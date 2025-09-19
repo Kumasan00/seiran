@@ -1,0 +1,12 @@
+[package]
+name = "seiran"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+cli = { path = "../cli" }
+font = { path = "../font" }
+pdf_gen = { path = "../pdf_gen" }
+read_file = { path = "../read_file" }

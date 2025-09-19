@@ -1,0 +1,15 @@
+[package]
+name = "font"
+authors.workspace = true
+description.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+harfbuzz_rs.workspace = true
+ttf-parser.workspace = true
+
+[build-dependencies]
+harfbuzz-sys.workspace = true

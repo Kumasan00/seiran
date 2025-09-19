@@ -1,0 +1,11 @@
+[package]
+name = "pdf_gen"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+font = { path = "../font" }
+pdf-writer.workspace = true
+ttf-parser.workspace = true

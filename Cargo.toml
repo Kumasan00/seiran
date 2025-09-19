@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/app",
+  "crates/cli",
+  "crates/font",
+  "crates/pdf_gen",
+  "crates/read_file",
+
+]
+
+[workspace.metadata]
+default-run = "app"
+
+[workspace.package]
+authors = ["Kuma"]
+description = "Seiran is a tool to generate PDF files from text files."
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+anyhow = "1.0.99"
+harfbuzz-sys = "0.5.0"
+harfbuzz_rs = "2.0.1"
+pdf-writer = "0.13.0"
+ttf-parser = "0.25.1"
+
+[workspace.lints.clippy]
+needless_return = "allow"
+
+[profile.release]
+debug = false
+lto = true
+opt-level = 3
