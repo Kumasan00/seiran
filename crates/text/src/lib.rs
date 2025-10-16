@@ -1,0 +1,77 @@
+use std::collections;
+
+use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
+
+pub fn shaping(
+  texts: &Vec<String>,
+  font: &Owned<Font<'_>>,
+) -> (
+  Vec<Vec<ShapingResult>>,
+  collections::BTreeSet<u16>,
+  collections::BTreeSet<u32>,
+) {
+  // let variation_vec: Vec<Variation> = vec![Variation::new(b"wght", 100.0)];
+  // font.set_variations(&variation_vec);
+
+  let mut shaping_results = Vec::new();
+  let mut gid_set = collections::BTreeSet::new();
+  gid_set.insert(0); // .notdef
+  let mut no_glyph_chars = collections::BTreeSet::new();
+
+  for line in texts {
+    let buffer = UnicodeBuffer::new()
+      .add_str(line)
+      .set_direction(Direction::Ltr);
+
+    let result = shape(font, buffer, &[]);
+
+    let positions = result.get_glyph_positions();
+    let infos = result.get_glyph_infos();
+
+    let mut shaping_result = Vec::with_capacity(positions.len());
+
+    for (position, info) in positions.iter().zip(infos) {
+      let gid = info.codepoint as u16;
+      let cluster = info.cluster;
+      let x_advance = position.x_advance;
+      let y_advance = position.y_advance;
+      let x_offset = position.x_offset;
+      let y_offset = position.y_offset;
+
+      // println!(
+      //   "gid{:0>5?}={:0>2?}@{:>4?},{:?}+{:?}",
+      //   gid, cluster, x_advance, x_offset, y_offset
+      // );
+      shaping_result.push(ShapingResult {
+        gid,
+        cluster,
+        x_advance,
+        y_advance,
+        x_offset,
+        y_offset,
+      });
+      gid_set.insert(gid);
+      if gid == 0 {
+        no_glyph_chars.insert(cluster);
+      }
+    }
+    shaping_results.push(shaping_result);
+  }
+
+  return (shaping_results, gid_set, no_glyph_chars);
+}
+
+#[derive(Debug)]
+pub struct ShapingResult {
+  pub gid: u16,
+  #[allow(dead_code)]
+  cluster: u32,
+  #[allow(dead_code)]
+  x_advance: i32,
+  #[allow(dead_code)]
+  y_advance: i32,
+  #[allow(dead_code)]
+  x_offset: i32,
+  #[allow(dead_code)]
+  y_offset: i32,
+}

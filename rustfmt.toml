@@ -1,0 +1,11 @@
+# インデントをスペース2つに設定
+tab_spaces = 2
+
+# use 文を並べ替える
+reorder_imports = true
+
+# std, external crate, 自作モジュールごとにグループ分け
+group_imports = "StdExternalCrate"
+
+# グループ間を空行で分ける
+imports_granularity = "Crate"
