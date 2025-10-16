@@ -1,3 +1,5 @@
+# rust target folder
 /target
 
+# font file
 *.ttf
