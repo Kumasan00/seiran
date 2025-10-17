@@ -2,6 +2,8 @@ use harfbuzz_rs::{Font, Owned};
 use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
 
+pub mod subset;
+
 pub fn parse_font(font_path: &str) -> Owned<Font<'_>> {
   let index = 0;
   let data = std::fs::read(font_path).expect("Error reading font file.");

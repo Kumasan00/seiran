@@ -1,7 +1,7 @@
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, types};
 
 pub fn pdf_gen(
-  font_data: Vec<u8>,
+  font_data: &Vec<u8>,
   font_info: font::FontData,
   adv_list: Vec<f32>,
   cid_texts: Vec<Vec<u8>>,

@@ -14,11 +14,17 @@ fn main() {
 
   let text: Vec<String> = read_file::read_file(&arg.file_path).expect("ファイルを読み込めません。");
   let font_path = &arg.font_path;
-  let font_data = std::fs::read(font_path).expect("Failed to read font file");
-  let face = Face::parse(&font_data, 0).expect("Failed to parse font");
   let harhbuzz_font = font::parse_font(font_path);
-  let font_info = font::FontData::analyze_font(&face);
+  let (_shape_results, used_gid, _no_glyph_chars) = text::shaping(&text, &harhbuzz_font);
+
+  let subset_font =
+    font::subset::subset_font(font_path, &used_gid).expect("フォントのサブセットに失敗しました。");
+
+  let harhbuzz_face = harfbuzz_rs::Face::from_bytes(&subset_font, 0);
+  let harhbuzz_font = harfbuzz_rs::Font::new(harhbuzz_face);
   let (shape_results, used_gid, _no_glyph_chars) = text::shaping(&text, &harhbuzz_font);
+  let face = Face::parse(&subset_font, 0).expect("Failed to parse font");
+  let font_info = font::FontData::analyze_font(&face);
 
   let mut adv_list = Vec::with_capacity(used_gid.len());
   for gid in used_gid.iter() {
@@ -42,13 +48,12 @@ fn main() {
   }
 
   let mut cid_to_gid_map = Vec::with_capacity(used_gid.len() * 2);
-  for gid in used_gid {
+  for gid in &used_gid {
     cid_to_gid_map.push((gid >> 8) as u8);
     cid_to_gid_map.push((gid & 0xFF) as u8);
   }
 
-  // Call the PDF generation function
-  pdf_gen::pdf_gen(font_data, font_info, adv_list, cid_texts, cid_to_gid_map)
+  pdf_gen::pdf_gen(&subset_font, font_info, adv_list, cid_texts, cid_to_gid_map)
     .expect("pdf が生成できません。");
-  println!("PDF generated")
+  println!("PDF generated");
 }

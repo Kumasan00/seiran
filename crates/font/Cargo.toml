@@ -7,6 +7,7 @@ name = "font"
 version.workspace = true
 
 [dependencies]
+allsorts.workspace = true
 harfbuzz_rs.workspace = true
 pdf-writer.workspace = true
 ttf-parser.workspace = true
