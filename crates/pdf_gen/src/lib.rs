@@ -1,7 +1,7 @@
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, types};
 
 pub fn pdf_gen(
-  font_data: &Vec<u8>,
+  font_data: &[u8],
   font_info: font::FontData,
   adv_list: Vec<f32>,
   cid_texts: Vec<Vec<u8>>,
@@ -60,7 +60,7 @@ pub fn pdf_gen(
 
   pdf.stream(cid_to_gid_map_id, &cid_to_gid_map); // Identity map
 
-  pdf.stream(font_file_id, &font_data);
+  pdf.stream(font_file_id, font_data);
 
   let mut page = pdf.page(page_id);
 
