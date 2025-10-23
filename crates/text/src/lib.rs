@@ -65,7 +65,7 @@ pub fn shaping(
 pub struct ShapingResult {
   pub gid: u16,
   #[allow(dead_code)]
-  cluster: u32,
+  pub cluster: u32,
   #[allow(dead_code)]
   x_advance: i32,
   #[allow(dead_code)]

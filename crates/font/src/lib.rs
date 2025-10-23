@@ -2,7 +2,9 @@ use harfbuzz_rs::{Font, Owned};
 use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
 
+pub mod font_info;
 pub mod subset;
+pub mod tounicode;
 
 pub fn parse_font(font_path: &str) -> Owned<Font<'_>> {
   let index = 0;

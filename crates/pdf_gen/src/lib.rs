@@ -15,9 +15,10 @@ pub fn pdf_gen(
   let cid_font_id = Ref::new(4);
   let font_descriptor_id = Ref::new(5);
   let cid_to_gid_map_id = Ref::new(6);
-  let font_file_id = Ref::new(7);
-  let page_id = Ref::new(8);
-  let content_id = Ref::new(9);
+  let to_unicode_cmap_id = Ref::new(7);
+  let font_file_id = Ref::new(8);
+  let page_id = Ref::new(9);
+  let content_id = Ref::new(10);
   let font_name = Name(b"NotoSansJP-Regular");
 
   pdf.catalog(catalog_id).pages(page_tree_id);
@@ -28,6 +29,7 @@ pub fn pdf_gen(
   font.base_font(font_name);
   font.encoding_predefined(Name(b"Identity-H"));
   font.descendant_font(cid_font_id);
+  font.to_unicode(to_unicode_cmap_id);
   font.finish();
 
   let mut cid_font = pdf.cid_font(cid_font_id);
@@ -59,6 +61,19 @@ pub fn pdf_gen(
   font_descriptor.finish();
 
   pdf.stream(cid_to_gid_map_id, &cid_to_gid_map); // Identity map
+
+  // let system_info = types::SystemInfo {
+  //   registry: Str(b"Kuma"),
+  //   ordering: Str(b"Custom"),
+  //   supplement: 0,
+  // };
+  // let mut to_unicode_cmap =
+  //   types::UnicodeCmap::new(Name(b"NotoSansJP-Regular_ToUnicode"), system_info);
+  //   to_unicode_cmap.pair(glyph, codepoint);
+  // let buffer = to_unicode_cmap.finish();
+  // let to_unicode_cmap = buffer.as_slice();
+
+  // pdf.cmap(to_unicode_cmap_id, to_unicode_cmap);
 
   pdf.stream(font_file_id, font_data);
 
