@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use harfbuzz_rs::{Font, Owned};
 use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
@@ -6,26 +8,27 @@ pub mod font_info;
 pub mod subset;
 pub mod tounicode;
 
-pub fn parse_font(font_path: &str) -> Owned<Font<'_>> {
+pub fn parse_font(font_path: &str) -> Result<Owned<Font<'_>>, Box<dyn Error>> {
   let index = 0;
-  let data = std::fs::read(font_path).expect("Error reading font file.");
-  let face = ttf_parser::Face::parse(&data, 0).expect("Error parsing font file.");
-
+  let data = std::fs::read(font_path)?;
+  // ttf_parser 用に一度だけバイト列から Face をパース（以降の解析に使える）
+  let face = ttf_parser::Face::parse(&data, index)?;
   if face.is_variable() {
-    println!("This is a variable font.");
-    println!("Variation Axes:");
+    eprintln!("This is a variable font.");
+    eprintln!("Variation Axes:");
     for axis in face.variation_axes() {
-      println!(
+      eprintln!(
         "  Tag: {:?}, Name ID: {}, Min: {}, Default: {}, Max: {}",
         axis.tag, axis.name_id, axis.min_value, axis.def_value, axis.max_value
       );
     }
   } else {
-    println!("This is NOT a variable font.");
+    eprintln!("This is NOT a variable font.");
   }
-  let face = harfbuzz_rs::Face::from_file(font_path, index).expect("Error reading font file.");
 
-  return Font::new(face);
+  // harfbuzz 用フェイスは harfbuzz_rs 側で生成（ファイルパスから）。エラーは呼び出し元へ伝播
+  let hb_face = harfbuzz_rs::Face::from_file(font_path, index)?;
+  Ok(Font::new(hb_face))
 }
 
 #[derive(Debug)]

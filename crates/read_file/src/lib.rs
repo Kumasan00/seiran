@@ -6,12 +6,6 @@ use std::{
 pub fn read_file(file_path: &str) -> io::Result<Vec<String>> {
   let file = File::open(file_path)?;
   let reader = BufReader::new(file);
-  let line_iter = reader.lines().enumerate().map(|(i, line)| {
-    line.unwrap_or_else(|e| {
-      eprintln!("読み込みエラー ({}行目): {}", i + 1, e);
-      std::process::exit(1);
-    })
-  });
-  let line_vec: Vec<String> = line_iter.collect();
-  Ok(line_vec)
+  let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
+  Ok(lines)
 }

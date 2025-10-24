@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use font::font_info;
+use pdf_gen::PdfOptions;
 use ttf_parser::Face;
 
 fn main() {
@@ -15,7 +16,14 @@ fn main() {
 
   let text: Vec<String> = read_file::read_file(&arg.file_path).expect("ファイルを読み込めません。");
   let font_path = &arg.font_path;
-  let harhbuzz_font = font::parse_font(font_path);
+  let harhbuzz_font = match font::parse_font(font_path) {
+    Ok(hb_font) => hb_font,
+    Err(e) => {
+      eprintln!("フォントの解析に失敗しました: {}", e);
+      std::process::exit(1);
+    }
+  };
+
   let (shape_results, old_used_gid, _no_glyph_chars) = text::shaping(&text, &harhbuzz_font);
 
   let subset_font = font::subset::subset_font(font_path, &old_used_gid)
@@ -26,17 +34,41 @@ fn main() {
 
   let mut new_used_gid = BTreeMap::new();
   for (new, old) in old_used_gid.iter().enumerate() {
-    new_used_gid.insert(old, new as u16);
+    new_used_gid.insert(*old, new as u16);
   }
 
-  let adv_list = font_info::adv_list(&new_used_gid, face);
-  let gid_to_cid: HashMap<&u16, u16> = font_info::gid_to_cid(&new_used_gid);
+  let adv_list: Vec<f32> = new_used_gid
+    .values()
+    .map(|new| {
+      face
+        .glyph_hor_advance(ttf_parser::GlyphId(*new))
+        .unwrap_or(font_info.upem) as f32
+    })
+    .collect();
+  let gid_to_cid: HashMap<u16, u16> = new_used_gid
+    .values()
+    .enumerate()
+    .map(|(cid, new)| (*new, cid as u16))
+    .collect();
   println!("{:?}", gid_to_cid);
-  let cid_texts = font_info::cid_texts(&shape_results, gid_to_cid, &new_used_gid);
+  let cid_texts = font_info::cid_texts(&shape_results, &gid_to_cid, &new_used_gid);
   let cid_to_gid_map = font_info::cid_to_gid_map(&new_used_gid);
 
-  pdf_gen::pdf_gen(&subset_font, font_info, adv_list, cid_texts, cid_to_gid_map)
-    .expect("pdf が生成できません。");
+  let opts = PdfOptions {
+    output_path: "target/hello.pdf",
+    font_name: b"NotoSansJP-Regular",
+    page_size: (595.0, 842.0),
+  };
+
+  pdf_gen::pdf_gen(
+    &subset_font,
+    font_info,
+    &adv_list,
+    &cid_texts,
+    &cid_to_gid_map,
+    opts,
+  )
+  .expect("pdf が生成できません。");
   println!("PDF generated");
 
   for (shape_result, text) in shape_results.iter().zip(text) {

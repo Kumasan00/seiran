@@ -1,11 +1,18 @@
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, types};
 
+pub struct PdfOptions<'a> {
+  pub output_path: &'a str,
+  pub font_name: &'a [u8],
+  pub page_size: (f32, f32),
+}
+
 pub fn pdf_gen(
   font_data: &[u8],
   font_info: font::FontData,
-  adv_list: Vec<f32>,
-  cid_texts: Vec<Vec<u8>>,
-  cid_to_gid_map: Vec<u8>,
+  adv_list: &[f32],
+  cid_texts: &[Vec<u8>],
+  cid_to_gid_map: &[u8],
+  opts: PdfOptions<'_>,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
 
@@ -19,7 +26,7 @@ pub fn pdf_gen(
   let font_file_id = Ref::new(8);
   let page_id = Ref::new(9);
   let content_id = Ref::new(10);
-  let font_name = Name(b"NotoSansJP-Regular");
+  let font_name = Name(opts.font_name);
 
   pdf.catalog(catalog_id).pages(page_tree_id);
 
@@ -41,9 +48,9 @@ pub fn pdf_gen(
     supplement: 0,
   });
   cid_font.font_descriptor(font_descriptor_id);
-  cid_font.default_width(1000.0);
+  cid_font.default_width(font_info.upem as f32);
   let mut widths = cid_font.widths();
-  widths.consecutive(0, adv_list);
+  widths.consecutive(0, adv_list.to_vec());
   widths.finish();
   cid_font.cid_to_gid_map_stream(cid_to_gid_map_id);
   cid_font.finish();
@@ -60,7 +67,7 @@ pub fn pdf_gen(
   font_descriptor.font_file2(font_file_id);
   font_descriptor.finish();
 
-  pdf.stream(cid_to_gid_map_id, &cid_to_gid_map); // Identity map
+  pdf.stream(cid_to_gid_map_id, cid_to_gid_map); // Identity map
 
   // let system_info = types::SystemInfo {
   //   registry: Str(b"Kuma"),
@@ -78,8 +85,8 @@ pub fn pdf_gen(
   pdf.stream(font_file_id, font_data);
 
   let mut page = pdf.page(page_id);
-
-  page.media_box(Rect::new(0.0, 0.0, 595.0, 842.0));
+  let (w, h) = opts.page_size;
+  page.media_box(Rect::new(0.0, 0.0, w, h));
   page.parent(page_tree_id);
   page.contents(content_id);
 
@@ -89,8 +96,8 @@ pub fn pdf_gen(
   let mut content = Content::new();
   content.begin_text();
   content.set_font(font_name, 14.0);
-  content.next_line(108.0, 734.0);
-  for cid_text in &cid_texts {
+  content.next_line(108.0, h - 108.0);
+  for cid_text in cid_texts {
     content.show(Str(cid_text));
     content.next_line(0.0, -20.0);
   }
@@ -99,5 +106,5 @@ pub fn pdf_gen(
 
   let buf: Vec<u8> = pdf.finish();
 
-  std::fs::write("target/hello.pdf", buf)
+  std::fs::write(opts.output_path, buf)
 }
