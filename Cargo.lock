@@ -65,6 +65,7 @@ dependencies = [
  "cli",
  "font",
  "harfbuzz_rs",
+ "pdf-writer",
  "pdf_gen",
  "read_file",
  "text",
@@ -234,7 +235,6 @@ dependencies = [
  "allsorts",
  "harfbuzz_rs",
  "pdf-writer",
- "text",
  "ttf-parser",
 ]
 
@@ -558,6 +558,8 @@ name = "text"
 version = "0.1.0"
 dependencies = [
  "harfbuzz_rs",
+ "pdf-writer",
+ "pdf_gen",
 ]
 
 [[package]]

@@ -10,7 +10,6 @@ version.workspace = true
 allsorts.workspace = true
 harfbuzz_rs.workspace = true
 pdf-writer.workspace = true
-text = { path = "../text" }
 ttf-parser.workspace = true
 
 [lints]

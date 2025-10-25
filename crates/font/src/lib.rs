@@ -4,7 +4,6 @@ use harfbuzz_rs::{Font, Owned};
 use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
 
-pub mod font_info;
 pub mod subset;
 pub mod tounicode;
 

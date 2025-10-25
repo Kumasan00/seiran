@@ -9,6 +9,7 @@ version = "0.1.0"
 cli = { path = "../cli" }
 font = { path = "../font" }
 harfbuzz_rs.workspace = true
+pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
 read_file = { path = "../read_file" }
 text = { path = "../text" }

@@ -1,8 +1,9 @@
-use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, types};
+use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types};
 
 pub struct PdfOptions<'a> {
   pub output_path: &'a str,
   pub font_name: &'a [u8],
+  pub font_size: f32,
   pub page_size: (f32, f32),
 }
 
@@ -10,9 +11,9 @@ pub fn pdf_gen(
   font_data: &[u8],
   font_info: font::FontData,
   adv_list: &[f32],
-  cid_texts: &[Vec<u8>],
+  content: pdf_writer::Content,
   cid_to_gid_map: &[u8],
-  opts: PdfOptions<'_>,
+  opts: &PdfOptions<'_>,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
 
@@ -93,15 +94,6 @@ pub fn pdf_gen(
   page.resources().fonts().pair(font_name, font_id);
   page.finish();
 
-  let mut content = Content::new();
-  content.begin_text();
-  content.set_font(font_name, 14.0);
-  content.next_line(108.0, h - 108.0);
-  for cid_text in cid_texts {
-    content.show(Str(cid_text));
-    content.next_line(0.0, -20.0);
-  }
-  content.end_text();
   pdf.stream(content_id, &content.finish());
 
   let buf: Vec<u8> = pdf.finish();

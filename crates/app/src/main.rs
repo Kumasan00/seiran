@@ -1,6 +1,5 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use font::font_info;
 use pdf_gen::PdfOptions;
 use ttf_parser::Face;
 
@@ -45,38 +44,30 @@ fn main() {
         .unwrap_or(font_info.upem) as f32
     })
     .collect();
-  let gid_to_cid: HashMap<u16, u16> = new_used_gid
-    .values()
-    .enumerate()
-    .map(|(cid, new)| (*new, cid as u16))
-    .collect();
-  println!("{:?}", gid_to_cid);
-  let cid_texts = font_info::cid_texts(&shape_results, &gid_to_cid, &new_used_gid);
-  let cid_to_gid_map = font_info::cid_to_gid_map(&new_used_gid);
+
+  let mut cid_to_gid_map = Vec::with_capacity(new_used_gid.len() * 2);
+  for new in new_used_gid.values() {
+    cid_to_gid_map.push((new >> 8) as u8);
+    cid_to_gid_map.push((new & 0xFF) as u8);
+  }
 
   let opts = PdfOptions {
     output_path: "target/hello.pdf",
     font_name: b"NotoSansJP-Regular",
+    font_size: 20.0,
     page_size: (595.0, 842.0),
   };
+
+  let content = text::make_content(&opts, shape_results, new_used_gid, &adv_list);
 
   pdf_gen::pdf_gen(
     &subset_font,
     font_info,
     &adv_list,
-    &cid_texts,
+    content,
     &cid_to_gid_map,
-    opts,
+    &opts,
   )
   .expect("pdf が生成できません。");
   println!("PDF generated");
-
-  for (shape_result, text) in shape_results.iter().zip(text) {
-    for shape in shape_result {
-      let g = shape.gid;
-      let c = shape.cluster;
-      println!("gid: {g},cluster: {c}")
-    }
-    println!("{text},{:x?}", text.as_bytes())
-  }
 }

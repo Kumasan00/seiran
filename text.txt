@@ -1,4 +1,1 @@
-rust
-aa
-tjio
-私の名前は
+a*
