@@ -64,8 +64,6 @@ version = "0.1.0"
 dependencies = [
  "cli",
  "font",
- "harfbuzz_rs",
- "pdf-writer",
  "pdf_gen",
  "read_file",
  "text",
