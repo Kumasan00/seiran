@@ -7,7 +7,7 @@ Seiran is a tool to generate PDF files from text files.
 
 M4 MacBook pro (Tahoe 26.0) \
 Xcode comand line tool (Xcode26) \
-harfbuzz 11.5.0
+harfbuzz 12.1.0
 
 ## License
 
