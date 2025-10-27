@@ -74,13 +74,13 @@ pub struct ShapingResult {
 
 pub fn make_content(
   opts: &PdfOptions,
-  shape_results: Vec<Vec<ShapingResult>>,
+  shape_results: &Vec<Vec<ShapingResult>>,
   new_used_gid: BTreeMap<u16, u16>,
   adv_list: &[f32],
 ) -> Content {
   let mut content = Content::new();
   content.begin_text();
-  content.set_font(Name(opts.font_name), opts.font_size);
+  content.set_font(Name(opts.font_name.as_bytes()), opts.font_size);
   content.next_line(108.0, opts.page_size.1 - 108.0);
 
   for line in shape_results {

@@ -2,7 +2,7 @@ use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types};
 
 pub struct PdfOptions<'a> {
   pub output_path: &'a str,
-  pub font_name: &'a [u8],
+  pub font_name: &'a str,
   pub font_size: f32,
   pub page_size: (f32, f32),
 }
@@ -11,8 +11,9 @@ pub fn pdf_gen(
   font_data: &[u8],
   font_info: font::FontData,
   adv_list: &[f32],
-  content: pdf_writer::Content,
   cid_to_gid_map: &[u8],
+  to_unicode_cmap: pdf_writer::types::UnicodeCmap,
+  content: pdf_writer::Content,
   opts: &PdfOptions<'_>,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
@@ -27,7 +28,7 @@ pub fn pdf_gen(
   let font_file_id = Ref::new(8);
   let page_id = Ref::new(9);
   let content_id = Ref::new(10);
-  let font_name = Name(opts.font_name);
+  let font_name = Name(opts.font_name.as_bytes());
 
   pdf.catalog(catalog_id).pages(page_tree_id);
 
@@ -70,18 +71,7 @@ pub fn pdf_gen(
 
   pdf.stream(cid_to_gid_map_id, cid_to_gid_map); // Identity map
 
-  // let system_info = types::SystemInfo {
-  //   registry: Str(b"Kuma"),
-  //   ordering: Str(b"Custom"),
-  //   supplement: 0,
-  // };
-  // let mut to_unicode_cmap =
-  //   types::UnicodeCmap::new(Name(b"NotoSansJP-Regular_ToUnicode"), system_info);
-  //   to_unicode_cmap.pair(glyph, codepoint);
-  // let buffer = to_unicode_cmap.finish();
-  // let to_unicode_cmap = buffer.as_slice();
-
-  // pdf.cmap(to_unicode_cmap_id, to_unicode_cmap);
+  pdf.cmap(to_unicode_cmap_id, to_unicode_cmap.finish().as_slice());
 
   pdf.stream(font_file_id, font_data);
 

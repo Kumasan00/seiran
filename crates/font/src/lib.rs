@@ -5,7 +5,6 @@ use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
 
 pub mod subset;
-pub mod tounicode;
 
 pub fn parse_font(font_path: &str) -> Result<Owned<Font<'_>>, Box<dyn Error>> {
   let index = 0;

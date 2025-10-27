@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use pdf_gen::PdfOptions;
 use ttf_parser::Face;
+mod tounicode;
 
 fn main() {
   // Call the CLI function
@@ -53,19 +54,22 @@ fn main() {
 
   let opts = PdfOptions {
     output_path: "target/hello.pdf",
-    font_name: b"NotoSansJP-Regular",
+    font_name: "NotoSansJP-Regular",
     font_size: 20.0,
     page_size: (595.0, 842.0),
   };
 
-  let content = text::make_content(&opts, shape_results, new_used_gid, &adv_list);
+  let to_unicode_cmap = tounicode::to_unicode_cmap(&opts, text, &new_used_gid, &shape_results);
+
+  let content = text::make_content(&opts, &shape_results, new_used_gid, &adv_list);
 
   pdf_gen::pdf_gen(
     &subset_font,
     font_info,
     &adv_list,
-    content,
     &cid_to_gid_map,
+    to_unicode_cmap,
+    content,
     &opts,
   )
   .expect("pdf が生成できません。");
