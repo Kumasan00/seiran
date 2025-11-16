@@ -5,6 +5,7 @@ members = [
   "crates/font",
   "crates/pdf_gen",
   "crates/read_file",
+  "crates/stypes",
   "crates/text",
 ]
 resolver = "3"

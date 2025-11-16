@@ -3,14 +3,12 @@ authors.workspace = true
 description.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "text"
+name = "stypes"
+readme.workspace = true
+repository.workspace = true
 version.workspace = true
 
 [dependencies]
-harfbuzz_rs.workspace = true
-pdf-writer.workspace = true
-pdf_gen = { path = "../pdf_gen" }
-stypes = { path = "../stypes" }
 
 [lints]
 workspace = true

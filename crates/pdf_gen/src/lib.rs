@@ -1,20 +1,13 @@
 use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types};
 
-pub struct PdfOptions<'a> {
-  pub output_path: &'a str,
-  pub font_name: &'a str,
-  pub font_size: f32,
-  pub page_size: (f32, f32),
-}
-
 pub fn pdf_gen(
   font_data: &[u8],
-  font_info: font::FontData,
+  font_info: &font::FontData,
   adv_list: &[f32],
   cid_to_gid_map: &[u8],
   to_unicode_cmap: pdf_writer::types::UnicodeCmap,
   content: pdf_writer::Content,
-  opts: &PdfOptions<'_>,
+  opts: &stypes::PdfOptions<'_>,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
 
@@ -52,7 +45,7 @@ pub fn pdf_gen(
   cid_font.font_descriptor(font_descriptor_id);
   cid_font.default_width(font_info.upem as f32);
   let mut widths = cid_font.widths();
-  widths.consecutive(0, adv_list.to_vec());
+  widths.consecutive(0, adv_list.to_owned());
   widths.finish();
   cid_font.cid_to_gid_map_stream(cid_to_gid_map_id);
   cid_font.finish();

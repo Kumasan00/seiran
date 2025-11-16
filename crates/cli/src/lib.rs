@@ -7,6 +7,7 @@ pub fn parse_arg() -> Result<Arg, String> {
     [file_path, font_path] => Ok(Arg {
       file_path: file_path.clone(),
       font_path: font_path.clone(),
+      font_index: 0,
     }),
     _ => {
       let expected = 2;
@@ -21,4 +22,5 @@ pub fn parse_arg() -> Result<Arg, String> {
 pub struct Arg {
   pub file_path: String,
   pub font_path: String,
+  pub font_index: u32,
 }

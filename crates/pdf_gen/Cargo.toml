@@ -8,6 +8,7 @@ version = "0.1.0"
 [dependencies]
 font = { path = "../font" }
 pdf-writer.workspace = true
+stypes = { path = "../stypes" }
 
 [lints]
 workspace = true

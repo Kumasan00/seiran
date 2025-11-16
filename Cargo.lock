@@ -62,11 +62,14 @@ dependencies = [
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "allsorts",
  "cli",
  "font",
+ "harfbuzz_rs",
  "pdf-writer",
  "pdf_gen",
  "read_file",
+ "stypes",
  "text",
  "ttf-parser",
 ]
@@ -438,6 +441,7 @@ version = "0.1.0"
 dependencies = [
  "font",
  "pdf-writer",
+ "stypes",
 ]
 
 [[package]]
@@ -532,6 +536,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stypes"
+version = "0.1.0"
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -559,6 +567,7 @@ dependencies = [
  "harfbuzz_rs",
  "pdf-writer",
  "pdf_gen",
+ "stypes",
 ]
 
 [[package]]
