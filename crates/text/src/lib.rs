@@ -146,7 +146,7 @@ mod tests {
   #[test]
   fn test_content_generation() {
     let opts = PdfOptions {
-      output_path: "test.pdf",
+      output_path: std::path::PathBuf::from("test.pdf"),
       font_name: "TestFont",
       font_size: 12.0,
       page_size: (595.0, 842.0),
@@ -176,7 +176,7 @@ mod tests {
   #[should_panic(expected = "index out of bounds")]
   fn test_content_generation_invalid_gid() {
     let opts = PdfOptions {
-      output_path: "test.pdf",
+      output_path: std::path::PathBuf::from("test.pdf"),
       font_name: "TestFont",
       font_size: 12.0,
       page_size: (595.0, 842.0),

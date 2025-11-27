@@ -52,7 +52,7 @@ pub fn pdf_gen(
 
   let mut font_descriptor = pdf.font_descriptor(font_descriptor_id);
   font_descriptor.name(font_name);
-  font_descriptor.flags(types::FontFlags::NON_SYMBOLIC);
+  font_descriptor.flags(types::FontFlags::SYMBOLIC);
   font_descriptor.italic_angle(font_info.italic_angle);
   font_descriptor.bbox(font_info.pdf_writer_rect());
   font_descriptor.ascent(font_info.ascender);
@@ -81,5 +81,5 @@ pub fn pdf_gen(
 
   let buf: Vec<u8> = pdf.finish();
 
-  std::fs::write(opts.output_path, buf)
+  std::fs::write(&opts.output_path, buf)
 }

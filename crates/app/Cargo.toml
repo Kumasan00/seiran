@@ -12,6 +12,7 @@ font = { path = "../font" }
 harfbuzz_rs.workspace = true
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
+read_config_file = { path = "../read_config_file" }
 read_file = { path = "../read_file" }
 stypes = { path = "../stypes" }
 text = { path = "../text" }

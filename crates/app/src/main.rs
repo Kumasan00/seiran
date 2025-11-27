@@ -9,11 +9,15 @@ use ttf_parser::Face;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   // Call the CLI function
   let arg = cli::parse_arg()?;
+
+  let config = read_config_file::read_config_file()?;
+  println!("Config: {:?}", config);
+
   let text: Vec<String> = read_file::read_file(&arg.file_path).expect("ファイルを読み込めません。");
 
-  let index = &arg.font_index;
+  let index = &config.fonts[0].font_index;
 
-  let data = fs::read(&arg.font_path)?;
+  let data = fs::read(&config.fonts[0].font_path)?;
   let ttf_paser_face = Face::parse(&data, *index)?;
   let hb_face = harfbuzz_rs::Face::from_bytes(&data, *index);
   let hb_font = Font::new(hb_face);
@@ -70,10 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
 
   let opts = PdfOptions {
-    output_path: "target/hello.pdf",
+    output_path: config.pdf.output_path,
     font_name: font_info.name.as_str(),
-    font_size: 20.0,
-    page_size: (595.0, 842.0),
+    font_size: config.pdf.font_size,
+    page_size: (config.pdf.width, config.pdf.height),
   };
 
   let mut cid_to_chars: BTreeMap<u16, Vec<char>> = BTreeMap::new();

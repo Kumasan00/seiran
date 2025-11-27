@@ -1,26 +1,18 @@
-use std::env;
+use std::{env, path::PathBuf};
 
 pub fn parse_arg() -> Result<Arg, String> {
   let args: Vec<String> = env::args().skip(1).collect();
 
-  match args.as_slice() {
-    [file_path, font_path] => Ok(Arg {
-      file_path: file_path.clone(),
-      font_path: font_path.clone(),
-      font_index: 0,
-    }),
-    _ => {
-      let expected = 2;
-      Err(format!(
-        "引数の個数が{expected}つではありません。現在の個数: {}",
-        args.len()
-      ))
-    }
+  if args[0] == "build" {
+    println!("seiran build");
+    return Ok(Arg {
+      file_path: PathBuf::from(&args[1]),
+    });
+  } else {
+    Err(format!("Unknown command: {:?}", args))?
   }
 }
 
 pub struct Arg {
-  pub file_path: String,
-  pub font_path: String,
-  pub font_index: u32,
+  pub file_path: PathBuf,
 }
