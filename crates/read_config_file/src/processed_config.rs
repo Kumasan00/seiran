@@ -4,10 +4,12 @@ use std::path::PathBuf;
 pub struct Config {
   pub name: String,
   pub pdf: PdfConfig,
-  pub fonts: Vec<FontConfig>,
+  pub main_font: FontConfig,
+  pub main_japanese_font: FontConfig,
 }
 #[derive(Debug)]
 pub struct FontConfig {
+  pub font_name: String,
   pub font_path: PathBuf,
   pub font_index: u32,
 }
