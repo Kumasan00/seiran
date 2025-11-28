@@ -10,6 +10,7 @@ allsorts.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
 harfbuzz_rs.workspace = true
+indexmap.workspace = true
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
 read_config_file = { path = "../read_config_file" }

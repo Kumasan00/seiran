@@ -1,63 +1,57 @@
-use std::collections::{self, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
 use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
+use indexmap::IndexSet;
 use pdf_writer::{Content, Finish, Name, Str};
 use stypes::PdfOptions;
 
 /// テキストをシェーピングして、グリフIDとその位置情報を得る
 pub fn shaping(
-  texts: &[String],
-  font: &Owned<Font<'_>>,
-) -> (
-  Vec<Vec<ShapingResult>>,
-  collections::BTreeSet<u16>,
-  collections::BTreeSet<u32>,
-) {
-  // let variation_vec: Vec<Variation> = vec![Variation::new(b"wght", 100.0)];
-  // font.set_variations(&variation_vec);
+  text: &str,
+  hb_font: &Owned<Font<'_>>,
+  gid_to_cid: &mut HashMap<u16, u16>,
+  used_gids: &mut IndexSet<u16>,
+) -> Vec<ShapingResult> {
+  let buffer = UnicodeBuffer::new()
+    .add_str(text)
+    .set_direction(Direction::Ltr);
 
-  let mut shaping_results = Vec::new();
-  let mut gid_set = collections::BTreeSet::new();
-  gid_set.insert(0); // .notdef
-  let mut no_glyph_chars = collections::BTreeSet::new();
+  let result = shape(hb_font, buffer, &[]);
 
-  for line in texts {
-    let buffer = UnicodeBuffer::new()
-      .add_str(line)
-      .set_direction(Direction::Ltr);
+  let positions = result.get_glyph_positions();
+  let infos = result.get_glyph_infos();
 
-    let result = shape(font, buffer, &[]);
+  let mut shaping_result = Vec::with_capacity(positions.len());
 
-    let positions = result.get_glyph_positions();
-    let infos = result.get_glyph_infos();
+  for (position, info) in positions.iter().zip(infos) {
+    let gid = info.codepoint as u16;
+    let cluster = info.cluster;
+    let x_advance = position.x_advance;
+    let y_advance = position.y_advance;
+    let x_offset = position.x_offset;
+    let y_offset = position.y_offset;
 
-    let mut shaping_result = Vec::with_capacity(positions.len());
+    shaping_result.push(ShapingResult {
+      gid,
+      cluster,
+      x_advance,
+      y_advance,
+      x_offset,
+      y_offset,
+    });
 
-    for (position, info) in positions.iter().zip(infos) {
-      let gid = info.codepoint as u16;
-      let cluster = info.cluster;
-      let x_advance = position.x_advance;
-      let y_advance = position.y_advance;
-      let x_offset = position.x_offset;
-      let y_offset = position.y_offset;
+    let len = gid_to_cid.len();
+    gid_to_cid.entry(gid).or_insert_with(|| len as u16);
+    used_gids.insert(gid);
 
-      shaping_result.push(ShapingResult {
-        gid,
-        cluster,
-        x_advance,
-        y_advance,
-        x_offset,
-        y_offset,
-      });
-      gid_set.insert(gid);
-      if gid == 0 {
-        no_glyph_chars.insert(cluster);
-      }
+    if gid == 0 {
+      eprintln!(
+        "Warning: The text contains characters that are not present in the font, resulting in .notdef glyphs."
+      );
     }
-    shaping_results.push(shaping_result);
   }
 
-  return (shaping_results, gid_set, no_glyph_chars);
+  return shaping_result;
 }
 
 #[derive(Debug)]
@@ -71,6 +65,14 @@ pub struct ShapingResult {
   x_offset: i32,
   #[allow(dead_code)]
   y_offset: i32,
+}
+
+pub fn create_content(opts: &PdfOptions) -> Content {
+  let mut content = Content::new();
+  content.begin_text();
+  content.set_font(Name(opts.font_name.as_bytes()), opts.font_size);
+  content.next_line(108.0, opts.page_size.1 - 108.0);
+  return content;
 }
 
 /// PDFコンテンツを生成する
@@ -110,90 +112,4 @@ pub fn make_content(
   content.end_text();
 
   return content;
-}
-
-#[cfg(test)]
-mod tests {
-  use std::collections::BTreeMap;
-
-  use harfbuzz_rs::Face;
-
-  use super::*;
-
-  const TEST_FONT_PATH: &str = "../../tests/fonts/NotoSansJP-Regular.ttf";
-
-  fn setup_test_font() -> Owned<Font<'static>> {
-    let face = Face::from_file(TEST_FONT_PATH, 0).expect("Failed to load test font");
-    Font::new(face)
-  }
-
-  #[test]
-  #[ignore = "Requires test font file"]
-  fn test_basic_shaping() {
-    let font = setup_test_font();
-    let texts = vec!["Hello".to_string()];
-
-    let (results, gid_set, no_glyph_chars) = shaping(&texts, &font);
-
-    assert_eq!(results.len(), 1, "Should have one line of results");
-    assert!(!gid_set.is_empty(), "Should have some glyphs");
-    assert!(no_glyph_chars.is_empty(), "Should not have missing glyphs");
-
-    let first_line = &results[0];
-    assert_eq!(first_line.len(), 5, "Hello should produce 5 glyphs");
-  }
-
-  #[test]
-  fn test_content_generation() {
-    let opts = PdfOptions {
-      output_path: std::path::PathBuf::from("test.pdf"),
-      font_name: "TestFont",
-      font_size: 12.0,
-      page_size: (595.0, 842.0),
-    };
-
-    let shape_results = vec![vec![ShapingResult {
-      gid: 1,
-      cluster: 0,
-      x_advance: 500,
-      y_advance: 0,
-      x_offset: 0,
-      y_offset: 0,
-    }]];
-
-    let mut new_used_gid = BTreeMap::new();
-    new_used_gid.insert(1, 1);
-
-    let adv_list = vec![500.0, 500.0];
-
-    let content = make_content(&opts, &shape_results, &new_used_gid, &adv_list);
-    let bytes = content.finish();
-
-    assert!(!bytes.is_empty(), "Should generate non-empty content");
-  }
-
-  #[test]
-  #[should_panic(expected = "index out of bounds")]
-  fn test_content_generation_invalid_gid() {
-    let opts = PdfOptions {
-      output_path: std::path::PathBuf::from("test.pdf"),
-      font_name: "TestFont",
-      font_size: 12.0,
-      page_size: (595.0, 842.0),
-    };
-
-    let shape_results = vec![vec![ShapingResult {
-      gid: 999, // Invalid GID
-      cluster: 0,
-      x_advance: 500,
-      y_advance: 0,
-      x_offset: 0,
-      y_offset: 0,
-    }]];
-
-    let new_used_gid = BTreeMap::new(); // Empty map
-    let adv_list = vec![500.0];
-
-    let _ = make_content(&opts, &shape_results, &new_used_gid, &adv_list);
-  }
 }

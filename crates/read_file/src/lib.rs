@@ -1,12 +1,10 @@
 use std::{
   fs::File,
   io::{self, BufRead, BufReader},
-  path::PathBuf,
+  path::Path,
 };
 
-pub fn read_file(file_path: &PathBuf) -> io::Result<Vec<String>> {
+pub fn read_file<P: AsRef<Path>>(file_path: P) -> io::Result<io::Lines<BufReader<File>>> {
   let file = File::open(file_path)?;
-  let reader = BufReader::new(file);
-  let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
-  Ok(lines)
+  Ok(BufReader::new(file).lines())
 }
