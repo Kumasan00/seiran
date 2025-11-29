@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let lines = read_file::read_file(&arg.file_path)?;
 
-  let font_ctx = FontContext::new(
+  let mut font_ctx = FontContext::new(
     config
       .main_font
       .font_path
@@ -29,17 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let mut mapping = GlyphMapping::new();
 
-  let content = process_text_lines(lines, &font_ctx, &mut mapping, &config)?;
+  let content = process_text_lines(lines, &mut font_ctx, &mut mapping, &config)?;
 
   let subset_bytes = font::create_font_subset(&font_ctx, &mapping)?;
   println!("Subset font: {} bytes", subset_bytes.len());
 
   let font_info = font::analyze_subset_font(&subset_bytes, font_ctx.index)?;
-  mapping
-    .advance_widths
-    .insert(NOTDEF_GID, font_info.upem as f32);
+  mapping.advance_widths.insert(NOTDEF_GID, font_info.upem);
 
-  let advance_list = mapping.build_advance_list(font_info.upem as f32);
+  let advance_list = mapping.build_advance_list(font_info.upem);
   let cid_to_gid_map = mapping.build_cid_to_gid_map();
   let to_unicode_cmap = create_to_unicode_cmap(&config.main_font.font_name, mapping.cid_to_chars);
 
@@ -59,10 +57,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn process_text_lines(
   lines: io::Lines<io::BufReader<fs::File>>,
-  font_ctx: &FontContext,
+  font_ctx: &mut FontContext,
   mapping: &mut GlyphMapping,
   config: &Config,
 ) -> Result<Content, Box<dyn std::error::Error>> {
+  let upem = font_ctx.ttf_face.units_per_em() as f32;
   let mut content = Content::new();
   content.begin_text();
   content.set_font(
@@ -78,7 +77,14 @@ fn process_text_lines(
     let line = line?;
     println!("Line {}: {}", line_num + 1, line);
 
-    process_single_line(&line, font_ctx, mapping, &mut content, config.pdf.font_size)?;
+    process_single_line(
+      &line,
+      font_ctx,
+      upem,
+      mapping,
+      &mut content,
+      config.pdf.font_size,
+    )?;
 
     content.next_line(0.0, -config.pdf.font_size * LINE_HEIGHT_FACTOR);
   }
@@ -89,7 +95,8 @@ fn process_text_lines(
 
 fn process_single_line(
   line: &str,
-  font_ctx: &FontContext,
+  font_ctx: &mut FontContext,
+  upem: f32,
   mapping: &mut GlyphMapping,
   content: &mut Content,
   _font_size: f32,
@@ -99,7 +106,7 @@ fn process_single_line(
 
   let shape_results = text::shaping(
     line,
-    &font_ctx.hb_font,
+    &mut font_ctx.hb_font,
     &mut mapping.gid_to_cid,
     &mut mapping.used_gids,
   );
@@ -110,15 +117,16 @@ fn process_single_line(
     let gid = shape_result.gid;
     let cid = *mapping.gid_to_cid.get(&gid).unwrap();
 
-    let advance_width = font_ctx.get_glyph_advance(gid);
+    let advance_width = font_ctx.get_glyph_advance(gid) * 1000.0 / upem; // 1000/upem スケーリング
     mapping.advance_widths.entry(cid).or_insert(advance_width);
+    let shape_advance = shape_result.x_advance as f32 * 1000.0 / upem; // 1000/upem スケーリング
 
     // CIDをバイト列に変換
     text_buffer.push((cid >> 8) as u8);
     text_buffer.push((cid & 0xFF) as u8);
 
     // 位置調整が必要な場合
-    let advance_diff = advance_width - shape_result.x_advance as f32;
+    let advance_diff = advance_width - shape_advance;
     if advance_diff != 0.0 {
       items.show(Str(&text_buffer));
       items.adjust(advance_diff);

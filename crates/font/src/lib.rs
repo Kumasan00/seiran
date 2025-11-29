@@ -85,7 +85,7 @@ impl std::error::Error for FontSubsetError {}
 #[derive(Debug)]
 pub struct FontData {
   pub name: String,
-  pub upem: u16,
+  pub upem: f32,
   pub italic_angle: f32,
   pub ascender: f32,
   pub descender: f32,
@@ -103,7 +103,7 @@ impl FontData {
 
     let name = Self::extract_font_name(face)?;
 
-    let upem = face.units_per_em();
+    let upem = face.units_per_em() as f32;
     let italic_angle = face.italic_angle();
     let ascender = face.ascender() as f32;
     let descender = face.descender() as f32;
@@ -185,6 +185,12 @@ impl FontContext {
 
     let ttf_face = ttf_parser::Face::parse(static_data, index).map_err(FontContextError::Parse)?;
     if ttf_face.is_variable() {
+      let axes = ttf_face.variation_axes();
+      let coordinates = ttf_face.variation_coordinates();
+      println!(
+        "Font has variation axes: {:?}, coordinates: {:?}",
+        axes, coordinates
+      );
       return Err(FontContextError::VariableFontUnsupported);
     }
 
@@ -275,7 +281,7 @@ mod tests {
     with_test_face(|face| {
       let font_data = FontData::analyze_font(face).expect("Font analysis failed");
 
-      assert!(font_data.upem > 0, "Units per em should be positive");
+      assert!(font_data.upem > 0.0, "Units per em should be positive");
       assert!(!font_data.name.is_empty(), "Font name should not be empty");
       assert!(font_data.ascender > 0.0, "Ascender should be positive");
       assert!(font_data.descender < 0.0, "Descender should be negative");

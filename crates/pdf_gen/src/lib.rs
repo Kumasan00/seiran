@@ -43,7 +43,7 @@ pub fn pdf_gen(
     supplement: 0,
   });
   cid_font.font_descriptor(font_descriptor_id);
-  cid_font.default_width(font_info.upem as f32);
+  cid_font.default_width(font_info.upem);
   let mut widths = cid_font.widths();
   widths.consecutive(0, adv_list.to_owned());
   widths.finish();
