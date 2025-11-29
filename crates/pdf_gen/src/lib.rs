@@ -1,5 +1,32 @@
+//! PDF生成モジュール
+//!
+//! このモジュールは、フォント、コンテンツ、設定情報から
+//! PDFドキュメントを生成する機能を提供します。
+
 use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types};
 
+/// PDFドキュメントを生成
+///
+/// フォント情報、コンテンツストリーム、設定を基に
+/// PDFファイルを構築してディスクに書き込みます。
+///
+/// # 引数
+///
+/// * `font_data` - サブセット化されたフォントデータ
+/// * `font_info` - フォントのメタデータ
+/// * `adv_list` - グリフの横幅リスト
+/// * `cid_to_gid_map` - CIDからGIDへのマッピング
+/// * `to_unicode_cmap` - Unicode CMap
+/// * `content` - PDFコンテンツストリーム
+/// * `config` - PDF生成設定
+///
+/// # 戻り値
+///
+/// 成功した場合は`Ok(())`を返します。
+///
+/// # エラー
+///
+/// ファイル書き込みに失敗した場合にエラーを返します。
 pub fn pdf_gen(
   font_data: &[u8],
   font_info: &font::FontData,

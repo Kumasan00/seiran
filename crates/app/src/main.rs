@@ -1,3 +1,9 @@
+//! PDFテキスト生成アプリケーション
+//!
+//! このアプリケーションは、テキストファイルを読み込み、
+//! 指定されたフォントを使用してPDFドキュメントを生成します。
+//! フォントのサブセット化、テキストシェーピング、グリフマッピングを処理します。
+
 use std::{collections::HashMap, fs, io};
 
 use font::FontContext;
@@ -5,16 +11,37 @@ use pdf_writer::{Content, Finish, Name, Str, types};
 use read_config_file::Config;
 use stypes::GlyphMapping;
 
-// Constants
+// 定数
+
+/// .notdef グリフのグリフID
 const NOTDEF_GID: u16 = 0;
+/// 行の高さの倍率
 const LINE_HEIGHT_FACTOR: f32 = 1.0;
+/// CID to GIDマッピングのレジストリ名
 const CID_TO_GID_REGISTRY: &[u8] = b"Kuma";
+/// CID to GIDマッピングのオーダリング名
 const CID_TO_GID_ORDERING: &[u8] = b"Custom";
+/// CID to GIDマッピングのサプリメント番号
 const CID_TO_GID_SUPPLEMENT: i32 = 0;
 
+/// アプリケーションのメインエントリーポイント
+///
+/// 以下の処理を実行します：
+/// 1. コマンドライン引数の解析
+/// 2. 設定ファイルの読み込み
+/// 3. 入力テキストファイルの読み込み
+/// 4. フォントの初期化とテキスト処理
+/// 5. フォントサブセットの作成
+/// 6. PDF生成
+///
+/// # エラー
+///
+/// ファイルI/O、フォント処理、PDF生成のいずれかで問題が発生した場合にエラーを返します。
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   let arg = cli::parse_arg()?;
   let config = read_config_file::read_config_file()?;
+
+  println!("Config loaded: {:?}", config);
 
   let lines = read_file::read_file(&arg.file_path)?;
 
@@ -24,13 +51,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       .font_path
       .to_str()
       .ok_or("Invalid UTF-8 in font path")?,
-    config.main_font.font_index,
+    &config,
   )?;
 
   let mut mapping = GlyphMapping::new();
 
   let content = process_text_lines(lines, &mut font_ctx, &mut mapping, &config)?;
-
   let subset_bytes = font::create_font_subset(&font_ctx, &mapping)?;
   println!("Subset font: {} bytes", subset_bytes.len());
 
@@ -55,6 +81,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
+/// テキストの各行を処理してPDFコンテンツストリームを生成
+///
+/// # 引数
+///
+/// * `lines` - 処理するテキスト行のイテレータ
+/// * `font_ctx` - フォントコンテキスト
+/// * `mapping` - グリフマッピング情報
+/// * `config` - アプリケーション設定
+///
+/// # 戻り値
+///
+/// PDFコンテンツストリームを返します。
+///
+/// # エラー
+///
+/// 行の処理中にエラーが発生した場合にエラーを返します。
 fn process_text_lines(
   lines: io::Lines<io::BufReader<fs::File>>,
   font_ctx: &mut FontContext,
@@ -77,14 +119,7 @@ fn process_text_lines(
     let line = line?;
     println!("Line {}: {}", line_num + 1, line);
 
-    process_single_line(
-      &line,
-      font_ctx,
-      upem,
-      mapping,
-      &mut content,
-      config.pdf.font_size,
-    )?;
+    process_single_line(&line, font_ctx, upem, mapping, &mut content)?;
 
     content.next_line(0.0, -config.pdf.font_size * LINE_HEIGHT_FACTOR);
   }
@@ -93,13 +128,28 @@ fn process_text_lines(
   Ok(content)
 }
 
+/// 単一行のテキストを処理してコンテンツストリームに追加
+///
+/// テキストシェーピングを実行し、グリフIDとCIDのマッピングを更新し、
+/// 位置調整を行いながらコンテンツストリームに書き込みます。
+///
+/// # 引数
+///
+/// * `line` - 処理するテキスト行
+/// * `font_ctx` - フォントコンテキスト
+/// * `upem` - フォントのユニット/em値
+/// * `mapping` - グリフマッピング情報
+/// * `content` - PDFコンテンツストリーム
+///
+/// # エラー
+///
+/// シェーピングまたはコンテンツ書き込み中にエラーが発生した場合にエラーを返します。
 fn process_single_line(
   line: &str,
   font_ctx: &mut FontContext,
   upem: f32,
   mapping: &mut GlyphMapping,
   content: &mut Content,
-  _font_size: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let mut position_text = content.show_positioned();
   let mut items = position_text.items();
@@ -146,6 +196,20 @@ fn process_single_line(
   Ok(())
 }
 
+/// シェーピング結果から文字範囲を取得
+///
+/// 指定されたインデックスのシェーピング結果に対応する
+/// 元のテキストの文字範囲を返します。
+///
+/// # 引数
+///
+/// * `line` - 元のテキスト行
+/// * `shape_results` - シェーピング結果のスライス
+/// * `current_index` - 現在のシェーピング結果のインデックス
+///
+/// # 戻り値
+///
+/// 文字範囲を表す`Range<usize>`を返します。
 fn get_char_range(
   line: &str,
   shape_results: &[text::ShapingResult],
@@ -159,6 +223,19 @@ fn get_char_range(
   start..end
 }
 
+/// ToUnicode CMapを作成
+///
+/// CIDから対応するUnicode文字へのマッピングを持つ
+/// CMapオブジェクトを生成します。
+///
+/// # 引数
+///
+/// * `font_name` - フォント名
+/// * `cid_to_chars` - CIDと文字のマッピング
+///
+/// # 戻り値
+///
+/// Unicode CMapを返します。
 fn create_to_unicode_cmap(
   font_name: &str,
   cid_to_chars: HashMap<u16, Vec<char>>,

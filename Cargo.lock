@@ -245,6 +245,7 @@ dependencies = [
  "allsorts",
  "harfbuzz_rs",
  "pdf-writer",
+ "read_config_file",
  "stypes",
  "ttf-parser",
 ]

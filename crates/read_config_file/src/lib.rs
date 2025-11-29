@@ -1,3 +1,8 @@
+//! 設定ファイル読み込みモジュール
+//!
+//! このモジュールは、TOML形式の設定ファイルを読み込み、
+//! アプリケーションが使用する設定情報に変換します。
+
 use std::{
   fs, io,
   path::{Path, PathBuf},
@@ -10,12 +15,18 @@ mod processed_config;
 // processed_config の型を公開
 pub use processed_config::{Config, FontConfig, PdfConfig};
 
+/// 設定ファイル読み込みに関連するエラー
 #[derive(Debug)]
 pub enum ReadConfigError {
+  /// 入出力エラー
   Io(io::Error),
+  /// TOML解析エラー
   Toml(toml::de::Error),
+  /// 出力ディレクトリの作成に失敗
   CreateDir(io::Error),
+  /// 無効な設定値
   InvalidValue { field: &'static str, msg: String },
+  /// カレントディレクトリの取得に失敗
   CurrentDir(io::Error),
 }
 
@@ -57,10 +68,36 @@ impl From<toml::de::Error> for ReadConfigError {
   }
 }
 
+/// デフォルトパスから設定ファイルを読み込み
+///
+/// `./config/config.toml`から設定を読み込みます。
+///
+/// # 戻り値
+///
+/// 解析された設定情報を返します。
+///
+/// # エラー
+///
+/// ファイル読み込みまたは解析に失敗した場合にエラーを返します。
 pub fn read_config_file() -> Result<processed_config::Config, ReadConfigError> {
   read_config_file_with_path("./config/config.toml")
 }
 
+/// 指定されたパスから設定ファイルを読み込み
+///
+/// TOMLファイルを読み込み、パスの解決とバリデーションを行います。
+///
+/// # 引数
+///
+/// * `config_file_path` - 設定ファイルのパス
+///
+/// # 戻り値
+///
+/// 解析された設定情報を返します。
+///
+/// # エラー
+///
+/// ファイル読み込み、解析、バリデーションのいずれかで失敗した場合。
 pub fn read_config_file_with_path<P: AsRef<Path>>(
   config_file_path: P,
 ) -> Result<processed_config::Config, ReadConfigError> {
@@ -91,13 +128,35 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     font_name: main_font_name,
     font_path: main_font_path,
     font_index: main_font_index,
+    variation_axes: main_font_variation_axes,
   } = pre_main_font;
+
+  let main_font_variation_axes = main_font_variation_axes.map(|axes| {
+    axes
+      .into_iter()
+      .map(|axis| processed_config::VariationAxis {
+        name: axis.name,
+        value: axis.value,
+      })
+      .collect()
+  });
 
   let pre_config::PreFontConfig {
     font_name: main_jp_font_name,
     font_path: main_jp_font_path,
     font_index: main_jp_font_index,
+    variation_axes: main_jp_font_variation_axes,
   } = pre_main_jp_font;
+
+  let main_jp_font_variation_axes = main_jp_font_variation_axes.map(|axes| {
+    axes
+      .into_iter()
+      .map(|axis| processed_config::VariationAxis {
+        name: axis.name,
+        value: axis.value,
+      })
+      .collect()
+  });
 
   let height: f32 = height;
   let width: f32 = width;
@@ -150,16 +209,27 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       font_name: main_font_name,
       font_path: main_font_path,
       font_index: main_font_index,
+      variation_axes: main_font_variation_axes,
     },
     main_japanese_font: processed_config::FontConfig {
       font_name: main_jp_font_name,
       font_path: main_jp_font_path,
       font_index: main_jp_font_index,
+      variation_axes: main_jp_font_variation_axes,
     },
   };
   Ok(config)
 }
 
+/// 相対パスを絶対パスに解決
+///
+/// パスが相対パスの場合は、ベースパスに結合します。
+/// 絶対パスの場合はそのまま返します。
+///
+/// # 引数
+///
+/// * `base` - ベースディレクトリ
+/// * `p` - 解決するパス
 fn resolve_path(base: &Path, p: impl AsRef<Path>) -> PathBuf {
   let p = p.as_ref();
   if p.is_absolute() {

@@ -10,6 +10,7 @@ version.workspace = true
 allsorts.workspace = true
 harfbuzz_rs.workspace = true
 pdf-writer.workspace = true
+read_config_file = { path = "../read_config_file" }
 stypes = { path = "../stypes" }
 ttf-parser.workspace = true
 

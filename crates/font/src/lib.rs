@@ -1,13 +1,21 @@
-use std::fs;
+//! フォント処理モジュール
+//!
+//! このモジュールは、TrueType/OpenTypeフォントの解析、解析、
+//! サブセット化、およびバリアブルフォントの処理機能を提供します。
 
-use allsorts::{binary::read::ReadScope, subset};
+use std::{fs, str::FromStr};
+
+use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::instance};
 use harfbuzz_rs::Font;
 use pdf_writer::Rect;
+use read_config_file::Config;
 use stypes::GlyphMapping;
 use ttf_parser::{Face, name_id};
 
+/// デフォルトのキャピタルハイト値
 const DEFAULT_CAP_HEIGHT: i16 = 0;
 
+/// フォント解析に関連するエラー
 #[derive(Debug)]
 pub enum FontError {
   /// Variable fonts are currently not supported by this crate
@@ -36,14 +44,24 @@ impl std::fmt::Display for FontError {
 
 impl std::error::Error for FontError {}
 
+/// フォントコンテキストの初期化に関連するエラー
 #[derive(Debug)]
 pub enum FontContextError {
   /// Failed to read font file from path
   Io(std::io::Error),
   /// Failed to parse TrueType/OpenType face
   Parse(ttf_parser::FaceParsingError),
-  /// Variable fonts are currently unsupported
-  VariableFontUnsupported,
+  /// Variable font provided without variation axes in config
+  MissingVariationAxes,
+  /// Variation axis name not supported by the font
+  UnknownVariationAxis(String),
+  /// Variation axis value out of supported range for the font
+  VariationValueOutOfRange {
+    name: String,
+    min: f32,
+    max: f32,
+    value: f32,
+  },
 }
 
 impl std::fmt::Display for FontContextError {
@@ -51,8 +69,22 @@ impl std::fmt::Display for FontContextError {
     match self {
       FontContextError::Io(e) => write!(f, "Failed to read font file: {e}"),
       FontContextError::Parse(e) => write!(f, "Failed to parse font face: {e}"),
-      FontContextError::VariableFontUnsupported => {
-        write!(f, "Variable fonts are not supported yet")
+      FontContextError::MissingVariationAxes => {
+        write!(f, "Variable font requires variation axes in config")
+      }
+      FontContextError::UnknownVariationAxis(name) => {
+        write!(f, "Unknown variation axis: {name}")
+      }
+      FontContextError::VariationValueOutOfRange {
+        name,
+        min,
+        max,
+        value,
+      } => {
+        write!(
+          f,
+          "Variation value out of range for axis '{name}': {value} (allowed: {min}..={max})"
+        )
       }
     }
   }
@@ -60,6 +92,7 @@ impl std::fmt::Display for FontContextError {
 
 impl std::error::Error for FontContextError {}
 
+/// フォントサブセット処理に関連するエラー
 #[derive(Debug)]
 pub enum FontSubsetError {
   /// Error while reading binary font data via allsorts `ReadScope`
@@ -68,6 +101,7 @@ pub enum FontSubsetError {
   TableProvider(Box<dyn std::error::Error + Send + Sync>),
   /// Error produced by allsorts during subsetting
   Subset(Box<dyn std::error::Error + Send + Sync>),
+  Instance(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for FontSubsetError {
@@ -76,20 +110,31 @@ impl std::fmt::Display for FontSubsetError {
       FontSubsetError::Read(e) => write!(f, "Failed to read font data: {e}"),
       FontSubsetError::TableProvider(e) => write!(f, "Failed to build table provider: {e}"),
       FontSubsetError::Subset(e) => write!(f, "Font subsetting failed: {e}"),
+      FontSubsetError::Instance(e) => write!(f, "Failed to create font instance: {e}"),
     }
   }
 }
 
 impl std::error::Error for FontSubsetError {}
 
+/// フォントのメタデータ情報
+///
+/// PDF生成に必要なフォントの各種メトリクスを保持します。
 #[derive(Debug)]
 pub struct FontData {
+  /// フォント名
   pub name: String,
+  /// ユニット/em値
   pub upem: f32,
+  /// イタリック角度
   pub italic_angle: f32,
+  /// アセンダー
   pub ascender: f32,
+  /// ディセンダー
   pub descender: f32,
+  /// キャピタルハイト
   pub cap_height: f32,
+  /// バウンディングボックス
   pub bbox: ttf_parser::Rect,
 }
 
@@ -121,6 +166,17 @@ impl FontData {
     })
   }
 
+  /// フォント名を抽出
+  ///
+  /// フォントのnameテーブルからフルネーム、またはファミリー名+サブファミリー名を取得します。
+  ///
+  /// # 引数
+  ///
+  /// * `face` - フォントフェース
+  ///
+  /// # エラー
+  ///
+  /// 必要な名前情報が見つからない場合にエラーを返します。
   fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
     // Prefer FULL_NAME
     if let Some(name) = face
@@ -150,6 +206,14 @@ impl FontData {
     Ok(format!("{family}_{subfamily}"))
   }
 
+  /// キャピタルハイトを抽出
+  ///
+  /// OS/2テーブルからキャピタルハイトを取得します。
+  /// 利用できない場合はデフォルト値を返します。
+  ///
+  /// # 引数
+  ///
+  /// * `face` - フォントフェース
   fn extract_cap_height(face: &Face<'_>) -> i16 {
     face
       .tables()
@@ -158,6 +222,10 @@ impl FontData {
       .unwrap_or(DEFAULT_CAP_HEIGHT)
   }
 
+  /// PDFライター用の矩形に変換
+  ///
+  /// フォントのバウンディングボックスをpdf_writerライブラリが使用する
+  /// `Rect`形式に変換します。
   pub fn pdf_writer_rect(&self) -> Rect {
     Rect::new(
       self.bbox.x_min as f32,
@@ -168,34 +236,92 @@ impl FontData {
   }
 }
 
-/// フォントデータとそれに関連するパーサーをまとめる構造体
+/// フォントデータと関連するパーサーを管理するコンテキスト
+///
+/// TrueTypeパーサーとHarfBuzzフォントオブジェクトの両方を保持し、
+/// フォントの解析とシェーピングに使用します。
 pub struct FontContext {
+  /// フォントファイルのバイトデータ
   pub data: Vec<u8>,
+  /// フォントコレクション内のインデックス
   pub index: u32,
+  /// TrueTypeパーサーのフェース
   pub ttf_face: ttf_parser::Face<'static>,
+  /// HarfBuzzフォントオブジェクト
   pub hb_font: harfbuzz_rs::Owned<Font<'static>>,
 }
 
 impl FontContext {
-  pub fn new(font_path: &str, index: u32) -> Result<Self, FontContextError> {
+  /// 新しいフォントコンテキストを作成
+  ///
+  /// 指定されたパスからフォントを読み込み、パーサーを初期化します。
+  /// バリアブルフォントの場合は、設定からバリエーション軸を適用します。
+  ///
+  /// # 引数
+  ///
+  /// * `font_path` - フォントファイルのパス
+  /// * `config` - アプリケーション設定
+  ///
+  /// # エラー
+  ///
+  /// ファイルの読み込み、フォントの解析、またはバリエーション設定に
+  /// 問題がある場合にエラーを返します。
+  pub fn new(font_path: &str, config: &Config) -> Result<Self, FontContextError> {
+    let index = config.main_font.font_index;
     let data = fs::read(font_path).map_err(FontContextError::Io)?;
 
     // 'static ライフタイムを持つデータとして扱うため、Box::leak を使用
     let static_data: &'static [u8] = Box::leak(data.clone().into_boxed_slice());
 
     let ttf_face = ttf_parser::Face::parse(static_data, index).map_err(FontContextError::Parse)?;
-    if ttf_face.is_variable() {
-      let axes = ttf_face.variation_axes();
-      let coordinates = ttf_face.variation_coordinates();
-      println!(
-        "Font has variation axes: {:?}, coordinates: {:?}",
-        axes, coordinates
-      );
-      return Err(FontContextError::VariableFontUnsupported);
-    }
-
     let hb_face = harfbuzz_rs::Face::from_bytes(static_data, index);
-    let hb_font = Font::new(hb_face);
+    let mut hb_font = Font::new(hb_face);
+
+    if ttf_face.is_variable() {
+      let config_variation_axes = config.main_font.variation_axes.as_ref();
+      let axes = ttf_parser::Face::variation_axes(&ttf_face);
+
+      let Some(config_variation_axes) = config_variation_axes else {
+        return Err(FontContextError::MissingVariationAxes);
+      };
+
+      for cfg_axis in config_variation_axes.iter() {
+        // Find matching axis by name
+        let maybe_axis = axes
+          .into_iter()
+          .find(|axis| cfg_axis.name.chars().collect::<Vec<char>>() == axis.tag.to_chars());
+
+        let axis = match maybe_axis {
+          Some(a) => a,
+          None => {
+            return Err(FontContextError::UnknownVariationAxis(
+              cfg_axis.name.clone(),
+            ));
+          }
+        };
+
+        if !(axis.min_value..=axis.max_value).contains(&cfg_axis.value) {
+          return Err(FontContextError::VariationValueOutOfRange {
+            name: cfg_axis.name.clone(),
+            min: axis.min_value,
+            max: axis.max_value,
+            value: cfg_axis.value,
+          });
+        }
+      }
+
+      if let Some(cfg_axes) = config.main_font.variation_axes.as_ref() {
+        let mut variations: Vec<harfbuzz_rs::Variation> = Vec::with_capacity(cfg_axes.len());
+        for axis in cfg_axes.iter() {
+          if let Ok(tag) = harfbuzz_rs::Tag::from_str(&axis.name) {
+            variations.push(harfbuzz_rs::Variation::new(tag, axis.value));
+          }
+        }
+        if !variations.is_empty() {
+          hb_font.set_variations(&variations);
+        }
+      }
+    }
 
     Ok(Self {
       data,
@@ -205,6 +331,14 @@ impl FontContext {
     })
   }
 
+  /// グリフの横幅を取得
+  ///
+  /// 指定されたGIDの横幅をフォントユニットで返します。
+  /// 利用できない場合はフォントのupem値を返します。
+  ///
+  /// # 引数
+  ///
+  /// * `gid` - グリフID
   pub fn get_glyph_advance(&self, gid: u16) -> f32 {
     self
       .ttf_face
@@ -213,23 +347,82 @@ impl FontContext {
   }
 }
 
+/// フォントサブセットを作成
+///
+/// 使用されているグリフのみを含むフォントサブセットを生成します。
+/// バリアブルフォントの場合は、まずインスタンス化してからサブセット化を行います。
+///
+/// # 引数
+///
+/// * `font_ctx` - フォントコンテキスト
+/// * `mapping` - 使用されるグリフのマッピング情報
+///
+/// # 戻り値
+///
+/// サブセット化されたフォントデータのバイト列を返します。
+///
+/// # エラー
+///
+/// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合。
 pub fn create_font_subset(
   font_ctx: &FontContext,
   mapping: &GlyphMapping,
 ) -> Result<Vec<u8>, FontSubsetError> {
   let used_gids_vec: Vec<u16> = mapping.used_gids.iter().copied().collect();
 
-  let scope = ReadScope::new(&font_ctx.data);
-  let font_data = scope
-    .read::<allsorts::font_data::FontData<'_>>()
-    .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let table_provider = font_data
-    .table_provider(font_ctx.index as usize)
-    .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+  if font_ctx.ttf_face.is_variable() {
+    let scope = ReadScope::new(&font_ctx.data);
+    let font_data = scope
+      .read::<allsorts::font_data::FontData<'_>>()
+      .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+    let table_provider = font_data
+      .table_provider(font_ctx.index as usize)
+      .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
 
-  subset::subset(&table_provider, &used_gids_vec).map_err(|e| FontSubsetError::Subset(Box::new(e)))
+    let axes = vec![Fixed::from_raw(400)];
+    let (instance, _tuple) =
+      instance(&table_provider, &axes).map_err(|e| FontSubsetError::Instance(Box::new(e)))?;
+
+    let scope = ReadScope::new(&instance);
+    let font_data = scope
+      .read::<allsorts::font_data::FontData<'_>>()
+      .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+    let table_provider = font_data
+      .table_provider(font_ctx.index as usize)
+      .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+
+    subset::subset(&table_provider, &used_gids_vec)
+      .map_err(|e| FontSubsetError::Subset(Box::new(e)))
+  } else {
+    let scope = ReadScope::new(&font_ctx.data);
+    let font_data = scope
+      .read::<allsorts::font_data::FontData<'_>>()
+      .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+    let table_provider = font_data
+      .table_provider(font_ctx.index as usize)
+      .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+
+    subset::subset(&table_provider, &used_gids_vec)
+      .map_err(|e| FontSubsetError::Subset(Box::new(e)))
+  }
 }
 
+/// サブセットフォントを解析
+///
+/// サブセット化されたフォントデータを解析し、メタデータ情報を抽出します。
+///
+/// # 引数
+///
+/// * `subset_bytes` - サブセットフォントのバイトデータ
+/// * `index` - フォントコレクション内のインデックス
+///
+/// # 戻り値
+///
+/// フォントのメタデータ情報を返します。
+///
+/// # エラー
+///
+/// フォントの解析に失敗した場合にエラーを返します。
 pub fn analyze_subset_font(subset_bytes: &[u8], index: u32) -> Result<FontData, FontError> {
   let subset_face = ttf_parser::Face::parse(subset_bytes, index).map_err(FontError::Parse)?;
   FontData::analyze_font(&subset_face)

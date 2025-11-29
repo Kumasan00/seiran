@@ -1,9 +1,28 @@
+//! テキストシェーピングモジュール
+//!
+//! このモジュールは、HarfBuzzを使用してテキストを
+//! グリフシーケンスに変換する機能を提供します。
+
 use std::collections::HashMap;
 
-use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, Variation, shape};
+use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
 use indexmap::IndexSet;
 
-/// テキストをシェーピングして、グリフIDとその位置情報を得る
+/// テキストをシェーピングしてグリフIDとその位置情報を得る
+///
+/// HarfBuzzを使用してテキストを解析し、各文字に対応する
+/// グリフID、位置情報、クラスタ情報を取得します。
+///
+/// # 引数
+///
+/// * `text` - シェーピングするテキスト
+/// * `hb_font` - HarfBuzzフォントオブジェクト
+/// * `gid_to_cid` - GIDからCIDへのマッピング
+/// * `used_gids` - 使用されたGIDの集合
+///
+/// # 戻り値
+///
+/// シェーピング結果のベクタを返します。
 pub fn shaping(
   text: &str,
   hb_font: &mut Owned<Font<'_>>,
@@ -13,9 +32,6 @@ pub fn shaping(
   let buffer = UnicodeBuffer::new()
     .add_str(text)
     .set_direction(Direction::Ltr);
-
-  let variation_vec = vec![Variation::new(b"wght", 100.0)];
-  hb_font.set_variations(&variation_vec);
 
   let result = shape(hb_font, buffer, &[]);
 
@@ -55,15 +71,24 @@ pub fn shaping(
   return shaping_result;
 }
 
+/// シェーピング結果の情報
+///
+/// 各グリフに関する位置情報とクラスタ情報を保持します。
 #[derive(Debug)]
 pub struct ShapingResult {
+  /// グリフID
   pub gid: u16,
+  /// クラスタ番号（元のテキスト内の位置）
   pub cluster: u32,
+  /// 横方向の進み幅
   pub x_advance: i32,
+  /// 縦方向の進み幅
   #[allow(dead_code)]
   y_advance: i32,
+  /// 横方向のオフセット
   #[allow(dead_code)]
   x_offset: i32,
+  /// 縦方向のオフセット
   #[allow(dead_code)]
   y_offset: i32,
 }
