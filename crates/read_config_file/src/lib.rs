@@ -81,6 +81,10 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     height,
     width,
     font_size,
+    margin_top,
+    margin_bottom,
+    margin_left,
+    margin_right,
   } = pre_pdf;
 
   let pre_config::PreFontConfig {
@@ -137,6 +141,10 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       height,
       width,
       font_size,
+      margin_top,
+      margin_bottom,
+      margin_left,
+      margin_right,
     },
     main_font: processed_config::FontConfig {
       font_name: main_font_name,

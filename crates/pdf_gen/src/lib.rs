@@ -7,7 +7,7 @@ pub fn pdf_gen(
   cid_to_gid_map: &[u8],
   to_unicode_cmap: pdf_writer::types::UnicodeCmap,
   content: pdf_writer::Content,
-  opts: &stypes::PdfOptions<'_>,
+  config: &read_config_file::Config,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
 
@@ -21,14 +21,14 @@ pub fn pdf_gen(
   let font_file_id = Ref::new(8);
   let page_id = Ref::new(9);
   let content_id = Ref::new(10);
-  let font_name = Name(opts.font_name.as_bytes());
+  let main_font_name = Name(config.main_font.font_name.as_bytes());
 
   pdf.catalog(catalog_id).pages(page_tree_id);
 
   pdf.pages(page_tree_id).kids([page_id]).count(1);
 
   let mut font = pdf.type0_font(font_id);
-  font.base_font(font_name);
+  font.base_font(main_font_name);
   font.encoding_predefined(Name(b"Identity-H"));
   font.descendant_font(cid_font_id);
   font.to_unicode(to_unicode_cmap_id);
@@ -36,7 +36,7 @@ pub fn pdf_gen(
 
   let mut cid_font = pdf.cid_font(cid_font_id);
   cid_font.subtype(types::CidFontType::Type2);
-  cid_font.base_font(font_name);
+  cid_font.base_font(main_font_name);
   cid_font.system_info(types::SystemInfo {
     registry: Str(b"Adobe"),
     ordering: Str(b"Identity"),
@@ -51,7 +51,7 @@ pub fn pdf_gen(
   cid_font.finish();
 
   let mut font_descriptor = pdf.font_descriptor(font_descriptor_id);
-  font_descriptor.name(font_name);
+  font_descriptor.name(main_font_name);
   font_descriptor.flags(types::FontFlags::SYMBOLIC);
   font_descriptor.italic_angle(font_info.italic_angle);
   font_descriptor.bbox(font_info.pdf_writer_rect());
@@ -69,17 +69,18 @@ pub fn pdf_gen(
   pdf.stream(font_file_id, font_data);
 
   let mut page = pdf.page(page_id);
-  let (w, h) = opts.page_size;
-  page.media_box(Rect::new(0.0, 0.0, w, h));
+  let width = config.pdf.width;
+  let height = config.pdf.height;
+  page.media_box(Rect::new(0.0, 0.0, width, height));
   page.parent(page_tree_id);
   page.contents(content_id);
 
-  page.resources().fonts().pair(font_name, font_id);
+  page.resources().fonts().pair(main_font_name, font_id);
   page.finish();
 
   pdf.stream(content_id, &content.finish());
 
   let buf: Vec<u8> = pdf.finish();
 
-  std::fs::write(&opts.output_path, buf)
+  std::fs::write(&config.pdf.output_path, buf)
 }

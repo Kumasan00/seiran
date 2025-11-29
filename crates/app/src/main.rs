@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs, io};
 use font::FontContext;
 use pdf_writer::{Content, Finish, Name, Str, types};
 use read_config_file::Config;
-use stypes::{GlyphMapping, PdfOptions};
+use stypes::GlyphMapping;
 
 // Constants
 const NOTDEF_GID: u16 = 0;
@@ -28,10 +28,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.main_font.font_index,
   )?;
 
-  let opts = create_pdf_options(&config);
+  // PdfOptions を使わず、Config を直接使用
   let mut mapping = GlyphMapping::new();
 
-  let content = process_text_lines(lines, &font_ctx, &mut mapping, &opts)?;
+  let content = process_text_lines(lines, &font_ctx, &mut mapping, &config)?;
 
   let subset_bytes = font::create_font_subset(&font_ctx, &mapping)?;
   println!("Subset font: {} bytes", subset_bytes.len());
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let advance_list = mapping.build_advance_list(font_info.upem as f32);
   let cid_to_gid_map = mapping.build_cid_to_gid_map();
-  let to_unicode_cmap = create_to_unicode_cmap(opts.font_name, mapping.cid_to_chars);
+  let to_unicode_cmap = create_to_unicode_cmap(&config.main_font.font_name, mapping.cid_to_chars);
 
   pdf_gen::pdf_gen(
     &subset_bytes,
@@ -52,40 +52,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     &cid_to_gid_map,
     to_unicode_cmap,
     content,
-    &opts,
+    &config,
   )?;
 
   println!("PDF generated");
   Ok(())
 }
 
-fn create_pdf_options<'a>(config: &'a Config) -> PdfOptions<'a> {
-  PdfOptions {
-    output_path: config.pdf.output_path.clone(),
-    font_name: config.main_font.font_name.as_str(),
-    font_size: config.pdf.font_size,
-    page_size: (config.pdf.width, config.pdf.height),
-  }
-}
-
 fn process_text_lines(
   lines: io::Lines<io::BufReader<fs::File>>,
   font_ctx: &FontContext,
   mapping: &mut GlyphMapping,
-  opts: &PdfOptions,
+  config: &Config,
 ) -> Result<Content, Box<dyn std::error::Error>> {
   let mut content = Content::new();
   content.begin_text();
-  content.set_font(Name(opts.font_name.as_bytes()), opts.font_size);
-  content.next_line(PAGE_MARGIN, opts.page_size.1 - PAGE_MARGIN);
+  content.set_font(
+    Name(config.main_font.font_name.as_bytes()),
+    config.pdf.font_size,
+  );
+  content.next_line(PAGE_MARGIN, config.pdf.height - PAGE_MARGIN);
 
   for (line_num, line) in lines.enumerate() {
     let line = line?;
     println!("Line {}: {}", line_num + 1, line);
 
-    process_single_line(&line, font_ctx, mapping, &mut content, opts.font_size)?;
+    process_single_line(&line, font_ctx, mapping, &mut content, config.pdf.font_size)?;
 
-    content.next_line(0.0, -opts.font_size * LINE_HEIGHT_FACTOR);
+    content.next_line(0.0, -config.pdf.font_size * LINE_HEIGHT_FACTOR);
   }
 
   content.end_text();

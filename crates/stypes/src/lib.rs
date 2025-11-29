@@ -3,12 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexSet;
 
 const NOTDEF_GID: u16 = 0;
-pub struct PdfOptions<'a> {
-  pub output_path: std::path::PathBuf,
-  pub font_name: &'a str,
-  pub font_size: f32,
-  pub page_size: (f32, f32),
-}
+
 /// グリフとCIDのマッピング情報を管理する構造体
 pub struct GlyphMapping {
   pub gid_to_cid: HashMap<u16, u16>,

@@ -1,9 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
 use indexmap::IndexSet;
-use pdf_writer::{Content, Finish, Name, Str};
-use stypes::PdfOptions;
 
 /// テキストをシェーピングして、グリフIDとその位置情報を得る
 pub fn shaping(
@@ -65,51 +63,4 @@ pub struct ShapingResult {
   x_offset: i32,
   #[allow(dead_code)]
   y_offset: i32,
-}
-
-pub fn create_content(opts: &PdfOptions) -> Content {
-  let mut content = Content::new();
-  content.begin_text();
-  content.set_font(Name(opts.font_name.as_bytes()), opts.font_size);
-  content.next_line(108.0, opts.page_size.1 - 108.0);
-  return content;
-}
-
-/// PDFコンテンツを生成する
-pub fn make_content(
-  opts: &PdfOptions,
-  shape_results: &[Vec<ShapingResult>],
-  new_used_gid: &BTreeMap<u16, u16>,
-  adv_list: &[f32],
-) -> Content {
-  let mut content = Content::new();
-  content.begin_text();
-  content.set_font(Name(opts.font_name.as_bytes()), opts.font_size);
-  content.next_line(108.0, opts.page_size.1 - 108.0);
-
-  for line in shape_results {
-    let mut position_text = content.show_positioned();
-    let mut items = position_text.items();
-    let mut text = Vec::new();
-    for shapingresult in line {
-      let new_gid = new_used_gid.get(&shapingresult.gid).unwrap();
-      let adv = adv_list[*new_gid as usize];
-      let x_advance = shapingresult.x_advance as f32;
-      let diff = adv - x_advance;
-      text.push((new_gid >> 8) as u8);
-      text.push((new_gid & 0xFF) as u8);
-      if diff != 0.0 {
-        items.show(Str(&text));
-        items.adjust(diff);
-        text.clear();
-      }
-    }
-    items.show(Str(&text));
-    items.finish();
-    position_text.finish();
-    content.next_line(0.0, -opts.font_size * 1.2);
-  }
-  content.end_text();
-
-  return content;
 }

@@ -19,4 +19,8 @@ pub(crate) struct PrePdfConfig {
   pub height: f32,
   pub width: f32,
   pub font_size: f32,
+  pub margin_top: f32,
+  pub margin_bottom: f32,
+  pub margin_left: f32,
+  pub margin_right: f32,
 }
