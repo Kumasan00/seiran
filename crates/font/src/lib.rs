@@ -1,9 +1,86 @@
-use std::error::Error;
+use std::fs;
 
+use allsorts::{binary::read::ReadScope, subset};
+use harfbuzz_rs::Font;
 use pdf_writer::Rect;
+use stypes::GlyphMapping;
 use ttf_parser::{Face, name_id};
 
 const DEFAULT_CAP_HEIGHT: i16 = 0;
+
+#[derive(Debug)]
+pub enum FontError {
+  /// Variable fonts are currently not supported by this crate
+  VariableFontUnsupported,
+  /// Required font family name was missing in name table
+  MissingFamilyName,
+  /// Required font subfamily name was missing in name table
+  MissingSubfamilyName,
+  /// Generic missing field error with context
+  MissingField(&'static str),
+  /// Face parsing error bubbled up from ttf_parser
+  Parse(ttf_parser::FaceParsingError),
+}
+
+impl std::fmt::Display for FontError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FontError::VariableFontUnsupported => write!(f, "Variable fonts are not supported yet"),
+      FontError::MissingFamilyName => write!(f, "Missing font family name"),
+      FontError::MissingSubfamilyName => write!(f, "Missing font subfamily name"),
+      FontError::MissingField(field) => write!(f, "Missing required field: {field}"),
+      FontError::Parse(e) => write!(f, "Failed to parse font face: {e}"),
+    }
+  }
+}
+
+impl std::error::Error for FontError {}
+
+#[derive(Debug)]
+pub enum FontContextError {
+  /// Failed to read font file from path
+  Io(std::io::Error),
+  /// Failed to parse TrueType/OpenType face
+  Parse(ttf_parser::FaceParsingError),
+  /// Variable fonts are currently unsupported
+  VariableFontUnsupported,
+}
+
+impl std::fmt::Display for FontContextError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FontContextError::Io(e) => write!(f, "Failed to read font file: {e}"),
+      FontContextError::Parse(e) => write!(f, "Failed to parse font face: {e}"),
+      FontContextError::VariableFontUnsupported => {
+        write!(f, "Variable fonts are not supported yet")
+      }
+    }
+  }
+}
+
+impl std::error::Error for FontContextError {}
+
+#[derive(Debug)]
+pub enum FontSubsetError {
+  /// Error while reading binary font data via allsorts `ReadScope`
+  Read(Box<dyn std::error::Error + Send + Sync>),
+  /// Error while creating table provider from font data
+  TableProvider(Box<dyn std::error::Error + Send + Sync>),
+  /// Error produced by allsorts during subsetting
+  Subset(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for FontSubsetError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FontSubsetError::Read(e) => write!(f, "Failed to read font data: {e}"),
+      FontSubsetError::TableProvider(e) => write!(f, "Failed to build table provider: {e}"),
+      FontSubsetError::Subset(e) => write!(f, "Font subsetting failed: {e}"),
+    }
+  }
+}
+
+impl std::error::Error for FontSubsetError {}
 
 #[derive(Debug)]
 pub struct FontData {
@@ -19,9 +96,9 @@ pub struct FontData {
 impl FontData {
   /// Analyze a parsed `Face` and return `FontData`.
   /// Returns an error for variable fonts or when required name fields are missing.
-  pub fn analyze_font(face: &Face<'_>) -> Result<FontData, Box<dyn Error>> {
+  pub fn analyze_font(face: &Face<'_>) -> Result<FontData, FontError> {
     if face.is_variable() {
-      return Err("Variable fonts are not supported yet".into());
+      return Err(FontError::VariableFontUnsupported);
     }
 
     let name = Self::extract_font_name(face)?;
@@ -44,7 +121,7 @@ impl FontData {
     })
   }
 
-  fn extract_font_name(face: &Face<'_>) -> Result<String, Box<dyn Error>> {
+  fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
     // Prefer FULL_NAME
     if let Some(name) = face
       .names()
@@ -61,14 +138,14 @@ impl FontData {
       .into_iter()
       .find(|n| n.name_id == name_id::FAMILY)
       .and_then(|n| n.to_string())
-      .ok_or("Missing font family name")?;
+      .ok_or(FontError::MissingFamilyName)?;
 
     let subfamily = face
       .names()
       .into_iter()
       .find(|n| n.name_id == name_id::SUBFAMILY)
       .and_then(|n| n.to_string())
-      .ok_or("Missing font subfamily name")?;
+      .ok_or(FontError::MissingSubfamilyName)?;
 
     Ok(format!("{family}_{subfamily}"))
   }
@@ -89,6 +166,67 @@ impl FontData {
       self.bbox.y_max as f32,
     )
   }
+}
+
+/// フォントデータとそれに関連するパーサーをまとめる構造体
+pub struct FontContext {
+  pub data: Vec<u8>,
+  pub index: u32,
+  pub ttf_face: ttf_parser::Face<'static>,
+  pub hb_font: harfbuzz_rs::Owned<Font<'static>>,
+}
+
+impl FontContext {
+  pub fn new(font_path: &str, index: u32) -> Result<Self, FontContextError> {
+    let data = fs::read(font_path).map_err(FontContextError::Io)?;
+
+    // 'static ライフタイムを持つデータとして扱うため、Box::leak を使用
+    let static_data: &'static [u8] = Box::leak(data.clone().into_boxed_slice());
+
+    let ttf_face = ttf_parser::Face::parse(static_data, index).map_err(FontContextError::Parse)?;
+    if ttf_face.is_variable() {
+      return Err(FontContextError::VariableFontUnsupported);
+    }
+
+    let hb_face = harfbuzz_rs::Face::from_bytes(static_data, index);
+    let hb_font = Font::new(hb_face);
+
+    Ok(Self {
+      data,
+      index,
+      ttf_face,
+      hb_font,
+    })
+  }
+
+  pub fn get_glyph_advance(&self, gid: u16) -> f32 {
+    self
+      .ttf_face
+      .glyph_hor_advance(ttf_parser::GlyphId(gid))
+      .unwrap_or(self.ttf_face.units_per_em()) as f32
+  }
+}
+
+pub fn create_font_subset(
+  font_ctx: &FontContext,
+  mapping: &GlyphMapping,
+) -> Result<Vec<u8>, FontSubsetError> {
+  let used_gids_vec: Vec<u16> = mapping.used_gids.iter().copied().collect();
+
+  let scope = ReadScope::new(&font_ctx.data);
+  let font_data = scope
+    .read::<allsorts::font_data::FontData<'_>>()
+    .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+  let table_provider = font_data
+    .table_provider(font_ctx.index as usize)
+    .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+
+  subset::subset(&table_provider, &used_gids_vec).map_err(|e| FontSubsetError::Subset(Box::new(e)))
+}
+
+pub fn analyze_subset_font(subset_bytes: &[u8], index: u32) -> Result<FontData, FontError> {
+  let subset_face = ttf_parser::Face::parse(subset_bytes, index).map_err(FontError::Parse)?;
+  FontData::analyze_font(&subset_face)
 }
 
 #[cfg(test)]

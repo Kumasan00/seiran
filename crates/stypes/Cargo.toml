@@ -9,6 +9,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+indexmap.workspace = true
 
 [lints]
 workspace = true

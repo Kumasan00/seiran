@@ -7,6 +7,9 @@ mod pre_config;
 use pre_config::PreConfig;
 mod processed_config;
 
+// processed_config の型を公開
+pub use processed_config::{Config, FontConfig, PdfConfig};
+
 #[derive(Debug)]
 pub enum ReadConfigError {
   Io(io::Error),
