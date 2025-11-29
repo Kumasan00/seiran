@@ -7,7 +7,6 @@ use stypes::GlyphMapping;
 
 // Constants
 const NOTDEF_GID: u16 = 0;
-const PAGE_MARGIN: f32 = 108.0;
 const LINE_HEIGHT_FACTOR: f32 = 1.0;
 const CID_TO_GID_REGISTRY: &[u8] = b"Kuma";
 const CID_TO_GID_ORDERING: &[u8] = b"Custom";
@@ -28,7 +27,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.main_font.font_index,
   )?;
 
-  // PdfOptions を使わず、Config を直接使用
   let mut mapping = GlyphMapping::new();
 
   let content = process_text_lines(lines, &font_ctx, &mut mapping, &config)?;
@@ -71,7 +69,10 @@ fn process_text_lines(
     Name(config.main_font.font_name.as_bytes()),
     config.pdf.font_size,
   );
-  content.next_line(PAGE_MARGIN, config.pdf.height - PAGE_MARGIN);
+  content.next_line(
+    config.pdf.margin_left,
+    config.pdf.height - config.pdf.margin_top,
+  );
 
   for (line_num, line) in lines.enumerate() {
     let line = line?;
