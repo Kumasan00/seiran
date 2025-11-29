@@ -11,5 +11,6 @@ version.workspace = true
 [dependencies]
 serde = { workspace = true }
 toml = { workspace = true }
+
 [lints]
 workspace = true
