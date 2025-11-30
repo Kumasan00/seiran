@@ -26,6 +26,7 @@ version = "0.1.0"
 [workspace.dependencies]
 allsorts = "0.15.1"
 anyhow = { version = "1.0.100", features = ["backtrace", "std"] }
+clap = { version = "4.5.53", features = ["derive"] }
 harfbuzz_rs = "2.0.1"
 indexmap = "2.12.1"
 pdf-writer = "0.14.0"

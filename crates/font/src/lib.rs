@@ -99,7 +99,7 @@ impl FontData {
   /// Analyze a parsed `Face` and return `FontData`.
   /// Returns an error for variable fonts or when required name fields are missing.
   pub fn analyze_font(face: &Face<'_>) -> Result<FontData, FontError> {
-    let name = Self::extract_font_name(face)?;
+    let name = extract_font_name(face)?;
 
     let upem = face.units_per_em() as f32;
     let italic_angle = face.italic_angle();
@@ -117,46 +117,6 @@ impl FontData {
       cap_height,
       bbox,
     })
-  }
-
-  /// フォント名を抽出
-  ///
-  /// フォントのnameテーブルからフルネーム、またはファミリー名+サブファミリー名を取得します。
-  ///
-  /// # 引数
-  ///
-  /// * `face` - フォントフェース
-  ///
-  /// # エラー
-  ///
-  /// 必要な名前情報が見つからない場合にエラーを返します。
-  fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
-    // Prefer FULL_NAME
-    if let Some(name) = face
-      .names()
-      .into_iter()
-      .find(|name| name.name_id == name_id::FULL_NAME)
-      .and_then(|n| n.to_string())
-    {
-      return Ok(name);
-    }
-
-    // Fallback to FAMILY + SUBFAMILY
-    let family = face
-      .names()
-      .into_iter()
-      .find(|n| n.name_id == name_id::FAMILY)
-      .and_then(|n| n.to_string())
-      .ok_or(FontError::MissingFamilyName)?;
-
-    let subfamily = face
-      .names()
-      .into_iter()
-      .find(|n| n.name_id == name_id::SUBFAMILY)
-      .and_then(|n| n.to_string())
-      .ok_or(FontError::MissingSubfamilyName)?;
-
-    Ok(format!("{family}_{subfamily}"))
   }
 
   /// キャピタルハイトを抽出
@@ -187,6 +147,46 @@ impl FontData {
       self.bbox.y_max as f32,
     )
   }
+}
+
+/// フォント名を抽出
+///
+/// フォントのnameテーブルからフルネーム、またはファミリー名+サブファミリー名を取得します。
+///
+/// # 引数
+///
+/// * `face` - フォントフェース
+///
+/// # エラー
+///
+/// 必要な名前情報が見つからない場合にエラーを返します。
+pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
+  // Prefer FULL_NAME
+  if let Some(name) = face
+    .names()
+    .into_iter()
+    .find(|name| name.name_id == name_id::FULL_NAME)
+    .and_then(|n| n.to_string())
+  {
+    return Ok(name);
+  }
+
+  // Fallback to FAMILY + SUBFAMILY
+  let family = face
+    .names()
+    .into_iter()
+    .find(|n| n.name_id == name_id::FAMILY)
+    .and_then(|n| n.to_string())
+    .ok_or(FontError::MissingFamilyName)?;
+
+  let subfamily = face
+    .names()
+    .into_iter()
+    .find(|n| n.name_id == name_id::SUBFAMILY)
+    .and_then(|n| n.to_string())
+    .ok_or(FontError::MissingSubfamilyName)?;
+
+  Ok(format!("{family}_{subfamily}"))
 }
 
 /// サブセットフォントを解析
@@ -539,7 +539,7 @@ mod tests {
   #[ignore = "Requires test font file"]
   fn test_font_name_extraction() {
     with_test_face(|face| {
-      let name = FontData::extract_font_name(face).expect("Name extraction failed");
+      let name = extract_font_name(face).expect("Name extraction failed");
       assert!(
         name.contains("Noto Sans"),
         "Font name should contain 'Noto Sans'"

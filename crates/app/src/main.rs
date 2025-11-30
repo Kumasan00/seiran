@@ -4,7 +4,7 @@
 //! 指定されたフォントを使用してPDFドキュメントを生成します。
 //! フォントのサブセット化、テキストシェーピング、グリフマッピングを処理します。
 
-use std::{collections::HashMap, fs, io};
+use std::{collections::HashMap, fs, io, path::Path, result};
 
 use font::{FontContext, FontContexts};
 use pdf_writer::{Content, Finish, Name, Str, types};
@@ -36,11 +36,26 @@ const CID_TO_GID_SUPPLEMENT: i32 = 0;
 ///
 /// ファイルI/O、フォント処理、PDF生成のいずれかで問題が発生した場合にエラーを返します。
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-  let arg = cli::parse_arg()?;
+  let cli = cli::parse_arg();
+
+  match cli.command {
+    cli::Command::Build { file_path } => {
+      build_pdf(&file_path)?;
+    }
+    cli::Command::TtcNames { file_path } => {
+      get_ttc_names(&file_path)?;
+    }
+  }
+
+  Ok(())
+}
+
+/// PDFを生成する
+fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
   let config = read_config_file::read_config_file()?;
   println!("Config loaded: {:?}", config);
 
-  let lines = read_file::read_file(&arg.file_path)?;
+  let lines = read_file::read_file(file_path)?;
 
   let mut main_font_ctxs = FontContexts::new(&config)?;
   let main_font_ctx = &mut main_font_ctxs.main;
@@ -264,4 +279,26 @@ fn create_to_unicode_cmap(
   }
 
   cmap
+}
+
+fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> result::Result<(), Box<dyn std::error::Error>> {
+  let data = fs::read(file_path)?;
+  let num = ttf_parser::fonts_in_collection(&data).unwrap();
+  println!("Number of fonts in TTC: {}", num);
+  for i in 0..num {
+    println!("\nFont index: {}\n", i);
+    let face = ttf_parser::Face::parse(&data, i)?;
+    // let name = font::extract_font_name(&face)?;
+    let names = face.names();
+    for name in names {
+      let platform_id = name.platform_id;
+      println!(
+        "Platform ID {:?}: Name ID {}: {:?}",
+        platform_id,
+        name.name_id,
+        name.to_string()
+      );
+    }
+  }
+  Ok(())
 }

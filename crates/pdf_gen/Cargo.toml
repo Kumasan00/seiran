@@ -3,7 +3,7 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 name = "pdf_gen"
-version = "0.1.0"
+version.workspace = true
 
 [dependencies]
 font = { path = "../font" }
