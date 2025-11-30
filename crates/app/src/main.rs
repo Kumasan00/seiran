@@ -15,8 +15,6 @@ use stypes::GlyphMapping;
 
 /// .notdef グリフのグリフID
 const NOTDEF_GID: u16 = 0;
-/// 行の高さの倍率
-const LINE_HEIGHT_FACTOR: f32 = 1.0;
 /// CID to GIDマッピングのレジストリ名
 const CID_TO_GID_REGISTRY: &[u8] = b"Kuma";
 /// CID to GIDマッピングのオーダリング名
@@ -41,8 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let arg = cli::parse_arg()?;
   let config = read_config_file::read_config_file()?;
 
-  println!("Config loaded: {:?}", config);
-
   let lines = read_file::read_file(&arg.file_path)?;
 
   let mut font_ctx = FontContext::new(
@@ -57,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let mut mapping = GlyphMapping::new();
 
   let content = process_text_lines(lines, &mut font_ctx, &mut mapping, &config)?;
-  let subset_bytes = font::create_font_subset(&font_ctx, &mapping)?;
+  let subset_bytes = font::create_font_subset(&font_ctx, &mapping, &config)?;
   println!("Subset font: {} bytes", subset_bytes.len());
 
   let font_info = font::analyze_subset_font(&subset_bytes, font_ctx.index)?;
@@ -121,7 +117,8 @@ fn process_text_lines(
 
     process_single_line(&line, font_ctx, upem, mapping, &mut content)?;
 
-    content.next_line(0.0, -config.pdf.font_size * LINE_HEIGHT_FACTOR);
+    let line_height_factor = config.pdf.line_height_factor;
+    content.next_line(0.0, -config.pdf.font_size * line_height_factor);
   }
 
   content.end_text();
@@ -165,7 +162,15 @@ fn process_single_line(
 
   for (j, shape_result) in shape_results.iter().enumerate() {
     let gid = shape_result.gid;
-    let cid = *mapping.gid_to_cid.get(&gid).unwrap();
+    // GIDに対応するCIDが存在しない場合は安全にスキップ
+    let Some(&cid) = mapping.gid_to_cid.get(&gid) else {
+      // 未定義グリフは .notdef にフォールバック
+      let fallback_cid = NOTDEF_GID;
+      // 未定義でも描画は続けるため、バッファに .notdef を積む
+      text_buffer.push((fallback_cid >> 8) as u8);
+      text_buffer.push((fallback_cid & 0xFF) as u8);
+      continue;
+    };
 
     let advance_width = font_ctx.get_glyph_advance(gid) * 1000.0 / upem; // 1000/upem スケーリング
     mapping.advance_widths.entry(cid).or_insert(advance_width);
@@ -177,19 +182,29 @@ fn process_single_line(
 
     // 位置調整が必要な場合
     let advance_diff = advance_width - shape_advance;
-    if advance_diff != 0.0 {
-      items.show(Str(&text_buffer));
+    // 浮動小数の微小誤差を無視するためのしきい値
+    if advance_diff.abs() > 0.0001 {
+      if !text_buffer.is_empty() {
+        items.show(Str(&text_buffer));
+        text_buffer.clear();
+      }
       items.adjust(advance_diff);
-      text_buffer.clear();
     }
 
     // Unicode マッピングを記録
     let char_range = get_char_range(line, &shape_results, j);
-    let chars: Vec<char> = line[char_range].chars().collect();
-    mapping.cid_to_chars.insert(cid, chars);
+    // 既存のUnicodeマッピングがある場合は追記（リガチャや複数マッピング対策）
+    let mut chars: Vec<char> = line[char_range].chars().collect();
+    if let Some(existing) = mapping.cid_to_chars.get_mut(&cid) {
+      existing.append(&mut chars);
+    } else {
+      mapping.cid_to_chars.insert(cid, chars);
+    }
   }
 
-  items.show(Str(&text_buffer));
+  if !text_buffer.is_empty() {
+    items.show(Str(&text_buffer));
+  }
   items.finish();
   position_text.finish();
 

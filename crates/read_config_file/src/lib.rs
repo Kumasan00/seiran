@@ -24,8 +24,18 @@ pub enum ReadConfigError {
   Toml(toml::de::Error),
   /// 出力ディレクトリの作成に失敗
   CreateDir(io::Error),
-  /// 無効な設定値
+  /// 無効な設定値（一般）
   InvalidValue { field: &'static str, msg: String },
+  /// サイズ系が正でない（height/width/font_size/line_height_factor）
+  NonPositive { field: &'static str },
+  /// 余白が負の値
+  NegativeMargin { field: &'static str },
+  /// 余白の合計が寸法以上
+  MarginSumTooLarge {
+    axis: &'static str,
+    sum: f32,
+    limit: f32,
+  },
   /// カレントディレクトリの取得に失敗
   CurrentDir(io::Error),
 }
@@ -39,6 +49,15 @@ impl std::fmt::Display for ReadConfigError {
       ReadConfigError::InvalidValue { field, msg } => {
         write!(f, "Invalid value for '{}': {}", field, msg)
       }
+      ReadConfigError::NonPositive { field } => {
+        write!(f, "'{}' must be > 0", field)
+      }
+      ReadConfigError::NegativeMargin { field } => {
+        write!(f, "'{}' must be >= 0", field)
+      }
+      ReadConfigError::MarginSumTooLarge { axis, sum, limit } => {
+        write!(f, "margin sum for {} ({} ) must be < {}", axis, sum, limit)
+      }
       ReadConfigError::CurrentDir(e) => write!(f, "Failed to get current directory: {}", e),
     }
   }
@@ -51,7 +70,10 @@ impl std::error::Error for ReadConfigError {
         Some(e)
       }
       ReadConfigError::Toml(e) => Some(e),
-      ReadConfigError::InvalidValue { .. } => None,
+      ReadConfigError::InvalidValue { .. }
+      | ReadConfigError::NonPositive { .. }
+      | ReadConfigError::NegativeMargin { .. }
+      | ReadConfigError::MarginSumTooLarge { .. } => None,
     }
   }
 }
@@ -118,6 +140,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     height,
     width,
     font_size,
+    line_height_factor,
     margin_top,
     margin_bottom,
     margin_left,
@@ -161,21 +184,60 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   let height: f32 = height;
   let width: f32 = width;
   if height <= 0.0 {
-    return Err(ReadConfigError::InvalidValue {
+    return Err(ReadConfigError::NonPositive {
       field: "pdf.height",
-      msg: "must be > 0".into(),
     });
   }
   if width <= 0.0 {
-    return Err(ReadConfigError::InvalidValue {
-      field: "pdf.width",
-      msg: "must be > 0".into(),
-    });
+    return Err(ReadConfigError::NonPositive { field: "pdf.width" });
   }
   if font_size <= 0.0 {
-    return Err(ReadConfigError::InvalidValue {
+    return Err(ReadConfigError::NonPositive {
       field: "pdf.font_size",
-      msg: "must be > 0".into(),
+    });
+  }
+
+  if line_height_factor <= 0.0 {
+    return Err(ReadConfigError::NonPositive {
+      field: "pdf.line_height_factor",
+    });
+  }
+
+  // margin のチェック（負の値は不可）
+  if margin_top < 0.0 {
+    return Err(ReadConfigError::NegativeMargin {
+      field: "pdf.margin_top",
+    });
+  }
+  if margin_bottom < 0.0 {
+    return Err(ReadConfigError::NegativeMargin {
+      field: "pdf.margin_bottom",
+    });
+  }
+  if margin_left < 0.0 {
+    return Err(ReadConfigError::NegativeMargin {
+      field: "pdf.margin_left",
+    });
+  }
+  if margin_right < 0.0 {
+    return Err(ReadConfigError::NegativeMargin {
+      field: "pdf.margin_right",
+    });
+  }
+
+  // margin の合計が高さ・幅を超えないか（厳密に小さいこと）
+  if margin_top + margin_bottom >= height {
+    return Err(ReadConfigError::MarginSumTooLarge {
+      axis: "vertical",
+      sum: margin_top + margin_bottom,
+      limit: height,
+    });
+  }
+  if margin_left + margin_right >= width {
+    return Err(ReadConfigError::MarginSumTooLarge {
+      axis: "horizontal",
+      sum: margin_left + margin_right,
+      limit: width,
     });
   }
 
@@ -200,6 +262,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       height,
       width,
       font_size,
+      line_height_factor,
       margin_top,
       margin_bottom,
       margin_left,

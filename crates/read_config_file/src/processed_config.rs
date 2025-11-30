@@ -51,6 +51,8 @@ pub struct PdfConfig {
   pub width: f32,
   /// フォントサイズ
   pub font_size: f32,
+  /// 行の高さの倍率
+  pub line_height_factor: f32,
   /// 上余白
   pub margin_top: f32,
   /// 下余白
