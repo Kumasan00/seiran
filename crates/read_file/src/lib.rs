@@ -13,7 +13,7 @@ use std::{
 ///
 /// # 引数
 ///
-/// * `file_path` - 読み込むファイルのパス
+/// * `input_file_path` - 読み込むファイルのパス
 ///
 /// # 戻り値
 ///
@@ -22,7 +22,7 @@ use std::{
 /// # エラー
 ///
 /// ファイルのオープンに失敗した場合にエラーを返します。
-pub fn read_file<P: AsRef<Path>>(file_path: P) -> io::Result<io::Lines<BufReader<File>>> {
-  let file = File::open(file_path)?;
+pub fn read_file<P: AsRef<Path>>(input_file_path: P) -> io::Result<io::Lines<BufReader<File>>> {
+  let file = File::open(input_file_path)?;
   Ok(BufReader::new(file).lines())
 }

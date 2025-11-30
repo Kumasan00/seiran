@@ -60,10 +60,10 @@ impl GlyphMapping {
   /// * `default_width` - デフォルトの横幅値
   pub fn build_advance_list(&self, default_width: f32) -> Vec<f32> {
     (0..self.gid_to_cid.len())
-      .map(|cid| {
+      .map(|cid_index| {
         *self
           .advance_widths
-          .get(&(cid as u16))
+          .get(&(cid_index as u16))
           .unwrap_or(&default_width)
       })
       .collect()
@@ -75,9 +75,9 @@ impl GlyphMapping {
   /// 各CIDは2バイトのビッグエンディアン値として表現されます。
   pub fn build_cid_to_gid_map(&self) -> Vec<u8> {
     let mut map = Vec::with_capacity(self.gid_to_cid.len() * 2);
-    for cid in 0..self.gid_to_cid.len() {
-      map.push((cid >> 8) as u8);
-      map.push((cid & 0xFF) as u8);
+    for cid_index in 0..self.gid_to_cid.len() {
+      map.push((cid_index >> 8) as u8);
+      map.push((cid_index & 0xFF) as u8);
     }
     map
   }

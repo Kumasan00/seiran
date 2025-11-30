@@ -30,10 +30,10 @@ use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types};
 pub fn pdf_gen(
   font_data: &[u8],
   font_info: &font::FontData,
-  adv_list: &[f32],
+  advance_width_list: &[f32],
   cid_to_gid_map: &[u8],
   to_unicode_cmap: pdf_writer::types::UnicodeCmap,
-  content: pdf_writer::Content,
+  pdf_content: pdf_writer::Content,
   config: &read_config_file::Config,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
@@ -54,40 +54,40 @@ pub fn pdf_gen(
 
   pdf.pages(page_tree_id).kids([page_id]).count(1);
 
-  let mut font = pdf.type0_font(font_id);
-  font.base_font(main_font_name);
-  font.encoding_predefined(Name(b"Identity-H"));
-  font.descendant_font(cid_font_id);
-  font.to_unicode(to_unicode_cmap_id);
-  font.finish();
+  let mut type0_font = pdf.type0_font(font_id);
+  type0_font.base_font(main_font_name);
+  type0_font.encoding_predefined(Name(b"Identity-H"));
+  type0_font.descendant_font(cid_font_id);
+  type0_font.to_unicode(to_unicode_cmap_id);
+  type0_font.finish();
 
-  let mut cid_font = pdf.cid_font(cid_font_id);
-  cid_font.subtype(types::CidFontType::Type2);
-  cid_font.base_font(main_font_name);
-  cid_font.system_info(types::SystemInfo {
+  let mut cid_type2_font = pdf.cid_font(cid_font_id);
+  cid_type2_font.subtype(types::CidFontType::Type2);
+  cid_type2_font.base_font(main_font_name);
+  cid_type2_font.system_info(types::SystemInfo {
     registry: Str(b"Adobe"),
     ordering: Str(b"Identity"),
     supplement: 0,
   });
-  cid_font.font_descriptor(font_descriptor_id);
-  cid_font.default_width(font_info.upem);
-  let mut widths = cid_font.widths();
-  widths.consecutive(0, adv_list.to_owned());
+  cid_type2_font.font_descriptor(font_descriptor_id);
+  cid_type2_font.default_width(font_info.upem);
+  let mut widths = cid_type2_font.widths();
+  widths.consecutive(0, advance_width_list.to_owned());
   widths.finish();
-  cid_font.cid_to_gid_map_stream(cid_to_gid_map_id);
-  cid_font.finish();
+  cid_type2_font.cid_to_gid_map_stream(cid_to_gid_map_id);
+  cid_type2_font.finish();
 
-  let mut font_descriptor = pdf.font_descriptor(font_descriptor_id);
-  font_descriptor.name(main_font_name);
-  font_descriptor.flags(types::FontFlags::SYMBOLIC);
-  font_descriptor.italic_angle(font_info.italic_angle);
-  font_descriptor.bbox(font_info.pdf_writer_rect());
-  font_descriptor.ascent(font_info.ascender);
-  font_descriptor.descent(font_info.descender);
-  font_descriptor.cap_height(font_info.cap_height);
-  font_descriptor.stem_v(80.0);
-  font_descriptor.font_file2(font_file_id);
-  font_descriptor.finish();
+  let mut font_descriptor_obj = pdf.font_descriptor(font_descriptor_id);
+  font_descriptor_obj.name(main_font_name);
+  font_descriptor_obj.flags(types::FontFlags::SYMBOLIC);
+  font_descriptor_obj.italic_angle(font_info.italic_angle);
+  font_descriptor_obj.bbox(font_info.pdf_writer_rect());
+  font_descriptor_obj.ascent(font_info.ascender);
+  font_descriptor_obj.descent(font_info.descender);
+  font_descriptor_obj.cap_height(font_info.cap_height);
+  font_descriptor_obj.stem_v(80.0);
+  font_descriptor_obj.font_file2(font_file_id);
+  font_descriptor_obj.finish();
 
   pdf.stream(cid_to_gid_map_id, cid_to_gid_map); // Identity map
 
@@ -105,9 +105,9 @@ pub fn pdf_gen(
   page.resources().fonts().pair(main_font_name, font_id);
   page.finish();
 
-  pdf.stream(content_id, &content.finish());
+  pdf.stream(content_id, &pdf_content.finish());
 
-  let buf: Vec<u8> = pdf.finish();
+  let pdf_bytes: Vec<u8> = pdf.finish();
 
-  std::fs::write(&config.pdf.output_path, buf)
+  std::fs::write(&config.pdf.output_path, pdf_bytes)
 }

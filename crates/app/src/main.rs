@@ -36,14 +36,14 @@ const CID_TO_GID_SUPPLEMENT: i32 = 0;
 ///
 /// ファイルI/O、フォント処理、PDF生成のいずれかで問題が発生した場合にエラーを返します。
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-  let cli = cli::parse_arg();
+  let cli_args = cli::parse_arg();
 
-  match cli.command {
-    cli::Command::Build { file_path } => {
-      build_pdf(&file_path)?;
+  match cli_args.command {
+    cli::Command::Build { text_file_path } => {
+      build_pdf(&text_file_path)?;
     }
-    cli::Command::TtcNames { file_path } => {
-      get_ttc_names(&file_path)?;
+    cli::Command::TtcNames { ttc_file_path } => {
+      get_ttc_names(&ttc_file_path)?;
     }
   }
 
@@ -51,27 +51,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// PDFを生成する
+///
+/// 設定ファイルとテキストファイルを読み込み、フォント処理を行い、
+/// PDFドキュメントを生成します。
+///
+/// # 引数
+///
+/// * `file_path` - 入力テキストファイルのパス
+///
+/// # 戻り値
+///
+/// 成功した場合は`Ok(())`を返します。
+///
+/// # エラー
+///
+/// ファイル読み込み、フォント処理、PDF生成のいずれかで失敗した場合。
 fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
   let config = read_config_file::read_config_file()?;
   println!("Config loaded: {:?}", config);
 
-  let lines = read_file::read_file(file_path)?;
+  let text_lines = read_file::read_file(file_path)?;
 
-  let mut main_font_ctxs = FontContexts::new(&config)?;
-  let main_font_ctx = &mut main_font_ctxs.main;
+  let mut main_font_contexts = FontContexts::new(&config)?;
+  let main_font_context = &mut main_font_contexts.main_font_context;
 
-  let mut mapping = GlyphMapping::new();
+  let mut glyph_mapping = GlyphMapping::new();
 
-  let content = process_text_lines(lines, main_font_ctx, &mut mapping, &config)?;
-  let subset_bytes = font::create_font_subset(main_font_ctx, &mapping, &config)?;
+  let pdf_content = process_text_lines(text_lines, main_font_context, &mut glyph_mapping, &config)?;
+  let subset_bytes = font::create_font_subset(main_font_context, &glyph_mapping, &config)?;
   println!("Subset font: {} bytes", subset_bytes.len());
 
-  let font_info = font::analyze_subset_font(&subset_bytes, main_font_ctx.index)?;
-  mapping.advance_widths.insert(NOTDEF_GID, font_info.upem);
+  let font_info = font::analyze_subset_font(&subset_bytes, main_font_context.index)?;
+  glyph_mapping
+    .advance_widths
+    .insert(NOTDEF_GID, font_info.upem);
 
-  let advance_list = mapping.build_advance_list(font_info.upem);
-  let cid_to_gid_map = mapping.build_cid_to_gid_map();
-  let to_unicode_cmap = create_to_unicode_cmap(&config.main_font.font_name, mapping.cid_to_chars);
+  let advance_list = glyph_mapping.build_advance_list(font_info.upem);
+  let cid_to_gid_map = glyph_mapping.build_cid_to_gid_map();
+  let to_unicode_cmap =
+    create_to_unicode_cmap(&config.main_font.font_name, glyph_mapping.cid_to_chars);
 
   pdf_gen::pdf_gen(
     &subset_bytes,
@@ -79,7 +97,7 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
     &advance_list,
     &cid_to_gid_map,
     to_unicode_cmap,
-    content,
+    pdf_content,
     &config,
   )?;
 
@@ -104,35 +122,41 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
 ///
 /// 行の処理中にエラーが発生した場合にエラーを返します。
 fn process_text_lines(
-  lines: io::Lines<io::BufReader<fs::File>>,
-  font_ctx: &mut FontContext,
-  mapping: &mut GlyphMapping,
+  text_lines: io::Lines<io::BufReader<fs::File>>,
+  main_font_context: &mut FontContext,
+  glyph_mapping: &mut GlyphMapping,
   config: &Config,
 ) -> Result<Content, Box<dyn std::error::Error>> {
-  let upem = font_ctx.ttf_face.units_per_em() as f32;
-  let mut content = Content::new();
-  content.begin_text();
-  content.set_font(
+  let units_per_em = main_font_context.ttf_face.units_per_em() as f32;
+  let mut pdf_content = Content::new();
+  pdf_content.begin_text();
+  pdf_content.set_font(
     Name(config.main_font.font_name.as_bytes()),
     config.pdf.font_size,
   );
-  content.next_line(
+  pdf_content.next_line(
     config.pdf.margin_left,
     config.pdf.height - config.pdf.margin_top,
   );
 
-  for (line_num, line) in lines.enumerate() {
-    let line = line?;
-    println!("Line {}: {}", line_num + 1, line);
+  for (line_num, line) in text_lines.enumerate() {
+    let text_line = line?;
+    println!("Line {}: {}", line_num + 1, text_line);
 
-    process_single_line(&line, font_ctx, upem, mapping, &mut content)?;
+    process_single_line(
+      &text_line,
+      main_font_context,
+      units_per_em,
+      glyph_mapping,
+      &mut pdf_content,
+    )?;
 
     let line_height_factor = config.pdf.line_height_factor;
-    content.next_line(0.0, -config.pdf.font_size * line_height_factor);
+    pdf_content.next_line(0.0, -config.pdf.font_size * line_height_factor);
   }
 
-  content.end_text();
-  Ok(content)
+  pdf_content.end_text();
+  Ok(pdf_content)
 }
 
 /// 単一行のテキストを処理してコンテンツストリームに追加
@@ -152,47 +176,44 @@ fn process_text_lines(
 ///
 /// シェーピングまたはコンテンツ書き込み中にエラーが発生した場合にエラーを返します。
 fn process_single_line(
-  line: &str,
-  font_ctx: &mut FontContext,
-  upem: f32,
-  mapping: &mut GlyphMapping,
-  content: &mut Content,
+  text_line: &str,
+  main_font_context: &mut FontContext,
+  units_per_em: f32,
+  glyph_mapping: &mut GlyphMapping,
+  pdf_content: &mut Content,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let mut position_text = content.show_positioned();
+  let mut position_text = pdf_content.show_positioned();
   let mut items = position_text.items();
 
   let shape_results = text::shaping(
-    line,
-    &mut font_ctx.hb_font,
-    &mut mapping.gid_to_cid,
-    &mut mapping.used_gids,
+    text_line,
+    &mut main_font_context.hb_font,
+    &mut glyph_mapping.gid_to_cid,
+    &mut glyph_mapping.used_gids,
   );
 
   let mut text_buffer = Vec::new();
 
-  for (j, shape_result) in shape_results.iter().enumerate() {
+  for (glyph_index, shape_result) in shape_results.iter().enumerate() {
     let gid = shape_result.gid;
-    // GIDに対応するCIDが存在しない場合は安全にスキップ
-    let Some(&cid) = mapping.gid_to_cid.get(&gid) else {
-      // 未定義グリフは .notdef にフォールバック
+    let Some(&cid) = glyph_mapping.gid_to_cid.get(&gid) else {
       let fallback_cid = NOTDEF_GID;
-      // 未定義でも描画は続けるため、バッファに .notdef を積む
       text_buffer.push((fallback_cid >> 8) as u8);
       text_buffer.push((fallback_cid & 0xFF) as u8);
       continue;
     };
 
-    let advance_width = font_ctx.get_glyph_advance(gid) * 1000.0 / upem; // 1000/upem スケーリング
-    mapping.advance_widths.entry(cid).or_insert(advance_width);
-    let shape_advance = shape_result.x_advance as f32 * 1000.0 / upem; // 1000/upem スケーリング
+    let advance_width = main_font_context.get_glyph_advance(gid) * 1000.0 / units_per_em;
+    glyph_mapping
+      .advance_widths
+      .entry(cid)
+      .or_insert(advance_width);
+    let shape_advance = shape_result.x_advance as f32 * 1000.0 / units_per_em;
 
-    // CIDをバイト列に変換
     text_buffer.push((cid >> 8) as u8);
     text_buffer.push((cid & 0xFF) as u8);
 
-    // 位置調整が必要な場合
     let advance_diff = advance_width - shape_advance;
-    // 浮動小数の微小誤差を無視するためのしきい値
     if advance_diff.abs() > 0.0001 {
       if !text_buffer.is_empty() {
         items.show(Str(&text_buffer));
@@ -201,14 +222,12 @@ fn process_single_line(
       items.adjust(advance_diff);
     }
 
-    // Unicode マッピングを記録
-    let char_range = get_char_range(line, &shape_results, j);
-    // 既存のUnicodeマッピングがある場合は追記（リガチャや複数マッピング対策）
-    let mut chars: Vec<char> = line[char_range].chars().collect();
-    if let Some(existing) = mapping.cid_to_chars.get_mut(&cid) {
+    let char_range = get_char_range(text_line, &shape_results, glyph_index);
+    let mut chars: Vec<char> = text_line[char_range].chars().collect();
+    if let Some(existing) = glyph_mapping.cid_to_chars.get_mut(&cid) {
       existing.append(&mut chars);
     } else {
-      mapping.cid_to_chars.insert(cid, chars);
+      glyph_mapping.cid_to_chars.insert(cid, chars);
     }
   }
 
@@ -281,22 +300,38 @@ fn create_to_unicode_cmap(
   cmap
 }
 
+/// TTCファイルから各フォントの名前情報を取得
+///
+/// TrueTypeコレクション(TTC)ファイルに含まれる全てのフォントの
+/// nameテーブル情報を出力します。
+///
+/// # 引数
+///
+/// * `file_path` - TTCファイルのパス
+///
+/// # 戻り値
+///
+/// 成功した場合は`Ok(())`を返します。
+///
+/// # エラー
+///
+/// ファイル読み込みまたはフォント解析に失敗した場合。
 fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> result::Result<(), Box<dyn std::error::Error>> {
-  let data = fs::read(file_path)?;
-  let num = ttf_parser::fonts_in_collection(&data).unwrap();
-  println!("Number of fonts in TTC: {}", num);
-  for i in 0..num {
-    println!("\nFont index: {}\n", i);
-    let face = ttf_parser::Face::parse(&data, i)?;
+  let font_data = fs::read(file_path)?;
+  let font_count = ttf_parser::fonts_in_collection(&font_data).unwrap();
+  println!("Number of fonts in TTC: {}", font_count);
+  for font_index in 0..font_count {
+    println!("\nFont index: {}\n", font_index);
+    let face = ttf_parser::Face::parse(&font_data, font_index)?;
     // let name = font::extract_font_name(&face)?;
     let names = face.names();
-    for name in names {
-      let platform_id = name.platform_id;
+    for name_entry in names {
+      let platform_id = name_entry.platform_id;
       println!(
         "Platform ID {:?}: Name ID {}: {:?}",
         platform_id,
-        name.name_id,
-        name.to_string()
+        name_entry.name_id,
+        name_entry.to_string()
       );
     }
   }

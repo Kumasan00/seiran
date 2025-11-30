@@ -33,22 +33,22 @@ pub fn shaping(
     .add_str(text)
     .set_direction(Direction::Ltr);
 
-  let result = shape(hb_font, buffer, &[]);
+  let shape_result = shape(hb_font, buffer, &[]);
 
-  let positions = result.get_glyph_positions();
-  let infos = result.get_glyph_infos();
+  let glyph_positions = shape_result.get_glyph_positions();
+  let glyph_infos = shape_result.get_glyph_infos();
 
-  let mut shaping_result = Vec::with_capacity(positions.len());
+  let mut shaping_results = Vec::with_capacity(glyph_positions.len());
 
-  for (position, info) in positions.iter().zip(infos) {
-    let gid = info.codepoint as u16;
-    let cluster = info.cluster;
-    let x_advance = position.x_advance;
-    let y_advance = position.y_advance;
-    let x_offset = position.x_offset;
-    let y_offset = position.y_offset;
+  for (glyph_position, glyph_info) in glyph_positions.iter().zip(glyph_infos) {
+    let gid = glyph_info.codepoint as u16;
+    let cluster = glyph_info.cluster;
+    let x_advance = glyph_position.x_advance;
+    let y_advance = glyph_position.y_advance;
+    let x_offset = glyph_position.x_offset;
+    let y_offset = glyph_position.y_offset;
 
-    shaping_result.push(ShapingResult {
+    shaping_results.push(ShapingResult {
       gid,
       cluster,
       x_advance,
@@ -68,7 +68,7 @@ pub fn shaping(
     }
   }
 
-  return shaping_result;
+  return shaping_results;
 }
 
 /// シェーピング結果の情報

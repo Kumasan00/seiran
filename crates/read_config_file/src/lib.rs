@@ -13,9 +13,12 @@ use pre_config::PreConfig;
 mod processed_config;
 
 // processed_config の型を公開
-pub use processed_config::{Config, FontConfig, PdfConfig};
+pub use processed_config::{Config, FontConfig, PdfConfig, VariationAxis};
 
 /// 設定ファイル読み込みに関連するエラー
+///
+/// ファイルI/O、TOML解析、設定値のバリデーションに関する
+/// 様々なエラーケースを表現します。
 #[derive(Debug)]
 pub enum ReadConfigError {
   /// 入出力エラー
@@ -121,9 +124,9 @@ pub fn read_config_file() -> Result<processed_config::Config, ReadConfigError> {
 ///
 /// ファイル読み込み、解析、バリデーションのいずれかで失敗した場合。
 pub fn read_config_file_with_path<P: AsRef<Path>>(
-  config_file_path: P,
+  config_path: P,
 ) -> Result<processed_config::Config, ReadConfigError> {
-  let config_content = fs::read_to_string(config_file_path)?;
+  let config_content = fs::read_to_string(config_path)?;
   let pre_config: PreConfig = toml::from_str(&config_content)?;
   let current_dir = std::env::current_dir().map_err(ReadConfigError::CurrentDir)?;
 
@@ -248,19 +251,19 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     });
   }
 
-  let output_dir_path = resolve_path(&current_dir, &output_dir);
-  if let Some(parent) = output_dir_path.parent() {
+  let output_directory_path = resolve_path(&current_dir, &output_dir);
+  if let Some(parent) = output_directory_path.parent() {
     // Create intermediate directories for the output dir if needed
     fs::create_dir_all(parent).map_err(ReadConfigError::CreateDir)?;
   }
   // Ensure output directory itself exists
-  fs::create_dir_all(&output_dir_path).map_err(ReadConfigError::CreateDir)?;
+  fs::create_dir_all(&output_directory_path).map_err(ReadConfigError::CreateDir)?;
 
-  let mut output_path = output_dir_path.join(&name);
+  let mut output_path = output_directory_path.join(&name);
   output_path.set_extension("pdf");
 
   let main_font_path = resolve_path(&current_dir, &main_font_path);
-  let main_jp_font_path = resolve_path(&current_dir, &main_jp_font_path);
+  let main_japanese_font_path = resolve_path(&current_dir, &main_jp_font_path);
   let math_font_path = resolve_path(&current_dir, &math_font_path);
 
   let config = processed_config::Config {
@@ -284,7 +287,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     },
     main_japanese_font: processed_config::FontConfig {
       font_name: main_jp_font_name,
-      font_path: main_jp_font_path,
+      font_path: main_japanese_font_path,
       font_index: main_jp_font_index,
       variation_axes: main_jp_font_variation_axes,
     },

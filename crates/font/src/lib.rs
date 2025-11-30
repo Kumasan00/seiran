@@ -54,6 +54,20 @@ pub enum FontContextError {
   },
 }
 
+/// フォントコンテキスト群の初期化に関連するエラー
+#[derive(thiserror::Error, Debug)]
+pub enum FontContextsError {
+  /// メインフォントの初期化失敗
+  #[error("Failed to initialize main font: {0}")]
+  MainFont(#[from] FontContextError),
+  /// 日本語フォントの初期化失敗
+  #[error("Failed to initialize main Japanese font: {0}")]
+  MainJapaneseFont(FontContextError),
+  /// 数式フォントの初期化失敗
+  #[error("Failed to initialize math font: {0}")]
+  MathFont(FontContextError),
+}
+
 /// フォントサブセット処理に関連するエラー
 #[derive(thiserror::Error, Debug)]
 pub enum FontSubsetError {
@@ -211,10 +225,15 @@ pub fn analyze_subset_font(subset_bytes: &[u8], index: u32) -> Result<FontData, 
 }
 
 /// フォントの種類を表す列挙型
+///
+/// 設定から適切なフォント情報を取得するために使用されます。
 #[derive(Debug)]
 pub enum FontType {
+  /// メインフォント
   MainFont,
+  /// メイン日本語フォント
   MainJapaneseFont,
+  /// 数式フォント
   MathFont,
 }
 
@@ -235,6 +254,95 @@ pub struct FontContext {
 }
 
 impl FontContext {
+  /// フォント設定を取得
+  ///
+  /// FontTypeに応じた設定を返します。
+  ///
+  /// # 引数
+  ///
+  /// * `config` - アプリケーション設定
+  /// * `font_type` - フォントの種類
+  ///
+  /// # 戻り値
+  ///
+  /// (フォントパス, フォントインデックス) のタプル
+  fn get_font_config<'a>(config: &'a Config, font_type: &FontType) -> (&'a std::path::Path, u32) {
+    match font_type {
+      FontType::MainFont => (&config.main_font.font_path, config.main_font.font_index),
+      FontType::MainJapaneseFont => (
+        &config.main_japanese_font.font_path,
+        config.main_japanese_font.font_index,
+      ),
+      FontType::MathFont => (&config.math_font.font_path, config.math_font.font_index),
+    }
+  }
+
+  /// バリアブルフォントの軸を検証
+  ///
+  /// 設定されたバリエーション軸がフォントの軸と一致し、
+  /// 値が許容範囲内にあることを確認します。
+  ///
+  /// # 引数
+  ///
+  /// * `ttf_face` - TrueTypeフェース
+  /// * `config_variation_axes` - 設定されたバリエーション軸
+  ///
+  /// # エラー
+  ///
+  /// 未知の軸名または値が範囲外の場合
+  fn validate_variation_axes(
+    ttf_face: &ttf_parser::Face<'_>,
+    config_variation_axes: &[read_config_file::VariationAxis],
+  ) -> Result<(), FontContextError> {
+    let axes = ttf_parser::Face::variation_axes(ttf_face);
+
+    for cfg_axis in config_variation_axes.iter() {
+      let maybe_axis = axes
+        .into_iter()
+        .find(|axis| cfg_axis.name.chars().collect::<Vec<char>>() == axis.tag.to_chars());
+
+      let axis =
+        maybe_axis.ok_or_else(|| FontContextError::UnknownVariationAxis(cfg_axis.name.clone()))?;
+
+      if !(axis.min_value..=axis.max_value).contains(&cfg_axis.value) {
+        return Err(FontContextError::VariationValueOutOfRange {
+          name: cfg_axis.name.clone(),
+          min: axis.min_value,
+          max: axis.max_value,
+          value: cfg_axis.value,
+        });
+      }
+    }
+
+    Ok(())
+  }
+
+  /// HarfBuzzフォントにバリエーションを適用
+  ///
+  /// 設定されたバリエーション軸をHarfBuzzフォントに設定します。
+  ///
+  /// # 引数
+  ///
+  /// * `hb_font` - HarfBuzzフォント
+  /// * `config_variation_axes` - 設定されたバリエーション軸
+  fn apply_hb_variations(
+    hb_font: &mut harfbuzz_rs::Owned<Font<'static>>,
+    config_variation_axes: &[read_config_file::VariationAxis],
+  ) {
+    let mut variations: Vec<harfbuzz_rs::Variation> =
+      Vec::with_capacity(config_variation_axes.len());
+
+    for axis in config_variation_axes.iter() {
+      if let Ok(tag) = harfbuzz_rs::Tag::from_str(&axis.name) {
+        variations.push(harfbuzz_rs::Variation::new(tag, axis.value));
+      }
+    }
+
+    if !variations.is_empty() {
+      hb_font.set_variations(&variations);
+    }
+  }
+
   /// 新しいフォントコンテキストを作成
   ///
   /// 指定されたパスからフォントを読み込み、パーサーを初期化します。
@@ -242,24 +350,15 @@ impl FontContext {
   ///
   /// # 引数
   ///
-  /// * `font_path` - フォントファイルのパス
   /// * `config` - アプリケーション設定
+  /// * `font_type` - フォントの種類
   ///
   /// # エラー
   ///
   /// ファイルの読み込み、フォントの解析、またはバリエーション設定に
   /// 問題がある場合にエラーを返します。
   pub fn new(config: &Config, font_type: FontType) -> Result<Self, FontContextError> {
-    let index = match font_type {
-      FontType::MainFont => config.main_font.font_index,
-      FontType::MainJapaneseFont => config.main_japanese_font.font_index,
-      FontType::MathFont => config.math_font.font_index,
-    };
-    let font_path = match font_type {
-      FontType::MainFont => &config.main_font.font_path,
-      FontType::MainJapaneseFont => &config.main_japanese_font.font_path,
-      FontType::MathFont => &config.math_font.font_path,
-    };
+    let (font_path, index) = Self::get_font_config(config, &font_type);
     let data = fs::read(font_path).map_err(FontContextError::Io)?;
 
     // 'static ライフタイムを持つデータとして扱うため、Box::leak を使用
@@ -269,51 +368,19 @@ impl FontContext {
     let hb_face = harfbuzz_rs::Face::from_bytes(static_data, index);
     let mut hb_font = Font::new(hb_face);
 
+    // バリアブルフォントの処理
     if ttf_face.is_variable() {
-      let config_variation_axes = config.main_font.variation_axes.as_ref();
+      let config_variation_axes = config
+        .main_font
+        .variation_axes
+        .as_ref()
+        .ok_or(FontContextError::MissingVariationAxes)?;
+
       let axes = ttf_parser::Face::variation_axes(&ttf_face);
       println!("Font is variable with axes: {:?}", axes);
 
-      let Some(config_variation_axes) = config_variation_axes else {
-        return Err(FontContextError::MissingVariationAxes);
-      };
-
-      for cfg_axis in config_variation_axes.iter() {
-        // Find matching axis by name
-        let maybe_axis = axes
-          .into_iter()
-          .find(|axis| cfg_axis.name.chars().collect::<Vec<char>>() == axis.tag.to_chars());
-
-        let axis = match maybe_axis {
-          Some(a) => a,
-          None => {
-            return Err(FontContextError::UnknownVariationAxis(
-              cfg_axis.name.clone(),
-            ));
-          }
-        };
-
-        if !(axis.min_value..=axis.max_value).contains(&cfg_axis.value) {
-          return Err(FontContextError::VariationValueOutOfRange {
-            name: cfg_axis.name.clone(),
-            min: axis.min_value,
-            max: axis.max_value,
-            value: cfg_axis.value,
-          });
-        }
-      }
-
-      if let Some(cfg_axes) = config.main_font.variation_axes.as_ref() {
-        let mut variations: Vec<harfbuzz_rs::Variation> = Vec::with_capacity(cfg_axes.len());
-        for axis in cfg_axes.iter() {
-          if let Ok(tag) = harfbuzz_rs::Tag::from_str(&axis.name) {
-            variations.push(harfbuzz_rs::Variation::new(tag, axis.value));
-          }
-        }
-        if !variations.is_empty() {
-          hb_font.set_variations(&variations);
-        }
-      }
+      Self::validate_variation_axes(&ttf_face, config_variation_axes)?;
+      Self::apply_hb_variations(&mut hb_font, config_variation_axes);
     }
 
     Ok(Self {
@@ -341,22 +408,41 @@ impl FontContext {
 }
 
 /// PDF生成に使われるフォントのコンテキストを保持
+///
+/// メインフォント、日本語フォント、数式フォントの
+/// それぞれのコンテキストを一元管理します。
 #[derive(Debug)]
 pub struct FontContexts {
-  pub main: FontContext,
-  pub main_japanese: FontContext,
-  pub math: FontContext,
+  /// メインフォントのコンテキスト
+  pub main_font_context: FontContext,
+  /// 日本語フォントのコンテキスト
+  pub main_japanese_font_context: FontContext,
+  /// 数式フォントのコンテキスト
+  pub math_font_context: FontContext,
 }
 
 impl FontContexts {
-  pub fn new(config: &Config) -> Result<Self, FontContextError> {
-    let main = FontContext::new(config, FontType::MainFont)?;
-    let main_japanese = FontContext::new(config, FontType::MainJapaneseFont)?;
-    let math = FontContext::new(config, FontType::MathFont)?;
+  /// 設定から全てのフォントコンテキストを初期化
+  ///
+  /// メインフォント、日本語フォント、数式フォントの
+  /// 各フォントコンテキストを生成します。
+  ///
+  /// # 引数
+  ///
+  /// * `config` - アプリケーション設定
+  ///
+  /// # エラー
+  ///
+  /// いずれかのフォントの初期化に失敗した場合。
+  pub fn new(config: &Config) -> Result<Self, FontContextsError> {
+    let main_font_context = FontContext::new(config, FontType::MainFont)?;
+    let main_japanese_font_context = FontContext::new(config, FontType::MainJapaneseFont)
+      .map_err(FontContextsError::MainJapaneseFont)?;
+    let math_font_context = FontContext::new(config, FontType::MathFont).map_err(FontContextsError::MathFont)?;
     Ok(FontContexts {
-      main,
-      main_japanese,
-      math,
+      main_font_context,
+      main_japanese_font_context,
+      math_font_context,
     })
   }
 }
@@ -380,21 +466,21 @@ impl FontContexts {
 ///
 /// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合。
 pub fn create_font_subset(
-  font_ctx: &FontContext,
-  mapping: &GlyphMapping,
+  font_context: &FontContext,
+  glyph_mapping: &GlyphMapping,
   config: &Config,
 ) -> Result<Vec<u8>, FontSubsetError> {
-  let used_gids_vec: Vec<u16> = mapping.used_gids.iter().copied().collect();
+  let used_gids_vec: Vec<u16> = glyph_mapping.used_gids.iter().copied().collect();
 
   // バリアブルフォントの場合はインスタンス化
-  let font_data = if font_ctx.ttf_face.is_variable() {
-    create_font_instance(font_ctx, config)?
+  let font_data = if font_context.ttf_face.is_variable() {
+    create_font_instance(font_context, config)?
   } else {
-    font_ctx.data.clone()
+    font_context.data.clone()
   };
 
   // サブセット化を実行
-  perform_subsetting(&font_data, font_ctx.index, &used_gids_vec)
+  perform_subsetting(&font_data, font_context.index, &used_gids_vec)
 }
 
 /// バリアブルフォントのインスタンスを作成
@@ -415,19 +501,19 @@ pub fn create_font_subset(
 ///
 /// インスタンス化処理中にエラーが発生した場合。
 fn create_font_instance(
-  font_ctx: &FontContext,
+  font_context: &FontContext,
   config: &Config,
 ) -> Result<Vec<u8>, FontSubsetError> {
-  let scope = ReadScope::new(&font_ctx.data);
+  let scope = ReadScope::new(&font_context.data);
   let font_data = scope
     .read::<allsorts::font_data::FontData<'_>>()
     .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
   let table_provider = font_data
-    .table_provider(font_ctx.index as usize)
+    .table_provider(font_context.index as usize)
     .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
 
   // バリエーション軸の値を取得
-  let axes = build_variation_axes(font_ctx, config)?;
+  let axes = build_variation_axes(font_context, config)?;
 
   // インスタンスを生成
   let (instance, _tuple) =
@@ -454,7 +540,7 @@ fn create_font_instance(
 ///
 /// バリエーション軸の設定が不足している場合。
 fn build_variation_axes(
-  font_ctx: &FontContext,
+  font_context: &FontContext,
   config: &Config,
 ) -> Result<Vec<Fixed>, FontSubsetError> {
   let config_axes = config
@@ -463,7 +549,7 @@ fn build_variation_axes(
     .as_ref()
     .ok_or(FontSubsetError::MissingVariationAxes)?;
 
-  let variation_axes = font_ctx.ttf_face.variation_axes();
+  let variation_axes = font_context.ttf_face.variation_axes();
 
   let axes = variation_axes
     .into_iter()

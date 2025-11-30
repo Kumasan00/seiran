@@ -55,6 +55,8 @@ pub(crate) struct PreMathFontConfig {
 }
 
 /// デフォルトのフォントインデックスを返す
+///
+/// 設定ファイルでフォントインデックスが省略された場合に使用されます。
 fn default_font_index() -> u32 {
   0
 }

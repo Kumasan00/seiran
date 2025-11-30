@@ -26,12 +26,12 @@ pub enum Command {
   Build {
     /// 処理対象のテキストファイルパス
     #[arg(value_name = "FILE")]
-    file_path: PathBuf,
+    text_file_path: PathBuf,
   },
   TtcNames {
     /// 処理対象のTTCファイルパス
     #[arg(value_name = "FILE")]
-    file_path: PathBuf,
+    ttc_file_path: PathBuf,
   },
 }
 
