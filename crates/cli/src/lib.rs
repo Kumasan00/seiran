@@ -3,47 +3,25 @@
 //! このモジュールは、コマンドラインからの引数を解析し、
 //! アプリケーションが使用する設定情報を提供します。
 
-use std::{env, error::Error, fmt, path::PathBuf};
+use std::{env, path::PathBuf};
+
+use thiserror::Error;
 
 /// コマンドライン解析に関連するエラー
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CliError {
   /// コマンドが指定されていない
+  #[error("No command provided. Usage: seiran build <file>")]
   NoCommand,
   /// 未知のコマンドが指定された
+  #[error("Unknown command: '{0}'. Available commands: build")]
   UnknownCommand(String),
   /// ファイルパスが指定されていない
+  #[error("No file path provided. Usage: seiran build <file>")]
   MissingFilePath,
   /// カレントディレクトリの取得に失敗した
+  #[error("Failed to get current directory: {0}")]
   CurrentDirError(std::io::Error),
-}
-
-impl fmt::Display for CliError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      CliError::NoCommand => {
-        write!(f, "No command provided. Usage: seiran build <file>")
-      }
-      CliError::UnknownCommand(cmd) => {
-        write!(f, "Unknown command: '{}'. Available commands: build", cmd)
-      }
-      CliError::MissingFilePath => {
-        write!(f, "No file path provided. Usage: seiran build <file>")
-      }
-      CliError::CurrentDirError(e) => {
-        write!(f, "Failed to get current directory: {}", e)
-      }
-    }
-  }
-}
-
-impl Error for CliError {
-  fn source(&self) -> Option<&(dyn Error + 'static)> {
-    match self {
-      CliError::CurrentDirError(e) => Some(e),
-      _ => None,
-    }
-  }
 }
 
 /// コマンドライン引数を解析して`Arg`構造体を返す

@@ -210,10 +210,19 @@ pub fn analyze_subset_font(subset_bytes: &[u8], index: u32) -> Result<FontData, 
   FontData::analyze_font(&subset_face)
 }
 
+/// フォントの種類を表す列挙型
+#[derive(Debug)]
+pub enum FontType {
+  MainFont,
+  MainJapaneseFont,
+  MathFont,
+}
+
 /// フォントデータと関連するパーサーを管理するコンテキスト
 ///
 /// TrueTypeパーサーとHarfBuzzフォントオブジェクトの両方を保持し、
 /// フォントの解析とシェーピングに使用します。
+#[derive(Debug)]
 pub struct FontContext {
   /// フォントファイルのバイトデータ
   pub data: Vec<u8>,
@@ -240,8 +249,17 @@ impl FontContext {
   ///
   /// ファイルの読み込み、フォントの解析、またはバリエーション設定に
   /// 問題がある場合にエラーを返します。
-  pub fn new(font_path: &str, config: &Config) -> Result<Self, FontContextError> {
-    let index = config.main_font.font_index;
+  pub fn new(config: &Config, font_type: FontType) -> Result<Self, FontContextError> {
+    let index = match font_type {
+      FontType::MainFont => config.main_font.font_index,
+      FontType::MainJapaneseFont => config.main_japanese_font.font_index,
+      FontType::MathFont => config.math_font.font_index,
+    };
+    let font_path = match font_type {
+      FontType::MainFont => &config.main_font.font_path,
+      FontType::MainJapaneseFont => &config.main_japanese_font.font_path,
+      FontType::MathFont => &config.math_font.font_path,
+    };
     let data = fs::read(font_path).map_err(FontContextError::Io)?;
 
     // 'static ライフタイムを持つデータとして扱うため、Box::leak を使用
@@ -319,6 +337,27 @@ impl FontContext {
       .ttf_face
       .glyph_hor_advance(ttf_parser::GlyphId(gid))
       .unwrap_or(self.ttf_face.units_per_em()) as f32
+  }
+}
+
+/// PDF生成に使われるフォントのコンテキストを保持
+#[derive(Debug)]
+pub struct FontContexts {
+  pub main: FontContext,
+  pub main_japanese: FontContext,
+  pub math: FontContext,
+}
+
+impl FontContexts {
+  pub fn new(config: &Config) -> Result<Self, FontContextError> {
+    let main = FontContext::new(config, FontType::MainFont)?;
+    let main_japanese = FontContext::new(config, FontType::MainJapaneseFont)?;
+    let math = FontContext::new(config, FontType::MathFont)?;
+    Ok(FontContexts {
+      main,
+      main_japanese,
+      math,
+    })
   }
 }
 

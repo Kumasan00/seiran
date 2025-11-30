@@ -16,6 +16,8 @@ pub struct Config {
   pub main_font: FontConfig,
   /// メイン日本語フォント設定
   pub main_japanese_font: FontConfig,
+  /// 数式フォント設定
+  pub math_font: MathFontConfig,
 }
 
 /// 処理済みのフォント設定
@@ -38,6 +40,17 @@ pub struct VariationAxis {
   pub name: String,
   /// 軸の値
   pub value: f32,
+}
+
+/// 処理済みの数式フォント設定
+#[derive(Debug)]
+pub struct MathFontConfig {
+  /// フォント名
+  pub font_name: String,
+  /// フォントファイルの解決済みパス
+  pub font_path: PathBuf,
+  /// フォントコレクション内のインデックス
+  pub font_index: u32,
 }
 
 /// 処理済みのPDF設定

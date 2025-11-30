@@ -6,7 +6,7 @@
 
 use std::{collections::HashMap, fs, io};
 
-use font::FontContext;
+use font::{FontContext, FontContexts};
 use pdf_writer::{Content, Finish, Name, Str, types};
 use read_config_file::Config;
 use stypes::GlyphMapping;
@@ -38,25 +38,20 @@ const CID_TO_GID_SUPPLEMENT: i32 = 0;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   let arg = cli::parse_arg()?;
   let config = read_config_file::read_config_file()?;
+  println!("Config loaded: {:?}", config);
 
   let lines = read_file::read_file(&arg.file_path)?;
 
-  let mut font_ctx = FontContext::new(
-    config
-      .main_font
-      .font_path
-      .to_str()
-      .ok_or("Invalid UTF-8 in font path")?,
-    &config,
-  )?;
+  let mut main_font_ctxs = FontContexts::new(&config)?;
+  let main_font_ctx = &mut main_font_ctxs.main;
 
   let mut mapping = GlyphMapping::new();
 
-  let content = process_text_lines(lines, &mut font_ctx, &mut mapping, &config)?;
-  let subset_bytes = font::create_font_subset(&font_ctx, &mapping, &config)?;
+  let content = process_text_lines(lines, main_font_ctx, &mut mapping, &config)?;
+  let subset_bytes = font::create_font_subset(main_font_ctx, &mapping, &config)?;
   println!("Subset font: {} bytes", subset_bytes.len());
 
-  let font_info = font::analyze_subset_font(&subset_bytes, font_ctx.index)?;
+  let font_info = font::analyze_subset_font(&subset_bytes, main_font_ctx.index)?;
   mapping.advance_widths.insert(NOTDEF_GID, font_info.upem);
 
   let advance_list = mapping.build_advance_list(font_info.upem);

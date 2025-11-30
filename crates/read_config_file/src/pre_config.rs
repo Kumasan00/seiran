@@ -16,6 +16,8 @@ pub(crate) struct PreConfig {
   pub main_font: PreFontConfig,
   /// メイン日本語フォント設定
   pub main_japanese_font: PreFontConfig,
+  /// 数式フォント設定
+  pub math_font: PreMathFontConfig,
 }
 
 /// プリプロセス済みのフォント設定
@@ -38,6 +40,23 @@ pub struct PreVariationAxis {
   pub name: String,
   /// 軸の値
   pub value: f32,
+}
+
+/// プリプロセス済みの数式フォント設定
+#[derive(Deserialize, Debug)]
+pub(crate) struct PreMathFontConfig {
+  /// フォント名
+  pub font_name: String,
+  /// フォントファイルのパス（文字列）
+  pub font_path: String,
+  /// フォントコレクション内のインデックス
+  #[serde(default = "default_font_index")]
+  pub font_index: u32,
+}
+
+/// デフォルトのフォントインデックスを返す
+fn default_font_index() -> u32 {
+  0
 }
 
 /// プリプロセス済みのPDF設定

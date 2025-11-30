@@ -6,6 +6,7 @@ name = "app"
 version = "0.1.0"
 
 [dependencies]
+anyhow.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
 pdf-writer.workspace = true

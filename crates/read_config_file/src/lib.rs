@@ -133,6 +133,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     pdf: pre_pdf,
     main_font: pre_main_font,
     main_japanese_font: pre_main_jp_font,
+    math_font: pre_math_font,
   } = pre_config;
 
   let pre_config::PrePdfConfig {
@@ -153,6 +154,12 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     font_index: main_font_index,
     variation_axes: main_font_variation_axes,
   } = pre_main_font;
+
+  let pre_config::PreMathFontConfig {
+    font_name: math_font_name,
+    font_path: math_font_path,
+    font_index: math_font_index,
+  } = pre_math_font;
 
   let main_font_variation_axes = main_font_variation_axes.map(|axes| {
     axes
@@ -254,6 +261,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
 
   let main_font_path = resolve_path(&current_dir, &main_font_path);
   let main_jp_font_path = resolve_path(&current_dir, &main_jp_font_path);
+  let math_font_path = resolve_path(&current_dir, &math_font_path);
 
   let config = processed_config::Config {
     name,
@@ -279,6 +287,11 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       font_path: main_jp_font_path,
       font_index: main_jp_font_index,
       variation_axes: main_jp_font_variation_axes,
+    },
+    math_font: processed_config::MathFontConfig {
+      font_name: math_font_name,
+      font_path: math_font_path,
+      font_index: math_font_index,
     },
   };
   Ok(config)
