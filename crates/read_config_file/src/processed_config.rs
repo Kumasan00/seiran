@@ -14,6 +14,8 @@ pub struct Config {
   pub pdf: PdfConfig,
   /// メインフォント設定
   pub main_font: FontConfig,
+  /// イタリックフォント設定
+  pub italic_font: FontConfig,
   /// 数式フォント設定
   pub math_font: MathFontConfig,
   /// サンセリフフォント設定

@@ -87,6 +87,7 @@ impl GlyphMapping {
 #[derive(Default)]
 pub struct GlyphMappings {
   pub main_font: GlyphMapping,
+  pub italic_font: GlyphMapping,
   pub math_font: GlyphMapping,
   pub sans_font: GlyphMapping,
   pub main_japanese_font: GlyphMapping,
@@ -101,6 +102,7 @@ impl GlyphMappings {
 
 pub struct AdvanceLists {
   pub main_font: Vec<f32>,
+  pub italic_font: Vec<f32>,
   pub math_font: Vec<f32>,
   pub sans_font: Vec<f32>,
   pub main_japanese_font: Vec<f32>,
@@ -109,6 +111,7 @@ pub struct AdvanceLists {
 
 pub struct CidToGidMaps {
   pub main_font: Vec<u8>,
+  pub italic_font: Vec<u8>,
   pub math_font: Vec<u8>,
   pub sans_font: Vec<u8>,
   pub main_japanese_font: Vec<u8>,
@@ -117,6 +120,7 @@ pub struct CidToGidMaps {
 
 pub struct ToUnicodeCmaps {
   pub main_font: UnicodeCmap,
+  pub italic_font: UnicodeCmap,
   pub math_font: UnicodeCmap,
   pub sans_font: UnicodeCmap,
   pub main_japanese_font: UnicodeCmap,

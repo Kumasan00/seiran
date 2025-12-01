@@ -135,6 +135,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     name,
     pdf: pre_pdf,
     main_font: pre_main_font,
+    italic_font: pre_italic_font,
     math_font: pre_math_font,
     main_japanese_font: pre_main_jp_font,
     sans_font: pre_sans_font,
@@ -161,6 +162,23 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   } = pre_main_font;
 
   let main_font_variation_axes = main_font_variation_axes.map(|axes| {
+    axes
+      .into_iter()
+      .map(|axis| processed_config::VariationAxis {
+        name: axis.name,
+        value: axis.value,
+      })
+      .collect()
+  });
+
+  let pre_config::PreFontConfig {
+    font_name: italic_font_name,
+    font_path: italic_font_path,
+    font_index: italic_font_index,
+    variation_axes: italic_font_variation_axes,
+  } = pre_italic_font;
+
+  let italic_font_variation_axes = italic_font_variation_axes.map(|axes| {
     axes
       .into_iter()
       .map(|axis| processed_config::VariationAxis {
@@ -299,6 +317,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   output_path.set_extension("pdf");
 
   let main_font_path = resolve_path(&current_dir, &main_font_path);
+  let italic_font_path = resolve_path(&current_dir, &italic_font_path);
   let math_font_path = resolve_path(&current_dir, &math_font_path);
   let sans_font_path = resolve_path(&current_dir, &sans_font_path);
   let main_japanese_font_path = resolve_path(&current_dir, &main_jp_font_path);
@@ -322,6 +341,12 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       font_path: main_font_path,
       font_index: main_font_index,
       variation_axes: main_font_variation_axes,
+    },
+    italic_font: processed_config::FontConfig {
+      font_name: italic_font_name,
+      font_path: italic_font_path,
+      font_index: italic_font_index,
+      variation_axes: italic_font_variation_axes,
     },
     math_font: processed_config::MathFontConfig {
       font_name: math_font_name,

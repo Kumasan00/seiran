@@ -14,6 +14,8 @@ pub(crate) struct PreConfig {
   pub pdf: PrePdfConfig,
   /// メインフォント設定
   pub main_font: PreFontConfig,
+  /// イタリックフォント設定
+  pub italic_font: PreFontConfig,
   /// サンセリフフォント設定
   pub sans_font: PreFontConfig,
   /// 数式フォント設定

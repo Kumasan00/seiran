@@ -152,6 +152,8 @@ pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
 pub struct FontDatas {
   /// メイン（本文）フォントのメタデータ
   pub main_font_data: FontData,
+  /// イタリックフォントのメタデータ
+  pub italic_font_data: FontData,
   /// 数式フォントのメタデータ
   pub math_font_data: FontData,
   /// サンセリフ（英数）フォントのメタデータ
@@ -207,6 +209,10 @@ pub fn analyze_subset_font(
     &fonts_subset_bytes.main_font_subset,
     font_contexts.main_font_context.index,
   )?;
+  let italic_font_data = analyze_single_subset(
+    &fonts_subset_bytes.italic_font_subset,
+    font_contexts.italic_font_context.index,
+  )?;
   let math_font_data = analyze_single_subset(
     &fonts_subset_bytes.math_font_subset,
     font_contexts.math_font_context.index,
@@ -226,6 +232,7 @@ pub fn analyze_subset_font(
 
   Ok(FontDatas {
     main_font_data,
+    italic_font_data,
     math_font_data,
     sans_font_data,
     main_japanese_font_data,

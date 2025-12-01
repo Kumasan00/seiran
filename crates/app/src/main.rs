@@ -39,6 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   match cli_args.command {
     cli::Command::Build { text_file_path } => {
+      println!("Building PDF from: {:?}", text_file_path);
       build_pdf(&text_file_path)?;
     }
     cli::Command::TtcNames { ttc_file_path } => {
@@ -67,21 +68,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// ファイル読み込み、フォント処理、PDF生成のいずれかで失敗した場合。
 fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
   let config = read_config_file::read_config_file()?;
-  println!("Config loaded: {:?}", config);
 
   let text_lines = read_file::read_file(file_path)?;
   let mut font_contexts = FontContexts::new(&config)?;
   let mut glyph_mappings = GlyphMappings::new();
 
-  let pdf_content = process_text_lines(
-    text_lines,
-    &mut font_contexts.main_font_context,
-    &mut glyph_mappings.main_font,
-    &config,
-  )?;
+  let pdf_content =
+    process_text_lines(text_lines, &mut font_contexts, &mut glyph_mappings, &config)?;
 
   let subset_bytes = create_font_subset(&font_contexts, &glyph_mappings, &config)?;
-  println!("Subset font: {} bytes", subset_bytes.main_font_subset.len());
 
   let font_datas = analyze_subset_font(&subset_bytes, &font_contexts)?;
 
@@ -91,7 +86,7 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
     &subset_bytes,
     &font_datas,
     &glyph_mappings,
-    pdf_content,
+    vec![pdf_content],
     &config,
   )?;
 
@@ -110,6 +105,10 @@ fn insert_notdef_advance_widths(glyph_mappings: &mut GlyphMappings, font_datas: 
     .main_font
     .advance_widths
     .insert(NOTDEF_GID, font_datas.main_font_data.upem);
+  glyph_mappings
+    .italic_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.italic_font_data.upem);
   glyph_mappings
     .math_font
     .advance_widths
@@ -146,11 +145,13 @@ fn insert_notdef_advance_widths(glyph_mappings: &mut GlyphMappings, font_datas: 
 /// 行の処理中にエラーが発生した場合にエラーを返します。
 fn process_text_lines(
   text_lines: io::Lines<io::BufReader<fs::File>>,
-  main_font_context: &mut FontContext,
-  glyph_mapping: &mut GlyphMapping,
+  font_contexts: &mut FontContexts,
+  glyph_mappings: &mut GlyphMappings,
   config: &Config,
 ) -> Result<Content, Box<dyn std::error::Error>> {
-  let units_per_em = main_font_context.ttf_face.units_per_em() as f32;
+  let units_per_em = font_contexts.main_font_context.ttf_face.units_per_em() as f32;
+  let main_font_context = &mut font_contexts.main_font_context;
+  let glyph_mapping = &mut glyph_mappings.main_font;
   let mut pdf_content = Content::new();
   pdf_content.begin_text();
   pdf_content.set_font(

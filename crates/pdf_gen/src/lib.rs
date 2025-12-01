@@ -33,6 +33,14 @@ struct FontSetupData<'a> {
   font_subset_bytes: &'a font::font_context::FontSubsetBytes,
 }
 
+/// フォント設定を1件分まとめて扱うためのローカル構造体
+struct LocalFont<'a> {
+  name_bytes: &'a [u8],
+  ids: &'a FontIds,
+  data: &'a FontData,
+  advances: &'a [f32],
+}
+
 /// 各フォント用のPDFオブジェクトID群
 #[derive(Debug)]
 struct FontIds {
@@ -48,9 +56,10 @@ struct FontIds {
 struct PdfIds {
   catalog_id: Ref,
   page_tree_id: Ref,
-  page_id: Ref,
-  content_id: Ref,
+  page_ids: Vec<Ref>,
+  content_ids: Vec<Ref>,
   main_font: FontIds,
+  italic_font: FontIds,
   math_font: FontIds,
   sans_font: FontIds,
   main_japanese_font: FontIds,
@@ -59,7 +68,7 @@ struct PdfIds {
 
 impl PdfIds {
   /// 新しいPDFオブジェクトIDセットを作成
-  fn new() -> Self {
+  fn new(page_count: usize) -> Self {
     let mut id_counter = 1;
     let mut next_id = || {
       let id = Ref::new(id_counter);
@@ -67,12 +76,23 @@ impl PdfIds {
       id
     };
 
+    let page_ids: Vec<Ref> = (0..page_count).map(|_| next_id()).collect();
+    let content_ids: Vec<Ref> = (0..page_count).map(|_| next_id()).collect();
+
     Self {
       catalog_id: next_id(),
       page_tree_id: next_id(),
-      page_id: next_id(),
-      content_id: next_id(),
+      page_ids,
+      content_ids,
       main_font: FontIds {
+        font_id: next_id(),
+        cid_font_id: next_id(),
+        font_descriptor_id: next_id(),
+        cid_to_gid_map_id: next_id(),
+        to_unicode_cmap_id: next_id(),
+        font_file_id: next_id(),
+      },
+      italic_font: FontIds {
         font_id: next_id(),
         cid_font_id: next_id(),
         font_descriptor_id: next_id(),
@@ -126,7 +146,7 @@ impl PdfIds {
 /// * `font_subset_bytes` - 全フォントのサブセット化されたデータ
 /// * `font_info` - フォントのメタデータ
 /// * `glyph_mappings` - 全フォントのグリフマッピング情報
-/// * `pdf_content` - PDFコンテンツストリーム
+/// * `pdf_contents` - PDFコンテンツストリームのベクター(各要素が1ページ)
 /// * `config` - PDF生成設定
 ///
 /// # 戻り値
@@ -140,11 +160,12 @@ pub fn pdf_gen(
   font_subset_bytes: &font::font_context::FontSubsetBytes,
   font_info: &FontDatas,
   glyph_mappings: &GlyphMappings,
-  pdf_content: pdf_writer::Content,
+  pdf_contents: Vec<pdf_writer::Content>,
   config: &read_config_file::Config,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
-  let ids = PdfIds::new();
+  let page_count = pdf_contents.len();
+  let ids = PdfIds::new(page_count);
 
   let advance_lists = build_advance_lists(glyph_mappings, font_info);
   let cid_to_gid_maps = build_cid_to_gid_maps(glyph_mappings);
@@ -161,8 +182,10 @@ pub fn pdf_gen(
   };
   setup_all_fonts(&mut pdf, &ids, config, font_info, font_setup_data);
 
-  // ページを設定（全フォントをリソースに登録）
-  setup_page(&mut pdf, &ids, pdf_content, config);
+  // 各ページを設定(全フォントをリソースに登録)
+  for (i, pdf_content) in pdf_contents.into_iter().enumerate() {
+    setup_page(&mut pdf, &ids, i, pdf_content, config);
+  }
 
   let pdf_bytes = pdf.finish();
   std::fs::write(&config.pdf.output_path, pdf_bytes)
@@ -171,7 +194,10 @@ pub fn pdf_gen(
 /// カタログとページツリーを設定
 fn setup_catalog_and_pages(pdf: &mut Pdf, ids: &PdfIds) {
   pdf.catalog(ids.catalog_id).pages(ids.page_tree_id);
-  pdf.pages(ids.page_tree_id).kids([ids.page_id]).count(1);
+  pdf
+    .pages(ids.page_tree_id)
+    .kids(ids.page_ids.iter().copied())
+    .count(ids.page_ids.len() as i32);
 }
 
 /// 単一フォントオブジェクトを設定
@@ -225,14 +251,50 @@ fn setup_all_fonts(
   font_datas: &FontDatas,
   data: FontSetupData,
 ) {
-  // メインフォント
-  setup_single_font(
-    pdf,
-    &ids.main_font,
-    Name(config.main_font.font_name.as_bytes()),
-    &font_datas.main_font_data,
-    &data.advance_lists.main_font,
-  );
+  let fonts: [LocalFont; 6] = [
+    LocalFont {
+      name_bytes: config.main_font.font_name.as_bytes(),
+      ids: &ids.main_font,
+      data: &font_datas.main_font_data,
+      advances: &data.advance_lists.main_font,
+    },
+    LocalFont {
+      name_bytes: config.italic_font.font_name.as_bytes(),
+      ids: &ids.italic_font,
+      data: &font_datas.italic_font_data,
+      advances: &data.advance_lists.italic_font,
+    },
+    LocalFont {
+      name_bytes: config.math_font.font_name.as_bytes(),
+      ids: &ids.math_font,
+      data: &font_datas.math_font_data,
+      advances: &data.advance_lists.math_font,
+    },
+    LocalFont {
+      name_bytes: config.sans_font.font_name.as_bytes(),
+      ids: &ids.sans_font,
+      data: &font_datas.sans_font_data,
+      advances: &data.advance_lists.sans_font,
+    },
+    LocalFont {
+      name_bytes: config.main_japanese_font.font_name.as_bytes(),
+      ids: &ids.main_japanese_font,
+      data: &font_datas.main_japanese_font_data,
+      advances: &data.advance_lists.main_japanese_font,
+    },
+    LocalFont {
+      name_bytes: config.sans_japanese_font.font_name.as_bytes(),
+      ids: &ids.sans_japanese_font,
+      data: &font_datas.sans_japanese_font_data,
+      advances: &data.advance_lists.sans_japanese_font,
+    },
+  ];
+
+  for f in fonts.iter() {
+    setup_single_font(pdf, f.ids, Name(f.name_bytes), f.data, f.advances);
+  }
+
+  // ストリームはムーブが必要なため個別に設定
   setup_font_streams(
     pdf,
     &ids.main_font,
@@ -240,14 +302,12 @@ fn setup_all_fonts(
     &data.cid_to_gid_maps.main_font,
     data.to_unicode_cmaps.main_font,
   );
-
-  // 数式フォント
-  setup_single_font(
+  setup_font_streams(
     pdf,
-    &ids.math_font,
-    Name(config.math_font.font_name.as_bytes()),
-    &font_datas.math_font_data,
-    &data.advance_lists.math_font,
+    &ids.italic_font,
+    &data.font_subset_bytes.italic_font_subset,
+    &data.cid_to_gid_maps.italic_font,
+    data.to_unicode_cmaps.italic_font,
   );
   setup_font_streams(
     pdf,
@@ -256,15 +316,6 @@ fn setup_all_fonts(
     &data.cid_to_gid_maps.math_font,
     data.to_unicode_cmaps.math_font,
   );
-
-  // サンセリフフォント
-  setup_single_font(
-    pdf,
-    &ids.sans_font,
-    Name(config.sans_font.font_name.as_bytes()),
-    &font_datas.sans_font_data,
-    &data.advance_lists.sans_font,
-  );
   setup_font_streams(
     pdf,
     &ids.sans_font,
@@ -272,30 +323,12 @@ fn setup_all_fonts(
     &data.cid_to_gid_maps.sans_font,
     data.to_unicode_cmaps.sans_font,
   );
-
-  // メイン日本語フォント
-  setup_single_font(
-    pdf,
-    &ids.main_japanese_font,
-    Name(config.main_japanese_font.font_name.as_bytes()),
-    &font_datas.main_japanese_font_data,
-    &data.advance_lists.main_japanese_font,
-  );
   setup_font_streams(
     pdf,
     &ids.main_japanese_font,
     &data.font_subset_bytes.main_japanese_font_subset,
     &data.cid_to_gid_maps.main_japanese_font,
     data.to_unicode_cmaps.main_japanese_font,
-  );
-
-  // サンセリフ日本語フォント
-  setup_single_font(
-    pdf,
-    &ids.sans_japanese_font,
-    Name(config.sans_japanese_font.font_name.as_bytes()),
-    &font_datas.sans_japanese_font_data,
-    &data.advance_lists.sans_japanese_font,
   );
   setup_font_streams(
     pdf,
@@ -326,21 +359,30 @@ fn setup_font_streams(
 fn setup_page(
   pdf: &mut Pdf,
   ids: &PdfIds,
+  page_index: usize,
   pdf_content: pdf_writer::Content,
   config: &read_config_file::Config,
 ) {
-  let mut page = pdf.page(ids.page_id);
+  let page_id = ids.page_ids[page_index];
+  let content_id = ids.content_ids[page_index];
+
+  let mut page = pdf.page(page_id);
   page.media_box(Rect::new(0.0, 0.0, config.pdf.width, config.pdf.height));
   page.parent(ids.page_tree_id);
-  page.contents(ids.content_id);
+  page.contents(content_id);
 
   // 全フォントをリソースに登録
+  // 既存のチェーン方式で安全に登録
   page
     .resources()
     .fonts()
     .pair(
       Name(config.main_font.font_name.as_bytes()),
       ids.main_font.font_id,
+    )
+    .pair(
+      Name(config.italic_font.font_name.as_bytes()),
+      ids.italic_font.font_id,
     )
     .pair(
       Name(config.math_font.font_name.as_bytes()),
@@ -361,7 +403,7 @@ fn setup_page(
 
   page.finish();
 
-  pdf.stream(ids.content_id, &pdf_content.finish());
+  pdf.stream(content_id, &pdf_content.finish());
 }
 
 // ===== ヘルパー関数 =====
@@ -415,6 +457,9 @@ fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) ->
     main_font: font_mappings
       .main_font
       .build_advance_list(font_datas.main_font_data.upem),
+    italic_font: font_mappings
+      .italic_font
+      .build_advance_list(font_datas.italic_font_data.upem),
     math_font: font_mappings
       .math_font
       .build_advance_list(font_datas.math_font_data.upem),
@@ -434,6 +479,7 @@ fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) ->
 fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
   CidToGidMaps {
     main_font: font_mappings.main_font.build_cid_to_gid_map(),
+    italic_font: font_mappings.italic_font.build_cid_to_gid_map(),
     math_font: font_mappings.math_font.build_cid_to_gid_map(),
     sans_font: font_mappings.sans_font.build_cid_to_gid_map(),
     main_japanese_font: font_mappings.main_japanese_font.build_cid_to_gid_map(),
@@ -447,6 +493,10 @@ fn create_to_unicode_cmaps(config: &Config, font_mappings: &GlyphMappings) -> To
     main_font: create_to_unicode_cmap(
       &config.main_font.font_name,
       font_mappings.main_font.cid_to_chars.clone(),
+    ),
+    italic_font: create_to_unicode_cmap(
+      &config.italic_font.font_name,
+      font_mappings.italic_font.cid_to_chars.clone(),
     ),
     math_font: create_to_unicode_cmap(
       &config.math_font.font_name,

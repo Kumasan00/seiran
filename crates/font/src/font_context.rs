@@ -36,6 +36,9 @@ pub enum FontContextsError {
   /// メインフォントの初期化失敗
   #[error("Failed to initialize main font: {0}")]
   MainFont(#[from] FontContextError),
+  /// イタリックフォントの初期化失敗
+  #[error("Failed to initialize italic font: {0}")]
+  ItalicFont(FontContextError),
   /// 数式フォントの初期化失敗
   #[error("Failed to initialize math font: {0}")]
   MathFont(FontContextError),
@@ -77,10 +80,12 @@ pub enum FontSubsetError {
 pub enum FontType {
   /// メインフォント
   MainFont,
-  /// サンセリフフォント
-  SansFont,
+  /// イタリックフォント
+  ItalicFont,
   /// 数式フォント
   MathFont,
+  /// サンセリフフォント
+  SansFont,
   /// メイン日本語フォント
   MainJapaneseFont,
   /// サンセリフ日本語フォント
@@ -121,6 +126,7 @@ impl FontContext {
   fn get_font_config<'a>(config: &'a Config, font_type: &FontType) -> (&'a std::path::Path, u32) {
     match font_type {
       FontType::MainFont => (&config.main_font.font_path, config.main_font.font_index),
+      FontType::ItalicFont => (&config.italic_font.font_path, config.italic_font.font_index),
       FontType::MathFont => (&config.math_font.font_path, config.math_font.font_index),
       FontType::SansFont => (&config.sans_font.font_path, config.sans_font.font_index),
       FontType::MainJapaneseFont => (
@@ -234,6 +240,11 @@ impl FontContext {
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::ItalicFont => config
+          .italic_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
         FontType::SansFont => config
           .sans_font
           .variation_axes
@@ -252,9 +263,6 @@ impl FontContext {
         // 数式フォントは現状設定に軸が無いが、バリアブルであれば必須とする
         FontType::MathFont => return Err(FontContextError::MissingVariationAxes),
       };
-
-      let axes = ttf_parser::Face::variation_axes(&ttf_face);
-      println!("Font is variable with axes: {:?}", axes);
 
       Self::validate_variation_axes(&ttf_face, config_variation_axes)?;
       Self::apply_hb_variations(&mut hb_font, config_variation_axes);
@@ -302,6 +310,8 @@ impl FontContext {
 pub struct FontContexts {
   /// メインフォントのコンテキスト
   pub main_font_context: FontContext,
+  /// イタリックフォントのコンテキスト
+  pub italic_font_context: FontContext,
   /// 数式フォントのコンテキスト
   pub math_font_context: FontContext,
   /// サンセリフフォントのコンテキスト
@@ -327,6 +337,8 @@ impl FontContexts {
   /// いずれかのフォントの初期化に失敗した場合。
   pub fn new(config: &Config) -> Result<Self, FontContextsError> {
     let main_font_context = FontContext::new(config, FontType::MainFont)?;
+    let italic_font_context =
+      FontContext::new(config, FontType::ItalicFont).map_err(FontContextsError::ItalicFont)?;
     let math_font_context =
       FontContext::new(config, FontType::MathFont).map_err(FontContextsError::MathFont)?;
     let main_japanese_font_context = FontContext::new(config, FontType::MainJapaneseFont)
@@ -338,6 +350,7 @@ impl FontContexts {
 
     Ok(FontContexts {
       main_font_context,
+      italic_font_context,
       math_font_context,
       main_japanese_font_context,
       sans_font_context,
@@ -352,6 +365,8 @@ impl FontContexts {
 pub struct FontSubsetBytes {
   /// メイン（本文）フォントのサブセットデータ
   pub main_font_subset: Vec<u8>,
+  /// イタリックフォントのサブセットデータ
+  pub italic_font_subset: Vec<u8>,
   /// 数式フォントのサブセットデータ
   pub math_font_subset: Vec<u8>,
   /// サンセリフ（英数）フォントのサブセットデータ
@@ -425,6 +440,11 @@ pub fn create_font_subset(
     &glyph_mappings.main_font.used_gids,
     config,
   )?;
+  let italic_subset_bytes = subset_for(
+    &font_contexts.italic_font_context,
+    &glyph_mappings.italic_font.used_gids,
+    config,
+  )?;
   let math_subset_bytes = subset_for(
     &font_contexts.math_font_context,
     &glyph_mappings.math_font.used_gids,
@@ -448,6 +468,7 @@ pub fn create_font_subset(
 
   Ok(FontSubsetBytes {
     main_font_subset: main_subset_bytes,
+    italic_font_subset: italic_subset_bytes,
     math_font_subset: math_subset_bytes,
     sans_font_subset: sans_subset_bytes,
     main_japanese_font_subset: main_japanese_subset_bytes,
