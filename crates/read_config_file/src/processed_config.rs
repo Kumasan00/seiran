@@ -14,10 +14,14 @@ pub struct Config {
   pub pdf: PdfConfig,
   /// メインフォント設定
   pub main_font: FontConfig,
-  /// メイン日本語フォント設定
-  pub main_japanese_font: FontConfig,
   /// 数式フォント設定
   pub math_font: MathFontConfig,
+  /// サンセリフフォント設定
+  pub sans_font: FontConfig,
+  /// メイン日本語フォント設定
+  pub main_japanese_font: FontConfig,
+  /// サンセリフ日本語フォント設定
+  pub sans_japanese_font: FontConfig,
 }
 
 /// 処理済みのフォント設定

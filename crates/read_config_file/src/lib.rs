@@ -135,8 +135,10 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     name,
     pdf: pre_pdf,
     main_font: pre_main_font,
-    main_japanese_font: pre_main_jp_font,
     math_font: pre_math_font,
+    main_japanese_font: pre_main_jp_font,
+    sans_font: pre_sans_font,
+    sans_japanese_font: pre_sans_japanese_font,
   } = pre_config;
 
   let pre_config::PrePdfConfig {
@@ -158,13 +160,30 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     variation_axes: main_font_variation_axes,
   } = pre_main_font;
 
+  let main_font_variation_axes = main_font_variation_axes.map(|axes| {
+    axes
+      .into_iter()
+      .map(|axis| processed_config::VariationAxis {
+        name: axis.name,
+        value: axis.value,
+      })
+      .collect()
+  });
+
   let pre_config::PreMathFontConfig {
     font_name: math_font_name,
     font_path: math_font_path,
     font_index: math_font_index,
   } = pre_math_font;
 
-  let main_font_variation_axes = main_font_variation_axes.map(|axes| {
+  let pre_config::PreFontConfig {
+    font_name: sans_font_name,
+    font_path: sans_font_path,
+    font_index: sans_font_index,
+    variation_axes: sans_font_variation_axes,
+  } = pre_sans_font;
+
+  let sans_font_variation_axes = sans_font_variation_axes.map(|axes| {
     axes
       .into_iter()
       .map(|axis| processed_config::VariationAxis {
@@ -182,6 +201,23 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   } = pre_main_jp_font;
 
   let main_jp_font_variation_axes = main_jp_font_variation_axes.map(|axes| {
+    axes
+      .into_iter()
+      .map(|axis| processed_config::VariationAxis {
+        name: axis.name,
+        value: axis.value,
+      })
+      .collect()
+  });
+
+  let pre_config::PreFontConfig {
+    font_name: sans_jp_font_name,
+    font_path: sans_jp_font_path,
+    font_index: sans_jp_font_index,
+    variation_axes: sans_jp_font_variation_axes,
+  } = pre_sans_japanese_font;
+
+  let sans_jp_font_variation_axes = sans_jp_font_variation_axes.map(|axes| {
     axes
       .into_iter()
       .map(|axis| processed_config::VariationAxis {
@@ -263,8 +299,10 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   output_path.set_extension("pdf");
 
   let main_font_path = resolve_path(&current_dir, &main_font_path);
-  let main_japanese_font_path = resolve_path(&current_dir, &main_jp_font_path);
   let math_font_path = resolve_path(&current_dir, &math_font_path);
+  let sans_font_path = resolve_path(&current_dir, &sans_font_path);
+  let main_japanese_font_path = resolve_path(&current_dir, &main_jp_font_path);
+  let sans_japanese_font_path = resolve_path(&current_dir, &sans_jp_font_path);
 
   let config = processed_config::Config {
     name,
@@ -285,16 +323,28 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       font_index: main_font_index,
       variation_axes: main_font_variation_axes,
     },
+    math_font: processed_config::MathFontConfig {
+      font_name: math_font_name,
+      font_path: math_font_path,
+      font_index: math_font_index,
+    },
     main_japanese_font: processed_config::FontConfig {
       font_name: main_jp_font_name,
       font_path: main_japanese_font_path,
       font_index: main_jp_font_index,
       variation_axes: main_jp_font_variation_axes,
     },
-    math_font: processed_config::MathFontConfig {
-      font_name: math_font_name,
-      font_path: math_font_path,
-      font_index: math_font_index,
+    sans_font: processed_config::FontConfig {
+      font_name: sans_font_name,
+      font_path: sans_font_path,
+      font_index: sans_font_index,
+      variation_axes: sans_font_variation_axes,
+    },
+    sans_japanese_font: processed_config::FontConfig {
+      font_name: sans_jp_font_name,
+      font_path: sans_japanese_font_path,
+      font_index: sans_jp_font_index,
+      variation_axes: sans_jp_font_variation_axes,
     },
   };
   Ok(config)

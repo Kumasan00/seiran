@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
+use pdf_writer::types::UnicodeCmap;
 
 /// .notdefグリフのGID
 const NOTDEF_GID: u16 = 0;
@@ -81,4 +82,43 @@ impl GlyphMapping {
     }
     map
   }
+}
+
+#[derive(Default)]
+pub struct GlyphMappings {
+  pub main_font: GlyphMapping,
+  pub math_font: GlyphMapping,
+  pub sans_font: GlyphMapping,
+  pub main_japanese_font: GlyphMapping,
+  pub sans_japanese_font: GlyphMapping,
+}
+
+impl GlyphMappings {
+  pub fn new() -> Self {
+    Self::default()
+  }
+}
+
+pub struct AdvanceLists {
+  pub main_font: Vec<f32>,
+  pub math_font: Vec<f32>,
+  pub sans_font: Vec<f32>,
+  pub main_japanese_font: Vec<f32>,
+  pub sans_japanese_font: Vec<f32>,
+}
+
+pub struct CidToGidMaps {
+  pub main_font: Vec<u8>,
+  pub math_font: Vec<u8>,
+  pub sans_font: Vec<u8>,
+  pub main_japanese_font: Vec<u8>,
+  pub sans_japanese_font: Vec<u8>,
+}
+
+pub struct ToUnicodeCmaps {
+  pub main_font: UnicodeCmap,
+  pub math_font: UnicodeCmap,
+  pub sans_font: UnicodeCmap,
+  pub main_japanese_font: UnicodeCmap,
+  pub sans_japanese_font: UnicodeCmap,
 }

@@ -14,10 +14,14 @@ pub(crate) struct PreConfig {
   pub pdf: PrePdfConfig,
   /// メインフォント設定
   pub main_font: PreFontConfig,
-  /// メイン日本語フォント設定
-  pub main_japanese_font: PreFontConfig,
+  /// サンセリフフォント設定
+  pub sans_font: PreFontConfig,
   /// 数式フォント設定
   pub math_font: PreMathFontConfig,
+  /// メイン日本語フォント設定
+  pub main_japanese_font: PreFontConfig,
+  /// サンセリフ日本語フォント設定
+  pub sans_japanese_font: PreFontConfig,
 }
 
 /// プリプロセス済みのフォント設定

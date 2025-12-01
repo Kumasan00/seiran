@@ -4,23 +4,22 @@
 //! 指定されたフォントを使用してPDFドキュメントを生成します。
 //! フォントのサブセット化、テキストシェーピング、グリフマッピングを処理します。
 
-use std::{collections::HashMap, fs, io, path::Path, result};
+use std::{fs, io, path::Path, result};
 
-use font::{FontContext, FontContexts};
-use pdf_writer::{Content, Finish, Name, Str, types};
+use font::{
+  self,
+  font_context::{FontContext, FontContexts, create_font_subset},
+  font_data::{FontDatas, analyze_subset_font},
+};
+use pdf_writer::{Content, Finish, Name, Str};
 use read_config_file::Config;
-use stypes::GlyphMapping;
+use stypes::{GlyphMapping, GlyphMappings};
+use ttf_parser::Face;
 
 // 定数
 
 /// .notdef グリフのグリフID
 const NOTDEF_GID: u16 = 0;
-/// CID to GIDマッピングのレジストリ名
-const CID_TO_GID_REGISTRY: &[u8] = b"Kuma";
-/// CID to GIDマッピングのオーダリング名
-const CID_TO_GID_ORDERING: &[u8] = b"Custom";
-/// CID to GIDマッピングのサプリメント番号
-const CID_TO_GID_SUPPLEMENT: i32 = 0;
 
 /// アプリケーションのメインエントリーポイント
 ///
@@ -71,38 +70,62 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
   println!("Config loaded: {:?}", config);
 
   let text_lines = read_file::read_file(file_path)?;
+  let mut font_contexts = FontContexts::new(&config)?;
+  let mut glyph_mappings = GlyphMappings::new();
 
-  let mut main_font_contexts = FontContexts::new(&config)?;
-  let main_font_context = &mut main_font_contexts.main_font_context;
+  let pdf_content = process_text_lines(
+    text_lines,
+    &mut font_contexts.main_font_context,
+    &mut glyph_mappings.main_font,
+    &config,
+  )?;
 
-  let mut glyph_mapping = GlyphMapping::new();
+  let subset_bytes = create_font_subset(&font_contexts, &glyph_mappings, &config)?;
+  println!("Subset font: {} bytes", subset_bytes.main_font_subset.len());
 
-  let pdf_content = process_text_lines(text_lines, main_font_context, &mut glyph_mapping, &config)?;
-  let subset_bytes = font::create_font_subset(main_font_context, &glyph_mapping, &config)?;
-  println!("Subset font: {} bytes", subset_bytes.len());
+  let font_datas = analyze_subset_font(&subset_bytes, &font_contexts)?;
 
-  let font_info = font::analyze_subset_font(&subset_bytes, main_font_context.index)?;
-  glyph_mapping
-    .advance_widths
-    .insert(NOTDEF_GID, font_info.upem);
-
-  let advance_list = glyph_mapping.build_advance_list(font_info.upem);
-  let cid_to_gid_map = glyph_mapping.build_cid_to_gid_map();
-  let to_unicode_cmap =
-    create_to_unicode_cmap(&config.main_font.font_name, glyph_mapping.cid_to_chars);
+  insert_notdef_advance_widths(&mut glyph_mappings, &font_datas);
 
   pdf_gen::pdf_gen(
     &subset_bytes,
-    &font_info,
-    &advance_list,
-    &cid_to_gid_map,
-    to_unicode_cmap,
+    &font_datas,
+    &glyph_mappings,
     pdf_content,
     &config,
   )?;
 
   println!("PDF generated");
   Ok(())
+}
+
+/// 全フォントに.notdefグリフのadvance widthを挿入
+///
+/// # 引数
+///
+/// * `glyph_mappings` - グリフマッピング情報
+/// * `font_datas` - フォントデータ情報
+fn insert_notdef_advance_widths(glyph_mappings: &mut GlyphMappings, font_datas: &FontDatas) {
+  glyph_mappings
+    .main_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.main_font_data.upem);
+  glyph_mappings
+    .math_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.math_font_data.upem);
+  glyph_mappings
+    .sans_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.sans_font_data.upem);
+  glyph_mappings
+    .main_japanese_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.main_japanese_font_data.upem);
+  glyph_mappings
+    .sans_japanese_font
+    .advance_widths
+    .insert(NOTDEF_GID, font_datas.sans_japanese_font_data.upem);
 }
 
 /// テキストの各行を処理してPDFコンテンツストリームを生成
@@ -267,39 +290,6 @@ fn get_char_range(
   start..end
 }
 
-/// ToUnicode CMapを作成
-///
-/// CIDから対応するUnicode文字へのマッピングを持つ
-/// CMapオブジェクトを生成します。
-///
-/// # 引数
-///
-/// * `font_name` - フォント名
-/// * `cid_to_chars` - CIDと文字のマッピング
-///
-/// # 戻り値
-///
-/// Unicode CMapを返します。
-fn create_to_unicode_cmap(
-  font_name: &str,
-  cid_to_chars: HashMap<u16, Vec<char>>,
-) -> types::UnicodeCmap {
-  let system_info = types::SystemInfo {
-    registry: Str(CID_TO_GID_REGISTRY),
-    ordering: Str(CID_TO_GID_ORDERING),
-    supplement: CID_TO_GID_SUPPLEMENT,
-  };
-
-  let name = format!("{}_ToUnicode", font_name);
-  let mut cmap = types::UnicodeCmap::new(Name(name.as_bytes()), system_info);
-
-  for (cid, chars) in cid_to_chars {
-    cmap.pair_with_multiple(cid, chars.into_iter());
-  }
-
-  cmap
-}
-
 /// TTCファイルから各フォントの名前情報を取得
 ///
 /// TrueTypeコレクション(TTC)ファイルに含まれる全てのフォントの
@@ -322,7 +312,7 @@ fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> result::Result<(), Box<dyn std
   println!("Number of fonts in TTC: {}", font_count);
   for font_index in 0..font_count {
     println!("\nFont index: {}\n", font_index);
-    let face = ttf_parser::Face::parse(&font_data, font_index)?;
+    let face = Face::parse(&font_data, font_index)?;
     // let name = font::extract_font_name(&face)?;
     let names = face.names();
     for name_entry in names {

@@ -633,6 +633,7 @@ dependencies = [
  "font",
  "pdf-writer",
  "read_config_file",
+ "stypes",
 ]
 
 [[package]]
@@ -790,6 +791,7 @@ name = "stypes"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "pdf-writer",
 ]
 
 [[package]]
