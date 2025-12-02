@@ -133,6 +133,7 @@ dependencies = [
  "anyhow",
  "cli",
  "font",
+ "indexmap",
  "pdf-writer",
  "pdf_gen",
  "read_config_file",

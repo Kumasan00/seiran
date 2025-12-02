@@ -11,6 +11,7 @@ use font::{
   font_context::{FontContext, FontContexts, create_font_subset},
   font_data::{FontDatas, analyze_subset_font},
 };
+use indexmap::IndexSet;
 use pdf_writer::{Content, Finish, Name, Str};
 use read_config_file::Config;
 use stypes::{GlyphMapping, GlyphMappings};
@@ -39,11 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   match cli_args.command {
     cli::Command::Build { text_file_path } => {
-      println!("Building PDF from: {:?}", text_file_path);
-      build_pdf(&text_file_path)?;
+      let absolute_path = text_file_path.canonicalize()?;
+      println!("Building PDF from: {:?}", absolute_path);
+      build_pdf(&absolute_path)?;
     }
     cli::Command::TtcNames { ttc_file_path } => {
-      get_ttc_names(&ttc_file_path)?;
+      let absolute_path = ttc_file_path.canonicalize()?;
+      get_ttc_names(&absolute_path)?;
     }
   }
 
@@ -217,6 +220,7 @@ fn process_single_line(
   );
 
   let mut text_buffer = Vec::new();
+  let mut notdef_glyph = IndexSet::new();
 
   for (glyph_index, shape_result) in shape_results.iter().enumerate() {
     let gid = shape_result.gid;
@@ -248,6 +252,14 @@ fn process_single_line(
 
     let char_range = get_char_range(text_line, &shape_results, glyph_index);
     let mut chars: Vec<char> = text_line[char_range].chars().collect();
+
+    if gid == 0 {
+      let not_def_chars = chars.clone();
+      for c in &not_def_chars {
+        notdef_glyph.insert(*c);
+      }
+    }
+
     if let Some(existing) = glyph_mapping.cid_to_chars.get_mut(&cid) {
       existing.append(&mut chars);
     } else {
@@ -260,6 +272,13 @@ fn process_single_line(
   }
   items.finish();
   position_text.finish();
+
+  if !notdef_glyph.is_empty() {
+    eprintln!(
+      "Warning: The following characters are missing in the font, resulting in .notdef glyphs: {:?}",
+      notdef_glyph
+    );
+  }
 
   Ok(())
 }

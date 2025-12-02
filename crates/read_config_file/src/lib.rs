@@ -41,6 +41,10 @@ pub enum ReadConfigError {
   },
   /// カレントディレクトリの取得に失敗
   CurrentDir(io::Error),
+  /// パスの正規化に失敗
+  Canonicalize { path: PathBuf, error: io::Error },
+  /// font_nameの重複
+  DuplicateFontName { font_name: String },
 }
 
 impl std::fmt::Display for ReadConfigError {
@@ -62,6 +66,17 @@ impl std::fmt::Display for ReadConfigError {
         write!(f, "margin sum for {} ({} ) must be < {}", axis, sum, limit)
       }
       ReadConfigError::CurrentDir(e) => write!(f, "Failed to get current directory: {}", e),
+      ReadConfigError::Canonicalize { path, error } => {
+        write!(
+          f,
+          "Failed to canonicalize path '{}': {}",
+          path.display(),
+          error
+        )
+      }
+      ReadConfigError::DuplicateFontName { font_name } => {
+        write!(f, "Duplicate font_name found: '{}'", font_name)
+      }
     }
   }
 }
@@ -69,14 +84,16 @@ impl std::fmt::Display for ReadConfigError {
 impl std::error::Error for ReadConfigError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
     match self {
-      ReadConfigError::Io(e) | ReadConfigError::CreateDir(e) | ReadConfigError::CurrentDir(e) => {
-        Some(e)
-      }
+      ReadConfigError::Io(e)
+      | ReadConfigError::CreateDir(e)
+      | ReadConfigError::CurrentDir(e)
+      | ReadConfigError::Canonicalize { error: e, .. } => Some(e),
       ReadConfigError::Toml(e) => Some(e),
       ReadConfigError::InvalidValue { .. }
       | ReadConfigError::NonPositive { .. }
       | ReadConfigError::NegativeMargin { .. }
-      | ReadConfigError::MarginSumTooLarge { .. } => None,
+      | ReadConfigError::MarginSumTooLarge { .. }
+      | ReadConfigError::DuplicateFontName { .. } => None,
     }
   }
 }
@@ -130,18 +147,56 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   let pre_config: PreConfig = toml::from_str(&config_content)?;
   let current_dir = std::env::current_dir().map_err(ReadConfigError::CurrentDir)?;
 
-  // Destructure to move values without extra clones
+  // ヘルパー: PreFontConfig/PreMathFontConfig から FontConfig/MathFontConfig を生成
+  fn to_font_config(
+    f: pre_config::PreFontConfig,
+    axes_conv: fn(
+      Option<Vec<pre_config::PreVariationAxis>>,
+    ) -> Option<Vec<processed_config::VariationAxis>>,
+  ) -> Result<processed_config::FontConfig, ReadConfigError> {
+    Ok(processed_config::FontConfig {
+      font_name: f.font_name,
+      font_path: resolve_path_buf(f.font_path)?,
+      font_index: f.font_index,
+      variation_axes: axes_conv(f.variation_axes),
+    })
+  }
+  fn to_math_font_config(
+    f: pre_config::PreMathFontConfig,
+  ) -> Result<processed_config::MathFontConfig, ReadConfigError> {
+    Ok(processed_config::MathFontConfig {
+      font_name: f.font_name,
+      font_path: resolve_path_buf(f.font_path)?,
+      font_index: f.font_index,
+    })
+  }
+
+  // variation_axes の変換
+  fn convert_axes(
+    axes: Option<Vec<pre_config::PreVariationAxis>>,
+  ) -> Option<Vec<processed_config::VariationAxis>> {
+    axes.map(|axes| {
+      axes
+        .into_iter()
+        .map(|axis| processed_config::VariationAxis {
+          name: axis.name,
+          value: axis.value,
+        })
+        .collect()
+    })
+  }
+
+  // 構造体分解
   let pre_config::PreConfig {
     name,
     pdf: pre_pdf,
-    main_font: pre_main_font,
-    italic_font: pre_italic_font,
-    math_font: pre_math_font,
-    main_japanese_font: pre_main_jp_font,
-    sans_font: pre_sans_font,
-    sans_japanese_font: pre_sans_japanese_font,
+    main_font,
+    italic_font,
+    math_font,
+    main_japanese_font,
+    sans_font,
+    sans_japanese_font,
   } = pre_config;
-
   let pre_config::PrePdfConfig {
     output_dir,
     height,
@@ -154,142 +209,27 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     margin_right,
   } = pre_pdf;
 
-  let pre_config::PreFontConfig {
-    font_name: main_font_name,
-    font_path: main_font_path,
-    font_index: main_font_index,
-    variation_axes: main_font_variation_axes,
-  } = pre_main_font;
-
-  let main_font_variation_axes = main_font_variation_axes.map(|axes| {
-    axes
-      .into_iter()
-      .map(|axis| processed_config::VariationAxis {
-        name: axis.name,
-        value: axis.value,
-      })
-      .collect()
-  });
-
-  let pre_config::PreFontConfig {
-    font_name: italic_font_name,
-    font_path: italic_font_path,
-    font_index: italic_font_index,
-    variation_axes: italic_font_variation_axes,
-  } = pre_italic_font;
-
-  let italic_font_variation_axes = italic_font_variation_axes.map(|axes| {
-    axes
-      .into_iter()
-      .map(|axis| processed_config::VariationAxis {
-        name: axis.name,
-        value: axis.value,
-      })
-      .collect()
-  });
-
-  let pre_config::PreMathFontConfig {
-    font_name: math_font_name,
-    font_path: math_font_path,
-    font_index: math_font_index,
-  } = pre_math_font;
-
-  let pre_config::PreFontConfig {
-    font_name: sans_font_name,
-    font_path: sans_font_path,
-    font_index: sans_font_index,
-    variation_axes: sans_font_variation_axes,
-  } = pre_sans_font;
-
-  let sans_font_variation_axes = sans_font_variation_axes.map(|axes| {
-    axes
-      .into_iter()
-      .map(|axis| processed_config::VariationAxis {
-        name: axis.name,
-        value: axis.value,
-      })
-      .collect()
-  });
-
-  let pre_config::PreFontConfig {
-    font_name: main_jp_font_name,
-    font_path: main_jp_font_path,
-    font_index: main_jp_font_index,
-    variation_axes: main_jp_font_variation_axes,
-  } = pre_main_jp_font;
-
-  let main_jp_font_variation_axes = main_jp_font_variation_axes.map(|axes| {
-    axes
-      .into_iter()
-      .map(|axis| processed_config::VariationAxis {
-        name: axis.name,
-        value: axis.value,
-      })
-      .collect()
-  });
-
-  let pre_config::PreFontConfig {
-    font_name: sans_jp_font_name,
-    font_path: sans_jp_font_path,
-    font_index: sans_jp_font_index,
-    variation_axes: sans_jp_font_variation_axes,
-  } = pre_sans_japanese_font;
-
-  let sans_jp_font_variation_axes = sans_jp_font_variation_axes.map(|axes| {
-    axes
-      .into_iter()
-      .map(|axis| processed_config::VariationAxis {
-        name: axis.name,
-        value: axis.value,
-      })
-      .collect()
-  });
-
-  let height: f32 = height;
-  let width: f32 = width;
-  if height <= 0.0 {
-    return Err(ReadConfigError::NonPositive {
-      field: "pdf.height",
-    });
+  // バリデーション
+  for (field, value) in [
+    ("pdf.height", height),
+    ("pdf.width", width),
+    ("pdf.font_size", font_size),
+    ("pdf.line_height_factor", line_height_factor),
+  ] {
+    if value <= 0.0 {
+      return Err(ReadConfigError::NonPositive { field });
+    }
   }
-  if width <= 0.0 {
-    return Err(ReadConfigError::NonPositive { field: "pdf.width" });
+  for (field, value) in [
+    ("pdf.margin_top", margin_top),
+    ("pdf.margin_bottom", margin_bottom),
+    ("pdf.margin_left", margin_left),
+    ("pdf.margin_right", margin_right),
+  ] {
+    if value < 0.0 {
+      return Err(ReadConfigError::NegativeMargin { field });
+    }
   }
-  if font_size <= 0.0 {
-    return Err(ReadConfigError::NonPositive {
-      field: "pdf.font_size",
-    });
-  }
-
-  if line_height_factor <= 0.0 {
-    return Err(ReadConfigError::NonPositive {
-      field: "pdf.line_height_factor",
-    });
-  }
-
-  // margin のチェック（負の値は不可）
-  if margin_top < 0.0 {
-    return Err(ReadConfigError::NegativeMargin {
-      field: "pdf.margin_top",
-    });
-  }
-  if margin_bottom < 0.0 {
-    return Err(ReadConfigError::NegativeMargin {
-      field: "pdf.margin_bottom",
-    });
-  }
-  if margin_left < 0.0 {
-    return Err(ReadConfigError::NegativeMargin {
-      field: "pdf.margin_left",
-    });
-  }
-  if margin_right < 0.0 {
-    return Err(ReadConfigError::NegativeMargin {
-      field: "pdf.margin_right",
-    });
-  }
-
-  // margin の合計が高さ・幅を超えないか（厳密に小さいこと）
   if margin_top + margin_bottom >= height {
     return Err(ReadConfigError::MarginSumTooLarge {
       axis: "vertical",
@@ -305,24 +245,24 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     });
   }
 
-  let output_directory_path = resolve_path(&current_dir, &output_dir);
-  if let Some(parent) = output_directory_path.parent() {
-    // Create intermediate directories for the output dir if needed
-    fs::create_dir_all(parent).map_err(ReadConfigError::CreateDir)?;
-  }
-  // Ensure output directory itself exists
-  fs::create_dir_all(&output_directory_path).map_err(ReadConfigError::CreateDir)?;
-
-  let mut output_path = output_directory_path.join(&name);
+  // 出力ディレクトリ作成とパス解決
+  let output_dir_path = if output_dir.is_absolute() {
+    output_dir
+  } else {
+    current_dir.join(output_dir)
+  };
+  fs::create_dir_all(&output_dir_path).map_err(ReadConfigError::CreateDir)?;
+  let mut output_path =
+    output_dir_path
+      .canonicalize()
+      .map_err(|error| ReadConfigError::Canonicalize {
+        path: output_dir_path.clone(),
+        error,
+      })?;
+  output_path.push(&name);
   output_path.set_extension("pdf");
 
-  let main_font_path = resolve_path(&current_dir, &main_font_path);
-  let italic_font_path = resolve_path(&current_dir, &italic_font_path);
-  let math_font_path = resolve_path(&current_dir, &math_font_path);
-  let sans_font_path = resolve_path(&current_dir, &sans_font_path);
-  let main_japanese_font_path = resolve_path(&current_dir, &main_jp_font_path);
-  let sans_japanese_font_path = resolve_path(&current_dir, &sans_jp_font_path);
-
+  // FontConfig/MathFontConfig 生成
   let config = processed_config::Config {
     name,
     pdf: processed_config::PdfConfig {
@@ -336,59 +276,48 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       margin_left,
       margin_right,
     },
-    main_font: processed_config::FontConfig {
-      font_name: main_font_name,
-      font_path: main_font_path,
-      font_index: main_font_index,
-      variation_axes: main_font_variation_axes,
-    },
-    italic_font: processed_config::FontConfig {
-      font_name: italic_font_name,
-      font_path: italic_font_path,
-      font_index: italic_font_index,
-      variation_axes: italic_font_variation_axes,
-    },
-    math_font: processed_config::MathFontConfig {
-      font_name: math_font_name,
-      font_path: math_font_path,
-      font_index: math_font_index,
-    },
-    main_japanese_font: processed_config::FontConfig {
-      font_name: main_jp_font_name,
-      font_path: main_japanese_font_path,
-      font_index: main_jp_font_index,
-      variation_axes: main_jp_font_variation_axes,
-    },
-    sans_font: processed_config::FontConfig {
-      font_name: sans_font_name,
-      font_path: sans_font_path,
-      font_index: sans_font_index,
-      variation_axes: sans_font_variation_axes,
-    },
-    sans_japanese_font: processed_config::FontConfig {
-      font_name: sans_jp_font_name,
-      font_path: sans_japanese_font_path,
-      font_index: sans_jp_font_index,
-      variation_axes: sans_jp_font_variation_axes,
-    },
+    main_font: to_font_config(main_font, convert_axes)?,
+    italic_font: to_font_config(italic_font, convert_axes)?,
+    math_font: to_math_font_config(math_font)?,
+    main_japanese_font: to_font_config(main_japanese_font, convert_axes)?,
+    sans_font: to_font_config(sans_font, convert_axes)?,
+    sans_japanese_font: to_font_config(sans_japanese_font, convert_axes)?,
   };
+
+  // font_nameの重複チェック
+  let mut font_names = std::collections::HashSet::new();
+  for font_name in [
+    &config.main_font.font_name,
+    &config.italic_font.font_name,
+    &config.math_font.font_name,
+    &config.sans_font.font_name,
+    &config.main_japanese_font.font_name,
+    &config.sans_japanese_font.font_name,
+  ] {
+    if !font_names.insert(font_name) {
+      return Err(ReadConfigError::DuplicateFontName {
+        font_name: font_name.clone(),
+      });
+    }
+  }
+
   Ok(config)
 }
 
-/// 相対パスを絶対パスに解決
+/// 相対パスを絶対パスに解決し正規化
 ///
-/// パスが相対パスの場合は、ベースパスに結合します。
-/// 絶対パスの場合はそのまま返します。
+/// PathBufを直接受け取り、canonicalize()を使用してシンボリックリンクを解決し、
+/// 正規化された絶対パスを返します。
 ///
 /// # 引数
 ///
-/// * `base` - ベースディレクトリ
-/// * `p` - 解決するパス
-fn resolve_path(base: &Path, p: impl AsRef<Path>) -> PathBuf {
-  let p = p.as_ref();
-  if p.is_absolute() {
-    p.to_path_buf()
-  } else {
-    base.join(p)
-  }
+/// * `p` - 解決するパス(所有権を移動)
+///
+/// # エラー
+///
+/// パスの正規化に失敗した場合、または存在しないパスの場合にエラーを返します。
+fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
+  path
+    .canonicalize()
+    .map_err(|error| ReadConfigError::Canonicalize { path, error })
 }

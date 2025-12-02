@@ -3,6 +3,8 @@
 //! これらの構造体は、TOMLファイルの形式に合わせています。
 //! 後に`processed_config`の型に変換されます。
 
+use std::path::PathBuf;
+
 use serde::Deserialize;
 
 /// プリプロセス済みの設定情報
@@ -32,7 +34,7 @@ pub(crate) struct PreFontConfig {
   /// フォント名
   pub font_name: String,
   /// フォントファイルのパス（文字列）
-  pub font_path: String,
+  pub font_path: PathBuf,
   /// フォントコレクション内のインデックス
   pub font_index: u32,
   /// バリエーション軸の設定
@@ -54,7 +56,7 @@ pub(crate) struct PreMathFontConfig {
   /// フォント名
   pub font_name: String,
   /// フォントファイルのパス（文字列）
-  pub font_path: String,
+  pub font_path: PathBuf,
   /// フォントコレクション内のインデックス
   #[serde(default = "default_font_index")]
   pub font_index: u32,
@@ -71,7 +73,7 @@ fn default_font_index() -> u32 {
 #[derive(Deserialize, Debug)]
 pub(crate) struct PrePdfConfig {
   /// 出力ディレクトリ
-  pub output_dir: String,
+  pub output_dir: PathBuf,
   /// ページの高さ
   pub height: f32,
   /// ページの幅

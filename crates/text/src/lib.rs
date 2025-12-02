@@ -60,12 +60,6 @@ pub fn shaping(
     let len = gid_to_cid.len();
     gid_to_cid.entry(gid).or_insert_with(|| len as u16);
     used_gids.insert(gid);
-
-    if gid == 0 {
-      eprintln!(
-        "Warning: The text contains characters that are not present in the font, resulting in .notdef glyphs."
-      );
-    }
   }
 
   return shaping_results;

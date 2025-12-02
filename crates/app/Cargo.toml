@@ -9,6 +9,7 @@ version.workspace = true
 anyhow.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
+indexmap.workspace = true
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
 read_config_file = { path = "../read_config_file" }
