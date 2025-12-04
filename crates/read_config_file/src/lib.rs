@@ -1,6 +1,7 @@
 //! 設定ファイル読み込みモジュール
 //!
 //! このモジュールは、TOML形式の設定ファイルを読み込み、
+//! パスの解決、バリデーション、型変換を行って
 //! アプリケーションが使用する設定情報に変換します。
 
 use std::{
@@ -57,16 +58,16 @@ impl std::fmt::Display for ReadConfigError {
       ReadConfigError::CreateDir(e) => write!(f, "Failed to create output directory: {}", e),
       ReadConfigError::InvalidValue { field, msg } => {
         write!(f, "Invalid value for '{}': {}", field, msg)
-      }
+      },
       ReadConfigError::NonPositive { field } => {
         write!(f, "'{}' must be > 0", field)
-      }
+      },
       ReadConfigError::NegativeMargin { field } => {
         write!(f, "'{}' must be >= 0", field)
-      }
+      },
       ReadConfigError::MarginSumTooLarge { axis, sum, limit } => {
         write!(f, "margin sum for {} ({} ) must be < {}", axis, sum, limit)
-      }
+      },
       ReadConfigError::CurrentDir(e) => write!(f, "Failed to get current directory: {}", e),
       ReadConfigError::Canonicalize { path, error } => {
         write!(
@@ -75,17 +76,17 @@ impl std::fmt::Display for ReadConfigError {
           path.display(),
           error
         )
-      }
+      },
       ReadConfigError::DuplicateFontName { font_name } => {
         write!(f, "Duplicate font_name found: '{}'", font_name)
-      }
+      },
       ReadConfigError::InvalidBackgroundColor { field, value } => {
         write!(
           f,
           "Background color '{}' must be in [0.0, 1.0], got {}",
           field, value
         )
-      }
+      },
     }
   }
 }
@@ -109,47 +110,48 @@ impl std::error::Error for ReadConfigError {
 }
 
 impl From<io::Error> for ReadConfigError {
-  fn from(value: io::Error) -> Self {
-    Self::Io(value)
-  }
+  fn from(value: io::Error) -> Self { Self::Io(value) }
 }
 
 impl From<toml::de::Error> for ReadConfigError {
-  fn from(value: toml::de::Error) -> Self {
-    Self::Toml(value)
-  }
+  fn from(value: toml::de::Error) -> Self { Self::Toml(value) }
 }
 
 /// デフォルトパスから設定ファイルを読み込み
 ///
-/// `./config/config.toml`から設定を読み込みます。
+/// `./config/config.toml`から設定を読み込み、パスの解決とバリデーションを行います。
 ///
 /// # 戻り値
 ///
-/// 解析された設定情報を返します。
+/// 解析され、検証済みの設定情報を返します。
 ///
 /// # エラー
 ///
-/// ファイル読み込みまたは解析に失敗した場合にエラーを返します。
+/// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
 pub fn read_config_file() -> Result<processed_config::Config, ReadConfigError> {
   read_config_file_with_path("./config/config.toml")
 }
 
 /// 指定されたパスから設定ファイルを読み込み
 ///
-/// TOMLファイルを読み込み、パスの解決とバリデーションを行います。
+/// TOMLファイルを読み込み、解析後に以下の処理を実行します：
+/// - ファイルパスの解決と正規化
+/// - ページサイズ、余白、フォントサイズのバリデーション
+/// - 背景色の検証（0.0〜1.0の範囲）
+/// - フォント名の重複チェック
+/// - 出力ディレクトリの作成
 ///
 /// # 引数
 ///
-/// * `config_file_path` - 設定ファイルのパス
+/// * `config_path` - 設定ファイルのパス
 ///
 /// # 戻り値
 ///
-/// 解析された設定情報を返します。
+/// 解析され、検証済みの設定情報を返します。
 ///
 /// # エラー
 ///
-/// ファイル読み込み、解析、バリデーションのいずれかで失敗した場合。
+/// ファイルの読み込み、解析、バリデーションのいずれかで失敗した場合にエラーを返します。
 pub fn read_config_file_with_path<P: AsRef<Path>>(
   config_path: P,
 ) -> Result<processed_config::Config, ReadConfigError> {
@@ -301,7 +303,7 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
         }
       }
       Some((r, g, b))
-    }
+    },
     _ => None,
   };
 
@@ -376,16 +378,20 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
 
 /// 相対パスを絶対パスに解決し正規化
 ///
-/// PathBufを直接受け取り、canonicalize()を使用してシンボリックリンクを解決し、
-/// 正規化された絶対パスを返します。
+/// PathBufを受け取り、`canonicalize()`を使用してシンボリックリンクを解決し、
+/// 正規化された絶対パスを返します。この関数はファイルが存在することを前提とします。
 ///
 /// # 引数
 ///
-/// * `p` - 解決するパス(所有権を移動)
+/// * `path` - 解決するパス（所有権を移動）
+///
+/// # 戻り値
+///
+/// 正規化された絶対パスを返します。
 ///
 /// # エラー
 ///
-/// パスの正規化に失敗した場合、または存在しないパスの場合にエラーを返します。
+/// パスの正規化に失敗した場合、またはファイルが存在しない場合にエラーを返します。
 fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
   path
     .canonicalize()

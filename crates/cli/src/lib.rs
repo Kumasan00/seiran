@@ -46,6 +46,4 @@ pub enum Command {
 ///   cli::Command::Build { file_path } => println!("Building: {:?}", file_path),
 /// }
 /// ```
-pub fn parse_arg() -> Cli {
-  Cli::parse()
-}
+pub fn parse_arg() -> Cli { Cli::parse() }

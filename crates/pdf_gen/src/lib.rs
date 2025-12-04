@@ -81,6 +81,10 @@ struct PdfIds {
 
 impl PdfIds {
   /// 新しいPDFオブジェクトIDセットを作成
+  ///
+  /// 指定されたページ数に基づいて、全てのPDFオブジェクトに
+  /// 一意な参照IDを割り当てます。カタログ、ページツリー、各ページ、
+  /// コンテンツストリーム、および全19種類のフォント関連オブジェクトのIDを生成します。
   fn new(page_count: usize) -> Self {
     let mut id_counter = 1;
     let mut next_id = || {
@@ -138,16 +142,17 @@ impl PdfIds {
 
 /// PDFドキュメントを生成
 ///
-/// フォント情報、コンテンツストリーム、設定を基に
-/// PDFファイルを構築してディスクに書き込みます。
+/// フォント情報、グリフマッピング、コンテンツストリーム、設定から
+/// 完全なPDFドキュメントを構築し、指定されたパスに書き込みます。
+/// カタログ、ページツリー、各ページ、および全19種類のフォントを設定します。
 ///
 /// # 引数
 ///
-/// * `font_subset_bytes` - 全フォントのサブセット化されたデータ
-/// * `font_info` - フォントのメタデータ
+/// * `font_subset_bytes` - 全19種類のフォントのサブセット化されたバイトデータ
+/// * `font_info` - 全フォントのメタデータ情報
 /// * `glyph_mappings` - 全フォントのグリフマッピング情報
-/// * `pdf_contents` - PDFコンテンツストリームのベクター(各要素が1ページ)
-/// * `config` - PDF生成設定
+/// * `pdf_contents` - PDFコンテンツストリームのベクター（各要素が1ページに対応）
+/// * `config` - PDF生成設定（ページサイズ、出力パスなど）
 ///
 /// # 戻り値
 ///
@@ -155,7 +160,7 @@ impl PdfIds {
 ///
 /// # エラー
 ///
-/// ファイル書き込みに失敗した場合にエラーを返します。
+/// ファイルの書き込みに失敗した場合にエラーを返します。
 pub fn pdf_gen(
   font_subset_bytes: &font::font_context::FontSubsetBytes,
   font_info: &FontDatas,
@@ -192,6 +197,9 @@ pub fn pdf_gen(
 }
 
 /// カタログとページツリーを設定
+///
+/// PDFドキュメントのルートカタログとページツリーを構築し、
+/// 全ページをページツリーに登録します。
 fn setup_catalog_and_pages(pdf: &mut Pdf, ids: &PdfIds) {
   pdf.catalog(ids.catalog_id).pages(ids.page_tree_id);
   pdf
@@ -201,6 +209,9 @@ fn setup_catalog_and_pages(pdf: &mut Pdf, ids: &PdfIds) {
 }
 
 /// 単一フォントオブジェクトを設定
+///
+/// Type0フォント、CIDフォント、フォントディスクリプタを含む
+/// 完全なフォント構造をPDFに追加します。
 fn setup_single_font(
   pdf: &mut Pdf,
   font_ids: &FontIds,
@@ -244,6 +255,9 @@ fn setup_single_font(
 }
 
 /// 全フォントオブジェクトを設定
+///
+/// 19種類のフォント（Serif/Sans Serif/Monospace/Math/日本語の各バリエーション）の
+/// フォントオブジェクトと関連ストリームをPDFに追加します。
 fn setup_all_fonts(
   pdf: &mut Pdf,
   ids: &PdfIds,
@@ -509,6 +523,9 @@ fn setup_all_fonts(
 }
 
 /// フォント関連ストリームを設定
+///
+/// CIDからGIDへのマッピング、ToUnicode CMap、
+/// およびフォントファイルデータの各ストリームをPDFに追加します。
 fn setup_font_streams(
   pdf: &mut Pdf,
   font_ids: &FontIds,
@@ -525,6 +542,9 @@ fn setup_font_streams(
 }
 
 /// ページとコンテンツを設定
+///
+/// 個々のページオブジェクトを作成し、メディアボックス、親ページツリー、
+/// コンテンツストリーム、およびフォントリソースを設定します。
 fn setup_page(
   pdf: &mut Pdf,
   ids: &PdfIds,
@@ -578,6 +598,8 @@ fn setup_page(
 // ===== ヘルパー関数 =====
 
 /// Adobe-Identity SystemInfoを作成
+///
+/// CIDフォントに使用する標準的なAdobe-Identity-0システム情報を生成します。
 fn create_adobe_system_info() -> types::SystemInfo<'static> {
   types::SystemInfo {
     registry: Str(ADOBE_REGISTRY),
@@ -587,6 +609,8 @@ fn create_adobe_system_info() -> types::SystemInfo<'static> {
 }
 
 /// ToUnicode CMap用のSystemInfoを作成
+///
+/// ToUnicode CMapに使用するカスタムシステム情報を生成します。
 fn create_to_unicode_system_info() -> types::SystemInfo<'static> {
   types::SystemInfo {
     registry: Str(TO_UNICODE_REGISTRY),
@@ -598,12 +622,13 @@ fn create_to_unicode_system_info() -> types::SystemInfo<'static> {
 /// ToUnicode CMapを作成
 ///
 /// CIDから対応するUnicode文字へのマッピングを持つ
-/// CMapオブジェクトを生成します。
+/// CMapオブジェクトを生成します。PDFビューアーでのテキスト検索や
+/// コピー機能を可能にします。
 ///
 /// # 引数
 ///
 /// * `font_name` - フォント名
-/// * `cid_to_chars` - CIDと文字のマッピング
+/// * `cid_to_chars` - CIDとUnicode文字のマッピング
 ///
 /// # 戻り値
 ///
@@ -621,6 +646,9 @@ fn create_to_unicode_cmap(font_name: &str, cid_to_chars: HashMap<u16, Vec<char>>
 }
 
 /// 全フォントのadvance widthリストを構築
+///
+/// 各フォントのグリフマッピングとメタデータから、
+/// PDFで使用するアドバンス幅のリストを生成します。
 fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) -> AdvanceLists {
   AdvanceLists {
     serif_font: font_mappings
@@ -684,6 +712,9 @@ fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) ->
 }
 
 /// 全フォントのCID to GIDマッピングを構築
+///
+/// 各フォントのグリフマッピングから、CID（Character ID）から
+/// GID（Glyph ID）への変換テーブルを生成します。
 fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
   CidToGidMaps {
     serif_font: font_mappings.serif_font.build_cid_to_gid_map(),
@@ -721,6 +752,9 @@ fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
 }
 
 /// 全フォントのToUnicode CMapを作成
+///
+/// 19種類のフォント全てに対してToUnicode CMapを生成し、
+/// PDF内でのテキスト検索とコピー機能を可能にします。
 fn create_to_unicode_cmaps(config: &Config, font_mappings: &GlyphMappings) -> ToUnicodeCmaps {
   ToUnicodeCmaps {
     serif_font: create_to_unicode_cmap(

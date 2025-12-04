@@ -1,7 +1,8 @@
 //! 共通型定義モジュール
 //!
 //! このモジュールは、プロジェクト全体で使用される
-//! グリフマッピングなどの共通型を定義します。
+//! グリフマッピング、アドバンス幅リスト、CID-GIDマッピング、
+//! ToUnicode CMapなどの共通型を定義します。
 
 use std::collections::HashMap;
 
@@ -14,7 +15,8 @@ const NOTDEF_GID: u16 = 0;
 /// グリフとCIDのマッピング情報を管理する構造体
 ///
 /// PDF生成に必要なグリフID(GID)と文字ID(CID)の対応、
-/// 使用されるグリフの集合、横幅情報、Unicodeマッピングを管理します。
+/// 使用されるグリフの集合、アドバンス幅情報、Unicodeマッピングを管理します。
+/// 各フォントごとに1つのインスタンスが作成されます。
 pub struct GlyphMapping {
   /// GIDからCIDへのマッピング
   pub gid_to_cid: HashMap<u16, u16>,
@@ -27,15 +29,14 @@ pub struct GlyphMapping {
 }
 
 impl Default for GlyphMapping {
-  fn default() -> Self {
-    Self::new()
-  }
+  fn default() -> Self { Self::new() }
 }
 
 impl GlyphMapping {
   /// 新しいグリフマッピングを作成
   ///
-  /// .notdefグリフ(GID=0)を初期状態で登録します。
+  /// .notdefグリフ(GID=0, CID=0)を初期状態で登録します。
+  /// .notdefはフォントに存在しない文字を表示する際に使用される特殊なグリフです。
   pub fn new() -> Self {
     let mut gid_to_cid = HashMap::new();
     gid_to_cid.insert(NOTDEF_GID, NOTDEF_GID);
@@ -51,14 +52,15 @@ impl GlyphMapping {
     }
   }
 
-  /// 横幅リストを構築
+  /// アドバンス幅リストを構築
   ///
-  /// CID順に並んだ横幅のリストを生成します。
-  /// 未登録のCIDにはデフォルト幅を使用します。
+  /// CID順に並んだアドバンス幅（水平進行幅）のリストを生成します。
+  /// 未登録のCIDにはデフォルト幅（通常はUPEM値）を使用します。
+  /// PDFのCIDFontのWidths配列として使用されます。
   ///
   /// # 引数
   ///
-  /// * `default_width` - デフォルトの横幅値
+  /// * `default_width` - デフォルトのアドバンス幅値
   pub fn build_advance_list(&self, default_width: f32) -> Vec<f32> {
     (0..self.gid_to_cid.len())
       .map(|cid_index| {
@@ -74,16 +76,21 @@ impl GlyphMapping {
   ///
   /// PDFのCIDFontで使用するバイト列形式のマッピングテーブルを生成します。
   /// 各CIDは2バイトのビッグエンディアン値として表現されます。
+  /// このテーブルはPDF内でCIDを実際のフォントグリフに変換するために使用されます。
   pub fn build_cid_to_gid_map(&self) -> Vec<u8> {
     let mut map = Vec::with_capacity(self.gid_to_cid.len() * 2);
     for cid_index in 0..self.gid_to_cid.len() {
       map.push((cid_index >> 8) as u8);
-      map.push((cid_index & 0xFF) as u8);
+      map.push((cid_index & 0xff) as u8);
     }
     map
   }
 }
 
+/// 全フォントのグリフマッピング情報を保持する構造体
+///
+/// 19種類のフォント（Serif/Sans Serif/Monospace/Math/日本語の各バリエーション）の
+/// グリフマッピングをまとめて管理します。
 #[derive(Default)]
 pub struct GlyphMappings {
   pub serif_font: GlyphMapping,
@@ -108,11 +115,13 @@ pub struct GlyphMappings {
 }
 
 impl GlyphMappings {
-  pub fn new() -> Self {
-    Self::default()
-  }
+  pub fn new() -> Self { Self::default() }
 }
 
+/// 全フォントのアドバンス幅リストを保持する構造体
+///
+/// 19種類のフォント各々のアドバンス幅リストをまとめて管理します。
+/// PDF生成時のCIDFontのWidths配列として使用されます。
 pub struct AdvanceLists {
   pub serif_font: Vec<f32>,
   pub serif_bold_font: Vec<f32>,
@@ -135,6 +144,10 @@ pub struct AdvanceLists {
   pub japanese_monospace_bold_font: Vec<f32>,
 }
 
+/// 全フォントのCID-GIDマッピングテーブルを保持する構造体
+///
+/// 19種類のフォント各々のCIDからGIDへのマッピングテーブル（バイト列）を
+/// まとめて管理します。PDFのCIDFontのストリームとして使用されます。
 pub struct CidToGidMaps {
   pub serif_font: Vec<u8>,
   pub serif_bold_font: Vec<u8>,
@@ -157,6 +170,10 @@ pub struct CidToGidMaps {
   pub japanese_monospace_bold_font: Vec<u8>,
 }
 
+/// 全フォントのToUnicode CMapを保持する構造体
+///
+/// 19種類のフォント各々のToUnicode CMapをまとめて管理します。
+/// ToUnicode CMapはPDFビューアーでのテキスト検索やコピー機能を可能にします。
 pub struct ToUnicodeCmaps {
   pub serif_font: UnicodeCmap,
   pub serif_bold_font: UnicodeCmap,

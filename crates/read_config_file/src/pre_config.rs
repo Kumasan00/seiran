@@ -1,7 +1,7 @@
 //! TOMLファイルから直接デシリアライズされる設定構造体
 //!
 //! これらの構造体は、TOMLファイルの形式に合わせています。
-//! 後に`processed_config`の型に変換されます。
+//! パスは文字列または`PathBuf`として保持され、後に`processed_config`の型に変換されます。
 
 use std::path::PathBuf;
 
@@ -90,10 +90,9 @@ pub(crate) struct PreMathFontConfig {
 
 /// デフォルトのフォントインデックスを返す
 ///
-/// 設定ファイルでフォントインデックスが省略された場合に使用されます。
-fn default_font_index() -> u32 {
-  0
-}
+/// 設定ファイルでフォントインデックスが省略された場合にSerdeによって使用されます。
+/// 単一フォントファイルまたはコレクションの最初のフォントを示す0を返します。
+fn default_font_index() -> u32 { 0 }
 
 /// プリプロセス済みのPDF設定
 #[derive(Deserialize, Debug)]

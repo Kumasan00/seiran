@@ -1,7 +1,8 @@
 //! テキストシェーピングモジュール
 //!
-//! このモジュールは、HarfBuzzを使用してテキストを
-//! グリフシーケンスに変換する機能を提供します。
+//! このモジュールは、HarfBuzzを使用してテキストをグリフシーケンスに変換し、
+//! PDF用のコンテンツストリームを生成する機能を提供します。
+//! テキストのシェーピング、グリフマッピングの管理、位置調整を行います。
 
 use std::{collections::HashMap, fs, io};
 
@@ -26,7 +27,9 @@ const NOTDEF_GID: u16 = 0;
 
 /// シェーピング結果の情報
 ///
-/// 各グリフに関する位置情報とクラスタ情報を保持します。
+/// HarfBuzzによるテキストシェーピングの結果として得られる、
+/// 各グリフのID、位置情報、クラスタ情報を保持します。
+/// クラスタは元のテキスト内での文字位置を示します。
 #[derive(Debug)]
 pub struct ShapingResult {
   /// グリフID
@@ -48,20 +51,24 @@ pub struct ShapingResult {
 
 /// テキストの各行を処理してPDFコンテンツストリームを生成
 ///
+/// 入力テキストの各行に対してシェーピングを実行し、グリフマッピングを更新しながら
+/// PDFコンテンツストリームを構築します。背景色の設定、フォントの指定、
+/// 行の配置と改行処理も行います。
+///
 /// # 引数
 ///
-/// * `lines` - 処理するテキスト行のイテレータ
-/// * `font_ctx` - フォントコンテキスト
-/// * `mapping` - グリフマッピング情報
+/// * `text_lines` - 処理するテキスト行のイテレータ
+/// * `font_contexts` - 全フォントのコンテキスト
+/// * `glyph_mappings` - 全フォントのグリフマッピング情報
 /// * `config` - アプリケーション設定
 ///
 /// # 戻り値
 ///
-/// PDFコンテンツストリームを返します。
+/// PDFコンテンツストリームのベクタを返します（現在は1ページ分）。
 ///
 /// # エラー
 ///
-/// 行の処理中にエラーが発生した場合にエラーを返します。
+/// 行の読み込みまたは処理中にエラーが発生した場合にエラーを返します。
 pub fn process_text_lines(
   text_lines: io::Lines<io::BufReader<fs::File>>,
   font_contexts: &mut FontContexts,
@@ -113,16 +120,17 @@ pub fn process_text_lines(
 
 /// 単一行のテキストを処理してコンテンツストリームに追加
 ///
-/// テキストシェーピングを実行し、グリフIDとCIDのマッピングを更新し、
-/// 位置調整を行いながらコンテンツストリームに書き込みます。
+/// HarfBuzzを使用してテキストシェーピングを実行し、グリフIDとCIDのマッピングを更新します。
+/// 各グリフのアドバンス幅を記録し、フォントの実際の幅とシェーピング結果の差分を調整します。
+/// また、.notdefグリフ（フォントに存在しない文字）を検出して警告を出力します。
 ///
 /// # 引数
 ///
-/// * `line` - 処理するテキスト行
-/// * `font_ctx` - フォントコンテキスト
-/// * `upem` - フォントのユニット/em値
-/// * `mapping` - グリフマッピング情報
-/// * `content` - PDFコンテンツストリーム
+/// * `text_line` - 処理するテキスト行
+/// * `main_font_context` - メインフォントのコンテキスト
+/// * `units_per_em` - フォントのユニット/em値
+/// * `glyph_mapping` - グリフマッピング情報
+/// * `pdf_content` - PDFコンテンツストリーム
 ///
 /// # エラー
 ///
@@ -152,7 +160,7 @@ fn process_single_line(
     let Some(&cid) = glyph_mapping.gid_to_cid.get(&gid) else {
       let fallback_cid = NOTDEF_GID;
       text_buffer.push((fallback_cid >> 8) as u8);
-      text_buffer.push((fallback_cid & 0xFF) as u8);
+      text_buffer.push((fallback_cid & 0xff) as u8);
       continue;
     };
 
@@ -164,7 +172,7 @@ fn process_single_line(
     let shape_advance = shape_result.x_advance as f32 * 1000.0 / units_per_em;
 
     text_buffer.push((cid >> 8) as u8);
-    text_buffer.push((cid & 0xFF) as u8);
+    text_buffer.push((cid & 0xff) as u8);
 
     let advance_diff = advance_width - shape_advance;
     if advance_diff.abs() > 0.0001 {
@@ -210,19 +218,21 @@ fn process_single_line(
 
 /// テキストをシェーピングしてグリフIDとその位置情報を得る
 ///
-/// HarfBuzzを使用してテキストを解析し、各文字に対応する
-/// グリフID、位置情報、クラスタ情報を取得します。
+/// HarfBuzzを使用してテキストを解析し、各文字に対応するグリフID、
+/// 位置情報（アドバンス幅、オフセット）、クラスタ情報を取得します。
+/// 新しいグリフが見つかった場合は、GIDからCIDへのマッピングに追加し、
+/// 使用グリフの集合を更新します。
 ///
 /// # 引数
 ///
 /// * `text` - シェーピングするテキスト
 /// * `hb_font` - HarfBuzzフォントオブジェクト
-/// * `gid_to_cid` - GIDからCIDへのマッピング
-/// * `used_gids` - 使用されたGIDの集合
+/// * `gid_to_cid` - GIDからCIDへのマッピング（更新される）
+/// * `used_gids` - 使用されたGIDの集合（更新される）
 ///
 /// # 戻り値
 ///
-/// シェーピング結果のベクタを返します。
+/// シェーピング結果のベクタを返します。各要素は1つのグリフに対応します。
 pub fn shaping(
   text: &str,
   hb_font: &mut Owned<Font<'_>>,
@@ -267,8 +277,9 @@ pub fn shaping(
 
 /// シェーピング結果から文字範囲を取得
 ///
-/// 指定されたインデックスのシェーピング結果に対応する
-/// 元のテキストの文字範囲を返します。
+/// 指定されたインデックスのシェーピング結果に対応する元のテキストの文字範囲を返します。
+/// クラスタ情報を使用して、グリフが元のテキストのどの部分に対応するかを特定します。
+/// 合字や結合文字の場合、複数の文字が1つのグリフに対応することがあります。
 ///
 /// # 引数
 ///
@@ -278,7 +289,7 @@ pub fn shaping(
 ///
 /// # 戻り値
 ///
-/// 文字範囲を表す`Range<usize>`を返します。
+/// 文字範囲を表す`Range<usize>`を返します（バイト単位のインデックス）。
 fn get_char_range(
   line: &str,
   shape_results: &[ShapingResult],

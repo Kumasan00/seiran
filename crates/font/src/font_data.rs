@@ -42,8 +42,14 @@ pub struct FontData {
 }
 
 impl FontData {
-  /// Analyze a parsed `Face` and return `FontData`.
-  /// Returns an error for variable fonts or when required name fields are missing.
+  /// 解析済みフォントフェースから`FontData`を生成
+  ///
+  /// フォントのメタデータ（名前、メトリクス、バウンディングボックスなど）を
+  /// 抽出して`FontData`構造体を作成します。
+  ///
+  /// # エラー
+  ///
+  /// バリアブルフォントまたは必須の名前フィールドが欠落している場合にエラーを返します。
   pub fn analyze_font(face: &Face<'_>) -> Result<FontData, FontError> {
     let name = extract_font_name(face)?;
 
@@ -67,8 +73,9 @@ impl FontData {
 
   /// キャピタルハイトを抽出
   ///
-  /// OS/2テーブルからキャピタルハイトを取得します。
-  /// 利用できない場合はデフォルト値を返します。
+  /// OS/2テーブルからキャピタルハイト（大文字の高さ）を取得します。
+  /// OS/2テーブルが存在しないか、キャピタルハイトの値が利用できない場合は
+  /// デフォルト値（0）を返します。
   ///
   /// # 引数
   ///
@@ -83,8 +90,8 @@ impl FontData {
 
   /// PDFライター用の矩形に変換
   ///
-  /// フォントのバウンディングボックスをpdf_writerライブラリが使用する
-  /// `Rect`形式に変換します。
+  /// フォントのバウンディングボックスを`pdf_writer`ライブラリが使用する
+  /// `Rect`形式に変換します。PDF生成時にフォントディスクリプタに必要です。
   pub fn pdf_writer_rect(&self) -> Rect {
     Rect::new(
       self.bbox.x_min as f32,
@@ -97,7 +104,9 @@ impl FontData {
 
 /// フォント名を抽出
 ///
-/// フォントのnameテーブルからフルネーム、またはファミリー名+サブファミリー名を取得します。
+/// フォントのnameテーブルからフルネームを取得します。
+/// フルネームが利用できない場合は、ファミリー名とサブファミリー名を
+/// アンダースコアで連結した文字列を返します。
 ///
 /// # 引数
 ///
@@ -105,7 +114,7 @@ impl FontData {
 ///
 /// # エラー
 ///
-/// 必要な名前情報が見つからない場合にエラーを返します。
+/// 必要な名前情報（ファミリー名またはサブファミリー名）が見つからない場合にエラーを返します。
 pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
   // 1パスで FULL_NAME を優先し、無ければ FAMILY/SUBFAMILY を収集
   let mut full_name: Option<String> = None;
@@ -121,18 +130,18 @@ pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
             break;
           }
         }
-      }
+      },
       name_id::FAMILY => {
         if family.is_none() {
           family = n.to_string();
         }
-      }
+      },
       name_id::SUBFAMILY => {
         if subfamily.is_none() {
           subfamily = n.to_string();
         }
-      }
-      _ => {}
+      },
+      _ => {},
     }
   }
 
@@ -173,12 +182,12 @@ pub struct FontDatas {
 
 /// 単一サブセットフォントを解析
 ///
-/// サブセット化されたフォントデータを解析し、メタデータを抽出します。
+/// サブセット化されたフォントデータからフェースを解析し、
+/// メタデータ情報を抽出して`FontData`を生成します。
 ///
 /// # 引数
 ///
 /// * `subset_data` - サブセットフォントのバイトデータ
-/// * `index` - フォントコレクション内のインデックス
 ///
 /// # 戻り値
 ///
@@ -192,22 +201,22 @@ fn analyze_single_subset(subset_data: &[u8]) -> Result<FontData, FontError> {
   FontData::analyze_font(&face)
 }
 
-/// サブセットフォントを解析
+/// 全サブセットフォントを解析
 ///
-/// サブセット化されたフォントデータを解析し、メタデータ情報を抽出します。
+/// 全19種類のサブセット化されたフォントデータを解析し、
+/// 各フォントのメタデータ情報を抽出して`FontDatas`構造体を生成します。
 ///
 /// # 引数
 ///
-/// * `subset_bytes` - サブセットフォントのバイトデータ
-/// * `index` - フォントコレクション内のインデックス
+/// * `fonts_subset_bytes` - 全フォントのサブセットバイトデータ
 ///
 /// # 戻り値
 ///
-/// フォントのメタデータ情報を返します。
+/// 全フォントのメタデータ情報を含む`FontDatas`を返します。
 ///
 /// # エラー
 ///
-/// フォントの解析に失敗した場合にエラーを返します。
+/// いずれかのフォントの解析に失敗した場合にエラーを返します。
 pub fn analyze_subset_font(fonts_subset_bytes: &FontSubsetBytes) -> Result<FontDatas, FontError> {
   let serif_font_data = analyze_single_subset(&fonts_subset_bytes.serif_font_subset)?;
   let serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.serif_bold_font_subset)?;

@@ -14,8 +14,8 @@ use std::{
 
 use font::{
   self,
-  font_context::{FontContexts, create_font_subset},
-  font_data::analyze_subset_font,
+  font_context::{self, FontContexts},
+  font_data,
 };
 use stypes::GlyphMappings;
 use ttf_parser::Face;
@@ -41,11 +41,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       let absolute_path = text_file_path.canonicalize()?;
       println!("Building PDF from: {:?}", absolute_path);
       build_pdf(&absolute_path)?;
-    }
+    },
     cli::Command::TtcNames { ttc_file_path } => {
       let absolute_path = ttc_file_path.canonicalize()?;
       get_ttc_names(&absolute_path)?;
-    }
+    },
   }
 
   Ok(())
@@ -77,9 +77,9 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
   let pdf_content =
     text::process_text_lines(text_lines, &mut font_contexts, &mut glyph_mappings, &config)?;
 
-  let subset_bytes = create_font_subset(&font_contexts, &glyph_mappings)?;
+  let subset_bytes = font_context::create_font_subset(&font_contexts, &glyph_mappings)?;
 
-  let font_datas = analyze_subset_font(&subset_bytes)?;
+  let font_datas = font_data::analyze_subset_font(&subset_bytes)?;
 
   font::insert_notdef_advance_widths(&mut glyph_mappings, &font_datas);
 
@@ -97,13 +97,16 @@ fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Err
 
 /// ファイルを読み込み、行のイテレータを返す
 ///
+/// 指定されたパスのファイルを開き、バッファリングされた行単位の
+/// イテレータを返します。
+///
 /// # 引数
 ///
 /// * `input_file_path` - 読み込むファイルのパス
 ///
 /// # 戻り値
 ///
-/// ファイルの各行を読み込むためのイテレータを返します。
+/// ファイルの各行を含む`io::Lines`イテレータを返します。
 ///
 /// # エラー
 ///
@@ -113,10 +116,11 @@ fn read_file<P: AsRef<Path>>(input_file_path: P) -> io::Result<io::Lines<BufRead
   Ok(BufReader::new(file).lines())
 }
 
-/// TTCファイルから各フォントの名前情報を取得
+/// TTCファイルから各フォントの名前情報を取得して表示
 ///
 /// TrueTypeコレクション(TTC)ファイルに含まれる全てのフォントの
-/// nameテーブル情報を出力します。
+/// nameテーブル情報を標準出力に表示します。各フォントのインデックスと
+/// プラットフォームID、Name ID、名前文字列を出力します。
 ///
 /// # 引数
 ///
@@ -128,7 +132,7 @@ fn read_file<P: AsRef<Path>>(input_file_path: P) -> io::Result<io::Lines<BufRead
 ///
 /// # エラー
 ///
-/// ファイル読み込みまたはフォント解析に失敗した場合。
+/// ファイルの読み込みまたはフォント解析に失敗した場合にエラーを返します。
 fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> result::Result<(), Box<dyn std::error::Error>> {
   let font_data = fs::read(file_path)?;
   let font_count = ttf_parser::fonts_in_collection(&font_data).unwrap();
