@@ -14,18 +14,44 @@ pub(crate) struct PreConfig {
   pub name: String,
   /// PDF設定
   pub pdf: PrePdfConfig,
-  /// メインフォント設定
-  pub main_font: PreFontConfig,
-  /// イタリックフォント設定
-  pub italic_font: PreFontConfig,
+  /// セリフフォント設定
+  pub serif_font: PreFontConfig,
+  /// セリフボールドフォント設定
+  pub serif_bold_font: PreFontConfig,
+  /// セリフイタリックフォント設定
+  pub serif_italic_font: PreFontConfig,
+  /// セリフボールドイタリックフォント設定
+  pub serif_bold_italic_font: PreFontConfig,
   /// サンセリフフォント設定
-  pub sans_font: PreFontConfig,
+  pub sans_serif_font: PreFontConfig,
+  /// サンセリフボールドフォント設定
+  pub sans_serif_bold_font: PreFontConfig,
+  /// サンセリフイタリックフォント設定
+  pub sans_serif_italic_font: PreFontConfig,
+  /// サンセリフボールドイタリックフォント設定
+  pub sans_serif_bold_italic_font: PreFontConfig,
+  /// モノスペースフォント設定
+  pub monospace_font: PreFontConfig,
+  /// モノスペースボールドフォント設定
+  pub monospace_bold_font: PreFontConfig,
+  /// モノスペースイタリックフォント設定
+  pub monospace_italic_font: PreFontConfig,
+  /// モノスペースボールドイタリックフォント設定
+  pub monospace_bold_italic_font: PreFontConfig,
   /// 数式フォント設定
   pub math_font: PreMathFontConfig,
-  /// メイン日本語フォント設定
-  pub main_japanese_font: PreFontConfig,
+  /// セリフ日本語フォント設定
+  pub japanese_serif_font: PreFontConfig,
+  /// セリフ日本語ボールドフォント設定
+  pub japanese_serif_bold_font: PreFontConfig,
   /// サンセリフ日本語フォント設定
-  pub sans_japanese_font: PreFontConfig,
+  pub japanese_sans_serif_font: PreFontConfig,
+  /// サンセリフ日本語ボールドフォント設定
+  pub japanese_sans_serif_bold_font: PreFontConfig,
+  /// モノスペース日本語フォント設定
+  pub japanese_monospace_font: PreFontConfig,
+  /// モノスペース日本語ボールドフォント設定
+  pub japanese_monospace_bold_font: PreFontConfig,
 }
 
 /// プリプロセス済みのフォント設定
@@ -43,7 +69,7 @@ pub(crate) struct PreFontConfig {
 
 /// プリプロセス済みのバリエーション軸設定
 #[derive(Deserialize, Debug)]
-pub struct PreVariationAxis {
+pub(crate) struct PreVariationAxis {
   /// 軸の名前
   pub name: String,
   /// 軸の値
@@ -90,4 +116,10 @@ pub(crate) struct PrePdfConfig {
   pub margin_left: f32,
   /// 右余白
   pub margin_right: f32,
+  /// 背景色R（省略可能）
+  pub background_r: Option<f32>,
+  /// 背景色G（省略可能）
+  pub background_g: Option<f32>,
+  /// 背景色B（省略可能）
+  pub background_b: Option<f32>,
 }

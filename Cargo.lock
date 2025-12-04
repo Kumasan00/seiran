@@ -137,7 +137,6 @@ dependencies = [
  "pdf-writer",
  "pdf_gen",
  "read_config_file",
- "read_file",
  "stypes",
  "text",
  "ttf-parser",
@@ -694,10 +693,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "read_file"
-version = "0.1.0"
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -820,8 +815,12 @@ dependencies = [
 name = "text"
 version = "0.1.0"
 dependencies = [
+ "font",
  "harfbuzz_rs",
  "indexmap",
+ "pdf-writer",
+ "read_config_file",
+ "stypes",
 ]
 
 [[package]]

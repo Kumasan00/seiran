@@ -45,6 +45,8 @@ pub enum ReadConfigError {
   Canonicalize { path: PathBuf, error: io::Error },
   /// font_nameの重複
   DuplicateFontName { font_name: String },
+  /// 背景色の範囲エラー
+  InvalidBackgroundColor { field: &'static str, value: f32 },
 }
 
 impl std::fmt::Display for ReadConfigError {
@@ -77,6 +79,13 @@ impl std::fmt::Display for ReadConfigError {
       ReadConfigError::DuplicateFontName { font_name } => {
         write!(f, "Duplicate font_name found: '{}'", font_name)
       }
+      ReadConfigError::InvalidBackgroundColor { field, value } => {
+        write!(
+          f,
+          "Background color '{}' must be in [0.0, 1.0], got {}",
+          field, value
+        )
+      }
     }
   }
 }
@@ -93,7 +102,8 @@ impl std::error::Error for ReadConfigError {
       | ReadConfigError::NonPositive { .. }
       | ReadConfigError::NegativeMargin { .. }
       | ReadConfigError::MarginSumTooLarge { .. }
-      | ReadConfigError::DuplicateFontName { .. } => None,
+      | ReadConfigError::DuplicateFontName { .. }
+      | ReadConfigError::InvalidBackgroundColor { .. } => None,
     }
   }
 }
@@ -190,12 +200,25 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   let pre_config::PreConfig {
     name,
     pdf: pre_pdf,
-    main_font,
-    italic_font,
+    serif_font,
+    serif_bold_font,
+    serif_italic_font,
+    serif_bold_italic_font,
+    sans_serif_font,
+    sans_serif_bold_font,
+    sans_serif_italic_font,
+    sans_serif_bold_italic_font,
+    monospace_font,
+    monospace_bold_font,
+    monospace_italic_font,
+    monospace_bold_italic_font,
     math_font,
-    main_japanese_font,
-    sans_font,
-    sans_japanese_font,
+    japanese_serif_font,
+    japanese_serif_bold_font,
+    japanese_sans_serif_font,
+    japanese_sans_serif_bold_font,
+    japanese_monospace_font,
+    japanese_monospace_bold_font,
   } = pre_config;
   let pre_config::PrePdfConfig {
     output_dir,
@@ -207,6 +230,9 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
     margin_bottom,
     margin_left,
     margin_right,
+    background_r,
+    background_g,
+    background_b,
   } = pre_pdf;
 
   // バリデーション
@@ -262,6 +288,23 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
   output_path.push(&name);
   output_path.set_extension("pdf");
 
+  // 背景色のバリデーションと生成
+  let background_color = match (background_r, background_g, background_b) {
+    (Some(r), Some(g), Some(b)) => {
+      for (field, value) in [
+        ("background_r", r),
+        ("background_g", g),
+        ("background_b", b),
+      ] {
+        if !(0.0..=1.0).contains(&value) {
+          return Err(ReadConfigError::InvalidBackgroundColor { field, value });
+        }
+      }
+      Some((r, g, b))
+    }
+    _ => None,
+  };
+
   // FontConfig/MathFontConfig 生成
   let config = processed_config::Config {
     name,
@@ -275,24 +318,51 @@ pub fn read_config_file_with_path<P: AsRef<Path>>(
       margin_bottom,
       margin_left,
       margin_right,
+      background_color,
     },
-    main_font: to_font_config(main_font, convert_axes)?,
-    italic_font: to_font_config(italic_font, convert_axes)?,
+    serif_font: to_font_config(serif_font, convert_axes)?,
+    serif_bold_font: to_font_config(serif_bold_font, convert_axes)?,
+    serif_italic_font: to_font_config(serif_italic_font, convert_axes)?,
+    serif_bold_italic_font: to_font_config(serif_bold_italic_font, convert_axes)?,
+    sans_serif_font: to_font_config(sans_serif_font, convert_axes)?,
+    sans_serif_bold_font: to_font_config(sans_serif_bold_font, convert_axes)?,
+    sans_serif_italic_font: to_font_config(sans_serif_italic_font, convert_axes)?,
+    sans_serif_bold_italic_font: to_font_config(sans_serif_bold_italic_font, convert_axes)?,
+    monospace_font: to_font_config(monospace_font, convert_axes)?,
+    monospace_bold_font: to_font_config(monospace_bold_font, convert_axes)?,
+    monospace_italic_font: to_font_config(monospace_italic_font, convert_axes)?,
+    monospace_bold_italic_font: to_font_config(monospace_bold_italic_font, convert_axes)?,
     math_font: to_math_font_config(math_font)?,
-    main_japanese_font: to_font_config(main_japanese_font, convert_axes)?,
-    sans_font: to_font_config(sans_font, convert_axes)?,
-    sans_japanese_font: to_font_config(sans_japanese_font, convert_axes)?,
+    japanese_serif_font: to_font_config(japanese_serif_font, convert_axes)?,
+    japanese_serif_bold_font: to_font_config(japanese_serif_bold_font, convert_axes)?,
+    japanese_sans_serif_font: to_font_config(japanese_sans_serif_font, convert_axes)?,
+    japanese_sans_serif_bold_font: to_font_config(japanese_sans_serif_bold_font, convert_axes)?,
+    japanese_monospace_font: to_font_config(japanese_monospace_font, convert_axes)?,
+    japanese_monospace_bold_font: to_font_config(japanese_monospace_bold_font, convert_axes)?,
   };
 
   // font_nameの重複チェック
   let mut font_names = std::collections::HashSet::new();
   for font_name in [
-    &config.main_font.font_name,
-    &config.italic_font.font_name,
+    &config.serif_font.font_name,
+    &config.serif_bold_font.font_name,
+    &config.serif_italic_font.font_name,
+    &config.serif_bold_italic_font.font_name,
+    &config.sans_serif_font.font_name,
+    &config.sans_serif_bold_font.font_name,
+    &config.sans_serif_italic_font.font_name,
+    &config.sans_serif_bold_italic_font.font_name,
+    &config.monospace_font.font_name,
+    &config.monospace_bold_font.font_name,
+    &config.monospace_italic_font.font_name,
+    &config.monospace_bold_italic_font.font_name,
     &config.math_font.font_name,
-    &config.sans_font.font_name,
-    &config.main_japanese_font.font_name,
-    &config.sans_japanese_font.font_name,
+    &config.japanese_serif_font.font_name,
+    &config.japanese_serif_bold_font.font_name,
+    &config.japanese_sans_serif_font.font_name,
+    &config.japanese_sans_serif_bold_font.font_name,
+    &config.japanese_monospace_font.font_name,
+    &config.japanese_monospace_bold_font.font_name,
   ] {
     if !font_names.insert(font_name) {
       return Err(ReadConfigError::DuplicateFontName {

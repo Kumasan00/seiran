@@ -5,7 +5,6 @@ members = [
   "crates/font",
   "crates/pdf_gen",
   "crates/read_config_file",
-  "crates/read_file",
   "crates/stypes",
   "crates/text",
 ]

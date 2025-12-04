@@ -28,29 +28,78 @@ pub enum FontContextError {
     max: f32,
     value: f32,
   },
+  /// フォントに存在する軸が設定されていない
+  #[error(
+    "Font has variation axis '{axis}' that is not configured (default: {default}, min: {min}, max: {max})"
+  )]
+  UnconfiguredVariationAxis {
+    axis: String,
+    default: f32,
+    min: f32,
+    max: f32,
+  },
 }
 
 /// フォントコンテキスト群の初期化に関連するエラー
 #[derive(thiserror::Error, Debug)]
 pub enum FontContextsError {
-  /// メインフォントの初期化失敗
-  #[error("Failed to initialize main font: {0}")]
-  MainFont(#[from] FontContextError),
-  /// イタリックフォントの初期化失敗
-  #[error("Failed to initialize italic font: {0}")]
-  ItalicFont(FontContextError),
+  /// SerifフォントError
+  #[error("Failed to initialize serif font: {0}")]
+  SerifFont(FontContextError),
+  /// SerifBoldフォントError
+  #[error("Failed to initialize serif bold font: {0}")]
+  SerifBoldFont(FontContextError),
+  /// SerifItalicフォントError
+  #[error("Failed to initialize serif italic font: {0}")]
+  SerifItalicFont(FontContextError),
+  /// SerifBoldItalicフォントError
+  #[error("Failed to initialize serif bold italic font: {0}")]
+  SerifBoldItalicFont(FontContextError),
+  /// SansSerifフォントError
+  #[error("Failed to initialize sans serif font: {0}")]
+  SansSerifFont(FontContextError),
+  /// SansSerifBoldフォントError
+  #[error("Failed to initialize sans serif bold font: {0}")]
+  SansSerifBoldFont(FontContextError),
+  /// SansSerifItalicフォントError
+  #[error("Failed to initialize sans serif italic font: {0}")]
+  SansSerifItalicFont(FontContextError),
+  /// SansSerifBoldItalicフォントError
+  #[error("Failed to initialize sans serif bold italic font: {0}")]
+  SansSerifBoldItalicFont(FontContextError),
+  /// MonospaceフォントError
+  #[error("Failed to initialize monospace font: {0}")]
+  MonospaceFont(FontContextError),
+  /// MonospaceBoldフォントError
+  #[error("Failed to initialize monospace bold font: {0}")]
+  MonospaceBoldFont(FontContextError),
+  /// MonospaceItalicフォントError
+  #[error("Failed to initialize monospace italic font: {0}")]
+  MonospaceItalicFont(FontContextError),
+  /// MonospaceBoldItalicフォントError
+  #[error("Failed to initialize monospace bold italic font: {0}")]
+  MonospaceBoldItalicFont(FontContextError),
   /// 数式フォントの初期化失敗
   #[error("Failed to initialize math font: {0}")]
   MathFont(FontContextError),
-  /// サンスセリフフォントの初期化失敗
-  #[error("Failed to initialize sans font: {0}")]
-  SansFont(FontContextError),
-  /// 日本語フォントの初期化失敗
-  #[error("Failed to initialize main Japanese font: {0}")]
-  MainJapaneseFont(FontContextError),
-  /// サンスセリフ日本語フォントの初期化失敗
-  #[error("Failed to initialize sans Japanese font: {0}")]
-  SansJapaneseFont(FontContextError),
+  /// 日本語Serifフォントの初期化失敗
+  #[error("Failed to initialize japanese serif font: {0}")]
+  JapaneseSerifFont(FontContextError),
+  /// 日本語SerifBoldフォントの初期化失敗
+  #[error("Failed to initialize japanese serif bold font: {0}")]
+  JapaneseSerifBoldFont(FontContextError),
+  /// 日本語SansSerifフォントの初期化失敗
+  #[error("Failed to initialize japanese sans serif font: {0}")]
+  JapaneseSansSerifFont(FontContextError),
+  /// 日本語SansSerifBoldフォントの初期化失敗
+  #[error("Failed to initialize japanese sans serif bold font: {0}")]
+  JapaneseSansSerifBoldFont(FontContextError),
+  /// 日本語Monospaceフォントの初期化失敗
+  #[error("Failed to initialize japanese monospace font: {0}")]
+  JapaneseMonospaceFont(FontContextError),
+  /// 日本語MonospaceBoldフォントの初期化失敗
+  #[error("Failed to initialize japanese monospace bold font: {0}")]
+  JapaneseMonospaceBoldFont(FontContextError),
 }
 
 /// フォントサブセット処理に関連するエラー
@@ -78,18 +127,25 @@ pub enum FontSubsetError {
 /// 設定から適切なフォント情報を取得するために使用されます。
 #[derive(Debug)]
 pub enum FontType {
-  /// メインフォント
-  MainFont,
-  /// イタリックフォント
-  ItalicFont,
-  /// 数式フォント
+  SerifFont,
+  SerifBoldFont,
+  SerifItalicFont,
+  SerifBoldItalicFont,
+  SansSerifFont,
+  SansSerifBoldFont,
+  SansSerifItalicFont,
+  SansSerifBoldItalicFont,
+  MonospaceFont,
+  MonospaceBoldFont,
+  MonospaceItalicFont,
+  MonospaceBoldItalicFont,
   MathFont,
-  /// サンセリフフォント
-  SansFont,
-  /// メイン日本語フォント
-  MainJapaneseFont,
-  /// サンセリフ日本語フォント
-  SansJapaneseFont,
+  JapaneseSerifFont,
+  JapaneseSerifBoldFont,
+  JapaneseSansSerifFont,
+  JapaneseSansSerifBoldFont,
+  JapaneseMonospaceFont,
+  JapaneseMonospaceBoldFont,
 }
 
 /// フォントデータと関連するパーサーを管理するコンテキスト
@@ -125,17 +181,75 @@ impl FontContext {
   /// (フォントパス, フォントインデックス) のタプル
   fn get_font_config<'a>(config: &'a Config, font_type: &FontType) -> (&'a std::path::Path, u32) {
     match font_type {
-      FontType::MainFont => (&config.main_font.font_path, config.main_font.font_index),
-      FontType::ItalicFont => (&config.italic_font.font_path, config.italic_font.font_index),
-      FontType::MathFont => (&config.math_font.font_path, config.math_font.font_index),
-      FontType::SansFont => (&config.sans_font.font_path, config.sans_font.font_index),
-      FontType::MainJapaneseFont => (
-        &config.main_japanese_font.font_path,
-        config.main_japanese_font.font_index,
+      FontType::SerifFont => (&config.serif_font.font_path, config.serif_font.font_index),
+      FontType::SerifBoldFont => (
+        &config.serif_bold_font.font_path,
+        config.serif_bold_font.font_index,
       ),
-      FontType::SansJapaneseFont => (
-        &config.sans_japanese_font.font_path,
-        config.sans_japanese_font.font_index,
+      FontType::SerifItalicFont => (
+        &config.serif_italic_font.font_path,
+        config.serif_italic_font.font_index,
+      ),
+      FontType::SerifBoldItalicFont => (
+        &config.serif_bold_italic_font.font_path,
+        config.serif_bold_italic_font.font_index,
+      ),
+      FontType::SansSerifFont => (
+        &config.sans_serif_font.font_path,
+        config.sans_serif_font.font_index,
+      ),
+      FontType::SansSerifBoldFont => (
+        &config.sans_serif_bold_font.font_path,
+        config.sans_serif_bold_font.font_index,
+      ),
+      FontType::SansSerifItalicFont => (
+        &config.sans_serif_italic_font.font_path,
+        config.sans_serif_italic_font.font_index,
+      ),
+      FontType::SansSerifBoldItalicFont => (
+        &config.sans_serif_bold_italic_font.font_path,
+        config.sans_serif_bold_italic_font.font_index,
+      ),
+      FontType::MonospaceFont => (
+        &config.monospace_font.font_path,
+        config.monospace_font.font_index,
+      ),
+      FontType::MonospaceBoldFont => (
+        &config.monospace_bold_font.font_path,
+        config.monospace_bold_font.font_index,
+      ),
+      FontType::MonospaceItalicFont => (
+        &config.monospace_italic_font.font_path,
+        config.monospace_italic_font.font_index,
+      ),
+      FontType::MonospaceBoldItalicFont => (
+        &config.monospace_bold_italic_font.font_path,
+        config.monospace_bold_italic_font.font_index,
+      ),
+      FontType::MathFont => (&config.math_font.font_path, config.math_font.font_index),
+      FontType::JapaneseSerifFont => (
+        &config.japanese_serif_font.font_path,
+        config.japanese_serif_font.font_index,
+      ),
+      FontType::JapaneseSerifBoldFont => (
+        &config.japanese_serif_bold_font.font_path,
+        config.japanese_serif_bold_font.font_index,
+      ),
+      FontType::JapaneseSansSerifFont => (
+        &config.japanese_sans_serif_font.font_path,
+        config.japanese_sans_serif_font.font_index,
+      ),
+      FontType::JapaneseSansSerifBoldFont => (
+        &config.japanese_sans_serif_bold_font.font_path,
+        config.japanese_sans_serif_bold_font.font_index,
+      ),
+      FontType::JapaneseMonospaceFont => (
+        &config.japanese_monospace_font.font_path,
+        config.japanese_monospace_font.font_index,
+      ),
+      FontType::JapaneseMonospaceBoldFont => (
+        &config.japanese_monospace_bold_font.font_path,
+        config.japanese_monospace_bold_font.font_index,
       ),
     }
   }
@@ -144,6 +258,8 @@ impl FontContext {
   ///
   /// 設定されたバリエーション軸がフォントの軸と一致し、
   /// 値が許容範囲内にあることを確認します。
+  /// また、フォントに存在する軸がすべて設定されていることも確認します。
+  /// 複数の軸を持つフォントに対応しています。
   ///
   /// # 引数
   ///
@@ -152,19 +268,22 @@ impl FontContext {
   ///
   /// # エラー
   ///
-  /// 未知の軸名または値が範囲外の場合
+  /// 未知の軸名、値が範囲外、またはフォントの軸が設定されていない場合
   fn validate_variation_axes(
     ttf_face: &ttf_parser::Face<'_>,
     config_variation_axes: &[read_config_file::VariationAxis],
   ) -> Result<(), FontContextError> {
-    for cfg_axis in config_variation_axes.iter() {
-      // 反復子の消費を避けるため、毎回新たに反復子を生成して探索
-      let maybe_axis = ttf_parser::Face::variation_axes(ttf_face)
-        .into_iter()
-        .find(|axis| cfg_axis.name.chars().collect::<Vec<char>>() == axis.tag.to_chars());
+    // フォントのすべての軸を一度取得してキャッシュ
+    let font_axes: Vec<_> = ttf_parser::Face::variation_axes(ttf_face)
+      .into_iter()
+      .collect();
 
-      let axis =
-        maybe_axis.ok_or_else(|| FontContextError::UnknownVariationAxis(cfg_axis.name.clone()))?;
+    // 設定された各軸を検証
+    for cfg_axis in config_variation_axes.iter() {
+      let axis = font_axes
+        .iter()
+        .find(|axis| cfg_axis.name.chars().collect::<Vec<char>>() == axis.tag.to_chars())
+        .ok_or_else(|| FontContextError::UnknownVariationAxis(cfg_axis.name.clone()))?;
 
       if !(axis.min_value..=axis.max_value).contains(&cfg_axis.value) {
         return Err(FontContextError::VariationValueOutOfRange {
@@ -172,6 +291,23 @@ impl FontContext {
           min: axis.min_value,
           max: axis.max_value,
           value: cfg_axis.value,
+        });
+      }
+    }
+
+    // フォントに存在する軸がすべて設定されているか確認
+    for font_axis in font_axes.iter() {
+      let axis_name: String = font_axis.tag.to_chars().into_iter().collect();
+      let is_configured = config_variation_axes
+        .iter()
+        .any(|cfg_axis| cfg_axis.name.chars().collect::<Vec<char>>() == font_axis.tag.to_chars());
+
+      if !is_configured {
+        return Err(FontContextError::UnconfiguredVariationAxis {
+          axis: axis_name,
+          default: font_axis.def_value,
+          min: font_axis.min_value,
+          max: font_axis.max_value,
         });
       }
     }
@@ -235,33 +371,97 @@ impl FontContext {
     if ttf_face.is_variable() {
       // フォント種別ごとのバリエーション軸設定を取得
       let config_variation_axes = match font_type {
-        FontType::MainFont => config
-          .main_font
+        FontType::SerifFont => config
+          .serif_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::ItalicFont => config
-          .italic_font
+        FontType::SerifBoldFont => config
+          .serif_bold_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SansFont => config
-          .sans_font
+        FontType::SerifItalicFont => config
+          .serif_italic_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::MainJapaneseFont => config
-          .main_japanese_font
+        FontType::SerifBoldItalicFont => config
+          .serif_bold_italic_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SansJapaneseFont => config
-          .sans_japanese_font
+        FontType::SansSerifFont => config
+          .sans_serif_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        // 数式フォントは現状設定に軸が無いが、バリアブルであれば必須とする
+        FontType::SansSerifBoldFont => config
+          .sans_serif_bold_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::SansSerifItalicFont => config
+          .sans_serif_italic_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::SansSerifBoldItalicFont => config
+          .sans_serif_bold_italic_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::MonospaceFont => config
+          .monospace_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::MonospaceBoldFont => config
+          .monospace_bold_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::MonospaceItalicFont => config
+          .monospace_italic_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::MonospaceBoldItalicFont => config
+          .monospace_bold_italic_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
         FontType::MathFont => return Err(FontContextError::MissingVariationAxes),
+        FontType::JapaneseSerifFont => config
+          .japanese_serif_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseSerifBoldFont => config
+          .japanese_serif_bold_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseSansSerifFont => config
+          .japanese_sans_serif_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseSansSerifBoldFont => config
+          .japanese_sans_serif_bold_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseMonospaceFont => config
+          .japanese_monospace_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseMonospaceBoldFont => config
+          .japanese_monospace_bold_font
+          .variation_axes
+          .as_ref()
+          .ok_or(FontContextError::MissingVariationAxes)?,
       };
 
       Self::validate_variation_axes(&ttf_face, config_variation_axes)?;
@@ -308,18 +508,25 @@ impl FontContext {
 /// それぞれのコンテキストを一元管理します。
 #[derive(Debug)]
 pub struct FontContexts {
-  /// メインフォントのコンテキスト
-  pub main_font_context: FontContext,
-  /// イタリックフォントのコンテキスト
-  pub italic_font_context: FontContext,
-  /// 数式フォントのコンテキスト
+  pub serif_font_context: FontContext,
+  pub serif_bold_font_context: FontContext,
+  pub serif_italic_font_context: FontContext,
+  pub serif_bold_italic_font_context: FontContext,
+  pub sans_serif_font_context: FontContext,
+  pub sans_serif_bold_font_context: FontContext,
+  pub sans_serif_italic_font_context: FontContext,
+  pub sans_serif_bold_italic_font_context: FontContext,
+  pub monospace_font_context: FontContext,
+  pub monospace_bold_font_context: FontContext,
+  pub monospace_italic_font_context: FontContext,
+  pub monospace_bold_italic_font_context: FontContext,
   pub math_font_context: FontContext,
-  /// サンセリフフォントのコンテキスト
-  pub sans_font_context: FontContext,
-  /// 日本語フォントのコンテキスト
-  pub main_japanese_font_context: FontContext,
-  /// サンセリフ日本語フォントのコンテキスト
-  pub sans_japanese_font_context: FontContext,
+  pub japanese_serif_font_context: FontContext,
+  pub japanese_serif_bold_font_context: FontContext,
+  pub japanese_sans_serif_font_context: FontContext,
+  pub japanese_sans_serif_bold_font_context: FontContext,
+  pub japanese_monospace_font_context: FontContext,
+  pub japanese_monospace_bold_font_context: FontContext,
 }
 
 impl FontContexts {
@@ -336,25 +543,71 @@ impl FontContexts {
   ///
   /// いずれかのフォントの初期化に失敗した場合。
   pub fn new(config: &Config) -> Result<Self, FontContextsError> {
-    let main_font_context = FontContext::new(config, FontType::MainFont)?;
-    let italic_font_context =
-      FontContext::new(config, FontType::ItalicFont).map_err(FontContextsError::ItalicFont)?;
+    let serif_font_context =
+      FontContext::new(config, FontType::SerifFont).map_err(FontContextsError::SerifFont)?;
+    let serif_bold_font_context = FontContext::new(config, FontType::SerifBoldFont)
+      .map_err(FontContextsError::SerifBoldFont)?;
+    let serif_italic_font_context = FontContext::new(config, FontType::SerifItalicFont)
+      .map_err(FontContextsError::SerifItalicFont)?;
+    let serif_bold_italic_font_context = FontContext::new(config, FontType::SerifBoldItalicFont)
+      .map_err(FontContextsError::SerifBoldItalicFont)?;
+    let sans_serif_font_context = FontContext::new(config, FontType::SansSerifFont)
+      .map_err(FontContextsError::SansSerifFont)?;
+    let sans_serif_bold_font_context = FontContext::new(config, FontType::SansSerifBoldFont)
+      .map_err(FontContextsError::SansSerifBoldFont)?;
+    let sans_serif_italic_font_context = FontContext::new(config, FontType::SansSerifItalicFont)
+      .map_err(FontContextsError::SansSerifItalicFont)?;
+    let sans_serif_bold_italic_font_context =
+      FontContext::new(config, FontType::SansSerifBoldItalicFont)
+        .map_err(FontContextsError::SansSerifBoldItalicFont)?;
+    let monospace_font_context = FontContext::new(config, FontType::MonospaceFont)
+      .map_err(FontContextsError::MonospaceFont)?;
+    let monospace_bold_font_context = FontContext::new(config, FontType::MonospaceBoldFont)
+      .map_err(FontContextsError::MonospaceBoldFont)?;
+    let monospace_italic_font_context = FontContext::new(config, FontType::MonospaceItalicFont)
+      .map_err(FontContextsError::MonospaceItalicFont)?;
+    let monospace_bold_italic_font_context =
+      FontContext::new(config, FontType::MonospaceBoldItalicFont)
+        .map_err(FontContextsError::MonospaceBoldItalicFont)?;
     let math_font_context =
       FontContext::new(config, FontType::MathFont).map_err(FontContextsError::MathFont)?;
-    let main_japanese_font_context = FontContext::new(config, FontType::MainJapaneseFont)
-      .map_err(FontContextsError::MainJapaneseFont)?;
-    let sans_font_context =
-      FontContext::new(config, FontType::SansFont).map_err(FontContextsError::SansFont)?;
-    let sans_japanese_font_context = FontContext::new(config, FontType::SansJapaneseFont)
-      .map_err(FontContextsError::SansJapaneseFont)?;
+    let japanese_serif_font_context = FontContext::new(config, FontType::JapaneseSerifFont)
+      .map_err(FontContextsError::JapaneseSerifFont)?;
+    let japanese_serif_bold_font_context =
+      FontContext::new(config, FontType::JapaneseSerifBoldFont)
+        .map_err(FontContextsError::JapaneseSerifBoldFont)?;
+    let japanese_sans_serif_font_context =
+      FontContext::new(config, FontType::JapaneseSansSerifFont)
+        .map_err(FontContextsError::JapaneseSansSerifFont)?;
+    let japanese_sans_serif_bold_font_context =
+      FontContext::new(config, FontType::JapaneseSansSerifBoldFont)
+        .map_err(FontContextsError::JapaneseSansSerifBoldFont)?;
+    let japanese_monospace_font_context = FontContext::new(config, FontType::JapaneseMonospaceFont)
+      .map_err(FontContextsError::JapaneseMonospaceFont)?;
+    let japanese_monospace_bold_font_context =
+      FontContext::new(config, FontType::JapaneseMonospaceBoldFont)
+        .map_err(FontContextsError::JapaneseMonospaceBoldFont)?;
 
     Ok(FontContexts {
-      main_font_context,
-      italic_font_context,
+      serif_font_context,
+      serif_bold_font_context,
+      serif_italic_font_context,
+      serif_bold_italic_font_context,
+      sans_serif_font_context,
+      sans_serif_bold_font_context,
+      sans_serif_italic_font_context,
+      sans_serif_bold_italic_font_context,
+      monospace_font_context,
+      monospace_bold_font_context,
+      monospace_italic_font_context,
+      monospace_bold_italic_font_context,
       math_font_context,
-      main_japanese_font_context,
-      sans_font_context,
-      sans_japanese_font_context,
+      japanese_serif_font_context,
+      japanese_serif_bold_font_context,
+      japanese_sans_serif_font_context,
+      japanese_sans_serif_bold_font_context,
+      japanese_monospace_font_context,
+      japanese_monospace_bold_font_context,
     })
   }
 }
@@ -363,18 +616,25 @@ impl FontContexts {
 ///
 /// 使用グリフのみを含むフォントサブセットを、各フォント種別ごとに保持します。
 pub struct FontSubsetBytes {
-  /// メイン（本文）フォントのサブセットデータ
-  pub main_font_subset: Vec<u8>,
-  /// イタリックフォントのサブセットデータ
-  pub italic_font_subset: Vec<u8>,
-  /// 数式フォントのサブセットデータ
+  pub serif_font_subset: Vec<u8>,
+  pub serif_bold_font_subset: Vec<u8>,
+  pub serif_italic_font_subset: Vec<u8>,
+  pub serif_bold_italic_font_subset: Vec<u8>,
+  pub sans_serif_font_subset: Vec<u8>,
+  pub sans_serif_bold_font_subset: Vec<u8>,
+  pub sans_serif_italic_font_subset: Vec<u8>,
+  pub sans_serif_bold_italic_font_subset: Vec<u8>,
+  pub monospace_font_subset: Vec<u8>,
+  pub monospace_bold_font_subset: Vec<u8>,
+  pub monospace_italic_font_subset: Vec<u8>,
+  pub monospace_bold_italic_font_subset: Vec<u8>,
   pub math_font_subset: Vec<u8>,
-  /// サンセリフ（英数）フォントのサブセットデータ
-  pub sans_font_subset: Vec<u8>,
-  /// メイン日本語フォントのサブセットデータ
-  pub main_japanese_font_subset: Vec<u8>,
-  /// サンセリフ日本語フォントのサブセットデータ
-  pub sans_japanese_font_subset: Vec<u8>,
+  pub japanese_serif_font_subset: Vec<u8>,
+  pub japanese_serif_bold_font_subset: Vec<u8>,
+  pub japanese_sans_serif_font_subset: Vec<u8>,
+  pub japanese_sans_serif_bold_font_subset: Vec<u8>,
+  pub japanese_monospace_font_subset: Vec<u8>,
+  pub japanese_monospace_bold_font_subset: Vec<u8>,
 }
 
 /// 単一フォントのサブセットを作成
@@ -394,18 +654,14 @@ pub struct FontSubsetBytes {
 /// # エラー
 ///
 /// インスタンス化またはサブセット処理中にエラーが発生した場合。
-fn subset_for<T>(
-  ctx: &FontContext,
-  used_gids: &T,
-  config: &Config,
-) -> Result<Vec<u8>, FontSubsetError>
+fn subset_for<T>(ctx: &FontContext, used_gids: &T) -> Result<Vec<u8>, FontSubsetError>
 where
   T: IntoIterator<Item = u16> + Clone,
   for<'a> &'a T: IntoIterator<Item = &'a u16>,
 {
   let used: Vec<u16> = used_gids.into_iter().copied().collect();
   let data: std::borrow::Cow<'static, [u8]> = if ctx.ttf_face.is_variable() {
-    std::borrow::Cow::Owned(create_font_instance(ctx, config)?)
+    std::borrow::Cow::Owned(create_font_instance(ctx)?)
   } else {
     std::borrow::Cow::Borrowed(ctx.data)
   };
@@ -433,46 +689,104 @@ where
 pub fn create_font_subset(
   font_contexts: &FontContexts,
   glyph_mappings: &GlyphMappings,
-  config: &Config,
 ) -> Result<FontSubsetBytes, FontSubsetError> {
-  let main_subset_bytes = subset_for(
-    &font_contexts.main_font_context,
-    &glyph_mappings.main_font.used_gids,
-    config,
+  let serif_font_subset = subset_for(
+    &font_contexts.serif_font_context,
+    &glyph_mappings.serif_font.used_gids,
   )?;
-  let italic_subset_bytes = subset_for(
-    &font_contexts.italic_font_context,
-    &glyph_mappings.italic_font.used_gids,
-    config,
+  let serif_bold_font_subset = subset_for(
+    &font_contexts.serif_bold_font_context,
+    &glyph_mappings.serif_bold_font.used_gids,
   )?;
-  let math_subset_bytes = subset_for(
+  let serif_italic_font_subset = subset_for(
+    &font_contexts.serif_italic_font_context,
+    &glyph_mappings.serif_italic_font.used_gids,
+  )?;
+  let serif_bold_italic_font_subset = subset_for(
+    &font_contexts.serif_bold_italic_font_context,
+    &glyph_mappings.serif_bold_italic_font.used_gids,
+  )?;
+  let sans_serif_font_subset = subset_for(
+    &font_contexts.sans_serif_font_context,
+    &glyph_mappings.sans_serif_font.used_gids,
+  )?;
+  let sans_serif_bold_font_subset = subset_for(
+    &font_contexts.sans_serif_bold_font_context,
+    &glyph_mappings.sans_serif_bold_font.used_gids,
+  )?;
+  let sans_serif_italic_font_subset = subset_for(
+    &font_contexts.sans_serif_italic_font_context,
+    &glyph_mappings.sans_serif_italic_font.used_gids,
+  )?;
+  let sans_serif_bold_italic_font_subset = subset_for(
+    &font_contexts.sans_serif_bold_italic_font_context,
+    &glyph_mappings.sans_serif_bold_italic_font.used_gids,
+  )?;
+  let monospace_font_subset = subset_for(
+    &font_contexts.monospace_font_context,
+    &glyph_mappings.monospace_font.used_gids,
+  )?;
+  let monospace_bold_font_subset = subset_for(
+    &font_contexts.monospace_bold_font_context,
+    &glyph_mappings.monospace_bold_font.used_gids,
+  )?;
+  let monospace_italic_font_subset = subset_for(
+    &font_contexts.monospace_italic_font_context,
+    &glyph_mappings.monospace_italic_font.used_gids,
+  )?;
+  let monospace_bold_italic_font_subset = subset_for(
+    &font_contexts.monospace_bold_italic_font_context,
+    &glyph_mappings.monospace_bold_italic_font.used_gids,
+  )?;
+  let math_font_subset = subset_for(
     &font_contexts.math_font_context,
     &glyph_mappings.math_font.used_gids,
-    config,
   )?;
-  let sans_subset_bytes = subset_for(
-    &font_contexts.sans_font_context,
-    &glyph_mappings.sans_font.used_gids,
-    config,
+  let japanese_serif_font_subset = subset_for(
+    &font_contexts.japanese_serif_font_context,
+    &glyph_mappings.japanese_serif_font.used_gids,
   )?;
-  let main_japanese_subset_bytes = subset_for(
-    &font_contexts.main_japanese_font_context,
-    &glyph_mappings.main_japanese_font.used_gids,
-    config,
+  let japanese_serif_bold_font_subset = subset_for(
+    &font_contexts.japanese_serif_bold_font_context,
+    &glyph_mappings.japanese_serif_bold_font.used_gids,
   )?;
-  let sans_japanese_subset_bytes = subset_for(
-    &font_contexts.sans_japanese_font_context,
-    &glyph_mappings.sans_japanese_font.used_gids,
-    config,
+  let japanese_sans_serif_font_subset = subset_for(
+    &font_contexts.japanese_sans_serif_font_context,
+    &glyph_mappings.japanese_sans_serif_font.used_gids,
+  )?;
+  let japanese_sans_serif_bold_font_subset = subset_for(
+    &font_contexts.japanese_sans_serif_bold_font_context,
+    &glyph_mappings.japanese_sans_serif_bold_font.used_gids,
+  )?;
+  let japanese_monospace_font_subset = subset_for(
+    &font_contexts.japanese_monospace_font_context,
+    &glyph_mappings.japanese_monospace_font.used_gids,
+  )?;
+  let japanese_monospace_bold_font_subset = subset_for(
+    &font_contexts.japanese_monospace_bold_font_context,
+    &glyph_mappings.japanese_monospace_bold_font.used_gids,
   )?;
 
   Ok(FontSubsetBytes {
-    main_font_subset: main_subset_bytes,
-    italic_font_subset: italic_subset_bytes,
-    math_font_subset: math_subset_bytes,
-    sans_font_subset: sans_subset_bytes,
-    main_japanese_font_subset: main_japanese_subset_bytes,
-    sans_japanese_font_subset: sans_japanese_subset_bytes,
+    serif_font_subset,
+    serif_bold_font_subset,
+    serif_italic_font_subset,
+    serif_bold_italic_font_subset,
+    sans_serif_font_subset,
+    sans_serif_bold_font_subset,
+    sans_serif_italic_font_subset,
+    sans_serif_bold_italic_font_subset,
+    monospace_font_subset,
+    monospace_bold_font_subset,
+    monospace_italic_font_subset,
+    monospace_bold_italic_font_subset,
+    math_font_subset,
+    japanese_serif_font_subset,
+    japanese_serif_bold_font_subset,
+    japanese_sans_serif_font_subset,
+    japanese_sans_serif_bold_font_subset,
+    japanese_monospace_font_subset,
+    japanese_monospace_bold_font_subset,
   })
 }
 
@@ -493,10 +807,7 @@ pub fn create_font_subset(
 /// # エラー
 ///
 /// インスタンス化処理中にエラーが発生した場合。
-fn create_font_instance(
-  font_context: &FontContext,
-  config: &Config,
-) -> Result<Vec<u8>, FontSubsetError> {
+fn create_font_instance(font_context: &FontContext) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(font_context.data);
   let font_data = scope
     .read::<allsorts::font_data::FontData<'_>>()
@@ -506,7 +817,7 @@ fn create_font_instance(
     .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
 
   // バリエーション軸の値を取得（初期化時に選択済みの軸を使用）
-  let axes = build_variation_axes(font_context, config)?;
+  let axes = build_variation_axes(font_context)?;
 
   // インスタンスを生成
   let (instance, _tuple) =
@@ -532,10 +843,7 @@ fn create_font_instance(
 /// # エラー
 ///
 /// バリエーション軸の設定が不足している場合。
-fn build_variation_axes(
-  font_context: &FontContext,
-  _config: &Config,
-) -> Result<Vec<Fixed>, FontSubsetError> {
+fn build_variation_axes(font_context: &FontContext) -> Result<Vec<Fixed>, FontSubsetError> {
   // フォント種別に応じた設定軸を取得するため、
   // font_context から使用フォントのパス・インデックスと一致する設定を探索
   // 既存の構造では FontContext に FontType が無いため、
