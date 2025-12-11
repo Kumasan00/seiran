@@ -9,12 +9,13 @@ version.workspace = true
 [dependencies]
 allsorts.workspace = true
 harfbuzz_rs.workspace = true
+harfrust.workspace = true
 pdf-writer.workspace = true
 rayon.workspace = true
 read_config_file = { path = "../read_config_file" }
-stypes = { path = "../stypes" }
 thiserror.workspace = true
 ttf-parser.workspace = true
+types = { path = "../types" }
 
 [lints]
 workspace = true

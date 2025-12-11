@@ -10,12 +10,13 @@ anyhow.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
 indexmap.workspace = true
+parser = { path = "../parser" }
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
 read_config_file = { path = "../read_config_file" }
-stypes = { path = "../stypes" }
 text = { path = "../text" }
 ttf-parser.workspace = true
+types = { path = "../types" }
 
 [lints]
 workspace = true

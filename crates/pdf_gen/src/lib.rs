@@ -6,9 +6,9 @@
 use std::collections::HashMap;
 
 use font::font_data::{FontData, FontDatas};
-use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types, types::UnicodeCmap};
+use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types::UnicodeCmap};
 use read_config_file::Config;
-use stypes::{AdvanceLists, CidToGidMaps, GlyphMappings, ToUnicodeCmaps};
+use types::{AdvanceLists, CidToGidMaps, GlyphMappings, ToUnicodeCmaps};
 
 // ===== 定数定義 =====
 
@@ -229,7 +229,7 @@ fn setup_single_font(
 
   // CID Font
   let mut cid_type2_font = pdf.cid_font(font_ids.cid_font_id);
-  cid_type2_font.subtype(types::CidFontType::Type2);
+  cid_type2_font.subtype(pdf_writer::types::CidFontType::Type2);
   cid_type2_font.base_font(font_name);
   cid_type2_font.system_info(create_adobe_system_info());
   cid_type2_font.font_descriptor(font_ids.font_descriptor_id);
@@ -243,7 +243,7 @@ fn setup_single_font(
   // Font Descriptor
   let mut font_descriptor = pdf.font_descriptor(font_ids.font_descriptor_id);
   font_descriptor.name(font_name);
-  font_descriptor.flags(types::FontFlags::SYMBOLIC);
+  font_descriptor.flags(pdf_writer::types::FontFlags::SYMBOLIC);
   font_descriptor.italic_angle(font_info.italic_angle);
   font_descriptor.bbox(font_info.pdf_writer_rect());
   font_descriptor.ascent(font_info.ascender);
@@ -531,7 +531,7 @@ fn setup_font_streams(
   font_ids: &FontIds,
   font_data: &[u8],
   cid_to_gid_map: &[u8],
-  to_unicode_cmap: types::UnicodeCmap,
+  to_unicode_cmap: pdf_writer::types::UnicodeCmap,
 ) {
   pdf.stream(font_ids.cid_to_gid_map_id, cid_to_gid_map);
   pdf.cmap(
@@ -600,8 +600,8 @@ fn setup_page(
 /// Adobe-Identity SystemInfoを作成
 ///
 /// CIDフォントに使用する標準的なAdobe-Identity-0システム情報を生成します。
-fn create_adobe_system_info() -> types::SystemInfo<'static> {
-  types::SystemInfo {
+fn create_adobe_system_info() -> pdf_writer::types::SystemInfo<'static> {
+  pdf_writer::types::SystemInfo {
     registry: Str(ADOBE_REGISTRY),
     ordering: Str(ADOBE_ORDERING),
     supplement: ADOBE_SUPPLEMENT,
@@ -611,8 +611,8 @@ fn create_adobe_system_info() -> types::SystemInfo<'static> {
 /// ToUnicode CMap用のSystemInfoを作成
 ///
 /// ToUnicode CMapに使用するカスタムシステム情報を生成します。
-fn create_to_unicode_system_info() -> types::SystemInfo<'static> {
-  types::SystemInfo {
+fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
+  pdf_writer::types::SystemInfo {
     registry: Str(TO_UNICODE_REGISTRY),
     ordering: Str(TO_UNICODE_ORDERING),
     supplement: TO_UNICODE_SUPPLEMENT,

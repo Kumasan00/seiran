@@ -7,7 +7,7 @@ pub mod font_context;
 pub mod font_data;
 
 use font_data::FontDatas;
-use stypes::GlyphMappings;
+use types::GlyphMappings;
 // 定数
 
 /// .notdef グリフのグリフID

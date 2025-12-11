@@ -3,17 +3,14 @@ authors.workspace = true
 description.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "text"
+name = "types"
+readme.workspace = true
+repository.workspace = true
 version.workspace = true
 
 [dependencies]
-font = { path = "../font" }
-harfbuzz_rs.workspace = true
 indexmap.workspace = true
-lazy-regex.workspace = true
 pdf-writer.workspace = true
-read_config_file = { path = "../read_config_file" }
-types = { path = "../types" }
 
 [lints]
 workspace = true

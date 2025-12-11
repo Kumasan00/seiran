@@ -4,6 +4,7 @@
 //! 指定されたフォントを使用してPDFドキュメントを生成します。
 //! フォントのサブセット化、テキストシェーピング、グリフマッピングを処理します。
 
+#[allow(unused_imports)]
 use std::{
   fs,
   fs::File,
@@ -12,13 +13,15 @@ use std::{
   result,
 };
 
+#[allow(unused_imports)]
 use font::{
   self,
   font_context::{self, FontContexts},
   font_data,
 };
-use stypes::GlyphMappings;
 use ttf_parser::Face;
+#[allow(unused_imports)]
+use types::GlyphMappings;
 
 /// アプリケーションのメインエントリーポイント
 ///
@@ -69,51 +72,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// ファイル読み込み、フォント処理、PDF生成のいずれかで失敗した場合。
 fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
   let config = read_config_file::read_config_file()?;
+  println!("{}", config.name);
 
-  let text_lines = read_file(&file_path)?;
-  let mut font_contexts = FontContexts::new(&config)?;
-  let mut glyph_mappings = GlyphMappings::new();
+  parser::text_parser(&file_path)?;
 
-  let pdf_content =
-    text::process_text_lines(text_lines, &mut font_contexts, &mut glyph_mappings, &config)?;
+  // let text_lines = read_file(&file_path)?;
+  // let mut font_contexts = FontContexts::new(&config)?;
+  // let mut glyph_mappings = GlyphMappings::new();
 
-  let subset_bytes = font_context::create_font_subset(&font_contexts, &glyph_mappings)?;
+  // let pdf_content =
+  //   text::process_text_lines(text_lines, &mut font_contexts, &mut glyph_mappings, &config)?;
 
-  let font_datas = font_data::analyze_subset_font(&subset_bytes)?;
+  // let subset_bytes = font_context::create_font_subset(&font_contexts, &glyph_mappings)?;
 
-  font::insert_notdef_advance_widths(&mut glyph_mappings, &font_datas);
+  // let font_datas = font_data::analyze_subset_font(&subset_bytes)?;
 
-  pdf_gen::pdf_gen(
-    &subset_bytes,
-    &font_datas,
-    &glyph_mappings,
-    pdf_content,
-    &config,
-  )?;
+  // font::insert_notdef_advance_widths(&mut glyph_mappings, &font_datas);
 
-  println!("PDF generated");
+  // pdf_gen::pdf_gen(
+  //   &subset_bytes,
+  //   &font_datas,
+  //   &glyph_mappings,
+  //   pdf_content,
+  //   &config,
+  // )?;
+
+  // println!("PDF generated");
   Ok(())
-}
-
-/// ファイルを読み込み、行のイテレータを返す
-///
-/// 指定されたパスのファイルを開き、バッファリングされた行単位の
-/// イテレータを返します。
-///
-/// # 引数
-///
-/// * `input_file_path` - 読み込むファイルのパス
-///
-/// # 戻り値
-///
-/// ファイルの各行を含む`io::Lines`イテレータを返します。
-///
-/// # エラー
-///
-/// ファイルのオープンに失敗した場合にエラーを返します。
-fn read_file<P: AsRef<Path>>(input_file_path: P) -> io::Result<io::Lines<BufReader<File>>> {
-  let file = File::open(input_file_path)?;
-  Ok(BufReader::new(file).lines())
 }
 
 /// TTCファイルから各フォントの名前情報を取得して表示

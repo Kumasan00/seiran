@@ -4,7 +4,7 @@ use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::insta
 use harfbuzz_rs::Font;
 use rayon::prelude::*;
 use read_config_file::Config;
-use stypes::GlyphMappings;
+use types::GlyphMappings;
 
 /// フォントコンテキスト初期化・設定に関連するエラー
 #[derive(thiserror::Error, Debug)]

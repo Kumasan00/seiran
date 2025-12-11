@@ -14,11 +14,7 @@ use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
 use indexmap::IndexSet;
 use pdf_writer::{Content, Finish, Name, Str};
 use read_config_file::Config;
-use stypes::{GlyphMapping, GlyphMappings};
-
-mod image;
-mod mathtext;
-mod text;
+use types::{GlyphMapping, GlyphMappings};
 
 // 定数
 
@@ -75,6 +71,7 @@ pub fn process_text_lines(
   glyph_mappings: &mut GlyphMappings,
   config: &Config,
 ) -> Result<Vec<Content>, Box<dyn std::error::Error>> {
+  let mut contents = Vec::new();
   let units_per_em = font_contexts.serif_font_context.ttf_face.units_per_em() as f32;
   let main_font_context = &mut font_contexts.serif_font_context;
   let glyph_mapping = &mut glyph_mappings.serif_font;
@@ -115,7 +112,9 @@ pub fn process_text_lines(
   }
 
   pdf_content.end_text();
-  Ok(vec![pdf_content])
+  contents.push(pdf_content);
+
+  Ok(contents)
 }
 
 /// 単一行のテキストを処理してコンテンツストリームに追加
@@ -233,7 +232,7 @@ fn process_single_line(
 /// # 戻り値
 ///
 /// シェーピング結果のベクタを返します。各要素は1つのグリフに対応します。
-pub fn shaping(
+fn shaping(
   text: &str,
   hb_font: &mut Owned<Font<'_>>,
   gid_to_cid: &mut HashMap<u16, u16>,
