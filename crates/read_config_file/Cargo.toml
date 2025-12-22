@@ -9,7 +9,9 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+miette = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 toml = { workspace = true }
 
 [lints]

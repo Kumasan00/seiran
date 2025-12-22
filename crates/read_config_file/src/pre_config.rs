@@ -14,44 +14,51 @@ pub(crate) struct PreConfig {
   pub name: String,
   /// PDF設定
   pub pdf: PrePdfConfig,
+  /// フォント設定群
+  pub font_configs: PreFontConfigs,
+}
+
+/// プリプロセス済みのフォント設定群
+#[derive(Deserialize, Debug)]
+pub(crate) struct PreFontConfigs {
   /// セリフフォント設定
-  pub serif_font: PreFontConfig,
+  pub serif: PreFontConfig,
   /// セリフボールドフォント設定
-  pub serif_bold_font: PreFontConfig,
+  pub serif_bold: PreFontConfig,
   /// セリフイタリックフォント設定
-  pub serif_italic_font: PreFontConfig,
+  pub serif_italic: PreFontConfig,
   /// セリフボールドイタリックフォント設定
-  pub serif_bold_italic_font: PreFontConfig,
+  pub serif_bold_italic: PreFontConfig,
   /// サンセリフフォント設定
-  pub sans_serif_font: PreFontConfig,
+  pub sans_serif: PreFontConfig,
   /// サンセリフボールドフォント設定
-  pub sans_serif_bold_font: PreFontConfig,
+  pub sans_serif_bold: PreFontConfig,
   /// サンセリフイタリックフォント設定
-  pub sans_serif_italic_font: PreFontConfig,
+  pub sans_serif_italic: PreFontConfig,
   /// サンセリフボールドイタリックフォント設定
-  pub sans_serif_bold_italic_font: PreFontConfig,
+  pub sans_serif_bold_italic: PreFontConfig,
   /// モノスペースフォント設定
-  pub monospace_font: PreFontConfig,
+  pub monospace: PreFontConfig,
   /// モノスペースボールドフォント設定
-  pub monospace_bold_font: PreFontConfig,
+  pub monospace_bold: PreFontConfig,
   /// モノスペースイタリックフォント設定
-  pub monospace_italic_font: PreFontConfig,
+  pub monospace_italic: PreFontConfig,
   /// モノスペースボールドイタリックフォント設定
-  pub monospace_bold_italic_font: PreFontConfig,
+  pub monospace_bold_italic: PreFontConfig,
   /// 数式フォント設定
-  pub math_font: PreMathFontConfig,
+  pub math: PreFontConfig,
   /// セリフ日本語フォント設定
-  pub japanese_serif_font: PreFontConfig,
+  pub japanese_serif: PreFontConfig,
   /// セリフ日本語ボールドフォント設定
-  pub japanese_serif_bold_font: PreFontConfig,
+  pub japanese_serif_bold: PreFontConfig,
   /// サンセリフ日本語フォント設定
-  pub japanese_sans_serif_font: PreFontConfig,
+  pub japanese_sans_serif: PreFontConfig,
   /// サンセリフ日本語ボールドフォント設定
-  pub japanese_sans_serif_bold_font: PreFontConfig,
+  pub japanese_sans_serif_bold: PreFontConfig,
   /// モノスペース日本語フォント設定
-  pub japanese_monospace_font: PreFontConfig,
+  pub japanese_monospace: PreFontConfig,
   /// モノスペース日本語ボールドフォント設定
-  pub japanese_monospace_bold_font: PreFontConfig,
+  pub japanese_monospace_bold: PreFontConfig,
 }
 
 /// プリプロセス済みのフォント設定
@@ -65,6 +72,10 @@ pub(crate) struct PreFontConfig {
   pub font_index: u32,
   /// バリエーション軸の設定
   pub variation_axes: Option<Vec<PreVariationAxis>>,
+  /// フォントのscriptシステムの指定
+  pub script: Option<String>,
+  /// フォントのlanguageシステムの指定
+  pub language: Option<String>,
 }
 
 /// プリプロセス済みのバリエーション軸設定
@@ -75,24 +86,6 @@ pub(crate) struct PreVariationAxis {
   /// 軸の値
   pub value: f32,
 }
-
-/// プリプロセス済みの数式フォント設定
-#[derive(Deserialize, Debug)]
-pub(crate) struct PreMathFontConfig {
-  /// フォント名
-  pub font_name: String,
-  /// フォントファイルのパス（文字列）
-  pub font_path: PathBuf,
-  /// フォントコレクション内のインデックス
-  #[serde(default = "default_font_index")]
-  pub font_index: u32,
-}
-
-/// デフォルトのフォントインデックスを返す
-///
-/// 設定ファイルでフォントインデックスが省略された場合にSerdeによって使用されます。
-/// 単一フォントファイルまたはコレクションの最初のフォントを示す0を返します。
-fn default_font_index() -> u32 { 0 }
 
 /// プリプロセス済みのPDF設定
 #[derive(Deserialize, Debug)]

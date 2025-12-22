@@ -9,7 +9,9 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+memchr.workspace = true
 memmap2.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

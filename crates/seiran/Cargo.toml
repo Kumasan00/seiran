@@ -2,7 +2,7 @@
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "app"
+name = "seiran"
 version.workspace = true
 
 [dependencies]
@@ -10,11 +10,14 @@ anyhow.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
 indexmap.workspace = true
+miette = { workspace = true }
 parser = { path = "../parser" }
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
 read_config_file = { path = "../read_config_file" }
 text = { path = "../text" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 ttf-parser.workspace = true
 types = { path = "../types" }
 

@@ -1,11 +1,11 @@
 [workspace]
 members = [
-  "crates/app",
   "crates/cli",
   "crates/font",
   "crates/parser",
   "crates/pdf_gen",
   "crates/read_config_file",
+  "crates/seiran",
   "crates/text",
   "crates/types",
 ]
@@ -24,21 +24,25 @@ repository = "https://github.com/Kumasan00/seiran"
 version = "0.1.0"
 
 [workspace.dependencies]
-allsorts = "0.15.1"
+allsorts = "0.16.1"
 anyhow = { version = "1.0.100", features = ["backtrace", "std"] }
 ariadne = "0.1.1"
-chumsky = "0.11.2"
 clap = { version = "4.5.53", features = ["derive"] }
 harfbuzz_rs = "2.0.1"
 harfrust = "0.4.1"
 indexmap = "2.12.1"
 lazy-regex = "3.4.2"
+memchr = "2.7.6"
 memmap2 = "0.9.9"
+miette = { version = "7.6.0", features = ["fancy"] }
 pdf-writer = "0.14.0"
 rayon = "1.11.0"
+read-fonts = "0.36.0"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.17"
-toml = "0.9.8"
+toml = "0.9.10"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 ttf-parser = "0.25.1"
 
 [workspace.lints.clippy]
@@ -48,3 +52,4 @@ needless_return = "allow"
 debug = false
 lto = true
 opt-level = 3
+strip = "symbols"

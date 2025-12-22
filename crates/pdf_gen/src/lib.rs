@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use font::font_data::{FontData, FontDatas};
-use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, types::UnicodeCmap};
-use read_config_file::Config;
+use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, types::UnicodeCmap};
+use read_config_file::{Config, FontConfigs};
 use types::{AdvanceLists, CidToGidMaps, GlyphMappings, ToUnicodeCmaps};
 
 // ===== 定数定義 =====
@@ -30,7 +30,7 @@ struct FontSetupData<'a> {
   advance_lists: &'a AdvanceLists,
   cid_to_gid_maps: &'a CidToGidMaps,
   to_unicode_cmaps: ToUnicodeCmaps,
-  font_subset_bytes: &'a font::font_context::FontSubsetBytes,
+  font_subset_bytes: &'a font::subset::FontSubsetBytes,
 }
 
 /// フォント設定を1件分まとめて扱うためのローカル構造体
@@ -162,11 +162,11 @@ impl PdfIds {
 ///
 /// ファイルの書き込みに失敗した場合にエラーを返します。
 pub fn pdf_gen(
-  font_subset_bytes: &font::font_context::FontSubsetBytes,
+  font_subset_bytes: &font::subset::FontSubsetBytes,
   font_info: &FontDatas,
   glyph_mappings: &GlyphMappings,
-  pdf_contents: Vec<pdf_writer::Content>,
-  config: &read_config_file::Config,
+  pdf_contents: Vec<Content>,
+  config: &Config,
 ) -> std::io::Result<()> {
   let mut pdf = Pdf::new();
   let page_count = pdf_contents.len();
@@ -174,7 +174,7 @@ pub fn pdf_gen(
 
   let advance_lists = build_advance_lists(glyph_mappings, font_info);
   let cid_to_gid_maps = build_cid_to_gid_maps(glyph_mappings);
-  let to_unicode_cmaps = create_to_unicode_cmaps(config, glyph_mappings);
+  let to_unicode_cmaps = create_to_unicode_cmaps(&config.font_configs, glyph_mappings);
 
   setup_catalog_and_pages(&mut pdf, &ids);
 
@@ -185,7 +185,7 @@ pub fn pdf_gen(
     to_unicode_cmaps,
     font_subset_bytes,
   };
-  setup_all_fonts(&mut pdf, &ids, config, font_info, font_setup_data);
+  setup_all_fonts(&mut pdf, &ids, &config.font_configs, font_info, font_setup_data);
 
   // 各ページを設定(全フォントをリソースに登録)
   for (i, pdf_content) in pdf_contents.into_iter().enumerate() {
@@ -202,10 +202,7 @@ pub fn pdf_gen(
 /// 全ページをページツリーに登録します。
 fn setup_catalog_and_pages(pdf: &mut Pdf, ids: &PdfIds) {
   pdf.catalog(ids.catalog_id).pages(ids.page_tree_id);
-  pdf
-    .pages(ids.page_tree_id)
-    .kids(ids.page_ids.iter().copied())
-    .count(ids.page_ids.len() as i32);
+  pdf.pages(ids.page_tree_id).kids(ids.page_ids.iter().copied()).count(ids.page_ids.len() as i32);
 }
 
 /// 単一フォントオブジェクトを設定
@@ -261,121 +258,121 @@ fn setup_single_font(
 fn setup_all_fonts(
   pdf: &mut Pdf,
   ids: &PdfIds,
-  config: &Config,
+  font_configs: &FontConfigs,
   font_datas: &FontDatas,
   data: FontSetupData,
 ) {
   let fonts: [LocalFont; 19] = [
     LocalFont {
-      name_bytes: config.serif_font.font_name.as_bytes(),
+      name_bytes: font_configs.serif.font_name.as_bytes(),
       ids: &ids.serif_font,
       data: &font_datas.serif_font_data,
       advances: &data.advance_lists.serif_font,
     },
     LocalFont {
-      name_bytes: config.serif_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.serif_bold.font_name.as_bytes(),
       ids: &ids.serif_bold_font,
       data: &font_datas.serif_bold_font_data,
       advances: &data.advance_lists.serif_bold_font,
     },
     LocalFont {
-      name_bytes: config.serif_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.serif_italic.font_name.as_bytes(),
       ids: &ids.serif_italic_font,
       data: &font_datas.serif_italic_font_data,
       advances: &data.advance_lists.serif_italic_font,
     },
     LocalFont {
-      name_bytes: config.serif_bold_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.serif_bold_italic.font_name.as_bytes(),
       ids: &ids.serif_bold_italic_font,
       data: &font_datas.serif_bold_italic_font_data,
       advances: &data.advance_lists.serif_bold_italic_font,
     },
     LocalFont {
-      name_bytes: config.sans_serif_font.font_name.as_bytes(),
+      name_bytes: font_configs.sans_serif.font_name.as_bytes(),
       ids: &ids.sans_serif_font,
       data: &font_datas.sans_serif_font_data,
       advances: &data.advance_lists.sans_serif_font,
     },
     LocalFont {
-      name_bytes: config.sans_serif_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.sans_serif_bold.font_name.as_bytes(),
       ids: &ids.sans_serif_bold_font,
       data: &font_datas.sans_serif_bold_font_data,
       advances: &data.advance_lists.sans_serif_bold_font,
     },
     LocalFont {
-      name_bytes: config.sans_serif_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.sans_serif_italic.font_name.as_bytes(),
       ids: &ids.sans_serif_italic_font,
       data: &font_datas.sans_serif_italic_font_data,
       advances: &data.advance_lists.sans_serif_italic_font,
     },
     LocalFont {
-      name_bytes: config.sans_serif_bold_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.sans_serif_bold_italic.font_name.as_bytes(),
       ids: &ids.sans_serif_bold_italic_font,
       data: &font_datas.sans_serif_bold_italic_font_data,
       advances: &data.advance_lists.sans_serif_bold_italic_font,
     },
     LocalFont {
-      name_bytes: config.monospace_font.font_name.as_bytes(),
+      name_bytes: font_configs.monospace.font_name.as_bytes(),
       ids: &ids.monospace_font,
       data: &font_datas.monospace_font_data,
       advances: &data.advance_lists.monospace_font,
     },
     LocalFont {
-      name_bytes: config.monospace_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.monospace_bold.font_name.as_bytes(),
       ids: &ids.monospace_bold_font,
       data: &font_datas.monospace_bold_font_data,
       advances: &data.advance_lists.monospace_bold_font,
     },
     LocalFont {
-      name_bytes: config.monospace_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.monospace_italic.font_name.as_bytes(),
       ids: &ids.monospace_italic_font,
       data: &font_datas.monospace_italic_font_data,
       advances: &data.advance_lists.monospace_italic_font,
     },
     LocalFont {
-      name_bytes: config.monospace_bold_italic_font.font_name.as_bytes(),
+      name_bytes: font_configs.monospace_bold_italic.font_name.as_bytes(),
       ids: &ids.monospace_bold_italic_font,
       data: &font_datas.monospace_bold_italic_font_data,
       advances: &data.advance_lists.monospace_bold_italic_font,
     },
     LocalFont {
-      name_bytes: config.math_font.font_name.as_bytes(),
+      name_bytes: font_configs.math.font_name.as_bytes(),
       ids: &ids.math_font,
       data: &font_datas.math_font_data,
       advances: &data.advance_lists.math_font,
     },
     LocalFont {
-      name_bytes: config.japanese_serif_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_serif.font_name.as_bytes(),
       ids: &ids.japanese_serif_font,
       data: &font_datas.japanese_serif_font_data,
       advances: &data.advance_lists.japanese_serif_font,
     },
     LocalFont {
-      name_bytes: config.japanese_serif_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_serif_bold.font_name.as_bytes(),
       ids: &ids.japanese_serif_bold_font,
       data: &font_datas.japanese_serif_bold_font_data,
       advances: &data.advance_lists.japanese_serif_bold_font,
     },
     LocalFont {
-      name_bytes: config.japanese_sans_serif_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_sans_serif.font_name.as_bytes(),
       ids: &ids.japanese_sans_serif_font,
       data: &font_datas.japanese_sans_serif_font_data,
       advances: &data.advance_lists.japanese_sans_serif_font,
     },
     LocalFont {
-      name_bytes: config.japanese_sans_serif_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_sans_serif_bold.font_name.as_bytes(),
       ids: &ids.japanese_sans_serif_bold_font,
       data: &font_datas.japanese_sans_serif_bold_font_data,
       advances: &data.advance_lists.japanese_sans_serif_bold_font,
     },
     LocalFont {
-      name_bytes: config.japanese_monospace_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_monospace.font_name.as_bytes(),
       ids: &ids.japanese_monospace_font,
       data: &font_datas.japanese_monospace_font_data,
       advances: &data.advance_lists.japanese_monospace_font,
     },
     LocalFont {
-      name_bytes: config.japanese_monospace_bold_font.font_name.as_bytes(),
+      name_bytes: font_configs.japanese_monospace_bold.font_name.as_bytes(),
       ids: &ids.japanese_monospace_bold_font,
       data: &font_datas.japanese_monospace_bold_font_data,
       advances: &data.advance_lists.japanese_monospace_bold_font,
@@ -534,10 +531,7 @@ fn setup_font_streams(
   to_unicode_cmap: pdf_writer::types::UnicodeCmap,
 ) {
   pdf.stream(font_ids.cid_to_gid_map_id, cid_to_gid_map);
-  pdf.cmap(
-    font_ids.to_unicode_cmap_id,
-    to_unicode_cmap.finish().as_slice(),
-  );
+  pdf.cmap(font_ids.to_unicode_cmap_id, to_unicode_cmap.finish().as_slice());
   pdf.stream(font_ids.font_file_id, font_data);
 }
 
@@ -565,29 +559,26 @@ fn setup_page(
   page
     .resources()
     .fonts()
+    .pair(Name(config.font_configs.serif.font_name.as_bytes()), ids.serif_font.font_id)
     .pair(
-      Name(config.serif_font.font_name.as_bytes()),
-      ids.serif_font.font_id,
+      Name(config.font_configs.serif_bold.font_name.as_bytes()),
+      ids.serif_bold_font.font_id,
     )
     .pair(
-      Name(config.serif_italic_font.font_name.as_bytes()),
+      Name(config.font_configs.serif_italic.font_name.as_bytes()),
       ids.serif_italic_font.font_id,
     )
     .pair(
-      Name(config.math_font.font_name.as_bytes()),
-      ids.math_font.font_id,
+      Name(config.font_configs.serif_bold_italic.font_name.as_bytes()),
+      ids.serif_bold_italic_font.font_id,
     )
     .pair(
-      Name(config.sans_serif_font.font_name.as_bytes()),
+      Name(config.font_configs.sans_serif.font_name.as_bytes()),
       ids.sans_serif_font.font_id,
     )
     .pair(
-      Name(config.japanese_serif_font.font_name.as_bytes()),
-      ids.japanese_serif_font.font_id,
-    )
-    .pair(
-      Name(config.japanese_sans_serif_font.font_name.as_bytes()),
-      ids.japanese_sans_serif_font.font_id,
+      Name(config.font_configs.sans_serif_bold.font_name.as_bytes()),
+      ids.sans_serif_bold_font.font_id,
     );
 
   page.finish();
@@ -651,21 +642,13 @@ fn create_to_unicode_cmap(font_name: &str, cid_to_chars: HashMap<u16, Vec<char>>
 /// PDFで使用するアドバンス幅のリストを生成します。
 fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) -> AdvanceLists {
   AdvanceLists {
-    serif_font: font_mappings
-      .serif_font
-      .build_advance_list(font_datas.serif_font_data.upem),
-    serif_bold_font: font_mappings
-      .serif_bold_font
-      .build_advance_list(font_datas.serif_bold_font_data.upem),
-    serif_italic_font: font_mappings
-      .serif_italic_font
-      .build_advance_list(font_datas.serif_italic_font_data.upem),
+    serif_font: font_mappings.serif_font.build_advance_list(font_datas.serif_font_data.upem),
+    serif_bold_font: font_mappings.serif_bold_font.build_advance_list(font_datas.serif_bold_font_data.upem),
+    serif_italic_font: font_mappings.serif_italic_font.build_advance_list(font_datas.serif_italic_font_data.upem),
     serif_bold_italic_font: font_mappings
       .serif_bold_italic_font
       .build_advance_list(font_datas.serif_bold_italic_font_data.upem),
-    sans_serif_font: font_mappings
-      .sans_serif_font
-      .build_advance_list(font_datas.sans_serif_font_data.upem),
+    sans_serif_font: font_mappings.sans_serif_font.build_advance_list(font_datas.sans_serif_font_data.upem),
     sans_serif_bold_font: font_mappings
       .sans_serif_bold_font
       .build_advance_list(font_datas.sans_serif_bold_font_data.upem),
@@ -675,24 +658,16 @@ fn build_advance_lists(font_mappings: &GlyphMappings, font_datas: &FontDatas) ->
     sans_serif_bold_italic_font: font_mappings
       .sans_serif_bold_italic_font
       .build_advance_list(font_datas.sans_serif_bold_italic_font_data.upem),
-    monospace_font: font_mappings
-      .monospace_font
-      .build_advance_list(font_datas.monospace_font_data.upem),
-    monospace_bold_font: font_mappings
-      .monospace_bold_font
-      .build_advance_list(font_datas.monospace_bold_font_data.upem),
+    monospace_font: font_mappings.monospace_font.build_advance_list(font_datas.monospace_font_data.upem),
+    monospace_bold_font: font_mappings.monospace_bold_font.build_advance_list(font_datas.monospace_bold_font_data.upem),
     monospace_italic_font: font_mappings
       .monospace_italic_font
       .build_advance_list(font_datas.monospace_italic_font_data.upem),
     monospace_bold_italic_font: font_mappings
       .monospace_bold_italic_font
       .build_advance_list(font_datas.monospace_bold_italic_font_data.upem),
-    math_font: font_mappings
-      .math_font
-      .build_advance_list(font_datas.math_font_data.upem),
-    japanese_serif_font: font_mappings
-      .japanese_serif_font
-      .build_advance_list(font_datas.japanese_serif_font_data.upem),
+    math_font: font_mappings.math_font.build_advance_list(font_datas.math_font_data.upem),
+    japanese_serif_font: font_mappings.japanese_serif_font.build_advance_list(font_datas.japanese_serif_font_data.upem),
     japanese_serif_bold_font: font_mappings
       .japanese_serif_bold_font
       .build_advance_list(font_datas.japanese_serif_bold_font_data.upem),
@@ -724,30 +699,18 @@ fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
     sans_serif_font: font_mappings.sans_serif_font.build_cid_to_gid_map(),
     sans_serif_bold_font: font_mappings.sans_serif_bold_font.build_cid_to_gid_map(),
     sans_serif_italic_font: font_mappings.sans_serif_italic_font.build_cid_to_gid_map(),
-    sans_serif_bold_italic_font: font_mappings
-      .sans_serif_bold_italic_font
-      .build_cid_to_gid_map(),
+    sans_serif_bold_italic_font: font_mappings.sans_serif_bold_italic_font.build_cid_to_gid_map(),
     monospace_font: font_mappings.monospace_font.build_cid_to_gid_map(),
     monospace_bold_font: font_mappings.monospace_bold_font.build_cid_to_gid_map(),
     monospace_italic_font: font_mappings.monospace_italic_font.build_cid_to_gid_map(),
-    monospace_bold_italic_font: font_mappings
-      .monospace_bold_italic_font
-      .build_cid_to_gid_map(),
+    monospace_bold_italic_font: font_mappings.monospace_bold_italic_font.build_cid_to_gid_map(),
     math_font: font_mappings.math_font.build_cid_to_gid_map(),
     japanese_serif_font: font_mappings.japanese_serif_font.build_cid_to_gid_map(),
-    japanese_serif_bold_font: font_mappings
-      .japanese_serif_bold_font
-      .build_cid_to_gid_map(),
-    japanese_sans_serif_font: font_mappings
-      .japanese_sans_serif_font
-      .build_cid_to_gid_map(),
-    japanese_sans_serif_bold_font: font_mappings
-      .japanese_sans_serif_bold_font
-      .build_cid_to_gid_map(),
+    japanese_serif_bold_font: font_mappings.japanese_serif_bold_font.build_cid_to_gid_map(),
+    japanese_sans_serif_font: font_mappings.japanese_sans_serif_font.build_cid_to_gid_map(),
+    japanese_sans_serif_bold_font: font_mappings.japanese_sans_serif_bold_font.build_cid_to_gid_map(),
     japanese_monospace_font: font_mappings.japanese_monospace_font.build_cid_to_gid_map(),
-    japanese_monospace_bold_font: font_mappings
-      .japanese_monospace_bold_font
-      .build_cid_to_gid_map(),
+    japanese_monospace_bold_font: font_mappings.japanese_monospace_bold_font.build_cid_to_gid_map(),
   }
 }
 
@@ -755,95 +718,77 @@ fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
 ///
 /// 19種類のフォント全てに対してToUnicode CMapを生成し、
 /// PDF内でのテキスト検索とコピー機能を可能にします。
-fn create_to_unicode_cmaps(config: &Config, font_mappings: &GlyphMappings) -> ToUnicodeCmaps {
+fn create_to_unicode_cmaps(font_configs: &FontConfigs, font_mappings: &GlyphMappings) -> ToUnicodeCmaps {
   ToUnicodeCmaps {
-    serif_font: create_to_unicode_cmap(
-      &config.serif_font.font_name,
-      font_mappings.serif_font.cid_to_chars.clone(),
-    ),
+    serif_font: create_to_unicode_cmap(&font_configs.serif.font_name, font_mappings.serif_font.cid_to_chars.clone()),
     serif_bold_font: create_to_unicode_cmap(
-      &config.serif_bold_font.font_name,
+      &font_configs.serif_bold.font_name,
       font_mappings.serif_bold_font.cid_to_chars.clone(),
     ),
     serif_italic_font: create_to_unicode_cmap(
-      &config.serif_italic_font.font_name,
+      &font_configs.serif_italic.font_name,
       font_mappings.serif_italic_font.cid_to_chars.clone(),
     ),
     serif_bold_italic_font: create_to_unicode_cmap(
-      &config.serif_bold_italic_font.font_name,
+      &font_configs.serif_bold_italic.font_name,
       font_mappings.serif_bold_italic_font.cid_to_chars.clone(),
     ),
     sans_serif_font: create_to_unicode_cmap(
-      &config.sans_serif_font.font_name,
+      &font_configs.sans_serif.font_name,
       font_mappings.sans_serif_font.cid_to_chars.clone(),
     ),
     sans_serif_bold_font: create_to_unicode_cmap(
-      &config.sans_serif_bold_font.font_name,
+      &font_configs.sans_serif_bold.font_name,
       font_mappings.sans_serif_bold_font.cid_to_chars.clone(),
     ),
     sans_serif_italic_font: create_to_unicode_cmap(
-      &config.sans_serif_italic_font.font_name,
+      &font_configs.sans_serif_italic.font_name,
       font_mappings.sans_serif_italic_font.cid_to_chars.clone(),
     ),
     sans_serif_bold_italic_font: create_to_unicode_cmap(
-      &config.sans_serif_bold_italic_font.font_name,
-      font_mappings
-        .sans_serif_bold_italic_font
-        .cid_to_chars
-        .clone(),
+      &font_configs.sans_serif_bold_italic.font_name,
+      font_mappings.sans_serif_bold_italic_font.cid_to_chars.clone(),
     ),
     monospace_font: create_to_unicode_cmap(
-      &config.monospace_font.font_name,
+      &font_configs.monospace.font_name,
       font_mappings.monospace_font.cid_to_chars.clone(),
     ),
     monospace_bold_font: create_to_unicode_cmap(
-      &config.monospace_bold_font.font_name,
+      &font_configs.monospace_bold.font_name,
       font_mappings.monospace_bold_font.cid_to_chars.clone(),
     ),
     monospace_italic_font: create_to_unicode_cmap(
-      &config.monospace_italic_font.font_name,
+      &font_configs.monospace_italic.font_name,
       font_mappings.monospace_italic_font.cid_to_chars.clone(),
     ),
     monospace_bold_italic_font: create_to_unicode_cmap(
-      &config.monospace_bold_italic_font.font_name,
-      font_mappings
-        .monospace_bold_italic_font
-        .cid_to_chars
-        .clone(),
+      &font_configs.monospace_bold_italic.font_name,
+      font_mappings.monospace_bold_italic_font.cid_to_chars.clone(),
     ),
-    math_font: create_to_unicode_cmap(
-      &config.math_font.font_name,
-      font_mappings.math_font.cid_to_chars.clone(),
-    ),
+    math_font: create_to_unicode_cmap(&font_configs.math.font_name, font_mappings.math_font.cid_to_chars.clone()),
     japanese_serif_font: create_to_unicode_cmap(
-      &config.japanese_serif_font.font_name,
+      &font_configs.japanese_serif.font_name,
       font_mappings.japanese_serif_font.cid_to_chars.clone(),
     ),
     japanese_serif_bold_font: create_to_unicode_cmap(
-      &config.japanese_serif_bold_font.font_name,
+      &font_configs.japanese_serif_bold.font_name,
       font_mappings.japanese_serif_bold_font.cid_to_chars.clone(),
     ),
     japanese_sans_serif_font: create_to_unicode_cmap(
-      &config.japanese_sans_serif_font.font_name,
+      &font_configs.japanese_sans_serif.font_name,
       font_mappings.japanese_sans_serif_font.cid_to_chars.clone(),
     ),
     japanese_sans_serif_bold_font: create_to_unicode_cmap(
-      &config.japanese_sans_serif_bold_font.font_name,
-      font_mappings
-        .japanese_sans_serif_bold_font
-        .cid_to_chars
-        .clone(),
+      &font_configs.japanese_sans_serif_bold.font_name,
+      font_mappings.japanese_sans_serif_bold_font.cid_to_chars.clone(),
     ),
     japanese_monospace_font: create_to_unicode_cmap(
-      &config.japanese_monospace_font.font_name,
+      &font_configs.japanese_monospace.font_name,
       font_mappings.japanese_monospace_font.cid_to_chars.clone(),
     ),
     japanese_monospace_bold_font: create_to_unicode_cmap(
-      &config.japanese_monospace_bold_font.font_name,
-      font_mappings
-        .japanese_monospace_bold_font
-        .cid_to_chars
-        .clone(),
+      &font_configs.japanese_monospace_bold.font_name,
+      font_mappings.japanese_monospace_bold_font.cid_to_chars.clone(),
     ),
   }
 }

@@ -6,11 +6,7 @@
 
 use std::{collections::HashMap, fs, io};
 
-use font::{
-  self,
-  font_context::{FontContext, FontContexts},
-};
-use harfbuzz_rs::{Direction, Font, Owned, UnicodeBuffer, shape};
+use font::shaper::{HarfRustShaper, HarfRustShapers, ShaperResult};
 use indexmap::IndexSet;
 use pdf_writer::{Content, Finish, Name, Str};
 use read_config_file::Config;
@@ -67,13 +63,13 @@ pub struct ShapingResult {
 /// 行の読み込みまたは処理中にエラーが発生した場合にエラーを返します。
 pub fn process_text_lines(
   text_lines: io::Lines<io::BufReader<fs::File>>,
-  font_contexts: &mut FontContexts,
+  font_contexts: &mut HarfRustShapers,
   glyph_mappings: &mut GlyphMappings,
   config: &Config,
 ) -> Result<Vec<Content>, Box<dyn std::error::Error>> {
   let mut contents = Vec::new();
-  let units_per_em = font_contexts.serif_font_context.ttf_face.units_per_em() as f32;
-  let main_font_context = &mut font_contexts.serif_font_context;
+  let units_per_em = 1000.0; // TODO: Get from font
+  let main_font_context = &mut font_contexts.serif_font;
   let glyph_mapping = &mut glyph_mappings.serif_font;
   let mut pdf_content = Content::new();
 
@@ -86,26 +82,14 @@ pub fn process_text_lines(
   }
 
   pdf_content.begin_text();
-  pdf_content.set_font(
-    Name(config.serif_font.font_name.as_bytes()),
-    config.pdf.font_size,
-  );
-  pdf_content.next_line(
-    config.pdf.margin_left,
-    config.pdf.height - config.pdf.margin_top,
-  );
+  pdf_content.set_font(Name(config.font_configs.serif.font_name.as_bytes()), config.pdf.font_size);
+  pdf_content.next_line(config.pdf.margin.left, config.pdf.height - config.pdf.margin.top);
 
   for (line_num, line) in text_lines.enumerate() {
     let text_line = line?;
     println!("Line {}: {}", line_num + 1, text_line);
 
-    process_single_line(
-      &text_line,
-      main_font_context,
-      units_per_em,
-      glyph_mapping,
-      &mut pdf_content,
-    )?;
+    process_single_line(&text_line, main_font_context, units_per_em, glyph_mapping, &mut pdf_content)?;
 
     let line_height_factor = config.pdf.line_height_factor;
     pdf_content.next_line(0.0, -config.pdf.font_size * line_height_factor);
@@ -136,7 +120,7 @@ pub fn process_text_lines(
 /// シェーピングまたはコンテンツ書き込み中にエラーが発生した場合にエラーを返します。
 fn process_single_line(
   text_line: &str,
-  main_font_context: &mut FontContext,
+  main_font_context: &mut HarfRustShaper,
   units_per_em: f32,
   glyph_mapping: &mut GlyphMapping,
   pdf_content: &mut Content,
@@ -146,10 +130,10 @@ fn process_single_line(
 
   let shape_results = shaping(
     text_line,
-    &mut main_font_context.hb_font,
+    main_font_context,
     &mut glyph_mapping.gid_to_cid,
     &mut glyph_mapping.used_gids,
-  );
+  )?;
 
   let mut text_buffer = Vec::new();
   let mut notdef_glyph = IndexSet::new();
@@ -163,11 +147,8 @@ fn process_single_line(
       continue;
     };
 
-    let advance_width = main_font_context.get_glyph_advance(gid) * 1000.0 / units_per_em;
-    glyph_mapping
-      .advance_widths
-      .entry(cid)
-      .or_insert(advance_width);
+    let advance_width = 1000.0; // TODO: Get actual advance width from font
+    glyph_mapping.advance_widths.entry(cid).or_insert(advance_width);
     let shape_advance = shape_result.x_advance as f32 * 1000.0 / units_per_em;
 
     text_buffer.push((cid >> 8) as u8);
@@ -234,23 +215,21 @@ fn process_single_line(
 /// シェーピング結果のベクタを返します。各要素は1つのグリフに対応します。
 fn shaping(
   text: &str,
-  hb_font: &mut Owned<Font<'_>>,
+  shaper: &mut HarfRustShaper,
   gid_to_cid: &mut HashMap<u16, u16>,
   used_gids: &mut IndexSet<u16>,
-) -> Vec<ShapingResult> {
-  let buffer = UnicodeBuffer::new()
-    .add_str(text)
-    .set_direction(Direction::Ltr);
+) -> ShaperResult<Vec<ShapingResult>> {
+  let (hb_shaper, shape_plan, mut buffer) = shaper.build()?;
+  buffer.push_str(text);
 
-  let shape_result = shape(hb_font, buffer, &[]);
-
-  let glyph_positions = shape_result.get_glyph_positions();
-  let glyph_infos = shape_result.get_glyph_infos();
+  let shape_result = hb_shaper.shape_with_plan(&shape_plan, buffer, &shaper.features);
+  let glyph_positions = shape_result.glyph_positions();
+  let glyph_infos = shape_result.glyph_infos();
 
   let mut shaping_results = Vec::with_capacity(glyph_positions.len());
 
   for (glyph_position, glyph_info) in glyph_positions.iter().zip(glyph_infos) {
-    let gid = glyph_info.codepoint as u16;
+    let gid = glyph_info.glyph_id as u16;
     let cluster = glyph_info.cluster;
     let x_advance = glyph_position.x_advance;
     let y_advance = glyph_position.y_advance;
@@ -271,7 +250,7 @@ fn shaping(
     used_gids.insert(gid);
   }
 
-  return shaping_results;
+  Ok(shaping_results)
 }
 
 /// シェーピング結果から文字範囲を取得
@@ -289,15 +268,8 @@ fn shaping(
 /// # 戻り値
 ///
 /// 文字範囲を表す`Range<usize>`を返します（バイト単位のインデックス）。
-fn get_char_range(
-  line: &str,
-  shape_results: &[ShapingResult],
-  current_index: usize,
-) -> std::ops::Range<usize> {
+fn get_char_range(line: &str, shape_results: &[ShapingResult], current_index: usize) -> std::ops::Range<usize> {
   let start = shape_results[current_index].cluster as usize;
-  let end = shape_results
-    .get(current_index + 1)
-    .map(|sr| sr.cluster as usize)
-    .unwrap_or(line.len());
+  let end = shape_results.get(current_index + 1).map(|sr| sr.cluster as usize).unwrap_or(line.len());
   start..end
 }

@@ -1,7 +1,7 @@
 use pdf_writer::Rect;
 use ttf_parser::{Face, name_id};
 
-use crate::font_context::FontSubsetBytes;
+use crate::subset::FontSubsetBytes;
 
 /// デフォルトのキャピタルハイト値
 const DEFAULT_CAP_HEIGHT: i16 = 0;
@@ -81,11 +81,7 @@ impl FontData {
   ///
   /// * `face` - フォントフェース
   fn extract_cap_height(face: &Face<'_>) -> i16 {
-    face
-      .tables()
-      .os2
-      .and_then(|os2| os2.capital_height())
-      .unwrap_or(DEFAULT_CAP_HEIGHT)
+    face.tables().os2.and_then(|os2| os2.capital_height()).unwrap_or(DEFAULT_CAP_HEIGHT)
   }
 
   /// PDFライター用の矩形に変換
@@ -221,33 +217,22 @@ pub fn analyze_subset_font(fonts_subset_bytes: &FontSubsetBytes) -> Result<FontD
   let serif_font_data = analyze_single_subset(&fonts_subset_bytes.serif_font_subset)?;
   let serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.serif_bold_font_subset)?;
   let serif_italic_font_data = analyze_single_subset(&fonts_subset_bytes.serif_italic_font_subset)?;
-  let serif_bold_italic_font_data =
-    analyze_single_subset(&fonts_subset_bytes.serif_bold_italic_font_subset)?;
+  let serif_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.serif_bold_italic_font_subset)?;
   let sans_serif_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_font_subset)?;
-  let sans_serif_bold_font_data =
-    analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_font_subset)?;
-  let sans_serif_italic_font_data =
-    analyze_single_subset(&fonts_subset_bytes.sans_serif_italic_font_subset)?;
-  let sans_serif_bold_italic_font_data =
-    analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_italic_font_subset)?;
+  let sans_serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_font_subset)?;
+  let sans_serif_italic_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_italic_font_subset)?;
+  let sans_serif_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_italic_font_subset)?;
   let monospace_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_font_subset)?;
-  let monospace_bold_font_data =
-    analyze_single_subset(&fonts_subset_bytes.monospace_bold_font_subset)?;
-  let monospace_italic_font_data =
-    analyze_single_subset(&fonts_subset_bytes.monospace_italic_font_subset)?;
-  let monospace_bold_italic_font_data =
-    analyze_single_subset(&fonts_subset_bytes.monospace_bold_italic_font_subset)?;
+  let monospace_bold_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_bold_font_subset)?;
+  let monospace_italic_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_italic_font_subset)?;
+  let monospace_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_bold_italic_font_subset)?;
   let math_font_data = analyze_single_subset(&fonts_subset_bytes.math_font_subset)?;
-  let japanese_serif_font_data =
-    analyze_single_subset(&fonts_subset_bytes.japanese_serif_font_subset)?;
-  let japanese_serif_bold_font_data =
-    analyze_single_subset(&fonts_subset_bytes.japanese_serif_bold_font_subset)?;
-  let japanese_sans_serif_font_data =
-    analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_font_subset)?;
+  let japanese_serif_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_serif_font_subset)?;
+  let japanese_serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_serif_bold_font_subset)?;
+  let japanese_sans_serif_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_font_subset)?;
   let japanese_sans_serif_bold_font_data =
     analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_bold_font_subset)?;
-  let japanese_monospace_font_data =
-    analyze_single_subset(&fonts_subset_bytes.japanese_monospace_font_subset)?;
+  let japanese_monospace_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_monospace_font_subset)?;
   let japanese_monospace_bold_font_data =
     analyze_single_subset(&fonts_subset_bytes.japanese_monospace_bold_font_subset)?;
 

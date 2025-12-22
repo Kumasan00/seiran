@@ -30,9 +30,7 @@ pub enum FontContextError {
     value: f32,
   },
   /// フォントに存在する軸が設定されていない
-  #[error(
-    "Font has variation axis '{axis}' that is not configured (default: {default}, min: {min}, max: {max})"
-  )]
+  #[error("Font has variation axis '{axis}' that is not configured (default: {default}, min: {min}, max: {max})")]
   UnconfiguredVariationAxis {
     axis: String,
     default: f32,
@@ -103,26 +101,6 @@ pub enum FontContextsError {
   JapaneseMonospaceBoldFont(FontContextError),
 }
 
-/// フォントサブセット処理に関連するエラー
-#[derive(thiserror::Error, Debug)]
-pub enum FontSubsetError {
-  /// ReadScope によるフォントバイナリ読込失敗
-  #[error("Failed to read font data: {0}")]
-  Read(Box<dyn std::error::Error + Send + Sync>),
-  /// テーブルプロバイダ生成失敗
-  #[error("Failed to build table provider: {0}")]
-  TableProvider(Box<dyn std::error::Error + Send + Sync>),
-  /// サブセット化失敗
-  #[error("Font subsetting failed: {0}")]
-  Subset(Box<dyn std::error::Error + Send + Sync>),
-  /// バリアブルフォントのインスタンス生成失敗
-  #[error("Failed to create font instance: {0}")]
-  Instance(Box<dyn std::error::Error + Send + Sync>),
-  /// バリアブルフォントに必要な軸設定が不足
-  #[error("Variable font requires variation axes in config")]
-  MissingVariationAxes,
-}
-
 /// フォントの種類を表す列挙型
 ///
 /// 設定から適切なフォント情報を取得するために使用されます。
@@ -183,26 +161,14 @@ impl FontContext {
   fn get_font_config<'a>(config: &'a Config, font_type: &FontType) -> (&'a std::path::Path, u32) {
     match font_type {
       FontType::SerifFont => (&config.serif_font.font_path, config.serif_font.font_index),
-      FontType::SerifBoldFont => (
-        &config.serif_bold_font.font_path,
-        config.serif_bold_font.font_index,
-      ),
-      FontType::SerifItalicFont => (
-        &config.serif_italic_font.font_path,
-        config.serif_italic_font.font_index,
-      ),
+      FontType::SerifBoldFont => (&config.serif_bold_font.font_path, config.serif_bold_font.font_index),
+      FontType::SerifItalicFont => (&config.serif_italic_font.font_path, config.serif_italic_font.font_index),
       FontType::SerifBoldItalicFont => (
         &config.serif_bold_italic_font.font_path,
         config.serif_bold_italic_font.font_index,
       ),
-      FontType::SansSerifFont => (
-        &config.sans_serif_font.font_path,
-        config.sans_serif_font.font_index,
-      ),
-      FontType::SansSerifBoldFont => (
-        &config.sans_serif_bold_font.font_path,
-        config.sans_serif_bold_font.font_index,
-      ),
+      FontType::SansSerifFont => (&config.sans_serif_font.font_path, config.sans_serif_font.font_index),
+      FontType::SansSerifBoldFont => (&config.sans_serif_bold_font.font_path, config.sans_serif_bold_font.font_index),
       FontType::SansSerifItalicFont => (
         &config.sans_serif_italic_font.font_path,
         config.sans_serif_italic_font.font_index,
@@ -211,27 +177,17 @@ impl FontContext {
         &config.sans_serif_bold_italic_font.font_path,
         config.sans_serif_bold_italic_font.font_index,
       ),
-      FontType::MonospaceFont => (
-        &config.monospace_font.font_path,
-        config.monospace_font.font_index,
-      ),
-      FontType::MonospaceBoldFont => (
-        &config.monospace_bold_font.font_path,
-        config.monospace_bold_font.font_index,
-      ),
-      FontType::MonospaceItalicFont => (
-        &config.monospace_italic_font.font_path,
-        config.monospace_italic_font.font_index,
-      ),
+      FontType::MonospaceFont => (&config.monospace_font.font_path, config.monospace_font.font_index),
+      FontType::MonospaceBoldFont => (&config.monospace_bold_font.font_path, config.monospace_bold_font.font_index),
+      FontType::MonospaceItalicFont => {
+        (&config.monospace_italic_font.font_path, config.monospace_italic_font.font_index)
+      },
       FontType::MonospaceBoldItalicFont => (
         &config.monospace_bold_italic_font.font_path,
         config.monospace_bold_italic_font.font_index,
       ),
       FontType::MathFont => (&config.math_font.font_path, config.math_font.font_index),
-      FontType::JapaneseSerifFont => (
-        &config.japanese_serif_font.font_path,
-        config.japanese_serif_font.font_index,
-      ),
+      FontType::JapaneseSerifFont => (&config.japanese_serif_font.font_path, config.japanese_serif_font.font_index),
       FontType::JapaneseSerifBoldFont => (
         &config.japanese_serif_bold_font.font_path,
         config.japanese_serif_bold_font.font_index,
@@ -275,9 +231,7 @@ impl FontContext {
     config_variation_axes: &[read_config_file::VariationAxis],
   ) -> Result<(), FontContextError> {
     // フォントのすべての軸を一度取得してキャッシュ
-    let font_axes: Vec<_> = ttf_parser::Face::variation_axes(ttf_face)
-      .into_iter()
-      .collect();
+    let font_axes: Vec<_> = ttf_parser::Face::variation_axes(ttf_face).into_iter().collect();
 
     // 設定された各軸を検証
     for cfg_axis in config_variation_axes.iter() {
@@ -329,8 +283,7 @@ impl FontContext {
     hb_font: &mut harfbuzz_rs::Owned<Font<'static>>,
     config_variation_axes: &[read_config_file::VariationAxis],
   ) {
-    let mut variations: Vec<harfbuzz_rs::Variation> =
-      Vec::with_capacity(config_variation_axes.len());
+    let mut variations: Vec<harfbuzz_rs::Variation> = Vec::with_capacity(config_variation_axes.len());
 
     for axis in config_variation_axes.iter() {
       if let Ok(tag) = harfbuzz_rs::Tag::from_str(&axis.name) {
@@ -374,36 +327,26 @@ impl FontContext {
     if ttf_face.is_variable() {
       // フォント種別ごとのバリエーション軸設定を取得
       let config_variation_axes = match font_type {
-        FontType::SerifFont => config
-          .serif_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SerifBoldFont => config
-          .serif_bold_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SerifItalicFont => config
-          .serif_italic_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::SerifFont => {
+          config.serif_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
+        FontType::SerifBoldFont => {
+          config.serif_bold_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
+        FontType::SerifItalicFont => {
+          config.serif_italic_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
         FontType::SerifBoldItalicFont => config
           .serif_bold_italic_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SansSerifFont => config
-          .sans_serif_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::SansSerifBoldFont => config
-          .sans_serif_bold_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::SansSerifFont => {
+          config.sans_serif_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
+        FontType::SansSerifBoldFont => {
+          config.sans_serif_bold_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
         FontType::SansSerifItalicFont => config
           .sans_serif_italic_font
           .variation_axes
@@ -414,32 +357,24 @@ impl FontContext {
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::MonospaceFont => config
-          .monospace_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::MonospaceBoldFont => config
-          .monospace_bold_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
-        FontType::MonospaceItalicFont => config
-          .monospace_italic_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::MonospaceFont => {
+          config.monospace_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
+        FontType::MonospaceBoldFont => {
+          config.monospace_bold_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
+        FontType::MonospaceItalicFont => {
+          config.monospace_italic_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
         FontType::MonospaceBoldItalicFont => config
           .monospace_bold_italic_font
           .variation_axes
           .as_ref()
           .ok_or(FontContextError::MissingVariationAxes)?,
         FontType::MathFont => return Err(FontContextError::MissingVariationAxes),
-        FontType::JapaneseSerifFont => config
-          .japanese_serif_font
-          .variation_axes
-          .as_ref()
-          .ok_or(FontContextError::MissingVariationAxes)?,
+        FontType::JapaneseSerifFont => {
+          config.japanese_serif_font.variation_axes.as_ref().ok_or(FontContextError::MissingVariationAxes)?
+        },
         FontType::JapaneseSerifBoldFont => config
           .japanese_serif_bold_font
           .variation_axes
@@ -498,10 +433,7 @@ impl FontContext {
   ///
   /// * `gid` - グリフID
   pub fn get_glyph_advance(&self, gid: u16) -> f32 {
-    self
-      .ttf_face
-      .glyph_hor_advance(ttf_parser::GlyphId(gid))
-      .unwrap_or(self.ttf_face.units_per_em()) as f32
+    self.ttf_face.glyph_hor_advance(ttf_parser::GlyphId(gid)).unwrap_or(self.ttf_face.units_per_em()) as f32
   }
 }
 
@@ -554,61 +486,25 @@ impl FontContexts {
         FontContextsError::SerifFont as fn(FontContextError) -> FontContextsError,
       ),
       (FontType::SerifBoldFont, FontContextsError::SerifBoldFont),
-      (
-        FontType::SerifItalicFont,
-        FontContextsError::SerifItalicFont,
-      ),
-      (
-        FontType::SerifBoldItalicFont,
-        FontContextsError::SerifBoldItalicFont,
-      ),
+      (FontType::SerifItalicFont, FontContextsError::SerifItalicFont),
+      (FontType::SerifBoldItalicFont, FontContextsError::SerifBoldItalicFont),
       (FontType::SansSerifFont, FontContextsError::SansSerifFont),
-      (
-        FontType::SansSerifBoldFont,
-        FontContextsError::SansSerifBoldFont,
-      ),
-      (
-        FontType::SansSerifItalicFont,
-        FontContextsError::SansSerifItalicFont,
-      ),
-      (
-        FontType::SansSerifBoldItalicFont,
-        FontContextsError::SansSerifBoldItalicFont,
-      ),
+      (FontType::SansSerifBoldFont, FontContextsError::SansSerifBoldFont),
+      (FontType::SansSerifItalicFont, FontContextsError::SansSerifItalicFont),
+      (FontType::SansSerifBoldItalicFont, FontContextsError::SansSerifBoldItalicFont),
       (FontType::MonospaceFont, FontContextsError::MonospaceFont),
-      (
-        FontType::MonospaceBoldFont,
-        FontContextsError::MonospaceBoldFont,
-      ),
-      (
-        FontType::MonospaceItalicFont,
-        FontContextsError::MonospaceItalicFont,
-      ),
-      (
-        FontType::MonospaceBoldItalicFont,
-        FontContextsError::MonospaceBoldItalicFont,
-      ),
+      (FontType::MonospaceBoldFont, FontContextsError::MonospaceBoldFont),
+      (FontType::MonospaceItalicFont, FontContextsError::MonospaceItalicFont),
+      (FontType::MonospaceBoldItalicFont, FontContextsError::MonospaceBoldItalicFont),
       (FontType::MathFont, FontContextsError::MathFont),
-      (
-        FontType::JapaneseSerifFont,
-        FontContextsError::JapaneseSerifFont,
-      ),
-      (
-        FontType::JapaneseSerifBoldFont,
-        FontContextsError::JapaneseSerifBoldFont,
-      ),
-      (
-        FontType::JapaneseSansSerifFont,
-        FontContextsError::JapaneseSansSerifFont,
-      ),
+      (FontType::JapaneseSerifFont, FontContextsError::JapaneseSerifFont),
+      (FontType::JapaneseSerifBoldFont, FontContextsError::JapaneseSerifBoldFont),
+      (FontType::JapaneseSansSerifFont, FontContextsError::JapaneseSansSerifFont),
       (
         FontType::JapaneseSansSerifBoldFont,
         FontContextsError::JapaneseSansSerifBoldFont,
       ),
-      (
-        FontType::JapaneseMonospaceFont,
-        FontContextsError::JapaneseMonospaceFont,
-      ),
+      (FontType::JapaneseMonospaceFont, FontContextsError::JapaneseMonospaceFont),
       (
         FontType::JapaneseMonospaceBoldFont,
         FontContextsError::JapaneseMonospaceBoldFont,
@@ -733,10 +629,7 @@ pub fn create_font_subset(
 ) -> Result<FontSubsetBytes, FontSubsetError> {
   // 各フォントコンテキストと対応するグリフマッピングをペアにしたデータを作成
   let font_data = vec![
-    (
-      &font_contexts.serif_font_context,
-      &glyph_mappings.serif_font.used_gids,
-    ),
+    (&font_contexts.serif_font_context, &glyph_mappings.serif_font.used_gids),
     (
       &font_contexts.serif_bold_font_context,
       &glyph_mappings.serif_bold_font.used_gids,
@@ -765,10 +658,7 @@ pub fn create_font_subset(
       &font_contexts.sans_serif_bold_italic_font_context,
       &glyph_mappings.sans_serif_bold_italic_font.used_gids,
     ),
-    (
-      &font_contexts.monospace_font_context,
-      &glyph_mappings.monospace_font.used_gids,
-    ),
+    (&font_contexts.monospace_font_context, &glyph_mappings.monospace_font.used_gids),
     (
       &font_contexts.monospace_bold_font_context,
       &glyph_mappings.monospace_bold_font.used_gids,
@@ -781,10 +671,7 @@ pub fn create_font_subset(
       &font_contexts.monospace_bold_italic_font_context,
       &glyph_mappings.monospace_bold_italic_font.used_gids,
     ),
-    (
-      &font_contexts.math_font_context,
-      &glyph_mappings.math_font.used_gids,
-    ),
+    (&font_contexts.math_font_context, &glyph_mappings.math_font.used_gids),
     (
       &font_contexts.japanese_serif_font_context,
       &glyph_mappings.japanese_serif_font.used_gids,
@@ -812,10 +699,8 @@ pub fn create_font_subset(
   ];
 
   // 並列でサブセット処理を実行
-  let results: Vec<Result<Vec<u8>, FontSubsetError>> = font_data
-    .into_par_iter()
-    .map(|(ctx, used_gids)| subset_for(ctx, used_gids))
-    .collect();
+  let results: Vec<Result<Vec<u8>, FontSubsetError>> =
+    font_data.into_par_iter().map(|(ctx, used_gids)| subset_for(ctx, used_gids)).collect();
 
   // 結果を順序に合わせて展開（最初のエラーで失敗）
   let mut iter = results.into_iter();
@@ -861,9 +746,7 @@ pub fn create_font_subset(
 /// インスタンス化処理中にエラーが発生した場合にエラーを返します。
 fn create_font_instance(font_context: &FontContext) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(font_context.data);
-  let font_data = scope
-    .read::<allsorts::font_data::FontData<'_>>()
-    .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+  let font_data = scope.read::<allsorts::font_data::FontData<'_>>().map_err(|e| FontSubsetError::Read(Box::new(e)))?;
   let table_provider = font_data
     .table_provider(font_context.index as usize)
     .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
@@ -872,8 +755,7 @@ fn create_font_instance(font_context: &FontContext) -> Result<Vec<u8>, FontSubse
   let axes = build_variation_axes(font_context)?;
 
   // インスタンスを生成
-  let (instance, _tuple) =
-    instance(&table_provider, &axes).map_err(|e| FontSubsetError::Instance(Box::new(e)))?;
+  let (instance, _tuple) = instance(&table_provider, &axes).map_err(|e| FontSubsetError::Instance(Box::new(e)))?;
 
   Ok(instance)
 }
@@ -903,10 +785,7 @@ fn build_variation_axes(font_context: &FontContext) -> Result<Vec<Fixed>, FontSu
   // ここでは設定のどれか一つが存在する前提で探索する。
 
   // 初期化時に選択済みの軸を利用（全バリアブルフォントを必ずインスタンス化）
-  let config_axes = font_context
-    .variation_axes
-    .as_ref()
-    .ok_or(FontSubsetError::MissingVariationAxes)?;
+  let config_axes = font_context.variation_axes.as_ref().ok_or(FontSubsetError::MissingVariationAxes)?;
 
   let variation_axes = font_context.ttf_face.variation_axes();
 
@@ -946,18 +825,11 @@ fn build_variation_axes(font_context: &FontContext) -> Result<Vec<Fixed>, FontSu
 /// # エラー
 ///
 /// サブセット処理中にエラーが発生した場合にエラーを返します。
-fn perform_subsetting(
-  font_data: &[u8],
-  index: u32,
-  used_gids: &[u16],
-) -> Result<Vec<u8>, FontSubsetError> {
+fn perform_subsetting(font_data: &[u8], index: u32, used_gids: &[u16]) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(font_data);
-  let font_data = scope
-    .read::<allsorts::font_data::FontData<'_>>()
-    .map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let table_provider = font_data
-    .table_provider(index as usize)
-    .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+  let font_data = scope.read::<allsorts::font_data::FontData<'_>>().map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+  let table_provider =
+    font_data.table_provider(index as usize).map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
 
   subset::subset(&table_provider, used_gids).map_err(|e| FontSubsetError::Subset(Box::new(e)))
 }

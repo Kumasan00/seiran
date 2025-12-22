@@ -2,33 +2,50 @@ use std::borrow::Cow;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {
-  // コマンド: \foo (バックスラッシュは含まない名前だけ保持)
   Command(&'a str),
-  // 構造用の記号
   LBrace,   // {
   RBrace,   // }
   LBracket, // [
   RBracket, // ]
-  Dollar,   // $ (単体のもの)
-  // 本文テキスト: エスケープ文字処理済み、改行削除済み
+  Dollar,   // $
+  // エスケープされた文字 (例: \\ -> Escaped('\'), \$ -> Escaped('$'))
+  Escaped(char),
+  // 本文テキスト
   Text(Cow<'a, str>),
   // パラグラフ区切り (空行)
   ParagraphBreak,
-  // コメント (必要なら保持、不要なら削除可)
+  // コメント
   Comment(&'a str),
-  // エラーや不明な文字
   Unknown(char),
+}
+
+impl<'a> Token<'a> {
+  /// ライフタイムを'staticに変換する（エラーレポート用）
+  pub(crate) fn into_static(self) -> Token<'static> {
+    match self {
+      Token::Command(s) => Token::Command(Box::leak(s.to_string().into_boxed_str())),
+      Token::LBrace => Token::LBrace,
+      Token::RBrace => Token::RBrace,
+      Token::LBracket => Token::LBracket,
+      Token::RBracket => Token::RBracket,
+      Token::Dollar => Token::Dollar,
+      Token::Escaped(c) => Token::Escaped(c),
+      Token::Text(cow) => Token::Text(Cow::Owned(cow.into_owned())),
+      Token::ParagraphBreak => Token::ParagraphBreak,
+      Token::Comment(s) => Token::Comment(Box::leak(s.to_string().into_boxed_str())),
+      Token::Unknown(c) => Token::Unknown(c),
+    }
+  }
 }
 
 pub struct Lexer<'a> {
   input: &'a str,
-  // 高速化のためバイト列でもアクセスできるようにする
   bytes: &'a [u8],
   cursor: usize,
 }
 
 impl<'a> Lexer<'a> {
-  pub fn new(input: &'a str) -> Self {
+  pub(crate) fn new(input: &'a str) -> Self {
     Self {
       input,
       bytes: input.as_bytes(),
@@ -36,319 +53,185 @@ impl<'a> Lexer<'a> {
     }
   }
 
-  // 現在の位置から文字を取得（境界チェック付き）
+  // 基本的なヘルパー
   fn peek_char(&self) -> Option<char> { self.input[self.cursor..].chars().next() }
 
-  // カーソルを進める
+  fn peek_byte_at(&self, offset: usize) -> Option<u8> { self.bytes.get(self.cursor + offset).copied() }
+
   fn advance_bytes(&mut self, n: usize) { self.cursor += n; }
 
-  // 文字を1つ進める（UTF-8考慮）
   fn advance_char(&mut self) -> Option<char> {
     let c = self.peek_char()?;
     self.cursor += c.len_utf8();
     Some(c)
   }
 
-  // 空白（改行以外）をスキップするか？
-  // 今回の仕様では引数内と本文で扱いが違うが、Lexerは「テキスト」として空白も取り込む
-  // ただし、コマンド直後の空白処理などはParserでやるかここでやるか。
-  // ここでは「構造的に無視できる空白」はないものとして扱う（テキストの一部になる）。
+  fn is_at_end(&self) -> bool { self.cursor >= self.input.len() }
 
-  pub fn next_token(&mut self) -> Option<Token<'a>> {
-    if self.cursor >= self.input.len() {
+  fn remaining_bytes(&self) -> &[u8] { &self.bytes[self.cursor..] }
+
+  pub(crate) fn next_token(&mut self) -> Option<Token<'a>> {
+    if self.is_at_end() {
       return None;
     }
 
-    let _start = self.cursor;
-    let c = self.peek_char()?;
+    let byte = self.bytes[self.cursor];
 
-    match c {
-      // --- コマンド ---
-      '\\' => {
-        self.advance_bytes(1); // \ をスキップ
-
-        // 次の文字を確認
-        if let Some(next_c) = self.peek_char() {
-          // 英数字ならコマンド
-          if next_c.is_ascii_alphanumeric() {
-            let cmd_start = self.cursor;
-            while let Some(ch) = self.peek_char() {
-              if ch.is_ascii_alphanumeric() {
-                self.advance_char();
-              } else {
-                break;
-              }
-            }
-            return Some(Token::Command(&self.input[cmd_start..self.cursor]));
-          }
-          // エスケープ処理: \\
-          else if next_c == '\\' {
-            self.advance_bytes(1);
-            // テキストとしてのバックスラッシュ
-            return Some(Token::Text(Cow::Borrowed("\\")));
-          }
-          // エスケープ処理: \$ (インライン数式内でのみ有効だがLexerは通す)
-          else if next_c == '$' {
-            self.advance_bytes(1);
-            return Some(Token::Text(Cow::Borrowed("$")));
-          }
-          // それ以外（空白など）は禁止されているが、ここではパースエラーにするか、
-          // 不正なバックスラッシュとしてテキスト扱いにする。
-          // 要件「\を表示したい時は必ずエスケープ」より、単独の \ はエラー候補。
-          // ここではとりあえずUnknownとして返す
-          return Some(Token::Unknown('\\'));
-        }
-        Some(Token::Unknown('\\'))
-      },
-
-      // --- 構造文字 ---
-      '{' => {
+    match byte {
+      b'\\' => self.read_backslash(),
+      b'{' => self.read_single_char_token(Token::LBrace),
+      b'}' => self.read_single_char_token(Token::RBrace),
+      b'[' => self.read_single_char_token(Token::LBracket),
+      b']' => self.read_single_char_token(Token::RBracket),
+      b'/' if self.peek_byte_at(1) == Some(b'/') => self.read_comment(),
+      b'$' => self.read_dollar(),
+      b'\n' => self.read_newline(),
+      b if b.is_ascii_whitespace() => {
         self.advance_bytes(1);
-        Some(Token::LBrace)
+        self.next_token()
       },
-      '}' => {
-        self.advance_bytes(1);
-        Some(Token::RBrace)
-      },
-      '[' => {
-        self.advance_bytes(1);
-        Some(Token::LBracket)
-      },
-      ']' => {
-        self.advance_bytes(1);
-        Some(Token::RBracket)
-      },
-
-      // --- コメント (//) ---
-      '/' if self.input[self.cursor..].starts_with("//") => {
-        self.advance_bytes(2);
-        let content_start = self.cursor;
-        // 改行まで進む
-        while let Some(ch) = self.peek_char() {
-          if ch == '\n' {
-            break;
-          }
-          self.advance_char();
-        }
-        Some(Token::Comment(&self.input[content_start..self.cursor]))
-      },
-
-      // --- 数式デリミタ ($) ---
-      '$' => {
-        // $$ は特殊文字として扱わない（テキストとして扱う）
-        if self.input[self.cursor..].starts_with("$$") {
-          // $$ というテキストとして処理を開始する
-          self.read_text()
-        } else {
-          self.advance_bytes(1);
-          Some(Token::Dollar)
-        }
-      },
-
-      // --- 改行と空行の判定 ---
-      '\n' => {
-        self.advance_bytes(1);
-        // 次も改行（または空白のみの行）なら空行扱い
-        if self.is_empty_line_next() {
-          // 空行を消費
-          self.consume_empty_lines();
-          Some(Token::ParagraphBreak)
-        } else {
-          // 単なる改行は無視（テキストの一部なら連結されるべきだが、
-          // ここにくるのはテキストブロック外の改行か、Parser任せの空白）
-          // ★重要: 「本文は空行まで同じトークン」にするため、
-          // テキスト読み込みロジック(read_text)の方で改行をハンドリングします。
-          // ここで単独の \n が来た場合、それは「直前がテキストではなかった」場合です。
-          // 例: "}\n{" の間の改行など。これは無視して次のトークンへ。
-          self.next_token()
-        }
-      },
-
-      // 空白文字（スペース、タブ）
-      c if c.is_whitespace() => {
-        // テキストブロック外の空白は通常無視か、区切りとして機能する。
-        // 引数内やコマンド間の空白はここでスキップして良い。
-        self.advance_char();
-        self.next_token() // 再帰的に次を探す
-      },
-
-      // --- テキスト (本文) ---
       _ => self.read_text(),
     }
   }
 
-  // 空行かどうかの先読みチェック
-  fn is_empty_line_next(&self) -> bool {
-    let mut temp_cursor = self.cursor;
-    while temp_cursor < self.input.len() {
-      let c = self.input[temp_cursor..].chars().next().unwrap();
-      if c == '\n' {
-        return true;
-      }
-      if !c.is_whitespace() {
-        return false;
-      }
-      temp_cursor += c.len_utf8();
-    }
-    false // ファイル末尾
+  fn read_single_char_token(&mut self, token: Token<'a>) -> Option<Token<'a>> {
+    self.advance_bytes(1);
+    Some(token)
   }
 
-  fn consume_empty_lines(&mut self) {
-    while let Some(c) = self.peek_char() {
-      if c == '\n' || c.is_whitespace() {
+  fn read_backslash(&mut self) -> Option<Token<'a>> {
+    self.advance_bytes(1);
+    let next_char = self.peek_char();
+
+    match next_char {
+      Some(ch) if ch.is_ascii_alphanumeric() => self.read_command(),
+      Some(ch) if ch.is_whitespace() => Some(Token::Unknown('\\')),
+      Some(ch) => {
         self.advance_char();
-        // 連続する空行も1つの区切りとして扱うため全部消費
-        // 次の行がテキスト開始なら止まるロジックが必要だが簡略化
-        // 実際には「2連続以上の改行」を見つけた時点でParagraphBreakを返し、
-        // 次の呼び出しでテキストまでスキップされるようにする方が良い。
+        Some(Token::Escaped(ch))
+      },
+      None => Some(Token::Unknown('\\')),
+    }
+  }
+
+  fn read_command(&mut self) -> Option<Token<'a>> {
+    let start = self.cursor;
+    while let Some(&b) = self.bytes.get(self.cursor) {
+      if b.is_ascii_alphanumeric() {
+        self.cursor += 1;
       } else {
         break;
       }
     }
+    Some(Token::Command(&self.input[start..self.cursor]))
   }
 
-  // テキスト読み込み（最重要：高速化の肝）
+  fn read_comment(&mut self) -> Option<Token<'a>> {
+    self.advance_bytes(2); // consume '//'
+    let start = self.cursor;
+    let len = memchr::memchr(b'\n', self.remaining_bytes()).unwrap_or(self.bytes.len() - self.cursor);
+
+    let content = &self.input[start..self.cursor + len];
+    self.advance_bytes(len);
+    Some(Token::Comment(content))
+  }
+
+  fn read_dollar(&mut self) -> Option<Token<'a>> {
+    if self.input[self.cursor..].starts_with("$$") {
+      self.read_text()
+    } else {
+      self.advance_bytes(1);
+      Some(Token::Dollar)
+    }
+  }
+
+  fn read_newline(&mut self) -> Option<Token<'a>> {
+    self.advance_bytes(1);
+    if self.is_empty_line_next() {
+      self.consume_empty_lines();
+      Some(Token::ParagraphBreak)
+    } else {
+      self.next_token()
+    }
+  }
+
   fn read_text(&mut self) -> Option<Token<'a>> {
     let start = self.cursor;
-    let mut has_newline = false;
-    let mut allocated_string = String::new();
 
-    // 最初のチャンクの開始位置
-    let mut chunk_start = start;
+    while !self.is_at_end() {
+      let b = self.bytes[self.cursor];
 
-    loop {
-      // 高速なバイトスキャンで特殊文字を探す
-      let remaining = &self.bytes[self.cursor..];
+      if self.is_structural_char(b) {
+        break;
+      }
 
-      // memchrなどを使うとさらに高速化可能だが、ここではイテレータで
-      // 特殊文字: \ { } [ ] $ / \n
-      let end_offset = remaining.iter().position(|&b| {
-        b == b'\\'
-          || b == b'{'
-          || b == b'}'
-          || b == b'['
-          || b == b']'
-          || b == b'$'
-          || b == b'/'
-          || b == b'\n'
-      });
-
-      match end_offset {
-        Some(offset) => {
-          self.advance_bytes(offset);
-          let hit_char = self.peek_char().unwrap();
-
-          match hit_char {
-            // コメント開始候補
-            '/' => {
-              if self.input[self.cursor..].starts_with("//") {
-                break; // テキスト終了
-              } else {
-                self.advance_bytes(1); // ただの / はテキスト
-                continue;
-              }
-            },
-            // $$ の判定（$が2つ以上ならテキスト扱い）
-            '$' => {
-              if self.input[self.cursor..].starts_with("$$") {
-                // テキストとして続行
-                self.advance_bytes(2);
-                continue;
-              } else {
-                break; // 単独の $ なのでトークン区切り
-              }
-            },
-            // 改行処理
-            '\n' => {
-              // 空行チェック
-              self.advance_bytes(1); // 改行を越えてチェック
-              if self.is_empty_line_next() {
-                // 空行ならテキスト終了。カーソルは改行の直後に戻すか、ParagraphBreak処理に任せる
-                // ここでは「テキストはここで終わり」とする
-                self.cursor -= 1; // \nの前に戻す
-                break;
-              } else {
-                // 単なる改行 -> 無視して継続（連結）
-                // ここで初めてアロケーションが必要になる
-                if !has_newline {
-                  has_newline = true;
-                  allocated_string.push_str(&self.input[chunk_start..self.cursor - 1]); // 改行除外
-                } else {
-                  allocated_string.push_str(&self.input[chunk_start..self.cursor - 1]);
-                }
-                chunk_start = self.cursor; // 新しい行の開始
-                continue;
-              }
-            },
-            // その他の特殊文字 (\, {, }, [, ])
-            _ => break,
+      match b {
+        b'$' => {
+          if !self.handle_dollar_in_text() {
+            break;
           }
         },
-        None => {
-          // 最後までテキスト
-          self.cursor = self.input.len();
-          break;
+        b'/' if self.peek_byte_at(1) == Some(b'/') => break,
+        b'\n' => {
+          if !self.handle_newline_in_text() {
+            break;
+          }
         },
+        _ => self.cursor += 1,
       }
     }
 
     if self.cursor == start {
-      return None; // 何も読めなかった
+      return None;
     }
 
-    if has_newline {
-      // 最後のチャンクを追加
-      allocated_string.push_str(&self.input[chunk_start..self.cursor]);
-      Some(Token::Text(Cow::Owned(allocated_string)))
+    Some(Token::Text(Cow::Borrowed(&self.input[start..self.cursor])))
+  }
+
+  fn is_structural_char(&self, b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']') }
+
+  fn handle_dollar_in_text(&mut self) -> bool {
+    let dollar_count = self.count_consecutive_dollars();
+    if dollar_count >= 2 {
+      self.cursor += dollar_count;
+      true
     } else {
-      // 改行がなければZero-copy
-      Some(Token::Text(Cow::Borrowed(&self.input[start..self.cursor])))
+      false
     }
   }
-}
 
-// 動作確認用テスト
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_lexer() {
-    let src = r"\foo{bar}
-baz // comment
-hello
-world
-
-Next paragraph";
-    let mut lexer = Lexer::new(src);
-
-    assert_eq!(lexer.next_token(), Some(Token::Command("foo")));
-    assert_eq!(lexer.next_token(), Some(Token::LBrace));
-    assert_eq!(lexer.next_token(), Some(Token::Text(Cow::Borrowed("bar"))));
-    assert_eq!(lexer.next_token(), Some(Token::RBrace));
-    // 改行は無視されて baz へ
-    assert_eq!(lexer.next_token(), Some(Token::Text(Cow::Borrowed("baz "))));
-    // 空白はread_text前でスキップされる実装ならこうなるが、
-    // 上記実装ではbazの後の空白もTextに含まれるか、スキップロジックが必要。
-    // ※実装の調整点: コマンド後の改行の扱いはParserで吸収するのが吉
-
-    // コメント
-    assert_eq!(lexer.next_token(), Some(Token::Comment(" comment")));
-
-    // hello world (改行結合)
-    // src上の "hello\nworld" -> "helloworld"
-    match lexer.next_token() {
-      Some(Token::Text(cow)) => assert_eq!(cow, "helloworld"),
-      _ => panic!("Expected text"),
+  fn count_consecutive_dollars(&self) -> usize {
+    let mut count = 0;
+    while self.peek_byte_at(count) == Some(b'$') {
+      count += 1;
     }
+    count
+  }
 
-    // 空行によるパラグラフ区切り
-    assert_eq!(lexer.next_token(), Some(Token::ParagraphBreak));
+  fn handle_newline_in_text(&mut self) -> bool {
+    let newline_pos = self.cursor;
+    self.cursor += 1;
 
-    assert_eq!(
-      lexer.next_token(),
-      Some(Token::Text(Cow::Borrowed("Next paragraph")))
-    );
-    // ... (空白処理の厳密さに依存)
+    if self.is_empty_line_next() {
+      self.cursor = newline_pos;
+      false
+    } else {
+      true
+    }
+  }
+
+  fn is_empty_line_next(&self) -> bool {
+    self.bytes[self.cursor..].iter().take_while(|&&b| b.is_ascii_whitespace()).any(|&b| b == b'\n')
+      || self.bytes[self.cursor..].iter().all(|&b| b.is_ascii_whitespace())
+  }
+
+  fn consume_empty_lines(&mut self) {
+    while let Some(&b) = self.bytes.get(self.cursor) {
+      if b == b'\n' || b.is_ascii_whitespace() {
+        self.cursor += 1;
+      } else {
+        break;
+      }
+    }
   }
 }

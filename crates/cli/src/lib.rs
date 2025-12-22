@@ -28,10 +28,23 @@ pub enum Command {
     #[arg(value_name = "FILE")]
     text_file_path: PathBuf,
   },
+  /// フォントファイルからバリエーション軸情報を取得
+  VariationAxes {
+    /// 処理対象のフォントファイルパス
+    #[arg(value_name = "FILE")]
+    font_path: PathBuf,
+  },
+  /// TTCファイルからフォント名リストを取得
   TtcNames {
     /// 処理対象のTTCファイルパス
     #[arg(value_name = "FILE")]
     ttc_file_path: PathBuf,
+  },
+  /// フォントファイルのscriptとlanguageシステムを表示
+  ScriptLangs {
+    /// 処理対象のフォントファイルパス
+    #[arg(value_name = "FILE")]
+    font_path: PathBuf,
   },
 }
 
