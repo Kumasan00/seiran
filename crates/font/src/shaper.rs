@@ -1,4 +1,4 @@
-use std::{fmt::Debug, str::FromStr};
+use std::{fmt::Debug, str::FromStr, time};
 
 use harfrust::{
   Direction, Feature, FontRef, Language, Script, ShapePlan, Shaper, ShaperData, ShaperInstance, Tag, UnicodeBuffer,
@@ -10,13 +10,13 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ShaperError {
   #[error("ファイル読み込みエラー: {0}")]
-  FileReadError(#[from] std::io::Error),
+  FileRead(#[from] std::io::Error),
   #[error("フォント参照エラー: {0}")]
-  FontRefError(String),
+  FontRef(String),
   #[error("UTF-8 変換エラー: {0}")]
-  Utf8Error(#[from] std::str::Utf8Error),
+  Utf8(#[from] std::str::Utf8Error),
   #[error("言語タグ解析エラー: {0}")]
-  LanguageParseError(String),
+  LanguageParse(String),
 }
 
 pub type ShaperResult<T> = Result<T, ShaperError>;
@@ -41,11 +41,16 @@ impl Debug for HarfRustShaper {
       .field("direction", &self.direction)
       .field("script", &self.script)
       .field("language", &self.language)
-      .finish()
+      .finish_non_exhaustive()
   }
 }
 
 impl HarfRustShaper {
+  /// `HarfBuzz` バッファを初期化
+  ///
+  /// # Errors
+  ///
+  /// 方向・スクリプト・言語の設定に失敗した場合にエラーを返します。
   fn setup_buffer(direction: Direction, script: Option<Script>, language: Option<Language>) -> UnicodeBuffer {
     let mut buffer = UnicodeBuffer::new();
     buffer.set_direction(direction);
@@ -58,18 +63,24 @@ impl HarfRustShaper {
     buffer
   }
 
+  /// フォント設定からシェイパーを構築
+  ///
+  /// # Errors
+  ///
+  /// フォントファイルの読み込みやタグ解析に失敗した場合にエラーを返します。
   fn new(font_config: &FontConfig) -> ShaperResult<Self> {
+    let start_time = time::Instant::now();
     let path = font_config.font_path.as_path();
     let font_data: Box<[u8]> = std::fs::read(path)?.into_boxed_slice();
     let font_ref = FontRef::from_index(font_data.as_ref(), font_config.font_index)
-      .map_err(|e| ShaperError::FontRefError(format!("{:?}", e)))?;
+      .map_err(|e| ShaperError::FontRef(format!("{e:?}")))?;
     let shaper_data = ShaperData::new(&font_ref);
     let shaper_instance = font_config.variation_axes.as_ref().map(|variation_axes| {
       let variations = variation_axes
         .iter()
         .map(|axis| {
           let tag = harfrust::Tag::new(&axis.name);
-          Variation::from((tag, axis.value))
+          Variation::from((tag, axis.value as f32))
         })
         .collect::<Vec<_>>();
       ShaperInstance::from_variations(&font_ref, variations)
@@ -85,10 +96,12 @@ impl HarfRustShaper {
     let language = match font_config.language {
       Some(tag_bytes) => {
         let str = std::str::from_utf8(&tag_bytes)?;
-        Some(Language::from_str(str).map_err(|_| ShaperError::LanguageParseError(str.to_string()))?)
+        Some(Language::from_str(str).map_err(|_| ShaperError::LanguageParse(str.to_string()))?)
       },
       None => None,
     };
+    let elapsed = start_time.elapsed();
+    println!("Loaded font from {} in {elapsed:.2?}", path.display());
 
     Ok(Self {
       font_data,
@@ -103,9 +116,15 @@ impl HarfRustShaper {
   }
 
   #[inline]
+  /// シェイパー本体・シェイププラン・バッファを生成
+  ///
+  /// # Errors
+  ///
+  /// フォント参照の生成やシェイププラン構築に失敗した場合にエラーを返します。
   pub fn build(&self) -> ShaperResult<(Shaper<'_>, ShapePlan, UnicodeBuffer)> {
+    let start_time = time::Instant::now();
     let font_ref = FontRef::from_index(self.font_data.as_ref(), self.font_index)
-      .map_err(|e| ShaperError::FontRefError(format!("{:?}", e)))?;
+      .map_err(|e| ShaperError::FontRef(format!("{e:?}")))?;
 
     let shaper = match &self.shaper_instance {
       Some(instance) => self.shaper_data.shaper(&font_ref).instance(Some(instance)).build(),
@@ -114,6 +133,8 @@ impl HarfRustShaper {
 
     let shape_plan = ShapePlan::new(&shaper, self.direction, self.script, self.language.as_ref(), &self.features);
     let buffer = Self::setup_buffer(self.direction, self.script, self.language.clone());
+    let elapsed = start_time.elapsed();
+    println!("Built shaper in {elapsed:.2?}");
 
     Ok((shaper, shape_plan, buffer))
   }
@@ -142,6 +163,11 @@ pub struct HarfRustShapers {
 }
 
 impl HarfRustShapers {
+  /// すべてのフォント設定からシェイパー群を構築
+  ///
+  /// # Errors
+  ///
+  /// フォントデータの読み込みやタグ解析に失敗した場合にエラーを返します。
   pub fn new(font_configs: &FontConfigs) -> ShaperResult<Self> {
     Ok(Self {
       serif_font: HarfRustShaper::new(&font_configs.serif)?,

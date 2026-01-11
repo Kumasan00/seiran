@@ -13,37 +13,32 @@ use std::{
 
 use miette::{Diagnostic, Report};
 use thiserror::Error;
+use tracing::info;
 
 mod pre_config;
 use pre_config::PreConfig;
 mod processed_config;
 
 // processed_config の型を公開
-pub use processed_config::{Config, FontConfig, FontConfigs, Margin, PdfConfig, VariationAxis};
+pub use processed_config::{Config, Feature, FontConfig, FontConfigs, Margin, PdfConfig, VariationAxis};
 
 /// 設定ファイル読み込みに関連するエラー
 ///
 /// ファイルI/O、TOML解析、設定値のバリデーションに関する
 /// 様々なエラーケースを表現します。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ReadConfigError {
+enum ReadConfigError {
   /// 入出力エラー
   #[error("failed to read config file")]
   #[diagnostic(code(config::io), help("設定ファイルのパスと権限を確認してください"))]
   Io(#[from] io::Error),
   /// TOML解析エラー
   #[error("TOML parse error: {0}")]
-  #[diagnostic(
-    code(config::toml_parse),
-    help("TOML の構文が正しいか確認してください")
-  )]
+  #[diagnostic(code(config::toml_parse), help("TOML の構文が正しいか確認してください"))]
   Toml(#[from] toml::de::Error),
   /// 出力ディレクトリの作成に失敗
   #[error("failed to create output directory")]
-  #[diagnostic(
-    code(config::create_dir),
-    help("ディレクトリの権限またはパスを確認してください")
-  )]
+  #[diagnostic(code(config::create_dir), help("ディレクトリの権限またはパスを確認してください"))]
   CreateDir {
     #[source]
     source: io::Error,
@@ -57,19 +52,12 @@ pub enum ReadConfigError {
   },
   /// パスの正規化に失敗
   #[error("failed to canonicalize path '{path}'")]
-  #[diagnostic(
-    code(config::canonicalize),
-    help("存在するパスかどうか確認してください")
-  )]
+  #[diagnostic(code(config::canonicalize), help("存在するパスかどうか確認してください"))]
   Canonicalize {
     path: PathBuf,
     #[source]
     source: io::Error,
   },
-  /// 設定値のバリデーションエラー
-  #[error(transparent)]
-  #[diagnostic(transparent)]
-  Validation(#[from] ValidationError),
   /// 複数のバリデーションエラー
   #[error("validation errors occurred")]
   #[diagnostic()]
@@ -82,13 +70,10 @@ pub enum ReadConfigError {
 /// 設定値のバリデーションエラー詳細
 /// 各種設定値に対する具体的なバリデーションエラーを表現します。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ValidationError {
-  /// サイズ系が正でない（height/width/font_size/line_height_factor）
+enum ValidationError {
+  /// サイズ系が正でない（`height`/`width`/`font_size`/`line_height_factor`）
   #[error("'{field}' must be > 0")]
-  #[diagnostic(
-    code(config::validation::non_positive),
-    help("正の値を指定してください")
-  )]
+  #[diagnostic(code(config::validation::non_positive), help("正の値を指定してください"))]
   NonPositive { field: &'static str },
   /// 余白が負の値
   #[error("'{field}' must be >= 0")]
@@ -96,16 +81,13 @@ pub enum ValidationError {
   NegativeMargin { field: &'static str },
   /// 余白の合計が寸法以上
   #[error("margin sum for {axis} ({sum} ) must be < {limit}")]
-  #[diagnostic(
-    code(config::validation::margin_sum),
-    help("余白の合計が寸法未満になるよう調整してください")
-  )]
+  #[diagnostic(code(config::validation::margin_sum), help("余白の合計が寸法未満になるよう調整してください"))]
   MarginSumTooLarge {
     axis: &'static str,
     sum: f32,
     limit: f32,
   },
-  /// font_nameの重複
+  /// `font_name`の重複
   #[error("Duplicate font_name found: '{font_name}'")]
   #[diagnostic(code(config::validation::duplicate_font))]
   DuplicateFontName { font_name: String },
@@ -113,12 +95,9 @@ pub enum ValidationError {
   #[error("Background color '{field}' must be in [0.0, 1.0], got {value}")]
   #[diagnostic(code(config::validation::background_color))]
   InvalidBackgroundColor { field: &'static str, value: f32 },
-  /// バリアブルフォントの軸設定エラー
-  #[error("Font variation axis error for '{axis_name}'")]
-  #[diagnostic(
-    code(config::validation::font_axis),
-    help("OpenType の軸名（例: wght, wdth）を指定してください")
-  )]
+  /// バリアブルフォントタグの長さエラー
+  #[error("Font variation axis name must be 4 characters long, got '{axis_name}'")]
+  #[diagnostic(code(config::validation::font_axis_length))]
   InvalidFontVariationAxisName { axis_name: String },
   /// scriptコードの長さエラー
   #[error("Script code must be 3 or 4 characters long, got '{code}'")]
@@ -128,6 +107,10 @@ pub enum ValidationError {
   #[error("Language code must be 3 or 4 characters long, got '{code}'")]
   #[diagnostic(code(config::validation::language_code))]
   InvalidLanguageCodeLength { code: String },
+  /// featureタグの長さエラー
+  #[error("Font feature tag must be 4 characters long, got '{tag}'")]
+  #[diagnostic(code(config::validation::font_feature_tag))]
+  InvalidFontFeatureTagLength { tag: String },
 }
 
 /// デフォルトパスから設定ファイルを読み込み
@@ -138,12 +121,17 @@ pub enum ValidationError {
 ///
 /// 解析され、検証済みの設定情報を返します。
 ///
+/// # Errors
+///
+/// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
 /// # エラー
 ///
 /// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
 /// エラーは `miette::Report` でラップされ、詳細なエラー情報が提供されます。
 pub fn read_config_file() -> Result<Config, Report> {
-  return read_config_file_with_path("./config/config.toml").map_err(|e| e.into());
+  let config_path = "./config/config.toml";
+  info!(config_path = %config_path, "Reading config file");
+  return read_config_file_with_path(config_path).map_err(std::convert::Into::into);
 }
 
 /// 指定されたパスから設定ファイルを読み込み
@@ -172,54 +160,6 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
   let pre_config: PreConfig = toml::from_slice(&config_content)?;
   let current_dir = std::env::current_dir().map_err(|error| ReadConfigError::CurrentDir { source: error })?;
   let mut errors = Vec::new();
-
-  // 型エイリアスでクロージャ型の煩雑さを隠す
-  type AxesConvertFn =
-    fn(Option<Vec<pre_config::PreVariationAxis>>) -> Result<Option<Vec<VariationAxis>>, ReadConfigError>;
-
-  // ヘルパー: PreFontConfig から FontConfig を生成
-  fn to_font_config(
-    f: pre_config::PreFontConfig,
-    axes_convert: AxesConvertFn,
-    errors: &mut Vec<ValidationError>,
-  ) -> Result<FontConfig, ReadConfigError> {
-    let script = parse_script_code(f.script, errors);
-    let language = parse_language_code(f.language, errors);
-
-    return Ok(FontConfig {
-      font_name: f.font_name,
-      font_path: resolve_path_buf(f.font_path)?,
-      font_index: f.font_index,
-      variation_axes: axes_convert(f.variation_axes)?,
-      script,
-      language,
-    });
-  }
-
-  // variation_axes の変換
-  fn convert_axes(
-    axes: Option<Vec<pre_config::PreVariationAxis>>,
-  ) -> Result<Option<Vec<VariationAxis>>, ReadConfigError> {
-    axes
-      .map(|axes| {
-        axes
-          .into_iter()
-          .map(|axis| {
-            if axis.name.len() == 4 {
-              Ok(VariationAxis {
-                name: axis.name.as_bytes().try_into().unwrap(),
-                value: axis.value,
-              })
-            } else {
-              Err(ReadConfigError::Validation(ValidationError::InvalidFontVariationAxisName {
-                axis_name: axis.name,
-              }))
-            }
-          })
-          .collect::<Result<Vec<_>, _>>()
-      })
-      .transpose()
-  }
 
   // 構造体分解
   let pre_config::PreConfig {
@@ -308,25 +248,25 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
       background_color,
     },
     font_configs: FontConfigs {
-      serif: to_font_config(serif, convert_axes, &mut errors)?,
-      serif_bold: to_font_config(serif_bold, convert_axes, &mut errors)?,
-      serif_italic: to_font_config(serif_italic, convert_axes, &mut errors)?,
-      serif_bold_italic: to_font_config(serif_bold_italic, convert_axes, &mut errors)?,
-      sans_serif: to_font_config(sans_serif, convert_axes, &mut errors)?,
-      sans_serif_bold: to_font_config(sans_serif_bold, convert_axes, &mut errors)?,
-      sans_serif_italic: to_font_config(sans_serif_italic, convert_axes, &mut errors)?,
-      sans_serif_bold_italic: to_font_config(sans_serif_bold_italic, convert_axes, &mut errors)?,
-      monospace: to_font_config(monospace, convert_axes, &mut errors)?,
-      monospace_bold: to_font_config(monospace_bold, convert_axes, &mut errors)?,
-      monospace_italic: to_font_config(monospace_italic, convert_axes, &mut errors)?,
-      monospace_bold_italic: to_font_config(monospace_bold_italic, convert_axes, &mut errors)?,
-      math: to_font_config(math, convert_axes, &mut errors)?,
-      japanese_serif: to_font_config(japanese_serif, convert_axes, &mut errors)?,
-      japanese_serif_bold: to_font_config(japanese_serif_bold, convert_axes, &mut errors)?,
-      japanese_sans_serif: to_font_config(japanese_sans_serif, convert_axes, &mut errors)?,
-      japanese_sans_serif_bold: to_font_config(japanese_sans_serif_bold, convert_axes, &mut errors)?,
-      japanese_monospace: to_font_config(japanese_monospace, convert_axes, &mut errors)?,
-      japanese_monospace_bold: to_font_config(japanese_monospace_bold, convert_axes, &mut errors)?,
+      serif: to_font_config(serif, &mut errors)?,
+      serif_bold: to_font_config(serif_bold, &mut errors)?,
+      serif_italic: to_font_config(serif_italic, &mut errors)?,
+      serif_bold_italic: to_font_config(serif_bold_italic, &mut errors)?,
+      sans_serif: to_font_config(sans_serif, &mut errors)?,
+      sans_serif_bold: to_font_config(sans_serif_bold, &mut errors)?,
+      sans_serif_italic: to_font_config(sans_serif_italic, &mut errors)?,
+      sans_serif_bold_italic: to_font_config(sans_serif_bold_italic, &mut errors)?,
+      monospace: to_font_config(monospace, &mut errors)?,
+      monospace_bold: to_font_config(monospace_bold, &mut errors)?,
+      monospace_italic: to_font_config(monospace_italic, &mut errors)?,
+      monospace_bold_italic: to_font_config(monospace_bold_italic, &mut errors)?,
+      math: to_font_config(math, &mut errors)?,
+      japanese_serif: to_font_config(japanese_serif, &mut errors)?,
+      japanese_serif_bold: to_font_config(japanese_serif_bold, &mut errors)?,
+      japanese_sans_serif: to_font_config(japanese_sans_serif, &mut errors)?,
+      japanese_sans_serif_bold: to_font_config(japanese_sans_serif_bold, &mut errors)?,
+      japanese_monospace: to_font_config(japanese_monospace, &mut errors)?,
+      japanese_monospace_bold: to_font_config(japanese_monospace_bold, &mut errors)?,
     },
   };
 
@@ -341,9 +281,28 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
   return Ok(config);
 }
 
+fn to_font_config(
+  pre_font_config: pre_config::PreFontConfig,
+  errors: &mut Vec<ValidationError>,
+) -> Result<FontConfig, ReadConfigError> {
+  let script = parse_script_code(pre_font_config.script, errors);
+  let language = parse_language_code(pre_font_config.language, errors);
+  let features = parse_font_features(pre_font_config.features, errors);
+
+  return Ok(FontConfig {
+    font_name: pre_font_config.font_name,
+    font_path: resolve_path_buf(pre_font_config.font_path)?,
+    font_index: pre_font_config.font_index.unwrap_or(0),
+    variation_axes: convert_axes(pre_font_config.variation_axes, errors)?,
+    script,
+    language,
+    features,
+  });
+}
+
 /// 相対パスを絶対パスに解決し正規化
 ///
-/// PathBufを受け取り、`canonicalize()`を使用してシンボリックリンクを解決し、
+/// `PathBuf`を受け取り、`canonicalize()`を使用してシンボリックリンクを解決し、
 /// 正規化された絶対パスを返します。この関数はファイルが存在することを前提とします。
 ///
 /// # 引数
@@ -365,13 +324,107 @@ fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
   return Ok(resolved);
 }
 
+// variation_axes の変換
+fn convert_axes(
+  axes: Option<Vec<pre_config::PreVariationAxis>>,
+  errors: &mut Vec<ValidationError>,
+) -> Result<Option<Vec<VariationAxis>>, ReadConfigError> {
+  axes
+    .map(|axes| {
+      axes
+        .into_iter()
+        .map(|axis| {
+          if axis.name.len() == 4 {
+            Ok(VariationAxis {
+              #[allow(clippy::unwrap_used)]
+              name: axis.name.as_bytes().try_into().unwrap(),
+              value: axis.value,
+            })
+          } else {
+            errors.push(ValidationError::InvalidFontVariationAxisName {
+              axis_name: axis.name,
+            });
+            Ok(VariationAxis {
+              name: [0, 0, 0, 0],
+              value: axis.value,
+            })
+          }
+        })
+        .collect::<Result<Vec<_>, _>>()
+    })
+    .transpose()
+}
+
+/// scriptコード（4文字）を [u8;4] へ変換
+fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
+  match input {
+    Some(s) => {
+      if s.len() == 4 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
+        return Some(arr);
+      }
+      errors.push(ValidationError::InvalidScriptCodeLength { code: s });
+      return None;
+    },
+    None => return None,
+  }
+}
+
+/// languageコード（3または4文字）を [u8;4] へ変換（3文字の場合は末尾スペース）
+fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
+  match input {
+    Some(s) => {
+      if s.len() == 4 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
+        return Some(arr);
+      } else if s.len() == 3 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], b' '];
+        return Some(arr);
+      }
+      errors.push(ValidationError::InvalidLanguageCodeLength { code: s.clone() });
+      return None;
+    },
+    None => return None,
+  }
+}
+
+fn parse_font_features(
+  input: Option<Vec<pre_config::PreFontFeature>>,
+  errors: &mut Vec<ValidationError>,
+) -> Option<Vec<Feature>> {
+  let mut features = Vec::new();
+  if let Some(pre_features) = input {
+    for pre_feature in pre_features {
+      if pre_feature.tag.len() == 4 {
+        #[allow(clippy::unwrap_used)]
+        let tag_bytes: [u8; 4] = pre_feature.tag.as_bytes().try_into().unwrap();
+        features.push(Feature {
+          tag: tag_bytes,
+          value: pre_feature.value,
+        });
+      } else {
+        errors.push(ValidationError::InvalidFontFeatureTagLength {
+          tag: pre_feature.tag,
+        });
+      }
+    }
+  }
+  if features.is_empty() {
+    None
+  } else {
+    Some(features)
+  }
+}
 /// 指定された数値フィールドがすべて正であることを検証する
 ///
 /// # 引数
 /// * `fields` - (フィールド名, 値)の配列
 ///
 /// # 戻り値
-/// 成功時は`()を返します。
+/// 成功時は`()`を返します。
 fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
     if *value <= 0.0 {
@@ -456,45 +509,7 @@ fn build_background_color(
   }
 }
 
-/// scriptコード（4文字）を [u8;4] へ変換
-fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
-  match input {
-    Some(s) => {
-      if s.len() == 4 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-        return Some(arr);
-      } else {
-        errors.push(ValidationError::InvalidScriptCodeLength { code: s });
-        return None;
-      }
-    },
-    None => return None,
-  }
-}
-
-/// languageコード（3または4文字）を [u8;4] へ変換（3文字の場合は末尾スペース）
-fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
-  match input {
-    Some(s) => {
-      if s.len() == 4 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-        return Some(arr);
-      } else if s.len() == 3 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], b' '];
-        return Some(arr);
-      } else {
-        errors.push(ValidationError::InvalidLanguageCodeLength { code: s.clone() });
-        return None;
-      }
-    },
-    None => return None,
-  }
-}
-
-/// font_name の重複を検出
+/// `font_name` の重複を検出
 fn check_duplicate_font_names(fonts: &FontConfigs, errors: &mut Vec<ValidationError>) {
   let mut set = std::collections::HashSet::new();
   for name in [

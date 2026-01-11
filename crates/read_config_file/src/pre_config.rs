@@ -69,13 +69,15 @@ pub(crate) struct PreFontConfig {
   /// フォントファイルのパス（文字列）
   pub font_path: PathBuf,
   /// フォントコレクション内のインデックス
-  pub font_index: u32,
+  pub font_index: Option<u32>,
   /// バリエーション軸の設定
   pub variation_axes: Option<Vec<PreVariationAxis>>,
   /// フォントのscriptシステムの指定
   pub script: Option<String>,
   /// フォントのlanguageシステムの指定
   pub language: Option<String>,
+  /// フォントのfeature設定
+  pub features: Option<Vec<PreFontFeature>>,
 }
 
 /// プリプロセス済みのバリエーション軸設定
@@ -84,7 +86,16 @@ pub(crate) struct PreVariationAxis {
   /// 軸の名前
   pub name: String,
   /// 軸の値
-  pub value: f32,
+  pub value: f64,
+}
+
+/// プリプロセス済みのフォントfeature設定
+#[derive(Deserialize, Debug)]
+pub(crate) struct PreFontFeature {
+  /// featureタグ（4文字の文字列）
+  pub tag: String,
+  /// featureの値
+  pub value: u32,
 }
 
 /// プリプロセス済みのPDF設定

@@ -33,6 +33,9 @@ pub enum Command {
     /// 処理対象のフォントファイルパス
     #[arg(value_name = "FILE")]
     font_path: PathBuf,
+    /// 処理対象のフォントのインデックス（TTCファイルの場合）
+    #[arg(short, long, default_value_t = 0)]
+    font_index: u32,
   },
   /// TTCファイルからフォント名リストを取得
   TtcNames {
@@ -45,6 +48,9 @@ pub enum Command {
     /// 処理対象のフォントファイルパス
     #[arg(value_name = "FILE")]
     font_path: PathBuf,
+    /// 処理対象のフォントのインデックス（TTCファイルの場合）
+    #[arg(short, long, default_value_t = 0)]
+    font_index: u32,
   },
 }
 
@@ -59,4 +65,5 @@ pub enum Command {
 ///   cli::Command::Build { file_path } => println!("Building: {:?}", file_path),
 /// }
 /// ```
+#[must_use]
 pub fn parse_arg() -> Cli { Cli::parse() }

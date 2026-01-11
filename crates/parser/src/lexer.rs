@@ -12,6 +12,7 @@ pub enum Token<'a> {
   Escaped(char),
   // 本文テキスト
   Text(Cow<'a, str>),
+  LineBreak, // 改行
   // パラグラフ区切り (空行)
   ParagraphBreak,
   // コメント
@@ -19,7 +20,7 @@ pub enum Token<'a> {
   Unknown(char),
 }
 
-impl<'a> Token<'a> {
+impl Token<'_> {
   /// ライフタイムを'staticに変換する（エラーレポート用）
   pub(crate) fn into_static(self) -> Token<'static> {
     match self {
@@ -32,6 +33,7 @@ impl<'a> Token<'a> {
       Token::Escaped(c) => Token::Escaped(c),
       Token::Text(cow) => Token::Text(Cow::Owned(cow.into_owned())),
       Token::ParagraphBreak => Token::ParagraphBreak,
+      Token::LineBreak => Token::LineBreak,
       Token::Comment(s) => Token::Comment(Box::leak(s.to_string().into_boxed_str())),
       Token::Unknown(c) => Token::Unknown(c),
     }
@@ -78,12 +80,12 @@ impl<'a> Lexer<'a> {
     let byte = self.bytes[self.cursor];
 
     match byte {
-      b'\\' => self.read_backslash(),
-      b'{' => self.read_single_char_token(Token::LBrace),
-      b'}' => self.read_single_char_token(Token::RBrace),
-      b'[' => self.read_single_char_token(Token::LBracket),
-      b']' => self.read_single_char_token(Token::RBracket),
-      b'/' if self.peek_byte_at(1) == Some(b'/') => self.read_comment(),
+      b'\\' => Some(self.read_backslash()),
+      b'{' => Some(self.read_single_char_token(Token::LBrace)),
+      b'}' => Some(self.read_single_char_token(Token::RBrace)),
+      b'[' => Some(self.read_single_char_token(Token::LBracket)),
+      b']' => Some(self.read_single_char_token(Token::RBracket)),
+      b'/' if self.peek_byte_at(1) == Some(b'/') => Some(self.read_comment()),
       b'$' => self.read_dollar(),
       b'\n' => self.read_newline(),
       b if b.is_ascii_whitespace() => {
@@ -94,27 +96,31 @@ impl<'a> Lexer<'a> {
     }
   }
 
-  fn read_single_char_token(&mut self, token: Token<'a>) -> Option<Token<'a>> {
+  fn read_single_char_token(&mut self, token: Token<'a>) -> Token<'a> {
     self.advance_bytes(1);
-    Some(token)
+    token
   }
 
-  fn read_backslash(&mut self) -> Option<Token<'a>> {
+  fn read_backslash(&mut self) -> Token<'a> {
     self.advance_bytes(1);
     let next_char = self.peek_char();
 
     match next_char {
+      Some('\\') => {
+        self.advance_bytes(1);
+        Token::LineBreak
+      },
       Some(ch) if ch.is_ascii_alphanumeric() => self.read_command(),
-      Some(ch) if ch.is_whitespace() => Some(Token::Unknown('\\')),
+      Some(ch) if ch.is_whitespace() => Token::Unknown('\\'),
       Some(ch) => {
         self.advance_char();
-        Some(Token::Escaped(ch))
+        Token::Escaped(ch)
       },
-      None => Some(Token::Unknown('\\')),
+      None => Token::Unknown('\\'),
     }
   }
 
-  fn read_command(&mut self) -> Option<Token<'a>> {
+  fn read_command(&mut self) -> Token<'a> {
     let start = self.cursor;
     while let Some(&b) = self.bytes.get(self.cursor) {
       if b.is_ascii_alphanumeric() {
@@ -123,17 +129,17 @@ impl<'a> Lexer<'a> {
         break;
       }
     }
-    Some(Token::Command(&self.input[start..self.cursor]))
+    Token::Command(&self.input[start..self.cursor])
   }
 
-  fn read_comment(&mut self) -> Option<Token<'a>> {
+  fn read_comment(&mut self) -> Token<'a> {
     self.advance_bytes(2); // consume '//'
     let start = self.cursor;
     let len = memchr::memchr(b'\n', self.remaining_bytes()).unwrap_or(self.bytes.len() - self.cursor);
 
     let content = &self.input[start..self.cursor + len];
     self.advance_bytes(len);
-    Some(Token::Comment(content))
+    Token::Comment(content)
   }
 
   fn read_dollar(&mut self) -> Option<Token<'a>> {
@@ -161,7 +167,7 @@ impl<'a> Lexer<'a> {
     while !self.is_at_end() {
       let b = self.bytes[self.cursor];
 
-      if self.is_structural_char(b) {
+      if Self::is_structural_char(b) {
         break;
       }
 
@@ -188,7 +194,7 @@ impl<'a> Lexer<'a> {
     Some(Token::Text(Cow::Borrowed(&self.input[start..self.cursor])))
   }
 
-  fn is_structural_char(&self, b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']') }
+  fn is_structural_char(b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']') }
 
   fn handle_dollar_in_text(&mut self) -> bool {
     let dollar_count = self.count_consecutive_dollars();

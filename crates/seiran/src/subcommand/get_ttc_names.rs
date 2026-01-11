@@ -1,6 +1,6 @@
-use std::{fs, path::Path, result};
+use std::{fs, path::Path};
 
-use ttf_parser::Face;
+use read_fonts::{FontRef, TableProvider};
 
 /// TTCファイルから各フォントの名前情報を取得して表示
 ///
@@ -18,23 +18,21 @@ use ttf_parser::Face;
 ///
 /// # エラー
 ///
-/// ファイルの読み込みまたはフォント解析に失敗した場合にエラーを返します。
-pub(crate) fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> result::Result<(), Box<dyn std::error::Error>> {
-  let font_data = fs::read(file_path)?;
-  let font_count = ttf_parser::fonts_in_collection(&font_data).unwrap();
-  println!("Number of fonts in TTC: {}", font_count);
-  for font_index in 0..font_count {
-    println!("\nFont index: {}\n", font_index);
-    let face = Face::parse(&font_data, font_index)?;
-    // let name = font::extract_font_name(&face)?;
-    let names = face.names();
-    for name_entry in names {
-      let platform_id = name_entry.platform_id;
+/// ファイルの読み込みまたはフォント解析に失敗した場合にエラーを返します
+pub(crate) fn get_ttc_names<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
+  let data = fs::read(file_path)?;
+  let fonts = FontRef::fonts(&data);
+  for (index, font) in fonts.enumerate() {
+    let font = font?;
+    let names = font.name()?;
+    for name_record in names.name_record() {
+      let platform_id = name_record.platform_id();
+      let encording_id = name_record.encoding_id();
+      let language_id = name_record.language_id();
+      let name_id = name_record.name_id();
+      let name = name_record.string(names.string_data());
       println!(
-        "Platform ID {:?}: Name ID {}: {:?}",
-        platform_id,
-        name_entry.name_id,
-        name_entry.to_string()
+        "Font Index {index}: Platform ID {platform_id:?}, Encoding ID {encording_id:?}, Language ID {language_id:?}, Name ID {name_id:?}: {name:?}",
       );
     }
   }

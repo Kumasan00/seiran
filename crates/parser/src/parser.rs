@@ -19,6 +19,7 @@ pub enum Node<'a> {
   Command(Command<'a>),
   Environment(Environment<'a>),
   InlineMath(InlineMathBlock<'a>),
+  LineBreak,
   ParagraphBreak,
 }
 
@@ -91,7 +92,7 @@ impl<'a> Parser<'a> {
   fn parse(&mut self) -> Result<Block<'a>, ParserError> { self.parse_block_until(None) }
 
   /// 終了条件（terminator）に遭遇するまでノードを読み続ける
-  /// terminator: Some(Token::RBrace) など。NoneならEOFまで。
+  /// terminator: `Some(Token::RBrace)` など。NoneならEOFまで。
   fn parse_block_until(&mut self, terminator: Option<&Token<'a>>) -> Result<Block<'a>, ParserError> {
     let mut nodes = Vec::new();
 
@@ -116,6 +117,7 @@ impl<'a> Parser<'a> {
       }
 
       // トークン消費と分岐
+      #[allow(clippy::unwrap_used)]
       let token = self.next_token().unwrap();
       match token {
         // Parser内で Token::Text を受け取ったときの処理
@@ -151,12 +153,13 @@ impl<'a> Parser<'a> {
           // TeXでは { a b } はスコープを作るが、ASTにGroupがないため
           // ここでは中身をフラットに展開して追加する方針をとる
           let inner_block = self.parse_block_until(Some(&Token::RBrace))?;
-          self.consume_expected(Token::RBrace)?;
+          self.consume_expected(&Token::RBrace)?;
           nodes.extend(inner_block);
         },
 
         // 不正な単独トークンなどは無視あるいはテキスト扱い
         Token::Unknown(c) => nodes.push(Node::Text(Cow::Owned(c.to_string()))),
+        Token::LineBreak => nodes.push(Node::LineBreak),
         _ => {}, // RBracketなどが単独で来た場合は無視
       }
     }
@@ -173,7 +176,7 @@ impl<'a> Parser<'a> {
     while let Some(Token::LBracket) = self.peek_token() {
       self.next_token(); // consume [
       let block = self.parse_block_until(Some(&Token::RBracket))?;
-      self.consume_expected(Token::RBracket)?;
+      self.consume_expected(&Token::RBracket)?;
       opt_args.push(block);
     }
 
@@ -181,7 +184,7 @@ impl<'a> Parser<'a> {
     while let Some(Token::LBrace) = self.peek_token() {
       self.next_token(); // consume {
       let block = self.parse_block_until(Some(&Token::RBrace))?;
-      self.consume_expected(Token::RBrace)?;
+      self.consume_expected(&Token::RBrace)?;
       args.push(block);
     }
     Ok(Command {
@@ -224,7 +227,7 @@ impl<'a> Parser<'a> {
     while let Some(Token::LBracket) = self.peek_token() {
       self.next_token();
       let block = self.parse_block_until(Some(&Token::RBracket))?;
-      self.consume_expected(Token::RBracket)?;
+      self.consume_expected(&Token::RBracket)?;
       opt_args.push(block);
     }
 
@@ -232,7 +235,7 @@ impl<'a> Parser<'a> {
     while let Some(Token::LBrace) = self.peek_token() {
       self.next_token();
       let block = self.parse_block_until(Some(&Token::RBrace))?;
-      self.consume_expected(Token::RBrace)?;
+      self.consume_expected(&Token::RBrace)?;
       args.push(block);
     }
 
@@ -249,12 +252,11 @@ impl<'a> Parser<'a> {
         // \end の後の {name} を確認
         if self.check_end_tag_name(env_name.as_ref()) {
           break; // 正しく環境が閉じた
-        } else {
-          // 名前が一致しない、または構文エラー
-          // 本来は Result でエラーを返すべきだが、要件に従いパニックか無視
-          // ここでは「強制終了」扱いにする
-          return Err(ParserError::UnexpectedToken(Token::Command("end").into_static()));
         }
+        // 名前が一致しない、または構文エラー
+        // 本来は Result でエラーを返すべきだが、要件に従いパニックか無視
+        // ここでは「強制終了」扱いにする
+        return Err(ParserError::UnexpectedToken(Token::Command("end").into_static()));
       }
 
       // EOFチェック
@@ -394,7 +396,7 @@ impl<'a> Parser<'a> {
     Ok(nodes)
   }
 
-  /// グループ内のインライン数式を解析: { ... } (RBraceで終了)
+  /// グループ内のインライン数式を解析: { ... } (`RBrace`で終了)
   fn parse_inline_math_group(&mut self) -> Result<InlineMathBlock<'a>, ParserError> {
     let mut nodes = Vec::new();
 
@@ -435,9 +437,9 @@ impl<'a> Parser<'a> {
     Ok(nodes)
   }
 
-  fn consume_expected(&mut self, expected: Token<'a>) -> Result<(), ParserError> {
+  fn consume_expected(&mut self, expected: &Token<'a>) -> Result<(), ParserError> {
     match self.peek_token() {
-      Some(t) if *t == expected => {
+      Some(t) if t == expected => {
         self.next_token();
         Ok(())
       },

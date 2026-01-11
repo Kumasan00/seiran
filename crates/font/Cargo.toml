@@ -8,10 +8,12 @@ version.workspace = true
 
 [dependencies]
 allsorts.workspace = true
+font-types.workspace = true
 harfbuzz_rs.workspace = true
 harfrust.workspace = true
 pdf-writer.workspace = true
 rayon.workspace = true
+read-fonts.workspace = true
 read_config_file = { path = "../read_config_file" }
 thiserror.workspace = true
 ttf-parser.workspace = true

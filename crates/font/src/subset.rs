@@ -1,7 +1,13 @@
+//! フォントのサブセット化を行うモジュール
+//!
+//! allsorts を用いて、使用グリフのみを含むフォントのサブセットを生成します。
+//! バリアブルフォントについては、設定された軸値でインスタンス化した上でサブセット化します。
+//! 並列処理には rayon を使用します。
+
 use std::fs;
 
 use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::instance};
-use rayon::prelude::*;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use read_config_file::{FontConfig, FontConfigs};
 use ttf_parser::Face;
 use types::GlyphMappings;
@@ -9,7 +15,7 @@ use types::GlyphMappings;
 /// フォントサブセット処理に関連するエラー
 #[derive(thiserror::Error, Debug)]
 pub enum FontSubsetError {
-  /// ReadScope によるフォントバイナリ読込失敗
+  /// `ReadScope`によるフォントバイナリ読込失敗
   #[error("Failed to read font data: {0}")]
   Read(Box<dyn std::error::Error + Send + Sync>),
   /// テーブルプロバイダ生成失敗
@@ -50,39 +56,6 @@ pub struct FontSubsetBytes {
   pub japanese_monospace_font_subset: Vec<u8>,
   pub japanese_monospace_bold_font_subset: Vec<u8>,
 }
-/// 単一フォントのサブセットを作成
-///
-/// バリアブルフォントの場合は設定された軸の値に基づいてインスタンスを生成し、
-/// 使用されるグリフのみを含むサブセットフォントを作成します。
-///
-/// # 引数
-///
-/// * `ctx` - フォントコンテキスト
-/// * `used_gids` - 使用されるグリフIDのイテレート可能な集合
-///
-/// # 戻り値
-///
-/// サブセット化されたフォントデータのバイト列を返します。
-///
-/// # エラー
-///
-/// インスタンス化またはサブセット処理中にエラーが発生した場合にエラーを返します。
-fn subset_for<'a, T>(font_config: &'a FontConfig, used_gids: &T) -> Result<Vec<u8>, FontSubsetError>
-where
-  T: IntoIterator<Item = u16> + Clone,
-  for<'b> &'b T: IntoIterator<Item = &'b u16>,
-{
-  let used: Vec<u16> = used_gids.into_iter().copied().collect();
-  let data = fs::read(&font_config.font_path).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let ttf_face =
-    ttf_parser::Face::parse(&data, font_config.font_index).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let data: Vec<u8> = if ttf_face.is_variable() {
-    create_font_instance(font_config, &data, ttf_face)?
-  } else {
-    data
-  };
-  perform_subsetting(&data, font_config.font_index, &used)
-}
 
 /// フォントサブセットを作成
 ///
@@ -92,16 +65,23 @@ where
 ///
 /// # 引数
 ///
-/// * `font_contexts` - 全フォントのコンテキスト
+/// * `font_configs` - 全フォントの設定（フォントパス、インデックス、軸設定）
 /// * `glyph_mappings` - 各フォントで使用されるグリフのマッピング情報
 ///
 /// # 戻り値
 ///
 /// 各フォント種別のサブセット化されたフォントデータのバイト列を含む`FontSubsetBytes`を返します。
 ///
+/// # Errors
+///
+/// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合にエラーを返します。
 /// # エラー
 ///
 /// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合にエラーを返します。
+///
+/// # Panics
+///
+/// 内部の処理結果数が想定と異なる場合にパニックします。
 pub fn create_font_subset(
   font_configs: &FontConfigs,
   glyph_mappings: &GlyphMappings,
@@ -111,49 +91,22 @@ pub fn create_font_subset(
     (&font_configs.serif, &glyph_mappings.serif_font.used_gids),
     (&font_configs.serif_bold, &glyph_mappings.serif_bold_font.used_gids),
     (&font_configs.serif_italic, &glyph_mappings.serif_italic_font.used_gids),
-    (
-      &font_configs.serif_bold_italic,
-      &glyph_mappings.serif_bold_italic_font.used_gids,
-    ),
+    (&font_configs.serif_bold_italic, &glyph_mappings.serif_bold_italic_font.used_gids),
     (&font_configs.sans_serif, &glyph_mappings.sans_serif_font.used_gids),
     (&font_configs.sans_serif_bold, &glyph_mappings.sans_serif_bold_font.used_gids),
-    (
-      &font_configs.sans_serif_italic,
-      &glyph_mappings.sans_serif_italic_font.used_gids,
-    ),
-    (
-      &font_configs.sans_serif_bold_italic,
-      &glyph_mappings.sans_serif_bold_italic_font.used_gids,
-    ),
+    (&font_configs.sans_serif_italic, &glyph_mappings.sans_serif_italic_font.used_gids),
+    (&font_configs.sans_serif_bold_italic, &glyph_mappings.sans_serif_bold_italic_font.used_gids),
     (&font_configs.monospace, &glyph_mappings.monospace_font.used_gids),
     (&font_configs.monospace_bold, &glyph_mappings.monospace_bold_font.used_gids),
     (&font_configs.monospace_italic, &glyph_mappings.monospace_italic_font.used_gids),
-    (
-      &font_configs.monospace_bold_italic,
-      &glyph_mappings.monospace_bold_italic_font.used_gids,
-    ),
+    (&font_configs.monospace_bold_italic, &glyph_mappings.monospace_bold_italic_font.used_gids),
     (&font_configs.math, &glyph_mappings.math_font.used_gids),
     (&font_configs.japanese_serif, &glyph_mappings.japanese_serif_font.used_gids),
-    (
-      &font_configs.japanese_serif_bold,
-      &glyph_mappings.japanese_serif_bold_font.used_gids,
-    ),
-    (
-      &font_configs.japanese_sans_serif,
-      &glyph_mappings.japanese_sans_serif_font.used_gids,
-    ),
-    (
-      &font_configs.japanese_sans_serif_bold,
-      &glyph_mappings.japanese_sans_serif_bold_font.used_gids,
-    ),
-    (
-      &font_configs.japanese_monospace,
-      &glyph_mappings.japanese_monospace_font.used_gids,
-    ),
-    (
-      &font_configs.japanese_monospace_bold,
-      &glyph_mappings.japanese_monospace_bold_font.used_gids,
-    ),
+    (&font_configs.japanese_serif_bold, &glyph_mappings.japanese_serif_bold_font.used_gids),
+    (&font_configs.japanese_sans_serif, &glyph_mappings.japanese_sans_serif_font.used_gids),
+    (&font_configs.japanese_sans_serif_bold, &glyph_mappings.japanese_sans_serif_bold_font.used_gids),
+    (&font_configs.japanese_monospace, &glyph_mappings.japanese_monospace_font.used_gids),
+    (&font_configs.japanese_monospace_bold, &glyph_mappings.japanese_monospace_bold_font.used_gids),
   ];
 
   // 並列でサブセット処理を実行
@@ -164,6 +117,7 @@ pub fn create_font_subset(
 
   // 結果を順序に合わせて展開（最初のエラーで失敗）
   let mut iter = results.into_iter();
+  #[allow(clippy::unwrap_used)]
   Ok(FontSubsetBytes {
     serif_font_subset: iter.next().unwrap()?,
     serif_bold_font_subset: iter.next().unwrap()?,
@@ -187,6 +141,40 @@ pub fn create_font_subset(
   })
 }
 
+/// 単一フォントのサブセットを作成
+///
+/// バリアブルフォントの場合は設定された軸の値に基づいてインスタンスを生成し、
+/// 使用されるグリフのみを含むサブセットフォントを作成します。
+///
+/// # 引数
+///
+/// * `font_config` - フォント設定（フォントパス、インデックス、軸設定）
+/// * `used_gids` - 使用されるグリフIDのイテレート可能な集合
+///
+/// # 戻り値
+///
+/// サブセット化されたフォントデータのバイト列を返します。
+///
+/// # エラー
+///
+/// インスタンス化またはサブセット処理中にエラーが発生した場合にエラーを返します。
+fn subset_for<'a, T>(font_config: &'a FontConfig, used_gids: &T) -> Result<Vec<u8>, FontSubsetError>
+where
+  T: IntoIterator<Item = u16> + Clone,
+  for<'b> &'b T: IntoIterator<Item = &'b u16>,
+{
+  let used: Vec<u16> = used_gids.into_iter().copied().collect();
+  let data = fs::read(&font_config.font_path).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+  let ttf_face =
+    ttf_parser::Face::parse(&data, font_config.font_index).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
+  let data: Vec<u8> = if ttf_face.is_variable() {
+    create_font_instance(font_config, &data, &ttf_face)?
+  } else {
+    data
+  };
+  perform_subsetting(&data, font_config.font_index, &used)
+}
+
 /// バリアブルフォントのインスタンスを作成
 ///
 /// フォントコンテキストに設定されたバリエーション軸の値に基づいて、
@@ -195,7 +183,7 @@ pub fn create_font_subset(
 ///
 /// # 引数
 ///
-/// * `font_context` - フォントコンテキスト
+/// * `font_config` - フォント設定（バリエーション軸の設定を含む）
 ///
 /// # 戻り値
 ///
@@ -204,7 +192,7 @@ pub fn create_font_subset(
 /// # エラー
 ///
 /// インスタンス化処理中にエラーが発生した場合にエラーを返します。
-fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: Face) -> Result<Vec<u8>, FontSubsetError> {
+fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: &Face) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(data);
   let font_data = scope.read::<allsorts::font_data::FontData<'_>>().map_err(|e| FontSubsetError::Read(Box::new(e)))?;
   let table_provider = font_data
@@ -227,7 +215,7 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: Face) -
 ///
 /// # 引数
 ///
-/// * `font_context` - フォントコンテキスト（バリエーション軸の設定を含む）
+/// * `font_config` - フォント設定（バリエーション軸の設定を含む）
 ///
 /// # 戻り値
 ///
@@ -236,9 +224,9 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: Face) -
 /// # エラー
 ///
 /// バリエーション軸の設定が不足している場合にエラーを返します。
-fn build_variation_axes(font_config: &FontConfig, ttf_face: Face) -> Result<Vec<Fixed>, FontSubsetError> {
+fn build_variation_axes(font_config: &FontConfig, ttf_face: &Face) -> Result<Vec<Fixed>, FontSubsetError> {
   // フォント種別に応じた設定軸を取得するため、
-  // font_context から使用フォントのパス・インデックスと一致する設定を探索
+  // font_config から使用フォントのパス・インデックスと一致する設定を探索
   // 既存の構造では FontContext に FontType が無いため、
   // パス一致で推定する（設定は絶対パスに正規化済み）
   // 呼び出し側で FontType ごとの軸選択を実施済みのため、

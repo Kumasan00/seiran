@@ -2,6 +2,7 @@
 /target
 
 # font file
+fonts/
 *.ttf
 *.otf
 *.woff

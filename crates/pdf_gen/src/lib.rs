@@ -17,12 +17,12 @@ const ADOBE_REGISTRY: &[u8] = b"Adobe";
 const ADOBE_ORDERING: &[u8] = b"Identity";
 const ADOBE_SUPPLEMENT: i32 = 0;
 
-/// ToUnicode CMapシステム情報
+/// `ToUnicode` `CMap`システム情報
 const TO_UNICODE_REGISTRY: &[u8] = b"Kuma";
 const TO_UNICODE_ORDERING: &[u8] = b"Custom";
 const TO_UNICODE_SUPPLEMENT: i32 = 0;
 
-/// デフォルトのStemV値
+/// デフォルトの`StemV`値
 const DEFAULT_STEM_V: f32 = 80.0;
 
 /// フォント設定データをまとめた構造体
@@ -44,12 +44,12 @@ struct LocalFont<'a> {
 /// 各フォント用のPDFオブジェクトID群
 #[derive(Debug)]
 struct FontIds {
-  font_id: Ref,
-  cid_font_id: Ref,
-  font_descriptor_id: Ref,
-  cid_to_gid_map_id: Ref,
-  to_unicode_cmap_id: Ref,
-  font_file_id: Ref,
+  font: Ref,
+  cid_font: Ref,
+  font_descriptor: Ref,
+  cid_to_gid_map: Ref,
+  to_unicode_cmap: Ref,
+  font_file: Ref,
 }
 
 /// PDFオブジェクトのID管理構造体
@@ -102,12 +102,12 @@ impl PdfIds {
     macro_rules! create_font_ids {
       () => {
         FontIds {
-          font_id: next_id(),
-          cid_font_id: next_id(),
-          font_descriptor_id: next_id(),
-          cid_to_gid_map_id: next_id(),
-          to_unicode_cmap_id: next_id(),
-          font_file_id: next_id(),
+          font: next_id(),
+          cid_font: next_id(),
+          font_descriptor: next_id(),
+          cid_to_gid_map: next_id(),
+          to_unicode_cmap: next_id(),
+          font_file: next_id(),
         }
       };
     }
@@ -158,6 +158,9 @@ impl PdfIds {
 ///
 /// 成功した場合は`Ok(())`を返します。
 ///
+/// # Errors
+///
+/// ファイルの書き込みに失敗した場合にエラーを返します。
 /// # エラー
 ///
 /// ファイルの書き込みに失敗した場合にエラーを返します。
@@ -202,7 +205,8 @@ pub fn pdf_gen(
 /// 全ページをページツリーに登録します。
 fn setup_catalog_and_pages(pdf: &mut Pdf, ids: &PdfIds) {
   pdf.catalog(ids.catalog_id).pages(ids.page_tree_id);
-  pdf.pages(ids.page_tree_id).kids(ids.page_ids.iter().copied()).count(ids.page_ids.len() as i32);
+  let page_count: i32 = i32::try_from(ids.page_ids.len()).unwrap_or(i32::MAX);
+  pdf.pages(ids.page_tree_id).kids(ids.page_ids.iter().copied()).count(page_count);
 }
 
 /// 単一フォントオブジェクトを設定
@@ -217,28 +221,28 @@ fn setup_single_font(
   advance_width_list: &[f32],
 ) {
   // Type0 Font
-  let mut type0_font = pdf.type0_font(font_ids.font_id);
+  let mut type0_font = pdf.type0_font(font_ids.font);
   type0_font.base_font(font_name);
   type0_font.encoding_predefined(Name(b"Identity-H"));
-  type0_font.descendant_font(font_ids.cid_font_id);
-  type0_font.to_unicode(font_ids.to_unicode_cmap_id);
+  type0_font.descendant_font(font_ids.cid_font);
+  type0_font.to_unicode(font_ids.to_unicode_cmap);
   type0_font.finish();
 
   // CID Font
-  let mut cid_type2_font = pdf.cid_font(font_ids.cid_font_id);
+  let mut cid_type2_font = pdf.cid_font(font_ids.cid_font);
   cid_type2_font.subtype(pdf_writer::types::CidFontType::Type2);
   cid_type2_font.base_font(font_name);
   cid_type2_font.system_info(create_adobe_system_info());
-  cid_type2_font.font_descriptor(font_ids.font_descriptor_id);
+  cid_type2_font.font_descriptor(font_ids.font_descriptor);
   cid_type2_font.default_width(font_info.upem);
   let mut widths = cid_type2_font.widths();
   widths.consecutive(0, advance_width_list.to_owned());
   widths.finish();
-  cid_type2_font.cid_to_gid_map_stream(font_ids.cid_to_gid_map_id);
+  cid_type2_font.cid_to_gid_map_stream(font_ids.cid_to_gid_map);
   cid_type2_font.finish();
 
   // Font Descriptor
-  let mut font_descriptor = pdf.font_descriptor(font_ids.font_descriptor_id);
+  let mut font_descriptor = pdf.font_descriptor(font_ids.font_descriptor);
   font_descriptor.name(font_name);
   font_descriptor.flags(pdf_writer::types::FontFlags::SYMBOLIC);
   font_descriptor.italic_angle(font_info.italic_angle);
@@ -247,7 +251,7 @@ fn setup_single_font(
   font_descriptor.descent(font_info.descender);
   font_descriptor.cap_height(font_info.cap_height);
   font_descriptor.stem_v(DEFAULT_STEM_V);
-  font_descriptor.font_file2(font_ids.font_file_id);
+  font_descriptor.font_file2(font_ids.font_file);
   font_descriptor.finish();
 }
 
@@ -379,7 +383,7 @@ fn setup_all_fonts(
     },
   ];
 
-  for f in fonts.iter() {
+  for f in &fonts {
     setup_single_font(pdf, f.ids, Name(f.name_bytes), f.data, f.advances);
   }
 
@@ -521,7 +525,7 @@ fn setup_all_fonts(
 
 /// フォント関連ストリームを設定
 ///
-/// CIDからGIDへのマッピング、ToUnicode CMap、
+/// CIDからGIDへのマッピング、`ToUnicode CMap`、
 /// およびフォントファイルデータの各ストリームをPDFに追加します。
 fn setup_font_streams(
   pdf: &mut Pdf,
@@ -530,9 +534,9 @@ fn setup_font_streams(
   cid_to_gid_map: &[u8],
   to_unicode_cmap: pdf_writer::types::UnicodeCmap,
 ) {
-  pdf.stream(font_ids.cid_to_gid_map_id, cid_to_gid_map);
-  pdf.cmap(font_ids.to_unicode_cmap_id, to_unicode_cmap.finish().as_slice());
-  pdf.stream(font_ids.font_file_id, font_data);
+  pdf.stream(font_ids.cid_to_gid_map, cid_to_gid_map);
+  pdf.cmap(font_ids.to_unicode_cmap, to_unicode_cmap.finish().as_slice());
+  pdf.stream(font_ids.font_file, font_data);
 }
 
 /// ページとコンテンツを設定
@@ -559,27 +563,12 @@ fn setup_page(
   page
     .resources()
     .fonts()
-    .pair(Name(config.font_configs.serif.font_name.as_bytes()), ids.serif_font.font_id)
-    .pair(
-      Name(config.font_configs.serif_bold.font_name.as_bytes()),
-      ids.serif_bold_font.font_id,
-    )
-    .pair(
-      Name(config.font_configs.serif_italic.font_name.as_bytes()),
-      ids.serif_italic_font.font_id,
-    )
-    .pair(
-      Name(config.font_configs.serif_bold_italic.font_name.as_bytes()),
-      ids.serif_bold_italic_font.font_id,
-    )
-    .pair(
-      Name(config.font_configs.sans_serif.font_name.as_bytes()),
-      ids.sans_serif_font.font_id,
-    )
-    .pair(
-      Name(config.font_configs.sans_serif_bold.font_name.as_bytes()),
-      ids.sans_serif_bold_font.font_id,
-    );
+    .pair(Name(config.font_configs.serif.font_name.as_bytes()), ids.serif_font.font)
+    .pair(Name(config.font_configs.serif_bold.font_name.as_bytes()), ids.serif_bold_font.font)
+    .pair(Name(config.font_configs.serif_italic.font_name.as_bytes()), ids.serif_italic_font.font)
+    .pair(Name(config.font_configs.serif_bold_italic.font_name.as_bytes()), ids.serif_bold_italic_font.font)
+    .pair(Name(config.font_configs.sans_serif.font_name.as_bytes()), ids.sans_serif_font.font)
+    .pair(Name(config.font_configs.sans_serif_bold.font_name.as_bytes()), ids.sans_serif_bold_font.font);
 
   page.finish();
 
@@ -588,7 +577,7 @@ fn setup_page(
 
 // ===== ヘルパー関数 =====
 
-/// Adobe-Identity SystemInfoを作成
+/// Adobe-Identity `SystemInfo`を作成
 ///
 /// CIDフォントに使用する標準的なAdobe-Identity-0システム情報を生成します。
 fn create_adobe_system_info() -> pdf_writer::types::SystemInfo<'static> {
@@ -599,9 +588,9 @@ fn create_adobe_system_info() -> pdf_writer::types::SystemInfo<'static> {
   }
 }
 
-/// ToUnicode CMap用のSystemInfoを作成
+/// `ToUnicode CMap`用の`SystemInfo`を作成
 ///
-/// ToUnicode CMapに使用するカスタムシステム情報を生成します。
+/// `ToUnicode CMap`に使用するカスタムシステム情報を生成します。
 fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
   pdf_writer::types::SystemInfo {
     registry: Str(TO_UNICODE_REGISTRY),
@@ -610,23 +599,23 @@ fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
   }
 }
 
-/// ToUnicode CMapを作成
+/// `ToUnicode CMap`を作成
 ///
-/// CIDから対応するUnicode文字へのマッピングを持つ
-/// CMapオブジェクトを生成します。PDFビューアーでのテキスト検索や
+/// `CID`から対応するUnicode文字へのマッピングを持つ
+/// `CMap`オブジェクトを生成します。PDFビューアーでのテキスト検索や
 /// コピー機能を可能にします。
 ///
 /// # 引数
 ///
 /// * `font_name` - フォント名
-/// * `cid_to_chars` - CIDとUnicode文字のマッピング
+/// * `cid_to_chars` - `CID`と`Unicode`文字のマッピング
 ///
 /// # 戻り値
 ///
-/// Unicode CMapを返します。
+/// `Unicode CMap`を返します。
 fn create_to_unicode_cmap(font_name: &str, cid_to_chars: HashMap<u16, Vec<char>>) -> UnicodeCmap {
   let system_info = create_to_unicode_system_info();
-  let name = format!("{}_ToUnicode", font_name);
+  let name = format!("{font_name}_ToUnicode");
   let mut cmap = UnicodeCmap::new(Name(name.as_bytes()), system_info);
 
   for (cid, chars) in cid_to_chars {
@@ -714,9 +703,9 @@ fn build_cid_to_gid_maps(font_mappings: &GlyphMappings) -> CidToGidMaps {
   }
 }
 
-/// 全フォントのToUnicode CMapを作成
+/// 全フォントの`ToUnicode CMap`を作成
 ///
-/// 19種類のフォント全てに対してToUnicode CMapを生成し、
+/// 19種類のフォント全てに対して`ToUnicode CMap`を生成し、
 /// PDF内でのテキスト検索とコピー機能を可能にします。
 fn create_to_unicode_cmaps(font_configs: &FontConfigs, font_mappings: &GlyphMappings) -> ToUnicodeCmaps {
   ToUnicodeCmaps {

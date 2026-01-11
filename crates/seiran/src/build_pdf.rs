@@ -24,7 +24,7 @@ pub(super) fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std:
   let config = match config {
     Ok(cfg) => cfg,
     Err(e) => {
-      eprintln!("{:?}", e);
+      eprintln!("{e:?}");
       std::process::exit(1);
     },
   };
@@ -34,7 +34,7 @@ pub(super) fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std:
     validate_font::validate_font(font_config)?;
   }
 
-  parser::text_parser(&file_path)?;
+  parser::text_parser(&file_path, &config)?;
   let _shapers = shaper::HarfRustShapers::new(&config.font_configs)?;
 
   // let text_lines = read_file(&file_path)?;

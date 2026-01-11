@@ -55,21 +55,44 @@ pub fn example(param: Type) -> Result<ReturnType, Error> {
 
 ### エラーハンドリング
 
-1. **thiserror クレートを使用**: すべてのカスタムエラーは`#[derive(thiserror::Error)]`を使用
-2. **Result 型を必須使用**: エラーの可能性がある関数は必ず`Result`を返す
-3. **詳細なエラーメッセージ**: エラーの原因と文脈を明確に示す
+1. **thiserror + miette による詳細なエラー診断**: すべてのカスタムエラーは`#[derive(thiserror::Error)]`と`#[derive(miette::Diagnostic)]`を併用
+2. **エラー型の設計**: エラー型を使用するか、Result 型を返すのか unwrap や panic を使用するのか適切に判断
+3. **詳細なエラーメッセージと診断情報**: エラーの原因を明確に示し、ユーザーに対して解決方法を提示する
 4. **エラーの伝播**: `?`演算子を活用し、適切に上位にエラーを伝播させる
+5. **ソースエラー**: `#[source]`属性で元のエラーを指定し、エラーチェーンを形成する
 
 ```rust
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, miette::Diagnostic)]
 pub enum MyError {
-  #[error("Failed to read file: {0}")]
-  Io(#[from] std::io::Error),
+  #[error("Failed to read file: {path}")]
+  #[diagnostic(
+    code(my_error::io),
+    help("ファイルのパスと読み取り権限を確認してください")
+  )]
+  Io {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
 
   #[error("Invalid value for '{field}': {msg}")]
-  InvalidValue { field: &'static str, msg: String },
+  #[diagnostic(code(my_error::invalid_value))]
+  InvalidValue {
+    field: &'static str,
+    msg: String
+  },
 }
 ```
+
+#### エラーハンドリングのベストプラクティス
+
+- **ユーザーフレンドリーなメッセージ**: エラーメッセージは日本語で、何が起きたかを簡潔に説明
+- **help 属性の活用**: `#[diagnostic(help("..."))]`でユーザーが取るべき行動を示唆
+- **code 属性の設定**: `#[diagnostic(code(...))]`でエラーを一意に識別可能にする
+- **型安全性**: `Box<dyn std::error::Error>`の使用はエントリーポイント（`main`）のみに限定
+- **Result 型の使い分け**:
+  - カスタムエラー型がある場合: `Result<T, CustomError>`
+  - 複数のエラーをまとめる場合: `Result<T, Box<dyn std::error::Error>>`
 
 ### 特殊なコーディングルール
 
@@ -178,6 +201,44 @@ mod tests {
 - 循環依存を避ける
 - 共通型は`types`クレートで定義
 - 設定関連は`read_config_file`クレートに集約
+
+---
+
+## CLI コマンド
+
+現在実装されているコマンド：
+
+### `build`
+
+テキストファイルから PDF を生成する主要な機能です。
+
+```
+cargo run build <text_file_path>
+```
+
+### `variation-axes`
+
+指定されたフォントのバリアブルフォント軸情報を取得します。
+
+```
+cargo run variation-axes <font_path> [--font-index <index>]
+```
+
+### `ttc-names`
+
+TrueType Collection（TTC）ファイル内のフォント名一覧を取得します。
+
+```
+cargo run ttc-names <ttc_file_path>
+```
+
+### `script-langs`
+
+フォントでサポートされているスクリプトと言語情報を取得します。
+
+```
+cargo run script-langs <font_path> [--font-index <index>]
+```
 
 ---
 

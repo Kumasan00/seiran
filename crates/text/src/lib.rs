@@ -19,7 +19,7 @@ const NOTDEF_GID: u16 = 0;
 
 /// シェーピング結果の情報
 ///
-/// HarfBuzzによるテキストシェーピングの結果として得られる、
+/// `HarfBuzz`によるテキストシェーピングの結果として得られる、
 /// 各グリフのID、位置情報、クラスタ情報を保持します。
 /// クラスタは元のテキスト内での文字位置を示します。
 #[derive(Debug)]
@@ -58,6 +58,9 @@ pub struct ShapingResult {
 ///
 /// PDFコンテンツストリームのベクタを返します（現在は1ページ分）。
 ///
+/// # Errors
+///
+/// 行の読み込みまたは処理中にエラーが発生した場合にエラーを返します。
 /// # エラー
 ///
 /// 行の読み込みまたは処理中にエラーが発生した場合にエラーを返します。
@@ -128,12 +131,8 @@ fn process_single_line(
   let mut position_text = pdf_content.show_positioned();
   let mut items = position_text.items();
 
-  let shape_results = shaping(
-    text_line,
-    main_font_context,
-    &mut glyph_mapping.gid_to_cid,
-    &mut glyph_mapping.used_gids,
-  )?;
+  let shape_results =
+    shaping(text_line, main_font_context, &mut glyph_mapping.gid_to_cid, &mut glyph_mapping.used_gids)?;
 
   let mut text_buffer = Vec::new();
   let mut notdef_glyph = IndexSet::new();
@@ -149,7 +148,8 @@ fn process_single_line(
 
     let advance_width = 1000.0; // TODO: Get actual advance width from font
     glyph_mapping.advance_widths.entry(cid).or_insert(advance_width);
-    let shape_advance = shape_result.x_advance as f32 * 1000.0 / units_per_em;
+    let shape_advance = f64::from(shape_result.x_advance) * 1000.0 / f64::from(units_per_em);
+    let shape_advance = shape_advance as f32;
 
     text_buffer.push((cid >> 8) as u8);
     text_buffer.push((cid & 0xff) as u8);
@@ -188,8 +188,7 @@ fn process_single_line(
 
   if !notdef_glyph.is_empty() {
     eprintln!(
-      "Warning: The following characters are missing in the font, resulting in .notdef glyphs: {:?}",
-      notdef_glyph
+      "Warning: The following characters are missing in the font, resulting in .notdef glyphs: {notdef_glyph:?}"
     );
   }
 
@@ -206,7 +205,7 @@ fn process_single_line(
 /// # 引数
 ///
 /// * `text` - シェーピングするテキスト
-/// * `hb_font` - HarfBuzzフォントオブジェクト
+/// * `hb_font` - `HarfBuzz`フォントオブジェクト
 /// * `gid_to_cid` - GIDからCIDへのマッピング（更新される）
 /// * `used_gids` - 使用されたGIDの集合（更新される）
 ///
@@ -270,6 +269,6 @@ fn shaping(
 /// 文字範囲を表す`Range<usize>`を返します（バイト単位のインデックス）。
 fn get_char_range(line: &str, shape_results: &[ShapingResult], current_index: usize) -> std::ops::Range<usize> {
   let start = shape_results[current_index].cluster as usize;
-  let end = shape_results.get(current_index + 1).map(|sr| sr.cluster as usize).unwrap_or(line.len());
+  let end = shape_results.get(current_index + 1).map_or(line.len(), |sr| sr.cluster as usize);
   start..end
 }

@@ -14,11 +14,12 @@ miette = { workspace = true }
 parser = { path = "../parser" }
 pdf-writer.workspace = true
 pdf_gen = { path = "../pdf_gen" }
+read-fonts = { workspace = true }
 read_config_file = { path = "../read_config_file" }
 text = { path = "../text" }
+thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-ttf-parser.workspace = true
 types = { path = "../types" }
 
 [lints]

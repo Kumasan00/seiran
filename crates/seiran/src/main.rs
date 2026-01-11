@@ -6,6 +6,7 @@
 
 mod build_pdf;
 mod subcommand;
+use miette::IntoDiagnostic;
 use tracing::info;
 use tracing_subscriber::fmt;
 
@@ -35,21 +36,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   match cli_args.command {
     cli::Command::Build { text_file_path } => {
-      let absolute_path = text_file_path.canonicalize()?;
+      let absolute_path = match text_file_path.canonicalize().into_diagnostic() {
+        Ok(p) => p,
+        Err(e) => {
+          eprintln!("{e:?}");
+          std::process::exit(1);
+        },
+      };
       info!(absolute_path = %absolute_path.display(), "Input text file path");
       build_pdf::build_pdf(&absolute_path)?;
     },
-    cli::Command::VariationAxes { font_path } => {
-      let absolute_path = font_path.canonicalize()?;
-      subcommand::get_variation_axes(&absolute_path)?;
+    cli::Command::VariationAxes {
+      font_path,
+      font_index,
+    } => {
+      let absolute_path = match font_path.canonicalize().into_diagnostic() {
+        Ok(p) => p,
+        Err(e) => {
+          eprintln!("{e:?}");
+          std::process::exit(1);
+        },
+      };
+      subcommand::get_variation_axes(&absolute_path, font_index)?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
-      let absolute_path = ttc_file_path.canonicalize()?;
+      let absolute_path = match ttc_file_path.canonicalize().into_diagnostic() {
+        Ok(p) => p,
+        Err(e) => {
+          eprintln!("{e:?}");
+          std::process::exit(1);
+        },
+      };
       subcommand::get_ttc_names(&absolute_path)?;
     },
-    cli::Command::ScriptLangs { font_path } => {
-      let absolute_path = font_path.canonicalize()?;
-      subcommand::get_script_langs(&absolute_path)?;
+    cli::Command::ScriptLangs {
+      font_path,
+      font_index,
+    } => {
+      let absolute_path = match font_path.canonicalize().into_diagnostic() {
+        Ok(p) => p,
+        Err(e) => {
+          eprintln!("{e:?}");
+          std::process::exit(1);
+        },
+      };
+      subcommand::script_langs(&absolute_path, font_index);
     },
   }
 

@@ -59,7 +59,18 @@ pub struct FontConfigs {
   pub japanese_monospace_bold: FontConfig,
 }
 
-/// FontConfigsイテレータ
+impl FontConfigs {
+  /// すべてのフォント設定を反復するイテレータを返す
+  #[must_use]
+  pub fn iter(&self) -> FontConfigsIter<'_> {
+    FontConfigsIter {
+      configs: self,
+      index: 0,
+    }
+  }
+}
+
+/// `FontConfigs`イテレータ
 pub struct FontConfigsIter<'a> {
   configs: &'a FontConfigs,
   index: usize,
@@ -101,7 +112,7 @@ impl<'a> Iterator for FontConfigsIter<'a> {
   }
 }
 
-impl<'a> ExactSizeIterator for FontConfigsIter<'a> {}
+impl ExactSizeIterator for FontConfigsIter<'_> {}
 
 impl<'a> IntoIterator for &'a FontConfigs {
   type IntoIter = FontConfigsIter<'a>;
@@ -130,6 +141,15 @@ pub struct FontConfig {
   pub script: Option<[u8; 4]>,
   /// フォントのlanguageシステムの指定
   pub language: Option<[u8; 4]>,
+  /// フォントのfeature設定
+  pub features: Option<Vec<Feature>>,
+}
+
+/// フォントのfeature設定
+#[derive(Debug, Clone)]
+pub struct Feature {
+  pub tag: [u8; 4],
+  pub value: u32,
 }
 
 /// バリエーション軸の設定
@@ -138,7 +158,7 @@ pub struct VariationAxis {
   /// 軸の名前
   pub name: [u8; 4],
   /// 軸の値
-  pub value: f32,
+  pub value: f64,
 }
 
 /// 処理済みのPDF設定

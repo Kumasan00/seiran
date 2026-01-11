@@ -1,9 +1,9 @@
 array_width = 60
-attr_fn_like_width = 70
+attr_fn_like_width = 100
 chain_width = 100
 comment_width = 80
 doc_comment_code_block_width = 100
-fn_call_width = 80
+fn_call_width = 100
 inline_attribute_width = 0
 max_width = 120
 single_line_if_else_max_width = 50

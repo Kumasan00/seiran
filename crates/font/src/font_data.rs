@@ -15,7 +15,7 @@ pub enum FontError {
   /// nameテーブルからサブファミリー名が取得できない
   #[error("Missing font subfamily name")]
   MissingSubfamilyName,
-  /// ttf_parserによるフェース解析エラー
+  /// `ttf_parser`によるフェース解析エラー
   #[error("Failed to parse font face: {0}")]
   Parse(#[from] ttf_parser::FaceParsingError),
 }
@@ -47,17 +47,20 @@ impl FontData {
   /// フォントのメタデータ（名前、メトリクス、バウンディングボックスなど）を
   /// 抽出して`FontData`構造体を作成します。
   ///
+  /// # Errors
+  ///
+  /// バリアブルフォントまたは必須の名前フィールドが欠落している場合にエラーを返します。
   /// # エラー
   ///
   /// バリアブルフォントまたは必須の名前フィールドが欠落している場合にエラーを返します。
   pub fn analyze_font(face: &Face<'_>) -> Result<FontData, FontError> {
     let name = extract_font_name(face)?;
 
-    let upem = face.units_per_em() as f32;
+    let upem = f32::from(face.units_per_em());
     let italic_angle = face.italic_angle();
-    let ascender = face.ascender() as f32;
-    let descender = face.descender() as f32;
-    let cap_height = Self::extract_cap_height(face) as f32;
+    let ascender = f32::from(face.ascender());
+    let descender = f32::from(face.descender());
+    let cap_height = f32::from(Self::extract_cap_height(face));
     let bbox = face.global_bounding_box();
 
     Ok(FontData {
@@ -88,12 +91,13 @@ impl FontData {
   ///
   /// フォントのバウンディングボックスを`pdf_writer`ライブラリが使用する
   /// `Rect`形式に変換します。PDF生成時にフォントディスクリプタに必要です。
+  #[must_use]
   pub fn pdf_writer_rect(&self) -> Rect {
     Rect::new(
-      self.bbox.x_min as f32,
-      self.bbox.y_min as f32,
-      self.bbox.x_max as f32,
-      self.bbox.y_max as f32,
+      f32::from(self.bbox.x_min),
+      f32::from(self.bbox.y_min),
+      f32::from(self.bbox.x_max),
+      f32::from(self.bbox.y_max),
     )
   }
 }
@@ -108,6 +112,9 @@ impl FontData {
 ///
 /// * `face` - フォントフェース
 ///
+/// # Errors
+///
+/// 必要な名前情報（ファミリー名またはサブファミリー名）が見つからない場合にエラーを返します。
 /// # エラー
 ///
 /// 必要な名前情報（ファミリー名またはサブファミリー名）が見つからない場合にエラーを返します。
@@ -117,7 +124,7 @@ pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
   let mut family: Option<String> = None;
   let mut subfamily: Option<String> = None;
 
-  for n in face.names().into_iter() {
+  for n in face.names() {
     match n.name_id {
       name_id::FULL_NAME => {
         if full_name.is_none() {
@@ -210,6 +217,9 @@ fn analyze_single_subset(subset_data: &[u8]) -> Result<FontData, FontError> {
 ///
 /// 全フォントのメタデータ情報を含む`FontDatas`を返します。
 ///
+/// # Errors
+///
+/// いずれかのフォントの解析に失敗した場合にエラーを返します。
 /// # エラー
 ///
 /// いずれかのフォントの解析に失敗した場合にエラーを返します。
