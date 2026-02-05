@@ -45,9 +45,13 @@ Seiran は、TeX スタイルのテキストファイルから高品質な PDF �
 ///
 /// 戻り値の説明
 ///
-/// # エラー
+/// # Errors
 ///
 /// エラー条件の説明
+///
+/// # Panics
+///
+/// パニック条件の説明(もしあれば)
 pub fn example(param: Type) -> Result<ReturnType, Error> {
   // 実装
 }
@@ -273,3 +277,8 @@ cargo run script-langs <font_path> [--font-index <index>]
 - TOML フォーマット
 - パスの正規化と検証
 - バリデーションルールの厳格な適用
+
+### ロギング
+
+- `tracing`クレートを使用
+- 重要な処理にログを追加してデバッグを容易に

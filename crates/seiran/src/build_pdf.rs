@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use font::{shaper, validate_font};
+use parser::layout_engine;
 use tracing::info;
 
 /// PDFを生成する
@@ -30,13 +31,19 @@ pub(super) fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std:
   };
   info!(config.name, "Document name");
 
-  for font_config in &config.font_configs {
+  for (font_type, font_config) in &config.font_configs {
+    info!(font_path = %font_config.font_path.display(), ?font_type, "Validating font");
     validate_font::validate_font(font_config)?;
   }
 
-  parser::text_parser(&file_path, &config)?;
-  let _shapers = shaper::HarfRustShapers::new(&config.font_configs)?;
+  let layout_nodes = parser::text_parser(&file_path, &config)?;
 
+  let font_data = font::FontData::new(&config.font_configs)?;
+  let shaper_datas = shaper::HarfRustShaperDatas::new(&config.font_configs, &font_data)?;
+  let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &shaper_datas);
+  let harf_rust_shapers = shaper::HarfRustShapers::new(&config.font_configs, &shaper_datas, &shaper_instances)?;
+
+  layout_engine::layout_engine(layout_nodes, harf_rust_shapers);
   // let text_lines = read_file(&file_path)?;
   // let mut font_contexts = FontContexts::new(&config)?;
   // let mut glyph_mappings = GlyphMappings::new();

@@ -1,6 +1,7 @@
 use font_types::{Fixed, Tag};
 use read_config_file::{FontConfig, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
+use tracing::warn;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FontValidationError {
@@ -54,7 +55,7 @@ pub fn validate_font(config: &FontConfig) -> Result<(), FontValidationError> {
     return Err(FontValidationError::MissingVariationAxes);
   }
   if config.script.is_none() && config.language.is_some() {
-    print!("Warning: 'language' is specified without 'script'. 'language' will be ignored.");
+    warn!("Warning: 'language' is specified without 'script'. 'language' will be ignored.");
   } else {
     check_script_language_support(&font_ref, config);
   }
@@ -147,14 +148,14 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   if let Ok(gsub) = font_ref.gsub() {
     check_script_in_table(gsub.script_list(), script_tag, lang_tag, "GSUB");
   } else {
-    println!("GSUB table not found.");
+    warn!("GSUB table not found.");
   }
 
   // GPOSテーブルのチェック
   if let Ok(gpos) = font_ref.gpos() {
     check_script_in_table(gpos.script_list(), script_tag, lang_tag, "GPOS");
   } else {
-    println!("GPOS table not found.");
+    warn!("GPOS table not found.");
   }
 }
 
@@ -175,13 +176,13 @@ fn check_script_in_table(
   let script_list = match script_list_result {
     Ok(list) => list,
     Err(e) => {
-      println!("Failed to read ScriptList from {table_name} table: {e}");
+      warn!("Failed to read ScriptList from {table_name} table: {e}");
       return;
     },
   };
 
   let Some(index) = script_list.index_for_tag(script_tag) else {
-    println!("Script '{script_tag}' is NOT supported in {table_name} table.");
+    warn!("Script '{script_tag}' is NOT supported in {table_name} table.");
     return;
   };
 
@@ -193,6 +194,6 @@ fn check_script_in_table(
   if let Some(lang_tag) = lang_tag
     && script.lang_sys_index_for_tag(lang_tag).is_none()
   {
-    println!("Language '{lang_tag}' is NOT supported under script '{script_tag}' in {table_name} table.");
+    warn!("Language '{lang_tag}' is NOT supported under script '{script_tag}' in {table_name} table.");
   }
 }

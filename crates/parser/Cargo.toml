@@ -9,6 +9,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+font = { path = "../font" }
 lazy-regex.workspace = true
 memchr.workspace = true
 memmap2.workspace = true

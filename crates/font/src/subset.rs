@@ -9,24 +9,31 @@ use std::fs;
 use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::instance};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use read_config_file::{FontConfig, FontConfigs};
-use ttf_parser::Face;
+// `fvar()` メソッドを使用するために `TableProvider` トレイトが必要
+use read_fonts::{FontRef, TableProvider};
 use types::GlyphMappings;
 
 /// フォントサブセット処理に関連するエラー
 #[derive(thiserror::Error, Debug)]
 pub enum FontSubsetError {
-  /// `ReadScope`によるフォントバイナリ読込失敗
-  #[error("Failed to read font data: {0}")]
-  Read(Box<dyn std::error::Error + Send + Sync>),
+  /// ファイル読み込み失敗
+  #[error("Failed to read font file: {0}")]
+  Io(#[from] std::io::Error),
+  /// フォント解析失敗
+  #[error("Failed to parse font: {0}")]
+  FontParse(#[from] read_fonts::ReadError),
+  /// allsorts によるフォントデータ読込失敗
+  #[error("Failed to read font data with allsorts: {0}")]
+  AllsortsParse(#[from] allsorts::error::ParseError),
   /// テーブルプロバイダ生成失敗
   #[error("Failed to build table provider: {0}")]
-  TableProvider(Box<dyn std::error::Error + Send + Sync>),
+  TableProvider(#[from] allsorts::error::ReadWriteError),
   /// サブセット化失敗
   #[error("Font subsetting failed: {0}")]
-  Subset(Box<dyn std::error::Error + Send + Sync>),
+  Subset(#[from] allsorts::subset::SubsetError),
   /// バリアブルフォントのインスタンス生成失敗
   #[error("Failed to create font instance: {0}")]
-  Instance(Box<dyn std::error::Error + Send + Sync>),
+  Instance(#[from] allsorts::variations::VariationError),
   /// バリアブルフォントに必要な軸設定が不足
   #[error("Variable font requires variation axes in config")]
   MissingVariationAxes,
@@ -61,7 +68,7 @@ pub struct FontSubsetBytes {
 ///
 /// 全19種類のフォントに対して、使用されているグリフのみを含むサブセットを生成します。
 /// バリアブルフォントの場合は、まずインスタンス化してからサブセット化を行います。
-/// rayonを使用した並列処理により高速化を実現しています。
+/// rayon を使用した並列処理により高速化を実現しています。
 ///
 /// # 引数
 ///
@@ -70,12 +77,9 @@ pub struct FontSubsetBytes {
 ///
 /// # 戻り値
 ///
-/// 各フォント種別のサブセット化されたフォントデータのバイト列を含む`FontSubsetBytes`を返します。
+/// 各フォント種別のサブセット化されたフォントデータのバイト列を含む `FontSubsetBytes` を返します。
 ///
 /// # Errors
-///
-/// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合にエラーを返します。
-/// # エラー
 ///
 /// フォントの読み込み、解析、またはサブセット処理中にエラーが発生した場合にエラーを返します。
 ///
@@ -164,15 +168,14 @@ where
   for<'b> &'b T: IntoIterator<Item = &'b u16>,
 {
   let used: Vec<u16> = used_gids.into_iter().copied().collect();
-  let data = fs::read(&font_config.font_path).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let ttf_face =
-    ttf_parser::Face::parse(&data, font_config.font_index).map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let data: Vec<u8> = if ttf_face.is_variable() {
-    create_font_instance(font_config, &data, &ttf_face)?
+  let data = fs::read(&font_config.font_path)?;
+  let font_ref = FontRef::from_index(&data, font_config.font_index)?;
+  let data: Vec<u8> = if font_ref.fvar().is_ok() {
+    create_font_instance(font_config, &data, &font_ref)?
   } else {
     data
   };
-  perform_subsetting(&data, font_config.font_index, &used)
+  return perform_subsetting(&data, font_config.font_index, &used);
 }
 
 /// バリアブルフォントのインスタンスを作成
@@ -184,6 +187,8 @@ where
 /// # 引数
 ///
 /// * `font_config` - フォント設定（バリエーション軸の設定を含む）
+/// * `data` - フォントのバイトデータ
+/// * `font_ref` - `read-fonts` の `FontRef`
 ///
 /// # 戻り値
 ///
@@ -192,20 +197,18 @@ where
 /// # エラー
 ///
 /// インスタンス化処理中にエラーが発生した場合にエラーを返します。
-fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: &Face) -> Result<Vec<u8>, FontSubsetError> {
+fn create_font_instance(font_config: &FontConfig, data: &[u8], font_ref: &FontRef) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(data);
-  let font_data = scope.read::<allsorts::font_data::FontData<'_>>().map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let table_provider = font_data
-    .table_provider(font_config.font_index as usize)
-    .map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+  let font_data = scope.read::<allsorts::font_data::FontData<'_>>()?;
+  let table_provider = font_data.table_provider(font_config.font_index as usize)?;
 
   // バリエーション軸の値を取得（初期化時に選択済みの軸を使用）
-  let axes = build_variation_axes(font_config, ttf_face)?;
+  let axes = build_variation_axes(font_config, font_ref)?;
 
   // インスタンスを生成
-  let (instance, _tuple) = instance(&table_provider, &axes).map_err(|e| FontSubsetError::Instance(Box::new(e)))?;
+  let (instance, _tuple) = instance(&table_provider, &axes)?;
 
-  Ok(instance)
+  return Ok(instance);
 }
 
 /// バリエーション軸の値を構築
@@ -216,6 +219,7 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: &Face) 
 /// # 引数
 ///
 /// * `font_config` - フォント設定（バリエーション軸の設定を含む）
+/// * `font_ref` - `read-fonts` の `FontRef`
 ///
 /// # 戻り値
 ///
@@ -224,26 +228,21 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], ttf_face: &Face) 
 /// # エラー
 ///
 /// バリエーション軸の設定が不足している場合にエラーを返します。
-fn build_variation_axes(font_config: &FontConfig, ttf_face: &Face) -> Result<Vec<Fixed>, FontSubsetError> {
-  // フォント種別に応じた設定軸を取得するため、
-  // font_config から使用フォントのパス・インデックスと一致する設定を探索
-  // 既存の構造では FontContext に FontType が無いため、
-  // パス一致で推定する（設定は絶対パスに正規化済み）
-  // 呼び出し側で FontType ごとの軸選択を実施済みのため、
-  // ここでは設定のどれか一つが存在する前提で探索する。
-
+fn build_variation_axes(font_config: &FontConfig, font_ref: &FontRef) -> Result<Vec<Fixed>, FontSubsetError> {
   // 初期化時に選択済みの軸を利用（全バリアブルフォントを必ずインスタンス化）
   let config_axes = font_config.variation_axes.as_ref().ok_or(FontSubsetError::MissingVariationAxes)?;
 
-  let variation_axes = ttf_face.variation_axes();
+  // read-fonts で fvar テーブルからバリエーション軸を取得
+  let fvar = font_ref.fvar()?;
+  let variation_axes = fvar.axes()?;
 
   let axes = variation_axes
-    .into_iter()
+    .iter()
     .filter_map(|axis| {
+      let axis_tag = axis.axis_tag();
       config_axes.iter().find_map(|cfg_axis| {
-        if cfg_axis.name == axis.tag.to_bytes() {
+        if cfg_axis.name == axis_tag.to_be_bytes() {
           // f32 を Fixed 形式に変換 (16.16 固定小数点)
-          // Fixed は 16.16 固定小数点なので、値を 65536 倍してから i32 にキャスト
           Some(Fixed::from_raw((cfg_axis.value * 65536.0) as i32))
         } else {
           None
@@ -252,7 +251,7 @@ fn build_variation_axes(font_config: &FontConfig, ttf_face: &Face) -> Result<Vec
     })
     .collect();
 
-  Ok(axes)
+  return Ok(axes);
 }
 
 /// フォントデータのサブセット化を実行
@@ -275,12 +274,10 @@ fn build_variation_axes(font_config: &FontConfig, ttf_face: &Face) -> Result<Vec
 /// サブセット処理中にエラーが発生した場合にエラーを返します。
 fn perform_subsetting(font_data: &[u8], index: u32, used_gids: &[u16]) -> Result<Vec<u8>, FontSubsetError> {
   let scope = ReadScope::new(font_data);
-  let font_data = scope.read::<allsorts::font_data::FontData<'_>>().map_err(|e| FontSubsetError::Read(Box::new(e)))?;
-  let table_provider =
-    font_data.table_provider(index as usize).map_err(|e| FontSubsetError::TableProvider(Box::new(e)))?;
+  let font_data = scope.read::<allsorts::font_data::FontData<'_>>()?;
+  let table_provider = font_data.table_provider(index as usize)?;
   let subset_profile = subset::SubsetProfile::Pdf;
   let cmap_target = subset::CmapTarget::Unicode;
 
-  subset::subset(&table_provider, used_gids, &subset_profile, cmap_target)
-    .map_err(|e| FontSubsetError::Subset(Box::new(e)))
+  return Ok(subset::subset(&table_provider, used_gids, &subset_profile, cmap_target)?);
 }

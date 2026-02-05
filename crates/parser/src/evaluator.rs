@@ -1,5 +1,6 @@
 use read_config_file::Config;
 use thiserror::Error;
+use types::FontType;
 
 use crate::parser::{Block, Node};
 
@@ -21,34 +22,17 @@ pub enum EvalError {
   UnknownEnvironment(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum FontStyle {
-  Serif,
-  SerifBold,
-  SerifItalic,
-  SerifBoldItalic,
-  SansSerif,
-  SansSerifBold,
-  SansSerifItalic,
-  SansSerifBoldItalic,
-  Monospace,
-  MonospaceBold,
-  MonospaceItalic,
-  MonospaceBoldItalic,
-  Math,
-}
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
   pub font_size: f32,
-  pub font_type: FontStyle,
+  pub font_type: FontType,
 }
 
 impl Style {
   fn new(font_size: f32) -> Self {
     Style {
       font_size,
-      font_type: FontStyle::Serif,
+      font_type: FontType::Serif,
     }
   }
 }

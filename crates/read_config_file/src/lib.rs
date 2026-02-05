@@ -22,6 +22,8 @@ mod processed_config;
 // processed_config の型を公開
 pub use processed_config::{Config, Feature, FontConfig, FontConfigs, Margin, PdfConfig, VariationAxis};
 
+const DEFAULT_CONFIG_PATH: &str = "./config/config.toml";
+
 /// 設定ファイル読み込みに関連するエラー
 ///
 /// ファイルI/O、TOML解析、設定値のバリデーションに関する
@@ -129,7 +131,7 @@ enum ValidationError {
 /// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
 /// エラーは `miette::Report` でラップされ、詳細なエラー情報が提供されます。
 pub fn read_config_file() -> Result<Config, Report> {
-  let config_path = "./config/config.toml";
+  let config_path = DEFAULT_CONFIG_PATH;
   info!(config_path = %config_path, "Reading config file");
   return read_config_file_with_path(config_path).map_err(std::convert::Into::into);
 }

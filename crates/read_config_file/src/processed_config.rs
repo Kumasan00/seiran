@@ -6,6 +6,8 @@
 
 use std::path::PathBuf;
 
+use types::FontType;
+
 /// 処理済みの設定情報
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -68,6 +70,32 @@ impl FontConfigs {
       index: 0,
     }
   }
+
+  /// 指定されたフォントタイプに対応するフォント設定を取得する
+  #[must_use]
+  pub fn get(&self, font_type: FontType) -> &FontConfig {
+    match font_type {
+      FontType::Serif => &self.serif,
+      FontType::SerifBold => &self.serif_bold,
+      FontType::SerifItalic => &self.serif_italic,
+      FontType::SerifBoldItalic => &self.serif_bold_italic,
+      FontType::SansSerif => &self.sans_serif,
+      FontType::SansSerifBold => &self.sans_serif_bold,
+      FontType::SansSerifItalic => &self.sans_serif_italic,
+      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
+      FontType::Monospace => &self.monospace,
+      FontType::MonospaceBold => &self.monospace_bold,
+      FontType::MonospaceItalic => &self.monospace_italic,
+      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
+      FontType::Math => &self.math,
+      FontType::JapaneseSerif => &self.japanese_serif,
+      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
+      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
+      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
+      FontType::JapaneseMonospace => &self.japanese_monospace,
+      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
+    }
+  }
 }
 
 /// `FontConfigs`イテレータ
@@ -77,38 +105,21 @@ pub struct FontConfigsIter<'a> {
 }
 
 impl<'a> Iterator for FontConfigsIter<'a> {
-  type Item = &'a FontConfig;
+  type Item = (FontType, &'a FontConfig);
 
   fn next(&mut self) -> Option<Self::Item> {
-    let item = match self.index {
-      0 => Some(&self.configs.serif),
-      1 => Some(&self.configs.serif_bold),
-      2 => Some(&self.configs.serif_italic),
-      3 => Some(&self.configs.serif_bold_italic),
-      4 => Some(&self.configs.sans_serif),
-      5 => Some(&self.configs.sans_serif_bold),
-      6 => Some(&self.configs.sans_serif_italic),
-      7 => Some(&self.configs.sans_serif_bold_italic),
-      8 => Some(&self.configs.monospace),
-      9 => Some(&self.configs.monospace_bold),
-      10 => Some(&self.configs.monospace_italic),
-      11 => Some(&self.configs.monospace_bold_italic),
-      12 => Some(&self.configs.math),
-      13 => Some(&self.configs.japanese_serif),
-      14 => Some(&self.configs.japanese_serif_bold),
-      15 => Some(&self.configs.japanese_sans_serif),
-      16 => Some(&self.configs.japanese_sans_serif_bold),
-      17 => Some(&self.configs.japanese_monospace),
-      18 => Some(&self.configs.japanese_monospace_bold),
-      _ => None,
-    };
+    if self.index >= FontType::ALL.len() {
+      return None;
+    }
+    let font_type = FontType::ALL[self.index];
+    let config = self.configs.get(font_type);
     self.index += 1;
-    item
+    return Some((font_type, config));
   }
 
   fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining = 19_usize.saturating_sub(self.index);
-    (remaining, Some(remaining))
+    let remaining = FontType::ALL.len().saturating_sub(self.index);
+    return (remaining, Some(remaining));
   }
 }
 
@@ -116,13 +127,13 @@ impl ExactSizeIterator for FontConfigsIter<'_> {}
 
 impl<'a> IntoIterator for &'a FontConfigs {
   type IntoIter = FontConfigsIter<'a>;
-  type Item = &'a FontConfig;
+  type Item = (FontType, &'a FontConfig);
 
   fn into_iter(self) -> Self::IntoIter {
-    FontConfigsIter {
+    return FontConfigsIter {
       configs: self,
       index: 0,
-    }
+    };
   }
 }
 
@@ -146,14 +157,14 @@ pub struct FontConfig {
 }
 
 /// フォントのfeature設定
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Feature {
   pub tag: [u8; 4],
   pub value: u32,
 }
 
 /// バリエーション軸の設定
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct VariationAxis {
   /// 軸の名前
   pub name: [u8; 4],
@@ -180,7 +191,7 @@ pub struct PdfConfig {
   pub background_color: Option<(f32, f32, f32)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Margin {
   pub top: f32,
   pub bottom: f32,

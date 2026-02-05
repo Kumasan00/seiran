@@ -21,7 +21,6 @@ use crate::{
 macro_rules! single_char {
   ($fn_name:ident, $doc:expr, $ch:expr) => {
     #[doc = concat!($doc, "\n\n# エラー\n\n引数が指定されている場合は [`EvalError::ExtraCommandArgument`] を返します。")]
-    #[inline]
     pub(super) fn $fn_name(command: Command, style: Style) -> Result<LayoutNode, EvalError> {
       if !command.args.is_empty() || !command.opt_args.is_empty() {
         return Err(EvalError::ExtraCommandArgument(command.name.to_string()));
@@ -129,14 +128,16 @@ single_char!(reversed_tilde, "反転チルダ記号を出力します。", "\u{2
 
 #[cfg(test)]
 mod tests {
+  use types::FontType;
+
   use super::*;
-  use crate::{evaluator::FontStyle, parser::Command};
+  use crate::parser::Command;
 
   /// テスト用のスタイルを生成
   fn test_style() -> Style {
     return Style {
       font_size: 12.0,
-      font_type: FontStyle::Serif,
+      font_type: FontType::Serif,
     };
   }
 
@@ -409,14 +410,14 @@ mod tests {
   fn preserves_style_through_emission() {
     let custom_style = Style {
       font_size: 24.5,
-      font_type: FontStyle::Math,
+      font_type: FontType::Math,
     };
     let command = test_command("beta");
     match lower_beta(command, custom_style) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "β");
         assert!((st.font_size - 24.5).abs() < f32::EPSILON);
-        assert_eq!(st.font_type, FontStyle::Math);
+        assert_eq!(st.font_type, FontType::Math);
       },
       _ => panic!("スタイルが保持されるべきです"),
     }

@@ -6,7 +6,6 @@ members = [
   "crates/pdf_gen",
   "crates/read_config_file",
   "crates/seiran",
-  "crates/text",
   "crates/types",
 ]
 resolver = "3"
@@ -27,7 +26,7 @@ version = "0.1.0"
 allsorts = "0.16.1"
 anyhow = { version = "1.0.100", features = ["backtrace", "std"] }
 ariadne = "0.6.0"
-clap = { version = "4.5.54", features = ["derive"] }
+clap = { version = "4.5.57", features = ["derive"] }
 font-types = "0.11.0"
 harfbuzz_rs = "2.0.1"
 harfrust = "0.5.0"
@@ -41,13 +40,13 @@ pdf-writer = "0.14.0"
 phf = { version = "0.13.1", features = ["macros"] }
 phf_codegen = "0.13.1"
 proc-macro2 = "1.0"
-quote = "1.0.43"
+quote = "1.0.44"
 rayon = "1.11.0"
 read-fonts = { version = "0.37.0", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 skrifa = "0.40.0"
 syn = "2.0.114"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 toml = "0.9.11"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
@@ -55,9 +54,9 @@ ttf-parser = "0.25.1"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-expect_used = { level = "warn", priority = 0, check-cfg = ["not(test)"] }
+expect_used = { level = "warn", priority = 0 }
 pedantic = { level = "warn", priority = 0 }
-unwrap_used = { level = "warn", priority = 0, check-cfg = ["not(test)"] }
+unwrap_used = { level = "warn", priority = 0 }
 
 cast_possible_truncation = { level = "allow", priority = 1 }
 needless_return = { level = "allow", priority = 1 }

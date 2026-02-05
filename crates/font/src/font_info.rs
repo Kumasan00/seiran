@@ -24,7 +24,7 @@ pub enum FontError {
 ///
 /// PDF生成に必要なフォントの各種メトリクスを保持します。
 #[derive(Debug)]
-pub struct FontData {
+pub struct FontInfo {
   /// フォント名
   pub name: String,
   /// ユニット/em値
@@ -41,11 +41,11 @@ pub struct FontData {
   pub bbox: ttf_parser::Rect,
 }
 
-impl FontData {
-  /// 解析済みフォントフェースから`FontData`を生成
+impl FontInfo {
+  /// 解析済みフォントフェースから`FontInfo`を生成
   ///
   /// フォントのメタデータ（名前、メトリクス、バウンディングボックスなど）を
-  /// 抽出して`FontData`構造体を作成します。
+  /// 抽出して`FontInfo`構造体を作成します。
   ///
   /// # Errors
   ///
@@ -53,7 +53,7 @@ impl FontData {
   /// # エラー
   ///
   /// バリアブルフォントまたは必須の名前フィールドが欠落している場合にエラーを返します。
-  pub fn analyze_font(face: &Face<'_>) -> Result<FontData, FontError> {
+  pub fn analyze_font(face: &Face<'_>) -> Result<FontInfo, FontError> {
     let name = extract_font_name(face)?;
 
     let upem = f32::from(face.units_per_em());
@@ -63,7 +63,7 @@ impl FontData {
     let cap_height = f32::from(Self::extract_cap_height(face));
     let bbox = face.global_bounding_box();
 
-    Ok(FontData {
+    Ok(FontInfo {
       name,
       upem,
       italic_angle,
@@ -159,34 +159,34 @@ pub fn extract_font_name(face: &Face<'_>) -> Result<String, FontError> {
 
 /// 解析済みフォントメタデータの集合
 ///
-/// PDF生成時に使用する各フォント種別の`FontData`をまとめて保持します。
+/// PDF生成時に使用する各フォント種別の`FontInfo`をまとめて保持します。
 #[derive(Debug)]
-pub struct FontDatas {
-  pub serif_font_data: FontData,
-  pub serif_bold_font_data: FontData,
-  pub serif_italic_font_data: FontData,
-  pub serif_bold_italic_font_data: FontData,
-  pub sans_serif_font_data: FontData,
-  pub sans_serif_bold_font_data: FontData,
-  pub sans_serif_italic_font_data: FontData,
-  pub sans_serif_bold_italic_font_data: FontData,
-  pub monospace_font_data: FontData,
-  pub monospace_bold_font_data: FontData,
-  pub monospace_italic_font_data: FontData,
-  pub monospace_bold_italic_font_data: FontData,
-  pub math_font_data: FontData,
-  pub japanese_serif_font_data: FontData,
-  pub japanese_serif_bold_font_data: FontData,
-  pub japanese_sans_serif_font_data: FontData,
-  pub japanese_sans_serif_bold_font_data: FontData,
-  pub japanese_monospace_font_data: FontData,
-  pub japanese_monospace_bold_font_data: FontData,
+pub struct FontInfos {
+  pub serif_font_info: FontInfo,
+  pub serif_bold_font_info: FontInfo,
+  pub serif_italic_font_info: FontInfo,
+  pub serif_bold_italic_font_info: FontInfo,
+  pub sans_serif_font_info: FontInfo,
+  pub sans_serif_bold_font_info: FontInfo,
+  pub sans_serif_italic_font_info: FontInfo,
+  pub sans_serif_bold_italic_font_info: FontInfo,
+  pub monospace_font_info: FontInfo,
+  pub monospace_bold_font_info: FontInfo,
+  pub monospace_italic_font_info: FontInfo,
+  pub monospace_bold_italic_font_info: FontInfo,
+  pub math_font_info: FontInfo,
+  pub japanese_serif_font_info: FontInfo,
+  pub japanese_serif_bold_font_info: FontInfo,
+  pub japanese_sans_serif_font_info: FontInfo,
+  pub japanese_sans_serif_bold_font_info: FontInfo,
+  pub japanese_monospace_font_info: FontInfo,
+  pub japanese_monospace_bold_font_info: FontInfo,
 }
 
 /// 単一サブセットフォントを解析
 ///
 /// サブセット化されたフォントデータからフェースを解析し、
-/// メタデータ情報を抽出して`FontData`を生成します。
+/// メタデータ情報を抽出して`FontInfo`を生成します。
 ///
 /// # 引数
 ///
@@ -199,15 +199,15 @@ pub struct FontDatas {
 /// # エラー
 ///
 /// フォントの解析に失敗した場合にエラーを返します。
-fn analyze_single_subset(subset_data: &[u8]) -> Result<FontData, FontError> {
+fn analyze_single_subset(subset_data: &[u8]) -> Result<FontInfo, FontError> {
   let face = ttf_parser::Face::parse(subset_data, 0).map_err(FontError::Parse)?;
-  FontData::analyze_font(&face)
+  FontInfo::analyze_font(&face)
 }
 
 /// 全サブセットフォントを解析
 ///
 /// 全19種類のサブセット化されたフォントデータを解析し、
-/// 各フォントのメタデータ情報を抽出して`FontDatas`構造体を生成します。
+/// 各フォントのメタデータ情報を抽出して`FontInfos`構造体を生成します。
 ///
 /// # 引数
 ///
@@ -215,7 +215,7 @@ fn analyze_single_subset(subset_data: &[u8]) -> Result<FontData, FontError> {
 ///
 /// # 戻り値
 ///
-/// 全フォントのメタデータ情報を含む`FontDatas`を返します。
+/// 全フォントのメタデータ情報を含む`FontInfos`を返します。
 ///
 /// # Errors
 ///
@@ -223,48 +223,48 @@ fn analyze_single_subset(subset_data: &[u8]) -> Result<FontData, FontError> {
 /// # エラー
 ///
 /// いずれかのフォントの解析に失敗した場合にエラーを返します。
-pub fn analyze_subset_font(fonts_subset_bytes: &FontSubsetBytes) -> Result<FontDatas, FontError> {
-  let serif_font_data = analyze_single_subset(&fonts_subset_bytes.serif_font_subset)?;
-  let serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.serif_bold_font_subset)?;
-  let serif_italic_font_data = analyze_single_subset(&fonts_subset_bytes.serif_italic_font_subset)?;
-  let serif_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.serif_bold_italic_font_subset)?;
-  let sans_serif_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_font_subset)?;
-  let sans_serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_font_subset)?;
-  let sans_serif_italic_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_italic_font_subset)?;
-  let sans_serif_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_italic_font_subset)?;
-  let monospace_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_font_subset)?;
-  let monospace_bold_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_bold_font_subset)?;
-  let monospace_italic_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_italic_font_subset)?;
-  let monospace_bold_italic_font_data = analyze_single_subset(&fonts_subset_bytes.monospace_bold_italic_font_subset)?;
-  let math_font_data = analyze_single_subset(&fonts_subset_bytes.math_font_subset)?;
-  let japanese_serif_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_serif_font_subset)?;
-  let japanese_serif_bold_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_serif_bold_font_subset)?;
-  let japanese_sans_serif_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_font_subset)?;
-  let japanese_sans_serif_bold_font_data =
+pub fn analyze_subset_font(fonts_subset_bytes: &FontSubsetBytes) -> Result<FontInfos, FontError> {
+  let serif_font_info = analyze_single_subset(&fonts_subset_bytes.serif_font_subset)?;
+  let serif_bold_font_info = analyze_single_subset(&fonts_subset_bytes.serif_bold_font_subset)?;
+  let serif_italic_font_info = analyze_single_subset(&fonts_subset_bytes.serif_italic_font_subset)?;
+  let serif_bold_italic_font_info = analyze_single_subset(&fonts_subset_bytes.serif_bold_italic_font_subset)?;
+  let sans_serif_font_info = analyze_single_subset(&fonts_subset_bytes.sans_serif_font_subset)?;
+  let sans_serif_bold_font_info = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_font_subset)?;
+  let sans_serif_italic_font_info = analyze_single_subset(&fonts_subset_bytes.sans_serif_italic_font_subset)?;
+  let sans_serif_bold_italic_font_info = analyze_single_subset(&fonts_subset_bytes.sans_serif_bold_italic_font_subset)?;
+  let monospace_font_info = analyze_single_subset(&fonts_subset_bytes.monospace_font_subset)?;
+  let monospace_bold_font_info = analyze_single_subset(&fonts_subset_bytes.monospace_bold_font_subset)?;
+  let monospace_italic_font_info = analyze_single_subset(&fonts_subset_bytes.monospace_italic_font_subset)?;
+  let monospace_bold_italic_font_info = analyze_single_subset(&fonts_subset_bytes.monospace_bold_italic_font_subset)?;
+  let math_font_info = analyze_single_subset(&fonts_subset_bytes.math_font_subset)?;
+  let japanese_serif_font_info = analyze_single_subset(&fonts_subset_bytes.japanese_serif_font_subset)?;
+  let japanese_serif_bold_font_info = analyze_single_subset(&fonts_subset_bytes.japanese_serif_bold_font_subset)?;
+  let japanese_sans_serif_font_info = analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_font_subset)?;
+  let japanese_sans_serif_bold_font_info =
     analyze_single_subset(&fonts_subset_bytes.japanese_sans_serif_bold_font_subset)?;
-  let japanese_monospace_font_data = analyze_single_subset(&fonts_subset_bytes.japanese_monospace_font_subset)?;
-  let japanese_monospace_bold_font_data =
+  let japanese_monospace_font_info = analyze_single_subset(&fonts_subset_bytes.japanese_monospace_font_subset)?;
+  let japanese_monospace_bold_font_info =
     analyze_single_subset(&fonts_subset_bytes.japanese_monospace_bold_font_subset)?;
 
-  Ok(FontDatas {
-    serif_font_data,
-    serif_bold_font_data,
-    serif_italic_font_data,
-    serif_bold_italic_font_data,
-    sans_serif_font_data,
-    sans_serif_bold_font_data,
-    sans_serif_italic_font_data,
-    sans_serif_bold_italic_font_data,
-    monospace_font_data,
-    monospace_bold_font_data,
-    monospace_italic_font_data,
-    monospace_bold_italic_font_data,
-    math_font_data,
-    japanese_serif_font_data,
-    japanese_serif_bold_font_data,
-    japanese_sans_serif_font_data,
-    japanese_sans_serif_bold_font_data,
-    japanese_monospace_font_data,
-    japanese_monospace_bold_font_data,
+  Ok(FontInfos {
+    serif_font_info,
+    serif_bold_font_info,
+    serif_italic_font_info,
+    serif_bold_italic_font_info,
+    sans_serif_font_info,
+    sans_serif_bold_font_info,
+    sans_serif_italic_font_info,
+    sans_serif_bold_italic_font_info,
+    monospace_font_info,
+    monospace_bold_font_info,
+    monospace_italic_font_info,
+    monospace_bold_italic_font_info,
+    math_font_info,
+    japanese_serif_font_info,
+    japanese_serif_bold_font_info,
+    japanese_sans_serif_font_info,
+    japanese_sans_serif_bold_font_info,
+    japanese_monospace_font_info,
+    japanese_monospace_bold_font_info,
   })
 }
