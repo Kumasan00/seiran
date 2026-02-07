@@ -1,16 +1,24 @@
 use std::borrow::Cow;
 
+use miette::Diagnostic;
+use thiserror::Error;
+
 use crate::lexer::{Lexer, Token};
 
 // --- AST Definitions (Given provided content) ---
 pub type Block<'a> = Vec<Node<'a>>;
 pub type InlineMathBlock<'a> = Vec<InlineMathNode<'a>>;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum ParserError {
-  #[error("Unexpected end of input")]
+  #[error("入力が予期せず終了しました")]
+  #[diagnostic(
+    code(parser::parse::unexpected_eof),
+    help("入力の末尾付近に閉じ括弧や区切りが不足していないか確認してください")
+  )]
   UnexpectedEof,
-  #[error("Unexpected token: {0:?}")]
+  #[error("予期しないトークンです: {0:?}")]
+  #[diagnostic(code(parser::parse::unexpected_token), help("構文に誤りがないか確認してください"))]
   UnexpectedToken(Token<'static>),
 }
 #[derive(Debug, Clone, PartialEq)]

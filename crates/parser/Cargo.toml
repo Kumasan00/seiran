@@ -13,6 +13,7 @@ font = { path = "../font" }
 lazy-regex.workspace = true
 memchr.workspace = true
 memmap2.workspace = true
+miette.workspace = true
 phf.workspace = true
 read_config_file = { path = "../read_config_file" }
 thiserror.workspace = true

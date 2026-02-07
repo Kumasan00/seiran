@@ -23,7 +23,6 @@ impl EnvironmentKind {
 }
 
 impl Evaluator {
-  #[allow(dead_code)]
   pub(crate) fn evaluate_environment(&mut self, env: &Environment) -> Result<Vec<LayoutNode>, EvalError> {
     let env_kind = ENVIRONMENT_MAP.get(env.name.to_string().as_str()).copied().unwrap_or(EnvironmentKind::Undefined);
     return env_kind.execute(env, self);

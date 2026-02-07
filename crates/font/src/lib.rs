@@ -5,16 +5,16 @@
 
 use std::{fs, rc::Rc};
 
+use font_info::FontInfos;
 use miette::IntoDiagnostic;
+use read_config_file::FontConfigs;
+use read_fonts::FontRef;
+use types::{FontType, GlyphMappings};
 
 pub mod font_info;
 pub mod shaper;
 pub mod subset;
 pub mod validate_font;
-
-use font_info::FontInfos;
-use read_config_file::FontConfigs;
-use types::{FontType, GlyphMappings};
 
 // 定数
 
@@ -170,6 +170,143 @@ impl<'a> IntoIterator for &'a FontData {
   type Item = (FontType, &'a Rc<Vec<u8>>);
 
   fn into_iter(self) -> Self::IntoIter { return self.iter(); }
+}
+
+/// フォント参照を保持するデータ構造
+///
+/// 各フォント種別の `FontRef` を保持し、フォントデータへの参照を提供します。
+pub struct FontRefs<'a> {
+  serif: FontRef<'a>,
+  serif_bold: FontRef<'a>,
+  serif_italic: FontRef<'a>,
+  serif_bold_italic: FontRef<'a>,
+  sans_serif: FontRef<'a>,
+  sans_serif_bold: FontRef<'a>,
+  sans_serif_italic: FontRef<'a>,
+  sans_serif_bold_italic: FontRef<'a>,
+  monospace: FontRef<'a>,
+  monospace_bold: FontRef<'a>,
+  monospace_italic: FontRef<'a>,
+  monospace_bold_italic: FontRef<'a>,
+  math: FontRef<'a>,
+  japanese_serif: FontRef<'a>,
+  japanese_serif_bold: FontRef<'a>,
+  japanese_sans_serif: FontRef<'a>,
+  japanese_sans_serif_bold: FontRef<'a>,
+  japanese_monospace: FontRef<'a>,
+  japanese_monospace_bold: FontRef<'a>,
+}
+
+impl<'a> FontRefs<'a> {
+  /// 設定情報とフォントデータからフォント参照を生成する
+  ///
+  /// # 引数
+  ///
+  /// * `config` - フォント設定情報
+  /// * `font_data` - フォントバイナリデータ
+  ///
+  /// # 戻り値
+  ///
+  /// 各フォント種別の `FontRef` を保持する `FontRefs`
+  ///
+  /// # Errors
+  ///
+  /// フォントデータの解析に失敗した場合にエラーを返します。
+  pub fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
+    return Ok(Self {
+      serif: FontRef::from_index(font_data.get(FontType::Serif), config.serif.font_index).into_diagnostic()?,
+      serif_bold: FontRef::from_index(font_data.get(FontType::SerifBold), config.serif_bold.font_index)
+        .into_diagnostic()?,
+      serif_italic: FontRef::from_index(font_data.get(FontType::SerifItalic), config.serif_italic.font_index)
+        .into_diagnostic()?,
+      serif_bold_italic: FontRef::from_index(
+        font_data.get(FontType::SerifBoldItalic),
+        config.serif_bold_italic.font_index,
+      )
+      .into_diagnostic()?,
+      sans_serif: FontRef::from_index(font_data.get(FontType::SansSerif), config.sans_serif.font_index)
+        .into_diagnostic()?,
+      sans_serif_bold: FontRef::from_index(font_data.get(FontType::SansSerifBold), config.sans_serif_bold.font_index)
+        .into_diagnostic()?,
+      sans_serif_italic: FontRef::from_index(
+        font_data.get(FontType::SansSerifItalic),
+        config.sans_serif_italic.font_index,
+      )
+      .into_diagnostic()?,
+      sans_serif_bold_italic: FontRef::from_index(
+        font_data.get(FontType::SansSerifBoldItalic),
+        config.sans_serif_bold_italic.font_index,
+      )
+      .into_diagnostic()?,
+      monospace: FontRef::from_index(font_data.get(FontType::Monospace), config.monospace.font_index)
+        .into_diagnostic()?,
+      monospace_bold: FontRef::from_index(font_data.get(FontType::MonospaceBold), config.monospace_bold.font_index)
+        .into_diagnostic()?,
+      monospace_italic: FontRef::from_index(
+        font_data.get(FontType::MonospaceItalic),
+        config.monospace_italic.font_index,
+      )
+      .into_diagnostic()?,
+      monospace_bold_italic: FontRef::from_index(
+        font_data.get(FontType::MonospaceBoldItalic),
+        config.monospace_bold_italic.font_index,
+      )
+      .into_diagnostic()?,
+      math: FontRef::from_index(font_data.get(FontType::Math), config.math.font_index).into_diagnostic()?,
+      japanese_serif: FontRef::from_index(font_data.get(FontType::JapaneseSerif), config.japanese_serif.font_index)
+        .into_diagnostic()?,
+      japanese_serif_bold: FontRef::from_index(
+        font_data.get(FontType::JapaneseSerifBold),
+        config.japanese_serif_bold.font_index,
+      )
+      .into_diagnostic()?,
+      japanese_sans_serif: FontRef::from_index(
+        font_data.get(FontType::JapaneseSansSerif),
+        config.japanese_sans_serif.font_index,
+      )
+      .into_diagnostic()?,
+      japanese_sans_serif_bold: FontRef::from_index(
+        font_data.get(FontType::JapaneseSansSerifBold),
+        config.japanese_sans_serif_bold.font_index,
+      )
+      .into_diagnostic()?,
+      japanese_monospace: FontRef::from_index(
+        font_data.get(FontType::JapaneseMonospace),
+        config.japanese_monospace.font_index,
+      )
+      .into_diagnostic()?,
+      japanese_monospace_bold: FontRef::from_index(
+        font_data.get(FontType::JapaneseMonospaceBold),
+        config.japanese_monospace_bold.font_index,
+      )
+      .into_diagnostic()?,
+    });
+  }
+
+  #[must_use]
+  pub fn get(&self, font_type: FontType) -> &FontRef<'_> {
+    match font_type {
+      FontType::Serif => &self.serif,
+      FontType::SerifBold => &self.serif_bold,
+      FontType::SerifItalic => &self.serif_italic,
+      FontType::SerifBoldItalic => &self.serif_bold_italic,
+      FontType::SansSerif => &self.sans_serif,
+      FontType::SansSerifBold => &self.sans_serif_bold,
+      FontType::SansSerifItalic => &self.sans_serif_italic,
+      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
+      FontType::Monospace => &self.monospace,
+      FontType::MonospaceBold => &self.monospace_bold,
+      FontType::MonospaceItalic => &self.monospace_italic,
+      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
+      FontType::Math => &self.math,
+      FontType::JapaneseSerif => &self.japanese_serif,
+      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
+      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
+      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
+      FontType::JapaneseMonospace => &self.japanese_monospace,
+      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
+    }
+  }
 }
 
 /// 全フォントに.notdefグリフのadvance widthを挿入

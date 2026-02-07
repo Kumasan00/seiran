@@ -1,63 +1,100 @@
+#![allow(unused_assignments)]
+
 use font_types::{Fixed, Tag};
+use miette::{Diagnostic, Report};
 use read_config_file::{FontConfig, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
+use thiserror::Error;
 use tracing::warn;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum FontValidationError {
-  /// フォントファイル読み込み失敗
-  #[error("Failed to read font file: {0}")]
-  Io(#[from] std::io::Error),
   /// フェース解析失敗
-  #[error("Failed to parse font face: {0}")]
+  #[error("フォントフェースの解析に失敗しました: {0}")]
+  #[diagnostic(
+    code(font::validation::parse),
+    help("フォントファイルが破損していないか、正しい形式であるか確認してください")
+  )]
   Parse(#[from] read_fonts::ReadError),
   /// バリアブルフォントではないのに軸設定が与えられた
-  #[error("Font is not a variable font, but variation axes were provided in config")]
+  #[error("バリアブルフォントではありませんが、設定ファイルにバリエーション軸が指定されています")]
+  #[diagnostic(
+    code(font::validation::not_variable_font),
+    help("バリアブルフォントでない場合は、設定ファイルから 'variation_axes' を削除してください")
+  )]
   NotVariableFont,
   /// バリアブルフォントに必要な軸設定が不足
-  #[error("Variable font requires variation axes in config")]
+  #[error("バリアブルフォントにはバリエーション軸の設定が必要です")]
+  #[diagnostic(
+    code(font::validation::missing_variation_axes),
+    help(
+      "設定ファイルに 'variation_axes' セクションを追加してください。'variation-axes' コマンドで利用可能な軸を確認できます"
+    )
+  )]
   MissingVariationAxes,
   /// 未知の軸名
-  #[error("Unknown variation axis: {0}")]
+  #[error("不明なバリエーション軸: {0}")]
+  #[diagnostic(
+    code(font::validation::unknown_axis),
+    help("'variation-axes' コマンドでフォントがサポートする軸を確認してください")
+  )]
   UnknownVariationAxis(String),
   /// 軸値が許容範囲外
-  #[error("Variation value out of range for axis '{name}': {value} (allowed: {min}..={max})")]
+  #[error("軸 '{name}' の値が範囲外です: {value} (許容範囲: {min}..={max})")]
+  #[diagnostic(code(font::validation::value_out_of_range), help("値をフォントの許容範囲内に設定してください"))]
   VariationValueOutOfRange {
     name: String,
-    min: f64,
-    max: f64,
+    min: Fixed,
+    max: Fixed,
     value: f64,
   },
   /// フォントに存在する軸が設定されていない
-  #[error("Font has variation axis '{axis}' that is not configured (default: {default}, min: {min}, max: {max})")]
+  #[error("フォントのバリエーション軸 '{axis}' が設定されていません (デフォルト: {default}, 最小: {min}, 最大: {max})")]
+  #[diagnostic(
+    code(font::validation::unconfigured_axis),
+    help("設定ファイルの 'variation_axes' にこの軸を追加してください")
+  )]
   UnconfiguredVariationAxis {
     axis: String,
-    default: f64,
-    min: f64,
-    max: f64,
+    default: Fixed,
+    min: Fixed,
+    max: Fixed,
   },
+}
+
+/// フォント設定を検証
+///
+/// # 引数
+///
+/// * `config` - フォント設定
+/// * `font_byte` - フォントバイナリ
+///
+/// # Errors
+///
+/// フォントの読み込み・解析、バリエーション軸の検証、スクリプト/言語の検証に失敗した場合に
+/// `Report` を返します。
+pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), Report> {
+  wrapped_validate_font(config, font_ref)?;
+  Ok(())
 }
 
 /// フォント設定を検証
 ///
 /// # Errors
 ///
-/// フォントの読み込み、解析、またはバリエーション軸検証に失敗した場合にエラーを返します。
-pub fn validate_font(config: &FontConfig) -> Result<(), FontValidationError> {
-  let font_path = &config.font_path;
-  let font_data = std::fs::read(font_path).map_err(FontValidationError::Io)?;
-  let font_ref = FontRef::from_index(&font_data, 0).map_err(FontValidationError::Parse)?;
-
+/// フォントの読み込み・解析、バリエーション軸の検証に失敗した場合に
+/// `FontValidationError` を返します。
+fn wrapped_validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), FontValidationError> {
   let variation_axes = &config.variation_axes;
   if let Some(variation_axes) = variation_axes {
-    validate_variation_axes(&font_ref, variation_axes)?;
+    validate_variation_axes(font_ref, variation_axes)?;
   } else if font_ref.fvar().is_ok() {
     return Err(FontValidationError::MissingVariationAxes);
   }
   if config.script.is_none() && config.language.is_some() {
     warn!("Warning: 'language' is specified without 'script'. 'language' will be ignored.");
   } else {
-    check_script_language_support(&font_ref, config);
+    check_script_language_support(font_ref, config);
   }
 
   Ok(())
@@ -100,8 +137,8 @@ fn validate_variation_axes(
       let name: String = cfg_tag.to_string();
       return Err(FontValidationError::VariationValueOutOfRange {
         name,
-        min: axis.min_value().to_f64(),
-        max: axis.max_value().to_f64(),
+        min: axis.min_value(),
+        max: axis.max_value(),
         value: cfg_axis.value,
       });
     }
@@ -117,9 +154,9 @@ fn validate_variation_axes(
     if !is_configured {
       return Err(FontValidationError::UnconfiguredVariationAxis {
         axis: axis_name,
-        default: font_axis.default_value().to_f64(),
-        min: font_axis.min_value().to_f64(),
-        max: font_axis.max_value().to_f64(),
+        default: font_axis.default_value(),
+        min: font_axis.min_value(),
+        max: font_axis.max_value(),
       });
     }
   }

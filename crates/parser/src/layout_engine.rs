@@ -1,7 +1,8 @@
 use font::shaper::HarfRustShapers;
 
 use crate::evaluator::LayoutNode;
-pub fn layout_engine(_layout_nodes: Vec<LayoutNode>, _shapers: HarfRustShapers) {
-  // ここにレイアウトエンジンの実装を追加
-  println!("Layout engine is not yet implemented.");
+pub fn layout_engine(layout_nodes: Vec<LayoutNode>, _shapers: HarfRustShapers) {
+  for node in layout_nodes {
+    println!("{node:?}");
+  }
 }

@@ -1,24 +1,33 @@
+use miette::Diagnostic;
 use read_config_file::Config;
 use thiserror::Error;
 use types::FontType;
 
 use crate::parser::{Block, Node};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
+#[allow(dead_code)]
 pub enum EvalError {
-  #[error("Missing argument for command: {0}")]
+  #[error("コマンドの引数が不足しています: {0}")]
+  #[diagnostic(code(parser::eval::missing_command_argument), help("コマンドに必要な引数を確認してください"))]
   MissingCommandArgument(String),
-  #[error("extra argument for command: {0}")]
+  #[error("コマンドの余分な引数があります: {0}")]
+  #[diagnostic(code(parser::eval::extra_command_argument), help("コマンドの引数数を確認してください"))]
   ExtraCommandArgument(String),
-  #[error("Invalid argument for command: {0}, {1}")]
+  #[error("コマンドの引数が不正です: {0}, {1}")]
+  #[diagnostic(code(parser::eval::invalid_command_argument), help("引数の型や形式を確認してください"))]
   InvalidCommandArgument(String, String),
-  #[error("Unknown command: {0}")]
+  #[error("不明なコマンドです: {0}")]
+  #[diagnostic(code(parser::eval::unknown_command), help("コマンド名のスペルを確認してください"))]
   UnknownCommand(String),
-  // #[error("Missing argument for environment: {0}")]
-  // MissingEnvironmentArgument(String),
-  #[error("extra argument for environment: {0}")]
+  #[error("環境の引数が不足しています: {0}")]
+  #[diagnostic(code(parser::eval::missing_environment_argument), help("環境に必要な引数を確認してください"))]
+  MissingEnvironmentArgument(String),
+  #[error("環境の余分な引数があります: {0}")]
+  #[diagnostic(code(parser::eval::extra_environment_argument), help("環境の引数数を確認してください"))]
   ExtraEnvironmentArgument(String),
-  #[error("Unknown environment: {0}")]
+  #[error("不明な環境です: {0}")]
+  #[diagnostic(code(parser::eval::unknown_environment), help("環境名のスペルを確認してください"))]
   UnknownEnvironment(String),
 }
 
@@ -72,7 +81,6 @@ pub enum LayoutNode {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) struct EvalContext {
   pub(crate) current_style: Style,
   pub(crate) part_num: u32,
@@ -113,7 +121,6 @@ impl Evaluator {
     for node in block {
       match node {
         Node::Text(text) => {
-          // println!("Evaluated text node: {}", text);
           Self::push_layout_node(&mut layout_nodes, LayoutNode::Text(text.to_string(), self.context.current_style));
         },
         Node::Command(command) => {

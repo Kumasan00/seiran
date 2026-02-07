@@ -1,7 +1,7 @@
 #![allow(unused_assignments)]
 use std::{collections::BTreeSet, fs, path::Path};
 
-use miette::{Diagnostic, Report};
+use miette::{Diagnostic, IntoDiagnostic};
 use read_fonts::{
   FontRef, ReadError, TableProvider,
   tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList},
@@ -106,34 +106,16 @@ enum ScriptLangsError {
   },
 }
 
-/// サブコマンド実行用エントリポイント（エラー時は終了コード 1）
+/// フォントスクリプト/言語システム表示用のエントリーポイント
 ///
 /// # 引数
 ///
 /// * `file_path` - フォントファイルのパス
 /// * `font_index` - TTC/TTCF など複合フォントのインデックス
-pub(crate) fn script_langs<P: AsRef<Path>>(file_path: P, font_index: u32) {
-  match get_script_langs(file_path, font_index) {
-    Ok(()) => {},
-    Err(e) => {
-      println!("{e:?}");
-      let report: Report = e.into();
-      eprintln!("{report:?}");
-      std::process::exit(1);
-    },
-  }
-}
-
-/// フォントスクリプト/言語システム表示用のエントリポイント
-///
-/// # 引数
-///
-/// * `file_path` - フォントファイルのパス
-/// * `font_index` - TTC/TTCF など複合フォントのインデックス
-fn get_script_langs<P: AsRef<Path>>(file_path: P, font_index: u32) -> Result<(), ScriptLangsError> {
+pub fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
+  let absolute_path = file_path.canonicalize().into_diagnostic()?;
   let mut referenced_features = BTreeSet::new();
-  let file_path_ref = file_path.as_ref();
-  let font_data = fs::read(file_path_ref)?;
+  let font_data = fs::read(&absolute_path).into_diagnostic()?;
   let font_ref = FontRef::from_index(&font_data, font_index)
     .map_err(|source| ScriptLangsError::FontParseError { font_index, source })?;
 

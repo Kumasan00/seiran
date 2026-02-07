@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use font::{shaper, validate_font};
+use miette::IntoDiagnostic;
 use parser::layout_engine;
 use tracing::info;
 
@@ -20,28 +21,28 @@ use tracing::info;
 /// # エラー
 ///
 /// ファイル読み込み、フォント処理、PDF生成のいずれかで失敗した場合。
-pub(super) fn build_pdf<P: AsRef<Path>>(file_path: P) -> Result<(), Box<dyn std::error::Error>> {
-  let config = read_config_file::read_config_file();
-  let config = match config {
-    Ok(cfg) => cfg,
-    Err(e) => {
-      eprintln!("{e:?}");
-      std::process::exit(1);
-    },
-  };
+pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
+  info!(text_file_path = %file_path.display(), "Input text file path");
+  let full_path = file_path.canonicalize().into_diagnostic()?;
+  info!(absolute_path = %full_path.display(), "Absolute input text file path");
+  let config = read_config_file::read_config_file()?;
   info!(config.name, "Document name");
+
+  let layout_nodes = parser::text_parser(&full_path, &config)?;
+  let font_data = font::FontData::new(&config.font_configs)?;
+  let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
   for (font_type, font_config) in &config.font_configs {
     info!(font_path = %font_config.font_path.display(), ?font_type, "Validating font");
-    validate_font::validate_font(font_config)?;
+    let font_ref = font_refs.get(font_type);
+    validate_font::validate_font(font_config, font_ref)?;
+    info!(font_path = %font_config.font_path.display(), ?font_type, "Font validated successfully");
   }
 
-  let layout_nodes = parser::text_parser(&file_path, &config)?;
-
-  let font_data = font::FontData::new(&config.font_configs)?;
-  let shaper_datas = shaper::HarfRustShaperDatas::new(&config.font_configs, &font_data)?;
-  let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &shaper_datas);
-  let harf_rust_shapers = shaper::HarfRustShapers::new(&config.font_configs, &shaper_datas, &shaper_instances)?;
+  let shaper_datas = shaper::ShaperDatas::new(&font_refs);
+  let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);
+  let harf_rust_shapers =
+    shaper::HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
 
   layout_engine::layout_engine(layout_nodes, harf_rust_shapers);
   // let text_lines = read_file(&file_path)?;

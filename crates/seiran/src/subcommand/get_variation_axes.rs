@@ -5,6 +5,7 @@
 
 use std::{fs, path::Path};
 
+use miette::IntoDiagnostic;
 use read_fonts::{FontRef, TableProvider, tables::name::NameString};
 
 /// バリエーション軸および命名インスタンスを表示する。
@@ -21,17 +22,15 @@ use read_fonts::{FontRef, TableProvider, tables::name::NameString};
 /// # エラー
 ///
 /// ファイル読み込み、フォント解析、テーブル参照に失敗した場合にエラーを返す。
-pub(crate) fn get_variation_axes<P: AsRef<Path>>(
-  font_path: P,
-  font_index: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
-  let font_bytes = fs::read(font_path)?;
-  let face = FontRef::from_index(&font_bytes, font_index)?;
+pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
+  let absolute_path = font_path.canonicalize().into_diagnostic()?;
+  let font_bytes = fs::read(&absolute_path).into_diagnostic()?;
+  let face = FontRef::from_index(&font_bytes, font_index).into_diagnostic()?;
 
   match face.fvar() {
     Ok(fvar) => {
       // バリエーション軸を表示
-      let variation_axes = fvar.axes()?;
+      let variation_axes = fvar.axes().into_diagnostic()?;
       for axis_record in variation_axes {
         let axis_tag = axis_record.axis_tag();
         let min_value = axis_record.min_value();
@@ -41,9 +40,10 @@ pub(crate) fn get_variation_axes<P: AsRef<Path>>(
       }
 
       // 命名インスタンスを表示
-      let name_table = face.name()?;
+      let name_table = face.name().into_diagnostic()?;
+
       let name_records = name_table.name_record();
-      let instances = fvar.instances()?;
+      let instances = fvar.instances().into_diagnostic()?;
 
       for instance in instances.iter().flatten() {
         let subfamily_name_id = instance.subfamily_name_id;

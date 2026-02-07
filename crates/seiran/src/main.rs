@@ -6,8 +6,6 @@
 
 mod build_pdf;
 mod subcommand;
-use miette::IntoDiagnostic;
-use tracing::info;
 use tracing_subscriber::fmt;
 
 /// アプリケーションのメインエントリーポイント
@@ -23,7 +21,7 @@ use tracing_subscriber::fmt;
 /// # エラー
 ///
 /// ファイルI/O、フォント処理、PDF生成のいずれかで問題が発生した場合にエラーを返します。
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> miette::Result<()> {
   fmt::fmt()
     .with_max_level(tracing::Level::INFO)
     .with_thread_ids(false)
@@ -35,52 +33,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let cli_args = cli::parse_arg();
 
   match cli_args.command {
-    cli::Command::Build { text_file_path } => {
-      let absolute_path = match text_file_path.canonicalize().into_diagnostic() {
-        Ok(p) => p,
-        Err(e) => {
-          eprintln!("{e:?}");
-          std::process::exit(1);
-        },
-      };
-      info!(absolute_path = %absolute_path.display(), "Input text file path");
-      build_pdf::build_pdf(&absolute_path)?;
+    cli::Command::Build { text_file_path } => match build_pdf::build_pdf(&text_file_path) {
+      Ok(()) => {},
+      Err(e) => {
+        eprintln!("{e:?}");
+        std::process::exit(1);
+      },
     },
     cli::Command::VariationAxes {
       font_path,
       font_index,
     } => {
-      let absolute_path = match font_path.canonicalize().into_diagnostic() {
-        Ok(p) => p,
-        Err(e) => {
-          eprintln!("{e:?}");
-          std::process::exit(1);
-        },
-      };
-      subcommand::get_variation_axes(&absolute_path, font_index)?;
+      subcommand::get_variation_axes(&font_path, font_index)?;
     },
     cli::Command::TtcNames { ttc_file_path } => {
-      let absolute_path = match ttc_file_path.canonicalize().into_diagnostic() {
-        Ok(p) => p,
-        Err(e) => {
-          eprintln!("{e:?}");
-          std::process::exit(1);
-        },
-      };
-      subcommand::get_ttc_names(&absolute_path)?;
+      subcommand::get_ttc_names(&ttc_file_path)?;
     },
     cli::Command::ScriptLangs {
       font_path,
       font_index,
     } => {
-      let absolute_path = match font_path.canonicalize().into_diagnostic() {
-        Ok(p) => p,
-        Err(e) => {
-          eprintln!("{e:?}");
-          std::process::exit(1);
-        },
-      };
-      subcommand::script_langs(&absolute_path, font_index);
+      subcommand::script_langs(&font_path, font_index)?;
     },
   }
 
