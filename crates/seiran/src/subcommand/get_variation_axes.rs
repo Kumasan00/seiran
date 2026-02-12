@@ -7,6 +7,7 @@ use std::{fs, path::Path};
 
 use miette::IntoDiagnostic;
 use read_fonts::{FontRef, TableProvider, tables::name::NameString};
+use tracing::info;
 
 /// バリエーション軸および命名インスタンスを表示する。
 ///
@@ -23,8 +24,8 @@ use read_fonts::{FontRef, TableProvider, tables::name::NameString};
 ///
 /// ファイル読み込み、フォント解析、テーブル参照に失敗した場合にエラーを返す。
 pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
-  let absolute_path = font_path.canonicalize().into_diagnostic()?;
-  let font_bytes = fs::read(&absolute_path).into_diagnostic()?;
+  info!(font_file_path = %font_path.display(), font_index = font_index, "Input font file path and index");
+  let font_bytes = fs::read(font_path).into_diagnostic()?;
   let face = FontRef::from_index(&font_bytes, font_index).into_diagnostic()?;
 
   match face.fvar() {

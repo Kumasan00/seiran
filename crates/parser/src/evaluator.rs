@@ -1,7 +1,7 @@
 use miette::Diagnostic;
 use read_config_file::Config;
 use thiserror::Error;
-use types::FontType;
+use types::FontKind;
 
 use crate::parser::{Block, Node};
 
@@ -34,14 +34,14 @@ pub enum EvalError {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
   pub font_size: f32,
-  pub font_type: FontType,
+  pub font_kind: FontKind,
 }
 
 impl Style {
   fn new(font_size: f32) -> Self {
     Style {
       font_size,
-      font_type: FontType::Serif,
+      font_kind: FontKind::Serif,
     }
   }
 }
@@ -76,7 +76,6 @@ pub enum LayoutNode {
     point: f32,
   },
   LineBreak,
-  ParagraphBreak,
   PageBreak,
 }
 
@@ -142,7 +141,12 @@ impl Evaluator {
           );
         },
         Node::LineBreak => layout_nodes.push(LayoutNode::LineBreak),
-        Node::ParagraphBreak => layout_nodes.push(LayoutNode::ParagraphBreak),
+        Node::ParagraphBreak => {
+          layout_nodes.push(LayoutNode::LineBreak);
+          layout_nodes.push(LayoutNode::Kern {
+            point: self.context.current_style.font_size,
+          });
+        },
       }
     }
     return Ok(layout_nodes);

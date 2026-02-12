@@ -1,7 +1,6 @@
 use std::path::Path;
 
-use font::{shaper, validate_font};
-use miette::IntoDiagnostic;
+use font::{font_info, shaper, validate_font};
 use parser::layout_engine;
 use tracing::info;
 
@@ -23,12 +22,11 @@ use tracing::info;
 /// ファイル読み込み、フォント処理、PDF生成のいずれかで失敗した場合。
 pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   info!(text_file_path = %file_path.display(), "Input text file path");
-  let full_path = file_path.canonicalize().into_diagnostic()?;
-  info!(absolute_path = %full_path.display(), "Absolute input text file path");
   let config = read_config_file::read_config_file()?;
   info!(config.name, "Document name");
 
-  let layout_nodes = parser::text_parser(&full_path, &config)?;
+  let layout_nodes = parser::text_parser(file_path, &config)?;
+  // println!("Layout Nodes: {layout_nodes:#?}");
   let font_data = font::FontData::new(&config.font_configs)?;
   let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
@@ -43,8 +41,10 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);
   let harf_rust_shapers =
     shaper::HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
+  let font_infos = font_info::FontInfos::new(&font_refs)?;
 
-  layout_engine::layout_engine(layout_nodes, harf_rust_shapers);
+  let items = layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos);
+  println!("Items: {items:#?}");
   // let text_lines = read_file(&file_path)?;
   // let mut font_contexts = FontContexts::new(&config)?;
   // let mut glyph_mappings = GlyphMappings::new();

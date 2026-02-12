@@ -446,6 +446,7 @@ impl<'a> HarfRustShaper<'a> {
     if let Some(language) = &self.language {
       buffer.set_language(language.clone());
     }
+    buffer.guess_segment_properties();
     buffer.push_str(text);
     let result = self.shaper.shape_with_plan(&self.shape_plan, buffer, self.features.as_ref());
     return result;

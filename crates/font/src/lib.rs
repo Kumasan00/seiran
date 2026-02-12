@@ -3,7 +3,7 @@
 //! このモジュールは、TrueType/OpenTypeフォントの読み込み、解析、
 //! サブセット化、およびバリアブルフォントの処理機能を提供します。
 
-use std::{fs, rc::Rc};
+use std::fs;
 
 use font_info::FontInfos;
 use miette::IntoDiagnostic;
@@ -26,25 +26,25 @@ const NOTDEF_GID: u16 = 0;
 /// 各フォント種別のバイナリデータを `Rc<Vec<u8>>` として保持し、
 /// 共有参照による再利用を可能にします。
 pub struct FontData {
-  serif: Rc<Vec<u8>>,
-  serif_bold: Rc<Vec<u8>>,
-  serif_italic: Rc<Vec<u8>>,
-  serif_bold_italic: Rc<Vec<u8>>,
-  sans_serif: Rc<Vec<u8>>,
-  sans_serif_bold: Rc<Vec<u8>>,
-  sans_serif_italic: Rc<Vec<u8>>,
-  sans_serif_bold_italic: Rc<Vec<u8>>,
-  monospace: Rc<Vec<u8>>,
-  monospace_bold: Rc<Vec<u8>>,
-  monospace_italic: Rc<Vec<u8>>,
-  monospace_bold_italic: Rc<Vec<u8>>,
-  math: Rc<Vec<u8>>,
-  japanese_serif: Rc<Vec<u8>>,
-  japanese_serif_bold: Rc<Vec<u8>>,
-  japanese_sans_serif: Rc<Vec<u8>>,
-  japanese_sans_serif_bold: Rc<Vec<u8>>,
-  japanese_monospace: Rc<Vec<u8>>,
-  japanese_monospace_bold: Rc<Vec<u8>>,
+  serif: Vec<u8>,
+  serif_bold: Vec<u8>,
+  serif_italic: Vec<u8>,
+  serif_bold_italic: Vec<u8>,
+  sans_serif: Vec<u8>,
+  sans_serif_bold: Vec<u8>,
+  sans_serif_italic: Vec<u8>,
+  sans_serif_bold_italic: Vec<u8>,
+  monospace: Vec<u8>,
+  monospace_bold: Vec<u8>,
+  monospace_italic: Vec<u8>,
+  monospace_bold_italic: Vec<u8>,
+  math: Vec<u8>,
+  japanese_serif: Vec<u8>,
+  japanese_serif_bold: Vec<u8>,
+  japanese_sans_serif: Vec<u8>,
+  japanese_sans_serif_bold: Vec<u8>,
+  japanese_monospace: Vec<u8>,
+  japanese_monospace_bold: Vec<u8>,
 }
 
 impl FontData {
@@ -63,25 +63,25 @@ impl FontData {
   /// フォントファイルの読み込みに失敗した場合にエラーを返します。
   pub fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
     Ok(Self {
-      serif: Rc::new(fs::read(&font_configs.serif.font_path).into_diagnostic()?),
-      serif_bold: Rc::new(fs::read(&font_configs.serif_bold.font_path).into_diagnostic()?),
-      serif_italic: Rc::new(fs::read(&font_configs.serif_italic.font_path).into_diagnostic()?),
-      serif_bold_italic: Rc::new(fs::read(&font_configs.serif_bold_italic.font_path).into_diagnostic()?),
-      sans_serif: Rc::new(fs::read(&font_configs.sans_serif.font_path).into_diagnostic()?),
-      sans_serif_bold: Rc::new(fs::read(&font_configs.sans_serif_bold.font_path).into_diagnostic()?),
-      sans_serif_italic: Rc::new(fs::read(&font_configs.sans_serif_italic.font_path).into_diagnostic()?),
-      sans_serif_bold_italic: Rc::new(fs::read(&font_configs.sans_serif_bold_italic.font_path).into_diagnostic()?),
-      monospace: Rc::new(fs::read(&font_configs.monospace.font_path).into_diagnostic()?),
-      monospace_bold: Rc::new(fs::read(&font_configs.monospace_bold.font_path).into_diagnostic()?),
-      monospace_italic: Rc::new(fs::read(&font_configs.monospace_italic.font_path).into_diagnostic()?),
-      monospace_bold_italic: Rc::new(fs::read(&font_configs.monospace_bold_italic.font_path).into_diagnostic()?),
-      math: Rc::new(fs::read(&font_configs.math.font_path).into_diagnostic()?),
-      japanese_serif: Rc::new(fs::read(&font_configs.japanese_serif.font_path).into_diagnostic()?),
-      japanese_serif_bold: Rc::new(fs::read(&font_configs.japanese_serif_bold.font_path).into_diagnostic()?),
-      japanese_sans_serif: Rc::new(fs::read(&font_configs.japanese_sans_serif.font_path).into_diagnostic()?),
-      japanese_sans_serif_bold: Rc::new(fs::read(&font_configs.japanese_sans_serif_bold.font_path).into_diagnostic()?),
-      japanese_monospace: Rc::new(fs::read(&font_configs.japanese_monospace.font_path).into_diagnostic()?),
-      japanese_monospace_bold: Rc::new(fs::read(&font_configs.japanese_monospace_bold.font_path).into_diagnostic()?),
+      serif: fs::read(&font_configs.serif.font_path).into_diagnostic()?,
+      serif_bold: fs::read(&font_configs.serif_bold.font_path).into_diagnostic()?,
+      serif_italic: fs::read(&font_configs.serif_italic.font_path).into_diagnostic()?,
+      serif_bold_italic: fs::read(&font_configs.serif_bold_italic.font_path).into_diagnostic()?,
+      sans_serif: fs::read(&font_configs.sans_serif.font_path).into_diagnostic()?,
+      sans_serif_bold: fs::read(&font_configs.sans_serif_bold.font_path).into_diagnostic()?,
+      sans_serif_italic: fs::read(&font_configs.sans_serif_italic.font_path).into_diagnostic()?,
+      sans_serif_bold_italic: fs::read(&font_configs.sans_serif_bold_italic.font_path).into_diagnostic()?,
+      monospace: fs::read(&font_configs.monospace.font_path).into_diagnostic()?,
+      monospace_bold: fs::read(&font_configs.monospace_bold.font_path).into_diagnostic()?,
+      monospace_italic: fs::read(&font_configs.monospace_italic.font_path).into_diagnostic()?,
+      monospace_bold_italic: fs::read(&font_configs.monospace_bold_italic.font_path).into_diagnostic()?,
+      math: fs::read(&font_configs.math.font_path).into_diagnostic()?,
+      japanese_serif: fs::read(&font_configs.japanese_serif.font_path).into_diagnostic()?,
+      japanese_serif_bold: fs::read(&font_configs.japanese_serif_bold.font_path).into_diagnostic()?,
+      japanese_sans_serif: fs::read(&font_configs.japanese_sans_serif.font_path).into_diagnostic()?,
+      japanese_sans_serif_bold: fs::read(&font_configs.japanese_sans_serif_bold.font_path).into_diagnostic()?,
+      japanese_monospace: fs::read(&font_configs.japanese_monospace.font_path).into_diagnostic()?,
+      japanese_monospace_bold: fs::read(&font_configs.japanese_monospace_bold.font_path).into_diagnostic()?,
     })
   }
 
@@ -95,7 +95,7 @@ impl FontData {
   ///
   /// フォントバイナリデータへの参照
   #[must_use]
-  pub fn get(&self, font_type: FontType) -> &Rc<Vec<u8>> {
+  pub fn get(&self, font_type: FontType) -> &Vec<u8> {
     match font_type {
       FontType::Serif => &self.serif,
       FontType::SerifBold => &self.serif_bold,
@@ -142,7 +142,7 @@ pub struct FontDataIter<'a> {
 }
 
 impl<'a> Iterator for FontDataIter<'a> {
-  type Item = (FontType, &'a Rc<Vec<u8>>);
+  type Item = (FontType, &'a Vec<u8>);
 
   fn next(&mut self) -> Option<Self::Item> {
     let font_types = FontType::ALL;
@@ -167,7 +167,7 @@ impl ExactSizeIterator for FontDataIter<'_> {}
 
 impl<'a> IntoIterator for &'a FontData {
   type IntoIter = FontDataIter<'a>;
-  type Item = (FontType, &'a Rc<Vec<u8>>);
+  type Item = (FontType, &'a Vec<u8>);
 
   fn into_iter(self) -> Self::IntoIter { return self.iter(); }
 }

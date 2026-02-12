@@ -2,6 +2,7 @@ use std::{fs, path::Path};
 
 use miette::IntoDiagnostic;
 use read_fonts::{FontRef, TableProvider};
+use tracing::info;
 
 /// TTCファイルから各フォントの名前情報を取得して表示
 ///
@@ -21,8 +22,8 @@ use read_fonts::{FontRef, TableProvider};
 ///
 /// ファイルの読み込みまたはフォント解析に失敗した場合にエラーを返します
 pub(crate) fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
-  let absolute_path = file_path.canonicalize().into_diagnostic()?;
-  let data = fs::read(&absolute_path).into_diagnostic()?;
+  info!(ttc_file_path = %file_path.display(), "Input TTC file path");
+  let data = fs::read(file_path).into_diagnostic()?;
   let fonts = FontRef::fonts(&data);
   for (index, font) in fonts.enumerate() {
     let font = font.into_diagnostic()?;

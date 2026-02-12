@@ -7,6 +7,7 @@ use read_fonts::{
   tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList},
 };
 use thiserror::Error;
+use tracing::info;
 
 /// フォントスクリプト/言語システム解析時のエラー
 #[derive(Error, Debug, Diagnostic)]
@@ -113,9 +114,9 @@ enum ScriptLangsError {
 /// * `file_path` - フォントファイルのパス
 /// * `font_index` - TTC/TTCF など複合フォントのインデックス
 pub fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
-  let absolute_path = file_path.canonicalize().into_diagnostic()?;
+  info!(font_file_path = %file_path.display(), font_index = font_index, "Input font file path and index");
   let mut referenced_features = BTreeSet::new();
-  let font_data = fs::read(&absolute_path).into_diagnostic()?;
+  let font_data = fs::read(file_path).into_diagnostic()?;
   let font_ref = FontRef::from_index(&font_data, font_index)
     .map_err(|source| ScriptLangsError::FontParseError { font_index, source })?;
 

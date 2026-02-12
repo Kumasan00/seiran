@@ -1,4 +1,4 @@
-use types::FontType;
+use types::FontKind;
 
 use crate::{
   evaluator::{EvalContext, EvalError, LayoutNode},
@@ -23,7 +23,7 @@ pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Layou
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}部 {}", context.part_num, name),
     context.current_style,
@@ -53,7 +53,7 @@ pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<La
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}章 {}", context.chapter_num, name),
     context.current_style,
@@ -82,7 +82,7 @@ pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<La
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}節 {}", context.section_num, name),
     context.current_style,
@@ -110,7 +110,7 @@ pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}小節 {}", context.subsection_num, name),
     context.current_style,
@@ -137,7 +137,7 @@ pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}項 {}", context.paragraph_num, name),
     context.current_style,
@@ -163,7 +163,7 @@ pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Resu
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
   context.current_style.font_size = 16.0;
-  context.current_style.font_type = FontType::SerifBold;
+  context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}小節 {}", context.subparagraph_num, name),
     context.current_style,

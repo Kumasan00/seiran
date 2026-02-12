@@ -457,7 +457,6 @@ dependencies = [
  "read_config_file",
  "thiserror",
  "tracing",
- "ttf-parser",
  "types",
 ]
 
@@ -819,11 +818,13 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "font",
+ "font-types",
  "lazy-regex",
  "memchr",
  "memmap2",
  "miette",
  "phf",
+ "read-fonts",
  "read_config_file",
  "thiserror",
  "types",
@@ -1430,12 +1431,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
 ]
-
-[[package]]
-name = "ttf-parser"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "types"

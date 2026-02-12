@@ -128,7 +128,7 @@ single_char!(reversed_tilde, "反転チルダ記号を出力します。", "\u{2
 
 #[cfg(test)]
 mod tests {
-  use types::FontType;
+  use types::FontKind;
 
   use super::*;
   use crate::parser::Command;
@@ -137,7 +137,7 @@ mod tests {
   fn test_style() -> Style {
     return Style {
       font_size: 12.0,
-      font_type: FontType::Serif,
+      font_kind: FontKind::Serif,
     };
   }
 
@@ -410,14 +410,14 @@ mod tests {
   fn preserves_style_through_emission() {
     let custom_style = Style {
       font_size: 24.5,
-      font_type: FontType::Math,
+      font_kind: FontKind::Math,
     };
     let command = test_command("beta");
     match lower_beta(command, custom_style) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "β");
         assert!((st.font_size - 24.5).abs() < f32::EPSILON);
-        assert_eq!(st.font_type, FontType::Math);
+        assert_eq!(st.font_kind, FontKind::Math);
       },
       _ => panic!("スタイルが保持されるべきです"),
     }
