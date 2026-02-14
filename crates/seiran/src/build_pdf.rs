@@ -26,8 +26,10 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   info!(config.name, "Document name");
 
   let layout_nodes = parser::text_parser(file_path, &config)?;
-  // println!("Layout Nodes: {layout_nodes:#?}");
+  let start = std::time::Instant::now();
   let font_data = font::FontData::new(&config.font_configs)?;
+  let duration = start.elapsed();
+  info!(duration = ?duration, "Font data loaded");
   let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
   for (font_type, font_config) in &config.font_configs {
@@ -47,7 +49,7 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   let _items =
     layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings);
 
-  let _subset_bytes = subset::create_font_subset(&config.font_configs, &glyph_mappings)?;
+  let _subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
 
   // let text_lines = read_file(&file_path)?;
   // let mut font_contexts = FontContexts::new(&config)?;

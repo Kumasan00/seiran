@@ -4,16 +4,15 @@
 //! バリアブルフォントについては、設定された軸値でインスタンス化した上でサブセット化します。
 //! 並列処理には rayon を使用します。
 
-use std::fs;
-
 use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::instance};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use read_config_file::{FontConfig, FontConfigs};
 // `fvar()` メソッドを使用するために `TableProvider` トレイトが必要
 use read_fonts::{FontRef, TableProvider};
 use tracing::info;
+use types::FontType;
 
-use crate::glyph_mapping::GlyphMappings;
+use crate::{FontData, glyph_mapping::GlyphMappings};
 
 /// フォントサブセット処理に関連するエラー
 #[derive(thiserror::Error, Debug, miette::Diagnostic)]
@@ -100,36 +99,25 @@ pub struct FontSubsetBytes {
 /// 内部の処理結果数が想定と異なる場合にパニックします。
 pub fn create_font_subset(
   font_configs: &FontConfigs,
+  font_data: &FontData,
   glyph_mappings: &GlyphMappings,
 ) -> Result<FontSubsetBytes, FontSubsetError> {
   info!("font subsetting started");
   // 各フォントコンテキストと対応するグリフマッピングをペアにしたデータを作成
-  let font_data = vec![
-    (&font_configs.serif, &glyph_mappings.serif_font.cid_to_gid),
-    (&font_configs.serif_bold, &glyph_mappings.serif_bold_font.cid_to_gid),
-    (&font_configs.serif_italic, &glyph_mappings.serif_italic_font.cid_to_gid),
-    (&font_configs.serif_bold_italic, &glyph_mappings.serif_bold_italic_font.cid_to_gid),
-    (&font_configs.sans_serif, &glyph_mappings.sans_serif_font.cid_to_gid),
-    (&font_configs.sans_serif_bold, &glyph_mappings.sans_serif_bold_font.cid_to_gid),
-    (&font_configs.sans_serif_italic, &glyph_mappings.sans_serif_italic_font.cid_to_gid),
-    (&font_configs.sans_serif_bold_italic, &glyph_mappings.sans_serif_bold_italic_font.cid_to_gid),
-    (&font_configs.monospace, &glyph_mappings.monospace_font.cid_to_gid),
-    (&font_configs.monospace_bold, &glyph_mappings.monospace_bold_font.cid_to_gid),
-    (&font_configs.monospace_italic, &glyph_mappings.monospace_italic_font.cid_to_gid),
-    (&font_configs.monospace_bold_italic, &glyph_mappings.monospace_bold_italic_font.cid_to_gid),
-    (&font_configs.math, &glyph_mappings.math_font.cid_to_gid),
-    (&font_configs.japanese_serif, &glyph_mappings.japanese_serif_font.cid_to_gid),
-    (&font_configs.japanese_serif_bold, &glyph_mappings.japanese_serif_bold_font.cid_to_gid),
-    (&font_configs.japanese_sans_serif, &glyph_mappings.japanese_sans_serif_font.cid_to_gid),
-    (&font_configs.japanese_sans_serif_bold, &glyph_mappings.japanese_sans_serif_bold_font.cid_to_gid),
-    (&font_configs.japanese_monospace, &glyph_mappings.japanese_monospace_font.cid_to_gid),
-    (&font_configs.japanese_monospace_bold, &glyph_mappings.japanese_monospace_bold_font.cid_to_gid),
-  ];
+  let font_data = FontType::ALL
+    .iter()
+    .map(|font_type| {
+      let font_config = font_configs.get(*font_type);
+      let font_data = font_data.get(*font_type).as_slice();
+      let used_glyphs = glyph_mappings.get(*font_type).cid_to_gid.as_slice();
+      (font_config, font_data, used_glyphs)
+    })
+    .collect::<Vec<(&FontConfig, &[u8], &[u16])>>();
 
   // 並列でサブセット処理を実行
   let results: Vec<Result<Option<Vec<u8>>, FontSubsetError>> = font_data
     .into_par_iter()
-    .map(|(font_config, cid_to_gid)| subset_for(font_config, cid_to_gid))
+    .map(|(font_config, font_data, cid_to_gid)| subset_for(font_config, font_data, cid_to_gid))
     .collect();
 
   // 結果を順序に合わせて展開（最初のエラーで失敗）
@@ -178,7 +166,11 @@ pub fn create_font_subset(
 /// # エラー
 ///
 /// インスタンス化またはサブセット処理中にエラーが発生した場合にエラーを返します。
-fn subset_for<'a>(font_config: &'a FontConfig, used_gids: &'a [u16]) -> Result<Option<Vec<u8>>, FontSubsetError> {
+fn subset_for<'a>(
+  font_config: &'a FontConfig,
+  font_data: &'a [u8],
+  used_gids: &'a [u16],
+) -> Result<Option<Vec<u8>>, FontSubsetError> {
   if used_gids.len() <= 1 {
     info!(
       font_path = %font_config.font_path.display(),
@@ -195,13 +187,12 @@ fn subset_for<'a>(font_config: &'a FontConfig, used_gids: &'a [u16]) -> Result<O
     "start subsetting font"
   );
 
-  let data = fs::read(&font_config.font_path)?;
-  let font_ref = FontRef::from_index(&data, font_config.font_index)?;
+  let font_ref = FontRef::from_index(font_data, font_config.font_index)?;
 
-  let data: Vec<u8> = if font_ref.fvar().is_ok() {
-    create_font_instance(font_config, &data, &font_ref)?
+  let data = if font_ref.fvar().is_ok() {
+    create_font_instance(font_config, font_data, &font_ref)?
   } else {
-    data
+    font_data.to_vec()
   };
 
   let subset_bytes = perform_subsetting(&data, font_config.font_index, used_gids)?;

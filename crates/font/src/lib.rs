@@ -6,6 +6,7 @@
 use std::fs;
 
 use miette::IntoDiagnostic;
+use rayon::prelude::*;
 use read_config_file::FontConfigs;
 use read_fonts::FontRef;
 use types::FontType;
@@ -56,27 +57,41 @@ impl FontData {
   /// # Errors
   ///
   /// フォントファイルの読み込みに失敗した場合にエラーを返します。
+  /// # Panics
+  ///
+  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
+  /// これは通常は発生しないため、プログラミングエラーを示します。
   pub fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
+    let font_datas = FontType::ALL
+      .par_iter()
+      .map(|&font_type| {
+        let font_config = font_configs.get(font_type);
+        let font_path = &font_config.font_path;
+        fs::read(font_path).into_diagnostic()
+      })
+      .collect::<Result<Vec<Vec<u8>>, miette::Report>>()?;
+    let mut font_data_iter = font_datas.into_iter();
+    #[allow(clippy::expect_used)]
     Ok(Self {
-      serif: fs::read(&font_configs.serif.font_path).into_diagnostic()?,
-      serif_bold: fs::read(&font_configs.serif_bold.font_path).into_diagnostic()?,
-      serif_italic: fs::read(&font_configs.serif_italic.font_path).into_diagnostic()?,
-      serif_bold_italic: fs::read(&font_configs.serif_bold_italic.font_path).into_diagnostic()?,
-      sans_serif: fs::read(&font_configs.sans_serif.font_path).into_diagnostic()?,
-      sans_serif_bold: fs::read(&font_configs.sans_serif_bold.font_path).into_diagnostic()?,
-      sans_serif_italic: fs::read(&font_configs.sans_serif_italic.font_path).into_diagnostic()?,
-      sans_serif_bold_italic: fs::read(&font_configs.sans_serif_bold_italic.font_path).into_diagnostic()?,
-      monospace: fs::read(&font_configs.monospace.font_path).into_diagnostic()?,
-      monospace_bold: fs::read(&font_configs.monospace_bold.font_path).into_diagnostic()?,
-      monospace_italic: fs::read(&font_configs.monospace_italic.font_path).into_diagnostic()?,
-      monospace_bold_italic: fs::read(&font_configs.monospace_bold_italic.font_path).into_diagnostic()?,
-      math: fs::read(&font_configs.math.font_path).into_diagnostic()?,
-      japanese_serif: fs::read(&font_configs.japanese_serif.font_path).into_diagnostic()?,
-      japanese_serif_bold: fs::read(&font_configs.japanese_serif_bold.font_path).into_diagnostic()?,
-      japanese_sans_serif: fs::read(&font_configs.japanese_sans_serif.font_path).into_diagnostic()?,
-      japanese_sans_serif_bold: fs::read(&font_configs.japanese_sans_serif_bold.font_path).into_diagnostic()?,
-      japanese_monospace: fs::read(&font_configs.japanese_monospace.font_path).into_diagnostic()?,
-      japanese_monospace_bold: fs::read(&font_configs.japanese_monospace_bold.font_path).into_diagnostic()?,
+      serif: font_data_iter.next().expect("FontRef count mismatch"),
+      serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
+      serif_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      serif_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      sans_serif: font_data_iter.next().expect("FontRef count mismatch"),
+      sans_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
+      sans_serif_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      sans_serif_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      monospace: font_data_iter.next().expect("FontRef count mismatch"),
+      monospace_bold: font_data_iter.next().expect("FontRef count mismatch"),
+      monospace_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      monospace_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
+      math: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_serif: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_sans_serif: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_sans_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_monospace: font_data_iter.next().expect("FontRef count mismatch"),
+      japanese_monospace_bold: font_data_iter.next().expect("FontRef count mismatch"),
     })
   }
 
@@ -207,74 +222,44 @@ impl<'a> FontRefs<'a> {
   /// # Errors
   ///
   /// フォントデータの解析に失敗した場合にエラーを返します。
+  ///
+  /// # Panics
+  ///
+  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
+  /// これは通常は発生しないため、プログラミングエラーを示します。
   pub fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
+    let font_ref = FontType::ALL
+      .iter()
+      .map(|&font_type| {
+        let font_data = font_data.get(font_type);
+        let font_config = config.get(font_type);
+        let index = font_config.font_index;
+        FontRef::from_index(font_data, index).into_diagnostic()
+      })
+      .collect::<Result<Vec<FontRef<'a>>, miette::Report>>()?;
+    let mut font_ref_iter = font_ref.into_iter();
+
+    #[allow(clippy::expect_used)]
     return Ok(Self {
-      serif: FontRef::from_index(font_data.get(FontType::Serif), config.serif.font_index).into_diagnostic()?,
-      serif_bold: FontRef::from_index(font_data.get(FontType::SerifBold), config.serif_bold.font_index)
-        .into_diagnostic()?,
-      serif_italic: FontRef::from_index(font_data.get(FontType::SerifItalic), config.serif_italic.font_index)
-        .into_diagnostic()?,
-      serif_bold_italic: FontRef::from_index(
-        font_data.get(FontType::SerifBoldItalic),
-        config.serif_bold_italic.font_index,
-      )
-      .into_diagnostic()?,
-      sans_serif: FontRef::from_index(font_data.get(FontType::SansSerif), config.sans_serif.font_index)
-        .into_diagnostic()?,
-      sans_serif_bold: FontRef::from_index(font_data.get(FontType::SansSerifBold), config.sans_serif_bold.font_index)
-        .into_diagnostic()?,
-      sans_serif_italic: FontRef::from_index(
-        font_data.get(FontType::SansSerifItalic),
-        config.sans_serif_italic.font_index,
-      )
-      .into_diagnostic()?,
-      sans_serif_bold_italic: FontRef::from_index(
-        font_data.get(FontType::SansSerifBoldItalic),
-        config.sans_serif_bold_italic.font_index,
-      )
-      .into_diagnostic()?,
-      monospace: FontRef::from_index(font_data.get(FontType::Monospace), config.monospace.font_index)
-        .into_diagnostic()?,
-      monospace_bold: FontRef::from_index(font_data.get(FontType::MonospaceBold), config.monospace_bold.font_index)
-        .into_diagnostic()?,
-      monospace_italic: FontRef::from_index(
-        font_data.get(FontType::MonospaceItalic),
-        config.monospace_italic.font_index,
-      )
-      .into_diagnostic()?,
-      monospace_bold_italic: FontRef::from_index(
-        font_data.get(FontType::MonospaceBoldItalic),
-        config.monospace_bold_italic.font_index,
-      )
-      .into_diagnostic()?,
-      math: FontRef::from_index(font_data.get(FontType::Math), config.math.font_index).into_diagnostic()?,
-      japanese_serif: FontRef::from_index(font_data.get(FontType::JapaneseSerif), config.japanese_serif.font_index)
-        .into_diagnostic()?,
-      japanese_serif_bold: FontRef::from_index(
-        font_data.get(FontType::JapaneseSerifBold),
-        config.japanese_serif_bold.font_index,
-      )
-      .into_diagnostic()?,
-      japanese_sans_serif: FontRef::from_index(
-        font_data.get(FontType::JapaneseSansSerif),
-        config.japanese_sans_serif.font_index,
-      )
-      .into_diagnostic()?,
-      japanese_sans_serif_bold: FontRef::from_index(
-        font_data.get(FontType::JapaneseSansSerifBold),
-        config.japanese_sans_serif_bold.font_index,
-      )
-      .into_diagnostic()?,
-      japanese_monospace: FontRef::from_index(
-        font_data.get(FontType::JapaneseMonospace),
-        config.japanese_monospace.font_index,
-      )
-      .into_diagnostic()?,
-      japanese_monospace_bold: FontRef::from_index(
-        font_data.get(FontType::JapaneseMonospaceBold),
-        config.japanese_monospace_bold.font_index,
-      )
-      .into_diagnostic()?,
+      serif: font_ref_iter.next().expect("FontRef count mismatch"),
+      serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
+      serif_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      serif_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      sans_serif: font_ref_iter.next().expect("FontRef count mismatch"),
+      sans_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
+      sans_serif_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      sans_serif_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      monospace: font_ref_iter.next().expect("FontRef count mismatch"),
+      monospace_bold: font_ref_iter.next().expect("FontRef count mismatch"),
+      monospace_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      monospace_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
+      math: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_serif: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_sans_serif: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_sans_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_monospace: font_ref_iter.next().expect("FontRef count mismatch"),
+      japanese_monospace_bold: font_ref_iter.next().expect("FontRef count mismatch"),
     });
   }
 

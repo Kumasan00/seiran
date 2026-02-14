@@ -75,6 +75,31 @@ impl GlyphMappings {
       FontType::JapaneseMonospaceBold => &mut self.japanese_monospace_bold_font,
     }
   }
+
+  #[must_use]
+  pub fn get(&self, font_type: FontType) -> &GlyphMapping {
+    match font_type {
+      FontType::Serif => &self.serif_font,
+      FontType::SerifBold => &self.serif_bold_font,
+      FontType::SerifItalic => &self.serif_italic_font,
+      FontType::SerifBoldItalic => &self.serif_bold_italic_font,
+      FontType::SansSerif => &self.sans_serif_font,
+      FontType::SansSerifBold => &self.sans_serif_bold_font,
+      FontType::SansSerifItalic => &self.sans_serif_italic_font,
+      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic_font,
+      FontType::Monospace => &self.monospace_font,
+      FontType::MonospaceBold => &self.monospace_bold_font,
+      FontType::MonospaceItalic => &self.monospace_italic_font,
+      FontType::MonospaceBoldItalic => &self.monospace_bold_italic_font,
+      FontType::Math => &self.math_font,
+      FontType::JapaneseSerif => &self.japanese_serif_font,
+      FontType::JapaneseSerifBold => &self.japanese_serif_bold_font,
+      FontType::JapaneseSansSerif => &self.japanese_sans_serif_font,
+      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold_font,
+      FontType::JapaneseMonospace => &self.japanese_monospace_font,
+      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold_font,
+    }
+  }
 }
 
 #[derive(Debug)]
