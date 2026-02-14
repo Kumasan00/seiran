@@ -3,7 +3,7 @@ members = [
   "crates/cli",
   "crates/font",
   "crates/parser",
-  "crates/pdf_gen",
+  # "crates/pdf_gen",
   "crates/read_config_file",
   "crates/seiran",
   "crates/types",

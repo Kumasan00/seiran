@@ -1,4 +1,4 @@
-use font::{FontRefs, font_info::FontInfos, shaper::HarfRustShapers};
+use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
 use font_types::GlyphId;
 use lazy_regex::regex_replace_all;
 use read_fonts::TableProvider;
@@ -24,6 +24,7 @@ pub enum BoxItem {
   Rule { width: f32, height: f32 },
 }
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct GlyphRun {
   font_size: f32,
   glyphs: Vec<Glyph>,
@@ -33,8 +34,9 @@ pub struct GlyphRun {
   font_type: FontType,
 }
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Glyph {
-  glyph_id: u32,
+  gid: u32,
   chars: Vec<char>,
   x_advance: i32,
   y_advance: i32,
@@ -67,6 +69,7 @@ pub fn layout_engine(
   shapers: &HarfRustShapers,
   font_refs: &FontRefs,
   font_infos: &FontInfos,
+  glyph_mappings: &mut GlyphMappings,
 ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
   let mut items: Vec<Item> = Vec::new();
   for node in layout_nodes {
@@ -90,6 +93,7 @@ pub fn layout_engine(
         };
         let font_ref = font_refs.get(font_type);
         let font_info = font_infos.get(font_type);
+        let glyph_mapping = glyph_mappings.get_mut(font_type);
         let hmtx = font_ref.hmtx()?;
         // テキストのレイアウト処理
         let result = shapers.get(font_type).shape(&text);
@@ -129,7 +133,7 @@ pub fn layout_engine(
           } else {
             width += advance_width;
             glyphs.push(Glyph {
-              glyph_id,
+              gid: glyph_id,
               chars: glyph_text.chars().collect(),
               x_advance: glyph_position.x_advance,
               y_advance: glyph_position.y_advance,
@@ -138,6 +142,7 @@ pub fn layout_engine(
               diff: if diff != 0 { Some(diff) } else { None },
             });
           }
+          glyph_mapping.register(glyph_id as u16, hmtx_record, glyph_text.chars().collect());
         }
         if !glyphs.is_empty() {
           items.push(Item::Box(BoxItem::Text(GlyphRun {
@@ -152,7 +157,7 @@ pub fn layout_engine(
       },
       LayoutNode::HBox { children, width } => {
         // HBoxのレイアウト処理
-        let child_items = layout_engine(children, shapers, font_refs, font_infos)?;
+        let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
         items.extend(child_items);
         if let Some(_width) = width {}
       },
@@ -161,7 +166,7 @@ pub fn layout_engine(
         margin_bottom,
       } => {
         // VBoxのレイアウト処理
-        let child_items = layout_engine(children, shapers, font_refs, font_infos)?;
+        let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
         items.extend(child_items);
         items.push(Item::Kern(margin_bottom));
       },

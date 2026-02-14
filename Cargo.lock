@@ -862,16 +862,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pdf_gen"
-version = "0.1.0"
-dependencies = [
- "font",
- "pdf-writer",
- "read_config_file",
- "types",
-]
-
-[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1097,7 +1087,6 @@ dependencies = [
  "miette",
  "parser",
  "pdf-writer",
- "pdf_gen",
  "read-fonts",
  "read_config_file",
  "thiserror",

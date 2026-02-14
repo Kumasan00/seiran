@@ -5,21 +5,16 @@
 
 use std::fs;
 
-use font_info::FontInfos;
 use miette::IntoDiagnostic;
 use read_config_file::FontConfigs;
 use read_fonts::FontRef;
-use types::{FontType, GlyphMappings};
+use types::FontType;
 
 pub mod font_info;
+pub mod glyph_mapping;
 pub mod shaper;
 pub mod subset;
 pub mod validate_font;
-
-// 定数
-
-/// .notdef グリフのグリフID
-const NOTDEF_GID: u16 = 0;
 
 /// フォントバイナリを保持するデータ構造
 ///
@@ -307,80 +302,4 @@ impl<'a> FontRefs<'a> {
       FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
     }
   }
-}
-
-/// 全フォントに.notdefグリフのadvance widthを挿入
-///
-/// # 引数
-///
-/// * `glyph_mappings` - グリフマッピング情報
-/// * `font_infos` - フォントデータ情報
-pub fn insert_notdef_advance_widths(glyph_mappings: &mut GlyphMappings, font_infos: &FontInfos) {
-  glyph_mappings.serif_font.advance_widths.insert(NOTDEF_GID, font_infos.serif_font_info.upem);
-  glyph_mappings
-    .serif_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.serif_bold_font_info.upem);
-  glyph_mappings
-    .serif_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.serif_italic_font_info.upem);
-  glyph_mappings
-    .serif_bold_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.serif_bold_italic_font_info.upem);
-  glyph_mappings
-    .sans_serif_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.sans_serif_font_info.upem);
-  glyph_mappings
-    .sans_serif_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.sans_serif_bold_font_info.upem);
-  glyph_mappings
-    .sans_serif_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.sans_serif_italic_font_info.upem);
-  glyph_mappings
-    .sans_serif_bold_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.sans_serif_bold_italic_font_info.upem);
-  glyph_mappings.monospace_font.advance_widths.insert(NOTDEF_GID, font_infos.monospace_font_info.upem);
-  glyph_mappings
-    .monospace_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.monospace_bold_font_info.upem);
-  glyph_mappings
-    .monospace_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.monospace_italic_font_info.upem);
-  glyph_mappings
-    .monospace_bold_italic_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.monospace_bold_italic_font_info.upem);
-  glyph_mappings.math_font.advance_widths.insert(NOTDEF_GID, font_infos.math_font_info.upem);
-  glyph_mappings
-    .japanese_serif_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_serif_font_info.upem);
-  glyph_mappings
-    .japanese_serif_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_serif_bold_font_info.upem);
-  glyph_mappings
-    .japanese_sans_serif_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_sans_serif_font_info.upem);
-  glyph_mappings
-    .japanese_sans_serif_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_sans_serif_bold_font_info.upem);
-  glyph_mappings
-    .japanese_monospace_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_monospace_font_info.upem);
-  glyph_mappings
-    .japanese_monospace_bold_font
-    .advance_widths
-    .insert(NOTDEF_GID, font_infos.japanese_monospace_bold_font_info.upem);
 }

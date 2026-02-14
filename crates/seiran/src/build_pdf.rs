@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use font::{font_info, shaper, validate_font};
+use font::{font_info, glyph_mapping, shaper, subset, validate_font};
 use parser::layout_engine;
 use tracing::info;
 
@@ -43,8 +43,12 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
     shaper::HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
   let font_infos = font_info::FontInfos::new(&font_refs)?;
 
-  let items = layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos);
-  println!("Items: {items:#?}");
+  let mut glyph_mappings = glyph_mapping::GlyphMappings::new(&font_infos);
+  let _items =
+    layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings);
+
+  let _subset_bytes = subset::create_font_subset(&config.font_configs, &glyph_mappings)?;
+
   // let text_lines = read_file(&file_path)?;
   // let mut font_contexts = FontContexts::new(&config)?;
   // let mut glyph_mappings = GlyphMappings::new();
