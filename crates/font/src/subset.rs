@@ -75,6 +75,33 @@ pub struct FontSubsetBytes {
   pub japanese_monospace_bold_font_subset: Option<Vec<u8>>,
 }
 
+impl FontSubsetBytes {
+  #[must_use]
+  pub fn get(&self, font_type: FontType) -> Option<&Vec<u8>> {
+    match font_type {
+      FontType::Serif => self.serif_font_subset.as_ref(),
+      FontType::SerifBold => self.serif_bold_font_subset.as_ref(),
+      FontType::SerifItalic => self.serif_italic_font_subset.as_ref(),
+      FontType::SerifBoldItalic => self.serif_bold_italic_font_subset.as_ref(),
+      FontType::SansSerif => self.sans_serif_font_subset.as_ref(),
+      FontType::SansSerifBold => self.sans_serif_bold_font_subset.as_ref(),
+      FontType::SansSerifItalic => self.sans_serif_italic_font_subset.as_ref(),
+      FontType::SansSerifBoldItalic => self.sans_serif_bold_italic_font_subset.as_ref(),
+      FontType::Monospace => self.monospace_font_subset.as_ref(),
+      FontType::MonospaceBold => self.monospace_bold_font_subset.as_ref(),
+      FontType::MonospaceItalic => self.monospace_italic_font_subset.as_ref(),
+      FontType::MonospaceBoldItalic => self.monospace_bold_italic_font_subset.as_ref(),
+      FontType::Math => self.math_font_subset.as_ref(),
+      FontType::JapaneseSerif => self.japanese_serif_font_subset.as_ref(),
+      FontType::JapaneseSerifBold => self.japanese_serif_bold_font_subset.as_ref(),
+      FontType::JapaneseSansSerif => self.japanese_sans_serif_font_subset.as_ref(),
+      FontType::JapaneseSansSerifBold => self.japanese_sans_serif_bold_font_subset.as_ref(),
+      FontType::JapaneseMonospace => self.japanese_monospace_font_subset.as_ref(),
+      FontType::JapaneseMonospaceBold => self.japanese_monospace_bold_font_subset.as_ref(),
+    }
+  }
+}
+
 /// フォントサブセットを作成
 ///
 /// 全19種類のフォントに対して、使用されているグリフのみを含むサブセットを生成します。

@@ -1,6 +1,7 @@
 use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
 use font_types::GlyphId;
 use lazy_regex::regex_replace_all;
+use miette::IntoDiagnostic;
 use read_fonts::TableProvider;
 use types::{FontKind, FontType};
 
@@ -70,7 +71,7 @@ pub fn layout_engine(
   font_refs: &FontRefs,
   font_infos: &FontInfos,
   glyph_mappings: &mut GlyphMappings,
-) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+) -> miette::Result<Vec<Item>> {
   let mut items: Vec<Item> = Vec::new();
   for node in layout_nodes {
     match node {
@@ -94,7 +95,7 @@ pub fn layout_engine(
         let font_ref = font_refs.get(font_type);
         let font_info = font_infos.get(font_type);
         let glyph_mapping = glyph_mappings.get_mut(font_type);
-        let hmtx = font_ref.hmtx()?;
+        let hmtx = font_ref.hmtx().into_diagnostic()?;
         // テキストのレイアウト処理
         let result = shapers.get(font_type).shape(&text);
         let glyph_infos = result.glyph_infos();

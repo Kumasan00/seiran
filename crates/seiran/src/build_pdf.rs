@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use font::{font_info, glyph_mapping, shaper, subset, validate_font};
+use miette::IntoDiagnostic;
 use parser::layout_engine;
 use tracing::info;
 
@@ -43,35 +44,18 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);
   let harf_rust_shapers =
     shaper::HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
-  let font_infos = font_info::FontInfos::new(&font_refs)?;
+  let font_infos = font_info::FontInfos::new(&config.font_configs, &font_refs)?;
 
   let mut glyph_mappings = glyph_mapping::GlyphMappings::new(&font_infos);
-  let _items =
-    layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings);
+  let items =
+    layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings)?;
 
-  let _subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
+  let subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
 
-  // let text_lines = read_file(&file_path)?;
-  // let mut font_contexts = FontContexts::new(&config)?;
-  // let mut glyph_mappings = GlyphMappings::new();
+  let pdf_bytes = pdf_gen::pdf_gen(&config, &subset_bytes, items, &font_infos, &glyph_mappings);
 
-  // let pdf_content =
-  //   text::process_text_lines(text_lines, &mut font_contexts, &mut glyph_mappings, &config)?;
+  std::fs::write(&config.pdf.output_path, pdf_bytes).into_diagnostic()?;
+  info!(pdf_path = %config.pdf.output_path.display(), "PDF generated successfully");
 
-  // let subset_bytes = font_context::create_font_subset(&font_contexts, &glyph_mappings)?;
-
-  // let font_datas = font_data::analyze_subset_font(&subset_bytes)?;
-
-  // font::insert_notdef_advance_widths(&mut glyph_mappings, &font_datas);
-
-  // pdf_gen::pdf_gen(
-  //   &subset_bytes,
-  //   &font_datas,
-  //   &glyph_mappings,
-  //   pdf_content,
-  //   &config,
-  // )?;
-
-  // println!("PDF generated");
   Ok(())
 }

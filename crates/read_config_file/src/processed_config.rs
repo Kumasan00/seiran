@@ -157,7 +157,7 @@ pub struct FontConfig {
 }
 
 /// フォントのfeature設定
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Feature {
   pub tag: [u8; 4],
   pub value: u32,

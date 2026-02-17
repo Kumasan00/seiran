@@ -2,6 +2,7 @@
 
 use font_types::Fixed;
 use miette::Diagnostic;
+use read_config_file::{FontConfig, FontConfigs};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 use types::FontType;
@@ -35,6 +36,8 @@ pub struct FontInfo {
   pub descender: i16,
   /// キャピタルハイト
   pub cap_height: i16,
+  /// ステムV値
+  pub stem_v: f64,
   /// バウンディングボックスの最小X座標
   pub xmin: i16,
   /// バウンディングボックスの最小Y座標
@@ -54,7 +57,7 @@ impl FontInfo {
   /// # Errors
   ///
   /// 必須テーブルが見つからない場合にエラーを返します。
-  fn new(font_ref: &FontRef) -> miette::Result<Self> {
+  fn new(font_config: &FontConfig, font_ref: &FontRef) -> miette::Result<Self> {
     let head = font_ref.head().map_err(|_| MissingTableError { table: "head" })?;
     let unit_per_em = head.units_per_em();
     let xmin = head.x_min();
@@ -67,12 +70,27 @@ impl FontInfo {
     let ascender = os2.s_typo_ascender();
     let descender = os2.s_typo_descender();
     let cap_height = os2.s_cap_height().unwrap_or(DEFAULT_CAP_HEIGHT);
+    let weight = font_config
+      .variation_axes
+      .as_ref()
+      .and_then(|axes| {
+        axes.iter().find_map(|axis| {
+          if axis.name == *b"wght" {
+            Some(axis.value)
+          } else {
+            None
+          }
+        })
+      })
+      .unwrap_or_else(|| f64::from(os2.us_weight_class()));
+    let stem_v = weight * f64::from(unit_per_em) / 10000.0; // 仮の値として、stemVをweightに基づいて計算
     return Ok(Self {
       upem: unit_per_em,
       italic_angle,
       ascender,
       descender,
       cap_height,
+      stem_v,
       xmin,
       ymin,
       xmax,
@@ -121,27 +139,38 @@ impl FontInfos {
   /// # Errors
   ///
   /// フォント情報の取得に失敗した場合にエラーを返します。
-  pub fn new(font_refs: &FontRefs) -> miette::Result<Self> {
+  ///
+  /// # Panics
+  ///
+  /// `FontType::ALL`が正確に19個の要素を含まない場合にパニック。
+  pub fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self> {
+    let font_infos = FontType::ALL
+      .iter()
+      .map(|font_type| FontInfo::new(font_configs.get(*font_type), font_refs.get(*font_type)))
+      .collect::<Result<Vec<FontInfo>, _>>()?;
+    let mut font_infos = font_infos.into_iter();
+
+    #[allow(clippy::unwrap_used)]
     return Ok(Self {
-      serif_font_info: FontInfo::new(&font_refs.serif)?,
-      serif_bold_font_info: FontInfo::new(&font_refs.serif_bold)?,
-      serif_italic_font_info: FontInfo::new(&font_refs.serif_italic)?,
-      serif_bold_italic_font_info: FontInfo::new(&font_refs.serif_bold_italic)?,
-      sans_serif_font_info: FontInfo::new(&font_refs.sans_serif)?,
-      sans_serif_bold_font_info: FontInfo::new(&font_refs.sans_serif_bold)?,
-      sans_serif_italic_font_info: FontInfo::new(&font_refs.sans_serif_italic)?,
-      sans_serif_bold_italic_font_info: FontInfo::new(&font_refs.sans_serif_bold_italic)?,
-      monospace_font_info: FontInfo::new(&font_refs.monospace)?,
-      monospace_bold_font_info: FontInfo::new(&font_refs.monospace_bold)?,
-      monospace_italic_font_info: FontInfo::new(&font_refs.monospace_italic)?,
-      monospace_bold_italic_font_info: FontInfo::new(&font_refs.monospace_bold_italic)?,
-      math_font_info: FontInfo::new(&font_refs.math)?,
-      japanese_serif_font_info: FontInfo::new(&font_refs.japanese_serif)?,
-      japanese_serif_bold_font_info: FontInfo::new(&font_refs.japanese_serif_bold)?,
-      japanese_sans_serif_font_info: FontInfo::new(&font_refs.japanese_sans_serif)?,
-      japanese_sans_serif_bold_font_info: FontInfo::new(&font_refs.japanese_sans_serif_bold)?,
-      japanese_monospace_font_info: FontInfo::new(&font_refs.japanese_monospace)?,
-      japanese_monospace_bold_font_info: FontInfo::new(&font_refs.japanese_monospace_bold)?,
+      serif_font_info: font_infos.next().unwrap(),
+      serif_bold_font_info: font_infos.next().unwrap(),
+      serif_italic_font_info: font_infos.next().unwrap(),
+      serif_bold_italic_font_info: font_infos.next().unwrap(),
+      sans_serif_font_info: font_infos.next().unwrap(),
+      sans_serif_bold_font_info: font_infos.next().unwrap(),
+      sans_serif_italic_font_info: font_infos.next().unwrap(),
+      sans_serif_bold_italic_font_info: font_infos.next().unwrap(),
+      monospace_font_info: font_infos.next().unwrap(),
+      monospace_bold_font_info: font_infos.next().unwrap(),
+      monospace_italic_font_info: font_infos.next().unwrap(),
+      monospace_bold_italic_font_info: font_infos.next().unwrap(),
+      math_font_info: font_infos.next().unwrap(),
+      japanese_serif_font_info: font_infos.next().unwrap(),
+      japanese_serif_bold_font_info: font_infos.next().unwrap(),
+      japanese_sans_serif_font_info: font_infos.next().unwrap(),
+      japanese_sans_serif_bold_font_info: font_infos.next().unwrap(),
+      japanese_monospace_font_info: font_infos.next().unwrap(),
+      japanese_monospace_bold_font_info: font_infos.next().unwrap(),
     });
   }
 

@@ -7,6 +7,7 @@ version.workspace = true
 
 [dependencies]
 font = { path = "../font" }
+parser = { path = "../parser" }
 pdf-writer.workspace = true
 read_config_file = { path = "../read_config_file" }
 types = { path = "../types" }

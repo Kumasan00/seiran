@@ -26,28 +26,43 @@ pub struct GlyphMappings {
 }
 
 impl GlyphMappings {
+  /// グリフマッピングを初期化します。
+  ///
+  /// # 引数
+  ///
+  /// * `font_infos` - フォント情報の参照
+  ///
+  /// # Panics
+  ///
+  /// `FontType::ALL`の要素数が19ではない場合、パニックが発生します。
   #[must_use]
   pub fn new(font_infos: &FontInfos) -> Self {
+    let mut glyph_mappings = FontType::ALL.iter().map(|font_type| {
+      let font_info = font_infos.get(*font_type);
+      GlyphMapping::new(font_info)
+    });
+
+    #[allow(clippy::expect_used)]
     Self {
-      serif_font: GlyphMapping::new(&font_infos.serif_font_info),
-      serif_bold_font: GlyphMapping::new(&font_infos.serif_bold_font_info),
-      serif_italic_font: GlyphMapping::new(&font_infos.serif_italic_font_info),
-      serif_bold_italic_font: GlyphMapping::new(&font_infos.serif_bold_italic_font_info),
-      sans_serif_font: GlyphMapping::new(&font_infos.sans_serif_font_info),
-      sans_serif_bold_font: GlyphMapping::new(&font_infos.sans_serif_bold_font_info),
-      sans_serif_italic_font: GlyphMapping::new(&font_infos.sans_serif_italic_font_info),
-      sans_serif_bold_italic_font: GlyphMapping::new(&font_infos.sans_serif_bold_italic_font_info),
-      monospace_font: GlyphMapping::new(&font_infos.monospace_font_info),
-      monospace_bold_font: GlyphMapping::new(&font_infos.monospace_bold_font_info),
-      monospace_italic_font: GlyphMapping::new(&font_infos.monospace_italic_font_info),
-      monospace_bold_italic_font: GlyphMapping::new(&font_infos.monospace_bold_italic_font_info),
-      math_font: GlyphMapping::new(&font_infos.math_font_info),
-      japanese_serif_font: GlyphMapping::new(&font_infos.japanese_serif_font_info),
-      japanese_serif_bold_font: GlyphMapping::new(&font_infos.japanese_serif_bold_font_info),
-      japanese_sans_serif_font: GlyphMapping::new(&font_infos.japanese_sans_serif_font_info),
-      japanese_sans_serif_bold_font: GlyphMapping::new(&font_infos.japanese_sans_serif_bold_font_info),
-      japanese_monospace_font: GlyphMapping::new(&font_infos.japanese_monospace_font_info),
-      japanese_monospace_bold_font: GlyphMapping::new(&font_infos.japanese_monospace_bold_font_info),
+      serif_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      serif_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      serif_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      serif_bold_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      sans_serif_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      sans_serif_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      sans_serif_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      sans_serif_bold_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      monospace_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      monospace_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      monospace_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      monospace_bold_italic_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      math_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_serif_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_serif_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_sans_serif_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_sans_serif_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_monospace_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
+      japanese_monospace_bold_font: glyph_mappings.next().expect("GlyphMappings count mismatch"),
     }
   }
 

@@ -68,33 +68,29 @@ impl ShaperDatas {
   /// これは通常は発生しないため、プログラミングエラーを示します。
   #[must_use]
   pub fn new(font_refs: &FontRefs) -> Self {
-    let shaper_datas = FontType::ALL
-      .iter()
-      .map(|&font_type| ShaperData::new(font_refs.get(font_type)))
-      .collect::<Vec<ShaperData>>();
-    let mut shaper_iter = shaper_datas.into_iter();
+    let mut shaper_datas = FontType::ALL.iter().map(|&font_type| ShaperData::new(font_refs.get(font_type)));
 
     #[allow(clippy::expect_used)]
     Self {
-      serif: shaper_iter.next().expect("ShaperData count mismatch"),
-      serif_bold: shaper_iter.next().expect("ShaperData count mismatch"),
-      serif_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      serif_bold_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      sans_serif: shaper_iter.next().expect("ShaperData count mismatch"),
-      sans_serif_bold: shaper_iter.next().expect("ShaperData count mismatch"),
-      sans_serif_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      sans_serif_bold_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      monospace: shaper_iter.next().expect("ShaperData count mismatch"),
-      monospace_bold: shaper_iter.next().expect("ShaperData count mismatch"),
-      monospace_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      monospace_bold_italic: shaper_iter.next().expect("ShaperData count mismatch"),
-      math: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_serif: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_serif_bold: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_sans_serif: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_sans_serif_bold: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_monospace: shaper_iter.next().expect("ShaperData count mismatch"),
-      japanese_monospace_bold: shaper_iter.next().expect("ShaperData count mismatch"),
+      serif: shaper_datas.next().expect("ShaperData count mismatch"),
+      serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
+      serif_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      serif_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      sans_serif: shaper_datas.next().expect("ShaperData count mismatch"),
+      sans_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
+      sans_serif_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      sans_serif_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      monospace: shaper_datas.next().expect("ShaperData count mismatch"),
+      monospace_bold: shaper_datas.next().expect("ShaperData count mismatch"),
+      monospace_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      monospace_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
+      math: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_serif: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_sans_serif: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_sans_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_monospace: shaper_datas.next().expect("ShaperData count mismatch"),
+      japanese_monospace_bold: shaper_datas.next().expect("ShaperData count mismatch"),
     }
   }
 
