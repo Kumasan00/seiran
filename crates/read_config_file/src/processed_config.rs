@@ -1,68 +1,113 @@
-//! 処理済み設定構造体
+//! 処理済み・検証済み設定構造体
 //!
-//! これらの構造体は、TOMLからデシリアライズされた後、
-//! パスの解決（正規化、絶対パス化）、バリデーション、型変換が
-//! 完了した状態を表します。アプリケーションが直接使用する設定情報です。
+//! このモジュールの構造体群は、TOML からデシリアライズされた後、
+//! 以下の処理が完了した最終形式の設定を表します：
+//!
+//! - **パス解決**: 相対パスを絶対パスに、シンボリックリンクを解決
+//! - **バリデーション**: すべての値が妥当な範囲内であることを確認
+//! - **型変換**: スクリプト・言語タグを文字列から `[u8; 4]` 配列に変換
+//! - **正規化**: バリアブル軸、フィーチャータグを標準形式に統一
+//!
+//! アプリケーションはこれら処理済み設定を直接使用し、
+//! バリデーションエラーの心配なく安全に処理できます。
+//!
+//! ## 処理済み状態の保証
+//!
+//! - **`Config`** - ドキュメント全体の設定（`lib.rs` で完全検証済み）
+//! - **`FontConfigs`** - 19 フォント設定のコンテナ（値の正当性保証）
+//! - **`FontConfig`** - 単一フォント設定（パス・値・型すべて検証済み）
+//! - **`PdfConfig`** - PDF ページ設定（値の正当性保証）
+//! - **`VariationAxis`** - バリアブル軸（軸値の範囲内性確認済み）
+//! - **`Feature`** - OpenType フィーチャー（タグ長・値の妥当性確認済み）
+//! - **`Margin`** - ページ余白（非負値・合計妥当性確認済み）
 
 use std::path::PathBuf;
 
 use types::FontType;
 
-/// 処理済みの設定情報
+/// PDF 生成に必要な完全な設定情報
+///
+/// すべてのパス、バリデーション、型変換が完了した
+/// 最終形式の設定です。`lib.rs` の `read_config_file_with_path()` で
+/// 生成され、すべての値が検証済みであることが保証されます。
+///
+/// アプリケーションはこの構造体から設定を読み取り、
+/// PDF 生成パイプラインに渡します。
 #[derive(Debug, Clone)]
 pub struct Config {
-  /// プロジェクト名
+  /// ドキュメント名（PDF ファイル名の基盤、拡張子なし）
   pub name: String,
-  /// PDF設定
+  /// PDF ページレイアウト設定（検証済み）
   pub pdf: PdfConfig,
-  /// フォント設定群
+  /// 19 フォント種別すべての設定（検証済み）
   pub font_configs: FontConfigs,
 }
 
+/// 19 フォント種別すべての検証済み設定
+///
+/// PDF 生成に使用される 19 種類のフォント（Latin 12 + Math 1 + 日本語 6）の
+/// 設定をまとめて管理します。各フォント種別は独立した `FontConfig` を持ち、
+/// すべてのパス、値、型が検証済みです。
+///
+/// [`iter()`](FontConfigs::iter) や [`get()`](FontConfigs::get) メソッドで
+/// 効率よくアクセスできます。
 #[derive(Debug, Clone)]
 pub struct FontConfigs {
-  /// セリフフォント設定
+  /// Serif 標準フォント設定
   pub serif: FontConfig,
-  /// セリフボールドフォント設定
+  /// Serif 太字フォント設定
   pub serif_bold: FontConfig,
-  /// セリフイタリックフォント設定
+  /// Serif イタリックフォント設定
   pub serif_italic: FontConfig,
-  /// セリフボールドイタリックフォント設定
+  /// Serif 太字イタリックフォント設定
   pub serif_bold_italic: FontConfig,
-  /// サンセリフフォント設定
+  /// Sans Serif 標準フォント設定
   pub sans_serif: FontConfig,
-  /// サンセリフボールドフォント設定
+  /// Sans Serif 太字フォント設定
   pub sans_serif_bold: FontConfig,
-  /// サンセリフイタリックフォント設定
+  /// Sans Serif イタリックフォント設定
   pub sans_serif_italic: FontConfig,
-  /// サンセリフボールドイタリックフォント設定
+  /// Sans Serif 太字イタリックフォント設定
   pub sans_serif_bold_italic: FontConfig,
-  /// モノスペースフォント設定
+  /// Monospace 標準フォント設定
   pub monospace: FontConfig,
-  /// モノスペースボールドフォント設定
+  /// Monospace 太字フォント設定
   pub monospace_bold: FontConfig,
-  /// モノスペースイタリックフォント設定
+  /// Monospace イタリックフォント設定
   pub monospace_italic: FontConfig,
-  /// モノスペースボールドイタリックフォント設定
+  /// Monospace 太字イタリックフォント設定
   pub monospace_bold_italic: FontConfig,
-  /// 数式フォント設定
+  /// 数式用フォント設定
   pub math: FontConfig,
-  /// セリフ日本語フォント設定
+  /// 日本語 Serif 標準フォント設定
   pub japanese_serif: FontConfig,
-  /// セリフ日本語ボールドフォント設定
+  /// 日本語 Serif 太字フォント設定
   pub japanese_serif_bold: FontConfig,
-  /// サンセリフ日本語フォント設定
+  /// 日本語 Sans Serif 標準フォント設定
   pub japanese_sans_serif: FontConfig,
-  /// サンセリフ日本語ボールドフォント設定
+  /// 日本語 Sans Serif 太字フォント設定
   pub japanese_sans_serif_bold: FontConfig,
-  /// モノスペース日本語フォント設定
+  /// 日本語 Monospace 標準フォント設定
   pub japanese_monospace: FontConfig,
-  /// モノスペース日本語ボールドフォント設定
+  /// 日本語 Monospace 太字フォント設定
   pub japanese_monospace_bold: FontConfig,
 }
 
 impl FontConfigs {
-  /// すべてのフォント設定を反復するイテレータを返す
+  /// 19 フォント種別すべてを反復するイテレータを返します
+  ///
+  /// [`FontType::ALL`](types::FontType::ALL) の順序に従って
+  /// (`FontType`, `&FontConfig`) のペアを返します。
+  ///
+  /// # Returns
+  ///
+  /// 19 フォント設定を順に返す `ExactSizeIterator`
+  ///
+  /// # Example
+  ///
+  /// ```ignore
+  /// for (font_type, config) in configs.iter() {
+  ///     println!(\"{:?}: {}\", font_type, config.font_name);\n  /// }\n  /// ```
   #[must_use]
   pub fn iter(&self) -> FontConfigsIter<'_> {
     FontConfigsIter {
@@ -71,7 +116,15 @@ impl FontConfigs {
     }
   }
 
-  /// 指定されたフォントタイプに対応するフォント設定を取得する
+  /// 指定されたフォント種別に対応する設定を取得します
+  ///
+  /// # Arguments
+  ///
+  /// * `font_type` - 取得したいフォント種別
+  ///
+  /// # Returns
+  ///
+  /// 指定フォント種別の `FontConfig` への不変参照
   #[must_use]
   pub fn get(&self, font_type: FontType) -> &FontConfig {
     match font_type {
@@ -98,7 +151,10 @@ impl FontConfigs {
   }
 }
 
-/// `FontConfigs`イテレータ
+/// `FontConfigs` 用の イテレータ
+///
+/// 19 フォント種別を順に反復します。
+/// [`ExactSizeIterator`] を実装しているため、残要素数が常に正確です。
 pub struct FontConfigsIter<'a> {
   configs: &'a FontConfigs,
   index: usize,
@@ -137,64 +193,108 @@ impl<'a> IntoIterator for &'a FontConfigs {
   }
 }
 
-/// 処理済みのフォント設定
+/// 単一フォント種別の検証済み・処理済み設定
+///
+/// パス正規化、バリデーション、型変換がすべて完了した状態です。
+/// 以下が保証されます：
+/// - `font_path` は絶対パスに正規化されている
+/// - `font_index` は 0 以上の値
+/// - `script`、`language`、`feature` タグは 4 文字の `[u8; 4]` に変換済み
+/// - 値の妥当性はすべてバリデーション済み
 #[derive(Debug, Clone)]
 pub struct FontConfig {
-  /// フォント名
+  /// `PDF FontDescriptor` で使用されるフォント名
+  /// 19 フォント種別間で一意である必要があります
   pub font_name: String,
-  /// フォントファイルの解決済みパス
+  /// フォントファイルへの絶対パス（正規化済み）
+  /// シンボリックリンク解決済み、ファイル存在確認済み
   pub font_path: PathBuf,
-  /// フォントコレクション内のインデックス
+  /// TTC（TrueType Collection）ファイル内のインデックス
+  /// 通常は 0。複数フォントを含むコレクションの場合は 1 以上
   pub font_index: u32,
-  /// バリエーション軸の設定
+  /// バリアブルフォント軸の設定値
+  /// 値が範囲内であることはバリデーション済み
   pub variation_axes: Option<Vec<VariationAxis>>,
-  /// フォントのscriptシステムの指定
+  /// OpenType Script タグ（4 バイト）
+  /// 例：b"latn"（Latin）、b"arab"（Arabic）
   pub script: Option<[u8; 4]>,
-  /// フォントのlanguageシステムの指定
+  /// BCP 47 言語タグ（4 バイト、3 文字の場合は末尾スペース）
+  /// 例：b"eng " (English)、b"ja  "（日本語）
   pub language: Option<[u8; 4]>,
-  /// フォントのfeature設定
+  /// OpenType フィーチャー設定（4 バイトタグ + 値）
+  /// 例："liga"（ligatures）、"smcp"（small capitals）
   pub features: Option<Vec<Feature>>,
 }
 
-/// フォントのfeature設定
+/// OpenType フィーチャーの設定（タグと値のペア）
+///
+/// フォントで有効にするシェイピング機能を指定します。
+/// タグは 4 バイトの OpenType フィーチャータグです。
+/// ( 例：`b"liga"` = ligatures、`b"smcp"` = small capitals）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Feature {
+  /// OpenType フィーチャータグ（4 バイト）
   pub tag: [u8; 4],
+  /// フィーチャーの値（通常は 0=無効、1=有効）
   pub value: u32,
 }
 
-/// バリエーション軸の設定
+/// バリアブルフォント軸の設定値
+///
+/// 変数フォントの特定の軸を目標値に設定します。
+/// 複数の軸を組み合わせることで、フォントの特定バリエーション
+/// （例：Weight=700、Width=80）を選択できます。
 #[derive(Debug, Clone, Copy)]
 pub struct VariationAxis {
-  /// 軸の名前
+  /// 軸名（4 バイトの OpenType 軸タグ）
+  /// 例：b"wght"（weight）、b"wdth"（width）
   pub name: [u8; 4],
-  /// 軸の値
+  /// 目標値（実数）
+  /// 例：weight 軸で 700（太字）、width 軸で 80（condensed）
   pub value: f64,
 }
 
-/// 処理済みのPDF設定
+/// PDF ページレイアウトの検証済み・処理済み設定
+///
+/// ページサイズ、余白、背景色、フォント設定など、
+/// PDF 出力全体のレイアウトを制御します。
+/// すべての値が正の値・非負値として検証済みです。
 #[derive(Debug, Clone)]
 pub struct PdfConfig {
-  /// 出力ファイルの解決済みパス
+  /// 出力 PDF ファイルへの絶対パス（正規化済み）
+  /// ファイル名は `{Config::name}.pdf` で生成されます
   pub output_path: PathBuf,
-  /// ページの高さ
+  /// ページの高さ（mm）
+  /// バリデーション済み（> 0）、余白と矛盾なし
   pub height: f32,
-  /// ページの幅
+  /// ページの幅（mm）
+  /// バリデーション済み（> 0）、余白と矛盾なし
   pub width: f32,
-  /// フォントサイズ
+  /// デフォルトのフォントサイズ（ポイント）
+  /// バリデーション済み（> 0）
   pub font_size: f32,
   /// 行の高さの倍率
+  /// バリデーション済み（> 0）、例：1.0、1.5、2.0
   pub line_height_factor: f32,
-  /// マージン
+  /// ページ余白（上下左右）
   pub margin: Margin,
-  /// 背景色
+  /// 背景色の RGB 値（各 0.0-1.0）
+  /// 値がない場合は背景色なし（white）
   pub background_color: Option<(f32, f32, f32)>,
 }
 
+/// ページ余白（上下左右）
+///
+/// ページ内の有効テキスト配置領域を定義します。
+/// すべて非負値（>= 0）で、合計がページサイズ未満であることが保証されます。
 #[derive(Debug, Clone, Copy)]
 pub struct Margin {
+  /// 上余白（mm）（バリデーション済み、>= 0）
   pub top: f32,
+  /// 下余白（mm）（バリデーション済み、>= 0）
   pub bottom: f32,
+  /// 左余白（mm）（バリデーション済み、>= 0）
   pub left: f32,
+  /// 右余白（mm）（バリデーション済み、>= 0）
   pub right: f32,
 }

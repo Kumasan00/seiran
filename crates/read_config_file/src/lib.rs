@@ -1,8 +1,71 @@
-//! 設定ファイル読み込みモジュール
+//! TOML 設定ファイルのパース・検証・変換モジュール
 //!
-//! このモジュールは、TOML形式の設定ファイルを読み込み、
-//! パスの解決、バリデーション、型変換を行って
-//! アプリケーションが使用する設定情報に変換します。
+//! PDF 生成に必要な設定情報を TOML ファイルから読み込み、
+//! ファイルパスの解決、バリデーション、型変換を実行して
+//! アプリケーションが直接使用できる構造化設定データに変換します。
+//!
+//! ## 処理フロー
+//!
+//! ```text
+//! config.toml（TOML テキスト）
+//!   ↓
+//! fs::read()（ファイル読み込み）
+//!   ↓
+//! toml::from_slice()（TOML パース → PreConfig）
+//!   ↓
+//! パス解決（canonicalize）
+//!   ↓
+//! バリデーション実行
+//!   ├→ ページサイズ、フォントサイズの妥当性
+//!   ├→ 余白値の妥当性
+//!   ├→ 背景色の範囲（0.0-1.0）
+//!   ├→ フォント名の重複チェック
+//!   ├→ バリアブルフォント軸の長さ
+//!   └→ スクリプト・言語・フィーチャーコードの長さ
+//!   ↓
+//! 出力ディレクトリの作成
+//!   ↓
+//! Config（構造化設定）
+//! ```
+//!
+//! ## バリデーション項目
+//!
+//! | 項目 | 条件 | エラー型 |
+//! |-----|------|--------|
+//! | page height/width | > 0 | `NonPositive` |
+//! | `font_size` | > 0 | `NonPositive` |
+//! | `line_height_factor` | > 0 | `NonPositive` |
+//! | 各余白 | >= 0 | `NegativeMargin` |
+//! | 余白合計（縦） | < height | `MarginSumTooLarge` |
+//! | 余白合計（横） | < width | `MarginSumTooLarge` |
+//! | 背景色 RGB | [0.0, 1.0] | `InvalidBackgroundColor` |
+//! | `font_name` | 重複なし | `DuplicateFontName` |
+//! | 軸名 | 4 文字 | `InvalidFontVariationAxisName` |
+//! | script code | 4 文字 | `InvalidScriptCodeLength` |
+//! | language code | 3 or 4 文字 | `InvalidLanguageCodeLength` |
+//! | feature tag | 4 文字 | `InvalidFontFeatureTagLength` |
+//!
+//! ## 19 フォント種別
+//!
+//! 設定は 19 フォント種別に対応：
+//! - Latin: `serif` × 4 + `sans_serif` × 4 + `monospace` × 4 = 12
+//! - Special: `math` = 1
+//! - Japanese: `serif` 2 + `sans_serif` 2 + `monospace` 2 = 6
+//!
+//! 各フォント種別は独立した `FontConfig` を持ちます。
+//!
+//! ## 使用例
+//!
+//! ```ignore
+//! # use read_config_file::*;
+//!
+//! // デフォルトパスから読み込み
+//! let config = read_config_file()?;
+//!
+//! // PDF サイズ、余白、フォント設定にアクセス
+//! println!("PDF size: {} x {}", config.pdf.width, config.pdf.height);
+//! println!("Font: {}", config.font_configs.serif.font_name);
+//! ```
 
 #![allow(unused_assignments)]
 
@@ -30,39 +93,42 @@ const DEFAULT_CONFIG_PATH: &str = "./config/config.toml";
 /// 様々なエラーケースを表現します。
 #[derive(Debug, Error, Diagnostic)]
 enum ReadConfigError {
-  /// 入出力エラー
-  #[error("failed to read config file")]
-  #[diagnostic(code(config::io), help("設定ファイルのパスと権限を確認してください"))]
+  /// ファイル読み込みエラー
+  #[error("設定ファイルの読み込みに失敗しました。")]
+  #[diagnostic(code(config::io), help("ファイルパスと読み込み権限を確認してください。"))]
   Io(#[from] io::Error),
-  /// TOML解析エラー
-  #[error("TOML parse error: {0}")]
-  #[diagnostic(code(config::toml_parse), help("TOML の構文が正しいか確認してください"))]
+  /// TOML 形式解析エラー
+  #[error("TOML 形式の解析に失敗しました: {0}")]
+  #[diagnostic(code(config::toml_parse), help("TOML 構文が正しいか確認してください。"))]
   Toml(#[from] toml::de::Error),
-  /// 出力ディレクトリの作成に失敗
-  #[error("failed to create output directory")]
-  #[diagnostic(code(config::create_dir), help("ディレクトリの権限またはパスを確認してください"))]
+  /// 出力ディレクトリ作成エラー
+  #[error("出力ディレクトリの作成に失敗しました。")]
+  #[diagnostic(code(config::create_dir), help("ディレクトリ権限とパスを確認してください。"))]
   CreateDir {
     #[source]
     source: io::Error,
   },
-  /// カレントディレクトリの取得に失敗
-  #[error("failed to get current working directory")]
-  #[diagnostic(code(config::current_dir))]
+  /// カレント作業ディレクトリ取得エラー
+  #[error("カレント作業ディレクトリの取得に失敗しました。")]
+  #[diagnostic(code(config::current_dir), help("ファイルシステムの状態を確認してください。"))]
   CurrentDir {
     #[source]
     source: io::Error,
   },
-  /// パスの正規化に失敗
-  #[error("failed to canonicalize path '{path}'")]
-  #[diagnostic(code(config::canonicalize), help("存在するパスかどうか確認してください"))]
+  /// パス正規化エラー
+  #[error("パス '{path}' の正規化に失敗しました。")]
+  #[diagnostic(
+    code(config::canonicalize),
+    help("パスが存在するか、またはシンボリックリンクが有効であるか確認してください。")
+  )]
   Canonicalize {
     path: PathBuf,
     #[source]
     source: io::Error,
   },
-  /// 複数のバリデーションエラー
-  #[error("validation errors occurred")]
-  #[diagnostic()]
+  /// 複合バリデーションエラー
+  #[error("複数のバリデーションエラーが発生しました。")]
+  #[diagnostic(code(config::multiple_validation_errors))]
   MultipleValidationErrors {
     #[related]
     errors: Vec<ValidationError>,
@@ -74,89 +140,110 @@ enum ReadConfigError {
 #[derive(Debug, Error, Diagnostic)]
 enum ValidationError {
   /// サイズ系が正でない（`height`/`width`/`font_size`/`line_height_factor`）
-  #[error("'{field}' must be > 0")]
-  #[diagnostic(code(config::validation::non_positive), help("正の値を指定してください"))]
+  #[error("'{field}' は正の値である必要があります。")]
+  #[diagnostic(code(config::validation::non_positive), help("0 より大きい値を指定してください。"))]
   NonPositive { field: &'static str },
   /// 余白が負の値
-  #[error("'{field}' must be >= 0")]
-  #[diagnostic(code(config::validation::negative_margin))]
+  #[error("'{field}' は 0 以上である必要があります。")]
+  #[diagnostic(code(config::validation::negative_margin), help("負でない値を指定してください。"))]
   NegativeMargin { field: &'static str },
   /// 余白の合計が寸法以上
-  #[error("margin sum for {axis} ({sum} ) must be < {limit}")]
-  #[diagnostic(code(config::validation::margin_sum), help("余白の合計が寸法未満になるよう調整してください"))]
+  #[error("方向 {axis} の余白合計 ({sum}) が寸法 {limit} 未満である必要があります。")]
+  #[diagnostic(code(config::validation::margin_sum), help("余白の合計が寸法未満になるように調整してください。"))]
   MarginSumTooLarge {
     axis: &'static str,
     sum: f32,
     limit: f32,
   },
   /// `font_name`の重複
-  #[error("Duplicate font_name found: '{font_name}'")]
-  #[diagnostic(code(config::validation::duplicate_font))]
+  #[error("フォント名 '{font_name}' が重複しています。")]
+  #[diagnostic(
+    code(config::validation::duplicate_font),
+    help("各フォント種別に異なるフォント名を指定してください。")
+  )]
   DuplicateFontName { font_name: String },
   /// 背景色の範囲エラー
-  #[error("Background color '{field}' must be in [0.0, 1.0], got {value}")]
-  #[diagnostic(code(config::validation::background_color))]
+  #[error("背景色 {field} は [0.0, 1.0] の範囲である必要があります。指定値: {value}")]
+  #[diagnostic(code(config::validation::background_color), help("0.0 から 1.0 の間の値を指定してください。"))]
   InvalidBackgroundColor { field: &'static str, value: f32 },
   /// バリアブルフォントタグの長さエラー
-  #[error("Font variation axis name must be 4 characters long, got '{axis_name}'")]
-  #[diagnostic(code(config::validation::font_axis_length))]
+  #[error("フォント軸名は 4 文字である必要があります。指定値: '{axis_name}'")]
+  #[diagnostic(
+    code(config::validation::font_axis_length),
+    help("OpenType 軸タグ（例：'wght'、'wdth'）として 4 文字を指定してください。")
+  )]
   InvalidFontVariationAxisName { axis_name: String },
   /// scriptコードの長さエラー
-  #[error("Script code must be 3 or 4 characters long, got '{code}'")]
-  #[diagnostic(code(config::validation::script_code))]
+  #[error("スクリプトコードは 4 文字である必要があります。指定値: '{code}'")]
+  #[diagnostic(
+    code(config::validation::script_code),
+    help("ISO 15924 スクリプトコード（例：'latn'、'arab'）として 4 文字を指定してください。")
+  )]
   InvalidScriptCodeLength { code: String },
   /// languageコードの長さエラー
-  #[error("Language code must be 3 or 4 characters long, got '{code}'")]
-  #[diagnostic(code(config::validation::language_code))]
+  #[error("言語コードは 3 または 4 文字である必要があります。指定値: '{code}'")]
+  #[diagnostic(
+    code(config::validation::language_code),
+    help("BCP 47 言語タグ（例：'eng'、'ja'）を指定してください。")
+  )]
   InvalidLanguageCodeLength { code: String },
   /// featureタグの長さエラー
-  #[error("Font feature tag must be 4 characters long, got '{tag}'")]
-  #[diagnostic(code(config::validation::font_feature_tag))]
+  #[error("フィーチャータグは 4 文字である必要があります。指定値: '{tag}'")]
+  #[diagnostic(
+    code(config::validation::font_feature_tag),
+    help("OpenType フィーチャータグ（例：'liga'、'smcp'）として 4 文字を指定してください。")
+  )]
   InvalidFontFeatureTagLength { tag: String },
 }
 
-/// デフォルトパスから設定ファイルを読み込み
+/// デフォルトパスから設定ファイルを読み込みます
 ///
-/// `./config/config.toml`から設定を読み込み、パスの解決とバリデーションを行います。
+/// `./config/config.toml` から TOML 設定を読み込み、
+/// パスの解決、バリデーション、型変換を行って
+/// アプリケーション使用用の構造化設定に変換します。
 ///
-/// # 戻り値
+/// # Returns
 ///
-/// 解析され、検証済みの設定情報を返します。
+/// 検証済みの設定情報 [`Config`]
 ///
 /// # Errors
 ///
-/// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
-/// # エラー
-///
-/// ファイルの読み込み、解析、またはバリデーションに失敗した場合にエラーを返します。
-/// エラーは `miette::Report` でラップされ、詳細なエラー情報が提供されます。
+/// 以下の場合にエラーを返します：
+/// - ファイルが見つからない、または読み込み権限がない
+/// - TOML 構文エラー
+/// - バリデーション失敗（サイズ、余白、フォント設定など）
+/// - 出力ディレクトリの作成に失敗
+/// - パスの正規化に失敗
 pub fn read_config_file() -> Result<Config, Report> {
   let config_path = DEFAULT_CONFIG_PATH;
   info!(config_path = %config_path, "Reading config file");
   return read_config_file_with_path(config_path).map_err(std::convert::Into::into);
 }
 
-/// 指定されたパスから設定ファイルを読み込み
+/// 指定されたパスから設定ファイルを読み込みます
 ///
-/// TOMLファイルを読み込み、解析後に以下の処理を実行します：
-/// - ファイルパスの解決と正規化
-/// - ページサイズ、余白、フォントサイズのバリデーション
-/// - 背景色の検証（0.0〜1.0の範囲）
-/// - フォント名の重複チェック
-/// - 出力ディレクトリの作成
+/// TOML ファイルをパース後、以下の処理を実行します：
+/// 1. ファイルパスの解決と正規化（`canonicalize`）
+/// 2. ページサイズ、フォント、余白のバリデーション
+/// 3. 出力ディレクトリの作成
+/// 4. フォント設定の型変換（スクリプト、言語、バリアブル軸など）
 ///
-/// # 引数
+/// # Arguments
 ///
-/// * `config_path` - 設定ファイルのパス
+/// * `config_path` - 設定ファイルのパス（相対・絶対いずれでも可）
 ///
-/// # 戻り値
+/// # Returns
 ///
-/// 解析され、検証済みの設定情報を返します。
+/// 検証済みの設定情報 [`Config`]
 ///
-/// # エラー
+/// # Errors
 ///
-/// ファイルの読み込み、解析、バリデーションのいずれかで失敗した場合にエラーを返します。
-/// 内部的には `ReadConfigError` を使用しますが、公開APIでは `miette::Report` に変換されます。
+/// 以下の場合にエラーを返します：
+/// - ファイルが見つからない、または読み込み権限がない場合
+/// - TOML 構文エラー
+/// - バリデーション失敗（複数のエラーをまとめて報告）
+/// - 出力ディレクトリの作成に失敗
+/// - パス正規化に失敗
 fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, ReadConfigError> {
   let config_content = fs::read(config_path)?;
   let pre_config: PreConfig = toml::from_slice(&config_content)?;
@@ -283,6 +370,24 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
   return Ok(config);
 }
 
+/// プリフォント設定を処理済みフォント設定に変換します
+///
+/// TOML からパースされた `PreFontConfig` を、
+/// アプリケーションが直接使用できる `FontConfig` に変換します。
+/// この過程でスクリプト、言語、フィーチャーをバリデーションして変換します。
+///
+/// # Arguments
+///
+/// * `pre_font_config` - パース済み設定
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 変換済みフォント設定
+///
+/// # Errors
+///
+/// ファイルパスの正規化に失敗した場合
 fn to_font_config(
   pre_font_config: pre_config::PreFontConfig,
   errors: &mut Vec<ValidationError>,
@@ -302,22 +407,25 @@ fn to_font_config(
   });
 }
 
-/// 相対パスを絶対パスに解決し正規化
+/// ファイルパスを正規化された絶対パスに解決します
 ///
-/// `PathBuf`を受け取り、`canonicalize()`を使用してシンボリックリンクを解決し、
-/// 正規化された絶対パスを返します。この関数はファイルが存在することを前提とします。
+/// 相対パスを絶対パスに変換し、シンボリックリンクを解決して、
+/// 正規化された絶対パスを返します。この関数はファイルが存在することを前提としています。
 ///
-/// # 引数
+/// # Arguments
 ///
-/// * `path` - 解決するパス（所有権を移動）
+/// * `path` - 解決するパス（相対パスまたは絶対パス）
 ///
-/// # 戻り値
+/// # Returns
 ///
-/// 正規化された絶対パスを返します。
+/// 正規化された絶対パス
 ///
-/// # エラー
+/// # Errors
 ///
-/// パスの正規化に失敗した場合、またはファイルが存在しない場合にエラーを返します。
+/// 以下の場合にエラーを返します：
+/// - ファイルが存在しない場合
+/// - シンボリックリンク解決に失敗した場合
+/// - パスの正規化に失敗した場合（権限エラーなど）
 fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
   let resolved = path.canonicalize().map_err(|error| ReadConfigError::Canonicalize {
     path,
@@ -327,6 +435,19 @@ fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
 }
 
 // variation_axes の変換
+/// バリアブルフォント軸の設定情報を変換します
+///
+/// 各軸の名前が 4 文字であることを検証し、`[u8; 4]` 配列に変換します。
+/// 不正な長さの軸名はエラーに記録されますが、処理は続行します。
+///
+/// # Arguments
+///
+/// * `axes` - 変換対象のバリアブル軸オプション
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 変換済みのバリアブル軸リスト（軸設定がない場合は `None`）
 fn convert_axes(
   axes: Option<Vec<pre_config::PreVariationAxis>>,
   errors: &mut Vec<ValidationError>,
@@ -357,7 +478,21 @@ fn convert_axes(
     .transpose()
 }
 
-/// scriptコード（4文字）を [u8;4] へ変換
+/// OpenType スクリプトコードを `[u8; 4]` に変換します
+///
+/// 4 文字の OpenType スクリプトコード
+/// （例："latn" = Latin、"arab" = Arabic、"cyrl" = Cyrillic）
+/// を `[u8; 4]` 配列に変換します。
+/// 長さが 4 文字でない場合はエラーに記録されます。
+///
+/// # Arguments
+///
+/// * `input` - スクリプトコード（4 文字の `String`）
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 変換済みスクリプトコード配列（不正な場合は `None`）
 fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
   match input {
     Some(s) => {
@@ -373,7 +508,23 @@ fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -
   }
 }
 
-/// languageコード（3または4文字）を [u8;4] へ変換（3文字の場合は末尾スペース）
+/// BCP 47 言語コードを `[u8; 4]` に変換します
+///
+/// BCP 47 言語タグ（3 または 4 文字）を `[u8; 4]` 配列に変換します。
+/// 3 文字の場合は末尾にスペース（0x20）を追加して 4 文字にします。
+/// 例：
+/// - "eng" → [b'e', b'n', b'g', b' ']
+/// - "ja" → 不正（3 文字未満）
+/// - "zhCN" → [b'z', b'h', b'C', b'N']
+///
+/// # Arguments
+///
+/// * `input` - 言語コード（3 または 4 文字の `String`）
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 変換済み言語コード配列（不正な場合は `None`）
 fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
   match input {
     Some(s) => {
@@ -393,6 +544,20 @@ fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>)
   }
 }
 
+/// OpenType フォント機能タグをパースして変換します
+///
+/// OpenType フィーチャータグ（4 文字）をパースし、
+/// タグと値のペアリストに変換します。
+/// 不正な長さのタグはエラーに記録されますが、処理は続行します。
+///
+/// # Arguments
+///
+/// * `input` - フィーチャー設定オプション
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 変換済みフィーチャーリスト（フィーチャーがない場合は `None`）
 fn parse_font_features(
   input: Option<Vec<pre_config::PreFontFeature>>,
   errors: &mut Vec<ValidationError>,
@@ -420,13 +585,15 @@ fn parse_font_features(
     Some(features)
   }
 }
-/// 指定された数値フィールドがすべて正であることを検証する
+/// 指定数値フィールドがすべて正であることを検証します
 ///
-/// # 引数
-/// * `fields` - (フィールド名, 値)の配列
+/// ページサイズ、フォントサイズ、行の高さ倍率などの
+/// 正である必要がある値を検証します。
 ///
-/// # 戻り値
-/// 成功時は`()`を返します。
+/// # Arguments
+///
+/// * `fields` - (フィールド名, 値) のペア配列
+/// * `errors` - バリデーションエラー蓄積用ベクタ
 fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
     if *value <= 0.0 {
@@ -435,7 +602,12 @@ fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<Val
   }
 }
 
-/// 余白フィールドがすべて非負であることを検証する
+/// 余白フィールドがすべて非負であることを検証します
+///
+/// # Arguments
+///
+/// * `fields` - (フィールド名, 値) のペア配列
+/// * `errors` - バリデーションエラー蓄積用ベクタ
 fn validate_non_negative_margins(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
     if *value < 0.0 {
@@ -444,7 +616,20 @@ fn validate_non_negative_margins(fields: &[(&'static str, f32)], errors: &mut Ve
   }
 }
 
-/// 余白の合計がページサイズ未満であることを検証する
+/// 余白の合計がページサイズ未満であることを検証します
+///
+/// 上下左右の余白合計がページのそれぞれの寸法より小さいことを確認します。
+/// そうでなければ、テキスト配置領域がなくなるため不正です。
+///
+/// # Arguments
+///
+/// * `height` - ページ高さ
+/// * `width` - ページ幅
+/// * `margin_top` - 上余白
+/// * `margin_bottom` - 下余白
+/// * `margin_left` - 左余白
+/// * `margin_right` - 右余白
+/// * `errors` - バリデーションエラー蓄積用ベクタ
 fn validate_margin_sums(
   height: f32,
   width: f32,
@@ -470,7 +655,24 @@ fn validate_margin_sums(
   }
 }
 
-/// 出力PDFの絶対パスを生成する（ディレクトリ作成・正規化込み）
+/// 出力 PDF の絶対パスを生成します（ディレクトリ作成・正規化含む）
+///
+/// 出力ディレクトリを作成・正規化した上で、
+/// PDF ファイル名（`{name}.pdf`）を含むフルパスを生成します。
+///
+/// # Arguments
+///
+/// * `current_dir` - カレント作業ディレクトリ
+/// * `output_dir` - 設定で指定された出力ディレクトリ
+/// * `name` - PDF ファイル名（拡張子なし）
+///
+/// # Returns
+///
+/// 正規化された出力 PDF への絶対パス
+///
+/// # Errors
+///
+/// ディレクトリ作成またはパス正規化に失敗した場合
 fn build_output_pdf_path(current_dir: &Path, output_dir: &Path, name: &str) -> Result<PathBuf, ReadConfigError> {
   let output_dir_path = if output_dir.is_absolute() {
     output_dir.to_path_buf()
@@ -487,7 +689,21 @@ fn build_output_pdf_path(current_dir: &Path, output_dir: &Path, name: &str) -> R
   return Ok(output_path);
 }
 
-/// 背景色を検証し、指定があればRGBタプルを返す
+/// 背景色を検証し RGB タプルを生成します
+///
+/// R、G、B の各成分を検証（0.0〜1.0 の範囲内）し、
+/// 全てそろっていれば RGB タプルを返します。
+///
+/// # Arguments
+///
+/// * `r` - 赤成分の設定値
+/// * `g` - 緑成分の設定値
+/// * `b` - 青成分の設定値
+/// * `errors` - バリデーションエラー蓄積用ベクタ
+///
+/// # Returns
+///
+/// 検証済み RGB タプル（値がない場合は `None`）
 fn build_background_color(
   r: Option<f32>,
   g: Option<f32>,
@@ -511,7 +727,15 @@ fn build_background_color(
   }
 }
 
-/// `font_name` の重複を検出
+/// 19 フォント種別中の `font_name` 重複を検出します
+///
+/// すべてのフォント種別の `font_name` を調査し、
+/// 重複がある場合はエラーに記録します。
+///
+/// # Arguments
+///
+/// * `fonts` - 全フォント設定
+/// * `errors` - バリデーションエラー蓄積用ベクタ
 fn check_duplicate_font_names(fonts: &FontConfigs, errors: &mut Vec<ValidationError>) {
   let mut set = std::collections::HashSet::new();
   for name in [

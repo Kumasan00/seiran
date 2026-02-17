@@ -19,42 +19,42 @@ pub struct Cli {
   pub command: Command,
 }
 
-/// サポートされているコマンド
+/// アプリケーションがサポートするサブコマンド
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-  /// 指定されたファイルからPDFを生成
+  /// テキストファイルからPDFドキュメントを生成する
   Build {
-    /// 処理対象のテキストファイルパス
+    /// 入力テキストファイルのパス
     #[arg(value_name = "FILE")]
     text_file_path: PathBuf,
   },
-  /// フォントファイルからバリエーション軸情報を取得
+  /// フォントファイルのバリアブルフォント軸情報を表示する
   VariationAxes {
-    /// 処理対象のフォントファイルパス
+    /// フォントファイルのパス
     #[arg(value_name = "FILE")]
     font_path: PathBuf,
-    /// 処理対象のフォントのインデックス（TTCファイルの場合）
+    /// フォントのインデックス（TTC ファイルで複数フォントが含まれる場合に指定）
     #[arg(short, long, default_value_t = 0)]
     font_index: u32,
   },
-  /// TTCファイルからフォント名リストを取得
+  /// TrueType Collection（TTC）ファイルに含まれるフォント名一覧を表示する
   TtcNames {
-    /// 処理対象のTTCファイルパス
+    /// TTC ファイルのパス
     #[arg(value_name = "FILE")]
     ttc_file_path: PathBuf,
   },
-  /// フォントファイルのscriptとlanguageシステムを表示
+  /// フォントでサポートされているスクリプトと言語の組み合わせを表示する
   ScriptLangs {
-    /// 処理対象のフォントファイルパス
+    /// フォントファイルのパス
     #[arg(value_name = "FILE")]
     font_path: PathBuf,
-    /// 処理対象のフォントのインデックス（TTCファイルの場合）
+    /// フォントのインデックス（TTC ファイルで複数フォントが含まれる場合に指定）
     #[arg(short, long, default_value_t = 0)]
     font_index: u32,
   },
 }
 
-/// コマンドライン引数を解析して`Cli`構造体を返す
+/// コマンドライン引数をパースして `Cli` 構造体を返します
 ///
 /// # 例
 ///
@@ -62,7 +62,7 @@ pub enum Command {
 /// # use cli::parse_arg;
 /// let cli = parse_arg();
 /// match cli.command {
-///   cli::Command::Build { file_path } => println!("Building: {:?}", file_path),
+///   cli::Command::Build { text_file_path } => println!("生成対象: {:?}", text_file_path),
 /// }
 /// ```
 #[must_use]

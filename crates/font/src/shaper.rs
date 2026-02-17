@@ -1,3 +1,88 @@
+//! テキストシェイピング管理モジュール
+//!
+//! **`HarfRust`**（Harfbuzz の Rust バインディング）によるテキストシェーピング機能を提供します。
+//! テックシェイピングとは、テキスト文字列をフォント固有のグリフシーケンスに変換するプロセスです。
+//!
+//! ## シェイピングとは
+//!
+//! テキストシェイピングは以下の処理を行います：
+//!
+//! - **文字 → グリフ変換**: Unicode コードポイントを OpenType グリフに対応
+//! - **スクリプト処理**: 言語特有の字形変形（例：アラビア文字のダイアクリティクス）
+//! - **リガチャ処理**: 複数文字を単一グリフに統合（例：f + i → fi）
+//! - **位置情報計算**: 各グリフの x, y オフセットと幅を計算
+//! - **フィーチャー適用**: OpenType Advanced Typograhy 機能（如 smallcaps など）
+//!
+//! ## モジュール構成
+//!
+//! - [`ShaperError`] - エラー型（UTF-8 変換、言語タグ解析エラー）
+//! - [`ShaperDatas`] - 19 フォント種別のシェイパーデータ（HarfRust の事前構築データ）
+//! - [`ShaperInstances`] - バリアブルフォント軸のインスタンス管理
+//! - [`HarfRustShapers`] - 19 種類のフォント種別に対応するシェイパー群
+//! - [`HarfRustShaper`] - 単一フォント種別のシェイパー実装
+//!
+//! ## データフロー
+//!
+//! ```text
+//! FontRefs（フォント参照）
+//!   ↓
+//! ShaperDatas（HarfRust 事前構築データ）
+//!   ↓ + FontConfigs（スクリプト、言語設定）
+//! ShaperInstances（バリアブル軸設定）
+//!   ↓
+//! HarfRustShapers（19 フォント用のシェイパー群）
+//!   ↓ + Text（テキスト入力）
+//! GlyphBuffer（グリフシーケンス + 位置情報）
+//! ```
+//!
+//! ## `HarfRust` との統合
+//!
+//! このモジュールは以下のような方法で `HarfRust` と統合します：
+//!
+//! | 処理 | `HarfRust` クラス | 説明 |
+//! |------|----------------|------|
+//! | 事前構築 | `ShaperData` | テーブルデータを事前にメモリにロード |
+//! | インスタンス化 | `ShaperInstance` | バリアブルフォント軸を設定 |
+//! | シェイピング | `ShapePlan` + `Shaper` | 文字→グリフ変換を実行 |
+//! | 結果格納 | `GlyphBuffer` | グリフ列、クラスタ、位置情報を格納 |
+//!
+//! ## スクリプト・言語・フィーチャー
+//!
+//! 各フォント種別のシェイパーは設定から以下の情報を取得します：
+//!
+//! - **Script**: OpenType Script タグ（例："arab"、"beng"）
+//! - **Language**: BCP 47 言語タグ（例："ja"、"en-US"）
+//! - **Features**: OpenType フィーチャータグと値（例：smallcaps、ligatures）
+//!
+//! ## バリアブルフォント対応
+//!
+//! 設定にバリアブルフォント軸が指定されている場合（例：Weight=700）、
+//! `ShaperInstance` を生成して、シェイピング時に軸値が反映されます。
+//!
+//! ## 19 フォント並列処理
+//!
+//! すべての構造体初期化は **rayon** で並列実行され、
+//! 19 種類のフォント（Latin 12 + Math 1 + 日本語 6）を効率的に処理します。
+//!
+//! ## 使用例
+//!
+//! ```ignore
+//! # use font::shaper::*;
+//! # use read_config_file::FontConfigs;
+//! # use font::FontRefs;
+//!
+//! // フォント参照とシェイパーデータを準備
+//! let font_refs = FontRefs::new(&font_data)?;
+//! let shaper_datas = ShaperDatas::new(&font_refs);
+//! let instances = ShaperInstances::new(&configs, &font_refs);
+//!
+//! // シェイパー群を生成
+//! let shapers = HarfRustShapers::new(&configs, &font_refs, &shaper_datas, &instances)?;
+//!
+//! // テキストを Serif フォントでシェイピング
+//! let glyph_buffer = shapers.get(FontType::Serif).shape("Hello World");
+//! ```
+
 #![allow(unused_assignments)]
 
 use std::str::FromStr;
@@ -13,22 +98,37 @@ use thiserror::Error;
 
 use crate::{FontRefs, FontType};
 
+/// テキストシェイピング中に発生するエラーの種類
+///
+/// `HarfRust` によるシェイピング処理やフォント設定の解析で発生するエラーを表します。
 #[derive(Debug, Error, Diagnostic)]
 pub enum ShaperError {
-  #[error("UTF-8への変換に失敗しました")]
-  #[diagnostic(code(shaper::utf8), help("言語タグが有効なUTF-8文字列であることを確認してください"))]
+  /// UTF-8 文字列への変換に失敗
+  #[error("UTF-8への変換に失敗しました。")]
+  #[diagnostic(code(shaper::utf8), help("言語タグが有効なUTF-8文字列であることを確認してください。"))]
   Utf8 {
+    /// UTF-8 変換エラーの詳細
     #[source]
     source: std::str::Utf8Error,
   },
+  /// 言語タグの解析に失敗
   #[error("言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
     code(shaper::language_parse),
-    help("言語タグはISO 639言語コード（例: 'ja', 'en'）である必要があります")
+    help("言語タグはISO 639言語コード（例: 'ja', 'en'）である必要があります。")
   )]
-  LanguageParse { tag: String, error_message: String },
+  LanguageParse {
+    /// 解析に失敗した言語タグ
+    tag: String,
+    /// エラーの詳細メッセージ
+    error_message: String,
+  },
 }
 
+/// `HarfRust` シェイピングに必要なフォント解析データの集合
+///
+/// 19 種類のフォント種別ごとの `ShaperData` を保持します。
+/// `ShaperData` はテキストシェイピング時にグリフ情報を参照するために使用されます。
 pub struct ShaperDatas {
   serif: ShaperData,
   serif_bold: ShaperData,
@@ -52,20 +152,23 @@ pub struct ShaperDatas {
 }
 
 impl ShaperDatas {
-  /// `HarfRust` 用のシェイパーデータ一式を生成します。
+  /// フォント参照から `HarfRust` シェイピング用のデータを生成します
   ///
-  /// # 引数
+  /// 各フォント種別に対応する `ShaperData` を生成し、
+  /// テキストシェイピングで使用するシェイパーデータをプリペア（事前構築）します。
   ///
-  /// * `font_data` - 各種フォントの生データ
+  /// # Arguments
   ///
-  /// # 戻り値
+  /// * `font_refs` - 各フォント種別のロード済みフォント参照
   ///
-  /// 生成された `HarfRustShaperDatas`
+  /// # Returns
+  ///
+  /// すべてのフォント種別のシェイパーデータを含む `ShaperDatas`
   ///
   /// # Panics
   ///
-  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
-  /// これは通常は発生しないため、プログラミングエラーを示します。
+  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
+  /// これは実装の不整合を示すプログラムエラーです。
   #[must_use]
   pub fn new(font_refs: &FontRefs) -> Self {
     let mut shaper_datas = FontType::ALL.iter().map(|&font_type| ShaperData::new(font_refs.get(font_type)));
@@ -94,6 +197,16 @@ impl ShaperDatas {
     }
   }
 
+  /// 指定されたフォント種別に対応するシェイパーデータを取得します
+  ///
+  /// # Arguments
+  ///
+  /// * `font_type` - 取得したいフォント種別
+  ///
+  /// # Returns
+  ///
+  /// 指定されたフォント種別の `ShaperData` への不変参照
+  #[must_use]
   pub fn get(&self, font_type: FontType) -> &ShaperData {
     match font_type {
       FontType::Serif => &self.serif,
@@ -119,7 +232,10 @@ impl ShaperDatas {
   }
 }
 
-/// 各フォントに対応するシェイパーインスタンスを保持します。
+/// バリアブルフォント軸に対応するシェイパーインスタンスの集合
+///
+/// 19 種類のフォント種別ごとに、バリアブルフォント軸の設定がある場合は
+/// `ShaperInstance` を保持します（軸設定がない場合は `None`）。
 pub struct ShaperInstances {
   serif: Option<ShaperInstance>,
   serif_bold: Option<ShaperInstance>,
@@ -143,12 +259,24 @@ pub struct ShaperInstances {
 }
 
 impl ShaperInstances {
-  /// フォント設定とシェイパーデータからインスタンス一式を生成します。
+  /// フォント設定からシェイパーインスタンスを生成します
+  ///
+  /// バリアブルフォント軸の設定がある場合は `ShaperInstance` を生成します。
+  /// 軸設定がない場合は `None` を保持します。生成は並列処理で実行されます。
+  ///
+  /// # Arguments
+  ///
+  /// * `configs` - 各フォント種別の設定情報（バリアブルフォント軸を含む）
+  /// * `font_refs` - 各フォント種別のロード済みフォント参照
+  ///
+  /// # Returns
+  ///
+  /// すべてのフォント種別のシェイパーインスタンスをまとめた `ShaperInstances`
   ///
   /// # Panics
   ///
-  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
-  /// これは通常は発生しないため、プログラミングエラーを示します。
+  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
+  /// これは実装の不整合を示すプログラムエラーです。
   #[must_use]
   pub fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self {
     let shaper_instances = FontType::ALL
@@ -185,7 +313,20 @@ impl ShaperInstances {
     };
   }
 
-  /// バリアブルフォント指定がある場合にシェイパーインスタンスを生成します。
+  /// バリアブルフォント軸設定からシェイパーインスタンスを生成します
+  ///
+  /// フォント設定にバリアブルフォント軸が指定されている場合、
+  /// それらの軸値から `ShaperInstance` を生成します。
+  /// 軸設定がない場合は `None` を返します。
+  ///
+  /// # Arguments
+  ///
+  /// * `config` - フォント設定情報（バリアブル軸を含む）
+  /// * `font_ref` - フォント参照
+  ///
+  /// # Returns
+  ///
+  /// 軸設定がある場合は `Some(ShaperInstance)`、ない場合は `None`
   fn build_instance(config: &FontConfig, font_ref: &FontRef) -> Option<ShaperInstance> {
     config.variation_axes.as_ref()?;
 
@@ -201,6 +342,15 @@ impl ShaperInstances {
     return instance;
   }
 
+  /// 指定されたフォント種別のシェイパーインスタンスを取得します
+  ///
+  /// # Arguments
+  ///
+  /// * `font_type` - 取得したいフォント種別
+  ///
+  /// # Returns
+  ///
+  /// インスタンスが存在する場合は `Some(&ShaperInstance)`、ない場合は `None`
   fn get(&self, font_type: FontType) -> Option<&ShaperInstance> {
     match font_type {
       FontType::Serif => self.serif.as_ref(),
@@ -226,7 +376,11 @@ impl ShaperInstances {
   }
 }
 
-/// `HarfRust`のシェイパー一式をまとめて保持します。
+/// `HarfRust` のテキストシェイピングエンジンの集合
+///
+/// 19 種類のフォント種別ごとに `HarfRustShaper` を保持します。
+/// このシェイパー群は、与えられたテキストを各フォント種別で
+/// シェイピング（グリフ配置の計算）するための統一インターフェースを提供します。
 pub struct HarfRustShapers<'a> {
   serif: HarfRustShaper<'a>,
   serif_bold: HarfRustShaper<'a>,
@@ -250,25 +404,35 @@ pub struct HarfRustShapers<'a> {
 }
 
 impl<'a> HarfRustShapers<'a> {
-  /// `HarfRust`用のシェイパー一式を生成します。
+  /// `HarfRust` シェイパー一式を生成します
   ///
-  /// # 引数
+  /// フォント設定、シェイパーデータ、シェイパーインスタンスから
+  /// 19 種類全てのフォント種別に対応する `HarfRust` シェイパーを生成します。
+  /// 各シェイパーは、テキストシェイピング時に必要なスクリプト、言語、
+  /// 機能情報（フィーチャー）を保有します。
   ///
-  /// * `configs` - フォント設定
-  /// * `shaper_datas` - `HarfRust`用のシェイパーデータ一式
-  /// * `instances` - シェイパーインスタンス一式
+  /// # Arguments
   ///
-  /// # 戻り値
+  /// * `configs` - 各フォント種別の設定情報
+  /// * `font_refs` - 各フォント種別の OpenType フォント参照
+  /// * `shaper_datas` - `HarfRust` シェイピング用の事前構築データ
+  /// * `instances` - バリアブルフォント軸のインスタンス情報
   ///
-  /// 生成された `HarfRustShapers`
+  /// # Returns
+  ///
+  /// すべてのフォント種別のシェイパーを含む `HarfRustShapers`
   ///
   /// # Errors
   ///
-  /// シェイパーの生成に失敗した場合に `ShaperError` を返します。
+  /// 以下の場合にエラーを返します：
+  /// - 言語タグの解析に失敗した場合
+  /// - UTF-8 文字列への変換に失敗した場合
+  /// - シェイパーの初期化に失敗した場合
   ///
   /// # Panics
   ///
-  /// `FontType::ALL`の要素数が予期した数と一致しない場合、パニックします。
+  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
+  /// これは実装の不整合を示すプログラムエラーです。
   pub fn new(
     configs: &FontConfigs,
     font_refs: &'a FontRefs,
@@ -311,6 +475,15 @@ impl<'a> HarfRustShapers<'a> {
     });
   }
 
+  /// 指定されたフォント種別に対応するシェイパーを取得します
+  ///
+  /// # Arguments
+  ///
+  /// * `font_type` - 取得したいフォント種別
+  ///
+  /// # Returns
+  ///
+  /// 指定されたフォント種別の `HarfRustShaper` への参照
   #[must_use]
   pub fn get(&'a self, font_type: FontType) -> &'a HarfRustShaper<'a> {
     match font_type {
@@ -337,7 +510,12 @@ impl<'a> HarfRustShapers<'a> {
   }
 }
 
-/// 文字列シェイピングに必要な状態を保持する個別のシェイパーです。
+/// 単一フォントに対するテキストシェイピングエンジン
+///
+/// `HarfRust` を使用して、特定のフォントに対してテキストをシェイピングします。
+/// シェイピングとは、テキスト文字列からグリフシーケンスを生成するプロセスです。
+/// スクリプト、言語、シェイピング機能（フィーチャー）などの
+/// タイポグラフィック情報を保持します。
 pub struct HarfRustShaper<'a> {
   shaper: Shaper<'a>,
   shape_plan: ShapePlan,
@@ -348,6 +526,26 @@ pub struct HarfRustShaper<'a> {
 }
 
 impl<'a> HarfRustShaper<'a> {
+  /// フォント設定とシェイパーデータから `HarfRustShaper` を生成します
+  ///
+  /// フォント設定からスクリプト、言語、シェイピング機能を取得し、
+  /// `HarfRust` のシェイパーとシェイピングプランを初期化します。
+  /// バリアブルフォント軸の設定がある場合はインスタンスとして適用されます。
+  ///
+  /// # Arguments
+  ///
+  /// * `config` - フォント設定（スクリプト、言語、機能を含む）
+  /// * `font_ref` - OpenType フォント参照
+  /// * `shaper_data` - `HarfRust` シェイピング用の事前構築データ
+  /// * `instance` - バリアブルフォント軸のインスタンス（軸設定がある場合）
+  ///
+  /// # Returns
+  ///
+  /// 初期化されたシェイパー
+  ///
+  /// # Errors
+  ///
+  /// 言語タグの解析に失敗した場合に `ShaperError` を返します。
   fn new(
     config: &FontConfig,
     font_ref: &FontRef<'a>,
@@ -366,8 +564,8 @@ impl<'a> HarfRustShaper<'a> {
     let language = match config.language {
       Some(tag_bytes) => {
         #[allow(clippy::expect_used)]
-        // すでにバリデーションされているため安全
-        let str = std::str::from_utf8(&tag_bytes).expect("Valid UTF-8 guaranteed by config validation");
+        // バリデーション済みため安全
+        let str = std::str::from_utf8(&tag_bytes).map_err(|e| ShaperError::Utf8 { source: e })?;
         Some(Language::from_str(str).map_err(|e| ShaperError::LanguageParse {
           tag: str.to_string(),
           error_message: e.to_string(),
@@ -395,8 +593,24 @@ impl<'a> HarfRustShaper<'a> {
     });
   }
 
+  /// 与えられたテキストをシェイピングし、グリフバッファを返します
+  ///
+  /// テキスト文字列を複数のグリフ ID、グリフクラスタ、位置情報に変換します。
+  /// このメソッドは
+  /// - スクリプトと言語の自動検出
+  /// - シェイピング機能（フィーチャー）の適用
+  /// - OpenType テーブルの参照
+  ///
+  /// などを行い、正確なシェイピング結果を生成します。
+  ///
+  /// # Arguments
+  ///
+  /// * `text` - シェイピング対象のテキスト
+  ///
+  /// # Returns
+  ///
+  /// シェイピング結果を含む `GlyphBuffer`
   #[must_use]
-  /// 与えられたテキストをシェイピングし、グリフバッファを返します。
   pub fn shape(&self, text: &str) -> GlyphBuffer {
     let mut buffer = UnicodeBuffer::new();
     buffer.set_direction(self.direction);

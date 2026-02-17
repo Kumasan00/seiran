@@ -1,3 +1,100 @@
+//! フォント設定と OpenType テーブルの検証モジュール
+//!
+//! フォント設定の妥当性、バリアブルフォント軸設定の完全性、
+//! スクリプト・言語のサポート状況などを検証し、
+//! PDF 生成前にフォント関連の問題を早期発見します。
+//!
+//! ## 検証項目
+//!
+//! ### 1. バリアブルフォント軸検証
+//!
+//! バリアブルフォントの軸設定に関して以下を検証：
+//!
+//! - **軸の存在確認**: 設定された軸がフォント内に存在すること
+//! - **値の範囲チェック**: 軸値が最小値〜最大値の範囲内であること
+//! - **完全性チェック**: フォント内のすべての軸が設定に含まれていること
+//!
+//! 例えば Weight 軸が [100, 900] の範囲を持つフォントで、
+//! 設定値が 950 の場合は範囲外エラーを報告します。
+//!
+//! ### 2. スクリプト・言語サポート検証
+//!
+//! フォントの OpenType テーブルで指定されたスクリプト・言語が
+//! サポートされているか確認：
+//!
+//! - **GSUB テーブル**: グリフ置換（字形の変形など）のサポート確認
+//! - **GPOS テーブル**: グリフ配置（カーニング、リガチャなど）のサポート確認
+//!
+//! サポートされていない場合は警告ログを出力（エラーではなく警告）。
+//!
+//! ## エラー型
+//!
+//! [`FontValidationError`] は 7 つのエラーバリアントを定義：
+//!
+//! | エラー | 条件 | 対応 |
+//! |-------|------|------|
+//! | `Parse` | フォント形式解析失敗 | ファイル形式を確認 |
+//! | `NotVariableFont` | 静的フォントに軸設定 | 設定から軸を削除 |
+//! | `MissingVariationAxes` | バリアブルに軸設定なし | 設定に軸を追加 |
+//! | `UnknownVariationAxis` | 不明な軸名 | `variation-axes` コマンドで確認 |
+//! | `VariationValueOutOfRange` | 軸値が範囲外 | 値をクリップまたは調整 |
+//! | `UnconfiguredVariationAxis` | フォント内の軸が未設定 | 設定に軸を追加 |
+//!
+//! ## ライフサイクル
+//!
+//! ```text
+//! FontConfig（設定ファイル）
+//!   ↓
+//! validate_font()（公開関数）
+//!   ↓ + FontRef（フォント）
+//! wrapped_validate_font()（内部関数）
+//!   ├→ validate_variation_axes()
+//!   └→ check_script_language_support()
+//!       └→ check_script_in_table()
+//!   ↓
+//! Result<(), Report>（検証結果）
+//! ```
+//!
+//! ## 検証タイミング
+//!
+//! 検証は PDF 生成パイプラインの初期段階で実行されます：
+//!
+//! 1. フォント読み込み（`font::FontData::new`）
+//! 2. フォントパース（`font::FontRefs::new`）
+//! 3. **→ フォント検証** （このモジュール）
+//! 4. メタデータ抽出（`font::font_info::FontInfos::new`）
+//! 5. テキスト処理（`parser`）
+//! 6. テキストシェイピング（`font::shaper`）
+//! 7. PDF 生成（`pdf_gen`）
+//!
+//! 検証に失敗すると後続の処理は実行されません。
+//!
+//! ## 警告 vs エラー
+//!
+//! - **エラー**: 処理を中断する（`FontValidationError` を返す）
+//!   - バリアブル軸の検証失敗
+//!   - OpenType テーブルの読み込み失敗設定値の矛盾
+//!
+//! - **警告**: ログ出力のみ、処理は続行（`warn!` マクロ）
+//!   - スクリプト・言語がサポートされていない
+//!   - 言語が指定されているがスクリプトが未指定
+//!
+//! ## 使用例
+//!
+//! ```ignore
+//! # use font::validate_font::*;
+//! # use read_config_file::FontConfig;
+//! # use read_fonts::FontRef;
+//!
+//! let config = FontConfig { /* ... */ };
+//! let font_ref = FontRef::new(&font_data)?;
+//!
+//! // 検証を実行
+//! validate_font(&config, &font_ref)?;
+//!
+//! // 検証成功後は PDF 生成処理に進む
+//! ```
+
 #![allow(unused_assignments)]
 
 use font_types::{Fixed, Tag};
@@ -7,83 +104,113 @@ use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::warn;
 
+/// フォント検証に関連するエラー
+///
+/// フォント形式のパース、バリアブルフォント軸の検証、
+/// スクリプト/言語サポートの検証などで発生するエラーを表します。
 #[derive(Debug, Error, Diagnostic)]
 pub enum FontValidationError {
-  /// フェース解析失敗
+  /// OpenType フォント形式解析エラー
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
     code(font::validation::parse),
-    help("フォントファイルが破損していないか、正しい形式であるか確認してください")
+    help("フォントファイルが破損していないか、正しい形式であるか確認してください。")
   )]
   Parse(#[from] read_fonts::ReadError),
-  /// バリアブルフォントではないのに軸設定が与えられた
-  #[error("バリアブルフォントではありませんが、設定ファイルにバリエーション軸が指定されています")]
+  /// 静的フォントにバリアブル軸設定が指定されたエラー
+  #[error("このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。")]
   #[diagnostic(
     code(font::validation::not_variable_font),
-    help("バリアブルフォントでない場合は、設定ファイルから 'variation_axes' を削除してください")
+    help("バリアブル対応ではないフォントの場合は、設定ファイルから 'variation_axes' を削除してください。")
   )]
   NotVariableFont,
-  /// バリアブルフォントに必要な軸設定が不足
-  #[error("バリアブルフォントにはバリエーション軸の設定が必要です")]
+  /// バリアブルフォント軸設定不足エラー
+  #[error("バリアブルフォントにはバリエーション軸の設定が必須です。")]
   #[diagnostic(
     code(font::validation::missing_variation_axes),
     help(
-      "設定ファイルに 'variation_axes' セクションを追加してください。'variation-axes' コマンドで利用可能な軸を確認できます"
+      "設定ファイルに 'variation_axes' セクションを追加してください。'variation-axes' コマンドで利用可能な軸を確認できます。"
     )
   )]
   MissingVariationAxes,
-  /// 未知の軸名
+  /// 不明なバリエーション軸名エラー
   #[error("不明なバリエーション軸: {0}")]
   #[diagnostic(
     code(font::validation::unknown_axis),
-    help("'variation-axes' コマンドでフォントがサポートする軸を確認してください")
+    help("'variation-axes' コマンドでフォントがサポートする軸を確認してください。")
   )]
   UnknownVariationAxis(String),
-  /// 軸値が許容範囲外
+  /// バリアブル軸値が許容範囲外エラー
   #[error("軸 '{name}' の値が範囲外です: {value} (許容範囲: {min}..={max})")]
-  #[diagnostic(code(font::validation::value_out_of_range), help("値をフォントの許容範囲内に設定してください"))]
+  #[diagnostic(code(font::validation::value_out_of_range), help("値をフォントの許容範囲内に設定してください。"))]
   VariationValueOutOfRange {
+    /// 軸名
     name: String,
+    /// 最小値
     min: Fixed,
+    /// 最大値
     max: Fixed,
+    /// 指定された値
     value: f64,
   },
-  /// フォントに存在する軸が設定されていない
+  /// フォント内の軸が設定に含まれていないエラー
   #[error("フォントのバリエーション軸 '{axis}' が設定されていません (デフォルト: {default}, 最小: {min}, 最大: {max})")]
   #[diagnostic(
     code(font::validation::unconfigured_axis),
-    help("設定ファイルの 'variation_axes' にこの軸を追加してください")
+    help("設定ファイルの 'variation_axes' にこの軸を追加してください。")
   )]
   UnconfiguredVariationAxis {
+    /// フォント内の軸名
     axis: String,
+    /// デフォルト値
     default: Fixed,
+    /// 最小値
     min: Fixed,
+    /// 最大値
     max: Fixed,
   },
 }
 
-/// フォント設定を検証
+/// フォント設定の妥当性を検証します
 ///
-/// # 引数
+/// フォント設定に基づいてフォントを下記の観点から検証します：
+/// - バリアブルフォント軸設定の妥当性
+/// - スクリプト・言語のサポート状況
 ///
-/// * `config` - フォント設定
-/// * `font_byte` - フォントバイナリ
+/// # Arguments
+///
+/// * `config` - フォント設定情報
+/// * `font_ref` - OpenType フォント参照
+///
+/// # Returns
+///
+/// 検証成功時は `Ok(())`
 ///
 /// # Errors
 ///
-/// フォントの読み込み・解析、バリエーション軸の検証、スクリプト/言語の検証に失敗した場合に
-/// `Report` を返します。
+/// 以下の場合にエラーを返します：
+/// - フォント形式のパースに失敗した場合
+/// - バリアブル軸設定が不正な場合
+/// - 軸値が許容範囲外の場合
 pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), Report> {
   wrapped_validate_font(config, font_ref)?;
   Ok(())
 }
 
-/// フォント設定を検証
+/// フォント設定の詳細な検証を実行します（内部関数）
+///
+/// # Arguments
+///
+/// * `config` - フォント設定情報
+/// * `font_ref` - OpenType フォント参照
+///
+/// # Returns
+///
+/// 検証成功時は `Ok(())`
 ///
 /// # Errors
 ///
-/// フォントの読み込み・解析、バリエーション軸の検証に失敗した場合に
-/// `FontValidationError` を返します。
+/// 検証に失敗した場合は `FontValidationError` を返します。
 fn wrapped_validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), FontValidationError> {
   let variation_axes = &config.variation_axes;
   if let Some(variation_axes) = variation_axes {
@@ -100,30 +227,37 @@ fn wrapped_validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), 
   Ok(())
 }
 
-/// バリアブルフォントの軸を検証
+/// バリアブルフォントの軸設定を検証します
 ///
-/// 設定されたバリエーション軸がフォントに存在する軸と一致し、
-/// 値が許容範囲内にあることを確認します。
-/// また、フォントに存在するすべての軸が設定されていることも検証します。
-/// 複数の軸を持つフォントに対応しています。
+/// 以下の検証を行います：
+/// - 設定された軸がフォント内に存在すること
+/// - 軸値が最小値から最大値の範囲内であること
+/// - フォント内のすべての軸が設定に含まれていること
 ///
-/// # 引数
+/// # Arguments
 ///
-/// * `ttf_face` - `TrueType`フェース
-/// * `config_variation_axes` - 設定されたバリエーション軸
+/// * `font_ref` - フォント参照（fvar テーブル読み込み用）
+/// * `config_variation_axes` - 設定ファイルに指定されたバリアブル軸
 ///
-/// # エラー
+/// # Returns
 ///
-/// 未知の軸名、値が範囲外、またはフォントに存在する軸が設定に含まれていない場合にエラーを返します。
+/// すべての軸設定が妥当な場合は `Ok(())`
+///
+/// # Errors
+///
+/// 以下の場合にエラーを返します：
+/// - 設定に含まれる軸がフォントに存在しない場合
+/// - 軸値が許容範囲外の場合
+/// - フォント内の軸が設定に含まれていない場合
 fn validate_variation_axes(
   font_ref: &FontRef,
   config_variation_axes: &[VariationAxis],
 ) -> Result<(), FontValidationError> {
-  // フォントのすべての軸を一度取得してキャッシュ
+  // fvar テーブルからフォント内のバリアブル軸定義を取得
   let fvar = font_ref.fvar().map_err(|_| FontValidationError::NotVariableFont)?;
   let font_axes = fvar.axes().map_err(FontValidationError::Parse)?;
 
-  // 設定された各軸を検証
+  // 設定されたバリアブル軸ごとにフォント内の定義と照合
   for cfg_axis in config_variation_axes {
     let cfg_tag = font_types::Tag::new(&cfg_axis.name);
     let axis = font_axes.iter().find(|axis| axis.axis_tag() == cfg_tag).ok_or_else(|| {
@@ -144,7 +278,7 @@ fn validate_variation_axes(
     }
   }
 
-  // フォントに存在する軸がすべて設定されているか確認
+  // フォント内のバリアブル軸が全て設定ファイルに含まれているか検証
   for font_axis in font_axes {
     let axis_name: String = font_axis.axis_tag().to_string();
     let is_configured = config_variation_axes
@@ -164,15 +298,16 @@ fn validate_variation_axes(
   Ok(())
 }
 
-/// スクリプトと言語のサポートを検証
+/// スクリプト・言語のサポート状況を確認します
 ///
-/// フォントのGSUBおよびGPOSテーブルで、指定されたスクリプトと言語が
-/// サポートされているかを確認します。サポートされていない場合は警告を出力します。
+/// フォントの GSUB（グリフ置換）および GPOS（グリフ配置）テーブルで、
+/// 指定されたスクリプトと言語がサポートされているかを確認します。
+/// サポートされていない場合は警告ログを出力します。
 ///
-/// # 引数
+/// # Arguments
 ///
 /// * `font_ref` - フォント参照
-/// * `font_config` - フォント設定
+/// * `font_config` - フォント設定情報（スクリプト、言語を含む）
 fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   let Some(script) = font_config.script else {
     return;
@@ -181,29 +316,32 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   let script_tag = Tag::new(&script);
   let lang_tag = font_config.language.map(|lang| Tag::new(&lang));
 
-  // GSUBテーブルのチェック
+  // GSUB（グリフ置換）テーブルを確認
   if let Ok(gsub) = font_ref.gsub() {
     check_script_in_table(gsub.script_list(), script_tag, lang_tag, "GSUB");
   } else {
-    warn!("GSUB table not found.");
+    warn!("GSUB テーブルが見つかりません。");
   }
 
-  // GPOSテーブルのチェック
+  // GPOS（グリフ配置）テーブルを確認
   if let Ok(gpos) = font_ref.gpos() {
     check_script_in_table(gpos.script_list(), script_tag, lang_tag, "GPOS");
   } else {
-    warn!("GPOS table not found.");
+    warn!("GPOS テーブルが見つかりません。");
   }
 }
 
-/// 指定されたテーブルでスクリプトと言語のサポートを確認
+/// 特定のテーブル内でスクリプト・言語のサポートを確認します
 ///
-/// # 引数
+/// GSUB または GPOS テーブルの `ScriptList` から、
+/// 指定されたスクリプトと言語がサポートされているかを調べます。
 ///
-/// * `script_list_result` - `ScriptList`の取得結果
-/// * `script_tag` - 検証するスクリプトタグ
-/// * `lang_tag` - 検証する言語タグ（オプション）
-/// * `table_name` - テーブル名（エラーメッセージ用）
+/// # Arguments
+///
+/// * `script_list_result` - `ScriptList` の取得結果
+/// * `script_tag` - 確認するスクリプトタグ
+/// * `lang_tag` - 確認する言語タグ（オプション）
+/// * `table_name` - テーブル名（"GSUB" または "GPOS"）
 fn check_script_in_table(
   script_list_result: Result<ScriptList<'_>, ReadError>,
   script_tag: Tag,
@@ -213,13 +351,13 @@ fn check_script_in_table(
   let script_list = match script_list_result {
     Ok(list) => list,
     Err(e) => {
-      warn!("Failed to read ScriptList from {table_name} table: {e}");
+      warn!("ScriptList の読み込みに失敗しました ({table_name}): {e}");
       return;
     },
   };
 
   let Some(index) = script_list.index_for_tag(script_tag) else {
-    warn!("Script '{script_tag}' is NOT supported in {table_name} table.");
+    warn!("スクリプト '{script_tag}' は {table_name} テーブルではサポートされていません。");
     return;
   };
 
@@ -231,6 +369,6 @@ fn check_script_in_table(
   if let Some(lang_tag) = lang_tag
     && script.lang_sys_index_for_tag(lang_tag).is_none()
   {
-    warn!("Language '{lang_tag}' is NOT supported under script '{script_tag}' in {table_name} table.");
+    warn!("言語 '{lang_tag}' はスクリプト '{script_tag}' の下では {table_name} テーブルでサポートされていません。");
   }
 }

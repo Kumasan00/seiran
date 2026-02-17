@@ -232,7 +232,7 @@ pub fn pdf_gen(
         y2: f32::from(font_info.ymax),
       });
       font_descriptor.ascent(f32::from(font_info.ascender));
-      font_descriptor.descent(f32::from(font_info.descender));
+      font_descriptor.descent(f32::from(font_info.descender).abs());
       font_descriptor.cap_height(f32::from(font_info.cap_height));
       font_descriptor.stem_v(font_info.stem_v as f32);
       font_descriptor.font_file2(font_ids.font_file);
@@ -284,103 +284,6 @@ pub fn pdf_gen(
   let pdf_bytes = pdf.finish();
   return pdf_bytes;
 }
-
-// /// PDFドキュメントを生成
-// ///
-// /// フォント情報、グリフマッピング、コンテンツストリーム、設定から
-// /// 完全なPDFドキュメントを構築し、指定されたパスに書き込みます。
-// /// カタログ、ページツリー、各ページ、および全19種類のフォントを設定します。
-// ///
-// /// # 引数
-// ///
-// /// * `font_subset_bytes` - 全19種類のフォントのサブセット化されたバイトデータ
-// /// * `font_info` - 全フォントのメタデータ情報
-// /// * `glyph_mappings` - 全フォントのグリフマッピング情報
-// /// * `pdf_contents` - PDFコンテンツストリームのベクター（各要素が1ページに対応）
-// /// * `config` - PDF生成設定（ページサイズ、出力パスなど）
-// ///
-// /// # 戻り値
-// ///
-// /// 成功した場合は`Ok(())`を返します。
-// ///
-// /// # Errors
-// ///
-// /// ファイルの書き込みに失敗した場合にエラーを返します。
-// /// # エラー
-// ///
-// /// ファイルの書き込みに失敗した場合にエラーを返します。
-// pub fn pdf_gen(
-//   font_subset_bytes: &font::subset::FontSubsetBytes,
-//   font_info: &FontInfos,
-//   glyph_mappings: &GlyphMappings,
-//   pdf_contents: Vec<Content>,
-//   config: &Config,
-// ) -> std::io::Result<()> {
-//   let mut pdf = Pdf::new();
-//   let page_count = pdf_contents.len();
-//   let ids = PdfIds::new(page_count);
-
-//   let advance_lists = build_advance_lists(glyph_mappings, font_info);
-//   let cid_to_gid_maps = build_cid_to_gid_maps(glyph_mappings);
-//   let to_unicode_cmaps = create_to_unicode_cmaps(&config.font_configs, glyph_mappings);
-
-//   setup_catalog_and_pages(&mut pdf, &ids);
-
-//   // 全フォントを設定
-//   let font_setup_data = FontSetupData {
-//     advance_lists: &advance_lists,
-//     cid_to_gid_maps: &cid_to_gid_maps,
-//     to_unicode_cmaps,
-//     font_subset_bytes,
-//   };
-//   setup_all_fonts(&mut pdf, &ids, &config.font_configs, font_info, font_setup_data);
-
-//   // 各ページを設定(全フォントをリソースに登録)
-//   for (i, pdf_content) in pdf_contents.into_iter().enumerate() {
-//     setup_page(&mut pdf, &ids, i, pdf_content, config);
-//   }
-
-//   let pdf_bytes = pdf.finish();
-//   std::fs::write(&config.pdf.output_path, pdf_bytes)
-// }
-
-// /// ページとコンテンツを設定
-// ///
-// /// 個々のページオブジェクトを作成し、メディアボックス、親ページツリー、
-// /// コンテンツストリーム、およびフォントリソースを設定します。
-// fn setup_page(
-//   pdf: &mut Pdf,
-//   ids: &PdfIds,
-//   page_index: usize,
-//   pdf_content: pdf_writer::Content,
-//   config: &read_config_file::Config,
-// ) {
-//   let page_id = ids.page_ids[page_index];
-//   let content_id = ids.content_ids[page_index];
-
-//   let mut page = pdf.page(page_id);
-//   page.media_box(Rect::new(0.0, 0.0, config.pdf.width, config.pdf.height));
-//   page.parent(ids.page_tree_id);
-//   page.contents(content_id);
-
-//   // 全フォントをリソースに登録
-//   // 既存のチェーン方式で安全に登録
-//   page
-//     .resources()
-//     .fonts()
-//     .pair(Name(config.font_configs.serif.font_name.as_bytes()), ids.serif_font.font)
-//     .pair(Name(config.font_configs.serif_bold.font_name.as_bytes()), ids.serif_bold_font.font)
-//     .pair(Name(config.font_configs.serif_italic.font_name.as_bytes()), ids.serif_italic_font.font)
-//     .pair(Name(config.font_configs.serif_bold_italic.font_name.as_bytes()), ids.serif_bold_italic_font.font)
-//     .pair(Name(config.font_configs.sans_serif.font_name.as_bytes()), ids.sans_serif_font.font)
-//     .pair(Name(config.font_configs.sans_serif_bold.font_name.as_bytes()), ids.sans_serif_bold_font.font);
-
-//   page.finish();
-
-//   pdf.stream(content_id, &pdf_content.finish());
-// }
-
-// // ===== ヘルパー関数 =====
 
 /// Adobe-Identity `SystemInfo`を作成
 ///

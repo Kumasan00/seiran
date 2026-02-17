@@ -1,7 +1,81 @@
-//! フォント処理モジュール
+//! フォント処理エンジン
 //!
-//! このモジュールは、TrueType/OpenTypeフォントの読み込み、解析、
-//! サブセット化、およびバリアブルフォントの処理機能を提供します。
+//! TrueType/OpenType フォントの読み込み、パース、メタデータ抽出、テキストシェーピング、
+//! 最適化（サブセット化）、および検証などの PDF 生成に必要なフォント処理機能を提供します。
+//!
+//! ## アーキテクチャ概要
+//!
+//! このモジュールは 19 種類のフォント種別を同時に管理し、以下のパイプラインを実装します：
+//!
+//! 1. **読み込み** ([`FontData`]) - ディスクからすべてのフォントバイナリを並列読み込み
+//! 2. **パース** ([`FontRefs`]) - OpenType テーブル構造をメモリ内で解析
+//! 3. **メタデータ抽出** ([`font_info`]) - `font_info` モジュールで upem、ascender などを取得
+//! 4. **グリフマッピング** ([`glyph_mapping`]) - `glyph_mapping` モジュールで GID 変換テーブル構築
+//! 5. **テキストシェーピング** ([`shaper`]) - shaper モジュールで `HarfRust` による字形配置
+//! 6. **最適化** ([`subset`]) - subset モジュールで使用グリフのみを抽出
+//! 7. **検証** ([`validate_font`]) - `validate_font` モジュールでフォント設定の妥当性確認
+//!
+//! ## フォント種別システム
+//!
+//! 19 種類のフォント種別を管理：
+//!
+//! - **Latin フォント**（12 種類）
+//!   - Serif: 標準、太字、イタリック、太字イタリック
+//!   - Sans Serif: 標準、太字、イタリック、太字イタリック
+//!   - Monospace: 標準、太字、イタリック、太字イタリック
+//!
+//! - **特殊フォント**（1 種類）
+//!   - Math: 数式用
+//!
+//! - **日本語フォント**（6 種類）
+//!   - Serif: 標準、太字
+//!   - Sans Serif: 標準、太字
+//!   - Monospace: 標準、太字
+//!
+//! これらはすべて `types::FontType` enum で定義され、
+//! 各フォント種別に対応した処理が並列実行されます。
+//!
+//! ## サブモジュール
+//!
+//! - [`font_info`] - フォントのメトリクス情報（upem、ascender、descender など）を取得・管理
+//! - [`glyph_mapping`] - グリフ ID とキャラクタ ID のマッピング、幅情報を管理
+//! - [`shaper`] - `HarfRust` によるテキストシェーピング（スクリプト、言語、フィーチャ対応）
+//! - [`subset`] - Allsorts による使用グリフのサブセット化、バリアブルフォント軸設定
+//! - [`validate_font`] - フォント設定と OpenType テーブルの妥当性検証
+//!
+//! ## パフォーマンス特性
+//!
+//! - 並列処理：`rayon` を使用した 19 フォント種別の並列処理
+//! - メモリ効率：`memmap2` による大型ファイルのメモリマップ対応（将来）
+//! - 最適化：フォントサブセット化で PDF ファイルサイズを削減
+//!
+//! ## 使用例
+//!
+//! ```ignore
+//! # use font::*;
+//! # use read_config_file::FontConfigs;
+//! # use std::fs;
+//!
+//! // 1. フォント設定を読み込み
+//! let font_configs = FontConfigs::new("config.toml")?;
+//!
+//! // 2. フォントバイナリを読み込み
+//! let font_data = FontData::new(&font_configs)?;
+//!
+//! // 3. フォント参照を生成
+//! let font_refs = FontRefs::new(&font_data)?;
+//!
+//! // 4. メタデータを抽出
+//! let font_infos = font_info::FontInfos::new(&font_refs)?;
+//!
+//! // 5. グリフマッピングを構築
+//! let glyph_mappings = glyph_mapping::GlyphMappings::new()?;
+//!
+//! // 6. フォントを検証
+//! for config in font_configs.iter() {
+//!     validate_font::validate_font(config, &font_refs.get(config.font_type))?;
+//! }
+//! ```
 
 use std::fs;
 
@@ -17,10 +91,11 @@ pub mod shaper;
 pub mod subset;
 pub mod validate_font;
 
-/// フォントバイナリを保持するデータ構造
+/// 全フォント種別のバイナリデータを保持するデータ構造
 ///
-/// 各フォント種別のバイナリデータを `Rc<Vec<u8>>` として保持し、
-/// 共有参照による再利用を可能にします。
+/// 19 種類のフォント種別ごとのバイナリデータ（オンメモリ）を保持します。
+/// このデータから複数の `FontRef` インスタンスを生成でき、
+/// 効率的にフォント情報にアクセスできます。
 pub struct FontData {
   serif: Vec<u8>,
   serif_bold: Vec<u8>,
@@ -44,23 +119,30 @@ pub struct FontData {
 }
 
 impl FontData {
-  /// 設定ファイルに基づいてフォントデータを読み込む
+  /// 設定に従ってすべてのフォントファイルを読み込みます
   ///
-  /// # 引数
+  /// `FontType::ALL` に列挙されたロロすべてのフォント種別に対応するファイルを
+  /// ディスクから読み込み、メモリに配置します。読み込みは並列処理で実行されます。
   ///
-  /// * `font_configs` - フォント設定情報
+  /// # Arguments
   ///
-  /// # 戻り値
+  /// * `font_configs` - 各フォント種別のパスと設定情報
   ///
-  /// 読み込んだフォントデータ
+  /// # Returns
+  ///
+  /// 全フォント種別のバイナリデータをまとめた `FontData`
   ///
   /// # Errors
   ///
-  /// フォントファイルの読み込みに失敗した場合にエラーを返します。
+  /// 以下の場合にエラーを返します：
+  /// - ファイルが見つからない
+  /// - ファイルの読み込み権限がない
+  /// - ディスク I/O エラーが発生した
+  ///
   /// # Panics
   ///
-  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
-  /// これは通常は発生しないため、プログラミングエラーを示します。
+  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
+  /// これは実装の不整合を示すプログラムエラーです。
   pub fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
     let font_datas = FontType::ALL
       .par_iter()
@@ -95,15 +177,15 @@ impl FontData {
     })
   }
 
-  /// 指定されたフォント種別のデータを取得
+  /// 指定されたフォント種別のバイナリデータを取得します
   ///
-  /// # 引数
+  /// # Arguments
   ///
-  /// * `font_type` - フォントの種類
+  /// * `font_type` - 取得したいフォント種別
   ///
-  /// # 戻り値
+  /// # Returns
   ///
-  /// フォントバイナリデータへの参照
+  /// フォントバイナリデータへの不変参照
   #[must_use]
   pub fn get(&self, font_type: FontType) -> &Vec<u8> {
     match font_type {
@@ -129,11 +211,11 @@ impl FontData {
     }
   }
 
-  /// イテレータを取得
+  /// すべてのフォント種別とそのバイナリデータをイテレートするイテレータを取得します
   ///
-  /// # 戻り値
+  /// # Returns
   ///
-  /// `FontDataIter` イテレータ
+  /// `FontDataIter` イテレータ（フォント種別とデータのペアを返す）
   #[must_use]
   pub fn iter(&self) -> FontDataIter<'_> {
     return FontDataIter {
@@ -143,9 +225,10 @@ impl FontData {
   }
 }
 
-/// `FontData` のイテレータ
+/// `FontData` のフォント種別イテレータ
 ///
-/// フォント種別とそのバイナリデータのペアを順に返します。
+/// すべてのフォント種別について、フォント種別とバイナリデータのペアを
+/// 順に次のように返します。このイテレータは `ExactSizeIterator` を実装します。
 pub struct FontDataIter<'a> {
   font_data: &'a FontData,
   index: usize,
@@ -182,9 +265,11 @@ impl<'a> IntoIterator for &'a FontData {
   fn into_iter(self) -> Self::IntoIter { return self.iter(); }
 }
 
-/// フォント参照を保持するデータ構造
+/// 全フォント種別の解析済みフォント参照（FontRef）を保持するデータ構造
 ///
-/// 各フォント種別の `FontRef` を保持し、フォントデータへの参照を提供します。
+/// 19 種類のフォント種別ごとの `FontRef` を保持します。
+/// `FontRef` は `read_fonts` クレートが提供する型で、OpenType フォント内の
+/// テーブルにアクセスするための API を提供します。
 pub struct FontRefs<'a> {
   serif: FontRef<'a>,
   serif_bold: FontRef<'a>,
@@ -208,25 +293,31 @@ pub struct FontRefs<'a> {
 }
 
 impl<'a> FontRefs<'a> {
-  /// 設定情報とフォントデータからフォント参照を生成する
+  /// フォント設定とバイナリデータから OpenType フォント参照を生成します
   ///
-  /// # 引数
+  /// バイナリデータから各フォント種別の `FontRef` を生成します。
+  /// 必要に応じて TTC（TrueType Collection）ファイルから指定されたインデックスのフォントを抽出します。
   ///
-  /// * `config` - フォント設定情報
+  /// # Arguments
+  ///
+  /// * `config` - フォント設定情報（インデックスを含む）
   /// * `font_data` - フォントバイナリデータ
   ///
-  /// # 戻り値
+  /// # Returns
   ///
   /// 各フォント種別の `FontRef` を保持する `FontRefs`
   ///
   /// # Errors
   ///
-  /// フォントデータの解析に失敗した場合にエラーを返します。
+  /// 以下の場合にエラーを返します：
+  /// - バイナリデータが有効な OpenType フォントではない
+  /// - TTC 内の指定されたインデックスが範囲外
+  /// - 必須 OpenType テーブルが見つからない
   ///
   /// # Panics
   ///
-  /// `FontType::ALL`の要素数が19と一致しない場合、このメソッドはパニックします。
-  /// これは通常は発生しないため、プログラミングエラーを示します。
+  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
+  /// これは実装の不整合を示すプログラムエラーです。
   pub fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
     let font_ref = FontType::ALL
       .iter()
@@ -263,6 +354,15 @@ impl<'a> FontRefs<'a> {
     });
   }
 
+  /// 指定されたフォント種別の OpenType フォント参照を取得します
+  ///
+  /// # Arguments
+  ///
+  /// * `font_type` - 取得したいフォント種別
+  ///
+  /// # Returns
+  ///
+  /// 指定されたフォント種別の `FontRef` への不変参照
   #[must_use]
   pub fn get(&self, font_type: FontType) -> &FontRef<'_> {
     match font_type {
