@@ -184,7 +184,7 @@ pub fn pdf_gen(
   glyph_mappings: &GlyphMappings,
 ) -> Vec<u8> {
   let font_configs = &config.font_configs;
-  let content = content::create_pdf_contents(items);
+  let content = content::create_pdf_contents(config, items, glyph_mappings, font_info);
   let pdf_ids = PdfIds::new(&content, subset_bytes);
 
   let mut pdf = Pdf::new();
@@ -262,14 +262,18 @@ pub fn pdf_gen(
       page.annotations(annotation_ids.iter().copied());
     }
 
-    // 全フォントをリソースに登録
+    // 全フォントをリソースに一括登録
+    let mut resources = page.resources();
+    let mut fonts = resources.fonts();
     for font_type in &FontType::ALL {
       if let Some(font_ids) = pdf_ids.get(*font_type) {
         let font_config = font_configs.get(*font_type);
         let font_name = &font_config.font_name;
-        page.resources().fonts().pair(Name(font_name.as_bytes()), font_ids.font);
+        fonts.pair(Name(font_name.as_bytes()), font_ids.font);
       }
     }
+    fonts.finish();
+    resources.finish();
 
     page.finish();
 

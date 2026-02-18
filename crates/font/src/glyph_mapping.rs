@@ -204,7 +204,7 @@ impl GlyphMappings {
 pub struct GlyphMapping {
   /// グリフ ID（旧 GID）から CID への対応表
   /// インデックスは元のグリフ ID、値は割り当てられた CID（または None）
-  old_to_cid: Vec<Option<u16>>,
+  pub old_to_cid: Vec<Option<u16>>,
   /// CID から新しいグリフ ID への対応表
   /// インデックスは CID、値は新しいグリフ ID（サブセット内の GID）
   pub cid_to_gid: Vec<u16>,
@@ -263,7 +263,7 @@ impl GlyphMapping {
       return cid;
     }
 
-    let cid = self.old_to_cid.len() as u16;
+    let cid = self.cid_to_gid.len() as u16;
 
     self.old_to_cid[glyph_id as usize] = Some(cid);
     self.cid_to_gid.push(glyph_id);

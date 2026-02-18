@@ -17,6 +17,7 @@ pub enum Item {
     shrink: f32,
   },
   Kern(f32),
+  Vkern(f32),
   Penalty(i32), // LineBreak / PageBreak 用
 }
 
@@ -28,22 +29,22 @@ pub enum BoxItem {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct GlyphRun {
-  font_size: f32,
-  glyphs: Vec<Glyph>,
-  width: i32,
-  height: i16,
-  depth: i16,
-  font_type: FontType,
+  pub font_size: f32,
+  pub glyphs: Vec<Glyph>,
+  pub width: i32,
+  pub height: i16,
+  pub depth: i16,
+  pub font_type: FontType,
 }
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Glyph {
-  gid: u32,
-  x_advance: i32,
-  y_advance: i32,
-  x_offset: i32,
-  y_offset: i32,
-  diff: Option<i32>,
+  pub gid: u32,
+  pub x_advance: i32,
+  pub y_advance: i32,
+  pub x_offset: i32,
+  pub y_offset: i32,
+  pub diff: Option<i32>,
 }
 
 /// テキストをスクリプトに基づいて分割したセグメント
@@ -168,7 +169,7 @@ pub fn layout_engine(
         // VBoxのレイアウト処理
         let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
         items.extend(child_items);
-        items.push(Item::Kern(margin_bottom));
+        items.push(Item::Vkern(margin_bottom));
       },
       LayoutNode::Glue {
         natural,

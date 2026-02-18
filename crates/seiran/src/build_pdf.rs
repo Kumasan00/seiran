@@ -106,6 +106,7 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   // - ページテキストアイテム成成（レイアウト情報をアイテムとして返す）
   let items =
     layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings)?;
+  println!("{items:#?}");
 
   // [ステップ 12] フォントサブセット化
   // - 使用グリフのリスト（glyph_mappings 内）を抽出

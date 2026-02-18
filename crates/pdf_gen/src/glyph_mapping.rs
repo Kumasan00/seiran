@@ -25,8 +25,8 @@ fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
 impl PDFInfo for GlyphMapping {
   fn build_to_unicode_cmap(&self, font_name: &str) -> UnicodeCmap {
     let system_info = create_to_unicode_system_info();
-    let name = Name(font_name.as_bytes());
-    let mut cmap = UnicodeCmap::new(name, system_info);
+    let name = format!("{font_name}-ToUnicode");
+    let mut cmap = UnicodeCmap::new(Name(name.as_bytes()), system_info);
 
     for (cid, chars) in self.chars.iter().enumerate() {
       cmap.pair_with_multiple(cid as u16, chars.iter().copied());
