@@ -54,43 +54,43 @@ pub struct Config {
 #[derive(Debug, Clone)]
 pub struct FontConfigs {
   /// Serif 標準フォント設定
-  pub serif: FontConfig,
+  pub(crate) serif: FontConfig,
   /// Serif 太字フォント設定
-  pub serif_bold: FontConfig,
+  pub(crate) serif_bold: FontConfig,
   /// Serif イタリックフォント設定
-  pub serif_italic: FontConfig,
+  pub(crate) serif_italic: FontConfig,
   /// Serif 太字イタリックフォント設定
-  pub serif_bold_italic: FontConfig,
+  pub(crate) serif_bold_italic: FontConfig,
   /// Sans Serif 標準フォント設定
-  pub sans_serif: FontConfig,
+  pub(crate) sans_serif: FontConfig,
   /// Sans Serif 太字フォント設定
-  pub sans_serif_bold: FontConfig,
+  pub(crate) sans_serif_bold: FontConfig,
   /// Sans Serif イタリックフォント設定
-  pub sans_serif_italic: FontConfig,
+  pub(crate) sans_serif_italic: FontConfig,
   /// Sans Serif 太字イタリックフォント設定
-  pub sans_serif_bold_italic: FontConfig,
+  pub(crate) sans_serif_bold_italic: FontConfig,
   /// Monospace 標準フォント設定
-  pub monospace: FontConfig,
+  pub(crate) monospace: FontConfig,
   /// Monospace 太字フォント設定
-  pub monospace_bold: FontConfig,
+  pub(crate) monospace_bold: FontConfig,
   /// Monospace イタリックフォント設定
-  pub monospace_italic: FontConfig,
+  pub(crate) monospace_italic: FontConfig,
   /// Monospace 太字イタリックフォント設定
-  pub monospace_bold_italic: FontConfig,
+  pub(crate) monospace_bold_italic: FontConfig,
   /// 数式用フォント設定
-  pub math: FontConfig,
+  pub(crate) math: FontConfig,
   /// 日本語 Serif 標準フォント設定
-  pub japanese_serif: FontConfig,
+  pub(crate) japanese_serif: FontConfig,
   /// 日本語 Serif 太字フォント設定
-  pub japanese_serif_bold: FontConfig,
+  pub(crate) japanese_serif_bold: FontConfig,
   /// 日本語 Sans Serif 標準フォント設定
-  pub japanese_sans_serif: FontConfig,
+  pub(crate) japanese_sans_serif: FontConfig,
   /// 日本語 Sans Serif 太字フォント設定
-  pub japanese_sans_serif_bold: FontConfig,
+  pub(crate) japanese_sans_serif_bold: FontConfig,
   /// 日本語 Monospace 標準フォント設定
-  pub japanese_monospace: FontConfig,
+  pub(crate) japanese_monospace: FontConfig,
   /// 日本語 Monospace 太字フォント設定
-  pub japanese_monospace_bold: FontConfig,
+  pub(crate) japanese_monospace_bold: FontConfig,
 }
 
 impl FontConfigs {

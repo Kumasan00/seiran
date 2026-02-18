@@ -48,7 +48,6 @@ impl Style {
 
 /// レイアウトエンジンが処理する最小単位
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum LayoutNode {
   /// スタイル付きテキスト
   Text(String, Style),

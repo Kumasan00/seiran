@@ -24,12 +24,13 @@ version = "0.1.0"
 
 [workspace.dependencies]
 allsorts = "0.16.1"
-clap = { version = "4.5.57", features = ["derive"] }
+clap = { version = "4.5.59", features = ["derive"] }
 font-types = "0.11.0"
 harfrust = "0.5.0"
-lazy-regex = "3.5.1"
-memchr = "2.7.6"
-memmap2 = "0.9.9"
+icu = { version = "2.1.1", features = ["compiled_data"] }
+lazy-regex = "3.6.0"
+memchr = "2.8.0"
+memmap2 = "0.9.10"
 miette = { version = "7.6.0", features = ["fancy"] }
 pdf-writer = "0.14.0"
 phf = { version = "0.13.1", features = ["macros"] }
@@ -37,7 +38,7 @@ rayon = "1.11.0"
 read-fonts = { version = "0.37.0", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
-toml = "0.9.11"
+toml = "1.0.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 
