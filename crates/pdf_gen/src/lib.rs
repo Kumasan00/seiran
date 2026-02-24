@@ -179,7 +179,7 @@ impl PdfIds {
 pub fn pdf_gen(
   config: &Config,
   subset_bytes: &FontSubsetBytes,
-  items: Vec<Item>,
+  items: &[Item],
   font_info: &FontInfos,
   glyph_mappings: &GlyphMappings,
 ) -> Vec<u8> {

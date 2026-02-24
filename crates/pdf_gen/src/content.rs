@@ -30,7 +30,7 @@ pub(crate) struct Annotation;
 /// 各ページのPDFコンテンツ
 pub(crate) fn create_pdf_contents(
   config: &Config,
-  items: Vec<Item>,
+  items: &[Item],
   glyph_mappings: &GlyphMappings,
   font_infos: &FontInfos,
 ) -> Vec<PDFContent> {
@@ -51,7 +51,7 @@ pub(crate) fn create_pdf_contents(
   // 直前のフォントサイズ（Glueスケーリング・改行幅計算用）
   let mut current_font_size = config.pdf.font_size;
 
-  for item in &items {
+  for item in items {
     match item {
       Item::Box(BoxItem::Text(run)) => {
         let font_config = font_configs.get(run.font_type);
@@ -59,6 +59,25 @@ pub(crate) fn create_pdf_contents(
         let glyph_mapping = glyph_mappings.get(run.font_type);
         let font_info = font_infos.get(run.font_type);
         let upem = f32::from(font_info.upem);
+        let new_font_size = run.font_size;
+
+        if (new_font_size - current_font_size).abs() > f32::EPSILON {
+          // フォントサイズが変わる場合は、行間を考慮してy位置を調整
+          let line_height = new_font_size * line_height_factor;
+          y -= line_height;
+          x = start_x;
+
+          // ページ下端超過チェック：自動改ページ
+          if y < margin.bottom {
+            pdf_contents.push(PDFContent {
+              content,
+              annotations: Vec::new(),
+            });
+            content = setup_content(config);
+            x = start_x;
+            y = start_y;
+          }
+        }
 
         // テキストブロックを開始し、フォントと位置を設定
         content.begin_text();
@@ -81,9 +100,12 @@ pub(crate) fn create_pdf_contents(
 
         // x位置を更新
         // CIDFont のグリフ幅スケーリング: glyph_units * font_size / upem
-        x += run.width as f32 * run.font_size / upem;
+        #[allow(clippy::cast_precision_loss)]
+        {
+          x += run.width as f32 * run.font_size / upem;
+        }
 
-        current_font_size = run.font_size;
+        current_font_size = new_font_size;
       },
 
       Item::Box(BoxItem::Rule { width, height }) => {
@@ -108,7 +130,7 @@ pub(crate) fn create_pdf_contents(
 
       Item::Vkern(vkern_value) => {
         // 垂直スペース
-        y -= vkern_value;
+        y -= vkern_value + current_font_size;
         x = start_x;
       },
 
@@ -200,7 +222,10 @@ fn show_glyphs_positioned(content: &mut Content, glyphs: &[Glyph], glyph_mapping
       text_buffer.clear();
       // 位置調整：TJの正値は左移動（減算）、負値は右移動
       // diff = shaped_advance - hmtx_advance なので、-diff で補正
-      items.adjust(-diff as f32);
+      #[allow(clippy::cast_precision_loss)]
+      {
+        items.adjust(-diff as f32);
+      }
     }
   }
 

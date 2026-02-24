@@ -122,13 +122,15 @@ impl Evaluator {
           Self::push_layout_node(&mut layout_nodes, LayoutNode::Text(text.to_string(), self.context.current_style));
         },
         Node::Command(command) => {
-          let node = self.evaluate_command(command)?;
-          Self::push_layout_node(&mut layout_nodes, node);
+          let nodes = self.evaluate_command(command)?;
+          for node in nodes {
+            Self::push_layout_node(&mut layout_nodes, node);
+          }
         },
         Node::Environment(environment) => {
           let nodes = self.evaluate_environment(&environment)?;
           for node in nodes {
-            layout_nodes.push(node);
+            Self::push_layout_node(&mut layout_nodes, node);
           }
         },
         Node::InlineMath(_inline_math) => {

@@ -107,7 +107,9 @@ impl FontConfigs {
   ///
   /// ```ignore
   /// for (font_type, config) in configs.iter() {
-  ///     println!(\"{:?}: {}\", font_type, config.font_name);\n  /// }\n  /// ```
+  ///     println!("{:?}: {}", font_type, config.font_name);
+  /// }
+  /// ```
   #[must_use]
   pub fn iter(&self) -> FontConfigsIter<'_> {
     FontConfigsIter {

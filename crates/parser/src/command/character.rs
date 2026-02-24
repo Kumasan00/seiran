@@ -21,11 +21,11 @@ use crate::{
 macro_rules! single_char {
   ($fn_name:ident, $doc:expr, $ch:expr) => {
     #[doc = concat!($doc, "\n\n# エラー\n\n引数が指定されている場合は [`EvalError::ExtraCommandArgument`] を返します。")]
-    pub(super) fn $fn_name(command: Command, style: Style) -> Result<LayoutNode, EvalError> {
+    pub(super) fn $fn_name(command: Command, style: Style) -> Result<Vec<LayoutNode>, EvalError> {
       if !command.args.is_empty() || !command.opt_args.is_empty() {
         return Err(EvalError::ExtraCommandArgument(command.name.to_string()));
       }
-      return Ok(LayoutNode::Text($ch.to_string(), style));
+      return Ok(vec![LayoutNode::Text($ch.to_string(), style)]);
     }
   };
 }
@@ -163,7 +163,7 @@ mod tests {
   fn emits_lower_sigma() {
     let style = test_style();
     let command = test_command("sigma");
-    match lower_sigma(command, style) {
+    match lower_sigma(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "σ");
         assert_eq!(st, style);
@@ -177,7 +177,7 @@ mod tests {
   fn emits_upper_omega() {
     let style = test_style();
     let command = test_command("Omega");
-    match upper_omega(command, style) {
+    match upper_omega(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "Ω");
         assert_eq!(st, style);
@@ -191,7 +191,7 @@ mod tests {
   fn emits_upper_alpha() {
     let style = test_style();
     let command = test_command("Alpha");
-    match upper_alpha(command, style) {
+    match upper_alpha(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "Α");
         assert_eq!(st, style);
@@ -205,7 +205,7 @@ mod tests {
   fn emits_lower_alpha() {
     let style = test_style();
     let command = test_command("alpha");
-    match lower_alpha(command, style) {
+    match lower_alpha(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "α");
         assert_eq!(st, style);
@@ -219,7 +219,7 @@ mod tests {
   fn emits_final_sigma() {
     let style = test_style();
     let command = test_command("final_sigma");
-    match final_sigma(command, style) {
+    match final_sigma(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "ς");
         assert_eq!(st, style);
@@ -233,7 +233,7 @@ mod tests {
   fn emits_infinity() {
     let style = test_style();
     let command = test_command("infty");
-    match infinity(command, style) {
+    match infinity(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "∞");
         assert_eq!(st, style);
@@ -247,7 +247,7 @@ mod tests {
   fn emits_integral() {
     let style = test_style();
     let command = test_command("int");
-    match integral(command, style) {
+    match integral(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "∫");
         assert_eq!(st, style);
@@ -261,7 +261,7 @@ mod tests {
   fn emits_summation() {
     let style = test_style();
     let command = test_command("sum");
-    match summation(command, style) {
+    match summation(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "∑");
         assert_eq!(st, style);
@@ -275,7 +275,7 @@ mod tests {
   fn emits_partial() {
     let style = test_style();
     let command = test_command("partial");
-    match partial(command, style) {
+    match partial(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "∂");
         assert_eq!(st, style);
@@ -289,7 +289,7 @@ mod tests {
   fn emits_nabla() {
     let style = test_style();
     let command = test_command("nabla");
-    match nabla(command, style) {
+    match nabla(command, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "∇");
         assert_eq!(st, style);
@@ -331,37 +331,37 @@ mod tests {
     let style = test_style();
 
     let command_for_all = test_command("for_all");
-    match for_all(command_for_all, style) {
+    match for_all(command_for_all, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∀"),
       _ => panic!("for_all は正常に Text ノードを返すべきです"),
     }
 
     let command_exists = test_command("exists");
-    match exists(command_exists, style) {
+    match exists(command_exists, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∃"),
       _ => panic!("exists は正常に Text ノードを返すべきです"),
     }
 
     let command_emptyset = test_command("emptyset");
-    match emptyset(command_emptyset, style) {
+    match emptyset(command_emptyset, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∅"),
       _ => panic!("emptyset は正常に Text ノードを返すべきです"),
     }
 
     let command_element = test_command("element_of");
-    match element_of(command_element, style) {
+    match element_of(command_element, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∈"),
       _ => panic!("element_of は正常に Text ノードを返すべきです"),
     }
 
     let command_union = test_command("union");
-    match union(command_union, style) {
+    match union(command_union, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∪"),
       _ => panic!("union は正常に Text ノードを返すべきです"),
     }
 
     let command_intersection = test_command("intersection");
-    match intersection(command_intersection, style) {
+    match intersection(command_intersection, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "∩"),
       _ => panic!("intersection は正常に Text ノードを返すべきです"),
     }
@@ -374,31 +374,31 @@ mod tests {
     let style = test_style();
 
     let command_var_eps = test_command("var_epsilon");
-    match var_epsilon(command_var_eps, style) {
+    match var_epsilon(command_var_eps, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "ϵ"),
       _ => panic!("var_epsilon は正常に Text ノードを返すべきです"),
     }
 
     let command_var_th = test_command("var_theta");
-    match var_theta(command_var_th, style) {
+    match var_theta(command_var_th, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "ϑ"),
       _ => panic!("var_theta は正常に Text ノードを返すべきです"),
     }
 
     let command_var_kap = test_command("var_kappa");
-    match var_kappa(command_var_kap, style) {
+    match var_kappa(command_var_kap, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "ϰ"),
       _ => panic!("var_kappa は正常に Text ノードを返すべきです"),
     }
 
     let command_var_pi_var = test_command("var_pi");
-    match var_pi(command_var_pi_var, style) {
+    match var_pi(command_var_pi_var, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "ϖ"),
       _ => panic!("var_pi は正常に Text ノードを返すべきです"),
     }
 
     let command_var_rho_var = test_command("var_rho");
-    match var_rho(command_var_rho_var, style) {
+    match var_rho(command_var_rho_var, style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, _)) => assert_eq!(s, "ϱ"),
       _ => panic!("var_rho は正常に Text ノードを返すべきです"),
     }
@@ -413,7 +413,7 @@ mod tests {
       font_kind: FontKind::Math,
     };
     let command = test_command("beta");
-    match lower_beta(command, custom_style) {
+    match lower_beta(command, custom_style).map(|mut v| v.remove(0)) {
       Ok(LayoutNode::Text(s, st)) => {
         assert_eq!(s, "β");
         assert!((st.font_size - 24.5).abs() < f32::EPSILON);

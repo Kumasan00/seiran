@@ -173,7 +173,7 @@ pub fn create_font_subset(
   font_data: &FontData,
   glyph_mappings: &GlyphMappings,
 ) -> Result<FontSubsetBytes, FontSubsetError> {
-  info!("font subsetting started");
+  info!(total_fonts = FontType::ALL.len(), "フォントサブセット化を開始します");
   // フォント設定、バイナリデータ、使用グリフIDをペアにしたデータを作成
   let font_data = FontType::ALL
     .iter()
@@ -216,7 +216,7 @@ pub fn create_font_subset(
     japanese_monospace_bold: iter.next().unwrap()?,
   };
 
-  info!("font subsetting completed");
+  info!(total_fonts = FontType::ALL.len(), "フォントサブセット化がすべて完了しました");
   return Ok(subsets);
 }
 
@@ -248,7 +248,7 @@ fn subset_for<'a>(
     info!(
       font_path = %font_config.font_path.display(),
       font_index = font_config.font_index,
-      "no glyphs used; skipping subsetting"
+      "使用グリフがないためサブセット化をスキップします"
     );
     return Ok(None);
   }
@@ -257,7 +257,7 @@ fn subset_for<'a>(
     font_path = %font_config.font_path.display(),
     font_index = font_config.font_index,
     used_glyphs = used_gids.len(),
-    "start subsetting font"
+    "フォントのサブセット化を開始します"
   );
 
   let font_ref = FontRef::from_index(font_data, font_config.font_index)?;
@@ -270,6 +270,12 @@ fn subset_for<'a>(
 
   let subset_bytes = perform_subsetting(&data, font_config.font_index, used_gids)?;
 
+  info!(
+    font_path = %font_config.font_path.display(),
+    font_index = font_config.font_index,
+    subset_size = subset_bytes.len(),
+    "フォントのサブセット化が完了しました"
+  );
   return Ok(Some(subset_bytes));
 }
 
@@ -298,7 +304,7 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], font_ref: &FontRe
   info!(
     font_path = %font_config.font_path.display(),
     font_index = font_config.font_index,
-    "variable font detected; creating instance"
+    "バリアブルフォントを検出しました。インスタンスを生成します"
   );
   let scope = ReadScope::new(data);
   let font_data = scope.read::<allsorts::font_data::FontData<'_>>()?;
@@ -314,7 +320,7 @@ fn create_font_instance(font_config: &FontConfig, data: &[u8], font_ref: &FontRe
     font_path = %font_config.font_path.display(),
     font_index = font_config.font_index,
     instance_size = instance.len(),
-    "created variable font instance"
+    "バリアブルフォントのインスタンス生成が完了しました"
   );
   return Ok(instance);
 }

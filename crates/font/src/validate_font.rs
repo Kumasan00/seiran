@@ -98,7 +98,7 @@
 #![allow(unused_assignments)]
 
 use font_types::{Fixed, Tag};
-use miette::{Diagnostic, Report};
+use miette::Diagnostic;
 use read_config_file::{FontConfig, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
@@ -171,32 +171,6 @@ pub enum FontValidationError {
   },
 }
 
-/// フォント設定の妥当性を検証します
-///
-/// フォント設定に基づいてフォントを下記の観点から検証します：
-/// - バリアブルフォント軸設定の妥当性
-/// - スクリプト・言語のサポート状況
-///
-/// # Arguments
-///
-/// * `config` - フォント設定情報
-/// * `font_ref` - OpenType フォント参照
-///
-/// # Returns
-///
-/// 検証成功時は `Ok(())`
-///
-/// # Errors
-///
-/// 以下の場合にエラーを返します：
-/// - フォント形式のパースに失敗した場合
-/// - バリアブル軸設定が不正な場合
-/// - 軸値が許容範囲外の場合
-pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), Report> {
-  wrapped_validate_font(config, font_ref)?;
-  Ok(())
-}
-
 /// フォント設定の詳細な検証を実行します（内部関数）
 ///
 /// # Arguments
@@ -211,12 +185,12 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), Repo
 /// # Errors
 ///
 /// 検証に失敗した場合は `FontValidationError` を返します。
-fn wrapped_validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), FontValidationError> {
+pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> miette::Result<()> {
   let variation_axes = &config.variation_axes;
   if let Some(variation_axes) = variation_axes {
     validate_variation_axes(font_ref, variation_axes)?;
   } else if font_ref.fvar().is_ok() {
-    return Err(FontValidationError::MissingVariationAxes);
+    return Err(FontValidationError::MissingVariationAxes.into());
   }
   if config.script.is_none() && config.language.is_some() {
     warn!("Warning: 'language' is specified without 'script'. 'language' will be ignored.");
@@ -249,10 +223,7 @@ fn wrapped_validate_font(config: &FontConfig, font_ref: &FontRef) -> Result<(), 
 /// - 設定に含まれる軸がフォントに存在しない場合
 /// - 軸値が許容範囲外の場合
 /// - フォント内の軸が設定に含まれていない場合
-fn validate_variation_axes(
-  font_ref: &FontRef,
-  config_variation_axes: &[VariationAxis],
-) -> Result<(), FontValidationError> {
+fn validate_variation_axes(font_ref: &FontRef, config_variation_axes: &[VariationAxis]) -> miette::Result<()> {
   // fvar テーブルからフォント内のバリアブル軸定義を取得
   let fvar = font_ref.fvar().map_err(|_| FontValidationError::NotVariableFont)?;
   let font_axes = fvar.axes().map_err(FontValidationError::Parse)?;
@@ -269,12 +240,15 @@ fn validate_variation_axes(
     let max_value = axis.max_value();
     if !(min_value..=max_value).contains(&Fixed::from_f64(cfg_axis.value)) {
       let name: String = cfg_tag.to_string();
-      return Err(FontValidationError::VariationValueOutOfRange {
-        name,
-        min: axis.min_value(),
-        max: axis.max_value(),
-        value: cfg_axis.value,
-      });
+      return Err(
+        FontValidationError::VariationValueOutOfRange {
+          name,
+          min: axis.min_value(),
+          max: axis.max_value(),
+          value: cfg_axis.value,
+        }
+        .into(),
+      );
     }
   }
 
@@ -286,12 +260,15 @@ fn validate_variation_axes(
       .any(|cfg_axis| font_types::Tag::new(&cfg_axis.name) == font_axis.axis_tag());
 
     if !is_configured {
-      return Err(FontValidationError::UnconfiguredVariationAxis {
-        axis: axis_name,
-        default: font_axis.default_value(),
-        min: font_axis.min_value(),
-        max: font_axis.max_value(),
-      });
+      return Err(
+        FontValidationError::UnconfiguredVariationAxis {
+          axis: axis_name,
+          default: font_axis.default_value(),
+          min: font_axis.min_value(),
+          max: font_axis.max_value(),
+        }
+        .into(),
+      );
     }
   }
 

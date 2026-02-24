@@ -97,7 +97,9 @@ impl<'a> Parser<'a> {
   }
 
   /// ドキュメント全体（またはブロック）をパースするエントリーポイント
-  fn parse(&mut self) -> Result<Block<'a>, ParserError> { self.parse_block_until(None) }
+  fn parse(&mut self) -> Result<Block<'a>, ParserError> {
+    self.parse_block_until(None)
+  }
 
   /// 終了条件（terminator）に遭遇するまでノードを読み続ける
   /// terminator: `Some(Token::RBrace)` など。NoneならEOFまで。
@@ -174,7 +176,7 @@ impl<'a> Parser<'a> {
     Ok(nodes)
   }
 
-  /// コマンド解析: \cmd[opt]{arg}
+  /// コマンド解析: \cmd\[opt\]{arg}
   fn parse_command_with_args(&mut self, name: &'a str) -> Result<Command<'a>, ParserError> {
     let mut opt_args = Vec::new();
     let mut args = Vec::new();
@@ -202,7 +204,7 @@ impl<'a> Parser<'a> {
     })
   }
 
-  /// 環境解析: \begin{name}[opt]{arg} ... \end{name}
+  /// 環境解析: \begin{name}\[opt\]{arg} ... \end{name}
   fn parse_environment(&mut self) -> Result<Environment<'a>, ParserError> {
     // \begin は既に消費済み
 

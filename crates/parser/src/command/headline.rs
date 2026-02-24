@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[inline]
-pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.part_num += 1;
   context.chapter_num = 0;
   context.section_num = 0;
@@ -30,14 +30,14 @@ pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Layou
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
+  return Ok(vec![LayoutNode::VBox {
     children,
     margin_bottom: 12.0,
-  });
+  }]);
 }
 
 #[inline]
-pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.chapter_num += 1;
   context.section_num = 0;
   context.subsection_num = 0;
@@ -60,14 +60,14 @@ pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<La
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
+  return Ok(vec![LayoutNode::VBox {
     children,
     margin_bottom: 12.0,
-  });
+  }]);
 }
 
 #[inline]
-pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.section_num += 1;
   context.subsection_num = 0;
   context.paragraph_num = 0;
@@ -89,14 +89,17 @@ pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<La
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  });
+  return Ok(vec![
+    LayoutNode::LineBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+  ]);
 }
 
 #[inline]
-pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.subsection_num += 1;
   context.paragraph_num = 0;
   context.subparagraph_num = 0;
@@ -117,14 +120,14 @@ pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
+  return Ok(vec![LayoutNode::VBox {
     children,
     margin_bottom: 12.0,
-  });
+  }]);
 }
 
 #[inline]
-pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.paragraph_num += 1;
   context.subparagraph_num = 0;
   let Some(first_command_arg) = command.args.first() else {
@@ -144,14 +147,14 @@ pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
+  return Ok(vec![LayoutNode::VBox {
     children,
     margin_bottom: 12.0,
-  });
+  }]);
 }
 
 #[inline]
-pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Result<LayoutNode, EvalError> {
+pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
   context.subparagraph_num += 1;
   let Some(first_command_arg) = command.args.first() else {
     return Err(EvalError::MissingCommandArgument("小節名".to_string()));
@@ -170,10 +173,10 @@ pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Resu
   )];
   context.current_style = prev_style;
 
-  return Ok(LayoutNode::VBox {
+  return Ok(vec![LayoutNode::VBox {
     children,
     margin_bottom: 12.0,
-  });
+  }]);
 }
 
 fn evaluate_text(nodes: &[Node]) -> std::string::String {

@@ -56,7 +56,7 @@ pub enum Command {
 
 /// コマンドライン引数をパースして `Cli` 構造体を返します
 ///
-/// # 例
+/// # Examples
 ///
 /// ```no_run
 /// # use cli::parse_arg;
@@ -66,4 +66,6 @@ pub enum Command {
 /// }
 /// ```
 #[must_use]
-pub fn parse_arg() -> Cli { Cli::parse() }
+pub fn parse_arg() -> Cli {
+  Cli::parse()
+}

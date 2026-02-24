@@ -125,8 +125,8 @@ impl CommandKind {
   ///
   /// # 戻り値
   ///
-  /// 生成されたLayoutNode、またはエラー
-  fn execute(self, command: Command, evaluator: &mut Evaluator) -> Result<LayoutNode, EvalError> {
+  /// 生成されたLayoutNodeのリスト、またはエラー
+  fn execute(self, command: Command, evaluator: &mut Evaluator) -> Result<Vec<LayoutNode>, EvalError> {
     let style = evaluator.context.current_style;
 
     match self {
@@ -369,7 +369,7 @@ impl Evaluator {
   /// # エラー
   ///
   /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-  pub(crate) fn evaluate_command(&mut self, command: Command) -> Result<LayoutNode, EvalError> {
+  pub(crate) fn evaluate_command(&mut self, command: Command) -> Result<Vec<LayoutNode>, EvalError> {
     let command_kind = COMMAND_MAP.get(command.name.to_string().as_str()).copied().unwrap_or(CommandKind::Undefined);
     return command_kind.execute(command, self);
   }

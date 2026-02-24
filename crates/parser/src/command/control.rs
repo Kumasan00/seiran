@@ -2,7 +2,7 @@ use crate::{
   evaluator::{EvalError, LayoutNode},
   parser::{Command, Node},
 };
-pub(super) fn space(command: &Command) -> Result<LayoutNode, EvalError> {
+pub(super) fn space(command: &Command) -> Result<Vec<LayoutNode>, EvalError> {
   let Some(first_arg) = command.args.first() else {
     return Err(EvalError::MissingCommandArgument("部名".to_string()));
   };
@@ -18,7 +18,7 @@ pub(super) fn space(command: &Command) -> Result<LayoutNode, EvalError> {
         Ok(val) => val,
         Err(_) => return Err(EvalError::InvalidCommandArgument("space".to_string(), "数値".to_string())),
       };
-      return Ok(LayoutNode::Kern { point: space_value });
+      return Ok(vec![LayoutNode::Kern { point: space_value }]);
     },
     _ => return Err(EvalError::InvalidCommandArgument("space".to_string(), "1文字のみ".to_string())),
   }

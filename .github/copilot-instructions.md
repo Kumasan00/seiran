@@ -52,6 +52,10 @@ Seiran は、TeX スタイルのテキストファイルから高品質な PDF �
 /// # Panics
 ///
 /// パニック条件の説明(もしあれば)
+/// 
+/// # Examples
+/// 
+/// 必要に応じて使用例をコードブロックで示す
 pub fn example(param: Type) -> Result<ReturnType, Error> {
   // 実装
 }

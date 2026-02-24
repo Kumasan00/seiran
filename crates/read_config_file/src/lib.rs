@@ -39,11 +39,13 @@
 //! | 余白合計（縦） | < height | `MarginSumTooLarge` |
 //! | 余白合計（横） | < width | `MarginSumTooLarge` |
 //! | 背景色 RGB | [0.0, 1.0] | `InvalidBackgroundColor` |
+//! | 背景色 RGB 指定 | 全成分または全省略 | `PartialBackgroundColor` |
 //! | `font_name` | 重複なし | `DuplicateFontName` |
 //! | 軸名 | 4 文字 | `InvalidFontVariationAxisName` |
 //! | script code | 4 文字 | `InvalidScriptCodeLength` |
 //! | language code | 3 or 4 文字 | `InvalidLanguageCodeLength` |
 //! | feature tag | 4 文字 | `InvalidFontFeatureTagLength` |
+//! | フォントパス | 存在・解決可能 | `FontPathResolution` |
 //!
 //! ## 19 フォント種別
 //!
@@ -67,10 +69,11 @@
 //! println!("Font: {}", config.font_configs.serif.font_name);
 //! ```
 
+// thiserror の #[error] マクロ生成コードへの誤検知を抑制（thiserror との既知の問題）。
 #![allow(unused_assignments)]
 
 use std::{
-  fs, io,
+  fs,
   path::{Path, PathBuf},
 };
 
@@ -87,46 +90,52 @@ pub use processed_config::{Config, Feature, FontConfig, FontConfigs, Margin, Pdf
 
 const DEFAULT_CONFIG_PATH: &str = "./config/config.toml";
 
-/// 設定ファイル読み込みに関連するエラー
-///
-/// ファイルI/O、TOML解析、設定値のバリデーションに関する
-/// 様々なエラーケースを表現します。
+/// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
 enum ReadConfigError {
-  /// ファイル読み込みエラー
-  #[error("設定ファイルの読み込みに失敗しました。")]
-  #[diagnostic(code(config::io), help("ファイルパスと読み込み権限を確認してください。"))]
-  Io(#[from] io::Error),
-  /// TOML 形式解析エラー
-  #[error("TOML 形式の解析に失敗しました: {0}")]
-  #[diagnostic(code(config::toml_parse), help("TOML 構文が正しいか確認してください。"))]
-  Toml(#[from] toml::de::Error),
-  /// 出力ディレクトリ作成エラー
-  #[error("出力ディレクトリの作成に失敗しました。")]
-  #[diagnostic(code(config::create_dir), help("ディレクトリ権限とパスを確認してください。"))]
-  CreateDir {
+  /// 設定ファイルの読み込み失敗
+  #[error("設定ファイルを読み込めませんでした: {path}")]
+  #[diagnostic(code(config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    path: String,
     #[source]
-    source: io::Error,
+    source: std::io::Error,
   },
-  /// カレント作業ディレクトリ取得エラー
-  #[error("カレント作業ディレクトリの取得に失敗しました。")]
-  #[diagnostic(code(config::current_dir), help("ファイルシステムの状態を確認してください。"))]
+  /// TOML 解析失敗
+  #[error("設定ファイルの TOML 解析に失敗しました: {path}")]
+  #[diagnostic(code(config::parse_toml), help("TOML の構文を確認してください。"))]
+  ParseToml {
+    path: String,
+    #[source]
+    source: toml::de::Error,
+  },
+  /// 出力ディレクトリの作成失敗
+  #[error("出力ディレクトリを作成できませんでした: {path}")]
+  #[diagnostic(
+    code(config::create_output_dir),
+    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
+  )]
+  CreateOutputDir {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// 出力ディレクトリのパス正規化失敗
+  #[error("出力ディレクトリのパスを正規化できませんでした: {path}")]
+  #[diagnostic(code(config::canonicalize_output_dir), help("指定したディレクトリが存在するか確認してください。"))]
+  CanonicalizeOutputDir {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// カレントディレクトリの取得失敗
+  #[error("カレントディレクトリを取得できませんでした。")]
+  #[diagnostic(code(config::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
   CurrentDir {
     #[source]
-    source: io::Error,
+    source: std::io::Error,
   },
-  /// パス正規化エラー
-  #[error("パス '{path}' の正規化に失敗しました。")]
-  #[diagnostic(
-    code(config::canonicalize),
-    help("パスが存在するか、またはシンボリックリンクが有効であるか確認してください。")
-  )]
-  Canonicalize {
-    path: PathBuf,
-    #[source]
-    source: io::Error,
-  },
-  /// 複合バリデーションエラー
+  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
   #[error("複数のバリデーションエラーが発生しました。")]
   #[diagnostic(code(config::multiple_validation_errors))]
   MultipleValidationErrors {
@@ -135,11 +144,10 @@ enum ReadConfigError {
   },
 }
 
-/// 設定値のバリデーションエラー詳細
-/// 各種設定値に対する具体的なバリデーションエラーを表現します。
+/// 設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
 enum ValidationError {
-  /// サイズ系が正でない（`height`/`width`/`font_size`/`line_height_factor`）
+  /// `height`/`width`/`font_size`/`line_height_factor` が正でない
   #[error("'{field}' は正の値である必要があります。")]
   #[diagnostic(code(config::validation::non_positive), help("0 より大きい値を指定してください。"))]
   NonPositive { field: &'static str },
@@ -147,7 +155,7 @@ enum ValidationError {
   #[error("'{field}' は 0 以上である必要があります。")]
   #[diagnostic(code(config::validation::negative_margin), help("負でない値を指定してください。"))]
   NegativeMargin { field: &'static str },
-  /// 余白の合計が寸法以上
+  /// 余白の合計がページ寸法以上
   #[error("方向 {axis} の余白合計 ({sum}) が寸法 {limit} 未満である必要があります。")]
   #[diagnostic(code(config::validation::margin_sum), help("余白の合計が寸法未満になるように調整してください。"))]
   MarginSumTooLarge {
@@ -155,99 +163,99 @@ enum ValidationError {
     sum: f32,
     limit: f32,
   },
-  /// `font_name`の重複
+  /// `font_name` の重複
   #[error("フォント名 '{font_name}' が重複しています。")]
   #[diagnostic(
     code(config::validation::duplicate_font),
     help("各フォント種別に異なるフォント名を指定してください。")
   )]
   DuplicateFontName { font_name: String },
-  /// 背景色の範囲エラー
+  /// 背景色が [0.0, 1.0] の範囲外
   #[error("背景色 {field} は [0.0, 1.0] の範囲である必要があります。指定値: {value}")]
   #[diagnostic(code(config::validation::background_color), help("0.0 から 1.0 の間の値を指定してください。"))]
   InvalidBackgroundColor { field: &'static str, value: f32 },
-  /// バリアブルフォントタグの長さエラー
+  /// バリアブルフォント軸名が 4 文字でない
   #[error("フォント軸名は 4 文字である必要があります。指定値: '{axis_name}'")]
   #[diagnostic(
     code(config::validation::font_axis_length),
     help("OpenType 軸タグ（例：'wght'、'wdth'）として 4 文字を指定してください。")
   )]
   InvalidFontVariationAxisName { axis_name: String },
-  /// scriptコードの長さエラー
+  /// スクリプトコードが 4 文字でない
   #[error("スクリプトコードは 4 文字である必要があります。指定値: '{code}'")]
   #[diagnostic(
     code(config::validation::script_code),
     help("ISO 15924 スクリプトコード（例：'latn'、'arab'）として 4 文字を指定してください。")
   )]
   InvalidScriptCodeLength { code: String },
-  /// languageコードの長さエラー
+  /// 言語コードが 3 or 4 文字でない
   #[error("言語コードは 3 または 4 文字である必要があります。指定値: '{code}'")]
   #[diagnostic(
     code(config::validation::language_code),
     help("BCP 47 言語タグ（例：'eng'、'ja'）を指定してください。")
   )]
   InvalidLanguageCodeLength { code: String },
-  /// featureタグの長さエラー
+  /// フィーチャータグが 4 文字でない
   #[error("フィーチャータグは 4 文字である必要があります。指定値: '{tag}'")]
   #[diagnostic(
     code(config::validation::font_feature_tag),
     help("OpenType フィーチャータグ（例：'liga'、'smcp'）として 4 文字を指定してください。")
   )]
   InvalidFontFeatureTagLength { tag: String },
+  /// フォントパスを解決できない
+  #[error("フォントファイルのパスを解決できませんでした: {path}")]
+  #[diagnostic(
+    code(config::validation::font_path),
+    help("フォントファイルが存在し、読み取り権限があることを確認してください。")
+  )]
+  FontPathResolution {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// 背景色の一部のみ指定（R/G/B が揃っていない）
+  #[error("背景色は background_r、background_g、background_b の 3 成分をすべて指定する必要があります。")]
+  #[diagnostic(
+    code(config::validation::partial_background_color),
+    help("3 成分をすべて指定するか、すべて省略してください。")
+  )]
+  PartialBackgroundColor,
 }
 
-/// デフォルトパスから設定ファイルを読み込みます
-///
-/// `./config/config.toml` から TOML 設定を読み込み、
-/// パスの解決、バリデーション、型変換を行って
-/// アプリケーション使用用の構造化設定に変換します。
-///
-/// # Returns
-///
-/// 検証済みの設定情報 [`Config`]
+/// `./config/config.toml` から設定を読み込みます。
 ///
 /// # Errors
 ///
-/// 以下の場合にエラーを返します：
-/// - ファイルが見つからない、または読み込み権限がない
-/// - TOML 構文エラー
-/// - バリデーション失敗（サイズ、余白、フォント設定など）
-/// - 出力ディレクトリの作成に失敗
-/// - パスの正規化に失敗
-pub fn read_config_file() -> Result<Config, Report> {
+/// ファイル読み込み・TOML 解析・バリデーション失敗時にエラーを返します。
+pub fn read_config_file() -> miette::Result<Config> {
   let config_path = DEFAULT_CONFIG_PATH;
-  info!(config_path = %config_path, "Reading config file");
-  return read_config_file_with_path(config_path).map_err(std::convert::Into::into);
+  info!(config_path = %config_path, "設定ファイルの読み込みを開始します");
+  let config = read_config_file_with_path(config_path)?;
+  info!(
+    config_path = %config_path,
+    document_name = %config.name,
+    output_path = %config.pdf.output_path.display(),
+    "設定ファイルの読み込みが完了しました"
+  );
+  return Ok(config);
 }
 
-/// 指定されたパスから設定ファイルを読み込みます
-///
-/// TOML ファイルをパース後、以下の処理を実行します：
-/// 1. ファイルパスの解決と正規化（`canonicalize`）
-/// 2. ページサイズ、フォント、余白のバリデーション
-/// 3. 出力ディレクトリの作成
-/// 4. フォント設定の型変換（スクリプト、言語、バリアブル軸など）
-///
-/// # Arguments
-///
-/// * `config_path` - 設定ファイルのパス（相対・絶対いずれでも可）
-///
-/// # Returns
-///
-/// 検証済みの設定情報 [`Config`]
+/// 指定パスから設定ファイルを読み込みます。
 ///
 /// # Errors
 ///
-/// 以下の場合にエラーを返します：
-/// - ファイルが見つからない、または読み込み権限がない場合
-/// - TOML 構文エラー
-/// - バリデーション失敗（複数のエラーをまとめて報告）
-/// - 出力ディレクトリの作成に失敗
-/// - パス正規化に失敗
-fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, ReadConfigError> {
-  let config_content = fs::read(config_path)?;
-  let pre_config: PreConfig = toml::from_slice(&config_content)?;
-  let current_dir = std::env::current_dir().map_err(|error| ReadConfigError::CurrentDir { source: error })?;
+/// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
+fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Config> {
+  let config_path = config_path.as_ref();
+  let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
+    path: config_path.display().to_string(),
+    source,
+  })?;
+  let pre_config: PreConfig = toml::from_slice(&config_content).map_err(|source| ReadConfigError::ParseToml {
+    path: config_path.display().to_string(),
+    source,
+  })?;
+  let current_dir = std::env::current_dir().map_err(|source| ReadConfigError::CurrentDir { source })?;
   let mut errors = Vec::new();
 
   // 構造体分解
@@ -319,7 +327,64 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
   // 背景色のバリデーションと生成
   let background_color = build_background_color(background_r, background_g, background_b, &mut errors);
 
-  // FontConfig/MathFontConfig 生成
+  // 19 フォント種別を先にすべて変換しエラーを蓄積（途中で中断しない）
+  let serif_opt = to_font_config(serif, &mut errors);
+  let serif_bold_opt = to_font_config(serif_bold, &mut errors);
+  let serif_italic_opt = to_font_config(serif_italic, &mut errors);
+  let serif_bold_italic_opt = to_font_config(serif_bold_italic, &mut errors);
+  let sans_serif_opt = to_font_config(sans_serif, &mut errors);
+  let sans_serif_bold_opt = to_font_config(sans_serif_bold, &mut errors);
+  let sans_serif_italic_opt = to_font_config(sans_serif_italic, &mut errors);
+  let sans_serif_bold_italic_opt = to_font_config(sans_serif_bold_italic, &mut errors);
+  let monospace_opt = to_font_config(monospace, &mut errors);
+  let monospace_bold_opt = to_font_config(monospace_bold, &mut errors);
+  let monospace_italic_opt = to_font_config(monospace_italic, &mut errors);
+  let monospace_bold_italic_opt = to_font_config(monospace_bold_italic, &mut errors);
+  let math_opt = to_font_config(math, &mut errors);
+  let japanese_serif_opt = to_font_config(japanese_serif, &mut errors);
+  let japanese_serif_bold_opt = to_font_config(japanese_serif_bold, &mut errors);
+  let japanese_sans_serif_opt = to_font_config(japanese_sans_serif, &mut errors);
+  let japanese_sans_serif_bold_opt = to_font_config(japanese_sans_serif_bold, &mut errors);
+  let japanese_monospace_opt = to_font_config(japanese_monospace, &mut errors);
+  let japanese_monospace_bold_opt = to_font_config(japanese_monospace_bold, &mut errors);
+
+  // フォント変換エラーを報告（重複チェック前）
+  if !errors.is_empty() {
+    return Err(Report::new(ReadConfigError::MultipleValidationErrors { errors }));
+  }
+
+  // errors が空なので unwrap は安全
+  #[allow(clippy::unwrap_used)]
+  let font_configs = FontConfigs {
+    serif: serif_opt.unwrap(),
+    serif_bold: serif_bold_opt.unwrap(),
+    serif_italic: serif_italic_opt.unwrap(),
+    serif_bold_italic: serif_bold_italic_opt.unwrap(),
+    sans_serif: sans_serif_opt.unwrap(),
+    sans_serif_bold: sans_serif_bold_opt.unwrap(),
+    sans_serif_italic: sans_serif_italic_opt.unwrap(),
+    sans_serif_bold_italic: sans_serif_bold_italic_opt.unwrap(),
+    monospace: monospace_opt.unwrap(),
+    monospace_bold: monospace_bold_opt.unwrap(),
+    monospace_italic: monospace_italic_opt.unwrap(),
+    monospace_bold_italic: monospace_bold_italic_opt.unwrap(),
+    math: math_opt.unwrap(),
+    japanese_serif: japanese_serif_opt.unwrap(),
+    japanese_serif_bold: japanese_serif_bold_opt.unwrap(),
+    japanese_sans_serif: japanese_sans_serif_opt.unwrap(),
+    japanese_sans_serif_bold: japanese_sans_serif_bold_opt.unwrap(),
+    japanese_monospace: japanese_monospace_opt.unwrap(),
+    japanese_monospace_bold: japanese_monospace_bold_opt.unwrap(),
+  };
+
+  // font_name の重複チェック
+  check_duplicate_font_names(&font_configs, &mut errors);
+
+  // 重複エラーを報告
+  if !errors.is_empty() {
+    return Err(Report::new(ReadConfigError::MultipleValidationErrors { errors }));
+  }
+
   let config = Config {
     name,
     pdf: PdfConfig {
@@ -336,163 +401,77 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> Result<Config, 
       },
       background_color,
     },
-    font_configs: FontConfigs {
-      serif: to_font_config(serif, &mut errors)?,
-      serif_bold: to_font_config(serif_bold, &mut errors)?,
-      serif_italic: to_font_config(serif_italic, &mut errors)?,
-      serif_bold_italic: to_font_config(serif_bold_italic, &mut errors)?,
-      sans_serif: to_font_config(sans_serif, &mut errors)?,
-      sans_serif_bold: to_font_config(sans_serif_bold, &mut errors)?,
-      sans_serif_italic: to_font_config(sans_serif_italic, &mut errors)?,
-      sans_serif_bold_italic: to_font_config(sans_serif_bold_italic, &mut errors)?,
-      monospace: to_font_config(monospace, &mut errors)?,
-      monospace_bold: to_font_config(monospace_bold, &mut errors)?,
-      monospace_italic: to_font_config(monospace_italic, &mut errors)?,
-      monospace_bold_italic: to_font_config(monospace_bold_italic, &mut errors)?,
-      math: to_font_config(math, &mut errors)?,
-      japanese_serif: to_font_config(japanese_serif, &mut errors)?,
-      japanese_serif_bold: to_font_config(japanese_serif_bold, &mut errors)?,
-      japanese_sans_serif: to_font_config(japanese_sans_serif, &mut errors)?,
-      japanese_sans_serif_bold: to_font_config(japanese_sans_serif_bold, &mut errors)?,
-      japanese_monospace: to_font_config(japanese_monospace, &mut errors)?,
-      japanese_monospace_bold: to_font_config(japanese_monospace_bold, &mut errors)?,
-    },
+    font_configs,
   };
-
-  // font_nameの重複チェック
-  check_duplicate_font_names(&config.font_configs, &mut errors);
-
-  // エラーが蓄積されている場合は複合エラーとして返す
-  if !errors.is_empty() {
-    return Err(ReadConfigError::MultipleValidationErrors { errors });
-  }
 
   return Ok(config);
 }
 
-/// プリフォント設定を処理済みフォント設定に変換します
+/// `PreFontConfig` を `FontConfig` に変換します。
 ///
-/// TOML からパースされた `PreFontConfig` を、
-/// アプリケーションが直接使用できる `FontConfig` に変換します。
-/// この過程でスクリプト、言語、フィーチャーをバリデーションして変換します。
-///
-/// # Arguments
-///
-/// * `pre_font_config` - パース済み設定
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 変換済みフォント設定
-///
-/// # Errors
-///
-/// ファイルパスの正規化に失敗した場合
-fn to_font_config(
-  pre_font_config: pre_config::PreFontConfig,
-  errors: &mut Vec<ValidationError>,
-) -> Result<FontConfig, ReadConfigError> {
+/// パス解決に失敗した場合は `errors` にエラーを追加して `None` を返します。
+/// これにより後続フォントのバリデーションを継続できます。
+fn to_font_config(pre_font_config: pre_config::PreFontConfig, errors: &mut Vec<ValidationError>) -> Option<FontConfig> {
   let script = parse_script_code(pre_font_config.script, errors);
   let language = parse_language_code(pre_font_config.language, errors);
   let features = parse_font_features(pre_font_config.features, errors);
+  let variation_axes = convert_axes(pre_font_config.variation_axes, errors);
 
-  return Ok(FontConfig {
+  let font_path = match pre_font_config.font_path.canonicalize() {
+    Ok(path) => path,
+    Err(source) => {
+      errors.push(ValidationError::FontPathResolution {
+        path: pre_font_config.font_path.display().to_string(),
+        source,
+      });
+      return None;
+    },
+  };
+
+  return Some(FontConfig {
     font_name: pre_font_config.font_name,
-    font_path: resolve_path_buf(pre_font_config.font_path)?,
+    font_path,
     font_index: pre_font_config.font_index.unwrap_or(0),
-    variation_axes: convert_axes(pre_font_config.variation_axes, errors)?,
+    variation_axes,
     script,
     language,
     features,
   });
 }
 
-/// ファイルパスを正規化された絶対パスに解決します
+/// バリアブルフォント軸を変換します。
 ///
-/// 相対パスを絶対パスに変換し、シンボリックリンクを解決して、
-/// 正規化された絶対パスを返します。この関数はファイルが存在することを前提としています。
-///
-/// # Arguments
-///
-/// * `path` - 解決するパス（相対パスまたは絶対パス）
-///
-/// # Returns
-///
-/// 正規化された絶対パス
-///
-/// # Errors
-///
-/// 以下の場合にエラーを返します：
-/// - ファイルが存在しない場合
-/// - シンボリックリンク解決に失敗した場合
-/// - パスの正規化に失敗した場合（権限エラーなど）
-fn resolve_path_buf(path: PathBuf) -> Result<PathBuf, ReadConfigError> {
-  let resolved = path.canonicalize().map_err(|error| ReadConfigError::Canonicalize {
-    path,
-    source: error,
-  })?;
-  return Ok(resolved);
-}
-
-// variation_axes の変換
-/// バリアブルフォント軸の設定情報を変換します
-///
-/// 各軸の名前が 4 文字であることを検証し、`[u8; 4]` 配列に変換します。
-/// 不正な長さの軸名はエラーに記録されますが、処理は続行します。
-///
-/// # Arguments
-///
-/// * `axes` - 変換対象のバリアブル軸オプション
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 変換済みのバリアブル軸リスト（軸設定がない場合は `None`）
+/// 軸名が 4 文字でない場合は `errors` に記録しダミー値 `[0, 0, 0, 0]` を使用します。
 fn convert_axes(
   axes: Option<Vec<pre_config::PreVariationAxis>>,
   errors: &mut Vec<ValidationError>,
-) -> Result<Option<Vec<VariationAxis>>, ReadConfigError> {
-  axes
-    .map(|axes| {
-      axes
-        .into_iter()
-        .map(|axis| {
-          if axis.name.len() == 4 {
-            Ok(VariationAxis {
-              #[allow(clippy::unwrap_used)]
-              name: axis.name.as_bytes().try_into().unwrap(),
-              value: axis.value,
-            })
-          } else {
-            errors.push(ValidationError::InvalidFontVariationAxisName {
-              axis_name: axis.name,
-            });
-            Ok(VariationAxis {
-              name: [0, 0, 0, 0],
-              value: axis.value,
-            })
-          }
-        })
-        .collect::<Result<Vec<_>, _>>()
+) -> Option<Vec<VariationAxis>> {
+  let axes = axes?;
+  let result = axes
+    .into_iter()
+    .map(|axis| {
+      if axis.name.len() == 4 {
+        #[allow(clippy::unwrap_used)]
+        let name = axis.name.as_bytes().try_into().unwrap();
+        return VariationAxis {
+          name,
+          value: axis.value,
+        };
+      }
+      errors.push(ValidationError::InvalidFontVariationAxisName {
+        axis_name: axis.name,
+      });
+      return VariationAxis {
+        name: [0, 0, 0, 0],
+        value: axis.value,
+      };
     })
-    .transpose()
+    .collect::<Vec<_>>();
+  return Some(result);
 }
 
-/// OpenType スクリプトコードを `[u8; 4]` に変換します
-///
-/// 4 文字の OpenType スクリプトコード
-/// （例："latn" = Latin、"arab" = Arabic、"cyrl" = Cyrillic）
-/// を `[u8; 4]` 配列に変換します。
-/// 長さが 4 文字でない場合はエラーに記録されます。
-///
-/// # Arguments
-///
-/// * `input` - スクリプトコード（4 文字の `String`）
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 変換済みスクリプトコード配列（不正な場合は `None`）
+/// OpenType スクリプトコード（4 文字）を `[u8; 4]` に変換します。
+/// 不正な長さの場合は `errors` に記録して `None` を返します。
 fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
   match input {
     Some(s) => {
@@ -508,23 +487,9 @@ fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -
   }
 }
 
-/// BCP 47 言語コードを `[u8; 4]` に変換します
-///
-/// BCP 47 言語タグ（3 または 4 文字）を `[u8; 4]` 配列に変換します。
-/// 3 文字の場合は末尾にスペース（0x20）を追加して 4 文字にします。
-/// 例：
-/// - "eng" → [b'e', b'n', b'g', b' ']
-/// - "ja" → 不正（3 文字未満）
-/// - "zhCN" → [b'z', b'h', b'C', b'N']
-///
-/// # Arguments
-///
-/// * `input` - 言語コード（3 または 4 文字の `String`）
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 変換済み言語コード配列（不正な場合は `None`）
+/// 言語コード（3 or 4 文字）を `[u8; 4]` に変換します。
+/// 3 文字の場合は末尾にスペース（0x20）を補完します。
+/// 不正な長さの場合は `errors` に記録して `None` を返します。
 fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
   match input {
     Some(s) => {
@@ -544,20 +509,8 @@ fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>)
   }
 }
 
-/// OpenType フォント機能タグをパースして変換します
-///
-/// OpenType フィーチャータグ（4 文字）をパースし、
-/// タグと値のペアリストに変換します。
-/// 不正な長さのタグはエラーに記録されますが、処理は続行します。
-///
-/// # Arguments
-///
-/// * `input` - フィーチャー設定オプション
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 変換済みフィーチャーリスト（フィーチャーがない場合は `None`）
+/// OpenType フィーチャータグ（4 文字）を変換します。
+/// 不正な長さのタグは `errors` に記録してスキップします。
 fn parse_font_features(
   input: Option<Vec<pre_config::PreFontFeature>>,
   errors: &mut Vec<ValidationError>,
@@ -585,15 +538,7 @@ fn parse_font_features(
     Some(features)
   }
 }
-/// 指定数値フィールドがすべて正であることを検証します
-///
-/// ページサイズ、フォントサイズ、行の高さ倍率などの
-/// 正である必要がある値を検証します。
-///
-/// # Arguments
-///
-/// * `fields` - (フィールド名, 値) のペア配列
-/// * `errors` - バリデーションエラー蓄積用ベクタ
+/// 各フィールドが正（> 0）であることを検証します。
 fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
     if *value <= 0.0 {
@@ -602,12 +547,7 @@ fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<Val
   }
 }
 
-/// 余白フィールドがすべて非負であることを検証します
-///
-/// # Arguments
-///
-/// * `fields` - (フィールド名, 値) のペア配列
-/// * `errors` - バリデーションエラー蓄積用ベクタ
+/// 各余白が非負（>= 0）であることを検証します。
 fn validate_non_negative_margins(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
     if *value < 0.0 {
@@ -616,20 +556,7 @@ fn validate_non_negative_margins(fields: &[(&'static str, f32)], errors: &mut Ve
   }
 }
 
-/// 余白の合計がページサイズ未満であることを検証します
-///
-/// 上下左右の余白合計がページのそれぞれの寸法より小さいことを確認します。
-/// そうでなければ、テキスト配置領域がなくなるため不正です。
-///
-/// # Arguments
-///
-/// * `height` - ページ高さ
-/// * `width` - ページ幅
-/// * `margin_top` - 上余白
-/// * `margin_bottom` - 下余白
-/// * `margin_left` - 左余白
-/// * `margin_right` - 右余白
-/// * `errors` - バリデーションエラー蓄積用ベクタ
+/// 上下の余白合計 < height、左右の余白合計 < width であることを検証します。
 fn validate_margin_sums(
   height: f32,
   width: f32,
@@ -655,55 +582,32 @@ fn validate_margin_sums(
   }
 }
 
-/// 出力 PDF の絶対パスを生成します（ディレクトリ作成・正規化含む）
-///
-/// 出力ディレクトリを作成・正規化した上で、
-/// PDF ファイル名（`{name}.pdf`）を含むフルパスを生成します。
-///
-/// # Arguments
-///
-/// * `current_dir` - カレント作業ディレクトリ
-/// * `output_dir` - 設定で指定された出力ディレクトリ
-/// * `name` - PDF ファイル名（拡張子なし）
-///
-/// # Returns
-///
-/// 正規化された出力 PDF への絶対パス
+/// 出力ディレクトリを作成・正規化し、`{name}.pdf` の絶対パスを返します。
 ///
 /// # Errors
 ///
-/// ディレクトリ作成またはパス正規化に失敗した場合
+/// ディレクトリ作成またはパス正規化に失敗した場合にエラーを返します。
 fn build_output_pdf_path(current_dir: &Path, output_dir: &Path, name: &str) -> Result<PathBuf, ReadConfigError> {
   let output_dir_path = if output_dir.is_absolute() {
     output_dir.to_path_buf()
   } else {
     current_dir.join(output_dir)
   };
-  fs::create_dir_all(&output_dir_path).map_err(|error| ReadConfigError::CreateDir { source: error })?;
-  let mut output_path = output_dir_path.canonicalize().map_err(|error| ReadConfigError::Canonicalize {
-    path: output_dir_path.clone(),
-    source: error,
+  fs::create_dir_all(&output_dir_path).map_err(|source| ReadConfigError::CreateOutputDir {
+    path: output_dir_path.display().to_string(),
+    source,
+  })?;
+  let mut output_path = output_dir_path.canonicalize().map_err(|source| ReadConfigError::CanonicalizeOutputDir {
+    path: output_dir_path.display().to_string(),
+    source,
   })?;
   output_path.push(name);
   output_path.set_extension("pdf");
   return Ok(output_path);
 }
 
-/// 背景色を検証し RGB タプルを生成します
-///
-/// R、G、B の各成分を検証（0.0〜1.0 の範囲内）し、
-/// 全てそろっていれば RGB タプルを返します。
-///
-/// # Arguments
-///
-/// * `r` - 赤成分の設定値
-/// * `g` - 緑成分の設定値
-/// * `b` - 青成分の設定値
-/// * `errors` - バリデーションエラー蓄積用ベクタ
-///
-/// # Returns
-///
-/// 検証済み RGB タプル（値がない場合は `None`）
+/// R/G/B を検証（各成分 [0.0, 1.0]）し、3 成分揃っていれば RGB タプルを返します。
+/// 一部のみ指定された場合は `errors` に記録します。3 成分すべて省略時は `None` を返します。
 fn build_background_color(
   r: Option<f32>,
   g: Option<f32>,
@@ -723,19 +627,15 @@ fn build_background_color(
       }
       return Some((r, g, b));
     },
-    _ => return None,
+    (None, None, None) => return None,
+    _ => {
+      errors.push(ValidationError::PartialBackgroundColor);
+      return None;
+    },
   }
 }
 
-/// 19 フォント種別中の `font_name` 重複を検出します
-///
-/// すべてのフォント種別の `font_name` を調査し、
-/// 重複がある場合はエラーに記録します。
-///
-/// # Arguments
-///
-/// * `fonts` - 全フォント設定
-/// * `errors` - バリデーションエラー蓄積用ベクタ
+/// 19 フォント種別の `font_name` 重複を検出します。
 fn check_duplicate_font_names(fonts: &FontConfigs, errors: &mut Vec<ValidationError>) {
   let mut set = std::collections::HashSet::new();
   for name in [
