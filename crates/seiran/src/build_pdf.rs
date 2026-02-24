@@ -21,17 +21,13 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   let layout_nodes = parser::text_parser(file_path, &config)?;
   info!("テキストのパースが完了しました");
 
-  let start = std::time::Instant::now();
   let font_data = font::FontData::new(&config.font_configs)?;
-  info!(elapsed = ?start.elapsed(), "フォントの読み込みが完了しました");
+  info!("フォントの読み込みが完了しました");
 
   let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
-  for (font_type, font_config) in &config.font_configs {
-    let font_ref = font_refs.get(font_type);
-    validate_font::validate_font(font_config, font_ref)?;
-    info!(font_type = ?font_type, font_path = %font_config.font_path.display(), "フォントの検証が完了しました");
-  }
+  validate_font::validate_fonts(&config.font_configs, &font_refs)?;
+  info!("フォントの検証が完了しました");
 
   let shaper_datas = shaper::ShaperDatas::new(&font_refs);
   let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);

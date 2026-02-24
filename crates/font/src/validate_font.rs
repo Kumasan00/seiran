@@ -99,10 +99,30 @@
 
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
-use read_config_file::{FontConfig, VariationAxis};
+use read_config_file::{FontConfig, FontConfigs, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
+use types::FontType;
+
+use crate::FontRefs;
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("複数のフォント設定にエラーがあります")]
+#[diagnostic(code(font::validation::multiple_errors))]
+struct MultipleFontValidationErrors {
+  #[related]
+  errors: Vec<FontValidationErrors>,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("フォントの検証に失敗しました: {font_type:?}")]
+#[diagnostic(code(font::validation::error))]
+struct FontValidationErrors {
+  font_type: FontType,
+  #[related]
+  errors: Vec<FontValidationError>,
+}
 
 /// フォント検証に関連するエラー
 ///
@@ -171,6 +191,37 @@ pub enum FontValidationError {
   },
 }
 
+/// すべてのフォント設定を検証します
+///
+/// # Arguments
+///
+/// * `font_configs` - フォント設定情報
+/// * `font_refs` - フォント参照
+///
+/// # Returns
+///
+/// すべてのフォント設定が妥当な場合は `Ok(())`
+///
+/// # Errors
+///
+/// 任意のフォント設定の検証に失敗した場合は、`FontValidationError` のバリアントを含む `miette::Report` を返します。
+pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<()> {
+  let mut all_errors = Vec::new();
+  for font_type in FontType::ALL {
+    let config = font_configs.get(font_type);
+    let font_ref = font_refs.get(font_type);
+    let errors = validate_font(config, font_ref);
+    if !errors.is_empty() {
+      all_errors.push(FontValidationErrors { font_type, errors });
+    }
+    info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
+  }
+  if !all_errors.is_empty() {
+    return Err(MultipleFontValidationErrors { errors: all_errors }.into());
+  }
+  return Ok(());
+}
+
 /// フォント設定の詳細な検証を実行します（内部関数）
 ///
 /// # Arguments
@@ -185,20 +236,20 @@ pub enum FontValidationError {
 /// # Errors
 ///
 /// 検証に失敗した場合は `FontValidationError` を返します。
-pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> miette::Result<()> {
-  let variation_axes = &config.variation_axes;
-  if let Some(variation_axes) = variation_axes {
-    validate_variation_axes(font_ref, variation_axes)?;
+pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationError> {
+  let mut errors = Vec::new();
+  if let Some(variation_axes) = &config.variation_axes {
+    validate_variation_axes(font_ref, variation_axes, &mut errors);
   } else if font_ref.fvar().is_ok() {
-    return Err(FontValidationError::MissingVariationAxes.into());
+    errors.push(FontValidationError::MissingVariationAxes);
   }
+
   if config.script.is_none() && config.language.is_some() {
-    warn!("Warning: 'language' is specified without 'script'. 'language' will be ignored.");
+    warn!("'language' が 'script' なしで指定されています。'language' は無視されます。");
   } else {
     check_script_language_support(font_ref, config);
   }
-
-  Ok(())
+  errors
 }
 
 /// バリアブルフォントの軸設定を検証します
@@ -223,56 +274,57 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> miette::Result<
 /// - 設定に含まれる軸がフォントに存在しない場合
 /// - 軸値が許容範囲外の場合
 /// - フォント内の軸が設定に含まれていない場合
-fn validate_variation_axes(font_ref: &FontRef, config_variation_axes: &[VariationAxis]) -> miette::Result<()> {
+fn validate_variation_axes(
+  font_ref: &FontRef,
+  config_variation_axes: &[VariationAxis],
+  errors: &mut Vec<FontValidationError>,
+) {
   // fvar テーブルからフォント内のバリアブル軸定義を取得
-  let fvar = font_ref.fvar().map_err(|_| FontValidationError::NotVariableFont)?;
-  let font_axes = fvar.axes().map_err(FontValidationError::Parse)?;
+  let Ok(fvar) = font_ref.fvar() else {
+    errors.push(FontValidationError::NotVariableFont);
+    return;
+  };
+  let font_axes = match fvar.axes() {
+    Ok(axes) => axes,
+    Err(e) => {
+      errors.push(FontValidationError::Parse(e));
+      return;
+    },
+  };
 
   // 設定されたバリアブル軸ごとにフォント内の定義と照合
   for cfg_axis in config_variation_axes {
-    let cfg_tag = font_types::Tag::new(&cfg_axis.name);
-    let axis = font_axes.iter().find(|axis| axis.axis_tag() == cfg_tag).ok_or_else(|| {
-      let name: String = cfg_tag.to_string();
-      FontValidationError::UnknownVariationAxis(name)
-    })?;
+    let cfg_tag = Tag::new(&cfg_axis.name);
+    let Some(axis) = font_axes.iter().find(|axis| axis.axis_tag() == cfg_tag) else {
+      errors.push(FontValidationError::UnknownVariationAxis(cfg_tag.to_string()));
+      continue;
+    };
 
     let min_value = axis.min_value();
     let max_value = axis.max_value();
     if !(min_value..=max_value).contains(&Fixed::from_f64(cfg_axis.value)) {
-      let name: String = cfg_tag.to_string();
-      return Err(
-        FontValidationError::VariationValueOutOfRange {
-          name,
-          min: axis.min_value(),
-          max: axis.max_value(),
-          value: cfg_axis.value,
-        }
-        .into(),
-      );
+      errors.push(FontValidationError::VariationValueOutOfRange {
+        name: cfg_tag.to_string(),
+        min: min_value,
+        max: max_value,
+        value: cfg_axis.value,
+      });
     }
   }
 
   // フォント内のバリアブル軸が全て設定ファイルに含まれているか検証
   for font_axis in font_axes {
-    let axis_name: String = font_axis.axis_tag().to_string();
-    let is_configured = config_variation_axes
-      .iter()
-      .any(|cfg_axis| font_types::Tag::new(&cfg_axis.name) == font_axis.axis_tag());
+    let is_configured = config_variation_axes.iter().any(|cfg_axis| Tag::new(&cfg_axis.name) == font_axis.axis_tag());
 
     if !is_configured {
-      return Err(
-        FontValidationError::UnconfiguredVariationAxis {
-          axis: axis_name,
-          default: font_axis.default_value(),
-          min: font_axis.min_value(),
-          max: font_axis.max_value(),
-        }
-        .into(),
-      );
+      errors.push(FontValidationError::UnconfiguredVariationAxis {
+        axis: font_axis.axis_tag().to_string(),
+        default: font_axis.default_value(),
+        min: font_axis.min_value(),
+        max: font_axis.max_value(),
+      });
     }
   }
-
-  Ok(())
 }
 
 /// スクリプト・言語のサポート状況を確認します

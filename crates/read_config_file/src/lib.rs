@@ -73,6 +73,7 @@
 #![allow(unused_assignments)]
 
 use std::{
+  collections::HashSet,
   fs,
   path::{Path, PathBuf},
 };
@@ -80,9 +81,10 @@ use std::{
 use miette::{Diagnostic, Report};
 use thiserror::Error;
 use tracing::info;
+use types::FontType;
 
 mod pre_config;
-use pre_config::PreConfig;
+use pre_config::{PreConfig, PreFontConfig};
 mod processed_config;
 
 // processed_config の型を公開
@@ -209,6 +211,7 @@ enum ValidationError {
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
   FontPathResolution {
+    font_type: FontType,
     path: String,
     #[source]
     source: std::io::Error,
@@ -261,30 +264,9 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
   // 構造体分解
   let pre_config::PreConfig {
     name,
-    pdf: pre_pdf,
+    pdf: pre_pdf_config,
     font_configs: pre_font_configs,
   } = pre_config;
-  let pre_config::PreFontConfigs {
-    serif,
-    serif_bold,
-    serif_italic,
-    serif_bold_italic,
-    sans_serif,
-    sans_serif_bold,
-    sans_serif_italic,
-    sans_serif_bold_italic,
-    monospace,
-    monospace_bold,
-    monospace_italic,
-    monospace_bold_italic,
-    math,
-    japanese_serif,
-    japanese_serif_bold,
-    japanese_sans_serif,
-    japanese_sans_serif_bold,
-    japanese_monospace,
-    japanese_monospace_bold,
-  } = pre_font_configs;
   let pre_config::PrePdfConfig {
     output_dir,
     height,
@@ -298,7 +280,7 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
     background_r,
     background_g,
     background_b,
-  } = pre_pdf;
+  } = pre_pdf_config;
 
   // バリデーション
   validate_positive_fields(
@@ -328,53 +310,69 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
   let background_color = build_background_color(background_r, background_g, background_b, &mut errors);
 
   // 19 フォント種別を先にすべて変換しエラーを蓄積（途中で中断しない）
-  let serif_opt = to_font_config(serif, &mut errors);
-  let serif_bold_opt = to_font_config(serif_bold, &mut errors);
-  let serif_italic_opt = to_font_config(serif_italic, &mut errors);
-  let serif_bold_italic_opt = to_font_config(serif_bold_italic, &mut errors);
-  let sans_serif_opt = to_font_config(sans_serif, &mut errors);
-  let sans_serif_bold_opt = to_font_config(sans_serif_bold, &mut errors);
-  let sans_serif_italic_opt = to_font_config(sans_serif_italic, &mut errors);
-  let sans_serif_bold_italic_opt = to_font_config(sans_serif_bold_italic, &mut errors);
-  let monospace_opt = to_font_config(monospace, &mut errors);
-  let monospace_bold_opt = to_font_config(monospace_bold, &mut errors);
-  let monospace_italic_opt = to_font_config(monospace_italic, &mut errors);
-  let monospace_bold_italic_opt = to_font_config(monospace_bold_italic, &mut errors);
-  let math_opt = to_font_config(math, &mut errors);
-  let japanese_serif_opt = to_font_config(japanese_serif, &mut errors);
-  let japanese_serif_bold_opt = to_font_config(japanese_serif_bold, &mut errors);
-  let japanese_sans_serif_opt = to_font_config(japanese_sans_serif, &mut errors);
-  let japanese_sans_serif_bold_opt = to_font_config(japanese_sans_serif_bold, &mut errors);
-  let japanese_monospace_opt = to_font_config(japanese_monospace, &mut errors);
-  let japanese_monospace_bold_opt = to_font_config(japanese_monospace_bold, &mut errors);
+  let mut font_configs_iter = FontType::ALL
+    .iter()
+    .map(|font_type| to_font_config(*font_type, pre_font_configs.get(*font_type), &mut errors))
+    .collect::<Vec<_>>()
+    .into_iter();
 
   // フォント変換エラーを報告（重複チェック前）
   if !errors.is_empty() {
     return Err(Report::new(ReadConfigError::MultipleValidationErrors { errors }));
   }
 
-  // errors が空なので unwrap は安全
-  #[allow(clippy::unwrap_used)]
+  // errors が空なので全 19 種別が揃っていることが保証される
+  #[allow(clippy::expect_used)]
   let font_configs = FontConfigs {
-    serif: serif_opt.unwrap(),
-    serif_bold: serif_bold_opt.unwrap(),
-    serif_italic: serif_italic_opt.unwrap(),
-    serif_bold_italic: serif_bold_italic_opt.unwrap(),
-    sans_serif: sans_serif_opt.unwrap(),
-    sans_serif_bold: sans_serif_bold_opt.unwrap(),
-    sans_serif_italic: sans_serif_italic_opt.unwrap(),
-    sans_serif_bold_italic: sans_serif_bold_italic_opt.unwrap(),
-    monospace: monospace_opt.unwrap(),
-    monospace_bold: monospace_bold_opt.unwrap(),
-    monospace_italic: monospace_italic_opt.unwrap(),
-    monospace_bold_italic: monospace_bold_italic_opt.unwrap(),
-    math: math_opt.unwrap(),
-    japanese_serif: japanese_serif_opt.unwrap(),
-    japanese_serif_bold: japanese_serif_bold_opt.unwrap(),
-    japanese_sans_serif: japanese_sans_serif_opt.unwrap(),
-    japanese_sans_serif_bold: japanese_sans_serif_bold_opt.unwrap(),
-    japanese_monospace: japanese_monospace_opt.unwrap(),
-    japanese_monospace_bold: japanese_monospace_bold_opt.unwrap(),
+    serif: font_configs_iter.next().expect("serif が不足").expect("serif の変換に失敗"),
+    serif_bold: font_configs_iter.next().expect("serif_bold が不足").expect("serif_bold の変換に失敗"),
+    serif_italic: font_configs_iter.next().expect("serif_italic が不足").expect("serif_italic の変換に失敗"),
+    serif_bold_italic: font_configs_iter
+      .next()
+      .expect("serif_bold_italic が不足")
+      .expect("serif_bold_italic の変換に失敗"),
+    sans_serif: font_configs_iter.next().expect("sans_serif が不足").expect("sans_serif の変換に失敗"),
+    sans_serif_bold: font_configs_iter.next().expect("sans_serif_bold が不足").expect("sans_serif_bold の変換に失敗"),
+    sans_serif_italic: font_configs_iter
+      .next()
+      .expect("sans_serif_italic が不足")
+      .expect("sans_serif_italic の変換に失敗"),
+    sans_serif_bold_italic: font_configs_iter
+      .next()
+      .expect("sans_serif_bold_italic が不足")
+      .expect("sans_serif_bold_italic の変換に失敗"),
+    monospace: font_configs_iter.next().expect("monospace が不足").expect("monospace の変換に失敗"),
+    monospace_bold: font_configs_iter.next().expect("monospace_bold が不足").expect("monospace_bold の変換に失敗"),
+    monospace_italic: font_configs_iter
+      .next()
+      .expect("monospace_italic が不足")
+      .expect("monospace_italic の変換に失敗"),
+    monospace_bold_italic: font_configs_iter
+      .next()
+      .expect("monospace_bold_italic が不足")
+      .expect("monospace_bold_italic の変換に失敗"),
+    math: font_configs_iter.next().expect("math が不足").expect("math の変換に失敗"),
+    japanese_serif: font_configs_iter.next().expect("japanese_serif が不足").expect("japanese_serif の変換に失敗"),
+    japanese_serif_bold: font_configs_iter
+      .next()
+      .expect("japanese_serif_bold が不足")
+      .expect("japanese_serif_bold の変換に失敗"),
+    japanese_sans_serif: font_configs_iter
+      .next()
+      .expect("japanese_sans_serif が不足")
+      .expect("japanese_sans_serif の変換に失敗"),
+    japanese_sans_serif_bold: font_configs_iter
+      .next()
+      .expect("japanese_sans_serif_bold が不足")
+      .expect("japanese_sans_serif_bold の変換に失敗"),
+    japanese_monospace: font_configs_iter
+      .next()
+      .expect("japanese_monospace が不足")
+      .expect("japanese_monospace の変換に失敗"),
+    japanese_monospace_bold: font_configs_iter
+      .next()
+      .expect("japanese_monospace_bold が不足")
+      .expect("japanese_monospace_bold の変換に失敗"),
   };
 
   // font_name の重複チェック
@@ -407,137 +405,6 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
   return Ok(config);
 }
 
-/// `PreFontConfig` を `FontConfig` に変換します。
-///
-/// パス解決に失敗した場合は `errors` にエラーを追加して `None` を返します。
-/// これにより後続フォントのバリデーションを継続できます。
-fn to_font_config(pre_font_config: pre_config::PreFontConfig, errors: &mut Vec<ValidationError>) -> Option<FontConfig> {
-  let script = parse_script_code(pre_font_config.script, errors);
-  let language = parse_language_code(pre_font_config.language, errors);
-  let features = parse_font_features(pre_font_config.features, errors);
-  let variation_axes = convert_axes(pre_font_config.variation_axes, errors);
-
-  let font_path = match pre_font_config.font_path.canonicalize() {
-    Ok(path) => path,
-    Err(source) => {
-      errors.push(ValidationError::FontPathResolution {
-        path: pre_font_config.font_path.display().to_string(),
-        source,
-      });
-      return None;
-    },
-  };
-
-  return Some(FontConfig {
-    font_name: pre_font_config.font_name,
-    font_path,
-    font_index: pre_font_config.font_index.unwrap_or(0),
-    variation_axes,
-    script,
-    language,
-    features,
-  });
-}
-
-/// バリアブルフォント軸を変換します。
-///
-/// 軸名が 4 文字でない場合は `errors` に記録しダミー値 `[0, 0, 0, 0]` を使用します。
-fn convert_axes(
-  axes: Option<Vec<pre_config::PreVariationAxis>>,
-  errors: &mut Vec<ValidationError>,
-) -> Option<Vec<VariationAxis>> {
-  let axes = axes?;
-  let result = axes
-    .into_iter()
-    .map(|axis| {
-      if axis.name.len() == 4 {
-        #[allow(clippy::unwrap_used)]
-        let name = axis.name.as_bytes().try_into().unwrap();
-        return VariationAxis {
-          name,
-          value: axis.value,
-        };
-      }
-      errors.push(ValidationError::InvalidFontVariationAxisName {
-        axis_name: axis.name,
-      });
-      return VariationAxis {
-        name: [0, 0, 0, 0],
-        value: axis.value,
-      };
-    })
-    .collect::<Vec<_>>();
-  return Some(result);
-}
-
-/// OpenType スクリプトコード（4 文字）を `[u8; 4]` に変換します。
-/// 不正な長さの場合は `errors` に記録して `None` を返します。
-fn parse_script_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
-  match input {
-    Some(s) => {
-      if s.len() == 4 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-        return Some(arr);
-      }
-      errors.push(ValidationError::InvalidScriptCodeLength { code: s });
-      return None;
-    },
-    None => return None,
-  }
-}
-
-/// 言語コード（3 or 4 文字）を `[u8; 4]` に変換します。
-/// 3 文字の場合は末尾にスペース（0x20）を補完します。
-/// 不正な長さの場合は `errors` に記録して `None` を返します。
-fn parse_language_code(input: Option<String>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
-  match input {
-    Some(s) => {
-      if s.len() == 4 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-        return Some(arr);
-      } else if s.len() == 3 {
-        let bytes = s.as_bytes();
-        let arr = [bytes[0], bytes[1], bytes[2], b' '];
-        return Some(arr);
-      }
-      errors.push(ValidationError::InvalidLanguageCodeLength { code: s.clone() });
-      return None;
-    },
-    None => return None,
-  }
-}
-
-/// OpenType フィーチャータグ（4 文字）を変換します。
-/// 不正な長さのタグは `errors` に記録してスキップします。
-fn parse_font_features(
-  input: Option<Vec<pre_config::PreFontFeature>>,
-  errors: &mut Vec<ValidationError>,
-) -> Option<Vec<Feature>> {
-  let mut features = Vec::new();
-  if let Some(pre_features) = input {
-    for pre_feature in pre_features {
-      if pre_feature.tag.len() == 4 {
-        #[allow(clippy::unwrap_used)]
-        let tag_bytes: [u8; 4] = pre_feature.tag.as_bytes().try_into().unwrap();
-        features.push(Feature {
-          tag: tag_bytes,
-          value: pre_feature.value,
-        });
-      } else {
-        errors.push(ValidationError::InvalidFontFeatureTagLength {
-          tag: pre_feature.tag,
-        });
-      }
-    }
-  }
-  if features.is_empty() {
-    None
-  } else {
-    Some(features)
-  }
-}
 /// 各フィールドが正（> 0）であることを検証します。
 fn validate_positive_fields(fields: &[(&'static str, f32)], errors: &mut Vec<ValidationError>) {
   for (field, value) in fields {
@@ -635,33 +502,154 @@ fn build_background_color(
   }
 }
 
+/// `PreFontConfig` を `FontConfig` に変換します。
+///
+/// パス解決に失敗した場合は `errors` にエラーを追加して `None` を返します。
+/// これにより後続フォントのバリデーションを継続できます。
+fn to_font_config(
+  font_type: FontType,
+  pre_font_config: &PreFontConfig,
+  errors: &mut Vec<ValidationError>,
+) -> Option<FontConfig> {
+  let script = parse_script_code(pre_font_config.script.as_deref(), errors);
+  let language = parse_language_code(pre_font_config.language.as_deref(), errors);
+  let features = parse_font_features(pre_font_config.features.as_deref(), errors);
+  let variation_axes = convert_axes(pre_font_config.variation_axes.as_deref(), errors);
+
+  let font_path = match pre_font_config.font_path.canonicalize() {
+    Ok(path) => path,
+    Err(source) => {
+      errors.push(ValidationError::FontPathResolution {
+        font_type,
+        path: pre_font_config.font_path.display().to_string(),
+        source,
+      });
+      return None;
+    },
+  };
+
+  return Some(FontConfig {
+    font_name: pre_font_config.font_name.clone(),
+    font_path,
+    font_index: pre_font_config.font_index.unwrap_or(0),
+    variation_axes,
+    script,
+    language,
+    features,
+  });
+}
+
+/// OpenType スクリプトコード（4 文字）を `[u8; 4]` に変換します。
+/// 不正な長さの場合は `errors` に記録して `None` を返します。
+fn parse_script_code(input: Option<&str>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
+  match input {
+    Some(s) => {
+      if s.len() == 4 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
+        return Some(arr);
+      }
+      errors.push(ValidationError::InvalidScriptCodeLength {
+        code: s.to_string(),
+      });
+      return None;
+    },
+    None => return None,
+  }
+}
+
+/// 言語コード（3 or 4 文字）を `[u8; 4]` に変換します。
+/// 3 文字の場合は末尾にスペース（0x20）を補完します。
+/// 不正な長さの場合は `errors` に記録して `None` を返します。
+fn parse_language_code(input: Option<&str>, errors: &mut Vec<ValidationError>) -> Option<[u8; 4]> {
+  match input {
+    Some(s) => {
+      if s.len() == 4 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
+        return Some(arr);
+      } else if s.len() == 3 {
+        let bytes = s.as_bytes();
+        let arr = [bytes[0], bytes[1], bytes[2], b' '];
+        return Some(arr);
+      }
+      errors.push(ValidationError::InvalidLanguageCodeLength {
+        code: s.to_string(),
+      });
+      return None;
+    },
+    None => return None,
+  }
+}
+
+/// OpenType フィーチャータグ（4 文字）を変換します。
+/// 不正な長さのタグは `errors` に記録してスキップします。
+fn parse_font_features(
+  input: Option<&[pre_config::PreFontFeature]>,
+  errors: &mut Vec<ValidationError>,
+) -> Option<Vec<Feature>> {
+  let mut features = Vec::new();
+  if let Some(pre_features) = input {
+    for pre_feature in pre_features {
+      if pre_feature.tag.len() == 4 {
+        #[allow(clippy::unwrap_used)]
+        let tag_bytes: [u8; 4] = pre_feature.tag.as_bytes().try_into().unwrap();
+        features.push(Feature {
+          tag: tag_bytes,
+          value: pre_feature.value,
+        });
+      } else {
+        errors.push(ValidationError::InvalidFontFeatureTagLength {
+          tag: pre_feature.tag.clone(),
+        });
+      }
+    }
+  }
+  if features.is_empty() {
+    None
+  } else {
+    Some(features)
+  }
+}
+
+/// バリアブルフォント軸を変換します。
+///
+/// 軸名が 4 文字でない場合は `errors` に記録しダミー値 `[0, 0, 0, 0]` を使用します。
+fn convert_axes(
+  axes: Option<&[pre_config::PreVariationAxis]>,
+  errors: &mut Vec<ValidationError>,
+) -> Option<Vec<VariationAxis>> {
+  let axes = axes?;
+  let result = axes
+    .iter()
+    .map(|axis| {
+      if axis.name.len() == 4 {
+        #[allow(clippy::unwrap_used)]
+        let name = axis.name.as_bytes().try_into().unwrap();
+        return VariationAxis {
+          name,
+          value: axis.value,
+        };
+      }
+      errors.push(ValidationError::InvalidFontVariationAxisName {
+        axis_name: axis.name.clone(),
+      });
+      return VariationAxis {
+        name: [0, 0, 0, 0],
+        value: axis.value,
+      };
+    })
+    .collect::<Vec<_>>();
+  return Some(result);
+}
+
 /// 19 フォント種別の `font_name` 重複を検出します。
 fn check_duplicate_font_names(fonts: &FontConfigs, errors: &mut Vec<ValidationError>) {
-  let mut set = std::collections::HashSet::new();
-  for name in [
-    &fonts.serif.font_name,
-    &fonts.serif_bold.font_name,
-    &fonts.serif_italic.font_name,
-    &fonts.serif_bold_italic.font_name,
-    &fonts.sans_serif.font_name,
-    &fonts.sans_serif_bold.font_name,
-    &fonts.sans_serif_italic.font_name,
-    &fonts.sans_serif_bold_italic.font_name,
-    &fonts.monospace.font_name,
-    &fonts.monospace_bold.font_name,
-    &fonts.monospace_italic.font_name,
-    &fonts.monospace_bold_italic.font_name,
-    &fonts.math.font_name,
-    &fonts.japanese_serif.font_name,
-    &fonts.japanese_serif_bold.font_name,
-    &fonts.japanese_sans_serif.font_name,
-    &fonts.japanese_sans_serif_bold.font_name,
-    &fonts.japanese_monospace.font_name,
-    &fonts.japanese_monospace_bold.font_name,
-  ] {
-    if !set.insert(name) {
+  let mut set = HashSet::new();
+  for (_, config) in fonts {
+    if !set.insert(&config.font_name) {
       errors.push(ValidationError::DuplicateFontName {
-        font_name: name.clone(),
+        font_name: config.font_name.clone(),
       });
     }
   }

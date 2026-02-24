@@ -45,7 +45,7 @@
 /// - **グリフシェイピング**: `HarfRustShapers` は 19 種別のシェーパーを保有
 /// - **PDF 埋め込み**: 各フォント種別は独立した PDF フォントオブジェクトになる
 /// - **テキスト解析**: 言語・スクリプト判定により自動選択
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FontType {
   /// Serif 標準フォント（通常の太さ、通常のゆがみ）
   Serif,
@@ -85,6 +85,33 @@ pub enum FontType {
   JapaneseMonospace,
   /// 日本語用 Monospace 太字フォント
   JapaneseMonospaceBold,
+}
+
+impl std::fmt::Display for FontType {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let name = match self {
+      FontType::Serif => "Serif",
+      FontType::SerifBold => "Serif Bold",
+      FontType::SerifItalic => "Serif Italic",
+      FontType::SerifBoldItalic => "Serif Bold Italic",
+      FontType::SansSerif => "Sans Serif",
+      FontType::SansSerifBold => "Sans Serif Bold",
+      FontType::SansSerifItalic => "Sans Serif Italic",
+      FontType::SansSerifBoldItalic => "Sans Serif Bold Italic",
+      FontType::Monospace => "Monospace",
+      FontType::MonospaceBold => "Monospace Bold",
+      FontType::MonospaceItalic => "Monospace Italic",
+      FontType::MonospaceBoldItalic => "Monospace Bold Italic",
+      FontType::Math => "Math",
+      FontType::JapaneseSerif => "Japanese Serif",
+      FontType::JapaneseSerifBold => "Japanese Serif Bold",
+      FontType::JapaneseSansSerif => "Japanese Sans Serif",
+      FontType::JapaneseSansSerifBold => "Japanese Sans Serif Bold",
+      FontType::JapaneseMonospace => "Japanese Monospace",
+      FontType::JapaneseMonospaceBold => "Japanese Monospace Bold",
+    };
+    return write!(f, "{name}");
+  }
 }
 
 impl FontType {

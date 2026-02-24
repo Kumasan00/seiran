@@ -116,10 +116,10 @@ pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::R
 
   // 指定されたインデックスのフォント参照を取得
   // TTC の場合は複数フォントから選択、単一フォントの場合は font_index=0
-  let face = FontRef::from_index(&font_bytes, font_index).into_diagnostic()?;
+  let font_ref = FontRef::from_index(&font_bytes, font_index).into_diagnostic()?;
 
   // fvar テーブルを取得（OpenType バリエーション軸定義テーブル）
-  match face.fvar() {
+  match font_ref.fvar() {
     Ok(fvar) => {
       // [1] バリエーション軸を表示
       // 各軸の最小値・デフォルト値・最大値を出力
@@ -134,7 +134,7 @@ pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::R
 
       // [2] 名前付きインスタンスを表示
       // fvar テーブルから命名インスタンス（プリセット）を取得
-      let name_table = face.name().into_diagnostic()?;
+      let name_table = font_ref.name().into_diagnostic()?;
 
       let name_records = name_table.name_record();
       let instances = fvar.instances().into_diagnostic()?;

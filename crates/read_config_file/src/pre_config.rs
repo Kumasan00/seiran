@@ -68,6 +68,7 @@
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use types::FontType;
 
 /// TOML ファイル全体をデシリアライズした設定
 ///
@@ -158,6 +159,33 @@ pub(crate) struct PreFontConfigs {
   pub japanese_monospace: PreFontConfig,
   /// 日本語 Monospace 太字フォント
   pub japanese_monospace_bold: PreFontConfig,
+}
+
+impl PreFontConfigs {
+  /// フォント種別に対応する `PreFontConfig` を取得します。
+  pub fn get(&self, font_type: FontType) -> &PreFontConfig {
+    match font_type {
+      FontType::Serif => &self.serif,
+      FontType::SerifBold => &self.serif_bold,
+      FontType::SerifItalic => &self.serif_italic,
+      FontType::SerifBoldItalic => &self.serif_bold_italic,
+      FontType::SansSerif => &self.sans_serif,
+      FontType::SansSerifBold => &self.sans_serif_bold,
+      FontType::SansSerifItalic => &self.sans_serif_italic,
+      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
+      FontType::Monospace => &self.monospace,
+      FontType::MonospaceBold => &self.monospace_bold,
+      FontType::MonospaceItalic => &self.monospace_italic,
+      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
+      FontType::Math => &self.math,
+      FontType::JapaneseSerif => &self.japanese_serif,
+      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
+      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
+      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
+      FontType::JapaneseMonospace => &self.japanese_monospace,
+      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
+    }
+  }
 }
 
 /// 単一フォント種別のプリセット設定情報
