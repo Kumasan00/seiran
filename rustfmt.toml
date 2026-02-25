@@ -1,3 +1,7 @@
+edition = "2024"
+style_edition = "2024"
+unstable_features = true
+
 array_width = 60
 attr_fn_like_width = 100
 chain_width = 100
@@ -44,7 +48,6 @@ hex_literal_case = "Lower"
 
 # match 式のフォrーマット設定
 match_arm_blocks = true
-match_arm_indent = true
 match_arm_leading_pipes = "Never"
 match_block_trailing_comma = true
 
@@ -58,8 +61,6 @@ reorder_impl_items = true
 # スペースの設定
 space_after_colon = true
 space_before_colon = false
-space_before_fn_sig_paren = false
-space_before_opening_brace = "Always"
 spaces_around_ranges = false
 
 # 末尾のカンマとセミコロンの設定
