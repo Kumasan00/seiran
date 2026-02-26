@@ -22,7 +22,7 @@ pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<L
 
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
+  context.current_style.font_size = 40.0;
   context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}部 {}", context.part_num, name),
@@ -30,10 +30,14 @@ pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<L
   )];
   context.current_style = prev_style;
 
-  return Ok(vec![LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  }]);
+  return Ok(vec![
+    LayoutNode::PageBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+    LayoutNode::PageBreak,
+  ]);
 }
 
 #[inline]
@@ -52,7 +56,7 @@ pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Ve
 
   let name = evaluate_text(first_command_arg);
   let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
+  context.current_style.font_size = 25.0;
   context.current_style.font_kind = FontKind::SerifBold;
   let children = vec![LayoutNode::Text(
     format!("{}章 {}", context.chapter_num, name),
@@ -60,10 +64,14 @@ pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Ve
   )];
   context.current_style = prev_style;
 
-  return Ok(vec![LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  }]);
+  return Ok(vec![
+    LayoutNode::LineBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+    LayoutNode::LineBreak,
+  ]);
 }
 
 #[inline]
@@ -95,6 +103,7 @@ pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<Ve
       children,
       margin_bottom: 12.0,
     },
+    LayoutNode::LineBreak,
   ]);
 }
 
@@ -120,10 +129,14 @@ pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result
   )];
   context.current_style = prev_style;
 
-  return Ok(vec![LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  }]);
+  return Ok(vec![
+    LayoutNode::LineBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+    LayoutNode::LineBreak,
+  ]);
 }
 
 #[inline]
@@ -147,10 +160,14 @@ pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<
   )];
   context.current_style = prev_style;
 
-  return Ok(vec![LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  }]);
+  return Ok(vec![
+    LayoutNode::LineBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+    LayoutNode::LineBreak,
+  ]);
 }
 
 #[inline]
@@ -173,10 +190,14 @@ pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Resu
   )];
   context.current_style = prev_style;
 
-  return Ok(vec![LayoutNode::VBox {
-    children,
-    margin_bottom: 12.0,
-  }]);
+  return Ok(vec![
+    LayoutNode::LineBreak,
+    LayoutNode::VBox {
+      children,
+      margin_bottom: 12.0,
+    },
+    LayoutNode::LineBreak,
+  ]);
 }
 
 fn evaluate_text(nodes: &[Node]) -> std::string::String {

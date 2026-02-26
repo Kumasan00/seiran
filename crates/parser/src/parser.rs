@@ -97,9 +97,7 @@ impl<'a> Parser<'a> {
   }
 
   /// ドキュメント全体（またはブロック）をパースするエントリーポイント
-  fn parse(&mut self) -> Result<Block<'a>, ParserError> {
-    self.parse_block_until(None)
-  }
+  fn parse(&mut self) -> Result<Block<'a>, ParserError> { self.parse_block_until(None) }
 
   /// 終了条件（terminator）に遭遇するまでノードを読み続ける
   /// terminator: `Some(Token::RBrace)` など。NoneならEOFまで。

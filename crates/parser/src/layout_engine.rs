@@ -1,6 +1,10 @@
 use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
 use font_types::GlyphId;
-use icu::properties::{CodePointMapData, props::Script};
+use icu::properties::{
+  CodePointMapData,
+  props::{EastAsianWidth, Script},
+  script::ScriptWithExtensions,
+};
 use lazy_regex::regex_replace_all;
 use miette::IntoDiagnostic;
 use read_fonts::TableProvider;
@@ -222,33 +226,6 @@ enum ScriptCategory {
   // Devanagari, // Hindi, Sanskrit など
 }
 
-/// Unicodeスクリプトを言語カテゴリに分類する
-///
-/// Common / Inherited スクリプト（句読点、空白、数字など）は `None` を返し、
-/// 前後の文脈に委ねます。
-///
-/// # Arguments
-///
-/// * `script` - Unicode スクリプトプロパティ
-///
-/// # Returns
-///
-/// 対応する言語カテゴリ。Common/Inherited の場合は `None`
-fn classify_script(script: Script) -> Option<ScriptCategory> {
-  return match script {
-    // 日本語スクリプト
-    Script::Han | Script::Hiragana | Script::Katakana => Some(ScriptCategory::Japanese),
-    // Common / Inherited は文脈依存のため None
-    Script::Common | Script::Inherited => None,
-    // 将来の言語対応用:
-    // Script::Hangul => Some(ScriptCategory::Korean),
-    // Script::Arabic | Script::Syriac => Some(ScriptCategory::Arabic),
-    // Script::Devanagari => Some(ScriptCategory::Devanagari),
-    // その他すべてのスクリプトはラテン系として扱う
-    _ => Some(ScriptCategory::Latin),
-  };
-}
-
 /// テキストをUnicodeスクリプトに基づいて分割し、各セグメントに適切なフォント種別を割り当てる
 ///
 /// 各文字のスクリプトを `classify_script` で言語カテゴリに分類し、
@@ -264,19 +241,41 @@ fn classify_script(script: Script) -> Option<ScriptCategory> {
 ///
 /// スクリプトごとに分割されたテキストセグメントのベクトル
 fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextSegment> {
-  let map_data = CodePointMapData::<Script>::new();
+  let script_data = CodePointMapData::<Script>::new();
+  let east_asian_width_data = CodePointMapData::<EastAsianWidth>::new();
+  let script_with_extensions_data = ScriptWithExtensions::new();
 
   let mut segments: Vec<TextSegment> = Vec::new();
   let mut current_text = String::new();
   let mut current_category: Option<ScriptCategory> = None;
 
   for ch in text.chars() {
-    let script = map_data.get(ch);
-    let category = classify_script(script);
+    let script = script_data.get(ch);
+    let category = match script {
+      Script::Inherited => None,
+      Script::Common => {
+        let east_asian_width = east_asian_width_data.get(ch);
+        match east_asian_width {
+          EastAsianWidth::Fullwidth | EastAsianWidth::Wide => Some(ScriptCategory::Japanese),
+          EastAsianWidth::Neutral | EastAsianWidth::Narrow | EastAsianWidth::Ambiguous | EastAsianWidth::Halfwidth => {
+            if script_with_extensions_data.has_script(ch, Script::Han)
+              || script_with_extensions_data.has_script(ch, Script::Hiragana)
+              || script_with_extensions_data.has_script(ch, Script::Katakana)
+            {
+              Some(ScriptCategory::Japanese)
+            } else {
+              Some(ScriptCategory::Latin)
+            }
+          },
+          _ => None,
+        }
+      },
+      Script::Han | Script::Hiragana | Script::Katakana => Some(ScriptCategory::Japanese),
+      _ => Some(ScriptCategory::Latin),
+    };
 
     match category {
       None => {
-        // Common/Inherited スクリプトは現在の文脈を引き継ぐ
         current_text.push(ch);
       },
       Some(cat) if current_category == Some(cat) => {

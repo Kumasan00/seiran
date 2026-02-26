@@ -66,6 +66,4 @@ pub enum Command {
 /// }
 /// ```
 #[must_use]
-pub fn parse_arg() -> Cli {
-  Cli::parse()
-}
+pub fn parse_arg() -> Cli { Cli::parse() }

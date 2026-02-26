@@ -61,24 +61,6 @@ pub(crate) fn create_pdf_contents(
         let upem = f32::from(font_info.upem);
         let new_font_size = run.font_size;
 
-        if (new_font_size - current_font_size).abs() > f32::EPSILON {
-          // フォントサイズが変わる場合は、行間を考慮してy位置を調整
-          let line_height = new_font_size * line_height_factor;
-          y -= line_height;
-          x = start_x;
-
-          // ページ下端超過チェック：自動改ページ
-          if y < margin.bottom {
-            pdf_contents.push(PDFContent {
-              content,
-              annotations: Vec::new(),
-            });
-            content = setup_content(config);
-            x = start_x;
-            y = start_y;
-          }
-        }
-
         // テキストブロックを開始し、フォントと位置を設定
         content.begin_text();
         content.set_font(Name(font_name.as_bytes()), run.font_size);
