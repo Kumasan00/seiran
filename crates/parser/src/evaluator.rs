@@ -172,3 +172,409 @@ impl Evaluator {
     return;
   }
 }
+
+#[cfg(test)]
+mod tests {
+
+  use super::*;
+
+  fn default_style() -> Style {
+    Style {
+      font_size: 12.0,
+      font_kind: FontKind::Serif,
+    }
+  }
+
+  fn other_style() -> Style {
+    Style {
+      font_size: 24.0,
+      font_kind: FontKind::SansSerif,
+    }
+  }
+
+  // ========================================
+  // push_layout_node: 空のVecへの追加
+  // ========================================
+
+  #[test]
+  fn push_layout_node_text_to_empty_vec() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+    let node = LayoutNode::Text("Hello".to_string(), default_style());
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, node);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(text, style) => {
+        assert_eq!(text, "Hello");
+        assert_eq!(*style, default_style());
+      },
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_non_text_to_empty_vec() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+    let node = LayoutNode::LineBreak;
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, node);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(&nodes[0], LayoutNode::LineBreak));
+  }
+
+  // ========================================
+  // push_layout_node: 同一スタイルのテキストマージ
+  // ========================================
+
+  #[test]
+  fn push_layout_node_merges_same_style_text() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("Hello".to_string(), default_style())];
+    let node = LayoutNode::Text(" World".to_string(), default_style());
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, node);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "Hello World"),
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_merges_multiple_same_style_texts() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("A".to_string(), default_style())];
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("B".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("C".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("D".to_string(), default_style()));
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "ABCD"),
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  // ========================================
+  // push_layout_node: 異なるスタイルのテキストは別ノード
+  // ========================================
+
+  #[test]
+  fn push_layout_node_different_style_no_merge() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("Hello".to_string(), default_style())];
+    let node = LayoutNode::Text(" World".to_string(), other_style());
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, node);
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+    match &nodes[0] {
+      LayoutNode::Text(text, style) => {
+        assert_eq!(text, "Hello");
+        assert_eq!(*style, default_style());
+      },
+      _ => panic!("Textノードが期待されます"),
+    }
+    match &nodes[1] {
+      LayoutNode::Text(text, style) => {
+        assert_eq!(text, " World");
+        assert_eq!(*style, other_style());
+      },
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_different_font_size_no_merge() {
+    // Arrange
+    let style_a = Style {
+      font_size: 10.0,
+      font_kind: FontKind::Serif,
+    };
+    let style_b = Style {
+      font_size: 14.0,
+      font_kind: FontKind::Serif,
+    };
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("Small".to_string(), style_a)];
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("Big".to_string(), style_b));
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+  }
+
+  #[test]
+  fn push_layout_node_different_font_kind_no_merge() {
+    // Arrange
+    let style_a = Style {
+      font_size: 12.0,
+      font_kind: FontKind::Serif,
+    };
+    let style_b = Style {
+      font_size: 12.0,
+      font_kind: FontKind::Monospace,
+    };
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("Serif".to_string(), style_a)];
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("Mono".to_string(), style_b));
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+  }
+
+  // ========================================
+  // push_layout_node: 非テキストノードの後にテキスト追加
+  // ========================================
+
+  #[test]
+  fn push_layout_node_text_after_non_text_no_merge() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::LineBreak];
+    let node = LayoutNode::Text("After break".to_string(), default_style());
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, node);
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+    assert!(matches!(&nodes[0], LayoutNode::LineBreak));
+    match &nodes[1] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "After break"),
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_text_after_kern() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Kern { point: 10.0 }];
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("Text".to_string(), default_style()));
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+    assert!(matches!(&nodes[0], LayoutNode::Kern { point } if (*point - 10.0).abs() < f32::EPSILON));
+    assert!(matches!(&nodes[1], LayoutNode::Text(..)));
+  }
+
+  // ========================================
+  // push_layout_node: 非テキストノード各種
+  // ========================================
+
+  #[test]
+  fn push_layout_node_kern() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Kern { point: 5.0 });
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(&nodes[0], LayoutNode::Kern { point } if (*point - 5.0).abs() < f32::EPSILON));
+  }
+
+  #[test]
+  fn push_layout_node_glue() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act
+    Evaluator::push_layout_node(
+      &mut nodes,
+      LayoutNode::Glue {
+        natural: 10.0,
+        stretch: 3.0,
+        shrink: 2.0,
+      },
+    );
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(
+      &nodes[0],
+      LayoutNode::Glue { natural, stretch, shrink }
+        if (*natural - 10.0).abs() < f32::EPSILON
+          && (*stretch - 3.0).abs() < f32::EPSILON
+          && (*shrink - 2.0).abs() < f32::EPSILON
+    ));
+  }
+
+  #[test]
+  fn push_layout_node_rule() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act
+    Evaluator::push_layout_node(
+      &mut nodes,
+      LayoutNode::Rule {
+        width: 100.0,
+        height: 1.0,
+      },
+    );
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(
+      &nodes[0],
+      LayoutNode::Rule { width, height }
+        if (*width - 100.0).abs() < f32::EPSILON
+          && (*height - 1.0).abs() < f32::EPSILON
+    ));
+  }
+
+  #[test]
+  fn push_layout_node_page_break() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::PageBreak);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(&nodes[0], LayoutNode::PageBreak));
+  }
+
+  #[test]
+  fn push_layout_node_vbox() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+    let vbox = LayoutNode::VBox {
+      children: vec![LayoutNode::Text("child".to_string(), default_style())],
+      margin_bottom: 8.0,
+    };
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, vbox);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(&nodes[0], LayoutNode::VBox { margin_bottom, .. } if (*margin_bottom - 8.0).abs() < f32::EPSILON));
+  }
+
+  #[test]
+  fn push_layout_node_hbox() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+    let hbox = LayoutNode::HBox {
+      children: vec![],
+      width: Some(200.0),
+    };
+
+    // Act
+    Evaluator::push_layout_node(&mut nodes, hbox);
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(&nodes[0], LayoutNode::HBox { width: Some(w), .. } if (*w - 200.0).abs() < f32::EPSILON));
+  }
+
+  // ========================================
+  // push_layout_node: マージ境界の複合テスト
+  // ========================================
+
+  #[test]
+  fn push_layout_node_merge_interrupted_by_non_text() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act: Text → Text(マージ) → LineBreak → Text(マージされない)
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("A".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("B".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::LineBreak);
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("C".to_string(), default_style()));
+
+    // Assert
+    assert_eq!(nodes.len(), 3);
+    match &nodes[0] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "AB"),
+      _ => panic!("Textノードが期待されます"),
+    }
+    assert!(matches!(&nodes[1], LayoutNode::LineBreak));
+    match &nodes[2] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "C"),
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_merge_interrupted_by_style_change() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act: Text(default) → Text(default, マージ) → Text(other, 別ノード) → Text(other, マージ)
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("A".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("B".to_string(), default_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("C".to_string(), other_style()));
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text("D".to_string(), other_style()));
+
+    // Assert
+    assert_eq!(nodes.len(), 2);
+    match &nodes[0] {
+      LayoutNode::Text(text, style) => {
+        assert_eq!(text, "AB");
+        assert_eq!(*style, default_style());
+      },
+      _ => panic!("Textノードが期待されます"),
+    }
+    match &nodes[1] {
+      LayoutNode::Text(text, style) => {
+        assert_eq!(text, "CD");
+        assert_eq!(*style, other_style());
+      },
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_empty_text_merges() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = vec![LayoutNode::Text("Hello".to_string(), default_style())];
+
+    // Act: 空文字列もマージされる
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Text(String::new(), default_style()));
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(text, _) => assert_eq!(text, "Hello"),
+      _ => panic!("Textノードが期待されます"),
+    }
+  }
+
+  #[test]
+  fn push_layout_node_non_text_nodes_do_not_merge() {
+    // Arrange
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+
+    // Act: 同種の非テキストノードは連続してもマージされない
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::LineBreak);
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::LineBreak);
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Kern { point: 5.0 });
+    Evaluator::push_layout_node(&mut nodes, LayoutNode::Kern { point: 5.0 });
+
+    // Assert
+    assert_eq!(nodes.len(), 4);
+  }
+}

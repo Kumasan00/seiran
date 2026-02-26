@@ -462,3 +462,1199 @@ pub(crate) fn parser<'a>(lexer: &'a mut Lexer<'a>) -> Result<Block<'a>, ParserEr
   let mut parser = Parser::new(lexer);
   parser.parse()
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use super::*;
+
+  // ==========================================================
+  // 空入力・基本テキストのテスト
+  // ==========================================================
+
+  #[test]
+  fn empty_input_returns_empty_block() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert!(block.is_empty());
+    return;
+  }
+
+  #[test]
+  fn plain_text() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("hello world");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("hello world"))]);
+    return;
+  }
+
+  #[test]
+  fn multiple_text_nodes_with_paragraph_break() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("first\n\nsecond");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("first")),
+        Node::ParagraphBreak,
+        Node::Text(Cow::Borrowed("second")),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn line_break_node() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("hello\\\\world");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("hello")),
+        Node::LineBreak,
+        Node::Text(Cow::Borrowed("world"))
+      ]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // エスケープ文字のテスト
+  // ==========================================================
+
+  #[test]
+  fn escaped_char_becomes_text() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\{");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert — エスケープされた文字はテキストノードになる
+    assert_eq!(block, vec![Node::Text(Cow::Owned("{".to_string()))]);
+    return;
+  }
+
+  #[test]
+  fn escaped_dollar_becomes_text() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::Text(Cow::Owned("$".to_string()))]);
+    return;
+  }
+
+  #[test]
+  fn escaped_rbrace_becomes_text() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::Text(Cow::Owned("}".to_string()))]);
+    return;
+  }
+
+  // ==========================================================
+  // Unknown文字のテスト
+  // ==========================================================
+
+  #[test]
+  fn unknown_char_becomes_text() {
+    // バックスラッシュの後にスペースが来る → Unknown('\\') → テキストノード
+    let mut lexer = Lexer::new("\\ ");
+    let block = parser(&mut lexer).unwrap();
+    assert_eq!(block, vec![Node::Text(Cow::Owned("\\".to_string()))]);
+    return;
+  }
+
+  // ==========================================================
+  // コメントスキップのテスト
+  // ==========================================================
+
+  #[test]
+  fn comments_are_skipped() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("// this is a comment\nhello");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert — コメントはパーサーレベルで無視される
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("hello"))]);
+    return;
+  }
+
+  #[test]
+  fn inline_comment_skipped_between_tokens() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("hello// comment\nworld");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("hello")),
+        Node::Text(Cow::Borrowed("world"))
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn multiple_comments_all_skipped() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("// c1\n// c2\nhello");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("hello"))]);
+    return;
+  }
+
+  // ==========================================================
+  // コマンドのテスト
+  // ==========================================================
+
+  #[test]
+  fn command_without_args() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\foo");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "foo",
+        args: vec![],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_one_required_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\bold{hello}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "bold",
+        args: vec![vec![Node::Text(Cow::Borrowed("hello"))]],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_multiple_required_args() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\cmd{arg1}{arg2}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![
+          vec![Node::Text(Cow::Borrowed("arg1"))],
+          vec![Node::Text(Cow::Borrowed("arg2"))],
+        ],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_optional_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\cmd[opt]{arg}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![vec![Node::Text(Cow::Borrowed("arg"))]],
+        opt_args: vec![vec![Node::Text(Cow::Borrowed("opt"))]],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_multiple_optional_args() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\cmd[opt1][opt2]{arg}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![vec![Node::Text(Cow::Borrowed("arg"))]],
+        opt_args: vec![
+          vec![Node::Text(Cow::Borrowed("opt1"))],
+          vec![Node::Text(Cow::Borrowed("opt2"))],
+        ],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_nested_command_in_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\bold{\\italic{hello}}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "bold",
+        args: vec![vec![Node::Command(Command {
+          name: "italic",
+          args: vec![vec![Node::Text(Cow::Borrowed("hello"))]],
+          opt_args: vec![],
+        })]],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_arg_with_text_and_command() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\outer{text \\inner{x}}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "outer",
+        args: vec![vec![
+          Node::Text(Cow::Borrowed("text ")),
+          Node::Command(Command {
+            name: "inner",
+            args: vec![vec![Node::Text(Cow::Borrowed("x"))]],
+            opt_args: vec![],
+          }),
+        ]],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_followed_by_text() {
+    // Arrange & Act — コマンドの後に {} が来ないとき引数は空
+    let mut lexer = Lexer::new("\\cmd hello");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Command(Command {
+          name: "cmd",
+          args: vec![],
+          opt_args: vec![],
+        }),
+        Node::Text(Cow::Borrowed("hello")),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn multiple_commands_in_sequence() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\a{x}\\b{y}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Command(Command {
+          name: "a",
+          args: vec![vec![Node::Text(Cow::Borrowed("x"))]],
+          opt_args: vec![],
+        }),
+        Node::Command(Command {
+          name: "b",
+          args: vec![vec![Node::Text(Cow::Borrowed("y"))]],
+          opt_args: vec![],
+        }),
+      ]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // 環境のテスト
+  // ==========================================================
+
+  #[test]
+  fn simple_environment() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{center}hello\\end{center}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("center"),
+        args: vec![],
+        opt_args: vec![],
+        children: vec![Node::Text(Cow::Borrowed("hello"))],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn environment_with_required_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{env}{arg}content\\end{env}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("env"),
+        args: vec![vec![Node::Text(Cow::Borrowed("arg"))]],
+        opt_args: vec![],
+        children: vec![Node::Text(Cow::Borrowed("content"))],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn environment_with_optional_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{env}[opt]content\\end{env}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("env"),
+        args: vec![],
+        opt_args: vec![vec![Node::Text(Cow::Borrowed("opt"))]],
+        children: vec![Node::Text(Cow::Borrowed("content"))],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn environment_with_both_args() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{env}[opt]{arg}body\\end{env}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("env"),
+        args: vec![vec![Node::Text(Cow::Borrowed("arg"))]],
+        opt_args: vec![vec![Node::Text(Cow::Borrowed("opt"))]],
+        children: vec![Node::Text(Cow::Borrowed("body"))],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn environment_with_command_in_body() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{env}\\bold{x}\\end{env}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("env"),
+        args: vec![],
+        opt_args: vec![],
+        children: vec![Node::Command(Command {
+          name: "bold",
+          args: vec![vec![Node::Text(Cow::Borrowed("x"))]],
+          opt_args: vec![],
+        })],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn empty_environment() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{empty}\\end{empty}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("empty"),
+        args: vec![],
+        opt_args: vec![],
+        children: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn nested_environments() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{outer}\\begin{inner}text\\end{inner}\\end{outer}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Environment(Environment {
+        name: Cow::Borrowed("outer"),
+        args: vec![],
+        opt_args: vec![],
+        children: vec![Node::Environment(Environment {
+          name: Cow::Borrowed("inner"),
+          args: vec![],
+          opt_args: vec![],
+          children: vec![Node::Text(Cow::Borrowed("text"))],
+        })],
+      })]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // インライン数式のテスト
+  // ==========================================================
+
+  #[test]
+  fn simple_inline_math() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("$x$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Borrowed(
+        "x"
+      ))])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_text() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("$x + y$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Borrowed(
+        "x + y"
+      ))])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_command() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("$\\frac{a}{b}$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Command(Command {
+        name: "frac",
+        args: vec![
+          vec![Node::Text(Cow::Borrowed("a"))],
+          vec![Node::Text(Cow::Borrowed("b"))],
+        ],
+        opt_args: vec![],
+      })])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_group() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("${x}$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Group(vec![
+        InlineMathNode::Text(Cow::Borrowed("x"))
+      ])])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_nested_groups() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("${{x}}$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Group(vec![
+        InlineMathNode::Group(vec![InlineMathNode::Text(Cow::Borrowed("x"))])
+      ])])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_escaped_dollar() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("$\\$$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert — \$ は許可されたエスケープでテキストになる
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Owned(
+        "$".to_string()
+      ))])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_allowed_escapes() {
+    // Arrange & Act — \[, \], \{, \} はいずれも許可されるエスケープ
+    // 注: \\ はレキサーが LineBreak トークンに変換するため Escaped('\\') は発生しない
+    let mut lexer1 = Lexer::new("$\\[$");
+    let block = parser(&mut lexer1).unwrap();
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Owned(
+        "[".to_string()
+      ))])]
+    );
+
+    let mut lexer2 = Lexer::new("$\\]$");
+    let block = parser(&mut lexer2).unwrap();
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Owned(
+        "]".to_string()
+      ))])]
+    );
+
+    let mut lexer3 = Lexer::new("$\\{$");
+    let block = parser(&mut lexer3).unwrap();
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Owned(
+        "{".to_string()
+      ))])]
+    );
+
+    let mut lexer4 = Lexer::new("$\\}$");
+    let block = parser(&mut lexer4).unwrap();
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Text(Cow::Owned(
+        "}".to_string()
+      ))])]
+    );
+    return;
+  }
+
+  #[test]
+  fn inline_math_disallowed_escape_returns_error() {
+    // Arrange & Act — \★ のような未許可のエスケープはエラー
+    let mut lexer = Lexer::new("$\\★$");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn double_dollar_is_text() {
+    // Arrange & Act — $$ はレキサーがテキストとして扱う
+    let mut lexer = Lexer::new("$$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert — レキサーが $$ をテキストトークンとして返す
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("$$"))]);
+    return;
+  }
+
+  #[test]
+  fn empty_inline_math() {
+    // Arrange & Act — $ の直後に空白を挟んで $ → 空のInlineMath
+    let mut lexer = Lexer::new("$ $");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::InlineMath(vec![])]);
+    return;
+  }
+
+  #[test]
+  fn inline_math_with_command_in_group() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("${\\cmd{x}}$");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::InlineMath(vec![InlineMathNode::Group(vec![
+        InlineMathNode::Command(Command {
+          name: "cmd",
+          args: vec![vec![Node::Text(Cow::Borrowed("x"))]],
+          opt_args: vec![],
+        })
+      ])])]
+    );
+    return;
+  }
+
+  #[test]
+  fn text_around_inline_math() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("before $x$ after");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("before ")),
+        Node::InlineMath(vec![InlineMathNode::Text(Cow::Borrowed("x"))]),
+        Node::Text(Cow::Borrowed("after")),
+      ]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // グループ（ブレース）のテスト
+  // ==========================================================
+
+  #[test]
+  fn standalone_group_flattens_into_parent() {
+    // Arrange & Act — {text} はフラットに展開される
+    let mut lexer = Lexer::new("{hello}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("hello"))]);
+    return;
+  }
+
+  #[test]
+  fn nested_standalone_group_flattens() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("{a{b}c}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("a")),
+        Node::Text(Cow::Borrowed("b")),
+        Node::Text(Cow::Borrowed("c")),
+      ]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // エラーケースのテスト
+  // ==========================================================
+
+  #[test]
+  fn unexpected_rbrace_at_top_level_is_error() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("}");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn unexpected_rbracket_at_top_level_is_error() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("]");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn environment_missing_name_brace_is_error() {
+    // Arrange & Act — \begin の後に { がない
+    let mut lexer = Lexer::new("\\begin text\\end{text}");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn environment_missing_name_text_is_error() {
+    // Arrange & Act — \begin{} の中にテキストがない（空の{}）
+    let mut lexer = Lexer::new("\\begin{}\\end{}");
+    let result = parser(&mut lexer);
+
+    // Assert — 環境名がテキストでない場合はエラー
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn environment_mismatched_end_name_is_error() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{foo}content\\end{bar}");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn consume_expected_eof_returns_error() {
+    // Arrange & Act — 閉じ括弧がない
+    let mut lexer = Lexer::new("{unclosed");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn consume_expected_wrong_token_returns_error() {
+    // Arrange & Act — \cmd[opt の後に ] が来ずに EOF
+    let mut lexer = Lexer::new("\\cmd[opt");
+    let result = parser(&mut lexer);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  // ==========================================================
+  // 統合テスト（複合入力）
+  // ==========================================================
+
+  #[test]
+  fn complex_document_with_paragraphs_and_commands() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\h1{Title}\n\nHello \\bold{world}.");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Command(Command {
+          name: "h1",
+          args: vec![vec![Node::Text(Cow::Borrowed("Title"))]],
+          opt_args: vec![],
+        }),
+        Node::ParagraphBreak,
+        Node::Text(Cow::Borrowed("Hello ")),
+        Node::Command(Command {
+          name: "bold",
+          args: vec![vec![Node::Text(Cow::Borrowed("world"))]],
+          opt_args: vec![],
+        }),
+        Node::Text(Cow::Borrowed(".")),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn document_with_environment_and_math() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("text $x$ \\begin{env}body\\end{env}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Borrowed("text ")),
+        Node::InlineMath(vec![InlineMathNode::Text(Cow::Borrowed("x"))]),
+        Node::Environment(Environment {
+          name: Cow::Borrowed("env"),
+          args: vec![],
+          opt_args: vec![],
+          children: vec![Node::Text(Cow::Borrowed("body"))],
+        }),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_empty_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\cmd{}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![vec![]],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn command_with_empty_optional_arg() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\cmd[]");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![],
+        opt_args: vec![vec![]],
+      })]
+    );
+    return;
+  }
+
+  #[test]
+  fn paragraph_break_between_environments() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\begin{a}x\\end{a}\n\n\\begin{b}y\\end{b}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Environment(Environment {
+          name: Cow::Borrowed("a"),
+          args: vec![],
+          opt_args: vec![],
+          children: vec![Node::Text(Cow::Borrowed("x"))],
+        }),
+        Node::ParagraphBreak,
+        Node::Environment(Environment {
+          name: Cow::Borrowed("b"),
+          args: vec![],
+          opt_args: vec![],
+          children: vec![Node::Text(Cow::Borrowed("y"))],
+        }),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn escaped_chars_and_commands_mixed() {
+    // Arrange & Act
+    let mut lexer = Lexer::new("\\{text\\}\\bold{hi}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert
+    assert_eq!(
+      block,
+      vec![
+        Node::Text(Cow::Owned("{".to_string())),
+        Node::Text(Cow::Borrowed("text")),
+        Node::Text(Cow::Owned("}".to_string())),
+        Node::Command(Command {
+          name: "bold",
+          args: vec![vec![Node::Text(Cow::Borrowed("hi"))]],
+          opt_args: vec![],
+        }),
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn comment_between_command_and_arg_is_transparent() {
+    // Arrange & Act — コメントがコマンドと引数の間にある場合
+    let mut lexer = Lexer::new("\\cmd// comment\n{arg}");
+    let block = parser(&mut lexer).unwrap();
+
+    // Assert — コメントはスキップされるので引数として認識される
+    assert_eq!(
+      block,
+      vec![Node::Command(Command {
+        name: "cmd",
+        args: vec![vec![Node::Text(Cow::Borrowed("arg"))]],
+        opt_args: vec![],
+      })]
+    );
+    return;
+  }
+
+  // ==========================================================
+  // Parser プライベートメソッドの直接テスト
+  // ==========================================================
+
+  #[test]
+  fn parser_new_initializes_with_no_peeked_token() {
+    // Arrange
+    let mut lexer = Lexer::new("hello");
+
+    // Act
+    let p = Parser::new(&mut lexer);
+
+    // Assert
+    assert!(p.peeked_token.is_none());
+    return;
+  }
+
+  #[test]
+  fn parser_peek_then_next_returns_same_token() {
+    // Arrange
+    let mut lexer = Lexer::new("hello");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act — peek はトークンを消費しない
+    let peeked = p.peek_token().cloned();
+    let consumed = p.next_token();
+
+    // Assert — 同じトークンが返る
+    assert_eq!(peeked, consumed);
+    return;
+  }
+
+  #[test]
+  fn parser_next_token_returns_none_on_empty() {
+    // Arrange
+    let mut lexer = Lexer::new("");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act & Assert
+    assert!(p.next_token().is_none());
+    return;
+  }
+
+  #[test]
+  fn parser_skip_comments_and_next_skips_comments() {
+    // Arrange
+    let mut lexer = Lexer::new("// comment\nhello");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act — skip_comments_and_next はコメントをスキップする
+    let token = p.skip_comments_and_next();
+
+    // Assert
+    assert_eq!(token, Some(Token::Text(Cow::Borrowed("hello"))));
+    return;
+  }
+
+  #[test]
+  fn parser_skip_comments_and_next_returns_none_on_eof() {
+    // Arrange
+    let mut lexer = Lexer::new("// only comment");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let token = p.skip_comments_and_next();
+
+    // Assert
+    assert!(token.is_none());
+    return;
+  }
+
+  #[test]
+  fn parser_consume_expected_succeeds_on_match() {
+    // Arrange
+    let mut lexer = Lexer::new("}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.consume_expected(&Token::RBrace);
+
+    // Assert
+    assert!(result.is_ok());
+    return;
+  }
+
+  #[test]
+  fn parser_consume_expected_fails_on_mismatch() {
+    // Arrange
+    let mut lexer = Lexer::new("]");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.consume_expected(&Token::RBrace);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn parser_consume_expected_fails_on_eof() {
+    // Arrange
+    let mut lexer = Lexer::new("");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.consume_expected(&Token::RBrace);
+
+    // Assert
+    assert!(result.is_err());
+    return;
+  }
+
+  #[test]
+  fn parser_check_end_tag_name_returns_true_on_match() {
+    // Arrange — "{foo}" を入力として、 "foo" と一致するか
+    let mut lexer = Lexer::new("{foo}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.check_end_tag_name("foo");
+
+    // Assert
+    assert!(result);
+    return;
+  }
+
+  #[test]
+  fn parser_check_end_tag_name_returns_false_on_mismatch() {
+    // Arrange
+    let mut lexer = Lexer::new("{bar}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.check_end_tag_name("foo");
+
+    // Assert
+    assert!(!result);
+    return;
+  }
+
+  #[test]
+  fn parser_check_end_tag_name_returns_false_without_lbrace() {
+    // Arrange — { がない場合
+    let mut lexer = Lexer::new("foo}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let result = p.check_end_tag_name("foo");
+
+    // Assert
+    assert!(!result);
+    return;
+  }
+
+  #[test]
+  fn parser_parse_block_until_stops_at_terminator() {
+    // Arrange — "text}" を parse_block_until(Some(RBrace)) する
+    let mut lexer = Lexer::new("hello}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let block = p.parse_block_until(Some(&Token::RBrace)).unwrap();
+
+    // Assert — テキストのみ、RBrace は消費されない
+    assert_eq!(block, vec![Node::Text(Cow::Borrowed("hello"))]);
+    // RBrace がまだ残っている
+    assert_eq!(p.peek_token(), Some(&Token::RBrace));
+    return;
+  }
+
+  #[test]
+  fn parser_parse_inline_math_group_basic() {
+    // Arrange — "x}" から parse_inline_math_group（} で終了）
+    let mut lexer = Lexer::new("x}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let nodes = p.parse_inline_math_group().unwrap();
+
+    // Assert
+    assert_eq!(nodes, vec![InlineMathNode::Text(Cow::Borrowed("x"))]);
+    return;
+  }
+
+  #[test]
+  fn parser_parse_inline_math_group_nested() {
+    // Arrange — "{inner}}" — 内部にネストしたグループ
+    let mut lexer = Lexer::new("{inner}}");
+    let mut p = Parser::new(&mut lexer);
+
+    // Act
+    let nodes = p.parse_inline_math_group().unwrap();
+
+    // Assert
+    assert_eq!(
+      nodes,
+      vec![InlineMathNode::Group(vec![InlineMathNode::Text(
+        Cow::Borrowed("inner")
+      )])]
+    );
+    return;
+  }
+}

@@ -35,7 +35,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # 3. ビルドとテストの実行
   test:
     name: Test
     runs-on: ubuntu-latest
