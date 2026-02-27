@@ -42,7 +42,7 @@ use miette::Diagnostic;
 use read_config_file::{FontConfig, FontConfigs};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
-use types::FontType;
+use types::{FontMap, FontType};
 
 use crate::FontRefs;
 
@@ -147,34 +147,14 @@ impl FontInfo {
   }
 }
 
-/// 全フォント種別のメタデータをまとめて管理する構造体
+/// 全フォント種別のメタデータをまとめて管理する型
 ///
 /// Serif、Sans Serif、Monospace、Math、日本語フォントなど 19 種類のフォント種別ごとに
 /// `FontInfo` を保持し、PDF 生成全体で使用するメタデータカタログとして機能します。
-#[derive(Debug)]
-pub struct FontInfos {
-  serif: FontInfo,
-  serif_bold: FontInfo,
-  serif_italic: FontInfo,
-  serif_bold_italic: FontInfo,
-  sans_serif: FontInfo,
-  sans_serif_bold: FontInfo,
-  sans_serif_italic: FontInfo,
-  sans_serif_bold_italic: FontInfo,
-  monospace: FontInfo,
-  monospace_bold: FontInfo,
-  monospace_italic: FontInfo,
-  monospace_bold_italic: FontInfo,
-  math: FontInfo,
-  japanese_serif: FontInfo,
-  japanese_serif_bold: FontInfo,
-  japanese_sans_serif: FontInfo,
-  japanese_sans_serif_bold: FontInfo,
-  japanese_monospace: FontInfo,
-  japanese_monospace_bold: FontInfo,
-}
+pub type FontInfos = FontMap<FontInfo>;
 
-impl FontInfos {
+/// `FontInfos` のコンストラクタを提供するトレイト
+pub trait FontInfosExt: Sized {
   /// フォント設定とフォント参照から `FontInfos` を生成します
   ///
   /// `FontType::ALL` に列挙されたすべてのフォント種別に対応する
@@ -192,75 +172,15 @@ impl FontInfos {
   /// # Errors
   ///
   /// いずれかのフォント種別から `FontInfo` の生成に失敗した場合、エラーを返します。
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が予期した 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  pub fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self> {
-    let font_infos = FontType::ALL
+  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self>;
+}
+
+impl FontInfosExt for FontInfos {
+  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self> {
+    let font_infos: Vec<FontInfo> = FontType::ALL
       .iter()
       .map(|font_type| FontInfo::new(font_configs.get(*font_type), font_refs.get(*font_type)))
       .collect::<Result<Vec<FontInfo>, _>>()?;
-    let mut font_infos = font_infos.into_iter();
-
-    #[allow(clippy::unwrap_used)]
-    return Ok(Self {
-      serif: font_infos.next().unwrap(),
-      serif_bold: font_infos.next().unwrap(),
-      serif_italic: font_infos.next().unwrap(),
-      serif_bold_italic: font_infos.next().unwrap(),
-      sans_serif: font_infos.next().unwrap(),
-      sans_serif_bold: font_infos.next().unwrap(),
-      sans_serif_italic: font_infos.next().unwrap(),
-      sans_serif_bold_italic: font_infos.next().unwrap(),
-      monospace: font_infos.next().unwrap(),
-      monospace_bold: font_infos.next().unwrap(),
-      monospace_italic: font_infos.next().unwrap(),
-      monospace_bold_italic: font_infos.next().unwrap(),
-      math: font_infos.next().unwrap(),
-      japanese_serif: font_infos.next().unwrap(),
-      japanese_serif_bold: font_infos.next().unwrap(),
-      japanese_sans_serif: font_infos.next().unwrap(),
-      japanese_sans_serif_bold: font_infos.next().unwrap(),
-      japanese_monospace: font_infos.next().unwrap(),
-      japanese_monospace_bold: font_infos.next().unwrap(),
-    });
-  }
-
-  /// 指定されたフォント種別に対応するメタデータを取得します
-  ///
-  /// 19 種類のフォント種別から、指定された種別に対応する `FontInfo` を返します。
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別（Serif、SansSerif、Monospace など）
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `FontInfo` への不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &FontInfo {
-    return match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    };
+    return Ok(FontInfos::from_all(font_infos));
   }
 }

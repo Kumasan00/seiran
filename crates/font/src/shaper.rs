@@ -95,6 +95,7 @@ use miette::Diagnostic;
 use rayon::prelude::*;
 use read_config_file::{FontConfig, FontConfigs};
 use thiserror::Error;
+use types::FontMap;
 
 use crate::{FontRefs, FontType};
 
@@ -129,106 +130,25 @@ pub enum ShaperError {
 ///
 /// 19 種類のフォント種別ごとの `ShaperData` を保持します。
 /// `ShaperData` はテキストシェイピング時にグリフ情報を参照するために使用されます。
-pub struct ShaperDatas {
-  serif: ShaperData,
-  serif_bold: ShaperData,
-  serif_italic: ShaperData,
-  serif_bold_italic: ShaperData,
-  sans_serif: ShaperData,
-  sans_serif_bold: ShaperData,
-  sans_serif_italic: ShaperData,
-  sans_serif_bold_italic: ShaperData,
-  monospace: ShaperData,
-  monospace_bold: ShaperData,
-  monospace_italic: ShaperData,
-  monospace_bold_italic: ShaperData,
-  math: ShaperData,
-  japanese_serif: ShaperData,
-  japanese_serif_bold: ShaperData,
-  japanese_sans_serif: ShaperData,
-  japanese_sans_serif_bold: ShaperData,
-  japanese_monospace: ShaperData,
-  japanese_monospace_bold: ShaperData,
-}
+pub type ShaperDatas = FontMap<ShaperData>;
 
-impl ShaperDatas {
+/// `ShaperDatas` のコンストラクタを提供するトレイト
+pub trait ShaperDatasExt {
   /// フォント参照から `HarfRust` シェイピング用のデータを生成します
-  ///
-  /// 各フォント種別に対応する `ShaperData` を生成し、
-  /// テキストシェイピングで使用するシェイパーデータをプリペア（事前構築）します。
   ///
   /// # Arguments
   ///
   /// * `font_refs` - 各フォント種別のロード済みフォント参照
-  ///
-  /// # Returns
-  ///
-  /// すべてのフォント種別のシェイパーデータを含む `ShaperDatas`
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  #[must_use]
-  pub fn new(font_refs: &FontRefs) -> Self {
-    let mut shaper_datas = FontType::ALL.iter().map(|&font_type| ShaperData::new(font_refs.get(font_type)));
+  fn new(font_refs: &FontRefs) -> Self;
+}
 
-    #[allow(clippy::expect_used)]
-    Self {
-      serif: shaper_datas.next().expect("ShaperData count mismatch"),
-      serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-      serif_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      serif_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      sans_serif: shaper_datas.next().expect("ShaperData count mismatch"),
-      sans_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-      sans_serif_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      sans_serif_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      monospace: shaper_datas.next().expect("ShaperData count mismatch"),
-      monospace_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-      monospace_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      monospace_bold_italic: shaper_datas.next().expect("ShaperData count mismatch"),
-      math: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_serif: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_sans_serif: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_sans_serif_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_monospace: shaper_datas.next().expect("ShaperData count mismatch"),
-      japanese_monospace_bold: shaper_datas.next().expect("ShaperData count mismatch"),
-    }
-  }
-
-  /// 指定されたフォント種別に対応するシェイパーデータを取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `ShaperData` への不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &ShaperData {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
+impl ShaperDatasExt for ShaperDatas {
+  fn new(font_refs: &FontRefs) -> Self {
+    let shaper_datas: Vec<ShaperData> = FontType::ALL
+      .iter()
+      .map(|&font_type| ShaperData::new(font_refs.get(font_type)))
+      .collect();
+    return ShaperDatas::from_all(shaper_datas);
   }
 }
 
@@ -236,29 +156,10 @@ impl ShaperDatas {
 ///
 /// 19 種類のフォント種別ごとに、バリアブルフォント軸の設定がある場合は
 /// `ShaperInstance` を保持します（軸設定がない場合は `None`）。
-pub struct ShaperInstances {
-  serif: Option<ShaperInstance>,
-  serif_bold: Option<ShaperInstance>,
-  serif_italic: Option<ShaperInstance>,
-  serif_bold_italic: Option<ShaperInstance>,
-  sans_serif: Option<ShaperInstance>,
-  sans_serif_bold: Option<ShaperInstance>,
-  sans_serif_italic: Option<ShaperInstance>,
-  sans_serif_bold_italic: Option<ShaperInstance>,
-  monospace: Option<ShaperInstance>,
-  monospace_bold: Option<ShaperInstance>,
-  monospace_italic: Option<ShaperInstance>,
-  monospace_bold_italic: Option<ShaperInstance>,
-  math: Option<ShaperInstance>,
-  japanese_serif: Option<ShaperInstance>,
-  japanese_serif_bold: Option<ShaperInstance>,
-  japanese_sans_serif: Option<ShaperInstance>,
-  japanese_sans_serif_bold: Option<ShaperInstance>,
-  japanese_monospace: Option<ShaperInstance>,
-  japanese_monospace_bold: Option<ShaperInstance>,
-}
+pub type ShaperInstances = FontMap<Option<ShaperInstance>>;
 
-impl ShaperInstances {
+/// `ShaperInstances` のコンストラクタを提供するトレイト
+pub trait ShaperInstancesExt {
   /// フォント設定からシェイパーインスタンスを生成します
   ///
   /// バリアブルフォント軸の設定がある場合は `ShaperInstance` を生成します。
@@ -268,112 +169,50 @@ impl ShaperInstances {
   ///
   /// * `configs` - 各フォント種別の設定情報（バリアブルフォント軸を含む）
   /// * `font_refs` - 各フォント種別のロード済みフォント参照
-  ///
-  /// # Returns
-  ///
-  /// すべてのフォント種別のシェイパーインスタンスをまとめた `ShaperInstances`
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  #[must_use]
-  pub fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self {
-    let shaper_instances = FontType::ALL
+  fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self;
+}
+
+impl ShaperInstancesExt for ShaperInstances {
+  fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self {
+    let shaper_instances: Vec<Option<ShaperInstance>> = FontType::ALL
       .par_iter()
       .map(|&font_type| {
         let config = configs.get(font_type);
         let font_ref = font_refs.get(font_type);
-        ShaperInstances::build_instance(config, font_ref)
+        build_shaper_instance(config, font_ref)
       })
-      .collect::<Vec<Option<ShaperInstance>>>();
-    let mut instance_iter = shaper_instances.into_iter();
-
-    #[allow(clippy::expect_used)]
-    return ShaperInstances {
-      serif: instance_iter.next().expect("ShaperInstance count mismatch"),
-      serif_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-      serif_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      serif_bold_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      sans_serif: instance_iter.next().expect("ShaperInstance count mismatch"),
-      sans_serif_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-      sans_serif_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      sans_serif_bold_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      monospace: instance_iter.next().expect("ShaperInstance count mismatch"),
-      monospace_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-      monospace_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      monospace_bold_italic: instance_iter.next().expect("ShaperInstance count mismatch"),
-      math: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_serif: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_serif_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_sans_serif: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_sans_serif_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_monospace: instance_iter.next().expect("ShaperInstance count mismatch"),
-      japanese_monospace_bold: instance_iter.next().expect("ShaperInstance count mismatch"),
-    };
+      .collect();
+    return ShaperInstances::from_all(shaper_instances);
   }
+}
 
-  /// バリアブルフォント軸設定からシェイパーインスタンスを生成します
-  ///
-  /// フォント設定にバリアブルフォント軸が指定されている場合、
-  /// それらの軸値から `ShaperInstance` を生成します。
-  /// 軸設定がない場合は `None` を返します。
-  ///
-  /// # Arguments
-  ///
-  /// * `config` - フォント設定情報（バリアブル軸を含む）
-  /// * `font_ref` - フォント参照
-  ///
-  /// # Returns
-  ///
-  /// 軸設定がある場合は `Some(ShaperInstance)`、ない場合は `None`
-  fn build_instance(config: &FontConfig, font_ref: &FontRef) -> Option<ShaperInstance> {
-    config.variation_axes.as_ref()?;
+/// バリアブルフォント軸設定からシェイパーインスタンスを生成します
+///
+/// フォント設定にバリアブルフォント軸が指定されている場合、
+/// それらの軸値から `ShaperInstance` を生成します。
+/// 軸設定がない場合は `None` を返します。
+///
+/// # Arguments
+///
+/// * `config` - フォント設定情報（バリアブル軸を含む）
+/// * `font_ref` - フォント参照
+///
+/// # Returns
+///
+/// 軸設定がある場合は `Some(ShaperInstance)`、ない場合は `None`
+fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<ShaperInstance> {
+  config.variation_axes.as_ref()?;
 
-    let variations = config.variation_axes.as_ref().map(|axes| {
-      axes
-        .iter()
-        .map(|axis| Variation::from((Tag::new(&axis.name), axis.value as f32)))
-        .collect::<Vec<Variation>>()
-    });
+  let variations = config.variation_axes.as_ref().map(|axes| {
+    axes
+      .iter()
+      .map(|axis| Variation::from((Tag::new(&axis.name), axis.value as f32)))
+      .collect::<Vec<Variation>>()
+  });
 
-    let instance = variations.as_ref().map(|variations| ShaperInstance::from_variations(font_ref, variations));
+  let instance = variations.as_ref().map(|variations| ShaperInstance::from_variations(font_ref, variations));
 
-    return instance;
-  }
-
-  /// 指定されたフォント種別のシェイパーインスタンスを取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// インスタンスが存在する場合は `Some(&ShaperInstance)`、ない場合は `None`
-  fn get(&self, font_type: FontType) -> Option<&ShaperInstance> {
-    match font_type {
-      FontType::Serif => self.serif.as_ref(),
-      FontType::SerifBold => self.serif_bold.as_ref(),
-      FontType::SerifItalic => self.serif_italic.as_ref(),
-      FontType::SerifBoldItalic => self.serif_bold_italic.as_ref(),
-      FontType::SansSerif => self.sans_serif.as_ref(),
-      FontType::SansSerifBold => self.sans_serif_bold.as_ref(),
-      FontType::SansSerifItalic => self.sans_serif_italic.as_ref(),
-      FontType::SansSerifBoldItalic => self.sans_serif_bold_italic.as_ref(),
-      FontType::Monospace => self.monospace.as_ref(),
-      FontType::MonospaceBold => self.monospace_bold.as_ref(),
-      FontType::MonospaceItalic => self.monospace_italic.as_ref(),
-      FontType::MonospaceBoldItalic => self.monospace_bold_italic.as_ref(),
-      FontType::Math => self.math.as_ref(),
-      FontType::JapaneseSerif => self.japanese_serif.as_ref(),
-      FontType::JapaneseSerifBold => self.japanese_serif_bold.as_ref(),
-      FontType::JapaneseSansSerif => self.japanese_sans_serif.as_ref(),
-      FontType::JapaneseSansSerifBold => self.japanese_sans_serif_bold.as_ref(),
-      FontType::JapaneseMonospace => self.japanese_monospace.as_ref(),
-      FontType::JapaneseMonospaceBold => self.japanese_monospace_bold.as_ref(),
-    }
-  }
+  return instance;
 }
 
 /// `HarfRust` のテキストシェイピングエンジンの集合
@@ -381,35 +220,14 @@ impl ShaperInstances {
 /// 19 種類のフォント種別ごとに `HarfRustShaper` を保持します。
 /// このシェイパー群は、与えられたテキストを各フォント種別で
 /// シェイピング（グリフ配置の計算）するための統一インターフェースを提供します。
-pub struct HarfRustShapers<'a> {
-  serif: HarfRustShaper<'a>,
-  serif_bold: HarfRustShaper<'a>,
-  serif_italic: HarfRustShaper<'a>,
-  serif_bold_italic: HarfRustShaper<'a>,
-  sans_serif: HarfRustShaper<'a>,
-  sans_serif_bold: HarfRustShaper<'a>,
-  sans_serif_italic: HarfRustShaper<'a>,
-  sans_serif_bold_italic: HarfRustShaper<'a>,
-  monospace: HarfRustShaper<'a>,
-  monospace_bold: HarfRustShaper<'a>,
-  monospace_italic: HarfRustShaper<'a>,
-  monospace_bold_italic: HarfRustShaper<'a>,
-  math: HarfRustShaper<'a>,
-  japanese_serif: HarfRustShaper<'a>,
-  japanese_serif_bold: HarfRustShaper<'a>,
-  japanese_sans_serif: HarfRustShaper<'a>,
-  japanese_sans_serif_bold: HarfRustShaper<'a>,
-  japanese_monospace: HarfRustShaper<'a>,
-  japanese_monospace_bold: HarfRustShaper<'a>,
-}
+pub type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 
-impl<'a> HarfRustShapers<'a> {
+/// `HarfRustShapers` のコンストラクタを提供するトレイト
+pub trait HarfRustShapersExt<'a>: Sized {
   /// `HarfRust` シェイパー一式を生成します
   ///
   /// フォント設定、シェイパーデータ、シェイパーインスタンスから
   /// 19 種類全てのフォント種別に対応する `HarfRust` シェイパーを生成します。
-  /// 各シェイパーは、テキストシェイピング時に必要なスクリプト、言語、
-  /// 機能情報（フィーチャー）を保有します。
   ///
   /// # Arguments
   ///
@@ -418,95 +236,35 @@ impl<'a> HarfRustShapers<'a> {
   /// * `shaper_datas` - `HarfRust` シェイピング用の事前構築データ
   /// * `instances` - バリアブルフォント軸のインスタンス情報
   ///
-  /// # Returns
-  ///
-  /// すべてのフォント種別のシェイパーを含む `HarfRustShapers`
-  ///
   /// # Errors
   ///
-  /// 以下の場合にエラーを返します：
-  /// - 言語タグの解析に失敗した場合
-  /// - UTF-8 文字列への変換に失敗した場合
-  /// - シェイパーの初期化に失敗した場合
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  pub fn new(
+  /// 言語タグの解析に失敗した場合やシェイパーの初期化に失敗した場合にエラーを返します。
+  fn new(
     configs: &FontConfigs,
     font_refs: &'a FontRefs,
     shaper_datas: &'a ShaperDatas,
     instances: &'a ShaperInstances,
-  ) -> Result<HarfRustShapers<'a>, ShaperError> {
-    let harfrust_shaper = FontType::ALL
+  ) -> Result<Self, ShaperError>;
+}
+
+impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
+  fn new(
+    configs: &FontConfigs,
+    font_refs: &'a FontRefs,
+    shaper_datas: &'a ShaperDatas,
+    instances: &'a ShaperInstances,
+  ) -> Result<Self, ShaperError> {
+    let harfrust_shapers: Vec<HarfRustShaper<'a>> = FontType::ALL
       .par_iter()
       .map(|&font_type| {
         let config = configs.get(font_type);
         let font_ref = font_refs.get(font_type);
         let shaper_data = shaper_datas.get(font_type);
-        let instance = instances.get(font_type);
+        let instance = instances.get(font_type).as_ref();
         HarfRustShaper::new(config, font_ref, shaper_data, instance)
       })
       .collect::<Result<Vec<HarfRustShaper>, ShaperError>>()?;
-    let mut shaper_iter = harfrust_shaper.into_iter();
-
-    #[allow(clippy::expect_used)]
-    return Ok(HarfRustShapers {
-      serif: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      serif_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      serif_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      serif_bold_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      sans_serif: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      sans_serif_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      sans_serif_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      sans_serif_bold_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      monospace: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      monospace_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      monospace_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      monospace_bold_italic: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      math: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_serif: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_serif_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_sans_serif: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_sans_serif_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_monospace: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-      japanese_monospace_bold: shaper_iter.next().expect("HarfRustShaper count mismatch"),
-    });
-  }
-
-  /// 指定されたフォント種別に対応するシェイパーを取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `HarfRustShaper` への参照
-  #[must_use]
-  pub fn get(&'a self, font_type: FontType) -> &'a HarfRustShaper<'a> {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
+    return Ok(HarfRustShapers::from_all(harfrust_shapers));
   }
 }
 

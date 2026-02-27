@@ -44,7 +44,7 @@
 //! 各フォント種別（Serif、SansSerif、Monospace、Math、日本語フォント）は
 //! 独立したグリフマッピングを持ち、並列処理で効率的に管理されます。
 
-use types::FontType;
+use types::{FontMap, FontType};
 
 use crate::font_info::{FontInfo, FontInfos};
 
@@ -53,30 +53,10 @@ use crate::font_info::{FontInfo, FontInfos};
 /// Serif、Sans Serif、Monospace、Math、日本語フォントなど 19 種類のフォント種別ごとに
 /// グリフマッピング情報を保持します。各フォント種別のグリフ ID と
 /// CID（Character ID）のマッピング、グリフ幅、文字情報などを管理します。
-#[derive(Debug)]
-pub struct GlyphMappings {
-  serif: GlyphMapping,
-  serif_bold: GlyphMapping,
-  serif_italic: GlyphMapping,
-  serif_bold_italic: GlyphMapping,
-  sans_serif: GlyphMapping,
-  sans_serif_bold: GlyphMapping,
-  sans_serif_italic: GlyphMapping,
-  sans_serif_bold_italic: GlyphMapping,
-  monospace: GlyphMapping,
-  monospace_bold: GlyphMapping,
-  monospace_italic: GlyphMapping,
-  monospace_bold_italic: GlyphMapping,
-  math: GlyphMapping,
-  japanese_serif: GlyphMapping,
-  japanese_serif_bold: GlyphMapping,
-  japanese_sans_serif: GlyphMapping,
-  japanese_sans_serif_bold: GlyphMapping,
-  japanese_monospace: GlyphMapping,
-  japanese_monospace_bold: GlyphMapping,
-}
+pub type GlyphMappings = FontMap<GlyphMapping>;
 
-impl GlyphMappings {
+/// `GlyphMappings` のコンストラクタを提供するトレイト
+pub trait GlyphMappingsExt {
   /// フォント情報からグリフマッピングを初期化します
   ///
   /// `FontType::ALL` に列挙されたすべてのフォント種別に対して
@@ -86,112 +66,19 @@ impl GlyphMappings {
   /// # Arguments
   ///
   /// * `font_infos` - 各フォント種別のメタデータ情報
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が予期した 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  #[must_use]
-  pub fn new(font_infos: &FontInfos) -> Self {
-    let mut glyph_mappings = FontType::ALL.iter().map(|font_type| {
-      let font_info = font_infos.get(*font_type);
-      GlyphMapping::new(font_info)
-    });
+  fn new(font_infos: &FontInfos) -> Self;
+}
 
-    #[allow(clippy::expect_used)]
-    Self {
-      serif: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      serif_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      serif_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      serif_bold_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      sans_serif: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      sans_serif_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      sans_serif_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      sans_serif_bold_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      monospace: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      monospace_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      monospace_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      monospace_bold_italic: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      math: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_serif: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_serif_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_sans_serif: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_sans_serif_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_monospace: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-      japanese_monospace_bold: glyph_mappings.next().expect("GlyphMappings count mismatch"),
-    }
-  }
-
-  /// 指定されたフォント種別に対応するグリフマッピングの可変参照を取得します
-  ///
-  /// グリフマッピングを修正する際に使用します（例：新しいグリフを登録する）。
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `GlyphMapping` への可変参照
-  #[must_use]
-  pub fn get_mut(&mut self, font_type: FontType) -> &mut GlyphMapping {
-    match font_type {
-      FontType::Serif => &mut self.serif,
-      FontType::SerifBold => &mut self.serif_bold,
-      FontType::SerifItalic => &mut self.serif_italic,
-      FontType::SerifBoldItalic => &mut self.serif_bold_italic,
-      FontType::SansSerif => &mut self.sans_serif,
-      FontType::SansSerifBold => &mut self.sans_serif_bold,
-      FontType::SansSerifItalic => &mut self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &mut self.sans_serif_bold_italic,
-      FontType::Monospace => &mut self.monospace,
-      FontType::MonospaceBold => &mut self.monospace_bold,
-      FontType::MonospaceItalic => &mut self.monospace_italic,
-      FontType::MonospaceBoldItalic => &mut self.monospace_bold_italic,
-      FontType::Math => &mut self.math,
-      FontType::JapaneseSerif => &mut self.japanese_serif,
-      FontType::JapaneseSerifBold => &mut self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &mut self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &mut self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &mut self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &mut self.japanese_monospace_bold,
-    }
-  }
-
-  /// 指定されたフォント種別に対応するグリフマッピングを取得します
-  ///
-  /// グリフマッピング情報を参照する際に使用します。
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `GlyphMapping` への不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &GlyphMapping {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
+impl GlyphMappingsExt for GlyphMappings {
+  fn new(font_infos: &FontInfos) -> Self {
+    let glyph_mappings: Vec<GlyphMapping> = FontType::ALL
+      .iter()
+      .map(|font_type| {
+        let font_info = font_infos.get(*font_type);
+        GlyphMapping::new(font_info)
+      })
+      .collect();
+    return GlyphMappings::from_all(glyph_mappings);
   }
 }
 

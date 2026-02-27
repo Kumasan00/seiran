@@ -3,7 +3,10 @@
 
 use std::path::Path;
 
-use font::{font_info, glyph_mapping, shaper, subset, validate_font};
+use font::{
+  FontDataExt, FontRefsExt, font_info, font_info::FontInfosExt, glyph_mapping, glyph_mapping::GlyphMappingsExt,
+  shaper, shaper::ShaperDatasExt, shaper::ShaperInstancesExt, shaper::HarfRustShapersExt, subset, validate_font,
+};
 use miette::IntoDiagnostic;
 use parser::layout_engine;
 use tracing::info;

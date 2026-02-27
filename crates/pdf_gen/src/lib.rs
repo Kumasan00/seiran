@@ -10,7 +10,7 @@ use font::{font_info::FontInfos, glyph_mapping::GlyphMappings, subset::FontSubse
 use parser::layout_engine::Item;
 use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str};
 use read_config_file::Config;
-use types::FontType;
+use types::{FontMap, FontType};
 
 use crate::{content::PDFContent, glyph_mapping::PDFInfo};
 
@@ -43,25 +43,7 @@ struct PdfIds {
   page_tree_id: Ref,
   page_ids: Vec<Ref>,
   content_ids: Vec<ContentIds>,
-  serif_font: Option<FontIds>,
-  serif_bold_font: Option<FontIds>,
-  serif_italic_font: Option<FontIds>,
-  serif_bold_italic_font: Option<FontIds>,
-  sans_serif_font: Option<FontIds>,
-  sans_serif_bold_font: Option<FontIds>,
-  sans_serif_italic_font: Option<FontIds>,
-  sans_serif_bold_italic_font: Option<FontIds>,
-  monospace_font: Option<FontIds>,
-  monospace_bold_font: Option<FontIds>,
-  monospace_italic_font: Option<FontIds>,
-  monospace_bold_italic_font: Option<FontIds>,
-  math_font: Option<FontIds>,
-  japanese_serif_font: Option<FontIds>,
-  japanese_serif_bold_font: Option<FontIds>,
-  japanese_sans_serif_font: Option<FontIds>,
-  japanese_sans_serif_bold_font: Option<FontIds>,
-  japanese_monospace_font: Option<FontIds>,
-  japanese_monospace_bold_font: Option<FontIds>,
+  font_ids: FontMap<Option<FontIds>>,
 }
 
 impl PdfIds {
@@ -90,72 +72,36 @@ impl PdfIds {
       })
       .collect();
 
-    let mut font_ids = FontType::ALL.iter().map(|font_type| {
-      let subset_byte = subset_bytes.get(*font_type);
-      if subset_byte.is_some() {
-        Some(FontIds {
-          font: next_id(),
-          cid_font: next_id(),
-          font_descriptor: next_id(),
-          cid_to_gid_map: next_id(),
-          to_unicode_cmap: next_id(),
-          font_file: next_id(),
-        })
-      } else {
-        None
-      }
-    });
+    let font_id_values: Vec<Option<FontIds>> = FontType::ALL
+      .iter()
+      .map(|font_type| {
+        let subset_byte = subset_bytes.get(*font_type);
+        if subset_byte.is_some() {
+          Some(FontIds {
+            font: next_id(),
+            cid_font: next_id(),
+            font_descriptor: next_id(),
+            cid_to_gid_map: next_id(),
+            to_unicode_cmap: next_id(),
+            font_file: next_id(),
+          })
+        } else {
+          None
+        }
+      })
+      .collect();
 
-    #[allow(clippy::expect_used)]
     return Self {
       catalog_id,
       page_tree_id,
       page_ids,
       content_ids,
-      serif_font: font_ids.next().expect("FontId count mismatch"),
-      serif_bold_font: font_ids.next().expect("FontId count mismatch"),
-      serif_italic_font: font_ids.next().expect("FontId count mismatch"),
-      serif_bold_italic_font: font_ids.next().expect("FontId count mismatch"),
-      sans_serif_font: font_ids.next().expect("FontId count mismatch"),
-      sans_serif_bold_font: font_ids.next().expect("FontId count mismatch"),
-      sans_serif_italic_font: font_ids.next().expect("FontId count mismatch"),
-      sans_serif_bold_italic_font: font_ids.next().expect("FontId count mismatch"),
-      monospace_font: font_ids.next().expect("FontId count mismatch"),
-      monospace_bold_font: font_ids.next().expect("FontId count mismatch"),
-      monospace_italic_font: font_ids.next().expect("FontId count mismatch"),
-      monospace_bold_italic_font: font_ids.next().expect("FontId count mismatch"),
-      math_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_serif_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_serif_bold_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_sans_serif_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_sans_serif_bold_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_monospace_font: font_ids.next().expect("FontId count mismatch"),
-      japanese_monospace_bold_font: font_ids.next().expect("FontId count mismatch"),
+      font_ids: FontMap::from_all(font_id_values),
     };
   }
 
-  fn get(&self, font_type: FontType) -> Option<&FontIds> {
-    match font_type {
-      FontType::Serif => self.serif_font.as_ref(),
-      FontType::SerifBold => self.serif_bold_font.as_ref(),
-      FontType::SerifItalic => self.serif_italic_font.as_ref(),
-      FontType::SerifBoldItalic => self.serif_bold_italic_font.as_ref(),
-      FontType::SansSerif => self.sans_serif_font.as_ref(),
-      FontType::SansSerifBold => self.sans_serif_bold_font.as_ref(),
-      FontType::SansSerifItalic => self.sans_serif_italic_font.as_ref(),
-      FontType::SansSerifBoldItalic => self.sans_serif_bold_italic_font.as_ref(),
-      FontType::Monospace => self.monospace_font.as_ref(),
-      FontType::MonospaceBold => self.monospace_bold_font.as_ref(),
-      FontType::MonospaceItalic => self.monospace_italic_font.as_ref(),
-      FontType::MonospaceBoldItalic => self.monospace_bold_italic_font.as_ref(),
-      FontType::Math => self.math_font.as_ref(),
-      FontType::JapaneseSerif => self.japanese_serif_font.as_ref(),
-      FontType::JapaneseSerifBold => self.japanese_serif_bold_font.as_ref(),
-      FontType::JapaneseSansSerif => self.japanese_sans_serif_font.as_ref(),
-      FontType::JapaneseSansSerifBold => self.japanese_sans_serif_bold_font.as_ref(),
-      FontType::JapaneseMonospace => self.japanese_monospace_font.as_ref(),
-      FontType::JapaneseMonospaceBold => self.japanese_monospace_bold_font.as_ref(),
-    }
+  fn get_font(&self, font_type: FontType) -> Option<&FontIds> {
+    self.font_ids.get(font_type).as_ref()
   }
 }
 
@@ -193,7 +139,7 @@ pub fn pdf_gen(
   pdf.pages(pdf_ids.page_tree_id).kids(pdf_ids.page_ids.iter().copied()).count(page_count);
 
   for font_type in &FontType::ALL {
-    if let Some(font_ids) = pdf_ids.get(*font_type) {
+    if let Some(font_ids) = pdf_ids.get_font(*font_type) {
       let font_config = font_configs.get(*font_type);
       let font_name = &font_config.font_name;
       let font_pdf_name = Name(font_name.as_bytes());
@@ -244,7 +190,7 @@ pub fn pdf_gen(
         glyph_mapping.build_to_unicode_cmap(font_name.as_str()).finish().as_slice(),
       );
       #[allow(clippy::expect_used)]
-      let data = subset_bytes.get(*font_type).expect("Font subset bytes not found");
+      let data = subset_bytes.get(*font_type).as_ref().expect("Font subset bytes not found");
       pdf.stream(font_ids.font_file, data);
     }
   }
@@ -266,7 +212,7 @@ pub fn pdf_gen(
     let mut resources = page.resources();
     let mut fonts = resources.fonts();
     for font_type in &FontType::ALL {
-      if let Some(font_ids) = pdf_ids.get(*font_type) {
+      if let Some(font_ids) = pdf_ids.get_font(*font_type) {
         let font_config = font_configs.get(*font_type);
         let font_name = &font_config.font_name;
         fonts.pair(Name(font_name.as_bytes()), font_ids.font);

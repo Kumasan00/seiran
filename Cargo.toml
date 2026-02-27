@@ -25,6 +25,7 @@ version = "0.1.0"
 [workspace.dependencies]
 allsorts = "0.16.1"
 clap = { version = "4.5.60", features = ["derive"] }
+figment = { version = "0.10", features = ["toml"] }
 font-types = "0.11.0"
 harfrust = "0.5.0"
 icu = { version = "2.1.1", features = ["compiled_data"] }

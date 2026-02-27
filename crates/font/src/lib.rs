@@ -83,7 +83,7 @@ use miette::IntoDiagnostic;
 use rayon::prelude::*;
 use read_config_file::FontConfigs;
 use read_fonts::FontRef;
-use types::FontType;
+use types::{FontMap, FontType};
 
 pub mod font_info;
 pub mod glyph_mapping;
@@ -96,32 +96,15 @@ pub mod validate_font;
 /// 19 種類のフォント種別ごとのバイナリデータ（オンメモリ）を保持します。
 /// このデータから複数の `FontRef` インスタンスを生成でき、
 /// 効率的にフォント情報にアクセスできます。
-pub struct FontData {
-  serif: Vec<u8>,
-  serif_bold: Vec<u8>,
-  serif_italic: Vec<u8>,
-  serif_bold_italic: Vec<u8>,
-  sans_serif: Vec<u8>,
-  sans_serif_bold: Vec<u8>,
-  sans_serif_italic: Vec<u8>,
-  sans_serif_bold_italic: Vec<u8>,
-  monospace: Vec<u8>,
-  monospace_bold: Vec<u8>,
-  monospace_italic: Vec<u8>,
-  monospace_bold_italic: Vec<u8>,
-  math: Vec<u8>,
-  japanese_serif: Vec<u8>,
-  japanese_serif_bold: Vec<u8>,
-  japanese_sans_serif: Vec<u8>,
-  japanese_sans_serif_bold: Vec<u8>,
-  japanese_monospace: Vec<u8>,
-  japanese_monospace_bold: Vec<u8>,
-}
+///
+/// 内部的には [`FontMap<Vec<u8>>`] を使用しています。
+pub type FontData = FontMap<Vec<u8>>;
 
-impl FontData {
+/// `FontData` のコンストラクタと拡張メソッド
+pub trait FontDataExt: Sized {
   /// 設定に従ってすべてのフォントファイルを読み込みます
   ///
-  /// `FontType::ALL` に列挙されたロロすべてのフォント種別に対応するファイルを
+  /// `FontType::ALL` に列挙されたすべてのフォント種別に対応するファイルを
   /// ディスクから読み込み、メモリに配置します。読み込みは並列処理で実行されます。
   ///
   /// # Arguments
@@ -138,12 +121,11 @@ impl FontData {
   /// - ファイルが見つからない
   /// - ファイルの読み込み権限がない
   /// - ディスク I/O エラーが発生した
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  pub fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
+  fn new(font_configs: &FontConfigs) -> miette::Result<Self>;
+}
+
+impl FontDataExt for FontData {
+  fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
     let font_datas = FontType::ALL
       .par_iter()
       .map(|&font_type| {
@@ -152,147 +134,21 @@ impl FontData {
         fs::read(font_path).into_diagnostic()
       })
       .collect::<Result<Vec<Vec<u8>>, miette::Report>>()?;
-    let mut font_data_iter = font_datas.into_iter();
-    #[allow(clippy::expect_used)]
-    Ok(Self {
-      serif: font_data_iter.next().expect("FontRef count mismatch"),
-      serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
-      serif_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      serif_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      sans_serif: font_data_iter.next().expect("FontRef count mismatch"),
-      sans_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
-      sans_serif_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      sans_serif_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      monospace: font_data_iter.next().expect("FontRef count mismatch"),
-      monospace_bold: font_data_iter.next().expect("FontRef count mismatch"),
-      monospace_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      monospace_bold_italic: font_data_iter.next().expect("FontRef count mismatch"),
-      math: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_serif: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_sans_serif: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_sans_serif_bold: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_monospace: font_data_iter.next().expect("FontRef count mismatch"),
-      japanese_monospace_bold: font_data_iter.next().expect("FontRef count mismatch"),
-    })
-  }
-
-  /// 指定されたフォント種別のバイナリデータを取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// フォントバイナリデータへの不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &Vec<u8> {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
-  }
-
-  /// すべてのフォント種別とそのバイナリデータをイテレートするイテレータを取得します
-  ///
-  /// # Returns
-  ///
-  /// `FontDataIter` イテレータ（フォント種別とデータのペアを返す）
-  #[must_use]
-  pub fn iter(&self) -> FontDataIter<'_> {
-    return FontDataIter {
-      font_data: self,
-      index: 0,
-    };
+    return Ok(FontMap::from_all(font_datas));
   }
 }
 
-/// `FontData` のフォント種別イテレータ
-///
-/// すべてのフォント種別について、フォント種別とバイナリデータのペアを
-/// 順に次のように返します。このイテレータは `ExactSizeIterator` を実装します。
-pub struct FontDataIter<'a> {
-  font_data: &'a FontData,
-  index: usize,
-}
-
-impl<'a> Iterator for FontDataIter<'a> {
-  type Item = (FontType, &'a Vec<u8>);
-
-  fn next(&mut self) -> Option<Self::Item> {
-    let font_types = FontType::ALL;
-
-    if self.index >= font_types.len() {
-      return None;
-    }
-
-    let font_type = font_types[self.index];
-    let data = self.font_data.get(font_type);
-    self.index += 1;
-    return Some((font_type, data));
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining = FontType::ALL.len().saturating_sub(self.index);
-    return (remaining, Some(remaining));
-  }
-}
-
-impl ExactSizeIterator for FontDataIter<'_> {}
-
-impl<'a> IntoIterator for &'a FontData {
-  type IntoIter = FontDataIter<'a>;
-  type Item = (FontType, &'a Vec<u8>);
-
-  fn into_iter(self) -> Self::IntoIter { return self.iter(); }
-}
-
-/// 全フォント種別の解析済みフォント参照（FontRef）を保持するデータ構造
+/// 全フォント種別の解析済みフォント参照（`FontRef`）を保持するデータ構造
 ///
 /// 19 種類のフォント種別ごとの `FontRef` を保持します。
 /// `FontRef` は `read_fonts` クレートが提供する型で、OpenType フォント内の
 /// テーブルにアクセスするための API を提供します。
-pub struct FontRefs<'a> {
-  serif: FontRef<'a>,
-  serif_bold: FontRef<'a>,
-  serif_italic: FontRef<'a>,
-  serif_bold_italic: FontRef<'a>,
-  sans_serif: FontRef<'a>,
-  sans_serif_bold: FontRef<'a>,
-  sans_serif_italic: FontRef<'a>,
-  sans_serif_bold_italic: FontRef<'a>,
-  monospace: FontRef<'a>,
-  monospace_bold: FontRef<'a>,
-  monospace_italic: FontRef<'a>,
-  monospace_bold_italic: FontRef<'a>,
-  math: FontRef<'a>,
-  japanese_serif: FontRef<'a>,
-  japanese_serif_bold: FontRef<'a>,
-  japanese_sans_serif: FontRef<'a>,
-  japanese_sans_serif_bold: FontRef<'a>,
-  japanese_monospace: FontRef<'a>,
-  japanese_monospace_bold: FontRef<'a>,
-}
+///
+/// 内部的には [`FontMap<FontRef>`] を使用しています。
+pub type FontRefs<'a> = FontMap<FontRef<'a>>;
 
-impl<'a> FontRefs<'a> {
+/// `FontRefs` のコンストラクタと拡張メソッド
+pub trait FontRefsExt<'a>: Sized {
   /// フォント設定とバイナリデータから OpenType フォント参照を生成します
   ///
   /// バイナリデータから各フォント種別の `FontRef` を生成します。
@@ -313,13 +169,12 @@ impl<'a> FontRefs<'a> {
   /// - バイナリデータが有効な OpenType フォントではない
   /// - TTC 内の指定されたインデックスが範囲外
   /// - 必須 OpenType テーブルが見つからない
-  ///
-  /// # Panics
-  ///
-  /// `FontType::ALL` に含まれるフォント種別数が 19 個と異なる場合にパニック。
-  /// これは実装の不整合を示すプログラムエラーです。
-  pub fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
-    let font_ref = FontType::ALL
+  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self>;
+}
+
+impl<'a> FontRefsExt<'a> for FontRefs<'a> {
+  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
+    let font_refs = FontType::ALL
       .iter()
       .map(|&font_type| {
         let font_data = font_data.get(font_type);
@@ -328,63 +183,6 @@ impl<'a> FontRefs<'a> {
         FontRef::from_index(font_data, index).into_diagnostic()
       })
       .collect::<Result<Vec<FontRef<'a>>, miette::Report>>()?;
-    let mut font_ref_iter = font_ref.into_iter();
-
-    #[allow(clippy::expect_used)]
-    return Ok(Self {
-      serif: font_ref_iter.next().expect("FontRef count mismatch"),
-      serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-      serif_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      serif_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      sans_serif: font_ref_iter.next().expect("FontRef count mismatch"),
-      sans_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-      sans_serif_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      sans_serif_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      monospace: font_ref_iter.next().expect("FontRef count mismatch"),
-      monospace_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-      monospace_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      monospace_bold_italic: font_ref_iter.next().expect("FontRef count mismatch"),
-      math: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_serif: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_sans_serif: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_sans_serif_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_monospace: font_ref_iter.next().expect("FontRef count mismatch"),
-      japanese_monospace_bold: font_ref_iter.next().expect("FontRef count mismatch"),
-    });
-  }
-
-  /// 指定されたフォント種別の OpenType フォント参照を取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定されたフォント種別の `FontRef` への不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &FontRef<'_> {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
+    return Ok(FontMap::from_all(font_refs));
   }
 }

@@ -23,7 +23,7 @@
 
 use std::path::PathBuf;
 
-use types::FontType;
+use types::FontMap;
 
 /// PDF 生成に必要な完全な設定情報
 ///
@@ -49,151 +49,10 @@ pub struct Config {
 /// 設定をまとめて管理します。各フォント種別は独立した `FontConfig` を持ち、
 /// すべてのパス、値、型が検証済みです。
 ///
+/// 内部的には [`FontMap<FontConfig>`] を使用しており、
 /// [`iter()`](FontConfigs::iter) や [`get()`](FontConfigs::get) メソッドで
 /// 効率よくアクセスできます。
-#[derive(Debug, Clone)]
-pub struct FontConfigs {
-  /// Serif 標準フォント設定
-  pub(crate) serif: FontConfig,
-  /// Serif 太字フォント設定
-  pub(crate) serif_bold: FontConfig,
-  /// Serif イタリックフォント設定
-  pub(crate) serif_italic: FontConfig,
-  /// Serif 太字イタリックフォント設定
-  pub(crate) serif_bold_italic: FontConfig,
-  /// Sans Serif 標準フォント設定
-  pub(crate) sans_serif: FontConfig,
-  /// Sans Serif 太字フォント設定
-  pub(crate) sans_serif_bold: FontConfig,
-  /// Sans Serif イタリックフォント設定
-  pub(crate) sans_serif_italic: FontConfig,
-  /// Sans Serif 太字イタリックフォント設定
-  pub(crate) sans_serif_bold_italic: FontConfig,
-  /// Monospace 標準フォント設定
-  pub(crate) monospace: FontConfig,
-  /// Monospace 太字フォント設定
-  pub(crate) monospace_bold: FontConfig,
-  /// Monospace イタリックフォント設定
-  pub(crate) monospace_italic: FontConfig,
-  /// Monospace 太字イタリックフォント設定
-  pub(crate) monospace_bold_italic: FontConfig,
-  /// 数式用フォント設定
-  pub(crate) math: FontConfig,
-  /// 日本語 Serif 標準フォント設定
-  pub(crate) japanese_serif: FontConfig,
-  /// 日本語 Serif 太字フォント設定
-  pub(crate) japanese_serif_bold: FontConfig,
-  /// 日本語 Sans Serif 標準フォント設定
-  pub(crate) japanese_sans_serif: FontConfig,
-  /// 日本語 Sans Serif 太字フォント設定
-  pub(crate) japanese_sans_serif_bold: FontConfig,
-  /// 日本語 Monospace 標準フォント設定
-  pub(crate) japanese_monospace: FontConfig,
-  /// 日本語 Monospace 太字フォント設定
-  pub(crate) japanese_monospace_bold: FontConfig,
-}
-
-impl FontConfigs {
-  /// 19 フォント種別すべてを反復するイテレータを返します
-  ///
-  /// [`FontType::ALL`](types::FontType::ALL) の順序に従って
-  /// (`FontType`, `&FontConfig`) のペアを返します。
-  ///
-  /// # Returns
-  ///
-  /// 19 フォント設定を順に返す `ExactSizeIterator`
-  ///
-  /// # Example
-  ///
-  /// ```ignore
-  /// for (font_type, config) in configs.iter() {
-  ///     println!("{:?}: {}", font_type, config.font_name);
-  /// }
-  /// ```
-  #[must_use]
-  pub fn iter(&self) -> FontConfigsIter<'_> {
-    FontConfigsIter {
-      configs: self,
-      index: 0,
-    }
-  }
-
-  /// 指定されたフォント種別に対応する設定を取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// 指定フォント種別の `FontConfig` への不変参照
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> &FontConfig {
-    match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
-    }
-  }
-}
-
-/// `FontConfigs` 用の イテレータ
-///
-/// 19 フォント種別を順に反復します。
-/// [`ExactSizeIterator`] を実装しているため、残要素数が常に正確です。
-pub struct FontConfigsIter<'a> {
-  configs: &'a FontConfigs,
-  index: usize,
-}
-
-impl<'a> Iterator for FontConfigsIter<'a> {
-  type Item = (FontType, &'a FontConfig);
-
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.index >= FontType::ALL.len() {
-      return None;
-    }
-    let font_type = FontType::ALL[self.index];
-    let config = self.configs.get(font_type);
-    self.index += 1;
-    return Some((font_type, config));
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let remaining = FontType::ALL.len().saturating_sub(self.index);
-    return (remaining, Some(remaining));
-  }
-}
-
-impl ExactSizeIterator for FontConfigsIter<'_> {}
-
-impl<'a> IntoIterator for &'a FontConfigs {
-  type IntoIter = FontConfigsIter<'a>;
-  type Item = (FontType, &'a FontConfig);
-
-  fn into_iter(self) -> Self::IntoIter {
-    return FontConfigsIter {
-      configs: self,
-      index: 0,
-    };
-  }
-}
+pub type FontConfigs = FontMap<FontConfig>;
 
 /// 単一フォント種別の検証済み・処理済み設定
 ///

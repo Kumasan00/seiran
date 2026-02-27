@@ -310,11 +310,10 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
   let background_color = build_background_color(background_r, background_g, background_b, &mut errors);
 
   // 19 フォント種別を先にすべて変換しエラーを蓄積（途中で中断しない）
-  let mut font_configs_iter = FontType::ALL
+  let font_config_results = FontType::ALL
     .iter()
     .map(|font_type| to_font_config(*font_type, pre_font_configs.get(*font_type), &mut errors))
-    .collect::<Vec<_>>()
-    .into_iter();
+    .collect::<Vec<_>>();
 
   // フォント変換エラーを報告（重複チェック前）
   if !errors.is_empty() {
@@ -323,57 +322,8 @@ fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<
 
   // errors が空なので全 19 種別が揃っていることが保証される
   #[allow(clippy::expect_used)]
-  let font_configs = FontConfigs {
-    serif: font_configs_iter.next().expect("serif が不足").expect("serif の変換に失敗"),
-    serif_bold: font_configs_iter.next().expect("serif_bold が不足").expect("serif_bold の変換に失敗"),
-    serif_italic: font_configs_iter.next().expect("serif_italic が不足").expect("serif_italic の変換に失敗"),
-    serif_bold_italic: font_configs_iter
-      .next()
-      .expect("serif_bold_italic が不足")
-      .expect("serif_bold_italic の変換に失敗"),
-    sans_serif: font_configs_iter.next().expect("sans_serif が不足").expect("sans_serif の変換に失敗"),
-    sans_serif_bold: font_configs_iter.next().expect("sans_serif_bold が不足").expect("sans_serif_bold の変換に失敗"),
-    sans_serif_italic: font_configs_iter
-      .next()
-      .expect("sans_serif_italic が不足")
-      .expect("sans_serif_italic の変換に失敗"),
-    sans_serif_bold_italic: font_configs_iter
-      .next()
-      .expect("sans_serif_bold_italic が不足")
-      .expect("sans_serif_bold_italic の変換に失敗"),
-    monospace: font_configs_iter.next().expect("monospace が不足").expect("monospace の変換に失敗"),
-    monospace_bold: font_configs_iter.next().expect("monospace_bold が不足").expect("monospace_bold の変換に失敗"),
-    monospace_italic: font_configs_iter
-      .next()
-      .expect("monospace_italic が不足")
-      .expect("monospace_italic の変換に失敗"),
-    monospace_bold_italic: font_configs_iter
-      .next()
-      .expect("monospace_bold_italic が不足")
-      .expect("monospace_bold_italic の変換に失敗"),
-    math: font_configs_iter.next().expect("math が不足").expect("math の変換に失敗"),
-    japanese_serif: font_configs_iter.next().expect("japanese_serif が不足").expect("japanese_serif の変換に失敗"),
-    japanese_serif_bold: font_configs_iter
-      .next()
-      .expect("japanese_serif_bold が不足")
-      .expect("japanese_serif_bold の変換に失敗"),
-    japanese_sans_serif: font_configs_iter
-      .next()
-      .expect("japanese_sans_serif が不足")
-      .expect("japanese_sans_serif の変換に失敗"),
-    japanese_sans_serif_bold: font_configs_iter
-      .next()
-      .expect("japanese_sans_serif_bold が不足")
-      .expect("japanese_sans_serif_bold の変換に失敗"),
-    japanese_monospace: font_configs_iter
-      .next()
-      .expect("japanese_monospace が不足")
-      .expect("japanese_monospace の変換に失敗"),
-    japanese_monospace_bold: font_configs_iter
-      .next()
-      .expect("japanese_monospace_bold が不足")
-      .expect("japanese_monospace_bold の変換に失敗"),
-  };
+  let font_configs =
+    FontConfigs::from_all(font_config_results.into_iter().map(|r| r.expect("フォント設定の変換に失敗")));
 
   // font_name の重複チェック
   check_duplicate_font_names(&font_configs, &mut errors);

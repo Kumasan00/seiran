@@ -25,7 +25,7 @@ use read_config_file::{FontConfig, FontConfigs};
 // `fvar()` メソッドを使用するために `TableProvider` トレイトが必要
 use read_fonts::{FontRef, TableProvider};
 use tracing::info;
-use types::FontType;
+use types::{FontMap, FontType};
 
 use crate::{FontData, glyph_mapping::GlyphMappings};
 
@@ -73,64 +73,7 @@ pub enum FontSubsetError {
 /// 各フォント種別（19 種類）に対して、グリフマッピングに基づいて
 /// 生成されたサブセット化フォントのバイナリデータを保持します。
 /// グリフが一つも使用されないフォント種別は `None` になります。
-pub struct FontSubsetBytes {
-  serif: Option<Vec<u8>>,
-  serif_bold: Option<Vec<u8>>,
-  serif_italic: Option<Vec<u8>>,
-  serif_bold_italic: Option<Vec<u8>>,
-  sans_serif: Option<Vec<u8>>,
-  sans_serif_bold: Option<Vec<u8>>,
-  sans_serif_italic: Option<Vec<u8>>,
-  sans_serif_bold_italic: Option<Vec<u8>>,
-  monospace: Option<Vec<u8>>,
-  monospace_bold: Option<Vec<u8>>,
-  monospace_italic: Option<Vec<u8>>,
-  monospace_bold_italic: Option<Vec<u8>>,
-  math: Option<Vec<u8>>,
-  japanese_serif: Option<Vec<u8>>,
-  japanese_serif_bold: Option<Vec<u8>>,
-  japanese_sans_serif: Option<Vec<u8>>,
-  japanese_sans_serif_bold: Option<Vec<u8>>,
-  japanese_monospace: Option<Vec<u8>>,
-  japanese_monospace_bold: Option<Vec<u8>>,
-}
-
-impl FontSubsetBytes {
-  /// 指定されたフォント種別のサブセット化フォントを取得します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_type` - 取得したいフォント種別
-  ///
-  /// # Returns
-  ///
-  /// グリフが使用されている場合は `Some(&Vec<u8>)`（バイナリデータ）、
-  /// グリフが使用されていない場合は `None`
-  #[must_use]
-  pub fn get(&self, font_type: FontType) -> Option<&Vec<u8>> {
-    match font_type {
-      FontType::Serif => self.serif.as_ref(),
-      FontType::SerifBold => self.serif_bold.as_ref(),
-      FontType::SerifItalic => self.serif_italic.as_ref(),
-      FontType::SerifBoldItalic => self.serif_bold_italic.as_ref(),
-      FontType::SansSerif => self.sans_serif.as_ref(),
-      FontType::SansSerifBold => self.sans_serif_bold.as_ref(),
-      FontType::SansSerifItalic => self.sans_serif_italic.as_ref(),
-      FontType::SansSerifBoldItalic => self.sans_serif_bold_italic.as_ref(),
-      FontType::Monospace => self.monospace.as_ref(),
-      FontType::MonospaceBold => self.monospace_bold.as_ref(),
-      FontType::MonospaceItalic => self.monospace_italic.as_ref(),
-      FontType::MonospaceBoldItalic => self.monospace_bold_italic.as_ref(),
-      FontType::Math => self.math.as_ref(),
-      FontType::JapaneseSerif => self.japanese_serif.as_ref(),
-      FontType::JapaneseSerifBold => self.japanese_serif_bold.as_ref(),
-      FontType::JapaneseSansSerif => self.japanese_sans_serif.as_ref(),
-      FontType::JapaneseSansSerifBold => self.japanese_sans_serif_bold.as_ref(),
-      FontType::JapaneseMonospace => self.japanese_monospace.as_ref(),
-      FontType::JapaneseMonospaceBold => self.japanese_monospace_bold.as_ref(),
-    }
-  }
-}
+pub type FontSubsetBytes = FontMap<Option<Vec<u8>>>;
 
 /// すべてのフォント種別のサブセット化を実行します
 ///
@@ -191,30 +134,9 @@ pub fn create_font_subset(
     .map(|(font_config, font_data, cid_to_gid)| subset_for(font_config, font_data, cid_to_gid))
     .collect();
 
-  // 結果を所定の順序に割り当て（最初のエラーで中断）
-  let mut iter = results.into_iter();
-  #[allow(clippy::unwrap_used)]
-  let subsets = FontSubsetBytes {
-    serif: iter.next().unwrap()?,
-    serif_bold: iter.next().unwrap()?,
-    serif_italic: iter.next().unwrap()?,
-    serif_bold_italic: iter.next().unwrap()?,
-    sans_serif: iter.next().unwrap()?,
-    sans_serif_bold: iter.next().unwrap()?,
-    sans_serif_italic: iter.next().unwrap()?,
-    sans_serif_bold_italic: iter.next().unwrap()?,
-    monospace: iter.next().unwrap()?,
-    monospace_bold: iter.next().unwrap()?,
-    monospace_italic: iter.next().unwrap()?,
-    monospace_bold_italic: iter.next().unwrap()?,
-    math: iter.next().unwrap()?,
-    japanese_serif: iter.next().unwrap()?,
-    japanese_serif_bold: iter.next().unwrap()?,
-    japanese_sans_serif: iter.next().unwrap()?,
-    japanese_sans_serif_bold: iter.next().unwrap()?,
-    japanese_monospace: iter.next().unwrap()?,
-    japanese_monospace_bold: iter.next().unwrap()?,
-  };
+  // 結果を FontMap に変換（最初のエラーで中断）
+  let subset_results: Vec<Option<Vec<u8>>> = results.into_iter().collect::<Result<Vec<_>, _>>()?;
+  let subsets = FontSubsetBytes::from_all(subset_results);
 
   info!(total_fonts = FontType::ALL.len(), "フォントサブセット化がすべて完了しました");
   return Ok(subsets);
