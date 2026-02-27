@@ -8,11 +8,12 @@ version.workspace = true
 [dependencies]
 cli = { path = "../cli" }
 font = { path = "../font" }
+layout = { path = "../layout" }
 miette = { workspace = true }
 parser = { path = "../parser" }
 pdf_gen = { path = "../pdf_gen" }
 read-fonts = { workspace = true }
-read_config_file = { path = "../read_config_file" }
+read_config = { path = "../read_config" }
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

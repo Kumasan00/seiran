@@ -96,7 +96,8 @@ crates/
 ├── font/             # フォント処理（読込・シェーピング・サブセット化）
 ├── parser/           # テキストパース（Lexer → Parser → Evaluator → Layout Engine）
 ├── pdf_gen/          # PDF 生成エンジン
-├── read_config_file/ # TOML 設定ファイルの読み込みと検証
+├── read_config/      # TOML 設定ファイルの読み込みと検証
+├── read_style/       # TOML スタイルファイルの読み込みと検証
 ├── seiran/           # メインアプリケーション（エントリーポイント）
 └── types/            # 共通型定義
 ```

@@ -53,7 +53,7 @@
 //!
 //! ```ignore
 //! # use font::*;
-//! # use read_config_file::FontConfigs;
+//! # use read_config::FontConfigs;
 //! # use std::fs;
 //!
 //! // 1. フォント設定を読み込み
@@ -81,7 +81,7 @@ use std::fs;
 
 use miette::IntoDiagnostic;
 use rayon::prelude::*;
-use read_config_file::FontConfigs;
+use read_config::FontConfigs;
 use read_fonts::FontRef;
 use types::{FontMap, FontType};
 

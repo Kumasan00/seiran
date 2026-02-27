@@ -3,19 +3,16 @@ authors.workspace = true
 description.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "parser"
+name = "read_style"
 readme.workspace = true
 repository.workspace = true
 version.workspace = true
 
 [dependencies]
-memchr.workspace = true
-memmap2.workspace = true
-miette.workspace = true
-phf.workspace = true
-read_config = { path = "../read_config" }
+figment.workspace = true
+serde.workspace = true
 thiserror.workspace = true
-types = { path = "../types" }
+toml.workspace = true
 
 [lints]
 workspace = true

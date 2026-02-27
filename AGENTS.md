@@ -25,7 +25,7 @@ CLI引数パース → TOML設定読込 → テキストパース(Lexer→Parser
 ```text
 types (依存なし — 全クレートの基盤)
   ↑
-read_config_file ← {serde, toml, miette, thiserror, tracing}
+read_config ← {serde, toml, miette, thiserror, tracing}
   ↑
 font ← {allsorts, harfrust, read-fonts, font-types, rayon, miette, thiserror, tracing}
   ↑
@@ -33,22 +33,22 @@ parser ← {font, icu, lazy-regex, memchr, memmap2, phf, read-fonts, miette, thi
   ↑
 pdf_gen ← {font, parser, pdf-writer}
   ↑
-seiran (main) ← {cli, font, parser, pdf_gen, read_config_file, miette, tracing}
+seiran (main) ← {cli, font, parser, pdf_gen, read_config, miette, tracing}
 
 cli ← {clap, thiserror}
 ```
 
 ### クレート一覧
 
-| クレート             | パス                       | 責務                                                                           |
-| -------------------- | -------------------------- | ------------------------------------------------------------------------------ |
-| **types**            | `crates/types/`            | プロジェクト全体で使用される共通型定義（`FontType`, `FontKind`）               |
-| **cli**              | `crates/cli/`              | コマンドライン引数の解析（clap derive）                                        |
-| **read_config_file** | `crates/read_config_file/` | TOML 設定ファイルの読み込みとバリデーション                                    |
-| **font**             | `crates/font/`             | フォント処理（読込、解析、シェーピング、サブセット化、バリアブルフォント対応） |
-| **parser**           | `crates/parser/`           | テキストファイルのパース（Lexer → Parser → Evaluator）とレイアウトエンジン     |
-| **pdf_gen**          | `crates/pdf_gen/`          | PDF バイナリ生成エンジン                                                       |
-| **seiran**           | `crates/seiran/`           | メインアプリケーション（エントリーポイント、パイプラインオーケストレーション） |
+| クレート        | パス                  | 責務                                                                           |
+| --------------- | --------------------- | ------------------------------------------------------------------------------ |
+| **types**       | `crates/types/`       | プロジェクト全体で使用される共通型定義（`FontType`, `FontKind`）               |
+| **cli**         | `crates/cli/`         | コマンドライン引数の解析（clap derive）                                        |
+| **read_config** | `crates/read_config/` | TOML 設定ファイルの読み込みとバリデーション                                    |
+| **font**        | `crates/font/`        | フォント処理（読込、解析、シェーピング、サブセット化、バリアブルフォント対応） |
+| **parser**      | `crates/parser/`      | テキストファイルのパース（Lexer → Parser → Evaluator）とレイアウトエンジン     |
+| **pdf_gen**     | `crates/pdf_gen/`     | PDF バイナリ生成エンジン                                                       |
+| **seiran**      | `crates/seiran/`      | メインアプリケーション（エントリーポイント、パイプラインオーケストレーション） |
 
 ---
 

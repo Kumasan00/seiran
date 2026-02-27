@@ -59,10 +59,10 @@
 //! ## 使用例
 //!
 //! ```ignore
-//! # use read_config_file::*;
+//! # use read_config::*;
 //!
 //! // デフォルトパスから読み込み
-//! let config = read_config_file()?;
+//! let config = read_config()?;
 //!
 //! // PDF サイズ、余白、フォント設定にアクセス
 //! println!("PDF size: {} x {}", config.pdf.width, config.pdf.height);
@@ -230,10 +230,10 @@ enum ValidationError {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション失敗時にエラーを返します。
-pub fn read_config_file() -> miette::Result<Config> {
+pub fn read_config() -> miette::Result<Config> {
   let config_path = DEFAULT_CONFIG_PATH;
   info!(config_path = %config_path, "設定ファイルの読み込みを開始します");
-  let config = read_config_file_with_path(config_path)?;
+  let config = read_config_with_path(config_path)?;
   info!(
     config_path = %config_path,
     document_name = %config.name,
@@ -248,7 +248,7 @@ pub fn read_config_file() -> miette::Result<Config> {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
-fn read_config_file_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Config> {
+fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Config> {
   let config_path = config_path.as_ref();
   let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),

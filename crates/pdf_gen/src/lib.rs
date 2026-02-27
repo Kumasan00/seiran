@@ -7,9 +7,9 @@ mod content;
 mod glyph_mapping;
 
 use font::{font_info::FontInfos, glyph_mapping::GlyphMappings, subset::FontSubsetBytes};
-use parser::layout_engine::Item;
+use layout::Item;
 use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str};
-use read_config_file::Config;
+use read_config::Config;
 use types::{FontMap, FontType};
 
 use crate::{content::PDFContent, glyph_mapping::PDFInfo};
@@ -100,9 +100,7 @@ impl PdfIds {
     };
   }
 
-  fn get_font(&self, font_type: FontType) -> Option<&FontIds> {
-    self.font_ids.get(font_type).as_ref()
-  }
+  fn get_font(&self, font_type: FontType) -> Option<&FontIds> { self.font_ids.get(font_type).as_ref() }
 }
 
 /// PDFドキュメントを生成

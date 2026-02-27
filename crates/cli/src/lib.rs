@@ -63,6 +63,15 @@ pub enum Command {
 /// let cli = parse_arg();
 /// match cli.command {
 ///   cli::Command::Build { text_file_path } => println!("生成対象: {:?}", text_file_path),
+///   cli::Command::VariationAxes {
+///     font_path,
+///     font_index,
+///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
+///   cli::Command::TtcNames { ttc_file_path } => println!("TTC: {:?}", ttc_file_path),
+///   cli::Command::ScriptLangs {
+///     font_path,
+///     font_index,
+///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
 /// }
 /// ```
 #[must_use]

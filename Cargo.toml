@@ -2,9 +2,11 @@
 members = [
   "crates/cli",
   "crates/font",
+  "crates/layout",
   "crates/parser",
   "crates/pdf_gen",
-  "crates/read_config_file",
+  "crates/read_config",
+  "crates/read_style",
   "crates/seiran",
   "crates/types",
 ]
@@ -25,7 +27,7 @@ version = "0.1.0"
 [workspace.dependencies]
 allsorts = "0.16.1"
 clap = { version = "4.5.60", features = ["derive"] }
-figment = { version = "0.10", features = ["toml"] }
+figment = { version = "0.10.19", features = ["toml"] }
 font-types = "0.11.0"
 harfrust = "0.5.0"
 icu = { version = "2.1.1", features = ["compiled_data"] }

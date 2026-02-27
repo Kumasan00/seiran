@@ -2,9 +2,9 @@ use font::{
   font_info::FontInfos,
   glyph_mapping::{GlyphMapping, GlyphMappings},
 };
-use parser::layout_engine::{BoxItem, Glyph, Item};
+use layout::{BoxItem, Glyph, Item};
 use pdf_writer::{Content, Name, Str};
-use read_config_file::Config;
+use read_config::Config;
 
 pub(crate) struct PDFContent {
   pub content: Content,

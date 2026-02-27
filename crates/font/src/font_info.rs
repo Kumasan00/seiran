@@ -39,7 +39,7 @@
 
 use font_types::Fixed;
 use miette::Diagnostic;
-use read_config_file::{FontConfig, FontConfigs};
+use read_config::{FontConfig, FontConfigs};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 use types::{FontMap, FontType};
@@ -62,6 +62,44 @@ const DEFAULT_CAP_HEIGHT: i16 = 0;
 struct MissingTableError {
   /// 見つからなかった OpenType テーブル名
   table: &'static str,
+}
+
+/// 全フォント種別のメタデータをまとめて管理する型
+///
+/// Serif、Sans Serif、Monospace、Math、日本語フォントなど 19 種類のフォント種別ごとに
+/// `FontInfo` を保持し、PDF 生成全体で使用するメタデータカタログとして機能します。
+pub type FontInfos = FontMap<FontInfo>;
+
+/// `FontInfos` のコンストラクタを提供するトレイト
+pub trait FontInfosExt: Sized {
+  /// フォント設定とフォント参照から `FontInfos` を生成します
+  ///
+  /// `FontType::ALL` に列挙されたすべてのフォント種別に対応する
+  /// `FontInfo` を生成し、ひとまとめにします。
+  ///
+  /// # Arguments
+  ///
+  /// * `font_configs` - 各フォント種別の設定情報
+  /// * `font_refs` - 各フォント種別のロード済みフォント参照
+  ///
+  /// # Returns
+  ///
+  /// 全フォント種別のメタデータをまとめた `FontInfos`
+  ///
+  /// # Errors
+  ///
+  /// いずれかのフォント種別から `FontInfo` の生成に失敗した場合、エラーを返します。
+  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self>;
+}
+
+impl FontInfosExt for FontInfos {
+  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self> {
+    let font_infos: Vec<FontInfo> = FontType::ALL
+      .iter()
+      .map(|font_type| FontInfo::new(font_configs.get(*font_type), font_refs.get(*font_type)))
+      .collect::<Result<Vec<FontInfo>, _>>()?;
+    return Ok(FontInfos::from_all(font_infos));
+  }
 }
 
 /// フォントのメタデータ情報
@@ -144,43 +182,5 @@ impl FontInfo {
       xmax,
       ymax,
     });
-  }
-}
-
-/// 全フォント種別のメタデータをまとめて管理する型
-///
-/// Serif、Sans Serif、Monospace、Math、日本語フォントなど 19 種類のフォント種別ごとに
-/// `FontInfo` を保持し、PDF 生成全体で使用するメタデータカタログとして機能します。
-pub type FontInfos = FontMap<FontInfo>;
-
-/// `FontInfos` のコンストラクタを提供するトレイト
-pub trait FontInfosExt: Sized {
-  /// フォント設定とフォント参照から `FontInfos` を生成します
-  ///
-  /// `FontType::ALL` に列挙されたすべてのフォント種別に対応する
-  /// `FontInfo` を生成し、ひとまとめにします。
-  ///
-  /// # Arguments
-  ///
-  /// * `font_configs` - 各フォント種別の設定情報
-  /// * `font_refs` - 各フォント種別のロード済みフォント参照
-  ///
-  /// # Returns
-  ///
-  /// 全フォント種別のメタデータをまとめた `FontInfos`
-  ///
-  /// # Errors
-  ///
-  /// いずれかのフォント種別から `FontInfo` の生成に失敗した場合、エラーを返します。
-  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self>;
-}
-
-impl FontInfosExt for FontInfos {
-  fn new(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<Self> {
-    let font_infos: Vec<FontInfo> = FontType::ALL
-      .iter()
-      .map(|font_type| FontInfo::new(font_configs.get(*font_type), font_refs.get(*font_type)))
-      .collect::<Result<Vec<FontInfo>, _>>()?;
-    return Ok(FontInfos::from_all(font_infos));
   }
 }

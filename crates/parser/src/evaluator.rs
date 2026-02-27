@@ -1,5 +1,5 @@
 use miette::Diagnostic;
-use read_config_file::Config;
+use read_config::Config;
 use thiserror::Error;
 use types::FontKind;
 
@@ -108,12 +108,18 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
+  #[must_use]
   pub fn new(config: &Config) -> Self {
     Evaluator {
       context: EvalContext::new(config.pdf.font_size),
     }
   }
 
+  /// ブロックを評価してレイアウトノードに変換する
+  ///
+  /// # Errors
+  ///
+  /// 不明なコマンドや環境、引数の不足・過剰がある場合にエラーを返します
   pub fn evaluate_block(&mut self, block: Block) -> Result<Vec<LayoutNode>, EvalError> {
     let mut layout_nodes = Vec::new();
     for node in block {

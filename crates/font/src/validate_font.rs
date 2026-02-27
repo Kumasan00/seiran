@@ -83,7 +83,7 @@
 //!
 //! ```ignore
 //! # use font::validate_font::*;
-//! # use read_config_file::FontConfig;
+//! # use read_config::FontConfig;
 //! # use read_fonts::FontRef;
 //!
 //! let config = FontConfig { /* ... */ };
@@ -99,7 +99,7 @@
 
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
-use read_config_file::{FontConfig, FontConfigs, VariationAxis};
+use read_config::{FontConfig, FontConfigs, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{info, warn};

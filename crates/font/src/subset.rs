@@ -21,7 +21,7 @@
 
 use allsorts::{binary::read::ReadScope, subset, tables::Fixed, variations::instance};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use read_config_file::{FontConfig, FontConfigs};
+use read_config::{FontConfig, FontConfigs};
 // `fvar()` メソッドを使用するために `TableProvider` トレイトが必要
 use read_fonts::{FontRef, TableProvider};
 use tracing::info;

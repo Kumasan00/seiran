@@ -2,16 +2,17 @@ use std::{fs::File, path::Path};
 
 use memmap2::Mmap;
 use miette::IntoDiagnostic;
-use read_config_file::Config;
+use read_config::Config;
 
 mod command;
+pub mod document;
 mod environment;
-mod evaluator;
-pub mod layout_engine;
+pub mod evaluator;
 mod lexer;
 mod parser;
 
-use evaluator::{Evaluator, LayoutNode};
+use evaluator::Evaluator;
+pub use evaluator::{LayoutNode, Style};
 use lexer::Lexer;
 
 /// 入力テキストをパースしてレイアウトノードを生成

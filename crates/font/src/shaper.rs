@@ -68,7 +68,7 @@
 //!
 //! ```ignore
 //! # use font::shaper::*;
-//! # use read_config_file::FontConfigs;
+//! # use read_config::FontConfigs;
 //! # use font::FontRefs;
 //!
 //! // フォント参照とシェイパーデータを準備
@@ -93,7 +93,7 @@ use harfrust::{
 };
 use miette::Diagnostic;
 use rayon::prelude::*;
-use read_config_file::{FontConfig, FontConfigs};
+use read_config::{FontConfig, FontConfigs};
 use thiserror::Error;
 use types::FontMap;
 
@@ -144,10 +144,8 @@ pub trait ShaperDatasExt {
 
 impl ShaperDatasExt for ShaperDatas {
   fn new(font_refs: &FontRefs) -> Self {
-    let shaper_datas: Vec<ShaperData> = FontType::ALL
-      .iter()
-      .map(|&font_type| ShaperData::new(font_refs.get(font_type)))
-      .collect();
+    let shaper_datas: Vec<ShaperData> =
+      FontType::ALL.iter().map(|&font_type| ShaperData::new(font_refs.get(font_type))).collect();
     return ShaperDatas::from_all(shaper_datas);
   }
 }

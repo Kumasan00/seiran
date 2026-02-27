@@ -8,7 +8,7 @@ use font::{
   shaper, shaper::ShaperDatasExt, shaper::ShaperInstancesExt, shaper::HarfRustShapersExt, subset, validate_font,
 };
 use miette::IntoDiagnostic;
-use parser::layout_engine;
+use layout::layout_engine;
 use tracing::info;
 
 /// TeX テキストから PDF を生成
@@ -19,7 +19,7 @@ use tracing::info;
 pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   info!(file_path = %file_path.display(), "PDF のビルドを開始します");
 
-  let config = read_config_file::read_config_file()?;
+  let config = read_config::read_config()?;
 
   let layout_nodes = parser::text_parser(file_path, &config)?;
   info!("テキストのパースが完了しました");
@@ -42,7 +42,7 @@ pub(super) fn build_pdf(file_path: &Path) -> miette::Result<()> {
   let mut glyph_mappings = glyph_mapping::GlyphMappings::new(&font_infos);
 
   let items =
-    layout_engine::layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings)?;
+    layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings)?;
   info!("レイアウトの計算が完了しました");
 
   let subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
