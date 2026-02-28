@@ -88,6 +88,10 @@ use types::FontType;
 pub(crate) struct PreConfig {
   /// ドキュメント名（PDF ファイル名の基盤）
   pub name: String,
+  /// スタイル設定ファイルへのパス（オプション）
+  pub style_path: Option<PathBuf>,
+  /// 参照設定ファイルへのパス（オプション）
+  pub references_path: Option<PathBuf>,
   /// PDF ページ設定
   pub pdf: PrePdfConfig,
   /// 19 フォント種別の設定群

@@ -90,8 +90,6 @@ mod processed_config;
 // processed_config の型を公開
 pub use processed_config::{Config, Feature, FontConfig, FontConfigs, Margin, PdfConfig, VariationAxis};
 
-const DEFAULT_CONFIG_PATH: &str = "./config/config.toml";
-
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
 enum ReadConfigError {
@@ -126,6 +124,22 @@ enum ReadConfigError {
   #[error("出力ディレクトリのパスを正規化できませんでした: {path}")]
   #[diagnostic(code(config::canonicalize_output_dir), help("指定したディレクトリが存在するか確認してください。"))]
   CanonicalizeOutputDir {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// スタイル設定ファイルのパス正規化失敗
+  #[error("スタイル設定ファイルのパスを正規化できませんでした: {path}")]
+  #[diagnostic(code(config::canonicalize_style_path), help("スタイル設定ファイルが存在するか確認してください。"))]
+  CanonicalizeStylePath {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// 参照設定ファイルのパス正規化失敗
+  #[error("参照設定ファイルのパスを正規化できませんでした: {path}")]
+  #[diagnostic(code(config::canonicalize_references_path), help("参照設定ファイルが存在するか確認してください。"))]
+  CanonicalizeReferencesPath {
     path: String,
     #[source]
     source: std::io::Error,
@@ -225,31 +239,17 @@ enum ValidationError {
   PartialBackgroundColor,
 }
 
-/// `./config/config.toml` から設定を読み込みます。
-///
-/// # Errors
-///
-/// ファイル読み込み・TOML 解析・バリデーション失敗時にエラーを返します。
-pub fn read_config() -> miette::Result<Config> {
-  let config_path = DEFAULT_CONFIG_PATH;
-  info!(config_path = %config_path, "設定ファイルの読み込みを開始します");
-  let config = read_config_with_path(config_path)?;
-  info!(
-    config_path = %config_path,
-    document_name = %config.name,
-    output_path = %config.pdf.output_path.display(),
-    "設定ファイルの読み込みが完了しました"
-  );
-  return Ok(config);
-}
-
 /// 指定パスから設定ファイルを読み込みます。
 ///
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
-fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Config> {
-  let config_path = config_path.as_ref();
+///  # Panics
+///
+/// フォント設定の変換処理において、内部的な不整合が発生した場合にパニックします。
+/// これは通常発生しませんが、バリデーションエラーの収集ロジックに問題がある場合に起こる可能性があります。
+pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
+  info!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),
     source,
@@ -264,6 +264,8 @@ fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Confi
   // 構造体分解
   let pre_config::PreConfig {
     name,
+    style_path,
+    references_path,
     pdf: pre_pdf_config,
     font_configs: pre_font_configs,
   } = pre_config;
@@ -281,6 +283,28 @@ fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Confi
     background_g,
     background_b,
   } = pre_pdf_config;
+
+  let style_path = match style_path {
+    Some(p) => {
+      let canonical = p.canonicalize().map_err(|source| ReadConfigError::CanonicalizeStylePath {
+        path: p.display().to_string(),
+        source,
+      })?;
+      Some(canonical)
+    },
+    None => None,
+  };
+
+  let references_path = match references_path {
+    Some(p) => {
+      let canonical = p.canonicalize().map_err(|source| ReadConfigError::CanonicalizeReferencesPath {
+        path: p.display().to_string(),
+        source,
+      })?;
+      Some(canonical)
+    },
+    None => None,
+  };
 
   // バリデーション
   validate_positive_fields(
@@ -335,6 +359,8 @@ fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Confi
 
   let config = Config {
     name,
+    style_path,
+    references_path,
     pdf: PdfConfig {
       output_path,
       height,
@@ -352,6 +378,12 @@ fn read_config_with_path<P: AsRef<Path>>(config_path: P) -> miette::Result<Confi
     font_configs,
   };
 
+  info!(
+    config_path = %config_path.display(),
+    document_name = %config.name,
+    output_path = %config.pdf.output_path.display(),
+    "設定ファイルの読み込みが完了しました"
+  );
   return Ok(config);
 }
 

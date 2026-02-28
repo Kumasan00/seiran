@@ -6,6 +6,7 @@ members = [
   "crates/parser",
   "crates/pdf_gen",
   "crates/read_config",
+  "crates/read_references",
   "crates/read_style",
   "crates/seiran",
   "crates/types",

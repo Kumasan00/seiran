@@ -37,6 +37,10 @@ use types::FontMap;
 pub struct Config {
   /// ドキュメント名（PDF ファイル名の基盤、拡張子なし）
   pub name: String,
+  /// スタイル設定ファイルへのパス（オプション、正規化済み）
+  pub style_path: Option<PathBuf>,
+  /// 参照設定ファイルへのパス（オプション、正規化済み）
+  pub references_path: Option<PathBuf>,
   /// PDF ページレイアウト設定（検証済み）
   pub pdf: PdfConfig,
   /// 19 フォント種別すべての設定（検証済み）

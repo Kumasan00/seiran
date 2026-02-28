@@ -87,13 +87,10 @@ fn main() -> miette::Result<()> {
   match cli_args.command {
     // build: テキストファイルから PDF を生成（メイン機能）
     // 設定読み込み → フォント検証 → テキスト処理 → シェイピング → PDF 出力
-    cli::Command::Build { text_file_path } => match build_pdf::build_pdf(&text_file_path) {
-      Ok(()) => {},
-      Err(e) => {
-        eprintln!("{e:?}");
-        std::process::exit(1);
-      },
-    },
+    cli::Command::Build {
+      text_file_path,
+      config_path,
+    } => build_pdf::build_pdf(&text_file_path, &config_path)?,
     // variation-axes: 指定フォントのバリアブル軸（weight, width など）の一覧表示
     cli::Command::VariationAxes {
       font_path,

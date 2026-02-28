@@ -27,6 +27,9 @@ pub enum Command {
     /// 入力テキストファイルのパス
     #[arg(value_name = "FILE")]
     text_file_path: PathBuf,
+    /// 設定ファイルのパス（オプション、指定しない場合はデフォルトの `config.toml` を使用）
+    #[arg(short, long, value_name = "CONFIG", default_value = "./config/config.toml")]
+    config_path: PathBuf,
   },
   /// フォントファイルのバリアブルフォント軸情報を表示する
   VariationAxes {
