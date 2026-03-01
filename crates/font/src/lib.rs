@@ -77,13 +77,50 @@
 //! }
 //! ```
 
+#![allow(unused_assignments)]
+
 use std::fs;
 
-use miette::IntoDiagnostic;
+use miette::Diagnostic;
 use rayon::prelude::*;
 use read_config::FontConfigs;
 use read_fonts::FontRef;
+use thiserror::Error;
 use types::{FontMap, FontType};
+
+/// フォント読み込み・解析時のエラー
+#[derive(Debug, Error, Diagnostic)]
+enum FontLoadError {
+  /// フォントファイルの読み込みに失敗した場合
+  #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(font::load::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+  ReadFont {
+    /// フォント種別
+    font_type: FontType,
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+  /// フォントの解析に失敗した場合
+  #[error("{font_type:?} のフォント解析に失敗しました (index: {index})")]
+  #[diagnostic(
+    code(font::load::parse),
+    help(
+      "フォントファイルが有効な OpenType フォントであることを確認してください。TTC の場合、font_index が正しいか確認してください。"
+    )
+  )]
+  ParseFont {
+    /// フォント種別
+    font_type: FontType,
+    /// TTC 内のフォントインデックス
+    index: u32,
+    /// 元の解析エラー
+    #[source]
+    source: read_fonts::ReadError,
+  },
+}
 
 pub mod font_info;
 pub mod glyph_mapping;
@@ -131,9 +168,13 @@ impl FontDataExt for FontData {
       .map(|&font_type| {
         let font_config = font_configs.get(font_type);
         let font_path = &font_config.font_path;
-        fs::read(font_path).into_diagnostic()
+        fs::read(font_path).map_err(|source| FontLoadError::ReadFont {
+          font_type,
+          path: font_path.display().to_string(),
+          source,
+        })
       })
-      .collect::<Result<Vec<Vec<u8>>, miette::Report>>()?;
+      .collect::<Result<Vec<Vec<u8>>, FontLoadError>>()?;
     return Ok(FontMap::from_all(font_datas));
   }
 }
@@ -180,9 +221,13 @@ impl<'a> FontRefsExt<'a> for FontRefs<'a> {
         let font_data = font_data.get(font_type);
         let font_config = config.get(font_type);
         let index = font_config.font_index;
-        FontRef::from_index(font_data, index).into_diagnostic()
+        FontRef::from_index(font_data, index).map_err(|source| FontLoadError::ParseFont {
+          font_type,
+          index,
+          source,
+        })
       })
-      .collect::<Result<Vec<FontRef<'a>>, miette::Report>>()?;
+      .collect::<Result<Vec<FontRef<'a>>, FontLoadError>>()?;
     return Ok(FontMap::from_all(font_refs));
   }
 }

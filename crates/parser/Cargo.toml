@@ -10,12 +10,9 @@ version.workspace = true
 
 [dependencies]
 memchr.workspace = true
-memmap2.workspace = true
 miette.workspace = true
 phf.workspace = true
-read_config = { path = "../read_config" }
 thiserror.workspace = true
-types = { path = "../types" }
 
 [lints]
 workspace = true

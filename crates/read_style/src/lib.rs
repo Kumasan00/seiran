@@ -1,14 +1,32 @@
+#![allow(unused_assignments)]
+
 use std::path::Path;
 
 use figment::{
   Figment,
   providers::{Format, Serialized, Toml},
 };
-use miette::IntoDiagnostic;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::info;
 
 const STYLE_PATH: &str = "config/style.toml";
+
+/// スタイル設定ファイル読み込み時のエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum ReadStyleError {
+  /// スタイル設定の読み込み・解析に失敗した場合
+  #[error("スタイル設定ファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(style::read), help("スタイル設定ファイルのパスと TOML の構文を確認してください。"))]
+  ReadStyle {
+    /// ファイルパス
+    path: String,
+    /// 元のエラー
+    #[source]
+    source: figment::Error,
+  },
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Style {
@@ -61,14 +79,18 @@ impl HeadingStyle {
 /// configuration values cannot be extracted into a [`Style`] struct.
 pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Style> {
   let figment = Figment::from(Serialized::defaults(Style::default()));
-  let figment = if let Some(p) = path {
-    info!(style_path = %p.as_ref().display(), "スタイル設定ファイルの読み込みを開始します");
-    figment.merge(Toml::file(p))
+  let (figment, style_path_str) = if let Some(p) = path {
+    let path_str = p.as_ref().display().to_string();
+    info!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
+    (figment.merge(Toml::file(p)), path_str)
   } else {
     info!(style_path = STYLE_PATH, "デフォルトのスタイル設定ファイルの読み込みを開始します");
-    figment.merge(Toml::file(STYLE_PATH))
+    (figment.merge(Toml::file(STYLE_PATH)), STYLE_PATH.to_string())
   };
-  let style: Style = figment.extract().into_diagnostic()?;
+  let style: Style = figment.extract().map_err(|source| ReadStyleError::ReadStyle {
+    path: style_path_str,
+    source,
+  })?;
   info!(font_size = style.font_size, "スタイル設定ファイルの読み込みが完了しました");
   return Ok(style);
 }

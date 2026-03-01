@@ -11,7 +11,9 @@
 - バリアブルフォント対応（軸の指定によるウェイト・幅の調整）
 - OpenType フィーチャー（カーニング、リガチャなど）のサポート
 - フォントサブセット化による PDF サイズの最小化
-- TOML 設定ファイルによる柔軟なカスタマイズ
+- TOML 設定ファイルによる柔軟なカスタマイズ（メイン設定 / スタイル設定 / 参照定義）
+- スタイル設定ファイルによる見出しフォントサイズ・余白のカスタマイズ
+- CSL ベースの参照定義ファイルによる文献管理
 - 詳細なエラー診断メッセージ（miette による fancy 表示）
 
 ## 必要環境
@@ -58,10 +60,14 @@ cargo run script-langs <font_path> [--font-index <index>]
 
 ## 設定
 
-`config/config.toml` で PDF 生成の設定を行います。
+### メイン設定（`config/config.toml`）
+
+PDF 生成の基本設定を行います。
 
 ```toml
 name = "document_name"         # ドキュメント名（出力PDFファイル名）
+references_path = "config/references.toml"  # 参照定義ファイルパス（オプション）
+style_path = "config/style.toml"            # スタイル設定ファイルパス（オプション）
 
 [pdf]
 output_dir = "target/"         # 出力ディレクトリ
@@ -73,6 +79,9 @@ margin_top = 99.0              # 上余白（pt）
 margin_bottom = 99.0           # 下余白（pt）
 margin_left = 85.0             # 左余白（pt）
 margin_right = 85.0            # 右余白（pt）
+# background_r = 0.8           # 背景色 R（0.0–1.0、オプション、RGB全指定必須）
+# background_g = 0.7           # 背景色 G
+# background_b = 0.6           # 背景色 B
 
 [font_configs.serif]           # 19種別それぞれに設定
 font_name = "MyFont"           # PDF 内フォント名（一意必須）
@@ -88,16 +97,66 @@ features = [                   # OpenType フィーチャー（オプション�
 ]
 ```
 
+### スタイル設定（`config/style.toml`）
+
+見出しのフォントサイズと下余白をカスタマイズします。指定しない項目はデフォルト値が使用されます。
+
+```toml
+font_size = 12.0               # 本文フォントサイズ（pt）
+
+[part]
+font_size = 40.0               # Part 見出しフォントサイズ
+bottom_margin = 20.0           # Part 見出し下余白
+
+[chapter]
+font_size = 25.0
+bottom_margin = 15.0
+
+[section]
+font_size = 20.0
+bottom_margin = 10.0
+
+[subsection]
+font_size = 16.0
+bottom_margin = 10.0
+
+[paragraph]
+font_size = 14.0
+bottom_margin = 5.0
+
+[subparagraph]
+font_size = 12.0
+bottom_margin = 5.0
+```
+
+### 参照定義（`config/references.toml`）
+
+CSL ベースの文献情報を定義します。
+
+```toml
+style = "IEEE"                 # 引用スタイル
+
+[[references]]
+id = "example"                 # 参照 ID
+title = "Example Book Title"
+type = "book"                  # CSL 文献タイプ（book, article 等）
+[[references.authors]]
+family = "Yamamoto"
+given = "Taro"
+```
+
 ## プロジェクト構成
 
 ```text
 crates/
 ├── cli/              # コマンドライン引数の解析
 ├── font/             # フォント処理（読込・シェーピング・サブセット化）
-├── parser/           # テキストパース（Lexer → Parser → Evaluator → Layout Engine）
+├── layout/           # レイアウトエンジン（Document IR → LayoutNode → Item）
+├── parser/           # テキストパース（Lexer → Parser → Evaluator → Document IR）
 ├── pdf_gen/          # PDF 生成エンジン
-├── read_config/      # TOML 設定ファイルの読み込みと検証
-├── read_style/       # TOML スタイルファイルの読み込みと検証
+├── read_config/      # TOML メイン設定ファイルの読み込みと検証
+├── read_references/  # TOML 参照定義ファイルの読み込み
+├── read_style/       # TOML スタイル設定ファイルの読み込み
 ├── seiran/           # メインアプリケーション（エントリーポイント）
 └── types/            # 共通型定義
 ```

@@ -22,7 +22,9 @@
 //! 5. Box/Glue/Penalty モデルの `Item` リストに変換して返す
 
 mod layout_engine;
+pub mod layout_node;
 pub mod lowering;
 
 pub use layout_engine::{BoxItem, Glyph, GlyphRun, Item, layout_engine};
+pub use layout_node::{LayoutNode, Style};
 pub use lowering::{LoweringContext, lower_document, lower_nodes};

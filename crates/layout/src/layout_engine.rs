@@ -4,6 +4,8 @@
 //! テキストノードは Unicode スクリプトに基づいてセグメント分割され、
 //! 各セグメントがフォントシェーパーで処理されてグリフ情報を持つ `GlyphRun` になります。
 
+#![allow(unused_assignments)]
+
 use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
 use font_types::GlyphId;
 use icu::properties::{
@@ -12,10 +14,30 @@ use icu::properties::{
   script::ScriptWithExtensions,
 };
 use lazy_regex::regex_replace_all;
-use miette::IntoDiagnostic;
-use parser::LayoutNode;
+use miette::Diagnostic;
 use read_fonts::TableProvider;
+use thiserror::Error;
 use types::{FontKind, FontType};
+
+use crate::layout_node::LayoutNode;
+
+/// レイアウトエンジンのエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum LayoutError {
+  /// hmtx テーブルの取得に失敗した場合
+  #[error("{font_type:?} フォントの hmtx テーブルの取得に失敗しました")]
+  #[diagnostic(
+    code(layout::hmtx),
+    help("フォントファイルが有効であり、hmtx テーブルが存在することを確認してください。")
+  )]
+  Hmtx {
+    /// フォント種別
+    font_type: FontType,
+    /// 元の解析エラー
+    #[source]
+    source: read_fonts::ReadError,
+  },
+}
 
 /// レイアウトエンジンが生成する最小単位
 ///
@@ -135,7 +157,7 @@ pub fn layout_engine(
           let font_ref = font_refs.get(font_type);
           let font_info = font_infos.get(font_type);
           let glyph_mapping = glyph_mappings.get_mut(font_type);
-          let hmtx = font_ref.hmtx().into_diagnostic()?;
+          let hmtx = font_ref.hmtx().map_err(|source| LayoutError::Hmtx { font_type, source })?;
           // テキストセグメントのレイアウト処理
           let result = shapers.get(font_type).shape(segment_text);
           let glyph_infos = result.glyph_infos();

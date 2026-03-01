@@ -1,6 +1,8 @@
 //! PDF を生成するモジュール
 //! このモジュールは、テキストファイルから PDF を生成するための主要な機能を提供します。
 
+#![allow(unused_assignments)]
+
 use std::path::{Path, PathBuf};
 
 use font::{
@@ -13,8 +15,24 @@ use font::{
   subset, validate_font,
 };
 use layout::layout_engine;
-use miette::IntoDiagnostic;
+use miette::Diagnostic;
+use thiserror::Error;
 use tracing::info;
+
+/// PDF ビルド時のエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum BuildPdfError {
+  /// PDF ファイルの書き込みに失敗した場合
+  #[error("PDF ファイルの保存に失敗しました: {path}")]
+  #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
+  WritePdf {
+    /// 出力パス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+}
 
 /// TeX テキストから PDF を生成
 ///
@@ -29,8 +47,13 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   let _style = read_style::read_style(config.style_path.as_deref())?;
   let _references = read_references::read_references(config.references_path.as_deref())?;
 
-  let layout_nodes = parser::text_parser(file_path, &config)?;
+  let doc_nodes = parser::text_parser(file_path)?;
   info!("テキストのパースが完了しました");
+
+  let lowering_ctx = layout::LoweringContext::new(config.pdf.font_size);
+  let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
+  println!("Layout Nodes: {layout_nodes:#?}");
+  info!("Document IR → LayoutNode への変換が完了しました");
 
   let font_data = font::FontData::new(&config.font_configs)?;
   info!("フォントの読み込みが完了しました");
@@ -56,7 +79,10 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
 
   let pdf_bytes = pdf_gen::pdf_gen(&config, &subset_bytes, &items, &font_infos, &glyph_mappings);
 
-  std::fs::write(&config.pdf.output_path, pdf_bytes).into_diagnostic()?;
+  std::fs::write(&config.pdf.output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
+    path: config.pdf.output_path.display().to_string(),
+    source,
+  })?;
   info!(output_path = %config.pdf.output_path.display(), "PDF の保存が完了しました");
 
   return Ok(());

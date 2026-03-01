@@ -15,8 +15,10 @@
 ### データフロー
 
 ```text
-CLI引数パース → TOML設定読込 → テキストパース(Lexer→Parser→Evaluator→LayoutNode)
-  → フォント読込/検証 → テキストシェーピング → レイアウトエンジン(→Item)
+CLI引数パース → TOML設定読込（メイン設定 / スタイル / 参照定義）
+  → テキストパース(Lexer→Parser→Evaluator→DocNode)
+  → ローワリング(DocNode→LayoutNode) → フォント読込/検証
+  → テキストシェーピング → レイアウトエンジン(LayoutNode→Item)
   → フォントサブセット化 → PDF生成 → ファイル出力
 ```
 
@@ -25,30 +27,37 @@ CLI引数パース → TOML設定読込 → テキストパース(Lexer→Parser
 ```text
 types (依存なし — 全クレートの基盤)
   ↑
-read_config ← {serde, toml, miette, thiserror, tracing}
+read_config ← {serde, toml, miette, thiserror, tracing, types}
+read_style  ← {figment, serde, miette, thiserror, tracing}
+read_references ← {serde, toml, miette, thiserror, tracing}
   ↑
-font ← {allsorts, harfrust, read-fonts, font-types, rayon, miette, thiserror, tracing}
+font ← {read_config, types, allsorts, harfrust, read-fonts, font-types, rayon, miette, thiserror, tracing}
   ↑
-parser ← {font, icu, lazy-regex, memchr, memmap2, phf, read-fonts, miette, thiserror}
+parser ← {types, memchr, memmap2, miette, phf, thiserror}
   ↑
-pdf_gen ← {font, parser, pdf-writer}
+layout ← {font, parser, types, icu, lazy-regex, font-types, read-fonts, miette}
   ↑
-seiran (main) ← {cli, font, parser, pdf_gen, read_config, miette, tracing}
+pdf_gen ← {font, layout, read_config, types, pdf-writer}
+  ↑
+seiran (main) ← {cli, font, layout, parser, pdf_gen, read_config, read_references, read_style, types, miette, tracing}
 
 cli ← {clap, thiserror}
 ```
 
 ### クレート一覧
 
-| クレート        | パス                  | 責務                                                                           |
-| --------------- | --------------------- | ------------------------------------------------------------------------------ |
-| **types**       | `crates/types/`       | プロジェクト全体で使用される共通型定義（`FontType`, `FontKind`）               |
-| **cli**         | `crates/cli/`         | コマンドライン引数の解析（clap derive）                                        |
-| **read_config** | `crates/read_config/` | TOML 設定ファイルの読み込みとバリデーション                                    |
-| **font**        | `crates/font/`        | フォント処理（読込、解析、シェーピング、サブセット化、バリアブルフォント対応） |
-| **parser**      | `crates/parser/`      | テキストファイルのパース（Lexer → Parser → Evaluator）とレイアウトエンジン     |
-| **pdf_gen**     | `crates/pdf_gen/`     | PDF バイナリ生成エンジン                                                       |
-| **seiran**      | `crates/seiran/`      | メインアプリケーション（エントリーポイント、パイプラインオーケストレーション） |
+| クレート            | パス                      | 責務                                                                           |
+| ------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| **types**           | `crates/types/`           | プロジェクト全体で使用される共通型定義（`FontType`, `FontKind`, `FontMap`）    |
+| **cli**             | `crates/cli/`             | コマンドライン引数の解析（clap derive）                                        |
+| **read_config**     | `crates/read_config/`     | TOML メイン設定ファイルの読み込みとバリデーション                              |
+| **read_style**      | `crates/read_style/`      | TOML スタイル設定ファイルの読み込み（figment によるデフォルト値マージ）        |
+| **read_references** | `crates/read_references/` | TOML 参照定義ファイルの読み込み（CSL ベース文献情報）                          |
+| **font**            | `crates/font/`            | フォント処理（読込、解析、シェーピング、サブセット化、バリアブルフォント対応） |
+| **parser**          | `crates/parser/`          | テキストファイルのパース（Lexer → Parser → Evaluator → Document IR）           |
+| **layout**          | `crates/layout/`          | ローワリング（DocNode → LayoutNode）とレイアウトエンジン（LayoutNode → Item）  |
+| **pdf_gen**         | `crates/pdf_gen/`         | PDF バイナリ生成エンジン                                                       |
+| **seiran**          | `crates/seiran/`          | メインアプリケーション（エントリーポイント、パイプラインオーケストレーション） |
 
 ---
 
@@ -155,12 +164,18 @@ pub fn example(param: Type) -> Result<ReturnType, Error> {
 
 ## 設定ファイル
 
-`config/config.toml` で PDF 生成の設定を定義します。
+3 つの TOML 設定ファイルで PDF 生成をカスタマイズします。
 
-### 構造
+### メイン設定（`config/config.toml`）
+
+PDF 生成の基本設定を定義します。
+
+#### 構造
 
 ```toml
 name = "document_name"         # ドキュメント名（出力PDFファイル名）
+references_path = "config/references.toml"  # 参照定義ファイルパス（オプション）
+style_path = "config/style.toml"            # スタイル設定ファイルパス（オプション）
 
 [pdf]
 output_dir = "target/"         # 出力ディレクトリ
@@ -190,6 +205,54 @@ features = [                   # OpenType フィーチャー（オプション�
 ]
 ```
 
+### スタイル設定（`config/style.toml`）
+
+見出しのフォントサイズと下余白を定義します。`figment` によるデフォルト値マージが行われるため、変更したい項目のみ記述すれば十分です。
+
+```toml
+font_size = 12.0               # 本文フォントサイズ（デフォルト: 12.0）
+
+[part]
+font_size = 40.0               # デフォルト: 40.0
+bottom_margin = 20.0           # デフォルト: 20.0
+
+[chapter]
+font_size = 25.0               # デフォルト: 25.0
+bottom_margin = 15.0           # デフォルト: 15.0
+
+[section]
+font_size = 20.0               # デフォルト: 20.0
+bottom_margin = 10.0           # デフォルト: 10.0
+
+[subsection]
+font_size = 16.0               # デフォルト: 16.0
+bottom_margin = 10.0           # デフォルト: 10.0
+
+[paragraph]
+font_size = 14.0               # デフォルト: 14.0
+bottom_margin = 5.0            # デフォルト: 5.0
+
+[subparagraph]
+font_size = 12.0               # デフォルト: 12.0
+bottom_margin = 5.0            # デフォルト: 5.0
+```
+
+### 参照定義（`config/references.toml`）
+
+CSL ベースの文献情報を定義します。
+
+```toml
+style = "IEEE"                 # 引用スタイル
+
+[[references]]
+id = "example"                 # 参照 ID（文中から参照するキー）
+title = "Example Book Title"
+type = "book"                  # CSL 文献タイプ（article, book, chapter, thesis 等）
+[[references.authors]]
+family = "Yamamoto"            # 姓
+given = "Taro"                 # 名（オプション）
+```
+
 ### 19 フォント種別
 
 `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`,
@@ -215,6 +278,7 @@ features = [                   # OpenType フィーチャー（オプション�
 | **memmap2**                          | テキストファイルのメモリマップ読込                              |
 | **icu**                              | Unicode プロパティ（Script 判定、East Asian Width）             |
 | **serde** + **toml**                 | TOML 設定ファイルデシリアライズ                                 |
+| **figment**                          | スタイル設定ファイルのデフォルト値マージ読み込み                |
 | **miette** + **thiserror**           | エラー診断（fancy 表示、diagnostic code、help）                 |
 | **tracing** + **tracing-subscriber** | 構造化ロギング                                                  |
 | **phf**                              | コンパイル時パーフェクトハッシュ（コマンド / 環境ディスパッチ） |

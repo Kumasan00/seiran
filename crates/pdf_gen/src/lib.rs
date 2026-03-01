@@ -100,7 +100,9 @@ impl PdfIds {
     };
   }
 
-  fn get_font(&self, font_type: FontType) -> Option<&FontIds> { self.font_ids.get(font_type).as_ref() }
+  fn get_font(&self, font_type: FontType) -> Option<&FontIds> {
+    self.font_ids.get(font_type).as_ref()
+  }
 }
 
 /// PDFドキュメントを生成

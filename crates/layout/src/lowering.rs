@@ -43,11 +43,10 @@
 //! 2. `build_pdf.rs` で `lower() → layout_engine()` の 2 段パイプラインに更新
 //! 3. 既存の PDF 出力結果が変わらないことを回帰テストで確認
 
-use parser::{
-  document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem},
-  evaluator::{LayoutNode, Style},
-};
+use parser::document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem};
 use types::FontKind;
+
+use crate::layout_node::{LayoutNode, Style};
 
 /// Lowering のコンテキスト
 ///
@@ -75,7 +74,9 @@ impl LoweringContext {
   ///   `pub fn new(config: &Config) -> Self`
   ///   現在は仮に `font_size` だけを受け取る
   #[must_use]
-  pub fn new(default_font_size: f32) -> Self { return LoweringContext { default_font_size }; }
+  pub fn new(default_font_size: f32) -> Self {
+    return LoweringContext { default_font_size };
+  }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）

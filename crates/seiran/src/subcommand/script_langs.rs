@@ -43,7 +43,7 @@
 
 use std::{collections::BTreeSet, fs, path::Path};
 
-use miette::{Diagnostic, IntoDiagnostic};
+use miette::Diagnostic;
 use read_fonts::{
   FontRef, ReadError, TableProvider,
   tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList},
@@ -62,18 +62,20 @@ enum ScriptLangsError {
   ///
   /// フォントファイルをメモリに読み込めません。
   /// ファイルが存在しない、アクセス権限がない、ディスクエラーなどが考えられます。
-  #[error("Failed to read font file: {0}")]
-  #[diagnostic(code(script_langs::io_error), help("Verify that the file exists and you have read permissions"))]
+  #[error("フォントファイルの読み込みに失敗しました: {0}")]
+  #[diagnostic(code(script_langs::io_error), help("ファイルが存在し、読み取り権限があることを確認してください。"))]
   IoError(#[from] std::io::Error),
 
   /// フォント解析エラー
   ///
   /// フォントファイルは読み込めましたが、指定インデックスのフォントを解析できません。
   /// TTC ファイルの場合、範囲外のインデックスを指定した可能性があります。
-  #[error("Failed to parse font at index {font_index}")]
+  #[error("インデックス {font_index} のフォント解析に失敗しました")]
   #[diagnostic(
     code(script_langs::font_parse_error),
-    help("Ensure the file is a valid font file (TTF/OTF/TTC/OTC). For font collections, try a different index.")
+    help(
+      "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は別のインデックスを試してください。"
+    )
   )]
   FontParseError {
     /// フォント インデックス（TTC の場合）
@@ -87,12 +89,10 @@ enum ScriptLangsError {
   ///
   /// フォントが GSUB（Glyph Substitution）テーブルを含みません。
   /// グリフ置換機能（合字など）をサポートしないフォントの可能性があります。
-  #[error("GSUB table not found or invalid")]
+  #[error("GSUB テーブルが見つからないか、無効です")]
   #[diagnostic(
     code(script_langs::gsub_error),
-    help(
-      "This font may not contain a GSUB (Glyph Substitution) table, which means it has no glyph substitution features"
-    )
+    help("このフォントには GSUB（グリフ置換）テーブルが含まれていない可能性があります。")
   )]
   GsubError {
     /// 元の読み込みエラー
@@ -104,10 +104,10 @@ enum ScriptLangsError {
   ///
   /// フォントが GPOS（Glyph Positioning）テーブルを含みません。
   /// グリフ位置調整機能（カーニングなど）をサポートしないフォントの可能性があります。
-  #[error("GPOS table not found or invalid")]
+  #[error("GPOS テーブルが見つからないか、無効です")]
   #[diagnostic(
     code(script_langs::gpos_error),
-    help("This font may not contain a GPOS (Glyph Positioning) table, which means it has no positioning features")
+    help("このフォントには GPOS（グリフ位置調整）テーブルが含まれていない可能性があります。")
   )]
   GposError {
     /// 元の読み込みエラー
@@ -118,10 +118,10 @@ enum ScriptLangsError {
   /// Feature リスト取得エラー
   ///
   /// GSUB/GPOS テーブル内の Feature リスト構造が破損しているか、アクセスできません。
-  #[error("Failed to retrieve feature list from {table_name} table")]
+  #[error("{table_name} テーブルから Feature リストの取得に失敗しました")]
   #[diagnostic(
     code(script_langs::feature_list_error),
-    help("The {table_name} table structure may be corrupted. Try validating the font file")
+    help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   FeatureListError {
     /// テーブル名（"GSUB" または "GPOS"）
@@ -134,10 +134,10 @@ enum ScriptLangsError {
   /// Script リスト取得エラー
   ///
   /// GSUB/GPOS テーブル内の Script リスト構造が破損しているか、アクセスできません。
-  #[error("Failed to retrieve script list from {table_name} table")]
+  #[error("{table_name} テーブルから Script リストの取得に失敗しました")]
   #[diagnostic(
     code(script_langs::script_list_error),
-    help("The {table_name} table structure may be corrupted. Try validating the font file")
+    help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   ScriptListError {
     /// テーブル名（"GSUB" または "GPOS"）
@@ -150,10 +150,10 @@ enum ScriptLangsError {
   /// Language System 取得エラー
   ///
   /// 特定の Script 内の Language System 構造にアクセスできません。
-  #[error("Failed to retrieve language system at index {index} for script '{script_tag}'")]
+  #[error("Script '{script_tag}' のインデックス {index} の Language System の取得に失敗しました")]
   #[diagnostic(
     code(script_langs::lang_sys_error),
-    help("The language system entry may be invalid or the script list structure is corrupted")
+    help("Language System エントリが無効であるか、Script リスト構造が破損している可能性があります。")
   )]
   LangSysError {
     /// Language System インデックス
@@ -169,10 +169,10 @@ enum ScriptLangsError {
   ///
   /// Feature リスト内の特定 Feature にアクセスできません。
   /// インデックスが無効または Feature テーブルが破損している可能性があります。
-  #[error("Failed to retrieve feature at index {index}")]
+  #[error("インデックス {index} の Feature の取得に失敗しました")]
   #[diagnostic(
     code(script_langs::feature_error),
-    help("The feature table entry may be invalid. The feature list index might be out of bounds")
+    help("Feature テーブルエントリが無効である可能性があります。Feature リストのインデックスが範囲外かもしれません。")
   )]
   FeatureError {
     /// Feature インデックス
@@ -186,8 +186,11 @@ enum ScriptLangsError {
   ///
   /// Feature の追加パラメータ情報にアクセスできません。
   /// すべての Feature がパラメータを持つわけではないため、エラーが常に問題になるわけではありません。
-  #[error("Failed to retrieve feature parameters for feature '{feature_tag}'")]
-  #[diagnostic(code(script_langs::feature_params_error), help("The feature parameters structure may be corrupted"))]
+  #[error("Feature '{feature_tag}' のパラメータの取得に失敗しました")]
+  #[diagnostic(
+    code(script_langs::feature_params_error),
+    help("Feature パラメータ構造が破損している可能性があります。")
+  )]
   FeatureParamsError {
     /// Feature タグ
     feature_tag: String,
@@ -243,7 +246,7 @@ pub fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
   // Script/Language System から参照された Feature タグを収集する（統計処理で使用）
   let mut referenced_features = BTreeSet::new();
 
-  let font_data = fs::read(file_path).into_diagnostic()?;
+  let font_data = fs::read(file_path).map_err(ScriptLangsError::from)?;
   let font_ref = FontRef::from_index(&font_data, font_index)
     .map_err(|source| ScriptLangsError::FontParseError { font_index, source })?;
 

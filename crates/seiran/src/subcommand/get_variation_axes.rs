@@ -43,11 +43,44 @@
 //! seiran variation-axes fonts/variable.ttc --font-index 1
 //! ```
 
+#![allow(unused_assignments)]
+
 use std::{fs, path::Path};
 
-use miette::IntoDiagnostic;
+use miette::{Diagnostic, IntoDiagnostic};
 use read_fonts::{FontRef, TableProvider, tables::name::NameString};
+use thiserror::Error;
 use tracing::info;
+
+/// バリアブルフォント軸情報取得時のエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum VariationAxesError {
+  /// フォントファイルの読み込みに失敗した場合
+  #[error("フォントファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(variation_axes::read_file), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+  /// フォント解析に失敗した場合
+  #[error("インデックス {font_index} のフォント解析に失敗しました")]
+  #[diagnostic(
+    code(variation_axes::font_parse),
+    help(
+      "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は --font-index を確認してください。"
+    )
+  )]
+  FontParse {
+    /// フォントインデックス
+    font_index: u32,
+    /// 元の解析エラー
+    #[source]
+    source: read_fonts::ReadError,
+  },
+}
 
 /// バリアブルフォントの軸情報と名前付きインスタンスを取得・表示
 ///
@@ -112,11 +145,15 @@ pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::R
   info!(font_file_path = %font_path.display(), font_index = font_index, "Input font file path and index");
 
   // フォントファイルをすべてメモリに読み込み
-  let font_bytes = fs::read(font_path).into_diagnostic()?;
+  let font_bytes = fs::read(font_path).map_err(|source| VariationAxesError::ReadFile {
+    path: font_path.display().to_string(),
+    source,
+  })?;
 
   // 指定されたインデックスのフォント参照を取得
   // TTC の場合は複数フォントから選択、単一フォントの場合は font_index=0
-  let font_ref = FontRef::from_index(&font_bytes, font_index).into_diagnostic()?;
+  let font_ref = FontRef::from_index(&font_bytes, font_index)
+    .map_err(|source| VariationAxesError::FontParse { font_index, source })?;
 
   // fvar テーブルを取得（OpenType バリエーション軸定義テーブル）
   match font_ref.fvar() {

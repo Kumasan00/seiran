@@ -2,12 +2,40 @@
 //!
 //! TOML 形式の参照定義ファイルを読み込み、ラベルとターゲットのペアを返す。
 
+#![allow(unused_assignments)]
+
 use std::path::Path;
 
-use miette::IntoDiagnostic;
+use miette::Diagnostic;
 use serde::{Deserialize, Deserializer, de};
+use thiserror::Error;
 use toml::value::Datetime;
 use tracing::info;
+
+/// 参照定義ファイル読み込み時のエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum ReadReferencesError {
+  /// 参照定義ファイルの読み込みに失敗した場合
+  #[error("参照定義ファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(references::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+  /// TOML 解析に失敗した場合
+  #[error("参照定義ファイルの TOML 解析に失敗しました: {path}")]
+  #[diagnostic(code(references::parse_toml), help("TOML の構文を確認してください。"))]
+  ParseToml {
+    /// ファイルパス
+    path: String,
+    /// 元の解析エラー
+    #[source]
+    source: toml::de::Error,
+  },
+}
 
 /// 参照定義ファイル全体を表す構造体
 ///
@@ -259,9 +287,16 @@ impl<'de> Deserialize<'de> for Author {
 pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Option<References>> {
   #[allow(clippy::redundant_else)]
   if let Some(path) = path {
-    info!(references_path = %path.as_ref().display(), "参照定義ファイルの読み込みを開始します");
-    let file = std::fs::read_to_string(path.as_ref()).into_diagnostic()?;
-    let references: References = toml::from_str(&file).into_diagnostic()?;
+    let path_ref = path.as_ref();
+    info!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
+    let file = std::fs::read_to_string(path_ref).map_err(|source| ReadReferencesError::ReadFile {
+      path: path_ref.display().to_string(),
+      source,
+    })?;
+    let references: References = toml::from_str(&file).map_err(|source| ReadReferencesError::ParseToml {
+      path: path_ref.display().to_string(),
+      source,
+    })?;
     let count = references.references.as_ref().map_or(0, std::vec::Vec::len);
     info!(count, "参照定義ファイルの読み込みが完了しました");
     return Ok(Some(references));

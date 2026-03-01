@@ -1,215 +1,202 @@
-use types::FontKind;
-
 use crate::{
-  evaluator::{EvalContext, EvalError, LayoutNode},
-  parser::{Command, Node},
+  ast::{Command, Node, NodeKind},
+  document::{DocNode, HeadingLevel, HeadingNumber, InlineNode},
+  evaluator::{EvalContext, EvalError},
 };
 
 #[inline]
-pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.part_num += 1;
-  context.chapter_num = 0;
-  context.section_num = 0;
-  context.subsection_num = 0;
-  context.paragraph_num = 0;
-  context.subparagraph_num = 0;
+pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.part += 1;
+  context.chapter = 0;
+  context.section = 0;
+  context.subsection = 0;
+  context.paragraph = 0;
+  context.subparagraph = 0;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("部名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "part".to_string(),
+      expected: "部名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("part".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "part".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 40.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}部 {}", context.part_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Part, context);
 
-  return Ok(vec![
-    LayoutNode::PageBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::PageBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Part,
+    number,
+    title,
+  }]);
 }
 
 #[inline]
-pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.chapter_num += 1;
-  context.section_num = 0;
-  context.subsection_num = 0;
-  context.paragraph_num = 0;
-  context.subparagraph_num = 0;
+pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.chapter += 1;
+  context.section = 0;
+  context.subsection = 0;
+  context.paragraph = 0;
+  context.subparagraph = 0;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("章名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "chapter".to_string(),
+      expected: "章名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("chapter".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "chapter".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 25.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}章 {}", context.chapter_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Chapter, context);
 
-  return Ok(vec![
-    LayoutNode::LineBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::LineBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Chapter,
+    number,
+    title,
+  }]);
 }
 
 #[inline]
-pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.section_num += 1;
-  context.subsection_num = 0;
-  context.paragraph_num = 0;
-  context.subparagraph_num = 0;
+pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.section += 1;
+  context.subsection = 0;
+  context.paragraph = 0;
+  context.subparagraph = 0;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("セクション名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "section".to_string(),
+      expected: "セクション名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("section".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "section".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}節 {}", context.section_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Section, context);
 
-  return Ok(vec![
-    LayoutNode::LineBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::LineBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Section,
+    number,
+    title,
+  }]);
 }
 
 #[inline]
-pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.subsection_num += 1;
-  context.paragraph_num = 0;
-  context.subparagraph_num = 0;
+pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.subsection += 1;
+  context.paragraph = 0;
+  context.subparagraph = 0;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("サブセクション名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "subsection".to_string(),
+      expected: "サブセクション名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("subsection".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "subsection".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}小節 {}", context.subsection_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Subsection, context);
 
-  return Ok(vec![
-    LayoutNode::LineBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::LineBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Subsection,
+    number,
+    title,
+  }]);
 }
 
 #[inline]
-pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.paragraph_num += 1;
-  context.subparagraph_num = 0;
+pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.paragraph += 1;
+  context.subparagraph = 0;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("段落名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "paragraph".to_string(),
+      expected: "段落名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("paragraph".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "paragraph".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}項 {}", context.paragraph_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Paragraph, context);
 
-  return Ok(vec![
-    LayoutNode::LineBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::LineBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Paragraph,
+    number,
+    title,
+  }]);
 }
 
 #[inline]
-pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Result<Vec<LayoutNode>, EvalError> {
-  context.subparagraph_num += 1;
+pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+  context.subparagraph += 1;
   let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument("小節名".to_string()));
+    return Err(EvalError::MissingCommandArgument {
+      name: "subparagraph".to_string(),
+      expected: "小節名".to_string(),
+      span: command.span.into(),
+    });
   };
   if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument("subparagraph".to_string()));
+    return Err(EvalError::ExtraCommandArgument {
+      name: "subparagraph".to_string(),
+      span: command.span.into(),
+    });
   }
 
-  let name = evaluate_text(first_command_arg);
-  let prev_style = context.current_style;
-  context.current_style.font_size = 16.0;
-  context.current_style.font_kind = FontKind::SerifBold;
-  let children = vec![LayoutNode::Text(
-    format!("{}小節 {}", context.subparagraph_num, name),
-    context.current_style,
-  )];
-  context.current_style = prev_style;
+  let title = evaluate_inline_nodes(first_command_arg);
+  let number = HeadingNumber::from_context(HeadingLevel::Subparagraph, context);
 
-  return Ok(vec![
-    LayoutNode::LineBreak,
-    LayoutNode::VBox {
-      children,
-      margin_bottom: 12.0,
-    },
-    LayoutNode::LineBreak,
-  ]);
+  return Ok(vec![DocNode::Heading {
+    level: HeadingLevel::Subparagraph,
+    number,
+    title,
+  }]);
 }
 
-fn evaluate_text(nodes: &[Node]) -> std::string::String {
-  let mut texts = Vec::new();
+/// AST ノードリストをインラインノードのリストに変換する
+///
+/// 見出し引数内のノードを `InlineNode` に変換します。
+/// コマンドノードは現時点では無視されます（将来的にインラインコマンドとして評価予定）。
+fn evaluate_inline_nodes(nodes: &[Node]) -> Vec<InlineNode> {
+  let mut inlines = Vec::new();
   for node in nodes {
-    match node {
-      Node::Text(text) => {
-        texts.push(text.clone());
+    match &node.kind {
+      NodeKind::Text(text) => {
+        inlines.push(InlineNode::Text(text.to_string()));
       },
-      Node::Command(_command) => {},
+      NodeKind::Command(_command) => {
+        // TODO: インラインコマンド（\textbf 等）を InlineNode として評価する
+      },
       _ => {},
     }
   }
-  return texts.join("");
+  return inlines;
 }

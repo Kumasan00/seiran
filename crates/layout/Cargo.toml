@@ -16,6 +16,7 @@ lazy-regex.workspace = true
 miette.workspace = true
 parser = { path = "../parser" }
 read-fonts.workspace = true
+thiserror.workspace = true
 types = { path = "../types" }
 
 [lints]

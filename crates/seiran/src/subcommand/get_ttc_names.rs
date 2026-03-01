@@ -53,11 +53,29 @@
 //! seiran ttc-names fonts/SourceHanCodeJP.ttc | grep "Name ID NameRecord(4)"
 //! ```
 
+#![allow(unused_assignments)]
+
 use std::{fs, path::Path};
 
-use miette::IntoDiagnostic;
+use miette::{Diagnostic, IntoDiagnostic};
 use read_fonts::{FontRef, TableProvider};
+use thiserror::Error;
 use tracing::info;
+
+/// TTC ファイル情報取得時のエラー型
+#[derive(Debug, Error, Diagnostic)]
+enum TtcNamesError {
+  /// TTC ファイルの読み込みに失敗した場合
+  #[error("TTC ファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(code(ttc_names::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+}
 
 /// TTC ファイル内のすべてのフォント名情報を取得・表示
 ///
@@ -112,7 +130,10 @@ pub(crate) fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
   info!(ttc_file_path = %file_path.display(), "Input TTC file path");
 
   // TTC ファイルをすべてメモリに読み込み
-  let data = fs::read(file_path).into_diagnostic()?;
+  let data = fs::read(file_path).map_err(|source| TtcNamesError::ReadFile {
+    path: file_path.display().to_string(),
+    source,
+  })?;
 
   // TTC に含まれるすべてのフォントを反復
   // FontRef::fonts() は TTC 内の複数フォントを自動検出

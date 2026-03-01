@@ -65,7 +65,10 @@ pub enum Command {
 /// # use cli::parse_arg;
 /// let cli = parse_arg();
 /// match cli.command {
-///   cli::Command::Build { text_file_path } => println!("生成対象: {:?}", text_file_path),
+///   cli::Command::Build {
+///     text_file_path,
+///     config_path,
+///   } => println!("生成対象: {:?}, 設定ファイル: {:?}", text_file_path, config_path),
 ///   cli::Command::VariationAxes {
 ///     font_path,
 ///     font_index,
@@ -78,4 +81,6 @@ pub enum Command {
 /// }
 /// ```
 #[must_use]
-pub fn parse_arg() -> Cli { Cli::parse() }
+pub fn parse_arg() -> Cli {
+  Cli::parse()
+}

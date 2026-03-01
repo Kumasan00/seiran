@@ -1,61 +1,37 @@
 use crate::{
-  evaluator::{EvalError, Evaluator, LayoutNode},
-  parser::Environment,
+  ast::{Environment, NodeKind},
+  document::{DocNode, ListItem},
+  evaluator::{EvalError, Evaluator},
 };
 
-pub(super) fn itemize(env: &Environment, _valuator: &mut Evaluator) -> Result<Vec<LayoutNode>, EvalError> {
-  println!("{env:?}");
+pub(super) fn itemize(env: &Environment, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   if !env.opt_args.is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument("itemize".to_string()));
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: "itemize".to_string(),
+      span: env.span.into(),
+    });
   }
 
-  // let mut items = Vec::new();
-  // for child in &env.children {
-  //   match child {
-  //     crate::parser::Node::Command(command) if command.name == "item" => {
-  //       let mut item_nodes = Vec::new();
-  //       for arg in &command.args {
-  //         let evaluated_nodes = evaluator.evaluate_block(arg.clone())?;
-  //         item_nodes.extend(evaluated_nodes);
-  //       }
-  //       let item_box = LayoutNode::HBox {
-  //         children: vec![
-  //           LayoutNode::Text("• ".to_string(), evaluator.context.current_style),
-  //           LayoutNode::VBox {
-  //             children: item_nodes,
-  //             margin_bottom: 0.0,
-  //           },
-  //         ],
-  //         spacing: 4.0,
-  //       };
-  //       items.push(item_box);
-  //     },
-  //     _ => return Err(EvalError::InvalidEnvironmentChild("itemize".to_string())),
-  //   }
-  // }
+  let mut items = Vec::new();
+  for child in &env.children {
+    match &child.kind {
+      NodeKind::Command(command) if command.name == "item" => {
+        let mut item_content = Vec::new();
+        for arg in &command.args {
+          let doc_nodes = evaluator.evaluate_block(arg.clone())?;
+          item_content.extend(doc_nodes);
+        }
+        items.push(ListItem {
+          content: item_content,
+        });
+      },
+      // テキストや改行等はスキップ（\item 以外はリスト内では無視）
+      _ => {},
+    }
+  }
 
-  // return Ok(vec![LayoutNode::VBox {
-  //   children: items,
-  //   margin_bottom: 12.0,
-  // }]);
-  return Ok(vec![]);
+  return Ok(vec![DocNode::List {
+    ordered: false,
+    items,
+  }]);
 }
-
-// fn dispatch_environment(&mut self, env: Environment) -> Result<Vec<LayoutNode>, EvalError> {
-//   match env.name.as_ref() {
-//     "itemize" => {
-//       // 箇条書きの処理
-//       let mut items = Vec::new();
-//       // ※ itemizeの実装は \item のハンドリングが必要で少し複雑になります
-//       // ここでは単純に子供を評価してVBoxに入れる例
-//       let children_nodes = self.evaluate_block(env.children)?;
-
-//       items.push(LayoutNode::VBox {
-//         children: children_nodes,
-//         margin_bottom: 5.0,
-//       });
-//       Ok(items)
-//     },
-//     _ => Err(EvalError::UnknownEnvironment(env.name.to_string())),
-//   }
-// }
