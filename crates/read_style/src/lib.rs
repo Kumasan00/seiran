@@ -24,7 +24,14 @@ enum ReadStyleError {
     path: String,
     /// 元のエラー
     #[source]
-    source: figment::Error,
+    source: Box<figment::Error>,
+  },
+  /// `font_size` が 0 以下の場合
+  #[error("スタイル設定ファイルの font_size は 0 より大きい必要があります:  font_size={font_size}")]
+  #[diagnostic(code(style::font_size), help("style.toml の font_size に 0 より大きい値を設定してください。"))]
+  InvalidFontSize {
+    /// 不正なフォントサイズ
+    font_size: f32,
   },
 }
 
@@ -41,14 +48,20 @@ pub struct Style {
 
 impl Default for Style {
   fn default() -> Self {
+    let part = "第\\partnum部 \\text".to_string();
+    let chapter = "第\\chapternum章 \\text".to_string();
+    let section = "\\chapternum.\\sectionnum".to_string();
+    let sub_section = "\\chapternum.\\sectionnum.\\subsectionnum".to_string();
+    let paragraph = "\\chapternum.\\sectionnum.\\subsectionnum.\\paragraphnum".to_string();
+    let sub_paragraph = "\\chapternum.\\sectionnum.\\subsectionnum.\\paragraphnum.\\subparagraphnum".to_string();
     return Self {
       font_size: 12.0,
-      part: HeadingStyle::new(40.0, 20.0),
-      chapter: HeadingStyle::new(25.0, 15.0),
-      section: HeadingStyle::new(20.0, 10.0),
-      sub_section: HeadingStyle::new(16.0, 10.0),
-      paragraph: HeadingStyle::new(14.0, 5.0),
-      sub_paragraph: HeadingStyle::new(12.0, 5.0),
+      part: HeadingStyle::new(part, 40.0, 20.0, true, true),
+      chapter: HeadingStyle::new(chapter, 25.0, 15.0, false, false),
+      section: HeadingStyle::new(section, 20.0, 10.0, false, false),
+      sub_section: HeadingStyle::new(sub_section, 16.0, 10.0, false, false),
+      paragraph: HeadingStyle::new(paragraph, 14.0, 5.0, false, false),
+      sub_paragraph: HeadingStyle::new(sub_paragraph, 12.0, 5.0, false, false),
     };
   }
 }
@@ -56,17 +69,29 @@ impl Default for Style {
 /// 見出し要素のスタイル設定（フォントサイズと下余白）
 #[derive(Debug, Deserialize, Serialize)]
 pub struct HeadingStyle {
+  pub format: String,
   pub font_size: f32,
   pub bottom_margin: f32,
+  pub page_break_before: bool,
+  pub page_break_after: bool,
 }
 
 impl HeadingStyle {
   /// 新しい [`HeadingStyle`] を作成する
   #[must_use]
-  const fn new(font_size: f32, bottom_margin: f32) -> Self {
+  const fn new(
+    format: String,
+    font_size: f32,
+    bottom_margin: f32,
+    page_break_before: bool,
+    page_break_after: bool,
+  ) -> Self {
     return Self {
+      format,
       font_size,
       bottom_margin,
+      page_break_before,
+      page_break_after,
     };
   }
 }
@@ -89,8 +114,23 @@ pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Style> {
   };
   let style: Style = figment.extract().map_err(|source| ReadStyleError::ReadStyle {
     path: style_path_str,
-    source,
+    source: Box::new(source),
   })?;
+
+  validate_style(&style)?;
+
   info!(font_size = style.font_size, "スタイル設定ファイルの読み込みが完了しました");
   return Ok(style);
+}
+
+fn validate_style(style: &Style) -> miette::Result<()> {
+  if style.font_size <= 0.0 {
+    return Err(
+      ReadStyleError::InvalidFontSize {
+        font_size: style.font_size,
+      }
+      .into(),
+    );
+  }
+  return Ok(());
 }

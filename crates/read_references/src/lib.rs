@@ -4,7 +4,10 @@
 
 #![allow(unused_assignments)]
 
-use std::path::Path;
+use std::{
+  collections::HashMap,
+  path::{Path, PathBuf},
+};
 
 use miette::Diagnostic;
 use serde::{Deserialize, Deserializer, de};
@@ -39,18 +42,55 @@ enum ReadReferencesError {
 
 /// 参照定義ファイル全体を表す構造体
 ///
-/// スタイル名と参照定義のリストを保持する。
-#[derive(Debug, Deserialize)]
+/// スタイル名と参照定義のマップを保持する。
+#[derive(Debug)]
 pub struct References {
   /// 参照スタイル名（例: "apa", "ieee"）
-  pub style: String,
-  /// 参照定義のリスト（省略可能）
-  pub references: Option<Vec<Reference>>,
+  pub style_path: PathBuf,
+  /// 参照定義のマップ（id をキー、Reference を値とする）
+  pub references: HashMap<String, Reference>,
+}
+
+/// `References` のデシリアライズ用中間構造体
+///
+/// TOML からフラットにデシリアライズした後、`References` に変換する。
+#[derive(Deserialize)]
+struct ReferencesRaw {
+  /// 参照スタイル名（例: "apa", "ieee"）
+  style_path: PathBuf,
+  /// 参照定義のリスト
+  #[serde(default)]
+  references: Vec<Reference>,
+}
+
+impl<'de> Deserialize<'de> for References {
+  /// Vec<Reference> から `HashMap<String, Reference>` に変換してデシリアライズする
+  ///
+  /// # Errors
+  ///
+  /// デシリアライズに失敗した場合、または参照IDが重複している場合
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    let raw = ReferencesRaw::deserialize(deserializer)?;
+    let mut references = HashMap::new();
+
+    for reference in raw.references {
+      let id = reference.id.clone();
+      if references.insert(id.clone(), reference).is_some() {
+        return Err(de::Error::custom(format!("重複する参照ID: {id}")));
+      }
+    }
+
+    return Ok(References {
+      style_path: raw.style_path,
+      references,
+    });
+  }
 }
 
 /// 個々の参照定義を表す構造体
 ///
 /// CSL (Citation Style Language) に基づく文献情報を保持する。
+/// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
 #[derive(Debug, Deserialize)]
 pub struct Reference {
   /// 参照の一意識別子（引用キー）
@@ -58,37 +98,258 @@ pub struct Reference {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]
   pub reference_type: ReferenceType,
-  /// タイトル
-  pub title: Option<String>,
-  /// 著者リスト
-  pub authors: Option<Vec<Author>>,
-  /// 発行日
-  pub issued: Option<Datetime>,
+
+  // Standard Variables
+  /// 要旨・抄録
+  #[serde(rename = "abstract")]
+  pub item_abstract: Option<String>,
+  /// 注釈
+  pub annote: Option<String>,
+  /// アーカイブ名
+  pub archive: Option<String>,
+  /// アーカイブ内コレクション名
+  pub archive_collection: Option<String>,
+  /// アーカイブ内の場所
+  pub archive_location: Option<String>,
+  /// アーカイブの所在地
+  #[serde(rename = "archive-place")]
+  pub archive_place: Option<String>,
+  /// 発行機関
+  pub authority: Option<String>,
+  /// 図書館の請求記号
+  #[serde(rename = "call-number")]
+  pub call_number: Option<String>,
+  /// 引用キー（BibTeX 互換）
+  #[serde(rename = "citation-key")]
+  pub citation_key: Option<String>,
+  /// 引用ラベル
+  #[serde(rename = "citation-label")]
+  pub citation_label: Option<String>,
+  /// コレクションのタイトル
+  #[serde(rename = "citation-title")]
+  pub collection_title: Option<String>,
   /// 収録誌・書名（例: ジャーナル名、書籍シリーズ名）
   #[serde(rename = "container-title")]
   pub container_title: Option<String>,
-  /// 巻号（ボリューム）
-  pub volume: Option<String>,
-  /// 号数（イシュー）
-  pub issue: Option<String>,
-  /// ページ範囲（例: "1-10"）
-  pub page: Option<String>,
+  /// 収録誌・書名（短縮形）
+  #[serde(rename = "container-title-short")]
+  pub container_title_short: Option<String>,
+  /// 物理的寸法
+  pub dimensions: Option<String>,
+  /// 部門・部局名
+  pub division: Option<String>,
+  /// DOI (Digital Object Identifier)
+  #[serde(rename = "DOI")]
+  pub doi: Option<String>,
+  /// イベント名（非推奨: event-title を使用）
+  pub event: Option<String>,
+  /// イベントのタイトル（例: 会議名）
+  #[serde(rename = "event-title")]
+  pub event_title: Option<String>,
+  /// イベント開催地
+  #[serde(rename = "event-place")]
+  pub event_place: Option<String>,
+  /// ジャンル・種別（例: 技術報告書、修士論文）
+  pub genre: Option<String>,
+  /// ISBN (International Standard Book Number)
+  #[serde(rename = "ISBN")]
+  pub isbn: Option<String>,
+  /// ISSN (International Standard Serial Number)
+  #[serde(rename = "ISSN")]
+  pub issn: Option<String>,
+  /// 管轄区域（法律文書など）
+  pub jurisdiction: Option<String>,
+  /// キーワード
+  pub keyword: Option<String>,
+  /// 言語
+  pub language: Option<String>,
+  /// ライセンス
+  pub license: Option<String>,
+  /// 媒体（例: CD-ROM、DVD）
+  pub medium: Option<String>,
+  /// 補足情報
+  pub note: Option<String>,
+  /// 原著の出版社
+  #[serde(rename = "original-publisher")]
+  pub original_publisher: Option<String>,
+  /// 原著の出版地
+  #[serde(rename = "original-publisher-place")]
+  pub original_publisher_place: Option<String>,
+  /// 原題
+  #[serde(rename = "original-title")]
+  pub original_title: Option<String>,
+  /// パートのタイトル
+  #[serde(rename = "part-title")]
+  pub part_title: Option<String>,
+  /// `PubMed Central ID`
+  #[serde(rename = "PMCID")]
+  pub pmcid: Option<String>,
+  /// `PubMed ID`
+  #[serde(rename = "PMID")]
+  pub pmid: Option<String>,
   /// 出版社名
   pub publisher: Option<String>,
   /// 出版地
   #[serde(rename = "publisher-place")]
   pub publisher_place: Option<String>,
-  /// DOI (Digital Object Identifier)
-  #[serde(rename = "DOI")]
-  pub doi: Option<String>,
+  /// 参考文献リスト
+  pub references: Option<String>,
+  /// レビュー対象のジャンル
+  #[serde(rename = "reviewed-genre")]
+  pub reviewed_genre: Option<String>,
+  /// レビュー対象のタイトル
+  #[serde(rename = "reviewed-title")]
+  pub reviewed_title: Option<String>,
+  /// 地図の縮尺
+  pub scale: Option<String>,
+  /// 情報源
+  pub source: Option<String>,
+  /// 出版状態（例: in press, forthcoming）
+  pub status: Option<String>,
+  /// タイトル
+  pub title: Option<String>,
+  /// タイトル（短縮形）
+  #[serde(rename = "title-short")]
+  pub title_short: Option<String>,
   /// URL
   #[serde(rename = "URL")]
   pub url: Option<String>,
-  /// ISBN (International Standard Book Number)
-  #[serde(rename = "ISBN")]
-  pub isbn: Option<String>,
-  /// 補足情報
-  pub note: Option<String>,
+  /// 巻のタイトル
+  #[serde(rename = "volume-title")]
+  pub volume_title: Option<String>,
+  /// 年サフィックス（同一著者・同一年の文献を区別）
+  #[serde(rename = "year-suffix")]
+  pub year_suffix: Option<String>,
+
+  // Number Variables
+  /// 章番号
+  #[serde(rename = "chapter-number")]
+  pub chapter_number: Option<String>,
+  /// 引用番号
+  #[serde(rename = "citation-number")]
+  pub citation_number: Option<String>,
+  /// コレクション番号
+  #[serde(rename = "collection-number")]
+  pub collection_number: Option<String>,
+  /// 版（例: 第2版）
+  pub edition: Option<String>,
+  /// 最初の参照脚注番号
+  #[serde(rename = "first-reference-note-number")]
+  pub first_reference_note_number: Option<String>,
+  /// 号数（イシュー）
+  pub issue: Option<String>,
+  /// 引用箇所（ページ番号など）
+  pub locator: Option<String>,
+  /// 番号（汎用）
+  pub number: Option<String>,
+  /// 総ページ数
+  #[serde(rename = "number-of-pages")]
+  pub number_of_pages: Option<String>,
+  /// 総巻数
+  #[serde(rename = "number-of-volumes")]
+  pub number_of_volumes: Option<String>,
+  /// ページ範囲（例: "1-10"）
+  pub page: Option<String>,
+  /// 開始ページ番号
+  #[serde(rename = "page-first")]
+  pub page_first: Option<String>,
+  /// パート番号
+  #[serde(rename = "part-number")]
+  pub part_number: Option<String>,
+  /// 刷番号
+  #[serde(rename = "printing-number")]
+  pub printing_number: Option<String>,
+  /// セクション
+  pub section: Option<String>,
+  /// 補遺番号
+  #[serde(rename = "supplement-number")]
+  pub supplement_number: Option<String>,
+  /// バージョン
+  pub version: Option<String>,
+  /// 巻号（ボリューム）
+  pub volume: Option<String>,
+
+  // Date Variables
+  /// アクセス日
+  pub accessed: Option<Datetime>,
+  /// 利用可能日
+  #[serde(rename = "available-date")]
+  pub available_date: Option<Datetime>,
+  /// イベント開催日
+  #[serde(rename = "event-date")]
+  pub event_date: Option<Datetime>,
+  /// 発行日
+  pub issued: Option<Datetime>,
+  /// 原著の発行日
+  #[serde(rename = "original-date")]
+  pub original_date: Option<Datetime>,
+  /// 提出日
+  pub submitted: Option<Datetime>,
+
+  // Name Variables
+  /// 著者リスト
+  pub authors: Option<Vec<Name>>,
+  /// 議長
+  pub chair: Option<Vec<Name>>,
+  /// コレクション編集者
+  #[serde(rename = "collection-editor")]
+  pub collection_editor: Option<Vec<Name>>,
+  /// 編纂者
+  pub compiler: Option<Vec<Name>>,
+  /// 作曲者
+  pub composer: Option<Vec<Name>>,
+  /// 収録著者（収録誌・書籍の著者）
+  #[serde(rename = "container-author")]
+  pub container_author: Option<Vec<Name>>,
+  /// 貢献者
+  pub contributor: Option<Vec<Name>>,
+  /// キュレーター
+  pub curator: Option<Vec<Name>>,
+  /// 監督
+  pub director: Option<Vec<Name>>,
+  /// 編集者
+  pub editor: Option<Vec<Name>>,
+  /// 編集主幹
+  #[serde(rename = "editorial-director")]
+  pub editorial_director: Option<Vec<Name>>,
+  /// 編集翻訳者
+  #[serde(rename = "editorial-translator")]
+  pub editor_translator: Option<Vec<Name>>,
+  /// エグゼクティブプロデューサー
+  #[serde(rename = "executive-producer")]
+  pub executive_producer: Option<Vec<Name>>,
+  /// ゲスト
+  pub guest: Option<Vec<Name>>,
+  /// 司会者
+  pub host: Option<Vec<Name>>,
+  /// 挿絵画家
+  pub illustrator: Option<Vec<Name>>,
+  /// インタビュアー
+  pub interviewer: Option<Vec<Name>>,
+  /// ナレーター
+  pub narrator: Option<Vec<Name>>,
+  /// 主催者
+  pub organizer: Option<Vec<Name>>,
+  /// 原著者
+  #[serde(rename = "original-author")]
+  pub original_author: Option<Vec<Name>>,
+  /// 演者
+  pub performer: Option<Vec<Name>>,
+  /// プロデューサー
+  pub producer: Option<Vec<Name>>,
+  /// 受取人
+  pub recipient: Option<Vec<Name>>,
+  /// レビュー対象の著者
+  #[serde(rename = "reviewed-author")]
+  pub reviewed_author: Option<Vec<Name>>,
+  /// 脚本家
+  #[serde(rename = "script-writer")]
+  pub script_writer: Option<Vec<Name>>,
+  /// シリーズ制作者
+  #[serde(rename = "series-creator")]
+  pub series_creator: Option<Vec<Name>>,
+  /// 翻訳者
+  pub translator: Option<Vec<Name>>,
 }
 
 /// 参照の種類を表す列挙型
@@ -193,7 +454,7 @@ pub enum ReferenceType {
 /// デシリアライズ時に `family` と `literal` の有無で個人著者か組織著者かを判別する。
 /// 両方が存在する場合はエラーとなる。
 #[derive(Debug)]
-pub enum Author {
+pub enum Name {
   /// 組織著者
   Organization {
     /// 組織名・リテラル表記
@@ -214,11 +475,11 @@ pub enum Author {
   },
 }
 
-/// `Author` のデシリアライズ用中間構造体
+/// `Name` のデシリアライズ用中間構造体
 ///
-/// TOML からフラットにデシリアライズした後、`Author` 列挙型に変換する。
+/// TOML からフラットにデシリアライズした後、`Name` 列挙型に変換する。
 #[derive(Deserialize)]
-struct AuthorRaw {
+struct NameRaw {
   /// 組織名・リテラル表記（組織著者の場合）
   literal: Option<String>,
   /// 姓（個人著者の場合）
@@ -235,15 +496,15 @@ struct AuthorRaw {
   suffix: Option<String>,
 }
 
-impl<'de> Deserialize<'de> for Author {
-  /// `family` と `literal` の組み合わせに基づいて `Author` をデシリアライズする
+impl<'de> Deserialize<'de> for Name {
+  /// `family` と `literal` の組み合わせに基づいて `Name` をデシリアライズする
   ///
   /// - `family` のみ → `Person`
   /// - `literal` のみ → `Organization`
   /// - 両方あり → エラー
   /// - 両方なし → エラー
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    let raw = AuthorRaw::deserialize(deserializer)?;
+    let raw = NameRaw::deserialize(deserializer)?;
 
     match (raw.family, raw.literal) {
       (Some(_), Some(_)) => {
@@ -252,10 +513,10 @@ impl<'de> Deserialize<'de> for Author {
         ));
       },
       (None, Some(literal)) => {
-        return Ok(Author::Organization { literal });
+        return Ok(Name::Organization { literal });
       },
       (Some(family), None) => {
-        return Ok(Author::Person {
+        return Ok(Name::Person {
           family,
           given: raw.given,
           dropping_particle: raw.dropping_particle,
@@ -274,17 +535,17 @@ impl<'de> Deserialize<'de> for Author {
 ///
 /// # Arguments
 ///
-/// * `path` - 参照定義 TOML ファイルのパス。`None` の場合は参照定義なしとみなす。
+/// * `path` - 参照定義 TOML ファイルのパス。`None` の場合は空の参照定義を返す。
 ///
 /// # Returns
 ///
-/// ファイルが指定された場合は `Some(Vec<Reference>)`、指定されなかった場合は `None` を返す。
+/// 参照定義の構造体を返す。参照定義ファイルが指定されていない場合は、空の `HashMap` を持つ構造体を返す。
 ///
 /// # Errors
 ///
 /// - ファイルの読み込みに失敗した場合
 /// - TOML のパースに失敗した場合
-pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Option<References>> {
+pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> miette::Result<References> {
   #[allow(clippy::redundant_else)]
   if let Some(path) = path {
     let path_ref = path.as_ref();
@@ -297,11 +558,14 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Option
       path: path_ref.display().to_string(),
       source,
     })?;
-    let count = references.references.as_ref().map_or(0, std::vec::Vec::len);
+    let count = references.references.len();
     info!(count, "参照定義ファイルの読み込みが完了しました");
-    return Ok(Some(references));
+    return Ok(references);
   } else {
-    info!("参照定義ファイルが指定されていないため、スキップします");
-    return Ok(None);
+    info!("参照定義ファイルが指定されていないため、空の参照定義を返します");
+    return Ok(References {
+      style_path: PathBuf::new(),
+      references: HashMap::new(),
+    });
   }
 }

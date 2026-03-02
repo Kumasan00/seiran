@@ -6,10 +6,12 @@
 mod content;
 mod glyph_mapping;
 
+use chrono::{Datelike, Local, Timelike};
 use font::{font_info::FontInfos, glyph_mapping::GlyphMappings, subset::FontSubsetBytes};
 use layout::Item;
-use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Date, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 use read_config::Config;
+use read_style::Style;
 use types::{FontMap, FontType};
 
 use crate::{content::PDFContent, glyph_mapping::PDFInfo};
@@ -39,6 +41,7 @@ struct ContentIds {
 /// PDFオブジェクトのID管理構造体
 #[derive(Debug)]
 struct PdfIds {
+  document_info_id: Ref,
   catalog_id: Ref,
   page_tree_id: Ref,
   page_ids: Vec<Ref>,
@@ -60,6 +63,7 @@ impl PdfIds {
       id
     };
 
+    let document_info_id = next_id();
     let catalog_id = next_id();
     let page_tree_id = next_id();
 
@@ -92,6 +96,7 @@ impl PdfIds {
       .collect();
 
     return Self {
+      document_info_id,
       catalog_id,
       page_tree_id,
       page_ids,
@@ -124,16 +129,46 @@ impl PdfIds {
 #[must_use]
 pub fn pdf_gen(
   config: &Config,
+  style: &Style,
   subset_bytes: &FontSubsetBytes,
   items: &[Item],
   font_info: &FontInfos,
   glyph_mappings: &GlyphMappings,
 ) -> Vec<u8> {
   let font_configs = &config.font_configs;
-  let content = content::create_pdf_contents(config, items, glyph_mappings, font_info);
+  let content = content::create_pdf_contents(config, style, items, glyph_mappings, font_info);
   let pdf_ids = PdfIds::new(&content, subset_bytes);
 
   let mut pdf = Pdf::new();
+
+  // ドキュメント情報の設定
+  let mut document_info = pdf.document_info(pdf_ids.document_info_id);
+  document_info.title(TextStr(config.name.as_str()));
+  if let Some(author) = &config.author {
+    document_info.author(TextStr(author.as_str()));
+  }
+  if let Some(subject) = &config.subject {
+    document_info.subject(TextStr(subject.as_str()));
+  }
+  document_info.creator(TextStr("seiran"));
+  document_info.producer(TextStr("seiran"));
+  let now = Local::now();
+  let offset_seconds = now.offset().local_minus_utc();
+  #[allow(clippy::cast_sign_loss)]
+  let offset_minutes = ((offset_seconds.abs() % 3600) / 60) as u8;
+  let offset_hours = (offset_seconds / 3600) as i8;
+  #[allow(clippy::cast_sign_loss)]
+  let date = Date::new(now.year() as u16)
+    .month(now.month() as u8)
+    .day(now.day() as u8)
+    .hour(now.hour() as u8)
+    .minute(now.minute() as u8)
+    .second(now.second() as u8)
+    .utc_offset_hour(offset_hours)
+    .utc_offset_minute(offset_minutes);
+  document_info.creation_date(date);
+  document_info.finish();
+
   pdf.catalog(pdf_ids.catalog_id).pages(pdf_ids.page_tree_id);
   let page_count = i32::try_from(pdf_ids.page_ids.len()).unwrap_or(i32::MAX);
   pdf.pages(pdf_ids.page_tree_id).kids(pdf_ids.page_ids.iter().copied()).count(page_count);

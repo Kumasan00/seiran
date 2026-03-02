@@ -88,6 +88,10 @@ use types::FontType;
 pub(crate) struct PreConfig {
   /// ドキュメント名（PDF ファイル名の基盤）
   pub name: String,
+  /// ドキュメントの著者名（オプション）
+  pub author: Option<String>,
+  /// ドキュメントの主題（オプション）
+  pub subject: Option<String>,
   /// スタイル設定ファイルへのパス（オプション）
   pub style_path: Option<PathBuf>,
   /// 参照設定ファイルへのパス（オプション）
@@ -349,9 +353,6 @@ pub(crate) struct PrePdfConfig {
   /// ページの幅（mm 単位）
   /// 後に正の値であることが検証されます
   pub width: f32,
-  /// デフォルトのフォントサイズ（ポイント）
-  /// 後に正の値であることが検証されます
-  pub font_size: f32,
   /// 行の高さの倍率（1.0 = シングルスペース、1.5 = 1.5 行分）
   /// 後に正の値であることが検証されます
   pub line_height_factor: f32,

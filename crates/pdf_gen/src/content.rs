@@ -5,6 +5,7 @@ use font::{
 use layout::{BoxItem, Glyph, Item};
 use pdf_writer::{Content, Name, Str};
 use read_config::Config;
+use read_style::Style;
 
 pub(crate) struct PDFContent {
   pub content: Content,
@@ -30,6 +31,7 @@ pub(crate) struct Annotation;
 /// 各ページのPDFコンテンツ
 pub(crate) fn create_pdf_contents(
   config: &Config,
+  style: &Style,
   items: &[Item],
   glyph_mappings: &GlyphMappings,
   font_infos: &FontInfos,
@@ -49,7 +51,7 @@ pub(crate) fn create_pdf_contents(
   let mut y = start_y;
 
   // 直前のフォントサイズ（Glueスケーリング・改行幅計算用）
-  let mut current_font_size = config.pdf.font_size;
+  let mut current_font_size = style.font_size;
 
   for item in items {
     match item {

@@ -73,10 +73,11 @@ fn main() -> miette::Result<()> {
   // tracing_subscriber によるロギング初期化
   // INFO レベル以上のログを RFC 3339 形式タイムスタンプ付きで出力
   fmt::fmt()
-    .with_max_level(tracing::Level::INFO)
+    .pretty()
     .with_thread_ids(false)
     .with_thread_names(false)
     .with_target(false)
+    .with_file(false)
     .with_timer(fmt::time::LocalTime::rfc_3339())
     .init();
 

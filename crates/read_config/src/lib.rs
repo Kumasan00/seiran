@@ -264,6 +264,8 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
   // 構造体分解
   let pre_config::PreConfig {
     name,
+    author,
+    subject,
     style_path,
     references_path,
     pdf: pre_pdf_config,
@@ -273,7 +275,6 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
     output_dir,
     height,
     width,
-    font_size,
     line_height_factor,
     margin_top,
     margin_bottom,
@@ -311,7 +312,6 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
     &[
       ("pdf.height", height),
       ("pdf.width", width),
-      ("pdf.font_size", font_size),
       ("pdf.line_height_factor", line_height_factor),
     ],
     &mut errors,
@@ -359,13 +359,14 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
 
   let config = Config {
     name,
+    author,
+    subject,
     style_path,
     references_path,
     pdf: PdfConfig {
       output_path,
       height,
       width,
-      font_size,
       line_height_factor,
       margin: Margin {
         top: margin_top,

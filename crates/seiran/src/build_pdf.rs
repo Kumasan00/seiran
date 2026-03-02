@@ -44,15 +44,14 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   info!(file_path = %file_path.display(), "PDF のビルドを開始します");
 
   let config = read_config::read_config(config_path)?;
-  let _style = read_style::read_style(config.style_path.as_deref())?;
+  let style = read_style::read_style(config.style_path.as_deref())?;
   let _references = read_references::read_references(config.references_path.as_deref())?;
 
   let doc_nodes = parser::text_parser(file_path)?;
   info!("テキストのパースが完了しました");
 
-  let lowering_ctx = layout::LoweringContext::new(config.pdf.font_size);
+  let lowering_ctx = layout::LoweringContext::new(style.font_size);
   let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
-  println!("Layout Nodes: {layout_nodes:#?}");
   info!("Document IR → LayoutNode への変換が完了しました");
 
   let font_data = font::FontData::new(&config.font_configs)?;
@@ -77,7 +76,7 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
 
   let subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
 
-  let pdf_bytes = pdf_gen::pdf_gen(&config, &subset_bytes, &items, &font_infos, &glyph_mappings);
+  let pdf_bytes = pdf_gen::pdf_gen(&config, &style, &subset_bytes, &items, &font_infos, &glyph_mappings);
 
   std::fs::write(&config.pdf.output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
     path: config.pdf.output_path.display().to_string(),
@@ -85,5 +84,6 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   })?;
   info!(output_path = %config.pdf.output_path.display(), "PDF の保存が完了しました");
 
+  println!("{:#?}", &items);
   return Ok(());
 }

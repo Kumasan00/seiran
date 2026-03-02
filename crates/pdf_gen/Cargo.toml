@@ -6,10 +6,12 @@ name = "pdf_gen"
 version.workspace = true
 
 [dependencies]
+chrono.workspace = true
 font = { path = "../font" }
 layout = { path = "../layout" }
 pdf-writer.workspace = true
 read_config = { path = "../read_config" }
+read_style = { path = "../read_style" }
 types = { path = "../types" }
 
 [lints]

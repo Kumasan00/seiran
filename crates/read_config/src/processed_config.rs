@@ -37,6 +37,10 @@ use types::FontMap;
 pub struct Config {
   /// ドキュメント名（PDF ファイル名の基盤、拡張子なし）
   pub name: String,
+  /// ドキュメントの著者名（オプション）
+  pub author: Option<String>,
+  /// ドキュメントの主題（オプション）
+  pub subject: Option<String>,
   /// スタイル設定ファイルへのパス（オプション、正規化済み）
   pub style_path: Option<PathBuf>,
   /// 参照設定ファイルへのパス（オプション、正規化済み）
@@ -135,9 +139,6 @@ pub struct PdfConfig {
   /// ページの幅（mm）
   /// バリデーション済み（> 0）、余白と矛盾なし
   pub width: f32,
-  /// デフォルトのフォントサイズ（ポイント）
-  /// バリデーション済み（> 0）
-  pub font_size: f32,
   /// 行の高さの倍率
   /// バリデーション済み（> 0）、例：1.0、1.5、2.0
   pub line_height_factor: f32,
