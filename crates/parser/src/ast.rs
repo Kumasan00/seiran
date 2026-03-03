@@ -61,9 +61,7 @@ pub struct Node<'a> {
 }
 
 impl PartialEq for Node<'_> {
-  fn eq(&self, other: &Self) -> bool {
-    return self.kind == other.kind;
-  }
+  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
 }
 
 impl Eq for Node<'_> {}
@@ -76,9 +74,7 @@ impl<'a> Node<'a> {
   /// * `kind` - ノードの種類
   /// * `span` - ソース上のバイト範囲
   #[must_use]
-  pub fn new(kind: NodeKind<'a>, span: Span) -> Self {
-    return Node { kind, span };
-  }
+  pub fn new(kind: NodeKind<'a>, span: Span) -> Self { return Node { kind, span }; }
 
   /// テキストノードを生成する（`Span::DUMMY` 付き）
   #[must_use]
@@ -175,9 +171,7 @@ pub struct InlineMathNode<'a> {
 }
 
 impl PartialEq for InlineMathNode<'_> {
-  fn eq(&self, other: &Self) -> bool {
-    return self.kind == other.kind;
-  }
+  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
 }
 
 impl Eq for InlineMathNode<'_> {}
@@ -190,9 +184,7 @@ impl<'a> InlineMathNode<'a> {
   /// * `kind` - ノードの種類
   /// * `span` - ソース上のバイト範囲
   #[must_use]
-  pub fn new(kind: InlineMathNodeKind<'a>, span: Span) -> Self {
-    return InlineMathNode { kind, span };
-  }
+  pub fn new(kind: InlineMathNodeKind<'a>, span: Span) -> Self { return InlineMathNode { kind, span }; }
 
   /// テキスト数式ノードを生成する（`Span::DUMMY` 付き）
   #[must_use]

@@ -82,11 +82,17 @@
 use std::fs;
 
 use miette::Diagnostic;
-use rayon::prelude::*;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_config::FontConfigs;
 use read_fonts::FontRef;
 use thiserror::Error;
 use types::{FontMap, FontType};
+
+pub mod font_info;
+pub mod glyph_mapping;
+pub mod shaper;
+pub mod subset;
+pub mod validate_font;
 
 /// フォント読み込み・解析時のエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -121,12 +127,6 @@ enum FontLoadError {
     source: read_fonts::ReadError,
   },
 }
-
-pub mod font_info;
-pub mod glyph_mapping;
-pub mod shaper;
-pub mod subset;
-pub mod validate_font;
 
 /// 全フォント種別のバイナリデータを保持するデータ構造
 ///
@@ -216,7 +216,7 @@ pub trait FontRefsExt<'a>: Sized {
 impl<'a> FontRefsExt<'a> for FontRefs<'a> {
   fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
     let font_refs = FontType::ALL
-      .iter()
+      .par_iter()
       .map(|&font_type| {
         let font_data = font_data.get(font_type);
         let font_config = config.get(font_type);

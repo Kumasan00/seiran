@@ -9,10 +9,9 @@ version.workspace = true
 cli = { path = "../cli" }
 font = { path = "../font" }
 layout = { path = "../layout" }
-miette = { workspace = true }
+miette.workspace = true
 parser = { path = "../parser" }
 pdf_gen = { path = "../pdf_gen" }
-read-fonts = { workspace = true }
 read_config = { path = "../read_config" }
 read_references = { path = "../read_references" }
 read_style = { path = "../read_style" }
@@ -20,6 +19,7 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 types = { path = "../types" }
+subcommand = { path = "../subcommand" }
 
 [lints]
 workspace = true

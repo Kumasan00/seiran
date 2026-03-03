@@ -34,7 +34,6 @@
 //! タイムスタンプ付きで標準エラー出力に記録されます。
 
 mod build_pdf;
-mod subcommand;
 use tracing_subscriber::fmt;
 
 /// アプリケーションのメインエントリーポイント

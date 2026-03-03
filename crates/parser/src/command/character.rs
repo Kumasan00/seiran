@@ -132,14 +132,10 @@ mod tests {
   use crate::ast::Command;
 
   /// テスト用のコマンドを生成
-  fn test_command(name: &'static str) -> Command<'static> {
-    return Command::new(name, vec![], vec![]);
-  }
+  fn test_command(name: &'static str) -> Command<'static> { return Command::new(name, vec![], vec![]); }
 
   /// 引数を持つテストコマンドを生成
-  fn test_command_with_args(name: &'static str) -> Command<'static> {
-    return Command::new(name, vec![vec![]], vec![]);
-  }
+  fn test_command_with_args(name: &'static str) -> Command<'static> { return Command::new(name, vec![vec![]], vec![]); }
 
   #[test]
   fn emits_lower_sigma() {

@@ -97,21 +97,15 @@ impl DocNode {
 
   /// このノードが見出しかどうかを判定する
   #[must_use]
-  pub fn is_heading(&self) -> bool {
-    return matches!(self, DocNode::Heading { .. });
-  }
+  pub fn is_heading(&self) -> bool { return matches!(self, DocNode::Heading { .. }); }
 
   /// このノードが段落かどうかを判定する
   #[must_use]
-  pub fn is_paragraph(&self) -> bool {
-    return matches!(self, DocNode::Paragraph(_));
-  }
+  pub fn is_paragraph(&self) -> bool { return matches!(self, DocNode::Paragraph(_)); }
 
   /// このノードがリストかどうかを判定する
   #[must_use]
-  pub fn is_list(&self) -> bool {
-    return matches!(self, DocNode::List { .. });
-  }
+  pub fn is_list(&self) -> bool { return matches!(self, DocNode::List { .. }); }
 }
 
 // =============================================================================
@@ -160,15 +154,11 @@ pub enum InlineNode {
 impl InlineNode {
   /// テキストノードを生成する
   #[must_use]
-  pub fn text(s: impl Into<String>) -> Self {
-    return InlineNode::Text(s.into());
-  }
+  pub fn text(s: impl Into<String>) -> Self { return InlineNode::Text(s.into()); }
 
   /// シンボルノードを生成する
   #[must_use]
-  pub fn symbol(ch: char) -> Self {
-    return InlineNode::Symbol(ch);
-  }
+  pub fn symbol(ch: char) -> Self { return InlineNode::Symbol(ch); }
 
   /// このノードをプレーンテキストに変換する
   ///
@@ -266,9 +256,7 @@ pub enum HeadingLevel {
 impl HeadingLevel {
   /// 数値インデックスを返す（0=Part, 5=Subparagraph）
   #[must_use]
-  pub fn depth(self) -> u8 {
-    return self as u8;
-  }
+  pub fn depth(self) -> u8 { return self as u8; }
 
   /// コマンド名からレベルを取得する
   ///
@@ -303,9 +291,7 @@ impl HeadingLevel {
 }
 
 impl fmt::Display for HeadingLevel {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    return write!(f, "{}", self.command_name());
-  }
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { return write!(f, "{}", self.command_name()); }
 }
 
 // =============================================================================
@@ -339,9 +325,7 @@ pub struct HeadingNumber {
 impl HeadingNumber {
   /// 番号パーツから `HeadingNumber` を生成する
   #[must_use]
-  pub fn new(parts: Vec<u32>) -> Self {
-    return HeadingNumber { parts };
-  }
+  pub fn new(parts: Vec<u32>) -> Self { return HeadingNumber { parts }; }
 
   /// `EvalContext` の現在の番号カウンタから `HeadingNumber` を構築する
   ///
@@ -404,9 +388,7 @@ impl HeadingNumber {
 }
 
 impl fmt::Display for HeadingNumber {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    return write!(f, "{}", self.dotted());
-  }
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { return write!(f, "{}", self.dotted()); }
 }
 
 // =============================================================================
@@ -426,9 +408,7 @@ pub struct ListItem {
 impl ListItem {
   /// 新しい `ListItem` を生成する
   #[must_use]
-  pub fn new(content: Vec<DocNode>) -> Self {
-    return ListItem { content };
-  }
+  pub fn new(content: Vec<DocNode>) -> Self { return ListItem { content }; }
 }
 
 // =============================================================================
@@ -448,9 +428,7 @@ pub struct Document {
 impl Document {
   /// ブロックノードのリストから `Document` を生成する
   #[must_use]
-  pub fn new(body: Vec<DocNode>) -> Self {
-    return Document { body };
-  }
+  pub fn new(body: Vec<DocNode>) -> Self { return Document { body }; }
 
   /// ドキュメント内の全見出しを収集する
   ///
@@ -477,15 +455,11 @@ impl Document {
 
   /// ドキュメント内のブロック要素の数を返す
   #[must_use]
-  pub fn len(&self) -> usize {
-    return self.body.len();
-  }
+  pub fn len(&self) -> usize { return self.body.len(); }
 
   /// ドキュメントが空かどうかを判定する
   #[must_use]
-  pub fn is_empty(&self) -> bool {
-    return self.body.is_empty();
-  }
+  pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
 }
 
 // =============================================================================

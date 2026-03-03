@@ -92,7 +92,7 @@ use harfrust::{
   UnicodeBuffer, Variation,
 };
 use miette::Diagnostic;
-use rayon::prelude::*;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_config::{FontConfig, FontConfigs};
 use thiserror::Error;
 use types::FontMap;

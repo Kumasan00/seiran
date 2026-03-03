@@ -232,6 +232,7 @@ pub fn layout_engine(
       } => {
         // VBox のレイアウト処理
         let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
+        // println!("VBox の子アイテム: {child_items:#?}");
         items.extend(child_items);
         items.push(Item::Vkern(margin_bottom));
       },

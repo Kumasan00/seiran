@@ -69,9 +69,7 @@ pub struct Token {
 }
 
 impl PartialEq for Token {
-  fn eq(&self, other: &Self) -> bool {
-    return self.kind == other.kind;
-  }
+  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
 }
 
 impl Eq for Token {}
@@ -79,9 +77,7 @@ impl Eq for Token {}
 impl Token {
   /// 新しいトークンを生成する
   #[must_use]
-  pub fn new(kind: TokenKind, span: Span) -> Self {
-    return Token { kind, span };
-  }
+  pub fn new(kind: TokenKind, span: Span) -> Self { return Token { kind, span }; }
 
   /// トークンが対応するソーステキストの部分文字列を返す
   ///

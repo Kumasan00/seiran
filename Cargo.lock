@@ -316,7 +316,6 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "thiserror",
 ]
 
 [[package]]
@@ -1577,10 +1576,10 @@ dependencies = [
  "miette",
  "parser",
  "pdf_gen",
- "read-fonts",
  "read_config",
  "read_references",
  "read_style",
+ "subcommand",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -1691,6 +1690,16 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "subcommand"
+version = "0.1.0"
+dependencies = [
+ "miette",
+ "read-fonts",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "supports-color"

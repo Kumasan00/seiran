@@ -193,6 +193,8 @@ pub enum FontValidationError {
 
 /// すべてのフォント設定を検証します
 ///
+/// 複数のフォント の検証を rayon を用いて並列実行します。
+///
 /// # Arguments
 ///
 /// * `font_configs` - フォント設定情報
@@ -216,6 +218,19 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> miett
     }
     info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
   }
+  // let all_errors: Vec<_> = FontType::ALL
+  //   .par_iter()
+  //   .filter_map(|&font_type| {
+  //     let config = font_configs.get(font_type);
+  //     let font_ref = font_refs.get(font_type);
+  //     let errors = validate_font(config, font_ref);
+  //     info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
+  //     if !errors.is_empty() {
+  //       return Some(FontValidationErrors { font_type, errors });
+  //     }
+  //     return None;
+  //   })
+  //   .collect();
   if !all_errors.is_empty() {
     return Err(MultipleFontValidationErrors { errors: all_errors }.into());
   }

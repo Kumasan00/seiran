@@ -158,6 +158,7 @@ crates/
 ├── read_references/  # TOML 参照定義ファイルの読み込み
 ├── read_style/       # TOML スタイル設定ファイルの読み込み
 ├── seiran/           # メインアプリケーション（エントリーポイント）
+├── subcommand/       # サブコマンド（バリアブルフォント軸情報、TTC 名称、スクリプト/言語情報）
 └── types/            # 共通型定義
 ```
 

@@ -280,9 +280,7 @@ impl<T> FontMap<T> {
   /// 指定された `font_type` がマップに存在しない場合にパニックします。
   /// `from_all` で正しく構築されていれば発生しません。
   #[must_use]
-  pub fn get(&self, font_type: FontType) -> &T {
-    return &self.inner[&font_type];
-  }
+  pub fn get(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
 
   /// 指定されたフォント種別に対応する値への可変参照を返します
   ///
@@ -393,16 +391,12 @@ impl<'a, T> IntoIterator for &'a FontMap<T> {
   type IntoIter = FontMapIter<'a, T>;
   type Item = (FontType, &'a T);
 
-  fn into_iter(self) -> Self::IntoIter {
-    return self.iter();
-  }
+  fn into_iter(self) -> Self::IntoIter { return self.iter(); }
 }
 
 impl<'a, T> IntoIterator for &'a mut FontMap<T> {
   type IntoIter = FontMapIterMut<'a, T>;
   type Item = (FontType, &'a mut T);
 
-  fn into_iter(self) -> Self::IntoIter {
-    return self.iter_mut();
-  }
+  fn into_iter(self) -> Self::IntoIter { return self.iter_mut(); }
 }

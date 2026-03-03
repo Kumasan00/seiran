@@ -33,7 +33,7 @@ read_references ← {serde, toml, miette, thiserror, tracing}
   ↑
 font ← {read_config, types, allsorts, harfrust, read-fonts, font-types, rayon, miette, thiserror, tracing}
   ↑
-parser ← {types, memchr, memmap2, miette, phf, thiserror}
+parser ← {types, memchr, miette, phf, thiserror}
   ↑
 layout ← {font, parser, types, icu, lazy-regex, font-types, read-fonts, miette}
   ↑
@@ -41,7 +41,9 @@ pdf_gen ← {font, layout, read_config, types, pdf-writer}
   ↑
 seiran (main) ← {cli, font, layout, parser, pdf_gen, read_config, read_references, read_style, types, miette, tracing}
 
-cli ← {clap, thiserror}
+cli ← {clap}
+
+subcommand (variation-axes, ttc-names, script-langs) ← {cli, font, read_config, types, read-fonts, font-types, miette}
 ```
 
 ### クレート一覧
@@ -58,6 +60,7 @@ cli ← {clap, thiserror}
 | **layout**          | `crates/layout/`          | ローワリング（DocNode → LayoutNode）とレイアウトエンジン（LayoutNode → Item）  |
 | **pdf_gen**         | `crates/pdf_gen/`         | PDF バイナリ生成エンジン                                                       |
 | **seiran**          | `crates/seiran/`          | メインアプリケーション（エントリーポイント、パイプラインオーケストレーション） |
+| **subcommand**      | `crates/subcommand/`      | サブコマンド実装（バリアブルフォント軸情報、TTC 名称、スクリプト/言語情報）    |
 
 ---
 

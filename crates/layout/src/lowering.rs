@@ -74,9 +74,7 @@ impl LoweringContext {
   ///   `pub fn new(config: &Config) -> Self`
   ///   現在は仮に `font_size` だけを受け取る
   #[must_use]
-  pub fn new(default_font_size: f32) -> Self {
-    return LoweringContext { default_font_size };
-  }
+  pub fn new(default_font_size: f32) -> Self { return LoweringContext { default_font_size }; }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）

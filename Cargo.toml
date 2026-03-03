@@ -9,6 +9,7 @@ members = [
   "crates/read_references",
   "crates/read_style",
   "crates/seiran",
+  "crates/subcommand",
   "crates/types",
 ]
 resolver = "3"
@@ -48,9 +49,7 @@ tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-expect_used = { level = "warn", priority = 0 }
 pedantic = { level = "warn", priority = 0 }
-unwrap_used = { level = "warn", priority = 0 }
 
 cast_possible_truncation = { level = "allow", priority = 1 }
 needless_return = { level = "allow", priority = 1 }

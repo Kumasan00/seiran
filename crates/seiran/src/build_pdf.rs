@@ -53,14 +53,18 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   let lowering_ctx = layout::LoweringContext::new(style.font_size);
   let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
   info!("Document IR → LayoutNode への変換が完了しました");
+  // println!("{layout_nodes:#?}");
 
   let font_data = font::FontData::new(&config.font_configs)?;
   info!("フォントの読み込みが完了しました");
 
   let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
+  let now = std::time::Instant::now();
   validate_font::validate_fonts(&config.font_configs, &font_refs)?;
   info!("フォントの検証が完了しました");
+  let elapsed = now.elapsed();
+  println!("{} μs", elapsed.as_micros());
 
   let shaper_datas = shaper::ShaperDatas::new(&font_refs);
   let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);
@@ -84,6 +88,6 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   })?;
   info!(output_path = %config.pdf.output_path.display(), "PDF の保存が完了しました");
 
-  println!("{:#?}", &items);
+  // println!("{:#?}", &items);
   return Ok(());
 }

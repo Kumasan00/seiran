@@ -108,9 +108,7 @@ pub struct SyntaxNode {
 }
 
 impl PartialEq for SyntaxNode {
-  fn eq(&self, other: &Self) -> bool {
-    return self.kind == other.kind && self.children == other.children;
-  }
+  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind && self.children == other.children; }
 }
 
 impl Eq for SyntaxNode {}

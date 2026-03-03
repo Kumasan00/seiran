@@ -1,23 +1,18 @@
 [package]
+name = "subcommand"
 authors.workspace = true
 description.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "layout"
 readme.workspace = true
 repository.workspace = true
 version.workspace = true
 
 [dependencies]
-font = { path = "../font" }
-font-types.workspace = true
-icu.workspace = true
-lazy-regex.workspace = true
-miette.workspace = true
-parser = { path = "../parser" }
-read-fonts.workspace = true
 thiserror.workspace = true
-types = { path = "../types" }
+tracing.workspace = true
+read-fonts.workspace = true
+miette.workspace = true
 
 [lints]
 workspace = true
