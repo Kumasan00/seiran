@@ -37,8 +37,7 @@ impl PDFInfo for GlyphMapping {
   fn build_cid_to_gid_map(&self) -> Vec<u8> {
     let mut map = Vec::new();
     for cid in 0..self.cid_to_gid.len() {
-      map.push((cid >> 8) as u8);
-      map.push((cid & 0xff) as u8);
+      map.extend_from_slice(&(cid as u16).to_be_bytes());
     }
     return map;
   }

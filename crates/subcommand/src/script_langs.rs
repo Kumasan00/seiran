@@ -1,5 +1,3 @@
-#![allow(unused_assignments)]
-
 //! フォント対応の OpenType Script/Language タグ表示サブコマンド
 //!
 //! フォントが対応する言語・文字体系（Script）と言語システム（Language）の組み合わせを確認します。

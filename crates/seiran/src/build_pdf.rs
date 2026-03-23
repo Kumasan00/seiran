@@ -1,8 +1,6 @@
 //! PDF を生成するモジュール
 //! このモジュールは、テキストファイルから PDF を生成するための主要な機能を提供します。
 
-#![allow(unused_assignments)]
-
 use std::path::{Path, PathBuf};
 
 use font::{
@@ -22,6 +20,22 @@ use tracing::info;
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 enum BuildPdfError {
+  /// テキストファイルの読み込みに失敗した場合
+  #[error("テキストファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(
+    code(build::read_text_file),
+    help(
+      "ファイルのパスと読み取り権限を確認してください。ファイルが UTF-8 でエンコードされていることも確認してください。"
+    )
+  )]
+  ReadTextFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+
   /// PDF ファイルの書き込みに失敗した場合
   #[error("PDF ファイルの保存に失敗しました: {path}")]
   #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
@@ -47,7 +61,11 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   let style = read_style::read_style(config.style_path.as_deref())?;
   let _references = read_references::read_references(config.references_path.as_deref())?;
 
-  let doc_nodes = parser::text_parser(file_path)?;
+  let content = std::fs::read_to_string(file_path).map_err(|source| BuildPdfError::ReadTextFile {
+    path: file_path.display().to_string(),
+    source,
+  })?;
+  let doc_nodes = parser::parse_source(&content, &file_path.display().to_string())?;
   info!("テキストのパースが完了しました");
 
   let lowering_ctx = layout::LoweringContext::new(style.font_size);
@@ -60,11 +78,8 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
 
   let font_refs = font::FontRefs::new(&config.font_configs, &font_data)?;
 
-  let now = std::time::Instant::now();
   validate_font::validate_fonts(&config.font_configs, &font_refs)?;
   info!("フォントの検証が完了しました");
-  let elapsed = now.elapsed();
-  println!("{} μs", elapsed.as_micros());
 
   let shaper_datas = shaper::ShaperDatas::new(&font_refs);
   let shaper_instances = shaper::ShaperInstances::new(&config.font_configs, &font_refs);

@@ -1,6 +1,6 @@
 //! Document IR（中間表現）の型定義
 //!
-//! Evaluator が AST から生成する**論理的なドキュメント構造**を表現します。
+//! Evaluator が CST から生成する**論理的なドキュメント構造**を表現します。
 //! セマンティック（意味）情報を保持し、物理レイアウト情報は含みません。
 //!
 //! ## パイプライン上の位置づけ
@@ -8,7 +8,7 @@
 //! ```text
 //! Source Text
 //!   ↓ [Lexer → Parser]
-//! AST (Node, Command, Environment)
+//! CST (GreenNode — bumpalo::Bump アリーナ上)
 //!   ↓ [Evaluator]
 //! Document IR (DocNode, InlineNode)  ← このモジュール
 //!   ↓ [Lowering]
@@ -22,6 +22,57 @@
 use std::fmt;
 
 use crate::evaluator::EvalContext;
+
+// =============================================================================
+// ドキュメント全体
+// =============================================================================
+
+/// ドキュメント全体を表す構造体
+///
+/// ドキュメント本体のブロック要素を保持します。
+/// 目次生成やメタデータ管理にも利用されます。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Document {
+  /// ドキュメント本体のブロック要素
+  pub body: Vec<DocNode>,
+}
+
+impl Document {
+  /// ブロックノードのリストから `Document` を生成する
+  #[must_use]
+  pub fn new(body: Vec<DocNode>) -> Self { return Document { body }; }
+
+  /// ドキュメント内の全見出しを収集する
+  ///
+  /// 目次生成や PDF ブックマーク構築に使用します。
+  ///
+  /// # Returns
+  ///
+  /// `(HeadingLevel, &HeadingNumber, &[InlineNode])` のタプルリスト
+  #[must_use]
+  pub fn collect_headings(&self) -> Vec<(HeadingLevel, &HeadingNumber, &[InlineNode])> {
+    let mut headings = Vec::new();
+    for node in &self.body {
+      if let DocNode::Heading {
+        level,
+        number,
+        title,
+      } = node
+      {
+        headings.push((*level, number, title.as_slice()));
+      }
+    }
+    return headings;
+  }
+
+  /// ドキュメント内のブロック要素の数を返す
+  #[must_use]
+  pub fn len(&self) -> usize { return self.body.len(); }
+
+  /// ドキュメントが空かどうかを判定する
+  #[must_use]
+  pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
+}
 
 // =============================================================================
 // ブロックレベル要素
@@ -188,48 +239,6 @@ pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
 }
 
 // =============================================================================
-// 数式要素
-// =============================================================================
-
-/// 数式ノード
-///
-/// インライン数式（`$...$`）およびディスプレイ数式内の構造を表現します。
-#[derive(Debug, Clone, PartialEq)]
-pub enum MathNode {
-  /// テキスト / 記号（変数名、数字、演算子等）
-  Text(String),
-  /// 数式記号（`\alpha`, `+`, `=` 等）
-  Symbol(char),
-  /// 数式内コマンド（`\frac`, `\sqrt` 等のコマンド名を保持）
-  Command {
-    /// コマンド名
-    name: String,
-    /// 必須引数
-    args: Vec<Vec<MathNode>>,
-  },
-  /// 中括弧グループ（`{...}`）
-  Group(Vec<MathNode>),
-  /// 上付き（`x^2`）
-  Superscript(Box<MathNode>),
-  /// 下付き（`x_i`）
-  Subscript(Box<MathNode>),
-  /// 分数（`\frac{numer}{denom}`）
-  Frac {
-    /// 分子
-    numer: Box<MathNode>,
-    /// 分母
-    denom: Box<MathNode>,
-  },
-  /// 平方根（`\sqrt[n]{x}`）
-  Sqrt {
-    /// 根のインデックス（`\sqrt[3]{x}` の `3`、省略時 `None`）
-    index: Option<Box<MathNode>>,
-    /// 被根号
-    radicand: Box<MathNode>,
-  },
-}
-
-// =============================================================================
 // 見出し関連の型
 // =============================================================================
 
@@ -392,6 +401,50 @@ impl fmt::Display for HeadingNumber {
 }
 
 // =============================================================================
+// 数式要素
+// =============================================================================
+
+/// 数式ノード
+///
+/// インライン数式（`$...$`）およびディスプレイ数式内の構造を表現します。
+#[derive(Debug, Clone, PartialEq)]
+pub enum MathNode {
+  /// テキスト / 記号（変数名、数字、演算子等）
+  Text(String),
+  /// 数式記号（`\alpha`, `+`, `=` 等）
+  Symbol(char),
+  /// 数式内コマンド（`\frac`, `\sqrt` 等のコマンド名を保持）
+  Command {
+    /// コマンド名
+    name: String,
+    /// 必須引数
+    args: Vec<Vec<MathNode>>,
+  },
+  /// 中括弧グループ（`{...}`）
+  Group(Vec<MathNode>),
+  /// 上付き（`x^2`）
+  Superscript(Box<MathNode>),
+  /// 下付き（`x_i`）
+  Subscript(Box<MathNode>),
+  /// 分数（`\frac{numer}{denom}`）
+  Frac {
+    /// 分子
+    numer: Box<MathNode>,
+    /// 分母
+    denom: Box<MathNode>,
+  },
+  /// 平方根（`\sqrt[n]{x}`）
+  Sqrt {
+    /// 根のインデックス（`\sqrt[3]{x}` の `3`、省略時 `None`）
+    index: Option<Box<MathNode>>,
+    /// 被根号
+    radicand: Box<MathNode>,
+  },
+  /// 位置合わせマーク（`&`）— 数式環境での列揃え・表環境での区切り
+  AlignmentMark,
+}
+
+// =============================================================================
 // リスト関連の型
 // =============================================================================
 
@@ -409,57 +462,6 @@ impl ListItem {
   /// 新しい `ListItem` を生成する
   #[must_use]
   pub fn new(content: Vec<DocNode>) -> Self { return ListItem { content }; }
-}
-
-// =============================================================================
-// ドキュメント全体
-// =============================================================================
-
-/// ドキュメント全体を表す構造体
-///
-/// ドキュメント本体のブロック要素を保持します。
-/// 目次生成やメタデータ管理にも利用されます。
-#[derive(Debug, Clone, PartialEq)]
-pub struct Document {
-  /// ドキュメント本体のブロック要素
-  pub body: Vec<DocNode>,
-}
-
-impl Document {
-  /// ブロックノードのリストから `Document` を生成する
-  #[must_use]
-  pub fn new(body: Vec<DocNode>) -> Self { return Document { body }; }
-
-  /// ドキュメント内の全見出しを収集する
-  ///
-  /// 目次生成や PDF ブックマーク構築に使用します。
-  ///
-  /// # Returns
-  ///
-  /// `(HeadingLevel, &HeadingNumber, &[InlineNode])` のタプルリスト
-  #[must_use]
-  pub fn collect_headings(&self) -> Vec<(HeadingLevel, &HeadingNumber, &[InlineNode])> {
-    let mut headings = Vec::new();
-    for node in &self.body {
-      if let DocNode::Heading {
-        level,
-        number,
-        title,
-      } = node
-      {
-        headings.push((*level, number, title.as_slice()));
-      }
-    }
-    return headings;
-  }
-
-  /// ドキュメント内のブロック要素の数を返す
-  #[must_use]
-  pub fn len(&self) -> usize { return self.body.len(); }
-
-  /// ドキュメントが空かどうかを判定する
-  #[must_use]
-  pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
 }
 
 // =============================================================================

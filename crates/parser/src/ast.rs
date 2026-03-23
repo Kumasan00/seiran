@@ -1,355 +1,396 @@
-//! AST（抽象構文木）の型定義
+//! CST 上の型付きビュー
 //!
-//! Lexer が生成するトークン列を Parser が解析して構築する中間表現です。
-//! AST はソースコードの構文的な構造をそのまま反映し、セマンティック（意味）情報は
-//! 後段の Evaluator で Document IR（`DocNode`）に変換する際に付与されます。
+//! `GreenNode` を内部に保持し、特定の構文ノード（コマンド・環境）に対する
+//! 型安全なアクセサを提供するゼロコスト抽象化です。
 //!
-//! ## パイプライン上の位置づけ
+//! ## 設計意図
 //!
-//! ```text
-//! Source Text
-//!   ↓ [Lexer]
-//! Token 列
-//!   ↓ [Parser]
-//! AST (このモジュールで定義)  ← Block, Node, NodeKind, Command, Environment
-//!   ↓ [Evaluator]
-//! Document IR (DocNode)
-//! ```
-//!
-//! ## 設計方針
-//!
-//! - 各 AST ノードは `Span`（ソース位置情報）を持ち、エラー報告に利用可能
-//! - `PartialEq` は `Span` を無視して構造的等価性のみを比較（テスト容易性のため）
-//! - 便利コンストラクタ（`Node::text()` 等）は `Span::DUMMY` 付きのノードを生成
+//! - 旧 AST 層（`Node`, `Command`, `Environment`）を排し、CST 上のビューに置き換え
+//! - `GreenNode` を直接参照するため、コピーやクローンが不要
+//! - ビューのライフタイムは CST（アリーナ）のライフタイムに紐づく
 
-use crate::span::Span;
+use crate::{
+  green::{GreenElement, GreenNode},
+  span::Span,
+  syntax::SyntaxKind,
+  token::TokenKind,
+};
 
 // =============================================================================
-// ブロック型エイリアス
+// コマンドビュー
 // =============================================================================
 
-/// ノードのリスト（ブロック）
+/// コマンド呼び出しの型付きビュー
 ///
-/// ドキュメント全体、コマンド引数、環境の中身など、
-/// 複数の `Node` を順序付きで保持するコンテナです。
-pub type Block<'a> = Vec<Node<'a>>;
-
-/// インライン数式ノードのリスト
-///
-/// `$...$` で囲まれた数式内のノードを保持します。
-pub type InlineMathBlock<'a> = Vec<InlineMathNode<'a>>;
-
-// =============================================================================
-// ノード型
-// =============================================================================
-
-/// AST のノード
-///
-/// ノードの種類（`kind`）とソース位置情報（`span`）を保持します。
-/// パーサーで構築され、Evaluator で Document IR に変換されます。
-///
-/// ## 等価比較
-///
-/// `PartialEq` は `span` を無視し `kind` のみで比較します。
-/// これによりテストでソース位置を意識せずに構造的な比較が可能です。
-#[derive(Debug, Clone)]
-pub struct Node<'a> {
-  /// ノードの種類
-  pub kind: NodeKind<'a>,
-  /// ソース上のバイト範囲
-  pub span: Span,
-}
-
-impl PartialEq for Node<'_> {
-  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
-}
-
-impl Eq for Node<'_> {}
-
-impl<'a> Node<'a> {
-  /// 新しいノードを生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `kind` - ノードの種類
-  /// * `span` - ソース上のバイト範囲
-  #[must_use]
-  pub fn new(kind: NodeKind<'a>, span: Span) -> Self { return Node { kind, span }; }
-
-  /// テキストノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn text(t: &'a str) -> Self {
-    return Node {
-      kind: NodeKind::Text(t),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// コマンドノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn command(cmd: Command<'a>) -> Self {
-    return Node {
-      kind: NodeKind::Command(cmd),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// 環境ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn environment(env: Environment<'a>) -> Self {
-    return Node {
-      kind: NodeKind::Environment(env),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// インライン数式ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn inline_math(math: InlineMathBlock<'a>) -> Self {
-    return Node {
-      kind: NodeKind::InlineMath(math),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// 改行ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn line_break() -> Self {
-    return Node {
-      kind: NodeKind::LineBreak,
-      span: Span::DUMMY,
-    };
-  }
-
-  /// 段落区切りノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn paragraph_break() -> Self {
-    return Node {
-      kind: NodeKind::ParagraphBreak,
-      span: Span::DUMMY,
-    };
-  }
-}
-
-/// ノードの種類
-///
-/// Parser がソーステキストから構築する構文木の基本要素です。
-/// テキスト、コマンド、環境、数式、改行、段落区切りを表現します。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeKind<'a> {
-  /// プレーンテキスト
-  Text(&'a str),
-  /// コマンド呼び出し（例: `\bold{text}`, `\alpha`）
-  Command(Command<'a>),
-  /// 環境（例: `\begin{itemize}...\end{itemize}`）
-  Environment(Environment<'a>),
-  /// インライン数式（`$...$`）
-  InlineMath(InlineMathBlock<'a>),
-  /// 強制改行（`\\`）
-  LineBreak,
-  /// 段落区切り（空行）
-  ParagraphBreak,
-}
-
-// =============================================================================
-// インライン数式ノード型
-// =============================================================================
-
-/// インライン数式内のノード
-///
-/// ノードの種類（`kind`）とソース位置情報（`span`）を保持します。
-///
-/// ## 等価比較
-///
-/// `PartialEq` は `span` を無視し `kind` のみで比較します。
-#[derive(Debug, Clone)]
-pub struct InlineMathNode<'a> {
-  /// ノードの種類
-  pub kind: InlineMathNodeKind<'a>,
-  /// ソース上のバイト範囲
-  pub span: Span,
-}
-
-impl PartialEq for InlineMathNode<'_> {
-  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
-}
-
-impl Eq for InlineMathNode<'_> {}
-
-impl<'a> InlineMathNode<'a> {
-  /// 新しいインライン数式ノードを生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `kind` - ノードの種類
-  /// * `span` - ソース上のバイト範囲
-  #[must_use]
-  pub fn new(kind: InlineMathNodeKind<'a>, span: Span) -> Self { return InlineMathNode { kind, span }; }
-
-  /// テキスト数式ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn text(t: &'a str) -> Self {
-    return InlineMathNode {
-      kind: InlineMathNodeKind::Text(t),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// コマンド数式ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn command(cmd: Command<'a>) -> Self {
-    return InlineMathNode {
-      kind: InlineMathNodeKind::Command(cmd),
-      span: Span::DUMMY,
-    };
-  }
-
-  /// グループ数式ノードを生成する（`Span::DUMMY` 付き）
-  #[must_use]
-  pub fn group(nodes: InlineMathBlock<'a>) -> Self {
-    return InlineMathNode {
-      kind: InlineMathNodeKind::Group(nodes),
-      span: Span::DUMMY,
-    };
-  }
-}
-
-/// インライン数式内のノードの種類
-///
-/// `$...$` で囲まれた数式内部の構文的な構造を表現します。
-/// テキスト・コマンド・グループ（`{...}`）の3種類があります。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InlineMathNodeKind<'a> {
-  /// テキスト片（数字、演算子、変数名など）
-  Text(&'a str),
-  /// 数式内コマンド（例: `\frac{a}{b}`）
-  Command(Command<'a>),
-  /// 中括弧グループ（例: `{x+1}`）
-  Group(InlineMathBlock<'a>),
-}
-
-// =============================================================================
-// コマンド型
-// =============================================================================
-
-/// コマンド呼び出しの構造
-///
-/// `\name[opt1][opt2]{arg1}{arg2}` のように、
-/// コマンド名・任意引数・必須引数・ソース位置を保持します。
-///
-/// ## 等価比較
-///
-/// `PartialEq` は `span` を無視し、`name`, `args`, `opt_args` のみで比較します。
-///
-/// ## 例
-///
-/// - `\bold{text}` → `Command { name: "bold", args: [[Text("text")]], opt_args: [], .. }`
-/// - `\cmd[opt]{arg}` → `Command { name: "cmd", args: [[Text("arg")]], opt_args: [[Text("opt")]], .. }`
-/// - `\alpha` → `Command { name: "alpha", args: [], opt_args: [], .. }`
-#[derive(Debug, Clone)]
-pub struct Command<'a> {
-  /// コマンド名（バックスラッシュを除いた部分）
-  pub name: &'a str,
-  /// 必須引数 `{...}` のリスト
-  pub args: Vec<Block<'a>>,
-  /// 任意引数 `[...]` のリスト
-  pub opt_args: Vec<Block<'a>>,
-  /// ソース上のバイト範囲
-  pub span: Span,
-}
-
-impl PartialEq for Command<'_> {
-  fn eq(&self, other: &Self) -> bool {
-    return self.name == other.name && self.args == other.args && self.opt_args == other.opt_args;
-  }
-}
-
-impl Eq for Command<'_> {}
-
-impl<'a> Command<'a> {
-  /// 新しいコマンドを生成する（`Span::DUMMY` 付き）
-  ///
-  /// # Arguments
-  ///
-  /// * `name` - コマンド名
-  /// * `args` - 必須引数のリスト
-  /// * `opt_args` - 任意引数のリスト
-  #[must_use]
-  pub fn new(name: &'a str, args: Vec<Block<'a>>, opt_args: Vec<Block<'a>>) -> Self {
-    return Command {
-      name,
-      args,
-      opt_args,
-      span: Span::DUMMY,
-    };
-  }
-}
-
-// =============================================================================
-// 環境型
-// =============================================================================
-
-/// 環境の構造
-///
-/// `\begin{name}[opt]{arg}...children...\end{name}` のように、
-/// 環境名・引数・内部コンテンツ・ソース位置を保持します。
-///
-/// ## 等価比較
-///
-/// `PartialEq` は `span` を無視し、`name`, `args`, `opt_args`, `children` のみで比較します。
+/// CST 上の `CommandCall` ノードをラップし、コマンド名・引数への
+/// 型安全なアクセスを提供します。
 ///
 /// ## 例
 ///
 /// ```text
-/// \begin{itemize}
-///   \item{First}
-///   \item{Second}
-/// \end{itemize}
+/// \cmd[opt]{arg}
 /// ```
 ///
-/// → `Environment { name: "itemize", args: [], opt_args: [], children: [...], .. }`
-#[derive(Debug, Clone)]
-pub struct Environment<'a> {
-  /// 環境名
-  pub name: &'a str,
-  /// 環境への必須引数 `\begin{env}{arg}`
-  pub args: Vec<Block<'a>>,
-  /// 環境への任意引数 `\begin{env}[opt]`
-  pub opt_args: Vec<Block<'a>>,
-  /// 環境の中身
-  pub children: Block<'a>,
-  /// ソース上のバイト範囲
-  pub span: Span,
+/// 上記の CST ノードから `CommandView` を構築すると、
+/// `name()` → `"cmd"`, `args_count()` → `1`, `opt_args_count()` → `1` となります。
+pub(crate) struct CommandView<'a> {
+  /// 内部の CST ノード
+  node: &'a GreenNode<'a>,
+  /// 元のソーステキスト
+  source: &'a str,
 }
 
-impl PartialEq for Environment<'_> {
-  fn eq(&self, other: &Self) -> bool {
-    return self.name == other.name
-      && self.args == other.args
-      && self.opt_args == other.opt_args
-      && self.children == other.children;
-  }
-}
-
-impl Eq for Environment<'_> {}
-
-impl<'a> Environment<'a> {
-  /// 新しい環境を生成する（`Span::DUMMY` 付き）
+impl<'a> CommandView<'a> {
+  /// コマンドビューを生成する
   ///
   /// # Arguments
   ///
-  /// * `name` - 環境名
-  /// * `args` - 必須引数のリスト
-  /// * `opt_args` - 任意引数のリスト
-  /// * `children` - 環境の中身
+  /// * `node` - `SyntaxKind::CommandCall` の CST ノード
+  /// * `source` - 元のソーステキスト
   #[must_use]
-  pub fn new(name: &'a str, args: Vec<Block<'a>>, opt_args: Vec<Block<'a>>, children: Block<'a>) -> Self {
-    return Environment {
-      name,
-      args,
-      opt_args,
-      children,
-      span: Span::DUMMY,
+  pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+    debug_assert_eq!(node.kind, SyntaxKind::CommandCall);
+    return Self { node, source };
+  }
+
+  /// 元のソーステキストへの参照を返す
+  #[must_use]
+  pub fn source(&self) -> &'a str { return self.source; }
+
+  /// コマンド名を返す（先頭の `\` を除いた名前）
+  #[must_use]
+  pub fn name(&self) -> &'a str {
+    return self.node.first_token_of_kind(TokenKind::Command).map_or("", |t| t.command_name(self.source));
+  }
+
+  /// ソース上のバイト範囲を返す
+  #[must_use]
+  pub fn span(&self) -> Span { return self.node.span; }
+
+  /// 必須引数 `{...}` ノードをイテレートする
+  pub fn args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+    return self.node.children_of_kind(SyntaxKind::MandatoryArg);
+  }
+
+  /// 任意引数 `[...]` ノードをイテレートする
+  pub fn opt_args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+    return self.node.children_of_kind(SyntaxKind::OptArg);
+  }
+
+  /// 必須引数の数を返す
+  #[must_use]
+  pub fn args_count(&self) -> usize { return self.args().count(); }
+
+  /// 任意引数の数を返す
+  #[must_use]
+  pub fn opt_args_count(&self) -> usize { return self.opt_args().count(); }
+
+  /// 最初の必須引数ノードを返す
+  #[must_use]
+  pub fn first_arg(&self) -> Option<&'a GreenNode<'a>> {
+    return self.node.first_child_of_kind(SyntaxKind::MandatoryArg);
+  }
+
+  /// 必須引数が空かどうかを返す
+  #[must_use]
+  pub fn args_is_empty(&self) -> bool { return self.args_count() == 0; }
+
+  /// 任意引数が空かどうかを返す
+  #[must_use]
+  pub fn opt_args_is_empty(&self) -> bool { return self.opt_args_count() == 0; }
+}
+
+// =============================================================================
+// 環境ビュー
+// =============================================================================
+
+/// 環境の型付きビュー
+///
+/// CST 上の `Environment` ノードをラップし、環境名・引数・本体への
+/// 型安全なアクセスを提供します。
+///
+/// ## 例
+///
+/// ```text
+/// \begin{itemize}[opt]
+///   \item{First}
+/// \end{itemize}
+/// ```
+///
+/// 上記の CST ノードから `EnvironmentView` を構築すると、
+/// `name()` → `"itemize"`, `opt_args()` → `[...]` となります。
+pub(crate) struct EnvironmentView<'a> {
+  /// 内部の CST ノード
+  node: &'a GreenNode<'a>,
+  /// 元のソーステキスト
+  source: &'a str,
+}
+
+impl<'a> EnvironmentView<'a> {
+  /// 環境ビューを生成する
+  ///
+  /// # Arguments
+  ///
+  /// * `node` - `SyntaxKind::Environment` の CST ノード
+  /// * `source` - 元のソーステキスト
+  #[must_use]
+  pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+    debug_assert_eq!(node.kind, SyntaxKind::Environment);
+    return Self { node, source };
+  }
+
+  /// 元のソーステキストへの参照を返す
+  #[must_use]
+  pub fn source(&self) -> &'a str { return self.source; }
+
+  /// 環境名を返す
+  ///
+  /// `EnvironmentBegin` の最初の `MandatoryArg` 内の `Text` トークンから取得します。
+  #[must_use]
+  pub fn name(&self) -> &'a str {
+    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
+      return "";
     };
+    let Some(name_arg) = begin.first_child_of_kind(SyntaxKind::MandatoryArg) else {
+      return "";
+    };
+    return name_arg.first_token_of_kind(TokenKind::Text).map_or("", |t| t.text(self.source));
+  }
+
+  /// ソース上のバイト範囲を返す
+  #[must_use]
+  pub fn span(&self) -> Span { return self.node.span; }
+
+  /// 環境の本体ノードを返す
+  #[must_use]
+  pub fn body(&self) -> Option<&'a GreenNode<'a>> { return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody); }
+
+  /// 環境の必須引数ノードを返す（環境名の arg は除外）
+  #[must_use]
+  #[allow(dead_code)]
+  pub fn args(&self) -> Vec<&'a GreenNode<'a>> {
+    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
+      return vec![];
+    };
+    // 最初の MandatoryArg は環境名なのでスキップ
+    return begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
+  }
+
+  /// 環境の任意引数ノードを返す
+  #[must_use]
+  pub fn opt_args(&self) -> Vec<&'a GreenNode<'a>> {
+    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
+      return vec![];
+    };
+    return begin.children_of_kind(SyntaxKind::OptArg).collect();
+  }
+}
+
+// =============================================================================
+// ユーティリティ
+// =============================================================================
+
+/// `GreenNode` の子要素からテキスト内容を抽出する
+///
+/// `MandatoryArg` や `OptArg` などのノード内のテキストトークンを連結して返します。
+/// 構造トークン（括弧類）やコメントは無視されます。
+#[must_use]
+pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
+  let mut text = String::new();
+  for child in node.children {
+    match child {
+      GreenElement::Token(token) => match token.kind {
+        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => text.push_str(token.text(source)),
+        TokenKind::Escaped => {
+          let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
+          text.push_str(escaped);
+        },
+        _ => {},
+      },
+      GreenElement::Node(child_node) => {
+        // 再帰的に子ノードのテキストも取得
+        text.push_str(&extract_text_content(source, child_node));
+      },
+    }
+  }
+  return text;
+}
+
+/// `GreenNode` の子要素から `InlineNode` のリストを構築する
+///
+/// 見出しの引数など、テキストノードとコマンドを `InlineNode` に変換します。
+pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<crate::document::InlineNode> {
+  let mut inlines = Vec::new();
+  for child in node.children {
+    match child {
+      GreenElement::Token(token) => match token.kind {
+        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
+          inlines.push(crate::document::InlineNode::Text(token.text(source).to_string()));
+        },
+        TokenKind::Escaped => {
+          let text = &source[token.span.start as usize + 1..token.span.end as usize];
+          inlines.push(crate::document::InlineNode::Text(text.to_string()));
+        },
+        _ => {},
+      },
+      GreenElement::Node(child_node) => {
+        if child_node.kind == SyntaxKind::CommandCall {
+          // TODO: インラインコマンド（\textbf 等）を InlineNode として評価する
+        }
+      },
+    }
+  }
+  return inlines;
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use super::*;
+  use crate::token::Token;
+
+  #[test]
+  fn command_view_extracts_name() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\bold{hello}";
+    let cmd_token = Token::new(TokenKind::Command, Span::new(0, 5));
+    let text_token = Token::new(TokenKind::Text, Span::new(6, 11));
+    let lbrace = Token::new(TokenKind::LBrace, Span::new(5, 6));
+    let rbrace = Token::new(TokenKind::RBrace, Span::new(11, 12));
+
+    let arg_children = arena.alloc_slice_copy(&[
+      GreenElement::Token(lbrace),
+      GreenElement::Token(text_token),
+      GreenElement::Token(rbrace),
+    ]);
+    let arg_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::MandatoryArg,
+      span: Span::new(5, 12),
+      children: arg_children,
+    });
+
+    let cmd_children = arena.alloc_slice_copy(&[GreenElement::Token(cmd_token), GreenElement::Node(arg_node)]);
+    let cmd_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::CommandCall,
+      span: Span::new(0, 12),
+      children: cmd_children,
+    });
+
+    let view = CommandView::new(cmd_node, source);
+    assert_eq!(view.name(), "bold");
+    assert_eq!(view.args_count(), 1);
+    assert_eq!(view.opt_args_count(), 0);
+    assert!(!view.args_is_empty());
+    assert!(view.opt_args_is_empty());
+  }
+
+  #[test]
+  fn command_view_no_args() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\alpha";
+    let cmd_token = Token::new(TokenKind::Command, Span::new(0, 6));
+
+    let cmd_children = arena.alloc_slice_copy(&[GreenElement::Token(cmd_token)]);
+    let cmd_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::CommandCall,
+      span: Span::new(0, 6),
+      children: cmd_children,
+    });
+
+    let view = CommandView::new(cmd_node, source);
+    assert_eq!(view.name(), "alpha");
+    assert!(view.args_is_empty());
+    assert!(view.opt_args_is_empty());
+  }
+
+  #[test]
+  fn environment_view_extracts_name() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\begin{center}body\\end{center}";
+
+    // EnvironmentBegin > \begin token + MandatoryArg({center})
+    let begin_token = Token::new(TokenKind::Command, Span::new(0, 6));
+    let lbrace = Token::new(TokenKind::LBrace, Span::new(6, 7));
+    let name_text = Token::new(TokenKind::Text, Span::new(7, 13));
+    let rbrace = Token::new(TokenKind::RBrace, Span::new(13, 14));
+
+    let name_arg_children = arena.alloc_slice_copy(&[
+      GreenElement::Token(lbrace),
+      GreenElement::Token(name_text),
+      GreenElement::Token(rbrace),
+    ]);
+    let name_arg = arena.alloc(GreenNode {
+      kind: SyntaxKind::MandatoryArg,
+      span: Span::new(6, 14),
+      children: name_arg_children,
+    });
+
+    let begin_children = arena.alloc_slice_copy(&[
+      GreenElement::Token(begin_token),
+      GreenElement::Node(name_arg),
+    ]);
+    let begin_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::EnvironmentBegin,
+      span: Span::new(0, 14),
+      children: begin_children,
+    });
+
+    // EnvironmentBody
+    let body_text = Token::new(TokenKind::Text, Span::new(14, 18));
+    let body_children = arena.alloc_slice_copy(&[GreenElement::Token(body_text)]);
+    let body_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::EnvironmentBody,
+      span: Span::new(14, 18),
+      children: body_children,
+    });
+
+    // EnvironmentEnd (simplified)
+    let end_token = Token::new(TokenKind::Command, Span::new(18, 22));
+    let end_children = arena.alloc_slice_copy(&[GreenElement::Token(end_token)]);
+    let end_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::EnvironmentEnd,
+      span: Span::new(18, 30),
+      children: end_children,
+    });
+
+    // Environment
+    let env_children = arena.alloc_slice_copy(&[
+      GreenElement::Node(begin_node),
+      GreenElement::Node(body_node),
+      GreenElement::Node(end_node),
+    ]);
+    let env_node = arena.alloc(GreenNode {
+      kind: SyntaxKind::Environment,
+      span: Span::new(0, 30),
+      children: env_children,
+    });
+
+    let view = EnvironmentView::new(env_node, source);
+    assert_eq!(view.name(), "center");
+    assert!(view.body().is_some());
+    assert!(view.args().is_empty());
+    assert!(view.opt_args().is_empty());
+  }
+
+  #[test]
+  fn extract_text_content_from_arg() {
+    let arena = bumpalo::Bump::new();
+    let source = "{hello world}";
+    let lbrace = Token::new(TokenKind::LBrace, Span::new(0, 1));
+    let text = Token::new(TokenKind::Text, Span::new(1, 12));
+    let rbrace = Token::new(TokenKind::RBrace, Span::new(12, 13));
+
+    let children = arena.alloc_slice_copy(&[
+      GreenElement::Token(lbrace),
+      GreenElement::Token(text),
+      GreenElement::Token(rbrace),
+    ]);
+    let node = GreenNode {
+      kind: SyntaxKind::MandatoryArg,
+      span: Span::new(0, 13),
+      children,
+    };
+
+    assert_eq!(extract_text_content(source, &node), "hello world");
   }
 }

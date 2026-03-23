@@ -1,6 +1,21 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    # update GitHub Actions dependencies weekly
     directory: "/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "cargo"
+    # update Rust dependencies weekly
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "04:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      minor-and-patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

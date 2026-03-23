@@ -35,8 +35,6 @@
 //! - グリフ座標系の正規化（upem を基準に変換）
 //! - `CIDFont` の設定（upem、バウンディングボックス）
 
-#![allow(unused_assignments)]
-
 use font_types::Fixed;
 use miette::Diagnostic;
 use read_config::{FontConfig, FontConfigs};

@@ -1,7 +1,12 @@
+//! 環境ディスパッチ
+//!
+//! 環境名を phf パーフェクトハッシュマップで `EnvironmentKind` に解決し、
+//! 対応するハンドラに委譲します。
+
 use phf::phf_map;
 
 use crate::{
-  ast::Environment,
+  ast::EnvironmentView,
   document::DocNode,
   evaluator::{EvalError, Evaluator},
 };
@@ -15,21 +20,31 @@ enum EnvironmentKind {
 }
 
 impl EnvironmentKind {
-  fn execute(self, env: &Environment, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  /// 環境を実行し、対応する `Vec<DocNode>` を生成する
+  fn execute(self, view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
     match self {
-      EnvironmentKind::Itemize => itemize::itemize(env, evaluator),
+      EnvironmentKind::Itemize => itemize::itemize(view, evaluator),
       EnvironmentKind::Undefined => Err(EvalError::UnknownEnvironment {
-        name: env.name.to_string(),
-        span: env.span.into(),
+        name: view.name().to_string(),
+        span: view.span().into(),
       }),
     }
   }
 }
 
 impl Evaluator {
-  pub(crate) fn evaluate_environment(&mut self, env: &Environment) -> Result<Vec<DocNode>, EvalError> {
-    let env_kind = ENVIRONMENT_MAP.get(env.name.to_string().as_str()).copied().unwrap_or(EnvironmentKind::Undefined);
-    return env_kind.execute(env, self);
+  /// 環境を評価し、対応する `Vec<DocNode>` を生成する
+  ///
+  /// # Arguments
+  ///
+  /// * `view` - 環境の型付きビュー
+  ///
+  /// # Errors
+  ///
+  /// 未知の環境やハンドラ実行中のエラーが発生した場合
+  pub(crate) fn evaluate_environment(&mut self, view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+    let env_kind = ENVIRONMENT_MAP.get(view.name()).copied().unwrap_or(EnvironmentKind::Undefined);
+    return env_kind.execute(view, self);
   }
 }
 

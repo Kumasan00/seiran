@@ -1,49 +1,58 @@
+//! 制御コマンド群
+//!
+//! スペース挿入などの制御コマンドを提供します。
+
 use crate::{
-  ast::{Command, NodeKind},
+  ast::{CommandView, extract_text_content},
   document::DocNode,
   evaluator::EvalError,
 };
-pub(super) fn space(command: &Command) -> Result<Vec<DocNode>, EvalError> {
-  let Some(first_arg) = command.args.first() else {
+
+/// `\space{N}` — 垂直スペースを挿入するコマンド
+///
+/// # Arguments
+///
+/// * `view` - コマンドの型付きビュー
+///
+/// # Errors
+///
+/// 引数の不足・過剰・数値でない場合にエラーを返します
+pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
+  let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: "space".to_string(),
       expected: "スペース量（数値）".to_string(),
-      span: command.span.into(),
+      span: view.span().into(),
     });
   };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
+  if view.args_count() > 1 || !view.opt_args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: "space".to_string(),
-      span: command.span.into(),
+      span: view.span().into(),
     });
   }
-  if first_arg.len() != 1 {
+
+  let text = extract_text_content(view.source(), first_arg);
+  let trimmed = text.trim();
+
+  if trimmed.is_empty() {
     return Err(EvalError::InvalidCommandArgument {
       name: "space".to_string(),
       reason: "数値のみ".to_string(),
-      span: command.span.into(),
+      span: view.span().into(),
     });
   }
-  match first_arg.first().map(|n| &n.kind) {
-    Some(NodeKind::Text(text)) => {
-      let space_value: f32 = match text.trim().parse() {
-        Ok(val) => val,
-        Err(_) => {
-          return Err(EvalError::InvalidCommandArgument {
-            name: "space".to_string(),
-            reason: "数値".to_string(),
-            span: command.span.into(),
-          });
-        },
-      };
-      return Ok(vec![DocNode::Space(space_value)]);
-    },
-    _ => {
+
+  let space_value: f32 = match trimmed.parse() {
+    Ok(val) => val,
+    Err(_) => {
       return Err(EvalError::InvalidCommandArgument {
         name: "space".to_string(),
-        reason: "1文字のみ".to_string(),
-        span: command.span.into(),
+        reason: "数値".to_string(),
+        span: view.span().into(),
       });
     },
-  }
+  };
+
+  return Ok(vec![DocNode::Space(space_value)]);
 }

@@ -43,8 +43,6 @@
 //! seiran variation-axes fonts/variable.ttc --font-index 1
 //! ```
 
-#![allow(unused_assignments)]
-
 use std::{fs, path::Path};
 
 use miette::{Diagnostic, IntoDiagnostic};

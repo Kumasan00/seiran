@@ -7,22 +7,10 @@
 ///
 /// 開始位置と終了位置のバイトオフセットを保持します。
 /// エラーメッセージでソースの該当箇所を指し示すために使用します。
-///
-/// # Examples
-///
-/// ```
-/// use parser::span::Span;
-///
-/// let span = Span::new(0, 5);
-/// assert_eq!(span.start, 0);
-/// assert_eq!(span.end, 5);
-/// assert_eq!(span.len(), 5);
-/// ```
-///
 /// `miette::SourceSpan` への変換をサポートしており、
 /// エラー診断時のソース位置表示に使用できます。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Span {
+pub(crate) struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
   pub start: u32,
   /// 終了バイトオフセット（exclusive）
@@ -44,11 +32,7 @@ impl Span {
 
   /// バイト長を返す
   #[must_use]
-  pub fn len(&self) -> u32 { return self.end - self.start; }
-
-  /// 長さが 0 かどうか
-  #[must_use]
-  pub fn is_empty(&self) -> bool { return self.start == self.end; }
+  pub fn len(self) -> u32 { return self.end - self.start; }
 
   /// 2 つの Span を結合して、両方を含む最小の Span を返す
   ///
@@ -91,18 +75,6 @@ mod tests {
   }
 
   #[test]
-  fn is_empty_returns_true_for_zero_length() {
-    let span = Span::new(5, 5);
-    assert!(span.is_empty());
-  }
-
-  #[test]
-  fn is_empty_returns_false_for_nonzero_length() {
-    let span = Span::new(5, 6);
-    assert!(!span.is_empty());
-  }
-
-  #[test]
   fn merge_combines_two_spans() {
     let a = Span::new(5, 10);
     let b = Span::new(8, 15);
@@ -116,12 +88,6 @@ mod tests {
     let b = Span::new(10, 20);
     let merged = a.merge(b);
     assert_eq!(merged, Span::new(0, 20));
-  }
-
-  #[test]
-  fn dummy_is_zero_span() {
-    assert_eq!(Span::DUMMY, Span::new(0, 0));
-    assert!(Span::DUMMY.is_empty());
   }
 
   #[test]

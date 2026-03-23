@@ -4,8 +4,6 @@
 //! テキストノードは Unicode スクリプトに基づいてセグメント分割され、
 //! 各セグメントがフォントシェーパーで処理されてグリフ情報を持つ `GlyphRun` になります。
 
-#![allow(unused_assignments)]
-
 use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
 use font_types::GlyphId;
 use icu::properties::{

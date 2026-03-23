@@ -5,8 +5,10 @@ use crate::{
 
 /// テキスト入力をトークン列に分割するレキサー
 ///
-/// 入力文字列をバイト単位で走査し、コマンド・テキスト・構造文字などの
-/// トークンを逐次生成する。カーソル位置を内部状態として保持する。
+/// 入力文字列をバイト単位で走査し、空白・改行・コメントを含む
+/// すべてのバイトを対応するトークンに変換する（完全トークン化）。
+/// 全トークンの `text()` を連結するとソーステキストを完全に再構築できる。
+/// カーソル位置を内部状態として保持する。
 pub(crate) struct Lexer<'a> {
   /// 入力テキスト全体の文字列スライス
   input: &'a str,
@@ -88,59 +90,67 @@ impl<'a> Lexer<'a> {
 
   /// 次のトークンを生成して返す
   ///
-  /// 空白や単一改行をスキップしつつ、意味のあるトークンを1つ返します。
-  /// 各トークンにはソース上のバイト範囲（`Span`）が付与されます。
+  /// 入力のすべてのバイトをいずれかのトークンとして出力します。
+  /// 空白・改行を含む完全なトークン列を返すため、
+  /// 全トークンの `text()` を連結するとソーステキストを完全に再構築できます。
   fn next_token(&mut self) -> Option<Token> {
-    loop {
-      if self.is_at_end() {
-        return None;
-      }
-
-      let start = self.cursor;
-      let byte = self.bytes[self.cursor];
-
-      let kind = match byte {
-        b'\\' => self.read_backslash(),
-        b'{' => {
-          self.advance_bytes(1);
-          TokenKind::LBrace
-        },
-        b'}' => {
-          self.advance_bytes(1);
-          TokenKind::RBrace
-        },
-        b'[' => {
-          self.advance_bytes(1);
-          TokenKind::LBracket
-        },
-        b']' => {
-          self.advance_bytes(1);
-          TokenKind::RBracket
-        },
-        b'/' if self.peek_byte_at(1) == Some(b'/') => self.read_comment(),
-        b'$' => {
-          self.advance_bytes(1);
-          TokenKind::Dollar
-        },
-        b'\n' => {
-          self.advance_bytes(1);
-          if self.is_empty_line_next() {
-            self.consume_empty_lines();
-            TokenKind::ParagraphBreak
-          } else {
-            continue;
-          }
-        },
-        b if b.is_ascii_whitespace() => {
-          self.advance_bytes(1);
-          continue;
-        },
-        _ => self.read_text()?,
-      };
-
-      let span = Span::new(start as u32, self.cursor as u32);
-      return Some(Token::new(kind, span));
+    if self.is_at_end() {
+      return None;
     }
+
+    let start = self.cursor;
+    let byte = self.bytes[self.cursor];
+
+    let kind = match byte {
+      b'\\' => self.read_backslash(),
+      b'{' => {
+        self.advance_bytes(1);
+        TokenKind::LBrace
+      },
+      b'}' => {
+        self.advance_bytes(1);
+        TokenKind::RBrace
+      },
+      b'[' => {
+        self.advance_bytes(1);
+        TokenKind::LBracket
+      },
+      b']' => {
+        self.advance_bytes(1);
+        TokenKind::RBracket
+      },
+      b'/' if self.peek_byte_at(1) == Some(b'/') => self.read_comment(),
+      b'$' => {
+        self.advance_bytes(1);
+        TokenKind::Dollar
+      },
+      b'_' => {
+        self.advance_bytes(1);
+        TokenKind::Underscore
+      },
+      b'^' => {
+        self.advance_bytes(1);
+        TokenKind::Caret
+      },
+      b'&' => {
+        self.advance_bytes(1);
+        TokenKind::Ampersand
+      },
+      b'\n' => {
+        self.advance_bytes(1);
+        if self.is_empty_line_next() {
+          self.consume_empty_lines();
+          TokenKind::ParagraphBreak
+        } else {
+          TokenKind::Newline
+        }
+      },
+      b if b.is_ascii_whitespace() => self.read_whitespace(),
+      _ => self.read_text()?,
+    };
+
+    let span = Span::new(start as u32, self.cursor as u32);
+    return Some(Token::new(kind, span));
   }
 
   /// バックスラッシュで始まるトークンを読み取る
@@ -196,7 +206,7 @@ impl<'a> Lexer<'a> {
   /// コメントを読み取る（`//` から行末まで）
   ///
   /// `//` の2バイトを消費した後、次の改行文字（`\n`）または入力末尾まで読み進める。
-  /// 改行文字自体はコメントに含まれない。
+  /// 改行文字自体はコメントに含まれず、次のトークンとして `Newline` が生成される。
   ///
   /// # Returns
   ///
@@ -210,9 +220,9 @@ impl<'a> Lexer<'a> {
 
   /// テキストトークンを読み取る
   ///
-  /// 構造文字（`\`, `{`, `}`, `[`, `]`, `$`）、単一ドル記号、コメント開始（`//`）、
-  /// または段落区切り（空行）に遭遇するまでテキストを読み進める。
-  /// `$$` 以上の連続ドル記号やコンテンツが続く単一改行はテキストの一部として扱う。
+  /// 構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`）、空白文字、改行、
+  /// コメント開始（`//`）に遭遇するまでテキストを読み進める。
+  /// 空白・改行は個別のトークンとして出力されるため、テキストには含まれない。
   ///
   /// # Returns
   ///
@@ -229,11 +239,8 @@ impl<'a> Lexer<'a> {
 
       match b {
         b'/' if self.peek_byte_at(1) == Some(b'/') => break,
-        b'\n' => {
-          if !self.handle_newline_in_text() {
-            break;
-          }
-        },
+        b'\n' => break,
+        b if b.is_ascii_whitespace() => break,
         _ => self.cursor += 1,
       }
     }
@@ -245,7 +252,7 @@ impl<'a> Lexer<'a> {
     Some(TokenKind::Text)
   }
 
-  /// 指定バイトが構造文字（`\`, `{`, `}`, `[`, `]`）であるかを判定する
+  /// 指定バイトが構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`）であるかを判定する
   ///
   /// # Arguments
   ///
@@ -254,26 +261,24 @@ impl<'a> Lexer<'a> {
   /// # Returns
   ///
   /// 構造文字の場合は `true`
-  fn is_structural_char(b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$') }
+  fn is_structural_char(b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&') }
 
-  /// テキスト読み取り中に改行に遭遇した際の処理
+  /// 水平空白（スペース・タブ等）を読み取る
   ///
-  /// 改行の次が空行（段落区切り）であればカーソルを改行位置に戻して `false` を返す。
-  /// コンテンツが続く場合は改行を消費してテキスト読み取りを継続する。
+  /// 改行以外の連続する空白文字を 1 つの `Whitespace` トークンとして返す。
   ///
   /// # Returns
   ///
-  /// テキスト読み取りを継続する場合は `true`、段落区切りで中断する場合は `false`
-  fn handle_newline_in_text(&mut self) -> bool {
-    let newline_pos = self.cursor;
-    self.cursor += 1;
-
-    if self.is_empty_line_next() {
-      self.cursor = newline_pos;
-      false
-    } else {
-      true
+  /// `TokenKind::Whitespace`
+  fn read_whitespace(&mut self) -> TokenKind {
+    while let Some(&b) = self.bytes.get(self.cursor) {
+      if b.is_ascii_whitespace() && b != b'\n' {
+        self.cursor += 1;
+      } else {
+        break;
+      }
     }
+    TokenKind::Whitespace
   }
 
   /// カーソル位置以降が空行（段落区切り）であるかを判定する
@@ -580,6 +585,58 @@ mod tests {
     return;
   }
 
+  #[test]
+  fn underscore_produces_underscore_token() {
+    // `_` 単独 → Underscore トークン
+    let tokens = tokenize("_");
+    assert_eq!(tokens, vec![TokenKind::Underscore]);
+    return;
+  }
+
+  #[test]
+  fn caret_produces_caret_token() {
+    // `^` 単独 → Caret トークン
+    let tokens = tokenize("^");
+    assert_eq!(tokens, vec![TokenKind::Caret]);
+    return;
+  }
+
+  #[test]
+  fn underscore_and_caret_in_text_produce_tokens() {
+    // テキスト中でも個別トークンとして認識される
+    let tokens = tokenize("a_b^c");
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Text,
+        TokenKind::Underscore,
+        TokenKind::Text,
+        TokenKind::Caret,
+        TokenKind::Text,
+      ]
+    );
+    return;
+  }
+
+  #[test]
+  fn math_with_subscript_superscript_tokens() {
+    // 数式中の `_` と `^` もトークンとして出力される
+    let tokens = tokenize("$x^2_i$");
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Dollar,
+        TokenKind::Text,
+        TokenKind::Caret,
+        TokenKind::Text,
+        TokenKind::Underscore,
+        TokenKind::Text,
+        TokenKind::Dollar,
+      ]
+    );
+    return;
+  }
+
   // ==========================================================
   // バックスラッシュ関連のテスト
   // ==========================================================
@@ -634,9 +691,9 @@ mod tests {
   }
 
   #[test]
-  fn backslash_followed_by_whitespace_produces_unknown() {
+  fn backslash_followed_by_whitespace_produces_unknown_and_whitespace() {
     let tokens = tokenize("\\ ");
-    assert_eq!(tokens, vec![TokenKind::Unknown]);
+    assert_eq!(tokens, vec![TokenKind::Unknown, TokenKind::Whitespace]);
     return;
   }
 
@@ -680,7 +737,7 @@ mod tests {
   #[test]
   fn comment_stops_at_newline() {
     let tokens = tokenize("// comment\ntext");
-    assert_eq!(tokens, vec![TokenKind::Comment, TokenKind::Text]);
+    assert_eq!(tokens, vec![TokenKind::Comment, TokenKind::Newline, TokenKind::Text]);
     return;
   }
 
@@ -737,9 +794,9 @@ mod tests {
   // ==========================================================
 
   #[test]
-  fn single_newline_is_skipped() {
+  fn single_newline_produces_newline_token() {
     let tokens = tokenize("hello\nworld");
-    assert_eq!(tokens, vec![TokenKind::Text]);
+    assert_eq!(tokens, vec![TokenKind::Text, TokenKind::Newline, TokenKind::Text]);
     return;
   }
 
@@ -779,7 +836,14 @@ mod tests {
   #[test]
   fn plain_text() {
     let texts = tokenize_texts("hello world");
-    assert_eq!(texts, vec![(TokenKind::Text, "hello world")]);
+    assert_eq!(
+      texts,
+      vec![
+        (TokenKind::Text, "hello"),
+        (TokenKind::Whitespace, " "),
+        (TokenKind::Text, "world")
+      ]
+    );
     return;
   }
 
@@ -839,24 +903,23 @@ mod tests {
   // ==========================================================
 
   #[test]
-  fn leading_whitespace_is_skipped() {
+  fn leading_whitespace_produces_whitespace_token() {
     let tokens = tokenize("   hello");
-    assert_eq!(tokens, vec![TokenKind::Text]);
+    assert_eq!(tokens, vec![TokenKind::Whitespace, TokenKind::Text]);
     return;
   }
 
   #[test]
-  fn tab_is_skipped() {
+  fn tab_produces_whitespace_token() {
     let tokens = tokenize("\thello");
-    assert_eq!(tokens, vec![TokenKind::Text]);
+    assert_eq!(tokens, vec![TokenKind::Whitespace, TokenKind::Text]);
     return;
   }
 
   #[test]
-  fn whitespace_only_returns_no_tokens() {
-    // 空白のみ → 改行がないので再帰的にスキップ
+  fn whitespace_only_produces_whitespace_token() {
     let tokens = tokenize("   ");
-    assert!(tokens.is_empty());
+    assert_eq!(tokens, vec![TokenKind::Whitespace]);
     return;
   }
 
@@ -900,7 +963,16 @@ mod tests {
   #[test]
   fn escaped_chars_in_text() {
     let tokens = tokenize("hello \\$ world");
-    assert_eq!(tokens, vec![TokenKind::Text, TokenKind::Escaped, TokenKind::Text,]);
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Text,
+        TokenKind::Whitespace,
+        TokenKind::Escaped,
+        TokenKind::Whitespace,
+        TokenKind::Text,
+      ]
+    );
     return;
   }
 
@@ -931,7 +1003,18 @@ mod tests {
   #[test]
   fn math_mode_delimiters() {
     let tokens = tokenize("$x + y$");
-    assert_eq!(tokens, vec![TokenKind::Dollar, TokenKind::Text, TokenKind::Dollar,]);
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Dollar,
+        TokenKind::Text,
+        TokenKind::Whitespace,
+        TokenKind::Text,
+        TokenKind::Whitespace,
+        TokenKind::Text,
+        TokenKind::Dollar,
+      ]
+    );
     return;
   }
 
@@ -994,6 +1077,7 @@ mod tests {
         TokenKind::RBrace,
         TokenKind::ParagraphBreak,
         TokenKind::Text,
+        TokenKind::Whitespace,
         TokenKind::Command,
         TokenKind::LBrace,
         TokenKind::Text,
@@ -1001,6 +1085,7 @@ mod tests {
         TokenKind::Text,
         TokenKind::ParagraphBreak,
         TokenKind::Comment,
+        TokenKind::Newline,
         TokenKind::Command,
         TokenKind::LBrace,
         TokenKind::Text,
@@ -1042,15 +1127,17 @@ mod tests {
 
   #[test]
   fn span_tracks_text() {
-    // Arrange & Act — 先頭空白はスキップされるため、"hello" の開始は3
+    // Arrange & Act — 先頭空白は Whitespace トークンとして保持される
     let source = "   hello";
     let tokens = tokenize_with_spans(source);
 
     // Assert
-    assert_eq!(tokens.len(), 1);
-    assert_eq!(tokens[0].kind, TokenKind::Text);
-    assert_eq!(tokens[0].span, Span::new(3, 8));
-    assert_eq!(tokens[0].text(source), "hello");
+    assert_eq!(tokens.len(), 2);
+    assert_eq!(tokens[0].kind, TokenKind::Whitespace);
+    assert_eq!(tokens[0].span, Span::new(0, 3));
+    assert_eq!(tokens[1].kind, TokenKind::Text);
+    assert_eq!(tokens[1].span, Span::new(3, 8));
+    assert_eq!(tokens[1].text(source), "hello");
     return;
   }
 
@@ -1100,38 +1187,6 @@ mod tests {
   }
 
   // ==========================================================
-  // handle_newline_in_text のテスト
-  // ==========================================================
-
-  #[test]
-  fn handle_newline_in_text_continues_for_content_line() {
-    // Arrange — "\nhello" でカーソルは0 ('\n' を指す)
-    let mut lexer = Lexer::new("\nhello");
-
-    // Act
-    let result = lexer.handle_newline_in_text();
-
-    // Assert — 次の行にコンテンツがあるのでtrue、カーソルは改行の次
-    assert!(result);
-    assert_eq!(lexer.cursor, 1);
-    return;
-  }
-
-  #[test]
-  fn handle_newline_in_text_stops_for_empty_line() {
-    // Arrange — "\n\nhello" でカーソルは0
-    let mut lexer = Lexer::new("\n\nhello");
-
-    // Act
-    let result = lexer.handle_newline_in_text();
-
-    // Assert — 次の行が空行なのでfalse、カーソルは元の位置に戻る
-    assert!(!result);
-    assert_eq!(lexer.cursor, 0);
-    return;
-  }
-
-  // ==========================================================
   // エッジケースのテスト
   // ==========================================================
 
@@ -1152,10 +1207,19 @@ mod tests {
   }
 
   #[test]
-  fn text_across_single_newline_is_continuous() {
-    // 段落内の改行はテキストに含まれる
+  fn text_across_single_newline_produces_separate_tokens() {
+    // 段落内の改行は Newline トークンとして分離される
     let tokens = tokenize("line1\nline2\nline3");
-    assert_eq!(tokens, vec![TokenKind::Text]);
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Text,
+        TokenKind::Newline,
+        TokenKind::Text,
+        TokenKind::Newline,
+        TokenKind::Text,
+      ]
+    );
     return;
   }
 
@@ -1167,15 +1231,18 @@ mod tests {
   }
 
   #[test]
-  fn whitespace_between_tokens_is_skipped() {
+  fn whitespace_between_tokens_is_preserved() {
     let tokens = tokenize("  \\cmd  {arg}  ");
     assert_eq!(
       tokens,
       vec![
+        TokenKind::Whitespace,
         TokenKind::Command,
+        TokenKind::Whitespace,
         TokenKind::LBrace,
         TokenKind::Text,
-        TokenKind::RBrace
+        TokenKind::RBrace,
+        TokenKind::Whitespace,
       ]
     );
     return;

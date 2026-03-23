@@ -1,5 +1,3 @@
-#![allow(unused_assignments)]
-
 use std::path::Path;
 
 use figment::{
@@ -44,6 +42,7 @@ pub struct Style {
   pub sub_section: HeadingStyle,
   pub paragraph: HeadingStyle,
   pub sub_paragraph: HeadingStyle,
+  pub reference: ReferenceStyle,
 }
 
 impl Default for Style {
@@ -62,6 +61,7 @@ impl Default for Style {
       sub_section: HeadingStyle::new(sub_section, 16.0, 10.0, false, false),
       paragraph: HeadingStyle::new(paragraph, 14.0, 5.0, false, false),
       sub_paragraph: HeadingStyle::new(sub_paragraph, 12.0, 5.0, false, false),
+      reference: ReferenceStyle::default(),
     };
   }
 }
@@ -92,6 +92,23 @@ impl HeadingStyle {
       bottom_margin,
       page_break_before,
       page_break_after,
+    };
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ReferenceStyle {
+  pub format: String,
+  pub font_size: f32,
+  pub bottom_margin: f32,
+}
+
+impl Default for ReferenceStyle {
+  fn default() -> Self {
+    return Self {
+      format: "参考文献".to_string(),
+      font_size: 12.0,
+      bottom_margin: 10.0,
     };
   }
 }

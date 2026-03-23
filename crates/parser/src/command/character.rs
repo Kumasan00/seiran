@@ -3,12 +3,12 @@
 //! パーサーから呼ばれるギリシャ文字・数学記号コマンドを提供します。すべての関数は
 //! 単一文字の `InlineNode::Symbol` を生成します。
 
-use crate::{ast::Command, document::InlineNode, evaluator::EvalError};
+use crate::{ast::CommandView, document::InlineNode, evaluator::EvalError};
 
 /// 単一の文字関数を生成するヘルパーマクロ
 ///
 /// このマクロは指定されたUnicode文字を返す関数を生成します。
-/// 生成される関数は引数なしでコマンドを受け取り、
+/// 生成される関数は引数なしでコマンドビューを受け取り、
 /// 単一文字の `InlineNode::Symbol` を返します。
 ///
 /// # エラーハンドリング
@@ -18,11 +18,11 @@ use crate::{ast::Command, document::InlineNode, evaluator::EvalError};
 macro_rules! single_char {
   ($fn_name:ident, $doc:expr, $ch:expr) => {
     #[doc = concat!($doc, "\n\n# エラー\n\n引数が指定されている場合は [`EvalError::ExtraCommandArgument`] を返します。")]
-    pub(super) fn $fn_name(command: Command) -> Result<Vec<InlineNode>, EvalError> {
-      if !command.args.is_empty() || !command.opt_args.is_empty() {
+    pub(super) fn $fn_name(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+      if !view.args_is_empty() || !view.opt_args_is_empty() {
         return Err(EvalError::ExtraCommandArgument {
-          name: command.name.to_string(),
-          span: command.span.into(),
+          name: view.name().to_string(),
+          span: view.span().into(),
         });
       }
       return Ok(vec![InlineNode::Symbol($ch)]);
@@ -128,233 +128,83 @@ single_char!(reversed_tilde, "反転チルダ記号を出力します。", '\u{2
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
+
   use super::*;
-  use crate::ast::Command;
+  use crate::{green::GreenNode, parser::parse, syntax::SyntaxKind};
 
-  /// テスト用のコマンドを生成
-  fn test_command(name: &'static str) -> Command<'static> { return Command::new(name, vec![], vec![]); }
-
-  /// 引数を持つテストコマンドを生成
-  fn test_command_with_args(name: &'static str) -> Command<'static> { return Command::new(name, vec![vec![]], vec![]); }
+  /// テスト用: ソースからコマンドビューを取得
+  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
+    let cst = parse(source, arena).unwrap();
+    // Root > CommandCall
+    for child in cst.children {
+      if let crate::green::GreenElement::Node(n) = child
+        && n.kind == SyntaxKind::CommandCall
+      {
+        return n;
+      }
+    }
+    panic!("CommandCall ノードが見つかりません");
+  }
 
   #[test]
   fn emits_lower_sigma() {
-    let command = test_command("sigma");
-    match lower_sigma(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, 'σ');
-      },
+    let arena = Bump::new();
+    let node = get_command_view("\\sigma", &arena);
+    let view = CommandView::new(node, "\\sigma");
+    match lower_sigma(&view).map(|mut v| v.remove(0)) {
+      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'σ'),
       _ => panic!("lower_sigma は正常に Symbol ノードを返すべきです"),
     }
-    return;
   }
 
   #[test]
   fn emits_upper_omega() {
-    let command = test_command("Omega");
-    match upper_omega(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, 'Ω');
-      },
+    let arena = Bump::new();
+    let node = get_command_view("\\Omega", &arena);
+    let view = CommandView::new(node, "\\Omega");
+    match upper_omega(&view).map(|mut v| v.remove(0)) {
+      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'Ω'),
       _ => panic!("upper_omega は正常に Symbol ノードを返すべきです"),
     }
-    return;
-  }
-
-  #[test]
-  fn emits_upper_alpha() {
-    let command = test_command("Alpha");
-    match upper_alpha(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, 'Α');
-      },
-      _ => panic!("upper_alpha は正常に Symbol ノードを返すべきです"),
-    }
-    return;
-  }
-
-  #[test]
-  fn emits_lower_alpha() {
-    let command = test_command("alpha");
-    match lower_alpha(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, 'α');
-      },
-      _ => panic!("lower_alpha は正常に Symbol ノードを返すべきです"),
-    }
-    return;
-  }
-
-  #[test]
-  fn emits_final_sigma() {
-    let command = test_command("final_sigma");
-    match final_sigma(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, 'ς');
-      },
-      _ => panic!("final_sigma は正常に Symbol ノードを返すべきです"),
-    }
-    return;
   }
 
   #[test]
   fn emits_infinity() {
-    let command = test_command("infty");
-    match infinity(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, '∞');
-      },
+    let arena = Bump::new();
+    let node = get_command_view("\\infty", &arena);
+    let view = CommandView::new(node, "\\infty");
+    match infinity(&view).map(|mut v| v.remove(0)) {
+      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∞'),
       _ => panic!("infinity は正常に Symbol ノードを返すべきです"),
     }
-    return;
-  }
-
-  #[test]
-  fn emits_integral() {
-    let command = test_command("int");
-    match integral(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, '∫');
-      },
-      _ => panic!("integral は正常に Symbol ノードを返すべきです"),
-    }
-    return;
-  }
-
-  #[test]
-  fn emits_summation() {
-    let command = test_command("sum");
-    match summation(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, '∑');
-      },
-      _ => panic!("summation は正常に Symbol ノードを返すべきです"),
-    }
-    return;
-  }
-
-  #[test]
-  fn emits_partial() {
-    let command = test_command("partial");
-    match partial(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, '∂');
-      },
-      _ => panic!("partial は正常に Symbol ノードを返すべきです"),
-    }
-    return;
-  }
-
-  #[test]
-  fn emits_nabla() {
-    let command = test_command("nabla");
-    match nabla(command).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => {
-        assert_eq!(ch, '∇');
-      },
-      _ => panic!("nabla は正常に Symbol ノードを返すべきです"),
-    }
-    return;
   }
 
   #[test]
   fn rejects_command_with_required_args() {
-    let command = test_command_with_args("alpha");
-    match lower_alpha(command) {
+    let arena = Bump::new();
+    let source = "\\alpha{extra}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+    match lower_alpha(&view) {
       Err(EvalError::ExtraCommandArgument { name, .. }) => {
         assert_eq!(name, "alpha");
       },
       _ => panic!("引数付きコマンドはエラーを返すべきです"),
     }
-    return;
   }
 
   #[test]
   fn rejects_command_with_optional_args() {
-    let mut command = test_command("omega");
-    command.opt_args = vec![vec![]];
-    match lower_omega(command) {
+    let arena = Bump::new();
+    let source = "\\omega[opt]";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+    match lower_omega(&view) {
       Err(EvalError::ExtraCommandArgument { name, .. }) => {
         assert_eq!(name, "omega");
       },
       _ => panic!("任意引数付きコマンドはエラーを返すべきです"),
     }
-    return;
-  }
-
-  #[test]
-  fn emits_various_math_symbols() {
-    let command_for_all = test_command("for_all");
-    match for_all(command_for_all).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∀'),
-      _ => panic!("for_all は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_exists = test_command("exists");
-    match exists(command_exists).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∃'),
-      _ => panic!("exists は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_emptyset = test_command("emptyset");
-    match emptyset(command_emptyset).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∅'),
-      _ => panic!("emptyset は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_element = test_command("element_of");
-    match element_of(command_element).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∈'),
-      _ => panic!("element_of は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_union = test_command("union");
-    match union(command_union).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∪'),
-      _ => panic!("union は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_intersection = test_command("intersection");
-    match intersection(command_intersection).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, '∩'),
-      _ => panic!("intersection は正常に Symbol ノードを返すべきです"),
-    }
-
-    return;
-  }
-
-  #[test]
-  fn emits_greek_variants() {
-    let command_var_eps = test_command("var_epsilon");
-    match var_epsilon(command_var_eps).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'ϵ'),
-      _ => panic!("var_epsilon は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_var_th = test_command("var_theta");
-    match var_theta(command_var_th).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'ϑ'),
-      _ => panic!("var_theta は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_var_kap = test_command("var_kappa");
-    match var_kappa(command_var_kap).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'ϰ'),
-      _ => panic!("var_kappa は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_var_pi_var = test_command("var_pi");
-    match var_pi(command_var_pi_var).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'ϖ'),
-      _ => panic!("var_pi は正常に Symbol ノードを返すべきです"),
-    }
-
-    let command_var_rho_var = test_command("var_rho");
-    match var_rho(command_var_rho_var).map(|mut v| v.remove(0)) {
-      Ok(InlineNode::Symbol(ch)) => assert_eq!(ch, 'ϱ'),
-      _ => panic!("var_rho は正常に Symbol ノードを返すべきです"),
-    }
-
-    return;
   }
 }

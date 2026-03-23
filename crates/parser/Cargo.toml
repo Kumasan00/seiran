@@ -9,6 +9,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+bumpalo.workspace = true
 memchr.workspace = true
 miette.workspace = true
 phf.workspace = true

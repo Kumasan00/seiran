@@ -83,8 +83,6 @@
 //! let glyph_buffer = shapers.get(FontType::Serif).shape("Hello World");
 //! ```
 
-#![allow(unused_assignments)]
-
 use std::str::FromStr;
 
 use harfrust::{

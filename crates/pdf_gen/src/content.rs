@@ -174,8 +174,7 @@ fn build_cid_bytes(glyphs: &[Glyph], glyph_mapping: &GlyphMapping) -> Vec<u8> {
   let mut buffer = Vec::with_capacity(glyphs.len() * 2);
   for glyph in glyphs {
     let cid = glyph_mapping.old_to_cid[glyph.gid as usize].unwrap_or(0);
-    buffer.push((cid >> 8) as u8);
-    buffer.push((cid & 0xff) as u8);
+    buffer.extend_from_slice(&cid.to_be_bytes());
   }
   return buffer;
 }
@@ -197,8 +196,7 @@ fn show_glyphs_positioned(content: &mut Content, glyphs: &[Glyph], glyph_mapping
 
   for glyph in glyphs {
     let cid = glyph_mapping.old_to_cid[glyph.gid as usize].unwrap_or(0);
-    text_buffer.push((cid >> 8) as u8);
-    text_buffer.push((cid & 0xff) as u8);
+    text_buffer.extend_from_slice(&cid.to_be_bytes());
 
     if let Some(diff) = glyph.diff {
       // 蓄積されたテキストを表示

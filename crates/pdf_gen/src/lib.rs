@@ -6,7 +6,7 @@
 mod content;
 mod glyph_mapping;
 
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, Timelike, Utc};
 use font::{font_info::FontInfos, glyph_mapping::GlyphMappings, subset::FontSubsetBytes};
 use layout::Item;
 use pdf_writer::{Date, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
@@ -150,20 +150,13 @@ pub fn pdf_gen(
   }
   document_info.creator(TextStr("seiran"));
   document_info.producer(TextStr("seiran"));
-  let now = Local::now();
-  let offset_seconds = now.offset().local_minus_utc();
-  #[allow(clippy::cast_sign_loss)]
-  let offset_minutes = ((offset_seconds.abs() % 3600) / 60) as u8;
-  let offset_hours = (offset_seconds / 3600) as i8;
+  let now = Utc::now();
   #[allow(clippy::cast_sign_loss)]
   let date = Date::new(now.year() as u16)
     .month(now.month() as u8)
     .day(now.day() as u8)
     .hour(now.hour() as u8)
-    .minute(now.minute() as u8)
-    .second(now.second() as u8)
-    .utc_offset_hour(offset_hours)
-    .utc_offset_minute(offset_minutes);
+    .minute(now.minute() as u8);
   document_info.creation_date(date);
   document_info.finish();
 

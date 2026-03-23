@@ -1,15 +1,42 @@
+//! 評価器 — CST から Document IR（`DocNode`）を生成する
+//!
+//! `GreenNode` ベースの CST を直接走査し、コマンド・環境を評価して
+//! PDF 生成パイプラインで使用される Document IR に変換します。
+//!
+//! ## パイプライン上の位置づけ
+//!
+//! ```text
+//! CST (green::GreenNode)
+//!   ↓ [evaluator (このモジュール)]
+//! Document IR (document::DocNode, document::InlineNode)
+//! ```
+//!
+//! ## 設計方針
+//!
+//! - CST を直接走査することで旧 AST ローワリングパスを不要にする
+//! - 型付きビュー（`CommandView`, `EnvironmentView`）を介してアクセス
+//! - 数式ノードは CST の `InlineMath` / `MathGroup` / `MathSubscript` /
+//!   `MathSuperscript` をそのまま `MathNode` に変換
+
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 use crate::{
-  ast::{Block, InlineMathNodeKind, NodeKind},
+  ast::CommandView,
   command::CommandResult,
   document::{DocNode, InlineNode, MathNode},
+  green::{GreenElement, GreenNode},
+  syntax::SyntaxKind,
+  token::TokenKind,
 };
+
+// =============================================================================
+// エラー型
+// =============================================================================
 
 /// 評価器のエラー型
 ///
-/// AST の評価中に発生するエラーを表現します。
+/// CST の評価中に発生するエラーを表現します。
 /// 各バリアントは `#[label]` によるソース位置情報を持ち、
 /// `miette::NamedSource` と組み合わせることでソースコード付きの
 /// エラー表示が可能です。
@@ -118,86 +145,118 @@ pub enum EvalError {
   },
 }
 
+// =============================================================================
+// 評価コンテキスト
+// =============================================================================
+
+/// 見出し番号の自動採番用コンテキスト
 #[derive(Debug, Default)]
 pub(crate) struct EvalContext {
-  pub(crate) part: u32,
-  pub(crate) chapter: u32,
-  pub(crate) section: u32,
-  pub(crate) subsection: u32,
-  pub(crate) paragraph: u32,
-  pub(crate) subparagraph: u32,
+  pub part: u32,
+  pub chapter: u32,
+  pub section: u32,
+  pub subsection: u32,
+  pub paragraph: u32,
+  pub subparagraph: u32,
 }
 
+// =============================================================================
+// 評価器
+// =============================================================================
+
+/// CST から Document IR を生成する評価器
 #[derive(Debug, Default)]
-pub struct Evaluator {
-  pub(crate) context: EvalContext,
+pub(crate) struct Evaluator {
+  pub context: EvalContext,
 }
 
 impl Evaluator {
-  /// ブロックを評価して Document IR（`Vec<DocNode>`）に変換する
+  /// CST ノードの子要素を評価して Document IR（`Vec<DocNode>`）に変換する
   ///
   /// テキスト・インラインコマンド・インライン数式を `DocNode::Paragraph` にグルーピングし、
   /// ブロックレベルのコマンド（見出し等）や環境は独立した `DocNode` として出力します。
   ///
+  /// # Arguments
+  ///
+  /// * `source` - 元のソーステキスト
+  /// * `node` - 走査対象の CST ノード
+  ///
   /// # Errors
   ///
   /// 不明なコマンドや環境、引数の不足・過剰がある場合にエラーを返します
-  pub fn evaluate_block(&mut self, block: Block) -> Result<Vec<DocNode>, EvalError> {
+  pub fn evaluate_children(&mut self, source: &str, node: &GreenNode) -> Result<Vec<DocNode>, EvalError> {
     let mut doc_nodes: Vec<DocNode> = Vec::new();
     let mut current_inlines: Vec<InlineNode> = Vec::new();
 
-    for node in block {
-      match node.kind {
-        NodeKind::Text(text) => {
-          current_inlines.push(InlineNode::Text(text.to_string()));
+    for child in node.children {
+      match child {
+        GreenElement::Token(token) => match token.kind {
+          TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
+            current_inlines.push(InlineNode::Text(token.text(source).to_string()));
+          },
+          TokenKind::Escaped => {
+            let text = &source[token.span.start as usize + 1..token.span.end as usize];
+            current_inlines.push(InlineNode::Text(text.to_string()));
+          },
+          TokenKind::LineBreak => {
+            current_inlines.push(InlineNode::LineBreak);
+          },
+          TokenKind::ParagraphBreak => {
+            flush_paragraph(&mut doc_nodes, &mut current_inlines);
+          },
+          // 数式外の `_` と `^` はプレーンテキストとして扱う
+          TokenKind::Underscore => {
+            current_inlines.push(InlineNode::Text("_".to_string()));
+          },
+          TokenKind::Caret => {
+            current_inlines.push(InlineNode::Text("^".to_string()));
+          },
+          // 数式外の `&` はプレーンテキストとして扱う
+          TokenKind::Ampersand => {
+            current_inlines.push(InlineNode::Text("&".to_string()));
+          },
+          // コメント・構造トークン（括弧類・$）は無視
+          _ => {},
         },
-        NodeKind::Command(command) => {
-          let result = self.evaluate_command(command)?;
-          match result {
-            CommandResult::Block(block_nodes) => {
-              // ブロックコマンドの前に蓄積中のインラインをフラッシュ
-              flush_paragraph(&mut doc_nodes, &mut current_inlines);
-              doc_nodes.extend(block_nodes);
-            },
-            CommandResult::Inline(inline_nodes) => {
-              current_inlines.extend(inline_nodes);
-            },
-          }
-        },
-        NodeKind::Environment(environment) => {
-          // 環境はブロックレベル
-          flush_paragraph(&mut doc_nodes, &mut current_inlines);
-          let nodes = self.evaluate_environment(&environment)?;
-          doc_nodes.extend(nodes);
-        },
-        NodeKind::InlineMath(inline_math) => {
-          // インライン数式を InlineNode::InlineMath に変換
-          let math_nodes: Vec<MathNode> = inline_math
-            .into_iter()
-            .map(|m| match m.kind {
-              InlineMathNodeKind::Text(text) => MathNode::Text(text.to_string()),
-              InlineMathNodeKind::Command(cmd) => MathNode::Text(cmd.name.to_string()),
-              InlineMathNodeKind::Group(group) => {
-                let text: String = group
-                  .into_iter()
-                  .map(|n| match n.kind {
-                    InlineMathNodeKind::Text(t) => t.to_string(),
-                    InlineMathNodeKind::Command(c) => c.name.to_string(),
-                    InlineMathNodeKind::Group(_) => String::new(),
-                  })
-                  .collect();
-                MathNode::Text(text)
+        GreenElement::Node(child_node) => match child_node.kind {
+          SyntaxKind::CommandCall => {
+            let view = CommandView::new(child_node, source);
+            let result = self.evaluate_command(&view)?;
+            match result {
+              CommandResult::Block(block_nodes) => {
+                flush_paragraph(&mut doc_nodes, &mut current_inlines);
+                doc_nodes.extend(block_nodes);
               },
-            })
-            .collect();
-          current_inlines.push(InlineNode::InlineMath(math_nodes));
-        },
-        NodeKind::LineBreak => {
-          current_inlines.push(InlineNode::LineBreak);
-        },
-        NodeKind::ParagraphBreak => {
-          // 段落区切り: 蓄積中のインラインを段落としてフラッシュ
-          flush_paragraph(&mut doc_nodes, &mut current_inlines);
+              CommandResult::Inline(inline_nodes) => {
+                current_inlines.extend(inline_nodes);
+              },
+            }
+          },
+          SyntaxKind::Environment => {
+            flush_paragraph(&mut doc_nodes, &mut current_inlines);
+            let view = crate::ast::EnvironmentView::new(child_node, source);
+            let nodes = self.evaluate_environment(&view)?;
+            doc_nodes.extend(nodes);
+          },
+          SyntaxKind::InlineMath => {
+            let math_nodes = evaluate_inline_math(source, child_node);
+            current_inlines.push(InlineNode::InlineMath(math_nodes));
+          },
+          SyntaxKind::Group => {
+            // グループの中身を再帰的に評価
+            let inner_nodes = self.evaluate_children(source, child_node)?;
+            for doc_node in inner_nodes {
+              match doc_node {
+                DocNode::Paragraph(inlines) => current_inlines.extend(inlines),
+                other => {
+                  flush_paragraph(&mut doc_nodes, &mut current_inlines);
+                  doc_nodes.push(other);
+                },
+              }
+            }
+          },
+          // MandatoryArg, OptArg 等はトップレベルには出現しない
+          _ => {},
         },
       }
     }
@@ -208,6 +267,10 @@ impl Evaluator {
     return Ok(doc_nodes);
   }
 }
+
+// =============================================================================
+// ヘルパー関数
+// =============================================================================
 
 /// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
 ///
@@ -220,31 +283,141 @@ fn flush_paragraph(doc_nodes: &mut Vec<DocNode>, current_inlines: &mut Vec<Inlin
   return;
 }
 
+/// インライン数式ノードを `MathNode` のリストに変換する
+///
+/// CST の `InlineMath` ノードから、構造トークン（`$`, `{`, `}`）を除去しつつ
+/// テキスト・コマンド・グループ・上付き・下付きを `MathNode` に変換します。
+fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
+  let mut nodes = Vec::new();
+  for child in math_node.children {
+    match child {
+      GreenElement::Token(token) => match token.kind {
+        TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+        TokenKind::Escaped => {
+          let text = &source[token.span.start as usize + 1..token.span.end as usize];
+          nodes.push(MathNode::Text(text.to_string()));
+        },
+        TokenKind::Whitespace | TokenKind::Newline => {
+          nodes.push(MathNode::Text(token.text(source).to_string()));
+        },
+        TokenKind::Ampersand => {
+          nodes.push(MathNode::AlignmentMark);
+        },
+        // 構造トークン（$, {, }）はスキップ
+        _ => {},
+      },
+      GreenElement::Node(child_node) => match child_node.kind {
+        SyntaxKind::CommandCall => {
+          // 数式内のコマンドはコマンド名をテキストとして扱う
+          if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
+            nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
+          }
+        },
+        SyntaxKind::MathGroup => {
+          let inner = evaluate_inline_math(source, child_node);
+          nodes.push(MathNode::Group(inner));
+        },
+        SyntaxKind::MathSubscript => {
+          let inner = evaluate_math_script_content(source, child_node);
+          let content = if inner.len() == 1 {
+            #[allow(clippy::unwrap_used)]
+            inner.into_iter().next().unwrap()
+          } else {
+            MathNode::Group(inner)
+          };
+          nodes.push(MathNode::Subscript(Box::new(content)));
+        },
+        SyntaxKind::MathSuperscript => {
+          let inner = evaluate_math_script_content(source, child_node);
+          let content = if inner.len() == 1 {
+            #[allow(clippy::unwrap_used)]
+            inner.into_iter().next().unwrap()
+          } else {
+            MathNode::Group(inner)
+          };
+          nodes.push(MathNode::Superscript(Box::new(content)));
+        },
+        _ => {},
+      },
+    }
+  }
+  return nodes;
+}
+
+/// 上付き・下付きスクリプトノードの中身を `MathNode` に変換する
+///
+/// `_` / `^` トークン自体はスキップし、後続のトークンまたはグループを変換します。
+fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Vec<MathNode> {
+  let mut nodes = Vec::new();
+  for child in script_node.children {
+    match child {
+      GreenElement::Token(token) => match token.kind {
+        TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+        TokenKind::Escaped => {
+          let text = &source[token.span.start as usize + 1..token.span.end as usize];
+          nodes.push(MathNode::Text(text.to_string()));
+        },
+        TokenKind::Whitespace | TokenKind::Newline => {
+          nodes.push(MathNode::Text(token.text(source).to_string()));
+        },
+        _ => {},
+      },
+      GreenElement::Node(child_node) => match child_node.kind {
+        SyntaxKind::MathGroup => {
+          // グループをそのまま MathNode::Group として保持
+          let inner = evaluate_inline_math(source, child_node);
+          nodes.push(MathNode::Group(inner));
+        },
+        SyntaxKind::CommandCall => {
+          if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
+            nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
+          }
+        },
+        _ => {},
+      },
+    }
+  }
+  return nodes;
+}
+
+// =============================================================================
+// テスト
+// =============================================================================
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+  use bumpalo::Bump;
+
   use super::*;
-  use crate::{
-    ast::{Command, Node},
-    document::{HeadingLevel, InlineNode},
-  };
+  use crate::{document::HeadingLevel, parser::parse};
+
+  /// テスト用ヘルパー: ソースをパースして評価する
+  fn evaluate_source(source: &str) -> Vec<DocNode> {
+    let arena = Bump::new();
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+    return evaluator.evaluate_children(source, cst).unwrap();
+  }
 
   #[test]
   fn evaluate_plain_text_creates_paragraph() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![Node::text("Hello World")];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("Hello World");
     assert_eq!(result.len(), 1);
     match &result[0] {
       DocNode::Paragraph(inlines) => {
-        assert_eq!(inlines.len(), 1);
+        // Text("Hello"), Text(" "), Text("World")
+        assert_eq!(inlines.len(), 3);
         match &inlines[0] {
-          InlineNode::Text(text) => assert_eq!(text, "Hello World"),
+          InlineNode::Text(text) => assert_eq!(text, "Hello"),
+          _ => panic!("Text が期待されます"),
+        }
+        match &inlines[1] {
+          InlineNode::Text(text) => assert_eq!(text, " "),
+          _ => panic!("Text が期待されます"),
+        }
+        match &inlines[2] {
+          InlineNode::Text(text) => assert_eq!(text, "World"),
           _ => panic!("Text が期待されます"),
         }
       },
@@ -254,18 +427,7 @@ mod tests {
 
   #[test]
   fn evaluate_paragraph_break_creates_two_paragraphs() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![
-      Node::text("First"),
-      Node::paragraph_break(),
-      Node::text("Second"),
-    ];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("First\n\nSecond");
     assert_eq!(result.len(), 2);
     assert!(matches!(&result[0], DocNode::Paragraph(_)));
     assert!(matches!(&result[1], DocNode::Paragraph(_)));
@@ -273,18 +435,7 @@ mod tests {
 
   #[test]
   fn evaluate_section_command_creates_heading() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![Node::command(Command::new(
-      "section",
-      vec![vec![Node::text("Introduction")]],
-      vec![],
-    ))];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("\\section{Introduction}");
     assert_eq!(result.len(), 1);
     match &result[0] {
       DocNode::Heading {
@@ -306,17 +457,7 @@ mod tests {
 
   #[test]
   fn evaluate_text_then_heading_flushes_paragraph() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![
-      Node::text("Some text"),
-      Node::command(Command::new("section", vec![vec![Node::text("Title")]], vec![])),
-    ];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("Some text\\section{Title}");
     assert_eq!(result.len(), 2);
     assert!(matches!(&result[0], DocNode::Paragraph(_)));
     assert!(matches!(&result[1], DocNode::Heading { .. }));
@@ -324,51 +465,31 @@ mod tests {
 
   #[test]
   fn evaluate_inline_command_stays_in_paragraph() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![
-      Node::text("f(x) = "),
-      Node::command(Command::new("alpha", vec![], vec![])),
-    ];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("f(x) = \\alpha");
     assert_eq!(result.len(), 1);
     match &result[0] {
       DocNode::Paragraph(inlines) => {
-        assert_eq!(inlines.len(), 2);
+        // Text("f(x)"), Text(" "), Text("="), Text(" "), Symbol('α')
+        assert_eq!(inlines.len(), 5);
         assert!(matches!(&inlines[0], InlineNode::Text(_)));
-        assert!(matches!(&inlines[1], InlineNode::Symbol('α')));
+        assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
+        assert!(matches!(&inlines[2], InlineNode::Text(_)));
+        assert!(matches!(&inlines[3], InlineNode::Text(t) if t == " "));
+        assert!(matches!(&inlines[4], InlineNode::Symbol('α')));
       },
       _ => panic!("Paragraph が期待されます"),
     }
   }
 
   #[test]
-  fn evaluate_empty_block_returns_empty() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+  fn evaluate_empty_input_returns_empty() {
+    let result = evaluate_source("");
     assert!(result.is_empty());
   }
 
   #[test]
   fn evaluate_line_break_in_paragraph() {
-    // Arrange
-    let mut evaluator = Evaluator::default();
-    let block: Block = vec![Node::text("line1"), Node::line_break(), Node::text("line2")];
-
-    // Act
-    let result = evaluator.evaluate_block(block).unwrap();
-
-    // Assert
+    let result = evaluate_source("line1\\\\line2");
     assert_eq!(result.len(), 1);
     match &result[0] {
       DocNode::Paragraph(inlines) => {
@@ -378,6 +499,78 @@ mod tests {
         assert!(matches!(&inlines[2], InlineNode::Text(_)));
       },
       _ => panic!("Paragraph が期待されます"),
+    }
+  }
+
+  #[test]
+  fn evaluate_inline_math_subscript() {
+    let result = evaluate_source("$x_i$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 2);
+        assert!(matches!(&math[0], MathNode::Text(t) if t == "x"));
+        assert!(matches!(&math[1], MathNode::Subscript(_)));
+        if let MathNode::Subscript(inner) = &math[1] {
+          assert!(matches!(inner.as_ref(), MathNode::Text(t) if t == "i"));
+        }
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_inline_math_superscript() {
+    let result = evaluate_source("$x^2$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 2);
+        assert!(matches!(&math[1], MathNode::Superscript(_)));
+        if let MathNode::Superscript(inner) = &math[1] {
+          assert!(matches!(inner.as_ref(), MathNode::Text(t) if t == "2"));
+        }
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_inline_math_subscript_with_group() {
+    let result = evaluate_source("$x_{ij}$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert!(matches!(&math[1], MathNode::Subscript(inner) if matches!(inner.as_ref(), MathNode::Group(_))));
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_inline_math_subscript_and_superscript_combined() {
+    let result = evaluate_source("$a_i^2$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 3);
+        assert!(matches!(&math[0], MathNode::Text(_)));
+        assert!(matches!(&math[1], MathNode::Subscript(_)));
+        assert!(matches!(&math[2], MathNode::Superscript(_)));
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
     }
   }
 }

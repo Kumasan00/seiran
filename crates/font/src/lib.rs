@@ -77,8 +77,6 @@
 //! }
 //! ```
 
-#![allow(unused_assignments)]
-
 use std::fs;
 
 use miette::Diagnostic;

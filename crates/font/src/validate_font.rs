@@ -95,8 +95,6 @@
 //! // 検証成功後は PDF 生成処理に進む
 //! ```
 
-#![allow(unused_assignments)]
-
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use read_config::{FontConfig, FontConfigs, VariationAxis};

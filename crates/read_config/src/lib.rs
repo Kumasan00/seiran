@@ -69,9 +69,6 @@
 //! println!("Font: {}", config.font_configs.serif.font_name);
 //! ```
 
-// thiserror の #[error] マクロ生成コードへの誤検知を抑制（thiserror との既知の問題）。
-#![allow(unused_assignments)]
-
 use std::{
   collections::HashSet,
   fs,

@@ -1,202 +1,112 @@
+//! 見出しコマンド群
+//!
+//! `\part`, `\chapter`, `\section`, `\subsection`, `\paragraph`, `\subparagraph`
+//! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成し、
+//! 自動採番を行います。
+
 use crate::{
-  ast::{Command, Node, NodeKind},
-  document::{DocNode, HeadingLevel, HeadingNumber, InlineNode},
+  ast::{CommandView, extract_inline_nodes},
+  document::{DocNode, HeadingLevel, HeadingNumber},
   evaluator::{EvalContext, EvalError},
 };
 
+/// 見出しコマンドの共通処理
+///
+/// # Arguments
+///
+/// * `view` - コマンドの型付きビュー
+/// * `name` - コマンド名（エラーメッセージ用）
+/// * `level` - 見出しレベル
+/// * `expected` - 引数の説明（エラーメッセージ用）
+/// * `context` - 評価コンテキスト（採番用）
+///
+/// # Errors
+///
+/// 引数不足・過剰の場合にエラーを返します
+fn heading_common(
+  view: &CommandView,
+  name: &str,
+  level: HeadingLevel,
+  expected: &str,
+  context: &mut EvalContext,
+) -> Result<Vec<DocNode>, EvalError> {
+  let Some(first_arg) = view.first_arg() else {
+    return Err(EvalError::MissingCommandArgument {
+      name: name.to_string(),
+      expected: expected.to_string(),
+      span: view.span().into(),
+    });
+  };
+  if view.args_count() > 1 || !view.opt_args_is_empty() {
+    return Err(EvalError::ExtraCommandArgument {
+      name: name.to_string(),
+      span: view.span().into(),
+    });
+  }
+
+  let title = extract_inline_nodes(view.source(), first_arg);
+  let number = HeadingNumber::from_context(level, context);
+
+  return Ok(vec![DocNode::Heading {
+    level,
+    number,
+    title,
+  }]);
+}
+
+/// `\part{タイトル}` — 部見出し
 #[inline]
-pub(super) fn part(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn part(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.part += 1;
   context.chapter = 0;
   context.section = 0;
   context.subsection = 0;
   context.paragraph = 0;
   context.subparagraph = 0;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "part".to_string(),
-      expected: "部名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "part".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Part, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Part,
-    number,
-    title,
-  }]);
+  return heading_common(view, "part", HeadingLevel::Part, "部名", context);
 }
 
+/// `\chapter{タイトル}` — 章見出し
 #[inline]
-pub(super) fn chapter(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn chapter(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.chapter += 1;
   context.section = 0;
   context.subsection = 0;
   context.paragraph = 0;
   context.subparagraph = 0;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "chapter".to_string(),
-      expected: "章名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "chapter".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Chapter, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Chapter,
-    number,
-    title,
-  }]);
+  return heading_common(view, "chapter", HeadingLevel::Chapter, "章名", context);
 }
 
+/// `\section{タイトル}` — セクション見出し
 #[inline]
-pub(super) fn section(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn section(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.section += 1;
   context.subsection = 0;
   context.paragraph = 0;
   context.subparagraph = 0;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "section".to_string(),
-      expected: "セクション名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "section".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Section, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Section,
-    number,
-    title,
-  }]);
+  return heading_common(view, "section", HeadingLevel::Section, "セクション名", context);
 }
 
+/// `\subsection{タイトル}` — サブセクション見出し
 #[inline]
-pub(super) fn subsection(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn subsection(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.subsection += 1;
   context.paragraph = 0;
   context.subparagraph = 0;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "subsection".to_string(),
-      expected: "サブセクション名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "subsection".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Subsection, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Subsection,
-    number,
-    title,
-  }]);
+  return heading_common(view, "subsection", HeadingLevel::Subsection, "サブセクション名", context);
 }
 
+/// `\paragraph{タイトル}` — 段落見出し
 #[inline]
-pub(super) fn paragraph(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn paragraph(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.paragraph += 1;
   context.subparagraph = 0;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "paragraph".to_string(),
-      expected: "段落名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "paragraph".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Paragraph, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Paragraph,
-    number,
-    title,
-  }]);
+  return heading_common(view, "paragraph", HeadingLevel::Paragraph, "段落名", context);
 }
 
+/// `\subparagraph{タイトル}` — 小段落見出し
 #[inline]
-pub(super) fn subparagraph(command: &Command, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn subparagraph(view: &CommandView, context: &mut EvalContext) -> Result<Vec<DocNode>, EvalError> {
   context.subparagraph += 1;
-  let Some(first_command_arg) = command.args.first() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "subparagraph".to_string(),
-      expected: "小節名".to_string(),
-      span: command.span.into(),
-    });
-  };
-  if command.args.len() > 1 || !command.opt_args.is_empty() {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "subparagraph".to_string(),
-      span: command.span.into(),
-    });
-  }
-
-  let title = evaluate_inline_nodes(first_command_arg);
-  let number = HeadingNumber::from_context(HeadingLevel::Subparagraph, context);
-
-  return Ok(vec![DocNode::Heading {
-    level: HeadingLevel::Subparagraph,
-    number,
-    title,
-  }]);
-}
-
-/// AST ノードリストをインラインノードのリストに変換する
-///
-/// 見出し引数内のノードを `InlineNode` に変換します。
-/// コマンドノードは現時点では無視されます（将来的にインラインコマンドとして評価予定）。
-fn evaluate_inline_nodes(nodes: &[Node]) -> Vec<InlineNode> {
-  let mut inlines = Vec::new();
-  for node in nodes {
-    match &node.kind {
-      NodeKind::Text(text) => {
-        inlines.push(InlineNode::Text(text.to_string()));
-      },
-      NodeKind::Command(_command) => {
-        // TODO: インラインコマンド（\textbf 等）を InlineNode として評価する
-      },
-      _ => {},
-    }
-  }
-  return inlines;
+  return heading_common(view, "subparagraph", HeadingLevel::Subparagraph, "小節名", context);
 }

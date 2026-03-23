@@ -2,8 +2,6 @@
 //!
 //! TOML 形式の参照定義ファイルを読み込み、ラベルとターゲットのペアを返す。
 
-#![allow(unused_assignments)]
-
 use std::{
   collections::HashMap,
   path::{Path, PathBuf},

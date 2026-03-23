@@ -53,8 +53,6 @@
 //! seiran ttc-names fonts/SourceHanCodeJP.ttc | grep "Name ID NameRecord(4)"
 //! ```
 
-#![allow(unused_assignments)]
-
 use std::{fs, path::Path};
 
 use miette::{Diagnostic, IntoDiagnostic};

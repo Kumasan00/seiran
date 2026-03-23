@@ -1,7 +1,12 @@
+//! コマンドディスパッチ
+//!
+//! コマンド名を phf パーフェクトハッシュマップで `CommandKind` に解決し、
+//! 対応するハンドラに委譲します。
+
 use phf::phf_map;
 
 use crate::{
-  ast::Command,
+  ast::CommandView,
   document::{DocNode, InlineNode},
   evaluator::{EvalError, Evaluator},
 };
@@ -132,126 +137,126 @@ enum CommandKind {
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
   ///
-  /// # 引数
+  /// # Arguments
   ///
-  /// * `command` - 実行するコマンド
+  /// * `view` - コマンドの型付きビュー
   /// * `evaluator` - 評価器への可変参照
   ///
-  /// # 戻り値
+  /// # Returns
   ///
   /// 生成された `CommandResult`（Block または Inline）、またはエラー
-  fn execute(self, command: Command, evaluator: &mut Evaluator) -> Result<CommandResult, EvalError> {
+  fn execute(self, view: &CommandView, evaluator: &mut Evaluator) -> Result<CommandResult, EvalError> {
     match self {
       // ブロックレベルコマンド → CommandResult::Block
-      Self::Space => control::space(&command).map(CommandResult::Block),
-      Self::Part => headline::part(&command, &mut evaluator.context).map(CommandResult::Block),
-      Self::Chapter => headline::chapter(&command, &mut evaluator.context).map(CommandResult::Block),
-      Self::Section => headline::section(&command, &mut evaluator.context).map(CommandResult::Block),
-      Self::Subsection => headline::subsection(&command, &mut evaluator.context).map(CommandResult::Block),
-      Self::Paragraph => headline::paragraph(&command, &mut evaluator.context).map(CommandResult::Block),
-      Self::Subparagraph => headline::subparagraph(&command, &mut evaluator.context).map(CommandResult::Block),
+      Self::Space => control::space(view).map(CommandResult::Block),
+      Self::Part => headline::part(view, &mut evaluator.context).map(CommandResult::Block),
+      Self::Chapter => headline::chapter(view, &mut evaluator.context).map(CommandResult::Block),
+      Self::Section => headline::section(view, &mut evaluator.context).map(CommandResult::Block),
+      Self::Subsection => headline::subsection(view, &mut evaluator.context).map(CommandResult::Block),
+      Self::Paragraph => headline::paragraph(view, &mut evaluator.context).map(CommandResult::Block),
+      Self::Subparagraph => headline::subparagraph(view, &mut evaluator.context).map(CommandResult::Block),
 
       // インラインコマンド → CommandResult::Inline
-      Self::UpperAlpha => character::upper_alpha(command).map(CommandResult::Inline),
-      Self::UpperBeta => character::upper_beta(command).map(CommandResult::Inline),
-      Self::UpperGamma => character::upper_gamma(command).map(CommandResult::Inline),
-      Self::UpperDelta => character::upper_delta(command).map(CommandResult::Inline),
-      Self::UpperEpsilon => character::upper_epsilon(command).map(CommandResult::Inline),
-      Self::UpperZeta => character::upper_zeta(command).map(CommandResult::Inline),
-      Self::UpperEta => character::upper_eta(command).map(CommandResult::Inline),
-      Self::UpperTheta => character::upper_theta(command).map(CommandResult::Inline),
-      Self::UpperIota => character::upper_iota(command).map(CommandResult::Inline),
-      Self::UpperKappa => character::upper_kappa(command).map(CommandResult::Inline),
-      Self::UpperLambda => character::upper_lambda(command).map(CommandResult::Inline),
-      Self::UpperMu => character::upper_mu(command).map(CommandResult::Inline),
-      Self::UpperNu => character::upper_nu(command).map(CommandResult::Inline),
-      Self::UpperXi => character::upper_xi(command).map(CommandResult::Inline),
-      Self::UpperOmicron => character::upper_omicron(command).map(CommandResult::Inline),
-      Self::UpperPi => character::upper_pi(command).map(CommandResult::Inline),
-      Self::UpperRho => character::upper_rho(command).map(CommandResult::Inline),
-      Self::UpperSigma => character::upper_sigma(command).map(CommandResult::Inline),
-      Self::UpperTau => character::upper_tau(command).map(CommandResult::Inline),
-      Self::UpperUpsilon => character::upper_upsilon(command).map(CommandResult::Inline),
-      Self::UpperPhi => character::upper_phi(command).map(CommandResult::Inline),
-      Self::UpperChi => character::upper_chi(command).map(CommandResult::Inline),
-      Self::UpperPsi => character::upper_psi(command).map(CommandResult::Inline),
-      Self::UpperOmega => character::upper_omega(command).map(CommandResult::Inline),
+      Self::UpperAlpha => character::upper_alpha(view).map(CommandResult::Inline),
+      Self::UpperBeta => character::upper_beta(view).map(CommandResult::Inline),
+      Self::UpperGamma => character::upper_gamma(view).map(CommandResult::Inline),
+      Self::UpperDelta => character::upper_delta(view).map(CommandResult::Inline),
+      Self::UpperEpsilon => character::upper_epsilon(view).map(CommandResult::Inline),
+      Self::UpperZeta => character::upper_zeta(view).map(CommandResult::Inline),
+      Self::UpperEta => character::upper_eta(view).map(CommandResult::Inline),
+      Self::UpperTheta => character::upper_theta(view).map(CommandResult::Inline),
+      Self::UpperIota => character::upper_iota(view).map(CommandResult::Inline),
+      Self::UpperKappa => character::upper_kappa(view).map(CommandResult::Inline),
+      Self::UpperLambda => character::upper_lambda(view).map(CommandResult::Inline),
+      Self::UpperMu => character::upper_mu(view).map(CommandResult::Inline),
+      Self::UpperNu => character::upper_nu(view).map(CommandResult::Inline),
+      Self::UpperXi => character::upper_xi(view).map(CommandResult::Inline),
+      Self::UpperOmicron => character::upper_omicron(view).map(CommandResult::Inline),
+      Self::UpperPi => character::upper_pi(view).map(CommandResult::Inline),
+      Self::UpperRho => character::upper_rho(view).map(CommandResult::Inline),
+      Self::UpperSigma => character::upper_sigma(view).map(CommandResult::Inline),
+      Self::UpperTau => character::upper_tau(view).map(CommandResult::Inline),
+      Self::UpperUpsilon => character::upper_upsilon(view).map(CommandResult::Inline),
+      Self::UpperPhi => character::upper_phi(view).map(CommandResult::Inline),
+      Self::UpperChi => character::upper_chi(view).map(CommandResult::Inline),
+      Self::UpperPsi => character::upper_psi(view).map(CommandResult::Inline),
+      Self::UpperOmega => character::upper_omega(view).map(CommandResult::Inline),
 
-      Self::LowerAlpha => character::lower_alpha(command).map(CommandResult::Inline),
-      Self::LowerBeta => character::lower_beta(command).map(CommandResult::Inline),
-      Self::LowerGamma => character::lower_gamma(command).map(CommandResult::Inline),
-      Self::LowerDelta => character::lower_delta(command).map(CommandResult::Inline),
-      Self::LowerEpsilon => character::lower_epsilon(command).map(CommandResult::Inline),
-      Self::VarEpsilon => character::var_epsilon(command).map(CommandResult::Inline),
-      Self::LowerZeta => character::lower_zeta(command).map(CommandResult::Inline),
-      Self::LowerEta => character::lower_eta(command).map(CommandResult::Inline),
-      Self::LowerTheta => character::lower_theta(command).map(CommandResult::Inline),
-      Self::VarTheta => character::var_theta(command).map(CommandResult::Inline),
-      Self::LowerIota => character::lower_iota(command).map(CommandResult::Inline),
-      Self::LowerKappa => character::lower_kappa(command).map(CommandResult::Inline),
-      Self::VarKappa => character::var_kappa(command).map(CommandResult::Inline),
-      Self::LowerLambda => character::lower_lambda(command).map(CommandResult::Inline),
-      Self::LowerMu => character::lower_mu(command).map(CommandResult::Inline),
-      Self::LowerNu => character::lower_nu(command).map(CommandResult::Inline),
-      Self::LowerXi => character::lower_xi(command).map(CommandResult::Inline),
-      Self::LowerOmicron => character::lower_omicron(command).map(CommandResult::Inline),
-      Self::LowerPi => character::lower_pi(command).map(CommandResult::Inline),
-      Self::VarPi => character::var_pi(command).map(CommandResult::Inline),
-      Self::LowerRho => character::lower_rho(command).map(CommandResult::Inline),
-      Self::VarRho => character::var_rho(command).map(CommandResult::Inline),
-      Self::LowerSigma => character::lower_sigma(command).map(CommandResult::Inline),
-      Self::VarSigma => character::final_sigma(command).map(CommandResult::Inline),
-      Self::LowerTau => character::lower_tau(command).map(CommandResult::Inline),
-      Self::LowerUpsilon => character::lower_upsilon(command).map(CommandResult::Inline),
-      Self::LowerPhi => character::lower_phi(command).map(CommandResult::Inline),
-      Self::LowerChi => character::lower_chi(command).map(CommandResult::Inline),
-      Self::LowerPsi => character::lower_psi(command).map(CommandResult::Inline),
-      Self::LowerOmega => character::lower_omega(command).map(CommandResult::Inline),
+      Self::LowerAlpha => character::lower_alpha(view).map(CommandResult::Inline),
+      Self::LowerBeta => character::lower_beta(view).map(CommandResult::Inline),
+      Self::LowerGamma => character::lower_gamma(view).map(CommandResult::Inline),
+      Self::LowerDelta => character::lower_delta(view).map(CommandResult::Inline),
+      Self::LowerEpsilon => character::lower_epsilon(view).map(CommandResult::Inline),
+      Self::VarEpsilon => character::var_epsilon(view).map(CommandResult::Inline),
+      Self::LowerZeta => character::lower_zeta(view).map(CommandResult::Inline),
+      Self::LowerEta => character::lower_eta(view).map(CommandResult::Inline),
+      Self::LowerTheta => character::lower_theta(view).map(CommandResult::Inline),
+      Self::VarTheta => character::var_theta(view).map(CommandResult::Inline),
+      Self::LowerIota => character::lower_iota(view).map(CommandResult::Inline),
+      Self::LowerKappa => character::lower_kappa(view).map(CommandResult::Inline),
+      Self::VarKappa => character::var_kappa(view).map(CommandResult::Inline),
+      Self::LowerLambda => character::lower_lambda(view).map(CommandResult::Inline),
+      Self::LowerMu => character::lower_mu(view).map(CommandResult::Inline),
+      Self::LowerNu => character::lower_nu(view).map(CommandResult::Inline),
+      Self::LowerXi => character::lower_xi(view).map(CommandResult::Inline),
+      Self::LowerOmicron => character::lower_omicron(view).map(CommandResult::Inline),
+      Self::LowerPi => character::lower_pi(view).map(CommandResult::Inline),
+      Self::VarPi => character::var_pi(view).map(CommandResult::Inline),
+      Self::LowerRho => character::lower_rho(view).map(CommandResult::Inline),
+      Self::VarRho => character::var_rho(view).map(CommandResult::Inline),
+      Self::LowerSigma => character::lower_sigma(view).map(CommandResult::Inline),
+      Self::VarSigma => character::final_sigma(view).map(CommandResult::Inline),
+      Self::LowerTau => character::lower_tau(view).map(CommandResult::Inline),
+      Self::LowerUpsilon => character::lower_upsilon(view).map(CommandResult::Inline),
+      Self::LowerPhi => character::lower_phi(view).map(CommandResult::Inline),
+      Self::LowerChi => character::lower_chi(view).map(CommandResult::Inline),
+      Self::LowerPsi => character::lower_psi(view).map(CommandResult::Inline),
+      Self::LowerOmega => character::lower_omega(view).map(CommandResult::Inline),
 
-      Self::ForAll => character::for_all(command).map(CommandResult::Inline),
-      Self::Complement => character::complement(command).map(CommandResult::Inline),
-      Self::Partial => character::partial(command).map(CommandResult::Inline),
-      Self::Exists => character::exists(command).map(CommandResult::Inline),
-      Self::NotExists => character::not_exists(command).map(CommandResult::Inline),
-      Self::Emptyset => character::emptyset(command).map(CommandResult::Inline),
-      Self::Increment => character::increment(command).map(CommandResult::Inline),
-      Self::Nabla => character::nabla(command).map(CommandResult::Inline),
-      Self::ElementOf => character::element_of(command).map(CommandResult::Inline),
-      Self::NotElementOf => character::not_element_of(command).map(CommandResult::Inline),
-      Self::ContainsAsMember => character::contains_as_member(command).map(CommandResult::Inline),
-      Self::NotContainsAsMember => character::not_contains_as_member(command).map(CommandResult::Inline),
-      Self::EndOfProof => character::end_of_proof(command).map(CommandResult::Inline),
-      Self::Product => character::product(command).map(CommandResult::Inline),
-      Self::Coproduct => character::coproduct(command).map(CommandResult::Inline),
-      Self::Summation => character::summation(command).map(CommandResult::Inline),
-      Self::Minus => character::minus(command).map(CommandResult::Inline),
-      Self::MinusOrPlus => character::minus_or_plus(command).map(CommandResult::Inline),
-      Self::DotPlus => character::dot_plus(command).map(CommandResult::Inline),
-      Self::Division => character::division(command).map(CommandResult::Inline),
-      Self::SquareRoot => character::square_root(command).map(CommandResult::Inline),
-      Self::ProportionalTo => character::proportional_to(command).map(CommandResult::Inline),
-      Self::Infinity => character::infinity(command).map(CommandResult::Inline),
-      Self::RightAngle => character::right_angle(command).map(CommandResult::Inline),
-      Self::Angle => character::angle(command).map(CommandResult::Inline),
-      Self::Parallel => character::parallel(command).map(CommandResult::Inline),
-      Self::NotParallel => character::not_parallel(command).map(CommandResult::Inline),
-      Self::LogicalAnd => character::logical_and(command).map(CommandResult::Inline),
-      Self::LogicalOr => character::logical_or(command).map(CommandResult::Inline),
-      Self::Intersection => character::intersection(command).map(CommandResult::Inline),
-      Self::Union => character::union(command).map(CommandResult::Inline),
-      Self::Integral => character::integral(command).map(CommandResult::Inline),
-      Self::DoubleIntegral => character::double_integral(command).map(CommandResult::Inline),
-      Self::TripleIntegral => character::triple_integral(command).map(CommandResult::Inline),
-      Self::ContourIntegral => character::contour_integral(command).map(CommandResult::Inline),
-      Self::SurfaceIntegral => character::surface_integral(command).map(CommandResult::Inline),
-      Self::VolumeIntegral => character::volume_integral(command).map(CommandResult::Inline),
-      Self::Therefore => character::therefore(command).map(CommandResult::Inline),
-      Self::Because => character::because(command).map(CommandResult::Inline),
-      Self::ReversedTilde => character::reversed_tilde(command).map(CommandResult::Inline),
+      Self::ForAll => character::for_all(view).map(CommandResult::Inline),
+      Self::Complement => character::complement(view).map(CommandResult::Inline),
+      Self::Partial => character::partial(view).map(CommandResult::Inline),
+      Self::Exists => character::exists(view).map(CommandResult::Inline),
+      Self::NotExists => character::not_exists(view).map(CommandResult::Inline),
+      Self::Emptyset => character::emptyset(view).map(CommandResult::Inline),
+      Self::Increment => character::increment(view).map(CommandResult::Inline),
+      Self::Nabla => character::nabla(view).map(CommandResult::Inline),
+      Self::ElementOf => character::element_of(view).map(CommandResult::Inline),
+      Self::NotElementOf => character::not_element_of(view).map(CommandResult::Inline),
+      Self::ContainsAsMember => character::contains_as_member(view).map(CommandResult::Inline),
+      Self::NotContainsAsMember => character::not_contains_as_member(view).map(CommandResult::Inline),
+      Self::EndOfProof => character::end_of_proof(view).map(CommandResult::Inline),
+      Self::Product => character::product(view).map(CommandResult::Inline),
+      Self::Coproduct => character::coproduct(view).map(CommandResult::Inline),
+      Self::Summation => character::summation(view).map(CommandResult::Inline),
+      Self::Minus => character::minus(view).map(CommandResult::Inline),
+      Self::MinusOrPlus => character::minus_or_plus(view).map(CommandResult::Inline),
+      Self::DotPlus => character::dot_plus(view).map(CommandResult::Inline),
+      Self::Division => character::division(view).map(CommandResult::Inline),
+      Self::SquareRoot => character::square_root(view).map(CommandResult::Inline),
+      Self::ProportionalTo => character::proportional_to(view).map(CommandResult::Inline),
+      Self::Infinity => character::infinity(view).map(CommandResult::Inline),
+      Self::RightAngle => character::right_angle(view).map(CommandResult::Inline),
+      Self::Angle => character::angle(view).map(CommandResult::Inline),
+      Self::Parallel => character::parallel(view).map(CommandResult::Inline),
+      Self::NotParallel => character::not_parallel(view).map(CommandResult::Inline),
+      Self::LogicalAnd => character::logical_and(view).map(CommandResult::Inline),
+      Self::LogicalOr => character::logical_or(view).map(CommandResult::Inline),
+      Self::Intersection => character::intersection(view).map(CommandResult::Inline),
+      Self::Union => character::union(view).map(CommandResult::Inline),
+      Self::Integral => character::integral(view).map(CommandResult::Inline),
+      Self::DoubleIntegral => character::double_integral(view).map(CommandResult::Inline),
+      Self::TripleIntegral => character::triple_integral(view).map(CommandResult::Inline),
+      Self::ContourIntegral => character::contour_integral(view).map(CommandResult::Inline),
+      Self::SurfaceIntegral => character::surface_integral(view).map(CommandResult::Inline),
+      Self::VolumeIntegral => character::volume_integral(view).map(CommandResult::Inline),
+      Self::Therefore => character::therefore(view).map(CommandResult::Inline),
+      Self::Because => character::because(view).map(CommandResult::Inline),
+      Self::ReversedTilde => character::reversed_tilde(view).map(CommandResult::Inline),
 
       Self::Undefined => Err(EvalError::UnknownCommand {
-        name: command.name.to_string(),
-        span: command.span.into(),
+        name: view.name().to_string(),
+        span: view.span().into(),
       }),
     }
   }
@@ -342,52 +347,44 @@ static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "mp" => CommandKind::MinusOrPlus,
   "dotplus" => CommandKind::DotPlus,
   "surd" => CommandKind::SquareRoot,
-  // division slash (distinct from \div)
   "slash" => CommandKind::Division,
-  // proportions and infinity
   "propto" => CommandKind::ProportionalTo,
   "infty" => CommandKind::Infinity,
-  // angles and parallels
   "angle" => CommandKind::Angle,
   "rightangle" => CommandKind::RightAngle,
   "parallel" => CommandKind::Parallel,
   "notparallel" => CommandKind::NotParallel,
-  // logic
   "land" => CommandKind::LogicalAnd,
   "lor" => CommandKind::LogicalOr,
-  // set operations
   "cap" => CommandKind::Intersection,
   "cup" => CommandKind::Union,
-  // integrals
   "int" => CommandKind::Integral,
   "iint" => CommandKind::DoubleIntegral,
   "iiint" => CommandKind::TripleIntegral,
   "oint" => CommandKind::ContourIntegral,
   "oiint" => CommandKind::SurfaceIntegral,
   "oiiint" => CommandKind::VolumeIntegral,
-  // reasoning symbols
   "therefore" => CommandKind::Therefore,
   "because" => CommandKind::Because,
-  // relation-like
   "backsim" => CommandKind::ReversedTilde,
 };
 
 impl Evaluator {
   /// コマンドを評価し、対応する `CommandResult` を生成する
   ///
-  /// # 引数
+  /// # Arguments
   ///
-  /// * `command` - 評価するコマンド
+  /// * `view` - コマンドの型付きビュー
   ///
-  /// # 戻り値
+  /// # Returns
   ///
   /// 生成された `CommandResult`、またはエラー
   ///
-  /// # エラー
+  /// # Errors
   ///
   /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-  pub(crate) fn evaluate_command(&mut self, command: Command) -> Result<CommandResult, EvalError> {
-    let command_kind = COMMAND_MAP.get(command.name.to_string().as_str()).copied().unwrap_or(CommandKind::Undefined);
-    return command_kind.execute(command, self);
+  pub(crate) fn evaluate_command(&mut self, view: &CommandView) -> Result<CommandResult, EvalError> {
+    let command_kind = COMMAND_MAP.get(view.name()).copied().unwrap_or(CommandKind::Undefined);
+    return command_kind.execute(view, self);
   }
 }

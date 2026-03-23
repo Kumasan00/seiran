@@ -28,11 +28,12 @@ version = "0.1.0"
 
 [workspace.dependencies]
 allsorts = "0.16.1"
+bumpalo = { version = "3.20.2", features = ["collections"] }
 chrono = { version = "0.4.44", features = ["serde"] }
-clap = { version = "4.5.60", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml"] }
-font-types = "0.11.0"
-harfrust = "0.5.0"
+font-types = "0.11.1"
+harfrust = "0.5.2"
 icu = { version = "2.1.1", features = ["compiled_data"] }
 lazy-regex = "3.6.0"
 memchr = "2.8.0"
@@ -43,9 +44,9 @@ rayon = "1.11.0"
 read-fonts = { version = "0.37.0", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
-toml = "1.0.3"
+toml = "1.0.7"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["local-time"] }
+tracing-subscriber = { version = "0.3.23", features = ["local-time"] }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
