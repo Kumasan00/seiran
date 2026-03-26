@@ -18,6 +18,8 @@ updates:
     labels:
       - "dependencies"
       - "rust"
+    allow:
+      - dependency-type: "all"
     groups:
       minor-and-patch-updates:
         patterns:

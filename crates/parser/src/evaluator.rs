@@ -202,7 +202,7 @@ impl Evaluator {
             current_inlines.push(InlineNode::LineBreak);
           },
           TokenKind::ParagraphBreak => {
-            flush_paragraph(&mut doc_nodes, &mut current_inlines);
+            Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
           },
           // 数式外の `_` と `^` はプレーンテキストとして扱う
           TokenKind::Underscore => {
@@ -224,7 +224,7 @@ impl Evaluator {
             let result = self.evaluate_command(&view)?;
             match result {
               CommandResult::Block(block_nodes) => {
-                flush_paragraph(&mut doc_nodes, &mut current_inlines);
+                Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
                 doc_nodes.extend(block_nodes);
               },
               CommandResult::Inline(inline_nodes) => {
@@ -233,13 +233,13 @@ impl Evaluator {
             }
           },
           SyntaxKind::Environment => {
-            flush_paragraph(&mut doc_nodes, &mut current_inlines);
+            Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
             let view = crate::ast::EnvironmentView::new(child_node, source);
             let nodes = self.evaluate_environment(&view)?;
             doc_nodes.extend(nodes);
           },
           SyntaxKind::InlineMath => {
-            let math_nodes = evaluate_inline_math(source, child_node);
+            let math_nodes = Self::evaluate_inline_math(source, child_node);
             current_inlines.push(InlineNode::InlineMath(math_nodes));
           },
           SyntaxKind::Group => {
@@ -249,7 +249,7 @@ impl Evaluator {
               match doc_node {
                 DocNode::Paragraph(inlines) => current_inlines.extend(inlines),
                 other => {
-                  flush_paragraph(&mut doc_nodes, &mut current_inlines);
+                  Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
                   doc_nodes.push(other);
                 },
               }
@@ -262,122 +262,118 @@ impl Evaluator {
     }
 
     // 残りのインラインをフラッシュ
-    flush_paragraph(&mut doc_nodes, &mut current_inlines);
+    Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
 
     return Ok(doc_nodes);
   }
-}
 
-// =============================================================================
-// ヘルパー関数
-// =============================================================================
+  /// インライン数式ノードを `MathNode` のリストに変換する
+  ///
+  /// CST の `InlineMath` ノードから、構造トークン（`$`, `{`, `}`）を除去しつつ
+  /// テキスト・コマンド・グループ・上付き・下付きを `MathNode` に変換します。
+  fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
+    let mut nodes = Vec::new();
+    for child in math_node.children {
+      match child {
+        GreenElement::Token(token) => match token.kind {
+          TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+          TokenKind::Escaped => {
+            let text = &source[token.span.start as usize + 1..token.span.end as usize];
+            nodes.push(MathNode::Text(text.to_string()));
+          },
+          TokenKind::Whitespace | TokenKind::Newline => {
+            nodes.push(MathNode::Text(token.text(source).to_string()));
+          },
+          TokenKind::Ampersand => {
+            nodes.push(MathNode::AlignmentMark);
+          },
+          // 構造トークン（$, {, }）はスキップ
+          _ => {},
+        },
+        GreenElement::Node(child_node) => match child_node.kind {
+          SyntaxKind::CommandCall => {
+            // 数式内のコマンドはコマンド名をテキストとして扱う
+            if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
+              nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
+            }
+          },
+          SyntaxKind::MathGroup => {
+            let inner = Self::evaluate_inline_math(source, child_node);
+            nodes.push(MathNode::Group(inner));
+          },
+          SyntaxKind::MathSubscript => {
+            let inner = Self::evaluate_math_script_content(source, child_node);
+            let content = if inner.len() == 1 {
+              #[allow(clippy::unwrap_used)]
+              inner.into_iter().next().unwrap()
+            } else {
+              MathNode::Group(inner)
+            };
+            nodes.push(MathNode::Subscript(Box::new(content)));
+          },
+          SyntaxKind::MathSuperscript => {
+            let inner = Self::evaluate_math_script_content(source, child_node);
+            let content = if inner.len() == 1 {
+              #[allow(clippy::unwrap_used)]
+              inner.into_iter().next().unwrap()
+            } else {
+              MathNode::Group(inner)
+            };
+            nodes.push(MathNode::Superscript(Box::new(content)));
+          },
+          _ => {},
+        },
+      }
+    }
+    return nodes;
+  }
 
-/// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
-///
-/// インラインノードリストが空の場合は何もしません。
-fn flush_paragraph(doc_nodes: &mut Vec<DocNode>, current_inlines: &mut Vec<InlineNode>) {
-  if current_inlines.is_empty() {
+  /// 上付き・下付きスクリプトノードの中身を `MathNode` に変換する
+  ///
+  /// `_` / `^` トークン自体はスキップし、後続のトークンまたはグループを変換します。
+  fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Vec<MathNode> {
+    let mut nodes = Vec::new();
+    for child in script_node.children {
+      match child {
+        GreenElement::Token(token) => match token.kind {
+          TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+          TokenKind::Escaped => {
+            let text = &source[token.span.start as usize + 1..token.span.end as usize];
+            nodes.push(MathNode::Text(text.to_string()));
+          },
+          TokenKind::Whitespace | TokenKind::Newline => {
+            nodes.push(MathNode::Text(token.text(source).to_string()));
+          },
+          _ => {},
+        },
+        GreenElement::Node(child_node) => match child_node.kind {
+          SyntaxKind::MathGroup => {
+            // グループをそのまま MathNode::Group として保持
+            let inner = Self::evaluate_inline_math(source, child_node);
+            nodes.push(MathNode::Group(inner));
+          },
+          SyntaxKind::CommandCall => {
+            if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
+              nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
+            }
+          },
+          _ => {},
+        },
+      }
+    }
+    return nodes;
+  }
+
+  /// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
+  ///
+  /// インラインノードリストが空の場合は何もしません。
+  fn flush_paragraph(doc_nodes: &mut Vec<DocNode>, current_inlines: &mut Vec<InlineNode>) {
+    if current_inlines.is_empty() {
+      return;
+    }
+    doc_nodes.push(DocNode::Paragraph(std::mem::take(current_inlines)));
     return;
   }
-  doc_nodes.push(DocNode::Paragraph(std::mem::take(current_inlines)));
-  return;
-}
-
-/// インライン数式ノードを `MathNode` のリストに変換する
-///
-/// CST の `InlineMath` ノードから、構造トークン（`$`, `{`, `}`）を除去しつつ
-/// テキスト・コマンド・グループ・上付き・下付きを `MathNode` に変換します。
-fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
-  let mut nodes = Vec::new();
-  for child in math_node.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(MathNode::Text(text.to_string()));
-        },
-        TokenKind::Whitespace | TokenKind::Newline => {
-          nodes.push(MathNode::Text(token.text(source).to_string()));
-        },
-        TokenKind::Ampersand => {
-          nodes.push(MathNode::AlignmentMark);
-        },
-        // 構造トークン（$, {, }）はスキップ
-        _ => {},
-      },
-      GreenElement::Node(child_node) => match child_node.kind {
-        SyntaxKind::CommandCall => {
-          // 数式内のコマンドはコマンド名をテキストとして扱う
-          if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
-            nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
-          }
-        },
-        SyntaxKind::MathGroup => {
-          let inner = evaluate_inline_math(source, child_node);
-          nodes.push(MathNode::Group(inner));
-        },
-        SyntaxKind::MathSubscript => {
-          let inner = evaluate_math_script_content(source, child_node);
-          let content = if inner.len() == 1 {
-            #[allow(clippy::unwrap_used)]
-            inner.into_iter().next().unwrap()
-          } else {
-            MathNode::Group(inner)
-          };
-          nodes.push(MathNode::Subscript(Box::new(content)));
-        },
-        SyntaxKind::MathSuperscript => {
-          let inner = evaluate_math_script_content(source, child_node);
-          let content = if inner.len() == 1 {
-            #[allow(clippy::unwrap_used)]
-            inner.into_iter().next().unwrap()
-          } else {
-            MathNode::Group(inner)
-          };
-          nodes.push(MathNode::Superscript(Box::new(content)));
-        },
-        _ => {},
-      },
-    }
-  }
-  return nodes;
-}
-
-/// 上付き・下付きスクリプトノードの中身を `MathNode` に変換する
-///
-/// `_` / `^` トークン自体はスキップし、後続のトークンまたはグループを変換します。
-fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Vec<MathNode> {
-  let mut nodes = Vec::new();
-  for child in script_node.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(MathNode::Text(text.to_string()));
-        },
-        TokenKind::Whitespace | TokenKind::Newline => {
-          nodes.push(MathNode::Text(token.text(source).to_string()));
-        },
-        _ => {},
-      },
-      GreenElement::Node(child_node) => match child_node.kind {
-        SyntaxKind::MathGroup => {
-          // グループをそのまま MathNode::Group として保持
-          let inner = evaluate_inline_math(source, child_node);
-          nodes.push(MathNode::Group(inner));
-        },
-        SyntaxKind::CommandCall => {
-          if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
-            nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
-          }
-        },
-        _ => {},
-      },
-    }
-  }
-  return nodes;
 }
 
 // =============================================================================

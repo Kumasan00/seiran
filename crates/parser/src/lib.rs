@@ -39,7 +39,6 @@ mod syntax;
 mod token;
 
 pub use document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
-use evaluator::Evaluator;
 
 /// ソーステキストをパースして Document IR（`Vec<DocNode>`）を生成する
 ///
@@ -64,7 +63,7 @@ pub fn parse_source(source: &str, source_name: &str) -> miette::Result<Vec<DocNo
   let cst = parser::parse(source, &arena).map_err(|e| miette::Report::new(e).with_source_code(named_source.clone()))?;
   println!("CST: {cst:#?}");
 
-  let mut evaluator = Evaluator::default();
+  let mut evaluator = evaluator::Evaluator::default();
   let doc_nodes = evaluator
     .evaluate_children(source, cst)
     .map_err(|e| miette::Report::new(e).with_source_code(named_source))?;
