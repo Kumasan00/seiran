@@ -1,4 +1,5 @@
 [workspace]
+resolver = "3"
 members = [
   "crates/cli",
   "crates/font",
@@ -12,41 +13,47 @@ members = [
   "crates/subcommand",
   "crates/types",
 ]
-resolver = "3"
-
-[workspace.metadata]
-default-run = "app"
 
 [workspace.package]
-authors = ["Kuma"]
-description = "Seiran is a tool to generate PDF files from text files."
+version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+description = "Seiran is a tool to generate PDF files from text files."
 readme = "README.md"
 repository = "https://github.com/Kumasan00/seiran"
-version = "0.1.0"
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 allsorts = "0.16.1"
 bumpalo = { version = "3.20.2", features = ["collections"] }
-chrono = { version = "0.4.44", features = ["serde"] }
+chrono = "0.4.44"
 clap = { version = "4.6.0", features = ["derive"] }
-figment = { version = "0.10.19", features = ["toml"] }
+cli = { path = "crates/cli" }
+figment2 = { version = "0.11.4", features = ["toml"] }
+font = { path = "crates/font" }
 font-types = "0.11.1"
 harfrust = "0.5.2"
 icu = { version = "2.2.0", features = ["compiled_data"] }
+layout = { path = "crates/layout" }
 lazy-regex = "3.6.0"
 memchr = "2.8.0"
 miette = { version = "7.6.0", features = ["fancy"] }
+parser = { path = "crates/parser" }
+pdf_gen = { path = "crates/pdf_gen" }
 pdf-writer = "0.14.0"
 phf = { version = "0.13.1", features = ["macros"] }
 rayon = "1.11.0"
-read-fonts = { version = "0.37.0", features = ["serde"] }
+read_config = { path = "crates/read_config" }
+read-fonts = "0.37.0"
+read_references = { path = "crates/read_references" }
+read_style = { path = "crates/read_style" }
+seiran = { path = "crates/seiran" }
 serde = { version = "1.0.228", features = ["derive"] }
+subcommand = { path = "crates/subcommand" }
 thiserror = "2.0.18"
 toml = "1.1.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["local-time"] }
+types = { path = "crates/types" }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
@@ -58,8 +65,8 @@ similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
 [profile.release]
-codegen-units = 1
-debug = false
-lto = true
 opt-level = 3
+debug = false
 strip = "symbols"
+lto = true
+codegen-units = 1

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use figment::{
+use figment2::{
   Figment,
   providers::{Format, Serialized, Toml},
 };
@@ -22,7 +22,7 @@ enum ReadStyleError {
     path: String,
     /// 元のエラー
     #[source]
-    source: Box<figment::Error>,
+    source: Box<figment2::Error>,
   },
   /// `font_size` が 0 以下の場合
   #[error("スタイル設定ファイルの font_size は 0 より大きい必要があります:  font_size={font_size}")]

@@ -1,10 +1,11 @@
 [package]
-authors.workspace = true
-description.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "font"
 version.workspace = true
+edition.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 allsorts.workspace = true
@@ -12,11 +13,11 @@ font-types.workspace = true
 harfrust.workspace = true
 miette.workspace = true
 rayon.workspace = true
+read_config.workspace = true
 read-fonts.workspace = true
-read_config = { path = "../read_config" }
 thiserror.workspace = true
 tracing.workspace = true
-types = { path = "../types" }
+types.workspace = true
 
 [lints]
 workspace = true

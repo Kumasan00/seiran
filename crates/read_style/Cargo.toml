@@ -1,15 +1,14 @@
 [package]
-authors.workspace = true
-description.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "read_style"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
 readme.workspace = true
 repository.workspace = true
-version.workspace = true
+license.workspace = true
 
 [dependencies]
-figment.workspace = true
+figment2.workspace = true
 miette.workspace = true
 serde.workspace = true
 thiserror.workspace = true

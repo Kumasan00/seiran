@@ -1,25 +1,27 @@
 [package]
-authors.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "seiran"
 version.workspace = true
+edition.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-cli = { path = "../cli" }
-font = { path = "../font" }
-layout = { path = "../layout" }
+cli.workspace = true
+font.workspace = true
+layout.workspace = true
 miette.workspace = true
-parser = { path = "../parser" }
-pdf_gen = { path = "../pdf_gen" }
-read_config = { path = "../read_config" }
-read_references = { path = "../read_references" }
-read_style = { path = "../read_style" }
+parser.workspace = true
+pdf_gen.workspace = true
+read_config.workspace = true
+read_references.workspace = true
+read_style.workspace = true
+subcommand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-types = { path = "../types" }
-subcommand = { path = "../subcommand" }
+types.workspace = true
 
 [lints]
 workspace = true

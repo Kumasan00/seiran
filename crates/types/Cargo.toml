@@ -1,12 +1,11 @@
 [package]
-authors.workspace = true
-description.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "types"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
 readme.workspace = true
 repository.workspace = true
-version.workspace = true
+license.workspace = true
 
 [dependencies]
 

@@ -1,23 +1,22 @@
 [package]
-authors.workspace = true
-description.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "layout"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
 readme.workspace = true
 repository.workspace = true
-version.workspace = true
+license.workspace = true
 
 [dependencies]
-font = { path = "../font" }
+font.workspace = true
 font-types.workspace = true
 icu.workspace = true
 lazy-regex.workspace = true
 miette.workspace = true
-parser = { path = "../parser" }
+parser.workspace = true
 read-fonts.workspace = true
 thiserror.workspace = true
-types = { path = "../types" }
+types.workspace = true
 
 [lints]
 workspace = true

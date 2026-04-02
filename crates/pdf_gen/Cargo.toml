@@ -1,18 +1,20 @@
 [package]
-authors.workspace = true
-edition.workspace = true
-license.workspace = true
 name = "pdf_gen"
 version.workspace = true
+edition.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 chrono.workspace = true
-font = { path = "../font" }
-layout = { path = "../layout" }
+font.workspace = true
+layout.workspace = true
 pdf-writer.workspace = true
-read_config = { path = "../read_config" }
-read_style = { path = "../read_style" }
-types = { path = "../types" }
+read_config.workspace = true
+read_style.workspace = true
+types.workspace = true
 
 [lints]
 workspace = true
