@@ -555,7 +555,7 @@ dependencies = [
  "harfrust",
  "miette",
  "rayon",
- "read-fonts 0.37.0",
+ "read-fonts 0.39.0",
  "read_config",
  "thiserror",
  "tracing",
@@ -1229,7 +1229,7 @@ dependencies = [
  "lazy-regex",
  "miette",
  "parser",
- "read-fonts 0.37.0",
+ "read-fonts 0.39.0",
  "thiserror",
  "types",
 ]
@@ -1711,6 +1711,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d962f56a037bdff66a05e4b663171eba5ceb3d8a4991cefd901424944c6be5b0"
+dependencies = [
+ "bytemuck",
+ "font-types 0.11.2",
+]
+
+[[package]]
 name = "read_config"
 version = "0.1.0"
 dependencies = [
@@ -2033,7 +2043,7 @@ name = "subcommand"
 version = "0.1.0"
 dependencies = [
  "miette",
- "read-fonts 0.37.0",
+ "read-fonts 0.39.0",
  "thiserror",
  "tracing",
 ]
