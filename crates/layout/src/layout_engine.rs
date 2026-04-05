@@ -174,7 +174,7 @@ pub fn layout_engine(
             let hmtx_record = hmtx.advance(GlyphId::new(glyph_id)).expect("Failed to get hmtx record");
             let advance_width = glyph_position.x_advance;
             let diff = advance_width - i32::from(hmtx_record);
-            if glyph_id == 1 {
+            if glyph_text == " " {
               let run_glyphs = std::mem::take(&mut glyphs);
               items.push(Item::Box(BoxItem::Text(GlyphRun {
                 font_size: style.font_size,

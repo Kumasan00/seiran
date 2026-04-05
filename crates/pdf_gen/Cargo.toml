@@ -10,6 +10,8 @@ license.workspace = true
 [dependencies]
 chrono.workspace = true
 font.workspace = true
+krilla.workspace = true
+krilla-svg.workspace = true
 layout.workspace = true
 pdf-writer.workspace = true
 read_config.workspace = true

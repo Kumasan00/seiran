@@ -30,9 +30,11 @@ clap = { version = "4.6.0", features = ["derive"] }
 cli = { path = "crates/cli" }
 figment2 = { version = "0.11.4", features = ["toml"] }
 font = { path = "crates/font" }
-font-types = "0.11.1"
+font-types = "0.11.2"
 harfrust = "0.5.2"
 icu = { version = "2.2.0", features = ["compiled_data"] }
+krilla = "0.7.0"
+krilla-svg = "0.7.0"
 layout = { path = "crates/layout" }
 lazy-regex = "3.6.0"
 memchr = "2.8.0"

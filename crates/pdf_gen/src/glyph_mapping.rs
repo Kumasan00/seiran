@@ -11,17 +11,6 @@ pub(crate) trait PDFInfo {
   fn build_cid_to_gid_map(&self) -> Vec<u8>;
 }
 
-/// `ToUnicode CMap`用の`SystemInfo`を作成
-///
-/// `ToUnicode CMap`に使用するカスタムシステム情報を生成します。
-fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
-  pdf_writer::types::SystemInfo {
-    registry: Str(TO_UNICODE_REGISTRY),
-    ordering: Str(TO_UNICODE_ORDERING),
-    supplement: TO_UNICODE_SUPPLEMENT,
-  }
-}
-
 impl PDFInfo for GlyphMapping {
   fn build_to_unicode_cmap(&self, font_name: &str) -> UnicodeCmap {
     let system_info = create_to_unicode_system_info();
@@ -40,5 +29,16 @@ impl PDFInfo for GlyphMapping {
       map.extend_from_slice(&(cid as u16).to_be_bytes());
     }
     return map;
+  }
+}
+
+/// `ToUnicode CMap`用の`SystemInfo`を作成
+///
+/// `ToUnicode CMap`に使用するカスタムシステム情報を生成します。
+fn create_to_unicode_system_info() -> pdf_writer::types::SystemInfo<'static> {
+  pdf_writer::types::SystemInfo {
+    registry: Str(TO_UNICODE_REGISTRY),
+    ordering: Str(TO_UNICODE_ORDERING),
+    supplement: TO_UNICODE_SUPPLEMENT,
   }
 }
