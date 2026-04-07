@@ -45,7 +45,7 @@ pdf-writer = "0.14.0"
 phf = { version = "0.13.1", features = ["macros"] }
 rayon = "1.11.0"
 read_config = { path = "crates/read_config" }
-read-fonts = "0.37.0"
+read-fonts = "0.39.1"
 read_references = { path = "crates/read_references" }
 read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
