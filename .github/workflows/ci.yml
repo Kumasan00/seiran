@@ -1,4 +1,4 @@
-name: Rust CI
+name: CI
 
 on:
   push:
@@ -15,15 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable toolchain
+      - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
+  test:
+    name: Test and Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -34,14 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: cargo test --all-targets --all-features
+      - name: Build release
+        run: cargo build --release
