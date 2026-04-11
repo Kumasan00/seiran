@@ -1524,9 +1524,11 @@ dependencies = [
  "krilla",
  "krilla-svg",
  "layout",
+ "miette",
  "read-fonts 0.39.1",
  "read_config",
  "read_style",
+ "thiserror",
  "types",
 ]
 

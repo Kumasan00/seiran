@@ -85,7 +85,7 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   let items = layout::layout_engine(layout_nodes, &harf_rust_shapers)?;
   info!("レイアウトの計算が完了しました");
 
-  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &items, &style);
+  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &items, &style)?;
 
   std::fs::write(&config.pdf.output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
     path: config.pdf.output_path.display().to_string(),

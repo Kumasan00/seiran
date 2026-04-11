@@ -73,13 +73,13 @@ pub struct Glyph {
   pub gid: u32,
   /// グリフのテキスト範囲（元のテキストに対する文字インデックスの範囲）
   pub range: Range<usize>,
-  /// X 方向の送り幅
+  /// x 方向の送り幅
   pub x_advance: i32,
-  /// Y 方向の送り幅
+  /// y 方向の送り幅
   pub y_advance: i32,
-  /// X 方向のオフセット
+  /// x 方向のオフセット
   pub x_offset: i32,
-  /// Y 方向のオフセット
+  /// y 方向のオフセット
   pub y_offset: i32,
 }
 

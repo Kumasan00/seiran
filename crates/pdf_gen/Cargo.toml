@@ -13,9 +13,11 @@ font.workspace = true
 krilla.workspace = true
 krilla-svg.workspace = true
 layout.workspace = true
+miette.workspace = true
 read_config.workspace = true
 read-fonts.workspace = true
 read_style.workspace = true
+thiserror.workspace = true
 types.workspace = true
 
 [lints]
