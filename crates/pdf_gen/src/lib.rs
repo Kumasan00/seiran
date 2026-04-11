@@ -3,271 +3,126 @@
 //! このモジュールは、フォント、コンテンツ、設定情報から
 //! PDFドキュメントを生成する機能を提供します。
 
-mod content;
-mod glyph_mapping;
-
 use chrono::{Datelike, Timelike, Utc};
-use font::{font_info::FontInfos, glyph_mapping::GlyphMappings, subset::FontSubsetBytes};
-use layout::Item;
-use pdf_writer::{Date, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
+use font::{FontData, FontRefs};
+use krilla::{
+  Document,
+  geom::Point,
+  metadata::{DateTime, Metadata},
+  page::PageSettings,
+  text::{Font, GlyphId, KrillaGlyph, Tag},
+};
+use layout::{BoxItem, Glyph, Item};
 use read_config::Config;
+use read_fonts::TableProvider;
 use read_style::Style;
 use types::{FontMap, FontType};
 
-use crate::{content::PDFContent, glyph_mapping::PDFInfo};
-
-/// Adobe-Identityシステム情報
-const ADOBE_REGISTRY: &[u8] = b"Adobe";
-const ADOBE_ORDERING: &[u8] = b"Identity";
-const ADOBE_SUPPLEMENT: i32 = 0;
-
-/// 各フォント用のPDFオブジェクトID群
-#[derive(Debug)]
-struct FontIds {
-  font: Ref,
-  cid_font: Ref,
-  font_descriptor: Ref,
-  cid_to_gid_map: Ref,
-  to_unicode_cmap: Ref,
-  font_file: Ref,
-}
-
-#[derive(Debug)]
-struct ContentIds {
-  content: Ref,
-  annotations: Vec<Ref>,
-}
-
-/// PDFオブジェクトのID管理構造体
-#[derive(Debug)]
-struct PdfIds {
-  document_info_id: Ref,
-  catalog_id: Ref,
-  page_tree_id: Ref,
-  page_ids: Vec<Ref>,
-  content_ids: Vec<ContentIds>,
-  font_ids: FontMap<Option<FontIds>>,
-}
-
-impl PdfIds {
-  /// 新しいPDFオブジェクトIDセットを作成
-  ///
-  /// 指定されたページ数に基づいて、全てのPDFオブジェクトに
-  /// 一意な参照IDを割り当てます。カタログ、ページツリー、各ページ、
-  /// コンテンツストリーム、および全19種類のフォント関連オブジェクトのIDを生成します。
-  fn new(content: &[PDFContent], subset_bytes: &FontSubsetBytes) -> Self {
-    let mut id_counter = 1;
-    let mut next_id = || {
-      let id = Ref::new(id_counter);
-      id_counter += 1;
-      id
-    };
-
-    let document_info_id = next_id();
-    let catalog_id = next_id();
-    let page_tree_id = next_id();
-
-    let page_count = content.len();
-    let page_ids: Vec<Ref> = (0..page_count).map(|_| next_id()).collect();
-    let content_ids: Vec<ContentIds> = (0..page_count)
-      .map(|i| ContentIds {
-        content: next_id(),
-        annotations: content[i].annotations.iter().map(|_| next_id()).collect(),
-      })
-      .collect();
-
-    let font_id_values: Vec<Option<FontIds>> = FontType::ALL
-      .iter()
-      .map(|font_type| {
-        let subset_byte = subset_bytes.get(*font_type);
-        if subset_byte.is_some() {
-          Some(FontIds {
-            font: next_id(),
-            cid_font: next_id(),
-            font_descriptor: next_id(),
-            cid_to_gid_map: next_id(),
-            to_unicode_cmap: next_id(),
-            font_file: next_id(),
-          })
-        } else {
-          None
-        }
-      })
-      .collect();
-
-    return Self {
-      document_info_id,
-      catalog_id,
-      page_tree_id,
-      page_ids,
-      content_ids,
-      font_ids: FontMap::from_all(font_id_values),
-    };
-  }
-
-  fn get_font(&self, font_type: FontType) -> Option<&FontIds> { self.font_ids.get(font_type).as_ref() }
-}
-
-/// PDFドキュメントを生成
+/// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。
 ///
-/// フォント情報、グリフマッピング、レイアウトアイテムから
-/// 完全なPDFドキュメントを構築します。
-///
-/// # 引数
-///
-/// * `config` - PDF生成設定（ページサイズ、出力パスなど）
-/// * `subset_bytes` - 全フォントのサブセット化されたバイトデータ
-/// * `items` - レイアウトエンジンから生成されたアイテム
-/// * `font_info` - 全フォントのメタデータ情報
-/// * `glyph_mappings` - 全フォントのグリフマッピング情報
+/// Krilla の `KrillaGlyph` はメトリクス値を UPEM で正規化した値で受け取るため、
+/// `layout::Glyph` の整数値を `upem` で除算して変換します。
+#[allow(clippy::cast_precision_loss)]
+fn convert_to_krilla_glyphs(glyphs: &[Glyph], upem: f32) -> Vec<KrillaGlyph> {
+  let krilla_glyphs = glyphs
+    .iter()
+    .map(|glyph| {
+      return KrillaGlyph::new(
+        GlyphId::new(glyph.gid),
+        glyph.x_advance as f32 / upem,
+        glyph.x_offset as f32 / upem,
+        glyph.y_offset as f32 / upem,
+        glyph.y_advance as f32 / upem,
+        glyph.range.clone(),
+        None,
+      );
+    })
+    .collect::<Vec<_>>();
+  return krilla_glyphs;
+}
+
+/// フォント情報を使用してKrillaフォントマップを作成
 ///
 /// # Panics
 ///
-/// フォントのサブセットバイトが見つからない場合にパニックが発生します。
+/// フォントの読み込みに失敗した場合にパニックが発生します。
 #[must_use]
-pub fn pdf_gen(
+pub fn create_pdf(
   config: &Config,
-  style: &Style,
-  subset_bytes: &FontSubsetBytes,
+  font_bytes: &FontData,
+  font_refs: &FontRefs,
   items: &[Item],
-  font_info: &FontInfos,
-  glyph_mappings: &GlyphMappings,
+  _style: &Style,
 ) -> Vec<u8> {
   let font_configs = &config.font_configs;
-  let content = content::create_pdf_contents(config, style, items, glyph_mappings, font_info);
-  let pdf_ids = PdfIds::new(&content, subset_bytes);
+  let krilla_fonts = FontMap::from_all(FontType::ALL.iter().map(|font_type| {
+    let font_config = font_configs.get(*font_type);
+    let font_data = font_bytes.get(*font_type);
+    let font_ref = font_refs.get(*font_type);
 
-  let mut pdf = Pdf::new();
-
-  // ドキュメント情報の設定
-  let mut document_info = pdf.document_info(pdf_ids.document_info_id);
-  document_info.title(TextStr(config.name.as_str()));
-  if let Some(author) = &config.author {
-    document_info.author(TextStr(author.as_str()));
-  }
-  if let Some(subject) = &config.subject {
-    document_info.subject(TextStr(subject.as_str()));
-  }
-  document_info.creator(TextStr("seiran"));
-  document_info.producer(TextStr("seiran"));
+    if font_ref.fvar().is_ok() {
+      let axes_config = font_config
+        .variation_axes
+        .as_ref()
+        .expect("バリアブルフォントには variation_axes の設定が必要です。");
+      let axes = axes_config
+        .iter()
+        .map(|cfg_axis| {
+          let tag = Tag::new(&cfg_axis.name);
+          let value = cfg_axis.value as f32;
+          let axis = (tag, value);
+          return axis;
+        })
+        .collect::<Vec<_>>();
+      Font::new_variable(font_data.clone().into(), font_config.font_index, &axes).expect("")
+    } else {
+      Font::new(font_data.clone().into(), font_config.font_index).expect("")
+    }
+  }));
+  let mut document = Document::new();
   let now = Utc::now();
   #[allow(clippy::cast_sign_loss)]
-  let date = Date::new(now.year() as u16)
+  let time = DateTime::new(now.year() as u16)
     .month(now.month() as u8)
     .day(now.day() as u8)
     .hour(now.hour() as u8)
     .minute(now.minute() as u8);
-  document_info.creation_date(date);
-  document_info.finish();
-
-  pdf.catalog(pdf_ids.catalog_id).pages(pdf_ids.page_tree_id);
-  let page_count = i32::try_from(pdf_ids.page_ids.len()).unwrap_or(i32::MAX);
-  pdf.pages(pdf_ids.page_tree_id).kids(pdf_ids.page_ids.iter().copied()).count(page_count);
-
-  for font_type in &FontType::ALL {
-    if let Some(font_ids) = pdf_ids.get_font(*font_type) {
-      let font_config = font_configs.get(*font_type);
-      let font_name = &font_config.font_name;
-      let font_pdf_name = Name(font_name.as_bytes());
-      let font_info = font_info.get(*font_type);
-      let glyph_mapping = glyph_mappings.get(*font_type);
-      // Type0 Font
-      let mut type0_font = pdf.type0_font(font_ids.font);
-      type0_font.base_font(font_pdf_name);
-      type0_font.encoding_predefined(Name(b"Identity-H"));
-      type0_font.descendant_font(font_ids.cid_font);
-      type0_font.to_unicode(font_ids.to_unicode_cmap);
-      type0_font.finish();
-
-      // CID Font
-      let mut cid_type2_font = pdf.cid_font(font_ids.cid_font);
-      cid_type2_font.subtype(pdf_writer::types::CidFontType::Type2);
-      cid_type2_font.base_font(font_pdf_name);
-      cid_type2_font.system_info(create_adobe_system_info());
-      cid_type2_font.font_descriptor(font_ids.font_descriptor);
-      cid_type2_font.default_width(f32::from(font_info.upem));
-      let mut widths = cid_type2_font.widths();
-      widths.consecutive(0, glyph_mapping.widths.iter().map(|width| f32::from(*width)));
-      widths.finish();
-      cid_type2_font.cid_to_gid_map_stream(font_ids.cid_to_gid_map);
-      cid_type2_font.finish();
-
-      // Font Descriptor
-      let mut font_descriptor = pdf.font_descriptor(font_ids.font_descriptor);
-      font_descriptor.name(font_pdf_name);
-      font_descriptor.flags(pdf_writer::types::FontFlags::SYMBOLIC);
-      font_descriptor.italic_angle(font_info.italic_angle.to_f32());
-      font_descriptor.bbox(Rect {
-        x1: f32::from(font_info.xmin),
-        y1: f32::from(font_info.ymin),
-        x2: f32::from(font_info.xmax),
-        y2: f32::from(font_info.ymax),
-      });
-      font_descriptor.ascent(f32::from(font_info.ascender));
-      font_descriptor.descent(f32::from(font_info.descender).abs());
-      font_descriptor.cap_height(f32::from(font_info.cap_height));
-      font_descriptor.stem_v(font_info.stem_v as f32);
-      font_descriptor.font_file2(font_ids.font_file);
-      font_descriptor.finish();
-
-      pdf.stream(font_ids.cid_to_gid_map, &glyph_mapping.build_cid_to_gid_map());
-      pdf.cmap(
-        font_ids.to_unicode_cmap,
-        glyph_mapping.build_to_unicode_cmap(font_name.as_str()).finish().as_slice(),
-      );
-      #[allow(clippy::expect_used)]
-      let data = subset_bytes.get(*font_type).as_ref().expect("Font subset bytes not found");
-      pdf.stream(font_ids.font_file, data);
+  let mut metadata = Metadata::new()
+    .title(config.name.clone())
+    .creation_date(time)
+    .creator("seiran".to_string())
+    .producer("seiran".to_string());
+  if let Some(author) = &config.author {
+    metadata = metadata.authors(vec![author.clone()]);
+  }
+  if let Some(subject) = &config.subject {
+    metadata = metadata.description(subject.clone());
+  }
+  document.set_metadata(metadata);
+  let mut page = document.start_page_with(PageSettings::from_wh(config.pdf.width, config.pdf.height).unwrap());
+  let mut surface = page.surface();
+  let x = config.pdf.margin.left;
+  let mut y = config.pdf.margin.top;
+  for item in items {
+    #[allow(clippy::single_match_else)]
+    match item {
+      Item::Box(box_item) => match box_item {
+        BoxItem::Text(run) => {
+          let font = krilla_fonts.get(run.font_type);
+          let upem =
+            f32::from(font_refs.get(run.font_type).head().expect("head テーブルの取得に失敗しました").units_per_em());
+          let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
+          surface.draw_glyphs(Point::from_xy(x, y), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
+          y -= run.font_size * 1.2; // 行間を考慮して y 座標を更新
+        },
+        #[allow(unused)]
+        BoxItem::Rule { width, height } => { /* ルール（線）アイテムの処理 */ },
+      },
+      _ => { /* 他のアイテムタイプの処理（例: 画像、図形など） */ },
     }
   }
-
-  for (i, pdf_content) in content.into_iter().enumerate() {
-    let page_id = pdf_ids.page_ids[i];
-    let content_id = pdf_ids.content_ids[i].content;
-    let annotation_ids = &pdf_ids.content_ids[i].annotations;
-
-    let mut page = pdf.page(page_id);
-    page.media_box(Rect::new(0.0, 0.0, config.pdf.width, config.pdf.height));
-    page.parent(pdf_ids.page_tree_id);
-    page.contents(content_id);
-    if !annotation_ids.is_empty() {
-      page.annotations(annotation_ids.iter().copied());
-    }
-
-    // 全フォントをリソースに一括登録
-    let mut resources = page.resources();
-    let mut fonts = resources.fonts();
-    for font_type in &FontType::ALL {
-      if let Some(font_ids) = pdf_ids.get_font(*font_type) {
-        let font_config = font_configs.get(*font_type);
-        let font_name = &font_config.font_name;
-        fonts.pair(Name(font_name.as_bytes()), font_ids.font);
-      }
-    }
-    fonts.finish();
-    resources.finish();
-
-    page.finish();
-
-    for annotation_id in annotation_ids {
-      let annotation = pdf.annotation(*annotation_id);
-      annotation.finish();
-    }
-
-    pdf.stream(content_id, &pdf_content.content.finish());
-  }
-
-  let pdf_bytes = pdf.finish();
+  surface.finish();
+  page.finish();
+  let pdf_bytes = document.finish().unwrap();
   return pdf_bytes;
-}
-
-/// Adobe-Identity `SystemInfo`を作成
-///
-/// CIDフォントに使用する標準的なAdobe-Identity-0システム情報を生成します。
-fn create_adobe_system_info() -> pdf_writer::types::SystemInfo<'static> {
-  pdf_writer::types::SystemInfo {
-    registry: Str(ADOBE_REGISTRY),
-    ordering: Str(ADOBE_ORDERING),
-    supplement: ADOBE_SUPPLEMENT,
-  }
 }

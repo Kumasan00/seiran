@@ -86,10 +86,7 @@ use read_fonts::FontRef;
 use thiserror::Error;
 use types::{FontMap, FontType};
 
-pub mod font_info;
-pub mod glyph_mapping;
 pub mod shaper;
-pub mod subset;
 pub mod validate_font;
 
 /// フォント読み込み・解析時のエラー

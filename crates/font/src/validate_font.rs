@@ -216,6 +216,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> miett
     }
     info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
   }
+  // 並列処理での検証（コメントアウト中、必要に応じて有効化）
   // let all_errors: Vec<_> = FontType::ALL
   //   .par_iter()
   //   .filter_map(|&font_type| {

@@ -4,38 +4,18 @@
 //! テキストノードは Unicode スクリプトに基づいてセグメント分割され、
 //! 各セグメントがフォントシェーパーで処理されてグリフ情報を持つ `GlyphRun` になります。
 
-use font::{FontRefs, font_info::FontInfos, glyph_mapping::GlyphMappings, shaper::HarfRustShapers};
-use font_types::GlyphId;
+use std::ops::Range;
+
+use font::shaper::HarfRustShapers;
 use icu::properties::{
   CodePointMapData,
   props::{EastAsianWidth, Script},
   script::ScriptWithExtensions,
 };
 use lazy_regex::regex_replace_all;
-use miette::Diagnostic;
-use read_fonts::TableProvider;
-use thiserror::Error;
 use types::{FontKind, FontType};
 
 use crate::layout_node::LayoutNode;
-
-/// レイアウトエンジンのエラー型
-#[derive(Debug, Error, Diagnostic)]
-enum LayoutError {
-  /// hmtx テーブルの取得に失敗した場合
-  #[error("{font_type:?} フォントの hmtx テーブルの取得に失敗しました")]
-  #[diagnostic(
-    code(layout::hmtx),
-    help("フォントファイルが有効であり、hmtx テーブルが存在することを確認してください。")
-  )]
-  Hmtx {
-    /// フォント種別
-    font_type: FontType,
-    /// 元の解析エラー
-    #[source]
-    source: read_fonts::ReadError,
-  },
-}
 
 /// レイアウトエンジンが生成する最小単位
 ///
@@ -77,14 +57,10 @@ pub enum BoxItem {
 pub struct GlyphRun {
   /// テキストのフォントサイズ（ポイント）
   pub font_size: f32,
+  /// 元のテキスト（シェーピング前）
+  pub text: String,
   /// シェーピング結果のグリフ列
   pub glyphs: Vec<Glyph>,
-  /// グリフ列の合計幅（フォント内部ユニット）
-  pub width: i32,
-  /// アセンダー（ベースラインから上への距離）
-  pub height: i16,
-  /// ディセンダー（ベースラインから下への距離）
-  pub depth: i16,
   /// このグリフ列が使用するフォント種別
   pub font_type: FontType,
 }
@@ -95,6 +71,8 @@ pub struct GlyphRun {
 pub struct Glyph {
   /// グリフ ID
   pub gid: u32,
+  /// グリフのテキスト範囲（元のテキストに対する文字インデックスの範囲）
+  pub range: Range<usize>,
   /// X 方向の送り幅
   pub x_advance: i32,
   /// Y 方向の送り幅
@@ -103,8 +81,6 @@ pub struct Glyph {
   pub x_offset: i32,
   /// Y 方向のオフセット
   pub y_offset: i32,
-  /// hmtx との差分（位置調整が必要な場合のみ）
-  pub diff: Option<i32>,
 }
 
 /// テキストをスクリプトに基づいて分割したセグメント
@@ -135,13 +111,7 @@ struct TextSegment {
 /// # Panics
 ///
 /// グリフ ID の高さ情報取得時に失敗した場合にパニックします
-pub fn layout_engine(
-  layout_nodes: Vec<LayoutNode>,
-  shapers: &HarfRustShapers,
-  font_refs: &FontRefs,
-  font_infos: &FontInfos,
-  glyph_mappings: &mut GlyphMappings,
-) -> miette::Result<Vec<Item>> {
+pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -> miette::Result<Vec<Item>> {
   let mut items: Vec<Item> = Vec::new();
   for node in layout_nodes {
     match node {
@@ -152,75 +122,43 @@ pub fn layout_engine(
         for segment in segments {
           let font_type = segment.font_type;
           let segment_text = &segment.text;
-          let font_ref = font_refs.get(font_type);
-          let font_info = font_infos.get(font_type);
-          let glyph_mapping = glyph_mappings.get_mut(font_type);
-          let hmtx = font_ref.hmtx().map_err(|source| LayoutError::Hmtx { font_type, source })?;
           // テキストセグメントのレイアウト処理
           let result = shapers.get(font_type).shape(segment_text);
           let glyph_infos = result.glyph_infos();
           let glyph_positions = result.glyph_positions();
-
-          let mut glyphs = Vec::new();
-          let mut width = 0;
+          let mut glyphs: Vec<Glyph> = Vec::new();
           for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
             let start = glyph_info.cluster as usize;
             let end = glyph_infos
               .get(i + 1)
               .map_or(segment_text.len(), |next_glyph_info| next_glyph_info.cluster as usize);
-            let glyph_text = &segment_text[start..end];
-            let glyph_id = glyph_info.glyph_id;
-            #[allow(clippy::expect_used)]
-            let hmtx_record = hmtx.advance(GlyphId::new(glyph_id)).expect("Failed to get hmtx record");
-            let advance_width = glyph_position.x_advance;
-            let diff = advance_width - i32::from(hmtx_record);
-            if glyph_text == " " {
-              let run_glyphs = std::mem::take(&mut glyphs);
-              items.push(Item::Box(BoxItem::Text(GlyphRun {
-                font_size: style.font_size,
-                glyphs: run_glyphs,
-                width,
-                height: font_info.ascender,
-                depth: font_info.descender,
-                font_type,
-              })));
-              width = 0;
-              #[allow(clippy::cast_precision_loss)]
-              {
-                items.push(Item::Glue {
-                  natural: advance_width as f32,
-                  stretch: (advance_width as f32) * 0.5,
-                  shrink: (advance_width as f32) * 0.33,
-                });
-              }
-            } else {
-              width += advance_width;
-              glyphs.push(Glyph {
-                gid: glyph_id,
-                x_advance: glyph_position.x_advance,
-                y_advance: glyph_position.y_advance,
-                x_offset: glyph_position.x_offset,
-                y_offset: glyph_position.y_offset,
-                diff: if diff != 0 { Some(diff) } else { None },
-              });
-            }
-            glyph_mapping.register(glyph_id as u16, hmtx_record, glyph_text.chars().collect());
+            let gid = glyph_info.glyph_id;
+            let x_advance = glyph_position.x_advance;
+            let y_advance = glyph_position.y_advance;
+            let x_offset = glyph_position.x_offset;
+            let y_offset = glyph_position.y_offset;
+            glyphs.push(Glyph {
+              gid,
+              range: start..end,
+              x_advance,
+              y_advance,
+              x_offset,
+              y_offset,
+            });
           }
-          if !glyphs.is_empty() {
-            items.push(Item::Box(BoxItem::Text(GlyphRun {
-              font_size: style.font_size,
-              glyphs,
-              width,
-              height: font_info.ascender,
-              depth: font_info.descender,
-              font_type,
-            })));
-          }
+          let glyph_run = GlyphRun {
+            font_size: style.font_size,
+            text: segment_text.clone(),
+            glyphs,
+            font_type,
+          };
+          let box_item = BoxItem::Text(glyph_run);
+          items.push(Item::Box(box_item));
         }
       },
       LayoutNode::HBox { children, width } => {
         // HBox のレイアウト処理
-        let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
+        let child_items = layout_engine(children, shapers)?;
         items.extend(child_items);
         if let Some(_width) = width {}
       },
@@ -229,7 +167,7 @@ pub fn layout_engine(
         margin_bottom,
       } => {
         // VBox のレイアウト処理
-        let child_items = layout_engine(children, shapers, font_refs, font_infos, glyph_mappings)?;
+        let child_items = layout_engine(children, shapers)?;
         // println!("VBox の子アイテム: {child_items:#?}");
         items.extend(child_items);
         items.push(Item::Vkern(margin_bottom));

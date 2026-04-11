@@ -4,15 +4,10 @@
 use std::path::{Path, PathBuf};
 
 use font::{
-  FontDataExt, FontRefsExt, font_info,
-  font_info::FontInfosExt,
-  glyph_mapping,
-  glyph_mapping::GlyphMappingsExt,
-  shaper,
-  shaper::{HarfRustShapersExt, ShaperDatasExt, ShaperInstancesExt},
-  subset, validate_font,
+  FontDataExt, FontRefsExt,
+  shaper::{self, HarfRustShapersExt, ShaperDatasExt, ShaperInstancesExt},
+  validate_font,
 };
-use layout::layout_engine;
 use miette::Diagnostic;
 use thiserror::Error;
 use tracing::info;
@@ -87,15 +82,10 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
     shaper::HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
   info!("シェーパーの初期化が完了しました");
 
-  let font_infos = font_info::FontInfos::new(&config.font_configs, &font_refs)?;
-  let mut glyph_mappings = glyph_mapping::GlyphMappings::new(&font_infos);
-
-  let items = layout_engine(layout_nodes, &harf_rust_shapers, &font_refs, &font_infos, &mut glyph_mappings)?;
+  let items = layout::layout_engine(layout_nodes, &harf_rust_shapers)?;
   info!("レイアウトの計算が完了しました");
 
-  let subset_bytes = subset::create_font_subset(&config.font_configs, &font_data, &glyph_mappings)?;
-
-  let pdf_bytes = pdf_gen::pdf_gen(&config, &style, &subset_bytes, &items, &font_infos, &glyph_mappings);
+  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &items, &style);
 
   std::fs::write(&config.pdf.output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
     path: config.pdf.output_path.display().to_string(),

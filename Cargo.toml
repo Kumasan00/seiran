@@ -31,7 +31,7 @@ cli = { path = "crates/cli" }
 figment2 = { version = "0.11.4", features = ["toml"] }
 font = { path = "crates/font" }
 font-types = "0.11.2"
-harfrust = "0.5.2"
+harfrust = "0.6.0"
 icu = { version = "2.2.0", features = ["compiled_data"] }
 krilla = "0.7.0"
 krilla-svg = "0.7.0"
@@ -41,11 +41,10 @@ memchr = "2.8.0"
 miette = { version = "7.6.0", features = ["fancy"] }
 parser = { path = "crates/parser" }
 pdf_gen = { path = "crates/pdf_gen" }
-pdf-writer = "0.14.0"
 phf = { version = "0.13.1", features = ["macros"] }
 rayon = "1.11.0"
 read_config = { path = "crates/read_config" }
-read-fonts = "0.37.0"
+read-fonts = "0.39.1"
 read_references = { path = "crates/read_references" }
 read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
