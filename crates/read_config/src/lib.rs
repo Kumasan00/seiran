@@ -75,7 +75,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use miette::{Diagnostic, Report};
+use miette::Diagnostic;
 use thiserror::Error;
 use tracing::info;
 use types::FontType;
@@ -89,7 +89,7 @@ pub use processed_config::{Config, Feature, FontConfig, FontConfigs, Margin, Pdf
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
-enum ReadConfigError {
+pub enum ReadConfigError {
   /// 設定ファイルの読み込み失敗
   #[error("設定ファイルを読み込めませんでした: {path}")]
   #[diagnostic(code(config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
@@ -159,7 +159,7 @@ enum ReadConfigError {
 
 /// 設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-enum ValidationError {
+pub enum ValidationError {
   /// `height`/`width`/`font_size`/`line_height_factor` が正でない
   #[error("'{field}' は正の値である必要があります。")]
   #[diagnostic(code(config::validation::non_positive), help("0 より大きい値を指定してください。"))]
@@ -245,7 +245,7 @@ enum ValidationError {
 ///
 /// フォント設定の変換処理において、内部的な不整合が発生した場合にパニックします。
 /// これは通常発生しませんが、バリデーションエラーの収集ロジックに問題がある場合に起こる可能性があります。
-pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
+pub fn read_config(config_path: &PathBuf) -> Result<Config, ReadConfigError> {
   info!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),
@@ -338,7 +338,7 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
 
   // フォント変換エラーを報告（重複チェック前）
   if !errors.is_empty() {
-    return Err(Report::new(ReadConfigError::MultipleValidationErrors { errors }));
+    return Err(ReadConfigError::MultipleValidationErrors { errors });
   }
 
   // errors が空なので全 19 種別が揃っていることが保証される
@@ -351,7 +351,7 @@ pub fn read_config(config_path: &PathBuf) -> miette::Result<Config> {
 
   // 重複エラーを報告
   if !errors.is_empty() {
-    return Err(Report::new(ReadConfigError::MultipleValidationErrors { errors }));
+    return Err(ReadConfigError::MultipleValidationErrors { errors });
   }
 
   let config = Config {

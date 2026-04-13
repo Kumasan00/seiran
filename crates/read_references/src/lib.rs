@@ -15,7 +15,7 @@ use tracing::info;
 
 /// 参照定義ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
-enum ReadReferencesError {
+pub enum ReadReferencesError {
   /// 参照定義ファイルの読み込みに失敗した場合
   #[error("参照定義ファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(code(references::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
@@ -543,7 +543,7 @@ impl<'de> Deserialize<'de> for Name {
 ///
 /// - ファイルの読み込みに失敗した場合
 /// - TOML のパースに失敗した場合
-pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> miette::Result<References> {
+pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, ReadReferencesError> {
   #[allow(clippy::redundant_else)]
   if let Some(path) = path {
     let path_ref = path.as_ref();

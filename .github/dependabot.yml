@@ -12,7 +12,8 @@ updates:
     # update Rust dependencies weekly
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "sunday"
       time: "04:00"
       timezone: "Asia/Tokyo"
     labels:

@@ -108,7 +108,7 @@ use crate::FontRefs;
 #[derive(Debug, Error, Diagnostic)]
 #[error("複数のフォント設定にエラーがあります")]
 #[diagnostic(code(font::validation::multiple_errors))]
-struct MultipleFontValidationErrors {
+pub struct MultipleFontValidationErrors {
   #[related]
   errors: Vec<FontValidationErrors>,
 }
@@ -116,7 +116,7 @@ struct MultipleFontValidationErrors {
 #[derive(Debug, Error, Diagnostic)]
 #[error("フォントの検証に失敗しました: {font_type:?}")]
 #[diagnostic(code(font::validation::error))]
-struct FontValidationErrors {
+pub struct FontValidationErrors {
   font_type: FontType,
   #[related]
   errors: Vec<FontValidationError>,
@@ -205,7 +205,7 @@ pub enum FontValidationError {
 /// # Errors
 ///
 /// 任意のフォント設定の検証に失敗した場合は、`FontValidationError` のバリアントを含む `miette::Report` を返します。
-pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> miette::Result<()> {
+pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), MultipleFontValidationErrors> {
   let mut all_errors = Vec::new();
   for font_type in FontType::ALL {
     let config = font_configs.get(font_type);
@@ -231,7 +231,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> miett
   //   })
   //   .collect();
   if !all_errors.is_empty() {
-    return Err(MultipleFontValidationErrors { errors: all_errors }.into());
+    return Err(MultipleFontValidationErrors { errors: all_errors });
   }
   return Ok(());
 }

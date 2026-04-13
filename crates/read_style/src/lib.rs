@@ -13,7 +13,7 @@ const STYLE_PATH: &str = "config/style.toml";
 
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
-enum ReadStyleError {
+pub enum ReadStyleError {
   /// スタイル設定の読み込み・解析に失敗した場合
   #[error("スタイル設定ファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(code(style::read), help("スタイル設定ファイルのパスと TOML の構文を確認してください。"))]
@@ -119,7 +119,7 @@ impl Default for ReferenceStyle {
 ///
 /// Returns an error if the configuration file cannot be read or if the
 /// configuration values cannot be extracted into a [`Style`] struct.
-pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Style> {
+pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleError> {
   let figment = Figment::from(Serialized::defaults(Style::default()));
   let (figment, style_path_str) = if let Some(p) = path {
     let path_str = p.as_ref().display().to_string();
@@ -140,14 +140,11 @@ pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> miette::Result<Style> {
   return Ok(style);
 }
 
-fn validate_style(style: &Style) -> miette::Result<()> {
+fn validate_style(style: &Style) -> Result<(), ReadStyleError> {
   if style.font_size <= 0.0 {
-    return Err(
-      ReadStyleError::InvalidFontSize {
-        font_size: style.font_size,
-      }
-      .into(),
-    );
+    return Err(ReadStyleError::InvalidFontSize {
+      font_size: style.font_size,
+    });
   }
   return Ok(());
 }

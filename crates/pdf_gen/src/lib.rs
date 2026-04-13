@@ -220,7 +220,7 @@ pub fn create_pdf(
             start_new_page!();
             x = config.pdf.margin.left;
             y = config.pdf.margin.top;
-            current_line_height = style.font_size * 1.2;
+            current_line_height = style.font_size * config.pdf.line_height_factor;
             line_break_seen = false;
           }
           let font = krilla_fonts.get(run.font_type);
@@ -238,7 +238,7 @@ pub fn create_pdf(
           surface.draw_glyphs(Point::from_xy(x, y), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
           let advance = run.glyphs.iter().map(|glyph| glyph.x_advance as f32 / upem * run.font_size).sum::<f32>();
           x += advance;
-          current_line_height = current_line_height.max(run.font_size * 1.2);
+          current_line_height = current_line_height.max(run.font_size * config.pdf.line_height_factor);
           line_break_seen = false;
         },
         BoxItem::Rule { width, height } => {
@@ -256,7 +256,7 @@ pub fn create_pdf(
           surface.draw_path(&path);
           x = config.pdf.margin.left;
           y += *height;
-          current_line_height = style.font_size * 1.2;
+          current_line_height = style.font_size * config.pdf.line_height_factor;
           line_break_seen = false;
         },
       },
