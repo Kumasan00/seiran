@@ -91,7 +91,7 @@ pub mod validate_font;
 
 /// フォント読み込み・解析時のエラー
 #[derive(Debug, Error, Diagnostic)]
-enum FontLoadError {
+pub enum FontLoadError {
   /// フォントファイルの読み込みに失敗した場合
   #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(code(font::load::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
@@ -153,11 +153,11 @@ pub trait FontDataExt: Sized {
   /// - ファイルが見つからない
   /// - ファイルの読み込み権限がない
   /// - ディスク I/O エラーが発生した
-  fn new(font_configs: &FontConfigs) -> miette::Result<Self>;
+  fn new(font_configs: &FontConfigs) -> Result<Self, FontLoadError>;
 }
 
 impl FontDataExt for FontData {
-  fn new(font_configs: &FontConfigs) -> miette::Result<Self> {
+  fn new(font_configs: &FontConfigs) -> Result<Self, FontLoadError> {
     let font_datas = FontType::ALL
       .par_iter()
       .map(|&font_type| {
@@ -205,11 +205,11 @@ pub trait FontRefsExt<'a>: Sized {
   /// - バイナリデータが有効な OpenType フォントではない
   /// - TTC 内の指定されたインデックスが範囲外
   /// - 必須 OpenType テーブルが見つからない
-  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self>;
+  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, FontLoadError>;
 }
 
 impl<'a> FontRefsExt<'a> for FontRefs<'a> {
-  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> miette::Result<Self> {
+  fn new(config: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, FontLoadError> {
     let font_refs = FontType::ALL
       .par_iter()
       .map(|&font_type| {

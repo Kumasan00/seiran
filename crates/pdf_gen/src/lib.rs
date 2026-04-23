@@ -22,7 +22,7 @@ use types::{FontMap, FontType};
 
 /// PDF 生成中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
-enum PdfGenError {
+pub enum PdfGenError {
   /// バリアブルフォントに必要な軸設定が不足しています。
   #[error("バリアブルフォント {font_type:?} に variation_axes が指定されていません")]
   #[diagnostic(code(pdf_gen::missing_variation_axes), help("設定ファイルに variation_axes を追加してください。"))]
@@ -123,7 +123,7 @@ pub fn create_pdf(
   font_refs: &FontRefs,
   items: &[Item],
   style: &Style,
-) -> miette::Result<Vec<u8>> {
+) -> Result<Vec<u8>, PdfGenError> {
   let font_configs = &config.font_configs;
   let krilla_fonts = {
     let fonts = FontType::ALL
