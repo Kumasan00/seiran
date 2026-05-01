@@ -219,28 +219,186 @@ pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
 /// `GreenNode` の子要素から `InlineNode` のリストを構築する
 ///
 /// 見出しの引数など、テキストノードとコマンドを `InlineNode` に変換します。
+/// インラインコマンド（`\textbf`, `\emph` 等）は対応する `InlineNode` ラッパーに変換し、
+/// `InlineMath` ノードは `InlineNode::InlineMath` に変換します。
 pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<crate::document::InlineNode> {
+  use crate::{document::InlineNode, evaluator::Evaluator};
+
   let mut inlines = Vec::new();
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
-          inlines.push(crate::document::InlineNode::Text(token.text(source).to_string()));
+          inlines.push(InlineNode::Text(token.text(source).to_string()));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          inlines.push(crate::document::InlineNode::Text(text.to_string()));
+          inlines.push(InlineNode::Text(text.to_string()));
+        },
+        TokenKind::LineBreak => {
+          inlines.push(InlineNode::LineBreak);
         },
         _ => {},
       },
-      GreenElement::Node(child_node) => {
-        if child_node.kind == SyntaxKind::CommandCall {
-          // TODO: インラインコマンド（\textbf 等）を InlineNode として評価する
-        }
+      GreenElement::Node(child_node) => match child_node.kind {
+        SyntaxKind::CommandCall => {
+          let view = CommandView::new(child_node, source);
+          match view.name() {
+            "textbf" => {
+              if let Some(arg) = view.first_arg() {
+                let children = extract_inline_nodes(source, arg);
+                inlines.push(InlineNode::Strong(children));
+              }
+            },
+            "emph" | "textit" => {
+              if let Some(arg) = view.first_arg() {
+                let children = extract_inline_nodes(source, arg);
+                inlines.push(InlineNode::Emphasis(children));
+              }
+            },
+            "texttt" => {
+              if let Some(arg) = view.first_arg() {
+                let children = extract_inline_nodes(source, arg);
+                inlines.push(InlineNode::Code(children));
+              }
+            },
+            "textsf" => {
+              if let Some(arg) = view.first_arg() {
+                let children = extract_inline_nodes(source, arg);
+                inlines.push(InlineNode::SansSerif(children));
+              }
+            },
+            other => {
+              // ギリシャ文字・数学記号等のシンボルコマンドを解決する
+              if let Some(ch) = resolve_symbol_command(other) {
+                inlines.push(InlineNode::Symbol(ch));
+              }
+              // 未知のコマンドは無視（エラーは evaluator 側で処理）
+            },
+          }
+        },
+        SyntaxKind::InlineMath => {
+          let math_nodes = Evaluator::evaluate_inline_math(source, child_node);
+          inlines.push(InlineNode::InlineMath(math_nodes));
+        },
+        SyntaxKind::Group => {
+          // グループの中身を再帰的に処理
+          let children = extract_inline_nodes(source, child_node);
+          inlines.extend(children);
+        },
+        _ => {},
       },
     }
   }
   return inlines;
+}
+
+/// コマンド名からシンボル文字を解決する
+///
+/// ギリシャ文字・数学記号等の引数なしコマンドを対応する Unicode 文字に変換します。
+/// 未知のコマンド名の場合は `None` を返します。
+#[must_use]
+pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
+  return match name {
+    // ギリシャ文字（大文字）
+    "Alpha" => Some('\u{0391}'),
+    "Beta" => Some('\u{0392}'),
+    "Gamma" => Some('\u{0393}'),
+    "Delta" => Some('\u{0394}'),
+    "Epsilon" => Some('\u{0395}'),
+    "Zeta" => Some('\u{0396}'),
+    "Eta" => Some('\u{0397}'),
+    "Theta" => Some('\u{0398}'),
+    "Iota" => Some('\u{0399}'),
+    "Kappa" => Some('\u{039A}'),
+    "Lambda" => Some('\u{039B}'),
+    "Mu" => Some('\u{039C}'),
+    "Nu" => Some('\u{039D}'),
+    "Xi" => Some('\u{039E}'),
+    "Omicron" => Some('\u{039F}'),
+    "Pi" => Some('\u{03A0}'),
+    "Rho" => Some('\u{03A1}'),
+    "Sigma" => Some('\u{03A3}'),
+    "Tau" => Some('\u{03A4}'),
+    "Upsilon" => Some('\u{03A5}'),
+    "Phi" => Some('\u{03A6}'),
+    "Chi" => Some('\u{03A7}'),
+    "Psi" => Some('\u{03A8}'),
+    "Omega" => Some('\u{03A9}'),
+    // ギリシャ文字（小文字）
+    "alpha" => Some('\u{03B1}'),
+    "beta" => Some('\u{03B2}'),
+    "gamma" => Some('\u{03B3}'),
+    "delta" => Some('\u{03B4}'),
+    "epsilon" => Some('\u{03B5}'),
+    "varepsilon" => Some('\u{03F5}'),
+    "zeta" => Some('\u{03B6}'),
+    "eta" => Some('\u{03B7}'),
+    "theta" => Some('\u{03B8}'),
+    "vartheta" => Some('\u{03D1}'),
+    "iota" => Some('\u{03B9}'),
+    "kappa" => Some('\u{03BA}'),
+    "varkappa" => Some('\u{03F0}'),
+    "lambda" => Some('\u{03BB}'),
+    "mu" => Some('\u{03BC}'),
+    "nu" => Some('\u{03BD}'),
+    "xi" => Some('\u{03BE}'),
+    "omicron" => Some('\u{03BF}'),
+    "pi" => Some('\u{03C0}'),
+    "varpi" => Some('\u{03D6}'),
+    "rho" => Some('\u{03C1}'),
+    "varrho" => Some('\u{03F1}'),
+    "sigma" => Some('\u{03C3}'),
+    "varsigma" => Some('\u{03C2}'),
+    "tau" => Some('\u{03C4}'),
+    "upsilon" => Some('\u{03C5}'),
+    "phi" => Some('\u{03C6}'),
+    "chi" => Some('\u{03C7}'),
+    "psi" => Some('\u{03C8}'),
+    "omega" => Some('\u{03C9}'),
+    // 数学記号
+    "forall" => Some('\u{2200}'),
+    "complement" => Some('\u{2201}'),
+    "partial" => Some('\u{2202}'),
+    "exists" => Some('\u{2203}'),
+    "notexists" => Some('\u{2204}'),
+    "emptyset" => Some('\u{2205}'),
+    "increment" => Some('\u{2206}'),
+    "nabla" => Some('\u{2207}'),
+    "in" => Some('\u{2208}'),
+    "notin" => Some('\u{2209}'),
+    "ni" => Some('\u{220B}'),
+    "notni" => Some('\u{220C}'),
+    "qed" => Some('\u{220E}'),
+    "prod" => Some('\u{220F}'),
+    "coprod" => Some('\u{2210}'),
+    "sum" => Some('\u{2211}'),
+    "minus" => Some('\u{2212}'),
+    "mp" => Some('\u{2213}'),
+    "dotplus" => Some('\u{2214}'),
+    "slash" => Some('\u{2215}'),
+    "surd" => Some('\u{221A}'),
+    "propto" => Some('\u{221D}'),
+    "infty" => Some('\u{221E}'),
+    "rightangle" => Some('\u{221F}'),
+    "angle" => Some('\u{2220}'),
+    "parallel" => Some('\u{2225}'),
+    "notparallel" => Some('\u{2226}'),
+    "land" => Some('\u{2227}'),
+    "lor" => Some('\u{2228}'),
+    "cap" => Some('\u{2229}'),
+    "cup" => Some('\u{222A}'),
+    "int" => Some('\u{222B}'),
+    "iint" => Some('\u{222C}'),
+    "iiint" => Some('\u{222D}'),
+    "oint" => Some('\u{222E}'),
+    "oiint" => Some('\u{222F}'),
+    "oiiint" => Some('\u{2230}'),
+    "therefore" => Some('\u{2234}'),
+    "because" => Some('\u{2235}'),
+    "backsim" => Some('\u{223D}'),
+    _ => None,
+  };
 }
 
 #[cfg(test)]
@@ -370,6 +528,63 @@ mod tests {
     assert!(view.body().is_some());
     assert!(view.args().is_empty());
     assert!(view.opt_args().is_empty());
+  }
+
+  #[test]
+  fn extract_inline_nodes_with_textbf() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\section{\\textbf{太字タイトル}}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    // Root > CommandCall(\section) > MandatoryArg > CommandCall(\textbf)
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+    let inlines = extract_inline_nodes(source, arg);
+    assert_eq!(inlines.len(), 1);
+    assert!(matches!(&inlines[0], crate::document::InlineNode::Strong(_)));
+  }
+
+  #[test]
+  fn extract_inline_nodes_with_symbol_command() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\section{\\alpha}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+    let inlines = extract_inline_nodes(source, arg);
+    assert_eq!(inlines.len(), 1);
+    assert!(matches!(&inlines[0], crate::document::InlineNode::Symbol('α')));
+  }
+
+  #[test]
+  fn extract_inline_nodes_with_inline_math() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\section{数式 $x^2$ です}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+    let inlines = extract_inline_nodes(source, arg);
+    // Text("数式"), Text(" "), InlineMath(...), Text(" "), Text("です")
+    let has_math = inlines.iter().any(|n| matches!(n, crate::document::InlineNode::InlineMath(_)));
+    assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
+  }
+
+  #[test]
+  fn extract_inline_nodes_mixed_text_and_commands() {
+    let arena = bumpalo::Bump::new();
+    let source = "\\section{Hello \\textbf{World}}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+    let inlines = extract_inline_nodes(source, arg);
+    // Text("Hello"), Text(" "), Strong(...)
+    assert_eq!(inlines.len(), 3);
+    assert!(matches!(&inlines[0], crate::document::InlineNode::Text(t) if t == "Hello"));
+    assert!(matches!(&inlines[1], crate::document::InlineNode::Text(t) if t == " "));
+    assert!(matches!(&inlines[2], crate::document::InlineNode::Strong(_)));
   }
 
   #[test]

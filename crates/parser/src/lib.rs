@@ -61,7 +61,6 @@ pub fn parse_source(source: &str, source_name: &str) -> miette::Result<Vec<DocNo
 
   let arena = Bump::new();
   let cst = parser::parse(source, &arena).map_err(|e| miette::Report::new(e).with_source_code(named_source.clone()))?;
-  println!("CST: {cst:#?}");
 
   let mut evaluator = evaluator::Evaluator::default();
   let doc_nodes = evaluator

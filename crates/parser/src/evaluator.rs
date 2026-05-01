@@ -24,7 +24,7 @@ use thiserror::Error;
 use crate::{
   ast::CommandView,
   command::CommandResult,
-  document::{DocNode, InlineNode, MathNode},
+  document::{DocNode, HeadingLevel, InlineNode, MathNode},
   green::{GreenElement, GreenNode},
   syntax::SyntaxKind,
   token::TokenKind,
@@ -160,6 +160,47 @@ pub(crate) struct EvalContext {
   pub subparagraph: u32,
 }
 
+impl EvalContext {
+  /// 指定レベルのカウンタをインクリメントし、下位レベルをリセットする
+  pub(crate) fn increment_heading(&mut self, level: HeadingLevel) {
+    match level {
+      HeadingLevel::Part => {
+        self.part += 1;
+        self.chapter = 0;
+        self.section = 0;
+        self.subsection = 0;
+        self.paragraph = 0;
+        self.subparagraph = 0;
+      },
+      HeadingLevel::Chapter => {
+        self.chapter += 1;
+        self.section = 0;
+        self.subsection = 0;
+        self.paragraph = 0;
+        self.subparagraph = 0;
+      },
+      HeadingLevel::Section => {
+        self.section += 1;
+        self.subsection = 0;
+        self.paragraph = 0;
+        self.subparagraph = 0;
+      },
+      HeadingLevel::Subsection => {
+        self.subsection += 1;
+        self.paragraph = 0;
+        self.subparagraph = 0;
+      },
+      HeadingLevel::Paragraph => {
+        self.paragraph += 1;
+        self.subparagraph = 0;
+      },
+      HeadingLevel::Subparagraph => {
+        self.subparagraph += 1;
+      },
+    }
+  }
+}
+
 // =============================================================================
 // 評価器
 // =============================================================================
@@ -271,7 +312,7 @@ impl Evaluator {
   ///
   /// CST の `InlineMath` ノードから、構造トークン（`$`, `{`, `}`）を除去しつつ
   /// テキスト・コマンド・グループ・上付き・下付きを `MathNode` に変換します。
-  fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
+  pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
     let mut nodes = Vec::new();
     for child in math_node.children {
       match child {
@@ -292,10 +333,8 @@ impl Evaluator {
         },
         GreenElement::Node(child_node) => match child_node.kind {
           SyntaxKind::CommandCall => {
-            // 数式内のコマンドはコマンド名をテキストとして扱う
-            if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
-              nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
-            }
+            let math_node = Self::evaluate_math_command(source, child_node);
+            nodes.push(math_node);
           },
           SyntaxKind::MathGroup => {
             let inner = Self::evaluate_inline_math(source, child_node);
@@ -353,15 +392,77 @@ impl Evaluator {
             nodes.push(MathNode::Group(inner));
           },
           SyntaxKind::CommandCall => {
-            if let Some(cmd_token) = child_node.first_token_of_kind(TokenKind::Command) {
-              nodes.push(MathNode::Text(cmd_token.command_name(source).to_string()));
-            }
+            let math_node = Self::evaluate_math_command(source, child_node);
+            nodes.push(math_node);
           },
           _ => {},
         },
       }
     }
     return nodes;
+  }
+
+  /// 数式内コマンドを `MathNode` に変換する
+  ///
+  /// `\frac{a}{b}` → `MathNode::Frac`、`\sqrt[n]{x}` → `MathNode::Sqrt`、
+  /// シンボルコマンド → `MathNode::Symbol`、その他 → `MathNode::Command` に変換します。
+  fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> MathNode {
+    use crate::ast::{CommandView, resolve_symbol_command};
+
+    let view = CommandView::new(cmd_node, source);
+    let name = view.name();
+
+    match name {
+      "frac" => {
+        let mut args = view.args();
+        let numer = args.next().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
+        let denom = args.next().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
+        return MathNode::Frac {
+          numer: Box::new(numer),
+          denom: Box::new(denom),
+        };
+      },
+      "sqrt" => {
+        let index = view.opt_args().next().map(|opt| Box::new(Self::math_arg_to_node(source, opt)));
+        let radicand = view.first_arg().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
+        return MathNode::Sqrt {
+          index,
+          radicand: Box::new(radicand),
+        };
+      },
+      _ => {
+        // シンボルコマンドの解決を試みる
+        if let Some(ch) = resolve_symbol_command(name) {
+          return MathNode::Symbol(ch);
+        }
+
+        // その他のコマンドは引数付きで保持
+        let args: Vec<Vec<MathNode>> = view.args().map(|a| Self::evaluate_inline_math(source, a)).collect();
+
+        if args.is_empty() {
+          // 引数なしの未知コマンドはテキストとして扱う
+          return MathNode::Text(name.to_string());
+        }
+
+        return MathNode::Command {
+          name: name.to_string(),
+          args,
+        };
+      },
+    }
+  }
+
+  /// 数式引数ノードを単一の `MathNode` に変換するヘルパー
+  ///
+  /// 引数ノード内の数式要素を評価し、要素が1つなら直接返し、
+  /// 複数なら `MathNode::Group` でラップします。
+  fn math_arg_to_node(source: &str, arg_node: &GreenNode) -> MathNode {
+    let nodes = Self::evaluate_inline_math(source, arg_node);
+    if nodes.len() == 1 {
+      #[allow(clippy::unwrap_used)]
+      return nodes.into_iter().next().unwrap();
+    }
+    return MathNode::Group(nodes);
   }
 
   /// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
@@ -567,6 +668,134 @@ mod tests {
       }
     } else {
       panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_textbf_creates_strong_in_paragraph() {
+    let result = evaluate_source("Hello \\textbf{World}");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      // Text("Hello"), Text(" "), Strong([Text("World")])
+      assert_eq!(inlines.len(), 3);
+      assert!(matches!(&inlines[2], InlineNode::Strong(_)));
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_emph_creates_emphasis_in_paragraph() {
+    let result = evaluate_source("\\emph{italic}");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      assert_eq!(inlines.len(), 1);
+      assert!(matches!(&inlines[0], InlineNode::Emphasis(_)));
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_enumerate_creates_ordered_list() {
+    let result = evaluate_source("\\begin{enumerate}\\item{First}\\item{Second}\\end{enumerate}");
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      DocNode::List { ordered, items } => {
+        assert!(ordered);
+        assert_eq!(items.len(), 2);
+      },
+      _ => panic!("List が期待されます"),
+    }
+  }
+
+  #[test]
+  fn evaluate_math_frac() {
+    let result = evaluate_source("$\\frac{a}{b}$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 1);
+        assert!(matches!(&math[0], MathNode::Frac { .. }));
+        if let MathNode::Frac { numer, denom } = &math[0] {
+          assert!(matches!(numer.as_ref(), MathNode::Text(t) if t == "a"));
+          assert!(matches!(denom.as_ref(), MathNode::Text(t) if t == "b"));
+        }
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_sqrt() {
+    let result = evaluate_source("$\\sqrt{x}$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 1);
+        assert!(matches!(&math[0], MathNode::Sqrt { index: None, .. }));
+        if let MathNode::Sqrt { radicand, .. } = &math[0] {
+          assert!(matches!(radicand.as_ref(), MathNode::Text(t) if t == "x"));
+        }
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_sqrt_with_index() {
+    let result = evaluate_source("$\\sqrt[3]{x}$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 1);
+        if let MathNode::Sqrt { index, radicand } = &math[0] {
+          assert!(index.is_some());
+          assert!(matches!(index.as_ref().unwrap().as_ref(), MathNode::Text(t) if t == "3"));
+          assert!(matches!(radicand.as_ref(), MathNode::Text(t) if t == "x"));
+        } else {
+          panic!("Sqrt が期待されます");
+        }
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_math_symbol_command() {
+    let result = evaluate_source("$\\alpha$");
+    assert_eq!(result.len(), 1);
+    if let DocNode::Paragraph(inlines) = &result[0] {
+      if let InlineNode::InlineMath(math) = &inlines[0] {
+        assert_eq!(math.len(), 1);
+        assert!(matches!(&math[0], MathNode::Symbol('α')));
+      } else {
+        panic!("InlineMath が期待されます");
+      }
+    } else {
+      panic!("Paragraph が期待されます");
+    }
+  }
+
+  #[test]
+  fn evaluate_itemize_creates_unordered_list() {
+    let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      DocNode::List { ordered, items } => {
+        assert!(!ordered);
+        assert_eq!(items.len(), 2);
+      },
+      _ => panic!("List が期待されます"),
     }
   }
 }

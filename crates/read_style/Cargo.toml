@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 figment2.workspace = true
+garde.workspace = true
 miette.workspace = true
 serde.workspace = true
 thiserror.workspace = true

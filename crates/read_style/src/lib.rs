@@ -4,6 +4,7 @@ use figment2::{
   Figment,
   providers::{Format, Serialized, Toml},
 };
+use garde::Validate;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -24,24 +25,52 @@ pub enum ReadStyleError {
     #[source]
     source: Box<figment2::Error>,
   },
-  /// `font_size` が 0 以下の場合
-  #[error("スタイル設定ファイルの font_size は 0 より大きい必要があります:  font_size={font_size}")]
-  #[diagnostic(code(style::font_size), help("style.toml の font_size に 0 より大きい値を設定してください。"))]
-  InvalidFontSize {
-    /// 不正なフォントサイズ
-    font_size: f32,
+  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
+  #[error("スタイル設定のバリデーションに失敗しました。")]
+  #[diagnostic(code(style::multiple_validation_errors))]
+  MultipleValidationErrors {
+    /// 検証で検出されたすべてのエラー
+    #[related]
+    errors: Vec<ValidationError>,
   },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+/// スタイル設定値バリデーションのエラー詳細。
+#[derive(Debug, Error, Diagnostic)]
+pub enum ValidationError {
+  /// garde が検出したスタイル設定値の不正
+  #[error("'{path}': {message}")]
+  #[diagnostic(code(style::validation::field), help("style.toml の該当フィールドの値を確認してください。"))]
+  Field {
+    /// 不正なフィールドのパス（例: `font_size`, `part.font_size`）
+    path: String,
+    /// 不正の内容
+    message: String,
+  },
+}
+
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub struct Style {
+  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub font_size: f32,
+  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
+  pub line_height_factor: f32,
+  /// 背景色 RGB（0.0-1.0、オプション）。未指定時は背景色なし。
+  #[garde(custom(validate_background_color))]
+  pub background_color: Option<[f32; 3]>,
+  #[garde(dive)]
   pub part: HeadingStyle,
+  #[garde(dive)]
   pub chapter: HeadingStyle,
+  #[garde(dive)]
   pub section: HeadingStyle,
+  #[garde(dive)]
   pub sub_section: HeadingStyle,
+  #[garde(dive)]
   pub paragraph: HeadingStyle,
+  #[garde(dive)]
   pub sub_paragraph: HeadingStyle,
+  #[garde(dive)]
   pub reference: ReferenceStyle,
 }
 
@@ -55,6 +84,8 @@ impl Default for Style {
     let sub_paragraph = "\\chapternum.\\sectionnum.\\subsectionnum.\\paragraphnum.\\subparagraphnum".to_string();
     return Self {
       font_size: 12.0,
+      line_height_factor: 1.2,
+      background_color: None,
       part: HeadingStyle::new(part, 40.0, 20.0, true, true),
       chapter: HeadingStyle::new(chapter, 25.0, 15.0, false, false),
       section: HeadingStyle::new(section, 20.0, 10.0, false, false),
@@ -67,10 +98,13 @@ impl Default for Style {
 }
 
 /// 見出し要素のスタイル設定（フォントサイズと下余白）
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
+#[garde(allow_unvalidated)]
 pub struct HeadingStyle {
   pub format: String,
+  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub font_size: f32,
+  #[garde(range(min = 0.0, max = f32::MAX))]
   pub bottom_margin: f32,
   pub page_break_before: bool,
   pub page_break_after: bool,
@@ -96,10 +130,13 @@ impl HeadingStyle {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
+#[garde(allow_unvalidated)]
 pub struct ReferenceStyle {
   pub format: String,
+  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub font_size: f32,
+  #[garde(range(min = 0.0, max = f32::MAX))]
   pub bottom_margin: f32,
 }
 
@@ -134,17 +171,40 @@ pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleErr
     source: Box::new(source),
   })?;
 
-  validate_style(&style)?;
+  if let Err(report) = style.validate() {
+    let errors = report
+      .iter()
+      .map(|(path, error)| ValidationError::Field {
+        path: path.to_string(),
+        message: error.to_string(),
+      })
+      .collect();
+    return Err(ReadStyleError::MultipleValidationErrors { errors });
+  }
 
-  info!(font_size = style.font_size, "スタイル設定ファイルの読み込みが完了しました");
+  info!(
+    font_size = style.font_size,
+    line_height_factor = style.line_height_factor,
+    "スタイル設定ファイルの読み込みが完了しました"
+  );
   return Ok(style);
 }
 
-fn validate_style(style: &Style) -> Result<(), ReadStyleError> {
-  if style.font_size <= 0.0 {
-    return Err(ReadStyleError::InvalidFontSize {
-      font_size: style.font_size,
-    });
+/// `background_color` の各成分が [0.0, 1.0] の範囲かを検証します。
+///
+/// `None` はそのまま通過させます。NaN や Infinity は範囲チェックで自動的に弾かれます。
+/// 引数の型は `garde` のカスタムバリデーター API に従います。
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn validate_background_color(value: &Option<[f32; 3]>, _: &()) -> garde::Result {
+  let Some([r, g, b]) = value else {
+    return Ok(());
+  };
+  for (component, v) in [("R", *r), ("G", *g), ("B", *b)] {
+    if !(0.0..=1.0).contains(&v) {
+      return Err(garde::Error::new(format!(
+        "background_color の {component} 成分は [0.0, 1.0] の範囲である必要があります: {v}"
+      )));
+    }
   }
   return Ok(());
 }

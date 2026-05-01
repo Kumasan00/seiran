@@ -1,0 +1,199 @@
+//! インラインテキスト装飾コマンド群
+//!
+//! `\textbf`, `\emph`, `\textit`, `\texttt`, `\textsf` など、
+//! テキストにスタイルを適用するインラインコマンドの共通処理を提供します。
+//! 各コマンドは子要素を再帰的に `InlineNode` に変換し、
+//! 対応するラッパーノードを生成します。
+
+use crate::{
+  ast::{CommandView, extract_inline_nodes},
+  document::InlineNode,
+  evaluator::EvalError,
+};
+
+/// 引数1つを取り、子要素を `InlineNode` リストに変換してラップする共通処理
+///
+/// `CommandKind::InlineWrapper` から呼ばれます。
+///
+/// # Arguments
+///
+/// * `view` - コマンドの型付きビュー
+/// * `wrapper` - `Vec<InlineNode>` を受け取りラッパー `InlineNode` を生成する関数
+///
+/// # Errors
+///
+/// 引数の不足・過剰の場合にエラーを返します
+pub(super) fn inline_wrapper(
+  view: &CommandView,
+  wrapper: fn(Vec<InlineNode>) -> InlineNode,
+) -> Result<Vec<InlineNode>, EvalError> {
+  let name = view.name();
+  let Some(first_arg) = view.first_arg() else {
+    return Err(EvalError::MissingCommandArgument {
+      name: name.to_string(),
+      expected: "テキスト".to_string(),
+      span: view.span().into(),
+    });
+  };
+  if view.args_count() > 1 || !view.opt_args_is_empty() {
+    return Err(EvalError::ExtraCommandArgument {
+      name: name.to_string(),
+      span: view.span().into(),
+    });
+  }
+
+  let children = extract_inline_nodes(view.source(), first_arg);
+  return Ok(vec![wrapper(children)]);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+
+  use super::*;
+  use crate::{green::GreenElement, parser::parse, syntax::SyntaxKind};
+
+  /// テスト用: ソースからコマンドビューを取得
+  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::green::GreenNode<'a> {
+    let cst = parse(source, arena).unwrap();
+    for child in cst.children {
+      if let GreenElement::Node(n) = child
+        && n.kind == SyntaxKind::CommandCall
+      {
+        return n;
+      }
+    }
+    panic!("CommandCall ノードが見つかりません");
+  }
+
+  #[test]
+  fn textbf_creates_strong_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\textbf{hello}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Strong).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      InlineNode::Strong(children) => {
+        assert_eq!(children.len(), 1);
+        assert!(matches!(&children[0], InlineNode::Text(t) if t == "hello"));
+      },
+      _ => panic!("Strong が期待されます"),
+    }
+  }
+
+  #[test]
+  fn emph_creates_emphasis_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\emph{world}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Emphasis).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert!(matches!(&result[0], InlineNode::Emphasis(_)));
+  }
+
+  #[test]
+  fn textit_creates_emphasis_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\textit{italic}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Emphasis).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert!(matches!(&result[0], InlineNode::Emphasis(_)));
+  }
+
+  #[test]
+  fn texttt_creates_code_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\texttt{code}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Code).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert!(matches!(&result[0], InlineNode::Code(_)));
+  }
+
+  #[test]
+  fn textsf_creates_sans_serif_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\textsf{sans}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::SansSerif).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert!(matches!(&result[0], InlineNode::SansSerif(_)));
+  }
+
+  #[test]
+  fn rejects_missing_argument() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\textbf";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act & Assert
+    assert!(matches!(inline_wrapper(&view, InlineNode::Strong), Err(EvalError::MissingCommandArgument { .. })));
+  }
+
+  #[test]
+  fn rejects_extra_arguments() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\textbf{a}{b}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act & Assert
+    assert!(matches!(inline_wrapper(&view, InlineNode::Strong), Err(EvalError::ExtraCommandArgument { .. })));
+  }
+
+  #[test]
+  fn nested_inline_commands() {
+    // Arrange — \textbf{\emph{nested}} のような入れ子
+    let arena = Bump::new();
+    let source = "\\textbf{hello}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Strong).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    if let InlineNode::Strong(children) = &result[0] {
+      assert!(!children.is_empty());
+    } else {
+      panic!("Strong が期待されます");
+    }
+  }
+}

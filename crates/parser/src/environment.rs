@@ -16,6 +16,7 @@ mod itemize;
 #[derive(Clone, Copy, Debug)]
 enum EnvironmentKind {
   Itemize,
+  Enumerate,
   Undefined,
 }
 
@@ -24,6 +25,7 @@ impl EnvironmentKind {
   fn execute(self, view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
     match self {
       EnvironmentKind::Itemize => itemize::itemize(view, evaluator),
+      EnvironmentKind::Enumerate => itemize::enumerate(view, evaluator),
       EnvironmentKind::Undefined => Err(EvalError::UnknownEnvironment {
         name: view.name().to_string(),
         span: view.span().into(),
@@ -50,4 +52,5 @@ impl Evaluator {
 
 static ENVIRONMENT_MAP: phf::Map<&'static str, EnvironmentKind> = phf_map! {
   "itemize" => EnvironmentKind::Itemize,
+  "enumerate" => EnvironmentKind::Enumerate,
 };

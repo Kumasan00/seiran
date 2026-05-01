@@ -60,7 +60,7 @@ use crate::layout_node::{LayoutNode, Style};
 pub struct LoweringContext {
   /// デフォルトのフォントサイズ（pt）
   ///
-  /// `config.toml` の `pdf.font_size` に対応。
+  /// `style.toml` の `font_size` に対応。
   /// 段落テキストに適用される基準サイズ。
   pub default_font_size: f32,
 }

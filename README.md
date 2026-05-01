@@ -73,15 +73,10 @@ style_path = "config/style.toml"            # スタイル設定ファイルパ�
 output_dir = "target/"         # 出力ディレクトリ
 height = 842.0                 # ページ高さ（pt, A4 = 842）
 width = 595.0                  # ページ幅（pt, A4 = 595）
-font_size = 10.0               # デフォルトフォントサイズ（pt）
-line_height_factor = 1.05      # 行間係数
 margin_top = 99.0              # 上余白（pt）
 margin_bottom = 99.0           # 下余白（pt）
 margin_left = 85.0             # 左余白（pt）
 margin_right = 85.0            # 右余白（pt）
-# background_r = 0.8           # 背景色 R（0.0–1.0、オプション、RGB全指定必須）
-# background_g = 0.7           # 背景色 G
-# background_b = 0.6           # 背景色 B
 
 [font_configs.serif]           # 19種別それぞれに設定
 font_name = "MyFont"           # PDF 内フォント名（一意必須）
@@ -103,6 +98,8 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ```toml
 font_size = 12.0               # 本文フォントサイズ（pt）
+line_height_factor = 1.05      # 行間係数（> 0）
+# background_color = [0.8, 0.7, 0.6]  # 背景色 RGB（各 0.0–1.0、オプション）
 
 [part]
 font_size = 40.0               # Part 見出しフォントサイズ

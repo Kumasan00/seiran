@@ -1,7 +1,8 @@
 //! TOML ファイルからのデシリアライズ用設定構造体
 //!
 //! このモジュールは、TOML ファイルの形式に直接対応した構造体群を定義します。
-//! `serde` による自動デシリアライズを用いて、TOML テキストを構造化データに変換する
+//! `serde` による自動デシリアライズと `garde` による宣言的バリデーションを
+//! 組み合わせ、TOML テキストを構造化データに変換しつつ値の妥当性を検証する
 //! 中間層（プリプロセス層）として機能します。
 //!
 //! ## 処理フロー
@@ -12,160 +13,118 @@
 //! toml::from_slice()（デシリアライズ）
 //!   ↓
 //! PreConfig（TOML そのものの構造）
-//!   ↓ + パス解決・バリデーション
+//!   ↓ garde::Validate（範囲・長さ・相互制約の検証）
+//!   ↓ + パス解決・型変換
 //! processed_config::Config（処理済み・検証済み設定）
 //! ```
 //!
-//! ## TOML ファイルの全体構造
+//! ## バリデーション項目
 //!
-//! ```toml
-//! name = "my_document"
-//!
-//! [pdf]
-//! output_dir = "./output"
-//! height = 297.0
-//! width = 210.0
-//! font_size = 12.0
-//! line_height_factor = 1.5
-//! margin_top = 20.0
-//! margin_bottom = 20.0
-//! margin_left = 20.0
-//! margin_right = 20.0
-//! background_r = 1.0
-//! background_g = 1.0
-//! background_b = 1.0
-//!
-//! [font_configs.serif]
-//! font_name = "Noto Serif"
-//! font_path = "./fonts/NotoSerif-Regular.ttf"
-//! font_index = 0  # オプション
-//! script = "latn"  # オプション
-//! language = "eng"  # オプション
-//!
-//! [[font_configs.serif.features]]
-//! tag = "liga"
-//! value = 1
-//!
-//! # ... （他の 18 フォント種別）
-//! ```
-//!
-//! ## 構造体の役割
-//!
-//! - [`PreConfig`] - TOML ファイル全体（最上位ノード）
-//! - [`PrePdfConfig`] - PDF 設定セクション
-//! - [`PreFontConfigs`] - 19 フォント設定群のコンテナ
-//! - [`PreFontConfig`] - 単一フォント種別の設定
-//! - [`PreVariationAxis`] - バリアブルフォント軸の設定値
-//! - [`PreFontFeature`] - OpenType フィーチャータグと値
-//!
-//! ## 重要な注意点
-//!
-//! - **バリデーションなし**: このモジュールの構造体はバリデーションを行いません
-//! - **変換なし**: パスやコード値の変換も行いません
-//! - **ロジックなし**: TOML の形状に完全に投影した、データ保持のみの層です
-//! - **検証・変換は `lib.rs` で実施**: パス正規化、バリデーション、型変換は親モジュールで実行
+//! | 項目 | 条件 | 実装 |
+//! |-----|------|------|
+//! | `pdf.height/width` | > 0 | `range(min = f32::MIN_POSITIVE)` |
+//! | `pdf.margin_*` | >= 0 | `range(min = 0.0)` |
+//! | 余白合計 | < 寸法 | `custom(validate_margin_sums)` |
+//! | `script` | 4 文字 | `length(equal = 4)` |
+//! | `language` | 3 or 4 文字 | `length(min = 3, max = 4)` |
+//! | feature `tag` | 4 文字 | `length(equal = 4)` |
+//! | 軸 `name` | 4 文字 | `length(equal = 4)` |
+//! | `font_name` 重複 | なし | `custom(validate_unique_font_names)` |
 
 use std::path::PathBuf;
 
+use garde::Validate;
 use serde::Deserialize;
 use types::FontType;
 
+use crate::ValidationError;
+
 /// TOML ファイル全体をデシリアライズした設定
-///
-/// TOML ファイルの最上位ノード構造を表します。
-/// ここからは生データであり、バリデーションと変換は行われていません。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// name = "my_document"
-/// [pdf]
-/// # ...
-/// [font_configs]
-/// # ...
-/// ```
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PreConfig {
   /// ドキュメント名（PDF ファイル名の基盤）
+  #[garde(custom(validate_document_name))]
   pub name: String,
   /// ドキュメントの著者名（オプション）
+  #[garde(skip)]
   pub author: Option<String>,
   /// ドキュメントの主題（オプション）
+  #[garde(skip)]
   pub subject: Option<String>,
   /// スタイル設定ファイルへのパス（オプション）
+  #[garde(skip)]
   pub style_path: Option<PathBuf>,
   /// 参照設定ファイルへのパス（オプション）
+  #[garde(skip)]
   pub references_path: Option<PathBuf>,
   /// PDF ページ設定
+  #[garde(dive)]
   pub pdf: PrePdfConfig,
   /// 19 フォント種別の設定群
+  #[garde(dive)]
   pub font_configs: PreFontConfigs,
 }
 
 /// 19 フォント種別すべてのプリプロセス設定
-///
-/// `[font_configs]` セクション下の 19 種類のフォント設定を保持します。
-/// 各フォント種別の設定は独立した `PreFontConfig` として格納されます。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// [font_configs.serif]
-/// [font_configs.serif_bold]
-/// # ... 他の 17 フォント
-/// ```
-///
-/// ## フォント種別一覧
-///
-/// - **Latin 体（12 種類）**
-///   - `serif` × 4（標準、太字、イタリック、太字イタリック）
-///   - `sans_serif` × 4（標準、太字、イタリック、太字イタリック）
-///   - `monospace` × 4（標準、太字、イタリック、太字イタリック）
-/// - **特殊（1 種類）**
-///   - `math`（数式用）
-/// - **日本語（6 種類）**
-///   - `japanese_serif` × 2（標準、太字）
-///   - `japanese_sans_serif` × 2（標準、太字）
-///   - `japanese_monospace` × 2（標準、太字）
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
+#[garde(allow_unvalidated)]
 pub(crate) struct PreFontConfigs {
   /// Serif 標準フォント
+  #[garde(dive)]
   pub serif: PreFontConfig,
   /// Serif 太字フォント
+  #[garde(dive)]
   pub serif_bold: PreFontConfig,
   /// Serif イタリックフォント
+  #[garde(dive)]
   pub serif_italic: PreFontConfig,
   /// Serif 太字イタリックフォント
+  #[garde(dive)]
   pub serif_bold_italic: PreFontConfig,
   /// Sans Serif 標準フォント
+  #[garde(dive)]
   pub sans_serif: PreFontConfig,
   /// Sans Serif 太字フォント
+  #[garde(dive)]
   pub sans_serif_bold: PreFontConfig,
   /// Sans Serif イタリックフォント
+  #[garde(dive)]
   pub sans_serif_italic: PreFontConfig,
   /// Sans Serif 太字イタリックフォント
+  #[garde(dive)]
   pub sans_serif_bold_italic: PreFontConfig,
   /// Monospace 標準フォント
+  #[garde(dive)]
   pub monospace: PreFontConfig,
   /// Monospace 太字フォント
+  #[garde(dive)]
   pub monospace_bold: PreFontConfig,
   /// Monospace イタリックフォント
+  #[garde(dive)]
   pub monospace_italic: PreFontConfig,
   /// Monospace 太字イタリックフォント
+  #[garde(dive)]
   pub monospace_bold_italic: PreFontConfig,
   /// 数式用フォント
+  #[garde(dive)]
   pub math: PreFontConfig,
   /// 日本語 Serif 標準フォント
+  #[garde(dive)]
   pub japanese_serif: PreFontConfig,
   /// 日本語 Serif 太字フォント
+  #[garde(dive)]
   pub japanese_serif_bold: PreFontConfig,
   /// 日本語 Sans Serif 標準フォント
+  #[garde(dive)]
   pub japanese_sans_serif: PreFontConfig,
   /// 日本語 Sans Serif 太字フォント
+  #[garde(dive)]
   pub japanese_sans_serif_bold: PreFontConfig,
   /// 日本語 Monospace 標準フォント
+  #[garde(dive)]
   pub japanese_monospace: PreFontConfig,
   /// 日本語 Monospace 太字フォント
+  #[garde(dive)]
   pub japanese_monospace_bold: PreFontConfig,
 }
 
@@ -197,184 +156,132 @@ impl PreFontConfigs {
 }
 
 /// 単一フォント種別のプリセット設定情報
-///
-/// 各フォント種別に対する完全な設定を保持します。
-/// このデータは後に `processed_config::FontConfig` に変換され、
-/// パス正規化、バリデーション、型変換が行われます。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// [font_configs.serif]
-/// font_name = "Noto Serif"
-/// font_path = "./fonts/NotoSerif-Regular.ttf"
-/// font_index = 0  # オプション、デフォルト: 0
-/// script = "latn"  # オプション、OpenType script tag
-/// language = "eng"  # オプション、BCP 47 language
-///
-/// [font_configs.serif.variation_axes]
-/// weight = 400
-///
-/// [[font_configs.serif.features]]
-/// tag = "liga"
-/// value = 1
-/// ```
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
+#[garde(allow_unvalidated)]
 pub(crate) struct PreFontConfig {
   /// `PDF FontDescriptor` での基本フォント名（各フォント種別で一意）
+  #[garde(length(min = 1))]
   pub font_name: String,
   /// フォントファイルへのパス（相対または絶対）
-  /// 後に正規化されて絶対パスに変換されます
   pub font_path: PathBuf,
-  /// TTC（TrueType Collection）ファイル内のフォントインデックス
-  /// デフォルトは 0（最初のフォント）
+  /// TTC ファイル内のフォントインデックス（デフォルト 0）
   pub font_index: Option<u32>,
   /// バリアブルフォント軸の設定値配列
-  /// 例：weight = 700、width = 80 など
+  #[garde(dive)]
   pub variation_axes: Option<Vec<PreVariationAxis>>,
-  /// OpenType Script Tag（ISO 15924 コード、4 文字）
-  /// 例："latn"（Latin）、"arab"（Arabic）、"cyrl"（Cyrillic）
+  /// OpenType Script Tag（ISO 15924 コード、4 バイト ASCII）
+  #[garde(ascii, length(bytes, equal = 4))]
   pub script: Option<String>,
-  /// BCP 47 言語タグ（3 or 4 文字）
-  /// 例："eng"（English）、"ja"（日本語）、"ko"（韓国語）
+  /// BCP 47 言語タグ（3 または 4 バイト ASCII）
+  #[garde(ascii, length(bytes, min = 3, max = 4))]
   pub language: Option<String>,
   /// OpenType フィーチャー設定配列
-  /// 例："liga"（ligatures）、"smcp"（small capitals）など
+  #[garde(dive)]
   pub features: Option<Vec<PreFontFeature>>,
 }
 
 /// バリアブルフォント軸の単一設定値
-///
-/// 軸名と目標値のペアを表します。
-/// 複数の軸を組み合わせることで、変数フォントの特定のバリエーションを選択します。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// [font_configs.serif.variation_axes]
-/// weight = 700      # 太さを 700（太字）に設定
-/// width = 80        # 幅を 80%（Condensed）に設定
-/// slnt = -12        # スラント角を -12 に設定
-/// ```
-///
-/// ## 標準軸名（OpenType Registry）
-///
-/// | 軸名 | 説明 | 典型値 |
-/// |------|------|--------|
-/// | weight | 太さ | 100-900 |
-/// | width | 横幅 | 50-200 |
-/// | slant | スラント | -90-0 |
-/// | opsz | 光学サイズ | 6-72 |
-/// | GRAD | グラデーション | -200-150 |
-/// | XTRA | x-トランスペアレント | 0-100 |
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PreVariationAxis {
-  /// 軸名（4 文字の OpenType 軸タグ、例："wght"、"wdth"）
+  /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
+  #[garde(ascii, length(bytes, equal = 4))]
   pub name: String,
   /// 軸の目標値（実数）
-  /// 後にバリデーションされ、フォントの最小値〜最大値の範囲内にあることが確認されます
+  #[garde(skip)]
   pub value: f64,
 }
 
 /// OpenType フィーチャータグと値のペア
-///
-/// フォント内で利用可能な Advanced Typography 機能（フィーチャー）を有効化/無効化します。
-/// 複数のフィーチャーを組み合わせることで、細かいタイポグラフィ制御が可能になります。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// [[font_configs.serif.features]]
-/// tag = "liga"  # Ligatures を有効化
-/// value = 1
-///
-/// [[font_configs.serif.features]]
-/// tag = "smcp"  # Small capitals を有効化
-/// value = 1
-/// ```
-///
-/// ## よく使われるフィーチャータグ
-///
-/// | タグ | 説明 | 値 |
-/// |------|------|-----|
-/// | liga | リガチャ（fi → fi） | 0/1 |
-/// | dlig | 随意リガチャ | 0/1 |
-/// | smcp | 小文字大文字化 | 0/1 |
-/// | c2sc | 大文字小文字化対応 | 0/1 |
-/// | zero | スラッシュ付きゼロ | 0/1 |
-/// | kern | カーニング | 0/1 |
-/// | onum | 旧体数字 | 0/1 |
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PreFontFeature {
-  /// フィーチャータグ（4 文字、例："liga"、"smcp"、"dlig"）
-  /// 後に長さが 4 文字であることが検証されます
+  /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
+  #[garde(ascii, length(bytes, equal = 4))]
   pub tag: String,
   /// フィーチャーの値（通常は 0=無効、1=有効）
+  #[garde(skip)]
   pub value: u32,
 }
 
 /// PDF ページレイアウトのプリセット設定
-///
-/// PDF ページサイズ、余白、フォント設定、背景色など、
-/// 出力 PDF のレイアウト全体を制御する設定を保持します。
-///
-/// ## TOML での表現
-///
-/// ```toml
-/// [pdf]
-/// output_dir = "./output"
-/// height = 297.0          # ページ高さ（mm、A4）
-/// width = 210.0           # ページ幅（mm、A4）
-/// font_size = 12.0        # 基本フォント高さ
-/// line_height_factor = 1.5  # 行間の倍率
-/// margin_top = 20.0       # 上余白
-/// margin_bottom = 20.0    # 下余白
-/// margin_left = 20.0      # 左余白
-/// margin_right = 20.0     # 右余白
-/// background_r = 1.0      # 背景色 R（オプション）
-/// background_g = 1.0      # 背景色 G（オプション）
-/// background_b = 1.0      # 背景色 B（オプション）
-/// ```
-///
-/// ## よくあるページサイズ例
-///
-/// | サイズ | 高さ | 幅 |
-/// |--------|------|-----|
-/// | A4 | 297.0 | 210.0 |
-/// | Letter | 279.4 | 215.9 |
-/// | A5 | 210.0 | 148.0 |
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
+#[garde(allow_unvalidated)]
 pub(crate) struct PrePdfConfig {
   /// 出力ディレクトリ（PDF ファイルの保存先）
   pub output_dir: PathBuf,
-  /// ページの高さ（mm 単位）
-  /// 後に正の値であることが検証されます
+  /// ページの高さ（mm 単位、> 0）
+  #[garde(range(min = f32::MIN_POSITIVE))]
   pub height: f32,
-  /// ページの幅（mm 単位）
-  /// 後に正の値であることが検証されます
+  /// ページの幅（mm 単位、> 0）
+  #[garde(range(min = f32::MIN_POSITIVE))]
   pub width: f32,
-  /// 行の高さの倍率（1.0 = シングルスペース、1.5 = 1.5 行分）
-  /// 後に正の値であることが検証されます
-  pub line_height_factor: f32,
-  /// 上余白（mm 単位）
-  /// 後に非負値であることが検証されます
+  /// 上余白（mm 単位、>= 0）
+  #[garde(range(min = 0.0))]
   pub margin_top: f32,
-  /// 下余白（mm 単位）
-  /// 後に非負値であることが検証されます
+  /// 下余白（mm 単位、>= 0）
+  #[garde(range(min = 0.0))]
   pub margin_bottom: f32,
-  /// 左余白（mm 単位）
-  /// 後に非負値であることが検証されます
+  /// 左余白（mm 単位、>= 0）
+  #[garde(range(min = 0.0))]
   pub margin_left: f32,
-  /// 右余白（mm 単位）
-  /// 後に非負値であることが検証されます
+  /// 右余白（mm 単位、>= 0）
+  #[garde(range(min = 0.0))]
   pub margin_right: f32,
-  /// 背景色の赤成分（0.0-1.0、オプション）
-  /// 値がない場合、背景色は設定されません
-  pub background_r: Option<f32>,
-  /// 背景色の緑成分（0.0-1.0、オプション）
-  /// 値がない場合、背景色は設定されません
-  pub background_g: Option<f32>,
-  /// 背景色の青成分（0.0-1.0、オプション）
-  /// 値がない場合、背景色は設定されません
-  pub background_b: Option<f32>,
+}
+
+/// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
+///
+/// garde の field-level 検証では表現できない相互制約のため、`PreConfig::validate` の
+/// 後に明示的に呼び出します。
+pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ValidationError>) {
+  let vertical = value.margin_top + value.margin_bottom;
+  if vertical >= value.height {
+    errors.push(ValidationError::Field {
+      path: "pdf".to_string(),
+      message: format!("方向 vertical の余白合計 ({vertical}) が寸法 {} 未満である必要があります", value.height),
+    });
+  }
+  let horizontal = value.margin_left + value.margin_right;
+  if horizontal >= value.width {
+    errors.push(ValidationError::Field {
+      path: "pdf".to_string(),
+      message: format!("方向 horizontal の余白合計 ({horizontal}) が寸法 {} 未満である必要があります", value.width),
+    });
+  }
+}
+
+/// ドキュメント名を検証します。
+///
+/// `name` は `{name}.pdf` として出力ファイル名に直接使われるため、
+/// パストラバーサルや空ファイル名を防ぐために以下を確認します:
+/// - 空文字列でない
+/// - パスセパレータ（`/`、`\`）を含まない
+/// - `.` または `..` 単独でない
+///
+/// 引数の型は `garde` のカスタムバリデーター API に従います。
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn validate_document_name(value: &str, _: &()) -> garde::Result {
+  if value.is_empty() {
+    return Err(garde::Error::new("ドキュメント名は空にできません"));
+  }
+  if value.contains('/') || value.contains('\\') {
+    return Err(garde::Error::new("ドキュメント名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
+  }
+  if value == "." || value == ".." {
+    return Err(garde::Error::new("ドキュメント名を '.' または '..' にすることはできません"));
+  }
+  return Ok(());
+}
+
+/// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。
+pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Vec<ValidationError>) {
+  let mut seen = std::collections::HashSet::new();
+  for font_type in FontType::ALL {
+    let name = value.get(font_type).font_name.as_str();
+    if !seen.insert(name) {
+      errors.push(ValidationError::Field {
+        path: format!("font_configs.{font_type:?}"),
+        message: format!("フォント名 '{name}' が重複しています"),
+      });
+    }
+  }
 }

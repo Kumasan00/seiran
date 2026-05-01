@@ -66,7 +66,6 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   let lowering_ctx = layout::LoweringContext::new(style.font_size);
   let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
   info!("Document IR → LayoutNode への変換が完了しました");
-  // println!("{layout_nodes:#?}");
 
   let font_data = font::FontData::new(&config.font_configs)?;
   info!("フォントの読み込みが完了しました");
@@ -93,6 +92,5 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Resu
   })?;
   info!(output_path = %config.pdf.output_path.display(), "PDF の保存が完了しました");
 
-  // println!("{:#?}", &items);
   return Ok(());
 }

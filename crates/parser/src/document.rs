@@ -297,6 +297,19 @@ impl HeadingLevel {
       HeadingLevel::Subparagraph => "subparagraph",
     };
   }
+
+  /// エラーメッセージ用の引数説明を返す
+  #[must_use]
+  pub(crate) fn expected_name(self) -> &'static str {
+    return match self {
+      HeadingLevel::Part => "部名",
+      HeadingLevel::Chapter => "章名",
+      HeadingLevel::Section => "セクション名",
+      HeadingLevel::Subsection => "サブセクション名",
+      HeadingLevel::Paragraph => "段落名",
+      HeadingLevel::Subparagraph => "小節名",
+    };
+  }
 }
 
 impl fmt::Display for HeadingLevel {
