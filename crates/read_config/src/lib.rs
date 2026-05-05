@@ -1,33 +1,7 @@
 //! TOML 設定ファイルのパース・検証・変換モジュール
 //!
-//! PDF 生成に必要な設定情報を TOML ファイルから読み込み、
-//! `garde` による宣言的バリデーション、ファイルパスの解決、型変換を実行して
-//! アプリケーションが直接使用できる構造化設定データに変換します。
-//!
-//! ## 処理フロー
-//!
-//! ```text
-//! config.toml（TOML テキスト）
-//!   ↓
-//! fs::read()（ファイル読み込み）
-//!   ↓
-//! toml::from_slice()（TOML パース → PreConfig）
-//!   ↓
-//! garde::Validate::validate（範囲・長さ・相互制約の検証）
-//!   ↓
-//! パス解決（canonicalize）
-//!   ↓
-//! 出力ディレクトリの作成
-//!   ↓
-//! Config（構造化設定）
-//! ```
-//!
-//! ## 19 フォント種別
-//!
-//! 設定は 19 フォント種別に対応：
-//! - Latin: `serif` × 4 + `sans_serif` × 4 + `monospace` × 4 = 12
-//! - Special: `math` = 1
-//! - Japanese: `serif` 2 + `sans_serif` 2 + `monospace` 2 = 6
+//! PDF 生成に必要な設定情報を TOML から読み込み、`garde` による宣言的バリデーション、
+//! ファイルパスの解決、型変換を実行して構造化設定データを構築します。
 
 use std::{
   fs,
@@ -145,44 +119,72 @@ pub enum ValidationError {
 
 /// 指定パスから設定ファイルを読み込みます。
 ///
+/// [`parse_config`] → [`resolve`] を連結する利便ラッパで、生産コードから使う想定です。
+///
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
-pub fn read_config(config_path: &PathBuf) -> Result<Config, ReadConfigError> {
+pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
   info!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),
     source,
   })?;
-  let pre_config: PreConfig = toml::from_slice(&config_content).map_err(|source| ReadConfigError::ParseToml {
-    path: config_path.display().to_string(),
+  let pre_config = parse_config(&config_content, config_path)?;
+  let current_dir = std::env::current_dir().map_err(|source| ReadConfigError::CurrentDir { source })?;
+  let config = resolve(pre_config, &current_dir)?;
+
+  info!(
+    config_path = %config_path.display(),
+    document_name = %config.name,
+    output_path = %config.pdf.output_path.display(),
+    "設定ファイルの読み込みが完了しました"
+  );
+  return Ok(config);
+}
+
+/// TOML バイト列を [`PreConfig`] にパースします（I/O なし）。
+///
+/// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
+/// 値検証は行いません。検証は [`validate_values`] または [`resolve`] で実行します。
+///
+/// # Errors
+///
+/// TOML の構文が不正な場合に [`ReadConfigError::ParseToml`] を返します。
+fn parse_config(bytes: &[u8], source_path: &Path) -> Result<PreConfig, ReadConfigError> {
+  return toml::from_slice(bytes).map_err(|source| ReadConfigError::ParseToml {
+    path: source_path.display().to_string(),
     source,
-  })?;
+  });
+}
 
-  // 検証フェーズ: garde の field-level 検証、相互制約、すべてのパス存在確認を
-  // 単一の `errors` に集約して 1 度に報告する（I/O は副作用のないものに限る）。
-  let mut errors: Vec<ValidationError> = Vec::new();
-  if let Err(report) = pre_config.validate() {
-    errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
-      path: path.to_string(),
-      message: error.to_string(),
-    }));
-  }
-  pre_config::validate_margin_sums(&pre_config.pdf, &mut errors);
-  pre_config::validate_unique_font_names(&pre_config.font_configs, &mut errors);
+/// [`PreConfig`] からパス解決・出力ディレクトリ作成を行い [`Config`] を構築します。
+///
+/// 値検証も内部で再実行し、値違反とパス解決エラーを 1 回の
+/// [`ReadConfigError::MultipleValidationErrors`] に集約します。
+///
+/// # Errors
+///
+/// - 値検証またはパス解決に違反があった場合は [`ReadConfigError::MultipleValidationErrors`]
+/// - 出力ディレクトリ作成・正規化に失敗した場合は [`ReadConfigError::CreateOutputDir`] または
+///   [`ReadConfigError::CanonicalizeOutputDir`]
+fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError> {
+  // 値検証エラーとパス解決エラーを単一の `errors` に集約して 1 度に報告する。
+  let mut errors: Vec<ValidationError> = match validate_values(&pre) {
+    Ok(()) => Vec::new(),
+    Err(value_errors) => value_errors,
+  };
 
-  let style_path = canonicalize_or_record(pre_config.style_path.as_deref(), &mut errors, |path, source| {
+  let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
     ValidationError::StylePathResolution { path, source }
   });
-  let references_path =
-    canonicalize_or_record(pre_config.references_path.as_deref(), &mut errors, |path, source| {
-      ValidationError::ReferencesPathResolution { path, source }
-    });
+  let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
+    ValidationError::ReferencesPathResolution { path, source }
+  });
 
-  // 19 フォント種別を変換しつつパス解決エラーも同じ `errors` に集約する
   let mut font_configs_vec: Vec<FontConfig> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    match to_font_config(font_type, pre_config.font_configs.get(font_type)) {
+    match to_font_config(font_type, pre.font_configs.get(font_type)) {
       Ok(font_config) => font_configs_vec.push(font_config),
       Err(error) => errors.push(error),
     }
@@ -193,9 +195,7 @@ pub fn read_config(config_path: &PathBuf) -> Result<Config, ReadConfigError> {
   }
 
   // 副作用フェーズ: 検証通過後にディレクトリ作成や正規化を実行する
-  let current_dir = std::env::current_dir().map_err(|source| ReadConfigError::CurrentDir { source })?;
-
-  let pre_config::PreConfig {
+  let PreConfig {
     name,
     author,
     subject,
@@ -203,12 +203,12 @@ pub fn read_config(config_path: &PathBuf) -> Result<Config, ReadConfigError> {
     references_path: _,
     pdf: pre_pdf_config,
     font_configs: _,
-  } = pre_config;
+  } = pre;
 
-  let output_path = build_output_pdf_path(&current_dir, &pre_pdf_config.output_dir, &name)?;
+  let output_path = build_output_pdf_path(current_dir, &pre_pdf_config.output_dir, &name)?;
   let font_configs = FontConfigs::from_all(font_configs_vec);
 
-  let config = Config {
+  return Ok(Config {
     name,
     author,
     subject,
@@ -226,22 +226,34 @@ pub fn read_config(config_path: &PathBuf) -> Result<Config, ReadConfigError> {
       },
     },
     font_configs,
-  };
+  });
+}
 
-  info!(
-    config_path = %config_path.display(),
-    document_name = %config.name,
-    output_path = %config.pdf.output_path.display(),
-    "設定ファイルの読み込みが完了しました"
-  );
-  return Ok(config);
+/// [`PreConfig`] の値検証を実行します（I/O なし）。
+///
+/// `garde` のフィールド検証、上下／左右の余白合計、19 フォント種別の `font_name` 重複を
+/// すべて 1 度に集約して返します。
+///
+/// # Errors
+///
+/// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
+fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
+  let mut errors: Vec<ValidationError> = Vec::new();
+  if let Err(report) = pre.validate() {
+    errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
+      path: path.to_string(),
+      message: error.to_string(),
+    }));
+  }
+  pre_config::validate_margin_sums(&pre.pdf, &mut errors);
+  pre_config::validate_unique_font_names(&pre.font_configs, &mut errors);
+  if errors.is_empty() {
+    return Ok(());
+  }
+  return Err(errors);
 }
 
 /// オプションのパスを `canonicalize` し、失敗時はエラーを `errors` に追加します。
-///
-/// `None` はそのまま `None` を返します。`Some(p)` の正規化に失敗した場合は
-/// `make_err` で `ValidationError` を生成して `errors` に push し、戻り値は `None` とします。
-/// 検証通過の判定は呼び出し側の `errors.is_empty()` で行うため、ここで早期 return しません。
 fn canonicalize_or_record(
   path: Option<&Path>,
   errors: &mut Vec<ValidationError>,
@@ -259,30 +271,7 @@ fn canonicalize_or_record(
   }
 }
 
-/// 出力ディレクトリを作成・正規化し、`{name}.pdf` の絶対パスを返します。
-fn build_output_pdf_path(current_dir: &Path, output_dir: &Path, name: &str) -> Result<PathBuf, ReadConfigError> {
-  let output_dir_path = if output_dir.is_absolute() {
-    output_dir.to_path_buf()
-  } else {
-    current_dir.join(output_dir)
-  };
-  fs::create_dir_all(&output_dir_path).map_err(|source| ReadConfigError::CreateOutputDir {
-    path: output_dir_path.display().to_string(),
-    source,
-  })?;
-  let mut output_path = output_dir_path.canonicalize().map_err(|source| ReadConfigError::CanonicalizeOutputDir {
-    path: output_dir_path.display().to_string(),
-    source,
-  })?;
-  output_path.push(name);
-  output_path.set_extension("pdf");
-  return Ok(output_path);
-}
-
 /// `PreFontConfig` を `FontConfig` に変換します。
-///
-/// バイト長と ASCII はカスタムバリデーターで検証済みのため、`[u8; 4]` 変換は安全に実行できます。
-/// パス解決に失敗した場合は `ValidationError::FontPathResolution` を返します。
 fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Result<FontConfig, ValidationError> {
   let font_path = pre_font_config.font_path.canonicalize().map_err(|source| ValidationError::FontPathResolution {
     font_type,
@@ -325,9 +314,7 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
 
 /// 4 バイト ASCII 文字列を `[u8; 4]` に変換します（カスタムバリデーターで長さと ASCII を検証済み）。
 #[allow(clippy::unwrap_used)]
-fn four_byte_tag(s: &str) -> [u8; 4] {
-  return s.as_bytes().try_into().unwrap();
-}
+fn four_byte_tag(s: &str) -> [u8; 4] { return s.as_bytes().try_into().unwrap(); }
 
 /// 3 or 4 文字の言語タグを `[u8; 4]` に変換します（3 文字時は末尾スペース）。
 fn language_tag(s: &str) -> [u8; 4] {
@@ -338,17 +325,39 @@ fn language_tag(s: &str) -> [u8; 4] {
   return [b[0], b[1], b[2], b' '];
 }
 
+/// 出力ディレクトリを作成・正規化し、`{name}.pdf` の絶対パスを返します。
+fn build_output_pdf_path(current_dir: &Path, output_dir: &Path, name: &str) -> Result<PathBuf, ReadConfigError> {
+  let output_dir_path = if output_dir.is_absolute() {
+    output_dir.to_path_buf()
+  } else {
+    current_dir.join(output_dir)
+  };
+  fs::create_dir_all(&output_dir_path).map_err(|source| ReadConfigError::CreateOutputDir {
+    path: output_dir_path.display().to_string(),
+    source,
+  })?;
+  let mut output_path = output_dir_path.canonicalize().map_err(|source| ReadConfigError::CanonicalizeOutputDir {
+    path: output_dir_path.display().to_string(),
+    source,
+  })?;
+  output_path.push(name);
+  output_path.set_extension("pdf");
+  return Ok(output_path);
+}
+
 #[cfg(test)]
 mod tests {
-  use super::{Config, ReadConfigError, ValidationError, read_config};
-  use std::fmt::Write as _;
-  use std::path::PathBuf;
+  use std::{
+    fmt::Write as _,
+    path::{Path, PathBuf},
+  };
+
   use tempfile::TempDir;
   use types::FontType;
 
+  use super::{Config, ReadConfigError, ValidationError, parse_config, read_config, validate_values};
+
   /// 19 フォント種別すべての設定セクションを生成するヘルパー。
-  ///
-  /// 各セクションは一意の `font_name` を持ち、引数の `font_path` を共有します。
   fn make_font_sections(font_path: &str) -> String {
     const SECTION_NAMES: [&str; 19] = [
       "serif",
@@ -386,10 +395,10 @@ mod tests {
     );
   }
 
+  /// `parse_config` 用のダミーパス。
+  fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
+
   /// 一時ディレクトリにダミーのフォントファイルと `config.toml` を作成します。
-  ///
-  /// `build_toml` には `(font_path, output_dir)` が渡され、戻り値の TOML 文字列が
-  /// `config.toml` として書き出されます。
   fn setup_config(build_toml: impl FnOnce(&str, &str) -> String) -> (TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().unwrap();
     let font_path = tempdir.path().join("dummy.ttf");
@@ -399,6 +408,79 @@ mod tests {
     let toml_text = build_toml(font_path.to_str().unwrap(), output_dir.to_str().unwrap());
     std::fs::write(&config_path, toml_text).unwrap();
     return (tempdir, config_path);
+  }
+
+  #[test]
+  fn parse_config_fails_on_invalid_toml_syntax() {
+    // Arrange / Act
+    let result = parse_config(b"name = \nthis is not valid toml", dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn validate_values_fails_on_negative_margin() {
+    // Arrange
+    let toml = format!(
+      "name = \"test\"\n\n[pdf]\noutput_dir = \"out\"\nheight = 842.0\nwidth = 595.0\n\
+       margin_top = -10.0\nmargin_bottom = 50.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
+      make_font_sections("dummy.ttf"),
+    );
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path.contains("margin_top")
+    )));
+  }
+
+  #[test]
+  fn validate_values_fails_on_margin_sum_exceeding_dimension() {
+    // Arrange: vertical margin sum (60+60=120) >= height (100)
+    let toml = format!(
+      "name = \"test\"\n\n[pdf]\noutput_dir = \"out\"\nheight = 100.0\nwidth = 595.0\n\
+       margin_top = 60.0\nmargin_bottom = 60.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
+      make_font_sections("dummy.ttf"),
+    );
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message } if path == "pdf" && message.contains("vertical")
+    )));
+  }
+
+  #[test]
+  fn validate_values_fails_on_duplicate_font_names_with_font_type_in_path() {
+    // Arrange: serif_bold が serif と同じ font_name を使う
+    let sections = make_font_sections("dummy.ttf").replace(
+      "[font_configs.serif_bold]\nfont_name = \"font_serif_bold\"",
+      "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
+    );
+    let toml = format!("name = \"test\"\n\n{}{sections}", valid_pdf_section("out"));
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    let dup_path = errors
+      .iter()
+      .find_map(|error| match error {
+        ValidationError::Field { path, message } if message.contains("重複") => Some(path.as_str()),
+        _ => None,
+      })
+      .expect("expected duplicate font name error");
+    assert!(dup_path.contains("SerifBold"), "path should contain FontType, got: {dup_path}");
   }
 
   #[test]
@@ -415,90 +497,6 @@ mod tests {
     assert_eq!(config.name, "test_doc");
     assert_eq!(config.font_configs.iter().count(), 19);
     assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
-  }
-
-  #[test]
-  fn read_config_fails_on_invalid_toml_syntax() {
-    // Arrange
-    let tempdir = tempfile::tempdir().unwrap();
-    let config_path = tempdir.path().join("config.toml");
-    std::fs::write(&config_path, "name = \nthis is not valid toml").unwrap();
-
-    // Act
-    let result = read_config(&config_path);
-
-    // Assert
-    assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
-  }
-
-  #[test]
-  fn read_config_fails_on_negative_margin() {
-    // Arrange
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir| {
-      format!(
-        "name = \"test\"\n\n[pdf]\noutput_dir = \"{output_dir}\"\nheight = 842.0\nwidth = 595.0\n\
-         margin_top = -10.0\nmargin_bottom = 50.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
-        make_font_sections(font_path),
-      )
-    });
-
-    // Act
-    let result = read_config(&config_path);
-
-    // Assert
-    assert!(matches!(result, Err(ReadConfigError::MultipleValidationErrors { .. })));
-  }
-
-  #[test]
-  fn read_config_fails_on_margin_sum_exceeding_dimension() {
-    // Arrange: vertical margin sum (60+60=120) >= height (100)
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir| {
-      format!(
-        "name = \"test\"\n\n[pdf]\noutput_dir = \"{output_dir}\"\nheight = 100.0\nwidth = 595.0\n\
-         margin_top = 60.0\nmargin_bottom = 60.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
-        make_font_sections(font_path),
-      )
-    });
-
-    // Act
-    let result = read_config(&config_path);
-
-    // Assert
-    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
-      panic!("expected MultipleValidationErrors, got {result:?}");
-    };
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, message } if path == "pdf" && message.contains("vertical")
-    )));
-  }
-
-  #[test]
-  fn read_config_fails_on_duplicate_font_names_with_font_type_in_path() {
-    // Arrange: serif_bold が serif と同じ font_name を使う
-    let (_tempdir, config_path) = setup_config(|font_path, output_dir| {
-      let sections = make_font_sections(font_path).replace(
-        "[font_configs.serif_bold]\nfont_name = \"font_serif_bold\"",
-        "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
-      );
-      format!("name = \"test\"\n\n{}{sections}", valid_pdf_section(output_dir))
-    });
-
-    // Act
-    let result = read_config(&config_path);
-
-    // Assert
-    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
-      panic!("expected MultipleValidationErrors, got {result:?}");
-    };
-    let dup_path = errors
-      .iter()
-      .find_map(|error| match error {
-        ValidationError::Field { path, message } if message.contains("重複") => Some(path.as_str()),
-        _ => None,
-      })
-      .expect("expected duplicate font name error");
-    assert!(dup_path.contains("SerifBold"), "path should contain FontType, got: {dup_path}");
   }
 
   #[test]

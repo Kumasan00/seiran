@@ -20,16 +20,22 @@
 //!
 //! ## バリデーション項目
 //!
+//! `garde::Validate` 派生によるフィールド検証と、派生では表現できない相互制約を補う
+//! 自由関数（[`validate_margin_sums`] / [`validate_unique_font_names`]）の組合せです。
+//! 後者は [`crate::validate_values`] が `pre.validate()` の後に明示的に呼び出します。
+//!
 //! | 項目 | 条件 | 実装 |
 //! |-----|------|------|
-//! | `pdf.height/width` | > 0 | `range(min = f32::MIN_POSITIVE)` |
-//! | `pdf.margin_*` | >= 0 | `range(min = 0.0)` |
-//! | 余白合計 | < 寸法 | `custom(validate_margin_sums)` |
-//! | `script` | 4 文字 | `length(equal = 4)` |
-//! | `language` | 3 or 4 文字 | `length(min = 3, max = 4)` |
-//! | feature `tag` | 4 文字 | `length(equal = 4)` |
-//! | 軸 `name` | 4 文字 | `length(equal = 4)` |
-//! | `font_name` 重複 | なし | `custom(validate_unique_font_names)` |
+//! | `name` | 空文字 / パスセパレータ / `.` `..` 不可 | `garde(custom(validate_document_name))` |
+//! | `pdf.height/width` | > 0 | `garde(range(min = f32::MIN_POSITIVE))` |
+//! | `pdf.margin_*` | >= 0 | `garde(range(min = 0.0))` |
+//! | 余白合計 | < 寸法 | 自由関数 [`validate_margin_sums`] |
+//! | `script` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
+//! | `language` | 3 or 4 文字 ASCII | `garde(ascii, length(bytes, min = 3, max = 4))` |
+//! | feature `tag` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
+//! | 軸 `name` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
+//! | `font_name` 長さ | >= 1 | `garde(length(min = 1))` |
+//! | `font_name` 重複 | なし | 自由関数 [`validate_unique_font_names`] |
 
 use std::path::PathBuf;
 
@@ -63,6 +69,29 @@ pub(crate) struct PreConfig {
   /// 19 フォント種別の設定群
   #[garde(dive)]
   pub font_configs: PreFontConfigs,
+}
+
+/// ドキュメント名を検証します。
+///
+/// `name` は `{name}.pdf` として出力ファイル名に直接使われるため、
+/// パストラバーサルや空ファイル名を防ぐために以下を確認します:
+/// - 空文字列でない
+/// - パスセパレータ（`/`、`\`）を含まない
+/// - `.` または `..` 単独でない
+///
+/// 引数の型は `garde` のカスタムバリデーター API に従います。
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn validate_document_name(value: &str, _: &()) -> garde::Result {
+  if value.is_empty() {
+    return Err(garde::Error::new("ドキュメント名は空にできません"));
+  }
+  if value.contains('/') || value.contains('\\') {
+    return Err(garde::Error::new("ドキュメント名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
+  }
+  if value == "." || value == ".." {
+    return Err(garde::Error::new("ドキュメント名を '.' または '..' にすることはできません"));
+  }
+  return Ok(());
 }
 
 /// 19 フォント種別すべてのプリプロセス設定
@@ -247,29 +276,6 @@ pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<Valida
       message: format!("方向 horizontal の余白合計 ({horizontal}) が寸法 {} 未満である必要があります", value.width),
     });
   }
-}
-
-/// ドキュメント名を検証します。
-///
-/// `name` は `{name}.pdf` として出力ファイル名に直接使われるため、
-/// パストラバーサルや空ファイル名を防ぐために以下を確認します:
-/// - 空文字列でない
-/// - パスセパレータ（`/`、`\`）を含まない
-/// - `.` または `..` 単独でない
-///
-/// 引数の型は `garde` のカスタムバリデーター API に従います。
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn validate_document_name(value: &str, _: &()) -> garde::Result {
-  if value.is_empty() {
-    return Err(garde::Error::new("ドキュメント名は空にできません"));
-  }
-  if value.contains('/') || value.contains('\\') {
-    return Err(garde::Error::new("ドキュメント名にパスセパレータ ('/' または '\\\\') を含めることはできません"));
-  }
-  if value == "." || value == ".." {
-    return Err(garde::Error::new("ドキュメント名を '.' または '..' にすることはできません"));
-  }
-  return Ok(());
 }
 
 /// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。

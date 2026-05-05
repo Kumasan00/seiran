@@ -1,7 +1,7 @@
 //! PDF を生成するモジュール
 //! このモジュールは、テキストファイルから PDF を生成するための主要な機能を提供します。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use font::{
   FontDataExt, FontRefsExt,
@@ -49,7 +49,7 @@ enum BuildPdfError {
 ///
 /// * `file_path` - 入力テキストファイルのパス
 /// * `config_path` - 設定ファイルのパス
-pub(super) fn build_pdf(file_path: &Path, config_path: &PathBuf) -> miette::Result<()> {
+pub(super) fn build_pdf(file_path: &Path, config_path: &Path) -> miette::Result<()> {
   info!(file_path = %file_path.display(), "PDF のビルドを開始します");
 
   let config = read_config::read_config(config_path)?;

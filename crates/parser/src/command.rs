@@ -67,13 +67,9 @@ impl CommandKind {
     match self {
       Self::Space => control::space(view).map(CommandResult::Block),
 
-      Self::Headline(level) => {
-        headline::heading(view, level, &mut evaluator.context).map(CommandResult::Block)
-      },
+      Self::Headline(level) => headline::heading(view, level, &mut evaluator.context).map(CommandResult::Block),
 
-      Self::InlineWrapper(wrapper) => {
-        inline::inline_wrapper(view, wrapper).map(CommandResult::Inline)
-      },
+      Self::InlineWrapper(wrapper) => inline::inline_wrapper(view, wrapper).map(CommandResult::Inline),
 
       Self::SingleChar(ch) => {
         if !view.args_is_empty() || !view.opt_args_is_empty() {

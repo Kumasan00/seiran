@@ -27,12 +27,10 @@ use types::FontMap;
 
 /// PDF 生成に必要な完全な設定情報
 ///
-/// すべてのパス、バリデーション、型変換が完了した
-/// 最終形式の設定です。`lib.rs` の `read_config_with_path()` で
-/// 生成され、すべての値が検証済みであることが保証されます。
+/// すべてのパス、バリデーション、型変換が完了した最終形式の設定です。
+/// [`crate::read_config`] で生成され、すべての値が検証済みであることが保証されます。
 ///
-/// アプリケーションはこの構造体から設定を読み取り、
-/// PDF 生成パイプラインに渡します。
+/// アプリケーションはこの構造体から設定を読み取り、PDF 生成パイプラインに渡します。
 #[derive(Debug, Clone)]
 pub struct Config {
   /// ドキュメント名（PDF ファイル名の基盤、拡張子なし）
@@ -98,8 +96,7 @@ pub struct FontConfig {
 /// OpenType フィーチャーの設定（タグと値のペア）
 ///
 /// フォントで有効にするシェイピング機能を指定します。
-/// タグは 4 バイトの OpenType フィーチャータグです。
-/// ( 例：`b"liga"` = ligatures、`b"smcp"` = small capitals）
+/// タグは 4 バイトの OpenType フィーチャータグです（例：`b"liga"` = ligatures、`b"smcp"` = small capitals）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Feature {
   /// OpenType フィーチャータグ（4 バイト）

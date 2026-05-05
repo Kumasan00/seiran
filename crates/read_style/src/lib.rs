@@ -1,3 +1,8 @@
+//! TOML スタイル設定ファイルのパース・検証モジュール
+//!
+//! [`read_style`] が `config/style.toml` を読み込み、figment によるデフォルト値マージと
+//! `garde` による値検証を行って [`Style`] を返します。
+
 use std::path::Path;
 
 use figment2::{
@@ -97,6 +102,25 @@ impl Default for Style {
   }
 }
 
+/// `background_color` の各成分が [0.0, 1.0] の範囲かを検証します。
+///
+/// `None` はそのまま通過させます。NaN や Infinity は範囲チェックで自動的に弾かれます。
+/// 引数の型は `garde` のカスタムバリデーター API に従います。
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn validate_background_color(value: &Option<[f32; 3]>, _: &()) -> garde::Result {
+  let Some([r, g, b]) = value else {
+    return Ok(());
+  };
+  for (component, v) in [("R", *r), ("G", *g), ("B", *b)] {
+    if !(0.0..=1.0).contains(&v) {
+      return Err(garde::Error::new(format!(
+        "background_color の {component} 成分は [0.0, 1.0] の範囲である必要があります: {v}"
+      )));
+    }
+  }
+  return Ok(());
+}
+
 /// 見出し要素のスタイル設定（フォントサイズと下余白）
 #[derive(Debug, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
@@ -150,12 +174,14 @@ impl Default for ReferenceStyle {
   }
 }
 
-/// Reads the style configuration from the style TOML file.
+/// スタイル設定ファイルを読み込みます。
+///
+/// `path = None` の場合はデフォルト位置 `config/style.toml` を読み込みます。
+/// ファイル読み込み後は [`validate_values`] による値検証も併せて実行します。
 ///
 /// # Errors
 ///
-/// Returns an error if the configuration file cannot be read or if the
-/// configuration values cannot be extracted into a [`Style`] struct.
+/// ファイルが読めない、TOML 解析に失敗、値検証に違反した場合にエラーを返します。
 pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleError> {
   let figment = Figment::from(Serialized::defaults(Style::default()));
   let (figment, style_path_str) = if let Some(p) = path {
@@ -171,14 +197,7 @@ pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleErr
     source: Box::new(source),
   })?;
 
-  if let Err(report) = style.validate() {
-    let errors = report
-      .iter()
-      .map(|(path, error)| ValidationError::Field {
-        path: path.to_string(),
-        message: error.to_string(),
-      })
-      .collect();
+  if let Err(errors) = validate_values(&style) {
     return Err(ReadStyleError::MultipleValidationErrors { errors });
   }
 
@@ -190,21 +209,23 @@ pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleErr
   return Ok(style);
 }
 
-/// `background_color` の各成分が [0.0, 1.0] の範囲かを検証します。
+/// [`Style`] の値検証を実行します（I/O なし）。
 ///
-/// `None` はそのまま通過させます。NaN や Infinity は範囲チェックで自動的に弾かれます。
-/// 引数の型は `garde` のカスタムバリデーター API に従います。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-fn validate_background_color(value: &Option<[f32; 3]>, _: &()) -> garde::Result {
-  let Some([r, g, b]) = value else {
+/// `garde` のフィールド検証および `background_color` のカスタム検証を集約します。
+///
+/// # Errors
+///
+/// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
+fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
+  let Err(report) = style.validate() else {
     return Ok(());
   };
-  for (component, v) in [("R", *r), ("G", *g), ("B", *b)] {
-    if !(0.0..=1.0).contains(&v) {
-      return Err(garde::Error::new(format!(
-        "background_color の {component} 成分は [0.0, 1.0] の範囲である必要があります: {v}"
-      )));
-    }
-  }
-  return Ok(());
+  let errors = report
+    .iter()
+    .map(|(path, error)| ValidationError::Field {
+      path: path.to_string(),
+      message: error.to_string(),
+    })
+    .collect();
+  return Err(errors);
 }
