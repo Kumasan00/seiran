@@ -13,6 +13,7 @@
 
 use bumpalo::Bump;
 use miette::{Diagnostic, SourceSpan};
+use phf::phf_map;
 use thiserror::Error;
 
 use crate::{
@@ -21,6 +22,33 @@ use crate::{
   span::Span,
   syntax::SyntaxKind,
   token::{Token, TokenKind},
+};
+
+// =============================================================================
+// パース モード
+// =============================================================================
+
+/// 環境本体および入れ子要素のパース時に、どの語彙的解釈を適用するかを示すモード
+///
+/// 既定は [`ParseMode::Text`]。`\begin{...}...\end{...}` の本体パース時に、
+/// 環境名を [`ENVIRONMENT_PARSE_MODES`] で引いて切り替える。
+/// 将来 `tabular` / `verbatim` / `align` 等を追加する際は、
+/// このバリアントを増やし、対応する分岐を [`Parser::parse_element`] に足す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ParseMode {
+  /// 通常のテキストモード（`$` でインライン数式に入る）
+  Text,
+  /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
+  Math,
+}
+
+/// 環境名 → 本体に適用する [`ParseMode`] の対応表
+///
+/// 未登録の環境は [`ParseMode::Text`] が既定として使われる。
+// TODO: tabular, verbatim, align など追加環境はここに登録する
+static ENVIRONMENT_PARSE_MODES: phf::Map<&'static str, ParseMode> = phf_map! {
+  "equation" => ParseMode::Math,
+  "equation*" => ParseMode::Math,
 };
 
 // =============================================================================
@@ -159,7 +187,7 @@ impl<'a> Parser<'a> {
           });
         },
         _ => {
-          self.parse_element(&mut children, false)?;
+          self.parse_element(&mut children, ParseMode::Text)?;
         },
       }
     }
@@ -170,11 +198,12 @@ impl<'a> Parser<'a> {
 
   /// 1つの構文要素をパースして `children` に追加する
   ///
-  /// `in_math` が true の場合、数式モードとして解釈する。
+  /// `mode` が [`ParseMode::Math`] の場合、`^` `_` を上付き・下付きとして構造化し、
+  /// `{...}` を `MathGroup` として解釈する。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
-    in_math: bool,
+    mode: ParseMode,
   ) -> Result<(), ParserError> {
     self.skip_trivia(children);
 
@@ -201,7 +230,7 @@ impl<'a> Parser<'a> {
           children.push(GreenElement::Node(cmd_node));
         }
       },
-      TokenKind::Dollar if !in_math => {
+      TokenKind::Dollar if mode == ParseMode::Text => {
         #[allow(clippy::unwrap_used)]
         let first_dollar = self.next_token().unwrap();
 
@@ -219,9 +248,17 @@ impl<'a> Parser<'a> {
           children.push(GreenElement::Node(math_node));
         }
       },
-      TokenKind::LBrace if in_math => {
+      TokenKind::LBrace if mode == ParseMode::Math => {
         let group_node = self.parse_math_group()?;
         children.push(GreenElement::Node(group_node));
+      },
+      TokenKind::Underscore if mode == ParseMode::Math => {
+        let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
+        children.push(GreenElement::Node(sub_node));
+      },
+      TokenKind::Caret if mode == ParseMode::Math => {
+        let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
+        children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
         let group_node = self.parse_group()?;
@@ -278,6 +315,9 @@ impl<'a> Parser<'a> {
     env_children.push(GreenElement::Node(begin_node));
 
     // === EnvironmentBody ===
+    // 環境名 → ParseMode を引く（未登録なら Text）
+    let body_mode = ENVIRONMENT_PARSE_MODES.get(env_name.as_str()).copied().unwrap_or(ParseMode::Text);
+
     let last_span_end = self.last_span.end;
     let body_start = self.peek_token().map_or(last_span_end, |t| t.span.start);
     let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -298,7 +338,7 @@ impl<'a> Parser<'a> {
         }
       }
 
-      self.parse_element(&mut body_children, false)?;
+      self.parse_element(&mut body_children, body_mode)?;
 
       // parse_element が \end を検出して何も消費しなかった場合のチェック
       if let Some(TokenKind::Command) = self.peek_kind() {
@@ -394,7 +434,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, false)?;
+      self.parse_element(&mut children, ParseMode::Text)?;
       if matches!(self.peek_kind(), Some(TokenKind::RBracket) | None) {
         break;
       }
@@ -431,7 +471,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, false)?;
+      self.parse_element(&mut children, ParseMode::Text)?;
       if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
         break;
       }
@@ -468,7 +508,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, false)?;
+      self.parse_element(&mut children, ParseMode::Text)?;
       if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
         break;
       }
@@ -1021,5 +1061,37 @@ mod tests {
     } else {
       panic!("InlineMath ノードが期待されます");
     }
+  }
+
+  #[test]
+  fn equation_env_body_is_parsed_in_math_mode() {
+    // ENVIRONMENT_PARSE_MODES で equation が Math と紐付いているため、body 内の
+    // `^` は MathSuperscript ノードに、`{ij}` は MathGroup ノードになる必要がある。
+    let arena = Bump::new();
+    let cst = parse_source(r"\begin{equation}x^{ij}\end{equation}", &arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    assert_eq!(env.kind, SyntaxKind::Environment);
+    let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+    let sups: Vec<_> = body.children_of_kind(SyntaxKind::MathSuperscript).collect();
+    assert_eq!(sups.len(), 1, "MathSuperscript が body 直下に出現するはず");
+    let groups: Vec<_> = sups[0].children_of_kind(SyntaxKind::MathGroup).collect();
+    assert_eq!(groups.len(), 1, "MathSuperscript の引数は MathGroup として構造化されるはず");
+  }
+
+  #[test]
+  fn non_math_env_body_keeps_caret_as_raw_token() {
+    // itemize は ENVIRONMENT_PARSE_MODES に未登録なので Text モード。`^` は raw Caret トークン。
+    let arena = Bump::new();
+    let cst = parse_source(r"\begin{itemize}a^b\end{itemize}", &arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+    let sups: Vec<_> = body.children_of_kind(SyntaxKind::MathSuperscript).collect();
+    assert_eq!(sups.len(), 0, "Text モードでは MathSuperscript 化されない");
+    let has_caret = body.children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Caret));
+    assert!(has_caret, "raw Caret トークンとして残っているはず");
   }
 }

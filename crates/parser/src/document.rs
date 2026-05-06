@@ -57,6 +57,7 @@ impl Document {
         level,
         number,
         title,
+        ..
       } = node
       {
         headings.push((*level, number, title.as_slice()));
@@ -96,6 +97,11 @@ pub enum DocNode {
     number: HeadingNumber,
     /// 見出しのタイトル（インライン要素として保持）
     title: Vec<InlineNode>,
+    /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル（任意）
+    ///
+    /// `\ref{sec:intro}` 解決時に `CounterRegistry::labels` から番号を引くキーとなる。
+    /// `None` の場合はラベル付与なし（参照対象外）。
+    label: Option<String>,
   },
 
   /// 段落（インライン要素の集合）
@@ -114,6 +120,44 @@ pub enum DocNode {
     items: Vec<ListItem>,
   },
 
+  /// ディスプレイ数式（`\begin{equation}...\end{equation}`）
+  ///
+  /// **前準備のスタブ**。Parser 側で env body が math モードで構造化されるため
+  /// `Vec<MathNode>` を直接保持する。実装本体タスクで evaluator・lowering の
+  /// ハンドラを書く。
+  DisplayMath {
+    /// 数式本体
+    body: Vec<MathNode>,
+    /// `\ref` 用ラベル（`[label=eq:foo]`）
+    label: Option<String>,
+  },
+
+  /// 図環境（`\begin{figure}...\end{figure}`）
+  ///
+  /// **前準備のスタブ**。中身（画像コマンド、キャプションコマンド等）を
+  /// そのまま `body` に保持する。実装本体タスクで caption / label の
+  /// 取り出し方と lowering を確定させる。
+  Figure {
+    /// 環境本体
+    body: Vec<DocNode>,
+    /// `[label=fig:foo]`
+    label: Option<String>,
+  },
+
+  /// 画像（`\image[width=10cm]{path}` コマンド）
+  ///
+  /// **前準備のスタブ**。`options` には command optarg の key=value 列を
+  /// そのまま保持する（width / height 等）。実装本体タスクで
+  /// オプションの解釈と lowering（実際の画像埋め込み）を行う。
+  Image {
+    /// 画像ファイルへのパス
+    path: String,
+    /// 任意引数の key=value 列
+    options: Vec<(String, String)>,
+    /// `\ref` 用ラベル
+    label: Option<String>,
+  },
+
   /// 罫線（描画線）
   Rule {
     /// 幅（pt）
@@ -130,7 +174,7 @@ pub enum DocNode {
 }
 
 impl DocNode {
-  /// 見出しノードを生成するヘルパー
+  /// 見出しノードを生成するヘルパー（label なし）
   ///
   /// # Arguments
   ///
@@ -143,6 +187,7 @@ impl DocNode {
       level,
       number,
       title,
+      label: None,
     };
   }
 
@@ -200,6 +245,18 @@ pub enum InlineNode {
 
   /// 強制改行（`\\`）
   LineBreak,
+
+  /// 相互参照（`\ref{label}`）
+  ///
+  /// **前準備のスタブ**。`CounterRegistry` での 2 パス評価を前提とし、
+  /// `number` は pass1 では `None`、pass2 解決後に `Some(裸の番号文字列)` になる。
+  /// pass2 終了後に `None` のままなら未定義ラベル（`evaluate_unknown_label_errors`）。
+  Ref {
+    /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
+    label: String,
+    /// 解決された番号文字列。pass2 完了時点で `Some` となる
+    number: Option<String>,
+  },
 }
 
 impl InlineNode {
@@ -228,6 +285,7 @@ impl InlineNode {
       InlineNode::InlineMath(_) => return "[Math]".to_string(),
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
+      InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
     }
   }
 }
@@ -377,35 +435,12 @@ impl HeadingNumber {
   }
 
   /// ドット区切りの番号文字列を生成する（例: "2.3.1"）
+  ///
+  /// 「3章」「第3部」のような装飾文字列は付与しない。装飾は
+  /// `read_style::HeadingStyle.format` テンプレートを介して lowering 側で行う。
   #[must_use]
   pub fn dotted(&self) -> String {
     return self.parts.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(".");
-  }
-
-  /// 見出しレベルに応じたフォーマット済み文字列を生成する
-  ///
-  /// - Part: `"1部 "`
-  /// - Chapter: `"1章 "`
-  /// - Section 以降: `"1.2 "` のようにドット区切り + スペース
-  ///
-  /// # Arguments
-  ///
-  /// * `level` - 見出しレベル
-  #[must_use]
-  pub fn format(&self, level: HeadingLevel) -> String {
-    return match level {
-      HeadingLevel::Part => {
-        let n = self.parts.first().copied().unwrap_or(0);
-        format!("{n}部 ")
-      },
-      HeadingLevel::Chapter => {
-        let n = self.parts.first().copied().unwrap_or(0);
-        format!("{n}章 ")
-      },
-      HeadingLevel::Section | HeadingLevel::Subsection | HeadingLevel::Paragraph | HeadingLevel::Subparagraph => {
-        format!("{} ", self.dotted())
-      },
-    };
   }
 }
 
@@ -544,30 +579,6 @@ mod tests {
     assert_eq!(HeadingNumber::new(vec![1]).dotted(), "1");
     assert_eq!(HeadingNumber::new(vec![2, 3]).dotted(), "2.3");
     assert_eq!(HeadingNumber::new(vec![1, 2, 3]).dotted(), "1.2.3");
-  }
-
-  #[test]
-  fn heading_number_format_part() {
-    let number = HeadingNumber::new(vec![3]);
-    assert_eq!(number.format(HeadingLevel::Part), "3部 ");
-  }
-
-  #[test]
-  fn heading_number_format_chapter() {
-    let number = HeadingNumber::new(vec![5]);
-    assert_eq!(number.format(HeadingLevel::Chapter), "5章 ");
-  }
-
-  #[test]
-  fn heading_number_format_section() {
-    let number = HeadingNumber::new(vec![2, 3]);
-    assert_eq!(number.format(HeadingLevel::Section), "2.3 ");
-  }
-
-  #[test]
-  fn heading_number_format_subsection() {
-    let number = HeadingNumber::new(vec![1, 2, 4]);
-    assert_eq!(number.format(HeadingLevel::Subsection), "1.2.4 ");
   }
 
   #[test]

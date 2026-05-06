@@ -63,7 +63,7 @@ pub(super) fn build_pdf(file_path: &Path, config_path: &Path) -> miette::Result<
   let doc_nodes = parser::parse_source(&content, &file_path.display().to_string())?;
   info!("テキストのパースが完了しました");
 
-  let lowering_ctx = layout::LoweringContext::new(style.font_size);
+  let lowering_ctx = layout::LoweringContext::new(&style);
   let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
   info!("Document IR → LayoutNode への変換が完了しました");
 

@@ -43,38 +43,34 @@
 //! 2. `build_pdf.rs` で `lower() → layout_engine()` の 2 段パイプラインに更新
 //! 3. 既存の PDF 出力結果が変わらないことを回帰テストで確認
 
-use parser::document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem};
+use parser::document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
+use read_style::Style as ReadStyle;
 use types::FontKind;
 
 use crate::layout_node::{LayoutNode, Style};
 
 /// Lowering のコンテキスト
 ///
-/// 変換中に必要な設定情報とステートを保持します。
+/// 変換中に必要なスタイル設定（`read_style::Style`）への参照を保持します。
 ///
-/// ## TODO
-///
-/// - [ ] `read_config::Config` から PDF 関連設定（デフォルトフォントサイズ等）を受け取る
-/// - [ ] 将来的に `read_style::StyleConfig` からスタイル情報を受け取る
-/// - [ ] 見出しサイズテーブルを設定ファイルからカスタマイズ可能にする
-pub struct LoweringContext {
-  /// デフォルトのフォントサイズ（pt）
-  ///
-  /// `style.toml` の `font_size` に対応。
-  /// 段落テキストに適用される基準サイズ。
-  pub default_font_size: f32,
+/// ライフタイム `'a` は `Style` の借用元（typically `build_pdf` でのスコープ）に紐づきます。
+pub struct LoweringContext<'a> {
+  /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
+  pub style: &'a ReadStyle,
 }
 
-impl LoweringContext {
+impl<'a> LoweringContext<'a> {
   /// 新しい `LoweringContext` を生成する
   ///
-  /// ## TODO
+  /// # Arguments
   ///
-  /// - [ ] `Config` を受け取るコンストラクタに変更する
-  ///   `pub fn new(config: &Config) -> Self`
-  ///   現在は仮に `font_size` だけを受け取る
+  /// * `style` - `read_style::read_style()` の結果への参照
   #[must_use]
-  pub fn new(default_font_size: f32) -> Self { return LoweringContext { default_font_size }; }
+  pub fn new(style: &'a ReadStyle) -> Self { return LoweringContext { style }; }
+
+  /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を返すヘルパー
+  #[must_use]
+  pub fn default_font_size(&self) -> f32 { return self.style.font_size; }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）
@@ -126,6 +122,7 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Vec<LayoutNode> {
       level,
       number,
       title,
+      ..
     } => {
       return lower_heading(ctx, *level, number, title);
     },
@@ -147,84 +144,158 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Vec<LayoutNode> {
     DocNode::Space(pt) => {
       return vec![LayoutNode::Kern { point: *pt }];
     },
+    DocNode::DisplayMath { body, .. } => {
+      // TODO(figure-equation-impl): 数式レンダラを呼ぶ。前準備ではプレースホルダ。
+      return lower_display_math_stub(ctx, body);
+    },
+    DocNode::Figure { body, .. } => {
+      // TODO(figure-equation-impl): caption 抽出と図のレイアウト。前準備では body を素通し。
+      return lower_nodes(ctx, body);
+    },
+    DocNode::Image { path, .. } => {
+      // TODO(figure-equation-impl): 実画像埋め込み。前準備ではパスをテキスト出力。
+      let style = Style {
+        font_size: ctx.default_font_size(),
+        font_kind: FontKind::Monospace,
+      };
+      return vec![LayoutNode::Text(format!("[Image: {path}]"), style)];
+    },
   }
+}
+
+/// `DocNode::DisplayMath` の暫定 lowering（前準備スタブ）
+///
+/// `MathNode` をプレーンテキストにフラット化して 1 行の Text ノードを返す。
+/// 実装本体タスクで数式レンダラに置き換える。
+fn lower_display_math_stub(ctx: &LoweringContext, body: &[MathNode]) -> Vec<LayoutNode> {
+  let style = Style {
+    font_size: ctx.default_font_size(),
+    font_kind: FontKind::SerifItalic,
+  };
+  let text = math_nodes_to_plain_text(body);
+  return vec![LayoutNode::Text(text, style)];
+}
+
+/// `MathNode` ツリーを暫定的にプレーンテキスト化する（前準備スタブ用）
+fn math_nodes_to_plain_text(nodes: &[MathNode]) -> String {
+  let mut buf = String::new();
+  for node in nodes {
+    match node {
+      MathNode::Text(s) => buf.push_str(s),
+      MathNode::Symbol(ch) => buf.push(*ch),
+      MathNode::Group(inner) => {
+        buf.push('{');
+        buf.push_str(&math_nodes_to_plain_text(inner));
+        buf.push('}');
+      },
+      MathNode::Superscript(inner) => {
+        buf.push('^');
+        buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(inner.as_ref())));
+      },
+      MathNode::Subscript(inner) => {
+        buf.push('_');
+        buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(inner.as_ref())));
+      },
+      MathNode::Frac { numer, denom } => {
+        buf.push_str("\\frac{");
+        buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(numer.as_ref())));
+        buf.push_str("}{");
+        buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(denom.as_ref())));
+        buf.push('}');
+      },
+      MathNode::Sqrt { index, radicand } => {
+        buf.push_str("\\sqrt");
+        if let Some(i) = index {
+          buf.push('[');
+          buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(i.as_ref())));
+          buf.push(']');
+        }
+        buf.push('{');
+        buf.push_str(&math_nodes_to_plain_text(std::slice::from_ref(radicand.as_ref())));
+        buf.push('}');
+      },
+      MathNode::Command { name, args } => {
+        buf.push('\\');
+        buf.push_str(name);
+        for arg in args {
+          buf.push('{');
+          buf.push_str(&math_nodes_to_plain_text(arg));
+          buf.push('}');
+        }
+      },
+      MathNode::AlignmentMark => buf.push('&'),
+    }
+  }
+  return buf;
 }
 
 // =============================================================================
 // 見出しの変換
 // =============================================================================
 
-/// 見出しレベルに応じたフォントサイズを返す
-///
-/// ## TODO
-///
-/// - [ ] ハードコードではなくスタイル設定テーブルから取得するように変更する
-///   将来的には `read_style::StyleConfig` にこの対応表を移す
-/// - [ ] 日本語見出しの場合は `JapaneseSerifBold` を使うロジックを追加
-///   （テキスト内容のスクリプト判定は `layout_engine` 側で行われるが、
-///   見出し全体のデフォルトフォントはここで決定する）
-fn heading_font_size(level: HeadingLevel) -> f32 {
-  // 現在の headline.rs のハードコード値を移植
-  // TODO: スタイルシートからカスタマイズ可能にする
-  match level {
-    HeadingLevel::Part => 40.0,
-    HeadingLevel::Chapter => 25.0,
-    HeadingLevel::Section => 20.0,
-    HeadingLevel::Subsection => 16.0,
-    HeadingLevel::Paragraph => 14.0,
-    HeadingLevel::Subparagraph => 12.0,
-  }
+/// 見出しレベルに対応する `read_style::HeadingStyle` を返す
+fn heading_style_for(style: &ReadStyle, level: HeadingLevel) -> &read_style::HeadingStyle {
+  return match level {
+    HeadingLevel::Part => &style.part,
+    HeadingLevel::Chapter => &style.chapter,
+    HeadingLevel::Section => &style.section,
+    HeadingLevel::Subsection => &style.sub_section,
+    HeadingLevel::Paragraph => &style.paragraph,
+    HeadingLevel::Subparagraph => &style.sub_paragraph,
+  };
 }
 
-/// 見出しレベルに応じた下マージンを返す
+/// `HeadingStyle.format` テンプレートを `\partnum`〜`\subparagraphnum` と
+/// `\text` で置換した最終文字列を組み立てる
 ///
-/// ## TODO
+/// テンプレに `\text` が含まれていればその位置にタイトルを差し込み、
+/// 含まれていなければ番号書式の末尾にスペース区切りでタイトルを連結する。
 ///
-/// - [ ] スタイル設定から取得するように変更する
-fn heading_margin_bottom(_level: HeadingLevel) -> f32 {
-  // 現在の headline.rs では全レベル共通で 12.0pt
-  // TODO: レベルに応じた値をスタイル設定から取得する
-  return 12.0;
-}
+/// ## スコープ
+///
+/// 前準備の範囲では「`\partnum` 〜 `\subparagraphnum` の 6 つと `\text` の
+/// リテラル置換」のみサポートする。フォーマット指定子（漢数字・ローマ数字等）の
+/// 対応は実装本体タスクに譲る。
+fn format_heading_text(level: HeadingLevel, number: &HeadingNumber, title: &str, template: &str) -> String {
+  let parts = &number.parts;
+  let mut result = template.to_string();
 
-/// 見出し番号をフォーマットする
-///
-/// 見出しレベルに応じて、日本語ラベル付きの番号文字列を生成します。
-///
-/// ## 例
-///
-/// - Part: `"1部 "` → 将来的に `"第1部 "` 等カスタマイズ可能に
-/// - Chapter: `"1章 "`
-/// - Section: `"1.2 "` → 章番号.節番号
-/// - Subsection: `"1.2.3 "` → 章番号.節番号.小節番号
-///
-/// ## TODO
-///
-/// - [ ] フォーマットパターンをスタイル設定で定義可能にする
-///   例: `heading_format.part = "第{n}部"`, `heading_format.section = "{n1}.{n2}"`
-/// - [ ] ロケールに応じた番号フォーマット（漢数字等）の対応
-fn format_heading_number(level: HeadingLevel, number: &HeadingNumber) -> String {
-  // 現在の headline.rs のフォーマットを移植
-  // TODO: スタイル設定からフォーマットパターンを取得する
-  match level {
-    HeadingLevel::Part => {
-      let n = number.parts.first().copied().unwrap_or(0);
-      return format!("{n}部 ");
-    },
-    HeadingLevel::Chapter => {
-      let n = number.parts.first().copied().unwrap_or(0);
-      return format!("{n}章 ");
-    },
-    HeadingLevel::Section => {
-      // "章番号.節番号 "
-      let parts_str: Vec<String> = number.parts.iter().map(std::string::ToString::to_string).collect();
-      return format!("{} ", parts_str.join("."));
-    },
-    HeadingLevel::Subsection | HeadingLevel::Paragraph | HeadingLevel::Subparagraph => {
-      let parts_str: Vec<String> = number.parts.iter().map(std::string::ToString::to_string).collect();
-      return format!("{} ", parts_str.join("."));
-    },
+  // 各 *num プレースホルダを parts 上の対応位置の値で置換する
+  let substitutions: &[(&str, usize)] = match level {
+    HeadingLevel::Part => &[("\\partnum", 0)],
+    HeadingLevel::Chapter => &[("\\chapternum", 0)],
+    HeadingLevel::Section => &[("\\chapternum", 0), ("\\sectionnum", 1)],
+    HeadingLevel::Subsection => &[
+      ("\\chapternum", 0),
+      ("\\sectionnum", 1),
+      ("\\subsectionnum", 2),
+    ],
+    HeadingLevel::Paragraph => &[
+      ("\\chapternum", 0),
+      ("\\sectionnum", 1),
+      ("\\subsectionnum", 2),
+      ("\\paragraphnum", 3),
+    ],
+    HeadingLevel::Subparagraph => &[
+      ("\\chapternum", 0),
+      ("\\sectionnum", 1),
+      ("\\subsectionnum", 2),
+      ("\\paragraphnum", 3),
+      ("\\subparagraphnum", 4),
+    ],
+  };
+  for (placeholder, index) in substitutions {
+    let value = parts.get(*index).copied().unwrap_or(0).to_string();
+    result = result.replace(placeholder, &value);
   }
+
+  if result.contains("\\text") {
+    result = result.replace("\\text", title);
+  } else if !title.is_empty() {
+    result.push(' ');
+    result.push_str(title);
+  }
+  return result;
 }
 
 /// 見出しをレイアウトノードに変換する
@@ -239,41 +310,36 @@ fn format_heading_number(level: HeadingLevel, number: &HeadingNumber) -> String 
 ///   → または別パスで Document IR を走査して収集する
 /// - [ ] 見出し前後のスペース（`margin_top` 等）を追加する
 fn lower_heading(
-  _ctx: &LoweringContext,
+  ctx: &LoweringContext,
   level: HeadingLevel,
   number: &HeadingNumber,
   title: &[InlineNode],
 ) -> Vec<LayoutNode> {
-  let font_size = heading_font_size(level);
+  let heading_style = heading_style_for(ctx.style, level);
   let style = Style {
-    font_size,
+    font_size: heading_style.font_size,
     font_kind: FontKind::SerifBold,
   };
 
-  // 番号テキスト + タイトルテキストを結合
-  let number_text = format_heading_number(level, number);
-
-  // TODO: タイトル内のインライン要素（強調等）を適切に変換する
-  // 現時点では全てプレーンテキストとして連結する
+  // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する
+  // TODO: 強調等のインライン要素のスタイルを保持したまま埋め込む（本実装タスク）
   let title_text = inline_nodes_to_plain_text(title);
-
-  let heading_text = format!("{number_text}{title_text}");
+  let heading_text = format_heading_text(level, number, &title_text, &heading_style.format);
 
   let mut result = Vec::new();
 
-  // Part レベルの場合は改ページを先行
-  if level == HeadingLevel::Part {
+  if heading_style.page_break_before {
     result.push(LayoutNode::PageBreak);
   }
 
-  // 見出しを VBox でラップ
   result.push(LayoutNode::VBox {
     children: vec![LayoutNode::Text(heading_text, style)],
-    margin_bottom: heading_margin_bottom(level),
+    margin_bottom: heading_style.bottom_margin,
   });
 
-  // Part 以外は改行を追加
-  if level != HeadingLevel::Part {
+  if heading_style.page_break_after {
+    result.push(LayoutNode::PageBreak);
+  } else {
     result.push(LayoutNode::LineBreak);
   }
 
@@ -297,7 +363,7 @@ fn lower_heading(
 /// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
 fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutNode> {
   let default_style = Style {
-    font_size: ctx.default_font_size,
+    font_size: ctx.default_font_size(),
     font_kind: FontKind::Serif,
   };
 
@@ -311,7 +377,7 @@ fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutN
   // TODO: 段落間スペースをスタイル設定で制御する
   result.push(LayoutNode::LineBreak);
   result.push(LayoutNode::Kern {
-    point: ctx.default_font_size,
+    point: ctx.default_font_size(),
   });
 
   return result;
@@ -392,6 +458,13 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
     InlineNode::LineBreak => {
       return vec![LayoutNode::LineBreak];
     },
+    InlineNode::Ref { number, .. } => {
+      // pass2 終了後は number が Some(裸の番号) になっている。前準備時点では未配線のため
+      // None なら空文字列にフォールバックする。
+      debug_assert!(number.is_some(), "InlineNode::Ref が pass2 で未解決のまま lowering に到達しました");
+      let resolved = number.clone().unwrap_or_default();
+      return vec![LayoutNode::Text(resolved, parent_style)];
+    },
   }
 }
 
@@ -422,7 +495,7 @@ fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Vec<L
     };
 
     let marker_style = Style {
-      font_size: ctx.default_font_size,
+      font_size: ctx.default_font_size(),
       font_kind: FontKind::Serif,
     };
 
@@ -469,6 +542,12 @@ fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
       InlineNode::InlineMath(_) => text.push_str("[Math]"),
       InlineNode::Symbol(ch) => text.push(*ch),
       InlineNode::LineBreak => text.push('\n'),
+      InlineNode::Ref { number, .. } => {
+        debug_assert!(number.is_some(), "InlineNode::Ref が pass2 で未解決のまま plain 化に到達しました");
+        if let Some(s) = number {
+          text.push_str(s);
+        }
+      },
     }
   }
   return text;
@@ -489,7 +568,8 @@ mod tests {
   #[test]
   fn test_lower_space() {
     // Arrange
-    let ctx = LoweringContext::new(10.0);
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
     let node = DocNode::Space(5.0);
 
     // Act
@@ -506,7 +586,8 @@ mod tests {
   #[test]
   fn test_lower_page_break() {
     // Arrange
-    let ctx = LoweringContext::new(10.0);
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
     let node = DocNode::PageBreak;
 
     // Act
@@ -520,7 +601,8 @@ mod tests {
   #[test]
   fn test_lower_rule() {
     // Arrange
-    let ctx = LoweringContext::new(10.0);
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
     let node = DocNode::Rule {
       width: 100.0,
       height: 1.0,
@@ -541,27 +623,52 @@ mod tests {
   }
 
   #[test]
-  fn test_format_heading_number_section() {
-    // Arrange
+  fn test_format_heading_text_section_default_template() {
+    // 既定テンプレ: section は "\\chapternum.\\sectionnum"（\text なし → 末尾に title）
     let number = HeadingNumber { parts: vec![2, 3] };
 
-    // Act
-    let formatted = format_heading_number(HeadingLevel::Section, &number);
+    let formatted = format_heading_text(HeadingLevel::Section, &number, "Intro", "\\chapternum.\\sectionnum");
 
-    // Assert
-    assert_eq!(formatted, "2.3 ");
+    assert_eq!(formatted, "2.3 Intro");
   }
 
   #[test]
-  fn test_format_heading_number_part() {
-    // Arrange
+  fn test_format_heading_text_part_default_template() {
+    // 既定テンプレ: part は "第\\partnum部 \\text"
     let number = HeadingNumber { parts: vec![1] };
 
-    // Act
-    let formatted = format_heading_number(HeadingLevel::Part, &number);
+    let formatted = format_heading_text(HeadingLevel::Part, &number, "Foundations", "第\\partnum部 \\text");
 
-    // Assert
-    assert_eq!(formatted, "1部 ");
+    assert_eq!(formatted, "第1部 Foundations");
+  }
+
+  #[test]
+  fn lower_heading_uses_style_template() {
+    // style.toml でテンプレを差し替えると見出し出力が追従することを確認する
+    let mut style = ReadStyle::default();
+    style.section.format = "[\\chapternum-\\sectionnum] \\text".to_string();
+    let ctx = LoweringContext::new(&style);
+
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      &HeadingNumber { parts: vec![4, 7] },
+      &[InlineNode::Text("Custom Title".to_string())],
+    );
+
+    let vbox = nodes.iter().find_map(|n| {
+      if let LayoutNode::VBox { children, .. } = n {
+        Some(children)
+      } else {
+        None
+      }
+    });
+    let children = vbox.expect("VBox が出力されるはず");
+    let text = match &children[0] {
+      LayoutNode::Text(text, _) => text.clone(),
+      other => panic!("Text ノードが期待されます: {other:?}"),
+    };
+    assert_eq!(text, "[4-7] Custom Title");
   }
 
   #[test]

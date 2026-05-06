@@ -1236,6 +1236,7 @@ dependencies = [
  "miette",
  "parser",
  "read-fonts 0.39.2",
+ "read_style",
  "thiserror",
  "types",
 ]
@@ -1455,9 +1456,12 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "garde",
  "memchr",
  "miette",
  "phf",
+ "read_style",
+ "serde",
  "thiserror",
 ]
 

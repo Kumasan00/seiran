@@ -15,6 +15,7 @@ lazy-regex.workspace = true
 miette.workspace = true
 parser.workspace = true
 read-fonts.workspace = true
+read_style.workspace = true
 thiserror.workspace = true
 types.workspace = true
 

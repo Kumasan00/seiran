@@ -48,7 +48,7 @@ pub(crate) enum CommandResult {
 /// パラメータ付きバリアントにより、同一パターンのコマンドを
 /// 個別のバリアントなしで表現できます。
 #[derive(Clone, Copy, Debug)]
-enum CommandKind {
+pub(crate) enum CommandKind {
   /// `\space{N}` — 垂直スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
@@ -89,7 +89,7 @@ impl CommandKind {
   }
 }
 
-static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
+pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
 

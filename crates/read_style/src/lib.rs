@@ -77,6 +77,10 @@ pub struct Style {
   pub sub_paragraph: HeadingStyle,
   #[garde(dive)]
   pub reference: ReferenceStyle,
+  // TODO(figure-equation-prep): figure / equation / table 用 *Style 構造体の追加予定地。
+  // 実装本体タスクで [counters] テーブルおよび FigureStyle / EquationStyle /
+  // TableStyle を追加し、`parser::evaluator::counter::CounterRegistry::from_style`
+  // と組み合わせて lowering までカスタマイズできるようにする。
 }
 
 impl Default for Style {

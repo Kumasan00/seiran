@@ -53,5 +53,6 @@ pub(super) fn heading(
     level,
     number,
     title,
+    label: None,
   }]);
 }

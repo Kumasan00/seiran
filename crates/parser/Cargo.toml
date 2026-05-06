@@ -9,9 +9,12 @@ license.workspace = true
 
 [dependencies]
 bumpalo.workspace = true
+garde.workspace = true
 memchr.workspace = true
 miette.workspace = true
 phf.workspace = true
+read_style.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 
 [lints]

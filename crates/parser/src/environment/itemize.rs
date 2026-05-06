@@ -4,11 +4,10 @@
 //! 環境内の `\item{...}` コマンドを `DocNode::List` に変換します。
 
 use crate::{
-  ast::{CommandView, EnvironmentView},
+  ast::EnvironmentView,
   document::{DocNode, ListItem},
+  environment::body_scan,
   evaluator::{EvalError, Evaluator},
-  green::GreenElement,
-  syntax::SyntaxKind,
 };
 
 /// リスト環境の共通処理
@@ -42,23 +41,18 @@ fn list_common(
   let source = view.source();
 
   if let Some(body) = view.body() {
-    for child in body.children {
-      if let GreenElement::Node(child_node) = child
-        && child_node.kind == SyntaxKind::CommandCall
-      {
-        let cmd_view = CommandView::new(child_node, source);
-        if cmd_view.name() == "item" {
-          let mut item_content = Vec::new();
-          for arg in cmd_view.args() {
-            let doc_nodes = evaluator.evaluate_children(source, arg)?;
-            item_content.extend(doc_nodes);
-          }
-          items.push(ListItem {
-            content: item_content,
-          });
+    for cmd_view in body_scan::iter_command_calls(source, body) {
+      if cmd_view.name() == "item" {
+        let mut item_content = Vec::new();
+        for arg in cmd_view.args() {
+          let doc_nodes = evaluator.evaluate_children(source, arg)?;
+          item_content.extend(doc_nodes);
         }
+        items.push(ListItem {
+          content: item_content,
+        });
       }
-      // テキストや改行等はスキップ（\item 以外はリスト内では無視）
+      // \item 以外の CommandCall（万一登場した場合）は無視
     }
   }
 

@@ -30,6 +30,8 @@ use crate::{
   token::TokenKind,
 };
 
+pub(crate) mod counter;
+
 // =============================================================================
 // エラー型
 // =============================================================================
@@ -310,11 +312,33 @@ impl Evaluator {
 
   /// インライン数式ノードを `MathNode` のリストに変換する
   ///
-  /// CST の `InlineMath` ノードから、構造トークン（`$`, `{`, `}`）を除去しつつ
-  /// テキスト・コマンド・グループ・上付き・下付きを `MathNode` に変換します。
+  /// `InlineMath` 専用の `$` 開閉トークンは [`Self::evaluate_math_children`] 内で
+  /// `_ => {}` に落ちるため、追加処理なしで共通ヘルパに委譲できる。
   pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
+    return Self::evaluate_math_children(source, math_node);
+  }
+
+  /// 数式環境の `EnvironmentBody` を `MathNode` のリストに変換する
+  ///
+  /// A1 で `\begin{equation}...\end{equation}` の body は [`crate::parser::ParseMode::Math`]
+  /// で構造化されており、`MathSuperscript` / `MathSubscript` / `MathGroup` / `CommandCall` が
+  /// body の直下に出現する。CST 形は `InlineMath` の中身と揃っているため、
+  /// 共通ヘルパ [`Self::evaluate_math_children`] にそのまま委譲する。
+  ///
+  /// 実装本体タスク（equation ハンドラ）から `view.body()` を渡して呼ぶ想定。
+  #[allow(dead_code)]
+  pub(crate) fn evaluate_math_body(source: &str, body_node: &GreenNode) -> Vec<MathNode> {
+    return Self::evaluate_math_children(source, body_node);
+  }
+
+  /// 数式モードで構造化された CST ノードの子要素を `MathNode` 列に変換する共通ヘルパ
+  ///
+  /// `InlineMath` ノード（`$...$` 由来）と数式環境の body の双方から呼ばれる。
+  /// 構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/
+  /// `Newline`/`Ampersand` を `MathNode::Text`・`MathNode::AlignmentMark` に変換する。
+  fn evaluate_math_children(source: &str, node: &GreenNode) -> Vec<MathNode> {
     let mut nodes = Vec::new();
-    for child in math_node.children {
+    for child in node.children {
       match child {
         GreenElement::Token(token) => match token.kind {
           TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
@@ -337,7 +361,7 @@ impl Evaluator {
             nodes.push(math_node);
           },
           SyntaxKind::MathGroup => {
-            let inner = Self::evaluate_inline_math(source, child_node);
+            let inner = Self::evaluate_math_children(source, child_node);
             nodes.push(MathNode::Group(inner));
           },
           SyntaxKind::MathSubscript => {
@@ -388,7 +412,7 @@ impl Evaluator {
         GreenElement::Node(child_node) => match child_node.kind {
           SyntaxKind::MathGroup => {
             // グループをそのまま MathNode::Group として保持
-            let inner = Self::evaluate_inline_math(source, child_node);
+            let inner = Self::evaluate_math_children(source, child_node);
             nodes.push(MathNode::Group(inner));
           },
           SyntaxKind::CommandCall => {
@@ -539,6 +563,7 @@ mod tests {
         level,
         number,
         title,
+        ..
       } => {
         assert_eq!(*level, HeadingLevel::Section);
         assert_eq!(number.parts, vec![0, 1]);
@@ -784,6 +809,30 @@ mod tests {
     } else {
       panic!("Paragraph が期待されます");
     }
+  }
+
+  #[test]
+  fn evaluate_math_body_on_equation_env_produces_superscript() {
+    // C2: equation 環境の EnvironmentBody から evaluate_math_body を呼ぶと
+    //     ParseMode::Math で構造化された CST 形を MathNode 列に変換できる
+    let arena = bumpalo::Bump::new();
+    let source = r"\begin{equation}x^2\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+
+    let env = cst.children.iter().find_map(|c| match c {
+      crate::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
+      _ => None,
+    });
+    let env = env.expect("Environment ノードが期待されます");
+    let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+
+    let math_nodes = Evaluator::evaluate_math_body(source, body);
+
+    // body は "x^2" → Text("x"), Superscript(Text("2"))
+    let has_superscript = math_nodes.iter().any(|n| matches!(n, MathNode::Superscript(_)));
+    let has_text_x = math_nodes.iter().any(|n| matches!(n, MathNode::Text(t) if t == "x"));
+    assert!(has_text_x, "Text(\"x\") が含まれるはず: {math_nodes:?}");
+    assert!(has_superscript, "MathSuperscript が含まれるはず: {math_nodes:?}");
   }
 
   #[test]

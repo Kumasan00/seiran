@@ -11,6 +11,7 @@ use crate::{
   evaluator::{EvalError, Evaluator},
 };
 
+pub(crate) mod body_scan;
 mod itemize;
 
 #[derive(Clone, Copy, Debug)]
