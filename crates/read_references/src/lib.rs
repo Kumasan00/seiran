@@ -1,20 +1,25 @@
 //! 参照定義ファイルの読み込みモジュール
 //!
-//! TOML 形式の参照定義ファイルを読み込み、`garde` による宣言的バリデーションを経て
+//! TOML / JSON 形式の参照定義ファイルを読み込み、`garde` による宣言的バリデーションを経て
 //! `id` をキーとする参照定義のマップを返す。フィールド単位の不正・著者の判別不能
 //! （`family` と `literal` の同時指定／不指定）・参照 ID の重複は、すべて
 //! `MultipleValidationErrors` に集約して 1 度に報告する。
+//!
+//! ファイル形式は拡張子 (`.toml` / `.json`) で判別する。
 
 use std::{
   collections::{HashMap, HashSet},
+  fmt,
   path::{Path, PathBuf},
 };
 
 use garde::Validate;
 use miette::Diagnostic;
-use serde::Deserialize;
+use serde::{
+  Deserialize,
+  de::{MapAccess, Visitor},
+};
 use thiserror::Error;
-use toml::value::Datetime;
 use tracing::info;
 
 /// 参照定義ファイル読み込み時のエラー型
@@ -39,6 +44,26 @@ pub enum ReadReferencesError {
     /// 元の解析エラー
     #[source]
     source: toml::de::Error,
+  },
+  /// JSON 解析に失敗した場合
+  #[error("参照定義ファイルの JSON 解析に失敗しました: {path}")]
+  #[diagnostic(code(references::parse_json), help("JSON の構文を確認してください。"))]
+  ParseJson {
+    /// ファイルパス
+    path: String,
+    /// 元の解析エラー
+    #[source]
+    source: serde_json::Error,
+  },
+  /// サポートされていない拡張子
+  #[error("参照定義ファイルの拡張子がサポートされていません: {path}")]
+  #[diagnostic(
+    code(references::unsupported_extension),
+    help("拡張子を `.toml` または `.json` のいずれかに変更してください。")
+  )]
+  UnsupportedExtension {
+    /// ファイルパス
+    path: String,
   },
   /// 複合バリデーションエラー（複数のエラーをまとめて報告）
   #[error("参照定義のバリデーションに失敗しました。")]
@@ -78,6 +103,27 @@ pub enum ValidationError {
     #[source]
     source: std::io::Error,
   },
+}
+
+/// 参照定義ファイルの形式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Format {
+  /// TOML 形式
+  Toml,
+  /// JSON 形式
+  Json,
+}
+
+impl Format {
+  /// 拡張子から形式を判定する。判別できない場合は `None` を返す。
+  fn from_extension(path: &Path) -> Option<Self> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    return match ext.as_str() {
+      "toml" => Some(Self::Toml),
+      "json" => Some(Self::Json),
+      _ => None,
+    };
+  }
 }
 
 /// 参照定義ファイル全体を表す構造体
@@ -245,67 +291,67 @@ pub struct Reference {
   // Number Variables
   /// 章番号
   #[serde(rename = "chapter-number")]
-  pub chapter_number: Option<String>,
+  pub chapter_number: Option<NumberOrString>,
   /// 引用番号
   #[serde(rename = "citation-number")]
-  pub citation_number: Option<String>,
+  pub citation_number: Option<NumberOrString>,
   /// コレクション番号
   #[serde(rename = "collection-number")]
-  pub collection_number: Option<String>,
+  pub collection_number: Option<NumberOrString>,
   /// 版（例: 第2版）
-  pub edition: Option<String>,
+  pub edition: Option<NumberOrString>,
   /// 最初の参照脚注番号
   #[serde(rename = "first-reference-note-number")]
-  pub first_reference_note_number: Option<String>,
+  pub first_reference_note_number: Option<NumberOrString>,
   /// 号数（イシュー）
-  pub issue: Option<String>,
+  pub issue: Option<NumberOrString>,
   /// 引用箇所（ページ番号など）
-  pub locator: Option<String>,
+  pub locator: Option<NumberOrString>,
   /// 番号（汎用）
-  pub number: Option<String>,
+  pub number: Option<NumberOrString>,
   /// 総ページ数
   #[serde(rename = "number-of-pages")]
-  pub number_of_pages: Option<String>,
+  pub number_of_pages: Option<NumberOrString>,
   /// 総巻数
   #[serde(rename = "number-of-volumes")]
-  pub number_of_volumes: Option<String>,
+  pub number_of_volumes: Option<NumberOrString>,
   /// ページ範囲（例: "1-10"）
-  pub page: Option<String>,
+  pub page: Option<NumberOrString>,
   /// 開始ページ番号
   #[serde(rename = "page-first")]
-  pub page_first: Option<String>,
+  pub page_first: Option<NumberOrString>,
   /// パート番号
   #[serde(rename = "part-number")]
-  pub part_number: Option<String>,
+  pub part_number: Option<NumberOrString>,
   /// 刷番号
   #[serde(rename = "printing-number")]
-  pub printing_number: Option<String>,
+  pub printing_number: Option<NumberOrString>,
   /// セクション
-  pub section: Option<String>,
+  pub section: Option<NumberOrString>,
   /// 補遺番号
   #[serde(rename = "supplement-number")]
-  pub supplement_number: Option<String>,
+  pub supplement_number: Option<NumberOrString>,
   /// バージョン
-  pub version: Option<String>,
+  pub version: Option<NumberOrString>,
   /// 巻号（ボリューム）
-  pub volume: Option<String>,
+  pub volume: Option<NumberOrString>,
 
   // Date Variables
   /// アクセス日
-  pub accessed: Option<Datetime>,
+  pub accessed: Option<Date>,
   /// 利用可能日
   #[serde(rename = "available-date")]
-  pub available_date: Option<Datetime>,
+  pub available_date: Option<Date>,
   /// イベント開催日
   #[serde(rename = "event-date")]
-  pub event_date: Option<Datetime>,
+  pub event_date: Option<Date>,
   /// 発行日
-  pub issued: Option<Datetime>,
+  pub issued: Option<Date>,
   /// 原著の発行日
   #[serde(rename = "original-date")]
-  pub original_date: Option<Datetime>,
+  pub original_date: Option<Date>,
   /// 提出日
-  pub submitted: Option<Datetime>,
+  pub submitted: Option<Date>,
 
   // Name Variables
   /// 著者リスト
@@ -497,6 +543,137 @@ pub enum ReferenceType {
   Webpage,
 }
 
+/// 数値または文字列の値。
+///
+/// CSL の Number Variables は整数・小数のいずれの数値も、ページ範囲（例: `"1-10"`）など
+/// 数値で表現できない値を保持する文字列も許容する。
+/// <https://docs.citationstyles.org/en/stable/specification.html#number-variables>
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum NumberOrString {
+  /// 整数値
+  Integer(i64),
+  /// 小数値
+  Float(f64),
+  /// 文字列値
+  String(String),
+}
+
+/// CSL (Citation Style Language) の日付値を表す構造体。
+///
+/// CSL JSON Date 仕様に対応し、`date-parts` / `season` / `circa` / `literal` / `raw` /
+/// `edtf` を保持する。
+/// <https://docs.citationstyles.org/en/stable/specification.html#date-variables>
+///
+/// 入力は CSL の構造化された日付オブジェクト（JSON object または TOML テーブル）のみを受理する。
+/// 例: `{ "date-parts": [[2024, 1, 15]], "circa": true }`。
+///
+/// 単純なISO 8601文字列（`"2024-01-15"`）や TOML の datetime リテラル（`2024-01-15`）は
+/// サポートしない。ISO 8601 風の文字列を保持したい場合は `edtf` フィールドを使用する
+/// （例: `{ "edtf": "2024-01-15" }`）。
+/// <https://docs.citationstyles.org/en/stable/specification.html#date>
+#[derive(Debug, Default)]
+pub struct Date {
+  /// 日付部分（年・月・日）。
+  ///
+  /// 外側の配列は最大 2 要素（2 要素ある場合は日付範囲を表す）、
+  /// 内側の配列は最大 3 要素（年・月・日）。
+  pub date_parts: Option<Vec<Vec<DatePart>>>,
+  /// 季節（`"spring"` / `"summer"` / `"fall"` / `"winter"`、または 1〜4 の整数）。
+  pub season: Option<DateSeason>,
+  /// 概算日付フラグ。CSL では真偽値・整数・文字列のいずれも許容する。
+  pub circa: Option<DateCirca>,
+  /// 文字列として解釈する日付（例: `"Spring 2024"`、`"early 19th century"`）。
+  pub literal: Option<String>,
+  /// 解析できなかった生の日付文字列。
+  pub raw: Option<String>,
+  /// EDTF (Extended Date/Time Format) 形式の日付文字列。
+  pub edtf: Option<String>,
+}
+
+/// `date-parts` の 1 要素（年・月・日のいずれか）。
+///
+/// CSL では数値表現が一般的だが、紀元前の年など特殊な表記のため文字列も許容される。
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum DatePart {
+  /// 数値での日付要素
+  Number(i64),
+  /// 文字列での日付要素
+  String(String),
+}
+
+/// 季節の表現。
+///
+/// CSL では `"spring"` / `"summer"` / `"fall"` / `"winter"` の文字列、
+/// または 1〜4 の整数のいずれも許容する。
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum DateSeason {
+  /// 整数での季節指定（1: spring, 2: summer, 3: fall, 4: winter）
+  Number(i64),
+  /// 文字列での季節指定
+  String(String),
+}
+
+/// 概算日付フラグの表現。
+///
+/// CSL では真偽値・整数（0/1）・文字列のいずれも許容する。
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum DateCirca {
+  /// 真偽値での指定
+  Bool(bool),
+  /// 整数での指定
+  Number(i64),
+  /// 文字列での指定
+  String(String),
+}
+
+impl<'de> Deserialize<'de> for Date {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    /// `Date` のデシリアライズを担う `Visitor`。
+    ///
+    /// CSL の構造化日付オブジェクトを受理し、各フィールドを `Date` に取り込む。
+    /// 未知のキーは無視する（CSL の前方互換性確保のため）。
+    struct DateVisitor;
+
+    impl<'de> Visitor<'de> for DateVisitor {
+      type Value = Date;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        return formatter.write_str("CSL の構造化日付オブジェクト");
+      }
+
+      fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+      where
+        A: MapAccess<'de>,
+      {
+        let mut date = Date::default();
+        while let Some(key) = map.next_key::<String>()? {
+          match key.as_str() {
+            "date-parts" => date.date_parts = Some(map.next_value()?),
+            "season" => date.season = Some(map.next_value()?),
+            "circa" => date.circa = Some(map.next_value()?),
+            "literal" => date.literal = Some(map.next_value()?),
+            "raw" => date.raw = Some(map.next_value()?),
+            "edtf" => date.edtf = Some(map.next_value()?),
+            _ => {
+              let _: serde::de::IgnoredAny = map.next_value()?;
+            },
+          }
+        }
+        return Ok(date);
+      }
+    }
+
+    return deserializer.deserialize_map(DateVisitor);
+  }
+}
+
 /// 著者情報を表す構造体
 ///
 /// `garde` の検証により、`family`（個人著者）と `literal`（組織著者）の
@@ -558,12 +735,13 @@ impl Validate for Name {
 ///
 /// # Arguments
 ///
-/// * `path` - 参照定義 TOML ファイルのパス。`None` の場合は空の参照定義を返す。
+/// * `path` - 参照定義ファイル（`.toml` / `.json`）のパス。`None` の場合は空の参照定義を返す。
 ///
 /// # Errors
 ///
 /// - ファイルの読み込みに失敗した場合
-/// - TOML のパースに失敗した場合
+/// - TOML / JSON のパースに失敗した場合
+/// - 拡張子がサポートされていない場合
 /// - フィールド単位の検証や参照 ID の重複検出に失敗した場合
 pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
@@ -586,19 +764,31 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
   return Ok(references);
 }
 
-/// TOML テキストを [`PreReferences`] にパースします（I/O なし）。
+/// テキストを [`PreReferences`] にパースします（I/O なし）。
 ///
-/// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
-/// 値検証は行いません。検証は [`validate_values`] または [`resolve`] で実行します。
+/// `source_path` の拡張子（`.toml` / `.json`）から形式を判別します。エラー報告に使う表示用
+/// パスでもあり、ファイルシステムへのアクセスには使われません。値検証は行いません。
+/// 検証は [`validate_values`] または [`resolve`] で実行します。
 ///
 /// # Errors
 ///
-/// TOML の構文が不正な場合に [`ReadReferencesError::ParseToml`] を返します。
+/// - 拡張子がサポートされていない場合は [`ReadReferencesError::UnsupportedExtension`] を返します。
+/// - TOML の構文が不正な場合は [`ReadReferencesError::ParseToml`] を返します。
+/// - JSON の構文が不正な場合は [`ReadReferencesError::ParseJson`] を返します。
 fn parse_references(text: &str, source_path: &Path) -> Result<PreReferences, ReadReferencesError> {
-  return toml::from_str(text).map_err(|source| ReadReferencesError::ParseToml {
+  let format = Format::from_extension(source_path).ok_or_else(|| ReadReferencesError::UnsupportedExtension {
     path: source_path.display().to_string(),
-    source,
-  });
+  })?;
+  return match format {
+    Format::Toml => toml::from_str(text).map_err(|source| ReadReferencesError::ParseToml {
+      path: source_path.display().to_string(),
+      source,
+    }),
+    Format::Json => serde_json::from_str(text).map_err(|source| ReadReferencesError::ParseJson {
+      path: source_path.display().to_string(),
+      source,
+    }),
+  };
 }
 
 /// [`PreReferences`] からパス解決を行い [`References`] を構築します。
@@ -684,7 +874,8 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    ReadReferencesError, References, ValidationError, parse_references, read_references, resolve, validate_values,
+    DateCirca, DatePart, DateSeason, NumberOrString, ReadReferencesError, References, ValidationError,
+    parse_references, read_references, resolve, validate_values,
   };
 
   /// `parse_references` 用のダミーパス。
@@ -902,5 +1093,256 @@ mod tests {
     assert_eq!(result.references.len(), 1);
     assert!(result.references.contains_key("ref1"));
     assert_eq!(result.style_path, style_path.canonicalize().unwrap());
+  }
+
+  /// JSON 用のダミーパス。
+  fn dummy_json_source() -> &'static Path { return Path::new("test.json"); }
+
+  /// `style_path` と `references` を含む JSON 文字列を組み立てる。
+  fn json_with_style_path(style_path: &str, references_json: &str) -> String {
+    return format!("{{\"style_path\": \"{style_path}\", \"references\": {references_json}}}");
+  }
+
+  #[test]
+  fn parse_references_fails_on_invalid_json_syntax() {
+    // Arrange / Act
+    let result = parse_references("{ this is not valid json", dummy_json_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
+  }
+
+  #[test]
+  fn parse_references_fails_on_unsupported_extension() {
+    // Arrange / Act
+    let result = parse_references("anything", Path::new("test.yaml"));
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
+  }
+
+  #[test]
+  fn validate_values_fails_on_empty_id_for_json() {
+    // Arrange
+    let json = json_with_style_path(
+      "/tmp/style.csl",
+      "[{\"id\": \"\", \"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}]",
+    );
+    let pre = parse_references(&json, dummy_json_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path.contains("id")
+    )));
+  }
+
+  #[test]
+  fn read_references_succeeds_with_valid_json_file() {
+    // Arrange
+    let tempdir = tempfile::tempdir().unwrap();
+    let style_path = tempdir.path().join("style.csl");
+    std::fs::write(&style_path, b"").unwrap();
+    let references_path = tempdir.path().join("references.json");
+    let json = json_with_style_path(
+      style_path.to_str().unwrap(),
+      "[{\
+         \"id\": \"ref1\", \
+         \"type\": \"book\", \
+         \"title\": \"Sample Book\", \
+         \"issued\": {\"date-parts\": [[2024, 1, 15]]}, \
+         \"author\": [{\"family\": \"Doe\", \"given\": \"John\"}]\
+       }]",
+    );
+    std::fs::write(&references_path, json).unwrap();
+
+    // Act
+    let result = read_references(Some(&references_path)).unwrap();
+
+    // Assert
+    assert_eq!(result.references.len(), 1);
+    let reference = result.references.get("ref1").unwrap();
+    let issued = reference.issued.as_ref().unwrap();
+    let parts = issued.date_parts.as_ref().unwrap();
+    assert_eq!(parts.len(), 1);
+    assert!(matches!(
+      parts[0].as_slice(),
+      [
+        DatePart::Number(2024),
+        DatePart::Number(1),
+        DatePart::Number(15)
+      ]
+    ));
+    assert_eq!(result.style_path, style_path.canonicalize().unwrap());
+  }
+
+  #[test]
+  fn read_references_parses_structured_date_in_toml() {
+    // Arrange
+    let tempdir = tempfile::tempdir().unwrap();
+    let style_path = tempdir.path().join("style.csl");
+    std::fs::write(&style_path, b"").unwrap();
+    let references_path = tempdir.path().join("references.toml");
+    std::fs::write(
+      &references_path,
+      toml_with_style_path(
+        style_path.to_str().unwrap(),
+        "[[references]]\n\
+         id = \"ref1\"\n\
+         type = \"book\"\n\
+         [[references.author]]\n\
+         family = \"Doe\"\n\n\
+         [references.issued]\n\
+         date-parts = [[2024, 1, 15], [2024, 12, 31]]\n\
+         circa = true\n\
+         season = \"spring\"\n",
+      ),
+    )
+    .unwrap();
+
+    // Act
+    let result = read_references(Some(&references_path)).unwrap();
+
+    // Assert
+    let reference = result.references.get("ref1").unwrap();
+    let issued = reference.issued.as_ref().unwrap();
+    let parts = issued.date_parts.as_ref().unwrap();
+    assert_eq!(parts.len(), 2);
+    assert!(matches!(
+      parts[0].as_slice(),
+      [
+        DatePart::Number(2024),
+        DatePart::Number(1),
+        DatePart::Number(15)
+      ]
+    ));
+    assert!(matches!(
+      parts[1].as_slice(),
+      [
+        DatePart::Number(2024),
+        DatePart::Number(12),
+        DatePart::Number(31)
+      ]
+    ));
+    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
+    assert!(matches!(&issued.season, Some(DateSeason::String(s)) if s == "spring"));
+  }
+
+  #[test]
+  fn read_references_parses_structured_date_in_json() {
+    // Arrange
+    let tempdir = tempfile::tempdir().unwrap();
+    let style_path = tempdir.path().join("style.csl");
+    std::fs::write(&style_path, b"").unwrap();
+    let references_path = tempdir.path().join("references.json");
+    let json = json_with_style_path(
+      style_path.to_str().unwrap(),
+      "[{\
+         \"id\": \"ref1\", \
+         \"type\": \"book\", \
+         \"issued\": {\
+           \"date-parts\": [[2024, 1, 15]], \
+           \"season\": 1, \
+           \"circa\": true, \
+           \"literal\": \"early 2024\", \
+           \"raw\": \"Jan 15, 2024\", \
+           \"edtf\": \"2024-01-15\"\
+         }, \
+         \"author\": [{\"family\": \"Doe\"}]\
+       }]",
+    );
+    std::fs::write(&references_path, json).unwrap();
+
+    // Act
+    let result = read_references(Some(&references_path)).unwrap();
+
+    // Assert
+    let reference = result.references.get("ref1").unwrap();
+    let issued = reference.issued.as_ref().unwrap();
+    let parts = issued.date_parts.as_ref().unwrap();
+    assert!(matches!(
+      parts[0].as_slice(),
+      [
+        DatePart::Number(2024),
+        DatePart::Number(1),
+        DatePart::Number(15)
+      ]
+    ));
+    assert!(matches!(issued.season, Some(DateSeason::Number(1))));
+    assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
+    assert_eq!(issued.literal.as_deref(), Some("early 2024"));
+    assert_eq!(issued.raw.as_deref(), Some("Jan 15, 2024"));
+    assert_eq!(issued.edtf.as_deref(), Some("2024-01-15"));
+  }
+
+  #[test]
+  fn read_references_fails_on_unsupported_extension_file() {
+    // Arrange
+    let tempdir = tempfile::tempdir().unwrap();
+    let references_path = tempdir.path().join("references.yaml");
+    std::fs::write(&references_path, b"style_path: /tmp/style.csl").unwrap();
+
+    // Act
+    let result = read_references(Some(&references_path));
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::UnsupportedExtension { .. })));
+  }
+
+  #[test]
+  fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
+    // Arrange
+    let toml = toml_with_style_path(
+      "/tmp/style.csl",
+      "[[references]]\n\
+       id = \"ref1\"\n\
+       type = \"book\"\n\
+       volume = 3\n\
+       edition = 2.5\n\
+       page = \"1-10\"\n\
+       issue = 7\n\
+       [[references.author]]\n\
+       family = \"Doe\"\n",
+    );
+
+    // Act
+    let pre = parse_references(&toml, dummy_source()).unwrap();
+    let reference = pre.references.first().unwrap();
+
+    // Assert
+    assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
+    assert!(matches!(reference.edition, Some(NumberOrString::Float(value)) if (value - 2.5).abs() < f64::EPSILON));
+    assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
+    assert!(matches!(reference.issue, Some(NumberOrString::Integer(7))));
+  }
+
+  #[test]
+  fn read_references_accepts_number_variables_as_integers_and_strings_in_json() {
+    // Arrange
+    let json = json_with_style_path(
+      "/tmp/style.csl",
+      "[{\
+         \"id\": \"ref1\", \
+         \"type\": \"book\", \
+         \"volume\": 3, \
+         \"edition\": 2.5, \
+         \"page\": \"1-10\", \
+         \"issue\": \"S2\", \
+         \"author\": [{\"family\": \"Doe\"}]\
+       }]",
+    );
+
+    // Act
+    let pre = parse_references(&json, dummy_json_source()).unwrap();
+    let reference = pre.references.first().unwrap();
+
+    // Assert
+    assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
+    assert!(matches!(reference.edition, Some(NumberOrString::Float(value)) if (value - 2.5).abs() < f64::EPSILON));
+    assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
+    assert!(matches!(&reference.issue, Some(NumberOrString::String(value)) if value == "S2"));
   }
 }

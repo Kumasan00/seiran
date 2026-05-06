@@ -1681,6 +1681,7 @@ dependencies = [
  "garde",
  "miette",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",
