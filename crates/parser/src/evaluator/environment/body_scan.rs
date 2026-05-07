@@ -20,10 +20,10 @@
 //! }
 //! ```
 
-use crate::{
+use syntax::{
+  SyntaxKind,
   ast::CommandView,
   green::{GreenElement, GreenNode},
-  syntax::SyntaxKind,
 };
 
 /// 環境本体の直下にある `CommandCall` ノードを順に返すイテレータ
@@ -49,9 +49,9 @@ pub(crate) fn iter_command_calls<'a>(
 #[cfg(test)]
 mod tests {
   use bumpalo::Bump;
+  use syntax::parse;
 
   use super::*;
-  use crate::parser::parse;
 
   #[test]
   fn iter_command_calls_yields_only_command_calls() {
@@ -62,7 +62,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     let env = cst.children.iter().find_map(|c| match c {
-      crate::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
+      syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
       _ => None,
     });
     let env = env.expect("Environment ノードが期待されます");

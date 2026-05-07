@@ -10,7 +10,7 @@
 /// `miette::SourceSpan` への変換をサポートしており、
 /// エラー診断時のソース位置表示に使用できます。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct Span {
+pub struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
   pub start: u32,
   /// 終了バイトオフセット（exclusive）
@@ -33,6 +33,10 @@ impl Span {
   /// バイト長を返す
   #[must_use]
   pub fn len(self) -> u32 { return self.end - self.start; }
+
+  /// バイト長が 0 かどうかを返す
+  #[must_use]
+  pub fn is_empty(self) -> bool { return self.end == self.start; }
 
   /// 2 つの Span を結合して、両方を含む最小の Span を返す
   ///

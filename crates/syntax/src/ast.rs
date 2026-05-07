@@ -11,8 +11,8 @@
 
 use crate::{
   green::{GreenElement, GreenNode},
+  kind::SyntaxKind,
   span::Span,
-  syntax::SyntaxKind,
   token::TokenKind,
 };
 
@@ -33,7 +33,7 @@ use crate::{
 ///
 /// 上記の CST ノードから `CommandView` を構築すると、
 /// `name()` → `"cmd"`, `args_count()` → `1`, `opt_args_count()` → `1` となります。
-pub(crate) struct CommandView<'a> {
+pub struct CommandView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
@@ -119,7 +119,7 @@ impl<'a> CommandView<'a> {
 ///
 /// 上記の CST ノードから `EnvironmentView` を構築すると、
 /// `name()` → `"itemize"`, `opt_args()` → `[...]` となります。
-pub(crate) struct EnvironmentView<'a> {
+pub struct EnvironmentView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
@@ -195,7 +195,7 @@ impl<'a> EnvironmentView<'a> {
 /// `MandatoryArg` や `OptArg` などのノード内のテキストトークンを連結して返します。
 /// 構造トークン（括弧類）やコメントは無視されます。
 #[must_use]
-pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
+pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
   let mut text = String::new();
   for child in node.children {
     match child {
@@ -229,7 +229,7 @@ pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
 /// の挙動に依存しており他種別を渡しても panic はしない（`debug_assert` のみ）。
 #[must_use]
 #[allow(dead_code)]
-pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
+pub fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
   debug_assert_eq!(opt_arg.kind, SyntaxKind::OptArg);
   let text = extract_text_content(source, opt_arg);
   let mut pairs = Vec::new();
@@ -245,87 +245,6 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<
     pairs.push((key.to_string(), value.to_string()));
   }
   return pairs;
-}
-
-/// `GreenNode` の子要素から `InlineNode` のリストを構築する
-///
-/// 見出しの引数など、テキストノードとコマンドを `InlineNode` に変換します。
-/// インラインコマンド（`\textbf`, `\emph` 等）と単一文字コマンドの解釈は
-/// [`crate::command::COMMAND_MAP`] を **唯一のソース** として参照する
-/// （ハードコードした name match は持たない）。
-/// `InlineMath` ノードは `InlineNode::InlineMath` に変換します。
-pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<crate::document::InlineNode> {
-  use crate::{
-    command::{COMMAND_MAP, CommandKind},
-    document::InlineNode,
-    evaluator::Evaluator,
-  };
-
-  let mut inlines = Vec::new();
-  for child in node.children {
-    match child {
-      GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
-          inlines.push(InlineNode::Text(token.text(source).to_string()));
-        },
-        TokenKind::Escaped => {
-          let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          inlines.push(InlineNode::Text(text.to_string()));
-        },
-        TokenKind::LineBreak => {
-          inlines.push(InlineNode::LineBreak);
-        },
-        _ => {},
-      },
-      GreenElement::Node(child_node) => match child_node.kind {
-        SyntaxKind::CommandCall => {
-          let view = CommandView::new(child_node, source);
-          match COMMAND_MAP.get(view.name()).copied() {
-            Some(CommandKind::InlineWrapper(wrapper)) => {
-              if let Some(arg) = view.first_arg() {
-                let children = extract_inline_nodes(source, arg);
-                inlines.push(wrapper(children));
-              }
-            },
-            Some(CommandKind::SingleChar(ch)) => {
-              inlines.push(InlineNode::Symbol(ch));
-            },
-            _ => {
-              // 見出しの引数などインライン文脈に出現しない種類（Headline / Space / Undefined）は
-              // 黙って無視。エラーは `Evaluator::evaluate_command` 側で扱う。
-            },
-          }
-        },
-        SyntaxKind::InlineMath => {
-          let math_nodes = Evaluator::evaluate_inline_math(source, child_node);
-          inlines.push(InlineNode::InlineMath(math_nodes));
-        },
-        SyntaxKind::Group => {
-          // グループの中身を再帰的に処理
-          let children = extract_inline_nodes(source, child_node);
-          inlines.extend(children);
-        },
-        _ => {},
-      },
-    }
-  }
-  return inlines;
-}
-
-/// コマンド名からシンボル文字を解決する
-///
-/// ギリシャ文字・数学記号等の引数なしコマンドを対応する Unicode 文字に変換します。
-/// 未知のコマンド名、または `SingleChar` 以外のコマンド種別の場合は `None` を返します。
-///
-/// 解決の単一ソースは [`crate::command::COMMAND_MAP`]。コマンド追加はそちらだけを
-/// 編集すれば、本関数および `Evaluator::evaluate_command` の双方に反映される。
-#[must_use]
-pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
-  use crate::command::{COMMAND_MAP, CommandKind};
-  if let Some(CommandKind::SingleChar(ch)) = COMMAND_MAP.get(name).copied() {
-    return Some(ch);
-  }
-  return None;
 }
 
 #[cfg(test)]
@@ -455,63 +374,6 @@ mod tests {
     assert!(view.body().is_some());
     assert!(view.args().is_empty());
     assert!(view.opt_args().is_empty());
-  }
-
-  #[test]
-  fn extract_inline_nodes_with_textbf() {
-    let arena = bumpalo::Bump::new();
-    let source = "\\section{\\textbf{太字タイトル}}";
-    let cst = crate::parser::parse(source, &arena).unwrap();
-    // Root > CommandCall(\section) > MandatoryArg > CommandCall(\textbf)
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
-    assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], crate::document::InlineNode::Strong(_)));
-  }
-
-  #[test]
-  fn extract_inline_nodes_with_symbol_command() {
-    let arena = bumpalo::Bump::new();
-    let source = "\\section{\\alpha}";
-    let cst = crate::parser::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
-    assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], crate::document::InlineNode::Symbol('α')));
-  }
-
-  #[test]
-  fn extract_inline_nodes_with_inline_math() {
-    let arena = bumpalo::Bump::new();
-    let source = "\\section{数式 $x^2$ です}";
-    let cst = crate::parser::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
-    // Text("数式"), Text(" "), InlineMath(...), Text(" "), Text("です")
-    let has_math = inlines.iter().any(|n| matches!(n, crate::document::InlineNode::InlineMath(_)));
-    assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
-  }
-
-  #[test]
-  fn extract_inline_nodes_mixed_text_and_commands() {
-    let arena = bumpalo::Bump::new();
-    let source = "\\section{Hello \\textbf{World}}";
-    let cst = crate::parser::parse(source, &arena).unwrap();
-    let section_node = cst.child_nodes().next().unwrap();
-    let view = CommandView::new(section_node, source);
-    let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
-    // Text("Hello"), Text(" "), Strong(...)
-    assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[0], crate::document::InlineNode::Text(t) if t == "Hello"));
-    assert!(matches!(&inlines[1], crate::document::InlineNode::Text(t) if t == " "));
-    assert!(matches!(&inlines[2], crate::document::InlineNode::Strong(_)));
   }
 
   #[test]

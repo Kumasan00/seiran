@@ -5,10 +5,11 @@
 //! 各コマンドは子要素を再帰的に `InlineNode` に変換し、
 //! 対応するラッパーノードを生成します。
 
+use syntax::ast::CommandView;
+
 use crate::{
-  ast::{CommandView, extract_inline_nodes},
   document::InlineNode,
-  evaluator::EvalError,
+  evaluator::{EvalError, inline::extract_inline_nodes},
 };
 
 /// 引数1つを取り、子要素を `InlineNode` リストに変換してラップする共通処理
@@ -50,12 +51,12 @@ pub(super) fn inline_wrapper(
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use syntax::{SyntaxKind, green::GreenElement, parse};
 
   use super::*;
-  use crate::{green::GreenElement, parser::parse, syntax::SyntaxKind};
 
   /// テスト用: ソースからコマンドビューを取得
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::green::GreenNode<'a> {
+  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a syntax::green::GreenNode<'a> {
     let cst = parse(source, arena).unwrap();
     for child in cst.children {
       if let GreenElement::Node(n) = child

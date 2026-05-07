@@ -19,18 +19,23 @@
 //!   `MathSuperscript` をそのまま `MathNode` に変換
 
 use miette::{Diagnostic, SourceSpan};
+use syntax::{
+  SyntaxKind,
+  ast::CommandView,
+  green::{GreenElement, GreenNode},
+  token::TokenKind,
+};
 use thiserror::Error;
 
 use crate::{
-  ast::CommandView,
-  command::CommandResult,
   document::{DocNode, HeadingLevel, InlineNode, MathNode},
-  green::{GreenElement, GreenNode},
-  syntax::SyntaxKind,
-  token::TokenKind,
+  evaluator::command::CommandResult,
 };
 
+mod command;
 pub(crate) mod counter;
+mod environment;
+mod inline;
 
 // =============================================================================
 // エラー型
@@ -277,7 +282,7 @@ impl Evaluator {
           },
           SyntaxKind::Environment => {
             Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);
-            let view = crate::ast::EnvironmentView::new(child_node, source);
+            let view = syntax::ast::EnvironmentView::new(child_node, source);
             let nodes = self.evaluate_environment(&view)?;
             doc_nodes.extend(nodes);
           },
@@ -320,7 +325,7 @@ impl Evaluator {
 
   /// 数式環境の `EnvironmentBody` を `MathNode` のリストに変換する
   ///
-  /// A1 で `\begin{equation}...\end{equation}` の body は [`crate::parser::ParseMode::Math`]
+  /// A1 で `\begin{equation}...\end{equation}` の body は `syntax::parser::ParseMode::Math`
   /// で構造化されており、`MathSuperscript` / `MathSubscript` / `MathGroup` / `CommandCall` が
   /// body の直下に出現する。CST 形は `InlineMath` の中身と揃っているため、
   /// 共通ヘルパ [`Self::evaluate_math_children`] にそのまま委譲する。
@@ -431,7 +436,7 @@ impl Evaluator {
   /// `\frac{a}{b}` → `MathNode::Frac`、`\sqrt[n]{x}` → `MathNode::Sqrt`、
   /// シンボルコマンド → `MathNode::Symbol`、その他 → `MathNode::Command` に変換します。
   fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> MathNode {
-    use crate::ast::{CommandView, resolve_symbol_command};
+    use crate::evaluator::inline::resolve_symbol_command;
 
     let view = CommandView::new(cmd_node, source);
     let name = view.name();
@@ -509,9 +514,10 @@ impl Evaluator {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use syntax::parse;
 
   use super::*;
-  use crate::{document::HeadingLevel, parser::parse};
+  use crate::document::HeadingLevel;
 
   /// テスト用ヘルパー: ソースをパースして評価する
   fn evaluate_source(source: &str) -> Vec<DocNode> {
@@ -820,7 +826,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     let env = cst.children.iter().find_map(|c| match c {
-      crate::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
+      syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
       _ => None,
     });
     let env = env.expect("Environment ノードが期待されます");

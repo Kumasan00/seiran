@@ -10,8 +10,8 @@
 //! - **Error ノード**: パースエラー時もエラーノードとして木に残す
 
 use crate::{
+  kind::SyntaxKind,
   span::Span,
-  syntax::SyntaxKind,
   token::{Token, TokenKind},
 };
 
@@ -29,7 +29,7 @@ use crate::{
 /// 全ノードとその子要素は単一の `bumpalo::Bump` アリーナに格納されるため、
 /// アリーナの `Drop` で全ノードが一括解放されます。
 #[derive(Debug)]
-pub(crate) struct GreenNode<'a> {
+pub struct GreenNode<'a> {
   /// ノードの種別
   pub kind: SyntaxKind,
   /// ソース上のバイト範囲

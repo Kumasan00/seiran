@@ -3,11 +3,11 @@
 //! `\begin{itemize}...\end{itemize}` および `\begin{enumerate}...\end{enumerate}`
 //! 環境内の `\item{...}` コマンドを `DocNode::List` に変換します。
 
+use syntax::ast::EnvironmentView;
+
 use crate::{
-  ast::EnvironmentView,
   document::{DocNode, ListItem},
-  environment::body_scan,
-  evaluator::{EvalError, Evaluator},
+  evaluator::{EvalError, Evaluator, environment::body_scan},
 };
 
 /// リスト環境の共通処理

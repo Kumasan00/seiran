@@ -21,9 +21,9 @@
 //!    `CommandKind` にバリアントを追加し、`execute()` にハンドラを実装します。
 
 use phf::phf_map;
+use syntax::ast::CommandView;
 
 use crate::{
-  ast::CommandView,
   document::{DocNode, HeadingLevel, InlineNode},
   evaluator::{EvalError, Evaluator},
 };

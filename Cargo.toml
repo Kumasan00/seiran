@@ -11,6 +11,7 @@ members = [
   "crates/read_style",
   "crates/seiran",
   "crates/subcommand",
+  "crates/syntax",
   "crates/types",
 ]
 
@@ -51,6 +52,7 @@ seiran = { path = "crates/seiran" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
 subcommand = { path = "crates/subcommand" }
+syntax = { path = "crates/syntax" }
 tempfile = "3.21.0"
 thiserror = "2.0.18"
 toml = "1.1.2"

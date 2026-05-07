@@ -1457,11 +1457,11 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "garde",
- "memchr",
  "miette",
  "phf",
  "read_style",
  "serde",
+ "syntax",
  "thiserror",
 ]
 
@@ -2061,6 +2061,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "syntax"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "memchr",
+ "miette",
+ "phf",
+ "thiserror",
 ]
 
 [[package]]

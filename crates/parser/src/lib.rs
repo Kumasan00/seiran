@@ -1,44 +1,30 @@
-//! テキストファイルのパースと Document IR 生成
+//! CST から Document IR への評価
 //!
-//! このクレートは TeX スタイルのソーステキストを解析し、
+//! このクレートは [`syntax`] クレートが生成した CST を走査し、
 //! PDF 生成パイプラインで使用される Document IR（`DocNode`）を生成します。
 //!
 //! ## 処理パイプライン
 //!
 //! ```text
 //! ソーステキスト
-//!   ↓ [lexer]     トークン列に分割
-//! Token 列 (Copy)
-//!   ↓ [parser]    アリーナベース CST（ロスレス具象構文木）を構築
-//! CST (green::GreenNode) — bumpalo::Bump アリーナ上
-//!   ↓ [evaluator] 型付きビュー (CommandView, EnvironmentView) を介して
-//!                  コマンド・環境を評価し Document IR に変換
+//!   ↓ [syntax::parse]  アリーナベース CST を構築
+//! CST (syntax::green::GreenNode) — bumpalo::Bump アリーナ上
+//!   ↓ [evaluator]       型付きビュー (CommandView, EnvironmentView) を介して
+//!                        コマンド・環境を評価し Document IR に変換
 //! Document IR (document::DocNode, document::InlineNode)
 //! ```
 //!
 //! ## モジュール構成
 //!
-//! - [`green`] — アリーナベース CST の型定義（`GreenNode`, `GreenElement`）
-//! - [`syntax`] — `SyntaxKind` 列挙型の定義
-//! - [`ast`] — CST 上の型付きビュー（`CommandView`, `EnvironmentView`）
 //! - [`document`] — Document IR の型定義
 //! - [`evaluator`] — CST → Document IR の変換器
 
 use bumpalo::Bump;
 
-mod ast;
-mod command;
 pub mod document;
-mod environment;
 mod evaluator;
-mod green;
-mod lexer;
-mod parser;
-mod span;
-mod syntax;
-mod token;
-
 pub use document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
+use evaluator::Evaluator;
 
 /// ソーステキストをパースして Document IR（`Vec<DocNode>`）を生成する
 ///
@@ -60,9 +46,9 @@ pub fn parse_source(source: &str, source_name: &str) -> miette::Result<Vec<DocNo
   let named_source = miette::NamedSource::new(source_name, source.to_string());
 
   let arena = Bump::new();
-  let cst = parser::parse(source, &arena).map_err(|e| miette::Report::new(e).with_source_code(named_source.clone()))?;
+  let cst = syntax::parse(source, &arena).map_err(|e| miette::Report::new(e).with_source_code(named_source.clone()))?;
 
-  let mut evaluator = evaluator::Evaluator::default();
+  let mut evaluator = Evaluator::default();
   let doc_nodes = evaluator
     .evaluate_children(source, cst)
     .map_err(|e| miette::Report::new(e).with_source_code(named_source))?;

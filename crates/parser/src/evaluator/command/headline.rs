@@ -4,10 +4,11 @@
 //! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成し、
 //! 自動採番を行います。
 
+use syntax::ast::CommandView;
+
 use crate::{
-  ast::{CommandView, extract_inline_nodes},
   document::{DocNode, HeadingLevel, HeadingNumber},
-  evaluator::{EvalContext, EvalError},
+  evaluator::{EvalContext, EvalError, inline::extract_inline_nodes},
 };
 
 /// 見出しコマンドの共通処理

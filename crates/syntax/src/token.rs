@@ -24,7 +24,7 @@ use crate::span::Span;
 ///
 /// `PartialEq` は `span` を無視し `kind` のみで比較します。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Token {
+pub struct Token {
   /// トークンの種類
   pub kind: TokenKind,
   /// ソース上のバイト範囲

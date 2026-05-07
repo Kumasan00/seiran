@@ -18,9 +18,9 @@ use thiserror::Error;
 
 use crate::{
   green::{GreenElement, GreenNode},
+  kind::SyntaxKind,
   lexer::Lexer,
   span::Span,
-  syntax::SyntaxKind,
   token::{Token, TokenKind},
 };
 
@@ -736,7 +736,7 @@ impl<'a> Parser<'a> {
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+pub fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
   let lexer = Lexer::new(source);
   let mut parser = Parser::new(source, lexer, arena);
   return parser.parse_root();

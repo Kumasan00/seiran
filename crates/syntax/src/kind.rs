@@ -30,7 +30,7 @@
 ///
 /// トークンレベル（リーフ）と合成ノード（内部ノード）の両方を表現します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum SyntaxKind {
+pub enum SyntaxKind {
   // // ---- トークン（リーフノード）----
   // /// コマンドトークン（`\name`）
   // CommandToken,

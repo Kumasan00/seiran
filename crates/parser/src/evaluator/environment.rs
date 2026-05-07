@@ -4,9 +4,9 @@
 //! 対応するハンドラに委譲します。
 
 use phf::phf_map;
+use syntax::ast::EnvironmentView;
 
 use crate::{
-  ast::EnvironmentView,
   document::DocNode,
   evaluator::{EvalError, Evaluator},
 };
