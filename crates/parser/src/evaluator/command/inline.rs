@@ -9,7 +9,7 @@ use syntax::ast::CommandView;
 
 use crate::{
   document::InlineNode,
-  evaluator::{EvalError, inline::extract_inline_nodes},
+  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
 };
 
 /// 引数1つを取り、子要素を `InlineNode` リストに変換してラップする共通処理
@@ -29,6 +29,7 @@ pub(super) fn inline_wrapper(
   wrapper: fn(Vec<InlineNode>) -> InlineNode,
 ) -> Result<Vec<InlineNode>, EvalError> {
   let name = view.name();
+  let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
@@ -36,7 +37,7 @@ pub(super) fn inline_wrapper(
       span: view.span().into(),
     });
   };
-  if view.args_count() > 1 || !view.opt_args_is_empty() {
+  if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
       span: view.span().into(),
@@ -176,6 +177,21 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(inline_wrapper(&view, InlineNode::Strong), Err(EvalError::ExtraCommandArgument { .. })));
+  }
+
+  #[test]
+  fn textbf_rejects_unknown_opt_arg_key() {
+    // Arrange — インライン装飾は任意引数を受け付けないので `[bold]` は不明キー
+    let arena = Bump::new();
+    let source = r"\textbf[bold]{x}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = inline_wrapper(&view, InlineNode::Strong);
+
+    // Assert — boolean ショートハンドの `bold` も未許可キーとして拒否される
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "bold"));
   }
 
   #[test]

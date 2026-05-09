@@ -25,7 +25,7 @@ use syntax::ast::CommandView;
 
 use crate::{
   document::{DocNode, HeadingLevel, InlineNode},
-  evaluator::{EvalError, Evaluator},
+  evaluator::{EvalError, Evaluator, opt_args::collect_command_opt_args},
 };
 
 mod control;
@@ -72,7 +72,8 @@ impl CommandKind {
       Self::InlineWrapper(wrapper) => inline::inline_wrapper(view, wrapper).map(CommandResult::Inline),
 
       Self::SingleChar(ch) => {
-        if !view.args_is_empty() || !view.opt_args_is_empty() {
+        let _opt_args = collect_command_opt_args(view, &[])?;
+        if !view.args_is_empty() {
           return Err(EvalError::ExtraCommandArgument {
             name: view.name().to_string(),
             span: view.span().into(),
@@ -226,5 +227,29 @@ impl Evaluator {
   pub(crate) fn evaluate_command(&mut self, view: &CommandView) -> Result<CommandResult, EvalError> {
     let command_kind = COMMAND_MAP.get(view.name()).copied().unwrap_or(CommandKind::Undefined);
     return command_kind.execute(view, self);
+  }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+  use syntax::parse;
+
+  use super::*;
+
+  #[test]
+  fn single_char_rejects_unknown_opt_arg_key() {
+    // Arrange — `\alpha` は SingleChar コマンドで任意引数を受け付けない
+    let arena = Bump::new();
+    let source = r"\alpha[k=v]";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 }

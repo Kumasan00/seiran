@@ -31,35 +31,6 @@
 /// トークンレベル（リーフ）と合成ノード（内部ノード）の両方を表現します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SyntaxKind {
-  // // ---- トークン（リーフノード）----
-  // /// コマンドトークン（`\name`）
-  // CommandToken,
-  // /// テキストトークン
-  // TextToken,
-  // /// 左中括弧 `{`
-  // LBrace,
-  // /// 右中括弧 `}`
-  // RBrace,
-  // /// 左角括弧 `[`
-  // LBracket,
-  // /// 右角括弧 `]`
-  // RBracket,
-  // /// ドル記号 `$`
-  // Dollar,
-  // /// アンパサンド `&`
-  // Ampersand,
-  // /// エスケープ文字（`\$` など）
-  // Escaped,
-  // /// 強制改行 `\\`
-  // LineBreak,
-  // /// パラグラフ区切り（空行）
-  // ParagraphBreak,
-  // /// コメント（`// ...`）
-  // Comment,
-  // /// 認識できない文字
-  // Unknown,
-
-  // ---- 合成ノード（内部ノード）----
   /// ドキュメント全体のルートノード
   Root,
   /// コマンド呼び出し（`\name[opt]{arg}`）

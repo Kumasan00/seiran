@@ -53,7 +53,6 @@ pub enum BoxItem {
 ///
 /// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct GlyphRun {
   /// テキストのフォントサイズ（ポイント）
   pub font_size: f32,
@@ -67,7 +66,6 @@ pub struct GlyphRun {
 
 /// 単一グリフの配置情報
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Glyph {
   /// グリフ ID
   pub gid: u32,

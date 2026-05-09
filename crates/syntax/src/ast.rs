@@ -167,7 +167,6 @@ impl<'a> EnvironmentView<'a> {
 
   /// 環境の必須引数ノードを返す（環境名の arg は除外）
   #[must_use]
-  #[allow(dead_code)]
   pub fn args(&self) -> Vec<&'a GreenNode<'a>> {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
       return vec![];
@@ -200,7 +199,9 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => text.push_str(token.text(source)),
+        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+          text.push_str(token.text(source));
+        },
         TokenKind::Escaped => {
           let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
           text.push_str(escaped);
@@ -222,27 +223,28 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
 ///
 /// `extract_text_content` で `[` `]` を除いた本文を取り出し、`,` で分割し、
 /// 各エントリを最初の `=` で key と value に分け、両側を `trim()` する。
-/// `=` を含まないエントリ、および key が空のエントリは無視される。
+/// `=` を含まないエントリは boolean フラグとして扱い `("key", "true")` を生成する
+/// （例: `[draft, label=fig:foo]` → `[("draft", "true"), ("label", "fig:foo")]`）。
+/// key が空のエントリは無視される。
 ///
 /// 値や key 内のクォート / カンマエスケープは現状非対応（必要になり次第拡張）。
 /// 入力ノードの種別は `SyntaxKind::OptArg` を期待するが、`extract_text_content`
 /// の挙動に依存しており他種別を渡しても panic はしない（`debug_assert` のみ）。
 #[must_use]
-#[allow(dead_code)]
 pub fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
   debug_assert_eq!(opt_arg.kind, SyntaxKind::OptArg);
   let text = extract_text_content(source, opt_arg);
   let mut pairs = Vec::new();
   for entry in text.split(',') {
-    let Some((key, value)) = entry.split_once('=') else {
-      continue;
+    let (key, value) = if let Some((k, v)) = entry.split_once('=') {
+      (k.trim(), v.trim().to_string())
+    } else {
+      (entry.trim(), "true".to_string())
     };
-    let key = key.trim();
-    let value = value.trim();
     if key.is_empty() {
       continue;
     }
-    pairs.push((key.to_string(), value.to_string()));
+    pairs.push((key.to_string(), value));
   }
   return pairs;
 }
@@ -457,16 +459,56 @@ mod tests {
   }
 
   #[test]
-  fn parse_key_value_options_skips_entries_without_equals() {
-    // `=` を含まないエントリは無視される
+  fn parse_key_value_options_treats_bare_key_as_boolean_true() {
+    // `=` を含まないエントリは boolean フラグとして "true" 値を生成する
     let arena = bumpalo::Bump::new();
-    let source = r"\cmd[orphan, key=val]{x}";
+    let source = r"\cmd[draft, key=val]{x}";
     let cst = crate::parser::parse(source, &arena).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
 
-    assert_eq!(pairs, vec![("key".to_string(), "val".to_string())]);
+    assert_eq!(
+      pairs,
+      vec![
+        ("draft".to_string(), "true".to_string()),
+        ("key".to_string(), "val".to_string()),
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_key_value_options_skips_empty_entries() {
+    // 空エントリ（連続した `,` や前後空白のみ）は無視される
+    let arena = bumpalo::Bump::new();
+    let source = r"\cmd[ , draft , ,key=val]{x}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
+
+    let pairs = parse_key_value_options(source, opt_arg);
+
+    assert_eq!(
+      pairs,
+      vec![
+        ("draft".to_string(), "true".to_string()),
+        ("key".to_string(), "val".to_string()),
+      ]
+    );
+  }
+
+  #[test]
+  fn extract_text_content_preserves_comma_and_equals() {
+    // Arrange — `[a=1, b=2]` の OptArg を実際にパースして取得
+    let arena = bumpalo::Bump::new();
+    let source = r"\cmd[a=1, b=2]{x}";
+    let cst = crate::parser::parse(source, &arena).unwrap();
+    let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
+
+    // Act
+    let text = extract_text_content(source, opt_arg);
+
+    // Assert — `[` と `]` は構造トークンなので除外され、本文のみ復元される
+    assert_eq!(text, "a=1, b=2");
   }
 
   #[test]

@@ -36,6 +36,7 @@ mod command;
 pub(crate) mod counter;
 mod environment;
 mod inline;
+mod opt_args;
 
 // =============================================================================
 // エラー型
@@ -150,6 +151,39 @@ pub enum EvalError {
     #[label("この環境は定義されていません")]
     span: SourceSpan,
   },
+
+  /// コマンド/環境の任意引数に未許可のキーが指定された場合
+  #[error("{name} の任意引数に不明なキー `{key}` が指定されています")]
+  #[diagnostic(code(parser::eval::unknown_opt_arg_key), help("許可されているキー: {expected_keys}"))]
+  UnknownOptArgKey {
+    /// コマンド名または環境名（先頭の `\` は含めない）
+    name: String,
+    /// 不明なキー
+    key: String,
+    /// 許可されているキー一覧の表示用文字列
+    expected_keys: String,
+    /// 任意引数ノードのソース位置
+    #[label("このキーは許可されていません")]
+    span: SourceSpan,
+  },
+
+  /// 任意引数の値が期待型に変換できない場合
+  #[error("{name} の任意引数 `{key}` の値が不正です: 期待型は {expected}")]
+  #[diagnostic(
+    code(parser::eval::invalid_opt_arg_value),
+    help("`{key}` には {expected} 形式の値を指定してください。")
+  )]
+  InvalidOptArgValue {
+    /// コマンド名または環境名（先頭の `\` は含めない）
+    name: String,
+    /// 値が不正なキー
+    key: String,
+    /// 期待された型の表示用文字列（"boolean" / "number" / "string" / "length (mm/cm)"）
+    expected: String,
+    /// 任意引数ノードのソース位置
+    #[label("この値は期待型に変換できません")]
+    span: SourceSpan,
+  },
 }
 
 // =============================================================================
@@ -239,7 +273,7 @@ impl Evaluator {
     for child in node.children {
       match child {
         GreenElement::Token(token) => match token.kind {
-          TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
+          TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
             current_inlines.push(InlineNode::Text(token.text(source).to_string()));
           },
           TokenKind::Escaped => {
@@ -346,13 +380,12 @@ impl Evaluator {
     for child in node.children {
       match child {
         GreenElement::Token(token) => match token.kind {
-          TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+          TokenKind::Text | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
+            nodes.push(MathNode::Text(token.text(source).to_string()));
+          },
           TokenKind::Escaped => {
             let text = &source[token.span.start as usize + 1..token.span.end as usize];
             nodes.push(MathNode::Text(text.to_string()));
-          },
-          TokenKind::Whitespace | TokenKind::Newline => {
-            nodes.push(MathNode::Text(token.text(source).to_string()));
           },
           TokenKind::Ampersand => {
             nodes.push(MathNode::AlignmentMark);
@@ -404,13 +437,12 @@ impl Evaluator {
     for child in script_node.children {
       match child {
         GreenElement::Token(token) => match token.kind {
-          TokenKind::Text => nodes.push(MathNode::Text(token.text(source).to_string())),
+          TokenKind::Text | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
+            nodes.push(MathNode::Text(token.text(source).to_string()));
+          },
           TokenKind::Escaped => {
             let text = &source[token.span.start as usize + 1..token.span.end as usize];
             nodes.push(MathNode::Text(text.to_string()));
-          },
-          TokenKind::Whitespace | TokenKind::Newline => {
-            nodes.push(MathNode::Text(token.text(source).to_string()));
           },
           _ => {},
         },
@@ -550,6 +582,62 @@ mod tests {
       },
       _ => panic!("Paragraph が期待されます"),
     }
+  }
+
+  #[test]
+  fn evaluate_body_text_preserves_comma_and_equals() {
+    // Arrange & Act — `,` `=` が独立トークンになっても本文中で取りこぼされず保持されること
+    let result = evaluate_source("Hello, world = ok");
+
+    // Assert — Paragraph の InlineNode を文字列結合すると元のソースが復元される
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      DocNode::Paragraph(inlines) => {
+        let joined: String = inlines
+          .iter()
+          .filter_map(|n| {
+            if let InlineNode::Text(t) = n {
+              Some(t.as_str())
+            } else {
+              None
+            }
+          })
+          .collect();
+        assert_eq!(joined, "Hello, world = ok");
+      },
+      _ => panic!("Paragraph が期待されます"),
+    }
+  }
+
+  #[test]
+  fn evaluate_inline_math_preserves_comma_and_equals() {
+    // Arrange & Act — 数式中の `,` `=` も MathNode::Text として保持されること
+    let result = evaluate_source("$f(x, y) = 0$");
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます");
+    };
+    let math = inlines.iter().find_map(|n| {
+      if let InlineNode::InlineMath(m) = n {
+        Some(m)
+      } else {
+        None
+      }
+    });
+    let math = math.expect("InlineMath ノードが含まれるはず");
+    let joined: String = math
+      .iter()
+      .filter_map(|n| {
+        if let MathNode::Text(t) = n {
+          Some(t.as_str())
+        } else {
+          None
+        }
+      })
+      .collect();
+    assert_eq!(joined, "f(x, y) = 0");
   }
 
   #[test]

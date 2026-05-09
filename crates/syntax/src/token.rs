@@ -19,23 +19,13 @@ use crate::span::Span;
 ///
 /// トークンの種類（`kind`）とソース位置情報（`span`）を保持します。
 /// テキスト内容はソースを参照して取得します。
-///
-/// ## 等価比較
-///
-/// `PartialEq` は `span` を無視し `kind` のみで比較します。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token {
   /// トークンの種類
   pub kind: TokenKind,
   /// ソース上のバイト範囲
   pub span: Span,
 }
-
-impl PartialEq for Token {
-  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind; }
-}
-
-impl Eq for Token {}
 
 impl Token {
   /// 新しいトークンを生成する
@@ -94,6 +84,10 @@ pub enum TokenKind {
   Caret,
   /// アンパサンド `&`（数式環境での位置合わせ・表環境での区切り）
   Ampersand,
+  /// カンマ `,`（任意引数のエントリ区切り）
+  Comma,
+  /// イコール `=`（任意引数の key=value 区切り）
+  Equals,
   /// エスケープ文字（`\{`, `\}`, `\$` など）
   Escaped,
   /// プレーンテキスト

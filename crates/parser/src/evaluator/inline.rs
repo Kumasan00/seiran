@@ -34,7 +34,7 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<Inline
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline => {
+        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
           inlines.push(InlineNode::Text(token.text(source).to_string()));
         },
         TokenKind::Escaped => {

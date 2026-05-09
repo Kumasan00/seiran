@@ -8,7 +8,7 @@ use syntax::ast::CommandView;
 
 use crate::{
   document::{DocNode, HeadingLevel, HeadingNumber},
-  evaluator::{EvalContext, EvalError, inline::extract_inline_nodes},
+  evaluator::{EvalContext, EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
 };
 
 /// 見出しコマンドの共通処理
@@ -32,6 +32,7 @@ pub(super) fn heading(
 ) -> Result<Vec<DocNode>, EvalError> {
   let name = level.command_name();
 
+  let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
@@ -39,7 +40,7 @@ pub(super) fn heading(
       span: view.span().into(),
     });
   };
-  if view.args_count() > 1 || !view.opt_args_is_empty() {
+  if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
       span: view.span().into(),
@@ -56,4 +57,41 @@ pub(super) fn heading(
     title,
     label: None,
   }]);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+  use syntax::{SyntaxKind, green::GreenElement, parse};
+
+  use super::*;
+
+  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a syntax::green::GreenNode<'a> {
+    let cst = parse(source, arena).unwrap();
+    for child in cst.children {
+      if let GreenElement::Node(n) = child
+        && n.kind == SyntaxKind::CommandCall
+      {
+        return n;
+      }
+    }
+    panic!("CommandCall ノードが見つかりません");
+  }
+
+  #[test]
+  fn heading_rejects_unknown_opt_arg_key() {
+    // Arrange — 見出しは現状任意引数を受け付けないので `[label=...]` は不明キー
+    let arena = Bump::new();
+    let source = r"\section[label=foo]{Title}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+    let mut context = EvalContext::default();
+
+    // Act
+    let result = heading(&view, HeadingLevel::Section, &mut context);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
+  }
 }

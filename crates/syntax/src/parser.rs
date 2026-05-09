@@ -177,19 +177,9 @@ impl<'a> Parser<'a> {
         break;
       }
 
-      match self.peek_kind() {
-        Some(TokenKind::RBrace | TokenKind::RBracket) => {
-          #[allow(clippy::unwrap_used)]
-          let token = self.next_token().unwrap();
-          return Err(ParserError::UnexpectedToken {
-            kind: token.kind,
-            span: token.span.into(),
-          });
-        },
-        _ => {
-          self.parse_element(&mut children, ParseMode::Text)?;
-        },
-      }
+      // トップレベルでは終端を持たないため None を渡す。
+      // parse_element 内で stray な `}` / `]` は UnexpectedToken エラーになる。
+      self.parse_element(&mut children, ParseMode::Text, None)?;
     }
 
     let end = self.last_span.end;
@@ -200,10 +190,16 @@ impl<'a> Parser<'a> {
   ///
   /// `mode` が [`ParseMode::Math`] の場合、`^` `_` を上付き・下付きとして構造化し、
   /// `{...}` を `MathGroup` として解釈する。
+  ///
+  /// `expected_closer` には呼び出し側が閉じるべき終端トークン（`RBrace` / `RBracket`）を渡す。
+  /// 一致する終端を見つけたら何も消費せず `Ok(())` を返し、呼び出し側の次の peek で break する。
+  /// 一致しない（=想定外の）閉じトークンは `UnexpectedToken` エラーとして即座に報告する。
+  /// トップレベルや環境本体のように終端を持たない文脈では `None` を渡す。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
     mode: ParseMode,
+    expected_closer: Option<TokenKind>,
   ) -> Result<(), ParserError> {
     self.skip_trivia(children);
 
@@ -264,9 +260,18 @@ impl<'a> Parser<'a> {
         let group_node = self.parse_group()?;
         children.push(GreenElement::Node(group_node));
       },
-      TokenKind::RBrace | TokenKind::RBracket => {
-        // terminator — 呼び出し元で処理する
+      TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
+        // 呼び出し側が期待する終端 — 消費せずに戻し、呼び出し側の loop で break させる
         return Ok(());
+      },
+      TokenKind::RBrace | TokenKind::RBracket => {
+        // 想定外の閉じトークン — 即エラー（無限ループ防止）
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::UnexpectedToken {
+          kind: token.kind,
+          span: token.span.into(),
+        });
       },
       _ => {
         #[allow(clippy::unwrap_used)]
@@ -338,7 +343,9 @@ impl<'a> Parser<'a> {
         }
       }
 
-      self.parse_element(&mut body_children, body_mode)?;
+      // 環境本体は単独で終端を持たない（`\end` で終わる）ため None を渡す。
+      // 本体内に stray な `}` / `]` が混入した場合は UnexpectedToken エラーで報告する。
+      self.parse_element(&mut body_children, body_mode, None)?;
 
       // parse_element が \end を検出して何も消費しなかった場合のチェック
       if let Some(TokenKind::Command) = self.peek_kind() {
@@ -434,7 +441,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, ParseMode::Text)?;
+      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBracket))?;
       if matches!(self.peek_kind(), Some(TokenKind::RBracket) | None) {
         break;
       }
@@ -471,7 +478,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, ParseMode::Text)?;
+      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBrace))?;
       if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
         break;
       }
@@ -508,7 +515,7 @@ impl<'a> Parser<'a> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, ParseMode::Text)?;
+      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBrace))?;
       if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
         break;
       }
@@ -924,6 +931,31 @@ mod tests {
   fn unexpected_rbracket_at_top_level() {
     let arena = Bump::new();
     assert!(parse("]", &arena).is_err());
+  }
+
+  #[test]
+  fn stray_rbrace_in_environment_body_is_error_not_hang() {
+    // 以前は環境本体で stray `}` が出ると parse_element が消費せず Ok を返し、
+    // body ループが進捗ゼロで無限ループしていた。エラーで早期に止まることを確認する。
+    let arena = Bump::new();
+    let result = parse(r"\begin{env}}\end{env}", &arena);
+    assert!(result.is_err(), "stray '}}' は UnexpectedToken エラーになるべき");
+  }
+
+  #[test]
+  fn stray_rbracket_in_mandatory_arg_is_error_not_hang() {
+    // 必須引数 `{...}` の中に stray `]` が出た場合も同様に無限ループしていた。
+    let arena = Bump::new();
+    let result = parse(r"\cmd{abc]def}", &arena);
+    assert!(result.is_err(), "stray ']' は UnexpectedToken エラーになるべき");
+  }
+
+  #[test]
+  fn stray_rbrace_in_opt_arg_is_error_not_hang() {
+    // 任意引数 `[...]` の中に stray `}` が出た場合も同様。
+    let arena = Bump::new();
+    let result = parse(r"\cmd[abc}def]{x}", &arena);
+    assert!(result.is_err(), "stray '}}' は UnexpectedToken エラーになるべき");
   }
 
   #[test]

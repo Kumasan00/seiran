@@ -120,6 +120,18 @@ impl<'a> Lexer<'a> {
         TokenKind::RBracket
       },
       b'/' if self.peek_byte_at(1) == Some(b'/') => self.read_comment(),
+      b'&' => {
+        self.advance_bytes(1);
+        TokenKind::Ampersand
+      },
+      b',' => {
+        self.advance_bytes(1);
+        TokenKind::Comma
+      },
+      b'=' => {
+        self.advance_bytes(1);
+        TokenKind::Equals
+      },
       b'$' => {
         self.advance_bytes(1);
         TokenKind::Dollar
@@ -131,10 +143,6 @@ impl<'a> Lexer<'a> {
       b'^' => {
         self.advance_bytes(1);
         TokenKind::Caret
-      },
-      b'&' => {
-        self.advance_bytes(1);
-        TokenKind::Ampersand
       },
       b'\n' => {
         self.advance_bytes(1);
@@ -220,8 +228,8 @@ impl<'a> Lexer<'a> {
 
   /// テキストトークンを読み取る
   ///
-  /// 構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`）、空白文字、改行、
-  /// コメント開始（`//`）に遭遇するまでテキストを読み進める。
+  /// 構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`, `&`, `,`, `=`）、
+  /// 空白文字、改行、コメント開始（`//`）に遭遇するまでテキストを読み進める。
   /// 空白・改行は個別のトークンとして出力されるため、テキストには含まれない。
   ///
   /// # Returns
@@ -252,7 +260,7 @@ impl<'a> Lexer<'a> {
     Some(TokenKind::Text)
   }
 
-  /// 指定バイトが構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`）であるかを判定する
+  /// 指定バイトが構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`, `&`, `,`, `=`）であるかを判定する
   ///
   /// # Arguments
   ///
@@ -261,7 +269,9 @@ impl<'a> Lexer<'a> {
   /// # Returns
   ///
   /// 構造文字の場合は `true`
-  fn is_structural_char(b: u8) -> bool { matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&') }
+  fn is_structural_char(b: u8) -> bool {
+    matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&' | b',' | b'=')
+  }
 
   /// 水平空白（スペース・タブ等）を読み取る
   ///
@@ -483,6 +493,8 @@ mod tests {
     assert!(Lexer::is_structural_char(b'}'));
     assert!(Lexer::is_structural_char(b'['));
     assert!(Lexer::is_structural_char(b']'));
+    assert!(Lexer::is_structural_char(b','));
+    assert!(Lexer::is_structural_char(b'='));
     return;
   }
 
@@ -598,6 +610,66 @@ mod tests {
     // `^` 単独 → Caret トークン
     let tokens = tokenize("^");
     assert_eq!(tokens, vec![TokenKind::Caret]);
+    return;
+  }
+
+  #[test]
+  fn comma_token() {
+    // Arrange & Act
+    let tokens = tokenize_with_spans(",");
+
+    // Assert
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].kind, TokenKind::Comma);
+    assert_eq!(tokens[0].span, Span::new(0, 1));
+    return;
+  }
+
+  #[test]
+  fn equals_token() {
+    // Arrange & Act
+    let tokens = tokenize_with_spans("=");
+
+    // Assert
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].kind, TokenKind::Equals);
+    assert_eq!(tokens[0].span, Span::new(0, 1));
+    return;
+  }
+
+  #[test]
+  fn text_stops_at_comma() {
+    let tokens = tokenize("abc,def");
+    assert_eq!(tokens, vec![TokenKind::Text, TokenKind::Comma, TokenKind::Text]);
+    return;
+  }
+
+  #[test]
+  fn text_stops_at_equals() {
+    let tokens = tokenize("a=b");
+    assert_eq!(tokens, vec![TokenKind::Text, TokenKind::Equals, TokenKind::Text]);
+    return;
+  }
+
+  #[test]
+  fn key_value_optarg_text_splits_into_tokens() {
+    // Arrange & Act
+    let tokens = tokenize("key=value, key2=value2");
+
+    // Assert
+    assert_eq!(
+      tokens,
+      vec![
+        TokenKind::Text,
+        TokenKind::Equals,
+        TokenKind::Text,
+        TokenKind::Comma,
+        TokenKind::Whitespace,
+        TokenKind::Text,
+        TokenKind::Equals,
+        TokenKind::Text,
+      ]
+    );
     return;
   }
 

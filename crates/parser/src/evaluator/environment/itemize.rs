@@ -7,7 +7,7 @@ use syntax::ast::EnvironmentView;
 
 use crate::{
   document::{DocNode, ListItem},
-  evaluator::{EvalError, Evaluator, environment::body_scan},
+  evaluator::{EvalError, Evaluator, environment::body_scan, opt_args::collect_environment_opt_args},
 };
 
 /// リスト環境の共通処理
@@ -18,24 +18,13 @@ use crate::{
 ///
 /// * `view` - 環境の型付きビュー
 /// * `evaluator` - 評価器への可変参照
-/// * `env_name` - 環境名（エラーメッセージ用）
 /// * `ordered` - 順序付きリストかどうか
 ///
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-fn list_common(
-  view: &EnvironmentView,
-  evaluator: &mut Evaluator,
-  env_name: &str,
-  ordered: bool,
-) -> Result<Vec<DocNode>, EvalError> {
-  if !view.opt_args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: env_name.to_string(),
-      span: view.span().into(),
-    });
-  }
+fn list_common(view: &EnvironmentView, evaluator: &mut Evaluator, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
+  let _opt_args = collect_environment_opt_args(view, &[])?;
 
   let mut items = Vec::new();
   let source = view.source();
@@ -65,7 +54,7 @@ fn list_common(
 ///
 /// 余分な引数が指定されている場合にエラーを返します
 pub(super) fn itemize(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, "itemize", false);
+  return list_common(view, evaluator, false);
 }
 
 /// `enumerate` 環境を評価する（順序付きリスト）
@@ -74,5 +63,29 @@ pub(super) fn itemize(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resu
 ///
 /// 余分な引数が指定されている場合にエラーを返します
 pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, "enumerate", true);
+  return list_common(view, evaluator, true);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+  use syntax::parse;
+
+  use super::*;
+
+  #[test]
+  fn itemize_rejects_unknown_opt_arg_key() {
+    // Arrange — itemize は任意引数を受け付けないので `[noitemsep]` は不明キー
+    let arena = Bump::new();
+    let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
+  }
 }

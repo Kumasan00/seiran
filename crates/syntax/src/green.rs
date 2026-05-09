@@ -28,7 +28,7 @@ use crate::{
 ///
 /// 全ノードとその子要素は単一の `bumpalo::Bump` アリーナに格納されるため、
 /// アリーナの `Drop` で全ノードが一括解放されます。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GreenNode<'a> {
   /// ノードの種別
   pub kind: SyntaxKind,
@@ -37,12 +37,6 @@ pub struct GreenNode<'a> {
   /// 子要素のスライス（アリーナ上に確保）
   pub children: &'a [GreenElement<'a>],
 }
-
-impl PartialEq for GreenNode<'_> {
-  fn eq(&self, other: &Self) -> bool { return self.kind == other.kind && self.children == other.children; }
-}
-
-impl Eq for GreenNode<'_> {}
 
 impl<'a> GreenNode<'a> {
   /// 子ノード（`GreenNode` のみ）をイテレートする
@@ -86,7 +80,7 @@ impl<'a> GreenNode<'a> {
 /// CST の要素（ノードまたはトークン）
 ///
 /// `GreenNode` への参照（内部ノード）または `Token`（リーフ）を統一的に扱います。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GreenElement<'a> {
   /// 内部ノード
   Node(&'a GreenNode<'a>),
@@ -94,22 +88,9 @@ pub enum GreenElement<'a> {
   Token(Token),
 }
 
-impl PartialEq for GreenElement<'_> {
-  fn eq(&self, other: &Self) -> bool {
-    match (self, other) {
-      (GreenElement::Node(a), GreenElement::Node(b)) => return a == b,
-      (GreenElement::Token(a), GreenElement::Token(b)) => return a.kind == b.kind,
-      _ => return false,
-    }
-  }
-}
-
-impl Eq for GreenElement<'_> {}
-
 impl GreenElement<'_> {
   /// 要素の Span を返す
   #[must_use]
-  #[allow(dead_code)]
   pub fn span(&self) -> Span {
     match self {
       GreenElement::Node(n) => return n.span,
