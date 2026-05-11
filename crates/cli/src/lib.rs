@@ -22,11 +22,8 @@ pub struct Cli {
 /// アプリケーションがサポートするサブコマンド
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-  /// テキストファイルからPDFドキュメントを生成する
+  /// 設定ファイルの `sources` 配列に列挙されたファイルから PDF を生成する
   Build {
-    /// 入力テキストファイルのパス
-    #[arg(value_name = "FILE")]
-    text_file_path: PathBuf,
     /// 設定ファイルのパス（オプション、指定しない場合はデフォルトの `config.toml` を使用）
     #[arg(short, long, value_name = "CONFIG", default_value = "./config/config.toml")]
     config_path: PathBuf,
@@ -65,10 +62,7 @@ pub enum Command {
 /// # use cli::parse_arg;
 /// let cli = parse_arg();
 /// match cli.command {
-///   cli::Command::Build {
-///     text_file_path,
-///     config_path,
-///   } => println!("生成対象: {:?}, 設定ファイル: {:?}", text_file_path, config_path),
+///   cli::Command::Build { config_path } => println!("設定ファイル: {:?}", config_path),
 ///   cli::Command::VariationAxes {
 ///     font_path,
 ///     font_index,

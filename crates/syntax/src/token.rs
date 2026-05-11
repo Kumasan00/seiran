@@ -106,6 +106,39 @@ pub enum TokenKind {
   Unknown,
 }
 
+/// `TokenKind` のユーザ向け表示文字列
+///
+/// `ParserError` などのエラーメッセージで `{:?}`（`Debug`）の内部識別子をそのまま
+/// 露出させないために用いる。LaTeX 風ソースを書くユーザに馴染む記号を返す。
+/// 単一記号トークンは記号そのもの、ペイロード付きトークンや内部トリビアは
+/// 山括弧で囲んだ日本語の説明文字列を返す。
+impl std::fmt::Display for TokenKind {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let s = match self {
+      TokenKind::Command => "\\<command>",
+      TokenKind::LBrace => "{",
+      TokenKind::RBrace => "}",
+      TokenKind::LBracket => "[",
+      TokenKind::RBracket => "]",
+      TokenKind::Dollar => "$",
+      TokenKind::Underscore => "_",
+      TokenKind::Caret => "^",
+      TokenKind::Ampersand => "&",
+      TokenKind::Comma => ",",
+      TokenKind::Equals => "=",
+      TokenKind::Escaped => "<エスケープ文字>",
+      TokenKind::Text => "<テキスト>",
+      TokenKind::LineBreak => "\\\\",
+      TokenKind::ParagraphBreak => "<段落区切り>",
+      TokenKind::Whitespace => "<空白>",
+      TokenKind::Newline => "<改行>",
+      TokenKind::Comment => "<コメント>",
+      TokenKind::Unknown => "<不正なトークン>",
+    };
+    return write!(f, "{s}");
+  }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -132,6 +165,50 @@ mod tests {
     let source = r"\bold";
     let token = Token::new(TokenKind::Command, Span::new(0, 5));
     assert_eq!(token.command_name(source), "bold");
+    return;
+  }
+
+  #[test]
+  fn display_returns_symbol_for_single_char_tokens() {
+    // Arrange & Act & Assert — 単一記号トークンはその記号がそのまま返る
+    assert_eq!(format!("{}", TokenKind::LBrace), "{");
+    assert_eq!(format!("{}", TokenKind::RBrace), "}");
+    assert_eq!(format!("{}", TokenKind::LBracket), "[");
+    assert_eq!(format!("{}", TokenKind::RBracket), "]");
+    assert_eq!(format!("{}", TokenKind::Dollar), "$");
+    assert_eq!(format!("{}", TokenKind::Underscore), "_");
+    assert_eq!(format!("{}", TokenKind::Caret), "^");
+    assert_eq!(format!("{}", TokenKind::Ampersand), "&");
+    assert_eq!(format!("{}", TokenKind::Comma), ",");
+    assert_eq!(format!("{}", TokenKind::Equals), "=");
+    return;
+  }
+
+  #[test]
+  fn display_returns_double_backslash_for_line_break() {
+    // Arrange & Act & Assert
+    assert_eq!(format!("{}", TokenKind::LineBreak), "\\\\");
+    return;
+  }
+
+  #[test]
+  fn display_does_not_leak_debug_identifiers() {
+    // Arrange & Act & Assert — 内部識別子 (Debug 由来) が露出しないことを確認
+    let kinds = [
+      TokenKind::Command,
+      TokenKind::Escaped,
+      TokenKind::Text,
+      TokenKind::ParagraphBreak,
+      TokenKind::Whitespace,
+      TokenKind::Newline,
+      TokenKind::Comment,
+      TokenKind::Unknown,
+    ];
+    for kind in kinds {
+      let display = format!("{kind}");
+      let debug = format!("{kind:?}");
+      assert_ne!(display, debug, "{kind:?} の Display は Debug と異なるべき");
+    }
     return;
   }
 }

@@ -85,12 +85,16 @@ pub struct Style {
 
 impl Default for Style {
   fn default() -> Self {
-    let part = "第\\partnum部 \\text".to_string();
-    let chapter = "第\\chapternum章 \\text".to_string();
-    let section = "\\chapternum.\\sectionnum".to_string();
-    let sub_section = "\\chapternum.\\sectionnum.\\subsectionnum".to_string();
-    let paragraph = "\\chapternum.\\sectionnum.\\subsectionnum.\\paragraphnum".to_string();
-    let sub_paragraph = "\\chapternum.\\sectionnum.\\subsectionnum.\\paragraphnum.\\subparagraphnum".to_string();
+    // 軸補 i18n: デフォルトは英語。日本語化したい場合は style.toml で上書きする。
+    // プレースホルダは `{number}` `{title}` のみ:
+    //   - `{number}` は HeadingNumber::dotted() の値（Part: "1"、Chapter: "1"、Section: "1.2"、…）
+    //   - `{title}` は見出しタイトルのプレーンテキスト
+    let part = "Part {number}: {title}".to_string();
+    let chapter = "Chapter {number}: {title}".to_string();
+    let section = "{number} {title}".to_string();
+    let sub_section = "{number} {title}".to_string();
+    let paragraph = "{number} {title}".to_string();
+    let sub_paragraph = "{number} {title}".to_string();
     return Self {
       font_size: 12.0,
       line_height_factor: 1.2,
@@ -171,7 +175,7 @@ pub struct ReferenceStyle {
 impl Default for ReferenceStyle {
   fn default() -> Self {
     return Self {
-      format: "参考文献".to_string(),
+      format: "References".to_string(),
       font_size: 12.0,
       bottom_margin: 10.0,
     };

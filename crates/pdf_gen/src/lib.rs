@@ -185,15 +185,17 @@ pub fn create_pdf(
     .day(now.day() as u8)
     .hour(now.hour() as u8)
     .minute(now.minute() as u8);
+  // PDF メタデータの /Title は document.title を優先し、未設定なら output.name にフォールバックする
+  let title = config.document.title.clone().unwrap_or_else(|| config.output.name.clone());
   let mut metadata = Metadata::new()
-    .title(config.name.clone())
+    .title(title)
     .creation_date(time)
     .creator("seiran".to_string())
     .producer("seiran".to_string());
-  if let Some(author) = &config.author {
+  if let Some(author) = &config.document.author {
     metadata = metadata.authors(vec![author.clone()]);
   }
-  if let Some(subject) = &config.subject {
+  if let Some(subject) = &config.document.subject {
     metadata = metadata.description(subject.clone());
   }
   document.set_metadata(metadata);

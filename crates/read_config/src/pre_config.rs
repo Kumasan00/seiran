@@ -48,27 +48,74 @@ use crate::ValidationError;
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PreConfig {
-  /// ドキュメント名（PDF ファイル名の基盤）
-  #[garde(custom(validate_document_name))]
-  pub name: String,
-  /// ドキュメントの著者名（オプション）
-  #[garde(skip)]
-  pub author: Option<String>,
-  /// ドキュメントの主題（オプション）
-  #[garde(skip)]
-  pub subject: Option<String>,
-  /// スタイル設定ファイルへのパス（オプション）
-  #[garde(skip)]
-  pub style_path: Option<PathBuf>,
-  /// 参照設定ファイルへのパス（オプション）
-  #[garde(skip)]
-  pub references_path: Option<PathBuf>,
+  /// ドキュメントメタデータ（title / author / date / subject）
+  ///
+  /// 全フィールドが optional なため省略可。
+  #[serde(default)]
+  #[garde(dive)]
+  pub document: PreDocumentConfig,
+  /// 出力ファイル名・ディレクトリ
+  #[garde(dive)]
+  pub output: PreOutputConfig,
   /// PDF ページ設定
   #[garde(dive)]
   pub pdf: PrePdfConfig,
   /// 19 フォント種別の設定群
   #[garde(dive)]
   pub font_configs: PreFontConfigs,
+  /// ソースファイル一覧（順次パースして 1 ドキュメントに結合）
+  ///
+  /// `serde(default)` により TOML での省略を許すが、空配列は許可されない。
+  #[serde(default)]
+  #[garde(custom(validate_non_empty_sources))]
+  pub sources: Vec<PathBuf>,
+  /// スタイル設定ファイルへのパス（オプション）
+  #[garde(skip)]
+  pub style_path: Option<PathBuf>,
+  /// 参照設定ファイルへのパス（オプション）
+  #[garde(skip)]
+  pub references_path: Option<PathBuf>,
+}
+
+/// `[document]` セクション: PDF メタデータ
+#[derive(Deserialize, Debug, Default, Validate)]
+#[serde(default)]
+#[garde(allow_unvalidated)]
+pub(crate) struct PreDocumentConfig {
+  /// ドキュメントタイトル（PDF メタデータ）
+  #[garde(skip)]
+  pub title: Option<String>,
+  /// 著者名
+  #[garde(skip)]
+  pub author: Option<String>,
+  /// 日付（ISO 8601 形式想定。PDF メタデータの D:YYYYMMDD 形式は出力時に変換）
+  #[garde(skip)]
+  pub date: Option<String>,
+  /// 主題
+  #[garde(skip)]
+  pub subject: Option<String>,
+}
+
+/// `[output]` セクション: 出力ファイル名・ディレクトリ
+#[derive(Deserialize, Debug, Validate)]
+pub(crate) struct PreOutputConfig {
+  /// 出力ファイル名の基盤（拡張子なし。PDF ファイル名は `{name}.pdf`）
+  #[garde(custom(validate_document_name))]
+  pub name: String,
+  /// 出力ディレクトリ（PDF ファイルの保存先）
+  #[garde(skip)]
+  pub output_dir: PathBuf,
+}
+
+/// `sources` 配列が空でないことを検証します。
+///
+/// 軸補（補足設計）: ソース分割は最低 1 ファイルが必要。
+#[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
+fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
+  if value.is_empty() {
+    return Err(garde::Error::new("sources は最低 1 つのファイルを指定する必要があります"));
+  }
+  return Ok(());
 }
 
 /// ドキュメント名を検証します。
@@ -235,8 +282,6 @@ pub(crate) struct PreFontFeature {
 #[derive(Deserialize, Debug, Validate)]
 #[garde(allow_unvalidated)]
 pub(crate) struct PrePdfConfig {
-  /// 出力ディレクトリ（PDF ファイルの保存先）
-  pub output_dir: PathBuf,
   /// ページの高さ（mm 単位、> 0）
   #[garde(range(min = f32::MIN_POSITIVE))]
   pub height: f32,

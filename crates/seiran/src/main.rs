@@ -23,7 +23,7 @@
 //!
 //! ## サブコマンド
 //!
-//! - `build <text_file>` - テキストファイルから PDF を生成（メイン機能）
+//! - `build [-c <config>]` - 設定ファイルの `sources` 配列から PDF を生成（メイン機能）
 //! - `variation-axes <font>` - フォントのバリアブル軸情報を表示
 //! - `ttc-names <ttc_file>` - TTC ファイル内のフォント名一覧を表示
 //! - `script-langs <font>` - フォント対応の Script/Language タグを表示
@@ -85,12 +85,9 @@ fn main() -> miette::Result<()> {
 
   // CLI コマンドに応じた処理を実行
   match cli_args.command {
-    // build: テキストファイルから PDF を生成（メイン機能）
+    // build: 設定ファイルの sources からテキストを読み込み PDF を生成（メイン機能）
     // 設定読み込み → フォント検証 → テキスト処理 → シェイピング → PDF 出力
-    cli::Command::Build {
-      text_file_path,
-      config_path,
-    } => build_pdf::build_pdf(&text_file_path, &config_path)?,
+    cli::Command::Build { config_path } => build_pdf::build_pdf(&config_path)?,
     // variation-axes: 指定フォントのバリアブル軸（weight, width など）の一覧表示
     cli::Command::VariationAxes {
       font_path,

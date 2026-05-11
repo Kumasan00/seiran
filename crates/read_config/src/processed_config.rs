@@ -33,20 +33,53 @@ use types::FontMap;
 /// アプリケーションはこの構造体から設定を読み取り、PDF 生成パイプラインに渡します。
 #[derive(Debug, Clone)]
 pub struct Config {
-  /// ドキュメント名（PDF ファイル名の基盤、拡張子なし）
-  pub name: String,
-  /// ドキュメントの著者名（オプション）
-  pub author: Option<String>,
-  /// ドキュメントの主題（オプション）
-  pub subject: Option<String>,
-  /// スタイル設定ファイルへのパス（オプション、正規化済み）
-  pub style_path: Option<PathBuf>,
-  /// 参照設定ファイルへのパス（オプション、正規化済み）
-  pub references_path: Option<PathBuf>,
+  /// ドキュメントメタデータ（title / author / date / subject）
+  pub document: DocumentConfig,
+  /// 出力ファイル名・ディレクトリ
+  pub output: OutputConfig,
   /// PDF ページレイアウト設定（検証済み）
   pub pdf: PdfConfig,
   /// 19 フォント種別すべての設定（検証済み）
   pub font_configs: FontConfigs,
+  /// ソースファイル一覧（順次パースして 1 ドキュメントに結合、絶対パス正規化済み）
+  pub sources: Vec<PathBuf>,
+  /// スタイル設定ファイルへのパス（オプション、正規化済み）
+  pub style_path: Option<PathBuf>,
+  /// 参照設定ファイルへのパス（オプション、正規化済み）
+  pub references_path: Option<PathBuf>,
+}
+
+/// PDF メタデータ
+#[derive(Debug, Clone)]
+pub struct DocumentConfig {
+  /// ドキュメントタイトル（PDF メタデータの /Title）
+  pub title: Option<String>,
+  /// 著者名（PDF メタデータの /Author）
+  pub author: Option<String>,
+  /// 日付（ISO 8601 形式想定。PDF 出力時に必要に応じて D:YYYYMMDD 形式に変換）
+  pub date: Option<String>,
+  /// 主題（PDF メタデータの /Subject）
+  pub subject: Option<String>,
+}
+
+/// 出力ファイル名・ディレクトリ
+#[derive(Debug, Clone)]
+pub struct OutputConfig {
+  /// 出力ファイル名の基盤（拡張子なし。実際の PDF パスは `{output_dir}/{name}.pdf`）
+  pub name: String,
+  /// 出力ディレクトリの絶対パス（正規化済み）
+  pub output_dir: PathBuf,
+}
+
+impl OutputConfig {
+  /// `{output_dir}/{name}.pdf` の絶対パスを返す
+  #[must_use]
+  pub fn pdf_path(&self) -> PathBuf {
+    let mut path = self.output_dir.clone();
+    path.push(&self.name);
+    path.set_extension("pdf");
+    return path;
+  }
 }
 
 /// 19 フォント種別すべての検証済み設定
@@ -125,11 +158,10 @@ pub struct VariationAxis {
 /// ページサイズ、余白、フォント設定など、
 /// PDF 出力全体のレイアウトを制御します。
 /// すべての値が正の値・非負値として検証済みです。
+///
+/// 出力先パスは `Config::output` を参照（`OutputConfig::pdf_path()`）。
 #[derive(Debug, Clone)]
 pub struct PdfConfig {
-  /// 出力 PDF ファイルへの絶対パス（正規化済み）
-  /// ファイル名は `{Config::name}.pdf` で生成されます
-  pub output_path: PathBuf,
   /// ページの高さ（mm）
   /// バリデーション済み（> 0）、余白と矛盾なし
   pub height: f32,

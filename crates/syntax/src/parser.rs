@@ -6,7 +6,8 @@
 //! ## 設計方針
 //!
 //! - **ロスレス**: 空白・改行・コメントを含むすべてのトークンを CST に保持
-//! - **Error ノード**: パースエラー時もエラーノードとして木に残す
+//! - **エラー回復しない**: パース失敗時は即座に `ParserError` を返し、
+//!   デフォルト引数の挿入や閉じ括弧のスキップなど、ユーザに気づかれない補完は行わない
 //! - **1 トークン先読み**: `peek` / `next` の単純な先読みパーサー
 //! - **アリーナベース**: 全ノードを `bumpalo::Bump` アリーナに確保し、
 //!   `Vec` の個別ヒープ確保を排除
@@ -73,7 +74,7 @@ pub enum ParserError {
   },
 
   /// 構文的に不正なトークンが出現した場合
-  #[error("予期しないトークンです: {kind:?}")]
+  #[error("予期しないトークンです: {kind}")]
   #[diagnostic(
     code(parser::parse::unexpected_token),
     help("対応する開き括弧なしに閉じ括弧が出現しているか、構文に誤りがないか確認してください")
@@ -83,6 +84,29 @@ pub enum ParserError {
     kind: TokenKind,
     /// エラー発生位置
     #[label("このトークンは構文上予期されていません")]
+    span: SourceSpan,
+  },
+
+  /// 開き括弧 `{` または `[` に対する閉じ括弧が見つからないまま EOF に達した場合
+  #[error("'{open_kind}' に対応する閉じ括弧が見つかりません")]
+  #[diagnostic(
+    code(parser::parse::unclosed_delimiter),
+    help("開き括弧 '{open_kind}' に対応する閉じ括弧を追加してください")
+  )]
+  UnclosedDelimiter {
+    /// 閉じ忘れた開き括弧の種類（`LBrace` または `LBracket`）
+    open_kind: TokenKind,
+    /// 開き括弧のソース位置
+    #[label("ここで始まった括弧が閉じられていません")]
+    span: SourceSpan,
+  },
+
+  /// 対応する `\begin` のない `\end` がトップレベルや環境本体外に出現した場合
+  #[error("対応する \\begin のない \\end です")]
+  #[diagnostic(code(parser::parse::stray_end), help("\\end は対応する \\begin{{...}} の後にのみ書けます"))]
+  StrayEnd {
+    /// `\end` トークンのソース位置
+    #[label("対応する \\begin がありません")]
     span: SourceSpan,
   },
 
@@ -99,6 +123,69 @@ pub enum ParserError {
     found: String,
     /// `\end` のソース位置
     #[label("\\begin{{{expected}}} に対して \\end{{{found}}} が指定されています")]
+    span: SourceSpan,
+  },
+
+  /// `\begin{{name}}` に対応する `\end{{name}}` が見つからずに入力が終了した場合
+  #[error("環境 '{name}' に対応する \\end が見つかりません")]
+  #[diagnostic(
+    code(parser::parse::unclosed_environment),
+    help("\\begin{{{name}}} に対応する \\end{{{name}}} を追加してください")
+  )]
+  UnclosedEnvironment {
+    /// 環境名
+    name: String,
+    /// `\begin` のソース位置
+    #[label("ここで始まった環境が閉じられていません")]
+    span: SourceSpan,
+  },
+
+  /// インライン数式内のグループが閉じられないまま `$` または EOF で終わる場合
+  #[error("数式内のグループが閉じられていません")]
+  #[diagnostic(code(parser::parse::unclosed_math_group), help("数式内の {{ に対応する }} を追加してください"))]
+  UnclosedMathGroup {
+    /// `{` のソース位置
+    #[label("ここで始まった数式内グループが閉じられていません")]
+    span: SourceSpan,
+  },
+
+  /// バックスラッシュの後に有効な文字がない場合（`\<空白>` や入力末尾の `\` など）
+  #[error("不正なバックスラッシュです")]
+  #[diagnostic(
+    code(parser::parse::invalid_backslash),
+    help("コマンドは \\name の形式、エスケープは \\{{ \\}} \\$ などで記述してください")
+  )]
+  InvalidBackslash {
+    /// バックスラッシュのソース位置
+    #[label("ここで不正なバックスラッシュが検出されました")]
+    span: SourceSpan,
+  },
+
+  /// 裸の `{...}` グループ（コマンド引数でも数式内グループでもないもの）が出現した場合
+  #[error("裸の {{...}} は構文エラーです")]
+  #[diagnostic(
+    code(parser::parse::bare_group),
+    help(
+      "`{{...}}` はコマンドの引数または数式内グループでのみ使用できます。装飾は \\textbf{{...}} などの引数型コマンド、または \\begin{{...}}\\end{{...}} 環境を使ってください"
+    )
+  )]
+  BareGroup {
+    /// 開き `{` のソース位置
+    #[label("この {{ は許可されない位置にあります")]
+    span: SourceSpan,
+  },
+
+  /// `$$` または連続する `$` が出現した場合
+  #[error("$$ は不採用です。ディスプレイ数式は \\begin{{equation}} を使ってください")]
+  #[diagnostic(
+    code(parser::parse::dollar_dollar_not_supported),
+    help(
+      "インライン数式は $...$ のみ、ディスプレイ数式は \\begin{{equation}}...\\end{{equation}} を使用します。$$ の代替は \\begin{{equation}} です"
+    )
+  )]
+  DollarDollarNotSupported {
+    /// 連続する `$$` の位置（最初の `$` から二つ目の `$` まで）
+    #[label("$$ はサポートされていません")]
     span: SourceSpan,
   },
 }
@@ -217,8 +304,7 @@ impl<'a> Parser<'a> {
           let env_node = self.parse_environment(token)?;
           children.push(GreenElement::Node(env_node));
         } else if name == "end" {
-          return Err(ParserError::UnexpectedToken {
-            kind: token.kind,
+          return Err(ParserError::StrayEnd {
             span: token.span.into(),
           });
         } else {
@@ -231,18 +317,17 @@ impl<'a> Parser<'a> {
         let first_dollar = self.next_token().unwrap();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
-          // 連続する $ はテキストとして扱う
-          children.push(GreenElement::Token(Token::new(TokenKind::Text, first_dollar.span)));
-          while self.peek_kind() == Some(TokenKind::Dollar) {
-            #[allow(clippy::unwrap_used)]
-            let dollar = self.next_token().unwrap();
-            children.push(GreenElement::Token(Token::new(TokenKind::Text, dollar.span)));
-          }
-        } else {
-          // 単独の $ はインライン数式
-          let math_node = self.parse_inline_math(first_dollar)?;
-          children.push(GreenElement::Node(math_node));
+          // 連続する $ は不採用（軸 1-G）。最初の $ と二つ目の $ をまとめてエラー範囲とする。
+          #[allow(clippy::unwrap_used)]
+          let second_dollar = self.next_token().unwrap();
+          return Err(ParserError::DollarDollarNotSupported {
+            span: first_dollar.span.merge(second_dollar.span).into(),
+          });
         }
+
+        // 単独の $ はインライン数式
+        let math_node = self.parse_inline_math(first_dollar)?;
+        children.push(GreenElement::Node(math_node));
       },
       TokenKind::LBrace if mode == ParseMode::Math => {
         let group_node = self.parse_math_group()?;
@@ -257,8 +342,13 @@ impl<'a> Parser<'a> {
         children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
-        let group_node = self.parse_group()?;
-        children.push(GreenElement::Node(group_node));
+        // テキストモードでの裸の `{...}` は構文エラー（軸 1-E2）。
+        // コマンド引数の `{...}` は parse_command_call で個別に消費するためここには来ない。
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::BareGroup {
+          span: token.span.into(),
+        });
       },
       TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
         // 呼び出し側が期待する終端 — 消費せずに戻し、呼び出し側の loop で break させる
@@ -270,6 +360,14 @@ impl<'a> Parser<'a> {
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
+          span: token.span.into(),
+        });
+      },
+      TokenKind::Unknown => {
+        // 不正なバックスラッシュ（`\<空白>` や入力末尾の `\`）— 黙認せず即エラー
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::InvalidBackslash {
           span: token.span.into(),
         });
       },
@@ -334,7 +432,7 @@ impl<'a> Parser<'a> {
         break;
       }
 
-      // \end の検出
+      // \end の検出 — `parse_element` は `\end` をエラーとして弾くため、ここで先に break する必要がある
       if let Some(TokenKind::Command) = self.peek_kind() {
         #[allow(clippy::unwrap_used)]
         let token = *self.peek_token().unwrap();
@@ -346,15 +444,6 @@ impl<'a> Parser<'a> {
       // 環境本体は単独で終端を持たない（`\end` で終わる）ため None を渡す。
       // 本体内に stray な `}` / `]` が混入した場合は UnexpectedToken エラーで報告する。
       self.parse_element(&mut body_children, body_mode, None)?;
-
-      // parse_element が \end を検出して何も消費しなかった場合のチェック
-      if let Some(TokenKind::Command) = self.peek_kind() {
-        #[allow(clippy::unwrap_used)]
-        let token = *self.peek_token().unwrap();
-        if token.command_name(self.source) == "end" {
-          break;
-        }
-      }
     }
 
     let last_span_end = self.last_span.end;
@@ -363,33 +452,38 @@ impl<'a> Parser<'a> {
     env_children.push(GreenElement::Node(body_node));
 
     // === EnvironmentEnd ===
-    if let Some(TokenKind::Command) = self.peek_kind() {
-      #[allow(clippy::unwrap_used)]
-      let end_token = self.next_token().unwrap();
-      let end_name_check = end_token.command_name(self.source);
-      if end_name_check == "end" {
-        let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
-        end_node_children.push(GreenElement::Token(end_token));
-
-        // {name}
-        let end_name_arg = self.parse_mandatory_arg()?;
-        let end_env_name = self.extract_text_from_arg(end_name_arg);
-
-        if env_name != end_env_name {
-          return Err(ParserError::MismatchedEnvironment {
-            expected: env_name,
-            found: end_env_name,
-            span: end_token.span.merge(self.last_span).into(),
-          });
-        }
-
-        end_node_children.push(GreenElement::Node(end_name_arg));
-
-        let end_span = end_token.span.merge(self.last_span);
-        let end_node = self.alloc_node(SyntaxKind::EnvironmentEnd, end_span, end_node_children);
-        env_children.push(GreenElement::Node(end_node));
-      }
+    // 本体ループは `\end` 検出または EOF で抜ける。EOF で抜けた場合（=`\end` 不在）はエラー。
+    if self.peek_kind() != Some(TokenKind::Command) {
+      return Err(ParserError::UnclosedEnvironment {
+        name: env_name,
+        span: start_span.into(),
+      });
     }
+
+    #[allow(clippy::unwrap_used)]
+    let end_token = self.next_token().unwrap();
+    debug_assert_eq!(end_token.command_name(self.source), "end", "本体ループは \\end でのみ break する");
+
+    let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
+    end_node_children.push(GreenElement::Token(end_token));
+
+    // {name}
+    let end_name_arg = self.parse_mandatory_arg()?;
+    let end_env_name = self.extract_text_from_arg(end_name_arg);
+
+    if env_name != end_env_name {
+      return Err(ParserError::MismatchedEnvironment {
+        expected: env_name,
+        found: end_env_name,
+        span: end_token.span.merge(self.last_span).into(),
+      });
+    }
+
+    end_node_children.push(GreenElement::Node(end_name_arg));
+
+    let end_span = end_token.span.merge(self.last_span);
+    let end_node = self.alloc_node(SyntaxKind::EnvironmentEnd, end_span, end_node_children);
+    env_children.push(GreenElement::Node(end_node));
 
     let env_span = start_span.merge(self.last_span);
     return Ok(self.alloc_node(SyntaxKind::Environment, env_span, env_children));
@@ -423,115 +517,55 @@ impl<'a> Parser<'a> {
     return Ok(self.alloc_node(SyntaxKind::CommandCall, start_span.merge(end), children));
   }
 
-  /// 任意引数をパース: `[...]`
-  fn parse_opt_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
-    let lbracket = self.expect(TokenKind::LBracket)?;
-    let start_span = lbracket.span;
+  /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
+  ///
+  /// `[...]` (`OptArg`), `{...}` (`MandatoryArg`, `Group`) の 3 つの構造に共通する
+  /// 「開き → 内容 → 閉じ」の枠組みを集約する。`expected_closer` は内側の
+  /// `parse_element` に伝えられ、想定外の閉じトークンが混入したときの
+  /// 早期エラー判定に使われる。
+  fn parse_delimited(
+    &mut self,
+    open_kind: TokenKind,
+    close_kind: TokenKind,
+    node_kind: SyntaxKind,
+  ) -> Result<&'a GreenNode<'a>, ParserError> {
+    let open = self.expect(open_kind)?;
+    let start_span = open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(lbracket));
+    children.push(GreenElement::Token(open));
 
     loop {
       self.skip_trivia(&mut children);
       match self.peek_kind() {
-        Some(TokenKind::RBracket) => break,
+        Some(k) if k == close_kind => break,
         None => {
-          return Err(ParserError::UnexpectedEof {
-            span: self.last_span.into(),
+          // 閉じ括弧不在のまま EOF — 開き括弧の位置をラベルにして UnclosedDelimiter を返す
+          return Err(ParserError::UnclosedDelimiter {
+            open_kind,
+            span: start_span.into(),
           });
         },
         _ => {},
       }
-      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBracket))?;
-      if matches!(self.peek_kind(), Some(TokenKind::RBracket) | None) {
-        break;
-      }
+      self.parse_element(&mut children, ParseMode::Text, Some(close_kind))?;
     }
 
-    if self.peek_kind() == Some(TokenKind::RBracket) {
-      #[allow(clippy::unwrap_used)]
-      let rbracket = self.next_token().unwrap();
-      children.push(GreenElement::Token(rbracket));
-    } else {
-      return Err(ParserError::UnexpectedEof {
-        span: self.last_span.into(),
-      });
-    }
+    // 直前の peek で close_kind を確認済み
+    #[allow(clippy::unwrap_used)]
+    let close = self.next_token().unwrap();
+    children.push(GreenElement::Token(close));
 
-    return Ok(self.alloc_node(SyntaxKind::OptArg, start_span.merge(self.last_span), children));
+    return Ok(self.alloc_node(node_kind, start_span.merge(self.last_span), children));
+  }
+
+  /// 任意引数をパース: `[...]`
+  fn parse_opt_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+    return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg);
   }
 
   /// 必須引数をパース: `{...}`
   fn parse_mandatory_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
-    let lbrace = self.expect(TokenKind::LBrace)?;
-    let start_span = lbrace.span;
-    let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(lbrace));
-
-    loop {
-      self.skip_trivia(&mut children);
-      match self.peek_kind() {
-        Some(TokenKind::RBrace) => break,
-        None => {
-          return Err(ParserError::UnexpectedEof {
-            span: self.last_span.into(),
-          });
-        },
-        _ => {},
-      }
-      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBrace))?;
-      if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
-        break;
-      }
-    }
-
-    if self.peek_kind() == Some(TokenKind::RBrace) {
-      #[allow(clippy::unwrap_used)]
-      let rbrace = self.next_token().unwrap();
-      children.push(GreenElement::Token(rbrace));
-    } else {
-      return Err(ParserError::UnexpectedEof {
-        span: self.last_span.into(),
-      });
-    }
-
-    return Ok(self.alloc_node(SyntaxKind::MandatoryArg, start_span.merge(self.last_span), children));
-  }
-
-  /// 中括弧グループをパース: `{...}`
-  fn parse_group(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
-    let lbrace = self.expect(TokenKind::LBrace)?;
-    let start_span = lbrace.span;
-    let mut children = bumpalo::collections::Vec::new_in(self.arena);
-    children.push(GreenElement::Token(lbrace));
-
-    loop {
-      self.skip_trivia(&mut children);
-      match self.peek_kind() {
-        Some(TokenKind::RBrace) => break,
-        None => {
-          return Err(ParserError::UnexpectedEof {
-            span: self.last_span.into(),
-          });
-        },
-        _ => {},
-      }
-      self.parse_element(&mut children, ParseMode::Text, Some(TokenKind::RBrace))?;
-      if matches!(self.peek_kind(), Some(TokenKind::RBrace) | None) {
-        break;
-      }
-    }
-
-    if self.peek_kind() == Some(TokenKind::RBrace) {
-      #[allow(clippy::unwrap_used)]
-      let rbrace = self.next_token().unwrap();
-      children.push(GreenElement::Token(rbrace));
-    } else {
-      return Err(ParserError::UnexpectedEof {
-        span: self.last_span.into(),
-      });
-    }
-
-    return Ok(self.alloc_node(SyntaxKind::Group, start_span.merge(self.last_span), children));
+    return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg);
   }
 
   /// インライン数式をパース: `$...$`
@@ -554,30 +588,7 @@ impl<'a> Parser<'a> {
           children.push(GreenElement::Token(dollar_close));
           break;
         },
-        Some(TokenKind::LBrace) => {
-          let group = self.parse_math_group()?;
-          children.push(GreenElement::Node(group));
-        },
-        Some(TokenKind::Command) => {
-          #[allow(clippy::unwrap_used)]
-          let cmd_token = self.next_token().unwrap();
-          let cmd_node = self.parse_command_call(cmd_token)?;
-          children.push(GreenElement::Node(cmd_node));
-        },
-        Some(TokenKind::Underscore) => {
-          let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
-          children.push(GreenElement::Node(sub_node));
-        },
-        Some(TokenKind::Caret) => {
-          let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
-          children.push(GreenElement::Node(sup_node));
-        },
-        _ => {
-          // Ampersand やその他のトークンはそのまま CST に保持
-          #[allow(clippy::unwrap_used)]
-          let token = self.next_token().unwrap();
-          children.push(GreenElement::Token(token));
-        },
+        _ => self.parse_math_atom(&mut children)?,
       }
     }
 
@@ -586,6 +597,8 @@ impl<'a> Parser<'a> {
   }
 
   /// 数式モード内のグループをパース: `{...}`
+  ///
+  /// `$` または EOF で閉じられないまま終わった場合は [`ParserError::UnclosedMathGroup`] を返す。
   fn parse_math_group(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
     let lbrace = self.expect(TokenKind::LBrace)?;
     let start_span = lbrace.span;
@@ -593,10 +606,6 @@ impl<'a> Parser<'a> {
     children.push(GreenElement::Token(lbrace));
 
     loop {
-      if self.peek_token().is_none() {
-        break;
-      }
-
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
           #[allow(clippy::unwrap_used)]
@@ -604,39 +613,66 @@ impl<'a> Parser<'a> {
           children.push(GreenElement::Token(rbrace));
           break;
         },
-        Some(TokenKind::Dollar) => {
-          // $で数式が終わる場合 — ここでは閉じずに呼び出し元に委ねる
-          break;
+        Some(TokenKind::Dollar) | None => {
+          // 数式区切りの $ や EOF が来た時点で `}` がないため UnclosedMathGroup
+          return Err(ParserError::UnclosedMathGroup {
+            span: start_span.into(),
+          });
         },
-        Some(TokenKind::LBrace) => {
-          let nested = self.parse_math_group()?;
-          children.push(GreenElement::Node(nested));
-        },
-        Some(TokenKind::Command) => {
-          #[allow(clippy::unwrap_used)]
-          let cmd_token = self.next_token().unwrap();
-          let cmd_node = self.parse_command_call(cmd_token)?;
-          children.push(GreenElement::Node(cmd_node));
-        },
-        Some(TokenKind::Underscore) => {
-          let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
-          children.push(GreenElement::Node(sub_node));
-        },
-        Some(TokenKind::Caret) => {
-          let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
-          children.push(GreenElement::Node(sup_node));
-        },
-        _ => {
-          // Ampersand やその他のトークンはそのまま CST に保持
-          #[allow(clippy::unwrap_used)]
-          let token = self.next_token().unwrap();
-          children.push(GreenElement::Token(token));
-        },
+        _ => self.parse_math_atom(&mut children)?,
       }
     }
 
     let group_span = start_span.merge(self.last_span);
     return Ok(self.alloc_node(SyntaxKind::MathGroup, group_span, children));
+  }
+
+  /// 数式コンテキスト内で 1 トークン分の内部要素を消費する共通ヘルパ
+  ///
+  /// `parse_inline_math` と `parse_math_group` の本体ループから、終端トークン
+  /// （`$` / `}`）の判定を除いた共通分岐をくくり出したもの。
+  /// `LBrace` は再帰的に `parse_math_group` を呼び、`Underscore` / `Caret` は
+  /// 上付き・下付きスクリプトとして構造化する。それ以外は単一のトークンとして
+  /// 子に追加する。
+  fn parse_math_atom(
+    &mut self,
+    children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
+  ) -> Result<(), ParserError> {
+    match self.peek_kind() {
+      Some(TokenKind::LBrace) => {
+        let group = self.parse_math_group()?;
+        children.push(GreenElement::Node(group));
+      },
+      Some(TokenKind::Command) => {
+        #[allow(clippy::unwrap_used)]
+        let cmd_token = self.next_token().unwrap();
+        let cmd_node = self.parse_command_call(cmd_token)?;
+        children.push(GreenElement::Node(cmd_node));
+      },
+      Some(TokenKind::Underscore) => {
+        let sub_node = self.parse_math_script(SyntaxKind::MathSubscript)?;
+        children.push(GreenElement::Node(sub_node));
+      },
+      Some(TokenKind::Caret) => {
+        let sup_node = self.parse_math_script(SyntaxKind::MathSuperscript)?;
+        children.push(GreenElement::Node(sup_node));
+      },
+      Some(TokenKind::Unknown) => {
+        // 数式中でも不正なバックスラッシュは黙認せず即エラー
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::InvalidBackslash {
+          span: token.span.into(),
+        });
+      },
+      _ => {
+        // Ampersand やその他のトークンはそのまま CST に保持
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        children.push(GreenElement::Token(token));
+      },
+    }
+    return Ok(());
   }
 
   /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
@@ -883,7 +919,7 @@ mod tests {
   fn environment_mismatched_end_is_error() {
     let arena = Bump::new();
     let result = parse("\\begin{foo}content\\end{bar}", &arena);
-    assert!(result.is_err());
+    assert!(matches!(result, Err(ParserError::MismatchedEnvironment { .. })));
   }
 
   #[test]
@@ -911,26 +947,67 @@ mod tests {
   }
 
   #[test]
-  fn standalone_group() {
+  fn bare_group_at_top_level_is_error() {
+    // 軸 1-E2: 裸の `{...}` は構文エラー。
     let arena = Bump::new();
-    let cst = parse_source("{hello}", &arena);
-    if let GreenElement::Node(group) = &cst.children[0] {
-      assert_eq!(group.kind, SyntaxKind::Group);
+    let result = parse("{hello}", &arena);
+    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+  }
+
+  #[test]
+  fn bare_group_in_paragraph_is_error() {
+    // 段落の途中に裸の `{...}` が混ざってもエラー。
+    let arena = Bump::new();
+    let result = parse("hello {world}", &arena);
+    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+  }
+
+  #[test]
+  fn bare_group_in_environment_body_is_error() {
+    // 環境本体内の裸の `{...}` もエラー。
+    // 注意: `\begin{env}{x}\end{env}` の `{x}` は \begin の追加 mandatory arg として
+    // 解釈されるため、本体内 bare group のテストには `text{bare}` のように先頭にテキストを置く。
+    let arena = Bump::new();
+    let result = parse(r"\begin{env}text{bare}\end{env}", &arena);
+    assert!(matches!(result, Err(ParserError::BareGroup { .. })));
+  }
+
+  #[test]
+  fn command_argument_brace_is_not_bare_group() {
+    // コマンド引数の `{...}` は parse_command_call で個別に消費されるため BareGroup にならない。
+    let arena = Bump::new();
+    let cst = parse_source(r"\bold{hello}", &arena);
+    if let GreenElement::Node(cmd) = &cst.children[0] {
+      assert_eq!(cmd.kind, SyntaxKind::CommandCall);
     } else {
-      panic!("Group ノードが期待されます");
+      panic!("CommandCall ノードが期待されます");
     }
   }
 
   #[test]
   fn unexpected_rbrace_at_top_level() {
     let arena = Bump::new();
-    assert!(parse("}", &arena).is_err());
+    let result = parse("}", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBrace,
+        ..
+      })
+    ));
   }
 
   #[test]
   fn unexpected_rbracket_at_top_level() {
     let arena = Bump::new();
-    assert!(parse("]", &arena).is_err());
+    let result = parse("]", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBracket,
+        ..
+      })
+    ));
   }
 
   #[test]
@@ -939,7 +1016,13 @@ mod tests {
     // body ループが進捗ゼロで無限ループしていた。エラーで早期に止まることを確認する。
     let arena = Bump::new();
     let result = parse(r"\begin{env}}\end{env}", &arena);
-    assert!(result.is_err(), "stray '}}' は UnexpectedToken エラーになるべき");
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBrace,
+        ..
+      })
+    ));
   }
 
   #[test]
@@ -947,7 +1030,13 @@ mod tests {
     // 必須引数 `{...}` の中に stray `]` が出た場合も同様に無限ループしていた。
     let arena = Bump::new();
     let result = parse(r"\cmd{abc]def}", &arena);
-    assert!(result.is_err(), "stray ']' は UnexpectedToken エラーになるべき");
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBracket,
+        ..
+      })
+    ));
   }
 
   #[test]
@@ -955,13 +1044,121 @@ mod tests {
     // 任意引数 `[...]` の中に stray `}` が出た場合も同様。
     let arena = Bump::new();
     let result = parse(r"\cmd[abc}def]{x}", &arena);
-    assert!(result.is_err(), "stray '}}' は UnexpectedToken エラーになるべき");
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBrace,
+        ..
+      })
+    ));
   }
 
   #[test]
-  fn unclosed_brace_is_error() {
+  fn unclosed_brace_in_command_arg_returns_unclosed_delimiter() {
+    // 軸 1-E2 によりトップレベルの `{` は BareGroup エラーになるが、
+    // コマンド引数 `\cmd{...` の `{` が閉じられないまま EOF に達した場合は
+    // 引き続き UnclosedDelimiter を返す。
     let arena = Bump::new();
-    assert!(parse("{unclosed", &arena).is_err());
+    let result = parse(r"\cmd{unclosed", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnclosedDelimiter {
+        open_kind: TokenKind::LBrace,
+        ..
+      })
+    ));
+  }
+
+  #[test]
+  fn unclosed_bracket_in_opt_arg_returns_unclosed_delimiter() {
+    // 任意引数の `[` が閉じられないまま EOF。span は開き `[` を指す。
+    let arena = Bump::new();
+    let result = parse(r"\cmd[opt", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnclosedDelimiter {
+        open_kind: TokenKind::LBracket,
+        ..
+      })
+    ));
+  }
+
+  #[test]
+  fn top_level_end_is_stray_end_error() {
+    // \begin に対応しないトップレベルの \end は StrayEnd エラー。
+    let arena = Bump::new();
+    let result = parse(r"\end{foo}", &arena);
+    assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
+  }
+
+  #[test]
+  fn unexpected_token_error_message_uses_display() {
+    // UnexpectedToken のメッセージには Display 由来の記号が現れ、
+    // Debug 由来の内部識別子 (RBrace 等) が漏れないこと。
+    let arena = Bump::new();
+    let err = parse("}", &arena).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains('}'), "メッセージに '}}' が含まれるべき: {msg}");
+    assert!(!msg.contains("RBrace"), "Debug 由来の識別子が漏れている: {msg}");
+  }
+
+  #[test]
+  fn lone_backslash_at_eof_is_error() {
+    // 入力末尾の単独 `\` は Lexer が Unknown トークンとして出すが、
+    // Parser はこれを黙認せず InvalidBackslash エラーで報告する。
+    let arena = Bump::new();
+    let result = parse(r"\", &arena);
+    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+  }
+
+  #[test]
+  fn backslash_followed_by_whitespace_is_error() {
+    // `\<空白>` も同様に InvalidBackslash で報告される。
+    let arena = Bump::new();
+    let result = parse("hello \\ world", &arena);
+    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+  }
+
+  #[test]
+  fn invalid_backslash_in_math_is_error() {
+    // 数式モード中の不正なバックスラッシュも黙認しない。
+    let arena = Bump::new();
+    let result = parse(r"$x \ y$", &arena);
+    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
+  }
+
+  #[test]
+  fn environment_without_end_is_error() {
+    // \begin{env} に対応する \end{env} がないまま EOF に達した場合は
+    // 静かに通すのではなく UnclosedEnvironment エラーになる必要がある。
+    let arena = Bump::new();
+    let result = parse(r"\begin{env}body without end", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+  }
+
+  #[test]
+  fn environment_without_end_after_args_is_error() {
+    // \begin の引数のあとに本体だけあって \end がない場合もエラー。
+    let arena = Bump::new();
+    let result = parse(r"\begin{env}[opt]body", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
+  }
+
+  #[test]
+  fn math_group_unclosed_by_dollar_is_error() {
+    // インライン数式 ${x$ では MathGroup の `}` が来ないまま `$` で数式が閉じる。
+    // 不完全な MathGroup を構築するのではなく UnclosedMathGroup エラーになる必要がある。
+    let arena = Bump::new();
+    let result = parse(r"${x$", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
+  }
+
+  #[test]
+  fn math_group_unclosed_by_eof_is_error() {
+    // ${x のように EOF で終わった場合も同様。
+    let arena = Bump::new();
+    let result = parse(r"${x", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
   }
 
   #[test]
@@ -992,19 +1189,27 @@ mod tests {
   }
 
   #[test]
-  fn double_dollar_is_text_not_math() {
+  fn dollar_dollar_returns_error() {
+    // 軸 1-G: `$$` は不採用。ディスプレイ数式は \begin{equation} を使う。
     let arena = Bump::new();
-    let cst = parse_source("$$", &arena);
-    assert_eq!(cst.children.len(), 2);
-    assert!(cst.children.iter().all(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Text)));
+    let result = parse("$$", &arena);
+    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
   }
 
   #[test]
-  fn triple_dollar_is_text() {
+  fn triple_dollar_returns_error() {
+    // 連続 $ も同様にエラー。最初の `$$` 検出時点で報告される。
     let arena = Bump::new();
-    let cst = parse_source("$$$", &arena);
-    assert_eq!(cst.children.len(), 3);
-    assert!(cst.children.iter().all(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Text)));
+    let result = parse("$$$", &arena);
+    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
+  }
+
+  #[test]
+  fn dollar_dollar_in_paragraph_returns_error() {
+    // 段落途中の `$$` もエラー。
+    let arena = Bump::new();
+    let result = parse("hello $$ world", &arena);
+    assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
   }
 
   #[test]

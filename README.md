@@ -35,10 +35,10 @@ cargo build --release
 ### PDF の生成
 
 ```sh
-cargo run build <text_file_path>
+cargo run -- build [-c <config_path>]
 ```
 
-テキストファイルと `config/config.toml` の設定に基づいて PDF を生成します。
+設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.txt", "chapter2.txt"]` のように複数ファイルを指定できます。
 
 ### バリアブルフォント軸情報の表示
 

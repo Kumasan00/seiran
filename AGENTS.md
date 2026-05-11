@@ -155,7 +155,7 @@ pub fn example(param: Type) -> Result<ReturnType, Error> {
 | -------------------------------------------------- | ----------------------------------------- |
 | `cargo build`                                      | デバッグビルド                            |
 | `cargo build --release`                            | リリースビルド（LTO 有効、strip symbols） |
-| `cargo run build <text_file>`                      | テキストファイルから PDF を生成           |
+| `cargo run -- build [-c <config>]`                 | 設定ファイルの sources から PDF を生成    |
 | `cargo run variation-axes <font> [--font-index N]` | バリアブルフォント軸情報を表示            |
 | `cargo run ttc-names <ttc_file>`                   | TTC ファイル内のフォント名一覧を表示      |
 | `cargo run script-langs <font> [--font-index N]`   | サポートされるスクリプト / 言語を表示     |

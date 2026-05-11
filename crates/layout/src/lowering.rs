@@ -245,57 +245,15 @@ fn heading_style_for(style: &ReadStyle, level: HeadingLevel) -> &read_style::Hea
   };
 }
 
-/// `HeadingStyle.format` テンプレートを `\partnum`〜`\subparagraphnum` と
-/// `\text` で置換した最終文字列を組み立てる
+/// `HeadingStyle.format` テンプレートの `{number}` と `{title}` を実値で置換する
 ///
-/// テンプレに `\text` が含まれていればその位置にタイトルを差し込み、
-/// 含まれていなければ番号書式の末尾にスペース区切りでタイトルを連結する。
+/// - `{number}` は `HeadingNumber::dotted()` の値で置換（Part: `1`、Chapter: `1`、Section: `1.2`、…）
+/// - `{title}` は引数 `title` のプレーンテキストで置換
 ///
-/// ## スコープ
-///
-/// 前準備の範囲では「`\partnum` 〜 `\subparagraphnum` の 6 つと `\text` の
-/// リテラル置換」のみサポートする。フォーマット指定子（漢数字・ローマ数字等）の
-/// 対応は実装本体タスクに譲る。
-fn format_heading_text(level: HeadingLevel, number: &HeadingNumber, title: &str, template: &str) -> String {
-  let parts = &number.parts;
-  let mut result = template.to_string();
-
-  // 各 *num プレースホルダを parts 上の対応位置の値で置換する
-  let substitutions: &[(&str, usize)] = match level {
-    HeadingLevel::Part => &[("\\partnum", 0)],
-    HeadingLevel::Chapter => &[("\\chapternum", 0)],
-    HeadingLevel::Section => &[("\\chapternum", 0), ("\\sectionnum", 1)],
-    HeadingLevel::Subsection => &[
-      ("\\chapternum", 0),
-      ("\\sectionnum", 1),
-      ("\\subsectionnum", 2),
-    ],
-    HeadingLevel::Paragraph => &[
-      ("\\chapternum", 0),
-      ("\\sectionnum", 1),
-      ("\\subsectionnum", 2),
-      ("\\paragraphnum", 3),
-    ],
-    HeadingLevel::Subparagraph => &[
-      ("\\chapternum", 0),
-      ("\\sectionnum", 1),
-      ("\\subsectionnum", 2),
-      ("\\paragraphnum", 3),
-      ("\\subparagraphnum", 4),
-    ],
-  };
-  for (placeholder, index) in substitutions {
-    let value = parts.get(*index).copied().unwrap_or(0).to_string();
-    result = result.replace(placeholder, &value);
-  }
-
-  if result.contains("\\text") {
-    result = result.replace("\\text", title);
-  } else if !title.is_empty() {
-    result.push(' ');
-    result.push_str(title);
-  }
-  return result;
+/// レベルごとに番号粒度を分ける必要はない。`HeadingNumber::from_context` が
+/// レベルに応じて適切な要素列を返すため、`dotted()` だけで番号書式が決まる。
+fn format_heading_text(number: &HeadingNumber, title: &str, template: &str) -> String {
+  return template.replace("{number}", &number.dotted()).replace("{title}", title);
 }
 
 /// 見出しをレイアウトノードに変換する
@@ -324,7 +282,7 @@ fn lower_heading(
   // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する
   // TODO: 強調等のインライン要素のスタイルを保持したまま埋め込む（本実装タスク）
   let title_text = inline_nodes_to_plain_text(title);
-  let heading_text = format_heading_text(level, number, &title_text, &heading_style.format);
+  let heading_text = format_heading_text(number, &title_text, &heading_style.format);
 
   let mut result = Vec::new();
 
@@ -624,29 +582,50 @@ mod tests {
 
   #[test]
   fn test_format_heading_text_section_default_template() {
-    // 既定テンプレ: section は "\\chapternum.\\sectionnum"（\text なし → 末尾に title）
+    // 英語デフォルト: section は "{number} {title}"
     let number = HeadingNumber { parts: vec![2, 3] };
 
-    let formatted = format_heading_text(HeadingLevel::Section, &number, "Intro", "\\chapternum.\\sectionnum");
+    let formatted = format_heading_text(&number, "Intro", "{number} {title}");
 
     assert_eq!(formatted, "2.3 Intro");
   }
 
   #[test]
   fn test_format_heading_text_part_default_template() {
-    // 既定テンプレ: part は "第\\partnum部 \\text"
+    // 英語デフォルト: part は "Part {number}: {title}"
     let number = HeadingNumber { parts: vec![1] };
 
-    let formatted = format_heading_text(HeadingLevel::Part, &number, "Foundations", "第\\partnum部 \\text");
+    let formatted = format_heading_text(&number, "Foundations", "Part {number}: {title}");
 
-    assert_eq!(formatted, "第1部 Foundations");
+    assert_eq!(formatted, "Part 1: Foundations");
+  }
+
+  #[test]
+  fn test_format_heading_text_japanese_override() {
+    // 日本語化（style.toml 上書き例）が正しく置換されること
+    let number = HeadingNumber { parts: vec![3] };
+
+    let formatted = format_heading_text(&number, "序論", "第{number}章 {title}");
+
+    assert_eq!(formatted, "第3章 序論");
+  }
+
+  #[test]
+  fn test_format_heading_text_legacy_placeholders_are_literal() {
+    // 旧プレースホルダ（\partnum / \chapternum / \text）はもはやプレースホルダではなく、
+    // テンプレ内にあればそのままリテラルとして残ることを確認する。
+    let number = HeadingNumber { parts: vec![1] };
+
+    let formatted = format_heading_text(&number, "Title", "第\\partnum部 \\text");
+
+    assert_eq!(formatted, "第\\partnum部 \\text");
   }
 
   #[test]
   fn lower_heading_uses_style_template() {
     // style.toml でテンプレを差し替えると見出し出力が追従することを確認する
     let mut style = ReadStyle::default();
-    style.section.format = "[\\chapternum-\\sectionnum] \\text".to_string();
+    style.section.format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
     let nodes = lower_heading(
@@ -668,7 +647,7 @@ mod tests {
       LayoutNode::Text(text, _) => text.clone(),
       other => panic!("Text ノードが期待されます: {other:?}"),
     };
-    assert_eq!(text, "[4-7] Custom Title");
+    assert_eq!(text, "[4.7] Custom Title");
   }
 
   #[test]

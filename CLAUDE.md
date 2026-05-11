@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 cargo build                                                # デバッグビルド
 cargo build --release                                      # リリースビルド（LTO 有効）
-cargo run -- build <text_file> [-c <config_path>]          # テキストファイルから PDF を生成
+cargo run -- build [-c <config_path>]                      # 設定ファイルの sources から PDF を生成
 cargo run -- variation-axes <font> [-f <font_index>]       # バリアブルフォント軸情報を表示
 cargo run -- ttc-names <ttc_file>                          # TTC ファイル内のフォント名一覧を表示
 cargo run -- script-langs <font> [-f <font_index>]         # サポートされるスクリプト / 言語を表示
