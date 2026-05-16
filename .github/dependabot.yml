@@ -5,9 +5,20 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Tokyo"
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      github-actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "cargo"
     # update Rust dependencies weekly
     directory: "/"
