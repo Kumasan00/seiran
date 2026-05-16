@@ -1,9 +1,10 @@
 //! TOML スタイル設定ファイルのパース・検証モジュール
 //!
-//! [`read_style`] が `config/style.toml` を読み込み、figment によるデフォルト値マージと
-//! `garde` による値検証を行って [`Style`] を返します。
+//! [`read_style`] が指定されたパスのスタイル設定ファイルを読み込み、figment による
+//! デフォルト値マージと `garde` による値検証を行って [`Style`] を返します。
+//! パスが `None` の場合はファイルを読まずに [`Style::default`] を返します。
 
-use std::path::Path;
+use std::{fs, path::Path};
 
 use figment2::{
   Figment,
@@ -15,15 +16,23 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 
-const STYLE_PATH: &str = "config/style.toml";
-
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub enum ReadStyleError {
-  /// スタイル設定の読み込み・解析に失敗した場合
-  #[error("スタイル設定ファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(style::read), help("スタイル設定ファイルのパスと TOML の構文を確認してください。"))]
-  ReadStyle {
+  /// スタイル設定ファイルの読み込み失敗（I/O エラー）
+  #[error("スタイル設定ファイルを読み込めませんでした: {path}")]
+  #[diagnostic(code(style::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  ReadFile {
+    /// ファイルパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+  /// スタイル設定の TOML 解析または既定値とのマージに失敗した場合
+  #[error("スタイル設定ファイルの解析に失敗しました: {path}")]
+  #[diagnostic(code(style::parse_toml), help("TOML の構文とフィールドの型を確認してください。"))]
+  ParseToml {
     /// ファイルパス
     path: String,
     /// 元のエラー
@@ -100,7 +109,7 @@ impl Default for Style {
       line_height_factor: 1.2,
       background_color: None,
       part: HeadingStyle::new(part, 40.0, 20.0, true, true),
-      chapter: HeadingStyle::new(chapter, 25.0, 15.0, false, false),
+      chapter: HeadingStyle::new(chapter, 25.0, 15.0, true, false),
       section: HeadingStyle::new(section, 20.0, 10.0, false, false),
       sub_section: HeadingStyle::new(sub_section, 16.0, 10.0, false, false),
       paragraph: HeadingStyle::new(paragraph, 14.0, 5.0, false, false),
@@ -184,36 +193,57 @@ impl Default for ReferenceStyle {
 
 /// スタイル設定ファイルを読み込みます。
 ///
-/// `path = None` の場合はデフォルト位置 `config/style.toml` を読み込みます。
-/// ファイル読み込み後は [`validate_values`] による値検証も併せて実行します。
+/// `path = None` の場合はファイルを読み込まずに [`Style::default`] を返します。
+/// パスが指定された場合はファイル内容を読み出し、[`parse_style`] へ委譲します。
 ///
 /// # Errors
 ///
-/// ファイルが読めない、TOML 解析に失敗、値検証に違反した場合にエラーを返します。
-pub fn read_style<P: AsRef<Path>>(path: Option<P>) -> Result<Style, ReadStyleError> {
-  let figment = Figment::from(Serialized::defaults(Style::default()));
-  let (figment, style_path_str) = if let Some(p) = path {
-    let path_str = p.as_ref().display().to_string();
-    info!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
-    (figment.merge(Toml::file(p)), path_str)
-  } else {
-    info!(style_path = STYLE_PATH, "デフォルトのスタイル設定ファイルの読み込みを開始します");
-    (figment.merge(Toml::file(STYLE_PATH)), STYLE_PATH.to_string())
+/// - ファイルが読めない場合は [`ReadStyleError::ReadFile`]
+/// - TOML 解析またはデフォルト値とのマージに失敗した場合は [`ReadStyleError::ParseToml`]
+/// - 値検証に違反した場合は [`ReadStyleError::MultipleValidationErrors`]
+pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
+  let Some(path) = path else {
+    info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
+    return Ok(Style::default());
   };
-  let style: Style = figment.extract().map_err(|source| ReadStyleError::ReadStyle {
-    path: style_path_str,
-    source: Box::new(source),
+  let path_str = path.display().to_string();
+  info!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
+
+  let content = fs::read_to_string(path).map_err(|source| ReadStyleError::ReadFile {
+    path: path_str.clone(),
+    source,
   })?;
 
-  if let Err(errors) = validate_values(&style) {
-    return Err(ReadStyleError::MultipleValidationErrors { errors });
-  }
+  let style = parse_style(&content, &path_str)?;
 
   info!(
     font_size = style.font_size,
     line_height_factor = style.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"
   );
+  return Ok(style);
+}
+
+/// TOML 文字列を [`Style`] にパースし、値検証まで実行します（I/O なし）。
+///
+/// figment で [`Style::default`] にマージし、続けて [`validate_values`] を呼び出します。
+/// `source_path` はエラー報告に使う表示用パスです。
+///
+/// # Errors
+///
+/// - TOML 解析またはデフォルト値とのマージに失敗した場合は [`ReadStyleError::ParseToml`]
+/// - 値検証に違反した場合は [`ReadStyleError::MultipleValidationErrors`]
+fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
+  let style: Style = Figment::from(Serialized::defaults(Style::default()))
+    .merge(Toml::string(content))
+    .extract()
+    .map_err(|source| ReadStyleError::ParseToml {
+      path: source_path.to_string(),
+      source: Box::new(source),
+    })?;
+  if let Err(errors) = validate_values(&style) {
+    return Err(ReadStyleError::MultipleValidationErrors { errors });
+  }
   return Ok(style);
 }
 
@@ -236,4 +266,234 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
     })
     .collect();
   return Err(errors);
+}
+
+#[cfg(test)]
+mod tests {
+  use std::path::PathBuf;
+
+  use super::{ReadStyleError, Style, ValidationError, parse_style, read_style, validate_values};
+
+  /// `parse_style` のエラー報告に使うダミーパス
+  fn dummy_source() -> &'static str { return "test.toml"; }
+
+  #[test]
+  fn read_style_returns_default_when_path_is_none() {
+    // Arrange / Act
+    let style = read_style(None).unwrap();
+
+    // Assert
+    let default = Style::default();
+    assert!((style.font_size - default.font_size).abs() < f32::EPSILON);
+    assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
+    assert!(style.background_color.is_none());
+    assert_eq!(style.part.format, default.part.format);
+  }
+
+  #[test]
+  fn read_style_fails_on_nonexistent_path() {
+    // Arrange
+    let path = PathBuf::from("/nonexistent/style.toml");
+
+    // Act
+    let result = read_style(Some(path.as_path()));
+
+    // Assert
+    assert!(matches!(result, Err(ReadStyleError::ReadFile { .. })));
+  }
+
+  #[test]
+  fn parse_style_returns_defaults_for_empty_content() {
+    // Arrange / Act
+    let style = parse_style("", dummy_source()).unwrap();
+
+    // Assert
+    let default = Style::default();
+    assert!((style.font_size - default.font_size).abs() < f32::EPSILON);
+    assert_eq!(style.part.format, default.part.format);
+    assert_eq!(style.chapter.format, default.chapter.format);
+  }
+
+  #[test]
+  fn parse_style_overrides_only_specified_fields() {
+    // Arrange: font_size のみ上書き、他はデフォルト維持
+    let toml = "font_size = 15.0\n";
+
+    // Act
+    let style = parse_style(toml, dummy_source()).unwrap();
+
+    // Assert
+    assert!((style.font_size - 15.0).abs() < f32::EPSILON);
+    let default = Style::default();
+    assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
+    assert_eq!(style.part.format, default.part.format);
+  }
+
+  #[test]
+  fn parse_style_overrides_nested_heading_style() {
+    // Arrange: chapter テーブルだけ上書きしても part 等はデフォルト維持
+    let toml = "[chapter]\nformat = \"第{number}章 {title}\"\nfont_size = 30.0\n";
+
+    // Act
+    let style = parse_style(toml, dummy_source()).unwrap();
+
+    // Assert
+    assert_eq!(style.chapter.format, "第{number}章 {title}");
+    assert!((style.chapter.font_size - 30.0).abs() < f32::EPSILON);
+    let default = Style::default();
+    assert_eq!(style.part.format, default.part.format);
+    assert_eq!(style.section.format, default.section.format);
+  }
+
+  #[test]
+  fn parse_style_accepts_valid_background_color() {
+    // Arrange
+    let toml = "background_color = [0.8, 0.7, 0.6]\n";
+
+    // Act
+    let style = parse_style(toml, dummy_source()).unwrap();
+
+    // Assert
+    let [r, g, b] = style.background_color.expect("background_color should be Some");
+    assert!((r - 0.8).abs() < f32::EPSILON);
+    assert!((g - 0.7).abs() < f32::EPSILON);
+    assert!((b - 0.6).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn parse_style_fails_on_invalid_toml_syntax() {
+    // Arrange
+    let toml = "font_size = \nthis is not valid toml";
+
+    // Act
+    let result = parse_style(toml, dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_style_fails_on_zero_font_size() {
+    // Arrange: range(min = f32::MIN_POSITIVE) 違反
+    let toml = "font_size = 0.0\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "font_size"
+    )));
+  }
+
+  #[test]
+  fn parse_style_fails_on_negative_line_height_factor() {
+    // Arrange
+    let toml = "line_height_factor = -1.0\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "line_height_factor"
+    )));
+  }
+
+  #[test]
+  fn parse_style_fails_on_background_color_above_one() {
+    // Arrange: R 成分が 1.1（> 1.0）
+    let toml = "background_color = [1.1, 0.5, 0.5]\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message }
+        if path == "background_color" && message.contains('R')
+    )));
+  }
+
+  #[test]
+  fn parse_style_fails_on_background_color_negative() {
+    // Arrange: B 成分が -0.1（< 0.0）
+    let toml = "background_color = [0.5, 0.5, -0.1]\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message }
+        if path == "background_color" && message.contains('B')
+    )));
+  }
+
+  #[test]
+  fn parse_style_fails_on_background_color_nan() {
+    // Arrange: TOML 1.0 は `nan` を許容するが、validator が範囲外として弾く
+    let toml = "background_color = [nan, 0.5, 0.5]\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "background_color"
+    )));
+  }
+
+  #[test]
+  fn parse_style_fails_on_negative_heading_bottom_margin() {
+    // Arrange: chapter.bottom_margin が負値
+    let toml = "[chapter]\nbottom_margin = -5.0\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "chapter.bottom_margin"
+    )));
+  }
+
+  #[test]
+  fn parse_style_collects_multiple_validation_errors() {
+    // Arrange: font_size と chapter.font_size の両方を不正値に
+    let toml = "font_size = 0.0\n\n[chapter]\nfont_size = -1.0\n";
+
+    // Act
+    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+    // Assert
+    let paths: Vec<&str> = errors
+      .iter()
+      .map(|error| match error {
+        ValidationError::Field { path, .. } => path.as_str(),
+      })
+      .collect();
+    assert!(paths.contains(&"font_size"));
+    assert!(paths.contains(&"chapter.font_size"));
+  }
+
+  #[test]
+  fn validate_values_accepts_default_style() {
+    // Arrange / Act / Assert: デフォルト値はバリデーションを通過する
+    assert!(validate_values(&Style::default()).is_ok());
+  }
+
+  /// `parse_style` の戻り値から `MultipleValidationErrors` を取り出すヘルパー。
+  fn expect_validation_errors(result: Result<Style, ReadStyleError>) -> Vec<ValidationError> {
+    match result {
+      Err(ReadStyleError::MultipleValidationErrors { errors }) => return errors,
+      other => panic!("expected MultipleValidationErrors, got {other:?}"),
+    }
+  }
 }

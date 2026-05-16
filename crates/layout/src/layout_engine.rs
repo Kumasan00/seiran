@@ -94,22 +94,11 @@ struct TextSegment {
 ///
 /// * `layout_nodes` - レイアウトするノードのリスト
 /// * `shapers` - フォント形成エンジンへの参照
-/// * `font_refs` - フォント参照へのアクセス
-/// * `font_infos` - フォントメタデータ情報
-/// * `glyph_mappings` - グリフマッピング情報（登録のため可変参照）
 ///
 /// # Returns
 ///
 /// 変換されたアイテムのベクトル
-///
-/// # Errors
-///
-/// フォントメトリクス（hmtx）の取得に失敗した場合にエラーを返します
-///
-/// # Panics
-///
-/// グリフ ID の高さ情報取得時に失敗した場合にパニックします
-pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -> miette::Result<Vec<Item>> {
+pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -> Vec<Item> {
   let mut items: Vec<Item> = Vec::new();
   for node in layout_nodes {
     match node {
@@ -156,7 +145,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
       },
       LayoutNode::HBox { children, width } => {
         // HBox のレイアウト処理
-        let child_items = layout_engine(children, shapers)?;
+        let child_items = layout_engine(children, shapers);
         items.extend(child_items);
         if let Some(_width) = width {}
       },
@@ -165,8 +154,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
         margin_bottom,
       } => {
         // VBox のレイアウト処理
-        let child_items = layout_engine(children, shapers)?;
-        // println!("VBox の子アイテム: {child_items:#?}");
+        let child_items = layout_engine(children, shapers);
         items.extend(child_items);
         items.push(Item::Vkern(margin_bottom));
       },
@@ -201,7 +189,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
       },
     }
   }
-  return Ok(items);
+  return items;
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型

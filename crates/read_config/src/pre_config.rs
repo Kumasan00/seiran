@@ -241,7 +241,8 @@ pub(crate) struct PreFontConfig {
   /// フォントファイルへのパス（相対または絶対）
   pub font_path: PathBuf,
   /// TTC ファイル内のフォントインデックス（デフォルト 0）
-  pub font_index: Option<u32>,
+  #[serde(default)]
+  pub font_index: u32,
   /// バリアブルフォント軸の設定値配列
   #[garde(dive)]
   pub variation_axes: Option<Vec<PreVariationAxis>>,

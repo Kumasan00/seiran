@@ -114,7 +114,7 @@ pub enum PdfGenError {
 ///
 /// # Errors
 ///
-/// フォント生成、ページ設定、罫線描画の構築に失敗した場合は `miette::Report` を返します。
+/// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
 #[allow(clippy::cast_precision_loss)]
 #[allow(unused_assignments)]
 pub fn create_pdf(

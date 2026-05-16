@@ -11,7 +11,7 @@ use font::{
 };
 use layout::LoweringContext;
 use miette::Diagnostic;
-use parser::DocNode;
+use parser::{DocNode, ParseSourceError};
 use thiserror::Error;
 use tracing::info;
 
@@ -37,11 +37,13 @@ enum BuildPdfError {
   /// 複数ソースのパース・評価で発生したエラーの集約
   ///
   /// 補足設計のエラー戦略: 文法・評価エラーは集約して 1 度に報告する。
+  /// 各 `ParseSourceError` は `NamedSource` と内側エラーの label を保持しているため、
+  /// `#[related]` 経由で `miette` のフル診断（ソースコード付き）が表示される。
   #[error("複数のソースファイルでエラーが発生しました。")]
   #[diagnostic(code(build::multiple_source_errors))]
   MultipleSourceErrors {
     #[related]
-    errors: Vec<SourceError>,
+    errors: Vec<ParseSourceError>,
   },
 
   /// PDF ファイルの書き込みに失敗した場合
@@ -54,18 +56,6 @@ enum BuildPdfError {
     #[source]
     source: std::io::Error,
   },
-}
-
-/// 単一ソースファイルのパース・評価エラー（集約用ラッパー）
-///
-/// `parser::parse_source` が返す `miette::Report` は `Diagnostic` を実装しないため、
-/// `#[related]` で持つには Diagnostic を実装した独自型でラップする必要がある。
-#[derive(Debug, Error, Diagnostic)]
-#[error("ソース '{path}' の処理に失敗しました: {message}")]
-#[diagnostic(code(build::source_error))]
-struct SourceError {
-  path: String,
-  message: String,
 }
 
 /// 設定ファイルの `sources` から PDF を生成
@@ -108,7 +98,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let harf_rust_shapers = HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
   info!("シェーパーの初期化が完了しました");
 
-  let items = layout::layout_engine(layout_nodes, &harf_rust_shapers)?;
+  let items = layout::layout_engine(layout_nodes, &harf_rust_shapers);
   info!("レイアウトの計算が完了しました");
 
   let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &items, &style)?;
@@ -127,9 +117,9 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 ///
 /// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
 /// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
-fn parse_all_sources(sources: &[std::path::PathBuf]) -> miette::Result<Vec<DocNode>> {
+fn parse_all_sources(sources: &[std::path::PathBuf]) -> Result<Vec<DocNode>, BuildPdfError> {
   let mut all_nodes: Vec<DocNode> = Vec::new();
-  let mut parse_errors: Vec<SourceError> = Vec::new();
+  let mut parse_errors: Vec<ParseSourceError> = Vec::new();
 
   for source_path in sources {
     let content = std::fs::read_to_string(source_path).map_err(|source| BuildPdfError::ReadTextFile {
@@ -139,20 +129,14 @@ fn parse_all_sources(sources: &[std::path::PathBuf]) -> miette::Result<Vec<DocNo
     let display_path = source_path.display().to_string();
     match parser::parse_source(&content, &display_path) {
       Ok(nodes) => all_nodes.extend(nodes),
-      Err(report) => parse_errors.push(SourceError {
-        path: display_path,
-        message: format!("{report:?}"),
-      }),
+      Err(error) => parse_errors.push(error),
     }
   }
 
   if !parse_errors.is_empty() {
-    return Err(
-      BuildPdfError::MultipleSourceErrors {
-        errors: parse_errors,
-      }
-      .into(),
-    );
+    return Err(BuildPdfError::MultipleSourceErrors {
+      errors: parse_errors,
+    });
   }
   return Ok(all_nodes);
 }

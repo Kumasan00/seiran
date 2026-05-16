@@ -347,7 +347,7 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
   return Ok(FontConfig {
     font_name: pre_font_config.font_name.clone(),
     font_path,
-    font_index: pre_font_config.font_index.unwrap_or(0),
+    font_index: pre_font_config.font_index,
     variation_axes,
     script,
     language,

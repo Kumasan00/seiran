@@ -20,11 +20,51 @@
 //! - [`evaluator`] — CST → Document IR の変換器
 
 use bumpalo::Bump;
+use miette::{Diagnostic, NamedSource};
+use thiserror::Error;
 
 pub mod document;
 mod evaluator;
 pub use document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
+pub use evaluator::EvalError;
 use evaluator::Evaluator;
+
+/// `parse_source` が返すエラー型
+///
+/// 構文解析（[`syntax::ParserError`]）と評価（[`EvalError`]）のいずれかをラップします。
+/// 各バリアントは [`NamedSource`] を保持しており、内側のエラーが持つ `#[label]`
+/// 情報と組み合わせて、`miette` のフル診断（ソースコード付き）が表示されます。
+///
+/// 内側のエラーが持つ診断属性（`code` / `help` / `#[label]`）は
+/// `#[diagnostic_source]` により外側へ自動的に伝播されます。
+#[derive(Debug, Error, Diagnostic)]
+pub enum ParseSourceError {
+  /// 構文解析（`syntax::parse`）で発生したエラー
+  #[error("構文解析に失敗しました")]
+  #[diagnostic(code(parser::parse_source::syntax))]
+  Syntax {
+    /// ソース名付きの元テキスト（`#[label]` をレンダリングするための `source_code`）
+    #[source_code]
+    src: NamedSource<String>,
+    /// 元の構文エラー
+    #[source]
+    #[diagnostic_source]
+    error: syntax::ParserError,
+  },
+
+  /// 評価（CST → Document IR 変換）で発生したエラー
+  #[error("評価に失敗しました")]
+  #[diagnostic(code(parser::parse_source::eval))]
+  Eval {
+    /// ソース名付きの元テキスト（`#[label]` をレンダリングするための `source_code`）
+    #[source_code]
+    src: NamedSource<String>,
+    /// 元の評価エラー
+    #[source]
+    #[diagnostic_source]
+    error: EvalError,
+  },
+}
 
 /// ソーステキストをパースして Document IR（`Vec<DocNode>`）を生成する
 ///
@@ -41,17 +81,26 @@ use evaluator::Evaluator;
 ///
 /// # Errors
 ///
-/// パースまたは評価で失敗した場合にエラーを返します。
-pub fn parse_source(source: &str, source_name: &str) -> miette::Result<Vec<DocNode>> {
-  let named_source = miette::NamedSource::new(source_name, source.to_string());
-
+/// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
+/// 返されるエラーには [`NamedSource`] が同梱されているため、呼び出し側で
+/// `with_source_code` を追加する必要はありません。
+// `ParseSourceError` は `EvalError` のフィールドが大きく ~168 バイトになるが、
+// `parse_source` はソースファイルごとに 1 回しか呼ばれないため Result のサイズは
+// 性能上の問題にならない。Box<dyn Diagnostic + Send + Sync> で型消去すると呼び出し側で
+// 内側エラーの variant match ができなくなるため、具体型のまま返してこの lint を抑止する。
+#[allow(clippy::result_large_err)]
+pub fn parse_source(source: &str, source_name: &str) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
-  let cst = syntax::parse(source, &arena).map_err(|e| miette::Report::new(e).with_source_code(named_source.clone()))?;
+  let cst = syntax::parse(source, &arena).map_err(|error| ParseSourceError::Syntax {
+    src: NamedSource::new(source_name, source.to_string()),
+    error,
+  })?;
 
   let mut evaluator = Evaluator::default();
-  let doc_nodes = evaluator
-    .evaluate_children(source, cst)
-    .map_err(|e| miette::Report::new(e).with_source_code(named_source))?;
+  let doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
+    src: NamedSource::new(source_name, source.to_string()),
+    error,
+  })?;
 
   return Ok(doc_nodes);
 }
