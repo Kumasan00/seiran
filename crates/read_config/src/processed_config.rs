@@ -5,7 +5,7 @@
 //!
 //! - **パス解決**: 相対パスを絶対パスに、シンボリックリンクを解決
 //! - **バリデーション**: すべての値が妥当な範囲内であることを確認
-//! - **型変換**: スクリプト・言語タグを文字列から `[u8; 4]` 配列に変換
+//! - **型変換**: スクリプト・OT 言語タグを `[u8; 4]`、BCP 47 言語を `String` に変換
 //! - **正規化**: バリアブル軸、フィーチャータグを標準形式に統一
 //!
 //! アプリケーションはこれら処理済み設定を直接使用し、
@@ -99,7 +99,9 @@ pub type FontConfigs = FontMap<FontConfig>;
 /// 以下が保証されます：
 /// - `font_path` は絶対パスに正規化されている
 /// - `font_index` は 0 以上の値
-/// - `script`、`language`、`feature` タグは 4 文字の `[u8; 4]` に変換済み
+/// - `script`、`feature` タグは 4 文字の `[u8; 4]` に変換済み
+/// - `language` は BCP 47 として妥当な文字列、または `None`
+/// - `ot_language_tag` は 4 バイトに正規化済み（3 文字指定時は末尾スペースパディング）、または `None`
 /// - 値の妥当性はすべてバリデーション済み
 #[derive(Debug, Clone)]
 pub struct FontConfig {
@@ -115,12 +117,24 @@ pub struct FontConfig {
   /// バリアブルフォント軸の設定値
   /// 値が範囲内であることはバリデーション済み
   pub variation_axes: Option<Vec<VariationAxis>>,
-  /// OpenType Script タグ（4 バイト）
-  /// 例：b"latn"（Latin）、b"arab"（Arabic）
+  /// OpenType Script タグ（4 バイト、ISO 15924）
+  /// 例：b"latn"（Latin）、b"arab"（Arabic）。ユーザの `script` 指定をそのまま反映
   pub script: Option<[u8; 4]>,
-  /// BCP 47 言語タグ（4 バイト、3 文字の場合は末尾スペース）
-  /// 例：b"eng " (English)、b"ja  "（日本語）
-  pub language: Option<[u8; 4]>,
+  /// BCP 47 言語タグ（harfrust の [`Language::from_str`] に渡す最終文字列）
+  ///
+  /// ユーザが `language` で指定した BCP 47 タグに加え、`ot_language` 指定時は
+  /// 末尾に `-x-hbot<XXXX>` 予約サブタグを連結した形式となる
+  /// （`language` 未指定で `ot_language` のみ指定された場合は `"und-x-hbot<XXXX>"`）。
+  /// 例：`"ja-JP"`, `"und-x-hbotJAN "`, `"en-x-hbotENG "`
+  ///
+  /// [`Language::from_str`]: https://docs.rs/harfrust/latest/harfrust/struct.Language.html
+  pub language: Option<String>,
+  /// OpenType 言語システムタグ（4 バイトに正規化済み、3 文字指定時は末尾スペース）
+  ///
+  /// ユーザが `ot_language` を明示指定した場合のみ `Some`。GSUB/GPOS の言語サブテーブル
+  /// 参照（`font` クレートの `validate_font`）に使用します。BCP 47 のみ指定時は `None` で、
+  /// harfrust の内部処理に OT 言語タグ導出を委ねます。
+  pub ot_language_tag: Option<[u8; 4]>,
   /// OpenType フィーチャー設定（4 バイトタグ + 値）
   /// 例："liga"（ligatures）、"smcp"（small capitals）
   pub features: Option<Vec<Feature>>,

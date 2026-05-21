@@ -239,9 +239,9 @@ fn heading_style_for(style: &ReadStyle, level: HeadingLevel) -> &read_style::Hea
     HeadingLevel::Part => &style.part,
     HeadingLevel::Chapter => &style.chapter,
     HeadingLevel::Section => &style.section,
-    HeadingLevel::Subsection => &style.sub_section,
+    HeadingLevel::Subsection => &style.subsection,
     HeadingLevel::Paragraph => &style.paragraph,
-    HeadingLevel::Subparagraph => &style.sub_paragraph,
+    HeadingLevel::Subparagraph => &style.subparagraph,
   };
 }
 

@@ -15,7 +15,7 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`ShaperError`] - エラー型（UTF-8 変換、言語タグ解析エラー）
+//! - [`ShaperError`] - エラー型（言語タグ解析エラー）
 //! - [`ShaperDatas`] - 19 フォント種別のシェイパーデータ（HarfRust の事前構築データ）
 //! - [`ShaperInstances`] - バリアブルフォント軸のインスタンス管理
 //! - [`HarfRustShapers`] - 19 種類のフォント種別に対応するシェイパー群
@@ -102,19 +102,11 @@ use crate::{FontRefs, FontType};
 /// `HarfRust` によるシェイピング処理やフォント設定の解析で発生するエラーを表します。
 #[derive(Debug, Error, Diagnostic)]
 pub enum ShaperError {
-  /// UTF-8 文字列への変換に失敗
-  #[error("UTF-8への変換に失敗しました。")]
-  #[diagnostic(code(shaper::utf8), help("言語タグが有効なUTF-8文字列であることを確認してください。"))]
-  Utf8 {
-    /// UTF-8 変換エラーの詳細
-    #[source]
-    source: std::str::Utf8Error,
-  },
   /// 言語タグの解析に失敗
   #[error("言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
     code(shaper::language_parse),
-    help("言語タグはISO 639言語コード（例: 'ja', 'en'）である必要があります。")
+    help("言語タグは BCP 47 形式（例: 'ja', 'en-US', 'zh-Hant'）である必要があります。")
   )]
   LanguageParse {
     /// 解析に失敗した言語タグ
@@ -315,16 +307,11 @@ impl<'a> HarfRustShaper<'a> {
       },
       None => None,
     };
-    let language = match config.language {
-      Some(tag_bytes) => {
-        #[allow(clippy::expect_used)]
-        // バリデーション済みため安全
-        let str = std::str::from_utf8(&tag_bytes).map_err(|e| ShaperError::Utf8 { source: e })?;
-        Some(Language::from_str(str).map_err(|e| ShaperError::LanguageParse {
-          tag: str.to_string(),
-          error_message: e.to_string(),
-        })?)
-      },
+    let language = match &config.language {
+      Some(tag) => Some(Language::from_str(tag).map_err(|e| ShaperError::LanguageParse {
+        tag: tag.clone(),
+        error_message: e.to_string(),
+      })?),
       None => None,
     };
     let features = match config.features {

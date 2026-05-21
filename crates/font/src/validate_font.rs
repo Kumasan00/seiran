@@ -250,6 +250,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
 /// # Errors
 ///
 /// 検証に失敗した場合は `FontValidationError` を返します。
+#[must_use]
 pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationError> {
   let mut errors = Vec::new();
   if let Some(variation_axes) = &config.variation_axes {
@@ -258,12 +259,8 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidat
     errors.push(FontValidationError::MissingVariationAxes);
   }
 
-  if config.script.is_none() && config.language.is_some() {
-    warn!("'language' が 'script' なしで指定されています。'language' は無視されます。");
-  } else {
-    check_script_language_support(font_ref, config);
-  }
-  errors
+  check_script_language_support(font_ref, config);
+  return errors;
 }
 
 /// バリアブルフォントの軸設定を検証します
@@ -344,20 +341,24 @@ fn validate_variation_axes(
 /// スクリプト・言語のサポート状況を確認します
 ///
 /// フォントの GSUB（グリフ置換）および GPOS（グリフ配置）テーブルで、
-/// 指定されたスクリプトと言語がサポートされているかを確認します。
+/// 指定されたスクリプトと OpenType 言語サブテーブルがサポートされているかを確認します。
 /// サポートされていない場合は警告ログを出力します。
+///
+/// 言語サブテーブルのチェックはユーザが `ot_language` を明示指定した場合のみ実施します。
+/// BCP 47 のみ指定時は harfrust の内部処理に OT 言語タグの導出を委ねるため、ここでは
+/// 言語サブテーブルの確認をスキップします（スクリプトのチェックは引き続き実施）。
 ///
 /// # Arguments
 ///
 /// * `font_ref` - フォント参照
-/// * `font_config` - フォント設定情報（スクリプト、言語を含む）
+/// * `font_config` - フォント設定情報（スクリプト、OT 言語タグを含む）
 fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   let Some(script) = font_config.script else {
     return;
   };
 
   let script_tag = Tag::new(&script);
-  let lang_tag = font_config.language.map(|lang| Tag::new(&lang));
+  let lang_tag = font_config.ot_language_tag.map(|lang| Tag::new(&lang));
 
   // GSUB（グリフ置換）テーブルを確認
   if let Ok(gsub) = font_ref.gsub() {

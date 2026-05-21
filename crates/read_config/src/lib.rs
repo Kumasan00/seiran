@@ -221,7 +221,7 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
     references_path: _,
   } = pre;
 
-  let output_dir = build_output_dir(current_dir, &pre_output.output_dir)?;
+  let output_dir = build_output_dir(current_dir, pre_output.output_dir.as_deref())?;
   let font_configs = FontConfigs::from_all(font_configs_vec);
 
   return Ok(Config {
@@ -290,6 +290,7 @@ fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
   }
   pre_config::validate_margin_sums(&pre.pdf, &mut errors);
   pre_config::validate_unique_font_names(&pre.font_configs, &mut errors);
+  pre_config::validate_font_language_constraints(&pre.font_configs, &mut errors);
   if errors.is_empty() {
     return Ok(());
   }
@@ -323,7 +324,8 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
   })?;
 
   let script = pre_font_config.script.as_deref().map(four_byte_tag);
-  let language = pre_font_config.language.as_deref().map(language_tag);
+  let ot_language_tag = pre_font_config.ot_language.as_deref().map(normalize_ot_language_tag);
+  let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
   let features = pre_font_config.features.as_deref().and_then(|fs| {
     let v: Vec<Feature> = fs
       .iter()
@@ -351,6 +353,7 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
     variation_axes,
     script,
     language,
+    ot_language_tag,
     features,
   });
 }
@@ -359,23 +362,43 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
 #[allow(clippy::unwrap_used)]
 fn four_byte_tag(s: &str) -> [u8; 4] { return s.as_bytes().try_into().unwrap(); }
 
-/// 3 or 4 文字の言語タグを `[u8; 4]` に変換します（3 文字時は末尾スペース）。
-fn language_tag(s: &str) -> [u8; 4] {
-  let b = s.as_bytes();
-  if b.len() == 4 {
-    return [b[0], b[1], b[2], b[3]];
+/// 3 または 4 文字の OT 言語タグを `[u8; 4]` に正規化します。
+///
+/// 大文字化し、4 バイト未満の場合は末尾を空白でパディングします（OpenType 言語システムタグの慣習）。
+/// `font` クレートの `validate_font` で GSUB/GPOS 言語サブテーブルの参照に使用します。
+fn normalize_ot_language_tag(s: &str) -> [u8; 4] {
+  let mut bytes = [b' '; 4];
+  for (i, b) in s.as_bytes().iter().enumerate().take(4) {
+    bytes[i] = b.to_ascii_uppercase();
   }
-  return [b[0], b[1], b[2], b' '];
+  return bytes;
+}
+
+/// BCP 47 言語タグと OT 言語タグから、harfrust の [`Language::from_str`] に渡す最終 BCP 47 文字列を構築します。
+///
+/// `ot_language` が指定されている場合は、ベースの BCP 47（未指定なら `"und"`）の末尾に
+/// `-x-hbot<TAG>` 予約サブタグを連結します。harfrust 側でこのサブタグを解釈し、
+/// GSUB/GPOS の言語タグ導出に直接使用します（[`tag.rs::parse_private_use_subtag`] 経由）。
+///
+/// [`Language::from_str`]: https://docs.rs/harfrust/latest/harfrust/struct.Language.html
+fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> Option<String> {
+  match (language, ot_language) {
+    (None, None) => return None,
+    (Some(lang), None) => return Some(lang.to_string()),
+    (None, Some(ot_lang)) => return Some(format!("und-x-hbot{ot_lang}")),
+    (Some(lang), Some(ot_lang)) => return Some(format!("{lang}-x-hbot{ot_lang}")),
+  }
 }
 
 /// 出力ディレクトリを作成・正規化し、絶対パスを返します。
 ///
+/// `output_dir` が `None` の場合は `current_dir` をそのまま出力先とします（カレント直下に出力）。
 /// 実際の PDF パス（`{output_dir}/{name}.pdf`）は [`OutputConfig::pdf_path`] が組み立てます。
-fn build_output_dir(current_dir: &Path, output_dir: &Path) -> Result<PathBuf, ReadConfigError> {
-  let output_dir_path = if output_dir.is_absolute() {
-    output_dir.to_path_buf()
-  } else {
-    current_dir.join(output_dir)
+fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ReadConfigError> {
+  let output_dir_path = match output_dir {
+    Some(path) if path.is_absolute() => path.to_path_buf(),
+    Some(path) => current_dir.join(path),
+    None => current_dir.to_path_buf(),
   };
   fs::create_dir_all(&output_dir_path).map_err(|source| ReadConfigError::CreateOutputDir {
     path: output_dir_path.display().to_string(),
@@ -398,7 +421,10 @@ mod tests {
   use tempfile::TempDir;
   use types::FontType;
 
-  use super::{Config, ReadConfigError, ValidationError, parse_config, read_config, validate_values};
+  use super::{
+    Config, ReadConfigError, ValidationError, build_language_string, normalize_ot_language_tag, parse_config,
+    read_config, validate_values,
+  };
 
   /// 19 フォント種別すべての設定セクションを生成するヘルパー。
   fn make_font_sections(font_path: &str) -> String {
@@ -647,5 +673,235 @@ mod tests {
       panic!("expected MultipleValidationErrors, got {result:?}");
     };
     assert!(errors.iter().any(|error| matches!(error, ValidationError::SourcePathResolution { .. })));
+  }
+
+  #[test]
+  fn validate_values_fails_on_empty_output_dir() {
+    // Arrange: output_dir = "" は明示的に拒否
+    let toml =
+      format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), make_font_sections("dummy.ttf"));
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "output.output_dir"
+    )));
+  }
+
+  #[test]
+  fn read_config_uses_current_dir_when_output_dir_omitted() {
+    // Arrange: TOML から output_dir を省略。CWD を変えると並列テストに影響するため、
+    // 現在の CWD を期待値として観察する。
+    let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
+      format!(
+        "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      )
+    });
+    let expected_output_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
+
+    // Act
+    let config = read_config(&config_path).unwrap();
+
+    // Assert: 出力先は省略時の CWD と一致する
+    assert_eq!(config.output.output_dir, expected_output_dir);
+    assert_eq!(config.output.pdf_path(), expected_output_dir.join("out.pdf"));
+  }
+
+  /// `[font_configs.serif]` セクションに任意のフィールド追加行を差し込んだ TOML を生成します。
+  ///
+  /// `extra_lines` には `font_name` / `font_path` 以外のフィールド（例: `language = "ja-JP"`）を
+  /// 改行区切りで指定します。
+  fn font_sections_with_serif_extra(font_path: &str, extra_lines: &str) -> String {
+    let base = make_font_sections(font_path);
+    let needle = "[font_configs.serif]\nfont_name = \"font_serif\"\nfont_path = \"";
+    let injected_marker = format!("[font_configs.serif]\nfont_name = \"font_serif\"\n{extra_lines}\nfont_path = \"");
+    return base.replace(needle, &injected_marker);
+  }
+
+  /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_values` を通した結果を返します。
+  ///
+  /// `validate_values` は I/O を行わないので、`sources` のパスは実在しなくても構わない
+  /// （`resolve` でのみ canonicalize される）。空配列だけ避ければ良い。
+  fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ValidationError>> {
+    let toml = format!(
+      "sources = [\"dummy.txt\"]\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      font_sections_with_serif_extra("dummy.ttf", extra_lines),
+    );
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    return validate_values(&pre);
+  }
+
+  #[test]
+  fn validate_values_accepts_valid_bcp47_languages() {
+    // Arrange / Act / Assert: 主要な BCP 47 形式が通る
+    for lang in ["ja", "en-US", "zh-Hant", "zh-Hans-CN", "und"] {
+      let extra = format!("language = \"{lang}\"");
+      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected '{lang}' to be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_bcp47_language() {
+    // Arrange / Act
+    let errors = run_validate_with_serif_extra("language = \"!!\"").unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
+    )));
+  }
+
+  #[test]
+  fn validate_values_rejects_reserved_private_use_in_language() {
+    // Arrange / Act: ユーザが `-x-hbsc` / `-x-hbot` を直接書くのは禁止
+    for forbidden in ["en-x-hbsclatn", "ja-x-hbotJAN"] {
+      let extra = format!("language = \"{forbidden}\"");
+      let errors = run_validate_with_serif_extra(&extra).unwrap_err();
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ValidationError::Field { path, message }
+            if path.contains("language") && (message.contains("-x-hbsc") || message.contains("-x-hbot"))
+        )),
+        "expected '{forbidden}' to be rejected"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_values_accepts_valid_ot_script_tag() {
+    // Arrange / Act / Assert: 4 文字 ASCII アルファベット
+    for script in ["latn", "kana", "Hani", "DFLT"] {
+      let extra = format!("script = \"{script}\"");
+      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected script='{script}' to be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_ot_script_tag() {
+    // Arrange / Act / Assert: 長さ違い、digit、非 ASCII
+    for script in ["kan", "kanaa", "kan1", "ka一"] {
+      let extra = format!("script = \"{script}\"");
+      let errors = run_validate_with_serif_extra(&extra).unwrap_err();
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ValidationError::Field { path, .. } if path.contains("script")
+        )),
+        "expected script='{script}' to be rejected"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_values_accepts_valid_ot_language_with_script() {
+    // Arrange / Act / Assert: 3-4 文字 ASCII alphanumeric、script 必須
+    for ot_lang in ["JAN", "ENG", "DEU", "ZHS"] {
+      let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
+      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected ot_language='{ot_lang}' to be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_ot_language_tag() {
+    // Arrange / Act / Assert: 長さ違い、非 alphanumeric
+    for ot_lang in ["JA", "JAPAN", "J!N"] {
+      let extra = format!("script = \"latn\"\not_language = \"{ot_lang}\"");
+      let errors = run_validate_with_serif_extra(&extra).unwrap_err();
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ValidationError::Field { path, .. } if path.contains("ot_language")
+        )),
+        "expected ot_language='{ot_lang}' to be rejected"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_ot_language_without_script() {
+    // Arrange: script を指定せず ot_language のみ指定
+    let extra = "ot_language = \"JAN\"";
+
+    // Act
+    let errors = run_validate_with_serif_extra(extra).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message }
+        if path.contains("Serif") && message.contains("ot_language") && message.contains("script")
+    )));
+  }
+
+  #[test]
+  fn read_config_builds_language_string_with_ot_language_suffix() {
+    // Arrange: BCP 47 + script + ot_language を指定
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert: final language string is `ja-x-hbotJAN`、script/ot_language_tag は正規化済み
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
+    assert_eq!(serif.script, Some(*b"kana"));
+    assert_eq!(serif.ot_language_tag, Some(*b"JAN "));
+  }
+
+  #[test]
+  fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
+    // Arrange: language 未指定で script + ot_language のみ → `und-x-hbot<TAG>` が生成される
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "script = \"latn\"\not_language = \"ENG\"";
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.language.as_deref(), Some("und-x-hbotENG"));
+    assert_eq!(serif.ot_language_tag, Some(*b"ENG "));
+  }
+
+  #[test]
+  fn build_language_string_handles_all_combinations() {
+    // Arrange / Act / Assert
+    assert_eq!(build_language_string(None, None), None);
+    assert_eq!(build_language_string(Some("ja"), None), Some("ja".to_string()));
+    assert_eq!(build_language_string(None, Some("JAN")), Some("und-x-hbotJAN".to_string()));
+    assert_eq!(build_language_string(Some("en-US"), Some("ENG")), Some("en-US-x-hbotENG".to_string()));
+  }
+
+  #[test]
+  fn normalize_ot_language_tag_uppercases_and_pads_to_four_bytes() {
+    // Arrange / Act / Assert: 3 文字は末尾スペース、小文字は大文字化
+    assert_eq!(normalize_ot_language_tag("JAN"), *b"JAN ");
+    assert_eq!(normalize_ot_language_tag("eng"), *b"ENG ");
+    assert_eq!(normalize_ot_language_tag("DEUT"), *b"DEUT");
   }
 }
