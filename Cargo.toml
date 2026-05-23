@@ -24,7 +24,7 @@ repository = "https://github.com/Kumasan00/seiran"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-bumpalo = { version = "3.20.2", features = ["collections"] }
+bumpalo = { version = "3.20.3", features = ["collections"] }
 chrono = "0.4.44"
 clap = { version = "4.6.1", features = ["derive"] }
 cli = { path = "crates/cli" }
