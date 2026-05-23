@@ -85,13 +85,14 @@
 
 use std::str::FromStr;
 
+pub use harfrust::UnicodeBuffer;
 use harfrust::{
   Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapePlan, Shaper, ShaperData, ShaperInstance, Tag,
-  UnicodeBuffer, Variation,
+  Variation,
 };
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use read_config::{FontConfig, FontConfigs};
+use read_config::{FontConfig, FontConfigs, TextDirection};
 use thiserror::Error;
 use types::FontMap;
 
@@ -264,8 +265,15 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
 /// タイポグラフィック情報を保持します。
 pub struct HarfRustShaper<'a> {
   shaper: Shaper<'a>,
-  shape_plan: ShapePlan,
-  direction: Direction,
+  /// `direction` が `Some` のときに事前構築される `ShapePlan`。
+  ///
+  /// `harfrust::Shaper::shape_with_plan` は `buffer.direction == plan.direction` をアサート
+  /// するため、direction を auto-guess する場合は plan をキャッシュできず `None` になります。
+  /// その場合は [`HarfRustShaper::shape`] が `Shaper::shape`（per-call で plan を組む）に
+  /// フォールバックします。
+  shape_plan: Option<ShapePlan>,
+  /// 書字方向。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
+  direction: Option<Direction>,
   script: Option<Script>,
   language: Option<Language>,
   features: Vec<Feature>,
@@ -299,7 +307,7 @@ impl<'a> HarfRustShaper<'a> {
     instance: Option<&'a ShaperInstance>,
   ) -> Result<Self, ShaperError> {
     let shaper = shaper_data.shaper(font_ref).instance(instance).build();
-    let direction = Direction::LeftToRight;
+    let direction = config.direction.map(Self::to_harfrust_direction);
     let script = match config.script {
       Some(tag_bytes) => {
         let tag = Tag::from_be_bytes(tag_bytes);
@@ -322,7 +330,7 @@ impl<'a> HarfRustShaper<'a> {
       None => vec![],
     };
 
-    let shape_plan = ShapePlan::new(&shaper, direction, script, language.as_ref(), &features);
+    let shape_plan = direction.map(|d| ShapePlan::new(&shaper, d, script, language.as_ref(), &features));
 
     return Ok(Self {
       shaper,
@@ -332,6 +340,16 @@ impl<'a> HarfRustShaper<'a> {
       language,
       features,
     });
+  }
+
+  /// [`TextDirection`] を `harfrust::Direction` に変換します。
+  fn to_harfrust_direction(direction: TextDirection) -> Direction {
+    return match direction {
+      TextDirection::LeftToRight => Direction::LeftToRight,
+      TextDirection::RightToLeft => Direction::RightToLeft,
+      TextDirection::TopToBottom => Direction::TopToBottom,
+      TextDirection::BottomToTop => Direction::BottomToTop,
+    };
   }
 
   /// 与えられたテキストをシェイピングし、グリフバッファを返します
@@ -344,26 +362,38 @@ impl<'a> HarfRustShaper<'a> {
   ///
   /// などを行い、正確なシェイピング結果を生成します。
   ///
+  /// 呼び出し側が `UnicodeBuffer` を所有して持ち回すことで、内部の `Vec<GlyphInfo>` /
+  /// `Vec<GlyphPosition>` 等のアロケーションを再利用できます。返却された
+  /// `GlyphBuffer` に対して `clear()` を呼ぶと、同じアロケーションを使った
+  /// 空の `UnicodeBuffer` が得られます。
+  ///
   /// # Arguments
   ///
+  /// * `buffer` - 使い回し可能な `UnicodeBuffer`。`direction` / `script` / `language` は
+  ///   このメソッドが上書きするため、呼び出し側が事前に設定する必要はありません。
   /// * `text` - シェイピング対象のテキスト
   ///
   /// # Returns
   ///
   /// シェイピング結果を含む `GlyphBuffer`
   #[must_use]
-  pub fn shape(&self, text: &str) -> GlyphBuffer {
-    let mut buffer = UnicodeBuffer::new();
-    buffer.set_direction(self.direction);
+  pub fn shape(&self, mut buffer: UnicodeBuffer, text: &str) -> GlyphBuffer {
+    if let Some(direction) = self.direction {
+      buffer.set_direction(direction);
+    }
     if let Some(script) = self.script {
       buffer.set_script(script);
     }
     if let Some(language) = &self.language {
       buffer.set_language(language.clone());
     }
-    buffer.guess_segment_properties();
     buffer.push_str(text);
-    let result = self.shaper.shape_with_plan(&self.shape_plan, buffer, self.features.as_ref());
-    return result;
+    buffer.guess_segment_properties();
+    // direction が config で明示された場合はキャッシュ済み ShapePlan を使い、
+    // 未指定（guess_segment_properties に委譲）の場合は per-call で plan を組む。
+    return match &self.shape_plan {
+      Some(plan) => self.shaper.shape_with_plan(plan, buffer, self.features.as_ref()),
+      None => self.shaper.shape(buffer, self.features.as_ref()),
+    };
   }
 }

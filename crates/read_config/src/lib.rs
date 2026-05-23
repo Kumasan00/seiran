@@ -19,7 +19,8 @@ use pre_config::{PreConfig, PreFontConfig};
 mod processed_config;
 
 pub use processed_config::{
-  Config, DocumentConfig, Feature, FontConfig, FontConfigs, Margin, OutputConfig, PdfConfig, VariationAxis,
+  Config, DocumentConfig, Feature, FontConfig, FontConfigs, Margin, OutputConfig, PdfConfig, TextDirection,
+  VariationAxis,
 };
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
@@ -252,26 +253,6 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
   });
 }
 
-/// 各 source パスを `canonicalize` し、失敗時はエラーを `errors` に追加する。
-fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Vec<ValidationError>) -> Vec<PathBuf> {
-  let mut resolved = Vec::with_capacity(sources.len());
-  for source_path in sources {
-    let absolute = if source_path.is_absolute() {
-      source_path.clone()
-    } else {
-      current_dir.join(source_path)
-    };
-    match absolute.canonicalize() {
-      Ok(canon) => resolved.push(canon),
-      Err(source) => errors.push(ValidationError::SourcePathResolution {
-        path: absolute.display().to_string(),
-        source,
-      }),
-    }
-  }
-  return resolved;
-}
-
 /// [`PreConfig`] の値検証を実行します（I/O なし）。
 ///
 /// `garde` のフィールド検証、上下／左右の余白合計、19 フォント種別の `font_name` 重複を
@@ -315,6 +296,26 @@ fn canonicalize_or_record(
   }
 }
 
+/// 各 source パスを `canonicalize` し、失敗時はエラーを `errors` に追加する。
+fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Vec<ValidationError>) -> Vec<PathBuf> {
+  let mut resolved = Vec::with_capacity(sources.len());
+  for source_path in sources {
+    let absolute = if source_path.is_absolute() {
+      source_path.clone()
+    } else {
+      current_dir.join(source_path)
+    };
+    match absolute.canonicalize() {
+      Ok(canon) => resolved.push(canon),
+      Err(source) => errors.push(ValidationError::SourcePathResolution {
+        path: absolute.display().to_string(),
+        source,
+      }),
+    }
+  }
+  return resolved;
+}
+
 /// `PreFontConfig` を `FontConfig` に変換します。
 fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Result<FontConfig, ValidationError> {
   let font_path = pre_font_config.font_path.canonicalize().map_err(|source| ValidationError::FontPathResolution {
@@ -326,6 +327,7 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
   let script = pre_font_config.script.as_deref().map(four_byte_tag);
   let ot_language_tag = pre_font_config.ot_language.as_deref().map(normalize_ot_language_tag);
   let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
+  let direction = pre_font_config.direction.as_deref().map(parse_text_direction);
   let features = pre_font_config.features.as_deref().and_then(|fs| {
     let v: Vec<Feature> = fs
       .iter()
@@ -354,6 +356,7 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
     script,
     language,
     ot_language_tag,
+    direction,
     features,
   });
 }
@@ -390,6 +393,20 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
   }
 }
 
+/// `validate_direction` で検証済みの direction 文字列を [`TextDirection`] に変換します。
+///
+/// validator が hard error を出す形で値域を 4 つに制限しているため、ここに想定外の値は
+/// 到達しません（`unreachable!` で明示）。
+fn parse_text_direction(s: &str) -> TextDirection {
+  return match s {
+    "left-to-right" => TextDirection::LeftToRight,
+    "right-to-left" => TextDirection::RightToLeft,
+    "top-to-bottom" => TextDirection::TopToBottom,
+    "bottom-to-top" => TextDirection::BottomToTop,
+    other => unreachable!("validate_direction で検証済みのはずだが '{other}' が到達した"),
+  };
+}
+
 /// 出力ディレクトリを作成・正規化し、絶対パスを返します。
 ///
 /// `output_dir` が `None` の場合は `current_dir` をそのまま出力先とします（カレント直下に出力）。
@@ -422,8 +439,8 @@ mod tests {
   use types::FontType;
 
   use super::{
-    Config, ReadConfigError, ValidationError, build_language_string, normalize_ot_language_tag, parse_config,
-    read_config, validate_values,
+    Config, ReadConfigError, TextDirection, ValidationError, build_language_string, normalize_ot_language_tag,
+    parse_config, read_config, validate_values,
   };
 
   /// 19 フォント種別すべての設定セクションを生成するヘルパー。
@@ -778,17 +795,24 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_accepts_valid_ot_script_tag() {
-    // Arrange / Act / Assert: 4 文字 ASCII アルファベット
-    for script in ["latn", "kana", "Hani", "DFLT"] {
+  fn validate_values_accepts_structurally_valid_ot_script_tags() {
+    // Arrange / Act / Assert: structural チェックは「4 文字 ASCII アルファベット」のみ。
+    // OT 慣例外（"Hani", "Latn", "dflt" 等）も hard error にはしない。フォント実態との突合せは
+    // font::validate_font が GSUB/GPOS の ScriptList をバイト完全一致 lookup で報告する。
+    for script in [
+      "latn", "kana", "hani", "DFLT", "Hani", "Latn", "LATN", "dflt", "Dflt",
+    ] {
       let extra = format!("script = \"{script}\"");
-      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected script='{script}' to be accepted");
+      assert!(
+        run_validate_with_serif_extra(&extra).is_ok(),
+        "expected script='{script}' to pass structural validation"
+      );
     }
   }
 
   #[test]
-  fn validate_values_rejects_invalid_ot_script_tag() {
-    // Arrange / Act / Assert: 長さ違い、digit、非 ASCII
+  fn validate_values_rejects_structurally_invalid_ot_script_tag() {
+    // Arrange / Act / Assert: 長さ違い、digit、非 ASCII alphabetic は hard error
     for script in ["kan", "kanaa", "kan1", "ka一"] {
       let extra = format!("script = \"{script}\"");
       let errors = run_validate_with_serif_extra(&extra).unwrap_err();
@@ -800,6 +824,26 @@ mod tests {
         "expected script='{script}' to be rejected"
       );
     }
+  }
+
+  #[test]
+  fn read_config_preserves_user_script_tag_case() {
+    // 構造的に妥当な OT 慣例外 ("Latn" 等) は read_config 段階では受け付け、ユーザ指定の case が
+    // そのまま保存される。フォントとの突合せは font::validate_font が担当する。
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "script = \"Latn\"";
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      )
+    });
+
+    let config: Config = read_config(&config_path).unwrap();
+
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.script, Some(*b"Latn"));
   }
 
   #[test]
@@ -903,5 +947,84 @@ mod tests {
     assert_eq!(normalize_ot_language_tag("JAN"), *b"JAN ");
     assert_eq!(normalize_ot_language_tag("eng"), *b"ENG ");
     assert_eq!(normalize_ot_language_tag("DEUT"), *b"DEUT");
+  }
+
+  #[test]
+  fn validate_values_accepts_all_valid_directions() {
+    // Arrange / Act / Assert: 4 種類のハイフン区切り長形が通る
+    for direction in [
+      "left-to-right",
+      "right-to-left",
+      "top-to-bottom",
+      "bottom-to-top",
+    ] {
+      let extra = format!("direction = \"{direction}\"");
+      assert!(run_validate_with_serif_extra(&extra).is_ok(), "expected direction='{direction}' to be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_direction() {
+    // Arrange / Act / Assert: 短縮形・大文字・スペース区切り・空文字・誤綴りは拒否
+    for direction in [
+      "ltr",
+      "LTR",
+      "left to right",
+      "",
+      "leftToRight",
+      "horizontal",
+    ] {
+      let extra = format!("direction = \"{direction}\"");
+      let errors = run_validate_with_serif_extra(&extra).unwrap_err();
+      assert!(
+        errors.iter().any(|error| matches!(
+          error,
+          ValidationError::Field { path, .. } if path.contains("direction")
+        )),
+        "expected direction='{direction}' to be rejected"
+      );
+    }
+  }
+
+  #[test]
+  fn read_config_preserves_user_direction() {
+    // Arrange: right-to-left を指定
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "direction = \"right-to-left\"";
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
+  }
+
+  #[test]
+  fn read_config_keeps_direction_none_when_omitted() {
+    // Arrange: direction を指定せず最小構成で読み込む
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert: 19 フォントすべて direction = None
+    for font_type in FontType::ALL {
+      assert_eq!(config.font_configs.get(font_type).direction, None, "{font_type:?}");
+    }
   }
 }

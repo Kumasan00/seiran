@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use font::shaper::HarfRustShapers;
+use font::shaper::{HarfRustShapers, UnicodeBuffer};
 use icu::properties::{
   CodePointMapData,
   props::{EastAsianWidth, Script},
@@ -98,8 +98,20 @@ struct TextSegment {
 /// # Returns
 ///
 /// 変換されたアイテムのベクトル
+#[must_use]
 pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -> Vec<Item> {
+  let mut buffer = UnicodeBuffer::new();
   let mut items: Vec<Item> = Vec::new();
+  layout_engine_inner(layout_nodes, shapers, &mut buffer, &mut items);
+  return items;
+}
+
+fn layout_engine_inner(
+  layout_nodes: Vec<LayoutNode>,
+  shapers: &HarfRustShapers,
+  buffer: &mut UnicodeBuffer,
+  items: &mut Vec<Item>,
+) {
   for node in layout_nodes {
     match node {
       LayoutNode::Text(text, style) => {
@@ -110,7 +122,8 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
           let font_type = segment.font_type;
           let segment_text = &segment.text;
           // テキストセグメントのレイアウト処理
-          let result = shapers.get(font_type).shape(segment_text);
+          let taken = std::mem::take(buffer);
+          let result = shapers.get(font_type).shape(taken, segment_text);
           let glyph_infos = result.glyph_infos();
           let glyph_positions = result.glyph_positions();
           let mut glyphs: Vec<Glyph> = Vec::new();
@@ -133,6 +146,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
               y_offset,
             });
           }
+          *buffer = result.clear();
           let glyph_run = GlyphRun {
             font_size: style.font_size,
             text: segment_text.clone(),
@@ -145,8 +159,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
       },
       LayoutNode::HBox { children, width } => {
         // HBox のレイアウト処理
-        let child_items = layout_engine(children, shapers);
-        items.extend(child_items);
+        layout_engine_inner(children, shapers, buffer, items);
         if let Some(_width) = width {}
       },
       LayoutNode::VBox {
@@ -154,8 +167,7 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
         margin_bottom,
       } => {
         // VBox のレイアウト処理
-        let child_items = layout_engine(children, shapers);
-        items.extend(child_items);
+        layout_engine_inner(children, shapers, buffer, items);
         items.push(Item::Vkern(margin_bottom));
       },
       LayoutNode::Glue {
@@ -189,7 +201,6 @@ pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -
       },
     }
   }
-  return items;
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型

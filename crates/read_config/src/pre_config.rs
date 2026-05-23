@@ -31,9 +31,10 @@
 //! | `pdf.margin_*` | >= 0 | `garde(range(min = 0.0))` |
 //! | 余白合計 | < 寸法 | 自由関数 [`validate_margin_sums`] |
 //! | `language` | BCP 47 として妥当・予約サブタグ非含有 | `garde(custom(validate_bcp47_language))` |
-//! | `script` | 4 文字 ASCII アルファベット（ISO 15924） | `garde(custom(validate_ot_script_tag))` |
+//! | `script` | 4 文字 ASCII アルファベット | `garde(custom(validate_ot_script_tag))` |
 //! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | `garde(custom(validate_ot_language_tag))` |
 //! | `ot_language` の前提 | `script` 必須 | 自由関数 [`validate_font_language_constraints`] |
+//! | `direction` | `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` | `garde(custom(validate_direction))` |
 //! | feature `tag` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
 //! | 軸 `name` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
 //! | `font_name` 長さ | >= 1 | `garde(length(min = 1))` |
@@ -274,10 +275,24 @@ pub(crate) struct PreFontConfig {
   /// 組み立てられます）。
   #[garde(custom(validate_bcp47_language))]
   pub language: Option<String>,
-  /// OpenType Script タグ（ISO 15924 コード、4 文字 ASCII アルファベット）
+  /// OpenType / ISO 15924 script タグ（4 文字 ASCII アルファベット、例: `"latn"`, `"Latn"`, `"kana"`）
   ///
   /// 上級向けオーバーライド。指定すると harfrust が `language` から導出するスクリプトを
-  /// 上書きします（例: `"zh"` に対して `"kana"` を明示するなど）。
+  /// 上書きします（例: `"zh"` に対して `"kana"` を明示するなど）。ユーザが書いた値は
+  /// `harfrust::Script::from_iso15924_tag` にそのまま渡され、harfrust 内部で case 正規化
+  /// （先頭大文字 + 残り小文字）と OT script タグ導出が行われます。したがって `"latn"` /
+  /// `"Latn"` / `"LATN"` はすべて同じ Latin script として shape されます。
+  ///
+  /// フォントの GSUB/GPOS `ScriptList` に書いた値が literally に存在するかは `font` クレートの
+  /// `validate_font::check_script_language_support` がバイト完全一致でチェックし、存在しなければ
+  /// `tracing::warn!` で報告します。表記揺れがあれば `validate_font` が指摘します。
+  ///
+  /// # 注意: `"DFLT"` を明示指定しないこと
+  ///
+  /// `"DFLT"` を渡すと harfrust 内部で `Dflt` → `dflt` と変換され、フォントの `b"DFLT"`
+  /// subtable とは別物が lookup されます（harfrust の `Script::from_iso15924_tag` が DFLT を
+  /// 特別扱いしないため）。harfrust は script 未指定時に DFLT を自動 fallback として試行する
+  /// ので、強制 DFLT が欲しい場合は `script` を省略してください。
   #[garde(custom(validate_ot_script_tag))]
   pub script: Option<String>,
   /// OpenType 言語システムタグ（3 または 4 文字 ASCII alphanumeric、例: `"JAN"`, `"ENG"`）
@@ -287,6 +302,12 @@ pub(crate) struct PreFontConfig {
   /// 4 バイトに正規化します。
   #[garde(custom(validate_ot_language_tag))]
   pub ot_language: Option<String>,
+  /// 書字方向（ハイフン区切りの長形のみ受理）
+  ///
+  /// 受理する値は `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` の
+  /// 4 つ。省略時は harfrust の `guess_segment_properties` が入力テキストから自動判定します。
+  #[garde(custom(validate_direction))]
+  pub direction: Option<String>,
   /// OpenType フィーチャー設定配列
   #[garde(dive)]
   pub features: Option<Vec<PreFontFeature>>,
@@ -314,19 +335,22 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
   return Ok(());
 }
 
-/// OpenType Script タグ（ISO 15924）を検証します。
+/// OpenType / ISO 15924 script タグの構造的妥当性を検証します。
 ///
-/// `None` は省略を表すため許可します。`Some` の場合は ISO 15924 の構造的要件である
-/// 「4 文字 ASCII アルファベット」を満たす必要があります（harfrust 側で大文字小文字は正規化されます）。
+/// `None` は省略を表すため許可します。`Some` の場合は「4 文字 ASCII アルファベット」を
+/// 満たす必要があります（長さ・文字種の hard error チェック）。
+///
+/// 受け付けた値はそのまま `[u8; 4]` 化されて [`crate::FontConfig::script`] に格納され、
+/// `font::validate_font` のバイト完全一致 lookup と harfrust の `Script::from_iso15924_tag`
+/// 経由のシェイピングの両方で同じバイト列が使われます。表記揺れ（例: `"Latn"` vs フォントの
+/// `b"latn"`）の警告は `validate_font` が確定的に出します。
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_ot_script_tag(value: &Option<String>, _: &()) -> garde::Result {
   let Some(tag) = value else {
     return Ok(());
   };
   if tag.len() != 4 || !tag.bytes().all(|b| b.is_ascii_alphabetic()) {
-    return Err(garde::Error::new(
-      "OpenType script タグ（ISO 15924）は 4 文字の ASCII アルファベットである必要があります",
-    ));
+    return Err(garde::Error::new("OpenType script タグは 4 文字の ASCII アルファベットである必要があります"));
   }
   return Ok(());
 }
@@ -345,6 +369,26 @@ fn validate_ot_language_tag(value: &Option<String>, _: &()) -> garde::Result {
     return Err(garde::Error::new("OpenType language タグは 3-4 文字の ASCII alphanumeric である必要があります"));
   }
   return Ok(());
+}
+
+/// 書字方向の文字列を検証します。
+///
+/// `None` は省略を表すため許可します。`Some` の場合は以下のいずれかである必要があります:
+/// `"left-to-right"`, `"right-to-left"`, `"top-to-bottom"`, `"bottom-to-top"`。
+/// 短縮形（`"ltr"` 等）や大文字 / スペース区切りは拒否します。
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn validate_direction(value: &Option<String>, _: &()) -> garde::Result {
+  let Some(direction) = value else {
+    return Ok(());
+  };
+  match direction.as_str() {
+    "left-to-right" | "right-to-left" | "top-to-bottom" | "bottom-to-top" => return Ok(()),
+    _ => {
+      return Err(garde::Error::new(
+        "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります",
+      ));
+    },
+  }
 }
 
 /// バリアブルフォント軸の単一設定値

@@ -20,6 +20,7 @@
 //! - **`VariationAxis`** - バリアブル軸（軸値の範囲内性確認済み）
 //! - **`Feature`** - OpenType フィーチャー（タグ長・値の妥当性確認済み）
 //! - **`Margin`** - ページ余白（非負値・合計妥当性確認済み）
+//! - **`TextDirection`** - 書字方向（`harfrust::Direction` の Invalid 以外にマップ）
 
 use std::path::PathBuf;
 
@@ -99,7 +100,7 @@ pub type FontConfigs = FontMap<FontConfig>;
 /// 以下が保証されます：
 /// - `font_path` は絶対パスに正規化されている
 /// - `font_index` は 0 以上の値
-/// - `script`、`feature` タグは 4 文字の `[u8; 4]` に変換済み
+/// - `script`、`feature` タグは 4 文字の `[u8; 4]` に変換済み（script はユーザ指定をそのまま反映）
 /// - `language` は BCP 47 として妥当な文字列、または `None`
 /// - `ot_language_tag` は 4 バイトに正規化済み（3 文字指定時は末尾スペースパディング）、または `None`
 /// - 値の妥当性はすべてバリデーション済み
@@ -117,8 +118,27 @@ pub struct FontConfig {
   /// バリアブルフォント軸の設定値
   /// 値が範囲内であることはバリデーション済み
   pub variation_axes: Option<Vec<VariationAxis>>,
-  /// OpenType Script タグ（4 バイト、ISO 15924）
-  /// 例：b"latn"（Latin）、b"arab"（Arabic）。ユーザの `script` 指定をそのまま反映
+  /// OpenType / ISO 15924 script タグ（4 バイト、ユーザ指定の case をそのまま反映）
+  ///
+  /// 構造的妥当性（4 文字 ASCII アルファベット）はバリデーション済み。case は正規化せず
+  /// ユーザ指定をそのまま `[u8; 4]` 化します。例：`b"latn"`（Latin）、`b"arab"`（Arabic）、
+  /// `b"kana"`（Katakana/Hiragana）。
+  ///
+  /// このバイト列は 2 つの経路で使われます：
+  /// - `font::validate_font::check_script_language_support` が GSUB/GPOS の `ScriptList` を
+  ///   **バイト完全一致** で lookup し、見つからなければ `tracing::warn!` で報告します。
+  ///   表記揺れ（例: `b"Latn"` vs フォントの `b"latn"`）はここで確定的に通知されます。
+  /// - `font::shaper` が `harfrust::Script::from_iso15924_tag` にそのまま渡し、harfrust が
+  ///   case 正規化（先頭大文字 + 残り小文字）と OT script タグ導出を行います。
+  ///   したがって `b"latn"` / `b"Latn"` / `b"LATN"` は同じ Latin script として shape されます。
+  ///
+  /// # 注意: `b"DFLT"` 明示指定の落とし穴
+  ///
+  /// `b"DFLT"` を渡すと shaper 側で harfrust が `Dflt` → `dflt` と変換し、フォントの
+  /// `b"DFLT"` subtable とは別物が lookup されます（`validate_font` 側ではバイト完全一致で
+  /// `b"DFLT"` を見つけて「OK」と判定するが、実際の shape は意図と異なる subtable を使う）。
+  /// harfrust は script 未指定時に DFLT を自動 fallback として試行するので、強制 DFLT が
+  /// 欲しい場合は config で `script` を省略してください。
   pub script: Option<[u8; 4]>,
   /// BCP 47 言語タグ（harfrust の [`Language::from_str`] に渡す最終文字列）
   ///
@@ -135,9 +155,37 @@ pub struct FontConfig {
   /// 参照（`font` クレートの `validate_font`）に使用します。BCP 47 のみ指定時は `None` で、
   /// harfrust の内部処理に OT 言語タグ導出を委ねます。
   pub ot_language_tag: Option<[u8; 4]>,
+  /// 書字方向（horizontal LTR/RTL、vertical TTB/BTB）
+  ///
+  /// `None` の場合は `font::shaper` 側で `harfrust::UnicodeBuffer::guess_segment_properties`
+  /// に委ね、入力テキストのスクリプトから自動判定されます。`Some` の場合はその値で
+  /// `harfrust::ShapePlan` を事前構築・キャッシュします。
+  ///
+  /// # パフォーマンス上の含意
+  ///
+  /// `harfrust::Shaper::shape_with_plan` は `buffer.direction == plan.direction` をアサート
+  /// するため、auto-guess パス（`None`）では `ShapePlan` をキャッシュできず、shape 呼び出し
+  /// ごとに plan を再構築します。明示指定時のみ事前構築 plan を使うキャッシュパスが有効です。
+  pub direction: Option<TextDirection>,
   /// OpenType フィーチャー設定（4 バイトタグ + 値）
   /// 例："liga"（ligatures）、"smcp"（small capitals）
   pub features: Option<Vec<Feature>>,
+}
+
+/// 書字方向（`harfrust::Direction` の Invalid 以外にマップ）
+///
+/// `read_config` クレートは harfrust に依存しないため、harfrust の `Direction` を直接保持せず
+/// 独自 enum で表現します。`font` クレートで `harfrust::Direction` への変換が行われます。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextDirection {
+  /// 左から右（horizontal、ラテン文字・日本語横書き等）
+  LeftToRight,
+  /// 右から左（horizontal、アラビア文字・ヘブライ文字等）
+  RightToLeft,
+  /// 上から下（vertical、日本語縦書き等）
+  TopToBottom,
+  /// 下から上（vertical、極めて稀）
+  BottomToTop,
 }
 
 /// OpenType フィーチャーの設定（タグと値のペア）
