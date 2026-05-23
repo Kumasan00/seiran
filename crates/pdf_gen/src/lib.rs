@@ -198,6 +198,12 @@ pub fn create_pdf(
   if let Some(subject) = &config.document.subject {
     metadata = metadata.description(subject.clone());
   }
+  if let Some(language) = &config.document.language {
+    metadata = metadata.language(language.clone());
+  }
+  if let Some(keywords) = &config.document.keywords {
+    metadata = metadata.keywords(keywords.clone());
+  }
   document.set_metadata(metadata);
   let mut page = document.start_page_with(page_settings.clone());
   let mut surface = page.surface();

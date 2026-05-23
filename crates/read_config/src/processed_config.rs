@@ -61,6 +61,17 @@ pub struct DocumentConfig {
   pub date: Option<String>,
   /// 主題（PDF メタデータの /Subject）
   pub subject: Option<String>,
+  /// ドキュメント全体の言語（BCP 47、PDF メタデータの /Lang）
+  ///
+  /// 文書のロケール属性。PDF /Lang への反映に加え、将来のハイフネーション・cleveref の i18n
+  /// 表示（"Figure" / "図"）・禁則処理などが参照する基準言語として使用します。フォント単位の
+  /// [`FontConfig::language`] とは独立で、こちらは文書全体の言語、フォント側はシェイピング用の
+  /// 言語タグです。BCP 47 として妥当であることが検証済みです。
+  pub language: Option<String>,
+  /// キーワード（PDF メタデータの /Keywords）
+  ///
+  /// 各キーワードは非空文字列であることが検証済みです。
+  pub keywords: Option<Vec<String>>,
 }
 
 /// 出力ファイル名・ディレクトリ
@@ -81,6 +92,41 @@ impl OutputConfig {
     path.set_extension("pdf");
     return path;
   }
+}
+
+/// PDF ページレイアウトの検証済み・処理済み設定
+///
+/// ページサイズ、余白、フォント設定など、
+/// PDF 出力全体のレイアウトを制御します。
+/// すべての値が正の値・非負値として検証済みです。
+///
+/// 出力先パスは `Config::output` を参照（`OutputConfig::pdf_path()`）。
+#[derive(Debug, Clone)]
+pub struct PdfConfig {
+  /// ページの高さ（mm）
+  /// バリデーション済み（> 0）、余白と矛盾なし
+  pub height: f32,
+  /// ページの幅（mm）
+  /// バリデーション済み（> 0）、余白と矛盾なし
+  pub width: f32,
+  /// ページ余白（上下左右）
+  pub margin: Margin,
+}
+
+/// ページ余白（上下左右）
+///
+/// ページ内の有効テキスト配置領域を定義します。
+/// すべて非負値（>= 0）で、合計がページサイズ未満であることが保証されます。
+#[derive(Debug, Clone, Copy)]
+pub struct Margin {
+  /// 上余白（mm）（バリデーション済み、>= 0）
+  pub top: f32,
+  /// 下余白（mm）（バリデーション済み、>= 0）
+  pub bottom: f32,
+  /// 左余白（mm）（バリデーション済み、>= 0）
+  pub left: f32,
+  /// 右余白（mm）（バリデーション済み、>= 0）
+  pub right: f32,
 }
 
 /// 19 フォント種別すべての検証済み設定
@@ -213,39 +259,4 @@ pub struct VariationAxis {
   /// 目標値（実数）
   /// 例：weight 軸で 700（太字）、width 軸で 80（condensed）
   pub value: f64,
-}
-
-/// PDF ページレイアウトの検証済み・処理済み設定
-///
-/// ページサイズ、余白、フォント設定など、
-/// PDF 出力全体のレイアウトを制御します。
-/// すべての値が正の値・非負値として検証済みです。
-///
-/// 出力先パスは `Config::output` を参照（`OutputConfig::pdf_path()`）。
-#[derive(Debug, Clone)]
-pub struct PdfConfig {
-  /// ページの高さ（mm）
-  /// バリデーション済み（> 0）、余白と矛盾なし
-  pub height: f32,
-  /// ページの幅（mm）
-  /// バリデーション済み（> 0）、余白と矛盾なし
-  pub width: f32,
-  /// ページ余白（上下左右）
-  pub margin: Margin,
-}
-
-/// ページ余白（上下左右）
-///
-/// ページ内の有効テキスト配置領域を定義します。
-/// すべて非負値（>= 0）で、合計がページサイズ未満であることが保証されます。
-#[derive(Debug, Clone, Copy)]
-pub struct Margin {
-  /// 上余白（mm）（バリデーション済み、>= 0）
-  pub top: f32,
-  /// 下余白（mm）（バリデーション済み、>= 0）
-  pub bottom: f32,
-  /// 左余白（mm）（バリデーション済み、>= 0）
-  pub left: f32,
-  /// 右余白（mm）（バリデーション済み、>= 0）
-  pub right: f32,
 }

@@ -231,6 +231,8 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
       author: pre_document.author,
       date: pre_document.date,
       subject: pre_document.subject,
+      language: pre_document.language,
+      keywords: pre_document.keywords,
     },
     output: OutputConfig {
       name: pre_output.name,
@@ -1005,6 +1007,103 @@ mod tests {
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
     assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
+  }
+
+  #[test]
+  fn validate_values_accepts_valid_document_language() {
+    // Arrange / Act / Assert: 主要な BCP 47 形式が document.language で通る
+    for lang in ["ja", "en-US", "zh-Hant", "und"] {
+      let toml = format!(
+        "sources = [\"dummy.txt\"]\n\n[document]\nlanguage = \"{lang}\"\n\n{}{}{}",
+        valid_output_section("test", "out"),
+        valid_pdf_section(),
+        make_font_sections("dummy.ttf"),
+      );
+      let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+      assert!(validate_values(&pre).is_ok(), "expected document.language='{lang}' to be accepted");
+    }
+  }
+
+  #[test]
+  fn validate_values_rejects_invalid_document_language() {
+    // Arrange
+    let toml = format!(
+      "sources = [\"dummy.txt\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("dummy.ttf"),
+    );
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
+    )));
+  }
+
+  #[test]
+  fn validate_values_rejects_empty_keyword_entry() {
+    // Arrange: keywords の途中に空文字列を含める
+    let toml = format!(
+      "sources = [\"dummy.txt\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("dummy.ttf"),
+    );
+    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
+    )));
+  }
+
+  #[test]
+  fn read_config_preserves_document_language_and_keywords() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      format!(
+        "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert
+    assert_eq!(config.document.language.as_deref(), Some("ja"));
+    assert_eq!(config.document.keywords.as_deref(), Some(&["組版".to_string(), "PDF".to_string()][..]));
+  }
+
+  #[test]
+  fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
+    // Arrange: language / keywords を省略
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      )
+    });
+
+    // Act
+    let config: Config = read_config(&config_path).unwrap();
+
+    // Assert
+    assert_eq!(config.document.language, None);
+    assert_eq!(config.document.keywords, None);
   }
 
   #[test]

@@ -97,6 +97,51 @@ pub(crate) struct PreDocumentConfig {
   /// 主題
   #[garde(skip)]
   pub subject: Option<String>,
+  /// ドキュメント全体の言語（BCP 47、例: `"ja"`, `"en-US"`, `"zh-Hant"`）
+  ///
+  /// PDF メタデータの /Lang や i18n に使用する文書レベルのロケール属性。
+  /// フォント単位の `language` とは別レイヤです。
+  #[garde(custom(validate_document_language))]
+  pub language: Option<String>,
+  /// キーワード（PDF メタデータの /Keywords）
+  ///
+  /// 各要素は非空文字列であることを検証します。
+  #[garde(custom(validate_keywords))]
+  pub keywords: Option<Vec<String>>,
+}
+
+/// ドキュメント全体の言語タグを検証します（BCP 47 構造的妥当性のみ）。
+///
+/// `None` は省略を表すため許可します。`Some` の場合は
+/// [`unic_langid::LanguageIdentifier::from_bytes`] による BCP 47 パースが成功する必要があります。
+/// フォント単位の [`validate_bcp47_language`] と異なり、document.language は harfrust に渡らない
+/// 純粋な文書ロケールのため、`-x-hbsc` / `-x-hbot` 予約サブタグの直接記述は禁止対象に含めません
+/// （直接記述は意味を成しませんが、ここで弾く責務はフォント側固有）。
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
+  let Some(language) = value else {
+    return Ok(());
+  };
+  unic_langid::LanguageIdentifier::from_bytes(language.as_bytes())
+    .map_err(|e| garde::Error::new(format!("BCP 47 言語タグとして不正です: {e}")))?;
+  return Ok(());
+}
+
+/// キーワード配列の各要素が非空であることを検証します。
+///
+/// `None` および空配列は省略相当として許可します。`Some` の場合は各要素が空文字列でない
+/// ことを確認します（PDF /Keywords に空エントリを混入させない目的）。
+#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
+  let Some(keywords) = value else {
+    return Ok(());
+  };
+  for (index, keyword) in keywords.iter().enumerate() {
+    if keyword.is_empty() {
+      return Err(garde::Error::new(format!("keywords[{index}] は空にできません")));
+    }
+  }
+  return Ok(());
 }
 
 /// `[output]` セクション: 出力ファイル名・ディレクトリ
