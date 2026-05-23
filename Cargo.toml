@@ -31,7 +31,7 @@ cli = { path = "crates/cli" }
 figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
 font-types = "0.11.3"
-garde = { version = "0.22.1", features = ["derive"] }
+garde = { version = "0.23.0", features = ["derive"] }
 harfrust = "0.6.0"
 icu = { version = "2.2.0", features = ["compiled_data"] }
 krilla = "0.7.0"
