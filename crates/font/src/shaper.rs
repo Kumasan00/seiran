@@ -87,8 +87,8 @@ use std::str::FromStr;
 
 pub use harfrust::UnicodeBuffer;
 use harfrust::{
-  Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapePlan, Shaper, ShaperData, ShaperInstance, Tag,
-  Variation,
+  Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapeOptions, ShapePlan, Shaper, ShaperData,
+  ShaperInstance, Tag, Variation,
 };
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -267,10 +267,10 @@ pub struct HarfRustShaper<'a> {
   shaper: Shaper<'a>,
   /// `direction` が `Some` のときに事前構築される `ShapePlan`。
   ///
-  /// `harfrust::Shaper::shape_with_plan` は `buffer.direction == plan.direction` をアサート
-  /// するため、direction を auto-guess する場合は plan をキャッシュできず `None` になります。
-  /// その場合は [`HarfRustShaper::shape`] が `Shaper::shape`（per-call で plan を組む）に
-  /// フォールバックします。
+  /// `harfrust::Shaper::shape` は plan を渡すと内部で `buffer.direction == plan.direction` を
+  /// アサートするため、direction を auto-guess する場合は plan をキャッシュできず `None` に
+  /// なります。その場合は [`HarfRustShaper::shape`] が plan 未指定の `ShapeOptions` を渡し、
+  /// `harfrust` 側で per-call に plan を構築します。
   shape_plan: Option<ShapePlan>,
   /// 書字方向。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
   direction: Option<Direction>,
@@ -389,11 +389,10 @@ impl<'a> HarfRustShaper<'a> {
     }
     buffer.push_str(text);
     buffer.guess_segment_properties();
-    // direction が config で明示された場合はキャッシュ済み ShapePlan を使い、
-    // 未指定（guess_segment_properties に委譲）の場合は per-call で plan を組む。
-    return match &self.shape_plan {
-      Some(plan) => self.shaper.shape_with_plan(plan, buffer, self.features.as_ref()),
-      None => self.shaper.shape(buffer, self.features.as_ref()),
-    };
+    // direction が config で明示された場合はキャッシュ済み ShapePlan を渡し、
+    // 未指定（guess_segment_properties に委譲）の場合は plan を渡さず harfrust 側で
+    // per-call に plan を組ませる。
+    let options = ShapeOptions::new().plan(self.shape_plan.as_ref()).features(self.features.as_ref());
+    return self.shaper.shape(buffer, options);
   }
 }

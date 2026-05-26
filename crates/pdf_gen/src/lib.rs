@@ -362,7 +362,8 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
   let Some([r, g, b]) = style.background_color else {
     return Ok(());
   };
-  let rect = Rect::from_xywh(0.0, 0.0, config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidBackgroundRect)?;
+  let rect =
+    Rect::from_xywh(0.0, 0.0, config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidBackgroundRect)?;
   let mut path_builder = PathBuilder::new();
   path_builder.push_rect(rect);
   let path = path_builder.finish().ok_or(PdfGenError::InvalidBackgroundPath)?;
