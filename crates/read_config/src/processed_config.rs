@@ -209,9 +209,11 @@ pub struct FontConfig {
   ///
   /// # パフォーマンス上の含意
   ///
-  /// `harfrust::Shaper::shape_with_plan` は `buffer.direction == plan.direction` をアサート
-  /// するため、auto-guess パス（`None`）では `ShapePlan` をキャッシュできず、shape 呼び出し
-  /// ごとに plan を再構築します。明示指定時のみ事前構築 plan を使うキャッシュパスが有効です。
+  /// `harfrust::Shaper::shape_with_plan` は `buffer.direction == plan.direction` と
+  /// `buffer.script == plan.script` の両方をアサートするため、`ShapePlan` をキャッシュするには
+  /// `direction` に加えて [`FontConfig::script`] も明示指定されている必要があります。いずれかが
+  /// `None` の場合（`guess_segment_properties` への委譲を含む）はキャッシュできず、shape 呼び出し
+  /// ごとに plan を再構築します。
   pub direction: Option<TextDirection>,
   /// OpenType フィーチャー設定（4 バイトタグ + 値）
   /// 例："liga"（ligatures）、"smcp"（small capitals）

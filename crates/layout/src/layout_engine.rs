@@ -123,7 +123,7 @@ fn layout_engine_inner(
           let segment_text = &segment.text;
           // テキストセグメントのレイアウト処理
           let taken = std::mem::take(buffer);
-          let result = shapers.get(font_type).shape(taken, segment_text);
+          let result = shapers.get(font_type).shape(taken, segment_text, style.font_size);
           let glyph_infos = result.glyph_infos();
           let glyph_positions = result.glyph_positions();
           let mut glyphs: Vec<Glyph> = Vec::new();

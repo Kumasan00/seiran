@@ -79,8 +79,8 @@
 //! // シェイパー群を生成
 //! let shapers = HarfRustShapers::new(&configs, &font_refs, &shaper_datas, &instances)?;
 //!
-//! // テキストを Serif フォントでシェイピング
-//! let glyph_buffer = shapers.get(FontType::Serif).shape("Hello World");
+//! // テキストを Serif フォントでシェイピング（10.5pt 想定）
+//! let glyph_buffer = shapers.get(FontType::Serif).shape(buffer, "Hello World", 10.5);
 //! ```
 
 use std::str::FromStr;
@@ -265,12 +265,15 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
 /// タイポグラフィック情報を保持します。
 pub struct HarfRustShaper<'a> {
   shaper: Shaper<'a>,
-  /// `direction` が `Some` のときに事前構築される `ShapePlan`。
+  /// `direction` と `script` の **両方が** `Some` のときに事前構築される `ShapePlan`。
   ///
-  /// `harfrust::Shaper::shape` は plan を渡すと内部で `buffer.direction == plan.direction` を
-  /// アサートするため、direction を auto-guess する場合は plan をキャッシュできず `None` に
-  /// なります。その場合は [`HarfRustShaper::shape`] が plan 未指定の `ShapeOptions` を渡し、
-  /// `harfrust` 側で per-call に plan を構築します。
+  /// `harfrust::Shaper::shape` は plan を渡すと内部で `buffer.direction == plan.direction` と
+  /// `buffer.script == plan.script` を `assert_eq!` で検証するため、いずれかが `None` の場合は
+  /// plan をキャッシュできず `None` になります。特に script が `None` のときは
+  /// `UnicodeBuffer::guess_segment_properties` がテキスト内容から `buffer.script` を埋めるため、
+  /// `plan.script = None` と不一致になりパニックします。キャッシュできない場合は
+  /// [`HarfRustShaper::shape`] が plan 未指定の `ShapeOptions` を渡し、`harfrust` 側で
+  /// per-call に plan を構築します。
   shape_plan: Option<ShapePlan>,
   /// 書字方向。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
   direction: Option<Direction>,
@@ -330,7 +333,14 @@ impl<'a> HarfRustShaper<'a> {
       None => vec![],
     };
 
-    let shape_plan = direction.map(|d| ShapePlan::new(&shaper, d, script, language.as_ref(), &features));
+    // harfrust 0.8.0 の `shape_with_plan` は direction と script の両方が buffer と plan で
+    // 一致することを assert する。`config.script = None` のときは `guess_segment_properties()` が
+    // テキスト内容から `buffer.script` を埋めてしまうため、`plan.script = None` と不一致になり
+    // パニックする。direction と script の両方が明示指定されているときだけ plan をキャッシュする。
+    let shape_plan = match (direction, script) {
+      (Some(d), Some(_)) => Some(ShapePlan::new(&shaper, d, script, language.as_ref(), &features)),
+      _ => None,
+    };
 
     return Ok(Self {
       shaper,
@@ -372,12 +382,15 @@ impl<'a> HarfRustShaper<'a> {
   /// * `buffer` - 使い回し可能な `UnicodeBuffer`。`direction` / `script` / `language` は
   ///   このメソッドが上書きするため、呼び出し側が事前に設定する必要はありません。
   /// * `text` - シェイピング対象のテキスト
+  /// * `point_size` - 組版時のポイントサイズ。AAT `trak` テーブルを持つフォントで
+  ///   サイズ依存のトラッキング量に反映される。`trak` を持たないフォントでは無視される。
+  ///   `<= 0.0` を渡すと `harfrust` 側で 12.0pt にフォールバックされる。
   ///
   /// # Returns
   ///
   /// シェイピング結果を含む `GlyphBuffer`
   #[must_use]
-  pub fn shape(&self, mut buffer: UnicodeBuffer, text: &str) -> GlyphBuffer {
+  pub fn shape(&self, mut buffer: UnicodeBuffer, text: &str, point_size: f32) -> GlyphBuffer {
     if let Some(direction) = self.direction {
       buffer.set_direction(direction);
     }
@@ -389,10 +402,14 @@ impl<'a> HarfRustShaper<'a> {
     }
     buffer.push_str(text);
     buffer.guess_segment_properties();
-    // direction が config で明示された場合はキャッシュ済み ShapePlan を渡し、
-    // 未指定（guess_segment_properties に委譲）の場合は plan を渡さず harfrust 側で
-    // per-call に plan を組ませる。
-    let options = ShapeOptions::new().plan(self.shape_plan.as_ref()).features(self.features.as_ref());
+    // direction と script の両方が config で明示された場合はキャッシュ済み ShapePlan を渡し、
+    // いずれかが未指定（guess_segment_properties に委譲）の場合は plan を渡さず harfrust 側で
+    // per-call に plan を組ませる（`self.shape_plan` が `None` のため自動的にこちらになる）。
+    // `point_size` は `ShapePlan` の構築入力ではないため、サイズが変動してもキャッシュは無効化されない。
+    let options = ShapeOptions::new()
+      .plan(self.shape_plan.as_ref())
+      .point_size(Some(point_size))
+      .features(self.features.as_ref());
     return self.shaper.shape(buffer, options);
   }
 }
