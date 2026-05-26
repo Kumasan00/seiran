@@ -112,9 +112,9 @@ pub struct Style {
   pub font_size: f32,
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub line_height_factor: f32,
-  /// 背景色 RGB（0.0-1.0、オプション）。未指定時は背景色なし。
-  #[garde(custom(validate_background_color))]
-  pub background_color: Option<[f32; 3]>,
+  /// 背景色 RGB（各成分 0-255、オプション）。未指定時は背景色なし。
+  #[garde(skip)]
+  pub background_color: Option<[u8; 3]>,
   #[garde(dive)]
   pub part: HeadingStyle,
   #[garde(dive)]
@@ -160,25 +160,6 @@ impl Default for Style {
       reference: ReferenceStyle::default(),
     };
   }
-}
-
-/// `background_color` の各成分が [0.0, 1.0] の範囲かを検証します。
-///
-/// `None` はそのまま通過させます。NaN や Infinity は範囲チェックで自動的に弾かれます。
-/// 引数の型は `garde` のカスタムバリデーター API に従います。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-fn validate_background_color(value: &Option<[f32; 3]>, _: &()) -> garde::Result {
-  let Some([r, g, b]) = value else {
-    return Ok(());
-  };
-  for (component, v) in [("R", *r), ("G", *g), ("B", *b)] {
-    if !(0.0..=1.0).contains(&v) {
-      return Err(garde::Error::new(format!(
-        "background_color の {component} 成分は [0.0, 1.0] の範囲である必要があります: {v}"
-      )));
-    }
-  }
-  return Ok(());
 }
 
 /// 見出し要素のスタイル設定（フォントサイズと下余白）
@@ -349,7 +330,7 @@ fn locate_figment_span(content: &str, path: &[String]) -> SourceSpan {
 
 /// [`Style`] の値検証を実行します（I/O なし）。
 ///
-/// `garde` のフィールド検証および `background_color` のカスタム検証を集約します。
+/// `garde` のフィールド検証を集約します。
 ///
 /// # Errors
 ///
@@ -448,16 +429,16 @@ mod tests {
   #[test]
   fn parse_style_accepts_valid_background_color() {
     // Arrange
-    let toml = "background_color = [0.8, 0.7, 0.6]\n";
+    let toml = "background_color = [204, 179, 153]\n";
 
     // Act
     let style = parse_style(toml, dummy_source()).unwrap();
 
     // Assert
     let [r, g, b] = style.background_color.expect("background_color should be Some");
-    assert!((r - 0.8).abs() < f32::EPSILON);
-    assert!((g - 0.7).abs() < f32::EPSILON);
-    assert!((b - 0.6).abs() < f32::EPSILON);
+    assert_eq!(r, 204);
+    assert_eq!(g, 179);
+    assert_eq!(b, 153);
   }
 
   #[test]
@@ -541,50 +522,27 @@ mod tests {
   }
 
   #[test]
-  fn parse_style_fails_on_background_color_above_one() {
-    // Arrange: R 成分が 1.1（> 1.0）
-    let toml = "background_color = [1.1, 0.5, 0.5]\n";
+  fn parse_style_fails_on_background_color_overflow() {
+    // Arrange: R 成分が 256（u8 の範囲外）
+    let toml = "background_color = [256, 0, 0]\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let result = parse_style(toml, dummy_source());
 
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, message }
-        if path == "background_color" && message.contains('R')
-    )));
+    // Assert: u8 にデシリアライズできないため ParseToml として弾かれる
+    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
   fn parse_style_fails_on_background_color_negative() {
-    // Arrange: B 成分が -0.1（< 0.0）
-    let toml = "background_color = [0.5, 0.5, -0.1]\n";
+    // Arrange: B 成分が -1（u8 は符号なし）
+    let toml = "background_color = [0, 0, -1]\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let result = parse_style(toml, dummy_source());
 
     // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, message }
-        if path == "background_color" && message.contains('B')
-    )));
-  }
-
-  #[test]
-  fn parse_style_fails_on_background_color_nan() {
-    // Arrange: TOML 1.0 は `nan` を許容するが、validator が範囲外として弾く
-    let toml = "background_color = [nan, 0.5, 0.5]\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "background_color"
-    )));
+    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]

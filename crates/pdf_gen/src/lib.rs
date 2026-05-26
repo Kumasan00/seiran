@@ -7,9 +7,12 @@ use chrono::{Datelike, Timelike, Utc};
 use font::{FontData, FontRefs};
 use krilla::{
   Document,
+  color::rgb,
   geom::{PathBuilder, Point, Rect},
   metadata::{DateTime, Metadata},
   page::PageSettings,
+  paint::Fill,
+  surface::Surface,
   text::{Font, GlyphId, KrillaGlyph, Tag},
 };
 use layout::{BoxItem, Glyph, Item};
@@ -86,6 +89,17 @@ pub enum PdfGenError {
   #[error("罫線のパスを生成できませんでした")]
   #[diagnostic(code(pdf_gen::invalid_rule_path), help("罫線の矩形が正しく構築されているか確認してください。"))]
   InvalidRulePath,
+  /// 背景塗りつぶし用の矩形を生成できませんでした。
+  #[error("背景の矩形を生成できませんでした")]
+  #[diagnostic(
+    code(pdf_gen::invalid_background_rect),
+    help("config.pdf.width と config.pdf.height が正の有限値であることを確認してください。")
+  )]
+  InvalidBackgroundRect,
+  /// 背景塗りつぶし用のパスを生成できませんでした。
+  #[error("背景のパスを生成できませんでした")]
+  #[diagnostic(code(pdf_gen::invalid_background_path), help("背景の矩形が正しく構築されているか確認してください。"))]
+  InvalidBackgroundPath,
   /// PDF の最終化に失敗しました。
   #[error("PDF の最終化に失敗しました: {reason}")]
   #[diagnostic(
@@ -115,8 +129,6 @@ pub enum PdfGenError {
 /// # Errors
 ///
 /// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
-#[allow(clippy::cast_precision_loss)]
-#[allow(unused_assignments)]
 pub fn create_pdf(
   config: &Config,
   font_bytes: &FontData,
@@ -124,60 +136,82 @@ pub fn create_pdf(
   items: &[Item],
   style: &Style,
 ) -> Result<Vec<u8>, PdfGenError> {
-  let font_configs = &config.font_configs;
-  let krilla_fonts = {
-    let fonts = FontType::ALL
-      .iter()
-      .map(|font_type| {
-        let font_config = font_configs.get(*font_type);
-        let font_data = font_bytes.get(*font_type);
-        let font_ref = font_refs.get(*font_type);
-
-        let font = match font_ref.fvar() {
-          Ok(_) => {
-            let Some(axes_config) = font_config.variation_axes.as_ref() else {
-              return Err(PdfGenError::MissingVariationAxes {
-                font_type: *font_type,
-              });
-            };
-            let axes = axes_config
-              .iter()
-              .map(|cfg_axis| {
-                let tag = Tag::new(&cfg_axis.name);
-                let value = cfg_axis.value as f32;
-                let axis = (tag, value);
-                return axis;
-              })
-              .collect::<Vec<_>>();
-            Font::new_variable(font_data.clone().into(), font_config.font_index, &axes).ok_or(
-              PdfGenError::FontCreation {
-                font_type: *font_type,
-              },
-            )?
-          },
-          Err(ReadError::TableIsMissing(_)) => {
-            Font::new(font_data.clone().into(), font_config.font_index).ok_or(PdfGenError::FontCreation {
-              font_type: *font_type,
-            })?
-          },
-          Err(source) => {
-            return Err(PdfGenError::VariationTableRead {
-              font_type: *font_type,
-              source,
-            });
-          },
-        };
-        return Ok(font);
-      })
-      .collect::<Result<Vec<_>, PdfGenError>>()?;
-    FontMap::from_all(fonts)
-  };
-  let mut document = Document::new();
+  let krilla_fonts = build_krilla_fonts(config, font_bytes, font_refs)?;
   let page_settings =
     PageSettings::from_wh(config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidPageSize {
       width: config.pdf.width,
       height: config.pdf.height,
     })?;
+  let mut document = Document::new();
+  document.set_metadata(build_metadata(config));
+  render_items(&mut document, &page_settings, config, font_refs, &krilla_fonts, items, style)?;
+  let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument {
+    reason: format!("{source:?}"),
+  })?;
+  return Ok(pdf_bytes);
+}
+
+/// 設定に基づいて Krilla 用フォント集合を構築します。
+///
+/// バリアブルフォントの場合は `variation_axes` を必須とし、
+/// 通常フォントの場合は `font_index` を使って `Font` を生成します。
+fn build_krilla_fonts(
+  config: &Config,
+  font_bytes: &FontData,
+  font_refs: &FontRefs,
+) -> Result<FontMap<Font>, PdfGenError> {
+  let font_configs = &config.font_configs;
+  let fonts = FontType::ALL
+    .iter()
+    .map(|font_type| {
+      let font_config = font_configs.get(*font_type);
+      let font_data = font_bytes.get(*font_type);
+      let font_ref = font_refs.get(*font_type);
+
+      let font = match font_ref.fvar() {
+        Ok(_) => {
+          let Some(axes_config) = font_config.variation_axes.as_ref() else {
+            return Err(PdfGenError::MissingVariationAxes {
+              font_type: *font_type,
+            });
+          };
+          let axes = axes_config
+            .iter()
+            .map(|cfg_axis| {
+              let tag = Tag::new(&cfg_axis.name);
+              let value = cfg_axis.value as f32;
+              let axis = (tag, value);
+              return axis;
+            })
+            .collect::<Vec<_>>();
+          Font::new_variable(font_data.clone().into(), font_config.font_index, &axes).ok_or(
+            PdfGenError::FontCreation {
+              font_type: *font_type,
+            },
+          )?
+        },
+        Err(ReadError::TableIsMissing(_)) => {
+          Font::new(font_data.clone().into(), font_config.font_index).ok_or(PdfGenError::FontCreation {
+            font_type: *font_type,
+          })?
+        },
+        Err(source) => {
+          return Err(PdfGenError::VariationTableRead {
+            font_type: *font_type,
+            source,
+          });
+        },
+      };
+      return Ok(font);
+    })
+    .collect::<Result<Vec<_>, PdfGenError>>()?;
+  return Ok(FontMap::from_all(fonts));
+}
+
+/// `config.document` から PDF メタデータを構築します。
+///
+/// `/Title` は `document.title` を優先し、未設定なら `output.name` にフォールバックします。
+fn build_metadata(config: &Config) -> Metadata {
   let now = Utc::now();
   #[allow(clippy::cast_sign_loss)]
   let time = DateTime::new(now.year() as u16)
@@ -185,7 +219,6 @@ pub fn create_pdf(
     .day(now.day() as u8)
     .hour(now.hour() as u8)
     .minute(now.minute() as u8);
-  // PDF メタデータの /Title は document.title を優先し、未設定なら output.name にフォールバックする
   let title = config.document.title.clone().unwrap_or_else(|| config.output.name.clone());
   let mut metadata = Metadata::new()
     .title(title)
@@ -204,13 +237,30 @@ pub fn create_pdf(
   if let Some(keywords) = &config.document.keywords {
     metadata = metadata.keywords(keywords.clone());
   }
-  document.set_metadata(metadata);
+  return metadata;
+}
+
+/// レイアウト済みアイテム列を `document` に描画します。
+///
+/// ページ送り・カーソル位置・行送りの状態を管理しながら、
+/// `Item::Box` / `Glue` / `Kern` / `Vkern` / `Penalty` を順に処理します。
+#[allow(unused_assignments)]
+fn render_items(
+  document: &mut Document,
+  page_settings: &PageSettings,
+  config: &Config,
+  font_refs: &FontRefs,
+  krilla_fonts: &FontMap<Font>,
+  items: &[Item],
+  style: &Style,
+) -> Result<(), PdfGenError> {
   let mut page = document.start_page_with(page_settings.clone());
   let mut surface = page.surface();
+  draw_page_background(&mut surface, config, style)?;
   let mut x = config.pdf.margin.left;
   let mut y = config.pdf.margin.top;
   let page_limit = config.pdf.height - config.pdf.margin.bottom;
-  let mut current_line_height = style.font_size * 1.2;
+  let mut current_line_height = style.font_size * style.line_height_factor;
   let mut line_break_seen = false;
   macro_rules! start_new_page {
     () => {{
@@ -218,6 +268,11 @@ pub fn create_pdf(
       page.finish();
       page = document.start_page_with(page_settings.clone());
       surface = page.surface();
+      draw_page_background(&mut surface, config, style)?;
+      x = config.pdf.margin.left;
+      y = config.pdf.margin.top;
+      current_line_height = style.font_size * style.line_height_factor;
+      line_break_seen = false;
     }};
   }
   for item in items {
@@ -226,10 +281,6 @@ pub fn create_pdf(
         BoxItem::Text(run) => {
           if y + current_line_height > page_limit {
             start_new_page!();
-            x = config.pdf.margin.left;
-            y = config.pdf.margin.top;
-            current_line_height = style.font_size * style.line_height_factor;
-            line_break_seen = false;
           }
           let font = krilla_fonts.get(run.font_type);
           let upem = f32::from(
@@ -244,6 +295,7 @@ pub fn create_pdf(
           );
           let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
           surface.draw_glyphs(Point::from_xy(x, y), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
+          #[allow(clippy::cast_precision_loss)]
           let advance = run.glyphs.iter().map(|glyph| glyph.x_advance as f32 / upem * run.font_size).sum::<f32>();
           x += advance;
           current_line_height = current_line_height.max(run.font_size * style.line_height_factor);
@@ -252,10 +304,6 @@ pub fn create_pdf(
         BoxItem::Rule { width, height } => {
           if y + height > page_limit {
             start_new_page!();
-            x = config.pdf.margin.left;
-            y = config.pdf.margin.top;
-            current_line_height = style.font_size * 1.2;
-            line_break_seen = false;
           }
           let rect = Rect::from_xywh(x, y, *width, *height).ok_or(PdfGenError::InvalidRuleRect)?;
           let mut path_builder = PathBuilder::new();
@@ -289,18 +337,10 @@ pub fn create_pdf(
       Item::Penalty(value) => {
         if *value == i32::MIN {
           start_new_page!();
-          x = config.pdf.margin.left;
-          y = config.pdf.margin.top;
-          current_line_height = style.font_size * 1.2;
-          line_break_seen = false;
         } else if *value <= -1000 {
           y += current_line_height;
           if y + current_line_height > page_limit {
             start_new_page!();
-            x = config.pdf.margin.left;
-            y = config.pdf.margin.top;
-            current_line_height = style.font_size * 1.2;
-            line_break_seen = false;
           } else {
             x = config.pdf.margin.left;
             current_line_height = style.font_size * 1.2;
@@ -312,10 +352,27 @@ pub fn create_pdf(
   }
   surface.finish();
   page.finish();
-  let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument {
-    reason: format!("{source:?}"),
-  })?;
-  return Ok(pdf_bytes);
+  return Ok(());
+}
+
+/// `style.background_color` が指定されていればページ全体を塗りつぶします。
+///
+/// 塗りつぶし後はフィルを解除し、後続の描画（テキスト・罫線）が黒で描画されるようにします。
+fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Style) -> Result<(), PdfGenError> {
+  let Some([r, g, b]) = style.background_color else {
+    return Ok(());
+  };
+  let rect = Rect::from_xywh(0.0, 0.0, config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidBackgroundRect)?;
+  let mut path_builder = PathBuilder::new();
+  path_builder.push_rect(rect);
+  let path = path_builder.finish().ok_or(PdfGenError::InvalidBackgroundPath)?;
+  surface.set_fill(Some(Fill {
+    paint: rgb::Color::new(r, g, b).into(),
+    ..Fill::default()
+  }));
+  surface.draw_path(&path);
+  surface.set_fill(None);
+  return Ok(());
 }
 
 /// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。
