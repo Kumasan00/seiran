@@ -2038,7 +2038,6 @@ dependencies = [
  "bumpalo",
  "memchr",
  "miette",
- "phf",
  "thiserror",
 ]
 

@@ -38,6 +38,8 @@ mod environment;
 mod inline;
 mod opt_args;
 
+pub(crate) use environment::lookup_parse_mode as lookup_env_parse_mode;
+
 // =============================================================================
 // エラー型
 // =============================================================================
@@ -546,10 +548,18 @@ impl Evaluator {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use syntax::parse;
 
   use super::*;
   use crate::document::HeadingLevel;
+
+  /// テスト用 `parse` ラッパ
+  ///
+  /// 本物の `syntax::parse` は `env_mode` コールバックを要求するが、評価器テストは
+  /// 本番経路と同じ環境レジストリを使ってパースしたいので [`lookup_env_parse_mode`] を
+  /// 自動注入する。同名関数でシャドウすることで、既存テスト本体への変更を最小化する。
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
 
   /// テスト用ヘルパー: ソースをパースして評価する
   fn evaluate_source(source: &str) -> Vec<DocNode> {

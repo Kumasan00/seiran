@@ -14,7 +14,6 @@
 
 use bumpalo::Bump;
 use miette::{Diagnostic, SourceSpan};
-use phf::phf_map;
 use thiserror::Error;
 
 use crate::{
@@ -32,25 +31,16 @@ use crate::{
 /// 環境本体および入れ子要素のパース時に、どの語彙的解釈を適用するかを示すモード
 ///
 /// 既定は [`ParseMode::Text`]。`\begin{...}...\end{...}` の本体パース時に、
-/// 環境名を [`ENVIRONMENT_PARSE_MODES`] で引いて切り替える。
-/// 将来 `tabular` / `verbatim` / `align` 等を追加する際は、
+/// 環境名 → [`ParseMode`] の対応を [`parse`] 呼び出し側から注入される
+/// コールバックで決定する。将来 `tabular` / `verbatim` / `align` 等を追加する際は、
 /// このバリアントを増やし、対応する分岐を [`Parser::parse_element`] に足す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParseMode {
+pub enum ParseMode {
   /// 通常のテキストモード（`$` でインライン数式に入る）
   Text,
   /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
   Math,
 }
-
-/// 環境名 → 本体に適用する [`ParseMode`] の対応表
-///
-/// 未登録の環境は [`ParseMode::Text`] が既定として使われる。
-// TODO: tabular, verbatim, align など追加環境はここに登録する
-static ENVIRONMENT_PARSE_MODES: phf::Map<&'static str, ParseMode> = phf_map! {
-  "equation" => ParseMode::Math,
-  "equation*" => ParseMode::Math,
-};
 
 // =============================================================================
 // エラー型
@@ -195,7 +185,7 @@ pub enum ParserError {
 // =============================================================================
 
 /// アリーナベース CST 構築パーサー
-pub(crate) struct Parser<'a> {
+pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
   /// 元のソーステキスト
   source: &'a str,
   /// レキサー
@@ -206,17 +196,23 @@ pub(crate) struct Parser<'a> {
   peeked_token: Option<Token>,
   /// 最後に消費したトークンの Span
   last_span: Span,
+  /// 環境名 → [`ParseMode`] を解決するコールバック
+  ///
+  /// `\begin{name}` の本体パース時に呼ばれ、本体の語彙的解釈を決定する。
+  /// 呼び出し側（評価器）が環境レジストリを参照して構築する。
+  env_mode: F,
 }
 
-impl<'a> Parser<'a> {
+impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// 新しいパーサーを生成する
-  fn new(source: &'a str, lexer: Lexer<'a>, arena: &'a Bump) -> Self {
+  fn new(source: &'a str, lexer: Lexer<'a>, arena: &'a Bump, env_mode: F) -> Self {
     Self {
       source,
       lexer,
       arena,
       peeked_token: None,
       last_span: Span::DUMMY,
+      env_mode,
     }
   }
 
@@ -418,8 +414,8 @@ impl<'a> Parser<'a> {
     env_children.push(GreenElement::Node(begin_node));
 
     // === EnvironmentBody ===
-    // 環境名 → ParseMode を引く（未登録なら Text）
-    let body_mode = ENVIRONMENT_PARSE_MODES.get(env_name.as_str()).copied().unwrap_or(ParseMode::Text);
+    // 環境名 → ParseMode を呼び出し側から注入されたコールバックで引く
+    let body_mode = (self.env_mode)(env_name.as_str());
 
     let last_span_end = self.last_span.end;
     let body_start = self.peek_token().map_or(last_span_end, |t| t.span.start);
@@ -775,13 +771,18 @@ impl<'a> Parser<'a> {
 ///
 /// * `source` - パース対象のソーステキスト
 /// * `arena` - ノード確保用の bumpalo アリーナ
+/// * `env_mode` - 環境名から本体の [`ParseMode`] を決定するコールバック
 ///
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+pub fn parse<'a>(
+  source: &'a str,
+  arena: &'a Bump,
+  env_mode: impl Fn(&str) -> ParseMode,
+) -> Result<&'a GreenNode<'a>, ParserError> {
   let lexer = Lexer::new(source);
-  let mut parser = Parser::new(source, lexer, arena);
+  let mut parser = Parser::new(source, lexer, arena, env_mode);
   return parser.parse_root();
 }
 
@@ -789,6 +790,27 @@ pub fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, 
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
+
+  /// テスト用の環境 → [`ParseMode`] 解決クロージャ
+  ///
+  /// 本番経路では `parser` クレートのレジストリ（`evaluator::environment::lookup_parse_mode`）が
+  /// 注入されるが、`syntax` クレート単体テストではそのレジストリを参照できないため、
+  /// 既存テストが依存する `equation` 系のみ Math、それ以外を Text とする簡易マップを使う。
+  fn test_env_mode(name: &str) -> ParseMode {
+    return match name {
+      "equation" | "equation*" => ParseMode::Math,
+      _ => ParseMode::Text,
+    };
+  }
+
+  /// テスト用の `parse` ラッパ
+  ///
+  /// 本物の `super::parse` は `env_mode` コールバックを要求するが、既存テストは
+  /// 旧シグネチャ `parse(source, &arena)` を多数使っているため、同名関数を
+  /// テストモジュール内に定義してシャドウし、`test_env_mode` を自動注入する。
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+    return super::parse(source, arena, test_env_mode);
+  }
 
   fn parse_source<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> { return parse(source, arena).unwrap(); }
 

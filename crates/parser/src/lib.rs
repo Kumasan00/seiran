@@ -91,10 +91,11 @@ pub enum ParseSourceError {
 #[allow(clippy::result_large_err)]
 pub fn parse_source(source: &str, source_name: &str) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
-  let cst = syntax::parse(source, &arena).map_err(|error| ParseSourceError::Syntax {
-    src: NamedSource::new(source_name, source.to_string()),
-    error,
-  })?;
+  let cst =
+    syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| ParseSourceError::Syntax {
+      src: NamedSource::new(source_name, source.to_string()),
+      error,
+    })?;
 
   let mut evaluator = Evaluator::default();
   let doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {

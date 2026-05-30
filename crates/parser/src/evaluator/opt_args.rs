@@ -212,9 +212,15 @@ fn format_expected(schema: &[(&str, OptType)]) -> String {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use syntax::{SyntaxKind, green::GreenElement, parse};
+  use syntax::{SyntaxKind, green::GreenElement};
 
   use super::*;
+  use crate::evaluator::lookup_env_parse_mode;
+
+  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
 
   /// CST のルートから最初の `CommandCall` を取り出す
   fn first_command_node<'a>(root: &'a GreenNode<'a>) -> &'a GreenNode<'a> {

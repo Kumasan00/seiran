@@ -30,4 +30,4 @@ pub mod span;
 pub mod token;
 
 pub use kind::SyntaxKind;
-pub use parser::{ParserError, parse};
+pub use parser::{ParseMode, ParserError, parse};

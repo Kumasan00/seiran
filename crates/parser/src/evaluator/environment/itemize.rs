@@ -70,9 +70,14 @@ pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Re
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use syntax::parse;
 
   use super::*;
+  use crate::evaluator::lookup_env_parse_mode;
+
+  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
 
   #[test]
   fn itemize_rejects_unknown_opt_arg_key() {
