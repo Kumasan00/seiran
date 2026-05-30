@@ -8,6 +8,7 @@ use font::{FontData, FontRefs};
 use krilla::{
   Document,
   color::rgb,
+  error::KrillaError,
   geom::{PathBuilder, Point, Rect},
   metadata::{DateTime, Metadata},
   page::PageSettings,
@@ -101,14 +102,15 @@ pub enum PdfGenError {
   #[diagnostic(code(pdf_gen::invalid_background_path), help("背景の矩形が正しく構築されているか確認してください。"))]
   InvalidBackgroundPath,
   /// PDF の最終化に失敗しました。
-  #[error("PDF の最終化に失敗しました: {reason}")]
+  #[error("PDF の最終化に失敗しました: {source}")]
   #[diagnostic(
     code(pdf_gen::finalize_document),
     help("Krilla 側の内部エラーが発生しています。入力データを見直してください。")
   )]
   FinalizeDocument {
-    /// 元の生成エラーの表示文字列。
-    reason: String,
+    /// 元の生成エラー。
+    #[source]
+    source: KrillaError,
   },
 }
 
@@ -145,9 +147,7 @@ pub fn create_pdf(
   let mut document = Document::new();
   document.set_metadata(build_metadata(config));
   render_items(&mut document, &page_settings, config, font_refs, &krilla_fonts, items, style)?;
-  let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument {
-    reason: format!("{source:?}"),
-  })?;
+  let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument { source })?;
   return Ok(pdf_bytes);
 }
 
