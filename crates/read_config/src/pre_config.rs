@@ -83,7 +83,6 @@ pub(crate) struct PreConfig {
 /// `[document]` セクション: PDF メタデータ
 #[derive(Deserialize, Debug, Default, Validate)]
 #[serde(default)]
-#[garde(allow_unvalidated)]
 pub(crate) struct PreDocumentConfig {
   /// ドキュメントタイトル（PDF メタデータ）
   #[garde(skip)]
@@ -209,7 +208,6 @@ fn validate_document_name(value: &str, _: &()) -> garde::Result {
 
 /// 19 フォント種別すべてのプリプロセス設定
 #[derive(Deserialize, Debug, Validate)]
-#[garde(allow_unvalidated)]
 pub(crate) struct PreFontConfigs {
   /// Serif 標準フォント
   #[garde(dive)]
@@ -460,7 +458,6 @@ pub(crate) struct PreFontFeature {
 
 /// PDF ページレイアウトのプリセット設定
 #[derive(Deserialize, Debug, Validate)]
-#[garde(allow_unvalidated)]
 pub(crate) struct PrePdfConfig {
   /// ページの高さ（mm 単位、> 0）
   #[garde(range(min = f32::MIN_POSITIVE))]

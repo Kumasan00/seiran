@@ -32,21 +32,18 @@ pub enum ReadStyleError {
   /// スタイル設定の TOML 解析または既定値とのマージに失敗した場合
   ///
   /// TOML の構文エラーに加え、フィールドの型不一致や未知のキー、デフォルト値との
-  /// マージ失敗もこのバリアントに含まれます。
-  /// [`NamedSource`] を保持しており、内側の [`ParseTomlError`] が持つ `#[label]` と
-  /// `#[diagnostic_source]` を介して miette のソースコード付き診断が表示されます。
+  /// マージ失敗もこのバリアントに含まれます。figment が報告したエラーチェーンを
+  /// [`ParseTomlError`] のベクタに展開し、`#[related]` 経由で一度にすべて表示します。
+  /// 各 [`ParseTomlError`] が自前で [`NamedSource`] を保持するため、ソースコード付きの
+  /// label がそれぞれレンダリングされます。
   #[error("スタイル設定の解析またはデフォルト値とのマージに失敗しました: {path}")]
   #[diagnostic(code(style::parse_toml))]
   ParseToml {
     /// ファイルパス
     path: String,
-    /// ソース名付きの元テキスト（`#[label]` レンダリング用）
-    #[source_code]
-    src: NamedSource<String>,
-    /// 元のエラー（キーパス・span 付き）
-    #[source]
-    #[diagnostic_source]
-    error: ParseTomlError,
+    /// figment のエラーチェーンを展開した個別エラー群
+    #[related]
+    errors: Vec<ParseTomlError>,
   },
   /// 複合バリデーションエラー（複数のエラーをまとめて報告）
   #[error("スタイル設定のバリデーションに失敗しました。")]
@@ -60,19 +57,25 @@ pub enum ReadStyleError {
 
 /// [`ReadStyleError::ParseToml`] の内側エラー。
 ///
-/// figment のエラーをラップし、キーパスとメッセージは `source` から派生させます
-/// （[`Self::key_path`] / [`Self::message`]）。これにより `source` と表示文字列が
-/// drift しません。figment のキーパスから推定したソース位置を `span` に持ち、
-/// `#[label]` で該当箇所をハイライト表示します。span を計算できなかった場合は
-/// `0..0` を持つため、ラベルは表示されませんがエラーメッセージ自体には影響しません。
+/// figment のエラーチェーンの 1 要素をラップします。`#[related]` の子要素は親の
+/// `#[source_code]` を継承しないため、各エラーが自前で [`NamedSource`] を保持します
+/// （[`NamedSource`] は `Clone` 実装を持つので複製コストは問題になりません）。
+/// キーパスは `source.path` から派生させ、表示メッセージは figment 側の `Display`
+/// 実装（`kind` + " for key ..." 等）を直接利用することで drift を防ぎます。
+/// figment のキーパスから推定したソース位置を `span` に持ち、`#[label]` で該当箇所を
+/// ハイライト表示します。span を計算できなかった場合は `0..0` を持つため、ラベルは
+/// 表示されませんがエラーメッセージ自体には影響しません。
 #[derive(Debug, Error, Diagnostic)]
-#[error("{}: {}", self.key_path(), self.message())]
+#[error("{}: {source}", self.key_path())]
 #[diagnostic(code(style::parse_toml::field), help("TOML の構文とフィールドの型を確認してください。"))]
 pub struct ParseTomlError {
+  /// ソース名付きの元テキスト（`#[label]` レンダリング用）
+  #[source_code]
+  pub src: NamedSource<String>,
   /// ソース上のスパン（推定）。`0..0` の場合はラベル非表示
   #[label("ここ")]
   pub span: SourceSpan,
-  /// 元の figment エラー（chain 保持、`key_path` / `message` の派生元）
+  /// 元の figment エラー（`key_path` の派生元、Display は本構造体の表示にも利用）
   #[source]
   pub source: Box<figment2::Error>,
 }
@@ -86,10 +89,6 @@ impl ParseTomlError {
     }
     return self.source.path.join(".");
   }
-
-  /// figment のエラーメッセージ本文（`source.kind` の表示）
-  #[must_use]
-  pub fn message(&self) -> String { return self.source.kind.to_string(); }
 }
 
 /// スタイル設定値バリデーションのエラー詳細。
@@ -107,6 +106,7 @@ pub enum ValidationError {
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct Style {
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub font_size: f32,
@@ -165,6 +165,7 @@ impl Default for Style {
 /// 見出し要素のスタイル設定（フォントサイズと下余白）
 #[derive(Debug, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
+#[serde(deny_unknown_fields)]
 pub struct HeadingStyle {
   #[garde(length(chars, min = 1))]
   pub format: String,
@@ -197,7 +198,7 @@ impl HeadingStyle {
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]
-#[garde(allow_unvalidated)]
+#[serde(deny_unknown_fields)]
 pub struct ReferenceStyle {
   #[garde(length(chars, min = 1))]
   pub format: String,
@@ -269,14 +270,18 @@ fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError
     .merge(Toml::string(content))
     .extract()
     .map_err(|source| {
-      let span = locate_figment_span(content, &source.path);
+      let src = NamedSource::new(source_path, content.to_string());
+      let errors = source
+        .into_iter()
+        .map(|error| ParseTomlError {
+          src: src.clone(),
+          span: locate_figment_span(content, &error.path),
+          source: Box::new(error),
+        })
+        .collect();
       ReadStyleError::ParseToml {
         path: source_path.to_string(),
-        src: NamedSource::new(source_path, content.to_string()),
-        error: ParseTomlError {
-          span,
-          source: Box::new(source),
-        },
+        errors,
       }
     })?;
   if let Err(errors) = validate_values(&style) {
@@ -442,6 +447,30 @@ mod tests {
   }
 
   #[test]
+  fn parse_style_fails_on_unknown_top_level_key() {
+    // Arrange: `font_size` のタイポ
+    let toml = "font_sze = 15.0\n";
+
+    // Act
+    let result = parse_style(toml, dummy_source());
+
+    // Assert: 未知キーは ParseToml として弾かれる
+    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_style_fails_on_unknown_nested_key() {
+    // Arrange: `font_size` のタイポ（chapter テーブル内）
+    let toml = "[chapter]\nfont_sze = 30.0\n";
+
+    // Act
+    let result = parse_style(toml, dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+  }
+
+  #[test]
   fn parse_style_fails_on_invalid_toml_syntax() {
     // Arrange
     let toml = "font_size = \nthis is not valid toml";
@@ -462,11 +491,12 @@ mod tests {
     let result = parse_style(toml, dummy_source());
 
     // Assert
-    let Err(ReadStyleError::ParseToml { error, src, .. }) = result else {
+    let Err(ReadStyleError::ParseToml { errors, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
+    let error = errors.first().expect("at least one error");
     assert_eq!(error.key_path(), "font_size");
-    assert_eq!(src.name(), dummy_source());
+    assert_eq!(error.src.name(), dummy_source());
     // span が "font_size" の位置を指していること
     assert_eq!(error.span.offset(), 0);
     assert_eq!(error.span.len(), "font_size".len());
@@ -481,9 +511,10 @@ mod tests {
     let result = parse_style(toml, dummy_source());
 
     // Assert
-    let Err(ReadStyleError::ParseToml { error, .. }) = result else {
+    let Err(ReadStyleError::ParseToml { errors, .. }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
+    let error = errors.first().expect("at least one error");
     assert_eq!(error.key_path(), "chapter.font_size");
     // span は section 内 "font_size" の絶対オフセットを指す
     let expected_offset = toml.find("font_size = \"oops\"").unwrap();
