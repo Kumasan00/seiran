@@ -34,7 +34,8 @@ fn smoke_through_lowering(name: &str) {
 
   let style = Style::default();
   let ctx = LoweringContext::new(&style);
-  let _layout_nodes = layout::lower_nodes(&ctx, &doc_nodes);
+  let _layout_nodes =
+    layout::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
 }
 
 #[test]

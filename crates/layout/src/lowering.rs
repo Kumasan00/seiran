@@ -43,11 +43,37 @@
 //! 2. `build_pdf.rs` で `lower() → layout_engine()` の 2 段パイプラインに更新
 //! 3. 既存の PDF 出力結果が変わらないことを回帰テストで確認
 
+use miette::Diagnostic;
 use parser::document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
 use read_style::Style as ReadStyle;
+use thiserror::Error;
 use types::FontKind;
 
 use crate::layout_node::{LayoutNode, Style};
+
+/// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
+///
+/// 新しい lowering 失敗ケースを追加する際は本 enum にバリアントを追加してください。
+/// `#[non_exhaustive]` を付与しているため、外部クレートでの `match` 漏れがコンパイルエラーになります。
+#[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
+pub enum LoweringError {
+  /// 参照（`\ref{...}`）が pass2 で解決されないまま lowering に到達した場合に返されます。
+  ///
+  /// 評価器（`parser::evaluator`）の参照解決パスが、対応する `\label` を見つけられず
+  /// `number` を `None` のまま渡してきたことを示します。
+  #[error("未解決の参照が lowering に到達しました: ラベル `{label}`")]
+  #[diagnostic(
+    code(layout::lowering::unresolved_reference),
+    help(
+      "対応する \\label が定義されているか確認してください。定義されている場合は評価器の参照解決パスにバグがある可能性があります。"
+    )
+  )]
+  UnresolvedReference {
+    /// 解決できなかったラベル名（`\ref{ch:intro}` の `ch:intro`）
+    label: String,
+  },
+}
 
 /// Lowering のコンテキスト
 ///
@@ -85,30 +111,31 @@ impl<'a> LoweringContext<'a> {
 ///
 /// # Errors
 ///
-/// 現時点ではエラーは発生しないが、将来スタイル解決でエラーが必要になる可能性がある
+/// 内部で呼び出す [`lower_nodes`] が返すエラーをそのまま伝播します。
 ///
 /// ## TODO
 ///
 /// - [ ] `Document` 型を活用して目次エントリの収集等を行う
-/// - [ ] エラー型を定義する（`LoweringError`）
-#[must_use]
-pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Vec<LayoutNode> {
+pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Result<Vec<LayoutNode>, LoweringError> {
   return lower_nodes(ctx, &document.body);
 }
 
 /// `DocNode` のリストをレイアウトノードに変換する
 ///
+/// # Errors
+///
+/// いずれかの `DocNode` の変換中に [`LoweringError`] が発生した場合に返します。
+///
 /// ## TODO
 ///
 /// - [ ] `parser::text_parser()` の戻り値が `Vec<DocNode>` になったら、
 ///   このメソッドが `build_pdf.rs` から呼ばれるエントリーポイントとなる
-#[must_use]
-pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Vec<LayoutNode> {
+pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut result = Vec::new();
   for node in nodes {
-    result.extend(lower_node(ctx, node));
+    result.extend(lower_node(ctx, node)?);
   }
-  return result;
+  return Ok(result);
 }
 
 /// 単一の `DocNode` をレイアウトノードに変換する
@@ -116,7 +143,7 @@ pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Vec<LayoutNode> 
 /// ## TODO
 ///
 /// - [ ] 各バリアントの変換関数を本実装にする（現在は TODO スタブ）
-fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Vec<LayoutNode> {
+fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, LoweringError> {
   match node {
     DocNode::Heading {
       level,
@@ -133,20 +160,20 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Vec<LayoutNode> {
       return lower_list(ctx, *ordered, items);
     },
     DocNode::Rule { width, height } => {
-      return vec![LayoutNode::Rule {
+      return Ok(vec![LayoutNode::Rule {
         width: *width,
         height: *height,
-      }];
+      }]);
     },
     DocNode::PageBreak => {
-      return vec![LayoutNode::PageBreak];
+      return Ok(vec![LayoutNode::PageBreak]);
     },
     DocNode::Space(pt) => {
-      return vec![LayoutNode::Kern { point: *pt }];
+      return Ok(vec![LayoutNode::Kern { point: *pt }]);
     },
     DocNode::DisplayMath { body, .. } => {
       // TODO(figure-equation-impl): 数式レンダラを呼ぶ。前準備ではプレースホルダ。
-      return lower_display_math_stub(ctx, body);
+      return Ok(lower_display_math_stub(ctx, body));
     },
     DocNode::Figure { body, .. } => {
       // TODO(figure-equation-impl): caption 抽出と図のレイアウト。前準備では body を素通し。
@@ -158,7 +185,7 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Vec<LayoutNode> {
         font_size: ctx.default_font_size(),
         font_kind: FontKind::Monospace,
       };
-      return vec![LayoutNode::Text(format!("[Image: {path}]"), style)];
+      return Ok(vec![LayoutNode::Text(format!("[Image: {path}]"), style)]);
     },
   }
 }
@@ -272,7 +299,7 @@ fn lower_heading(
   level: HeadingLevel,
   number: &HeadingNumber,
   title: &[InlineNode],
-) -> Vec<LayoutNode> {
+) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = heading_style_for(ctx.style, level);
   let style = Style {
     font_size: heading_style.font_size,
@@ -281,7 +308,7 @@ fn lower_heading(
 
   // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する
   // TODO: 強調等のインライン要素のスタイルを保持したまま埋め込む（本実装タスク）
-  let title_text = inline_nodes_to_plain_text(title);
+  let title_text = inline_nodes_to_plain_text(title)?;
   let heading_text = format_heading_text(number, &title_text, &heading_style.format);
 
   let mut result = Vec::new();
@@ -301,7 +328,7 @@ fn lower_heading(
     result.push(LayoutNode::LineBreak);
   }
 
-  return result;
+  return Ok(result);
 }
 
 // =============================================================================
@@ -319,7 +346,7 @@ fn lower_heading(
 /// - [ ] 段落先頭のインデント（字下げ）を追加する
 /// - [ ] 段落間スペースをスタイル設定で定義可能にする
 /// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
-fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutNode> {
+fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = Style {
     font_size: ctx.default_font_size(),
     font_kind: FontKind::Serif,
@@ -328,7 +355,7 @@ fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutN
   let mut result = Vec::new();
 
   for inline in inlines {
-    result.extend(lower_inline(ctx, inline, default_style));
+    result.extend(lower_inline(ctx, inline, default_style)?);
   }
 
   // 段落末に改行 + カーンを追加（段落間スペース）
@@ -338,7 +365,7 @@ fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutN
     point: ctx.default_font_size(),
   });
 
-  return result;
+  return Ok(result);
 }
 
 // =============================================================================
@@ -355,10 +382,14 @@ fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Vec<LayoutN
 /// - [ ] Emphasis / Strong のネスト対応（イタリック内の強調 → ボールドイタリック等）
 /// - [ ] スタイルスタック方式に変更して、任意深さのネストに対応する
 #[allow(clippy::used_underscore_binding)]
-fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style) -> Vec<LayoutNode> {
+fn lower_inline(
+  _ctx: &LoweringContext,
+  inline: &InlineNode,
+  parent_style: Style,
+) -> Result<Vec<LayoutNode>, LoweringError> {
   match inline {
     InlineNode::Text(text) => {
-      return vec![LayoutNode::Text(text.clone(), parent_style)];
+      return Ok(vec![LayoutNode::Text(text.clone(), parent_style)]);
     },
     InlineNode::Emphasis(children) => {
       // TODO: ネスト対応（イタリック内の強調は通常体に戻す等）
@@ -368,9 +399,9 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, italic_style));
+        result.extend(lower_inline(_ctx, child, italic_style)?);
       }
-      return result;
+      return Ok(result);
     },
     InlineNode::Strong(children) => {
       let bold_style = Style {
@@ -379,9 +410,9 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, bold_style));
+        result.extend(lower_inline(_ctx, child, bold_style)?);
       }
-      return result;
+      return Ok(result);
     },
     InlineNode::Code(children) => {
       let mono_style = Style {
@@ -390,9 +421,9 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, mono_style));
+        result.extend(lower_inline(_ctx, child, mono_style)?);
       }
-      return result;
+      return Ok(result);
     },
     InlineNode::SansSerif(children) => {
       let sans_style = Style {
@@ -401,27 +432,30 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, sans_style));
+        result.extend(lower_inline(_ctx, child, sans_style)?);
       }
-      return result;
+      return Ok(result);
     },
     InlineNode::InlineMath(_math_nodes) => {
       // TODO: 数式レンダリングの実装
       // 暫定: "[Math]" プレースホルダを出力
-      return vec![LayoutNode::Text("[Math]".to_string(), parent_style)];
+      return Ok(vec![LayoutNode::Text("[Math]".to_string(), parent_style)]);
     },
     InlineNode::Symbol(ch) => {
-      return vec![LayoutNode::Text(ch.to_string(), parent_style)];
+      return Ok(vec![LayoutNode::Text(ch.to_string(), parent_style)]);
     },
     InlineNode::LineBreak => {
-      return vec![LayoutNode::LineBreak];
+      return Ok(vec![LayoutNode::LineBreak]);
     },
-    InlineNode::Ref { number, .. } => {
-      // pass2 終了後は number が Some(裸の番号) になっている。前準備時点では未配線のため
-      // None なら空文字列にフォールバックする。
-      debug_assert!(number.is_some(), "InlineNode::Ref が pass2 で未解決のまま lowering に到達しました");
-      let resolved = number.clone().unwrap_or_default();
-      return vec![LayoutNode::Text(resolved, parent_style)];
+    InlineNode::Ref { label, number } => {
+      // 評価器の pass2 で参照解決が済んでいれば number は Some。未解決のまま
+      // lowering に到達した場合は `LoweringError::UnresolvedReference` で報告する。
+      let Some(resolved) = number.clone() else {
+        return Err(LoweringError::UnresolvedReference {
+          label: label.clone(),
+        });
+      };
+      return Ok(vec![LayoutNode::Text(resolved, parent_style)]);
     },
   }
 }
@@ -439,7 +473,7 @@ fn lower_inline(_ctx: &LoweringContext, inline: &InlineNode, parent_style: Style
 /// - [ ] 順序なしリストのマーカー生成（•, -, ▪ 等、ネストレベルで変更）
 /// - [ ] マーカーのフォント・サイズをスタイル設定で制御する
 /// - [ ] リスト前後のスペースをスタイル設定で制御する
-fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Vec<LayoutNode> {
+fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut result = Vec::new();
   let indent = 20.0; // TODO: スタイル設定から取得する
 
@@ -463,7 +497,7 @@ fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Vec<L
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
     // アイテム内容を変換
-    let content_nodes = lower_nodes(ctx, &item.content);
+    let content_nodes = lower_nodes(ctx, &item.content)?;
     item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {
@@ -472,7 +506,7 @@ fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Vec<L
     });
   }
 
-  return result;
+  return Ok(result);
 }
 
 // =============================================================================
@@ -486,7 +520,7 @@ fn lower_list(ctx: &LoweringContext, ordered: bool, items: &[ListItem]) -> Vec<L
 /// - [ ] 移行完了後にこの関数は不要になる（インライン要素は `lower_inline` で
 ///   個別にスタイル付きテキストに変換されるため）
 /// - [ ] 見出しタイトルのインライン要素に対応するまでの間の暫定実装
-fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
+fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> Result<String, LoweringError> {
   let mut text = String::new();
   for inline in inlines {
     match inline {
@@ -495,20 +529,22 @@ fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
       | InlineNode::Strong(children)
       | InlineNode::Code(children)
       | InlineNode::SansSerif(children) => {
-        text.push_str(&inline_nodes_to_plain_text(children));
+        text.push_str(&inline_nodes_to_plain_text(children)?);
       },
       InlineNode::InlineMath(_) => text.push_str("[Math]"),
       InlineNode::Symbol(ch) => text.push(*ch),
       InlineNode::LineBreak => text.push('\n'),
-      InlineNode::Ref { number, .. } => {
-        debug_assert!(number.is_some(), "InlineNode::Ref が pass2 で未解決のまま plain 化に到達しました");
-        if let Some(s) = number {
-          text.push_str(s);
-        }
+      InlineNode::Ref { label, number } => {
+        let Some(s) = number else {
+          return Err(LoweringError::UnresolvedReference {
+            label: label.clone(),
+          });
+        };
+        text.push_str(s);
       },
     }
   }
-  return text;
+  return Ok(text);
 }
 
 #[cfg(test)]
@@ -531,7 +567,7 @@ mod tests {
     let node = DocNode::Space(5.0);
 
     // Act
-    let result = lower_node(&ctx, &node);
+    let result = lower_node(&ctx, &node).expect("Space の lowering は失敗しないはず");
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -549,7 +585,7 @@ mod tests {
     let node = DocNode::PageBreak;
 
     // Act
-    let result = lower_node(&ctx, &node);
+    let result = lower_node(&ctx, &node).expect("PageBreak の lowering は失敗しないはず");
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -567,7 +603,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_node(&ctx, &node);
+    let result = lower_node(&ctx, &node).expect("Rule の lowering は失敗しないはず");
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -633,7 +669,8 @@ mod tests {
       HeadingLevel::Section,
       &HeadingNumber { parts: vec![4, 7] },
       &[InlineNode::Text("Custom Title".to_string())],
-    );
+    )
+    .expect("解決済みテキストのみの見出しは失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -659,9 +696,50 @@ mod tests {
     ];
 
     // Act
-    let result = inline_nodes_to_plain_text(&inlines);
+    let result = inline_nodes_to_plain_text(&inlines).expect("解決済みノードのみなので失敗しないはず");
 
     // Assert
     assert_eq!(result, "Hello world");
+  }
+
+  #[test]
+  fn unresolved_ref_in_paragraph_returns_error() {
+    // 評価器の pass2 が走らずに number = None のまま lowering に到達した場合、
+    // LoweringError::UnresolvedReference が返ることを確認する。
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "ch:intro".to_string(),
+      number: None,
+    }]);
+
+    let err = lower_node(&ctx, &node).expect_err("未解決の Ref は LoweringError を返すべき");
+
+    match err {
+      LoweringError::UnresolvedReference { label } => assert_eq!(label, "ch:intro"),
+    }
+  }
+
+  #[test]
+  fn unresolved_ref_in_heading_title_returns_error() {
+    // 見出しタイトルに含まれる未解決 Ref も inline_nodes_to_plain_text 経由で
+    // 同じエラーとして伝播することを確認する。
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    let err = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      &HeadingNumber { parts: vec![1] },
+      &[InlineNode::Ref {
+        label: "sec:missing".to_string(),
+        number: None,
+      }],
+    )
+    .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
+
+    match err {
+      LoweringError::UnresolvedReference { label } => assert_eq!(label, "sec:missing"),
+    }
   }
 }

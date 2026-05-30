@@ -9,7 +9,7 @@ use font::{
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
-use layout::LoweringContext;
+use layout::{LoweringContext, LoweringError};
 use miette::Diagnostic;
 use parser::{DocNode, ParseSourceError};
 use thiserror::Error;
@@ -44,6 +44,19 @@ enum BuildPdfError {
   MultipleSourceErrors {
     #[related]
     errors: Vec<ParseSourceError>,
+  },
+
+  /// Document IR → `LayoutNode` 変換（lowering）で発生したエラー
+  ///
+  /// 内側の [`LoweringError`] が持つ `code` / `help` は `#[diagnostic_source]` により
+  /// 外側へ伝播されます。
+  #[error("ドキュメントのレイアウト変換に失敗しました。")]
+  #[diagnostic(code(build::lowering))]
+  Lowering {
+    /// 元の lowering エラー
+    #[source]
+    #[diagnostic_source]
+    source: LoweringError,
   },
 
   /// PDF ファイルの書き込みに失敗した場合
@@ -82,7 +95,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!(source_count = config.sources.len(), "全ソースのパースが完了しました");
 
   let lowering_ctx = LoweringContext::new(&style);
-  let layout_nodes = layout::lower_nodes(&lowering_ctx, &doc_nodes);
+  let layout_nodes =
+    layout::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!("Document IR → LayoutNode への変換が完了しました");
 
   let font_data = FontData::new(&config.font_configs)?;

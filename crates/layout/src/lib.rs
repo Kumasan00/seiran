@@ -27,4 +27,4 @@ pub mod lowering;
 
 pub use layout_engine::{BoxItem, Glyph, GlyphRun, Item, layout_engine};
 pub use layout_node::{LayoutNode, Style};
-pub use lowering::{LoweringContext, lower_document, lower_nodes};
+pub use lowering::{LoweringContext, LoweringError, lower_document, lower_nodes};
