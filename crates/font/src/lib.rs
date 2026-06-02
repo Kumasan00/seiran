@@ -1,19 +1,17 @@
 //! フォント処理エンジン
 //!
-//! TrueType/OpenType フォントの読み込み、パース、メタデータ抽出、テキストシェーピング、
-//! 最適化（サブセット化）、および検証などの PDF 生成に必要なフォント処理機能を提供します。
+//! TrueType/OpenType フォントの読み込み、パース、テキストシェーピング、検証など、
+//! PDF 生成に必要なフォント処理機能を提供します。フォントサブセット化は本クレートでは
+//! 行わず、`pdf_gen` クレートが利用する `krilla` が PDF 生成時に内部で実施します。
 //!
 //! ## アーキテクチャ概要
 //!
 //! このモジュールは 19 種類のフォント種別を同時に管理し、以下のパイプラインを実装します：
 //!
 //! 1. **読み込み** ([`FontData`]) - ディスクからすべてのフォントバイナリを並列読み込み
-//! 2. **パース** ([`FontRefs`]) - OpenType テーブル構造をメモリ内で解析
-//! 3. **メタデータ抽出** ([`font_info`]) - `font_info` モジュールで upem、ascender などを取得
-//! 4. **グリフマッピング** ([`glyph_mapping`]) - `glyph_mapping` モジュールで GID 変換テーブル構築
-//! 5. **テキストシェーピング** ([`shaper`]) - shaper モジュールで `HarfRust` による字形配置
-//! 6. **最適化** ([`subset`]) - subset モジュールで使用グリフのみを抽出
-//! 7. **検証** ([`validate_font`]) - `validate_font` モジュールでフォント設定の妥当性確認
+//! 2. **パース** ([`FontRefs`]) - `read-fonts` で OpenType テーブル構造をメモリ内で解析
+//! 3. **テキストシェーピング** ([`shaper`]) - `HarfRust` による字形配置
+//! 4. **検証** ([`validate_font`]) - フォント設定の妥当性確認
 //!
 //! ## フォント種別システム
 //!
@@ -37,44 +35,28 @@
 //!
 //! ## サブモジュール
 //!
-//! - [`font_info`] - フォントのメトリクス情報（upem、ascender、descender など）を取得・管理
-//! - [`glyph_mapping`] - グリフ ID とキャラクタ ID のマッピング、幅情報を管理
 //! - [`shaper`] - `HarfRust` によるテキストシェーピング（スクリプト、言語、フィーチャ対応）
-//! - [`subset`] - Allsorts による使用グリフのサブセット化、バリアブルフォント軸設定
 //! - [`validate_font`] - フォント設定と OpenType テーブルの妥当性検証
 //!
 //! ## パフォーマンス特性
 //!
-//! - 並列処理：`rayon` を使用した 19 フォント種別の並列処理
-//! - メモリ効率：`memmap2` による大型ファイルのメモリマップ対応（将来）
-//! - 最適化：フォントサブセット化で PDF ファイルサイズを削減
+//! - 並列処理：`rayon` を使用した 19 フォント種別の並列読み込み・パース
 //!
 //! ## 使用例
 //!
 //! ```ignore
-//! # use font::*;
+//! # use font::{FontData, FontDataExt, FontRefs, FontRefsExt, validate_font};
 //! # use read_config::FontConfigs;
-//! # use std::fs;
 //!
-//! // 1. フォント設定を読み込み
-//! let font_configs = FontConfigs::new("config.toml")?;
-//!
-//! // 2. フォントバイナリを読み込み
+//! // 1. 設定（事前に read_config::read_config で生成済み）から
+//! //    フォントバイナリを読み込み
 //! let font_data = FontData::new(&font_configs)?;
 //!
-//! // 3. フォント参照を生成
-//! let font_refs = FontRefs::new(&font_data)?;
+//! // 2. フォント参照を生成
+//! let font_refs = FontRefs::new(&font_configs, &font_data)?;
 //!
-//! // 4. メタデータを抽出
-//! let font_infos = font_info::FontInfos::new(&font_refs)?;
-//!
-//! // 5. グリフマッピングを構築
-//! let glyph_mappings = glyph_mapping::GlyphMappings::new()?;
-//!
-//! // 6. フォントを検証
-//! for config in font_configs.iter() {
-//!     validate_font::validate_font(config, &font_refs.get(config.font_type))?;
-//! }
+//! // 3. フォントを検証
+//! validate_font::validate_fonts(&font_configs, &font_refs)?;
 //! ```
 
 use std::fs;

@@ -33,7 +33,7 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → 評価（parser: CST → Document IR（DocNode））
   → ローワリング（layout: DocNode → LayoutNode）→ フォント読込・検証
   → テキストシェーピング → レイアウトエンジン（LayoutNode → Item）
-  → フォントサブセット化 → PDF 生成 → ファイル出力
+  → PDF 生成（krilla がフォントサブセット化を内部実施）→ ファイル出力
 ```
 
 ### クレート依存関係
@@ -55,13 +55,13 @@ syntax （bumpalo アリーナ上に CST を構築。workspace クレートに�
 parser （syntax の CST を Document IR に変換。read_style に依存）
   ↑ layout, seiran
 
-font （types, read_config に依存。allsorts / harfrust / rayon を使用）
+font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
   ↑ layout, pdf_gen, seiran
 
-layout （font, parser, read_style, types に依存）
+layout （font, parser, read_style, types に依存。icu を使用）
   ↑ pdf_gen, seiran
 
-pdf_gen （font, layout, read_config, read_style, types に依存。pdf-writer / krilla で PDF を生成）
+pdf_gen （font, layout, read_config, read_style, types に依存。krilla / krilla-svg で PDF を生成）
   ↑ seiran
 
 cli （clap のみに依存）
@@ -80,13 +80,13 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `types` | `FontType`, `FontKind`, `FontMap` など全クレート共通型 |
 | `cli` | clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`） |
 | `read_config` | `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約） |
-| `read_style` | `config/style.toml` の読み込み（figment によるデフォルト値マージ、`garde` 派生によるバリデーション） |
-| `read_references` | `config/references.toml` の読み込み（CSL 文献情報） |
+| `read_style` | `config/style.toml` の読み込み（`figment2` によるデフォルト値マージ、`garde` 派生によるバリデーション） |
+| `read_references` | `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別） |
 | `syntax` | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供 |
 | `parser` | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール |
-| `font` | フォント読込・シェーピング・サブセット化・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`） |
-| `layout` | DocNode → LayoutNode へのローワリング（`lowering.rs`）、LayoutNode → Item のレイアウト計算（`layout_engine.rs`） |
-| `pdf_gen` | krilla / krilla-svg / pdf-writer による PDF バイナリ生成 |
+| `font` | フォント読込・シェーピング・検証・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`）。`read-fonts` / `harfrust` / `rayon` を使用 |
+| `layout` | DocNode → LayoutNode へのローワリング（`lowering.rs`）、LayoutNode → Item のレイアウト計算（`layout_engine.rs`）。`icu` でスクリプト判定 |
+| `pdf_gen` | `krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施） |
 | `subcommand` | `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存） |
 | `seiran` | `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化 |
 
@@ -156,13 +156,13 @@ pub enum MyError {
 
 ### テスト
 
-- テスト用入力: `tests/text/text.txt`、テスト用フォント: `tests/fonts/`
+- テスト用入力: `tests/text/`（`text.txt` / `equation.txt` / `figure.txt` / `ref.txt`）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
 
 ## 設定ファイル
 
-- `config/config.toml` — PDF 出力サイズ・余白・フォント設定（19 種別）
-- `config/style.toml` — 見出しフォントサイズ・余白（figment でデフォルト値マージ）
-- `config/references.toml` — CSL ベース文献情報
+- `config/config.toml` — PDF 出力サイズ・余白・フォント設定（19 種別）、`sources` / `style_path` / `references_path` の指定
+- `config/style.toml` — 見出しフォーマット文字列・フォントサイズ・余白・行高・背景色（`figment2` でデフォルト値マージ）
+- `config/references.toml`（または `.json`） — CSL ベース文献情報
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`

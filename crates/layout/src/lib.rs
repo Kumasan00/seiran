@@ -15,8 +15,8 @@
 //!
 //! ## データフロー
 //!
-//! 1. `parser::text_parser()` が生成した `Vec<LayoutNode>`（将来は `Vec<DocNode>`）を受け取る
-//! 2. 【将来】`lowering` モジュールで `DocNode → LayoutNode` に変換
+//! 1. `parser::parse_source` が生成した `Vec<DocNode>` を受け取る
+//! 2. `lowering` モジュールで `DocNode → LayoutNode` に変換
 //! 3. テキストノードを Unicode スクリプトに基づいて分割し、適切なフォント種別を割り当てる
 //! 4. 各セグメントをフォントシェーパーでシェーピングし、グリフ情報を取得
 //! 5. Box/Glue/Penalty モデルの `Item` リストに変換して返す

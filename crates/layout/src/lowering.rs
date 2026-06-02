@@ -21,27 +21,8 @@
 //! - 見出し番号のフォーマット（「1.2.3」等）
 //! - 段落スタイル（フォントサイズ、行間等）の付与
 //! - リストのインデント・マーカー生成
-//! - 将来的にスタイルシート（`read_style` クレート）との統合
-//!
-//! ## 実装手順
-//!
-//! ### ステップ 1: 基本的な変換関数の実装
-//!
-//! 1. `lower()` 関数のメインディスパッチを実装する
-//! 2. 各 `DocNode` バリアントに対応する変換関数を実装する
-//! 3. テストを追加して既存の出力と一致することを確認する
-//!
-//! ### ステップ 2: スタイル解決の統合
-//!
-//! 1. `LoweringContext` にスタイル設定（見出しサイズテーブル等）を追加する
-//! 2. ハードコードされた値を設定ベースに置き換える
-//! 3. 将来的に `read_style` クレートの `StyleConfig` を受け取るようにする
-//!
-//! ### ステップ 3: パイプライン統合
-//!
-//! 1. `parser::text_parser()` の戻り値を `Vec<DocNode>` に変更
-//! 2. `build_pdf.rs` で `lower() → layout_engine()` の 2 段パイプラインに更新
-//! 3. 既存の PDF 出力結果が変わらないことを回帰テストで確認
+//! - スタイルシート（`read_style` クレート）を `LoweringContext` 経由で受け取り、
+//!   見出しレベルごとのフォントサイズ・フォーマット文字列・余白を適用する
 
 use miette::Diagnostic;
 use parser::document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
@@ -103,7 +84,7 @@ impl<'a> LoweringContext<'a> {
 ///
 /// # Arguments
 ///
-/// * `document` - `Document` 構造体（将来用）
+/// * `document` - `Document` 構造体
 ///
 /// # Returns
 ///
@@ -112,24 +93,17 @@ impl<'a> LoweringContext<'a> {
 /// # Errors
 ///
 /// 内部で呼び出す [`lower_nodes`] が返すエラーをそのまま伝播します。
-///
-/// ## TODO
-///
-/// - [ ] `Document` 型を活用して目次エントリの収集等を行う
 pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Result<Vec<LayoutNode>, LoweringError> {
   return lower_nodes(ctx, &document.body);
 }
 
 /// `DocNode` のリストをレイアウトノードに変換する
 ///
+/// `build_pdf.rs` から呼ばれる lowering のエントリーポイント。
+///
 /// # Errors
 ///
 /// いずれかの `DocNode` の変換中に [`LoweringError`] が発生した場合に返します。
-///
-/// ## TODO
-///
-/// - [ ] `parser::text_parser()` の戻り値が `Vec<DocNode>` になったら、
-///   このメソッドが `build_pdf.rs` から呼ばれるエントリーポイントとなる
 pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut result = Vec::new();
   for node in nodes {
