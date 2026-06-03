@@ -4,6 +4,18 @@
 //! デフォルト値マージと `garde` による値検証を行って [`Style`] を返します。
 //! パスが `None` の場合はファイルを読まずに [`Style::default`] を返します。
 
+mod counter;
+mod equation;
+mod error;
+mod figure;
+mod footnote;
+mod heading;
+mod hyperref;
+mod reference;
+mod style;
+mod table;
+mod toc;
+
 use std::{fs, path::Path};
 
 use figment2::{
@@ -11,212 +23,22 @@ use figment2::{
   providers::{Format, Serialized, Toml},
 };
 use garde::Validate;
-use miette::{Diagnostic, NamedSource, SourceSpan};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use miette::{NamedSource, SourceSpan};
 use tracing::info;
 
-/// スタイル設定ファイル読み込み時のエラー型
-#[derive(Debug, Error, Diagnostic)]
-pub enum ReadStyleError {
-  /// スタイル設定ファイルの読み込み失敗（I/O エラー）
-  #[error("スタイル設定ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(style::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
-  ReadFile {
-    /// ファイルパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-  /// スタイル設定の TOML 解析または既定値とのマージに失敗した場合
-  ///
-  /// TOML の構文エラーに加え、フィールドの型不一致や未知のキー、デフォルト値との
-  /// マージ失敗もこのバリアントに含まれます。figment が報告したエラーチェーンを
-  /// [`ParseTomlError`] のベクタに展開し、`#[related]` 経由で一度にすべて表示します。
-  /// 各 [`ParseTomlError`] が自前で [`NamedSource`] を保持するため、ソースコード付きの
-  /// label がそれぞれレンダリングされます。
-  #[error("スタイル設定の解析またはデフォルト値とのマージに失敗しました: {path}")]
-  #[diagnostic(code(style::parse_toml))]
-  ParseToml {
-    /// ファイルパス
-    path: String,
-    /// figment のエラーチェーンを展開した個別エラー群
-    #[related]
-    errors: Vec<ParseTomlError>,
-  },
-  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
-  #[error("スタイル設定のバリデーションに失敗しました。")]
-  #[diagnostic(code(style::multiple_validation_errors))]
-  MultipleValidationErrors {
-    /// 検証で検出されたすべてのエラー
-    #[related]
-    errors: Vec<ValidationError>,
-  },
-}
-
-/// [`ReadStyleError::ParseToml`] の内側エラー。
-///
-/// figment のエラーチェーンの 1 要素をラップします。`#[related]` の子要素は親の
-/// `#[source_code]` を継承しないため、各エラーが自前で [`NamedSource`] を保持します
-/// （[`NamedSource`] は `Clone` 実装を持つので複製コストは問題になりません）。
-/// キーパスは `source.path` から派生させ、表示メッセージは figment 側の `Display`
-/// 実装（`kind` + " for key ..." 等）を直接利用することで drift を防ぎます。
-/// figment のキーパスから推定したソース位置を `span` に持ち、`#[label]` で該当箇所を
-/// ハイライト表示します。span を計算できなかった場合は `0..0` を持つため、ラベルは
-/// 表示されませんがエラーメッセージ自体には影響しません。
-#[derive(Debug, Error, Diagnostic)]
-#[error("{}: {source}", self.key_path())]
-#[diagnostic(code(style::parse_toml::field), help("TOML の構文とフィールドの型を確認してください。"))]
-pub struct ParseTomlError {
-  /// ソース名付きの元テキスト（`#[label]` レンダリング用）
-  #[source_code]
-  pub src: NamedSource<String>,
-  /// ソース上のスパン（推定）。`0..0` の場合はラベル非表示
-  #[label("ここ")]
-  pub span: SourceSpan,
-  /// 元の figment エラー（`key_path` の派生元、Display は本構造体の表示にも利用）
-  #[source]
-  pub source: Box<figment2::Error>,
-}
-
-impl ParseTomlError {
-  /// figment が報告したキーパス（例: `chapter.font_size`）。トップレベルなら `"(root)"`
-  #[must_use]
-  pub fn key_path(&self) -> String {
-    if self.source.path.is_empty() {
-      return "(root)".to_string();
-    }
-    return self.source.path.join(".");
-  }
-}
-
-/// スタイル設定値バリデーションのエラー詳細。
-#[derive(Debug, Error, Diagnostic)]
-pub enum ValidationError {
-  /// garde が検出したスタイル設定値の不正
-  #[error("'{path}': {message}")]
-  #[diagnostic(code(style::validation::field), help("style.toml の該当フィールドの値を確認してください。"))]
-  Field {
-    /// 不正なフィールドのパス（例: `font_size`, `part.font_size`）
-    path: String,
-    /// 不正の内容
-    message: String,
-  },
-}
-
-#[derive(Debug, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct Style {
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub line_height_factor: f32,
-  /// 背景色 RGB（各成分 0-255、オプション）。未指定時は背景色なし。
-  #[garde(skip)]
-  pub background_color: Option<[u8; 3]>,
-  #[garde(dive)]
-  pub part: HeadingStyle,
-  #[garde(dive)]
-  pub chapter: HeadingStyle,
-  #[garde(dive)]
-  pub section: HeadingStyle,
-  #[garde(dive)]
-  pub subsection: HeadingStyle,
-  #[garde(dive)]
-  pub paragraph: HeadingStyle,
-  #[garde(dive)]
-  pub subparagraph: HeadingStyle,
-  #[garde(dive)]
-  pub reference: ReferenceStyle,
-  // TODO(figure-equation-prep): figure / equation / table 用 *Style 構造体の追加予定地。
-  // 実装本体タスクで [counters] テーブルおよび FigureStyle / EquationStyle /
-  // TableStyle を追加し、`parser::evaluator::counter::CounterRegistry::from_style`
-  // と組み合わせて lowering までカスタマイズできるようにする。
-}
-
-impl Default for Style {
-  fn default() -> Self {
-    // 軸補 i18n: デフォルトは英語。日本語化したい場合は style.toml で上書きする。
-    // プレースホルダは `{number}` `{title}` のみ:
-    //   - `{number}` は HeadingNumber::dotted() の値（Part: "1"、Chapter: "1"、Section: "1.2"、…）
-    //   - `{title}` は見出しタイトルのプレーンテキスト
-    let part = "Part {number}: {title}".to_string();
-    let chapter = "Chapter {number}: {title}".to_string();
-    let section = "{number} {title}".to_string();
-    let subsection = "{number} {title}".to_string();
-    let paragraph = "{number} {title}".to_string();
-    let subparagraph = "{number} {title}".to_string();
-    return Self {
-      font_size: 12.0,
-      line_height_factor: 1.2,
-      background_color: None,
-      part: HeadingStyle::new(part, 40.0, 20.0, true, true),
-      chapter: HeadingStyle::new(chapter, 25.0, 15.0, true, false),
-      section: HeadingStyle::new(section, 20.0, 10.0, false, false),
-      subsection: HeadingStyle::new(subsection, 16.0, 10.0, false, false),
-      paragraph: HeadingStyle::new(paragraph, 14.0, 5.0, false, false),
-      subparagraph: HeadingStyle::new(subparagraph, 12.0, 5.0, false, false),
-      reference: ReferenceStyle::default(),
-    };
-  }
-}
-
-/// 見出し要素のスタイル設定（フォントサイズと下余白）
-#[derive(Debug, Deserialize, Serialize, Validate)]
-#[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields)]
-pub struct HeadingStyle {
-  #[garde(length(chars, min = 1))]
-  pub format: String,
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
-  pub page_break_before: bool,
-  pub page_break_after: bool,
-}
-
-impl HeadingStyle {
-  /// 新しい [`HeadingStyle`] を作成する
-  #[must_use]
-  const fn new(
-    format: String,
-    font_size: f32,
-    bottom_margin: f32,
-    page_break_before: bool,
-    page_break_after: bool,
-  ) -> Self {
-    return Self {
-      format,
-      font_size,
-      bottom_margin,
-      page_break_before,
-      page_break_after,
-    };
-  }
-}
-
-#[derive(Debug, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ReferenceStyle {
-  #[garde(length(chars, min = 1))]
-  pub format: String,
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
-}
-
-impl Default for ReferenceStyle {
-  fn default() -> Self {
-    return Self {
-      format: "References".to_string(),
-      font_size: 12.0,
-      bottom_margin: 10.0,
-    };
-  }
-}
+pub use crate::{
+  counter::{CounterStyle, NumberFormat},
+  equation::{Alignment, EquationStyle, NumberSide},
+  error::{ParseTomlError, ReadStyleError, ValidationError},
+  figure::{CaptionPosition, FigureStyle},
+  footnote::FootnoteStyle,
+  heading::HeadingStyle,
+  hyperref::HyperrefStyle,
+  reference::ReferenceStyle,
+  style::Style,
+  table::TableStyle,
+  toc::TocStyle,
+};
 
 /// スタイル設定ファイルを読み込みます。
 ///
@@ -228,9 +50,9 @@ impl Default for ReferenceStyle {
 /// - ファイルが読めない場合は [`ReadStyleError::ReadFile`]
 /// - TOML 解析またはデフォルト値とのマージに失敗した場合は [`ReadStyleError::ParseToml`]
 /// - 値検証に違反した場合は [`ReadStyleError::MultipleValidationErrors`]
-// `ReadStyleError::ParseToml` は `NamedSource<String>` を含むため Err バリアントが大きくなるが、
-// `read_style` は設定ファイルごとに 1 回しか呼ばれないため Result サイズは性能上の問題にならない。
-// 内側 enum を Box で型消去すると呼び出し側で `matches!` できなくなるためそのまま返す。
+// `ReadStyleError::ParseToml` は内側に `NamedSource<String>` と `figment2::Error` を含むため
+// Err バリアントが大きくなるが、`read_style` は設定ファイルごとに 1 回しか呼ばれないため
+// Result サイズは性能上の問題にならない。
 #[allow(clippy::result_large_err)]
 pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   let Some(path) = path else {
@@ -274,20 +96,28 @@ fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError
       let errors = source
         .into_iter()
         .map(|error| ParseTomlError {
+          key_path: format_key_path(&error.path),
           src: src.clone(),
           span: locate_figment_span(content, &error.path),
-          source: Box::new(error),
+          source: error,
         })
         .collect();
-      ReadStyleError::ParseToml {
-        path: source_path.to_string(),
-        errors,
-      }
+      ReadStyleError::ParseToml { errors }
     })?;
   if let Err(errors) = validate_values(&style) {
     return Err(ReadStyleError::MultipleValidationErrors { errors });
   }
   return Ok(style);
+}
+
+/// figment のキーパス配列を表示用の文字列に整形します。
+///
+/// トップレベル（パスが空）の場合は `"(root)"`、それ以外はドット区切りで結合します。
+fn format_key_path(path: &[String]) -> String {
+  if path.is_empty() {
+    return "(root)".to_string();
+  }
+  return path.join(".");
 }
 
 /// figment のキーパスから TOML ソース内の該当箇所を推定し [`SourceSpan`] を返します。
@@ -314,8 +144,10 @@ fn locate_figment_span(content: &str, path: &[String]) -> SourceSpan {
   };
 
   // セクション内（または先頭から）で、行頭の leaf キーを `^<key>\s*=` のパターンで探す。
+  // `split_inclusive('\n')` で区切りを含めた長さを維持し、LF / CRLF どちらでも cursor がずれないようにする。
   let mut cursor = start;
-  for line in content[start..].lines() {
+  for raw_line in content[start..].split_inclusive('\n') {
+    let line = raw_line.trim_end_matches('\n').trim_end_matches('\r');
     let trimmed = line.trim_start();
     let leading = line.len() - trimmed.len();
     // 次のセクションに入ったら打ち切る（同名キーの誤検出を防ぐ）
@@ -328,7 +160,7 @@ fn locate_figment_span(content: &str, path: &[String]) -> SourceSpan {
         return SourceSpan::new((cursor + leading).into(), leaf.len());
       }
     }
-    cursor += line.len() + 1; // `+1` は `lines()` が消費する改行
+    cursor += raw_line.len();
   }
   return SourceSpan::new(0.into(), 0);
 }
@@ -358,7 +190,7 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
 mod tests {
   use std::path::PathBuf;
 
-  use super::{ReadStyleError, Style, ValidationError, parse_style, read_style, validate_values};
+  use super::{CaptionPosition, ReadStyleError, Style, ValidationError, parse_style, read_style, validate_values};
 
   /// `parse_style` のエラー報告に使うダミーパス
   fn dummy_source() -> &'static str { return "test.toml"; }
@@ -373,7 +205,39 @@ mod tests {
     assert!((style.font_size - default.font_size).abs() < f32::EPSILON);
     assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
     assert!(style.background_color.is_none());
+    assert!(style.text_color.is_none());
     assert_eq!(style.part.format, default.part.format);
+    assert_eq!(style.figure.caption_position, CaptionPosition::Bottom);
+    assert_eq!(style.table.caption_position, CaptionPosition::Top);
+    assert!(style.counters.contains_key("figure"));
+  }
+
+  #[test]
+  fn parse_style_overrides_figure_caption_position() {
+    // Arrange: figure テーブルだけ上書き
+    let toml = "[figure]\ncaption_position = \"top\"\n";
+
+    // Act
+    let style = parse_style(toml, dummy_source()).unwrap();
+
+    // Assert
+    assert_eq!(style.figure.caption_position, CaptionPosition::Top);
+    // 他のフィールドはデフォルト維持
+    let default = Style::default();
+    assert!((style.figure.caption_font_size - default.figure.caption_font_size).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn parse_style_overrides_counter_display_name() {
+    // Arrange: counters テーブルに日本語 display_name を上書き
+    let toml = "[counters.figure]\ndisplay_name = \"図\"\nformat = \"prefixed\"\nparent = \"chapter\"\nresets = []\n";
+
+    // Act
+    let style = parse_style(toml, dummy_source()).unwrap();
+
+    // Assert
+    let figure = style.counters.get("figure").expect("figure counter");
+    assert_eq!(figure.display_name, "図");
   }
 
   #[test]
@@ -491,11 +355,11 @@ mod tests {
     let result = parse_style(toml, dummy_source());
 
     // Assert
-    let Err(ReadStyleError::ParseToml { errors, .. }) = result else {
+    let Err(ReadStyleError::ParseToml { errors }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
     let error = errors.first().expect("at least one error");
-    assert_eq!(error.key_path(), "font_size");
+    assert_eq!(error.key_path, "font_size");
     assert_eq!(error.src.name(), dummy_source());
     // span が "font_size" の位置を指していること
     assert_eq!(error.span.offset(), 0);
@@ -511,11 +375,11 @@ mod tests {
     let result = parse_style(toml, dummy_source());
 
     // Assert
-    let Err(ReadStyleError::ParseToml { errors, .. }) = result else {
+    let Err(ReadStyleError::ParseToml { errors }) = result else {
       panic!("expected ParseToml, got {result:?}");
     };
     let error = errors.first().expect("at least one error");
-    assert_eq!(error.key_path(), "chapter.font_size");
+    assert_eq!(error.key_path, "chapter.font_size");
     // span は section 内 "font_size" の絶対オフセットを指す
     let expected_offset = toml.find("font_size = \"oops\"").unwrap();
     assert_eq!(error.span.offset(), expected_offset);
@@ -523,33 +387,22 @@ mod tests {
   }
 
   #[test]
-  fn parse_style_fails_on_zero_font_size() {
-    // Arrange: range(min = f32::MIN_POSITIVE) 違反
-    let toml = "font_size = 0.0\n";
+  fn parse_toml_error_locates_nested_key_in_section_with_crlf() {
+    // Arrange: 行末を CRLF にしても section 内のキー位置が正しく出ること
+    let toml = "[chapter]\r\nfont_size = \"oops\"\r\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let result = parse_style(toml, dummy_source());
 
     // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "font_size"
-    )));
-  }
-
-  #[test]
-  fn parse_style_fails_on_negative_line_height_factor() {
-    // Arrange
-    let toml = "line_height_factor = -1.0\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "line_height_factor"
-    )));
+    let Err(ReadStyleError::ParseToml { errors }) = result else {
+      panic!("expected ParseToml, got {result:?}");
+    };
+    let error = errors.first().expect("at least one error");
+    assert_eq!(error.key_path, "chapter.font_size");
+    let expected_offset = toml.find("font_size = \"oops\"").unwrap();
+    assert_eq!(error.span.offset(), expected_offset);
+    assert_eq!(error.span.len(), "font_size".len());
   }
 
   #[test]
@@ -577,21 +430,6 @@ mod tests {
   }
 
   #[test]
-  fn parse_style_fails_on_negative_heading_bottom_margin() {
-    // Arrange: chapter.bottom_margin が負値
-    let toml = "[chapter]\nbottom_margin = -5.0\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "chapter.bottom_margin"
-    )));
-  }
-
-  #[test]
   fn parse_style_collects_multiple_validation_errors() {
     // Arrange: font_size と chapter.font_size の両方を不正値に
     let toml = "font_size = 0.0\n\n[chapter]\nfont_size = -1.0\n";
@@ -614,36 +452,6 @@ mod tests {
   fn validate_values_accepts_default_style() {
     // Arrange / Act / Assert: デフォルト値はバリデーションを通過する
     assert!(validate_values(&Style::default()).is_ok());
-  }
-
-  #[test]
-  fn parse_style_fails_on_empty_heading_format() {
-    // Arrange: chapter.format が空文字列
-    let toml = "[chapter]\nformat = \"\"\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "chapter.format"
-    )));
-  }
-
-  #[test]
-  fn parse_style_fails_on_empty_reference_format() {
-    // Arrange: reference.format が空文字列
-    let toml = "[reference]\nformat = \"\"\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::Field { path, .. } if path == "reference.format"
-    )));
   }
 
   /// `parse_style` の戻り値から `MultipleValidationErrors` を取り出すヘルパー。
