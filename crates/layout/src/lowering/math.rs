@@ -1,0 +1,366 @@
+//! 数式（インライン / ディスプレイ）の lowering
+//!
+//! インライン数式と `\begin{equation}...\end{equation}` のディスプレイ数式を
+//! `LayoutNode` 列に変換します。数式中の文字は [`math_alphanumeric::translate_math_char`]
+//! によって Unicode Mathematical Alphanumeric Symbols へ変換され、数式フォントが持つ
+//! 字形バリアントを直接呼び出します。
+
+use parser::document::{MathNode, MathStyle};
+use types::FontKind;
+
+use self::math_alphanumeric::translate_math_char;
+use super::LoweringContext;
+use crate::layout_node::{LayoutNode, Style};
+
+mod math_alphanumeric;
+
+/// 上付きスクリプトのフォントサイズ倍率（親フォントサイズに対する比）
+const SCRIPT_SIZE_FACTOR: f32 = 0.7;
+/// 上付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で上方向）
+const SUPERSCRIPT_RAISE_FACTOR: f32 = 0.4;
+/// 下付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で下方向）
+const SUBSCRIPT_DROP_FACTOR: f32 = 0.2;
+
+/// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する
+///
+/// インライン数式と同じ [`lower_inline_math`] を流用しつつ、数式を独立した行に配置する。
+/// 真の中央寄せには行幅の知識が必要なため、現段階では行頭からのレンダリングとし、
+/// 前後に改行を挿入して段落から分離する。
+pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode]) -> Vec<LayoutNode> {
+  let font_size = ctx.default_font_size();
+  let mut result = Vec::new();
+  result.push(LayoutNode::LineBreak);
+  result.extend(lower_inline_math(body, font_size));
+  result.push(LayoutNode::LineBreak);
+  return result;
+}
+
+/// インライン数式（`$...$`）を `LayoutNode` 列に変換する
+///
+/// 数式中の文字はすべて `FontKind::Math` を割り当てつつ、入力コードポイントを
+/// Unicode Mathematical Alphanumeric Symbols（U+1D400–U+1D7FF）へ変換することで
+/// 数式フォントが持つ字形バリアントを直接呼び出す。デフォルト（スタイル指定なし）では
+/// ASCII 英字のみ Mathematical Italic 化し、変数を italic で描画する。
+/// 上付き・下付きは [`LayoutNode::Raise`] で縦シフトしつつ、フォントサイズを
+/// [`SCRIPT_SIZE_FACTOR`] 倍に縮小して描画する。
+pub(super) fn lower_inline_math(math_nodes: &[MathNode], base_font_size: f32) -> Vec<LayoutNode> {
+  let mut result = Vec::new();
+  for node in math_nodes {
+    result.extend(lower_math_node(node, base_font_size, None));
+  }
+  return result;
+}
+
+/// 単一の `MathNode` を `LayoutNode` 列に変換する
+///
+/// `style` パラメータは、外側の `MathNode::Styled` から継承する数式スタイル。
+/// `None` のときはデフォルト挙動（ASCII 英字のみ italic 化）。`Some(_)` のときは
+/// ASCII 英字・数字・Greek を該当スタイルへコードポイント変換する。
+/// `Styled` バリアントは内側の `style` で完全上書きする（ネストは内側優先）。
+fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) -> Vec<LayoutNode> {
+  match node {
+    MathNode::Text(s) => {
+      return lower_math_text(s, font_size, style);
+    },
+    MathNode::Symbol(ch) => {
+      let translated = translate_math_char(*ch, style);
+      let layout_style = Style {
+        font_size,
+        font_kind: FontKind::Math,
+      };
+      return vec![LayoutNode::Text(translated.to_string(), layout_style)];
+    },
+    MathNode::Group(children) => {
+      let mut result = Vec::new();
+      for child in children {
+        result.extend(lower_math_node(child, font_size, style));
+      }
+      return result;
+    },
+    MathNode::Superscript(inner) => {
+      let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
+      let children = lower_math_node(inner.as_ref(), script_size, style);
+      return vec![LayoutNode::Raise {
+        dy: font_size * SUPERSCRIPT_RAISE_FACTOR,
+        children,
+      }];
+    },
+    MathNode::Subscript(inner) => {
+      let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
+      let children = lower_math_node(inner.as_ref(), script_size, style);
+      return vec![LayoutNode::Raise {
+        dy: -font_size * SUBSCRIPT_DROP_FACTOR,
+        children,
+      }];
+    },
+    MathNode::Frac { numer, denom } => {
+      // インラインでは真の縦書き分数は無理なので、`a / b` の形式で代替する
+      let slash_style = Style {
+        font_size,
+        font_kind: FontKind::Math,
+      };
+      let mut result = Vec::new();
+      result.extend(lower_math_node(numer.as_ref(), font_size, style));
+      result.push(LayoutNode::Text("/".to_string(), slash_style));
+      result.extend(lower_math_node(denom.as_ref(), font_size, style));
+      return result;
+    },
+    MathNode::Sqrt { index, radicand } => {
+      let upright_style = Style {
+        font_size,
+        font_kind: FontKind::Math,
+      };
+      let mut result = Vec::new();
+      if let Some(idx) = index {
+        let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
+        let idx_children = lower_math_node(idx.as_ref(), script_size, style);
+        result.push(LayoutNode::Raise {
+          dy: font_size * SUPERSCRIPT_RAISE_FACTOR,
+          children: idx_children,
+        });
+      }
+      result.push(LayoutNode::Text("√".to_string(), upright_style));
+      result.extend(lower_math_node(radicand.as_ref(), font_size, style));
+      return result;
+    },
+    MathNode::Command { name, args } => {
+      // 未解決の数式コマンドはコマンド名と引数をリテラル表示してデバッグしやすくする
+      let literal_style = Style {
+        font_size,
+        font_kind: FontKind::Math,
+      };
+      let mut result = Vec::new();
+      result.push(LayoutNode::Text(format!("\\{name}"), literal_style));
+      for arg in args {
+        result.push(LayoutNode::Text("{".to_string(), literal_style));
+        for child in arg {
+          result.extend(lower_math_node(child, font_size, style));
+        }
+        result.push(LayoutNode::Text("}".to_string(), literal_style));
+      }
+      return result;
+    },
+    MathNode::Styled {
+      style: inner_style,
+      body,
+    } => {
+      let mut result = Vec::new();
+      for child in body {
+        result.extend(lower_math_node(child, font_size, Some(*inner_style)));
+      }
+      return result;
+    },
+    MathNode::AlignmentMark => {
+      // インライン数式では `&` は意味を持たないので無視する
+      return Vec::new();
+    },
+  }
+}
+
+/// 数式中のテキスト文字列を `LayoutNode` 列に変換する
+///
+/// 文字単位で [`translate_math_char`] を適用してから 1 つの `LayoutNode::Text` にまとめる。
+/// `FontKind::Math` は常に維持する（テキストフォントへの切替は行わない）。
+/// 数式中に和文が混入した場合のスクリプト別フォント切替は後段の
+/// `split_text_by_script` / `resolve_font_type` が担うため、ここでは分割しない。
+fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<LayoutNode> {
+  if text.is_empty() {
+    return Vec::new();
+  }
+  let translated: String = text.chars().map(|c| translate_math_char(c, style)).collect();
+  let layout_style = Style {
+    font_size,
+    font_kind: FontKind::Math,
+  };
+  return vec![LayoutNode::Text(translated, layout_style)];
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn lower_math_text_italicizes_ascii_letters_by_default() {
+    // Arrange: デフォルトでは ASCII 英字 "x" のみ Mathematical Italic (U+1D44E) に変換、
+    // 記号 "+" と数字 "1" は素通し。1 つの Math セグメントにまとまる
+    let nodes = lower_math_text("x+1", 12.0, None);
+
+    // Assert
+    assert_eq!(nodes.len(), 1, "Math フォントの単一セグメントにまとまるはず: {nodes:?}");
+    match &nodes[0] {
+      LayoutNode::Text(t, style) => {
+        assert_eq!(t, "\u{1D465}+1"); // U+1D44E + 23 (x - a)
+        assert_eq!(style.font_kind, FontKind::Math);
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_text_keeps_japanese_in_math_kind() {
+    // Arrange: 数式中に和文が混ざっても lowering 層ではスクリプト分割せず単一の Math セグメントで返す
+    // x は italic 化される、和文と数字は素通し
+    let nodes = lower_math_text("x速度2", 12.0, None);
+
+    // Assert
+    assert_eq!(nodes.len(), 1, "Math フォントの単一セグメントになるはず: {nodes:?}");
+    match &nodes[0] {
+      LayoutNode::Text(t, style) => {
+        assert_eq!(t, "\u{1D465}速度2"); // U+1D44E + 23 (x - a)
+        assert_eq!(style.font_kind, FontKind::Math);
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_text_empty_returns_no_nodes() {
+    // 空文字列は空のノード列を返す
+    let nodes = lower_math_text("", 12.0, None);
+    assert!(nodes.is_empty(), "空文字列は空のノード列を返すはず: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_math_superscript_wraps_in_raise() {
+    // Arrange: x^2 の Superscript は Raise（正の dy）でラップされ、フォントサイズが縮小される
+    let node = MathNode::Superscript(Box::new(MathNode::Text("2".to_string())));
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      LayoutNode::Raise { dy, children } => {
+        assert!(*dy > 0.0, "上付きは正の dy（上方向）になるべき: dy={dy}");
+        // children に縮小サイズの Text が入っているはず
+        assert!(!children.is_empty());
+        if let LayoutNode::Text(_, style) = &children[0] {
+          assert!(style.font_size < 12.0, "上付きはフォントサイズが縮小される: size={}", style.font_size);
+        } else {
+          panic!("Text を期待: {:?}", children[0]);
+        }
+      },
+      other => panic!("Raise を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_subscript_uses_negative_raise() {
+    // Arrange: x_i の Subscript は Raise（負の dy）でラップされる
+    let node = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      LayoutNode::Raise { dy, .. } => {
+        assert!(*dy < 0.0, "下付きは負の dy（下方向）になるべき: dy={dy}");
+      },
+      other => panic!("Raise を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_symbol_uses_math_font() {
+    // Arrange: \alpha → MathNode::Symbol('α') → デフォルトでは α は素通し（Math フォントで描画）
+    let node = MathNode::Symbol('α');
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    match &result[0] {
+      LayoutNode::Text(t, style) => {
+        assert_eq!(t, "α");
+        assert_eq!(style.font_kind, FontKind::Math);
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_frac_inlines_as_slash() {
+    // Arrange: インライン \frac{a}{b} は "a / b" 形式で代替される（真の縦書きは未対応）
+    let node = MathNode::Frac {
+      numer: Box::new(MathNode::Text("a".to_string())),
+      denom: Box::new(MathNode::Text("b".to_string())),
+    };
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert: 何らかの Text に "/" が含まれていること
+    let has_slash = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "/"));
+    assert!(has_slash, "分数は / 付きで描画されるはず: {result:?}");
+  }
+
+  #[test]
+  fn lower_math_sqrt_emits_radical_sign() {
+    // Arrange: \sqrt{x} は √ 記号 + 被根号 でレンダリング
+    let node = MathNode::Sqrt {
+      index: None,
+      radicand: Box::new(MathNode::Text("x".to_string())),
+    };
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert: √ を含む Text ノードが存在し、後ろに変数 x の italic Text が続く
+    let has_radical = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "√"));
+    assert!(has_radical, "√ 記号が含まれるはず: {result:?}");
+  }
+
+  #[test]
+  fn lower_math_alignment_mark_is_ignored_inline() {
+    // インライン数式に紛れ込んだ AlignmentMark は空のノード列を返す
+    let result = lower_math_node(&MathNode::AlignmentMark, 12.0, None);
+    assert!(result.is_empty(), "AlignmentMark は無視されるべき: {result:?}");
+  }
+
+  #[test]
+  fn lower_math_node_bold_styled_propagates_to_text_and_symbol() {
+    // Arrange — \mathbold{x12 \alpha} 相当: Styled { Bold, [Text("x12"), Symbol('α')] }
+    let node = MathNode::Styled {
+      style: MathStyle::Bold,
+      body: vec![MathNode::Text("x12".to_string()), MathNode::Symbol('α')],
+    };
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert — 連結すると "𝐱𝟏𝟐" + "𝛂"
+    let texts: String = result
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Text(t, _) => Some(t.as_str()),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(texts, "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
+  }
+
+  #[test]
+  fn lower_math_node_styled_propagates_into_frac_body() {
+    // Arrange — \mathbold{\frac{a}{b}}: 内側 frac の a と b は bold で変換される
+    let node = MathNode::Styled {
+      style: MathStyle::Bold,
+      body: vec![MathNode::Frac {
+        numer: Box::new(MathNode::Text("a".to_string())),
+        denom: Box::new(MathNode::Text("b".to_string())),
+      }],
+    };
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None);
+
+    // Assert — bold a (U+1D41A) と bold b (U+1D41B) が含まれる
+    let has_bold_a = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "\u{1D41A}"));
+    let has_bold_b = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "\u{1D41B}"));
+    assert!(has_bold_a, "bold a が含まれるはず: {result:?}");
+    assert!(has_bold_b, "bold b が含まれるはず: {result:?}");
+  }
+}
