@@ -38,7 +38,7 @@ cargo build --release
 cargo run -- build [-c <config_path>]
 ```
 
-設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.txt", "chapter2.txt"]` のように複数ファイルを指定できます。
+設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.sei", "chapter2.sei"]` のように複数ファイルを指定できます。
 
 ### バリアブルフォント軸情報の表示
 

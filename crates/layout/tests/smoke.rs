@@ -15,11 +15,11 @@ use layout::LoweringContext;
 use parser::parse_source;
 use read_style::Style;
 
-/// ワークスペースの `tests/text/<name>.txt` を絶対パスで返す
+/// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
 fn fixture_path(name: &str) -> PathBuf {
   let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
   path.push("../../tests/text");
-  path.push(format!("{name}.txt"));
+  path.push(format!("{name}.sei"));
   return path;
 }
 

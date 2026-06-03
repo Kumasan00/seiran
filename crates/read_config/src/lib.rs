@@ -11,7 +11,7 @@ use std::{
 use garde::Validate;
 use miette::Diagnostic;
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, warn};
 use types::FontType;
 
 mod pre_config;
@@ -302,6 +302,12 @@ fn canonicalize_or_record(
 fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Vec<ValidationError>) -> Vec<PathBuf> {
   let mut resolved = Vec::with_capacity(sources.len());
   for source_path in sources {
+    if source_path.extension().and_then(|ext| ext.to_str()) != Some("sei") {
+      warn!(
+        path = %source_path.display(),
+        "ソースファイルの拡張子が `.sei` ではありません。Seiran は `.sei` 拡張子を推奨します。"
+      );
+    }
     let absolute = if source_path.is_absolute() {
       source_path.clone()
     } else {
@@ -498,7 +504,7 @@ mod tests {
     let tempdir = tempfile::tempdir().unwrap();
     let font_path = tempdir.path().join("dummy.ttf");
     std::fs::write(&font_path, b"").unwrap();
-    let source_path = tempdir.path().join("source.txt");
+    let source_path = tempdir.path().join("source.sei");
     std::fs::write(&source_path, b"").unwrap();
     let output_dir = tempdir.path().join("output");
     let config_path = tempdir.path().join("config.toml");
@@ -677,7 +683,7 @@ mod tests {
     // Arrange: 存在しない source パスを指定
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
       format!(
-        "sources = [\"/nonexistent/source.txt\"]\n\n{}{}{}",
+        "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
         valid_output_section("test", output_dir),
         valid_pdf_section(),
         make_font_sections(font_path),
@@ -749,7 +755,7 @@ mod tests {
   /// （`resolve` でのみ canonicalize される）。空配列だけ避ければ良い。
   fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ValidationError>> {
     let toml = format!(
-      "sources = [\"dummy.txt\"]\n\n{}{}{}",
+      "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
       font_sections_with_serif_extra("dummy.ttf", extra_lines),
@@ -1014,7 +1020,7 @@ mod tests {
     // Arrange / Act / Assert: 主要な BCP 47 形式が document.language で通る
     for lang in ["ja", "en-US", "zh-Hant", "und"] {
       let toml = format!(
-        "sources = [\"dummy.txt\"]\n\n[document]\nlanguage = \"{lang}\"\n\n{}{}{}",
+        "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"{lang}\"\n\n{}{}{}",
         valid_output_section("test", "out"),
         valid_pdf_section(),
         make_font_sections("dummy.ttf"),
@@ -1028,7 +1034,7 @@ mod tests {
   fn validate_values_rejects_invalid_document_language() {
     // Arrange
     let toml = format!(
-      "sources = [\"dummy.txt\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
+      "sources = [\"dummy.sei\"]\n\n[document]\nlanguage = \"!!\"\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
@@ -1049,7 +1055,7 @@ mod tests {
   fn validate_values_rejects_empty_keyword_entry() {
     // Arrange: keywords の途中に空文字列を含める
     let toml = format!(
-      "sources = [\"dummy.txt\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
+      "sources = [\"dummy.sei\"]\n\n[document]\nkeywords = [\"foo\", \"\", \"bar\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),

@@ -156,7 +156,7 @@ pub enum MyError {
 
 ### テスト
 
-- テスト用入力: `tests/text/`（`text.txt` / `equation.txt` / `figure.txt` / `ref.txt`）、フォント: リポジトリ直下の `fonts/`
+- テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `figure.sei` / `ref.sei`）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
 
 ## 設定ファイル
