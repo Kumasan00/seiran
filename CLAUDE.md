@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Seiran** は、TeX スタイルのテキストファイルから高品質な PDF を生成する Rust ベースの CLI ツールです。Rust Edition 2024、Cargo workspace 構成（resolver = "3"）。
 
+## 言語設計原則
+
+LaTeX の主要機能をデフォルトで提供しつつ、LaTeX の曖昧さを排除する方針。新コマンド・新環境を設計する際は以下に整合させる。
+
+- **A. 引数は必ず `{}` で明示** — `\section Title` 不可、`\section{Title}` のみ
+- **B. コマンド名** — 英数字始まり、続く文字も英数字。英数字以外で終端
+- **C. マクロ置換は原則不可** — `\newcommand` 相当はデフォルトで提供しない（拡張は将来の `\define` メタコマンド + `.seiran` ファイル）
+- **D. カテゴリコードなし** — トークン規則は固定
+- **E1. 宣言型コマンド廃止** — `\bfseries` のような状態変更コマンドは作らない。装飾は引数型コマンドか環境のみ
+- **E2. 裸の `{...}` は構文エラー** — `{}` の意味は「コマンドの引数の境界」と「数式内のグループ化」だけ
+- **F. プログラミング機能なし** — 計算・条件分岐は未実装。コメントは `//`（将来 `%` を剰余演算子に確保するため）
+- **G. 数式モード境界の単純化** — インライン `$...$` のみ、ディスプレイは数式環境のみ。`$$...$$` `\[...\]` は不採用
+
+**コンテンツとプレゼンテーションの完全分離**: ソースは本文のみ、メタデータ（title/author/date）・物理設定は config.toml、見た目は style.toml に集約。プリアンブル相当はソースに書けない。`\documentclass` 相当のクラス概念も導入しない。
+
 ## コマンド
 
 ```sh
@@ -161,8 +176,15 @@ pub enum MyError {
 
 ## 設定ファイル
 
-- `config/config.toml` — PDF 出力サイズ・余白・フォント設定（19 種別）、`sources` / `style_path` / `references_path` の指定
-- `config/style.toml` — 見出しフォーマット文字列・フォントサイズ・余白・行高・背景色（`figment2` でデフォルト値マージ）
-- `config/references.toml`（または `.json`） — CSL ベース文献情報
+3 ファイルの役割分担原則 — **「同じ本文 + 同じ用紙で style.toml だけ差し替えて見た目を変えられる」** を新フィールド追加時の判断基準にする。
+
+| ファイル | 役割 | 主な内容 |
+|---|---|---|
+| `config.toml` | **実体・物理・メタデータ** | title/author/date、用紙サイズ・余白、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語 |
+| `style.toml` | **見た目** | 見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、段組み数、参照リンク色、フロート挙動デフォルト |
+| `references.toml`（または `.json`） | **文献データ** | CSL ベース文献情報 |
+
+- `style.toml` は `figment2` でデフォルト値マージ
+- フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
