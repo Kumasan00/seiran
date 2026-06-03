@@ -9,20 +9,6 @@ use std::collections::HashMap;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// 番号の表示形式
-///
-/// `Plain` は単独カウンタの値を返す（例: chapter は `"3"`）。
-/// `Prefixed` は親カウンタを `.` 区切りで連結した値を返す（例: section は `"2.3"`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
-#[serde(rename_all = "snake_case")]
-#[garde(allow_unvalidated)]
-pub enum NumberFormat {
-  /// 単独カウンタ。例: chapter は `"3"`
-  Plain,
-  /// 親カウンタチェーンと自身を `.` で結合。例: section は `"2.3"`
-  Prefixed,
-}
-
 /// 1 つのカウンタ定義（TOML スキーマ）
 ///
 /// `display_name` で「図」「Figure」のような i18n 文字列を指定し、
@@ -62,6 +48,20 @@ impl CounterStyle {
       alias_of: alias_of.map(str::to_string),
     };
   }
+}
+
+/// 番号の表示形式
+///
+/// `Plain` は単独カウンタの値を返す（例: chapter は `"3"`）。
+/// `Prefixed` は親カウンタを `.` 区切りで連結した値を返す（例: section は `"2.3"`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
+#[serde(rename_all = "snake_case")]
+#[garde(allow_unvalidated)]
+pub enum NumberFormat {
+  /// 単独カウンタ。例: chapter は `"3"`
+  Plain,
+  /// 親カウンタチェーンと自身を `.` で結合。例: section は `"2.3"`
+  Prefixed,
 }
 
 /// seiran 既定のカウンタセットを返す
