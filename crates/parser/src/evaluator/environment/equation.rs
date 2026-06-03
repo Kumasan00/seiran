@@ -1,0 +1,108 @@
+//! 数式環境 — `equation`
+//!
+//! `\begin{equation}...\end{equation}` を [`DocNode::DisplayMath`] に変換します。
+//! 本体は [`syntax::ParseMode::Math`] で構造化された CST から
+//! [`Evaluator::evaluate_math_body`] で `Vec<MathNode>` に変換します。
+//!
+//! ## 任意引数
+//!
+//! - `[label=eq:foo]` — `\ref` 解決用ラベル（任意）
+
+use syntax::ast::EnvironmentView;
+
+use crate::{
+  document::DocNode,
+  evaluator::{
+    EvalError, Evaluator,
+    opt_args::{OptType, OptValue, collect_environment_opt_args},
+  },
+};
+
+/// `equation` 環境を評価する
+///
+/// # Errors
+///
+/// 不明な任意引数キーや値の型不一致が発生した場合にエラーを返します
+pub(super) fn equation(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
+  let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
+    ("label", OptValue::String(s)) => Some(s),
+    _ => None,
+  });
+
+  let source = view.source();
+  let body = view.body().map_or_else(Vec::new, |body_node| Evaluator::evaluate_math_body(source, body_node));
+
+  return Ok(vec![DocNode::DisplayMath { body, label }]);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+
+  use super::*;
+  use crate::{document::MathNode, evaluator::lookup_env_parse_mode};
+
+  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
+
+  #[test]
+  fn equation_produces_display_math() {
+    // Arrange — 上付き付きの簡単なディスプレイ数式
+    let arena = Bump::new();
+    let source = r"\begin{equation}x^2 = y\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — DisplayMath が 1 件、label は None、body に Superscript が含まれる
+    assert_eq!(result.len(), 1);
+    let DocNode::DisplayMath { body, label } = &result[0] else {
+      panic!("DisplayMath が期待されます: {:?}", result[0]);
+    };
+    assert!(label.is_none());
+    assert!(
+      body.iter().any(|n| matches!(n, MathNode::Superscript(_))),
+      "Superscript ノードが含まれるべき: {body:?}"
+    );
+  }
+
+  #[test]
+  fn equation_with_label_captures_label() {
+    // Arrange — label 任意引数を持つ equation
+    let arena = Bump::new();
+    let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let DocNode::DisplayMath { label, .. } = &result[0] else {
+      panic!("DisplayMath が期待されます");
+    };
+    assert_eq!(label.as_deref(), Some("eq:pythag"));
+  }
+
+  #[test]
+  fn equation_rejects_unknown_opt_key() {
+    // Arrange — equation は label のみ許可、未知キーはエラー
+    let arena = Bump::new();
+    let source = r"\begin{equation}[foo=1]x\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+}

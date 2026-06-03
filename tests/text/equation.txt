@@ -1,6 +1,11 @@
 \section{数式のサンプル}
 
-インライン数式 $x^2 + y^2 = z^2$ は前準備の段階でも動作します。
+インライン数式 $x^2 + y^2 = z^2$ と、ディスプレイ数式（equation 環境）の動作確認用フィクスチャ。
 
-ディスプレイ数式（equation 環境）は実装本体タスクで配線されるため、
-このフィクスチャでは触れずに見出しとインライン数式だけにします。
+\begin{equation}
+a^2 + b^2 = c^2
+\end{equation}
+
+\begin{equation}[label=eq:euler]
+e^{i \pi} + 1 = 0
+\end{equation}

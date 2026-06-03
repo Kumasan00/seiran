@@ -10,6 +10,24 @@ use crate::{
   evaluator::{EvalError, Evaluator, environment::body_scan, opt_args::collect_environment_opt_args},
 };
 
+/// `itemize` 環境を評価する（順序なしリスト）
+///
+/// # Errors
+///
+/// 余分な引数が指定されている場合にエラーを返します
+pub(super) fn itemize(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  return list_common(view, evaluator, false);
+}
+
+/// `enumerate` 環境を評価する（順序付きリスト）
+///
+/// # Errors
+///
+/// 余分な引数が指定されている場合にエラーを返します
+pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  return list_common(view, evaluator, true);
+}
+
 /// リスト環境の共通処理
 ///
 /// `\item{...}` コマンドを収集し、`DocNode::List` を生成します。
@@ -46,24 +64,6 @@ fn list_common(view: &EnvironmentView, evaluator: &mut Evaluator, ordered: bool)
   }
 
   return Ok(vec![DocNode::List { ordered, items }]);
-}
-
-/// `itemize` 環境を評価する（順序なしリスト）
-///
-/// # Errors
-///
-/// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, false);
-}
-
-/// `enumerate` 環境を評価する（順序付きリスト）
-///
-/// # Errors
-///
-/// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, true);
 }
 
 #[cfg(test)]

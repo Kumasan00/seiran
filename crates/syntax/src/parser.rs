@@ -798,7 +798,7 @@ mod tests {
   /// 既存テストが依存する `equation` 系のみ Math、それ以外を Text とする簡易マップを使う。
   fn test_env_mode(name: &str) -> ParseMode {
     return match name {
-      "equation" | "equation*" => ParseMode::Math,
+      "equation" => ParseMode::Math,
       _ => ParseMode::Text,
     };
   }
