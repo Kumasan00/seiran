@@ -323,7 +323,7 @@ impl Evaluator {
             doc_nodes.extend(nodes);
           },
           SyntaxKind::InlineMath => {
-            let math_nodes = Self::evaluate_inline_math(source, child_node);
+            let math_nodes = Self::evaluate_inline_math(source, child_node)?;
             current_inlines.push(InlineNode::InlineMath(math_nodes));
           },
           SyntaxKind::Group => {
@@ -355,7 +355,11 @@ impl Evaluator {
   ///
   /// `InlineMath` 専用の `$` 開閉トークンは [`Self::evaluate_math_children`] 内で
   /// `_ => {}` に落ちるため、追加処理なしで共通ヘルパに委譲できる。
-  pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Vec<MathNode> {
+  ///
+  /// # Errors
+  ///
+  /// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
+  pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
     return Self::evaluate_math_children(source, math_node);
   }
 
@@ -367,8 +371,11 @@ impl Evaluator {
   /// 共通ヘルパ [`Self::evaluate_math_children`] にそのまま委譲する。
   ///
   /// 実装本体タスク（equation ハンドラ）から `view.body()` を渡して呼ぶ想定。
-  #[allow(dead_code)]
-  pub(crate) fn evaluate_math_body(source: &str, body_node: &GreenNode) -> Vec<MathNode> {
+  ///
+  /// # Errors
+  ///
+  /// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
+  pub(crate) fn evaluate_math_body(source: &str, body_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
     return Self::evaluate_math_children(source, body_node);
   }
 
@@ -377,7 +384,7 @@ impl Evaluator {
   /// `InlineMath` ノード（`$...$` 由来）と数式環境の body の双方から呼ばれる。
   /// 構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/
   /// `Newline`/`Ampersand` を `MathNode::Text`・`MathNode::AlignmentMark` に変換する。
-  fn evaluate_math_children(source: &str, node: &GreenNode) -> Vec<MathNode> {
+  fn evaluate_math_children(source: &str, node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
     let mut nodes = Vec::new();
     for child in node.children {
       match child {
@@ -397,15 +404,15 @@ impl Evaluator {
         },
         GreenElement::Node(child_node) => match child_node.kind {
           SyntaxKind::CommandCall => {
-            let math_node = Self::evaluate_math_command(source, child_node);
+            let math_node = Self::evaluate_math_command(source, child_node)?;
             nodes.push(math_node);
           },
           SyntaxKind::MathGroup => {
-            let inner = Self::evaluate_math_children(source, child_node);
+            let inner = Self::evaluate_math_children(source, child_node)?;
             nodes.push(MathNode::Group(inner));
           },
           SyntaxKind::MathSubscript => {
-            let inner = Self::evaluate_math_script_content(source, child_node);
+            let inner = Self::evaluate_math_script_content(source, child_node)?;
             let content = if inner.len() == 1 {
               #[allow(clippy::unwrap_used)]
               inner.into_iter().next().unwrap()
@@ -415,7 +422,7 @@ impl Evaluator {
             nodes.push(MathNode::Subscript(Box::new(content)));
           },
           SyntaxKind::MathSuperscript => {
-            let inner = Self::evaluate_math_script_content(source, child_node);
+            let inner = Self::evaluate_math_script_content(source, child_node)?;
             let content = if inner.len() == 1 {
               #[allow(clippy::unwrap_used)]
               inner.into_iter().next().unwrap()
@@ -428,13 +435,13 @@ impl Evaluator {
         },
       }
     }
-    return nodes;
+    return Ok(nodes);
   }
 
   /// 上付き・下付きスクリプトノードの中身を `MathNode` に変換する
   ///
   /// `_` / `^` トークン自体はスキップし、後続のトークンまたはグループを変換します。
-  fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Vec<MathNode> {
+  fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
     let mut nodes = Vec::new();
     for child in script_node.children {
       match child {
@@ -451,66 +458,104 @@ impl Evaluator {
         GreenElement::Node(child_node) => match child_node.kind {
           SyntaxKind::MathGroup => {
             // グループをそのまま MathNode::Group として保持
-            let inner = Self::evaluate_math_children(source, child_node);
+            let inner = Self::evaluate_math_children(source, child_node)?;
             nodes.push(MathNode::Group(inner));
           },
           SyntaxKind::CommandCall => {
-            let math_node = Self::evaluate_math_command(source, child_node);
+            let math_node = Self::evaluate_math_command(source, child_node)?;
             nodes.push(math_node);
           },
           _ => {},
         },
       }
     }
-    return nodes;
+    return Ok(nodes);
   }
 
   /// 数式内コマンドを `MathNode` に変換する
   ///
   /// `\frac{a}{b}` → `MathNode::Frac`、`\sqrt[n]{x}` → `MathNode::Sqrt`、
+  /// スタイルコマンド（`\mathbold` 等）→ `MathNode::Styled`、
   /// シンボルコマンド → `MathNode::Symbol`、その他 → `MathNode::Command` に変換します。
-  fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> MathNode {
-    use crate::evaluator::inline::resolve_symbol_command;
+  fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode, EvalError> {
+    use crate::{document::MathStyle, evaluator::inline::resolve_symbol_command};
 
     let view = CommandView::new(cmd_node, source);
     let name = view.name();
 
+    // 数式スタイルコマンド（\mathbold, \mathitalic 等）
+    if let Some(style) = MathStyle::from_command_name(name) {
+      let arg_count = view.args().count();
+      if arg_count == 0 {
+        return Err(EvalError::MissingCommandArgument {
+          name: name.to_string(),
+          expected: "1 個（数式本体）".to_string(),
+          span: view.span().into(),
+        });
+      }
+      if arg_count > 1 {
+        return Err(EvalError::ExtraCommandArgument {
+          name: name.to_string(),
+          span: view.span().into(),
+        });
+      }
+      #[allow(clippy::unwrap_used)]
+      let first_arg = view.first_arg().unwrap();
+      let body = Self::evaluate_inline_math(source, first_arg)?;
+      return Ok(MathNode::Styled { style, body });
+    }
+
     match name {
       "frac" => {
         let mut args = view.args();
-        let numer = args.next().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
-        let denom = args.next().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
-        return MathNode::Frac {
+        let numer = match args.next() {
+          Some(a) => Self::math_arg_to_node(source, a)?,
+          None => MathNode::Text(String::new()),
+        };
+        let denom = match args.next() {
+          Some(a) => Self::math_arg_to_node(source, a)?,
+          None => MathNode::Text(String::new()),
+        };
+        return Ok(MathNode::Frac {
           numer: Box::new(numer),
           denom: Box::new(denom),
-        };
+        });
       },
       "sqrt" => {
-        let index = view.opt_args().next().map(|opt| Box::new(Self::math_arg_to_node(source, opt)));
-        let radicand = view.first_arg().map_or(MathNode::Text(String::new()), |a| Self::math_arg_to_node(source, a));
-        return MathNode::Sqrt {
+        let index = match view.opt_args().next() {
+          Some(opt) => Some(Box::new(Self::math_arg_to_node(source, opt)?)),
+          None => None,
+        };
+        let radicand = match view.first_arg() {
+          Some(a) => Self::math_arg_to_node(source, a)?,
+          None => MathNode::Text(String::new()),
+        };
+        return Ok(MathNode::Sqrt {
           index,
           radicand: Box::new(radicand),
-        };
+        });
       },
       _ => {
         // シンボルコマンドの解決を試みる
         if let Some(ch) = resolve_symbol_command(name) {
-          return MathNode::Symbol(ch);
+          return Ok(MathNode::Symbol(ch));
         }
 
         // その他のコマンドは引数付きで保持
-        let args: Vec<Vec<MathNode>> = view.args().map(|a| Self::evaluate_inline_math(source, a)).collect();
+        let mut args: Vec<Vec<MathNode>> = Vec::new();
+        for arg in view.args() {
+          args.push(Self::evaluate_inline_math(source, arg)?);
+        }
 
         if args.is_empty() {
           // 引数なしの未知コマンドはテキストとして扱う
-          return MathNode::Text(name.to_string());
+          return Ok(MathNode::Text(name.to_string()));
         }
 
-        return MathNode::Command {
+        return Ok(MathNode::Command {
           name: name.to_string(),
           args,
-        };
+        });
       },
     }
   }
@@ -519,13 +564,13 @@ impl Evaluator {
   ///
   /// 引数ノード内の数式要素を評価し、要素が1つなら直接返し、
   /// 複数なら `MathNode::Group` でラップします。
-  fn math_arg_to_node(source: &str, arg_node: &GreenNode) -> MathNode {
-    let nodes = Self::evaluate_inline_math(source, arg_node);
+  fn math_arg_to_node(source: &str, arg_node: &GreenNode) -> Result<MathNode, EvalError> {
+    let nodes = Self::evaluate_inline_math(source, arg_node)?;
     if nodes.len() == 1 {
       #[allow(clippy::unwrap_used)]
-      return nodes.into_iter().next().unwrap();
+      return Ok(nodes.into_iter().next().unwrap());
     }
-    return MathNode::Group(nodes);
+    return Ok(MathNode::Group(nodes));
   }
 
   /// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
@@ -801,6 +846,117 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_inline_math_styled_bold() {
+    // Arrange — \mathbold{x} は MathNode::Styled { Bold, [Text("x")] } を生成
+    use crate::document::MathStyle;
+
+    // Act
+    let result = evaluate_source(r"$\mathbold{x}$");
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます");
+    };
+    let InlineNode::InlineMath(math) = &inlines[0] else {
+      panic!("InlineMath が期待されます");
+    };
+    assert_eq!(math.len(), 1);
+    let MathNode::Styled { style, body } = &math[0] else {
+      panic!("Styled が期待されます: {:?}", math[0]);
+    };
+    assert_eq!(*style, MathStyle::Bold);
+    assert_eq!(body.len(), 1);
+    assert!(matches!(&body[0], MathNode::Text(t) if t == "x"));
+  }
+
+  #[test]
+  fn evaluate_inline_math_styled_sans_bold_italic_with_greek() {
+    // Arrange — \mathsansbolditalic{\alpha} は Styled { SansBoldItalic, [Symbol('α')] }
+    use crate::document::MathStyle;
+
+    // Act
+    let result = evaluate_source(r"$\mathsansbolditalic{\alpha}$");
+
+    // Assert
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます");
+    };
+    let InlineNode::InlineMath(math) = &inlines[0] else {
+      panic!("InlineMath が期待されます");
+    };
+    let MathNode::Styled { style, body } = &math[0] else {
+      panic!("Styled が期待されます: {:?}", math[0]);
+    };
+    assert_eq!(*style, MathStyle::SansBoldItalic);
+    assert!(matches!(&body[0], MathNode::Symbol('α')));
+  }
+
+  #[test]
+  fn evaluate_inline_math_styled_rejects_missing_argument() {
+    // Arrange — 引数なしの \mathbold は MissingCommandArgument
+    let arena = Bump::new();
+    let source = r"$\mathbold$";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "mathbold"));
+  }
+
+  #[test]
+  fn evaluate_inline_math_styled_rejects_extra_argument() {
+    // Arrange — 引数 2 個の \mathbold は ExtraCommandArgument
+    let arena = Bump::new();
+    let source = r"$\mathbold{x}{y}$";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "mathbold"));
+  }
+
+  #[test]
+  fn evaluate_inline_math_styled_nests_inner_overrides_outer() {
+    // Arrange — \mathbold{\mathitalic{x}} はネストで内側 Italic が body に保持される
+    use crate::document::MathStyle;
+
+    // Act
+    let result = evaluate_source(r"$\mathbold{\mathitalic{x}}$");
+
+    // Assert
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます");
+    };
+    let InlineNode::InlineMath(math) = &inlines[0] else {
+      panic!("InlineMath が期待されます");
+    };
+    let MathNode::Styled {
+      style: outer,
+      body: outer_body,
+    } = &math[0]
+    else {
+      panic!("外側 Styled が期待されます");
+    };
+    assert_eq!(*outer, MathStyle::Bold);
+    let MathNode::Styled {
+      style: inner,
+      body: inner_body,
+    } = &outer_body[0]
+    else {
+      panic!("内側 Styled が期待されます: {:?}", outer_body[0]);
+    };
+    assert_eq!(*inner, MathStyle::Italic);
+    assert!(matches!(&inner_body[0], MathNode::Text(t) if t == "x"));
+  }
+
+  #[test]
   fn evaluate_textbf_creates_strong_in_paragraph() {
     let result = evaluate_source("Hello \\textbf{World}");
     assert_eq!(result.len(), 1);
@@ -930,7 +1086,7 @@ mod tests {
     let env = env.expect("Environment ノードが期待されます");
     let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
 
-    let math_nodes = Evaluator::evaluate_math_body(source, body);
+    let math_nodes = Evaluator::evaluate_math_body(source, body).unwrap();
 
     // body は "x^2" → Text("x"), Superscript(Text("2"))
     let has_superscript = math_nodes.iter().any(|n| matches!(n, MathNode::Superscript(_)));

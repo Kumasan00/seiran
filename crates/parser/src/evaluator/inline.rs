@@ -18,7 +18,7 @@ use syntax::{
 use crate::{
   document::InlineNode,
   evaluator::{
-    Evaluator,
+    EvalError, Evaluator,
     command::{COMMAND_MAP, CommandKind},
   },
 };
@@ -29,7 +29,11 @@ use crate::{
 /// インラインコマンド（`\textbf`, `\emph` 等）と単一文字コマンドの解釈は
 /// [`COMMAND_MAP`] を **唯一のソース** として参照する。
 /// `InlineMath` ノードは `InlineNode::InlineMath` に変換します。
-pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<InlineNode> {
+///
+/// # Errors
+///
+/// 数式中のスタイルコマンドが不正な引数数を持つ場合などに伝播します。
+pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec<InlineNode>, EvalError> {
   let mut inlines = Vec::new();
   for child in node.children {
     match child {
@@ -52,7 +56,7 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<Inline
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::InlineWrapper(wrapper)) => {
               if let Some(arg) = view.first_arg() {
-                let children = extract_inline_nodes(source, arg);
+                let children = extract_inline_nodes(source, arg)?;
                 inlines.push(wrapper(children));
               }
             },
@@ -66,19 +70,19 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Vec<Inline
           }
         },
         SyntaxKind::InlineMath => {
-          let math_nodes = Evaluator::evaluate_inline_math(source, child_node);
+          let math_nodes = Evaluator::evaluate_inline_math(source, child_node)?;
           inlines.push(InlineNode::InlineMath(math_nodes));
         },
         SyntaxKind::Group => {
           // グループの中身を再帰的に処理
-          let children = extract_inline_nodes(source, child_node);
+          let children = extract_inline_nodes(source, child_node)?;
           inlines.extend(children);
         },
         _ => {},
       },
     }
   }
-  return inlines;
+  return Ok(inlines);
 }
 
 /// コマンド名からシンボル文字を解決する
@@ -118,7 +122,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
+    let inlines = extract_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0], InlineNode::Strong(_)));
   }
@@ -131,7 +135,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
+    let inlines = extract_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0], InlineNode::Symbol('α')));
   }
@@ -144,7 +148,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
+    let inlines = extract_inline_nodes(source, arg).unwrap();
     // Text("数式"), Text(" "), InlineMath(...), Text(" "), Text("です")
     let has_math = inlines.iter().any(|n| matches!(n, InlineNode::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
@@ -158,7 +162,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg);
+    let inlines = extract_inline_nodes(source, arg).unwrap();
     // Text("Hello"), Text(" "), Strong(...)
     assert_eq!(inlines.len(), 3);
     assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "Hello"));

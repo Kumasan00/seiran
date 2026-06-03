@@ -31,7 +31,10 @@ pub(super) fn equation(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Re
   });
 
   let source = view.source();
-  let body = view.body().map_or_else(Vec::new, |body_node| Evaluator::evaluate_math_body(source, body_node));
+  let body = match view.body() {
+    Some(body_node) => Evaluator::evaluate_math_body(source, body_node)?,
+    None => Vec::new(),
+  };
 
   return Ok(vec![DocNode::DisplayMath { body, label }]);
 }

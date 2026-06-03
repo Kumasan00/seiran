@@ -334,6 +334,11 @@ fn render_items(
         current_line_height = style.font_size * 1.2;
         line_break_seen = false;
       },
+      Item::Raise(dy) => {
+        // 正の dy は上方向（PDF 座標系では y を減少）に持ち上げる。
+        // 数式の上付き／下付き等で一時的にベースラインをずらすために使用する。
+        y -= dy;
+      },
       Item::Penalty(value) => {
         if *value == i32::MIN {
           start_new_page!();

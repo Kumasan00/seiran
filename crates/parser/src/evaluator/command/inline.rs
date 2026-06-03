@@ -44,7 +44,7 @@ pub(super) fn inline_wrapper(
     });
   }
 
-  let children = extract_inline_nodes(view.source(), first_arg);
+  let children = extract_inline_nodes(view.source(), first_arg)?;
   return Ok(vec![wrapper(children)]);
 }
 

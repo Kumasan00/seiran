@@ -48,7 +48,7 @@ pub(super) fn heading(
   }
 
   context.increment_heading(level);
-  let title = extract_inline_nodes(view.source(), first_arg);
+  let title = extract_inline_nodes(view.source(), first_arg)?;
   let number = HeadingNumber::from_context(level, context);
 
   return Ok(vec![DocNode::Heading {

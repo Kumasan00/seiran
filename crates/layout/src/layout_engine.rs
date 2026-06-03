@@ -36,6 +36,12 @@ pub enum Item {
   Kern(f32),
   /// 垂直カーン（固定高さの空白）
   Vkern(f32),
+  /// ベースラインオフセット
+  ///
+  /// 正の値で上方向（PDF 座標系では y を減少）、負の値で下方向にシフトします。
+  /// 数式の上付き・下付きで使用します。`Raise(d)` の後には対応する `Raise(-d)` が
+  /// 出力され、ベースラインが元に戻る前提です。
+  Raise(f32),
   /// ペナルティ（行分割 / ページ分割の制御）
   Penalty(i32),
 }
@@ -199,6 +205,12 @@ fn layout_engine_inner(
         let box_item = BoxItem::Rule { width, height };
         items.push(Item::Box(box_item));
       },
+      LayoutNode::Raise { dy, children } => {
+        // ベースラインを一時的にずらして子要素を描画し、終了後に戻す
+        items.push(Item::Raise(dy));
+        layout_engine_inner(children, shapers, buffer, items);
+        items.push(Item::Raise(-dy));
+      },
     }
   }
 }
@@ -318,6 +330,10 @@ fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextSegment> {
 /// 対応するフォント種別
 fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType {
   return match category {
+    // Serif/SerifItalic と Math は同じ FontType::JapaneseSerif に落ちるが、
+    // 前者は「和文に italic 概念がない」、後者は「Math フォントに和文グリフがない」ため
+    // のフォールバックで意図が異なる。arm を分けて意図を明示する。
+    #[allow(clippy::match_same_arms)]
     ScriptCategory::Japanese => match font_kind {
       FontKind::Serif | FontKind::SerifItalic => FontType::JapaneseSerif,
       FontKind::SerifBold | FontKind::SerifBoldItalic => FontType::JapaneseSerifBold,
@@ -325,7 +341,8 @@ fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType 
       FontKind::SansSerifBold | FontKind::SansSerifBoldItalic => FontType::JapaneseSansSerifBold,
       FontKind::Monospace | FontKind::MonospaceItalic => FontType::JapaneseMonospace,
       FontKind::MonospaceBold | FontKind::MonospaceBoldItalic => FontType::JapaneseMonospaceBold,
-      FontKind::Math => FontType::Math,
+      // 数式中の和文は Math フォントに含まれないため本文の和文セリフにフォールバックする
+      FontKind::Math => FontType::JapaneseSerif,
     },
     // 将来の言語対応用:
     // ScriptCategory::Korean => match font_kind { ... },
@@ -345,4 +362,35 @@ fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType 
       FontKind::Math => FontType::Math,
     },
   };
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{FontKind, FontType, ScriptCategory, resolve_font_type, split_text_by_script};
+
+  #[test]
+  fn resolve_font_type_math_japanese_falls_back_to_japanese_serif() {
+    // Math フォントには和文グリフが含まれないので、JapaneseSerif にフォールバックする
+    let resolved = resolve_font_type(FontKind::Math, ScriptCategory::Japanese);
+    assert_eq!(resolved, FontType::JapaneseSerif);
+  }
+
+  #[test]
+  fn resolve_font_type_math_latin_stays_math() {
+    // Latin スクリプトは Math フォントのまま描画する
+    let resolved = resolve_font_type(FontKind::Math, ScriptCategory::Latin);
+    assert_eq!(resolved, FontType::Math);
+  }
+
+  #[test]
+  fn split_text_by_script_math_splits_latin_and_japanese() {
+    // FontKind::Math の文字列に和文が混ざると、ラテン部分は FontType::Math、
+    // 和文部分は FontType::JapaneseSerif として別セグメントに分割される
+    let segments = split_text_by_script(FontKind::Math, "x速度+1");
+
+    let types: Vec<FontType> = segments.iter().map(|s| s.font_type).collect();
+    let texts: Vec<&str> = segments.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(texts, vec!["x", "速度", "+1"], "スクリプトごとに分割されるはず: {segments:?}");
+    assert_eq!(types, vec![FontType::Math, FontType::JapaneseSerif, FontType::Math]);
+  }
 }

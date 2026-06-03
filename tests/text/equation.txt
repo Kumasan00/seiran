@@ -9,3 +9,20 @@ a^2 + b^2 = c^2
 \begin{equation}[label=eq:euler]
 e^{i \pi} + 1 = 0
 \end{equation}
+
+\section{数式フォントスタイル切替}
+
+デフォルトでは変数（ASCII 英字）が Mathematical Italic に変換される。
+明示スタイルコマンドで太字・サンセリフ・等幅などへ切り替えられる。
+
+\begin{equation}
+\mathbold{F} = m \mathbold{a}
+\end{equation}
+
+\begin{equation}
+\mathsansbolditalic{\alpha} + \mathmono{code} + \mathserif{const} = \mathitalic{h}
+\end{equation}
+
+\begin{equation}
+\mathbold{x12} + \mathsans{S} + \mathbolditalic{\beta}
+\end{equation}
