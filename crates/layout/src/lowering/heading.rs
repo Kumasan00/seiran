@@ -5,9 +5,8 @@
 
 use parser::document::{HeadingLevel, HeadingNumber, InlineNode};
 use read_style::Style as ReadStyle;
-use types::FontKind;
 
-use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
+use super::{LoweringContext, LoweringError, font_kind_from_config, inline::inline_nodes_to_plain_text};
 use crate::layout_node::{LayoutNode, Style};
 
 /// 見出しレベルに対応する `read_style::HeadingStyle` を返す
@@ -53,7 +52,7 @@ pub(super) fn lower_heading(
   let heading_style = heading_style_for(ctx.style, level);
   let style = Style {
     font_size: heading_style.font_size,
-    font_kind: FontKind::SerifBold,
+    font_kind: font_kind_from_config(heading_style.font_kind),
   };
 
   // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する

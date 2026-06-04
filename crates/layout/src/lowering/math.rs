@@ -6,6 +6,7 @@
 //! 字形バリアントを直接呼び出します。
 
 use parser::document::{MathNode, MathStyle};
+use read_style::MathLayoutStyle;
 use types::FontKind;
 
 use self::math_alphanumeric::translate_math_char;
@@ -14,12 +15,10 @@ use crate::layout_node::{LayoutNode, Style};
 
 mod math_alphanumeric;
 
-/// 上付きスクリプトのフォントサイズ倍率（親フォントサイズに対する比）
-const SCRIPT_SIZE_FACTOR: f32 = 0.7;
-/// 上付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で上方向）
-const SUPERSCRIPT_RAISE_FACTOR: f32 = 0.4;
-/// 下付きスクリプトのベースラインシフト（親フォントサイズに対する比、正で下方向）
-const SUBSCRIPT_DROP_FACTOR: f32 = 0.2;
+/// スクリプト（上付き / 下付き）のフォントサイズを計算する
+fn script_font_size(font_size: f32, math_style: &MathLayoutStyle) -> f32 {
+  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
+}
 
 /// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する
 ///
@@ -30,7 +29,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode]) -> Ve
   let font_size = ctx.default_font_size();
   let mut result = Vec::new();
   result.push(LayoutNode::LineBreak);
-  result.extend(lower_inline_math(body, font_size));
+  result.extend(lower_inline_math(body, font_size, &ctx.style.math));
   result.push(LayoutNode::LineBreak);
   return result;
 }
@@ -42,11 +41,15 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode]) -> Ve
 /// 数式フォントが持つ字形バリアントを直接呼び出す。デフォルト（スタイル指定なし）では
 /// ASCII 英字のみ Mathematical Italic 化し、変数を italic で描画する。
 /// 上付き・下付きは [`LayoutNode::Raise`] で縦シフトしつつ、フォントサイズを
-/// [`SCRIPT_SIZE_FACTOR`] 倍に縮小して描画する。
-pub(super) fn lower_inline_math(math_nodes: &[MathNode], base_font_size: f32) -> Vec<LayoutNode> {
+/// [`MathLayoutStyle::script_size_factor`] 倍に縮小して描画する。
+pub(super) fn lower_inline_math(
+  math_nodes: &[MathNode],
+  base_font_size: f32,
+  math_style: &MathLayoutStyle,
+) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for node in math_nodes {
-    result.extend(lower_math_node(node, base_font_size, None));
+    result.extend(lower_math_node(node, base_font_size, None, math_style));
   }
   return result;
 }
@@ -57,7 +60,12 @@ pub(super) fn lower_inline_math(math_nodes: &[MathNode], base_font_size: f32) ->
 /// `None` のときはデフォルト挙動（ASCII 英字のみ italic 化）。`Some(_)` のときは
 /// ASCII 英字・数字・Greek を該当スタイルへコードポイント変換する。
 /// `Styled` バリアントは内側の `style` で完全上書きする（ネストは内側優先）。
-fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) -> Vec<LayoutNode> {
+fn lower_math_node(
+  node: &MathNode,
+  font_size: f32,
+  style: Option<MathStyle>,
+  math_style: &MathLayoutStyle,
+) -> Vec<LayoutNode> {
   match node {
     MathNode::Text(s) => {
       return lower_math_text(s, font_size, style);
@@ -73,23 +81,23 @@ fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) ->
     MathNode::Group(children) => {
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_math_node(child, font_size, style));
+        result.extend(lower_math_node(child, font_size, style, math_style));
       }
       return result;
     },
     MathNode::Superscript(inner) => {
-      let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
-      let children = lower_math_node(inner.as_ref(), script_size, style);
+      let script_size = script_font_size(font_size, math_style);
+      let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
       return vec![LayoutNode::Raise {
-        dy: font_size * SUPERSCRIPT_RAISE_FACTOR,
+        dy: font_size * math_style.superscript_raise_factor,
         children,
       }];
     },
     MathNode::Subscript(inner) => {
-      let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
-      let children = lower_math_node(inner.as_ref(), script_size, style);
+      let script_size = script_font_size(font_size, math_style);
+      let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
       return vec![LayoutNode::Raise {
-        dy: -font_size * SUBSCRIPT_DROP_FACTOR,
+        dy: -font_size * math_style.subscript_drop_factor,
         children,
       }];
     },
@@ -100,9 +108,9 @@ fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) ->
         font_kind: FontKind::Math,
       };
       let mut result = Vec::new();
-      result.extend(lower_math_node(numer.as_ref(), font_size, style));
+      result.extend(lower_math_node(numer.as_ref(), font_size, style, math_style));
       result.push(LayoutNode::Text("/".to_string(), slash_style));
-      result.extend(lower_math_node(denom.as_ref(), font_size, style));
+      result.extend(lower_math_node(denom.as_ref(), font_size, style, math_style));
       return result;
     },
     MathNode::Sqrt { index, radicand } => {
@@ -112,15 +120,15 @@ fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) ->
       };
       let mut result = Vec::new();
       if let Some(idx) = index {
-        let script_size = (font_size * SCRIPT_SIZE_FACTOR).max(6.0);
-        let idx_children = lower_math_node(idx.as_ref(), script_size, style);
+        let script_size = script_font_size(font_size, math_style);
+        let idx_children = lower_math_node(idx.as_ref(), script_size, style, math_style);
         result.push(LayoutNode::Raise {
-          dy: font_size * SUPERSCRIPT_RAISE_FACTOR,
+          dy: font_size * math_style.superscript_raise_factor,
           children: idx_children,
         });
       }
       result.push(LayoutNode::Text("√".to_string(), upright_style));
-      result.extend(lower_math_node(radicand.as_ref(), font_size, style));
+      result.extend(lower_math_node(radicand.as_ref(), font_size, style, math_style));
       return result;
     },
     MathNode::Command { name, args } => {
@@ -134,7 +142,7 @@ fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) ->
       for arg in args {
         result.push(LayoutNode::Text("{".to_string(), literal_style));
         for child in arg {
-          result.extend(lower_math_node(child, font_size, style));
+          result.extend(lower_math_node(child, font_size, style, math_style));
         }
         result.push(LayoutNode::Text("}".to_string(), literal_style));
       }
@@ -146,7 +154,7 @@ fn lower_math_node(node: &MathNode, font_size: f32, style: Option<MathStyle>) ->
     } => {
       let mut result = Vec::new();
       for child in body {
-        result.extend(lower_math_node(child, font_size, Some(*inner_style)));
+        result.extend(lower_math_node(child, font_size, Some(*inner_style), math_style));
       }
       return result;
     },
@@ -178,6 +186,9 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// テストで共通使用する `MathLayoutStyle` のデフォルトインスタンス
+  fn default_math_style() -> MathLayoutStyle { return MathLayoutStyle::default(); }
 
   #[test]
   fn lower_math_text_italicizes_ascii_letters_by_default() {
@@ -226,7 +237,7 @@ mod tests {
     let node = MathNode::Superscript(Box::new(MathNode::Text("2".to_string())));
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -251,7 +262,7 @@ mod tests {
     let node = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -269,7 +280,7 @@ mod tests {
     let node = MathNode::Symbol('α');
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -291,7 +302,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert: 何らかの Text に "/" が含まれていること
     let has_slash = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "/"));
@@ -307,7 +318,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert: √ を含む Text ノードが存在し、後ろに変数 x の italic Text が続く
     let has_radical = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "√"));
@@ -317,7 +328,7 @@ mod tests {
   #[test]
   fn lower_math_alignment_mark_is_ignored_inline() {
     // インライン数式に紛れ込んだ AlignmentMark は空のノード列を返す
-    let result = lower_math_node(&MathNode::AlignmentMark, 12.0, None);
+    let result = lower_math_node(&MathNode::AlignmentMark, 12.0, None, &default_math_style());
     assert!(result.is_empty(), "AlignmentMark は無視されるべき: {result:?}");
   }
 
@@ -330,7 +341,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert — 連結すると "𝐱𝟏𝟐" + "𝛂"
     let texts: String = result
@@ -355,7 +366,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None);
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
 
     // Assert — bold a (U+1D41A) と bold b (U+1D41B) が含まれる
     let has_bold_a = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "\u{1D41A}"));

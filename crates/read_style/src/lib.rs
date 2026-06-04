@@ -8,9 +8,13 @@ mod counter;
 mod equation;
 mod error;
 mod figure;
+mod font_kind;
 mod footnote;
 mod heading;
 mod hyperref;
+mod list;
+mod math_layout;
+mod paragraph;
 mod reference;
 mod style;
 mod table;
@@ -31,9 +35,13 @@ pub use crate::{
   equation::{Alignment, EquationStyle, NumberSide},
   error::{ParseTomlError, ReadStyleError, ValidationError},
   figure::{CaptionPosition, FigureStyle},
+  font_kind::FontKindConfig,
   footnote::FootnoteStyle,
   heading::HeadingStyle,
   hyperref::HyperrefStyle,
+  list::ListStyle,
+  math_layout::MathLayoutStyle,
+  paragraph::ParagraphStyle,
   reference::ReferenceStyle,
   style::Style,
   table::TableStyle,

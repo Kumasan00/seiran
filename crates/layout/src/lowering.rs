@@ -26,7 +26,7 @@
 
 use miette::Diagnostic;
 use parser::document::{DocNode, Document};
-use read_style::Style as ReadStyle;
+use read_style::{FontKindConfig, Style as ReadStyle};
 use thiserror::Error;
 use types::FontKind;
 
@@ -37,6 +37,32 @@ mod inline;
 mod list;
 mod math;
 mod paragraph;
+
+/// `read_style::FontKindConfig`（TOML 入口の論理 13 種）を `types::FontKind`（同 13 種）に変換する。
+///
+/// 和文・欧文の物理切替（19 種の `types::FontType`）は後段の
+/// `layout_engine::resolve_font_type` が文字スクリプトに基づいて行うため、
+/// ここでは 1 対 1 のマッピングのみ。`From` 実装ではなく関数として提供しているのは、
+/// `FontKindConfig` は `read_style` クレート、`FontKind` は `types` クレートに属し、
+/// `layout` 側では孤児ルール（orphan rule）により `From` を実装できないため。
+#[must_use]
+pub(crate) fn font_kind_from_config(config: FontKindConfig) -> FontKind {
+  return match config {
+    FontKindConfig::Serif => FontKind::Serif,
+    FontKindConfig::SerifBold => FontKind::SerifBold,
+    FontKindConfig::SerifItalic => FontKind::SerifItalic,
+    FontKindConfig::SerifBoldItalic => FontKind::SerifBoldItalic,
+    FontKindConfig::SansSerif => FontKind::SansSerif,
+    FontKindConfig::SansSerifBold => FontKind::SansSerifBold,
+    FontKindConfig::SansSerifItalic => FontKind::SansSerifItalic,
+    FontKindConfig::SansSerifBoldItalic => FontKind::SansSerifBoldItalic,
+    FontKindConfig::Monospace => FontKind::Monospace,
+    FontKindConfig::MonospaceBold => FontKind::MonospaceBold,
+    FontKindConfig::MonospaceItalic => FontKind::MonospaceItalic,
+    FontKindConfig::MonospaceBoldItalic => FontKind::MonospaceBoldItalic,
+    FontKindConfig::Math => FontKind::Math,
+  };
+}
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
 ///

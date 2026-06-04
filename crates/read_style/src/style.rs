@@ -6,8 +6,8 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  CounterStyle, EquationStyle, FigureStyle, FootnoteStyle, HeadingStyle, HyperrefStyle, ReferenceStyle, TableStyle,
-  TocStyle, counter::default_counters,
+  CounterStyle, EquationStyle, FigureStyle, FootnoteStyle, HeadingStyle, HyperrefStyle, ListStyle, MathLayoutStyle,
+  ParagraphStyle, ReferenceStyle, TableStyle, TocStyle, counter,
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -54,6 +54,17 @@ pub struct Style {
   pub counters: HashMap<String, CounterStyle>,
   #[garde(dive)]
   pub reference: ReferenceStyle,
+  /// リスト要素のスタイル設定（インデント・マーカー等）
+  #[garde(dive)]
+  pub list: ListStyle,
+  /// 本文段落のスタイル設定。
+  ///
+  /// 見出しレベルの `paragraph`（[`HeadingStyle`]）と衝突しないようフィールド名は `body` とする。
+  #[garde(dive)]
+  pub body: ParagraphStyle,
+  /// 数式レイアウト（上付き / 下付きスクリプトのサイズ・位置）のスタイル設定
+  #[garde(dive)]
+  pub math: MathLayoutStyle,
 }
 
 impl Default for Style {
@@ -73,6 +84,7 @@ impl Default for Style {
         bottom_margin: 20.0,
         page_break_before: true,
         page_break_after: true,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       chapter: HeadingStyle {
         format: "Chapter {number}: {title}".to_string(),
@@ -80,6 +92,7 @@ impl Default for Style {
         bottom_margin: 15.0,
         page_break_before: true,
         page_break_after: false,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       section: HeadingStyle {
         format: "{number} {title}".to_string(),
@@ -87,6 +100,7 @@ impl Default for Style {
         bottom_margin: 10.0,
         page_break_before: false,
         page_break_after: false,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       subsection: HeadingStyle {
         format: "{number} {title}".to_string(),
@@ -94,6 +108,7 @@ impl Default for Style {
         bottom_margin: 10.0,
         page_break_before: false,
         page_break_after: false,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       paragraph: HeadingStyle {
         format: "{number} {title}".to_string(),
@@ -101,6 +116,7 @@ impl Default for Style {
         bottom_margin: 5.0,
         page_break_before: false,
         page_break_after: false,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       subparagraph: HeadingStyle {
         format: "{number} {title}".to_string(),
@@ -108,6 +124,7 @@ impl Default for Style {
         bottom_margin: 5.0,
         page_break_before: false,
         page_break_after: false,
+        font_kind: crate::FontKindConfig::SerifBold,
       },
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
@@ -115,8 +132,11 @@ impl Default for Style {
       footnote: FootnoteStyle::default(),
       toc: TocStyle::default(),
       hyperref: HyperrefStyle::default(),
-      counters: default_counters(),
+      counters: counter::default_counters(),
       reference: ReferenceStyle::default(),
+      list: ListStyle::default(),
+      body: ParagraphStyle::default(),
+      math: MathLayoutStyle::default(),
     };
   }
 }

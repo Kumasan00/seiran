@@ -15,9 +15,8 @@ use crate::layout_node::{LayoutNode, Style};
 ///
 /// - [ ] Emphasis / Strong のネスト対応（イタリック内の強調 → ボールドイタリック等）
 /// - [ ] スタイルスタック方式に変更して、任意深さのネストに対応する
-#[allow(clippy::used_underscore_binding)]
 pub(super) fn lower_inline(
-  _ctx: &LoweringContext,
+  ctx: &LoweringContext,
   inline: &InlineNode,
   parent_style: Style,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -33,7 +32,7 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, italic_style)?);
+        result.extend(lower_inline(ctx, child, italic_style)?);
       }
       return Ok(result);
     },
@@ -44,7 +43,7 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, bold_style)?);
+        result.extend(lower_inline(ctx, child, bold_style)?);
       }
       return Ok(result);
     },
@@ -55,7 +54,7 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, mono_style)?);
+        result.extend(lower_inline(ctx, child, mono_style)?);
       }
       return Ok(result);
     },
@@ -66,12 +65,12 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(_ctx, child, sans_style)?);
+        result.extend(lower_inline(ctx, child, sans_style)?);
       }
       return Ok(result);
     },
     InlineNode::InlineMath(math_nodes) => {
-      return Ok(lower_inline_math(math_nodes, parent_style.font_size));
+      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math));
     },
     InlineNode::Symbol(ch) => {
       return Ok(vec![LayoutNode::Text(ch.to_string(), parent_style)]);

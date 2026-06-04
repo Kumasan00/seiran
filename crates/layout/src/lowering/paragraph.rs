@@ -4,9 +4,8 @@
 //! レイアウトノードに変換します。段落間にはデフォルトのスペースを挿入します。
 
 use parser::document::InlineNode;
-use types::FontKind;
 
-use super::{LoweringContext, LoweringError, inline::lower_inline};
+use super::{LoweringContext, LoweringError, font_kind_from_config, inline::lower_inline};
 use crate::layout_node::{LayoutNode, Style};
 
 /// 段落をレイアウトノードに変換する
@@ -15,12 +14,11 @@ use crate::layout_node::{LayoutNode, Style};
 ///
 /// - [ ] インライン要素のスタイル変更（Emphasis → Italic 等）を反映する
 /// - [ ] 段落先頭のインデント（字下げ）を追加する
-/// - [ ] 段落間スペースをスタイル設定で定義可能にする
 /// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = Style {
     font_size: ctx.default_font_size(),
-    font_kind: FontKind::Serif,
+    font_kind: font_kind_from_config(ctx.style.body.font_kind),
   };
 
   let mut result = Vec::new();
@@ -30,11 +28,10 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
   }
 
   // 段落末に改行 + カーンを追加（段落間スペース）
-  // TODO: 段落間スペースをスタイル設定で制御する
+  // `inter_paragraph_spacing` が未指定なら本文フォントサイズ分のスペースを入れる既存挙動を維持する
+  let spacing = ctx.style.body.inter_paragraph_spacing.unwrap_or(ctx.default_font_size());
   result.push(LayoutNode::LineBreak);
-  result.push(LayoutNode::Kern {
-    point: ctx.default_font_size(),
-  });
+  result.push(LayoutNode::Kern { point: spacing });
 
   return Ok(result);
 }

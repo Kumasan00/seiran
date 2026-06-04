@@ -3,6 +3,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use crate::FontKindConfig;
+
 /// 見出し要素のスタイル設定
 #[derive(Debug, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
@@ -21,13 +23,22 @@ pub struct HeadingStyle {
   pub page_break_before: bool,
   /// 見出しの直後で改ページするか
   pub page_break_after: bool,
+  /// 見出しテキストのフォント種別。
+  ///
+  /// 未指定時のデフォルトは [`FontKindConfig::SerifBold`]（`crates/layout/src/lowering/heading.rs`
+  /// の現行ハードコード値と一致）。
+  #[serde(default = "default_font_kind")]
+  pub font_kind: FontKindConfig,
 }
+
+/// `font_kind` のデフォルト（`#[serde(default = ...)]` 用）
+fn default_font_kind() -> FontKindConfig { return FontKindConfig::SerifBold; }
 
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
-  use super::HeadingStyle;
+  use super::{FontKindConfig, HeadingStyle};
 
   /// 妥当な [`HeadingStyle`] を返すテストヘルパー
   fn valid_heading() -> HeadingStyle {
@@ -37,6 +48,7 @@ mod tests {
       bottom_margin: 10.0,
       page_break_before: false,
       page_break_after: false,
+      font_kind: FontKindConfig::SerifBold,
     };
   }
 
@@ -97,5 +109,15 @@ mod tests {
 
     // Act / Assert
     assert!(heading.validate().is_err());
+  }
+
+  #[test]
+  fn validate_accepts_alternative_font_kind() {
+    // Arrange: font_kind を非デフォルトの値に変更してもバリデーションは通る
+    let mut heading = valid_heading();
+    heading.font_kind = FontKindConfig::SansSerifBold;
+
+    // Act / Assert
+    assert!(heading.validate().is_ok());
   }
 }
