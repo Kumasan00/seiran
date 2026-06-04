@@ -6,7 +6,7 @@
 //! 字形バリアントを直接呼び出します。
 
 use parser::document::{MathNode, MathStyle};
-use read_style::MathStyle as MathStyleConfig;
+use read_style::MathScriptStyle as MathStyleConfig;
 use types::FontKind;
 
 use self::math_alphanumeric::translate_math_char;
@@ -17,7 +17,7 @@ mod math_alphanumeric;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
-  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
+  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size.to_pt());
 }
 
 /// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する

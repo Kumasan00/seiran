@@ -81,9 +81,9 @@ impl<'a> LoweringContext<'a> {
   #[must_use]
   pub fn new(style: &'a ReadStyle) -> Self { return LoweringContext { style }; }
 
-  /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を返すヘルパー
+  /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
-  pub fn default_font_size(&self) -> f32 { return self.style.font_size; }
+  pub fn default_font_size(&self) -> f32 { return self.style.font_size.to_pt(); }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）

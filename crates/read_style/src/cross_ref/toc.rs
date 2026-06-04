@@ -3,6 +3,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use crate::common::length::{Length, non_negative, positive};
+
 /// 目次のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
@@ -16,12 +18,12 @@ pub struct TocStyle {
   /// `types::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
   #[garde(range(min = 1, max = 6))]
   pub max_depth: u32,
-  /// 目次エントリのフォントサイズ（pt）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
+  /// 目次エントリのフォントサイズ
+  #[garde(custom(positive))]
+  pub font_size: Length,
   /// 目次ブロックの下余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
+  #[garde(custom(non_negative))]
+  pub bottom_margin: Length,
   /// ページ番号を表示するか
   pub show_page_numbers: bool,
 }
@@ -31,8 +33,8 @@ impl Default for TocStyle {
     return Self {
       title: "Contents".to_string(),
       max_depth: 3,
-      font_size: 12.0,
-      bottom_margin: 10.0,
+      font_size: Length::pt(12.0),
+      bottom_margin: Length::pt(10.0),
       show_page_numbers: true,
     };
   }

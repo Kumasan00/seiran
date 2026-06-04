@@ -3,6 +3,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use crate::common::length::{Length, non_negative};
+
 /// ディスプレイ数式のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
@@ -16,11 +18,11 @@ pub struct EquationStyle {
   /// 数式本体の揃え
   pub alignment: Alignment,
   /// 数式ブロックの上余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub top_margin: f32,
+  #[garde(custom(non_negative))]
+  pub top_margin: Length,
   /// 数式ブロックの下余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
+  #[garde(custom(non_negative))]
+  pub bottom_margin: Length,
 }
 
 impl Default for EquationStyle {
@@ -29,8 +31,8 @@ impl Default for EquationStyle {
       number_format: "({number})".to_string(),
       number_side: NumberSide::Right,
       alignment: Alignment::Center,
-      top_margin: 8.0,
-      bottom_margin: 8.0,
+      top_margin: Length::pt(8.0),
+      bottom_margin: Length::pt(8.0),
     };
   }
 }

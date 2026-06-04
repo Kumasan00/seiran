@@ -7,18 +7,20 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::FontKind;
 
+use crate::common::length::{Length, non_negative};
+
 /// 本文段落のスタイル設定
 ///
-/// `paragraph_spacing` は段落末に挿入するスペース（pt）。
+/// `paragraph_spacing` は段落末に挿入するスペース。
 /// 旧 `inter_paragraph_spacing: Option<f32>` の `None`（未指定 → `font_size`）挙動を廃止し、
 /// 明示的な既定値（12.0pt）を使う。サイズを動的に追従させたければ呼び出し側で計算する。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct TextBlockStyle {
-  /// 段落末に挿入するスペース（pt）
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub paragraph_spacing: f32,
+  /// 段落末に挿入するスペース
+  #[garde(custom(non_negative))]
+  pub paragraph_spacing: Length,
   /// 段落本文のフォント種別
   pub font_kind: FontKind,
 }
@@ -26,7 +28,7 @@ pub struct TextBlockStyle {
 impl Default for TextBlockStyle {
   fn default() -> Self {
     return Self {
-      paragraph_spacing: 12.0,
+      paragraph_spacing: Length::pt(12.0),
       font_kind: FontKind::Serif,
     };
   }
@@ -38,6 +40,7 @@ mod tests {
   use types::FontKind;
 
   use super::TextBlockStyle;
+  use crate::common::length::Length;
 
   #[test]
   fn validate_accepts_default() {
@@ -51,7 +54,7 @@ mod tests {
     let style = TextBlockStyle::default();
 
     // Assert
-    assert!((style.paragraph_spacing - 12.0).abs() < f32::EPSILON);
+    assert!((style.paragraph_spacing.to_pt() - 12.0).abs() < f32::EPSILON);
     assert_eq!(style.font_kind, FontKind::Serif);
   }
 
@@ -59,7 +62,7 @@ mod tests {
   fn validate_accepts_zero_paragraph_spacing() {
     // Arrange
     let style = TextBlockStyle {
-      paragraph_spacing: 0.0,
+      paragraph_spacing: Length::pt(0.0),
       ..TextBlockStyle::default()
     };
 
@@ -71,7 +74,7 @@ mod tests {
   fn validate_rejects_negative_paragraph_spacing() {
     // Arrange
     let style = TextBlockStyle {
-      paragraph_spacing: -1.0,
+      paragraph_spacing: Length::pt(-1.0),
       ..TextBlockStyle::default()
     };
 

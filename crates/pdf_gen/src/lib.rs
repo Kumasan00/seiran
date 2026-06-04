@@ -260,7 +260,7 @@ fn render_items(
   let mut x = config.pdf.margin.left;
   let mut y = config.pdf.margin.top;
   let page_limit = config.pdf.height - config.pdf.margin.bottom;
-  let mut current_line_height = style.font_size * style.line_height_factor;
+  let mut current_line_height = style.font_size.to_pt() * style.line_height_factor;
   let mut line_break_seen = false;
   macro_rules! start_new_page {
     () => {{
@@ -271,7 +271,7 @@ fn render_items(
       draw_page_background(&mut surface, config, style)?;
       x = config.pdf.margin.left;
       y = config.pdf.margin.top;
-      current_line_height = style.font_size * style.line_height_factor;
+      current_line_height = style.font_size.to_pt() * style.line_height_factor;
       line_break_seen = false;
     }};
   }
@@ -312,7 +312,7 @@ fn render_items(
           surface.draw_path(&path);
           x = config.pdf.margin.left;
           y += *height;
-          current_line_height = style.font_size * style.line_height_factor;
+          current_line_height = style.font_size.to_pt() * style.line_height_factor;
           line_break_seen = false;
         },
       },
@@ -331,7 +331,7 @@ fn render_items(
       Item::Vkern(value) => {
         y += value;
         x = config.pdf.margin.left;
-        current_line_height = style.font_size * 1.2;
+        current_line_height = style.font_size.to_pt() * 1.2;
         line_break_seen = false;
       },
       Item::Raise(dy) => {
@@ -348,7 +348,7 @@ fn render_items(
             start_new_page!();
           } else {
             x = config.pdf.margin.left;
-            current_line_height = style.font_size * 1.2;
+            current_line_height = style.font_size.to_pt() * 1.2;
             line_break_seen = true;
           }
         }

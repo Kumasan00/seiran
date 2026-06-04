@@ -11,32 +11,28 @@ use crate::{
   block::{
     heading::{HeadingStyle, default_per_level, deserialize_per_level},
     list::ListStyle,
-    math::MathStyle,
+    math::MathScriptStyle,
     text::TextBlockStyle,
   },
-  cross_ref::{
-    counter::{self, CounterStyle},
-    hyperref::HyperrefStyle,
-    reference::ReferenceStyle,
-    toc::TocStyle,
+  common::{
+    counter::{self, CounterEntry},
+    length::{Length, positive},
+    per_level::PerLevel,
   },
-  float::{equation::EquationStyle, figure::FigureStyle, footnote::FootnoteStyle, table::TableStyle},
-  per_level::PerLevel,
+  extended::ExtendedStyle,
+  float::table::TableStyle,
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct Style {
-  /// 本文の既定フォントサイズ（pt）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
+  /// 本文の既定フォントサイズ
+  #[garde(custom(positive))]
+  pub font_size: Length,
   /// 行高（フォントサイズに対する倍率）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub line_height_factor: f32,
-  /// 本文テキスト色。`None` は黒
-  #[garde(skip)]
-  pub text_color: Option<Color>,
   /// 背景色。`None` は背景描画なし
   #[garde(skip)]
   pub background_color: Option<Color>,
@@ -55,53 +51,34 @@ pub struct Style {
   pub list: ListStyle,
   /// 数式レイアウトのスタイル
   #[garde(dive)]
-  pub math: MathStyle,
-  /// 図フロートのスタイル
-  #[garde(dive)]
-  pub figure: FigureStyle,
-  /// ディスプレイ数式のスタイル
-  #[garde(dive)]
-  pub equation: EquationStyle,
+  pub math: MathScriptStyle,
   /// 表のスタイル
   #[garde(dive)]
   pub table: TableStyle,
-  /// 脚注のスタイル
-  #[garde(dive)]
-  pub footnote: FootnoteStyle,
-  /// 目次のスタイル
-  #[garde(dive)]
-  pub toc: TocStyle,
-  /// ハイパーリンクのスタイル
-  #[garde(dive)]
-  pub hyperref: HyperrefStyle,
-  /// 参考文献セクションのスタイル
-  #[garde(dive)]
-  pub reference: ReferenceStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`）。
   /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
+  /// 値は [`CounterEntry`] で「カウンタ定義」「別名」を排他的に表す。
   #[garde(dive)]
-  pub counters: HashMap<String, CounterStyle>,
+  pub counters: HashMap<String, CounterEntry>,
+  /// 現状 `lowering/pdf_gen` 未参照のスタイル群（figure / equation / footnote / toc /
+  /// hyperref / reference）。資産として保持し、TOML 上では `[extended.*]` 配下に書く。
+  #[garde(dive)]
+  pub extended: ExtendedStyle,
 }
 
 impl Default for Style {
   fn default() -> Self {
     return Self {
-      font_size: 12.0,
+      font_size: Length::pt(12.0),
       line_height_factor: 1.2,
-      text_color: None,
       background_color: None,
       heading: default_per_level(),
       text: TextBlockStyle::default(),
       list: ListStyle::default(),
-      math: MathStyle::default(),
-      figure: FigureStyle::default(),
-      equation: EquationStyle::default(),
+      math: MathScriptStyle::default(),
       table: TableStyle::default(),
-      footnote: FootnoteStyle::default(),
-      toc: TocStyle::default(),
-      hyperref: HyperrefStyle::default(),
-      reference: ReferenceStyle::default(),
       counters: counter::default_counters(),
+      extended: ExtendedStyle::default(),
     };
   }
 }
@@ -114,9 +91,12 @@ impl Style {
   #[must_use]
   pub fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
 
-  /// 指定された名前のカウンタ定義への不変参照を返す
+  /// 指定された名前のカウンタエントリ（定義または別名）への不変参照を返す。
+  ///
+  /// 別名解決（[`CounterEntry::Alias`](crate::CounterEntry::Alias) を辿って canonical な定義に
+  /// 到達する）は呼び出し側の責任。
   #[must_use]
-  pub fn counter(&self, name: &str) -> Option<&CounterStyle> { return self.counters.get(name); }
+  pub fn counter(&self, name: &str) -> Option<&CounterEntry> { return self.counters.get(name); }
 }
 
 #[cfg(test)]
@@ -125,7 +105,7 @@ mod tests {
   use types::HeadingLevel;
 
   use super::Style;
-  use crate::Color;
+  use crate::{Color, common::length::Length};
 
   #[test]
   fn validate_accepts_default() {
@@ -135,7 +115,7 @@ mod tests {
   #[test]
   fn validate_rejects_zero_font_size() {
     let style = Style {
-      font_size: 0.0,
+      font_size: Length::pt(0.0),
       ..Style::default()
     };
     assert!(style.validate().is_err());
@@ -164,24 +144,24 @@ mod tests {
   }
 
   #[test]
-  fn default_color_fields_are_none() {
+  fn default_background_color_is_none() {
     let style = Style::default();
-    assert!(style.text_color.is_none());
     assert!(style.background_color.is_none());
   }
 
   #[test]
   fn validate_dives_into_nested_table_rule_thickness() {
     let mut style = Style::default();
-    style.table.rule_thickness = -0.1;
+    style.table.rule_thickness = Length::pt(-0.1);
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_dives_into_counters_display_name() {
+    use crate::common::counter::CounterEntry;
     let mut style = Style::default();
-    if let Some(counter) = style.counters.get_mut("figure") {
-      counter.display_name = String::new();
+    if let Some(CounterEntry::Counter(def)) = style.counters.get_mut("figure") {
+      def.display_name = String::new();
     }
     assert!(style.validate().is_err());
   }

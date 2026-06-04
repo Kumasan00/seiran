@@ -35,7 +35,7 @@ pub(super) fn lower_list(
     // インデント + マーカー + 内容
     let mut item_nodes = Vec::new();
     item_nodes.push(LayoutNode::Kern {
-      point: list_style.indent,
+      point: list_style.indent.to_pt(),
     });
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
@@ -45,7 +45,7 @@ pub(super) fn lower_list(
 
     result.push(LayoutNode::VBox {
       children: item_nodes,
-      margin_bottom: list_style.item_margin_bottom,
+      margin_bottom: list_style.item_margin_bottom.to_pt(),
     });
   }
 

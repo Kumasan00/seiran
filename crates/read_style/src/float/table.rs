@@ -3,31 +3,33 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::Color;
-pub use crate::float::figure::CaptionPosition;
+use crate::{
+  Color,
+  common::{
+    caption::{CaptionPosition, CaptionStyle},
+    length::{Length, non_negative},
+  },
+};
 
 /// 表のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct TableStyle {
-  /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1))]
-  pub caption_format: String,
+  /// キャプション本体（書式テンプレートとフォントサイズ）
+  #[garde(dive)]
+  pub caption: CaptionStyle,
   /// キャプションを表本体の上下どちらに配置するか
   pub caption_position: CaptionPosition,
-  /// キャプションのフォントサイズ（pt）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub caption_font_size: f32,
   /// 表ブロックの上余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub top_margin: f32,
+  #[garde(custom(non_negative))]
+  pub top_margin: Length,
   /// 表ブロックの下余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
-  /// 罫線の太さ（pt）
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub rule_thickness: f32,
+  #[garde(custom(non_negative))]
+  pub bottom_margin: Length,
+  /// 罫線の太さ
+  #[garde(custom(non_negative))]
+  pub rule_thickness: Length,
   /// 罫線色。`None` は黒
   pub rule_color: Option<Color>,
 }
@@ -35,12 +37,14 @@ pub struct TableStyle {
 impl Default for TableStyle {
   fn default() -> Self {
     return Self {
-      caption_format: "Table {number}: {title}".to_string(),
+      caption: CaptionStyle {
+        format: "Table {number}: {title}".to_string(),
+        font_size: Length::pt(11.0),
+      },
       caption_position: CaptionPosition::Top,
-      caption_font_size: 11.0,
-      top_margin: 12.0,
-      bottom_margin: 12.0,
-      rule_thickness: 0.5,
+      top_margin: Length::pt(12.0),
+      bottom_margin: Length::pt(12.0),
+      rule_thickness: Length::pt(0.5),
       rule_color: None,
     };
   }
@@ -50,7 +54,8 @@ impl Default for TableStyle {
 mod tests {
   use garde::Validate;
 
-  use super::{CaptionPosition, TableStyle};
+  use super::TableStyle;
+  use crate::common::{caption::CaptionPosition, length::Length};
 
   #[test]
   fn validate_accepts_default() {
@@ -65,7 +70,7 @@ mod tests {
   #[test]
   fn validate_rejects_negative_rule_thickness() {
     let style = TableStyle {
-      rule_thickness: -0.1,
+      rule_thickness: Length::pt(-0.1),
       ..TableStyle::default()
     };
     assert!(style.validate().is_err());

@@ -1,0 +1,65 @@
+//! 拡張スタイル設定（[`ExtendedStyle`]）。
+//!
+//! 図・数式・脚注・目次・ハイパーリンク・参考文献といった、現状は [`crate::layout`] /
+//! [`crate::pdf_gen`] 側で参照されていない（実装が追いついていない）スタイル設定を
+//! トップレベル [`crate::Style`] から分離して保持する。
+//!
+//! 利用側からは `style.extended.figure` のように経由してアクセスする。
+//! TOML では `[extended.figure]` / `[extended.equation]` / … の各テーブルにマップされる。
+
+use garde::Validate;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+  cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
+  float::{equation::EquationStyle, figure::FigureStyle, footnote::FootnoteStyle},
+};
+
+/// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields, default)]
+pub struct ExtendedStyle {
+  /// 図フロートのスタイル
+  #[garde(dive)]
+  pub figure: FigureStyle,
+  /// ディスプレイ数式のスタイル
+  #[garde(dive)]
+  pub equation: EquationStyle,
+  /// 脚注のスタイル
+  #[garde(dive)]
+  pub footnote: FootnoteStyle,
+  /// 目次のスタイル
+  #[garde(dive)]
+  pub toc: TocStyle,
+  /// ハイパーリンクのスタイル
+  #[garde(dive)]
+  pub hyperref: HyperrefStyle,
+  /// 参考文献セクションのスタイル
+  #[garde(dive)]
+  pub reference: ReferenceStyle,
+}
+
+#[cfg(test)]
+mod tests {
+  use garde::Validate;
+
+  use super::ExtendedStyle;
+
+  #[test]
+  fn validate_accepts_default() {
+    assert!(ExtendedStyle::default().validate().is_ok());
+  }
+
+  #[test]
+  fn default_round_trips_through_toml() {
+    // Arrange / Act: serialize → deserialize して同等の構造が復元できる
+    let style = ExtendedStyle::default();
+    let toml = toml::to_string(&style).unwrap();
+    let restored: ExtendedStyle = toml::from_str(&toml).unwrap();
+
+    // Assert
+    assert!(restored.validate().is_ok());
+    assert_eq!(restored.figure.caption_position, style.figure.caption_position);
+    assert_eq!(restored.toc.title, style.toc.title);
+  }
+}

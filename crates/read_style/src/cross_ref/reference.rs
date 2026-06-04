@@ -3,6 +3,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use crate::common::length::{Length, non_negative, positive};
+
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
@@ -10,20 +12,20 @@ pub struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列
   #[garde(length(chars, min = 1))]
   pub format: String,
-  /// セクションのフォントサイズ（pt）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub font_size: f32,
+  /// セクションのフォントサイズ
+  #[garde(custom(positive))]
+  pub font_size: Length,
   /// セクションブロックの下余白
-  #[garde(range(min = 0.0, max = f32::MAX))]
-  pub bottom_margin: f32,
+  #[garde(custom(non_negative))]
+  pub bottom_margin: Length,
 }
 
 impl Default for ReferenceStyle {
   fn default() -> Self {
     return Self {
       format: "References".to_string(),
-      font_size: 12.0,
-      bottom_margin: 10.0,
+      font_size: Length::pt(12.0),
+      bottom_margin: Length::pt(10.0),
     };
   }
 }

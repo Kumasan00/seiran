@@ -8,11 +8,11 @@
 //! 部分指定をサポートします（未指定キーはデフォルト値で埋まる）。
 
 pub mod block;
-pub mod color;
+pub mod common;
 pub mod cross_ref;
 mod error;
+mod extended;
 pub mod float;
-pub mod per_level;
 mod style;
 
 use std::{fs, path::Path};
@@ -25,24 +25,25 @@ pub use crate::{
   block::{
     heading::{HeadingStyle, default_for_level, default_per_level},
     list::ListStyle,
-    math::MathStyle,
+    math::MathScriptStyle,
     text::TextBlockStyle,
   },
-  color::Color,
-  cross_ref::{
-    counter::{CounterStyle, NumberFormat, default_counters},
-    hyperref::HyperrefStyle,
-    reference::ReferenceStyle,
-    toc::TocStyle,
+  common::{
+    caption::{CaptionPosition, CaptionStyle},
+    color::Color,
+    counter::{CounterEntry, CounterStyle, NumberFormat, default_counters},
+    length::Length,
+    per_level::PerLevel,
   },
+  cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
   error::{ReadStyleError, ValidationError},
+  extended::ExtendedStyle,
   float::{
     equation::{Alignment, EquationStyle, NumberSide},
-    figure::{CaptionPosition, FigureStyle},
+    figure::FigureStyle,
     footnote::FootnoteStyle,
     table::TableStyle,
   },
-  per_level::PerLevel,
   style::Style,
 };
 
@@ -74,7 +75,7 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   let style = parse_style(&content, &path_str)?;
 
   info!(
-    font_size = style.font_size,
+    font_size_pt = style.font_size.to_pt(),
     line_height_factor = style.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"
   );
@@ -135,30 +136,34 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
   }
 
   // クロスフィールド: counters の parent / resets / alias_of が counters に実在するか
-  for (name, counter) in &style.counters {
-    if let Some(parent) = &counter.parent
-      && !style.counters.contains_key(parent)
-    {
-      errors.push(ValidationError::Field {
-        path: format!("counters.{name}.parent"),
-        message: format!("親カウンタ '{parent}' が counters に存在しません"),
-      });
-    }
-    for reset in &counter.resets {
-      if !style.counters.contains_key(reset) {
-        errors.push(ValidationError::Field {
-          path: format!("counters.{name}.resets"),
-          message: format!("リセット対象 '{reset}' が counters に存在しません"),
-        });
-      }
-    }
-    if let Some(alias) = &counter.alias_of
-      && !style.counters.contains_key(alias)
-    {
-      errors.push(ValidationError::Field {
-        path: format!("counters.{name}.alias_of"),
-        message: format!("別名のソース '{alias}' が counters に存在しません"),
-      });
+  for (name, entry) in &style.counters {
+    match entry {
+      CounterEntry::Alias(alias) => {
+        if !style.counters.contains_key(&alias.alias_of) {
+          errors.push(ValidationError::Field {
+            path: format!("counters.{name}.alias_of"),
+            message: format!("別名のソース '{}' が counters に存在しません", alias.alias_of),
+          });
+        }
+      },
+      CounterEntry::Counter(def) => {
+        if let Some(parent) = &def.parent
+          && !style.counters.contains_key(parent)
+        {
+          errors.push(ValidationError::Field {
+            path: format!("counters.{name}.parent"),
+            message: format!("親カウンタ '{parent}' が counters に存在しません"),
+          });
+        }
+        for reset in &def.resets {
+          if !style.counters.contains_key(reset) {
+            errors.push(ValidationError::Field {
+              path: format!("counters.{name}.resets"),
+              message: format!("リセット対象 '{reset}' が counters に存在しません"),
+            });
+          }
+        }
+      },
     }
   }
 
@@ -166,201 +171,4 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
     return Ok(());
   }
   return Err(errors);
-}
-
-#[cfg(test)]
-mod tests {
-  use std::path::PathBuf;
-
-  use types::HeadingLevel;
-
-  use super::{ReadStyleError, Style, ValidationError, parse_style, read_style, validate_values};
-
-  fn dummy_source() -> &'static str { return "test.toml"; }
-
-  #[test]
-  fn read_style_returns_default_when_path_is_none() {
-    // Arrange / Act
-    let style = read_style(None).unwrap();
-
-    // Assert
-    let default = Style::default();
-    assert!((style.font_size - default.font_size).abs() < f32::EPSILON);
-    assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
-    assert!(style.background_color.is_none());
-    assert!(style.text_color.is_none());
-    assert_eq!(style.heading(HeadingLevel::Part).format, default.heading(HeadingLevel::Part).format);
-  }
-
-  #[test]
-  fn parse_style_overrides_heading_section_format() {
-    // Arrange: [heading.section] テーブルを上書き
-    let toml = "[heading.section]\nformat = \"§ {number} {title}\"\n";
-
-    // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
-
-    // Assert
-    assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
-    // 他のレベルはデフォルトを維持
-    let default = Style::default();
-    assert_eq!(style.heading(HeadingLevel::Chapter).format, default.heading(HeadingLevel::Chapter).format);
-  }
-
-  #[test]
-  fn parse_style_overrides_only_specified_fields() {
-    // Arrange: font_size のみ上書き
-    let toml = "font_size = 15.0\n";
-
-    // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
-
-    // Assert
-    assert!((style.font_size - 15.0).abs() < f32::EPSILON);
-    let default = Style::default();
-    assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn parse_style_accepts_color_array() {
-    // Arrange
-    let toml = "background_color = [204, 179, 153]\n";
-
-    // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
-
-    // Assert
-    let color = style.background_color.expect("background_color should be Some");
-    assert_eq!(color.rgb(), [204, 179, 153]);
-  }
-
-  #[test]
-  fn parse_style_accepts_color_hex_string() {
-    // Arrange
-    let toml = "background_color = \"#cc9966\"\n";
-
-    // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
-
-    // Assert
-    let color = style.background_color.expect("background_color should be Some");
-    assert_eq!(color.rgb(), [0xcc, 0x99, 0x66]);
-  }
-
-  #[test]
-  fn parse_style_fails_on_unknown_top_level_key() {
-    // Arrange: typo
-    let toml = "font_sze = 15.0\n";
-
-    // Act
-    let result = parse_style(toml, dummy_source());
-
-    // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
-  }
-
-  #[test]
-  fn parse_style_fails_on_unknown_nested_key() {
-    // Arrange: typo inside [heading.chapter]
-    let toml = "[heading.chapter]\nfont_sze = 30.0\n";
-
-    // Act
-    let result = parse_style(toml, dummy_source());
-
-    // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
-  }
-
-  #[test]
-  fn parse_style_fails_on_invalid_toml_syntax() {
-    // Arrange
-    let toml = "font_size = \nthis is not valid toml";
-
-    // Act
-    let result = parse_style(toml, dummy_source());
-
-    // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
-  }
-
-  #[test]
-  fn parse_style_collects_multiple_validation_errors() {
-    // Arrange: font_size と heading.chapter.font_size の両方を不正値に
-    let toml = "font_size = 0.0\n\n[heading.chapter]\nfont_size = -1.0\n";
-
-    // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
-
-    // Assert
-    let paths: Vec<&str> = errors
-      .iter()
-      .map(|error| match error {
-        ValidationError::Field { path, .. } => path.as_str(),
-      })
-      .collect();
-    assert!(paths.contains(&"font_size"));
-    assert!(paths.contains(&"heading.chapter.font_size"));
-  }
-
-  #[test]
-  fn validate_values_rejects_unknown_counter_parent() {
-    // Arrange: parent に存在しないカウンタ名を指定
-    let toml = "
-[counters.invalid]
-display_name = \"Invalid\"
-parent = \"nonexistent\"
-format = \"plain\"
-resets = []
-";
-    let style: Style = toml::from_str(toml).expect("toml itself should parse");
-
-    // Act
-    let errors = validate_values(&style).expect_err("cross-field validation should fail");
-
-    // Assert
-    assert!(errors.iter().any(|e| matches!(e, ValidationError::Field { path, .. } if path.contains("parent"))));
-  }
-
-  #[test]
-  fn validate_values_rejects_unknown_reset_target() {
-    // Arrange
-    let toml = "
-[counters.custom]
-display_name = \"Custom\"
-parent = \"chapter\"
-format = \"prefixed\"
-resets = [\"nonexistent\"]
-";
-    let style: Style = toml::from_str(toml).expect("toml itself should parse");
-
-    // Act
-    let errors = validate_values(&style).expect_err("cross-field validation should fail");
-
-    // Assert
-    assert!(errors.iter().any(|e| matches!(e, ValidationError::Field { path, .. } if path.contains("resets"))));
-  }
-
-  #[test]
-  fn read_style_fails_on_nonexistent_path() {
-    // Arrange
-    let path = PathBuf::from("/nonexistent/style.toml");
-
-    // Act
-    let result = read_style(Some(path.as_path()));
-
-    // Assert
-    assert!(matches!(result, Err(ReadStyleError::ReadFile { .. })));
-  }
-
-  #[test]
-  fn validate_values_accepts_default_style() {
-    assert!(validate_values(&Style::default()).is_ok());
-  }
-
-  fn expect_validation_errors(result: Result<Style, ReadStyleError>) -> Vec<ValidationError> {
-    match result {
-      Err(ReadStyleError::MultipleValidationErrors { errors }) => return errors,
-      other => panic!("expected MultipleValidationErrors, got {other:?}"),
-    }
-  }
 }

@@ -1,0 +1,45 @@
+//! `Style::default()` および各サブ型の既定値が `validate` を通ることの確認。
+//!
+//! 各 struct 内 `mod tests` の `validate_accepts_default` と重複するが、トップレベルの
+//! Style とサブ型の組合せが矛盾しないことを保証する統合確認として残す。
+
+use garde::Validate;
+use read_style::Style;
+use types::HeadingLevel;
+
+#[test]
+fn default_style_passes_validation() {
+  let style = Style::default();
+  assert!(style.validate().is_ok(), "Style::default() must pass garde validation");
+}
+
+#[test]
+fn default_heading_has_descending_font_size() {
+  // 既定値（default_for_level）でレベル順にフォントサイズが単調減少することを確認
+  let style = Style::default();
+  let part = style.heading(HeadingLevel::Part).font_size.to_pt();
+  let chapter = style.heading(HeadingLevel::Chapter).font_size.to_pt();
+  let section = style.heading(HeadingLevel::Section).font_size.to_pt();
+  let subparagraph = style.heading(HeadingLevel::Subparagraph).font_size.to_pt();
+  assert!(part > chapter, "Part should be larger than Chapter: {part} vs {chapter}");
+  assert!(chapter > section, "Chapter should be larger than Section: {chapter} vs {section}");
+  assert!(section > subparagraph, "Section should be larger than Subparagraph");
+}
+
+#[test]
+fn default_counters_contains_canonical_set() {
+  let style = Style::default();
+  for name in [
+    "part",
+    "chapter",
+    "section",
+    "subsection",
+    "paragraph",
+    "subparagraph",
+    "figure",
+    "equation",
+    "table",
+  ] {
+    assert!(style.counter(name).is_some(), "default counters must contain {name}");
+  }
+}

@@ -1,12 +1,9 @@
 //! 色を表す `Color` newtype。
 //!
-//! TOML 上では以下の 2 形式を受け付ける:
+//! TOML 上では `"#rrggbb"` の 16 進文字列形式のみを受け付ける（大文字小文字は不問）。
+//! `[204, 179, 153]` の配列形式は受け付けない（破壊的: スタイル側の視認性を優先）。
 //!
-//! - 配列形式: `text_color = [204, 179, 153]`
-//! - 16 進文字列形式: `text_color = "#cc9966"` または `"#CC9966"`
-//!
-//! いずれも 8bit RGB に正規化して `Color([u8; 3])` に格納する。
-//! u8 範囲外の値は serde 段階で拒否される。
+//! 内部表現は 8bit RGB に正規化した `Color([u8; 3])`。
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
@@ -49,33 +46,24 @@ fn parse_hex(value: &str) -> Option<[u8; 3]> {
 
 impl<'de> Deserialize<'de> for Color {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    /// 配列・文字列の両方を受ける中間表現
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Repr {
-      Hex(String),
-      Rgb([u8; 3]),
-    }
-    let repr = Repr::deserialize(deserializer)?;
-    return match repr {
-      Repr::Rgb(rgb) => Ok(Color(rgb)),
-      Repr::Hex(s) => parse_hex(&s)
-        .map(Color)
-        .ok_or_else(|| D::Error::custom(format!("色の 16 進表記が不正です: {s:?}（期待形式: \"#rrggbb\"）"))),
-    };
+    let hex = String::deserialize(deserializer)?;
+    return parse_hex(&hex)
+      .map(Color)
+      .ok_or_else(|| D::Error::custom(format!("色の 16 進表記が不正です: {hex:?}（期待形式: \"#rrggbb\"）")));
   }
 }
 
 impl Serialize for Color {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    // 配列形式で書き出す（往復性を最優先）
-    return self.0.serialize(serializer);
+    // 内部表現は RGB だが、デシリアライズと往復させるため `#rrggbb` 形式で書き出す
+    let [r, g, b] = self.0;
+    return format!("#{r:02x}{g:02x}{b:02x}").serialize(serializer);
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use serde::Deserialize;
+  use serde::{Deserialize, Serialize};
 
   use super::Color;
 
@@ -84,13 +72,18 @@ mod tests {
     color: Color,
   }
 
+  #[derive(Debug, Serialize)]
+  struct SerWrapper {
+    color: Color,
+  }
+
   #[test]
-  fn parses_rgb_array() {
-    // Arrange / Act
-    let w: Wrapper = toml::from_str("color = [204, 179, 153]").unwrap();
+  fn rejects_rgb_array() {
+    // Arrange: 旧形式の配列指定は受け付けない（破壊的）
+    let result: Result<Wrapper, _> = toml::from_str("color = [204, 179, 153]");
 
     // Assert
-    assert_eq!(w.color, Color::new(204, 179, 153));
+    assert!(result.is_err());
   }
 
   #[test]
@@ -130,20 +123,25 @@ mod tests {
   }
 
   #[test]
-  fn rejects_out_of_range_value() {
-    // Arrange: R が 256
-    let result: Result<Wrapper, _> = toml::from_str("color = [256, 0, 0]");
+  fn rejects_non_hex_chars_in_body() {
+    // Arrange: 'g' は 16 進数ではない
+    let result: Result<Wrapper, _> = toml::from_str("color = \"#gghhii\"");
 
     // Assert
     assert!(result.is_err());
   }
 
   #[test]
-  fn rejects_negative_value() {
+  fn serializes_to_lowercase_hex_string() {
     // Arrange
-    let result: Result<Wrapper, _> = toml::from_str("color = [-1, 0, 0]");
+    let value = SerWrapper {
+      color: Color::new(0xcc, 0x99, 0x66),
+    };
 
-    // Assert
-    assert!(result.is_err());
+    // Act
+    let s = toml::to_string(&value).unwrap();
+
+    // Assert: 内部表現と往復可能な形式で書き出される
+    assert!(s.contains("color = \"#cc9966\""), "serialized form: {s}");
   }
 }

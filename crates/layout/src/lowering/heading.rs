@@ -38,7 +38,7 @@ pub(super) fn lower_heading(
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
   let style = Style {
-    font_size: heading_style.font_size,
+    font_size: heading_style.font_size.to_pt(),
     font_kind: heading_style.font_kind,
   };
 
@@ -55,7 +55,7 @@ pub(super) fn lower_heading(
 
   result.push(LayoutNode::VBox {
     children: vec![LayoutNode::Text(heading_text, style)],
-    margin_bottom: heading_style.bottom_margin,
+    margin_bottom: heading_style.bottom_margin.to_pt(),
   });
 
   if heading_style.page_break_after {
