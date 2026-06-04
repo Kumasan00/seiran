@@ -6,7 +6,7 @@
 //! 字形バリアントを直接呼び出します。
 
 use parser::document::{MathNode, MathStyle};
-use read_style::MathScriptStyle as MathStyleConfig;
+use read_style::{MathScriptStyle as MathStyleConfig, NumberSide};
 use types::FontKind;
 
 use self::math_alphanumeric::translate_math_char;
@@ -15,6 +15,12 @@ use crate::layout_node::{LayoutNode, Style};
 
 mod math_alphanumeric;
 
+/// 数式番号テキストと本体の間に挿入する仮の水平アキ（pt）。
+///
+/// 真の右寄せは行幅依存のため未対応。揃え機能（`EquationStyle::alignment`）が
+/// 入った段階で `Glue` のストレッチを利用した「番号は行末・本体は中央」配置に置き換える。
+const NUMBER_GAP_PT: f32 = 6.0;
+
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size.to_pt());
@@ -22,14 +28,71 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 
 /// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する
 ///
-/// インライン数式と同じ [`lower_inline_math`] を流用しつつ、数式を独立した行に配置する。
-/// 真の中央寄せには行幅の知識が必要なため、現段階では行頭からのレンダリングとし、
-/// 前後に改行を挿入して段落から分離する。
-pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode]) -> Vec<LayoutNode> {
+/// `EquationStyle`（`style.extended.equation`）から上下マージンと番号書式・配置を読み、
+/// 以下の順で `LayoutNode` 列を組み立てる：
+///
+/// ```text
+/// LineBreak  Vkern(top_margin)
+///   [number? Glue]  body...  [Glue number?]
+/// Vkern(bottom_margin)  LineBreak
+/// ```
+///
+/// 番号は `EquationStyle::number_format` の `{number}` を `number` 引数で置換した
+/// 文字列を `FontKind::Serif`（数字は立体）で描画する。`number_side` に応じて
+/// 本体の前後どちらに置くかを決める。`number` が `None` のとき（将来の `equation*` 等）
+/// は番号と Glue を挿入しない。
+///
+/// 真の中央寄せ・右寄せ（`EquationStyle::alignment`）には行幅の知識が要るため未対応。
+/// 現段階では行頭からのレンダリングのみ。
+pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], number: Option<&str>) -> Vec<LayoutNode> {
   let font_size = ctx.default_font_size();
+  let eq = &ctx.style.extended.equation;
+
+  // 番号文字列を書式化し、Text ノードに包む（None の場合は何も生成しない）
+  let number_node: Option<LayoutNode> = number.map(|n| {
+    let text = eq.number_format.replace("{number}", n);
+    LayoutNode::Text(
+      text,
+      Style {
+        font_size,
+        font_kind: FontKind::Serif,
+      },
+    )
+  });
+
+  let gap = LayoutNode::Glue {
+    natural: NUMBER_GAP_PT,
+    stretch: 0.0,
+    shrink: 0.0,
+  };
+
   let mut result = Vec::new();
   result.push(LayoutNode::LineBreak);
-  result.extend(lower_inline_math(body, font_size, &ctx.style.math));
+  result.push(LayoutNode::Vkern {
+    point: eq.top_margin.to_pt(),
+  });
+
+  // TODO: eq.alignment（Center/Left/Right）の真の揃えには行幅の知識が必要。
+  // 現状は左揃え固定。Glue を伸縮可能にした上で行折り返しと連動させて実装する。
+  match (eq.number_side, number_node) {
+    (NumberSide::Left, Some(node)) => {
+      result.push(node);
+      result.push(gap);
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
+    },
+    (NumberSide::Right, Some(node)) => {
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
+      result.push(gap);
+      result.push(node);
+    },
+    (_, None) => {
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
+    },
+  }
+
+  result.push(LayoutNode::Vkern {
+    point: eq.bottom_margin.to_pt(),
+  });
   result.push(LayoutNode::LineBreak);
   return result;
 }
@@ -185,6 +248,8 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
 
 #[cfg(test)]
 mod tests {
+  use read_style::Style as ReadStyle;
+
   use super::*;
 
   /// テストで共通使用する `MathStyleConfig` のデフォルトインスタンス
@@ -352,6 +417,44 @@ mod tests {
       })
       .collect();
     assert_eq!(texts, "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
+  }
+
+  #[test]
+  fn lower_display_math_renders_number_with_format_template_and_serif_font() {
+    // Arrange: number = Some("2") を渡すと、デフォルト書式 "({number})" で "(2)" になり、
+    // 数字は立体（FontKind::Serif）で描画される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let nodes = lower_display_math(&ctx, &[MathNode::Text("a".to_string())], Some("2"));
+
+    // Assert: "(2)" を含む Serif Text が末尾近くに含まれる
+    let serif_number = nodes.iter().find_map(|n| match n {
+      LayoutNode::Text(t, style) if t == "(2)" && style.font_kind == FontKind::Serif => Some(t.as_str()),
+      _ => None,
+    });
+    assert!(serif_number.is_some(), "(2) の Serif Text が含まれるはず: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_display_math_places_number_left_when_configured() {
+    // Arrange: number_side = Left に設定すると、本体の前に番号 Text + Glue が並ぶ
+    let mut style = ReadStyle::default();
+    style.extended.equation.number_side = read_style::NumberSide::Left;
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let nodes = lower_display_math(&ctx, &[MathNode::Text("a".to_string())], Some("3"));
+
+    // Assert: 先頭 LineBreak + Vkern の直後に Text("(3)") → Glue → 本体... の順
+    assert!(matches!(nodes.first(), Some(LayoutNode::LineBreak)));
+    assert!(matches!(nodes.get(1), Some(LayoutNode::Vkern { .. })));
+    assert!(
+      matches!(nodes.get(2), Some(LayoutNode::Text(t, s)) if t == "(3)" && s.font_kind == FontKind::Serif),
+      "3 番目に Serif Text(\"(3)\") があるべき: {nodes:?}"
+    );
+    assert!(matches!(nodes.get(3), Some(LayoutNode::Glue { .. })));
   }
 
   #[test]

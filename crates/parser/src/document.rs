@@ -122,14 +122,17 @@ pub enum DocNode {
 
   /// ディスプレイ数式（`\begin{equation}...\end{equation}`）
   ///
-  /// **前準備のスタブ**。Parser 側で env body が math モードで構造化されるため
-  /// `Vec<MathNode>` を直接保持する。実装本体タスクで evaluator・lowering の
-  /// ハンドラを書く。
+  /// Parser 側で env body が math モードで構造化されるため `Vec<MathNode>` を直接保持する。
+  /// 評価時に `EvalContext::increment_equation` で発番された番号を `number` に保持し、
+  /// lowering 層が `EquationStyle::number_format` で書式化して描画する。
   DisplayMath {
     /// 数式本体
     body: Vec<MathNode>,
     /// `\ref` 用ラベル（`[label=eq:foo]`）
     label: Option<String>,
+    /// 評価時に発番された通し番号（プレーン文字列）。
+    /// 番号が振られない環境（将来の `equation*` 等）では `None`。
+    number: Option<String>,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）
@@ -602,6 +605,7 @@ mod tests {
       subsection: 4,
       paragraph: 5,
       subparagraph: 6,
+      equation_count: 0,
     };
 
     assert_eq!(HeadingNumber::from_context(HeadingLevel::Part, &ctx).parts, vec![1]);

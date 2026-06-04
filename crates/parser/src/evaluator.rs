@@ -201,6 +201,10 @@ pub(crate) struct EvalContext {
   pub subsection: u32,
   pub paragraph: u32,
   pub subparagraph: u32,
+  /// ディスプレイ数式の通し番号（フラットカウンタ）。
+  /// chapter リセット連動は今回は組まない — 将来 `CounterRegistry` に
+  /// 移行する際に章番号との連結（`1.1`, `1.2`, …）も同時に整える。
+  pub equation_count: u32,
 }
 
 impl EvalContext {
@@ -241,6 +245,16 @@ impl EvalContext {
         self.subparagraph += 1;
       },
     }
+  }
+
+  /// ディスプレイ数式カウンタをインクリメントし、新しい番号を返す
+  ///
+  /// `\begin{equation}` ハンドラから呼ばれる想定。
+  /// 現状はフラットカウンタで、章番号との連結 (`1.1`, `1.2`) や
+  /// chapter リセットは行わない。
+  pub(crate) fn increment_equation(&mut self) -> u32 {
+    self.equation_count += 1;
+    return self.equation_count;
   }
 }
 

@@ -62,7 +62,18 @@ pub enum LayoutNode {
     stretch: f32,
     shrink: f32,
   },
+  /// 水平カーン（固定幅の空白）
+  ///
+  /// 横方向のみの空白を表現する。縦方向の空白は [`LayoutNode::Vkern`] を使う。
   Kern {
+    point: f32,
+  },
+  /// 垂直カーン（固定高さの空白）
+  ///
+  /// `VBox::margin_bottom` が children の末尾に Vkern を 1 個出すのに対して、
+  /// この variant は任意位置に挿入できる縦方向の空白として使う。
+  /// ディスプレイ数式の上下余白や、ブロック要素間の縦アキ調整に使用する。
+  Vkern {
     point: f32,
   },
   /// ベースラインから子要素を垂直方向にずらすコンテナ

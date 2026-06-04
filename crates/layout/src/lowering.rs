@@ -147,8 +147,8 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     DocNode::Space(pt) => {
       return Ok(vec![LayoutNode::Kern { point: *pt }]);
     },
-    DocNode::DisplayMath { body, .. } => {
-      return Ok(math::lower_display_math(ctx, body));
+    DocNode::DisplayMath { body, number, .. } => {
+      return Ok(math::lower_display_math(ctx, body, number.as_deref()));
     },
     DocNode::Figure { body, .. } => {
       // TODO(figure-equation-impl): caption 抽出と図のレイアウト。前準備では body を素通し。
@@ -268,18 +268,53 @@ mod tests {
   }
 
   #[test]
-  fn lower_display_math_wraps_with_linebreaks() {
-    // ディスプレイ数式は前後に LineBreak を挿入して独立した行に配置する
+  fn lower_display_math_wraps_with_linebreaks_and_vkerns() {
+    // ディスプレイ数式は LineBreak + Vkern(top) ... Vkern(bottom) + LineBreak で
+    // 独立した行＋上下マージンに配置される（number = None なら番号は付かない）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let node = DocNode::DisplayMath {
       body: vec![MathNode::Text("a".to_string())],
       label: None,
+      number: None,
     };
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
+    // 先頭: LineBreak → Vkern(top_margin)
     assert!(matches!(nodes.first(), Some(LayoutNode::LineBreak)));
+    assert!(matches!(nodes.get(1), Some(LayoutNode::Vkern { .. })), "2 番目は Vkern であるべき: {nodes:?}");
+    // 末尾: Vkern(bottom_margin) → LineBreak
     assert!(matches!(nodes.last(), Some(LayoutNode::LineBreak)));
+    let second_last = nodes.get(nodes.len() - 2);
+    assert!(matches!(second_last, Some(LayoutNode::Vkern { .. })), "末尾の 1 つ前は Vkern であるべき: {nodes:?}");
+    // number = None のときは Glue / Serif Text は挿入されない
+    let has_glue = nodes.iter().any(|n| matches!(n, LayoutNode::Glue { .. }));
+    assert!(!has_glue, "number が None のときは Glue は挿入されないはず: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_display_math_appends_number_text_on_right() {
+    // number = Some("1") + デフォルトの number_side = Right で、本体の後に
+    // Glue + Text("(1)") が挿入される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::DisplayMath {
+      body: vec![MathNode::Text("a".to_string())],
+      label: None,
+      number: Some("1".to_string()),
+    };
+
+    let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
+
+    // 末尾 Vkern + LineBreak の手前に Text("(1)")、その手前に Glue が並ぶ
+    let len = nodes.len();
+    let number_text = nodes.get(len - 3);
+    let gap = nodes.get(len - 4);
+    assert!(
+      matches!(number_text, Some(LayoutNode::Text(t, _)) if t == "(1)"),
+      "末尾近くに Text(\"(1)\") があるべき: {nodes:?}"
+    );
+    assert!(matches!(gap, Some(LayoutNode::Glue { .. })), "数式と番号の間に Glue: {nodes:?}");
   }
 }

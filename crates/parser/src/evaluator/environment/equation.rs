@@ -20,15 +20,21 @@ use crate::{
 
 /// `equation` 環境を評価する
 ///
+/// 評価コンテキストの `equation_count` をインクリメントし、発番された通し番号を
+/// `DocNode::DisplayMath.number` に格納する。lowering 層が
+/// `EquationStyle::number_format` でこの番号を書式化して描画する。
+///
 /// # Errors
 ///
 /// 不明な任意引数キーや値の型不一致が発生した場合にエラーを返します
-pub(super) fn equation(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
     ("label", OptValue::String(s)) => Some(s),
     _ => None,
   });
+
+  let number = evaluator.context.increment_equation().to_string();
 
   let source = view.source();
   let body = match view.body() {
@@ -36,7 +42,11 @@ pub(super) fn equation(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Re
     None => Vec::new(),
   };
 
-  return Ok(vec![DocNode::DisplayMath { body, label }]);
+  return Ok(vec![DocNode::DisplayMath {
+    body,
+    label,
+    number: Some(number),
+  }]);
 }
 
 #[cfg(test)]
@@ -65,10 +75,16 @@ mod tests {
 
     // Assert — DisplayMath が 1 件、label は None、body に Superscript が含まれる
     assert_eq!(result.len(), 1);
-    let DocNode::DisplayMath { body, label } = &result[0] else {
+    let DocNode::DisplayMath {
+      body,
+      label,
+      number,
+    } = &result[0]
+    else {
       panic!("DisplayMath が期待されます: {:?}", result[0]);
     };
     assert!(label.is_none());
+    assert_eq!(number.as_deref(), Some("1"));
     assert!(
       body.iter().any(|n| matches!(n, MathNode::Superscript(_))),
       "Superscript ノードが含まれるべき: {body:?}"
@@ -86,12 +102,36 @@ mod tests {
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert
+    // Assert — label と number が両方保持されること
     assert_eq!(result.len(), 1);
-    let DocNode::DisplayMath { label, .. } = &result[0] else {
+    let DocNode::DisplayMath { label, number, .. } = &result[0] else {
       panic!("DisplayMath が期待されます");
     };
     assert_eq!(label.as_deref(), Some("eq:pythag"));
+    assert_eq!(number.as_deref(), Some("1"));
+  }
+
+  #[test]
+  fn equation_assigns_sequential_numbers() {
+    // Arrange — 連続する 2 つの equation は 1, 2 と通し番号が振られる
+    let arena = Bump::new();
+    let source = r"\begin{equation}a\end{equation}\begin{equation}b\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 2);
+    let numbers: Vec<Option<&str>> = result
+      .iter()
+      .map(|n| match n {
+        DocNode::DisplayMath { number, .. } => number.as_deref(),
+        _ => panic!("DisplayMath が期待されます: {n:?}"),
+      })
+      .collect();
+    assert_eq!(numbers, vec![Some("1"), Some("2")]);
   }
 
   #[test]

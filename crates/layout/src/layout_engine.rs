@@ -192,6 +192,10 @@ fn layout_engine_inner(
         // Kern のレイアウト処理
         items.push(Item::Kern(point));
       },
+      LayoutNode::Vkern { point } => {
+        // 垂直カーンのレイアウト処理
+        items.push(Item::Vkern(point));
+      },
       LayoutNode::LineBreak => {
         // 行分割のレイアウト処理
         items.push(Item::Penalty(-1000)); // 強制改行
