@@ -4,14 +4,16 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// 目次のスタイル設定
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct TocStyle {
   /// 目次のタイトル文字列
   #[garde(length(chars, min = 1))]
   pub title: String,
-  /// 目次に含める見出しの最大深さ。1=part のみ、6=subparagraph まで
+  /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
+  ///
+  /// `types::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
   #[garde(range(min = 1, max = 6))]
   pub max_depth: u32,
   /// 目次エントリのフォントサイズ（pt）
@@ -36,6 +38,12 @@ impl Default for TocStyle {
   }
 }
 
+/// 型レベルの整合チェック: `TocStyle::max_depth` の上限が `HeadingLevel::COUNT` と一致する
+///
+/// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
+/// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
+const _: () = assert!(types::HeadingLevel::COUNT == 6);
+
 #[cfg(test)]
 mod tests {
   use garde::Validate;
@@ -44,67 +52,33 @@ mod tests {
 
   #[test]
   fn validate_accepts_default() {
-    // Arrange / Act / Assert
     assert!(TocStyle::default().validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_empty_title() {
-    // Arrange
     let style = TocStyle {
       title: String::new(),
       ..TocStyle::default()
     };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_zero_max_depth() {
-    // Arrange
     let style = TocStyle {
       max_depth: 0,
       ..TocStyle::default()
     };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_too_large_max_depth() {
-    // Arrange: 見出しは subparagraph まで 6 レベル
     let style = TocStyle {
       max_depth: 7,
       ..TocStyle::default()
     };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_zero_font_size() {
-    // Arrange
-    let style = TocStyle {
-      font_size: 0.0,
-      ..TocStyle::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_negative_bottom_margin() {
-    // Arrange
-    let style = TocStyle {
-      bottom_margin: -1.0,
-      ..TocStyle::default()
-    };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

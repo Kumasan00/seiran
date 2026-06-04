@@ -6,7 +6,7 @@
 //! 字形バリアントを直接呼び出します。
 
 use parser::document::{MathNode, MathStyle};
-use read_style::MathLayoutStyle;
+use read_style::MathStyle as MathStyleConfig;
 use types::FontKind;
 
 use self::math_alphanumeric::translate_math_char;
@@ -16,7 +16,7 @@ use crate::layout_node::{LayoutNode, Style};
 mod math_alphanumeric;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
-fn script_font_size(font_size: f32, math_style: &MathLayoutStyle) -> f32 {
+fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
 }
 
@@ -41,11 +41,11 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode]) -> Ve
 /// 数式フォントが持つ字形バリアントを直接呼び出す。デフォルト（スタイル指定なし）では
 /// ASCII 英字のみ Mathematical Italic 化し、変数を italic で描画する。
 /// 上付き・下付きは [`LayoutNode::Raise`] で縦シフトしつつ、フォントサイズを
-/// [`MathLayoutStyle::script_size_factor`] 倍に縮小して描画する。
+/// [`MathStyleConfig::script_size_factor`] 倍に縮小して描画する。
 pub(super) fn lower_inline_math(
   math_nodes: &[MathNode],
   base_font_size: f32,
-  math_style: &MathLayoutStyle,
+  math_style: &MathStyleConfig,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for node in math_nodes {
@@ -64,7 +64,7 @@ fn lower_math_node(
   node: &MathNode,
   font_size: f32,
   style: Option<MathStyle>,
-  math_style: &MathLayoutStyle,
+  math_style: &MathStyleConfig,
 ) -> Vec<LayoutNode> {
   match node {
     MathNode::Text(s) => {
@@ -187,8 +187,8 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
 mod tests {
   use super::*;
 
-  /// テストで共通使用する `MathLayoutStyle` のデフォルトインスタンス
-  fn default_math_style() -> MathLayoutStyle { return MathLayoutStyle::default(); }
+  /// テストで共通使用する `MathStyleConfig` のデフォルトインスタンス
+  fn default_math_style() -> MathStyleConfig { return MathStyleConfig::default(); }
 
   #[test]
   fn lower_math_text_italicizes_ascii_letters_by_default() {

@@ -364,9 +364,10 @@ fn render_items(
 ///
 /// 塗りつぶし後はフィルを解除し、後続の描画（テキスト・罫線）が黒で描画されるようにします。
 fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Style) -> Result<(), PdfGenError> {
-  let Some([r, g, b]) = style.background_color else {
+  let Some(color) = style.background_color else {
     return Ok(());
   };
+  let [r, g, b] = color.rgb();
   let rect =
     Rect::from_xywh(0.0, 0.0, config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidBackgroundRect)?;
   let mut path_builder = PathBuilder::new();

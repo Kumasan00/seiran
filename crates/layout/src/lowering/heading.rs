@@ -4,22 +4,9 @@
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
 use parser::document::{HeadingLevel, HeadingNumber, InlineNode};
-use read_style::Style as ReadStyle;
 
-use super::{LoweringContext, LoweringError, font_kind_from_config, inline::inline_nodes_to_plain_text};
+use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
 use crate::layout_node::{LayoutNode, Style};
-
-/// 見出しレベルに対応する `read_style::HeadingStyle` を返す
-pub(super) fn heading_style_for(style: &ReadStyle, level: HeadingLevel) -> &read_style::HeadingStyle {
-  return match level {
-    HeadingLevel::Part => &style.part,
-    HeadingLevel::Chapter => &style.chapter,
-    HeadingLevel::Section => &style.section,
-    HeadingLevel::Subsection => &style.subsection,
-    HeadingLevel::Paragraph => &style.paragraph,
-    HeadingLevel::Subparagraph => &style.subparagraph,
-  };
-}
 
 /// `HeadingStyle.format` テンプレートの `{number}` と `{title}` を実値で置換する
 ///
@@ -49,10 +36,10 @@ pub(super) fn lower_heading(
   number: &HeadingNumber,
   title: &[InlineNode],
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let heading_style = heading_style_for(ctx.style, level);
+  let heading_style = ctx.style.heading(level);
   let style = Style {
     font_size: heading_style.font_size,
-    font_kind: font_kind_from_config(heading_style.font_kind),
+    font_kind: heading_style.font_kind,
   };
 
   // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する
@@ -82,6 +69,8 @@ pub(super) fn lower_heading(
 
 #[cfg(test)]
 mod tests {
+  use read_style::Style as ReadStyle;
+
   use super::*;
 
   #[test]
@@ -129,7 +118,7 @@ mod tests {
   fn lower_heading_uses_style_template() {
     // style.toml でテンプレを差し替えると見出し出力が追従することを確認する
     let mut style = ReadStyle::default();
-    style.section.format = "[{number}] {title}".to_string();
+    style.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
     let nodes = lower_heading(

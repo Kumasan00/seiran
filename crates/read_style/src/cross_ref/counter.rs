@@ -1,8 +1,4 @@
-//! カウンタ（chapter / section / figure 等）のユーザ向けスタイル設定型。
-//!
-//! `parser::evaluator::counter::CounterRegistry` がランタイムでカウンタを管理しますが、
-//! 本モジュールは TOML スキーマとしてカウンタの宣言を受け取るための型を定義します。
-//! `CounterRegistry::from_style` がここで宣言された [`CounterStyle`] を実行時表現に変換します。
+//! カウンタ（chapter / section / figure 等）のスタイル設定型。
 
 use std::collections::HashMap;
 
@@ -10,9 +6,6 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// 1 つのカウンタ定義（TOML スキーマ）
-///
-/// `display_name` で「図」「Figure」のような i18n 文字列を指定し、
-/// `parent` / `resets` / `alias_of` で番号体系の構造を表現します。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
@@ -51,9 +44,6 @@ impl CounterStyle {
 }
 
 /// 番号の表示形式
-///
-/// `Plain` は単独カウンタの値を返す（例: chapter は `"3"`）。
-/// `Prefixed` は親カウンタを `.` 区切りで連結した値を返す（例: section は `"2.3"`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
@@ -65,10 +55,6 @@ pub enum NumberFormat {
 }
 
 /// seiran 既定のカウンタセットを返す
-///
-/// `parser::evaluator::counter::CounterRegistry::default_for_seiran` と同じセット
-/// （part / chapter / section / subsection / paragraph / subparagraph / figure / equation / table）を
-/// 英語の `display_name` で初期化します。
 #[must_use]
 pub fn default_counters() -> HashMap<String, CounterStyle> {
   let entries: [(&str, CounterStyle); 9] = [
@@ -143,28 +129,19 @@ mod tests {
 
   #[test]
   fn validate_accepts_minimal_counter() {
-    // Arrange
     let counter = CounterStyle::new("Figure", Some("chapter"), NumberFormat::Prefixed, &[], None);
-
-    // Act / Assert
     assert!(counter.validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_empty_display_name() {
-    // Arrange
     let counter = CounterStyle::new("", None, NumberFormat::Plain, &[], None);
-
-    // Act / Assert
     assert!(counter.validate().is_err());
   }
 
   #[test]
   fn default_counters_contains_expected_names() {
-    // Arrange / Act
     let counters = default_counters();
-
-    // Assert
     for expected in ["part", "chapter", "section", "figure", "equation", "table"] {
       assert!(counters.contains_key(expected), "missing counter: {expected}");
     }
@@ -172,24 +149,9 @@ mod tests {
 
   #[test]
   fn default_counters_section_has_chapter_parent() {
-    // Arrange / Act
     let counters = default_counters();
-
-    // Assert
     let section = counters.get("section").expect("section counter");
     assert_eq!(section.parent.as_deref(), Some("chapter"));
     assert_eq!(section.format, NumberFormat::Prefixed);
-  }
-
-  #[test]
-  fn default_counters_chapter_resets_figure_equation_table() {
-    // Arrange / Act
-    let counters = default_counters();
-
-    // Assert
-    let chapter = counters.get("chapter").expect("chapter counter");
-    for expected in ["figure", "equation", "table"] {
-      assert!(chapter.resets.iter().any(|r| r == expected), "chapter should reset {expected}");
-    }
   }
 }

@@ -7,7 +7,7 @@
 use syntax::ast::CommandView;
 
 use crate::{
-  document::{DocNode, HeadingLevel, HeadingNumber},
+  document::{self, DocNode, HeadingLevel, HeadingNumber},
   evaluator::{EvalContext, EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
 };
 
@@ -36,7 +36,7 @@ pub(super) fn heading(
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
-      expected: level.expected_name().to_string(),
+      expected: document::expected_name(level).to_string(),
       span: view.span().into(),
     });
   };

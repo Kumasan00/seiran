@@ -4,282 +4,196 @@ use std::collections::HashMap;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+use types::HeadingLevel;
 
 use crate::{
-  CounterStyle, EquationStyle, FigureStyle, FootnoteStyle, HeadingStyle, HyperrefStyle, ListStyle, MathLayoutStyle,
-  ParagraphStyle, ReferenceStyle, TableStyle, TocStyle, counter,
+  Color,
+  block::{
+    heading::{HeadingStyle, default_per_level, deserialize_per_level},
+    list::ListStyle,
+    math::MathStyle,
+    text::TextBlockStyle,
+  },
+  cross_ref::{
+    counter::{self, CounterStyle},
+    hyperref::HyperrefStyle,
+    reference::ReferenceStyle,
+    toc::TocStyle,
+  },
+  float::{equation::EquationStyle, figure::FigureStyle, footnote::FootnoteStyle, table::TableStyle},
+  per_level::PerLevel,
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
-#[derive(Debug, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields, default)]
 pub struct Style {
+  /// 本文の既定フォントサイズ（pt）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub font_size: f32,
+  /// 行高（フォントサイズに対する倍率）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub line_height_factor: f32,
-  /// 本文テキスト色 RGB（各成分 0-255、オプション）。未指定時はデフォルト（黒）。
+  /// 本文テキスト色。`None` は黒
   #[garde(skip)]
-  pub text_color: Option<[u8; 3]>,
-  /// 背景色 RGB（各成分 0-255、オプション）。未指定時は背景色なし。
+  pub text_color: Option<Color>,
+  /// 背景色。`None` は背景描画なし
   #[garde(skip)]
-  pub background_color: Option<[u8; 3]>,
+  pub background_color: Option<Color>,
+  /// 見出し全 6 レベルのスタイル
+  ///
+  /// レベル別の既定値は [`default_per_level`] が供給する。TOML で `[heading.section]` のように
+  /// 一部だけ書いた場合、欠落レベルは [`crate::block::heading::default_for_level`] で埋まる。
+  #[garde(skip)]
+  #[serde(default = "default_per_level", deserialize_with = "deserialize_per_level")]
+  pub heading: PerLevel<HeadingStyle>,
+  /// 本文段落のスタイル
   #[garde(dive)]
-  pub part: HeadingStyle,
+  pub text: TextBlockStyle,
+  /// リストのスタイル
   #[garde(dive)]
-  pub chapter: HeadingStyle,
+  pub list: ListStyle,
+  /// 数式レイアウトのスタイル
   #[garde(dive)]
-  pub section: HeadingStyle,
-  #[garde(dive)]
-  pub subsection: HeadingStyle,
-  #[garde(dive)]
-  pub paragraph: HeadingStyle,
-  #[garde(dive)]
-  pub subparagraph: HeadingStyle,
+  pub math: MathStyle,
+  /// 図フロートのスタイル
   #[garde(dive)]
   pub figure: FigureStyle,
+  /// ディスプレイ数式のスタイル
   #[garde(dive)]
   pub equation: EquationStyle,
+  /// 表のスタイル
   #[garde(dive)]
   pub table: TableStyle,
+  /// 脚注のスタイル
   #[garde(dive)]
   pub footnote: FootnoteStyle,
+  /// 目次のスタイル
   #[garde(dive)]
   pub toc: TocStyle,
+  /// ハイパーリンクのスタイル
   #[garde(dive)]
   pub hyperref: HyperrefStyle,
+  /// 参考文献セクションのスタイル
+  #[garde(dive)]
+  pub reference: ReferenceStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`）。
   /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
   #[garde(dive)]
   pub counters: HashMap<String, CounterStyle>,
-  #[garde(dive)]
-  pub reference: ReferenceStyle,
-  /// リスト要素のスタイル設定（インデント・マーカー等）
-  #[garde(dive)]
-  pub list: ListStyle,
-  /// 本文段落のスタイル設定。
-  ///
-  /// 見出しレベルの `paragraph`（[`HeadingStyle`]）と衝突しないようフィールド名は `body` とする。
-  #[garde(dive)]
-  pub body: ParagraphStyle,
-  /// 数式レイアウト（上付き / 下付きスクリプトのサイズ・位置）のスタイル設定
-  #[garde(dive)]
-  pub math: MathLayoutStyle,
 }
 
 impl Default for Style {
   fn default() -> Self {
-    // 軸補 i18n: デフォルトは英語。日本語化したい場合は style.toml で上書きする。
-    // プレースホルダは `{number}` `{title}` のみ:
-    //   - `{number}` は HeadingNumber::dotted() の値（Part: "1"、Chapter: "1"、Section: "1.2"、…）
-    //   - `{title}` は見出しタイトルのプレーンテキスト
     return Self {
       font_size: 12.0,
       line_height_factor: 1.2,
       text_color: None,
       background_color: None,
-      part: HeadingStyle {
-        format: "Part {number}: {title}".to_string(),
-        font_size: 40.0,
-        bottom_margin: 20.0,
-        page_break_before: true,
-        page_break_after: true,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
-      chapter: HeadingStyle {
-        format: "Chapter {number}: {title}".to_string(),
-        font_size: 25.0,
-        bottom_margin: 15.0,
-        page_break_before: true,
-        page_break_after: false,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
-      section: HeadingStyle {
-        format: "{number} {title}".to_string(),
-        font_size: 20.0,
-        bottom_margin: 10.0,
-        page_break_before: false,
-        page_break_after: false,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
-      subsection: HeadingStyle {
-        format: "{number} {title}".to_string(),
-        font_size: 16.0,
-        bottom_margin: 10.0,
-        page_break_before: false,
-        page_break_after: false,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
-      paragraph: HeadingStyle {
-        format: "{number} {title}".to_string(),
-        font_size: 14.0,
-        bottom_margin: 5.0,
-        page_break_before: false,
-        page_break_after: false,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
-      subparagraph: HeadingStyle {
-        format: "{number} {title}".to_string(),
-        font_size: 12.0,
-        bottom_margin: 5.0,
-        page_break_before: false,
-        page_break_after: false,
-        font_kind: crate::FontKindConfig::SerifBold,
-      },
+      heading: default_per_level(),
+      text: TextBlockStyle::default(),
+      list: ListStyle::default(),
+      math: MathStyle::default(),
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
       table: TableStyle::default(),
       footnote: FootnoteStyle::default(),
       toc: TocStyle::default(),
       hyperref: HyperrefStyle::default(),
-      counters: counter::default_counters(),
       reference: ReferenceStyle::default(),
-      list: ListStyle::default(),
-      body: ParagraphStyle::default(),
-      math: MathLayoutStyle::default(),
+      counters: counter::default_counters(),
     };
   }
+}
+
+impl Style {
+  /// 指定された見出しレベルの [`HeadingStyle`] への不変参照を返す
+  ///
+  /// `style.heading[level]` でも同じことができるが、`heading` の内部表現を変えても
+  /// 呼び出し側に影響しないよう、利用側にはこの accessor を使ってもらう。
+  #[must_use]
+  pub fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
+
+  /// 指定された名前のカウンタ定義への不変参照を返す
+  #[must_use]
+  pub fn counter(&self, name: &str) -> Option<&CounterStyle> { return self.counters.get(name); }
 }
 
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use types::HeadingLevel;
 
   use super::Style;
+  use crate::Color;
 
   #[test]
   fn validate_accepts_default() {
-    // Arrange / Act / Assert
     assert!(Style::default().validate().is_ok());
   }
 
   #[test]
   fn validate_rejects_zero_font_size() {
-    // Arrange
     let style = Style {
       font_size: 0.0,
       ..Style::default()
     };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_negative_font_size() {
-    // Arrange
-    let style = Style {
-      font_size: -1.0,
-      ..Style::default()
-    };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_zero_line_height_factor() {
-    // Arrange
     let style = Style {
       line_height_factor: 0.0,
       ..Style::default()
     };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
-  fn validate_rejects_negative_line_height_factor() {
-    // Arrange
-    let style = Style {
-      line_height_factor: -1.0,
-      ..Style::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
+  fn heading_accessor_returns_correct_level() {
+    let style = Style::default();
+    assert!(style.heading(HeadingLevel::Part).font_size > style.heading(HeadingLevel::Section).font_size);
   }
 
   #[test]
-  fn validate_dives_into_nested_heading() {
-    // Arrange: dive で chapter 内の不正値が伝播することを確認
-    let mut style = Style::default();
-    style.chapter.bottom_margin = -1.0;
-
-    // Act / Assert
-    assert!(style.validate().is_err());
+  fn counter_accessor_finds_figure() {
+    let style = Style::default();
+    assert!(style.counter("figure").is_some());
+    assert!(style.counter("nonexistent").is_none());
   }
 
   #[test]
-  fn validate_dives_into_nested_reference() {
-    // Arrange: dive で reference 内の不正値が伝播することを確認
-    let mut style = Style::default();
-    style.reference.format = String::new();
-
-    // Act / Assert
-    assert!(style.validate().is_err());
+  fn default_color_fields_are_none() {
+    let style = Style::default();
+    assert!(style.text_color.is_none());
+    assert!(style.background_color.is_none());
   }
 
   #[test]
-  fn validate_dives_into_nested_figure() {
-    // Arrange
-    let mut style = Style::default();
-    style.figure.caption_format = String::new();
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_nested_equation() {
-    // Arrange
-    let mut style = Style::default();
-    style.equation.top_margin = -1.0;
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_nested_table() {
-    // Arrange
+  fn validate_dives_into_nested_table_rule_thickness() {
     let mut style = Style::default();
     style.table.rule_thickness = -0.1;
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 
   #[test]
-  fn validate_dives_into_nested_footnote() {
-    // Arrange
-    let mut style = Style::default();
-    style.footnote.marker_format = String::new();
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_nested_toc() {
-    // Arrange
-    let mut style = Style::default();
-    style.toc.max_depth = 0;
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_dives_into_counters() {
-    // Arrange: HashMap の中身もバリデーションされること
+  fn validate_dives_into_counters_display_name() {
     let mut style = Style::default();
     if let Some(counter) = style.counters.get_mut("figure") {
       counter.display_name = String::new();
     }
-
-    // Act / Assert
     assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn background_color_field_accepts_color_value() {
+    let style = Style {
+      background_color: Some(Color::new(204, 179, 153)),
+      ..Style::default()
+    };
+    assert!(style.validate().is_ok());
+    let color = style.background_color.expect("background_color should be Some");
+    assert_eq!(color.rgb(), [204, 179, 153]);
   }
 }

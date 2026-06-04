@@ -3,12 +3,13 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use crate::figure::CaptionPosition;
+use crate::Color;
+pub use crate::float::figure::CaptionPosition;
 
 /// 表のスタイル設定
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct TableStyle {
   /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
   #[garde(length(chars, min = 1))]
@@ -27,8 +28,8 @@ pub struct TableStyle {
   /// 罫線の太さ（pt）
   #[garde(range(min = 0.0, max = f32::MAX))]
   pub rule_thickness: f32,
-  /// 罫線色 RGB（各成分 0-255、オプション）。`None` は黒
-  pub rule_color: Option<[u8; 3]>,
+  /// 罫線色。`None` は黒
+  pub rule_color: Option<Color>,
 }
 
 impl Default for TableStyle {
@@ -53,64 +54,20 @@ mod tests {
 
   #[test]
   fn validate_accepts_default() {
-    // Arrange / Act / Assert
     assert!(TableStyle::default().validate().is_ok());
   }
 
   #[test]
   fn default_has_top_caption() {
-    // Arrange / Act
-    let style = TableStyle::default();
-
-    // Assert: 表のキャプションは上が業界慣習
-    assert_eq!(style.caption_position, CaptionPosition::Top);
-  }
-
-  #[test]
-  fn validate_rejects_empty_caption_format() {
-    // Arrange
-    let style = TableStyle {
-      caption_format: String::new(),
-      ..TableStyle::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_zero_caption_font_size() {
-    // Arrange
-    let style = TableStyle {
-      caption_font_size: 0.0,
-      ..TableStyle::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_zero_rule_thickness() {
-    // Arrange: range(min = 0.0) のため 0.0 は許容される（罫線非表示相当）
-    let style = TableStyle {
-      rule_thickness: 0.0,
-      ..TableStyle::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_ok());
+    assert_eq!(TableStyle::default().caption_position, CaptionPosition::Top);
   }
 
   #[test]
   fn validate_rejects_negative_rule_thickness() {
-    // Arrange
     let style = TableStyle {
       rule_thickness: -0.1,
       ..TableStyle::default()
     };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

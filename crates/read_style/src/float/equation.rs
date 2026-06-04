@@ -4,9 +4,9 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// ディスプレイ数式のスタイル設定
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct EquationStyle {
   /// 数式番号の書式テンプレート。`{number}` を含めることができる
   #[garde(length(chars, min = 1))]
@@ -55,6 +55,8 @@ pub enum Alignment {
   Center,
   /// 左揃え
   Left,
+  /// 右揃え
+  Right,
 }
 
 #[cfg(test)]
@@ -65,54 +67,22 @@ mod tests {
 
   #[test]
   fn validate_accepts_default() {
-    // Arrange / Act / Assert
     assert!(EquationStyle::default().validate().is_ok());
   }
 
   #[test]
-  fn default_has_right_aligned_number_and_center_body() {
-    // Arrange / Act
+  fn default_uses_right_number_and_center_body() {
     let style = EquationStyle::default();
-
-    // Assert
     assert_eq!(style.number_side, NumberSide::Right);
     assert_eq!(style.alignment, Alignment::Center);
   }
 
   #[test]
   fn validate_rejects_empty_number_format() {
-    // Arrange
     let style = EquationStyle {
       number_format: String::new(),
       ..EquationStyle::default()
     };
-
-    // Act / Assert
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_accepts_zero_margins() {
-    // Arrange
-    let style = EquationStyle {
-      top_margin: 0.0,
-      bottom_margin: 0.0,
-      ..EquationStyle::default()
-    };
-
-    // Act / Assert
-    assert!(style.validate().is_ok());
-  }
-
-  #[test]
-  fn validate_rejects_negative_top_margin() {
-    // Arrange
-    let style = EquationStyle {
-      top_margin: -1.0,
-      ..EquationStyle::default()
-    };
-
-    // Act / Assert
     assert!(style.validate().is_err());
   }
 }

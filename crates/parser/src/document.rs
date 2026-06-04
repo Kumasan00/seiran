@@ -300,78 +300,21 @@ pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
 // 見出し関連の型
 // =============================================================================
 
-/// 見出しのレベル
+pub use types::HeadingLevel;
+
+/// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
 ///
-/// LaTeX の見出しコマンドに対応し、各レベルの
-/// フォントサイズ・余白は Lowering 層で決定されます。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum HeadingLevel {
-  /// `\part` — 部（最上位の区分）
-  Part = 0,
-  /// `\chapter` — 章
-  Chapter = 1,
-  /// `\section` — 節
-  Section = 2,
-  /// `\subsection` — 小節
-  Subsection = 3,
-  /// `\paragraph` — 段落見出し
-  Paragraph = 4,
-  /// `\subparagraph` — 小段落見出し
-  Subparagraph = 5,
-}
-
-impl HeadingLevel {
-  /// 数値インデックスを返す（0=Part, 5=Subparagraph）
-  #[must_use]
-  pub fn depth(self) -> u8 { return self as u8; }
-
-  /// コマンド名からレベルを取得する
-  ///
-  /// # Returns
-  ///
-  /// 対応する `HeadingLevel`。未知のコマンド名の場合は `None`。
-  #[must_use]
-  pub fn from_command_name(name: &str) -> Option<Self> {
-    return match name {
-      "part" => Some(HeadingLevel::Part),
-      "chapter" => Some(HeadingLevel::Chapter),
-      "section" => Some(HeadingLevel::Section),
-      "subsection" => Some(HeadingLevel::Subsection),
-      "paragraph" => Some(HeadingLevel::Paragraph),
-      "subparagraph" => Some(HeadingLevel::Subparagraph),
-      _ => None,
-    };
-  }
-
-  /// コマンド名を返す
-  #[must_use]
-  pub fn command_name(self) -> &'static str {
-    return match self {
-      HeadingLevel::Part => "part",
-      HeadingLevel::Chapter => "chapter",
-      HeadingLevel::Section => "section",
-      HeadingLevel::Subsection => "subsection",
-      HeadingLevel::Paragraph => "paragraph",
-      HeadingLevel::Subparagraph => "subparagraph",
-    };
-  }
-
-  /// エラーメッセージ用の引数説明を返す
-  #[must_use]
-  pub(crate) fn expected_name(self) -> &'static str {
-    return match self {
-      HeadingLevel::Part => "部名",
-      HeadingLevel::Chapter => "章名",
-      HeadingLevel::Section => "セクション名",
-      HeadingLevel::Subsection => "サブセクション名",
-      HeadingLevel::Paragraph => "段落名",
-      HeadingLevel::Subparagraph => "小節名",
-    };
-  }
-}
-
-impl fmt::Display for HeadingLevel {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { return write!(f, "{}", self.command_name()); }
+/// 文言は parser エラーレポート専用のため、`types` 側ではなく parser に置く。
+#[must_use]
+pub(crate) fn expected_name(level: HeadingLevel) -> &'static str {
+  return match level {
+    HeadingLevel::Part => "部名",
+    HeadingLevel::Chapter => "章名",
+    HeadingLevel::Section => "セクション名",
+    HeadingLevel::Subsection => "サブセクション名",
+    HeadingLevel::Paragraph => "段落名",
+    HeadingLevel::Subparagraph => "小節名",
+  };
 }
 
 // =============================================================================

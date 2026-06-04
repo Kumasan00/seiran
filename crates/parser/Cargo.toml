@@ -16,6 +16,7 @@ read_style.workspace = true
 serde.workspace = true
 syntax.workspace = true
 thiserror.workspace = true
+types.workspace = true
 
 [lints]
 workspace = true

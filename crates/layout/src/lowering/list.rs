@@ -2,7 +2,7 @@
 
 use parser::document::ListItem;
 
-use super::{LoweringContext, LoweringError, font_kind_from_config, lower_nodes};
+use super::{LoweringContext, LoweringError, lower_nodes};
 use crate::layout_node::{LayoutNode, Style};
 
 /// リストをレイアウトノードに変換する
@@ -20,7 +20,7 @@ pub(super) fn lower_list(
 
   let marker_style = Style {
     font_size: ctx.default_font_size(),
-    font_kind: font_kind_from_config(list_style.marker_font_kind),
+    font_kind: list_style.marker_font_kind,
   };
 
   for (i, item) in items.iter().enumerate() {
