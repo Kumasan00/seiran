@@ -95,7 +95,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `types` | `FontType`, `FontKind`, `FontMap` など全クレート共通型 |
 | `cli` | clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`） |
 | `read_config` | `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約） |
-| `read_style` | `config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。`Style { core, extended }` の 2 層構造で、lowering/pdf_gen が読む `core` フィールド（`font_size` / `heading` / `text` / `list` / `math` / `table` / `counters` / `background_color`）と、現状未参照の `extended`（`figure` / `equation` / `footnote` / `toc` / `hyperref` / `reference`）に分離 |
+| `read_style` | `config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。`Style { core, extended }` の 2 層構造で、lowering/pdf_gen が読む `core` フィールド（`font_size` / `heading` / `text` / `list` / `math` / `table` / `counters` / `background_color` / `equation`）と、現状未参照の `extended`（`figure` / `footnote` / `toc` / `hyperref` / `reference`）に分離 |
 | `read_references` | `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別） |
 | `syntax` | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供 |
 | `parser` | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール |

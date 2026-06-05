@@ -28,7 +28,7 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 
 /// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する
 ///
-/// `EquationStyle`（`style.extended.equation`）から上下マージンと番号書式・配置を読み、
+/// `EquationStyle`（`style.equation`）から上下マージンと番号書式・配置を読み、
 /// 以下の順で `LayoutNode` 列を組み立てる：
 ///
 /// ```text
@@ -46,7 +46,7 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 /// 現段階では行頭からのレンダリングのみ。
 pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], number: Option<&str>) -> Vec<LayoutNode> {
   let font_size = ctx.default_font_size();
-  let eq = &ctx.style.extended.equation;
+  let eq = &ctx.style.equation;
 
   // 番号文字列を書式化し、Text ノードに包む（None の場合は何も生成しない）
   let number_node: Option<LayoutNode> = number.map(|n| {
@@ -441,7 +441,7 @@ mod tests {
   fn lower_display_math_places_number_left_when_configured() {
     // Arrange: number_side = Left に設定すると、本体の前に番号 Text + Glue が並ぶ
     let mut style = ReadStyle::default();
-    style.extended.equation.number_side = read_style::NumberSide::Left;
+    style.equation.number_side = read_style::NumberSide::Left;
     let ctx = LoweringContext::new(&style);
 
     // Act

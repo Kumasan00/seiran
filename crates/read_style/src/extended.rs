@@ -1,27 +1,24 @@
 //! 拡張スタイル設定（[`ExtendedStyle`]）。
 //!
-//! 図・数式・脚注・目次・ハイパーリンク・参考文献といった、現状は [`crate::layout`] /
+//! 脚注・目次・ハイパーリンク・参考文献といった、現状は [`crate::layout`] /
 //! [`crate::pdf_gen`] 側で参照されていない（実装が追いついていない）スタイル設定を
 //! トップレベル [`crate::Style`] から分離して保持する。
 //!
-//! 利用側からは `style.extended.figure` のように経由してアクセスする。
-//! TOML では `[extended.figure]` / `[extended.equation]` / … の各テーブルにマップされる。
+//! 利用側からは `style.extended.footnote` のように経由してアクセスする。
+//! TOML では `[extended.footnote]` / `[extended.toc]` / … の各テーブルにマップされる。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
   cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
-  float::{equation::EquationStyle, footnote::FootnoteStyle},
+  float::footnote::FootnoteStyle,
 };
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct ExtendedStyle {
-  /// ディスプレイ数式のスタイル
-  #[garde(dive)]
-  pub equation: EquationStyle,
   /// 脚注のスタイル
   #[garde(dive)]
   pub footnote: FootnoteStyle,

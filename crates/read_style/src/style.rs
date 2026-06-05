@@ -20,7 +20,7 @@ use crate::{
     per_level::PerLevel,
   },
   extended::ExtendedStyle,
-  float::{figure::FigureStyle, table::TableStyle},
+  float::{equation::EquationStyle, figure::FigureStyle, table::TableStyle},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -58,15 +58,18 @@ pub struct Style {
   /// 図フロートのスタイル
   #[garde(dive)]
   pub figure: FigureStyle,
+  /// ディスプレイ数式のスタイル
+  #[garde(dive)]
+  pub equation: EquationStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`）。
   /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
   /// 値は [`CounterEntry`] で「カウンタ定義」「別名」を排他的に表す。
   #[garde(dive)]
   pub counters: HashMap<String, CounterEntry>,
-  /// 現状 `lowering/pdf_gen` 未参照のスタイル群（figure / equation / footnote / toc /
-  /// hyperref / reference）。資産として保持し、TOML 上では `[extended.*]` 配下に書く。
+  /// 現状 `lowering/pdf_gen` 未参照のスタイル群（footnote / toc / hyperref / reference）。
+  /// 資産として保持し、TOML 上では `[extended.*]` 配下に書く。
   #[garde(dive)]
-  pub extended: ExtendedStyle,
+  extended: ExtendedStyle,
 }
 
 impl Default for Style {
@@ -81,6 +84,7 @@ impl Default for Style {
       math: MathScriptStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
+      equation: EquationStyle::default(),
       counters: counter::default_counters(),
       extended: ExtendedStyle::default(),
     };

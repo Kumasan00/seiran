@@ -19,40 +19,26 @@
 //! `read_style::HeadingStyle.format` テンプレを介して付けるため、本レジストリは
 //! 装飾を含まない裸の番号文字列のみを返すことに注意。
 //!
-//! ## TODO（実装本体タスクで解消）
+//! ## カウンタ定義のソース
 //!
-//! - `style.toml` に `[counters]` テーブルを追加し、[`CounterRegistry::from_style`] の
-//!   中身を `default_for_seiran()` 委譲から実装に置き換える
-//! - 図・数式・表のカウンタは現状 chapter 親で固定。`style.toml` でカスタマイズ可能にする
+//! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
+//! [`CounterRegistry::from_style`] が [`read_style::CounterEntry`] を内部表現の
+//! [`CounterDef`] にマップする。既定 9 種（part〜table）も `Style::default()` が
+//! `read_style::default_counters()` 経由で供給するため、parser 側に同じ定義を
+//! 重複して持たない。
 
 use std::collections::HashMap;
 
-use garde::Validate;
-use serde::{Deserialize, Serialize};
+use read_style::{CounterEntry, NumberFormat, Style};
 
 use crate::document::HeadingLevel;
 
-/// 番号の表示形式
+/// カウンタ 1 つの内部表現
 ///
-/// `Plain` は単独カウンタの値を 10 進数で返す（例: chapter は `"3"`）。
-/// `Prefixed` は親カウンタを `.` 区切りで連結した値を返す（例: section は `"2.3"`）。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Validate)]
-#[serde(rename_all = "snake_case")]
-#[garde(allow_unvalidated)]
-pub enum NumberFormat {
-  /// 単独カウンタ。例: chapter は `"3"`
-  Plain,
-  /// 親カウンタチェーンと自身を `.` で結合。例: section は `"2.3"`
-  Prefixed,
-}
-
-/// カウンタ 1 つの定義
-///
-/// 親子関係（`parent`）・リセット連鎖（`resets`）・別名（`alias_of`）を持つ。
-/// `style.toml` に `[counters.<name>]` テーブルを足すことで将来カスタマイズ可能にする
-/// 想定で、`HeadingStyle` と同じ `serde + garde` パターンに揃えている。
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
-#[garde(allow_unvalidated)]
+/// [`read_style::CounterEntry`]（カウンタ定義と別名の untagged enum）を平坦化したもの。
+/// `alias_of` を `CounterDef` 自身のフィールドに畳むことで、`HashMap<String, CounterDef>`
+/// に対する統一的なルックアップが可能になる。
+#[derive(Debug, Clone)]
 pub struct CounterDef {
   /// カウンタ名（一意）
   pub name: String,
@@ -91,103 +77,42 @@ pub(crate) struct CounterRegistry {
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   ///
-  /// 部・章・節・小節・段落・小段落、および図・数式・表（実装本体タスクで本格的に
-  /// 利用される）のカウンタを既定値で登録する。
+  /// 既定値は `read_style::Style::default()` が `default_counters()` 経由で供給する
+  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
+  /// figure / equation / table）。
   #[must_use]
-  pub fn default_for_seiran() -> Self {
-    let defs = vec![
-      CounterDef {
-        name: "part".to_string(),
-        parent: None,
-        format: NumberFormat::Plain,
-        resets: vec![
-          "chapter".to_string(),
-          "section".to_string(),
-          "subsection".to_string(),
-          "paragraph".to_string(),
-          "subparagraph".to_string(),
-        ],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "chapter".to_string(),
-        parent: None,
-        format: NumberFormat::Plain,
-        resets: vec![
-          "section".to_string(),
-          "subsection".to_string(),
-          "paragraph".to_string(),
-          "subparagraph".to_string(),
-          "figure".to_string(),
-          "equation".to_string(),
-          "table".to_string(),
-        ],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "section".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![
-          "subsection".to_string(),
-          "paragraph".to_string(),
-          "subparagraph".to_string(),
-        ],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "subsection".to_string(),
-        parent: Some("section".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec!["paragraph".to_string(), "subparagraph".to_string()],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "paragraph".to_string(),
-        parent: Some("subsection".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec!["subparagraph".to_string()],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "subparagraph".to_string(),
-        parent: Some("paragraph".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "figure".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "equation".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "table".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: None,
-      },
-    ];
+  pub fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
+
+  /// `read_style::Style` からレジストリを構築する
+  ///
+  /// `Style.counters` の各エントリを [`CounterDef`] に変換して [`Self::from_definitions`] に
+  /// 渡す。`CounterEntry::Counter` は通常定義に、`CounterEntry::Alias` は `alias_of` のみを
+  /// 持つ `CounterDef` にマップする。`display_name`（"Figure" / "図" 等の装飾文字列）は
+  /// lowering 側の責務のため捨てる。
+  #[must_use]
+  pub fn from_style(style: &Style) -> Self {
+    let defs: Vec<CounterDef> = style
+      .counters
+      .iter()
+      .map(|(name, entry)| match entry {
+        CounterEntry::Counter(def) => CounterDef {
+          name: name.clone(),
+          parent: def.parent.clone(),
+          format: def.format,
+          resets: def.resets.clone(),
+          alias_of: None,
+        },
+        CounterEntry::Alias(alias) => CounterDef {
+          name: name.clone(),
+          parent: None,
+          format: NumberFormat::Plain,
+          resets: Vec::new(),
+          alias_of: Some(alias.alias_of.clone()),
+        },
+      })
+      .collect();
     return Self::from_definitions(defs);
   }
-
-  /// `read_style::Style` から `CounterRegistry` を構築する（シグネチャ予約）
-  ///
-  /// 現状 `Style` には `[counters]` テーブルが存在しないため、内部実装は
-  /// `default_for_seiran()` への委譲のみ。`style.toml` 側のスキーマ拡張後に
-  /// このメソッドだけを実装すれば配線完了する。
-  #[must_use]
-  pub fn from_style(_style: &read_style::Style) -> Self { return Self::default_for_seiran(); }
 
   /// 任意の定義列からレジストリを構築する（テスト・カスタム用）
   #[must_use]
@@ -301,6 +226,8 @@ impl CounterRegistry {
 
 #[cfg(test)]
 mod tests {
+  use read_style::{CounterEntry, CounterStyle, NumberFormat, Style, common::counter::AliasDef};
+
   use super::*;
 
   #[test]
@@ -376,10 +303,60 @@ mod tests {
   }
 
   #[test]
-  fn from_style_delegates_to_default() {
-    // シグネチャ予約: 現状は default_for_seiran() と同じ動作のみ確認
-    let style = read_style::Style::default();
+  fn from_style_includes_custom_counter_definition() {
+    // Arrange: 既定 Style に独自カウンタ "example" を追加（chapter 親、prefixed）
+    let mut style = Style::default();
+    style.counters.insert(
+      "example".to_string(),
+      CounterEntry::Counter(CounterStyle {
+        display_name: "Example".to_string(),
+        parent: Some("chapter".to_string()),
+        format: NumberFormat::Prefixed,
+        resets: Vec::new(),
+      }),
+    );
+
+    // Act
     let mut r = CounterRegistry::from_style(&style);
-    assert_eq!(r.increment("chapter"), "1");
+    r.increment("chapter");
+    let n1 = r.increment("example");
+    let n2 = r.increment("example");
+
+    // Assert: chapter 親が反映されており、prefixed で "1.1" → "1.2" と進む
+    assert_eq!(n1, "1.1");
+    assert_eq!(n2, "1.2");
+  }
+
+  #[test]
+  fn from_style_maps_alias_entry_to_canonical_counter() {
+    // Arrange: 既定 Style に "fig" を "figure" の別名として追加
+    let mut style = Style::default();
+    style.counters.insert(
+      "fig".to_string(),
+      CounterEntry::Alias(AliasDef {
+        alias_of: "figure".to_string(),
+      }),
+    );
+
+    // Act: alias 経由で進めても figure 本体が進むことを確認
+    let mut r = CounterRegistry::from_style(&style);
+    r.increment("chapter");
+    let via_alias = r.increment("fig"); // alias 経由
+    let via_canonical = r.increment("figure"); // 本体経由
+
+    // Assert: 同じ figure カウンタを共有しているので連番になる
+    assert_eq!(via_alias, "1.1");
+    assert_eq!(via_canonical, "1.2");
+  }
+
+  #[test]
+  fn from_style_with_default_style_matches_default_for_seiran() {
+    // Arrange / Act
+    let mut from_default = CounterRegistry::from_style(&Style::default());
+    let mut from_helper = CounterRegistry::default_for_seiran();
+
+    // Assert: 既定 Style 経由と default_for_seiran() が同じ振る舞いをする
+    assert_eq!(from_default.increment("chapter"), from_helper.increment("chapter"));
+    assert_eq!(from_default.increment("section"), from_helper.increment("section"));
   }
 }
