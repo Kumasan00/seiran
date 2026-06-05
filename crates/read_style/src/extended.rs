@@ -12,16 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
-  float::{equation::EquationStyle, figure::FigureStyle, footnote::FootnoteStyle},
+  float::{equation::EquationStyle, footnote::FootnoteStyle},
 };
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct ExtendedStyle {
-  /// 図フロートのスタイル
-  #[garde(dive)]
-  pub figure: FigureStyle,
   /// ディスプレイ数式のスタイル
   #[garde(dive)]
   pub equation: EquationStyle,
@@ -59,7 +56,6 @@ mod tests {
 
     // Assert
     assert!(restored.validate().is_ok());
-    assert_eq!(restored.figure.caption_position, style.figure.caption_position);
     assert_eq!(restored.toc.title, style.toc.title);
   }
 }

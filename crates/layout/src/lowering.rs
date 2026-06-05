@@ -28,10 +28,10 @@ use miette::Diagnostic;
 use parser::document::{DocNode, Document};
 use read_style::Style as ReadStyle;
 use thiserror::Error;
-use types::FontKind;
 
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::LayoutNode;
 
+mod figure;
 mod heading;
 mod inline;
 mod list;
@@ -150,17 +150,15 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     DocNode::DisplayMath { body, number, .. } => {
       return Ok(math::lower_display_math(ctx, body, number.as_deref()));
     },
-    DocNode::Figure { body, .. } => {
-      // TODO(figure-equation-impl): caption 抽出と図のレイアウト。前準備では body を素通し。
-      return lower_nodes(ctx, body);
-    },
-    DocNode::Image { path, .. } => {
-      // TODO(figure-equation-impl): 実画像埋め込み。前準備ではパスをテキスト出力。
-      let style = Style {
-        font_size: ctx.default_font_size(),
-        font_kind: FontKind::Monospace,
-      };
-      return Ok(vec![LayoutNode::Text(format!("[Image: {path}]"), style)]);
+    DocNode::Figure {
+      image_path,
+      width_mm,
+      height_mm,
+      caption,
+      number,
+      ..
+    } => {
+      return figure::lower_figure(ctx, image_path, *width_mm, *height_mm, caption.as_deref(), number);
     },
   }
 }

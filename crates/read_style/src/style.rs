@@ -20,7 +20,7 @@ use crate::{
     per_level::PerLevel,
   },
   extended::ExtendedStyle,
-  float::table::TableStyle,
+  float::{figure::FigureStyle, table::TableStyle},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -55,6 +55,9 @@ pub struct Style {
   /// 表のスタイル
   #[garde(dive)]
   pub table: TableStyle,
+  /// 図フロートのスタイル
+  #[garde(dive)]
+  pub figure: FigureStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`）。
   /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
   /// 値は [`CounterEntry`] で「カウンタ定義」「別名」を排他的に表す。
@@ -77,6 +80,7 @@ impl Default for Style {
       list: ListStyle::default(),
       math: MathScriptStyle::default(),
       table: TableStyle::default(),
+      figure: FigureStyle::default(),
       counters: counter::default_counters(),
       extended: ExtendedStyle::default(),
     };

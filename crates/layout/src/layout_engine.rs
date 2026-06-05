@@ -53,6 +53,19 @@ pub enum BoxItem {
   Text(GlyphRun),
   /// 罫線（幅と高さを持つ矩形）
   Rule { width: f32, height: f32 },
+  /// 画像（PNG / JPEG）
+  ///
+  /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位。
+  /// `pdf_gen` 側でファイルを開いて `krilla::Image` に変換し、`surface.draw_image`
+  /// で配置する。
+  Image {
+    /// 画像ファイルへのパス
+    path: String,
+    /// 描画幅（pt）
+    width: f32,
+    /// 描画高さ（pt）
+    height: f32,
+  },
 }
 
 /// シェーピング済みのグリフ列情報
@@ -207,6 +220,19 @@ fn layout_engine_inner(
       LayoutNode::Rule { width, height } => {
         // ルールのレイアウト処理
         let box_item = BoxItem::Rule { width, height };
+        items.push(Item::Box(box_item));
+      },
+      LayoutNode::Image {
+        path,
+        width,
+        height,
+      } => {
+        // 画像のレイアウト処理（実際の描画は pdf_gen が担当）
+        let box_item = BoxItem::Image {
+          path,
+          width,
+          height,
+        };
         items.push(Item::Box(box_item));
       },
       LayoutNode::Raise { dy, children } => {

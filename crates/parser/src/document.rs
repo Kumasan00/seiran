@@ -137,28 +137,22 @@ pub enum DocNode {
 
   /// 図環境（`\begin{figure}...\end{figure}`）
   ///
-  /// **前準備のスタブ**。中身（画像コマンド、キャプションコマンド等）を
-  /// そのまま `body` に保持する。実装本体タスクで caption / label の
-  /// 取り出し方と lowering を確定させる。
+  /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
+  /// `width_mm` / `height_mm` は `\image` の任意引数で mm 単位指定。
+  /// `number` は `figure_count` から発番された通し番号文字列。
   Figure {
-    /// 環境本体
-    body: Vec<DocNode>,
-    /// `[label=fig:foo]`
+    /// 画像ファイルへのパス（`\image{...}` の必須引数）
+    image_path: String,
+    /// 画像の幅（mm）
+    width_mm: f64,
+    /// 画像の高さ（mm）
+    height_mm: f64,
+    /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
+    caption: Option<Vec<InlineNode>>,
+    /// `\ref{fig:foo}` 解決用ラベル（環境の任意引数 `[label=fig:foo]`）
     label: Option<String>,
-  },
-
-  /// 画像（`\image[width=10cm]{path}` コマンド）
-  ///
-  /// **前準備のスタブ**。`options` には command optarg の key=value 列を
-  /// そのまま保持する（width / height 等）。実装本体タスクで
-  /// オプションの解釈と lowering（実際の画像埋め込み）を行う。
-  Image {
-    /// 画像ファイルへのパス
-    path: String,
-    /// 任意引数の key=value 列
-    options: Vec<(String, String)>,
-    /// `\ref` 用ラベル
-    label: Option<String>,
+    /// 評価時に発番された通し番号（プレーン文字列）
+    number: String,
   },
 
   /// 罫線（描画線）
@@ -606,6 +600,7 @@ mod tests {
       paragraph: 5,
       subparagraph: 6,
       equation_count: 0,
+      figure_count: 0,
     };
 
     assert_eq!(HeadingNumber::from_context(HeadingLevel::Part, &ctx).parts, vec![1]);

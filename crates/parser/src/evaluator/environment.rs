@@ -27,6 +27,7 @@ use crate::{
 
 pub(crate) mod body_scan;
 mod equation;
+mod figure;
 mod itemize;
 
 /// 環境ハンドラの関数ポインタ型
@@ -54,6 +55,7 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::itemize),   display_name: "箇条書きリスト" },
   "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::enumerate), display_name: "番号付きリスト" },
   "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(equation::equation), display_name: "数式" },
+  "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),     display_name: "図" },
 };
 
 /// 環境名から構文解析モードを引く

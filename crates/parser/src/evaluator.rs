@@ -205,6 +205,9 @@ pub(crate) struct EvalContext {
   /// chapter リセット連動は今回は組まない — 将来 `CounterRegistry` に
   /// 移行する際に章番号との連結（`1.1`, `1.2`, …）も同時に整える。
   pub equation_count: u32,
+  /// 図の通し番号（フラットカウンタ）。`equation_count` と同様に
+  /// `CounterRegistry` 完成時に章番号連結を整える。
+  pub figure_count: u32,
 }
 
 impl EvalContext {
@@ -255,6 +258,15 @@ impl EvalContext {
   pub(crate) fn increment_equation(&mut self) -> u32 {
     self.equation_count += 1;
     return self.equation_count;
+  }
+
+  /// 図カウンタをインクリメントし、新しい番号を返す
+  ///
+  /// `\begin{figure}` ハンドラから呼ばれる想定。`increment_equation` と同様に
+  /// フラットカウンタで、章番号との連結は将来 `CounterRegistry` 完成時に整える。
+  pub(crate) fn increment_figure(&mut self) -> u32 {
+    self.figure_count += 1;
+    return self.figure_count;
   }
 }
 

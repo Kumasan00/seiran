@@ -3,13 +3,16 @@
 //! このモジュールは、フォント、コンテンツ、設定情報から
 //! PDFドキュメントを生成する機能を提供します。
 
+use std::{fs, path::Path};
+
 use chrono::{Datelike, Timelike, Utc};
 use font::{FontData, FontRefs};
 use krilla::{
   Document,
   color::rgb,
   error::KrillaError,
-  geom::{PathBuilder, Point, Rect},
+  geom::{PathBuilder, Point, Rect, Size, Transform},
+  image::Image,
   metadata::{DateTime, Metadata},
   page::PageSettings,
   paint::Fill,
@@ -111,6 +114,44 @@ pub enum PdfGenError {
     /// 元の生成エラー。
     #[source]
     source: KrillaError,
+  },
+  /// 画像ファイルを読み込めませんでした。
+  #[error("画像ファイルを読み込めませんでした: {path}")]
+  #[diagnostic(code(pdf_gen::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
+  ReadImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の I/O エラー。
+    #[source]
+    source: std::io::Error,
+  },
+  /// 画像ファイルの形式が未対応です。
+  #[error("画像ファイルの拡張子が未対応です: {path}")]
+  #[diagnostic(code(pdf_gen::unsupported_image_format), help("対応形式は PNG (.png) と JPEG (.jpg / .jpeg) です。"))]
+  UnsupportedImageFormat {
+    /// 画像ファイルのパス。
+    path: String,
+  },
+  /// 画像のデコードに失敗しました。
+  #[error("画像のデコードに失敗しました: {path} ({reason})")]
+  #[diagnostic(code(pdf_gen::decode_image), help("画像ファイルが破損していないか確認してください。"))]
+  DecodeImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// krilla が返したメッセージ。
+    reason: String,
+  },
+  /// 画像の描画サイズが不正です。
+  #[error("画像の描画サイズが不正です: width={width}, height={height}")]
+  #[diagnostic(
+    code(pdf_gen::invalid_image_size),
+    help("width と height が正の有限値であることを確認してください。")
+  )]
+  InvalidImageSize {
+    /// 描画幅。
+    width: f32,
+    /// 描画高さ。
+    height: f32,
   },
 }
 
@@ -315,6 +356,27 @@ fn render_items(
           current_line_height = style.font_size.to_pt() * style.line_height_factor;
           line_break_seen = false;
         },
+        BoxItem::Image {
+          path,
+          width,
+          height,
+        } => {
+          if y + height > page_limit {
+            start_new_page!();
+          }
+          let image = load_image(path)?;
+          let size = Size::from_wh(*width, *height).ok_or(PdfGenError::InvalidImageSize {
+            width: *width,
+            height: *height,
+          })?;
+          surface.push_transform(&Transform::from_translate(x, y));
+          surface.draw_image(image, size);
+          surface.pop();
+          x = config.pdf.margin.left;
+          y += *height;
+          current_line_height = style.font_size.to_pt() * style.line_height_factor;
+          line_break_seen = false;
+        },
       },
       Item::Glue { natural, .. } => {
         x += natural;
@@ -380,6 +442,35 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
   surface.draw_path(&path);
   surface.set_fill(None);
   return Ok(());
+}
+
+/// 画像ファイルを読み込み、拡張子に応じて [`Image`] に変換します。
+///
+/// 対応形式は PNG（`.png`）と JPEG（`.jpg` / `.jpeg`）です。
+/// それ以外の拡張子は [`PdfGenError::UnsupportedImageFormat`] を返します。
+fn load_image(path: &str) -> Result<Image, PdfGenError> {
+  let bytes = fs::read(path).map_err(|source| PdfGenError::ReadImage {
+    path: path.to_string(),
+    source,
+  })?;
+  let extension = Path::new(path)
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(str::to_ascii_lowercase)
+    .unwrap_or_default();
+  let result = match extension.as_str() {
+    "png" => Image::from_png(bytes.into(), false),
+    "jpg" | "jpeg" => Image::from_jpeg(bytes.into(), false),
+    _ => {
+      return Err(PdfGenError::UnsupportedImageFormat {
+        path: path.to_string(),
+      });
+    },
+  };
+  return result.map_err(|reason| PdfGenError::DecodeImage {
+    path: path.to_string(),
+    reason,
+  });
 }
 
 /// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。

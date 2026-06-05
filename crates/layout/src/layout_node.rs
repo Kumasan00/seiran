@@ -57,6 +57,19 @@ pub enum LayoutNode {
     width: f32,
     height: f32,
   },
+  /// 画像（PNG / JPEG）
+  ///
+  /// `path` はソースに記載された相対 / 絶対パス。`width` / `height` は
+  /// `\image[width=..., height=...]` で指定された値を pt に変換した結果。
+  /// `pdf_gen` が `surface.draw_image` でこの矩形にビットマップをマップする。
+  Image {
+    /// 画像ファイルへのパス
+    path: String,
+    /// 描画幅（pt）
+    width: f32,
+    /// 描画高さ（pt）
+    height: f32,
+  },
   Glue {
     natural: f32,
     stretch: f32,

@@ -1,5 +1,11 @@
 \section{図のサンプル}
 
-ここは figure 環境用のフィクスチャです。実装本体タスクで figure 環境と
-image コマンドを評価できるようになるまでは、見出しとプレーンテキストのみで
-「クラッシュしないこと」を確認します。
+ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが
+正しくレンダリングされることを確認します。
+
+\begin{figure}[label=fig:seiran]
+\image[width=80mm, height=60mm]{./images/seiran.jpg}
+\caption{せいらん画像}
+\end{figure}
+
+図の後の段落です。
