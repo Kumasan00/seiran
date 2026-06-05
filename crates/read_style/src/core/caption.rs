@@ -7,7 +7,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::common::length::{Length, positive};
+use crate::primitives::length::{Length, positive};
 
 /// キャプションの共通設定（figure / table で共有）。
 ///
@@ -54,7 +54,7 @@ mod tests {
   use garde::Validate;
 
   use super::{CaptionPosition, CaptionStyle};
-  use crate::common::length::Length;
+  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

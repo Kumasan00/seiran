@@ -143,8 +143,7 @@ pub fn default_counters() -> HashMap<String, CounterEntry> {
 mod tests {
   use garde::Validate;
 
-  use super::{CounterEntry, CounterStyle, NumberFormat, default_counters};
-  use crate::common::counter::AliasDef;
+  use super::{AliasDef, CounterEntry, CounterStyle, NumberFormat, default_counters};
 
   #[test]
   fn validate_accepts_minimal_counter() {

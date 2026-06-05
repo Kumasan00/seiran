@@ -301,7 +301,7 @@ fn render_items(
   let mut x = config.pdf.margin.left;
   let mut y = config.pdf.margin.top;
   let page_limit = config.pdf.height - config.pdf.margin.bottom;
-  let mut current_line_height = style.font_size.to_pt() * style.line_height_factor;
+  let mut current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
   let mut line_break_seen = false;
   macro_rules! start_new_page {
     () => {{
@@ -312,7 +312,7 @@ fn render_items(
       draw_page_background(&mut surface, config, style)?;
       x = config.pdf.margin.left;
       y = config.pdf.margin.top;
-      current_line_height = style.font_size.to_pt() * style.line_height_factor;
+      current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
       line_break_seen = false;
     }};
   }
@@ -339,7 +339,7 @@ fn render_items(
           #[allow(clippy::cast_precision_loss)]
           let advance = run.glyphs.iter().map(|glyph| glyph.x_advance as f32 / upem * run.font_size).sum::<f32>();
           x += advance;
-          current_line_height = current_line_height.max(run.font_size * style.line_height_factor);
+          current_line_height = current_line_height.max(run.font_size * style.core.line_height_factor);
           line_break_seen = false;
         },
         BoxItem::Rule { width, height } => {
@@ -353,7 +353,7 @@ fn render_items(
           surface.draw_path(&path);
           x = config.pdf.margin.left;
           y += *height;
-          current_line_height = style.font_size.to_pt() * style.line_height_factor;
+          current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
           line_break_seen = false;
         },
         BoxItem::Image {
@@ -374,7 +374,7 @@ fn render_items(
           surface.pop();
           x = config.pdf.margin.left;
           y += *height;
-          current_line_height = style.font_size.to_pt() * style.line_height_factor;
+          current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
           line_break_seen = false;
         },
       },
@@ -393,7 +393,7 @@ fn render_items(
       Item::Vkern(value) => {
         y += value;
         x = config.pdf.margin.left;
-        current_line_height = style.font_size.to_pt() * 1.2;
+        current_line_height = style.core.font_size.to_pt() * 1.2;
         line_break_seen = false;
       },
       Item::Raise(dy) => {
@@ -410,7 +410,7 @@ fn render_items(
             start_new_page!();
           } else {
             x = config.pdf.margin.left;
-            current_line_height = style.font_size.to_pt() * 1.2;
+            current_line_height = style.core.font_size.to_pt() * 1.2;
             line_break_seen = true;
           }
         }
@@ -426,7 +426,7 @@ fn render_items(
 ///
 /// 塗りつぶし後はフィルを解除し、後続の描画（テキスト・罫線）が黒で描画されるようにします。
 fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Style) -> Result<(), PdfGenError> {
-  let Some(color) = style.background_color else {
+  let Some(color) = style.core.background_color else {
     return Ok(());
   };
   let [r, g, b] = color.rgb();

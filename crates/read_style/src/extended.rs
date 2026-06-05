@@ -2,18 +2,20 @@
 //!
 //! 脚注・目次・ハイパーリンク・参考文献といった、現状は [`crate::layout`] /
 //! [`crate::pdf_gen`] 側で参照されていない（実装が追いついていない）スタイル設定を
-//! トップレベル [`crate::Style`] から分離して保持する。
+//! [`crate::Style`] の `extended` フィールドに分離して保持する。
 //!
 //! 利用側からは `style.extended.footnote` のように経由してアクセスする。
 //! TOML では `[extended.footnote]` / `[extended.toc]` / … の各テーブルにマップされる。
 
+pub mod footnote;
+pub mod hyperref;
+pub mod reference;
+pub mod toc;
+
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-  cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
-  float::footnote::FootnoteStyle,
-};
+use crate::extended::{footnote::FootnoteStyle, hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle};
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]

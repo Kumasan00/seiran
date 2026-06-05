@@ -90,20 +90,20 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 ### 各クレートの責務
 
-| クレート | 責務 |
-|---|---|
-| `types` | `FontType`, `FontKind`, `FontMap` など全クレート共通型 |
-| `cli` | clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`） |
-| `read_config` | `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約） |
-| `read_style` | `config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。`Style { core, extended }` の 2 層構造で、lowering/pdf_gen が読む `core` フィールド（`font_size` / `heading` / `text` / `list` / `math` / `table` / `counters` / `background_color` / `equation`）と、現状未参照の `extended`（`figure` / `footnote` / `toc` / `hyperref` / `reference`）に分離 |
-| `read_references` | `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別） |
-| `syntax` | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供 |
-| `parser` | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール |
-| `font` | フォント読込・シェーピング・検証・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`）。`read-fonts` / `harfrust` / `rayon` を使用 |
-| `layout` | DocNode → LayoutNode へのローワリング（`lowering.rs`）、LayoutNode → Item のレイアウト計算（`layout_engine.rs`）。`icu` でスクリプト判定 |
-| `pdf_gen` | `krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施） |
-| `subcommand` | `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存） |
-| `seiran` | `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化 |
+| クレート          | 責務                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types`           | `FontType`, `FontKind`, `FontMap` など全クレート共通型                                                                                                                                                                                                                                                                                                                                                     |
+| `cli`             | clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）                                                                                                                                                                                                                                                                                                                  |
+| `read_config`     | `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約）                                                                                                                                                                                                                                                                                                          |
+| `read_style`      | `config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。`Style { core, extended }` の 2 層構造で、lowering/pdf_gen が読む `core` フィールド（`font_size` / `heading` / `text` / `list` / `math` / `table` / `counters` / `background_color` / `equation`）と、現状未参照の `extended`（`figure` / `footnote` / `toc` / `hyperref` / `reference`）に分離 |
+| `read_references` | `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）                                                                                                                                                                                                                                                                                                                       |
+| `syntax`          | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供                                                                                                                                                                                                                         |
+| `parser`          | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール                                                                                                                                                                                                                   |
+| `font`            | フォント読込・シェーピング・検証・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`）。`read-fonts` / `harfrust` / `rayon` を使用                                                                                                                                                                                                                                                                    |
+| `layout`          | DocNode → LayoutNode へのローワリング（`lowering.rs`）、LayoutNode → Item のレイアウト計算（`layout_engine.rs`）。`icu` でスクリプト判定                                                                                                                                                                                                                                                                   |
+| `pdf_gen`         | `krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）                                                                                                                                                                                                                                                                                                              |
+| `subcommand`      | `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存）                                                                                                                                                                                                                                                                                           |
+| `seiran`          | `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化                                                                                                                                                                                                                                                                                                                 |
 
 ## コーディング規約
 
@@ -178,11 +178,11 @@ pub enum MyError {
 
 3 ファイルの役割分担原則 — **「同じ本文 + 同じ用紙で style.toml だけ差し替えて見た目を変えられる」** を新フィールド追加時の判断基準にする。
 
-| ファイル | 役割 | 主な内容 |
-|---|---|---|
-| `config.toml` | **実体・物理・メタデータ** | title/author/date、用紙サイズ・余白、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語 |
-| `style.toml` | **見た目** | 見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、段組み数、参照リンク色、フロート挙動デフォルト |
-| `references.toml`（または `.json`） | **文献データ** | CSL ベース文献情報 |
+| ファイル                            | 役割                       | 主な内容                                                                                                                                             |
+| ----------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.toml`                       | **実体・物理・メタデータ** | title/author/date、用紙サイズ・余白、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語             |
+| `style.toml`                        | **見た目**                 | 見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、段組み数、参照リンク色、フロート挙動デフォルト |
+| `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                   |
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
@@ -192,7 +192,7 @@ pub enum MyError {
 - **長さ値（`Length`）**: フォントサイズ・余白等は単位付き文字列 `"12pt"` または `"5mm"` で指定（素の数値は不可）
 - **色（`Color`）**: `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問）。`[r, g, b]` 配列形式は不可
 - **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに持ち、`caption_position` は別フィールド（top/bottom）。equation は `number_format` / `number_side` を維持
-- **見出し（3 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading]` 直下のスカラー（base 共通指定） → `[heading.<level>]`（レベル別差分）の順に重畳
+- **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
 - **カウンタ（`CounterEntry`）**: `[counters.<name>]` は `display_name` / `parent` / `format` / `resets` のカウンタ定義、または `{ alias_of = "<canonical>" }` の別名のいずれか（`untagged` enum + `deny_unknown_fields` で混在拒否）
 - **数式パラメータ（`MathScriptStyle`）**: 上付き / 下付きの倍率・シフト等。将来 OpenType MATH テーブルから自動取得する想定で、現状は手動指定（`Option<MathScriptStyle>` 化の余地を残す）
 

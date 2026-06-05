@@ -3,9 +3,9 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{
-  caption::{CaptionPosition, CaptionStyle},
-  length::{Length, non_negative},
+use crate::{
+  core::caption::{CaptionPosition, CaptionStyle},
+  primitives::length::{Length, non_negative},
 };
 
 /// 図環境のスタイル設定
@@ -49,7 +49,7 @@ mod tests {
   use garde::Validate;
 
   use super::FigureStyle;
-  use crate::common::{caption::CaptionPosition, length::Length};
+  use crate::{core::caption::CaptionPosition, primitives::length::Length};
 
   #[test]
   fn validate_accepts_default() {

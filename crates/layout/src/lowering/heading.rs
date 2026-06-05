@@ -118,7 +118,7 @@ mod tests {
   fn lower_heading_uses_style_template() {
     // style.toml でテンプレを差し替えると見出し出力が追従することを確認する
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
+    style.core.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
     let nodes = lower_heading(

@@ -41,7 +41,7 @@ pub(super) fn lower_figure(
   caption: Option<&[InlineNode]>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let style = &ctx.style.figure;
+  let style = &ctx.style.core.figure;
 
   let image_node = LayoutNode::Image {
     path: image_path.to_string(),
@@ -142,7 +142,7 @@ mod tests {
   fn lower_figure_caption_position_top_swaps_order() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.figure.caption_position = CaptionPosition::Top;
+    style.core.figure.caption_position = CaptionPosition::Top;
     let ctx = LoweringContext::new(&style);
 
     // Act

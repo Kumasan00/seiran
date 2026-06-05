@@ -92,6 +92,7 @@ impl CounterRegistry {
   #[must_use]
   pub fn from_style(style: &Style) -> Self {
     let defs: Vec<CounterDef> = style
+      .core
       .counters
       .iter()
       .map(|(name, entry)| match entry {
@@ -226,7 +227,7 @@ impl CounterRegistry {
 
 #[cfg(test)]
 mod tests {
-  use read_style::{CounterEntry, CounterStyle, NumberFormat, Style, common::counter::AliasDef};
+  use read_style::{AliasDef, CounterEntry, CounterStyle, NumberFormat, Style};
 
   use super::*;
 
@@ -306,7 +307,7 @@ mod tests {
   fn from_style_includes_custom_counter_definition() {
     // Arrange: 既定 Style に独自カウンタ "example" を追加（chapter 親、prefixed）
     let mut style = Style::default();
-    style.counters.insert(
+    style.core.counters.insert(
       "example".to_string(),
       CounterEntry::Counter(CounterStyle {
         display_name: "Example".to_string(),
@@ -331,7 +332,7 @@ mod tests {
   fn from_style_maps_alias_entry_to_canonical_counter() {
     // Arrange: 既定 Style に "fig" を "figure" の別名として追加
     let mut style = Style::default();
-    style.counters.insert(
+    style.core.counters.insert(
       "fig".to_string(),
       CounterEntry::Alias(AliasDef {
         alias_of: "figure".to_string(),

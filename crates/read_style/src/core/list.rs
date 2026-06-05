@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::FontKind;
 
-use crate::common::length::{Length, non_negative};
+use crate::primitives::length::{Length, non_negative};
 
 /// リスト要素のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -46,7 +46,7 @@ mod tests {
   use types::FontKind;
 
   use super::ListStyle;
-  use crate::common::length::Length;
+  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

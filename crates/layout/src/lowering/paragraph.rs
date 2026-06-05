@@ -18,7 +18,7 @@ use crate::layout_node::{LayoutNode, Style};
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = Style {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.style.text.font_kind,
+    font_kind: ctx.style.core.text.font_kind,
   };
 
   let mut result = Vec::new();
@@ -30,7 +30,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
   // 段落末に改行 + カーンを追加（段落間スペース）
   result.push(LayoutNode::LineBreak);
   result.push(LayoutNode::Kern {
-    point: ctx.style.text.paragraph_spacing.to_pt(),
+    point: ctx.style.core.text.paragraph_spacing.to_pt(),
   });
 
   return Ok(result);

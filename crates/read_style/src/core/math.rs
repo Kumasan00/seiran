@@ -8,7 +8,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::common::length::{Length, positive};
+use crate::primitives::length::{Length, positive};
 
 /// 数式レイアウトのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

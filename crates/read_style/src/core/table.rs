@@ -5,10 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   Color,
-  common::{
-    caption::{CaptionPosition, CaptionStyle},
-    length::{Length, non_negative},
-  },
+  core::caption::{CaptionPosition, CaptionStyle},
+  primitives::length::{Length, non_negative},
 };
 
 /// 表のスタイル設定
@@ -55,7 +53,7 @@ mod tests {
   use garde::Validate;
 
   use super::TableStyle;
-  use crate::common::{caption::CaptionPosition, length::Length};
+  use crate::{core::caption::CaptionPosition, primitives::length::Length};
 
   #[test]
   fn validate_accepts_default() {

@@ -83,7 +83,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
-  pub fn default_font_size(&self) -> f32 { return self.style.font_size.to_pt(); }
+  pub fn default_font_size(&self) -> f32 { return self.style.core.font_size.to_pt(); }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）

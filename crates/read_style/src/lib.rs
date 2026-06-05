@@ -6,44 +6,43 @@
 //!
 //! 既定値は各サブ struct の [`Default`] 実装が提供し、TOML 側は `#[serde(default)]` で
 //! 部分指定をサポートします（未指定キーはデフォルト値で埋まる）。
+//!
+//! モジュールは [`core`] / [`extended`] / [`primitives`] の 3 階層に分かれている。
+//! [`Style`] は `core: CoreStyle` と `extended: ExtendedStyle` の 2 層構造で、
+//! `core` は `lowering` / `pdf_gen` から参照される実働フィールド、`extended` は
+//! 未参照フィールド（脚注・目次・参考文献等）を保持する。
 
-pub mod block;
-pub mod common;
-pub mod cross_ref;
+pub mod core;
 mod error;
-mod extended;
-pub mod float;
+pub mod extended;
+pub mod primitives;
 mod style;
 
 use std::{fs, path::Path};
 
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
+use serde::de::Error as _;
 use tracing::info;
 
 pub use crate::{
-  block::{
-    heading::{HeadingStyle, default_for_level, default_per_level},
-    list::ListStyle,
-    math::MathScriptStyle,
-    text::TextBlockStyle,
-  },
-  common::{
+  core::{
+    CoreStyle,
     caption::{CaptionPosition, CaptionStyle},
-    color::Color,
-    counter::{CounterEntry, CounterStyle, NumberFormat, default_counters},
-    length::Length,
-    per_level::PerLevel,
-  },
-  cross_ref::{hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle},
-  error::{ReadStyleError, ValidationError},
-  extended::ExtendedStyle,
-  float::{
+    counter::{AliasDef, CounterEntry, CounterStyle, NumberFormat, default_counters},
     equation::{Alignment, EquationStyle, NumberSide},
     figure::FigureStyle,
-    footnote::FootnoteStyle,
+    heading::{HeadingStyle, HeadingStyles, default_for_level},
+    list::ListStyle,
+    math::MathScriptStyle,
     table::TableStyle,
+    text::TextBlockStyle,
   },
+  error::{ReadStyleError, ValidationError},
+  extended::{
+    ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle,
+  },
+  primitives::{color::Color, length::Length},
   style::Style,
 };
 
@@ -75,8 +74,8 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   let style = parse_style(&content, &path_str)?;
 
   info!(
-    font_size_pt = style.font_size.to_pt(),
-    line_height_factor = style.line_height_factor,
+    font_size_pt = style.core.font_size.to_pt(),
+    line_height_factor = style.core.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"
   );
   return Ok(style);
@@ -92,6 +91,12 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
 /// - 値検証に違反した場合は [`ReadStyleError::MultipleValidationErrors`]
 #[allow(clippy::result_large_err)]
 pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
+  // 先にトップレベルキーの未知名検出を行う。
+  // `Style` は `#[serde(flatten)]` で `core: CoreStyle` を展開しているため、
+  // `deny_unknown_fields` は serde の制約で機能しない。代わりに toml::Value に一旦パースして
+  // 既知キーの集合と照合する。
+  reject_unknown_top_level_keys(content, source_path)?;
+
   let style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(
@@ -106,6 +111,48 @@ pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleE
   return Ok(style);
 }
 
+/// TOML のトップレベルキーが [`CoreStyle`] のフィールド名または `"extended"` に
+/// 含まれるかをチェックする。未知のキーがあれば [`ReadStyleError::ParseToml`] を返す。
+///
+/// `#[serde(flatten)]` を使うと `deny_unknown_fields` が無効化されるため、
+/// 別途このチェックを差し挟んで TOML 上の typo を捕捉する。
+#[allow(clippy::result_large_err)]
+fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(), ReadStyleError> {
+  const ALLOWED_KEYS: &[&str] = &[
+    "font_size",
+    "line_height_factor",
+    "background_color",
+    "heading",
+    "text",
+    "list",
+    "math",
+    "table",
+    "figure",
+    "equation",
+    "counters",
+    "extended",
+  ];
+
+  // 構文不正は本処理側のパースエラーで取得した方が span が正しいため、ここでは無視する
+  let Ok(value) = toml::from_str::<toml::Table>(content) else {
+    return Ok(());
+  };
+  for key in value.keys() {
+    if !ALLOWED_KEYS.contains(&key.as_str()) {
+      let src = NamedSource::new(source_path, content.to_string());
+      let synthetic = toml::de::Error::custom(format!(
+        "未知のトップレベルキー `{key}` が指定されています。許可されるキー: {ALLOWED_KEYS:?}"
+      ));
+      return Err(ReadStyleError::ParseToml {
+        src,
+        span: SourceSpan::new(0.into(), 0),
+        source: synthetic,
+      });
+    }
+  }
+  return Ok(());
+}
+
 /// [`Style`] の値検証を実行します（I/O なし）。
 ///
 /// `garde` のフィールド検証に加え、カウンタの parent / resets が `counters` に
@@ -117,16 +164,23 @@ pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleE
 fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
   let mut errors: Vec<ValidationError> = Vec::new();
 
-  // garde 派生による単一フィールド検証
-  if let Err(report) = style.validate() {
+  // core / extended を個別に検証してパス文字列を TOML のキー階層と一致させる
+  // （Style.validate() 経由だと `core.` プレフィックスが付いて TOML と乖離するため）
+  if let Err(report) = style.core.validate() {
     errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
       path: path.to_string(),
       message: error.to_string(),
     }));
   }
+  if let Err(report) = style.extended.validate() {
+    errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
+      path: format!("extended.{path}"),
+      message: error.to_string(),
+    }));
+  }
 
-  // PerLevel<HeadingStyle> は #[garde(skip)] にしているため別途検証する
-  for (level, heading) in style.heading.iter_with_level() {
+  // HeadingStyles は #[garde(skip)] にしているため別途検証する
+  for (level, heading) in style.core.heading.iter_with_level() {
     if let Err(report) = heading.validate() {
       errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
         path: format!("heading.{}.{path}", level.command_name()),
@@ -136,10 +190,10 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
   }
 
   // クロスフィールド: counters の parent / resets / alias_of が counters に実在するか
-  for (name, entry) in &style.counters {
+  for (name, entry) in &style.core.counters {
     match entry {
       CounterEntry::Alias(alias) => {
-        if !style.counters.contains_key(&alias.alias_of) {
+        if !style.core.counters.contains_key(&alias.alias_of) {
           errors.push(ValidationError::Field {
             path: format!("counters.{name}.alias_of"),
             message: format!("別名のソース '{}' が counters に存在しません", alias.alias_of),
@@ -148,7 +202,7 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
       },
       CounterEntry::Counter(def) => {
         if let Some(parent) = &def.parent
-          && !style.counters.contains_key(parent)
+          && !style.core.counters.contains_key(parent)
         {
           errors.push(ValidationError::Field {
             path: format!("counters.{name}.parent"),
@@ -156,7 +210,7 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
           });
         }
         for reset in &def.resets {
-          if !style.counters.contains_key(reset) {
+          if !style.core.counters.contains_key(reset) {
             errors.push(ValidationError::Field {
               path: format!("counters.{name}.resets"),
               message: format!("リセット対象 '{reset}' が counters に存在しません"),

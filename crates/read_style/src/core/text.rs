@@ -7,7 +7,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::FontKind;
 
-use crate::common::length::{Length, non_negative};
+use crate::primitives::length::{Length, non_negative};
 
 /// 本文段落のスタイル設定
 ///
@@ -40,7 +40,7 @@ mod tests {
   use types::FontKind;
 
   use super::TextBlockStyle;
-  use crate::common::length::Length;
+  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

@@ -70,7 +70,7 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::InlineMath(math_nodes) => {
-      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math));
+      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.core.math));
     },
     InlineNode::Symbol(ch) => {
       return Ok(vec![LayoutNode::Text(ch.to_string(), parent_style)]);

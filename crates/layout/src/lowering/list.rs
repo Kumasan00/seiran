@@ -15,7 +15,7 @@ pub(super) fn lower_list(
   ordered: bool,
   items: &[ListItem],
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let list_style = &ctx.style.list;
+  let list_style = &ctx.style.core.list;
   let mut result = Vec::new();
 
   let marker_style = Style {
