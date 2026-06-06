@@ -49,10 +49,10 @@ impl Style {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::HeadingLevel;
+  use types::{HeadingLevel, length::Length};
 
   use super::Style;
-  use crate::{Color, core::counter::CounterName, primitives::length::Length};
+  use crate::{Color, core::counter::CounterName};
 
   #[test]
   fn validate_accepts_default() {

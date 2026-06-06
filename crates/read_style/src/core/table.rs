@@ -2,11 +2,11 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+use types::length::{Length, non_negative};
 
 use crate::{
   Color,
   core::caption::{CaptionPosition, CaptionStyle},
-  primitives::length::{Length, non_negative},
 };
 
 /// 表のスタイル設定
@@ -51,9 +51,10 @@ impl Default for TableStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use types::length::Length;
 
   use super::TableStyle;
-  use crate::{core::caption::CaptionPosition, primitives::length::Length};
+  use crate::core::caption::CaptionPosition;
 
   #[test]
   fn validate_accepts_default() {

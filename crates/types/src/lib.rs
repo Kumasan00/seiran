@@ -41,7 +41,9 @@
 pub mod font;
 pub mod font_map;
 pub mod heading_level;
+pub mod length;
 
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
+pub use length::Length;

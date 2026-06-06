@@ -2,8 +2,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-use crate::primitives::length::{Length, non_negative, positive};
+use types::length::{Length, non_negative, positive};
 
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

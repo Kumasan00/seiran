@@ -5,9 +5,10 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::FontKind;
-
-use crate::primitives::length::{Length, non_negative};
+use types::{
+  FontKind,
+  length::{Length, non_negative},
+};
 
 /// 本文段落のスタイル設定
 ///
@@ -37,10 +38,9 @@ impl Default for TextBlockStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::FontKind;
+  use types::{FontKind, length::Length};
 
   use super::TextBlockStyle;
-  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

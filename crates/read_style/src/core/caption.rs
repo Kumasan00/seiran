@@ -6,8 +6,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-use crate::primitives::length::{Length, positive};
+use types::length::{Length, positive};
 
 /// キャプションの共通設定（figure / table で共有）。
 ///
@@ -52,9 +51,9 @@ pub enum CaptionPosition {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use types::length::Length;
 
   use super::{CaptionPosition, CaptionStyle};
-  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

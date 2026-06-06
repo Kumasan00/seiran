@@ -19,16 +19,14 @@ pub mod text;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+use types::length::{Length, positive};
 
 use crate::{
   core::{
     counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
     math::MathScriptStyle, table::TableStyle, text::TextBlockStyle,
   },
-  primitives::{
-    color::Color,
-    length::{Length, positive},
-  },
+  primitives::color::Color,
 };
 
 /// コアスタイル設定。`lowering` / `pdf_gen` から参照されるフィールドの集合。

@@ -2,8 +2,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-use crate::primitives::length::{Length, non_negative, positive};
+use types::length::{Length, non_negative, positive};
 
 /// 脚注のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -45,9 +44,9 @@ impl Default for FootnoteStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use types::length::Length;
 
   use super::FootnoteStyle;
-  use crate::primitives::length::Length;
 
   #[test]
   fn validate_accepts_default() {

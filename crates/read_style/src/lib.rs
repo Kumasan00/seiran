@@ -24,6 +24,7 @@ use garde::Validate;
 use miette::{NamedSource, SourceSpan};
 use serde::de::Error as _;
 use tracing::info;
+pub use types::Length;
 
 pub use crate::{
   core::{
@@ -42,7 +43,7 @@ pub use crate::{
   extended::{
     ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle,
   },
-  primitives::{color::Color, length::Length},
+  primitives::color::Color,
   style::Style,
 };
 

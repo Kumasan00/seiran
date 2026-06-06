@@ -2,11 +2,9 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+use types::length::{Length, non_negative};
 
-use crate::{
-  core::caption::{CaptionPosition, CaptionStyle},
-  primitives::length::{Length, non_negative},
-};
+use crate::core::caption::{CaptionPosition, CaptionStyle};
 
 /// 図環境のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -47,9 +45,10 @@ impl Default for FigureStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
+  use types::length::Length;
 
   use super::FigureStyle;
-  use crate::{core::caption::CaptionPosition, primitives::length::Length};
+  use crate::core::caption::CaptionPosition;
 
   #[test]
   fn validate_accepts_default() {

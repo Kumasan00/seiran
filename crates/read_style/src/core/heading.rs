@@ -11,9 +11,10 @@ use std::ops::{Index, IndexMut};
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::{FontKind, HeadingLevel};
-
-use crate::primitives::length::{Length, non_negative, positive};
+use types::{
+  FontKind, HeadingLevel,
+  length::{Length, non_negative, positive},
+};
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
 ///
@@ -258,10 +259,9 @@ pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, HeadingLevel};
+  use types::{FontKind, HeadingLevel, length::Length};
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
-  use crate::primitives::length::Length;
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
   /// 本番では `CoreStyle.heading` が同形でこの型を保持する。

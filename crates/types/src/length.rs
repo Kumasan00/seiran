@@ -1,7 +1,7 @@
 //! 単位付き長さ値 [`Length`]。
 //!
-//! TOML 上では `"12pt"` または `"5mm"` の文字列で指定する。素の数値（`12.0` のような）は
-//! 受け付けない。内部表現は常に pt（ポイント）。
+//! TOML 上では `"12pt"` / `"5mm"` / `"1.5cm"` のいずれかの文字列で指定する。
+//! 素の数値（`12.0` のような）は受け付けない。内部表現は常に pt（ポイント）。
 //!
 //! 各スタイル構造体の `font_size` / `bottom_margin` などはこの型を用い、`garde` の `custom`
 //! バリデータ [`positive`] / [`non_negative`] で 0 や負値を弾く。
@@ -10,6 +10,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 /// 1 mm を pt に換算する係数。1 pt = 1/72 inch、1 inch = 25.4 mm。
 const MM_TO_PT: f32 = 72.0 / 25.4;
+/// 1 cm を pt に換算する係数。1 cm = 10 mm。
+const CM_TO_PT: f32 = 10.0 * MM_TO_PT;
 
 /// 単位付き長さ値。内部は pt（ポイント）で保持する。
 ///
@@ -27,6 +29,10 @@ impl Length {
   #[must_use]
   pub fn mm(value: f32) -> Self { return Length(value * MM_TO_PT); }
 
+  /// cm 値から `Length` を構築する（内部で pt に換算）。
+  #[must_use]
+  pub fn cm(value: f32) -> Self { return Length(value * CM_TO_PT); }
+
   /// 内部の pt 値を返す。
   #[must_use]
   pub const fn to_pt(self) -> f32 { return self.0; }
@@ -40,7 +46,7 @@ impl Length {
   pub fn is_non_negative(self) -> bool { return self.0 >= 0.0; }
 }
 
-/// `"<数値>pt"` / `"<数値>mm"` を解釈する。失敗時は `None`。
+/// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。失敗時は `None`。
 fn parse_length(value: &str) -> Option<Length> {
   let trimmed = value.trim();
   if let Some(num) = trimmed.strip_suffix("pt") {
@@ -57,6 +63,13 @@ fn parse_length(value: &str) -> Option<Length> {
     }
     return Some(Length::mm(parsed));
   }
+  if let Some(num) = trimmed.strip_suffix("cm") {
+    let parsed: f32 = num.trim().parse().ok()?;
+    if !parsed.is_finite() {
+      return None;
+    }
+    return Some(Length::cm(parsed));
+  }
   return None;
 }
 
@@ -64,7 +77,9 @@ impl<'de> Deserialize<'de> for Length {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     let value = String::deserialize(deserializer)?;
     return parse_length(&value).ok_or_else(|| {
-      D::Error::custom(format!("Length は `<数値>pt` または `<数値>mm` 形式で指定してください: {value:?}"))
+      D::Error::custom(format!(
+        "Length は `<数値>pt` / `<数値>mm` / `<数値>cm` のいずれかの形式で指定してください: {value:?}"
+      ))
     });
   }
 }
@@ -131,6 +146,25 @@ mod tests {
 
     // Assert
     assert!((w.length.to_pt() - 72.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn parses_cm_suffix_using_inch_identity() {
+    // Arrange: 2.54 cm = 1 inch = 72 pt
+    let w: Wrapper = toml::from_str("length = \"2.54cm\"").unwrap();
+
+    // Assert
+    assert!((w.length.to_pt() - 72.0).abs() < 0.01);
+  }
+
+  #[test]
+  fn cm_and_mm_are_consistent() {
+    // Arrange / Act: 1 cm == 10 mm
+    let a: Wrapper = toml::from_str("length = \"1cm\"").unwrap();
+    let b: Wrapper = toml::from_str("length = \"10mm\"").unwrap();
+
+    // Assert
+    assert!((a.length.to_pt() - b.length.to_pt()).abs() < f32::EPSILON);
   }
 
   #[test]
