@@ -6,6 +6,8 @@
 //! 各スタイル構造体の `font_size` / `bottom_margin` などはこの型を用い、`garde` の `custom`
 //! バリデータ [`positive`] / [`non_negative`] で 0 や負値を弾く。
 
+use std::ops::{Add, Div, Mul, Sub};
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 /// 1 mm を pt に換算する係数。1 pt = 1/72 inch、1 inch = 25.4 mm。
@@ -122,6 +124,30 @@ pub fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
   return Err(garde::Error::new(format!("非負である必要があります（受け取った値: {}pt）", value.to_pt())));
 }
 
+impl Add for Length {
+  type Output = Self;
+
+  fn add(self, rhs: Self) -> Self::Output { Length(self.0 + rhs.0) }
+}
+
+impl Sub for Length {
+  type Output = Self;
+
+  fn sub(self, rhs: Self) -> Self::Output { Length(self.0 - rhs.0) }
+}
+
+impl Mul<f32> for Length {
+  type Output = Self;
+
+  fn mul(self, rhs: f32) -> Self::Output { Length(self.0 * rhs) }
+}
+
+impl Div<f32> for Length {
+  type Output = Self;
+
+  fn div(self, rhs: f32) -> Self::Output { Length(self.0 / rhs) }
+}
+
 #[cfg(test)]
 mod tests {
   use serde::Deserialize;
@@ -226,5 +252,35 @@ mod tests {
   #[test]
   fn non_negative_validator_rejects_negative() {
     assert!(non_negative(&Length::pt(-0.1), &()).is_err());
+  }
+
+  #[test]
+  fn add_works() {
+    let a = Length::pt(1.0);
+    let b = Length::pt(2.0);
+    let c = a + b;
+    assert_eq!(c, Length::pt(3.0));
+  }
+
+  #[test]
+  fn sub_works() {
+    let a = Length::pt(5.0);
+    let b = Length::pt(3.0);
+    let c = a - b;
+    assert_eq!(c, Length::pt(2.0));
+  }
+
+  #[test]
+  fn mul_works() {
+    let a = Length::pt(2.0);
+    let b = a * 3.0;
+    assert_eq!(b, Length::pt(6.0));
+  }
+
+  #[test]
+  fn div_works() {
+    let a = Length::pt(6.0);
+    let b = a / 2.0;
+    assert_eq!(b, Length::pt(3.0));
   }
 }
