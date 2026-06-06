@@ -2,7 +2,7 @@
 //!
 //! `\begin{equation}...\end{equation}` を [`DocNode::DisplayMath`] に変換します。
 //! 本体は [`syntax::ParseMode::Math`] で構造化された CST から
-//! [`Evaluator::evaluate_math_body`] で `Vec<MathNode>` に変換します。
+//! [`crate::evaluator::math::evaluate_math_body`] で `Vec<MathNode>` に変換します。
 //!
 //! ## 任意引数
 //!
@@ -13,7 +13,7 @@ use syntax::ast::EnvironmentView;
 use crate::{
   document::DocNode,
   evaluator::{
-    EvalError, Evaluator,
+    EvalError, Evaluator, math,
     opt_args::{OptType, OptValue, collect_environment_opt_args},
   },
 };
@@ -38,7 +38,7 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 
   let source = view.source();
   let body = match view.body() {
-    Some(body_node) => Evaluator::evaluate_math_body(source, body_node)?,
+    Some(body_node) => math::evaluate_math_body(source, body_node)?,
     None => Vec::new(),
   };
 

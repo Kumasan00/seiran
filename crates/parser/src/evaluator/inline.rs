@@ -6,7 +6,7 @@
 //! を **唯一のソース** として参照する（ハードコードした name match を持たない）。
 //!
 //! `resolve_symbol_command` はコマンド名から単一 Unicode 文字を返す純粋関数で、
-//! 数式ノード変換 (`Evaluator::evaluate_math_command`) からも参照される。
+//! 数式ノード変換（[`crate::evaluator::math`] モジュール）からも参照される。
 
 use syntax::{
   ast::CommandView,
@@ -18,8 +18,9 @@ use syntax::{
 use crate::{
   document::InlineNode,
   evaluator::{
-    EvalError, Evaluator,
+    EvalError,
     command::{COMMAND_MAP, CommandKind},
+    math,
   },
 };
 
@@ -70,7 +71,7 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec
           }
         },
         SyntaxKind::InlineMath => {
-          let math_nodes = Evaluator::evaluate_inline_math(source, child_node)?;
+          let math_nodes = math::evaluate_inline_math(source, child_node)?;
           inlines.push(InlineNode::InlineMath(math_nodes));
         },
         SyntaxKind::Group => {
