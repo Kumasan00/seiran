@@ -138,15 +138,15 @@ pub enum DocNode {
   /// 図環境（`\begin{figure}...\end{figure}`）
   ///
   /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
-  /// `width_mm` / `height_mm` は `\image` の任意引数で mm 単位指定。
+  /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。
   /// `number` は `figure_count` から発番された通し番号文字列。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
     image_path: String,
-    /// 画像の幅（mm）
-    width_mm: f64,
-    /// 画像の高さ（mm）
-    height_mm: f64,
+    /// 画像の幅
+    width: Length,
+    /// 画像の高さ
+    height: Length,
     /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
     caption: Option<Vec<InlineNode>>,
     /// `\ref{fig:foo}` 解決用ラベル（環境の任意引数 `[label=fig:foo]`）
@@ -157,17 +157,17 @@ pub enum DocNode {
 
   /// 罫線（描画線）
   Rule {
-    /// 幅（pt）
-    width: f32,
-    /// 高さ（pt）
-    height: f32,
+    /// 幅
+    width: Length,
+    /// 高さ
+    height: Length,
   },
 
   /// 改ページ
   PageBreak,
 
-  /// 固定幅スペース（`\space{N}` コマンド）
-  Space(f32),
+  /// 固定幅スペース（`\space{N}` コマンド、pt 単位）
+  Space(Length),
 }
 
 impl DocNode {
@@ -297,7 +297,7 @@ pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
 // 見出し関連の型
 // =============================================================================
 
-pub use types::HeadingLevel;
+pub use types::{HeadingLevel, Length};
 
 /// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
 ///

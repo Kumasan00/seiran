@@ -7,13 +7,10 @@
 
 use parser::document::InlineNode;
 use read_style::CaptionPosition;
-use types::FontKind;
+use types::{FontKind, Length};
 
 use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
 use crate::layout_node::{LayoutNode, Style};
-
-/// mm → pt 変換係数（PostScript の 1 pt = 1/72 inch、1 inch = 25.4 mm）
-const MM_TO_PT: f32 = 72.0 / 25.4;
 
 /// キャプション文字列を `format` テンプレートで構築する
 ///
@@ -32,12 +29,11 @@ fn format_caption(template: &str, number: &str, title: &str) -> String {
 /// # Errors
 ///
 /// キャプション内に未解決の `\ref` がある場合に [`LoweringError::UnresolvedReference`] を返します。
-#[allow(clippy::cast_possible_truncation)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
   image_path: &str,
-  width_mm: f64,
-  height_mm: f64,
+  width: Length,
+  height: Length,
   caption: Option<&[InlineNode]>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -45,8 +41,8 @@ pub(super) fn lower_figure(
 
   let image_node = LayoutNode::Image {
     path: image_path.to_string(),
-    width: width_mm as f32 * MM_TO_PT,
-    height: height_mm as f32 * MM_TO_PT,
+    width: width.to_pt(),
+    height: height.to_pt(),
   };
 
   let title_text = match caption {
@@ -110,9 +106,15 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes =
-      lower_figure(&ctx, "./images/seiran.jpg", 80.0, 60.0, Some(&[InlineNode::Text("せいらん".to_string())]), "1")
-        .expect("解決済みインラインなのでエラーにならない");
+    let nodes = lower_figure(
+      &ctx,
+      "./images/seiran.jpg",
+      Length::pt(80.0),
+      Length::pt(60.0),
+      Some(&[InlineNode::Text("せいらん".to_string())]),
+      "1",
+    )
+    .expect("解決済みインラインなのでエラーにならない");
 
     // Assert — top_margin Vkern → VBox（画像 → LineBreak → 内マージン → キャプション → LineBreak）
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
@@ -128,8 +130,8 @@ mod tests {
       panic!("先頭は Image であるべき: {children:?}");
     };
     assert_eq!(path, "./images/seiran.jpg");
-    assert!((width - 80.0 * MM_TO_PT).abs() < 0.01);
-    assert!((height - 60.0 * MM_TO_PT).abs() < 0.01);
+    assert!((width - 80.0).abs() < 0.01);
+    assert!((height - 60.0).abs() < 0.01);
 
     let caption_text = children.iter().find_map(|n| match n {
       LayoutNode::Text(text, _) => Some(text.as_str()),
@@ -146,7 +148,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_figure(&ctx, "a.png", 10.0, 10.0, None, "2").expect("失敗しない");
+    let nodes = lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), None, "2").expect("失敗しない");
 
     // Assert — VBox 内で キャプションが画像より前
     let LayoutNode::VBox { children, .. } = &nodes[1] else {

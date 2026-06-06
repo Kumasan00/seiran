@@ -24,7 +24,7 @@
 
 use std::path::PathBuf;
 
-use types::FontMap;
+use types::{FontMap, Length};
 
 /// PDF 生成に必要な完全な設定情報
 ///
@@ -103,12 +103,12 @@ impl OutputConfig {
 /// 出力先パスは `Config::output` を参照（`OutputConfig::pdf_path()`）。
 #[derive(Debug, Clone)]
 pub struct PdfConfig {
-  /// ページの高さ（mm）
+  /// ページの高さ（[`Length`]）
   /// バリデーション済み（> 0）、余白と矛盾なし
-  pub height: f32,
-  /// ページの幅（mm）
+  pub height: Length,
+  /// ページの幅（[`Length`]）
   /// バリデーション済み（> 0）、余白と矛盾なし
-  pub width: f32,
+  pub width: Length,
   /// ページ余白（上下左右）
   pub margin: Margin,
 }
@@ -119,14 +119,14 @@ pub struct PdfConfig {
 /// すべて非負値（>= 0）で、合計がページサイズ未満であることが保証されます。
 #[derive(Debug, Clone, Copy)]
 pub struct Margin {
-  /// 上余白（mm）（バリデーション済み、>= 0）
-  pub top: f32,
-  /// 下余白（mm）（バリデーション済み、>= 0）
-  pub bottom: f32,
-  /// 左余白（mm）（バリデーション済み、>= 0）
-  pub left: f32,
-  /// 右余白（mm）（バリデーション済み、>= 0）
-  pub right: f32,
+  /// 上余白（[`Length`]）（バリデーション済み、>= 0）
+  pub top: Length,
+  /// 下余白（[`Length`]）（バリデーション済み、>= 0）
+  pub bottom: Length,
+  /// 左余白（[`Length`]）（バリデーション済み、>= 0）
+  pub left: Length,
+  /// 右余白（[`Length`]）（バリデーション済み、>= 0）
+  pub right: Length,
 }
 
 /// 19 フォント種別すべての検証済み設定

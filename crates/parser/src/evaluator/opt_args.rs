@@ -8,8 +8,8 @@
 //! ## 設計方針
 //!
 //! - 型変換とキー検証は本モジュールに集約。各ハンドラの変換ボイラープレートを排除する
-//! - 長さは内部正準を `mm`（`f64`）とし、入力では `(無印) / mm / cm` を許可（大文字小文字非依存）
-//! - `pt`/`em`/`in` 等の単位は受け付けない（必要になったら別バリアントを追加する）
+//! - 長さは [`types::Length`] として返し、入力では `(無印) / mm / cm` を許可（大文字小文字非依存）。
+//!   無印は `mm` 扱い。`pt`/`em`/`in` 等の単位は受け付けない（必要になったら拡張する）
 //! - boolean は `[draft]` の bare key ショートハンドを `Bool(true)` として受理。
 //!   bare key が来たがスキーマ側で `OptType::Bool` 以外を期待していた場合は型エラー
 //! - 数値は `f64::parse` に通す。指数表記・負値も許可（数値範囲のバリデーションは呼び出し側責務）
@@ -21,6 +21,7 @@ use syntax::{
   ast::{CommandView, EnvironmentView, parse_key_value_options},
   green::GreenNode,
 };
+use types::Length;
 
 use crate::evaluator::EvalError;
 
@@ -34,7 +35,7 @@ pub(crate) enum OptType {
   Number,
   /// 任意の文字列
   String,
-  /// 長さ。`mm` / `cm` / 無印を mm の `f64` に正規化する
+  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`types::Length`] に正規化する
   Length,
 }
 
@@ -57,8 +58,8 @@ pub(crate) enum OptValue {
   Bool(bool),
   Number(f64),
   String(String),
-  /// mm 単位に正規化された長さ
-  Length(f64),
+  /// [`types::Length`] に正規化された長さ
+  Length(Length),
 }
 
 /// 任意引数群を集約・型変換してスキーマで検証する低レベル関数
@@ -158,30 +159,32 @@ fn parse_value(
       return Ok(OptValue::String(raw.to_string()));
     },
     OptType::Length => {
-      let v = parse_length_mm(raw).ok_or_else(|| invalid(name, key, expected, span))?;
+      let v = parse_length(raw).ok_or_else(|| invalid(name, key, expected, span))?;
       return Ok(OptValue::Length(v));
     },
   }
 }
 
-/// 長さ文字列を mm の `f64` に変換する
+/// 長さ文字列を [`Length`] に変換する
 ///
-/// 受理する形式: `"<num>"`, `"<num>mm"`, `"<num>cm"`（前後空白可、サフィックスは大小無視）
-fn parse_length_mm(raw: &str) -> Option<f64> {
+/// 受理する形式: `"<num>"`, `"<num>mm"`, `"<num>cm"`（前後空白可、サフィックスは大小無視）。
+/// サフィックスなしは `mm` 扱い。
+fn parse_length(raw: &str) -> Option<Length> {
   let trimmed = raw.trim();
   if trimmed.is_empty() {
     return None;
   }
   let lower = trimmed.to_ascii_lowercase();
-  let (num_str, scale) = if let Some(stripped) = lower.strip_suffix("mm") {
-    (stripped.trim_end(), 1.0_f64)
-  } else if let Some(stripped) = lower.strip_suffix("cm") {
-    (stripped.trim_end(), 10.0_f64)
-  } else {
-    (lower.as_str(), 1.0_f64)
-  };
-  let value: f64 = num_str.parse().ok()?;
-  return Some(value * scale);
+  if let Some(stripped) = lower.strip_suffix("mm") {
+    let value: f32 = stripped.trim_end().parse().ok()?;
+    return Some(Length::mm(value));
+  }
+  if let Some(stripped) = lower.strip_suffix("cm") {
+    let value: f32 = stripped.trim_end().parse().ok()?;
+    return Some(Length::cm(value));
+  }
+  let value: f32 = lower.parse().ok()?;
+  return Some(Length::mm(value));
 }
 
 /// 型エラー生成ヘルパ
@@ -327,7 +330,7 @@ mod tests {
     let result = collect_command_opt_args(&view, &[("width", OptType::Length)]).unwrap();
 
     // Assert
-    assert_eq!(result, vec![("width".to_string(), OptValue::Length(10.0))]);
+    assert_eq!(result, vec![("width".to_string(), OptValue::Length(Length::mm(10.0)))]);
   }
 
   #[test]
@@ -342,12 +345,12 @@ mod tests {
     let result = collect_command_opt_args(&view, &[("width", OptType::Length)]).unwrap();
 
     // Assert
-    assert_eq!(result, vec![("width".to_string(), OptValue::Length(10.0))]);
+    assert_eq!(result, vec![("width".to_string(), OptValue::Length(Length::mm(10.0)))]);
   }
 
   #[test]
   fn collect_returns_length_with_cm_suffix() {
-    // Arrange — cm は mm に正規化される
+    // Arrange — cm サフィックスは Length::cm として構築される
     let arena = Bump::new();
     let source = r"\section[width=5cm]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -357,7 +360,7 @@ mod tests {
     let result = collect_command_opt_args(&view, &[("width", OptType::Length)]).unwrap();
 
     // Assert
-    assert_eq!(result, vec![("width".to_string(), OptValue::Length(50.0))]);
+    assert_eq!(result, vec![("width".to_string(), OptValue::Length(Length::cm(5.0)))]);
   }
 
   #[test]
@@ -372,7 +375,7 @@ mod tests {
     let result = collect_command_opt_args(&view, &[("width", OptType::Length)]).unwrap();
 
     // Assert
-    assert_eq!(result, vec![("width".to_string(), OptValue::Length(20.0))]);
+    assert_eq!(result, vec![("width".to_string(), OptValue::Length(Length::cm(2.0)))]);
   }
 
   #[test]

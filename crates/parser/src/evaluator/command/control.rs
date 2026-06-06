@@ -3,6 +3,7 @@
 //! スペース挿入などの制御コマンドを提供します。
 
 use syntax::ast::{CommandView, extract_text_content};
+use types::Length;
 
 use crate::{
   document::DocNode,
@@ -56,7 +57,7 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
     },
   };
 
-  return Ok(vec![DocNode::Space(space_value)]);
+  return Ok(vec![DocNode::Space(Length::pt(space_value))]);
 }
 
 #[cfg(test)]

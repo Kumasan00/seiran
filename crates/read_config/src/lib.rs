@@ -488,8 +488,8 @@ mod tests {
 
   /// 既定の `[pdf]` セクション（妥当な値）を生成します。
   fn valid_pdf_section() -> String {
-    return "[pdf]\nheight = 842.0\nwidth = 595.0\n\
-            margin_top = 50.0\nmargin_bottom = 50.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n"
+    return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
+            margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n"
       .to_string();
   }
 
@@ -527,8 +527,8 @@ mod tests {
   fn validate_values_fails_on_negative_margin() {
     // Arrange
     let toml = format!(
-      "{}[pdf]\nheight = 842.0\nwidth = 595.0\n\
-       margin_top = -10.0\nmargin_bottom = 50.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
+      "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
+       margin_top = \"-10pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
@@ -548,8 +548,8 @@ mod tests {
   fn validate_values_fails_on_margin_sum_exceeding_dimension() {
     // Arrange: vertical margin sum (60+60=120) >= height (100)
     let toml = format!(
-      "{}[pdf]\nheight = 100.0\nwidth = 595.0\n\
-       margin_top = 60.0\nmargin_bottom = 60.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
+      "{}[pdf]\nheight = \"100pt\"\nwidth = \"595pt\"\n\
+       margin_top = \"60pt\"\nmargin_bottom = \"60pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
@@ -594,8 +594,8 @@ mod tests {
     // 旧構造（トップレベル `name`）の TOML は新構造のスキーマと一致せず、
     // toml デシリアライズが失敗するため、利用者は構造変更に気づける。
     let toml = format!(
-      "name = \"test\"\n\n[pdf]\nheight = 842.0\nwidth = 595.0\n\
-       margin_top = 50.0\nmargin_bottom = 50.0\nmargin_left = 50.0\nmargin_right = 50.0\n\n{}",
+      "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
+       margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
       make_font_sections("dummy.ttf"),
     );
     let result = parse_config(toml.as_bytes(), dummy_source());

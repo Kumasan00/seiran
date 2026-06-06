@@ -37,6 +37,9 @@ impl Length {
   #[must_use]
   pub const fn to_pt(self) -> f32 { return self.0; }
 
+  #[must_use]
+  pub const fn to_mm(self) -> f32 { return self.0 / MM_TO_PT; }
+
   /// 厳密に正の値か。
   #[must_use]
   pub fn is_positive(self) -> bool { return self.0 > 0.0; }

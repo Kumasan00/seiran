@@ -44,7 +44,10 @@ use std::path::PathBuf;
 
 use garde::Validate;
 use serde::Deserialize;
-use types::FontType;
+use types::{
+  FontType,
+  length::{Length, non_negative, positive},
+};
 
 use crate::ValidationError;
 
@@ -459,24 +462,24 @@ pub(crate) struct PreFontFeature {
 /// PDF ページレイアウトのプリセット設定
 #[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PrePdfConfig {
-  /// ページの高さ（mm 単位、> 0）
-  #[garde(range(min = f32::MIN_POSITIVE))]
-  pub height: f32,
-  /// ページの幅（mm 単位、> 0）
-  #[garde(range(min = f32::MIN_POSITIVE))]
-  pub width: f32,
-  /// 上余白（mm 単位、>= 0）
-  #[garde(range(min = 0.0))]
-  pub margin_top: f32,
-  /// 下余白（mm 単位、>= 0）
-  #[garde(range(min = 0.0))]
-  pub margin_bottom: f32,
-  /// 左余白（mm 単位、>= 0）
-  #[garde(range(min = 0.0))]
-  pub margin_left: f32,
-  /// 右余白（mm 単位、>= 0）
-  #[garde(range(min = 0.0))]
-  pub margin_right: f32,
+  /// ページの高さ（単位付き文字列、> 0）
+  #[garde(custom(positive))]
+  pub height: Length,
+  /// ページの幅（単位付き文字列、> 0）
+  #[garde(custom(positive))]
+  pub width: Length,
+  /// 上余白（単位付き文字列、>= 0）
+  #[garde(custom(non_negative))]
+  pub margin_top: Length,
+  /// 下余白（単位付き文字列、>= 0）
+  #[garde(custom(non_negative))]
+  pub margin_bottom: Length,
+  /// 左余白（単位付き文字列、>= 0）
+  #[garde(custom(non_negative))]
+  pub margin_left: Length,
+  /// 右余白（単位付き文字列、>= 0）
+  #[garde(custom(non_negative))]
+  pub margin_right: Length,
 }
 
 /// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
@@ -484,18 +487,24 @@ pub(crate) struct PrePdfConfig {
 /// garde の field-level 検証では表現できない相互制約のため、`PreConfig::validate` の
 /// 後に明示的に呼び出します。
 pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ValidationError>) {
-  let vertical = value.margin_top + value.margin_bottom;
-  if vertical >= value.height {
+  let vertical = value.margin_top.to_pt() + value.margin_bottom.to_pt();
+  if vertical >= value.height.to_pt() {
     errors.push(ValidationError::Field {
       path: "pdf".to_string(),
-      message: format!("方向 vertical の余白合計 ({vertical}) が寸法 {} 未満である必要があります", value.height),
+      message: format!(
+        "方向 vertical の余白合計 ({vertical}pt) が寸法 {}pt 未満である必要があります",
+        value.height.to_pt()
+      ),
     });
   }
-  let horizontal = value.margin_left + value.margin_right;
-  if horizontal >= value.width {
+  let horizontal = value.margin_left.to_pt() + value.margin_right.to_pt();
+  if horizontal >= value.width.to_pt() {
     errors.push(ValidationError::Field {
       path: "pdf".to_string(),
-      message: format!("方向 horizontal の余白合計 ({horizontal}) が寸法 {} 未満である必要があります", value.width),
+      message: format!(
+        "方向 horizontal の余白合計 ({horizontal}pt) が寸法 {}pt 未満である必要があります",
+        value.width.to_pt()
+      ),
     });
   }
 }

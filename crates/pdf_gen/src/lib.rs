@@ -180,11 +180,12 @@ pub fn create_pdf(
   style: &Style,
 ) -> Result<Vec<u8>, PdfGenError> {
   let krilla_fonts = build_krilla_fonts(config, font_bytes, font_refs)?;
-  let page_settings =
-    PageSettings::from_wh(config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidPageSize {
-      width: config.pdf.width,
-      height: config.pdf.height,
-    })?;
+  let page_width = config.pdf.width.to_pt();
+  let page_height = config.pdf.height.to_pt();
+  let page_settings = PageSettings::from_wh(page_width, page_height).ok_or(PdfGenError::InvalidPageSize {
+    width: page_width,
+    height: page_height,
+  })?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(config));
   render_items(&mut document, &page_settings, config, font_refs, &krilla_fonts, items, style)?;
@@ -298,9 +299,11 @@ fn render_items(
   let mut page = document.start_page_with(page_settings.clone());
   let mut surface = page.surface();
   draw_page_background(&mut surface, config, style)?;
-  let mut x = config.pdf.margin.left;
-  let mut y = config.pdf.margin.top;
-  let page_limit = config.pdf.height - config.pdf.margin.bottom;
+  let margin_left = config.pdf.margin.left.to_pt();
+  let margin_top = config.pdf.margin.top.to_pt();
+  let mut x = margin_left;
+  let mut y = margin_top;
+  let page_limit = config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt();
   let mut current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
   let mut line_break_seen = false;
   macro_rules! start_new_page {
@@ -310,8 +313,8 @@ fn render_items(
       page = document.start_page_with(page_settings.clone());
       surface = page.surface();
       draw_page_background(&mut surface, config, style)?;
-      x = config.pdf.margin.left;
-      y = config.pdf.margin.top;
+      x = margin_left;
+      y = margin_top;
       current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
       line_break_seen = false;
     }};
@@ -351,7 +354,7 @@ fn render_items(
           path_builder.push_rect(rect);
           let path = path_builder.finish().ok_or(PdfGenError::InvalidRulePath)?;
           surface.draw_path(&path);
-          x = config.pdf.margin.left;
+          x = margin_left;
           y += *height;
           current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
           line_break_seen = false;
@@ -372,7 +375,7 @@ fn render_items(
           surface.push_transform(&Transform::from_translate(x, y));
           surface.draw_image(image, size);
           surface.pop();
-          x = config.pdf.margin.left;
+          x = margin_left;
           y += *height;
           current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
           line_break_seen = false;
@@ -392,7 +395,7 @@ fn render_items(
       },
       Item::Vkern(value) => {
         y += value;
-        x = config.pdf.margin.left;
+        x = margin_left;
         current_line_height = style.core.font_size.to_pt() * 1.2;
         line_break_seen = false;
       },
@@ -409,7 +412,7 @@ fn render_items(
           if y + current_line_height > page_limit {
             start_new_page!();
           } else {
-            x = config.pdf.margin.left;
+            x = margin_left;
             current_line_height = style.core.font_size.to_pt() * 1.2;
             line_break_seen = true;
           }
@@ -430,8 +433,8 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
     return Ok(());
   };
   let [r, g, b] = color.rgb();
-  let rect =
-    Rect::from_xywh(0.0, 0.0, config.pdf.width, config.pdf.height).ok_or(PdfGenError::InvalidBackgroundRect)?;
+  let rect = Rect::from_xywh(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt())
+    .ok_or(PdfGenError::InvalidBackgroundRect)?;
   let mut path_builder = PathBuilder::new();
   path_builder.push_rect(rect);
   let path = path_builder.finish().ok_or(PdfGenError::InvalidBackgroundPath)?;

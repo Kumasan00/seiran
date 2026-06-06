@@ -137,28 +137,30 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {
-        width: *width,
-        height: *height,
+        width: width.to_pt(),
+        height: height.to_pt(),
       }]);
     },
     DocNode::PageBreak => {
       return Ok(vec![LayoutNode::PageBreak]);
     },
-    DocNode::Space(pt) => {
-      return Ok(vec![LayoutNode::Kern { point: *pt }]);
+    DocNode::Space(length) => {
+      return Ok(vec![LayoutNode::Kern {
+        point: length.to_pt(),
+      }]);
     },
     DocNode::DisplayMath { body, number, .. } => {
       return Ok(math::lower_display_math(ctx, body, number.as_deref()));
     },
     DocNode::Figure {
       image_path,
-      width_mm,
-      height_mm,
+      width,
+      height,
       caption,
       number,
       ..
     } => {
-      return figure::lower_figure(ctx, image_path, *width_mm, *height_mm, caption.as_deref(), number);
+      return figure::lower_figure(ctx, image_path, *width, *height, caption.as_deref(), number);
     },
   }
 }
@@ -166,6 +168,7 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
 #[cfg(test)]
 mod tests {
   use parser::document::{InlineNode, MathNode};
+  use types::Length;
 
   use super::*;
 
@@ -174,7 +177,7 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::Space(5.0);
+    let node = DocNode::Space(Length::pt(5.0));
 
     // Act
     let result = lower_node(&ctx, &node).expect("Space の lowering は失敗しないはず");
@@ -208,8 +211,8 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let node = DocNode::Rule {
-      width: 100.0,
-      height: 1.0,
+      width: Length::pt(100.0),
+      height: Length::pt(1.0),
     };
 
     // Act

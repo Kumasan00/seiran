@@ -14,6 +14,7 @@
 //! - `\caption{...}` — キャプション（任意）
 
 use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
+use types::Length;
 
 use crate::{
   document::{DocNode, InlineNode},
@@ -44,8 +45,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
 
   let source = view.source();
   let mut image_path: Option<String> = None;
-  let mut width_mm: Option<f64> = None;
-  let mut height_mm: Option<f64> = None;
+  let mut width: Option<Length> = None;
+  let mut height: Option<Length> = None;
   let mut caption: Option<Vec<InlineNode>> = None;
 
   if let Some(body) = view.body() {
@@ -54,8 +55,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
         "image" => {
           let (path, w, h) = extract_image(&cmd_view)?;
           image_path = Some(path);
-          width_mm = Some(w);
-          height_mm = Some(h);
+          width = Some(w);
+          height = Some(h);
         },
         "caption" => {
           caption = Some(extract_caption(&cmd_view)?);
@@ -72,14 +73,14 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
       span: view.span().into(),
     });
   };
-  let Some(width_mm) = width_mm else {
+  let Some(width) = width else {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "width 任意引数（mm）".to_string(),
       span: view.span().into(),
     });
   };
-  let Some(height_mm) = height_mm else {
+  let Some(height) = height else {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "height 任意引数（mm）".to_string(),
@@ -89,8 +90,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
 
   return Ok(vec![DocNode::Figure {
     image_path,
-    width_mm,
-    height_mm,
+    width,
+    height,
     caption,
     label,
     number,
@@ -98,15 +99,15 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
 }
 
 /// `\image[width=Xmm, height=Ymm]{path}` から path / width / height を抽出する
-fn extract_image(view: &CommandView) -> Result<(String, f64, f64), EvalError> {
+fn extract_image(view: &CommandView) -> Result<(String, Length, Length), EvalError> {
   let opt_args = collect_command_opt_args(view, &[("width", OptType::Length), ("height", OptType::Length)])?;
 
-  let mut width_mm: Option<f64> = None;
-  let mut height_mm: Option<f64> = None;
+  let mut width: Option<Length> = None;
+  let mut height: Option<Length> = None;
   for (key, value) in opt_args {
     match (key.as_str(), value) {
-      ("width", OptValue::Length(mm)) => width_mm = Some(mm),
-      ("height", OptValue::Length(mm)) => height_mm = Some(mm),
+      ("width", OptValue::Length(l)) => width = Some(l),
+      ("height", OptValue::Length(l)) => height = Some(l),
       _ => {},
     }
   }
@@ -127,14 +128,14 @@ fn extract_image(view: &CommandView) -> Result<(String, f64, f64), EvalError> {
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
 
-  let Some(width_mm) = width_mm else {
+  let Some(width) = width else {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "width 任意引数（mm）".to_string(),
       span: view.span().into(),
     });
   };
-  let Some(height_mm) = height_mm else {
+  let Some(height) = height else {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "height 任意引数（mm）".to_string(),
@@ -142,7 +143,7 @@ fn extract_image(view: &CommandView) -> Result<(String, f64, f64), EvalError> {
     });
   };
 
-  return Ok((path, width_mm, height_mm));
+  return Ok((path, width, height));
 }
 
 /// `\caption{...}` の引数をインライン要素列に変換する
@@ -192,8 +193,8 @@ mod tests {
     assert_eq!(result.len(), 1);
     let DocNode::Figure {
       image_path,
-      width_mm,
-      height_mm,
+      width,
+      height,
       caption,
       label,
       number,
@@ -202,8 +203,9 @@ mod tests {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
     assert_eq!(image_path, "./images/seiran.jpg");
-    assert!((width_mm - 80.0).abs() < f64::EPSILON);
-    assert!((height_mm - 60.0).abs() < f64::EPSILON);
+    // Length は内部 pt（f32）を経由するため、mm への往復変換に小さい誤差を許容する
+    assert!((width.to_mm() - 80.0).abs() < 1e-4);
+    assert!((height.to_mm() - 60.0).abs() < 1e-4);
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
