@@ -6,7 +6,7 @@
 use parser::document::{HeadingLevel, HeadingNumber, InlineNode};
 
 use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
 /// `HeadingStyle.format` テンプレートの `{number}` と `{title}` を実値で置換する
 ///
@@ -37,7 +37,7 @@ pub(super) fn lower_heading(
   title: &[InlineNode],
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
-  let style = Style {
+  let style = TextStyle {
     font_size: heading_style.font_size.to_pt(),
     font_kind: heading_style.font_kind,
   };
@@ -55,7 +55,7 @@ pub(super) fn lower_heading(
 
   result.push(LayoutNode::VBox {
     children: vec![LayoutNode::Text(heading_text, style)],
-    margin_bottom: heading_style.bottom_margin.to_pt(),
+    margin_bottom: heading_style.bottom_margin,
   });
 
   if heading_style.page_break_after {

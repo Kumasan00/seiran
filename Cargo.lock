@@ -1168,14 +1168,9 @@ name = "layout"
 version = "0.1.0"
 dependencies = [
  "font",
- "font-types",
  "icu",
  "lazy-regex",
- "miette",
- "parser",
- "read-fonts",
- "read_style",
- "thiserror",
+ "lowering",
  "types",
 ]
 
@@ -1243,6 +1238,17 @@ name = "log"
 version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
+
+[[package]]
+name = "lowering"
+version = "0.1.0"
+dependencies = [
+ "miette",
+ "parser",
+ "read_style",
+ "thiserror",
+ "types",
+]
 
 [[package]]
 name = "memchr"
@@ -1771,6 +1777,7 @@ dependencies = [
  "cli",
  "font",
  "layout",
+ "lowering",
  "miette",
  "parser",
  "pdf_gen",

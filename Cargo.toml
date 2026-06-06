@@ -4,6 +4,7 @@ members = [
   "crates/cli",
   "crates/font",
   "crates/layout",
+  "crates/lowering",
   "crates/parser",
   "crates/pdf_gen",
   "crates/read_config",
@@ -38,6 +39,7 @@ krilla = "0.8.0"
 krilla-svg = "0.8.0"
 layout = { path = "crates/layout" }
 lazy-regex = "3.6.0"
+lowering = { path = "crates/lowering" }
 memchr = "2.8.0"
 miette = { version = "7.6.0", features = ["fancy"] }
 parser = { path = "crates/parser" }

@@ -11,6 +11,7 @@ license.workspace = true
 cli.workspace = true
 font.workspace = true
 layout.workspace = true
+lowering.workspace = true
 miette.workspace = true
 parser.workspace = true
 pdf_gen.workspace = true

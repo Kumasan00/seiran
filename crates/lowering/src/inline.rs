@@ -7,7 +7,7 @@ use parser::document::InlineNode;
 use types::FontKind;
 
 use super::{LoweringContext, LoweringError, math::lower_inline_math};
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
 /// インライン要素をレイアウトノードに変換する
 ///
@@ -18,7 +18,7 @@ use crate::layout_node::{LayoutNode, Style};
 pub(super) fn lower_inline(
   ctx: &LoweringContext,
   inline: &InlineNode,
-  parent_style: Style,
+  parent_style: TextStyle,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   match inline {
     InlineNode::Text(text) => {
@@ -26,7 +26,7 @@ pub(super) fn lower_inline(
     },
     InlineNode::Emphasis(children) => {
       // TODO: ネスト対応（イタリック内の強調は通常体に戻す等）
-      let italic_style = Style {
+      let italic_style = TextStyle {
         font_size: parent_style.font_size,
         font_kind: FontKind::SerifItalic,
       };
@@ -37,7 +37,7 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::Strong(children) => {
-      let bold_style = Style {
+      let bold_style = TextStyle {
         font_size: parent_style.font_size,
         font_kind: FontKind::SerifBold,
       };
@@ -48,7 +48,7 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::Code(children) => {
-      let mono_style = Style {
+      let mono_style = TextStyle {
         font_size: parent_style.font_size,
         font_kind: FontKind::Monospace,
       };
@@ -59,7 +59,7 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::SansSerif(children) => {
-      let sans_style = Style {
+      let sans_style = TextStyle {
         font_size: parent_style.font_size,
         font_kind: FontKind::SansSerif,
       };

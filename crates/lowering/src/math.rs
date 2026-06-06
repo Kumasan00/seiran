@@ -1,7 +1,7 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
 //! インライン数式と `\begin{equation}...\end{equation}` のディスプレイ数式を
-//! `LayoutNode` 列に変換します。数式中の文字は [`math_alphanumeric::translate_math_char`]
+//! `LayoutNode` 列に変換します。数式中の文字は [`alphanumeric::translate_math_char`]
 //! によって Unicode Mathematical Alphanumeric Symbols へ変換され、数式フォントが持つ
 //! 字形バリアントを直接呼び出します。
 
@@ -9,17 +9,17 @@ use parser::document::{MathNode, MathStyle};
 use read_style::{MathScriptStyle as MathStyleConfig, NumberSide};
 use types::FontKind;
 
-use self::math_alphanumeric::translate_math_char;
+use self::alphanumeric::translate_math_char;
 use super::LoweringContext;
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
-mod math_alphanumeric;
+mod alphanumeric;
 
 /// 数式番号テキストと本体の間に挿入する仮の水平アキ（pt）。
 ///
 /// 真の右寄せは行幅依存のため未対応。揃え機能（`EquationStyle::alignment`）が
 /// 入った段階で `Glue` のストレッチを利用した「番号は行末・本体は中央」配置に置き換える。
-const NUMBER_GAP_PT: f32 = 6.0;
+const EQUATION_NUMBER_GAP_PT: f32 = 6.0;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
@@ -53,7 +53,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
     let text = eq.number_format.replace("{number}", n);
     LayoutNode::Text(
       text,
-      Style {
+      TextStyle {
         font_size,
         font_kind: FontKind::Serif,
       },
@@ -61,7 +61,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
   });
 
   let gap = LayoutNode::Glue {
-    natural: NUMBER_GAP_PT,
+    natural: EQUATION_NUMBER_GAP_PT,
     stretch: 0.0,
     shrink: 0.0,
   };
@@ -69,7 +69,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
   let mut result = Vec::new();
   result.push(LayoutNode::LineBreak);
   result.push(LayoutNode::Vkern {
-    point: eq.top_margin.to_pt(),
+    length: eq.top_margin,
   });
 
   // TODO: eq.alignment（Center/Left/Right）の真の揃えには行幅の知識が必要。
@@ -91,7 +91,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
   }
 
   result.push(LayoutNode::Vkern {
-    point: eq.bottom_margin.to_pt(),
+    length: eq.bottom_margin,
   });
   result.push(LayoutNode::LineBreak);
   return result;
@@ -135,7 +135,7 @@ fn lower_math_node(
     },
     MathNode::Symbol(ch) => {
       let translated = translate_math_char(*ch, style);
-      let layout_style = Style {
+      let layout_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
       };
@@ -152,7 +152,7 @@ fn lower_math_node(
       let script_size = script_font_size(font_size, math_style);
       let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
       return vec![LayoutNode::Raise {
-        dy: font_size * math_style.superscript_raise_factor,
+        offset: font_size * math_style.superscript_raise_factor,
         children,
       }];
     },
@@ -160,13 +160,13 @@ fn lower_math_node(
       let script_size = script_font_size(font_size, math_style);
       let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
       return vec![LayoutNode::Raise {
-        dy: -font_size * math_style.subscript_drop_factor,
+        offset: -font_size * math_style.subscript_drop_factor,
         children,
       }];
     },
     MathNode::Frac { numer, denom } => {
       // インラインでは真の縦書き分数は無理なので、`a / b` の形式で代替する
-      let slash_style = Style {
+      let slash_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
       };
@@ -177,7 +177,7 @@ fn lower_math_node(
       return result;
     },
     MathNode::Sqrt { index, radicand } => {
-      let upright_style = Style {
+      let upright_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
       };
@@ -186,7 +186,7 @@ fn lower_math_node(
         let script_size = script_font_size(font_size, math_style);
         let idx_children = lower_math_node(idx.as_ref(), script_size, style, math_style);
         result.push(LayoutNode::Raise {
-          dy: font_size * math_style.superscript_raise_factor,
+          offset: font_size * math_style.superscript_raise_factor,
           children: idx_children,
         });
       }
@@ -196,7 +196,7 @@ fn lower_math_node(
     },
     MathNode::Command { name, args } => {
       // 未解決の数式コマンドはコマンド名と引数をリテラル表示してデバッグしやすくする
-      let literal_style = Style {
+      let literal_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
       };
@@ -239,7 +239,7 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
     return Vec::new();
   }
   let translated: String = text.chars().map(|c| translate_math_char(c, style)).collect();
-  let layout_style = Style {
+  let layout_style = TextStyle {
     font_size,
     font_kind: FontKind::Math,
   };
@@ -298,7 +298,7 @@ mod tests {
 
   #[test]
   fn lower_math_superscript_wraps_in_raise() {
-    // Arrange: x^2 の Superscript は Raise（正の dy）でラップされ、フォントサイズが縮小される
+    // Arrange: x^2 の Superscript は Raise（正の offset）でラップされ、フォントサイズが縮小される
     let node = MathNode::Superscript(Box::new(MathNode::Text("2".to_string())));
 
     // Act
@@ -307,8 +307,8 @@ mod tests {
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
-      LayoutNode::Raise { dy, children } => {
-        assert!(*dy > 0.0, "上付きは正の dy（上方向）になるべき: dy={dy}");
+      LayoutNode::Raise { offset, children } => {
+        assert!(*offset > 0.0, "上付きは正の offset（上方向）になるべき: offset={offset}");
         // children に縮小サイズの Text が入っているはず
         assert!(!children.is_empty());
         if let LayoutNode::Text(_, style) = &children[0] {
@@ -323,7 +323,7 @@ mod tests {
 
   #[test]
   fn lower_math_subscript_uses_negative_raise() {
-    // Arrange: x_i の Subscript は Raise（負の dy）でラップされる
+    // Arrange: x_i の Subscript は Raise（負の offset）でラップされる
     let node = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
 
     // Act
@@ -332,8 +332,8 @@ mod tests {
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
-      LayoutNode::Raise { dy, .. } => {
-        assert!(*dy < 0.0, "下付きは負の dy（下方向）になるべき: dy={dy}");
+      LayoutNode::Raise { offset, .. } => {
+        assert!(*offset < 0.0, "下付きは負の offset（下方向）になるべき: offset={offset}");
       },
       other => panic!("Raise を期待: {other:?}"),
     }

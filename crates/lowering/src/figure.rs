@@ -10,7 +10,7 @@ use read_style::CaptionPosition;
 use types::{FontKind, Length};
 
 use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
 /// キャプション文字列を `format` テンプレートで構築する
 ///
@@ -41,8 +41,8 @@ pub(super) fn lower_figure(
 
   let image_node = LayoutNode::Image {
     path: image_path.to_string(),
-    width: width.to_pt(),
-    height: height.to_pt(),
+    width,
+    height,
   };
 
   let title_text = match caption {
@@ -52,14 +52,14 @@ pub(super) fn lower_figure(
   let caption_text = format_caption(&style.caption.format, number, &title_text);
   let caption_node = LayoutNode::Text(
     caption_text,
-    Style {
+    TextStyle {
       font_size: style.caption.font_size.to_pt(),
       font_kind: FontKind::Serif,
     },
   );
 
   let inner_gap = LayoutNode::Vkern {
-    point: style.inner_margin.to_pt(),
+    length: style.inner_margin,
   };
 
   let mut children = Vec::new();
@@ -82,11 +82,11 @@ pub(super) fn lower_figure(
 
   let result = vec![
     LayoutNode::Vkern {
-      point: style.top_margin.to_pt(),
+      length: style.top_margin,
     },
     LayoutNode::VBox {
       children,
-      margin_bottom: style.bottom_margin.to_pt(),
+      margin_bottom: style.bottom_margin,
     },
   ];
   return Ok(result);
@@ -130,8 +130,8 @@ mod tests {
       panic!("先頭は Image であるべき: {children:?}");
     };
     assert_eq!(path, "./images/seiran.jpg");
-    assert!((width - 80.0).abs() < 0.01);
-    assert!((height - 60.0).abs() < 0.01);
+    assert!((width.to_pt() - 80.0).abs() < 0.01);
+    assert!((height.to_pt() - 60.0).abs() < 0.01);
 
     let caption_text = children.iter().find_map(|n| match n {
       LayoutNode::Text(text, _) => Some(text.as_str()),

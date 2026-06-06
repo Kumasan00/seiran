@@ -46,8 +46,8 @@ cargo test -p <crate_name>                                 # 特定クレート�
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
   → 字句解析・構文解析（syntax: Lexer → Parser → CST）
   → 評価（parser: CST → Document IR（DocNode））
-  → ローワリング（layout: DocNode → LayoutNode）→ フォント読込・検証
-  → テキストシェーピング → レイアウトエンジン（LayoutNode → Item）
+  → ローワリング（lowering: DocNode → LayoutNode）→ フォント読込・検証
+  → テキストシェーピング → レイアウトエンジン（layout: LayoutNode → Item）
   → PDF 生成（krilla がフォントサブセット化を内部実施）→ ファイル出力
 ```
 
@@ -55,28 +55,31 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
 
 ```text
 types （依存なし — 共通型の基盤）
-  ↑ read_config, font, layout, pdf_gen, seiran
+  ↑ read_config, font, lowering, layout, pdf_gen, seiran
 
 read_config （types を使用）
   ↑ font, pdf_gen, seiran
 
 read_style / read_references （workspace クレートに依存しない独立クレート）
-  ↑ read_style: parser, layout, pdf_gen, seiran
+  ↑ read_style: parser, lowering, pdf_gen, seiran
   ↑ read_references: seiran
 
 syntax （bumpalo アリーナ上に CST を構築。workspace クレートに依存しない）
   ↑ parser
 
 parser （syntax の CST を Document IR に変換。read_style に依存）
-  ↑ layout, seiran
+  ↑ lowering, seiran
 
 font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
   ↑ layout, pdf_gen, seiran
 
-layout （font, parser, read_style, types に依存。icu を使用）
+lowering （parser, read_style, types に依存。フォント非依存の論理変換層）
+  ↑ layout, pdf_gen, seiran
+
+layout （font, lowering, types に依存。icu でスクリプト判定）
   ↑ pdf_gen, seiran
 
-pdf_gen （font, layout, read_config, read_style, types に依存。krilla / krilla-svg で PDF を生成）
+pdf_gen （font, layout, lowering, read_config, read_style, types に依存。krilla / krilla-svg で PDF を生成）
   ↑ seiran
 
 cli （clap のみに依存）
@@ -100,7 +103,8 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `syntax`          | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供                                                                                                                                                                                                                         |
 | `parser`          | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール                                                                                                                                                                                                                   |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`）。`read-fonts` / `harfrust` / `rayon` を使用                                                                                                                                                                                                                                                                    |
-| `layout`          | DocNode → LayoutNode へのローワリング（`lowering.rs`）、LayoutNode → Item のレイアウト計算（`layout_engine.rs`）。`icu` でスクリプト判定                                                                                                                                                                                                                                                                   |
+| `lowering`        | DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `heading` / `inline` / `list` / `math` / `paragraph` サブモジュール）。`LayoutNode` / `Style` の型定義もここに置く。フォント・シェーピング非依存                                                                                                                                                                                                |
+| `layout`          | LayoutNode → Item のレイアウト計算（`layout_engine.rs`）。テキストシェーピング・スクリプト分割・グリフ位置決め。`icu` でスクリプト判定、`font` クレートのシェーパーを利用                                                                                                                                                                                                                                  |
 | `pdf_gen`         | `krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）                                                                                                                                                                                                                                                                                                              |
 | `subcommand`      | `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存）                                                                                                                                                                                                                                                                                           |
 | `seiran`          | `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化                                                                                                                                                                                                                                                                                                                 |

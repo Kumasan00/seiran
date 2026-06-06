@@ -3,7 +3,7 @@
 use parser::document::ListItem;
 
 use super::{LoweringContext, LoweringError, lower_nodes};
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
 /// リストをレイアウトノードに変換する
 ///
@@ -18,7 +18,7 @@ pub(super) fn lower_list(
   let list_style = &ctx.style.core.list;
   let mut result = Vec::new();
 
-  let marker_style = Style {
+  let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: list_style.marker_font_kind,
   };
@@ -35,7 +35,7 @@ pub(super) fn lower_list(
     // インデント + マーカー + 内容
     let mut item_nodes = Vec::new();
     item_nodes.push(LayoutNode::Kern {
-      point: list_style.indent.to_pt(),
+      length: list_style.indent,
     });
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
@@ -45,7 +45,7 @@ pub(super) fn lower_list(
 
     result.push(LayoutNode::VBox {
       children: item_nodes,
-      margin_bottom: list_style.item_margin_bottom.to_pt(),
+      margin_bottom: list_style.item_margin_bottom,
     });
   }
 

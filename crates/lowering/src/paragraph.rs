@@ -6,7 +6,7 @@
 use parser::document::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
-use crate::layout_node::{LayoutNode, Style};
+use crate::layout_node::{LayoutNode, TextStyle};
 
 /// 段落をレイアウトノードに変換する
 ///
@@ -16,7 +16,7 @@ use crate::layout_node::{LayoutNode, Style};
 /// - [ ] 段落先頭のインデント（字下げ）を追加する
 /// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
-  let default_style = Style {
+  let default_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.style.core.text.font_kind,
   };
@@ -30,7 +30,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
   // 段落末に改行 + カーンを追加（段落間スペース）
   result.push(LayoutNode::LineBreak);
   result.push(LayoutNode::Kern {
-    point: ctx.style.core.text.paragraph_spacing.to_pt(),
+    length: ctx.style.core.text.paragraph_spacing,
   });
 
   return Ok(result);

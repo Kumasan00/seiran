@@ -9,7 +9,7 @@ use font::{
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
-use layout::{LoweringContext, LoweringError};
+use lowering::{LoweringContext, LoweringError};
 use miette::Diagnostic;
 use parser::{DocNode, ParseSourceError};
 use thiserror::Error;
@@ -96,7 +96,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 
   let lowering_ctx = LoweringContext::new(&style);
   let layout_nodes =
-    layout::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
+    lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!("Document IR → LayoutNode への変換が完了しました");
 
   let font_data = FontData::new(&config.font_configs)?;

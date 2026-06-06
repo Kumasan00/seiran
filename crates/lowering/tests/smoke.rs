@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use layout::LoweringContext;
+use lowering::LoweringContext;
 use parser::parse_source;
 use read_style::Style;
 
@@ -35,7 +35,7 @@ fn smoke_through_lowering(name: &str) {
   let style = Style::default();
   let ctx = LoweringContext::new(&style);
   let _layout_nodes =
-    layout::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
+    lowering::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
 }
 
 #[test]

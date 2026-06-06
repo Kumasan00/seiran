@@ -1,13 +1,13 @@
 //! Lowering 層: Document IR → `LayoutNode` 変換
 //!
 //! `parser` クレートの `DocNode`（セマンティックな論理構造）を
-//! `LayoutNode`（物理的なレイアウト表現）に変換するモジュールです。
+//! `LayoutNode`（物理的なレイアウト表現）に変換するクレートです。
 //!
 //! ## アーキテクチャ上の位置づけ
 //!
 //! ```text
 //! parser (DocNode)
-//!   ↓ [lowering]  ← このモジュール
+//!   ↓ [lowering]  ← このクレート
 //! LayoutNode
 //!   ↓ [layout_engine]
 //! Item (Box/Glue/Penalty)
@@ -29,14 +29,15 @@ use parser::document::{DocNode, Document};
 use read_style::Style as ReadStyle;
 use thiserror::Error;
 
-use crate::layout_node::LayoutNode;
-
 mod figure;
 mod heading;
 mod inline;
+mod layout_node;
 mod list;
 mod math;
 mod paragraph;
+
+pub use layout_node::{LayoutNode, TextStyle};
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
 ///
@@ -51,7 +52,7 @@ pub enum LoweringError {
   /// `number` を `None` のまま渡してきたことを示します。
   #[error("未解決の参照が lowering に到達しました: ラベル `{label}`")]
   #[diagnostic(
-    code(layout::lowering::unresolved_reference),
+    code(lowering::unresolved_reference),
     help(
       "対応する \\label が定義されているか確認してください。定義されている場合は評価器の参照解決パスにバグがある可能性があります。"
     )
@@ -137,17 +138,15 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {
-        width: width.to_pt(),
-        height: height.to_pt(),
+        width: *width,
+        height: *height,
       }]);
     },
     DocNode::PageBreak => {
       return Ok(vec![LayoutNode::PageBreak]);
     },
     DocNode::Space(length) => {
-      return Ok(vec![LayoutNode::Kern {
-        point: length.to_pt(),
-      }]);
+      return Ok(vec![LayoutNode::Kern { length: *length }]);
     },
     DocNode::DisplayMath { body, number, .. } => {
       return Ok(math::lower_display_math(ctx, body, number.as_deref()));
@@ -185,7 +184,7 @@ mod tests {
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
-      LayoutNode::Kern { point } => assert!((point - 5.0).abs() < f32::EPSILON),
+      LayoutNode::Kern { length } => assert!((length.to_pt() - 5.0).abs() < f32::EPSILON),
       other => panic!("Expected Kern, got {other:?}"),
     }
   }
@@ -222,8 +221,8 @@ mod tests {
     assert_eq!(result.len(), 1);
     match &result[0] {
       LayoutNode::Rule { width, height } => {
-        assert!((width - 100.0).abs() < f32::EPSILON);
-        assert!((height - 1.0).abs() < f32::EPSILON);
+        assert!((width.to_pt() - 100.0).abs() < f32::EPSILON);
+        assert!((height.to_pt() - 1.0).abs() < f32::EPSILON);
       },
       other => panic!("Expected Rule, got {other:?}"),
     }
