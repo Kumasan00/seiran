@@ -4,7 +4,7 @@
 //! Style とサブ型の組合せが矛盾しないことを保証する統合確認として残す。
 
 use garde::Validate;
-use read_style::Style;
+use read_style::{CounterName, Style};
 use types::HeadingLevel;
 
 #[test]
@@ -30,16 +30,16 @@ fn default_heading_has_descending_font_size() {
 fn default_counters_contains_canonical_set() {
   let style = Style::default();
   for name in [
-    "part",
-    "chapter",
-    "section",
-    "subsection",
-    "paragraph",
-    "subparagraph",
-    "figure",
-    "equation",
-    "table",
+    CounterName::Part,
+    CounterName::Chapter,
+    CounterName::Section,
+    CounterName::Subsection,
+    CounterName::Paragraph,
+    CounterName::Subparagraph,
+    CounterName::Figure,
+    CounterName::Equation,
+    CounterName::Table,
   ] {
-    assert!(style.counter(name).is_some(), "default counters must contain {name}");
+    assert!(!style.counter(name).display_name.is_empty(), "default counters must contain {}", name.as_str());
   }
 }

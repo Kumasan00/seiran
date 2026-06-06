@@ -11,7 +11,7 @@ use crate::primitives::length::{Length, non_negative, positive};
 pub struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列
   #[garde(length(chars, min = 1))]
-  pub format: String,
+  pub title: String,
   /// セクションのフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -23,7 +23,7 @@ pub struct ReferenceStyle {
 impl Default for ReferenceStyle {
   fn default() -> Self {
     return Self {
-      format: "References".to_string(),
+      title: "References".to_string(),
       font_size: Length::pt(12.0),
       bottom_margin: Length::pt(10.0),
     };
@@ -44,7 +44,7 @@ mod tests {
   #[test]
   fn validate_rejects_empty_format() {
     let style = ReferenceStyle {
-      format: String::new(),
+      title: String::new(),
       ..ReferenceStyle::default()
     };
     assert!(style.validate().is_err());

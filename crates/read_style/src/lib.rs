@@ -29,7 +29,7 @@ pub use crate::{
   core::{
     CoreStyle,
     caption::{CaptionPosition, CaptionStyle},
-    counter::{AliasDef, CounterEntry, CounterStyle, NumberFormat, default_counters},
+    counter::{CounterName, CounterStyle, Counters, NumberStyle},
     equation::{Alignment, EquationStyle, NumberSide},
     figure::FigureStyle,
     heading::{HeadingStyle, HeadingStyles, default_for_level},
@@ -155,8 +155,9 @@ fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(),
 
 /// [`Style`] の値検証を実行します（I/O なし）。
 ///
-/// `garde` のフィールド検証に加え、カウンタの parent / resets が `counters` に
-/// 実在することを確認するクロスフィールド検証を行います。
+/// `garde` のフィールド検証を `core` / `extended` / `heading` の 3 系統で実行します。
+/// カウンタの `resets` は固定 9 種の [`CounterName`] 配列として型付けされているため、
+/// 不正名は TOML パース時点で拒否されます（追加のクロスフィールド検証は不要）。
 ///
 /// # Errors
 ///
@@ -186,38 +187,6 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
         path: format!("heading.{}.{path}", level.command_name()),
         message: error.to_string(),
       }));
-    }
-  }
-
-  // クロスフィールド: counters の parent / resets / alias_of が counters に実在するか
-  for (name, entry) in &style.core.counters {
-    match entry {
-      CounterEntry::Alias(alias) => {
-        if !style.core.counters.contains_key(&alias.alias_of) {
-          errors.push(ValidationError::Field {
-            path: format!("counters.{name}.alias_of"),
-            message: format!("別名のソース '{}' が counters に存在しません", alias.alias_of),
-          });
-        }
-      },
-      CounterEntry::Counter(def) => {
-        if let Some(parent) = &def.parent
-          && !style.core.counters.contains_key(parent)
-        {
-          errors.push(ValidationError::Field {
-            path: format!("counters.{name}.parent"),
-            message: format!("親カウンタ '{parent}' が counters に存在しません"),
-          });
-        }
-        for reset in &def.resets {
-          if !style.core.counters.contains_key(reset) {
-            errors.push(ValidationError::Field {
-              path: format!("counters.{name}.resets"),
-              message: format!("リセット対象 '{reset}' が counters に存在しません"),
-            });
-          }
-        }
-      },
     }
   }
 

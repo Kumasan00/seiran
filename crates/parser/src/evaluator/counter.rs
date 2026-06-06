@@ -11,64 +11,129 @@
 //! - **pass2**: `InlineNode::Ref { label, .. }` を [`CounterRegistry::resolve_label`] で
 //!   解決し、`number: Some(裸の番号)` に書き換える。
 //!
-//! ## 数値書式について
+//! ## 番号書式について
 //!
-//! [`NumberFormat::Plain`] は単独カウンタの値（例: `"3"`）、
-//! [`NumberFormat::Prefixed`] は親カウンタを `.` で連結した値（例: `"2.3.1"`）を返す。
-//! 「3章」「第3部」のような装飾文字列は **lowering 側** で
-//! `read_style::HeadingStyle.format` テンプレを介して付けるため、本レジストリは
-//! 装飾を含まない裸の番号文字列のみを返すことに注意。
+//! 各カウンタは [`read_style::CounterStyle`] の `format` テンプレート（例: `"{n}"`、
+//! `"{chapter}.{n}"`）に従って文字列化される。`{n}` は自身のカウンタ値、`{<name>}` は
+//! 他カウンタの値を参照先カウンタの [`read_style::NumberStyle`] でレンダリングする
+//! （再帰展開はしない）。「3章」「第3部」のような装飾文字列は **lowering 側** で
+//! `read_style::HeadingStyle.format` テンプレを介して付ける。
+//!
+//! ## `\ref` の書式について
+//!
+//! `\ref{label}` の表示は [`read_style::CounterStyle::ref_format`] テンプレートで決まる
+//! （例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`）。
+//! `register_label` 時点でテンプレートを適用するため、`resolve_label` は整形済み文字列を
+//! 返す（呼び出し側は装飾を気にせず使える）。
 //!
 //! ## カウンタ定義のソース
 //!
 //! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
-//! [`CounterRegistry::from_style`] が [`read_style::CounterEntry`] を内部表現の
-//! [`CounterDef`] にマップする。既定 9 種（part〜table）も `Style::default()` が
-//! `read_style::default_counters()` 経由で供給するため、parser 側に同じ定義を
+//! [`CounterRegistry::from_style`] が [`read_style::Counters`] の各フィールドを内部の
+//! [`CounterStates`] に複製する。既定 9 種（part〜table）も `Style::default()` が
+//! `read_style::Counters::default()` 経由で供給するため、parser 側に同じ定義を
 //! 重複して持たない。
 
 use std::collections::HashMap;
 
-use read_style::{CounterEntry, NumberFormat, Style};
+use read_style::{CounterName, CounterStyle, Counters, Style};
 
 use crate::document::HeadingLevel;
-
-/// カウンタ 1 つの内部表現
-///
-/// [`read_style::CounterEntry`]（カウンタ定義と別名の untagged enum）を平坦化したもの。
-/// `alias_of` を `CounterDef` 自身のフィールドに畳むことで、`HashMap<String, CounterDef>`
-/// に対する統一的なルックアップが可能になる。
-#[derive(Debug, Clone)]
-pub struct CounterDef {
-  /// カウンタ名（一意）
-  pub name: String,
-  /// 親カウンタ。`Prefixed` 形式の場合に `.` 連結のチェーンを構成する
-  pub parent: Option<String>,
-  /// 数値の表示形式
-  pub format: NumberFormat,
-  /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
-  pub resets: Vec<String>,
-  /// 別名のソース。`Some(name)` の場合、`name` のカウンタと値を共有する
-  pub alias_of: Option<String>,
-}
 
 /// pass1 で登録される、ラベル名から確定済み番号への解決結果
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedLabel {
-  /// 番号を発番したカウンタの正規名（alias 解決済み）
-  pub counter: String,
-  /// 確定済みの番号文字列（`format_number` の出力）
+  /// 番号を発番したカウンタ
+  pub counter: CounterName,
+  /// 確定済みの番号文字列（`format_number` の出力に `ref_format` を適用したもの）
   pub number: String,
 }
 
+/// カウンタ 1 つの実行時状態（定義 + 現在値）
+#[derive(Debug, Clone)]
+pub(crate) struct CounterState {
+  /// `read_style` から取り込んだスタイル定義
+  pub def: CounterStyle,
+  /// 現在のカウンタ値（初期値 0、`increment` で 1 ずつ進む）
+  pub value: u32,
+}
+
+impl CounterState {
+  fn new(def: CounterStyle) -> Self { return Self { def, value: 0 }; }
+}
+
+/// 固定 9 種のカウンタ状態を保持する struct（[`Counters`] と同じ形）
+///
+/// `read_style::Counters` がフィールド型から `HashMap` ベースの定義テーブルへ変わったのに合わせ、
+/// parser 側でも `HashMap<String, _>` ではなく名前付きフィールドで保持する。
+#[derive(Debug, Clone)]
+pub(crate) struct CounterStates {
+  pub part: CounterState,
+  pub chapter: CounterState,
+  pub section: CounterState,
+  pub subsection: CounterState,
+  pub paragraph: CounterState,
+  pub subparagraph: CounterState,
+  pub figure: CounterState,
+  pub equation: CounterState,
+  pub table: CounterState,
+}
+
+impl CounterStates {
+  /// `read_style::Counters` の各フィールドを `CounterState` にラップして取り込む
+  #[must_use]
+  pub fn from_counters(counters: &Counters) -> Self {
+    return Self {
+      part: CounterState::new(counters.part.clone()),
+      chapter: CounterState::new(counters.chapter.clone()),
+      section: CounterState::new(counters.section.clone()),
+      subsection: CounterState::new(counters.subsection.clone()),
+      paragraph: CounterState::new(counters.paragraph.clone()),
+      subparagraph: CounterState::new(counters.subparagraph.clone()),
+      figure: CounterState::new(counters.figure.clone()),
+      equation: CounterState::new(counters.equation.clone()),
+      table: CounterState::new(counters.table.clone()),
+    };
+  }
+
+  /// 指定カウンタの状態への不変参照を返す（9 種固定のため必ず存在する）
+  #[must_use]
+  pub fn get(&self, name: CounterName) -> &CounterState {
+    return match name {
+      CounterName::Part => &self.part,
+      CounterName::Chapter => &self.chapter,
+      CounterName::Section => &self.section,
+      CounterName::Subsection => &self.subsection,
+      CounterName::Paragraph => &self.paragraph,
+      CounterName::Subparagraph => &self.subparagraph,
+      CounterName::Figure => &self.figure,
+      CounterName::Equation => &self.equation,
+      CounterName::Table => &self.table,
+    };
+  }
+
+  /// 指定カウンタの状態への可変参照を返す
+  pub fn get_mut(&mut self, name: CounterName) -> &mut CounterState {
+    return match name {
+      CounterName::Part => &mut self.part,
+      CounterName::Chapter => &mut self.chapter,
+      CounterName::Section => &mut self.section,
+      CounterName::Subsection => &mut self.subsection,
+      CounterName::Paragraph => &mut self.paragraph,
+      CounterName::Subparagraph => &mut self.subparagraph,
+      CounterName::Figure => &mut self.figure,
+      CounterName::Equation => &mut self.equation,
+      CounterName::Table => &mut self.table,
+    };
+  }
+}
+
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) struct CounterRegistry {
-  /// 名前 → 定義
-  counters: HashMap<String, CounterDef>,
-  /// 名前 → 現在値（alias 解決後のキーで管理）
-  values: HashMap<String, u32>,
+  /// 9 種のカウンタ状態
+  counters: CounterStates,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   pub labels: HashMap<String, ResolvedLabel>,
 }
@@ -77,130 +142,104 @@ pub(crate) struct CounterRegistry {
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   ///
-  /// 既定値は `read_style::Style::default()` が `default_counters()` 経由で供給する
+  /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
   /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
   /// figure / equation / table）。
   #[must_use]
   pub fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
 
   /// `read_style::Style` からレジストリを構築する
-  ///
-  /// `Style.counters` の各エントリを [`CounterDef`] に変換して [`Self::from_definitions`] に
-  /// 渡す。`CounterEntry::Counter` は通常定義に、`CounterEntry::Alias` は `alias_of` のみを
-  /// 持つ `CounterDef` にマップする。`display_name`（"Figure" / "図" 等の装飾文字列）は
-  /// lowering 側の責務のため捨てる。
   #[must_use]
-  pub fn from_style(style: &Style) -> Self {
-    let defs: Vec<CounterDef> = style
-      .core
-      .counters
-      .iter()
-      .map(|(name, entry)| match entry {
-        CounterEntry::Counter(def) => CounterDef {
-          name: name.clone(),
-          parent: def.parent.clone(),
-          format: def.format,
-          resets: def.resets.clone(),
-          alias_of: None,
-        },
-        CounterEntry::Alias(alias) => CounterDef {
-          name: name.clone(),
-          parent: None,
-          format: NumberFormat::Plain,
-          resets: Vec::new(),
-          alias_of: Some(alias.alias_of.clone()),
-        },
-      })
-      .collect();
-    return Self::from_definitions(defs);
-  }
+  pub fn from_style(style: &Style) -> Self { return Self::from_counters(&style.core.counters); }
 
-  /// 任意の定義列からレジストリを構築する（テスト・カスタム用）
+  /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
-  pub fn from_definitions(defs: Vec<CounterDef>) -> Self {
-    let mut counters = HashMap::new();
-    let mut values = HashMap::new();
-    for def in defs {
-      values.entry(def.name.clone()).or_insert(0);
-      counters.insert(def.name.clone(), def);
-    }
+  pub fn from_counters(counters: &Counters) -> Self {
     return Self {
-      counters,
-      values,
+      counters: CounterStates::from_counters(counters),
       labels: HashMap::new(),
     };
   }
 
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、書式化済みの番号文字列を返す
-  ///
-  /// alias 解決を経由するため、別名カウンタを進めると元のカウンタも進む。
-  pub fn increment(&mut self, name: &str) -> String {
-    let canonical = self.resolve_alias(name);
-    let resets = self.counters.get(&canonical).map(|d| d.resets.clone()).unwrap_or_default();
+  pub fn increment(&mut self, name: CounterName) -> String {
+    let resets = self.counters.get(name).def.resets.clone();
 
-    *self.values.entry(canonical.clone()).or_insert(0) += 1;
+    self.counters.get_mut(name).value += 1;
     for r in resets {
-      let r_canonical = self.resolve_alias(&r);
-      if let Some(v) = self.values.get_mut(&r_canonical) {
-        *v = 0;
+      self.counters.get_mut(r).value = 0;
+    }
+
+    return self.format_number(name);
+  }
+
+  /// 現在のカウンタ値を `format` テンプレートに従って書式化する
+  #[must_use]
+  pub fn format_number(&self, name: CounterName) -> String {
+    let def = &self.counters.get(name).def;
+    return self.expand_template(&def.format, name);
+  }
+
+  /// テンプレートのプレースホルダ `{n}` / `{<counter_name>}` を値で置換する
+  ///
+  /// - `{n}` は `self_name` カウンタの値を、その `number_style` でレンダリングする
+  /// - `{<name>}` は参照先カウンタの値を、参照先の `number_style` でレンダリングする
+  ///   （テンプレートは再帰展開しない）
+  /// - 未知のカウンタ名（9 種以外）は空文字列に置換する
+  fn expand_template(&self, template: &str, self_name: CounterName) -> String {
+    let mut out = String::new();
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+      if c != '{' {
+        out.push(c);
+        continue;
+      }
+      let mut name = String::new();
+      let mut closed = false;
+      while let Some(&nc) = chars.peek() {
+        chars.next();
+        if nc == '}' {
+          closed = true;
+          break;
+        }
+        name.push(nc);
+      }
+      if !closed {
+        // 閉じ括弧なしの `{...` はリテラル扱いとして残す
+        out.push('{');
+        out.push_str(&name);
+        continue;
+      }
+      let target = if name == "n" {
+        Some(self_name)
+      } else {
+        parse_counter_name(&name)
+      };
+      if let Some(target) = target {
+        out.push_str(&self.render_counter_value(target));
       }
     }
-
-    return self.format_number(&canonical);
+    return out;
   }
 
-  /// 現在のカウンタ値を `format` に従って書式化する
-  #[must_use]
-  pub fn format_number(&self, name: &str) -> String {
-    let canonical = self.resolve_alias(name);
-    let Some(def) = self.counters.get(&canonical) else {
-      return String::new();
-    };
-    match def.format {
-      NumberFormat::Plain => return self.values.get(&canonical).copied().unwrap_or(0).to_string(),
-      NumberFormat::Prefixed => return self.format_prefixed(&canonical),
-    }
-  }
-
-  /// 親チェーンを root → leaf の順に書式化する
-  fn format_prefixed(&self, name: &str) -> String {
-    let mut chain: Vec<u32> = Vec::new();
-    let mut cursor = Some(name.to_string());
-    while let Some(n) = cursor {
-      chain.push(self.values.get(&n).copied().unwrap_or(0));
-      cursor = self.counters.get(&n).and_then(|d| d.parent.clone()).map(|p| self.resolve_alias(&p));
-    }
-    chain.reverse();
-    return chain.iter().map(u32::to_string).collect::<Vec<_>>().join(".");
-  }
-
-  /// alias を辿って正規のカウンタ名を返す
-  fn resolve_alias(&self, name: &str) -> String {
-    let mut current = name.to_string();
-    let mut hops = 0_u32;
-    // 循環 alias を踏んだ場合の保険として、定義数を上限にする
-    let limit = self.counters.len() as u32 + 1;
-    while hops < limit {
-      let Some(def) = self.counters.get(&current) else {
-        break;
-      };
-      let Some(target) = &def.alias_of else {
-        break;
-      };
-      current = target.clone();
-      hops += 1;
-    }
-    return current;
+  /// カウンタの「現在値を自身の `number_style` で描画した文字列」を返す
+  fn render_counter_value(&self, name: CounterName) -> String {
+    let state = self.counters.get(name);
+    return state.def.number_style.render(state.value);
   }
 
   /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
-  pub fn register_label(&mut self, label: impl Into<String>, counter: impl Into<String>, number: impl Into<String>) {
-    let counter = self.resolve_alias(&counter.into());
+  ///
+  /// 渡された `number`（裸の番号）にカウンタの `ref_format` を適用し、`\ref` 時の表示
+  /// 文字列を作って保存する（例: `"1.2"` → `"Section 1.2"`、`"({number})"` 形式なら `"(1.2)"`）。
+  pub fn register_label(&mut self, label: impl Into<String>, counter: CounterName, number: impl Into<String>) {
+    let def = &self.counters.get(counter).def;
+    let formatted = expand_ref_format(&def.ref_format, &number.into(), &def.display_name);
     self.labels.insert(
       label.into(),
       ResolvedLabel {
         counter,
-        number: number.into(),
+        number: formatted,
       },
     );
   }
@@ -211,90 +250,185 @@ impl CounterRegistry {
   #[must_use]
   pub fn resolve_label(&self, label: &str) -> Option<&str> { return self.labels.get(label).map(|r| r.number.as_str()); }
 
-  /// 見出しレベルから seiran 既定カウンタ名を返す
+  /// 見出しレベルから seiran 既定の [`CounterName`] を返す
   #[must_use]
-  pub fn counter_name_for_heading(level: HeadingLevel) -> &'static str {
+  pub fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
     return match level {
-      HeadingLevel::Part => "part",
-      HeadingLevel::Chapter => "chapter",
-      HeadingLevel::Section => "section",
-      HeadingLevel::Subsection => "subsection",
-      HeadingLevel::Paragraph => "paragraph",
-      HeadingLevel::Subparagraph => "subparagraph",
+      HeadingLevel::Part => CounterName::Part,
+      HeadingLevel::Chapter => CounterName::Chapter,
+      HeadingLevel::Section => CounterName::Section,
+      HeadingLevel::Subsection => CounterName::Subsection,
+      HeadingLevel::Paragraph => CounterName::Paragraph,
+      HeadingLevel::Subparagraph => CounterName::Subparagraph,
     };
   }
 }
 
+/// `snake_case` のカウンタ名文字列を [`CounterName`] に解決する
+///
+/// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
+/// 9 種以外の文字列は `None` を返す。
+fn parse_counter_name(s: &str) -> Option<CounterName> {
+  return match s {
+    "part" => Some(CounterName::Part),
+    "chapter" => Some(CounterName::Chapter),
+    "section" => Some(CounterName::Section),
+    "subsection" => Some(CounterName::Subsection),
+    "paragraph" => Some(CounterName::Paragraph),
+    "subparagraph" => Some(CounterName::Subparagraph),
+    "figure" => Some(CounterName::Figure),
+    "equation" => Some(CounterName::Equation),
+    "table" => Some(CounterName::Table),
+    _ => None,
+  };
+}
+
+/// `ref_format` テンプレートを適用して `\ref` の表示文字列を作る
+///
+/// 認識するプレースホルダは `{number}`（裸の番号）と `{display_name}`（種別名）のみ。
+/// 未知のプレースホルダや閉じ括弧の欠落はリテラル扱いで残す。
+fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String {
+  let mut out = String::new();
+  let mut chars = template.chars().peekable();
+  while let Some(c) = chars.next() {
+    if c != '{' {
+      out.push(c);
+      continue;
+    }
+    let mut name = String::new();
+    let mut closed = false;
+    while let Some(&nc) = chars.peek() {
+      chars.next();
+      if nc == '}' {
+        closed = true;
+        break;
+      }
+      name.push(nc);
+    }
+    if !closed {
+      out.push('{');
+      out.push_str(&name);
+      continue;
+    }
+    match name.as_str() {
+      "number" => out.push_str(number),
+      "display_name" => out.push_str(display_name),
+      _ => {
+        // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
+        out.push('{');
+        out.push_str(&name);
+        out.push('}');
+      },
+    }
+  }
+  return out;
+}
+
 #[cfg(test)]
 mod tests {
-  use read_style::{AliasDef, CounterEntry, CounterStyle, NumberFormat, Style};
+  use read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style};
 
   use super::*;
 
   #[test]
   fn counter_registry_increment_format() {
     let mut r = CounterRegistry::default_for_seiran();
-    assert_eq!(r.increment("chapter"), "1");
-    assert_eq!(r.increment("section"), "1.1");
-    assert_eq!(r.increment("section"), "1.2");
-    assert_eq!(r.format_number("chapter"), "1");
-    assert_eq!(r.format_number("section"), "1.2");
+    assert_eq!(r.increment(CounterName::Chapter), "1");
+    assert_eq!(r.increment(CounterName::Section), "1.1");
+    assert_eq!(r.increment(CounterName::Section), "1.2");
+    assert_eq!(r.format_number(CounterName::Chapter), "1");
+    assert_eq!(r.format_number(CounterName::Section), "1.2");
   }
 
   #[test]
-  fn counter_registry_alias_shared_numbering() {
-    // subsubsection を section の alias として定義 → section と番号を共有
-    let defs = vec![
-      CounterDef {
-        name: "chapter".to_string(),
-        parent: None,
-        format: NumberFormat::Plain,
-        resets: vec!["section".to_string()],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "section".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: None,
-      },
-      CounterDef {
-        name: "subsubsection".to_string(),
-        parent: None,
-        format: NumberFormat::Prefixed,
-        resets: vec![],
-        alias_of: Some("section".to_string()),
-      },
-    ];
-    let mut r = CounterRegistry::from_definitions(defs);
-    r.increment("chapter");
-    let a = r.increment("section"); // section -> 1.1
-    let b = r.increment("subsubsection"); // alias で section が進む -> 1.2
-    assert_eq!(a, "1.1");
-    assert_eq!(b, "1.2");
+  fn counter_registry_part_uses_roman_upper() {
+    let mut r = CounterRegistry::default_for_seiran();
+    assert_eq!(r.increment(CounterName::Part), "I");
+    assert_eq!(r.increment(CounterName::Part), "II");
   }
 
   #[test]
   fn counter_registry_section_reset() {
     let mut r = CounterRegistry::default_for_seiran();
-    r.increment("chapter"); // chapter = 1
-    r.increment("section"); // section = 1.1
-    r.increment("section"); // section = 1.2
-    r.increment("chapter"); // chapter = 2、section は 0 にリセット
-    let next = r.increment("section");
+    r.increment(CounterName::Chapter); // chapter = 1
+    r.increment(CounterName::Section); // section = 1.1
+    r.increment(CounterName::Section); // section = 1.2
+    r.increment(CounterName::Chapter); // chapter = 2、section は 0 にリセット
+    let next = r.increment(CounterName::Section);
     assert_eq!(next, "2.1");
   }
 
   #[test]
-  fn evaluate_ref_pass2_resolves_number() {
-    // CounterRegistry レベルでラベル登録 → 解決
-    let mut r = CounterRegistry::default_for_seiran();
-    r.increment("chapter");
-    let chapter_number = r.format_number("chapter");
-    r.register_label("ch:intro", "chapter", chapter_number.clone());
+  fn template_with_literal_decoration() {
+    // Arrange: chapter を "第{n}章" 形式で発番する
+    let counters = Counters {
+      chapter: CounterStyle {
+        display_name: "Chapter".to_string(),
+        format: "第{n}章".to_string(),
+        number_style: NumberStyle::Arabic,
+        ref_format: "{number}".to_string(),
+        resets: vec![],
+      },
+      ..Counters::default()
+    };
+    let mut r = CounterRegistry::from_counters(&counters);
 
-    assert_eq!(r.resolve_label("ch:intro"), Some(chapter_number.as_str()));
+    // Act / Assert
+    assert_eq!(r.increment(CounterName::Chapter), "第1章");
+    assert_eq!(r.increment(CounterName::Chapter), "第2章");
+  }
+
+  #[test]
+  fn template_cross_counter_uses_target_number_style() {
+    // Arrange: part を roman、chapter は part を参照する arabic
+    let counters = Counters {
+      part: CounterStyle {
+        display_name: "Part".to_string(),
+        format: "{n}".to_string(),
+        number_style: NumberStyle::RomanUpper,
+        ref_format: "{number}".to_string(),
+        resets: vec![CounterName::Chapter],
+      },
+      chapter: CounterStyle {
+        display_name: "Chapter".to_string(),
+        format: "{part}-{n}".to_string(),
+        number_style: NumberStyle::Arabic,
+        ref_format: "{number}".to_string(),
+        resets: vec![],
+      },
+      ..Counters::default()
+    };
+    let mut r = CounterRegistry::from_counters(&counters);
+
+    // Act
+    r.increment(CounterName::Part); // I
+    r.increment(CounterName::Part); // II
+    let ch = r.increment(CounterName::Chapter);
+
+    // Assert: part は Roman、chapter 自身は Arabic で展開される
+    assert_eq!(ch, "II-1");
+  }
+
+  #[test]
+  fn evaluate_ref_pass2_applies_ref_format() {
+    // 既定 chapter は ref_format = "{display_name} {number}" なので "Chapter 1" が返る
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment(CounterName::Chapter);
+    let bare = r.format_number(CounterName::Chapter);
+    r.register_label("ch:intro", CounterName::Chapter, bare);
+
+    assert_eq!(r.resolve_label("ch:intro"), Some("Chapter 1"));
+  }
+
+  #[test]
+  fn evaluate_ref_equation_uses_parenthesized_ref_format() {
+    // 既定 equation は ref_format = "({number})" なので "(1.1)" が返る
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment(CounterName::Chapter);
+    let bare = r.increment(CounterName::Equation);
+    r.register_label("eq:foo", CounterName::Equation, bare);
+
+    assert_eq!(r.resolve_label("eq:foo"), Some("(1.1)"));
   }
 
   #[test]
@@ -304,60 +438,20 @@ mod tests {
   }
 
   #[test]
-  fn from_style_includes_custom_counter_definition() {
-    // Arrange: 既定 Style に独自カウンタ "example" を追加（chapter 親、prefixed）
-    let mut style = Style::default();
-    style.core.counters.insert(
-      "example".to_string(),
-      CounterEntry::Counter(CounterStyle {
-        display_name: "Example".to_string(),
-        parent: Some("chapter".to_string()),
-        format: NumberFormat::Prefixed,
-        resets: Vec::new(),
-      }),
-    );
-
-    // Act
-    let mut r = CounterRegistry::from_style(&style);
-    r.increment("chapter");
-    let n1 = r.increment("example");
-    let n2 = r.increment("example");
-
-    // Assert: chapter 親が反映されており、prefixed で "1.1" → "1.2" と進む
-    assert_eq!(n1, "1.1");
-    assert_eq!(n2, "1.2");
-  }
-
-  #[test]
-  fn from_style_maps_alias_entry_to_canonical_counter() {
-    // Arrange: 既定 Style に "fig" を "figure" の別名として追加
-    let mut style = Style::default();
-    style.core.counters.insert(
-      "fig".to_string(),
-      CounterEntry::Alias(AliasDef {
-        alias_of: "figure".to_string(),
-      }),
-    );
-
-    // Act: alias 経由で進めても figure 本体が進むことを確認
-    let mut r = CounterRegistry::from_style(&style);
-    r.increment("chapter");
-    let via_alias = r.increment("fig"); // alias 経由
-    let via_canonical = r.increment("figure"); // 本体経由
-
-    // Assert: 同じ figure カウンタを共有しているので連番になる
-    assert_eq!(via_alias, "1.1");
-    assert_eq!(via_canonical, "1.2");
-  }
-
-  #[test]
   fn from_style_with_default_style_matches_default_for_seiran() {
     // Arrange / Act
     let mut from_default = CounterRegistry::from_style(&Style::default());
     let mut from_helper = CounterRegistry::default_for_seiran();
 
     // Assert: 既定 Style 経由と default_for_seiran() が同じ振る舞いをする
-    assert_eq!(from_default.increment("chapter"), from_helper.increment("chapter"));
-    assert_eq!(from_default.increment("section"), from_helper.increment("section"));
+    assert_eq!(from_default.increment(CounterName::Chapter), from_helper.increment(CounterName::Chapter));
+    assert_eq!(from_default.increment(CounterName::Section), from_helper.increment(CounterName::Section));
+  }
+
+  #[test]
+  fn counter_name_for_heading_maps_each_level() {
+    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
+    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
+    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 }

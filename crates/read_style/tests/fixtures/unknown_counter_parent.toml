@@ -1,7 +1,0 @@
-# クロスフィールド検証用 fixture: 存在しない親カウンタを指定。
-
-[counters.invalid]
-display_name = "Invalid"
-parent = "nonexistent"
-format = "plain"
-resets = []

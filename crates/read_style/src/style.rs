@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use types::HeadingLevel;
 
 use crate::{
-  core::{CoreStyle, counter::CounterEntry, heading::HeadingStyle},
+  core::{
+    CoreStyle,
+    counter::{CounterName, CounterStyle},
+    heading::HeadingStyle,
+  },
   extended::ExtendedStyle,
 };
 
@@ -37,12 +41,9 @@ impl Style {
   #[must_use]
   pub fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.core.heading[level]; }
 
-  /// 指定された名前のカウンタエントリ（定義または別名）への不変参照を返す。
-  ///
-  /// 別名解決（[`CounterEntry::Alias`] を辿って canonical な定義に
-  /// 到達する）は呼び出し側の責任。
+  /// 指定された名前のカウンタ定義への不変参照を返す（9 種固定のため必ず存在する）。
   #[must_use]
-  pub fn counter(&self, name: &str) -> Option<&CounterEntry> { return self.core.counters.get(name); }
+  pub fn counter(&self, name: CounterName) -> &CounterStyle { return self.core.counters.get(name); }
 }
 
 #[cfg(test)]
@@ -51,7 +52,7 @@ mod tests {
   use types::HeadingLevel;
 
   use super::Style;
-  use crate::{Color, primitives::length::Length};
+  use crate::{Color, core::counter::CounterName, primitives::length::Length};
 
   #[test]
   fn validate_accepts_default() {
@@ -81,8 +82,7 @@ mod tests {
   #[test]
   fn counter_accessor_finds_figure() {
     let style = Style::default();
-    assert!(style.counter("figure").is_some());
-    assert!(style.counter("nonexistent").is_none());
+    assert_eq!(style.counter(CounterName::Figure).display_name, "Figure");
   }
 
   #[test]
@@ -100,11 +100,8 @@ mod tests {
 
   #[test]
   fn validate_dives_into_counters_display_name() {
-    use crate::core::counter::CounterEntry;
     let mut style = Style::default();
-    if let Some(CounterEntry::Counter(def)) = style.core.counters.get_mut("figure") {
-      def.display_name = String::new();
-    }
+    style.core.counters.figure.display_name = String::new();
     assert!(style.validate().is_err());
   }
 

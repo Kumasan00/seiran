@@ -17,21 +17,13 @@ pub mod math;
 pub mod table;
 pub mod text;
 
-use std::collections::HashMap;
-
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
   core::{
-    counter::{CounterEntry, default_counters},
-    equation::EquationStyle,
-    figure::FigureStyle,
-    heading::HeadingStyles,
-    list::ListStyle,
-    math::MathScriptStyle,
-    table::TableStyle,
-    text::TextBlockStyle,
+    counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
+    math::MathScriptStyle, table::TableStyle, text::TextBlockStyle,
   },
   primitives::{
     color::Color,
@@ -79,11 +71,10 @@ pub struct CoreStyle {
   /// ディスプレイ数式のスタイル
   #[garde(dive)]
   pub equation: EquationStyle,
-  /// カウンタ定義テーブル（`[counters.<name>]`）。
+  /// カウンタ定義テーブル（`[counters.<name>]`）。固定 9 種のみを保持し、
   /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
-  /// 値は [`CounterEntry`] で「カウンタ定義」「別名」を排他的に表す。
   #[garde(dive)]
-  pub counters: HashMap<String, CounterEntry>,
+  pub counters: Counters,
 }
 
 impl Default for CoreStyle {
@@ -99,7 +90,7 @@ impl Default for CoreStyle {
       table: TableStyle::default(),
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
-      counters: default_counters(),
+      counters: Counters::default(),
     };
   }
 }

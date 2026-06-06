@@ -193,7 +193,7 @@ pub enum MyError {
 - **色（`Color`）**: `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問）。`[r, g, b]` 配列形式は不可
 - **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに持ち、`caption_position` は別フィールド（top/bottom）。equation は `number_format` / `number_side` を維持
 - **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
-- **カウンタ（`CounterEntry`）**: `[counters.<name>]` は `display_name` / `parent` / `format` / `resets` のカウンタ定義、または `{ alias_of = "<canonical>" }` の別名のいずれか（`untagged` enum + `deny_unknown_fields` で混在拒否）
+- **カウンタ（`CounterEntry`）**: `[counters.<name>]` は `display_name` / `format` / `resets` のカウンタ定義、または `{ alias_of = "<canonical>" }` の別名のいずれか（`untagged` enum + `deny_unknown_fields` で混在拒否）
 - **数式パラメータ（`MathScriptStyle`）**: 上付き / 下付きの倍率・シフト等。将来 OpenType MATH テーブルから自動取得する想定で、現状は手動指定（`Option<MathScriptStyle>` 化の余地を残す）
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
