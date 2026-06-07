@@ -21,13 +21,14 @@
 
 use bumpalo::Bump;
 use miette::{Diagnostic, NamedSource};
+pub use read_style::Style;
 use thiserror::Error;
 
 pub mod document;
 mod evaluator;
-pub use document::{DocNode, Document, HeadingLevel, HeadingNumber, InlineNode, ListItem, MathNode};
+pub use document::{DocNode, Document, HeadingLevel, InlineNode, ListItem, MathNode};
 pub use evaluator::EvalError;
-use evaluator::Evaluator;
+use evaluator::{Evaluator, counter::resolve_refs};
 
 /// `parse_source` が返すエラー型
 ///
@@ -78,6 +79,7 @@ pub enum ParseSourceError {
 ///
 /// * `source` - パース対象のソーステキスト
 /// * `source_name` - エラー表示用のソース名（ファイルパス等）
+/// * `style` - カウンタ定義などを取り込む `read_style::Style`
 ///
 /// # Errors
 ///
@@ -89,7 +91,7 @@ pub enum ParseSourceError {
 // 性能上の問題にならない。Box<dyn Diagnostic + Send + Sync> で型消去すると呼び出し側で
 // 内側エラーの variant match ができなくなるため、具体型のまま返してこの lint を抑止する。
 #[allow(clippy::result_large_err)]
-pub fn parse_source(source: &str, source_name: &str) -> Result<Vec<DocNode>, ParseSourceError> {
+pub fn parse_source(source: &str, source_name: &str, style: &Style) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
   let cst =
     syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| ParseSourceError::Syntax {
@@ -97,8 +99,14 @@ pub fn parse_source(source: &str, source_name: &str) -> Result<Vec<DocNode>, Par
       error,
     })?;
 
-  let mut evaluator = Evaluator::default();
-  let doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
+  let mut evaluator = Evaluator::new(style);
+  let mut doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
+    src: NamedSource::new(source_name, source.to_string()),
+    error,
+  })?;
+
+  // pass2: `\ref{label}` を `CounterRegistry::labels` で解決して書き換える
+  resolve_refs(&mut doc_nodes, &evaluator.registry).map_err(|error| ParseSourceError::Eval {
     src: NamedSource::new(source_name, source.to_string()),
     error,
   })?;

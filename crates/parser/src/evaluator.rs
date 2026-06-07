@@ -18,6 +18,7 @@
 //! - 数式ノードは CST の `InlineMath` / `MathGroup` / `MathSubscript` /
 //!   `MathSuperscript` をそのまま `MathNode` に変換
 
+use read_style::Style;
 use syntax::{
   SyntaxKind,
   ast::CommandView,
@@ -26,8 +27,8 @@ use syntax::{
 };
 
 use crate::{
-  document::{DocNode, HeadingLevel, InlineNode},
-  evaluator::command::CommandResult,
+  document::{DocNode, InlineNode},
+  evaluator::{command::CommandResult, counter::CounterRegistry},
 };
 
 mod command;
@@ -42,95 +43,33 @@ pub(crate) use environment::lookup_parse_mode as lookup_env_parse_mode;
 pub use error::EvalError;
 
 // =============================================================================
-// 評価コンテキスト
-// =============================================================================
-
-/// 見出し番号の自動採番用コンテキスト
-#[derive(Debug, Default)]
-pub(crate) struct EvalContext {
-  pub part: u32,
-  pub chapter: u32,
-  pub section: u32,
-  pub subsection: u32,
-  pub paragraph: u32,
-  pub subparagraph: u32,
-  /// ディスプレイ数式の通し番号（フラットカウンタ）。
-  /// chapter リセット連動は今回は組まない — 将来 `CounterRegistry` に
-  /// 移行する際に章番号との連結（`1.1`, `1.2`, …）も同時に整える。
-  pub equation_count: u32,
-  /// 図の通し番号（フラットカウンタ）。`equation_count` と同様に
-  /// `CounterRegistry` 完成時に章番号連結を整える。
-  pub figure_count: u32,
-}
-
-impl EvalContext {
-  /// 指定レベルのカウンタをインクリメントし、下位レベルをリセットする
-  pub(crate) fn increment_heading(&mut self, level: HeadingLevel) {
-    match level {
-      HeadingLevel::Part => {
-        self.part += 1;
-        self.chapter = 0;
-        self.section = 0;
-        self.subsection = 0;
-        self.paragraph = 0;
-        self.subparagraph = 0;
-      },
-      HeadingLevel::Chapter => {
-        self.chapter += 1;
-        self.section = 0;
-        self.subsection = 0;
-        self.paragraph = 0;
-        self.subparagraph = 0;
-      },
-      HeadingLevel::Section => {
-        self.section += 1;
-        self.subsection = 0;
-        self.paragraph = 0;
-        self.subparagraph = 0;
-      },
-      HeadingLevel::Subsection => {
-        self.subsection += 1;
-        self.paragraph = 0;
-        self.subparagraph = 0;
-      },
-      HeadingLevel::Paragraph => {
-        self.paragraph += 1;
-        self.subparagraph = 0;
-      },
-      HeadingLevel::Subparagraph => {
-        self.subparagraph += 1;
-      },
-    }
-  }
-
-  /// ディスプレイ数式カウンタをインクリメントし、新しい番号を返す
-  ///
-  /// `\begin{equation}` ハンドラから呼ばれる想定。
-  /// 現状はフラットカウンタで、章番号との連結 (`1.1`, `1.2`) や
-  /// chapter リセットは行わない。
-  pub(crate) fn increment_equation(&mut self) -> u32 {
-    self.equation_count += 1;
-    return self.equation_count;
-  }
-
-  /// 図カウンタをインクリメントし、新しい番号を返す
-  ///
-  /// `\begin{figure}` ハンドラから呼ばれる想定。`increment_equation` と同様に
-  /// フラットカウンタで、章番号との連結は将来 `CounterRegistry` 完成時に整える。
-  pub(crate) fn increment_figure(&mut self) -> u32 {
-    self.figure_count += 1;
-    return self.figure_count;
-  }
-}
-
-// =============================================================================
 // 評価器
 // =============================================================================
 
 /// CST から Document IR を生成する評価器
-#[derive(Debug, Default)]
+///
+/// 見出し・数式・図の自動採番とラベル登録は [`CounterRegistry`] が一手に担う。
+/// 9 種の `CounterName`（part〜table）はすべて `Style::core.counters` のテンプレートに従って
+/// 書式化されるため、parser 側にフラットカウンタを別途持たない。
+#[derive(Debug)]
 pub(crate) struct Evaluator {
-  pub context: EvalContext,
+  /// 自動採番とラベル登録のレジストリ。`read_style::Style.core.counters` から構築する
+  pub registry: CounterRegistry,
+}
+
+impl Evaluator {
+  /// `Style` からカウンタ定義を取り込んで評価器を構築する
+  #[must_use]
+  pub fn new(style: &Style) -> Self {
+    return Self {
+      registry: CounterRegistry::from_style(style),
+    };
+  }
+}
+
+impl Default for Evaluator {
+  /// `Style::default()` を使った評価器を返す（主にテスト用）
+  fn default() -> Self { return Self::new(&Style::default()); }
 }
 
 impl Evaluator {

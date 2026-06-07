@@ -62,6 +62,32 @@ pub(crate) enum OptValue {
   Length(Length),
 }
 
+/// `CommandView` 用の薄いラッパ
+///
+/// # Errors
+///
+/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
+/// [`EvalError::InvalidOptArgValue`] を返します。
+pub(crate) fn collect_command_opt_args(
+  view: &CommandView,
+  schema: &[(&str, OptType)],
+) -> Result<Vec<(String, OptValue)>, EvalError> {
+  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
+}
+
+/// `EnvironmentView` 用の薄いラッパ
+///
+/// # Errors
+///
+/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
+/// [`EvalError::InvalidOptArgValue`] を返します。
+pub(crate) fn collect_environment_opt_args(
+  view: &EnvironmentView,
+  schema: &[(&str, OptType)],
+) -> Result<Vec<(String, OptValue)>, EvalError> {
+  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
+}
+
 /// 任意引数群を集約・型変換してスキーマで検証する低レベル関数
 ///
 /// `opt_arg_nodes` の各 `OptArg` ノードに対して [`parse_key_value_options`] を呼び、
@@ -104,32 +130,6 @@ where
     }
   }
   return Ok(pairs);
-}
-
-/// `CommandView` 用の薄いラッパ
-///
-/// # Errors
-///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
-/// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_command_opt_args(
-  view: &CommandView,
-  schema: &[(&str, OptType)],
-) -> Result<Vec<(String, OptValue)>, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
-}
-
-/// `EnvironmentView` 用の薄いラッパ
-///
-/// # Errors
-///
-/// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
-/// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn collect_environment_opt_args(
-  view: &EnvironmentView,
-  schema: &[(&str, OptType)],
-) -> Result<Vec<(String, OptValue)>, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
 }
 
 /// `parse_key_value_options` から得た生の `(key, value)` を期待型で `OptValue` に変換する

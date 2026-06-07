@@ -13,6 +13,7 @@
 //! - `\image[width=Xmm, height=Ymm]{path}` — 画像（必須）
 //! - `\caption{...}` — キャプション（任意）
 
+use read_style::CounterName;
 use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
 use types::Length;
 
@@ -28,8 +29,9 @@ use crate::{
 
 /// `figure` 環境を評価する
 ///
-/// `figure_count` をインクリメントし、本体内の `\image` / `\caption` を抽出して
-/// [`DocNode::Figure`] を生成する。
+/// [`CounterRegistry::increment`] で `CounterName::Figure` の通し番号を発番し、
+/// 本体内の `\image` / `\caption` を抽出して [`DocNode::Figure`] を生成する。
+/// 番号書式は `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
 ///
 /// # Errors
 ///
@@ -41,7 +43,10 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
     _ => None,
   });
 
-  let number = evaluator.context.increment_figure().to_string();
+  let number = evaluator.registry.increment(CounterName::Figure);
+  if let Some(l) = &label {
+    evaluator.registry.register_label(l.clone(), CounterName::Figure, &number);
+  }
 
   let source = view.source();
   let mut image_path: Option<String> = None;
@@ -169,6 +174,7 @@ fn extract_caption(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -178,13 +184,25 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
+  /// figure カウンタの `format` を `"{n}"` に差し替えた Style を返す
+  ///
+  /// 既定の `"{chapter}.{n}"` はカウンタ経由化の通し番号テスト目的では本質的ではないため、
+  /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
+  fn style_with_plain_figure_format() -> Style {
+    let mut counters = Counters::default();
+    counters.figure.format = "{n}".to_string();
+    let mut style = Style::default();
+    style.core.counters = counters;
+    return style;
+  }
+
   #[test]
   fn figure_extracts_image_and_caption() {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -238,7 +256,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=1mm, height=1mm]{a}\end{figure}\begin{figure}\image[width=1mm, height=1mm]{b}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -253,6 +271,25 @@ mod tests {
       })
       .collect();
     assert_eq!(numbers, vec!["1", "2"]);
+  }
+
+  #[test]
+  fn figure_number_picks_up_chapter_prefix_via_counter_format() {
+    // Arrange — `\chapter` で chapter が 1 に進んだあとの figure は "1.1" になる
+    let arena = Bump::new();
+    let source = r"\chapter{C}\begin{figure}\image[width=1mm, height=1mm]{a}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — Heading 1 件 + Figure 1 件、figure の number は既定書式 "{chapter}.{n}" で "1.1"
+    assert_eq!(result.len(), 2);
+    let DocNode::Figure { number, .. } = &result[1] else {
+      panic!("Figure が期待されます: {:?}", result[1]);
+    };
+    assert_eq!(number, "1.1");
   }
 
   #[test]

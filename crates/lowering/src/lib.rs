@@ -237,6 +237,7 @@ mod tests {
     let node = DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
       number: None,
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
     }]);
 
     let err = lower_node(&ctx, &node).expect_err("未解決の Ref は LoweringError を返すべき");

@@ -158,4 +158,18 @@ pub enum EvalError {
     #[label("この値は期待型に変換できません")]
     span: SourceSpan,
   },
+
+  /// `\ref{label}` で参照されたラベルが未登録の場合
+  #[error("不明なラベルです: {label}")]
+  #[diagnostic(
+    code(parser::eval::unknown_label),
+    help("\\ref で参照しているラベルが \\section[label=...] / 環境 [label=...] で定義されているか確認してください")
+  )]
+  UnknownLabel {
+    /// 参照しようとしたラベル名
+    label: String,
+    /// `\ref{...}` のソース位置
+    #[label("このラベルは未定義です")]
+    span: SourceSpan,
+  },
 }

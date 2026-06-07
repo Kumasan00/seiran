@@ -8,13 +8,13 @@
 #![allow(clippy::unwrap_used, clippy::too_many_lines)]
 
 use parser::{
-  DocNode, EvalError, HeadingLevel, InlineNode, MathNode, ParseSourceError, document::MathStyle, parse_source,
+  DocNode, EvalError, HeadingLevel, InlineNode, MathNode, ParseSourceError, Style, document::MathStyle, parse_source,
 };
 
 /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
 ///
 /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
-fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "test").unwrap(); }
+fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "test", &Style::default()).unwrap(); }
 
 /// ソースを評価して `EvalError` を取り出すテストヘルパ
 ///
@@ -22,7 +22,7 @@ fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "
 /// `Eval` バリアントから内側のエラーを取り出して返す。
 /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
 fn evaluate_error(source: &str) -> EvalError {
-  match parse_source(source, "test") {
+  match parse_source(source, "test", &Style::default()) {
     Err(ParseSourceError::Eval { error, .. }) => return error,
     other => panic!("評価エラーが期待されます: {other:?}"),
   }
@@ -119,6 +119,9 @@ fn evaluate_paragraph_break_creates_two_paragraphs() {
 
 #[test]
 fn evaluate_section_command_creates_heading() {
+  // Counters::default().section.format = "{chapter}.{n}" のため、`\chapter` 不在時は
+  // chapter 値（0）が `NumberStyle::Arabic.render(0) = ""` で空文字列となり、`.1` が出力される。
+  // 実ドキュメントでは通常 `\chapter` 配下で `\section` を使うため、この挙動は許容範囲。
   let result = evaluate_source("\\section{Introduction}");
   assert_eq!(result.len(), 1);
   match &result[0] {
@@ -129,7 +132,7 @@ fn evaluate_section_command_creates_heading() {
       ..
     } => {
       assert_eq!(*level, HeadingLevel::Section);
-      assert_eq!(number.parts, vec![0, 1]);
+      assert_eq!(number, ".1");
       assert_eq!(title.len(), 1);
       match &title[0] {
         InlineNode::Text(text) => assert_eq!(text, "Introduction"),
@@ -138,6 +141,78 @@ fn evaluate_section_command_creates_heading() {
     },
     _ => panic!("Heading が期待されます"),
   }
+}
+
+#[test]
+fn evaluate_chapter_then_section_uses_chapter_prefix() {
+  // `\chapter` 後の `\section` は `{chapter}.{n}` テンプレで `"1.1"` になる
+  let result = evaluate_source("\\chapter{Foundations}\\section{Introduction}");
+  assert_eq!(result.len(), 2);
+  let DocNode::Heading { number: ch_num, .. } = &result[0] else {
+    panic!("Heading が期待されます");
+  };
+  assert_eq!(ch_num, "1");
+  let DocNode::Heading {
+    number: sec_num, ..
+  } = &result[1]
+  else {
+    panic!("Heading が期待されます");
+  };
+  assert_eq!(sec_num, "1.1");
+}
+
+#[test]
+fn evaluate_section_with_label_then_ref_resolves_via_registry() {
+  // `\chapter{X}\section[label=sec:intro]{T}` の後に `\ref{sec:intro}` を書くと、
+  // `Counters::default().section.ref_format = "{display_name} {number}"` が適用されて
+  // `"Section 1.1"` という整形済み文字列で解決される。
+  let result = evaluate_source(r"\chapter{X}\section[label=sec:intro]{T}See \ref{sec:intro}.");
+  // [Heading(chapter), Heading(section), Paragraph("See <Ref> .")]
+  assert_eq!(result.len(), 3);
+  let DocNode::Paragraph(inlines) = &result[2] else {
+    panic!("Paragraph が期待されます: {:?}", result[2]);
+  };
+  let ref_node = inlines
+    .iter()
+    .find_map(|n| match n {
+      InlineNode::Ref { number, .. } => Some(number.clone()),
+      _ => None,
+    })
+    .expect("Ref ノードが含まれるべき");
+  assert_eq!(ref_node.as_deref(), Some("Section 1.1"));
+}
+
+#[test]
+fn evaluate_equation_with_label_then_ref_resolves_with_parens() {
+  // equation は `CounterRegistry::increment(CounterName::Equation)` で書式化された
+  // "{chapter}.{n}" 形式の番号を発番し、`ref_format = "({number})"` が適用される。
+  // 直前の `\chapter` で chapter を 1 にしてから equation を発番すると "(1.1)" になる。
+  let source = r"\chapter{C}\begin{equation}[label=eq:p]a\end{equation}See \ref{eq:p}.";
+  let result = evaluate_source(source);
+  let para = result
+    .iter()
+    .find_map(|n| {
+      if let DocNode::Paragraph(i) = n {
+        Some(i)
+      } else {
+        None
+      }
+    })
+    .expect("Paragraph が含まれるべき");
+  let ref_node = para
+    .iter()
+    .find_map(|n| match n {
+      InlineNode::Ref { number, .. } => Some(number.clone()),
+      _ => None,
+    })
+    .expect("Ref ノードが含まれるべき");
+  assert_eq!(ref_node.as_deref(), Some("(1.1)"));
+}
+
+#[test]
+fn evaluate_unknown_ref_returns_unknown_label_error() {
+  let err = evaluate_error(r"\ref{nope}");
+  assert!(matches!(err, EvalError::UnknownLabel { ref label, .. } if label == "nope"));
 }
 
 #[test]

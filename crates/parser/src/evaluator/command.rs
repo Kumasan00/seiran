@@ -31,6 +31,7 @@ use crate::{
 mod control;
 mod headline;
 mod inline;
+mod ref_;
 
 /// コマンドの実行結果
 ///
@@ -57,6 +58,8 @@ pub(crate) enum CommandKind {
   InlineWrapper(fn(Vec<InlineNode>) -> InlineNode),
   /// 引数なしで単一文字を出力するコマンド（ギリシャ文字・数学記号）
   SingleChar(char),
+  /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
+  Ref,
   /// 未定義のコマンド
   Undefined,
 }
@@ -67,7 +70,7 @@ impl CommandKind {
     match self {
       Self::Space => control::space(view).map(CommandResult::Block),
 
-      Self::Headline(level) => headline::heading(view, level, &mut evaluator.context).map(CommandResult::Block),
+      Self::Headline(level) => headline::heading(view, level, &mut evaluator.registry).map(CommandResult::Block),
 
       Self::InlineWrapper(wrapper) => inline::inline_wrapper(view, wrapper).map(CommandResult::Inline),
 
@@ -82,6 +85,8 @@ impl CommandKind {
         return Ok(CommandResult::Inline(vec![InlineNode::Symbol(ch)]));
       },
 
+      Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
+
       Self::Undefined => Err(EvalError::UnknownCommand {
         name: view.name().to_string(),
         span: view.span().into(),
@@ -93,6 +98,9 @@ impl CommandKind {
 pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
+
+  // 相互参照
+  "ref" => CommandKind::Ref,
 
   // インラインラッパーコマンド（テキスト装飾）
   "textbf" => CommandKind::InlineWrapper(InlineNode::Strong),

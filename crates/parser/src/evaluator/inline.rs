@@ -9,7 +9,7 @@
 //! 数式ノード変換（[`crate::evaluator::math`] モジュール）からも参照される。
 
 use syntax::{
-  ast::CommandView,
+  ast::{CommandView, extract_text_content},
   green::{GreenElement, GreenNode},
   kind::SyntaxKind,
   token::TokenKind,
@@ -63,6 +63,18 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec
             },
             Some(CommandKind::SingleChar(ch)) => {
               inlines.push(InlineNode::Symbol(ch));
+            },
+            Some(CommandKind::Ref) => {
+              // 見出しタイトル・キャプション内に出現する `\ref{label}` も
+              // pass1 ではスタブを生成し pass2 で解決する
+              if let Some(arg) = view.first_arg() {
+                let label = extract_text_content(source, arg).trim().to_string();
+                inlines.push(InlineNode::Ref {
+                  label,
+                  number: None,
+                  span: view.span().into(),
+                });
+              }
             },
             _ => {
               // 見出しの引数などインライン文脈に出現しない種類（Headline / Space / Undefined）は

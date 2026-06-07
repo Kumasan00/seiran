@@ -8,6 +8,7 @@
 //!
 //! - `[label=eq:foo]` — `\ref` 解決用ラベル（任意）
 
+use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 
 use crate::{
@@ -20,9 +21,9 @@ use crate::{
 
 /// `equation` 環境を評価する
 ///
-/// 評価コンテキストの `equation_count` をインクリメントし、発番された通し番号を
-/// `DocNode::DisplayMath.number` に格納する。lowering 層が
-/// `EquationStyle::number_format` でこの番号を書式化して描画する。
+/// [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
+/// `[label=...]` 指定時はそのレジストリにラベルを登録する。番号書式は
+/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
 ///
 /// # Errors
 ///
@@ -34,7 +35,10 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
     _ => None,
   });
 
-  let number = evaluator.context.increment_equation().to_string();
+  let number = evaluator.registry.increment(CounterName::Equation);
+  if let Some(l) = &label {
+    evaluator.registry.register_label(l.clone(), CounterName::Equation, &number);
+  }
 
   let source = view.source();
   let body = match view.body() {
@@ -53,6 +57,7 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use read_style::{Counters, Style};
 
   use super::*;
   use crate::{document::MathNode, evaluator::lookup_env_parse_mode};
@@ -62,13 +67,25 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
+  /// equation カウンタの `format` を `"{n}"` に差し替えた Style を返す
+  ///
+  /// 既定の `"{chapter}.{n}"` はカウンタ経由化の通し番号テスト目的では本質的ではないため、
+  /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
+  fn style_with_plain_equation_format() -> Style {
+    let mut counters = Counters::default();
+    counters.equation.format = "{n}".to_string();
+    let mut style = Style::default();
+    style.core.counters = counters;
+    return style;
+  }
+
   #[test]
   fn equation_produces_display_math() {
     // Arrange — 上付き付きの簡単なディスプレイ数式
     let arena = Bump::new();
     let source = r"\begin{equation}x^2 = y\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -97,7 +114,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -117,7 +134,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a\end{equation}\begin{equation}b\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -147,5 +164,24 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn equation_number_picks_up_chapter_prefix_via_counter_format() {
+    // Arrange — `\chapter` で chapter が 1 に進んだあとの equation は "1.1" になる
+    let arena = Bump::new();
+    let source = r"\chapter{C}\begin{equation}a\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — Heading 1 件 + DisplayMath 1 件、equation の number は既定書式 "{chapter}.{n}" で "1.1"
+    assert_eq!(result.len(), 2);
+    let DocNode::DisplayMath { number, .. } = &result[1] else {
+      panic!("DisplayMath が期待されます: {:?}", result[1]);
+    };
+    assert_eq!(number.as_deref(), Some("1.1"));
   }
 }

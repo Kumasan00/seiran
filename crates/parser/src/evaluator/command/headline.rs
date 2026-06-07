@@ -2,37 +2,47 @@
 //!
 //! `\part`, `\chapter`, `\section`, `\subsection`, `\paragraph`, `\subparagraph`
 //! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成し、
-//! 自動採番を行います。
+//! [`CounterRegistry`](crate::evaluator::counter::CounterRegistry) で自動採番します。
 
 use syntax::ast::CommandView;
 
 use crate::{
-  document::{self, DocNode, HeadingLevel, HeadingNumber},
-  evaluator::{EvalContext, EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+  document::{self, DocNode, HeadingLevel},
+  evaluator::{
+    EvalError,
+    counter::CounterRegistry,
+    inline::extract_inline_nodes,
+    opt_args::{OptType, OptValue, collect_command_opt_args},
+  },
 };
 
 /// 見出しコマンドの共通処理
 ///
-/// カウンタのインクリメント・リセット、引数バリデーション、
-/// `DocNode::Heading` の生成をすべて行います。
+/// カウンタのインクリメント・リセットは [`CounterRegistry`] に委ね、
+/// `[label=...]` 指定時はラベルレジストリに登録した上で `DocNode::Heading` を生成する。
 ///
 /// # Arguments
 ///
 /// * `view` - コマンドの型付きビュー
 /// * `level` - 見出しレベル
-/// * `context` - 評価コンテキスト（採番用）
+/// * `registry` - 採番・ラベル登録用のレジストリ
 ///
 /// # Errors
 ///
-/// 引数不足・過剰の場合にエラーを返します
+/// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
 pub(super) fn heading(
   view: &CommandView,
   level: HeadingLevel,
-  context: &mut EvalContext,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<DocNode>, EvalError> {
   let name = level.command_name();
 
-  let _opt_args = collect_command_opt_args(view, &[])?;
+  let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
+  let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
+    ("label", OptValue::String(s)) => Some(s),
+    _ => None,
+  });
+
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
@@ -47,15 +57,19 @@ pub(super) fn heading(
     });
   }
 
-  context.increment_heading(level);
+  let counter_name = CounterRegistry::counter_name_for_heading(level);
+  let number = registry.increment(counter_name);
+  if let Some(l) = &label {
+    registry.register_label(l.clone(), counter_name, &number);
+  }
+
   let title = extract_inline_nodes(view.source(), first_arg)?;
-  let number = HeadingNumber::from_context(level, context);
 
   return Ok(vec![DocNode::Heading {
     level,
     number,
     title,
-    label: None,
+    label,
   }]);
 }
 
@@ -86,18 +100,40 @@ mod tests {
   }
 
   #[test]
-  fn heading_rejects_unknown_opt_arg_key() {
-    // Arrange — 見出しは現状任意引数を受け付けないので `[label=...]` は不明キー
+  fn heading_captures_label_and_assigns_number() {
+    // Arrange — `\section[label=foo]{Title}` でラベル付きの section が登録される
     let arena = Bump::new();
-    let source = r"\section[label=foo]{Title}";
+    let source = r"\section[label=sec:foo]{Title}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
-    let mut context = EvalContext::default();
+    let mut registry = CounterRegistry::default_for_seiran();
 
     // Act
-    let result = heading(&view, HeadingLevel::Section, &mut context);
+    let result = heading(&view, HeadingLevel::Section, &mut registry).unwrap();
+
+    // Assert: Heading が 1 個生成され、label が保持される
+    assert_eq!(result.len(), 1);
+    let DocNode::Heading { label, .. } = &result[0] else {
+      panic!("Heading が期待されます");
+    };
+    assert_eq!(label.as_deref(), Some("sec:foo"));
+    // ラベルが registry にも登録されている
+    assert!(registry.labels.contains_key("sec:foo"));
+  }
+
+  #[test]
+  fn heading_rejects_unknown_opt_arg_key() {
+    // Arrange — `label` 以外の任意引数キーは未許可
+    let arena = Bump::new();
+    let source = r"\section[draft=true]{Title}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+    let mut registry = CounterRegistry::default_for_seiran();
+
+    // Act
+    let result = heading(&view, HeadingLevel::Section, &mut registry);
 
     // Assert
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
 }

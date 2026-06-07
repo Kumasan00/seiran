@@ -3,20 +3,17 @@
 //! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`read_style::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
-use parser::document::{HeadingLevel, HeadingNumber, InlineNode};
+use parser::document::{HeadingLevel, InlineNode};
 
 use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
 use crate::layout_node::{LayoutNode, TextStyle};
 
 /// `HeadingStyle.format` テンプレートの `{number}` と `{title}` を実値で置換する
 ///
-/// - `{number}` は `HeadingNumber::dotted()` の値で置換（Part: `1`、Chapter: `1`、Section: `1.2`、…）
-/// - `{title}` は引数 `title` のプレーンテキストで置換
-///
-/// レベルごとに番号粒度を分ける必要はない。`HeadingNumber::from_context` が
-/// レベルに応じて適切な要素列を返すため、`dotted()` だけで番号書式が決まる。
-pub(super) fn format_heading_text(number: &HeadingNumber, title: &str, template: &str) -> String {
-  return template.replace("{number}", &number.dotted()).replace("{title}", title);
+/// `number` は `parser::evaluator::counter::CounterRegistry::increment` で生成済みの
+/// 書式化文字列（例: `"1.2"`、`"第3章"`）。
+pub(super) fn format_heading_text(number: &str, title: &str, template: &str) -> String {
+  return template.replace("{number}", number).replace("{title}", title);
 }
 
 /// 見出しをレイアウトノードに変換する
@@ -33,7 +30,7 @@ pub(super) fn format_heading_text(number: &HeadingNumber, title: &str, template:
 pub(super) fn lower_heading(
   ctx: &LoweringContext,
   level: HeadingLevel,
-  number: &HeadingNumber,
+  number: &str,
   title: &[InlineNode],
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
@@ -76,9 +73,7 @@ mod tests {
   #[test]
   fn test_format_heading_text_section_default_template() {
     // 英語デフォルト: section は "{number} {title}"
-    let number = HeadingNumber { parts: vec![2, 3] };
-
-    let formatted = format_heading_text(&number, "Intro", "{number} {title}");
+    let formatted = format_heading_text("2.3", "Intro", "{number} {title}");
 
     assert_eq!(formatted, "2.3 Intro");
   }
@@ -86,9 +81,7 @@ mod tests {
   #[test]
   fn test_format_heading_text_part_default_template() {
     // 英語デフォルト: part は "Part {number}: {title}"
-    let number = HeadingNumber { parts: vec![1] };
-
-    let formatted = format_heading_text(&number, "Foundations", "Part {number}: {title}");
+    let formatted = format_heading_text("1", "Foundations", "Part {number}: {title}");
 
     assert_eq!(formatted, "Part 1: Foundations");
   }
@@ -96,9 +89,7 @@ mod tests {
   #[test]
   fn test_format_heading_text_japanese_override() {
     // 日本語化（style.toml 上書き例）が正しく置換されること
-    let number = HeadingNumber { parts: vec![3] };
-
-    let formatted = format_heading_text(&number, "序論", "第{number}章 {title}");
+    let formatted = format_heading_text("3", "序論", "第{number}章 {title}");
 
     assert_eq!(formatted, "第3章 序論");
   }
@@ -107,9 +98,7 @@ mod tests {
   fn test_format_heading_text_legacy_placeholders_are_literal() {
     // 旧プレースホルダ（\partnum / \chapternum / \text）はもはやプレースホルダではなく、
     // テンプレ内にあればそのままリテラルとして残ることを確認する。
-    let number = HeadingNumber { parts: vec![1] };
-
-    let formatted = format_heading_text(&number, "Title", "第\\partnum部 \\text");
+    let formatted = format_heading_text("1", "Title", "第\\partnum部 \\text");
 
     assert_eq!(formatted, "第\\partnum部 \\text");
   }
@@ -121,13 +110,8 @@ mod tests {
     style.core.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
-    let nodes = lower_heading(
-      &ctx,
-      HeadingLevel::Section,
-      &HeadingNumber { parts: vec![4, 7] },
-      &[InlineNode::Text("Custom Title".to_string())],
-    )
-    .expect("解決済みテキストのみの見出しは失敗しないはず");
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())])
+      .expect("解決済みテキストのみの見出しは失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -154,10 +138,11 @@ mod tests {
     let err = lower_heading(
       &ctx,
       HeadingLevel::Section,
-      &HeadingNumber { parts: vec![1] },
+      "1",
       &[InlineNode::Ref {
         label: "sec:missing".to_string(),
         number: None,
+        span: miette::SourceSpan::from((0_usize, 0_usize)),
       }],
     )
     .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");

@@ -91,7 +91,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let style = read_style::read_style(config.style_path.as_deref())?;
   let _references = read_references::read_references(config.references_path.as_deref())?;
 
-  let doc_nodes = parse_all_sources(&config.sources)?;
+  let doc_nodes = parse_all_sources(&config.sources, &style)?;
   info!(source_count = config.sources.len(), "全ソースのパースが完了しました");
 
   let lowering_ctx = LoweringContext::new(&style);
@@ -131,7 +131,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 ///
 /// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
 /// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
-fn parse_all_sources(sources: &[std::path::PathBuf]) -> Result<Vec<DocNode>, BuildPdfError> {
+fn parse_all_sources(sources: &[std::path::PathBuf], style: &read_style::Style) -> Result<Vec<DocNode>, BuildPdfError> {
   let mut all_nodes: Vec<DocNode> = Vec::new();
   let mut parse_errors: Vec<ParseSourceError> = Vec::new();
 
@@ -141,7 +141,7 @@ fn parse_all_sources(sources: &[std::path::PathBuf]) -> Result<Vec<DocNode>, Bui
       source,
     })?;
     let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path) {
+    match parser::parse_source(&content, &display_path, style) {
       Ok(nodes) => all_nodes.extend(nodes),
       Err(error) => parse_errors.push(error),
     }

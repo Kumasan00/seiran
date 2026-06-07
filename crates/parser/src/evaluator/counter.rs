@@ -38,99 +38,13 @@ use std::collections::HashMap;
 
 use read_style::{CounterName, CounterStyle, Counters, Style};
 
-use crate::document::HeadingLevel;
-
-/// pass1 で登録される、ラベル名から確定済み番号への解決結果
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedLabel {
-  /// 番号を発番したカウンタ
-  pub counter: CounterName,
-  /// 確定済みの番号文字列（`format_number` の出力に `ref_format` を適用したもの）
-  pub number: String,
-}
-
-/// カウンタ 1 つの実行時状態（定義 + 現在値）
-#[derive(Debug, Clone)]
-pub(crate) struct CounterState {
-  /// `read_style` から取り込んだスタイル定義
-  pub def: CounterStyle,
-  /// 現在のカウンタ値（初期値 0、`increment` で 1 ずつ進む）
-  pub value: u32,
-}
-
-impl CounterState {
-  fn new(def: CounterStyle) -> Self { return Self { def, value: 0 }; }
-}
-
-/// 固定 9 種のカウンタ状態を保持する struct（[`Counters`] と同じ形）
-///
-/// `read_style::Counters` がフィールド型から `HashMap` ベースの定義テーブルへ変わったのに合わせ、
-/// parser 側でも `HashMap<String, _>` ではなく名前付きフィールドで保持する。
-#[derive(Debug, Clone)]
-pub(crate) struct CounterStates {
-  pub part: CounterState,
-  pub chapter: CounterState,
-  pub section: CounterState,
-  pub subsection: CounterState,
-  pub paragraph: CounterState,
-  pub subparagraph: CounterState,
-  pub figure: CounterState,
-  pub equation: CounterState,
-  pub table: CounterState,
-}
-
-impl CounterStates {
-  /// `read_style::Counters` の各フィールドを `CounterState` にラップして取り込む
-  #[must_use]
-  pub fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      part: CounterState::new(counters.part.clone()),
-      chapter: CounterState::new(counters.chapter.clone()),
-      section: CounterState::new(counters.section.clone()),
-      subsection: CounterState::new(counters.subsection.clone()),
-      paragraph: CounterState::new(counters.paragraph.clone()),
-      subparagraph: CounterState::new(counters.subparagraph.clone()),
-      figure: CounterState::new(counters.figure.clone()),
-      equation: CounterState::new(counters.equation.clone()),
-      table: CounterState::new(counters.table.clone()),
-    };
-  }
-
-  /// 指定カウンタの状態への不変参照を返す（9 種固定のため必ず存在する）
-  #[must_use]
-  pub fn get(&self, name: CounterName) -> &CounterState {
-    return match name {
-      CounterName::Part => &self.part,
-      CounterName::Chapter => &self.chapter,
-      CounterName::Section => &self.section,
-      CounterName::Subsection => &self.subsection,
-      CounterName::Paragraph => &self.paragraph,
-      CounterName::Subparagraph => &self.subparagraph,
-      CounterName::Figure => &self.figure,
-      CounterName::Equation => &self.equation,
-      CounterName::Table => &self.table,
-    };
-  }
-
-  /// 指定カウンタの状態への可変参照を返す
-  pub fn get_mut(&mut self, name: CounterName) -> &mut CounterState {
-    return match name {
-      CounterName::Part => &mut self.part,
-      CounterName::Chapter => &mut self.chapter,
-      CounterName::Section => &mut self.section,
-      CounterName::Subsection => &mut self.subsection,
-      CounterName::Paragraph => &mut self.paragraph,
-      CounterName::Subparagraph => &mut self.subparagraph,
-      CounterName::Figure => &mut self.figure,
-      CounterName::Equation => &mut self.equation,
-      CounterName::Table => &mut self.table,
-    };
-  }
-}
+use crate::{
+  document::{DocNode, HeadingLevel, InlineNode, ListItem},
+  evaluator::EvalError,
+};
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct CounterRegistry {
   /// 9 種のカウンタ状態
   counters: CounterStates,
@@ -138,14 +52,14 @@ pub(crate) struct CounterRegistry {
   pub labels: HashMap<String, ResolvedLabel>,
 }
 
-#[allow(dead_code)]
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   ///
   /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
   /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
-  /// figure / equation / table）。
+  /// figure / equation / table）。テスト用ショートカット。
   #[must_use]
+  #[allow(dead_code)] // テスト専用ヘルパ
   pub fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
 
   /// `read_style::Style` からレジストリを構築する
@@ -264,6 +178,94 @@ impl CounterRegistry {
   }
 }
 
+/// 固定 9 種のカウンタ状態を保持する struct（[`Counters`] と同じ形）
+///
+/// `read_style::Counters` がフィールド型から `HashMap` ベースの定義テーブルへ変わったのに合わせ、
+/// parser 側でも `HashMap<String, _>` ではなく名前付きフィールドで保持する。
+#[derive(Debug, Clone)]
+pub(crate) struct CounterStates {
+  pub part: CounterState,
+  pub chapter: CounterState,
+  pub section: CounterState,
+  pub subsection: CounterState,
+  pub paragraph: CounterState,
+  pub subparagraph: CounterState,
+  pub figure: CounterState,
+  pub equation: CounterState,
+  pub table: CounterState,
+}
+
+impl CounterStates {
+  /// `read_style::Counters` の各フィールドを `CounterState` にラップして取り込む
+  #[must_use]
+  pub fn from_counters(counters: &Counters) -> Self {
+    return Self {
+      part: CounterState::new(counters.part.clone()),
+      chapter: CounterState::new(counters.chapter.clone()),
+      section: CounterState::new(counters.section.clone()),
+      subsection: CounterState::new(counters.subsection.clone()),
+      paragraph: CounterState::new(counters.paragraph.clone()),
+      subparagraph: CounterState::new(counters.subparagraph.clone()),
+      figure: CounterState::new(counters.figure.clone()),
+      equation: CounterState::new(counters.equation.clone()),
+      table: CounterState::new(counters.table.clone()),
+    };
+  }
+
+  /// 指定カウンタの状態への不変参照を返す（9 種固定のため必ず存在する）
+  #[must_use]
+  pub fn get(&self, name: CounterName) -> &CounterState {
+    return match name {
+      CounterName::Part => &self.part,
+      CounterName::Chapter => &self.chapter,
+      CounterName::Section => &self.section,
+      CounterName::Subsection => &self.subsection,
+      CounterName::Paragraph => &self.paragraph,
+      CounterName::Subparagraph => &self.subparagraph,
+      CounterName::Figure => &self.figure,
+      CounterName::Equation => &self.equation,
+      CounterName::Table => &self.table,
+    };
+  }
+
+  /// 指定カウンタの状態への可変参照を返す
+  pub fn get_mut(&mut self, name: CounterName) -> &mut CounterState {
+    return match name {
+      CounterName::Part => &mut self.part,
+      CounterName::Chapter => &mut self.chapter,
+      CounterName::Section => &mut self.section,
+      CounterName::Subsection => &mut self.subsection,
+      CounterName::Paragraph => &mut self.paragraph,
+      CounterName::Subparagraph => &mut self.subparagraph,
+      CounterName::Figure => &mut self.figure,
+      CounterName::Equation => &mut self.equation,
+      CounterName::Table => &mut self.table,
+    };
+  }
+}
+
+/// カウンタ 1 つの実行時状態（定義 + 現在値）
+#[derive(Debug, Clone)]
+pub(crate) struct CounterState {
+  /// `read_style` から取り込んだスタイル定義
+  pub def: CounterStyle,
+  /// 現在のカウンタ値（初期値 0、`increment` で 1 ずつ進む）
+  pub value: u32,
+}
+
+impl CounterState {
+  fn new(def: CounterStyle) -> Self { return Self { def, value: 0 }; }
+}
+
+/// pass1 で登録される、ラベル名から確定済み番号への解決結果
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedLabel {
+  /// 番号を発番したカウンタ
+  pub counter: CounterName,
+  /// 確定済みの番号文字列（`format_number` の出力に `ref_format` を適用したもの）
+  pub number: String,
+}
+
 /// `snake_case` のカウンタ名文字列を [`CounterName`] に解決する
 ///
 /// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
@@ -324,11 +326,84 @@ fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String
   return out;
 }
 
+// =============================================================================
+// Pass2: `\ref` 解決
+// =============================================================================
+
+/// `Vec<DocNode>` を再帰的に走査して `InlineNode::Ref` を `CounterRegistry` で解決する
+///
+/// pass1（`Evaluator::evaluate_children`）で生成された `Ref { number: None }` を
+/// `registry.resolve_label(label)` で書き換える。未登録ラベルは
+/// [`EvalError::UnknownLabel`] を返す。
+///
+/// # Errors
+///
+/// 未定義ラベルが見つかった場合に [`EvalError::UnknownLabel`] を返します。
+pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) -> Result<(), EvalError> {
+  for node in nodes {
+    match node {
+      DocNode::Heading { title: inlines, .. }
+      | DocNode::Paragraph(inlines)
+      | DocNode::Figure {
+        caption: Some(inlines),
+        ..
+      } => resolve_inlines(inlines, registry)?,
+      DocNode::List { items, .. } => {
+        for item in items {
+          resolve_list_item(item, registry)?;
+        }
+      },
+      // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）
+      DocNode::DisplayMath { .. }
+      | DocNode::Figure { caption: None, .. }
+      | DocNode::Rule { .. }
+      | DocNode::PageBreak
+      | DocNode::Space(_) => {},
+    }
+  }
+  return Ok(());
+}
+
+fn resolve_list_item(item: &mut ListItem, registry: &CounterRegistry) -> Result<(), EvalError> {
+  return resolve_refs(&mut item.content, registry);
+}
+
+fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Result<(), EvalError> {
+  for inline in inlines {
+    match inline {
+      InlineNode::Emphasis(children)
+      | InlineNode::Strong(children)
+      | InlineNode::Code(children)
+      | InlineNode::SansSerif(children) => resolve_inlines(children, registry)?,
+      InlineNode::Ref {
+        label,
+        number,
+        span,
+      } => {
+        if number.is_some() {
+          continue;
+        }
+        let Some(resolved) = registry.resolve_label(label) else {
+          return Err(EvalError::UnknownLabel {
+            label: label.clone(),
+            span: *span,
+          });
+        };
+        *number = Some(resolved.to_string());
+      },
+      InlineNode::Text(_) | InlineNode::InlineMath(_) | InlineNode::Symbol(_) | InlineNode::LineBreak => {},
+    }
+  }
+  return Ok(());
+}
+
 #[cfg(test)]
 mod tests {
+  use miette::SourceSpan;
   use read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style};
 
   use super::*;
+  use crate::document::DocNode;
 
   #[test]
   fn counter_registry_increment_format() {
@@ -453,5 +528,80 @@ mod tests {
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
+  }
+
+  fn dummy_span() -> SourceSpan { return SourceSpan::from((0_usize, 0_usize)); }
+
+  #[test]
+  fn resolve_refs_rewrites_paragraph_ref_number() {
+    // Arrange — chapter を 1 進めて section にラベルを登録、Paragraph 内の Ref を解決
+    let mut registry = CounterRegistry::default_for_seiran();
+    registry.increment(CounterName::Chapter);
+    let number = registry.increment(CounterName::Section);
+    registry.register_label("sec:intro", CounterName::Section, &number);
+    let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "sec:intro".to_string(),
+      number: None,
+      span: dummy_span(),
+    }])];
+
+    // Act
+    resolve_refs(&mut nodes, &registry).unwrap();
+
+    // Assert
+    let DocNode::Paragraph(inlines) = &nodes[0] else {
+      panic!("Paragraph が期待されます");
+    };
+    let InlineNode::Ref { number, .. } = &inlines[0] else {
+      panic!("Ref が期待されます");
+    };
+    assert_eq!(number.as_deref(), Some("Section 1.1"));
+  }
+
+  #[test]
+  fn resolve_refs_returns_unknown_label_error_for_missing_label() {
+    // Arrange — ラベル未登録の状態で Ref を解決
+    let registry = CounterRegistry::default_for_seiran();
+    let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "nope".to_string(),
+      number: None,
+      span: dummy_span(),
+    }])];
+
+    // Act
+    let result = resolve_refs(&mut nodes, &registry);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownLabel { ref label, .. }) if label == "nope"));
+  }
+
+  #[test]
+  fn resolve_refs_recurses_into_heading_title() {
+    // Arrange
+    let mut registry = CounterRegistry::default_for_seiran();
+    registry.increment(CounterName::Chapter);
+    registry.register_label("ch:intro", CounterName::Chapter, "1");
+    let mut nodes = vec![DocNode::Heading {
+      level: HeadingLevel::Section,
+      number: "1.1".to_string(),
+      title: vec![InlineNode::Ref {
+        label: "ch:intro".to_string(),
+        number: None,
+        span: dummy_span(),
+      }],
+      label: None,
+    }];
+
+    // Act
+    resolve_refs(&mut nodes, &registry).unwrap();
+
+    // Assert
+    let DocNode::Heading { title, .. } = &nodes[0] else {
+      panic!("Heading が期待されます");
+    };
+    let InlineNode::Ref { number, .. } = &title[0] else {
+      panic!("Ref が期待されます");
+    };
+    assert_eq!(number.as_deref(), Some("Chapter 1"));
   }
 }

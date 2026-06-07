@@ -78,7 +78,7 @@ pub(super) fn lower_inline(
     InlineNode::LineBreak => {
       return Ok(vec![LayoutNode::LineBreak]);
     },
-    InlineNode::Ref { label, number } => {
+    InlineNode::Ref { label, number, .. } => {
       // 評価器の pass2 で参照解決が済んでいれば number は Some。未解決のまま
       // lowering に到達した場合は `LoweringError::UnresolvedReference` で報告する。
       let Some(resolved) = number.clone() else {
@@ -112,7 +112,7 @@ pub(super) fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> Result<Strin
       InlineNode::InlineMath(_) => text.push_str("[Math]"),
       InlineNode::Symbol(ch) => text.push(*ch),
       InlineNode::LineBreak => text.push('\n'),
-      InlineNode::Ref { label, number } => {
+      InlineNode::Ref { label, number, .. } => {
         let Some(s) = number else {
           return Err(LoweringError::UnresolvedReference {
             label: label.clone(),
