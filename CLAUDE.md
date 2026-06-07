@@ -195,7 +195,7 @@ pub enum MyError {
 
 - **長さ値（`Length`）**: フォントサイズ・余白等は単位付き文字列 `"12pt"` または `"5mm"` で指定（素の数値は不可）
 - **色（`Color`）**: `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問）。`[r, g, b]` 配列形式は不可
-- **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに持ち、`caption_position` は別フィールド（top/bottom）。equation は `number_format` / `number_side` を維持
+- **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、スタイル側では指定しない。equation は `number_format` / `number_side` を維持
 - **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
 - **カウンタ（`CounterEntry`）**: `[counters.<name>]` は `display_name` / `format` / `resets` のカウンタ定義、または `{ alias_of = "<canonical>" }` の別名のいずれか（`untagged` enum + `deny_unknown_fields` で混在拒否）
 - **数式パラメータ（`MathScriptStyle`）**: 上付き / 下付きの倍率・シフト等。将来 OpenType MATH テーブルから自動取得する想定で、現状は手動指定（`Option<MathScriptStyle>` 化の余地を残す）

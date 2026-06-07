@@ -4,12 +4,11 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::length::{Length, non_negative};
 
-use crate::{
-  Color,
-  core::caption::{CaptionPosition, CaptionStyle},
-};
+use crate::{Color, core::caption::CaptionStyle};
 
 /// 表のスタイル設定
+///
+/// キャプション位置は図と同様、ソース上の `\caption` の出現位置で決まるためスタイル側では持たない。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -17,8 +16,6 @@ pub struct TableStyle {
   /// キャプション本体（書式テンプレートとフォントサイズ）
   #[garde(dive)]
   pub caption: CaptionStyle,
-  /// キャプションを表本体の上下どちらに配置するか
-  pub caption_position: CaptionPosition,
   /// 表ブロックの上余白
   #[garde(custom(non_negative))]
   pub top_margin: Length,
@@ -39,7 +36,6 @@ impl Default for TableStyle {
         format: "Table {number}: {title}".to_string(),
         font_size: Length::pt(11.0),
       },
-      caption_position: CaptionPosition::Top,
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
       rule_thickness: Length::pt(0.5),
@@ -54,16 +50,10 @@ mod tests {
   use types::length::Length;
 
   use super::TableStyle;
-  use crate::core::caption::CaptionPosition;
 
   #[test]
   fn validate_accepts_default() {
     assert!(TableStyle::default().validate().is_ok());
-  }
-
-  #[test]
-  fn default_has_top_caption() {
-    assert_eq!(TableStyle::default().caption_position, CaptionPosition::Top);
   }
 
   #[test]

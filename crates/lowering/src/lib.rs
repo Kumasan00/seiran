@@ -156,10 +156,12 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
       width,
       height,
       caption,
+      caption_position,
       number,
       ..
     } => {
-      return figure::lower_figure(ctx, image_path, *width, *height, caption.as_deref(), number);
+      let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
+      return figure::lower_figure(ctx, image_path, *width, *height, caption_arg, number);
     },
   }
 }

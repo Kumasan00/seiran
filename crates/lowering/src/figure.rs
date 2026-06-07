@@ -1,12 +1,14 @@
 //! 図環境（`DocNode::Figure`）の lowering
 //!
 //! 画像 ([`LayoutNode::Image`]) と、`FigureStyle.caption` で書式化したキャプション
-//! テキストを [`FigureStyle.caption_position`] の指定順序で `VBox` に詰めます。
+//! テキストを caption の位置指定の順序で `VBox` に詰めます。位置はパーサが
+//! ソース上の `\image` / `\caption` の出現順から決定します。caption が `None` の
+//! ときはキャプション行を一切出力しません。
 //!
 //! 画像サイズ（width / height）は mm 入力を pt（72/25.4 倍）に変換します。
 
-use parser::document::InlineNode;
-use read_style::CaptionPosition;
+use parser::document::{CaptionPosition, InlineNode};
+use read_style::FigureStyle;
 use types::{FontKind, Length};
 
 use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
@@ -15,16 +17,29 @@ use crate::layout_node::{LayoutNode, TextStyle};
 /// キャプション文字列を `format` テンプレートで構築する
 ///
 /// - `{number}` は通し番号で置換
-/// - `{title}` はキャプション本文で置換（未指定なら空文字）
+/// - `{title}` はキャプション本文で置換
 fn format_caption(template: &str, number: &str, title: &str) -> String {
   return template.replace("{number}", number).replace("{title}", title);
 }
 
+/// キャプション本体（`{number}` / `{title}` を埋めた `LayoutNode::Text`）を生成する
+fn build_caption_node(style: &FigureStyle, inlines: &[InlineNode], number: &str) -> Result<LayoutNode, LoweringError> {
+  let title_text = inline_nodes_to_plain_text(inlines)?;
+  let caption_text = format_caption(&style.caption.format, number, &title_text);
+  return Ok(LayoutNode::Text(
+    caption_text,
+    TextStyle {
+      font_size: style.caption.font_size.to_pt(),
+      font_kind: FontKind::Serif,
+    },
+  ));
+}
+
 /// 図をレイアウトノードに変換する
 ///
-/// 画像とキャプションを `caption_position` の指定に従って積み、上下マージン付きの
-/// `VBox` で囲んで返す。キャプションが `None` でもキャプションタイトル部分を
-/// 空文字として番号のみ表示する（例: `"Figure 1: "`）。
+/// 画像とキャプションを指定された [`CaptionPosition`] の順序で積み、上下マージン付きの
+/// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力せず、
+/// `VBox` には画像のみが入る。
 ///
 /// # Errors
 ///
@@ -34,7 +49,7 @@ pub(super) fn lower_figure(
   image_path: &str,
   width: Length,
   height: Length,
-  caption: Option<&[InlineNode]>,
+  caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.core.figure;
@@ -45,37 +60,28 @@ pub(super) fn lower_figure(
     height,
   };
 
-  let title_text = match caption {
-    Some(inlines) => inline_nodes_to_plain_text(inlines)?,
-    None => String::new(),
-  };
-  let caption_text = format_caption(&style.caption.format, number, &title_text);
-  let caption_node = LayoutNode::Text(
-    caption_text,
-    TextStyle {
-      font_size: style.caption.font_size.to_pt(),
-      font_kind: FontKind::Serif,
-    },
-  );
-
-  let inner_gap = LayoutNode::Vkern {
-    length: style.inner_margin,
-  };
-
   let mut children = Vec::new();
-  match style.caption_position {
-    CaptionPosition::Top => {
-      children.push(caption_node);
+  match caption {
+    Some((CaptionPosition::Top, inlines)) => {
+      children.push(build_caption_node(style, inlines, number)?);
       children.push(LayoutNode::LineBreak);
-      children.push(inner_gap);
+      children.push(LayoutNode::Vkern {
+        length: style.inner_margin,
+      });
       children.push(image_node);
       children.push(LayoutNode::LineBreak);
     },
-    CaptionPosition::Bottom => {
+    Some((CaptionPosition::Bottom, inlines)) => {
       children.push(image_node);
       children.push(LayoutNode::LineBreak);
-      children.push(inner_gap);
-      children.push(caption_node);
+      children.push(LayoutNode::Vkern {
+        length: style.inner_margin,
+      });
+      children.push(build_caption_node(style, inlines, number)?);
+      children.push(LayoutNode::LineBreak);
+    },
+    None => {
+      children.push(image_node);
       children.push(LayoutNode::LineBreak);
     },
   }
@@ -100,10 +106,11 @@ mod tests {
   use super::*;
 
   #[test]
-  fn lower_figure_emits_image_and_caption_in_default_order() {
-    // Arrange — デフォルトは caption_position = Bottom
+  fn lower_figure_emits_image_and_caption_in_bottom_order() {
+    // Arrange — \image が先（DocNode から CaptionPosition::Bottom が渡される）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
+    let caption = [InlineNode::Text("せいらん".to_string())];
 
     // Act
     let nodes = lower_figure(
@@ -111,7 +118,7 @@ mod tests {
       "./images/seiran.jpg",
       Length::pt(80.0),
       Length::pt(60.0),
-      Some(&[InlineNode::Text("せいらん".to_string())]),
+      Some((CaptionPosition::Bottom, &caption)),
       "1",
     )
     .expect("解決済みインラインなのでエラーにならない");
@@ -142,13 +149,15 @@ mod tests {
 
   #[test]
   fn lower_figure_caption_position_top_swaps_order() {
-    // Arrange
-    let mut style = ReadStyle::default();
-    style.core.figure.caption_position = CaptionPosition::Top;
+    // Arrange — DocNode 側で CaptionPosition::Top を指定（\caption が先）
+    let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
+    let caption = [InlineNode::Text("せいらん".to_string())];
 
     // Act
-    let nodes = lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), None, "2").expect("失敗しない");
+    let nodes =
+      lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), Some((CaptionPosition::Top, &caption)), "2")
+        .expect("失敗しない");
 
     // Assert — VBox 内で キャプションが画像より前
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -157,5 +166,24 @@ mod tests {
     let first_text_idx = children.iter().position(|n| matches!(n, LayoutNode::Text(_, _))).expect("Text あり");
     let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image { .. })).expect("Image あり");
     assert!(first_text_idx < first_image_idx, "Top: caption が image の前");
+  }
+
+  #[test]
+  fn lower_figure_without_caption_omits_caption_node() {
+    // Arrange — caption が None ならキャプション行は出力しない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let nodes = lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), None, "3").expect("失敗しない");
+
+    // Assert — VBox に Text ノードが含まれていない（"Figure 3: " のような空タイトル行を出さない）
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待");
+    };
+    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
+    assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
+    let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
+    assert!(has_image, "画像は出力されている: {children:?}");
   }
 }

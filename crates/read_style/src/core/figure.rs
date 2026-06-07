@@ -4,9 +4,12 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::length::{Length, non_negative};
 
-use crate::core::caption::{CaptionPosition, CaptionStyle};
+use crate::core::caption::CaptionStyle;
 
 /// 図環境のスタイル設定
+///
+/// キャプション位置は `\image` と `\caption` のソース上の出現順で決まるため、
+/// スタイル側では持たない。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -14,8 +17,6 @@ pub struct FigureStyle {
   /// キャプション本体（書式テンプレートとフォントサイズ）
   #[garde(dive)]
   pub caption: CaptionStyle,
-  /// キャプションを図本体の上下どちらに配置するか
-  pub caption_position: CaptionPosition,
   /// 図ブロックの上余白
   #[garde(custom(non_negative))]
   pub top_margin: Length,
@@ -34,7 +35,6 @@ impl Default for FigureStyle {
         format: "Figure {number}: {title}".to_string(),
         font_size: Length::pt(11.0),
       },
-      caption_position: CaptionPosition::Bottom,
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
       inner_margin: Length::pt(6.0),
@@ -48,16 +48,10 @@ mod tests {
   use types::length::Length;
 
   use super::FigureStyle;
-  use crate::core::caption::CaptionPosition;
 
   #[test]
   fn validate_accepts_default() {
     assert!(FigureStyle::default().validate().is_ok());
-  }
-
-  #[test]
-  fn default_has_bottom_caption() {
-    assert_eq!(FigureStyle::default().caption_position, CaptionPosition::Bottom);
   }
 
   #[test]

@@ -140,7 +140,8 @@ pub enum DocNode {
   /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
   /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。`number` は
   /// `CounterRegistry::increment(CounterName::Figure)` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）。
+  /// （`format` テンプレ適用済みの文字列）。`caption_position` は
+  /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
     image_path: String,
@@ -150,6 +151,9 @@ pub enum DocNode {
     height: Length,
     /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
     caption: Option<Vec<InlineNode>>,
+    /// キャプションを図本体の上下どちらに配置するか。ソース上の `\caption` / `\image` の
+    /// 出現順から決定される
+    caption_position: CaptionPosition,
     /// `\ref{fig:foo}` 解決用ラベル（環境の任意引数 `[label=fig:foo]`）
     label: Option<String>,
     /// 評価時に発番された通し番号（プレーン文字列）
@@ -200,6 +204,23 @@ impl DocNode {
   /// このノードがリストかどうかを判定する
   #[must_use]
   pub fn is_list(&self) -> bool { return matches!(self, DocNode::List { .. }); }
+}
+
+// =============================================================================
+// 図関連の型
+// =============================================================================
+
+/// キャプションを本体の上下どちらに配置するか
+///
+/// 図・表ともにソース上の `\caption` の出現位置から決定される
+/// （本体より前なら [`CaptionPosition::Top`]、後なら [`CaptionPosition::Bottom`]）。
+/// スタイル設定では指定せず、`parser` 側で出現順から決めて [`DocNode::Figure`] に格納する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptionPosition {
+  /// キャプションを本体の上に配置
+  Top,
+  /// キャプションを本体の下に配置
+  Bottom,
 }
 
 // =============================================================================

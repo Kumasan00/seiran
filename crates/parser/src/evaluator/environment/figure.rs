@@ -18,7 +18,7 @@ use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
 use types::Length;
 
 use crate::{
-  document::{DocNode, InlineNode},
+  document::{CaptionPosition, DocNode, InlineNode},
   evaluator::{
     EvalError, Evaluator,
     environment::body_scan,
@@ -53,6 +53,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
   let mut caption: Option<Vec<InlineNode>> = None;
+  // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
+  let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
     for cmd_view in body_scan::iter_command_calls(source, body) {
@@ -64,6 +66,10 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
           height = Some(h);
         },
         "caption" => {
+          // image 抽出より先に caption が現れた場合は Top 配置
+          if image_path.is_none() {
+            caption_position = CaptionPosition::Top;
+          }
           caption = Some(extract_caption(&cmd_view)?);
         },
         _ => {},
@@ -98,6 +104,7 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
     width,
     height,
     caption,
+    caption_position,
     label,
     number,
   }]);
@@ -214,6 +221,7 @@ mod tests {
       width,
       height,
       caption,
+      caption_position,
       label,
       number,
     } = &result[0]
@@ -227,8 +235,52 @@ mod tests {
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
+    // \image が先 → 既定の Bottom
+    assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
     assert_eq!(number, "1");
+  }
+
+  #[test]
+  fn figure_caption_before_image_yields_top_position() {
+    // Arrange — \caption が \image より先に書かれている
+    let arena = Bump::new();
+    let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::Figure {
+      caption_position, ..
+    } = &result[0]
+    else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*caption_position, CaptionPosition::Top);
+  }
+
+  #[test]
+  fn figure_image_before_caption_yields_bottom_position() {
+    // Arrange — \image が \caption より先（典型的な記法）
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::Figure {
+      caption_position, ..
+    } = &result[0]
+    else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*caption_position, CaptionPosition::Bottom);
   }
 
   #[test]

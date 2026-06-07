@@ -29,7 +29,7 @@ pub use types::Length;
 pub use crate::{
   core::{
     CoreStyle,
-    caption::{CaptionPosition, CaptionStyle},
+    caption::CaptionStyle,
     counter::{CounterName, CounterStyle, Counters, NumberStyle},
     equation::{Alignment, EquationStyle, NumberSide},
     figure::FigureStyle,

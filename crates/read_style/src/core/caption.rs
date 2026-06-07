@@ -1,8 +1,9 @@
 //! 図・表のキャプションスタイル設定型。
 //!
 //! [`FigureStyle`](crate::FigureStyle) と [`TableStyle`](crate::TableStyle) が共有する 2 フィールド
-//! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置 [`CaptionPosition`] は
-//! 要素ごとの既定値が異なるため、struct には含めず各要素の個別フィールドとして持つ。
+//! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置は図・表ともに
+//! ソース上の `\caption` の出現位置で決まるため、スタイル側では持たず Document IR
+//! （`parser::document::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -35,25 +36,12 @@ impl Default for CaptionStyle {
   }
 }
 
-/// キャプションの配置（図・表で共用）。
-///
-/// 数式の番号配置は意味が異なるため別 enum（[`crate::float::equation::NumberSide`]）を使う。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
-#[serde(rename_all = "snake_case")]
-#[garde(allow_unvalidated)]
-pub enum CaptionPosition {
-  /// キャプションを本体の上に配置
-  Top,
-  /// キャプションを本体の下に配置
-  Bottom,
-}
-
 #[cfg(test)]
 mod tests {
   use garde::Validate;
   use types::length::Length;
 
-  use super::{CaptionPosition, CaptionStyle};
+  use super::CaptionStyle;
 
   #[test]
   fn validate_accepts_default() {
@@ -89,21 +77,5 @@ mod tests {
     // Assert
     assert_eq!(style.format, "Figure {number}: {title}");
     assert!((style.font_size.to_pt() - 11.0).abs() < f32::EPSILON);
-  }
-
-  #[test]
-  fn caption_position_round_trips() {
-    // Arrange / Act
-    let bottom: CaptionPosition = toml::from_str::<Wrap>("position = \"bottom\"").unwrap().position;
-    let top: CaptionPosition = toml::from_str::<Wrap>("position = \"top\"").unwrap().position;
-
-    // Assert
-    assert_eq!(bottom, CaptionPosition::Bottom);
-    assert_eq!(top, CaptionPosition::Top);
-  }
-
-  #[derive(serde::Deserialize)]
-  struct Wrap {
-    position: CaptionPosition,
   }
 }
