@@ -138,17 +138,18 @@ pub enum DocNode {
   /// 図環境（`\begin{figure}...\end{figure}`）
   ///
   /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
-  /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。`number` は
-  /// `CounterRegistry::increment(CounterName::Figure)` で発番された通し番号
+  /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。両方とも省略可で、
+  /// 未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から自動算出される。
+  /// `number` は `CounterRegistry::increment(CounterName::Figure)` で発番された通し番号
   /// （`format` テンプレ適用済みの文字列）。`caption_position` は
   /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
     image_path: String,
-    /// 画像の幅
-    width: Length,
-    /// 画像の高さ
-    height: Length,
+    /// 画像の幅（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
+    width: Option<Length>,
+    /// 画像の高さ（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
+    height: Option<Length>,
     /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
     caption: Option<Vec<InlineNode>>,
     /// キャプションを図本体の上下どちらに配置するか。ソース上の `\caption` / `\image` の

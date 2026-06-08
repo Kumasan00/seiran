@@ -42,15 +42,16 @@ pub enum LayoutNode {
   /// 画像（PNG / JPEG）
   ///
   /// `path` はソースに記載された相対 / 絶対パス。`width` / `height` は
-  /// `\image[width=..., height=...]` で指定された値。
-  /// `pdf_gen` が `surface.draw_image` でこの矩形にビットマップをマップする。
+  /// `\image[width=..., height=...]` で指定された値。両方とも `None` 可で、
+  /// 未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から算出される。
+  /// `pdf_gen` が `surface.draw_image` で確定矩形にビットマップをマップする。
   Image {
     /// 画像ファイルへのパス
     path: String,
-    /// 描画幅
-    width: Length,
-    /// 描画高さ
-    height: Length,
+    /// 描画幅（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
+    width: Option<Length>,
+    /// 描画高さ（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
+    height: Option<Length>,
   },
   Glue {
     natural: f32,

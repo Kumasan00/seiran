@@ -2,37 +2,38 @@
 
 ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが
 正しくレンダリングされること、JPEG と PNG の両方が読めること、図番号が連番で振られる
-ことを確認します。
+ことを確認します。あわせて image コマンドのサイズ指定 4 パターン
+（両指定 / width のみ / height のみ / 両省略）の挙動も検証します。
 
 \begin{figure}[label=fig:testimage1]
 \image[width=80mm, height=60mm]{./tests/image/testimage1.jpg}
-\caption{テスト画像 1 (JPEG)}
+\caption{テスト画像 1 (JPEG, 両指定 — 縦横比は崩れ得る)}
 \end{figure}
 
-図 1 の後の段落です。続けて 2 枚目の JPEG を配置します。
+図 1 の後の段落です。続けて width のみ指定したパターンを配置します。
 
 \begin{figure}[label=fig:testimage2]
-\image[width=80mm, height=60mm]{./tests/image/testimage2.jpg}
-\caption{テスト画像 2 (JPEG)}
+\image[width=80mm]{./tests/image/testimage2.jpg}
+\caption{テスト画像 2 (JPEG, width のみ — 高さは縦横比から算出)}
 \end{figure}
 
-ここで PNG 形式の画像を配置し、形式違いでも読み込めることを確認します。
+ここで PNG 形式の画像を、height のみ指定で配置します。
 
 \begin{figure}[label=fig:testimage4]
-\image[width=80mm, height=60mm]{./tests/image/testimage4.png}
-\caption{テスト画像 4 (PNG)}
+\image[height=60mm]{./tests/image/testimage4.png}
+\caption{テスト画像 4 (PNG, height のみ — 幅は縦横比から算出)}
 \end{figure}
 
 \begin{figure}[label=fig:testimage3]
 \image[width=80mm, height=60mm]{./tests/image/testimage3.jpg}
-\caption{テスト画像 3 (JPEG)}
+\caption{テスト画像 3 (JPEG, 両指定)}
 \end{figure}
 
-最後に 2 枚目の PNG を配置します。
+最後にサイズ両方を省略したパターンで、本文幅にフィットすることを確認します。
 
 \begin{figure}[label=fig:testimage5]
-\image[width=80mm, height=60mm]{./tests/image/testimage5.png}
-\caption{テスト画像 5 (PNG)}
+\image{./tests/image/testimage5.png}
+\caption{テスト画像 5 (PNG, 両省略 — 本文幅にフィット)}
 \end{figure}
 
 図の後の段落です。

@@ -153,6 +153,20 @@ pub enum PdfGenError {
     /// 描画高さ。
     height: f32,
   },
+  /// 画像のピクセル寸法が不正です（縦横比を算出できません）。
+  #[error("画像のピクセル寸法が不正です: {path} (width={width}, height={height})")]
+  #[diagnostic(
+    code(pdf_gen::invalid_image_pixel_size),
+    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
+  )]
+  InvalidImagePixelSize {
+    /// 画像ファイルのパス。
+    path: String,
+    /// ピクセル幅。
+    width: u32,
+    /// ピクセル高さ。
+    height: u32,
+  },
 }
 
 /// フォント情報を使用して PDF バイト列を生成します。
@@ -301,6 +315,7 @@ fn render_items(
   draw_page_background(&mut surface, config, style)?;
   let margin_left = config.pdf.margin.left.to_pt();
   let margin_top = config.pdf.margin.top.to_pt();
+  let column_width = config.pdf.width.to_pt() - margin_left - config.pdf.margin.right.to_pt();
   let mut x = margin_left;
   let mut y = margin_top;
   let page_limit = config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt();
@@ -364,19 +379,26 @@ fn render_items(
           width,
           height,
         } => {
-          if y + height > page_limit {
+          let image = load_image(path)?;
+          let (px_width, px_height) = image.size();
+          let (final_width, final_height) = resolve_image_size(*width, *height, px_width, px_height, column_width)
+            .ok_or_else(|| PdfGenError::InvalidImagePixelSize {
+              path: path.clone(),
+              width: px_width,
+              height: px_height,
+            })?;
+          if y + final_height > page_limit {
             start_new_page!();
           }
-          let image = load_image(path)?;
-          let size = Size::from_wh(*width, *height).ok_or(PdfGenError::InvalidImageSize {
-            width: *width,
-            height: *height,
+          let size = Size::from_wh(final_width, final_height).ok_or(PdfGenError::InvalidImageSize {
+            width: final_width,
+            height: final_height,
           })?;
           surface.push_transform(&Transform::from_translate(x, y));
           surface.draw_image(image, size);
           surface.pop();
           x = margin_left;
-          y += *height;
+          y += final_height;
           current_line_height = style.core.font_size.to_pt() * style.core.line_height_factor;
           line_break_seen = false;
         },
@@ -447,6 +469,45 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
   return Ok(());
 }
 
+/// 画像の最終描画寸法（pt）を解決します。
+///
+/// `\image` の `width` / `height` 任意引数は両方とも省略可能で、未指定分は元画像の
+/// ピクセル縦横比から自動算出します。両方とも省略された場合は本文幅にフィットさせ、
+/// 高さはピクセル縦横比から算出します（Typst 方式）。
+///
+/// 戻り値が `None` になるのは、`width` / `height` のどちらかを算出する必要があるにも
+/// かかわらず元画像のピクセル寸法が 0 で縦横比を取れないケースです。
+fn resolve_image_size(
+  width: Option<f32>,
+  height: Option<f32>,
+  px_width: u32,
+  px_height: u32,
+  column_width: f32,
+) -> Option<(f32, f32)> {
+  #[allow(clippy::cast_precision_loss)]
+  let aspect_ratio = || {
+    if px_width == 0 || px_height == 0 {
+      return None;
+    }
+    return Some(px_height as f32 / px_width as f32);
+  };
+  match (width, height) {
+    (Some(w), Some(h)) => return Some((w, h)),
+    (Some(w), None) => {
+      let ratio = aspect_ratio()?;
+      return Some((w, w * ratio));
+    },
+    (None, Some(h)) => {
+      let ratio = aspect_ratio()?;
+      return Some((h / ratio, h));
+    },
+    (None, None) => {
+      let ratio = aspect_ratio()?;
+      return Some((column_width, column_width * ratio));
+    },
+  }
+}
+
 /// 画像ファイルを読み込み、拡張子に応じて [`Image`] に変換します。
 ///
 /// 対応形式は PNG（`.png`）と JPEG（`.jpg` / `.jpeg`）です。
@@ -497,4 +558,77 @@ fn convert_to_krilla_glyphs(glyphs: &[Glyph], upem: f32) -> Vec<KrillaGlyph> {
     })
     .collect::<Vec<_>>();
   return krilla_glyphs;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn resolve_image_size_uses_specified_values_when_both_given() {
+    // Arrange
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(Some(80.0), Some(60.0), 800, 600, column_width);
+
+    // Assert — 両指定はピクセル寸法に依存せずそのまま返る
+    let (w, h) = resolved.expect("両指定なら必ず Some");
+    assert!((w - 80.0).abs() < 1e-4);
+    assert!((h - 60.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn resolve_image_size_infers_height_from_aspect_when_only_width_given() {
+    // Arrange — 4:3 の画像で width のみ指定
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(Some(80.0), None, 800, 600, column_width);
+
+    // Assert — height = width * (px_h / px_w) = 80 * (600 / 800) = 60
+    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    assert!((w - 80.0).abs() < 1e-4);
+    assert!((h - 60.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn resolve_image_size_infers_width_from_aspect_when_only_height_given() {
+    // Arrange — 4:3 の画像で height のみ指定
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(None, Some(60.0), 800, 600, column_width);
+
+    // Assert — width = height * (px_w / px_h) = 60 * (800 / 600) = 80
+    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    assert!((w - 80.0).abs() < 1e-4);
+    assert!((h - 60.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn resolve_image_size_fits_to_column_when_both_omitted() {
+    // Arrange — 4:3 の画像でサイズ全省略
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(None, None, 800, 600, column_width);
+
+    // Assert — width=column_width, height は縦横比から
+    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    assert!((w - 400.0).abs() < 1e-4);
+    assert!((h - 300.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn resolve_image_size_returns_none_when_pixel_size_zero_and_inference_needed() {
+    // Arrange — ピクセル寸法が 0 だと縦横比が出せない
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(None, None, 0, 600, column_width);
+
+    // Assert — None を返してエラーへ
+    assert!(resolved.is_none());
+  }
 }

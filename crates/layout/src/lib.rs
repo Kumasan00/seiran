@@ -37,7 +37,7 @@ use icu::properties::{
 };
 use lazy_regex::regex_replace_all;
 use lowering::LayoutNode;
-use types::{FontKind, FontType};
+use types::{FontKind, FontType, Length};
 
 /// レイアウトエンジンが生成する最小単位
 ///
@@ -77,16 +77,17 @@ pub enum BoxItem {
   Rule { width: f32, height: f32 },
   /// 画像（PNG / JPEG）
   ///
-  /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位。
+  /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位の任意指定で、
+  /// `None` の場合は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から決定される。
   /// `pdf_gen` 側でファイルを開いて `krilla::Image` に変換し、`surface.draw_image`
   /// で配置する。
   Image {
     /// 画像ファイルへのパス
     path: String,
-    /// 描画幅（pt）
-    width: f32,
-    /// 描画高さ（pt）
-    height: f32,
+    /// 描画幅（pt）。`None` の場合は `pdf_gen` 段で自動算出
+    width: Option<f32>,
+    /// 描画高さ（pt）。`None` の場合は `pdf_gen` 段で自動算出
+    height: Option<f32>,
   },
 }
 
@@ -252,11 +253,11 @@ fn layout_engine_inner(
         width,
         height,
       } => {
-        // 画像のレイアウト処理（実際の描画は pdf_gen が担当）
+        // 画像のレイアウト処理（実際の描画とサイズ解決は pdf_gen が担当）
         let box_item = BoxItem::Image {
           path,
-          width: width.to_pt(),
-          height: height.to_pt(),
+          width: width.map(Length::to_pt),
+          height: height.map(Length::to_pt),
         };
         items.push(Item::Box(box_item));
       },

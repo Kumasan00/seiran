@@ -47,8 +47,8 @@ fn build_caption_node(style: &FigureStyle, inlines: &[InlineNode], number: &str)
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
   image_path: &str,
-  width: Length,
-  height: Length,
+  width: Option<Length>,
+  height: Option<Length>,
   caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -116,8 +116,8 @@ mod tests {
     let nodes = lower_figure(
       &ctx,
       "./images/seiran.jpg",
-      Length::pt(80.0),
-      Length::pt(60.0),
+      Some(Length::pt(80.0)),
+      Some(Length::pt(60.0)),
       Some((CaptionPosition::Bottom, &caption)),
       "1",
     )
@@ -137,8 +137,8 @@ mod tests {
       panic!("先頭は Image であるべき: {children:?}");
     };
     assert_eq!(path, "./images/seiran.jpg");
-    assert!((width.to_pt() - 80.0).abs() < 0.01);
-    assert!((height.to_pt() - 60.0).abs() < 0.01);
+    assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
+    assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
 
     let caption_text = children.iter().find_map(|n| match n {
       LayoutNode::Text(text, _) => Some(text.as_str()),
@@ -155,9 +155,15 @@ mod tests {
     let caption = [InlineNode::Text("せいらん".to_string())];
 
     // Act
-    let nodes =
-      lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), Some((CaptionPosition::Top, &caption)), "2")
-        .expect("失敗しない");
+    let nodes = lower_figure(
+      &ctx,
+      "a.png",
+      Some(Length::pt(10.0)),
+      Some(Length::pt(10.0)),
+      Some((CaptionPosition::Top, &caption)),
+      "2",
+    )
+    .expect("失敗しない");
 
     // Assert — VBox 内で キャプションが画像より前
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -175,7 +181,8 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_figure(&ctx, "a.png", Length::pt(10.0), Length::pt(10.0), None, "3").expect("失敗しない");
+    let nodes =
+      lower_figure(&ctx, "a.png", Some(Length::pt(10.0)), Some(Length::pt(10.0)), None, "3").expect("失敗しない");
 
     // Assert — VBox に Text ノードが含まれていない（"Figure 3: " のような空タイトル行を出さない）
     let LayoutNode::VBox { children, .. } = &nodes[1] else {

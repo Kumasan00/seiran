@@ -10,7 +10,8 @@
 //!
 //! ## 本体内のコマンド
 //!
-//! - `\image[width=Xmm, height=Ymm]{path}` — 画像（必須）
+//! - `\image[width=Xmm, height=Ymm]{path}` — 画像（必須）。`width` / `height` は
+//!   ともに任意で、未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から算出される
 //! - `\caption{...}` — キャプション（任意）
 
 use read_style::CounterName;
@@ -62,8 +63,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
         "image" => {
           let (path, w, h) = extract_image(&cmd_view)?;
           image_path = Some(path);
-          width = Some(w);
-          height = Some(h);
+          width = w;
+          height = h;
         },
         "caption" => {
           // image 抽出より先に caption が現れた場合は Top 配置
@@ -84,20 +85,6 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
       span: view.span().into(),
     });
   };
-  let Some(width) = width else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "width 任意引数（mm）".to_string(),
-      span: view.span().into(),
-    });
-  };
-  let Some(height) = height else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "height 任意引数（mm）".to_string(),
-      span: view.span().into(),
-    });
-  };
 
   return Ok(vec![DocNode::Figure {
     image_path,
@@ -111,7 +98,10 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
 }
 
 /// `\image[width=Xmm, height=Ymm]{path}` から path / width / height を抽出する
-fn extract_image(view: &CommandView) -> Result<(String, Length, Length), EvalError> {
+///
+/// `width` / `height` は任意引数。両方省略可で、未指定分は `pdf_gen` 段で
+/// 元画像のピクセル縦横比と本文幅から自動算出される。
+fn extract_image(view: &CommandView) -> Result<(String, Option<Length>, Option<Length>), EvalError> {
   let opt_args = collect_command_opt_args(view, &[("width", OptType::Length), ("height", OptType::Length)])?;
 
   let mut width: Option<Length> = None;
@@ -139,21 +129,6 @@ fn extract_image(view: &CommandView) -> Result<(String, Length, Length), EvalErr
   }
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
-
-  let Some(width) = width else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "width 任意引数（mm）".to_string(),
-      span: view.span().into(),
-    });
-  };
-  let Some(height) = height else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "image".to_string(),
-      expected: "height 任意引数（mm）".to_string(),
-      span: view.span().into(),
-    });
-  };
 
   return Ok((path, width, height));
 }
@@ -230,8 +205,8 @@ mod tests {
     };
     assert_eq!(image_path, "./images/seiran.jpg");
     // Length は内部 pt（f32）を経由するため、mm への往復変換に小さい誤差を許容する
-    assert!((width.to_mm() - 80.0).abs() < 1e-4);
-    assert!((height.to_mm() - 60.0).abs() < 1e-4);
+    assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!((height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
@@ -360,18 +335,49 @@ mod tests {
   }
 
   #[test]
-  fn figure_rejects_image_missing_size() {
-    // Arrange — width / height は必須
+  fn figure_accepts_image_without_size() {
+    // Arrange — width / height はともに任意。\image{path} のみで通る
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
     let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — width/height は None のまま伝播し、pdf_gen 段で解決される
+    assert_eq!(result.len(), 1);
+    let DocNode::Figure {
+      image_path,
+      width,
+      height,
+      ..
+    } = &result[0]
+    else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(image_path, "a.png");
+    assert!(width.is_none());
+    assert!(height.is_none());
+  }
+
+  #[test]
+  fn figure_accepts_image_with_only_width() {
+    // Arrange — width のみ指定。height は省略可
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "image"));
+    let DocNode::Figure { width, height, .. } = &result[0] else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!(height.is_none());
   }
 
   #[test]
