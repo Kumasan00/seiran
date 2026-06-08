@@ -47,6 +47,8 @@ pub enum LayoutNode {
   /// が報告する width / height）の縦横比と本文幅から算出される。
   /// `pdf_gen` がラスタは `surface.draw_image`、SVG は `surface.draw_svg` で
   /// 確定矩形に配置する。
+  /// `target_dpi` は per-image / グローバル設定を解決済みのラスタ画像ダウンサンプリング
+  /// 上限 DPI。`None` の場合はリサイズなしで原寸で埋め込む。SVG は無視される。
   Image {
     /// 画像ファイルへのパス
     path: String,
@@ -54,6 +56,8 @@ pub enum LayoutNode {
     width: Option<Length>,
     /// 描画高さ（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
     height: Option<Length>,
+    /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
+    target_dpi: Option<u32>,
   },
   Glue {
     natural: f32,

@@ -3,7 +3,8 @@
 ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが
 正しくレンダリングされること、JPEG / PNG / SVG の 3 形式が読めること、図番号が連番で振られる
 ことを確認します。あわせて image コマンドのサイズ指定 4 パターン
-（両指定 / width のみ / height のみ / 両省略）の挙動も検証します。
+（両指定 / width のみ / height のみ / 両省略）の挙動、および dpi / downsample の per-image
+上書きを検証します。
 
 \begin{figure}[label=fig:testimage1]
 \image[width=80mm, height=60mm]{./tests/image/testimage1.jpg}
@@ -25,15 +26,15 @@
 \end{figure}
 
 \begin{figure}[label=fig:testimage3]
-\image[width=80mm, height=60mm]{./tests/image/testimage3.jpg}
-\caption{テスト画像 3 (JPEG, 両指定)}
+\image[width=80mm, height=60mm, dpi=600]{./tests/image/testimage3.jpg}
+\caption{テスト画像 3 (JPEG, 両指定, dpi=600 上書き)}
 \end{figure}
 
 最後にサイズ両方を省略したパターンで、本文幅にフィットすることを確認します。
 
 \begin{figure}[label=fig:testimage5]
-\image{./tests/image/testimage5.png}
-\caption{テスト画像 5 (PNG, 両省略 — 本文幅にフィット)}
+\image[downsample=false]{./tests/image/testimage5.png}
+\caption{テスト画像 5 (PNG, 両省略 — 本文幅にフィット, downsample=false で原寸維持)}
 \end{figure}
 
 最後に SVG を埋め込んで、ベクタ画像が krilla-svg 経由でラスタライズなく PDF に取り込まれる

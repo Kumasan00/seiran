@@ -10,8 +10,11 @@
 //!
 //! ## 本体内のコマンド
 //!
-//! - `\image[width=Xmm, height=Ymm]{path}` — 画像（必須）。`width` / `height` は
-//!   ともに任意で、未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から算出される
+//! - `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` — 画像（必須）。
+//!   `width` / `height` はともに任意で、未指定分は `pdf_gen` 段で元画像のピクセル縦横比と
+//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（`style.figure.max_dpi`
+//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（`style.figure.downsample`
+//!   を上書き）
 //! - `\caption{...}` — キャプション（任意）
 
 use read_style::CounterName;
@@ -53,6 +56,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
   let mut image_path: Option<String> = None;
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
+  let mut dpi: Option<u32> = None;
+  let mut downsample: Option<bool> = None;
   let mut caption: Option<Vec<InlineNode>> = None;
   // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
   let mut caption_position = CaptionPosition::Bottom;
@@ -61,10 +66,12 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
     for cmd_view in body_scan::iter_command_calls(source, body) {
       match cmd_view.name() {
         "image" => {
-          let (path, w, h) = extract_image(&cmd_view)?;
-          image_path = Some(path);
-          width = w;
-          height = h;
+          let extracted = extract_image(&cmd_view)?;
+          image_path = Some(extracted.path);
+          width = extracted.width;
+          height = extracted.height;
+          dpi = extracted.dpi;
+          downsample = extracted.downsample;
         },
         "caption" => {
           // image 抽出より先に caption が現れた場合は Top 配置
@@ -90,6 +97,8 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
     image_path,
     width,
     height,
+    dpi,
+    downsample,
     caption,
     caption_position,
     label,
@@ -97,19 +106,67 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
   }]);
 }
 
-/// `\image[width=Xmm, height=Ymm]{path}` から path / width / height を抽出する
+/// `\image` から抽出される情報の集約構造体
+struct ImageArgs {
+  /// 画像ファイルへのパス
+  path: String,
+  /// 描画幅
+  width: Option<Length>,
+  /// 描画高さ
+  height: Option<Length>,
+  /// per-image DPI 上限
+  dpi: Option<u32>,
+  /// per-image ダウンサンプリング ON/OFF
+  downsample: Option<bool>,
+}
+
+/// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` から各引数を抽出する
 ///
-/// `width` / `height` は任意引数。両方省略可で、未指定分は `pdf_gen` 段で
-/// 元画像のピクセル縦横比と本文幅から自動算出される。
-fn extract_image(view: &CommandView) -> Result<(String, Option<Length>, Option<Length>), EvalError> {
-  let opt_args = collect_command_opt_args(view, &[("width", OptType::Length), ("height", OptType::Length)])?;
+/// `width` / `height` / `dpi` / `downsample` はいずれも任意引数。`width` / `height` の未指定分は
+/// `pdf_gen` 段で元画像のピクセル縦横比と本文幅から自動算出される。`dpi` / `downsample` の
+/// 未指定分は `style.figure.max_dpi` / `style.figure.downsample` が使われる。
+fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
+  let opt_args = collect_command_opt_args(
+    view,
+    &[
+      ("width", OptType::Length),
+      ("height", OptType::Length),
+      ("dpi", OptType::Number),
+      ("downsample", OptType::Bool),
+    ],
+  )?;
 
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
+  let mut dpi: Option<u32> = None;
+  let mut downsample: Option<bool> = None;
   for (key, value) in opt_args {
     match (key.as_str(), value) {
       ("width", OptValue::Length(l)) => width = Some(l),
       ("height", OptValue::Length(l)) => height = Some(l),
+      ("dpi", OptValue::Number(n)) => {
+        // dpi は正の整数のみ受理する
+        if !(n.is_finite() && n > 0.0 && n <= f64::from(u32::MAX)) {
+          return Err(EvalError::InvalidOptArgValue {
+            name: "image".to_string(),
+            key: "dpi".to_string(),
+            expected: "positive integer".to_string(),
+            span: view.span().into(),
+          });
+        }
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        let rounded = n.round() as u32;
+        if rounded == 0 {
+          return Err(EvalError::InvalidOptArgValue {
+            name: "image".to_string(),
+            key: "dpi".to_string(),
+            expected: "positive integer".to_string(),
+            span: view.span().into(),
+          });
+        }
+        dpi = Some(rounded);
+      },
+      ("downsample", OptValue::Bool(b)) => downsample = Some(b),
       _ => {},
     }
   }
@@ -130,7 +187,13 @@ fn extract_image(view: &CommandView) -> Result<(String, Option<Length>, Option<L
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
 
-  return Ok((path, width, height));
+  return Ok(ImageArgs {
+    path,
+    width,
+    height,
+    dpi,
+    downsample,
+  });
 }
 
 /// `\caption{...}` の引数をインライン要素列に変換する
@@ -195,6 +258,8 @@ mod tests {
       image_path,
       width,
       height,
+      dpi,
+      downsample,
       caption,
       caption_position,
       label,
@@ -207,6 +272,8 @@ mod tests {
     // Length は内部 pt（f32）を経由するため、mm への往復変換に小さい誤差を許容する
     assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
     assert!((height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
+    assert!(dpi.is_none());
+    assert!(downsample.is_none());
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
@@ -393,5 +460,57 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn image_captures_dpi_and_downsample() {
+    // Arrange — \image[dpi=600, downsample=false]
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::Figure {
+      dpi, downsample, ..
+    } = &result[0]
+    else {
+      panic!("Figure が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*dpi, Some(600));
+    assert_eq!(*downsample, Some(false));
+  }
+
+  #[test]
+  fn image_rejects_zero_dpi() {
+    // Arrange — dpi=0 は正の整数ではないので拒否
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
+  }
+
+  #[test]
+  fn image_rejects_negative_dpi() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
   }
 }

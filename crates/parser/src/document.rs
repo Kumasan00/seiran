@@ -150,6 +150,10 @@ pub enum DocNode {
     width: Option<Length>,
     /// 画像の高さ（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
     height: Option<Length>,
+    /// `\image[dpi=...]` の per-image 上書き。`None` なら `style.figure.max_dpi` が使われる
+    dpi: Option<u32>,
+    /// `\image[downsample=...]` の per-image 上書き。`None` なら `style.figure.downsample` が使われる
+    downsample: Option<bool>,
     /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
     caption: Option<Vec<InlineNode>>,
     /// キャプションを図本体の上下どちらに配置するか。ソース上の `\caption` / `\image` の

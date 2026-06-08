@@ -80,6 +80,7 @@ pub enum BoxItem {
   /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位の任意指定で、
   /// `None` の場合は `pdf_gen` 段で元画像の自然寸法（ラスタはピクセル、SVG は usvg
   /// が報告する width / height）の縦横比と本文幅から決定される。
+  /// `target_dpi` はラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし。
   /// `pdf_gen` 側でファイルを開き、ラスタは `krilla::Image` に変換して
   /// `surface.draw_image` で、SVG は `usvg::Tree` に変換して `surface.draw_svg` で配置する。
   Image {
@@ -89,6 +90,8 @@ pub enum BoxItem {
     width: Option<f32>,
     /// 描画高さ（pt）。`None` の場合は `pdf_gen` 段で自動算出
     height: Option<f32>,
+    /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
+    target_dpi: Option<u32>,
   },
 }
 
@@ -253,12 +256,14 @@ fn layout_engine_inner(
         path,
         width,
         height,
+        target_dpi,
       } => {
         // 画像のレイアウト処理（実際の描画とサイズ解決は pdf_gen が担当）
         let box_item = BoxItem::Image {
           path,
           width: width.map(Length::to_pt),
           height: height.map(Length::to_pt),
+          target_dpi,
         };
         items.push(Item::Box(box_item));
       },

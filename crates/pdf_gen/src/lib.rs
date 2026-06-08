@@ -194,6 +194,19 @@ pub enum PdfGenError {
     /// 自然高さ（ラスタはピクセル、SVG は pt）。
     height: f32,
   },
+  /// ラスタ画像のダウンサンプリング時の処理（デコード / リサイズ / 再エンコード）に失敗しました。
+  #[error("画像のリサイズに失敗しました: {path}")]
+  #[diagnostic(
+    code(pdf_gen::resize_image),
+    help("元画像が破損していないか、または \\image[downsample=false] でリサイズを無効化してください。")
+  )]
+  ResizeImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の image クレートのエラー。
+    #[source]
+    source: image::ImageError,
+  },
 }
 
 /// フォント情報を使用して PDF バイト列を生成します。
@@ -405,8 +418,9 @@ fn render_items(
           path,
           width,
           height,
+          target_dpi,
         } => {
-          let loaded = load_image(path)?;
+          let loaded = load_image(path, None)?;
           let (nat_width, nat_height) = loaded.natural_size();
           let (final_width, final_height) = resolve_image_size(*width, *height, nat_width, nat_height, column_width)
             .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
@@ -414,6 +428,19 @@ fn render_items(
               width: nat_width,
               height: nat_height,
             })?;
+          // ラスタ画像かつ target_dpi が指定されている場合は、最終物理サイズと DPI から
+          // 必要ピクセル数を算出し、元画像が上回っていればリサイズして再ロードする。
+          let loaded = if matches!(loaded, LoadedImage::Raster(_))
+            && let Some(dpi) = target_dpi
+            && let Some(target) = required_pixels(final_width, final_height, *dpi)
+            && (nat_width > target.0 || nat_height > target.1)
+          {
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
+            load_image(path, Some(target_u))?
+          } else {
+            loaded
+          };
           if y + final_height > page_limit {
             start_new_page!();
           }
@@ -579,7 +606,12 @@ impl LoadedImage {
 ///
 /// 対応形式は PNG（`.png`）, JPEG（`.jpg` / `.jpeg`）, SVG（`.svg`）です。
 /// それ以外の拡張子は [`PdfGenError::UnsupportedImageFormat`] を返します。
-fn load_image(path: &str) -> Result<LoadedImage, PdfGenError> {
+///
+/// `resize_to` が `Some((w_px, h_px))` のときはラスタ画像をデコード → Lanczos3 リサイズ →
+/// 同一フォーマットで再エンコードしてから krilla に渡します。SVG は無視されます
+/// （ベクタなので再ラスタライズは不要）。フォーマット変換は行わず、入力が PNG なら PNG、
+/// JPEG なら JPEG のまま出力します。
+fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<LoadedImage, PdfGenError> {
   let bytes = fs::read(path).map_err(|source| PdfGenError::ReadImage {
     path: path.to_string(),
     source,
@@ -591,6 +623,11 @@ fn load_image(path: &str) -> Result<LoadedImage, PdfGenError> {
     .unwrap_or_default();
   match extension.as_str() {
     "png" => {
+      let bytes = if let Some(target) = resize_to {
+        downsample_raster(&bytes, target, image::ImageFormat::Png, path)?
+      } else {
+        bytes
+      };
       let image = Image::from_png(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
         path: path.to_string(),
         reason,
@@ -598,6 +635,11 @@ fn load_image(path: &str) -> Result<LoadedImage, PdfGenError> {
       return Ok(LoadedImage::Raster(image));
     },
     "jpg" | "jpeg" => {
+      let bytes = if let Some(target) = resize_to {
+        downsample_raster(&bytes, target, image::ImageFormat::Jpeg, path)?
+      } else {
+        bytes
+      };
       let image = Image::from_jpeg(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
         path: path.to_string(),
         reason,
@@ -617,6 +659,44 @@ fn load_image(path: &str) -> Result<LoadedImage, PdfGenError> {
       });
     },
   }
+}
+
+/// ラスタ画像を `target_px = (w_px, h_px)` 以下に縮小して同一フォーマットで再エンコードする。
+///
+/// `image::load_from_memory_with_format` でデコードし、`Lanczos3` フィルタで縮小、
+/// `format` で再エンコードしたバイト列を返す。JPEG 品質は image クレートの既定値
+/// （現状 75）に従う。フォーマットを跨いだ変換（PNG → JPEG 等）は行わない。
+fn downsample_raster(
+  bytes: &[u8],
+  target_px: (u32, u32),
+  format: image::ImageFormat,
+  path: &str,
+) -> Result<Vec<u8>, PdfGenError> {
+  let img = image::load_from_memory_with_format(bytes, format).map_err(|source| PdfGenError::ResizeImage {
+    path: path.to_string(),
+    source,
+  })?;
+  let resized = img.resize(target_px.0, target_px.1, image::imageops::FilterType::Lanczos3);
+  let mut out: Vec<u8> = Vec::new();
+  resized
+    .write_to(&mut std::io::Cursor::new(&mut out), format)
+    .map_err(|source| PdfGenError::ResizeImage {
+      path: path.to_string(),
+      source,
+    })?;
+  return Ok(out);
+}
+
+/// 描画寸法（pt）と上限 DPI から必要なピクセル寸法を算出する。
+///
+/// 1 pt = 1/72 inch なので `px = pt / 72 * dpi`。負値や非有限値、ゼロは `None` を返す。
+fn required_pixels(width_pt: f32, height_pt: f32, dpi: u32) -> Option<(f32, f32)> {
+  if !width_pt.is_finite() || !height_pt.is_finite() || width_pt <= 0.0 || height_pt <= 0.0 || dpi == 0 {
+    return None;
+  }
+  #[allow(clippy::cast_precision_loss)]
+  let dpi_f = dpi as f32;
+  return Some((width_pt / 72.0 * dpi_f, height_pt / 72.0 * dpi_f));
 }
 
 /// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。

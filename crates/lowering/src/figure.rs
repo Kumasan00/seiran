@@ -35,11 +35,25 @@ fn build_caption_node(style: &FigureStyle, inlines: &[InlineNode], number: &str)
   ));
 }
 
+/// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ImageOverrides {
+  /// `\image[dpi=N]` の per-image 上書き。`None` なら `style.figure.max_dpi` が使われる
+  pub dpi: Option<u32>,
+  /// `\image[downsample=true|false]` の per-image 上書き。`None` なら `style.figure.downsample` が使われる
+  pub downsample: Option<bool>,
+}
+
 /// 図をレイアウトノードに変換する
 ///
 /// 画像とキャプションを指定された [`CaptionPosition`] の順序で積み、上下マージン付きの
 /// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力せず、
 /// `VBox` には画像のみが入る。
+///
+/// per-image の `dpi` / `downsample` 上書きと `style.figure.max_dpi` / `style.figure.downsample`
+/// の既定値を解決し、ラスタ画像のダウンサンプリング上限 DPI を `target_dpi` として
+/// [`LayoutNode::Image`] に焼き付ける。`downsample` が `false` に解決された場合は `None`
+/// （リサイズなし）になる。
 ///
 /// # Errors
 ///
@@ -49,15 +63,24 @@ pub(super) fn lower_figure(
   image_path: &str,
   width: Option<Length>,
   height: Option<Length>,
+  overrides: ImageOverrides,
   caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.core.figure;
 
+  let downsample_enabled = overrides.downsample.unwrap_or(style.downsample);
+  let target_dpi = if downsample_enabled {
+    Some(overrides.dpi.unwrap_or(style.max_dpi))
+  } else {
+    None
+  };
+
   let image_node = LayoutNode::Image {
     path: image_path.to_string(),
     width,
     height,
+    target_dpi,
   };
 
   let mut children = Vec::new();
@@ -118,6 +141,7 @@ mod tests {
       "./images/seiran.jpg",
       Some(Length::pt(80.0)),
       Some(Length::pt(60.0)),
+      ImageOverrides::default(),
       Some((CaptionPosition::Bottom, &caption)),
       "1",
     )
@@ -132,6 +156,7 @@ mod tests {
       path,
       width,
       height,
+      target_dpi,
     } = children.first().expect("先頭は画像")
     else {
       panic!("先頭は Image であるべき: {children:?}");
@@ -139,6 +164,8 @@ mod tests {
     assert_eq!(path, "./images/seiran.jpg");
     assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
     assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
+    // 既定 style.figure では downsample=true / max_dpi=300 なので target_dpi=Some(300)
+    assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
       LayoutNode::Text(text, _) => Some(text.as_str()),
@@ -160,6 +187,7 @@ mod tests {
       "a.png",
       Some(Length::pt(10.0)),
       Some(Length::pt(10.0)),
+      ImageOverrides::default(),
       Some((CaptionPosition::Top, &caption)),
       "2",
     )
@@ -182,7 +210,8 @@ mod tests {
 
     // Act
     let nodes =
-      lower_figure(&ctx, "a.png", Some(Length::pt(10.0)), Some(Length::pt(10.0)), None, "3").expect("失敗しない");
+      lower_figure(&ctx, "a.png", Some(Length::pt(10.0)), Some(Length::pt(10.0)), ImageOverrides::default(), None, "3")
+        .expect("失敗しない");
 
     // Assert — VBox に Text ノードが含まれていない（"Figure 3: " のような空タイトル行を出さない）
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -192,5 +221,71 @@ mod tests {
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
     let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
     assert!(has_image, "画像は出力されている: {children:?}");
+  }
+
+  #[test]
+  fn lower_figure_per_image_downsample_false_yields_no_target_dpi() {
+    // Arrange — per-image downsample=false なら target_dpi は None
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let overrides = ImageOverrides {
+      downsample: Some(false),
+      ..ImageOverrides::default()
+    };
+    let nodes = lower_figure(&ctx, "a.png", None, None, overrides, None, "1").expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待");
+    };
+    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
+      panic!("Image が期待: {children:?}");
+    };
+    assert!(target_dpi.is_none());
+  }
+
+  #[test]
+  fn lower_figure_per_image_dpi_overrides_style() {
+    // Arrange — per-image dpi=600 はスタイル既定（300）を上書きする
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let overrides = ImageOverrides {
+      dpi: Some(600),
+      ..ImageOverrides::default()
+    };
+    let nodes = lower_figure(&ctx, "a.png", None, None, overrides, None, "1").expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待");
+    };
+    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
+      panic!("Image が期待: {children:?}");
+    };
+    assert_eq!(*target_dpi, Some(600));
+  }
+
+  #[test]
+  fn lower_figure_style_downsample_false_yields_no_target_dpi() {
+    // Arrange — グローバル downsample=false ならリサイズしない
+    let mut style = ReadStyle::default();
+    style.core.figure.downsample = false;
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let nodes = lower_figure(&ctx, "a.png", None, None, ImageOverrides::default(), None, "1").expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待");
+    };
+    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
+      panic!("Image が期待: {children:?}");
+    };
+    assert!(target_dpi.is_none());
   }
 }
