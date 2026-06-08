@@ -1,7 +1,7 @@
 \section{図のサンプル}
 
 ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが
-正しくレンダリングされること、JPEG と PNG の両方が読めること、図番号が連番で振られる
+正しくレンダリングされること、JPEG / PNG / SVG の 3 形式が読めること、図番号が連番で振られる
 ことを確認します。あわせて image コマンドのサイズ指定 4 パターン
 （両指定 / width のみ / height のみ / 両省略）の挙動も検証します。
 
@@ -34,6 +34,14 @@
 \begin{figure}[label=fig:testimage5]
 \image{./tests/image/testimage5.png}
 \caption{テスト画像 5 (PNG, 両省略 — 本文幅にフィット)}
+\end{figure}
+
+最後に SVG を埋め込んで、ベクタ画像が krilla-svg 経由でラスタライズなく PDF に取り込まれる
+ことを確認します。
+
+\begin{figure}[label=fig:testimage6]
+\image[width=80mm]{./tests/image/testimage6.svg}
+\caption{テスト画像 6 (SVG, width のみ — 高さは usvg が報告する縦横比から算出)}
 \end{figure}
 
 図の後の段落です。

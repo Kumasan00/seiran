@@ -1439,6 +1439,7 @@ dependencies = [
  "read_style",
  "thiserror",
  "types",
+ "usvg",
 ]
 
 [[package]]

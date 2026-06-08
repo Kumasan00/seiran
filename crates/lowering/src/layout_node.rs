@@ -39,12 +39,14 @@ pub enum LayoutNode {
     width: Length,
     height: Length,
   },
-  /// 画像（PNG / JPEG）
+  /// 画像（PNG / JPEG / SVG）
   ///
   /// `path` はソースに記載された相対 / 絶対パス。`width` / `height` は
   /// `\image[width=..., height=...]` で指定された値。両方とも `None` 可で、
-  /// 未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から算出される。
-  /// `pdf_gen` が `surface.draw_image` で確定矩形にビットマップをマップする。
+  /// 未指定分は `pdf_gen` 段で元画像の自然寸法（ラスタはピクセル、SVG は usvg
+  /// が報告する width / height）の縦横比と本文幅から算出される。
+  /// `pdf_gen` がラスタは `surface.draw_image`、SVG は `surface.draw_svg` で
+  /// 確定矩形に配置する。
   Image {
     /// 画像ファイルへのパス
     path: String,

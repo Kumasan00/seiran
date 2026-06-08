@@ -75,12 +75,13 @@ pub enum BoxItem {
   Text(GlyphRun),
   /// 罫線（幅と高さを持つ矩形）
   Rule { width: f32, height: f32 },
-  /// 画像（PNG / JPEG）
+  /// 画像（PNG / JPEG / SVG）
   ///
   /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位の任意指定で、
-  /// `None` の場合は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から決定される。
-  /// `pdf_gen` 側でファイルを開いて `krilla::Image` に変換し、`surface.draw_image`
-  /// で配置する。
+  /// `None` の場合は `pdf_gen` 段で元画像の自然寸法（ラスタはピクセル、SVG は usvg
+  /// が報告する width / height）の縦横比と本文幅から決定される。
+  /// `pdf_gen` 側でファイルを開き、ラスタは `krilla::Image` に変換して
+  /// `surface.draw_image` で、SVG は `usvg::Tree` に変換して `surface.draw_svg` で配置する。
   Image {
     /// 画像ファイルへのパス
     path: String,

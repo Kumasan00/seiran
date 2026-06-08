@@ -19,6 +19,7 @@ use krilla::{
   surface::Surface,
   text::{Font, GlyphId, KrillaGlyph, Tag},
 };
+use krilla_svg::{SurfaceExt, SvgSettings};
 use layout::{BoxItem, Glyph, Item};
 use miette::Diagnostic;
 use read_config::Config;
@@ -26,6 +27,7 @@ use read_fonts::{ReadError, TableProvider};
 use read_style::Style;
 use thiserror::Error;
 use types::{FontMap, FontType};
+use usvg::Tree;
 
 /// PDF 生成中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -127,8 +129,31 @@ pub enum PdfGenError {
   },
   /// 画像ファイルの形式が未対応です。
   #[error("画像ファイルの拡張子が未対応です: {path}")]
-  #[diagnostic(code(pdf_gen::unsupported_image_format), help("対応形式は PNG (.png) と JPEG (.jpg / .jpeg) です。"))]
+  #[diagnostic(
+    code(pdf_gen::unsupported_image_format),
+    help("対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。")
+  )]
   UnsupportedImageFormat {
+    /// 画像ファイルのパス。
+    path: String,
+  },
+  /// SVG のパースに失敗しました。
+  #[error("SVG のパースに失敗しました: {path}")]
+  #[diagnostic(code(pdf_gen::parse_svg), help("SVG ファイルが妥当な XML / SVG であることを確認してください。"))]
+  ParseSvg {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の usvg エラー。
+    #[source]
+    source: usvg::Error,
+  },
+  /// SVG のレンダリングに失敗しました。
+  #[error("SVG のレンダリングに失敗しました: {path}")]
+  #[diagnostic(
+    code(pdf_gen::draw_svg),
+    help("krilla-svg が SVG の描画を完了できませんでした。SVG の内容を確認してください。")
+  )]
+  DrawSvg {
     /// 画像ファイルのパス。
     path: String,
   },
@@ -153,19 +178,21 @@ pub enum PdfGenError {
     /// 描画高さ。
     height: f32,
   },
-  /// 画像のピクセル寸法が不正です（縦横比を算出できません）。
-  #[error("画像のピクセル寸法が不正です: {path} (width={width}, height={height})")]
+  /// 画像の自然寸法が不正です（縦横比を算出できません）。
+  ///
+  /// ラスタ画像の場合はピクセル幅 / 高さ、SVG の場合は usvg が報告した width / height を保持します。
+  #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
   #[diagnostic(
-    code(pdf_gen::invalid_image_pixel_size),
+    code(pdf_gen::invalid_image_natural_size),
     help("画像ファイルが破損していないか、または width / height を明示指定してください。")
   )]
-  InvalidImagePixelSize {
+  InvalidImageNaturalSize {
     /// 画像ファイルのパス。
     path: String,
-    /// ピクセル幅。
-    width: u32,
-    /// ピクセル高さ。
-    height: u32,
+    /// 自然幅（ラスタはピクセル、SVG は pt）。
+    width: f32,
+    /// 自然高さ（ラスタはピクセル、SVG は pt）。
+    height: f32,
   },
 }
 
@@ -379,13 +406,13 @@ fn render_items(
           width,
           height,
         } => {
-          let image = load_image(path)?;
-          let (px_width, px_height) = image.size();
-          let (final_width, final_height) = resolve_image_size(*width, *height, px_width, px_height, column_width)
-            .ok_or_else(|| PdfGenError::InvalidImagePixelSize {
+          let loaded = load_image(path)?;
+          let (nat_width, nat_height) = loaded.natural_size();
+          let (final_width, final_height) = resolve_image_size(*width, *height, nat_width, nat_height, column_width)
+            .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
               path: path.clone(),
-              width: px_width,
-              height: px_height,
+              width: nat_width,
+              height: nat_height,
             })?;
           if y + final_height > page_limit {
             start_new_page!();
@@ -395,7 +422,16 @@ fn render_items(
             height: final_height,
           })?;
           surface.push_transform(&Transform::from_translate(x, y));
-          surface.draw_image(image, size);
+          match loaded {
+            LoadedImage::Raster(image) => {
+              surface.draw_image(image, size);
+            },
+            LoadedImage::Svg(tree) => {
+              surface
+                .draw_svg(tree.as_ref(), size, SvgSettings::default())
+                .ok_or_else(|| PdfGenError::DrawSvg { path: path.clone() })?;
+            },
+          }
           surface.pop();
           x = margin_left;
           y += final_height;
@@ -472,24 +508,24 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
 /// 画像の最終描画寸法（pt）を解決します。
 ///
 /// `\image` の `width` / `height` 任意引数は両方とも省略可能で、未指定分は元画像の
-/// ピクセル縦横比から自動算出します。両方とも省略された場合は本文幅にフィットさせ、
-/// 高さはピクセル縦横比から算出します（Typst 方式）。
+/// 自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）の縦横比から
+/// 自動算出します。両方とも省略された場合は本文幅にフィットさせ、高さは縦横比から
+/// 算出します（Typst 方式）。
 ///
 /// 戻り値が `None` になるのは、`width` / `height` のどちらかを算出する必要があるにも
-/// かかわらず元画像のピクセル寸法が 0 で縦横比を取れないケースです。
+/// かかわらず自然寸法が 0 以下または非有限値で縦横比を取れないケースです。
 fn resolve_image_size(
   width: Option<f32>,
   height: Option<f32>,
-  px_width: u32,
-  px_height: u32,
+  nat_width: f32,
+  nat_height: f32,
   column_width: f32,
 ) -> Option<(f32, f32)> {
-  #[allow(clippy::cast_precision_loss)]
   let aspect_ratio = || {
-    if px_width == 0 || px_height == 0 {
+    if !nat_width.is_finite() || !nat_height.is_finite() || nat_width <= 0.0 || nat_height <= 0.0 {
       return None;
     }
-    return Some(px_height as f32 / px_width as f32);
+    return Some(nat_height / nat_width);
   };
   match (width, height) {
     (Some(w), Some(h)) => return Some((w, h)),
@@ -508,11 +544,42 @@ fn resolve_image_size(
   }
 }
 
-/// 画像ファイルを読み込み、拡張子に応じて [`Image`] に変換します。
+/// `load_image` が返す画像表現。
 ///
-/// 対応形式は PNG（`.png`）と JPEG（`.jpg` / `.jpeg`）です。
+/// ラスタ画像は krilla の [`Image`] として、SVG は usvg の [`Tree`] として保持し、
+/// レンダリング時に呼び出し側が分岐して描画します。
+enum LoadedImage {
+  /// PNG / JPEG などのラスタ画像。
+  Raster(Image),
+  /// SVG を usvg でパースした結果。
+  ///
+  /// `usvg::Tree` は数百バイト規模のため、列挙の他バリアントとのサイズ差を抑える目的で
+  /// ヒープに退避します（`clippy::large_enum_variant` 対策）。
+  Svg(Box<Tree>),
+}
+
+impl LoadedImage {
+  /// 自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を返します。
+  #[allow(clippy::cast_precision_loss)]
+  fn natural_size(&self) -> (f32, f32) {
+    return match self {
+      LoadedImage::Raster(image) => {
+        let (w, h) = image.size();
+        (w as f32, h as f32)
+      },
+      LoadedImage::Svg(tree) => {
+        let size = tree.size();
+        (size.width(), size.height())
+      },
+    };
+  }
+}
+
+/// 画像ファイルを読み込み、拡張子に応じて [`LoadedImage`] に変換します。
+///
+/// 対応形式は PNG（`.png`）, JPEG（`.jpg` / `.jpeg`）, SVG（`.svg`）です。
 /// それ以外の拡張子は [`PdfGenError::UnsupportedImageFormat`] を返します。
-fn load_image(path: &str) -> Result<Image, PdfGenError> {
+fn load_image(path: &str) -> Result<LoadedImage, PdfGenError> {
   let bytes = fs::read(path).map_err(|source| PdfGenError::ReadImage {
     path: path.to_string(),
     source,
@@ -522,19 +589,34 @@ fn load_image(path: &str) -> Result<Image, PdfGenError> {
     .and_then(|e| e.to_str())
     .map(str::to_ascii_lowercase)
     .unwrap_or_default();
-  let result = match extension.as_str() {
-    "png" => Image::from_png(bytes.into(), false),
-    "jpg" | "jpeg" => Image::from_jpeg(bytes.into(), false),
+  match extension.as_str() {
+    "png" => {
+      let image = Image::from_png(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
+        path: path.to_string(),
+        reason,
+      })?;
+      return Ok(LoadedImage::Raster(image));
+    },
+    "jpg" | "jpeg" => {
+      let image = Image::from_jpeg(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
+        path: path.to_string(),
+        reason,
+      })?;
+      return Ok(LoadedImage::Raster(image));
+    },
+    "svg" => {
+      let tree = Tree::from_data(&bytes, &usvg::Options::default()).map_err(|source| PdfGenError::ParseSvg {
+        path: path.to_string(),
+        source,
+      })?;
+      return Ok(LoadedImage::Svg(Box::new(tree)));
+    },
     _ => {
       return Err(PdfGenError::UnsupportedImageFormat {
         path: path.to_string(),
       });
     },
-  };
-  return result.map_err(|reason| PdfGenError::DecodeImage {
-    path: path.to_string(),
-    reason,
-  });
+  }
 }
 
 /// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。
@@ -570,9 +652,9 @@ mod tests {
     let column_width = 400.0;
 
     // Act
-    let resolved = resolve_image_size(Some(80.0), Some(60.0), 800, 600, column_width);
+    let resolved = resolve_image_size(Some(80.0), Some(60.0), 800.0, 600.0, column_width);
 
-    // Assert — 両指定はピクセル寸法に依存せずそのまま返る
+    // Assert — 両指定は自然寸法に依存せずそのまま返る
     let (w, h) = resolved.expect("両指定なら必ず Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
@@ -584,10 +666,10 @@ mod tests {
     let column_width = 400.0;
 
     // Act
-    let resolved = resolve_image_size(Some(80.0), None, 800, 600, column_width);
+    let resolved = resolve_image_size(Some(80.0), None, 800.0, 600.0, column_width);
 
-    // Assert — height = width * (px_h / px_w) = 80 * (600 / 800) = 60
-    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    // Assert — height = width * (nat_h / nat_w) = 80 * (600 / 800) = 60
+    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
@@ -598,10 +680,10 @@ mod tests {
     let column_width = 400.0;
 
     // Act
-    let resolved = resolve_image_size(None, Some(60.0), 800, 600, column_width);
+    let resolved = resolve_image_size(None, Some(60.0), 800.0, 600.0, column_width);
 
-    // Assert — width = height * (px_w / px_h) = 60 * (800 / 600) = 80
-    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    // Assert — width = height * (nat_w / nat_h) = 60 * (800 / 600) = 80
+    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
   }
@@ -612,23 +694,50 @@ mod tests {
     let column_width = 400.0;
 
     // Act
-    let resolved = resolve_image_size(None, None, 800, 600, column_width);
+    let resolved = resolve_image_size(None, None, 800.0, 600.0, column_width);
 
     // Assert — width=column_width, height は縦横比から
-    let (w, h) = resolved.expect("ピクセル寸法が有効なので Some");
+    let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 400.0).abs() < 1e-4);
     assert!((h - 300.0).abs() < 1e-4);
   }
 
   #[test]
-  fn resolve_image_size_returns_none_when_pixel_size_zero_and_inference_needed() {
-    // Arrange — ピクセル寸法が 0 だと縦横比が出せない
+  fn resolve_image_size_returns_none_when_natural_size_zero_and_inference_needed() {
+    // Arrange — 自然寸法が 0 だと縦横比が出せない
     let column_width = 400.0;
 
     // Act
-    let resolved = resolve_image_size(None, None, 0, 600, column_width);
+    let resolved = resolve_image_size(None, None, 0.0, 600.0, column_width);
 
     // Assert — None を返してエラーへ
+    assert!(resolved.is_none());
+  }
+
+  #[test]
+  fn resolve_image_size_accepts_fractional_svg_natural_size() {
+    // Arrange — SVG の自然寸法は f32 で来る。縦横比 16:9 のベクタ画像で width のみ指定
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(Some(160.0), None, 320.5, 180.0, column_width);
+
+    // Assert — height = 160 * (180 / 320.5)
+    let (w, h) = resolved.expect("自然寸法が有効なので Some");
+    let expected_height = 160.0 * (180.0_f32 / 320.5_f32);
+    assert!((w - 160.0).abs() < 1e-4);
+    assert!((h - expected_height).abs() < 1e-4);
+  }
+
+  #[test]
+  fn resolve_image_size_returns_none_when_natural_size_non_finite() {
+    // Arrange — NaN / 無限大は安全側に倒して None
+    let column_width = 400.0;
+
+    // Act
+    let resolved = resolve_image_size(None, None, f32::NAN, 100.0, column_width);
+
+    // Assert
     assert!(resolved.is_none());
   }
 }

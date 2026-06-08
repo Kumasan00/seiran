@@ -19,6 +19,7 @@ read-fonts.workspace = true
 read_style.workspace = true
 thiserror.workspace = true
 types.workspace = true
+usvg.workspace = true
 
 [lints]
 workspace = true
