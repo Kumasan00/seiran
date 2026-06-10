@@ -1,4 +1,4 @@
-//! 4 種類のフィクスチャに対して `parse_source → lower_nodes` をパニックなしで通す smoke テスト
+//! 5 種類のフィクスチャに対して `parse_source → lower_nodes` をパニックなしで通す smoke テスト
 //!
 //! 目的:
 //! - 前準備で導入した AST 拡張・Style 注入・テンプレ展開が、最低限のサンプルで
@@ -49,3 +49,6 @@ fn smoke_equation_fixture() { smoke_through_lowering("equation"); }
 
 #[test]
 fn smoke_ref_fixture() { smoke_through_lowering("ref"); }
+
+#[test]
+fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
