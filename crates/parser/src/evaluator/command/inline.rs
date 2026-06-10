@@ -24,7 +24,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰の場合にエラーを返します
-pub(super) fn inline_wrapper(
+pub(crate) fn inline_wrapper(
   view: &CommandView,
   wrapper: fn(Vec<InlineNode>) -> InlineNode,
 ) -> Result<Vec<InlineNode>, EvalError> {

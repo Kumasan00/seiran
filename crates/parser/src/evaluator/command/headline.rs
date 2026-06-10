@@ -59,8 +59,13 @@ pub(super) fn heading(
 
   let counter_name = CounterRegistry::counter_name_for_heading(level);
   let number = registry.increment(counter_name);
-  if let Some(l) = &label {
-    registry.register_label(l.clone(), counter_name, &number);
+  if let Some(l) = &label
+    && !registry.register_label(l.clone(), counter_name, &number)
+  {
+    return Err(EvalError::DuplicateLabel {
+      label: l.clone(),
+      span: view.span().into(),
+    });
   }
 
   let title = extract_inline_nodes(view.source(), first_arg)?;

@@ -575,3 +575,211 @@ fn evaluate_itemize_creates_unordered_list() {
     _ => panic!("List が期待されます"),
   }
 }
+
+// ==========================================================
+// 見逃されていたエラーの検出（インライン文脈）
+// ==========================================================
+
+#[test]
+fn evaluate_unknown_command_at_top_level_is_error() {
+  // 本文直下の未知コマンドは UnknownCommand
+  let error = evaluate_error(r"hello \nosuchcommand world");
+  assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchcommand"));
+}
+
+#[test]
+fn evaluate_unknown_command_in_heading_title_is_error() {
+  // 以前は見出しタイトル内の未知コマンドが黙って捨てられていた
+  let error = evaluate_error(r"\section{\nosuchcommand}");
+  assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchcommand"));
+}
+
+#[test]
+fn evaluate_block_command_in_inline_context_is_error() {
+  // \textbf の引数内に見出しコマンドは書けない（以前は黙って無視）
+  let error = evaluate_error(r"\textbf{\section{x}}");
+  assert!(matches!(error, EvalError::BlockInInline { ref what, .. } if what == "\\section"));
+}
+
+#[test]
+fn evaluate_environment_in_inline_context_is_error() {
+  // 見出しタイトル内の環境は黙って捨てずエラー
+  let error = evaluate_error(r"\section{\begin{itemize}\item{a}\end{itemize}}");
+  assert!(matches!(error, EvalError::BlockInInline { ref what, .. } if what == "環境 itemize"));
+}
+
+#[test]
+fn evaluate_inline_wrapper_missing_arg_in_heading_is_error() {
+  // 見出しタイトル内でも \textbf の引数不足はエラー（以前は黙って無視）
+  let error = evaluate_error(r"\section{\textbf}");
+  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "textbf"));
+}
+
+#[test]
+fn evaluate_inline_wrapper_extra_arg_in_heading_is_error() {
+  // 見出しタイトル内でも \textbf の引数過剰はエラー
+  let error = evaluate_error(r"\section{\textbf{a}{b}}");
+  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "textbf"));
+}
+
+#[test]
+fn evaluate_paragraph_break_in_argument_is_error() {
+  // 引数内の空行は以前黙って捨てられ前後が連結されていた
+  let error = evaluate_error("\\section{a\n\nb}");
+  assert!(matches!(error, EvalError::ParagraphBreakInArgument { .. }));
+}
+
+#[test]
+fn evaluate_underscore_in_heading_title_is_text() {
+  // 数式外の `_` は本文と同様にプレーンテキストとして保持される（以前は黙って消えていた）
+  let result = evaluate_source(r"\section{a_b}");
+  let DocNode::Heading { title, .. } = &result[0] else {
+    panic!("Heading が期待されます");
+  };
+  let joined: String = title
+    .iter()
+    .filter_map(|n| {
+      if let InlineNode::Text(t) = n {
+        Some(t.as_str())
+      } else {
+        None
+      }
+    })
+    .collect();
+  assert_eq!(joined, "a_b");
+}
+
+// ==========================================================
+// 見逃されていたエラーの検出（数式）
+// ==========================================================
+
+#[test]
+fn evaluate_math_frac_missing_arg_is_error() {
+  // 以前は不足分が空テキストで黙って補完されていた
+  let error = evaluate_error(r"$\frac{a}$");
+  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "frac"));
+}
+
+#[test]
+fn evaluate_math_frac_extra_arg_is_error() {
+  let error = evaluate_error(r"$\frac{a}{b}{c}$");
+  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "frac"));
+}
+
+#[test]
+fn evaluate_math_sqrt_missing_radicand_is_error() {
+  // 以前は被開平数が空テキストで黙って補完されていた
+  let error = evaluate_error(r"$\sqrt$");
+  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "sqrt"));
+}
+
+#[test]
+fn evaluate_math_unknown_command_is_error() {
+  // 以前は未知の数式コマンドがコマンド名のテキスト表示に黙って復帰していた
+  let error = evaluate_error(r"$\nosuchmathcmd$");
+  assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchmathcmd"));
+}
+
+#[test]
+fn evaluate_math_unknown_command_with_args_is_error() {
+  // 引数付きの未知数式コマンドも同様にエラー
+  let error = evaluate_error(r"$\nosuchmathcmd{x}$");
+  assert!(matches!(error, EvalError::UnknownCommand { ref name, .. } if name == "nosuchmathcmd"));
+}
+
+#[test]
+fn evaluate_math_symbol_command_with_arg_is_error() {
+  // シンボルコマンドは引数を取らない（以前は引数付きで Command ノードに化けていた）
+  let error = evaluate_error(r"$\alpha{x}$");
+  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "alpha"));
+}
+
+#[test]
+fn evaluate_math_line_break_is_error() {
+  // 数式内の \\ は複数行数式が未対応のため黙って潰さずエラー
+  let error = evaluate_error(r"$a \\ b$");
+  assert!(matches!(error, EvalError::UnsupportedInMath { .. }));
+}
+
+#[test]
+fn evaluate_equation_with_nested_environment_is_error() {
+  // 数式環境の中の環境は黙って捨てずエラー
+  let error = evaluate_error(r"\begin{equation}\begin{itemize}\item{a}\end{itemize}\end{equation}");
+  assert!(matches!(error, EvalError::UnsupportedInMath { ref what, .. } if what == "環境 itemize"));
+}
+
+#[test]
+fn evaluate_math_frac_arg_structures_superscript() {
+  // \frac の引数も数式モードでパースされ、`^` が Superscript として構造化される
+  // （以前はテキストモードでパースされ `^` が黙って消えていた）
+  let result = evaluate_source(r"$\frac{x^2}{y}$");
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます");
+  };
+  let InlineNode::InlineMath(math) = &inlines[0] else {
+    panic!("InlineMath が期待されます");
+  };
+  let MathNode::Frac { numer, .. } = &math[0] else {
+    panic!("Frac が期待されます: {:?}", math[0]);
+  };
+  let MathNode::Group(children) = numer.as_ref() else {
+    panic!("Group が期待されます: {numer:?}");
+  };
+  assert!(
+    children.iter().any(|n| matches!(n, MathNode::Superscript(_))),
+    "分子に Superscript が含まれるべき: {children:?}"
+  );
+}
+
+// ==========================================================
+// 見逃されていたエラーの検出（環境本体）
+// ==========================================================
+
+#[test]
+fn evaluate_itemize_with_stray_text_is_error() {
+  // リスト環境直下のテキストは以前黙って捨てられていた
+  let error = evaluate_error(r"\begin{itemize}stray\item{A}\end{itemize}");
+  assert!(matches!(error, EvalError::UnexpectedContentInEnvironment { ref env, .. } if env == "itemize"));
+}
+
+#[test]
+fn evaluate_itemize_with_disallowed_command_is_error() {
+  // \item 以外のコマンドも以前は黙って無視されていた
+  let error = evaluate_error(r"\begin{itemize}\textbf{x}\end{itemize}");
+  assert!(matches!(error, EvalError::UnexpectedCommandInEnvironment { ref name, .. } if name == "textbf"));
+}
+
+#[test]
+fn evaluate_item_without_argument_is_error() {
+  // 引数は `{}` で明示する（軸 1-A）。`\item` 単体はエラー
+  let error = evaluate_error(r"\begin{itemize}\item\end{itemize}");
+  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "item"));
+}
+
+#[test]
+fn evaluate_figure_with_duplicate_image_is_error() {
+  // 以前は 2 つ目の \image が黙って 1 つ目を上書きしていた
+  let error = evaluate_error(r"\begin{figure}\image{a.png}\image{b.png}\end{figure}");
+  assert!(matches!(error, EvalError::DuplicateCommandInEnvironment { ref name, .. } if name == "image"));
+}
+
+#[test]
+fn evaluate_figure_with_stray_text_is_error() {
+  // figure 直下のテキストも黙って捨てずエラー
+  let error = evaluate_error(r"\begin{figure}stray\image{a.png}\end{figure}");
+  assert!(matches!(error, EvalError::UnexpectedContentInEnvironment { ref env, .. } if env == "figure"));
+}
+
+#[test]
+fn evaluate_environment_with_extra_mandatory_arg_is_error() {
+  // equation は必須引数を取らない。\begin{equation}{x} の {x} は以前黙って無視されていた
+  let error = evaluate_error(r"\begin{equation}{x}a\end{equation}");
+  assert!(matches!(error, EvalError::ExtraEnvironmentArgument { ref name, .. } if name == "equation"));
+}
+
+#[test]
+fn evaluate_duplicate_label_is_error() {
+  // 同名ラベルの再定義は以前黙って上書きされていた
+  let error = evaluate_error(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
+  assert!(matches!(error, EvalError::DuplicateLabel { ref label, .. } if label == "sec:a"));
+}

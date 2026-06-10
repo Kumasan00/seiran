@@ -178,6 +178,41 @@ pub enum ParserError {
     #[label("$$ はサポートされていません")]
     span: SourceSpan,
   },
+
+  /// インライン数式 `$...$` が閉じられないまま入力が終了した場合
+  #[error("インライン数式が閉じられていません")]
+  #[diagnostic(code(parser::parse::unclosed_inline_math), help("数式の開始 $ に対応する閉じ $ を追加してください"))]
+  UnclosedInlineMath {
+    /// 開き `$` のソース位置
+    #[label("ここで始まった数式が閉じられていません")]
+    span: SourceSpan,
+  },
+
+  /// 任意引数の開始位置以外に裸の `[` が出現した場合
+  #[error("裸の '[' は構文エラーです")]
+  #[diagnostic(
+    code(parser::parse::bare_bracket),
+    help(
+      "'[' はコマンドや環境の任意引数の開始でのみ使用できます。文字として '[' を書く場合は \\[ とエスケープしてください"
+    )
+  )]
+  BareBracket {
+    /// `[` のソース位置
+    #[label("この [ は許可されない位置にあります")]
+    span: SourceSpan,
+  },
+
+  /// 数式モードの内側（数式環境の本体や数式コマンドの引数）に `$` が出現した場合
+  #[error("数式の中で $ は使用できません")]
+  #[diagnostic(
+    code(parser::parse::dollar_in_math_mode),
+    help("数式の中に $...$ を入れ子にすることはできません。文字として $ を書く場合は \\$ とエスケープしてください")
+  )]
+  DollarInMathMode {
+    /// `$` のソース位置
+    #[label("数式モード内の $ です")]
+    span: SourceSpan,
+  },
 }
 
 // =============================================================================
@@ -304,7 +339,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
             span: token.span.into(),
           });
         } else {
-          let cmd_node = self.parse_command_call(token)?;
+          let cmd_node = self.parse_command_call(token, mode)?;
           children.push(GreenElement::Node(cmd_node));
         }
       },
@@ -325,6 +360,14 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let math_node = self.parse_inline_math(first_dollar)?;
         children.push(GreenElement::Node(math_node));
       },
+      TokenKind::Dollar => {
+        // mode == Math（Text は上のアームで処理済み）。数式モードの中に `$` は書けない
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::DollarInMathMode {
+          span: token.span.into(),
+        });
+      },
       TokenKind::LBrace if mode == ParseMode::Math => {
         let group_node = self.parse_math_group()?;
         children.push(GreenElement::Node(group_node));
@@ -343,6 +386,16 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareGroup {
+          span: token.span.into(),
+        });
+      },
+      TokenKind::LBracket => {
+        // 任意引数の `[...]` は parse_command_call / parse_environment で個別に消費する。
+        // ここに来る `[` は任意引数の開始位置にない裸のブラケットなので、黙って素通し
+        // （評価器で捨てられて出力から消える）にせず構文エラーとして報告する。
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::BareBracket {
           span: token.span.into(),
         });
       },
@@ -389,7 +442,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     begin_children.push(GreenElement::Token(begin_token));
 
     // 環境名 {name}
-    let name_arg = self.parse_mandatory_arg()?;
+    let name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let env_name = self.extract_text_from_arg(name_arg);
     begin_children.push(GreenElement::Node(name_arg));
 
@@ -404,7 +457,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     // 必須引数 {arg}
     while let Some(TokenKind::LBrace) = self.peek_kind() {
-      let arg = self.parse_mandatory_arg()?;
+      let arg = self.parse_mandatory_arg(ParseMode::Text)?;
       begin_children.push(GreenElement::Node(arg));
       self.skip_trivia(&mut begin_children);
     }
@@ -464,7 +517,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     end_node_children.push(GreenElement::Token(end_token));
 
     // {name}
-    let end_name_arg = self.parse_mandatory_arg()?;
+    let end_name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let end_env_name = self.extract_text_from_arg(end_name_arg);
 
     if env_name != end_env_name {
@@ -487,8 +540,11 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
   /// コマンド呼び出しをパース: `\cmd[opt]{arg}`
   ///
-  /// コマンドトークンは既に消費済み。
-  fn parse_command_call(&mut self, cmd_token: Token) -> Result<&'a GreenNode<'a>, ParserError> {
+  /// コマンドトークンは既に消費済み。`mode` は必須引数 `{...}` の本体の語彙的解釈に
+  /// 使われる（数式モード中の `\frac{x^2}{y}` の `^` を `MathSuperscript` として
+  /// 構造化するため）。任意引数 `[...]` は key=value / インデックス指定のため常に
+  /// テキストモードでパースする。
+  fn parse_command_call(&mut self, cmd_token: Token, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = cmd_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(cmd_token));
@@ -504,7 +560,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     // 必須引数 { ... } の解析
     while let Some(TokenKind::LBrace) = self.peek_kind() {
-      let arg_node = self.parse_mandatory_arg()?;
+      let arg_node = self.parse_mandatory_arg(mode)?;
       children.push(GreenElement::Node(arg_node));
       self.skip_trivia(&mut children);
     }
@@ -524,6 +580,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     open_kind: TokenKind,
     close_kind: TokenKind,
     node_kind: SyntaxKind,
+    mode: ParseMode,
   ) -> Result<&'a GreenNode<'a>, ParserError> {
     let open = self.expect(open_kind)?;
     let start_span = open.span;
@@ -543,7 +600,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         },
         _ => {},
       }
-      self.parse_element(&mut children, ParseMode::Text, Some(close_kind))?;
+      self.parse_element(&mut children, mode, Some(close_kind))?;
     }
 
     // 直前の peek で close_kind を確認済み
@@ -555,18 +612,22 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// 任意引数をパース: `[...]`
+  ///
+  /// key=value / インデックス指定のため常にテキストモードでパースする。
   fn parse_opt_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
-    return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg);
+    return self.parse_delimited(TokenKind::LBracket, TokenKind::RBracket, SyntaxKind::OptArg, ParseMode::Text);
   }
 
   /// 必須引数をパース: `{...}`
-  fn parse_mandatory_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
-    return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg);
+  fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
+    return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode);
   }
 
   /// インライン数式をパース: `$...$`
   ///
   /// 開き `$` トークンは呼び出し元で既に消費済みのため引数として受け取る。
+  /// 閉じ `$` がないまま EOF に達した場合は [`ParserError::UnclosedInlineMath`] を返す
+  /// （不完全な数式ノードを黙って構築しない）。
   fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = dollar_open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -574,7 +635,9 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     loop {
       if self.peek_token().is_none() {
-        break;
+        return Err(ParserError::UnclosedInlineMath {
+          span: start_span.into(),
+        });
       }
 
       match self.peek_kind() {
@@ -642,7 +705,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       Some(TokenKind::Command) => {
         #[allow(clippy::unwrap_used)]
         let cmd_token = self.next_token().unwrap();
-        let cmd_node = self.parse_command_call(cmd_token)?;
+        let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
       },
       Some(TokenKind::Underscore) => {
@@ -661,6 +724,24 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           span: token.span.into(),
         });
       },
+      Some(TokenKind::LBracket) => {
+        // 数式中の裸の `[` も黙って捨てずエラーにする（文字として書くなら \[ ）
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::BareBracket {
+          span: token.span.into(),
+        });
+      },
+      Some(TokenKind::RBracket | TokenKind::RBrace) => {
+        // 対応する開き括弧のない閉じトークン — 以前は CST に保持され評価器で
+        // 黙って捨てられていたため、構文エラーとして報告する
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::UnexpectedToken {
+          kind: token.kind,
+          span: token.span.into(),
+        });
+      },
       _ => {
         // Ampersand やその他のトークンはそのまま CST に保持
         #[allow(clippy::unwrap_used)]
@@ -674,12 +755,17 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
   ///
   /// `_` または `^` トークンはこのメソッド内で消費する。
+  /// 内容が来るべき位置に終端トークン（`$` / `}` 等）や不正なトークンが現れた場合は、
+  /// それを黙って内容として消費せずエラーを返す。
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
     #[allow(clippy::unwrap_used)]
     let script_token = self.next_token().unwrap();
     let start_span = script_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(script_token));
+
+    // `^`/`_` と内容の間の空白・改行・コメントは内容とみなさずスキップする
+    self.skip_trivia(&mut children);
 
     match self.peek_kind() {
       Some(TokenKind::LBrace) => {
@@ -689,8 +775,25 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       Some(TokenKind::Command) => {
         #[allow(clippy::unwrap_used)]
         let cmd_token = self.next_token().unwrap();
-        let cmd_node = self.parse_command_call(cmd_token)?;
+        let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
+      },
+      Some(TokenKind::Unknown) => {
+        #[allow(clippy::unwrap_used)]
+        let token = self.next_token().unwrap();
+        return Err(ParserError::InvalidBackslash {
+          span: token.span.into(),
+        });
+      },
+      Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
+        // `$x^$` のように内容なしで数式やグループが終わる場合 — 終端トークンを
+        // 内容として黙って消費せずエラーにする
+        #[allow(clippy::unwrap_used)]
+        let span = self.peek_token().unwrap().span;
+        return Err(ParserError::UnexpectedToken {
+          kind: token_kind,
+          span: span.into(),
+        });
       },
       Some(_) => {
         #[allow(clippy::unwrap_used)]
@@ -1208,6 +1311,110 @@ mod tests {
     if let GreenElement::Node(math) = &cst.children[0] {
       assert_eq!(math.span, Span::new(0, 3));
     }
+  }
+
+  #[test]
+  fn unclosed_inline_math_is_error() {
+    // `$x` のように閉じ $ がないまま EOF に達した場合、以前は不完全な
+    // InlineMath ノードが黙って構築されていた。UnclosedInlineMath で報告する。
+    let arena = Bump::new();
+    let result = parse(r"$x", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
+  }
+
+  #[test]
+  fn currency_dollar_without_escape_is_error() {
+    // 通貨の `$` をエスケープせず書くと数式開始とみなされ、閉じられないためエラー。
+    let arena = Bump::new();
+    let result = parse(r"price is 100$", &arena);
+    assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
+  }
+
+  #[test]
+  fn bare_lbracket_in_text_is_error() {
+    // 裸の `[` は以前は raw トークンとして CST に残り、評価器で黙って捨てられていた。
+    // stray `]` がエラーになるのと対称に、`[` も構文エラーとして報告する。
+    let arena = Bump::new();
+    let result = parse("hello [world", &arena);
+    assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+  }
+
+  #[test]
+  fn escaped_bracket_in_text_is_ok() {
+    // `\[` エスケープなら文字として書ける。
+    let arena = Bump::new();
+    let cst = parse_source(r"hello \[0\]", &arena);
+    let has_escaped = cst.children.iter().any(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Escaped));
+    assert!(has_escaped);
+  }
+
+  #[test]
+  fn bare_lbracket_in_inline_math_is_error() {
+    // 数式中の `[` も同様に黙って捨てずエラーにする。
+    let arena = Bump::new();
+    let result = parse(r"$[0,1]$", &arena);
+    assert!(matches!(result, Err(ParserError::BareBracket { .. })));
+  }
+
+  #[test]
+  fn stray_rbrace_in_inline_math_is_error() {
+    // 数式中の対応しない `}` は以前は CST に残り評価器で捨てられていた。
+    let arena = Bump::new();
+    let result = parse(r"$x}$", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::RBrace,
+        ..
+      })
+    ));
+  }
+
+  #[test]
+  fn dollar_in_math_environment_is_error() {
+    // 数式環境の本体は既に数式モードなので `$` は書けない。
+    // 以前は raw トークンとして黙って無視されていた。
+    let arena = Bump::new();
+    let result = parse(r"\begin{equation}$x$\end{equation}", &arena);
+    assert!(matches!(result, Err(ParserError::DollarInMathMode { .. })));
+  }
+
+  #[test]
+  fn math_script_without_content_before_dollar_is_error() {
+    // `$x^$` — `^` の内容が来るべき位置で数式が閉じる場合はエラー。
+    // 以前は閉じ $ を内容として消費し、数式全体が閉じられない扱いになっていた。
+    let arena = Bump::new();
+    let result = parse(r"$x^$", &arena);
+    assert!(matches!(
+      result,
+      Err(ParserError::UnexpectedToken {
+        kind: TokenKind::Dollar,
+        ..
+      })
+    ));
+  }
+
+  #[test]
+  fn math_script_skips_whitespace_before_content() {
+    // `$x^ 2$` — `^` と内容の間の空白は内容とみなさずスキップされる。
+    let arena = Bump::new();
+    let cst = parse_source(r"$x^ 2$", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let sups: Vec<_> = math.children_of_kind(SyntaxKind::MathSuperscript).collect();
+    assert_eq!(sups.len(), 1);
+    let content_text =
+      sups[0].children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Text));
+    assert!(content_text, "スクリプト内容は Text トークンであるべき");
+  }
+
+  #[test]
+  fn math_script_invalid_backslash_content_is_error() {
+    // `$x^\ $` — スクリプト内容が不正なバックスラッシュの場合もエラー。
+    let arena = Bump::new();
+    let result = parse("$x^\\ $", &arena);
+    assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
   }
 
   #[test]

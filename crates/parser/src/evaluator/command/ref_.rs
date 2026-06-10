@@ -16,7 +16,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {

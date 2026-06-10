@@ -30,8 +30,8 @@ use crate::{
 
 mod control;
 mod headline;
-mod inline;
-mod ref_;
+pub(crate) mod inline;
+pub(crate) mod ref_;
 
 /// コマンドの実行結果
 ///
@@ -74,16 +74,7 @@ impl CommandKind {
 
       Self::InlineWrapper(wrapper) => inline::inline_wrapper(view, wrapper).map(CommandResult::Inline),
 
-      Self::SingleChar(ch) => {
-        let _opt_args = collect_command_opt_args(view, &[])?;
-        if !view.args_is_empty() {
-          return Err(EvalError::ExtraCommandArgument {
-            name: view.name().to_string(),
-            span: view.span().into(),
-          });
-        }
-        return Ok(CommandResult::Inline(vec![InlineNode::Symbol(ch)]));
-      },
+      Self::SingleChar(ch) => single_char(view, ch).map(CommandResult::Inline),
 
       Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
 
@@ -93,6 +84,24 @@ impl CommandKind {
       }),
     }
   }
+}
+
+/// 単一文字コマンド（`\alpha` 等）を検証して `InlineNode::Symbol` を生成する共通処理
+///
+/// `CommandKind::execute` とインライン文脈の `extract_inline_nodes` の双方から呼ばれる。
+///
+/// # Errors
+///
+/// 任意引数や必須引数が指定されている場合にエラーを返します
+pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode>, EvalError> {
+  let _opt_args = collect_command_opt_args(view, &[])?;
+  if !view.args_is_empty() {
+    return Err(EvalError::ExtraCommandArgument {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  }
+  return Ok(vec![InlineNode::Symbol(ch)]);
 }
 
 pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {

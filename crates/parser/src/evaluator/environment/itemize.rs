@@ -7,7 +7,11 @@ use syntax::ast::EnvironmentView;
 
 use crate::{
   document::{DocNode, ListItem},
-  evaluator::{EvalError, Evaluator, environment::body_scan, opt_args::collect_environment_opt_args},
+  evaluator::{
+    EvalError, Evaluator,
+    environment::body_scan,
+    opt_args::{collect_command_opt_args, collect_environment_opt_args},
+  },
 };
 
 /// `itemize` 環境を評価する（順序なしリスト）
@@ -31,6 +35,8 @@ pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Re
 /// リスト環境の共通処理
 ///
 /// `\item{...}` コマンドを収集し、`DocNode::List` を生成します。
+/// body 直下の `\item` 以外のコンテンツ（テキスト・他コマンド等）は黙って捨てず
+/// エラーとして報告します。
 ///
 /// # Arguments
 ///
@@ -40,26 +46,37 @@ pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Re
 ///
 /// # Errors
 ///
-/// 余分な引数が指定されている場合にエラーを返します
+/// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
 fn list_common(view: &EnvironmentView, evaluator: &mut Evaluator, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
   let _opt_args = collect_environment_opt_args(view, &[])?;
+  if !view.args().is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  }
 
   let mut items = Vec::new();
   let source = view.source();
 
   if let Some(body) = view.body() {
-    for cmd_view in body_scan::iter_command_calls(source, body) {
-      if cmd_view.name() == "item" {
-        let mut item_content = Vec::new();
-        for arg in cmd_view.args() {
-          let doc_nodes = evaluator.evaluate_children(source, arg)?;
-          item_content.extend(doc_nodes);
-        }
-        items.push(ListItem {
-          content: item_content,
+    for cmd_view in body_scan::strict_command_calls(source, body, view.name(), &["item"], "\\item{...}")? {
+      let _item_opt_args = collect_command_opt_args(&cmd_view, &[])?;
+      let Some(first_arg) = cmd_view.first_arg() else {
+        return Err(EvalError::MissingCommandArgument {
+          name: "item".to_string(),
+          expected: "項目の内容".to_string(),
+          span: cmd_view.span().into(),
+        });
+      };
+      if cmd_view.args_count() > 1 {
+        return Err(EvalError::ExtraCommandArgument {
+          name: "item".to_string(),
+          span: cmd_view.span().into(),
         });
       }
-      // \item 以外の CommandCall（万一登場した場合）は無視
+      let content = evaluator.evaluate_children(source, first_arg)?;
+      items.push(ListItem { content });
     }
   }
 

@@ -5,17 +5,18 @@
 //!
 //! ## 設計
 //!
-//! - body の子要素のうち [`SyntaxKind::CommandCall`] のみを返すイテレータを提供
-//! - テキスト・空白・改行・コメントなどは黙ってスキップ
-//! - 各ハンドラはコマンド名による `match` で `\item` / `\caption` / `\label` を捌く
+//! - body の子要素のうち [`SyntaxKind::CommandCall`] を許可リストと照合して収集する
+//! - トリビア（空白・改行・段落区切り・コメント）は黙ってスキップする
+//! - それ以外のコンテンツ（テキスト・許可外コマンド・入れ子環境・インライン数式等）は
+//!   黙って捨てずにエラーとして報告する
 //!
 //! ## 使用例
 //!
 //! ```ignore
-//! for view in body_scan::iter_command_calls(source, body) {
+//! for view in body_scan::strict_command_calls(source, body, "itemize", &["item"], "\\item")? {
 //!   match view.name() {
 //!     "item" => { /* ... */ }
-//!     _ => {}
+//!     _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
 //!   }
 //! }
 //! ```
@@ -24,26 +25,76 @@ use syntax::{
   SyntaxKind,
   ast::CommandView,
   green::{GreenElement, GreenNode},
+  token::TokenKind,
 };
 
-/// 環境本体の直下にある `CommandCall` ノードを順に返すイテレータ
+use crate::evaluator::EvalError;
+
+/// 環境本体の直下にある `CommandCall` を許可リストで検証しながら収集する
 ///
-/// `body.children` を走査し、`SyntaxKind::CommandCall` のノードを `CommandView` で
-/// ラップして yield する。それ以外（テキストトークン・トリビア・別種別ノード）は
+/// `body.children` を走査し、`allowed` に含まれる名前の `CommandCall` を
+/// `CommandView` でラップして返す。トリビア（空白・改行・段落区切り・コメント）は
 /// スキップする。
-#[allow(dead_code)]
-pub(crate) fn iter_command_calls<'a>(
+///
+/// # Arguments
+///
+/// * `source`   - 元のソーステキスト
+/// * `body`     - `EnvironmentBody` ノード
+/// * `env_name` - エラーメッセージに使う環境名
+/// * `allowed`  - 許可するコマンド名のリスト
+/// * `expected` - エラーメッセージに使う「書けるもの」の説明（例: `"\\item"`）
+///
+/// # Errors
+///
+/// 許可外のコマンドは [`EvalError::UnexpectedCommandInEnvironment`]、
+/// テキスト・入れ子環境などのコンテンツは [`EvalError::UnexpectedContentInEnvironment`]
+/// を返します。
+pub(crate) fn strict_command_calls<'a>(
   source: &'a str,
   body: &'a GreenNode<'a>,
-) -> impl Iterator<Item = CommandView<'a>> + 'a {
-  return body.children.iter().filter_map(move |child| {
-    if let GreenElement::Node(node) = child
-      && node.kind == SyntaxKind::CommandCall
-    {
-      return Some(CommandView::new(node, source));
+  env_name: &str,
+  allowed: &[&str],
+  expected: &str,
+) -> Result<Vec<CommandView<'a>>, EvalError> {
+  let mut views = Vec::new();
+  for child in body.children {
+    match child {
+      GreenElement::Token(token) => match token.kind {
+        TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {},
+        _ => {
+          // 以前は body 直下のテキスト等が黙って捨てられ、出力から消えていた
+          return Err(EvalError::UnexpectedContentInEnvironment {
+            env: env_name.to_string(),
+            expected: expected.to_string(),
+            span: token.span.into(),
+          });
+        },
+      },
+      GreenElement::Node(node) => {
+        if node.kind == SyntaxKind::CommandCall {
+          let view = CommandView::new(node, source);
+          if allowed.contains(&view.name()) {
+            views.push(view);
+          } else {
+            return Err(EvalError::UnexpectedCommandInEnvironment {
+              env: env_name.to_string(),
+              name: view.name().to_string(),
+              expected: expected.to_string(),
+              span: node.span.into(),
+            });
+          }
+        } else {
+          // 入れ子環境・インライン数式など
+          return Err(EvalError::UnexpectedContentInEnvironment {
+            env: env_name.to_string(),
+            expected: expected.to_string(),
+            span: node.span.into(),
+          });
+        }
+      },
     }
-    return None;
-  });
+  }
+  return Ok(views);
 }
 
 #[cfg(test)]
@@ -59,22 +110,59 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  #[test]
-  fn iter_command_calls_yields_only_command_calls() {
-    // \begin{itemize} の body には \item の CommandCall とテキストが混在するが、
-    // iter_command_calls は CommandCall だけを返す
-    let arena = Bump::new();
-    let source = r"\begin{itemize}\item{A}some text\item{B}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
-
+  /// テスト用: ソース中の最初の Environment ノードの body を取得する
+  fn first_env_body<'a>(cst: &'a syntax::green::GreenNode<'a>) -> &'a syntax::green::GreenNode<'a> {
     let env = cst.children.iter().find_map(|c| match c {
       syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
       _ => None,
     });
     let env = env.expect("Environment ノードが期待されます");
-    let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+    return env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+  }
 
-    let names: Vec<&str> = iter_command_calls(source, body).map(|v| v.name()).collect();
+  #[test]
+  fn strict_scan_collects_allowed_commands() {
+    // Arrange — body には \item だけが並ぶ（間のトリビアはスキップされる）
+    let arena = Bump::new();
+    let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+    let body = first_env_body(cst);
+
+    // Act
+    let views = strict_command_calls(source, body, "itemize", &["item"], "\\item").unwrap();
+
+    // Assert
+    let names: Vec<&str> = views.iter().map(syntax::ast::CommandView::name).collect();
     assert_eq!(names, vec!["item", "item"]);
+  }
+
+  #[test]
+  fn strict_scan_rejects_stray_text() {
+    // Arrange — body 直下のテキストは以前は黙って捨てられていた
+    let arena = Bump::new();
+    let source = r"\begin{itemize}some text\item{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+    let body = first_env_body(cst);
+
+    // Act
+    let result = strict_command_calls(source, body, "itemize", &["item"], "\\item");
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnexpectedContentInEnvironment { ref env, .. }) if env == "itemize"));
+  }
+
+  #[test]
+  fn strict_scan_rejects_disallowed_command() {
+    // Arrange — itemize 内の \textbf は許可リスト外
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\textbf{x}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+    let body = first_env_body(cst);
+
+    // Act
+    let result = strict_command_calls(source, body, "itemize", &["item"], "\\item");
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "textbf"));
   }
 }

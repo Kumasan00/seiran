@@ -9,7 +9,7 @@
 //! 数式ノード変換（[`crate::evaluator::math`] モジュール）からも参照される。
 
 use syntax::{
-  ast::{CommandView, extract_text_content},
+  ast::{CommandView, EnvironmentView},
   green::{GreenElement, GreenNode},
   kind::SyntaxKind,
   token::TokenKind,
@@ -19,7 +19,7 @@ use crate::{
   document::InlineNode,
   evaluator::{
     EvalError,
-    command::{COMMAND_MAP, CommandKind},
+    command::{COMMAND_MAP, CommandKind, inline::inline_wrapper, ref_::ref_command, single_char},
     math,
   },
 };
@@ -31,9 +31,13 @@ use crate::{
 /// [`COMMAND_MAP`] を **唯一のソース** として参照する。
 /// `InlineMath` ノードは `InlineNode::InlineMath` に変換します。
 ///
+/// インライン文脈に書けない要素は黙って無視せずエラーにする:
+/// 未知のコマンドは [`EvalError::UnknownCommand`]、ブロックコマンド（`\section` 等）と
+/// 環境は [`EvalError::BlockInInline`]、空行は [`EvalError::ParagraphBreakInArgument`]。
+///
 /// # Errors
 ///
-/// 数式中のスタイルコマンドが不正な引数数を持つ場合などに伝播します。
+/// 上記のほか、インラインコマンドの引数不足・過剰などでエラーを返します。
 pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec<InlineNode>, EvalError> {
   let mut inlines = Vec::new();
   for child in node.children {
@@ -49,6 +53,23 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec
         TokenKind::LineBreak => {
           inlines.push(InlineNode::LineBreak);
         },
+        // 数式外の `_` `^` `&` は本文（`evaluate_children`）と同様プレーンテキストとして扱う
+        TokenKind::Underscore => {
+          inlines.push(InlineNode::Text("_".to_string()));
+        },
+        TokenKind::Caret => {
+          inlines.push(InlineNode::Text("^".to_string()));
+        },
+        TokenKind::Ampersand => {
+          inlines.push(InlineNode::Text("&".to_string()));
+        },
+        TokenKind::ParagraphBreak => {
+          // 以前は黙って捨てられ前後のテキストが連結されていた
+          return Err(EvalError::ParagraphBreakInArgument {
+            span: token.span.into(),
+          });
+        },
+        // コメント・構造トークン（引数の括弧類）は無視
         _ => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
@@ -56,35 +77,42 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::InlineWrapper(wrapper)) => {
-              if let Some(arg) = view.first_arg() {
-                let children = extract_inline_nodes(source, arg)?;
-                inlines.push(wrapper(children));
-              }
+              // 引数の不足・過剰・未許可の任意引数はブロック文脈と同じ検証を通す
+              inlines.extend(inline_wrapper(&view, wrapper)?);
             },
             Some(CommandKind::SingleChar(ch)) => {
-              inlines.push(InlineNode::Symbol(ch));
+              inlines.extend(single_char(&view, ch)?);
             },
             Some(CommandKind::Ref) => {
               // 見出しタイトル・キャプション内に出現する `\ref{label}` も
               // pass1 ではスタブを生成し pass2 で解決する
-              if let Some(arg) = view.first_arg() {
-                let label = extract_text_content(source, arg).trim().to_string();
-                inlines.push(InlineNode::Ref {
-                  label,
-                  number: None,
-                  span: view.span().into(),
-                });
-              }
+              inlines.extend(ref_command(&view)?);
             },
-            _ => {
-              // 見出しの引数などインライン文脈に出現しない種類（Headline / Space / Undefined）は
-              // 黙って無視。エラーは `Evaluator::evaluate_command` 側で扱う。
+            Some(CommandKind::Headline(_) | CommandKind::Space) => {
+              return Err(EvalError::BlockInInline {
+                what: format!("\\{}", view.name()),
+                span: view.span().into(),
+              });
+            },
+            Some(CommandKind::Undefined) | None => {
+              return Err(EvalError::UnknownCommand {
+                name: view.name().to_string(),
+                span: view.span().into(),
+              });
             },
           }
         },
         SyntaxKind::InlineMath => {
           let math_nodes = math::evaluate_inline_math(source, child_node)?;
           inlines.push(InlineNode::InlineMath(math_nodes));
+        },
+        SyntaxKind::Environment => {
+          // 引数内の環境（`\textbf{\begin{itemize}...}` 等）は黙って捨てずエラーにする
+          let view = EnvironmentView::new(child_node, source);
+          return Err(EvalError::BlockInInline {
+            what: format!("環境 {}", view.name()),
+            span: child_node.span.into(),
+          });
         },
         SyntaxKind::Group => {
           // グループの中身を再帰的に処理

@@ -23,7 +23,6 @@ use thiserror::Error;
 /// `miette::NamedSource` と組み合わせることでソースコード付きの
 /// エラー表示が可能です。
 #[derive(Debug, Error, Diagnostic)]
-#[allow(dead_code)]
 pub enum EvalError {
   /// コマンドの必須引数が不足している場合
   #[error("コマンド \\{name} の引数が不足しています（必要: {expected}）")]
@@ -170,6 +169,105 @@ pub enum EvalError {
     label: String,
     /// `\ref{...}` のソース位置
     #[label("このラベルは未定義です")]
+    span: SourceSpan,
+  },
+
+  /// 同じラベル名が複数回定義された場合
+  #[error("ラベルが重複しています: {label}")]
+  #[diagnostic(code(parser::eval::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
+  DuplicateLabel {
+    /// 重複したラベル名
+    label: String,
+    /// 2 回目に定義したコマンド / 環境のソース位置
+    #[label("このラベルは既に定義されています")]
+    span: SourceSpan,
+  },
+
+  /// インライン文脈（見出しタイトル・キャプション・インライン装飾の引数）に
+  /// ブロックレベルの要素が出現した場合
+  #[error("インライン文脈では使用できません: {what}")]
+  #[diagnostic(
+    code(parser::eval::block_in_inline),
+    help("見出し・環境などのブロック要素は本文の直下にのみ書けます")
+  )]
+  BlockInInline {
+    /// 出現した要素の説明（例: `\section`、`環境 itemize`）
+    what: String,
+    /// 要素のソース位置
+    #[label("この要素はインライン文脈では使用できません")]
+    span: SourceSpan,
+  },
+
+  /// コマンドの引数内に空行（段落区切り）が出現した場合
+  #[error("コマンドの引数内に空行（段落区切り）を含めることはできません")]
+  #[diagnostic(code(parser::eval::paragraph_break_in_argument), help("引数内の文章は 1 段落に収めてください"))]
+  ParagraphBreakInArgument {
+    /// 空行のソース位置
+    #[label("ここに空行があります")]
+    span: SourceSpan,
+  },
+
+  /// 数式内でサポートされない要素が出現した場合
+  #[error("数式内では使用できません: {what}")]
+  #[diagnostic(
+    code(parser::eval::unsupported_in_math),
+    help("数式内で使用できるのは数式コマンド・グループ・上付き / 下付きのみです")
+  )]
+  UnsupportedInMath {
+    /// 出現した要素の説明（例: `\\（強制改行）`、`環境 itemize`）
+    what: String,
+    /// 要素のソース位置
+    #[label("この要素は数式内では使用できません")]
+    span: SourceSpan,
+  },
+
+  /// 環境の本体に許可されていないコマンドが出現した場合
+  #[error("環境 {env} 内で許可されていないコマンドです: \\{name}")]
+  #[diagnostic(
+    code(parser::eval::unexpected_command_in_environment),
+    help("環境 {env} の本体に書けるのは {expected} のみです")
+  )]
+  UnexpectedCommandInEnvironment {
+    /// 環境名
+    env: String,
+    /// 出現したコマンド名
+    name: String,
+    /// 許可されているコマンドの説明
+    expected: String,
+    /// コマンドのソース位置
+    #[label("このコマンドはここでは使用できません")]
+    span: SourceSpan,
+  },
+
+  /// 環境の本体に直接テキスト等のコンテンツが書かれた場合
+  #[error("環境 {env} 内に直接コンテンツを書くことはできません")]
+  #[diagnostic(
+    code(parser::eval::unexpected_content_in_environment),
+    help("環境 {env} の本体に書けるのは {expected} のみです")
+  )]
+  UnexpectedContentInEnvironment {
+    /// 環境名
+    env: String,
+    /// 許可されているコマンドの説明
+    expected: String,
+    /// コンテンツのソース位置
+    #[label("このコンテンツはここでは使用できません")]
+    span: SourceSpan,
+  },
+
+  /// 環境内で 1 回しか使えないコマンドが複数回出現した場合
+  #[error("環境 {env} 内でコマンド \\{name} を複数回使用することはできません")]
+  #[diagnostic(
+    code(parser::eval::duplicate_command_in_environment),
+    help("環境 {env} には \\{name} を 1 回だけ書けます")
+  )]
+  DuplicateCommandInEnvironment {
+    /// 環境名
+    env: String,
+    /// 重複したコマンド名
+    name: String,
+    /// 2 回目のコマンドのソース位置
+    #[label("2 回目の使用です")]
     span: SourceSpan,
   },
 }

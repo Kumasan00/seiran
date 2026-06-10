@@ -1,8 +1,9 @@
 //! 図環境 — `figure`
 //!
 //! `\begin{figure}...\end{figure}` を [`DocNode::Figure`] に変換します。
-//! 本体には `\image` と `\caption` を 1 つずつ持つことを想定し、
-//! それ以外のコマンド・テキストは無視します。
+//! 本体には `\image`（必須）と `\caption`（任意）をそれぞれ 1 つだけ書けます。
+//! それ以外のコマンド・テキスト、および `\image` / `\caption` の重複は
+//! 黙って無視せずエラーとして報告します。
 //!
 //! ## 任意引数
 //!
@@ -48,8 +49,20 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
   });
 
   let number = evaluator.registry.increment(CounterName::Figure);
-  if let Some(l) = &label {
-    evaluator.registry.register_label(l.clone(), CounterName::Figure, &number);
+  if let Some(l) = &label
+    && !evaluator.registry.register_label(l.clone(), CounterName::Figure, &number)
+  {
+    return Err(EvalError::DuplicateLabel {
+      label: l.clone(),
+      span: view.span().into(),
+    });
+  }
+
+  if !view.args().is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: "figure".to_string(),
+      span: view.span().into(),
+    });
   }
 
   let source = view.source();
@@ -63,9 +76,19 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for cmd_view in body_scan::iter_command_calls(source, body) {
+    for cmd_view in
+      body_scan::strict_command_calls(source, body, "figure", &["image", "caption"], "\\image と \\caption")?
+    {
       match cmd_view.name() {
         "image" => {
+          if image_path.is_some() {
+            // 以前は 2 つ目の \image が黙って 1 つ目を上書きしていた
+            return Err(EvalError::DuplicateCommandInEnvironment {
+              env: "figure".to_string(),
+              name: "image".to_string(),
+              span: cmd_view.span().into(),
+            });
+          }
           let extracted = extract_image(&cmd_view)?;
           image_path = Some(extracted.path);
           width = extracted.width;
@@ -74,13 +97,20 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
           downsample = extracted.downsample;
         },
         "caption" => {
+          if caption.is_some() {
+            return Err(EvalError::DuplicateCommandInEnvironment {
+              env: "figure".to_string(),
+              name: "caption".to_string(),
+              span: cmd_view.span().into(),
+            });
+          }
           // image 抽出より先に caption が現れた場合は Top 配置
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
           caption = Some(extract_caption(&cmd_view)?);
         },
-        _ => {},
+        _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
     }
   }
@@ -186,6 +216,13 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
   }
 
   let path = extract_text_content(view.source(), first_arg).trim().to_string();
+  if path.is_empty() {
+    return Err(EvalError::InvalidCommandArgument {
+      name: "image".to_string(),
+      reason: "画像ファイルのパスが空です".to_string(),
+      span: view.span().into(),
+    });
+  }
 
   return Ok(ImageArgs {
     path,

@@ -194,23 +194,6 @@ fn lower_math_node(
       result.extend(lower_math_node(radicand.as_ref(), font_size, style, math_style));
       return result;
     },
-    MathNode::Command { name, args } => {
-      // 未解決の数式コマンドはコマンド名と引数をリテラル表示してデバッグしやすくする
-      let literal_style = TextStyle {
-        font_size,
-        font_kind: FontKind::Math,
-      };
-      let mut result = Vec::new();
-      result.push(LayoutNode::Text(format!("\\{name}"), literal_style));
-      for arg in args {
-        result.push(LayoutNode::Text("{".to_string(), literal_style));
-        for child in arg {
-          result.extend(lower_math_node(child, font_size, style, math_style));
-        }
-        result.push(LayoutNode::Text("}".to_string(), literal_style));
-      }
-      return result;
-    },
     MathNode::Styled {
       style: inner_style,
       body,

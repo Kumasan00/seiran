@@ -34,10 +34,21 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
     ("label", OptValue::String(s)) => Some(s),
     _ => None,
   });
+  if !view.args().is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: "equation".to_string(),
+      span: view.span().into(),
+    });
+  }
 
   let number = evaluator.registry.increment(CounterName::Equation);
-  if let Some(l) = &label {
-    evaluator.registry.register_label(l.clone(), CounterName::Equation, &number);
+  if let Some(l) = &label
+    && !evaluator.registry.register_label(l.clone(), CounterName::Equation, &number)
+  {
+    return Err(EvalError::DuplicateLabel {
+      label: l.clone(),
+      span: view.span().into(),
+    });
   }
 
   let source = view.source();

@@ -356,13 +356,6 @@ pub enum MathNode {
   Text(String),
   /// 数式記号（`\alpha`, `+`, `=` 等）
   Symbol(char),
-  /// 数式内コマンド（`\frac`, `\sqrt` 等のコマンド名を保持）
-  Command {
-    /// コマンド名
-    name: String,
-    /// 必須引数
-    args: Vec<Vec<MathNode>>,
-  },
   /// 中括弧グループ（`{...}`）
   Group(Vec<MathNode>),
   /// 上付き（`x^2`）
@@ -707,24 +700,6 @@ mod tests {
     let sub = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
     assert_eq!(sup, MathNode::Superscript(Box::new(MathNode::Text("2".to_string()))));
     assert_eq!(sub, MathNode::Subscript(Box::new(MathNode::Text("i".to_string()))));
-  }
-
-  #[test]
-  fn math_node_command() {
-    let node = MathNode::Command {
-      name: "frac".to_string(),
-      args: vec![
-        vec![MathNode::Text("a".to_string())],
-        vec![MathNode::Text("b".to_string())],
-      ],
-    };
-    match &node {
-      MathNode::Command { name, args } => {
-        assert_eq!(name, "frac");
-        assert_eq!(args.len(), 2);
-      },
-      _ => panic!("Command が期待されます"),
-    }
   }
 
   #[test]

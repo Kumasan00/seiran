@@ -146,16 +146,25 @@ impl CounterRegistry {
   ///
   /// 渡された `number`（裸の番号）にカウンタの `ref_format` を適用し、`\ref` 時の表示
   /// 文字列を作って保存する（例: `"1.2"` → `"Section 1.2"`、`"({number})"` 形式なら `"(1.2)"`）。
-  pub fn register_label(&mut self, label: impl Into<String>, counter: CounterName, number: impl Into<String>) {
+  ///
+  /// 同名ラベルが登録済みの場合は上書きせず `false` を返す。呼び出し側はこれを
+  /// [`EvalError::DuplicateLabel`] に変換して報告する（黙って上書きしない）。
+  #[must_use]
+  pub fn register_label(&mut self, label: impl Into<String>, counter: CounterName, number: impl Into<String>) -> bool {
+    let label = label.into();
+    if self.labels.contains_key(&label) {
+      return false;
+    }
     let def = &self.counters.get(counter).def;
     let formatted = expand_ref_format(&def.ref_format, &number.into(), &def.display_name);
     self.labels.insert(
-      label.into(),
+      label,
       ResolvedLabel {
         counter,
         number: formatted,
       },
     );
+    return true;
   }
 
   /// pass2 で `\ref{label}` を解決して番号文字列を返す
@@ -490,7 +499,7 @@ mod tests {
     let mut r = CounterRegistry::default_for_seiran();
     r.increment(CounterName::Chapter);
     let bare = r.format_number(CounterName::Chapter);
-    r.register_label("ch:intro", CounterName::Chapter, bare);
+    assert!(r.register_label("ch:intro", CounterName::Chapter, bare));
 
     assert_eq!(r.resolve_label("ch:intro"), Some("Chapter 1"));
   }
@@ -501,7 +510,7 @@ mod tests {
     let mut r = CounterRegistry::default_for_seiran();
     r.increment(CounterName::Chapter);
     let bare = r.increment(CounterName::Equation);
-    r.register_label("eq:foo", CounterName::Equation, bare);
+    assert!(r.register_label("eq:foo", CounterName::Equation, bare));
 
     assert_eq!(r.resolve_label("eq:foo"), Some("(1.1)"));
   }
@@ -538,7 +547,7 @@ mod tests {
     let mut registry = CounterRegistry::default_for_seiran();
     registry.increment(CounterName::Chapter);
     let number = registry.increment(CounterName::Section);
-    registry.register_label("sec:intro", CounterName::Section, &number);
+    assert!(registry.register_label("sec:intro", CounterName::Section, &number));
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "sec:intro".to_string(),
       number: None,
@@ -580,7 +589,7 @@ mod tests {
     // Arrange
     let mut registry = CounterRegistry::default_for_seiran();
     registry.increment(CounterName::Chapter);
-    registry.register_label("ch:intro", CounterName::Chapter, "1");
+    assert!(registry.register_label("ch:intro", CounterName::Chapter, "1"));
     let mut nodes = vec![DocNode::Heading {
       level: HeadingLevel::Section,
       number: "1.1".to_string(),
