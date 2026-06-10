@@ -130,6 +130,36 @@ impl FontType {
     FontType::JapaneseMonospace,
     FontType::JapaneseMonospaceBold,
   ];
+
+  /// TOML 設定ファイルでこのフォント種別を指すキー（`snake_case`）を返します。
+  ///
+  /// `[font_configs.<key>]` セクションのキーと一致し、診断メッセージで設定パスを
+  /// 表示する際の正規表記としても使用されます（`Debug` フォーマットは `PascalCase` で
+  /// ユーザの書いた TOML キーと一致しないため、エラーパスにはこちらを使ってください）。
+  #[must_use]
+  pub fn as_toml_key(&self) -> &'static str {
+    return match self {
+      FontType::Serif => "serif",
+      FontType::SerifBold => "serif_bold",
+      FontType::SerifItalic => "serif_italic",
+      FontType::SerifBoldItalic => "serif_bold_italic",
+      FontType::SansSerif => "sans_serif",
+      FontType::SansSerifBold => "sans_serif_bold",
+      FontType::SansSerifItalic => "sans_serif_italic",
+      FontType::SansSerifBoldItalic => "sans_serif_bold_italic",
+      FontType::Monospace => "monospace",
+      FontType::MonospaceBold => "monospace_bold",
+      FontType::MonospaceItalic => "monospace_italic",
+      FontType::MonospaceBoldItalic => "monospace_bold_italic",
+      FontType::Math => "math",
+      FontType::JapaneseSerif => "japanese_serif",
+      FontType::JapaneseSerifBold => "japanese_serif_bold",
+      FontType::JapaneseSansSerif => "japanese_sans_serif",
+      FontType::JapaneseSansSerifBold => "japanese_sans_serif_bold",
+      FontType::JapaneseMonospace => "japanese_monospace",
+      FontType::JapaneseMonospaceBold => "japanese_monospace_bold",
+    };
+  }
 }
 
 /// フォントのスタイル分類（Latin / 日本語 判定前）

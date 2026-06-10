@@ -10,7 +10,7 @@
 //! ```text
 //! config.toml（TOML テキスト）
 //!   ↓
-//! toml::from_slice()（デシリアライズ）
+//! toml::from_str()（デシリアライズ）
 //!   ↓
 //! PreConfig（TOML そのものの構造）
 //!   ↓ garde::Validate（範囲・長さ・相互制約の検証）
@@ -516,7 +516,7 @@ pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Ve
     let name = value.get(font_type).font_name.as_str();
     if !seen.insert(name) {
       errors.push(ValidationError::Field {
-        path: format!("font_configs.{font_type:?}"),
+        path: format!("font_configs.{}", font_type.as_toml_key()),
         message: format!("フォント名 '{name}' が重複しています"),
       });
     }
@@ -533,7 +533,7 @@ pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors:
     let cfg = value.get(font_type);
     if cfg.ot_language.is_some() && cfg.script.is_none() {
       errors.push(ValidationError::Field {
-        path: format!("font_configs.{font_type:?}"),
+        path: format!("font_configs.{}", font_type.as_toml_key()),
         message: "ot_language を指定する場合は script も指定する必要があります".to_string(),
       });
     }

@@ -9,7 +9,7 @@ use std::{
 };
 
 use garde::Validate;
-use miette::Diagnostic;
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use tracing::{info, warn};
 use types::FontType;
@@ -17,6 +17,9 @@ use types::FontType;
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
 mod processed_config;
+
+#[doc(hidden)]
+pub mod test_support;
 
 pub use processed_config::{
   Config, DocumentConfig, Feature, FontConfig, FontConfigs, Margin, OutputConfig, PdfConfig, TextDirection,
@@ -35,31 +38,20 @@ pub enum ReadConfigError {
     source: std::io::Error,
   },
   /// TOML 解析失敗
-  #[error("設定ファイルの TOML 解析に失敗しました: {path}")]
+  ///
+  /// `toml::de::Error` 自身も `Display` で line/column の自前スニペットを描画するため、
+  /// miette の `#[label]` と二重に出ないよう `parse_config` 内で `set_input(None)` により
+  /// 内蔵 input をクリアして抑止する。位置表示は miette の `#[source_code]` + `#[label]` に
+  /// 一本化する。
+  #[error("設定ファイルの TOML 解析に失敗しました")]
   #[diagnostic(code(config::parse_toml), help("TOML の構文を確認してください。"))]
   ParseToml {
-    path: String,
+    #[source_code]
+    src: NamedSource<String>,
+    #[label("ここ")]
+    span: SourceSpan,
     #[source]
     source: toml::de::Error,
-  },
-  /// 出力ディレクトリの作成失敗
-  #[error("出力ディレクトリを作成できませんでした: {path}")]
-  #[diagnostic(
-    code(config::create_output_dir),
-    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
-  )]
-  CreateOutputDir {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
-  /// 出力ディレクトリのパス正規化失敗
-  #[error("出力ディレクトリのパスを正規化できませんでした: {path}")]
-  #[diagnostic(code(config::canonicalize_output_dir), help("指定したディレクトリが存在するか確認してください。"))]
-  CanonicalizeOutputDir {
-    path: String,
-    #[source]
-    source: std::io::Error,
   },
   /// カレントディレクトリの取得失敗
   #[error("カレントディレクトリを取得できませんでした。")]
@@ -129,6 +121,39 @@ pub enum ValidationError {
     #[source]
     source: std::io::Error,
   },
+  /// 出力ディレクトリの作成失敗
+  #[error("出力ディレクトリを作成できませんでした: {path}")]
+  #[diagnostic(
+    code(config::validation::create_output_dir),
+    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
+  )]
+  CreateOutputDir {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+  /// 出力ディレクトリのパス正規化失敗
+  #[error("出力ディレクトリのパスを正規化できませんでした: {path}")]
+  #[diagnostic(
+    code(config::validation::canonicalize_output_dir),
+    help("指定したディレクトリが存在するか確認してください。")
+  )]
+  CanonicalizeOutputDir {
+    path: String,
+    #[source]
+    source: std::io::Error,
+  },
+}
+
+/// 読み取り I/O フェーズで集約する解決済みパス群。
+///
+/// [`resolve_paths`] がフォント・ソース・スタイル・参照の各パスを `canonicalize` し、
+/// 成功したものはここに詰め、失敗したものは別途返す [`Vec<ValidationError>`] に集約します。
+struct ResolvedPaths {
+  font_configs: Vec<FontConfig>,
+  sources: Vec<PathBuf>,
+  style_path: Option<PathBuf>,
+  references_path: Option<PathBuf>,
 }
 
 /// 指定パスから設定ファイルを読み込みます。
@@ -138,9 +163,12 @@ pub enum ValidationError {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
+// `ReadConfigError::ParseToml` が `NamedSource<String>` を保持して Result サイズが拡大するため
+// allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
+#[allow(clippy::result_large_err)]
 pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
   info!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
-  let config_content = fs::read(config_path).map_err(|source| ReadConfigError::ReadFile {
+  let config_content = fs::read_to_string(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),
     source,
   })?;
@@ -157,7 +185,7 @@ pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
   return Ok(config);
 }
 
-/// TOML バイト列を [`PreConfig`] にパースします（I/O なし）。
+/// TOML 文字列を [`PreConfig`] にパースします（I/O なし）。
 ///
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証は [`validate_values`] または [`resolve`] で実行します。
@@ -165,53 +193,58 @@ pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
 /// # Errors
 ///
 /// TOML の構文が不正な場合に [`ReadConfigError::ParseToml`] を返します。
-fn parse_config(bytes: &[u8], source_path: &Path) -> Result<PreConfig, ReadConfigError> {
-  return toml::from_slice(bytes).map_err(|source| ReadConfigError::ParseToml {
-    path: source_path.display().to_string(),
-    source,
+#[allow(clippy::result_large_err)]
+fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConfigError> {
+  return toml::from_str(content).map_err(|mut source| {
+    let span = source.span().map_or_else(
+      || SourceSpan::new(0.into(), 0),
+      |range| SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
+    );
+    // toml::de::Error::Display は input が設定されていると line/column の自前スニペットを描画する。
+    // miette の #[label] と二重に位置情報が出るため、ここで input をクリアして抑止する。
+    source.set_input(None);
+    return ReadConfigError::ParseToml {
+      src: NamedSource::new(source_path.display().to_string(), content.to_string()),
+      span,
+      source,
+    };
   });
 }
 
 /// [`PreConfig`] からパス解決・出力ディレクトリ作成を行い [`Config`] を構築します。
 ///
-/// 値検証も内部で再実行し、値違反とパス解決エラーを 1 回の
-/// [`ReadConfigError::MultipleValidationErrors`] に集約します。
+/// 純粋値検証 → 読み取り I/O（パス解決）→ 書き込み I/O（出力ディレクトリ作成）の順で
+/// 3 フェーズに分かれており、各フェーズのエラーはすべて
+/// [`ReadConfigError::MultipleValidationErrors`] に集約されます。読み取りフェーズで失敗が
+/// あった場合は書き込みフェーズをスキップし、副作用を最小化します。
 ///
 /// # Errors
 ///
-/// - 値検証またはパス解決に違反があった場合は [`ReadConfigError::MultipleValidationErrors`]
-/// - 出力ディレクトリ作成・正規化に失敗した場合は [`ReadConfigError::CreateOutputDir`] または
-///   [`ReadConfigError::CanonicalizeOutputDir`]
+/// 値検証・パス解決・出力ディレクトリ作成のいずれかに違反があった場合は
+/// [`ReadConfigError::MultipleValidationErrors`] を返します。
+#[allow(clippy::result_large_err)]
 fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError> {
-  // 値検証エラーとパス解決エラーを単一の `errors` に集約して 1 度に報告する。
   let mut errors: Vec<ValidationError> = match validate_values(&pre) {
     Ok(()) => Vec::new(),
     Err(value_errors) => value_errors,
   };
 
-  let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
-    ValidationError::StylePathResolution { path, source }
-  });
-  let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
-    ValidationError::ReferencesPathResolution { path, source }
-  });
-
-  let mut font_configs_vec: Vec<FontConfig> = Vec::with_capacity(FontType::ALL.len());
-  for font_type in FontType::ALL {
-    match to_font_config(font_type, pre.font_configs.get(font_type)) {
-      Ok(font_config) => font_configs_vec.push(font_config),
-      Err(error) => errors.push(error),
-    }
-  }
-
-  // sources パスの正規化を試行（失敗はバリデーションエラーに集約）
-  let resolved_sources = canonicalize_sources(&pre.sources, current_dir, &mut errors);
+  let (resolved, path_errors) = resolve_paths(&pre, current_dir);
+  errors.extend(path_errors);
 
   if !errors.is_empty() {
     return Err(ReadConfigError::MultipleValidationErrors { errors });
   }
 
-  // 副作用フェーズ: 検証通過後にディレクトリ作成や正規化を実行する
+  let output_dir = match build_output_dir(current_dir, pre.output.output_dir.as_deref()) {
+    Ok(dir) => dir,
+    Err(error) => {
+      return Err(ReadConfigError::MultipleValidationErrors {
+        errors: vec![error],
+      });
+    },
+  };
+
   let PreConfig {
     document: pre_document,
     output: pre_output,
@@ -222,8 +255,7 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
     references_path: _,
   } = pre;
 
-  let output_dir = build_output_dir(current_dir, pre_output.output_dir.as_deref())?;
-  let font_configs = FontConfigs::from_all(font_configs_vec);
+  let font_configs = FontConfigs::from_all(resolved.font_configs);
 
   return Ok(Config {
     document: DocumentConfig {
@@ -249,9 +281,9 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
       },
     },
     font_configs,
-    sources: resolved_sources,
-    style_path,
-    references_path,
+    sources: resolved.sources,
+    style_path: resolved.style_path,
+    references_path: resolved.references_path,
   });
 }
 
@@ -278,6 +310,42 @@ fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
     return Ok(());
   }
   return Err(errors);
+}
+
+/// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを解決します。
+///
+/// 各パスを独立に `canonicalize` し、解決できたものは [`ResolvedPaths`] に詰め、失敗した
+/// ものは [`ValidationError`] として集約して返します。書き込み I/O は行わないため、ここで
+/// 失敗があっても呼び出し側が安全に中断できます。
+fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<ValidationError>) {
+  let mut errors: Vec<ValidationError> = Vec::new();
+
+  let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
+    ValidationError::StylePathResolution { path, source }
+  });
+  let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
+    ValidationError::ReferencesPathResolution { path, source }
+  });
+
+  let mut font_configs: Vec<FontConfig> = Vec::with_capacity(FontType::ALL.len());
+  for font_type in FontType::ALL {
+    match to_font_config(font_type, pre.font_configs.get(font_type)) {
+      Ok(font_config) => font_configs.push(font_config),
+      Err(error) => errors.push(error),
+    }
+  }
+
+  let sources = canonicalize_sources(&pre.sources, current_dir, &mut errors);
+
+  return (
+    ResolvedPaths {
+      font_configs,
+      sources,
+      style_path,
+      references_path,
+    },
+    errors,
+  );
 }
 
 /// オプションのパスを `canonicalize` し、失敗時はエラーを `errors` に追加します。
@@ -415,21 +483,23 @@ fn parse_text_direction(s: &str) -> TextDirection {
   };
 }
 
-/// 出力ディレクトリを作成・正規化し、絶対パスを返します。
+/// 書き込み I/O フェーズ: 出力ディレクトリを作成・正規化し、絶対パスを返します。
 ///
 /// `output_dir` が `None` の場合は `current_dir` をそのまま出力先とします（カレント直下に出力）。
 /// 実際の PDF パス（`{output_dir}/{name}.pdf`）は [`OutputConfig::pdf_path`] が組み立てます。
-fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ReadConfigError> {
+/// エラーは [`ValidationError`] として返し、呼び出し側で他の検証エラーと同じ
+/// [`ReadConfigError::MultipleValidationErrors`] に集約します。
+fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ValidationError> {
   let output_dir_path = match output_dir {
     Some(path) if path.is_absolute() => path.to_path_buf(),
     Some(path) => current_dir.join(path),
     None => current_dir.to_path_buf(),
   };
-  fs::create_dir_all(&output_dir_path).map_err(|source| ReadConfigError::CreateOutputDir {
+  fs::create_dir_all(&output_dir_path).map_err(|source| ValidationError::CreateOutputDir {
     path: output_dir_path.display().to_string(),
     source,
   })?;
-  let canonical = output_dir_path.canonicalize().map_err(|source| ReadConfigError::CanonicalizeOutputDir {
+  let canonical = output_dir_path.canonicalize().map_err(|source| ValidationError::CanonicalizeOutputDir {
     path: output_dir_path.display().to_string(),
     source,
   })?;
@@ -438,53 +508,12 @@ fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<Pat
 
 #[cfg(test)]
 mod tests {
-  use std::{fmt::Write as _, path::Path};
+  use std::path::Path;
 
   use super::{
     ReadConfigError, ValidationError, build_language_string, normalize_ot_language_tag, parse_config, validate_values,
   };
-
-  /// 19 フォント種別すべての設定セクションを生成するヘルパー。
-  fn make_font_sections(font_path: &str) -> String {
-    const SECTION_NAMES: [&str; 19] = [
-      "serif",
-      "serif_bold",
-      "serif_italic",
-      "serif_bold_italic",
-      "sans_serif",
-      "sans_serif_bold",
-      "sans_serif_italic",
-      "sans_serif_bold_italic",
-      "monospace",
-      "monospace_bold",
-      "monospace_italic",
-      "monospace_bold_italic",
-      "math",
-      "japanese_serif",
-      "japanese_serif_bold",
-      "japanese_sans_serif",
-      "japanese_sans_serif_bold",
-      "japanese_monospace",
-      "japanese_monospace_bold",
-    ];
-    let mut out = String::new();
-    for name in SECTION_NAMES {
-      write!(out, "[font_configs.{name}]\nfont_name = \"font_{name}\"\nfont_path = \"{font_path}\"\n\n").unwrap();
-    }
-    return out;
-  }
-
-  /// 既定の `[output]` セクション（妥当な値）を生成します。
-  fn valid_output_section(name: &str, output_dir: &str) -> String {
-    return format!("[output]\nname = \"{name}\"\noutput_dir = \"{output_dir}\"\n\n");
-  }
-
-  /// 既定の `[pdf]` セクション（妥当な値）を生成します。
-  fn valid_pdf_section() -> String {
-    return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-            margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n"
-      .to_string();
-  }
+  use crate::test_support::{make_font_sections, valid_output_section, valid_pdf_section};
 
   /// `parse_config` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
@@ -492,10 +521,37 @@ mod tests {
   #[test]
   fn parse_config_fails_on_invalid_toml_syntax() {
     // Arrange / Act
-    let result = parse_config(b"name = \nthis is not valid toml", dummy_source());
+    let result = parse_config("name = \nthis is not valid toml", dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_toml_error_records_span_and_suppresses_inner_display_input() {
+    // Arrange: クォート抜けの不正な TOML
+    let invalid_toml = "name = bad\n";
+
+    // Act
+    let err = parse_config(invalid_toml, dummy_source()).unwrap_err();
+
+    // Assert
+    let ReadConfigError::ParseToml {
+      src: _,
+      span,
+      source,
+    } = err
+    else {
+      panic!("expected ParseToml variant");
+    };
+    // span が文字列内の位置を指していること（先頭固定でない / 何らかの正の幅を持つ）
+    assert!(span.offset() > 0 || !span.is_empty(), "span must point at the syntax issue, got {span:?}");
+    // set_input(None) により toml の Display 側の自前 line/column スニペットが消えている
+    let rendered = source.to_string();
+    assert!(
+      !rendered.contains("TOML parse error at line"),
+      "set_input(None) should suppress toml's built-in snippet, but got: {rendered}"
+    );
   }
 
   #[test]
@@ -507,7 +563,7 @@ mod tests {
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();
@@ -528,7 +584,7 @@ mod tests {
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();
@@ -548,7 +604,7 @@ mod tests {
       "[font_configs.serif_bold]\nfont_name = \"font_serif\"",
     );
     let toml = format!("{}{}{sections}", valid_output_section("test", "out"), valid_pdf_section());
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();
@@ -561,7 +617,7 @@ mod tests {
         _ => None,
       })
       .expect("expected duplicate font name error");
-    assert!(dup_path.contains("SerifBold"), "path should contain FontType, got: {dup_path}");
+    assert_eq!(dup_path, "font_configs.serif_bold");
   }
 
   #[test]
@@ -573,7 +629,7 @@ mod tests {
        margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
       make_font_sections("dummy.ttf"),
     );
-    let result = parse_config(toml.as_bytes(), dummy_source());
+    let result = parse_config(&toml, dummy_source());
     assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
   }
 
@@ -586,7 +642,7 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
     let errors = validate_values(&pre).unwrap_err();
     assert!(errors.iter().any(|error| matches!(
       error,
@@ -599,7 +655,7 @@ mod tests {
     // `sources` キー自体を省略しても、空配列扱いで同じエラーになる
     let toml =
       format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
     let errors = validate_values(&pre).unwrap_err();
     assert!(errors.iter().any(|error| matches!(
       error,
@@ -612,7 +668,7 @@ mod tests {
     // Arrange: output_dir = "" は明示的に拒否
     let toml =
       format!("{}{}{}", valid_output_section("test", ""), valid_pdf_section(), make_font_sections("dummy.ttf"));
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();
@@ -624,17 +680,6 @@ mod tests {
     )));
   }
 
-  /// `[font_configs.serif]` セクションに任意のフィールド追加行を差し込んだ TOML を生成します。
-  ///
-  /// `extra_lines` には `font_name` / `font_path` 以外のフィールド（例: `language = "ja-JP"`）を
-  /// 改行区切りで指定します。
-  fn font_sections_with_serif_extra(font_path: &str, extra_lines: &str) -> String {
-    let base = make_font_sections(font_path);
-    let needle = "[font_configs.serif]\nfont_name = \"font_serif\"\nfont_path = \"";
-    let injected_marker = format!("[font_configs.serif]\nfont_name = \"font_serif\"\n{extra_lines}\nfont_path = \"");
-    return base.replace(needle, &injected_marker);
-  }
-
   /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_values` を通した結果を返します。
   ///
   /// `validate_values` は I/O を行わないので、`sources` のパスは実在しなくても構わない
@@ -644,9 +689,9 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      font_sections_with_serif_extra("dummy.ttf", extra_lines),
+      crate::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
     return validate_values(&pre);
   }
 
@@ -757,7 +802,7 @@ mod tests {
     assert!(errors.iter().any(|error| matches!(
       error,
       ValidationError::Field { path, message }
-        if path.contains("Serif") && message.contains("ot_language") && message.contains("script")
+        if path == "font_configs.serif" && message.contains("ot_language") && message.contains("script")
     )));
   }
 
@@ -825,7 +870,7 @@ mod tests {
         valid_pdf_section(),
         make_font_sections("dummy.ttf"),
       );
-      let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+      let pre = parse_config(&toml, dummy_source()).unwrap();
       assert!(validate_values(&pre).is_ok(), "expected document.language='{lang}' to be accepted");
     }
   }
@@ -839,7 +884,7 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();
@@ -860,7 +905,7 @@ mod tests {
       valid_pdf_section(),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(toml.as_bytes(), dummy_source()).unwrap();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
     let errors = validate_values(&pre).unwrap_err();

@@ -1,64 +1,12 @@
-//! `read_config` の統合テストで共有するフィクスチャ生成ヘルパ。
+//! 統合テスト専用のフィクスチャ生成ヘルパ
 //!
-//! `tests/` 配下のサブディレクトリは Cargo がテストターゲットとして拾わないため、
-//! `mod common;` で各統合テストから取り込んで利用します。
+//! 純文字列ヘルパ（`make_font_sections` 等）は `read_config::test_support` に集約済みで、
+//! ここではユニットテストでは不要な「実ファイル配置を伴う」ヘルパだけを保持します。
+//! `tempfile` を dev-dependency に閉じ込めるための分離です。
 
-use std::{fmt::Write as _, path::PathBuf};
+use std::path::PathBuf;
 
 use tempfile::TempDir;
-
-/// 19 フォント種別すべての設定セクションを生成するヘルパー。
-pub fn make_font_sections(font_path: &str) -> String {
-  const SECTION_NAMES: [&str; 19] = [
-    "serif",
-    "serif_bold",
-    "serif_italic",
-    "serif_bold_italic",
-    "sans_serif",
-    "sans_serif_bold",
-    "sans_serif_italic",
-    "sans_serif_bold_italic",
-    "monospace",
-    "monospace_bold",
-    "monospace_italic",
-    "monospace_bold_italic",
-    "math",
-    "japanese_serif",
-    "japanese_serif_bold",
-    "japanese_sans_serif",
-    "japanese_sans_serif_bold",
-    "japanese_monospace",
-    "japanese_monospace_bold",
-  ];
-  let mut out = String::new();
-  for name in SECTION_NAMES {
-    write!(out, "[font_configs.{name}]\nfont_name = \"font_{name}\"\nfont_path = \"{font_path}\"\n\n").unwrap();
-  }
-  return out;
-}
-
-/// 既定の `[output]` セクション（妥当な値）を生成します。
-pub fn valid_output_section(name: &str, output_dir: &str) -> String {
-  return format!("[output]\nname = \"{name}\"\noutput_dir = \"{output_dir}\"\n\n");
-}
-
-/// 既定の `[pdf]` セクション（妥当な値）を生成します。
-pub fn valid_pdf_section() -> String {
-  return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-          margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n"
-    .to_string();
-}
-
-/// `[font_configs.serif]` セクションに任意のフィールド追加行を差し込んだ TOML を生成します。
-///
-/// `extra_lines` には `font_name` / `font_path` 以外のフィールド（例: `language = "ja-JP"`）を
-/// 改行区切りで指定します。
-pub fn font_sections_with_serif_extra(font_path: &str, extra_lines: &str) -> String {
-  let base = make_font_sections(font_path);
-  let needle = "[font_configs.serif]\nfont_name = \"font_serif\"\nfont_path = \"";
-  let injected_marker = format!("[font_configs.serif]\nfont_name = \"font_serif\"\n{extra_lines}\nfont_path = \"");
-  return base.replace(needle, &injected_marker);
-}
 
 /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します。
 ///

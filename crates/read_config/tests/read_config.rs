@@ -4,13 +4,14 @@
 //! 純粋関数（`parse_config` / `validate_values` 等）のユニットテストは
 //! `src/lib.rs` の `#[cfg(test)] mod tests` 側に置いている。
 
-use read_config::{Config, ReadConfigError, TextDirection, ValidationError, read_config};
+use read_config::{
+  Config, ReadConfigError, TextDirection, ValidationError, read_config,
+  test_support::{font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section},
+};
 use types::FontType;
 
 mod common;
-use common::{
-  font_sections_with_serif_extra, make_font_sections, setup_config, valid_output_section, valid_pdf_section,
-};
+use common::setup_config;
 
 #[test]
 fn read_config_succeeds_with_valid_config() {
