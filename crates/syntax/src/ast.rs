@@ -199,7 +199,16 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+        // Underscore / Caret / Ampersand は数式外では意味を持たないため、
+        // ファイルパスや key=value（例: `rule_above`）の一部としてそのまま保持する
+        TokenKind::Text
+        | TokenKind::Whitespace
+        | TokenKind::Newline
+        | TokenKind::Comma
+        | TokenKind::Equals
+        | TokenKind::Underscore
+        | TokenKind::Caret
+        | TokenKind::Ampersand => {
           text.push_str(token.text(source));
         },
         TokenKind::Escaped => {

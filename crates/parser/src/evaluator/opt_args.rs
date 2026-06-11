@@ -156,7 +156,14 @@ fn parse_value(
       return Ok(OptValue::Number(v));
     },
     OptType::String => {
-      return Ok(OptValue::String(raw.to_string()));
+      // `columns="left center right"` のような囲み二重引用符は剥がして値だけを返す
+      let trimmed = raw.trim();
+      let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        &trimmed[1..trimmed.len() - 1]
+      } else {
+        trimmed
+      };
+      return Ok(OptValue::String(unquoted.to_string()));
     },
     OptType::Length => {
       let v = parse_length(raw).ok_or_else(|| invalid(name, key, expected, span))?;

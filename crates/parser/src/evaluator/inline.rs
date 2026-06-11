@@ -39,8 +39,24 @@ use crate::{
 ///
 /// 上記のほか、インラインコマンドの引数不足・過剰などでエラーを返します。
 pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec<InlineNode>, EvalError> {
+  return extract_inline_nodes_from_elements(source, node.children);
+}
+
+/// CST 要素のスライスから `InlineNode` のリストを構築する
+///
+/// [`extract_inline_nodes`] の本体。表の `\row{A & B}` のように引数の子要素を
+/// `&` で分割してから各セグメントをインライン評価するケースで、ノードを
+/// 構築せずスライスのまま評価するために公開している。
+///
+/// # Errors
+///
+/// [`extract_inline_nodes`] と同じ条件でエラーを返します。
+pub(crate) fn extract_inline_nodes_from_elements(
+  source: &str,
+  children: &[GreenElement],
+) -> Result<Vec<InlineNode>, EvalError> {
   let mut inlines = Vec::new();
-  for child in node.children {
+  for child in children {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {

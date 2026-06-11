@@ -36,8 +36,9 @@ mod layout_node;
 mod list;
 mod math;
 mod paragraph;
+mod table;
 
-pub use layout_node::{LayoutNode, TextStyle};
+pub use layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle};
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
 ///
@@ -168,6 +169,20 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
         downsample: *downsample,
       };
       return figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, number);
+    },
+    DocNode::Table {
+      columns,
+      widths,
+      head,
+      rows,
+      caption,
+      caption_position,
+      number,
+      breakable,
+      ..
+    } => {
+      let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
+      return table::lower_table(ctx, columns, widths, head, rows, caption_arg, number, *breakable);
     },
   }
 }

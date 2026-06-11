@@ -27,6 +27,9 @@ pub struct TableStyle {
   pub rule_thickness: Length,
   /// 罫線色。`None` は黒
   pub rule_color: Option<Color>,
+  /// セル内容の左右内側余白（各セルの両側に適用される）
+  #[garde(custom(non_negative))]
+  pub cell_padding: Length,
 }
 
 impl Default for TableStyle {
@@ -40,6 +43,7 @@ impl Default for TableStyle {
       bottom_margin: Length::pt(12.0),
       rule_thickness: Length::pt(0.5),
       rule_color: None,
+      cell_padding: Length::pt(4.0),
     };
   }
 }

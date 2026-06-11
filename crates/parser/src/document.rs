@@ -165,6 +165,36 @@ pub enum DocNode {
     number: String,
   },
 
+  /// 表環境（`\begin{table}...\end{table}`）
+  ///
+  /// 環境ハンドラが body 内の `\head` / `\row` / `\caption` を抽出して構造化する。
+  /// `columns` / `widths` は環境の任意引数 `columns="left center right"` /
+  /// `widths="auto auto 5cm"` のパース結果で、長さは列数に揃えられている
+  /// （未指定分は `ColumnAlign::Left` / `ColumnWidth::Auto` で埋める）。
+  /// `number` は `CounterRegistry::increment(CounterName::Table)` で発番された通し番号。
+  /// `caption_position` は `\caption` が最初の行（`\head` / `\row`）より前に
+  /// 書かれた場合 `Top`、それ以外は `Bottom`。
+  Table {
+    /// 列ごとの揃え方向（列数に正規化済み）
+    columns: Vec<ColumnAlign>,
+    /// 列ごとの幅指定（列数に正規化済み）
+    widths: Vec<ColumnWidth>,
+    /// ヘッダ行（`\head{...}` 内の `\row`）。改ページ時に再描画される
+    head: Vec<TableRow>,
+    /// 本体行（`\row{...}`）
+    rows: Vec<TableRow>,
+    /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
+    caption: Option<Vec<InlineNode>>,
+    /// キャプションを表本体の上下どちらに配置するか
+    caption_position: CaptionPosition,
+    /// `\ref{tab:foo}` 解決用ラベル（環境の任意引数 `[label=tab:foo]`）
+    label: Option<String>,
+    /// 評価時に発番された通し番号（プレーン文字列）
+    number: String,
+    /// 改ページによる分割を許可するか（`[breakable=false]` で禁止、既定 `true`）
+    breakable: bool,
+  },
+
   /// 罫線（描画線）
   Rule {
     /// 幅
@@ -226,6 +256,39 @@ pub enum CaptionPosition {
   Top,
   /// キャプションを本体の下に配置
   Bottom,
+}
+
+// =============================================================================
+// 表関連の型
+// =============================================================================
+
+/// 表の 1 行（`\row{...}` に対応）
+///
+/// ヘッダ行（`\head` 内）と本体行の双方で使われる。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableRow {
+  /// 行内のセル（ソース上の `&` 区切り、または `\cell[...]{...}`）
+  pub cells: Vec<TableCell>,
+  /// この行の上に横罫線を引くか（`\row[rule_above]{...}`）
+  pub rule_above: bool,
+}
+
+/// 表の 1 セル
+///
+/// 通常セル（`&` 区切りの内容）は `span = 1`。
+/// `\cell[span=N]{...}` で列方向の結合を指定できる。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableCell {
+  /// セルの内容（インライン要素）
+  pub content: Vec<InlineNode>,
+  /// 列方向の結合数（colspan、1 以上）
+  pub span: u32,
+}
+
+impl TableCell {
+  /// span = 1 の通常セルを生成する
+  #[must_use]
+  pub fn new(content: Vec<InlineNode>) -> Self { return TableCell { content, span: 1 }; }
 }
 
 // =============================================================================
@@ -326,7 +389,7 @@ pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
 // 見出し関連の型
 // =============================================================================
 
-pub use types::{HeadingLevel, Length};
+pub use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length};
 
 /// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
 ///

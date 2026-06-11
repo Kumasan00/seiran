@@ -36,7 +36,8 @@ use icu::properties::{
   script::ScriptWithExtensions,
 };
 use lazy_regex::regex_replace_all;
-use lowering::LayoutNode;
+pub use lowering::TableColumn;
+use lowering::{LayoutNode, TableLayout, TableRowLayout};
 use types::{FontKind, FontType, Length};
 
 /// レイアウトエンジンが生成する最小単位
@@ -93,6 +94,43 @@ pub enum BoxItem {
     /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
     target_dpi: Option<u32>,
   },
+  /// 表（シェーピング済みセルのグリッド）
+  ///
+  /// セル内容はシェーピング済みの `Item` 列として保持される。
+  /// 列幅の解決（自然幅の実測・残余分配）、罫線・行の描画、改ページ時の
+  /// ヘッダ再描画は `pdf_gen` 段で行う。
+  Table(TableBox),
+}
+
+/// 表ボックス（シェーピング済みの表全体）
+#[derive(Debug)]
+pub struct TableBox {
+  /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
+  pub columns: Vec<TableColumn>,
+  /// ヘッダ行。改ページ時にページ先頭へ再描画される
+  pub head: Vec<TableRowBox>,
+  /// 本体行
+  pub rows: Vec<TableRowBox>,
+  /// 改ページによる分割を許可するか
+  pub breakable: bool,
+}
+
+/// 表の 1 行（シェーピング済み）
+#[derive(Debug)]
+pub struct TableRowBox {
+  /// 行内のセル
+  pub cells: Vec<TableCellBox>,
+  /// この行の上に横罫線を引くか
+  pub rule_above: bool,
+}
+
+/// 表の 1 セル（シェーピング済み）
+#[derive(Debug)]
+pub struct TableCellBox {
+  /// セル内容のアイテム列（`Box(Text)` / `Kern` / `Glue` / `Raise` のみを想定）
+  pub items: Vec<Item>,
+  /// 列方向の結合数（colspan、1 以上）
+  pub span: u32,
 }
 
 /// シェーピング済みのグリフ列情報
@@ -273,8 +311,47 @@ fn layout_engine_inner(
         layout_engine_inner(children, shapers, buffer, items);
         items.push(Item::Raise(-offset));
       },
+      LayoutNode::Table(table) => {
+        // 各セルの内容を個別にシェーピングして表ボックスに詰める
+        items.push(Item::Box(BoxItem::Table(build_table_box(table, shapers, buffer))));
+      },
     }
   }
+}
+
+/// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
+fn build_table_box(table: TableLayout, shapers: &HarfRustShapers, buffer: &mut UnicodeBuffer) -> TableBox {
+  return TableBox {
+    columns: table.columns,
+    head: build_table_rows(table.head, shapers, buffer),
+    rows: build_table_rows(table.rows, shapers, buffer),
+    breakable: table.breakable,
+  };
+}
+
+/// 行のリストのセル内容をシェーピングして [`TableRowBox`] の列に変換する
+fn build_table_rows(
+  rows: Vec<TableRowLayout>,
+  shapers: &HarfRustShapers,
+  buffer: &mut UnicodeBuffer,
+) -> Vec<TableRowBox> {
+  let mut result = Vec::with_capacity(rows.len());
+  for row in rows {
+    let mut cells = Vec::with_capacity(row.cells.len());
+    for cell in row.cells {
+      let mut cell_items = Vec::new();
+      layout_engine_inner(cell.content, shapers, buffer, &mut cell_items);
+      cells.push(TableCellBox {
+        items: cell_items,
+        span: cell.span,
+      });
+    }
+    result.push(TableRowBox {
+      cells,
+      rule_above: row.rule_above,
+    });
+  }
+  return result;
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型

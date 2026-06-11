@@ -362,6 +362,21 @@ pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) ->
           resolve_list_item(item, registry)?;
         }
       },
+      DocNode::Table {
+        head,
+        rows,
+        caption,
+        ..
+      } => {
+        for row in head.iter_mut().chain(rows.iter_mut()) {
+          for cell in &mut row.cells {
+            resolve_inlines(&mut cell.content, registry)?;
+          }
+        }
+        if let Some(inlines) = caption {
+          resolve_inlines(inlines, registry)?;
+        }
+      },
       // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）
       DocNode::DisplayMath { .. }
       | DocNode::Figure { caption: None, .. }

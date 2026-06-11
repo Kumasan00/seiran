@@ -29,6 +29,7 @@ pub(crate) mod body_scan;
 mod equation;
 mod figure;
 mod itemize;
+mod table;
 
 /// 環境ハンドラの関数ポインタ型
 type EnvHandler = fn(&EnvironmentView, &mut Evaluator) -> Result<Vec<DocNode>, EvalError>;
@@ -56,6 +57,7 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::enumerate), display_name: "番号付きリスト" },
   "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(equation::equation), display_name: "数式" },
   "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),     display_name: "図" },
+  "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),       display_name: "表" },
 };
 
 /// 環境名から構文解析モードを引く

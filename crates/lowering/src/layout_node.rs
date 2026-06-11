@@ -15,7 +15,7 @@
 //! PDF bytes
 //! ```
 
-use types::{FontKind, Length};
+use types::{ColumnAlign, ColumnWidth, FontKind, Length};
 
 /// レイアウトエンジンが処理する最小単位
 ///
@@ -87,8 +87,57 @@ pub enum LayoutNode {
     offset: f32,
     children: Vec<LayoutNode>,
   },
+  /// 表（`table` 環境）
+  ///
+  /// セル内容はシェーピング前の `LayoutNode` のまま保持し、`layout` 段で
+  /// セルごとに `Item` 列へ変換される。列幅の解決（自然幅の実測・残余分配）と
+  /// 罫線・行の描画は `pdf_gen` 段で行う。
+  Table(TableLayout),
   LineBreak,
   PageBreak,
+}
+
+/// 表全体の物理レイアウト表現
+///
+/// `DocNode::Table` から lowering 段で生成される。罫線の太さ・色や
+/// セル内側余白などの見た目情報は `pdf_gen` 段が `read_style` から直接読む。
+#[derive(Debug, Clone)]
+pub struct TableLayout {
+  /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
+  pub columns: Vec<TableColumn>,
+  /// ヘッダ行。改ページ時にページ先頭へ再描画される
+  pub head: Vec<TableRowLayout>,
+  /// 本体行
+  pub rows: Vec<TableRowLayout>,
+  /// 改ページによる分割を許可するか
+  pub breakable: bool,
+}
+
+/// 表の 1 列の定義
+#[derive(Debug, Clone, Copy)]
+pub struct TableColumn {
+  /// セル内容の揃え方向
+  pub align: ColumnAlign,
+  /// 列幅の指定方法
+  pub width: ColumnWidth,
+}
+
+/// 表の 1 行の物理レイアウト表現
+#[derive(Debug, Clone)]
+pub struct TableRowLayout {
+  /// 行内のセル
+  pub cells: Vec<TableCellLayout>,
+  /// この行の上に横罫線を引くか
+  pub rule_above: bool,
+}
+
+/// 表の 1 セルの物理レイアウト表現
+#[derive(Debug, Clone)]
+pub struct TableCellLayout {
+  /// セル内容（スタイル付与済みのレイアウトノード列）
+  pub content: Vec<LayoutNode>,
+  /// 列方向の結合数（colspan、1 以上）
+  pub span: u32,
 }
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）

@@ -26,7 +26,7 @@ use thiserror::Error;
 
 pub mod document;
 mod evaluator;
-pub use document::{DocNode, Document, HeadingLevel, InlineNode, ListItem, MathNode};
+pub use document::{DocNode, Document, HeadingLevel, InlineNode, ListItem, MathNode, TableCell, TableRow};
 pub use evaluator::EvalError;
 use evaluator::{Evaluator, counter::resolve_refs};
 

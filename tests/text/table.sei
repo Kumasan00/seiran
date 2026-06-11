@@ -1,0 +1,28 @@
+\section{表のサンプル}
+
+ここは table 環境のフィクスチャです。表の前後にテキストを置き、ヘッダ行・本体行・
+キャプション・罫線・セル結合が正しくレンダリングされること、表番号が連番で振られる
+ことを確認します。
+
+\begin{table}[label=tab:scores, columns="left center right", widths="auto auto 30mm"]
+\head{
+  \row{Name & Score & Rank}
+}
+\row[rule_above]{Alice & 92 & 1}
+\row{Bob & 88 & 2}
+\row{Charlie & 75 & 3}
+\row[rule_above]{\cell[span=2]{合計} & 255}
+\caption{得点表}
+\end{table}
+
+表 \ref{tab:scores} の後の段落です。続けて columns / widths を省略した最小構成の表を
+配置します。列数は行のセル数から推定され、すべて左揃え・自然幅になります。
+
+\begin{table}
+\caption{最小構成の表（キャプション上配置）}
+\row{項目 & 値}
+\row{インライン装飾 & \textbf{太字}と\emph{強調}}
+\row{インライン数式 & $x^2 + y$}
+\end{table}
+
+表の後の段落です。

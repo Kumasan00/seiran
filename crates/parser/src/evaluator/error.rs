@@ -270,4 +270,60 @@ pub enum EvalError {
     #[label("2 回目の使用です")]
     span: SourceSpan,
   },
+
+  /// 表の行のセル数（span 合計）が列数と一致しない場合
+  #[error("表の行のセル数が列数と一致しません（期待: {expected} 列、実際: {actual} 列）")]
+  #[diagnostic(
+    code(parser::eval::table_row_cell_count_mismatch),
+    help("`&` 区切りのセル数（\\cell[span=N] は N 列分）を columns / widths の列数に揃えてください")
+  )]
+  TableRowCellCountMismatch {
+    /// 期待される列数
+    expected: usize,
+    /// 実際のセル数（span 合計）
+    actual: usize,
+    /// 行（`\row`）のソース位置
+    #[label("この行のセル数が一致しません")]
+    span: SourceSpan,
+  },
+
+  /// 表の columns と widths の指定数が一致しない場合
+  #[error("表の columns（{columns} 個）と widths（{widths} 個）の指定数が一致しません")]
+  #[diagnostic(
+    code(parser::eval::table_columns_widths_mismatch),
+    help("columns と widths を両方指定する場合は同じ個数の空白区切りトークンにしてください")
+  )]
+  TableColumnsWidthsMismatch {
+    /// columns のトークン数
+    columns: usize,
+    /// widths のトークン数
+    widths: usize,
+    /// 環境のソース位置
+    #[label("columns と widths の個数が一致しません")]
+    span: SourceSpan,
+  },
+
+  /// `\cell` とその他の内容が 1 つのセル区画に混在した場合
+  #[error("\\cell コマンドとその他の内容を同じセル区画に混在させることはできません")]
+  #[diagnostic(
+    code(parser::eval::table_cell_mixed_content),
+    help("特殊属性が必要なセルは区画全体を \\cell[...]{{...}} で書いてください（例: `\\cell[span=2]{{合計}} & 180`）")
+  )]
+  TableCellMixedContent {
+    /// 混在が検出されたセル区画のソース位置
+    #[label("\\cell と他の内容が混在しています")]
+    span: SourceSpan,
+  },
+
+  /// 表のセル内に強制改行（`\\`）が出現した場合
+  #[error("表のセル内では強制改行 \\\\ を使用できません")]
+  #[diagnostic(
+    code(parser::eval::line_break_in_table_cell),
+    help("セル内の改行は現在サポートされていません。行を分けるか内容を短くしてください")
+  )]
+  LineBreakInTableCell {
+    /// 強制改行を含む行（`\row`）のソース位置
+    #[label("この行のセルに \\\\ が含まれています")]
+    span: SourceSpan,
+  },
 }

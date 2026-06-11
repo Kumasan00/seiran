@@ -234,7 +234,9 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
 }
 
 /// `\caption{...}` の引数をインライン要素列に変換する
-fn extract_caption(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+///
+/// `figure` / `table` 環境で共用する（エラーメッセージのコマンド名は `caption` 固定）。
+pub(super) fn extract_caption(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
