@@ -1,7 +1,7 @@
 //! インライン要素抽出のヘルパー
 //!
 //! `extract_inline_nodes` は CST のサブツリーをインライン文脈として歩き、
-//! `InlineNode` 列に変換する。テキスト装飾コマンド（`\textbf` 等）と
+//! `InlineNode` 列に変換する。書体指定コマンド（`\bold` 等）と
 //! 単一文字コマンド（`\alpha` 等）の解釈は [`crate::evaluator::command::COMMAND_MAP`]
 //! を **唯一のソース** として参照する（ハードコードした name match を持たない）。
 //!
@@ -19,7 +19,7 @@ use crate::{
   document::InlineNode,
   evaluator::{
     EvalError,
-    command::{COMMAND_MAP, CommandKind, inline::inline_wrapper, ref_::ref_command, single_char},
+    command::{COMMAND_MAP, CommandKind, inline::styled_text, ref_::ref_command, single_char},
     math,
   },
 };
@@ -27,7 +27,7 @@ use crate::{
 /// `GreenNode` の子要素から `InlineNode` のリストを構築する
 ///
 /// 見出しの引数など、テキストノードとコマンドを `InlineNode` に変換します。
-/// インラインコマンド（`\textbf`, `\emph` 等）と単一文字コマンドの解釈は
+/// 書体指定コマンド（`\bold`, `\sans` 等）と単一文字コマンドの解釈は
 /// [`COMMAND_MAP`] を **唯一のソース** として参照する。
 /// `InlineMath` ノードは `InlineNode::InlineMath` に変換します。
 ///
@@ -92,9 +92,9 @@ pub(crate) fn extract_inline_nodes_from_elements(
         SyntaxKind::CommandCall => {
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
-            Some(CommandKind::InlineWrapper(wrapper)) => {
+            Some(CommandKind::StyledText(kind)) => {
               // 引数の不足・過剰・未許可の任意引数はブロック文脈と同じ検証を通す
-              inlines.extend(inline_wrapper(&view, wrapper)?);
+              inlines.extend(styled_text(&view, kind)?);
             },
             Some(CommandKind::SingleChar(ch)) => {
               inlines.extend(single_char(&view, ch)?);
@@ -171,17 +171,23 @@ mod tests {
   }
 
   #[test]
-  fn extract_inline_nodes_with_textbf() {
+  fn extract_inline_nodes_with_bold() {
     let arena = Bump::new();
-    let source = "\\section{\\textbf{太字タイトル}}";
+    let source = "\\section{\\bold{太字タイトル}}";
     let cst = parse(source, &arena).unwrap();
-    // Root > CommandCall(\section) > MandatoryArg > CommandCall(\textbf)
+    // Root > CommandCall(\section) > MandatoryArg > CommandCall(\bold)
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
     let inlines = extract_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], InlineNode::Strong(_)));
+    assert!(matches!(
+      &inlines[0],
+      InlineNode::Styled {
+        kind: types::FontKind::SerifBold,
+        ..
+      }
+    ));
   }
 
   #[test]
@@ -214,16 +220,22 @@ mod tests {
   #[test]
   fn extract_inline_nodes_mixed_text_and_commands() {
     let arena = Bump::new();
-    let source = "\\section{Hello \\textbf{World}}";
+    let source = "\\section{Hello \\bold{World}}";
     let cst = parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
     let inlines = extract_inline_nodes(source, arg).unwrap();
-    // Text("Hello"), Text(" "), Strong(...)
+    // Text("Hello"), Text(" "), Styled(...)
     assert_eq!(inlines.len(), 3);
     assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "Hello"));
     assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
-    assert!(matches!(&inlines[2], InlineNode::Strong(_)));
+    assert!(matches!(
+      &inlines[2],
+      InlineNode::Styled {
+        kind: types::FontKind::SerifBold,
+        ..
+      }
+    ));
   }
 }

@@ -1,39 +1,21 @@
 //! 図環境（`DocNode::Figure`）の lowering
 //!
-//! 画像 ([`LayoutNode::Image`]) と、`FigureStyle.caption` で書式化したキャプション
-//! テキストを caption の位置指定の順序で `VBox` に詰めます。位置はパーサが
-//! ソース上の `\image` / `\caption` の出現順から決定します。caption が `None` の
-//! ときはキャプション行を一切出力しません。
+//! 画像 ([`LayoutNode::Image`]) と、`FigureStyle.caption` で書式化したキャプションを
+//! caption の位置指定の順序で `VBox` に詰めます。位置はパーサがソース上の
+//! `\image` / `\caption` の出現順から決定します。caption が `None` のときは
+//! キャプション行を一切出力しません。キャプション構築と `VBox` 包みは
+//! [`crate::float`] の共通ヘルパで行います。
 //!
 //! 画像サイズ（width / height）は mm 入力を pt（72/25.4 倍）に変換します。
 
 use parser::document::{CaptionPosition, InlineNode};
-use read_style::FigureStyle;
-use types::{FontKind, Length};
+use types::Length;
 
-use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
-use crate::layout_node::{LayoutNode, TextStyle};
-
-/// キャプション文字列を `format` テンプレートで構築する
-///
-/// - `{number}` は通し番号で置換
-/// - `{title}` はキャプション本文で置換
-fn format_caption(template: &str, number: &str, title: &str) -> String {
-  return template.replace("{number}", number).replace("{title}", title);
-}
-
-/// キャプション本体（`{number}` / `{title}` を埋めた `LayoutNode::Text`）を生成する
-fn build_caption_node(style: &FigureStyle, inlines: &[InlineNode], number: &str) -> Result<LayoutNode, LoweringError> {
-  let title_text = inline_nodes_to_plain_text(inlines)?;
-  let caption_text = format_caption(&style.caption.format, number, &title_text);
-  return Ok(LayoutNode::Text(
-    caption_text,
-    TextStyle {
-      font_size: style.caption.font_size.to_pt(),
-      font_kind: FontKind::Serif,
-    },
-  ));
-}
+use super::{
+  LoweringContext, LoweringError,
+  float::{FloatSpec, build_caption, wrap_float},
+};
+use crate::layout_node::LayoutNode;
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]
@@ -83,42 +65,17 @@ pub(super) fn lower_figure(
     target_dpi,
   };
 
-  let mut children = Vec::new();
-  match caption {
-    Some((CaptionPosition::Top, inlines)) => {
-      children.push(build_caption_node(style, inlines, number)?);
-      children.push(LayoutNode::LineBreak);
-      children.push(LayoutNode::Vkern {
-        length: style.inner_margin,
-      });
-      children.push(image_node);
-      children.push(LayoutNode::LineBreak);
-    },
-    Some((CaptionPosition::Bottom, inlines)) => {
-      children.push(image_node);
-      children.push(LayoutNode::LineBreak);
-      children.push(LayoutNode::Vkern {
-        length: style.inner_margin,
-      });
-      children.push(build_caption_node(style, inlines, number)?);
-      children.push(LayoutNode::LineBreak);
-    },
-    None => {
-      children.push(image_node);
-      children.push(LayoutNode::LineBreak);
-    },
-  }
-
-  let result = vec![
-    LayoutNode::Vkern {
-      length: style.top_margin,
-    },
-    LayoutNode::VBox {
-      children,
-      margin_bottom: style.bottom_margin,
-    },
-  ];
-  return Ok(result);
+  let caption_nodes = match caption {
+    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number)?)),
+    None => None,
+  };
+  let spec = FloatSpec {
+    top_margin: style.top_margin,
+    bottom_margin: style.bottom_margin,
+    inner_margin: Some(style.inner_margin),
+    break_after_main: true,
+  };
+  return Ok(wrap_float(image_node, caption_nodes, &spec));
 }
 
 #[cfg(test)]

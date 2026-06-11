@@ -26,6 +26,7 @@ use crate::{
 };
 
 pub(crate) mod body_scan;
+mod caption;
 mod equation;
 mod figure;
 mod itemize;

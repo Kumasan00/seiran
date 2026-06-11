@@ -20,6 +20,7 @@
 //! ```
 
 use miette::SourceSpan;
+use types::FontKind;
 
 // =============================================================================
 // ドキュメント全体
@@ -304,25 +305,20 @@ pub enum InlineNode {
   /// プレーンテキスト
   Text(String),
 
-  /// 強調テキスト（`\emph{...}`, `\textit{...}`）
+  /// 書体指定テキスト（`\bold{...}`, `\sansitalic{...}`, `\mono{...}` 等の 12 コマンド）
   ///
-  /// Lowering 層で `FontKind::SerifItalic` 等に変換されます。
-  Emphasis(Vec<InlineNode>),
-
-  /// 太字テキスト（`\textbf{...}`）
+  /// 3 ファミリ（serif / sans / mono）× 4 スタイル（normal / bold / italic / bolditalic）の
+  /// 組み合わせを 1 コマンド = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
+  /// 完全に上書きする（[`MathNode::Styled`] と同じ規則で、親スタイルとの合成はしない）。
   ///
-  /// Lowering 層で `FontKind::SerifBold` 等に変換されます。
-  Strong(Vec<InlineNode>),
-
-  /// 等幅テキスト（`\texttt{...}`）
-  ///
-  /// Lowering 層で `FontKind::Monospace` に変換されます。
-  Code(Vec<InlineNode>),
-
-  /// サンセリフテキスト（`\textsf{...}`）
-  ///
-  /// Lowering 層で `FontKind::SansSerif` に変換されます。
-  SansSerif(Vec<InlineNode>),
+  /// コマンド表（`COMMAND_MAP`）にはテキスト装飾 12 種のみを登録するため、
+  /// `FontKind::Math` がここに入ることはない。
+  Styled {
+    /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
+    kind: FontKind,
+    /// 装飾対象のインライン要素
+    children: Vec<InlineNode>,
+  },
 
   /// インライン数式（`$...$`）
   InlineMath(Vec<MathNode>),
@@ -365,10 +361,7 @@ impl InlineNode {
   pub fn to_plain_text(&self) -> String {
     match self {
       InlineNode::Text(s) => return s.clone(),
-      InlineNode::Emphasis(children)
-      | InlineNode::Strong(children)
-      | InlineNode::Code(children)
-      | InlineNode::SansSerif(children) => {
+      InlineNode::Styled { children, .. } => {
         return children.iter().map(InlineNode::to_plain_text).collect();
       },
       InlineNode::InlineMath(_) => return "[Math]".to_string(),
@@ -601,17 +594,26 @@ mod tests {
   }
 
   #[test]
-  fn inline_emphasis_to_plain_text() {
-    let node = InlineNode::Emphasis(vec![InlineNode::text("important")]);
+  fn inline_styled_to_plain_text() {
+    let node = InlineNode::Styled {
+      kind: FontKind::SerifItalic,
+      children: vec![InlineNode::text("important")],
+    };
     assert_eq!(node.to_plain_text(), "important");
   }
 
   #[test]
   fn inline_nested_to_plain_text() {
-    let node = InlineNode::Strong(vec![
-      InlineNode::text("bold "),
-      InlineNode::Emphasis(vec![InlineNode::text("and italic")]),
-    ]);
+    let node = InlineNode::Styled {
+      kind: FontKind::SerifBold,
+      children: vec![
+        InlineNode::text("bold "),
+        InlineNode::Styled {
+          kind: FontKind::SerifItalic,
+          children: vec![InlineNode::text("and italic")],
+        },
+      ],
+    };
     assert_eq!(node.to_plain_text(), "bold and italic");
   }
 
@@ -631,7 +633,10 @@ mod tests {
   fn inline_nodes_to_plain_text_mixed() {
     let inlines = vec![
       InlineNode::text("Hello "),
-      InlineNode::Strong(vec![InlineNode::text("world")]),
+      InlineNode::Styled {
+        kind: FontKind::SerifBold,
+        children: vec![InlineNode::text("world")],
+      },
       InlineNode::text("!"),
     ];
     assert_eq!(inline_nodes_to_plain_text(&inlines), "Hello world!");

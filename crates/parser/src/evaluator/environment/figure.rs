@@ -26,9 +26,8 @@ use crate::{
   document::{CaptionPosition, DocNode, InlineNode},
   evaluator::{
     EvalError, Evaluator,
-    environment::body_scan,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args},
+    environment::{body_scan, caption::extract_caption},
+    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
   },
 };
 
@@ -43,20 +42,9 @@ use crate::{
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
 pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
-  let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
-    ("label", OptValue::String(s)) => Some(s),
-    _ => None,
-  });
+  let label = find_string(opt_args, "label");
 
-  let number = evaluator.registry.increment(CounterName::Figure);
-  if let Some(l) = &label
-    && !evaluator.registry.register_label(l.clone(), CounterName::Figure, &number)
-  {
-    return Err(EvalError::DuplicateLabel {
-      label: l.clone(),
-      span: view.span().into(),
-    });
-  }
+  let number = evaluator.registry.increment_with_label(CounterName::Figure, label.as_deref(), view.span().into())?;
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -231,27 +219,6 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
     dpi,
     downsample,
   });
-}
-
-/// `\caption{...}` の引数をインライン要素列に変換する
-///
-/// `figure` / `table` 環境で共用する（エラーメッセージのコマンド名は `caption` 固定）。
-pub(super) fn extract_caption(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
-  let _opt_args = collect_command_opt_args(view, &[])?;
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "caption".to_string(),
-      expected: "キャプション本文".to_string(),
-      span: view.span().into(),
-    });
-  };
-  if view.args_count() > 1 {
-    return Err(EvalError::ExtraCommandArgument {
-      name: "caption".to_string(),
-      span: view.span().into(),
-    });
-  }
-  return extract_inline_nodes(view.source(), first_arg);
 }
 
 #[cfg(test)]

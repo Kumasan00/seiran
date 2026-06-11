@@ -12,7 +12,6 @@ use crate::layout_node::{LayoutNode, TextStyle};
 ///
 /// ## TODO
 ///
-/// - [ ] インライン要素のスタイル変更（Emphasis → Italic 等）を反映する
 /// - [ ] 段落先頭のインデント（字下げ）を追加する
 /// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {

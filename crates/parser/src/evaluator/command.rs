@@ -10,8 +10,8 @@
 //! 1. **単一文字コマンド**（`\alpha` 等）:
 //!    `COMMAND_MAP` に `"name" => CommandKind::SingleChar('文字')` を追加するだけ。
 //!
-//! 2. **インラインラッパーコマンド**（`\textbf` 等）:
-//!    `COMMAND_MAP` に `"name" => CommandKind::InlineWrapper(InlineNode::Variant)` を追加するだけ。
+//! 2. **書体指定コマンド**（`\bold` 等）:
+//!    `COMMAND_MAP` に `"name" => CommandKind::StyledText(FontKind::Variant)` を追加するだけ。
 //!
 //! 3. **見出しコマンド**（`\section` 等）:
 //!    `COMMAND_MAP` に `"name" => CommandKind::Headline(HeadingLevel::Level)` を追加し、
@@ -22,6 +22,7 @@
 
 use phf::phf_map;
 use syntax::ast::CommandView;
+use types::FontKind;
 
 use crate::{
   document::{DocNode, HeadingLevel, InlineNode},
@@ -54,8 +55,12 @@ pub(crate) enum CommandKind {
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
   Headline(HeadingLevel),
-  /// 引数1つを取りインラインノードでラップするコマンド（`\textbf`, `\emph` 等）
-  InlineWrapper(fn(Vec<InlineNode>) -> InlineNode),
+  /// 引数 1 つを取り書体を適用するコマンド（`\bold`, `\sansitalic` 等の 12 種）
+  ///
+  /// ネスト時は内側の書体が完全に上書きする（親スタイルとの合成はしない）。
+  /// テキスト装飾はファミリ × スタイルの全組み合わせを個別コマンドで提供するため、
+  /// `FontKind::Math` をここに登録してはならない。
+  StyledText(FontKind),
   /// 引数なしで単一文字を出力するコマンド（ギリシャ文字・数学記号）
   SingleChar(char),
   /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
@@ -72,7 +77,7 @@ impl CommandKind {
 
       Self::Headline(level) => headline::heading(view, level, &mut evaluator.registry).map(CommandResult::Block),
 
-      Self::InlineWrapper(wrapper) => inline::inline_wrapper(view, wrapper).map(CommandResult::Inline),
+      Self::StyledText(kind) => inline::styled_text(view, kind).map(CommandResult::Inline),
 
       Self::SingleChar(ch) => single_char(view, ch).map(CommandResult::Inline),
 
@@ -111,12 +116,22 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 相互参照
   "ref" => CommandKind::Ref,
 
-  // インラインラッパーコマンド（テキスト装飾）
-  "textbf" => CommandKind::InlineWrapper(InlineNode::Strong),
-  "emph" => CommandKind::InlineWrapper(InlineNode::Emphasis),
-  "textit" => CommandKind::InlineWrapper(InlineNode::Emphasis),
-  "texttt" => CommandKind::InlineWrapper(InlineNode::Code),
-  "textsf" => CommandKind::InlineWrapper(InlineNode::SansSerif),
+  // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
+  // セリフ（既定ファミリ、接頭辞なし）
+  "serif" => CommandKind::StyledText(FontKind::Serif),
+  "bold" => CommandKind::StyledText(FontKind::SerifBold),
+  "italic" => CommandKind::StyledText(FontKind::SerifItalic),
+  "bolditalic" => CommandKind::StyledText(FontKind::SerifBoldItalic),
+  // サンセリフ
+  "sans" => CommandKind::StyledText(FontKind::SansSerif),
+  "sansbold" => CommandKind::StyledText(FontKind::SansSerifBold),
+  "sansitalic" => CommandKind::StyledText(FontKind::SansSerifItalic),
+  "sansbolditalic" => CommandKind::StyledText(FontKind::SansSerifBoldItalic),
+  // 等幅
+  "mono" => CommandKind::StyledText(FontKind::Monospace),
+  "monobold" => CommandKind::StyledText(FontKind::MonospaceBold),
+  "monoitalic" => CommandKind::StyledText(FontKind::MonospaceItalic),
+  "monobolditalic" => CommandKind::StyledText(FontKind::MonospaceBoldItalic),
 
   // 見出しコマンド
   "part" => CommandKind::Headline(HeadingLevel::Part),

@@ -10,6 +10,7 @@
 use parser::{
   DocNode, EvalError, HeadingLevel, InlineNode, MathNode, ParseSourceError, Style, document::MathStyle, parse_source,
 };
+use types::FontKind;
 
 /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
 ///
@@ -431,27 +432,103 @@ fn evaluate_inline_math_styled_nests_inner_overrides_outer() {
 }
 
 #[test]
-fn evaluate_textbf_creates_strong_in_paragraph() {
-  let result = evaluate_source("Hello \\textbf{World}");
+fn evaluate_bold_creates_styled_in_paragraph() {
+  let result = evaluate_source("Hello \\bold{World}");
   assert_eq!(result.len(), 1);
   if let DocNode::Paragraph(inlines) = &result[0] {
-    // Text("Hello"), Text(" "), Strong([Text("World")])
+    // Text("Hello"), Text(" "), Styled { SerifBold, [Text("World")] }
     assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[2], InlineNode::Strong(_)));
+    assert!(matches!(
+      &inlines[2],
+      InlineNode::Styled {
+        kind: FontKind::SerifBold,
+        ..
+      }
+    ));
   } else {
     panic!("Paragraph が期待されます");
   }
 }
 
 #[test]
-fn evaluate_emph_creates_emphasis_in_paragraph() {
-  let result = evaluate_source("\\emph{italic}");
+fn evaluate_italic_creates_styled_in_paragraph() {
+  let result = evaluate_source("\\italic{italic}");
   assert_eq!(result.len(), 1);
   if let DocNode::Paragraph(inlines) = &result[0] {
     assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], InlineNode::Emphasis(_)));
+    assert!(matches!(
+      &inlines[0],
+      InlineNode::Styled {
+        kind: FontKind::SerifItalic,
+        ..
+      }
+    ));
   } else {
     panic!("Paragraph が期待されます");
+  }
+}
+
+#[test]
+fn evaluate_all_twelve_styled_commands_resolve() {
+  // 12 コマンドすべてが対応する FontKind の Styled に解決されることを確認する
+  let cases: [(&str, FontKind); 12] = [
+    ("serif", FontKind::Serif),
+    ("bold", FontKind::SerifBold),
+    ("italic", FontKind::SerifItalic),
+    ("bolditalic", FontKind::SerifBoldItalic),
+    ("sans", FontKind::SansSerif),
+    ("sansbold", FontKind::SansSerifBold),
+    ("sansitalic", FontKind::SansSerifItalic),
+    ("sansbolditalic", FontKind::SansSerifBoldItalic),
+    ("mono", FontKind::Monospace),
+    ("monobold", FontKind::MonospaceBold),
+    ("monoitalic", FontKind::MonospaceItalic),
+    ("monobolditalic", FontKind::MonospaceBoldItalic),
+  ];
+  for (name, expected) in cases {
+    let result = evaluate_source(&format!("\\{name}{{x}}"));
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます: \\{name}");
+    };
+    let InlineNode::Styled { kind, .. } = &inlines[0] else {
+      panic!("Styled が期待されます: \\{name} → {:?}", inlines[0]);
+    };
+    assert_eq!(*kind, expected, "\\{name} の FontKind");
+  }
+}
+
+#[test]
+fn evaluate_nested_styled_keeps_inner_kind() {
+  // ネストは内側が完全上書き（合成しない）: \bold{\italic{x}} の内側は SerifItalic のまま
+  let result = evaluate_source(r"\bold{a\italic{x}}");
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます");
+  };
+  let InlineNode::Styled {
+    kind: FontKind::SerifBold,
+    children,
+  } = &inlines[0]
+  else {
+    panic!("外側 Styled(SerifBold) が期待されます: {:?}", inlines[0]);
+  };
+  assert!(matches!(
+    &children[1],
+    InlineNode::Styled {
+      kind: FontKind::SerifItalic,
+      ..
+    }
+  ));
+}
+
+#[test]
+fn evaluate_legacy_latex_commands_are_unknown() {
+  // 旧 LaTeX 風コマンドは削除済み（エイリアスも残さない）
+  for name in ["textbf", "emph", "textit", "texttt", "textsf"] {
+    let error = evaluate_error(&format!("\\{name}{{x}}"));
+    assert!(
+      matches!(error, EvalError::UnknownCommand { name: ref n, .. } if n == name),
+      "\\{name} は UnknownCommand になるべき: {error:?}"
+    );
   }
 }
 
@@ -596,8 +673,8 @@ fn evaluate_unknown_command_in_heading_title_is_error() {
 
 #[test]
 fn evaluate_block_command_in_inline_context_is_error() {
-  // \textbf の引数内に見出しコマンドは書けない（以前は黙って無視）
-  let error = evaluate_error(r"\textbf{\section{x}}");
+  // \bold の引数内に見出しコマンドは書けない（以前は黙って無視）
+  let error = evaluate_error(r"\bold{\section{x}}");
   assert!(matches!(error, EvalError::BlockInInline { ref what, .. } if what == "\\section"));
 }
 
@@ -610,16 +687,16 @@ fn evaluate_environment_in_inline_context_is_error() {
 
 #[test]
 fn evaluate_inline_wrapper_missing_arg_in_heading_is_error() {
-  // 見出しタイトル内でも \textbf の引数不足はエラー（以前は黙って無視）
-  let error = evaluate_error(r"\section{\textbf}");
-  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "textbf"));
+  // 見出しタイトル内でも \bold の引数不足はエラー（以前は黙って無視）
+  let error = evaluate_error(r"\section{\bold}");
+  assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "bold"));
 }
 
 #[test]
 fn evaluate_inline_wrapper_extra_arg_in_heading_is_error() {
-  // 見出しタイトル内でも \textbf の引数過剰はエラー
-  let error = evaluate_error(r"\section{\textbf{a}{b}}");
-  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "textbf"));
+  // 見出しタイトル内でも \bold の引数過剰はエラー
+  let error = evaluate_error(r"\section{\bold{a}{b}}");
+  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "bold"));
 }
 
 #[test]
@@ -745,8 +822,8 @@ fn evaluate_itemize_with_stray_text_is_error() {
 #[test]
 fn evaluate_itemize_with_disallowed_command_is_error() {
   // \item 以外のコマンドも以前は黙って無視されていた
-  let error = evaluate_error(r"\begin{itemize}\textbf{x}\end{itemize}");
-  assert!(matches!(error, EvalError::UnexpectedCommandInEnvironment { ref name, .. } if name == "textbf"));
+  let error = evaluate_error(r"\begin{itemize}\bold{x}\end{itemize}");
+  assert!(matches!(error, EvalError::UnexpectedCommandInEnvironment { ref name, .. } if name == "bold"));
 }
 
 #[test]

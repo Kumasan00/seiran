@@ -6,8 +6,8 @@ itemize 環境（順序なしリスト）と enumerate 環境（順序付きリ�
 
 \begin{itemize}
 \item{最初の項目。プレーンテキストだけの項目。}
-\item{\textbf{強調}した語を含む項目。}
-\item{\texttt{etc} と \emph{emph} を混在させた項目。}
+\item{\bold{強調}した語を含む項目。}
+\item{\mono{etc} と \italic{emph} を混在させた項目。}
 \item{インライン数式 $x^2 + y^2 = z^2$ を含む項目。}
 \end{itemize}
 

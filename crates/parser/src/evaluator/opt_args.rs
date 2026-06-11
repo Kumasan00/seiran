@@ -62,6 +62,17 @@ pub(crate) enum OptValue {
   Length(Length),
 }
 
+/// 収集済み任意引数から指定キーの文字列値を取り出す
+///
+/// `[label=...]` のような単一の文字列キーを取り出す典型パターン用。
+/// キーが存在しない、または値が文字列型でない場合は `None` を返す。
+pub(crate) fn find_string(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<String> {
+  return opt_args.into_iter().find_map(|(k, value)| match value {
+    OptValue::String(s) if k == key => Some(s),
+    _ => None,
+  });
+}
+
 /// `CommandView` 用の薄いラッパ
 ///
 /// # Errors
@@ -248,7 +259,7 @@ mod tests {
   fn collect_returns_empty_for_no_opt_args() {
     // Arrange
     let arena = Bump::new();
-    let source = r"\textbf{x}";
+    let source = r"\bold{x}";
     let cst = parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 

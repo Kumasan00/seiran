@@ -4,36 +4,20 @@
 //! [`TableLayout`] に詰めます。ヘッダ行のセルは本文フォントの太字バリアントで
 //! 描画されます。キャプションは `TableStyle.caption` の書式で構築し、図と同様に
 //! `caption_position`（ソース上の `\caption` の出現順）に従って表の上下に配置します。
+//! キャプション構築と `VBox` 包みは [`crate::float`] の共通ヘルパで行います。
 //!
 //! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
 //! `pdf_gen` 段で行い、ここでは列指定をそのまま保持します。
 
 use parser::document::{CaptionPosition, InlineNode, TableRow};
-use read_style::CaptionStyle;
 use types::{ColumnAlign, ColumnWidth, FontKind};
 
 use super::{
   LoweringContext, LoweringError,
-  inline::{inline_nodes_to_plain_text, lower_inline},
+  float::{FloatSpec, build_caption, wrap_float},
+  inline::lower_inline,
 };
 use crate::layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle};
-
-/// キャプション本体（`{number}` / `{title}` を埋めた `LayoutNode::Text`）を生成する
-fn build_caption_node(
-  caption_style: &CaptionStyle,
-  inlines: &[InlineNode],
-  number: &str,
-) -> Result<LayoutNode, LoweringError> {
-  let title_text = inline_nodes_to_plain_text(inlines)?;
-  let caption_text = caption_style.format.replace("{number}", number).replace("{title}", &title_text);
-  return Ok(LayoutNode::Text(
-    caption_text,
-    TextStyle {
-      font_size: caption_style.font_size.to_pt(),
-      font_kind: FontKind::Serif,
-    },
-  ));
-}
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {
@@ -120,34 +104,17 @@ pub(super) fn lower_table(
     breakable,
   });
 
-  let mut children = Vec::new();
-  match caption {
-    Some((CaptionPosition::Top, inlines)) => {
-      children.push(build_caption_node(&style.caption, inlines, number)?);
-      children.push(LayoutNode::LineBreak);
-      children.push(table_node);
-    },
-    Some((CaptionPosition::Bottom, inlines)) => {
-      children.push(table_node);
-      children.push(LayoutNode::LineBreak);
-      children.push(build_caption_node(&style.caption, inlines, number)?);
-      children.push(LayoutNode::LineBreak);
-    },
-    None => {
-      children.push(table_node);
-    },
-  }
-
-  let result = vec![
-    LayoutNode::Vkern {
-      length: style.top_margin,
-    },
-    LayoutNode::VBox {
-      children,
-      margin_bottom: style.bottom_margin,
-    },
-  ];
-  return Ok(result);
+  let caption_nodes = match caption {
+    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number)?)),
+    None => None,
+  };
+  let spec = FloatSpec {
+    top_margin: style.top_margin,
+    bottom_margin: style.bottom_margin,
+    inner_margin: None,
+    break_after_main: false,
+  };
+  return Ok(wrap_float(table_node, caption_nodes, &spec));
 }
 
 #[cfg(test)]

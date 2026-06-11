@@ -12,7 +12,7 @@ use crate::{
     EvalError,
     counter::CounterRegistry,
     inline::extract_inline_nodes,
-    opt_args::{OptType, OptValue, collect_command_opt_args},
+    opt_args::{OptType, collect_command_opt_args, find_string},
   },
 };
 
@@ -38,10 +38,7 @@ pub(super) fn heading(
   let name = level.command_name();
 
   let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
-  let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
-    ("label", OptValue::String(s)) => Some(s),
-    _ => None,
-  });
+  let label = find_string(opt_args, "label");
 
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -58,15 +55,7 @@ pub(super) fn heading(
   }
 
   let counter_name = CounterRegistry::counter_name_for_heading(level);
-  let number = registry.increment(counter_name);
-  if let Some(l) = &label
-    && !registry.register_label(l.clone(), counter_name, &number)
-  {
-    return Err(EvalError::DuplicateLabel {
-      label: l.clone(),
-      span: view.span().into(),
-    });
-  }
+  let number = registry.increment_with_label(counter_name, label.as_deref(), view.span().into())?;
 
   let title = extract_inline_nodes(view.source(), first_arg)?;
 

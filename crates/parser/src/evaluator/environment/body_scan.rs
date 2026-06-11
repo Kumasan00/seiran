@@ -153,9 +153,9 @@ mod tests {
 
   #[test]
   fn strict_scan_rejects_disallowed_command() {
-    // Arrange — itemize 内の \textbf は許可リスト外
+    // Arrange — itemize 内の \bold は許可リスト外
     let arena = Bump::new();
-    let source = r"\begin{itemize}\textbf{x}\end{itemize}";
+    let source = r"\begin{itemize}\bold{x}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
@@ -163,6 +163,6 @@ mod tests {
     let result = strict_command_calls(source, body, "itemize", &["item"], "\\item");
 
     // Assert
-    assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "textbf"));
+    assert!(matches!(result, Err(EvalError::UnexpectedCommandInEnvironment { ref name, .. }) if name == "bold"));
   }
 }

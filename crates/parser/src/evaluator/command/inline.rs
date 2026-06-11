@@ -1,33 +1,31 @@
-//! インラインテキスト装飾コマンド群
+//! 書体指定コマンド群
 //!
-//! `\textbf`, `\emph`, `\textit`, `\texttt`, `\textsf` など、
-//! テキストにスタイルを適用するインラインコマンドの共通処理を提供します。
-//! 各コマンドは子要素を再帰的に `InlineNode` に変換し、
-//! 対応するラッパーノードを生成します。
+//! `\bold`, `\italic`, `\sans`, `\monobold` など、テキストに書体（ファミリ × スタイル）を
+//! 適用するインラインコマンドの共通処理を提供します。
+//! 各コマンドは子要素を再帰的に `InlineNode` に変換し、対応する `FontKind` を持つ
+//! [`InlineNode::Styled`] を生成します。ネスト時は内側の書体が完全に上書きします。
 
 use syntax::ast::CommandView;
+use types::FontKind;
 
 use crate::{
   document::InlineNode,
   evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
 };
 
-/// 引数1つを取り、子要素を `InlineNode` リストに変換してラップする共通処理
+/// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
 ///
-/// `CommandKind::InlineWrapper` から呼ばれます。
+/// `CommandKind::StyledText` から呼ばれます。
 ///
 /// # Arguments
 ///
 /// * `view` - コマンドの型付きビュー
-/// * `wrapper` - `Vec<InlineNode>` を受け取りラッパー `InlineNode` を生成する関数
+/// * `kind` - 適用する書体
 ///
 /// # Errors
 ///
 /// 引数の不足・過剰の場合にエラーを返します
-pub(crate) fn inline_wrapper(
-  view: &CommandView,
-  wrapper: fn(Vec<InlineNode>) -> InlineNode,
-) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<InlineNode>, EvalError> {
   let name = view.name();
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
@@ -45,7 +43,7 @@ pub(crate) fn inline_wrapper(
   }
 
   let children = extract_inline_nodes(view.source(), first_arg)?;
-  return Ok(vec![wrapper(children)]);
+  return Ok(vec![InlineNode::Styled { kind, children }]);
 }
 
 #[cfg(test)]
@@ -76,147 +74,89 @@ mod tests {
   }
 
   #[test]
-  fn textbf_creates_strong_node() {
+  fn bold_creates_styled_node() {
     // Arrange
     let arena = Bump::new();
-    let source = "\\textbf{hello}";
+    let source = "\\bold{hello}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
-    let result = inline_wrapper(&view, InlineNode::Strong).unwrap();
+    let result = styled_text(&view, FontKind::SerifBold).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
-      InlineNode::Strong(children) => {
+      InlineNode::Styled { kind, children } => {
+        assert_eq!(*kind, FontKind::SerifBold);
         assert_eq!(children.len(), 1);
         assert!(matches!(&children[0], InlineNode::Text(t) if t == "hello"));
       },
-      _ => panic!("Strong が期待されます"),
+      _ => panic!("Styled が期待されます"),
     }
   }
 
   #[test]
-  fn emph_creates_emphasis_node() {
-    // Arrange
+  fn nested_styled_commands_keep_inner_kind() {
+    // Arrange — \bold{\italic{x}} のネストは内側が完全上書き（合成しない）
     let arena = Bump::new();
-    let source = "\\emph{world}";
+    let source = r"\bold{\italic{x}}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
-    let result = inline_wrapper(&view, InlineNode::Emphasis).unwrap();
+    let result = styled_text(&view, FontKind::SerifBold).unwrap();
 
-    // Assert
-    assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], InlineNode::Emphasis(_)));
-  }
-
-  #[test]
-  fn textit_creates_emphasis_node() {
-    // Arrange
-    let arena = Bump::new();
-    let source = "\\textit{italic}";
-    let node = get_command_view(source, &arena);
-    let view = CommandView::new(node, source);
-
-    // Act
-    let result = inline_wrapper(&view, InlineNode::Emphasis).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], InlineNode::Emphasis(_)));
-  }
-
-  #[test]
-  fn texttt_creates_code_node() {
-    // Arrange
-    let arena = Bump::new();
-    let source = "\\texttt{code}";
-    let node = get_command_view(source, &arena);
-    let view = CommandView::new(node, source);
-
-    // Act
-    let result = inline_wrapper(&view, InlineNode::Code).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], InlineNode::Code(_)));
-  }
-
-  #[test]
-  fn textsf_creates_sans_serif_node() {
-    // Arrange
-    let arena = Bump::new();
-    let source = "\\textsf{sans}";
-    let node = get_command_view(source, &arena);
-    let view = CommandView::new(node, source);
-
-    // Act
-    let result = inline_wrapper(&view, InlineNode::SansSerif).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], InlineNode::SansSerif(_)));
+    // Assert — 外側 SerifBold の子として内側 SerifItalic がそのまま保持される
+    let InlineNode::Styled { kind, children } = &result[0] else {
+      panic!("Styled が期待されます");
+    };
+    assert_eq!(*kind, FontKind::SerifBold);
+    let InlineNode::Styled {
+      kind: inner_kind, ..
+    } = &children[0]
+    else {
+      panic!("内側も Styled が期待されます: {children:?}");
+    };
+    assert_eq!(*inner_kind, FontKind::SerifItalic);
   }
 
   #[test]
   fn rejects_missing_argument() {
     // Arrange
     let arena = Bump::new();
-    let source = "\\textbf";
+    let source = "\\bold";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(inline_wrapper(&view, InlineNode::Strong), Err(EvalError::MissingCommandArgument { .. })));
+    assert!(matches!(styled_text(&view, FontKind::SerifBold), Err(EvalError::MissingCommandArgument { .. })));
   }
 
   #[test]
   fn rejects_extra_arguments() {
     // Arrange
     let arena = Bump::new();
-    let source = "\\textbf{a}{b}";
+    let source = "\\bold{a}{b}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(inline_wrapper(&view, InlineNode::Strong), Err(EvalError::ExtraCommandArgument { .. })));
+    assert!(matches!(styled_text(&view, FontKind::SerifBold), Err(EvalError::ExtraCommandArgument { .. })));
   }
 
   #[test]
-  fn textbf_rejects_unknown_opt_arg_key() {
-    // Arrange — インライン装飾は任意引数を受け付けないので `[bold]` は不明キー
+  fn bold_rejects_unknown_opt_arg_key() {
+    // Arrange — 書体指定コマンドは任意引数を受け付けないので `[heavy]` は不明キー
     let arena = Bump::new();
-    let source = r"\textbf[bold]{x}";
+    let source = r"\bold[heavy]{x}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
-    let result = inline_wrapper(&view, InlineNode::Strong);
+    let result = styled_text(&view, FontKind::SerifBold);
 
-    // Assert — boolean ショートハンドの `bold` も未許可キーとして拒否される
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "bold"));
-  }
-
-  #[test]
-  fn nested_inline_commands() {
-    // Arrange — \textbf{\emph{nested}} のような入れ子
-    let arena = Bump::new();
-    let source = "\\textbf{hello}";
-    let node = get_command_view(source, &arena);
-    let view = CommandView::new(node, source);
-
-    // Act
-    let result = inline_wrapper(&view, InlineNode::Strong).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 1);
-    if let InlineNode::Strong(children) = &result[0] {
-      assert!(!children.is_empty());
-    } else {
-      panic!("Strong が期待されます");
-    }
+    // Assert — boolean ショートハンドの `heavy` も未許可キーとして拒否される
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
   }
 }

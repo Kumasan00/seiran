@@ -30,6 +30,7 @@ use read_style::Style as ReadStyle;
 use thiserror::Error;
 
 mod figure;
+mod float;
 mod heading;
 mod inline;
 mod layout_node;
@@ -37,6 +38,7 @@ mod list;
 mod math;
 mod paragraph;
 mod table;
+mod template;
 
 pub use layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle};
 
@@ -61,6 +63,9 @@ pub enum LoweringError {
   UnresolvedReference {
     /// 解決できなかったラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
+    /// `\ref{...}` のソース位置（`InlineNode::Ref` から引き継ぐ）
+    #[label("この参照が未解決です")]
+    span: miette::SourceSpan,
   },
 }
 
@@ -266,7 +271,7 @@ mod tests {
     let err = lower_node(&ctx, &node).expect_err("未解決の Ref は LoweringError を返すべき");
 
     match err {
-      LoweringError::UnresolvedReference { label } => assert_eq!(label, "ch:intro"),
+      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "ch:intro"),
     }
   }
 

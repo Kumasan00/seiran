@@ -29,14 +29,15 @@
 //! ## カウンタ定義のソース
 //!
 //! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
-//! [`CounterRegistry::from_style`] が [`read_style::Counters`] の各フィールドを内部の
-//! [`CounterStates`] に複製する。既定 9 種（part〜table）も `Style::default()` が
-//! `read_style::Counters::default()` 経由で供給するため、parser 側に同じ定義を
-//! 重複して持たない。
+//! [`CounterRegistry::from_style`] が [`read_style::Counters`] を `defs` に複製し、
+//! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
+//! 既定 9 種（part〜table）も `Style::default()` が `read_style::Counters::default()`
+//! 経由で供給するため、parser 側に同じ定義を重複して持たない。新しいカウンタの追加で
+//! parser 側に必要な変更は [`parse_counter_name`] への 1 行だけ。
 
 use std::collections::HashMap;
 
-use read_style::{CounterName, CounterStyle, Counters, Style};
+use read_style::{CounterName, Counters, Style};
 
 use crate::{
   document::{DocNode, HeadingLevel, InlineNode, ListItem},
@@ -46,8 +47,10 @@ use crate::{
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
-  /// 9 種のカウンタ状態
-  counters: CounterStates,
+  /// カウンタ定義（`read_style::Counters` の複製）
+  defs: Counters,
+  /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
+  values: HashMap<CounterName, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   pub labels: HashMap<String, ResolvedLabel>,
 }
@@ -70,18 +73,17 @@ impl CounterRegistry {
   #[must_use]
   pub fn from_counters(counters: &Counters) -> Self {
     return Self {
-      counters: CounterStates::from_counters(counters),
+      defs: counters.clone(),
+      values: HashMap::new(),
       labels: HashMap::new(),
     };
   }
 
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、書式化済みの番号文字列を返す
   pub fn increment(&mut self, name: CounterName) -> String {
-    let resets = self.counters.get(name).def.resets.clone();
-
-    self.counters.get_mut(name).value += 1;
-    for r in resets {
-      self.counters.get_mut(r).value = 0;
+    *self.values.entry(name).or_insert(0) += 1;
+    for r in &self.defs.get(name).resets {
+      self.values.insert(*r, 0);
     }
 
     return self.format_number(name);
@@ -90,9 +92,11 @@ impl CounterRegistry {
   /// 現在のカウンタ値を `format` テンプレートに従って書式化する
   #[must_use]
   pub fn format_number(&self, name: CounterName) -> String {
-    let def = &self.counters.get(name).def;
-    return self.expand_template(&def.format, name);
+    return self.expand_template(&self.defs.get(name).format, name);
   }
+
+  /// カウンタの現在値を返す（未登場のカウンタは 0）
+  fn value(&self, name: CounterName) -> u32 { return self.values.get(&name).copied().unwrap_or(0); }
 
   /// テンプレートのプレースホルダ `{n}` / `{<counter_name>}` を値で置換する
   ///
@@ -138,8 +142,7 @@ impl CounterRegistry {
 
   /// カウンタの「現在値を自身の `number_style` で描画した文字列」を返す
   fn render_counter_value(&self, name: CounterName) -> String {
-    let state = self.counters.get(name);
-    return state.def.number_style.render(state.value);
+    return self.defs.get(name).number_style.render(self.value(name));
   }
 
   /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
@@ -155,7 +158,7 @@ impl CounterRegistry {
     if self.labels.contains_key(&label) {
       return false;
     }
-    let def = &self.counters.get(counter).def;
+    let def = self.defs.get(counter);
     let formatted = expand_ref_format(&def.ref_format, &number.into(), &def.display_name);
     self.labels.insert(
       label,
@@ -165,6 +168,34 @@ impl CounterRegistry {
       },
     );
     return true;
+  }
+
+  /// 採番とラベル登録を一括で行う共通処理
+  ///
+  /// [`CounterRegistry::increment`] で番号を発番し、`label` があれば
+  /// [`CounterRegistry::register_label`] で登録する。同名ラベルが登録済みの場合は
+  /// [`EvalError::DuplicateLabel`] を返す。見出し・`equation`・`figure`・`table` の
+  /// 各ハンドラが共用する。
+  ///
+  /// # Errors
+  ///
+  /// `label` が既に登録済みの場合に [`EvalError::DuplicateLabel`] を返します。
+  pub fn increment_with_label(
+    &mut self,
+    counter: CounterName,
+    label: Option<&str>,
+    span: miette::SourceSpan,
+  ) -> Result<String, EvalError> {
+    let number = self.increment(counter);
+    if let Some(l) = label
+      && !self.register_label(l.to_string(), counter, &number)
+    {
+      return Err(EvalError::DuplicateLabel {
+        label: l.to_string(),
+        span,
+      });
+    }
+    return Ok(number);
   }
 
   /// pass2 で `\ref{label}` を解決して番号文字列を返す
@@ -185,85 +216,6 @@ impl CounterRegistry {
       HeadingLevel::Subparagraph => CounterName::Subparagraph,
     };
   }
-}
-
-/// 固定 9 種のカウンタ状態を保持する struct（[`Counters`] と同じ形）
-///
-/// `read_style::Counters` がフィールド型から `HashMap` ベースの定義テーブルへ変わったのに合わせ、
-/// parser 側でも `HashMap<String, _>` ではなく名前付きフィールドで保持する。
-#[derive(Debug, Clone)]
-pub(crate) struct CounterStates {
-  pub part: CounterState,
-  pub chapter: CounterState,
-  pub section: CounterState,
-  pub subsection: CounterState,
-  pub paragraph: CounterState,
-  pub subparagraph: CounterState,
-  pub figure: CounterState,
-  pub equation: CounterState,
-  pub table: CounterState,
-}
-
-impl CounterStates {
-  /// `read_style::Counters` の各フィールドを `CounterState` にラップして取り込む
-  #[must_use]
-  pub fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      part: CounterState::new(counters.part.clone()),
-      chapter: CounterState::new(counters.chapter.clone()),
-      section: CounterState::new(counters.section.clone()),
-      subsection: CounterState::new(counters.subsection.clone()),
-      paragraph: CounterState::new(counters.paragraph.clone()),
-      subparagraph: CounterState::new(counters.subparagraph.clone()),
-      figure: CounterState::new(counters.figure.clone()),
-      equation: CounterState::new(counters.equation.clone()),
-      table: CounterState::new(counters.table.clone()),
-    };
-  }
-
-  /// 指定カウンタの状態への不変参照を返す（9 種固定のため必ず存在する）
-  #[must_use]
-  pub fn get(&self, name: CounterName) -> &CounterState {
-    return match name {
-      CounterName::Part => &self.part,
-      CounterName::Chapter => &self.chapter,
-      CounterName::Section => &self.section,
-      CounterName::Subsection => &self.subsection,
-      CounterName::Paragraph => &self.paragraph,
-      CounterName::Subparagraph => &self.subparagraph,
-      CounterName::Figure => &self.figure,
-      CounterName::Equation => &self.equation,
-      CounterName::Table => &self.table,
-    };
-  }
-
-  /// 指定カウンタの状態への可変参照を返す
-  pub fn get_mut(&mut self, name: CounterName) -> &mut CounterState {
-    return match name {
-      CounterName::Part => &mut self.part,
-      CounterName::Chapter => &mut self.chapter,
-      CounterName::Section => &mut self.section,
-      CounterName::Subsection => &mut self.subsection,
-      CounterName::Paragraph => &mut self.paragraph,
-      CounterName::Subparagraph => &mut self.subparagraph,
-      CounterName::Figure => &mut self.figure,
-      CounterName::Equation => &mut self.equation,
-      CounterName::Table => &mut self.table,
-    };
-  }
-}
-
-/// カウンタ 1 つの実行時状態（定義 + 現在値）
-#[derive(Debug, Clone)]
-pub(crate) struct CounterState {
-  /// `read_style` から取り込んだスタイル定義
-  pub def: CounterStyle,
-  /// 現在のカウンタ値（初期値 0、`increment` で 1 ずつ進む）
-  pub value: u32,
-}
-
-impl CounterState {
-  fn new(def: CounterStyle) -> Self { return Self { def, value: 0 }; }
 }
 
 /// pass1 で登録される、ラベル名から確定済み番号への解決結果
@@ -395,10 +347,7 @@ fn resolve_list_item(item: &mut ListItem, registry: &CounterRegistry) -> Result<
 fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Result<(), EvalError> {
   for inline in inlines {
     match inline {
-      InlineNode::Emphasis(children)
-      | InlineNode::Strong(children)
-      | InlineNode::Code(children)
-      | InlineNode::SansSerif(children) => resolve_inlines(children, registry)?,
+      InlineNode::Styled { children, .. } => resolve_inlines(children, registry)?,
       InlineNode::Ref {
         label,
         number,

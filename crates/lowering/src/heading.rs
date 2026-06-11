@@ -5,20 +5,13 @@
 
 use parser::document::{HeadingLevel, InlineNode};
 
-use super::{LoweringContext, LoweringError, inline::inline_nodes_to_plain_text};
+use super::{LoweringContext, LoweringError, template::expand_template};
 use crate::layout_node::{LayoutNode, TextStyle};
-
-/// `HeadingStyle.format` テンプレートの `{number}` と `{title}` を実値で置換する
-///
-/// `number` は `parser::evaluator::counter::CounterRegistry::increment` で生成済みの
-/// 書式化文字列（例: `"1.2"`、`"第3章"`）。
-pub(super) fn format_heading_text(number: &str, title: &str, template: &str) -> String {
-  return template.replace("{number}", number).replace("{title}", title);
-}
 
 /// 見出しをレイアウトノードに変換する
 ///
-/// 見出し番号 + タイトルをスタイル付きテキストとして `VBox` に配置します。
+/// `HeadingStyle.format` テンプレートを [`expand_template`] で展開し、`VBox` に配置します。
+/// タイトル内の書体指定・インライン数式はスタイルを保持したまま埋め込まれます。
 /// Part レベルの場合は `PageBreak` を先行して出力します。
 ///
 /// ## TODO
@@ -39,10 +32,7 @@ pub(super) fn lower_heading(
     font_kind: heading_style.font_kind,
   };
 
-  // タイトルのインライン要素を一旦プレーン化し、テンプレ展開で番号と結合する
-  // TODO: 強調等のインライン要素のスタイルを保持したまま埋め込む（本実装タスク）
-  let title_text = inline_nodes_to_plain_text(title)?;
-  let heading_text = format_heading_text(number, &title_text, &heading_style.format);
+  let children = expand_template(ctx, &heading_style.format, number, title, style)?;
 
   let mut result = Vec::new();
 
@@ -51,7 +41,7 @@ pub(super) fn lower_heading(
   }
 
   result.push(LayoutNode::VBox {
-    children: vec![LayoutNode::Text(heading_text, style)],
+    children,
     margin_bottom: heading_style.bottom_margin,
   });
 
@@ -69,39 +59,6 @@ mod tests {
   use read_style::Style as ReadStyle;
 
   use super::*;
-
-  #[test]
-  fn test_format_heading_text_section_default_template() {
-    // 英語デフォルト: section は "{number} {title}"
-    let formatted = format_heading_text("2.3", "Intro", "{number} {title}");
-
-    assert_eq!(formatted, "2.3 Intro");
-  }
-
-  #[test]
-  fn test_format_heading_text_part_default_template() {
-    // 英語デフォルト: part は "Part {number}: {title}"
-    let formatted = format_heading_text("1", "Foundations", "Part {number}: {title}");
-
-    assert_eq!(formatted, "Part 1: Foundations");
-  }
-
-  #[test]
-  fn test_format_heading_text_japanese_override() {
-    // 日本語化（style.toml 上書き例）が正しく置換されること
-    let formatted = format_heading_text("3", "序論", "第{number}章 {title}");
-
-    assert_eq!(formatted, "第3章 序論");
-  }
-
-  #[test]
-  fn test_format_heading_text_legacy_placeholders_are_literal() {
-    // 旧プレースホルダ（\partnum / \chapternum / \text）はもはやプレースホルダではなく、
-    // テンプレ内にあればそのままリテラルとして残ることを確認する。
-    let formatted = format_heading_text("1", "Title", "第\\partnum部 \\text");
-
-    assert_eq!(formatted, "第\\partnum部 \\text");
-  }
 
   #[test]
   fn lower_heading_uses_style_template() {
@@ -129,6 +86,43 @@ mod tests {
   }
 
   #[test]
+  fn lower_heading_preserves_styled_title() {
+    // 見出しタイトル内の \italic は見出しのフォントサイズのまま SerifItalic の Text として保持される
+    // （見出しの既定書体は SerifBold なので、異なる書体としてマージされずに残る）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let title = [
+      InlineNode::Text("Intro ".to_string()),
+      InlineNode::Styled {
+        kind: types::FontKind::SerifItalic,
+        children: vec![InlineNode::Text("Italic".to_string())],
+      },
+    ];
+
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1.1", &title).expect("解決済みインラインのみなので失敗しないはず");
+
+    let vbox = nodes.iter().find_map(|n| {
+      if let LayoutNode::VBox { children, .. } = n {
+        Some(children)
+      } else {
+        None
+      }
+    });
+    let children = vbox.expect("VBox が出力されるはず");
+    let heading_size = style.heading(HeadingLevel::Section).font_size.to_pt();
+    let italic = children
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Text(t, s) if t == "Italic" => Some(*s),
+        _ => None,
+      })
+      .expect("イタリック部分の Text があるはず: {children:?}");
+    assert_eq!(italic.font_kind, types::FontKind::SerifItalic);
+    assert!((italic.font_size - heading_size).abs() < f32::EPSILON, "フォントサイズは見出しスタイルを継承する");
+  }
+
+  #[test]
   fn unresolved_ref_in_heading_title_returns_error() {
     // 見出しタイトルに含まれる未解決 Ref も inline_nodes_to_plain_text 経由で
     // 同じエラーとして伝播することを確認する。
@@ -148,7 +142,7 @@ mod tests {
     .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
 
     match err {
-      LoweringError::UnresolvedReference { label } => assert_eq!(label, "sec:missing"),
+      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "sec:missing"),
     }
   }
 }

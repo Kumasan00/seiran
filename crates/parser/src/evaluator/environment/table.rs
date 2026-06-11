@@ -31,7 +31,7 @@ use crate::{
   document::{CaptionPosition, DocNode, InlineNode, TableCell, TableRow},
   evaluator::{
     EvalError, Evaluator,
-    environment::{body_scan, figure::extract_caption},
+    environment::{body_scan, caption::extract_caption},
     inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
     opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args},
   },
@@ -73,15 +73,7 @@ pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
     }
   }
 
-  let number = evaluator.registry.increment(CounterName::Table);
-  if let Some(l) = &label
-    && !evaluator.registry.register_label(l.clone(), CounterName::Table, &number)
-  {
-    return Err(EvalError::DuplicateLabel {
-      label: l.clone(),
-      span: view.span().into(),
-    });
-  }
+  let number = evaluator.registry.increment_with_label(CounterName::Table, label.as_deref(), view.span().into())?;
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -495,10 +487,7 @@ fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
 fn contains_line_break(nodes: &[InlineNode]) -> bool {
   return nodes.iter().any(|node| match node {
     InlineNode::LineBreak => true,
-    InlineNode::Emphasis(children)
-    | InlineNode::Strong(children)
-    | InlineNode::Code(children)
-    | InlineNode::SansSerif(children) => contains_line_break(children),
+    InlineNode::Styled { children, .. } => contains_line_break(children),
     _ => false,
   });
 }
@@ -845,7 +834,7 @@ mod tests {
   #[test]
   fn table_cell_preserves_inline_styles() {
     // Arrange — セル内のインライン装飾は維持される
-    let source = r"\begin{table}\row{\textbf{強調} & $x^2$}\end{table}";
+    let source = r"\begin{table}\row{\bold{強調} & $x^2$}\end{table}";
 
     // Act
     let result = eval_table(source).unwrap();
@@ -854,7 +843,13 @@ mod tests {
     let DocNode::Table { rows, .. } = &result[0] else {
       panic!("Table が期待されます");
     };
-    assert!(matches!(&rows[0].cells[0].content[0], InlineNode::Strong(_)));
+    assert!(matches!(
+      &rows[0].cells[0].content[0],
+      InlineNode::Styled {
+        kind: types::FontKind::SerifBold,
+        ..
+      }
+    ));
     assert!(matches!(&rows[0].cells[1].content[0], InlineNode::InlineMath(_)));
   }
 

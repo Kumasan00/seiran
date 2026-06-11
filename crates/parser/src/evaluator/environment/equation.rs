@@ -15,7 +15,7 @@ use crate::{
   document::DocNode,
   evaluator::{
     EvalError, Evaluator, math,
-    opt_args::{OptType, OptValue, collect_environment_opt_args},
+    opt_args::{OptType, collect_environment_opt_args, find_string},
   },
 };
 
@@ -30,10 +30,7 @@ use crate::{
 /// 不明な任意引数キーや値の型不一致が発生した場合にエラーを返します
 pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
-  let label = opt_args.into_iter().find_map(|(key, value)| match (key.as_str(), value) {
-    ("label", OptValue::String(s)) => Some(s),
-    _ => None,
-  });
+  let label = find_string(opt_args, "label");
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),
@@ -41,15 +38,9 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
     });
   }
 
-  let number = evaluator.registry.increment(CounterName::Equation);
-  if let Some(l) = &label
-    && !evaluator.registry.register_label(l.clone(), CounterName::Equation, &number)
-  {
-    return Err(EvalError::DuplicateLabel {
-      label: l.clone(),
-      span: view.span().into(),
-    });
-  }
+  let number = evaluator
+    .registry
+    .increment_with_label(CounterName::Equation, label.as_deref(), view.span().into())?;
 
   let source = view.source();
   let body = match view.body() {
