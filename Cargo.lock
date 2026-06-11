@@ -374,6 +374,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "document"
+version = "0.1.0"
+dependencies = [
+ "miette",
+ "types",
+]
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1260,6 +1268,7 @@ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 name = "lowering"
 version = "0.1.0"
 dependencies = [
+ "document",
  "miette",
  "parser",
  "read_style",
@@ -1427,6 +1436,7 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "document",
  "garde",
  "miette",
  "phf",
@@ -1810,6 +1820,7 @@ name = "seiran"
 version = "0.1.0"
 dependencies = [
  "cli",
+ "document",
  "font",
  "layout",
  "lowering",

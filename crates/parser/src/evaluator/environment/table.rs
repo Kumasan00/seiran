@@ -18,6 +18,7 @@
 //!   特殊属性が必要なセルだけ `\cell[span=N]{...}` にエスカレートする
 //! - `\caption{...}` — キャプション（出現位置が最初の行より前なら上、後なら下に配置）
 
+use document::{CaptionPosition, DocNode, InlineNode, TableCell, TableRow};
 use read_style::CounterName;
 use syntax::{
   SyntaxKind,
@@ -27,14 +28,11 @@ use syntax::{
 };
 use types::{ColumnAlign, ColumnWidth, Length};
 
-use crate::{
-  document::{CaptionPosition, DocNode, InlineNode, TableCell, TableRow},
-  evaluator::{
-    EvalError, Evaluator,
-    environment::{body_scan, caption::extract_caption},
-    inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args},
-  },
+use crate::evaluator::{
+  EvalError, Evaluator,
+  environment::{body_scan, caption::extract_caption},
+  inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
+  opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args},
 };
 
 /// `table` 環境を評価する
@@ -496,9 +494,10 @@ fn contains_line_break(nodes: &[InlineNode]) -> bool {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use document::inline_nodes_to_plain_text;
 
   use super::*;
-  use crate::{document::inline_nodes_to_plain_text, evaluator::lookup_env_parse_mode};
+  use crate::evaluator::lookup_env_parse_mode;
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {

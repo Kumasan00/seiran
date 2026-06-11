@@ -4,7 +4,7 @@
 //! `{title}` の中身はインライン要素のまま [`lower_inline`] で展開するため、
 //! タイトル内の書体指定（`\bold` 等）やインライン数式が失われない。
 
-use parser::document::InlineNode;
+use document::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -165,7 +165,7 @@ mod tests {
   #[test]
   fn inline_math_in_title_is_lowered() {
     // タイトル内のインライン数式は "[Math]" プレースホルダではなく実ノードに展開される
-    use parser::document::MathNode;
+    use document::MathNode;
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::InlineMath(vec![MathNode::Text(

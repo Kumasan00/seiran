@@ -6,7 +6,7 @@
 //!
 //! 親モジュール [`super`]（`math.rs`）からのみ参照される内部モジュール。
 
-use parser::document::MathStyle;
+use document::MathStyle;
 
 /// 1 文字を `style` に応じた Mathematical Alphanumeric コードポイントへ変換する
 ///

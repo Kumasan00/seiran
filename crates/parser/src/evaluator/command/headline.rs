@@ -4,16 +4,14 @@
 //! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成し、
 //! [`CounterRegistry`](crate::evaluator::counter::CounterRegistry) で自動採番します。
 
+use document::{DocNode, HeadingLevel};
 use syntax::ast::CommandView;
 
-use crate::{
-  document::{self, DocNode, HeadingLevel},
-  evaluator::{
-    EvalError,
-    counter::CounterRegistry,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, collect_command_opt_args, find_string},
-  },
+use crate::evaluator::{
+  EvalError,
+  counter::CounterRegistry,
+  inline::extract_inline_nodes,
+  opt_args::{OptType, collect_command_opt_args, find_string},
 };
 
 /// 見出しコマンドの共通処理
@@ -43,7 +41,7 @@ pub(super) fn heading(
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
-      expected: document::expected_name(level).to_string(),
+      expected: expected_name(level).to_string(),
       span: view.span().into(),
     });
   };
@@ -65,6 +63,20 @@ pub(super) fn heading(
     title,
     label,
   }]);
+}
+
+/// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
+///
+/// 文言は parser エラーレポート専用のため、`document` クレート側ではなく parser に置く。
+fn expected_name(level: HeadingLevel) -> &'static str {
+  return match level {
+    HeadingLevel::Part => "部名",
+    HeadingLevel::Chapter => "章名",
+    HeadingLevel::Section => "セクション名",
+    HeadingLevel::Subsection => "サブセクション名",
+    HeadingLevel::Paragraph => "段落名",
+    HeadingLevel::Subparagraph => "小節名",
+  };
 }
 
 #[cfg(test)]

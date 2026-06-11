@@ -3,15 +3,13 @@
 //! `\begin{itemize}...\end{itemize}` および `\begin{enumerate}...\end{enumerate}`
 //! 環境内の `\item{...}` コマンドを `DocNode::List` に変換します。
 
+use document::{DocNode, ListItem};
 use syntax::ast::EnvironmentView;
 
-use crate::{
-  document::{DocNode, ListItem},
-  evaluator::{
-    EvalError, Evaluator,
-    environment::body_scan,
-    opt_args::{collect_command_opt_args, collect_environment_opt_args},
-  },
+use crate::evaluator::{
+  EvalError, Evaluator,
+  environment::body_scan,
+  opt_args::{collect_command_opt_args, collect_environment_opt_args},
 };
 
 /// `itemize` 環境を評価する（順序なしリスト）

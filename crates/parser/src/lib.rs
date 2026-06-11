@@ -20,13 +20,12 @@
 //! - [`evaluator`] — CST → Document IR の変換器
 
 use bumpalo::Bump;
+use document::DocNode;
 use miette::{Diagnostic, NamedSource};
 pub use read_style::Style;
 use thiserror::Error;
 
-pub mod document;
 mod evaluator;
-pub use document::{DocNode, Document, HeadingLevel, InlineNode, ListItem, MathNode, TableCell, TableRow};
 pub use evaluator::EvalError;
 use evaluator::{Evaluator, counter::resolve_refs};
 

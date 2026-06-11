@@ -1,5 +1,5 @@
 [package]
-name = "lowering"
+name = "document"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -8,14 +8,8 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-document.workspace = true
 miette.workspace = true
-read_style.workspace = true
-thiserror.workspace = true
 types.workspace = true
-
-[dev-dependencies]
-parser.workspace = true
 
 [lints]
 workspace = true

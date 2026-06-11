@@ -3,7 +3,7 @@
 //! 段落内のインライン要素を展開し、フラットな `LayoutNode::Text` のリストとして
 //! レイアウトノードに変換します。段落間にはデフォルトのスペースを挿入します。
 
-use parser::document::InlineNode;
+use document::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
 use crate::layout_node::{LayoutNode, TextStyle};

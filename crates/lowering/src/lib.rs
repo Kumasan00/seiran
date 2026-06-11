@@ -24,8 +24,8 @@
 //! - スタイルシート（`read_style` クレート）を `LoweringContext` 経由で受け取り、
 //!   見出しレベルごとのフォントサイズ・フォーマット文字列・余白を適用する
 
+use document::{DocNode, Document};
 use miette::Diagnostic;
-use parser::document::{DocNode, Document};
 use read_style::Style as ReadStyle;
 use thiserror::Error;
 
@@ -194,7 +194,7 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
 
 #[cfg(test)]
 mod tests {
-  use parser::document::{InlineNode, MathNode};
+  use document::{InlineNode, MathNode};
   use types::Length;
 
   use super::*;

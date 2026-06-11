@@ -1,6 +1,6 @@
 //! リスト（`DocNode::List`）の lowering
 
-use parser::document::ListItem;
+use document::ListItem;
 
 use super::{LoweringContext, LoweringError, lower_nodes};
 use crate::layout_node::{LayoutNode, TextStyle};

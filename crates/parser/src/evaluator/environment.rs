@@ -17,13 +17,11 @@
 //!    },
 //!    ```
 
+use document::DocNode;
 use phf::phf_map;
 use syntax::{ParseMode, ast::EnvironmentView};
 
-use crate::{
-  document::DocNode,
-  evaluator::{EvalError, Evaluator},
-};
+use crate::evaluator::{EvalError, Evaluator};
 
 pub(crate) mod body_scan;
 mod caption;

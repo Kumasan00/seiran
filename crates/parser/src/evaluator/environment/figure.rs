@@ -18,17 +18,15 @@
 //!   を上書き）
 //! - `\caption{...}` — キャプション（任意）
 
+use document::{CaptionPosition, DocNode, InlineNode};
 use read_style::CounterName;
 use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
 use types::Length;
 
-use crate::{
-  document::{CaptionPosition, DocNode, InlineNode},
-  evaluator::{
-    EvalError, Evaluator,
-    environment::{body_scan, caption::extract_caption},
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
-  },
+use crate::evaluator::{
+  EvalError, Evaluator,
+  environment::{body_scan, caption::extract_caption},
+  opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
 };
 
 /// `figure` 環境を評価する

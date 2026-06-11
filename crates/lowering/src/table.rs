@@ -9,7 +9,7 @@
 //! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
 //! `pdf_gen` 段で行い、ここでは列指定をそのまま保持します。
 
-use parser::document::{CaptionPosition, InlineNode, TableRow};
+use document::{CaptionPosition, InlineNode, TableRow};
 use types::{ColumnAlign, ColumnWidth, FontKind};
 
 use super::{
@@ -119,7 +119,7 @@ pub(super) fn lower_table(
 
 #[cfg(test)]
 mod tests {
-  use parser::document::{InlineNode, TableCell};
+  use document::{InlineNode, TableCell};
   use read_style::Style as ReadStyle;
 
   use super::*;

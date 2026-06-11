@@ -2,13 +2,11 @@
 //!
 //! スペース挿入などの制御コマンドを提供します。
 
+use document::DocNode;
 use syntax::ast::{CommandView, extract_text_content};
 use types::Length;
 
-use crate::{
-  document::DocNode,
-  evaluator::{EvalError, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, opt_args::collect_command_opt_args};
 
 /// `\space{N}` — 垂直スペースを挿入するコマンド
 ///

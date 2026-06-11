@@ -1,6 +1,6 @@
 //! 数式レイアウト（上付き / 下付きスクリプトのサイズと位置）のスタイル設定型。
 //!
-//! `parser::document::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
+//! `document::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
 //! および将来 OpenType MATH テーブルから自動取得する範囲を明確化するため、`MathScriptStyle`
 //! と命名している。MATH テーブル対応時にはこれを `Option<MathScriptStyle>`（`None` = MATH
 //! テーブルから自動取得）に変える想定で、現状の手動設定は暫定的な API 境界。

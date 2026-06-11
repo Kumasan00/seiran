@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 cli.workspace = true
+document.workspace = true
 font.workspace = true
 layout.workspace = true
 lowering.workspace = true

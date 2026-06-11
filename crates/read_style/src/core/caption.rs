@@ -3,7 +3,7 @@
 //! [`FigureStyle`](crate::FigureStyle) と [`TableStyle`](crate::TableStyle) が共有する 2 フィールド
 //! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置は図・表ともに
 //! ソース上の `\caption` の出現位置で決まるため、スタイル側では持たず Document IR
-//! （`parser::document::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
+//! （`document::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};

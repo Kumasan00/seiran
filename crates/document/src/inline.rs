@@ -1,0 +1,162 @@
+//! インラインレベル要素の型定義
+
+use miette::SourceSpan;
+use types::FontKind;
+
+use crate::math::MathNode;
+
+// =============================================================================
+// インラインレベル要素
+// =============================================================================
+
+/// インラインレベルのドキュメント要素
+///
+/// 段落や見出しの内部に配置されるテキスト片やスタイル修飾を表現します。
+/// セマンティックな意図を保持し、物理的なスタイルは Lowering 層で付与されます。
+#[derive(Debug, Clone, PartialEq)]
+pub enum InlineNode {
+  /// プレーンテキスト
+  Text(String),
+
+  /// 書体指定テキスト（`\bold{...}`, `\sansitalic{...}`, `\mono{...}` 等の 12 コマンド）
+  ///
+  /// 3 ファミリ（serif / sans / mono）× 4 スタイル（normal / bold / italic / bolditalic）の
+  /// 組み合わせを 1 コマンド = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
+  /// 完全に上書きする（[`MathNode::Styled`] と同じ規則で、親スタイルとの合成はしない）。
+  ///
+  /// コマンド表（`COMMAND_MAP`）にはテキスト装飾 12 種のみを登録するため、
+  /// `FontKind::Math` がここに入ることはない。
+  Styled {
+    /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
+    kind: FontKind,
+    /// 装飾対象のインライン要素
+    children: Vec<InlineNode>,
+  },
+
+  /// インライン数式（`$...$`）
+  InlineMath(Vec<MathNode>),
+
+  /// 特殊文字・記号（`\alpha`, `\sum`, `\infty` 等）
+  Symbol(char),
+
+  /// 強制改行（`\\`）
+  LineBreak,
+
+  /// 相互参照（`\ref{label}`）
+  ///
+  /// `CounterRegistry` での 2 パス評価で解決される。`number` は pass1 では `None`、
+  /// pass2 解決後に `Some(整形済み文字列)` になる。pass2 で未定義ラベルが残った場合は
+  /// `EvalError::UnknownLabel` を返し、`number: None` の状態は呼び出し側に届かない。
+  Ref {
+    /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
+    label: String,
+    /// 解決された番号文字列。pass2 完了時点で `Some` となる
+    number: Option<String>,
+    /// `\ref{...}` の `CommandCall` ノードのソース位置。pass2 で未解決時の診断に使う
+    span: SourceSpan,
+  },
+}
+
+impl InlineNode {
+  /// テキストノードを生成する
+  #[must_use]
+  pub fn text(s: impl Into<String>) -> Self { return InlineNode::Text(s.into()); }
+
+  /// シンボルノードを生成する
+  #[must_use]
+  pub fn symbol(ch: char) -> Self { return InlineNode::Symbol(ch); }
+
+  /// このノードをプレーンテキストに変換する
+  ///
+  /// スタイル情報を無視して、含まれる文字列を連結して返します。
+  /// 見出しタイトルのプレーンテキスト取得などに使用します。
+  #[must_use]
+  pub fn to_plain_text(&self) -> String {
+    match self {
+      InlineNode::Text(s) => return s.clone(),
+      InlineNode::Styled { children, .. } => {
+        return children.iter().map(InlineNode::to_plain_text).collect();
+      },
+      InlineNode::InlineMath(_) => return "[Math]".to_string(),
+      InlineNode::Symbol(ch) => return ch.to_string(),
+      InlineNode::LineBreak => return "\n".to_string(),
+      InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
+    }
+  }
+}
+
+/// インラインノードのスライスをプレーンテキストに一括変換する
+#[must_use]
+pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
+  return inlines.iter().map(InlineNode::to_plain_text).collect();
+}
+
+// =============================================================================
+// テスト
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn inline_text_to_plain_text() {
+    let node = InlineNode::text("hello");
+    assert_eq!(node.to_plain_text(), "hello");
+  }
+
+  #[test]
+  fn inline_symbol_to_plain_text() {
+    let node = InlineNode::symbol('α');
+    assert_eq!(node.to_plain_text(), "α");
+  }
+
+  #[test]
+  fn inline_styled_to_plain_text() {
+    let node = InlineNode::Styled {
+      kind: FontKind::SerifItalic,
+      children: vec![InlineNode::text("important")],
+    };
+    assert_eq!(node.to_plain_text(), "important");
+  }
+
+  #[test]
+  fn inline_nested_to_plain_text() {
+    let node = InlineNode::Styled {
+      kind: FontKind::SerifBold,
+      children: vec![
+        InlineNode::text("bold "),
+        InlineNode::Styled {
+          kind: FontKind::SerifItalic,
+          children: vec![InlineNode::text("and italic")],
+        },
+      ],
+    };
+    assert_eq!(node.to_plain_text(), "bold and italic");
+  }
+
+  #[test]
+  fn inline_math_to_plain_text() {
+    let node = InlineNode::InlineMath(vec![MathNode::Text("x+1".to_string())]);
+    assert_eq!(node.to_plain_text(), "[Math]");
+  }
+
+  #[test]
+  fn inline_line_break_to_plain_text() {
+    let node = InlineNode::LineBreak;
+    assert_eq!(node.to_plain_text(), "\n");
+  }
+
+  #[test]
+  fn inline_nodes_to_plain_text_mixed() {
+    let inlines = vec![
+      InlineNode::text("Hello "),
+      InlineNode::Styled {
+        kind: FontKind::SerifBold,
+        children: vec![InlineNode::text("world")],
+      },
+      InlineNode::text("!"),
+    ];
+    assert_eq!(inline_nodes_to_plain_text(&inlines), "Hello world!");
+  }
+}

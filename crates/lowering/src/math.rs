@@ -5,7 +5,7 @@
 //! によって Unicode Mathematical Alphanumeric Symbols へ変換され、数式フォントが持つ
 //! 字形バリアントを直接呼び出します。
 
-use parser::document::{MathNode, MathStyle};
+use document::{MathNode, MathStyle};
 use read_style::{MathScriptStyle as MathStyleConfig, NumberSide};
 use types::FontKind;
 

@@ -2,12 +2,10 @@
 //!
 //! `figure` / `table`（および将来のキャプション付き環境）の環境ハンドラが共用する。
 
+use document::InlineNode;
 use syntax::ast::CommandView;
 
-use crate::{
-  document::InlineNode,
-  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args};
 
 /// `\caption{...}` の引数をインライン要素列に変換する
 ///

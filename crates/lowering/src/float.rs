@@ -4,7 +4,7 @@
 //! キャプションは [`expand_template`] で展開するため、キャプション内の
 //! 書体指定・インライン数式もスタイルを保持したまま埋め込まれる。
 
-use parser::document::{CaptionPosition, InlineNode};
+use document::{CaptionPosition, InlineNode};
 use read_style::CaptionStyle;
 use types::{FontKind, Length};
 

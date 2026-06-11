@@ -20,14 +20,12 @@
 //! 4. **独自ロジックを持つコマンド**:
 //!    `CommandKind` にバリアントを追加し、`execute()` にハンドラを実装します。
 
+use document::{DocNode, HeadingLevel, InlineNode};
 use phf::phf_map;
 use syntax::ast::CommandView;
 use types::FontKind;
 
-use crate::{
-  document::{DocNode, HeadingLevel, InlineNode},
-  evaluator::{EvalError, Evaluator, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, Evaluator, opt_args::collect_command_opt_args};
 
 mod control;
 mod headline;

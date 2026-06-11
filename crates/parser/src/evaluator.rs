@@ -18,6 +18,7 @@
 //! - 数式ノードは CST の `InlineMath` / `MathGroup` / `MathSubscript` /
 //!   `MathSuperscript` をそのまま `MathNode` に変換
 
+use document::{DocNode, InlineNode};
 use read_style::Style;
 use syntax::{
   SyntaxKind,
@@ -26,10 +27,7 @@ use syntax::{
   token::TokenKind,
 };
 
-use crate::{
-  document::{DocNode, InlineNode},
-  evaluator::{command::CommandResult, counter::CounterRegistry},
-};
+use crate::evaluator::{command::CommandResult, counter::CounterRegistry};
 
 mod command;
 pub(crate) mod counter;

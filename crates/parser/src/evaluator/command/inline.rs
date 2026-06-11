@@ -5,13 +5,11 @@
 //! 各コマンドは子要素を再帰的に `InlineNode` に変換し、対応する `FontKind` を持つ
 //! [`InlineNode::Styled`] を生成します。ネスト時は内側の書体が完全に上書きします。
 
+use document::InlineNode;
 use syntax::ast::CommandView;
 use types::FontKind;
 
-use crate::{
-  document::InlineNode,
-  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args};
 
 /// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
 ///

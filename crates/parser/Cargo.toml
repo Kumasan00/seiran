@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 bumpalo.workspace = true
+document.workspace = true
 garde.workspace = true
 miette.workspace = true
 phf.workspace = true

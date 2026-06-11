@@ -4,12 +4,10 @@
 //! 解決される [`InlineNode::Ref`] スタブを生成する。pass1 時点では `number` は `None`
 //! で、`parser::parse_source` の pass2 で書き換えられる。
 
+use document::InlineNode;
 use syntax::ast::{CommandView, extract_text_content};
 
-use crate::{
-  document::InlineNode,
-  evaluator::{EvalError, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, opt_args::collect_command_opt_args};
 
 /// `\ref{label}` を `InlineNode::Ref` に変換する
 ///

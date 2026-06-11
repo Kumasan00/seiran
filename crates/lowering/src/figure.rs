@@ -8,7 +8,7 @@
 //!
 //! 画像サイズ（width / height）は mm 入力を pt（72/25.4 倍）に変換します。
 
-use parser::document::{CaptionPosition, InlineNode};
+use document::{CaptionPosition, InlineNode};
 use types::Length;
 
 use super::{
@@ -80,7 +80,7 @@ pub(super) fn lower_figure(
 
 #[cfg(test)]
 mod tests {
-  use parser::document::InlineNode;
+  use document::InlineNode;
   use read_style::Style as ReadStyle;
 
   use super::*;

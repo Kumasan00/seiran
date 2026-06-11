@@ -8,15 +8,13 @@
 //!
 //! - `[label=eq:foo]` — `\ref` 解決用ラベル（任意）
 
+use document::DocNode;
 use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 
-use crate::{
-  document::DocNode,
-  evaluator::{
-    EvalError, Evaluator, math,
-    opt_args::{OptType, collect_environment_opt_args, find_string},
-  },
+use crate::evaluator::{
+  EvalError, Evaluator, math,
+  opt_args::{OptType, collect_environment_opt_args, find_string},
 };
 
 /// `equation` 環境を評価する
@@ -59,10 +57,11 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use document::MathNode;
   use read_style::{Counters, Style};
 
   use super::*;
-  use crate::{document::MathNode, evaluator::lookup_env_parse_mode};
+  use crate::evaluator::lookup_env_parse_mode;
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {

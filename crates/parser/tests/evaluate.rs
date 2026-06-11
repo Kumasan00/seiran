@@ -7,9 +7,8 @@
 
 #![allow(clippy::unwrap_used, clippy::too_many_lines)]
 
-use parser::{
-  DocNode, EvalError, HeadingLevel, InlineNode, MathNode, ParseSourceError, Style, document::MathStyle, parse_source,
-};
+use document::{DocNode, HeadingLevel, InlineNode, MathNode, MathStyle};
+use parser::{EvalError, ParseSourceError, Style, parse_source};
 use types::FontKind;
 
 /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ

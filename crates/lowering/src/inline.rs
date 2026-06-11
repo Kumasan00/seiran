@@ -3,7 +3,7 @@
 //! 親から継承されたスタイル（`parent_style`）を基に、インライン要素の種類に応じて
 //! フォント種別やサイズを変更します。
 
-use parser::document::InlineNode;
+use document::InlineNode;
 
 use super::{LoweringContext, LoweringError, math::lower_inline_math};
 use crate::layout_node::{LayoutNode, TextStyle};

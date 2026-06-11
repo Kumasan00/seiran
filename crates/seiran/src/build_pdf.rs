@@ -4,6 +4,7 @@
 
 use std::{fs, path::Path};
 
+use document::DocNode;
 use font::{
   FontData, FontDataExt, FontRefs, FontRefsExt,
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
@@ -11,7 +12,7 @@ use font::{
 };
 use lowering::{LoweringContext, LoweringError};
 use miette::Diagnostic;
-use parser::{DocNode, ParseSourceError};
+use parser::ParseSourceError;
 use thiserror::Error;
 use tracing::info;
 

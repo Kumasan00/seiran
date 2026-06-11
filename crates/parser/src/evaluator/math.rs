@@ -13,6 +13,7 @@
 //! CST 形が揃っているため共通化でき、`InlineMath` 専用の `$` 開閉トークンは
 //! 共通ヘルパ内で `_ => {}` に落ちて無視されます。
 
+use document::{MathNode, MathStyle};
 use syntax::{
   SyntaxKind,
   ast::{CommandView, EnvironmentView},
@@ -20,10 +21,7 @@ use syntax::{
   token::TokenKind,
 };
 
-use crate::{
-  document::{MathNode, MathStyle},
-  evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
-};
+use crate::evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args};
 
 /// インライン数式ノード（`$...$` 由来の `InlineMath`）を `MathNode` のリストに変換する
 ///

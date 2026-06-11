@@ -3,7 +3,7 @@
 //! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`read_style::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
-use parser::document::{HeadingLevel, InlineNode};
+use document::{HeadingLevel, InlineNode};
 
 use super::{LoweringContext, LoweringError, template::expand_template};
 use crate::layout_node::{LayoutNode, TextStyle};

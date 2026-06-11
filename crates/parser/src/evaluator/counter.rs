@@ -37,12 +37,10 @@
 
 use std::collections::HashMap;
 
+use document::{DocNode, HeadingLevel, InlineNode, ListItem};
 use read_style::{CounterName, Counters, Style};
 
-use crate::{
-  document::{DocNode, HeadingLevel, InlineNode, ListItem},
-  evaluator::EvalError,
-};
+use crate::evaluator::EvalError;
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -372,11 +370,11 @@ fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Re
 
 #[cfg(test)]
 mod tests {
+  use document::DocNode;
   use miette::SourceSpan;
   use read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style};
 
   use super::*;
-  use crate::document::DocNode;
 
   #[test]
   fn counter_registry_increment_format() {
