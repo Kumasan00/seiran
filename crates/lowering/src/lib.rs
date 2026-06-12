@@ -40,7 +40,8 @@ mod paragraph;
 mod table;
 mod template;
 
-pub use layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle};
+pub use layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
+pub use types::TableColumn;
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
 ///
@@ -297,9 +298,9 @@ mod tests {
   }
 
   #[test]
-  fn lower_display_math_wraps_with_linebreaks_and_vkerns() {
-    // ディスプレイ数式は LineBreak + Vkern(top) ... Vkern(bottom) + LineBreak で
-    // 独立した行＋上下マージンに配置される（number = None なら番号は付かない）
+  fn lower_display_math_wraps_with_vkerns() {
+    // ディスプレイ数式は Vkern(top) ... Vkern(bottom) の上下マージンのみで包まれ、
+    // renderer 専用の LineBreak は出力しない（number = None なら番号は付かない）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let node = DocNode::DisplayMath {
@@ -310,13 +311,12 @@ mod tests {
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
-    // 先頭: LineBreak → Vkern(top_margin)
-    assert!(matches!(nodes.first(), Some(LayoutNode::LineBreak)));
-    assert!(matches!(nodes.get(1), Some(LayoutNode::Vkern { .. })), "2 番目は Vkern であるべき: {nodes:?}");
-    // 末尾: Vkern(bottom_margin) → LineBreak
-    assert!(matches!(nodes.last(), Some(LayoutNode::LineBreak)));
-    let second_last = nodes.get(nodes.len() - 2);
-    assert!(matches!(second_last, Some(LayoutNode::Vkern { .. })), "末尾の 1 つ前は Vkern であるべき: {nodes:?}");
+    // 先頭: Vkern(top_margin)、末尾: Vkern(bottom_margin)
+    assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {nodes:?}");
+    assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {nodes:?}");
+    // LineBreak は含まれない
+    let has_line_break = nodes.iter().any(|n| matches!(n, LayoutNode::LineBreak));
+    assert!(!has_line_break, "LineBreak は出力されないはず: {nodes:?}");
     // number = None のときは Glue / Serif Text は挿入されない
     let has_glue = nodes.iter().any(|n| matches!(n, LayoutNode::Glue { .. }));
     assert!(!has_glue, "number が None のときは Glue は挿入されないはず: {nodes:?}");
@@ -336,10 +336,10 @@ mod tests {
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
-    // 末尾 Vkern + LineBreak の手前に Text("(1)")、その手前に Glue が並ぶ
+    // 末尾 Vkern の手前に Text("(1)")、その手前に Glue が並ぶ
     let len = nodes.len();
-    let number_text = nodes.get(len - 3);
-    let gap = nodes.get(len - 4);
+    let number_text = nodes.get(len - 2);
+    let gap = nodes.get(len - 3);
     assert!(
       matches!(number_text, Some(LayoutNode::Text(t, _)) if t == "(1)"),
       "末尾近くに Text(\"(1)\") があるべき: {nodes:?}"

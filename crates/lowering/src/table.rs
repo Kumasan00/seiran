@@ -10,14 +10,14 @@
 //! `pdf_gen` 段で行い、ここでは列指定をそのまま保持します。
 
 use document::{CaptionPosition, InlineNode, TableRow};
-use types::{ColumnAlign, ColumnWidth, FontKind};
+use types::{ColumnAlign, ColumnWidth, FontKind, TableColumn};
 
 use super::{
   LoweringContext, LoweringError,
   float::{FloatSpec, build_caption, wrap_float},
   inline::lower_inline,
 };
-use crate::layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle};
+use crate::layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {
@@ -112,7 +112,6 @@ pub(super) fn lower_table(
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: None,
-    break_after_main: false,
   };
   return Ok(wrap_float(table_node, caption_nodes, &spec));
 }

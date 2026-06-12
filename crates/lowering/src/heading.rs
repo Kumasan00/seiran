@@ -47,8 +47,6 @@ pub(super) fn lower_heading(
 
   if heading_style.page_break_after {
     result.push(LayoutNode::PageBreak);
-  } else {
-    result.push(LayoutNode::LineBreak);
   }
 
   return Ok(result);

@@ -52,6 +52,18 @@ pub enum ColumnWidth {
   Flex,
 }
 
+/// 表の 1 列の定義（揃え + 幅指定）
+///
+/// `lowering`（`TableLayout`）と `hlist`（`TableBox`）の両方が参照するため、
+/// どちらにも依存しない `types` クレートに置く。
+#[derive(Debug, Clone, Copy)]
+pub struct TableColumn {
+  /// セル内容の揃え方向
+  pub align: ColumnAlign,
+  /// 列幅の指定方法
+  pub width: ColumnWidth,
+}
+
 #[cfg(test)]
 mod tests {
   use super::ColumnAlign;

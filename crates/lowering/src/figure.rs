@@ -73,7 +73,6 @@ pub(super) fn lower_figure(
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: Some(style.inner_margin),
-    break_after_main: true,
   };
   return Ok(wrap_float(image_node, caption_nodes, &spec));
 }

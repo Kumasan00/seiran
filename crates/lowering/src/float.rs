@@ -29,7 +29,9 @@ pub(super) fn build_caption(
   return expand_template(ctx, &caption_style.format, number, inlines, base_style);
 }
 
-/// フロートの余白・改行挙動の指定
+/// フロートの余白の指定
+// 全フィールドが余白（*_margin）のみの構造体なので postfix 警告は意図どおり
+#[allow(clippy::struct_field_names)]
 pub(super) struct FloatSpec {
   /// フロート全体の上マージン（VBox の前に Vkern として出力）
   pub top_margin: Length,
@@ -37,16 +39,13 @@ pub(super) struct FloatSpec {
   pub bottom_margin: Length,
   /// 本体とキャプションの間に入れる余白。`None` なら Vkern を出力しない
   pub inner_margin: Option<Length>,
-  /// 本体ノードの直後に `LineBreak` を入れるか
-  ///
-  /// テキストフローに乗る本体（画像）は `true`、`pdf_gen` が独立ブロックとして
-  /// 扱う本体（表）は `false`。
-  pub break_after_main: bool,
 }
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
 ///
 /// `caption` が `None` のときはキャプション行を一切出力しない。
+/// 本体とキャプションの縦区切りは `Vkern`（`inner_margin`）のみで表し、
+/// ブロック境界の判断は縦組版層（`build_blocks` の `VBox` 再帰平坦化）に委ねる。
 pub(super) fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<LayoutNode>)>,
@@ -56,29 +55,20 @@ pub(super) fn wrap_float(
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
       children.extend(caption_nodes);
-      children.push(LayoutNode::LineBreak);
       if let Some(margin) = spec.inner_margin {
         children.push(LayoutNode::Vkern { length: margin });
       }
       children.push(main);
-      if spec.break_after_main {
-        children.push(LayoutNode::LineBreak);
-      }
     },
     Some((CaptionPosition::Bottom, caption_nodes)) => {
       children.push(main);
-      children.push(LayoutNode::LineBreak);
       if let Some(margin) = spec.inner_margin {
         children.push(LayoutNode::Vkern { length: margin });
       }
       children.extend(caption_nodes);
-      children.push(LayoutNode::LineBreak);
     },
     None => {
       children.push(main);
-      if spec.break_after_main {
-        children.push(LayoutNode::LineBreak);
-      }
     },
   }
 

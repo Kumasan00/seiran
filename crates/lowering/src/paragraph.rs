@@ -26,9 +26,8 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
     result.extend(lower_inline(ctx, inline, default_style)?);
   }
 
-  // 段落末に改行 + カーンを追加（段落間スペース）
-  result.push(LayoutNode::LineBreak);
-  result.push(LayoutNode::Kern {
+  // 段落間スペースは縦カーンで構造的に表す（段落の行送り自体は縦組版層が担う）
+  result.push(LayoutNode::Vkern {
     length: ctx.style.core.text.paragraph_spacing,
   });
 

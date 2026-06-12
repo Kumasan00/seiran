@@ -6,10 +6,52 @@
 
 use std::{fs, path::Path};
 
+use hlist::Block;
 use krilla::image::Image;
 use usvg::Tree;
 
 use crate::error::PdfGenError;
+
+/// ブロック列中の画像サイズを確定する prepass
+///
+/// `Block::Image` の `width` / `height` が未指定（`None`）の場合に画像ファイルを開いて
+/// 自然寸法を取得し、縦横比と本文幅から最終物理サイズ（pt）を確定する。
+/// 縦組版（`hlist::break_pages`）が画像高さで改ページ判定できるよう、
+/// (a) `build_blocks` と (c+d) `break_pages` の間に挟む。
+///
+/// # Errors
+///
+/// 画像の読み込み・デコードに失敗した場合、または自然寸法から縦横比を
+/// 算出できない場合に [`PdfGenError`] を返します。
+pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>, PdfGenError> {
+  return blocks
+    .into_iter()
+    .map(|block| match block {
+      Block::Image {
+        path,
+        width,
+        height,
+        target_dpi,
+      } => {
+        let loaded = load_image(&path, None)?;
+        let (nat_width, nat_height) = loaded.natural_size();
+        let (final_width, final_height) = resolve_image_size(width, height, nat_width, nat_height, text_width)
+          .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
+            path: path.clone(),
+            width: nat_width,
+            height: nat_height,
+          })?;
+        return Ok(Block::Image {
+          path,
+          width: Some(final_width),
+          height: Some(final_height),
+          target_dpi,
+        });
+      },
+      other => Ok(other),
+    })
+    .collect();
+}
 
 /// `load_image` が返す画像表現。
 ///

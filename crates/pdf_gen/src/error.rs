@@ -48,19 +48,6 @@ pub enum PdfGenError {
     /// ページ高さ。
     height: f32,
   },
-  /// フォントの head テーブルを取得できませんでした。
-  #[error("head テーブルの取得に失敗しました: {font_type:?}")]
-  #[diagnostic(
-    code(pdf_gen::missing_head_table),
-    help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
-  )]
-  MissingHeadTable {
-    /// フォント種別。
-    font_type: FontType,
-    /// 元の読み込みエラー。
-    #[source]
-    source: ReadError,
-  },
   /// 罫線用の矩形を生成できませんでした。
   #[error("罫線の矩形を生成できませんでした")]
   #[diagnostic(

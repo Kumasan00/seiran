@@ -1,169 +1,45 @@
-//! レイアウトエンジンクレート
+//! レイアウトエンジンクレート — (a) `build_blocks`
 //!
 //! `lowering` クレートが生成した [`LayoutNode`] をフォントシェーピング・メトリクス情報と
-//! 組み合わせて、PDF 生成に使用される [`Item`]（Box/Glue/Penalty）リストに変換します。
+//! 組み合わせて、計測済みの縦リスト（[`Block`] 列）に変換します。
 //!
 //! ## アーキテクチャ上の位置づけ
 //!
-//! このクレートは `lowering`（フォント非依存）と `font`（フォント処理）の間の橋渡し役です。
-//!
 //! ```text
-//! parser (DocNode) ──→ lowering (DocNode → LayoutNode) ──→ layout (LayoutNode → Item) ──→ pdf_gen (PDF bytes)
-//!                                                                  ↑
-//!                                                             font (shaping, metrics)
+//! lowering (Vec<LayoutNode>)
+//!   → (a) build_blocks（このクレート） … シェーピング + 計測 + break 注入 [フォント依存]
+//!   → (c+d) hlist::break_pages        … 行分割 + 縦組版 [純粋]
+//!   → (e) pdf_gen::render_pages       … 描画のみ
 //! ```
 //!
-//! ## データフロー
+//! ## 責務
 //!
-//! 1. `lowering::lower_nodes` が生成した [`LayoutNode`] のリストを受け取る
-//! 2. テキストノードを Unicode スクリプトに基づいて分割し、適切なフォント種別を割り当てる
-//! 3. 各セグメントをフォントシェーパーでシェーピングし、グリフ情報を取得
-//! 4. Box/Glue/Penalty モデルの [`Item`] リストに変換して返す
+//! 1. トップレベルの `Vec<LayoutNode>` を縦リストとして走査し、同じ規則を `VBox` の中にも
+//!    再帰適用する（`VBox` は単一 Block ではなく副縦リスト）
+//! 2. 連続するインライン要素の極大列を 1 個の [`Block::Paragraph`] にまとめる
+//! 3. テキストを Unicode スクリプトに基づいて分割し、各セグメントを 1 回シェーピングして
+//!    width / height / depth を [`FontMetrics`] で計測した [`HBox`] にする
+//! 4. 数式の `Raise` ツリーを絶対配置の [`HBoxContent::Atom`] に畳む
+//!    （`Raise(+d)…Raise(-d)` のペア整合という不変条件を消す）
 //!
-//! [`LayoutNode`]: lowering::LayoutNode
-//! レイアウトノードをアイテムに変換するレイアウトエンジン
-//!
-//! `LayoutNode`（論理的なドキュメント構造）を `Item`（物理的な Box/Glue/Penalty）に変換します。
-//! テキストノードは Unicode スクリプトに基づいてセグメント分割され、
-//! 各セグメントがフォントシェーパーで処理されてグリフ情報を持つ `GlyphRun` になります。
+//! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
-use std::ops::Range;
-
-use font::shaper::{HarfRustShapers, UnicodeBuffer};
+use font::{
+  FontMetrics,
+  shaper::{HarfRustShapers, UnicodeBuffer},
+};
+use hlist::{
+  Block, BreakKind, BreakPoint, Glyph, GlyphRun, HBox, HBoxContent, HItem, PlacedHItem, TableBox, TableCellBox,
+  TableRowBox, break_opportunities,
+};
 use icu::properties::{
   CodePointMapData,
   props::{EastAsianWidth, Script},
   script::ScriptWithExtensions,
 };
 use lazy_regex::regex_replace_all;
-pub use lowering::TableColumn;
-use lowering::{LayoutNode, TableLayout, TableRowLayout};
+use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
 use types::{FontKind, FontType, Length};
-
-/// レイアウトエンジンが生成する最小単位
-///
-/// TeX の Box/Glue/Penalty モデルに基づいたアイテムです。
-/// PDF コンテンツストリーム生成時にこのアイテムリストを走査して
-/// テキスト配置やページ分割を行います。
-#[derive(Debug)]
-pub enum Item {
-  /// ボックス（テキストグリフ列または罫線）
-  Box(BoxItem),
-  /// グルー（伸縮可能なスペース）
-  Glue {
-    natural: f32,
-    stretch: f32,
-    shrink: f32,
-  },
-  /// 水平カーン（固定幅の空白）
-  Kern(f32),
-  /// 垂直カーン（固定高さの空白）
-  Vkern(f32),
-  /// ベースラインオフセット
-  ///
-  /// 正の値で上方向（PDF 座標系では y を減少）、負の値で下方向にシフトします。
-  /// 数式の上付き・下付きで使用します。`Raise(d)` の後には対応する `Raise(-d)` が
-  /// 出力され、ベースラインが元に戻る前提です。
-  Raise(f32),
-  /// ペナルティ（行分割 / ページ分割の制御）
-  Penalty(i32),
-}
-
-/// ボックスアイテムの種類
-#[derive(Debug)]
-pub enum BoxItem {
-  /// テキストグリフ列
-  Text(GlyphRun),
-  /// 罫線（幅と高さを持つ矩形）
-  Rule { width: f32, height: f32 },
-  /// 画像（PNG / JPEG / SVG）
-  ///
-  /// `path` はソース記載のファイルパス。`width` / `height` は pt 単位の任意指定で、
-  /// `None` の場合は `pdf_gen` 段で元画像の自然寸法（ラスタはピクセル、SVG は usvg
-  /// が報告する width / height）の縦横比と本文幅から決定される。
-  /// `target_dpi` はラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし。
-  /// `pdf_gen` 側でファイルを開き、ラスタは `krilla::Image` に変換して
-  /// `surface.draw_image` で、SVG は `usvg::Tree` に変換して `surface.draw_svg` で配置する。
-  Image {
-    /// 画像ファイルへのパス
-    path: String,
-    /// 描画幅（pt）。`None` の場合は `pdf_gen` 段で自動算出
-    width: Option<f32>,
-    /// 描画高さ（pt）。`None` の場合は `pdf_gen` 段で自動算出
-    height: Option<f32>,
-    /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
-    target_dpi: Option<u32>,
-  },
-  /// 表（シェーピング済みセルのグリッド）
-  ///
-  /// セル内容はシェーピング済みの `Item` 列として保持される。
-  /// 列幅の解決（自然幅の実測・残余分配）、罫線・行の描画、改ページ時の
-  /// ヘッダ再描画は `pdf_gen` 段で行う。
-  Table(TableBox),
-}
-
-/// 表ボックス（シェーピング済みの表全体）
-#[derive(Debug)]
-pub struct TableBox {
-  /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
-  pub columns: Vec<TableColumn>,
-  /// ヘッダ行。改ページ時にページ先頭へ再描画される
-  pub head: Vec<TableRowBox>,
-  /// 本体行
-  pub rows: Vec<TableRowBox>,
-  /// 改ページによる分割を許可するか
-  pub breakable: bool,
-}
-
-/// 表の 1 行（シェーピング済み）
-#[derive(Debug)]
-pub struct TableRowBox {
-  /// 行内のセル
-  pub cells: Vec<TableCellBox>,
-  /// この行の上に横罫線を引くか
-  pub rule_above: bool,
-}
-
-/// 表の 1 セル（シェーピング済み）
-#[derive(Debug)]
-pub struct TableCellBox {
-  /// セル内容のアイテム列（`Box(Text)` / `Kern` / `Glue` / `Raise` のみを想定）
-  pub items: Vec<Item>,
-  /// 列方向の結合数（colspan、1 以上）
-  pub span: u32,
-}
-
-/// シェーピング済みのグリフ列情報
-///
-/// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
-#[derive(Debug)]
-pub struct GlyphRun {
-  /// テキストのフォントサイズ（ポイント）
-  pub font_size: f32,
-  /// 元のテキスト（シェーピング前）
-  pub text: String,
-  /// シェーピング結果のグリフ列
-  pub glyphs: Vec<Glyph>,
-  /// このグリフ列が使用するフォント種別
-  pub font_type: FontType,
-}
-
-/// 単一グリフの配置情報
-#[derive(Debug)]
-pub struct Glyph {
-  /// グリフ ID
-  pub gid: u32,
-  /// グリフのテキスト範囲（元のテキストに対する文字インデックスの範囲）
-  pub range: Range<usize>,
-  /// x 方向の送り幅
-  pub x_advance: i32,
-  /// y 方向の送り幅
-  pub y_advance: i32,
-  /// x 方向のオフセット
-  pub x_offset: i32,
-  /// y 方向のオフセット
-  pub y_offset: i32,
-}
 
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]
@@ -172,186 +48,449 @@ struct TextSegment {
   font_type: FontType,
 }
 
-/// レイアウトノードをアイテムに変換するレイアウトエンジン
+/// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
 ///
-/// * `layout_nodes` - レイアウトするノードのリスト
+/// * `layout_nodes` - 変換するノードのリスト
 /// * `shapers` - フォント形成エンジンへの参照
-///
-/// # Returns
-///
-/// 変換されたアイテムのベクトル
+/// * `metrics` - 全フォント種別の基本メトリクス（box の寸法計測に使用）
+/// * `default_font_size` - 既定フォントサイズ（pt）。空段落の行送りのフォールバック
+/// * `line_height_factor` - 行高係数。段落の行送り（leading）の算出に使用
 #[must_use]
-pub fn layout_engine(layout_nodes: Vec<LayoutNode>, shapers: &HarfRustShapers) -> Vec<Item> {
-  let mut buffer = UnicodeBuffer::new();
-  let mut items: Vec<Item> = Vec::new();
-  layout_engine_inner(layout_nodes, shapers, &mut buffer, &mut items);
-  return items;
-}
-
-fn layout_engine_inner(
+pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
   shapers: &HarfRustShapers,
-  buffer: &mut UnicodeBuffer,
-  items: &mut Vec<Item>,
-) {
-  for node in layout_nodes {
+  metrics: &FontMetrics,
+  default_font_size: f32,
+  line_height_factor: f32,
+) -> Vec<Block> {
+  let mut measurer = Measurer {
+    shapers,
+    metrics,
+    buffer: UnicodeBuffer::new(),
+    default_font_size,
+    line_height_factor,
+  };
+  let mut blocks: Vec<Block> = Vec::new();
+  let mut paragraph: Vec<HItem> = Vec::new();
+  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph);
+  measurer.flush_paragraph(&mut blocks, &mut paragraph);
+  return blocks;
+}
+
+/// シェーピング・計測の状態を束ねた内部ワーカー
+struct Measurer<'a> {
+  shapers: &'a HarfRustShapers<'a>,
+  metrics: &'a FontMetrics,
+  buffer: UnicodeBuffer,
+  default_font_size: f32,
+  line_height_factor: f32,
+}
+
+impl Measurer<'_> {
+  /// 縦リストを走査してブロック列を構築する（`VBox` に再帰適用）
+  fn walk_vertical(&mut self, nodes: Vec<LayoutNode>, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>) {
+    for node in nodes {
+      match node {
+        // インライン要素の極大列は 1 個の段落にまとめる
+        LayoutNode::Text(..)
+        | LayoutNode::Glue { .. }
+        | LayoutNode::Kern { .. }
+        | LayoutNode::LineBreak
+        | LayoutNode::Raise { .. }
+        | LayoutNode::HBox { .. } => {
+          self.collect_inline(node, paragraph);
+        },
+        LayoutNode::VBox {
+          children,
+          margin_bottom,
+        } => {
+          // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる
+          self.flush_paragraph(blocks, paragraph);
+          self.walk_vertical(children, blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::VSpace(margin_bottom.to_pt()));
+        },
+        LayoutNode::Vkern { length } => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::VSpace(length.to_pt()));
+        },
+        LayoutNode::Rule { width, height } => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::Rule {
+            width: width.to_pt(),
+            height: height.to_pt(),
+          });
+        },
+        LayoutNode::Image {
+          path,
+          width,
+          height,
+          target_dpi,
+        } => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::Image {
+            path,
+            width: width.map(Length::to_pt),
+            height: height.map(Length::to_pt),
+            target_dpi,
+          });
+        },
+        LayoutNode::Table(table) => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::Table(self.build_table_box(table)));
+        },
+        LayoutNode::PageBreak => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::PageBreak);
+        },
+      }
+    }
+  }
+
+  /// 溜めた段落アイテムを `Block::Paragraph` として確定する
+  ///
+  /// 行送り（leading）は段落内の支配的（最大）フォントサイズ × 行高係数。
+  fn flush_paragraph(&self, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>) {
+    if paragraph.is_empty() {
+      return;
+    }
+    let items = std::mem::take(paragraph);
+    let dominant_font_size = hlist::max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+    blocks.push(Block::Paragraph {
+      items,
+      leading: dominant_font_size * self.line_height_factor,
+    });
+  }
+
+  /// インライン要素を水平リストへ変換して `out` に追加する
+  fn collect_inline(&mut self, node: LayoutNode, out: &mut Vec<HItem>) {
     match node {
       LayoutNode::Text(text, style) => {
-        let text = regex_replace_all!("\n", &text, " ");
-        let segments = split_text_by_script(style.font_kind, &text);
-
-        for segment in segments {
-          let font_type = segment.font_type;
-          let segment_text = &segment.text;
-          // テキストセグメントのレイアウト処理
-          let taken = std::mem::take(buffer);
-          let result = shapers.get(font_type).shape(taken, segment_text, style.font_size);
-          let glyph_infos = result.glyph_infos();
-          let glyph_positions = result.glyph_positions();
-          let mut glyphs: Vec<Glyph> = Vec::new();
-          for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
-            let start = glyph_info.cluster as usize;
-            let end = glyph_infos
-              .get(i + 1)
-              .map_or(segment_text.len(), |next_glyph_info| next_glyph_info.cluster as usize);
-            let gid = glyph_info.glyph_id;
-            let x_advance = glyph_position.x_advance;
-            let y_advance = glyph_position.y_advance;
-            let x_offset = glyph_position.x_offset;
-            let y_offset = glyph_position.y_offset;
-            glyphs.push(Glyph {
-              gid,
-              range: start..end,
-              x_advance,
-              y_advance,
-              x_offset,
-              y_offset,
-            });
-          }
-          *buffer = result.clear();
-          let glyph_run = GlyphRun {
-            font_size: style.font_size,
-            text: segment_text.clone(),
-            glyphs,
-            font_type,
-          };
-          let box_item = BoxItem::Text(glyph_run);
-          items.push(Item::Box(box_item));
-        }
-      },
-      LayoutNode::HBox { children, width } => {
-        // HBox のレイアウト処理
-        layout_engine_inner(children, shapers, buffer, items);
-        if let Some(_width) = width {}
-      },
-      LayoutNode::VBox {
-        children,
-        margin_bottom,
-      } => {
-        // VBox のレイアウト処理
-        layout_engine_inner(children, shapers, buffer, items);
-        items.push(Item::Vkern(margin_bottom.to_pt()));
+        self.push_text_items(&text, style, out);
       },
       LayoutNode::Glue {
         natural,
         stretch,
         shrink,
       } => {
-        // Glue のレイアウト処理
-        items.push(Item::Glue {
+        out.push(HItem::Glue {
           natural,
           stretch,
           shrink,
+          breakable: false,
         });
       },
       LayoutNode::Kern { length } => {
-        // Kern のレイアウト処理
-        items.push(Item::Kern(length.to_pt()));
-      },
-      LayoutNode::Vkern { length } => {
-        // 垂直カーンのレイアウト処理
-        items.push(Item::Vkern(length.to_pt()));
+        out.push(HItem::Kern(length.to_pt()));
       },
       LayoutNode::LineBreak => {
-        // 行分割のレイアウト処理
-        items.push(Item::Penalty(-1000)); // 強制改行
-      },
-      LayoutNode::PageBreak => {
-        // ページ分割のレイアウト処理
-        items.push(Item::Penalty(i32::MIN)); // 強制ページ改行
-      },
-      LayoutNode::Rule { width, height } => {
-        // ルールのレイアウト処理
-        let box_item = BoxItem::Rule {
-          width: width.to_pt(),
-          height: height.to_pt(),
-        };
-        items.push(Item::Box(box_item));
-      },
-      LayoutNode::Image {
-        path,
-        width,
-        height,
-        target_dpi,
-      } => {
-        // 画像のレイアウト処理（実際の描画とサイズ解決は pdf_gen が担当）
-        let box_item = BoxItem::Image {
-          path,
-          width: width.map(Length::to_pt),
-          height: height.map(Length::to_pt),
-          target_dpi,
-        };
-        items.push(Item::Box(box_item));
+        out.push(HItem::ForcedBreak);
       },
       LayoutNode::Raise { offset, children } => {
-        // ベースラインを一時的にずらして子要素を描画し、終了後に戻す
-        items.push(Item::Raise(offset));
-        layout_engine_inner(children, shapers, buffer, items);
-        items.push(Item::Raise(-offset));
+        // 上付き・下付きの Raise ツリーは 1 個の閉じた Atom に畳む
+        out.push(HItem::Box(self.build_atom(offset, children)));
       },
-      LayoutNode::Table(table) => {
-        // 各セルの内容を個別にシェーピングして表ボックスに詰める
-        items.push(Item::Box(BoxItem::Table(build_table_box(table, shapers, buffer))));
+      LayoutNode::HBox { children, .. } => {
+        for child in children {
+          self.collect_inline(child, out);
+        }
       },
+      // 縦リスト要素はインライン文脈（表セル等）には現れない（パーサ段で拒否済み）
+      LayoutNode::VBox { .. }
+      | LayoutNode::Vkern { .. }
+      | LayoutNode::Rule { .. }
+      | LayoutNode::Image { .. }
+      | LayoutNode::Table(_)
+      | LayoutNode::PageBreak => {},
     }
   }
-}
 
-/// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
-fn build_table_box(table: TableLayout, shapers: &HarfRustShapers, buffer: &mut UnicodeBuffer) -> TableBox {
-  return TableBox {
-    columns: table.columns,
-    head: build_table_rows(table.head, shapers, buffer),
-    rows: build_table_rows(table.rows, shapers, buffer),
-    breakable: table.breakable,
-  };
-}
+  /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む
+  fn build_atom(&mut self, offset: f32, children: Vec<LayoutNode>) -> HBox {
+    let mut placed: Vec<PlacedHItem> = Vec::new();
+    let mut dx = 0.0f32;
+    self.place_atom_children(children, offset, &mut dx, &mut placed);
+    return HBox::atom(placed);
+  }
 
-/// 行のリストのセル内容をシェーピングして [`TableRowBox`] の列に変換する
-fn build_table_rows(
-  rows: Vec<TableRowLayout>,
-  shapers: &HarfRustShapers,
-  buffer: &mut UnicodeBuffer,
-) -> Vec<TableRowBox> {
-  let mut result = Vec::with_capacity(rows.len());
-  for row in rows {
-    let mut cells = Vec::with_capacity(row.cells.len());
-    for cell in row.cells {
-      let mut cell_items = Vec::new();
-      layout_engine_inner(cell.content, shapers, buffer, &mut cell_items);
-      cells.push(TableCellBox {
-        items: cell_items,
-        span: cell.span,
+  /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
+  ///
+  /// ネストした `Raise` は `dy` を累積する（上付きで +、下付きで −）。
+  fn place_atom_children(&mut self, nodes: Vec<LayoutNode>, dy: f32, dx: &mut f32, out: &mut Vec<PlacedHItem>) {
+    for node in nodes {
+      match node {
+        LayoutNode::Text(text, style) => {
+          for hbox in self.shape_text(&text, style) {
+            let width = hbox.width;
+            out.push(PlacedHItem {
+              item: hbox,
+              dy,
+              dx: *dx,
+            });
+            *dx += width;
+          }
+        },
+        LayoutNode::Raise {
+          offset,
+          children: nested,
+        } => {
+          self.place_atom_children(nested, dy + offset, dx, out);
+        },
+        LayoutNode::Kern { length } => {
+          *dx += length.to_pt();
+        },
+        LayoutNode::Glue { natural, .. } => {
+          *dx += natural;
+        },
+        LayoutNode::HBox {
+          children: nested, ..
+        } => {
+          self.place_atom_children(nested, dy, dx, out);
+        },
+        // Atom 内に縦リスト要素・改行は現れない
+        _ => {},
+      }
+    }
+  }
+
+  /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
+  fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+    let text = regex_replace_all!("\n", text, " ");
+    let segments = split_text_by_script(style.font_kind, &text);
+    return segments
+      .into_iter()
+      .map(|segment| self.shape_segment(&segment.text, segment.font_type, style.font_size))
+      .collect();
+  }
+
+  /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
+  ///
+  /// セグメントをまるごと 1 回シェーピング（約物詰め・カーニングを維持）してから、
+  /// ICU の分割可能位置（[`break_opportunities`]）で `GlyphRun` を分割する（Q2=B 方式）。
+  /// 数式テキスト（`FontKind::Math`）は分割しない。
+  fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
+    let text = regex_replace_all!("\n", text, " ");
+    for segment in split_text_by_script(style.font_kind, &text) {
+      let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size);
+      if style.font_kind == FontKind::Math {
+        // 数式は行分割の対象にしない（閉じた box のまま行に載せる）
+        out.push(HItem::Box(hbox));
+        continue;
+      }
+      self.split_run_into_items(hbox, &segment.text, out);
+    }
+  }
+
+  /// シェーピング済みの `HBox`（Glyphs）を分割可能位置で `HItem` 列に分割する
+  ///
+  /// - [`BreakKind::Glue`]（欧文空白）: 分割位置直前のスペースグリフを run から抜き、
+  ///   その advance を breakable な [`HItem::Glue`] にする
+  /// - [`BreakKind::Penalty`]（CJK 文字間）: グリフ境界で run を割り、間に `Penalty { value: 0 }`
+  /// - リガチャ等でクラスタ途中に分割位置が落ちた場合は分割を抑制する
+  /// - 分割で生じる各 `GlyphRun.text` は `Glyph.range` 整合にスライスし直す
+  ///   （PDF テキスト抽出を壊さない）
+  fn split_run_into_items(&self, hbox: HBox, text: &str, out: &mut Vec<HItem>) {
+    let HBoxContent::Glyphs(run) = hbox.content else {
+      out.push(HItem::Box(hbox));
+      return;
+    };
+
+    let mut breaks = break_opportunities(text);
+    // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
+    if text.ends_with(' ') {
+      breaks.push(BreakPoint {
+        byte: text.len(),
+        kind: BreakKind::Glue,
       });
     }
-    result.push(TableRowBox {
-      cells,
-      rule_above: row.rule_above,
-    });
+    if breaks.is_empty() {
+      out.push(HItem::Box(HBox {
+        content: HBoxContent::Glyphs(run),
+        width: hbox.width,
+        height: hbox.height,
+        depth: hbox.depth,
+      }));
+      return;
+    }
+
+    let metric = self.metrics.get(run.font_type);
+    let scale = run.font_size / metric.upem;
+    let mut seg_glyph_start = 0usize;
+    let mut seg_byte_start = 0usize;
+
+    for break_point in breaks {
+      match break_point.kind {
+        BreakKind::Glue => {
+          // 分割位置から始まるグリフ（仮想の末尾 break は glyphs.len()）
+          let glyph_index = if break_point.byte == text.len() {
+            run.glyphs.len()
+          } else {
+            let Some(index) = find_glyph_starting_at(&run.glyphs, break_point.byte) else {
+              continue; // クラスタ途中: 分割を抑制
+            };
+            index
+          };
+          if glyph_index <= seg_glyph_start {
+            continue;
+          }
+          // 直前のグリフが単独のスペースであることを確認する
+          let space = &run.glyphs[glyph_index - 1];
+          let is_single_space = space.range.start == break_point.byte - 1
+            && space.range.end == break_point.byte
+            && text.as_bytes()[break_point.byte - 1] == b' ';
+          if !is_single_space {
+            continue; // スペースが前後とクラスタを成している場合は分割を抑制
+          }
+          self.push_sub_run(&run, text, seg_glyph_start..glyph_index - 1, seg_byte_start..break_point.byte - 1, out);
+          #[allow(clippy::cast_precision_loss)]
+          out.push(HItem::Glue {
+            natural: space.x_advance as f32 * scale,
+            stretch: 0.0,
+            shrink: 0.0,
+            breakable: true,
+          });
+          seg_glyph_start = glyph_index;
+          seg_byte_start = break_point.byte;
+        },
+        BreakKind::Penalty => {
+          let Some(glyph_index) = find_glyph_starting_at(&run.glyphs, break_point.byte) else {
+            continue; // クラスタ途中: 分割を抑制
+          };
+          if glyph_index <= seg_glyph_start {
+            continue;
+          }
+          self.push_sub_run(&run, text, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
+          out.push(HItem::Penalty { value: 0 });
+          seg_glyph_start = glyph_index;
+          seg_byte_start = break_point.byte;
+        },
+      }
+    }
+    self.push_sub_run(&run, text, seg_glyph_start..run.glyphs.len(), seg_byte_start..text.len(), out);
   }
-  return result;
+
+  /// `run` の部分グリフ列から計測済みの sub-box を作って `out` に追加する
+  ///
+  /// `Glyph.range` は sub-run のテキスト先頭基準にスライスし直す。空の場合は何も追加しない。
+  fn push_sub_run(
+    &self,
+    run: &GlyphRun,
+    text: &str,
+    glyph_range: std::ops::Range<usize>,
+    byte_range: std::ops::Range<usize>,
+    out: &mut Vec<HItem>,
+  ) {
+    if glyph_range.is_empty() {
+      return;
+    }
+    let glyphs: Vec<Glyph> = run.glyphs[glyph_range]
+      .iter()
+      .map(|glyph| Glyph {
+        gid: glyph.gid,
+        range: glyph.range.start - byte_range.start..glyph.range.end - byte_range.start,
+        x_advance: glyph.x_advance,
+        y_advance: glyph.y_advance,
+        x_offset: glyph.x_offset,
+        y_offset: glyph.y_offset,
+      })
+      .collect();
+    let metric = self.metrics.get(run.font_type);
+    #[allow(clippy::cast_precision_loss)]
+    let advance_units: f32 = glyphs.iter().map(|glyph| glyph.x_advance as f32).sum();
+    out.push(HItem::Box(HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: run.font_size,
+        text: text[byte_range].to_string(),
+        glyphs,
+        font_type: run.font_type,
+      }),
+      width: advance_units / metric.upem * run.font_size,
+      height: metric.ascender / metric.upem * run.font_size,
+      depth: metric.descender.abs() / metric.upem * run.font_size,
+    }));
+  }
+
+  /// 1 セグメントをシェーピングして計測済みの `HBox` を返す
+  fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: f32) -> HBox {
+    let taken = std::mem::take(&mut self.buffer);
+    let result = self.shapers.get(font_type).shape(taken, text, font_size);
+    let glyph_infos = result.glyph_infos();
+    let glyph_positions = result.glyph_positions();
+    let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
+    for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
+      let start = glyph_info.cluster as usize;
+      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| next_glyph_info.cluster as usize);
+      glyphs.push(Glyph {
+        gid: glyph_info.glyph_id,
+        range: start..end,
+        x_advance: glyph_position.x_advance,
+        y_advance: glyph_position.y_advance,
+        x_offset: glyph_position.x_offset,
+        y_offset: glyph_position.y_offset,
+      });
+    }
+    self.buffer = result.clear();
+
+    let metric = self.metrics.get(font_type);
+    #[allow(clippy::cast_precision_loss)]
+    let advance_units: f32 = glyphs.iter().map(|glyph| glyph.x_advance as f32).sum();
+    let width = advance_units / metric.upem * font_size;
+    let height = metric.ascender / metric.upem * font_size;
+    let depth = metric.descender.abs() / metric.upem * font_size;
+    return HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size,
+        text: text.to_string(),
+        glyphs,
+        font_type,
+      }),
+      width,
+      height,
+      depth,
+    };
+  }
+
+  /// `TableLayout` のセル内容をシェーピングして [`TableBox`] を構築する
+  fn build_table_box(&mut self, table: TableLayout) -> TableBox {
+    return TableBox {
+      columns: table.columns,
+      head: self.build_table_rows(table.head),
+      rows: self.build_table_rows(table.rows),
+      breakable: table.breakable,
+    };
+  }
+
+  /// 行のリストのセル内容をシェーピングして [`TableRowBox`] の列に変換する
+  fn build_table_rows(&mut self, rows: Vec<TableRowLayout>) -> Vec<TableRowBox> {
+    let mut result = Vec::with_capacity(rows.len());
+    for row in rows {
+      let mut cells = Vec::with_capacity(row.cells.len());
+      for cell in row.cells {
+        let mut items: Vec<HItem> = Vec::new();
+        for node in cell.content {
+          self.collect_inline(node, &mut items);
+        }
+        cells.push(TableCellBox {
+          items,
+          span: cell.span,
+        });
+      }
+      result.push(TableRowBox {
+        cells,
+        rule_above: row.rule_above,
+      });
+    }
+    return result;
+  }
+}
+
+/// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
+///
+/// 見つからない場合（リガチャ等でクラスタ途中に位置が落ちた場合）は `None`。
+fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
+  return glyphs.iter().position(|glyph| glyph.range.start == byte);
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型

@@ -9,14 +9,14 @@ mod image;
 mod metadata;
 mod render;
 
-use ::font::{FontData, FontRefs};
+use ::font::{FontData, FontMetrics, FontRefs};
+use hlist::Page;
 use krilla::{Document, page::PageSettings};
-use layout::Item;
 use read_config::Config;
 use read_style::Style;
 
-pub use crate::error::PdfGenError;
-use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_items};
+pub use crate::{error::PdfGenError, image::resolve_images};
+use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
 
 /// フォント情報を使用して PDF バイト列を生成します。
 ///
@@ -25,7 +25,8 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_i
 /// * `config` - PDF 生成設定
 /// * `font_bytes` - フォントバイナリ
 /// * `font_refs` - 解析済みフォント参照
-/// * `items` - レイアウト済みアイテム列
+/// * `metrics` - 全フォント種別の基本メトリクス（upem / ascender / descender）
+/// * `pages` - 組版済みページ列（`hlist::break_pages` の出力）
 /// * `style` - スタイル設定
 ///
 /// # Returns
@@ -39,7 +40,8 @@ pub fn create_pdf(
   config: &Config,
   font_bytes: &FontData,
   font_refs: &FontRefs,
-  items: &[Item],
+  metrics: &FontMetrics,
+  pages: &[Page],
   style: &Style,
 ) -> Result<Vec<u8>, PdfGenError> {
   let krilla_fonts = build_krilla_fonts(config, font_bytes, font_refs)?;
@@ -51,7 +53,7 @@ pub fn create_pdf(
   })?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(config));
-  render_items(&mut document, &page_settings, config, font_refs, &krilla_fonts, items, style)?;
+  render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style)?;
   let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument { source })?;
   return Ok(pdf_bytes);
 }

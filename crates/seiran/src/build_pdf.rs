@@ -6,7 +6,7 @@ use std::{fs, path::Path};
 
 use document::DocNode;
 use font::{
-  FontData, FontDataExt, FontRefs, FontRefsExt,
+  FontData, FontDataExt, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
@@ -113,10 +113,29 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let harf_rust_shapers = HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
   info!("シェーパーの初期化が完了しました");
 
-  let items = layout::layout_engine(layout_nodes, &harf_rust_shapers);
-  info!("レイアウトの計算が完了しました");
+  let metrics = FontMetrics::new(&font_refs)?;
 
-  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &items, &style)?;
+  // 本文幅は画像サイズ解決と行分割の双方で使うので先に算出する
+  let text_width = config.pdf.width.to_pt() - config.pdf.margin.left.to_pt() - config.pdf.margin.right.to_pt();
+  let default_font_size = style.core.font_size.to_pt();
+  let line_height_factor = style.core.line_height_factor;
+
+  let blocks = layout::build_blocks(layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor);
+  info!("ブロックの構築が完了しました");
+
+  let blocks = pdf_gen::resolve_images(blocks, text_width)?;
+
+  let geometry = hlist::PageGeometry {
+    margin_top: config.pdf.margin.top.to_pt(),
+    page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
+    default_font_size,
+    line_height_factor,
+    table_cell_padding: style.core.table.cell_padding.to_pt(),
+  };
+  let pages = hlist::break_pages(blocks, text_width, &geometry, &hlist::GreedyBreaker);
+  info!(page_count = pages.len(), "レイアウトの計算が完了しました");
+
+  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style)?;
 
   let output_path = config.output.pdf_path();
   fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {

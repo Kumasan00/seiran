@@ -4,6 +4,7 @@ members = [
   "crates/cli",
   "crates/document",
   "crates/font",
+  "crates/hlist",
   "crates/layout",
   "crates/lowering",
   "crates/parser",
@@ -36,6 +37,7 @@ font = { path = "crates/font" }
 font-types = "0.11.3"
 garde = { version = "0.23.0", features = ["derive"] }
 harfrust = "0.8.4"
+hlist = { path = "crates/hlist" }
 icu = { version = "2.2.0", features = ["compiled_data"] }
 image = { version = "0.25.8", default-features = false, features = ["png", "jpeg"] }
 krilla = "0.8.2"

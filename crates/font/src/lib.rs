@@ -64,7 +64,7 @@ use std::fs;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_config::FontConfigs;
-use read_fonts::FontRef;
+use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 use types::{FontMap, FontType};
 
@@ -100,6 +100,21 @@ pub enum FontLoadError {
     /// TTC 内のフォントインデックス
     index: u32,
     /// 元の解析エラー
+    #[source]
+    source: read_fonts::ReadError,
+  },
+  /// メトリクス取得に必要な OpenType テーブルの読み込みに失敗した場合
+  #[error("{font_type:?} の {table} テーブルの読み込みに失敗しました")]
+  #[diagnostic(
+    code(font::load::metrics_table),
+    help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
+  )]
+  ReadMetricsTable {
+    /// フォント種別
+    font_type: FontType,
+    /// 読み込みに失敗したテーブル名（`head` / `hhea`）
+    table: &'static str,
+    /// 元の読み込みエラー
     #[source]
     source: read_fonts::ReadError,
   },
@@ -206,5 +221,70 @@ impl<'a> FontRefsExt<'a> for FontRefs<'a> {
       })
       .collect::<Result<Vec<FontRef<'a>>, FontLoadError>>()?;
     return Ok(FontMap::from_all(font_refs));
+  }
+}
+
+/// 1 フォントの基本メトリクス（フォントユニット系）
+///
+/// `upem` は `head` テーブルの units-per-em、`ascender` / `descender` は `hhea` テーブル由来です。
+/// グリフ advance の pt 換算は `advance / upem * font_size` で行います。
+/// `descender` は OpenType の慣例どおり負値（ベースラインより下）を保持します。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FontMetric {
+  /// units-per-em（`head` テーブル由来）
+  pub upem: f32,
+  /// アセンダ（`hhea` テーブル由来、フォントユニット）
+  pub ascender: f32,
+  /// ディセンダ（`hhea` テーブル由来、フォントユニット、通常は負値）
+  pub descender: f32,
+}
+
+/// 全フォント種別の基本メトリクスを保持するデータ構造
+///
+/// `head` / `hhea` テーブルの散在呼び出しを排除するため、`build_pdf` で 1 回だけ構築し、
+/// 計測（`layout`）と描画（`pdf_gen`）の双方へ参照で渡します。
+pub type FontMetrics = FontMap<FontMetric>;
+
+/// `FontMetrics` のコンストラクタと拡張メソッド
+///
+/// [`FontMap`] は `types` クレート定義のため inherent impl が書けず、
+/// [`FontDataExt`] / [`FontRefsExt`] と同様に拡張トレイトでコンストラクタを提供します。
+pub trait FontMetricsExt: Sized {
+  /// 解析済みフォント参照から全種別のメトリクスを取得します
+  ///
+  /// 各フォント種別の `head` / `hhea` テーブルをそれぞれ 1 回ずつ読み、
+  /// upem / ascender / descender を確定します。
+  ///
+  /// # Errors
+  ///
+  /// `head` / `hhea` テーブルの読み込みに失敗した場合に
+  /// [`FontLoadError::ReadMetricsTable`] を返します。
+  fn new(font_refs: &FontRefs) -> Result<Self, FontLoadError>;
+}
+
+impl FontMetricsExt for FontMetrics {
+  fn new(font_refs: &FontRefs) -> Result<Self, FontLoadError> {
+    let metrics = FontType::ALL
+      .iter()
+      .map(|&font_type| {
+        let font_ref = font_refs.get(font_type);
+        let head = font_ref.head().map_err(|source| FontLoadError::ReadMetricsTable {
+          font_type,
+          table: "head",
+          source,
+        })?;
+        let hhea = font_ref.hhea().map_err(|source| FontLoadError::ReadMetricsTable {
+          font_type,
+          table: "hhea",
+          source,
+        })?;
+        return Ok(FontMetric {
+          upem: f32::from(head.units_per_em()),
+          ascender: f32::from(hhea.ascender().to_i16()),
+          descender: f32::from(hhea.descender().to_i16()),
+        });
+      })
+      .collect::<Result<Vec<FontMetric>, FontLoadError>>()?;
+    return Ok(FontMap::from_all(metrics));
   }
 }

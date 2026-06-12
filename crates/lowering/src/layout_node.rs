@@ -15,7 +15,7 @@
 //! PDF bytes
 //! ```
 
-use types::{ColumnAlign, ColumnWidth, FontKind, Length};
+use types::{FontKind, Length, TableColumn};
 
 /// レイアウトエンジンが処理する最小単位
 ///
@@ -111,15 +111,6 @@ pub struct TableLayout {
   pub rows: Vec<TableRowLayout>,
   /// 改ページによる分割を許可するか
   pub breakable: bool,
-}
-
-/// 表の 1 列の定義
-#[derive(Debug, Clone, Copy)]
-pub struct TableColumn {
-  /// セル内容の揃え方向
-  pub align: ColumnAlign,
-  /// 列幅の指定方法
-  pub width: ColumnWidth,
 }
 
 /// 表の 1 行の物理レイアウト表現

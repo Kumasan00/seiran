@@ -625,6 +625,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hlist"
+version = "0.1.0"
+dependencies = [
+ "icu",
+ "types",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1193,6 +1201,7 @@ name = "layout"
 version = "0.1.0"
 dependencies = [
  "font",
+ "hlist",
  "icu",
  "lazy-regex",
  "lowering",
@@ -1465,10 +1474,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "font",
+ "hlist",
  "image",
  "krilla",
  "krilla-svg",
- "layout",
  "miette",
  "read-fonts",
  "read_config",
@@ -1822,6 +1831,7 @@ dependencies = [
  "cli",
  "document",
  "font",
+ "hlist",
  "layout",
  "lowering",
  "miette",
@@ -1831,6 +1841,7 @@ dependencies = [
  "read_references",
  "read_style",
  "subcommand",
+ "tempfile",
  "thiserror",
  "tracing",
  "tracing-subscriber",

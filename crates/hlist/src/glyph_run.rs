@@ -1,0 +1,40 @@
+//! シェーピング済みグリフ列（[`GlyphRun`] / [`Glyph`]）の定義
+//!
+//! `layout` クレートのシェーピング結果を保持する plain data 型。`FontType` と数値のみで
+//! 構成され、フォントパース結果（`FontRef`）には依存しないため `hlist` に置く。
+
+use std::ops::Range;
+
+use types::FontType;
+
+/// シェーピング済みのグリフ列情報
+///
+/// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
+#[derive(Debug, Clone)]
+pub struct GlyphRun {
+  /// テキストのフォントサイズ（ポイント）
+  pub font_size: f32,
+  /// 元のテキスト（シェーピング前）
+  pub text: String,
+  /// シェーピング結果のグリフ列
+  pub glyphs: Vec<Glyph>,
+  /// このグリフ列が使用するフォント種別
+  pub font_type: FontType,
+}
+
+/// 単一グリフの配置情報
+#[derive(Debug, Clone)]
+pub struct Glyph {
+  /// グリフ ID
+  pub gid: u32,
+  /// グリフのテキスト範囲（元のテキストに対するバイトインデックスの範囲）
+  pub range: Range<usize>,
+  /// x 方向の送り幅（フォントユニット）
+  pub x_advance: i32,
+  /// y 方向の送り幅（フォントユニット）
+  pub y_advance: i32,
+  /// x 方向のオフセット（フォントユニット）
+  pub x_offset: i32,
+  /// y 方向のオフセット（フォントユニット）
+  pub y_offset: i32,
+}

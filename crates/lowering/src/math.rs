@@ -32,10 +32,13 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 /// 以下の順で `LayoutNode` 列を組み立てる：
 ///
 /// ```text
-/// LineBreak  Vkern(top_margin)
+/// Vkern(top_margin)
 ///   [number? Glue]  body...  [Glue number?]
-/// Vkern(bottom_margin)  LineBreak
+/// Vkern(bottom_margin)
 /// ```
+///
+/// `DisplayMath` は常にブロック級の `DocNode` なので前後の行畳み用 `LineBreak` は出さず、
+/// 縦アキは `Vkern` のみで構造的に表す（ブロック境界は縦組版層が判断する）。
 ///
 /// 番号は `EquationStyle::number_format` の `{number}` を `number` 引数で置換した
 /// 文字列を `FontKind::Serif`（数字は立体）で描画する。`number_side` に応じて
@@ -67,7 +70,6 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
   };
 
   let mut result = Vec::new();
-  result.push(LayoutNode::LineBreak);
   result.push(LayoutNode::Vkern {
     length: eq.top_margin,
   });
@@ -93,7 +95,6 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
   result.push(LayoutNode::Vkern {
     length: eq.bottom_margin,
   });
-  result.push(LayoutNode::LineBreak);
   return result;
 }
 
@@ -430,14 +431,13 @@ mod tests {
     // Act
     let nodes = lower_display_math(&ctx, &[MathNode::Text("a".to_string())], Some("3"));
 
-    // Assert: 先頭 LineBreak + Vkern の直後に Text("(3)") → Glue → 本体... の順
-    assert!(matches!(nodes.first(), Some(LayoutNode::LineBreak)));
-    assert!(matches!(nodes.get(1), Some(LayoutNode::Vkern { .. })));
+    // Assert: 先頭 Vkern の直後に Text("(3)") → Glue → 本体... の順
+    assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
     assert!(
-      matches!(nodes.get(2), Some(LayoutNode::Text(t, s)) if t == "(3)" && s.font_kind == FontKind::Serif),
-      "3 番目に Serif Text(\"(3)\") があるべき: {nodes:?}"
+      matches!(nodes.get(1), Some(LayoutNode::Text(t, s)) if t == "(3)" && s.font_kind == FontKind::Serif),
+      "2 番目に Serif Text(\"(3)\") があるべき: {nodes:?}"
     );
-    assert!(matches!(nodes.get(3), Some(LayoutNode::Glue { .. })));
+    assert!(matches!(nodes.get(2), Some(LayoutNode::Glue { .. })));
   }
 
   #[test]

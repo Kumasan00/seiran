@@ -48,4 +48,4 @@ pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
 pub use length::Length;
-pub use table::{ColumnAlign, ColumnWidth};
+pub use table::{ColumnAlign, ColumnWidth, TableColumn};
