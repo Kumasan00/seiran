@@ -43,30 +43,23 @@
 //! ## ライフサイクル
 //!
 //! ```text
-//! FontConfig（設定ファイル）
+//! FontConfigs + FontRefs
 //!   ↓
-//! validate_font()（公開関数）
-//!   ↓ + FontRef（フォント）
-//! wrapped_validate_font()（内部関数）
+//! validate_fonts()（公開関数、全 19 種別を検証）
+//!   ↓ 種別ごとに
+//! validate_font()
 //!   ├→ validate_variation_axes()
 //!   └→ check_script_language_support()
 //!       └→ check_script_in_table()
 //!   ↓
-//! Result<(), Report>（検証結果）
+//! Result<(), MultipleFontValidationErrors>
 //! ```
 //!
 //! ## 検証タイミング
 //!
-//! 検証は PDF 生成パイプラインの初期段階で実行されます：
-//!
-//! 1. フォント読み込み（`font::FontData::new`）
-//! 2. フォントパース（`font::FontRefs::new`）
-//! 3. **→ フォント検証** （このモジュール）
-//! 4. テキスト処理（`parser`）
-//! 5. テキストシェイピング（`font::shaper`）
-//! 6. PDF 生成（`pdf_gen`、フォントサブセット化を含む）
-//!
-//! 検証に失敗すると後続の処理は実行されません。
+//! 検証はフォント読み込み（`font::FontData::new`）・フォントパース
+//! （`font::FontRefs::new`）の直後、シェイピング（`font::shaper`）・PDF 生成
+//! （`pdf_gen`）の前に実行されます。検証に失敗すると後続の処理は実行されません。
 //!
 //! ## 警告 vs エラー
 //!
@@ -81,17 +74,10 @@
 //! ## 使用例
 //!
 //! ```ignore
-//! # use font::validate_font::*;
-//! # use read_config::FontConfig;
-//! # use read_fonts::FontRef;
+//! # use font::validate_font::validate_fonts;
 //!
-//! let config = FontConfig { /* ... */ };
-//! let font_ref = FontRef::new(&font_data)?;
-//!
-//! // 検証を実行
-//! validate_font(&config, &font_ref)?;
-//!
-//! // 検証成功後は PDF 生成処理に進む
+//! // 全フォント種別の検証を実行（検証成功後は PDF 生成処理に進む）
+//! validate_fonts(&font_configs, &font_refs)?;
 //! ```
 
 use font_types::{Fixed, Tag};
@@ -190,20 +176,17 @@ pub enum FontValidationError {
 
 /// すべてのフォント設定を検証します
 ///
-/// 複数のフォント の検証を rayon を用いて並列実行します。
+/// 19 フォント種別を順に検証し、検出した違反を種別ごとに集約します。
 ///
 /// # Arguments
 ///
 /// * `font_configs` - フォント設定情報
 /// * `font_refs` - フォント参照
 ///
-/// # Returns
-///
-/// すべてのフォント設定が妥当な場合は `Ok(())`
-///
 /// # Errors
 ///
-/// 任意のフォント設定の検証に失敗した場合は、`FontValidationError` のバリアントを含む `miette::Report` を返します。
+/// 1 つ以上のフォントで検証に失敗した場合は、全違反を `#[related]` で集約した
+/// [`MultipleFontValidationErrors`] を返します。
 pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), MultipleFontValidationErrors> {
   let mut all_errors = Vec::new();
   for font_type in FontType::ALL {
@@ -215,27 +198,13 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
     }
     info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
   }
-  // 並列処理での検証（コメントアウト中、必要に応じて有効化）
-  // let all_errors: Vec<_> = FontType::ALL
-  //   .par_iter()
-  //   .filter_map(|&font_type| {
-  //     let config = font_configs.get(font_type);
-  //     let font_ref = font_refs.get(font_type);
-  //     let errors = validate_font(config, font_ref);
-  //     info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
-  //     if !errors.is_empty() {
-  //       return Some(FontValidationErrors { font_type, errors });
-  //     }
-  //     return None;
-  //   })
-  //   .collect();
   if !all_errors.is_empty() {
     return Err(MultipleFontValidationErrors { errors: all_errors });
   }
   return Ok(());
 }
 
-/// フォント設定の詳細な検証を実行します（内部関数）
+/// 1 フォント分の検証を実行し、検出した違反をすべて返します
 ///
 /// # Arguments
 ///
@@ -244,11 +213,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
 ///
 /// # Returns
 ///
-/// 検証成功時は `Ok(())`
-///
-/// # Errors
-///
-/// 検証に失敗した場合は `FontValidationError` を返します。
+/// 検出した [`FontValidationError`] のリスト。違反がなければ空。
 #[must_use]
 pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationError> {
   let mut errors = Vec::new();
@@ -273,17 +238,7 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidat
 ///
 /// * `font_ref` - フォント参照（fvar テーブル読み込み用）
 /// * `config_variation_axes` - 設定ファイルに指定されたバリアブル軸
-///
-/// # Returns
-///
-/// すべての軸設定が妥当な場合は `Ok(())`
-///
-/// # Errors
-///
-/// 以下の場合にエラーを返します：
-/// - 設定に含まれる軸がフォントに存在しない場合
-/// - 軸値が許容範囲外の場合
-/// - フォント内の軸が設定に含まれていない場合
+/// * `errors` - 検出した違反の追加先
 fn validate_variation_axes(
   font_ref: &FontRef,
   config_variation_axes: &[VariationAxis],

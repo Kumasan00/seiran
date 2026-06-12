@@ -5,7 +5,7 @@
 //!
 //! ## 設計意図
 //!
-//! - 旧 AST 層（`Node`, `Command`, `Environment`）を排し、CST 上のビューに置き換え
+//! - 独立した AST 層を持たず、CST 上のビューとして提供する
 //! - `GreenNode` を直接参照するため、コピーやクローンが不要
 //! - ビューのライフタイムは CST（アリーナ）のライフタイムに紐づく
 
@@ -456,7 +456,7 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_command_optarg_basic() {
-    // command optarg からも同じ関数で抽出できる（A2）
+    // command optarg からも同じ関数で抽出できる
     let arena = bumpalo::Bump::new();
     let source = r"\image[width=10cm]{img.png}";
     let cst = crate::parser::parse(source, &arena, |_| crate::parser::ParseMode::Text).unwrap();

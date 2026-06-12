@@ -1,17 +1,17 @@
 //! Lowering 層: Document IR → `LayoutNode` 変換
 //!
-//! `parser` クレートの `DocNode`（セマンティックな論理構造）を
+//! `document` クレートの `DocNode`（セマンティックな論理構造）を
 //! `LayoutNode`（物理的なレイアウト表現）に変換するクレートです。
 //!
 //! ## アーキテクチャ上の位置づけ
 //!
 //! ```text
-//! parser (DocNode)
+//! document (DocNode)
 //!   ↓ [lowering]  ← このクレート
 //! LayoutNode
-//!   ↓ [layout_engine]
-//! Item (Box/Glue/Penalty)
-//!   ↓ [pdf_gen]
+//!   ↓ [layout::build_blocks → hlist::break_pages]
+//! Vec<Page> (確定座標)
+//!   ↓ [pdf_gen::render_pages]
 //! PDF bytes
 //! ```
 //!
@@ -300,7 +300,7 @@ mod tests {
   #[test]
   fn lower_display_math_wraps_with_vkerns() {
     // ディスプレイ数式は Vkern(top) ... Vkern(bottom) の上下マージンのみで包まれ、
-    // renderer 専用の LineBreak は出力しない（number = None なら番号は付かない）
+    // LineBreak は出力しない（number = None なら番号は付かない）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let node = DocNode::DisplayMath {

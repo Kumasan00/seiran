@@ -1,25 +1,11 @@
 //! レイアウトノードおよびスタイルの型定義
 //!
-//! Lowering 層（`lowering` モジュール）が `DocNode` から生成する
-//! 物理的なレイアウト表現を定義します。
-//!
-//! ## パイプライン上の位置づけ
-//!
-//! ```text
-//! parser (DocNode)
-//!   ↓ [lowering]
-//! LayoutNode (このモジュール)
-//!   ↓ [layout_engine]
-//! Item (Box/Glue/Penalty)
-//!   ↓ [pdf_gen]
-//! PDF bytes
-//! ```
+//! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
+//! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
 use types::{FontKind, Length, TableColumn};
 
-/// レイアウトエンジンが処理する最小単位
-///
-/// Lowering 層（`lowering`）が `DocNode` から生成する物理的なレイアウト表現です。
+/// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub enum LayoutNode {
   /// スタイル付きテキスト
@@ -41,14 +27,8 @@ pub enum LayoutNode {
   },
   /// 画像（PNG / JPEG / SVG）
   ///
-  /// `path` はソースに記載された相対 / 絶対パス。`width` / `height` は
-  /// `\image[width=..., height=...]` で指定された値。両方とも `None` 可で、
-  /// 未指定分は `pdf_gen` 段で元画像の自然寸法（ラスタはピクセル、SVG は usvg
-  /// が報告する width / height）の縦横比と本文幅から算出される。
-  /// `pdf_gen` がラスタは `surface.draw_image`、SVG は `surface.draw_svg` で
-  /// 確定矩形に配置する。
-  /// `target_dpi` は per-image / グローバル設定を解決済みのラスタ画像ダウンサンプリング
-  /// 上限 DPI。`None` の場合はリサイズなしで原寸で埋め込む。SVG は無視される。
+  /// `width` / `height` は両方とも `None` 可で、未指定分は `pdf_gen` の
+  /// `resolve_images` prepass が元画像の自然寸法の縦横比と本文幅から確定する。
   Image {
     /// 画像ファイルへのパス
     path: String,
@@ -80,9 +60,9 @@ pub enum LayoutNode {
   },
   /// ベースラインから子要素を垂直方向にずらすコンテナ
   ///
-  /// 数式の上付き・下付き・分数のレイアウトに使用します。
-  /// `offset > 0` で視覚的に上（PDF 座標系では y を減少）、`offset < 0` で下方向にシフトします。
-  /// シフトは子要素のレンダリング後に元に戻り、後続のテキストは元のベースラインに戻ります。
+  /// 数式の上付き・下付きのレイアウトに使用します。`offset > 0` で上方向、
+  /// `offset < 0` で下方向。`layout::build_blocks` が絶対配置の `Atom` に畳むため、
+  /// 後続要素のベースラインには影響しません。
   Raise {
     offset: f32,
     children: Vec<LayoutNode>,
@@ -90,8 +70,8 @@ pub enum LayoutNode {
   /// 表（`table` 環境）
   ///
   /// セル内容はシェーピング前の `LayoutNode` のまま保持し、`layout` 段で
-  /// セルごとに `Item` 列へ変換される。列幅の解決（自然幅の実測・残余分配）と
-  /// 罫線・行の描画は `pdf_gen` 段で行う。
+  /// セルごとに `HItem` 列へ変換される。列幅の解決（自然幅の実測・残余分配）は
+  /// `hlist` 段、罫線・行の描画は `pdf_gen` 段で行う。
   Table(TableLayout),
   LineBreak,
   PageBreak,

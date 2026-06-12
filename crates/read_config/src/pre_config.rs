@@ -21,7 +21,8 @@
 //! ## バリデーション項目
 //!
 //! `garde::Validate` 派生によるフィールド検証と、派生では表現できない相互制約を補う
-//! 自由関数（[`validate_margin_sums`] / [`validate_unique_font_names`]）の組合せです。
+//! 自由関数（[`validate_margin_sums`] / [`validate_unique_font_names`] /
+//! [`validate_font_language_constraints`]）の組合せです。
 //! 後者は [`crate::validate_values`] が `pre.validate()` の後に明示的に呼び出します。
 //!
 //! | 項目 | 条件 | 実装 |

@@ -57,9 +57,6 @@ pub struct CoreStyle {
   /// リストのスタイル
   #[garde(dive)]
   pub list: ListStyle,
-  /// 数式レイアウトのスタイル
-  #[garde(dive)]
-  pub math: MathScriptStyle,
   /// 表のスタイル
   #[garde(dive)]
   pub table: TableStyle,
@@ -69,8 +66,10 @@ pub struct CoreStyle {
   /// ディスプレイ数式のスタイル
   #[garde(dive)]
   pub equation: EquationStyle,
-  /// カウンタ定義テーブル（`[counters.<name>]`）。固定 9 種のみを保持し、
-  /// `parser::evaluator::counter::CounterRegistry::from_style` が読み取って実行時表現に変換する。
+  /// 数式レイアウトのスタイル
+  #[garde(dive)]
+  pub math: MathScriptStyle,
+  /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
 }
@@ -84,10 +83,10 @@ impl Default for CoreStyle {
       heading: HeadingStyles::default(),
       text: TextBlockStyle::default(),
       list: ListStyle::default(),
-      math: MathScriptStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
+      math: MathScriptStyle::default(),
       counters: Counters::default(),
     };
   }

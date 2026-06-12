@@ -122,7 +122,7 @@ pub enum DocNode {
   ///
   /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
   /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。両方とも省略可で、
-  /// 未指定分は `pdf_gen` 段で元画像のピクセル縦横比と本文幅から自動算出される。
+  /// 未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。
   /// `number` は `CounterRegistry::increment(CounterName::Figure)` で発番された通し番号
   /// （`format` テンプレ適用済みの文字列）。`caption_position` は
   /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。

@@ -1,6 +1,6 @@
 //! 環境本体（`EnvironmentBody`）を走査する共通ヘルパ
 //!
-//! 図環境（`figure`）・リスト環境（`itemize`/`enumerate`）・表環境（`tabular`）など
+//! 図環境（`figure`）・リスト環境（`itemize`/`enumerate`）・表環境（`table`）など
 //! 複数の環境ハンドラから利用される **body 直下の `CommandCall` 走査** を一本化する。
 //!
 //! ## 設計
@@ -62,7 +62,6 @@ pub(crate) fn strict_command_calls<'a>(
       GreenElement::Token(token) => match token.kind {
         TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {},
         _ => {
-          // 以前は body 直下のテキスト等が黙って捨てられ、出力から消えていた
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
             expected: expected.to_string(),

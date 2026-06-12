@@ -28,8 +28,6 @@ pub enum HItem {
   /// `value <= 0` のとき行分割の候補点になる。幅は持たない。
   Penalty { value: i32 },
   /// 強制改行（`\\` 由来）
-  ///
-  /// 旧実装の魔法定数 `Penalty(-1000)` を専用バリアントで置き換えたもの。
   ForcedBreak,
 }
 
@@ -69,8 +67,7 @@ impl HBox {
   /// - `height = max(child.dy + child.height)`（`dy` は正で上方向）
   /// - `depth = max(child.depth - child.dy)`
   ///
-  /// 上付きを含む行の行高がこの寸法から自然に決まり、`Raise(+d)…Raise(-d)` の
-  /// ブラケットペア整合という不変条件が不要になる。
+  /// 上付き・下付きを含む行の行高はこの寸法から自然に決まる。
   #[must_use]
   pub fn atom(children: Vec<PlacedHItem>) -> Self {
     let width = children.iter().map(|c| c.dx + c.item.width).fold(0.0f32, f32::max);
@@ -102,8 +99,7 @@ pub enum HBoxContent {
 /// Atom 内の絶対配置済み要素
 ///
 /// `dy` はベースラインからの縦オフセット（正で上方向）、`dx` は親 Atom 内の
-/// 水平オフセット。いずれも絶対値で持つため、描画カーソルの副作用で復帰する
-/// 「開きっぱなしなら壊れる」設計が型から消える。
+/// 水平オフセット。
 #[derive(Debug, Clone)]
 pub struct PlacedHItem {
   /// 配置するボックス

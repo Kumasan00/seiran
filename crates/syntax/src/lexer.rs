@@ -1,3 +1,5 @@
+//! 字句解析 — ソーステキストを [`Token`] 列に分割する
+
 use crate::{
   span::Span,
   token::{Token, TokenKind},

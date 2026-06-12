@@ -8,6 +8,8 @@
 //! - [`font`] - フォント種別 [`FontType`]（19 種別）とスタイル分類 [`FontKind`]（13 種別）
 //! - [`font_map`] - 全フォント種別に値を対応付ける汎用コンテナ [`FontMap`]
 //! - [`heading_level`] - 見出しのレベル [`HeadingLevel`]
+//! - [`length`] - 単位付き長さ値 [`Length`]
+//! - [`table`] - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
 //!
 //! ## `FontMap<T>`
 //!
@@ -31,12 +33,12 @@
 //! 適切なフォント種別が決定されます。
 //!
 //! - **`FontType`**: すべてのフォント種別（19 個）
-//! - **`FontKind`**: Latin フォント種別のみ（13 個、日本語フォント除外）
+//! - **`FontKind`**: 言語判定前のスタイル分類（13 個、日本語フォント除外）
 //!
-//! 関連モジュール：
-//! - 設定: `read_config` クレート
-//! - フォント処理: `font` クレート
-//! - テキスト処理: `parser` クレート、`text` モジュール
+//! 関連クレート：
+//! - 設定: `read_config`
+//! - フォント処理: `font`
+//! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 
 pub mod font;
 pub mod font_map;

@@ -1,9 +1,18 @@
-//! 表（table 環境)の列指定に関する共通型
+//! 表（table 環境）の列指定に関する共通型
 //!
-//! `parser`（評価時の `columns=` / `widths=` 解析結果）、`lowering`（`LayoutNode::Table`）、
-//! `layout` / `pdf_gen`（列幅解決と描画）の全段で共有されるため `types` クレートに置く。
+//! `parser`（`columns=` / `widths=` の解析）、`document` / `lowering`（IR・レイアウトノード）、
+//! `hlist`（列幅解決）、`pdf_gen`（描画）の全段で共有されるため `types` クレートに置く。
 
 use crate::Length;
+
+/// 表の 1 列の定義（揃え + 幅指定）
+#[derive(Debug, Clone, Copy)]
+pub struct TableColumn {
+  /// セル内容の揃え方向
+  pub align: ColumnAlign,
+  /// 列幅の指定方法
+  pub width: ColumnWidth,
+}
 
 /// 列内のセル内容の揃え方向
 ///
@@ -38,7 +47,7 @@ impl ColumnAlign {
 /// 列幅の指定方法
 ///
 /// 環境任意引数 `widths="auto 5cm 0.3 *"` の各トークンに対応する。
-/// 実際の幅解決（自然幅の実測・残余分配）は `pdf_gen` 段で行われる。
+/// 実際の幅解決（自然幅の実測・残余分配）は `hlist` の `resolve_column_widths` で行われる。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ColumnWidth {
   /// 内容の自然幅に合わせる（既定）
@@ -50,18 +59,6 @@ pub enum ColumnWidth {
   Ratio(f32),
   /// 残り幅を等分するフレックス指定（`*`）
   Flex,
-}
-
-/// 表の 1 列の定義（揃え + 幅指定）
-///
-/// `lowering`（`TableLayout`）と `hlist`（`TableBox`）の両方が参照するため、
-/// どちらにも依存しない `types` クレートに置く。
-#[derive(Debug, Clone, Copy)]
-pub struct TableColumn {
-  /// セル内容の揃え方向
-  pub align: ColumnAlign,
-  /// 列幅の指定方法
-  pub width: ColumnWidth,
 }
 
 #[cfg(test)]

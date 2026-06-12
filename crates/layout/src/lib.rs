@@ -20,7 +20,6 @@
 //! 3. テキストを Unicode スクリプトに基づいて分割し、各セグメントを 1 回シェーピングして
 //!    width / height / depth を [`FontMetrics`] で計測した [`HBox`] にする
 //! 4. 数式の `Raise` ツリーを絶対配置の [`HBoxContent::Atom`] に畳む
-//!    （`Raise(+d)…Raise(-d)` のペア整合という不変条件を消す）
 //!
 //! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
@@ -268,7 +267,7 @@ impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   ///
   /// セグメントをまるごと 1 回シェーピング（約物詰め・カーニングを維持）してから、
-  /// ICU の分割可能位置（[`break_opportunities`]）で `GlyphRun` を分割する（Q2=B 方式）。
+  /// ICU の分割可能位置（[`break_opportunities`]）で `GlyphRun` を分割する。
   /// 数式テキスト（`FontKind::Math`）は分割しない。
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = regex_replace_all!("\n", text, " ");

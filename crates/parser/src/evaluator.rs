@@ -13,7 +13,7 @@
 //!
 //! ## 設計方針
 //!
-//! - CST を直接走査することで旧 AST ローワリングパスを不要にする
+//! - CST を直接走査する（独立した AST 層を介さない）
 //! - 型付きビュー（`CommandView`, `EnvironmentView`）を介してアクセス
 //! - 数式ノードは CST の `InlineMath` / `MathGroup` / `MathSubscript` /
 //!   `MathSuperscript` をそのまま `MathNode` に変換

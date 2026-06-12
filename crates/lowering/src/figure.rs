@@ -5,8 +5,6 @@
 //! `\image` / `\caption` の出現順から決定します。caption が `None` のときは
 //! キャプション行を一切出力しません。キャプション構築と `VBox` 包みは
 //! [`crate::float`] の共通ヘルパで行います。
-//!
-//! 画像サイズ（width / height）は mm 入力を pt（72/25.4 倍）に変換します。
 
 use document::{CaptionPosition, InlineNode};
 use types::Length;
@@ -103,7 +101,7 @@ mod tests {
     )
     .expect("解決済みインラインなのでエラーにならない");
 
-    // Assert — top_margin Vkern → VBox（画像 → LineBreak → 内マージン → キャプション → LineBreak）
+    // Assert — top_margin Vkern → VBox（画像 → 内マージン Vkern → キャプション）
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
     let LayoutNode::VBox { children, .. } = nodes.get(1).expect("VBox があるはず") else {
       panic!("2 番目は VBox であるべき: {nodes:?}");

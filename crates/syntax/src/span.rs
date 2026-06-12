@@ -1,14 +1,11 @@
 //! ソース位置情報
 //!
-//! トークンや AST ノードのソース上のバイト範囲を表現します。
-//! 将来的に miette の `SourceSpan` と統合してエラー位置の表示に使用します。
+//! トークンや CST ノードのソース上のバイト範囲を表現します。
+//! `miette::SourceSpan` への変換（`From`）を提供し、エラー診断のソース位置表示に使われます。
 
 /// ソーステキスト上のバイト範囲
 ///
 /// 開始位置と終了位置のバイトオフセットを保持します。
-/// エラーメッセージでソースの該当箇所を指し示すために使用します。
-/// `miette::SourceSpan` への変換をサポートしており、
-/// エラー診断時のソース位置表示に使用できます。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
@@ -53,8 +50,6 @@ impl Span {
 }
 
 /// `Span` から `miette::SourceSpan` への変換
-///
-/// miette の診断エラー表示でソース位置を使用するための変換です。
 impl From<Span> for miette::SourceSpan {
   fn from(span: Span) -> Self {
     return miette::SourceSpan::new(miette::SourceOffset::from(span.start as usize), span.len() as usize);

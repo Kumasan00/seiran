@@ -8,7 +8,7 @@ use types::Length;
 
 use crate::evaluator::{EvalError, opt_args::collect_command_opt_args};
 
-/// `\space{N}` — 垂直スペースを挿入するコマンド
+/// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド
 ///
 /// # Arguments
 ///

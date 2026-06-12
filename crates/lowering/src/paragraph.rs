@@ -1,7 +1,7 @@
 //! 段落（`DocNode::Paragraph`）の lowering
 //!
-//! 段落内のインライン要素を展開し、フラットな `LayoutNode::Text` のリストとして
-//! レイアウトノードに変換します。段落間にはデフォルトのスペースを挿入します。
+//! 段落内のインライン要素を展開してフラットな `LayoutNode` 列に変換します。
+//! 段落間のアキは `Vkern`（`text.paragraph_spacing`）で構造的に表します。
 
 use document::InlineNode;
 
@@ -13,7 +13,7 @@ use crate::layout_node::{LayoutNode, TextStyle};
 /// ## TODO
 ///
 /// - [ ] 段落先頭のインデント（字下げ）を追加する
-/// - [ ] 段落内テキストの結合最適化（evaluator.rs の `merge_text` に相当するロジック）
+/// - [ ] 段落内テキストの結合最適化（隣接する同スタイルの `Text` をまとめる）
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),

@@ -6,7 +6,7 @@
 //!
 //! ## カーソルの意味
 //!
-//! カーソル `y` は基本的に「次のベースライン位置」を表す（旧カーソル renderer の挙動を継承）。
+//! カーソル `y` は基本的に「次のベースライン位置」を表す。
 //! ただし画像・表・罫線はブロックの底辺で終わるため、直後の段落はベースラインを
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
@@ -146,11 +146,10 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 
 /// 段落を行に割ってベースライン送りで配置する
 ///
-/// ベースライン送り規則（旧カーソル renderer の挙動を再現）:
+/// ベースライン送り規則:
 /// - 段落先頭行の baseline = 現在のカーソル `y`（直前が底辺基準ブロックならアセント分下げる）
 /// - 2 行目以降は `baseline += max(leading, prev.depth + line.height)`
 /// - 最終行を置いた後、カーソルを `last_baseline + leading` まで進める
-///   （旧トレーリング `LineBreak` の 1 行送り相当）
 /// - `baseline + line.depth > page_limit` で改ページし、ページ先頭の baseline は `margin_top`
 fn place_paragraph(
   composer: &mut PageComposer,
@@ -190,7 +189,7 @@ fn place_paragraph(
 
 /// 表を行単位で配置する（改ページ時はページ先頭にヘッダ行を再描画する）
 ///
-/// 旧 renderer の規則を再現する:
+/// 配置規則:
 /// - 分割禁止（`breakable = false`）の表は、現ページに収まらず新しいページなら
 ///   収まる場合のみ先に改ページする
 /// - 行配置中にページ下限を超えたら改ページし、本体行の前にヘッダ行を再描画する

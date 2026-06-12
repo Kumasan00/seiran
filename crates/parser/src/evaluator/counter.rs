@@ -9,7 +9,7 @@
 //!   [`CounterRegistry::increment`] を呼び、`Heading.label` 等の任意ラベルが
 //!   付いていれば [`CounterRegistry::register_label`] で登録する。
 //! - **pass2**: `InlineNode::Ref { label, .. }` を [`CounterRegistry::resolve_label`] で
-//!   解決し、`number: Some(裸の番号)` に書き換える。
+//!   解決し、`number: Some(ref_format 適用済みの文字列)` に書き換える。
 //!
 //! ## 番号書式について
 //!
@@ -28,7 +28,7 @@
 //!
 //! ## カウンタ定義のソース
 //!
-//! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
+//! カウンタ定義の真のソースは `read_style::Style.core.counters` テーブル。
 //! [`CounterRegistry::from_style`] が [`read_style::Counters`] を `defs` に複製し、
 //! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
 //! 既定 9 種（part〜table）も `Style::default()` が `read_style::Counters::default()`

@@ -16,8 +16,7 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`document`] — Document IR の型定義
-//! - [`evaluator`] — CST → Document IR の変換器
+//! - [`evaluator`] — CST → Document IR の変換器（IR の型定義は `document` クレートに分離）
 
 use bumpalo::Bump;
 use document::DocNode;

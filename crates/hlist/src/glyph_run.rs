@@ -1,7 +1,7 @@
 //! シェーピング済みグリフ列（[`GlyphRun`] / [`Glyph`]）の定義
 //!
-//! `layout` クレートのシェーピング結果を保持する plain data 型。`FontType` と数値のみで
-//! 構成され、フォントパース結果（`FontRef`）には依存しないため `hlist` に置く。
+//! `layout` クレートのシェーピング結果を保持する plain data 型。
+//! フォントパース結果（`FontRef`）には依存しないため `hlist` に置く。
 
 use std::ops::Range;
 

@@ -1,7 +1,7 @@
 //! テキストシェイピング管理モジュール
 //!
-//! **`HarfRust`**（Harfbuzz の Rust バインディング）によるテキストシェーピング機能を提供します。
-//! テックシェイピングとは、テキスト文字列をフォント固有のグリフシーケンスに変換するプロセスです。
+//! **`HarfRust`**（`HarfBuzz` の Rust 移植）によるテキストシェイピング機能を提供します。
+//! テキストシェイピングとは、テキスト文字列をフォント固有のグリフシーケンスに変換するプロセスです。
 //!
 //! ## シェイピングとは
 //!
@@ -11,7 +11,7 @@
 //! - **スクリプト処理**: 言語特有の字形変形（例：アラビア文字のダイアクリティクス）
 //! - **リガチャ処理**: 複数文字を単一グリフに統合（例：f + i → fi）
 //! - **位置情報計算**: 各グリフの x, y オフセットと幅を計算
-//! - **フィーチャー適用**: OpenType Advanced Typograhy 機能（如 smallcaps など）
+//! - **フィーチャー適用**: OpenType Advanced Typography 機能（smallcaps など）
 //!
 //! ## モジュール構成
 //!
@@ -72,7 +72,7 @@
 //! # use font::FontRefs;
 //!
 //! // フォント参照とシェイパーデータを準備
-//! let font_refs = FontRefs::new(&font_data)?;
+//! let font_refs = FontRefs::new(&configs, &font_data)?;
 //! let shaper_datas = ShaperDatas::new(&font_refs);
 //! let instances = ShaperInstances::new(&configs, &font_refs);
 //!

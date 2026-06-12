@@ -209,7 +209,6 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
       }
       let mut args = view.args();
       let (Some(numer_arg), Some(denom_arg)) = (args.next(), args.next()) else {
-        // 以前は不足分を空テキストで黙って補完していた
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "2 個（分子と分母）".to_string(),
@@ -240,7 +239,6 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         None => None,
       };
       let Some(radicand_arg) = view.first_arg() else {
-        // 以前は被開平数を空テキストで黙って補完していた
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "1 個（被開平数）".to_string(),
@@ -265,7 +263,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         return Ok(MathNode::Symbol(ch));
       }
 
-      // 未知の数式コマンド — 以前はコマンド名をテキスト表示する暗黙の復帰を行っていた
+      // 未知の数式コマンドはテキスト等へのフォールバックを行わずエラーにする
       return Err(EvalError::UnknownCommand {
         name: name.to_string(),
         span: view.span().into(),

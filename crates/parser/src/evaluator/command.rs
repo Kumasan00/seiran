@@ -49,7 +49,7 @@ pub(crate) enum CommandResult {
 /// 個別のバリアントなしで表現できます。
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CommandKind {
-  /// `\space{N}` — 垂直スペース挿入
+  /// `\space{N}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
   Headline(HeadingLevel),

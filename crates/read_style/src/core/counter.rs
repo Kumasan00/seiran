@@ -53,15 +53,15 @@ pub struct Counters {
   /// 小段落
   #[garde(dive)]
   pub subparagraph: CounterStyle,
+  /// 表
+  #[garde(dive)]
+  pub table: CounterStyle,
   /// 図
   #[garde(dive)]
   pub figure: CounterStyle,
   /// 数式
   #[garde(dive)]
   pub equation: CounterStyle,
-  /// 表
-  #[garde(dive)]
-  pub table: CounterStyle,
 }
 
 impl Counters {
@@ -75,9 +75,9 @@ impl Counters {
       CounterName::Subsection => &self.subsection,
       CounterName::Paragraph => &self.paragraph,
       CounterName::Subparagraph => &self.subparagraph,
+      CounterName::Table => &self.table,
       CounterName::Figure => &self.figure,
       CounterName::Equation => &self.equation,
-      CounterName::Table => &self.table,
     };
   }
 
@@ -90,9 +90,9 @@ impl Counters {
       (CounterName::Subsection, &self.subsection),
       (CounterName::Paragraph, &self.paragraph),
       (CounterName::Subparagraph, &self.subparagraph),
+      (CounterName::Table, &self.table),
       (CounterName::Figure, &self.figure),
       (CounterName::Equation, &self.equation),
-      (CounterName::Table, &self.table),
     ]
     .into_iter();
   }
@@ -152,9 +152,9 @@ impl Default for Counters {
         "{display_name} {number}",
         &[],
       ),
+      table: CounterStyle::new("Table", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
       figure: CounterStyle::new("Figure", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
       equation: CounterStyle::new("Equation", "{chapter}.{n}", NumberStyle::Arabic, "({number})", &[]),
-      table: CounterStyle::new("Table", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
     };
   }
 }
@@ -261,12 +261,12 @@ pub enum CounterName {
   Paragraph,
   /// 小段落
   Subparagraph,
+  /// 表
+  Table,
   /// 図
   Figure,
   /// 数式
   Equation,
-  /// 表
-  Table,
 }
 
 impl CounterName {
@@ -280,9 +280,9 @@ impl CounterName {
       Self::Subsection => "subsection",
       Self::Paragraph => "paragraph",
       Self::Subparagraph => "subparagraph",
+      Self::Table => "table",
       Self::Figure => "figure",
       Self::Equation => "equation",
-      Self::Table => "table",
     };
   }
 }

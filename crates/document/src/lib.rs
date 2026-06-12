@@ -12,11 +12,11 @@
 //! CST (GreenNode — bumpalo::Bump アリーナ上)
 //!   ↓ [Evaluator]
 //! Document IR (DocNode, InlineNode)  ← このクレート
-//!   ↓ [Lowering]
+//!   ↓ [lowering]
 //! LayoutNode (物理レイアウト)
-//!   ↓ [layout_engine]
-//! Item (Box/Glue/Penalty)
-//!   ↓ [pdf_gen]
+//!   ↓ [layout::build_blocks → hlist::break_pages]
+//! Vec<Page> (確定座標)
+//!   ↓ [pdf_gen::render_pages]
 //! PDF bytes
 //! ```
 

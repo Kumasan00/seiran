@@ -78,7 +78,6 @@ pub(crate) fn extract_inline_nodes_from_elements(
           inlines.push(InlineNode::Text("&".to_string()));
         },
         TokenKind::ParagraphBreak => {
-          // 以前は黙って捨てられ前後のテキストが連結されていた
           return Err(EvalError::ParagraphBreakInArgument {
             span: token.span.into(),
           });
@@ -121,7 +120,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
           inlines.push(InlineNode::InlineMath(math_nodes));
         },
         SyntaxKind::Environment => {
-          // 引数内の環境（`\textbf{\begin{itemize}...}` 等）は黙って捨てずエラーにする
+          // 引数内の環境（`\bold{\begin{itemize}...}` 等）は黙って捨てずエラーにする
           let view = EnvironmentView::new(child_node, source);
           return Err(EvalError::BlockInInline {
             what: format!("環境 {}", view.name()),

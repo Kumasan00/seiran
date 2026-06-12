@@ -7,7 +7,7 @@
 //! キャプション構築と `VBox` 包みは [`crate::float`] の共通ヘルパで行います。
 //!
 //! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
-//! `pdf_gen` 段で行い、ここでは列指定をそのまま保持します。
+//! `hlist` の `resolve_column_widths` で行い、ここでは列指定をそのまま保持します。
 
 use document::{CaptionPosition, InlineNode, TableRow};
 use types::{ColumnAlign, ColumnWidth, FontKind, TableColumn};

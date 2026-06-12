@@ -32,7 +32,7 @@ use crate::{
 ///
 /// 既定は [`ParseMode::Text`]。`\begin{...}...\end{...}` の本体パース時に、
 /// 環境名 → [`ParseMode`] の対応を [`parse`] 呼び出し側から注入される
-/// コールバックで決定する。将来 `tabular` / `verbatim` / `align` 等を追加する際は、
+/// コールバックで決定する。将来 `verbatim` / `align` 等を追加する際は、
 /// このバリアントを増やし、対応する分岐を [`Parser::parse_element`] に足す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseMode {
@@ -348,7 +348,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let first_dollar = self.next_token().unwrap();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
-          // 連続する $ は不採用（軸 1-G）。最初の $ と二つ目の $ をまとめてエラー範囲とする。
+          // 連続する $ は不採用（設計原則 G）。最初の $ と二つ目の $ をまとめてエラー範囲とする。
           #[allow(clippy::unwrap_used)]
           let second_dollar = self.next_token().unwrap();
           return Err(ParserError::DollarDollarNotSupported {
@@ -381,7 +381,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
-        // テキストモードでの裸の `{...}` は構文エラー（軸 1-E2）。
+        // テキストモードでの裸の `{...}` は構文エラー（設計原則 E2）。
         // コマンド引数の `{...}` は parse_command_call で個別に消費するためここには来ない。
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
@@ -733,8 +733,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
-        // 対応する開き括弧のない閉じトークン — 以前は CST に保持され評価器で
-        // 黙って捨てられていたため、構文エラーとして報告する
+        // 対応する開き括弧のない閉じトークンは構文エラーとして報告する
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
@@ -1073,7 +1072,7 @@ mod tests {
 
   #[test]
   fn bare_group_at_top_level_is_error() {
-    // 軸 1-E2: 裸の `{...}` は構文エラー。
+    // 設計原則 E2: 裸の `{...}` は構文エラー。
     let arena = Bump::new();
     let result = parse("{hello}", &arena);
     assert!(matches!(result, Err(ParserError::BareGroup { .. })));
@@ -1180,7 +1179,7 @@ mod tests {
 
   #[test]
   fn unclosed_brace_in_command_arg_returns_unclosed_delimiter() {
-    // 軸 1-E2 によりトップレベルの `{` は BareGroup エラーになるが、
+    // 設計原則 E2 によりトップレベルの `{` は BareGroup エラーになるが、
     // コマンド引数 `\cmd{...` の `{` が閉じられないまま EOF に達した場合は
     // 引き続き UnclosedDelimiter を返す。
     let arena = Bump::new();
@@ -1419,7 +1418,7 @@ mod tests {
 
   #[test]
   fn dollar_dollar_returns_error() {
-    // 軸 1-G: `$$` は不採用。ディスプレイ数式は \begin{equation} を使う。
+    // 設計原則 G: `$$` は不採用。ディスプレイ数式は \begin{equation} を使う。
     let arena = Bump::new();
     let result = parse("$$", &arena);
     assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
