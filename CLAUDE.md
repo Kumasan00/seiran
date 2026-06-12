@@ -45,7 +45,7 @@ cargo test -p <crate_name>                                 # 特定クレート�
 ```text
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
   → 字句解析・構文解析（syntax: Lexer → Parser → CST）
-  → 評価（parser: CST → Document IR（DocNode））
+  → 評価（parser: CST → Document IR（document::DocNode））
   → ローワリング（lowering: DocNode → LayoutNode）→ フォント読込・検証
   → (a) build_blocks（layout: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
   → (prepass) resolve_images（pdf_gen: 画像の自然寸法から width/height を確定）
@@ -62,21 +62,26 @@ ICU `LineSegmenter`（UAX #14）により和欧同時に求める（`hlist::brea
 ### クレート依存関係
 
 ```text
-types （依存なし — 共通型の基盤。TableColumn / ColumnAlign / ColumnWidth もここ）
-  ↑ read_config, font, hlist, lowering, layout, pdf_gen, seiran
+types （依存なし — 共通型の基盤。Length / HeadingLevel / TableColumn / ColumnAlign / ColumnWidth もここ）
+  ↑ read_config, read_style, document, font, hlist, lowering, layout, parser, pdf_gen, seiran
 
 read_config （types を使用）
   ↑ font, pdf_gen, seiran
 
-read_style / read_references （workspace クレートに依存しない独立クレート）
-  ↑ read_style: parser, lowering, pdf_gen, seiran
-  ↑ read_references: seiran
+read_style （types を使用）
+  ↑ parser, lowering, pdf_gen, seiran
+
+read_references （workspace クレートに依存しない独立クレート）
+  ↑ seiran
 
 syntax （bumpalo アリーナ上に CST を構築。workspace クレートに依存しない）
   ↑ parser
 
-parser （syntax の CST を Document IR に変換。read_style に依存）
-  ↑ lowering, seiran
+document （types のみに依存。Document IR の共有契約クレート）
+  ↑ parser, lowering, seiran
+
+parser （syntax の CST を Document IR（document）に変換。read_style に依存）
+  ↑ seiran
 
 hlist （types, icu のみに依存。フォント・krilla 非依存の純粋組版パスとコア型）
   ↑ layout, pdf_gen, seiran
@@ -84,7 +89,7 @@ hlist （types, icu のみに依存。フォント・krilla 非依存の純粋�
 font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
   ↑ layout, pdf_gen, seiran
 
-lowering （parser, read_style, types に依存。フォント非依存の論理変換層）
+lowering （document, read_style, types に依存。フォント非依存の論理変換層）
   ↑ layout, seiran
 
 layout （font, hlist, lowering, types に依存。icu でスクリプト判定）
@@ -106,18 +111,19 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 | クレート          | 責務                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `types`           | `FontType`, `FontKind`, `FontMap` など全クレート共通型                                                                                                                                                                                                                                                                                                                                                     |
+| `types`           | `FontType`, `FontKind`, `FontMap`, `Length`, `HeadingLevel`, `TableColumn` など全クレート共通型                                                                                                                                                                                                                                                                                                            |
 | `cli`             | clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）                                                                                                                                                                                                                                                                                                                  |
 | `read_config`     | `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約）                                                                                                                                                                                                                                                                                                          |
 | `read_style`      | `config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。`Style { core, extended }` の 2 層構造で、lowering/pdf_gen が読む `core` フィールド（`font_size` / `line_height_factor` / `background_color` / `heading` / `text` / `list` / `math` / `table` / `figure` / `equation` / `counters`）と、現状未参照の `extended`（`footnote` / `toc` / `hyperref` / `reference`）に分離 |
 | `read_references` | `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）                                                                                                                                                                                                                                                                                                                       |
 | `syntax`          | 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供                                                                                                                                                                                                                         |
-| `parser`          | `syntax` の生成した CST を走査し、Document IR（`document::DocNode`, `InlineNode`, `MathNode` 等）に評価変換。`evaluator/` 配下にコマンド・環境・カウンタ・インライン要素のサブモジュール                                                                                                                                                                                                                   |
+| `document`        | Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell`）。`parser`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `table` サブモジュール）                                                  |
+| `parser`          | `syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`control` / `headline` / `inline` / `ref_`）・環境（`body_scan` / `caption` / `equation` / `figure` / `itemize` / `table`）・カウンタ・インライン要素・数式・オプション引数のサブモジュール                                                                                    |
 | `hlist`           | フォント非依存のコア型（`HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` / `GlyphRun` / `TableBox`）と純粋組版パス: (b) `break_opportunities`（ICU UAX #14）、(c) `break_lines`（`LineBreaker` / `GreedyBreaker`）、(d) `break_pages`（ベースライン送り・改ページ・表分割・`PageGeometry`）。表の列幅・行高の純粋計測もここ |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント対応（`shaper.rs`, `validate_font.rs`）、`FontMetrics`（upem / ascender / descender の一元化）。`read-fonts` / `harfrust` / `rayon` を使用 |
-| `lowering`        | DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `heading` / `inline` / `list` / `math` / `paragraph` サブモジュール）。`LayoutNode` / `Style` の型定義もここに置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ） |
+| `lowering`        | DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `table` / `template` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ） |
 | `layout`          | (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストのスクリプト分割・シェーピング・計測、break 注入（シェーピング後に `GlyphRun` を ICU の分割可能位置で分割。数式は分割しない）、`Raise` ツリーの `Atom` 化。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用 |
-| `pdf_gen`         | (e) `render_pages`: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施） |
+| `pdf_gen`         | (e) `render_pages`（`render`）: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定、`image`）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）。`error` / `font` / `image` / `metadata` / `render` サブモジュール構成 |
 | `subcommand`      | `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存）                                                                                                                                                                                                                                                                                           |
 | `seiran`          | `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化                                                                                                                                                                                                                                                                                                                 |
 
@@ -187,7 +193,7 @@ pub enum MyError {
 
 ### テスト
 
-- テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `figure.sei` / `ref.sei`）、フォント: リポジトリ直下の `fonts/`
+- テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `figure.sei` / `itemize.sei` / `table.sei` / `ref.sei`）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
 
 ## 設定ファイル
