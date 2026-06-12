@@ -1841,7 +1841,6 @@ dependencies = [
  "read_references",
  "read_style",
  "subcommand",
- "tempfile",
  "thiserror",
  "tracing",
  "tracing-subscriber",

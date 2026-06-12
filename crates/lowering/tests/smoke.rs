@@ -2,7 +2,7 @@
 //! パニックなしで通す smoke テスト
 //!
 //! フォント読み込みを避けるため `lower_nodes` までで打ち切り、出力構造は検証しない。
-//! 完全なパイプラインの構造検証は `seiran/tests/golden_pages.rs` が担う。
+//! `lower_nodes` より下（`build_blocks` / `break_pages`）の検証は各クレート側に委ねる。
 
 use std::path::PathBuf;
 
