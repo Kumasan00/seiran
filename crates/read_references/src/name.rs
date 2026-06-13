@@ -13,7 +13,10 @@ use thiserror::Error;
 /// [`Name`] への変換時に `family`（個人著者）と `literal`（組織著者）の排他性を検証する。
 /// このため不正状態（両方指定／両方不指定）は確定型である [`Name`] には現れず、`RawName` の段階で
 /// のみ表現される。
+///
+/// 未知のフィールドは `deny_unknown_fields` で拒否し、フィールド名のタイポを検出する。
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RawName {
   /// 組織名・リテラル表記（組織著者の場合）
   pub literal: Option<String>,
