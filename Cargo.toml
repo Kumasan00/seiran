@@ -52,7 +52,7 @@ pdf_gen = { path = "crates/pdf_gen" }
 phf = { version = "0.13.1", features = ["macros"] }
 rayon = "1.12.0"
 read_config = { path = "crates/read_config" }
-read-fonts = "0.39.2"
+read-fonts = "0.40.1"
 read_references = { path = "crates/read_references" }
 read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
