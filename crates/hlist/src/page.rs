@@ -15,6 +15,14 @@ use crate::{line::Line, table_box::TableRowBox};
 pub struct Page {
   /// ページ内の配置済みブロック（上から順）
   pub blocks: Vec<PlacedBlock>,
+  /// ヘッダー（ページ上端の余白領域に描く走り文）の配置済みブロック
+  ///
+  /// `break_pages` は空で生成し、ページ数確定後にヘッダー・フッター配置パス
+  /// （`layout::build_running_content`）が埋める。本文と同じ [`PlacedBlock`] を流用するため、
+  /// `pdf_gen` は本文と同一の描画ロジックで扱える。
+  pub header: Vec<PlacedBlock>,
+  /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
+  pub footer: Vec<PlacedBlock>,
 }
 
 /// ページ内に配置されたブロック
@@ -61,6 +69,8 @@ pub enum PlacedBlock {
     width: f32,
     /// 高さ（pt）
     height: f32,
+    /// 塗り色（RGB）。`None` は黒。`read_style` 非依存のため生の `[u8; 3]` で保持する
+    color: Option<[u8; 3]>,
   },
 }
 

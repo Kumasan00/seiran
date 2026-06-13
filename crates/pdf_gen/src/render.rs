@@ -42,60 +42,79 @@ pub(crate) fn render_pages(
     let mut page = document.start_page_with(page_settings.clone());
     let mut surface = page.surface();
     draw_page_background(&mut surface, config, style)?;
-    for block in &page_blocks.blocks {
-      match block {
-        PlacedBlock::Line { line, baseline_y } => {
-          for positioned in &line.boxes {
-            draw_box_content(
-              &mut surface,
-              metrics,
-              krilla_fonts,
-              &positioned.content,
-              margin_left + positioned.x,
-              baseline_y - positioned.dy,
-            )?;
-          }
-        },
-        PlacedBlock::Table {
-          columns,
-          col_widths,
-          rows,
-        } => {
-          let draw_ctx = TableDrawContext {
-            metrics,
-            krilla_fonts,
-            columns,
-            col_widths,
-            padding: style.core.table.cell_padding.to_pt(),
-            rule_thickness: style.core.table.rule_thickness.to_pt(),
-            rule_color: style.core.table.rule_color,
-          };
-          for placed_row in rows {
-            draw_table_row(&mut surface, &draw_ctx, placed_row, margin_left)?;
-          }
-        },
-        PlacedBlock::Image {
-          path,
-          x,
-          y,
-          width,
-          height,
-          target_dpi,
-        } => {
-          draw_image(&mut surface, path, margin_left + x, *y, *width, *height, *target_dpi)?;
-        },
-        PlacedBlock::Rule {
-          x,
-          y,
-          width,
-          height,
-        } => {
-          draw_filled_rect(&mut surface, margin_left + x, *y, *width, *height, None)?;
-        },
-      }
+    // 本文・ヘッダー・フッターはすべて同じ PlacedBlock なので同一ロジックで描画する
+    // （配置座標が重ならないよう、ヘッダー・フッターは余白領域に置かれている）
+    for block in page_blocks.blocks.iter().chain(&page_blocks.header).chain(&page_blocks.footer) {
+      draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
     }
     surface.finish();
     page.finish();
+  }
+  return Ok(());
+}
+
+/// 配置済みブロック 1 個を描画する
+///
+/// 行送り・改ページなどのレイアウト判断は前段で完了しているため、本関数は確定座標を
+/// Krilla の `Surface` に書き出すだけ。本文・ヘッダー・フッターで共有する。
+fn draw_placed_block(
+  surface: &mut Surface<'_>,
+  metrics: &FontMetrics,
+  krilla_fonts: &FontMap<Font>,
+  style: &Style,
+  margin_left: f32,
+  block: &PlacedBlock,
+) -> Result<(), PdfGenError> {
+  match block {
+    PlacedBlock::Line { line, baseline_y } => {
+      for positioned in &line.boxes {
+        draw_box_content(
+          surface,
+          metrics,
+          krilla_fonts,
+          &positioned.content,
+          margin_left + positioned.x,
+          baseline_y - positioned.dy,
+        )?;
+      }
+    },
+    PlacedBlock::Table {
+      columns,
+      col_widths,
+      rows,
+    } => {
+      let draw_ctx = TableDrawContext {
+        metrics,
+        krilla_fonts,
+        columns,
+        col_widths,
+        padding: style.core.table.cell_padding.to_pt(),
+        rule_thickness: style.core.table.rule_thickness.to_pt(),
+        rule_color: style.core.table.rule_color,
+      };
+      for placed_row in rows {
+        draw_table_row(surface, &draw_ctx, placed_row, margin_left)?;
+      }
+    },
+    PlacedBlock::Image {
+      path,
+      x,
+      y,
+      width,
+      height,
+      target_dpi,
+    } => {
+      draw_image(surface, path, margin_left + x, *y, *width, *height, *target_dpi)?;
+    },
+    PlacedBlock::Rule {
+      x,
+      y,
+      width,
+      height,
+      color,
+    } => {
+      draw_filled_rect(surface, margin_left + x, *y, *width, *height, color.map(Color::from))?;
+    },
   }
   return Ok(());
 }

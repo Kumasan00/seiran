@@ -78,6 +78,47 @@ fn parse_style_accepts_color_hex_string() {
 }
 
 #[test]
+fn parse_style_overrides_header_and_footer() {
+  // Arrange: [header] / [footer] のスロットと見た目を上書き
+  let toml = concat!(
+    "[header]\n",
+    "right = \"{page} / {pages}\"\n",
+    "font_size = \"9pt\"\n",
+    "font_kind = \"sans_serif\"\n",
+    "rule_thickness = \"0.5pt\"\n",
+    "rule_color = \"#333333\"\n",
+    "[footer]\n",
+    "center = \"{title}\"\n",
+  );
+
+  // Act
+  let style = parse_style(toml, dummy_source()).unwrap();
+
+  // Assert: header は指定値、footer は center のみ指定で他はデフォルト
+  assert_eq!(style.core.header.right, "{page} / {pages}");
+  assert!((style.core.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
+  assert_eq!(style.core.header.font_kind, types::FontKind::SansSerif);
+  assert!((style.core.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
+  assert_eq!(style.core.header.rule_color.map(read_style::Color::rgb), Some([0x33, 0x33, 0x33]));
+  assert_eq!(style.core.footer.center, "{title}");
+  assert!(style.core.footer.left.is_empty());
+  // 既定では header/footer は空（描画なし）
+  assert!(!style.core.header.is_empty());
+}
+
+#[test]
+fn parse_style_fails_on_unknown_header_key() {
+  // Arrange: [header] 内の typo は deny_unknown_fields で拒否
+  let toml = "[header]\nrght = \"{page}\"\n";
+
+  // Act
+  let result = parse_style(toml, dummy_source());
+
+  // Assert
+  assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+}
+
+#[test]
 fn parse_style_fails_on_unknown_top_level_key() {
   // Arrange: typo
   let toml = "font_sze = \"15pt\"\n";

@@ -23,6 +23,8 @@
 //!
 //! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
+mod running;
+
 use font::{
   FontMetrics,
   shaper::{HarfRustShapers, UnicodeBuffer},
@@ -38,6 +40,7 @@ use icu::properties::{
 };
 use lazy_regex::regex_replace_all;
 use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
+pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
 use types::{FontKind, FontType, Length};
 
 /// テキストをスクリプトに基づいて分割したセグメント
@@ -64,13 +67,7 @@ pub fn build_blocks(
   default_font_size: f32,
   line_height_factor: f32,
 ) -> Vec<Block> {
-  let mut measurer = Measurer {
-    shapers,
-    metrics,
-    buffer: UnicodeBuffer::new(),
-    default_font_size,
-    line_height_factor,
-  };
+  let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph);
@@ -79,12 +76,32 @@ pub fn build_blocks(
 }
 
 /// シェーピング・計測の状態を束ねた内部ワーカー
-struct Measurer<'a> {
+///
+/// `build_blocks`（本文）とヘッダー・フッター配置パス（[`crate::running`]）の双方が共有する。
+pub(crate) struct Measurer<'a> {
   shapers: &'a HarfRustShapers<'a>,
   metrics: &'a FontMetrics,
   buffer: UnicodeBuffer,
   default_font_size: f32,
   line_height_factor: f32,
+}
+
+impl<'a> Measurer<'a> {
+  /// シェーパーとメトリクスから新しい `Measurer` を生成する
+  pub(crate) fn new(
+    shapers: &'a HarfRustShapers<'a>,
+    metrics: &'a FontMetrics,
+    default_font_size: f32,
+    line_height_factor: f32,
+  ) -> Self {
+    return Measurer {
+      shapers,
+      metrics,
+      buffer: UnicodeBuffer::new(),
+      default_font_size,
+      line_height_factor,
+    };
+  }
 }
 
 impl Measurer<'_> {
@@ -255,7 +272,7 @@ impl Measurer<'_> {
   }
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
-  fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
+  pub(crate) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
     let text = regex_replace_all!("\n", text, " ");
     let segments = split_text_by_script(style.font_kind, &text);
     return segments

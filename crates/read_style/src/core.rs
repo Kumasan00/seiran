@@ -14,6 +14,7 @@ pub mod figure;
 pub mod heading;
 pub mod list;
 pub mod math;
+pub mod running;
 pub mod table;
 pub mod text;
 
@@ -24,7 +25,7 @@ use types::length::{Length, positive};
 use crate::{
   core::{
     counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
-    math::MathScriptStyle, table::TableStyle, text::TextBlockStyle,
+    math::MathScriptStyle, running::RunningContentStyle, table::TableStyle, text::TextBlockStyle,
   },
   primitives::color::Color,
 };
@@ -72,6 +73,12 @@ pub struct CoreStyle {
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
+  /// ヘッダー（ページ上端の走り文）のスタイル
+  #[garde(dive)]
+  pub header: RunningContentStyle,
+  /// フッター（ページ下端の走り文）のスタイル
+  #[garde(dive)]
+  pub footer: RunningContentStyle,
 }
 
 impl Default for CoreStyle {
@@ -88,6 +95,8 @@ impl Default for CoreStyle {
       equation: EquationStyle::default(),
       math: MathScriptStyle::default(),
       counters: Counters::default(),
+      header: RunningContentStyle::default(),
+      footer: RunningContentStyle::default(),
     };
   }
 }

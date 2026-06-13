@@ -131,6 +131,8 @@ fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(),
     "figure",
     "equation",
     "counters",
+    "header",
+    "footer",
     "extended",
   ];
 

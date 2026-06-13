@@ -1,0 +1,301 @@
+//! ヘッダー・フッター（running header/footer）の配置パス
+//!
+//! `hlist::break_pages` がページ数を確定した**後**に走る、フォント依存の後処理パスです。
+//! 各ページについて左・中央・右スロットのテンプレートを展開（`{page}` などのトークン置換）し、
+//! 既存の [`crate::Measurer`] でシェーピングして、本文と同じ [`PlacedBlock`] として
+//! `Page::header` / `Page::footer` に配置します。
+//!
+//! 出力はフォント非依存の [`PlacedBlock`] なので、`pdf_gen` は本文ブロックと同一の描画ロジックで
+//! 扱えます。`read_style` / `read_config` には依存せず、呼び出し側（`seiran::build_pdf`）が
+//! 設定からプリミティブの [`RunningContentSpec`] を組み立てて渡します（`PageGeometry` と同じ流儀）。
+
+use font::{FontMetrics, shaper::HarfRustShapers};
+use hlist::{HBox, Line, Page, PlacedBlock, PositionedBox};
+use lowering::TextStyle;
+use types::FontKind;
+
+use crate::Measurer;
+
+/// ヘッダー・フッター配置に必要なプリミティブ設定
+///
+/// `read_style` / `read_config` 型を持ち込まないよう、呼び出し側が設定から組み立てて渡す。
+/// `header` / `footer` が `None` のリージョンは配置しない（全スロット空のとき呼び出し側が `None`
+/// にする）。
+#[derive(Debug, Clone)]
+pub struct RunningContentSpec {
+  /// ヘッダー（ページ上端側）のスロット。`None` なら描画しない
+  pub header: Option<RunningSlots>,
+  /// フッター（ページ下端側）のスロット。`None` なら描画しない
+  pub footer: Option<RunningSlots>,
+  /// トークン置換に使う文書メタデータ
+  pub metadata: RunningMetadata,
+  /// 本文幅（pt）。スロットの左／中央／右揃えの基準
+  pub text_width: f32,
+}
+
+/// 1 リージョン（ヘッダーまたはフッター）のスロットと見た目
+#[derive(Debug, Clone)]
+pub struct RunningSlots {
+  /// 左スロットのテンプレート
+  pub left: String,
+  /// 中央スロットのテンプレート
+  pub center: String,
+  /// 右スロットのテンプレート
+  pub right: String,
+  /// フォント種別
+  pub font_kind: FontKind,
+  /// フォントサイズ（pt）
+  pub font_size: f32,
+  /// ベースラインのページ上端からの距離（pt、絶対座標。フッターは呼び出し側で換算済み）
+  pub baseline_y: f32,
+  /// 区切り線をテキストの下に置くか（`true`: ヘッダー、`false`: フッター）
+  pub rule_below: bool,
+  /// 区切り線の太さ（pt）。0 のとき線を描画しない
+  pub rule_thickness: f32,
+  /// テキストと区切り線の間隔（pt）
+  pub rule_gap: f32,
+  /// 区切り線の色（RGB）。`None` は黒
+  pub rule_color: Option<[u8; 3]>,
+}
+
+/// トークン置換に使う文書メタデータ（未設定は空文字列）
+#[derive(Debug, Clone, Default)]
+pub struct RunningMetadata {
+  /// `{title}`
+  pub title: String,
+  /// `{author}`
+  pub author: String,
+  /// `{date}`
+  pub date: String,
+}
+
+/// 各ページにヘッダー・フッターを配置する
+///
+/// `pages` を走査し、`spec` に従って `page.header` / `page.footer` を埋める。
+/// ヘッダー・フッターともに未指定（`None`）の場合は何もしない。
+///
+/// # Arguments
+///
+/// * `pages` - 配置先のページ列（`break_pages` の出力）
+/// * `shapers` - フォント形成エンジン
+/// * `metrics` - フォントメトリクス
+/// * `spec` - ヘッダー・フッターのプリミティブ設定
+pub fn build_running_content(
+  pages: &mut [Page],
+  shapers: &HarfRustShapers,
+  metrics: &FontMetrics,
+  spec: &RunningContentSpec,
+) {
+  if spec.header.is_none() && spec.footer.is_none() {
+    return;
+  }
+  // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない
+  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0);
+  let page_count = pages.len();
+  for (index, page) in pages.iter_mut().enumerate() {
+    let page_number = index + 1;
+    if let Some(slots) = &spec.header {
+      page.header = build_region(&mut measurer, slots, spec.text_width, page_number, page_count, &spec.metadata);
+    }
+    if let Some(slots) = &spec.footer {
+      page.footer = build_region(&mut measurer, slots, spec.text_width, page_number, page_count, &spec.metadata);
+    }
+  }
+}
+
+/// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる
+fn build_region(
+  measurer: &mut Measurer,
+  slots: &RunningSlots,
+  text_width: f32,
+  page_number: usize,
+  page_count: usize,
+  metadata: &RunningMetadata,
+) -> Vec<PlacedBlock> {
+  let style = TextStyle {
+    font_size: slots.font_size,
+    font_kind: slots.font_kind,
+  };
+  let left = shape_slot(measurer, &slots.left, page_number, page_count, metadata, style);
+  let center = shape_slot(measurer, &slots.center, page_number, page_count, metadata, style);
+  let right = shape_slot(measurer, &slots.right, page_number, page_count, metadata, style);
+
+  let center_x = (text_width - slot_width(&center)) / 2.0;
+  let right_x = text_width - slot_width(&right);
+
+  let mut boxes: Vec<PositionedBox> = Vec::new();
+  let mut height = 0.0f32;
+  let mut depth = 0.0f32;
+  append_slot(left, 0.0, &mut boxes, &mut height, &mut depth);
+  append_slot(center, center_x, &mut boxes, &mut height, &mut depth);
+  append_slot(right, right_x, &mut boxes, &mut height, &mut depth);
+
+  if boxes.is_empty() {
+    return Vec::new();
+  }
+
+  let mut result = Vec::with_capacity(2);
+  result.push(PlacedBlock::Line {
+    line: Line {
+      boxes,
+      height,
+      depth,
+      is_last: true,
+    },
+    baseline_y: slots.baseline_y,
+  });
+  if slots.rule_thickness > 0.0 {
+    let y = if slots.rule_below {
+      slots.baseline_y + depth + slots.rule_gap
+    } else {
+      slots.baseline_y - height - slots.rule_gap - slots.rule_thickness
+    };
+    result.push(PlacedBlock::Rule {
+      x: 0.0,
+      y,
+      width: text_width,
+      height: slots.rule_thickness,
+      color: slots.rule_color,
+    });
+  }
+  return result;
+}
+
+/// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
+///
+/// 置換後が空（空白のみ）の場合は空ベクタを返す。
+fn shape_slot(
+  measurer: &mut Measurer,
+  template: &str,
+  page_number: usize,
+  page_count: usize,
+  metadata: &RunningMetadata,
+  style: TextStyle,
+) -> Vec<HBox> {
+  let text = substitute(template, page_number, page_count, metadata);
+  if text.trim().is_empty() {
+    return Vec::new();
+  }
+  return measurer.shape_text(&text, style);
+}
+
+/// テンプレート中のトークンを実値へ置換する
+///
+/// `{page}` は `{pages}` の部分文字列ではない（直後が `s` か `}` かで異なる）ため、置換順は不問。
+fn substitute(template: &str, page_number: usize, page_count: usize, metadata: &RunningMetadata) -> String {
+  return template
+    .replace("{page}", &page_number.to_string())
+    .replace("{pages}", &page_count.to_string())
+    .replace("{title}", &metadata.title)
+    .replace("{author}", &metadata.author)
+    .replace("{date}", &metadata.date);
+}
+
+/// `HBox` 列の合計幅（pt）を返す
+fn slot_width(hboxes: &[HBox]) -> f32 { return hboxes.iter().map(|hbox| hbox.width).sum(); }
+
+/// `HBox` 列を `x_start` から水平に並べて `boxes` へ追加し、行の高さ・深さを更新する
+fn append_slot(hboxes: Vec<HBox>, x_start: f32, boxes: &mut Vec<PositionedBox>, height: &mut f32, depth: &mut f32) {
+  let mut x = x_start;
+  for hbox in hboxes {
+    *height = height.max(hbox.height);
+    *depth = depth.max(hbox.depth);
+    boxes.push(PositionedBox {
+      content: hbox.content,
+      x,
+      dy: 0.0,
+      width: hbox.width,
+    });
+    x += hbox.width;
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use hlist::{HBox, HBoxContent, PositionedBox};
+
+  use super::{RunningMetadata, append_slot, slot_width, substitute};
+
+  /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
+  fn box_of_width(w: f32) -> HBox {
+    return HBox {
+      content: HBoxContent::Rule {
+        width: w,
+        height: 8.0,
+      },
+      width: w,
+      height: 8.0,
+      depth: 2.0,
+    };
+  }
+
+  #[test]
+  fn slot_width_sums_box_widths() {
+    // Arrange / Act
+    let width = slot_width(&[box_of_width(10.0), box_of_width(15.0)]);
+
+    // Assert
+    assert!((width - 25.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn append_slot_positions_boxes_left_to_right() {
+    // Arrange — x_start=100 から幅 10, 15 のボックスを並べる
+    let mut boxes: Vec<PositionedBox> = Vec::new();
+    let mut height = 0.0f32;
+    let mut depth = 0.0f32;
+
+    // Act
+    append_slot(vec![box_of_width(10.0), box_of_width(15.0)], 100.0, &mut boxes, &mut height, &mut depth);
+
+    // Assert — x は累積し、行の高さ・深さはボックスの最大値
+    let xs: Vec<f32> = boxes.iter().map(|b| b.x).collect();
+    assert_eq!(xs, vec![100.0, 110.0]);
+    assert!((height - 8.0).abs() < f32::EPSILON);
+    assert!((depth - 2.0).abs() < f32::EPSILON);
+  }
+
+  fn metadata() -> RunningMetadata {
+    return RunningMetadata {
+      title: "My Title".to_string(),
+      author: "Me".to_string(),
+      date: "2026-06-14".to_string(),
+    };
+  }
+
+  #[test]
+  fn substitute_replaces_page_and_pages_independently() {
+    // Arrange / Act
+    let result = substitute("{page} / {pages}", 3, 12, &metadata());
+
+    // Assert — {page} が {pages} を壊さない
+    assert_eq!(result, "3 / 12");
+  }
+
+  #[test]
+  fn substitute_replaces_metadata_tokens() {
+    // Arrange / Act
+    let result = substitute("{title} — {author} ({date})", 1, 1, &metadata());
+
+    // Assert
+    assert_eq!(result, "My Title — Me (2026-06-14)");
+  }
+
+  #[test]
+  fn substitute_unset_metadata_becomes_empty() {
+    // Arrange — 既定（空）メタデータ
+    let result = substitute("[{title}]", 1, 1, &RunningMetadata::default());
+
+    // Assert
+    assert_eq!(result, "[]");
+  }
+
+  #[test]
+  fn substitute_leaves_static_text_untouched() {
+    // Arrange / Act
+    let result = substitute("Confidential", 5, 9, &metadata());
+
+    // Assert
+    assert_eq!(result, "Confidential");
+  }
+}

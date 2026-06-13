@@ -61,6 +61,8 @@ impl PageComposer {
   fn start_new_page(&mut self, geom: &PageGeometry) {
     self.pages.push(Page {
       blocks: std::mem::take(&mut self.current),
+      header: Vec::new(),
+      footer: Vec::new(),
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
@@ -70,6 +72,8 @@ impl PageComposer {
   fn finish(mut self) -> Vec<Page> {
     self.pages.push(Page {
       blocks: self.current,
+      header: Vec::new(),
+      footer: Vec::new(),
     });
     return self.pages;
   }
@@ -107,6 +111,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
           y: composer.y,
           width,
           height,
+          color: None,
         });
         composer.y += height;
         composer.cursor_at_edge = true;

@@ -132,8 +132,22 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
     line_height_factor,
     table_cell_padding: style.core.table.cell_padding.to_pt(),
   };
-  let pages = hlist::break_pages(blocks, text_width, &geometry, &hlist::GreedyBreaker);
+  let mut pages = hlist::break_pages(blocks, text_width, &geometry, &hlist::GreedyBreaker);
   info!(page_count = pages.len(), "レイアウトの計算が完了しました");
+
+  // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決に総数が必要なため）
+  let page_height = config.pdf.height.to_pt();
+  let running_spec = layout::RunningContentSpec {
+    header: running_slots(&style.core.header, style.core.header.baseline_offset.to_pt(), true),
+    footer: running_slots(&style.core.footer, page_height - style.core.footer.baseline_offset.to_pt(), false),
+    metadata: layout::RunningMetadata {
+      title: config.document.title.clone().unwrap_or_default(),
+      author: config.document.author.clone().unwrap_or_default(),
+      date: config.document.date.clone().unwrap_or_default(),
+    },
+    text_width,
+  };
+  layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style)?;
 
@@ -173,4 +187,31 @@ fn parse_all_sources(sources: &[std::path::PathBuf], style: &read_style::Style) 
     });
   }
   return Ok(all_nodes);
+}
+
+/// `RunningContentStyle` をヘッダー・フッター配置用の [`layout::RunningSlots`] に変換する。
+///
+/// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
+/// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
+/// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
+fn running_slots(
+  style: &read_style::core::running::RunningContentStyle,
+  baseline_y: f32,
+  rule_below: bool,
+) -> Option<layout::RunningSlots> {
+  if style.is_empty() {
+    return None;
+  }
+  return Some(layout::RunningSlots {
+    left: style.left.clone(),
+    center: style.center.clone(),
+    right: style.right.clone(),
+    font_kind: style.font_kind,
+    font_size: style.font_size.to_pt(),
+    baseline_y,
+    rule_below,
+    rule_thickness: style.rule_thickness.to_pt(),
+    rule_gap: style.rule_gap.to_pt(),
+    rule_color: style.rule_color.map(read_style::Color::rgb),
+  });
 }
