@@ -275,4 +275,92 @@ mod tests {
     // 既に太字のものはそのまま
     assert_eq!(bold_kind(FontKind::SerifBold), FontKind::SerifBold);
   }
+
+  #[test]
+  fn lower_table_preserves_column_widths() {
+    // Arrange — Fixed / Ratio / Flex の幅指定が TableColumn にそのまま保持される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["a", "b", "c"])];
+    let widths = [
+      ColumnWidth::Fixed(types::Length::pt(40.0)),
+      ColumnWidth::Ratio(0.25),
+      ColumnWidth::Flex,
+    ];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right],
+      &widths,
+      &[],
+      &rows,
+      None,
+      "1",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert_eq!(table.columns.len(), 3);
+    assert!(matches!(table.columns[0].width, ColumnWidth::Fixed(l) if (l.to_pt() - 40.0).abs() < f32::EPSILON));
+    assert!(matches!(table.columns[1].width, ColumnWidth::Ratio(r) if (r - 0.25).abs() < f32::EPSILON));
+    assert!(matches!(table.columns[2].width, ColumnWidth::Flex));
+    assert_eq!(table.columns[1].align, ColumnAlign::Center);
+  }
+
+  #[test]
+  fn lower_table_breakable_false_is_preserved() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", false).expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert!(!table.breakable);
+  }
+
+  #[test]
+  fn lower_table_preserves_rule_above_flag() {
+    // Arrange — rule_above=true の行が TableRowLayout に保持される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [TableRow {
+      cells: vec![TableCell::new(vec![InlineNode::Text("A".to_string())])],
+      rule_above: true,
+    }];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert!(table.rows[0].rule_above);
+  }
+
+  #[test]
+  fn lower_table_without_caption_omits_caption_text() {
+    // Arrange — caption が None なら VBox にキャプション Text を出さない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
+    assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
+  }
 }

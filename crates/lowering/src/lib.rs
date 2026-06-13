@@ -195,10 +195,26 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
 
 #[cfg(test)]
 mod tests {
-  use document::{InlineNode, MathNode};
+  use document::{HeadingLevel, InlineNode, ListItem, MathNode};
   use types::Length;
 
   use super::*;
+
+  /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
+  fn contains_line_break(nodes: &[LayoutNode]) -> bool {
+    return nodes.iter().any(|n| match n {
+      LayoutNode::LineBreak => true,
+      LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } | LayoutNode::Raise { children, .. } => {
+        contains_line_break(children)
+      },
+      LayoutNode::Table(table) => table
+        .head
+        .iter()
+        .chain(table.rows.iter())
+        .any(|row| row.cells.iter().any(|cell| contains_line_break(&cell.content))),
+      _ => false,
+    });
+  }
 
   #[test]
   fn test_lower_space() {
@@ -345,5 +361,91 @@ mod tests {
       "末尾近くに Text(\"(1)\") があるべき: {nodes:?}"
     );
     assert!(matches!(gap, Some(LayoutNode::Glue { .. })), "数式と番号の間に Glue: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_nodes_dispatches_each_variant_in_order() {
+    // Arrange — 見出し / 段落 / リスト / 改ページを並べる
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes = vec![
+      DocNode::heading(HeadingLevel::Section, "1", vec![InlineNode::Text("H".to_string())]),
+      DocNode::Paragraph(vec![InlineNode::Text("P".to_string())]),
+      DocNode::List {
+        ordered: false,
+        items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
+          InlineNode::Text("L".to_string()),
+        ])])],
+      },
+      DocNode::PageBreak,
+    ];
+
+    // Act
+    let out = lower_nodes(&ctx, &nodes).expect("解決済みノードのみなので失敗しない");
+
+    // Assert — 見出しとリスト項目で VBox が 2 つ以上、段落由来の Text("P")、末尾は PageBreak
+    let vbox_count = out.iter().filter(|n| matches!(n, LayoutNode::VBox { .. })).count();
+    assert!(vbox_count >= 2, "見出しとリスト項目で VBox が複数出る: {out:?}");
+    assert!(out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "P")), "段落 Text が出る: {out:?}");
+    assert!(matches!(out.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {out:?}");
+  }
+
+  #[test]
+  fn lower_document_delegates_to_lower_nodes() {
+    // Arrange — Document の body がそのまま lower_nodes に渡ることを確認する
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let document = Document::new(vec![
+      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::Text("Intro".to_string())]),
+      DocNode::Paragraph(vec![InlineNode::Text("Body".to_string())]),
+    ]);
+
+    // Act
+    let out = lower_document(&ctx, &document).expect("失敗しない");
+
+    // Assert — 見出し VBox と段落 Text の両方が出る
+    assert!(out.iter().any(|n| matches!(n, LayoutNode::VBox { .. })));
+    assert!(out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "Body")));
+  }
+
+  #[test]
+  fn block_boundaries_use_no_bare_line_break() {
+    // Arrange — インライン \\（LineBreak）を一切含まないブロック構成
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes = vec![
+      DocNode::heading(HeadingLevel::Section, "1", vec![InlineNode::Text("Heading".to_string())]),
+      DocNode::Paragraph(vec![InlineNode::Text("Para".to_string())]),
+      DocNode::List {
+        ordered: true,
+        items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
+          InlineNode::Text("Item".to_string()),
+        ])])],
+      },
+    ];
+
+    // Act
+    let out = lower_nodes(&ctx, &nodes).expect("失敗しない");
+
+    // Assert — ブロック境界は Vkern / VBox.margin_bottom で表され、裸の LineBreak は出ない
+    assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
+  }
+
+  #[test]
+  fn default_font_size_reflects_core_font_size() {
+    // Arrange — font_size を 18pt に上書きする
+    let mut style = ReadStyle::default();
+    style.core.font_size = Length::pt(18.0);
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let out = lower_node(&ctx, &DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])).expect("失敗しない");
+
+    // Assert — default_font_size と段落 Text の font_size がともに 18pt
+    assert!((ctx.default_font_size() - 18.0).abs() < f32::EPSILON);
+    let LayoutNode::Text(_, text_style) = &out[0] else {
+      panic!("先頭は Text であるべき: {out:?}");
+    };
+    assert!((text_style.font_size - 18.0).abs() < f32::EPSILON);
   }
 }

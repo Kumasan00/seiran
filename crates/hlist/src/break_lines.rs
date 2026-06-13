@@ -311,4 +311,44 @@ mod tests {
     assert_eq!(lines.len(), 1);
     assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
   }
+
+  #[test]
+  fn no_line_exceeds_width_when_break_points_exist() {
+    // 不変条件: breakable glue で区切られ、各 box が段幅より狭ければ
+    // どの行も段幅を超えない（box(10) を glue(5) で 10 個連結、text_width=30）
+    let mut items = Vec::new();
+    for i in 0..10 {
+      if i > 0 {
+        items.push(space_glue());
+      }
+      items.push(test_box());
+    }
+
+    let lines = GreedyBreaker.break_lines(&items, 30.0);
+
+    for line in &lines {
+      let width = line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
+      assert!(width <= 30.0 + f32::EPSILON, "行幅 {width} が段幅 30 を超えた: {line:?}");
+    }
+  }
+
+  #[test]
+  fn single_box_wider_than_width_is_not_split() {
+    // 分割は機会位置のみ: 段幅より広い単一 box は分割されず 1 行に overflow する
+    let wide = HItem::Box(HBox {
+      content: HBoxContent::Rule {
+        width: 50.0,
+        height: 1.0,
+      },
+      width: 50.0,
+      height: 8.0,
+      depth: 2.0,
+    });
+
+    let lines = GreedyBreaker.break_lines(&[wide], 30.0);
+
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 1);
+    assert!((lines[0].boxes[0].width - 50.0).abs() < f32::EPSILON);
+  }
 }

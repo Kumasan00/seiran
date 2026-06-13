@@ -266,12 +266,16 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 
 #[cfg(test)]
 mod tests {
+  use types::{ColumnAlign, ColumnWidth, TableColumn};
+
   use super::{PageGeometry, break_pages};
   use crate::{
     block::Block,
     break_lines::GreedyBreaker,
+    glyph_run::GlyphRun,
     hitem::{HBox, HBoxContent, HItem},
-    page::PlacedBlock,
+    page::{Page, PlacedBlock},
+    table_box::{TableBox, TableCellBox, TableRowBox},
   };
 
   /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`）
@@ -441,5 +445,113 @@ mod tests {
       panic!("Image を期待");
     };
     assert!((y - 10.0).abs() < f32::EPSILON, "画像はページ先頭 (margin_top) に置かれる");
+  }
+
+  /// テキスト入り（フォント 10）の 1 セル行を作るヘルパ
+  fn table_row(text: &str) -> TableRowBox {
+    return TableRowBox {
+      cells: vec![TableCellBox {
+        items: vec![HItem::Box(HBox {
+          content: HBoxContent::Glyphs(GlyphRun {
+            font_size: 10.0,
+            text: text.to_string(),
+            glyphs: Vec::new(),
+            font_type: types::FontType::Serif,
+          }),
+          width: 20.0,
+          height: 10.0,
+          depth: 0.0,
+        })],
+        span: 1,
+      }],
+      rule_above: false,
+    };
+  }
+
+  /// ページ内の最初の表ブロックの先頭行セルのテキストを取り出すヘルパ
+  fn first_table_row_text(page: &Page) -> Option<String> {
+    for block in &page.blocks {
+      if let PlacedBlock::Table { rows, .. } = block
+        && let Some(first) = rows.first()
+        && let HItem::Box(hbox) = &first.row.cells[0].items[0]
+        && let HBoxContent::Glyphs(run) = &hbox.content
+      {
+        return Some(run.text.clone());
+      }
+    }
+    return None;
+  }
+
+  #[test]
+  fn empty_blocks_yield_single_empty_page() {
+    // 空入力でも 1 ページ（空ページ）を返す
+    let geom = test_geometry();
+
+    let pages = break_pages(vec![], 100.0, &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1);
+    assert!(pages[0].blocks.is_empty());
+  }
+
+  #[test]
+  fn multiple_page_breaks_create_multiple_pages() {
+    // 連続する PageBreak は都度ページを分ける
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::PageBreak,
+      paragraph_of_lines(1),
+      Block::PageBreak,
+      paragraph_of_lines(1),
+    ];
+
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 3);
+  }
+
+  #[test]
+  fn breakable_table_splits_across_pages_and_redraws_header() {
+    // Arrange — head + 本体 5 行。各行高 10、page_limit=50 で 2 ページに分割される
+    let geom = test_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: vec![table_row("HEAD")],
+      rows: (0..5).map(|i| table_row(&format!("R{i}"))).collect(),
+      breakable: true,
+    };
+
+    // Act
+    let pages = break_pages(vec![Block::Table(table)], 100.0, &geom, &GreedyBreaker);
+
+    // Assert — 2 ページに分割され、2 ページ目の表先頭行はヘッダの再描画
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("HEAD"), "1 ページ目もヘッダ始まり");
+    assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("HEAD"), "2 ページ目はヘッダ再描画");
+  }
+
+  #[test]
+  fn no_line_baseline_exceeds_page_limit() {
+    // 不変条件: どのページの行も baseline + depth がページ下限を超えない
+    let geom = test_geometry();
+
+    let pages = break_pages(vec![paragraph_of_lines(12)], 100.0, &geom, &GreedyBreaker);
+
+    assert!(pages.len() >= 2, "複数ページに分かれる: {}", pages.len());
+    for page in &pages {
+      for block in &page.blocks {
+        if let PlacedBlock::Line { line, baseline_y } = block {
+          assert!(
+            baseline_y + line.depth <= geom.page_limit + f32::EPSILON,
+            "baseline={baseline_y} depth={} が page_limit={} を超えた",
+            line.depth,
+            geom.page_limit
+          );
+        }
+      }
+    }
   }
 }

@@ -106,4 +106,31 @@ mod tests {
     let breaks = break_opportunities("");
     assert!(breaks.is_empty(), "{breaks:?}");
   }
+
+  #[test]
+  fn trailing_space_has_no_break_at_end() {
+    // 末尾（byte == len）の分割可能点は除外されるため、行末スペースは機会を生まない
+    let breaks = break_opportunities("hello ");
+    assert!(breaks.is_empty(), "{breaks:?}");
+  }
+
+  #[test]
+  fn multiple_latin_words_break_after_each_space_in_order() {
+    // "a b c" はスペース直後（byte 2, 4）にのみ Glue 分割可能点を持ち、順序が保たれる
+    let breaks = break_opportunities("a b c");
+
+    assert_eq!(
+      breaks,
+      vec![
+        BreakPoint {
+          byte: 2,
+          kind: BreakKind::Glue
+        },
+        BreakPoint {
+          byte: 4,
+          kind: BreakKind::Glue
+        },
+      ]
+    );
+  }
 }

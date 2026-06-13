@@ -82,3 +82,174 @@ pub(super) fn wrap_float(
     },
   ];
 }
+
+#[cfg(test)]
+mod tests {
+  use document::{CaptionPosition, InlineNode};
+  use read_style::{CaptionStyle, Style as ReadStyle};
+  use types::{FontKind, Length};
+
+  use super::*;
+
+  /// テスト用のキャプション本体（識別しやすい固定文字列の Text）を作る
+  fn caption_node(text: &str) -> LayoutNode {
+    return LayoutNode::Text(
+      text.to_string(),
+      TextStyle {
+        font_size: 11.0,
+        font_kind: FontKind::Serif,
+      },
+    );
+  }
+
+  /// 本体（main）として使う、キャプションと区別しやすい Rule ノードを作る
+  fn main_node() -> LayoutNode {
+    return LayoutNode::Rule {
+      width: Length::pt(10.0),
+      height: Length::pt(2.0),
+    };
+  }
+
+  /// `LayoutNode` が指定 pt の `Vkern` であることを確認するヘルパ
+  fn assert_vkern(node: &LayoutNode, expected_pt: f32) {
+    let LayoutNode::Vkern { length } = node else {
+      panic!("Vkern が期待されます: {node:?}");
+    };
+    assert!((length.to_pt() - expected_pt).abs() < f32::EPSILON, "Vkern={} 期待={expected_pt}", length.to_pt());
+  }
+
+  #[test]
+  fn wrap_float_top_orders_caption_inner_kern_then_main() {
+    // Arrange — top=5 / bottom=7 / inner=3 で各 Vkern を区別できるようにする
+    let spec = FloatSpec {
+      top_margin: Length::pt(5.0),
+      bottom_margin: Length::pt(7.0),
+      inner_margin: Some(Length::pt(3.0)),
+    };
+
+    // Act
+    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
+
+    // Assert — [Vkern(top), VBox{ [caption, Vkern(inner), main], margin_bottom=bottom }]
+    assert_eq!(nodes.len(), 2);
+    assert_vkern(&nodes[0], 5.0);
+    let LayoutNode::VBox {
+      children,
+      margin_bottom,
+    } = &nodes[1]
+    else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
+    assert_vkern(&children[1], 3.0);
+    assert!(matches!(&children[2], LayoutNode::Rule { .. }));
+  }
+
+  #[test]
+  fn wrap_float_bottom_orders_main_inner_kern_then_caption() {
+    // Arrange
+    let spec = FloatSpec {
+      top_margin: Length::pt(5.0),
+      bottom_margin: Length::pt(7.0),
+      inner_margin: Some(Length::pt(3.0)),
+    };
+
+    // Act
+    let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &spec);
+
+    // Assert — VBox children が main → Vkern(inner) → caption の順
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    assert!(matches!(&children[0], LayoutNode::Rule { .. }));
+    assert_vkern(&children[1], 3.0);
+    assert!(matches!(&children[2], LayoutNode::Text(t, _) if t == "cap"));
+  }
+
+  #[test]
+  fn wrap_float_without_inner_margin_omits_inner_vkern() {
+    // Arrange — inner_margin が None なら本体とキャプションの間に Vkern を入れない
+    let spec = FloatSpec {
+      top_margin: Length::pt(5.0),
+      bottom_margin: Length::pt(7.0),
+      inner_margin: None,
+    };
+
+    // Act
+    let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
+
+    // Assert — VBox children は caption + main の 2 要素のみ（間に Vkern なし）
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    assert_eq!(children.len(), 2, "間に Vkern が入らない: {children:?}");
+    let has_vkern = children.iter().any(|n| matches!(n, LayoutNode::Vkern { .. }));
+    assert!(!has_vkern, "本体とキャプションの間に Vkern は入らない: {children:?}");
+  }
+
+  #[test]
+  fn wrap_float_without_caption_contains_only_main() {
+    // Arrange — caption が None なら VBox には本体のみ
+    let spec = FloatSpec {
+      top_margin: Length::pt(5.0),
+      bottom_margin: Length::pt(7.0),
+      inner_margin: Some(Length::pt(3.0)),
+    };
+
+    // Act
+    let nodes = wrap_float(main_node(), None, &spec);
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    assert_eq!(children.len(), 1, "本体のみ: {children:?}");
+    assert!(matches!(&children[0], LayoutNode::Rule { .. }));
+  }
+
+  #[test]
+  fn build_caption_expands_template_with_serif_caption_style() {
+    // Arrange — format の {number}/{title} が展開され、base_style が caption の font_size + Serif になる
+    let read_style = ReadStyle::default();
+    let ctx = LoweringContext::new(&read_style);
+    let caption_style = CaptionStyle {
+      format: "Fig {number}: {title}".to_string(),
+      font_size: Length::pt(9.0),
+    };
+    let inlines = [InlineNode::Text("Overview".to_string())];
+
+    // Act
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "3").expect("解決済みインラインなので失敗しない");
+
+    // Assert — 単一 Text "Fig 3: Overview"、font_size=9.0、font_kind=Serif
+    assert_eq!(nodes.len(), 1, "プレーンタイトルは 1 つの Text に縮約される: {nodes:?}");
+    let LayoutNode::Text(text, style) = &nodes[0] else {
+      panic!("Text が期待されます: {nodes:?}");
+    };
+    assert_eq!(text, "Fig 3: Overview");
+    assert!((style.font_size - 9.0).abs() < f32::EPSILON);
+    assert_eq!(style.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn build_caption_unresolved_ref_returns_error() {
+    // Arrange — キャプション内の未解決 \ref は LoweringError::UnresolvedReference を返す
+    let read_style = ReadStyle::default();
+    let ctx = LoweringContext::new(&read_style);
+    let caption_style = CaptionStyle::default();
+    let inlines = [InlineNode::Ref {
+      label: "fig:missing".to_string(),
+      number: None,
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }];
+
+    // Act
+    let err = build_caption(&ctx, &caption_style, &inlines, "1").expect_err("未解決 Ref はエラー");
+
+    // Assert
+    match err {
+      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "fig:missing"),
+    }
+  }
+}

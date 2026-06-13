@@ -155,3 +155,227 @@ pub fn resolve_column_widths(table: &TableBox, available: f32, padding: f32) -> 
   }
   return widths;
 }
+
+#[cfg(test)]
+mod tests {
+  use types::{ColumnAlign, ColumnWidth, Length, TableColumn};
+
+  use super::{
+    TableBox, TableCellBox, TableRowBox, max_font_size_in_items, measure_items_width, resolve_column_widths,
+    table_row_height,
+  };
+  use crate::{
+    glyph_run::GlyphRun,
+    hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+  };
+
+  /// 指定幅・指定フォントサイズの Glyphs ボックスを作るヘルパ
+  fn glyph_box(width: f32, font_size: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size,
+        text: "x".to_string(),
+        glyphs: Vec::new(),
+        font_type: types::FontType::Serif,
+      }),
+      width,
+      height: font_size,
+      depth: 0.0,
+    });
+  }
+
+  /// 指定幅の Rule ボックス（テキストを含まない）を作るヘルパ
+  fn rule_box(width: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Rule { width, height: 1.0 },
+      width,
+      height: 1.0,
+      depth: 0.0,
+    });
+  }
+
+  /// `span=1` のセルを作るヘルパ
+  fn cell(items: Vec<HItem>) -> TableCellBox { return TableCellBox { items, span: 1 }; }
+
+  /// `rule_above = false` の行を作るヘルパ
+  fn row(cells: Vec<TableCellBox>) -> TableRowBox {
+    return TableRowBox {
+      cells,
+      rule_above: false,
+    };
+  }
+
+  #[test]
+  fn measure_items_width_is_additive() {
+    // Arrange — box(10) + glue(5) + kern(3) = 18
+    let items = vec![
+      rule_box(10.0),
+      HItem::Glue {
+        natural: 5.0,
+        stretch: 0.0,
+        shrink: 0.0,
+        breakable: true,
+      },
+      HItem::Kern(3.0),
+    ];
+
+    // Act / Assert — Penalty / ForcedBreak は幅 0
+    assert!((measure_items_width(&items) - 18.0).abs() < f32::EPSILON);
+    assert!((measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]) - 0.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn max_font_size_in_items_returns_largest_text_size() {
+    // Arrange — フォント 10 と 14 が混在
+    let items = vec![glyph_box(20.0, 10.0), rule_box(5.0), glyph_box(20.0, 14.0)];
+
+    // Act / Assert
+    assert_eq!(max_font_size_in_items(&items), Some(14.0));
+  }
+
+  #[test]
+  fn max_font_size_in_items_none_without_text() {
+    // Rule のみ（テキストなし）なら None
+    assert_eq!(max_font_size_in_items(&[rule_box(5.0)]), None);
+  }
+
+  #[test]
+  fn max_font_size_in_items_recurses_into_atom() {
+    // Arrange — Atom（数式）の子要素内の Glyphs フォントサイズも拾う
+    let inner = HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: 20.0,
+        text: "y".to_string(),
+        glyphs: Vec::new(),
+        font_type: types::FontType::Math,
+      }),
+      width: 8.0,
+      height: 20.0,
+      depth: 0.0,
+    };
+    let atom = HBox::atom(vec![PlacedHItem {
+      item: inner,
+      dy: 0.0,
+      dx: 0.0,
+    }]);
+
+    // Act / Assert
+    assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(20.0));
+  }
+
+  #[test]
+  fn table_row_height_is_max_font_times_factor() {
+    // Arrange — フォント 10 と 12 のセル、行高係数 1.5 → 12 * 1.5 = 18
+    let row = row(vec![
+      cell(vec![glyph_box(10.0, 10.0)]),
+      cell(vec![glyph_box(10.0, 12.0)]),
+    ]);
+
+    // Act / Assert
+    assert!((table_row_height(&row, 9.0, 1.5) - 18.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn table_row_height_falls_back_to_default_font() {
+    // Arrange — テキストのない行は default_font_size を使う（9 * 2.0 = 18）
+    let row = row(vec![cell(vec![rule_box(5.0)])]);
+
+    // Act / Assert
+    assert!((table_row_height(&row, 9.0, 2.0) - 18.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn resolve_column_widths_fixed_auto_ratio() {
+    // Arrange — Fixed(40) / Auto(内容30+padding4=34) / Ratio(0.5*200=100)
+    let table = TableBox {
+      columns: vec![
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Fixed(Length::pt(40.0)),
+        },
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Auto,
+        },
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Ratio(0.5),
+        },
+      ],
+      head: Vec::new(),
+      rows: vec![row(vec![
+        cell(vec![rule_box(5.0)]),
+        cell(vec![rule_box(30.0)]),
+        cell(vec![rule_box(5.0)]),
+      ])],
+      breakable: true,
+    };
+
+    // Act
+    let widths = resolve_column_widths(&table, 200.0, 2.0);
+
+    // Assert
+    assert!((widths[0] - 40.0).abs() < f32::EPSILON, "Fixed: {widths:?}");
+    assert!((widths[1] - 34.0).abs() < f32::EPSILON, "Auto=内容+2*padding: {widths:?}");
+    assert!((widths[2] - 100.0).abs() < f32::EPSILON, "Ratio=比*available: {widths:?}");
+  }
+
+  #[test]
+  fn resolve_column_widths_flex_shares_remaining() {
+    // Arrange — Auto(20) + Flex。available=100、padding=0 → Flex は残り 80
+    let table = TableBox {
+      columns: vec![
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Auto,
+        },
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Flex,
+        },
+      ],
+      head: Vec::new(),
+      rows: vec![row(vec![
+        cell(vec![rule_box(20.0)]),
+        cell(vec![rule_box(10.0)]),
+      ])],
+      breakable: true,
+    };
+
+    // Act
+    let widths = resolve_column_widths(&table, 100.0, 0.0);
+
+    // Assert
+    assert!((widths[0] - 20.0).abs() < f32::EPSILON, "{widths:?}");
+    assert!((widths[1] - 80.0).abs() < f32::EPSILON, "Flex=残り幅の等分: {widths:?}");
+  }
+
+  #[test]
+  fn resolve_column_widths_flex_never_below_natural() {
+    // Arrange — Auto(90) で残りが少なくても、Flex は自然幅(40)を下回らない
+    let table = TableBox {
+      columns: vec![
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Auto,
+        },
+        TableColumn {
+          align: ColumnAlign::Left,
+          width: ColumnWidth::Flex,
+        },
+      ],
+      head: Vec::new(),
+      rows: vec![row(vec![
+        cell(vec![rule_box(90.0)]),
+        cell(vec![rule_box(40.0)]),
+      ])],
+      breakable: true,
+    };
+
+    // Act — 残り = 100 - 90 = 10 だが natural[1]=40
+    let widths = resolve_column_widths(&table, 100.0, 0.0);
+
+    // Assert
+    assert!((widths[1] - 40.0).abs() < f32::EPSILON, "Flex は自然幅を下回らない: {widths:?}");
+  }
+}

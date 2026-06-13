@@ -178,4 +178,32 @@ mod tests {
     assert!(!has_placeholder, "[Math] プレースホルダは出力されない: {nodes:?}");
     assert!(!nodes.is_empty());
   }
+
+  #[test]
+  fn unresolved_ref_in_title_propagates_error() {
+    // {title} 内の未解決 \ref は LoweringError::UnresolvedReference として伝播する
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let title = [InlineNode::Ref {
+      label: "tab:missing".to_string(),
+      number: None,
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }];
+
+    let err =
+      expand_template(&ctx, "{number} {title}", "1", &title, base_style()).expect_err("未解決 Ref はエラーになるべき");
+
+    match err {
+      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "tab:missing"),
+    }
+  }
+
+  #[test]
+  fn number_only_template_without_title_placeholder() {
+    // {title} を含まないテンプレートでは title は展開されず、{number} だけ置換される
+    let nodes = expand_plain("No.{number}", "7", "Ignored");
+
+    assert_eq!(nodes.len(), 1, "{nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "No.7"));
+  }
 }

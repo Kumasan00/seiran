@@ -112,7 +112,7 @@ pub struct PlacedHItem {
 
 #[cfg(test)]
 mod tests {
-  use super::{HBox, HBoxContent, PlacedHItem};
+  use super::{HBox, HBoxContent, HItem, PlacedHItem};
 
   /// テスト用の合成 Rule ボックスを作る
   fn rule_box(width: f32, height: f32, depth: f32) -> HBox {
@@ -179,5 +179,22 @@ mod tests {
     assert!((atom.width - 0.0).abs() < f32::EPSILON);
     assert!((atom.height - 0.0).abs() < f32::EPSILON);
     assert!((atom.depth - 0.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn natural_width_per_variant() {
+    // Box は計測済みの width、Glue は natural、Kern は値、Penalty / ForcedBreak は 0
+    let box_item = HItem::Box(rule_box(12.0, 8.0, 2.0));
+    assert!((box_item.natural_width() - 12.0).abs() < f32::EPSILON);
+    let glue = HItem::Glue {
+      natural: 5.0,
+      stretch: 2.0,
+      shrink: 1.0,
+      breakable: true,
+    };
+    assert!((glue.natural_width() - 5.0).abs() < f32::EPSILON);
+    assert!((HItem::Kern(3.0).natural_width() - 3.0).abs() < f32::EPSILON);
+    assert!((HItem::Penalty { value: 0 }.natural_width() - 0.0).abs() < f32::EPSILON);
+    assert!((HItem::ForcedBreak.natural_width() - 0.0).abs() < f32::EPSILON);
   }
 }

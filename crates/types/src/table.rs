@@ -63,7 +63,40 @@ pub enum ColumnWidth {
 
 #[cfg(test)]
 mod tests {
-  use super::ColumnAlign;
+  use super::{ColumnAlign, ColumnWidth, TableColumn};
+  use crate::Length;
+
+  #[test]
+  fn column_align_default_is_left() {
+    // #[default] が Left であることを確認する
+    assert_eq!(ColumnAlign::default(), ColumnAlign::Left);
+  }
+
+  #[test]
+  fn column_width_default_is_auto() {
+    // #[default] が Auto であることを確認する
+    assert_eq!(ColumnWidth::default(), ColumnWidth::Auto);
+  }
+
+  #[test]
+  fn column_width_equality_by_variant_and_value() {
+    // 同一変種・同一値は等しく、値や変種が違えば等しくない
+    assert_eq!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(5.0)));
+    assert_ne!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(6.0)));
+    assert_ne!(ColumnWidth::Ratio(0.3), ColumnWidth::Ratio(0.5));
+    assert_ne!(ColumnWidth::Auto, ColumnWidth::Flex);
+  }
+
+  #[test]
+  fn table_column_holds_align_and_width() {
+    // TableColumn は揃えと幅指定をそのまま保持する
+    let col = TableColumn {
+      align: ColumnAlign::Right,
+      width: ColumnWidth::Ratio(0.25),
+    };
+    assert_eq!(col.align, ColumnAlign::Right);
+    assert_eq!(col.width, ColumnWidth::Ratio(0.25));
+  }
 
   #[test]
   fn from_keyword_resolves_full_spellings() {
