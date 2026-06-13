@@ -34,7 +34,7 @@ cli = { path = "crates/cli" }
 document = { path = "crates/document" }
 figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
-font-types = "0.11.3"
+font-types = "0.12.0"
 garde = { version = "0.23.0", features = ["derive"] }
 harfrust = "0.8.4"
 hlist = { path = "crates/hlist" }
