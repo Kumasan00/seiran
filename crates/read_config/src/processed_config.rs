@@ -22,8 +22,9 @@
 //! - **`Margin`** - ページ余白（非負値・合計妥当性確認済み）
 //! - **`TextDirection`** - 書字方向（`harfrust::Direction` の Invalid 以外にマップ）
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
+use thiserror::Error;
 use types::{FontMap, Length};
 
 /// PDF 生成に必要な完全な設定情報
@@ -234,6 +235,36 @@ pub enum TextDirection {
   TopToBottom,
   /// 下から上（vertical、極めて稀）
   BottomToTop,
+}
+
+/// [`TextDirection`] の `FromStr` 実装が受理しない方向文字列を渡されたときのエラー。
+///
+/// 受理する値はハイフン区切りの長形 4 種のみで、短縮形（`"ltr"` 等）や大文字・
+/// スペース区切りは拒否します。`read_config` 内部の検証・変換でのみ使用し、最終的に
+/// [`crate::ValidationError::Field`] の `message` へ畳み込まれます。
+#[derive(Debug, Error)]
+#[error(
+  "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります"
+)]
+pub struct TextDirectionParseError;
+
+impl FromStr for TextDirection {
+  type Err = TextDirectionParseError;
+
+  /// 書字方向文字列を [`TextDirection`] に変換します（検証と変換の単一情報源）。
+  ///
+  /// 旧 `validate_direction`（検証）と旧 `parse_text_direction`（変換）が別々に持っていた
+  /// 値域の知識をこの 1 実装に集約します。これにより検証を通った値だけが変換されるという
+  /// 暗黙契約に頼った `unreachable!()` を不要にします。
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    return match value {
+      "left-to-right" => Ok(Self::LeftToRight),
+      "right-to-left" => Ok(Self::RightToLeft),
+      "top-to-bottom" => Ok(Self::TopToBottom),
+      "bottom-to-top" => Ok(Self::BottomToTop),
+      _ => Err(TextDirectionParseError),
+    };
+  }
 }
 
 /// OpenType フィーチャーの設定（タグと値のペア）

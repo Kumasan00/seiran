@@ -20,10 +20,16 @@
 //!
 //! ## バリデーション項目
 //!
-//! `garde::Validate` 派生によるフィールド検証と、派生では表現できない相互制約を補う
-//! 自由関数（[`validate_margin_sums`] / [`validate_unique_font_names`] /
-//! [`validate_font_language_constraints`]）の組合せです。
-//! 後者は [`crate::validate_values`] が `pre.validate()` の後に明示的に呼び出します。
+//! 検証は 3 系統に分かれます:
+//!
+//! 1. `garde::Validate` 派生によるフィールド検証
+//! 2. 派生では表現できない相互制約を補う自由関数（[`validate_margin_sums`] /
+//!    [`validate_unique_font_names`] / [`validate_font_language_constraints`]）。
+//!    [`crate::validate_and_convert`] が `pre.validate()` の後に明示的に呼び出します。
+//! 3. タグ・書字方向の構造的検証は専用の **失敗しうるコンストラクタ**（[`crate::tag`] の各関数 /
+//!    [`TextDirection`] の `FromStr` 実装）に集約し、検証と `[u8; 4]` / enum への変換を同じ関数で
+//!    行います。[`crate::parse_font_values`] が変換時に呼び出すため、`garde` 側には重複した規則を
+//!    持ちません。
 //!
 //! | 項目 | 条件 | 実装 |
 //! |-----|------|------|
@@ -32,14 +38,16 @@
 //! | `pdf.margin_*` | >= 0 | `garde(range(min = 0.0))` |
 //! | 余白合計 | < 寸法 | 自由関数 [`validate_margin_sums`] |
 //! | `language` | BCP 47 として妥当・予約サブタグ非含有 | `garde(custom(validate_bcp47_language))` |
-//! | `script` | 4 文字 ASCII アルファベット | `garde(custom(validate_ot_script_tag))` |
-//! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | `garde(custom(validate_ot_language_tag))` |
+//! | `script` | 4 文字 ASCII アルファベット | [`crate::tag::parse_script_tag`]（変換時） |
+//! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | [`crate::tag::parse_ot_language_tag`]（変換時） |
 //! | `ot_language` の前提 | `script` 必須 | 自由関数 [`validate_font_language_constraints`] |
-//! | `direction` | `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` | `garde(custom(validate_direction))` |
-//! | feature `tag` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
-//! | 軸 `name` | 4 文字 ASCII | `garde(ascii, length(bytes, equal = 4))` |
+//! | `direction` | `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` | [`TextDirection`] の `FromStr`（変換時） |
+//! | feature `tag` | 4 文字 ASCII | [`crate::tag::parse_opentype_tag`]（変換時） |
+//! | 軸 `name` | 4 文字 ASCII | [`crate::tag::parse_opentype_tag`]（変換時） |
 //! | `font_name` 長さ | >= 1 | `garde(length(min = 1))` |
 //! | `font_name` 重複 | なし | 自由関数 [`validate_unique_font_names`] |
+//!
+//! [`TextDirection`]: crate::TextDirection
 
 use std::path::PathBuf;
 
@@ -312,7 +320,9 @@ pub(crate) struct PreFontConfig {
   #[serde(default)]
   pub font_index: u32,
   /// バリアブルフォント軸の設定値配列
-  #[garde(dive)]
+  ///
+  /// 軸名タグの検証は `garde` ではなく [`crate::tag::parse_opentype_tag`] による変換時に
+  /// 行います（検証と構築の単一情報源）。
   pub variation_axes: Option<Vec<PreVariationAxis>>,
   /// BCP 47 言語タグ（例: `"ja"`, `"en-US"`, `"zh-Hant"`）
   ///
@@ -340,23 +350,34 @@ pub(crate) struct PreFontConfig {
   /// subtable とは別物が lookup されます（harfrust の `Script::from_iso15924_tag` が DFLT を
   /// 特別扱いしないため）。harfrust は script 未指定時に DFLT を自動 fallback として試行する
   /// ので、強制 DFLT が欲しい場合は `script` を省略してください。
-  #[garde(custom(validate_ot_script_tag))]
+  ///
+  /// 構造的妥当性の検証は `garde` ではなく [`crate::tag::parse_script_tag`] による変換時に
+  /// 行います（検証と構築の単一情報源）。
   pub script: Option<String>,
   /// OpenType 言語システムタグ（3 または 4 文字 ASCII alphanumeric、例: `"JAN"`, `"ENG"`）
   ///
   /// 上級向けオーバーライド。指定時は [`PreFontConfig::script`] が必須です（GSUB/GPOS の
   /// 言語サブテーブルはスクリプト配下にあるため）。3 文字の場合は内部で末尾を空白パディングし
   /// 4 バイトに正規化します。
-  #[garde(custom(validate_ot_language_tag))]
+  ///
+  /// 構造的妥当性の検証は `garde` ではなく [`crate::tag::parse_ot_language_tag`] による
+  /// 変換時に行います（検証と構築の単一情報源）。`script` 必須の相互制約のみ
+  /// [`validate_font_language_constraints`] が別途検査します。
   pub ot_language: Option<String>,
   /// 書字方向（ハイフン区切りの長形のみ受理）
   ///
   /// 受理する値は `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` の
   /// 4 つ。省略時は harfrust の `guess_segment_properties` が入力テキストから自動判定します。
-  #[garde(custom(validate_direction))]
+  ///
+  /// 値の検証は `garde` ではなく [`TextDirection`] の `FromStr` 実装による変換時に行います
+  /// （検証と構築の単一情報源）。
+  ///
+  /// [`TextDirection`]: crate::TextDirection
   pub direction: Option<String>,
   /// OpenType フィーチャー設定配列
-  #[garde(dive)]
+  ///
+  /// フィーチャータグの検証は `garde` ではなく [`crate::tag::parse_opentype_tag`] による
+  /// 変換時に行います（検証と構築の単一情報源）。
   pub features: Option<Vec<PreFontFeature>>,
 }
 
@@ -382,81 +403,27 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
   return Ok(());
 }
 
-/// OpenType / ISO 15924 script タグの構造的妥当性を検証します。
-///
-/// `None` は省略を表すため許可します。`Some` の場合は「4 文字 ASCII アルファベット」を
-/// 満たす必要があります（長さ・文字種の hard error チェック）。
-///
-/// 受け付けた値はそのまま `[u8; 4]` 化されて [`crate::FontConfig::script`] に格納され、
-/// `font::validate_font` のバイト完全一致 lookup と harfrust の `Script::from_iso15924_tag`
-/// 経由のシェイピングの両方で同じバイト列が使われます。表記揺れ（例: `"Latn"` vs フォントの
-/// `b"latn"`）の警告は `validate_font` が確定的に出します。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-fn validate_ot_script_tag(value: &Option<String>, _: &()) -> garde::Result {
-  let Some(tag) = value else {
-    return Ok(());
-  };
-  if tag.len() != 4 || !tag.bytes().all(|b| b.is_ascii_alphabetic()) {
-    return Err(garde::Error::new("OpenType script タグは 4 文字の ASCII アルファベットである必要があります"));
-  }
-  return Ok(());
-}
-
-/// OpenType 言語システムタグを検証します。
-///
-/// `None` は省略を表すため許可します。`Some` の場合は OpenType 仕様の言語システムタグの
-/// 構造（3-4 文字 ASCII alphanumeric）を満たす必要があります。4 バイト未満の場合は内部で
-/// 末尾を空白パディングし `[u8; 4]` に正規化します。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-fn validate_ot_language_tag(value: &Option<String>, _: &()) -> garde::Result {
-  let Some(tag) = value else {
-    return Ok(());
-  };
-  if !(3..=4).contains(&tag.len()) || !tag.bytes().all(|b| b.is_ascii_alphanumeric()) {
-    return Err(garde::Error::new("OpenType language タグは 3-4 文字の ASCII alphanumeric である必要があります"));
-  }
-  return Ok(());
-}
-
-/// 書字方向の文字列を検証します。
-///
-/// `None` は省略を表すため許可します。`Some` の場合は以下のいずれかである必要があります:
-/// `"left-to-right"`, `"right-to-left"`, `"top-to-bottom"`, `"bottom-to-top"`。
-/// 短縮形（`"ltr"` 等）や大文字 / スペース区切りは拒否します。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
-fn validate_direction(value: &Option<String>, _: &()) -> garde::Result {
-  let Some(direction) = value else {
-    return Ok(());
-  };
-  match direction.as_str() {
-    "left-to-right" | "right-to-left" | "top-to-bottom" | "bottom-to-top" => return Ok(()),
-    _ => {
-      return Err(garde::Error::new(
-        "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります",
-      ));
-    },
-  }
-}
-
 /// バリアブルフォント軸の単一設定値
-#[derive(Deserialize, Debug, Validate)]
+///
+/// 軸名タグの構造的検証は `garde` ではなく [`crate::tag::parse_opentype_tag`] による
+/// 変換時に行うため、この DTO は `Validate` を導出しません。
+#[derive(Deserialize, Debug)]
 pub(crate) struct PreVariationAxis {
   /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
-  #[garde(ascii, length(bytes, equal = 4))]
   pub name: String,
   /// 軸の目標値（実数）
-  #[garde(skip)]
   pub value: f64,
 }
 
 /// OpenType フィーチャータグと値のペア
-#[derive(Deserialize, Debug, Validate)]
+///
+/// フィーチャータグの構造的検証は `garde` ではなく [`crate::tag::parse_opentype_tag`] による
+/// 変換時に行うため、この DTO は `Validate` を導出しません。
+#[derive(Deserialize, Debug)]
 pub(crate) struct PreFontFeature {
   /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
-  #[garde(ascii, length(bytes, equal = 4))]
   pub tag: String,
   /// フィーチャーの値（通常は 0=無効、1=有効）
-  #[garde(skip)]
   pub value: u32,
 }
 

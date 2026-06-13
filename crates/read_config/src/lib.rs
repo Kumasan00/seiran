@@ -17,6 +17,7 @@ use types::FontType;
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
 mod processed_config;
+mod tag;
 
 #[doc(hidden)]
 pub mod test_support;
@@ -149,11 +150,39 @@ pub enum ValidationError {
 ///
 /// [`resolve_paths`] がフォント・ソース・スタイル・参照の各パスを `canonicalize` し、
 /// 成功したものはここに詰め、失敗したものは別途返す [`Vec<ValidationError>`] に集約します。
+/// `font_paths` は [`FontType::ALL`] の順序に対応する正規化済みフォントパスで、エラーが
+/// 1 件もない場合のみ 19 要素が揃います（[`resolve`] はエラー時に早期 return するため、
+/// 組み立て時には必ず揃っています）。タグ・書字方向の変換は I/O に依存しない純粋処理として
+/// [`validate_and_convert`] が別途担当し、このフェーズはパス解決のみを行います。
 struct ResolvedPaths {
-  font_configs: Vec<FontConfig>,
+  font_paths: Vec<PathBuf>,
   sources: Vec<PathBuf>,
   style_path: Option<PathBuf>,
   references_path: Option<PathBuf>,
+}
+
+/// フォント 1 種別ぶんの、パス解決を除いた検証済み・変換済みの値群。
+///
+/// [`parse_font_values`] が純粋に（I/O なしで）生成し、[`resolve`] が正規化済みの
+/// `font_path` と zip して [`FontConfig`] に組み立てます。フィールドは `font_path` を
+/// 除いて [`FontConfig`] と一対一に対応します。
+struct FontValues {
+  /// `PDF FontDescriptor` で使用されるフォント名
+  font_name: String,
+  /// TTC ファイル内のフォントインデックス
+  font_index: u32,
+  /// バリアブルフォント軸の設定値（タグ変換済み）
+  variation_axes: Option<Vec<VariationAxis>>,
+  /// OpenType / ISO 15924 script タグ（4 バイト、case 保持）
+  script: Option<[u8; 4]>,
+  /// harfrust に渡す最終 BCP 47 言語文字列
+  language: Option<String>,
+  /// OpenType 言語システムタグ（4 バイトに正規化済み）
+  ot_language_tag: Option<[u8; 4]>,
+  /// 書字方向
+  direction: Option<TextDirection>,
+  /// OpenType フィーチャー設定（タグ変換済み）
+  features: Option<Vec<Feature>>,
 }
 
 /// 指定パスから設定ファイルを読み込みます。
@@ -188,7 +217,7 @@ pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
 /// TOML 文字列を [`PreConfig`] にパースします（I/O なし）。
 ///
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
-/// 値検証は行いません。検証は [`validate_values`] または [`resolve`] で実行します。
+/// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
 ///
 /// # Errors
 ///
@@ -213,28 +242,34 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
 
 /// [`PreConfig`] からパス解決・出力ディレクトリ作成を行い [`Config`] を構築します。
 ///
-/// 純粋値検証 → 読み取り I/O（パス解決）→ 書き込み I/O（出力ディレクトリ作成）の順で
-/// 3 フェーズに分かれており、各フェーズのエラーはすべて
-/// [`ReadConfigError::MultipleValidationErrors`] に集約されます。読み取りフェーズで失敗が
-/// あった場合は書き込みフェーズをスキップし、副作用を最小化します。
+/// 純粋値検証＋変換 → 読み取り I/O（パス解決）→ 書き込み I/O（出力ディレクトリ作成）の順で
+/// 3 フェーズに分かれます。タグ・書字方向の検証は変換と一体化しており、純粋フェーズで 1 回だけ
+/// パースされます（パス解決フェーズではタグに触れません）。純粋フェーズと読み取りフェーズの
+/// 違反は [`ReadConfigError::MultipleValidationErrors`] に集約し、いずれかで失敗があれば
+/// 書き込みフェーズをスキップして副作用を最小化します。
 ///
 /// # Errors
 ///
-/// 値検証・パス解決・出力ディレクトリ作成のいずれかに違反があった場合は
+/// 値検証・タグ変換・パス解決・出力ディレクトリ作成のいずれかに違反があった場合は
 /// [`ReadConfigError::MultipleValidationErrors`] を返します。
 #[allow(clippy::result_large_err)]
 fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError> {
-  let mut errors: Vec<ValidationError> = match validate_values(&pre) {
-    Ok(()) => Vec::new(),
-    Err(value_errors) => value_errors,
-  };
-
+  let validation = validate_and_convert(&pre);
   let (resolved, path_errors) = resolve_paths(&pre, current_dir);
-  errors.extend(path_errors);
 
-  if !errors.is_empty() {
-    return Err(ReadConfigError::MultipleValidationErrors { errors });
-  }
+  // 純粋フェーズが成功し、かつパス解決にも違反がない場合のみ組み立てへ進む。
+  // それ以外は両フェーズの違反をまとめて報告する。
+  let font_values = match validation {
+    Ok(font_values) if path_errors.is_empty() => font_values,
+    result => {
+      let mut errors = match result {
+        Ok(_) => Vec::new(),
+        Err(value_errors) => value_errors,
+      };
+      errors.extend(path_errors);
+      return Err(ReadConfigError::MultipleValidationErrors { errors });
+    },
+  };
 
   let output_dir = match build_output_dir(current_dir, pre.output.output_dir.as_deref()) {
     Ok(dir) => dir,
@@ -249,13 +284,22 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
     document: pre_document,
     output: pre_output,
     pdf: pre_pdf_config,
-    font_configs: _,
-    sources: _,
-    style_path: _,
-    references_path: _,
+    ..
   } = pre;
 
-  let font_configs = FontConfigs::from_all(resolved.font_configs);
+  // FontType::ALL の順序で揃った検証済み値と正規化済みパスを zip して FontConfig を組み立てる。
+  let font_configs =
+    FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| FontConfig {
+      font_name: values.font_name,
+      font_path,
+      font_index: values.font_index,
+      variation_axes: values.variation_axes,
+      script: values.script,
+      language: values.language,
+      ot_language_tag: values.ot_language_tag,
+      direction: values.direction,
+      features: values.features,
+    }));
 
   return Ok(Config {
     document: DocumentConfig {
@@ -287,15 +331,18 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
   });
 }
 
-/// [`PreConfig`] の値検証を実行します（I/O なし）。
+/// [`PreConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
 ///
-/// `garde` のフィールド検証、上下／左右の余白合計、19 フォント種別の `font_name` 重複を
-/// すべて 1 度に集約して返します。
+/// `garde` のフィールド検証、余白合計・`font_name` 重複・`ot_language`⇒`script` の相互制約、
+/// および 19 フォント種別ぶんのタグ・書字方向の構造的検証＋変換（[`parse_font_values`]）を
+/// すべて 1 度に集約します。タグ・書字方向の検証はここで唯一行われるため、変換と検証が
+/// 二重実行されることはありません。
 ///
 /// # Errors
 ///
 /// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
-fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
+/// 違反が皆無の場合は [`FontType::ALL`] の順序に対応する [`FontValues`] のベクタを返します。
+fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ValidationError>> {
   let mut errors: Vec<ValidationError> = Vec::new();
   if let Err(report) = pre.validate() {
     errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
@@ -306,17 +353,44 @@ fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
   pre_config::validate_margin_sums(&pre.pdf, &mut errors);
   pre_config::validate_unique_font_names(&pre.font_configs, &mut errors);
   pre_config::validate_font_language_constraints(&pre.font_configs, &mut errors);
+
+  let mut font_values: Vec<FontValues> = Vec::with_capacity(FontType::ALL.len());
+  for font_type in FontType::ALL {
+    match parse_font_values(font_type, pre.font_configs.get(font_type)) {
+      Ok(values) => font_values.push(values),
+      Err(value_errors) => errors.extend(value_errors),
+    }
+  }
+
   if errors.is_empty() {
-    return Ok(());
+    return Ok(font_values);
   }
   return Err(errors);
+}
+
+/// 純粋な値検証のみを行うテスト向けラッパ（変換結果は破棄）。
+///
+/// 既存のユニットテストが「値検証だけ」を観察できるよう [`validate_and_convert`] を薄く包みます。
+/// 生産コードのパスでは [`resolve`] が [`validate_and_convert`] を直接使用します。
+///
+/// # Errors
+///
+/// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
+#[cfg(test)]
+fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
+  return validate_and_convert(pre).map(|_| ());
 }
 
 /// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを解決します。
 ///
 /// 各パスを独立に `canonicalize` し、解決できたものは [`ResolvedPaths`] に詰め、失敗した
 /// ものは [`ValidationError`] として集約して返します。書き込み I/O は行わないため、ここで
-/// 失敗があっても呼び出し側が安全に中断できます。
+/// 失敗があっても呼び出し側が安全に中断できます。タグ・書字方向の変換は純粋処理として
+/// [`parse_font_values`] が担当するため、このフェーズはパス解決のみに専念します。
+///
+/// `font_paths` は [`FontType::ALL`] の順序で `canonicalize` に成功したものだけを詰めます。
+/// 1 件でも失敗があれば [`resolve`] は組み立て前に早期 return するため、組み立て時には
+/// 必ず 19 要素が順序どおり揃っています。
 fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<ValidationError>) {
   let mut errors: Vec<ValidationError> = Vec::new();
 
@@ -327,11 +401,16 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Val
     ValidationError::ReferencesPathResolution { path, source }
   });
 
-  let mut font_configs: Vec<FontConfig> = Vec::with_capacity(FontType::ALL.len());
+  let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    match to_font_config(font_type, pre.font_configs.get(font_type)) {
-      Ok(font_config) => font_configs.push(font_config),
-      Err(error) => errors.push(error),
+    let pre_font_config = pre.font_configs.get(font_type);
+    match pre_font_config.font_path.canonicalize() {
+      Ok(font_path) => font_paths.push(font_path),
+      Err(source) => errors.push(ValidationError::FontPathResolution {
+        font_type,
+        path: pre_font_config.font_path.display().to_string(),
+        source,
+      }),
     }
   }
 
@@ -339,7 +418,7 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Val
 
   return (
     ResolvedPaths {
-      font_configs,
+      font_paths,
       sources,
       style_path,
       references_path,
@@ -392,41 +471,96 @@ fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Ve
   return resolved;
 }
 
-/// `PreFontConfig` を `FontConfig` に変換します。
-fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Result<FontConfig, ValidationError> {
-  let font_path = pre_font_config.font_path.canonicalize().map_err(|source| ValidationError::FontPathResolution {
-    font_type,
-    path: pre_font_config.font_path.display().to_string(),
-    source,
-  })?;
+/// `PreFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
+///
+/// `script` / `ot_language` / `direction` / フィーチャー / バリアブル軸の各タグを
+/// [`crate::tag`] の失敗しうるコンストラクタ・[`TextDirection`] の `FromStr` 実装でパースします。
+/// これらの関数が検証と `[u8; 4]` / enum への変換を兼ねるため、ここがタグ・書字方向の
+/// 唯一の検証点です（旧 `four_byte_tag` の `unwrap()` による長さ不正パニックや、検証と変換の
+/// ドリフトは生じません）。`font_path` の解決は I/O フェーズ（[`resolve_paths`]）が担当します。
+///
+/// # Errors
+///
+/// 1 つ以上のタグ・書字方向が不正な場合、当該フォント種別の [`ValidationError::Field`] を
+/// すべて集約して `Err` で返します（途中で打ち切らず、複数の不正を 1 度に報告します）。
+fn parse_font_values(font_type: FontType, pre_font_config: &PreFontConfig) -> Result<FontValues, Vec<ValidationError>> {
+  let mut errors: Vec<ValidationError> = Vec::new();
 
-  let script = pre_font_config.script.as_deref().map(four_byte_tag);
-  let ot_language_tag = pre_font_config.ot_language.as_deref().map(normalize_ot_language_tag);
-  let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
-  let direction = pre_font_config.direction.as_deref().map(parse_text_direction);
-  let features = pre_font_config.features.as_deref().and_then(|fs| {
-    let v: Vec<Feature> = fs
-      .iter()
-      .map(|f| Feature {
-        tag: four_byte_tag(&f.tag),
-        value: f.value,
-      })
-      .collect();
-    (!v.is_empty()).then_some(v)
-  });
+  let script = match pre_font_config.script.as_deref() {
+    None => None,
+    Some(value) => match tag::parse_script_tag(value) {
+      Ok(bytes) => Some(bytes),
+      Err(error) => {
+        errors.push(field_error(font_type, "script", error));
+        None
+      },
+    },
+  };
+
+  let ot_language_tag = match pre_font_config.ot_language.as_deref() {
+    None => None,
+    Some(value) => match tag::parse_ot_language_tag(value) {
+      Ok(bytes) => Some(bytes),
+      Err(error) => {
+        errors.push(field_error(font_type, "ot_language", error));
+        None
+      },
+    },
+  };
+
+  let direction = match pre_font_config.direction.as_deref() {
+    None => None,
+    Some(value) => match value.parse::<TextDirection>() {
+      Ok(direction) => Some(direction),
+      Err(error) => {
+        errors.push(field_error(font_type, "direction", error));
+        None
+      },
+    },
+  };
+
+  // 軸: 入力が Some なら（空配列でも）Some を維持する（旧挙動）。不正な軸名は集約。
   let variation_axes = pre_font_config.variation_axes.as_deref().map(|axes| {
     axes
       .iter()
-      .map(|a| VariationAxis {
-        name: four_byte_tag(&a.name),
-        value: a.value,
+      .filter_map(|axis| match tag::parse_opentype_tag(&axis.name) {
+        Ok(name) => Some(VariationAxis {
+          name,
+          value: axis.value,
+        }),
+        Err(error) => {
+          errors.push(field_error(font_type, "variation_axes", error));
+          None
+        },
       })
       .collect::<Vec<_>>()
   });
 
-  return Ok(FontConfig {
+  // フィーチャー: 空配列は None 扱い（旧挙動）。不正なタグは集約。
+  let features = pre_font_config.features.as_deref().and_then(|feats| {
+    let converted: Vec<Feature> = feats
+      .iter()
+      .filter_map(|feature| match tag::parse_opentype_tag(&feature.tag) {
+        Ok(tag) => Some(Feature {
+          tag,
+          value: feature.value,
+        }),
+        Err(error) => {
+          errors.push(field_error(font_type, "features", error));
+          None
+        },
+      })
+      .collect();
+    (!converted.is_empty()).then_some(converted)
+  });
+
+  let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
+
+  if !errors.is_empty() {
+    return Err(errors);
+  }
+  return Ok(FontValues {
     font_name: pre_font_config.font_name.clone(),
-    font_path,
     font_index: pre_font_config.font_index,
     variation_axes,
     script,
@@ -437,20 +571,16 @@ fn to_font_config(font_type: FontType, pre_font_config: &PreFontConfig) -> Resul
   });
 }
 
-/// 4 バイト ASCII 文字列を `[u8; 4]` に変換します（カスタムバリデーターで長さと ASCII を検証済み）。
-#[allow(clippy::unwrap_used)]
-fn four_byte_tag(s: &str) -> [u8; 4] { return s.as_bytes().try_into().unwrap(); }
-
-/// 3 または 4 文字の OT 言語タグを `[u8; 4]` に正規化します。
+/// フォント種別とフィールド名から、タグ・書字方向の不正を表す [`ValidationError::Field`] を作ります。
 ///
-/// 大文字化し、4 バイト未満の場合は末尾を空白でパディングします（OpenType 言語システムタグの慣習）。
-/// `font` クレートの `validate_font` で GSUB/GPOS 言語サブテーブルの参照に使用します。
-fn normalize_ot_language_tag(s: &str) -> [u8; 4] {
-  let mut bytes = [b' '; 4];
-  for (i, b) in s.as_bytes().iter().enumerate().take(4) {
-    bytes[i] = b.to_ascii_uppercase();
-  }
-  return bytes;
+/// `path` は `garde` のフィールドパス（例: `"font_configs.serif.script"`）と同じ書式に揃え、
+/// `message` には [`crate::tag::TagError`] / [`processed_config::TextDirectionParseError`] の
+/// 説明文をそのまま使用します。
+fn field_error(font_type: FontType, field: &str, error: impl std::fmt::Display) -> ValidationError {
+  return ValidationError::Field {
+    path: format!("font_configs.{}.{field}", font_type.as_toml_key()),
+    message: error.to_string(),
+  };
 }
 
 /// BCP 47 言語タグと OT 言語タグから、harfrust の [`Language::from_str`] に渡す最終 BCP 47 文字列を構築します。
@@ -469,32 +599,29 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
   }
 }
 
-/// `validate_direction` で検証済みの direction 文字列を [`TextDirection`] に変換します。
+/// 出力ディレクトリの絶対パスを決定します（I/O なし・純粋）。
 ///
-/// validator が hard error を出す形で値域を 4 つに制限しているため、ここに想定外の値は
-/// 到達しません（`unreachable!` で明示）。
-fn parse_text_direction(s: &str) -> TextDirection {
-  return match s {
-    "left-to-right" => TextDirection::LeftToRight,
-    "right-to-left" => TextDirection::RightToLeft,
-    "top-to-bottom" => TextDirection::TopToBottom,
-    "bottom-to-top" => TextDirection::BottomToTop,
-    other => unreachable!("validate_direction で検証済みのはずだが '{other}' が到達した"),
-  };
+/// `output_dir` が絶対パスならそのまま、相対パスなら `current_dir` に結合、
+/// `None` なら `current_dir` 自体を出力先とします。実ディレクトリの作成・正規化は
+/// 行いません（[`build_output_dir`] の責務）。
+fn resolve_output_dir_path(current_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
+  match output_dir {
+    Some(path) if path.is_absolute() => return path.to_path_buf(),
+    Some(path) => return current_dir.join(path),
+    None => return current_dir.to_path_buf(),
+  }
 }
 
 /// 書き込み I/O フェーズ: 出力ディレクトリを作成・正規化し、絶対パスを返します。
 ///
+/// パスの決定は純粋関数 [`resolve_output_dir_path`] に委譲し、本関数は `mkdir`
+/// （`create_dir_all`）と `canonicalize` の I/O だけを担います。
 /// `output_dir` が `None` の場合は `current_dir` をそのまま出力先とします（カレント直下に出力）。
 /// 実際の PDF パス（`{output_dir}/{name}.pdf`）は [`OutputConfig::pdf_path`] が組み立てます。
 /// エラーは [`ValidationError`] として返し、呼び出し側で他の検証エラーと同じ
 /// [`ReadConfigError::MultipleValidationErrors`] に集約します。
 fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ValidationError> {
-  let output_dir_path = match output_dir {
-    Some(path) if path.is_absolute() => path.to_path_buf(),
-    Some(path) => current_dir.join(path),
-    None => current_dir.to_path_buf(),
-  };
+  let output_dir_path = resolve_output_dir_path(current_dir, output_dir);
   fs::create_dir_all(&output_dir_path).map_err(|source| ValidationError::CreateOutputDir {
     path: output_dir_path.display().to_string(),
     source,
@@ -508,15 +635,53 @@ fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<Pat
 
 #[cfg(test)]
 mod tests {
-  use std::path::Path;
+  use std::path::{Path, PathBuf};
 
   use super::{
-    ReadConfigError, ValidationError, build_language_string, normalize_ot_language_tag, parse_config, validate_values,
+    ReadConfigError, ValidationError, build_language_string, parse_config, resolve_output_dir_path, validate_values,
   };
   use crate::test_support::{make_font_sections, valid_output_section, valid_pdf_section};
 
   /// `parse_config` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
+
+  #[test]
+  fn resolve_output_dir_path_keeps_absolute_path_as_is() {
+    // Arrange
+    let current_dir = Path::new("/home/user/project");
+    let output_dir = PathBuf::from("/var/out");
+
+    // Act
+    let resolved = resolve_output_dir_path(current_dir, Some(&output_dir));
+
+    // Assert: 絶対パスは current_dir を無視してそのまま返る
+    assert_eq!(resolved, PathBuf::from("/var/out"));
+  }
+
+  #[test]
+  fn resolve_output_dir_path_joins_relative_path_to_current_dir() {
+    // Arrange
+    let current_dir = Path::new("/home/user/project");
+    let output_dir = PathBuf::from("build/out");
+
+    // Act
+    let resolved = resolve_output_dir_path(current_dir, Some(&output_dir));
+
+    // Assert: 相対パスは current_dir に結合される
+    assert_eq!(resolved, PathBuf::from("/home/user/project/build/out"));
+  }
+
+  #[test]
+  fn resolve_output_dir_path_uses_current_dir_when_none() {
+    // Arrange
+    let current_dir = Path::new("/home/user/project");
+
+    // Act
+    let resolved = resolve_output_dir_path(current_dir, None);
+
+    // Assert: 省略時は current_dir 自体が出力先になる
+    assert_eq!(resolved, PathBuf::from("/home/user/project"));
+  }
 
   #[test]
   fn parse_config_fails_on_invalid_toml_syntax() {
@@ -813,14 +978,6 @@ mod tests {
     assert_eq!(build_language_string(Some("ja"), None), Some("ja".to_string()));
     assert_eq!(build_language_string(None, Some("JAN")), Some("und-x-hbotJAN".to_string()));
     assert_eq!(build_language_string(Some("en-US"), Some("ENG")), Some("en-US-x-hbotENG".to_string()));
-  }
-
-  #[test]
-  fn normalize_ot_language_tag_uppercases_and_pads_to_four_bytes() {
-    // Arrange / Act / Assert: 3 文字は末尾スペース、小文字は大文字化
-    assert_eq!(normalize_ot_language_tag("JAN"), *b"JAN ");
-    assert_eq!(normalize_ot_language_tag("eng"), *b"ENG ");
-    assert_eq!(normalize_ot_language_tag("DEUT"), *b"DEUT");
   }
 
   #[test]
