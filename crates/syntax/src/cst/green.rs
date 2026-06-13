@@ -10,7 +10,7 @@
 //! - **Error ノード**: パースエラー時もエラーノードとして木に残す
 
 use crate::{
-  kind::SyntaxKind,
+  cst::kind::SyntaxKind,
   span::Span,
   token::{Token, TokenKind},
 };

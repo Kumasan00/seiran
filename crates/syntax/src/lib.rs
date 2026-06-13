@@ -15,19 +15,18 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`kind`] — `SyntaxKind` 列挙型の定義
-//! - [`span`] — ソース位置 `Span` の定義
-//! - [`token`] — トークン型の定義
-//! - [`green`] — アリーナベース CST の型定義（`GreenNode`, `GreenElement`）
-//! - [`ast`] — CST 上の型付きビュー（`CommandView`, `EnvironmentView`）
+//! - [`span`] — ソース位置 `Span` の定義（共通基盤）
+//! - [`token`] — トークン型の定義（lexer の出力 / parser の入力語彙）
+//! - [`cst`] — CST の表現（`kind` / `green` / `ast` を束ねる出力データモデル）
+//!
+//! `cst` 配下の `green` / `ast` / `kind::SyntaxKind` はルートで再エクスポートし、
+//! `syntax::green::*` / `syntax::ast::*` / `syntax::SyntaxKind` のパスを維持します。
 
-pub mod ast;
-pub mod green;
-pub mod kind;
+mod cst;
 mod lexer;
 mod parser;
 pub mod span;
 pub mod token;
 
-pub use kind::SyntaxKind;
+pub use cst::{ast, green, kind, kind::SyntaxKind};
 pub use parser::{ParseMode, ParserError, parse};

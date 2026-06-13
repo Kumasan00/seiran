@@ -10,8 +10,10 @@
 //! - ビューのライフタイムは CST（アリーナ）のライフタイムに紐づく
 
 use crate::{
-  green::{GreenElement, GreenNode},
-  kind::SyntaxKind,
+  cst::{
+    green::{GreenElement, GreenNode},
+    kind::SyntaxKind,
+  },
   span::Span,
   token::TokenKind,
 };
