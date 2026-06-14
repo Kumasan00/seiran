@@ -18,7 +18,14 @@ use syntax::{
 
 use crate::evaluator::{
   EvalError,
-  command::{COMMAND_MAP, CommandKind, cite::cite_command, inline::styled_text, ref_::ref_command, single_char},
+  command::{
+    COMMAND_MAP, CommandKind,
+    cite::cite_command,
+    inline::styled_text,
+    link::{href_command, url_command},
+    ref_::ref_command,
+    single_char,
+  },
   math,
 };
 
@@ -105,6 +112,12 @@ pub(crate) fn extract_inline_nodes_from_elements(
               // 見出しタイトル・キャプション内に出現する `\cite{...}` も
               // pass1 ではスタブを生成し pass2 でキー存在を検証する
               inlines.extend(cite_command(&view)?);
+            },
+            Some(CommandKind::Url) => {
+              inlines.extend(url_command(&view)?);
+            },
+            Some(CommandKind::Href) => {
+              inlines.extend(href_command(&view)?);
             },
             Some(CommandKind::Headline(_) | CommandKind::Space) => {
               return Err(EvalError::BlockInInline {

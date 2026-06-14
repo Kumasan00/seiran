@@ -5,13 +5,19 @@
 //! などのレイアウト判断は (c)(d)（`hlist::break_pages`）で完了しており、
 //! このパスは描画のみを行う。
 
+use std::collections::HashMap;
+
 use font::FontMetrics;
 use hlist::{HBoxContent, Page, PlacedBlock, PlacedTableRow};
 use krilla::{
   Document,
+  action::{Action, LinkAction},
+  annotation::{Annotation, LinkAnnotation, Target},
   color::rgb,
+  destination::{Destination, XyzDestination},
   geom::{PathBuilder, Point, Rect, Size, Transform},
-  page::PageSettings,
+  outline::{Outline, OutlineNode},
+  page::{Page as KrillaPage, PageSettings},
   paint::Fill,
   surface::Surface,
   text::Font,
@@ -19,15 +25,25 @@ use krilla::{
 use krilla_svg::{SurfaceExt, SvgSettings};
 use read_config::Config;
 use read_style::{Color, Style};
-use types::{ColumnAlign, FontMap, TableColumn};
+use types::{AnchorMark, ColumnAlign, FontMap, LinkTarget, TableColumn};
 
 use crate::{
+  OutlineEntry,
   error::PdfGenError,
   font::convert_to_krilla_glyphs,
   image::{LoadedImage, load_image, required_pixels},
 };
 
 /// 組版済みページ列を `document` に描画します。
+///
+/// 描画に加えて、ハイパーリンク（hyperref 相当）を出力する:
+/// - 各ページの [`hlist::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
+/// - 各ページの [`hlist::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
+/// - 見出しアンカーと `outline_entries` から PDF のしおり（アウトライン）を構築し、
+///   `style.extended.hyperref.show_bookmarks` が真なら設定する
+// 設定・フォント・スタイル・しおり情報を個別に受け取る描画オーケストレーション関数のため、
+// 引数をまとめず素直に並べる（束ねても呼び出し側の見通しは良くならない）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_pages(
   document: &mut Document,
   page_settings: &PageSettings,
@@ -36,8 +52,14 @@ pub(crate) fn render_pages(
   krilla_fonts: &FontMap<Font>,
   pages: &[Page],
   style: &Style,
+  outline_entries: &[OutlineEntry],
 ) -> Result<(), PdfGenError> {
   let margin_left = config.pdf.margin.left.to_pt();
+
+  // pass 1: 全ページのアンカーから destination 索引と見出し destination 列（文書順）を作る。
+  // 内部リンクは前方参照もあり得るため、描画前に全ページ分を集める。
+  let (dest_by_label, heading_dests) = build_destination_index(pages, margin_left);
+
   for page_blocks in pages {
     let mut page = document.start_page_with(page_settings.clone());
     let mut surface = page.surface();
@@ -48,9 +70,133 @@ pub(crate) fn render_pages(
       draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
     }
     surface.finish();
+    add_page_links(&mut page, page_blocks, margin_left, &dest_by_label)?;
     page.finish();
   }
+
+  if style.extended.hyperref.show_bookmarks
+    && let Some(outline) = build_outline(&heading_dests, outline_entries)
+  {
+    document.set_outline(outline);
+  }
   return Ok(());
+}
+
+/// 全ページのアンカーを走査し、内部リンク用の `label → XyzDestination` 索引と、
+/// しおり用の見出し destination 列（文書順）を作る。
+///
+/// 見出しアンカーにラベルが付いていれば `\ref` の到達先も兼ねるため索引にも登録する。
+fn build_destination_index(pages: &[Page], margin_left: f32) -> (HashMap<String, XyzDestination>, Vec<XyzDestination>) {
+  let mut dest_by_label: HashMap<String, XyzDestination> = HashMap::new();
+  let mut heading_dests: Vec<XyzDestination> = Vec::new();
+  for (page_index, page) in pages.iter().enumerate() {
+    for anchor in &page.anchors {
+      let dest = XyzDestination::new(page_index, Point::from_xy(margin_left + anchor.x, anchor.y));
+      match &anchor.mark {
+        AnchorMark::Heading { label } => {
+          heading_dests.push(dest.clone());
+          if let Some(label) = label {
+            dest_by_label.insert(label.clone(), dest);
+          }
+        },
+        AnchorMark::Label(label) => {
+          dest_by_label.insert(label.clone(), dest);
+        },
+      }
+    }
+  }
+  return (dest_by_label, heading_dests);
+}
+
+/// 1 ページの確定済みリンク領域をリンク注釈として付与する
+///
+/// 内部リンク（`\ref`）は索引から `XyzDestination` を引いて `Target::Destination` に、
+/// 外部リンク（`\url` / `\href`）は `Target::Action(LinkAction)` にする。索引に無い内部
+/// リンクは（参照解決済みの前提では発生しないが）安全側に倒してスキップする。
+fn add_page_links(
+  page: &mut KrillaPage<'_>,
+  page_blocks: &Page,
+  margin_left: f32,
+  dest_by_label: &HashMap<String, XyzDestination>,
+) -> Result<(), PdfGenError> {
+  for link in &page_blocks.links {
+    let target = match &link.target {
+      LinkTarget::Internal(label) => {
+        let Some(dest) = dest_by_label.get(label) else {
+          continue;
+        };
+        Target::Destination(Destination::from(dest.clone()))
+      },
+      LinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
+    };
+    let rect =
+      Rect::from_xywh(margin_left + link.x, link.y, link.width, link.height).ok_or(PdfGenError::InvalidLinkRect)?;
+    page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
+  }
+  return Ok(());
+}
+
+/// 見出し destination 列と `outline_entries` から PDF のしおり（アウトライン）を構築する
+///
+/// 両者は文書順で 1 対 1 に対応する（短い方に合わせる）。見出しレベルの深さで入れ子にし、
+/// エントリが無ければ `None` を返す（しおりを設定しない）。
+fn build_outline(heading_dests: &[XyzDestination], outline_entries: &[OutlineEntry]) -> Option<Outline> {
+  // 見出し destination とエントリ（レベル + テキスト）を文書順に対応付ける
+  let mut roots: Vec<OutlineTreeNode> = Vec::new();
+  for (entry, dest) in outline_entries.iter().zip(heading_dests.iter()) {
+    insert_outline_node(&mut roots, entry.level.depth(), entry.text.clone(), dest.clone());
+  }
+  if roots.is_empty() {
+    return None;
+  }
+  let mut outline = Outline::new();
+  for root in roots {
+    outline.push_child(root.into_krilla());
+  }
+  return Some(outline);
+}
+
+/// アウトライン構築用の中間ツリーノード（krilla の `OutlineNode` 化前）
+struct OutlineTreeNode {
+  /// 見出しレベルの深さ（`HeadingLevel::depth()`、0 = Part）
+  depth: u8,
+  /// しおりに表示するテキスト（`"{number} {plain title}"`）
+  text: String,
+  /// ジャンプ先
+  dest: XyzDestination,
+  /// 子（より深いレベルの見出し）
+  children: Vec<OutlineTreeNode>,
+}
+
+impl OutlineTreeNode {
+  /// 中間ツリーを krilla の [`OutlineNode`] に再帰変換する
+  fn into_krilla(self) -> OutlineNode {
+    let mut node = OutlineNode::new(self.text, self.dest);
+    for child in self.children {
+      node.push_child(child.into_krilla());
+    }
+    return node;
+  }
+}
+
+/// 見出しを深さに基づいて中間ツリーへ挿入する
+///
+/// 末尾の兄弟がより浅ければ（`last.depth < depth`）その子として再帰挿入し、
+/// そうでなければこの階層の兄弟として追加する。レベルが飛んでも（章を飛ばして節など）
+/// 直近の浅いノードの下に収まる。
+fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: String, dest: XyzDestination) {
+  if let Some(last) = siblings.last_mut()
+    && last.depth < depth
+  {
+    insert_outline_node(&mut last.children, depth, text, dest);
+    return;
+  }
+  siblings.push(OutlineTreeNode {
+    depth,
+    text,
+    dest,
+    children: Vec::new(),
+  });
 }
 
 /// 配置済みブロック 1 個を描画する
@@ -237,8 +383,10 @@ fn draw_cell_items(
       },
       hlist::HItem::Kern(value) => cursor_x += value,
       hlist::HItem::Glue { natural, .. } => cursor_x += natural,
-      // セル内の行分割は無効（パーサ段で \\ は拒否済み）
-      hlist::HItem::Penalty { .. } | hlist::HItem::ForcedBreak => {},
+      // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
+      // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）
+      hlist::HItem::Penalty { .. } | hlist::HItem::ForcedBreak | hlist::HItem::LinkStart(_) | hlist::HItem::LinkEnd => {
+      },
     }
   }
   return Ok(());
@@ -343,4 +491,45 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
   surface.draw_path(&path);
   surface.set_fill(None);
   return Ok(());
+}
+
+#[cfg(test)]
+mod tests {
+  use krilla::{destination::XyzDestination, geom::Point};
+
+  use super::{OutlineTreeNode, insert_outline_node};
+
+  /// テスト用のダミー destination（ページ 0・原点）
+  fn dummy_dest() -> XyzDestination { return XyzDestination::new(0, Point::from_xy(0.0, 0.0)); }
+
+  #[test]
+  fn insert_outline_node_nests_by_depth() {
+    // Arrange — Part(0) > Chapter(1) > Section(2), Section(2), Chapter(1) の順に挿入
+    let mut roots: Vec<OutlineTreeNode> = Vec::new();
+    for (depth, text) in [(0, "P"), (1, "C1"), (2, "S1"), (2, "S2"), (1, "C2")] {
+      insert_outline_node(&mut roots, depth, text.to_string(), dummy_dest());
+    }
+
+    // Assert — Part 1 個がルート。その下に Chapter が 2 個、最初の Chapter の下に Section が 2 個
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].depth, 0);
+    assert_eq!(roots[0].children.len(), 2, "Part の下に Chapter が 2 個");
+    assert_eq!(roots[0].children[0].depth, 1);
+    assert_eq!(roots[0].children[0].children.len(), 2, "最初の Chapter の下に Section が 2 個");
+    assert_eq!(roots[0].children[1].depth, 1);
+    assert!(roots[0].children[1].children.is_empty(), "2 番目の Chapter は子を持たない");
+  }
+
+  #[test]
+  fn insert_outline_node_handles_level_skip() {
+    // Arrange — Part(0) の直後に Section(2)（Chapter を飛ばす）
+    let mut roots: Vec<OutlineTreeNode> = Vec::new();
+    insert_outline_node(&mut roots, 0, "P".to_string(), dummy_dest());
+    insert_outline_node(&mut roots, 2, "S".to_string(), dummy_dest());
+
+    // Assert — Section は直近の浅いノード（Part）の子に収まる
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].children.len(), 1);
+    assert_eq!(roots[0].children[0].depth, 2);
+  }
 }

@@ -3,6 +3,8 @@
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（[`crate::break_lines`]）は `Block::Paragraph` の水平リストにだけ回る。
 
+use types::AnchorMark;
+
 use crate::{hitem::HItem, table_box::TableBox};
 
 /// 文書の縦リスト要素
@@ -43,4 +45,9 @@ pub enum Block {
   VSpace(f32),
   /// 強制改ページ
   PageBreak,
+  /// リンク行き先のアンカー（機構 A・ゼロサイズ）
+  ///
+  /// `break_pages` で次に配置される実ブロックの確定座標に解決され、`Page::anchors` に
+  /// `PlacedAnchor` として格納される。それ自身は縦方向のアキを生まない。
+  Anchor(AnchorMark),
 }

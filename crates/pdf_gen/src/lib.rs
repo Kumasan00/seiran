@@ -16,9 +16,23 @@ use hlist::Page;
 use krilla::{Document, page::PageSettings};
 use read_config::Config;
 use read_style::Style;
+use types::HeadingLevel;
 
 pub use crate::{error::PdfGenError, image::resolve_images};
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
+
+/// PDF のしおり（アウトライン）1 項目の論理情報
+///
+/// `seiran` の `build_pdf` が Document IR の見出しから文書順に組み立て、[`create_pdf`] に
+/// 渡す。確定座標（ページ index + 座標）は `pdf_gen` 側が各ページの見出しアンカーから
+/// 補い、本型が持つレベル・テキストと文書順で 1 対 1 に対応付けてしおりツリーを構築する。
+#[derive(Debug, Clone)]
+pub struct OutlineEntry {
+  /// 見出しレベル（ネストの深さに使う）
+  pub level: HeadingLevel,
+  /// しおりに表示するテキスト（`"{number} {plain title}"`）
+  pub text: String,
+}
 
 /// フォント情報を使用して PDF バイト列を生成します。
 ///
@@ -30,6 +44,7 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 /// * `metrics` - 全フォント種別の基本メトリクス（upem / ascender / descender）
 /// * `pages` - 組版済みページ列（`hlist::break_pages` の出力）
 /// * `style` - スタイル設定
+/// * `outline_entries` - PDF しおり用の見出し情報（文書順、見出しアンカーと 1 対 1 対応）
 ///
 /// # Returns
 ///
@@ -45,6 +60,7 @@ pub fn create_pdf(
   metrics: &FontMetrics,
   pages: &[Page],
   style: &Style,
+  outline_entries: &[OutlineEntry],
 ) -> Result<Vec<u8>, PdfGenError> {
   let krilla_fonts = build_krilla_fonts(config, font_bytes, font_refs)?;
   let page_width = config.pdf.width.to_pt();
@@ -55,7 +71,7 @@ pub fn create_pdf(
   })?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(config));
-  render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style)?;
+  render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style, outline_entries)?;
   let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument { source })?;
   return Ok(pdf_bytes);
 }

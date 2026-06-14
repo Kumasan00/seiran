@@ -169,7 +169,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   };
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
-  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style)?;
+  // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
+  // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
+  let outline_entries = collect_outline_entries(&doc_nodes);
+
+  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style, &outline_entries)?;
 
   let output_path = config.output.pdf_path();
   fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
@@ -179,6 +183,37 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!(output_path = %output_path.display(), "PDF の保存が完了しました");
 
   return Ok(());
+}
+
+/// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
+///
+/// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しは常にトップレベルの
+/// `DocNode::Heading` に現れる（言語仕様上ネストしない）ため、`body` を線形に走査すればよい。
+fn collect_outline_entries(doc_nodes: &[DocNode]) -> Vec<pdf_gen::OutlineEntry> {
+  let mut entries = Vec::new();
+  for node in doc_nodes {
+    if let DocNode::Heading {
+      level,
+      number,
+      title,
+      ..
+    } = node
+    {
+      let plain = document::inline_nodes_to_plain_text(title);
+      let text = if number.is_empty() {
+        plain
+      } else if plain.is_empty() {
+        number.clone()
+      } else {
+        format!("{number} {plain}")
+      };
+      entries.push(pdf_gen::OutlineEntry {
+        level: *level,
+        text,
+      });
+    }
+  }
+  return entries;
 }
 
 /// 全 source を順次読み込み、パース結果を結合した `Vec<DocNode>` を返す。

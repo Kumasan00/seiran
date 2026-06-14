@@ -41,8 +41,8 @@ pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
 pub use break_pages::{PageGeometry, break_pages};
 pub use glyph_run::{Glyph, GlyphRun};
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
-pub use line::{Line, PositionedBox};
-pub use page::{Page, PlacedBlock, PlacedTableRow};
+pub use line::{Line, LineLink, PositionedBox};
+pub use page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedTableRow};
 pub use table_box::{
   TableBox, TableCellBox, TableRowBox, max_font_size_in_items, measure_items_width, resolve_column_widths,
   table_row_height,

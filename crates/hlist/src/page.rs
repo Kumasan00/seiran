@@ -6,7 +6,7 @@
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use types::TableColumn;
+use types::{AnchorMark, LinkTarget, TableColumn};
 
 use crate::{line::Line, table_box::TableRowBox};
 
@@ -23,6 +23,47 @@ pub struct Page {
   pub header: Vec<PlacedBlock>,
   /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
   pub footer: Vec<PlacedBlock>,
+  /// このページに解決されたリンク到達先アンカー（機構 A）
+  ///
+  /// `pdf_gen` がページ index + 座標から `XyzDestination` を作り、PDF しおりや
+  /// 内部リンクの行き先として登録する。
+  pub anchors: Vec<PlacedAnchor>,
+  /// このページに確定したクリック可能なリンク領域（機構 B）
+  ///
+  /// `pdf_gen` が各ページにリンク注釈として付与する。
+  pub links: Vec<PlacedLink>,
+}
+
+/// 確定座標に解決されたリンク到達先アンカー
+///
+/// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端からのオフセット、`y` はページ上端から
+/// 下方向に正）。`pdf_gen` が左マージンを加算して `XyzDestination` 点にする。
+#[derive(Debug, Clone)]
+pub struct PlacedAnchor {
+  /// アンカー種別（見出し / ラベル付きブロック）
+  pub mark: AnchorMark,
+  /// 本文左端からの水平オフセット（pt、通常 0）
+  pub x: f32,
+  /// ページ上端からの距離（pt）
+  pub y: f32,
+}
+
+/// 確定座標に確定したクリック可能なリンク領域
+///
+/// 座標系は [`PlacedBlock`] と同じ（`x` / `y` はそれぞれ本文左端・ページ上端からの距離）。
+/// `pdf_gen` が左マージンを加算して矩形のリンク注釈にする。
+#[derive(Debug, Clone)]
+pub struct PlacedLink {
+  /// リンクの行き先（内部アンカー / 外部 URI）
+  pub target: LinkTarget,
+  /// 矩形左端の本文左端からの水平オフセット（pt）
+  pub x: f32,
+  /// 矩形上端のページ上端からの距離（pt）
+  pub y: f32,
+  /// 矩形の幅（pt）
+  pub width: f32,
+  /// 矩形の高さ（pt）
+  pub height: f32,
 }
 
 /// ページ内に配置されたブロック

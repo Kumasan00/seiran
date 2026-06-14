@@ -56,6 +56,20 @@ pub enum InlineNode {
     span: SourceSpan,
   },
 
+  /// 外部リンク（`\url{uri}` / `\href[url=uri]{表示}`）
+  ///
+  /// 外部 URI を行き先とするクリック可能なテキスト。`\url` は URI 自身を表示テキストに
+  /// 持ち（`children = [Text(uri)]`）、`\href` は本文を表示テキストに持つ。`lowering` 層で
+  /// `LayoutNode::Link { target: External(url), children }` に変換され、`pdf_gen` が
+  /// `LinkAction` のリンク注釈として出力する。内部参照（`\ref`）は [`InlineNode::Ref`]
+  /// が担い、こちらは外部 URI 専用。
+  Link {
+    /// リンク先の外部 URI（`\url{...}` / `\href[url=...]{...}` の URI）
+    url: String,
+    /// 表示テキスト（インライン要素）。`\url` では URI 自身の `Text` 1 個
+    children: Vec<InlineNode>,
+  },
+
   /// 文献引用（`\cite{key}` / 複数キーの `\cite{a,b}`）
   ///
   /// `Ref` と同様の 2 段階で扱う。パーサ（pass1）では `keys` を確定し `label: None` の
@@ -97,6 +111,7 @@ impl InlineNode {
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
       InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
+      InlineNode::Link { children, .. } => return inline_nodes_to_plain_text(children),
       InlineNode::Cite { keys, label, .. } => {
         return label.as_deref().map_or_else(|| keys.join(", "), inline_nodes_to_plain_text);
       },

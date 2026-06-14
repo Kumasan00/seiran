@@ -31,6 +31,7 @@ pub(crate) mod cite;
 mod control;
 mod headline;
 pub(crate) mod inline;
+pub(crate) mod link;
 pub(crate) mod ref_;
 
 /// コマンドの実行結果
@@ -66,6 +67,10 @@ pub(crate) enum CommandKind {
   Ref,
   /// `\cite{key}` — 文献引用のスタブを生成し、pass2 でキー存在を検証する
   Cite,
+  /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク
+  Url,
+  /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
+  Href,
   /// 未定義のコマンド
   Undefined,
 }
@@ -85,6 +90,10 @@ impl CommandKind {
       Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
 
       Self::Cite => cite::cite_command(view).map(CommandResult::Inline),
+
+      Self::Url => link::url_command(view).map(CommandResult::Inline),
+
+      Self::Href => link::href_command(view).map(CommandResult::Inline),
 
       Self::Undefined => Err(EvalError::UnknownCommand {
         name: view.name().to_string(),
@@ -121,6 +130,10 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
   // 文献引用
   "cite" => CommandKind::Cite,
+
+  // 外部リンク
+  "url" => CommandKind::Url,
+  "href" => CommandKind::Href,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）

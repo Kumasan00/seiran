@@ -4,6 +4,7 @@
 //! フォント種別やサイズを変更します。
 
 use document::InlineNode;
+use types::LinkTarget;
 
 use super::{LoweringContext, LoweringError, math::lower_inline_math};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -54,7 +55,22 @@ pub(super) fn lower_inline(
           span: *span,
         });
       };
-      return Ok(vec![LayoutNode::Text(resolved, parent_style)]);
+      // 番号テキストを内部リンク（機構 B）で囲み、参照先アンカーへジャンプできるようにする。
+      return Ok(vec![LayoutNode::Link {
+        target: LinkTarget::Internal(label.clone()),
+        children: vec![LayoutNode::Text(resolved, parent_style)],
+      }]);
+    },
+    InlineNode::Link { url, children } => {
+      // 外部リンク（`\url` / `\href`）。表示テキストを External リンクで囲む。
+      let mut inner = Vec::new();
+      for child in children {
+        inner.extend(lower_inline(ctx, child, parent_style)?);
+      }
+      return Ok(vec![LayoutNode::Link {
+        target: LinkTarget::External(url.clone()),
+        children: inner,
+      }]);
     },
     InlineNode::Cite { keys, label, .. } => {
       // CSL 整形ステージが `label` を確定済みならそれを描画する。未確定（CSL 整形未実装）
@@ -99,5 +115,50 @@ mod tests {
     assert_eq!(text, "x");
     assert_eq!(text_style.font_kind, types::FontKind::SerifItalic);
     assert!((text_style.font_size - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn lower_resolved_ref_wraps_number_in_internal_link() {
+    // Arrange — 解決済み Ref は番号テキストを内部リンク（Internal(label)）で囲む
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Ref {
+      label: "sec:intro".to_string(),
+      number: Some("1.2".to_string()),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    };
+    let parent = TextStyle::new(10.0);
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent).expect("解決済み Ref は失敗しない");
+
+    // Assert — Link { Internal("sec:intro"), [Text("1.2")] }
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    assert_eq!(*target, LinkTarget::Internal("sec:intro".to_string()));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "1.2"));
+  }
+
+  #[test]
+  fn lower_external_link_maps_to_external_target() {
+    // Arrange — InlineNode::Link は External リンクに変換され、表示テキストを子に持つ
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Link {
+      url: "https://example.com".to_string(),
+      children: vec![InlineNode::Text("ここ".to_string())],
+    };
+    let parent = TextStyle::new(10.0);
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent).expect("失敗しない");
+
+    // Assert — Link { External(url), [Text("ここ")] }
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    assert_eq!(*target, LinkTarget::External("https://example.com".to_string()));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "ここ"));
   }
 }

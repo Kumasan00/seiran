@@ -104,8 +104,14 @@ impl Measurer<'_> {
         | LayoutNode::Kern { .. }
         | LayoutNode::LineBreak
         | LayoutNode::Raise { .. }
+        | LayoutNode::Link { .. }
         | LayoutNode::HBox { .. } => {
           self.collect_inline(node, paragraph);
+        },
+        // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
+        LayoutNode::Anchor(mark) => {
+          self.flush_paragraph(blocks, paragraph);
+          blocks.push(Block::Anchor(mark));
         },
         LayoutNode::VBox {
           children,
@@ -202,8 +208,18 @@ impl Measurer<'_> {
           self.collect_inline(child, out);
         }
       },
-      // 縦リスト要素はインライン文脈（表セル等）には現れない（パーサ段で拒否済み）
-      LayoutNode::VBox { .. }
+      // リンク領域（機構 B）: 子要素を幅 0 のマーカー対で囲む。行分割がこの境界で
+      // 行ごとのクリック矩形を収集する（折り返しは複数矩形に分割される）
+      LayoutNode::Link { target, children } => {
+        out.push(HItem::LinkStart(target));
+        for child in children {
+          self.collect_inline(child, out);
+        }
+        out.push(HItem::LinkEnd);
+      },
+      // 縦リスト要素・アンカーはインライン文脈（表セル等）には現れない（構造上の不変条件）
+      LayoutNode::Anchor(_)
+      | LayoutNode::VBox { .. }
       | LayoutNode::Vkern { .. }
       | LayoutNode::Rule { .. }
       | LayoutNode::Image { .. }

@@ -1,0 +1,14 @@
+\section[label=sec:intro]{はじめに}
+
+これは導入の節です。詳しくは \ref{sec:detail} を参照してください。
+
+外部リンクの例: \url{https:\/\/example.com} と
+\href[url=https:\/\/www.rust-lang.org]{Rust の公式サイト} を参照。
+
+\section{背景}
+
+背景の説明です。\ref{sec:intro} に戻ることもできます。
+
+\subsection[label=sec:detail]{詳細}
+
+ここが \ref{sec:detail} の指す詳細の小節です。

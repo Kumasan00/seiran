@@ -237,7 +237,7 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
 fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut InlineNode>) {
   for inline in inlines {
     match inline {
-      InlineNode::Styled { children, .. } => collect_cite_inlines(children, out),
+      InlineNode::Styled { children, .. } | InlineNode::Link { children, .. } => collect_cite_inlines(children, out),
       InlineNode::Cite { .. } => out.push(inline),
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
