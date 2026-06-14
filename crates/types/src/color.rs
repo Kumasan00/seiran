@@ -1,9 +1,11 @@
 //! 色を表す `Color` newtype。
 //!
-//! TOML 上では `"#rrggbb"` の 16 進文字列形式のみを受け付ける（大文字小文字は不問）。
-//! `[204, 179, 153]` の配列形式は受け付けない（破壊的: スタイル側の視認性を優先）。
+//! TOML / コマンド任意引数のいずれでも `"#rrggbb"` の 16 進文字列形式のみを受け付ける
+//! （大文字小文字は不問）。`[204, 179, 153]` の配列形式は受け付けない
+//! （破壊的: スタイル側の視認性を優先）。
 //!
-//! 内部表現は 8bit RGB に正規化した `Color([u8; 3])`。
+//! 内部表現は 8bit RGB に正規化した `Color([u8; 3])`。背景色・罫線色・テキスト色など
+//! 全クレート共通の色表現としてここ（`types`）に置く。
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
@@ -22,6 +24,22 @@ impl Color {
   /// R / G / B 各成分を返す
   #[must_use]
   pub fn rgb(self) -> [u8; 3] { return self.0; }
+
+  /// `"#rrggbb"` 形式の文字列を `Color` に変換する（大文字小文字不問）
+  ///
+  /// `#` 接頭辞・6 桁・全桁が 16 進数のいずれかを満たさない場合は `None` を返す。
+  /// デシリアライズとパーサの任意引数解析の双方から再利用する。
+  #[must_use]
+  pub fn from_hex(value: &str) -> Option<Color> {
+    let body = value.strip_prefix('#')?;
+    if body.len() != 6 || !body.chars().all(|c| c.is_ascii_hexdigit()) {
+      return None;
+    }
+    let r = u8::from_str_radix(&body[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&body[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&body[4..6], 16).ok()?;
+    return Some(Color([r, g, b]));
+  }
 }
 
 impl From<[u8; 3]> for Color {
@@ -32,23 +50,10 @@ impl From<Color> for [u8; 3] {
   fn from(color: Color) -> Self { return color.0; }
 }
 
-/// `"#rrggbb"` 形式の文字列を 3 バイトの配列に変換する
-fn parse_hex(value: &str) -> Option<[u8; 3]> {
-  let body = value.strip_prefix('#')?;
-  if body.len() != 6 || !body.chars().all(|c| c.is_ascii_hexdigit()) {
-    return None;
-  }
-  let r = u8::from_str_radix(&body[0..2], 16).ok()?;
-  let g = u8::from_str_radix(&body[2..4], 16).ok()?;
-  let b = u8::from_str_radix(&body[4..6], 16).ok()?;
-  return Some([r, g, b]);
-}
-
 impl<'de> Deserialize<'de> for Color {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     let hex = String::deserialize(deserializer)?;
-    return parse_hex(&hex)
-      .map(Color)
+    return Color::from_hex(&hex)
       .ok_or_else(|| D::Error::custom(format!("色の 16 進表記が不正です: {hex:?}（期待形式: \"#rrggbb\"）")));
   }
 }
@@ -129,6 +134,23 @@ mod tests {
 
     // Assert
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn from_hex_parses_valid_string() {
+    // Arrange / Act
+    let color = Color::from_hex("#FF0000");
+
+    // Assert
+    assert_eq!(color, Some(Color::new(0xff, 0x00, 0x00)));
+  }
+
+  #[test]
+  fn from_hex_rejects_invalid_string() {
+    // Arrange / Act / Assert — 接頭辞なし・桁数不足・非 16 進はいずれも None
+    assert_eq!(Color::from_hex("ff0000"), None);
+    assert_eq!(Color::from_hex("#fff"), None);
+    assert_eq!(Color::from_hex("#gg0000"), None);
   }
 
   #[test]

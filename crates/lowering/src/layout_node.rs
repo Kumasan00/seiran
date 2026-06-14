@@ -3,7 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use types::{AnchorMark, FontKind, Length, LinkTarget, TableColumn};
+use types::{AnchorMark, Color, FontKind, Length, LinkTarget, TableColumn};
 
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -136,15 +136,19 @@ pub struct TableCellLayout {
 pub struct TextStyle {
   pub font_size: f32,
   pub font_kind: FontKind,
+  /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
+  /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。
+  pub color: Option<Color>,
 }
 
 impl TextStyle {
-  /// 指定されたフォントサイズで新しい `TextStyle` を生成する
+  /// 指定されたフォントサイズで新しい `TextStyle` を生成する（既定色 = 黒）
   #[must_use]
   pub fn new(font_size: f32) -> Self {
     return TextStyle {
       font_size,
       font_kind: FontKind::Serif,
+      color: None,
     };
   }
 }

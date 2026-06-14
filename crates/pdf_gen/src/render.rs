@@ -281,7 +281,18 @@ fn draw_box_content(
       let font = krilla_fonts.get(run.font_type);
       let upem = metrics.get(run.font_type).upem;
       let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
+      // `\color` 由来の色があれば塗り色を設定し、描画後に解除して後続を既定色（黒）に戻す
+      if let Some(color) = run.color {
+        let [r, g, b] = color.rgb();
+        surface.set_fill(Some(Fill {
+          paint: rgb::Color::new(r, g, b).into(),
+          ..Fill::default()
+        }));
+      }
       surface.draw_glyphs(Point::from_xy(x, baseline_y), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
+      if run.color.is_some() {
+        surface.set_fill(None);
+      }
     },
     HBoxContent::Rule { width, height } => {
       // インライン罫線はベースラインの上に載せる

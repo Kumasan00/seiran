@@ -527,6 +527,7 @@ mod tests {
             text: text.to_string(),
             glyphs: Vec::new(),
             font_type: types::FontType::Serif,
+            color: None,
           }),
           width: 20.0,
           height: 10.0,

@@ -5,7 +5,7 @@
 
 use std::ops::Range;
 
-use types::FontType;
+use types::{Color, FontType};
 
 /// シェーピング済みのグリフ列情報
 ///
@@ -20,6 +20,9 @@ pub struct GlyphRun {
   pub glyphs: Vec<Glyph>,
   /// このグリフ列が使用するフォント種別
   pub font_type: FontType,
+  /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
+  /// `\color[color=#rrggbb]{...}` 由来のテキストだけ `Some` になる。
+  pub color: Option<Color>,
 }
 
 /// 単一グリフの配置情報

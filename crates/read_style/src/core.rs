@@ -21,15 +21,15 @@ pub mod text;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, positive};
+use types::{
+  Color,
+  length::{Length, positive},
+};
 
-use crate::{
-  core::{
-    counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
-    math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
-    text::TextBlockStyle,
-  },
-  primitives::color::Color,
+use crate::core::{
+  counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
+  math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
+  text::TextBlockStyle,
 };
 
 /// コアスタイル設定。`lowering` / `pdf_gen` から参照されるフィールドの集合。

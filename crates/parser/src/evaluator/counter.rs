@@ -345,7 +345,9 @@ fn resolve_list_item(item: &mut ListItem, registry: &CounterRegistry) -> Result<
 fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Result<(), EvalError> {
   for inline in inlines {
     match inline {
-      InlineNode::Styled { children, .. } | InlineNode::Link { children, .. } => {
+      InlineNode::Styled { children, .. }
+      | InlineNode::Colored { children, .. }
+      | InlineNode::Link { children, .. } => {
         resolve_inlines(children, registry)?;
       },
       InlineNode::Ref {

@@ -25,6 +25,7 @@ pub(super) fn build_caption(
   let base_style = TextStyle {
     font_size: caption_style.font_size.to_pt(),
     font_kind: FontKind::Serif,
+    color: None,
   };
   return expand_template(ctx, &caption_style.format, number, inlines, base_style);
 }
@@ -98,6 +99,7 @@ mod tests {
       TextStyle {
         font_size: 11.0,
         font_kind: FontKind::Serif,
+        color: None,
       },
     );
   }

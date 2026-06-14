@@ -61,6 +61,12 @@ pub(crate) enum CommandKind {
   /// テキスト装飾はファミリ × スタイルの全組み合わせを個別コマンドで提供するため、
   /// `FontKind::Math` をここに登録してはならない。
   StyledText(FontKind),
+  /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
+  ///
+  /// 色は任意引数 `color` から取得するためバリアントにペイロードは持たない。
+  /// 色は書体（`FontKind`）と直交する属性なので `StyledText` とは別経路で扱い、
+  /// ネスト時は内側の `color` が外側を上書きする。
+  ColoredText,
   /// 引数なしで単一文字を出力するコマンド（ギリシャ文字・数学記号）
   SingleChar(char),
   /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
@@ -84,6 +90,8 @@ impl CommandKind {
       Self::Headline(level) => headline::heading(view, level, &mut evaluator.registry).map(CommandResult::Block),
 
       Self::StyledText(kind) => inline::styled_text(view, kind).map(CommandResult::Inline),
+
+      Self::ColoredText => inline::colored_text(view).map(CommandResult::Inline),
 
       Self::SingleChar(ch) => single_char(view, ch).map(CommandResult::Inline),
 
@@ -151,6 +159,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "monobold" => CommandKind::StyledText(FontKind::MonospaceBold),
   "monoitalic" => CommandKind::StyledText(FontKind::MonospaceItalic),
   "monobolditalic" => CommandKind::StyledText(FontKind::MonospaceBoldItalic),
+
+  // テキスト色指定
+  "color" => CommandKind::ColoredText,
 
   // 見出しコマンド
   "part" => CommandKind::Headline(HeadingLevel::Part),

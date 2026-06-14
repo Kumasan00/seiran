@@ -1,0 +1,4 @@
+通常のテキストと \color[color=#cc0000]{赤いテキスト} を並べる。
+\color[color=#0000ff]{青い文章の中に \bold{太字} を入れても色は保たれる。}
+\bold{太字の中に \color[color=#008000]{緑} を入れる。}
+English text with \color[color=#ff8800]{orange words} inline.

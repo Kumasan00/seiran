@@ -84,10 +84,12 @@ pub(super) fn lower_table(
   let body_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.style.core.text.font_kind,
+    color: None,
   };
   let head_style = TextStyle {
     font_size: body_style.font_size,
     font_kind: bold_kind(body_style.font_kind),
+    color: None,
   };
 
   let table_node = LayoutNode::Table(TableLayout {

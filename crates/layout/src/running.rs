@@ -115,6 +115,7 @@ fn build_region(
   let style = TextStyle {
     font_size: slots.font_size,
     font_kind: slots.font_kind,
+    color: None,
   };
   let left = shape_slot(measurer, &slots.left, page_number, page_count, metadata, style);
   let center = shape_slot(measurer, &slots.center, page_number, page_count, metadata, style);

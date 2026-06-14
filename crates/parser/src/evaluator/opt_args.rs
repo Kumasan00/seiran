@@ -21,7 +21,7 @@ use syntax::{
   ast::{CommandView, EnvironmentView, parse_key_value_options},
   green::GreenNode,
 };
-use types::Length;
+use types::{Color, Length};
 
 use crate::evaluator::EvalError;
 
@@ -36,6 +36,8 @@ pub(crate) enum OptType {
   String,
   /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`types::Length`] に正規化する
   Length,
+  /// 色。`#rrggbb` の 16 進文字列を [`types::Color`] に変換する（大文字小文字不問）
+  Color,
 }
 
 impl fmt::Display for OptType {
@@ -45,6 +47,7 @@ impl fmt::Display for OptType {
       Self::Number => "number",
       Self::String => "string",
       Self::Length => "length (mm/cm)",
+      Self::Color => "color (#rrggbb)",
     };
     return f.write_str(s);
   }
@@ -58,6 +61,8 @@ pub(crate) enum OptValue {
   String(String),
   /// [`types::Length`] に正規化された長さ
   Length(Length),
+  /// [`types::Color`] に変換された色
+  Color(Color),
 }
 
 /// 収集済み任意引数から指定キーの文字列値を取り出す
@@ -67,6 +72,17 @@ pub(crate) enum OptValue {
 pub(crate) fn find_string(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<String> {
   return opt_args.into_iter().find_map(|(k, value)| match value {
     OptValue::String(s) if k == key => Some(s),
+    _ => None,
+  });
+}
+
+/// 収集済み任意引数から指定キーの色値を取り出す
+///
+/// `[color=#rrggbb]` のような単一の色キーを取り出す典型パターン用。
+/// キーが存在しない、または値が色型でない場合は `None` を返す。
+pub(crate) fn find_color(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<Color> {
+  return opt_args.into_iter().find_map(|(k, value)| match value {
+    OptValue::Color(c) if k == key => Some(c),
     _ => None,
   });
 }
@@ -177,6 +193,10 @@ fn parse_value(
     OptType::Length => {
       let v = parse_length(raw).ok_or_else(|| invalid(name, key, expected, span))?;
       return Ok(OptValue::Length(v));
+    },
+    OptType::Color => {
+      let v = Color::from_hex(raw.trim()).ok_or_else(|| invalid(name, key, expected, span))?;
+      return Ok(OptValue::Color(v));
     },
   }
 }

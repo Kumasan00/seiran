@@ -37,7 +37,7 @@ use hlist::{
 use lazy_regex::regex_replace_all;
 use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
-use types::{FontKind, FontType, Length};
+use types::{Color, FontKind, FontType, Length};
 
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
@@ -282,7 +282,7 @@ impl Measurer<'_> {
     let segments = script::split_text_by_script(style.font_kind, &text);
     return segments
       .into_iter()
-      .map(|segment| self.shape_segment(&segment.text, segment.font_type, style.font_size))
+      .map(|segment| self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color))
       .collect();
   }
 
@@ -294,7 +294,7 @@ impl Measurer<'_> {
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = regex_replace_all!("\n", text, " ");
     for segment in script::split_text_by_script(style.font_kind, &text) {
-      let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size);
+      let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
         // 数式は行分割の対象にしない（閉じた box のまま行に載せる）
         out.push(HItem::Box(hbox));
@@ -426,6 +426,7 @@ impl Measurer<'_> {
         text: text[byte_range].to_string(),
         glyphs,
         font_type: run.font_type,
+        color: run.color,
       }),
       width: advance_units / metric.upem * run.font_size,
       height: metric.ascender / metric.upem * run.font_size,
@@ -434,7 +435,7 @@ impl Measurer<'_> {
   }
 
   /// 1 セグメントをシェーピングして計測済みの `HBox` を返す
-  fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: f32) -> HBox {
+  fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: f32, color: Option<Color>) -> HBox {
     let taken = std::mem::take(&mut self.buffer);
     let result = self.shapers.get(font_type).shape(taken, text, font_size);
     let glyph_infos = result.glyph_infos();
@@ -466,6 +467,7 @@ impl Measurer<'_> {
         text: text.to_string(),
         glyphs,
         font_type,
+        color,
       }),
       width,
       height,

@@ -485,7 +485,7 @@ fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
 fn contains_line_break(nodes: &[InlineNode]) -> bool {
   return nodes.iter().any(|node| match node {
     InlineNode::LineBreak => true,
-    InlineNode::Styled { children, .. } => contains_line_break(children),
+    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => contains_line_break(children),
     _ => false,
   });
 }

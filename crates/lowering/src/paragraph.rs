@@ -18,6 +18,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.style.core.text.font_kind,
+    color: None,
   };
 
   let mut result = Vec::new();

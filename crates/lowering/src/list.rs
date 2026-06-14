@@ -21,6 +21,7 @@ pub(super) fn lower_list(
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: list_style.marker_font_kind,
+    color: None,
   };
 
   for (i, item) in items.iter().enumerate() {

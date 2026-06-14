@@ -21,7 +21,7 @@ use crate::evaluator::{
   command::{
     COMMAND_MAP, CommandKind,
     cite::cite_command,
-    inline::styled_text,
+    inline::{colored_text, styled_text},
     link::{href_command, url_command},
     ref_::ref_command,
     single_char,
@@ -99,6 +99,10 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::StyledText(kind)) => {
               // 引数の不足・過剰・未許可の任意引数はブロック文脈と同じ検証を通す
               inlines.extend(styled_text(&view, kind)?);
+            },
+            Some(CommandKind::ColoredText) => {
+              // `\color[color=#rrggbb]{...}` も書体指定と同じくインライン文脈で展開する
+              inlines.extend(colored_text(&view)?);
             },
             Some(CommandKind::SingleChar(ch)) => {
               inlines.extend(single_char(&view, ch)?);

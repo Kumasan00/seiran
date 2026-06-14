@@ -26,10 +26,25 @@ pub(super) fn lower_inline(
       let styled = TextStyle {
         font_size: parent_style.font_size,
         font_kind: *kind,
+        // 色は書体と直交するので、親から引き継いだ色を保持する
+        color: parent_style.color,
       };
       let mut result = Vec::new();
       for child in children {
         result.extend(lower_inline(ctx, child, styled)?);
+      }
+      return Ok(result);
+    },
+    InlineNode::Colored { color, children } => {
+      let colored = TextStyle {
+        // フォントサイズ・書体は親から継承し、色だけを上書きする（書体と直交合成）
+        font_size: parent_style.font_size,
+        font_kind: parent_style.font_kind,
+        color: Some(*color),
+      };
+      let mut result = Vec::new();
+      for child in children {
+        result.extend(lower_inline(ctx, child, colored)?);
       }
       return Ok(result);
     },
@@ -103,6 +118,7 @@ mod tests {
     let parent = TextStyle {
       font_size: 10.0,
       font_kind: types::FontKind::SerifBold,
+      color: None,
     };
 
     // Act
@@ -115,6 +131,58 @@ mod tests {
     assert_eq!(text, "x");
     assert_eq!(text_style.font_kind, types::FontKind::SerifItalic);
     assert!((text_style.font_size - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn lower_inline_colored_overrides_color_keeps_font() {
+    // Arrange — \color は親の font_kind / font_size を継承し、色だけ上書きする
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Colored {
+      color: types::Color::new(0xff, 0x00, 0x00),
+      children: vec![InlineNode::Text("x".to_string())],
+    };
+    let parent = TextStyle {
+      font_size: 10.0,
+      font_kind: types::FontKind::SansSerif,
+      color: None,
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
+
+    // Assert — font_kind は親 SansSerif を維持し、色だけが Some に上書きされる
+    let LayoutNode::Text(text, text_style) = &nodes[0] else {
+      panic!("Text が期待されます: {nodes:?}");
+    };
+    assert_eq!(text, "x");
+    assert_eq!(text_style.font_kind, types::FontKind::SansSerif);
+    assert_eq!(text_style.color, Some(types::Color::new(0xff, 0x00, 0x00)));
+  }
+
+  #[test]
+  fn lower_bold_inside_color_keeps_color() {
+    // Arrange — \color[...]{\bold{x}} は内側で書体を変えても色が保持される（直交合成）
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Colored {
+      color: types::Color::new(0x00, 0x80, 0x00),
+      children: vec![InlineNode::Styled {
+        kind: types::FontKind::SerifBold,
+        children: vec![InlineNode::Text("x".to_string())],
+      }],
+    };
+    let parent = TextStyle::new(10.0);
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
+
+    // Assert — 内側 \bold で SerifBold になっても色は外側 \color のまま
+    let LayoutNode::Text(_, text_style) = &nodes[0] else {
+      panic!("Text が期待されます: {nodes:?}");
+    };
+    assert_eq!(text_style.font_kind, types::FontKind::SerifBold);
+    assert_eq!(text_style.color, Some(types::Color::new(0x00, 0x80, 0x00)));
   }
 
   #[test]

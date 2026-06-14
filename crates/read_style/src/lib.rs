@@ -7,7 +7,7 @@
 //! 既定値は各サブ struct の [`Default`] 実装が提供し、TOML 側は `#[serde(default)]` で
 //! 部分指定をサポートします（未指定キーはデフォルト値で埋まる）。
 //!
-//! モジュールは [`core`] / [`extended`] / [`primitives`] の 3 階層に分かれている。
+//! モジュールは [`core`] / [`extended`] の 2 階層に分かれている。
 //! [`Style`] は `core: CoreStyle` と `extended: ExtendedStyle` の 2 層構造で、
 //! `core` は `lowering` / `pdf_gen` から参照される実働フィールド、`extended` は
 //! 未参照フィールド（脚注・目次・参考文献等）を保持する。
@@ -15,7 +15,6 @@
 pub mod core;
 mod error;
 pub mod extended;
-pub mod primitives;
 mod style;
 
 use std::{fs, path::Path};
@@ -24,7 +23,7 @@ use garde::Validate;
 use miette::{NamedSource, SourceSpan};
 use serde::de::Error as _;
 use tracing::info;
-pub use types::Length;
+pub use types::{Color, Length};
 
 pub use crate::{
   core::{
@@ -42,7 +41,6 @@ pub use crate::{
   },
   error::{ReadStyleError, ValidationError},
   extended::{ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, toc::TocStyle},
-  primitives::color::Color,
   style::Style,
 };
 

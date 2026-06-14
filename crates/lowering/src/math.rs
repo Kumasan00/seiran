@@ -59,6 +59,7 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
       TextStyle {
         font_size,
         font_kind: FontKind::Serif,
+        color: None,
       },
     )
   });
@@ -139,6 +140,7 @@ fn lower_math_node(
       let layout_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
+        color: None,
       };
       return vec![LayoutNode::Text(translated.to_string(), layout_style)];
     },
@@ -170,6 +172,7 @@ fn lower_math_node(
       let slash_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
+        color: None,
       };
       let mut result = Vec::new();
       result.extend(lower_math_node(numer.as_ref(), font_size, style, math_style));
@@ -181,6 +184,7 @@ fn lower_math_node(
       let upright_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
+        color: None,
       };
       let mut result = Vec::new();
       if let Some(idx) = index {
@@ -226,6 +230,7 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
   let layout_style = TextStyle {
     font_size,
     font_kind: FontKind::Math,
+    color: None,
   };
   return vec![LayoutNode::Text(translated, layout_style)];
 }

@@ -1,7 +1,7 @@
 //! インラインレベル要素の型定義
 
 use miette::SourceSpan;
-use types::FontKind;
+use types::{Color, FontKind};
 
 use crate::math::MathNode;
 
@@ -30,6 +30,19 @@ pub enum InlineNode {
     /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
     kind: FontKind,
     /// 装飾対象のインライン要素
+    children: Vec<InlineNode>,
+  },
+
+  /// テキスト色指定（`\color[color=#rrggbb]{...}`）
+  ///
+  /// 色は書体（`FontKind`）と直交する属性なので [`InlineNode::Styled`] とは別経路にする。
+  /// Lowering 層では親の `font_size` / `font_kind` を継承したまま `TextStyle.color` だけを
+  /// 上書きするため、`\bold{\color[...]{x}}` / `\color[...]{\bold{x}}` のいずれも合成される。
+  /// ネスト時は内側の `color` が外側の色を上書きする（`Styled` の上書き規則と整合）。
+  Colored {
+    /// 適用する色（Lowering 層でそのまま `TextStyle.color` になる）
+    color: Color,
+    /// 着色対象のインライン要素
     children: Vec<InlineNode>,
   },
 
@@ -104,7 +117,7 @@ impl InlineNode {
   pub fn to_plain_text(&self) -> String {
     match self {
       InlineNode::Text(s) => return s.clone(),
-      InlineNode::Styled { children, .. } => {
+      InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => {
         return children.iter().map(InlineNode::to_plain_text).collect();
       },
       InlineNode::InlineMath(_) => return "[Math]".to_string(),

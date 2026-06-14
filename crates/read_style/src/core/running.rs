@@ -16,11 +16,9 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::{
-  FontKind,
+  Color, FontKind,
   length::{Length, non_negative, positive},
 };
-
-use crate::primitives::color::Color;
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
 ///

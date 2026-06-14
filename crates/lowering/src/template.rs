@@ -105,6 +105,7 @@ mod tests {
     return TextStyle {
       font_size: 10.0,
       font_kind: FontKind::Serif,
+      color: None,
     };
   }
 

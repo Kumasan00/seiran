@@ -34,6 +34,7 @@ pub(super) fn lower_heading(
   let style = TextStyle {
     font_size: heading_style.font_size.to_pt(),
     font_kind: heading_style.font_kind,
+    color: None,
   };
 
   let children = expand_template(ctx, &heading_style.format, number, title, style)?;

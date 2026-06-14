@@ -12,6 +12,7 @@
 //! - [`table`] - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
 //! - [`anchor_mark`] - リンク行き先のアンカー [`AnchorMark`]（PDF しおり / 内部リンク）
 //! - [`link_target`] - ハイパーリンクの行き先 [`LinkTarget`]（内部 / 外部）
+//! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
 //!
 //! ## `FontMap<T>`
 //!
@@ -43,6 +44,7 @@
 //! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 
 pub mod anchor_mark;
+pub mod color;
 pub mod font;
 pub mod font_map;
 pub mod heading_level;
@@ -51,6 +53,7 @@ pub mod link_target;
 pub mod table;
 
 pub use anchor_mark::AnchorMark;
+pub use color::Color;
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;

@@ -80,7 +80,9 @@ fn collect_unknown_in_list_item(item: &ListItem, keys: &HashSet<String>, labels:
 fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, labels: &mut Vec<LabeledSpan>) {
   for inline in inlines {
     match inline {
-      InlineNode::Styled { children, .. } | InlineNode::Link { children, .. } => {
+      InlineNode::Styled { children, .. }
+      | InlineNode::Colored { children, .. }
+      | InlineNode::Link { children, .. } => {
         collect_unknown_in_inlines(children, keys, labels);
       },
       InlineNode::Cite {
