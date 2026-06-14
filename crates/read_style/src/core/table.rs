@@ -25,6 +25,9 @@ pub struct TableStyle {
   /// 表ブロックの下余白
   #[garde(custom(non_negative))]
   pub bottom_margin: Length,
+  /// 表本体とキャプションの間隔
+  #[garde(custom(non_negative))]
+  pub inner_margin: Length,
   /// 罫線の太さ
   #[garde(custom(non_negative))]
   pub rule_thickness: Length,
@@ -44,6 +47,7 @@ impl Default for TableStyle {
       },
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
+      inner_margin: Length::pt(6.0),
       rule_thickness: Length::pt(0.5),
       rule_color: None,
       cell_padding: Length::pt(4.0),

@@ -28,8 +28,8 @@ pub(crate) struct Rendered {
 /// * `entries` - cite key → hayagriva `Entry`（全参照定義から構築済み）
 /// * `cite_sites` - 各 `\cite` のキー列（ドキュメント順）
 /// * `style` - CSL スタイル（`ieee.csl` 等）
-/// * `locales` - hayagriva 内蔵ロケール
-/// * `bib_title` - 書誌見出しの文字列（`style.extended.reference.title`）
+/// * `locales` - 採番に使うロケール列（カスタムロケールを内蔵ロケールの前に重ねたもの）
+/// * `bib_title` - 書誌見出しの文字列（`style.core.reference.title`）
 pub(crate) fn render(
   entries: &HashMap<String, Entry>,
   cite_sites: &[Vec<String>],
