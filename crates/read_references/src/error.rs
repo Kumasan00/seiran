@@ -1,8 +1,8 @@
 //! 参照定義ファイル読み込み時のエラー型。
 //!
-//! 読み込み・TOML / JSON 解析・拡張子判定の失敗を表す [`ReadReferencesError`] と、値検証の個別違反を
-//! 表す [`ValidationError`] を定義する。検証フェーズで検出した複数の違反は
-//! [`ReadReferencesError::MultipleValidationErrors`] に集約し、1 度に報告する。
+//! 読み込み・TOML / JSON 解析・拡張子判定の失敗を表す [`ReadReferencesError`] を定義する。著者名の
+//! 排他性違反や空・重複 ID は、デシリアライズ時点で fail-fast に検出され
+//! [`ReadReferencesError::ParseToml`] / [`ReadReferencesError::ParseJson`] として報告される。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -49,30 +49,5 @@ pub enum ReadReferencesError {
   UnsupportedExtension {
     /// ファイルパス
     path: String,
-  },
-  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
-  #[error("参照定義のバリデーションに失敗しました。")]
-  #[diagnostic(code(references::multiple_validation_errors))]
-  MultipleValidationErrors {
-    /// 検証で検出されたすべてのエラー
-    #[related]
-    errors: Vec<ValidationError>,
-  },
-}
-
-/// 参照定義値バリデーションのエラー詳細。
-#[derive(Debug, Error, Diagnostic)]
-pub enum ValidationError {
-  /// 著者名（family/literal 排他）の不正、または空 ID などの構造的不正
-  #[error("'{path}': {message}")]
-  #[diagnostic(
-    code(references::validation::field),
-    help("references.toml の該当フィールドの値を確認してください。")
-  )]
-  Field {
-    /// 不正なフィールドのパス（例: `references.ref1.author[0]`）
-    path: String,
-    /// 不正の内容
-    message: String,
   },
 }

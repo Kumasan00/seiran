@@ -1,10 +1,10 @@
 //! CSL (Citation Style Language) 文献情報のデータモデル。
 //!
 //! 参照定義ファイル全体を表す [`References`] と個々の文献を表す [`Reference`]、文献タイプの
-//! [`ReferenceType`]、数値または文字列を許容する [`NumberOrString`] を定義する。著者名の表現は
-//! 型引数 `N` で切り替える（serde 境界では [`RawName`](crate::RawName)、確定後は [`Name`]）。
+//! [`ReferenceType`]、数値または文字列を許容する [`NumberOrString`] を定義する。著者名は手書きの
+//! [`Deserialize`] 実装を持つ確定型 [`Name`] として直接デシリアライズする（検証は [`Name`] 側で実施）。
 
-use std::{collections::HashMap, fmt, marker::PhantomData};
+use std::{collections::HashMap, fmt};
 
 use serde::{
   Deserialize, Deserializer,
@@ -15,45 +15,38 @@ use crate::{date::Date, name::Name};
 
 /// 参照定義ファイル全体を表す構造体
 ///
-/// 型引数 `N` は著者名の表現を切り替える。serde 境界では `References<RawName>` としてパースし、
-/// [`resolve`](crate::resolve) で名前検証（family/literal 排他）・空 ID チェックを経て、確定済みの
-/// `References<Name>`（既定）へ変換する。`references` は keyed-table 形式（テーブルキーが参照 ID）で
-/// デシリアライズするため、`id` をキーとするマップに直接展開される。
+/// `references` は keyed-table 形式（テーブルキーが参照 ID）でデシリアライズするため、`id` をキーと
+/// するマップに直接展開される。著者名は [`Name`] として確定済みで読み込まれる（family/literal の排他性は
+/// [`Name`] の [`Deserialize`] 実装が保証する）。
 ///
 /// CSL スタイル（`.csl`）の選択は「見た目」設定として style.toml の `[reference].csl_path` に置く
 /// （`citation` クレートが参照する）。本構造体は文献データのみを保持する。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct References<N = Name> {
+pub struct References {
   /// 参照定義のマップ（id をキー、`Reference` を値とする）
   ///
-  /// 重複キーは厳格にエラーとする（JSON の後勝ちを許さない）。詳細は
+  /// 空・空白のみの参照 ID と重複キーは厳格にエラーとする（JSON の後勝ちを許さない）。詳細は
   /// [`deserialize_unique_references`] を参照。
-  #[serde(
-    default,
-    deserialize_with = "deserialize_unique_references",
-    bound(deserialize = "N: serde::Deserialize<'de>")
-  )]
-  pub references: HashMap<String, Reference<N>>,
+  #[serde(default, deserialize_with = "deserialize_unique_references")]
+  pub references: HashMap<String, Reference>,
 }
 
-/// 参照定義マップを重複キー検出付きでデシリアライズする。
+/// 参照定義マップを参照 ID の検証付きでデシリアライズする。
 ///
-/// JSON は仕様上キーの重複を許し、標準の `HashMap` デシリアライズでは後勝ちで黙殺される。本関数は
-/// 重複を検出して即座にエラーとし、TOML（パーサ段階で重複テーブルを拒否）と挙動を揃える。
-fn deserialize_unique_references<'de, D, N>(deserializer: D) -> Result<HashMap<String, Reference<N>>, D::Error>
+/// 以下を fail-fast で拒否する:
+/// - 空文字列・空白のみの参照 ID（keyed-table のキーは値検証と独立に明示チェックする）
+/// - 重複キー。JSON は仕様上キーの重複を許し標準の `HashMap` デシリアライズでは後勝ちで黙殺されるため、
+///   ここで検出して即座にエラーとし、TOML（パーサ段階で重複テーブルを拒否）と挙動を揃える。
+fn deserialize_unique_references<'de, D>(deserializer: D) -> Result<HashMap<String, Reference>, D::Error>
 where
   D: Deserializer<'de>,
-  N: Deserialize<'de>,
 {
-  /// 重複キーを検出する `HashMap` 用の `Visitor`。
-  struct UniqueReferencesVisitor<N>(PhantomData<N>);
+  /// 参照 ID を検証する `HashMap` 用の `Visitor`。
+  struct UniqueReferencesVisitor;
 
-  impl<'de, N> Visitor<'de> for UniqueReferencesVisitor<N>
-  where
-    N: Deserialize<'de>,
-  {
-    type Value = HashMap<String, Reference<N>>;
+  impl<'de> Visitor<'de> for UniqueReferencesVisitor {
+    type Value = HashMap<String, Reference>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
       return formatter.write_str("参照 ID をキーとするテーブル");
@@ -63,8 +56,14 @@ where
     where
       A: MapAccess<'de>,
     {
-      let mut map: HashMap<String, Reference<N>> = HashMap::with_capacity(access.size_hint().unwrap_or(0));
-      while let Some((id, reference)) = access.next_entry::<String, Reference<N>>()? {
+      let mut map: HashMap<String, Reference> = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+      while let Some((id, reference)) = access.next_entry::<String, Reference>()? {
+        if id.is_empty() {
+          return Err(A::Error::custom("参照 ID（テーブルキー）に空文字列は使用できません"));
+        }
+        if id.trim().is_empty() {
+          return Err(A::Error::custom(format!("参照 ID（テーブルキー）に空白のみの文字列は使用できません: {id:?}")));
+        }
         if map.contains_key(&id) {
           return Err(A::Error::custom(format!("参照 ID が重複しています: {id}")));
         }
@@ -74,19 +73,19 @@ where
     }
   }
 
-  return deserializer.deserialize_map(UniqueReferencesVisitor(PhantomData));
+  return deserializer.deserialize_map(UniqueReferencesVisitor);
 }
 
 /// 個々の参照定義を表す構造体
 ///
 /// CSL (Citation Style Language) に基づく文献情報を保持する。
 /// 参照 ID は keyed-table 形式のテーブルキーとして保持されるため、本構造体には持たない。
-/// 型引数 `N` は著者名の表現で、serde 境界では [`RawName`](crate::RawName)、確定後（既定）は [`Name`]
-/// となる。
+/// 著者名フィールドは確定型 [`Name`] として読み込む（family/literal の排他性は [`Name`] の
+/// [`Deserialize`] 実装が保証する）。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Reference<N = Name> {
+pub struct Reference {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]
   pub reference_type: ReferenceType,
@@ -280,68 +279,68 @@ pub struct Reference<N = Name> {
 
   // Name Variables
   /// 著者リスト
-  pub author: Option<Vec<N>>,
+  pub author: Option<Vec<Name>>,
   /// 議長
-  pub chair: Option<Vec<N>>,
+  pub chair: Option<Vec<Name>>,
   /// コレクション編集者
   #[serde(rename = "collection-editor")]
-  pub collection_editor: Option<Vec<N>>,
+  pub collection_editor: Option<Vec<Name>>,
   /// 編纂者
-  pub compiler: Option<Vec<N>>,
+  pub compiler: Option<Vec<Name>>,
   /// 作曲者
-  pub composer: Option<Vec<N>>,
+  pub composer: Option<Vec<Name>>,
   /// 収録著者（収録誌・書籍の著者）
   #[serde(rename = "container-author")]
-  pub container_author: Option<Vec<N>>,
+  pub container_author: Option<Vec<Name>>,
   /// 貢献者
-  pub contributor: Option<Vec<N>>,
+  pub contributor: Option<Vec<Name>>,
   /// キュレーター
-  pub curator: Option<Vec<N>>,
+  pub curator: Option<Vec<Name>>,
   /// 監督
-  pub director: Option<Vec<N>>,
+  pub director: Option<Vec<Name>>,
   /// 編集者
-  pub editor: Option<Vec<N>>,
+  pub editor: Option<Vec<Name>>,
   /// 編集主幹
   #[serde(rename = "editorial-director")]
-  pub editorial_director: Option<Vec<N>>,
+  pub editorial_director: Option<Vec<Name>>,
   /// 編集翻訳者
   #[serde(rename = "editor-translator")]
-  pub editor_translator: Option<Vec<N>>,
+  pub editor_translator: Option<Vec<Name>>,
   /// エグゼクティブプロデューサー
   #[serde(rename = "executive-producer")]
-  pub executive_producer: Option<Vec<N>>,
+  pub executive_producer: Option<Vec<Name>>,
   /// ゲスト
-  pub guest: Option<Vec<N>>,
+  pub guest: Option<Vec<Name>>,
   /// 司会者
-  pub host: Option<Vec<N>>,
+  pub host: Option<Vec<Name>>,
   /// 挿絵画家
-  pub illustrator: Option<Vec<N>>,
+  pub illustrator: Option<Vec<Name>>,
   /// インタビュアー
-  pub interviewer: Option<Vec<N>>,
+  pub interviewer: Option<Vec<Name>>,
   /// ナレーター
-  pub narrator: Option<Vec<N>>,
+  pub narrator: Option<Vec<Name>>,
   /// 主催者
-  pub organizer: Option<Vec<N>>,
+  pub organizer: Option<Vec<Name>>,
   /// 原著者
   #[serde(rename = "original-author")]
-  pub original_author: Option<Vec<N>>,
+  pub original_author: Option<Vec<Name>>,
   /// 演者
-  pub performer: Option<Vec<N>>,
+  pub performer: Option<Vec<Name>>,
   /// プロデューサー
-  pub producer: Option<Vec<N>>,
+  pub producer: Option<Vec<Name>>,
   /// 受取人
-  pub recipient: Option<Vec<N>>,
+  pub recipient: Option<Vec<Name>>,
   /// レビュー対象の著者
   #[serde(rename = "reviewed-author")]
-  pub reviewed_author: Option<Vec<N>>,
+  pub reviewed_author: Option<Vec<Name>>,
   /// 脚本家
   #[serde(rename = "script-writer")]
-  pub script_writer: Option<Vec<N>>,
+  pub script_writer: Option<Vec<Name>>,
   /// シリーズ制作者
   #[serde(rename = "series-creator")]
-  pub series_creator: Option<Vec<N>>,
+  pub series_creator: Option<Vec<Name>>,
   /// 翻訳者
-  pub translator: Option<Vec<N>>,
+  pub translator: Option<Vec<Name>>,
 }
 
 /// 参照の種類を表す列挙型
