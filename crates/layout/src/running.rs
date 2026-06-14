@@ -141,6 +141,7 @@ fn build_region(
       height,
       depth,
       is_last: true,
+      links: Vec::new(),
     },
     baseline_y: slots.baseline_y,
   });

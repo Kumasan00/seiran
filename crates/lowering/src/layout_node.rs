@@ -3,7 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use types::{FontKind, Length, TableColumn};
+use types::{AnchorMark, FontKind, Length, LinkTarget, TableColumn};
 
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -73,6 +73,23 @@ pub enum LayoutNode {
   /// セルごとに `HItem` 列へ変換される。列幅の解決（自然幅の実測・残余分配）は
   /// `hlist` 段、罫線・行の描画は `pdf_gen` 段で行う。
   Table(TableLayout),
+  /// リンク行き先のアンカー（機構 A・ゼロサイズ）
+  ///
+  /// ブロック先頭に置く destination マーカー。`layout` 段で `Block::Anchor` に透過され、
+  /// `hlist::break_pages` が確定座標（`PlacedAnchor`）に解決する。見出し（しおり用）と
+  /// ラベル付きブロック（`\ref` の到達先）に付与される。
+  Anchor(AnchorMark),
+  /// クリック可能なリンク領域（機構 B）
+  ///
+  /// `children` を囲むクリック矩形を表す。`layout` 段で幅 0 のマーカー対
+  /// （`HItem::LinkStart` / `LinkEnd`）に展開され、`hlist` が行ごとの矩形を
+  /// 収集して `pdf_gen` がリンク注釈にする。`\ref`（内部）と `\url` / `\href`（外部）の双方。
+  Link {
+    /// リンクの行き先（内部アンカー / 外部 URI）
+    target: LinkTarget,
+    /// リンク対象の子要素
+    children: Vec<LayoutNode>,
+  },
   LineBreak,
   PageBreak,
 }

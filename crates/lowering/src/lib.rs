@@ -133,9 +133,9 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
       level,
       number,
       title,
-      ..
+      label,
     } => {
-      return heading::lower_heading(ctx, *level, number, title);
+      return heading::lower_heading(ctx, *level, number, title, label.clone());
     },
     DocNode::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines);
@@ -155,8 +155,13 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     DocNode::Space(length) => {
       return Ok(vec![LayoutNode::Kern { length: *length }]);
     },
-    DocNode::DisplayMath { body, number, .. } => {
-      return Ok(math::lower_display_math(ctx, body, number.as_deref()));
+    DocNode::DisplayMath {
+      body,
+      number,
+      label,
+    } => {
+      let nodes = math::lower_display_math(ctx, body, number.as_deref());
+      return Ok(with_label_anchor(label.as_deref(), nodes));
     },
     DocNode::Figure {
       image_path,
@@ -167,14 +172,15 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
       caption,
       caption_position,
       number,
-      ..
+      label,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
       let overrides = figure::ImageOverrides {
         dpi: *dpi,
         downsample: *downsample,
       };
-      return figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, number);
+      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, number)?;
+      return Ok(with_label_anchor(label.as_deref(), nodes));
     },
     DocNode::Table {
       columns,
@@ -185,12 +191,27 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
       caption_position,
       number,
       breakable,
-      ..
+      label,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
-      return table::lower_table(ctx, columns, widths, head, rows, caption_arg, number, *breakable);
+      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, number, *breakable)?;
+      return Ok(with_label_anchor(label.as_deref(), nodes));
     },
   }
+}
+
+/// ラベル付きブロック（図・表・ディスプレイ数式）の先頭に `\ref` 到達先アンカーを付与する
+///
+/// `label` が `None`（参照対象でない）の場合はそのまま返す。見出しは [`heading::lower_heading`]
+/// が `AnchorMark::Heading` を別途出すため、ここでは扱わない。
+fn with_label_anchor(label: Option<&str>, nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
+  let Some(label) = label else {
+    return nodes;
+  };
+  let mut result = Vec::with_capacity(nodes.len() + 1);
+  result.push(LayoutNode::Anchor(types::AnchorMark::Label(label.to_string())));
+  result.extend(nodes);
+  return result;
 }
 
 #[cfg(test)]
@@ -429,6 +450,45 @@ mod tests {
 
     // Assert — ブロック境界は Vkern / VBox.margin_bottom で表され、裸の LineBreak は出ない
     assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
+  }
+
+  #[test]
+  fn labeled_display_math_emits_label_anchor() {
+    // Arrange — label 付きディスプレイ数式は先頭に AnchorMark::Label を出す
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::DisplayMath {
+      body: vec![MathNode::Text("a".to_string())],
+      label: Some("eq:foo".to_string()),
+      number: Some("1".to_string()),
+    };
+
+    // Act
+    let nodes = lower_node(&ctx, &node).expect("失敗しない");
+
+    // Assert — 先頭が Anchor(Label("eq:foo"))
+    assert!(
+      matches!(nodes.first(), Some(LayoutNode::Anchor(types::AnchorMark::Label(l))) if l == "eq:foo"),
+      "先頭は Label アンカー: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn unlabeled_display_math_emits_no_anchor() {
+    // Arrange — label なしのディスプレイ数式はアンカーを出さない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::DisplayMath {
+      body: vec![MathNode::Text("a".to_string())],
+      label: None,
+      number: Some("1".to_string()),
+    };
+
+    // Act
+    let nodes = lower_node(&ctx, &node).expect("失敗しない");
+
+    // Assert — Anchor は含まれない
+    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Anchor(_))), "アンカーは出ない: {nodes:?}");
   }
 
   #[test]

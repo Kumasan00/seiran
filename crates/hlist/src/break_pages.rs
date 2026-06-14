@@ -10,10 +10,13 @@
 //! ただし画像・表・罫線はブロックの底辺で終わるため、直後の段落はベースラインを
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
+use types::AnchorMark;
+
 use crate::{
   block::Block,
   break_lines::LineBreaker,
-  page::{Page, PlacedBlock, PlacedTableRow},
+  line::Line,
+  page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedTableRow},
   table_box::{TableBox, resolve_column_widths, table_row_height},
 };
 
@@ -39,6 +42,12 @@ pub struct PageGeometry {
 struct PageComposer {
   pages: Vec<Page>,
   current: Vec<PlacedBlock>,
+  /// 現在ページに解決済みのリンク到達先アンカー（機構 A）
+  current_anchors: Vec<PlacedAnchor>,
+  /// 現在ページに確定済みのクリック可能リンク領域（機構 B）
+  current_links: Vec<PlacedLink>,
+  /// 未解決のアンカー。次に配置される実ブロックの確定座標で解決する
+  pending_anchors: Vec<AnchorMark>,
   /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
   y: f32,
   /// 直前のブロックが底辺基準（画像・表・罫線）で終わったか
@@ -52,28 +61,69 @@ impl PageComposer {
     return PageComposer {
       pages: Vec::new(),
       current: Vec::new(),
+      current_anchors: Vec::new(),
+      current_links: Vec::new(),
+      pending_anchors: Vec::new(),
       y: geom.margin_top,
       cursor_at_edge: false,
     };
   }
 
   /// 現在ページを確定し、新しいページを開始する
+  ///
+  /// 未解決アンカー（`pending_anchors`）は引き継ぐ。次の実ブロックがこの新ページに
+  /// 配置されたときに解決されるため、移動はしない。
   fn start_new_page(&mut self, geom: &PageGeometry) {
     self.pages.push(Page {
       blocks: std::mem::take(&mut self.current),
       header: Vec::new(),
       footer: Vec::new(),
+      anchors: std::mem::take(&mut self.current_anchors),
+      links: std::mem::take(&mut self.current_links),
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
   }
 
+  /// 未解決アンカーを確定座標 `(x, y)` で現在ページに解決する
+  fn resolve_pending_anchors(&mut self, x: f32, y: f32) {
+    for mark in self.pending_anchors.drain(..) {
+      self.current_anchors.push(PlacedAnchor { mark, x, y });
+    }
+  }
+
+  /// 行のリンク領域を確定座標へ展開し、現在ページに追加する
+  ///
+  /// `baseline_y` は行のベースライン。矩形は行の `height` / `depth` で縦範囲を取る。
+  /// 退化した（幅 0 以下の）矩形はスキップする。
+  fn collect_line_links(&mut self, line: &Line, baseline_y: f32) {
+    let top = baseline_y - line.height;
+    let height = line.height + line.depth;
+    for link in &line.links {
+      if link.x1 <= link.x0 {
+        continue;
+      }
+      self.current_links.push(PlacedLink {
+        target: link.target.clone(),
+        x: link.x0,
+        y: top,
+        width: link.x1 - link.x0,
+        height,
+      });
+    }
+  }
+
   /// 全ブロックの配置後に最終ページを確定して返す
   fn finish(mut self) -> Vec<Page> {
+    // 末尾に残った未解決アンカーは現在カーソル位置で解決する
+    let y = self.y;
+    self.resolve_pending_anchors(0.0, y);
     self.pages.push(Page {
       blocks: self.current,
       header: Vec::new(),
       footer: Vec::new(),
+      anchors: self.current_anchors,
+      links: self.current_links,
     });
     return self.pages;
   }
@@ -106,6 +156,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         if composer.y + height > geom.page_limit {
           composer.start_new_page(geom);
         }
+        composer.resolve_pending_anchors(0.0, composer.y);
         composer.current.push(PlacedBlock::Rule {
           x: 0.0,
           y: composer.y,
@@ -128,6 +179,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         if composer.y + height > geom.page_limit {
           composer.start_new_page(geom);
         }
+        composer.resolve_pending_anchors(0.0, composer.y);
         composer.current.push(PlacedBlock::Image {
           path,
           x: 0.0,
@@ -142,6 +194,10 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
       Block::Table(table) => {
         place_table(&mut composer, geom, &table, text_width);
         composer.cursor_at_edge = true;
+      },
+      // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため pending に積む
+      Block::Anchor(mark) => {
+        composer.pending_anchors.push(mark);
       },
     }
   }
@@ -168,6 +224,7 @@ fn place_paragraph(
   let mut baseline = composer.y;
   let mut prev_depth: Option<f32> = None;
   for line in lines {
+    let is_first = prev_depth.is_none();
     match prev_depth {
       None => {
         if composer.cursor_at_edge {
@@ -182,7 +239,12 @@ fn place_paragraph(
       composer.start_new_page(geom);
       baseline = geom.margin_top;
     }
+    // 先頭行の確定位置（改ページ後）で未解決アンカーを解決する。行の上端を指す
+    if is_first {
+      composer.resolve_pending_anchors(0.0, baseline - line.height);
+    }
     prev_depth = Some(line.depth);
+    composer.collect_line_links(&line, baseline);
     composer.current.push(PlacedBlock::Line {
       line,
       baseline_y: baseline,
@@ -219,6 +281,9 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   {
     composer.start_new_page(geom);
   }
+
+  // 表先頭の確定位置（改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する
+  composer.resolve_pending_anchors(0.0, composer.y);
 
   let mut placed_rows: Vec<PlacedTableRow> = Vec::new();
   // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ
@@ -536,6 +601,77 @@ mod tests {
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("HEAD"), "1 ページ目もヘッダ始まり");
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("HEAD"), "2 ページ目はヘッダ再描画");
+  }
+
+  #[test]
+  fn pending_anchor_resolves_to_next_paragraph_top() {
+    // Arrange — Anchor の直後の段落の先頭行の上端にアンカーが解決される
+    use types::AnchorMark;
+    let geom = test_geometry();
+    let blocks = vec![
+      Block::Anchor(AnchorMark::Heading { label: None }),
+      paragraph_of_lines(1),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — baseline=10, line.height=8 → アンカー y = 2、x = 0
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
+    assert!((pages[0].anchors[0].y - 2.0).abs() < f32::EPSILON);
+    assert!((pages[0].anchors[0].x - 0.0).abs() < f32::EPSILON);
+    assert!(matches!(pages[0].anchors[0].mark, AnchorMark::Heading { label: None }));
+  }
+
+  #[test]
+  fn pending_anchor_resolves_on_page_after_break() {
+    // Arrange — ページ 1 を埋めた後の Anchor は、改ページした次段落とともにページ 2 に解決される
+    use types::AnchorMark;
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(4),
+      Block::Anchor(AnchorMark::Label("tab:x".to_string())),
+      paragraph_of_lines(1),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — アンカーはページ 1 ではなくページ 2（改ページ後）に解決される
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(pages[0].anchors.is_empty(), "ページ 1 にアンカーは無い: {:?}", pages[0].anchors);
+    assert_eq!(pages[1].anchors.len(), 1, "{:?}", pages[1].anchors);
+    assert!((pages[1].anchors[0].y - 2.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn paragraph_link_becomes_placed_link() {
+    // Arrange — リンクマーカーで囲んだ段落から PlacedLink が確定する
+    use types::LinkTarget;
+    let geom = test_geometry();
+    let items = vec![
+      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — baseline=10, height=8, depth=2 → top=2, height=10, x=0, width=20
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    let link = &pages[0].links[0];
+    assert!(matches!(&link.target, LinkTarget::External(uri) if uri == "https://example.com"));
+    assert!((link.x - 0.0).abs() < f32::EPSILON);
+    assert!((link.y - 2.0).abs() < f32::EPSILON);
+    assert!((link.width - 20.0).abs() < f32::EPSILON);
+    assert!((link.height - 10.0).abs() < f32::EPSILON);
   }
 
   #[test]

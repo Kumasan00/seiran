@@ -4,9 +4,11 @@
 //! box は計測済みの幅を持つため、行分割はフォントに一切触れない純粋計算になる。
 //! 将来 Knuth-Plass を導入する際は入出力型を変えずに実装を追加する。
 
+use types::LinkTarget;
+
 use crate::{
   hitem::HItem,
-  line::{Line, PositionedBox},
+  line::{Line, LineLink, PositionedBox},
 };
 
 /// 行分割アルゴリズムの抽象
@@ -15,6 +17,17 @@ pub trait LineBreaker {
   ///
   /// `text_width` は本文幅（pt）。分割点が存在しない場合は overflow を許容する。
   fn break_lines(&self, items: &[HItem], text_width: f32) -> Vec<Line>;
+}
+
+/// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
+///
+/// 折り返しをまたいで継続するため、`break_lines` のループ全体で 1 つ保持し、
+/// 各行（[`build_line`]）に渡して引き継ぐ。
+struct OpenLink {
+  /// リンクの行き先
+  target: LinkTarget,
+  /// 現在の行における領域左端の行頭からの水平オフセット（pt）
+  x0: f32,
 }
 
 /// 貪欲法（first-fit）による行分割
@@ -35,11 +48,13 @@ impl LineBreaker for GreedyBreaker {
     let mut width_so_far = 0.0f32;
     // 直近の分割可能点（buffer 内インデックス）
     let mut last_break: Option<usize> = None;
+    // 折り返しをまたいで開いているリンク領域（行間で引き継ぐ）
+    let mut open_links: Vec<OpenLink> = Vec::new();
 
     for item in items {
       match item {
         HItem::ForcedBreak => {
-          lines.push(build_line(&buffer, true));
+          lines.push(build_line(&buffer, true, &mut open_links));
           buffer.clear();
           width_so_far = 0.0;
           last_break = None;
@@ -63,13 +78,17 @@ impl LineBreaker for GreedyBreaker {
             last_break = Some(buffer.len() - 1);
           }
         },
+        // リンクマーカーは幅 0・分割不可。行に積むだけで build_line が矩形を収集する
+        HItem::LinkStart(_) | HItem::LinkEnd => {
+          buffer.push(item);
+        },
         HItem::Box(_) | HItem::Kern(_) => {
           let item_width = item.natural_width();
           if width_so_far + item_width > text_width
             && let Some(break_index) = last_break
           {
             // 分割可能点までで行を確定し、残りを次行へ持ち越す
-            lines.push(build_line(&buffer[..break_index], false));
+            lines.push(build_line(&buffer[..break_index], false, &mut open_links));
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             // 持ち越し先頭の breakable glue は破棄する
@@ -92,7 +111,7 @@ impl LineBreaker for GreedyBreaker {
     }
 
     if !buffer.is_empty() || lines.is_empty() {
-      lines.push(build_line(&buffer, true));
+      lines.push(build_line(&buffer, true, &mut open_links));
     }
     return lines;
   }
@@ -101,7 +120,9 @@ impl LineBreaker for GreedyBreaker {
 /// アイテム列から 1 行を組み立てる（左揃え・位置確定）
 ///
 /// 行末の breakable glue は破棄する。`Penalty` は幅を持たないため位置決めに影響しない。
-fn build_line(items: &[&HItem], is_last: bool) -> Line {
+/// `open_links` は折り返しをまたいで開いているリンク領域の状態で、`LinkStart` / `LinkEnd`
+/// に応じて更新しつつ、この行に属するクリック矩形（[`LineLink`]）を収集する。
+fn build_line(items: &[&HItem], is_last: bool, open_links: &mut Vec<OpenLink>) -> Line {
   // 行末の breakable glue を切り落とす
   let mut end = items.len();
   while end > 0
@@ -117,7 +138,13 @@ fn build_line(items: &[&HItem], is_last: bool) -> Line {
   }
   let items = &items[..end];
 
+  // 前の行から継続するリンクは、この行では行頭（x0 = 0）から始まる
+  for open in open_links.iter_mut() {
+    open.x0 = 0.0;
+  }
+
   let mut boxes: Vec<PositionedBox> = Vec::new();
+  let mut links: Vec<LineLink> = Vec::new();
   let mut x = 0.0f32;
   let mut height = 0.0f32;
   let mut depth = 0.0f32;
@@ -136,14 +163,36 @@ fn build_line(items: &[&HItem], is_last: bool) -> Line {
       },
       HItem::Glue { natural, .. } => x += natural,
       HItem::Kern(value) => x += value,
+      HItem::LinkStart(target) => open_links.push(OpenLink {
+        target: target.clone(),
+        x0: x,
+      }),
+      HItem::LinkEnd => {
+        if let Some(open) = open_links.pop() {
+          links.push(LineLink {
+            target: open.target,
+            x0: open.x0,
+            x1: x,
+          });
+        }
+      },
       HItem::Penalty { .. } | HItem::ForcedBreak => {},
     }
+  }
+  // 行末でまだ開いているリンクは、この行ぶんの矩形を出して次行へ継続する
+  for open in open_links.iter() {
+    links.push(LineLink {
+      target: open.target.clone(),
+      x0: open.x0,
+      x1: x,
+    });
   }
   return Line {
     boxes,
     height,
     depth,
     is_last,
+    links,
   };
 }
 
@@ -330,6 +379,60 @@ mod tests {
       let width = line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
       assert!(width <= 30.0 + f32::EPSILON, "行幅 {width} が段幅 30 を超えた: {line:?}");
     }
+  }
+
+  /// テスト用の内部リンク行き先
+  fn link_target() -> types::LinkTarget { return types::LinkTarget::Internal("sec:x".to_string()); }
+
+  #[test]
+  fn link_markers_collect_single_rect_on_one_line() {
+    // Arrange — LinkStart box box LinkEnd が 1 行に収まる（幅 100）
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 100.0);
+
+    // Assert — 1 行・1 矩形（x0=0, x1=20）。マーカーは幅 0 なので box 2 つ分
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].links.len(), 1);
+    assert!((lines[0].links[0].x0 - 0.0).abs() < f32::EPSILON);
+    assert!((lines[0].links[0].x1 - 20.0).abs() < f32::EPSILON, "{:?}", lines[0].links);
+  }
+
+  #[test]
+  fn link_spanning_wrap_splits_into_two_rects() {
+    // Arrange — LinkStart box glue box LinkEnd。幅 12 で box 2 つ目が折り返す
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      test_box(),
+      space_glue(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 12.0);
+
+    // Assert — 2 行に分割され、各行に 1 矩形（どちらも x0=0, x1=10）
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].links.len(), 1, "1 行目に継続中の矩形: {:?}", lines[0].links);
+    assert!((lines[0].links[0].x1 - 10.0).abs() < f32::EPSILON);
+    assert_eq!(lines[1].links.len(), 1, "2 行目に残りの矩形: {:?}", lines[1].links);
+    assert!((lines[1].links[0].x0 - 0.0).abs() < f32::EPSILON);
+    assert!((lines[1].links[0].x1 - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn line_without_links_has_empty_links() {
+    // リンクマーカーが無い段落の行は links が空
+    let lines = GreedyBreaker.break_lines(&[test_box(), space_glue(), test_box()], 100.0);
+
+    assert!(lines[0].links.is_empty());
   }
 
   #[test]

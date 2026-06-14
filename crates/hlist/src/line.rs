@@ -1,4 +1,6 @@
-//! 行分割の出力（[`Line`] / [`PositionedBox`]）の定義
+//! 行分割の出力（[`Line`] / [`PositionedBox`] / [`LineLink`]）の定義
+
+use types::LinkTarget;
 
 use crate::hitem::HBoxContent;
 
@@ -17,6 +19,24 @@ pub struct Line {
   pub depth: f32,
   /// 段落最終行・強制改行による行か
   pub is_last: bool,
+  /// この行に含まれるクリック可能なリンク領域（機構 B・行頭からの水平範囲）
+  ///
+  /// 1 つのリンクが折り返しをまたぐ場合は行ごとに 1 つの矩形へ分割される。
+  pub links: Vec<LineLink>,
+}
+
+/// 行内のリンク領域（クリック矩形の水平範囲）
+///
+/// `x0` / `x1` は行頭（本文左端）からの水平オフセット（pt）。縦範囲は所属する
+/// [`Line`] の `height` / `depth` から `break_pages` が確定する。
+#[derive(Debug, Clone)]
+pub struct LineLink {
+  /// リンクの行き先（内部アンカー / 外部 URI）
+  pub target: LinkTarget,
+  /// 領域左端の行頭からの水平オフセット（pt）
+  pub x0: f32,
+  /// 領域右端の行頭からの水平オフセット（pt）
+  pub x1: f32,
 }
 
 /// 行内に配置されたボックス

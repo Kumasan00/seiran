@@ -4,6 +4,7 @@
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
 use document::{HeadingLevel, InlineNode};
+use types::AnchorMark;
 
 use super::{LoweringContext, LoweringError, template::expand_template};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -14,17 +15,20 @@ use crate::layout_node::{LayoutNode, TextStyle};
 /// タイトル内の書体指定・インライン数式はスタイルを保持したまま埋め込まれます。
 /// Part レベルの場合は `PageBreak` を先行して出力します。
 ///
+/// 見出しブロックの直前に [`LayoutNode::Anchor`]（[`AnchorMark::Heading`]）を出力し、
+/// PDF のしおり（アウトライン）と `\ref` 内部リンクの到達先を生成する。`label` は
+/// `\section[label=...]` で付与された参照ラベル（`\ref` 対象でなければ `None`）。
+///
 /// ## TODO
 ///
 /// - [ ] 見出し番号のフォントスタイル（色、太さ等）を細かくカスタマイズ可能にする
-/// - [ ] PDF ブックマーク生成に必要な情報（ページ番号、座標等）をここで収集する
-///   → または別パスで Document IR を走査して収集する
 /// - [ ] 見出し前後のスペース（`margin_top` 等）を追加する
 pub(super) fn lower_heading(
   ctx: &LoweringContext,
   level: HeadingLevel,
   number: &str,
   title: &[InlineNode],
+  label: Option<String>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
   let style = TextStyle {
@@ -39,6 +43,9 @@ pub(super) fn lower_heading(
   if heading_style.page_break_before {
     result.push(LayoutNode::PageBreak);
   }
+
+  // しおり・内部リンクの到達先アンカー。改ページ後に置くことで正しいページに解決される。
+  result.push(LayoutNode::Anchor(AnchorMark::Heading { label }));
 
   result.push(LayoutNode::VBox {
     children,
@@ -65,8 +72,9 @@ mod tests {
     style.core.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())])
-      .expect("解決済みテキストのみの見出しは失敗しないはず");
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())], None)
+        .expect("解決済みテキストのみの見出しは失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -97,8 +105,8 @@ mod tests {
       },
     ];
 
-    let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1.1", &title).expect("解決済みインラインのみなので失敗しないはず");
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1.1", &title, None)
+      .expect("解決済みインラインのみなので失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -121,6 +129,37 @@ mod tests {
   }
 
   #[test]
+  fn lower_heading_emits_anchor_with_label() {
+    // 見出しは VBox の直前に AnchorMark::Heading（ラベル付き）を出す
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      &[InlineNode::Text("Intro".to_string())],
+      Some("sec:intro".to_string()),
+    )
+    .expect("失敗しないはず");
+
+    let anchor = nodes.iter().find_map(|n| match n {
+      LayoutNode::Anchor(mark) => Some(mark.clone()),
+      _ => None,
+    });
+    assert_eq!(
+      anchor,
+      Some(types::AnchorMark::Heading {
+        label: Some("sec:intro".to_string())
+      })
+    );
+    // アンカーは VBox より前に出る
+    let anchor_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Anchor(_))).unwrap();
+    let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
+    assert!(anchor_idx < vbox_idx, "アンカーは VBox より前: {nodes:?}");
+  }
+
+  #[test]
   fn unresolved_ref_in_heading_title_returns_error() {
     // 見出しタイトルに含まれる未解決 Ref も inline_nodes_to_plain_text 経由で
     // 同じエラーとして伝播することを確認する。
@@ -136,6 +175,7 @@ mod tests {
         number: None,
         span: miette::SourceSpan::from((0_usize, 0_usize)),
       }],
+      None,
     )
     .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
 

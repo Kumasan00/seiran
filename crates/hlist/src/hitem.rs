@@ -3,6 +3,8 @@
 //! box の width / height / depth は生成時（`layout::build_blocks`）に 1 回だけ計測して
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
+use types::LinkTarget;
+
 use crate::glyph_run::GlyphRun;
 
 /// 水平リストの最小単位（段落内）
@@ -29,17 +31,25 @@ pub enum HItem {
   Penalty { value: i32 },
   /// 強制改行（`\\` 由来）
   ForcedBreak,
+  /// リンク領域（機構 B）の開始マーカー（幅 0・分割不可）
+  ///
+  /// 後続の `LinkEnd` までのボックス連がクリック可能なリンク領域になる。
+  /// 行分割（[`crate::break_lines`]）が行ごとの矩形を収集する際の境界に使う。
+  /// 折り返しをまたぐ場合は次行へ継続する。
+  LinkStart(LinkTarget),
+  /// リンク領域（機構 B）の終了マーカー（幅 0・分割不可）
+  LinkEnd,
 }
 
 impl HItem {
-  /// アイテムの自然幅（pt）を返す。`Penalty` / `ForcedBreak` は 0
+  /// アイテムの自然幅（pt）を返す。`Penalty` / `ForcedBreak` / リンクマーカーは 0
   #[must_use]
   pub fn natural_width(&self) -> f32 {
     return match self {
       HItem::Box(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
-      HItem::Penalty { .. } | HItem::ForcedBreak => 0.0,
+      HItem::Penalty { .. } | HItem::ForcedBreak | HItem::LinkStart(_) | HItem::LinkEnd => 0.0,
     };
   }
 }

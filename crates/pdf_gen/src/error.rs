@@ -59,6 +59,13 @@ pub enum PdfGenError {
   #[error("罫線のパスを生成できませんでした")]
   #[diagnostic(code(pdf_gen::invalid_rule_path), help("罫線の矩形が正しく構築されているか確認してください。"))]
   InvalidRulePath,
+  /// リンク注釈用の矩形を生成できませんでした。
+  #[error("リンク注釈の矩形を生成できませんでした")]
+  #[diagnostic(
+    code(pdf_gen::invalid_link_rect),
+    help("リンク領域の x / y / width / height が正の有限値であることを確認してください。")
+  )]
+  InvalidLinkRect,
   /// 背景塗りつぶし用の矩形を生成できませんでした。
   #[error("背景の矩形を生成できませんでした")]
   #[diagnostic(
