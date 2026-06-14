@@ -14,6 +14,11 @@ pub enum LayoutNode {
   VBox {
     children: Vec<LayoutNode>,
     margin_bottom: Length,
+    /// この `VBox` 配下の縦リストに加える左インデント（pt 換算で累積）
+    ///
+    /// リスト項目で字下げに使う。`layout::build_blocks` が `VBox` の入れ子ごとに加算し、
+    /// 配下の段落（`Block::Paragraph`）へ確定値を刻む。通常の `VBox` は 0。
+    indent: Length,
   },
   /// 水平方向のコンテナ (行、インライン数式など)
   HBox {

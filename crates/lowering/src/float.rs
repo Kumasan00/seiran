@@ -80,6 +80,7 @@ pub(super) fn wrap_float(
     LayoutNode::VBox {
       children,
       margin_bottom: spec.bottom_margin,
+      indent: Length::pt(0.0),
     },
   ];
 }
@@ -138,6 +139,7 @@ mod tests {
     let LayoutNode::VBox {
       children,
       margin_bottom,
+      ..
     } = &nodes[1]
     else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
@@ -250,8 +252,9 @@ mod tests {
     let err = build_caption(&ctx, &caption_style, &inlines, "1").expect_err("未解決 Ref はエラー");
 
     // Assert
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "fig:missing"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "fig:missing");
   }
 }

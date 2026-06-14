@@ -194,9 +194,10 @@ mod tests {
     let err =
       expand_template(&ctx, "{number} {title}", "1", &title, base_style()).expect_err("未解決 Ref はエラーになるべき");
 
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "tab:missing"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "tab:missing");
   }
 
   #[test]

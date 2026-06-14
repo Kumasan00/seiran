@@ -59,8 +59,8 @@ pub fn build_blocks(
   let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
-  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph);
-  measurer.flush_paragraph(&mut blocks, &mut paragraph);
+  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0);
+  measurer.flush_paragraph(&mut blocks, &mut paragraph, 0.0);
   return blocks;
 }
 
@@ -95,7 +95,16 @@ impl<'a> Measurer<'a> {
 
 impl Measurer<'_> {
   /// 縦リストを走査してブロック列を構築する（`VBox` に再帰適用）
-  fn walk_vertical(&mut self, nodes: Vec<LayoutNode>, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>) {
+  ///
+  /// `indent` は本文左端からの累積左インデント（pt）。`VBox` の入れ子ごとに
+  /// `VBox::indent` を加算し、配下の段落（`Block::Paragraph`）へ確定値として刻む。
+  fn walk_vertical(
+    &mut self,
+    nodes: Vec<LayoutNode>,
+    blocks: &mut Vec<Block>,
+    paragraph: &mut Vec<HItem>,
+    indent: f32,
+  ) {
     for node in nodes {
       match node {
         // インライン要素の極大列は 1 個の段落にまとめる
@@ -110,25 +119,27 @@ impl Measurer<'_> {
         },
         // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
         LayoutNode::Anchor(mark) => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::Anchor(mark));
         },
         LayoutNode::VBox {
           children,
           margin_bottom,
+          indent: vbox_indent,
         } => {
-          // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる
-          self.flush_paragraph(blocks, paragraph);
-          self.walk_vertical(children, blocks, paragraph);
-          self.flush_paragraph(blocks, paragraph);
+          // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
+          // インデントは入れ子ごとに累積する（ネストしたリストが段ごとに深くなる）。
+          self.flush_paragraph(blocks, paragraph, indent);
+          self.walk_vertical(children, blocks, paragraph, indent + vbox_indent.to_pt());
+          self.flush_paragraph(blocks, paragraph, indent + vbox_indent.to_pt());
           blocks.push(Block::VSpace(margin_bottom.to_pt()));
         },
         LayoutNode::Vkern { length } => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::VSpace(length.to_pt()));
         },
         LayoutNode::Rule { width, height } => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::Rule {
             width: width.to_pt(),
             height: height.to_pt(),
@@ -140,7 +151,7 @@ impl Measurer<'_> {
           height,
           target_dpi,
         } => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::Image {
             path,
             width: width.map(Length::to_pt),
@@ -149,11 +160,11 @@ impl Measurer<'_> {
           });
         },
         LayoutNode::Table(table) => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::Table(self.build_table_box(table)));
         },
         LayoutNode::PageBreak => {
-          self.flush_paragraph(blocks, paragraph);
+          self.flush_paragraph(blocks, paragraph, indent);
           blocks.push(Block::PageBreak);
         },
       }
@@ -163,7 +174,9 @@ impl Measurer<'_> {
   /// 溜めた段落アイテムを `Block::Paragraph` として確定する
   ///
   /// 行送り（leading）は段落内の支配的（最大）フォントサイズ × 行高係数。
-  fn flush_paragraph(&self, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>) {
+  /// `indent` は本文左端からの左インデント（pt）で、`break_pages` が折り返し幅の縮小と
+  /// 行の右シフトに用いる。
+  fn flush_paragraph(&self, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>, indent: f32) {
     if paragraph.is_empty() {
       return;
     }
@@ -172,6 +185,7 @@ impl Measurer<'_> {
     blocks.push(Block::Paragraph {
       items,
       leading: dominant_font_size * self.line_height_factor,
+      indent,
     });
   }
 

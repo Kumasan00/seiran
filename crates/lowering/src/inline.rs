@@ -87,17 +87,20 @@ pub(super) fn lower_inline(
         children: inner,
       }]);
     },
-    InlineNode::Cite { keys, label, .. } => {
-      // CSL 整形ステージが `label` を確定済みならそれを描画する。未確定（CSL 整形未実装）
-      // の暫定動作として、キー列をそのまま描画してパイプラインを通す。
-      if let Some(inlines) = label {
-        let mut result = Vec::new();
-        for child in inlines {
-          result.extend(lower_inline(ctx, child, parent_style)?);
-        }
-        return Ok(result);
+    InlineNode::Cite { keys, label, span } => {
+      // CSL 整形ステージ（`citation::process_citations`）が lowering の前段で `label` を
+      // 確定済みのはず。未確定のまま到達した場合は `Ref` と同様にエラーとして報告する。
+      let Some(inlines) = label else {
+        return Err(LoweringError::UnresolvedCitation {
+          keys: keys.join(", "),
+          span: *span,
+        });
+      };
+      let mut result = Vec::new();
+      for child in inlines {
+        result.extend(lower_inline(ctx, child, parent_style)?);
       }
-      return Ok(vec![LayoutNode::Text(keys.join(", "), parent_style)]);
+      return Ok(result);
     },
   }
 }

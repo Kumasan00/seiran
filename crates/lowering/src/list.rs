@@ -33,11 +33,9 @@ pub(super) fn lower_list(
       format!("{} ", list_style.unordered_marker)
     };
 
-    // インデント + マーカー + 内容
+    // マーカー + 内容。左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
+    // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。
     let mut item_nodes = Vec::new();
-    item_nodes.push(LayoutNode::Kern {
-      length: list_style.indent,
-    });
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
     // アイテム内容を変換
@@ -47,6 +45,7 @@ pub(super) fn lower_list(
     result.push(LayoutNode::VBox {
       children: item_nodes,
       margin_bottom: list_style.item_margin_bottom,
+      indent: list_style.indent,
     });
   }
 
@@ -66,18 +65,17 @@ mod tests {
     return ListItem::new(vec![DocNode::Paragraph(vec![InlineNode::Text(text.to_string())])]);
   }
 
-  /// `lower_list` が返す各 item（`VBox`）から先頭の `Kern` 長とマーカー `Text` を取り出す
-  fn kern_and_marker(node: &LayoutNode) -> (f32, &str, TextStyle) {
+  /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
+  ///
+  /// インデントは `VBox.indent`（ブロック単位）で表すため、項目の先頭インラインはマーカー。
+  fn marker_of(node: &LayoutNode) -> (&str, TextStyle) {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
     };
-    let LayoutNode::Kern { length } = &children[0] else {
-      panic!("先頭は Kern（インデント）であるべき: {children:?}");
+    let LayoutNode::Text(marker, style) = &children[0] else {
+      panic!("先頭はマーカー Text であるべき: {children:?}");
     };
-    let LayoutNode::Text(marker, style) = &children[1] else {
-      panic!("2 番目はマーカー Text であるべき: {children:?}");
-    };
-    return (length.to_pt(), marker, *style);
+    return (marker, *style);
   }
 
   #[test]
@@ -91,7 +89,7 @@ mod tests {
     let nodes = lower_list(&ctx, false, &items).expect("解決済み内容なので失敗しない");
 
     // Assert — マーカーは "• "（末尾スペース付き）
-    let (_, marker, _) = kern_and_marker(&nodes[0]);
+    let (marker, _) = marker_of(&nodes[0]);
     assert_eq!(marker, "• ");
   }
 
@@ -111,7 +109,7 @@ mod tests {
 
     // Assert — 1,2,3 と連番で展開され、末尾スペースが付く
     assert_eq!(nodes.len(), 3);
-    let markers: Vec<&str> = nodes.iter().map(|n| kern_and_marker(n).1).collect();
+    let markers: Vec<&str> = nodes.iter().map(|n| marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
   }
 
@@ -125,17 +123,65 @@ mod tests {
     // Act
     let nodes = lower_list(&ctx, false, &items).expect("失敗しない");
 
-    // Assert — Kern=indent、VBox.margin_bottom=item_margin_bottom、marker_style は規定どおり
+    // Assert — VBox.indent=indent（ブロック単位）・先頭に Kern は出さない、
+    // margin_bottom=item_margin_bottom、marker_style は規定どおり
     let list_style = &style.core.list;
-    let (indent_pt, _, marker_style) = kern_and_marker(&nodes[0]);
-    assert!((indent_pt - list_style.indent.to_pt()).abs() < f32::EPSILON);
-    let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
+    let (_, marker_style) = marker_of(&nodes[0]);
+    let LayoutNode::VBox {
+      children,
+      margin_bottom,
+      indent,
+    } = &nodes[0]
+    else {
       panic!("item は VBox");
     };
+    assert!(!matches!(children[0], LayoutNode::Kern { .. }), "先頭に Kern は出さない: {children:?}");
+    assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
     assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
     assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
     assert_eq!(marker_style.font_kind, FontKind::Serif);
     assert!((marker_style.font_size - ctx.default_font_size()).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn nested_list_item_also_carries_indent() {
+    // Arrange — 項目内容にネストしたリストを含める。各段の item VBox に indent が乗ることで、
+    // build_blocks 側で外側 indent と累積され、ネスト項目が段ごとに深く字下げされる。
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nested = DocNode::List {
+      ordered: false,
+      items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
+        InlineNode::Text("inner".to_string()),
+      ])])],
+    };
+    let items = [ListItem::new(vec![
+      DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
+      nested,
+    ])];
+
+    // Act
+    let nodes = lower_list(&ctx, false, &items).expect("失敗しない");
+
+    // Assert — 外側 item VBox.indent == list.indent、内側ネスト item VBox にも同じ indent が乗る
+    let indent = style.core.list.indent.to_pt();
+    let LayoutNode::VBox {
+      children,
+      indent: outer_indent,
+      ..
+    } = &nodes[0]
+    else {
+      panic!("外側 item は VBox");
+    };
+    assert!((outer_indent.to_pt() - indent).abs() < f32::EPSILON);
+    let nested_indent = children
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { indent, .. } => Some(indent.to_pt()),
+        _ => None,
+      })
+      .expect("ネストした item VBox があるはず");
+    assert!((nested_indent - indent).abs() < f32::EPSILON, "ネスト item にも indent が乗る");
   }
 
   #[test]

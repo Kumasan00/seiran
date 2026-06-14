@@ -143,8 +143,12 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 
   for block in blocks {
     match block {
-      Block::Paragraph { items, leading } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width);
+      Block::Paragraph {
+        items,
+        leading,
+        indent,
+      } => {
+        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent);
       },
       Block::VSpace(space) => {
         composer.y += space;
@@ -212,6 +216,10 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 /// - 2 行目以降は `baseline += max(leading, prev.depth + line.height)`
 /// - 最終行を置いた後、カーソルを `last_baseline + leading` まで進める
 /// - `baseline + line.depth > page_limit` で改ページし、ページ先頭の baseline は `margin_top`
+///
+/// `indent`（本文左端からの左インデント、pt）は折り返し幅を `text_width - indent` に縮め、
+/// 確定した各行のボックス・リンク矩形を一律 `indent` だけ右へシフトする。行座標は本文左端基準
+/// （`page.rs` の契約）なので、シフト後の `x` をそのまま描画に渡せる。
 fn place_paragraph(
   composer: &mut PageComposer,
   geom: &PageGeometry,
@@ -219,8 +227,22 @@ fn place_paragraph(
   items: &[crate::hitem::HItem],
   leading: f32,
   text_width: f32,
+  indent: f32,
 ) {
-  let lines = breaker.break_lines(items, text_width);
+  let mut lines = breaker.break_lines(items, (text_width - indent).max(0.0));
+  // 行は本文左端 (x=0) 基準で組まれるため、ブロックインデント分を全行に一律加算する。
+  // リンク矩形の収集（collect_line_links）より前にシフトしておく。
+  if indent != 0.0 {
+    for line in &mut lines {
+      for positioned in &mut line.boxes {
+        positioned.x += indent;
+      }
+      for link in &mut line.links {
+        link.x0 += indent;
+        link.x1 += indent;
+      }
+    }
+  }
   let mut baseline = composer.y;
   let mut prev_depth: Option<f32> = None;
   for line in lines {
@@ -344,6 +366,7 @@ mod tests {
     break_lines::GreedyBreaker,
     glyph_run::GlyphRun,
     hitem::{HBox, HBoxContent, HItem},
+    line::Line,
     page::{Page, PlacedBlock},
     table_box::{TableBox, TableCellBox, TableRowBox},
   };
@@ -384,6 +407,7 @@ mod tests {
     return Block::Paragraph {
       items,
       leading: 12.0,
+      indent: 0.0,
     };
   }
 
@@ -660,6 +684,7 @@ mod tests {
     let blocks = vec![Block::Paragraph {
       items,
       leading: 12.0,
+      indent: 0.0,
     }];
 
     // Act
@@ -673,6 +698,82 @@ mod tests {
     assert!((link.y - 2.0).abs() < f32::EPSILON);
     assert!((link.width - 20.0).abs() < f32::EPSILON);
     assert!((link.height - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn paragraph_indent_shifts_all_lines_and_reduces_width() {
+    // Arrange — indent=20, text_width=60 → 利用可能幅 40。box(10) を glue(5) で連結し折り返す
+    let geom = test_geometry();
+    let mut items = Vec::new();
+    for i in 0..6 {
+      if i > 0 {
+        items.push(HItem::Glue {
+          natural: 5.0,
+          stretch: 0.0,
+          shrink: 0.0,
+          breakable: true,
+        });
+      }
+      items.push(test_box());
+    }
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+      indent: 20.0,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker);
+
+    // Assert — 利用可能幅 40 で折り返し（複数行）、全行の先頭ボックス x が indent(20) 以上
+    let lines: Vec<&Line> = pages[0]
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .collect();
+    assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
+    for line in &lines {
+      let first = line.boxes.first().expect("各行にボックスがあるはず");
+      assert!(first.x >= 20.0 - f32::EPSILON, "先頭ボックス x={} は indent(20) 以上", first.x);
+      // どのボックスも本文幅 60 を超えない（はみ出さない）
+      for positioned in &line.boxes {
+        assert!(
+          positioned.x + positioned.width <= 60.0 + f32::EPSILON,
+          "x+width={} <= 60",
+          positioned.x + positioned.width
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn paragraph_indent_shifts_links() {
+    // Arrange — indent=15 のリンク付き段落。リンク矩形も indent ぶん右へシフトされる
+    use types::LinkTarget;
+    let geom = test_geometry();
+    let items = vec![
+      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+      indent: 15.0,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — x0=0 → +15、幅 20 は不変
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    let link = &pages[0].links[0];
+    assert!((link.x - 15.0).abs() < f32::EPSILON, "link.x={}", link.x);
+    assert!((link.width - 20.0).abs() < f32::EPSILON, "link.width={}", link.width);
   }
 
   #[test]
