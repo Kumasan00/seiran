@@ -1,6 +1,6 @@
 //! 拡張スタイル設定（[`ExtendedStyle`]）。
 //!
-//! 脚注・目次・ハイパーリンク・参考文献といった、現状は `lowering` / `pdf_gen` 側で
+//! 脚注・目次といった、現状は `lowering` / `pdf_gen` 側で
 //! 参照されていない（実装が追いついていない）スタイル設定を
 //! [`crate::Style`] の `extended` フィールドに分離して保持する。
 //!
@@ -8,13 +8,12 @@
 //! TOML では `[extended.footnote]` / `[extended.toc]` / … の各テーブルにマップされる。
 
 pub mod footnote;
-pub mod hyperref;
 pub mod toc;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::extended::{footnote::FootnoteStyle, hyperref::HyperrefStyle, toc::TocStyle};
+use crate::extended::{footnote::FootnoteStyle, toc::TocStyle};
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
@@ -26,9 +25,6 @@ pub struct ExtendedStyle {
   /// 目次のスタイル
   #[garde(dive)]
   pub toc: TocStyle,
-  /// ハイパーリンクのスタイル
-  #[garde(dive)]
-  pub hyperref: HyperrefStyle,
 }
 
 #[cfg(test)]

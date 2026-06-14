@@ -2,9 +2,12 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, non_negative};
+use types::{
+  Color,
+  length::{Length, non_negative},
+};
 
-use crate::{Color, core::caption::CaptionStyle};
+use crate::core::caption::CaptionStyle;
 
 /// 表のスタイル設定
 ///

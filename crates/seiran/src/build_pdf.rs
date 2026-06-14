@@ -271,6 +271,6 @@ fn running_slots(
     rule_below,
     rule_thickness: style.rule_thickness.to_pt(),
     rule_gap: style.rule_gap.to_pt(),
-    rule_color: style.rule_color.map(read_style::Color::rgb),
+    rule_color: style.rule_color.map(types::Color::rgb),
   });
 }

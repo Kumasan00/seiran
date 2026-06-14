@@ -12,6 +12,7 @@ pub mod counter;
 pub mod equation;
 pub mod figure;
 pub mod heading;
+pub mod hyperref;
 pub mod list;
 pub mod math;
 pub mod reference;
@@ -27,8 +28,8 @@ use types::{
 };
 
 use crate::core::{
-  counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, list::ListStyle,
-  math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
+  counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, hyperref::HyperrefStyle,
+  list::ListStyle, math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
   text::TextBlockStyle,
 };
 
@@ -84,6 +85,9 @@ pub struct CoreStyle {
   /// 参考文献セクションのスタイル
   #[garde(dive)]
   pub reference: ReferenceStyle,
+  /// ハイパーリンク（hyperref 相当）のスタイル
+  #[garde(dive)]
+  pub hyperref: HyperrefStyle,
 }
 
 impl Default for CoreStyle {
@@ -103,6 +107,7 @@ impl Default for CoreStyle {
       header: RunningContentStyle::default(),
       footer: RunningContentStyle::default(),
       reference: ReferenceStyle::default(),
+      hyperref: HyperrefStyle::default(),
     };
   }
 }

@@ -23,7 +23,6 @@ use garde::Validate;
 use miette::{NamedSource, SourceSpan};
 use serde::de::Error as _;
 use tracing::info;
-pub use types::{Color, Length};
 
 pub use crate::{
   core::{
@@ -33,6 +32,7 @@ pub use crate::{
     equation::{Alignment, EquationStyle, NumberSide},
     figure::FigureStyle,
     heading::{HeadingStyle, HeadingStyles, default_for_level},
+    hyperref::HyperrefStyle,
     list::ListStyle,
     math::MathScriptStyle,
     reference::ReferenceStyle,
@@ -40,7 +40,7 @@ pub use crate::{
     text::TextBlockStyle,
   },
   error::{ReadStyleError, ValidationError},
-  extended::{ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, toc::TocStyle},
+  extended::{ExtendedStyle, footnote::FootnoteStyle, toc::TocStyle},
   style::Style,
 };
 
@@ -131,6 +131,7 @@ fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(),
     "header",
     "footer",
     "reference",
+    "hyperref",
     "extended",
   ];
 
