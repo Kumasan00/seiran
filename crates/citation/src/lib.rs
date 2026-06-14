@@ -11,7 +11,10 @@
 use std::collections::HashMap;
 
 use document::{DocNode, InlineNode};
-use hayagriva::{Entry, citationberg::IndependentStyle};
+use hayagriva::{
+  Entry,
+  citationberg::{IndependentStyle, Locale, LocaleFile},
+};
 use miette::Diagnostic;
 use read_references::References;
 use read_style::Style;
@@ -25,11 +28,19 @@ mod test_fixtures;
 /// CSL 整形ステージのエラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum CitationError {
+  /// 引用（`\cite`）があるのに CSL スタイルが設定されていない場合。
+  #[error("引用がありますが CSL スタイルが設定されていません。")]
+  #[diagnostic(
+    code(citation::missing_csl_path),
+    help("style.toml の [reference].csl_path に CSL スタイル（.csl）ファイルのパスを設定してください。")
+  )]
+  MissingCslPath,
+
   /// CSL スタイル（`.csl`）ファイルの読み込みに失敗した場合。
   #[error("CSL スタイルファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
     code(citation::read_style_file),
-    help("references.toml / .json の style_path が指す .csl ファイルのパスと読み取り権限を確認してください。")
+    help("style.toml の [reference].csl_path が指す .csl ファイルのパスと読み取り権限を確認してください。")
   )]
   ReadStyleFile {
     /// スタイルファイルのパス
@@ -52,6 +63,34 @@ pub enum CitationError {
     #[source]
     source: hayagriva::citationberg::XmlDeError,
   },
+
+  /// CSL ロケール（`.xml`）ファイルの読み込みに失敗した場合。
+  #[error("CSL ロケールファイルの読み込みに失敗しました: {path}")]
+  #[diagnostic(
+    code(citation::read_locale_file),
+    help("style.toml の [reference].locale_path が指す CSL ロケール XML のパスと読み取り権限を確認してください。")
+  )]
+  ReadLocaleFile {
+    /// ロケールファイルのパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+
+  /// CSL ロケール（`.xml`）の解析に失敗した場合。
+  #[error("CSL ロケールファイルの解析に失敗しました: {path}")]
+  #[diagnostic(
+    code(citation::parse_locale),
+    help("ファイルが有効な CSL ロケール（locales-xx-YY.xml 形式）であることを確認してください。")
+  )]
+  ParseLocale {
+    /// ロケールファイルのパス
+    path: String,
+    /// 元の citationberg パースエラー
+    #[source]
+    source: hayagriva::citationberg::XmlDeError,
+  },
 }
 
 /// `\cite` を CSL 整形し、書誌ブロックを本文末尾に追加する。
@@ -62,7 +101,8 @@ pub enum CitationError {
 ///
 /// # Errors
 ///
-/// CSL スタイルファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
+/// 引用があるのに `style.core.reference.csl_path` が未設定の場合、または CSL スタイル / ロケール
+/// ファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
 pub fn process_citations(
   nodes: &mut Vec<DocNode>,
   references: &References,
@@ -92,18 +132,20 @@ pub fn process_citations(
     .map(|(id, reference)| (id.clone(), bridge::to_entry(id, reference)))
     .collect();
 
-  // CSL スタイルは references.style_path の .csl を読む（同梱 ieee.csl が実効化される）。
-  let style_path = references.style_path.display().to_string();
-  let style_xml = std::fs::read_to_string(&references.style_path).map_err(|source| CitationError::ReadStyleFile {
-    path: style_path.clone(),
+  // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
+  // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は read_style::ReferenceStyle）。
+  let csl_path = style.core.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
+  let csl_path_str = csl_path.display().to_string();
+  let style_xml = std::fs::read_to_string(csl_path).map_err(|source| CitationError::ReadStyleFile {
+    path: csl_path_str.clone(),
     source,
   })?;
   let csl_style = IndependentStyle::from_xml(&style_xml).map_err(|source| CitationError::ParseStyle {
-    path: style_path,
+    path: csl_path_str,
     source,
   })?;
-  // ロケールは hayagriva の archive feature 内蔵（CBOR）から取得する。
-  let locales = hayagriva::archive::locales();
+  // 内蔵ロケール（CBOR）に、style.toml で指定されたカスタムロケールを重ねる。
+  let locales = load_locales(style)?;
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, &style.core.reference.title);
 
@@ -118,6 +160,35 @@ pub fn process_citations(
 
   nodes.extend(rendered.bibliography);
   return Ok(());
+}
+
+/// 引用整形に用いるロケール一覧を組み立てる。
+///
+/// `style.core.reference.locale_path` で指定された CSL ロケール XML を読み込み・解析し、
+/// hayagriva 内蔵ロケール（`archive` feature の CBOR）の**前**に並べて返す。hayagriva の
+/// ロケール探索は言語コードの先頭一致（`find`）で決まるため、先頭に重ねたカスタムロケールが
+/// 同一言語の内蔵ロケールを上書きする。`locale_path` が `None` なら内蔵ロケールのみを返す。
+///
+/// # Errors
+///
+/// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
+fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
+  let mut locales: Vec<Locale> = Vec::new();
+  // カスタムロケールがあれば先頭に置き、同一言語の内蔵ロケールより優先させる。
+  if let Some(path) = &style.core.reference.locale_path {
+    let path_str = path.display().to_string();
+    let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
+      path: path_str.clone(),
+      source,
+    })?;
+    let locale_file = LocaleFile::from_xml(&xml).map_err(|source| CitationError::ParseLocale {
+      path: path_str,
+      source,
+    })?;
+    locales.push(locale_file.into());
+  }
+  locales.extend(hayagriva::archive::locales());
+  return Ok(locales);
 }
 
 /// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
@@ -179,12 +250,106 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    io::Write,
+    path::{Path, PathBuf},
+  };
+
   use document::{DocNode, InlineNode};
+  use hayagriva::citationberg::LocaleFile;
   use miette::SourceSpan;
   use read_style::Style;
 
-  use super::process_citations;
-  use crate::test_fixtures::sample_references;
+  use super::{CitationError, load_locales, process_citations};
+  use crate::test_fixtures::{ieee_csl_path, sample_references};
+
+  /// クレート同梱のカスタム en-US ロケール（`tests/data/custom-en-US.xml`）への絶対パスを返す。
+  fn custom_locale_path() -> PathBuf {
+    return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/custom-en-US.xml");
+  }
+
+  /// CSL スタイル（IEEE）を設定した `Style` を作る。引用整形に最低限必要な設定。
+  fn style_with_csl() -> Style {
+    let mut style = Style::default();
+    style.core.reference.csl_path = Some(ieee_csl_path());
+    return style;
+  }
+
+  /// CSL スタイルに加えてカスタムロケール（`locale_path`）を設定した `Style` を作る。
+  fn style_with_locale_path(path: PathBuf) -> Style {
+    let mut style = style_with_csl();
+    style.core.reference.locale_path = Some(path);
+    return style;
+  }
+
+  #[test]
+  fn load_locales_without_custom_returns_builtin_only() {
+    // Arrange — locale_paths 未指定
+    let style = Style::default();
+
+    // Act
+    let locales = load_locales(&style).expect("内蔵ロケールのみで成功するはず");
+
+    // Assert — 内蔵ロケールと完全一致
+    assert_eq!(locales, hayagriva::archive::locales());
+  }
+
+  #[test]
+  fn load_locales_prepends_custom_locale() {
+    // Arrange — カスタム en-US ロケールを指定
+    let style = style_with_locale_path(custom_locale_path());
+    let builtin_len = hayagriva::archive::locales().len();
+
+    // Act
+    let locales = load_locales(&style).expect("カスタムロケールの読み込みは成功するはず");
+
+    // Assert — 件数は内蔵 + 1、先頭はカスタムロケール
+    assert_eq!(locales.len(), builtin_len + 1, "カスタムは内蔵に重ねる");
+    let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
+    let expected = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
+    assert_eq!(locales[0], expected, "先頭にカスタムロケールが並ぶ");
+  }
+
+  #[test]
+  fn load_locales_reports_missing_file() {
+    // Arrange — 実在しないパス
+    let style = style_with_locale_path(PathBuf::from("/nonexistent/locales-en-US.xml"));
+
+    // Act
+    let error = load_locales(&style).expect_err("読み込み失敗するはず");
+
+    // Assert
+    assert!(matches!(error, CitationError::ReadLocaleFile { .. }), "got: {error:?}");
+  }
+
+  #[test]
+  fn load_locales_reports_malformed_file() {
+    // Arrange — CSL ロケールでない内容のファイル
+    let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
+    file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
+    let style = style_with_locale_path(file.path().to_path_buf());
+
+    // Act
+    let error = load_locales(&style).expect_err("解析失敗するはず");
+
+    // Assert
+    assert!(matches!(error, CitationError::ParseLocale { .. }), "got: {error:?}");
+  }
+
+  #[test]
+  fn process_citations_succeeds_with_custom_locale() {
+    // Arrange — カスタムロケールを設定して引用を含む本文を整形
+    let references = sample_references();
+    let style = style_with_locale_path(custom_locale_path());
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
+
+    // Act
+    process_citations(&mut nodes, &references, &style).expect("カスタムロケールでも整形は成功するはず");
+
+    // Assert — 書誌見出しが追加される
+    let has_heading = nodes.iter().any(|node| matches!(node, DocNode::Heading { .. }));
+    assert!(has_heading, "References 見出しが追加されるはず");
+  }
 
   /// 単一キーの `\cite` スタブを作る。
   fn cite(key: &str) -> InlineNode {
@@ -199,7 +364,7 @@ mod tests {
   fn process_citations_resolves_labels_and_appends_bibliography() {
     // Arrange — 2 件を引用する段落
     let references = sample_references();
-    let style = Style::default();
+    let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![
       InlineNode::Text("本文 ".to_string()),
       cite("kwan2014"),
@@ -253,5 +418,19 @@ mod tests {
 
     // Assert — 書誌は追加されない
     assert_eq!(nodes.len(), before, "引用がなければ書誌は追加されない");
+  }
+
+  #[test]
+  fn process_citations_errors_when_csl_path_missing() {
+    // Arrange — 引用はあるが csl_path 未設定（既定の Style）
+    let references = sample_references();
+    let style = Style::default();
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
+
+    // Act
+    let error = process_citations(&mut nodes, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
+
+    // Assert
+    assert!(matches!(error, CitationError::MissingCslPath), "got: {error:?}");
   }
 }

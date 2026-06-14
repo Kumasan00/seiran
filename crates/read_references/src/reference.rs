@@ -4,7 +4,7 @@
 //! [`ReferenceType`]、数値または文字列を許容する [`NumberOrString`] を定義する。著者名の表現は
 //! 型引数 `N` で切り替える（serde 境界では [`RawName`](crate::RawName)、確定後は [`Name`]）。
 
-use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf};
+use std::{collections::HashMap, fmt, marker::PhantomData};
 
 use serde::{
   Deserialize, Deserializer,
@@ -16,14 +16,15 @@ use crate::{date::Date, name::Name};
 /// 参照定義ファイル全体を表す構造体
 ///
 /// 型引数 `N` は著者名の表現を切り替える。serde 境界では `References<RawName>` としてパースし、
-/// [`resolve`](crate::resolve) で名前検証（family/literal 排他）・空 ID チェック・`style_path` の正規化を
-/// 経て、確定済みの `References<Name>`（既定）へ変換する。`references` は keyed-table 形式
-/// （テーブルキーが参照 ID）でデシリアライズするため、`id` をキーとするマップに直接展開される。
+/// [`resolve`](crate::resolve) で名前検証（family/literal 排他）・空 ID チェックを経て、確定済みの
+/// `References<Name>`（既定）へ変換する。`references` は keyed-table 形式（テーブルキーが参照 ID）で
+/// デシリアライズするため、`id` をキーとするマップに直接展開される。
+///
+/// CSL スタイル（`.csl`）の選択は「見た目」設定として style.toml の `[reference].csl_path` に置く
+/// （`citation` クレートが参照する）。本構造体は文献データのみを保持する。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct References<N = Name> {
-  /// 参照スタイル（CSL）ファイルへのパス（[`resolve`](crate::resolve) 通過後は正規化済み）
-  pub style_path: PathBuf,
   /// 参照定義のマップ（id をキー、`Reference` を値とする）
   ///
   /// 重複キーは厳格にエラーとする（JSON の後勝ちを許さない）。詳細は

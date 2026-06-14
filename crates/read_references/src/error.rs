@@ -75,17 +75,4 @@ pub enum ValidationError {
     /// 不正の内容
     message: String,
   },
-  /// CSL スタイルファイルのパスを解決できない
-  #[error("CSL スタイルファイルのパスを解決できませんでした: {path}")]
-  #[diagnostic(
-    code(references::validation::style_path),
-    help("`style_path` で指定されたファイルが存在し、読み取り権限があることを確認してください。")
-  )]
-  StylePathResolution {
-    /// 解決できなかったパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
 }

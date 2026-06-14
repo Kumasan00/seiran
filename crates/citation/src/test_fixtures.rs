@@ -1,7 +1,7 @@
 //! テスト用フィクスチャ: 一時 references ファイルを生成して読み込むヘルパ。
 //!
-//! `read_references` は `style_path` を `canonicalize`（実在必須）するため、クレート同梱の
-//! テスト用 CSL（`tests/data/ieee.csl`）への絶対パスを `style_path` に埋め込んだ一時 TOML を作って読み込む。
+//! 文献データ（`References`）は一時 TOML を作って読み込む。CSL スタイル（`.csl`）の選択は style.toml の
+//! `[reference].csl_path` に移管したため、テストでは [`ieee_csl_path`] が返す絶対パスを `Style` 側に設定する。
 //! `config/` はリポジトリで gitignore されるため、テストはクレート内にフィクスチャを持ち自己完結させる。
 
 use std::{
@@ -12,6 +12,8 @@ use std::{
 use read_references::References;
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
+///
+/// `style.core.reference.csl_path` に設定する CSL スタイルのパスとして使う。
 pub(crate) fn ieee_csl_path() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .join("tests/data/ieee.csl")
@@ -21,10 +23,8 @@ pub(crate) fn ieee_csl_path() -> PathBuf {
 
 /// 書籍 1 件（`kwan2014`）・論文 1 件（`doe2020`）を含む `References` を一時ファイル経由で読み込む。
 pub(crate) fn sample_references() -> References {
-  let csl = ieee_csl_path();
-  let toml = format!(
-    "style_path = \"{}\"\n\n\
-     [references.kwan2014]\n\
+  let toml = String::from(
+    "[references.kwan2014]\n\
      type = \"book\"\n\
      title = \"Crazy Rich Asians\"\n\
      publisher = \"Anchor Books\"\n\
@@ -45,7 +45,6 @@ pub(crate) fn sample_references() -> References {
      given = \"John\"\n\
      [references.doe2020.issued]\n\
      date-parts = [[2020, 5, 1]]\n",
-    csl.display()
   );
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");

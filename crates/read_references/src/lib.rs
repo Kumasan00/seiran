@@ -6,7 +6,7 @@
 //! 著者は serde 境界では [`RawName`]（全フィールド任意）として受理し、検証フェーズで
 //! [`Name`]（`Personal` / `Organization` の 2 択 enum）へ変換する。これにより `family`（個人著者）と
 //! `literal`（組織著者）の同時指定／不指定という不正状態は、変換後の型には表現できなくなる。
-//! 著者の判別不能・空（空白のみを含む）の参照 ID・`style_path` の解決失敗は、すべて
+//! 著者の判別不能・空（空白のみを含む）の参照 ID は、すべて
 //! `MultipleValidationErrors` に集約して 1 度に報告する。参照 ID の重複は TOML / JSON とも厳格に
 //! エラーとする（TOML はパーサ段階、JSON は専用デシリアライザで検出）。未知のフィールドは
 //! `deny_unknown_fields` で拒否し、日付オブジェクトの未知キーも同様にエラーとする
@@ -22,10 +22,7 @@ mod error;
 mod name;
 mod reference;
 
-use std::{
-  collections::HashMap,
-  path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::Path};
 
 pub use date::{Date, DateCirca, DatePart, DateSeason};
 pub use error::{ReadReferencesError, ValidationError};
@@ -67,12 +64,11 @@ impl Format {
 /// - ファイルの読み込みに失敗した場合
 /// - TOML / JSON のパースに失敗した場合
 /// - 拡張子がサポートされていない場合
-/// - フィールド単位の検証・空の参照 ID 検出・`style_path` の解決に失敗した場合
+/// - フィールド単位の検証・空の参照 ID 検出に失敗した場合
 pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
     info!("参照定義ファイルが指定されていないため、空の参照定義を返します");
     return Ok(References {
-      style_path: PathBuf::new(),
       references: HashMap::new(),
     });
   };
@@ -93,7 +89,7 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
 ///
 /// 著者名は検証前の [`RawName`] のまま受理します。`source_path` の拡張子（`.toml` / `.json`）から
 /// 形式を判別します。エラー報告に使う表示用パスでもあり、ファイルシステムへのアクセスには使われません。
-/// 値検証・`style_path` の正規化は行いません。検証・正規化は [`resolve`] で実行します。
+/// 値検証は行いません。検証・正規化は [`resolve`] で実行します。
 ///
 /// # Errors
 ///
@@ -116,41 +112,28 @@ fn parse_references(text: &str, source_path: &Path) -> Result<References<RawName
   };
 }
 
-/// パース済みの `References<RawName>` を検証し、著者名を [`Name`] へ変換、`style_path` を
-/// 正規化して `References<Name>` に確定します。
+/// パース済みの `References<RawName>` を検証し、著者名を [`Name`] へ変換して `References<Name>` に
+/// 確定します。
 ///
-/// 空 ID チェック・著者名の検証変換・`style_path` の解決エラーを、すべて 1 回の
+/// 空 ID チェック・著者名の検証変換のエラーを、すべて 1 回の
 /// [`ReadReferencesError::MultipleValidationErrors`] に集約します（途中でエラーが出ても短絡せず、
 /// すべての違反を収集してから報告します）。`references` は keyed-table 形式により既に id をキーと
-/// するマップなので、`style_path` のみを更新します。
+/// するマップなので、著者名のみを確定型へ変換します。
 ///
 /// # Errors
 ///
-/// 著者名の検証変換・空 ID・`style_path` の正規化のいずれかに違反があった場合は
+/// 著者名の検証変換・空 ID のいずれかに違反があった場合は
 /// [`ReadReferencesError::MultipleValidationErrors`] を返します。
 fn resolve(refs: References<RawName>) -> Result<References<Name>, ReadReferencesError> {
   let mut errors: Vec<ValidationError> = Vec::new();
   validate_non_empty_ids(&refs.references, &mut errors);
   let references = convert_references(refs.references, &mut errors);
-  let style_path = match refs.style_path.canonicalize() {
-    Ok(canon) => Some(canon),
-    Err(source) => {
-      errors.push(ValidationError::StylePathResolution {
-        path: refs.style_path.display().to_string(),
-        source,
-      });
-      None
-    },
-  };
 
   if !errors.is_empty() {
     return Err(ReadReferencesError::MultipleValidationErrors { errors });
   }
 
-  return Ok(References {
-    style_path: style_path.expect("errors が空なら style_path は Some である"),
-    references,
-  });
+  return Ok(References { references });
 }
 
 /// 参照定義マップの各著者名を [`RawName`] から [`Name`] へ変換します（I/O なし）。
@@ -342,11 +325,6 @@ mod tests {
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
 
-  /// `style_path` を含む TOML 文字列を文字列のみで構築する（ファイル不要）。
-  fn toml_with_style_path(style_path: &str, body: &str) -> String {
-    return format!("style_path = \"{style_path}\"\n\n{body}");
-  }
-
   #[test]
   fn read_references_returns_empty_when_path_is_none() {
     // Arrange / Act
@@ -354,13 +332,12 @@ mod tests {
 
     // Assert
     assert!(result.references.is_empty());
-    assert_eq!(result.style_path, PathBuf::new());
   }
 
   #[test]
   fn parse_references_fails_on_invalid_toml_syntax() {
     // Arrange / Act
-    let result = parse_references("style_path = \nthis is not valid toml", dummy_source());
+    let result = parse_references("= \nthis is not valid toml", dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
@@ -369,8 +346,7 @@ mod tests {
   #[test]
   fn resolve_fails_on_empty_id() {
     // Arrange
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.\"\"]\n\
        type = \"book\"\n\
        [[references.\"\".author]]\n\
@@ -391,8 +367,7 @@ mod tests {
   #[test]
   fn parse_references_fails_on_duplicate_toml_keys() {
     // Arrange: keyed-table 形式では重複 ID は同一テーブルの再定義となり TOML パースエラーになる
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.dup]\n\
        type = \"book\"\n\
        [[references.dup.author]]\n\
@@ -484,8 +459,7 @@ mod tests {
   #[test]
   fn resolve_aggregates_name_error_with_field_path() {
     // Arrange: ref1.author[0] に family/literal 同時指定
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.ref1]\n\
        type = \"book\"\n\
        [[references.ref1.author]]\n\
@@ -505,11 +479,10 @@ mod tests {
   }
 
   #[test]
-  fn resolve_aggregates_value_and_path_errors() {
-    // Arrange: 不正な style_path、空 id、Name の不正を同時に発生させる
+  fn resolve_aggregates_multiple_field_errors() {
+    // Arrange: 空 id と Name の不正（family/literal 両方指定）を同時に発生させる
     let pre = parse_references(
-      "style_path = \"/nonexistent/style.csl\"\n\n\
-       [references.\"\"]\n\
+      "[references.\"\"]\n\
        type = \"book\"\n\
        [[references.\"\".author]]\n\
        family = \"Doe\"\n\
@@ -525,7 +498,6 @@ mod tests {
     let Err(ReadReferencesError::MultipleValidationErrors { errors }) = result else {
       panic!("expected MultipleValidationErrors, got {result:?}");
     };
-    assert!(errors.iter().any(|e| matches!(e, ValidationError::StylePathResolution { .. })));
     assert!(
       errors
         .iter()
@@ -536,24 +508,6 @@ mod tests {
         .iter()
         .any(|e| matches!(e, ValidationError::Field { message, .. } if message.contains("両方")))
     );
-  }
-
-  #[test]
-  fn resolve_fails_when_style_path_does_not_exist() {
-    // Arrange
-    let pre = parse_references("style_path = \"/nonexistent/path/to/style.csl\"\n", dummy_source()).unwrap();
-
-    // Act
-    let result = resolve(pre);
-
-    // Assert
-    let Err(ReadReferencesError::MultipleValidationErrors { errors }) = result else {
-      panic!("expected MultipleValidationErrors, got {result:?}");
-    };
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ValidationError::StylePathResolution { path, .. } if path == "/nonexistent/path/to/style.csl"
-    )));
   }
 
   #[test]
@@ -572,20 +526,15 @@ mod tests {
   fn read_references_succeeds_with_valid_file() {
     // Arrange
     let tempdir = tempfile::tempdir().unwrap();
-    let style_path = tempdir.path().join("style.csl");
-    std::fs::write(&style_path, b"").unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
       &references_path,
-      toml_with_style_path(
-        style_path.to_str().unwrap(),
-        "[references.ref1]\n\
-         type = \"book\"\n\
-         title = \"Sample Book\"\n\
-         [[references.ref1.author]]\n\
-         family = \"Doe\"\n\
-         given = \"John\"\n",
-      ),
+      "[references.ref1]\n\
+       type = \"book\"\n\
+       title = \"Sample Book\"\n\
+       [[references.ref1.author]]\n\
+       family = \"Doe\"\n\
+       given = \"John\"\n",
     )
     .unwrap();
 
@@ -595,16 +544,13 @@ mod tests {
     // Assert
     assert_eq!(result.references.len(), 1);
     assert!(result.references.contains_key("ref1"));
-    assert_eq!(result.style_path, style_path.canonicalize().unwrap());
   }
 
   /// JSON 用のダミーパス。
   fn dummy_json_source() -> &'static Path { return Path::new("test.json"); }
 
-  /// `style_path` と `references` を含む JSON 文字列を組み立てる。
-  fn json_with_style_path(style_path: &str, references_json: &str) -> String {
-    return format!("{{\"style_path\": \"{style_path}\", \"references\": {references_json}}}");
-  }
+  /// `references` テーブルを持つトップレベル JSON を組み立てる（CSL スタイルパスは style.toml へ移管）。
+  fn json_doc(references_json: &str) -> String { return format!("{{\"references\": {references_json}}}"); }
 
   #[test]
   fn parse_references_fails_on_invalid_json_syntax() {
@@ -627,8 +573,7 @@ mod tests {
   #[test]
   fn resolve_fails_on_empty_id_for_json() {
     // Arrange
-    let json =
-      json_with_style_path("/tmp/style.csl", "{\"\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}}");
+    let json = json_doc("{\"\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}}");
     let pre = parse_references(&json, dummy_json_source()).unwrap();
 
     // Act
@@ -645,11 +590,8 @@ mod tests {
   fn read_references_succeeds_with_valid_json_file() {
     // Arrange
     let tempdir = tempfile::tempdir().unwrap();
-    let style_path = tempdir.path().join("style.csl");
-    std::fs::write(&style_path, b"").unwrap();
     let references_path = tempdir.path().join("references.json");
-    let json = json_with_style_path(
-      style_path.to_str().unwrap(),
+    let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
          \"title\": \"Sample Book\", \
@@ -676,29 +618,23 @@ mod tests {
         DatePart::Number(15)
       ]
     ));
-    assert_eq!(result.style_path, style_path.canonicalize().unwrap());
   }
 
   #[test]
   fn read_references_parses_structured_date_in_toml() {
     // Arrange
     let tempdir = tempfile::tempdir().unwrap();
-    let style_path = tempdir.path().join("style.csl");
-    std::fs::write(&style_path, b"").unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
       &references_path,
-      toml_with_style_path(
-        style_path.to_str().unwrap(),
-        "[references.ref1]\n\
-         type = \"book\"\n\
-         [[references.ref1.author]]\n\
-         family = \"Doe\"\n\n\
-         [references.ref1.issued]\n\
-         date-parts = [[2024, 1, 15], [2024, 12, 31]]\n\
-         circa = true\n\
-         season = \"spring\"\n",
-      ),
+      "[references.ref1]\n\
+       type = \"book\"\n\
+       [[references.ref1.author]]\n\
+       family = \"Doe\"\n\n\
+       [references.ref1.issued]\n\
+       date-parts = [[2024, 1, 15], [2024, 12, 31]]\n\
+       circa = true\n\
+       season = \"spring\"\n",
     )
     .unwrap();
 
@@ -734,11 +670,8 @@ mod tests {
   fn read_references_parses_structured_date_in_json() {
     // Arrange
     let tempdir = tempfile::tempdir().unwrap();
-    let style_path = tempdir.path().join("style.csl");
-    std::fs::write(&style_path, b"").unwrap();
     let references_path = tempdir.path().join("references.json");
-    let json = json_with_style_path(
-      style_path.to_str().unwrap(),
+    let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
          \"issued\": {\
@@ -781,7 +714,7 @@ mod tests {
     // Arrange
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.yaml");
-    std::fs::write(&references_path, b"style_path: /tmp/style.csl").unwrap();
+    std::fs::write(&references_path, b"anything: true").unwrap();
 
     // Act
     let result = read_references(Some(&references_path));
@@ -793,8 +726,7 @@ mod tests {
   #[test]
   fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
     // Arrange
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.ref1]\n\
        type = \"book\"\n\
        volume = 3\n\
@@ -819,8 +751,7 @@ mod tests {
   #[test]
   fn read_references_accepts_number_variables_as_integers_and_strings_in_json() {
     // Arrange
-    let json = json_with_style_path(
-      "/tmp/style.csl",
+    let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
          \"volume\": 3, \
@@ -845,8 +776,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_unknown_field_in_reference() {
     // Arrange: Reference に未知フィールドを含める
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.ref1]\n\
        type = \"book\"\n\
        unknown_field = \"oops\"\n\
@@ -864,8 +794,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_unknown_field_in_name() {
     // Arrange: 著者名（RawName）に未知フィールドを含める
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.ref1]\n\
        type = \"book\"\n\
        [[references.ref1.author]]\n\
@@ -883,7 +812,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_unknown_top_level_field() {
     // Arrange: トップレベルに未知フィールドを含める
-    let toml = "style_path = \"/tmp/style.csl\"\nunexpected = true\n";
+    let toml = "unexpected = true\n";
 
     // Act
     let result = parse_references(toml, dummy_source());
@@ -895,8 +824,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_unknown_date_field() {
     // Arrange: 日付オブジェクトに未知キーを含める
-    let json = json_with_style_path(
-      "/tmp/style.csl",
+    let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
          \"issued\": {\"date-parts\": [[2024]], \"bogus\": 1}, \
@@ -914,8 +842,7 @@ mod tests {
   #[test]
   fn parse_references_rejects_duplicate_json_keys() {
     // Arrange: JSON はキー重複を許すが、Seiran は後勝ちを許さず厳格に拒否する
-    let json = json_with_style_path(
-      "/tmp/style.csl",
+    let json = json_doc(
       "{\"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}, \
         \"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Roe\"}]}}",
     );
@@ -930,8 +857,7 @@ mod tests {
   #[test]
   fn resolve_fails_on_whitespace_only_id() {
     // Arrange: 空白のみの参照 ID
-    let toml = toml_with_style_path(
-      "/tmp/style.csl",
+    let toml = String::from(
       "[references.\"  \"]\n\
        type = \"book\"\n\
        [[references.\"  \".author]]\n\
