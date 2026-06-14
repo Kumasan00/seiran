@@ -9,13 +9,12 @@
 
 pub mod footnote;
 pub mod hyperref;
-pub mod reference;
 pub mod toc;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::extended::{footnote::FootnoteStyle, hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle};
+use crate::extended::{footnote::FootnoteStyle, hyperref::HyperrefStyle, toc::TocStyle};
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
@@ -30,9 +29,6 @@ pub struct ExtendedStyle {
   /// ハイパーリンクのスタイル
   #[garde(dive)]
   pub hyperref: HyperrefStyle,
-  /// 参考文献セクションのスタイル
-  #[garde(dive)]
-  pub reference: ReferenceStyle,
 }
 
 #[cfg(test)]

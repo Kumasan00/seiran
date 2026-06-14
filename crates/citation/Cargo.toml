@@ -1,5 +1,5 @@
 [package]
-name = "seiran"
+name = "citation"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -8,24 +8,16 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-citation.workspace = true
-cli.workspace = true
 document.workspace = true
-font.workspace = true
-hlist.workspace = true
-layout.workspace = true
-lowering.workspace = true
+hayagriva.workspace = true
 miette.workspace = true
-parser.workspace = true
-pdf_gen.workspace = true
-read_config.workspace = true
 read_references.workspace = true
 read_style.workspace = true
-subcommand.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
 types.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

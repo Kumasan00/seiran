@@ -7,22 +7,38 @@
 
 #![allow(clippy::unwrap_used, clippy::too_many_lines)]
 
+use std::collections::HashSet;
+
 use document::{DocNode, HeadingLevel, InlineNode, MathNode, MathStyle};
 use parser::{EvalError, ParseSourceError, Style, parse_source};
 use types::FontKind;
 
+/// 引用キーの集合を組み立てるテストヘルパ
+fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).to_string()).collect(); }
+
 /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
 ///
 /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
-fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "test", &Style::default()).unwrap(); }
+/// 引用キーは空集合（`\cite` を含まないソース向け）。
+fn evaluate_source(source: &str) -> Vec<DocNode> {
+  return parse_source(source, "test", &Style::default(), &HashSet::new()).unwrap();
+}
+
+/// 引用キー集合を指定してソースを評価するテストヘルパ
+fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
+  return parse_source(source, "test", &Style::default(), citation_keys).unwrap();
+}
 
 /// ソースを評価して `EvalError` を取り出すテストヘルパ
 ///
 /// `parse_source` は [`ParseSourceError`] でラップして返すため、
 /// `Eval` バリアントから内側のエラーを取り出して返す。
 /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
-fn evaluate_error(source: &str) -> EvalError {
-  match parse_source(source, "test", &Style::default()) {
+fn evaluate_error(source: &str) -> EvalError { return evaluate_error_with_keys(source, &HashSet::new()); }
+
+/// 引用キー集合を指定してソースを評価し `EvalError` を取り出すテストヘルパ
+fn evaluate_error_with_keys(source: &str, citation_keys: &HashSet<String>) -> EvalError {
+  match parse_source(source, "test", &Style::default(), citation_keys) {
     Err(ParseSourceError::Eval { error, .. }) => return error,
     other => panic!("評価エラーが期待されます: {other:?}"),
   }
@@ -213,6 +229,56 @@ fn evaluate_equation_with_label_then_ref_resolves_with_parens() {
 fn evaluate_unknown_ref_returns_unknown_label_error() {
   let err = evaluate_error(r"\ref{nope}");
   assert!(matches!(err, EvalError::UnknownLabel { ref label, .. } if label == "nope"));
+}
+
+#[test]
+fn evaluate_cite_with_known_key_produces_cite_stub() {
+  // Arrange / Act — references に存在するキーを引用する
+  let result = evaluate_source_with_keys(r"See \cite{rika}.", &keys(&["rika"]));
+
+  // Assert — Cite ノードがスタブ（label 未解決）として生成される
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます");
+  };
+  let cite = inlines
+    .iter()
+    .find_map(|node| match node {
+      InlineNode::Cite { keys, label, .. } => Some((keys.clone(), label.clone())),
+      _ => None,
+    })
+    .expect("Cite ノードが含まれるべき");
+  assert_eq!(cite.0, vec!["rika".to_string()]);
+  assert!(cite.1.is_none());
+}
+
+#[test]
+fn evaluate_cite_with_multiple_keys_splits_on_comma() {
+  // Arrange / Act
+  let result = evaluate_source_with_keys(r"\cite{a, b}", &keys(&["a", "b"]));
+
+  // Assert
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます");
+  };
+  let InlineNode::Cite {
+    keys: cite_keys, ..
+  } = &inlines[0]
+  else {
+    panic!("Cite が期待されます");
+  };
+  assert_eq!(cite_keys, &["a".to_string(), "b".to_string()]);
+}
+
+#[test]
+fn evaluate_cite_with_unknown_key_returns_aggregated_error() {
+  // Arrange / Act — references に存在しないキーを引用する
+  let err = evaluate_error_with_keys(r"\cite{rika} and \cite{missing}", &keys(&["rika"]));
+
+  // Assert — 未定義キーの \cite が集約エラーで報告される
+  let EvalError::UnknownCitationKeys { labels } = err else {
+    panic!("UnknownCitationKeys が期待されます: {err:?}");
+  };
+  assert_eq!(labels.len(), 1);
 }
 
 #[test]

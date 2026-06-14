@@ -13,7 +13,7 @@
 //! これにより `EvalError` 自身は `#[source_code]` を持たず、
 //! `#[related]` 集約にも安全に乗せられる。
 
-use miette::{Diagnostic, SourceSpan};
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use thiserror::Error;
 
 /// 評価器のエラー型
@@ -170,6 +170,21 @@ pub enum EvalError {
     /// `\ref{...}` のソース位置
     #[label("このラベルは未定義です")]
     span: SourceSpan,
+  },
+
+  /// `\cite{...}` で参照された引用キーが参照定義（references）に未定義の場合（集約）
+  ///
+  /// 1 ファイル内のすべての未定義キーを 1 度に報告する。各 `\cite` のソース位置を
+  /// [`LabeledSpan`] のコレクションとして保持し、ソースコード付きでまとめてラベル表示する。
+  #[error("未定義の引用キーがあります")]
+  #[diagnostic(
+    code(parser::eval::unknown_citation_key),
+    help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
+  )]
+  UnknownCitationKeys {
+    /// 未定義キーを含む各 `\cite` のラベル（ソース位置付き）
+    #[label(collection)]
+    labels: Vec<LabeledSpan>,
   },
 
   /// 同じラベル名が複数回定義された場合

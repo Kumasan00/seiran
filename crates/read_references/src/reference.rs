@@ -4,9 +4,12 @@
 //! [`ReferenceType`]、数値または文字列を許容する [`NumberOrString`] を定義する。著者名の表現は
 //! 型引数 `N` で切り替える（serde 境界では [`RawName`](crate::RawName)、確定後は [`Name`]）。
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf};
 
-use serde::Deserialize;
+use serde::{
+  Deserialize, Deserializer,
+  de::{Error, MapAccess, Visitor},
+};
 
 use crate::{date::Date, name::Name};
 
@@ -17,12 +20,60 @@ use crate::{date::Date, name::Name};
 /// 経て、確定済みの `References<Name>`（既定）へ変換する。`references` は keyed-table 形式
 /// （テーブルキーが参照 ID）でデシリアライズするため、`id` をキーとするマップに直接展開される。
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct References<N = Name> {
   /// 参照スタイル（CSL）ファイルへのパス（[`resolve`](crate::resolve) 通過後は正規化済み）
   pub style_path: PathBuf,
   /// 参照定義のマップ（id をキー、`Reference` を値とする）
-  #[serde(default)]
+  ///
+  /// 重複キーは厳格にエラーとする（JSON の後勝ちを許さない）。詳細は
+  /// [`deserialize_unique_references`] を参照。
+  #[serde(
+    default,
+    deserialize_with = "deserialize_unique_references",
+    bound(deserialize = "N: serde::Deserialize<'de>")
+  )]
   pub references: HashMap<String, Reference<N>>,
+}
+
+/// 参照定義マップを重複キー検出付きでデシリアライズする。
+///
+/// JSON は仕様上キーの重複を許し、標準の `HashMap` デシリアライズでは後勝ちで黙殺される。本関数は
+/// 重複を検出して即座にエラーとし、TOML（パーサ段階で重複テーブルを拒否）と挙動を揃える。
+fn deserialize_unique_references<'de, D, N>(deserializer: D) -> Result<HashMap<String, Reference<N>>, D::Error>
+where
+  D: Deserializer<'de>,
+  N: Deserialize<'de>,
+{
+  /// 重複キーを検出する `HashMap` 用の `Visitor`。
+  struct UniqueReferencesVisitor<N>(PhantomData<N>);
+
+  impl<'de, N> Visitor<'de> for UniqueReferencesVisitor<N>
+  where
+    N: Deserialize<'de>,
+  {
+    type Value = HashMap<String, Reference<N>>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      return formatter.write_str("参照 ID をキーとするテーブル");
+    }
+
+    fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+    where
+      A: MapAccess<'de>,
+    {
+      let mut map: HashMap<String, Reference<N>> = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+      while let Some((id, reference)) = access.next_entry::<String, Reference<N>>()? {
+        if map.contains_key(&id) {
+          return Err(A::Error::custom(format!("参照 ID が重複しています: {id}")));
+        }
+        map.insert(id, reference);
+      }
+      return Ok(map);
+    }
+  }
+
+  return deserializer.deserialize_map(UniqueReferencesVisitor(PhantomData));
 }
 
 /// 個々の参照定義を表す構造体
@@ -33,6 +84,7 @@ pub struct References<N = Name> {
 /// となる。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Reference<N = Name> {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]

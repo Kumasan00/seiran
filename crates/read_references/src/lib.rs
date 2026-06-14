@@ -6,9 +6,11 @@
 //! 著者は serde 境界では [`RawName`]（全フィールド任意）として受理し、検証フェーズで
 //! [`Name`]（`Personal` / `Organization` の 2 択 enum）へ変換する。これにより `family`（個人著者）と
 //! `literal`（組織著者）の同時指定／不指定という不正状態は、変換後の型には表現できなくなる。
-//! 著者の判別不能・空の参照 ID・`style_path` の解決失敗は、すべて `MultipleValidationErrors` に
-//! 集約して 1 度に報告する。参照 ID の重複は、TOML ではパース時にエラーとなり、JSON では後勝ちで
-//! 解決する。
+//! 著者の判別不能・空（空白のみを含む）の参照 ID・`style_path` の解決失敗は、すべて
+//! `MultipleValidationErrors` に集約して 1 度に報告する。参照 ID の重複は TOML / JSON とも厳格に
+//! エラーとする（TOML はパーサ段階、JSON は専用デシリアライザで検出）。未知のフィールドは
+//! `deny_unknown_fields` で拒否し、日付オブジェクトの未知キーも同様にエラーとする
+//! （タイポ検出のため、CSL 前方互換より厳格性を優先）。
 //!
 //! ファイル形式は拡張子 (`.toml` / `.json`) で判別する。
 //!
@@ -299,16 +301,23 @@ fn convert_names(
   return Some(names);
 }
 
-/// 参照 ID（テーブルキー）が空でないことを検証し、違反を `errors` に追加する。
+/// 参照 ID（テーブルキー）が空でも空白のみでもないことを検証し、違反を `errors` に追加する。
 ///
 /// keyed-table 形式では id はマップのキーであり、値（`Reference`）の検証とは別に、キーの非空
-/// チェックを明示的に行う。
+/// チェックを明示的に行う。厳格性のため、空文字列に加えて空白のみの ID も拒否する。
 fn validate_non_empty_ids(references: &HashMap<String, Reference<RawName>>, errors: &mut Vec<ValidationError>) {
-  if references.contains_key("") {
-    errors.push(ValidationError::Field {
-      path: "references".to_string(),
-      message: "参照ID（テーブルキー）に空文字列は使用できません".to_string(),
-    });
+  for id in references.keys() {
+    if id.is_empty() {
+      errors.push(ValidationError::Field {
+        path: "references".to_string(),
+        message: "参照ID（テーブルキー）に空文字列は使用できません".to_string(),
+      });
+    } else if id.trim().is_empty() {
+      errors.push(ValidationError::Field {
+        path: "references".to_string(),
+        message: format!("参照ID（テーブルキー）に空白のみの文字列は使用できません: {id:?}"),
+      });
+    }
   }
 }
 
@@ -831,5 +840,112 @@ mod tests {
     assert!(matches!(reference.edition, Some(NumberOrString::Float(value)) if (value - 2.5).abs() < f64::EPSILON));
     assert!(matches!(&reference.page, Some(NumberOrString::String(value)) if value == "1-10"));
     assert!(matches!(&reference.issue, Some(NumberOrString::String(value)) if value == "S2"));
+  }
+
+  #[test]
+  fn parse_references_rejects_unknown_field_in_reference() {
+    // Arrange: Reference に未知フィールドを含める
+    let toml = toml_with_style_path(
+      "/tmp/style.csl",
+      "[references.ref1]\n\
+       type = \"book\"\n\
+       unknown_field = \"oops\"\n\
+       [[references.ref1.author]]\n\
+       family = \"Doe\"\n",
+    );
+
+    // Act
+    let result = parse_references(&toml, dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_references_rejects_unknown_field_in_name() {
+    // Arrange: 著者名（RawName）に未知フィールドを含める
+    let toml = toml_with_style_path(
+      "/tmp/style.csl",
+      "[references.ref1]\n\
+       type = \"book\"\n\
+       [[references.ref1.author]]\n\
+       family = \"Doe\"\n\
+       unknown_name_field = \"oops\"\n",
+    );
+
+    // Act
+    let result = parse_references(&toml, dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_references_rejects_unknown_top_level_field() {
+    // Arrange: トップレベルに未知フィールドを含める
+    let toml = "style_path = \"/tmp/style.csl\"\nunexpected = true\n";
+
+    // Act
+    let result = parse_references(toml, dummy_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseToml { .. })));
+  }
+
+  #[test]
+  fn parse_references_rejects_unknown_date_field() {
+    // Arrange: 日付オブジェクトに未知キーを含める
+    let json = json_with_style_path(
+      "/tmp/style.csl",
+      "{\"ref1\": {\
+         \"type\": \"book\", \
+         \"issued\": {\"date-parts\": [[2024]], \"bogus\": 1}, \
+         \"author\": [{\"family\": \"Doe\"}]\
+       }}",
+    );
+
+    // Act
+    let result = parse_references(&json, dummy_json_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
+  }
+
+  #[test]
+  fn parse_references_rejects_duplicate_json_keys() {
+    // Arrange: JSON はキー重複を許すが、Seiran は後勝ちを許さず厳格に拒否する
+    let json = json_with_style_path(
+      "/tmp/style.csl",
+      "{\"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}, \
+        \"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Roe\"}]}}",
+    );
+
+    // Act
+    let result = parse_references(&json, dummy_json_source());
+
+    // Assert
+    assert!(matches!(result, Err(ReadReferencesError::ParseJson { .. })));
+  }
+
+  #[test]
+  fn resolve_fails_on_whitespace_only_id() {
+    // Arrange: 空白のみの参照 ID
+    let toml = toml_with_style_path(
+      "/tmp/style.csl",
+      "[references.\"  \"]\n\
+       type = \"book\"\n\
+       [[references.\"  \".author]]\n\
+       family = \"Doe\"\n",
+    );
+    let pre = parse_references(&toml, dummy_source()).unwrap();
+
+    // Act
+    let errors = resolve_errors(pre);
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { message, .. } if message.contains("空白のみ")
+    )));
   }
 }

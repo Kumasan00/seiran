@@ -1,7 +1,8 @@
 //! CSL (Citation Style Language) の日付値の型と手書きデシリアライザ。
 //!
 //! 構造化された日付オブジェクト（`date-parts` / `season` / `circa` / `literal` / `raw` / `edtf`）のみを
-//! 受理する。未知のキーは CSL の前方互換性確保のため無視する。
+//! 受理する。未知のキーはエラーとして拒否し、フィールド名のタイポを検出する
+//! （CSL 前方互換より厳格性を優先）。
 
 use std::fmt;
 
@@ -89,7 +90,7 @@ impl<'de> Deserialize<'de> for Date {
     /// `Date` のデシリアライズを担う `Visitor`。
     ///
     /// CSL の構造化日付オブジェクトを受理し、各フィールドを `Date` に取り込む。
-    /// 未知のキーは無視する（CSL の前方互換性確保のため）。
+    /// 未知のキーはエラーとして拒否する（フィールド名のタイポ検出のため）。
     struct DateVisitor;
 
     impl<'de> Visitor<'de> for DateVisitor {
@@ -112,8 +113,11 @@ impl<'de> Deserialize<'de> for Date {
             "literal" => date.literal = Some(map.next_value()?),
             "raw" => date.raw = Some(map.next_value()?),
             "edtf" => date.edtf = Some(map.next_value()?),
-            _ => {
-              let _: serde::de::IgnoredAny = map.next_value()?;
+            unknown => {
+              return Err(<A::Error as serde::de::Error>::unknown_field(
+                unknown,
+                &["date-parts", "season", "circa", "literal", "raw", "edtf"],
+              ));
             },
           }
         }

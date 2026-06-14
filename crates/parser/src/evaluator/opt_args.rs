@@ -27,7 +27,6 @@ use crate::evaluator::EvalError;
 
 /// 任意引数キーが期待する値の型タグ
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) enum OptType {
   /// `true` / `false` または bare key（`[draft]` → `true`）
   Bool,
@@ -53,7 +52,6 @@ impl fmt::Display for OptType {
 
 /// 型変換済みの任意引数値
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
 pub(crate) enum OptValue {
   Bool(bool),
   Number(f64),

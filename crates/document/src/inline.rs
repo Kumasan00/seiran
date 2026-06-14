@@ -55,6 +55,22 @@ pub enum InlineNode {
     /// `\ref{...}` の `CommandCall` ノードのソース位置。pass2 で未解決時の診断に使う
     span: SourceSpan,
   },
+
+  /// 文献引用（`\cite{key}` / 複数キーの `\cite{a,b}`）
+  ///
+  /// `Ref` と同様の 2 段階で扱う。パーサ（pass1）では `keys` を確定し `label: None` の
+  /// スタブを生成、pass2 では参照定義（references）に対するキーの存在のみを検証する。
+  /// 最終的な引用ラベル（番号 / 著者年の整形済みインライン列）は CSL 整形ステージ
+  /// （`citation` クレート）が全引用集合から採番して `label: Some(...)` に確定する。
+  Cite {
+    /// 引用キーのリスト（`\cite{a,b}` は `["a", "b"]`）
+    keys: Vec<String>,
+    /// 解決済みの引用ラベル（CSL 整形済みインライン列）。パーサ段階では `None`、
+    /// CSL 整形ステージで `Some` に確定する。
+    label: Option<Vec<InlineNode>>,
+    /// `\cite{...}` の `CommandCall` ノードのソース位置。キー存在検証時の診断に使う
+    span: SourceSpan,
+  },
 }
 
 impl InlineNode {
@@ -81,6 +97,9 @@ impl InlineNode {
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
       InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
+      InlineNode::Cite { keys, label, .. } => {
+        return label.as_deref().map_or_else(|| keys.join(", "), inline_nodes_to_plain_text);
+      },
     }
   }
 }
