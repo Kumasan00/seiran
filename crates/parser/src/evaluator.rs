@@ -29,6 +29,7 @@ use syntax::{
 
 use crate::evaluator::{command::CommandResult, counter::CounterRegistry};
 
+pub(crate) mod cite;
 mod command;
 pub(crate) mod counter;
 mod environment;

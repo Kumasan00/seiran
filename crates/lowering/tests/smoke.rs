@@ -4,7 +4,7 @@
 //! フォント読み込みを避けるため `lower_nodes` までで打ち切り、出力構造は検証しない。
 //! `lower_nodes` より下（`build_blocks` / `break_pages`）の検証は各クレート側に委ねる。
 
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use lowering::LoweringContext;
 use parser::parse_source;
@@ -25,7 +25,7 @@ fn smoke_through_lowering(name: &str) {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
 
   let style = Style::default();
-  let doc_nodes = parse_source(&content, &path.display().to_string(), &style)
+  let doc_nodes = parse_source(&content, &path.display().to_string(), &style, &HashSet::new())
     .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
 
   let ctx = LoweringContext::new(&style);

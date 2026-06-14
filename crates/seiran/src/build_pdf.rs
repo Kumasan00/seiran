@@ -2,7 +2,7 @@
 //! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
 //! PDF を生成するための主要な機能を提供します。
 
-use std::{fs, path::Path};
+use std::{collections::HashSet, fs, path::Path};
 
 use document::DocNode;
 use font::{
@@ -90,9 +90,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 
   let config = read_config::read_config(config_path)?;
   let style = read_style::read_style(config.style_path.as_deref())?;
-  let _references = read_references::read_references(config.references_path.as_deref())?;
+  let references = read_references::read_references(config.references_path.as_deref())?;
+  // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
+  let citation_keys: HashSet<String> = references.references.keys().cloned().collect();
 
-  let doc_nodes = parse_all_sources(&config.sources, &style)?;
+  let doc_nodes = parse_all_sources(&config.sources, &style, &citation_keys)?;
   info!(source_count = config.sources.len(), "全ソースのパースが完了しました");
 
   let lowering_ctx = LoweringContext::new(&style);
@@ -165,7 +167,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 ///
 /// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
 /// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
-fn parse_all_sources(sources: &[std::path::PathBuf], style: &read_style::Style) -> Result<Vec<DocNode>, BuildPdfError> {
+fn parse_all_sources(
+  sources: &[std::path::PathBuf],
+  style: &read_style::Style,
+  citation_keys: &HashSet<String>,
+) -> Result<Vec<DocNode>, BuildPdfError> {
   let mut all_nodes: Vec<DocNode> = Vec::new();
   let mut parse_errors: Vec<ParseSourceError> = Vec::new();
 
@@ -175,7 +181,7 @@ fn parse_all_sources(sources: &[std::path::PathBuf], style: &read_style::Style) 
       source,
     })?;
     let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path, style) {
+    match parser::parse_source(&content, &display_path, style, citation_keys) {
       Ok(nodes) => all_nodes.extend(nodes),
       Err(error) => parse_errors.push(error),
     }

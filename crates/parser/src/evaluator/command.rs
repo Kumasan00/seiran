@@ -27,6 +27,7 @@ use types::FontKind;
 
 use crate::evaluator::{EvalError, Evaluator, opt_args::collect_command_opt_args};
 
+pub(crate) mod cite;
 mod control;
 mod headline;
 pub(crate) mod inline;
@@ -63,6 +64,8 @@ pub(crate) enum CommandKind {
   SingleChar(char),
   /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
   Ref,
+  /// `\cite{key}` — 文献引用のスタブを生成し、pass2 でキー存在を検証する
+  Cite,
   /// 未定義のコマンド
   Undefined,
 }
@@ -80,6 +83,8 @@ impl CommandKind {
       Self::SingleChar(ch) => single_char(view, ch).map(CommandResult::Inline),
 
       Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
+
+      Self::Cite => cite::cite_command(view).map(CommandResult::Inline),
 
       Self::Undefined => Err(EvalError::UnknownCommand {
         name: view.name().to_string(),
@@ -113,6 +118,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
   // 相互参照
   "ref" => CommandKind::Ref,
+
+  // 文献引用
+  "cite" => CommandKind::Cite,
 
   // 書体指定コマンド（テキスト装飾、3 ファミリ × 4 スタイル）
   // セリフ（既定ファミリ、接頭辞なし）

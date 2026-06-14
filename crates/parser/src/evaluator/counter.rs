@@ -362,7 +362,12 @@ fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Re
         };
         *number = Some(resolved.to_string());
       },
-      InlineNode::Text(_) | InlineNode::InlineMath(_) | InlineNode::Symbol(_) | InlineNode::LineBreak => {},
+      // `\cite` のキー検証は cite::resolve_cites が別途行う（ここでは触らない）
+      InlineNode::Text(_)
+      | InlineNode::InlineMath(_)
+      | InlineNode::Symbol(_)
+      | InlineNode::LineBreak
+      | InlineNode::Cite { .. } => {},
     }
   }
   return Ok(());
