@@ -36,13 +36,12 @@ pub use crate::{
     heading::{HeadingStyle, HeadingStyles, default_for_level},
     list::ListStyle,
     math::MathScriptStyle,
+    reference::ReferenceStyle,
     table::TableStyle,
     text::TextBlockStyle,
   },
   error::{ReadStyleError, ValidationError},
-  extended::{
-    ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, reference::ReferenceStyle, toc::TocStyle,
-  },
+  extended::{ExtendedStyle, footnote::FootnoteStyle, hyperref::HyperrefStyle, toc::TocStyle},
   primitives::color::Color,
   style::Style,
 };
