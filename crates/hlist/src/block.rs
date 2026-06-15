@@ -3,7 +3,7 @@
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（[`crate::break_lines`]）は `Block::Paragraph` の水平リストにだけ回る。
 
-use types::AnchorMark;
+use types::{Align, AnchorMark};
 
 use crate::{hitem::HItem, table_box::TableBox};
 
@@ -16,9 +16,27 @@ pub enum Block {
     items: Vec<HItem>,
     /// 行送り（pt）= 支配的フォントサイズ × 行高係数
     leading: f32,
+    /// 本文左端からの左インデント（pt）
+    ///
+    /// リスト項目などブロック単位で字下げする段落で使う。全行（折り返し行を含む）に
+    /// 一律適用され、行折り返しの利用可能幅は `text_width - indent` に縮む。通常の段落は 0。
+    indent: f32,
+    /// 段落内の各行の水平揃え（既定は左揃え）
+    ///
+    /// 折り返しには影響せず、確定した各行を利用可能幅（`text_width - indent`）の中で
+    /// 中央・右へシフトする。タイトルページの中央寄せ等で使う。通常の段落は [`Align::Left`]。
+    align: Align,
   },
   /// 表（シェーピング済み）
-  Table(TableBox),
+  Table {
+    /// 表本体（列定義・行・列幅指定）
+    table: TableBox,
+    /// 本文幅の中での表全体の水平揃え（既定は左揃え）
+    ///
+    /// 表の自然幅は確定済み列幅の総和。利用可能幅（本文幅）の中で中央・右へ寄せる。
+    /// 全幅（flex / ratio 列で本文幅いっぱい）の表は揃えても動かない。
+    align: Align,
+  },
   /// 画像（PNG / JPEG / SVG）
   ///
   /// `width` / `height` はソース指定値（pt）。未指定（`None`）の場合は
@@ -33,6 +51,10 @@ pub enum Block {
     height: Option<f32>,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
+    /// 本文幅の中での画像の水平揃え（既定は左揃え）
+    ///
+    /// 揃えオフセットは確定済み描画幅と本文幅から `break_pages` で算出する。
+    align: Align,
   },
   /// 罫線（本文幅とは独立な塗りつぶし矩形）
   Rule {
@@ -40,6 +62,8 @@ pub enum Block {
     width: f32,
     /// 高さ（pt）
     height: f32,
+    /// 本文幅の中での罫線の水平揃え（既定は左揃え）
+    align: Align,
   },
   /// 縦方向の固定アキ（pt）
   VSpace(f32),

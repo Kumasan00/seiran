@@ -31,6 +31,12 @@ pub struct RunningContentSpec {
   pub metadata: RunningMetadata,
   /// 本文幅（pt）。スロットの左／中央／右揃えの基準
   pub text_width: f32,
+  /// 先頭ページ（タイトルページ）のヘッダー・フッターを抑止するか
+  ///
+  /// `true` のとき index 0 のページはヘッダー・フッターを配置しない。タイトルページ
+  /// 有効時に `build_pdf` が `true` を渡す。ページ番号トークン（`{page}` / `{pages}`）の
+  /// 採番自体には影響せず、描画の有無だけを制御する。
+  pub skip_first: bool,
 }
 
 /// 1 リージョン（ヘッダーまたはフッター）のスロットと見た目
@@ -93,6 +99,10 @@ pub fn build_running_content(
   let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0);
   let page_count = pages.len();
   for (index, page) in pages.iter_mut().enumerate() {
+    // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
+    if spec.skip_first && index == 0 {
+      continue;
+    }
     let page_number = index + 1;
     if let Some(slots) = &spec.header {
       page.header = build_region(&mut measurer, slots, spec.text_width, page_number, page_count, &spec.metadata);

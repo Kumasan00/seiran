@@ -39,8 +39,10 @@ mod math;
 mod paragraph;
 mod table;
 mod template;
+mod title_page;
 
 pub use layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
+pub use title_page::{TitlePageMetadata, lower_title_page};
 pub use types::TableColumn;
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
@@ -66,6 +68,26 @@ pub enum LoweringError {
     label: String,
     /// `\ref{...}` のソース位置（`InlineNode::Ref` から引き継ぐ）
     #[label("この参照が未解決です")]
+    span: miette::SourceSpan,
+  },
+
+  /// 文献引用（`\cite{...}`）が CSL 整形ステージを経ずに lowering に到達した場合に返されます。
+  ///
+  /// `citation::process_citations`（lowering の前段）がラベルを採番していれば `label` は
+  /// `Some` になります。`None` のまま到達したのは、整形ステージが呼ばれていないか
+  /// 走査漏れがあることを示します。
+  #[error("未整形の文献引用が lowering に到達しました: キー `{keys}`")]
+  #[diagnostic(
+    code(lowering::unresolved_citation),
+    help(
+      "lowering の前に citation::process_citations が実行されているか確認してください。実行済みの場合は CSL 整形ステージにバグがある可能性があります。"
+    )
+  )]
+  UnresolvedCitation {
+    /// 採番できなかった引用キー列（`\cite{a,b}` は `a, b`）
+    keys: String,
+    /// `\cite{...}` のソース位置（`InlineNode::Cite` から引き継ぐ）
+    #[label("この引用が未整形です")]
     span: miette::SourceSpan,
   },
 }
@@ -308,9 +330,30 @@ mod tests {
 
     let err = lower_node(&ctx, &node).expect_err("未解決の Ref は LoweringError を返すべき");
 
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "ch:intro"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "ch:intro");
+  }
+
+  #[test]
+  fn unprocessed_cite_in_paragraph_returns_error() {
+    // CSL 整形ステージ（citation::process_citations）を経ずに label = None のまま
+    // lowering に到達した場合、LoweringError::UnresolvedCitation が返ることを確認する。
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::Paragraph(vec![InlineNode::Cite {
+      keys: vec!["smith2020".to_string(), "jones2021".to_string()],
+      label: None,
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }]);
+
+    let err = lower_node(&ctx, &node).expect_err("未整形の Cite は LoweringError を返すべき");
+
+    let LoweringError::UnresolvedCitation { keys, .. } = err else {
+      panic!("UnresolvedCitation が期待されます: {err:?}");
+    };
+    assert_eq!(keys, "smith2020, jones2021");
   }
 
   #[test]

@@ -99,7 +99,7 @@ fn parse_style_overrides_header_and_footer() {
   assert!((style.core.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
   assert_eq!(style.core.header.font_kind, types::FontKind::SansSerif);
   assert!((style.core.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-  assert_eq!(style.core.header.rule_color.map(read_style::Color::rgb), Some([0x33, 0x33, 0x33]));
+  assert_eq!(style.core.header.rule_color.map(types::Color::rgb), Some([0x33, 0x33, 0x33]));
   assert_eq!(style.core.footer.center, "{title}");
   assert!(style.core.footer.left.is_empty());
   // 既定では header/footer は空（描画なし）

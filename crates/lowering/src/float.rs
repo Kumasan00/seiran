@@ -38,8 +38,8 @@ pub(super) struct FloatSpec {
   pub top_margin: Length,
   /// フロート全体の下マージン（VBox の `margin_bottom`）
   pub bottom_margin: Length,
-  /// 本体とキャプションの間に入れる余白。`None` なら Vkern を出力しない
-  pub inner_margin: Option<Length>,
+  /// 本体とキャプションの間に入れる余白（`Vkern` として出力。0pt なら実質アキなし）
+  pub inner_margin: Length,
 }
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
@@ -47,6 +47,10 @@ pub(super) struct FloatSpec {
 /// `caption` が `None` のときはキャプション行を一切出力しない。
 /// 本体とキャプションの縦区切りは `Vkern`（`inner_margin`）のみで表し、
 /// ブロック境界の判断は縦組版層（`build_blocks` の `VBox` 再帰平坦化）に委ねる。
+///
+/// 図表は既定で中央寄せ（`align = Center`）にする。`VBox` の `align` は配下の本体
+/// （画像・表）とキャプション段落の双方に伝播するため、本体が本文幅より狭ければ
+/// 本体・キャプションがともに中央へ寄る（全幅の表・画像はオフセット 0 で動かない）。
 pub(super) fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<LayoutNode>)>,
@@ -56,16 +60,16 @@ pub(super) fn wrap_float(
   match caption {
     Some((CaptionPosition::Top, caption_nodes)) => {
       children.extend(caption_nodes);
-      if let Some(margin) = spec.inner_margin {
-        children.push(LayoutNode::Vkern { length: margin });
-      }
+      children.push(LayoutNode::Vkern {
+        length: spec.inner_margin,
+      });
       children.push(main);
     },
     Some((CaptionPosition::Bottom, caption_nodes)) => {
       children.push(main);
-      if let Some(margin) = spec.inner_margin {
-        children.push(LayoutNode::Vkern { length: margin });
-      }
+      children.push(LayoutNode::Vkern {
+        length: spec.inner_margin,
+      });
       children.extend(caption_nodes);
     },
     None => {
@@ -80,6 +84,8 @@ pub(super) fn wrap_float(
     LayoutNode::VBox {
       children,
       margin_bottom: spec.bottom_margin,
+      indent: Length::pt(0.0),
+      align: types::Align::Center,
     },
   ];
 }
@@ -126,7 +132,7 @@ mod tests {
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
-      inner_margin: Some(Length::pt(3.0)),
+      inner_margin: Length::pt(3.0),
     };
 
     // Act
@@ -138,11 +144,14 @@ mod tests {
     let LayoutNode::VBox {
       children,
       margin_bottom,
+      align,
+      ..
     } = &nodes[1]
     else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
+    assert_eq!(*align, types::Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Rule { .. }));
@@ -154,7 +163,7 @@ mod tests {
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
-      inner_margin: Some(Length::pt(3.0)),
+      inner_margin: Length::pt(3.0),
     };
 
     // Act
@@ -170,24 +179,23 @@ mod tests {
   }
 
   #[test]
-  fn wrap_float_without_inner_margin_omits_inner_vkern() {
-    // Arrange — inner_margin が None なら本体とキャプションの間に Vkern を入れない
+  fn wrap_float_zero_inner_margin_still_emits_harmless_vkern() {
+    // Arrange — inner_margin が 0pt でも Vkern は常に出る（VSpace(0) は縦組版層で no-op）
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
-      inner_margin: None,
+      inner_margin: Length::pt(0.0),
     };
 
     // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
 
-    // Assert — VBox children は caption + main の 2 要素のみ（間に Vkern なし）
+    // Assert — caption → Vkern(0) → main の 3 要素。間の Vkern は 0pt
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
-    assert_eq!(children.len(), 2, "間に Vkern が入らない: {children:?}");
-    let has_vkern = children.iter().any(|n| matches!(n, LayoutNode::Vkern { .. }));
-    assert!(!has_vkern, "本体とキャプションの間に Vkern は入らない: {children:?}");
+    assert_eq!(children.len(), 3, "caption + Vkern(0) + main: {children:?}");
+    assert_vkern(&children[1], 0.0);
   }
 
   #[test]
@@ -196,7 +204,7 @@ mod tests {
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
-      inner_margin: Some(Length::pt(3.0)),
+      inner_margin: Length::pt(3.0),
     };
 
     // Act
@@ -250,8 +258,9 @@ mod tests {
     let err = build_caption(&ctx, &caption_style, &inlines, "1").expect_err("未解決 Ref はエラー");
 
     // Assert
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "fig:missing"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "fig:missing");
   }
 }

@@ -70,7 +70,7 @@ pub(super) fn lower_figure(
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
-    inner_margin: Some(style.inner_margin),
+    inner_margin: style.inner_margin,
   };
   return Ok(wrap_float(image_node, caption_nodes, &spec));
 }

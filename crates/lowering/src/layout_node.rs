@@ -3,7 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use types::{AnchorMark, Color, FontKind, Length, LinkTarget, TableColumn};
+use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, TableColumn};
 
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -14,6 +14,17 @@ pub enum LayoutNode {
   VBox {
     children: Vec<LayoutNode>,
     margin_bottom: Length,
+    /// この `VBox` 配下の縦リストに加える左インデント（pt 換算で累積）
+    ///
+    /// リスト項目で字下げに使う。`layout::build_blocks` が `VBox` の入れ子ごとに加算し、
+    /// 配下の段落（`Block::Paragraph`）へ確定値を刻む。通常の `VBox` は 0。
+    indent: Length,
+    /// この `VBox` 配下の段落に適用する水平揃え（既定は左揃え）
+    ///
+    /// `layout::build_blocks` が `VBox` 配下の段落（`Block::Paragraph`）へ伝播する。
+    /// 入れ子の `VBox` は自身の `align` で上書きする（インデントのように累積はしない）。
+    /// タイトルページの中央寄せで [`Align::Center`] を使う。通常の `VBox` は [`Align::Left`]。
+    align: Align,
   },
   /// 水平方向のコンテナ (行、インライン数式など)
   HBox {

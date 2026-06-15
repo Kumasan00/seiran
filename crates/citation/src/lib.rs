@@ -162,35 +162,6 @@ pub fn process_citations(
   return Ok(());
 }
 
-/// 引用整形に用いるロケール一覧を組み立てる。
-///
-/// `style.core.reference.locale_path` で指定された CSL ロケール XML を読み込み・解析し、
-/// hayagriva 内蔵ロケール（`archive` feature の CBOR）の**前**に並べて返す。hayagriva の
-/// ロケール探索は言語コードの先頭一致（`find`）で決まるため、先頭に重ねたカスタムロケールが
-/// 同一言語の内蔵ロケールを上書きする。`locale_path` が `None` なら内蔵ロケールのみを返す。
-///
-/// # Errors
-///
-/// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
-fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
-  let mut locales: Vec<Locale> = Vec::new();
-  // カスタムロケールがあれば先頭に置き、同一言語の内蔵ロケールより優先させる。
-  if let Some(path) = &style.core.reference.locale_path {
-    let path_str = path.display().to_string();
-    let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
-      path: path_str.clone(),
-      source,
-    })?;
-    let locale_file = LocaleFile::from_xml(&xml).map_err(|source| CitationError::ParseLocale {
-      path: path_str,
-      source,
-    })?;
-    locales.push(locale_file.into());
-  }
-  locales.extend(hayagriva::archive::locales());
-  return Ok(locales);
-}
-
 /// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
 ///
 /// 走査範囲は `parser::evaluator::cite` のキー存在検証と同じ木構造（見出しタイトル・段落・図キャプ
@@ -248,6 +219,35 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
       | InlineNode::Ref { .. } => {},
     }
   }
+}
+
+/// 引用整形に用いるロケール一覧を組み立てる。
+///
+/// `style.core.reference.locale_path` で指定された CSL ロケール XML を読み込み・解析し、
+/// hayagriva 内蔵ロケール（`archive` feature の CBOR）の**前**に並べて返す。hayagriva の
+/// ロケール探索は言語コードの先頭一致（`find`）で決まるため、先頭に重ねたカスタムロケールが
+/// 同一言語の内蔵ロケールを上書きする。`locale_path` が `None` なら内蔵ロケールのみを返す。
+///
+/// # Errors
+///
+/// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
+fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
+  let mut locales: Vec<Locale> = Vec::new();
+  // カスタムロケールがあれば先頭に置き、同一言語の内蔵ロケールより優先させる。
+  if let Some(path) = &style.core.reference.locale_path {
+    let path_str = path.display().to_string();
+    let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
+      path: path_str.clone(),
+      source,
+    })?;
+    let locale_file = LocaleFile::from_xml(&xml).map_err(|source| CitationError::ParseLocale {
+      path: path_str,
+      source,
+    })?;
+    locales.push(locale_file.into());
+  }
+  locales.extend(hayagriva::archive::locales());
+  return Ok(locales);
 }
 
 #[cfg(test)]

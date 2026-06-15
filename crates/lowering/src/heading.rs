@@ -51,6 +51,8 @@ pub(super) fn lower_heading(
   result.push(LayoutNode::VBox {
     children,
     margin_bottom: heading_style.bottom_margin,
+    indent: types::Length::pt(0.0),
+    align: types::Align::Left,
   });
 
   if heading_style.page_break_after {
@@ -180,8 +182,9 @@ mod tests {
     )
     .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
 
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "sec:missing"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "sec:missing");
   }
 }

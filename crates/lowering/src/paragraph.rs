@@ -119,8 +119,9 @@ mod tests {
     let err = lower_paragraph(&ctx, &inlines).expect_err("未解決 Ref はエラー");
 
     // Assert
-    match err {
-      LoweringError::UnresolvedReference { label, .. } => assert_eq!(label, "eq:missing"),
-    }
+    let LoweringError::UnresolvedReference { label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "eq:missing");
   }
 }

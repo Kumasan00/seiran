@@ -24,8 +24,8 @@ use krilla::{
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
 use read_config::Config;
-use read_style::{Color, Style};
-use types::{AnchorMark, ColumnAlign, FontMap, LinkTarget, TableColumn};
+use read_style::Style;
+use types::{AnchorMark, Color, ColumnAlign, FontMap, LinkTarget, TableColumn};
 
 use crate::{
   OutlineEntry,
@@ -40,7 +40,7 @@ use crate::{
 /// - 各ページの [`hlist::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
 /// - 各ページの [`hlist::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
 /// - 見出しアンカーと `outline_entries` から PDF のしおり（アウトライン）を構築し、
-///   `style.extended.hyperref.show_bookmarks` が真なら設定する
+///   `style.core.hyperref.show_bookmarks` が真なら設定する
 // 設定・フォント・スタイル・しおり情報を個別に受け取る描画オーケストレーション関数のため、
 // 引数をまとめず素直に並べる（束ねても呼び出し側の見通しは良くならない）。
 #[allow(clippy::too_many_arguments)]
@@ -74,7 +74,7 @@ pub(crate) fn render_pages(
     page.finish();
   }
 
-  if style.extended.hyperref.show_bookmarks
+  if style.core.hyperref.show_bookmarks
     && let Some(outline) = build_outline(&heading_dests, outline_entries)
   {
     document.set_outline(outline);
@@ -225,6 +225,7 @@ fn draw_placed_block(
       }
     },
     PlacedBlock::Table {
+      x,
       columns,
       col_widths,
       rows,
@@ -238,8 +239,9 @@ fn draw_placed_block(
         rule_thickness: style.core.table.rule_thickness.to_pt(),
         rule_color: style.core.table.rule_color,
       };
+      // 表全体の揃えオフセット `x` を左マージンに足し込み、行帯・セルの起点を右へずらす
       for placed_row in rows {
-        draw_table_row(surface, &draw_ctx, placed_row, margin_left)?;
+        draw_table_row(surface, &draw_ctx, placed_row, margin_left + x)?;
       }
     },
     PlacedBlock::Image {

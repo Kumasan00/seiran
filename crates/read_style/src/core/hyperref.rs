@@ -2,8 +2,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-use crate::Color;
+use types::Color;
 
 /// ハイパーリンクとしおりに関するスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

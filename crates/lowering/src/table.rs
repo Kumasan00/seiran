@@ -113,7 +113,7 @@ pub(super) fn lower_table(
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
-    inner_margin: None,
+    inner_margin: style.inner_margin,
   };
   return Ok(wrap_float(table_node, caption_nodes, &spec));
 }
@@ -267,6 +267,39 @@ mod tests {
       .position(|n| matches!(n, LayoutNode::Text(t, _) if t.starts_with("Table 2")))
       .expect("キャプション Text あり");
     assert!(caption_idx < table_idx, "Top: キャプションが table の前");
+  }
+
+  #[test]
+  fn lower_table_inserts_inner_margin_between_table_and_caption() {
+    // Arrange — キャプション付きの表は本体とキャプションの間に inner_margin の Vkern を挟む（図と対称）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+    let caption = [InlineNode::Text("得点表".to_string())];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      Some((CaptionPosition::Bottom, &caption)),
+      "1",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert — VBox children は Table → Vkern(inner_margin) → caption Text の順
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
+    let inner_kern = children.get(table_idx + 1);
+    assert!(
+      matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.core.table.inner_margin.to_pt()).abs() < f32::EPSILON),
+      "本体の直後に inner_margin の Vkern が入る: {children:?}"
+    );
   }
 
   #[test]

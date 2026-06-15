@@ -13,6 +13,7 @@
 //! - [`anchor_mark`] - リンク行き先のアンカー [`AnchorMark`]（PDF しおり / 内部リンク）
 //! - [`link_target`] - ハイパーリンクの行き先 [`LinkTarget`]（内部 / 外部）
 //! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
+//! - [`align`] - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
 //!
 //! ## `FontMap<T>`
 //!
@@ -43,6 +44,7 @@
 //! - フォント処理: `font`
 //! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 
+pub mod align;
 pub mod anchor_mark;
 pub mod color;
 pub mod font;
@@ -52,6 +54,7 @@ pub mod length;
 pub mod link_target;
 pub mod table;
 
+pub use align::Align;
 pub use anchor_mark::AnchorMark;
 pub use color::Color;
 pub use font::{FontKind, FontType};

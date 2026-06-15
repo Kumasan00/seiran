@@ -32,6 +32,7 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
         width,
         height,
         target_dpi,
+        align,
       } => {
         let loaded = load_image(&path, None)?;
         let (nat_width, nat_height) = loaded.natural_size();
@@ -46,6 +47,7 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
           width: Some(final_width),
           height: Some(final_height),
           target_dpi,
+          align,
         });
       },
       other => Ok(other),
