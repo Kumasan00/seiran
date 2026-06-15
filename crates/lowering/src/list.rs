@@ -46,6 +46,7 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: list_style.item_margin_bottom,
       indent: list_style.indent,
+      align: types::Align::Left,
     });
   }
 
@@ -131,6 +132,7 @@ mod tests {
       children,
       margin_bottom,
       indent,
+      ..
     } = &nodes[0]
     else {
       panic!("item は VBox");

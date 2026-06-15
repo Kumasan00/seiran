@@ -116,9 +116,24 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!("文献引用の CSL 整形が完了しました");
 
   let lowering_ctx = LoweringContext::new(&style);
-  let layout_nodes =
+  let mut layout_nodes =
     lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!("Document IR → LayoutNode への変換が完了しました");
+
+  // タイトルページが有効なら、本文の先頭に自動生成のタイトルページ + 改ページを prepend する
+  // （本文は 2 ページ目から始まる）。内容は config.toml の [document]、見た目は style.toml の
+  // [title_page] から供給する（ソース側にコマンドは追加しない）。
+  if style.core.title_page.enabled {
+    let metadata = lowering::TitlePageMetadata {
+      title: config.document.title.clone(),
+      author: config.document.author.clone(),
+      date: config.document.date.clone(),
+    };
+    let mut title_nodes = lowering::lower_title_page(&metadata, &style.core.title_page);
+    title_nodes.append(&mut layout_nodes);
+    layout_nodes = title_nodes;
+    info!("タイトルページを挿入しました");
+  }
 
   let font_data = FontData::new(&config.font_configs)?;
   info!("フォントの読み込みが完了しました");
@@ -166,6 +181,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
       date: config.document.date.clone().unwrap_or_default(),
     },
     text_width,
+    // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
+    skip_first: style.core.title_page.enabled,
   };
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 

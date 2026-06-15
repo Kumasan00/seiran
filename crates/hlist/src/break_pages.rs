@@ -147,8 +147,9 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         items,
         leading,
         indent,
+        align,
       } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent);
+        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent, align);
       },
       Block::VSpace(space) => {
         composer.y += space;
@@ -220,6 +221,11 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 /// `indent`（本文左端からの左インデント、pt）は折り返し幅を `text_width - indent` に縮め、
 /// 確定した各行のボックス・リンク矩形を一律 `indent` だけ右へシフトする。行座標は本文左端基準
 /// （`page.rs` の契約）なので、シフト後の `x` をそのまま描画に渡せる。
+///
+/// `align` は確定した各行を利用可能幅（`text_width - indent`）の中で水平にシフトする。
+/// 中央寄せは `(利用可能幅 − 行幅) / 2`、右寄せは `利用可能幅 − 行幅` を `indent` に加算する。
+/// 行幅が利用可能幅を超える場合のシフト量は 0 にクランプする（左端からはみ出さない）。
+#[allow(clippy::too_many_arguments)]
 fn place_paragraph(
   composer: &mut PageComposer,
   geom: &PageGeometry,
@@ -228,18 +234,27 @@ fn place_paragraph(
   leading: f32,
   text_width: f32,
   indent: f32,
+  align: types::Align,
 ) {
-  let mut lines = breaker.break_lines(items, (text_width - indent).max(0.0));
-  // 行は本文左端 (x=0) 基準で組まれるため、ブロックインデント分を全行に一律加算する。
-  // リンク矩形の収集（collect_line_links）より前にシフトしておく。
-  if indent != 0.0 {
-    for line in &mut lines {
+  let available = (text_width - indent).max(0.0);
+  let mut lines = breaker.break_lines(items, available);
+  // 行は本文左端 (x=0) 基準で組まれるため、インデント + 揃えオフセットを全行に加算する。
+  // 揃えオフセットは行ごとに（行幅に応じて）異なる。リンク矩形の収集より前にシフトしておく。
+  for line in &mut lines {
+    let line_width = line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
+    let align_offset = match align {
+      types::Align::Left => 0.0,
+      types::Align::Center => ((available - line_width) / 2.0).max(0.0),
+      types::Align::Right => (available - line_width).max(0.0),
+    };
+    let shift = indent + align_offset;
+    if shift != 0.0 {
       for positioned in &mut line.boxes {
-        positioned.x += indent;
+        positioned.x += shift;
       }
       for link in &mut line.links {
-        link.x0 += indent;
-        link.x1 += indent;
+        link.x0 += shift;
+        link.x1 += shift;
       }
     }
   }
@@ -408,6 +423,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      align: types::Align::Left,
     };
   }
 
@@ -685,6 +701,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      align: types::Align::Left,
     }];
 
     // Act
@@ -720,6 +737,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 20.0,
+      align: types::Align::Left,
     }];
 
     // Act
@@ -764,6 +782,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 15.0,
+      align: types::Align::Left,
     }];
 
     // Act
@@ -774,6 +793,93 @@ mod tests {
     let link = &pages[0].links[0];
     assert!((link.x - 15.0).abs() < f32::EPSILON, "link.x={}", link.x);
     assert!((link.width - 20.0).abs() < f32::EPSILON, "link.width={}", link.width);
+  }
+
+  #[test]
+  fn centered_paragraph_shifts_line_to_horizontal_center() {
+    // Arrange — box(10) 単一行の段落を align=Center、text_width=100 で配置する
+    let geom = test_geometry();
+    let blocks = vec![Block::Paragraph {
+      items: vec![test_box()],
+      leading: 12.0,
+      indent: 0.0,
+      align: types::Align::Center,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — オフセット = (100 - 10) / 2 = 45。box.x は 45
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[0].x - 45.0).abs() < f32::EPSILON, "box.x={}", line.boxes[0].x);
+  }
+
+  #[test]
+  fn right_aligned_paragraph_shifts_line_to_right_edge() {
+    // Arrange — box(10) 単一行を align=Right、text_width=100 で配置する
+    let geom = test_geometry();
+    let blocks = vec![Block::Paragraph {
+      items: vec![test_box()],
+      leading: 12.0,
+      indent: 0.0,
+      align: types::Align::Right,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — オフセット = 100 - 10 = 90。box.x は 90（右端に揃う）
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[0].x - 90.0).abs() < f32::EPSILON, "box.x={}", line.boxes[0].x);
+  }
+
+  #[test]
+  fn centered_overflowing_line_is_not_shifted_negative() {
+    // Arrange — 幅 50 の単一 box を align=Center、text_width=30 で配置（行幅 > 利用可能幅）
+    let geom = test_geometry();
+    let wide = HItem::Box(HBox {
+      content: HBoxContent::Rule {
+        width: 50.0,
+        height: 1.0,
+      },
+      width: 50.0,
+      height: 8.0,
+      depth: 2.0,
+    });
+    let blocks = vec![Block::Paragraph {
+      items: vec![wide],
+      leading: 12.0,
+      indent: 0.0,
+      align: types::Align::Center,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 30.0, &geom, &GreedyBreaker);
+
+    // Assert — シフト量は 0 にクランプされ、box.x は左端 0 のまま（左へはみ出さない）
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[0].x - 0.0).abs() < f32::EPSILON, "box.x={}", line.boxes[0].x);
   }
 
   #[test]

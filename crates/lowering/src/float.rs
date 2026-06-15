@@ -81,6 +81,7 @@ pub(super) fn wrap_float(
       children,
       margin_bottom: spec.bottom_margin,
       indent: Length::pt(0.0),
+      align: types::Align::Left,
     },
   ];
 }

@@ -3,7 +3,7 @@
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（[`crate::break_lines`]）は `Block::Paragraph` の水平リストにだけ回る。
 
-use types::AnchorMark;
+use types::{Align, AnchorMark};
 
 use crate::{hitem::HItem, table_box::TableBox};
 
@@ -21,6 +21,11 @@ pub enum Block {
     /// リスト項目などブロック単位で字下げする段落で使う。全行（折り返し行を含む）に
     /// 一律適用され、行折り返しの利用可能幅は `text_width - indent` に縮む。通常の段落は 0。
     indent: f32,
+    /// 段落内の各行の水平揃え（既定は左揃え）
+    ///
+    /// 折り返しには影響せず、確定した各行を利用可能幅（`text_width - indent`）の中で
+    /// 中央・右へシフトする。タイトルページの中央寄せ等で使う。通常の段落は [`Align::Left`]。
+    align: Align,
   },
   /// 表（シェーピング済み）
   Table(TableBox),

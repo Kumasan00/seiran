@@ -39,8 +39,10 @@ mod math;
 mod paragraph;
 mod table;
 mod template;
+mod title_page;
 
 pub use layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
+pub use title_page::{TitlePageMetadata, lower_title_page};
 pub use types::TableColumn;
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー

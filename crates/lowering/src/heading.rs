@@ -52,6 +52,7 @@ pub(super) fn lower_heading(
     children,
     margin_bottom: heading_style.bottom_margin,
     indent: types::Length::pt(0.0),
+    align: types::Align::Left,
   });
 
   if heading_style.page_break_after {

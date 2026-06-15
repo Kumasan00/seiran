@@ -38,6 +38,7 @@ pub use crate::{
     reference::ReferenceStyle,
     table::TableStyle,
     text::TextBlockStyle,
+    title_page::TitlePageStyle,
   },
   error::{ReadStyleError, ValidationError},
   extended::{ExtendedStyle, footnote::FootnoteStyle, toc::TocStyle},
@@ -132,6 +133,7 @@ fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(),
     "footer",
     "reference",
     "hyperref",
+    "title_page",
     "extended",
   ];
 

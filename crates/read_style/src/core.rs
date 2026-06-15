@@ -19,6 +19,7 @@ pub mod reference;
 pub mod running;
 pub mod table;
 pub mod text;
+pub mod title_page;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,7 @@ use types::{
 use crate::core::{
   counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, hyperref::HyperrefStyle,
   list::ListStyle, math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
-  text::TextBlockStyle,
+  text::TextBlockStyle, title_page::TitlePageStyle,
 };
 
 /// コアスタイル設定。`lowering` / `pdf_gen` から参照されるフィールドの集合。
@@ -88,6 +89,9 @@ pub struct CoreStyle {
   /// ハイパーリンク（hyperref 相当）のスタイル
   #[garde(dive)]
   pub hyperref: HyperrefStyle,
+  /// タイトルページ（`\maketitle` 相当）のスタイル
+  #[garde(dive)]
+  pub title_page: TitlePageStyle,
 }
 
 impl Default for CoreStyle {
@@ -108,6 +112,7 @@ impl Default for CoreStyle {
       footer: RunningContentStyle::default(),
       reference: ReferenceStyle::default(),
       hyperref: HyperrefStyle::default(),
+      title_page: TitlePageStyle::default(),
     };
   }
 }
