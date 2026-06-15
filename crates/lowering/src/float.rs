@@ -47,6 +47,10 @@ pub(super) struct FloatSpec {
 /// `caption` が `None` のときはキャプション行を一切出力しない。
 /// 本体とキャプションの縦区切りは `Vkern`（`inner_margin`）のみで表し、
 /// ブロック境界の判断は縦組版層（`build_blocks` の `VBox` 再帰平坦化）に委ねる。
+///
+/// 図表は既定で中央寄せ（`align = Center`）にする。`VBox` の `align` は配下の本体
+/// （画像・表）とキャプション段落の双方に伝播するため、本体が本文幅より狭ければ
+/// 本体・キャプションがともに中央へ寄る（全幅の表・画像はオフセット 0 で動かない）。
 pub(super) fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<LayoutNode>)>,
@@ -81,7 +85,7 @@ pub(super) fn wrap_float(
       children,
       margin_bottom: spec.bottom_margin,
       indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: types::Align::Center,
     },
   ];
 }
@@ -140,12 +144,14 @@ mod tests {
     let LayoutNode::VBox {
       children,
       margin_bottom,
+      align,
       ..
     } = &nodes[1]
     else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
+    assert_eq!(*align, types::Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Rule { .. }));

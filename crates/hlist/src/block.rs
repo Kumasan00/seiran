@@ -28,7 +28,15 @@ pub enum Block {
     align: Align,
   },
   /// 表（シェーピング済み）
-  Table(TableBox),
+  Table {
+    /// 表本体（列定義・行・列幅指定）
+    table: TableBox,
+    /// 本文幅の中での表全体の水平揃え（既定は左揃え）
+    ///
+    /// 表の自然幅は確定済み列幅の総和。利用可能幅（本文幅）の中で中央・右へ寄せる。
+    /// 全幅（flex / ratio 列で本文幅いっぱい）の表は揃えても動かない。
+    align: Align,
+  },
   /// 画像（PNG / JPEG / SVG）
   ///
   /// `width` / `height` はソース指定値（pt）。未指定（`None`）の場合は
@@ -43,6 +51,10 @@ pub enum Block {
     height: Option<f32>,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
+    /// 本文幅の中での画像の水平揃え（既定は左揃え）
+    ///
+    /// 揃えオフセットは確定済み描画幅と本文幅から `break_pages` で算出する。
+    align: Align,
   },
   /// 罫線（本文幅とは独立な塗りつぶし矩形）
   Rule {
@@ -50,6 +62,8 @@ pub enum Block {
     width: f32,
     /// 高さ（pt）
     height: f32,
+    /// 本文幅の中での罫線の水平揃え（既定は左揃え）
+    align: Align,
   },
   /// 縦方向の固定アキ（pt）
   VSpace(f32),

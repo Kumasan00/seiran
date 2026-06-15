@@ -149,6 +149,7 @@ impl Measurer<'_> {
           blocks.push(Block::Rule {
             width: width.to_pt(),
             height: height.to_pt(),
+            align,
           });
         },
         LayoutNode::Image {
@@ -163,11 +164,15 @@ impl Measurer<'_> {
             width: width.map(Length::to_pt),
             height: height.map(Length::to_pt),
             target_dpi,
+            align,
           });
         },
         LayoutNode::Table(table) => {
           self.flush_paragraph(blocks, paragraph, indent, align);
-          blocks.push(Block::Table(self.build_table_box(table)));
+          blocks.push(Block::Table {
+            table: self.build_table_box(table),
+            align,
+          });
         },
         LayoutNode::PageBreak => {
           self.flush_paragraph(blocks, paragraph, indent, align);

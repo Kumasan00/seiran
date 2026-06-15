@@ -225,6 +225,7 @@ fn draw_placed_block(
       }
     },
     PlacedBlock::Table {
+      x,
       columns,
       col_widths,
       rows,
@@ -238,8 +239,9 @@ fn draw_placed_block(
         rule_thickness: style.core.table.rule_thickness.to_pt(),
         rule_color: style.core.table.rule_color,
       };
+      // 表全体の揃えオフセット `x` を左マージンに足し込み、行帯・セルの起点を右へずらす
       for placed_row in rows {
-        draw_table_row(surface, &draw_ctx, placed_row, margin_left)?;
+        draw_table_row(surface, &draw_ctx, placed_row, margin_left + x)?;
       }
     },
     PlacedBlock::Image {

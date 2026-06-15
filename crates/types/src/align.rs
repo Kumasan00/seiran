@@ -26,6 +26,22 @@ pub enum Align {
   Right,
 }
 
+impl Align {
+  /// 利用可能幅 `available` の中に幅 `content_width` の内容を置くときの水平オフセット（pt）。
+  ///
+  /// [`Align::Left`] は 0、[`Align::Center`] は中央、[`Align::Right`] は右端に寄せる。
+  /// 内容が利用可能幅を超える場合は 0 にクランプし、左端より左へはみ出さない。
+  /// 段落行・画像・罫線・表のいずれもこの 1 関数で揃えオフセットを算出する。
+  #[must_use]
+  pub fn offset(self, available: f32, content_width: f32) -> f32 {
+    return match self {
+      Align::Left => 0.0,
+      Align::Center => ((available - content_width) / 2.0).max(0.0),
+      Align::Right => (available - content_width).max(0.0),
+    };
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::Align;
@@ -34,6 +50,31 @@ mod tests {
   fn default_is_left() {
     // Arrange / Act / Assert — 既定は左揃え
     assert_eq!(Align::default(), Align::Left);
+  }
+
+  #[test]
+  fn offset_left_is_always_zero() {
+    // Arrange / Act / Assert — 左揃えは常に 0
+    assert!((Align::Left.offset(100.0, 30.0) - 0.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn offset_center_is_half_remaining() {
+    // Arrange / Act / Assert — 中央は余白の半分
+    assert!((Align::Center.offset(100.0, 30.0) - 35.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn offset_right_is_full_remaining() {
+    // Arrange / Act / Assert — 右は余白いっぱい
+    assert!((Align::Right.offset(100.0, 30.0) - 70.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn offset_clamps_to_zero_when_content_overflows() {
+    // Arrange / Act / Assert — 内容が利用可能幅を超えたら 0 にクランプ
+    assert!((Align::Center.offset(30.0, 50.0) - 0.0).abs() < f32::EPSILON);
+    assert!((Align::Right.offset(30.0, 50.0) - 0.0).abs() < f32::EPSILON);
   }
 
   #[test]
