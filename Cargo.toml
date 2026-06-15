@@ -33,29 +33,37 @@ chrono = "0.4.45"
 citation = { path = "crates/citation" }
 clap = { version = "4.6.1", features = ["derive"] }
 cli = { path = "crates/cli" }
-hayagriva = { version = "0.10.0", features = ["archive"] }
 document = { path = "crates/document" }
 figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
-font-types = "0.11.3"
+font-types = "0.12.0"
 garde = { version = "0.23.0", features = ["derive"] }
-harfrust = "0.8.4"
+harfrust = "0.9.0"
+hayagriva = {
+  version = "0.10.1",
+  default-features = false,
+  features = ["archive"]
+}
 hlist = { path = "crates/hlist" }
 icu = { version = "2.2.0", features = ["compiled_data"] }
-image = { version = "0.25.8", default-features = false, features = ["png", "jpeg"] }
+image = {
+  version = "0.25.10",
+  default-features = false,
+  features = ["jpeg", "png"]
+}
 krilla = "0.8.2"
 krilla-svg = "0.8.1"
 layout = { path = "crates/layout" }
 lazy-regex = "3.6.0"
 lowering = { path = "crates/lowering" }
-memchr = "2.8.0"
+memchr = "2.8.2"
 miette = { version = "7.6.0", features = ["fancy"] }
 parser = { path = "crates/parser" }
 pdf_gen = { path = "crates/pdf_gen" }
 phf = { version = "0.13.1", features = ["macros"] }
 rayon = "1.12.0"
 read_config = { path = "crates/read_config" }
-read-fonts = "0.39.2"
+read-fonts = "0.40.1"
 read_references = { path = "crates/read_references" }
 read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
@@ -63,7 +71,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
 subcommand = { path = "crates/subcommand" }
 syntax = { path = "crates/syntax" }
-tempfile = "3.21.0"
+tempfile = "3.27.0"
 thiserror = "2.0.18"
 toml = "1.1.2"
 tracing = "0.1.44"
