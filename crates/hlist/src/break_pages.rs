@@ -883,6 +883,82 @@ mod tests {
   }
 
   #[test]
+  fn centered_wrapped_lines_are_each_independently_centered() {
+    // Arrange — box(10) glue(5) box(10) glue(5) box(10) を text_width=35 で折り返す。
+    // 1 行目は box glue box（幅 25）、2 行目は box（幅 10）になり、行幅が異なる。
+    let geom = test_geometry();
+    let items = vec![
+      test_box(),
+      HItem::Glue {
+        natural: 5.0,
+        stretch: 0.0,
+        shrink: 0.0,
+        breakable: true,
+      },
+      test_box(),
+      HItem::Glue {
+        natural: 5.0,
+        stretch: 0.0,
+        shrink: 0.0,
+        breakable: true,
+      },
+      test_box(),
+    ];
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+      indent: 0.0,
+      align: types::Align::Center,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 35.0, &geom, &GreedyBreaker);
+
+    // Assert — 2 行に折り返し、各行が自身の行幅で独立に中央寄せされる。
+    // 1 行目: 幅 25 → オフセット (35-25)/2 = 5、2 行目: 幅 10 → オフセット (35-10)/2 = 12.5
+    let lines: Vec<&Line> = pages[0]
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(lines.len(), 2, "text_width=35 で 2 行に折り返すはず: {} 行", lines.len());
+    assert!((lines[0].boxes[0].x - 5.0).abs() < f32::EPSILON, "1 行目先頭 x={}", lines[0].boxes[0].x);
+    assert!((lines[1].boxes[0].x - 12.5).abs() < f32::EPSILON, "2 行目先頭 x={}", lines[1].boxes[0].x);
+  }
+
+  #[test]
+  fn centered_paragraph_shifts_links() {
+    // Arrange — box 2 つ（幅 20）を囲むリンクを align=Center、text_width=100 で配置する。
+    // リンク矩形も中央オフセット分シフトされ、確定 PlacedLink に追従する。
+    use types::LinkTarget;
+    let geom = test_geometry();
+    let items = vec![
+      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+      indent: 0.0,
+      align: types::Align::Center,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — 行幅 20 → 中央オフセット (100-20)/2 = 40。link.x=40、幅 20 は不変
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    let link = &pages[0].links[0];
+    assert!((link.x - 40.0).abs() < f32::EPSILON, "link.x={}", link.x);
+    assert!((link.width - 20.0).abs() < f32::EPSILON, "link.width={}", link.width);
+  }
+
+  #[test]
   fn no_line_baseline_exceeds_page_limit() {
     // 不変条件: どのページの行も baseline + depth がページ下限を超えない
     let geom = test_geometry();
