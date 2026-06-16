@@ -263,6 +263,7 @@ mod tests {
   use hayagriva::citationberg::LocaleFile;
   use miette::SourceSpan;
   use read_style::Style;
+  use types::FontKind;
 
   use super::{CitationError, load_locales, process_citations};
   use crate::test_fixtures::{ieee_csl_path, sample_references};
@@ -520,5 +521,50 @@ mod tests {
 
     // Assert
     assert!(matches!(error, CitationError::MissingCslPath), "got: {error:?}");
+  }
+
+  /// インライン列を再帰走査し、serif イタリック系の `Styled` 配下のプレーンテキストを集める。
+  fn collect_italic_texts(inlines: &[InlineNode], out: &mut Vec<String>) {
+    for inline in inlines {
+      match inline {
+        InlineNode::Styled {
+          kind: FontKind::SerifItalic | FontKind::SerifBoldItalic,
+          children,
+        } => out.push(children.iter().map(InlineNode::to_plain_text).collect()),
+        InlineNode::Styled { children, .. }
+        | InlineNode::Colored { children, .. }
+        | InlineNode::Link { children, .. }
+        | InlineNode::InternalLink { children, .. } => collect_italic_texts(children, out),
+        InlineNode::Text(_)
+        | InlineNode::InlineMath(_)
+        | InlineNode::Symbol(_)
+        | InlineNode::LineBreak
+        | InlineNode::Ref { .. }
+        | InlineNode::Cite { .. } => {},
+      }
+    }
+  }
+
+  #[test]
+  fn process_citations_bibliography_italicizes_titles() {
+    // Arrange — 書籍 1 件・論文 1 件を引用（IEEE は書名・誌名をイタリックで組む）
+    let references = sample_references();
+    let style = style_with_csl();
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014"), cite("doe2020")])];
+
+    // Act
+    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+
+    // Assert — 書誌段落のどこかに、イタリックで包まれた書名/誌名が現れる
+    let mut italic_texts: Vec<String> = Vec::new();
+    for node in &nodes {
+      if let DocNode::Paragraph(inlines) = node {
+        collect_italic_texts(inlines, &mut italic_texts);
+      }
+    }
+    assert!(
+      italic_texts.iter().any(|t| t.contains("Crazy Rich Asians") || t.contains("Journal of Things")),
+      "書名/誌名が InlineNode::Styled（serif italic 系）で組まれるはず: {italic_texts:?}"
+    );
   }
 }

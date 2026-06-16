@@ -8,10 +8,11 @@ use std::collections::HashMap;
 
 use document::{DocNode, HeadingLevel, InlineNode};
 use hayagriva::{
-  BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, ElemChild, ElemChildren,
-  ElemMeta, Entry, RenderedBibliography,
-  citationberg::{IndependentStyle, Locale},
+  BibliographyDriver, BibliographyRequest, CitationItem, CitationRequest, ElemChild, ElemChildren, ElemMeta, Entry,
+  Formatted, Formatting, RenderedBibliography,
+  citationberg::{FontStyle, FontWeight, IndependentStyle, Locale},
 };
+use types::FontKind;
 
 /// hayagriva 整形の結果。所有値のみを保持し、`nodes` への借用は残さない。
 pub(crate) struct Rendered {
@@ -67,6 +68,52 @@ pub(crate) fn render(
   };
 }
 
+/// rendered citation の `ElemChildren` を `Vec<InlineNode>` に平坦化する（引用アイテムは内部リンク化）。
+///
+/// `site` はこの引用の引用キー列（ドキュメント順）。hayagriva は引用ラベル内の各引用アイテムを
+/// `Elem { meta: Some(ElemMeta::Entry(idx)) }` で包む。`idx` は引用リクエスト内のローカル番号なので
+/// `site[idx]` がそのアイテムの引用キー。各アイテムのテキスト（`[1]` の番号部分など）を
+/// `InlineNode::InternalLink { target: "cite:<key>", .. }` で包んで対応する書誌エントリへのリンクにし、
+/// 括弧・区切りなど非アイテム部分はプレーンな `InlineNode::Text` とする。
+fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<InlineNode> {
+  let mut out = Vec::new();
+  collect_citation_inlines(children, site, &mut out);
+  return out;
+}
+
+/// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
+fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<InlineNode>) {
+  for child in &children.0 {
+    match child {
+      ElemChild::Elem(elem) => {
+        if let Some(ElemMeta::Entry(idx)) = elem.meta {
+          // 引用アイテム: 子を実効整形付きで取り出し、対応キーへの内部リンクで包む。
+          let mut item_inlines = Vec::new();
+          collect_inlines(&elem.children, &mut item_inlines);
+          if item_inlines.is_empty() {
+            continue;
+          }
+          match site.get(idx) {
+            Some(key) => out.push(InlineNode::InternalLink {
+              target: format!("cite:{key}"),
+              children: item_inlines,
+            }),
+            // 想定外（idx が範囲外）の場合はリンクにせず整形済みインラインをそのまま積む。
+            None => out.extend(item_inlines),
+          }
+        } else {
+          // 非アイテムの入れ子要素（書式グループ等）は再帰的に降りる。
+          collect_citation_inlines(&elem.children, site, out);
+        }
+      },
+      // 括弧・区切り（`[`, `, `, `]` 等）やリンク・マークアップは実効整形付きで積む。
+      ElemChild::Text(_) | ElemChild::Markup(_) | ElemChild::Link { .. } | ElemChild::Transparent { .. } => {
+        push_elem_child(child, out);
+      },
+    }
+  }
+}
+
 /// 整形済み書誌（`RenderedBibliography`）から書誌 `DocNode` 群を組み立てる。
 ///
 /// 見出しは `DocNode::Heading`（Section レベル・番号なし）、各文献は `DocNode::Paragraph` とする。
@@ -91,11 +138,11 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
   for item in &bibliography.items {
     let mut inlines: Vec<InlineNode> = Vec::new();
     if let Some(first_field) = &item.first_field {
-      let mut label = String::new();
-      // first_field も装飾コード抜きのプレーン文字列で取り出す（VT100 エスケープの混入を防ぐ）。
-      let _ = first_field.write_buf(&mut label, BufWriteFormat::Plain);
-      if !label.is_empty() {
-        inlines.push(InlineNode::Text(format!("{label} ")));
+      // 番号ラベル（`[1]` 等）を実効整形付きで取り出し、本文との間に空白を 1 つ挟む。
+      let before = inlines.len();
+      push_elem_child(first_field, &mut inlines);
+      if inlines.len() > before {
+        inlines.push(InlineNode::Text(" ".to_string()));
       }
     }
     inlines.extend(elem_children_to_inlines(&item.content));
@@ -107,78 +154,76 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
   return nodes;
 }
 
-/// rendered citation の `ElemChildren` を `Vec<InlineNode>` に平坦化する（引用アイテムは内部リンク化）。
+/// hayagriva の整形ツリー `ElemChildren` を `Vec<InlineNode>` に変換する。
 ///
-/// `site` はこの引用の引用キー列（ドキュメント順）。hayagriva は引用ラベル内の各引用アイテムを
-/// `Elem { meta: Some(ElemMeta::Entry(idx)) }` で包む。`idx` は引用リクエスト内のローカル番号なので
-/// `site[idx]` がそのアイテムの引用キー。各アイテムのテキスト（`[1]` の番号部分など）を
-/// `InlineNode::InternalLink { target: "cite:<key>", .. }` で包んで対応する書誌エントリへのリンクにし、
-/// 括弧・区切りなど非アイテム部分はプレーンな `InlineNode::Text` とする。
-fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<InlineNode> {
+/// 各リーフ（`Formatted`）の実効 `Formatting` を本文系 serif の `FontKind` に落とし、装飾のある
+/// テキストランだけ [`InlineNode::Styled`] で包む（斜体・ボールド・両方）。空のときは空ベクタを返す。
+fn elem_children_to_inlines(children: &ElemChildren) -> Vec<InlineNode> {
   let mut out = Vec::new();
-  collect_citation_inlines(children, site, &mut out);
+  collect_inlines(children, &mut out);
   return out;
 }
 
-/// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
-fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<InlineNode>) {
+/// `ElemChildren` を走査し、各要素を [`push_elem_child`] で `out` に積む。
+fn collect_inlines(children: &ElemChildren, out: &mut Vec<InlineNode>) {
   for child in &children.0 {
-    match child {
-      ElemChild::Elem(elem) => {
-        if let Some(ElemMeta::Entry(idx)) = elem.meta {
-          // 引用アイテム: テキストを取り出し、対応キーへの内部リンクにする。
-          let text = elem_children_to_plain(&elem.children);
-          if text.is_empty() {
-            continue;
-          }
-          match site.get(idx) {
-            Some(key) => out.push(InlineNode::InternalLink {
-              target: format!("cite:{key}"),
-              children: vec![InlineNode::Text(text)],
-            }),
-            // 想定外（idx が範囲外）の場合はリンクにせずプレーンテキストにフォールバックする。
-            None => out.push(InlineNode::Text(text)),
-          }
-        } else {
-          // 非アイテムの入れ子要素（書式グループ等）は再帰的に降りる。
-          collect_citation_inlines(&elem.children, site, out);
-        }
-      },
-      // 括弧・区切り（`[`, `, `, `]` 等）や整形マークアップはプレーンテキストとして積む。
-      ElemChild::Text(formatted) if !formatted.text.is_empty() => {
-        out.push(InlineNode::Text(formatted.text.clone()));
-      },
-      ElemChild::Markup(markup) if !markup.is_empty() => {
-        out.push(InlineNode::Text(markup.clone()));
-      },
-      ElemChild::Link { text, .. } if !text.text.is_empty() => {
-        out.push(InlineNode::Text(text.text.clone()));
-      },
-      // 空テキスト・置換前提の Transparent は何も積まない。
-      ElemChild::Text(_) | ElemChild::Markup(_) | ElemChild::Link { .. } | ElemChild::Transparent { .. } => {},
-    }
+    push_elem_child(child, out);
   }
 }
 
-/// hayagriva の整形ツリー `ElemChildren` を `Vec<InlineNode>` に変換する。
+/// 1 つの `ElemChild` を `InlineNode` 群へ変換して `out` に積む。
 ///
-/// 初版はプレーン文字列へ平坦化する（斜体等のリッチ整形は段階対応）。空文字列のときは空ベクタを返す。
-fn elem_children_to_inlines(children: &ElemChildren) -> Vec<InlineNode> {
-  let text = elem_children_to_plain(children);
-  if text.is_empty() {
-    return Vec::new();
+/// `Text` / `Link` のアンカーテキストはリーフの実効 `Formatting` を反映し（[`formatted_to_inline`]）、
+/// `Elem` は子へ再帰する。`Markup`（Typst 向けの生マークアップ）はプレーンテキストとして積み、
+/// 置換前提の `Transparent` と空テキストは無視する。`Link` の URL は hyperref 対応まで当面捨て、
+/// アンカーテキストのみ残す（近似）。
+fn push_elem_child(child: &ElemChild, out: &mut Vec<InlineNode>) {
+  match child {
+    ElemChild::Text(formatted)
+    | ElemChild::Link {
+      text: formatted, ..
+    } => {
+      if let Some(node) = formatted_to_inline(formatted) {
+        out.push(node);
+      }
+    },
+    ElemChild::Elem(elem) => collect_inlines(&elem.children, out),
+    ElemChild::Markup(markup) if !markup.is_empty() => out.push(InlineNode::Text(markup.clone())),
+    ElemChild::Markup(_) | ElemChild::Transparent { .. } => {},
   }
-  return vec![InlineNode::Text(text)];
 }
 
-/// `ElemChildren` を装飾コードを含まないプレーン文字列へ平坦化する。
+/// 整形済みテキストラン `Formatted` を実効スタイル付き `InlineNode` にする。
 ///
-/// hayagriva の `Display`（`to_string`）は既定で `BufWriteFormat::VT100`（ターミナル用 ANSI
-/// エスケープ）を埋め込むため、そのまま本文へ流すと PDF に制御コードが混入し文字化けする。書誌は
-/// 通常の本文として描画するので、装飾を持たない `BufWriteFormat::Plain` でテキストのみを取り出す。
-fn elem_children_to_plain(children: &ElemChildren) -> String {
-  let mut text = String::new();
-  // String への書き込みは決して失敗しないため、fmt::Error は無視してよい。
-  let _ = children.write_buf(&mut text, BufWriteFormat::Plain);
-  return text;
+/// 空テキストは `None`。実効 `FontKind` が装飾なし（`Serif`）ならプレーン [`InlineNode::Text`]、
+/// 斜体・ボールド等があるときだけ [`InlineNode::Styled`] で包む（ノードを無駄に増やさない）。
+fn formatted_to_inline(formatted: &Formatted) -> Option<InlineNode> {
+  if formatted.text.is_empty() {
+    return None;
+  }
+  let text = InlineNode::Text(formatted.text.clone());
+  let kind = formatting_to_font_kind(formatted.formatting);
+  if kind == FontKind::Serif {
+    return Some(text);
+  }
+  return Some(InlineNode::Styled {
+    kind,
+    children: vec![text],
+  });
+}
+
+/// 実効 `Formatting` を本文系 serif の `FontKind`（normal / bold / italic / bolditalic）に落とす。
+///
+/// `font_weight == Bold` を太字、`font_style == Italic` を斜体とみなす（`FontWeight::Light` は
+/// 対応する書体が無いため normal 扱い）。スモールキャップス（`font_variant`）・下線（`text_decoration`）・
+/// 上付き下付き（`vertical_align`）は `InlineNode` に表現が無いため当面無視する（近似）。
+fn formatting_to_font_kind(formatting: Formatting) -> FontKind {
+  let bold = matches!(formatting.font_weight, FontWeight::Bold);
+  let italic = matches!(formatting.font_style, FontStyle::Italic);
+  return match (bold, italic) {
+    (false, false) => FontKind::Serif,
+    (true, false) => FontKind::SerifBold,
+    (false, true) => FontKind::SerifItalic,
+    (true, true) => FontKind::SerifBoldItalic,
+  };
 }
