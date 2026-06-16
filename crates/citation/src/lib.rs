@@ -199,7 +199,8 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak
-      | DocNode::Space(_) => {},
+      | DocNode::Space(_)
+      | DocNode::Anchor(_) => {},
     }
   }
 }
@@ -210,7 +211,8 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
     match inline {
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. } => collect_cite_inlines(children, out),
+      | InlineNode::Link { children, .. }
+      | InlineNode::InternalLink { children, .. } => collect_cite_inlines(children, out),
       InlineNode::Cite { .. } => out.push(inline),
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
@@ -403,6 +405,90 @@ mod tests {
     assert!(has_heading, "References 見出しが追加されるはず");
     let paragraphs = nodes.iter().filter(|node| matches!(node, DocNode::Paragraph(_))).count();
     assert!(paragraphs >= 3, "本文 1 段落 + 書誌 2 段落以上のはず: {paragraphs}");
+  }
+
+  #[test]
+  fn process_citations_single_key_links_label() {
+    // Arrange — 単一キーの引用
+    let references = sample_references();
+    let style = style_with_csl();
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
+
+    // Act
+    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+
+    // Assert — ラベル内に cite:kwan2014 への内部リンク（番号）が含まれる
+    let DocNode::Paragraph(inlines) = &nodes[0] else {
+      panic!("先頭は段落のはず");
+    };
+    let InlineNode::Cite {
+      label: Some(label), ..
+    } = &inlines[0]
+    else {
+      panic!("Cite のはず: {inlines:?}");
+    };
+    let has_link = label
+      .iter()
+      .any(|node| matches!(node, InlineNode::InternalLink { target, .. } if target == "cite:kwan2014"));
+    assert!(has_link, "単一キーの番号も内部リンクになるはず: {label:?}");
+  }
+
+  #[test]
+  fn process_citations_multi_key_produces_per_entry_links() {
+    // Arrange — 1 つの \cite で 2 件を引用（\cite{kwan2014, doe2020}）
+    let references = sample_references();
+    let style = style_with_csl();
+    let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
+      keys: vec!["kwan2014".to_string(), "doe2020".to_string()],
+      label: None,
+      span: SourceSpan::from((0_usize, 0_usize)),
+    }])];
+
+    // Act
+    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+
+    // Assert — 各番号が対応キーへの個別 InternalLink になる
+    let DocNode::Paragraph(inlines) = &nodes[0] else {
+      panic!("先頭は段落のはず");
+    };
+    let InlineNode::Cite {
+      label: Some(label), ..
+    } = &inlines[0]
+    else {
+      panic!("Cite のはず: {inlines:?}");
+    };
+    let targets: Vec<&str> = label
+      .iter()
+      .filter_map(|node| match node {
+        InlineNode::InternalLink { target, .. } => Some(target.as_str()),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(targets.len(), 2, "2 つの番号が個別リンクになるはず: {targets:?}");
+    assert!(targets.contains(&"cite:kwan2014"), "targets: {targets:?}");
+    assert!(targets.contains(&"cite:doe2020"), "targets: {targets:?}");
+  }
+
+  #[test]
+  fn process_citations_adds_bibliography_anchors() {
+    // Arrange — 引用 1 件
+    let references = sample_references();
+    let style = style_with_csl();
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
+
+    // Act
+    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+
+    // Assert — 書誌に cite:kwan2014 アンカーが入り、その直後が書誌段落
+    let pos = nodes
+      .iter()
+      .position(|node| matches!(node, DocNode::Anchor(key) if key == "cite:kwan2014"))
+      .expect("cite:kwan2014 アンカーが追加されるはず");
+    assert!(
+      matches!(&nodes[pos + 1], DocNode::Paragraph(_)),
+      "アンカーの直後は書誌段落のはず: {:?}",
+      &nodes[pos + 1]
+    );
   }
 
   #[test]

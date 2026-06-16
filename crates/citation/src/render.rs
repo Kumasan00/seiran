@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use document::{DocNode, HeadingLevel, InlineNode};
 use hayagriva::{
-  BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, ElemChildren, Entry,
-  RenderedBibliography,
+  BibliographyDriver, BibliographyRequest, BufWriteFormat, CitationItem, CitationRequest, ElemChild, ElemChildren,
+  ElemMeta, Entry, RenderedBibliography,
   citationberg::{IndependentStyle, Locale},
 };
 
@@ -50,7 +50,15 @@ pub(crate) fn render(
     locale_files: locales,
   });
 
-  let labels = result.citations.iter().map(|citation| elem_children_to_inlines(&citation.citation)).collect();
+  // 各引用ラベルは、対応する cite サイトのキー列を参照しながら走査する。引用アイテム
+  // （`ElemMeta::Entry`）を対応キーへの内部リンクにするため、`result.citations` と `cite_sites`
+  // を順番対応（投入順 = 収集順 = ドキュメント順）で zip する。
+  let labels = result
+    .citations
+    .iter()
+    .zip(cite_sites)
+    .map(|(citation, site)| citation_children_to_inlines(&citation.citation, site))
+    .collect();
   let bibliography = build_bibliography(result.bibliography.as_ref(), bib_title);
 
   return Rendered {
@@ -63,13 +71,16 @@ pub(crate) fn render(
 ///
 /// 見出しは `DocNode::Heading`（Section レベル・番号なし）、各文献は `DocNode::Paragraph` とする。
 /// IEEE 等の numeric スタイルでは `first_field`（`[1]` ラベル）が `content` と別に来るため、先頭に
-/// 連結する。書誌が空（引用なし等）なら空ベクタを返し、呼び出し側は何も追加しない。
+/// 連結する。各エントリ段落の直前には `DocNode::Anchor("cite:<引用キー>")` を置き、本文中の `\cite`
+/// リンク（`InlineNode::InternalLink { target: "cite:<引用キー>" }`）のジャンプ先にする。書誌が空
+/// （引用なし等）なら空ベクタを返し、呼び出し側は何も追加しない。
 fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &str) -> Vec<DocNode> {
   let Some(bibliography) = bibliography else {
     return Vec::new();
   };
 
-  let mut nodes = Vec::with_capacity(bibliography.items.len() + 1);
+  // 見出し + 各エントリ（アンカー + 段落）。
+  let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
   nodes.push(DocNode::Heading {
     level: HeadingLevel::Section,
     number: String::new(),
@@ -88,10 +99,65 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
       }
     }
     inlines.extend(elem_children_to_inlines(&item.content));
+    // `\cite` のジャンプ先アンカー。`\ref` の `\label` と衝突しないよう `cite:` で名前空間化する。
+    nodes.push(DocNode::Anchor(format!("cite:{}", item.key)));
     nodes.push(DocNode::Paragraph(inlines));
   }
 
   return nodes;
+}
+
+/// rendered citation の `ElemChildren` を `Vec<InlineNode>` に平坦化する（引用アイテムは内部リンク化）。
+///
+/// `site` はこの引用の引用キー列（ドキュメント順）。hayagriva は引用ラベル内の各引用アイテムを
+/// `Elem { meta: Some(ElemMeta::Entry(idx)) }` で包む。`idx` は引用リクエスト内のローカル番号なので
+/// `site[idx]` がそのアイテムの引用キー。各アイテムのテキスト（`[1]` の番号部分など）を
+/// `InlineNode::InternalLink { target: "cite:<key>", .. }` で包んで対応する書誌エントリへのリンクにし、
+/// 括弧・区切りなど非アイテム部分はプレーンな `InlineNode::Text` とする。
+fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<InlineNode> {
+  let mut out = Vec::new();
+  collect_citation_inlines(children, site, &mut out);
+  return out;
+}
+
+/// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
+fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<InlineNode>) {
+  for child in &children.0 {
+    match child {
+      ElemChild::Elem(elem) => {
+        if let Some(ElemMeta::Entry(idx)) = elem.meta {
+          // 引用アイテム: テキストを取り出し、対応キーへの内部リンクにする。
+          let text = elem_children_to_plain(&elem.children);
+          if text.is_empty() {
+            continue;
+          }
+          match site.get(idx) {
+            Some(key) => out.push(InlineNode::InternalLink {
+              target: format!("cite:{key}"),
+              children: vec![InlineNode::Text(text)],
+            }),
+            // 想定外（idx が範囲外）の場合はリンクにせずプレーンテキストにフォールバックする。
+            None => out.push(InlineNode::Text(text)),
+          }
+        } else {
+          // 非アイテムの入れ子要素（書式グループ等）は再帰的に降りる。
+          collect_citation_inlines(&elem.children, site, out);
+        }
+      },
+      // 括弧・区切り（`[`, `, `, `]` 等）や整形マークアップはプレーンテキストとして積む。
+      ElemChild::Text(formatted) if !formatted.text.is_empty() => {
+        out.push(InlineNode::Text(formatted.text.clone()));
+      },
+      ElemChild::Markup(markup) if !markup.is_empty() => {
+        out.push(InlineNode::Text(markup.clone()));
+      },
+      ElemChild::Link { text, .. } if !text.text.is_empty() => {
+        out.push(InlineNode::Text(text.text.clone()));
+      },
+      // 空テキスト・置換前提の Transparent は何も積まない。
+      ElemChild::Text(_) | ElemChild::Markup(_) | ElemChild::Link { .. } | ElemChild::Transparent { .. } => {},
+    }
+  }
 }
 
 /// hayagriva の整形ツリー `ElemChildren` を `Vec<InlineNode>` に変換する。

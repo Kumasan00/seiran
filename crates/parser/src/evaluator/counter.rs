@@ -327,12 +327,14 @@ pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) ->
           resolve_inlines(inlines, registry)?;
         }
       },
-      // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）
+      // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）。
+      // `DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない。
       DocNode::DisplayMath { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak
-      | DocNode::Space(_) => {},
+      | DocNode::Space(_)
+      | DocNode::Anchor(_) => {},
     }
   }
   return Ok(());
@@ -347,7 +349,8 @@ fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Re
     match inline {
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. } => {
+      | InlineNode::Link { children, .. }
+      | InlineNode::InternalLink { children, .. } => {
         resolve_inlines(children, registry)?;
       },
       InlineNode::Ref {

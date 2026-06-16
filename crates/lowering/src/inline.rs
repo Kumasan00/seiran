@@ -71,19 +71,35 @@ pub(super) fn lower_inline(
         });
       };
       // 番号テキストを内部リンク（機構 B）で囲み、参照先アンカーへジャンプできるようにする。
+      // 表示色はハイパーリンクの `link_color`（既定青、明示 `\color` があればそちらを優先）。
+      let style = with_link_color(parent_style, ctx.style.core.hyperref.link_color);
       return Ok(vec![LayoutNode::Link {
         target: LinkTarget::Internal(label.clone()),
-        children: vec![LayoutNode::Text(resolved, parent_style)],
+        children: vec![LayoutNode::Text(resolved, style)],
       }]);
     },
     InlineNode::Link { url, children } => {
       // 外部リンク（`\url` / `\href`）。表示テキストを External リンクで囲む。
+      // 表示色はハイパーリンクの `url_color`（既定青、明示 `\color` があればそちらを優先）。
+      let style = with_link_color(parent_style, ctx.style.core.hyperref.url_color);
+      let mut inner = Vec::new();
+      for child in children {
+        inner.extend(lower_inline(ctx, child, style)?);
+      }
+      return Ok(vec![LayoutNode::Link {
+        target: LinkTarget::External(url.clone()),
+        children: inner,
+      }]);
+    },
+    InlineNode::InternalLink { target, children } => {
+      // 整形済みの内部リンク（`\cite` の各番号など）。色は親文脈（`Cite` 側で適用した
+      // cite_color 等）から継承するため、ここでは色を触らずリンク領域で囲むだけにする。
       let mut inner = Vec::new();
       for child in children {
         inner.extend(lower_inline(ctx, child, parent_style)?);
       }
       return Ok(vec![LayoutNode::Link {
-        target: LinkTarget::External(url.clone()),
+        target: LinkTarget::Internal(target.clone()),
         children: inner,
       }]);
     },
@@ -96,13 +112,28 @@ pub(super) fn lower_inline(
           span: *span,
         });
       };
+      // 引用ラベル全体（括弧含む）に `cite_color` を適用する。番号部分は `InlineNode::InternalLink`
+      // としてこの色を継承したまま内部リンクで囲まれる（明示 `\color` があればそちらを優先）。
+      let style = with_link_color(parent_style, ctx.style.core.hyperref.cite_color);
       let mut result = Vec::new();
       for child in inlines {
-        result.extend(lower_inline(ctx, child, parent_style)?);
+        result.extend(lower_inline(ctx, child, style)?);
       }
       return Ok(result);
     },
   }
+}
+
+/// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
+///
+/// 明示的な `\color` を優先するため、親が既に色を持つ場合はそれを保ち、親が無色（`None`）の
+/// ときだけ `link_color` をデフォルトとして適用する。`link_color` 自体が `None`（色指定なし）なら
+/// 本文色（黒）を継承する（受け入れ条件: 色未指定時は黒継承）。
+fn with_link_color(parent_style: TextStyle, link_color: Option<types::Color>) -> TextStyle {
+  return TextStyle {
+    color: parent_style.color.or(link_color),
+    ..parent_style
+  };
 }
 
 #[cfg(test)]
@@ -231,5 +262,160 @@ mod tests {
     };
     assert_eq!(*target, LinkTarget::External("https://example.com".to_string()));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "ここ"));
+  }
+
+  #[test]
+  fn lower_ref_applies_link_color() {
+    // Arrange — style で link_color を指定すると \ref の番号テキストに乗る
+    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let mut style = read_style::Style::default();
+    style.core.hyperref.link_color = Some(blue);
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Ref {
+      label: "sec:intro".to_string(),
+      number: Some("1.2".to_string()),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+
+    // Assert — リンク子の Text が link_color を持つ
+    let LayoutNode::Link { children, .. } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(blue));
+  }
+
+  #[test]
+  fn lower_external_link_applies_url_color() {
+    // Arrange — style で url_color を指定すると外部リンクの表示テキストに乗る
+    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let mut style = read_style::Style::default();
+    style.core.hyperref.url_color = Some(blue);
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Link {
+      url: "https://example.com".to_string(),
+      children: vec![InlineNode::Text("ここ".to_string())],
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::Link { children, .. } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(blue));
+  }
+
+  #[test]
+  fn lower_ref_inherits_black_when_link_color_none() {
+    // Arrange — link_color = None のとき、本文色（黒 = None）を継承する
+    let mut style = read_style::Style::default();
+    style.core.hyperref.link_color = None;
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Ref {
+      label: "a".to_string(),
+      number: Some("1".to_string()),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+
+    // Assert — 色は None（黒継承）
+    let LayoutNode::Link { children, .. } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, None);
+  }
+
+  #[test]
+  fn lower_explicit_color_overrides_link_color() {
+    // Arrange — \color[red]{\ref{a}} は明示色（赤）がリンク色より優先される
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let red = types::Color::new(0xff, 0x00, 0x00);
+    let inline = InlineNode::Colored {
+      color: red,
+      children: vec![InlineNode::Ref {
+        label: "a".to_string(),
+        number: Some("1".to_string()),
+        span: miette::SourceSpan::from((0_usize, 0_usize)),
+      }],
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+
+    // Assert — 番号は赤（parent_style.color が Some なのでそちらを優先）
+    let LayoutNode::Link { children, .. } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(red));
+  }
+
+  #[test]
+  fn lower_internal_link_maps_to_internal_target() {
+    // Arrange — InternalLink は内部リンク（Internal(target)）に変換され、色は触らない
+    let style = read_style::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::InternalLink {
+      target: "cite:foo".to_string(),
+      children: vec![InlineNode::Text("1".to_string())],
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    assert_eq!(*target, LinkTarget::Internal("cite:foo".to_string()));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "1"));
+  }
+
+  #[test]
+  fn lower_cite_label_applies_cite_color_and_links() {
+    // Arrange — Cite ラベル内の InternalLink 番号は cite_color を継承しつつ内部リンクになる
+    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let mut style = read_style::Style::default();
+    style.core.hyperref.cite_color = Some(blue);
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Cite {
+      keys: vec!["foo".to_string()],
+      label: Some(vec![InlineNode::InternalLink {
+        target: "cite:foo".to_string(),
+        children: vec![InlineNode::Text("1".to_string())],
+      }]),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    };
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Cite は失敗しない");
+
+    // Assert — Internal リンクで、番号テキストが cite_color を継承
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    assert_eq!(*target, LinkTarget::Internal("cite:foo".to_string()));
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(blue));
   }
 }

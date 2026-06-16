@@ -83,6 +83,21 @@ pub enum InlineNode {
     children: Vec<InlineNode>,
   },
 
+  /// 整形済みの内部リンク（文書内アンカーへのジャンプ）
+  ///
+  /// 表示テキスト `children` を文書内アンカー `target` へジャンプさせるクリック可能なテキスト。
+  /// 外部 URI を行き先とする [`InlineNode::Link`] の内部版で、`lowering` 層で
+  /// `LayoutNode::Link { target: Internal(target), children }` に変換される。`\ref`（[`InlineNode::Ref`]）
+  /// と異なり表示テキストを任意に持てるため、CSL 整形ステージが `\cite` の各番号を対応する書誌
+  /// エントリへのリンクにする用途で生成する（`target` は衝突回避のため `"cite:<key>"` で名前空間化）。
+  /// 色ロジックは持たず、親文脈（`Cite` 側で適用した `cite_color` 等）の色をそのまま継承する。
+  InternalLink {
+    /// ジャンプ先アンカーのキー（`AnchorMark::Label(target)` と一致させる）
+    target: String,
+    /// 表示テキスト（インライン要素）
+    children: Vec<InlineNode>,
+  },
+
   /// 文献引用（`\cite{key}` / 複数キーの `\cite{a,b}`）
   ///
   /// `Ref` と同様の 2 段階で扱う。パーサ（pass1）では `keys` を確定し `label: None` の
@@ -124,7 +139,9 @@ impl InlineNode {
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
       InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
-      InlineNode::Link { children, .. } => return inline_nodes_to_plain_text(children),
+      InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
+        return inline_nodes_to_plain_text(children);
+      },
       InlineNode::Cite { keys, label, .. } => {
         return label.as_deref().map_or_else(|| keys.join(", "), inline_nodes_to_plain_text);
       },

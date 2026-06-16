@@ -61,12 +61,14 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
           collect_unknown_in_inlines(inlines, keys, labels);
         }
       },
-      // 数式・図（キャプションなし）・罫線・改ページ・スペースには `\cite` は出現しない
+      // 数式・図（キャプションなし）・罫線・改ページ・スペース・アンカーには `\cite` は出現しない
+      // （`DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない）
       DocNode::DisplayMath { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak
-      | DocNode::Space(_) => {},
+      | DocNode::Space(_)
+      | DocNode::Anchor(_) => {},
     }
   }
 }
@@ -82,7 +84,8 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
     match inline {
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. } => {
+      | InlineNode::Link { children, .. }
+      | InlineNode::InternalLink { children, .. } => {
         collect_unknown_in_inlines(children, keys, labels);
       },
       InlineNode::Cite {

@@ -177,6 +177,11 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
     DocNode::Space(length) => {
       return Ok(vec![LayoutNode::Kern { length: *length }]);
     },
+    DocNode::Anchor(target) => {
+      // CSL 整形ステージが付与した参照アンカー点（参考文献エントリの直前）。
+      // ラベル付きブロックと同じ `AnchorMark::Label` でジャンプ先に解決させる。
+      return Ok(vec![LayoutNode::Anchor(types::AnchorMark::Label(target.clone()))]);
+    },
     DocNode::DisplayMath {
       body,
       number,
@@ -275,6 +280,21 @@ mod tests {
       LayoutNode::Kern { length } => assert!((length.to_pt() - 5.0).abs() < f32::EPSILON),
       other => panic!("Expected Kern, got {other:?}"),
     }
+  }
+
+  #[test]
+  fn test_lower_anchor() {
+    // Arrange — DocNode::Anchor は LayoutNode::Anchor(AnchorMark::Label(..)) に 1:1 変換される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let node = DocNode::Anchor("cite:foo".to_string());
+
+    // Act
+    let result = lower_node(&ctx, &node).expect("Anchor の lowering は失敗しないはず");
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert!(matches!(&result[0], LayoutNode::Anchor(types::AnchorMark::Label(l)) if l == "cite:foo"));
   }
 
   #[test]

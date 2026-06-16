@@ -22,9 +22,11 @@ pub struct HyperrefStyle {
 impl Default for HyperrefStyle {
   fn default() -> Self {
     return Self {
-      link_color: Some(Color::new(0, 0, 255)),
-      url_color: Some(Color::new(0, 0, 255)),
-      cite_color: Some(Color::new(0, 0, 255)),
+      // 既定はリンク色を付けず、本文色（黒）を継承する（`None`）。色を付けたい場合は
+      // style.toml の `[hyperref]` で `link_color` 等を明示する。
+      link_color: None,
+      url_color: None,
+      cite_color: None,
       show_bookmarks: true,
     };
   }
@@ -44,5 +46,14 @@ mod tests {
   #[test]
   fn default_enables_bookmarks() {
     assert!(HyperrefStyle::default().show_bookmarks);
+  }
+
+  #[test]
+  fn default_colors_are_none() {
+    // 既定はリンク色を付けず本文色（黒）を継承する（`None`）
+    let style = HyperrefStyle::default();
+    assert_eq!(style.link_color, None);
+    assert_eq!(style.url_color, None);
+    assert_eq!(style.cite_color, None);
   }
 }
