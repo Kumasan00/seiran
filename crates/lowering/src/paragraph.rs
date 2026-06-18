@@ -17,7 +17,7 @@ use crate::layout_node::{LayoutNode, TextStyle};
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.style.core.text.font_kind,
+    font_kind: ctx.style.text.font_kind,
     color: None,
   };
 
@@ -29,7 +29,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
 
   // 段落間スペースは縦カーンで構造的に表す（段落の行送り自体は縦組版層が担う）
   result.push(LayoutNode::Vkern {
-    length: ctx.style.core.text.paragraph_spacing,
+    length: ctx.style.text.paragraph_spacing,
   });
 
   return Ok(result);
@@ -55,7 +55,7 @@ mod tests {
     let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
       panic!("末尾は Vkern であるべき: {nodes:?}");
     };
-    assert!((length.to_pt() - style.core.text.paragraph_spacing.to_pt()).abs() < f32::EPSILON);
+    assert!((length.to_pt() - style.text.paragraph_spacing.to_pt()).abs() < f32::EPSILON);
     let vkern_count = nodes.iter().filter(|n| matches!(n, LayoutNode::Vkern { .. })).count();
     assert_eq!(vkern_count, 1, "段落末の Vkern は 1 つだけ: {nodes:?}");
   }
@@ -75,7 +75,7 @@ mod tests {
       panic!("先頭は Text であるべき: {nodes:?}");
     };
     assert_eq!(text, "body");
-    assert_eq!(text_style.font_kind, style.core.text.font_kind);
+    assert_eq!(text_style.font_kind, style.text.font_kind);
     assert!((text_style.font_size - ctx.default_font_size()).abs() < f32::EPSILON);
   }
 

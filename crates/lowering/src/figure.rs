@@ -47,7 +47,7 @@ pub(super) fn lower_figure(
   caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let style = &ctx.style.core.figure;
+  let style = &ctx.style.figure;
 
   let downsample_enabled = overrides.downsample.unwrap_or(style.downsample);
   let target_dpi = if downsample_enabled {
@@ -227,7 +227,7 @@ mod tests {
   fn lower_figure_style_downsample_false_yields_no_target_dpi() {
     // Arrange — グローバル downsample=false ならリサイズしない
     let mut style = ReadStyle::default();
-    style.core.figure.downsample = false;
+    style.figure.downsample = false;
     let ctx = LoweringContext::new(&style);
 
     // Act

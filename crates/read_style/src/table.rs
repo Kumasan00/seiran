@@ -7,7 +7,7 @@ use types::{
   length::{Length, non_negative},
 };
 
-use crate::core::caption::CaptionStyle;
+use crate::caption::CaptionStyle;
 
 /// 表のスタイル設定
 ///

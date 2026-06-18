@@ -79,11 +79,11 @@ pub(super) fn lower_table(
   number: &str,
   breakable: bool,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let style = &ctx.style.core.table;
+  let style = &ctx.style.table;
 
   let body_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.style.core.text.font_kind,
+    font_kind: ctx.style.text.font_kind,
     color: None,
   };
   let head_style = TextStyle {
@@ -297,7 +297,7 @@ mod tests {
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let inner_kern = children.get(table_idx + 1);
     assert!(
-      matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.core.table.inner_margin.to_pt()).abs() < f32::EPSILON),
+      matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
       "本体の直後に inner_margin の Vkern が入る: {children:?}"
     );
   }

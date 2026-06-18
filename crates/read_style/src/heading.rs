@@ -20,7 +20,7 @@ use types::{
 ///
 /// TOML 上は `[heading.<level>]` テーブル群（`HeadingStylesTable` 経由）から
 /// 2 レイヤーマージ（Rust 既定 → レベル別差分）でデシリアライズする。
-/// 消費側は `style.heading(level)` または `style.core.heading[level]` でアクセスする。
+/// 消費側は `style.heading(level)` または `style.heading[level]` でアクセスする。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(from = "HeadingStylesTable")]
 pub struct HeadingStyles {
@@ -264,7 +264,7 @@ mod tests {
   use super::{HeadingStyle, HeadingStyles, default_for_level};
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
-  /// 本番では `CoreStyle.heading` が同形でこの型を保持する。
+  /// 本番では `Style.heading` が同形でこの型を保持する。
   #[derive(Debug, serde::Deserialize)]
   struct HeadingWrapper {
     heading: HeadingStyles,

@@ -137,8 +137,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 
   // 本文幅は画像サイズ解決と行分割の双方で使うので先に算出する
   let text_width = config.pdf.width.to_pt() - config.pdf.margin.left.to_pt() - config.pdf.margin.right.to_pt();
-  let default_font_size = style.core.font_size.to_pt();
-  let line_height_factor = style.core.line_height_factor;
+  let default_font_size = style.font_size.to_pt();
+  let line_height_factor = style.line_height_factor;
 
   let body_blocks =
     layout::build_blocks(body_layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor);
@@ -150,7 +150,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
     page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
     default_font_size,
     line_height_factor,
-    table_cell_padding: style.core.table.cell_padding.to_pt(),
+    table_cell_padding: style.table.cell_padding.to_pt(),
   };
 
   // Pass 1: 本文だけを単独でページ分割し、各見出しの本文内ページ index を採取する。
@@ -163,14 +163,14 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
   let mut front_blocks: Vec<hlist::Block> = Vec::new();
-  if style.core.title_page.enabled {
+  if style.title_page.enabled {
     let metadata = lowering::TitlePageMetadata {
       title: config.document.title.clone(),
       author: config.document.author.clone(),
       date: config.document.date.clone(),
     };
     // lower_title_page は末尾に PageBreak を含むため、後続（目次・本文）は次ページから始まる。
-    let title_nodes = lowering::lower_title_page(&metadata, &style.core.title_page);
+    let title_nodes = lowering::lower_title_page(&metadata, &style.title_page);
     front_blocks.extend(layout::build_blocks(
       title_nodes,
       &harf_rust_shapers,
@@ -180,8 +180,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
     ));
     info!("タイトルページを生成しました");
   }
-  if style.core.toc.enabled {
-    let toc_entries = collect_toc_entries(&doc_nodes, &heading_pages, &style.core.toc, &style.core.page_numbering);
+  if style.toc.enabled {
+    let toc_entries = collect_toc_entries(&doc_nodes, &heading_pages, &style.toc, &style.page_numbering);
     let toc_spec = build_toc_spec(&style, text_width);
     let toc_blocks = layout::build_toc_blocks(&toc_spec, &toc_entries, &harf_rust_shapers, &metrics);
     if !toc_blocks.is_empty() {
@@ -202,13 +202,13 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!(page_count = pages.len(), front_matter_count, "レイアウトの計算が完了しました");
 
   // ページ番号ラベルを算出する（前付け = ローマ数字 / 本文 = 算用数字、各リージョン 1 から）。
-  let page_numbers = page_number_labels(pages.len(), front_matter_count, body_page_count, &style.core.page_numbering);
+  let page_numbers = page_number_labels(pages.len(), front_matter_count, body_page_count, &style.page_numbering);
 
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height.to_pt();
   let running_spec = layout::RunningContentSpec {
-    header: running_slots(&style.core.header, style.core.header.baseline_offset.to_pt(), true),
-    footer: running_slots(&style.core.footer, page_height - style.core.footer.baseline_offset.to_pt(), false),
+    header: running_slots(&style.header, style.header.baseline_offset.to_pt(), true),
+    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset.to_pt(), false),
     metadata: layout::RunningMetadata {
       title: config.document.title.clone().unwrap_or_default(),
       author: config.document.author.clone().unwrap_or_default(),
@@ -217,7 +217,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
     text_width,
     page_numbers,
     // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
-    skip_first: style.core.title_page.enabled,
+    skip_first: style.title_page.enabled,
   };
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
@@ -309,11 +309,11 @@ fn collect_toc_entries(
     .collect();
 }
 
-/// `style.core.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
+/// `style.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
 ///
 /// 目次見出しの書体は文書の節見出しスタイル（[`document::HeadingLevel::Section`]）に揃える。
 fn build_toc_spec(style: &read_style::Style, text_width: f32) -> layout::TocSpec {
-  let toc = &style.core.toc;
+  let toc = &style.toc;
   let title_heading = style.heading(document::HeadingLevel::Section);
   return layout::TocSpec {
     title: toc.title.clone(),
@@ -332,7 +332,7 @@ fn build_toc_spec(style: &read_style::Style, text_width: f32) -> layout::TocSpec
     leader: toc.leader.clone(),
     show_page_numbers: toc.show_page_numbers,
     text_width,
-    line_height_factor: style.core.line_height_factor,
+    line_height_factor: style.line_height_factor,
     bottom_margin: toc.bottom_margin.to_pt(),
   };
 }
@@ -402,7 +402,7 @@ fn parse_all_sources(
 /// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
 /// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
 fn running_slots(
-  style: &read_style::core::running::RunningContentStyle,
+  style: &read_style::RunningContentStyle,
   baseline_y: f32,
   rule_below: bool,
 ) -> Option<layout::RunningSlots> {

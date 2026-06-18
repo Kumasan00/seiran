@@ -239,8 +239,10 @@ mod tests {
   fn style_with_plain_figure_format() -> Style {
     let mut counters = Counters::default();
     counters.figure.format = "{n}".to_string();
-    let mut style = Style::default();
-    style.core.counters = counters;
+    let style = Style {
+      counters,
+      ..Default::default()
+    };
     return style;
   }
 

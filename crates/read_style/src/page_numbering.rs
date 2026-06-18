@@ -3,12 +3,12 @@
 //! 前付け（タイトルページ・目次）と本文でページ番号系列を分離する（R1 方式）。
 //! `seiran::build_pdf` が前付けページ数を確定したうえで、各物理ページの表示ラベルを
 //! [`PageNumbering`] の数字表記スタイルでレンダリングし、ヘッダー・フッターの `{page}` /
-//! `{pages}` トークンに供給する。番号表記は [`crate::core::counter::NumberStyle`] を流用する。
+//! `{pages}` トークンに供給する。番号表記は [`crate::counter::NumberStyle`] を流用する。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::core::counter::NumberStyle;
+use crate::number_style::NumberStyle;
 
 /// ページ番号のスタイル設定
 ///
@@ -39,7 +39,7 @@ mod tests {
   use garde::Validate;
 
   use super::PageNumbering;
-  use crate::core::counter::NumberStyle;
+  use crate::number_style::NumberStyle;
 
   #[test]
   fn default_uses_roman_front_and_arabic_body() {

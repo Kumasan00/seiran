@@ -17,9 +17,9 @@ fn read_style_returns_default_when_path_is_none() {
 
   // Assert
   let default = Style::default();
-  assert!((style.core.font_size.to_pt() - default.core.font_size.to_pt()).abs() < f32::EPSILON);
-  assert!((style.core.line_height_factor - default.core.line_height_factor).abs() < f32::EPSILON);
-  assert!(style.core.background_color.is_none());
+  assert!((style.font_size.to_pt() - default.font_size.to_pt()).abs() < f32::EPSILON);
+  assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
+  assert!(style.background_color.is_none());
   assert_eq!(style.heading(HeadingLevel::Part).format, default.heading(HeadingLevel::Part).format);
 }
 
@@ -47,9 +47,9 @@ fn parse_style_overrides_only_specified_fields() {
   let style = parse_style(toml, dummy_source()).unwrap();
 
   // Assert
-  assert!((style.core.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
+  assert!((style.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
   let default = Style::default();
-  assert!((style.core.line_height_factor - default.core.line_height_factor).abs() < f32::EPSILON);
+  assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn parse_style_accepts_color_hex_string() {
   let style = parse_style(toml, dummy_source()).unwrap();
 
   // Assert
-  let color = style.core.background_color.expect("background_color should be Some");
+  let color = style.background_color.expect("background_color should be Some");
   assert_eq!(color.rgb(), [0xcc, 0x99, 0x66]);
 }
 
@@ -95,15 +95,15 @@ fn parse_style_overrides_header_and_footer() {
   let style = parse_style(toml, dummy_source()).unwrap();
 
   // Assert: header は指定値、footer は center のみ指定で他はデフォルト
-  assert_eq!(style.core.header.right, "{page} / {pages}");
-  assert!((style.core.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-  assert_eq!(style.core.header.font_kind, types::FontKind::SansSerif);
-  assert!((style.core.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-  assert_eq!(style.core.header.rule_color.map(types::Color::rgb), Some([0x33, 0x33, 0x33]));
-  assert_eq!(style.core.footer.center, "{title}");
-  assert!(style.core.footer.left.is_empty());
+  assert_eq!(style.header.right, "{page} / {pages}");
+  assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
+  assert_eq!(style.header.font_kind, types::FontKind::SansSerif);
+  assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
+  assert_eq!(style.header.rule_color.map(types::Color::rgb), Some([0x33, 0x33, 0x33]));
+  assert_eq!(style.footer.center, "{title}");
+  assert!(style.footer.left.is_empty());
   // 既定では header/footer は空（描画なし）
-  assert!(!style.core.header.is_empty());
+  assert!(!style.header.is_empty());
 }
 
 #[test]
@@ -175,6 +175,6 @@ fn parse_style_reads_minimal_fixture() {
   let style = parse_style(toml, "minimal.toml").unwrap();
 
   // Assert: 指定したフィールドだけ上書きされ、他はデフォルト
-  assert!((style.core.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
+  assert!((style.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
   assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
 }

@@ -101,7 +101,7 @@ pub enum CitationError {
 ///
 /// # Errors
 ///
-/// 引用があるのに `style.core.reference.csl_path` が未設定の場合、または CSL スタイル / ロケール
+/// 引用があるのに `style.reference.csl_path` が未設定の場合、または CSL スタイル / ロケール
 /// ファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
 pub fn process_citations(
   nodes: &mut Vec<DocNode>,
@@ -134,7 +134,7 @@ pub fn process_citations(
 
   // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
   // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は read_style::ReferenceStyle）。
-  let csl_path = style.core.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
+  let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
   let style_xml = std::fs::read_to_string(csl_path).map_err(|source| CitationError::ReadStyleFile {
     path: csl_path_str.clone(),
@@ -147,7 +147,7 @@ pub fn process_citations(
   // 内蔵ロケール（CBOR）に、style.toml で指定されたカスタムロケールを重ねる。
   let locales = load_locales(style)?;
 
-  let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, &style.core.reference.title);
+  let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, &style.reference.title);
 
   // ラベルを書き戻す（収集と同じドキュメント順なので zip で対応づく）。
   for (node, label) in cite_nodes.iter_mut().zip(rendered.labels) {
@@ -225,7 +225,7 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 
 /// 引用整形に用いるロケール一覧を組み立てる。
 ///
-/// `style.core.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析し、
+/// `style.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析し、
 /// それ**だけ**を返す（hayagriva 内蔵ロケールは使わない）。`locale_path` が `None` の場合のみ、
 /// hayagriva 内蔵ロケール（`archive` feature の CBOR）一式を返す。
 ///
@@ -234,7 +234,7 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 /// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
 fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
   // カスタムロケールが指定されていればそれだけを使い、なければ内蔵ロケールを使う。
-  let locales = if let Some(path) = &style.core.reference.locale_path {
+  let locales = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
     let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
       path: path_str.clone(),
@@ -275,14 +275,14 @@ mod tests {
   /// CSL スタイル（IEEE）を設定した `Style` を作る。引用整形に最低限必要な設定。
   fn style_with_csl() -> Style {
     let mut style = Style::default();
-    style.core.reference.csl_path = Some(ieee_csl_path());
+    style.reference.csl_path = Some(ieee_csl_path());
     return style;
   }
 
   /// CSL スタイルに加えてカスタムロケール（`locale_path`）を設定した `Style` を作る。
   fn style_with_locale_path(path: PathBuf) -> Style {
     let mut style = style_with_csl();
-    style.core.reference.locale_path = Some(path);
+    style.reference.locale_path = Some(path);
     return style;
   }
 

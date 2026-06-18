@@ -113,7 +113,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
-  pub fn default_font_size(&self) -> f32 { return self.style.core.font_size.to_pt(); }
+  pub fn default_font_size(&self) -> f32 { return self.style.font_size.to_pt(); }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）
@@ -578,8 +578,10 @@ mod tests {
   #[test]
   fn default_font_size_reflects_core_font_size() {
     // Arrange — font_size を 18pt に上書きする
-    let mut style = ReadStyle::default();
-    style.core.font_size = Length::pt(18.0);
+    let style = read_style::Style {
+      font_size: Length::pt(18.0),
+      ..Default::default()
+    };
     let ctx = LoweringContext::new(&style);
 
     // Act

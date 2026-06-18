@@ -52,7 +52,7 @@ pub use error::EvalError;
 /// 書式化されるため、parser 側にフラットカウンタを別途持たない。
 #[derive(Debug)]
 pub(crate) struct Evaluator {
-  /// 自動採番とラベル登録のレジストリ。`read_style::Style.core.counters` から構築する
+  /// 自動採番とラベル登録のレジストリ。`read_style::Style.counters` から構築する
   pub registry: CounterRegistry,
 }
 

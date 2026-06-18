@@ -91,8 +91,8 @@ mod tests {
     let style = parse_style(toml, "style.toml").expect("[reference] を含む style.toml はパースできるはず");
 
     // Assert
-    assert_eq!(style.core.reference.title, "参考文献");
-    assert_eq!(style.core.reference.csl_path, Some(PathBuf::from("styles/ieee.csl")));
-    assert_eq!(style.core.reference.locale_path, Some(PathBuf::from("locales/locales-ja-JP.xml")));
+    assert_eq!(style.reference.title, "参考文献");
+    assert_eq!(style.reference.csl_path, Some(PathBuf::from("styles/ieee.csl")));
+    assert_eq!(style.reference.locale_path, Some(PathBuf::from("locales/locales-ja-JP.xml")));
   }
 }

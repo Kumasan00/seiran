@@ -40,7 +40,7 @@ use crate::{
 /// - 各ページの [`hlist::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
 /// - 各ページの [`hlist::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
 /// - 見出しアンカーと `outline_entries` から PDF のしおり（アウトライン）を構築し、
-///   `style.core.hyperref.show_bookmarks` が真なら設定する
+///   `style.hyperref.show_bookmarks` が真なら設定する
 // 設定・フォント・スタイル・しおり情報を個別に受け取る描画オーケストレーション関数のため、
 // 引数をまとめず素直に並べる（束ねても呼び出し側の見通しは良くならない）。
 #[allow(clippy::too_many_arguments)]
@@ -74,7 +74,7 @@ pub(crate) fn render_pages(
     page.finish();
   }
 
-  if style.core.hyperref.show_bookmarks
+  if style.hyperref.show_bookmarks
     && let Some(outline) = build_outline(&heading_dests, outline_entries)
   {
     document.set_outline(outline);
@@ -238,9 +238,9 @@ fn draw_placed_block(
         krilla_fonts,
         columns,
         col_widths,
-        padding: style.core.table.cell_padding.to_pt(),
-        rule_thickness: style.core.table.rule_thickness.to_pt(),
-        rule_color: style.core.table.rule_color,
+        padding: style.table.cell_padding.to_pt(),
+        rule_thickness: style.table.rule_thickness.to_pt(),
+        rule_color: style.table.rule_color,
       };
       // 表全体の揃えオフセット `x` を左マージンに足し込み、行帯・セルの起点を右へずらす
       for placed_row in rows {
@@ -491,7 +491,7 @@ fn draw_filled_rect(
 ///
 /// 塗りつぶし後はフィルを解除し、後続の描画（テキスト・罫線）が黒で描画されるようにします。
 fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Style) -> Result<(), PdfGenError> {
-  let Some(color) = style.core.background_color else {
+  let Some(color) = style.background_color else {
     return Ok(());
   };
   let [r, g, b] = color.rgb();

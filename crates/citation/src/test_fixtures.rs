@@ -13,7 +13,7 @@ use read_references::References;
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
 ///
-/// `style.core.reference.csl_path` に設定する CSL スタイルのパスとして使う。
+/// `style.reference.csl_path` に設定する CSL スタイルのパスとして使う。
 pub(crate) fn ieee_csl_path() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .join("tests/data/ieee.csl")

@@ -15,7 +15,7 @@ pub(super) fn lower_list(
   ordered: bool,
   items: &[ListItem],
 ) -> Result<Vec<LayoutNode>, LoweringError> {
-  let list_style = &ctx.style.core.list;
+  let list_style = &ctx.style.list;
   let mut result = Vec::new();
 
   let marker_style = TextStyle {
@@ -126,7 +126,7 @@ mod tests {
 
     // Assert — VBox.indent=indent（ブロック単位）・先頭に Kern は出さない、
     // margin_bottom=item_margin_bottom、marker_style は規定どおり
-    let list_style = &style.core.list;
+    let list_style = &style.list;
     let (_, marker_style) = marker_of(&nodes[0]);
     let LayoutNode::VBox {
       children,
@@ -166,7 +166,7 @@ mod tests {
     let nodes = lower_list(&ctx, false, &items).expect("失敗しない");
 
     // Assert — 外側 item VBox.indent == list.indent、内側ネスト item VBox にも同じ indent が乗る
-    let indent = style.core.list.indent.to_pt();
+    let indent = style.list.indent.to_pt();
     let LayoutNode::VBox {
       children,
       indent: outer_indent,

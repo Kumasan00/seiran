@@ -28,7 +28,7 @@
 //!
 //! ## カウンタ定義のソース
 //!
-//! カウンタ定義の真のソースは `read_style::Style.core.counters` テーブル。
+//! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
 //! [`CounterRegistry::from_style`] が [`read_style::Counters`] を `defs` に複製し、
 //! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
 //! 既定 9 種（part〜table）も `Style::default()` が `read_style::Counters::default()`
@@ -65,7 +65,7 @@ impl CounterRegistry {
 
   /// `read_style::Style` からレジストリを構築する
   #[must_use]
-  pub fn from_style(style: &Style) -> Self { return Self::from_counters(&style.core.counters); }
+  pub fn from_style(style: &Style) -> Self { return Self::from_counters(&style.counters); }
 
   /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]

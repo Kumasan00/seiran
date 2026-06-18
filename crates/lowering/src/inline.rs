@@ -49,7 +49,7 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::InlineMath(math_nodes) => {
-      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.core.math));
+      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math));
     },
     InlineNode::Symbol(ch) => {
       return Ok(vec![LayoutNode::Text(ch.to_string(), parent_style)]);
@@ -72,7 +72,7 @@ pub(super) fn lower_inline(
       };
       // 番号テキストを内部リンク（機構 B）で囲み、参照先アンカーへジャンプできるようにする。
       // 表示色はハイパーリンクの `link_color`（既定青、明示 `\color` があればそちらを優先）。
-      let style = with_link_color(parent_style, ctx.style.core.hyperref.link_color);
+      let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       return Ok(vec![LayoutNode::Link {
         target: LinkTarget::Internal(label.clone()),
         children: vec![LayoutNode::Text(resolved, style)],
@@ -81,7 +81,7 @@ pub(super) fn lower_inline(
     InlineNode::Link { url, children } => {
       // 外部リンク（`\url` / `\href`）。表示テキストを External リンクで囲む。
       // 表示色はハイパーリンクの `url_color`（既定青、明示 `\color` があればそちらを優先）。
-      let style = with_link_color(parent_style, ctx.style.core.hyperref.url_color);
+      let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
       let mut inner = Vec::new();
       for child in children {
         inner.extend(lower_inline(ctx, child, style)?);
@@ -114,7 +114,7 @@ pub(super) fn lower_inline(
       };
       // 引用ラベル全体（括弧含む）に `cite_color` を適用する。番号部分は `InlineNode::InternalLink`
       // としてこの色を継承したまま内部リンクで囲まれる（明示 `\color` があればそちらを優先）。
-      let style = with_link_color(parent_style, ctx.style.core.hyperref.cite_color);
+      let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
       let mut result = Vec::new();
       for child in inlines {
         result.extend(lower_inline(ctx, child, style)?);
@@ -269,7 +269,7 @@ mod tests {
     // Arrange — style で link_color を指定すると \ref の番号テキストに乗る
     let blue = types::Color::new(0x00, 0x00, 0xff);
     let mut style = read_style::Style::default();
-    style.core.hyperref.link_color = Some(blue);
+    style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "sec:intro".to_string(),
@@ -295,7 +295,7 @@ mod tests {
     // Arrange — style で url_color を指定すると外部リンクの表示テキストに乗る
     let blue = types::Color::new(0x00, 0x00, 0xff);
     let mut style = read_style::Style::default();
-    style.core.hyperref.url_color = Some(blue);
+    style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Link {
       url: "https://example.com".to_string(),
@@ -319,7 +319,7 @@ mod tests {
   fn lower_ref_inherits_black_when_link_color_none() {
     // Arrange — link_color = None のとき、本文色（黒 = None）を継承する
     let mut style = read_style::Style::default();
-    style.core.hyperref.link_color = None;
+    style.hyperref.link_color = None;
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "a".to_string(),
@@ -394,7 +394,7 @@ mod tests {
     // Arrange — Cite ラベル内の InternalLink 番号は cite_color を継承しつつ内部リンクになる
     let blue = types::Color::new(0x00, 0x00, 0xff);
     let mut style = read_style::Style::default();
-    style.core.hyperref.cite_color = Some(blue);
+    style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Cite {
       keys: vec!["foo".to_string()],

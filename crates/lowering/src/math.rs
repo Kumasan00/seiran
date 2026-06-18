@@ -49,7 +49,7 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 /// 現段階では行頭からのレンダリングのみ。
 pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], number: Option<&str>) -> Vec<LayoutNode> {
   let font_size = ctx.default_font_size();
-  let eq = &ctx.style.core.equation;
+  let eq = &ctx.style.equation;
 
   // 番号文字列を書式化し、Text ノードに包む（None の場合は何も生成しない）
   let number_node: Option<LayoutNode> = number.map(|n| {
@@ -81,15 +81,15 @@ pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], numbe
     (NumberSide::Left, Some(node)) => {
       result.push(node);
       result.push(gap);
-      result.extend(lower_inline_math(body, font_size, &ctx.style.core.math));
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
     },
     (NumberSide::Right, Some(node)) => {
-      result.extend(lower_inline_math(body, font_size, &ctx.style.core.math));
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
       result.push(gap);
       result.push(node);
     },
     (_, None) => {
-      result.extend(lower_inline_math(body, font_size, &ctx.style.core.math));
+      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
     },
   }
 
@@ -430,7 +430,7 @@ mod tests {
   fn lower_display_math_places_number_left_when_configured() {
     // Arrange: number_side = Left に設定すると、本体の前に番号 Text + Glue が並ぶ
     let mut style = ReadStyle::default();
-    style.core.equation.number_side = read_style::NumberSide::Left;
+    style.equation.number_side = read_style::NumberSide::Left;
     let ctx = LoweringContext::new(&style);
 
     // Act

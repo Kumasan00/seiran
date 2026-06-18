@@ -1,7 +1,7 @@
 //! 本文段落（`DocNode::Paragraph`）のスタイル設定型。
 //!
 //! 見出しレベルの `Paragraph` と区別するため、本文段落は `TextBlockStyle` という名前にし、
-//! `CoreStyle::text` フィールドに置く。
+//! `Style::text` フィールドに置く。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
