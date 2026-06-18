@@ -2,7 +2,7 @@
 //!
 //! [`crate::core::CoreStyle`] と [`crate::extended::ExtendedStyle`] の 2 層に分かれている。
 //! `core` は `lowering` / `pdf_gen` から参照される実働フィールド、`extended` は資産として
-//! 保持している未参照フィールド（脚注・目次・参考文献等）を含む。
+//! 保持している未参照フィールド（脚注等）を含む。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ pub struct Style {
   #[serde(flatten)]
   #[garde(dive)]
   pub core: CoreStyle,
-  /// 未参照領域（脚注・目次・ハイパーリンク・参考文献）。`[extended.*]` 配下にマップされる
+  /// 未参照領域（脚注等）。`[extended.*]` 配下にマップされる
   #[garde(dive)]
   pub extended: ExtendedStyle,
 }

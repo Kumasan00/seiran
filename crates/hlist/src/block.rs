@@ -5,7 +5,7 @@
 
 use types::{Align, AnchorMark};
 
-use crate::{hitem::HItem, table_box::TableBox};
+use crate::{hitem::HItem, line::Line, table_box::TableBox};
 
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
@@ -64,6 +64,18 @@ pub enum Block {
     height: f32,
     /// 本文幅の中での罫線の水平揃え（既定は左揃え）
     align: Align,
+  },
+  /// 合成済みの単一行（行分割をかけずそのまま配置する）
+  ///
+  /// 目次エントリの「番号＋タイトル …リーダー… ページ番号（右寄せ）」のように、
+  /// 生成側で絶対座標まで組み上げた [`Line`] を 1 行として配置するためのプリミティブ。
+  /// `break_pages` は段落 1 行分と同じ規則（ベースライン送り・改ページ・アンカー解決・
+  /// リンク収集）で扱うが、[`crate::break_lines`] は通さない。
+  ComposedLine {
+    /// 配置する合成済みの行
+    line: Line,
+    /// 行送り（pt）。配置後にカーソルをこの分だけ進める
+    leading: f32,
   },
   /// 縦方向の固定アキ（pt）
   VSpace(f32),

@@ -9,6 +9,8 @@ use types::length::{Length, non_negative, positive};
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct TocStyle {
+  /// 目次を生成するか（既定 `false`。既存設定の出力を変えないようオプトイン）
+  pub enabled: bool,
   /// 目次のタイトル文字列
   #[garde(length(chars, min = 1))]
   pub title: String,
@@ -20,21 +22,30 @@ pub struct TocStyle {
   /// 目次エントリのフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
+  /// 見出しレベルの深さ 1 段ごとに加える左インデント（深さ × この値）
+  #[garde(custom(non_negative))]
+  pub indent_per_level: Length,
   /// 目次ブロックの下余白
   #[garde(custom(non_negative))]
   pub bottom_margin: Length,
   /// ページ番号を表示するか
   pub show_page_numbers: bool,
+  /// エントリ末尾とページ番号の間を埋めるリーダー文字列（`None` でリーダー無し）。
+  /// 指定した単位文字列を残り幅いっぱいに反復する（例: `"."`）
+  pub leader: Option<String>,
 }
 
 impl Default for TocStyle {
   fn default() -> Self {
     return Self {
+      enabled: false,
       title: "Contents".to_string(),
       max_depth: 3,
       font_size: Length::pt(12.0),
+      indent_per_level: Length::pt(12.0),
       bottom_margin: Length::pt(10.0),
       show_page_numbers: true,
+      leader: Some(".".to_string()),
     };
   }
 }
@@ -54,6 +65,26 @@ mod tests {
   #[test]
   fn validate_accepts_default() {
     assert!(TocStyle::default().validate().is_ok());
+  }
+
+  #[test]
+  fn default_is_disabled_with_dot_leader() {
+    // 既定では目次は無効（オプトイン）でリーダーは "."
+    let style = TocStyle::default();
+    assert!(!style.enabled);
+    assert_eq!(style.leader.as_deref(), Some("."));
+  }
+
+  #[test]
+  fn partial_toml_keeps_other_defaults() {
+    // Arrange / Act: enabled だけ指定しても他フィールドは既定で埋まる
+    let style: TocStyle = toml::from_str("enabled = true\n").unwrap();
+
+    // Assert
+    assert!(style.enabled);
+    assert_eq!(style.title, "Contents");
+    assert_eq!(style.max_depth, 3);
+    assert!(style.validate().is_ok());
   }
 
   #[test]

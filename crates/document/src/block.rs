@@ -23,29 +23,12 @@ impl Document {
   #[must_use]
   pub fn new(body: Vec<DocNode>) -> Self { return Document { body }; }
 
-  /// ドキュメント内の全見出しを収集する
+  /// ドキュメント内の全見出しを文書順に収集する
   ///
-  /// 目次生成や PDF ブックマーク構築に使用します。
-  ///
-  /// # Returns
-  ///
-  /// `(HeadingLevel, &str, &[InlineNode])` のタプルリスト
+  /// 目次生成や PDF ブックマーク構築に使用します。意味側の単一ソースである
+  /// 自由関数 [`collect_headings`] に委譲します。
   #[must_use]
-  pub fn collect_headings(&self) -> Vec<(HeadingLevel, &str, &[InlineNode])> {
-    let mut headings = Vec::new();
-    for node in &self.body {
-      if let DocNode::Heading {
-        level,
-        number,
-        title,
-        ..
-      } = node
-      {
-        headings.push((*level, number.as_str(), title.as_slice()));
-      }
-    }
-    return headings;
-  }
+  pub fn collect_headings(&self) -> Vec<HeadingInfo<'_>> { return collect_headings(&self.body); }
 
   /// ドキュメント内のブロック要素の数を返す
   #[must_use]
@@ -54,6 +37,60 @@ impl Document {
   /// ドキュメントが空かどうかを判定する
   #[must_use]
   pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
+}
+
+// =============================================================================
+// 見出しの収集（目次生成・PDF しおりの共通ソース）
+// =============================================================================
+
+/// 文書順インデックス付きの見出しビュー
+///
+/// [`collect_headings`] が返す軽量な参照ビュー。目次生成と PDF しおり構築の双方が
+/// この単一ソースを消費する。`index` は本文中の見出し出現順（0 始まり）で、
+/// [`heading_anchor_key`] に渡すと目次エントリの内部リンク到達先キーが得られる。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HeadingInfo<'a> {
+  /// 見出しの文書順インデックス（0 始まり）
+  pub index: usize,
+  /// 見出しレベル
+  pub level: HeadingLevel,
+  /// 書式化済みの見出し番号
+  pub number: &'a str,
+  /// 見出しタイトル（インライン要素）
+  pub title: &'a [InlineNode],
+}
+
+/// 見出しの暗黙 destination キーを文書順インデックスから生成する
+///
+/// lowering（採番側 = `AnchorMark::Heading.key`）と目次ビルダ（参照側 =
+/// `LinkTarget::Internal`）が同じ規則を共有するための単一ソース。
+#[must_use]
+pub fn heading_anchor_key(index: usize) -> String { return format!("heading:{index}"); }
+
+/// ブロックノード列から全見出しを文書順に収集する
+///
+/// 目次生成と PDF しおり構築が共通で使う意味側の単一ソース。`index` は出現順に
+/// 0 から振られる。
+#[must_use]
+pub fn collect_headings(nodes: &[DocNode]) -> Vec<HeadingInfo<'_>> {
+  let mut headings = Vec::new();
+  for node in nodes {
+    if let DocNode::Heading {
+      level,
+      number,
+      title,
+      ..
+    } = node
+    {
+      headings.push(HeadingInfo {
+        index: headings.len(),
+        level: *level,
+        number: number.as_str(),
+        title: title.as_slice(),
+      });
+    }
+  }
+  return headings;
 }
 
 // =============================================================================
@@ -346,10 +383,12 @@ mod tests {
 
     let headings = doc.collect_headings();
     assert_eq!(headings.len(), 2);
-    assert_eq!(headings[0].0, HeadingLevel::Chapter);
-    assert_eq!(headings[0].1, "1");
-    assert_eq!(headings[1].0, HeadingLevel::Section);
-    assert_eq!(headings[1].1, "1.1");
+    assert_eq!(headings[0].index, 0);
+    assert_eq!(headings[0].level, HeadingLevel::Chapter);
+    assert_eq!(headings[0].number, "1");
+    assert_eq!(headings[1].index, 1);
+    assert_eq!(headings[1].level, HeadingLevel::Section);
+    assert_eq!(headings[1].number, "1.1");
   }
 
   #[test]

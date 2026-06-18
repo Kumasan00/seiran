@@ -31,6 +31,11 @@ pub struct RunningContentSpec {
   pub metadata: RunningMetadata,
   /// 本文幅（pt）。スロットの左／中央／右揃えの基準
   pub text_width: f32,
+  /// 各物理ページの `(\{page\} ラベル, \{pages\} ラベル)`。`pages` と同じ長さ・同じ順序。
+  ///
+  /// 前付け（ローマ数字）と本文（算用数字、1 から振り直し）でリージョン別に採番した結果を
+  /// 呼び出し側（`build_pdf`）が算出して渡す。`build_running_content` はこれをトークン置換に使う。
+  pub page_numbers: Vec<(String, String)>,
   /// 先頭ページ（タイトルページ）のヘッダー・フッターを抑止するか
   ///
   /// `true` のとき index 0 のページはヘッダー・フッターを配置しない。タイトルページ
@@ -97,18 +102,20 @@ pub fn build_running_content(
   }
   // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない
   let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0);
-  let page_count = pages.len();
   for (index, page) in pages.iter_mut().enumerate() {
     // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
     if spec.skip_first && index == 0 {
       continue;
     }
-    let page_number = index + 1;
+    // ページ番号ラベルが無いページ（通常は発生しない）は安全側でスキップする
+    let Some((page_label, pages_label)) = spec.page_numbers.get(index) else {
+      continue;
+    };
     if let Some(slots) = &spec.header {
-      page.header = build_region(&mut measurer, slots, spec.text_width, page_number, page_count, &spec.metadata);
+      page.header = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
     if let Some(slots) = &spec.footer {
-      page.footer = build_region(&mut measurer, slots, spec.text_width, page_number, page_count, &spec.metadata);
+      page.footer = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
   }
 }
@@ -118,8 +125,8 @@ fn build_region(
   measurer: &mut Measurer,
   slots: &RunningSlots,
   text_width: f32,
-  page_number: usize,
-  page_count: usize,
+  page_label: &str,
+  pages_label: &str,
   metadata: &RunningMetadata,
 ) -> Vec<PlacedBlock> {
   let style = TextStyle {
@@ -127,9 +134,9 @@ fn build_region(
     font_kind: slots.font_kind,
     color: None,
   };
-  let left = shape_slot(measurer, &slots.left, page_number, page_count, metadata, style);
-  let center = shape_slot(measurer, &slots.center, page_number, page_count, metadata, style);
-  let right = shape_slot(measurer, &slots.right, page_number, page_count, metadata, style);
+  let left = shape_slot(measurer, &slots.left, page_label, pages_label, metadata, style);
+  let center = shape_slot(measurer, &slots.center, page_label, pages_label, metadata, style);
+  let right = shape_slot(measurer, &slots.right, page_label, pages_label, metadata, style);
 
   let center_x = (text_width - slot_width(&center)) / 2.0;
   let right_x = text_width - slot_width(&right);
@@ -179,12 +186,12 @@ fn build_region(
 fn shape_slot(
   measurer: &mut Measurer,
   template: &str,
-  page_number: usize,
-  page_count: usize,
+  page_label: &str,
+  pages_label: &str,
   metadata: &RunningMetadata,
   style: TextStyle,
 ) -> Vec<HBox> {
-  let text = substitute(template, page_number, page_count, metadata);
+  let text = substitute(template, page_label, pages_label, metadata);
   if text.trim().is_empty() {
     return Vec::new();
   }
@@ -194,10 +201,11 @@ fn shape_slot(
 /// テンプレート中のトークンを実値へ置換する
 ///
 /// `{page}` は `{pages}` の部分文字列ではない（直後が `s` か `}` かで異なる）ため、置換順は不問。
-fn substitute(template: &str, page_number: usize, page_count: usize, metadata: &RunningMetadata) -> String {
+/// `page_label` / `pages_label` は呼び出し側がリージョン別に採番済みのラベル文字列。
+fn substitute(template: &str, page_label: &str, pages_label: &str, metadata: &RunningMetadata) -> String {
   return template
-    .replace("{page}", &page_number.to_string())
-    .replace("{pages}", &page_count.to_string())
+    .replace("{page}", page_label)
+    .replace("{pages}", pages_label)
     .replace("{title}", &metadata.title)
     .replace("{author}", &metadata.author)
     .replace("{date}", &metadata.date);
@@ -278,16 +286,25 @@ mod tests {
   #[test]
   fn substitute_replaces_page_and_pages_independently() {
     // Arrange / Act
-    let result = substitute("{page} / {pages}", 3, 12, &metadata());
+    let result = substitute("{page} / {pages}", "3", "12", &metadata());
 
     // Assert — {page} が {pages} を壊さない
     assert_eq!(result, "3 / 12");
   }
 
   #[test]
+  fn substitute_supports_roman_front_matter_labels() {
+    // Arrange / Act — 前付けのローマ数字ラベルもそのまま埋め込める
+    let result = substitute("{page} / {pages}", "ii", "iv", &metadata());
+
+    // Assert
+    assert_eq!(result, "ii / iv");
+  }
+
+  #[test]
   fn substitute_replaces_metadata_tokens() {
     // Arrange / Act
-    let result = substitute("{title} — {author} ({date})", 1, 1, &metadata());
+    let result = substitute("{title} — {author} ({date})", "1", "1", &metadata());
 
     // Assert
     assert_eq!(result, "My Title — Me (2026-06-14)");
@@ -296,7 +313,7 @@ mod tests {
   #[test]
   fn substitute_unset_metadata_becomes_empty() {
     // Arrange — 既定（空）メタデータ
-    let result = substitute("[{title}]", 1, 1, &RunningMetadata::default());
+    let result = substitute("[{title}]", "1", "1", &RunningMetadata::default());
 
     // Assert
     assert_eq!(result, "[]");
@@ -305,7 +322,7 @@ mod tests {
   #[test]
   fn substitute_leaves_static_text_untouched() {
     // Arrange / Act
-    let result = substitute("Confidential", 5, 9, &metadata());
+    let result = substitute("Confidential", "5", "9", &metadata());
 
     // Assert
     assert_eq!(result, "Confidential");

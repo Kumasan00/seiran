@@ -8,13 +8,17 @@
 /// リンク行き先のアンカー種別
 ///
 /// - [`AnchorMark::Heading`] — 見出しに付くアンカー。PDF アウトライン（しおり）の
-///   ジャンプ先になる。`label` が `Some` のときは `\ref` の到達先も兼ねる。
+///   ジャンプ先になる。`key` は文書順から決まる暗黙の destination キーで、目次エントリの
+///   内部リンク到達先になる。`label` が `Some` のときは `\ref` の到達先も兼ねる。
 /// - [`AnchorMark::Label`] — ラベル付きブロック（図・表・ディスプレイ数式）に付く
 ///   アンカー。`\ref{label}` の到達先になる。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnchorMark {
-  /// 見出しのアンカー（アウトライン用 + 任意で `\ref` 到達先）
+  /// 見出しのアンカー（アウトライン用 + 目次リンク到達先 + 任意で `\ref` 到達先）
   Heading {
+    /// 文書順から決まる暗黙の destination キー（目次エントリの内部リンク到達先）。
+    /// `\ref` ラベルの有無にかかわらず全見出しに付与される
+    key: String,
     /// `\section[label=...]` で付与された参照ラベル。`\ref` 対象なら `Some`
     label: Option<String>,
   },

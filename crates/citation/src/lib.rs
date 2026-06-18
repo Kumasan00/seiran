@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use document::{DocNode, InlineNode};
 use hayagriva::{
-  Entry,
+  Entry, archive,
   citationberg::{IndependentStyle, Locale, LocaleFile},
 };
 use miette::Diagnostic;
@@ -225,18 +225,16 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 
 /// 引用整形に用いるロケール一覧を組み立てる。
 ///
-/// `style.core.reference.locale_path` で指定された CSL ロケール XML を読み込み・解析し、
-/// hayagriva 内蔵ロケール（`archive` feature の CBOR）の**前**に並べて返す。hayagriva の
-/// ロケール探索は言語コードの先頭一致（`find`）で決まるため、先頭に重ねたカスタムロケールが
-/// 同一言語の内蔵ロケールを上書きする。`locale_path` が `None` なら内蔵ロケールのみを返す。
+/// `style.core.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析し、
+/// それ**だけ**を返す（hayagriva 内蔵ロケールは使わない）。`locale_path` が `None` の場合のみ、
+/// hayagriva 内蔵ロケール（`archive` feature の CBOR）一式を返す。
 ///
 /// # Errors
 ///
 /// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
 fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
-  let mut locales: Vec<Locale> = Vec::new();
-  // カスタムロケールがあれば先頭に置き、同一言語の内蔵ロケールより優先させる。
-  if let Some(path) = &style.core.reference.locale_path {
+  // カスタムロケールが指定されていればそれだけを使い、なければ内蔵ロケールを使う。
+  let locales = if let Some(path) = &style.core.reference.locale_path {
     let path_str = path.display().to_string();
     let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
       path: path_str.clone(),
@@ -246,9 +244,10 @@ fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
       path: path_str,
       source,
     })?;
-    locales.push(locale_file.into());
-  }
-  locales.extend(hayagriva::archive::locales());
+    vec![locale_file.into()]
+  } else {
+    archive::locales()
+  };
   return Ok(locales);
 }
 
@@ -300,19 +299,18 @@ mod tests {
   }
 
   #[test]
-  fn load_locales_prepends_custom_locale() {
+  fn load_locales_returns_custom_only() {
     // Arrange — カスタム en-US ロケールを指定
     let style = style_with_locale_path(custom_locale_path());
-    let builtin_len = hayagriva::archive::locales().len();
 
     // Act
     let locales = load_locales(&style).expect("カスタムロケールの読み込みは成功するはず");
 
-    // Assert — 件数は内蔵 + 1、先頭はカスタムロケール
-    assert_eq!(locales.len(), builtin_len + 1, "カスタムは内蔵に重ねる");
+    // Assert — カスタム指定時は内蔵を使わず、カスタムロケールのみを返す
+    assert_eq!(locales.len(), 1, "カスタム指定時は内蔵を使わずカスタムのみ");
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
     let expected = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
-    assert_eq!(locales[0], expected, "先頭にカスタムロケールが並ぶ");
+    assert_eq!(locales[0], expected, "唯一の要素はカスタムロケール");
   }
 
   #[test]

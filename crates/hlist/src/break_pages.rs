@@ -151,6 +151,9 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
       } => {
         place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent, align);
       },
+      Block::ComposedLine { line, leading } => {
+        place_single_line(&mut composer, geom, line, leading);
+      },
       Block::VSpace(space) => {
         composer.y += space;
       },
@@ -287,6 +290,31 @@ fn place_paragraph(
       baseline_y: baseline,
     });
   }
+  composer.y = baseline + leading;
+  composer.cursor_at_edge = false;
+}
+
+/// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
+///
+/// 段落先頭行と同じ規則で配置する: 直前が底辺基準ブロックならアセント分下げ、ページ下限を
+/// 超えるなら改ページし、確定位置で未解決アンカーを解決してリンク矩形を収集する。配置後は
+/// カーソルを `baseline + leading` まで進める。行分割（[`crate::break_lines`]）は通さない。
+fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, line: Line, leading: f32) {
+  let mut baseline = composer.y;
+  if composer.cursor_at_edge {
+    baseline += line.height;
+  }
+  if baseline + line.depth > geom.page_limit {
+    composer.start_new_page(geom);
+    baseline = geom.margin_top;
+  }
+  // 行の上端を未解決アンカーの解決位置にする（段落先頭行と同じ）
+  composer.resolve_pending_anchors(0.0, baseline - line.height);
+  composer.collect_line_links(&line, baseline);
+  composer.current.push(PlacedBlock::Line {
+    line,
+    baseline_y: baseline,
+  });
   composer.y = baseline + leading;
   composer.cursor_at_edge = false;
 }
@@ -670,7 +698,10 @@ mod tests {
     use types::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
-      Block::Anchor(AnchorMark::Heading { label: None }),
+      Block::Anchor(AnchorMark::Heading {
+        key: "heading:0".to_string(),
+        label: None,
+      }),
       paragraph_of_lines(1),
     ];
 
@@ -682,7 +713,7 @@ mod tests {
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
     assert!((pages[0].anchors[0].y - 2.0).abs() < f32::EPSILON);
     assert!((pages[0].anchors[0].x - 0.0).abs() < f32::EPSILON);
-    assert!(matches!(pages[0].anchors[0].mark, AnchorMark::Heading { label: None }));
+    assert!(matches!(pages[0].anchors[0].mark, AnchorMark::Heading { label: None, .. }));
   }
 
   #[test]
@@ -1129,5 +1160,100 @@ mod tests {
         }
       }
     }
+  }
+
+  /// 合成済み単一行（[`Block::ComposedLine`]）のテスト用ヘルパ。幅・高さ・深さと任意のリンクを持つ
+  fn composed_line(width: f32, height: f32, depth: f32, link: Option<types::LinkTarget>) -> Block {
+    let links = link.map_or_else(Vec::new, |target| {
+      vec![crate::line::LineLink {
+        target,
+        x0: 0.0,
+        x1: width,
+      }]
+    });
+    return Block::ComposedLine {
+      line: Line {
+        boxes: vec![crate::line::PositionedBox {
+          content: HBoxContent::Rule { width, height },
+          x: 0.0,
+          dy: 0.0,
+          width,
+        }],
+        height,
+        depth,
+        is_last: true,
+        links,
+      },
+      leading: 12.0,
+    };
+  }
+
+  #[test]
+  fn composed_line_places_at_baseline_with_leading() {
+    // Arrange — margin_top=10, leading=12 の ComposedLine を 2 つ
+    let geom = test_geometry();
+    let blocks = vec![
+      composed_line(20.0, 8.0, 2.0, None),
+      composed_line(20.0, 8.0, 2.0, None),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — baseline は 10, 22（leading=12 ずつ）。行分割は通さない
+    let baselines: Vec<f32> = pages[0]
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(baselines, vec![10.0, 22.0]);
+  }
+
+  #[test]
+  fn composed_line_resolves_anchor_and_collects_link() {
+    // Arrange — 見出しアンカー直後の ComposedLine（内部リンク付き）
+    use types::{AnchorMark, LinkTarget};
+    let geom = test_geometry();
+    let blocks = vec![
+      Block::Anchor(AnchorMark::Heading {
+        key: "heading:0".to_string(),
+        label: None,
+      }),
+      composed_line(20.0, 8.0, 2.0, Some(LinkTarget::Internal("heading:5".to_string()))),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — アンカーは行上端（baseline 10 − height 8 = 2）に解決
+    assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
+    assert!((pages[0].anchors[0].y - 2.0).abs() < f32::EPSILON);
+    // リンクは PlacedLink 化（top=2, height=height+depth=10, 行き先は内部キー）
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    assert!(matches!(&pages[0].links[0].target, LinkTarget::Internal(k) if k == "heading:5"));
+    assert!((pages[0].links[0].y - 2.0).abs() < f32::EPSILON);
+    assert!((pages[0].links[0].height - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn composed_lines_break_across_pages() {
+    // Arrange — page_limit=50, margin_top=10, leading=12, depth=2:
+    // baseline 10,22,34,46（46+2=48≤50）まで 1 ページ、5 本目で改ページ
+    let geom = test_geometry();
+    let blocks: Vec<Block> = (0..5).map(|_| composed_line(20.0, 8.0, 2.0, None)).collect();
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — 2 ページに分かれ、2 ページ目の先頭 baseline は margin_top
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    let PlacedBlock::Line { baseline_y, .. } = pages[1].blocks.first().expect("2 ページ目に行があるはず")
+    else {
+      panic!("Line を期待");
+    };
+    assert!((baseline_y - 10.0).abs() < f32::EPSILON);
   }
 }

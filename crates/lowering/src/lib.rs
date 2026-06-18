@@ -142,14 +142,35 @@ pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Result<Vec<
 /// いずれかの `DocNode` の変換中に [`LoweringError`] が発生した場合に返します。
 pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut result = Vec::new();
+  // 見出しの文書順インデックス。`heading_anchor_key` で暗黙 destination キーを採番するのに使う
+  // （目次エントリの内部リンク到達先と一致させるため、`document::collect_headings` の index と同じ規則）。
+  let mut heading_index = 0;
   for node in nodes {
-    result.extend(lower_node(ctx, node)?);
+    result.extend(lower_node_indexed(ctx, node, heading_index)?);
+    if node.is_heading() {
+      heading_index += 1;
+    }
   }
   return Ok(result);
 }
 
-/// 単一の `DocNode` をレイアウトノードに変換する
+/// 単一の `DocNode` をレイアウトノードに変換する（見出しインデックス 0 固定の単体エントリ）
+///
+/// 見出しの暗黙キーが文書順に依存しないテスト・単発変換用。本文全体の変換は
+/// [`lower_nodes`] が [`lower_node_indexed`] を介して連番キーを与える。
+#[cfg(test)]
 fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, LoweringError> {
+  return lower_node_indexed(ctx, node, 0);
+}
+
+/// 単一の `DocNode` をレイアウトノードに変換する
+///
+/// `heading_index` は見出しの文書順インデックス（[`document::heading_anchor_key`] に渡す）。
+fn lower_node_indexed(
+  ctx: &LoweringContext,
+  node: &DocNode,
+  heading_index: usize,
+) -> Result<Vec<LayoutNode>, LoweringError> {
   match node {
     DocNode::Heading {
       level,
@@ -157,7 +178,7 @@ fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, 
       title,
       label,
     } => {
-      return heading::lower_heading(ctx, *level, number, title, label.clone());
+      return heading::lower_heading(ctx, *level, number, title, label.clone(), heading_index);
     },
     DocNode::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines);

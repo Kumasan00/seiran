@@ -93,8 +93,11 @@ fn build_destination_index(pages: &[Page], margin_left: f32) -> (HashMap<String,
     for anchor in &page.anchors {
       let dest = XyzDestination::new(page_index, Point::from_xy(margin_left + anchor.x, anchor.y));
       match &anchor.mark {
-        AnchorMark::Heading { label } => {
+        AnchorMark::Heading { key, label } => {
           heading_dests.push(dest.clone());
+          // 暗黙キーを常に登録する（目次エントリの内部リンク到達先）。
+          dest_by_label.insert(key.clone(), dest.clone());
+          // `\ref` ラベルが付いていれば従来どおり追加登録する。
           if let Some(label) = label {
             dest_by_label.insert(label.clone(), dest);
           }

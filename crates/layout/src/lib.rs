@@ -25,6 +25,7 @@
 
 mod running;
 mod script;
+mod toc;
 
 use font::{
   FontMetrics,
@@ -37,6 +38,7 @@ use hlist::{
 use lazy_regex::regex_replace_all;
 use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
+pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
 use types::{Align, Color, FontKind, FontType, Length};
 
 /// レイアウトノードを計測済みのブロック列に変換する

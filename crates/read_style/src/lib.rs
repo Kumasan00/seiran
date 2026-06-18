@@ -10,7 +10,7 @@
 //! モジュールは [`core`] / [`extended`] の 2 階層に分かれている。
 //! [`Style`] は `core: CoreStyle` と `extended: ExtendedStyle` の 2 層構造で、
 //! `core` は `lowering` / `pdf_gen` から参照される実働フィールド、`extended` は
-//! 未参照フィールド（脚注・目次・参考文献等）を保持する。
+//! 未参照フィールド（脚注等）を保持する。
 
 pub mod core;
 mod error;
@@ -35,13 +35,15 @@ pub use crate::{
     hyperref::HyperrefStyle,
     list::ListStyle,
     math::MathScriptStyle,
+    page_numbering::PageNumbering,
     reference::ReferenceStyle,
     table::TableStyle,
     text::TextBlockStyle,
     title_page::TitlePageStyle,
+    toc::TocStyle,
   },
   error::{ReadStyleError, ValidationError},
-  extended::{ExtendedStyle, footnote::FootnoteStyle, toc::TocStyle},
+  extended::{ExtendedStyle, footnote::FootnoteStyle},
   style::Style,
 };
 
@@ -129,11 +131,13 @@ fn reject_unknown_top_level_keys(content: &str, source_path: &str) -> Result<(),
     "figure",
     "equation",
     "counters",
+    "page_numbering",
     "header",
     "footer",
     "reference",
     "hyperref",
     "title_page",
+    "toc",
     "extended",
   ];
 

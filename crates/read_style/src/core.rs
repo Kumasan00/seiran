@@ -1,7 +1,7 @@
 //! コアスタイル設定（[`CoreStyle`]）。
 //!
-//! `lowering` / `pdf_gen` から実際に参照される本文・見出し・リスト・数式・図表など、
-//! 描画パイプラインに直接効くフィールドを集約する。未実装領域（脚注・目次・参考文献等）
+//! `lowering` / `pdf_gen` から実際に参照される本文・見出し・リスト・数式・図表・目次など、
+//! 描画パイプラインに直接効くフィールドを集約する。未参照領域（脚注等）
 //! は [`crate::extended::ExtendedStyle`] に分離している。
 //!
 //! TOML 上では [`crate::Style`] が `#[serde(flatten)]` で展開するため、`CoreStyle` の
@@ -15,11 +15,13 @@ pub mod heading;
 pub mod hyperref;
 pub mod list;
 pub mod math;
+pub mod page_numbering;
 pub mod reference;
 pub mod running;
 pub mod table;
 pub mod text;
 pub mod title_page;
+pub mod toc;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -30,8 +32,8 @@ use types::{
 
 use crate::core::{
   counter::Counters, equation::EquationStyle, figure::FigureStyle, heading::HeadingStyles, hyperref::HyperrefStyle,
-  list::ListStyle, math::MathScriptStyle, reference::ReferenceStyle, running::RunningContentStyle, table::TableStyle,
-  text::TextBlockStyle, title_page::TitlePageStyle,
+  list::ListStyle, math::MathScriptStyle, page_numbering::PageNumbering, reference::ReferenceStyle,
+  running::RunningContentStyle, table::TableStyle, text::TextBlockStyle, title_page::TitlePageStyle, toc::TocStyle,
 };
 
 /// コアスタイル設定。`lowering` / `pdf_gen` から参照されるフィールドの集合。
@@ -77,6 +79,9 @@ pub struct CoreStyle {
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
+  /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
+  #[garde(dive)]
+  pub page_numbering: PageNumbering,
   /// ヘッダー（ページ上端の走り文）のスタイル
   #[garde(dive)]
   pub header: RunningContentStyle,
@@ -92,6 +97,9 @@ pub struct CoreStyle {
   /// タイトルページ（`\maketitle` 相当）のスタイル
   #[garde(dive)]
   pub title_page: TitlePageStyle,
+  /// 目次（table of contents）のスタイル
+  #[garde(dive)]
+  pub toc: TocStyle,
 }
 
 impl Default for CoreStyle {
@@ -108,11 +116,13 @@ impl Default for CoreStyle {
       equation: EquationStyle::default(),
       math: MathScriptStyle::default(),
       counters: Counters::default(),
+      page_numbering: PageNumbering::default(),
       header: RunningContentStyle::default(),
       footer: RunningContentStyle::default(),
       reference: ReferenceStyle::default(),
       hyperref: HyperrefStyle::default(),
       title_page: TitlePageStyle::default(),
+      toc: TocStyle::default(),
     };
   }
 }

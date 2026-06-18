@@ -3,7 +3,7 @@
 //! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`read_style::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
-use document::{HeadingLevel, InlineNode};
+use document::{HeadingLevel, InlineNode, heading_anchor_key};
 use types::AnchorMark;
 
 use super::{LoweringContext, LoweringError, template::expand_template};
@@ -29,6 +29,7 @@ pub(super) fn lower_heading(
   number: &str,
   title: &[InlineNode],
   label: Option<String>,
+  heading_index: usize,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
   let style = TextStyle {
@@ -45,8 +46,12 @@ pub(super) fn lower_heading(
     result.push(LayoutNode::PageBreak);
   }
 
-  // しおり・内部リンクの到達先アンカー。改ページ後に置くことで正しいページに解決される。
-  result.push(LayoutNode::Anchor(AnchorMark::Heading { label }));
+  // しおり・目次リンク・`\ref` の到達先アンカー。改ページ後に置くことで正しいページに解決される。
+  // `key` は文書順インデックスから決まる暗黙キー（目次エントリの内部リンクと一致させる）。
+  result.push(LayoutNode::Anchor(AnchorMark::Heading {
+    key: heading_anchor_key(heading_index),
+    label,
+  }));
 
   result.push(LayoutNode::VBox {
     children,
@@ -76,7 +81,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())], None)
+      lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())], None, 0)
         .expect("解決済みテキストのみの見出しは失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
@@ -108,7 +113,7 @@ mod tests {
       },
     ];
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1.1", &title, None)
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1.1", &title, None, 0)
       .expect("解決済みインラインのみなので失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
@@ -143,6 +148,7 @@ mod tests {
       "1",
       &[InlineNode::Text("Intro".to_string())],
       Some("sec:intro".to_string()),
+      3,
     )
     .expect("失敗しないはず");
 
@@ -150,10 +156,12 @@ mod tests {
       LayoutNode::Anchor(mark) => Some(mark.clone()),
       _ => None,
     });
+    // key は文書順インデックス（3）由来、label は \ref 用ラベル
     assert_eq!(
       anchor,
       Some(types::AnchorMark::Heading {
-        label: Some("sec:intro".to_string())
+        key: "heading:3".to_string(),
+        label: Some("sec:intro".to_string()),
       })
     );
     // アンカーは VBox より前に出る
@@ -179,6 +187,7 @@ mod tests {
         span: miette::SourceSpan::from((0_usize, 0_usize)),
       }],
       None,
+      0,
     )
     .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
 

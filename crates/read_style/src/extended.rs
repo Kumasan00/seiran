@@ -1,19 +1,18 @@
 //! 拡張スタイル設定（[`ExtendedStyle`]）。
 //!
-//! 脚注・目次といった、現状は `lowering` / `pdf_gen` 側で
+//! 脚注といった、現状は `lowering` / `pdf_gen` 側で
 //! 参照されていない（実装が追いついていない）スタイル設定を
 //! [`crate::Style`] の `extended` フィールドに分離して保持する。
 //!
 //! 利用側からは `style.extended.footnote` のように経由してアクセスする。
-//! TOML では `[extended.footnote]` / `[extended.toc]` / … の各テーブルにマップされる。
+//! TOML では `[extended.footnote]` / … の各テーブルにマップされる。
 
 pub mod footnote;
-pub mod toc;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::extended::{footnote::FootnoteStyle, toc::TocStyle};
+use crate::extended::footnote::FootnoteStyle;
 
 /// 拡張スタイル設定。資産として保持しているが、現状は `lowering/pdf_gen` から参照されていない。
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Validate)]
@@ -22,9 +21,6 @@ pub struct ExtendedStyle {
   /// 脚注のスタイル
   #[garde(dive)]
   pub footnote: FootnoteStyle,
-  /// 目次のスタイル
-  #[garde(dive)]
-  pub toc: TocStyle,
 }
 
 #[cfg(test)]
@@ -47,6 +43,6 @@ mod tests {
 
     // Assert
     assert!(restored.validate().is_ok());
-    assert_eq!(restored.toc.title, style.toc.title);
+    assert_eq!(restored.footnote.font_size, style.footnote.font_size);
   }
 }
