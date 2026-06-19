@@ -128,16 +128,15 @@ bottom_margin = 5.0
 
 ### 参照定義（`config/references.toml`）
 
-CSL ベースの文献情報を定義します。
+CSL ベースの文献情報を定義します。トップレベルのテーブルキーがそのまま参照 ID になります
+（`references.` 接頭辞は不要）。引用スタイル（`.csl`）の選択は見た目設定として `style.toml` の
+`[reference].csl_path` に置きます。
 
 ```toml
-style = "IEEE"                 # 引用スタイル
-
-[[references]]
-id = "example"                 # 参照 ID
+[example]                      # テーブルキー = 参照 ID
 title = "Example Book Title"
 type = "book"                  # CSL 文献タイプ（book, article 等）
-[[references.authors]]
+[[example.author]]
 family = "Yamamoto"
 given = "Taro"
 ```

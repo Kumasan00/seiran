@@ -126,11 +126,8 @@ pub fn process_citations(
     .collect();
 
   // 全参照定義 → hayagriva Entry のマップ（採番・整列に必要なため引用集合に依らず全件作る）。
-  let entries: HashMap<String, Entry> = references
-    .references
-    .iter()
-    .map(|(id, reference)| (id.clone(), bridge::to_entry(id, reference)))
-    .collect();
+  let entries: HashMap<String, Entry> =
+    references.iter().map(|(id, reference)| (id.clone(), bridge::to_entry(id, reference))).collect();
 
   // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
   // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は read_style::ReferenceStyle）。

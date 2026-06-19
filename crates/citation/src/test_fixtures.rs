@@ -24,26 +24,26 @@ pub(crate) fn ieee_csl_path() -> PathBuf {
 /// 書籍 1 件（`kwan2014`）・論文 1 件（`doe2020`）を含む `References` を一時ファイル経由で読み込む。
 pub(crate) fn sample_references() -> References {
   let toml = String::from(
-    "[references.kwan2014]\n\
+    "[kwan2014]\n\
      type = \"book\"\n\
      title = \"Crazy Rich Asians\"\n\
      publisher = \"Anchor Books\"\n\
-     [[references.kwan2014.author]]\n\
+     [[kwan2014.author]]\n\
      family = \"Kwan\"\n\
      given = \"Kevin\"\n\
-     [references.kwan2014.issued]\n\
+     [kwan2014.issued]\n\
      date-parts = [[2014]]\n\n\
-     [references.doe2020]\n\
+     [doe2020]\n\
      type = \"article-journal\"\n\
      title = \"On Something\"\n\
      container-title = \"Journal of Things\"\n\
      volume = 3\n\
      issue = 1\n\
      page = \"10-20\"\n\
-     [[references.doe2020.author]]\n\
+     [[doe2020.author]]\n\
      family = \"Doe\"\n\
      given = \"John\"\n\
-     [references.doe2020.issued]\n\
+     [doe2020.issued]\n\
      date-parts = [[2020, 5, 1]]\n",
   );
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");

@@ -15,21 +15,36 @@ use crate::{date::Date, name::Name};
 
 /// 参照定義ファイル全体を表す構造体
 ///
-/// `references` は keyed-table 形式（テーブルキーが参照 ID）でデシリアライズするため、`id` をキーと
-/// するマップに直接展開される。著者名は [`Name`] として確定済みで読み込まれる（family/literal の排他性は
-/// [`Name`] の [`Deserialize`] 実装が保証する）。
+/// ファイルのトップレベルそのものが keyed-table 形式（テーブルキーが参照 ID）であり、`id` をキーと
+/// するマップに直接展開される（`references` ラッパーテーブルは持たない）。本構造体は検証済みのマップを
+/// 包む newtype であり、[`Deref`](std::ops::Deref) 経由で `HashMap` の API（`get` / `keys` / `iter`
+/// など）をそのまま使える。著者名は [`Name`] として確定済みで読み込まれる（family/literal の排他性は
+/// [`Name`] の [`Deserialize`] 実装が保証する）。空・空白のみの参照 ID と重複キーは厳格にエラーとする
+/// （JSON の後勝ちを許さない。詳細は [`deserialize_unique_references`] を参照）。
 ///
 /// CSL スタイル（`.csl`）の選択は「見た目」設定として style.toml の `[reference].csl_path` に置く
 /// （`citation` クレートが参照する）。本構造体は文献データのみを保持する。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct References {
-  /// 参照定義のマップ（id をキー、`Reference` を値とする）
-  ///
-  /// 空・空白のみの参照 ID と重複キーは厳格にエラーとする（JSON の後勝ちを許さない）。詳細は
-  /// [`deserialize_unique_references`] を参照。
-  #[serde(default, deserialize_with = "deserialize_unique_references")]
-  pub references: HashMap<String, Reference>,
+#[derive(Debug)]
+pub struct References(pub HashMap<String, Reference>);
+
+impl std::ops::Deref for References {
+  type Target = HashMap<String, Reference>;
+
+  /// 内包する参照定義マップへの参照を返す（`HashMap` の API を透過的に利用するため）。
+  fn deref(&self) -> &Self::Target { return &self.0; }
+}
+
+impl<'de> Deserialize<'de> for References {
+  /// ファイルのトップレベル（参照 ID をキーとするテーブル）を直接デシリアライズする。`references.`
+  /// 接頭辞を付けずに `[kwan2014]` のように直接エントリを記述できる。derive を使わないのは、フィールド名が
+  /// そのまま TOML / JSON のキー接頭辞になるのを避けるため。
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let references = deserialize_unique_references(deserializer)?;
+    return Ok(References(references));
+  }
 }
 
 /// 参照定義マップを参照 ID の検証付きでデシリアライズする。

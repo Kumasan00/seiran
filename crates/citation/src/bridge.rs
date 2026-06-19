@@ -216,7 +216,7 @@ mod tests {
   fn to_entry_maps_book_type_title_author_date() {
     // Arrange
     let references = sample_references();
-    let reference = references.references.get("kwan2014").expect("book エントリがあるはず");
+    let reference = references.get("kwan2014").expect("book エントリがあるはず");
 
     // Act
     let entry = to_entry("kwan2014", reference);
@@ -232,7 +232,7 @@ mod tests {
   fn to_entry_maps_article_container_as_parent() {
     // Arrange
     let references = sample_references();
-    let reference = references.references.get("doe2020").expect("article エントリがあるはず");
+    let reference = references.get("doe2020").expect("article エントリがあるはず");
 
     // Act
     let entry = to_entry("doe2020", reference);

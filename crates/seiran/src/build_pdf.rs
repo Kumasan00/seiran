@@ -105,7 +105,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let style = read_style::read_style(config.style_path.as_deref())?;
   let references = read_references::read_references(config.references_path.as_deref())?;
   // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
-  let citation_keys: HashSet<String> = references.references.keys().cloned().collect();
+  let citation_keys: HashSet<String> = references.keys().cloned().collect();
 
   let mut doc_nodes = parse_all_sources(&config.sources, &style, &citation_keys)?;
   info!(source_count = config.sources.len(), "全ソースのパースが完了しました");

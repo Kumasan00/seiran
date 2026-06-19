@@ -1,7 +1,8 @@
 //! 参照定義ファイルの読み込みモジュール
 //!
 //! TOML / JSON 形式の参照定義ファイルを読み込み、`id` をキーとする参照定義のマップを返す。参照定義は
-//! keyed-table 形式（テーブルキーが参照 ID）で記述する。
+//! ファイルのトップレベルそのものを keyed-table 形式（テーブルキーが参照 ID）で記述する（`references.`
+//! 接頭辞は不要で、`[kwan2014]` のように直接エントリを書く）。
 //!
 //! 著者名は確定型 [`Name`]（`Personal` / `Organization` の 2 択 enum）として直接デシリアライズする。
 //! `family`（個人著者）と `literal`（組織著者）の同時指定／不指定という不正状態は、[`Name`] の手書き
@@ -65,9 +66,7 @@ impl Format {
 pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
     info!("参照定義ファイルが指定されていないため、空の参照定義を返します");
-    return Ok(References {
-      references: HashMap::new(),
-    });
+    return Ok(References(HashMap::new()));
   };
   let path_ref = path.as_ref();
   info!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
@@ -76,7 +75,7 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
     source,
   })?;
   let references = parse_references(&content, path_ref)?;
-  let count = references.references.len();
+  let count = references.len();
   info!(count, "参照定義ファイルの読み込みが完了しました");
   return Ok(references);
 }
@@ -122,8 +121,8 @@ mod tests {
   /// JSON 用のダミーパス。
   fn dummy_json_source() -> &'static Path { return Path::new("test.json"); }
 
-  /// `references` テーブルを持つトップレベル JSON を組み立てる（CSL スタイルパスは style.toml へ移管）。
-  fn json_doc(references_json: &str) -> String { return format!("{{\"references\": {references_json}}}"); }
+  /// 参照 ID をキーとするトップレベル JSON をそのまま返す（ラッパーテーブルは持たない）。
+  fn json_doc(references_json: &str) -> String { return references_json.to_string(); }
 
   #[test]
   fn read_references_returns_empty_when_path_is_none() {
@@ -131,7 +130,7 @@ mod tests {
     let result: super::References = read_references::<&Path>(None).unwrap();
 
     // Assert
-    assert!(result.references.is_empty());
+    assert!(result.is_empty());
   }
 
   #[test]
@@ -147,9 +146,9 @@ mod tests {
   fn parse_references_fails_on_empty_id() {
     // Arrange: 空文字列の参照 ID はデシリアライズ時に拒否される
     let toml = String::from(
-      "[references.\"\"]\n\
+      "[\"\"]\n\
        type = \"book\"\n\
-       [[references.\"\".author]]\n\
+       [[\"\".author]]\n\
        family = \"Doe\"\n",
     );
 
@@ -167,9 +166,9 @@ mod tests {
   fn parse_references_fails_on_whitespace_only_id() {
     // Arrange: 空白のみの参照 ID
     let toml = String::from(
-      "[references.\"  \"]\n\
+      "[\"  \"]\n\
        type = \"book\"\n\
-       [[references.\"  \".author]]\n\
+       [[\"  \".author]]\n\
        family = \"Doe\"\n",
     );
 
@@ -187,13 +186,13 @@ mod tests {
   fn parse_references_fails_on_duplicate_toml_keys() {
     // Arrange: keyed-table 形式では重複 ID は同一テーブルの再定義となり TOML パースエラーになる
     let toml = String::from(
-      "[references.dup]\n\
+      "[dup]\n\
        type = \"book\"\n\
-       [[references.dup.author]]\n\
+       [[dup.author]]\n\
        family = \"Doe\"\n\n\
-       [references.dup]\n\
+       [dup]\n\
        type = \"book\"\n\
-       [[references.dup.author]]\n\
+       [[dup.author]]\n\
        family = \"Roe\"\n",
     );
 
@@ -208,9 +207,9 @@ mod tests {
   fn parse_references_reads_personal_author() {
     // Arrange: family のみ → 個人著者
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n\
        given = \"John\"\n\
        suffix = \"Jr.\"\n",
@@ -220,7 +219,7 @@ mod tests {
     let refs = parse_references(&toml, dummy_source()).unwrap();
 
     // Assert
-    let author = &refs.references["ref1"].author.as_ref().unwrap()[0];
+    let author = &refs.0["ref1"].author.as_ref().unwrap()[0];
     assert_eq!(
       *author,
       Name::Personal {
@@ -237,9 +236,9 @@ mod tests {
   fn parse_references_reads_organization_author() {
     // Arrange: literal のみ → 組織著者
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        literal = \"ACME Corp\"\n",
     );
 
@@ -247,7 +246,7 @@ mod tests {
     let refs = parse_references(&toml, dummy_source()).unwrap();
 
     // Assert
-    let author = &refs.references["ref1"].author.as_ref().unwrap()[0];
+    let author = &refs.0["ref1"].author.as_ref().unwrap()[0];
     assert_eq!(
       *author,
       Name::Organization {
@@ -260,9 +259,9 @@ mod tests {
   fn parse_references_fails_when_author_has_both_family_and_literal() {
     // Arrange: family/literal 同時指定は排他性違反
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n\
        literal = \"ACME Corp\"\n",
     );
@@ -281,9 +280,9 @@ mod tests {
   fn parse_references_fails_when_author_has_neither_family_nor_literal() {
     // Arrange: given のみ（family も literal もない）
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        given = \"John\"\n",
     );
 
@@ -313,10 +312,10 @@ mod tests {
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
       &references_path,
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
        title = \"Sample Book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n\
        given = \"John\"\n",
     )
@@ -326,8 +325,8 @@ mod tests {
     let result = read_references(Some(&references_path)).unwrap();
 
     // Assert
-    assert_eq!(result.references.len(), 1);
-    assert!(result.references.contains_key("ref1"));
+    assert_eq!(result.len(), 1);
+    assert!(result.contains_key("ref1"));
   }
 
   #[test]
@@ -382,8 +381,8 @@ mod tests {
     let result = read_references(Some(&references_path)).unwrap();
 
     // Assert
-    assert_eq!(result.references.len(), 1);
-    let reference = result.references.get("ref1").unwrap();
+    assert_eq!(result.len(), 1);
+    let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     let parts = issued.date_parts.as_ref().unwrap();
     assert_eq!(parts.len(), 1);
@@ -404,11 +403,11 @@ mod tests {
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
       &references_path,
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n\n\
-       [references.ref1.issued]\n\
+       [ref1.issued]\n\
        date-parts = [[2024, 1, 15], [2024, 12, 31]]\n\
        circa = true\n\
        season = \"spring\"\n",
@@ -419,7 +418,7 @@ mod tests {
     let result = read_references(Some(&references_path)).unwrap();
 
     // Assert
-    let reference = result.references.get("ref1").unwrap();
+    let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     let parts = issued.date_parts.as_ref().unwrap();
     assert_eq!(parts.len(), 2);
@@ -468,7 +467,7 @@ mod tests {
     let result = read_references(Some(&references_path)).unwrap();
 
     // Assert
-    let reference = result.references.get("ref1").unwrap();
+    let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     let parts = issued.date_parts.as_ref().unwrap();
     assert!(matches!(
@@ -504,19 +503,19 @@ mod tests {
   fn read_references_accepts_number_variables_as_integers_and_strings_in_toml() {
     // Arrange
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
        volume = 3\n\
        edition = 2.5\n\
        page = \"1-10\"\n\
        issue = 7\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n",
     );
 
     // Act
     let refs = parse_references(&toml, dummy_source()).unwrap();
-    let reference = refs.references.get("ref1").unwrap();
+    let reference = refs.get("ref1").unwrap();
 
     // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
@@ -541,7 +540,7 @@ mod tests {
 
     // Act
     let refs = parse_references(&json, dummy_json_source()).unwrap();
-    let reference = refs.references.get("ref1").unwrap();
+    let reference = refs.get("ref1").unwrap();
 
     // Assert
     assert!(matches!(reference.volume, Some(NumberOrString::Integer(3))));
@@ -554,10 +553,10 @@ mod tests {
   fn parse_references_rejects_unknown_field_in_reference() {
     // Arrange: Reference に未知フィールドを含める
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
        unknown_field = \"oops\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n",
     );
 
@@ -572,9 +571,9 @@ mod tests {
   fn parse_references_rejects_unknown_field_in_name() {
     // Arrange: 著者名に未知フィールドを含める
     let toml = String::from(
-      "[references.ref1]\n\
+      "[ref1]\n\
        type = \"book\"\n\
-       [[references.ref1.author]]\n\
+       [[ref1.author]]\n\
        family = \"Doe\"\n\
        unknown_name_field = \"oops\"\n",
     );
@@ -587,8 +586,9 @@ mod tests {
   }
 
   #[test]
-  fn parse_references_rejects_unknown_top_level_field() {
-    // Arrange: トップレベルに未知フィールドを含める
+  fn parse_references_rejects_non_table_top_level_value() {
+    // Arrange: トップレベルの値はすべて参照テーブルでなければならない（スカラー値は Reference に
+    // デシリアライズできず拒否される）
     let toml = "unexpected = true\n";
 
     // Act
