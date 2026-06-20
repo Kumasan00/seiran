@@ -50,3 +50,6 @@ fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
 
 #[test]
 fn smoke_table_fixture() { smoke_through_lowering("table"); }
+
+#[test]
+fn smoke_toc_fixture() { smoke_through_lowering("toc"); }
