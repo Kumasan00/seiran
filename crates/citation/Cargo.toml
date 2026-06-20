@@ -13,6 +13,7 @@ hayagriva.workspace = true
 miette.workspace = true
 read_references.workspace = true
 read_style.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 types.workspace = true
 

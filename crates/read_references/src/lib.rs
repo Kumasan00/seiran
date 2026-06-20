@@ -10,8 +10,12 @@
 //! なくなる。空（空白のみを含む）・重複の参照 ID も同様にデシリアライズ時点で拒否する（TOML はパーサ段階、
 //! JSON は専用デシリアライザで検出）。未知のフィールドは `deny_unknown_fields` で拒否し、日付オブジェクト・
 //! name オブジェクトの未知キーも同様にエラーとする（タイポ検出のため、CSL 前方互換より厳格性を優先）。
+//! 日付範囲（`date-parts` の 2 要素指定）は CSL-JSN 担体経由の hayagriva が未対応のため拒否する。
 //! これらの値検証エラーはいずれも TOML / JSON の解析エラー（[`ReadReferencesError::ParseToml`] /
 //! [`ReadReferencesError::ParseJson`]）として、ソース上の位置情報付きで報告される。
+//!
+//! [`Reference`] は CSL-JSN（kebab-case キー）へ [`Serialize`](serde::Serialize) でき、`citation`
+//! クレートが hayagriva の担体 `citationberg::json::Item` を組み立てる出力経路に使う。
 //!
 //! ファイル形式は拡張子 (`.toml` / `.json`) で判別する。
 //!
@@ -398,7 +402,7 @@ mod tests {
 
   #[test]
   fn read_references_parses_structured_date_in_toml() {
-    // Arrange
+    // Arrange — 単一日付（範囲はサポートしない）
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
@@ -408,7 +412,7 @@ mod tests {
        [[ref1.author]]\n\
        family = \"Doe\"\n\n\
        [ref1.issued]\n\
-       date-parts = [[2024, 1, 15], [2024, 12, 31]]\n\
+       date-parts = [[2024, 1, 15]]\n\
        circa = true\n\
        season = \"spring\"\n",
     )
@@ -421,7 +425,7 @@ mod tests {
     let reference = result.get("ref1").unwrap();
     let issued = reference.issued.as_ref().unwrap();
     let parts = issued.date_parts.as_ref().unwrap();
-    assert_eq!(parts.len(), 2);
+    assert_eq!(parts.len(), 1);
     assert!(matches!(
       parts[0].as_slice(),
       [
@@ -430,16 +434,51 @@ mod tests {
         DatePart::Number(15)
       ]
     ));
-    assert!(matches!(
-      parts[1].as_slice(),
-      [
-        DatePart::Number(2024),
-        DatePart::Number(12),
-        DatePart::Number(31)
-      ]
-    ));
     assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
     assert!(matches!(&issued.season, Some(DateSeason::String(s)) if s == "spring"));
+  }
+
+  #[test]
+  fn parse_references_rejects_date_range_in_toml() {
+    // Arrange — date-parts 2 要素（日付範囲）は CSL-JSN 担体が未対応のため拒否される
+    let toml = String::from(
+      "[ref1]\n\
+       type = \"book\"\n\
+       [[ref1.author]]\n\
+       family = \"Doe\"\n\n\
+       [ref1.issued]\n\
+       date-parts = [[2024, 1, 15], [2024, 12, 31]]\n",
+    );
+
+    // Act
+    let result = parse_references(&toml, dummy_source());
+
+    // Assert
+    let Err(ReadReferencesError::ParseToml { source, .. }) = result else {
+      panic!("expected ParseToml, got {result:?}");
+    };
+    assert!(source.to_string().contains("日付範囲"));
+  }
+
+  #[test]
+  fn parse_references_rejects_date_range_in_json() {
+    // Arrange
+    let json = json_doc(
+      "{\"ref1\": {\
+         \"type\": \"book\", \
+         \"issued\": {\"date-parts\": [[2024, 1, 15], [2024, 12, 31]]}, \
+         \"author\": [{\"family\": \"Doe\"}]\
+       }}",
+    );
+
+    // Act
+    let result = parse_references(&json, dummy_json_source());
+
+    // Assert
+    let Err(ReadReferencesError::ParseJson { source, .. }) = result else {
+      panic!("expected ParseJson, got {result:?}");
+    };
+    assert!(source.to_string().contains("日付範囲"));
   }
 
   #[test]
@@ -455,8 +494,7 @@ mod tests {
            \"season\": 1, \
            \"circa\": true, \
            \"literal\": \"early 2024\", \
-           \"raw\": \"Jan 15, 2024\", \
-           \"edtf\": \"2024-01-15\"\
+           \"raw\": \"Jan 15, 2024\"\
          }, \
          \"author\": [{\"family\": \"Doe\"}]\
        }}",
@@ -482,7 +520,6 @@ mod tests {
     assert!(matches!(issued.circa, Some(DateCirca::Bool(true))));
     assert_eq!(issued.literal.as_deref(), Some("early 2024"));
     assert_eq!(issued.raw.as_deref(), Some("Jan 15, 2024"));
-    assert_eq!(issued.edtf.as_deref(), Some("2024-01-15"));
   }
 
   #[test]

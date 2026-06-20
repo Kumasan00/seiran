@@ -1,249 +1,164 @@
-//! `read_references::Reference`（CSL-JSON 型付きモデル）から `hayagriva::Entry` への変換ブリッジ。
+//! `read_references::Reference`（CSL-JSN 型付きモデル）から hayagriva の担体
+//! `citationberg::json::Item`（CSL-JSN の全フィールドを保持するマップ）への変換アダプタ。
 //!
-//! Seiran は CSL-JSON 由来の `read_references` モデルを正とし、CSL 整形エンジン hayagriva は
-//! 独自の `Entry` モデルを持つ。両モデルの差はこのファイル 1 箇所に隔離する（モデルは二重になるが、
-//! 代わりに同梱 `ieee.csl` の実効化・正確な採番/整列/曖昧性回避を hayagriva に委譲できる）。
+//! Seiran は入口で `Reference` を強い型で厳格に検証し、出口では `Reference` を CSL-JSN へ
+//! `Serialize` して `Item` に丸ごと流す。これにより書誌に出るフィールドは手書きサブセットに縛られず
+//! 網羅的になり（hayagriva が `impl EntryLike for Item` で全 CSL 変数を解決する）、旧来の
+//! `Reference → hayagriva::Entry` の項目別変換が不要になる。
 //!
-//! マップするのは常用サブセット（type / title / author / editor / issued / container-title /
-//! publisher / volume / issue / page / doi / url / isbn / edition）に限り、未対応フィールドは
-//! 当面スキップする（段階拡張）。
+//! serde 一発では `Item` 化できない 3 点をこのアダプタで吸収する:
+//! - `Option::None` 由来の `null` は `Item` の `Value` に変種が無いので除去する。
+//! - 非整数の数値は `Value::Number`(i64) に嵌らないので文字列化する（CSL の number 変数は文字列可）。
+//! - `Item` は cite id をマップ内の `"id"` キーから読むため、keyed-table のキーを注入する。
+//!
+//! 日付の差異（範囲不可・`date-parts` 必須）は `read_references` 側の検証と `Serialize for Date` で
+//! 吸収済み。`date-parts` に文字列の年（紀元前等）や i16 を超える年がある場合は `Item` 化に失敗し、
+//! 呼び出し側へエラーとして伝播する。
 
-use hayagriva::{
-  Entry,
-  types::{
-    Date as HayaDate, EntryType, FormatString, MaybeTyped, Numeric, PageRanges, Person, Publisher, QualifiedUrl,
-  },
-};
-use read_references::{Date, Name, NumberOrString, Reference, ReferenceType};
+use hayagriva::citationberg::json::Item;
+use read_references::Reference;
+use serde_json::{Map, Value};
 
-/// `Reference` を hayagriva の `Entry` に変換する。
+/// `Reference` を CSL-JSN 担体 `Item` に変換する。
 ///
 /// `id` は参照定義のキー（`references` マップのキー）で、hayagriva の cite key となる。
-pub(crate) fn to_entry(id: &str, reference: &Reference) -> Entry {
-  let entry_type = to_entry_type(&reference.reference_type);
-  let mut entry = Entry::new(id, entry_type);
-
-  if let Some(title) = &reference.title {
-    entry.set_title(FormatString::from(title.clone()));
-  }
-  if let Some(authors) = &reference.author {
-    entry.set_authors(authors.iter().map(to_person).collect());
-  }
-  if let Some(editors) = &reference.editor {
-    entry.set_editors(editors.iter().map(to_person).collect());
-  }
-  if let Some(date) = reference.issued.as_ref().and_then(to_date) {
-    entry.set_date(date);
-  }
-  if let Some(volume) = &reference.volume {
-    entry.set_volume(to_numeric(volume));
-  }
-  if let Some(issue) = &reference.issue {
-    entry.set_issue(to_numeric(issue));
-  }
-  if let Some(edition) = &reference.edition {
-    entry.set_edition(to_numeric(edition));
-  }
-  if let Some(page) = &reference.page {
-    entry.set_page_range(to_page_ranges(page));
-  }
-  if reference.publisher.is_some() || reference.publisher_place.is_some() {
-    entry.set_publisher(to_publisher(reference.publisher.as_deref(), reference.publisher_place.as_deref()));
-  }
-  if let Some(doi) = &reference.doi {
-    entry.set_doi(doi.clone());
-  }
-  if let Some(isbn) = &reference.isbn {
-    entry.set_isbn(isbn.clone());
-  }
-  if let Some(url) = reference.url.as_ref().and_then(|u| u.parse::<QualifiedUrl>().ok()) {
-    entry.set_url(url);
-  }
-  // container-title（収録誌・収録書名）は hayagriva では親 Entry として表現する。
-  if let Some(container) = &reference.container_title {
-    let mut parent = Entry::new(&format!("{id}-container"), parent_entry_type(entry_type));
-    parent.set_title(FormatString::from(container.clone()));
-    entry.set_parents(vec![parent]);
-  }
-
-  return entry;
-}
-
-/// `ReferenceType`（CSL の type）を hayagriva の `EntryType` に対応づける。
 ///
-/// 明確に対応する常用型のみを個別にマップし、それ以外は `Misc` にフォールバックする。
-fn to_entry_type(reference_type: &ReferenceType) -> EntryType {
-  return match reference_type {
-    ReferenceType::Article
-    | ReferenceType::ArticleJournal
-    | ReferenceType::ArticleMagazine
-    | ReferenceType::PaperConference
-    | ReferenceType::Review
-    | ReferenceType::ReviewBook
-    | ReferenceType::Interview => EntryType::Article,
-    ReferenceType::ArticleNewspaper => EntryType::Newspaper,
-    ReferenceType::Book | ReferenceType::Classic | ReferenceType::Pamphlet => EntryType::Book,
-    ReferenceType::Chapter => EntryType::Chapter,
-    ReferenceType::Collection => EntryType::Anthology,
-    ReferenceType::Entry => EntryType::Entry,
-    ReferenceType::EntryDictionary | ReferenceType::EntryEncyclopedia => EntryType::Reference,
-    ReferenceType::Figure | ReferenceType::Graphic => EntryType::Artwork,
-    ReferenceType::Manuscript => EntryType::Manuscript,
-    ReferenceType::Patent => EntryType::Patent,
-    ReferenceType::Performance | ReferenceType::Speech | ReferenceType::Event => EntryType::Performance,
-    ReferenceType::Periodical => EntryType::Periodical,
-    ReferenceType::Post | ReferenceType::PostWeblog => EntryType::Post,
-    ReferenceType::Report => EntryType::Report,
-    ReferenceType::Song => EntryType::Audio,
-    ReferenceType::Broadcast | ReferenceType::MotionPicture => EntryType::Video,
-    ReferenceType::Thesis => EntryType::Thesis,
-    ReferenceType::Webpage => EntryType::Web,
-    ReferenceType::Bill
-    | ReferenceType::Hearing
-    | ReferenceType::Legislation
-    | ReferenceType::Regulation
-    | ReferenceType::Treaty => EntryType::Legislation,
-    ReferenceType::LegalCase => EntryType::Case,
-    ReferenceType::Dataset
-    | ReferenceType::Document
-    | ReferenceType::Map
-    | ReferenceType::MusicalScore
-    | ReferenceType::PersonalCommunication
-    | ReferenceType::Software
-    | ReferenceType::Standard => EntryType::Misc,
-  };
-}
-
-/// 親 Entry（container-title）の型を子 Entry の型から決める。
-fn parent_entry_type(child: EntryType) -> EntryType {
-  return match child {
-    EntryType::Chapter | EntryType::Anthos => EntryType::Book,
-    _ => EntryType::Periodical,
-  };
-}
-
-/// `read_references::Name` を hayagriva の `Person` に変換する。
+/// # Errors
 ///
-/// 個人著者は `family`/`given`/`suffix` を、組織著者は `literal` を名前に充てる。hayagriva の
-/// `prefix` は非ドロップ粒子（'van' 等）に対応するため、`non_dropping_particle` を優先して使う。
-fn to_person(name: &Name) -> Person {
-  return match name {
-    Name::Personal {
-      family,
-      given,
-      dropping_particle,
-      non_dropping_particle,
-      suffix,
-    } => Person {
-      name: family.clone(),
-      given_name: given.clone(),
-      prefix: non_dropping_particle.clone().or_else(|| dropping_particle.clone()),
-      suffix: suffix.clone(),
-      comma_suffix: false,
-      alias: None,
-    },
-    Name::Organization { literal } => Person {
-      name: literal.clone(),
-      given_name: None,
-      prefix: None,
-      suffix: None,
-      comma_suffix: false,
-      alias: None,
-    },
+/// `Reference` の CSL-JSN 表現が `Item`（`citationberg::json::Value` のマップ）にデシリアライズ
+/// できない場合（例: `date-parts` に文字列の年や i16 を超える年が含まれる場合）に
+/// [`serde_json::Error`] を返す。
+pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_json::Error> {
+  // Reference を CSL-JSN（kebab-case キー）へ serialize する。Serialize 実装は失敗しないが、
+  // 念のためエラーは伝播する。
+  let value = serde_json::to_value(reference)?;
+  let mut object = match value {
+    Value::Object(map) => sanitize_object(map),
+    // Reference は構造体なので常にオブジェクトになるが、念のため空で受ける。
+    _ => Map::new(),
   };
+  // Item は cite id をマップ内の "id" キーから読む（Seiran は keyed-table のキーに持つ）。
+  object.insert("id".to_string(), Value::String(id.to_string()));
+  return serde_json::from_value(Value::Object(object));
 }
 
-/// `read_references::Date`（CSL date-parts）を hayagriva の `Date` に変換する。
+/// CSL-JSN オブジェクトを `Item` 化できる形に整える（再帰）。
 ///
-/// CSL の月/日は 1 始まり（month 1-12 / day 1-31）だが、hayagriva は 0 始まり（month 0-11 /
-/// day 0-30）なので 1 を引いて補正する。date-parts や年が欠けている場合は `None` を返す。
-fn to_date(date: &Date) -> Option<HayaDate> {
-  let parts = date.date_parts.as_ref()?.first()?;
-  let year = match parts.first()? {
-    read_references::DatePart::Number(n) => i32::try_from(*n).ok()?,
-    read_references::DatePart::String(s) => s.parse::<i32>().ok()?,
-  };
-  let mut result = HayaDate::from_year(year);
-  if let Some(read_references::DatePart::Number(month)) = parts.get(1) {
-    result.month = u8::try_from(month.saturating_sub(1)).ok();
+/// 値が `null`（`Option::None` 由来）のエントリを除去し、残る値を [`sanitize_value`] で正規化する。
+fn sanitize_object(map: Map<String, Value>) -> Map<String, Value> {
+  let mut out = Map::new();
+  for (key, value) in map {
+    if value.is_null() {
+      continue;
+    }
+    out.insert(key, sanitize_value(value));
   }
-  if let Some(read_references::DatePart::Number(day)) = parts.get(2) {
-    result.day = u8::try_from(day.saturating_sub(1)).ok();
-  }
-  return Some(result);
+  return out;
 }
 
-/// `NumberOrString` を hayagriva の数値型 `MaybeTyped<Numeric>` に変換する。
+/// CSL-JSN 値を `Item` の `Value`（String / Number(i64) / Names / Date）に嵌る形へ正規化する（再帰）。
 ///
-/// 整数は型付き `Numeric`、浮動小数・文字列は整形済み文字列としてそのまま保持する。
-fn to_numeric(value: &NumberOrString) -> MaybeTyped<Numeric> {
+/// 非整数の数値（`is_f64`）は `Value::Number` が i64 限定のため文字列化する（CSL の number 変数は
+/// 文字列を許容する）。オブジェクト・配列は再帰的に処理する。
+fn sanitize_value(value: Value) -> Value {
   return match value {
-    NumberOrString::Integer(n) => MaybeTyped::Typed(Numeric::new(i32::try_from(*n).unwrap_or_default())),
-    NumberOrString::Float(f) => MaybeTyped::String(f.to_string()),
-    NumberOrString::String(s) => MaybeTyped::String(s.clone()),
+    Value::Object(map) => Value::Object(sanitize_object(map)),
+    Value::Array(items) => Value::Array(items.into_iter().map(sanitize_value).collect()),
+    Value::Number(n) if n.is_f64() => Value::String(n.to_string()),
+    other => other,
   };
-}
-
-/// `NumberOrString` をページ範囲 `MaybeTyped<PageRanges>` に変換する。
-///
-/// 文字列（"1-10" 等）はページ範囲としてのパースを試み、失敗時はそのまま文字列として保持する。
-fn to_page_ranges(value: &NumberOrString) -> MaybeTyped<PageRanges> {
-  return match value {
-    NumberOrString::Integer(n) => MaybeTyped::Typed(PageRanges::from(i32::try_from(*n).unwrap_or_default())),
-    NumberOrString::Float(f) => MaybeTyped::String(f.to_string()),
-    NumberOrString::String(s) => {
-      s.parse::<PageRanges>().map_or_else(|_| MaybeTyped::String(s.clone()), MaybeTyped::Typed)
-    },
-  };
-}
-
-/// 出版社名・出版地から hayagriva の `Publisher` を作る。
-fn to_publisher(name: Option<&str>, location: Option<&str>) -> Publisher {
-  return Publisher::new(
-    name.map(|n| FormatString::from(n.to_string())),
-    location.map(|l| FormatString::from(l.to_string())),
-  );
 }
 
 #[cfg(test)]
 mod tests {
-  use hayagriva::types::EntryType;
+  use std::io::Write;
 
-  use super::to_entry;
+  use hayagriva::citationberg::json::Value;
+  use read_references::References;
+
+  use super::to_item;
   use crate::test_fixtures::sample_references;
 
+  /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
+  fn references_from_toml(toml: &str) -> References {
+    let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
+    file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
+    return read_references::read_references(Some(file.path())).expect("references を読み込めるはず");
+  }
+
   #[test]
-  fn to_entry_maps_book_type_title_author_date() {
+  fn to_item_maps_id_type_title_author() {
     // Arrange
     let references = sample_references();
     let reference = references.get("kwan2014").expect("book エントリがあるはず");
 
     // Act
-    let entry = to_entry("kwan2014", reference);
+    let item = to_item("kwan2014", reference).expect("Item 化できるはず");
 
-    // Assert
-    assert_eq!(entry.entry_type(), &EntryType::Book);
-    assert_eq!(entry.title().map(ToString::to_string).as_deref(), Some("Crazy Rich Asians"));
-    assert_eq!(entry.authors().map(<[_]>::len), Some(1), "著者 1 名が変換されるはず");
-    assert!(entry.date().is_some(), "issued から date が設定されるはず");
+    // Assert — id / type / title / author が CSL-JSN キーで保持される
+    assert_eq!(item.id().as_deref(), Some("kwan2014"), "id は keyed-table のキー");
+    assert_eq!(item.type_().as_deref(), Some("book"));
+    assert_eq!(item.0.get("title").and_then(Value::to_str).as_deref(), Some("Crazy Rich Asians"));
+    assert!(matches!(item.0.get("author"), Some(Value::Names(_))), "著者は Names として保持");
   }
 
   #[test]
-  fn to_entry_maps_article_container_as_parent() {
-    // Arrange
+  fn to_item_keeps_container_title_as_field() {
+    // Arrange — Entry 経路では親 Entry に押し込んでいた container-title が、Item ではそのまま残る
     let references = sample_references();
     let reference = references.get("doe2020").expect("article エントリがあるはず");
 
     // Act
-    let entry = to_entry("doe2020", reference);
+    let item = to_item("doe2020", reference).expect("Item 化できるはず");
 
     // Assert
-    assert_eq!(entry.entry_type(), &EntryType::Article);
-    assert_eq!(entry.parents().len(), 1, "container-title は親 Entry に変換されるはず");
+    assert_eq!(item.type_().as_deref(), Some("article-journal"));
     assert_eq!(
-      entry.parents()[0].title().map(ToString::to_string).as_deref(),
+      item.0.get("container-title").and_then(Value::to_str).as_deref(),
       Some("Journal of Things"),
-      "親 Entry のタイトルは収録誌名のはず"
+      "container-title はフィールドとして保持される"
     );
+  }
+
+  #[test]
+  fn to_item_preserves_fields_dropped_by_old_bridge() {
+    // Arrange — 旧 Entry 経路が落としていた CSL フィールド（genre / note）を含む参照
+    let references = references_from_toml(
+      "[r1]\n\
+       type = \"book\"\n\
+       title = \"T\"\n\
+       genre = \"fiction\"\n\
+       note = \"a note\"\n\
+       [[r1.author]]\n\
+       family = \"Doe\"\n",
+    );
+    let reference = references.get("r1").expect("r1 があるはず");
+
+    // Act
+    let item = to_item("r1", reference).expect("Item 化できるはず");
+
+    // Assert — 網羅性: サブセット外のフィールドも Item に流れる
+    assert_eq!(item.0.get("genre").and_then(Value::to_str).as_deref(), Some("fiction"));
+    assert_eq!(item.0.get("note").and_then(Value::to_str).as_deref(), Some("a note"));
+  }
+
+  #[test]
+  fn to_item_omits_absent_fields_and_coerces_float_numbers() {
+    // Arrange — edition は浮動小数（i64 に嵌らない）、未指定フィールドは null として落ちる
+    let references = references_from_toml(
+      "[r1]\n\
+       type = \"book\"\n\
+       edition = 2.5\n\
+       [[r1.author]]\n\
+       family = \"Doe\"\n",
+    );
+    let reference = references.get("r1").expect("r1 があるはず");
+
+    // Act
+    let item = to_item("r1", reference).expect("Item 化できるはず");
+
+    // Assert — float は文字列化され、未指定の title 等はキーごと存在しない
+    assert_eq!(item.0.get("edition").and_then(Value::to_str).as_deref(), Some("2.5"));
+    assert!(!item.0.contains_key("title"), "未指定フィールドは null 落としで欠落する");
   }
 }

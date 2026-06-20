@@ -261,6 +261,7 @@ dependencies = [
  "miette",
  "read_references",
  "read_style",
+ "serde_json",
  "tempfile",
  "thiserror",
  "types",
@@ -275,6 +276,7 @@ dependencies = [
  "quick-xml",
  "serde",
  "serde_path_to_error",
+ "unscanny",
 ]
 
 [[package]]

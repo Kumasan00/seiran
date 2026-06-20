@@ -5,15 +5,15 @@
 //! パイプライン上は parser の後・lowering の前に挟む 1 ステージで、以降は通常の `DocNode` なので
 //! lowering 以降は無改修。
 //!
-//! - [`bridge`]: `read_references::Reference` → `hayagriva::Entry` のモデル変換（差を 1 箇所に隔離）。
+//! - [`bridge`]: `read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
 //! - [`render`]: `BibliographyDriver` の駆動・引用ラベルと書誌 `DocNode` の生成。
 
 use std::collections::HashMap;
 
 use document::{DocNode, InlineNode};
 use hayagriva::{
-  Entry, archive,
-  citationberg::{IndependentStyle, Locale, LocaleFile},
+  archive,
+  citationberg::{IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
 use read_references::References;
@@ -35,6 +35,20 @@ pub enum CitationError {
     help("style.toml の [reference].csl_path に CSL スタイル（.csl）ファイルのパスを設定してください。")
   )]
   MissingCslPath,
+
+  /// 参照定義を CSL-JSN 担体（`Item`）に変換できなかった場合。
+  #[error("参照定義を CSL-JSN に変換できませんでした: {id}")]
+  #[diagnostic(
+    code(citation::build_entry),
+    help("`date-parts` は整数の単一日付で指定してください（日付範囲・文字列の年・i16 を超える年は不可）。")
+  )]
+  BuildEntry {
+    /// 変換に失敗した参照 ID
+    id: String,
+    /// 元の `serde_json` 変換エラー
+    #[source]
+    source: serde_json::Error,
+  },
 
   /// CSL スタイル（`.csl`）ファイルの読み込みに失敗した場合。
   #[error("CSL スタイルファイルの読み込みに失敗しました: {path}")]
@@ -125,9 +139,23 @@ pub fn process_citations(
     })
     .collect();
 
-  // 全参照定義 → hayagriva Entry のマップ（採番・整列に必要なため引用集合に依らず全件作る）。
-  let entries: HashMap<String, Entry> =
-    references.iter().map(|(id, reference)| (id.clone(), bridge::to_entry(id, reference))).collect();
+  // 引用されたキーのみ CSL-JSN 担体 Item 化する。採番・整列・書誌生成は引用集合だけで完結し
+  // （未引用文献は hayagriva に渡らない）、未引用の不正な文献で build を巻き込まないため。
+  let mut entries: HashMap<String, Item> = HashMap::new();
+  for key in cite_sites.iter().flatten() {
+    if entries.contains_key(key) {
+      continue;
+    }
+    // parser がキー存在を保証するが、念のため references に無いキーはスキップ（render の filter_map と整合）。
+    let Some(reference) = references.get(key) else {
+      continue;
+    };
+    let item = bridge::to_item(key, reference).map_err(|source| CitationError::BuildEntry {
+      id: key.clone(),
+      source,
+    })?;
+    entries.insert(key.clone(), item);
+  }
 
   // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
   // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は read_style::ReferenceStyle）。
@@ -141,10 +169,10 @@ pub fn process_citations(
     path: csl_path_str,
     source,
   })?;
-  // 内蔵ロケール（CBOR）に、style.toml で指定されたカスタムロケールを重ねる。
-  let locales = load_locales(style)?;
+  // ロケールプール（内蔵ロケールにカスタムを overlay）と、出力言語の override を組み立てる。
+  let (locales, locale_override) = load_locales(style)?;
 
-  let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, &style.reference.title);
+  let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
   // ラベルを書き戻す（収集と同じドキュメント順なので zip で対応づく）。
   for (node, label) in cite_nodes.iter_mut().zip(rendered.labels) {
@@ -220,18 +248,24 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
   }
 }
 
-/// 引用整形に用いるロケール一覧を組み立てる。
+/// 引用整形に用いるロケールプールと、出力言語（active locale）の override を組み立てる。
 ///
-/// `style.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析し、
-/// それ**だけ**を返す（hayagriva 内蔵ロケールは使わない）。`locale_path` が `None` の場合のみ、
-/// hayagriva 内蔵ロケール（`archive` feature の CBOR）一式を返す。
+/// プールは常に hayagriva 内蔵ロケール（`archive` feature の CBOR）一式を土台にし、
+/// `style.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析して
+/// 内蔵ロケールの**前**に重ねる（overlay。`lookup_locale` は先頭一致を採るため、同一言語コードは
+/// カスタムが内蔵より優先される）。内蔵を捨てないので en-US ほか全言語のフォールバックは常に効く。
+///
+/// 出力言語の override は次の優先順位で決まる:
+/// 1. `style.reference.locale`（明示指定のロケールコード）
+/// 2. `locale_path` のファイルの `xml:lang`（カスタムロケール指定時のみ）
+/// 3. いずれも無ければ `None`（`.csl` の `default-locale`、最終的に en-US に委ねる）
 ///
 /// # Errors
 ///
 /// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
-fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
-  // カスタムロケールが指定されていればそれだけを使い、なければ内蔵ロケールを使う。
-  let locales = if let Some(path) = &style.reference.locale_path {
+fn load_locales(style: &Style) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
+  // カスタムロケールがあれば内蔵の前に重ね、そのファイル言語を override 既定値として控える。
+  let (locales, file_lang) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
     let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
       path: path_str.clone(),
@@ -241,11 +275,16 @@ fn load_locales(style: &Style) -> Result<Vec<Locale>, CitationError> {
       path: path_str,
       source,
     })?;
-    vec![locale_file.into()]
+    let file_lang = locale_file.lang.clone();
+    let mut locales = vec![locale_file.into()];
+    locales.extend(archive::locales());
+    (locales, Some(file_lang))
   } else {
-    archive::locales()
+    (archive::locales(), None)
   };
-  return Ok(locales);
+  // 明示指定の locale が最優先、無ければカスタムファイルの言語、それも無ければ None。
+  let locale_override = style.reference.locale.as_ref().map(|code| LocaleCode(code.clone())).or(file_lang);
+  return Ok((locales, locale_override));
 }
 
 #[cfg(test)]
@@ -285,29 +324,61 @@ mod tests {
 
   #[test]
   fn load_locales_without_custom_returns_builtin_only() {
-    // Arrange — locale_paths 未指定
+    // Arrange — locale_path / locale ともに未指定
     let style = Style::default();
 
     // Act
-    let locales = load_locales(&style).expect("内蔵ロケールのみで成功するはず");
+    let (locales, locale_override) = load_locales(&style).expect("内蔵ロケールのみで成功するはず");
 
-    // Assert — 内蔵ロケールと完全一致
+    // Assert — 内蔵ロケールと完全一致、override は無し
     assert_eq!(locales, hayagriva::archive::locales());
+    assert!(locale_override.is_none(), "override 指定が無ければ None");
   }
 
   #[test]
-  fn load_locales_returns_custom_only() {
+  fn load_locales_overlays_custom_before_builtin() {
     // Arrange — カスタム en-US ロケールを指定
     let style = style_with_locale_path(custom_locale_path());
 
     // Act
-    let locales = load_locales(&style).expect("カスタムロケールの読み込みは成功するはず");
+    let (locales, locale_override) = load_locales(&style).expect("カスタムロケールの読み込みは成功するはず");
 
-    // Assert — カスタム指定時は内蔵を使わず、カスタムロケールのみを返す
-    assert_eq!(locales.len(), 1, "カスタム指定時は内蔵を使わずカスタムのみ");
+    // Assert — 先頭がカスタム、残りは内蔵一式（overlay。内蔵を捨てない）
+    let builtin = hayagriva::archive::locales();
+    assert_eq!(locales.len(), builtin.len() + 1, "内蔵一式＋カスタム1件");
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
     let expected = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
-    assert_eq!(locales[0], expected, "唯一の要素はカスタムロケール");
+    assert_eq!(locales[0], expected, "先頭はカスタムロケール（同一言語コードはカスタム優先）");
+    assert_eq!(&locales[1..], builtin.as_slice(), "残りは内蔵ロケール一式");
+    // locale 明示が無いので、override 既定値はカスタムファイルの言語（custom-en-US.xml → en-US）
+    assert_eq!(locale_override.expect("ファイル言語が override 既定になる").0.as_str(), "en-US");
+  }
+
+  #[test]
+  fn load_locales_explicit_locale_overrides_file_lang() {
+    // Arrange — カスタムは en-US だが、明示 locale = ja-JP を指定
+    let mut style = style_with_locale_path(custom_locale_path());
+    style.reference.locale = Some("ja-JP".to_string());
+
+    // Act
+    let (_locales, locale_override) = load_locales(&style).expect("読み込みは成功するはず");
+
+    // Assert — 明示指定がファイル言語(en-US)より優先される
+    assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
+  }
+
+  #[test]
+  fn load_locales_explicit_locale_without_file_uses_builtin_pool() {
+    // Arrange — ロケールファイル無し、明示 locale のみ（内蔵 ja-JP 用語を使う想定）
+    let mut style = Style::default();
+    style.reference.locale = Some("ja-JP".to_string());
+
+    // Act
+    let (locales, locale_override) = load_locales(&style).expect("成功するはず");
+
+    // Assert — プールは内蔵のみ、override は ja-JP
+    assert_eq!(locales, hayagriva::archive::locales());
+    assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
   }
 
   #[test]
@@ -516,6 +587,39 @@ mod tests {
 
     // Assert
     assert!(matches!(error, CitationError::MissingCslPath), "got: {error:?}");
+  }
+
+  #[test]
+  fn process_citations_ignores_uncited_malformed_reference() {
+    // Arrange — 引用する正常な文献 + 引用しない不正な文献（date-parts の年が i16 を超え to_item で
+    // 失敗する）。修正前は全文献を Item 化していたため未引用の不正文献だけで build が
+    // CitationError::BuildEntry で落ちていたが、引用集合のみ変換する現在は成功する。
+    let toml = String::from(
+      "[kwan2014]\n\
+       type = \"book\"\n\
+       title = \"Crazy Rich Asians\"\n\
+       [[kwan2014.author]]\n\
+       family = \"Kwan\"\n\
+       given = \"Kevin\"\n\
+       [kwan2014.issued]\n\
+       date-parts = [[2014]]\n\n\
+       [bad9999]\n\
+       type = \"book\"\n\
+       title = \"Broken\"\n\
+       [bad9999.issued]\n\
+       date-parts = [[99999]]\n",
+    );
+    let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
+    file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
+    let references = read_references::read_references(Some(file.path())).expect("references を読み込めるはず");
+    let style = style_with_csl();
+    let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
+
+    // Act — 正常な kwan2014 のみを引用（bad9999 は未引用）
+    let result = process_citations(&mut nodes, &references, &style);
+
+    // Assert — 未引用の不正文献は変換対象外なのでビルドを巻き込まない
+    assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
   }
 
   /// インライン列を再帰走査し、serif イタリック系の `Styled` 配下のプレーンテキストを集める。

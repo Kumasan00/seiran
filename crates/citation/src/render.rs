@@ -8,9 +8,9 @@ use std::collections::HashMap;
 
 use document::{DocNode, HeadingLevel, InlineNode};
 use hayagriva::{
-  BibliographyDriver, BibliographyRequest, CitationItem, CitationRequest, ElemChild, ElemChildren, ElemMeta, Entry,
-  Formatted, Formatting, RenderedBibliography,
-  citationberg::{FontStyle, FontWeight, IndependentStyle, Locale},
+  BibliographyDriver, BibliographyRequest, CitationItem, CitationRequest, ElemChild, ElemChildren, ElemMeta, Formatted,
+  Formatting, RenderedBibliography,
+  citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
 use types::FontKind;
 
@@ -26,28 +26,31 @@ pub(crate) struct Rendered {
 ///
 /// # Arguments
 ///
-/// * `entries` - cite key → hayagriva `Entry`（全参照定義から構築済み）
+/// * `entries` - cite key → CSL-JSN 担体 `citationberg::json::Item`（全参照定義から構築済み）
 /// * `cite_sites` - 各 `\cite` のキー列（ドキュメント順）
 /// * `style` - CSL スタイル（`ieee.csl` 等）
-/// * `locales` - 採番に使うロケール列（カスタムロケールを内蔵ロケールの前に重ねたもの）
+/// * `locales` - 採番に使うロケールプール（カスタムロケールを内蔵ロケールの前に重ねた overlay）
+/// * `locale_override` - 出力言語（active locale）の override。`None` なら `.csl` の `default-locale`
+///   に委ねる（詳細は `crate::load_locales`）
 /// * `bib_title` - 書誌見出しの文字列（`style.reference.title`）
 pub(crate) fn render(
-  entries: &HashMap<String, Entry>,
+  entries: &HashMap<String, Item>,
   cite_sites: &[Vec<String>],
   style: &IndependentStyle,
   locales: &[Locale],
+  locale_override: Option<LocaleCode>,
   bib_title: &str,
 ) -> Rendered {
-  let mut driver: BibliographyDriver<Entry> = BibliographyDriver::new();
+  let mut driver: BibliographyDriver<Item> = BibliographyDriver::new();
   for site in cite_sites {
-    let items: Vec<CitationItem<Entry>> =
+    let items: Vec<CitationItem<Item>> =
       site.iter().filter_map(|key| entries.get(key)).map(CitationItem::with_entry).collect();
-    driver.citation(CitationRequest::from_items(items, style, locales));
+    driver.citation(CitationRequest::new(items, style, locale_override.clone(), locales, None));
   }
 
   let result = driver.finish(BibliographyRequest {
     style,
-    locale: None,
+    locale: locale_override,
     locale_files: locales,
   });
 

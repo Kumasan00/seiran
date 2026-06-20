@@ -9,8 +9,9 @@
 use std::fmt;
 
 use serde::{
-  Deserialize,
+  Deserialize, Serialize,
   de::{MapAccess, Visitor},
+  ser::SerializeMap,
 };
 use thiserror::Error;
 
@@ -124,5 +125,54 @@ impl<'de> Deserialize<'de> for Name {
     }
 
     return deserializer.deserialize_map(NameVisitor);
+  }
+}
+
+impl Serialize for Name {
+  /// CSL の name オブジェクト（フラットなマップ）として出力する。
+  ///
+  /// [`Deserialize`] の逆変換であり、個人著者は `family` と任意の補助フィールド（`given` /
+  /// `dropping-particle` / `non-dropping-particle` / `suffix`）を、組織著者は `literal` のみを出す。
+  /// キー名は CSL の kebab-case に合わせる（hayagriva の CSL-JSN 担体 `citationberg::json::NameItem`
+  /// が読む形）。`None` のフィールドは出力しない。
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    return match self {
+      Name::Personal {
+        family,
+        given,
+        dropping_particle,
+        non_dropping_particle,
+        suffix,
+      } => {
+        let len = 1
+          + usize::from(given.is_some())
+          + usize::from(dropping_particle.is_some())
+          + usize::from(non_dropping_particle.is_some())
+          + usize::from(suffix.is_some());
+        let mut map = serializer.serialize_map(Some(len))?;
+        map.serialize_entry("family", family)?;
+        if let Some(given) = given {
+          map.serialize_entry("given", given)?;
+        }
+        if let Some(dropping_particle) = dropping_particle {
+          map.serialize_entry("dropping-particle", dropping_particle)?;
+        }
+        if let Some(non_dropping_particle) = non_dropping_particle {
+          map.serialize_entry("non-dropping-particle", non_dropping_particle)?;
+        }
+        if let Some(suffix) = suffix {
+          map.serialize_entry("suffix", suffix)?;
+        }
+        map.end()
+      },
+      Name::Organization { literal } => {
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry("literal", literal)?;
+        map.end()
+      },
+    };
   }
 }

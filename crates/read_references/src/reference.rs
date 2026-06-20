@@ -7,7 +7,7 @@
 use std::{collections::HashMap, fmt};
 
 use serde::{
-  Deserialize, Deserializer,
+  Deserialize, Deserializer, Serialize,
   de::{Error, MapAccess, Visitor},
 };
 
@@ -98,7 +98,7 @@ where
 /// 著者名フィールドは確定型 [`Name`] として読み込む（family/literal の排他性は [`Name`] の
 /// [`Deserialize`] 実装が保証する）。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
   /// 参照の種類（書籍、論文など）
@@ -361,7 +361,7 @@ pub struct Reference {
 /// 参照の種類を表す列挙型
 ///
 /// CSL (Citation Style Language) で定義されている文献タイプに対応する。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ReferenceType {
   #[serde(rename = "article")]
   Article,
@@ -460,7 +460,7 @@ pub enum ReferenceType {
 /// CSL の Number Variables は整数・小数のいずれの数値も、ページ範囲（例: `"1-10"`）など
 /// 数値で表現できない値を保持する文字列も許容する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#number-variables>
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOrString {
   /// 整数値
