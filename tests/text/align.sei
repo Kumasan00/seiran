@@ -1,0 +1,26 @@
+\section{整列数式のサンプル}
+
+align 環境は複数行の式を列区切りの位置で揃え、各行に式番号を付ける動作確認用フィクスチャ。
+
+\begin{align}
+a + b &= c \\
+x &= y + z \\
+\alpha &= \beta + \gamma
+\end{align}
+
+\section{1 行の align}
+
+1 行だけでも採番される。
+
+\begin{align}
+f &= m a
+\end{align}
+
+\section{上付き・下付きを含む align}
+
+各セル内で上付き・下付き・記号が評価される。
+
+\begin{align}
+E &= m c^2 \\
+a_i &= b_i + c_i
+\end{align}

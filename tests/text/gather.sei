@@ -1,0 +1,18 @@
+\section{中央寄せ数式 (gather)}
+
+gather 環境は複数行の式を各行中央に揃え、各行に式番号を付ける動作確認用フィクスチャ。
+
+\begin{gather}
+a = b + c \\
+x = y \\
+\alpha + \beta = \gamma
+\end{gather}
+
+\section{無採番の gather}
+
+numbered=false で採番を抑制できる。
+
+\begin{gather}[numbered=false]
+p = q \\
+r = s
+\end{gather}

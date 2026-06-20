@@ -66,6 +66,8 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
   return Ok(vec![DocNode::MathBlock {
     kind: MathEnvKind::Equation,
     rows: vec![row],
+    // equation は行ごと採番（`row.number`）。環境全体の番号は使わない
+    number: None,
   }]);
 }
 
@@ -100,7 +102,7 @@ mod tests {
 
   /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
   fn first_row(result: &[DocNode]) -> &document::MathRow {
-    let DocNode::MathBlock { kind, rows } = &result[0] else {
+    let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");

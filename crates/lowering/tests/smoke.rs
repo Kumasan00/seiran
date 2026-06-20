@@ -43,6 +43,24 @@ fn smoke_figure_fixture() { smoke_through_lowering("figure"); }
 fn smoke_equation_fixture() { smoke_through_lowering("equation"); }
 
 #[test]
+fn smoke_align_fixture() { smoke_through_lowering("align"); }
+
+#[test]
+fn smoke_gather_fixture() { smoke_through_lowering("gather"); }
+
+#[test]
+fn smoke_split_fixture() { smoke_through_lowering("split"); }
+
+#[test]
+fn smoke_multiline_fixture() { smoke_through_lowering("multiline"); }
+
+#[test]
+fn smoke_cases_fixture() { smoke_through_lowering("cases"); }
+
+#[test]
+fn smoke_matrix_fixture() { smoke_through_lowering("matrix"); }
+
+#[test]
 fn smoke_ref_fixture() { smoke_through_lowering("ref"); }
 
 #[test]

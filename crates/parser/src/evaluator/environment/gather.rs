@@ -1,0 +1,120 @@
+//! 数式環境 — `gather`
+//!
+//! `\begin{gather}...\end{gather}` を [`DocNode::MathBlock`]（`kind = Gather`）に変換します。各行は
+//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を [`read_style::CounterName::Equation`] で
+//! 採番します。実体は共通ハンドラ [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に
+//! 委譲します。各行の中央寄せは `layout` 段が [`MathEnvKind::Gather`] に応じて確定します。
+//!
+//! ## 任意引数
+//!
+//! - `[numbered=false]` — 環境全体を無採番にする
+
+use document::{DocNode, MathEnvKind};
+use syntax::ast::EnvironmentView;
+
+use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
+use crate::evaluator::{EvalError, Evaluator};
+
+/// `gather` 環境を評価する
+///
+/// 本体を `\\` で行に分割（`&` は不可）し、各行に通し番号を発番した `MathBlock`（`kind = Gather`）を
+/// 返す。`[numbered=false]` 指定時は採番しない。
+///
+/// # Errors
+///
+/// 未知の任意引数キー・位置引数の指定、本体への `&`（列区切り）混入、セル評価失敗時にエラーを返します
+pub(super) fn gather(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  return evaluate_math_env(
+    view,
+    evaluator,
+    MathEnvKind::Gather,
+    &GridSpec {
+      allow_row_breaks: true,
+      allow_column_breaks: false,
+    },
+    &NumberingMode::PerRow,
+  );
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+  use document::MathEnvKind;
+  use read_style::{Counters, Style};
+
+  use super::*;
+  use crate::evaluator::lookup_env_parse_mode;
+
+  fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
+
+  /// equation カウンタの `format` を `"{n}"` に縮約した Style
+  fn style_with_plain_equation_format() -> Style {
+    let mut counters = Counters::default();
+    counters.equation.format = "{n}".to_string();
+    return Style {
+      counters,
+      ..Default::default()
+    };
+  }
+
+  fn rows_of(result: &[DocNode]) -> &[document::MathRow] {
+    let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Gather, "gather は MathEnvKind::Gather");
+    return rows;
+  }
+
+  #[test]
+  fn gather_splits_rows_each_single_cell_and_numbers_each_row() {
+    // Arrange — 2 行・各 1 セルの gather
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \\ c = d\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 2 行・各 1 セル・各行採番
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert!(rows.iter().all(|r| r.cells.len() == 1), "各行 1 セル: {rows:?}");
+    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert_eq!(rows[1].number.as_deref(), Some("2"));
+  }
+
+  #[test]
+  fn gather_rejects_column_break() {
+    // Arrange — gather は `&`（列区切り）を許さない
+    let arena = Bump::new();
+    let source = r"\begin{gather}a & b\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
+  }
+
+  #[test]
+  fn gather_numbered_false_suppresses_numbering() {
+    // Arrange — `[numbered=false]` で無採番
+    let arena = Bump::new();
+    let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let rows = rows_of(&result);
+    assert!(rows.iter().all(|r| r.number.is_none()), "無採番のはず: {rows:?}");
+  }
+}

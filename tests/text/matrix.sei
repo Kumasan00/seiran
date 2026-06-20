@@ -1,0 +1,23 @@
+\section{行列 (matrix)}
+
+matrix 環境は & で列・\\ で行のグリッドを中央揃えに組む動作確認用フィクスチャ。
+区切り括弧は任意引数 delimiter で選ぶ（既定は括弧なし）。番号は付かない。
+
+\begin{matrix}
+a & b \\
+c & d
+\end{matrix}
+
+\section{角括弧つき行列}
+
+delimiter=bracket で角括弧、delimiter=paren で丸括弧を付けられる。
+
+\begin{matrix}[delimiter=bracket]
+1 & 0 \\
+0 & 1
+\end{matrix}
+
+\begin{matrix}[delimiter=paren]
+x & y & z \\
+u & v & w
+\end{matrix}

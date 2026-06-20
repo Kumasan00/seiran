@@ -1,0 +1,16 @@
+\section{分割数式 (split)}
+
+split 環境は 1 つの長い式を複数行に分け、列区切りの位置で揃えつつ、環境全体に式番号を 1 つだけ付ける動作確認用フィクスチャ。
+
+\begin{split}
+a &= b + c + d \\
+&= e + f \\
+&= g
+\end{split}
+
+\section{無採番の split}
+
+\begin{split}[numbered=false]
+u &= v + w \\
+&= x
+\end{split}

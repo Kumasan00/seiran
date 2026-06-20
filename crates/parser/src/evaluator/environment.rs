@@ -23,12 +23,18 @@ use syntax::{ParseMode, ast::EnvironmentView};
 
 use crate::evaluator::{EvalError, Evaluator};
 
+mod align;
 pub(crate) mod body_scan;
 mod caption;
+mod cases;
 mod equation;
 mod figure;
+mod gather;
 mod itemize;
 mod math_grid;
+mod matrix;
+mod multiline;
+mod split;
 mod table;
 
 /// 環境ハンドラの関数ポインタ型
@@ -55,9 +61,15 @@ pub(crate) struct EnvDef {
 pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::itemize),   display_name: "箇条書きリスト" },
   "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::enumerate), display_name: "番号付きリスト" },
-  "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(equation::equation), display_name: "数式" },
-  "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),     display_name: "図" },
-  "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),       display_name: "表" },
+  "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(equation::equation),   display_name: "数式" },
+  "align"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(align::align),         display_name: "整列数式" },
+  "gather"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(gather::gather),       display_name: "中央寄せ数式" },
+  "split"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(split::split),         display_name: "分割数式" },
+  "multiline" => EnvDef { parse_mode: ParseMode::Math, handler: Some(multiline::multiline), display_name: "多行数式" },
+  "cases"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(cases::cases),         display_name: "場合分け" },
+  "matrix"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(matrix::matrix),       display_name: "行列" },
+  "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),       display_name: "図" },
+  "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),         display_name: "表" },
 };
 
 /// 環境名から構文解析モードを引く

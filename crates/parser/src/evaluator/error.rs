@@ -236,6 +236,22 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// `cases` 環境の 1 行が 3 列以上に分割された場合
+  ///
+  /// `cases` は「式 & 条件」の 2 列固定なので、`&` が 1 行に 2 個以上現れるとエラーにする。
+  #[error("cases 環境の行は 2 列までです（{found} 列が指定されています）")]
+  #[diagnostic(
+    code(parser::eval::cases_column_overflow),
+    help("cases の各行は `式 & 条件` の 2 列までです。3 列以上が必要なら matrix / align を使ってください")
+  )]
+  CasesColumnOverflow {
+    /// 実際に分割された列数
+    found: usize,
+    /// 環境のソース位置
+    #[label("この行の列が多すぎます")]
+    span: SourceSpan,
+  },
+
   /// 環境の本体に許可されていないコマンドが出現した場合
   #[error("環境 {env} 内で許可されていないコマンドです: \\{name}")]
   #[diagnostic(

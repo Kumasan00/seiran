@@ -1,0 +1,19 @@
+\section{場合分け (cases)}
+
+cases 環境は左の大波括弧で囲んだ「式 & 条件」の 2 列を左揃えに並べる動作確認用フィクスチャ。
+番号は付かない。
+
+\begin{cases}
+x & x > 0 \\
+-x & x < 0
+\end{cases}
+
+\section{3 行の cases}
+
+行数が増えても左波括弧がグリッド全体の高さに合わせて拡大される。
+
+\begin{cases}
+1 & n = 0 \\
+n & n = 1 \\
+a + b & n > 1
+\end{cases}

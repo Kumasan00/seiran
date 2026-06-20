@@ -20,16 +20,22 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size.to_pt());
 }
 
-/// `DocNode::MathBlock`（`equation` / `align` / `gather` / `cases` / `matrix`）を
+/// `DocNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）を
 /// `LayoutNode::MathBlock` に変換する
 ///
-/// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower し、採番された行は
+/// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower し、採番された行・環境は
 /// `EquationStyle::number_format` の `{number}` を発番番号で置換した文字列を `FontKind::Serif`
-/// （数字は立体）の番号ボックスに包む。列整列・行積み・区切り括弧の配置は `layout` 段が
+/// （数字は立体）の番号ボックスに包む。`env_number_str` は `split` / `multiline` の環境全体に 1 つの
+/// 番号で、`layout` 段がブロック縦中央に配置する。列整列・行積み・区切り括弧の配置は `layout` 段が
 /// `kind` に応じて確定し、本体の中央寄せ（`align`）と番号の端寄せ（`numbers_on_right`）は
 /// `break_pages` 段が本文幅を使って決める。上下マージンは呼び出し側（[`crate`] のディスパッチ）が
 /// `Vkern` で前後に出す。
-pub(super) fn lower_math_block(ctx: &LoweringContext, kind: MathEnvKind, rows: &[MathRow]) -> LayoutNode {
+pub(super) fn lower_math_block(
+  ctx: &LoweringContext,
+  kind: MathEnvKind,
+  rows: &[MathRow],
+  env_number_str: Option<&str>,
+) -> LayoutNode {
   let font_size = ctx.default_font_size();
   let eq = &ctx.style.equation;
   let mb = &ctx.style.math_block;
@@ -38,29 +44,38 @@ pub(super) fn lower_math_block(ctx: &LoweringContext, kind: MathEnvKind, rows: &
     .iter()
     .map(|row| {
       let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math)).collect();
-      let number = row.number.as_deref().map(|n| {
-        let text = eq.number_format.replace("{number}", n);
-        return vec![LayoutNode::Text(
-          text,
-          TextStyle {
-            font_size,
-            font_kind: FontKind::Serif,
-            color: None,
-          },
-        )];
-      });
+      let number = row.number.as_deref().map(|n| number_box(&eq.number_format, n, font_size));
       return MathBlockRow { cells, number };
     })
     .collect();
 
+  let env_number = env_number_str.map(|n| number_box(&eq.number_format, n, font_size));
+
   return LayoutNode::MathBlock {
     kind,
     rows: layout_rows,
+    env_number,
     align: alignment_to_align(eq.alignment),
     numbers_on_right: matches!(eq.number_side, NumberSide::Right),
     row_gap: mb.row_gap.to_pt(),
     column_gap: mb.column_gap.to_pt(),
   };
+}
+
+/// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
+///
+/// `number_format` の `{number}` を `n` で置換し（既定 `"({number})"` → `"(1)"`）、数字を
+/// `FontKind::Serif` で描く `LayoutNode::Text` 1 つにまとめる。行ごと番号と環境全体番号の双方で使う。
+fn number_box(number_format: &str, n: &str, font_size: f32) -> Vec<LayoutNode> {
+  let text = number_format.replace("{number}", n);
+  return vec![LayoutNode::Text(
+    text,
+    TextStyle {
+      font_size,
+      font_kind: FontKind::Serif,
+      color: None,
+    },
+  )];
 }
 
 /// `read_style::Alignment`（数式本体の揃え）を `types::Align` に対応付ける
@@ -387,7 +402,7 @@ mod tests {
     let rows = vec![numbered_row("2")];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert: その行の number ボックスが "(2)" の Serif Text 1 個
     let LayoutNode::MathBlock {
@@ -411,7 +426,7 @@ mod tests {
     let rows = vec![numbered_row("3")];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert
     let LayoutNode::MathBlock {
@@ -435,7 +450,7 @@ mod tests {
     let rows = vec![numbered_row("3")];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert
     let LayoutNode::MathBlock {
