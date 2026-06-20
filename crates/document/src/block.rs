@@ -139,18 +139,29 @@ pub enum DocNode {
     items: Vec<ListItem>,
   },
 
-  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
+  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   ///
   /// Parser が環境種別を `kind` に決め、本体を `\\` で行・`&` で列に分割して `rows` に
-  /// 格納する（env body は math モードで構造化される）。採番される環境では各行の
-  /// `number` に `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）が入り、lowering 層が `EquationStyle::number_format`
-  /// でさらに装飾する。`kind` に応じて lowering 以降が列整列・区切り括弧・中央寄せを決める。
+  /// 格納する（env body は math モードで構造化される）。採番には 2 つの粒度があり、kind ごとに
+  /// **どちらか一方だけ**を使う:
+  ///
+  /// - **行ごと採番**（`equation` / `align` / `gather`）: 各行の `MathRow::number` に通し番号が入る。
+  ///   環境全体の `number` は `None`。
+  /// - **環境全体に 1 つ採番**（`split` / `multiline`）: この `number` フィールドに 1 つだけ通し番号が入り、
+  ///   `layout` 段がブロックの縦中央に配置する。各行の `MathRow::number` は `None`。
+  ///
+  /// いずれも番号は `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
+  /// （`format` テンプレ適用済みの文字列）で、lowering 層が `EquationStyle::number_format` でさらに
+  /// 装飾する。`[numbered=false]` で採番ありの環境を無採番にした場合は両方とも `None`。`kind` に応じて
+  /// lowering 以降が列整列・区切り括弧・中央寄せを決める。
   MathBlock {
     /// 環境種別
     kind: MathEnvKind,
     /// 行（各行は `&` 区切りの列を持つ）
     rows: Vec<MathRow>,
+    /// 環境全体に 1 つだけ付く通し番号（`split` / `multiline` 用、縦中央配置）。
+    /// 行ごと採番の環境（`equation` / `align` / `gather`）や無採番では `None`
+    number: Option<String>,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）

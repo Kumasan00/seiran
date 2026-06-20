@@ -1,0 +1,16 @@
+\section{多行数式 (multiline)}
+
+multiline 環境は 1 つの長い式を折り返し、先頭行を左・末尾行を右・中間行を中央に配置して、環境全体に式番号を 1 つ付ける動作確認用フィクスチャ。
+
+\begin{multiline}
+a + b + c + d + e \\
++ f + g + h + i + j \\
++ k + l + m
+\end{multiline}
+
+\section{無採番の multiline}
+
+\begin{multiline}[numbered=false]
+x + y + z \\
++ u + v + w
+\end{multiline}

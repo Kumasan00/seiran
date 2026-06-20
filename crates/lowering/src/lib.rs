@@ -203,13 +203,13 @@ fn lower_node_indexed(
       // ラベル付きブロックと同じ `AnchorMark::Label` でジャンプ先に解決させる。
       return Ok(vec![LayoutNode::Anchor(types::AnchorMark::Label(target.clone()))]);
     },
-    DocNode::MathBlock { kind, rows } => {
+    DocNode::MathBlock { kind, rows, number } => {
       let eq = &ctx.style.equation;
       let mut nodes = vec![
         LayoutNode::Vkern {
           length: eq.top_margin,
         },
-        math::lower_math_block(ctx, *kind, rows),
+        math::lower_math_block(ctx, *kind, rows, number.as_deref()),
         LayoutNode::Vkern {
           length: eq.bottom_margin,
         },
@@ -290,6 +290,7 @@ mod tests {
         number: number.map(str::to_string),
         label: label.map(str::to_string),
       }],
+      number: None,
     };
   }
 

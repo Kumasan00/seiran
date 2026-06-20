@@ -180,13 +180,15 @@ impl Measurer<'_> {
         LayoutNode::MathBlock {
           kind,
           rows,
+          env_number,
           align: block_align,
           numbers_on_right,
           row_gap,
           column_gap,
         } => {
           self.flush_paragraph(blocks, paragraph, indent, align);
-          let math_block = self.build_math_block(kind, rows, block_align, numbers_on_right, row_gap, column_gap);
+          let math_block =
+            self.build_math_block(kind, rows, env_number, block_align, numbers_on_right, row_gap, column_gap);
           blocks.push(math_block);
         },
         LayoutNode::PageBreak => {

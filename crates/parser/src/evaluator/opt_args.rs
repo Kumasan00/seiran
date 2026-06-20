@@ -87,6 +87,17 @@ pub(crate) fn find_color(opt_args: Vec<(String, OptValue)>, key: &str) -> Option
   });
 }
 
+/// 収集済み任意引数から指定キーの真偽値を取り出す
+///
+/// `[numbered=false]` / `[breakable=false]` のような単一の bool キーを取り出す典型パターン用。
+/// キーが存在しない、または値が bool 型でない場合は `None` を返す。
+pub(crate) fn find_bool(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<bool> {
+  return opt_args.into_iter().find_map(|(k, value)| match value {
+    OptValue::Bool(b) if k == key => Some(b),
+    _ => None,
+  });
+}
+
 /// `CommandView` 用の薄いラッパ
 ///
 /// # Errors

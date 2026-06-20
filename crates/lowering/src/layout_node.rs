@@ -84,7 +84,7 @@ pub enum LayoutNode {
   /// セルごとに `HItem` 列へ変換される。列幅の解決（自然幅の実測・残余分配）は
   /// `hlist` 段、罫線・行の描画は `pdf_gen` 段で行う。
   Table(TableLayout),
-  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
+  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   ///
   /// 各セルはシェーピング前の lower 済みインライン数式（`Vec<LayoutNode>`）のまま保持し、
   /// `layout` 段が `kind` に応じてセルを閉じた Atom に measure・列整列・行積みして
@@ -93,8 +93,11 @@ pub enum LayoutNode {
   MathBlock {
     /// 環境種別（列整列・区切り括弧・採番の決定に使う）
     kind: MathEnvKind,
-    /// 行（各行は `&` 区切りの列と任意の番号を持つ）
+    /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
     rows: Vec<MathBlockRow>,
+    /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
+    /// `layout` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
+    env_number: Option<Vec<LayoutNode>>,
     /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
     /// 番号を本文右端に寄せるか（`false` なら左端）
