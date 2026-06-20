@@ -169,8 +169,9 @@ pub fn process_citations(
     path: csl_path_str,
     source,
   })?;
-  // ロケールプール（内蔵ロケールにカスタムを overlay）と、出力言語の override を組み立てる。
-  let (locales, locale_override) = load_locales(style)?;
+  // ロケールプール（必要な内蔵ロケールにカスタムを overlay）と、出力言語の override を組み立てる。
+  // active locale 解決に .csl の default-locale を渡し、実際に引かれる内蔵ロケールだけを読む。
+  let (locales, locale_override) = load_locales(style, csl_style.default_locale.as_ref())?;
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
@@ -250,22 +251,28 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 
 /// 引用整形に用いるロケールプールと、出力言語（active locale）の override を組み立てる。
 ///
-/// プールは常に hayagriva 内蔵ロケール（`archive` feature の CBOR）一式を土台にし、
 /// `style.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析して
-/// 内蔵ロケールの**前**に重ねる（overlay。`lookup_locale` は先頭一致を採るため、同一言語コードは
-/// カスタムが内蔵より優先される）。内蔵を捨てないので en-US ほか全言語のフォールバックは常に効く。
+/// プールの**先頭**に重ねる（overlay。`lookup_locale` は先頭一致を採るため、同一言語コードは
+/// カスタムが内蔵より優先される）。続けて、引用整形で実際に参照される内蔵ロケールだけを
+/// [`load_builtin_locales`] で読み足す（en-US フォールバックは常に含むので全言語のフォールバックは効く）。
 ///
 /// 出力言語の override は次の優先順位で決まる:
 /// 1. `style.reference.locale`（明示指定のロケールコード）
 /// 2. `locale_path` のファイルの `xml:lang`（カスタムロケール指定時のみ）
 /// 3. いずれも無ければ `None`（`.csl` の `default-locale`、最終的に en-US に委ねる）
 ///
+/// `csl_default_locale` は `.csl` の `default-locale`。override も無いときの active locale を
+/// hayagriva と同じ順序（override → `.csl` default → en-US）で解決し、読み込む内蔵ロケールを絞るのに使う。
+///
 /// # Errors
 ///
 /// ロケールファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
-fn load_locales(style: &Style) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
-  // カスタムロケールがあれば内蔵の前に重ね、そのファイル言語を override 既定値として控える。
-  let (locales, file_lang) = if let Some(path) = &style.reference.locale_path {
+fn load_locales(
+  style: &Style,
+  csl_default_locale: Option<&LocaleCode>,
+) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
+  // カスタムロケールがあれば先頭に重ね、そのファイル言語を override 既定値として控える。
+  let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
     let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
       path: path_str.clone(),
@@ -276,15 +283,79 @@ fn load_locales(style: &Style) -> Result<(Vec<Locale>, Option<LocaleCode>), Cita
       source,
     })?;
     let file_lang = locale_file.lang.clone();
-    let mut locales = vec![locale_file.into()];
-    locales.extend(archive::locales());
-    (locales, Some(file_lang))
+    (Some(locale_file.into()), Some(file_lang))
   } else {
-    (archive::locales(), None)
+    (None, None)
   };
+
   // 明示指定の locale が最優先、無ければカスタムファイルの言語、それも無ければ None。
   let locale_override = style.reference.locale.as_ref().map(|code| LocaleCode(code.clone())).or(file_lang);
+
+  // hayagriva の lookup_locale がプール（locale_files）に対して引くのは「出力ロケール（active locale）・
+  // その地域フォールバック・最終フォールバックの en-US」だけ。active = override → .csl default → en-US の
+  // 順で解決し（hayagriva の self.locale() と一致）、その 3 コードだけを内蔵から読む（重複は除く）。
+  let active = locale_override.clone().or_else(|| csl_default_locale.cloned()).unwrap_or_else(LocaleCode::en_us);
+  let mut wanted: Vec<LocaleCode> = Vec::with_capacity(3);
+  for code in [
+    Some(active.clone()),
+    Some(LocaleCode::en_us()),
+    active.fallback(),
+  ]
+  .into_iter()
+  .flatten()
+  {
+    if !wanted.contains(&code) {
+      wanted.push(code);
+    }
+  }
+
+  // カスタムを先頭に、必要な内蔵ロケールを後続に並べる（同一コードはカスタムが先頭一致で勝つ）。
+  let mut locales = Vec::with_capacity(wanted.len() + usize::from(custom.is_some()));
+  locales.extend(custom);
+  load_builtin_locales(&wanted, &mut locales);
+
   return Ok((locales, locale_override));
+}
+
+/// `archive::LOCALES` の CBOR から `lang`（`@xml:lang`）だけを安価に読み出すための部分デコード対象。
+///
+/// 完全な [`Locale`] は用語表・日付書式まで構築するため 1 件あたりのデコードが重い。目的のロケール
+/// かどうかは `lang` だけで判定できるので、まずこの構造体で `lang` のみを取り出し（残りのフィールドは
+/// serde が読み飛ばす）、一致したものだけを完全復元する。
+#[derive(serde::Deserialize)]
+struct LocaleLang {
+  /// ロケールの言語コード（`@xml:lang`）。
+  #[serde(rename = "@xml:lang")]
+  lang: Option<LocaleCode>,
+}
+
+/// `wanted` に挙げたコードに一致する内蔵ロケールだけを `archive::LOCALES`（CBOR バイト列）から
+/// 復元して `out` に追加する。すべて見つかった時点で走査を打ち切る。
+///
+/// 全 63 ロケールを完全復元する [`archive::locales`] は約 30ms かかるが、引用整形が実際に参照するのは
+/// 出力ロケール・その地域フォールバック・en-US の高々 3 件。ここでは各バイト列からまず [`LocaleLang`]
+/// で `lang` だけを読んで非一致を読み飛ばし、一致した数件のみ完全復元することで起動コストを抑える
+/// （全件読み飛ばしても約 5ms）。`archive::LOCALES` は公開された CBOR バイト列で各要素は公開型 [`Locale`]
+/// にデコードでき、ロケールの並び順には依存しない。
+fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
+  let mut remaining = wanted.len();
+  for bytes in archive::LOCALES {
+    if remaining == 0 {
+      break;
+    }
+    // まず lang だけを安価に読み、目的のロケールでなければ用語表を構築せずに読み飛ばす。
+    let Ok(peek) = ciborium::de::from_reader::<LocaleLang, _>(*bytes) else {
+      continue;
+    };
+    if !peek.lang.is_some_and(|lang| wanted.contains(&lang)) {
+      continue;
+    }
+    // 一致したものだけを完全復元する。内蔵 CBOR が壊れていることはないが、失敗時は飛ばす。
+    if let Ok(locale) = ciborium::de::from_reader::<Locale, _>(*bytes) {
+      out.push(locale);
+      remaining -= 1;
+    }
+  }
 }
 
 #[cfg(test)]
@@ -295,7 +366,7 @@ mod tests {
   };
 
   use document::{DocNode, InlineNode};
-  use hayagriva::citationberg::LocaleFile;
+  use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
   use miette::SourceSpan;
   use read_style::Style;
   use types::FontKind;
@@ -322,16 +393,20 @@ mod tests {
     return style;
   }
 
+  /// ロケールの言語コード（`xml:lang`）を文字列スライスで取り出すヘルパ。
+  fn lang_of(locale: &Locale) -> Option<&str> { return locale.lang.as_ref().map(|code| code.0.as_str()); }
+
   #[test]
-  fn load_locales_without_custom_returns_builtin_only() {
-    // Arrange — locale_path / locale ともに未指定
+  fn load_locales_without_custom_loads_only_active() {
+    // Arrange — locale_path / locale ともに未指定、.csl default も無し（active = en-US）
     let style = Style::default();
 
     // Act
-    let (locales, locale_override) = load_locales(&style).expect("内蔵ロケールのみで成功するはず");
+    let (locales, locale_override) = load_locales(&style, None).expect("内蔵 en-US のみで成功するはず");
 
-    // Assert — 内蔵ロケールと完全一致、override は無し
-    assert_eq!(locales, hayagriva::archive::locales());
+    // Assert — 全 63 ロケールではなく en-US 1 件だけを読む、override は無し
+    assert_eq!(locales.len(), 1, "active=en-US なら en-US 1 件だけ: {locales:?}");
+    assert_eq!(lang_of(&locales[0]), Some("en-US"));
     assert!(locale_override.is_none(), "override 指定が無ければ None");
   }
 
@@ -341,15 +416,16 @@ mod tests {
     let style = style_with_locale_path(custom_locale_path());
 
     // Act
-    let (locales, locale_override) = load_locales(&style).expect("カスタムロケールの読み込みは成功するはず");
+    let (locales, locale_override) = load_locales(&style, None).expect("カスタムロケールの読み込みは成功するはず");
 
-    // Assert — 先頭がカスタム、残りは内蔵一式（overlay。内蔵を捨てない）
-    let builtin = hayagriva::archive::locales();
-    assert_eq!(locales.len(), builtin.len() + 1, "内蔵一式＋カスタム1件");
+    // Assert — 先頭がカスタム、後続に内蔵 en-US フォールバック（同一コードはカスタムが先頭一致で勝つ）
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
-    let expected = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
+    let expected: Locale = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
     assert_eq!(locales[0], expected, "先頭はカスタムロケール（同一言語コードはカスタム優先）");
-    assert_eq!(&locales[1..], builtin.as_slice(), "残りは内蔵ロケール一式");
+    assert!(
+      locales[1..].iter().any(|locale| lang_of(locale) == Some("en-US")),
+      "内蔵 en-US フォールバックが続くはず: {locales:?}"
+    );
     // locale 明示が無いので、override 既定値はカスタムファイルの言語（custom-en-US.xml → en-US）
     assert_eq!(locale_override.expect("ファイル言語が override 既定になる").0.as_str(), "en-US");
   }
@@ -361,24 +437,43 @@ mod tests {
     style.reference.locale = Some("ja-JP".to_string());
 
     // Act
-    let (_locales, locale_override) = load_locales(&style).expect("読み込みは成功するはず");
+    let (_locales, locale_override) = load_locales(&style, None).expect("読み込みは成功するはず");
 
     // Assert — 明示指定がファイル言語(en-US)より優先される
     assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
   }
 
   #[test]
-  fn load_locales_explicit_locale_without_file_uses_builtin_pool() {
-    // Arrange — ロケールファイル無し、明示 locale のみ（内蔵 ja-JP 用語を使う想定）
+  fn load_locales_explicit_locale_loads_active_and_fallback() {
+    // Arrange — ロケールファイル無し、明示 locale = ja-JP（内蔵 ja-JP 用語を使う想定）
     let mut style = Style::default();
     style.reference.locale = Some("ja-JP".to_string());
 
     // Act
-    let (locales, locale_override) = load_locales(&style).expect("成功するはず");
+    let (locales, locale_override) = load_locales(&style, None).expect("成功するはず");
 
-    // Assert — プールは内蔵のみ、override は ja-JP
-    assert_eq!(locales, hayagriva::archive::locales());
+    // Assert — active(ja-JP) と en-US フォールバックだけを読む（全 63 件は読まない）
+    let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
+    assert!(langs.contains(&"ja-JP"), "明示 locale ja-JP を読むはず: {langs:?}");
+    assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
+    assert!(langs.len() < 10, "必要な数件のみで全ロケールは読まないはず: {langs:?}");
     assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
+  }
+
+  #[test]
+  fn load_locales_uses_csl_default_when_no_override() {
+    // Arrange — override も locale_path も無いが、.csl の default-locale が de-DE
+    let style = Style::default();
+    let csl_default = LocaleCode("de-DE".to_string());
+
+    // Act
+    let (locales, locale_override) = load_locales(&style, Some(&csl_default)).expect("成功するはず");
+
+    // Assert — active=de-DE を内蔵から読み、en-US フォールバックも含む。override は None のまま
+    let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
+    assert!(langs.contains(&"de-DE"), ".csl default の de-DE を読むはず: {langs:?}");
+    assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
+    assert!(locale_override.is_none(), "明示 override が無ければ None のまま");
   }
 
   #[test]
@@ -387,7 +482,7 @@ mod tests {
     let style = style_with_locale_path(PathBuf::from("/nonexistent/locales-en-US.xml"));
 
     // Act
-    let error = load_locales(&style).expect_err("読み込み失敗するはず");
+    let error = load_locales(&style, None).expect_err("読み込み失敗するはず");
 
     // Assert
     assert!(matches!(error, CitationError::ReadLocaleFile { .. }), "got: {error:?}");
@@ -401,7 +496,7 @@ mod tests {
     let style = style_with_locale_path(file.path().to_path_buf());
 
     // Act
-    let error = load_locales(&style).expect_err("解析失敗するはず");
+    let error = load_locales(&style, None).expect_err("解析失敗するはず");
 
     // Assert
     assert!(matches!(error, CitationError::ParseLocale { .. }), "got: {error:?}");
