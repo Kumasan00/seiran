@@ -7,7 +7,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, positive};
+use types::length::{Length, non_negative, positive};
 
 /// 数式レイアウトのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -35,6 +35,31 @@ impl Default for MathScriptStyle {
       superscript_raise_factor: 0.4,
       subscript_drop_factor: 0.2,
       min_script_font_size: Length::pt(6.0),
+    };
+  }
+}
+
+/// 複数行ディスプレイ数式環境（`align` / `gather` / `cases` / `matrix`）のレイアウトスタイル
+///
+/// 上下マージン・番号書式・番号配置側は [`crate::equation::EquationStyle`] を流用し、
+/// ここでは行間・列間のアキを保持する。区切り括弧の既定種別などは将来追加する。
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[garde(allow_unvalidated)]
+#[serde(deny_unknown_fields, default)]
+pub struct MathBlockStyle {
+  /// 行間（隣り合う行のベースライン間に挿入する追加アキ、pt）
+  #[garde(custom(non_negative))]
+  pub row_gap: Length,
+  /// 列間（`&` で分割した列の間隔、pt）
+  #[garde(custom(non_negative))]
+  pub column_gap: Length,
+}
+
+impl Default for MathBlockStyle {
+  fn default() -> Self {
+    return Self {
+      row_gap: Length::pt(3.0),
+      column_gap: Length::pt(6.0),
     };
   }
 }

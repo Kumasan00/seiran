@@ -23,6 +23,7 @@
 //!
 //! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
+mod math;
 mod running;
 mod script;
 mod toc;
@@ -176,6 +177,18 @@ impl Measurer<'_> {
             align,
           });
         },
+        LayoutNode::MathBlock {
+          kind,
+          rows,
+          align: block_align,
+          numbers_on_right,
+          row_gap,
+          column_gap,
+        } => {
+          self.flush_paragraph(blocks, paragraph, indent, align);
+          let math_block = self.build_math_block(kind, rows, block_align, numbers_on_right, row_gap, column_gap);
+          blocks.push(math_block);
+        },
         LayoutNode::PageBreak => {
           self.flush_paragraph(blocks, paragraph, indent, align);
           blocks.push(Block::PageBreak);
@@ -253,6 +266,7 @@ impl Measurer<'_> {
       | LayoutNode::Rule { .. }
       | LayoutNode::Image { .. }
       | LayoutNode::Table(_)
+      | LayoutNode::MathBlock { .. }
       | LayoutNode::PageBreak => {},
     }
   }

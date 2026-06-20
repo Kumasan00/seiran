@@ -41,7 +41,7 @@ mod table;
 mod template;
 mod title_page;
 
-pub use layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
+pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
 pub use title_page::{TitlePageMetadata, lower_title_page};
 pub use types::TableColumn;
 
@@ -203,13 +203,25 @@ fn lower_node_indexed(
       // ラベル付きブロックと同じ `AnchorMark::Label` でジャンプ先に解決させる。
       return Ok(vec![LayoutNode::Anchor(types::AnchorMark::Label(target.clone()))]);
     },
-    DocNode::DisplayMath {
-      body,
-      number,
-      label,
-    } => {
-      let nodes = math::lower_display_math(ctx, body, number.as_deref());
-      return Ok(with_label_anchor(label.as_deref(), nodes));
+    DocNode::MathBlock { kind, rows } => {
+      let eq = &ctx.style.equation;
+      let mut nodes = vec![
+        LayoutNode::Vkern {
+          length: eq.top_margin,
+        },
+        math::lower_math_block(ctx, *kind, rows),
+        LayoutNode::Vkern {
+          length: eq.bottom_margin,
+        },
+      ];
+      // ラベル付き行（`equation` の `[label=...]` 等）の `\ref` 到達先アンカーを先頭に付ける。
+      // 複数行が同じブロック内にラベルを持つ場合も、いずれもブロック先頭座標に解決される。
+      for row in rows {
+        if let Some(label) = &row.label {
+          nodes = with_label_anchor(Some(label), nodes);
+        }
+      }
+      return Ok(nodes);
     },
     DocNode::Figure {
       image_path,
@@ -264,10 +276,22 @@ fn with_label_anchor(label: Option<&str>, nodes: Vec<LayoutNode>) -> Vec<LayoutN
 
 #[cfg(test)]
 mod tests {
-  use document::{HeadingLevel, InlineNode, ListItem, MathNode};
+  use document::{HeadingLevel, InlineNode, ListItem, MathEnvKind, MathNode, MathRow};
   use types::Length;
 
   use super::*;
+
+  /// 1 行 1 セルの `equation` 相当 `DocNode::MathBlock` を作るテストヘルパ
+  fn equation_block(number: Option<&str>, label: Option<&str>) -> DocNode {
+    return DocNode::MathBlock {
+      kind: MathEnvKind::Equation,
+      rows: vec![MathRow {
+        cells: vec![vec![MathNode::Text("a".to_string())]],
+        number: number.map(str::to_string),
+        label: label.map(str::to_string),
+      }],
+    };
+  }
 
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
@@ -419,53 +443,41 @@ mod tests {
   }
 
   #[test]
-  fn lower_display_math_wraps_with_vkerns() {
-    // ディスプレイ数式は Vkern(top) ... Vkern(bottom) の上下マージンのみで包まれ、
-    // LineBreak は出力しない（number = None なら番号は付かない）
+  fn lower_math_block_wraps_with_vkerns_and_emits_no_line_break() {
+    // ディスプレイ数式は Vkern(top) → MathBlock → Vkern(bottom) で包まれ、LineBreak は出力しない
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::DisplayMath {
-      body: vec![MathNode::Text("a".to_string())],
-      label: None,
-      number: None,
-    };
+    let node = equation_block(None, None);
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
-    // 先頭: Vkern(top_margin)、末尾: Vkern(bottom_margin)
+    // 先頭: Vkern(top_margin)、中央: MathBlock、末尾: Vkern(bottom_margin)
+    assert_eq!(nodes.len(), 3, "Vkern + MathBlock + Vkern の 3 要素: {nodes:?}");
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は Vkern であるべき: {nodes:?}");
+    assert!(matches!(nodes.get(1), Some(LayoutNode::MathBlock { .. })), "中央は MathBlock であるべき: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は Vkern であるべき: {nodes:?}");
-    // LineBreak は含まれない
     let has_line_break = nodes.iter().any(|n| matches!(n, LayoutNode::LineBreak));
     assert!(!has_line_break, "LineBreak は出力されないはず: {nodes:?}");
-    // number = None のときは Glue / Serif Text は挿入されない
-    let has_glue = nodes.iter().any(|n| matches!(n, LayoutNode::Glue { .. }));
-    assert!(!has_glue, "number が None のときは Glue は挿入されないはず: {nodes:?}");
   }
 
   #[test]
-  fn lower_display_math_appends_number_text_on_right() {
-    // number = Some("1") + デフォルトの number_side = Right で、本体の後に
-    // Glue + Text("(1)") が挿入される
+  fn lower_math_block_carries_numbered_row() {
+    // number = Some("1") のとき MathBlock の行に番号ボックスが乗る
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::DisplayMath {
-      body: vec![MathNode::Text("a".to_string())],
-      label: None,
-      number: Some("1".to_string()),
-    };
+    let node = equation_block(Some("1"), None);
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
-    // 末尾 Vkern の手前に Text("(1)")、その手前に Glue が並ぶ
-    let len = nodes.len();
-    let number_text = nodes.get(len - 2);
-    let gap = nodes.get(len - 3);
+    let Some(LayoutNode::MathBlock { rows, .. }) = nodes.get(1) else {
+      panic!("中央に MathBlock があるべき: {nodes:?}");
+    };
+    assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
+    let number = rows[0].number.as_ref().expect("採番された行は番号ボックスを持つ");
     assert!(
-      matches!(number_text, Some(LayoutNode::Text(t, _)) if t == "(1)"),
-      "末尾近くに Text(\"(1)\") があるべき: {nodes:?}"
+      matches!(&number[0], LayoutNode::Text(t, _) if t == "(1)"),
+      "番号ボックスは Text(\"(1)\"): {number:?}"
     );
-    assert!(matches!(gap, Some(LayoutNode::Glue { .. })), "数式と番号の間に Glue: {nodes:?}");
   }
 
   #[test]
@@ -541,11 +553,7 @@ mod tests {
     // Arrange — label 付きディスプレイ数式は先頭に AnchorMark::Label を出す
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::DisplayMath {
-      body: vec![MathNode::Text("a".to_string())],
-      label: Some("eq:foo".to_string()),
-      number: Some("1".to_string()),
-    };
+    let node = equation_block(Some("1"), Some("eq:foo"));
 
     // Act
     let nodes = lower_node(&ctx, &node).expect("失敗しない");
@@ -562,11 +570,7 @@ mod tests {
     // Arrange — label なしのディスプレイ数式はアンカーを出さない
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::DisplayMath {
-      body: vec![MathNode::Text("a".to_string())],
-      label: None,
-      number: Some("1".to_string()),
-    };
+    let node = equation_block(Some("1"), None);
 
     // Act
     let nodes = lower_node(&ctx, &node).expect("失敗しない");

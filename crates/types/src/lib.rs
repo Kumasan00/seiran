@@ -52,6 +52,7 @@ pub mod font_map;
 pub mod heading_level;
 pub mod length;
 pub mod link_target;
+pub mod math;
 pub mod table;
 
 pub use align::Align;
@@ -62,4 +63,5 @@ pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
 pub use length::Length;
 pub use link_target::LinkTarget;
+pub use math::{MathDelimiter, MathEnvKind};
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};

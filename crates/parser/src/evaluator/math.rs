@@ -1,15 +1,17 @@
 //! 数式モードの評価
 //!
-//! `InlineMath` ノード（`$...$` 由来）と数式環境の body の双方を `MathNode` 列に変換します。
-//! 構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/`Newline`/`Ampersand`
-//! を `MathNode::Text` / `MathNode::AlignmentMark` に変換します。
+//! `InlineMath` ノード（`$...$` 由来）と数式環境の 1 セル分の要素列の双方を `MathNode` 列に
+//! 変換します。構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/`Newline`
+//! を `MathNode::Text` に変換します。列区切り `&`・行区切り `\\` は複数行数式環境の構造分割器
+//! （[`crate::evaluator::environment::math_grid`]）が消費するため、ここまで到達した `&`・`\\` は
+//! 「文脈外（インライン数式や単一行 equation のセル内）の迷子」とみなしてエラーにします。
 //!
 //! ## 公開 API
 //!
 //! - [`evaluate_inline_math`] — `InlineMath` ノード（`$...$` 由来）を変換
-//! - [`evaluate_math_body`] — 数式環境（`equation` 等）の `EnvironmentBody` を変換
+//! - [`evaluate_math_elements`] — 数式環境の 1 セル分の要素列（`&` / `\\` 分割後）を変換
 //!
-//! 両者は内部で同じ共通ヘルパ [`evaluate_math_children`] に委譲します。
+//! 両者は内部で同じ共通ヘルパ [`evaluate_math_elements`] に委譲します。
 //! CST 形が揃っているため共通化でき、`InlineMath` 専用の `$` 開閉トークンは
 //! 共通ヘルパ内で `_ => {}` に落ちて無視されます。
 
@@ -35,28 +37,22 @@ pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Resul
   return evaluate_math_children(source, math_node);
 }
 
-/// 数式環境の `EnvironmentBody` を `MathNode` のリストに変換する
-///
-/// `\begin{equation}...\end{equation}` の body は [`syntax::ParseMode::Math`]
-/// で構造化されており、`MathSuperscript` / `MathSubscript` / `MathGroup` / `CommandCall` が
-/// body の直下に出現する。CST 形は `InlineMath` の中身と揃っているため、
-/// 共通ヘルパ [`evaluate_math_children`] にそのまま委譲する。
-///
-/// # Errors
-///
-/// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
-pub(crate) fn evaluate_math_body(source: &str, body_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
-  return evaluate_math_children(source, body_node);
-}
-
 /// 数式モードで構造化された CST ノードの子要素を `MathNode` 列に変換する共通ヘルパ
 ///
-/// `InlineMath` ノード（`$...$` 由来）と数式環境の body の双方から呼ばれる。
-/// 構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/
-/// `Newline`/`Ampersand` を `MathNode::Text`・`MathNode::AlignmentMark` に変換する。
+/// `InlineMath` ノード（`$...$` 由来）と、複数行数式環境の構造分割器が切り出した 1 セル分の
+/// 要素列の双方から呼ばれる。`GreenNode` 全体を渡したい呼び出し側はこのラッパを使う。
 fn evaluate_math_children(source: &str, node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
+  return evaluate_math_elements(source, node.children);
+}
+
+/// 数式モードで構造化された要素列を `MathNode` 列に変換する共通ヘルパ
+///
+/// 構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/`Newline` を
+/// `MathNode::Text` に変換する。列区切り `&`・行区切り `\\` は構造分割器が消費済みのはずなので、
+/// ここに到達した場合は文脈外の迷子として [`EvalError::UnsupportedInMath`] を返す。
+pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) -> Result<Vec<MathNode>, EvalError> {
   let mut nodes = Vec::new();
-  for child in node.children {
+  for child in elements {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
@@ -67,12 +63,17 @@ fn evaluate_math_children(source: &str, node: &GreenNode) -> Result<Vec<MathNode
           nodes.push(MathNode::Text(text.to_string()));
         },
         TokenKind::Ampersand => {
-          nodes.push(MathNode::AlignmentMark);
+          // `&` 列区切りは align / matrix / cases の本体でのみ意味を持つ。
+          // インライン数式や単一行 equation のセル内に紛れ込んだ `&` はエラーにする
+          return Err(EvalError::UnsupportedInMath {
+            what: r"&（列区切り）".to_string(),
+            span: token.span.into(),
+          });
         },
         TokenKind::LineBreak => {
-          // 複数行数式は未対応。黙って 1 行に潰さずエラーにする
+          // `\\` 行区切りも複数行数式環境の本体でのみ意味を持つ。それ以外ではエラー
           return Err(EvalError::UnsupportedInMath {
-            what: r"\\（強制改行）".to_string(),
+            what: r"\\（行区切り）".to_string(),
             span: token.span.into(),
           });
         },

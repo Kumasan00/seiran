@@ -33,8 +33,6 @@ pub enum MathNode {
     /// 被根号
     radicand: Box<MathNode>,
   },
-  /// 位置合わせマーク（`&`）— 数式環境での列揃え・表環境での区切り
-  AlignmentMark,
   /// 数式スタイル指定（`\mathbold` `\mathitalic` 等）
   ///
   /// body 内の ASCII 英字・数字・Greek を、ローワリング層で
@@ -76,6 +74,22 @@ pub enum MathStyle {
   SansBoldItalic,
   /// `\mathmono` — 等幅
   Mono,
+}
+
+/// ディスプレイ数式環境の 1 行
+///
+/// `cells` は `&` で分割された列（`equation` / `gather` は 1 列、`cases` は 2 列、
+/// `align` / `matrix` は複数列）。各列は数式ノード列。`number` は評価時に発番された
+/// 通し番号文字列（採番されない行・環境では `None`）。`label` は `\ref` 解決用の
+/// 行ラベル（`equation` の `[label=...]`、将来は行単位指定）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MathRow {
+  /// 列（`&` 区切り）。各列は数式ノード列
+  pub cells: Vec<Vec<MathNode>>,
+  /// 採番された通し番号（`None` は非採番）
+  pub number: Option<String>,
+  /// `\ref` 解決用ラベル（`None` は参照対象外）
+  pub label: Option<String>,
 }
 
 impl MathStyle {

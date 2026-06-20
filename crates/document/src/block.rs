@@ -1,8 +1,8 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
-use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length};
+use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind};
 
-use crate::{caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathNode, table::TableRow};
+use crate::{caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, table::TableRow};
 
 // =============================================================================
 // ドキュメント全体
@@ -139,20 +139,18 @@ pub enum DocNode {
     items: Vec<ListItem>,
   },
 
-  /// ディスプレイ数式（`\begin{equation}...\end{equation}`）
+  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
   ///
-  /// Parser 側で env body が math モードで構造化されるため `Vec<MathNode>` を直接保持する。
-  /// 評価時に `CounterRegistry::increment(CounterName::Equation)` で発番された番号
-  /// （`format` テンプレ適用済みの文字列）を `number` に保持し、lowering 層が
-  /// `EquationStyle::number_format` でさらに装飾を加えて描画する。
-  DisplayMath {
-    /// 数式本体
-    body: Vec<MathNode>,
-    /// `\ref` 用ラベル（`[label=eq:foo]`）
-    label: Option<String>,
-    /// 評価時に発番された通し番号（プレーン文字列）。
-    /// 番号が振られない環境（将来の `equation*` 等）では `None`。
-    number: Option<String>,
+  /// Parser が環境種別を `kind` に決め、本体を `\\` で行・`&` で列に分割して `rows` に
+  /// 格納する（env body は math モードで構造化される）。採番される環境では各行の
+  /// `number` に `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
+  /// （`format` テンプレ適用済みの文字列）が入り、lowering 層が `EquationStyle::number_format`
+  /// でさらに装飾する。`kind` に応じて lowering 以降が列整列・区切り括弧・中央寄せを決める。
+  MathBlock {
+    /// 環境種別
+    kind: MathEnvKind,
+    /// 行（各行は `&` 区切りの列を持つ）
+    rows: Vec<MathRow>,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）

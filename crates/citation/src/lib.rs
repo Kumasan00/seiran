@@ -221,7 +221,7 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
           collect_cite_inlines(inlines, out);
         }
       },
-      DocNode::DisplayMath { .. }
+      DocNode::MathBlock { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak

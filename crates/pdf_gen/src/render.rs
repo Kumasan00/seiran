@@ -247,6 +247,25 @@ fn draw_placed_block(
         draw_table_row(surface, &draw_ctx, placed_row, margin_left + x)?;
       }
     },
+    PlacedBlock::MathBlock {
+      body,
+      x,
+      baseline_y,
+      numbers,
+    } => {
+      // 本体 Atom はベースライン基準で確定済み。番号も確定座標で同じ要領で描く
+      draw_box_content(surface, metrics, krilla_fonts, &body.content, margin_left + x, *baseline_y)?;
+      for number in numbers {
+        draw_box_content(
+          surface,
+          metrics,
+          krilla_fonts,
+          &number.content.content,
+          margin_left + number.x,
+          number.baseline_y,
+        )?;
+      }
+    },
     PlacedBlock::Image {
       path,
       x,

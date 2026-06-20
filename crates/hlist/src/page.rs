@@ -8,7 +8,7 @@
 
 use types::{AnchorMark, LinkTarget, TableColumn};
 
-use crate::{line::Line, table_box::TableRowBox};
+use crate::{hitem::HBox, line::Line, table_box::TableRowBox};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]
@@ -115,6 +115,30 @@ pub enum PlacedBlock {
     /// 塗り色（RGB）。`None` は黒。`read_style` 非依存のため生の `[u8; 3]` で保持する
     color: Option<[u8; 3]>,
   },
+  /// ディスプレイ数式ブロック（本体 Atom + 行番号、いずれも確定座標）
+  MathBlock {
+    /// 数式本体（閉じた Atom）
+    body: HBox,
+    /// 本体の本文左端からの水平オフセット（pt、揃えで算出済み）
+    x: f32,
+    /// 本体ベースラインのページ上端からの距離（pt）
+    baseline_y: f32,
+    /// 行番号（位置確定済み）
+    numbers: Vec<PlacedMathNumber>,
+  },
+}
+
+/// 配置確定済みの数式行番号
+///
+/// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端から、`baseline_y` はページ上端から下方向）。
+#[derive(Debug, Clone)]
+pub struct PlacedMathNumber {
+  /// 番号ボックス（シェーピング済み）
+  pub content: HBox,
+  /// 本文左端からの水平オフセット（pt）
+  pub x: f32,
+  /// ベースラインのページ上端からの距離（pt）
+  pub baseline_y: f32,
 }
 
 /// 位置確定済みの表の 1 行

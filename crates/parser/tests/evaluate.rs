@@ -690,14 +690,15 @@ fn evaluate_math_symbol_command() {
 #[test]
 fn evaluate_equation_env_body_produces_superscript() {
   // equation 環境の body は ParseMode::Math で構造化された CST から
-  // MathNode 列に変換され、DocNode::DisplayMath.body に格納される。
+  // MathNode 列に変換され、DocNode::MathBlock の 1 行 1 セルに格納される。
   // `x^2` → Text("x") + Superscript(Text("2"))
   let result = evaluate_source(r"\begin{equation}x^2\end{equation}");
 
   assert_eq!(result.len(), 1);
-  let DocNode::DisplayMath { body, .. } = &result[0] else {
-    panic!("DisplayMath が期待されます: {:?}", result[0]);
+  let DocNode::MathBlock { rows, .. } = &result[0] else {
+    panic!("MathBlock が期待されます: {:?}", result[0]);
   };
+  let body = &rows[0].cells[0];
 
   let has_superscript = body.iter().any(|n| matches!(n, MathNode::Superscript(_)));
   let has_text_x = body.iter().any(|n| matches!(n, MathNode::Text(t) if t == "x"));

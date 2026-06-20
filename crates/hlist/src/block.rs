@@ -5,7 +5,11 @@
 
 use types::{Align, AnchorMark};
 
-use crate::{hitem::HItem, line::Line, table_box::TableBox};
+use crate::{
+  hitem::{HBox, HItem},
+  line::Line,
+  table_box::TableBox,
+};
 
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
@@ -77,6 +81,21 @@ pub enum Block {
     /// 行送り（pt）。配置後にカーソルをこの分だけ進める
     leading: f32,
   },
+  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
+  ///
+  /// 全セルを絶対配置した 1 つの閉じた Atom（`body`）として保持する（行分割をまたがない）。
+  /// 列整列・行積み・区切り括弧は `layout` 段で `body` の局所座標へ解決済み。`break_pages` は
+  /// `align` で本体を本文幅の中に中央寄せし、各行番号（`numbers`）を本文端へ寄せるだけ。
+  MathBlock {
+    /// 数式本体（全セル + 区切り括弧を絶対配置した閉じた Atom）
+    body: HBox,
+    /// 行番号（採番された行ごと、測定済み）。空なら番号なし
+    numbers: Vec<MathRowNumber>,
+    /// 番号を本文右端に寄せるか（`false` なら左端）
+    numbers_on_right: bool,
+    /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
+    align: Align,
+  },
   /// 縦方向の固定アキ（pt）
   VSpace(f32),
   /// 強制改ページ
@@ -86,4 +105,16 @@ pub enum Block {
   /// `break_pages` で次に配置される実ブロックの確定座標に解決され、`Page::anchors` に
   /// `PlacedAnchor` として格納される。それ自身は縦方向のアキを生まない。
   Anchor(AnchorMark),
+}
+
+/// 数式ブロックの行番号（測定済み）
+///
+/// `break_pages` が `dy`（本体ベースラインからのオフセット）と本文幅から本文端に寄せて
+/// 確定座標を与え、[`crate::page::PlacedMathNumber`] にする。
+#[derive(Debug, Clone)]
+pub struct MathRowNumber {
+  /// 番号ボックス（`"(1)"` 等、シェーピング済み）
+  pub content: HBox,
+  /// 本体 Atom のベースラインからの縦オフセット（pt、正で上方向）＝その行のベースライン
+  pub dy: f32,
 }
