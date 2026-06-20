@@ -16,7 +16,7 @@ use crate::{
   block::Block,
   break_lines::LineBreaker,
   line::Line,
-  page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedTableRow},
+  page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedMathNumber, PlacedTableRow},
   table_box::{TableBox, resolve_column_widths, table_row_height},
 };
 
@@ -208,6 +208,15 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         place_table(&mut composer, geom, &table, text_width, align);
         composer.cursor_at_edge = true;
       },
+      Block::MathBlock {
+        body,
+        numbers,
+        numbers_on_right,
+        align,
+      } => {
+        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, text_width);
+        composer.cursor_at_edge = true;
+      },
       // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため pending に積む
       Block::Anchor(mark) => {
         composer.pending_anchors.push(mark);
@@ -317,6 +326,55 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, line: Lin
   });
   composer.y = baseline + leading;
   composer.cursor_at_edge = false;
+}
+
+/// ディスプレイ数式ブロックを配置する
+///
+/// 本体 Atom（`body`）は `layout` 段で局所座標まで組み上がっているため、ここでは本文幅の中で
+/// 揃え（`align`、既定は中央）オフセットを 1 回算出し、各行番号を本文端（`numbers_on_right` で
+/// 左右）へ寄せて確定座標を与えるだけ。当面は改ページ単位の不可分ブロックとして扱う
+/// （収まらない場合に新しいページなら収まるときだけ先に改ページする）。
+fn place_math_block(
+  composer: &mut PageComposer,
+  geom: &PageGeometry,
+  body: crate::hitem::HBox,
+  numbers: Vec<crate::block::MathRowNumber>,
+  numbers_on_right: bool,
+  align: types::Align,
+  text_width: f32,
+) {
+  let total_height = body.height + body.depth;
+  if composer.y + total_height > geom.page_limit && geom.margin_top + total_height <= geom.page_limit {
+    composer.start_new_page(geom);
+  }
+  composer.resolve_pending_anchors(0.0, composer.y);
+
+  let x = align.offset(text_width, body.width);
+  // 本体ベースライン = ブロック上端（カーソル）+ ベースラインより上の高さ
+  let baseline_y = composer.y + body.height;
+  let placed_numbers: Vec<PlacedMathNumber> = numbers
+    .into_iter()
+    .map(|n| {
+      let number_x = if numbers_on_right {
+        (text_width - n.content.width).max(0.0)
+      } else {
+        0.0
+      };
+      return PlacedMathNumber {
+        content: n.content,
+        x: number_x,
+        baseline_y: baseline_y - n.dy,
+      };
+    })
+    .collect();
+
+  composer.current.push(PlacedBlock::MathBlock {
+    body,
+    x,
+    baseline_y,
+    numbers: placed_numbers,
+  });
+  composer.y += total_height;
 }
 
 /// 表を行単位で配置する（改ページ時はページ先頭にヘッダ行を再描画する）

@@ -31,6 +31,6 @@ pub use block::{DocNode, Document, HeadingInfo, collect_headings, heading_anchor
 pub use caption::CaptionPosition;
 pub use inline::{InlineNode, inline_nodes_to_plain_text};
 pub use list::ListItem;
-pub use math::{MathNode, MathStyle};
+pub use math::{MathNode, MathRow, MathStyle};
 pub use table::{TableCell, TableRow};
-pub use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length};
+pub use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathDelimiter, MathEnvKind};

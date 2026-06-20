@@ -256,11 +256,13 @@ dependencies = [
 name = "citation"
 version = "0.1.0"
 dependencies = [
+ "ciborium",
  "document",
  "hayagriva",
  "miette",
  "read_references",
  "read_style",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",

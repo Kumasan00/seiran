@@ -63,7 +63,7 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
       },
       // 数式・図（キャプションなし）・罫線・改ページ・スペース・アンカーには `\cite` は出現しない
       // （`DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない）
-      DocNode::DisplayMath { .. }
+      DocNode::MathBlock { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak

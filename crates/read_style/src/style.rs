@@ -18,7 +18,7 @@ use crate::{
   heading::{HeadingStyle, HeadingStyles},
   hyperref::HyperrefStyle,
   list::ListStyle,
-  math::MathScriptStyle,
+  math::{MathBlockStyle, MathScriptStyle},
   page_numbering::PageNumbering,
   reference::ReferenceStyle,
   running::RunningContentStyle,
@@ -64,9 +64,12 @@ pub struct Style {
   /// ディスプレイ数式のスタイル
   #[garde(dive)]
   pub equation: EquationStyle,
-  /// 数式レイアウトのスタイル
+  /// 数式レイアウト（上付き / 下付き）のスタイル
   #[garde(dive)]
   pub math: MathScriptStyle,
+  /// 複数行ディスプレイ数式環境（align / gather / cases / matrix）のレイアウトスタイル
+  #[garde(dive)]
+  pub math_block: MathBlockStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
@@ -106,6 +109,7 @@ impl Default for Style {
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
       math: MathScriptStyle::default(),
+      math_block: MathBlockStyle::default(),
       counters: Counters::default(),
       page_numbering: PageNumbering::default(),
       header: RunningContentStyle::default(),

@@ -46,7 +46,7 @@ pub use crate::{
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
   list::ListStyle,
-  math::MathScriptStyle,
+  math::{MathBlockStyle, MathScriptStyle},
   number_style::NumberStyle,
   page_numbering::PageNumbering,
   reference::ReferenceStyle,

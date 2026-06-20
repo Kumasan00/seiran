@@ -3,7 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, TableColumn};
+use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -84,6 +84,26 @@ pub enum LayoutNode {
   /// セルごとに `HItem` 列へ変換される。列幅の解決（自然幅の実測・残余分配）は
   /// `hlist` 段、罫線・行の描画は `pdf_gen` 段で行う。
   Table(TableLayout),
+  /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
+  ///
+  /// 各セルはシェーピング前の lower 済みインライン数式（`Vec<LayoutNode>`）のまま保持し、
+  /// `layout` 段が `kind` に応じてセルを閉じた Atom に measure・列整列・行積みして
+  /// 1 つの本体 Atom（`hlist::Block::MathBlock`）に合成する。番号は `Vec<LayoutNode>`
+  /// （`"(1)"` の Serif Text）として保持し、`layout` 段でシェーピングされる。
+  MathBlock {
+    /// 環境種別（列整列・区切り括弧・採番の決定に使う）
+    kind: MathEnvKind,
+    /// 行（各行は `&` 区切りの列と任意の番号を持つ）
+    rows: Vec<MathBlockRow>,
+    /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
+    align: Align,
+    /// 番号を本文右端に寄せるか（`false` なら左端）
+    numbers_on_right: bool,
+    /// 行間（pt）
+    row_gap: f32,
+    /// 列間（pt）
+    column_gap: f32,
+  },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
   /// ブロック先頭に置く destination マーカー。`layout` 段で `Block::Anchor` に透過され、
@@ -137,6 +157,18 @@ pub struct TableCellLayout {
   pub content: Vec<LayoutNode>,
   /// 列方向の結合数（colspan、1 以上）
   pub span: u32,
+}
+
+/// ディスプレイ数式環境の 1 行の物理レイアウト表現
+///
+/// `cells` は `&` で分割された列（lower 済みインライン数式）。`number` は採番された行の
+/// 番号ボックス（`"(1)"` を Serif で lower 済み）で、非採番行・環境では `None`。
+#[derive(Debug, Clone)]
+pub struct MathBlockRow {
+  /// 列（lower 済みインライン数式）
+  pub cells: Vec<Vec<LayoutNode>>,
+  /// 行番号ボックス（lower 済み、`None` は非採番）
+  pub number: Option<Vec<LayoutNode>>,
 }
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）

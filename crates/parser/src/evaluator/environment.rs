@@ -28,6 +28,7 @@ mod caption;
 mod equation;
 mod figure;
 mod itemize;
+mod math_grid;
 mod table;
 
 /// 環境ハンドラの関数ポインタ型

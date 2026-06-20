@@ -30,6 +30,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 bumpalo = { version = "3.20.3", features = ["collections"] }
 chrono = "0.4.45"
+ciborium = "0.2.2"
 citation = { path = "crates/citation" }
 clap = { version = "4.6.1", features = ["derive"] }
 cli = { path = "crates/cli" }
@@ -91,7 +92,8 @@ too_many_lines = { level = "allow", priority = 1 }
 
 [profile.release]
 opt-level = 3
-debug = false
-strip = "symbols"
+# debug = false
+debug = true
+# strip = "symbols"
 lto = true
 codegen-units = 1

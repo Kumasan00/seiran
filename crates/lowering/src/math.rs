@@ -5,98 +5,71 @@
 //! によって Unicode Mathematical Alphanumeric Symbols へ変換され、数式フォントが持つ
 //! 字形バリアントを直接呼び出します。
 
-use document::{MathNode, MathStyle};
-use read_style::{MathScriptStyle as MathStyleConfig, NumberSide};
-use types::FontKind;
+use document::{MathNode, MathRow, MathStyle};
+use read_style::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
+use types::{Align, FontKind, MathEnvKind};
 
 use self::alphanumeric::translate_math_char;
 use super::LoweringContext;
-use crate::layout_node::{LayoutNode, TextStyle};
+use crate::layout_node::{LayoutNode, MathBlockRow, TextStyle};
 
 mod alphanumeric;
-
-/// 数式番号テキストと本体の間に挿入する仮の水平アキ（pt）。
-///
-/// 真の右寄せは行幅依存のため未対応。揃え機能（`EquationStyle::alignment`）が
-/// 入った段階で `Glue` のストレッチを利用した「番号は行末・本体は中央」配置に置き換える。
-const EQUATION_NUMBER_GAP_PT: f32 = 6.0;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size.to_pt());
 }
 
-/// `DocNode::DisplayMath`（`\begin{equation}...\end{equation}`）を `LayoutNode` 列に変換する
+/// `DocNode::MathBlock`（`equation` / `align` / `gather` / `cases` / `matrix`）を
+/// `LayoutNode::MathBlock` に変換する
 ///
-/// `EquationStyle`（`style.equation`）から上下マージンと番号書式・配置を読み、
-/// 以下の順で `LayoutNode` 列を組み立てる：
-///
-/// ```text
-/// Vkern(top_margin)
-///   [number? Glue]  body...  [Glue number?]
-/// Vkern(bottom_margin)
-/// ```
-///
-/// `DisplayMath` は常にブロック級の `DocNode` なので前後の行畳み用 `LineBreak` は出さず、
-/// 縦アキは `Vkern` のみで構造的に表す（ブロック境界は縦組版層が判断する）。
-///
-/// 番号は `EquationStyle::number_format` の `{number}` を `number` 引数で置換した
-/// 文字列を `FontKind::Serif`（数字は立体）で描画する。`number_side` に応じて
-/// 本体の前後どちらに置くかを決める。`number` が `None` のとき（将来の `equation*` 等）
-/// は番号と Glue を挿入しない。
-///
-/// 真の中央寄せ・右寄せ（`EquationStyle::alignment`）には行幅の知識が要るため未対応。
-/// 現段階では行頭からのレンダリングのみ。
-pub(super) fn lower_display_math(ctx: &LoweringContext, body: &[MathNode], number: Option<&str>) -> Vec<LayoutNode> {
+/// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower し、採番された行は
+/// `EquationStyle::number_format` の `{number}` を発番番号で置換した文字列を `FontKind::Serif`
+/// （数字は立体）の番号ボックスに包む。列整列・行積み・区切り括弧の配置は `layout` 段が
+/// `kind` に応じて確定し、本体の中央寄せ（`align`）と番号の端寄せ（`numbers_on_right`）は
+/// `break_pages` 段が本文幅を使って決める。上下マージンは呼び出し側（[`crate`] のディスパッチ）が
+/// `Vkern` で前後に出す。
+pub(super) fn lower_math_block(ctx: &LoweringContext, kind: MathEnvKind, rows: &[MathRow]) -> LayoutNode {
   let font_size = ctx.default_font_size();
   let eq = &ctx.style.equation;
+  let mb = &ctx.style.math_block;
 
-  // 番号文字列を書式化し、Text ノードに包む（None の場合は何も生成しない）
-  let number_node: Option<LayoutNode> = number.map(|n| {
-    let text = eq.number_format.replace("{number}", n);
-    LayoutNode::Text(
-      text,
-      TextStyle {
-        font_size,
-        font_kind: FontKind::Serif,
-        color: None,
-      },
-    )
-  });
+  let layout_rows: Vec<MathBlockRow> = rows
+    .iter()
+    .map(|row| {
+      let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math)).collect();
+      let number = row.number.as_deref().map(|n| {
+        let text = eq.number_format.replace("{number}", n);
+        return vec![LayoutNode::Text(
+          text,
+          TextStyle {
+            font_size,
+            font_kind: FontKind::Serif,
+            color: None,
+          },
+        )];
+      });
+      return MathBlockRow { cells, number };
+    })
+    .collect();
 
-  let gap = LayoutNode::Glue {
-    natural: EQUATION_NUMBER_GAP_PT,
-    stretch: 0.0,
-    shrink: 0.0,
+  return LayoutNode::MathBlock {
+    kind,
+    rows: layout_rows,
+    align: alignment_to_align(eq.alignment),
+    numbers_on_right: matches!(eq.number_side, NumberSide::Right),
+    row_gap: mb.row_gap.to_pt(),
+    column_gap: mb.column_gap.to_pt(),
   };
+}
 
-  let mut result = Vec::new();
-  result.push(LayoutNode::Vkern {
-    length: eq.top_margin,
-  });
-
-  // TODO: eq.alignment（Center/Left/Right）の真の揃えには行幅の知識が必要。
-  // 現状は左揃え固定。Glue を伸縮可能にした上で行折り返しと連動させて実装する。
-  match (eq.number_side, number_node) {
-    (NumberSide::Left, Some(node)) => {
-      result.push(node);
-      result.push(gap);
-      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
-    },
-    (NumberSide::Right, Some(node)) => {
-      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
-      result.push(gap);
-      result.push(node);
-    },
-    (_, None) => {
-      result.extend(lower_inline_math(body, font_size, &ctx.style.math));
-    },
-  }
-
-  result.push(LayoutNode::Vkern {
-    length: eq.bottom_margin,
-  });
-  return result;
+/// `read_style::Alignment`（数式本体の揃え）を `types::Align` に対応付ける
+fn alignment_to_align(alignment: Alignment) -> Align {
+  return match alignment {
+    Alignment::Center => Align::Center,
+    Alignment::Left => Align::Left,
+    Alignment::Right => Align::Right,
+  };
 }
 
 /// インライン数式（`$...$`）を `LayoutNode` 列に変換する
@@ -208,10 +181,6 @@ fn lower_math_node(
         result.extend(lower_math_node(child, font_size, Some(*inner_style), math_style));
       }
       return result;
-    },
-    MathNode::AlignmentMark => {
-      // インライン数式では `&` は意味を持たないので無視する
-      return Vec::new();
     },
   }
 }
@@ -380,13 +349,6 @@ mod tests {
   }
 
   #[test]
-  fn lower_math_alignment_mark_is_ignored_inline() {
-    // インライン数式に紛れ込んだ AlignmentMark は空のノード列を返す
-    let result = lower_math_node(&MathNode::AlignmentMark, 12.0, None, &default_math_style());
-    assert!(result.is_empty(), "AlignmentMark は無視されるべき: {result:?}");
-  }
-
-  #[test]
   fn lower_math_node_bold_styled_propagates_to_text_and_symbol() {
     // Arrange — \mathbold{x12 \alpha} 相当: Styled { Bold, [Text("x12"), Symbol('α')] }
     let node = MathNode::Styled {
@@ -408,41 +370,81 @@ mod tests {
     assert_eq!(texts, "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
   }
 
-  #[test]
-  fn lower_display_math_renders_number_with_format_template_and_serif_font() {
-    // Arrange: number = Some("2") を渡すと、デフォルト書式 "({number})" で "(2)" になり、
-    // 数字は立体（FontKind::Serif）で描画される
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-
-    // Act
-    let nodes = lower_display_math(&ctx, &[MathNode::Text("a".to_string())], Some("2"));
-
-    // Assert: "(2)" を含む Serif Text が末尾近くに含まれる
-    let serif_number = nodes.iter().find_map(|n| match n {
-      LayoutNode::Text(t, style) if t == "(2)" && style.font_kind == FontKind::Serif => Some(t.as_str()),
-      _ => None,
-    });
-    assert!(serif_number.is_some(), "(2) の Serif Text が含まれるはず: {nodes:?}");
+  /// 番号付き 1 行 1 セルの `MathRow` を作るヘルパ
+  fn numbered_row(number: &str) -> MathRow {
+    return MathRow {
+      cells: vec![vec![MathNode::Text("a".to_string())]],
+      number: Some(number.to_string()),
+      label: None,
+    };
   }
 
   #[test]
-  fn lower_display_math_places_number_left_when_configured() {
-    // Arrange: number_side = Left に設定すると、本体の前に番号 Text + Glue が並ぶ
-    let mut style = ReadStyle::default();
-    style.equation.number_side = read_style::NumberSide::Left;
+  fn lower_math_block_formats_number_with_template_and_serif_font() {
+    // Arrange: number = Some("2") → 既定書式 "({number})" で "(2)"、数字は立体（FontKind::Serif）
+    let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
+    let rows = vec![numbered_row("2")];
 
     // Act
-    let nodes = lower_display_math(&ctx, &[MathNode::Text("a".to_string())], Some("3"));
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
 
-    // Assert: 先頭 Vkern の直後に Text("(3)") → Glue → 本体... の順
-    assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
+    // Assert: その行の number ボックスが "(2)" の Serif Text 1 個
+    let LayoutNode::MathBlock {
+      rows: layout_rows, ..
+    } = node
+    else {
+      panic!("MathBlock を期待: {node:?}");
+    };
+    let number = layout_rows[0].number.as_ref().expect("番号あり");
     assert!(
-      matches!(nodes.get(1), Some(LayoutNode::Text(t, s)) if t == "(3)" && s.font_kind == FontKind::Serif),
-      "2 番目に Serif Text(\"(3)\") があるべき: {nodes:?}"
+      matches!(&number[0], LayoutNode::Text(t, s) if t == "(2)" && s.font_kind == FontKind::Serif),
+      "(2) の Serif Text が番号ボックスに入るはず: {number:?}"
     );
-    assert!(matches!(nodes.get(2), Some(LayoutNode::Glue { .. })));
+  }
+
+  #[test]
+  fn lower_math_block_uses_right_numbers_and_center_align_by_default() {
+    // Arrange: 既定は番号右寄せ・本体中央寄せ
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = vec![numbered_row("3")];
+
+    // Act
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
+
+    // Assert
+    let LayoutNode::MathBlock {
+      numbers_on_right,
+      align,
+      ..
+    } = node
+    else {
+      panic!("MathBlock を期待: {node:?}");
+    };
+    assert!(numbers_on_right, "既定では番号は右寄せ");
+    assert_eq!(align, Align::Center, "既定では本体は中央寄せ");
+  }
+
+  #[test]
+  fn lower_math_block_left_number_side_sets_numbers_on_left() {
+    // Arrange: number_side = Left → numbers_on_right = false
+    let mut style = ReadStyle::default();
+    style.equation.number_side = NumberSide::Left;
+    let ctx = LoweringContext::new(&style);
+    let rows = vec![numbered_row("3")];
+
+    // Act
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows);
+
+    // Assert
+    let LayoutNode::MathBlock {
+      numbers_on_right, ..
+    } = node
+    else {
+      panic!("MathBlock を期待: {node:?}");
+    };
+    assert!(!numbers_on_right, "number_side = Left では番号は左寄せ");
   }
 
   #[test]

@@ -1,19 +1,21 @@
 //! 数式環境 — `equation`
 //!
-//! `\begin{equation}...\end{equation}` を [`DocNode::DisplayMath`] に変換します。
-//! 本体は [`syntax::ParseMode::Math`] で構造化された CST から
-//! [`crate::evaluator::math::evaluate_math_body`] で `Vec<MathNode>` に変換します。
+//! `\begin{equation}...\end{equation}` を [`DocNode::MathBlock`]（`kind = Equation`、1 行 1 セル）に
+//! 変換します。本体は [`syntax::ParseMode::Math`] で構造化された CST を
+//! [`super::math_grid::evaluate_grid`] で評価します。`equation` は行区切り `\\`・列区切り `&` を
+//! 許さないため、本体にそれらが現れるとエラーになります（複数行は `align` 等を使う）。
 //!
 //! ## 任意引数
 //!
 //! - `[label=eq:foo]` — `\ref` 解決用ラベル（任意）
 
-use document::DocNode;
+use document::{DocNode, MathEnvKind, MathRow};
 use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 
+use super::math_grid::{GridSpec, evaluate_grid};
 use crate::evaluator::{
-  EvalError, Evaluator, math,
+  EvalError, Evaluator,
   opt_args::{OptType, collect_environment_opt_args, find_string},
 };
 
@@ -21,11 +23,12 @@ use crate::evaluator::{
 ///
 /// [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
 /// `[label=...]` 指定時はそのレジストリにラベルを登録する。番号書式は
-/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
+/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。本体は
+/// 単一行・単一セルとして評価し、`MathRow` 1 件の `MathBlock` を返す。
 ///
 /// # Errors
 ///
-/// 不明な任意引数キーや値の型不一致が発生した場合にエラーを返します
+/// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します
 pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(opt_args, "label");
@@ -41,15 +44,28 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
     .increment_with_label(CounterName::Equation, label.as_deref(), view.span().into())?;
 
   let source = view.source();
-  let body = match view.body() {
-    Some(body_node) => math::evaluate_math_body(source, body_node)?,
-    None => Vec::new(),
+  // equation は単一行・単一セル。行区切り `\\`・列区切り `&` はエラーにする
+  let cells = match view.body() {
+    Some(body_node) => {
+      let spec = GridSpec {
+        allow_row_breaks: false,
+        allow_column_breaks: false,
+      };
+      let grid = evaluate_grid(source, body_node, &spec)?;
+      // 分割を許していないので必ず 1 行。その行のセル列（1 セル）を取り出す
+      grid.into_iter().next().unwrap_or_else(|| vec![Vec::new()])
+    },
+    None => vec![Vec::new()],
   };
 
-  return Ok(vec![DocNode::DisplayMath {
-    body,
-    label,
+  let row = MathRow {
+    cells,
     number: Some(number),
+    label,
+  };
+  return Ok(vec![DocNode::MathBlock {
+    kind: MathEnvKind::Equation,
+    rows: vec![row],
   }]);
 }
 
@@ -57,7 +73,7 @@ pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::MathNode;
+  use document::{MathEnvKind, MathNode};
   use read_style::{Counters, Style};
 
   use super::*;
@@ -82,8 +98,18 @@ mod tests {
     return style;
   }
 
+  /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
+  fn first_row(result: &[DocNode]) -> &document::MathRow {
+    let DocNode::MathBlock { kind, rows } = &result[0] else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");
+    assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
+    return &rows[0];
+  }
+
   #[test]
-  fn equation_produces_display_math() {
+  fn equation_produces_math_block() {
     // Arrange — 上付き付きの簡単なディスプレイ数式
     let arena = Bump::new();
     let source = r"\begin{equation}x^2 = y\end{equation}";
@@ -93,21 +119,16 @@ mod tests {
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — DisplayMath が 1 件、label は None、body に Superscript が含まれる
+    // Assert — MathBlock(Equation) が 1 件、1 行 1 セル、label は None、セルに Superscript
     assert_eq!(result.len(), 1);
-    let DocNode::DisplayMath {
-      body,
-      label,
-      number,
-    } = &result[0]
-    else {
-      panic!("DisplayMath が期待されます: {:?}", result[0]);
-    };
-    assert!(label.is_none());
-    assert_eq!(number.as_deref(), Some("1"));
+    let row = first_row(&result);
+    assert!(row.label.is_none());
+    assert_eq!(row.number.as_deref(), Some("1"));
+    assert_eq!(row.cells.len(), 1, "equation は 1 セル");
     assert!(
-      body.iter().any(|n| matches!(n, MathNode::Superscript(_))),
-      "Superscript ノードが含まれるべき: {body:?}"
+      row.cells[0].iter().any(|n| matches!(n, MathNode::Superscript(_))),
+      "Superscript ノードが含まれるべき: {:?}",
+      row.cells[0]
     );
   }
 
@@ -124,11 +145,9 @@ mod tests {
 
     // Assert — label と number が両方保持されること
     assert_eq!(result.len(), 1);
-    let DocNode::DisplayMath { label, number, .. } = &result[0] else {
-      panic!("DisplayMath が期待されます");
-    };
-    assert_eq!(label.as_deref(), Some("eq:pythag"));
-    assert_eq!(number.as_deref(), Some("1"));
+    let row = first_row(&result);
+    assert_eq!(row.label.as_deref(), Some("eq:pythag"));
+    assert_eq!(row.number.as_deref(), Some("1"));
   }
 
   #[test]
@@ -147,11 +166,41 @@ mod tests {
     let numbers: Vec<Option<&str>> = result
       .iter()
       .map(|n| match n {
-        DocNode::DisplayMath { number, .. } => number.as_deref(),
-        _ => panic!("DisplayMath が期待されます: {n:?}"),
+        DocNode::MathBlock { rows, .. } => rows[0].number.as_deref(),
+        _ => panic!("MathBlock が期待されます: {n:?}"),
       })
       .collect();
     assert_eq!(numbers, vec![Some("1"), Some("2")]);
+  }
+
+  #[test]
+  fn equation_rejects_column_break() {
+    // Arrange — equation 本体の `&`（列区切り）はエラー（複数列は align / matrix を使う）
+    let arena = Bump::new();
+    let source = r"\begin{equation}a & b\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
+  }
+
+  #[test]
+  fn equation_rejects_row_break() {
+    // Arrange — equation 本体の `\\`（行区切り）はエラー（複数行は align / gather を使う）
+    let arena = Bump::new();
+    let source = r"\begin{equation}a \\ b\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
   }
 
   #[test]
@@ -180,11 +229,11 @@ mod tests {
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — Heading 1 件 + DisplayMath 1 件、equation の number は既定書式 "{chapter}.{n}" で "1.1"
+    // Assert — Heading 1 件 + MathBlock 1 件、equation の number は既定書式 "{chapter}.{n}" で "1.1"
     assert_eq!(result.len(), 2);
-    let DocNode::DisplayMath { number, .. } = &result[1] else {
-      panic!("DisplayMath が期待されます: {:?}", result[1]);
+    let DocNode::MathBlock { rows, .. } = &result[1] else {
+      panic!("MathBlock が期待されます: {:?}", result[1]);
     };
-    assert_eq!(number.as_deref(), Some("1.1"));
+    assert_eq!(rows[0].number.as_deref(), Some("1.1"));
   }
 }

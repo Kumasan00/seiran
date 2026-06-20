@@ -329,7 +329,7 @@ pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) ->
       },
       // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）。
       // `DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない。
-      DocNode::DisplayMath { .. }
+      DocNode::MathBlock { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
       | DocNode::PageBreak
