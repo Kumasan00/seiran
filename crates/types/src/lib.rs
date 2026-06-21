@@ -10,8 +10,7 @@
 //! - [`heading_level`] - 見出しのレベル [`HeadingLevel`]
 //! - [`length`] - 単位付き長さ値 [`Length`]
 //! - [`table`] - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
-//! - [`anchor_mark`] - リンク行き先のアンカー [`AnchorMark`]（PDF しおり / 内部リンク）
-//! - [`link_target`] - ハイパーリンクの行き先 [`LinkTarget`]（内部 / 外部）
+//! - [`link`] - ハイパーリンク機構の到達先 [`AnchorMark`]（機構 A）とリンク行き先 [`LinkTarget`]（機構 B）
 //! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
 //! - [`align`] - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
 //!
@@ -45,23 +44,21 @@
 //! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 
 pub mod align;
-pub mod anchor_mark;
 pub mod color;
 pub mod font;
 pub mod font_map;
 pub mod heading_level;
 pub mod length;
-pub mod link_target;
+pub mod link;
 pub mod math;
 pub mod table;
 
 pub use align::Align;
-pub use anchor_mark::AnchorMark;
 pub use color::Color;
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
 pub use length::Length;
-pub use link_target::LinkTarget;
+pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathDelimiter, MathEnvKind};
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};
