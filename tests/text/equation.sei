@@ -33,3 +33,5 @@ e^{i \pi} + 1 = 0
 Letterlike Symbols に散る穴を含めて正しいグリフへ変換される。
 
 スクリプト（花文字）$\mathscript{ABFHL}$ も大文字の穴を含めて変換される。
+
+太字スクリプト $\mathscriptbold{ABC}$ と太字フラクトゥール $\mathfrakturbold{abc}$ は太字字形で出力される。

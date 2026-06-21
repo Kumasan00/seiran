@@ -131,6 +131,14 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       // フラクトゥール: 大文字に 5 個の穴（ℭ ℌ ℑ ℜ ℨ）。小文字は連続。数字・Greek は素通し
       return map_ascii(ch, 0x1d504, 0x1d51e, fraktur_hole);
     },
+    Some(MathStyle::ScriptBold) => {
+      // 太字スクリプト: 大文字・小文字とも連続（穴なし）。数字・Greek は Unicode 未定義のため素通し
+      return map_ascii(ch, 0x1d4d0, 0x1d4ea, no_hole);
+    },
+    Some(MathStyle::FrakturBold) => {
+      // 太字フラクトゥール: 大文字・小文字とも連続（穴なし）。数字・Greek は素通し
+      return map_ascii(ch, 0x1d56c, 0x1d586, no_hole);
+    },
   }
 }
 
@@ -390,5 +398,29 @@ mod tests {
     assert_eq!(translate_math_char('g', style), '\u{210A}'); // ℊ (穴)
     assert_eq!(translate_math_char('o', style), '\u{2134}'); // ℴ (穴)
     assert_eq!(translate_math_char('1', style), '1', "スクリプト数字は素通し");
+  }
+
+  #[test]
+  fn translate_script_bold_maps_contiguous_block() {
+    // Arrange & Act & Assert — 太字スクリプト: 大文字・小文字とも連続（穴なし）、base 先頭/末尾を確認
+    let style = Some(MathStyle::ScriptBold);
+    assert_eq!(translate_math_char('A', style), '\u{1D4D0}'); // 大文字 base 先頭
+    assert_eq!(translate_math_char('Z', style), '\u{1D4E9}'); // 大文字 base 末尾
+    assert_eq!(translate_math_char('a', style), '\u{1D4EA}'); // 小文字 base 先頭
+    assert_eq!(translate_math_char('z', style), '\u{1D503}'); // 小文字 base 末尾
+    assert_eq!(translate_math_char('1', style), '1', "太字スクリプト数字は素通し");
+    assert_eq!(translate_math_char('α', style), 'α', "太字スクリプト Greek は Unicode 未定義のため素通し");
+  }
+
+  #[test]
+  fn translate_fraktur_bold_maps_contiguous_block() {
+    // Arrange & Act & Assert — 太字フラクトゥール: 大文字・小文字とも連続（穴なし）、base 先頭/末尾を確認
+    let style = Some(MathStyle::FrakturBold);
+    assert_eq!(translate_math_char('A', style), '\u{1D56C}'); // 大文字 base 先頭
+    assert_eq!(translate_math_char('Z', style), '\u{1D585}'); // 大文字 base 末尾
+    assert_eq!(translate_math_char('a', style), '\u{1D586}'); // 小文字 base 先頭
+    assert_eq!(translate_math_char('z', style), '\u{1D59F}'); // 小文字 base 末尾
+    assert_eq!(translate_math_char('1', style), '1', "太字フラクトゥール数字は素通し");
+    assert_eq!(translate_math_char('α', style), 'α', "太字フラクトゥール Greek は Unicode 未定義のため素通し");
   }
 }

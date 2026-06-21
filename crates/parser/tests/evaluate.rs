@@ -447,11 +447,13 @@ fn evaluate_inline_math_styled_sans_bold_italic_with_greek() {
 
 #[test]
 fn evaluate_inline_math_styled_math_alphabets_resolve() {
-  // Arrange — 数学字体 4 コマンドが対応する MathStyle の Styled に解決される
-  let cases: [(&str, MathStyle); 3] = [
+  // Arrange — 数学字体 5 コマンドが対応する MathStyle の Styled に解決される
+  let cases: [(&str, MathStyle); 5] = [
     ("mathdoublestruck", MathStyle::DoubleStruck),
     ("mathscript", MathStyle::Script),
     ("mathfraktur", MathStyle::Fraktur),
+    ("mathscriptbold", MathStyle::ScriptBold),
+    ("mathfrakturbold", MathStyle::FrakturBold),
   ];
 
   for (name, expected) in cases {
