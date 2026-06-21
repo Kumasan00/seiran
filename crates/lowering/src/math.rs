@@ -463,6 +463,21 @@ mod tests {
   }
 
   #[test]
+  fn lower_math_text_script_maps_letters_with_holes() {
+    // Arrange & Act — \mathscript{ABb1} 相当: A は連続、B は穴(ℬ)、b は連続小文字、数字は素通し
+    let nodes = lower_math_text("ABb1", 12.0, Some(MathStyle::Script));
+
+    // Assert — A→U+1D49C, B→U+212C(穴), b→U+1D4B7, 1 は素通し
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(t, _) => {
+        assert_eq!(t, "\u{1D49C}\u{212C}\u{1D4B7}1");
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
   fn lower_math_node_styled_propagates_into_frac_body() {
     // Arrange — \mathbold{\frac{a}{b}}: 内側 frac の a と b は bold で変換される
     let node = MathNode::Styled {

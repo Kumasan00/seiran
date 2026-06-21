@@ -446,6 +446,34 @@ fn evaluate_inline_math_styled_sans_bold_italic_with_greek() {
 }
 
 #[test]
+fn evaluate_inline_math_styled_math_alphabets_resolve() {
+  // Arrange — 数学字体 4 コマンドが対応する MathStyle の Styled に解決される
+  let cases: [(&str, MathStyle); 3] = [
+    ("mathdoublestruck", MathStyle::DoubleStruck),
+    ("mathscript", MathStyle::Script),
+    ("mathfraktur", MathStyle::Fraktur),
+  ];
+
+  for (name, expected) in cases {
+    // Act
+    let result = evaluate_source(&format!(r"$\{name}{{R}}$"));
+
+    // Assert
+    let DocNode::Paragraph(inlines) = &result[0] else {
+      panic!("Paragraph が期待されます: {name}");
+    };
+    let InlineNode::InlineMath(math) = &inlines[0] else {
+      panic!("InlineMath が期待されます: {name}");
+    };
+    let MathNode::Styled { style, body } = &math[0] else {
+      panic!("Styled が期待されます ({name}): {:?}", math[0]);
+    };
+    assert_eq!(*style, expected, "{name} は {expected:?} に解決されるべき");
+    assert!(matches!(&body[0], MathNode::Text(t) if t == "R"), "body は Text(\"R\"): {name}");
+  }
+}
+
+#[test]
 fn evaluate_inline_math_styled_rejects_missing_argument() {
   // Arrange & Act — 引数なしの \mathbold は MissingCommandArgument
   let error = evaluate_error(r"$\mathbold$");

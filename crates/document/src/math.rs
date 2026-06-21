@@ -74,6 +74,12 @@ pub enum MathStyle {
   SansBoldItalic,
   /// `\mathmono` — 等幅
   Mono,
+  /// `\mathdoublestruck` — 黒板太字（double-struck, ℝ ℂ ℕ 等）
+  DoubleStruck,
+  /// `\mathscript` — スクリプト（roundhand, 花文字）
+  Script,
+  /// `\mathfraktur` — フラクトゥール（ドイツ文字, ℌ ℑ ℜ 等）
+  Fraktur,
 }
 
 /// ディスプレイ数式環境の 1 行
@@ -109,6 +115,9 @@ impl MathStyle {
       "mathsansbold" => Some(MathStyle::SansBold),
       "mathsansbolditalic" => Some(MathStyle::SansBoldItalic),
       "mathmono" => Some(MathStyle::Mono),
+      "mathdoublestruck" => Some(MathStyle::DoubleStruck),
+      "mathscript" => Some(MathStyle::Script),
+      "mathfraktur" => Some(MathStyle::Fraktur),
       _ => None,
     };
   }
@@ -194,6 +203,9 @@ mod tests {
     assert_eq!(MathStyle::from_command_name("mathsansbold"), Some(MathStyle::SansBold));
     assert_eq!(MathStyle::from_command_name("mathsansbolditalic"), Some(MathStyle::SansBoldItalic));
     assert_eq!(MathStyle::from_command_name("mathmono"), Some(MathStyle::Mono));
+    assert_eq!(MathStyle::from_command_name("mathdoublestruck"), Some(MathStyle::DoubleStruck));
+    assert_eq!(MathStyle::from_command_name("mathscript"), Some(MathStyle::Script));
+    assert_eq!(MathStyle::from_command_name("mathfraktur"), Some(MathStyle::Fraktur));
   }
 
   #[test]
