@@ -80,6 +80,10 @@ pub enum MathStyle {
   Script,
   /// `\mathfraktur` — フラクトゥール（ドイツ文字, ℌ ℑ ℜ 等）
   Fraktur,
+  /// `\mathscriptbold` — 太字スクリプト（bold roundhand, 花文字の太字）
+  ScriptBold,
+  /// `\mathfrakturbold` — 太字フラクトゥール（bold ドイツ文字）
+  FrakturBold,
 }
 
 /// ディスプレイ数式環境の 1 行
@@ -118,6 +122,8 @@ impl MathStyle {
       "mathdoublestruck" => Some(MathStyle::DoubleStruck),
       "mathscript" => Some(MathStyle::Script),
       "mathfraktur" => Some(MathStyle::Fraktur),
+      "mathscriptbold" => Some(MathStyle::ScriptBold),
+      "mathfrakturbold" => Some(MathStyle::FrakturBold),
       _ => None,
     };
   }
@@ -193,7 +199,7 @@ mod tests {
 
   #[test]
   fn math_style_from_command_name_resolves_all_styles() {
-    // Arrange & Act & Assert — 9 個のスタイルコマンドが正しく解決される
+    // Arrange & Act & Assert — 14 個のスタイルコマンドが正しく解決される
     assert_eq!(MathStyle::from_command_name("mathserif"), Some(MathStyle::Serif));
     assert_eq!(MathStyle::from_command_name("mathitalic"), Some(MathStyle::Italic));
     assert_eq!(MathStyle::from_command_name("mathbold"), Some(MathStyle::Bold));
@@ -206,6 +212,8 @@ mod tests {
     assert_eq!(MathStyle::from_command_name("mathdoublestruck"), Some(MathStyle::DoubleStruck));
     assert_eq!(MathStyle::from_command_name("mathscript"), Some(MathStyle::Script));
     assert_eq!(MathStyle::from_command_name("mathfraktur"), Some(MathStyle::Fraktur));
+    assert_eq!(MathStyle::from_command_name("mathscriptbold"), Some(MathStyle::ScriptBold));
+    assert_eq!(MathStyle::from_command_name("mathfrakturbold"), Some(MathStyle::FrakturBold));
   }
 
   #[test]

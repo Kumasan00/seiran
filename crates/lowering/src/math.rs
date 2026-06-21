@@ -478,6 +478,36 @@ mod tests {
   }
 
   #[test]
+  fn lower_math_text_script_bold_maps_contiguous_block() {
+    // Arrange & Act — \mathscriptbold{AZaz} 相当: 大文字・小文字とも連続（穴なし）
+    let nodes = lower_math_text("AZaz", 12.0, Some(MathStyle::ScriptBold));
+
+    // Assert — A→U+1D4D0, Z→U+1D4E9, a→U+1D4EA, z→U+1D503
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(t, _) => {
+        assert_eq!(t, "\u{1D4D0}\u{1D4E9}\u{1D4EA}\u{1D503}");
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn lower_math_text_fraktur_bold_maps_contiguous_block() {
+    // Arrange & Act — \mathfrakturbold{AZaz} 相当: 大文字・小文字とも連続（穴なし）
+    let nodes = lower_math_text("AZaz", 12.0, Some(MathStyle::FrakturBold));
+
+    // Assert — A→U+1D56C, Z→U+1D585, a→U+1D586, z→U+1D59F
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+      LayoutNode::Text(t, _) => {
+        assert_eq!(t, "\u{1D56C}\u{1D585}\u{1D586}\u{1D59F}");
+      },
+      other => panic!("Math Text を期待: {other:?}"),
+    }
+  }
+
+  #[test]
   fn lower_math_node_styled_propagates_into_frac_body() {
     // Arrange — \mathbold{\frac{a}{b}}: 内側 frac の a と b は bold で変換される
     let node = MathNode::Styled {
