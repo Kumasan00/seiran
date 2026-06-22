@@ -5,10 +5,12 @@
 //!
 //! ## コマンドの追加方法
 //!
-//! 新しいコマンドを追加するには、以下の手順に従います:
+//! コマンドは **機能コマンド**（`COMMAND_MAP`）と **記号コマンド**（[`symbol::SYMBOL_MAP`]）に
+//! 分かれます。記号（ギリシャ文字・数学記号）は `SYMBOL_MAP` に置き、`COMMAND_MAP` には
+//! 制御・書体・色・見出し・参照・リンクといった機能コマンドだけを置きます。
 //!
-//! 1. **単一文字コマンド**（`\alpha` 等）:
-//!    `COMMAND_MAP` に `"name" => CommandKind::SingleChar('文字')` を追加するだけ。
+//! 1. **記号コマンド**（`\alpha` `\leq` 等）:
+//!    [`symbol::SYMBOL_MAP`] に `"name" => MathSymbol::new('文字', MathClass::Class)` を追加するだけ。
 //!
 //! 2. **書体指定コマンド**（`\bold` 等）:
 //!    `COMMAND_MAP` に `"name" => CommandKind::StyledText(FontKind::Variant)` を追加するだけ。
@@ -25,7 +27,7 @@ use phf::phf_map;
 use syntax::ast::CommandView;
 use types::FontKind;
 
-use crate::evaluator::{EvalError, Evaluator, opt_args::collect_command_opt_args};
+use crate::evaluator::{EvalError, Evaluator, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args};
 
 pub(crate) mod cite;
 mod control;
@@ -33,6 +35,7 @@ mod headline;
 pub(crate) mod inline;
 pub(crate) mod link;
 pub(crate) mod ref_;
+pub(crate) mod symbol;
 
 /// コマンドの実行結果
 ///
@@ -67,8 +70,6 @@ pub(crate) enum CommandKind {
   /// 色は書体（`FontKind`）と直交する属性なので `StyledText` とは別経路で扱い、
   /// ネスト時は内側の `color` が外側を上書きする。
   ColoredText,
-  /// 引数なしで単一文字を出力するコマンド（ギリシャ文字・数学記号）
-  SingleChar(char),
   /// `\ref{label}` — 相互参照のスタブを生成し、pass2 で解決する
   Ref,
   /// `\cite{key}` — 文献引用のスタブを生成し、pass2 でキー存在を検証する
@@ -77,8 +78,6 @@ pub(crate) enum CommandKind {
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
   Href,
-  /// 未定義のコマンド
-  Undefined,
 }
 
 impl CommandKind {
@@ -93,8 +92,6 @@ impl CommandKind {
 
       Self::ColoredText => inline::colored_text(view).map(CommandResult::Inline),
 
-      Self::SingleChar(ch) => single_char(view, ch).map(CommandResult::Inline),
-
       Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
 
       Self::Cite => cite::cite_command(view).map(CommandResult::Inline),
@@ -102,11 +99,6 @@ impl CommandKind {
       Self::Url => link::url_command(view).map(CommandResult::Inline),
 
       Self::Href => link::href_command(view).map(CommandResult::Inline),
-
-      Self::Undefined => Err(EvalError::UnknownCommand {
-        name: view.name().to_string(),
-        span: view.span().into(),
-      }),
     }
   }
 }
@@ -171,105 +163,7 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "paragraph" => CommandKind::Headline(HeadingLevel::Paragraph),
   "subparagraph" => CommandKind::Headline(HeadingLevel::Subparagraph),
 
-  // ギリシャ文字（大文字）
-  "Alpha" => CommandKind::SingleChar('\u{0391}'),
-  "Beta" => CommandKind::SingleChar('\u{0392}'),
-  "Gamma" => CommandKind::SingleChar('\u{0393}'),
-  "Delta" => CommandKind::SingleChar('\u{0394}'),
-  "Epsilon" => CommandKind::SingleChar('\u{0395}'),
-  "Zeta" => CommandKind::SingleChar('\u{0396}'),
-  "Eta" => CommandKind::SingleChar('\u{0397}'),
-  "Theta" => CommandKind::SingleChar('\u{0398}'),
-  "Iota" => CommandKind::SingleChar('\u{0399}'),
-  "Kappa" => CommandKind::SingleChar('\u{039A}'),
-  "Lambda" => CommandKind::SingleChar('\u{039B}'),
-  "Mu" => CommandKind::SingleChar('\u{039C}'),
-  "Nu" => CommandKind::SingleChar('\u{039D}'),
-  "Xi" => CommandKind::SingleChar('\u{039E}'),
-  "Omicron" => CommandKind::SingleChar('\u{039F}'),
-  "Pi" => CommandKind::SingleChar('\u{03A0}'),
-  "Rho" => CommandKind::SingleChar('\u{03A1}'),
-  "Sigma" => CommandKind::SingleChar('\u{03A3}'),
-  "Tau" => CommandKind::SingleChar('\u{03A4}'),
-  "Upsilon" => CommandKind::SingleChar('\u{03A5}'),
-  "Phi" => CommandKind::SingleChar('\u{03A6}'),
-  "Chi" => CommandKind::SingleChar('\u{03A7}'),
-  "Psi" => CommandKind::SingleChar('\u{03A8}'),
-  "Omega" => CommandKind::SingleChar('\u{03A9}'),
-
-  // ギリシャ文字（小文字）
-  "alpha" => CommandKind::SingleChar('\u{03B1}'),
-  "beta" => CommandKind::SingleChar('\u{03B2}'),
-  "gamma" => CommandKind::SingleChar('\u{03B3}'),
-  "delta" => CommandKind::SingleChar('\u{03B4}'),
-  "epsilon" => CommandKind::SingleChar('\u{03B5}'),
-  "varepsilon" => CommandKind::SingleChar('\u{03F5}'),
-  "zeta" => CommandKind::SingleChar('\u{03B6}'),
-  "eta" => CommandKind::SingleChar('\u{03B7}'),
-  "theta" => CommandKind::SingleChar('\u{03B8}'),
-  "vartheta" => CommandKind::SingleChar('\u{03D1}'),
-  "iota" => CommandKind::SingleChar('\u{03B9}'),
-  "kappa" => CommandKind::SingleChar('\u{03BA}'),
-  "varkappa" => CommandKind::SingleChar('\u{03F0}'),
-  "lambda" => CommandKind::SingleChar('\u{03BB}'),
-  "mu" => CommandKind::SingleChar('\u{03BC}'),
-  "nu" => CommandKind::SingleChar('\u{03BD}'),
-  "xi" => CommandKind::SingleChar('\u{03BE}'),
-  "omicron" => CommandKind::SingleChar('\u{03BF}'),
-  "pi" => CommandKind::SingleChar('\u{03C0}'),
-  "varpi" => CommandKind::SingleChar('\u{03D6}'),
-  "rho" => CommandKind::SingleChar('\u{03C1}'),
-  "varrho" => CommandKind::SingleChar('\u{03F1}'),
-  "sigma" => CommandKind::SingleChar('\u{03C3}'),
-  "varsigma" => CommandKind::SingleChar('\u{03C2}'),
-  "tau" => CommandKind::SingleChar('\u{03C4}'),
-  "upsilon" => CommandKind::SingleChar('\u{03C5}'),
-  "phi" => CommandKind::SingleChar('\u{03C6}'),
-  "chi" => CommandKind::SingleChar('\u{03C7}'),
-  "psi" => CommandKind::SingleChar('\u{03C8}'),
-  "omega" => CommandKind::SingleChar('\u{03C9}'),
-
-  // 数学記号
-  "forall" => CommandKind::SingleChar('\u{2200}'),
-  "complement" => CommandKind::SingleChar('\u{2201}'),
-  "partial" => CommandKind::SingleChar('\u{2202}'),
-  "exists" => CommandKind::SingleChar('\u{2203}'),
-  "notexists" => CommandKind::SingleChar('\u{2204}'),
-  "emptyset" => CommandKind::SingleChar('\u{2205}'),
-  "increment" => CommandKind::SingleChar('\u{2206}'),
-  "nabla" => CommandKind::SingleChar('\u{2207}'),
-  "in" => CommandKind::SingleChar('\u{2208}'),
-  "notin" => CommandKind::SingleChar('\u{2209}'),
-  "ni" => CommandKind::SingleChar('\u{220B}'),
-  "notni" => CommandKind::SingleChar('\u{220C}'),
-  "qed" => CommandKind::SingleChar('\u{220E}'),
-  "prod" => CommandKind::SingleChar('\u{220F}'),
-  "coprod" => CommandKind::SingleChar('\u{2210}'),
-  "sum" => CommandKind::SingleChar('\u{2211}'),
-  "minus" => CommandKind::SingleChar('\u{2212}'),
-  "mp" => CommandKind::SingleChar('\u{2213}'),
-  "dotplus" => CommandKind::SingleChar('\u{2214}'),
-  "slash" => CommandKind::SingleChar('\u{2215}'),
-  "surd" => CommandKind::SingleChar('\u{221A}'),
-  "propto" => CommandKind::SingleChar('\u{221D}'),
-  "infty" => CommandKind::SingleChar('\u{221E}'),
-  "rightangle" => CommandKind::SingleChar('\u{221F}'),
-  "angle" => CommandKind::SingleChar('\u{2220}'),
-  "parallel" => CommandKind::SingleChar('\u{2225}'),
-  "notparallel" => CommandKind::SingleChar('\u{2226}'),
-  "land" => CommandKind::SingleChar('\u{2227}'),
-  "lor" => CommandKind::SingleChar('\u{2228}'),
-  "cap" => CommandKind::SingleChar('\u{2229}'),
-  "cup" => CommandKind::SingleChar('\u{222A}'),
-  "int" => CommandKind::SingleChar('\u{222B}'),
-  "iint" => CommandKind::SingleChar('\u{222C}'),
-  "iiint" => CommandKind::SingleChar('\u{222D}'),
-  "oint" => CommandKind::SingleChar('\u{222E}'),
-  "oiint" => CommandKind::SingleChar('\u{222F}'),
-  "oiiint" => CommandKind::SingleChar('\u{2230}'),
-  "therefore" => CommandKind::SingleChar('\u{2234}'),
-  "because" => CommandKind::SingleChar('\u{2235}'),
-  "backsim" => CommandKind::SingleChar('\u{223D}'),
+  // 記号（ギリシャ文字・数学記号）は機能コマンドと分離して `symbol::SYMBOL_MAP` に置く。
 };
 
 impl Evaluator {
@@ -286,9 +180,23 @@ impl Evaluator {
   /// # Errors
   ///
   /// 未知のコマンドやコマンド実行中のエラーが発生した場合
+  ///
+  /// # 解決順序
+  ///
+  /// `COMMAND_MAP`（機能コマンド）を引いた後 miss なら [`SYMBOL_MAP`]（記号）を引く。
+  /// 機能コマンド名が記号名に優先する（両マップにキー重複はテストで排除済み）。
+  /// どちらにも無ければ未知コマンドとしてエラーにする。
   pub(crate) fn evaluate_command(&mut self, view: &CommandView) -> Result<CommandResult, EvalError> {
-    let command_kind = COMMAND_MAP.get(view.name()).copied().unwrap_or(CommandKind::Undefined);
-    return command_kind.execute(view, self);
+    if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
+      return command_kind.execute(view, self);
+    }
+    if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
+      return single_char(view, symbol.ch).map(CommandResult::Inline);
+    }
+    return Err(EvalError::UnknownCommand {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
   }
 }
 
@@ -307,7 +215,7 @@ mod tests {
 
   #[test]
   fn single_char_rejects_unknown_opt_arg_key() {
-    // Arrange — `\alpha` は SingleChar コマンドで任意引数を受け付けない
+    // Arrange — `\alpha` は記号コマンドで任意引数を受け付けない
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = parse(source, &arena).unwrap();

@@ -308,6 +308,43 @@ fn evaluate_inline_command_stays_in_paragraph() {
 }
 
 #[test]
+fn evaluate_amssymb_symbol_in_body_resolves_to_symbol() {
+  // Arrange & Act — `\geq` は SYMBOL_MAP に追加した amssymb 記号。本文文脈で解決される
+  let result = evaluate_source(r"a \geq b");
+
+  // Assert
+  assert_eq!(result.len(), 1);
+  match &result[0] {
+    DocNode::Paragraph(inlines) => {
+      assert!(
+        inlines.iter().any(|n| matches!(n, InlineNode::Symbol('≥'))),
+        "≥ の Symbol ノードが含まれるはず: {inlines:?}"
+      );
+    },
+    _ => panic!("Paragraph が期待されます"),
+  }
+}
+
+#[test]
+fn evaluate_amssymb_symbol_in_math_resolves_to_symbol() {
+  // Arrange & Act — 数式文脈でも SYMBOL_MAP 経由で記号が解決される
+  let result = evaluate_source(r"$a \leq b$");
+
+  // Assert
+  assert_eq!(result.len(), 1);
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます");
+  };
+  let InlineNode::InlineMath(math) = &inlines[0] else {
+    panic!("InlineMath が期待されます");
+  };
+  assert!(
+    math.iter().any(|n| matches!(n, MathNode::Symbol('≤'))),
+    "≤ の MathNode::Symbol が含まれるはず: {math:?}"
+  );
+}
+
+#[test]
 fn evaluate_empty_input_returns_empty() {
   let result = evaluate_source("");
   assert!(result.is_empty());

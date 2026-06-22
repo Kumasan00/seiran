@@ -1,9 +1,40 @@
-//! 数式環境の種別 [`MathEnvKind`] と区切り括弧 [`MathDelimiter`]。
+//! 数式環境の種別 [`MathEnvKind`]・区切り括弧 [`MathDelimiter`]・記号の数式クラス [`MathClass`]。
 //!
 //! ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）の
 //! 種別を表す共通型。`document`（IR）・`lowering`（`LayoutNode`）・`layout`（組版）が
 //! 共有するため、依存の基盤である本クレートに置く。`parser` が環境名から決定し、
 //! `layout` 段の列整列・区切り括弧・行採番まで透過的に伝播する。
+//!
+//! [`MathClass`] は数式記号のクラス（順序子・演算子・二項演算子・関係子・開き / 閉じ括弧・区切り）を
+//! 表す。`parser` の記号テーブルが各記号に付与し、将来の数式スペーシング実装がクラスの
+//! 組み合わせから記号間のアキを決めるためのデータ源となる（現状はクラスを記録するのみ）。
+
+/// 数式記号のクラス
+///
+/// TeX 系の数式組版では、記号同士の間隔がこのクラスの組み合わせで決まる
+/// （`a + b` の `+`（[`Bin`](MathClass::Bin)）は中アキ、`a = b` の `=`（[`Rel`](MathClass::Rel)）は太アキ）。
+/// 現状の Seiran はこのスペーシングを実装していないが、記号テーブルに
+/// クラスを記録しておくことで、将来の数式スペーシング実装が記号表を
+/// 作り直さずにクラスを消費できる。
+///
+/// クラスは上流の `unicode-math-table.tex` の `\mathord` / `\mathbin` 等から取得する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathClass {
+  /// 順序子（`\mathord`）— 変数・名前付き記号など（`\alpha` `\infty` `\hbar`）
+  Ord,
+  /// 大型演算子（`\mathop`）— 総和・積分など（`\sum` `\int` `\prod`）
+  Op,
+  /// 二項演算子（`\mathbin`）— 中アキを伴う演算子（`\times` `\oplus` `\cup`）
+  Bin,
+  /// 関係子（`\mathrel`）— 太アキを伴う関係・矢印（`\leq` `\subseteq` `\rightarrow`）
+  Rel,
+  /// 開き括弧（`\mathopen`）— 開き区切り（`\langle` `\lceil`）
+  Open,
+  /// 閉じ括弧（`\mathclose`）— 閉じ区切り（`\rangle` `\rceil`）
+  Close,
+  /// 区切り（`\mathpunct`）— 句読点的記号（`\colon` 等）
+  Punct,
+}
 
 /// ディスプレイ数式環境の種別
 ///
