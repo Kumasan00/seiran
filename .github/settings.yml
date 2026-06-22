@@ -1,0 +1,18 @@
+# GitHub リポジトリ設定の単一ソース。
+# 反映には Probot "Settings" App のインストールが必要: https://github.com/apps/settings
+# default ブランチ(main)のこのファイルを更新すると、App が設定を同期する。
+# ここに無いキーは App が触らない（既存値を保持する）。
+repository:
+  name: seiran
+
+  # マージは squash 一本（merge / rebase commit は無効）。main を 1 PR = 1 コミットの linear に保つ。
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+
+  # squash の件名 = PR タイトル、本文 = PR 本文（PR テンプレの内容がそのまま履歴になる）。
+  squash_merge_commit_title: PR_TITLE
+  squash_merge_commit_message: PR_BODY
+
+  # マージ済みブランチを自動削除。
+  delete_branch_on_merge: true
