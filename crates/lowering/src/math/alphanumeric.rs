@@ -122,9 +122,11 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       }
       return map_digit(ch, 0x1d7d8);
     },
-    Some(MathStyle::Script) => {
-      // スクリプト（roundhand）: 大文字に 8 個・小文字に 3 個の穴。数字・Greek は素通し
-      // chancery（カリグラフィー）は OpenType ss01 が必要なため別途対応する
+    Some(MathStyle::Script | MathStyle::Calligraphic) => {
+      // スクリプト（roundhand）とカリグラフィー（chancery）は同一の基底コードポイントを共有する
+      // （大文字に 8 個・小文字に 3 個の穴。数字・Greek は素通し）。両者の字形差はここでは付けず、
+      // カリグラフィーのみ呼び出し側 `push_math_char` が異体字セレクタ VS1（U+FE00）を付与して
+      // chancery 字形を選ぶ（VS1 はフォント依存。非対応フォントではスクリプト字形にフォールバック）。
       return map_ascii(ch, 0x1d49c, 0x1d4b6, script_hole);
     },
     Some(MathStyle::Fraktur) => {
@@ -139,6 +141,23 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       // 太字フラクトゥール: 大文字・小文字とも連続（穴なし）。数字・Greek は素通し
       return map_ascii(ch, 0x1d56c, 0x1d586, no_hole);
     },
+  }
+}
+
+/// 1 文字を `style` に応じて変換し、必要なら異体字セレクタを付けて `out` に書き込む
+///
+/// [`translate_math_char`] が返す基底文字を push したうえで、`style` が
+/// [`MathStyle::Calligraphic`] かつ入力が ASCII 英字のときだけ chancery 異体字セレクタ
+/// VS1（U+FE00）を続けて push する。基底文字 + VS1 を同一の `LayoutNode::Text` 文字列に
+/// 含めることで、後段のシェーピング（harfrust）が 1 クラスタとして処理し、Unicode 数式
+/// 異体字シーケンスに対応した数式フォントで chancery 字形が選ばれる。
+///
+/// 数字・Greek・記号には chancery 異体字が存在しないため VS1 は付与しない。
+/// [`MathStyle::Calligraphic`] 以外のスタイルでは VS1 を一切付与せず、従来挙動を保つ。
+pub(super) fn push_math_char(out: &mut String, ch: char, style: Option<MathStyle>) {
+  out.push(translate_math_char(ch, style));
+  if style == Some(MathStyle::Calligraphic) && ch.is_ascii_alphabetic() {
+    out.push('\u{FE00}');
   }
 }
 
@@ -169,9 +188,11 @@ fn double_struck_hole(ch: char) -> Option<char> {
   };
 }
 
-/// Mathematical Script（スクリプト / カリグラフィー）の穴
+/// Mathematical Script（スクリプト / カリグラフィー共用の基底）の穴
 ///
 /// 大文字 B E F H I L M R と小文字 e g o が Letterlike Symbols に散在する。
+/// スクリプト（roundhand）とカリグラフィー（chancery）は同一の基底コードポイントを共有し、
+/// カリグラフィーはこの基底に VS1 を付けて字形を切り替える（[`push_math_char`] 参照）。
 fn script_hole(ch: char) -> Option<char> {
   return match ch {
     'B' => Some('\u{212C}'), // ℬ
@@ -410,6 +431,51 @@ mod tests {
     assert_eq!(translate_math_char('z', style), '\u{1D503}'); // 小文字 base 末尾
     assert_eq!(translate_math_char('1', style), '1', "太字スクリプト数字は素通し");
     assert_eq!(translate_math_char('α', style), 'α', "太字スクリプト Greek は Unicode 未定義のため素通し");
+  }
+
+  #[test]
+  fn translate_calligraphic_reuses_script_codepoints() {
+    // Arrange & Act & Assert — カリグラフィーの基底はスクリプトと同一（穴も共有）。VS1 は別途付与
+    let cal = Some(MathStyle::Calligraphic);
+    let script = Some(MathStyle::Script);
+    assert_eq!(translate_math_char('A', cal), translate_math_char('A', script));
+    assert_eq!(translate_math_char('A', cal), '\u{1D49C}'); // 連続
+    assert_eq!(translate_math_char('B', cal), '\u{212C}'); // ℬ (穴)
+    assert_eq!(translate_math_char('e', cal), '\u{212F}'); // ℯ (穴)
+    assert_eq!(translate_math_char('z', cal), '\u{1D4CF}'); // 小文字 base 末尾
+    assert_eq!(translate_math_char('1', cal), '1', "カリグラフィー数字は素通し");
+    assert_eq!(translate_math_char('α', cal), 'α', "カリグラフィー Greek は素通し");
+  }
+
+  #[test]
+  fn push_math_char_appends_vs1_only_for_calligraphic_letters() {
+    // Arrange — カリグラフィーは ASCII 英字に VS1 (U+FE00) を付与、数字・Greek には付けない
+    let cal = Some(MathStyle::Calligraphic);
+
+    // Act & Assert
+    let mut a = String::new();
+    push_math_char(&mut a, 'A', cal);
+    assert_eq!(a, "\u{1D49C}\u{FE00}", "カリグラフィー英字は基底 + VS1");
+
+    let mut hole = String::new();
+    push_math_char(&mut hole, 'B', cal);
+    assert_eq!(hole, "\u{212C}\u{FE00}", "Letterlike の穴文字にも VS1 を付与");
+
+    let mut digit = String::new();
+    push_math_char(&mut digit, '1', cal);
+    assert_eq!(digit, "1", "数字には VS1 を付けない");
+  }
+
+  #[test]
+  fn push_math_char_keeps_other_styles_unchanged() {
+    // Arrange & Act & Assert — カリグラフィー以外は VS1 を一切付けず従来挙動（単一コードポイント）
+    let mut script = String::new();
+    push_math_char(&mut script, 'A', Some(MathStyle::Script));
+    assert_eq!(script, "\u{1D49C}", "スクリプトは VS1 無し（既存挙動不変）");
+
+    let mut default = String::new();
+    push_math_char(&mut default, 'x', None);
+    assert_eq!(default, "\u{1D465}", "デフォルトは italic 化のみ");
   }
 
   #[test]

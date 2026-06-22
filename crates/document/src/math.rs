@@ -78,6 +78,13 @@ pub enum MathStyle {
   DoubleStruck,
   /// `\mathscript` — スクリプト（roundhand, 花文字）
   Script,
+  /// `\mathcalligraphic` — カリグラフィー（chancery, 花文字の筆記体）
+  ///
+  /// スクリプトと同一の基底コードポイントに異体字セレクタ VS1（U+FE00）を付与して
+  /// chancery 字形を要求する。Unicode の数式異体字シーケンスに対応した数式フォントでのみ
+  /// chancery 字形が選ばれ、非対応フォントでは VS1 が無視されてスクリプト字形に
+  /// フォールバックする（フォント非依存対応は OpenType `ss01` を使う別 issue で行う）。
+  Calligraphic,
   /// `\mathfraktur` — フラクトゥール（ドイツ文字, ℌ ℑ ℜ 等）
   Fraktur,
   /// `\mathscriptbold` — 太字スクリプト（bold roundhand, 花文字の太字）
@@ -121,6 +128,7 @@ impl MathStyle {
       "mathmono" => Some(MathStyle::Mono),
       "mathdoublestruck" => Some(MathStyle::DoubleStruck),
       "mathscript" => Some(MathStyle::Script),
+      "mathcalligraphic" => Some(MathStyle::Calligraphic),
       "mathfraktur" => Some(MathStyle::Fraktur),
       "mathscriptbold" => Some(MathStyle::ScriptBold),
       "mathfrakturbold" => Some(MathStyle::FrakturBold),
@@ -199,7 +207,7 @@ mod tests {
 
   #[test]
   fn math_style_from_command_name_resolves_all_styles() {
-    // Arrange & Act & Assert — 14 個のスタイルコマンドが正しく解決される
+    // Arrange & Act & Assert — 15 個のスタイルコマンドが正しく解決される
     assert_eq!(MathStyle::from_command_name("mathserif"), Some(MathStyle::Serif));
     assert_eq!(MathStyle::from_command_name("mathitalic"), Some(MathStyle::Italic));
     assert_eq!(MathStyle::from_command_name("mathbold"), Some(MathStyle::Bold));
@@ -211,6 +219,7 @@ mod tests {
     assert_eq!(MathStyle::from_command_name("mathmono"), Some(MathStyle::Mono));
     assert_eq!(MathStyle::from_command_name("mathdoublestruck"), Some(MathStyle::DoubleStruck));
     assert_eq!(MathStyle::from_command_name("mathscript"), Some(MathStyle::Script));
+    assert_eq!(MathStyle::from_command_name("mathcalligraphic"), Some(MathStyle::Calligraphic));
     assert_eq!(MathStyle::from_command_name("mathfraktur"), Some(MathStyle::Fraktur));
     assert_eq!(MathStyle::from_command_name("mathscriptbold"), Some(MathStyle::ScriptBold));
     assert_eq!(MathStyle::from_command_name("mathfrakturbold"), Some(MathStyle::FrakturBold));
