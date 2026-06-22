@@ -9,6 +9,7 @@
 //! - [`font_map`] - 全フォント種別に値を対応付ける汎用コンテナ [`FontMap`]
 //! - [`heading_level`] - 見出しのレベル [`HeadingLevel`]
 //! - [`length`] - 単位付き長さ値 [`Length`]
+//! - [`math`] - 数式環境の種別 [`MathEnvKind`] / 区切り括弧 [`MathDelimiter`] / 記号の数式クラス [`MathClass`]
 //! - [`table`] - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
 //! - [`link`] - ハイパーリンク機構の到達先 [`AnchorMark`]（機構 A）とリンク行き先 [`LinkTarget`]（機構 B）
 //! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
@@ -60,5 +61,5 @@ pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
 pub use length::Length;
 pub use link::{AnchorMark, LinkTarget};
-pub use math::{MathDelimiter, MathEnvKind};
+pub use math::{MathClass, MathDelimiter, MathEnvKind};
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};

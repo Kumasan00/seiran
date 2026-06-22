@@ -25,6 +25,7 @@ use crate::evaluator::{
     link::{href_command, url_command},
     ref_::ref_command,
     single_char,
+    symbol::SYMBOL_MAP,
   },
   math,
 };
@@ -104,9 +105,6 @@ pub(crate) fn extract_inline_nodes_from_elements(
               // `\color[color=#rrggbb]{...}` も書体指定と同じくインライン文脈で展開する
               inlines.extend(colored_text(&view)?);
             },
-            Some(CommandKind::SingleChar(ch)) => {
-              inlines.extend(single_char(&view, ch)?);
-            },
             Some(CommandKind::Ref) => {
               // 見出しタイトル・キャプション内に出現する `\ref{label}` も
               // pass1 ではスタブを生成し pass2 で解決する
@@ -129,11 +127,16 @@ pub(crate) fn extract_inline_nodes_from_elements(
                 span: view.span().into(),
               });
             },
-            Some(CommandKind::Undefined) | None => {
-              return Err(EvalError::UnknownCommand {
-                name: view.name().to_string(),
-                span: view.span().into(),
-              });
+            None => {
+              // 機能コマンドに無ければ記号テーブルを引く（COMMAND_MAP→miss→SYMBOL_MAP）
+              if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
+                inlines.extend(single_char(&view, symbol.ch)?);
+              } else {
+                return Err(EvalError::UnknownCommand {
+                  name: view.name().to_string(),
+                  span: view.span().into(),
+                });
+              }
             },
           }
         },
@@ -164,16 +167,15 @@ pub(crate) fn extract_inline_nodes_from_elements(
 /// コマンド名からシンボル文字を解決する
 ///
 /// ギリシャ文字・数学記号等の引数なしコマンドを対応する Unicode 文字に変換します。
-/// 未知のコマンド名、または `SingleChar` 以外のコマンド種別の場合は `None` を返します。
+/// 記号テーブル [`SYMBOL_MAP`] に無いコマンド名（機能コマンドや未知の名前）の場合は
+/// `None` を返します。
 ///
-/// 解決の単一ソースは [`COMMAND_MAP`]。コマンド追加はそちらだけを編集すれば、
-/// 本関数および `Evaluator::evaluate_command` の双方に反映される。
+/// 解決の単一ソースは [`SYMBOL_MAP`]。記号追加はそちらだけを編集すれば、
+/// 本関数（数式文脈）・`Evaluator::evaluate_command`・`extract_inline_nodes`（本文文脈）の
+/// すべてに反映される。
 #[must_use]
 pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
-  if let Some(CommandKind::SingleChar(ch)) = COMMAND_MAP.get(name).copied() {
-    return Some(ch);
-  }
-  return None;
+  return SYMBOL_MAP.get(name).map(|symbol| symbol.ch);
 }
 
 #[cfg(test)]
@@ -220,6 +222,41 @@ mod tests {
     let inlines = extract_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0], InlineNode::Symbol('α')));
+  }
+
+  #[test]
+  fn extract_inline_nodes_resolves_amssymb_symbol() {
+    // Arrange — `\leq` は SYMBOL_MAP に移設・追加した amssymb 記号。本文文脈でも解決される
+    let arena = Bump::new();
+    let source = "\\section{\\leq}";
+    let cst = parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let inlines = extract_inline_nodes(source, arg).unwrap();
+
+    // Assert
+    assert_eq!(inlines.len(), 1);
+    assert!(matches!(&inlines[0], InlineNode::Symbol('≤')));
+  }
+
+  #[test]
+  fn extract_inline_nodes_rejects_unknown_command() {
+    // Arrange — COMMAND_MAP にも SYMBOL_MAP にも無い名前は未知コマンドエラー
+    let arena = Bump::new();
+    let source = "\\section{\\nonexistent}";
+    let cst = parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let result = extract_inline_nodes(source, arg);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
   }
 
   #[test]
