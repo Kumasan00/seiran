@@ -29,7 +29,7 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します
-pub(super) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(opt_args, "label");
   if !view.args().is_empty() {

@@ -22,7 +22,7 @@ use crate::evaluator::{EvalError, Evaluator, opt_args::collect_environment_opt_a
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(super) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   // cases は任意引数を受け付けない（未知キーはエラー）
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {

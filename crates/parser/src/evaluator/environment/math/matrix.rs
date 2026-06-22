@@ -29,7 +29,7 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(super) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(opt_args, "delimiter") {
     Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| EvalError::InvalidOptArgValue {

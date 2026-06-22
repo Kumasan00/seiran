@@ -27,7 +27,7 @@ use crate::evaluator::{EvalError, Evaluator};
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体への `&`（列区切り）混入、セル評価失敗時にエラーを返します
-pub(super) fn multiline(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn multiline(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   return evaluate_math_env(
     view,
     evaluator,

@@ -3,7 +3,7 @@
 //! `InlineMath` ノード（`$...$` 由来）と数式環境の 1 セル分の要素列の双方を `MathNode` 列に
 //! 変換します。構造トークン（`$`, `{`, `}`）はスキップし、`Text`/`Escaped`/`Whitespace`/`Newline`
 //! を `MathNode::Text` に変換します。列区切り `&`・行区切り `\\` は複数行数式環境の構造分割器
-//! （[`crate::evaluator::environment::math_grid`]）が消費するため、ここまで到達した `&`・`\\` は
+//! （[`crate::evaluator::environment::math::math_grid`]）が消費するため、ここまで到達した `&`・`\\` は
 //! 「文脈外（インライン数式や単一行 equation のセル内）の迷子」とみなしてエラーにします。
 //!
 //! ## 公開 API
