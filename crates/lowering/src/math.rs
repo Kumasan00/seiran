@@ -1,15 +1,15 @@
 //! 数式（インライン / ディスプレイ）の lowering
 //!
 //! インライン数式と `\begin{equation}...\end{equation}` のディスプレイ数式を
-//! `LayoutNode` 列に変換します。数式中の文字は [`alphanumeric::translate_math_char`]
-//! によって Unicode Mathematical Alphanumeric Symbols へ変換され、数式フォントが持つ
-//! 字形バリアントを直接呼び出します。
+//! `LayoutNode` 列に変換します。数式中の文字は [`alphanumeric::push_math_char`]
+//! によって Unicode Mathematical Alphanumeric Symbols へ変換され（カリグラフィーは
+//! VS1 異体字セレクタを付与）、数式フォントが持つ字形バリアントを直接呼び出します。
 
 use document::{MathNode, MathRow, MathStyle};
 use read_style::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
 use types::{Align, FontKind, MathEnvKind};
 
-use self::alphanumeric::translate_math_char;
+use self::alphanumeric::push_math_char;
 use super::LoweringContext;
 use crate::layout_node::{LayoutNode, MathBlockRow, TextStyle};
 
@@ -124,13 +124,14 @@ fn lower_math_node(
       return lower_math_text(s, font_size, style);
     },
     MathNode::Symbol(ch) => {
-      let translated = translate_math_char(*ch, style);
+      let mut translated = String::new();
+      push_math_char(&mut translated, *ch, style);
       let layout_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
         color: None,
       };
-      return vec![LayoutNode::Text(translated.to_string(), layout_style)];
+      return vec![LayoutNode::Text(translated, layout_style)];
     },
     MathNode::Group(children) => {
       let mut result = Vec::new();
@@ -202,15 +203,19 @@ fn lower_math_node(
 
 /// 数式中のテキスト文字列を `LayoutNode` 列に変換する
 ///
-/// 文字単位で [`translate_math_char`] を適用してから 1 つの `LayoutNode::Text` にまとめる。
+/// 文字単位で [`push_math_char`] を適用してから 1 つの `LayoutNode::Text` にまとめる。
 /// `FontKind::Math` は常に維持する（テキストフォントへの切替は行わない）。
-/// 数式中に和文が混入した場合のスクリプト別フォント切替は後段の
-/// `split_text_by_script` / `resolve_font_type` が担うため、ここでは分割しない。
+/// カリグラフィーでは基底文字 + VS1 が連続して書き込まれるが、同一文字列に含めることで
+/// 後段のシェーピングが 1 クラスタとして扱う。数式中に和文が混入した場合のスクリプト別
+/// フォント切替は後段の `split_text_by_script` / `resolve_font_type` が担うため、ここでは分割しない。
 fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<LayoutNode> {
   if text.is_empty() {
     return Vec::new();
   }
-  let translated: String = text.chars().map(|c| translate_math_char(c, style)).collect();
+  let mut translated = String::with_capacity(text.len());
+  for c in text.chars() {
+    push_math_char(&mut translated, c, style);
+  }
   let layout_style = TextStyle {
     font_size,
     font_kind: FontKind::Math,
@@ -383,6 +388,29 @@ mod tests {
       })
       .collect();
     assert_eq!(texts, "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
+  }
+
+  #[test]
+  fn lower_math_node_calligraphic_appends_variation_selector() {
+    // Arrange — \mathcalligraphic{Ab1} 相当: Styled { Calligraphic, [Text("Ab1")] }
+    // 英字はスクリプト基底 + VS1（U+FE00）、数字は素通し
+    let node = MathNode::Styled {
+      style: MathStyle::Calligraphic,
+      body: vec![MathNode::Text("Ab1".to_string())],
+    };
+
+    // Act
+    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+
+    // Assert — "𝒜<VS1>𝒷<VS1>1"（基底はスクリプトと共有、英字のみ VS1 付与）
+    let texts: String = result
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Text(t, _) => Some(t.as_str()),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(texts, "\u{1D49C}\u{FE00}\u{1D4B7}\u{FE00}1");
   }
 
   /// 番号付き 1 行 1 セルの `MathRow` を作るヘルパ

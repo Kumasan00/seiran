@@ -34,4 +34,7 @@ Letterlike Symbols に散る穴を含めて正しいグリフへ変換される�
 
 スクリプト（花文字）$\mathscript{ABFHL}$ も大文字の穴を含めて変換される。
 
+カリグラフィー $\mathcalligraphic{ABFHL}$ はスクリプトと同じ基底に異体字セレクタ VS1 を付与し、
+対応フォントでは chancery 字形になる（非対応フォントではスクリプト字形にフォールバックする）。
+
 太字スクリプト $\mathscriptbold{ABC}$ と太字フラクトゥール $\mathfrakturbold{abc}$ は太字字形で出力される。
