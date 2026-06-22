@@ -237,3 +237,11 @@ pub enum MyError {
 - **数式パラメータ（`MathScriptStyle`）**: 上付き / 下付きの倍率・シフト等。将来 OpenType MATH テーブルから自動取得する想定で、現状は手動指定（`Option<MathScriptStyle>` 化の余地を残す）
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
+
+## issue / PR 運用
+
+- **issue は「何を作るか」を仕様の精度まで書く**: 動機・振る舞い・構文 / セマンティクス・エッジケース・受け入れ条件。触るクレートやデータ構造などの**実装メカニクスは書かない**（実装着手時に情報が増えてから決まるため）。テンプレートは `.github/ISSUE_TEMPLATE/feature.md`
+- **PR は「どう実装したか」を記録する**: 確定したメカニクスは PR 本文の `## 変更内容` に残す。実装スケッチを issue に残す場合は「一案（拘束しない）」と明示する。テンプレートは `.github/PULL_REQUEST_TEMPLATE.md`
+- **branch の線引き**: 機能・仕様変更は issue → ブランチ → PR（`Closes #番号` で issue に紐付け）。ドキュメント・タイポ・テンプレ等の些末な変更は main 直コミット可
+- **タイトル規約**: issue / PR とも `領域: 要約`（領域 = 数式 / 組版 / フォント / 設定 / 文献 / CLI 等）。ラベルは導入しない
+- **外部リポの参照**: 自リポ内は `#番号` でよい。他プロジェクトのスレッドに backlink を残さないよう、外部リポの issue / PR は `` `owner/repo#番号` `` とバッククォートで囲む（URL の生貼り・`owner/repo#番号` は backlink を作る）
