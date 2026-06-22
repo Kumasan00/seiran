@@ -4,6 +4,7 @@
 # ここに無いキーは App が触らない（既存値を保持する）。
 repository:
   name: seiran
+  description: pdf generator
 
   # マージは squash 一本（merge / rebase commit は無効）。main を 1 PR = 1 コミットの linear に保つ。
   allow_squash_merge: true
