@@ -30,6 +30,11 @@ rulesets:
         include:
           - "~DEFAULT_BRANCH"
         exclude: []
+        # admin ロール（actor_id=5）は常時バイパス可。
+    bypass_actors:
+      - actor_id: 5
+        actor_type: RepositoryRole
+        bypass_mode: always
     rules:
       # ブランチ削除禁止。
       - type: deletion
@@ -44,13 +49,3 @@ rulesets:
               integration_id: 15368
             - context: Test and Clippy
               integration_id: 15368
-      # Copilot 自動レビュー。
-      - type: copilot_code_review
-        parameters:
-          review_on_push: false
-          review_draft_pull_requests: false
-    # admin ロール（actor_id=5）は常時バイパス可。
-    bypass_actors:
-      - actor_id: 5
-        actor_type: RepositoryRole
-        bypass_mode: always
