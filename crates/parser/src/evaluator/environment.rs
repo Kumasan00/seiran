@@ -30,6 +30,7 @@ mod figure;
 mod itemize;
 mod math;
 mod table;
+mod theorem;
 
 /// 環境ハンドラの関数ポインタ型
 type EnvHandler = fn(&EnvironmentView, &mut Evaluator) -> Result<Vec<DocNode>, EvalError>;
@@ -64,6 +65,17 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "matrix"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::matrix),        display_name: "行列" },
   "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),      display_name: "図" },
   "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),        display_name: "表" },
+  // 定理環境 10 種は単一ハンドラ（環境名からクラスを解決）に集約して登録する
+  "theorem"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "定理" },
+  "lemma"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "補題" },
+  "proposition" => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "命題" },
+  "corollary"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "系" },
+  "definition"  => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "定義" },
+  "axiom"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "公理" },
+  "example"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "例" },
+  "remark"      => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
+  "claim"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
+  "proof"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
 };
 
 /// 環境名から構文解析モードを引く

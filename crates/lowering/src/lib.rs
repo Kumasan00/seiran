@@ -186,6 +186,21 @@ fn lower_node_indexed(
     DocNode::List { ordered, items } => {
       return list::lower_list(ctx, *ordered, items);
     },
+    DocNode::Theorem {
+      class, body, label, ..
+    } => {
+      // 見出し書式・本文フォント・QED マーク配置は #54 で実装する。現状はクラスの上下マージンで
+      // 本体を挟んでローワリングするだけの暫定実装で、パイプラインを通すための橋渡し。
+      let theorem_style = ctx.style.theorem(*class);
+      let mut nodes = vec![LayoutNode::Vkern {
+        length: theorem_style.style.top_margin,
+      }];
+      nodes.extend(lower_nodes(ctx, body)?);
+      nodes.push(LayoutNode::Vkern {
+        length: theorem_style.style.bottom_margin,
+      });
+      return Ok(with_label_anchor(label.as_deref(), nodes));
+    },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {
         width: *width,

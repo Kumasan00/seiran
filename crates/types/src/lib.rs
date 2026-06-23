@@ -53,6 +53,7 @@ pub mod length;
 pub mod link;
 pub mod math;
 pub mod table;
+pub mod theorem;
 
 pub use align::Align;
 pub use color::Color;
@@ -63,3 +64,4 @@ pub use length::Length;
 pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathClass, MathDelimiter, MathEnvKind};
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};
+pub use theorem::TheoremClass;

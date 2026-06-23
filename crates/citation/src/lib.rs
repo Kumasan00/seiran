@@ -206,6 +206,8 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
           collect_cite_nodes(&mut item.content, out);
         }
       },
+      // 定理本体は通常の本文と同じく `\cite` を含みうるため再帰する
+      DocNode::Theorem { body, .. } => collect_cite_nodes(body, out),
       DocNode::Table {
         head,
         rows,

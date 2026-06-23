@@ -17,71 +17,13 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+// 定理クラス enum は `types` を単一ソースとし、`read_style::theorem::TheoremClass` として再エクスポートする。
+// `document::DocNode::Theorem` も同じ enum を共有するため（`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
+pub use types::TheoremClass;
 use types::{
   FontKind,
   length::{Length, non_negative},
 };
-
-/// ビルトイン定理クラス（固定 10 種）。
-///
-/// TOML 上の `[theorems.<name>]` キーとして使われ、未知の名前は TOML パース時に弾かれる。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TheoremClass {
-  /// 定理
-  Theorem,
-  /// 補題
-  Lemma,
-  /// 命題
-  Proposition,
-  /// 系
-  Corollary,
-  /// 定義
-  Definition,
-  /// 公理
-  Axiom,
-  /// 例
-  Example,
-  /// 注意
-  Remark,
-  /// 主張
-  Claim,
-  /// 証明（採番なし・QED マーク自動末尾配置）
-  Proof,
-}
-
-impl TheoremClass {
-  /// 全 10 クラスを宣言順に並べた配列。
-  pub const ALL: [TheoremClass; 10] = [
-    TheoremClass::Theorem,
-    TheoremClass::Lemma,
-    TheoremClass::Proposition,
-    TheoremClass::Corollary,
-    TheoremClass::Definition,
-    TheoremClass::Axiom,
-    TheoremClass::Example,
-    TheoremClass::Remark,
-    TheoremClass::Claim,
-    TheoremClass::Proof,
-  ];
-
-  /// `snake_case` の文字列表現を返す（TOML のキーおよび環境名と同じ）。
-  #[must_use]
-  pub fn as_str(self) -> &'static str {
-    return match self {
-      Self::Theorem => "theorem",
-      Self::Lemma => "lemma",
-      Self::Proposition => "proposition",
-      Self::Corollary => "corollary",
-      Self::Definition => "definition",
-      Self::Axiom => "axiom",
-      Self::Example => "example",
-      Self::Remark => "remark",
-      Self::Claim => "claim",
-      Self::Proof => "proof",
-    };
-  }
-}
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
 ///
