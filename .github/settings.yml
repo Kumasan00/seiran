@@ -1,7 +1,6 @@
-# GitHub リポジトリ設定の単一ソース。
-# 反映には Probot "Settings" App のインストールが必要: https://github.com/apps/settings
-# default ブランチ(main)のこのファイルを更新すると、App が設定を同期する。
-# ここに無いキーは App が触らない（既存値を保持する）。
+# GitHub リポジトリ設定の単一ソース（反映には Probot "Settings" App が必要: https://github.com/apps/settings）。
+# default ブランチ(main)のこのファイルを更新すると App が設定を同期する。ここに無いキーは触らない。
+# ブランチ保護 ruleset は Settings App が更新に未対応のため、ファイル管理から除外し GitHub 上で手動管理する。
 repository:
   name: seiran
   description: TeX スタイルのテキストファイルから高品質な PDF を生成する Rust 製 CLI 組版ツール
@@ -15,37 +14,16 @@ repository:
   squash_merge_commit_title: PR_TITLE
   squash_merge_commit_message: PR_BODY
 
+  # CI 通過後の自動マージを許可。PR の "Update branch"（main 追従）ボタンも有効化。
+  allow_auto_merge: true
+  allow_update_branch: true
+
   # マージ済みブランチを自動削除。
   delete_branch_on_merge: true
 
-# ブランチ保護。これまで手動作成していた ruleset "check"（main 対象）を settings.yml へ移管。
-# 注意: Settings App の rulesets 対応は "semi-dark release"（開発途上・破壊的変更の可能性あり）。
-#       同名 "check" で在来 ruleset を in-place 更新させる想定。同期後に重複が無いか確認すること。
-rulesets:
-  - name: check
-    target: branch
-    enforcement: active
-    conditions:
-      ref_name:
-        include:
-          - "~DEFAULT_BRANCH"
-        exclude: []
-        # admin ロール（actor_id=5）は常時バイパス可。
-    bypass_actors:
-      - actor_id: 5
-        actor_type: RepositoryRole
-        bypass_mode: always
-    rules:
-      # ブランチ削除禁止。
-      - type: deletion
-      # force push（非 fast-forward）禁止。
-      - type: non_fast_forward
-      # 必須ステータスチェック（integration_id=15368 は GitHub Actions）。
-      - type: required_status_checks
-        parameters:
-          strict_required_status_checks_policy: false # 必須フィールド。マージ前の main 最新追従は強制しない。
-          required_status_checks:
-            - context: Rustfmt
-              integration_id: 15368
-            - context: Test and Clippy
-              integration_id: 15368
+  # issue / Pull requests を有効化（運用の根幹）。未使用の Wiki / Projects タブは無効化。
+  has_issues: true
+  has_pull_requests: true
+  pull_request_creation_policy: all
+  has_wiki: false
+  has_projects: false
