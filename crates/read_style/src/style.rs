@@ -24,6 +24,7 @@ use crate::{
   running::RunningContentStyle,
   table::TableStyle,
   text::TextBlockStyle,
+  theorem::{TheoremClass, TheoremStyle, Theorems},
   title_page::TitlePageStyle,
   toc::TocStyle,
 };
@@ -73,6 +74,13 @@ pub struct Style {
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
+  /// 定理クラス定義テーブル（`[theorems.<class>]`、固定 10 種）
+  ///
+  /// クラス別の既定値は [`Theorems::default`] が供給する。TOML で `[theorems.lemma]` のように
+  /// 一部だけ書いた場合、欠落フィールドは [`crate::theorem::default_for_class`] で埋まる。
+  /// `heading` と同様 `#[serde(from = ...)]` で構築するため検証は `validate_values` で個別に行う。
+  #[garde(skip)]
+  pub theorems: Theorems,
   /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
   #[garde(dive)]
   pub page_numbering: PageNumbering,
@@ -111,6 +119,7 @@ impl Default for Style {
       math: MathScriptStyle::default(),
       math_block: MathBlockStyle::default(),
       counters: Counters::default(),
+      theorems: Theorems::default(),
       page_numbering: PageNumbering::default(),
       header: RunningContentStyle::default(),
       footer: RunningContentStyle::default(),
@@ -133,6 +142,10 @@ impl Style {
   /// 指定された名前のカウンタ定義への不変参照を返す（9 種固定のため必ず存在する）。
   #[must_use]
   pub fn counter(&self, name: CounterName) -> &CounterStyle { return self.counters.get(name); }
+
+  /// 指定された定理クラスのスタイル定義への不変参照を返す（10 種固定のため必ず存在する）。
+  #[must_use]
+  pub fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return self.theorems.get(class); }
 }
 
 #[cfg(test)]
@@ -141,7 +154,7 @@ mod tests {
   use types::{Color, HeadingLevel, length::Length};
 
   use super::Style;
-  use crate::counter::CounterName;
+  use crate::{counter::CounterName, theorem::TheoremClass};
 
   #[test]
   fn validate_accepts_default() {
@@ -197,6 +210,22 @@ mod tests {
     let mut style = Style::default();
     style.counters.figure.display_name = String::new();
     assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn theorem_accessor_finds_proof() {
+    let style = Style::default();
+    assert_eq!(style.theorem(TheoremClass::Proof).display_name, "Proof");
+    assert!(style.theorem(TheoremClass::Proof).unnumbered);
+  }
+
+  #[test]
+  fn validate_detects_invalid_theorem_top_margin() {
+    // Style::validate() は #[garde(skip)] のため theorems を見ない。検証は validate_values で行われる。
+    let mut style = Style::default();
+    style.theorems.theorem.style.top_margin = Length::pt(-0.1);
+    // 直接 TheoremStyle を検証して不正が検出されることを確認する
+    assert!(style.theorems.theorem.validate().is_err());
   }
 
   #[test]
