@@ -244,6 +244,7 @@ pub enum MyError {
 - **PR は「どう実装したか」を記録する**: 確定したメカニクスは PR 本文の `## 変更内容` に残す。実装スケッチを issue に残す場合は「一案（拘束しない）」と明示する。テンプレートは `.github/PULL_REQUEST_TEMPLATE.md`
 - **branch の線引き**: 機能・仕様変更は issue → ブランチ → PR（`Closes #番号` で issue に紐付け）。ドキュメント・タイポ・テンプレ等の些末な変更は main 直コミット可
 - **マージ・履歴**: PR は squash merge 一本（merge / rebase commit は無効化済み）。main は「1 PR = 1 コミット」で linear。squash の件名 = PR タイトル、本文 = PR 本文。issue 番号はタイトルに手書きせず本文の `Closes #番号` で紐付ける（PR 番号は squash が `(#番号)` を自動付与する。手書きすると `(#26) (#88)` のように二重になる）。main 直コミットの件名も `領域: 要約` に従い、`軽微な修正` のような中身のない件名は避ける
-- **タイトル規約**: issue / PR とも `領域: 要約`（領域 = 数式 / 組版 / フォント / 設定 / 文献 / CLI 等）。ラベルは導入しない
+- **タイトル規約**: issue / PR とも `領域: 要約`（領域 = 数式 / 組版 / フォント / 設定 / 文献 / CLI 等）
+- **ラベル運用**: 領域はタイトル接頭辞が担うので**領域ラベルは作らない**（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う — **Tier**（`tier-1a` / `tier-1b` / `tier-1c`、`seiran_feature_scope` の実装順序）と **epic**（sub-issue の親）と種別（`enhancement` / `bug`）。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`（Tier は付けない＝ロードマップ軸ではないため）。PR には基本ラベルを付けない（squash で `Closes #` 紐付けの issue 側が分類軸を持つ）。Dependabot の `dependencies` 等の自動ラベルは放置でよい
 - **外部リポの参照**: 自リポ内は `#番号` でよい。他プロジェクトのスレッドに backlink を残さないよう、外部リポの issue / PR は `` `owner/repo#番号` `` とバッククォートで囲む（URL の生貼り・`owner/repo#番号` は backlink を作る）
 - **リポジトリ設定**: merge 方式等の GitHub 設定は `.github/settings.yml`（Probot Settings App）が単一ソース。default ブランチで更新すると同期される
