@@ -215,12 +215,13 @@ fn lower_node_indexed(
       number,
       title,
       body,
+      of,
       label,
-      ..
     } => {
       // 見出し（独立行）＋ クラス別 font_kind 本文 ＋ 上下マージン、proof は末尾に QED。
-      // `of`（証明対象の見出し反映）は本実装では未対応（スタイルスキーマ拡張が前提・別 issue）。
-      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, label.as_deref());
+      // proof の `of` は pass2 で解決済みの cleveref 文字列（例「Theorem 1」）を見出しに織り込む。
+      let of = of.as_ref().and_then(|target| target.number.as_deref());
+      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, of, label.as_deref());
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {

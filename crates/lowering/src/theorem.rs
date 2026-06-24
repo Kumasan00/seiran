@@ -16,6 +16,8 @@ use crate::layout_node::{LayoutNode, TextStyle};
 ///
 /// 構成: `Vkern(top_margin)` → 見出し `VBox` → 本体（`body_font_kind` 上書き）→ `Vkern(bottom_margin)`。
 /// `label` が `Some` のとき先頭に `\ref` 到達先アンカー（[`with_label_anchor`]）を付ける。
+/// `of` は `proof` の証明対象（pass2 で解決済みの cleveref 文字列、例「Theorem 1」）で、
+/// `Some` のとき見出しを「Proof of Theorem 1」相当に組む。
 ///
 /// # Errors
 ///
@@ -26,6 +28,7 @@ pub(super) fn lower_theorem(
   number: Option<&str>,
   title: Option<&str>,
   body: &[DocNode],
+  of: Option<&str>,
   label: Option<&str>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let theorem_style = ctx.style.theorem(class);
@@ -35,7 +38,7 @@ pub(super) fn lower_theorem(
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number, title)?,
+    build_heading(ctx, theorem_style, number, title, of)?,
   ];
 
   // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする
@@ -65,14 +68,17 @@ pub(super) fn lower_theorem(
 
 /// 定理見出し（独立行）の `VBox` を構築する
 ///
-/// `title` の有無で `heading_with_title` / `heading_format` を選び、`{display_name}` を素朴置換
-/// してから [`expand_template`] で `{number}` / `{title}` を解決する。書体は `heading_font_kind`、
-/// サイズは本文と同じ（`TheoremPresentation` に見出し専用サイズは無い）。
+/// `of`（証明対象）と `title`（サブタイトル）の有無の 4 通りで
+/// `heading_with_of_and_title` / `heading_with_of` / `heading_with_title` / `heading_format` を選び、
+/// プレーン文字列の `{display_name}` / `{of}` を素朴置換してから [`expand_template`] で
+/// `{number}` / `{title}` を解決する。書体は `heading_font_kind`、サイズは本文と同じ
+/// （`TheoremPresentation` に見出し専用サイズは無い）。
 fn build_heading(
   ctx: &LoweringContext,
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
+  of: Option<&str>,
 ) -> Result<LayoutNode, LoweringError> {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
@@ -81,13 +87,17 @@ fn build_heading(
     color: None,
   };
 
-  // `{display_name}` は expand_template 非対応なので先に素朴置換する（プレーン文字列）
-  let raw_template = if title.is_some() {
-    &pres.heading_with_title
-  } else {
-    &pres.heading_format
+  // 証明対象（`of`）とサブタイトル（`title`）の有無でテンプレートを選ぶ。`of` は proof のみ。
+  let raw_template = match (of.is_some(), title.is_some()) {
+    (true, true) => &pres.heading_with_of_and_title,
+    (true, false) => &pres.heading_with_of,
+    (false, true) => &pres.heading_with_title,
+    (false, false) => &pres.heading_format,
   };
-  let template = raw_template.replace("{display_name}", &theorem_style.display_name);
+  // `{display_name}` / `{of}` は expand_template 非対応なので先に素朴置換する（いずれもプレーン文字列）
+  let template = raw_template
+    .replace("{display_name}", &theorem_style.display_name)
+    .replace("{of}", of.unwrap_or(""));
 
   let title_inlines: Vec<InlineNode> = title.map(|t| vec![InlineNode::Text(t.to_string())]).unwrap_or_default();
 
@@ -149,8 +159,8 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes =
-      lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None).expect("失敗しないはず");
+    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None, None)
+      .expect("失敗しないはず");
 
     // Assert — 見出しは "Theorem 1"・太字、本体は斜体、上下に Vkern
     let (heading, heading_style) = first_heading_text(&nodes);
@@ -175,8 +185,9 @@ mod tests {
     // Arrange / Act — title 付きは heading_with_title（"{display_name} {number} ({title})"）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None)
-      .expect("失敗しないはず");
+    let nodes =
+      lower_theorem(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None, None)
+        .expect("失敗しないはず");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -191,7 +202,7 @@ mod tests {
 
     // Act
     let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None).expect("失敗しないはず");
+      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None, None).expect("失敗しないはず");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -216,7 +227,7 @@ mod tests {
 
     // Act
     let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None).expect("失敗しないはず");
+      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None, None).expect("失敗しないはず");
 
     // Assert — FlushRight の直後は Vkern（最終段落と同居 = 段落の途中に置かれている）
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -237,7 +248,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, None, &[list], None).expect("失敗しないはず");
+    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, None, &[list], None, None).expect("失敗しないはず");
 
     // Assert — FlushRight は末尾の bottom_margin Vkern の直前（= 全体の最後から 2 番目）
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -246,11 +257,66 @@ mod tests {
   }
 
   #[test]
+  fn proof_with_of_renders_proof_of_target_heading() {
+    // Arrange — of=「Theorem 1」（pass2 解決済み）を持つ proof
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    // Act
+    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], Some("Theorem 1"), None)
+      .expect("失敗しないはず");
+
+    // Assert — 見出しは "Proof of Theorem 1"
+    let (heading, _) = first_heading_text(&nodes);
+    assert_eq!(heading, "Proof of Theorem 1");
+  }
+
+  #[test]
+  fn proof_without_of_keeps_plain_proof_heading() {
+    // Arrange / Act — of=None の proof は従来どおり "Proof"
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes =
+      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None, None).expect("失敗しないはず");
+
+    // Assert
+    let (heading, _) = first_heading_text(&nodes);
+    assert_eq!(heading, "Proof");
+  }
+
+  #[test]
+  fn proof_with_of_and_title_combines_both() {
+    // Arrange / Act — of と title を併用: of を先に、title を括弧で後置する
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes =
+      lower_theorem(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], Some("Theorem 1"), None)
+        .expect("失敗しないはず");
+
+    // Assert
+    let (heading, _) = first_heading_text(&nodes);
+    assert_eq!(heading, "Proof of Theorem 1 (sketch)");
+  }
+
+  #[test]
+  fn proof_with_title_only_ignores_of_templates() {
+    // Arrange / Act — of なし・title あり: heading_with_title（"Proof (title)"）が選ばれる
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None, None)
+      .expect("失敗しないはず");
+
+    // Assert
+    let (heading, _) = first_heading_text(&nodes);
+    assert_eq!(heading, "Proof (sketch)");
+  }
+
+  #[test]
   fn theorem_with_label_prepends_anchor() {
     // Arrange / Act — label 付きは先頭に AnchorMark::Label を出す
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], Some("thm:x"))
+    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], None, Some("thm:x"))
       .expect("失敗しないはず");
 
     // Assert
