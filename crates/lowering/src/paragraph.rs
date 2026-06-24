@@ -17,7 +17,7 @@ use crate::layout_node::{LayoutNode, TextStyle};
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.style.text.font_kind,
+    font_kind: ctx.body_font_kind,
     color: None,
   };
 

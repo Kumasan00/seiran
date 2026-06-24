@@ -53,7 +53,7 @@ pub fn max_font_size_in_items(items: &[HItem]) -> Option<f32> {
   return items
     .iter()
     .filter_map(|item| match item {
-      HItem::Box(hbox) => max_font_size_in_content(&hbox.content),
+      HItem::Box(hbox) | HItem::FlushRight(hbox) => max_font_size_in_content(&hbox.content),
       _ => None,
     })
     .reduce(f32::max);

@@ -54,7 +54,7 @@ impl LineBreaker for GreedyBreaker {
     for item in items {
       match item {
         HItem::ForcedBreak => {
-          lines.push(build_line(&buffer, true, &mut open_links));
+          lines.push(build_line(&buffer, true, text_width, &mut open_links));
           buffer.clear();
           width_so_far = 0.0;
           last_break = None;
@@ -82,13 +82,13 @@ impl LineBreaker for GreedyBreaker {
         HItem::LinkStart(_) | HItem::LinkEnd => {
           buffer.push(item);
         },
-        HItem::Box(_) | HItem::Kern(_) => {
+        HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
           let item_width = item.natural_width();
           if width_so_far + item_width > text_width
             && let Some(break_index) = last_break
           {
             // 分割可能点までで行を確定し、残りを次行へ持ち越す
-            lines.push(build_line(&buffer[..break_index], false, &mut open_links));
+            lines.push(build_line(&buffer[..break_index], false, text_width, &mut open_links));
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             // 持ち越し先頭の breakable glue は破棄する
@@ -111,7 +111,7 @@ impl LineBreaker for GreedyBreaker {
     }
 
     if !buffer.is_empty() || lines.is_empty() {
-      lines.push(build_line(&buffer, true, &mut open_links));
+      lines.push(build_line(&buffer, true, text_width, &mut open_links));
     }
     return lines;
   }
@@ -122,7 +122,8 @@ impl LineBreaker for GreedyBreaker {
 /// 行末の breakable glue は破棄する。`Penalty` は幅を持たないため位置決めに影響しない。
 /// `open_links` は折り返しをまたいで開いているリンク領域の状態で、`LinkStart` / `LinkEnd`
 /// に応じて更新しつつ、この行に属するクリック矩形（[`LineLink`]）を収集する。
-fn build_line(items: &[&HItem], is_last: bool, open_links: &mut Vec<OpenLink>) -> Line {
+/// `available` は本文幅（折り返し幅）で、`FlushRight` を `available − 幅` に右寄せするのに使う。
+fn build_line(items: &[&HItem], is_last: bool, available: f32, open_links: &mut Vec<OpenLink>) -> Line {
   // 行末の breakable glue を切り落とす
   let mut end = items.len();
   while end > 0
@@ -163,6 +164,18 @@ fn build_line(items: &[&HItem], is_last: bool, open_links: &mut Vec<OpenLink>) -
       },
       HItem::Glue { natural, .. } => x += natural,
       HItem::Kern(value) => x += value,
+      // 右寄せ末尾ボックス: 行内累積 x を無視し、本文幅の右端へ寄せる
+      HItem::FlushRight(hbox) => {
+        let flush_x = (available - hbox.width).max(0.0);
+        boxes.push(PositionedBox {
+          content: hbox.content.clone(),
+          x: flush_x,
+          dy: 0.0,
+          width: hbox.width,
+        });
+        height = height.max(hbox.height);
+        depth = depth.max(hbox.depth);
+      },
       HItem::LinkStart(target) => open_links.push(OpenLink {
         target: target.clone(),
         x0: x,
@@ -222,6 +235,16 @@ mod tests {
       shrink: 0.0,
       breakable: true,
     };
+  }
+
+  /// テスト用の右寄せ末尾ボックス（QED 相当・指定幅、高さ 6・深さ 0）
+  fn flush_right_box(width: f32) -> HItem {
+    return HItem::FlushRight(HBox {
+      content: HBoxContent::Rule { width, height: 1.0 },
+      width,
+      height: 6.0,
+      depth: 0.0,
+    });
   }
 
   #[test]
@@ -359,6 +382,44 @@ mod tests {
 
     assert_eq!(lines.len(), 1);
     assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+  }
+
+  #[test]
+  fn flush_right_box_sits_on_last_line_when_it_fits() {
+    // Arrange — box(10) glue(5) FlushRight(8)、text_width=50 なら最終語の後ろに収まる
+    let items = vec![test_box(), space_glue(), flush_right_box(8.0)];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 50.0);
+
+    // Assert — 1 行。本文 box は x=0、FlushRight は右端（50 − 8 = 42）に寄る
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
+    assert!((lines[0].boxes[0].x - 0.0).abs() < f32::EPSILON);
+    assert!((lines[0].boxes[1].x - 42.0).abs() < f32::EPSILON, "QED は右端寄せ: {lines:?}");
+    assert!(lines[0].is_last);
+  }
+
+  #[test]
+  fn flush_right_box_wraps_to_next_line_when_it_does_not_fit() {
+    // Arrange — box(10) Penalty(0) FlushRight(8)、text_width=14 では同居できず次行へ。
+    // Penalty(0) が直前の分割機会となり、QED だけが折り返す（本文 box は残る）
+    let items = vec![
+      test_box(),
+      HItem::Penalty { value: 0 },
+      flush_right_box(8.0),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 14.0);
+
+    // Assert — 2 行。1 行目は本文 box のみ、2 行目は QED だけが右端（14 − 8 = 6）に
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
+    assert!((lines[0].boxes[0].x - 0.0).abs() < f32::EPSILON);
+    assert_eq!(lines[1].boxes.len(), 1, "2 行目は QED box のみ: {lines:?}");
+    assert!((lines[1].boxes[0].x - 6.0).abs() < f32::EPSILON, "QED は右端寄せ: {lines:?}");
+    assert!(lines[1].is_last);
   }
 
   #[test]

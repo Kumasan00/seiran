@@ -71,3 +71,6 @@ fn smoke_table_fixture() { smoke_through_lowering("table"); }
 
 #[test]
 fn smoke_toc_fixture() { smoke_through_lowering("toc"); }
+
+#[test]
+fn smoke_theorem_fixture() { smoke_through_lowering("theorem"); }

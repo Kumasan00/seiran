@@ -419,9 +419,13 @@ fn draw_cell_items(
       hlist::HItem::Kern(value) => cursor_x += value,
       hlist::HItem::Glue { natural, .. } => cursor_x += natural,
       // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
-      // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）
-      hlist::HItem::Penalty { .. } | hlist::HItem::ForcedBreak | hlist::HItem::LinkStart(_) | hlist::HItem::LinkEnd => {
-      },
+      // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
+      // FlushRight（QED）は定理本体専用で表セル内には現れない
+      hlist::HItem::Penalty { .. }
+      | hlist::HItem::ForcedBreak
+      | hlist::HItem::LinkStart(_)
+      | hlist::HItem::LinkEnd
+      | hlist::HItem::FlushRight(_) => {},
     }
   }
   return Ok(());

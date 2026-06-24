@@ -39,6 +39,7 @@ mod math;
 mod paragraph;
 mod table;
 mod template;
+mod theorem;
 mod title_page;
 
 pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
@@ -100,6 +101,12 @@ pub enum LoweringError {
 pub struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
   pub style: &'a ReadStyle,
+  /// 本文段落の既定フォント種別
+  ///
+  /// 通常は `style.text.font_kind`。定理本体のように既定書体を差し替えたいブロックでは
+  /// [`LoweringContext::with_body_font_kind`] で派生した文脈を本体の lowering に渡す
+  /// （斜体の定理本文・ローマンの証明本文など）。段落・本体内リストへ伝播する。
+  pub body_font_kind: types::FontKind,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -109,7 +116,24 @@ impl<'a> LoweringContext<'a> {
   ///
   /// * `style` - `read_style::read_style()` の結果への参照
   #[must_use]
-  pub fn new(style: &'a ReadStyle) -> Self { return LoweringContext { style }; }
+  pub fn new(style: &'a ReadStyle) -> Self {
+    return LoweringContext {
+      style,
+      body_font_kind: style.text.font_kind,
+    };
+  }
+
+  /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
+  ///
+  /// `style` 参照は共有したまま `body_font_kind` のみ上書きする。定理本体を斜体・証明本体を
+  /// ローマンで lower する際に、本体ノード列の lowering へ渡す。
+  #[must_use]
+  pub fn with_body_font_kind(&self, body_font_kind: types::FontKind) -> LoweringContext<'a> {
+    return LoweringContext {
+      style: self.style,
+      body_font_kind,
+    };
+  }
 
   /// 既定フォントサイズ（段落本文用、`style.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
@@ -187,19 +211,16 @@ fn lower_node_indexed(
       return list::lower_list(ctx, *ordered, items);
     },
     DocNode::Theorem {
-      class, body, label, ..
+      class,
+      number,
+      title,
+      body,
+      label,
+      ..
     } => {
-      // 見出し書式・本文フォント・QED マーク配置は #54 で実装する。現状はクラスの上下マージンで
-      // 本体を挟んでローワリングするだけの暫定実装で、パイプラインを通すための橋渡し。
-      let theorem_style = ctx.style.theorem(*class);
-      let mut nodes = vec![LayoutNode::Vkern {
-        length: theorem_style.style.top_margin,
-      }];
-      nodes.extend(lower_nodes(ctx, body)?);
-      nodes.push(LayoutNode::Vkern {
-        length: theorem_style.style.bottom_margin,
-      });
-      return Ok(with_label_anchor(label.as_deref(), nodes));
+      // 見出し（独立行）＋ クラス別 font_kind 本文 ＋ 上下マージン、proof は末尾に QED。
+      // `of`（証明対象の見出し反映）は本実装では未対応（スタイルスキーマ拡張が前提・別 issue）。
+      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, label.as_deref());
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {
