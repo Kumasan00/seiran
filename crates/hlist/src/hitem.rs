@@ -24,6 +24,13 @@ pub enum HItem {
   },
   /// 固定カーン（破棄されない・分割不可）
   Kern(f32),
+  /// 行の右端に寄せる末尾ボックス（証明の QED マーク等）
+  ///
+  /// 自然幅ぶん行分割の収まり判定に参加し、現在行に収まらなければ次行へ折り返す。
+  /// 確定行内では `x` を `本文幅 − 幅` に置いて右マージンへ寄せる（[`crate::break_lines`]）。
+  /// 末尾専用で、後続のアイテムが続くことは想定しない（同居時に最終語と重ならないよう、
+  /// 収まり判定が最終語右端 ≤ 自身の x を保証する）。
+  FlushRight(HBox),
   /// 分割制御
   ///
   /// CJK 文字間は `value = 0`（自由分割可）、分割禁止は `i32::MAX`。
@@ -46,7 +53,7 @@ impl HItem {
   #[must_use]
   pub fn natural_width(&self) -> f32 {
     return match self {
-      HItem::Box(hbox) => hbox.width,
+      HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
       HItem::Penalty { .. } | HItem::ForcedBreak | HItem::LinkStart(_) | HItem::LinkEnd => 0.0,

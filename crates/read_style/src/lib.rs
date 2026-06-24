@@ -25,6 +25,7 @@ pub mod reference;
 pub mod running;
 pub mod table;
 pub mod text;
+pub mod theorem;
 pub mod title_page;
 pub mod toc;
 
@@ -54,6 +55,7 @@ pub use crate::{
   style::Style,
   table::TableStyle,
   text::TextBlockStyle,
+  theorem::{TheoremClass, TheoremPresentation, TheoremReset, TheoremStyle, Theorems, default_for_class},
   title_page::TitlePageStyle,
   toc::TocStyle,
 };
@@ -121,7 +123,9 @@ pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleE
 
 /// [`Style`] の値検証を実行します（I/O なし）。
 ///
-/// `garde` のフィールド検証を本体（`#[garde(dive)]` フィールド）と `heading` の 2 系統で実行します。
+/// `garde` のフィールド検証を本体（`#[garde(dive)]` フィールド）・`heading`・`theorems` の 3 系統で
+/// 実行します。`heading` / `theorems` は `#[serde(from = ...)]` で構築するため `#[garde(skip)]` とし、
+/// 各レベル / クラスを個別に検証してパスプレフィックスを付与します。
 /// カウンタの `resets` は固定 9 種の [`CounterName`] 配列として型付けされているため、
 /// 不正名は TOML パース時点で拒否されます（追加のクロスフィールド検証は不要）。
 ///
@@ -144,6 +148,16 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
     if let Err(report) = heading.validate() {
       errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
         path: format!("heading.{}.{path}", level.command_name()),
+        message: error.to_string(),
+      }));
+    }
+  }
+
+  // Theorems も #[garde(skip)] にしているため別途検証する（ネストは theorems.<class>.style.<field>）
+  for (class, theorem) in style.theorems.iter_with_class() {
+    if let Err(report) = theorem.validate() {
+      errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
+        path: format!("theorems.{}.{path}", class.as_str()),
         message: error.to_string(),
       }));
     }

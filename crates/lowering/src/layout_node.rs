@@ -126,6 +126,13 @@ pub enum LayoutNode {
   },
   LineBreak,
   PageBreak,
+  /// 行の右端に寄せる末尾要素（証明の QED マーク等）
+  ///
+  /// `children`（QED の中身 = `Text` ノード列）を `layout` 段で 1 つの閉じた箱に畳み、
+  /// 直前に分割機会を挿んだうえで `hlist::HItem::FlushRight` に変換する。確定行内で右端
+  /// （本文幅 − 幅）へ寄せられ、現在行に収まらなければ次行へ折り返す。段落末（最終行と同居）
+  /// もしくは独立した 1 行として置かれる。
+  FlushRight(Vec<LayoutNode>),
 }
 
 /// 表全体の物理レイアウト表現

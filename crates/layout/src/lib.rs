@@ -121,6 +121,7 @@ impl Measurer<'_> {
         | LayoutNode::LineBreak
         | LayoutNode::Raise { .. }
         | LayoutNode::Link { .. }
+        | LayoutNode::FlushRight(..)
         | LayoutNode::HBox { .. } => {
           self.collect_inline(node, paragraph);
         },
@@ -246,6 +247,13 @@ impl Measurer<'_> {
       LayoutNode::Raise { offset, children } => {
         // 上付き・下付きの Raise ツリーは 1 個の閉じた Atom に畳む
         out.push(HItem::Box(self.build_atom(offset, children)));
+      },
+      // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
+      // 右寄せ末尾ボックスにする。折り返し時はこの Penalty で QED だけが次行へ運ばれる
+      LayoutNode::FlushRight(children) => {
+        let flush_box = self.build_atom(0.0, children);
+        out.push(HItem::Penalty { value: 0 });
+        out.push(HItem::FlushRight(flush_box));
       },
       LayoutNode::HBox { children, .. } => {
         for child in children {

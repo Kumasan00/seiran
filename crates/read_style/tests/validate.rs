@@ -38,6 +38,35 @@ fn parse_style_collects_multiple_validation_errors() {
 }
 
 #[test]
+fn reports_nested_theorem_style_validation_error_with_path() {
+  // Arrange: [theorems.theorem.style] の top_margin を負値に
+  let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert: ネストしたパスが theorems.<class>.style.<field> で報告される
+  let paths = paths(&errors);
+  assert!(
+    paths.contains(&"theorems.theorem.style.top_margin"),
+    "expected theorems.theorem.style.top_margin in {paths:?}"
+  );
+}
+
+#[test]
+fn reports_theorem_empty_display_name_with_path() {
+  // Arrange: [theorems.lemma] の display_name を空文字に
+  let toml = "[theorems.lemma]\ndisplay_name = \"\"\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  let paths = paths(&errors);
+  assert!(paths.contains(&"theorems.lemma.display_name"), "expected theorems.lemma.display_name in {paths:?}");
+}
+
+#[test]
 fn rejects_unknown_counter_name_at_parse_time() {
   // Arrange: `custom` は固定 9 種に含まれないため TOML パース時に弾かれる
   let toml = "

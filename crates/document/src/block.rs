@@ -1,6 +1,7 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
-use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind};
+use miette::SourceSpan;
+use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, TheoremClass};
 
 use crate::{caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, table::TableRow};
 
@@ -224,6 +225,29 @@ pub enum DocNode {
     breakable: bool,
   },
 
+  /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）
+  ///
+  /// 環境ハンドラがクラスをを解決し、`[title=...]` / `[label=...]` / `[of=...]` の任意引数を
+  /// 抽出して構造化する。本体（`body`）は通常の本文と同様に再帰評価された `Vec<DocNode>`。
+  /// 採番済みクラスは `CounterRegistry::increment_theorem_with_label` で発番された通し番号
+  /// （`format` テンプレ適用済みの文字列）を `number` に持ち、`unnumbered` クラス（`proof`）は
+  /// `None`。見出し書式・本文フォント・QED マーク配置は `lowering` 層がクラスの
+  /// `read_style::TheoremStyle` を参照して決める（このノードは物理スタイルを持たない）。
+  Theorem {
+    /// 定理クラス（`theorem` / `lemma` / … / `proof`）。`lowering` がスタイル解決に使う
+    class: TheoremClass,
+    /// 採番済みの番号文字列（`format` テンプレ適用済み）。`unnumbered` クラスでは `None`
+    number: Option<String>,
+    /// サブタイトル（`[title="..."]` の中身）。見出しの `{title}` に反映される。未指定は `None`
+    title: Option<String>,
+    /// 本体（再帰評価された `Vec<DocNode>`）
+    body: Vec<DocNode>,
+    /// `proof` の `[of=label]` 参照（証明対象の定理）。`proof` 以外や未指定は `None`
+    of: Option<ProofTarget>,
+    /// `\ref{thm:foo}` 解決用ラベル（環境の任意引数 `[label=thm:foo]`）。未指定は `None`
+    label: Option<String>,
+  },
+
   /// 罫線（描画線）
   Rule {
     /// 幅
@@ -246,6 +270,21 @@ pub enum DocNode {
   /// 持たないブロック（CSL 整形ステージが追加する参考文献エントリ段落）にアンカーを付けるための
   /// プリミティブ。キーは衝突回避のため `"cite:<引用キー>"` の形で名前空間化される。
   Anchor(String),
+}
+
+/// `proof` 環境の `[of=label]` 参照（証明対象の定理）
+///
+/// `\ref` と同じ 2 パスで解決する。pass1 では `label` を確定し `number: None` のスタブを
+/// 生成、pass2（`CounterRegistry` による解決）で対象定理の cleveref 文字列（例 `"Theorem 1.2"`）を
+/// `number: Some(...)` に書き換える。`lowering` 層が証明見出しの「… の証明」に埋め込む。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProofTarget {
+  /// 参照先のラベル名（`[of=thm:foo]` の `thm:foo`）
+  pub label: String,
+  /// 解決済みの参照文字列。pass2 完了時点で `Some` となる
+  pub number: Option<String>,
+  /// `[of=...]` 任意引数のソース位置。pass2 で未解決時の診断に使う
+  pub span: SourceSpan,
 }
 
 impl DocNode {

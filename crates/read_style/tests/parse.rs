@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use read_style::{ReadStyleError, Style, parse_style, read_style};
+use read_style::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
 use types::HeadingLevel;
 
 fn dummy_source() -> &'static str { return "test.toml"; }
@@ -177,4 +177,46 @@ fn parse_style_reads_minimal_fixture() {
   // Assert: 指定したフィールドだけ上書きされ、他はデフォルト
   assert!((style.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
   assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
+}
+
+#[test]
+fn parse_style_overrides_theorem_class_partially() {
+  // Arrange: [theorems.lemma] の display_name だけ上書き
+  let toml = "[theorems.lemma]\ndisplay_name = \"補題\"\n";
+
+  // Act
+  let style = parse_style(toml, dummy_source()).unwrap();
+
+  // Assert: lemma は display_name のみ変わり counter 等はクラス既定を維持、他クラスはデフォルト
+  assert_eq!(style.theorem(TheoremClass::Lemma).display_name, "補題");
+  assert_eq!(style.theorem(TheoremClass::Lemma).counter, "theorem");
+  let default = Style::default();
+  assert_eq!(
+    style.theorem(TheoremClass::Theorem).display_name,
+    default.theorem(TheoremClass::Theorem).display_name
+  );
+}
+
+#[test]
+fn parse_style_fails_on_unknown_theorem_class() {
+  // Arrange: `conjecture` は固定 10 種に含まれない
+  let toml = "[theorems.conjecture]\ndisplay_name = \"Conjecture\"\n";
+
+  // Act
+  let result = parse_style(toml, dummy_source());
+
+  // Assert
+  assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+}
+
+#[test]
+fn parse_style_fails_on_unknown_theorem_field() {
+  // Arrange: [theorems.theorem] 内の typo
+  let toml = "[theorems.theorem]\ndispl_name = \"Theorem\"\n";
+
+  // Act
+  let result = parse_style(toml, dummy_source());
+
+  // Assert
+  assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
 }
