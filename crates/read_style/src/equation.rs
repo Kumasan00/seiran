@@ -10,7 +10,7 @@ use types::length::{Length, non_negative};
 #[serde(deny_unknown_fields, default)]
 pub struct EquationStyle {
   /// 数式番号の書式テンプレート。`{number}` を含めることができる
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::equation_number_format))]
   pub number_format: String,
   /// 数式番号の配置側
   pub number_side: NumberSide,

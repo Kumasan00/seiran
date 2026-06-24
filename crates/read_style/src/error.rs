@@ -55,4 +55,36 @@ pub enum ValidationError {
     /// 不正の内容
     message: String,
   },
+
+  /// `csl_path`（CSL スタイルファイル）の正規化（`canonicalize`）失敗。
+  ///
+  /// ファイルが存在しない・読み取り権限が無い等で絶対パスへ解決できなかった場合に発生する。
+  #[error("CSL スタイルファイルのパスを正規化できませんでした: {path}")]
+  #[diagnostic(
+    code(style::validation::csl_path_resolution),
+    help("style.toml の [reference].csl_path が指すファイルが存在し、読み取り権限があることを確認してください。")
+  )]
+  CslPathResolution {
+    /// 正規化に失敗したパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+
+  /// `locale_path`（CSL ロケールファイル）の正規化（`canonicalize`）失敗。
+  ///
+  /// ファイルが存在しない・読み取り権限が無い等で絶対パスへ解決できなかった場合に発生する。
+  #[error("CSL ロケールファイルのパスを正規化できませんでした: {path}")]
+  #[diagnostic(
+    code(style::validation::locale_path_resolution),
+    help("style.toml の [reference].locale_path が指すファイルが存在し、読み取り権限があることを確認してください。")
+  )]
+  LocalePathResolution {
+    /// 正規化に失敗したパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
 }

@@ -1,7 +1,9 @@
 //! TOML スタイル設定ファイルのパース・検証モジュール
 //!
 //! [`read_style`] が指定されたパスのスタイル設定ファイルを読み込み、`toml` クレートで
-//! デシリアライズしてから `garde` で値検証を行い [`Style`] を返します。
+//! デシリアライズしてから `garde` で値検証を行い [`Style`] を返します。値検証の後、ロケール
+//! コードを標準形へ正規化し（[`parse_style`]）、`csl_path` / `locale_path` を `canonicalize` で
+//! 絶対パスへ正規化しつつ存在を検証します（[`read_style`]、I/O フェーズ）。
 //! パスが `None` の場合はファイルを読まずに [`Style::default`] を返します。
 //!
 //! 既定値は各サブ struct の [`Default`] 実装が提供し、TOML 側は `#[serde(default)]` で
@@ -30,6 +32,7 @@ pub mod title_page;
 pub mod toc;
 
 mod error;
+mod placeholder;
 mod style;
 
 use std::{fs, path::Path};
@@ -69,7 +72,8 @@ pub use crate::{
 ///
 /// - ファイルが読めない場合は [`ReadStyleError::ReadFile`]
 /// - TOML 解析に失敗した場合は [`ReadStyleError::ParseToml`]
-/// - 値検証に違反した場合は [`ReadStyleError::MultipleValidationErrors`]
+/// - 値検証違反、または `csl_path` / `locale_path` の正規化（`canonicalize`）失敗の場合は
+///   [`ReadStyleError::MultipleValidationErrors`]
 // 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
 #[allow(clippy::result_large_err)]
 pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
@@ -85,7 +89,14 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
     source,
   })?;
 
-  let style = parse_style(&content, &path_str)?;
+  let mut style = parse_style(&content, &path_str)?;
+
+  // CSL 関連パス（csl_path / locale_path）を canonicalize で絶対パスへ正規化し、存在を検証する
+  // （I/O フェーズ。純粋処理の parse_style とは分離する）。
+  let errors = resolve_reference_paths(&mut style.reference);
+  if !errors.is_empty() {
+    return Err(ReadStyleError::MultipleValidationErrors { errors });
+  }
 
   info!(
     font_size_pt = style.font_size.to_pt(),
@@ -95,9 +106,11 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   return Ok(style);
 }
 
-/// TOML 文字列を [`Style`] にパースし、値検証まで実行します（I/O なし）。
+/// TOML 文字列を [`Style`] にパースし、値検証とロケールコードの正規化まで実行します（I/O なし）。
 ///
 /// 未指定フィールドは `#[serde(default)]` 経由で [`Style::default`] の値が入ります。
+/// 値検証の通過後に [`ReferenceStyle::normalize`] でロケールコードを標準形へ揃えます
+/// （パスの `canonicalize` は I/O を伴うため [`read_style`] 側で行います）。
 ///
 /// # Errors
 ///
@@ -107,7 +120,7 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
 pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
   // `Style` は `#[serde(deny_unknown_fields)]` を持つため、未知のトップレベルキーは
   // この toml::from_str がそのまま span 付きで弾く。
-  let style: Style = toml::from_str(content).map_err(|source| {
+  let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(
       || SourceSpan::new(0.into(), 0),
@@ -118,6 +131,8 @@ pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleE
   if let Err(errors) = validate_values(&style) {
     return Err(ReadStyleError::MultipleValidationErrors { errors });
   }
+  // 値検証の通過後にロケールコードを標準形へ正規化する（純粋処理）。
+  style.reference.normalize();
   return Ok(style);
 }
 
@@ -167,4 +182,90 @@ fn validate_values(style: &Style) -> Result<(), Vec<ValidationError>> {
     return Ok(());
   }
   return Err(errors);
+}
+
+/// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `canonicalize` で絶対パスへ
+/// 正規化し、ファイルの存在を同時に検証します（I/O フェーズ）。
+///
+/// 相対パスは `read_config` のパス解決（`style_path` / `references_path` 等）と同様にカレント
+/// ディレクトリ基準で解決します。解決できなかったパスは [`ValidationError`] に積んで返し、
+/// 呼び出し側（[`read_style`]）が
+/// [`ReadStyleError::MultipleValidationErrors`] へ集約します。`csl_path` / `locale_path` を独立に
+/// 試すため、1 度の実行で双方の不備をまとめて報告できます。`None` のフィールドは何もしません。
+fn resolve_reference_paths(reference: &mut ReferenceStyle) -> Vec<ValidationError> {
+  let mut errors: Vec<ValidationError> = Vec::new();
+
+  if let Some(path) = reference.csl_path.take() {
+    match path.canonicalize() {
+      Ok(canonical) => reference.csl_path = Some(canonical),
+      Err(source) => errors.push(ValidationError::CslPathResolution {
+        path: path.display().to_string(),
+        source,
+      }),
+    }
+  }
+
+  if let Some(path) = reference.locale_path.take() {
+    match path.canonicalize() {
+      Ok(canonical) => reference.locale_path = Some(canonical),
+      Err(source) => errors.push(ValidationError::LocalePathResolution {
+        path: path.display().to_string(),
+        source,
+      }),
+    }
+  }
+
+  return errors;
+}
+
+#[cfg(test)]
+mod tests {
+  use std::path::PathBuf;
+
+  use tempfile::NamedTempFile;
+
+  use crate::{ReferenceStyle, ValidationError, resolve_reference_paths};
+
+  #[test]
+  fn resolve_reference_paths_makes_csl_path_absolute() {
+    // Arrange — 実在する一時ファイルを csl_path に設定
+    let file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
+    let mut reference = ReferenceStyle {
+      csl_path: Some(file.path().to_path_buf()),
+      ..ReferenceStyle::default()
+    };
+
+    // Act
+    let errors = resolve_reference_paths(&mut reference);
+
+    // Assert — 絶対パスへ正規化され、エラーは無い
+    assert!(errors.is_empty(), "実在パスはエラーにならないはず: {errors:?}");
+    assert!(reference.csl_path.expect("csl_path は残るはず").is_absolute());
+  }
+
+  #[test]
+  fn resolve_reference_paths_reports_missing_files() {
+    // Arrange — 実在しない csl_path / locale_path
+    let mut reference = ReferenceStyle {
+      csl_path: Some(PathBuf::from("/nonexistent/style.csl")),
+      locale_path: Some(PathBuf::from("/nonexistent/locale.xml")),
+      ..ReferenceStyle::default()
+    };
+
+    // Act — 双方の不備をまとめて報告する
+    let errors = resolve_reference_paths(&mut reference);
+
+    // Assert
+    assert_eq!(errors.len(), 2, "csl_path / locale_path 双方が報告されるはず: {errors:?}");
+    assert!(errors.iter().any(|e| matches!(e, ValidationError::CslPathResolution { .. })));
+    assert!(errors.iter().any(|e| matches!(e, ValidationError::LocalePathResolution { .. })));
+  }
+
+  #[test]
+  fn resolve_reference_paths_skips_none() {
+    // Arrange / Act / Assert — 既定（csl_path / locale_path ともに None）なら何もしない
+    let mut reference = ReferenceStyle::default();
+    let errors = resolve_reference_paths(&mut reference);
+    assert!(errors.is_empty());
+  }
 }

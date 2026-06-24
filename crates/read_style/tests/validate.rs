@@ -18,7 +18,9 @@ fn paths(errors: &[ValidationError]) -> Vec<&str> {
   return errors
     .iter()
     .map(|error| match error {
-      ValidationError::Field { path, .. } => path.as_str(),
+      ValidationError::Field { path, .. }
+      | ValidationError::CslPathResolution { path, .. }
+      | ValidationError::LocalePathResolution { path, .. } => path.as_str(),
     })
     .collect();
 }
@@ -86,6 +88,67 @@ resets = []
     matches!(result, Err(ReadStyleError::ParseToml { .. })),
     "unknown counter name should be rejected at TOML parse time, got {result:?}"
   );
+}
+
+#[test]
+fn empty_toml_defaults_pass_placeholder_validation() {
+  // Arrange / Act — 空 TOML は全フィールドが既定値。新しいプレースホルダ検証を通るはず
+  let result = parse_style("", dummy_source());
+
+  // Assert
+  assert!(result.is_ok(), "既定値はプレースホルダ検証を通るべき: {result:?}");
+}
+
+#[test]
+fn reports_unknown_placeholders_across_fields_together() {
+  // Arrange: 見出し書式と footer スロットの双方にタイポを入れる
+  let toml = "
+[heading.section]
+format = \"{nubmer} {title}\"
+
+[footer]
+center = \"{pagee}\"
+";
+
+  // Act — 1 度の実行で両方の不正が報告される
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  let paths = paths(&errors);
+  assert!(paths.contains(&"heading.section.format"), "expected heading.section.format in {paths:?}");
+  assert!(paths.contains(&"footer.center"), "expected footer.center in {paths:?}");
+}
+
+#[test]
+fn placeholder_error_message_names_the_offending_token() {
+  // Arrange: equation.number_format に未知プレースホルダ {num}
+  let toml = "[equation]\nnumber_format = \"({num})\"\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert: メッセージに不正なプレースホルダ名が含まれる
+  let message = errors
+    .iter()
+    .find_map(|error| match error {
+      ValidationError::Field { path, message } if path == "equation.number_format" => Some(message.as_str()),
+      _ => None,
+    })
+    .expect("equation.number_format のエラーがあるはず");
+  assert!(message.contains("{num}"), "メッセージに {{num}} を含むべき: {message}");
+}
+
+#[test]
+fn rejects_unknown_counter_placeholder_in_format() {
+  // Arrange: counters.section.format に未知のカウンタ参照 {chaptr}（chapter のタイポ）
+  let toml = "[counters.section]\ndisplay_name = \"Section\"\nformat = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  let paths = paths(&errors);
+  assert!(paths.contains(&"counters.section.format"), "expected counters.section.format in {paths:?}");
 }
 
 #[test]
