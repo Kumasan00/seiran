@@ -179,6 +179,19 @@ pub struct TheoremPresentation {
   /// サブタイトルありの見出し書式。`{display_name}` / `{number}` / `{title}` を含められる
   #[garde(length(chars, min = 1))]
   pub heading_with_title: String,
+  /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
+  ///
+  /// `proof` の `[of=...]` 指定時にのみ選択される（`{of}` は対象定理の cleveref 文字列
+  /// ＝「Theorem 1」等に解決される）。前置語「of」を含む結合書式ごとこのフィールドで上書きでき、
+  /// 国際化（`{display_name}（{of} の証明）` 等）も可能。`proof` 以外のクラスでは `of` を取れないため未使用。
+  #[garde(length(chars, min = 1))]
+  pub heading_with_of: String,
+  /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
+  ///
+  /// `of` と `title` を併用したときの結合書式。既定は `of` を先に、`title` を括弧で後置する
+  /// （「Proof of Theorem 1 (…)」）。
+  #[garde(length(chars, min = 1))]
+  pub heading_with_of_and_title: String,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
   pub font_kind: FontKind,
   /// 見出しのフォント種別（既定は太字セリフ）
@@ -192,11 +205,13 @@ pub struct TheoremPresentation {
 }
 
 impl Default for TheoremPresentation {
-  /// 既定値: `"{display_name} {number}"` / 本文斜体・見出し太字 / 上下 12pt。
+  /// 既定値: `"{display_name} {number}"`（`of` ありは `"{display_name} of {of}"`）/ 本文斜体・見出し太字 / 上下 12pt。
   fn default() -> Self {
     return Self {
       heading_format: "{display_name} {number}".to_string(),
       heading_with_title: "{display_name} {number} ({title})".to_string(),
+      heading_with_of: "{display_name} of {of}".to_string(),
+      heading_with_of_and_title: "{display_name} of {of} ({title})".to_string(),
       font_kind: FontKind::SerifItalic,
       heading_font_kind: FontKind::SerifBold,
       top_margin: Length::pt(12.0),
@@ -362,6 +377,10 @@ pub struct TheoremPresentationOverride {
   pub heading_format: Option<String>,
   /// サブタイトルありの見出し書式
   pub heading_with_title: Option<String>,
+  /// 証明対象（`of`）ありサブタイトルなしの見出し書式
+  pub heading_with_of: Option<String>,
+  /// 証明対象（`of`）ありサブタイトルありの見出し書式
+  pub heading_with_of_and_title: Option<String>,
   /// 本文のフォント種別
   pub font_kind: Option<FontKind>,
   /// 見出しのフォント種別
@@ -380,6 +399,12 @@ impl TheoremPresentationOverride {
     }
     if let Some(heading_with_title) = &self.heading_with_title {
       target.heading_with_title.clone_from(heading_with_title);
+    }
+    if let Some(heading_with_of) = &self.heading_with_of {
+      target.heading_with_of.clone_from(heading_with_of);
+    }
+    if let Some(heading_with_of_and_title) = &self.heading_with_of_and_title {
+      target.heading_with_of_and_title.clone_from(heading_with_of_and_title);
     }
     if let Some(font_kind) = self.font_kind {
       target.font_kind = font_kind;
@@ -568,6 +593,32 @@ font_kind = \"sans_serif_bold\"
     assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
     assert_eq!(theorem.style.heading_format, "{display_name} {number}");
     assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn default_proof_of_templates_render_proof_of_target() {
+    // Arrange / Act — proof の of テンプレート既定（generic default を継承）
+    let proof = default_for_class(TheoremClass::Proof);
+
+    // Assert — of ありは「Proof of {of}」、of＋title 併用は括弧で後置
+    assert_eq!(proof.style.heading_with_of, "{display_name} of {of}");
+    assert_eq!(proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
+  }
+
+  #[test]
+  fn override_proof_of_template_localizes_prefix() {
+    // Arrange: 前置語「of」を日本語化する上書き
+    let toml = "
+[theorems.proof.style]
+heading_with_of = \"{display_name}（{of} の証明）\"
+";
+
+    // Act
+    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+
+    // Assert: of テンプレートだけ変わり、他は既定を維持
+    assert_eq!(wrapper.theorems.proof.style.heading_with_of, "{display_name}（{of} の証明）");
+    assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
   }
 
   #[test]
