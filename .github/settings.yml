@@ -27,3 +27,44 @@ repository:
   pull_request_creation_policy: all
   has_wiki: false
   has_projects: false
+
+# ラベルの単一ソース。repository: と違い labels: は「このリストが正本」で、
+# ここに無いラベルは同期時に App が削除する（運用方針は CLAUDE.md「ラベル運用」を参照）。
+labels:
+  # 種別
+  - name: enhancement
+    color: 'a2eeef'
+    description: New feature or request
+  - name: bug
+    color: 'd73a4a'
+    description: Something isn't working
+  - name: documentation
+    color: '0075ca'
+    description: Improvements or additions to documentation
+
+  # Tier（seiran_feature_scope の実装順序軸）
+  - name: tier-1a
+    color: '0e8a16'
+    description: 'Tier 1a: 既存スタブ完成+全ジャンル必須'
+  - name: tier-1b
+    color: 'fbca04'
+    description: 'Tier 1b: コア拡張'
+  - name: tier-1c
+    color: 'd93f0b'
+    description: 'Tier 1c: 標準機能'
+  - name: tier-2
+    color: 'cccccc'
+    description: 'Tier 2: 将来検討'
+
+  # 構造
+  - name: epic
+    color: '5319e7'
+    description: 親 issue（sub-issue に分割）
+
+  # Dependabot が自動付与（運用上は放置）
+  - name: dependencies
+    color: '6b5049'
+  - name: rust
+    color: '78ef4a'
+  - name: github-actions
+    color: '66b6f4'
