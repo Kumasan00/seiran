@@ -23,7 +23,7 @@ pub struct ListStyle {
   pub unordered_marker: String,
   /// 順序付きリストのマーカー書式（例: `"{number}."`）。`{number}` は 1 始まりの項目番号で置換される。
   /// 後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::ordered_list_format))]
   pub ordered_format: String,
   /// マーカー描画に使用するフォント種別
   pub marker_font_kind: FontKind,

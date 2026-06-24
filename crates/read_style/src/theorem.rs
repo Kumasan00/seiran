@@ -117,7 +117,7 @@ pub struct TheoremStyle {
   pub reset_by: TheoremReset,
   /// 番号テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   /// （counter の `format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::counter_format))]
   pub format: String,
   /// 採番しない（`proof` 等）。`true` のとき番号は付かない
   pub unnumbered: bool,
@@ -174,23 +174,23 @@ pub enum TheoremReset {
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::theorem_heading_format))]
   pub heading_format: String,
   /// サブタイトルありの見出し書式。`{display_name}` / `{number}` / `{title}` を含められる
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::theorem_heading_format))]
   pub heading_with_title: String,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
   ///
   /// `proof` の `[of=...]` 指定時にのみ選択される（`{of}` は対象定理の cleveref 文字列
   /// ＝「Theorem 1」等に解決される）。前置語「of」を含む結合書式ごとこのフィールドで上書きでき、
   /// 国際化（`{display_name}（{of} の証明）` 等）も可能。`proof` 以外のクラスでは `of` を取れないため未使用。
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::theorem_heading_format))]
   pub heading_with_of: String,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
   ///
   /// `of` と `title` を併用したときの結合書式。既定は `of` を先に、`title` を括弧で後置する
   /// （「Proof of Theorem 1 (…)」）。
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::theorem_heading_format))]
   pub heading_with_of_and_title: String,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
   pub font_kind: FontKind,
@@ -478,6 +478,28 @@ mod tests {
     // Arrange: Some("") は inner 検証で弾かれる
     let style = TheoremStyle {
       qed_mark: Some(String::new()),
+      ..TheoremStyle::default()
+    };
+
+    // Act / Assert
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_rejects_unknown_heading_placeholder() {
+    // Arrange: 見出し書式に許可外トークン `{page}` を入れる
+    let mut style = TheoremStyle::default();
+    style.style.heading_format = "{page}".to_string();
+
+    // Act / Assert
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_rejects_unknown_counter_reference_in_format() {
+    // Arrange: format（カウンタ規則）に未知のカウンタ参照 `{chaptr}`
+    let style = TheoremStyle {
+      format: "{chaptr}.{n}".to_string(),
       ..TheoremStyle::default()
     };
 

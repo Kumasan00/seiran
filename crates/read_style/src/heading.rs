@@ -103,7 +103,7 @@ impl HeadingStyles {
 #[serde(deny_unknown_fields, default)]
 pub struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::heading_format))]
   pub format: String,
   /// 見出しテキストのフォントサイズ
   #[garde(custom(positive))]
@@ -262,6 +262,18 @@ mod tests {
   use types::{FontKind, HeadingLevel, length::Length};
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
+
+  #[test]
+  fn validate_rejects_unknown_placeholder_in_format() {
+    // Arrange: `{number}` のタイポ `{nubmer}` を含む書式
+    let style = HeadingStyle {
+      format: "{nubmer} {title}".to_string(),
+      ..HeadingStyle::default()
+    };
+
+    // Act / Assert
+    assert!(style.validate().is_err());
+  }
 
   /// `HeadingStyles` を TOML から `[heading.<level>]` 配下に書く形でテストするための薄いラッパ。
   /// 本番では `Style.heading` が同形でこの型を保持する。

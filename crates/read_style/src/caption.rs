@@ -17,7 +17,7 @@ use types::length::{Length, positive};
 #[serde(deny_unknown_fields, default)]
 pub struct CaptionStyle {
   /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1))]
+  #[garde(length(chars, min = 1), custom(crate::placeholder::caption_format))]
   pub format: String,
   /// キャプションのフォントサイズ
   #[garde(custom(positive))]

@@ -30,13 +30,13 @@ use types::{
 #[serde(deny_unknown_fields, default)]
 pub struct RunningContentStyle {
   /// 左スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(skip)]
+  #[garde(custom(crate::placeholder::running_slot))]
   pub left: String,
   /// 中央スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(skip)]
+  #[garde(custom(crate::placeholder::running_slot))]
   pub center: String,
   /// 右スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(skip)]
+  #[garde(custom(crate::placeholder::running_slot))]
   pub right: String,
   /// フォント種別
   #[garde(skip)]
@@ -142,6 +142,32 @@ mod tests {
 
     // Act / Assert
     assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_rejects_unknown_slot_token() {
+    // Arrange: `{page}` のタイポ `{pagee}` を center スロットに
+    let style = RunningContentStyle {
+      center: "{pagee}".to_string(),
+      ..RunningContentStyle::default()
+    };
+
+    // Act / Assert
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_accepts_valid_slot_tokens() {
+    // Arrange: 5 トークンと空スロットの混在は妥当
+    let style = RunningContentStyle {
+      left: "{title}".to_string(),
+      center: "{author}".to_string(),
+      right: "{page} / {pages} — {date}".to_string(),
+      ..RunningContentStyle::default()
+    };
+
+    // Act / Assert
+    assert!(style.validate().is_ok());
   }
 
   #[test]
