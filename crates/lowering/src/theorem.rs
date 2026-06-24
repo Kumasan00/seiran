@@ -44,7 +44,7 @@ pub(super) fn lower_theorem(
 
   // QED マーク（`qed_mark` を持つクラス = proof）を本体末尾に右寄せ配置する
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
-    let qed_node = make_qed_node(qed_mark, pres.font_kind, ctx.default_font_size());
+    let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
     if matches!(body.last(), Some(DocNode::Paragraph(_))) {
       // 本体末が段落: 最終段落と同居させるため、末尾の paragraph_spacing Vkern の直前に挿す
       let insert_at = body_nodes.len().saturating_sub(1);
@@ -101,11 +101,16 @@ fn build_heading(
   });
 }
 
-/// QED マークの右寄せノードを作る（本体と同じ書体・既定サイズ）
-fn make_qed_node(qed_mark: &str, font_kind: FontKind, font_size: f32) -> LayoutNode {
+/// QED マークの右寄せノードを作る（既定サイズ・数式フォント）
+///
+/// `□`（U+25A1）等の QED 記号は本文セリフ（STIX Two Text 等）に欠けることが多く、本体書体で
+/// 出すと `.notdef`（豆腐）になる。LaTeX の qed 記号も数式記号由来であるため、[`FontKind::Math`]
+/// で描画する（layout のスクリプト解決で欧文部は数式フォント・和文部は和文セリフへ回り、
+/// いずれも `□` を持つ）。
+fn make_qed_node(qed_mark: &str, font_size: f32) -> LayoutNode {
   let qed_style = TextStyle {
     font_size,
-    font_kind,
+    font_kind: FontKind::Math,
     color: None,
   };
   return LayoutNode::FlushRight(vec![LayoutNode::Text(qed_mark.to_string(), qed_style)]);
