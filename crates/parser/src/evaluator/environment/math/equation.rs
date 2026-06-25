@@ -8,6 +8,9 @@
 //! ## 任意引数
 //!
 //! - `[label=eq:foo]` — `\ref` 解決用ラベル（任意）
+//! - `[numbered=false]` — 本体を無採番にする（既定は採番あり）。`align` 等 4 環境の `[numbered]` と
+//!   同一意味論。無採番のときは equation カウンタを消費しない（後続の採番式の通し番号が連続する）。
+//!   無採番の式に `[label=...]` を併用するとエラー（参照番号が存在しないため）
 
 use document::{DocNode, MathEnvKind, MathRow};
 use read_style::CounterName;
@@ -16,21 +19,26 @@ use syntax::ast::EnvironmentView;
 use super::math_grid::{GridSpec, evaluate_grid};
 use crate::evaluator::{
   EvalError, Evaluator,
-  opt_args::{OptType, collect_environment_opt_args, find_string},
+  opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
 };
 
 /// `equation` 環境を評価する
 ///
-/// [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
+/// 既定では [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
 /// `[label=...]` 指定時はそのレジストリにラベルを登録する。番号書式は
-/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。本体は
+/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。`[numbered=false]`
+/// 指定時は採番を一切行わず（カウンタを消費しない）、`row.number` は `None` になる。本体は
 /// 単一行・単一セルとして評価し、`MathRow` 1 件の `MathBlock` を返す。
 ///
 /// # Errors
 ///
-/// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します
+/// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
+/// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
 pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
+  let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
+  // label と numbered の 2 キーを取り出す。find_* は引数を消費するため bool 抽出には複製を渡す
+  // （任意引数は高々 2 要素で複製は軽量）
+  let numbered = find_bool(opt_args.clone(), "numbered").unwrap_or(true);
   let label = find_string(opt_args, "label");
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -38,10 +46,24 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
       span: view.span().into(),
     });
   }
+  // 無採番の式は参照番号を持たないため、ラベルとの併用を禁じる
+  if !numbered && label.is_some() {
+    return Err(EvalError::LabelRequiresNumbering {
+      name: "equation".to_string(),
+      span: view.span().into(),
+    });
+  }
 
-  let number = evaluator
-    .registry
-    .increment_with_label(CounterName::Equation, label.as_deref(), view.span().into())?;
+  // `[numbered=false]` のときは採番せず（カウンタも消費しない）番号は持たせない
+  let number = if numbered {
+    Some(
+      evaluator
+        .registry
+        .increment_with_label(CounterName::Equation, label.as_deref(), view.span().into())?,
+    )
+  } else {
+    None
+  };
 
   let source = view.source();
   // equation は単一行・単一セル。行区切り `\\`・列区切り `&` はエラーにする
@@ -60,7 +82,7 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 
   let row = MathRow {
     cells,
-    number: Some(number),
+    number,
     label,
   };
   return Ok(vec![DocNode::MathBlock {
@@ -207,7 +229,7 @@ mod tests {
 
   #[test]
   fn equation_rejects_unknown_opt_key() {
-    // Arrange — equation は label のみ許可、未知キーはエラー
+    // Arrange — equation は label / numbered のみ許可、未知キーはエラー
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
@@ -218,6 +240,78 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn equation_numbered_false_suppresses_numbering() {
+    // Arrange — `[numbered=false]` で無採番（number が None）になる
+    let arena = Bump::new();
+    let source = r"\begin{equation}[numbered=false]x\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 行は出るが番号は持たない
+    assert_eq!(result.len(), 1);
+    let row = first_row(&result);
+    assert!(row.number.is_none(), "無採番なので number は None: {:?}", row.number);
+  }
+
+  #[test]
+  fn equation_numbered_false_does_not_consume_counter() {
+    // Arrange — 無採番 → 採番の並びで、採番側の通し番号が "1" から始まる（無採番はカウンタ非消費）
+    let arena = Bump::new();
+    let source = r"\begin{equation}[numbered=false]a\end{equation}\begin{equation}b\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 1 つ目は無採番、2 つ目は通し番号が連続して "1"
+    assert_eq!(result.len(), 2);
+    let numbers: Vec<Option<&str>> = result
+      .iter()
+      .map(|n| match n {
+        DocNode::MathBlock { rows, .. } => rows[0].number.as_deref(),
+        _ => panic!("MathBlock が期待されます: {n:?}"),
+      })
+      .collect();
+    assert_eq!(numbers, vec![None, Some("1")]);
+  }
+
+  #[test]
+  fn equation_numbered_true_is_explicit_default() {
+    // Arrange — `[numbered=true]` 明示は既定（採番あり）と同じ
+    let arena = Bump::new();
+    let source = r"\begin{equation}[numbered=true]x\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let row = first_row(&result);
+    assert_eq!(row.number.as_deref(), Some("1"));
+  }
+
+  #[test]
+  fn equation_numbered_false_with_label_errors() {
+    // Arrange — 無採番の式にラベルを付けるとエラー（参照番号が存在しないため）
+    let arena = Bump::new();
+    let source = r"\begin{equation}[numbered=false][label=eq:x]a\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
   }
 
   #[test]

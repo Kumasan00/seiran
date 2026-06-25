@@ -198,6 +198,22 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// 無採番（`[numbered=false]`）の数式環境にラベル（`[label=...]`）を付与した場合
+  ///
+  /// 無採番の式は参照番号を持たないため、ラベルを付けても `\ref` で解決できる対象がない。
+  #[error("無採番の数式にラベルは付けられません: {name}")]
+  #[diagnostic(
+    code(parser::eval::label_requires_numbering),
+    help("ラベルは参照番号を前提とします。[numbered=false] を外すか [label=...] を外してください。")
+  )]
+  LabelRequiresNumbering {
+    /// 環境名（先頭の `\` は含めない）
+    name: String,
+    /// 環境のソース位置
+    #[label("無採番の式にはラベルを付けられません")]
+    span: SourceSpan,
+  },
+
   /// インライン文脈（見出しタイトル・キャプション・インライン装飾の引数）に
   /// ブロックレベルの要素が出現した場合
   #[error("インライン文脈では使用できません: {what}")]
