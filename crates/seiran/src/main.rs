@@ -51,36 +51,37 @@
 //! - 件数は `<entity>_count`（例: `source_count` / `page_count` / `block_count`）。
 //! - 時間はステージが `elapsed_ms`、ビルド全体が `total_elapsed_ms`。
 //!
-//! ### 冗長度の制御（別 issue）
+//! ### 冗長度の制御
 //!
-//! DEBUG / TRACE を実際に画面へ出す制御手段（`RUST_LOG` / `EnvFilter` や `-v` / `-q` フラグ）は
-//! 本バージョンでは未導入で、既定では INFO のみを表示する（`with_max_level(INFO)` で固定）。
-//! DEBUG / TRACE はコンパイルされるが既定では出力されない。
+//! 何も指定しなければ既定どおり INFO 以上のみを表示する。冗長度の切り替えは 2 系統:
+//!
+//! - **第一級（一般ユーザ向け、CLI フラグ）**: グローバルフラグ `-v` / `-q` で冗長度を上下する。
+//!   全サブコマンドに効き `--help` に出る。`-v` = DEBUG、`-vv` = TRACE（繰り返しで段階を上げる）。
+//!   `-q` / `--quiet` = WARN 以上のみ（INFO 進捗を抑制）。`-v` と `-q` は相互排他。
+//! - **補足（開発者向け、環境変数）**: `RUST_LOG`（`tracing-subscriber` の `EnvFilter`）で
+//!   クレート / ターゲット単位に絞り込む（例: `RUST_LOG=seiran=info,layout=debug`）。フラグでは
+//!   表現できない「特定クレートだけ詳しく」を担うエスケープハッチ。
+//!
+//! **優先順位**: `RUST_LOG`（明示指定時）> `-v` / `-q` フラグ > 既定 INFO。`RUST_LOG` を設定した
+//! ときはそれが全権を持つため、同時に渡した `-v` / `-q` は無視される（`-vv` が効かない場合は
+//! `RUST_LOG` 設定済みを疑う）。`RUST_LOG` のパースに失敗したときは INFO にフォールバックし、
+//! 警告を 1 行出す（黙って無効化しない）。
 
 mod build_pdf;
-use tracing_subscriber::fmt;
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// アプリケーションのメインエントリーポイント
 ///
-/// ロギング（INFO 以上、RFC 3339 タイムスタンプ付きで stderr）を初期化し、
-/// CLI 引数で指定されたサブコマンドを実行します。
+/// CLI 引数をパースしてからロギング（`-v` / `-q` / `RUST_LOG` で冗長度可変、既定 INFO、
+/// RFC 3339 タイムスタンプ付きで stderr）を初期化し、指定されたサブコマンドを実行します。
 ///
 /// # Errors
 ///
 /// 設定読み込み・フォント検証・パース・PDF 生成の各段のエラーを
 /// `miette` 診断として表示します。
 fn main() -> miette::Result<()> {
-  fmt::fmt()
-    .pretty()
-    .with_max_level(tracing::Level::INFO)
-    .with_thread_ids(false)
-    .with_thread_names(false)
-    .with_target(false)
-    .with_file(false)
-    .with_timer(fmt::time::LocalTime::rfc_3339())
-    .init();
-
   let cli_args = cli::parse_arg();
+  init_logging(cli_args.verbose, cli_args.quiet);
 
   match cli_args.command {
     cli::Command::Build { config_path } => build_pdf::build_pdf(&config_path)?,
@@ -102,4 +103,61 @@ fn main() -> miette::Result<()> {
   }
 
   return Ok(());
+}
+
+/// 優先順位（`RUST_LOG` > `-v` / `-q` > 既定 INFO）に従ってフィルタを構築し、ロギングを初期化する。
+///
+/// `RUST_LOG` のパースに失敗した場合は INFO へフォールバックし、subscriber 初期化後に
+/// 警告を 1 行出す（フィルタ未確定では `tracing::warn!` を出せないため後出しにする）。
+fn init_logging(verbose: u8, quiet: bool) {
+  let (filter, warn_msg) = build_env_filter(verbose, quiet);
+  fmt::fmt()
+    .pretty()
+    .with_env_filter(filter)
+    .with_thread_ids(false)
+    .with_thread_names(false)
+    .with_target(false)
+    .with_file(false)
+    .with_timer(fmt::time::LocalTime::rfc_3339())
+    .init();
+  if let Some(msg) = warn_msg {
+    tracing::warn!("{msg}");
+  }
+}
+
+/// 冗長度フィルタを優先順位に従って構築する。
+///
+/// `RUST_LOG` が明示指定（非空）かつパース成功ならそれを最優先で返す（開発者オーバーライド）。
+/// 未設定なら `-v` / `-q` フラグから、いずれも無ければ既定 INFO のフィルタを返す。
+/// `RUST_LOG` のパース失敗時は INFO へフォールバックし、警告メッセージを併せて返す。
+fn build_env_filter(verbose: u8, quiet: bool) -> (EnvFilter, Option<String>) {
+  if let Ok(raw) = std::env::var("RUST_LOG")
+    && !raw.trim().is_empty()
+  {
+    match EnvFilter::builder().parse(&raw) {
+      Ok(filter) => return (filter, None),
+      Err(error) => {
+        let msg = format!("環境変数 RUST_LOG のパースに失敗したため INFO にフォールバックします: {error}");
+        return (EnvFilter::new("info"), Some(msg));
+      },
+    }
+  }
+  return (flag_filter(verbose, quiet), None);
+}
+
+/// `-v` / `-q` フラグからグローバルレベルの `EnvFilter` を作る（既定 INFO）。
+///
+/// `-q` が WARN 以上、`-v` が DEBUG、`-vv` 以上が TRACE。`-v` と `-q` は CLI 側（clap の
+/// `conflicts_with`）で相互排他なので、両立するケースは到達しない。
+fn flag_filter(verbose: u8, quiet: bool) -> EnvFilter {
+  let level = if quiet {
+    "warn"
+  } else {
+    match verbose {
+      0 => "info",
+      1 => "debug",
+      _ => "trace",
+    }
+  };
+  return EnvFilter::new(level);
 }
