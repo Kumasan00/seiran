@@ -67,33 +67,35 @@ pub(crate) enum OptValue {
 
 /// 収集済み任意引数から指定キーの文字列値を取り出す
 ///
-/// `[label=...]` のような単一の文字列キーを取り出す典型パターン用。
-/// キーが存在しない、または値が文字列型でない場合は `None` を返す。
-pub(crate) fn find_string(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<String> {
-  return opt_args.into_iter().find_map(|(k, value)| match value {
-    OptValue::String(s) if k == key => Some(s),
+/// `[label=...]` のような文字列キーを取り出す。引数を借用するため、同じ `opt_args` から
+/// 複数のキー（例: `label` と `numbered`）を続けて抽出できる。キーが存在しない、または
+/// 値が文字列型でない場合は `None` を返す。
+pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<String> {
+  return opt_args.iter().find_map(|(k, value)| match value {
+    OptValue::String(s) if k == key => Some(s.clone()),
     _ => None,
   });
 }
 
 /// 収集済み任意引数から指定キーの色値を取り出す
 ///
-/// `[color=#rrggbb]` のような単一の色キーを取り出す典型パターン用。
-/// キーが存在しない、または値が色型でない場合は `None` を返す。
-pub(crate) fn find_color(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<Color> {
-  return opt_args.into_iter().find_map(|(k, value)| match value {
-    OptValue::Color(c) if k == key => Some(c),
+/// `[color=#rrggbb]` のような色キーを取り出す。引数を借用するため、同じ `opt_args` から
+/// 複数のキーを続けて抽出できる。キーが存在しない、または値が色型でない場合は `None` を返す。
+pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<Color> {
+  return opt_args.iter().find_map(|(k, value)| match value {
+    OptValue::Color(c) if k == key => Some(*c),
     _ => None,
   });
 }
 
 /// 収集済み任意引数から指定キーの真偽値を取り出す
 ///
-/// `[numbered=false]` / `[breakable=false]` のような単一の bool キーを取り出す典型パターン用。
-/// キーが存在しない、または値が bool 型でない場合は `None` を返す。
-pub(crate) fn find_bool(opt_args: Vec<(String, OptValue)>, key: &str) -> Option<bool> {
-  return opt_args.into_iter().find_map(|(k, value)| match value {
-    OptValue::Bool(b) if k == key => Some(b),
+/// `[numbered=false]` / `[breakable=false]` のような bool キーを取り出す。引数を借用するため、
+/// 同じ `opt_args` から複数のキーを続けて抽出できる。キーが存在しない、または値が bool 型でない
+/// 場合は `None` を返す。
+pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bool> {
+  return opt_args.iter().find_map(|(k, value)| match value {
+    OptValue::Bool(b) if k == key => Some(*b),
     _ => None,
   });
 }

@@ -36,10 +36,8 @@ use crate::evaluator::{
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
 pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
-  // label と numbered の 2 キーを取り出す。find_* は引数を消費するため bool 抽出には複製を渡す
-  // （任意引数は高々 2 要素で複製は軽量）
-  let numbered = find_bool(opt_args.clone(), "numbered").unwrap_or(true);
-  let label = find_string(opt_args, "label");
+  let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
+  let label = find_string(&opt_args, "label");
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),
