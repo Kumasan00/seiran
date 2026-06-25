@@ -50,6 +50,9 @@
 //! - パスは `<entity>_path`（例: `config_path` / `source_path` / `output_path`）。
 //! - 件数は `<entity>_count`（例: `source_count` / `page_count` / `block_count`）。
 //! - 時間はステージが `elapsed_ms`、ビルド全体が `total_elapsed_ms`。
+//! - 同一関数を複数回呼ぶステージ（`build_blocks` / `break_pages`）は、クレート側が出す同文面の
+//!   DEBUG 完了ログを区別できるよう、呼び出し側で `debug_span!` を張りフィールドで文脈を付ける
+//!   （`region`＝本文 / タイトル等の区間、`pass`＝ページ分割の Pass 番号）。
 //!
 //! ### 冗長度の制御
 //!

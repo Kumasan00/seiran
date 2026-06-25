@@ -15,7 +15,7 @@ use lowering::{LoweringContext, LoweringError};
 use miette::Diagnostic;
 use parser::ParseSourceError;
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::{debug, debug_span, info};
 
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -151,9 +151,13 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let default_font_size = style.font_size.to_pt();
   let line_height_factor = style.line_height_factor;
 
+  // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
+  // span の `region` で呼び出し区間を区別できるようにする（INFO 時は span 非活性でゼロコスト）。
   let stage_start = Instant::now();
-  let body_blocks =
-    layout::build_blocks(body_layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor);
+  let body_blocks = {
+    let _span = debug_span!("build_blocks", region = "body").entered();
+    layout::build_blocks(body_layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor)
+  };
   info!(
     block_count = body_blocks.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -175,8 +179,13 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   // Pass 1: 本文だけを単独でページ分割し、各見出しの本文内ページ index を採取する。
   // 本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、ここで得る本文内
   // ページ番号が最終値になる（前付けの長さに不依存 = R1。break_pages は純粋なので安価）。
+  // break_pages は Pass 1 / Pass 2 で 2 回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
+  // span の `pass` でどちらの呼び出しかを区別できるようにする。
   let stage_start = Instant::now();
-  let body_pages = hlist::break_pages(body_blocks.clone(), text_width, &geometry, &hlist::GreedyBreaker);
+  let body_pages = {
+    let _span = debug_span!("break_pages", pass = 1).entered();
+    hlist::break_pages(body_blocks.clone(), text_width, &geometry, &hlist::GreedyBreaker)
+  };
   let body_page_count = body_pages.len();
   let heading_pages = heading_page_indices(&body_pages);
   info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました（Pass 1）");
@@ -191,13 +200,16 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
     };
     // lower_title_page は末尾に PageBreak を含むため、後続（目次・本文）は次ページから始まる。
     let title_nodes = lowering::lower_title_page(&metadata, &style.title_page);
-    front_blocks.extend(layout::build_blocks(
-      title_nodes,
-      &harf_rust_shapers,
-      &metrics,
-      default_font_size,
-      line_height_factor,
-    ));
+    {
+      let _span = debug_span!("build_blocks", region = "title").entered();
+      front_blocks.extend(layout::build_blocks(
+        title_nodes,
+        &harf_rust_shapers,
+        &metrics,
+        default_font_size,
+        line_height_factor,
+      ));
+    }
     debug!("タイトルページを生成しました");
   }
   if style.toc.enabled {
@@ -217,7 +229,10 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let stage_start = Instant::now();
   let mut combined = front_blocks;
   combined.extend(body_blocks);
-  let mut pages = hlist::break_pages(combined, text_width, &geometry, &hlist::GreedyBreaker);
+  let mut pages = {
+    let _span = debug_span!("break_pages", pass = 2).entered();
+    hlist::break_pages(combined, text_width, &geometry, &hlist::GreedyBreaker)
+  };
   let front_matter_count = pages.len().saturating_sub(body_page_count);
   debug_assert_eq!(pages.len(), front_matter_count + body_page_count, "本文区間のページ数は Pass 1 と一致するはず");
   info!(
