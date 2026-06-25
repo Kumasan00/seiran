@@ -55,7 +55,7 @@ pub(crate) fn url_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
 /// 任意引数 `url` の欠落・型不正、必須引数（表示テキスト）の欠落 / 過剰でエラーを返します。
 pub(crate) fn href_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("url", OptType::String)])?;
-  let Some(url) = find_string(opt_args, "url") else {
+  let Some(url) = find_string(&opt_args, "url") else {
     return Err(EvalError::MissingCommandArgument {
       name: "href".to_string(),
       expected: "[url=...]（リンク先 URI）".to_string(),

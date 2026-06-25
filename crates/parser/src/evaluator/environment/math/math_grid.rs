@@ -122,7 +122,7 @@ pub(crate) fn evaluate_math_env(
 ) -> Result<Vec<DocNode>, EvalError> {
   // 許可する任意引数は [numbered] のみ。既定は採番あり
   let opt_args = collect_environment_opt_args(view, &[("numbered", OptType::Bool)])?;
-  let numbered = find_bool(opt_args, "numbered").unwrap_or(true);
+  let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),

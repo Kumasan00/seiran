@@ -61,7 +61,7 @@ pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<Inli
 pub(crate) fn colored_text(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
   let name = view.name();
   let opt_args = collect_command_opt_args(view, &[("color", OptType::Color)])?;
-  let Some(color) = find_color(opt_args, "color") else {
+  let Some(color) = find_color(&opt_args, "color") else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: "色 (color=#rrggbb)".to_string(),

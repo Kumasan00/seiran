@@ -40,7 +40,7 @@ use crate::evaluator::{
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
 pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
-  let label = find_string(opt_args, "label");
+  let label = find_string(&opt_args, "label");
 
   let number = evaluator.registry.increment_with_label(CounterName::Figure, label.as_deref(), view.span().into())?;
 

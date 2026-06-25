@@ -36,7 +36,7 @@ pub(super) fn heading(
   let name = level.command_name();
 
   let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
-  let label = find_string(opt_args, "label");
+  let label = find_string(&opt_args, "label");
 
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
