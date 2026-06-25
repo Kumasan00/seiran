@@ -8,6 +8,7 @@ use std::{fs, path::Path};
 
 use hlist::Block;
 use krilla::image::Image;
+use tracing::debug;
 use usvg::Tree;
 
 use crate::error::PdfGenError;
@@ -24,7 +25,7 @@ use crate::error::PdfGenError;
 /// 画像の読み込み・デコードに失敗した場合、または自然寸法から縦横比を
 /// 算出できない場合に [`PdfGenError`] を返します。
 pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>, PdfGenError> {
-  return blocks
+  let resolved = blocks
     .into_iter()
     .map(|block| match block {
       Block::Image {
@@ -52,7 +53,10 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
       },
       other => Ok(other),
     })
-    .collect();
+    .collect::<Result<Vec<Block>, PdfGenError>>()?;
+  let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
+  debug!(image_count, "画像サイズを確定しました");
+  return Ok(resolved);
 }
 
 /// `load_image` が返す画像表現。

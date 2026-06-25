@@ -140,7 +140,7 @@ enum VariationAxesError {
 /// ```
 pub fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
   // ファイルパスとインデックスをログに記録
-  info!(font_file_path = %font_path.display(), font_index = font_index, "Input font file path and index");
+  info!(font_path = %font_path.display(), font_index, "フォントファイルを読み込みます");
 
   // フォントファイルをすべてメモリに読み込み
   let font_bytes = fs::read(font_path).map_err(|source| VariationAxesError::ReadFile {

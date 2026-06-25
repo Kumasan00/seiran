@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 icu.workspace = true
+tracing.workspace = true
 types.workspace = true
 
 [lints]

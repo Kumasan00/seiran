@@ -260,6 +260,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "tracing",
  "types",
 ]
 
@@ -716,6 +717,7 @@ name = "hlist"
 version = "0.1.0"
 dependencies = [
  "icu",
+ "tracing",
  "types",
 ]
 
@@ -1306,6 +1308,7 @@ dependencies = [
  "icu",
  "lazy-regex",
  "lowering",
+ "tracing",
  "types",
 ]
 
@@ -1377,6 +1380,7 @@ dependencies = [
  "parser",
  "read_style",
  "thiserror",
+ "tracing",
  "types",
 ]
 
@@ -1548,6 +1552,7 @@ dependencies = [
  "serde",
  "syntax",
  "thiserror",
+ "tracing",
  "types",
 ]
 
@@ -1584,6 +1589,7 @@ dependencies = [
  "read_config",
  "read_style",
  "thiserror",
+ "tracing",
  "types",
  "usvg",
 ]
@@ -2226,6 +2232,7 @@ dependencies = [
  "memchr",
  "miette",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

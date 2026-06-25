@@ -28,6 +28,7 @@ use document::{DocNode, Document};
 use miette::Diagnostic;
 use read_style::Style as ReadStyle;
 use thiserror::Error;
+use tracing::debug;
 
 mod figure;
 mod float;
@@ -175,6 +176,7 @@ pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<Layou
       heading_index += 1;
     }
   }
+  debug!(input_node_count = nodes.len(), layout_node_count = result.len(), "lowering が完了しました");
   return Ok(result);
 }
 

@@ -25,6 +25,7 @@ use document::DocNode;
 use miette::{Diagnostic, NamedSource};
 pub use read_style::Style;
 use thiserror::Error;
+use tracing::debug;
 
 mod evaluator;
 pub use evaluator::EvalError;
@@ -125,5 +126,6 @@ pub fn parse_source(
     error,
   })?;
 
+  debug!(source_path = source_name, node_count = doc_nodes.len(), "ソースのパース・評価が完了しました");
   return Ok(doc_nodes);
 }

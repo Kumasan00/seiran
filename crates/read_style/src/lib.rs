@@ -39,7 +39,7 @@ use std::{fs, path::Path};
 
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
-use tracing::info;
+use tracing::{debug, info};
 
 pub use crate::{
   caption::CaptionStyle,
@@ -82,7 +82,7 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
     return Ok(Style::default());
   };
   let path_str = path.display().to_string();
-  info!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
+  debug!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
 
   let content = fs::read_to_string(path).map_err(|source| ReadStyleError::ReadFile {
     path: path_str.clone(),

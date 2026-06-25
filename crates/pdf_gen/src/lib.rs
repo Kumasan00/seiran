@@ -16,6 +16,7 @@ use hlist::Page;
 use krilla::{Document, page::PageSettings};
 use read_config::Config;
 use read_style::Style;
+use tracing::debug;
 use types::HeadingLevel;
 
 pub use crate::{error::PdfGenError, image::resolve_images};
@@ -73,5 +74,6 @@ pub fn create_pdf(
   document.set_metadata(build_metadata(config));
   render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style, outline_entries)?;
   let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument { source })?;
+  debug!(page_count = pages.len(), "PDF 描画が完了しました");
   return Ok(pdf_bytes);
 }
