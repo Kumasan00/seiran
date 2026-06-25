@@ -11,7 +11,7 @@ use std::{
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use types::FontType;
 
 mod pre_config;
@@ -196,7 +196,7 @@ struct FontValues {
 // allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
 #[allow(clippy::result_large_err)]
 pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
-  info!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
+  debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = fs::read_to_string(config_path).map_err(|source| ReadConfigError::ReadFile {
     path: config_path.display().to_string(),
     source,
@@ -451,7 +451,7 @@ fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Ve
   for source_path in sources {
     if source_path.extension().and_then(|ext| ext.to_str()) != Some("sei") {
       warn!(
-        path = %source_path.display(),
+        source_path = %source_path.display(),
         "ソースファイルの拡張子が `.sei` ではありません。Seiran は `.sei` 拡張子を推奨します。"
       );
     }

@@ -19,6 +19,7 @@ use miette::Diagnostic;
 use read_references::References;
 use read_style::Style;
 use thiserror::Error;
+use tracing::debug;
 
 mod bridge;
 mod render;
@@ -175,6 +176,7 @@ pub fn process_citations(
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
+  let citation_count = cite_nodes.len();
   // ラベルを書き戻す（収集と同じドキュメント順なので zip で対応づく）。
   for (node, label) in cite_nodes.iter_mut().zip(rendered.labels) {
     if let InlineNode::Cite { label: slot, .. } = node {
@@ -184,7 +186,9 @@ pub fn process_citations(
   // 可変借用を解放してから書誌を末尾に追加する。
   drop(cite_nodes);
 
+  let bibliography_count = rendered.bibliography.len();
   nodes.extend(rendered.bibliography);
+  debug!(citation_count, bibliography_count, "文献引用の整形が完了しました");
   return Ok(());
 }
 

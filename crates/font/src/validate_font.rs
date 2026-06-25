@@ -85,7 +85,7 @@ use miette::Diagnostic;
 use read_config::{FontConfig, FontConfigs, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 use types::FontType;
 
 use crate::FontRefs;
@@ -196,7 +196,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
     if !errors.is_empty() {
       all_errors.push(FontValidationErrors { font_type, errors });
     }
-    info!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントの検証が完了しました");
+    debug!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントを検証しました");
   }
   if !all_errors.is_empty() {
     return Err(MultipleFontValidationErrors { errors: all_errors });

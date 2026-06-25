@@ -33,7 +33,7 @@ pub use date::{Date, DateCirca, DatePart, DateSeason};
 pub use error::ReadReferencesError;
 pub use name::Name;
 pub use reference::{NumberOrString, Reference, ReferenceType, References};
-use tracing::info;
+use tracing::{debug, info};
 
 /// 参照定義ファイルの形式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,14 +73,14 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
     return Ok(References(HashMap::new()));
   };
   let path_ref = path.as_ref();
-  info!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
+  debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
   let content = std::fs::read_to_string(path_ref).map_err(|source| ReadReferencesError::ReadFile {
     path: path_ref.display().to_string(),
     source,
   })?;
   let references = parse_references(&content, path_ref)?;
-  let count = references.len();
-  info!(count, "参照定義ファイルの読み込みが完了しました");
+  let reference_count = references.len();
+  info!(reference_count, "参照定義ファイルの読み込みが完了しました");
   return Ok(references);
 }
 

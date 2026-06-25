@@ -125,7 +125,7 @@ enum TtcNamesError {
 /// ```
 pub fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
   // TTC ファイルパスをログに記録
-  info!(ttc_file_path = %file_path.display(), "Input TTC file path");
+  info!(ttc_path = %file_path.display(), "TTC ファイルを読み込みます");
 
   // TTC ファイルをすべてメモリに読み込み
   let data = fs::read(file_path).map_err(|source| TtcNamesError::ReadFile {

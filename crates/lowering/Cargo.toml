@@ -12,6 +12,7 @@ document.workspace = true
 miette.workspace = true
 read_style.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 types.workspace = true
 
 [dev-dependencies]

@@ -10,6 +10,7 @@
 //! ただし画像・表・罫線はブロックの底辺で終わるため、直後の段落はベースラインを
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
+use tracing::debug;
 use types::AnchorMark;
 
 use crate::{
@@ -140,6 +141,7 @@ impl PageComposer {
 #[must_use]
 pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, breaker: &dyn LineBreaker) -> Vec<Page> {
   let mut composer = PageComposer::new(geom);
+  let block_count = blocks.len();
 
   for block in blocks {
     match block {
@@ -224,7 +226,9 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
     }
   }
 
-  return composer.finish();
+  let pages = composer.finish();
+  debug!(block_count, page_count = pages.len(), "ページ分割が完了しました");
+  return pages;
 }
 
 /// 段落を行に割ってベースライン送りで配置する

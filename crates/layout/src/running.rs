@@ -12,6 +12,7 @@
 use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{HBox, Line, Page, PlacedBlock, PositionedBox};
 use lowering::TextStyle;
+use tracing::debug;
 use types::FontKind;
 
 use crate::Measurer;
@@ -118,6 +119,7 @@ pub fn build_running_content(
       page.footer = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
     }
   }
+  debug!(page_count = pages.len(), "ヘッダー・フッターを配置しました");
 }
 
 /// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる

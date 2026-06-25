@@ -2,7 +2,7 @@
 //! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
 //! PDF を生成するための主要な機能を提供します。
 
-use std::{collections::HashSet, fs, path::Path};
+use std::{collections::HashSet, fs, path::Path, time::Instant};
 
 use citation::CitationError;
 use document::DocNode;
@@ -15,7 +15,7 @@ use lowering::{LoweringContext, LoweringError};
 use miette::Diagnostic;
 use parser::ParseSourceError;
 use thiserror::Error;
-use tracing::info;
+use tracing::{debug, info};
 
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -99,6 +99,7 @@ enum BuildPdfError {
 ///
 /// * `config_path` - 設定ファイルのパス
 pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
+  let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
 
   let config = read_config::read_config(config_path)?;
@@ -107,31 +108,41 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
   let citation_keys: HashSet<String> = references.keys().cloned().collect();
 
+  let stage_start = Instant::now();
   let mut doc_nodes = parse_all_sources(&config.sources, &style, &citation_keys)?;
-  info!(source_count = config.sources.len(), "全ソースのパースが完了しました");
+  info!(
+    source_count = config.sources.len(),
+    node_count = doc_nodes.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "全ソースのパースが完了しました"
+  );
 
   // `\cite` を CSL 整形し、引用された文献の書誌を本文末尾に追加する（parser の後・lowering の前）。
+  let stage_start = Instant::now();
   citation::process_citations(&mut doc_nodes, &references, &style)
     .map_err(|source| BuildPdfError::Citation { source })?;
-  info!("文献引用の CSL 整形が完了しました");
+  info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
+  let stage_start = Instant::now();
   let lowering_ctx = LoweringContext::new(&style);
   let body_layout_nodes =
     lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
-  info!("Document IR → LayoutNode への変換が完了しました");
+  info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
+  let stage_start = Instant::now();
   let font_data = FontData::new(&config.font_configs)?;
-  info!("フォントの読み込みが完了しました");
+  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
 
   let font_refs = FontRefs::new(&config.font_configs, &font_data)?;
 
+  let stage_start = Instant::now();
   validate_font::validate_fonts(&config.font_configs, &font_refs)?;
-  info!("フォントの検証が完了しました");
+  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
 
   let shaper_datas = ShaperDatas::new(&font_refs);
   let shaper_instances = ShaperInstances::new(&config.font_configs, &font_refs);
   let harf_rust_shapers = HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
-  info!("シェーパーの初期化が完了しました");
+  debug!("シェーパーの初期化が完了しました");
 
   let metrics = FontMetrics::new(&font_refs)?;
 
@@ -140,10 +151,18 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   let default_font_size = style.font_size.to_pt();
   let line_height_factor = style.line_height_factor;
 
+  let stage_start = Instant::now();
   let body_blocks =
     layout::build_blocks(body_layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor);
+  info!(
+    block_count = body_blocks.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "本文ブロックの構築が完了しました"
+  );
+
+  let stage_start = Instant::now();
   let body_blocks = pdf_gen::resolve_images(body_blocks, text_width)?;
-  info!("本文ブロックの構築が完了しました");
+  info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
   let geometry = hlist::PageGeometry {
     margin_top: config.pdf.margin.top.to_pt(),
@@ -156,10 +175,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   // Pass 1: 本文だけを単独でページ分割し、各見出しの本文内ページ index を採取する。
   // 本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、ここで得る本文内
   // ページ番号が最終値になる（前付けの長さに不依存 = R1。break_pages は純粋なので安価）。
+  let stage_start = Instant::now();
   let body_pages = hlist::break_pages(body_blocks.clone(), text_width, &geometry, &hlist::GreedyBreaker);
   let body_page_count = body_pages.len();
   let heading_pages = heading_page_indices(&body_pages);
-  info!(body_page_count, "本文の Pass 1 ページ分割が完了しました");
+  info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました（Pass 1）");
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
   let mut front_blocks: Vec<hlist::Block> = Vec::new();
@@ -178,7 +198,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
       default_font_size,
       line_height_factor,
     ));
-    info!("タイトルページを生成しました");
+    debug!("タイトルページを生成しました");
   }
   if style.toc.enabled {
     let toc_entries = collect_toc_entries(&doc_nodes, &heading_pages, &style.toc, &style.page_numbering);
@@ -188,18 +208,25 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
       front_blocks.extend(toc_blocks);
       // 目次の後で改ページし、本文を次ページから始める（本文区間の独立性を保つ）。
       front_blocks.push(hlist::Block::PageBreak);
-      info!(entry_count = toc_entries.len(), "目次を生成しました");
+      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
     }
   }
 
   // Pass 2: 前付け + 本文を結合して最終ページを確定する。本文区間のページ分割は Pass 1 と
   // 一致する（本文は常に改ページ境界から始まるため）。
+  let stage_start = Instant::now();
   let mut combined = front_blocks;
   combined.extend(body_blocks);
   let mut pages = hlist::break_pages(combined, text_width, &geometry, &hlist::GreedyBreaker);
   let front_matter_count = pages.len().saturating_sub(body_page_count);
   debug_assert_eq!(pages.len(), front_matter_count + body_page_count, "本文区間のページ数は Pass 1 と一致するはず");
-  info!(page_count = pages.len(), front_matter_count, "レイアウトの計算が完了しました");
+  info!(
+    page_count = pages.len(),
+    front_matter_count,
+    body_page_count,
+    elapsed_ms = elapsed_ms(stage_start),
+    "ページ分割が完了しました（Pass 2）"
+  );
 
   // ページ番号ラベルを算出する（前付け = ローマ数字 / 本文 = 算用数字、各リージョン 1 から）。
   let page_numbers = page_number_labels(pages.len(), front_matter_count, body_page_count, &style.page_numbering);
@@ -225,17 +252,24 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
   let outline_entries = collect_outline_entries(&doc_nodes);
 
+  let stage_start = Instant::now();
   let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style, &outline_entries)?;
+  info!(page_count = pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
 
+  let stage_start = Instant::now();
   let output_path = config.output.pdf_path();
   fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
     path: output_path.display().to_string(),
     source,
   })?;
-  info!(output_path = %output_path.display(), "PDF の保存が完了しました");
+  info!(output_path = %output_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
 
+  info!(page_count = pages.len(), total_elapsed_ms = elapsed_ms(build_start), "ビルドが完了しました");
   return Ok(());
 }
+
+/// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
+fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
 /// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
 ///

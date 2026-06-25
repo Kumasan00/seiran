@@ -13,6 +13,7 @@
 //!   `Vec` の個別ヒープ確保を排除
 
 use bumpalo::Bump;
+use tracing::debug;
 
 use crate::{
   cst::{
@@ -716,7 +717,9 @@ pub fn parse<'a>(
 ) -> Result<&'a GreenNode<'a>, ParserError> {
   let lexer = Lexer::new(source);
   let mut parser = Parser::new(source, lexer, arena, env_mode);
-  return parser.parse_root();
+  let root = parser.parse_root()?;
+  debug!(source_bytes = source.len(), "CST の構築が完了しました");
+  return Ok(root);
 }
 
 #[cfg(test)]

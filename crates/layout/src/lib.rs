@@ -40,6 +40,7 @@ use lazy_regex::regex_replace_all;
 use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
 pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
+use tracing::debug;
 use types::{Align, Color, FontKind, FontType, Length};
 
 /// レイアウトノードを計測済みのブロック列に変換する
@@ -64,6 +65,7 @@ pub fn build_blocks(
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, Align::Left);
   measurer.flush_paragraph(&mut blocks, &mut paragraph, 0.0, Align::Left);
+  debug!(block_count = blocks.len(), "ブロックの構築が完了しました");
   return blocks;
 }
 
