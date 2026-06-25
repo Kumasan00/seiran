@@ -69,89 +69,38 @@ impl Default for ReferenceStyle {
 }
 
 impl ReferenceStyle {
-  /// 値を正規化する（現状はロケールコードの大文字小文字を BCP 47 の標準形へ揃える）。
+  /// 値を正規化する（現状はロケールコードを BCP 47 の標準形へ揃える）。
   ///
-  /// [`crate::parse_style`] が値検証の後に呼び出す純粋処理。`locale` が `Some` のとき、言語サブ
-  /// タグを小文字・地域サブタグを大文字・用字サブタグを先頭大文字へ整える（例 `ja-jp` → `ja-JP`）。
-  /// `citation` の内蔵ロケール照合は文字列一致のため、ここで標準形へ揃えておくと照合が安定する。
-  /// `None` のときは何もしない。パスの正規化（`canonicalize`）は I/O を伴うため [`crate::read_style`]
-  /// 側で行う。
+  /// [`crate::parse_style`] が値検証の後に呼び出す純粋処理。`locale` が `Some` のとき、
+  /// [`unic_langid::LanguageIdentifier`] でパースしてから `to_string` で標準形へ整える（言語サブ
+  /// タグを小文字・地域サブタグを大文字・用字サブタグを先頭大文字へ、区切りは `-` へ揃える。
+  /// 例 `ja-jp` → `ja-JP`、`ja_JP` → `ja-JP`）。`citation` の内蔵ロケール照合は文字列一致のため、
+  /// ここで標準形へ揃えておくと照合が安定する。`None` のときは何もしない。検証済みの値はパースに
+  /// 成功する前提だが、万一失敗した場合は元の値を温存する。パスの正規化（`canonicalize`）は I/O を
+  /// 伴うため [`crate::read_style`] 側で行う。
   pub fn normalize(&mut self) {
-    if let Some(code) = &self.locale {
-      self.locale = Some(normalize_locale_code(code));
+    if let Some(code) = &self.locale
+      && let Ok(langid) = unic_langid::LanguageIdentifier::from_bytes(code.as_bytes())
+    {
+      self.locale = Some(langid.to_string());
     }
   }
 }
 
 /// ロケールコードの構文を検証する `garde` カスタムバリデーター。
 ///
-/// `None`（ロケール未指定）は許可する。`Some` のときは BCP 47 風の構文（言語サブタグ + 任意の
-/// サブタグ）に合致するかだけを確認し、大文字小文字は問わない（[`normalize_locale_code`] が後段で
-/// 標準形へ揃える）。実在するロケールかどうかは検証しない（内蔵 / カスタムロケールの有無は
-/// `citation` が解決する）。
+/// `None`（ロケール未指定）は許可する。`Some` のときは [`unic_langid::LanguageIdentifier::from_bytes`]
+/// による BCP 47 パースが成功するかだけを確認し、大文字小文字は問わない（[`ReferenceStyle::normalize`]
+/// が後段で標準形へ揃える）。`unic-langid` は `-`/`_` の双方を区切りとして受理する。実在するロケール
+/// かどうかは検証しない（内蔵 / カスタムロケールの有無は `citation` が解決する）。
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_locale(value: &Option<String>, _: &()) -> garde::Result {
   let Some(code) = value else {
     return Ok(());
   };
-  if !is_well_formed_locale(code) {
-    return Err(garde::Error::new(format!(
-      "ロケールコードの構文が不正です（例: \"ja-JP\"・\"en\"）（受け取った値: {code:?}）"
-    )));
-  }
+  unic_langid::LanguageIdentifier::from_bytes(code.as_bytes())
+    .map_err(|e| garde::Error::new(format!("ロケールコードが BCP 47 として不正です: {e}（受け取った値: {code:?}）")))?;
   return Ok(());
-}
-
-/// ロケールコードが BCP 47 風の構文に合致するかを判定する。
-///
-/// 先頭サブタグ（言語）は 2〜3 文字の ASCII 英字、後続サブタグは 1〜8 文字の ASCII 英数字とし、
-/// ハイフン区切りで空サブタグを含まないことを要求する。実在性は検証しない。
-fn is_well_formed_locale(code: &str) -> bool {
-  let mut subtags = code.split('-');
-  let Some(language) = subtags.next() else {
-    return false;
-  };
-  if !(2..=3).contains(&language.len()) || !language.bytes().all(|b| b.is_ascii_alphabetic()) {
-    return false;
-  }
-  for subtag in subtags {
-    if !(1..=8).contains(&subtag.len()) || !subtag.bytes().all(|b| b.is_ascii_alphanumeric()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/// ロケールコードを BCP 47 の標準形（言語=小文字 / 用字=先頭大文字 / 地域=大文字）へ正規化する。
-///
-/// 構文が [`is_well_formed_locale`] を満たす前提で、各サブタグの大文字小文字だけを整える。
-/// - 言語（先頭サブタグ）: 小文字（例 `JA` → `ja`）
-/// - 用字（4 文字英字）: 先頭大文字 + 残り小文字（例 `hant` → `Hant`）
-/// - 地域（2 文字英字）: 大文字（例 `jp` → `JP`）
-/// - それ以外（3 桁地域コード・variant 等）: そのまま
-fn normalize_locale_code(code: &str) -> String {
-  let mut out = String::with_capacity(code.len());
-  for (index, subtag) in code.split('-').enumerate() {
-    if index > 0 {
-      out.push('-');
-    }
-    if index == 0 {
-      out.extend(subtag.chars().map(|c| c.to_ascii_lowercase()));
-    } else if subtag.len() == 4 && subtag.bytes().all(|b| b.is_ascii_alphabetic()) {
-      out.extend(subtag.chars().enumerate().map(|(i, c)| {
-        if i == 0 {
-          c.to_ascii_uppercase()
-        } else {
-          c.to_ascii_lowercase()
-        }
-      }));
-    } else if subtag.len() == 2 && subtag.bytes().all(|b| b.is_ascii_alphabetic()) {
-      out.extend(subtag.chars().map(|c| c.to_ascii_uppercase()));
-    } else {
-      out.push_str(subtag);
-    }
-  }
-  return out;
 }
 
 #[cfg(test)]
@@ -230,8 +179,9 @@ mod tests {
 
   #[test]
   fn validate_rejects_malformed_locale() {
-    // Arrange / Act / Assert — 空・短すぎる言語・アンダースコア・空サブタグ・非英数字
-    for bad in ["", "j", "ja_JP", "ja-", "ja JP", "english"] {
+    // Arrange / Act / Assert — 空・短すぎる言語・末尾の空サブタグ・空白
+    // （`ja_JP` のアンダースコア区切り・`english` の長い言語サブタグは unic-langid が受理する）
+    for bad in ["", "j", "ja-", "ja JP"] {
       let style = ReferenceStyle {
         locale: Some(bad.to_string()),
         ..ReferenceStyle::default()
@@ -268,6 +218,21 @@ mod tests {
 
     // Assert
     assert_eq!(style.locale.as_deref(), Some("zh-Hant"));
+  }
+
+  #[test]
+  fn normalize_canonicalizes_underscore_separator() {
+    // Arrange — unic-langid はアンダースコア区切りを受理し、正規化でハイフン区切りへ正準化する
+    let mut style = ReferenceStyle {
+      locale: Some("ja_JP".to_string()),
+      ..ReferenceStyle::default()
+    };
+
+    // Act
+    style.normalize();
+
+    // Assert
+    assert_eq!(style.locale.as_deref(), Some("ja-JP"));
   }
 
   #[test]
