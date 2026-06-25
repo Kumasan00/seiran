@@ -318,14 +318,14 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   if let Ok(gsub) = font_ref.gsub() {
     check_script_in_table(gsub.script_list(), script_tag, lang_tag, "GSUB");
   } else {
-    warn!("GSUB テーブルが見つかりません。");
+    warn!(table_name = "GSUB", "テーブルが見つかりません");
   }
 
   // GPOS（グリフ配置）テーブルを確認
   if let Ok(gpos) = font_ref.gpos() {
     check_script_in_table(gpos.script_list(), script_tag, lang_tag, "GPOS");
   } else {
-    warn!("GPOS テーブルが見つかりません。");
+    warn!(table_name = "GPOS", "テーブルが見つかりません");
   }
 }
 
@@ -349,13 +349,13 @@ fn check_script_in_table(
   let script_list = match script_list_result {
     Ok(list) => list,
     Err(e) => {
-      warn!("ScriptList の読み込みに失敗しました ({table_name}): {e}");
+      warn!(table_name, error = %e, "ScriptList の読み込みに失敗しました");
       return;
     },
   };
 
   let Some(index) = script_list.index_for_tag(script_tag) else {
-    warn!("スクリプト '{script_tag}' は {table_name} テーブルではサポートされていません。");
+    warn!(script_tag = %script_tag, table_name, "スクリプトがテーブルでサポートされていません");
     return;
   };
 
@@ -367,6 +367,6 @@ fn check_script_in_table(
   if let Some(lang_tag) = lang_tag
     && script.lang_sys_index_for_tag(lang_tag).is_none()
   {
-    warn!("言語 '{lang_tag}' はスクリプト '{script_tag}' の下では {table_name} テーブルでサポートされていません。");
+    warn!(lang_tag = %lang_tag, script_tag = %script_tag, table_name, "言語がスクリプト配下でテーブルにサポートされていません");
   }
 }

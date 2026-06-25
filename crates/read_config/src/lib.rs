@@ -452,7 +452,7 @@ fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Ve
     if source_path.extension().and_then(|ext| ext.to_str()) != Some("sei") {
       warn!(
         source_path = %source_path.display(),
-        "ソースファイルの拡張子が `.sei` ではありません。Seiran は `.sei` 拡張子を推奨します。"
+        "ソースファイルの拡張子が `.sei` ではありません（`.sei` を推奨します）"
       );
     }
     let absolute = if source_path.is_absolute() {
