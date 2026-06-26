@@ -41,7 +41,7 @@ pub(crate) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resul
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
-      // cases は非採番のため `\notag` は不可
+      // cases は非採番のため行末マーカー `\notag` / `\label` は不可
       false,
     )?,
     None => Vec::new(),
@@ -59,6 +59,8 @@ pub(crate) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resul
     kind: MathEnvKind::Cases,
     rows,
     number: None,
+    // cases は非採番のため参照対象外
+    label: None,
   }]);
 }
 
@@ -87,7 +89,10 @@ mod tests {
   }
 
   fn rows_of(result: &[DocNode]) -> &[document::MathRow] {
-    let DocNode::MathBlock { kind, rows, number } = &result[0] else {
+    let DocNode::MathBlock {
+      kind, rows, number, ..
+    } = &result[0]
+    else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Cases, "cases は MathEnvKind::Cases");

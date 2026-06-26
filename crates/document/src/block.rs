@@ -155,6 +155,11 @@ pub enum DocNode {
   /// （`format` テンプレ適用済みの文字列）で、lowering 層が `EquationStyle::number_format` でさらに
   /// 装飾する。`[numbered=false]` で採番ありの環境を無採番にした場合は両方とも `None`。`kind` に応じて
   /// lowering 以降が列整列・区切り括弧・中央寄せを決める。
+  ///
+  /// ラベルの担い手も採番粒度に揃える。行ごと採番（`equation` / `align` / `gather`）は各行の
+  /// `MathRow::label`（`align` / `gather` は行末マーカー `\label{...}`、`equation` は `[label=...]`）が、
+  /// 環境単位採番（`split` / `multiline`）は環境の任意引数 `[label=...]` を受けるこの `label` フィールドが
+  /// 担う。lowering 層がいずれも `AnchorMark::Label` でブロック先頭の `\ref` 到達先に解決する。
   MathBlock {
     /// 環境種別
     kind: MathEnvKind,
@@ -163,6 +168,9 @@ pub enum DocNode {
     /// 環境全体に 1 つだけ付く通し番号（`split` / `multiline` 用、縦中央配置）。
     /// 行ごと採番の環境（`equation` / `align` / `gather`）や無採番では `None`
     number: Option<String>,
+    /// `\ref{eq:foo}` 解決用の環境単位ラベル（`split` / `multiline` の `[label=...]`）。
+    /// 行ごと採番の環境（ラベルは `MathRow::label` 側）や無採番では `None`
+    label: Option<String>,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）

@@ -153,4 +153,24 @@ mod tests {
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
   }
+
+  #[test]
+  fn gather_row_label_captures_label_and_keeps_numbering() {
+    // Arrange — gather でも行末マーカー `\label{...}` でその行にラベルを付けられる
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 1 行目: ラベルあり・番号 1、2 行目: ラベルなし・番号 2
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert_eq!(rows[0].label.as_deref(), Some("eq:g"));
+    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
+    assert_eq!(rows[1].number.as_deref(), Some("2"));
+  }
 }

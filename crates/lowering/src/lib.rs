@@ -242,7 +242,12 @@ fn lower_node_indexed(
       // ラベル付きブロックと同じ `AnchorMark::Label` でジャンプ先に解決させる。
       return Ok(vec![LayoutNode::Anchor(types::AnchorMark::Label(target.clone()))]);
     },
-    DocNode::MathBlock { kind, rows, number } => {
+    DocNode::MathBlock {
+      kind,
+      rows,
+      number,
+      label,
+    } => {
       let eq = &ctx.style.equation;
       let mut nodes = vec![
         LayoutNode::Vkern {
@@ -253,13 +258,15 @@ fn lower_node_indexed(
           length: eq.bottom_margin,
         },
       ];
-      // ラベル付き行（`equation` の `[label=...]` 等）の `\ref` 到達先アンカーを先頭に付ける。
-      // 複数行が同じブロック内にラベルを持つ場合も、いずれもブロック先頭座標に解決される。
+      // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
+      // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
       for row in rows {
         if let Some(label) = &row.label {
           nodes = with_label_anchor(Some(label), nodes);
         }
       }
+      // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する
+      nodes = with_label_anchor(label.as_deref(), nodes);
       return Ok(nodes);
     },
     DocNode::Figure {
@@ -330,6 +337,8 @@ mod tests {
         label: label.map(str::to_string),
       }],
       number: None,
+      // equation はラベルを行側（`MathRow::label`）に持つため、環境単位ラベルは None
+      label: None,
     };
   }
 
