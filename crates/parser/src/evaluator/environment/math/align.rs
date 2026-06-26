@@ -6,9 +6,11 @@
 //! [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に委譲します。列整列（奇数列＝右・
 //! 偶数列＝左で `&` 位置に接合）は `layout` 段が [`MathEnvKind::Align`] に応じて確定します。
 //!
-//! ## 任意引数
+//! ## 任意引数・行マーカー
 //!
-//! - `[numbered=false]` — 環境全体を無採番にする（行単位のラベル・無採番指定は将来対応 → 親 issue #25）
+//! - `[numbered=false]` — 環境**全体**を無採番にする
+//! - `\notag` — 行の**末尾**に置くと、その**行だけ**を無採番にする（採番カウンタも消費しないため、他行の
+//!   通し番号は連続する）。`[numbered=false]` との併用は冗長なためエラー。行ラベルの行単位指定は将来対応
 
 use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
@@ -202,5 +204,76 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
+  }
+
+  #[test]
+  fn align_notag_suppresses_single_row() {
+    // Arrange — 中間行の行末に \notag を置くと、その行だけ無採番になり通し番号は連続する
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \\ c &= d \notag \\ e &= f\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 1 行目 (1)、2 行目 無採番、3 行目 (2)
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
+    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[1].number.is_none(), "\\notag 行は無採番: {:?}", rows[1].number);
+    assert_eq!(rows[2].number.as_deref(), Some("2"), "通し番号は連続する");
+  }
+
+  #[test]
+  fn align_notag_row_does_not_consume_counter() {
+    // Arrange — \notag 行はカウンタを消費しないので、後続 equation の採番が飛ばない
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \notag \\ c &= d\end{align}\begin{equation}e\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — align: 1 行目 無採番・2 行目 (1)、続く equation が (2)
+    assert_eq!(result.len(), 2);
+    let align_rows = rows_of(&result[..1]);
+    assert!(align_rows[0].number.is_none(), "\\notag 行は無採番: {:?}", align_rows[0].number);
+    assert_eq!(align_rows[1].number.as_deref(), Some("1"));
+    let DocNode::MathBlock { rows: eq_rows, .. } = &result[1] else {
+      panic!("equation の MathBlock が期待されます: {:?}", result[1]);
+    };
+    assert_eq!(eq_rows[0].number.as_deref(), Some("2"));
+  }
+
+  #[test]
+  fn align_notag_not_at_row_end_errors() {
+    // Arrange — \notag の後ろに列・内容が続く（行末でない）とエラー
+    let arena = Bump::new();
+    let source = r"\begin{align}a \notag &= b\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
+  }
+
+  #[test]
+  fn align_notag_with_numbered_false_errors() {
+    // Arrange — [numbered=false]（全行無採番）と \notag の併用は冗長でエラー
+    let arena = Bump::new();
+    let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagWithUnnumberedEnv { .. })));
   }
 }

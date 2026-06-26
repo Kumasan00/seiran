@@ -12,9 +12,11 @@
 //! もここに置く（任意引数 `[numbered]` の解釈・グリッド分割・末尾空行除去・採番までを一手に行う）。
 
 use document::{DocNode, MathEnvKind, MathNode, MathRow};
+use miette::SourceSpan;
 use read_style::CounterName;
 use syntax::{
-  ast::EnvironmentView,
+  SyntaxKind,
+  ast::{CommandView, EnvironmentView},
   green::{GreenElement, GreenNode},
   token::TokenKind,
 };
@@ -36,23 +38,43 @@ pub(crate) struct GridSpec {
   pub allow_column_breaks: bool,
 }
 
+/// グリッド 1 行の評価結果
+///
+/// `cells` は `&` で分割した各列の `MathNode` 列。`notag_span` はその行に行末マーカー `\notag` が
+/// 付いていた場合の `\notag` のソース位置（`None` は採番対象）。行ごと採番の `align` / `gather` では
+/// `notag_span.is_some()` の行を無採番にする。
+#[derive(Debug)]
+pub(crate) struct GridRow {
+  /// 列（`&` 区切り）。各列は数式ノード列
+  pub cells: Vec<Vec<MathNode>>,
+  /// 行末マーカー `\notag` の位置（`None` は採番する）
+  pub notag_span: Option<SourceSpan>,
+}
+
 /// 数式環境本体を行 × 列のグリッドに分割して評価する
 ///
-/// 戻り値は行のリストで、各行はセル（列）のリスト、各セルは `MathNode` 列。`equation` のように
-/// 分割を許さない環境では常に「1 行 1 セル」を返す（本体が空でも 1 行 1 空セル）。
+/// 戻り値は [`GridRow`] のリスト。各行はセル（列）のリストと行末マーカー `\notag` の有無
+/// （`notag_span`）を持つ。`equation` のように分割を許さない環境では常に「1 行 1 セル」を返す
+/// （本体が空でも 1 行 1 空セル）。
+///
+/// `notag_allowed` が `true`（行ごと採番の `align` / `gather`）のときのみ行末の `\notag` を受理し、
+/// その行の `notag_span` を立てる（マーカー自体はセルに残さないため後段の数式評価には現れない）。
 ///
 /// # Errors
 ///
-/// 許可していない区切りトークン（`\\` / `&`）が現れた場合や、セル内の数式評価が失敗した場合に
-/// エラーを返す。
+/// 許可していない区切りトークン（`\\` / `&`）の出現、`\notag` の不正な使用（非許可環境＝
+/// [`EvalError::NotagNotSupported`]、行末以外・引数付き・1 行に複数＝[`EvalError::NotagNotAtRowEnd`]）、
+/// セル内の数式評価失敗時にエラーを返す。
 pub(crate) fn evaluate_grid(
   source: &str,
   body: &GreenNode,
   spec: &GridSpec,
-) -> Result<Vec<Vec<Vec<MathNode>>>, EvalError> {
-  let mut rows: Vec<Vec<Vec<MathNode>>> = Vec::new();
+  notag_allowed: bool,
+) -> Result<Vec<GridRow>, EvalError> {
+  let mut rows: Vec<GridRow> = Vec::new();
   let mut current_row: Vec<Vec<MathNode>> = Vec::new();
   let mut current_cell: Vec<GreenElement> = Vec::new();
+  let mut current_notag: Option<SourceSpan> = None;
 
   for child in body.children {
     if let GreenElement::Token(token) = child {
@@ -63,6 +85,10 @@ pub(crate) fn evaluate_grid(
               what: r"&（列区切り）".to_string(),
               span: token.span.into(),
             });
+          }
+          // `\notag` の後ろに列が続くなら、`\notag` は行末になく不正
+          if let Some(span) = current_notag {
+            return Err(EvalError::NotagNotAtRowEnd { span });
           }
           current_row.push(evaluate_math_elements(source, &current_cell)?);
           current_cell.clear();
@@ -77,18 +103,55 @@ pub(crate) fn evaluate_grid(
           }
           current_row.push(evaluate_math_elements(source, &current_cell)?);
           current_cell.clear();
-          rows.push(std::mem::take(&mut current_row));
+          rows.push(GridRow {
+            cells: std::mem::take(&mut current_row),
+            notag_span: current_notag.take(),
+          });
           continue;
         },
         _ => {},
       }
     }
+
+    // 行末マーカー `\notag` の検出（CommandCall ノード）
+    if let GreenElement::Node(node) = *child
+      && node.kind == SyntaxKind::CommandCall
+    {
+      let view = CommandView::new(node, source);
+      if view.name() == "notag" {
+        let span: SourceSpan = node.span.into();
+        if !notag_allowed {
+          return Err(EvalError::NotagNotSupported { span });
+        }
+        // `\notag` は引数を取らない（`\notag{...}` が後続の中身を飲み込むのを防ぐ）
+        if !view.args_is_empty() || view.opt_args_count() > 0 {
+          return Err(EvalError::NotagNotAtRowEnd { span });
+        }
+        // 1 行に `\notag` は 1 つだけ
+        if current_notag.is_some() {
+          return Err(EvalError::NotagNotAtRowEnd { span });
+        }
+        current_notag = Some(span);
+        continue;
+      }
+    }
+
+    // `\notag` の後ろに意味のある要素が来たら行末ではない（末尾空白等のトリビアは許容）
+    if let Some(span) = current_notag
+      && !is_trivia_element(child)
+    {
+      return Err(EvalError::NotagNotAtRowEnd { span });
+    }
+
     current_cell.push(*child);
   }
 
   // 末尾のセル・行を確定する（行区切りで終わっていなければ最後の行を 1 つ積む）
   current_row.push(evaluate_math_elements(source, &current_cell)?);
-  rows.push(current_row);
+  rows.push(GridRow {
+    cells: current_row,
+    notag_span: current_notag,
+  });
   return Ok(rows);
 }
 
@@ -130,24 +193,40 @@ pub(crate) fn evaluate_math_env(
     });
   }
 
+  // 行末マーカー `\notag` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
+  let notag_allowed = matches!(mode, NumberingMode::PerRow);
   let source = view.source();
   let mut grid = match view.body() {
-    Some(body_node) => evaluate_grid(source, body_node, spec)?,
+    Some(body_node) => evaluate_grid(source, body_node, spec, notag_allowed)?,
     None => Vec::new(),
   };
-  // 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する
-  while grid.last().is_some_and(|row| is_blank_row(row)) {
+  // 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する。
+  // 中身が空なのに `\notag` だけ付いた末尾行（例 `a \\ \notag`）は行末に式がないためエラーにする。
+  while let Some(last) = grid.last() {
+    if !is_blank_row(&last.cells) {
+      break;
+    }
+    if let Some(span) = last.notag_span {
+      return Err(EvalError::NotagNotAtRowEnd { span });
+    }
     grid.pop();
+  }
+
+  // `[numbered=false]` で既に全行が無採番なら、行単位の `\notag` は冗長・矛盾
+  if !numbered && let Some(span) = grid.iter().find_map(|row| row.notag_span) {
+    return Err(EvalError::NotagWithUnnumberedEnv { span });
   }
 
   let mut env_number = None;
   let rows: Vec<MathRow> = match mode {
     NumberingMode::PerRow => grid
       .into_iter()
-      .map(|cells| {
-        let number = numbered.then(|| evaluator.registry.increment(CounterName::Equation));
+      .map(|row| {
+        // `\notag` 行（`notag_span` あり）はカウンタを消費せず無採番にする
+        let number =
+          (numbered && row.notag_span.is_none()).then(|| evaluator.registry.increment(CounterName::Equation));
         return MathRow {
-          cells,
+          cells: row.cells,
           number,
           label: None,
         };
@@ -160,8 +239,8 @@ pub(crate) fn evaluate_math_env(
       }
       grid
         .into_iter()
-        .map(|cells| MathRow {
-          cells,
+        .map(|row| MathRow {
+          cells: row.cells,
           number: None,
           label: None,
         })
@@ -181,14 +260,14 @@ pub(crate) fn evaluate_math_env(
 /// 末尾の空行（行末 `\\` 由来）を除去したうえで、各行を採番なし（`number` / `label` ともに `None`）の
 /// [`MathRow`] に変換する。`cases` / `matrix` は番号を持たないため、`CounterName::Equation` を一切
 /// 消費しない（採番ありの環境と通し番号を共有しない）。
-pub(crate) fn into_unnumbered_rows(mut grid: Vec<Vec<Vec<MathNode>>>) -> Vec<MathRow> {
-  while grid.last().is_some_and(|row| is_blank_row(row)) {
+pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
+  while grid.last().is_some_and(|row| is_blank_row(&row.cells)) {
     grid.pop();
   }
   return grid
     .into_iter()
-    .map(|cells| MathRow {
-      cells,
+    .map(|row| MathRow {
+      cells: row.cells,
       number: None,
       label: None,
     })
@@ -203,6 +282,22 @@ fn is_blank_row(row: &[Vec<MathNode>]) -> bool {
   return row
     .iter()
     .all(|cell| cell.iter().all(|node| matches!(node, MathNode::Text(t) if t.trim().is_empty())));
+}
+
+/// 要素がトリビア（空白・改行・コメント・段落区切り）かどうかを判定する
+///
+/// 行末マーカー `\notag` の位置検証で、`\notag` の後ろに来てよい無意味な要素（末尾の空白・改行・
+/// コメント）を許容するために使う。これら以外のトークン / ノードが `\notag` の後ろに続く場合は
+/// 「行末ではない」と判断する。
+fn is_trivia_element(child: &GreenElement) -> bool {
+  return matches!(
+    child,
+    GreenElement::Token(token)
+      if matches!(
+        token.kind,
+        TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comment | TokenKind::ParagraphBreak
+      )
+  );
 }
 
 #[cfg(test)]
@@ -265,16 +360,16 @@ mod tests {
     };
 
     // Act
-    let grid = evaluate_grid(source, body, &spec).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
+    let grid = evaluate_grid(source, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
 
     // Assert — 2 行、各行 2 セル、内容は a/b/c/d
     assert_eq!(grid.len(), 2, "2 行に分割される: {grid:?}");
-    assert_eq!(grid[0].len(), 2);
-    assert_eq!(grid[1].len(), 2);
-    assert_eq!(cell_text(&grid[0][0]), "a");
-    assert_eq!(cell_text(&grid[0][1]), "b");
-    assert_eq!(cell_text(&grid[1][0]), "c");
-    assert_eq!(cell_text(&grid[1][1]), "d");
+    assert_eq!(grid[0].cells.len(), 2);
+    assert_eq!(grid[1].cells.len(), 2);
+    assert_eq!(cell_text(&grid[0].cells[0]), "a");
+    assert_eq!(cell_text(&grid[0].cells[1]), "b");
+    assert_eq!(cell_text(&grid[1].cells[0]), "c");
+    assert_eq!(cell_text(&grid[1].cells[1]), "d");
   }
 
   #[test]
@@ -289,11 +384,11 @@ mod tests {
     };
 
     // Act
-    let grid = evaluate_grid(source, body, &spec).unwrap();
+    let grid = evaluate_grid(source, body, &spec, false).unwrap();
 
     // Assert
     assert_eq!(grid.len(), 1);
-    assert_eq!(grid[0].len(), 1);
+    assert_eq!(grid[0].cells.len(), 1);
   }
 
   #[test]
@@ -308,7 +403,7 @@ mod tests {
     };
 
     // Act
-    let result = evaluate_grid(source, body, &spec);
+    let result = evaluate_grid(source, body, &spec, false);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));

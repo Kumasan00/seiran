@@ -56,6 +56,8 @@ pub(crate) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resu
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
+      // matrix は非採番のため `\notag` は不可
+      false,
     )?,
     None => Vec::new(),
   };

@@ -24,3 +24,13 @@ f &= m a
 E &= m c^2 \\
 a_i &= b_i + c_i
 \end{align}
+
+\section{行単位の無採番}
+
+align では行末に無採番マーカーを置くと、その行だけ採番されない。他の行の通し番号は連続したままになる。
+
+\begin{align}
+a &= b \\
+c &= d \notag \\
+e &= f
+\end{align}
