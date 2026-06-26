@@ -5,9 +5,11 @@
 //! 採番します。実体は共通ハンドラ [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に
 //! 委譲します。各行の中央寄せは `layout` 段が [`MathEnvKind::Gather`] に応じて確定します。
 //!
-//! ## 任意引数
+//! ## 任意引数・行マーカー
 //!
-//! - `[numbered=false]` — 環境全体を無採番にする
+//! - `[numbered=false]` — 環境**全体**を無採番にする
+//! - `\notag` — 行の**末尾**に置くと、その**行だけ**を無採番にする（採番カウンタも消費しないため、他行の
+//!   通し番号は連続する）。`[numbered=false]` との併用は冗長なためエラー
 
 use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
@@ -116,5 +118,39 @@ mod tests {
     // Assert
     let rows = rows_of(&result);
     assert!(rows.iter().all(|r| r.number.is_none()), "無採番のはず: {rows:?}");
+  }
+
+  #[test]
+  fn gather_notag_suppresses_single_row() {
+    // Arrange — gather でも中間行の行末 \notag で 1 行だけ無採番にできる（通し番号は連続）
+    let arena = Bump::new();
+    let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — (1)、無採番、(2)
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
+    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[1].number.is_none(), "\\notag 行は無採番: {:?}", rows[1].number);
+    assert_eq!(rows[2].number.as_deref(), Some("2"), "通し番号は連続する");
+  }
+
+  #[test]
+  fn gather_notag_not_at_row_end_errors() {
+    // Arrange — \notag の後ろに内容が続くとエラー
+    let arena = Bump::new();
+    let source = r"\begin{gather}a \notag = b\end{gather}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
   }
 }

@@ -71,9 +71,10 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
         allow_row_breaks: false,
         allow_column_breaks: false,
       };
-      let grid = evaluate_grid(source, body_node, &spec)?;
+      // equation は行ごと採番ではないため `\notag` は不可（無採番にするなら `[numbered=false]`）
+      let grid = evaluate_grid(source, body_node, &spec, false)?;
       // 分割を許していないので必ず 1 行。その行のセル列（1 セル）を取り出す
-      grid.into_iter().next().unwrap_or_else(|| vec![Vec::new()])
+      grid.into_iter().next().map_or_else(|| vec![Vec::new()], |row| row.cells)
     },
     None => vec![Vec::new()],
   };
@@ -329,5 +330,20 @@ mod tests {
       panic!("MathBlock が期待されます: {:?}", result[1]);
     };
     assert_eq!(rows[0].number.as_deref(), Some("1.1"));
+  }
+
+  #[test]
+  fn equation_rejects_notag() {
+    // Arrange — equation は行ごと採番でないため \notag は不可（無採番にするなら [numbered=false]）
+    let arena = Bump::new();
+    let source = r"\begin{equation}a \notag\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
   }
 }

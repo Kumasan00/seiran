@@ -268,6 +268,52 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// `\notag`（行単位の無採番マーカー）が行末以外に置かれた場合
+  ///
+  /// `\notag` は「その行を無採番にする」マーカーで、行の末尾（`\\` または `\end` の直前）にのみ
+  /// 置ける。行の途中・列区切り `&` の前・1 行に複数・引数付き（`\notag{...}`）はエラーにする。
+  #[error("\\notag は行の末尾にのみ置けます")]
+  #[diagnostic(
+    code(parser::eval::notag_not_at_row_end),
+    help("\\notag は各行の末尾（\\\\ または \\end の直前）に 1 つだけ、引数なしで置いてください。")
+  )]
+  NotagNotAtRowEnd {
+    /// `\notag` のソース位置
+    #[label("この \\notag は行末にありません")]
+    span: SourceSpan,
+  },
+
+  /// `\notag` が行ごと採番でない数式環境に現れた場合
+  ///
+  /// `\notag` は行ごとに採番する `align` / `gather` の行末でのみ意味を持つ。`equation`（無採番にするなら
+  /// `[numbered=false]`）・`split` / `multiline`（環境全体で 1 番号）・`cases` / `matrix`（非採番）では使えない。
+  #[error("\\notag はこの数式環境では使用できません")]
+  #[diagnostic(
+    code(parser::eval::notag_not_supported),
+    help(
+      "\\notag は align / gather の行末でのみ使えます。equation を無採番にするには [numbered=false] を使ってください。"
+    )
+  )]
+  NotagNotSupported {
+    /// `\notag` のソース位置
+    #[label("この環境では \\notag を使えません")]
+    span: SourceSpan,
+  },
+
+  /// 環境全体が無採番（`[numbered=false]`）なのに `\notag` を併用した場合
+  ///
+  /// `[numbered=false]` で既に全行が無採番なので、行単位の `\notag` は冗長・矛盾する。
+  #[error("[numbered=false] の環境では \\notag を併用できません")]
+  #[diagnostic(
+    code(parser::eval::notag_with_unnumbered_env),
+    help("[numbered=false] で既に全行が無採番です。\\notag を外すか [numbered=false] を外してください。")
+  )]
+  NotagWithUnnumberedEnv {
+    /// `\notag` のソース位置
+    #[label("環境全体が無採番のため、この \\notag は不要です")]
+    span: SourceSpan,
+  },
+
   /// 環境の本体に許可されていないコマンドが出現した場合
   #[error("環境 {env} 内で許可されていないコマンドです: \\{name}")]
   #[diagnostic(

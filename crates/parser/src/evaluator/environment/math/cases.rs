@@ -41,6 +41,8 @@ pub(crate) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resul
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
+      // cases は非採番のため `\notag` は不可
+      false,
     )?,
     None => Vec::new(),
   };
@@ -159,5 +161,20 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn cases_rejects_notag() {
+    // Arrange — cases は非採番のため \notag は使えない
+    let arena = Bump::new();
+    let source = r"\begin{cases}a & b \notag\end{cases}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
   }
 }
