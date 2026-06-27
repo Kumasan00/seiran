@@ -23,6 +23,11 @@
 //! - 例: section の `ref_format = "{display_name} {number}"` → `"Section 1.2"`
 //! - 例: equation の `ref_format = "({number})"` → `"(1.2)"`
 //! - 例: 日本語化したい場合は `display_name = "図"` + `ref_format = "{display_name} {number}"` → `"図 1.2"`
+//!
+//! equation の `ref_format` は `\ref{eq:x}` の表示専用で、式の横に出る番号の体裁を決める
+//! [`crate::EquationStyle::number_format`]（`[equation]`）とは別物。既定値がどちらも `"({number})"`
+//! で一致するのは LaTeX 慣習で「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に
+//! 変更できる（`number_format` は `figure` の `caption.format` に相当する数式ブロックの体裁）。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
