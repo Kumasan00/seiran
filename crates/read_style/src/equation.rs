@@ -9,7 +9,11 @@ use types::length::{Length, non_negative};
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct EquationStyle {
-  /// 数式番号の書式テンプレート。`{number}` を含めることができる
+  /// 式の横に出る数式番号の書式テンプレート。`{number}` を発番番号で置換する（既定 `"({number})"`
+  /// → `"(1.1)"`）。これは「数式ブロックの体裁」（`figure` の `caption.format` に相当）で、
+  /// `\ref{eq:x}` の表示を決める [`crate::CounterStyle::ref_format`]（`counters.equation`）とは別物。
+  /// 既定値が一致するのは LaTeX 慣習で「式の横」も「素の相互参照」も括弧付き番号だからで、両者は
+  /// 独立に変更できる（揃えたいなら両方を直す）。`align` / `gather` / `split` / `multiline` も共有する。
   #[garde(length(chars, min = 1), custom(crate::placeholder::equation_number_format))]
   pub number_format: String,
   /// 数式番号の配置側
