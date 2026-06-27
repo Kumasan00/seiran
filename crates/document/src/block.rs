@@ -1,7 +1,7 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
 use miette::SourceSpan;
-use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, TheoremClass};
+use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, QuoteKind, TheoremClass};
 
 use crate::{caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, table::TableRow};
 
@@ -254,6 +254,20 @@ pub enum DocNode {
     of: Option<ProofTarget>,
     /// `\ref{thm:foo}` 解決用ラベル（環境の任意引数 `[label=thm:foo]`）。未指定は `None`
     label: Option<String>,
+  },
+
+  /// 引用ブロック（`\begin{quote}...\end{quote}` / `\begin{quotation}...\end{quotation}`）
+  ///
+  /// 本文より左右に字下げされたブロック引用。本体（`body`）は通常の本文と同様に再帰評価された
+  /// `Vec<DocNode>`（段落・リスト・数式などを含められる）。`kind` が `Quotation` のときブロック内
+  /// 段落の先頭行を字下げし、`Quote` のときは字下げしない。左右インデント量・上下マージン・
+  /// 段落先頭字下げ量・本文フォントは `lowering` 層が `read_style::QuoteStyle` を参照して決める
+  /// （このノードは物理スタイルを持たない）。
+  Quote {
+    /// 引用の種別（`quote` / `quotation`）。`lowering` が段落先頭字下げの有無に使う
+    kind: QuoteKind,
+    /// 本体（再帰評価された `Vec<DocNode>`）
+    body: Vec<DocNode>,
   },
 
   /// 罫線（描画線）

@@ -29,6 +29,7 @@ mod caption;
 mod figure;
 mod itemize;
 mod math;
+mod quote;
 mod table;
 mod theorem;
 
@@ -76,6 +77,9 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "remark"      => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
   "claim"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
   "proof"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
+  // 引用環境 2 種は単一ハンドラ（環境名から種別を解決）に集約して登録する
+  "quote"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用" },
+  "quotation"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
 };
 
 /// 環境名から構文解析モードを引く

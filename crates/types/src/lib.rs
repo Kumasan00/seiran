@@ -52,6 +52,7 @@ pub mod heading_level;
 pub mod length;
 pub mod link;
 pub mod math;
+pub mod quote;
 pub mod table;
 pub mod theorem;
 
@@ -63,5 +64,6 @@ pub use heading_level::HeadingLevel;
 pub use length::Length;
 pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathClass, MathDelimiter, MathEnvKind};
+pub use quote::QuoteKind;
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};
 pub use theorem::TheoremClass;

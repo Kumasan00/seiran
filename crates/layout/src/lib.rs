@@ -63,8 +63,8 @@ pub fn build_blocks(
   let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
-  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, Align::Left);
-  measurer.flush_paragraph(&mut blocks, &mut paragraph, 0.0, Align::Left);
+  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
+  measurer.flush_paragraph(&mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
   debug!(block_count = blocks.len(), "ブロックの構築が完了しました");
   return blocks;
 }
@@ -112,6 +112,7 @@ impl Measurer<'_> {
     blocks: &mut Vec<Block>,
     paragraph: &mut Vec<HItem>,
     indent: f32,
+    right_indent: f32,
     align: Align,
   ) {
     for node in nodes {
@@ -129,29 +130,32 @@ impl Measurer<'_> {
         },
         // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
         LayoutNode::Anchor(mark) => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Anchor(mark));
         },
         LayoutNode::VBox {
           children,
           margin_bottom,
           indent: vbox_indent,
+          right_indent: vbox_right_indent,
           align: vbox_align,
         } => {
           // VBox は副縦リスト: 中の画像・キャプション・ネストリストがそれぞれ独立 Block になる。
-          // インデントは入れ子ごとに累積する（ネストしたリストが段ごとに深くなる）。
+          // インデント（左右とも）は入れ子ごとに累積する（ネストしたリストが段ごとに深くなる）。
           // 揃えは累積せず、この VBox 自身の align を子へ渡す。
-          self.flush_paragraph(blocks, paragraph, indent, align);
-          self.walk_vertical(children, blocks, paragraph, indent + vbox_indent.to_pt(), vbox_align);
-          self.flush_paragraph(blocks, paragraph, indent + vbox_indent.to_pt(), vbox_align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
+          let child_indent = indent + vbox_indent.to_pt();
+          let child_right_indent = right_indent + vbox_right_indent.to_pt();
+          self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
+          self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
           blocks.push(Block::VSpace(margin_bottom.to_pt()));
         },
         LayoutNode::Vkern { length } => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::VSpace(length.to_pt()));
         },
         LayoutNode::Rule { width, height } => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Rule {
             width: width.to_pt(),
             height: height.to_pt(),
@@ -164,7 +168,7 @@ impl Measurer<'_> {
           height,
           target_dpi,
         } => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Image {
             path,
             width: width.map(Length::to_pt),
@@ -174,7 +178,7 @@ impl Measurer<'_> {
           });
         },
         LayoutNode::Table(table) => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Table {
             table: self.build_table_box(table),
             align,
@@ -189,13 +193,13 @@ impl Measurer<'_> {
           row_gap,
           column_gap,
         } => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           let math_block =
             self.build_math_block(kind, rows, env_number, block_align, numbers_on_right, row_gap, column_gap);
           blocks.push(math_block);
         },
         LayoutNode::PageBreak => {
-          self.flush_paragraph(blocks, paragraph, indent, align);
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::PageBreak);
         },
       }
@@ -205,10 +209,17 @@ impl Measurer<'_> {
   /// 溜めた段落アイテムを `Block::Paragraph` として確定する
   ///
   /// 行送り（leading）は段落内の支配的（最大）フォントサイズ × 行高係数。
-  /// `indent` は本文左端からの左インデント（pt）で、`break_pages` が折り返し幅の縮小と
-  /// 行の右シフトに用いる。`align` は確定行の水平揃え（中央寄せ等）で、同じく `break_pages`
-  /// が各行のシフトに用いる。
-  fn flush_paragraph(&self, blocks: &mut Vec<Block>, paragraph: &mut Vec<HItem>, indent: f32, align: Align) {
+  /// `indent` / `right_indent` は本文左右端からのインデント（pt）で、`break_pages` が折り返し幅の
+  /// 縮小（`text_width - indent - right_indent`）と行の右シフトに用いる。`align` は確定行の水平揃え
+  /// （中央寄せ等）で、同じく `break_pages` が各行のシフトに用いる。
+  fn flush_paragraph(
+    &self,
+    blocks: &mut Vec<Block>,
+    paragraph: &mut Vec<HItem>,
+    indent: f32,
+    right_indent: f32,
+    align: Align,
+  ) {
     if paragraph.is_empty() {
       return;
     }
@@ -218,6 +229,7 @@ impl Measurer<'_> {
       items,
       leading: dominant_font_size * self.line_height_factor,
       indent,
+      right_indent,
       align,
     });
   }

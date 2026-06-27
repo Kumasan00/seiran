@@ -159,9 +159,10 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         items,
         leading,
         indent,
+        right_indent,
         align,
       } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent, align);
+        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent, right_indent, align);
       },
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
@@ -249,11 +250,12 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 /// - 最終行を置いた後、カーソルを `last_baseline + leading` まで進める
 /// - `baseline + line.depth > page_limit` で改ページし、ページ先頭の baseline は `margin_top`
 ///
-/// `indent`（本文左端からの左インデント、pt）は折り返し幅を `text_width - indent` に縮め、
-/// 確定した各行のボックス・リンク矩形を一律 `indent` だけ右へシフトする。行座標は本文左端基準
-/// （`page.rs` の契約）なので、シフト後の `x` をそのまま描画に渡せる。
+/// `indent` / `right_indent`（本文左右端からのインデント、pt）は折り返し幅を
+/// `text_width - indent - right_indent` に縮め、確定した各行のボックス・リンク矩形を一律 `indent`
+/// だけ右へシフトする。行座標は本文左端基準（`page.rs` の契約）なので、シフト後の `x` をそのまま
+/// 描画に渡せる。
 ///
-/// `align` は確定した各行を利用可能幅（`text_width - indent`）の中で水平にシフトする。
+/// `align` は確定した各行を利用可能幅（`text_width - indent - right_indent`）の中で水平にシフトする。
 /// 中央寄せは `(利用可能幅 − 行幅) / 2`、右寄せは `利用可能幅 − 行幅` を `indent` に加算する。
 /// 行幅が利用可能幅を超える場合のシフト量は 0 にクランプする（左端からはみ出さない）。
 #[allow(clippy::too_many_arguments)]
@@ -265,9 +267,10 @@ fn place_paragraph(
   leading: f32,
   text_width: f32,
   indent: f32,
+  right_indent: f32,
   align: types::Align,
 ) {
-  let available = (text_width - indent).max(0.0);
+  let available = (text_width - indent - right_indent).max(0.0);
   let mut lines = breaker.break_lines(items, available);
   // 行は本文左端 (x=0) 基準で組まれるため、インデント + 揃えオフセットを全行に加算する。
   // 揃えオフセットは行ごとに（行幅に応じて）異なる。リンク矩形の収集より前にシフトしておく。
@@ -533,6 +536,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Left,
     };
   }
@@ -855,6 +859,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Left,
     }];
 
@@ -891,6 +896,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 20.0,
+      right_indent: 0.0,
       align: types::Align::Left,
     }];
 
@@ -922,6 +928,57 @@ mod tests {
   }
 
   #[test]
+  fn paragraph_right_indent_reduces_available_width() {
+    // Arrange — indent=10, right_indent=10, text_width=60 → 利用可能幅 40。
+    // box(10) を glue(5) で 6 連結し折り返す（右インデントぶん早く折り返す）
+    let geom = test_geometry();
+    let mut items = Vec::new();
+    for i in 0..6 {
+      if i > 0 {
+        items.push(HItem::Glue {
+          natural: 5.0,
+          stretch: 0.0,
+          shrink: 0.0,
+          breakable: true,
+        });
+      }
+      items.push(test_box());
+    }
+    let blocks = vec![Block::Paragraph {
+      items,
+      leading: 12.0,
+      indent: 10.0,
+      right_indent: 10.0,
+      align: types::Align::Left,
+    }];
+
+    // Act
+    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker);
+
+    // Assert — 利用可能幅は 60-10-10=40。全行が右端 text_width - right_indent = 50 を超えない
+    let lines: Vec<&Line> = pages[0]
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .collect();
+    assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
+    for line in &lines {
+      let first = line.boxes.first().expect("各行にボックスがあるはず");
+      assert!(first.x >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.x);
+      for positioned in &line.boxes {
+        assert!(
+          positioned.x + positioned.width <= 50.0 + f32::EPSILON,
+          "x+width={} <= text_width - right_indent = 50",
+          positioned.x + positioned.width
+        );
+      }
+    }
+  }
+
+  #[test]
   fn paragraph_indent_shifts_links() {
     // Arrange — indent=15 のリンク付き段落。リンク矩形も indent ぶん右へシフトされる
     use types::LinkTarget;
@@ -936,6 +993,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 15.0,
+      right_indent: 0.0,
       align: types::Align::Left,
     }];
 
@@ -957,6 +1015,7 @@ mod tests {
       items: vec![test_box()],
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Center,
     }];
 
@@ -983,6 +1042,7 @@ mod tests {
       items: vec![test_box()],
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Right,
     }];
 
@@ -1018,6 +1078,7 @@ mod tests {
       items: vec![wide],
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Center,
     }];
 
@@ -1062,6 +1123,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Center,
     }];
 
@@ -1099,6 +1161,7 @@ mod tests {
       items,
       leading: 12.0,
       indent: 0.0,
+      right_indent: 0.0,
       align: types::Align::Center,
     }];
 

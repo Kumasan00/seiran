@@ -2,6 +2,7 @@
 //!
 //! 段落内のインライン要素を展開してフラットな `LayoutNode` 列に変換します。
 //! 段落間のアキは `Vkern`（`text.paragraph_spacing`）で構造的に表します。
+//! 段落先頭行の字下げは先頭に水平カーン（`ctx.first_line_indent`）を前置して表します。
 
 use document::InlineNode;
 
@@ -10,9 +11,12 @@ use crate::layout_node::{LayoutNode, TextStyle};
 
 /// 段落をレイアウトノードに変換する
 ///
+/// `ctx.first_line_indent` が正のとき、結果先頭に水平カーンを前置する。貪欲法の行分割は
+/// 行頭の `Kern` を「先頭行だけに効く幅」として消費するため、折り返し 2 行目以降・`\\` 直後の
+/// 行には字下げが効かず、「段落先頭のみ字下げ」が自動的に成立する。
+///
 /// ## TODO
 ///
-/// - [ ] 段落先頭のインデント（字下げ）を追加する
 /// - [ ] 段落内テキストの結合最適化（隣接する同スタイルの `Text` をまとめる）
 pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = TextStyle {
@@ -22,6 +26,14 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
   };
 
   let mut result = Vec::new();
+
+  // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
+  // 折り返し幅を狭める（2 行目以降には残らない）。0pt のときは何も足さない（従来挙動）。
+  if ctx.first_line_indent.to_pt() > 0.0 {
+    result.push(LayoutNode::Kern {
+      length: ctx.first_line_indent,
+    });
+  }
 
   for inline in inlines {
     result.extend(lower_inline(ctx, inline, default_style)?);
@@ -77,6 +89,39 @@ mod tests {
     assert_eq!(text, "body");
     assert_eq!(text_style.font_kind, style.text.font_kind);
     assert!((text_style.font_size - ctx.default_font_size()).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn paragraph_prepends_first_line_indent_kern_when_positive() {
+    // Arrange — first_line_indent を 15pt にした文脈
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style).with_first_line_indent(types::Length::pt(15.0));
+    let inlines = [InlineNode::Text("body".to_string())];
+
+    // Act
+    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+
+    // Assert — 先頭は first_line_indent 量の Kern、その次が本文 Text
+    let LayoutNode::Kern { length } = &nodes[0] else {
+      panic!("先頭は字下げ Kern であるべき: {nodes:?}");
+    };
+    assert!((length.to_pt() - 15.0).abs() < f32::EPSILON);
+    assert!(matches!(&nodes[1], LayoutNode::Text(t, _) if t == "body"));
+  }
+
+  #[test]
+  fn paragraph_omits_first_line_indent_kern_by_default() {
+    // Arrange — 既定（first_line_indent = 0pt）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let inlines = [InlineNode::Text("body".to_string())];
+
+    // Act
+    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+
+    // Assert — 先頭は本文 Text（字下げ Kern は無い）
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
+    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は出ない: {nodes:?}");
   }
 
   #[test]

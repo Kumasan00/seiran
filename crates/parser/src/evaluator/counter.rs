@@ -424,6 +424,8 @@ pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) ->
           resolve_proof_target(target, registry)?;
         }
       },
+      // 引用本体は通常の本文と同じく `\ref` を含みうるため再帰する
+      DocNode::Quote { body, .. } => resolve_refs(body, registry)?,
       DocNode::Table {
         head,
         rows,

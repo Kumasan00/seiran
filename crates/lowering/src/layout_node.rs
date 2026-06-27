@@ -19,6 +19,12 @@ pub enum LayoutNode {
     /// リスト項目で字下げに使う。`layout::build_blocks` が `VBox` の入れ子ごとに加算し、
     /// 配下の段落（`Block::Paragraph`）へ確定値を刻む。通常の `VBox` は 0。
     indent: Length,
+    /// この `VBox` 配下の縦リストに加える右インデント（pt 換算で累積）
+    ///
+    /// 引用ブロックで本文右端からの字下げに使う。`layout::build_blocks` が `VBox` の入れ子ごとに
+    /// 加算し、配下の段落（`Block::Paragraph`）へ確定値を刻む。折り返し幅は
+    /// `text_width - indent - right_indent` に縮む。通常の `VBox` は 0。
+    right_indent: Length,
     /// この `VBox` 配下の段落に適用する水平揃え（既定は左揃え）
     ///
     /// `layout::build_blocks` が `VBox` 配下の段落（`Block::Paragraph`）へ伝播する。
