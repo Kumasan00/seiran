@@ -27,15 +27,23 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
 
   let mut result = Vec::new();
 
+  // `\noindent`（[`InlineNode::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
+  // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
+  let suppress_indent = inlines.iter().any(|inline| matches!(inline, InlineNode::NoIndent));
+
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
-  // 折り返し幅を狭める（2 行目以降には残らない）。0pt のときは何も足さない（従来挙動）。
-  if ctx.first_line_indent.to_pt() > 0.0 {
+  // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
+  if ctx.first_line_indent.to_pt() > 0.0 && !suppress_indent {
     result.push(LayoutNode::Kern {
       length: ctx.first_line_indent,
     });
   }
 
   for inline in inlines {
+    // 非描画マーカーは出力に寄与しないので読み飛ばす
+    if matches!(inline, InlineNode::NoIndent) {
+      continue;
+    }
     result.extend(lower_inline(ctx, inline, default_style)?);
   }
 
@@ -107,6 +115,21 @@ mod tests {
     };
     assert!((length.to_pt() - 15.0).abs() < f32::EPSILON);
     assert!(matches!(&nodes[1], LayoutNode::Text(t, _) if t == "body"));
+  }
+
+  #[test]
+  fn paragraph_noindent_marker_suppresses_indent_kern() {
+    // Arrange — first_line_indent を 15pt にした文脈で、先頭に NoIndent マーカーがある段落
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style).with_first_line_indent(types::Length::pt(15.0));
+    let inlines = [InlineNode::NoIndent, InlineNode::Text("body".to_string())];
+
+    // Act
+    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+
+    // Assert — 字下げ Kern は出ず、マーカーも描画されず、先頭は本文 Text
+    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は抑止される: {nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
   }
 
   #[test]

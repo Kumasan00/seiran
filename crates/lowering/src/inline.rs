@@ -57,6 +57,11 @@ pub(super) fn lower_inline(
     InlineNode::LineBreak => {
       return Ok(vec![LayoutNode::LineBreak]);
     },
+    InlineNode::NoIndent => {
+      // 非描画の字下げ抑止マーカー。段落字下げの抑止は `lower_paragraph` が担い、
+      // 通常は同関数がマーカーを除去するためここには到達しないが、防御的に空を返す。
+      return Ok(Vec::new());
+    },
     InlineNode::Ref {
       label,
       number,

@@ -58,6 +58,26 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
   return Ok(vec![DocNode::Space(Length::pt(space_value))]);
 }
 
+/// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
+///
+/// 引数も任意引数も取らない（`\notag` と同じ引数なしマーカー）。「段落の先頭にのみ置ける」
+/// という位置検証は段落境界を知る `evaluate_children` が担うため、ここでは引数の不在だけを
+/// 検証し、結果は呼び出し側（`CommandKind::execute`）が `CommandResult::NoIndent` に詰める。
+///
+/// # Errors
+///
+/// 任意引数や必須引数が指定されている場合にエラーを返します
+pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
+  let _opt_args = collect_command_opt_args(view, &[])?;
+  if !view.args_is_empty() {
+    return Err(EvalError::ExtraCommandArgument {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  }
+  return Ok(());
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -94,6 +114,51 @@ mod tests {
 
     // Act
     let result = space(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
+  }
+
+  #[test]
+  fn noindent_accepts_no_args() {
+    // Arrange — 引数なしの `\noindent` は受理される
+    let arena = Bump::new();
+    let source = r"\noindent";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = noindent(&view);
+
+    // Assert
+    assert!(result.is_ok());
+  }
+
+  #[test]
+  fn noindent_rejects_mandatory_argument() {
+    // Arrange — `\noindent{x}` は引数過剰でエラー
+    let arena = Bump::new();
+    let source = r"\noindent{x}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = noindent(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "noindent"));
+  }
+
+  #[test]
+  fn noindent_rejects_unknown_opt_arg_key() {
+    // Arrange — `\noindent` は任意引数を受け付けない
+    let arena = Bump::new();
+    let source = r"\noindent[draft]";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = noindent(&view);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
