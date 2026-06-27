@@ -41,8 +41,9 @@ pub(super) fn lower_theorem(
     build_heading(ctx, theorem_style, number, title, of)?,
   ];
 
-  // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする
-  let body_ctx = ctx.with_body_font_kind(pres.font_kind);
+  // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする。
+  // 本文の段落先頭字下げは波及させない（定理本体はブロックとして 0 にリセット）。
+  let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
   let mut body_nodes = lower_nodes(&body_ctx, body)?;
 
   // QED マーク（`qed_mark` を持つクラス = proof）を本体末尾に右寄せ配置する

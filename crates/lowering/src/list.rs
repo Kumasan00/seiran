@@ -18,6 +18,9 @@ pub(super) fn lower_list(
   let list_style = &ctx.style.list;
   let mut result = Vec::new();
 
+  // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
+  let item_ctx = ctx.with_first_line_indent(types::Length::pt(0.0));
+
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: list_style.marker_font_kind,
@@ -39,7 +42,7 @@ pub(super) fn lower_list(
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
     // アイテム内容を変換
-    let content_nodes = lower_nodes(ctx, &item.content)?;
+    let content_nodes = lower_nodes(&item_ctx, &item.content)?;
     item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {

@@ -108,6 +108,13 @@ pub struct LoweringContext<'a> {
   /// [`LoweringContext::with_body_font_kind`] で派生した文脈を本体の lowering に渡す
   /// （斜体の定理本文・ローマンの証明本文など）。段落・本体内リストへ伝播する。
   pub body_font_kind: types::FontKind,
+  /// 段落先頭行の字下げ量
+  ///
+  /// 通常は `style.text.first_line_indent`。[`crate::paragraph::lower_paragraph`] が正のとき
+  /// 段落先頭に水平カーンを前置し、先頭行だけを字下げする。リスト項目・表セルのように
+  /// 内部段落へ字下げを波及させたくないブロックは [`LoweringContext::with_first_line_indent`]
+  /// で 0 にリセットした文脈を本体に渡す。`quotation` ブロックは逆に正の値を設定する。
+  pub first_line_indent: types::Length,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -121,6 +128,7 @@ impl<'a> LoweringContext<'a> {
     return LoweringContext {
       style,
       body_font_kind: style.text.font_kind,
+      first_line_indent: style.text.first_line_indent,
     };
   }
 
@@ -133,6 +141,21 @@ impl<'a> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
+      first_line_indent: self.first_line_indent,
+    };
+  }
+
+  /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
+  ///
+  /// `style` 参照・`body_font_kind` は共有したまま `first_line_indent` のみ上書きする。
+  /// リスト項目・表セル・定理本体などへ字下げを波及させないため 0 にリセットしたり、
+  /// `quotation` ブロックで正の値を与えたりするのに使う。
+  #[must_use]
+  pub fn with_first_line_indent(&self, first_line_indent: types::Length) -> LoweringContext<'a> {
+    return LoweringContext {
+      style: self.style,
+      body_font_kind: self.body_font_kind,
+      first_line_indent,
     };
   }
 

@@ -15,6 +15,9 @@ use types::{
 /// `paragraph_spacing` は段落末に挿入するスペース。
 /// 旧 `inter_paragraph_spacing: Option<f32>` の `None`（未指定 → `font_size`）挙動を廃止し、
 /// 明示的な既定値（12.0pt）を使う。サイズを動的に追従させたければ呼び出し側で計算する。
+///
+/// `first_line_indent` は段落先頭行の字下げ量。既定 0pt（字下げなし＝従来のブロック段落方式）。
+/// 正の値のとき各段落の先頭行だけが字下げされる（折り返し 2 行目以降・`\\` 直後の行には効かない）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -22,6 +25,9 @@ pub struct TextBlockStyle {
   /// 段落末に挿入するスペース
   #[garde(custom(non_negative))]
   pub paragraph_spacing: Length,
+  /// 段落先頭行の字下げ量（既定 0pt = 字下げなし）
+  #[garde(custom(non_negative))]
+  pub first_line_indent: Length,
   /// 段落本文のフォント種別
   pub font_kind: FontKind,
 }
@@ -30,6 +36,7 @@ impl Default for TextBlockStyle {
   fn default() -> Self {
     return Self {
       paragraph_spacing: Length::pt(12.0),
+      first_line_indent: Length::pt(0.0),
       font_kind: FontKind::Serif,
     };
   }
@@ -55,7 +62,20 @@ mod tests {
 
     // Assert
     assert!((style.paragraph_spacing.to_pt() - 12.0).abs() < f32::EPSILON);
+    assert!((style.first_line_indent.to_pt() - 0.0).abs() < f32::EPSILON);
     assert_eq!(style.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn validate_rejects_negative_first_line_indent() {
+    // Arrange
+    let style = TextBlockStyle {
+      first_line_indent: Length::pt(-1.0),
+      ..TextBlockStyle::default()
+    };
+
+    // Act / Assert
+    assert!(style.validate().is_err());
   }
 
   #[test]
