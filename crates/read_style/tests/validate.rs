@@ -74,7 +74,7 @@ fn rejects_unknown_counter_name_at_parse_time() {
   let toml = "
 [counters.custom]
 display_name = \"Custom\"
-format = \"{chapter}.{n}\"
+number_format = \"{chapter}.{n}\"
 number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = []
@@ -139,16 +139,19 @@ fn placeholder_error_message_names_the_offending_token() {
 }
 
 #[test]
-fn rejects_unknown_counter_placeholder_in_format() {
-  // Arrange: counters.section.format に未知のカウンタ参照 {chaptr}（chapter のタイポ）
-  let toml = "[counters.section]\ndisplay_name = \"Section\"\nformat = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
+fn rejects_unknown_counter_placeholder_in_number_format() {
+  // Arrange: counters.section.number_format に未知のカウンタ参照 {chaptr}（chapter のタイポ）
+  let toml = "[counters.section]\ndisplay_name = \"Section\"\nnumber_format = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
 
   // Act
   let errors = expect_validation_errors(parse_style(toml, dummy_source()));
 
   // Assert
   let paths = paths(&errors);
-  assert!(paths.contains(&"counters.section.format"), "expected counters.section.format in {paths:?}");
+  assert!(
+    paths.contains(&"counters.section.number_format"),
+    "expected counters.section.number_format in {paths:?}"
+  );
 }
 
 #[test]
@@ -157,7 +160,7 @@ fn rejects_unknown_reset_target_at_parse_time() {
   let toml = "
 [counters.chapter]
 display_name = \"Chapter\"
-format = \"{n}\"
+number_format = \"{n}\"
 number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = [\"nonexistent\"]

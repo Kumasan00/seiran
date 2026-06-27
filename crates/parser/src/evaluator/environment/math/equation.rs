@@ -26,7 +26,7 @@ use crate::evaluator::{
 ///
 /// 既定では [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
 /// `[label=...]` 指定時はそのレジストリにラベルを登録する。番号書式は
-/// `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。`[numbered=false]`
+/// `read_style::CounterStyle.number_format` テンプレ（既定 `"{chapter}.{n}"`）に従う。`[numbered=false]`
 /// 指定時は採番を一切行わず（カウンタを消費しない）、`row.number` は `None` になる。本体は
 /// 単一行・単一セルとして評価し、`MathRow` 1 件の `MathBlock` を返す。
 ///
@@ -115,7 +115,7 @@ mod tests {
   /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
   fn style_with_plain_equation_format() -> Style {
     let mut counters = Counters::default();
-    counters.equation.format = "{n}".to_string();
+    counters.equation.number_format = "{n}".to_string();
     let style = read_style::Style {
       counters,
       ..Default::default()

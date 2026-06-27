@@ -99,7 +99,7 @@ impl Default for Theorems {
 
 /// 1 つの定理クラスのスタイル定義（クラス別既定 + 差分上書きで解決済み）。
 ///
-/// TOML 上では `[theorems.<class>]` テーブルにマップされる。`format` はカウンタと同形の
+/// TOML 上では `[theorems.<class>]` テーブルにマップされる。`number_format` はカウンタと同形の
 /// テンプレート文字列（`"{n}"` / `"{chapter}.{n}"`）で、プレースホルダの実レンダリングは
 /// parser 段で行う（本層では非空のみ検証）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -115,10 +115,10 @@ pub struct TheoremStyle {
   pub counter: String,
   /// このクラスのカウンタのリセット先（見出しレベル or なし）
   pub reset_by: TheoremReset,
-  /// 番号テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
-  /// （counter の `format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
+  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
+  /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
   #[garde(length(chars, min = 1), custom(crate::placeholder::counter_format))]
-  pub format: String,
+  pub number_format: String,
   /// 採番しない（`proof` 等）。`true` のとき番号は付かない
   pub unnumbered: bool,
   /// QED マーク（`proof` 末尾に配置する記号）。`None` のときマークなし
@@ -139,7 +139,7 @@ impl Default for TheoremStyle {
       display_name: "Theorem".to_string(),
       counter: "theorem".to_string(),
       reset_by: TheoremReset::None,
-      format: "{n}".to_string(),
+      number_format: "{n}".to_string(),
       unnumbered: false,
       qed_mark: None,
       style: TheoremPresentation::default(),
@@ -332,8 +332,8 @@ pub struct TheoremStyleOverride {
   pub counter: Option<String>,
   /// カウンタのリセット先
   pub reset_by: Option<TheoremReset>,
-  /// 番号テンプレート
-  pub format: Option<String>,
+  /// 番号構築テンプレート
+  pub number_format: Option<String>,
   /// 採番しないか
   pub unnumbered: Option<bool>,
   /// QED マーク（TOML からは設定のみ可。`None` への解除は非対応）
@@ -354,8 +354,8 @@ impl TheoremStyleOverride {
     if let Some(reset_by) = self.reset_by {
       target.reset_by = reset_by;
     }
-    if let Some(format) = &self.format {
-      target.format.clone_from(format);
+    if let Some(number_format) = &self.number_format {
+      target.number_format.clone_from(number_format);
     }
     if let Some(unnumbered) = self.unnumbered {
       target.unnumbered = unnumbered;
@@ -462,10 +462,10 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_empty_format() {
+  fn validate_rejects_empty_number_format() {
     // Arrange
     let style = TheoremStyle {
-      format: String::new(),
+      number_format: String::new(),
       ..TheoremStyle::default()
     };
 
@@ -496,10 +496,10 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_unknown_counter_reference_in_format() {
-    // Arrange: format（カウンタ規則）に未知のカウンタ参照 `{chaptr}`
+  fn validate_rejects_unknown_counter_reference_in_number_format() {
+    // Arrange: number_format（カウンタ規則）に未知のカウンタ参照 `{chaptr}`
     let style = TheoremStyle {
-      format: "{chaptr}.{n}".to_string(),
+      number_format: "{chaptr}.{n}".to_string(),
       ..TheoremStyle::default()
     };
 
@@ -686,6 +686,37 @@ displ_name = \"Theorem\"
 
     // Assert
     assert!(result.is_err(), "未知のフィールド名は拒否されるべき: {result:?}");
+  }
+
+  #[test]
+  fn accepts_number_format_override() {
+    // Arrange: 新キー `number_format` でクラス別の番号書式を上書きできる
+    let toml = "
+[theorems.theorem]
+number_format = \"{section}.{n}\"
+";
+
+    // Act
+    let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
+
+    // Assert
+    assert_eq!(wrapper.theorems.theorem.number_format, "{section}.{n}");
+  }
+
+  #[test]
+  fn rejects_renamed_format_key() {
+    // Arrange: 旧キー `format` はハードリネームで廃止された（→ `number_format`）。
+    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    let toml = "
+[theorems.theorem]
+format = \"{section}.{n}\"
+";
+
+    // Act
+    let result: Result<TheoremsWrapper, _> = toml::from_str(toml);
+
+    // Assert
+    assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される: {result:?}");
   }
 
   #[test]

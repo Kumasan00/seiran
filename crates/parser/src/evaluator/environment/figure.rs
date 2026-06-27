@@ -33,7 +33,7 @@ use crate::evaluator::{
 ///
 /// [`CounterRegistry::increment`] で `CounterName::Figure` の通し番号を発番し、
 /// 本体内の `\image` / `\caption` を抽出して [`DocNode::Figure`] を生成する。
-/// 番号書式は `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
+/// 番号書式は `read_style::CounterStyle.number_format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
 ///
 /// # Errors
 ///
@@ -238,7 +238,7 @@ mod tests {
   /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
   fn style_with_plain_figure_format() -> Style {
     let mut counters = Counters::default();
-    counters.figure.format = "{n}".to_string();
+    counters.figure.number_format = "{n}".to_string();
     let style = Style {
       counters,
       ..Default::default()

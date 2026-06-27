@@ -60,7 +60,7 @@ mod tests {
   /// 形式に縮約してテストの意図を読みやすくする。
   fn style_with_plain_equation_format() -> Style {
     let mut counters = Counters::default();
-    counters.equation.format = "{n}".to_string();
+    counters.equation.number_format = "{n}".to_string();
     return Style {
       counters,
       ..Default::default()

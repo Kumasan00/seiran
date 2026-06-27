@@ -135,7 +135,7 @@ fn evaluate_paragraph_break_creates_two_paragraphs() {
 
 #[test]
 fn evaluate_section_command_creates_heading() {
-  // Counters::default().section.format = "{chapter}.{n}" のため、`\chapter` 不在時は
+  // Counters::default().section.number_format = "{chapter}.{n}" のため、`\chapter` 不在時は
   // chapter 値（0）が `NumberStyle::Arabic.render(0) = ""` で空文字列となり、`.1` が出力される。
   // 実ドキュメントでは通常 `\chapter` 配下で `\section` を使うため、この挙動は許容範囲。
   let result = evaluate_source("\\section{Introduction}");

@@ -38,8 +38,8 @@ const THEOREM_HEADING: &[&str] = &["display_name", "number", "title", "of"];
 /// プレースホルダ。
 const RUNNING: &[&str] = &["page", "pages", "title", "author", "date"];
 
-/// カウンタ番号書式（`counters.<name>.format` / `theorems.<class>.format`）で許可するプレースホルダ
-/// かどうかを判定する。
+/// カウンタ番号書式（`counters.<name>.number_format` / `theorems.<class>.number_format`）で許可する
+/// プレースホルダかどうかを判定する。
 ///
 /// `{n}` は「そのカウンタ自身の値」を指す特別トークン、それ以外は固定 9 種の他カウンタ名
 /// （[`CounterName::ALL`]）のみを許可する。
@@ -153,7 +153,7 @@ pub(crate) fn ordered_list_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| ORDERED_LIST.contains(&name));
 }
 
-/// カウンタ番号書式（`counters.<name>.format` / `theorems.<class>.format`）用のバリデーター。
+/// カウンタ番号書式（`counters.<name>.number_format` / `theorems.<class>.number_format`）用のバリデーター。
 ///
 /// `{n}`（自身）と固定 9 種の他カウンタ名のみを許可する。
 ///
