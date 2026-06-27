@@ -82,6 +82,7 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
       children,
       margin_bottom: Length::pt(0.0),
       indent: Length::pt(0.0),
+      right_indent: Length::pt(0.0),
       align: Align::Center,
     });
   }

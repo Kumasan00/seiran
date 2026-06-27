@@ -108,6 +108,7 @@ fn build_heading(
     children,
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
+    right_indent: Length::pt(0.0),
     align: Align::Left,
   });
 }

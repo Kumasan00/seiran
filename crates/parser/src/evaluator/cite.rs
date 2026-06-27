@@ -46,8 +46,8 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
           collect_unknown_in_list_item(item, keys, labels);
         }
       },
-      // 定理本体は通常の本文と同じく `\cite` を含みうるため再帰する（`title` は文字列で `\cite` を含まない）
-      DocNode::Theorem { body, .. } => collect_unknown_in_nodes(body, keys, labels),
+      // 定理本体・引用本体は通常の本文と同じく `\cite` を含みうるため再帰する（`title` は文字列で `\cite` を含まない）
+      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_unknown_in_nodes(body, keys, labels),
       DocNode::Table {
         head,
         rows,
