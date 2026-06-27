@@ -23,6 +23,7 @@ pub mod list;
 pub mod math;
 pub mod number_style;
 pub mod page_numbering;
+pub mod quote;
 pub mod reference;
 pub mod running;
 pub mod table;
@@ -53,6 +54,7 @@ pub use crate::{
   math::{MathBlockStyle, MathScriptStyle},
   number_style::NumberStyle,
   page_numbering::PageNumbering,
+  quote::QuoteStyle,
   reference::ReferenceStyle,
   running::RunningContentStyle,
   style::Style,

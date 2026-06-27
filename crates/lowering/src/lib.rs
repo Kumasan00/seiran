@@ -38,6 +38,7 @@ mod layout_node;
 mod list;
 mod math;
 mod paragraph;
+mod quote;
 mod table;
 mod template;
 mod theorem;
@@ -247,6 +248,9 @@ fn lower_node_indexed(
       // proof の `of` は pass2 で解決済みの cleveref 文字列（例「Theorem 1」）を見出しに織り込む。
       let of = of.as_ref().and_then(|target| target.number.as_deref());
       return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, of, label.as_deref());
+    },
+    DocNode::Quote { kind, body } => {
+      return quote::lower_quote(ctx, *kind, body);
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {

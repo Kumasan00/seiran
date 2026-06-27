@@ -49,6 +49,7 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: list_style.item_margin_bottom,
       indent: list_style.indent,
+      right_indent: types::Length::pt(0.0),
       align: types::Align::Left,
     });
   }

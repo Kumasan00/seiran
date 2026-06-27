@@ -20,6 +20,7 @@ use crate::{
   list::ListStyle,
   math::{MathBlockStyle, MathScriptStyle},
   page_numbering::PageNumbering,
+  quote::QuoteStyle,
   reference::ReferenceStyle,
   running::RunningContentStyle,
   table::TableStyle,
@@ -56,6 +57,9 @@ pub struct Style {
   /// リストのスタイル
   #[garde(dive)]
   pub list: ListStyle,
+  /// 引用ブロック（quote / quotation）のスタイル
+  #[garde(dive)]
+  pub quote: QuoteStyle,
   /// 表のスタイル
   #[garde(dive)]
   pub table: TableStyle,
@@ -113,6 +117,7 @@ impl Default for Style {
       heading: HeadingStyles::default(),
       text: TextBlockStyle::default(),
       list: ListStyle::default(),
+      quote: QuoteStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
       equation: EquationStyle::default(),
@@ -202,6 +207,13 @@ mod tests {
   fn validate_dives_into_nested_table_rule_thickness() {
     let mut style = Style::default();
     style.table.rule_thickness = Length::pt(-0.1);
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
+  fn validate_dives_into_quote_indent() {
+    let mut style = Style::default();
+    style.quote.indent = Length::pt(-0.1);
     assert!(style.validate().is_err());
   }
 
