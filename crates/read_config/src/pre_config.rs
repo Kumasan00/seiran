@@ -75,6 +75,10 @@ pub(crate) struct PreConfig {
   /// PDF ページ設定
   #[garde(dive)]
   pub pdf: PrePdfConfig,
+  /// ラスタ画像のダウンサンプリング設定（省略可、既定 `max_dpi=300` / `downsample=true`）
+  #[serde(default)]
+  #[garde(dive)]
+  pub image: PreImageConfig,
   /// 19 フォント種別の設定群
   #[garde(dive)]
   pub font_configs: PreFontConfigs,
@@ -459,6 +463,32 @@ pub(crate) struct PrePdfConfig {
 
 /// `[pdf].show_bookmarks` の既定値（true = しおりを出力）。
 fn default_show_bookmarks() -> bool { return true; }
+
+/// `[image]` セクション: ラスタ画像のダウンサンプリング設定
+///
+/// 画像の埋め込み解像度（ファイルサイズ・物理画素数）を決める「出力物理」の設定で、
+/// 見た目（レイアウト）ではないため style ではなく config が持つ（#125 で style `[figure]` から移動）。
+/// `\image[dpi=...]` / `[downsample=...]` の per-image 上書きはここで決めるグローバル既定を上書きする。
+#[derive(Deserialize, Debug, Validate)]
+#[serde(default)]
+pub(crate) struct PreImageConfig {
+  /// ラスタ画像埋め込み時の最大 DPI（1〜2400）。表示物理サイズと本値から必要ピクセル数を計算し、
+  /// 元画像がそれを超える場合に限り縮小する。
+  #[garde(range(min = 1, max = 2400))]
+  pub max_dpi: u32,
+  /// ラスタ画像のダウンサンプリングを行うか。`false` なら `max_dpi` によらず全画像を原寸で埋め込む。
+  #[garde(skip)]
+  pub downsample: bool,
+}
+
+impl Default for PreImageConfig {
+  fn default() -> Self {
+    return Self {
+      max_dpi: 300,
+      downsample: true,
+    };
+  }
+}
 
 /// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
 ///

@@ -23,8 +23,8 @@ mod tag;
 pub mod test_support;
 
 pub use processed_config::{
-  Config, DocumentConfig, Feature, FontConfig, FontConfigs, Margin, OutputConfig, PdfConfig, TextDirection,
-  VariationAxis,
+  Config, DocumentConfig, Feature, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig,
+  TextDirection, VariationAxis,
 };
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
@@ -284,6 +284,7 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
     document: pre_document,
     output: pre_output,
     pdf: pre_pdf_config,
+    image: pre_image_config,
     ..
   } = pre;
 
@@ -324,6 +325,10 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
         right: pre_pdf_config.margin_right,
       },
       show_bookmarks: pre_pdf_config.show_bookmarks,
+    },
+    image: ImageConfig {
+      max_dpi: pre_image_config.max_dpi,
+      downsample: pre_image_config.downsample,
     },
     font_configs,
     sources: resolved.sources,
@@ -843,6 +848,27 @@ mod tests {
     assert!(errors.iter().any(|error| matches!(
       error,
       ValidationError::Field { path, .. } if path == "output.output_dir"
+    )));
+  }
+
+  #[test]
+  fn validate_values_fails_on_out_of_range_max_dpi() {
+    // Arrange: `[image].max_dpi` の範囲（1〜2400）外（#125 で style から config へ移動）
+    let toml = format!(
+      "sources = [\"dummy.sei\"]\n\n{}{}[image]\nmax_dpi = 9999\n\n{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("dummy.ttf"),
+    );
+    let pre = parse_config(&toml, dummy_source()).unwrap();
+
+    // Act
+    let errors = validate_values(&pre).unwrap_err();
+
+    // Assert
+    assert!(errors.iter().any(|error| matches!(
+      error,
+      ValidationError::Field { path, .. } if path == "image.max_dpi"
     )));
   }
 

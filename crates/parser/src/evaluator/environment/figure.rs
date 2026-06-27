@@ -13,8 +13,8 @@
 //!
 //! - `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` — 画像（必須）。
 //!   `width` / `height` はともに任意で、未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と
-//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（`style.figure.max_dpi`
-//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（`style.figure.downsample`
+//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（config `[image].max_dpi`
+//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（config `[image].downsample`
 //!   を上書き）
 //! - `\caption{...}` — キャプション（任意）
 
@@ -139,7 +139,7 @@ struct ImageArgs {
 ///
 /// `width` / `height` / `dpi` / `downsample` はいずれも任意引数。`width` / `height` の未指定分は
 /// `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。`dpi` / `downsample` の
-/// 未指定分は `style.figure.max_dpi` / `style.figure.downsample` が使われる。
+/// 未指定分は config `[image].max_dpi` / `[image].downsample` が使われる。
 fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
   let opt_args = collect_command_opt_args(
     view,

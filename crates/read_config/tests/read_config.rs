@@ -36,6 +36,29 @@ fn read_config_succeeds_with_valid_config() {
   assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
   // しおりは省略時 true（#127 で style から config `[pdf]` へ移動）
   assert!(config.pdf.show_bookmarks);
+  // 画像設定は省略時 max_dpi=300 / downsample=true（#125 で style から config `[image]` へ移動）
+  assert_eq!(config.image.max_dpi, 300);
+  assert!(config.image.downsample);
+}
+
+#[test]
+fn read_config_reads_image_overrides() {
+  // Arrange: `[image]` で max_dpi / downsample を明示
+  let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+    format!(
+      "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
+      valid_output_section("test", output_dir),
+      valid_pdf_section(),
+      make_font_sections(font_path),
+    )
+  });
+
+  // Act
+  let config: Config = read_config(&config_path).unwrap();
+
+  // Assert
+  assert_eq!(config.image.max_dpi, 150);
+  assert!(!config.image.downsample);
 }
 
 #[test]

@@ -116,6 +116,16 @@ pub struct LoweringContext<'a> {
   /// 内部段落へ字下げを波及させたくないブロックは [`LoweringContext::with_first_line_indent`]
   /// で 0 にリセットした文脈を本体に渡す。`quotation` ブロックは逆に正の値を設定する。
   pub first_line_indent: types::Length,
+  /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
+  ///
+  /// `\image[dpi=...]` の per-image 上書きが無いときの既定値。production では
+  /// [`LoweringContext::with_image_defaults`] で config の値に差し替える（出力物理の設定は
+  /// style ではなく config が持つ）。
+  pub image_max_dpi: u32,
+  /// ラスタ画像のダウンサンプリング可否（config `[image].downsample` 由来）
+  ///
+  /// `\image[downsample=...]` の per-image 上書きが無いときの既定値。
+  pub image_downsample: bool,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -130,7 +140,22 @@ impl<'a> LoweringContext<'a> {
       style,
       body_font_kind: style.text.font_kind,
       first_line_indent: style.text.first_line_indent,
+      // 画像 DPI の既定。production は build_pdf が with_image_defaults で config 由来値へ差し替える
+      // （read_config::ImageConfig::default と同値）。テストはこの既定をそのまま使う。
+      image_max_dpi: 300,
+      image_downsample: true,
     };
+  }
+
+  /// 画像出力の既定値（config `[image]` 由来）を差し替えた文脈を返す
+  ///
+  /// 画像のダウンサンプリング解像度は「出力物理」の設定で config.toml `[image]` が持つ。
+  /// `build_pdf` が `LoweringContext::new(&style).with_image_defaults(...)` の形で注入する。
+  #[must_use]
+  pub fn with_image_defaults(mut self, image_max_dpi: u32, image_downsample: bool) -> Self {
+    self.image_max_dpi = image_max_dpi;
+    self.image_downsample = image_downsample;
+    return self;
   }
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
@@ -143,6 +168,8 @@ impl<'a> LoweringContext<'a> {
       style: self.style,
       body_font_kind,
       first_line_indent: self.first_line_indent,
+      image_max_dpi: self.image_max_dpi,
+      image_downsample: self.image_downsample,
     };
   }
 
@@ -157,6 +184,8 @@ impl<'a> LoweringContext<'a> {
       style: self.style,
       body_font_kind: self.body_font_kind,
       first_line_indent,
+      image_max_dpi: self.image_max_dpi,
+      image_downsample: self.image_downsample,
     };
   }
 

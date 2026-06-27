@@ -18,9 +18,9 @@ use crate::layout_node::LayoutNode;
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ImageOverrides {
-  /// `\image[dpi=N]` の per-image 上書き。`None` なら `style.figure.max_dpi` が使われる
+  /// `\image[dpi=N]` の per-image 上書き。`None` なら config `[image].max_dpi`（既定）が使われる
   pub dpi: Option<u32>,
-  /// `\image[downsample=true|false]` の per-image 上書き。`None` なら `style.figure.downsample` が使われる
+  /// `\image[downsample=true|false]` の per-image 上書き。`None` なら config `[image].downsample`（既定）が使われる
   pub downsample: Option<bool>,
 }
 
@@ -30,8 +30,8 @@ pub(crate) struct ImageOverrides {
 /// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力せず、
 /// `VBox` には画像のみが入る。
 ///
-/// per-image の `dpi` / `downsample` 上書きと `style.figure.max_dpi` / `style.figure.downsample`
-/// の既定値を解決し、ラスタ画像のダウンサンプリング上限 DPI を `target_dpi` として
+/// per-image の `dpi` / `downsample` 上書きと config `[image].max_dpi` / `[image].downsample`
+/// （`ctx.image_max_dpi` / `ctx.image_downsample`）の既定値を解決し、ラスタ画像のダウンサンプリング上限 DPI を `target_dpi` として
 /// [`LayoutNode::Image`] に焼き付ける。`downsample` が `false` に解決された場合は `None`
 /// （リサイズなし）になる。
 ///
@@ -49,9 +49,11 @@ pub(super) fn lower_figure(
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.figure;
 
-  let downsample_enabled = overrides.downsample.unwrap_or(style.downsample);
+  // ダウンサンプリングの既定（max_dpi / downsample）は出力物理の設定で config `[image]` 由来。
+  // per-image の `\image[dpi=...]` / `[downsample=...]` 上書きが優先される。
+  let downsample_enabled = overrides.downsample.unwrap_or(ctx.image_downsample);
   let target_dpi = if downsample_enabled {
-    Some(overrides.dpi.unwrap_or(style.max_dpi))
+    Some(overrides.dpi.unwrap_or(ctx.image_max_dpi))
   } else {
     None
   };
@@ -118,7 +120,7 @@ mod tests {
     assert_eq!(path, "./images/seiran.jpg");
     assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
     assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
-    // 既定 style.figure では downsample=true / max_dpi=300 なので target_dpi=Some(300)
+    // 既定（config `[image]`）では downsample=true / max_dpi=300 なので target_dpi=Some(300)
     assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
@@ -202,7 +204,7 @@ mod tests {
 
   #[test]
   fn lower_figure_per_image_dpi_overrides_style() {
-    // Arrange — per-image dpi=600 はスタイル既定（300）を上書きする
+    // Arrange — per-image dpi=600 は既定（config `[image]` の 300）を上書きする
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -225,10 +227,9 @@ mod tests {
 
   #[test]
   fn lower_figure_style_downsample_false_yields_no_target_dpi() {
-    // Arrange — グローバル downsample=false ならリサイズしない
-    let mut style = ReadStyle::default();
-    style.figure.downsample = false;
-    let ctx = LoweringContext::new(&style);
+    // Arrange — グローバル downsample=false（config `[image]` 由来）ならリサイズしない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style).with_image_defaults(300, false);
 
     // Act
     let nodes = lower_figure(&ctx, "a.png", None, None, ImageOverrides::default(), None, "1").expect("失敗しない");

@@ -124,7 +124,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let stage_start = Instant::now();
-  let lowering_ctx = LoweringContext::new(&style);
+  let lowering_ctx = LoweringContext::new(&style).with_image_defaults(config.image.max_dpi, config.image.downsample);
   let body_layout_nodes =
     lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");

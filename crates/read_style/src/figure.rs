@@ -26,18 +26,6 @@ pub struct FigureStyle {
   /// 図本体とキャプションの間隔
   #[garde(custom(non_negative))]
   pub inner_margin: Length,
-  /// ラスタ画像埋め込み時の最大 DPI。`\image[dpi=...]` で per-image 上書き可能
-  ///
-  /// 表示物理サイズと本値から必要ピクセル数を計算し、元画像がそれを超える場合に限り縮小する。
-  /// `downsample` が `false` の場合や `\image[downsample=false]` が指定された場合は無視される。
-  #[garde(range(min = 1, max = 2400))]
-  pub max_dpi: u32,
-  /// ラスタ画像のダウンサンプリングを行うかどうか
-  ///
-  /// `false` の場合、`max_dpi` の値にかかわらず全画像を原寸で埋め込む。
-  /// `\image[downsample=false]` で per-image 上書きが可能。
-  #[garde(skip)]
-  pub downsample: bool,
 }
 
 impl Default for FigureStyle {
@@ -50,8 +38,6 @@ impl Default for FigureStyle {
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
       inner_margin: Length::pt(6.0),
-      max_dpi: 300,
-      downsample: true,
     };
   }
 }
@@ -92,20 +78,10 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_zero_max_dpi() {
-    let style = FigureStyle {
-      max_dpi: 0,
-      ..FigureStyle::default()
-    };
-    assert!(style.validate().is_err());
-  }
-
-  #[test]
-  fn validate_rejects_huge_max_dpi() {
-    let style = FigureStyle {
-      max_dpi: 9999,
-      ..FigureStyle::default()
-    };
-    assert!(style.validate().is_err());
+  fn rejects_moved_image_keys() {
+    // `max_dpi` / `downsample` は出力物理の設定として config.toml `[image]` へ移動した（#125）。
+    // style 側旧キーは `deny_unknown_fields` で未知フィールドとして弾く。
+    assert!(toml::from_str::<FigureStyle>("max_dpi = 300\n").is_err());
+    assert!(toml::from_str::<FigureStyle>("downsample = true\n").is_err());
   }
 }
