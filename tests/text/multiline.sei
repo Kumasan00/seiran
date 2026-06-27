@@ -14,3 +14,14 @@ a + b + c + d + e \\
 x + y + z \\
 + u + v + w
 \end{multiline}
+
+\section{ラベル付きの multiline}
+
+multiline も label 任意引数で環境全体に 1 つラベルを付け、本文から参照できる。
+
+\begin{multiline}[label=eq:multiline-main]
+a + b + c \\
++ d + e
+\end{multiline}
+
+この式は \ref{eq:multiline-main} で参照できる。

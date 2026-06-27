@@ -226,6 +226,57 @@ fn evaluate_equation_with_label_then_ref_resolves_with_parens() {
 }
 
 #[test]
+fn evaluate_align_row_label_then_ref_resolves_with_parens() {
+  // align は行ごと採番。行末マーカー `\label{...}` を付けた行の番号を `\ref` で参照できる。
+  // `\chapter` で chapter を 1 にし、align の 1 行目に `\label` を付けると "(1.1)" に解決する。
+  let source = r"\chapter{C}\begin{align}a &= b \label{eq:a} \\ c &= d\end{align}See \ref{eq:a}.";
+  let result = evaluate_source(source);
+  let para = result
+    .iter()
+    .find_map(|n| {
+      if let DocNode::Paragraph(i) = n {
+        Some(i)
+      } else {
+        None
+      }
+    })
+    .expect("Paragraph が含まれるべき");
+  let ref_node = para
+    .iter()
+    .find_map(|n| match n {
+      InlineNode::Ref { number, .. } => Some(number.clone()),
+      _ => None,
+    })
+    .expect("Ref ノードが含まれるべき");
+  assert_eq!(ref_node.as_deref(), Some("(1.1)"), "1 行目の番号 1.1 が参照される");
+}
+
+#[test]
+fn evaluate_split_env_label_then_ref_resolves_with_parens() {
+  // split は環境単位採番。`[label=...]` で環境全体の番号を `\ref` で参照できる。
+  let source = r"\chapter{C}\begin{split}[label=eq:s]a &= b \\ &= c\end{split}See \ref{eq:s}.";
+  let result = evaluate_source(source);
+  let para = result
+    .iter()
+    .find_map(|n| {
+      if let DocNode::Paragraph(i) = n {
+        Some(i)
+      } else {
+        None
+      }
+    })
+    .expect("Paragraph が含まれるべき");
+  let ref_node = para
+    .iter()
+    .find_map(|n| match n {
+      InlineNode::Ref { number, .. } => Some(number.clone()),
+      _ => None,
+    })
+    .expect("Ref ノードが含まれるべき");
+  assert_eq!(ref_node.as_deref(), Some("(1.1)"), "環境単位の番号 1.1 が参照される");
+}
+
+#[test]
 fn evaluate_unknown_ref_returns_unknown_label_error() {
   let err = evaluate_error(r"\ref{nope}");
   assert!(matches!(err, EvalError::UnknownLabel { ref label, .. } if label == "nope"));

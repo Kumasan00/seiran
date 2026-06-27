@@ -34,3 +34,15 @@ a &= b \\
 c &= d \notag \\
 e &= f
 \end{align}
+
+\section{行へのラベル付けと参照}
+
+align では行末に label マーカーを置くと、その行に番号とラベルが付き、本文から参照できる。
+
+\begin{align}
+a &= b \\
+c &= d \label{eq:align-cd} \\
+e &= f
+\end{align}
+
+2 行目の式は \ref{eq:align-cd} で参照できる。

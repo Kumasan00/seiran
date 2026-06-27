@@ -16,7 +16,7 @@ use miette::SourceSpan;
 use read_style::CounterName;
 use syntax::{
   SyntaxKind,
-  ast::{CommandView, EnvironmentView},
+  ast::{CommandView, EnvironmentView, extract_text_content},
   green::{GreenElement, GreenNode},
   token::TokenKind,
 };
@@ -24,7 +24,7 @@ use syntax::{
 use crate::evaluator::{
   EvalError, Evaluator,
   math::evaluate_math_elements,
-  opt_args::{OptType, collect_environment_opt_args, find_bool},
+  opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
 };
 
 /// グリッド分割の許可設定（環境種別ごと）
@@ -42,39 +42,47 @@ pub(crate) struct GridSpec {
 ///
 /// `cells` は `&` で分割した各列の `MathNode` 列。`notag_span` はその行に行末マーカー `\notag` が
 /// 付いていた場合の `\notag` のソース位置（`None` は採番対象）。行ごと採番の `align` / `gather` では
-/// `notag_span.is_some()` の行を無採番にする。
+/// `notag_span.is_some()` の行を無採番にする。`label` / `label_span` は行末マーカー `\label{...}` で
+/// 付与された行ラベルとその位置（`None` は参照対象外）。
 #[derive(Debug)]
 pub(crate) struct GridRow {
   /// 列（`&` 区切り）。各列は数式ノード列
   pub cells: Vec<Vec<MathNode>>,
   /// 行末マーカー `\notag` の位置（`None` は採番する）
   pub notag_span: Option<SourceSpan>,
+  /// 行末マーカー `\label{...}` で付与された行ラベル（`None` は参照対象外）
+  pub label: Option<String>,
+  /// 行末マーカー `\label` のソース位置（重複・無採番診断用。`label` が `Some` なら `Some`）
+  pub label_span: Option<SourceSpan>,
 }
 
 /// 数式環境本体を行 × 列のグリッドに分割して評価する
 ///
-/// 戻り値は [`GridRow`] のリスト。各行はセル（列）のリストと行末マーカー `\notag` の有無
-/// （`notag_span`）を持つ。`equation` のように分割を許さない環境では常に「1 行 1 セル」を返す
-/// （本体が空でも 1 行 1 空セル）。
+/// 戻り値は [`GridRow`] のリスト。各行はセル（列）のリストと行末マーカー（`\notag` / `\label`）の
+/// 情報を持つ。`equation` のように分割を許さない環境では常に「1 行 1 セル」を返す（本体が空でも
+/// 1 行 1 空セル）。
 ///
-/// `notag_allowed` が `true`（行ごと採番の `align` / `gather`）のときのみ行末の `\notag` を受理し、
-/// その行の `notag_span` を立てる（マーカー自体はセルに残さないため後段の数式評価には現れない）。
+/// `row_markers_allowed` が `true`（行ごと採番の `align` / `gather`）のときのみ行末マーカー
+/// `\notag`（その行を無採番にする）と `\label{...}`（その行にラベルを付ける）を受理し、行の
+/// `notag_span` / `label` を立てる（マーカー自体はセルに残さないため後段の数式評価には現れない）。
 ///
 /// # Errors
 ///
-/// 許可していない区切りトークン（`\\` / `&`）の出現、`\notag` の不正な使用（非許可環境＝
-/// [`EvalError::NotagNotSupported`]、行末以外・引数付き・1 行に複数＝[`EvalError::NotagNotAtRowEnd`]）、
-/// セル内の数式評価失敗時にエラーを返す。
+/// 許可していない区切りトークン（`\\` / `&`）の出現、行末マーカーの不正な使用（非許可環境＝
+/// [`EvalError::NotagNotSupported`] / [`EvalError::RowLabelNotSupported`]、行末以外・引数不正・1 行に
+/// 複数＝[`EvalError::NotagNotAtRowEnd`] / [`EvalError::RowLabelNotAtRowEnd`]）、セル内の数式評価失敗時に
+/// エラーを返す。
 pub(crate) fn evaluate_grid(
   source: &str,
   body: &GreenNode,
   spec: &GridSpec,
-  notag_allowed: bool,
+  row_markers_allowed: bool,
 ) -> Result<Vec<GridRow>, EvalError> {
   let mut rows: Vec<GridRow> = Vec::new();
   let mut current_row: Vec<Vec<MathNode>> = Vec::new();
   let mut current_cell: Vec<GreenElement> = Vec::new();
   let mut current_notag: Option<SourceSpan> = None;
+  let mut current_label: Option<(String, SourceSpan)> = None;
 
   for child in body.children {
     if let GreenElement::Token(token) = child {
@@ -86,9 +94,12 @@ pub(crate) fn evaluate_grid(
               span: token.span.into(),
             });
           }
-          // `\notag` の後ろに列が続くなら、`\notag` は行末になく不正
+          // 行末マーカーの後ろに列が続くなら、マーカーは行末になく不正
           if let Some(span) = current_notag {
             return Err(EvalError::NotagNotAtRowEnd { span });
+          }
+          if let Some((_, span)) = &current_label {
+            return Err(EvalError::RowLabelNotAtRowEnd { span: *span });
           }
           current_row.push(evaluate_math_elements(source, &current_cell)?);
           current_cell.clear();
@@ -103,9 +114,12 @@ pub(crate) fn evaluate_grid(
           }
           current_row.push(evaluate_math_elements(source, &current_cell)?);
           current_cell.clear();
+          let (label, label_span) = take_row_label(&mut current_label);
           rows.push(GridRow {
             cells: std::mem::take(&mut current_row),
             notag_span: current_notag.take(),
+            label,
+            label_span,
           });
           continue;
         },
@@ -113,14 +127,14 @@ pub(crate) fn evaluate_grid(
       }
     }
 
-    // 行末マーカー `\notag` の検出（CommandCall ノード）
+    // 行末マーカー `\notag` / `\label{...}` の検出（CommandCall ノード）
     if let GreenElement::Node(node) = *child
       && node.kind == SyntaxKind::CommandCall
     {
       let view = CommandView::new(node, source);
       if view.name() == "notag" {
         let span: SourceSpan = node.span.into();
-        if !notag_allowed {
+        if !row_markers_allowed {
           return Err(EvalError::NotagNotSupported { span });
         }
         // `\notag` は引数を取らない（`\notag{...}` が後続の中身を飲み込むのを防ぐ）
@@ -134,13 +148,34 @@ pub(crate) fn evaluate_grid(
         current_notag = Some(span);
         continue;
       }
+      if view.name() == "label" {
+        let span: SourceSpan = node.span.into();
+        if !row_markers_allowed {
+          return Err(EvalError::RowLabelNotSupported { span });
+        }
+        // `\label` は必須引数 1 個（ラベル名）のみ。引数過不足・任意引数付きは不正
+        if view.args_count() != 1 || view.opt_args_count() > 0 {
+          return Err(EvalError::RowLabelNotAtRowEnd { span });
+        }
+        // 1 行に `\label` は 1 つだけ
+        if current_label.is_some() {
+          return Err(EvalError::RowLabelNotAtRowEnd { span });
+        }
+        let first_arg = view.first_arg().ok_or(EvalError::RowLabelNotAtRowEnd { span })?;
+        let label = extract_text_content(source, first_arg).trim().to_string();
+        current_label = Some((label, span));
+        continue;
+      }
     }
 
-    // `\notag` の後ろに意味のある要素が来たら行末ではない（末尾空白等のトリビアは許容）
-    if let Some(span) = current_notag
-      && !is_trivia_element(child)
-    {
-      return Err(EvalError::NotagNotAtRowEnd { span });
+    // 行末マーカーの後ろに意味のある要素が来たら行末ではない（末尾空白等のトリビアは許容）
+    if !is_trivia_element(child) {
+      if let Some(span) = current_notag {
+        return Err(EvalError::NotagNotAtRowEnd { span });
+      }
+      if let Some((_, span)) = &current_label {
+        return Err(EvalError::RowLabelNotAtRowEnd { span: *span });
+      }
     }
 
     current_cell.push(*child);
@@ -148,11 +183,24 @@ pub(crate) fn evaluate_grid(
 
   // 末尾のセル・行を確定する（行区切りで終わっていなければ最後の行を 1 つ積む）
   current_row.push(evaluate_math_elements(source, &current_cell)?);
+  let (label, label_span) = take_row_label(&mut current_label);
   rows.push(GridRow {
     cells: current_row,
     notag_span: current_notag,
+    label,
+    label_span,
   });
   return Ok(rows);
+}
+
+/// 行末マーカー `\label{...}` の蓄積を行の `(label, label_span)` に取り出すヘルパ
+///
+/// `current_label` を消費し、ラベル文字列とその位置をそれぞれの `Option` に分解して返す。
+fn take_row_label(current_label: &mut Option<(String, SourceSpan)>) -> (Option<String>, Option<SourceSpan>) {
+  return match current_label.take() {
+    Some((label, span)) => (Some(label), Some(span)),
+    None => (None, None),
+  };
 }
 
 /// 採番の粒度
@@ -168,14 +216,19 @@ pub(crate) enum NumberingMode {
 
 /// `align` / `gather` / `split` / `multiline` の共通評価本体
 ///
-/// 任意引数 `[numbered]`（既定 `true`）のみを許可し、本体を `spec` に従って `\\`×`&` のグリッドへ
-/// 分割（[`evaluate_grid`]）したのち末尾の空行を除去し、`mode` に応じて採番した `DocNode::MathBlock`
-/// を返す。`numbered == false` のときは採番を一切行わない（採番ありの環境を無採番にする）。
+/// 任意引数 `[numbered]`（既定 `true`）を許可し、環境単位採番（`SingleEnv` = `split` / `multiline`）では
+/// 加えて `[label=...]` を受理する。本体を `spec` に従って `\\`×`&` のグリッドへ分割（[`evaluate_grid`]）
+/// したのち末尾の空行を除去し、`mode` に応じて採番した `DocNode::MathBlock` を返す。`numbered == false`
+/// のときは採番を一切行わない（採番ありの環境を無採番にする）。
+///
+/// ラベルは採番粒度に揃える。`PerRow`（`align` / `gather`）は行末マーカー `\label{...}` をその行の
+/// `MathRow::label` に、`SingleEnv`（`split` / `multiline`）は環境の `[label=...]` を `MathBlock::label` に
+/// 載せる。いずれも無採番の行/環境にラベルは付けられない（参照番号が無いため [`EvalError::LabelRequiresNumbering`]）。
 ///
 /// # Errors
 ///
-/// 未知の任意引数キー（`numbered` 以外）・位置引数の指定、本体のセル評価や許可しない区切りトークンの
-/// 出現時にエラーを返す。
+/// 未知の任意引数キー・位置引数の指定、本体のセル評価や許可しない区切りトークンの出現、無採番への
+/// ラベル付与・重複ラベル時にエラーを返す。
 pub(crate) fn evaluate_math_env(
   view: &EnvironmentView,
   evaluator: &mut Evaluator,
@@ -183,31 +236,49 @@ pub(crate) fn evaluate_math_env(
   spec: &GridSpec,
   mode: &NumberingMode,
 ) -> Result<Vec<DocNode>, EvalError> {
-  // 許可する任意引数は [numbered] のみ。既定は採番あり
-  let opt_args = collect_environment_opt_args(view, &[("numbered", OptType::Bool)])?;
+  // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
+  // 行ごと採番（`PerRow` = align / gather）の行単位ラベルは行末マーカー `\label{...}` で指定する。
+  let allow_env_label = matches!(mode, NumberingMode::SingleEnv);
+  let schema: &[(&str, OptType)] = if allow_env_label {
+    &[("label", OptType::String), ("numbered", OptType::Bool)]
+  } else {
+    &[("numbered", OptType::Bool)]
+  };
+  let opt_args = collect_environment_opt_args(view, schema)?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
+  let env_label = find_string(&opt_args, "label");
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
       span: view.span().into(),
     });
   }
+  // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる（equation と同じ規則）
+  if !numbered && env_label.is_some() {
+    return Err(EvalError::LabelRequiresNumbering {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    });
+  }
 
-  // 行末マーカー `\notag` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
-  let notag_allowed = matches!(mode, NumberingMode::PerRow);
+  // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
+  let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
   let source = view.source();
   let mut grid = match view.body() {
-    Some(body_node) => evaluate_grid(source, body_node, spec, notag_allowed)?,
+    Some(body_node) => evaluate_grid(source, body_node, spec, row_markers_allowed)?,
     None => Vec::new(),
   };
   // 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する。
-  // 中身が空なのに `\notag` だけ付いた末尾行（例 `a \\ \notag`）は行末に式がないためエラーにする。
+  // 中身が空なのにマーカー（`\notag` / `\label`）だけ付いた末尾行は行末に式がないためエラーにする。
   while let Some(last) = grid.last() {
     if !is_blank_row(&last.cells) {
       break;
     }
     if let Some(span) = last.notag_span {
       return Err(EvalError::NotagNotAtRowEnd { span });
+    }
+    if let Some(span) = last.label_span {
+      return Err(EvalError::RowLabelNotAtRowEnd { span });
     }
     grid.pop();
   }
@@ -221,21 +292,42 @@ pub(crate) fn evaluate_math_env(
   let rows: Vec<MathRow> = match mode {
     NumberingMode::PerRow => grid
       .into_iter()
-      .map(|row| {
+      .map(|row| -> Result<MathRow, EvalError> {
         // `\notag` 行（`notag_span` あり）はカウンタを消費せず無採番にする
-        let number =
-          (numbered && row.notag_span.is_none()).then(|| evaluator.registry.increment(CounterName::Equation));
-        return MathRow {
+        let numbered_row = numbered && row.notag_span.is_none();
+        // 無採番の行に行ラベルは付けられない（参照番号が無いため）
+        if let Some(span) = row.label_span
+          && !numbered_row
+        {
+          return Err(EvalError::LabelRequiresNumbering {
+            name: view.name().to_string(),
+            span,
+          });
+        }
+        let number = if numbered_row {
+          Some(evaluator.registry.increment_with_label(
+            CounterName::Equation,
+            row.label.as_deref(),
+            row.label_span.unwrap_or_else(|| view.span().into()),
+          )?)
+        } else {
+          None
+        };
+        return Ok(MathRow {
           cells: row.cells,
           number,
-          label: None,
-        };
+          label: row.label,
+        });
       })
-      .collect(),
+      .collect::<Result<Vec<MathRow>, EvalError>>()?,
     NumberingMode::SingleEnv => {
       // 行は無採番。環境全体に 1 つだけ（空ブロックには採番しない）
       if numbered && !grid.is_empty() {
-        env_number = Some(evaluator.registry.increment(CounterName::Equation));
+        env_number = Some(evaluator.registry.increment_with_label(
+          CounterName::Equation,
+          env_label.as_deref(),
+          view.span().into(),
+        )?);
       }
       grid
         .into_iter()
@@ -248,10 +340,13 @@ pub(crate) fn evaluate_math_env(
     },
   };
 
+  // 環境単位ラベルは採番できた場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
+  let block_label = env_number.as_ref().and(env_label);
   return Ok(vec![DocNode::MathBlock {
     kind,
     rows,
     number: env_number,
+    label: block_label,
   }]);
 }
 

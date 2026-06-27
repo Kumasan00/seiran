@@ -65,7 +65,10 @@ mod tests {
   }
 
   fn block_of(result: &[DocNode]) -> (&[document::MathRow], Option<&str>) {
-    let DocNode::MathBlock { kind, rows, number } = &result[0] else {
+    let DocNode::MathBlock {
+      kind, rows, number, ..
+    } = &result[0]
+    else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
@@ -120,5 +123,39 @@ mod tests {
     // Assert
     let (_, env_number) = block_of(&result);
     assert_eq!(env_number, None, "無採番のはず");
+  }
+
+  #[test]
+  fn multiline_with_label_captures_block_label() {
+    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体に番号が付く
+    let arena = Bump::new();
+    let source = r"\begin{multiline}[label=eq:m]a + b \\ + c\end{multiline}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — MathBlock.label と env number が両方付く
+    let DocNode::MathBlock { number, label, .. } = &result[0] else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
+    assert_eq!(number.as_deref(), Some("1"), "環境全体に 1 つの番号");
+  }
+
+  #[test]
+  fn multiline_rejects_row_label_marker() {
+    // Arrange — multiline は環境単位採番。行末マーカー `\label{...}` は使えない（`[label=...]` を使う）
+    let arena = Bump::new();
+    let source = r"\begin{multiline}a + b \label{eq:m} \\ + c\end{multiline}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

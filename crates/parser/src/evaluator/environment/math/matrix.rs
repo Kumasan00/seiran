@@ -56,7 +56,7 @@ pub(crate) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resu
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
-      // matrix は非採番のため `\notag` は不可
+      // matrix は非採番のため行末マーカー `\notag` / `\label` は不可
       false,
     )?,
     None => Vec::new(),
@@ -67,6 +67,8 @@ pub(crate) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Resu
     kind: MathEnvKind::Matrix { delimiter },
     rows,
     number: None,
+    // matrix は非採番のため参照対象外
+    label: None,
   }]);
 }
 
@@ -96,7 +98,10 @@ mod tests {
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
   fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[document::MathRow]) {
-    let DocNode::MathBlock { kind, rows, number } = &result[0] else {
+    let DocNode::MathBlock {
+      kind, rows, number, ..
+    } = &result[0]
+    else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert!(number.is_none(), "matrix は非採番（環境番号なし）: {number:?}");

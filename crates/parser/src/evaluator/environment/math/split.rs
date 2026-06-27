@@ -63,7 +63,10 @@ mod tests {
 
   /// 最初の `DocNode::MathBlock`（`Split`）を分解して (`rows`, `env_number`) を返す
   fn block_of(result: &[DocNode]) -> (&[document::MathRow], Option<&str>) {
-    let DocNode::MathBlock { kind, rows, number } = &result[0] else {
+    let DocNode::MathBlock {
+      kind, rows, number, ..
+    } = &result[0]
+    else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Split, "split は MathEnvKind::Split");
@@ -123,5 +126,61 @@ mod tests {
     let (rows, env_number) = block_of(&result);
     assert!(rows.iter().all(|r| r.number.is_none()));
     assert_eq!(env_number, None, "無採番のはず");
+  }
+
+  #[test]
+  fn split_with_label_captures_block_label() {
+    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体に番号が付く
+    let arena = Bump::new();
+    let source = r"\begin{split}[label=eq:s]a &= b \\ &= c\end{split}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — MathBlock.label と env number が両方付く（行は無採番）
+    let DocNode::MathBlock {
+      rows,
+      number,
+      label,
+      ..
+    } = &result[0]
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
+    assert_eq!(number.as_deref(), Some("1"), "環境全体に 1 つの番号");
+    assert!(rows.iter().all(|r| r.number.is_none()), "行は無採番: {rows:?}");
+  }
+
+  #[test]
+  fn split_numbered_false_with_label_errors() {
+    // Arrange — 無採番の環境にラベルを付けるとエラー（参照番号が存在しないため）
+    let arena = Bump::new();
+    let source = r"\begin{split}[numbered=false][label=eq:s]a &= b\end{split}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "split"));
+  }
+
+  #[test]
+  fn split_rejects_row_label_marker() {
+    // Arrange — split は環境単位採番。行末マーカー `\label{...}` は使えない（`[label=...]` を使う）
+    let arena = Bump::new();
+    let source = r"\begin{split}a &= b \label{eq:s}\end{split}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

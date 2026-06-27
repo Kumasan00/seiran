@@ -314,6 +314,40 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// 行ラベルマーカー `\label` が行ごと採番でない数式環境に現れた場合
+  ///
+  /// `\label{...}` は行ごとに採番する `align` / `gather` の行末でのみ意味を持つ。`equation` /
+  /// `split` / `multiline` は環境の任意引数 `[label=...]` でラベルを付け、`cases` / `matrix` は非採番なので
+  /// 参照対象がない。
+  #[error("行ラベル \\label はこの数式環境では使用できません")]
+  #[diagnostic(
+    code(parser::eval::row_label_not_supported),
+    help(
+      "\\label は align / gather の行末でのみ使えます。equation / split / multiline は [label=...] を使ってください。"
+    )
+  )]
+  RowLabelNotSupported {
+    /// `\label` のソース位置
+    #[label("この環境では行ラベル \\label を使えません")]
+    span: SourceSpan,
+  },
+
+  /// 行ラベルマーカー `\label` が行末以外に置かれた・引数が不正だった場合
+  ///
+  /// `\label{name}` は「その行にラベルを付ける」マーカーで、行の末尾（`\\` または `\end` の直前）にのみ
+  /// 置ける。行の途中・列区切り `&` の前・1 行に複数・必須引数 1 個以外（`\label` / `\label{a}{b}`）・
+  /// 任意引数付きはエラーにする。
+  #[error("\\label は行の末尾に、ラベル名 1 個の引数付きで置けます")]
+  #[diagnostic(
+    code(parser::eval::row_label_not_at_row_end),
+    help("\\label は各行の末尾（\\\\ または \\end の直前）に 1 つだけ、`\\label{{name}}` の形で置いてください。")
+  )]
+  RowLabelNotAtRowEnd {
+    /// `\label` のソース位置
+    #[label("この \\label は行末にないか、引数が不正です")]
+    span: SourceSpan,
+  },
+
   /// 環境の本体に許可されていないコマンドが出現した場合
   #[error("環境 {env} 内で許可されていないコマンドです: \\{name}")]
   #[diagnostic(

@@ -71,7 +71,8 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
         allow_row_breaks: false,
         allow_column_breaks: false,
       };
-      // equation は行ごと採番ではないため `\notag` は不可（無採番にするなら `[numbered=false]`）
+      // equation は行ごと採番ではないため行末マーカー `\notag` / `\label` は不可
+      // （無採番なら `[numbered=false]`、ラベルは `[label=...]`）
       let grid = evaluate_grid(source, body_node, &spec, false)?;
       // 分割を許していないので必ず 1 行。その行のセル列（1 セル）を取り出す
       grid.into_iter().next().map_or_else(|| vec![Vec::new()], |row| row.cells)
@@ -87,8 +88,9 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
   return Ok(vec![DocNode::MathBlock {
     kind: MathEnvKind::Equation,
     rows: vec![row],
-    // equation は行ごと採番（`row.number`）。環境全体の番号は使わない
+    // equation は行ごと採番（`row.number`）。環境全体の番号・ラベルは使わない（ラベルは `row.label`）
     number: None,
+    label: None,
   }]);
 }
 
@@ -345,5 +347,20 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
+  }
+
+  #[test]
+  fn equation_rejects_row_label_marker() {
+    // Arrange — equation は行末マーカー `\label{...}` を受け付けない（ラベルは `[label=...]` を使う）
+    let arena = Bump::new();
+    let source = r"\begin{equation}a \label{eq:x}\end{equation}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
   }
 }

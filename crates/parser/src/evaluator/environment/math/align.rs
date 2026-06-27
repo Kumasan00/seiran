@@ -192,8 +192,9 @@ mod tests {
   }
 
   #[test]
-  fn align_rejects_unknown_opt_args() {
-    // Arrange — align は `[numbered]` のみ許可。`[label=...]` は未知キーエラー
+  fn align_rejects_env_level_label_opt_arg() {
+    // Arrange — align は行ごと採番。ラベルは行末マーカー `\label{...}` で付けるため、環境レベルの
+    // `[label=...]` は受け付けない（スキーマ外の未知キーエラー）
     let arena = Bump::new();
     let source = r"\begin{align}[label=eq:foo]a &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
@@ -204,6 +205,86 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
+  }
+
+  #[test]
+  fn align_row_label_captures_label_and_keeps_numbering() {
+    // Arrange — 1 行目の行末に `\label{...}` を置くと、その行に番号とラベルが付く
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \label{eq:foo} \\ c &= d\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst).unwrap();
+
+    // Assert — 1 行目: ラベルあり・番号 1、2 行目: ラベルなし・番号 2（通し番号は連続）
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert_eq!(rows[0].label.as_deref(), Some("eq:foo"));
+    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
+    assert_eq!(rows[1].number.as_deref(), Some("2"));
+  }
+
+  #[test]
+  fn align_row_label_on_notag_row_errors() {
+    // Arrange — \notag 行（無採番）にラベルは付けられない（参照番号が無いため）
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
+  }
+
+  #[test]
+  fn align_row_label_with_numbered_false_errors() {
+    // Arrange — [numbered=false]（全行無採番）の行ラベルも参照番号が無いためエラー
+    let arena = Bump::new();
+    let source = r"\begin{align}[numbered=false]a &= b \label{eq:x}\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
+  }
+
+  #[test]
+  fn align_row_label_not_at_row_end_errors() {
+    // Arrange — \label の後ろに列・内容が続く（行末でない）とエラー
+    let arena = Bump::new();
+    let source = r"\begin{align}a \label{eq:x} &= b\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::default();
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::RowLabelNotAtRowEnd { .. })));
+  }
+
+  #[test]
+  fn align_duplicate_row_label_errors() {
+    // Arrange — 同名の行ラベルを 2 行に付けると重複エラー
+    let arena = Bump::new();
+    let source = r"\begin{align}a &= b \label{eq:x} \\ c &= d \label{eq:x}\end{align}";
+    let cst = parse(source, &arena).unwrap();
+    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+
+    // Act
+    let result = evaluator.evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::DuplicateLabel { ref label, .. }) if label == "eq:x"));
   }
 
   #[test]
