@@ -34,6 +34,28 @@ fn read_config_succeeds_with_valid_config() {
   assert_eq!(config.sources.len(), 1);
   assert_eq!(config.font_configs.iter().count(), 19);
   assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
+  // しおりは省略時 true（#127 で style から config `[pdf]` へ移動）
+  assert!(config.pdf.show_bookmarks);
+}
+
+#[test]
+fn read_config_respects_show_bookmarks_false() {
+  // Arrange: `[pdf]` に show_bookmarks = false を明示
+  let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+    format!(
+      "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
+       margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\
+       show_bookmarks = false\n\n{}",
+      valid_output_section("test", output_dir),
+      make_font_sections(font_path),
+    )
+  });
+
+  // Act
+  let config: Config = read_config(&config_path).unwrap();
+
+  // Assert
+  assert!(!config.pdf.show_bookmarks);
 }
 
 #[test]

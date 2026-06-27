@@ -323,6 +323,7 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
         left: pre_pdf_config.margin_left,
         right: pre_pdf_config.margin_right,
       },
+      show_bookmarks: pre_pdf_config.show_bookmarks,
     },
     font_configs,
     sources: resolved.sources,

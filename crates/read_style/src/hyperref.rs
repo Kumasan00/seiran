@@ -4,7 +4,10 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::Color;
 
-/// ハイパーリンクとしおりに関するスタイル設定
+/// ハイパーリンクの文字色に関するスタイル設定
+///
+/// しおり（ブックマーク）の出力可否は「文字の見た目」ではなく PDF の構造的な出力機能のため、
+/// `config.toml` の `[pdf].show_bookmarks` が担う（#127 で style から config へ移動）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -15,8 +18,6 @@ pub struct HyperrefStyle {
   pub url_color: Option<Color>,
   /// 文献引用（`\cite`）の文字色。`None` は本文色を継承
   pub cite_color: Option<Color>,
-  /// PDF のしおり（ブックマーク）を出力するか
-  pub show_bookmarks: bool,
 }
 
 impl Default for HyperrefStyle {
@@ -27,7 +28,6 @@ impl Default for HyperrefStyle {
       link_color: None,
       url_color: None,
       cite_color: None,
-      show_bookmarks: true,
     };
   }
 }
@@ -44,8 +44,9 @@ mod tests {
   }
 
   #[test]
-  fn default_enables_bookmarks() {
-    assert!(HyperrefStyle::default().show_bookmarks);
+  fn rejects_renamed_show_bookmarks_key() {
+    // しおり出力は #127 で config `[pdf]` へ移動した。style 側旧キーは未知フィールドとして弾く。
+    assert!(toml::from_str::<HyperrefStyle>("show_bookmarks = true\n").is_err());
   }
 
   #[test]

@@ -112,6 +112,8 @@ pub struct PdfConfig {
   pub width: Length,
   /// ページ余白（上下左右）
   pub margin: Margin,
+  /// PDF のしおり（ブックマーク）を出力するか（既定 true）
+  pub show_bookmarks: bool,
 }
 
 /// ページ余白（上下左右）

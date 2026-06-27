@@ -448,7 +448,17 @@ pub(crate) struct PrePdfConfig {
   /// 右余白（単位付き文字列、>= 0）
   #[garde(custom(non_negative))]
   pub margin_right: Length,
+  /// PDF のしおり（ブックマーク）を出力するか（省略時 true）
+  ///
+  /// しおりは PDF の構造的な出力機能で、視覚スタイル（リンク色など）とは別軸のため config が持つ
+  /// （#127 で style `[hyperref]` から移動）。
+  #[garde(skip)]
+  #[serde(default = "default_show_bookmarks")]
+  pub show_bookmarks: bool,
 }
+
+/// `[pdf].show_bookmarks` の既定値（true = しおりを出力）。
+fn default_show_bookmarks() -> bool { return true; }
 
 /// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
 ///

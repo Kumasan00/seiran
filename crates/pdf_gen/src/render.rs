@@ -74,7 +74,7 @@ pub(crate) fn render_pages(
     page.finish();
   }
 
-  if style.hyperref.show_bookmarks
+  if config.pdf.show_bookmarks
     && let Some(outline) = build_outline(&heading_dests, outline_entries)
   {
     document.set_outline(outline);
