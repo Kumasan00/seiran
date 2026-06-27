@@ -24,7 +24,7 @@ fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
 /// `LayoutNode::MathBlock` に変換する
 ///
 /// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower し、採番された行・環境は
-/// `EquationStyle::number_format` の `{number}` を発番番号で置換した文字列を `FontKind::Serif`
+/// `MathBlockStyle::tag_format` の `{number}` を発番番号で置換した文字列を `FontKind::Serif`
 /// （数字は立体）の番号ボックスに包む。`env_number_str` は `split` / `multiline` の環境全体に 1 つの
 /// 番号で、`layout` 段がブロック縦中央に配置する。列整列・行積み・区切り括弧の配置は `layout` 段が
 /// `kind` に応じて確定し、本体の中央寄せ（`align`）と番号の端寄せ（`numbers_on_right`）は
@@ -37,28 +37,27 @@ pub(super) fn lower_math_block(
   env_number_str: Option<&str>,
 ) -> LayoutNode {
   let font_size = ctx.default_font_size();
-  let eq = &ctx.style.equation;
-  let mb = &ctx.style.math_block;
+  let block = &ctx.style.math.block;
 
   let layout_rows: Vec<MathBlockRow> = rows
     .iter()
     .map(|row| {
-      let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math)).collect();
-      let number = row.number.as_deref().map(|n| number_box(&eq.number_format, n, font_size));
+      let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math.script)).collect();
+      let number = row.number.as_deref().map(|n| number_box(&block.tag_format, n, font_size));
       return MathBlockRow { cells, number };
     })
     .collect();
 
-  let env_number = env_number_str.map(|n| number_box(&eq.number_format, n, font_size));
+  let env_number = env_number_str.map(|n| number_box(&block.tag_format, n, font_size));
 
   return LayoutNode::MathBlock {
     kind,
     rows: layout_rows,
     env_number,
-    align: alignment_to_align(eq.alignment),
-    numbers_on_right: matches!(eq.number_side, NumberSide::Right),
-    row_gap: mb.row_gap.to_pt(),
-    column_gap: mb.column_gap.to_pt(),
+    align: alignment_to_align(block.alignment),
+    numbers_on_right: matches!(block.number_side, NumberSide::Right),
+    row_gap: block.row_gap.to_pt(),
+    column_gap: block.column_gap.to_pt(),
   };
 }
 
@@ -473,7 +472,7 @@ mod tests {
   fn lower_math_block_left_number_side_sets_numbers_on_left() {
     // Arrange: number_side = Left → numbers_on_right = false
     let mut style = ReadStyle::default();
-    style.equation.number_side = NumberSide::Left;
+    style.math.block.number_side = NumberSide::Left;
     let ctx = LoweringContext::new(&style);
     let rows = vec![numbered_row("3")];
 

@@ -152,7 +152,7 @@ pub enum DocNode {
   ///   `layout` 段がブロックの縦中央に配置する。各行の `MathRow::number` は `None`。
   ///
   /// いずれも番号は `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）で、lowering 層が `EquationStyle::number_format` でさらに
+  /// （`number_format` テンプレ適用済みの文字列）で、lowering 層が `MathBlockStyle::tag_format` でさらに
   /// 装飾する。`[numbered=false]` で採番ありの環境を無採番にした場合は両方とも `None`。`kind` に応じて
   /// lowering 以降が列整列・区切り括弧・中央寄せを決める。
   ///
@@ -188,9 +188,9 @@ pub enum DocNode {
     width: Option<Length>,
     /// 画像の高さ（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
     height: Option<Length>,
-    /// `\image[dpi=...]` の per-image 上書き。`None` なら `style.figure.max_dpi` が使われる
+    /// `\image[dpi=...]` の per-image 上書き。`None` なら config `[image].max_dpi` が使われる
     dpi: Option<u32>,
-    /// `\image[downsample=...]` の per-image 上書き。`None` なら `style.figure.downsample` が使われる
+    /// `\image[downsample=...]` の per-image 上書き。`None` なら config `[image].downsample` が使われる
     downsample: Option<bool>,
     /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
     caption: Option<Vec<InlineNode>>,

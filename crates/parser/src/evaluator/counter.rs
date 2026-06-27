@@ -130,7 +130,7 @@ impl CounterRegistry {
 
   /// 定理環境を採番し、`label` があれば cleveref 形式で登録する
   ///
-  /// クラスの共有カウンタ（`TheoremStyle.counter`）を 1 増やし、クラスの `format` テンプレート
+  /// クラスの共有カウンタ（`TheoremStyle.counter`）を 1 増やし、クラスの `number_format` テンプレート
   /// （`"{n}"` / `"{chapter}.{n}"` 等）で番号文字列を作って返す。`unnumbered` クラス（`proof`）は
   /// 採番せず `None` を返す。`label` が与えられた採番ありクラスでは `"{display_name} {number}"`
   /// （cleveref）で整形した文字列を `labels` に登録し、`\ref{label}` が「Theorem 1.2」等に解決される。
@@ -145,9 +145,9 @@ impl CounterRegistry {
     span: miette::SourceSpan,
   ) -> Result<Option<String>, EvalError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
-    let (counter, format, display_name, unnumbered) = {
+    let (counter, number_format, display_name, unnumbered) = {
       let def = self.theorems.get(class);
-      (def.counter.clone(), def.format.clone(), def.display_name.clone(), def.unnumbered)
+      (def.counter.clone(), def.number_format.clone(), def.display_name.clone(), def.unnumbered)
     };
     if unnumbered {
       return Ok(None);
@@ -158,7 +158,7 @@ impl CounterRegistry {
       *v += 1;
       *v
     };
-    let number = self.expand_theorem_template(&format, value);
+    let number = self.expand_theorem_template(&number_format, value);
 
     if let Some(l) = label {
       let formatted = expand_ref_format("{display_name} {number}", &number, &display_name);
@@ -172,10 +172,10 @@ impl CounterRegistry {
     return Ok(Some(number));
   }
 
-  /// 現在のカウンタ値を `format` テンプレートに従って書式化する
+  /// 現在のカウンタ値を `number_format` テンプレートに従って書式化する
   #[must_use]
   pub fn format_number(&self, name: CounterName) -> String {
-    return self.expand_template(&self.defs.get(name).format, name);
+    return self.expand_template(&self.defs.get(name).number_format, name);
   }
 
   /// カウンタの現在値を返す（未登場のカウンタは 0）
@@ -563,9 +563,9 @@ mod tests {
 
   #[test]
   fn theorem_format_embeds_section_counter() {
-    // Arrange — theorem の format を "{section}.{n}" に変える
+    // Arrange — theorem の number_format を "{section}.{n}" に変える
     let mut style = Style::default();
-    style.theorems.theorem.format = "{section}.{n}".to_string();
+    style.theorems.theorem.number_format = "{section}.{n}".to_string();
     let mut r = CounterRegistry::from_style(&style);
 
     // Act — section を 1 に進めてから theorem を採番
@@ -579,10 +579,10 @@ mod tests {
 
   #[test]
   fn theorem_counter_resets_on_reset_by_heading() {
-    // Arrange — theorem を reset_by=section・format "{section}.{n}" に設定
+    // Arrange — theorem を reset_by=section・number_format "{section}.{n}" に設定
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    style.theorems.theorem.format = "{section}.{n}".to_string();
+    style.theorems.theorem.number_format = "{section}.{n}".to_string();
     let mut r = CounterRegistry::from_style(&style);
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
@@ -676,7 +676,7 @@ mod tests {
     let counters = Counters {
       chapter: CounterStyle {
         display_name: "Chapter".to_string(),
-        format: "第{n}章".to_string(),
+        number_format: "第{n}章".to_string(),
         number_style: NumberStyle::Arabic,
         ref_format: "{number}".to_string(),
         resets: vec![],
@@ -696,14 +696,14 @@ mod tests {
     let counters = Counters {
       part: CounterStyle {
         display_name: "Part".to_string(),
-        format: "{n}".to_string(),
+        number_format: "{n}".to_string(),
         number_style: NumberStyle::RomanUpper,
         ref_format: "{number}".to_string(),
         resets: vec![CounterName::Chapter],
       },
       chapter: CounterStyle {
         display_name: "Chapter".to_string(),
-        format: "{part}-{n}".to_string(),
+        number_format: "{part}-{n}".to_string(),
         number_style: NumberStyle::Arabic,
         ref_format: "{number}".to_string(),
         resets: vec![],

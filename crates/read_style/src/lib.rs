@@ -15,7 +15,6 @@
 
 pub mod caption;
 pub mod counter;
-pub mod equation;
 pub mod figure;
 pub mod heading;
 pub mod hyperref;
@@ -45,13 +44,12 @@ use tracing::{debug, info};
 pub use crate::{
   caption::CaptionStyle,
   counter::{CounterName, CounterStyle, Counters},
-  equation::{Alignment, EquationStyle, NumberSide},
   error::{ReadStyleError, ValidationError},
   figure::FigureStyle,
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
   list::ListStyle,
-  math::{MathBlockStyle, MathScriptStyle},
+  math::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide},
   number_style::NumberStyle,
   page_numbering::PageNumbering,
   quote::QuoteStyle,
@@ -101,8 +99,8 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   }
 
   info!(
-    font_size_pt = style.font_size.to_pt(),
-    line_height_factor = style.line_height_factor,
+    font_size_pt = style.text.font_size.to_pt(),
+    line_height_factor = style.text.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"
   );
   return Ok(style);

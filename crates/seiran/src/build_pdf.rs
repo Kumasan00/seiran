@@ -124,7 +124,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let stage_start = Instant::now();
-  let lowering_ctx = LoweringContext::new(&style);
+  let lowering_ctx = LoweringContext::new(&style).with_image_defaults(config.image.max_dpi, config.image.downsample);
   let body_layout_nodes =
     lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
@@ -148,8 +148,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
 
   // 本文幅は画像サイズ解決と行分割の双方で使うので先に算出する
   let text_width = config.pdf.width.to_pt() - config.pdf.margin.left.to_pt() - config.pdf.margin.right.to_pt();
-  let default_font_size = style.font_size.to_pt();
-  let line_height_factor = style.line_height_factor;
+  let default_font_size = style.text.font_size.to_pt();
+  let line_height_factor = style.text.line_height_factor;
 
   // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
   // span の `region` で呼び出し区間を区別できるようにする（INFO 時は span 非活性でゼロコスト）。
@@ -381,7 +381,7 @@ fn build_toc_spec(style: &read_style::Style, text_width: f32) -> layout::TocSpec
     leader: toc.leader.clone(),
     show_page_numbers: toc.show_page_numbers,
     text_width,
-    line_height_factor: style.line_height_factor,
+    line_height_factor: style.text.line_height_factor,
     bottom_margin: toc.bottom_margin.to_pt(),
   };
 }

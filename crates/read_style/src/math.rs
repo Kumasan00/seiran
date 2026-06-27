@@ -1,15 +1,44 @@
-//! 数式レイアウト（上付き / 下付きスクリプトのサイズと位置）のスタイル設定型。
+//! 数式のスタイル設定型（`[math]` テーブル）。
+//!
+//! `[math.script]`（[`MathScriptStyle`]、上付き / 下付きスクリプトのサイズ・位置）と
+//! `[math.block]`（[`MathBlockStyle`]、表示数式ブロックのレイアウト）の 2 つの副テーブルを
+//! [`MathStyle`] がまとめる。`[math.script]` はインライン数式（`$...$`）にも効き、`[math.block]`
+//! は全表示数式環境（equation / align / gather / split / multiline / cases / matrix）が共有する。
 //!
 //! `document::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
-//! および将来 OpenType MATH テーブルから自動取得する範囲を明確化するため、`MathScriptStyle`
-//! と命名している。MATH テーブル対応時にはこれを `Option<MathScriptStyle>`（`None` = MATH
-//! テーブルから自動取得）に変える想定で、現状の手動設定は暫定的な API 境界。
+//! および将来 OpenType MATH テーブルから自動取得する範囲を明確化するため、スクリプト設定は
+//! `MathScriptStyle` と命名している。MATH テーブル対応時にはこれを `Option<MathScriptStyle>`
+//! （`None` = MATH テーブルから自動取得）に変える想定で、現状の手動設定は暫定的な API 境界。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::length::{Length, non_negative, positive};
 
-/// 数式レイアウトのスタイル設定
+/// 数式設定全体（`[math]` テーブル）。
+///
+/// `[math.script]`（スクリプト）と `[math.block]`（表示数式ブロックのレイアウト）の 2 つを束ねる。
+#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[garde(allow_unvalidated)]
+#[serde(deny_unknown_fields, default)]
+pub struct MathStyle {
+  /// 上付き / 下付きスクリプトのスタイル（`[math.script]`）。インライン数式にも効く。
+  #[garde(dive)]
+  pub script: MathScriptStyle,
+  /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）。全表示数式環境が共有する。
+  #[garde(dive)]
+  pub block: MathBlockStyle,
+}
+
+impl Default for MathStyle {
+  fn default() -> Self {
+    return Self {
+      script: MathScriptStyle::default(),
+      block: MathBlockStyle::default(),
+    };
+  }
+}
+
+/// スクリプト（上付き / 下付き）のスタイル設定（`[math.script]`）
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -39,41 +68,109 @@ impl Default for MathScriptStyle {
   }
 }
 
-/// 複数行ディスプレイ数式環境（`align` / `gather` / `cases` / `matrix`）のレイアウトスタイル
+/// 表示数式ブロックのレイアウトスタイル（`[math.block]`）
 ///
-/// 上下マージン・番号書式・番号配置側は [`crate::equation::EquationStyle`] を流用し、
-/// ここでは行間・列間のアキを保持する。区切り括弧の既定種別などは将来追加する。
+/// 旧 `[equation]` テーブル（タグ書式・配置側・揃え・上下マージン）と旧 `[math_block]`
+/// （行間・列間）を統合したもの。equation / align / gather / split / multiline / cases / matrix の
+/// 全表示数式環境がこの設定を共有する（`equation` 環境固有の設定は存在しない）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct MathBlockStyle {
+  /// 式の横に出る数式番号（タグ）の書式テンプレート。`{number}` を発番番号で置換する（既定
+  /// `"({number})"` → `"(1.1)"`）。これは番号 3 系統のうち **tag**（式の横に出す）で、番号を構築する
+  /// `counters.equation`（**number**）や `\ref{eq:x}` の表示を決める
+  /// [`crate::CounterStyle::ref_format`]（**ref**）とは別物。既定値が一致するのは LaTeX 慣習で
+  /// 「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に変更できる。
+  #[garde(length(chars, min = 1), custom(crate::placeholder::tag_format))]
+  pub tag_format: String,
+  /// 数式番号の配置側
+  pub number_side: NumberSide,
+  /// 数式本体の揃え
+  pub alignment: Alignment,
   /// 行間（隣り合う行のベースライン間に挿入する追加アキ、pt）
   #[garde(custom(non_negative))]
   pub row_gap: Length,
   /// 列間（`&` で分割した列の間隔、pt）
   #[garde(custom(non_negative))]
   pub column_gap: Length,
+  /// 数式ブロックの上余白
+  #[garde(custom(non_negative))]
+  pub top_margin: Length,
+  /// 数式ブロックの下余白
+  #[garde(custom(non_negative))]
+  pub bottom_margin: Length,
 }
 
 impl Default for MathBlockStyle {
   fn default() -> Self {
     return Self {
+      tag_format: "({number})".to_string(),
+      number_side: NumberSide::Right,
+      alignment: Alignment::Center,
       row_gap: Length::pt(3.0),
       column_gap: Length::pt(6.0),
+      top_margin: Length::pt(8.0),
+      bottom_margin: Length::pt(8.0),
     };
   }
+}
+
+/// 数式番号を本体のどちら側に配置するか
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
+#[serde(rename_all = "snake_case")]
+#[garde(allow_unvalidated)]
+pub enum NumberSide {
+  /// 数式の右側に番号を配置
+  Right,
+  /// 数式の左側に番号を配置
+  Left,
+}
+
+/// 数式本体の揃え
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
+#[serde(rename_all = "snake_case")]
+#[garde(allow_unvalidated)]
+pub enum Alignment {
+  /// 中央揃え
+  Center,
+  /// 左揃え
+  Left,
+  /// 右揃え
+  Right,
 }
 
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
-  use super::MathScriptStyle;
+  use super::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide};
 
   #[test]
   fn validate_accepts_default() {
     // Arrange / Act / Assert
-    assert!(MathScriptStyle::default().validate().is_ok());
+    assert!(MathStyle::default().validate().is_ok());
+  }
+
+  #[test]
+  fn block_default_uses_right_number_and_center_body() {
+    // Arrange / Act
+    let block = MathBlockStyle::default();
+
+    // Assert
+    assert_eq!(block.number_side, NumberSide::Right);
+    assert_eq!(block.alignment, Alignment::Center);
+    assert_eq!(block.tag_format, "({number})");
+  }
+
+  #[test]
+  fn validate_rejects_empty_tag_format() {
+    // Arrange
+    let mut style = MathStyle::default();
+    style.block.tag_format = String::new();
+
+    // Act / Assert
+    assert!(style.validate().is_err());
   }
 
   #[test]
@@ -110,5 +207,12 @@ mod tests {
 
     // Act / Assert
     assert!(style.validate().is_ok());
+  }
+
+  #[test]
+  fn rejects_renamed_equation_table_keys() {
+    // 旧テーブル `[equation]` / `[math_block]` と旧キー `number_format` はハードリネームで廃止された
+    // （→ `[math.script]` / `[math.block]` / `tag_format`）。`deny_unknown_fields` が弾く。
+    assert!(toml::from_str::<MathBlockStyle>("number_format = \"({number})\"\n").is_err());
   }
 }

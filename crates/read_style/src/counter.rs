@@ -1,23 +1,24 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
 //!
 //! TOML 上では `[counters.<name>]` のキーに [`CounterStyle`] の各フィールド
-//! （`display_name` / `format` / `number_style` / `ref_format` / `resets`）を書く。
+//! （`display_name` / `number_format` / `number_style` / `ref_format` / `resets`）を書く。
 //! `<name>` は固定 9 種（[`CounterName`]）のみが許可され、それ以外のキーは TOML
 //! パース時に拒否される。
 //!
-//! ## `format` テンプレート（カウンタ番号の構築）
+//! ## `number_format` テンプレート（カウンタ番号の構築）
 //!
-//! `format` はテンプレート文字列で、`{n}` がそのカウンタ自身の値、`{<counter_name>}` が
+//! `number_format` はテンプレート文字列で、`{n}` がそのカウンタ自身の値、`{<counter_name>}` が
 //! 他カウンタの値を表す。各プレースホルダは参照先カウンタの [`NumberStyle`] に従って
-//! レンダリングされる（再帰展開はしない）。
+//! レンダリングされる（再帰展開はしない）。番号を「構築」する書式であり、`\ref` に出す
+//! [`CounterStyle::ref_format`] とは役割が異なる（number = 構築 / ref = 参照）。
 //!
-//! - 例: chapter の `format = "{n}"` → `"1"`、`"2"`
-//! - 例: section の `format = "{chapter}.{n}"` → `"1.1"`、`"1.2"`
-//! - 例: 部の `format = "{n}"` + `number_style = "roman_upper"` → `"I"`、`"II"`
+//! - 例: chapter の `number_format = "{n}"` → `"1"`、`"2"`
+//! - 例: section の `number_format = "{chapter}.{n}"` → `"1.1"`、`"1.2"`
+//! - 例: 部の `number_format = "{n}"` + `number_style = "roman_upper"` → `"I"`、`"II"`
 //!
 //! ## `ref_format` テンプレート（`\ref` の表示）
 //!
-//! `\ref{label}` が返す文字列の整形に使うテンプレート。`{number}` が `format` の出力（裸の
+//! `\ref{label}` が返す文字列の整形に使うテンプレート。`{number}` が `number_format` の出力（裸の
 //! 番号）、`{display_name}` が `display_name` フィールドの値を指す。
 //!
 //! - 例: section の `ref_format = "{display_name} {number}"` → `"Section 1.2"`
@@ -27,7 +28,7 @@
 //! equation の `ref_format` は `\ref{eq:x}` の表示専用で、式の横に出る番号の体裁を決める
 //! [`crate::EquationStyle::number_format`]（`[equation]`）とは別物。既定値がどちらも `"({number})"`
 //! で一致するのは LaTeX 慣習で「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に
-//! 変更できる（`number_format` は `figure` の `caption.format` に相当する数式ブロックの体裁）。
+//! 変更できる（`EquationStyle::number_format` は `figure` の `caption.format` に相当する数式ブロックの体裁）。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -174,11 +175,11 @@ pub struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
   #[garde(length(chars, min = 1))]
   pub display_name: String,
-  /// 番号テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
+  /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
   #[garde(length(chars, min = 1), custom(crate::placeholder::counter_format))]
-  pub format: String,
+  pub number_format: String,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
   /// `\ref{label}` の表示テンプレート。`{number}` で `format` の出力、`{display_name}` で
@@ -196,14 +197,14 @@ impl CounterStyle {
   #[must_use]
   pub(crate) fn new(
     display_name: &str,
-    format: &str,
+    number_format: &str,
     number_style: NumberStyle,
     ref_format: &str,
     resets: &[CounterName],
   ) -> Self {
     return Self {
       display_name: display_name.to_string(),
-      format: format.to_string(),
+      number_format: number_format.to_string(),
       number_style,
       ref_format: ref_format.to_string(),
       resets: resets.to_vec(),
@@ -289,7 +290,7 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_empty_format() {
+  fn validate_rejects_empty_number_format() {
     let counter = CounterStyle::new("Chapter", "", NumberStyle::Arabic, "{number}", &[]);
     assert!(counter.validate().is_err());
   }
@@ -322,7 +323,7 @@ mod tests {
   #[test]
   fn default_counters_section_references_chapter() {
     let counters = Counters::default();
-    assert_eq!(counters.section.format, "{chapter}.{n}");
+    assert_eq!(counters.section.number_format, "{chapter}.{n}");
     assert_eq!(counters.section.number_style, NumberStyle::Arabic);
     assert_eq!(counters.section.ref_format, "{display_name} {number}");
   }
@@ -344,7 +345,7 @@ mod tests {
     // Arrange
     let toml = "
 display_name = \"Figure\"
-format = \"{chapter}.{n}\"
+number_format = \"{chapter}.{n}\"
 number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = []
@@ -355,9 +356,28 @@ resets = []
 
     // Assert
     assert_eq!(entry.display_name, "Figure");
-    assert_eq!(entry.format, "{chapter}.{n}");
+    assert_eq!(entry.number_format, "{chapter}.{n}");
     assert_eq!(entry.number_style, NumberStyle::Arabic);
     assert_eq!(entry.ref_format, "{display_name} {number}");
+  }
+
+  #[test]
+  fn rejects_renamed_format_key() {
+    // Arrange: 旧キー `format` はハードリネームで廃止された（→ `number_format`）。
+    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    let toml = "
+display_name = \"Figure\"
+format = \"{chapter}.{n}\"
+number_style = \"arabic\"
+ref_format = \"{display_name} {number}\"
+resets = []
+";
+
+    // Act
+    let result: Result<CounterStyle, _> = toml::from_str(toml);
+
+    // Assert
+    assert!(result.is_err(), "旧キー `format` は未知フィールドとして拒否される");
   }
 
   #[test]
@@ -366,7 +386,7 @@ resets = []
     let toml = "
 [example]
 display_name = \"Example\"
-format = \"{n}\"
+number_format = \"{n}\"
 number_style = \"arabic\"
 ref_format = \"{number}\"
 resets = []
@@ -385,7 +405,7 @@ resets = []
     let toml = "
 [chapter]
 display_name = \"Chapter\"
-format = \"{n}\"
+number_format = \"{n}\"
 number_style = \"arabic\"
 ref_format = \"{display_name} {number}\"
 resets = [\"example\"]

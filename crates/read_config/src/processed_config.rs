@@ -41,6 +41,8 @@ pub struct Config {
   pub output: OutputConfig,
   /// PDF ページレイアウト設定（検証済み）
   pub pdf: PdfConfig,
+  /// ラスタ画像のダウンサンプリング設定（検証済み）
+  pub image: ImageConfig,
   /// 19 フォント種別すべての設定（検証済み）
   pub font_configs: FontConfigs,
   /// ソースファイル一覧（順次パースして 1 ドキュメントに結合、絶対パス正規化済み）
@@ -112,6 +114,20 @@ pub struct PdfConfig {
   pub width: Length,
   /// ページ余白（上下左右）
   pub margin: Margin,
+  /// PDF のしおり（ブックマーク）を出力するか（既定 true）
+  pub show_bookmarks: bool,
+}
+
+/// ラスタ画像のダウンサンプリング設定（検証済み）
+///
+/// 画像の埋め込み解像度（出力物理）を決める設定。`\image[dpi=...]` / `[downsample=...]` の
+/// per-image 上書きが無いときのグローバル既定値。
+#[derive(Debug, Clone, Copy)]
+pub struct ImageConfig {
+  /// ラスタ画像埋め込み時の最大 DPI（バリデーション済み、1〜2400）
+  pub max_dpi: u32,
+  /// ラスタ画像のダウンサンプリングを行うか
+  pub downsample: bool,
 }
 
 /// ページ余白（上下左右）

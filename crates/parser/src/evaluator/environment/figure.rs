@@ -13,8 +13,8 @@
 //!
 //! - `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` — 画像（必須）。
 //!   `width` / `height` はともに任意で、未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と
-//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（`style.figure.max_dpi`
-//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（`style.figure.downsample`
+//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（config `[image].max_dpi`
+//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（config `[image].downsample`
 //!   を上書き）
 //! - `\caption{...}` — キャプション（任意）
 
@@ -33,7 +33,7 @@ use crate::evaluator::{
 ///
 /// [`CounterRegistry::increment`] で `CounterName::Figure` の通し番号を発番し、
 /// 本体内の `\image` / `\caption` を抽出して [`DocNode::Figure`] を生成する。
-/// 番号書式は `read_style::CounterStyle.format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
+/// 番号書式は `read_style::CounterStyle.number_format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
 ///
 /// # Errors
 ///
@@ -139,7 +139,7 @@ struct ImageArgs {
 ///
 /// `width` / `height` / `dpi` / `downsample` はいずれも任意引数。`width` / `height` の未指定分は
 /// `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。`dpi` / `downsample` の
-/// 未指定分は `style.figure.max_dpi` / `style.figure.downsample` が使われる。
+/// 未指定分は config `[image].max_dpi` / `[image].downsample` が使われる。
 fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
   let opt_args = collect_command_opt_args(
     view,
@@ -238,7 +238,7 @@ mod tests {
   /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
   fn style_with_plain_figure_format() -> Style {
     let mut counters = Counters::default();
-    counters.figure.format = "{n}".to_string();
+    counters.figure.number_format = "{n}".to_string();
     let style = Style {
       counters,
       ..Default::default()

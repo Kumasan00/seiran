@@ -17,8 +17,8 @@ fn read_style_returns_default_when_path_is_none() {
 
   // Assert
   let default = Style::default();
-  assert!((style.font_size.to_pt() - default.font_size.to_pt()).abs() < f32::EPSILON);
-  assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
+  assert!((style.text.font_size.to_pt() - default.text.font_size.to_pt()).abs() < f32::EPSILON);
+  assert!((style.text.line_height_factor - default.text.line_height_factor).abs() < f32::EPSILON);
   assert!(style.background_color.is_none());
   assert_eq!(style.heading(HeadingLevel::Part).format, default.heading(HeadingLevel::Part).format);
 }
@@ -40,16 +40,16 @@ fn parse_style_overrides_heading_section_format() {
 
 #[test]
 fn parse_style_overrides_only_specified_fields() {
-  // Arrange: font_size のみ上書き
-  let toml = "font_size = \"15pt\"\n";
+  // Arrange: [text].font_size のみ上書き
+  let toml = "[text]\nfont_size = \"15pt\"\n";
 
   // Act
   let style = parse_style(toml, dummy_source()).unwrap();
 
   // Assert
-  assert!((style.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
+  assert!((style.text.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
   let default = Style::default();
-  assert!((style.line_height_factor - default.line_height_factor).abs() < f32::EPSILON);
+  assert!((style.text.line_height_factor - default.text.line_height_factor).abs() < f32::EPSILON);
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn parse_style_reads_minimal_fixture() {
   let style = parse_style(toml, "minimal.toml").unwrap();
 
   // Assert: 指定したフィールドだけ上書きされ、他はデフォルト
-  assert!((style.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
+  assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
   assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
 }
 

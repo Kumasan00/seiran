@@ -6,19 +6,15 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::{
-  Color, HeadingLevel,
-  length::{Length, positive},
-};
+use types::{Color, HeadingLevel};
 
 use crate::{
   counter::{CounterName, CounterStyle, Counters},
-  equation::EquationStyle,
   figure::FigureStyle,
   heading::{HeadingStyle, HeadingStyles},
   hyperref::HyperrefStyle,
   list::ListStyle,
-  math::{MathBlockStyle, MathScriptStyle},
+  math::MathStyle,
   page_numbering::PageNumbering,
   quote::QuoteStyle,
   reference::ReferenceStyle,
@@ -32,16 +28,11 @@ use crate::{
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
 ///
-/// TOML キーはそのままトップレベル（`font_size` / `[heading.section]` / `[figure.caption]` 等）に出る。
+/// TOML キーはそのままトップレベル（`[text]` / `[heading.section]` / `[figure.caption]` 等）に出る。
+/// 本文テキストの既定見た目（フォントサイズ・行高など）は `[text]`（[`TextBlockStyle`]）に集約する。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct Style {
-  /// 本文の既定フォントサイズ
-  #[garde(custom(positive))]
-  pub font_size: Length,
-  /// 行高（フォントサイズに対する倍率）
-  #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
-  pub line_height_factor: f32,
   /// 背景色。`None` は背景描画なし
   #[garde(skip)]
   pub background_color: Option<Color>,
@@ -66,15 +57,9 @@ pub struct Style {
   /// 図フロートのスタイル
   #[garde(dive)]
   pub figure: FigureStyle,
-  /// ディスプレイ数式のスタイル
+  /// 数式のスタイル（`[math.script]` スクリプト / `[math.block]` 表示数式ブロックのレイアウト）
   #[garde(dive)]
-  pub equation: EquationStyle,
-  /// 数式レイアウト（上付き / 下付き）のスタイル
-  #[garde(dive)]
-  pub math: MathScriptStyle,
-  /// 複数行ディスプレイ数式環境（align / gather / cases / matrix）のレイアウトスタイル
-  #[garde(dive)]
-  pub math_block: MathBlockStyle,
+  pub math: MathStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
@@ -111,8 +96,6 @@ pub struct Style {
 impl Default for Style {
   fn default() -> Self {
     return Self {
-      font_size: Length::pt(12.0),
-      line_height_factor: 1.2,
       background_color: None,
       heading: HeadingStyles::default(),
       text: TextBlockStyle::default(),
@@ -120,9 +103,7 @@ impl Default for Style {
       quote: QuoteStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
-      equation: EquationStyle::default(),
-      math: MathScriptStyle::default(),
-      math_block: MathBlockStyle::default(),
+      math: MathStyle::default(),
       counters: Counters::default(),
       theorems: Theorems::default(),
       page_numbering: PageNumbering::default(),
@@ -167,21 +148,17 @@ mod tests {
   }
 
   #[test]
-  fn validate_rejects_zero_font_size() {
-    let style = Style {
-      font_size: Length::pt(0.0),
-      ..Default::default()
-    };
-
+  fn validate_dives_into_text_font_size() {
+    // 本文フォントサイズは `[text]` に移動した（#124）。`#[garde(dive)]` で Style 検証が拾う。
+    let mut style = Style::default();
+    style.text.font_size = Length::pt(0.0);
     assert!(style.validate().is_err());
   }
 
   #[test]
-  fn validate_rejects_zero_line_height_factor() {
-    let style = Style {
-      line_height_factor: 0.0,
-      ..Default::default()
-    };
+  fn validate_dives_into_text_line_height_factor() {
+    let mut style = Style::default();
+    style.text.line_height_factor = 0.0;
     assert!(style.validate().is_err());
   }
 
@@ -249,5 +226,13 @@ mod tests {
     assert!(style.validate().is_ok());
     let color = style.background_color.expect("background_color should be Some");
     assert_eq!(color.rgb(), [204, 179, 153]);
+  }
+
+  #[test]
+  fn rejects_renamed_top_level_text_keys() {
+    // 旧トップレベルキー `font_size` / `line_height_factor` は `[text]` へ移動した（#124）。
+    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    assert!(toml::from_str::<Style>("font_size = \"12pt\"\n").is_err());
+    assert!(toml::from_str::<Style>("line_height_factor = 1.2\n").is_err());
   }
 }

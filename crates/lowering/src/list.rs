@@ -31,7 +31,7 @@ pub(super) fn lower_list(
     // マーカーの生成
     // TODO: ネストレベルに応じたマーカーの変更
     let marker = if ordered {
-      format!("{} ", list_style.ordered_format.replace("{number}", &(i + 1).to_string()))
+      format!("{} ", list_style.ordered_marker_format.replace("{number}", &(i + 1).to_string()))
     } else {
       format!("{} ", list_style.unordered_marker)
     };
@@ -100,7 +100,7 @@ mod tests {
 
   #[test]
   fn ordered_list_numbers_start_at_one_and_increment() {
-    // Arrange — 既定 ordered_format は "{number}."
+    // Arrange — 既定 ordered_marker_format は "{number}."
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [
