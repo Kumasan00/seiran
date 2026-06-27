@@ -74,7 +74,17 @@ impl PageComposer {
   ///
   /// 未解決アンカー（`pending_anchors`）は引き継ぐ。次の実ブロックがこの新ページに
   /// 配置されたときに解決されるため、移動はしない。
+  ///
+  /// 現在ページにまだ本文ブロックが 1 つも置かれていない場合は何もしない（ページを
+  /// 送らない）。これにより、先頭が見出しのときの白紙の先頭ページや、内容を挟まない
+  /// 連続改ページ（Part の `page_break_after` の直後に Chapter の `page_break_before`
+  /// が続く等）による中間の白紙ページが生じない。判定は本文ブロック（`current`）の
+  /// 有無のみで行う。走り文はページ数確定後の別パスで載るため判定に含めず、ゼロサイズの
+  /// アンカー・リンクも本文ブロックではないため含めない。
   fn start_new_page(&mut self, geom: &PageGeometry) {
+    if self.current.is_empty() {
+      return;
+    }
     self.pages.push(Page {
       blocks: std::mem::take(&mut self.current),
       header: Vec::new(),
@@ -708,7 +718,7 @@ mod tests {
 
   #[test]
   fn multiple_page_breaks_create_multiple_pages() {
-    // 連続する PageBreak は都度ページを分ける
+    // 内容を挟んだ PageBreak は都度ページを分ける
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
@@ -721,6 +731,37 @@ mod tests {
     let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
 
     assert_eq!(pages.len(), 3);
+  }
+
+  #[test]
+  fn leading_page_break_does_not_create_blank_page() {
+    // 先頭が改ページ（Part 見出しの page_break_before 相当）でも、白紙の先頭ページを作らない
+    let geom = test_geometry();
+    let blocks = vec![Block::PageBreak, paragraph_of_lines(1)];
+
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(pages[0].blocks.len(), 1, "本文は先頭ページに置かれる");
+  }
+
+  #[test]
+  fn consecutive_page_breaks_without_content_collapse() {
+    // 内容を挟まない連続改ページはページ境界 1 つに畳まれる
+    // （Part の page_break_after の直後に Chapter の page_break_before が続く状況に相当）。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::PageBreak,
+      Block::PageBreak,
+      paragraph_of_lines(1),
+    ];
+
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 2, "中間に白紙ページは生じない: {pages:?}");
+    assert_eq!(pages[0].blocks.len(), 1);
+    assert_eq!(pages[1].blocks.len(), 1);
   }
 
   #[test]
