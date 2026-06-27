@@ -25,7 +25,7 @@ const CAPTION: &[&str] = &["number", "title"];
 /// 数式番号書式（`equation.number_format`）で許可するプレースホルダ。
 const EQUATION_NUMBER: &[&str] = &["number"];
 
-/// 順序付きリストのマーカー書式（`list.ordered_format`）で許可するプレースホルダ。
+/// 順序付きリストのマーカー書式（`list.ordered_marker_format`）で許可するプレースホルダ。
 const ORDERED_LIST: &[&str] = &["number"];
 
 /// カウンタの参照書式（`counters.<name>.ref_format`）で許可するプレースホルダ。
@@ -143,7 +143,7 @@ pub(crate) fn equation_number_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| EQUATION_NUMBER.contains(&name));
 }
 
-/// 順序付きリストのマーカー書式（`list.ordered_format`）用のバリデーター。
+/// 順序付きリストのマーカー書式（`list.ordered_marker_format`）用のバリデーター。
 ///
 /// # Errors
 ///
