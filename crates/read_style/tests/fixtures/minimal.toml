@@ -1,6 +1,7 @@
 # 最小限の部分指定 fixture。
-# font_size と heading.section.format だけ上書きし、それ以外はデフォルトを使う。
+# text.font_size と heading.section.format だけ上書きし、それ以外はデフォルトを使う。
 
+[text]
 font_size = "14pt"
 
 [heading.section]

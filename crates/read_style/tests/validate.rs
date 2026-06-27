@@ -27,15 +27,15 @@ fn paths(errors: &[ValidationError]) -> Vec<&str> {
 
 #[test]
 fn parse_style_collects_multiple_validation_errors() {
-  // Arrange: font_size と heading.chapter.font_size の両方を不正値に
-  let toml = "font_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
+  // Arrange: text.font_size と heading.chapter.font_size の両方を不正値に（#124 で本文は [text] に集約）
+  let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
   // Act
   let errors = expect_validation_errors(parse_style(toml, dummy_source()));
 
   // Assert
   let paths = paths(&errors);
-  assert!(paths.contains(&"font_size"));
+  assert!(paths.contains(&"text.font_size"));
   assert!(paths.contains(&"heading.chapter.font_size"));
 }
 

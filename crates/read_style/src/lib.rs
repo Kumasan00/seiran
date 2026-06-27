@@ -101,8 +101,8 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   }
 
   info!(
-    font_size_pt = style.font_size.to_pt(),
-    line_height_factor = style.line_height_factor,
+    font_size_pt = style.text.font_size.to_pt(),
+    line_height_factor = style.text.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"
   );
   return Ok(style);
