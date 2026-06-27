@@ -55,6 +55,15 @@ pub enum InlineNode {
   /// 強制改行（`\\`）
   LineBreak,
 
+  /// 段落先頭行の字下げ抑止マーカー（`\noindent`）
+  ///
+  /// 描画されない制御マーカー。パーサ（`evaluate_children`）が段落の先頭にのみ許可して
+  /// 段落のインライン列の先頭に置き、`lowering` 層がこれを見つけたら段落先頭行の字下げ
+  /// （`first_line_indent`）を抑止しつつマーカー自体は出力しない。位置検証はパーサが行うため、
+  /// `lowering` は出現位置を問わず「存在すれば抑止」とみなしてよい。`\\`（[`InlineNode::LineBreak`]）
+  /// と同じく本文の意味を持たないレイアウト制御マーカー。
+  NoIndent,
+
   /// 相互参照（`\ref{label}`）
   ///
   /// `CounterRegistry` での 2 パス評価で解決される。`number` は pass1 では `None`、
@@ -138,6 +147,8 @@ impl InlineNode {
       InlineNode::InlineMath(_) => return "[Math]".to_string(),
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
+      // 非描画マーカーなのでプレーンテキストには何も寄与しない
+      InlineNode::NoIndent => return String::new(),
       InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
       InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
         return inline_nodes_to_plain_text(children);

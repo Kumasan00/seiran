@@ -131,6 +131,16 @@ impl Evaluator {
               CommandResult::Inline(inline_nodes) => {
                 current_inlines.extend(inline_nodes);
               },
+              CommandResult::NoIndent { span } => {
+                // `\noindent` は段落の先頭にのみ置ける。先行する空白・改行（トリビア）は
+                // 許すが、実体のあるインライン要素が既にあれば段落途中なのでエラー。直前に
+                // 置いた `NoIndent` マーカー自体も非空白なので、同一段落への二重 `\noindent`
+                // もここで弾かれる。マーカーは段落のインライン列に積み、`lowering` が字下げを抑止する。
+                if current_inlines.iter().any(is_non_blank_inline) {
+                  return Err(EvalError::NoindentNotAtParagraphStart { span });
+                }
+                current_inlines.push(InlineNode::NoIndent);
+              },
             }
           },
           SyntaxKind::Environment => {
@@ -178,4 +188,16 @@ impl Evaluator {
     doc_nodes.push(DocNode::Paragraph(std::mem::take(current_inlines)));
     return;
   }
+}
+
+/// 段落の先頭判定用に、インライン要素が「実体のある内容」かどうかを返す
+///
+/// 空白のみの `Text`（段落先頭のインデント等）は内容なし（`false`）とみなし、それ以外
+/// （記号・数式・`\noindent` マーカー等）はすべて内容あり（`true`）とする。`\noindent` を
+/// 段落の先頭に限定する際、先行する空白トリビアは許しつつ実体の有無を見分けるために使う。
+fn is_non_blank_inline(inline: &InlineNode) -> bool {
+  return match inline {
+    InlineNode::Text(text) => !text.trim().is_empty(),
+    _ => true,
+  };
 }

@@ -885,6 +885,71 @@ fn evaluate_inline_wrapper_extra_arg_in_heading_is_error() {
 }
 
 #[test]
+fn evaluate_noindent_at_paragraph_start_prepends_marker() {
+  // 段落の先頭の \noindent は段落のインライン列の先頭に NoIndent マーカーを置く
+  let result = evaluate_source(r"\noindent Body");
+  assert_eq!(result.len(), 1);
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます: {result:?}");
+  };
+  assert!(matches!(&inlines[0], InlineNode::NoIndent), "先頭は NoIndent マーカー: {inlines:?}");
+  assert!(
+    inlines.iter().any(|n| matches!(n, InlineNode::Text(t) if t == "Body")),
+    "本文 Text は保持される: {inlines:?}"
+  );
+}
+
+#[test]
+fn evaluate_noindent_after_paragraph_break_is_at_start() {
+  // 空行で区切られた 2 段落目の先頭 \noindent も段落先頭として受理される
+  let result = evaluate_source("First.\n\n\\noindent Second.");
+  assert_eq!(result.len(), 2);
+  let DocNode::Paragraph(second) = &result[1] else {
+    panic!("2 段落目は Paragraph: {result:?}");
+  };
+  assert!(matches!(&second[0], InlineNode::NoIndent), "2 段落目の先頭は NoIndent: {second:?}");
+}
+
+#[test]
+fn evaluate_noindent_allows_leading_whitespace() {
+  // 先行する空白トリビアは「段落の先頭」判定で内容とみなさない（受理される）
+  let result = evaluate_source("  \\noindent x");
+  assert_eq!(result.len(), 1);
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます: {result:?}");
+  };
+  assert!(inlines.iter().any(|n| matches!(n, InlineNode::NoIndent)), "NoIndent マーカーを含む: {inlines:?}");
+}
+
+#[test]
+fn evaluate_noindent_mid_paragraph_is_error() {
+  // 段落の途中（実体のある内容の後ろ）の \noindent はエラー
+  let error = evaluate_error(r"hello \noindent world");
+  assert!(matches!(error, EvalError::NoindentNotAtParagraphStart { .. }));
+}
+
+#[test]
+fn evaluate_noindent_twice_is_error() {
+  // 同一段落への 2 つ目の \noindent はエラー（直前のマーカーは非空白として残るため）
+  let error = evaluate_error(r"\noindent \noindent x");
+  assert!(matches!(error, EvalError::NoindentNotAtParagraphStart { .. }));
+}
+
+#[test]
+fn evaluate_noindent_with_argument_is_error() {
+  // \noindent は引数を取らない
+  let error = evaluate_error(r"\noindent{x}");
+  assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "noindent"));
+}
+
+#[test]
+fn evaluate_noindent_in_heading_is_error() {
+  // インライン文脈（見出しタイトル）での \noindent はブロック扱いでエラー
+  let error = evaluate_error(r"\section{\noindent x}");
+  assert!(matches!(error, EvalError::BlockInInline { .. }));
+}
+
+#[test]
 fn evaluate_paragraph_break_in_argument_is_error() {
   // 引数内の空行は以前黙って捨てられ前後が連結されていた
   let error = evaluate_error("\\section{a\n\nb}");

@@ -314,6 +314,22 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// `\noindent`（段落先頭行の字下げ抑止マーカー）が段落の先頭以外に置かれた場合
+  ///
+  /// `\noindent` は「その段落の先頭行を字下げしない」マーカーで、段落の先頭（先行する空白・改行
+  /// トリビアを除く最初の内容）にのみ置ける。段落の途中・引数付き（`\noindent{...}`）・同一段落に
+  /// 複数（2 つ目以降）はエラーにする。
+  #[error("\\noindent は段落の先頭にのみ置けます")]
+  #[diagnostic(
+    code(parser::eval::noindent_not_at_paragraph_start),
+    help("\\noindent は各段落の先頭に 1 つだけ、引数なしで置いてください。")
+  )]
+  NoindentNotAtParagraphStart {
+    /// `\noindent` のソース位置
+    #[label("この \\noindent は段落の先頭にありません")]
+    span: SourceSpan,
+  },
+
   /// 行ラベルマーカー `\label` が行ごと採番でない数式環境に現れた場合
   ///
   /// `\label{...}` は行ごとに採番する `align` / `gather` の行末でのみ意味を持つ。`equation` /

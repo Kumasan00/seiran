@@ -121,7 +121,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::Href) => {
               inlines.extend(href_command(&view)?);
             },
-            Some(CommandKind::Headline(_) | CommandKind::Space) => {
+            Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent) => {
               return Err(EvalError::BlockInInline {
                 what: format!("\\{}", view.name()),
                 span: view.span().into(),

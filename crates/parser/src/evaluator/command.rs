@@ -23,6 +23,7 @@
 //!    `CommandKind` にバリアントを追加し、`execute()` にハンドラを実装します。
 
 use document::{DocNode, HeadingLevel, InlineNode};
+use miette::SourceSpan;
 use phf::phf_map;
 use syntax::ast::CommandView;
 use types::FontKind;
@@ -46,6 +47,11 @@ pub(crate) enum CommandResult {
   Block(Vec<DocNode>),
   /// インラインレベルのドキュメントノード（記号文字等）
   Inline(Vec<InlineNode>),
+  /// `\noindent` — 段落先頭行の字下げ抑止マーカー
+  ///
+  /// 「段落の先頭にのみ置ける」という位置検証は段落境界を知る `evaluate_children` が行うため、
+  /// ここではマーカーであることとソース位置だけを運ぶ（`span` は位置エラー時の診断に使う）。
+  NoIndent { span: SourceSpan },
 }
 
 /// コマンドの種類
@@ -78,6 +84,8 @@ pub(crate) enum CommandKind {
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
   Href,
+  /// `\noindent` — 段落先頭行の字下げを抑止するマーカー（引数なし）
+  NoIndent,
 }
 
 impl CommandKind {
@@ -99,6 +107,10 @@ impl CommandKind {
       Self::Url => link::url_command(view).map(CommandResult::Inline),
 
       Self::Href => link::href_command(view).map(CommandResult::Inline),
+
+      Self::NoIndent => control::noindent(view).map(|()| CommandResult::NoIndent {
+        span: view.span().into(),
+      }),
     }
   }
 }
@@ -124,6 +136,7 @@ pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode
 pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
+  "noindent" => CommandKind::NoIndent,
 
   // 相互参照
   "ref" => CommandKind::Ref,

@@ -506,6 +506,7 @@ fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Re
       | InlineNode::InlineMath(_)
       | InlineNode::Symbol(_)
       | InlineNode::LineBreak
+      | InlineNode::NoIndent
       | InlineNode::Cite { .. } => {},
     }
   }
