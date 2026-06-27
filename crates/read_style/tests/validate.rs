@@ -121,8 +121,8 @@ center = \"{pagee}\"
 
 #[test]
 fn placeholder_error_message_names_the_offending_token() {
-  // Arrange: equation.number_format に未知プレースホルダ {num}
-  let toml = "[equation]\nnumber_format = \"({num})\"\n";
+  // Arrange: math.block.tag_format に未知プレースホルダ {num}
+  let toml = "[math.block]\ntag_format = \"({num})\"\n";
 
   // Act
   let errors = expect_validation_errors(parse_style(toml, dummy_source()));
@@ -131,10 +131,10 @@ fn placeholder_error_message_names_the_offending_token() {
   let message = errors
     .iter()
     .find_map(|error| match error {
-      ValidationError::Field { path, message } if path == "equation.number_format" => Some(message.as_str()),
+      ValidationError::Field { path, message } if path == "math.block.tag_format" => Some(message.as_str()),
       _ => None,
     })
-    .expect("equation.number_format のエラーがあるはず");
+    .expect("math.block.tag_format のエラーがあるはず");
   assert!(message.contains("{num}"), "メッセージに {{num}} を含むべき: {message}");
 }
 

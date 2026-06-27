@@ -10,12 +10,11 @@ use types::{Color, HeadingLevel};
 
 use crate::{
   counter::{CounterName, CounterStyle, Counters},
-  equation::EquationStyle,
   figure::FigureStyle,
   heading::{HeadingStyle, HeadingStyles},
   hyperref::HyperrefStyle,
   list::ListStyle,
-  math::{MathBlockStyle, MathScriptStyle},
+  math::MathStyle,
   page_numbering::PageNumbering,
   quote::QuoteStyle,
   reference::ReferenceStyle,
@@ -58,15 +57,9 @@ pub struct Style {
   /// 図フロートのスタイル
   #[garde(dive)]
   pub figure: FigureStyle,
-  /// ディスプレイ数式のスタイル
+  /// 数式のスタイル（`[math.script]` スクリプト / `[math.block]` 表示数式ブロックのレイアウト）
   #[garde(dive)]
-  pub equation: EquationStyle,
-  /// 数式レイアウト（上付き / 下付き）のスタイル
-  #[garde(dive)]
-  pub math: MathScriptStyle,
-  /// 複数行ディスプレイ数式環境（align / gather / cases / matrix）のレイアウトスタイル
-  #[garde(dive)]
-  pub math_block: MathBlockStyle,
+  pub math: MathStyle,
   /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
   #[garde(dive)]
   pub counters: Counters,
@@ -110,9 +103,7 @@ impl Default for Style {
       quote: QuoteStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
-      equation: EquationStyle::default(),
-      math: MathScriptStyle::default(),
-      math_block: MathBlockStyle::default(),
+      math: MathStyle::default(),
       counters: Counters::default(),
       theorems: Theorems::default(),
       page_numbering: PageNumbering::default(),

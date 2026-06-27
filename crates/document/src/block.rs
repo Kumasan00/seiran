@@ -152,7 +152,7 @@ pub enum DocNode {
   ///   `layout` 段がブロックの縦中央に配置する。各行の `MathRow::number` は `None`。
   ///
   /// いずれも番号は `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）で、lowering 層が `EquationStyle::number_format` でさらに
+  /// （`number_format` テンプレ適用済みの文字列）で、lowering 層が `MathBlockStyle::tag_format` でさらに
   /// 装飾する。`[numbered=false]` で採番ありの環境を無採番にした場合は両方とも `None`。`kind` に応じて
   /// lowering 以降が列整列・区切り括弧・中央寄せを決める。
   ///

@@ -22,8 +22,8 @@ const HEADING: &[&str] = &["number", "title"];
 /// キャプション書式（`figure.caption.format` / `table.caption.format`）で許可するプレースホルダ。
 const CAPTION: &[&str] = &["number", "title"];
 
-/// 数式番号書式（`equation.number_format`）で許可するプレースホルダ。
-const EQUATION_NUMBER: &[&str] = &["number"];
+/// 数式タグ書式（`math.block.tag_format`、式の横に出る番号）で許可するプレースホルダ。
+const TAG: &[&str] = &["number"];
 
 /// 順序付きリストのマーカー書式（`list.ordered_marker_format`）で許可するプレースホルダ。
 const ORDERED_LIST: &[&str] = &["number"];
@@ -133,14 +133,14 @@ pub(crate) fn caption_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| CAPTION.contains(&name));
 }
 
-/// 数式番号書式（`equation.number_format`）用のバリデーター。
+/// 数式タグ書式（`math.block.tag_format`、式の横に出る番号）用のバリデーター。
 ///
 /// # Errors
 ///
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
-pub(crate) fn equation_number_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| EQUATION_NUMBER.contains(&name));
+pub(crate) fn tag_format(value: &str, _: &()) -> garde::Result {
+  return check_placeholders(value, |name| TAG.contains(&name));
 }
 
 /// 順序付きリストのマーカー書式（`list.ordered_marker_format`）用のバリデーター。
@@ -202,8 +202,8 @@ pub(crate) fn running_slot(value: &str, _: &()) -> garde::Result {
 #[cfg(test)]
 mod tests {
   use super::{
-    CounterName, caption_format, check_placeholders, counter_format, equation_number_format, heading_format,
-    is_counter_placeholder, ordered_list_format, ref_format, running_slot, theorem_heading_format,
+    CounterName, caption_format, check_placeholders, counter_format, heading_format, is_counter_placeholder,
+    ordered_list_format, ref_format, running_slot, tag_format, theorem_heading_format,
   };
 
   /// 全プレースホルダを許可するクロージャ（構文系のみを試すテスト用）。
@@ -290,7 +290,7 @@ mod tests {
     // Arrange / Act / Assert — 各フィールドの代表的な正当値
     assert!(heading_format("{number} {title}", &()).is_ok());
     assert!(caption_format("Figure {number}: {title}", &()).is_ok());
-    assert!(equation_number_format("({number})", &()).is_ok());
+    assert!(tag_format("({number})", &()).is_ok());
     assert!(ordered_list_format("{number}.", &()).is_ok());
     assert!(ref_format("{display_name} {number}", &()).is_ok());
     assert!(theorem_heading_format("{display_name} of {of} ({title})", &()).is_ok());
@@ -300,7 +300,7 @@ mod tests {
   fn field_validators_reject_foreign_tokens() {
     // Arrange / Act / Assert — 文脈に無いトークンは弾く
     assert!(heading_format("{display_name}", &()).is_err());
-    assert!(equation_number_format("{title}", &()).is_err());
+    assert!(tag_format("{title}", &()).is_err());
     assert!(ordered_list_format("{title}", &()).is_err());
     assert!(ref_format("{title}", &()).is_err());
     assert!(theorem_heading_format("{page}", &()).is_err());

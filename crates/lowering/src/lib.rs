@@ -275,14 +275,14 @@ fn lower_node_indexed(
       number,
       label,
     } => {
-      let eq = &ctx.style.equation;
+      let block = &ctx.style.math.block;
       let mut nodes = vec![
         LayoutNode::Vkern {
-          length: eq.top_margin,
+          length: block.top_margin,
         },
         math::lower_math_block(ctx, *kind, rows, number.as_deref()),
         LayoutNode::Vkern {
-          length: eq.bottom_margin,
+          length: block.bottom_margin,
         },
       ];
       // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
