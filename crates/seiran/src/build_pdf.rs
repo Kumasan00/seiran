@@ -2,7 +2,12 @@
 //! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
 //! PDF を生成するための主要な機能を提供します。
 
-use std::{collections::HashSet, fs, path::Path, time::Instant};
+use std::{
+  collections::HashSet,
+  fs,
+  path::{Path, PathBuf},
+  time::Instant,
+};
 
 use citation::CitationError;
 use document::DocNode;
@@ -16,6 +21,19 @@ use miette::Diagnostic;
 use parser::ParseSourceError;
 use thiserror::Error;
 use tracing::{debug, debug_span, info};
+
+/// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
+///
+/// `tracing` の段ログとは別物で、コンパイラ型 CLI の「成果報告 1 行」（出力先・ページ数・所要
+/// 時間）だけを運ぶ。表示は呼び出し側（`main::report_build`）が担う。
+pub(super) struct BuildSummary {
+  /// 出力した PDF のパス
+  pub(super) output_path: PathBuf,
+  /// 総ページ数
+  pub(super) page_count: usize,
+  /// ビルド全体の所要ミリ秒
+  pub(super) total_elapsed_ms: u64,
+}
 
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -98,7 +116,12 @@ enum BuildPdfError {
 /// # Arguments
 ///
 /// * `config_path` - 設定ファイルのパス
-pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
+///
+/// # Returns
+///
+/// 成功時は [`BuildSummary`]（出力先・ページ数・所要時間）。ユーザー向けの成果報告は呼び出し側の
+/// `report_build` が担うため、ここでは最終サマリを `tracing` には出さない（二重表示を避ける）。
+pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
 
@@ -279,8 +302,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<()> {
   })?;
   info!(output_path = %output_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
 
-  info!(page_count = pages.len(), total_elapsed_ms = elapsed_ms(build_start), "ビルドが完了しました");
-  return Ok(());
+  return Ok(BuildSummary {
+    output_path,
+    page_count: pages.len(),
+    total_elapsed_ms: elapsed_ms(build_start),
+  });
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
