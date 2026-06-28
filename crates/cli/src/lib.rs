@@ -15,11 +15,11 @@ use clap::{Parser, Subcommand};
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "PDFテキスト生成ツール", long_about = None)]
 pub struct Cli {
-  /// ログの冗長度を上げる（`-v` = DEBUG、`-vv` = TRACE）。`RUST_LOG` 未設定時のみ有効
+  /// ログの冗長度を上げる（`-v` = INFO 進捗、`-vv` = DEBUG、`-vvv` = TRACE）。`RUST_LOG` 未設定時のみ有効
   #[arg(short, long, global = true, action = clap::ArgAction::Count, conflicts_with = "quiet")]
   pub verbose: u8,
 
-  /// ログの冗長度を下げる（WARN 以上のみ表示）。`RUST_LOG` 未設定時のみ有効
+  /// 警告も抑止しエラーのみ表示する（成功時は無言）。`RUST_LOG` 未設定時のみ有効
   #[arg(short, long, global = true)]
   pub quiet: bool,
 
