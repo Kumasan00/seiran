@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use types::{Color, HeadingLevel};
 
 use crate::{
+  columns::ColumnsStyle,
   counter::{CounterName, CounterStyle, Counters},
   figure::FigureStyle,
   heading::{HeadingStyle, HeadingStyles},
@@ -45,6 +46,9 @@ pub struct Style {
   /// 本文段落のスタイル
   #[garde(dive)]
   pub text: TextBlockStyle,
+  /// 段組み（1 段 / 2 段切替）のスタイル
+  #[garde(dive)]
+  pub columns: ColumnsStyle,
   /// リストのスタイル
   #[garde(dive)]
   pub list: ListStyle,
@@ -99,6 +103,7 @@ impl Default for Style {
       background_color: None,
       heading: HeadingStyles::default(),
       text: TextBlockStyle::default(),
+      columns: ColumnsStyle::default(),
       list: ListStyle::default(),
       quote: QuoteStyle::default(),
       table: TableStyle::default(),

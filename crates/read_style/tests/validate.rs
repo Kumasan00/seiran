@@ -40,6 +40,42 @@ fn parse_style_collects_multiple_validation_errors() {
 }
 
 #[test]
+fn rejects_three_columns() {
+  // Arrange: count は 1..=2（issue #32 スコープ）。3 段は契約外
+  let toml = "[columns]\ncount = 3\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  assert!(paths(&errors).contains(&"columns.count"));
+}
+
+#[test]
+fn rejects_zero_columns() {
+  // Arrange: 0 段は不正
+  let toml = "[columns]\ncount = 0\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  assert!(paths(&errors).contains(&"columns.count"));
+}
+
+#[test]
+fn rejects_negative_column_gap() {
+  // Arrange: 段間は非負
+  let toml = "[columns]\ngap = \"-1pt\"\n";
+
+  // Act
+  let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+
+  // Assert
+  assert!(paths(&errors).contains(&"columns.gap"));
+}
+
+#[test]
 fn reports_nested_theorem_style_validation_error_with_path() {
   // Arrange: [theorems.theorem.style] の top_margin を負値に
   let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";

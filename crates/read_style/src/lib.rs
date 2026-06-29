@@ -14,6 +14,7 @@
 //! から参照される実働フィールドである。主要な型は本モジュールで再エクスポートする。
 
 pub mod caption;
+pub mod columns;
 pub mod counter;
 pub mod figure;
 pub mod heading;
@@ -43,6 +44,7 @@ use tracing::{debug, info};
 
 pub use crate::{
   caption::CaptionStyle,
+  columns::ColumnsStyle,
   counter::{CounterName, CounterStyle, Counters},
   error::{ReadStyleError, ValidationError},
   figure::FigureStyle,
