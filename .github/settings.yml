@@ -39,6 +39,9 @@ labels:
   - name: documentation
     color: "0075ca"
     description: Improvements or additions to documentation
+  - name: refactor
+    color: "006b75"
+    description: リファクタ（振る舞いを変えないコード整理・ロードマップ軸ではない）
 
   # Tier（seiran_feature_scope の実装順序軸）
   - name: tier-1a
