@@ -14,8 +14,13 @@ Seiran リポジトリの issue・PR・branch・commit・ラベルの運用規�
 
 ## issue と PR の書き分け
 
-- **issue は「何を作るか」を仕様の精度まで書く**: 動機・振る舞い・構文 / セマンティクス・エッジケース・受け入れ条件。触るクレートやデータ構造などの**実装メカニクスは書かない**（実装着手時に情報が増えてから決まるため）。テンプレートは `.github/ISSUE_TEMPLATE/feature.md`
-- **PR は「どう実装したか」を記録する**: 確定したメカニクスは PR 本文の `## 変更内容` に残す。実装スケッチを issue に残す場合は「一案（拘束しない）」と明示する。テンプレートは `.github/PULL_REQUEST_TEMPLATE.md`
+- **issue は「何を作るか」を仕様の精度まで書く**: 動機・振る舞い・構文 / セマンティクス・エッジケース・受け入れ条件。触るクレートやデータ構造などの**実装メカニクスは書かない**（実装着手時に情報が増えてから決まるため）。
+- **PR は「どう実装したか」を記録する**: 確定したメカニクスは PR 本文の `## 変更内容` に残す。実装スケッチを issue に残す場合は「一案（拘束しない）」と明示する。
+
+### テンプレート
+
+- **issue は作業種別で 3 つ**（`.github/ISSUE_TEMPLATE/`）。捉える仕様の形が型ごとに違うので New issue のチューザーから選び分ける — `feature.md`（機能追加・設計＝仕様 / 受け入れ条件、label `enhancement`）/ `bug.md`（再現手順 / 期待・実際の差分、label `bug`）/ `refactor.md`（現状の問題 / 目標構造 / 振る舞い不変、label `refactor`）
+- **PR は 1 つだけ**（`.github/PULL_REQUEST_TEMPLATE.md`）。種別では分けない。PR の役目は「どう実装したか＝メカニクスの記録」で、`変更内容 / 設計上の判断 / テスト / スコープ外 / 関連` の形は feature / bug / refactor のどれでも同じだから（型による差分は紐づく issue 側が持つ）。GitHub に PR テンプレートの選択 UI が無い（複数置いても `?template=` を手書きしない限りデフォルトしか効かない）ことも 1 本に保つ理由。refactor の「振る舞い不変」確認など型固有の一文は既存テンプレ内に書けば足り、分割はしない
 
 ## branch・commit・merge
 
@@ -29,7 +34,7 @@ Seiran リポジトリの issue・PR・branch・commit・ラベルの運用規�
 
 ## ラベル運用
 
-- 領域はタイトル接頭辞が担うので**領域ラベルは作らない**（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う — **Tier**（`tier-1a` / `tier-1b` / `tier-1c`、`seiran_feature_scope` の実装順序）と **epic**（sub-issue の親）と種別（`enhancement` / `bug`）。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`（Tier は付けない＝ロードマップ軸ではないため）。PR には基本ラベルを付けない（squash で `Closes #` 紐付けの issue 側が分類軸を持つ）。Dependabot の `dependencies` 等の自動ラベルは放置でよい
+- 領域はタイトル接頭辞が担うので**領域ラベルは作らない**（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う — **Tier**（`tier-1a` / `tier-1b` / `tier-1c`、`seiran_feature_scope` の実装順序）と **epic**（sub-issue の親）と種別（`enhancement` / `bug` / `refactor`）。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`・リファクタは `refactor`（どちらも Tier は付けない＝ロードマップ軸ではないため）。PR には基本ラベルを付けない（squash で `Closes #` 紐付けの issue 側が分類軸を持つ）。Dependabot の `dependencies` 等の自動ラベルは放置でよい
 
 ## 参照・設定
 
