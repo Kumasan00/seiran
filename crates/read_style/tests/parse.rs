@@ -53,6 +53,41 @@ fn parse_style_overrides_only_specified_fields() {
 }
 
 #[test]
+fn parse_style_overrides_columns() {
+  // Arrange: [columns] で段数・段間を上書き
+  let toml = "[columns]\ncount = 2\ngap = \"24pt\"\n";
+
+  // Act
+  let style = parse_style(toml, dummy_source()).unwrap();
+
+  // Assert
+  assert_eq!(style.columns.count, 2);
+  assert!((style.columns.gap.to_pt() - 24.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn parse_style_columns_defaults_to_single_column() {
+  // Arrange / Act: 未指定なら既定（1 段・18pt）
+  let style = parse_style("", dummy_source()).unwrap();
+
+  // Assert
+  assert_eq!(style.columns.count, 1);
+  assert!((style.columns.gap.to_pt() - 18.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn parse_style_fails_on_unknown_columns_key() {
+  // Arrange: [columns] 内の typo は deny_unknown_fields で拒否
+  let toml = "[columns]\ncont = 2\n";
+
+  // Act
+  let result = parse_style(toml, dummy_source());
+
+  // Assert
+  assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+}
+
+#[test]
 fn parse_style_rejects_color_array() {
   // Arrange: 旧形式の RGB 配列は破壊的に廃止された
   let toml = "background_color = [204, 179, 153]\n";

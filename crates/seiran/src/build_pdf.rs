@@ -101,6 +101,29 @@ enum BuildPdfError {
     #[source]
     source: std::io::Error,
   },
+
+  /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
+  ///
+  /// 段幅 = `(本文幅 − (段数 − 1) × 段間) / 段数`。段間が本文幅に対して大きすぎると非正になる。
+  /// この制約は config（用紙・余白）と style（`[columns]`）の横断で決まるため `read_style` 単体では
+  /// 検証できず、両者が揃うこのステージで判定する。
+  #[error(
+    "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
+  )]
+  #[diagnostic(
+    code(build::invalid_columns),
+    help(
+      "style.toml の [columns].gap を小さくするか、count を減らしてください。または config.toml の用紙幅を広げる・左右余白を狭めて本文幅を確保してください。"
+    )
+  )]
+  InvalidColumnWidth {
+    /// 本文幅（pt）
+    text_width: f32,
+    /// 段数
+    num_columns: usize,
+    /// 段間（pt）
+    column_gap: f32,
+  },
 }
 
 /// 設定ファイルの `sources` から PDF を生成
@@ -174,6 +197,22 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let default_font_size = style.text.font_size.to_pt();
   let line_height_factor = style.text.line_height_factor;
 
+  // 本文の段組み（前付けは常に単段）。1 段あたりの幅を算出し、非正なら早期にエラーにする
+  // （config の用紙・余白 × style の [columns] の横断制約はこのステージでしか検証できない）。
+  let body_columns = style.columns.count as usize;
+  let column_gap = style.columns.gap.to_pt();
+  let body_col_width = hlist::column_width(text_width, body_columns, column_gap);
+  if body_col_width <= 0.0 {
+    return Err(
+      BuildPdfError::InvalidColumnWidth {
+        text_width,
+        num_columns: body_columns,
+        column_gap,
+      }
+      .into(),
+    );
+  }
+
   // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
   // span の `region` で呼び出し区間を区別できるようにする（INFO 時は span 非活性でゼロコスト）。
   let stage_start = Instant::now();
@@ -188,30 +227,37 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   );
 
   let stage_start = Instant::now();
-  let body_blocks = pdf_gen::resolve_images(body_blocks, text_width)?;
+  // 本文画像は段幅に合わせて解決する（段抜き＝全幅フロートは将来検討）。
+  let body_blocks = pdf_gen::resolve_images(body_blocks, body_col_width)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
-  let geometry = hlist::PageGeometry {
+  // ジオメトリは本文（N 段）と前付け（常に 1 段）で分ける。両者は段数・段間以外を共有する。
+  let body_geometry = hlist::PageGeometry {
     margin_top: config.pdf.margin.top.to_pt(),
     page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
     default_font_size,
     line_height_factor,
     table_cell_padding: style.table.cell_padding.to_pt(),
+    num_columns: body_columns,
+    column_gap,
+  };
+  let front_geometry = hlist::PageGeometry {
+    num_columns: 1,
+    column_gap: 0.0,
+    ..body_geometry
   };
 
-  // Pass 1: 本文だけを単独でページ分割し、各見出しの本文内ページ index を採取する。
-  // 本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、ここで得る本文内
-  // ページ番号が最終値になる（前付けの長さに不依存 = R1。break_pages は純粋なので安価）。
-  // break_pages は Pass 1 / Pass 2 で 2 回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
-  // span の `pass` でどちらの呼び出しかを区別できるようにする。
+  // 本文を 1 回だけページ分割する。これがそのまま最終本文ページになる。各見出しの本文内ページ index も
+  // ここから採取する。本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、得られる
+  // 本文内ページ番号が最終値になる（前付けの長さに不依存 = R1。break_pages は純粋）。
   let stage_start = Instant::now();
   let body_pages = {
-    let _span = debug_span!("break_pages", pass = 1).entered();
-    hlist::break_pages(body_blocks.clone(), text_width, &geometry, &hlist::GreedyBreaker)
+    let _span = debug_span!("break_pages", region = "body").entered();
+    hlist::break_pages(body_blocks, text_width, &body_geometry, &hlist::GreedyBreaker)
   };
   let body_page_count = body_pages.len();
   let heading_pages = heading_page_indices(&body_pages);
-  info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました（Pass 1）");
+  info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました");
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
   let mut front_blocks: Vec<hlist::Block> = Vec::new();
@@ -247,23 +293,23 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
     }
   }
 
-  // Pass 2: 前付け + 本文を結合して最終ページを確定する。本文区間のページ分割は Pass 1 と
-  // 一致する（本文は常に改ページ境界から始まるため）。
+  // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
+  // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
+  // リンク・しおりの参照ページもレンダリング時の列挙で正しく解決される。
   let stage_start = Instant::now();
-  let mut combined = front_blocks;
-  combined.extend(body_blocks);
-  let mut pages = {
-    let _span = debug_span!("break_pages", pass = 2).entered();
-    hlist::break_pages(combined, text_width, &geometry, &hlist::GreedyBreaker)
+  let front_pages = {
+    let _span = debug_span!("break_pages", region = "front").entered();
+    break_front_matter(front_blocks, text_width, &front_geometry, &hlist::GreedyBreaker)
   };
-  let front_matter_count = pages.len().saturating_sub(body_page_count);
-  debug_assert_eq!(pages.len(), front_matter_count + body_page_count, "本文区間のページ数は Pass 1 と一致するはず");
+  let front_matter_count = front_pages.len();
+  let mut pages = front_pages;
+  pages.extend(body_pages);
   info!(
     page_count = pages.len(),
     front_matter_count,
     body_page_count,
     elapsed_ms = elapsed_ms(stage_start),
-    "ページ分割が完了しました（Pass 2）"
+    "ページ分割が完了しました"
   );
 
   // ページ番号ラベルを算出する（前付け = ローマ数字 / 本文 = 算用数字、各リージョン 1 から）。
@@ -339,6 +385,27 @@ fn heading_label(number: &str, title_plain: &str) -> String {
     return number.to_string();
   }
   return format!("{number} {title_plain}");
+}
+
+/// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
+///
+/// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
+/// 付いている `Block::PageBreak` は落とす（[`hlist::break_pages`] の `finish` が末尾ページを無条件に
+/// push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間 `PageBreak` は保持する。
+/// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
+fn break_front_matter(
+  mut front_blocks: Vec<hlist::Block>,
+  text_width: f32,
+  front_geometry: &hlist::PageGeometry,
+  breaker: &dyn hlist::LineBreaker,
+) -> Vec<hlist::Page> {
+  if matches!(front_blocks.last(), Some(hlist::Block::PageBreak)) {
+    front_blocks.pop();
+  }
+  if front_blocks.is_empty() {
+    return Vec::new();
+  }
+  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker);
 }
 
 /// 本文 Pass のページ列から、各見出しの本文内ページ index を文書順に採取する。

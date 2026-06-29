@@ -29,7 +29,7 @@ use crate::{
 pub struct PageGeometry {
   /// 上マージン（pt）。ページ先頭のベースライン位置
   pub margin_top: f32,
-  /// 本文下限（pt）= ページ高さ − 下マージン。超えると改ページ
+  /// 本文下限（pt）= ページ高さ − 下マージン。超えると改ページ（または改段）
   pub page_limit: f32,
   /// 既定フォントサイズ（pt）。表の行高のフォールバックに使用
   pub default_font_size: f32,
@@ -37,6 +37,22 @@ pub struct PageGeometry {
   pub line_height_factor: f32,
   /// 表セルの内側余白（pt、左右各）。列幅の解決に使用
   pub table_cell_padding: f32,
+  /// 段組み数（1 = 単段）。本文を左段 → 右段 → 次ページの順に流す段の本数
+  pub num_columns: usize,
+  /// 段間（gutter、pt）。隣り合う段の間隔
+  pub column_gap: f32,
+}
+
+/// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
+///
+/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`build_pdf` の `resolve_images`
+/// と `break_pages` の双方がこの 1 つの式を真実源として段幅を求める（重複した算出を避ける）。
+#[must_use]
+pub fn column_width(text_width: f32, num_columns: usize, column_gap: f32) -> f32 {
+  // 段数は実用上 1〜2。f32 で精度を失う桁数にはならない
+  #[allow(clippy::cast_precision_loss)]
+  let n = num_columns.max(1) as f32;
+  return (text_width - (n - 1.0) * column_gap) / n;
 }
 
 /// 縦組版の内部状態（現在ページ・カーソル）
@@ -55,10 +71,18 @@ struct PageComposer {
   ///
   /// `true` のとき、次の段落の先頭行はベースラインをアセント分だけ下げる。
   cursor_at_edge: bool,
+  /// 段組み数（1 = 単段）
+  num_columns: usize,
+  /// 1 段あたりの幅（pt）。行分割・揃え・表の列幅解決に使う
+  column_width: f32,
+  /// 段間（gutter、pt）
+  column_gap: f32,
+  /// 現在の段インデックス（0 = 左段）。`column_offset` の算出に使う
+  col: usize,
 }
 
 impl PageComposer {
-  fn new(geom: &PageGeometry) -> Self {
+  fn new(geom: &PageGeometry, column_width: f32) -> Self {
     return PageComposer {
       pages: Vec::new(),
       current: Vec::new(),
@@ -67,7 +91,34 @@ impl PageComposer {
       pending_anchors: Vec::new(),
       y: geom.margin_top,
       cursor_at_edge: false,
+      num_columns: geom.num_columns.max(1),
+      column_width,
+      column_gap: geom.column_gap,
+      col: 0,
     };
+  }
+
+  /// 現在の段の左端 x オフセット（本文左端基準、pt）。段 `k` は `k * (段幅 + 段間)` だけ右へ寄る
+  fn column_offset(&self) -> f32 {
+    // 段インデックスは実用上 0〜1。f32 で精度を失う桁数にはならない
+    #[allow(clippy::cast_precision_loss)]
+    let col = self.col as f32;
+    return col * (self.column_width + self.column_gap);
+  }
+
+  /// ページ下限を超えたときの遷移。次の段があれば改段、なければ改ページする。
+  ///
+  /// 改段はページを送らず、段インデックスを進めてカーソルを上端へ戻すだけ
+  /// （次段の先頭は段落先頭行と同じ扱いにするため `cursor_at_edge` も倒す）。最終段で
+  /// 超えたときだけ [`PageComposer::start_new_page`] へフォールスルーして実際に改ページする。
+  fn advance_region(&mut self, geom: &PageGeometry) {
+    if self.col + 1 < self.num_columns {
+      self.col += 1;
+      self.y = geom.margin_top;
+      self.cursor_at_edge = false;
+    } else {
+      self.start_new_page(geom);
+    }
   }
 
   /// 現在ページを確定し、新しいページを開始する
@@ -94,6 +145,7 @@ impl PageComposer {
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
+    self.col = 0;
   }
 
   /// 未解決アンカーを確定座標 `(x, y)` で現在ページに解決する
@@ -126,9 +178,10 @@ impl PageComposer {
 
   /// 全ブロックの配置後に最終ページを確定して返す
   fn finish(mut self) -> Vec<Page> {
-    // 末尾に残った未解決アンカーは現在カーソル位置で解決する
+    // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
     let y = self.y;
-    self.resolve_pending_anchors(0.0, y);
+    let x = self.column_offset();
+    self.resolve_pending_anchors(x, y);
     self.pages.push(Page {
       blocks: self.current,
       header: Vec::new(),
@@ -145,12 +198,18 @@ impl PageComposer {
 /// # Arguments
 ///
 /// * `blocks` - 配置するブロック列（画像サイズは解決済みであること）
-/// * `text_width` - 本文幅（pt）。行分割と表の列幅解決に使用
-/// * `geom` - ページジオメトリ
+/// * `text_width` - 本文幅（pt）。段組み時は段数で割って 1 段あたりの幅（`col_width`）を求める
+/// * `geom` - ページジオメトリ（段組み数・段間を含む）
 /// * `breaker` - 行分割アルゴリズム
+///
+/// 段組み時は本文を左段 → 右段 → 次ページの順に流す。各ブロックは 1 段あたりの幅 `col_width` で
+/// 行分割・揃え・列幅解決を行い、確定 x には現在段の左端オフセット（[`PageComposer::column_offset`]）を
+/// 加える。段下限を超えると [`PageComposer::advance_region`] が改段または改ページする。単段
+/// （`num_columns == 1`）では `col_width == text_width`・オフセット 0 となり、従来と同一の出力になる。
 #[must_use]
 pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, breaker: &dyn LineBreaker) -> Vec<Page> {
-  let mut composer = PageComposer::new(geom);
+  let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
+  let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
 
   for block in blocks {
@@ -162,7 +221,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         right_indent,
         align,
       } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, text_width, indent, right_indent, align);
+        place_paragraph(&mut composer, geom, breaker, &items, leading, col_width, indent, right_indent, align);
       },
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
@@ -179,11 +238,13 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         align,
       } => {
         if composer.y + height > geom.page_limit {
-          composer.start_new_page(geom);
+          composer.advance_region(geom);
         }
-        composer.resolve_pending_anchors(0.0, composer.y);
+        // 改段・改ページ後の段オフセットを読む（着地段に合わせる）
+        let col_off = composer.column_offset();
+        composer.resolve_pending_anchors(col_off, composer.y);
         composer.current.push(PlacedBlock::Rule {
-          x: align.offset(text_width, width),
+          x: col_off + align.offset(col_width, width),
           y: composer.y,
           width,
           height,
@@ -203,12 +264,14 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         let width = width.unwrap_or(0.0);
         let height = height.unwrap_or(0.0);
         if composer.y + height > geom.page_limit {
-          composer.start_new_page(geom);
+          composer.advance_region(geom);
         }
-        composer.resolve_pending_anchors(0.0, composer.y);
+        // 改段・改ページ後の段オフセットを読む（着地段に合わせる）
+        let col_off = composer.column_offset();
+        composer.resolve_pending_anchors(col_off, composer.y);
         composer.current.push(PlacedBlock::Image {
           path,
-          x: align.offset(text_width, width),
+          x: col_off + align.offset(col_width, width),
           y: composer.y,
           width,
           height,
@@ -218,7 +281,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         composer.cursor_at_edge = true;
       },
       Block::Table { table, align } => {
-        place_table(&mut composer, geom, &table, text_width, align);
+        place_table(&mut composer, geom, &table, col_width, align);
         composer.cursor_at_edge = true;
       },
       Block::MathBlock {
@@ -227,7 +290,7 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         numbers_on_right,
         align,
       } => {
-        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, text_width);
+        place_math_block(&mut composer, geom, body, numbers, numbers_on_right, align, col_width);
         composer.cursor_at_edge = true;
       },
       // アンカーはゼロサイズ。次の実ブロックの確定座標で解決するため pending に積む
@@ -248,16 +311,20 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 /// - 段落先頭行の baseline = 現在のカーソル `y`（直前が底辺基準ブロックならアセント分下げる）
 /// - 2 行目以降は `baseline += max(leading, prev.depth + line.height)`
 /// - 最終行を置いた後、カーソルを `last_baseline + leading` まで進める
-/// - `baseline + line.depth > page_limit` で改ページし、ページ先頭の baseline は `margin_top`
+/// - `baseline + line.depth > page_limit` で改段または改ページし、先頭の baseline は `margin_top`
 ///
-/// `indent` / `right_indent`（本文左右端からのインデント、pt）は折り返し幅を
-/// `text_width - indent - right_indent` に縮め、確定した各行のボックス・リンク矩形を一律 `indent`
-/// だけ右へシフトする。行座標は本文左端基準（`page.rs` の契約）なので、シフト後の `x` をそのまま
-/// 描画に渡せる。
+/// `column_width` は 1 段あたりの幅（単段では本文幅）。`indent` / `right_indent`（段左右端からの
+/// インデント、pt）は折り返し幅を `column_width - indent - right_indent` に縮め、確定した各行の
+/// ボックス・リンク矩形を一律 `indent`（＋揃えオフセット）だけ段内で右へシフトする。
 ///
-/// `align` は確定した各行を利用可能幅（`text_width - indent - right_indent`）の中で水平にシフトする。
+/// 段組みでは、改段・改ページの確定後にその行が属する段の左端オフセット
+/// （[`PageComposer::column_offset`]）を**行ごとに**加算する。段落は段 0 → 段 1 へまたいで流れ得るため、
+/// 事前の一括シフトに段オフセットを畳み込むと段 1 の行が左端に重なってしまう。段内シフト
+/// （`indent + align`、`[0, column_width]`）と段オフセットを分けるのが要点。
+///
+/// `align` は確定した各行を利用可能幅（`column_width - indent - right_indent`）の中で水平にシフトする。
 /// 中央寄せは `(利用可能幅 − 行幅) / 2`、右寄せは `利用可能幅 − 行幅` を `indent` に加算する。
-/// 行幅が利用可能幅を超える場合のシフト量は 0 にクランプする（左端からはみ出さない）。
+/// 行幅が利用可能幅を超える場合のシフト量は 0 にクランプする（段左端からはみ出さない）。
 #[allow(clippy::too_many_arguments)]
 fn place_paragraph(
   composer: &mut PageComposer,
@@ -265,15 +332,16 @@ fn place_paragraph(
   breaker: &dyn LineBreaker,
   items: &[crate::hitem::HItem],
   leading: f32,
-  text_width: f32,
+  column_width: f32,
   indent: f32,
   right_indent: f32,
   align: types::Align,
 ) {
-  let available = (text_width - indent - right_indent).max(0.0);
+  let available = (column_width - indent - right_indent).max(0.0);
   let mut lines = breaker.break_lines(items, available);
-  // 行は本文左端 (x=0) 基準で組まれるため、インデント + 揃えオフセットを全行に加算する。
-  // 揃えオフセットは行ごとに（行幅に応じて）異なる。リンク矩形の収集より前にシフトしておく。
+  // 行は段左端 (x=0) 基準で組まれるため、インデント + 揃えオフセット（段内 [0, column_width]）を
+  // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
+  // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
   for line in &mut lines {
     let line_width = line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
     let shift = indent + align.offset(available, line_width);
@@ -289,7 +357,7 @@ fn place_paragraph(
   }
   let mut baseline = composer.y;
   let mut prev_depth: Option<f32> = None;
-  for line in lines {
+  for mut line in lines {
     let is_first = prev_depth.is_none();
     match prev_depth {
       None => {
@@ -302,12 +370,23 @@ fn place_paragraph(
       },
     }
     if baseline + line.depth > geom.page_limit {
-      composer.start_new_page(geom);
+      composer.advance_region(geom);
       baseline = geom.margin_top;
     }
-    // 先頭行の確定位置（改ページ後）で未解決アンカーを解決する。行の上端を指す
+    // 着地段（advance_region 後）の左端オフセットを行ごとに加算する。リンク矩形の収集より前に行う。
+    let col_off = composer.column_offset();
+    if col_off != 0.0 {
+      for positioned in &mut line.boxes {
+        positioned.x += col_off;
+      }
+      for link in &mut line.links {
+        link.x0 += col_off;
+        link.x1 += col_off;
+      }
+    }
+    // 先頭行の確定位置（改段・改ページ後）で未解決アンカーを解決する。行の上端（段の左端）を指す
     if is_first {
-      composer.resolve_pending_anchors(0.0, baseline - line.height);
+      composer.resolve_pending_anchors(col_off, baseline - line.height);
     }
     prev_depth = Some(line.depth);
     composer.collect_line_links(&line, baseline);
@@ -322,20 +401,32 @@ fn place_paragraph(
 
 /// 合成済みの単一行（[`Block::ComposedLine`]）を 1 行として配置する
 ///
-/// 段落先頭行と同じ規則で配置する: 直前が底辺基準ブロックならアセント分下げ、ページ下限を
-/// 超えるなら改ページし、確定位置で未解決アンカーを解決してリンク矩形を収集する。配置後は
+/// 段落先頭行と同じ規則で配置する: 直前が底辺基準ブロックならアセント分下げ、段下限を
+/// 超えるなら改段または改ページし、確定位置で未解決アンカーを解決してリンク矩形を収集する。配置後は
 /// カーソルを `baseline + leading` まで進める。行分割（[`crate::break_lines`]）は通さない。
-fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, line: Line, leading: f32) {
+/// 段組みでは着地段の左端オフセットを行のボックス・リンクに加算する（行は段左端基準で組まれているため）。
+fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line: Line, leading: f32) {
   let mut baseline = composer.y;
   if composer.cursor_at_edge {
     baseline += line.height;
   }
   if baseline + line.depth > geom.page_limit {
-    composer.start_new_page(geom);
+    composer.advance_region(geom);
     baseline = geom.margin_top;
   }
+  // 着地段（advance_region 後）の左端オフセットを行に加算する。リンク矩形の収集より前に行う。
+  let col_off = composer.column_offset();
+  if col_off != 0.0 {
+    for positioned in &mut line.boxes {
+      positioned.x += col_off;
+    }
+    for link in &mut line.links {
+      link.x0 += col_off;
+      link.x1 += col_off;
+    }
+  }
   // 行の上端を未解決アンカーの解決位置にする（段落先頭行と同じ）
-  composer.resolve_pending_anchors(0.0, baseline - line.height);
+  composer.resolve_pending_anchors(col_off, baseline - line.height);
   composer.collect_line_links(&line, baseline);
   composer.current.push(PlacedBlock::Line {
     line,
@@ -347,10 +438,11 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, line: Lin
 
 /// ディスプレイ数式ブロックを配置する
 ///
-/// 本体 Atom（`body`）は `layout` 段で局所座標まで組み上がっているため、ここでは本文幅の中で
-/// 揃え（`align`、既定は中央）オフセットを 1 回算出し、各行番号を本文端（`numbers_on_right` で
-/// 左右）へ寄せて確定座標を与えるだけ。当面は改ページ単位の不可分ブロックとして扱う
-/// （収まらない場合に新しいページなら収まるときだけ先に改ページする）。
+/// 本体 Atom（`body`）は `layout` 段で局所座標まで組み上がっているため、ここでは段幅の中で
+/// 揃え（`align`、既定は中央）オフセットを 1 回算出し、各行番号を段端（`numbers_on_right` で
+/// 左右）へ寄せて確定座標を与えるだけ。当面は改ページ（段）単位の不可分ブロックとして扱う
+/// （収まらない場合に新しい段／ページなら収まるときだけ先に改段・改ページする）。段組みでは
+/// fit チェック後の段オフセットを本体・行番号の x に加算する。
 fn place_math_block(
   composer: &mut PageComposer,
   geom: &PageGeometry,
@@ -358,25 +450,28 @@ fn place_math_block(
   numbers: Vec<crate::block::MathRowNumber>,
   numbers_on_right: bool,
   align: types::Align,
-  text_width: f32,
+  column_width: f32,
 ) {
   let total_height = body.height + body.depth;
   if composer.y + total_height > geom.page_limit && geom.margin_top + total_height <= geom.page_limit {
-    composer.start_new_page(geom);
+    composer.advance_region(geom);
   }
-  composer.resolve_pending_anchors(0.0, composer.y);
+  // 改段・改ページ後の段オフセットを読む（着地段に合わせる）
+  let col_off = composer.column_offset();
+  composer.resolve_pending_anchors(col_off, composer.y);
 
-  let x = align.offset(text_width, body.width);
+  let x = col_off + align.offset(column_width, body.width);
   // 本体ベースライン = ブロック上端（カーソル）+ ベースラインより上の高さ
   let baseline_y = composer.y + body.height;
   let placed_numbers: Vec<PlacedMathNumber> = numbers
     .into_iter()
     .map(|n| {
-      let number_x = if numbers_on_right {
-        (text_width - n.content.width).max(0.0)
-      } else {
-        0.0
-      };
+      let number_x = col_off
+        + if numbers_on_right {
+          (column_width - n.content.width).max(0.0)
+        } else {
+          0.0
+        };
       return PlacedMathNumber {
         content: n.content,
         x: number_x,
@@ -394,23 +489,28 @@ fn place_math_block(
   composer.y += total_height;
 }
 
-/// 表を行単位で配置する（改ページ時はページ先頭にヘッダ行を再描画する）
+/// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
 ///
 /// 配置規則:
-/// - 分割禁止（`breakable = false`）の表は、現ページに収まらず新しいページなら
-///   収まる場合のみ先に改ページする
-/// - 行配置中にページ下限を超えたら改ページし、本体行の前にヘッダ行を再描画する
+/// - 分割禁止（`breakable = false`）の表は、現段に収まらず新しい段／ページなら
+///   収まる場合のみ先に改段・改ページする
+/// - 行配置中に段下限を超えたら改段・改ページし、本体行の前にヘッダ行を再描画する
+///
+/// 段組みでは、段をまたぐ breakable な表は段ごとに別の `PlacedBlock::Table` 断片になり、断片ごとに
+/// 着地段のオフセットが要る。揃えオフセット（段内）だけ先に確定し、`flush` 時に
+/// [`PageComposer::column_offset`] を足して断片の `x` を与える（`flush` は必ず `advance_region` の前に
+/// 呼ばれるので `col` は断片が属する段を指す）。
 fn place_table(
   composer: &mut PageComposer,
   geom: &PageGeometry,
   table: &TableBox,
-  text_width: f32,
+  column_width: f32,
   align: types::Align,
 ) {
-  let col_widths = resolve_column_widths(table, text_width, geom.table_cell_padding);
-  // 表全体の自然幅は確定済み列幅の総和。本文幅の中で揃えオフセットを 1 回だけ算出する
-  // （全幅の表ではオフセットが 0 になり左端のまま）。全行・全断片に同じ x を与える。
-  let table_x = align.offset(text_width, col_widths.iter().sum());
+  let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
+  // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
+  // （全幅の表ではオフセットが 0 になり段左端のまま）。段オフセットは flush 時に断片ごとに足す。
+  let table_align_offset = align.offset(column_width, col_widths.iter().sum());
   let head_heights: Vec<f32> = table
     .head
     .iter()
@@ -428,20 +528,22 @@ fn place_table(
     && composer.y + total_height > geom.page_limit
     && geom.margin_top + total_height <= geom.page_limit
   {
-    composer.start_new_page(geom);
+    composer.advance_region(geom);
   }
 
-  // 表先頭の確定位置（改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する
-  composer.resolve_pending_anchors(0.0, composer.y);
+  // 表先頭の確定位置（改段・改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する
+  composer.resolve_pending_anchors(composer.column_offset(), composer.y);
 
   let mut placed_rows: Vec<PlacedTableRow> = Vec::new();
-  // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ
+  // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ。断片の x は着地段の
+  // オフセット + 段内揃えオフセット（flush は advance_region の前に呼ばれるので col は正しい）。
   let flush = |composer: &mut PageComposer, placed_rows: &mut Vec<PlacedTableRow>| {
     if placed_rows.is_empty() {
       return;
     }
+    let x = composer.column_offset() + table_align_offset;
     composer.current.push(PlacedBlock::Table {
-      x: table_x,
+      x,
       columns: table.columns.clone(),
       col_widths: col_widths.clone(),
       rows: std::mem::take(placed_rows),
@@ -451,7 +553,7 @@ fn place_table(
   for (row, height) in table.head.iter().zip(&head_heights) {
     if composer.y + height > geom.page_limit {
       flush(composer, &mut placed_rows);
-      composer.start_new_page(geom);
+      composer.advance_region(geom);
     }
     placed_rows.push(PlacedTableRow {
       row: row.clone(),
@@ -463,8 +565,8 @@ fn place_table(
   for (row, height) in table.rows.iter().zip(&row_heights) {
     if composer.y + height > geom.page_limit {
       flush(composer, &mut placed_rows);
-      composer.start_new_page(geom);
-      // 改ページ後のページ先頭にヘッダ行を再描画する
+      composer.advance_region(geom);
+      // 改段・改ページ後の先頭にヘッダ行を再描画する
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
         placed_rows.push(PlacedTableRow {
           row: head_row.clone(),
@@ -488,7 +590,7 @@ fn place_table(
 mod tests {
   use types::{ColumnAlign, ColumnWidth, TableColumn};
 
-  use super::{PageGeometry, break_pages};
+  use super::{PageGeometry, break_pages, column_width};
   use crate::{
     block::Block,
     break_lines::GreedyBreaker,
@@ -499,7 +601,7 @@ mod tests {
     table_box::{TableBox, TableCellBox, TableRowBox},
   };
 
-  /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`）
+  /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`、単段）
   fn test_geometry() -> PageGeometry {
     return PageGeometry {
       margin_top: 10.0,
@@ -507,6 +609,18 @@ mod tests {
       default_font_size: 10.0,
       line_height_factor: 1.0,
       table_cell_padding: 2.0,
+      num_columns: 1,
+      column_gap: 0.0,
+    };
+  }
+
+  /// テスト用 2 段ジオメトリ（`num_columns=2`, `column_gap=10`）。
+  /// `text_width=100` と組むと段幅 45・段オフセット(右段) 55 になる。
+  fn two_column_geometry() -> PageGeometry {
+    return PageGeometry {
+      num_columns: 2,
+      column_gap: 10.0,
+      ..test_geometry()
     };
   }
 
@@ -1421,5 +1535,123 @@ mod tests {
       panic!("Line を期待");
     };
     assert!((baseline_y - 10.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn column_width_helper_divides_text_width() {
+    // Arrange / Act / Assert — (100 - 1*10)/2 = 45、単段は本文幅そのまま
+    assert!((column_width(100.0, 2, 10.0) - 45.0).abs() < f32::EPSILON);
+    assert!((column_width(100.0, 1, 18.0) - 100.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn two_column_flow_fills_left_then_right_then_next_page() {
+    // Arrange — 2 段（段幅 45・段オフセット 55）。9 行を流すと、左段 4 行 → 右段 4 行 → 次ページ 1 行
+    // になる（各段はカーソルが margin_top に戻り、右段は x に 55 が乗る）。
+    let geom = two_column_geometry();
+
+    // Act
+    let pages = break_pages(vec![paragraph_of_lines(9)], 100.0, &geom, &GreedyBreaker);
+
+    // Assert — 各行の (baseline_y, 先頭ボックス x) を採取して段送りを検証する
+    let page_lines = |page: &Page| -> Vec<(f32, f32)> {
+      return page
+        .blocks
+        .iter()
+        .filter_map(|b| match b {
+          PlacedBlock::Line { line, baseline_y } => Some((*baseline_y, line.boxes[0].x)),
+          _ => None,
+        })
+        .collect();
+    };
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    let p0 = page_lines(&pages[0]);
+    assert_eq!(p0.len(), 8, "1 ページ目は左段 4 行 + 右段 4 行: {p0:?}");
+    // 左段: x≈0、baseline は margin_top から leading(12) ずつ
+    assert_eq!(p0[0..4], [(10.0, 0.0), (22.0, 0.0), (34.0, 0.0), (46.0, 0.0)], "左段は x=0 で 10,22,34,46");
+    // 右段: x≈55、baseline は margin_top にリセットされて再び 10,22,34,46
+    assert_eq!(
+      p0[4..8],
+      [(10.0, 55.0), (22.0, 55.0), (34.0, 55.0), (46.0, 55.0)],
+      "右段は x=55 で baseline がリセット"
+    );
+    let p1 = page_lines(&pages[1]);
+    assert_eq!(p1, [(10.0, 0.0)], "9 行目は次ページの左段先頭");
+  }
+
+  #[test]
+  fn two_column_paragraph_link_rect_uses_column_offset() {
+    // Arrange（Hole A の番人）— 左段を埋めた後に右段へ入るリンク付き段落を置く。リンク矩形は
+    // ボックスと一緒に段オフセット分シフトされていなければならない。
+    use types::LinkTarget;
+    let geom = two_column_geometry();
+    let link_para = Block::Paragraph {
+      items: vec![
+        HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+        test_box(),
+        test_box(),
+        HItem::LinkEnd,
+      ],
+      leading: 12.0,
+      indent: 0.0,
+      right_indent: 0.0,
+      align: types::Align::Left,
+    };
+    // paragraph_of_lines(5) で左段を埋め、カーソルを右段へ送ってからリンク段落を置く
+    let blocks = vec![paragraph_of_lines(5), link_para];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+
+    // Assert — リンクは右段（x≈55）に確定し、2 ボックス分の幅 20 を持つ
+    assert_eq!(pages.len(), 1, "全行が 1 ページの 2 段に収まる: {pages:?}");
+    let link = pages[0]
+      .links
+      .iter()
+      .find(|l| matches!(&l.target, LinkTarget::External(uri) if uri == "https://example.com"))
+      .expect("External リンクがあるはず");
+    assert!((link.x - 55.0).abs() < f32::EPSILON, "リンク x={} は段オフセット 55", link.x);
+    assert!((link.width - 20.0).abs() < f32::EPSILON, "リンク幅={}", link.width);
+  }
+
+  #[test]
+  fn breakable_table_spans_columns_uses_column_offset() {
+    // Arrange（Hole B の番人）— 1 段に収まらない breakable 表が左段 → 右段にまたがるとき、
+    // 2 つ目の断片の x に段オフセットが乗る。各行高 10・段高 40 で 4 行ずつ。
+    let geom = two_column_geometry();
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: (0..6).map(|i| table_row(&format!("R{i}"))).collect(),
+      breakable: true,
+    };
+
+    // Act
+    let pages = break_pages(
+      vec![Block::Table {
+        table,
+        align: types::Align::Left,
+      }],
+      100.0,
+      &geom,
+      &GreedyBreaker,
+    );
+
+    // Assert — 1 ページ内に 2 断片。1 つ目は左段（x≈0）、2 つ目は右段（x≈55）
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    let xs: Vec<f32> = pages[0]
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Table { x, .. } => Some(*x),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(xs.len(), 2, "左段断片 + 右段断片の 2 つ: {xs:?}");
+    assert!((xs[0] - 0.0).abs() < f32::EPSILON, "1 つ目（左段）x={}", xs[0]);
+    assert!((xs[1] - 55.0).abs() < f32::EPSILON, "2 つ目（右段）x={}", xs[1]);
   }
 }

@@ -38,7 +38,7 @@ pub mod table_box;
 pub use block::{Block, MathRowNumber};
 pub use break_lines::{GreedyBreaker, LineBreaker};
 pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
-pub use break_pages::{PageGeometry, break_pages};
+pub use break_pages::{PageGeometry, break_pages, column_width};
 pub use glyph_run::{Glyph, GlyphRun};
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
 pub use line::{Line, LineLink, PositionedBox};
