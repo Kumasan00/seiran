@@ -137,6 +137,69 @@ fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, EvalError> {
   });
 }
 
+/// `columns="left center right"` の値を [`ColumnAlign`] の列に変換する
+fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnAlign>, EvalError> {
+  let invalid = || EvalError::InvalidOptArgValue {
+    name: "table".to_string(),
+    key: "columns".to_string(),
+    expected: "left / center / right の空白区切り".to_string(),
+    span: view.span().into(),
+  };
+  let tokens: Vec<&str> = spec.split_whitespace().collect();
+  if tokens.is_empty() {
+    return Err(invalid());
+  }
+  return tokens.iter().map(|t| ColumnAlign::from_keyword(t).ok_or_else(invalid)).collect();
+}
+
+/// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する
+fn parse_widths_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnWidth>, EvalError> {
+  let invalid = || EvalError::InvalidOptArgValue {
+    name: "table".to_string(),
+    key: "widths".to_string(),
+    expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
+    span: view.span().into(),
+  };
+  let tokens: Vec<&str> = spec.split_whitespace().collect();
+  if tokens.is_empty() {
+    return Err(invalid());
+  }
+  return tokens.iter().map(|t| parse_width_token(t).ok_or_else(invalid)).collect();
+}
+
+/// `widths=` の 1 トークンを [`ColumnWidth`] に変換する
+///
+/// 受理する形式: `auto` / `*` / `<num>mm` / `<num>cm`（サフィックスは大小無視）/
+/// `0` より大きく `1` 以下の小数（本文幅に対する比率）。
+fn parse_width_token(token: &str) -> Option<ColumnWidth> {
+  if token == "auto" {
+    return Some(ColumnWidth::Auto);
+  }
+  if token == "*" {
+    return Some(ColumnWidth::Flex);
+  }
+  let lower = token.to_ascii_lowercase();
+  if let Some(stripped) = lower.strip_suffix("mm") {
+    let value: f32 = stripped.parse().ok()?;
+    if !(value.is_finite() && value > 0.0) {
+      return None;
+    }
+    return Some(ColumnWidth::Fixed(Length::mm(value)));
+  }
+  if let Some(stripped) = lower.strip_suffix("cm") {
+    let value: f32 = stripped.parse().ok()?;
+    if !(value.is_finite() && value > 0.0) {
+      return None;
+    }
+    return Some(ColumnWidth::Fixed(Length::cm(value)));
+  }
+  let ratio: f32 = lower.parse().ok()?;
+  if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0) {
+    return None;
+  }
+  return Some(ColumnWidth::Ratio(ratio));
+}
+
 /// 本体走査で収集した行・キャプション情報
 struct TableBody {
   head: Vec<(TableRow, miette::SourceSpan)>,
@@ -206,117 +269,6 @@ fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalError> {
     caption,
     caption_position,
   });
-}
-
-/// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
-///
-/// 列数は `columns` / `widths` の明示指定を優先し、両方未指定なら行のセル数（`span` 合計）の
-/// 最大値を採る。`columns` と `widths` の長さが食い違う場合は
-/// [`EvalError::TableColumnsWidthsMismatch`]、列数と一致しない行があれば
-/// [`EvalError::TableRowCellCountMismatch`] を返す。
-fn resolve_column_count(
-  columns_tokens: Option<&[ColumnAlign]>,
-  widths_tokens: Option<&[ColumnWidth]>,
-  head: &[(TableRow, miette::SourceSpan)],
-  rows: &[(TableRow, miette::SourceSpan)],
-  view: &EnvironmentView,
-) -> Result<usize, EvalError> {
-  // 列数の決定: columns / widths の明示指定を優先し、両方未指定なら行のセル数（span 合計）の最大値
-  let column_count = match (columns_tokens, widths_tokens) {
-    (Some(c), Some(w)) => {
-      if c.len() != w.len() {
-        return Err(EvalError::TableColumnsWidthsMismatch {
-          columns: c.len(),
-          widths: w.len(),
-          span: view.span().into(),
-        });
-      }
-      c.len()
-    },
-    (Some(c), None) => c.len(),
-    (None, Some(w)) => w.len(),
-    (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| row_span_sum(row)).max().unwrap_or(0),
-  };
-
-  // 各行のセル数（span 合計）が列数と一致するか検証する
-  for (row, span) in head.iter().chain(rows.iter()) {
-    let actual = row_span_sum(row);
-    if actual != column_count {
-      return Err(EvalError::TableRowCellCountMismatch {
-        expected: column_count,
-        actual,
-        span: *span,
-      });
-    }
-  }
-
-  return Ok(column_count);
-}
-
-/// 行のセル数（`span` 合計）を返す
-fn row_span_sum(row: &TableRow) -> usize { return row.cells.iter().map(|cell| cell.span as usize).sum(); }
-
-/// `columns="left center right"` の値を [`ColumnAlign`] の列に変換する
-fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnAlign>, EvalError> {
-  let invalid = || EvalError::InvalidOptArgValue {
-    name: "table".to_string(),
-    key: "columns".to_string(),
-    expected: "left / center / right の空白区切り".to_string(),
-    span: view.span().into(),
-  };
-  let tokens: Vec<&str> = spec.split_whitespace().collect();
-  if tokens.is_empty() {
-    return Err(invalid());
-  }
-  return tokens.iter().map(|t| ColumnAlign::from_keyword(t).ok_or_else(invalid)).collect();
-}
-
-/// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する
-fn parse_widths_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnWidth>, EvalError> {
-  let invalid = || EvalError::InvalidOptArgValue {
-    name: "table".to_string(),
-    key: "widths".to_string(),
-    expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
-    span: view.span().into(),
-  };
-  let tokens: Vec<&str> = spec.split_whitespace().collect();
-  if tokens.is_empty() {
-    return Err(invalid());
-  }
-  return tokens.iter().map(|t| parse_width_token(t).ok_or_else(invalid)).collect();
-}
-
-/// `widths=` の 1 トークンを [`ColumnWidth`] に変換する
-///
-/// 受理する形式: `auto` / `*` / `<num>mm` / `<num>cm`（サフィックスは大小無視）/
-/// `0` より大きく `1` 以下の小数（本文幅に対する比率）。
-fn parse_width_token(token: &str) -> Option<ColumnWidth> {
-  if token == "auto" {
-    return Some(ColumnWidth::Auto);
-  }
-  if token == "*" {
-    return Some(ColumnWidth::Flex);
-  }
-  let lower = token.to_ascii_lowercase();
-  if let Some(stripped) = lower.strip_suffix("mm") {
-    let value: f32 = stripped.parse().ok()?;
-    if !(value.is_finite() && value > 0.0) {
-      return None;
-    }
-    return Some(ColumnWidth::Fixed(Length::mm(value)));
-  }
-  if let Some(stripped) = lower.strip_suffix("cm") {
-    let value: f32 = stripped.parse().ok()?;
-    if !(value.is_finite() && value > 0.0) {
-      return None;
-    }
-    return Some(ColumnWidth::Fixed(Length::cm(value)));
-  }
-  let ratio: f32 = lower.parse().ok()?;
-  if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0) {
-    return None;
-  }
-  return Some(ColumnWidth::Ratio(ratio));
 }
 
 /// `\head{\row{...} ...}` からヘッダ行を抽出する
@@ -441,6 +393,15 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
   return Ok(TableRow { cells, rule_above });
 }
 
+/// セル内容に強制改行（`\\`）が含まれるかを再帰的に判定する
+fn contains_line_break(nodes: &[InlineNode]) -> bool {
+  return nodes.iter().any(|node| match node {
+    InlineNode::LineBreak => true,
+    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => contains_line_break(children),
+    _ => false,
+  });
+}
+
 /// `&` 分割後の 1 区画を [`TableCell`] に変換する
 ///
 /// 区画の非トリビア要素が `\cell` コマンド 1 つだけなら属性付きセルとして評価し、
@@ -549,14 +510,53 @@ fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
   return content;
 }
 
-/// セル内容に強制改行（`\\`）が含まれるかを再帰的に判定する
-fn contains_line_break(nodes: &[InlineNode]) -> bool {
-  return nodes.iter().any(|node| match node {
-    InlineNode::LineBreak => true,
-    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => contains_line_break(children),
-    _ => false,
-  });
+/// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
+///
+/// 列数は `columns` / `widths` の明示指定を優先し、両方未指定なら行のセル数（`span` 合計）の
+/// 最大値を採る。`columns` と `widths` の長さが食い違う場合は
+/// [`EvalError::TableColumnsWidthsMismatch`]、列数と一致しない行があれば
+/// [`EvalError::TableRowCellCountMismatch`] を返す。
+fn resolve_column_count(
+  columns_tokens: Option<&[ColumnAlign]>,
+  widths_tokens: Option<&[ColumnWidth]>,
+  head: &[(TableRow, miette::SourceSpan)],
+  rows: &[(TableRow, miette::SourceSpan)],
+  view: &EnvironmentView,
+) -> Result<usize, EvalError> {
+  // 列数の決定: columns / widths の明示指定を優先し、両方未指定なら行のセル数（span 合計）の最大値
+  let column_count = match (columns_tokens, widths_tokens) {
+    (Some(c), Some(w)) => {
+      if c.len() != w.len() {
+        return Err(EvalError::TableColumnsWidthsMismatch {
+          columns: c.len(),
+          widths: w.len(),
+          span: view.span().into(),
+        });
+      }
+      c.len()
+    },
+    (Some(c), None) => c.len(),
+    (None, Some(w)) => w.len(),
+    (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| row_span_sum(row)).max().unwrap_or(0),
+  };
+
+  // 各行のセル数（span 合計）が列数と一致するか検証する
+  for (row, span) in head.iter().chain(rows.iter()) {
+    let actual = row_span_sum(row);
+    if actual != column_count {
+      return Err(EvalError::TableRowCellCountMismatch {
+        expected: column_count,
+        actual,
+        span: *span,
+      });
+    }
+  }
+
+  return Ok(column_count);
 }
+
+/// 行のセル数（`span` 合計）を返す
+fn row_span_sum(row: &TableRow) -> usize { return row.cells.iter().map(|cell| cell.span as usize).sum(); }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
