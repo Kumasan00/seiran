@@ -2,6 +2,11 @@
 //! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
 //! PDF を生成するための主要な機能を提供します。
 
+mod error;
+mod front_matter;
+mod outline;
+mod running;
+
 use std::{
   collections::HashSet,
   fs,
@@ -9,18 +14,20 @@ use std::{
   time::Instant,
 };
 
-use citation::CitationError;
 use document::DocNode;
+use error::BuildPdfError;
 use font::{
   FontData, FontDataExt, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
-use lowering::{LoweringContext, LoweringError};
-use miette::Diagnostic;
+use front_matter::{assemble_front_matter, break_front_matter, page_number_labels};
+use lowering::LoweringContext;
+use outline::collect_outline_entries;
 use parser::ParseSourceError;
-use thiserror::Error;
+use running::build_running_spec;
 use tracing::{debug, debug_span, info};
+use types::AnchorMark;
 
 /// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
 ///
@@ -33,97 +40,6 @@ pub(super) struct BuildSummary {
   pub(super) page_count: usize,
   /// ビルド全体の所要ミリ秒
   pub(super) total_elapsed_ms: u64,
-}
-
-/// PDF ビルド時のエラー型
-#[derive(Debug, Error, Diagnostic)]
-enum BuildPdfError {
-  /// テキストファイルの読み込みに失敗した場合
-  #[error("テキストファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(
-    code(build::read_text_file),
-    help(
-      "ファイルのパスと読み取り権限を確認してください。ファイルが UTF-8 でエンコードされていることも確認してください。"
-    )
-  )]
-  ReadTextFile {
-    /// ファイルパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// 複数ソースのパース・評価で発生したエラーの集約
-  ///
-  /// 補足設計のエラー戦略: 文法・評価エラーは集約して 1 度に報告する。
-  /// 各 `ParseSourceError` は `NamedSource` と内側エラーの label を保持しているため、
-  /// `#[related]` 経由で `miette` のフル診断（ソースコード付き）が表示される。
-  #[error("複数のソースファイルでエラーが発生しました。")]
-  #[diagnostic(code(build::multiple_source_errors))]
-  MultipleSourceErrors {
-    #[related]
-    errors: Vec<ParseSourceError>,
-  },
-
-  /// 文献引用（`\cite`）の CSL 整形ステージで発生したエラー
-  ///
-  /// 内側の [`CitationError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播される。
-  #[error("文献引用の整形に失敗しました。")]
-  #[diagnostic(code(build::citation))]
-  Citation {
-    /// 元の citation エラー
-    #[source]
-    #[diagnostic_source]
-    source: CitationError,
-  },
-
-  /// Document IR → `LayoutNode` 変換（lowering）で発生したエラー
-  ///
-  /// 内側の [`LoweringError`] が持つ `code` / `help` は `#[diagnostic_source]` により
-  /// 外側へ伝播されます。
-  #[error("ドキュメントのレイアウト変換に失敗しました。")]
-  #[diagnostic(code(build::lowering))]
-  Lowering {
-    /// 元の lowering エラー
-    #[source]
-    #[diagnostic_source]
-    source: LoweringError,
-  },
-
-  /// PDF ファイルの書き込みに失敗した場合
-  #[error("PDF ファイルの保存に失敗しました: {path}")]
-  #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
-  WritePdf {
-    /// 出力パス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
-  ///
-  /// 段幅 = `(本文幅 − (段数 − 1) × 段間) / 段数`。段間が本文幅に対して大きすぎると非正になる。
-  /// この制約は config（用紙・余白）と style（`[columns]`）の横断で決まるため `read_style` 単体では
-  /// 検証できず、両者が揃うこのステージで判定する。
-  #[error(
-    "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
-  )]
-  #[diagnostic(
-    code(build::invalid_columns),
-    help(
-      "style.toml の [columns].gap を小さくするか、count を減らしてください。または config.toml の用紙幅を広げる・左右余白を狭めて本文幅を確保してください。"
-    )
-  )]
-  InvalidColumnWidth {
-    /// 本文幅（pt）
-    text_width: f32,
-    /// 段数
-    num_columns: usize,
-    /// 段間（pt）
-    column_gap: f32,
-  },
 }
 
 /// 設定ファイルの `sources` から PDF を生成
@@ -386,7 +302,7 @@ fn heading_page_indices(pages: &[hlist::Page]) -> Vec<usize> {
   let mut indices = Vec::new();
   for (page_index, page) in pages.iter().enumerate() {
     for anchor in &page.anchors {
-      if matches!(anchor.mark, types::AnchorMark::Heading { .. }) {
+      if matches!(anchor.mark, AnchorMark::Heading { .. }) {
         indices.push(page_index);
       }
     }
@@ -394,268 +310,12 @@ fn heading_page_indices(pages: &[hlist::Page]) -> Vec<usize> {
   return indices;
 }
 
-/// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
-///
-/// 各リージョンは改ページ境界で始まる。`lower_title_page` は末尾に `PageBreak` を含むため、後続
-/// （目次・本文）は次ページから始まる。目次の後にも `Block::PageBreak` を積み、本文を次ページから
-/// 始める（本文区間の独立性を保つ）。`title_page` / `toc` がともに無効なら空列を返す。
-fn assemble_front_matter(
-  doc_nodes: &[DocNode],
-  heading_pages: &[usize],
-  title_metadata: &lowering::TitlePageMetadata,
-  style: &read_style::Style,
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
-  text_width: f32,
-) -> Vec<hlist::Block> {
-  // build_blocks 用の既定サイズは style から導出する（呼び出し本体と同じ値）。
-  let default_font_size = style.text.font_size.to_pt();
-  let line_height_factor = style.text.line_height_factor;
-  let mut front_blocks: Vec<hlist::Block> = Vec::new();
-  if style.title_page.enabled {
-    let title_nodes = lowering::lower_title_page(title_metadata, &style.title_page);
-    {
-      let _span = debug_span!("build_blocks", region = "title").entered();
-      front_blocks.extend(layout::build_blocks(title_nodes, shapers, metrics, default_font_size, line_height_factor));
-    }
-    debug!("タイトルページを生成しました");
-  }
-  if style.toc.enabled {
-    let toc_entries = collect_toc_entries(doc_nodes, heading_pages, &style.toc, &style.page_numbering);
-    let toc_spec = build_toc_spec(style, text_width);
-    let toc_blocks = layout::build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
-    if !toc_blocks.is_empty() {
-      front_blocks.extend(toc_blocks);
-      front_blocks.push(hlist::Block::PageBreak);
-      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
-    }
-  }
-  return front_blocks;
-}
-
-/// 見出しと本文内ページ index から目次エントリ列を組み立てる。
-///
-/// `max_depth` を超える深さの見出しは除外する。ページラベルは本文の番号スタイル（算用数字）で
-/// レンダリングし、内部リンクキーは見出しの文書順インデックスから [`document::heading_anchor_key`]
-/// で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
-fn collect_toc_entries(
-  doc_nodes: &[DocNode],
-  heading_pages: &[usize],
-  toc: &read_style::TocStyle,
-  page_numbering: &read_style::PageNumbering,
-) -> Vec<layout::TocEntryInput> {
-  let headings = document::collect_headings(doc_nodes);
-  debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
-  return headings
-    .into_iter()
-    .zip(heading_pages.iter().copied())
-    .filter(|(info, _)| u32::from(info.level.depth()) < toc.max_depth)
-    .map(|(info, page_index)| layout::TocEntryInput {
-      level: info.level,
-      number: info.number.to_string(),
-      title_plain: document::inline_nodes_to_plain_text(info.title),
-      page_label: page_numbering.body.render(page_index as u32 + 1),
-      link_key: document::heading_anchor_key(info.index),
-    })
-    .collect();
-}
-
-/// `style.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
-///
-/// 目次見出しの書体は文書の節見出しスタイル（[`document::HeadingLevel::Section`]）に揃える。
-fn build_toc_spec(style: &read_style::Style, text_width: f32) -> layout::TocSpec {
-  let toc = &style.toc;
-  let title_heading = style.heading(document::HeadingLevel::Section);
-  return layout::TocSpec {
-    title: toc.title.clone(),
-    title_style: lowering::TextStyle {
-      font_size: title_heading.font_size.to_pt(),
-      font_kind: title_heading.font_kind,
-      color: None,
-    },
-    title_bottom_margin: title_heading.bottom_margin.to_pt(),
-    entry_style: lowering::TextStyle {
-      font_size: toc.font_size.to_pt(),
-      font_kind: types::FontKind::Serif,
-      color: None,
-    },
-    indent_per_level: toc.indent_per_level.to_pt(),
-    leader: toc.leader.clone(),
-    show_page_numbers: toc.show_page_numbers,
-    text_width,
-    line_height_factor: style.text.line_height_factor,
-    bottom_margin: toc.bottom_margin.to_pt(),
-  };
-}
-
-/// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
-///
-/// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている `Block::PageBreak` は落とす（[`hlist::break_pages`] の `finish` が末尾ページを無条件に
-/// push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間 `PageBreak` は保持する。
-/// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
-fn break_front_matter(
-  mut front_blocks: Vec<hlist::Block>,
-  text_width: f32,
-  front_geometry: &hlist::PageGeometry,
-  breaker: &dyn hlist::LineBreaker,
-) -> Vec<hlist::Page> {
-  if matches!(front_blocks.last(), Some(hlist::Block::PageBreak)) {
-    front_blocks.pop();
-  }
-  if front_blocks.is_empty() {
-    return Vec::new();
-  }
-  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker);
-}
-
-/// 各物理ページの `(\{page\}, \{pages\})` ラベルをリージョン別に算出する。
-///
-/// 前付け（index `< front_count`）は `page_numbering.front_matter`（既定ローマ数字）で 1 から、
-/// 本文はそれ以降を `page_numbering.body`（既定算用数字）で 1 から振り直す。`\{pages\}` は同じ
-/// リージョンの総数を同じスタイルでレンダリングしたもの。
-fn page_number_labels(
-  total: usize,
-  front_count: usize,
-  body_count: usize,
-  page_numbering: &read_style::PageNumbering,
-) -> Vec<(String, String)> {
-  let mut labels = Vec::with_capacity(total);
-  for index in 0..total {
-    if index < front_count {
-      let page = page_numbering.front_matter.render(index as u32 + 1);
-      let pages = page_numbering.front_matter.render(front_count as u32);
-      labels.push((page, pages));
-    } else {
-      let body_index = index - front_count;
-      let page = page_numbering.body.render(body_index as u32 + 1);
-      let pages = page_numbering.body.render(body_count as u32);
-      labels.push((page, pages));
-    }
-  }
-  return labels;
-}
-
-/// ページ数確定後のヘッダー・フッター配置仕様 [`layout::RunningContentSpec`] を組み立てる。
-///
-/// ヘッダー / フッターの各スロットは [`running_slots`] で構築し（全スロット空なら描画省略）、`skip_first`
-/// でタイトルページ（先頭ページ）への非描画を指示する。`page_numbers` のラベル解決は配置パス側が担う。
-fn build_running_spec(
-  style: &read_style::Style,
-  document: &read_config::DocumentConfig,
-  text_width: f32,
-  page_height: f32,
-  page_numbers: Vec<(String, String)>,
-) -> layout::RunningContentSpec {
-  return layout::RunningContentSpec {
-    header: running_slots(&style.header, style.header.baseline_offset.to_pt(), true),
-    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset.to_pt(), false),
-    metadata: layout::RunningMetadata {
-      title: document.title.clone().unwrap_or_default(),
-      author: document.author.clone().unwrap_or_default(),
-      date: document.date.clone().unwrap_or_default(),
-    },
-    text_width,
-    page_numbers,
-    // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
-    skip_first: style.title_page.enabled,
-  };
-}
-
-/// `RunningContentStyle` をヘッダー・フッター配置用の [`layout::RunningSlots`] に変換する。
-///
-/// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
-/// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
-/// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
-fn running_slots(
-  style: &read_style::RunningContentStyle,
-  baseline_y: f32,
-  rule_below: bool,
-) -> Option<layout::RunningSlots> {
-  if style.is_empty() {
-    return None;
-  }
-  return Some(layout::RunningSlots {
-    left: style.left.clone(),
-    center: style.center.clone(),
-    right: style.right.clone(),
-    font_kind: style.font_kind,
-    font_size: style.font_size.to_pt(),
-    baseline_y,
-    rule_below,
-    rule_thickness: style.rule_thickness.to_pt(),
-    rule_gap: style.rule_gap.to_pt(),
-    rule_color: style.rule_color.map(types::Color::rgb),
-  });
-}
-
-/// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
-///
-/// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しの収集は意味側の
-/// 単一ソース [`document::collect_headings`] に委譲する（目次生成と同じソースを使う）。
-fn collect_outline_entries(doc_nodes: &[DocNode]) -> Vec<pdf_gen::OutlineEntry> {
-  return document::collect_headings(doc_nodes)
-    .into_iter()
-    .map(|info| {
-      let plain = document::inline_nodes_to_plain_text(info.title);
-      let text = heading_label(info.number, &plain);
-      return pdf_gen::OutlineEntry {
-        level: info.level,
-        text,
-      };
-    })
-    .collect();
-}
-
-/// 「番号 タイトル」の表示文字列を組む（番号・タイトルの空を考慮）。しおり・目次で共用する。
-fn heading_label(number: &str, title_plain: &str) -> String {
-  if number.is_empty() {
-    return title_plain.to_string();
-  }
-  if title_plain.is_empty() {
-    return number.to_string();
-  }
-  return format!("{number} {title_plain}");
-}
-
 #[cfg(test)]
 mod tests {
-  use document::{DocNode, HeadingLevel, InlineNode};
   use hlist::{Page, PlacedAnchor};
-  use read_style::{PageNumbering, TocStyle};
   use types::AnchorMark;
 
-  use super::{collect_toc_entries, heading_label, heading_page_indices, page_number_labels};
-
-  #[test]
-  fn heading_label_combines_number_and_title() {
-    assert_eq!(heading_label("1.2", "Intro"), "1.2 Intro");
-    assert_eq!(heading_label("", "Intro"), "Intro");
-    assert_eq!(heading_label("1.2", ""), "1.2");
-  }
-
-  #[test]
-  fn page_number_labels_roman_front_arabic_body() {
-    // Arrange — 既定（前付け=ローマ小文字 / 本文=算用）。total=5, front=2, body=3
-    let pn = PageNumbering::default();
-
-    // Act
-    let labels = page_number_labels(5, 2, 3, &pn);
-
-    // Assert — 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）でリージョン別に振り直す
-    assert_eq!(labels[0], ("i".to_string(), "ii".to_string()));
-    assert_eq!(labels[1], ("ii".to_string(), "ii".to_string()));
-    assert_eq!(labels[2], ("1".to_string(), "3".to_string()));
-    assert_eq!(labels[4], ("3".to_string(), "3".to_string()));
-  }
-
-  #[test]
-  fn page_number_labels_without_front_matter_is_plain_arabic() {
-    // 前付けが無ければ全ページが本文系列（算用数字 1 から）= 従来挙動
-    let labels = page_number_labels(3, 0, 3, &PageNumbering::default());
-    assert_eq!(labels[0].0, "1");
-    assert_eq!(labels[2], ("3".to_string(), "3".to_string()));
-  }
+  use super::heading_page_indices;
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ
   fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {
@@ -697,32 +357,5 @@ mod tests {
 
     // Assert — 見出しアンカーのページ index だけを文書順に拾う（Label は無視）
     assert_eq!(indices, vec![0, 1]);
-  }
-
-  #[test]
-  fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
-    // Arrange — Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
-    let doc = vec![
-      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::text("Ch")]),
-      DocNode::heading(HeadingLevel::Section, "1.1", vec![InlineNode::text("Sec")]),
-      DocNode::heading(HeadingLevel::Subsection, "1.1.1", vec![InlineNode::text("Sub")]),
-    ];
-    let heading_pages = vec![0, 1, 2];
-    let toc = TocStyle {
-      max_depth: 3,
-      ..TocStyle::default()
-    };
-
-    // Act
-    let entries = collect_toc_entries(&doc, &heading_pages, &toc, &PageNumbering::default());
-
-    // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].number, "1");
-    assert_eq!(entries[0].page_label, "1");
-    assert_eq!(entries[0].link_key, "heading:0");
-    assert_eq!(entries[1].title_plain, "Sec");
-    assert_eq!(entries[1].page_label, "2");
-    assert_eq!(entries[1].link_key, "heading:1");
   }
 }
