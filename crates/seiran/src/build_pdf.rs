@@ -317,6 +317,38 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
+/// 全 source を順次読み込み、パース結果を結合した `Vec<DocNode>` を返す。
+///
+/// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
+/// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
+fn parse_all_sources(
+  sources: &[std::path::PathBuf],
+  style: &read_style::Style,
+  citation_keys: &HashSet<String>,
+) -> Result<Vec<DocNode>, BuildPdfError> {
+  let mut all_nodes: Vec<DocNode> = Vec::new();
+  let mut parse_errors: Vec<ParseSourceError> = Vec::new();
+
+  for source_path in sources {
+    let content = std::fs::read_to_string(source_path).map_err(|source| BuildPdfError::ReadTextFile {
+      path: source_path.display().to_string(),
+      source,
+    })?;
+    let display_path = source_path.display().to_string();
+    match parser::parse_source(&content, &display_path, style, citation_keys) {
+      Ok(nodes) => all_nodes.extend(nodes),
+      Err(error) => parse_errors.push(error),
+    }
+  }
+
+  if !parse_errors.is_empty() {
+    return Err(BuildPdfError::MultipleSourceErrors {
+      errors: parse_errors,
+    });
+  }
+  return Ok(all_nodes);
+}
+
 /// 本文（N 段）と前付け（常に 1 段）の [`hlist::PageGeometry`] を組み立てる。
 ///
 /// 両者は段数・段間以外を共有するため、本文側を組んでから前付けは `num_columns` / `column_gap` だけ
@@ -346,33 +378,20 @@ fn build_page_geometries(
   return (body_geometry, front_geometry);
 }
 
-/// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
+/// 本文 Pass のページ列から、各見出しの本文内ページ index を文書順に採取する。
 ///
-/// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しの収集は意味側の
-/// 単一ソース [`document::collect_headings`] に委譲する（目次生成と同じソースを使う）。
-fn collect_outline_entries(doc_nodes: &[DocNode]) -> Vec<pdf_gen::OutlineEntry> {
-  return document::collect_headings(doc_nodes)
-    .into_iter()
-    .map(|info| {
-      let plain = document::inline_nodes_to_plain_text(info.title);
-      let text = heading_label(info.number, &plain);
-      return pdf_gen::OutlineEntry {
-        level: info.level,
-        text,
-      };
-    })
-    .collect();
-}
-
-/// 「番号 タイトル」の表示文字列を組む（番号・タイトルの空を考慮）。しおり・目次で共用する。
-fn heading_label(number: &str, title_plain: &str) -> String {
-  if number.is_empty() {
-    return title_plain.to_string();
+/// `pdf_gen::build_destination_index` と同型のアンカー走査。`document::collect_headings` が返す
+/// 見出し列と 1 対 1 に対応する（どちらも文書順）。
+fn heading_page_indices(pages: &[hlist::Page]) -> Vec<usize> {
+  let mut indices = Vec::new();
+  for (page_index, page) in pages.iter().enumerate() {
+    for anchor in &page.anchors {
+      if matches!(anchor.mark, types::AnchorMark::Heading { .. }) {
+        indices.push(page_index);
+      }
+    }
   }
-  if title_plain.is_empty() {
-    return number.to_string();
-  }
-  return format!("{number} {title_plain}");
+  return indices;
 }
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
@@ -412,43 +431,6 @@ fn assemble_front_matter(
     }
   }
   return front_blocks;
-}
-
-/// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
-///
-/// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている `Block::PageBreak` は落とす（[`hlist::break_pages`] の `finish` が末尾ページを無条件に
-/// push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間 `PageBreak` は保持する。
-/// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
-fn break_front_matter(
-  mut front_blocks: Vec<hlist::Block>,
-  text_width: f32,
-  front_geometry: &hlist::PageGeometry,
-  breaker: &dyn hlist::LineBreaker,
-) -> Vec<hlist::Page> {
-  if matches!(front_blocks.last(), Some(hlist::Block::PageBreak)) {
-    front_blocks.pop();
-  }
-  if front_blocks.is_empty() {
-    return Vec::new();
-  }
-  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker);
-}
-
-/// 本文 Pass のページ列から、各見出しの本文内ページ index を文書順に採取する。
-///
-/// `pdf_gen::build_destination_index` と同型のアンカー走査。`document::collect_headings` が返す
-/// 見出し列と 1 対 1 に対応する（どちらも文書順）。
-fn heading_page_indices(pages: &[hlist::Page]) -> Vec<usize> {
-  let mut indices = Vec::new();
-  for (page_index, page) in pages.iter().enumerate() {
-    for anchor in &page.anchors {
-      if matches!(anchor.mark, types::AnchorMark::Heading { .. }) {
-        indices.push(page_index);
-      }
-    }
-  }
-  return indices;
 }
 
 /// 見出しと本文内ページ index から目次エントリ列を組み立てる。
@@ -506,6 +488,27 @@ fn build_toc_spec(style: &read_style::Style, text_width: f32) -> layout::TocSpec
   };
 }
 
+/// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
+///
+/// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
+/// 付いている `Block::PageBreak` は落とす（[`hlist::break_pages`] の `finish` が末尾ページを無条件に
+/// push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間 `PageBreak` は保持する。
+/// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
+fn break_front_matter(
+  mut front_blocks: Vec<hlist::Block>,
+  text_width: f32,
+  front_geometry: &hlist::PageGeometry,
+  breaker: &dyn hlist::LineBreaker,
+) -> Vec<hlist::Page> {
+  if matches!(front_blocks.last(), Some(hlist::Block::PageBreak)) {
+    front_blocks.pop();
+  }
+  if front_blocks.is_empty() {
+    return Vec::new();
+  }
+  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker);
+}
+
 /// 各物理ページの `(\{page\}, \{pages\})` ラベルをリージョン別に算出する。
 ///
 /// 前付け（index `< front_count`）は `page_numbering.front_matter`（既定ローマ数字）で 1 から、
@@ -531,38 +534,6 @@ fn page_number_labels(
     }
   }
   return labels;
-}
-
-/// 全 source を順次読み込み、パース結果を結合した `Vec<DocNode>` を返す。
-///
-/// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
-/// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
-fn parse_all_sources(
-  sources: &[std::path::PathBuf],
-  style: &read_style::Style,
-  citation_keys: &HashSet<String>,
-) -> Result<Vec<DocNode>, BuildPdfError> {
-  let mut all_nodes: Vec<DocNode> = Vec::new();
-  let mut parse_errors: Vec<ParseSourceError> = Vec::new();
-
-  for source_path in sources {
-    let content = std::fs::read_to_string(source_path).map_err(|source| BuildPdfError::ReadTextFile {
-      path: source_path.display().to_string(),
-      source,
-    })?;
-    let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path, style, citation_keys) {
-      Ok(nodes) => all_nodes.extend(nodes),
-      Err(error) => parse_errors.push(error),
-    }
-  }
-
-  if !parse_errors.is_empty() {
-    return Err(BuildPdfError::MultipleSourceErrors {
-      errors: parse_errors,
-    });
-  }
-  return Ok(all_nodes);
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様 [`layout::RunningContentSpec`] を組み立てる。
@@ -616,6 +587,35 @@ fn running_slots(
     rule_gap: style.rule_gap.to_pt(),
     rule_color: style.rule_color.map(types::Color::rgb),
   });
+}
+
+/// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
+///
+/// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しの収集は意味側の
+/// 単一ソース [`document::collect_headings`] に委譲する（目次生成と同じソースを使う）。
+fn collect_outline_entries(doc_nodes: &[DocNode]) -> Vec<pdf_gen::OutlineEntry> {
+  return document::collect_headings(doc_nodes)
+    .into_iter()
+    .map(|info| {
+      let plain = document::inline_nodes_to_plain_text(info.title);
+      let text = heading_label(info.number, &plain);
+      return pdf_gen::OutlineEntry {
+        level: info.level,
+        text,
+      };
+    })
+    .collect();
+}
+
+/// 「番号 タイトル」の表示文字列を組む（番号・タイトルの空を考慮）。しおり・目次で共用する。
+fn heading_label(number: &str, title_plain: &str) -> String {
+  if number.is_empty() {
+    return title_plain.to_string();
+  }
+  if title_plain.is_empty() {
+    return number.to_string();
+  }
+  return format!("{number} {title_plain}");
 }
 
 #[cfg(test)]
