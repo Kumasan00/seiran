@@ -295,6 +295,44 @@ pub(crate) fn evaluate_math_env(
   spec: &GridSpec,
   mode: &NumberingMode,
 ) -> Result<Vec<DocNode>, EvalError> {
+  let (numbered, env_label) = parse_math_env_opts(view, mode)?;
+
+  // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
+  let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
+  let mut grid = match view.body() {
+    Some(body_node) => evaluate_grid(view.source(), body_node, spec, row_markers_allowed)?,
+    None => Vec::new(),
+  };
+  trim_trailing_blank_marker_rows(&mut grid)?;
+
+  // `[numbered=false]` で既に全行が無採番なら、行単位の `\notag` は冗長・矛盾
+  if !numbered && let Some(span) = grid.iter().find_map(|row| row.notag_span) {
+    return Err(EvalError::NotagWithUnnumberedEnv { span });
+  }
+
+  let (rows, env_number) = assign_numbering(grid, mode, numbered, env_label.as_deref(), view, evaluator)?;
+
+  // 環境単位ラベルは採番できた場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
+  let block_label = env_number.as_ref().and(env_label);
+  return Ok(vec![DocNode::MathBlock {
+    kind,
+    rows,
+    number: env_number,
+    label: block_label,
+  }]);
+}
+
+/// 数式環境の任意引数 `[numbered]` / `[label=...]` を解析・検証する
+///
+/// `[numbered]`（既定 `true`）はすべての環境で受理する。環境単位ラベル `[label=...]` は環境全体へ 1 番号を
+/// 振る `SingleEnv`（split / multiline）でのみ受理する（行ごと採番 `PerRow` = align / gather の行単位ラベルは
+/// 行末マーカー `\label{...}` で指定するため、ここでは受理しない）。返り値は `(numbered, 環境単位ラベル)`。
+///
+/// # Errors
+///
+/// 未知の任意引数キー・不正な値、位置引数の指定（[`EvalError::ExtraEnvironmentArgument`]）、無採番環境への
+/// 環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）でエラーを返す。
+fn parse_math_env_opts(view: &EnvironmentView, mode: &NumberingMode) -> Result<(bool, Option<String>), EvalError> {
   // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
   // 行ごと採番（`PerRow` = align / gather）の行単位ラベルは行末マーカー `\label{...}` で指定する。
   let allow_env_label = matches!(mode, NumberingMode::SingleEnv);
@@ -319,16 +357,19 @@ pub(crate) fn evaluate_math_env(
       span: view.span().into(),
     });
   }
+  return Ok((numbered, env_label));
+}
 
-  // 行末マーカー `\notag` / `\label` は行ごと採番（`PerRow`）の環境でのみ意味を持つ
-  let row_markers_allowed = matches!(mode, NumberingMode::PerRow);
-  let source = view.source();
-  let mut grid = match view.body() {
-    Some(body_node) => evaluate_grid(source, body_node, spec, row_markers_allowed)?,
-    None => Vec::new(),
-  };
-  // 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する。
-  // 中身が空なのにマーカー（`\notag` / `\label`）だけ付いた末尾行は行末に式がないためエラーにする。
+/// グリッド末尾の空白行を除去し、マーカーだけ残る不正な末尾行を検出する
+///
+/// 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する。中身が空なのにマーカー
+/// （`\notag` / `\label`）だけ付いた末尾行は、行末に式が無いためエラーにする。
+///
+/// # Errors
+///
+/// 末尾の空白行に `\notag` が残る場合は [`EvalError::NotagNotAtRowEnd`]、`\label` が残る場合は
+/// [`EvalError::RowLabelNotAtRowEnd`] を返す。
+fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result<(), EvalError> {
   while let Some(last) = grid.last() {
     if !is_blank_row(&last.cells) {
       break;
@@ -341,12 +382,28 @@ pub(crate) fn evaluate_math_env(
     }
     grid.pop();
   }
+  return Ok(());
+}
 
-  // `[numbered=false]` で既に全行が無採番なら、行単位の `\notag` は冗長・矛盾
-  if !numbered && let Some(span) = grid.iter().find_map(|row| row.notag_span) {
-    return Err(EvalError::NotagWithUnnumberedEnv { span });
-  }
-
+/// グリッドを採番粒度（`mode`）に応じて [`MathRow`] 列へ変換し、`CounterName::Equation` を消費する
+///
+/// `PerRow`（align / gather）は採番行ごとにカウンタを 1 回消費し、`\notag` 行はカウンタを消費せず無採番に
+/// する。`SingleEnv`（split / multiline）は環境全体で 1 回だけ消費し（空ブロックには採番しない）、各行は
+/// 無採番にする。`numbered == false` のときはいずれも採番しない。返り値は `(各行, 環境単位番号)` で、
+/// 環境単位番号は `SingleEnv` で採番できたときのみ `Some`。
+///
+/// # Errors
+///
+/// 無採番の行への行ラベル付与（[`EvalError::LabelRequiresNumbering`]）、採番時の重複ラベル
+/// （[`EvalError::DuplicateLabel`]）でエラーを返す。
+fn assign_numbering(
+  grid: Vec<GridRow>,
+  mode: &NumberingMode,
+  numbered: bool,
+  env_label: Option<&str>,
+  view: &EnvironmentView,
+  evaluator: &mut Evaluator,
+) -> Result<(Vec<MathRow>, Option<String>), EvalError> {
   let mut env_number = None;
   let rows: Vec<MathRow> = match mode {
     NumberingMode::PerRow => grid
@@ -382,11 +439,8 @@ pub(crate) fn evaluate_math_env(
     NumberingMode::SingleEnv => {
       // 行は無採番。環境全体に 1 つだけ（空ブロックには採番しない）
       if numbered && !grid.is_empty() {
-        env_number = Some(evaluator.registry.increment_with_label(
-          CounterName::Equation,
-          env_label.as_deref(),
-          view.span().into(),
-        )?);
+        env_number =
+          Some(evaluator.registry.increment_with_label(CounterName::Equation, env_label, view.span().into())?);
       }
       grid
         .into_iter()
@@ -398,15 +452,7 @@ pub(crate) fn evaluate_math_env(
         .collect()
     },
   };
-
-  // 環境単位ラベルは採番できた場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
-  let block_label = env_number.as_ref().and(env_label);
-  return Ok(vec![DocNode::MathBlock {
-    kind,
-    rows,
-    number: env_number,
-    label: block_label,
-  }]);
+  return Ok((rows, env_number));
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する
