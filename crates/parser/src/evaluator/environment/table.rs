@@ -47,6 +47,64 @@ use crate::evaluator::{
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
 pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+  let opts = collect_table_opts(view)?;
+
+  let number =
+    evaluator
+      .registry
+      .increment_with_label(CounterName::Table, opts.label.as_deref(), view.span().into())?;
+
+  if !view.args().is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: "table".to_string(),
+      span: view.span().into(),
+    });
+  }
+
+  let columns_tokens = opts.columns_spec.as_deref().map(|s| parse_columns_spec(s, view)).transpose()?;
+  let widths_tokens = opts.widths_spec.as_deref().map(|s| parse_widths_spec(s, view)).transpose()?;
+
+  let body = scan_table_body(view)?;
+
+  if body.head.is_empty() && body.rows.is_empty() {
+    return Err(EvalError::MissingEnvironmentArgument {
+      name: "table".to_string(),
+      expected: "\\row コマンド".to_string(),
+      span: view.span().into(),
+    });
+  }
+
+  let column_count =
+    resolve_column_count(columns_tokens.as_deref(), widths_tokens.as_deref(), &body.head, &body.rows, view)?;
+
+  let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
+  let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
+
+  return Ok(vec![DocNode::Table {
+    columns,
+    widths,
+    head: body.head.into_iter().map(|(row, _)| row).collect(),
+    rows: body.rows.into_iter().map(|(row, _)| row).collect(),
+    caption: body.caption,
+    caption_position: body.caption_position,
+    label: opts.label,
+    number,
+    breakable: opts.breakable,
+  }]);
+}
+
+/// `table` 環境の任意引数を集約した構造体
+struct TableOpts {
+  columns_spec: Option<String>,
+  widths_spec: Option<String>,
+  label: Option<String>,
+  breakable: bool,
+}
+
+/// `table` の任意引数（`columns` / `widths` / `label` / `breakable`）を収集してスカラー化する
+///
+/// 既定では `breakable` は `true`（改ページによる分割を許可）。
+fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, EvalError> {
   let opt_args = collect_environment_opt_args(
     view,
     &[
@@ -71,18 +129,28 @@ pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
     }
   }
 
-  let number = evaluator.registry.increment_with_label(CounterName::Table, label.as_deref(), view.span().into())?;
+  return Ok(TableOpts {
+    columns_spec,
+    widths_spec,
+    label,
+    breakable,
+  });
+}
 
-  if !view.args().is_empty() {
-    return Err(EvalError::ExtraEnvironmentArgument {
-      name: "table".to_string(),
-      span: view.span().into(),
-    });
-  }
+/// 本体走査で収集した行・キャプション情報
+struct TableBody {
+  head: Vec<(TableRow, miette::SourceSpan)>,
+  rows: Vec<(TableRow, miette::SourceSpan)>,
+  caption: Option<Vec<InlineNode>>,
+  caption_position: CaptionPosition,
+}
 
-  let columns_tokens = columns_spec.as_deref().map(|s| parse_columns_spec(s, view)).transpose()?;
-  let widths_tokens = widths_spec.as_deref().map(|s| parse_widths_spec(s, view)).transpose()?;
-
+/// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
+///
+/// `\head` / `\caption` は高々 1 回（重複は [`EvalError::DuplicateCommandInEnvironment`]）。
+/// 行はソース位置とともに収集し、列数確定後のセル数検証に使う。キャプション位置は、
+/// `\caption` が最初の行（`\head` / `\row`）よりソース上で先に現れた場合のみ `Top`。
+fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalError> {
   let source = view.source();
   // 行はソース位置とともに収集し、列数確定後にセル数を検証する
   let mut head: Vec<(TableRow, miette::SourceSpan)> = Vec::new();
@@ -132,16 +200,29 @@ pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
     }
   }
 
-  if head.is_empty() && rows.is_empty() {
-    return Err(EvalError::MissingEnvironmentArgument {
-      name: "table".to_string(),
-      expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
-    });
-  }
+  return Ok(TableBody {
+    head,
+    rows,
+    caption,
+    caption_position,
+  });
+}
 
+/// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
+///
+/// 列数は `columns` / `widths` の明示指定を優先し、両方未指定なら行のセル数（`span` 合計）の
+/// 最大値を採る。`columns` と `widths` の長さが食い違う場合は
+/// [`EvalError::TableColumnsWidthsMismatch`]、列数と一致しない行があれば
+/// [`EvalError::TableRowCellCountMismatch`] を返す。
+fn resolve_column_count(
+  columns_tokens: Option<&[ColumnAlign]>,
+  widths_tokens: Option<&[ColumnWidth]>,
+  head: &[(TableRow, miette::SourceSpan)],
+  rows: &[(TableRow, miette::SourceSpan)],
+  view: &EnvironmentView,
+) -> Result<usize, EvalError> {
   // 列数の決定: columns / widths の明示指定を優先し、両方未指定なら行のセル数（span 合計）の最大値
-  let column_count = match (&columns_tokens, &widths_tokens) {
+  let column_count = match (columns_tokens, widths_tokens) {
     (Some(c), Some(w)) => {
       if c.len() != w.len() {
         return Err(EvalError::TableColumnsWidthsMismatch {
@@ -169,20 +250,7 @@ pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
     }
   }
 
-  let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
-  let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
-
-  return Ok(vec![DocNode::Table {
-    columns,
-    widths,
-    head: head.into_iter().map(|(row, _)| row).collect(),
-    rows: rows.into_iter().map(|(row, _)| row).collect(),
-    caption,
-    caption_position,
-    label,
-    number,
-    breakable,
-  }]);
+  return Ok(column_count);
 }
 
 /// 行のセル数（`span` 合計）を返す
