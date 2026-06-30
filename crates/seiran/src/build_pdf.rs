@@ -232,20 +232,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
   // ジオメトリは本文（N 段）と前付け（常に 1 段）で分ける。両者は段数・段間以外を共有する。
-  let body_geometry = hlist::PageGeometry {
-    margin_top: config.pdf.margin.top.to_pt(),
-    page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
-    default_font_size,
-    line_height_factor,
-    table_cell_padding: style.table.cell_padding.to_pt(),
-    num_columns: body_columns,
-    column_gap,
-  };
-  let front_geometry = hlist::PageGeometry {
-    num_columns: 1,
-    column_gap: 0.0,
-    ..body_geometry
-  };
+  let (body_geometry, front_geometry) =
+    build_page_geometries(&config, &style, default_font_size, line_height_factor, body_columns, column_gap);
 
   // 本文を 1 回だけページ分割する。これがそのまま最終本文ページになる。各見出しの本文内ページ index も
   // ここから採取する。本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、得られる
@@ -260,38 +248,21 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました");
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
-  let mut front_blocks: Vec<hlist::Block> = Vec::new();
-  if style.title_page.enabled {
-    let metadata = lowering::TitlePageMetadata {
-      title: config.document.title.clone(),
-      author: config.document.author.clone(),
-      date: config.document.date.clone(),
-    };
-    // lower_title_page は末尾に PageBreak を含むため、後続（目次・本文）は次ページから始まる。
-    let title_nodes = lowering::lower_title_page(&metadata, &style.title_page);
-    {
-      let _span = debug_span!("build_blocks", region = "title").entered();
-      front_blocks.extend(layout::build_blocks(
-        title_nodes,
-        &harf_rust_shapers,
-        &metrics,
-        default_font_size,
-        line_height_factor,
-      ));
-    }
-    debug!("タイトルページを生成しました");
-  }
-  if style.toc.enabled {
-    let toc_entries = collect_toc_entries(&doc_nodes, &heading_pages, &style.toc, &style.page_numbering);
-    let toc_spec = build_toc_spec(&style, text_width);
-    let toc_blocks = layout::build_toc_blocks(&toc_spec, &toc_entries, &harf_rust_shapers, &metrics);
-    if !toc_blocks.is_empty() {
-      front_blocks.extend(toc_blocks);
-      // 目次の後で改ページし、本文を次ページから始める（本文区間の独立性を保つ）。
-      front_blocks.push(hlist::Block::PageBreak);
-      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
-    }
-  }
+  // タイトルページのメタデータは config 形状から疎結合にするため本体で構築して渡す。
+  let title_metadata = lowering::TitlePageMetadata {
+    title: config.document.title.clone(),
+    author: config.document.author.clone(),
+    date: config.document.date.clone(),
+  };
+  let front_blocks = assemble_front_matter(
+    &doc_nodes,
+    &heading_pages,
+    &title_metadata,
+    &style,
+    &harf_rust_shapers,
+    &metrics,
+    text_width,
+  );
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
   // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
@@ -317,19 +288,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height.to_pt();
-  let running_spec = layout::RunningContentSpec {
-    header: running_slots(&style.header, style.header.baseline_offset.to_pt(), true),
-    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset.to_pt(), false),
-    metadata: layout::RunningMetadata {
-      title: config.document.title.clone().unwrap_or_default(),
-      author: config.document.author.clone().unwrap_or_default(),
-      date: config.document.date.clone().unwrap_or_default(),
-    },
-    text_width,
-    page_numbers,
-    // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
-    skip_first: style.title_page.enabled,
-  };
+  let running_spec = build_running_spec(&style, &config.document, text_width, page_height, page_numbers);
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
@@ -358,6 +317,35 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
+/// 本文（N 段）と前付け（常に 1 段）の [`hlist::PageGeometry`] を組み立てる。
+///
+/// 両者は段数・段間以外を共有するため、本文側を組んでから前付けは `num_columns` / `column_gap` だけ
+/// 差し替える。
+fn build_page_geometries(
+  config: &read_config::Config,
+  style: &read_style::Style,
+  default_font_size: f32,
+  line_height_factor: f32,
+  body_columns: usize,
+  column_gap: f32,
+) -> (hlist::PageGeometry, hlist::PageGeometry) {
+  let body_geometry = hlist::PageGeometry {
+    margin_top: config.pdf.margin.top.to_pt(),
+    page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
+    default_font_size,
+    line_height_factor,
+    table_cell_padding: style.table.cell_padding.to_pt(),
+    num_columns: body_columns,
+    column_gap,
+  };
+  let front_geometry = hlist::PageGeometry {
+    num_columns: 1,
+    column_gap: 0.0,
+    ..body_geometry
+  };
+  return (body_geometry, front_geometry);
+}
+
 /// Document IR の見出しから PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
 ///
 /// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しの収集は意味側の
@@ -385,6 +373,45 @@ fn heading_label(number: &str, title_plain: &str) -> String {
     return number.to_string();
   }
   return format!("{number} {title_plain}");
+}
+
+/// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
+///
+/// 各リージョンは改ページ境界で始まる。`lower_title_page` は末尾に `PageBreak` を含むため、後続
+/// （目次・本文）は次ページから始まる。目次の後にも `Block::PageBreak` を積み、本文を次ページから
+/// 始める（本文区間の独立性を保つ）。`title_page` / `toc` がともに無効なら空列を返す。
+fn assemble_front_matter(
+  doc_nodes: &[DocNode],
+  heading_pages: &[usize],
+  title_metadata: &lowering::TitlePageMetadata,
+  style: &read_style::Style,
+  shapers: &HarfRustShapers,
+  metrics: &FontMetrics,
+  text_width: f32,
+) -> Vec<hlist::Block> {
+  // build_blocks 用の既定サイズは style から導出する（呼び出し本体と同じ値）。
+  let default_font_size = style.text.font_size.to_pt();
+  let line_height_factor = style.text.line_height_factor;
+  let mut front_blocks: Vec<hlist::Block> = Vec::new();
+  if style.title_page.enabled {
+    let title_nodes = lowering::lower_title_page(title_metadata, &style.title_page);
+    {
+      let _span = debug_span!("build_blocks", region = "title").entered();
+      front_blocks.extend(layout::build_blocks(title_nodes, shapers, metrics, default_font_size, line_height_factor));
+    }
+    debug!("タイトルページを生成しました");
+  }
+  if style.toc.enabled {
+    let toc_entries = collect_toc_entries(doc_nodes, heading_pages, &style.toc, &style.page_numbering);
+    let toc_spec = build_toc_spec(style, text_width);
+    let toc_blocks = layout::build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
+    if !toc_blocks.is_empty() {
+      front_blocks.extend(toc_blocks);
+      front_blocks.push(hlist::Block::PageBreak);
+      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
+    }
+  }
+  return front_blocks;
 }
 
 /// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
@@ -536,6 +563,32 @@ fn parse_all_sources(
     });
   }
   return Ok(all_nodes);
+}
+
+/// ページ数確定後のヘッダー・フッター配置仕様 [`layout::RunningContentSpec`] を組み立てる。
+///
+/// ヘッダー / フッターの各スロットは [`running_slots`] で構築し（全スロット空なら描画省略）、`skip_first`
+/// でタイトルページ（先頭ページ）への非描画を指示する。`page_numbers` のラベル解決は配置パス側が担う。
+fn build_running_spec(
+  style: &read_style::Style,
+  document: &read_config::DocumentConfig,
+  text_width: f32,
+  page_height: f32,
+  page_numbers: Vec<(String, String)>,
+) -> layout::RunningContentSpec {
+  return layout::RunningContentSpec {
+    header: running_slots(&style.header, style.header.baseline_offset.to_pt(), true),
+    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset.to_pt(), false),
+    metadata: layout::RunningMetadata {
+      title: document.title.clone().unwrap_or_default(),
+      author: document.author.clone().unwrap_or_default(),
+      date: document.date.clone().unwrap_or_default(),
+    },
+    text_width,
+    page_numbers,
+    // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
+    skip_first: style.title_page.enabled,
+  };
 }
 
 /// `RunningContentStyle` をヘッダー・フッター配置用の [`layout::RunningSlots`] に変換する。
