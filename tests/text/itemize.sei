@@ -20,4 +20,48 @@ itemize 環境（順序なしリスト）と enumerate 環境（順序付きリ�
 \item{3 番目の手順。}
 \end{enumerate}
 
+\section{ネストした箇条書き}
+
+リストをネストすると、深さに応じてマーカーの見た目が自動的に変わることを確認する。
+順序なしリストを 3 段ネストすると、マーカーは 1 段目から順に「黒丸・en dash・アスタリスク」と
+変化する。
+
+\begin{itemize}
+\item{1 段目の項目。マーカーは黒丸。
+\begin{itemize}
+\item{2 段目の項目。マーカーは en dash。
+\begin{itemize}
+\item{3 段目の項目。マーカーはアスタリスク。}
+\end{itemize}
+}
+\item{2 段目のもう 1 つの項目。}
+\end{itemize}
+}
+\end{itemize}
+
+順序付きリストを 3 段ネストすると、番号書式が「算用数字・小文字英字（丸括弧）・小文字ローマ数字」と
+段ごとに変化する。
+
+\begin{enumerate}
+\item{1 段目の手順。番号は算用数字。
+\begin{enumerate}
+\item{2 段目の手順。番号は小文字英字の丸括弧。
+\begin{enumerate}
+\item{3 段目の手順。番号は小文字ローマ数字。}
+\end{enumerate}
+}
+\end{enumerate}
+}
+\end{enumerate}
+
+itemize と enumerate を混在させたネストでも、各種別のシーケンスに従うことを確認する。
+
+\begin{itemize}
+\item{外側は順序なしリスト（黒丸）。
+\begin{enumerate}
+\item{内側は順序付きリスト（小文字英字の丸括弧）。}
+\end{enumerate}
+}
+\end{itemize}
+
 箇条書きの後の段落です。

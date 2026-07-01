@@ -126,6 +126,12 @@ pub struct LoweringContext<'a> {
   ///
   /// `\image[downsample=...]` の per-image 上書きが無いときの既定値。
   pub image_downsample: bool,
+  /// 箇条書き（`itemize` / `enumerate`）のネスト深さ（0 = 最上位）
+  ///
+  /// [`crate::list::lower_list`] がマーカーの見た目を段ごとに切り替えるために参照する。
+  /// リスト項目の内容を lower する際に [`LoweringContext::with_list_depth`] で +1 した文脈を
+  /// 渡すことで、item 内容中のネストしたリストが深さ +1 として lower される。
+  pub list_depth: usize,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -144,6 +150,8 @@ impl<'a> LoweringContext<'a> {
       // （read_config::ImageConfig::default と同値）。テストはこの既定をそのまま使う。
       image_max_dpi: 300,
       image_downsample: true,
+      // 文書のトップレベルは深さ 0。リストに入るたび with_list_depth で +1 する。
+      list_depth: 0,
     };
   }
 
@@ -170,6 +178,7 @@ impl<'a> LoweringContext<'a> {
       first_line_indent: self.first_line_indent,
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
+      list_depth: self.list_depth,
     };
   }
 
@@ -186,6 +195,24 @@ impl<'a> LoweringContext<'a> {
       first_line_indent,
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
+      list_depth: self.list_depth,
+    };
+  }
+
+  /// 箇条書きのネスト深さだけを差し替えた派生文脈を返す
+  ///
+  /// `style` 参照・その他フィールドは共有したまま `list_depth` のみ上書きする。
+  /// [`crate::list::lower_list`] がリスト項目の内容を lower する際に深さ +1 の文脈を渡し、
+  /// item 内容中のネストしたリストへ深さを伝播させるのに使う。
+  #[must_use]
+  pub fn with_list_depth(&self, list_depth: usize) -> LoweringContext<'a> {
+    return LoweringContext {
+      style: self.style,
+      body_font_kind: self.body_font_kind,
+      first_line_indent: self.first_line_indent,
+      image_max_dpi: self.image_max_dpi,
+      image_downsample: self.image_downsample,
+      list_depth,
     };
   }
 

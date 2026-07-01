@@ -6,7 +6,7 @@
 
 use std::{collections::HashSet, path::PathBuf};
 
-use lowering::LoweringContext;
+use lowering::{LayoutNode, LoweringContext};
 use parser::parse_source;
 use read_style::Style;
 
@@ -65,6 +65,53 @@ fn smoke_ref_fixture() { smoke_through_lowering("ref"); }
 
 #[test]
 fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
+
+/// `tests/text/<name>.sei` を parse → lower し、レイアウトノード列を返すヘルパ
+fn lower_fixture(name: &str) -> Vec<LayoutNode> {
+  let path = fixture_path(name);
+  let content =
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
+  let style = Style::default();
+  let doc_nodes = parse_source(&content, &path.display().to_string(), &style, &HashSet::new())
+    .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
+  let ctx = LoweringContext::new(&style);
+  return lowering::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
+}
+
+/// レイアウト木を再帰的に辿り、リスト項目の先頭に置かれるマーカー文字列を集める
+///
+/// `lower_list` は各項目 `VBox` の先頭に `Text(marker, _)` を置く。ここでは
+/// 「先頭の子が `Text` である `VBox`」の先頭文字列を収集し、深さ別マーカーの検証に使う。
+fn collect_item_markers(nodes: &[LayoutNode], out: &mut Vec<String>) {
+  for node in nodes {
+    match node {
+      LayoutNode::VBox { children, .. } => {
+        if let Some(LayoutNode::Text(text, _)) = children.first() {
+          out.push(text.clone());
+        }
+        collect_item_markers(children, out);
+      },
+      LayoutNode::HBox { children, .. } => collect_item_markers(children, out),
+      _ => {},
+    }
+  }
+}
+
+#[test]
+fn itemize_fixture_produces_depth_varying_markers() {
+  // Arrange — ネストを含む itemize フィクスチャを parse → lower する
+  let nodes = lower_fixture("itemize");
+
+  // Act — レイアウト木からリスト項目のマーカー文字列を集める
+  let mut markers = Vec::new();
+  collect_item_markers(&nodes, &mut markers);
+
+  // Assert — parse → lower を通した全パイプラインで、深さ別マーカーが実際に現れる。
+  // unordered は • → – → *、ordered は 1. → (a) → i. がそれぞれ生成される。
+  for expected in ["• ", "– ", "* ", "1. ", "(a) ", "i. "] {
+    assert!(markers.iter().any(|m| m == expected), "マーカー {expected:?} が見つからない: {markers:?}");
+  }
+}
 
 #[test]
 fn smoke_table_fixture() { smoke_through_lowering("table"); }
