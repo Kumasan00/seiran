@@ -37,10 +37,16 @@
 
 use std::collections::HashMap;
 
-use document::{DocNode, HeadingLevel, InlineNode, ListItem, ProofTarget};
+use document::HeadingLevel;
 use read_style::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
 
 use crate::evaluator::EvalError;
+
+mod format;
+mod resolve;
+
+use format::{expand_placeholders, expand_ref_format, parse_counter_name};
+pub(crate) use resolve::resolve_refs;
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -309,73 +315,6 @@ pub struct ResolvedLabel {
   pub number: String,
 }
 
-/// `snake_case` のカウンタ名文字列を [`CounterName`] に解決する
-///
-/// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
-/// 9 種以外の文字列は `None` を返す。
-fn parse_counter_name(s: &str) -> Option<CounterName> {
-  return match s {
-    "part" => Some(CounterName::Part),
-    "chapter" => Some(CounterName::Chapter),
-    "section" => Some(CounterName::Section),
-    "subsection" => Some(CounterName::Subsection),
-    "paragraph" => Some(CounterName::Paragraph),
-    "subparagraph" => Some(CounterName::Subparagraph),
-    "figure" => Some(CounterName::Figure),
-    "equation" => Some(CounterName::Equation),
-    "table" => Some(CounterName::Table),
-    _ => None,
-  };
-}
-
-/// `ref_format` テンプレートを適用して `\ref` の表示文字列を作る
-///
-/// 認識するプレースホルダは `{number}`（裸の番号）と `{display_name}`（種別名）のみ。
-/// 未知のプレースホルダや閉じ括弧の欠落はリテラル扱いで残す。
-fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String {
-  return expand_placeholders(template, |name| match name {
-    "number" => number.to_string(),
-    "display_name" => display_name.to_string(),
-    // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
-    _ => format!("{{{name}}}"),
-  });
-}
-
-/// `{name}` 形式のプレースホルダを `resolve` の戻り値で置換する共通ループ
-///
-/// テンプレート文字列を 1 文字ずつ走査し、`{...}` の中身を `resolve(name)` に渡してその
-/// 戻り値を出力する。`resolve` が空文字列を返せば「ドロップ」、`{name}` を返せば「リテラル
-/// 保持」を表現でき、カウンタ・定理・`ref_format` の各展開がこの 1 つの実装を共有する。
-/// 閉じ括弧のない `{...` はリテラル扱いとしてそのまま残す。
-fn expand_placeholders(template: &str, resolve: impl Fn(&str) -> String) -> String {
-  let mut out = String::new();
-  let mut chars = template.chars().peekable();
-  while let Some(c) = chars.next() {
-    if c != '{' {
-      out.push(c);
-      continue;
-    }
-    let mut name = String::new();
-    let mut closed = false;
-    while let Some(&nc) = chars.peek() {
-      chars.next();
-      if nc == '}' {
-        closed = true;
-        break;
-      }
-      name.push(nc);
-    }
-    if !closed {
-      // 閉じ括弧なしの `{...` はリテラル扱いとして残す
-      out.push('{');
-      out.push_str(&name);
-      continue;
-    }
-    out.push_str(&resolve(&name));
-  }
-  return out;
-}
-
 /// 見出しカウンタ [`CounterName`] を、定理カウンタの `reset_by` に対応する [`TheoremReset`] に写す
 ///
 /// part / chapter / section / subsection の 4 種だけが定理リセットのトリガになりうる。
@@ -391,131 +330,9 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
   };
 }
 
-// =============================================================================
-// Pass2: `\ref` 解決
-// =============================================================================
-
-/// `Vec<DocNode>` を再帰的に走査して `InlineNode::Ref` を `CounterRegistry` で解決する
-///
-/// pass1（`Evaluator::evaluate_children`）で生成された `Ref { number: None }` を
-/// `registry.resolve_label(label)` で書き換える。未登録ラベルは
-/// [`EvalError::UnknownLabel`] を返す。
-///
-/// # Errors
-///
-/// 未定義ラベルが見つかった場合に [`EvalError::UnknownLabel`] を返します。
-pub(crate) fn resolve_refs(nodes: &mut [DocNode], registry: &CounterRegistry) -> Result<(), EvalError> {
-  for node in nodes {
-    match node {
-      DocNode::Heading { title: inlines, .. }
-      | DocNode::Paragraph(inlines)
-      | DocNode::Figure {
-        caption: Some(inlines),
-        ..
-      } => resolve_inlines(inlines, registry)?,
-      DocNode::List { items, .. } => {
-        for item in items {
-          resolve_list_item(item, registry)?;
-        }
-      },
-      DocNode::Theorem { body, of, .. } => {
-        resolve_refs(body, registry)?;
-        if let Some(target) = of {
-          resolve_proof_target(target, registry)?;
-        }
-      },
-      // 引用本体は通常の本文と同じく `\ref` を含みうるため再帰する
-      DocNode::Quote { body, .. } => resolve_refs(body, registry)?,
-      DocNode::Table {
-        head,
-        rows,
-        caption,
-        ..
-      } => {
-        for row in head.iter_mut().chain(rows.iter_mut()) {
-          for cell in &mut row.cells {
-            resolve_inlines(&mut cell.content, registry)?;
-          }
-        }
-        if let Some(inlines) = caption {
-          resolve_inlines(inlines, registry)?;
-        }
-      },
-      // 数式中の `\ref` は対象外（現状の MathNode に Ref バリアントがないため）。
-      // `DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない。
-      DocNode::MathBlock { .. }
-      | DocNode::Figure { caption: None, .. }
-      | DocNode::Rule { .. }
-      | DocNode::PageBreak
-      | DocNode::Space(_)
-      | DocNode::Anchor(_) => {},
-    }
-  }
-  return Ok(());
-}
-
-fn resolve_list_item(item: &mut ListItem, registry: &CounterRegistry) -> Result<(), EvalError> {
-  return resolve_refs(&mut item.content, registry);
-}
-
-/// `proof` の `[of=label]` 参照を解決する（`\ref` 解決と同型）
-///
-/// 既に解決済み（`number.is_some()`）なら何もしない。未登録ラベルは
-/// [`EvalError::UnknownLabel`] を返す。
-fn resolve_proof_target(target: &mut ProofTarget, registry: &CounterRegistry) -> Result<(), EvalError> {
-  if target.number.is_some() {
-    return Ok(());
-  }
-  let Some(resolved) = registry.resolve_label(&target.label) else {
-    return Err(EvalError::UnknownLabel {
-      label: target.label.clone(),
-      span: target.span,
-    });
-  };
-  target.number = Some(resolved.to_string());
-  return Ok(());
-}
-
-fn resolve_inlines(inlines: &mut [InlineNode], registry: &CounterRegistry) -> Result<(), EvalError> {
-  for inline in inlines {
-    match inline {
-      InlineNode::Styled { children, .. }
-      | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. }
-      | InlineNode::InternalLink { children, .. } => {
-        resolve_inlines(children, registry)?;
-      },
-      InlineNode::Ref {
-        label,
-        number,
-        span,
-      } => {
-        if number.is_some() {
-          continue;
-        }
-        let Some(resolved) = registry.resolve_label(label) else {
-          return Err(EvalError::UnknownLabel {
-            label: label.clone(),
-            span: *span,
-          });
-        };
-        *number = Some(resolved.to_string());
-      },
-      // `\cite` のキー検証は cite::resolve_cites が別途行う（ここでは触らない）
-      InlineNode::Text(_)
-      | InlineNode::InlineMath(_)
-      | InlineNode::Symbol(_)
-      | InlineNode::LineBreak
-      | InlineNode::NoIndent
-      | InlineNode::Cite { .. } => {},
-    }
-  }
-  return Ok(());
-}
-
 #[cfg(test)]
 mod tests {
-  use document::DocNode;
+  use document::{DocNode, InlineNode};
   use miette::SourceSpan;
   use read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
 
