@@ -43,6 +43,16 @@ pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
 use tracing::debug;
 use types::{Align, Color, FontKind, FontType, Length};
 
+/// 欧文単語間スペースの伸長能力（自然幅に対する倍率）
+///
+/// 両端揃え（`TextAlignment::Justify`）で行の余り幅を配分するときの上限。
+/// 自然幅の 1/2 伸長・1/3 収縮は Computer Modern のスペース伸縮比と同じで、
+/// issue #162 の目安値。上限を超える行は上限で止め、右端不一致を許容する。
+const SPACE_STRETCH_RATIO: f32 = 1.0 / 2.0;
+
+/// 欧文単語間スペースの収縮能力（自然幅に対する倍率）
+const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
+
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
@@ -433,10 +443,11 @@ impl Measurer<'_> {
           }
           self.push_sub_run(&run, text, seg_glyph_start..glyph_index - 1, seg_byte_start..break_point.byte - 1, out);
           #[allow(clippy::cast_precision_loss)]
+          let natural = space.x_advance as f32 * scale;
           out.push(HItem::Glue {
-            natural: space.x_advance as f32 * scale,
-            stretch: 0.0,
-            shrink: 0.0,
+            natural,
+            stretch: natural * SPACE_STRETCH_RATIO,
+            shrink: natural * SPACE_SHRINK_RATIO,
             breakable: true,
           });
           seg_glyph_start = glyph_index;
