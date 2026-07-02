@@ -1,0 +1,30 @@
+# golden テスト用の固定文献データ（fixture）。
+#
+# 文献データのみを記述する。CSL スタイル（.csl）の選択は見た目設定として
+# style.toml の [reference].csl_path に置く。
+# トップレベルのテーブルキーがそのまま参照 ID になる（references. 接頭辞は不要）。
+
+# サンプル文献（tests/text/cite.sei の \cite で参照される）。
+[kwan2014]
+type = "book"
+title = "Crazy Rich Asians"
+publisher = "Anchor Books"
+publisher-place = "New York, NY, US"
+[[kwan2014.author]]
+family = "Kwan"
+given = "Kevin"
+[kwan2014.issued]
+date-parts = [[2014]]
+
+[doe2020]
+type = "article-journal"
+title = "On Something Interesting"
+container-title = "Journal of Things"
+volume = 3
+issue = 1
+page = "10-20"
+[[doe2020.author]]
+family = "Doe"
+given = "John"
+[doe2020.issued]
+date-parts = [[2020, 5, 1]]

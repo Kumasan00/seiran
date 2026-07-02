@@ -1,0 +1,25 @@
+# golden テスト用の固定 style（fixture）
+#
+# ユーザローカルの `config/style.toml`（gitignore 対象）から独立させた、テスト専用のスタイル。
+# ここでは golden が前提とする有効値だけを列挙する（スキーマの解説・設定例は書かない —
+# それはユーザ向け設定ファイルの役目）。省略した項目はすべて `Style::default()` の既定値。
+#
+# ここを変更すると golden の座標が変わるので、変更時は `UPDATE_GOLDEN=1 cargo test -p seiran`
+# で golden を再生成し、差分を確認してコミットすること。
+
+[text]
+line_height_factor = 1.05
+
+[heading.part]
+format = "第{number}部 {title}"
+
+[heading.chapter]
+format = "第{number}章 {title}"
+
+[heading.section]
+format = "{number} {title}"
+
+[reference]
+csl_path = "vendor/csl/ieee.csl"
+locale_path = "vendor/csl/locales-ja-JP.xml"
+locale = "ja-JP"

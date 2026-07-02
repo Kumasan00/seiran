@@ -216,6 +216,7 @@ pub enum MyError {
 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `figure.sei` / `itemize.sei` / `table.sei` / `ref.sei`）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
+- **golden テスト**（`crates/seiran/src/build_pdf/golden.rs`）: 入力はコミット済み fixture（`crates/seiran/tests/config/`）+ `tools/fetch-test-assets.sh` が `vendor/` へ取得するピン留め資産（フォント・CSL。SHA-256 検証、gitignore 対象・コミットしない）。初回はスクリプトを 1 度実行する。golden 再生成は `UPDATE_GOLDEN=1 cargo test -p seiran`。ユーザローカルの `config/` / `fonts/` はテストから参照しない
 
 ## 設定ファイル
 

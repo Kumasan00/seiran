@@ -10,3 +10,6 @@ fonts/
 *.ttc
 
 /config
+
+# fetched third-party test assets (tools/fetch-test-assets.sh)
+/vendor
