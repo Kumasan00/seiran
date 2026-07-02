@@ -17,6 +17,7 @@ use types::{FontKind, FontType};
 pub(crate) struct TextSegment {
   pub(crate) text: String,
   pub(crate) font_type: FontType,
+  pub(crate) category: ScriptCategory,
 }
 
 /// Unicode スクリプトを言語カテゴリに分類するための列挙型
@@ -24,7 +25,7 @@ pub(crate) struct TextSegment {
 /// 新しい言語を追加する場合は、ここにバリアントを追加し、
 /// `classify_script` と `resolve_font_type` を拡張してください。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ScriptCategory {
+pub(crate) enum ScriptCategory {
   /// ラテン系スクリプト（Latin, Cyrillic, Greek など）
   Latin,
   /// 日本語スクリプト（Han, Hiragana, Katakana）
@@ -95,10 +96,11 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
       Some(cat) => {
         // スクリプトカテゴリが変わった場合、現在のセグメントを保存して新しいセグメントを開始
         if !current_text.is_empty() {
-          let font_type = resolve_font_type(font_kind, current_category.unwrap_or(ScriptCategory::Latin));
+          let segment_category = current_category.unwrap_or(ScriptCategory::Latin);
           segments.push(TextSegment {
             text: current_text,
-            font_type,
+            font_type: resolve_font_type(font_kind, segment_category),
+            category: segment_category,
           });
           current_text = String::new();
         }
@@ -110,10 +112,11 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
 
   // 残りのテキストをセグメントとして追加
   if !current_text.is_empty() {
-    let font_type = resolve_font_type(font_kind, current_category.unwrap_or(ScriptCategory::Latin));
+    let segment_category = current_category.unwrap_or(ScriptCategory::Latin);
     segments.push(TextSegment {
       text: current_text,
-      font_type,
+      font_type: resolve_font_type(font_kind, segment_category),
+      category: segment_category,
     });
   }
 
