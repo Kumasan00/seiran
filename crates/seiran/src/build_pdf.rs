@@ -7,6 +7,9 @@ mod front_matter;
 mod outline;
 mod running;
 
+#[cfg(test)]
+mod golden;
+
 use std::{
   collections::HashSet,
   fs,
@@ -25,6 +28,7 @@ use front_matter::{assemble_front_matter, break_front_matter, page_number_labels
 use lowering::LoweringContext;
 use outline::collect_outline_entries;
 use parser::ParseSourceError;
+use pdf_gen::OutlineEntry;
 use running::build_running_spec;
 use tracing::{debug, debug_span, info};
 use types::AnchorMark;
@@ -67,11 +71,75 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let config = read_config::read_config(config_path)?;
   let style = read_style::read_style(config.style_path.as_deref())?;
   let references = read_references::read_references(config.references_path.as_deref())?;
+
+  let stage_start = Instant::now();
+  let font_data = FontData::new(&config.font_configs)?;
+  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
+
+  // 描画前パイプライン（パース〜走り文配置）を 1 つの seam に束ねて確定レイアウトを得る。
+  let laid_out = build_pages(&config, &style, &references, &font_data)?;
+
+  // 描画は font_refs / metrics を再構築して使う。両者は `font_data` 上のゼロコピービュー
+  // （FontRef のパース + head/hhea 参照）で、`build_pages` 内で使ったものは borrow が閉じていて
+  // 持ち出せないため描画パス用にもう一度組み直す。フォントファイル自体の再読込は起きない。
+  let font_refs = FontRefs::new(&config.font_configs, &font_data)?;
+  let metrics = FontMetrics::new(&font_refs)?;
+
+  let stage_start = Instant::now();
+  let pdf_bytes =
+    pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &laid_out.pages, &style, &laid_out.outline_entries)?;
+  info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
+
+  let stage_start = Instant::now();
+  let output_path = config.output.pdf_path();
+  fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
+    path: output_path.display().to_string(),
+    source,
+  })?;
+  info!(output_path = %output_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
+
+  return Ok(BuildSummary {
+    output_path,
+    page_count: laid_out.pages.len(),
+    total_elapsed_ms: elapsed_ms(build_start),
+  });
+}
+
+/// [`build_pages`] の出力＝描画パスへ渡す確定レイアウト。
+///
+/// いずれもフォント非依存の所有データ（[`hlist::Page`] は計測済みグリフ列を持ち `FontRef` を
+/// 借用しない、[`OutlineEntry`] はプレーンな見出し情報）なので、フォント関連の借用を伴わずに
+/// `build_pages` の外へ持ち出せる。golden スナップショットテストは `pages` をダンプ対象にする。
+pub(super) struct LaidOutDocument {
+  /// 前付け + 本文を連結した確定ページ列（走り文配置済み）
+  pub(super) pages: Vec<hlist::Page>,
+  /// PDF しおり用の見出し情報（文書順）
+  pub(super) outline_entries: Vec<OutlineEntry>,
+}
+
+/// 読込済みの設定・スタイル・文献とフォントデータから、描画直前の確定レイアウトを構築する。
+///
+/// `build_pdf` の描画前パイプライン（ソースのパース → 文献 CSL 整形 → Document IR → `LayoutNode` →
+/// `build_blocks` → 画像サイズ確定 → `break_pages` → 走り文配置 → しおり収集）を 1 つの関数に束ねたもの。
+/// フォントは `font_data` から内部で `FontRefs` / シェーパー / メトリクスを組み立てて使い、
+/// 返り値はフォント非依存の所有データのみ（[`LaidOutDocument`]）。これにより本文組版のロジックを
+/// PDF 描画・ファイル I/O から切り離し、確定ページ列を golden テストで直接検証できる。
+///
+/// # Errors
+///
+/// ソース読込・パース・文献整形・lowering・フォント検証・段組み幅の不正のいずれかで失敗した場合に
+/// エラーを返す。
+fn build_pages(
+  config: &read_config::Config,
+  style: &read_style::Style,
+  references: &read_references::References,
+  font_data: &FontData,
+) -> miette::Result<LaidOutDocument> {
   // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
   let citation_keys: HashSet<String> = references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let mut doc_nodes = parse_all_sources(&config.sources, &style, &citation_keys)?;
+  let mut doc_nodes = parse_all_sources(&config.sources, style, &citation_keys)?;
   info!(
     source_count = config.sources.len(),
     node_count = doc_nodes.len(),
@@ -81,21 +149,17 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   // `\cite` を CSL 整形し、引用された文献の書誌を本文末尾に追加する（parser の後・lowering の前）。
   let stage_start = Instant::now();
-  citation::process_citations(&mut doc_nodes, &references, &style)
+  citation::process_citations(&mut doc_nodes, references, style)
     .map_err(|source| BuildPdfError::Citation { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let stage_start = Instant::now();
-  let lowering_ctx = LoweringContext::new(&style).with_image_defaults(config.image.max_dpi, config.image.downsample);
+  let lowering_ctx = LoweringContext::new(style).with_image_defaults(config.image.max_dpi, config.image.downsample);
   let body_layout_nodes =
     lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
-  let stage_start = Instant::now();
-  let font_data = FontData::new(&config.font_configs)?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
-
-  let font_refs = FontRefs::new(&config.font_configs, &font_data)?;
+  let font_refs = FontRefs::new(&config.font_configs, font_data)?;
 
   let stage_start = Instant::now();
   validate_font::validate_fonts(&config.font_configs, &font_refs)?;
@@ -149,7 +213,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   // ジオメトリは本文（N 段）と前付け（常に 1 段）で分ける。両者は段数・段間以外を共有する。
   let (body_geometry, front_geometry) =
-    build_page_geometries(&config, &style, default_font_size, line_height_factor, body_columns, column_gap);
+    build_page_geometries(config, style, default_font_size, line_height_factor, body_columns, column_gap);
 
   // 本文を 1 回だけページ分割する。これがそのまま最終本文ページになる。各見出しの本文内ページ index も
   // ここから採取する。本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、得られる
@@ -170,15 +234,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
     author: config.document.author.clone(),
     date: config.document.date.clone(),
   };
-  let front_blocks = assemble_front_matter(
-    &doc_nodes,
-    &heading_pages,
-    &title_metadata,
-    &style,
-    &harf_rust_shapers,
-    &metrics,
-    text_width,
-  );
+  let front_blocks =
+    assemble_front_matter(&doc_nodes, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
   // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
@@ -204,29 +261,16 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height.to_pt();
-  let running_spec = build_running_spec(&style, &config.document, text_width, page_height, page_numbers);
+  let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_numbers);
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
   // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
   let outline_entries = collect_outline_entries(&doc_nodes);
 
-  let stage_start = Instant::now();
-  let pdf_bytes = pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &pages, &style, &outline_entries)?;
-  info!(page_count = pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
-
-  let stage_start = Instant::now();
-  let output_path = config.output.pdf_path();
-  fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
-    path: output_path.display().to_string(),
-    source,
-  })?;
-  info!(output_path = %output_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
-
-  return Ok(BuildSummary {
-    output_path,
-    page_count: pages.len(),
-    total_elapsed_ms: elapsed_ms(build_start),
+  return Ok(LaidOutDocument {
+    pages,
+    outline_entries,
   });
 }
 

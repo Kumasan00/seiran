@@ -24,11 +24,13 @@
 //! - [`break_opportunities`] - (b) ICU による分割可能点の探索（純粋関数）
 //! - [`break_lines`] - (c) 貪欲法の行分割（`LineBreaker` / `GreedyBreaker`）
 //! - [`break_pages`] - (d) 縦組版（ベースライン送り・改ページ・表分割）
+//! - [`dump`] - 確定ページ列の決定的テキストダンプ（レイアウト回帰テスト用）
 
 pub mod block;
 pub mod break_lines;
 pub mod break_opportunities;
 pub mod break_pages;
+pub mod dump;
 pub mod glyph_run;
 pub mod hitem;
 pub mod line;
@@ -39,6 +41,7 @@ pub use block::{Block, MathRowNumber};
 pub use break_lines::{GreedyBreaker, LineBreaker};
 pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
 pub use break_pages::{PageGeometry, break_pages, column_width};
+pub use dump::dump_pages;
 pub use glyph_run::{Glyph, GlyphRun};
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
 pub use line::{Line, LineLink, PositionedBox};
