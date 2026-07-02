@@ -7,8 +7,6 @@
 # ここを変更すると golden の座標が変わるので、変更時は `UPDATE_GOLDEN=1 cargo test -p seiran`
 # で golden を再生成し、差分を確認してコミットすること。
 
-background_color = "#cc9966"
-
 [text]
 line_height_factor = 1.05
 

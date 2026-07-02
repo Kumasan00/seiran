@@ -1,5 +1,37 @@
 === page 0 ===
 body:
+  line baseline_y=280.63 height=15.24 depth=4.76 last=true
+    box x=0.00 dy=0.00 w=84.78 glyphs font=SerifBold size=20.00 text="Contents"
+  line baseline_y=311.63 height=13.81 depth=3.43 last=true
+    box x=12.00 dy=0.00 w=8.76 glyphs font=Serif size=12.00 text="1 "
+    box x=20.76 dy=0.00 w=82.92 glyphs font=JapaneseSerif size=12.00 text="目次のサンプル"
+    box x=105.10 dy=0.00 w=1093.68 glyphs font=Serif size=12.00 text="...................................................................................................................................................................................................................................................................................................................................................................................."
+    box x=1198.78 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
+    linkspan target=Internal("heading:0") x0=12.00 x1=1204.72
+  line baseline_y=324.23 height=13.81 depth=3.43 last=true
+    box x=24.00 dy=0.00 w=17.64 glyphs font=Serif size=12.00 text="1.1 "
+    box x=41.64 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="導入"
+    box x=66.88 dy=0.00 w=1131.90 glyphs font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................."
+    box x=1198.78 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
+    linkspan target=Internal("heading:1") x0=24.00 x1=1204.72
+  line baseline_y=336.83 height=13.81 depth=3.43 last=true
+    box x=24.00 dy=0.00 w=17.64 glyphs font=Serif size=12.00 text="1.2 "
+    box x=41.64 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="本論"
+    box x=66.88 dy=0.00 w=1131.90 glyphs font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................."
+    box x=1198.78 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
+    linkspan target=Internal("heading:3") x0=24.00 x1=1204.72
+  line baseline_y=349.43 height=13.81 depth=3.43 last=true
+    box x=24.00 dy=0.00 w=17.64 glyphs font=Serif size=12.00 text="1.3 "
+    box x=41.64 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="結論"
+    box x=66.88 dy=0.00 w=1131.90 glyphs font=Serif size=12.00 text="................................................................................................................................................................................................................................................................................................................................................................................................."
+    box x=1198.78 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
+    linkspan target=Internal("heading:5") x0=24.00 x1=1204.72
+link target=Internal("heading:0") x=12.00 y=297.82 w=1192.72 h=17.24
+link target=Internal("heading:1") x=24.00 y=310.42 w=1180.72 h=17.24
+link target=Internal("heading:3") x=24.00 y=323.02 w=1180.72 h=17.24
+link target=Internal("heading:5") x=24.00 y=335.62 w=1180.72 h=17.24
+=== page 1 ===
+body:
   line baseline_y=280.63 height=28.78 depth=7.15 last=true
     box x=0.00 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="第"
     box x=25.00 dy=0.00 w=12.38 glyphs font=SerifBold size=25.00 text="1"

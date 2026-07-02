@@ -1,5 +1,17 @@
 === page 0 ===
 body:
+  line baseline_y=400.63 height=27.43 depth=8.57 last=true
+    box x=476.67 dy=0.00 w=251.39 glyphs font=SerifBold size=36.00 text="test_document"
+  line baseline_y=462.43 height=20.72 depth=5.15 last=true
+    box x=557.72 dy=0.00 w=17.28 glyphs font=JapaneseSerif size=18.00 text="テ"
+    box x=575.00 dy=0.00 w=18.00 glyphs font=JapaneseSerif size=18.00 text="ス"
+    box x=593.00 dy=0.00 w=18.00 glyphs font=JapaneseSerif size=18.00 text="ト"
+    box x=611.00 dy=0.00 w=18.00 glyphs font=JapaneseSerif size=18.00 text="著"
+    box x=629.00 dy=0.00 w=18.00 glyphs font=JapaneseSerif size=18.00 text="者"
+  line baseline_y=493.33 height=10.67 depth=3.33 last=true
+    box x=570.23 dy=0.00 w=64.26 glyphs font=Serif size=14.00 text="2026-01-01"
+=== page 1 ===
+body:
   line baseline_y=280.63 height=23.02 depth=5.72 last=true
     box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
     box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="は"
@@ -148,5 +160,12 @@ body:
     box x=465.48 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="現"
     box x=477.48 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="れ"
     box x=489.48 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="る。"
+header:
+  line baseline_y=28.00 height=7.62 depth=2.38 last=true
+    box x=0.00 dy=0.00 w=62.72 glyphs font=Serif size=10.00 text="test_document"
+    box x=1186.25 dy=0.00 w=18.47 glyphs font=Serif size=10.00 text="1 / 1"
+footer:
+  line baseline_y=2358.77 height=7.62 depth=2.38 last=true
+    box x=599.89 dy=0.00 w=4.95 glyphs font=Serif size=10.00 text="1"
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
 anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=330.45

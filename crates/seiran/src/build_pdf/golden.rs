@@ -94,9 +94,32 @@ fn load_base() -> (read_config::Config, read_style::Style, read_references::Refe
   return (config, style, references);
 }
 
+/// 入力ごとの style 差分を適用する。
+///
+/// 既定で無効の機能（タイトルページ・目次・ヘッダー / フッター）は、fixture で全入力に対して
+/// 有効化すると全 golden にタイトルページ等が乗ってノイズになるため、その機能の検証用に
+/// 書かれた入力に限ってここで有効化する。対象外の入力はベース style をそのまま使う。
+fn apply_input_style_overrides(name: &str, style: &mut read_style::Style) {
+  match name {
+    // タイトルページ + ヘッダー / フッター（入力の本文が「ヘッダー・フッターはタイトルページには
+    // 描画されず、本文ページから現れる」ことの検証を前提に書かれている）。前付けページの挿入で
+    // page_numbering（前付け roman / 本文 arabic）の系列分離もここで踏む
+    "title_page" => {
+      style.title_page.enabled = true;
+      style.header.left = "{title}".to_string();
+      style.header.right = "{page} / {pages}".to_string();
+      style.footer.center = "{page}".to_string();
+    },
+    // 目次（エントリ収集・リーダー・ページ番号・レベル別字下げ）
+    "toc" => style.toc.enabled = true,
+    _ => {},
+  }
+}
+
 /// 指定入力 1 つを組版し、確定ページ列のダンプ文字列を返す。
 ///
-/// `sources` だけを対象入力へ差し替え、フォント・用紙・スタイルはベース設定を共有する。
+/// `sources` だけを対象入力へ差し替え、フォント・用紙はベース設定を共有する。style は
+/// ベースに [`apply_input_style_overrides`] の入力別差分を重ねたものを使う。
 fn dump_input(
   base_config: &read_config::Config,
   style: &read_style::Style,
@@ -105,8 +128,10 @@ fn dump_input(
 ) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
+  let mut style = style.clone();
+  apply_input_style_overrides(name, &mut style);
   let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
-  let laid_out = build_pages(&config, style, references, &font_data).expect("build_pages の実行");
+  let laid_out = build_pages(&config, &style, references, &font_data).expect("build_pages の実行");
   return dump_pages(&laid_out.pages);
 }
 
