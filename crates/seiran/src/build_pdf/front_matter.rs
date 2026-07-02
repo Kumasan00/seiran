@@ -7,7 +7,7 @@ use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
 use lowering::{TextStyle, TitlePageMetadata, lower_title_page};
 use read_style::{PageNumbering, Style, TocStyle};
 use tracing::{debug, debug_span};
-use types::FontKind;
+use types::{FontKind, TextAlignment};
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
 ///
@@ -114,6 +114,7 @@ pub(super) fn break_front_matter(
   text_width: f32,
   front_geometry: &PageGeometry,
   breaker: &dyn LineBreaker,
+  alignment: TextAlignment,
 ) -> Vec<Page> {
   if matches!(front_blocks.last(), Some(Block::PageBreak)) {
     front_blocks.pop();
@@ -121,7 +122,7 @@ pub(super) fn break_front_matter(
   if front_blocks.is_empty() {
     return Vec::new();
   }
-  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker);
+  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker, alignment);
 }
 
 /// 各物理ページの `(\{page\}, \{pages\})` ラベルをリージョン別に算出する。

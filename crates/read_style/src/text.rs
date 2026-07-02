@@ -6,7 +6,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 use types::{
-  FontKind,
+  FontKind, TextAlignment,
   length::{Length, non_negative, positive},
 };
 
@@ -24,6 +24,9 @@ use types::{
 ///
 /// `first_line_indent` は段落先頭行の字下げ量。既定 0pt（字下げなし＝従来のブロック段落方式）。
 /// 正の値のとき各段落の先頭行だけが字下げされる（折り返し 2 行目以降・`\\` 直後の行には効かない）。
+///
+/// `alignment` は行末処理（既定 justify = 両端揃え）。`ragged_right` で従来の左揃えになる。
+/// 中央・右寄せ段落（タイトルページ等）には効かない。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -42,6 +45,8 @@ pub struct TextBlockStyle {
   pub first_line_indent: Length,
   /// 段落本文のフォント種別
   pub font_kind: FontKind,
+  /// 行末処理（両端揃え / 左揃え、既定は両端揃え）
+  pub alignment: TextAlignment,
 }
 
 impl Default for TextBlockStyle {
@@ -52,6 +57,7 @@ impl Default for TextBlockStyle {
       paragraph_spacing: Length::pt(12.0),
       first_line_indent: Length::pt(0.0),
       font_kind: FontKind::Serif,
+      alignment: TextAlignment::Justify,
     };
   }
 }
@@ -59,7 +65,7 @@ impl Default for TextBlockStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, length::Length};
+  use types::{FontKind, TextAlignment, length::Length};
 
   use super::TextBlockStyle;
 
@@ -80,6 +86,16 @@ mod tests {
     assert!((style.paragraph_spacing.to_pt() - 12.0).abs() < f32::EPSILON);
     assert!((style.first_line_indent.to_pt() - 0.0).abs() < f32::EPSILON);
     assert_eq!(style.font_kind, FontKind::Serif);
+    assert_eq!(style.alignment, TextAlignment::Justify, "alignment 未指定の既定は両端揃え");
+  }
+
+  #[test]
+  fn deserializes_ragged_right_alignment() {
+    // Arrange / Act — 部分指定 TOML で alignment だけ上書きする
+    let style: TextBlockStyle = toml::from_str("alignment = \"ragged_right\"").unwrap();
+
+    // Assert
+    assert_eq!(style.alignment, TextAlignment::RaggedRight);
   }
 
   #[test]

@@ -11,7 +11,7 @@
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
 use tracing::debug;
-use types::AnchorMark;
+use types::{AnchorMark, TextAlignment};
 
 use crate::{
   block::Block,
@@ -201,13 +201,22 @@ impl PageComposer {
 /// * `text_width` - 本文幅（pt）。段組み時は段数で割って 1 段あたりの幅（`col_width`）を求める
 /// * `geom` - ページジオメトリ（段組み数・段間を含む）
 /// * `breaker` - 行分割アルゴリズム
+/// * `alignment` - 本文段落の行末処理（`style.toml` の `[text] alignment`）。両端揃えは
+///   左揃え段落にのみ適用し、中央・右寄せ段落（[`types::Align::Center`] / [`types::Align::Right`]）は
+///   伸縮しない
 ///
 /// 段組み時は本文を左段 → 右段 → 次ページの順に流す。各ブロックは 1 段あたりの幅 `col_width` で
 /// 行分割・揃え・列幅解決を行い、確定 x には現在段の左端オフセット（[`PageComposer::column_offset`]）を
 /// 加える。段下限を超えると [`PageComposer::advance_region`] が改段または改ページする。単段
 /// （`num_columns == 1`）では `col_width == text_width`・オフセット 0 となり、従来と同一の出力になる。
 #[must_use]
-pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, breaker: &dyn LineBreaker) -> Vec<Page> {
+pub fn break_pages(
+  blocks: Vec<Block>,
+  text_width: f32,
+  geom: &PageGeometry,
+  breaker: &dyn LineBreaker,
+  alignment: TextAlignment,
+) -> Vec<Page> {
   let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
   let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
@@ -221,7 +230,18 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
         right_indent,
         align,
       } => {
-        place_paragraph(&mut composer, geom, breaker, &items, leading, col_width, indent, right_indent, align);
+        place_paragraph(
+          &mut composer,
+          geom,
+          breaker,
+          alignment,
+          &items,
+          leading,
+          col_width,
+          indent,
+          right_indent,
+          align,
+        );
       },
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
@@ -325,11 +345,15 @@ pub fn break_pages(blocks: Vec<Block>, text_width: f32, geom: &PageGeometry, bre
 /// `align` は確定した各行を利用可能幅（`column_width - indent - right_indent`）の中で水平にシフトする。
 /// 中央寄せは `(利用可能幅 − 行幅) / 2`、右寄せは `利用可能幅 − 行幅` を `indent` に加算する。
 /// 行幅が利用可能幅を超える場合のシフト量は 0 にクランプする（段左端からはみ出さない）。
+///
+/// `alignment` は行末処理（両端揃え / 左揃え）。両端揃えは左揃え段落（`align == Left`）にのみ
+/// 適用し、中央・右寄せ段落は左揃えのまま行を組んで揃えオフセットでシフトする。
 #[allow(clippy::too_many_arguments)]
 fn place_paragraph(
   composer: &mut PageComposer,
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
+  alignment: TextAlignment,
   items: &[crate::hitem::HItem],
   leading: f32,
   column_width: f32,
@@ -338,7 +362,14 @@ fn place_paragraph(
   align: types::Align,
 ) {
   let available = (column_width - indent - right_indent).max(0.0);
-  let mut lines = breaker.break_lines(items, available);
+  // 両端揃えは左揃え段落にのみ適用する。中央・右寄せ段落は行を自然幅のまま組み、
+  // 確定後に揃えオフセットでシフトする（伸縮すると余り幅が消えて揃え自体が無意味になる）
+  let effective_alignment = if align == types::Align::Left {
+    alignment
+  } else {
+    TextAlignment::RaggedRight
+  };
+  let mut lines = breaker.break_lines(items, available, effective_alignment);
   // 行は段左端 (x=0) 基準で組まれるため、インデント + 揃えオフセット（段内 [0, column_width]）を
   // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
   // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
@@ -588,7 +619,7 @@ fn place_table(
 
 #[cfg(test)]
 mod tests {
-  use types::{ColumnAlign, ColumnWidth, TableColumn};
+  use types::{ColumnAlign, ColumnWidth, TableColumn, TextAlignment};
 
   use super::{PageGeometry, break_pages, column_width};
   use crate::{
@@ -661,7 +692,7 @@ mod tests {
     let geom = test_geometry();
 
     // Act
-    let pages = break_pages(vec![paragraph_of_lines(3)], 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(vec![paragraph_of_lines(3)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 1 ページに 3 行、baseline は 10, 22, 34
     assert_eq!(pages.len(), 1);
@@ -683,7 +714,7 @@ mod tests {
     let geom = test_geometry();
 
     // Act
-    let pages = break_pages(vec![paragraph_of_lines(5)], 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(vec![paragraph_of_lines(5)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 2 ページに分かれ、2 ページ目の先頭 baseline は margin_top
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -704,7 +735,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     let baselines: Vec<f32> = pages[0]
       .blocks
@@ -727,7 +758,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 2);
     assert_eq!(pages[0].blocks.len(), 1);
@@ -749,7 +780,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // 画像 top=10, bottom=25。段落先頭行 baseline = 25 + height(8) = 33
     let baseline = pages[0]
@@ -778,7 +809,7 @@ mod tests {
       },
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     let PlacedBlock::Image { y, .. } = pages[1].blocks.first().expect("画像があるはず") else {
@@ -828,7 +859,7 @@ mod tests {
     // 空入力でも 1 ページ（空ページ）を返す
     let geom = test_geometry();
 
-    let pages = break_pages(vec![], 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(vec![], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 1);
     assert!(pages[0].blocks.is_empty());
@@ -846,7 +877,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 3);
   }
@@ -857,7 +888,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![Block::PageBreak, paragraph_of_lines(1)];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(pages[0].blocks.len(), 1, "本文は先頭ページに置かれる");
@@ -875,7 +906,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert_eq!(pages.len(), 2, "中間に白紙ページは生じない: {pages:?}");
     assert_eq!(pages[0].blocks.len(), 1);
@@ -905,6 +936,7 @@ mod tests {
       100.0,
       &geom,
       &GreedyBreaker,
+      TextAlignment::RaggedRight,
     );
 
     // Assert — 2 ページに分割され、2 ページ目の表先頭行はヘッダの再描画
@@ -927,7 +959,7 @@ mod tests {
     ];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — baseline=10, line.height=8 → アンカー y = 2、x = 0
     assert_eq!(pages.len(), 1);
@@ -949,7 +981,7 @@ mod tests {
     ];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — アンカーはページ 1 ではなくページ 2（改ページ後）に解決される
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -978,7 +1010,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — baseline=10, height=8, depth=2 → top=2, height=10, x=0, width=20
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
@@ -1015,7 +1047,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 利用可能幅 40 で折り返し（複数行）、全行の先頭ボックス x が indent(20) 以上
     let lines: Vec<&Line> = pages[0]
@@ -1067,7 +1099,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 60.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 利用可能幅は 60-10-10=40。全行が右端 text_width - right_indent = 50 を超えない
     let lines: Vec<&Line> = pages[0]
@@ -1112,7 +1144,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — x0=0 → +15、幅 20 は不変
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
@@ -1134,7 +1166,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — オフセット = (100 - 10) / 2 = 45。box.x は 45
     let line = pages[0]
@@ -1161,7 +1193,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — オフセット = 100 - 10 = 90。box.x は 90（右端に揃う）
     let line = pages[0]
@@ -1173,6 +1205,99 @@ mod tests {
       })
       .expect("行があるはず");
     assert!((line.boxes[0].x - 90.0).abs() < f32::EPSILON, "box.x={}", line.boxes[0].x);
+  }
+
+  /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
+  fn stretch_glue() -> HItem {
+    return HItem::Glue {
+      natural: 5.0,
+      stretch: 2.5,
+      shrink: 5.0 / 3.0,
+      breakable: true,
+    };
+  }
+
+  /// 伸縮能力付き glue で折り返す 2 行の段落（1 行目自然幅 25）を作る
+  fn stretchable_paragraph(align: types::Align) -> Block {
+    return Block::Paragraph {
+      items: vec![
+        test_box(),
+        stretch_glue(),
+        test_box(),
+        stretch_glue(),
+        test_box(),
+      ],
+      leading: 12.0,
+      indent: 0.0,
+      right_indent: 0.0,
+      align,
+    };
+  }
+
+  #[test]
+  fn justify_stretches_left_aligned_paragraph() {
+    // Arrange — text_width=27 で折り返す左揃え段落を justify 設定で配置する
+    let geom = test_geometry();
+    let blocks = vec![stretchable_paragraph(types::Align::Left)];
+
+    // Act
+    let pages = break_pages(blocks, 27.0, &geom, &GreedyBreaker, TextAlignment::Justify);
+
+    // Assert — 1 行目の余り 2 が glue に配分され、2 つ目の box の右端が版面右端（27）に一致する
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[1].x + line.boxes[1].width - 27.0).abs() < 1e-4, "{:?}", line.boxes);
+  }
+
+  #[test]
+  fn justify_does_not_stretch_centered_paragraph() {
+    // Arrange — 同じ段落を align=Center にすると justify 設定でも伸縮しない
+    let geom = test_geometry();
+    let blocks = vec![stretchable_paragraph(types::Align::Center)];
+
+    // Act
+    let pages = break_pages(blocks, 27.0, &geom, &GreedyBreaker, TextAlignment::Justify);
+
+    // Assert — 1 行目は自然幅 25 のまま中央へシフト（オフセット = (27 − 25) / 2 = 1）。
+    // box 間隔は自然 glue 幅 5 を保つ
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[0].x - 1.0).abs() < 1e-4, "{:?}", line.boxes);
+    assert!((line.boxes[1].x - line.boxes[0].x - 15.0).abs() < 1e-4, "glue は自然幅のまま: {:?}", line.boxes);
+  }
+
+  #[test]
+  fn justify_does_not_stretch_right_aligned_paragraph() {
+    // Arrange — align=Right も伸縮せず、自然幅のまま右端へ寄る
+    let geom = test_geometry();
+    let blocks = vec![stretchable_paragraph(types::Align::Right)];
+
+    // Act
+    let pages = break_pages(blocks, 27.0, &geom, &GreedyBreaker, TextAlignment::Justify);
+
+    // Assert — 1 行目のオフセット = 27 − 25 = 2
+    let line = pages[0]
+      .blocks
+      .iter()
+      .find_map(|b| match b {
+        PlacedBlock::Line { line, .. } => Some(line),
+        _ => None,
+      })
+      .expect("行があるはず");
+    assert!((line.boxes[0].x - 2.0).abs() < 1e-4, "{:?}", line.boxes);
+    assert!((line.boxes[1].x - line.boxes[0].x - 15.0).abs() < 1e-4, "glue は自然幅のまま: {:?}", line.boxes);
   }
 
   #[test]
@@ -1197,7 +1322,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 30.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 30.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — シフト量は 0 にクランプされ、box.x は左端 0 のまま（左へはみ出さない）
     let line = pages[0]
@@ -1242,7 +1367,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 35.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 35.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 2 行に折り返し、各行が自身の行幅で独立に中央寄せされる。
     // 1 行目: 幅 25 → オフセット (35-25)/2 = 5、2 行目: 幅 10 → オフセット (35-10)/2 = 12.5
@@ -1280,7 +1405,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 行幅 20 → 中央オフセット (100-20)/2 = 40。link.x=40、幅 20 は不変
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
@@ -1307,7 +1432,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — オフセット = (100 - 20) / 2 = 40
     let PlacedBlock::Image { x, .. } = first_image(&pages[0]) else {
@@ -1329,7 +1454,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — オフセット = 100 - 20 = 80（右端に揃う）
     let PlacedBlock::Image { x, .. } = first_image(&pages[0]) else {
@@ -1349,7 +1474,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — オフセット = (100 - 30) / 2 = 35
     let PlacedBlock::Rule { x, .. } =
@@ -1379,7 +1504,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 表全体幅 24 → オフセット (100 - 24) / 2 = 38
     let PlacedBlock::Table { x, .. } =
@@ -1409,7 +1534,7 @@ mod tests {
     }];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 表全体幅 = 本文幅 100 → オフセット 0
     let PlacedBlock::Table { x, .. } =
@@ -1425,7 +1550,7 @@ mod tests {
     // 不変条件: どのページの行も baseline + depth がページ下限を超えない
     let geom = test_geometry();
 
-    let pages = break_pages(vec![paragraph_of_lines(12)], 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(vec![paragraph_of_lines(12)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     assert!(pages.len() >= 2, "複数ページに分かれる: {}", pages.len());
     for page in &pages {
@@ -1478,7 +1603,7 @@ mod tests {
     ];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — baseline は 10, 22（leading=12 ずつ）。行分割は通さない
     let baselines: Vec<f32> = pages[0]
@@ -1506,7 +1631,7 @@ mod tests {
     ];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — アンカーは行上端（baseline 10 − height 8 = 2）に解決
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
@@ -1526,7 +1651,7 @@ mod tests {
     let blocks: Vec<Block> = (0..5).map(|_| composed_line(20.0, 8.0, 2.0, None)).collect();
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 2 ページに分かれ、2 ページ目の先頭 baseline は margin_top
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -1551,7 +1676,7 @@ mod tests {
     let geom = two_column_geometry();
 
     // Act
-    let pages = break_pages(vec![paragraph_of_lines(9)], 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(vec![paragraph_of_lines(9)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 各行の (baseline_y, 先頭ボックス x) を採取して段送りを検証する
     let page_lines = |page: &Page| -> Vec<(f32, f32)> {
@@ -1601,7 +1726,7 @@ mod tests {
     let blocks = vec![paragraph_of_lines(5), link_para];
 
     // Act
-    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker);
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — リンクは右段（x≈55）に確定し、2 ボックス分の幅 20 を持つ
     assert_eq!(pages.len(), 1, "全行が 1 ページの 2 段に収まる: {pages:?}");
@@ -1638,6 +1763,7 @@ mod tests {
       100.0,
       &geom,
       &GreedyBreaker,
+      TextAlignment::RaggedRight,
     );
 
     // Assert — 1 ページ内に 2 断片。1 つ目は左段（x≈0）、2 つ目は右段（x≈55）

@@ -1,10 +1,12 @@
-//! (c) 行分割 — 貪欲法（first-fit）・左揃え（ragged-right）
+//! (c) 行分割 — 貪欲法（first-fit）
 //!
 //! [`LineBreaker`] トレイトの実装として [`GreedyBreaker`] を提供する。
 //! box は計測済みの幅を持つため、行分割はフォントに一切触れない純粋計算になる。
+//! 分割点の選択は常に自然幅で行い、両端揃え（[`TextAlignment::Justify`]）は
+//! 確定した行内の伸縮点（glue）の幅だけを変える仕上げの工程として適用する。
 //! 将来 Knuth-Plass を導入する際は入出力型を変えずに実装を追加する。
 
-use types::LinkTarget;
+use types::{LinkTarget, TextAlignment};
 
 use crate::{
   hitem::HItem,
@@ -16,7 +18,9 @@ pub trait LineBreaker {
   /// 水平リストを本文幅で行に分割する
   ///
   /// `text_width` は本文幅（pt）。分割点が存在しない場合は overflow を許容する。
-  fn break_lines(&self, items: &[HItem], text_width: f32) -> Vec<Line>;
+  /// `alignment` は行末処理で、[`TextAlignment::Justify`] のとき段落最終行・強制改行
+  /// 直前の行を除く各行の余り幅を伸縮点へ比例配分する（分割点の選択には影響しない）。
+  fn break_lines(&self, items: &[HItem], text_width: f32, alignment: TextAlignment) -> Vec<Line>;
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
@@ -40,7 +44,7 @@ struct OpenLink {
 pub struct GreedyBreaker;
 
 impl LineBreaker for GreedyBreaker {
-  fn break_lines(&self, items: &[HItem], text_width: f32) -> Vec<Line> {
+  fn break_lines(&self, items: &[HItem], text_width: f32, alignment: TextAlignment) -> Vec<Line> {
     let mut lines: Vec<Line> = Vec::new();
     // 現在の行に積んだアイテム
     let mut buffer: Vec<&HItem> = Vec::new();
@@ -54,7 +58,7 @@ impl LineBreaker for GreedyBreaker {
     for item in items {
       match item {
         HItem::ForcedBreak => {
-          lines.push(build_line(&buffer, true, text_width, &mut open_links));
+          lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links));
           buffer.clear();
           width_so_far = 0.0;
           last_break = None;
@@ -88,7 +92,7 @@ impl LineBreaker for GreedyBreaker {
             && let Some(break_index) = last_break
           {
             // 分割可能点までで行を確定し、残りを次行へ持ち越す
-            lines.push(build_line(&buffer[..break_index], false, text_width, &mut open_links));
+            lines.push(build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links));
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             // 持ち越し先頭の breakable glue は破棄する
@@ -111,19 +115,72 @@ impl LineBreaker for GreedyBreaker {
     }
 
     if !buffer.is_empty() || lines.is_empty() {
-      lines.push(build_line(&buffer, true, text_width, &mut open_links));
+      lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links));
     }
     return lines;
   }
 }
 
-/// アイテム列から 1 行を組み立てる（左揃え・位置確定）
+/// 行の余り幅から glue の伸縮係数を求める（両端揃えの配分係数）
+///
+/// 正の値は伸長（各 glue の `stretch` に乗算）、負の値は収縮（`shrink` に乗算）を表し、
+/// 大きさは 1.0 でクランプする。行の余り幅が伸縮能力を超える場合は上限で止まり、
+/// 右端不一致を許容する（貪欲法では発生しうる。Knuth-Plass で解消対象）。
+/// 伸縮点が存在しない行（`stretch` / `shrink` の総和が 0）は 0 を返し、左揃えのまま置く。
+/// `FlushRight` は行内の x 進行を消費しない（右端へ独立に寄る）ため自然幅の合計から除く。
+fn glue_adjust_ratio(items: &[&HItem], available: f32) -> f32 {
+  let natural: f32 = items
+    .iter()
+    .filter(|item| !matches!(item, HItem::FlushRight(_)))
+    .map(|item| item.natural_width())
+    .sum();
+  let leftover = available - natural;
+  if leftover > 0.0 {
+    let total_stretch: f32 = items
+      .iter()
+      .map(|item| match item {
+        HItem::Glue { stretch, .. } => *stretch,
+        _ => 0.0,
+      })
+      .sum();
+    if total_stretch <= 0.0 {
+      return 0.0;
+    }
+    return (leftover / total_stretch).min(1.0);
+  }
+  if leftover < 0.0 {
+    let total_shrink: f32 = items
+      .iter()
+      .map(|item| match item {
+        HItem::Glue { shrink, .. } => *shrink,
+        _ => 0.0,
+      })
+      .sum();
+    if total_shrink <= 0.0 {
+      return 0.0;
+    }
+    return -((-leftover / total_shrink).min(1.0));
+  }
+  return 0.0;
+}
+
+/// アイテム列から 1 行を組み立てる（位置確定）
 ///
 /// 行末の breakable glue は破棄する。`Penalty` は幅を持たないため位置決めに影響しない。
 /// `open_links` は折り返しをまたいで開いているリンク領域の状態で、`LinkStart` / `LinkEnd`
 /// に応じて更新しつつ、この行に属するクリック矩形（[`LineLink`]）を収集する。
 /// `available` は本文幅（折り返し幅）で、`FlushRight` を `available − 幅` に右寄せするのに使う。
-fn build_line(items: &[&HItem], is_last: bool, available: f32, open_links: &mut Vec<OpenLink>) -> Line {
+///
+/// `alignment` が [`TextAlignment::Justify`] かつ最終行（段落最終行・強制改行直前）でない
+/// とき、行の余り幅を各 glue の伸縮能力に比例して配分し行末を右端に揃える。リンク矩形は
+/// 伸縮後の x を読むため字位置に自動追従する。
+fn build_line(
+  items: &[&HItem],
+  is_last: bool,
+  available: f32,
+  alignment: TextAlignment,
+  open_links: &mut Vec<OpenLink>,
+) -> Line {
   // 行末の breakable glue を切り落とす
   let mut end = items.len();
   while end > 0
@@ -138,6 +195,13 @@ fn build_line(items: &[&HItem], is_last: bool, available: f32, open_links: &mut 
     end -= 1;
   }
   let items = &items[..end];
+
+  // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない
+  let adjust_ratio = if alignment == TextAlignment::Justify && !is_last {
+    glue_adjust_ratio(items, available)
+  } else {
+    0.0
+  };
 
   // 前の行から継続するリンクは、この行では行頭（x0 = 0）から始まる
   for open in open_links.iter_mut() {
@@ -162,7 +226,19 @@ fn build_line(items: &[&HItem], is_last: bool, available: f32, open_links: &mut 
         height = height.max(hbox.height);
         depth = depth.max(hbox.depth);
       },
-      HItem::Glue { natural, .. } => x += natural,
+      HItem::Glue {
+        natural,
+        stretch,
+        shrink,
+        ..
+      } => {
+        x += natural
+          + if adjust_ratio >= 0.0 {
+            adjust_ratio * stretch
+          } else {
+            adjust_ratio * shrink
+          };
+      },
       HItem::Kern(value) => x += value,
       // 右寄せ末尾ボックス: 行内累積 x を無視し、本文幅の右端へ寄せる
       HItem::FlushRight(hbox) => {
@@ -211,6 +287,8 @@ fn build_line(items: &[&HItem], is_last: bool, available: f32, open_links: &mut 
 
 #[cfg(test)]
 mod tests {
+  use types::TextAlignment;
+
   use super::{GreedyBreaker, LineBreaker};
   use crate::hitem::{HBox, HBoxContent, HItem};
 
@@ -247,6 +325,26 @@ mod tests {
     });
   }
 
+  /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
+  fn stretch_glue() -> HItem {
+    return HItem::Glue {
+      natural: 5.0,
+      stretch: 2.5,
+      shrink: 5.0 / 3.0,
+      breakable: true,
+    };
+  }
+
+  /// テスト用の伸縮能力付き非 breakable glue（分割点にならず overflow 行を作れる）
+  fn non_breakable_stretch_glue() -> HItem {
+    return HItem::Glue {
+      natural: 5.0,
+      stretch: 2.5,
+      shrink: 5.0 / 3.0,
+      breakable: false,
+    };
+  }
+
   #[test]
   fn breaks_at_glue_when_box_exceeds_width() {
     // Arrange — box(10) glue(5) box(10) glue(5) box(10): text_width=30 では
@@ -260,7 +358,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 30.0);
+    let lines = GreedyBreaker.break_lines(&items, 30.0, TextAlignment::RaggedRight);
 
     // Assert — 1 行目は box 2 つ（行末 glue は破棄）、2 行目は box 1 つ
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -284,7 +382,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 30.0);
+    let lines = GreedyBreaker.break_lines(&items, 30.0, TextAlignment::RaggedRight);
 
     // Assert — 1 行目: box(0..10) glue(10..15) box(15..25)。2 つ目の box の x は 15
     assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
@@ -295,7 +393,7 @@ mod tests {
     // 幅が十分なら 1 行に収まり、is_last = true
     let items = vec![test_box(), space_glue(), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, 100.0);
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
@@ -315,7 +413,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 25.0);
+    let lines = GreedyBreaker.break_lines(&items, 25.0, TextAlignment::RaggedRight);
 
     // Assert
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -334,7 +432,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker.break_lines(&items, 25.0);
+    let lines = GreedyBreaker.break_lines(&items, 25.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1, "分割点がなければ overflow 許容: {lines:?}");
     assert_eq!(lines[0].boxes.len(), 3);
@@ -345,7 +443,7 @@ mod tests {
     // ForcedBreak は幅に関係なく行を確定し、is_last = true になる
     let items = vec![test_box(), HItem::ForcedBreak, test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, 100.0);
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 2);
     assert!(lines[0].is_last, "強制改行の行は is_last: {lines:?}");
@@ -357,7 +455,7 @@ mod tests {
     // 行の height / depth は行内ボックスの最大値
     let items = vec![test_box(), space_glue(), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, 100.0);
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
 
     assert!((lines[0].height - 8.0).abs() < f32::EPSILON);
     assert!((lines[0].depth - 2.0).abs() < f32::EPSILON);
@@ -366,7 +464,7 @@ mod tests {
   #[test]
   fn empty_items_yield_single_empty_line() {
     // 空の段落も 1 行（空行）として返す
-    let lines = GreedyBreaker.break_lines(&[], 100.0);
+    let lines = GreedyBreaker.break_lines(&[], 100.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -378,7 +476,7 @@ mod tests {
     // Kern は分割点にならず、行末でも破棄されない（幅に寄与する）
     let items = vec![test_box(), HItem::Kern(5.0), test_box()];
 
-    let lines = GreedyBreaker.break_lines(&items, 100.0);
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1);
     assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
@@ -390,7 +488,7 @@ mod tests {
     let items = vec![test_box(), space_glue(), flush_right_box(8.0)];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 50.0);
+    let lines = GreedyBreaker.break_lines(&items, 50.0, TextAlignment::RaggedRight);
 
     // Assert — 1 行。本文 box は x=0、FlushRight は右端（50 − 8 = 42）に寄る
     assert_eq!(lines.len(), 1, "{lines:?}");
@@ -411,7 +509,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 14.0);
+    let lines = GreedyBreaker.break_lines(&items, 14.0, TextAlignment::RaggedRight);
 
     // Assert — 2 行。1 行目は本文 box のみ、2 行目は QED だけが右端（14 − 8 = 6）に
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -434,7 +532,7 @@ mod tests {
       items.push(test_box());
     }
 
-    let lines = GreedyBreaker.break_lines(&items, 30.0);
+    let lines = GreedyBreaker.break_lines(&items, 30.0, TextAlignment::RaggedRight);
 
     for line in &lines {
       let width = line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
@@ -456,7 +554,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 100.0);
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
 
     // Assert — 1 行・1 矩形（x0=0, x1=20）。マーカーは幅 0 なので box 2 つ分
     assert_eq!(lines.len(), 1);
@@ -477,7 +575,7 @@ mod tests {
     ];
 
     // Act
-    let lines = GreedyBreaker.break_lines(&items, 12.0);
+    let lines = GreedyBreaker.break_lines(&items, 12.0, TextAlignment::RaggedRight);
 
     // Assert — 2 行に分割され、各行に 1 矩形（どちらも x0=0, x1=10）
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -491,7 +589,7 @@ mod tests {
   #[test]
   fn line_without_links_has_empty_links() {
     // リンクマーカーが無い段落の行は links が空
-    let lines = GreedyBreaker.break_lines(&[test_box(), space_glue(), test_box()], 100.0);
+    let lines = GreedyBreaker.break_lines(&[test_box(), space_glue(), test_box()], 100.0, TextAlignment::RaggedRight);
 
     assert!(lines[0].links.is_empty());
   }
@@ -509,10 +607,187 @@ mod tests {
       depth: 2.0,
     });
 
-    let lines = GreedyBreaker.break_lines(&[wide], 30.0);
+    let lines = GreedyBreaker.break_lines(&[wide], 30.0, TextAlignment::RaggedRight);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
     assert!((lines[0].boxes[0].width - 50.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn justify_stretches_glue_to_flush_right_edge() {
+    // Arrange — box(10) glue(5±) box(10) glue(5±) box(10)、text_width=27 で 2 つ目の glue で折り返す。
+    // 1 行目の自然幅 25・余り 2 は伸長能力 2.5 の内側なので、glue が 7 に伸びて右端が 27 に一致する
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+
+    // Assert — 1 行目: box(0..10) glue(10..17) box(17..27)。右端 = 本文幅
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 17.0).abs() < 1e-4, "{lines:?}");
+    let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
+    assert!((right_edge - 27.0).abs() < 1e-4, "非最終行の右端は版面右端に一致: {lines:?}");
+  }
+
+  #[test]
+  fn justify_does_not_stretch_last_line() {
+    // Arrange — 1 行に収まる（= 段落最終行）ので、余り幅があっても伸縮しない
+    let items = vec![test_box(), stretch_glue(), test_box()];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+
+    // Assert — glue は自然幅 5 のまま（box は 0 と 15）
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].is_last);
+    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_does_not_stretch_line_before_forced_break() {
+    // Arrange — 強制改行（\\）直前の行は is_last となり伸縮しない
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      HItem::ForcedBreak,
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+
+    // Assert — 1 行目の glue は自然幅のまま
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].is_last);
+    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_clamps_at_stretch_limit() {
+    // Arrange — text_width=30 で 1 行目の余り 5 が伸長能力 2.5 を超える。
+    // 上限で止まり（glue = 7.5）、右端不一致（27.5 < 30）を許容する
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 30.0, TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 17.5).abs() < 1e-4, "伸長は能力の上限で止まる: {lines:?}");
+  }
+
+  #[test]
+  fn justify_shrinks_overfull_line() {
+    // Arrange — box(10) 非分割glue(5±) box(10) は分割点がなく自然幅 25 のまま 1 行に確定する。
+    // text_width=24 では超過 1 が収縮能力 5/3 の内側なので、glue が 4 に詰まり右端が 24 に一致する
+    let items = vec![
+      test_box(),
+      non_breakable_stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 24.0, TextAlignment::Justify);
+
+    // Assert — 1 行目: box(0..10) glue(10..14) box(14..24)
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 14.0).abs() < 1e-4, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_clamps_at_shrink_limit() {
+    // Arrange — text_width=23 では超過 2 が収縮能力 5/3 を超える。
+    // 下限で止まり（glue = 5 − 5/3）、右端の超過（23.33 > 23）を許容する
+    let items = vec![
+      test_box(),
+      non_breakable_stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 23.0, TextAlignment::Justify);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - (15.0 - 5.0 / 3.0)).abs() < 1e-4, "収縮は能力の下限で止まる: {lines:?}");
+  }
+
+  #[test]
+  fn justify_leaves_line_without_stretch_points_ragged() {
+    // Arrange — 1 行目が box kern box（伸縮点なし）。余り幅 1 があっても左揃えのまま
+    let items = vec![
+      test_box(),
+      HItem::Kern(5.0),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 26.0, TextAlignment::Justify);
+
+    // Assert — kern は伸縮せず box は自然位置（0 と 15）
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_moves_link_rects_with_stretched_glue() {
+    // Arrange — リンクが伸長される glue をまたぐ。矩形は伸縮後の字位置に追従する
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      HItem::LinkEnd,
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+
+    // Assert — 1 行目の矩形は x0=0, x1=27（glue 7 に伸長後の右端）
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
+    assert!((lines[0].links[0].x0 - 0.0).abs() < f32::EPSILON);
+    assert!((lines[0].links[0].x1 - 27.0).abs() < 1e-4, "リンク矩形は伸縮後の字位置: {:?}", lines[0].links);
+  }
+
+  #[test]
+  fn ragged_right_ignores_stretch_capacity() {
+    // Arrange — 伸縮能力付き glue でも ragged_right では自然幅のまま並ぶ（従来と同一の出力）
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::RaggedRight);
+
+    // Assert — 1 行目: box(0..10) glue(10..15) box(15..25)
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
   }
 }

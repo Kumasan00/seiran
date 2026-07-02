@@ -14,6 +14,7 @@
 //! - [`link`] - ハイパーリンク機構の到達先 [`AnchorMark`]（機構 A）とリンク行き先 [`LinkTarget`]（機構 B）
 //! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
 //! - [`align`] - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
+//! - [`text_alignment`] - 本文段落の行末処理 [`TextAlignment`]（両端揃え / 左揃え）
 //!
 //! ## `FontMap<T>`
 //!
@@ -54,6 +55,7 @@ pub mod link;
 pub mod math;
 pub mod quote;
 pub mod table;
+pub mod text_alignment;
 pub mod theorem;
 
 pub use align::Align;
@@ -66,4 +68,5 @@ pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathClass, MathDelimiter, MathEnvKind};
 pub use quote::QuoteKind;
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};
+pub use text_alignment::TextAlignment;
 pub use theorem::TheoremClass;

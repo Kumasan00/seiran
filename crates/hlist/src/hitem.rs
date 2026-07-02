@@ -14,7 +14,9 @@ pub enum HItem {
   Box(HBox),
   /// 伸縮スペース 兼 分割可能点（Latin 単語間スペース由来）
   ///
-  /// ragged-right（左揃え）では `stretch` / `shrink` は 0 で使用する。
+  /// `stretch` / `shrink` は伸縮能力（pt）で生成時に常に付与し、両端揃え
+  /// （`TextAlignment::Justify`）の行末処理でのみ使う。ragged-right（左揃え）では
+  /// 適用されず、自然幅のまま並ぶ。
   /// `breakable` が `true` のとき行分割の候補点になり、行末では破棄される。
   Glue {
     natural: f32,
