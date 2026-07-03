@@ -53,6 +53,15 @@ const SPACE_STRETCH_RATIO: f32 = 1.0 / 2.0;
 /// 欧文単語間スペースの収縮能力（自然幅に対する倍率）
 const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 
+/// 和文字間の伸長能力（フォントサイズに対する倍率）
+///
+/// 和文セグメント内の分割可能位置に置く幅 0 glue の伸長上限。両端揃えで
+/// 行の余り幅を字間に微量配分する（issue #163）。pLaTeX の `\kanjiskip`
+/// （0pt plus .4pt @10pt ≈ 0.04em）と同オーダーで視覚上目立たない量に抑え、
+/// 上限を超える行は #162 と同様に右端不一致を許容する。収縮は持たない
+/// （ベタ組の字間は詰めない。詰めは約物アキ調整 #170 の領分）。
+const CJK_STRETCH_RATIO: f32 = 0.05;
+
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
@@ -377,7 +386,7 @@ impl Measurer<'_> {
         out.push(HItem::Box(hbox));
         continue;
       }
-      self.split_run_into_items(hbox, &segment.text, out);
+      self.split_run_into_items(hbox, &segment.text, segment.category == script::ScriptCategory::Japanese, out);
     }
   }
 
@@ -385,11 +394,14 @@ impl Measurer<'_> {
   ///
   /// - [`BreakKind::Glue`]（欧文空白）: 分割位置直前のスペースグリフを run から抜き、
   ///   その advance を breakable な [`HItem::Glue`] にする
-  /// - [`BreakKind::Penalty`]（CJK 文字間）: グリフ境界で run を割り、間に `Penalty { value: 0 }`
+  /// - [`BreakKind::Penalty`]（スペースなし分割点）: グリフ境界で run を割り、間に挿むアイテムを
+  ///   セグメントで分ける。和文（`is_japanese`）は幅 0・微小伸長の breakable な [`HItem::Glue`]
+  ///   （両端揃えで字間に余り幅を配分する。issue #163）、欧文（ハイフン後等）は
+  ///   `Penalty { value: 0 }`（伸縮なし）
   /// - リガチャ等でクラスタ途中に分割位置が落ちた場合は分割を抑制する
   /// - 分割で生じる各 `GlyphRun.text` は `Glyph.range` 整合にスライスし直す
   ///   （PDF テキスト抽出を壊さない）
-  fn split_run_into_items(&self, hbox: HBox, text: &str, out: &mut Vec<HItem>) {
+  fn split_run_into_items(&self, hbox: HBox, text: &str, is_japanese: bool, out: &mut Vec<HItem>) {
     let HBoxContent::Glyphs(run) = hbox.content else {
       out.push(HItem::Box(hbox));
       return;
@@ -461,7 +473,16 @@ impl Measurer<'_> {
             continue;
           }
           self.push_sub_run(&run, text, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
-          out.push(HItem::Penalty { value: 0 });
+          if is_japanese {
+            out.push(HItem::Glue {
+              natural: 0.0,
+              stretch: run.font_size * CJK_STRETCH_RATIO,
+              shrink: 0.0,
+              breakable: true,
+            });
+          } else {
+            out.push(HItem::Penalty { value: 0 });
+          }
           seg_glyph_start = glyph_index;
           seg_byte_start = break_point.byte;
         },

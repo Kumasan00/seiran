@@ -48,6 +48,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "gather",
   "hyperref",
   "itemize",
+  "justify",
   "matrix",
   "multiline",
   "quote",

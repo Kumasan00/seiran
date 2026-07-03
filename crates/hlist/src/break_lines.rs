@@ -345,6 +345,16 @@ mod tests {
     };
   }
 
+  /// テスト用の和文字間 glue（幅 0・伸長 0.5・収縮なし = フォントサイズ 10pt の字間相当）
+  fn cjk_glue() -> HItem {
+    return HItem::Glue {
+      natural: 0.0,
+      stretch: 0.5,
+      shrink: 0.0,
+      breakable: true,
+    };
+  }
+
   #[test]
   fn breaks_at_glue_when_box_exceeds_width() {
     // Arrange — box(10) glue(5) box(10) glue(5) box(10): text_width=30 では
@@ -789,5 +799,53 @@ mod tests {
     // Assert — 1 行目: box(0..10) glue(10..15) box(15..25)
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_stretches_cjk_zero_width_glue_to_flush_right_edge() {
+    // Arrange — 和文行モデル: box(10) 字間glue(0+0.5) box(10) 字間glue(0+0.5) box(10)。
+    // text_width=20.3 では 3 つ目の box が収まらず 2 つ目の字間 glue で折り返す。
+    // 1 行目の自然幅 20・余り 0.3 は伸長能力 0.5 の内側なので、字間が 0.3 に開いて右端が一致する
+    let items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 20.3, TextAlignment::Justify);
+
+    // Assert — 1 行目: box(0..10) 字間(10..10.3) box(10.3..20.3)。非最終行の右端 = 本文幅
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 10.3).abs() < 1e-4, "{lines:?}");
+    let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
+    assert!((right_edge - 20.3).abs() < 1e-4, "和文のみの非最終行の右端は版面右端に一致: {lines:?}");
+  }
+
+  #[test]
+  fn cjk_zero_width_glue_breaks_like_zero_penalty() {
+    // Arrange — 同じ box 列を Penalty(0) 繋ぎと幅 0 glue 繋ぎで分割する。
+    // 幅 0 glue は自然幅に寄与しないため、分割位置・行内容・自然位置が Penalty(0) と一致する
+    // （禁則を含む折り返し挙動が変わらないことの担保）。ragged_right では伸長も効かず出力同一
+    let penalty_items = vec![
+      test_box(),
+      HItem::Penalty { value: 0 },
+      test_box(),
+      HItem::Penalty { value: 0 },
+      test_box(),
+    ];
+    let glue_items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
+
+    // Act
+    let penalty_lines = GreedyBreaker.break_lines(&penalty_items, 25.0, TextAlignment::RaggedRight);
+    let glue_lines = GreedyBreaker.break_lines(&glue_items, 25.0, TextAlignment::RaggedRight);
+
+    // Assert — 行数・各行の box 数・各 box の x が完全一致
+    assert_eq!(penalty_lines.len(), glue_lines.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
+    for (penalty_line, glue_line) in penalty_lines.iter().zip(&glue_lines) {
+      assert_eq!(penalty_line.boxes.len(), glue_line.boxes.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
+      for (penalty_box, glue_box) in penalty_line.boxes.iter().zip(&glue_line.boxes) {
+        assert!(
+          (penalty_box.x - glue_box.x).abs() < f32::EPSILON,
+          "penalty: {penalty_lines:?}, glue: {glue_lines:?}"
+        );
+      }
+    }
   }
 }
