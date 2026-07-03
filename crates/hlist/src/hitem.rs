@@ -41,6 +41,12 @@ pub enum HItem {
   /// QED マーカー前。和文字間は伸長を持つ幅 0 の `Glue` を使う）、分割禁止は `i32::MAX`。
   /// `value <= 0` のとき行分割の候補点になる。幅は持たない。
   Penalty { value: i32 },
+  /// 欧文語中のハイフネーション分割点（discretionary）
+  ///
+  /// ここで折り返した場合**のみ**行末に `hyphen` 箱を出す。折り返さなければ幅 0
+  /// （前後の単語断片 `Box` が語の幅を持つ）。`hyphen` は生成時（`layout`）に計測済みで、
+  /// 行分割はその `width` を収まり判定・両端揃えに使う。空白での分割より優先度が低い候補。
+  Discretionary { hyphen: HBox },
   /// 強制改行（`\\` 由来）
   ForcedBreak,
   /// リンク領域（機構 B）の開始マーカー（幅 0・分割不可）
@@ -54,14 +60,21 @@ pub enum HItem {
 }
 
 impl HItem {
-  /// アイテムの自然幅（pt）を返す。`Penalty` / `ForcedBreak` / リンクマーカーは 0
+  /// アイテムの自然幅（pt）を返す
+  ///
+  /// `Penalty` / `ForcedBreak` / リンクマーカーは 0。`Discretionary` も自然幅 0
+  /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。
   #[must_use]
   pub fn natural_width(&self) -> f32 {
     return match self {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
-      HItem::Penalty { .. } | HItem::ForcedBreak | HItem::LinkStart(_) | HItem::LinkEnd => 0.0,
+      HItem::Penalty { .. }
+      | HItem::Discretionary { .. }
+      | HItem::ForcedBreak
+      | HItem::LinkStart(_)
+      | HItem::LinkEnd => 0.0,
     };
   }
 }

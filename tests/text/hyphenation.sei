@@ -1,0 +1,11 @@
+\section{Western hyphenation}
+
+Typographical hyphenation separates polysyllabic words at permissible syllable
+boundaries, letting the paragraph breaker distribute the remaining width more
+evenly across justified lines. Without such internal breakpoints, an unusually
+long word like internationalization would migrate to the following line and
+leave a conspicuously overstretched predecessor behind it.
+
+Compound expressions such as well-known already provide a breakpoint immediately
+after the existing hyphen, so the hyphenation pass supplements rather than
+replaces the segmentation supplied by Unicode line breaking.

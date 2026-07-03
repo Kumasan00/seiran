@@ -9,7 +9,7 @@
 use types::{LinkTarget, TextAlignment};
 
 use crate::{
-  hitem::HItem,
+  hitem::{HBox, HItem},
   line::{Line, LineLink, PositionedBox},
 };
 
@@ -58,7 +58,7 @@ impl LineBreaker for GreedyBreaker {
     for item in items {
       match item {
         HItem::ForcedBreak => {
-          lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links));
+          lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links, None));
           buffer.clear();
           width_so_far = 0.0;
           last_break = None;
@@ -82,6 +82,14 @@ impl LineBreaker for GreedyBreaker {
             last_break = Some(buffer.len() - 1);
           }
         },
+        HItem::Discretionary { hyphen } => {
+          buffer.push(item);
+          // ハイフンを足しても本文幅に収まる語中点だけを分割候補にする
+          // （折り返すと行末にハイフンが乗るため、右端超過を作らない）。自然幅には寄与しない
+          if width_so_far + hyphen.width <= text_width {
+            last_break = Some(buffer.len() - 1);
+          }
+        },
         // リンクマーカーは幅 0・分割不可。行に積むだけで build_line が矩形を収集する
         HItem::LinkStart(_) | HItem::LinkEnd => {
           buffer.push(item);
@@ -91,8 +99,20 @@ impl LineBreaker for GreedyBreaker {
           if width_so_far + item_width > text_width
             && let Some(break_index) = last_break
           {
-            // 分割可能点までで行を確定し、残りを次行へ持ち越す
-            lines.push(build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links));
+            // 分割可能点までで行を確定し、残りを次行へ持ち越す。
+            // 語中（Discretionary）で折り返すときは行末にハイフンを付す
+            let trailing_hyphen = match buffer[break_index] {
+              HItem::Discretionary { hyphen } => Some(hyphen),
+              _ => None,
+            };
+            lines.push(build_line(
+              &buffer[..break_index],
+              false,
+              text_width,
+              alignment,
+              &mut open_links,
+              trailing_hyphen,
+            ));
             let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
             buffer = carried;
             // 持ち越し先頭の breakable glue は破棄する
@@ -115,7 +135,7 @@ impl LineBreaker for GreedyBreaker {
     }
 
     if !buffer.is_empty() || lines.is_empty() {
-      lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links));
+      lines.push(build_line(&buffer, true, text_width, alignment, &mut open_links, None));
     }
     return lines;
   }
@@ -174,12 +194,17 @@ fn glue_adjust_ratio(items: &[&HItem], available: f32) -> f32 {
 /// `alignment` が [`TextAlignment::Justify`] かつ最終行（段落最終行・強制改行直前）でない
 /// とき、行の余り幅を各 glue の伸縮能力に比例して配分し行末を右端に揃える。リンク矩形は
 /// 伸縮後の x を読むため字位置に自動追従する。
+///
+/// `trailing_hyphen` が `Some` のとき（語中 [`HItem::Discretionary`] で折り返した行）、
+/// 行内アイテムを配置した後の行末にハイフン箱を置く。両端揃えではハイフン幅を差し引いた
+/// 余り幅で glue を伸縮させ、ハイフン込みで右端に揃える。
 fn build_line(
   items: &[&HItem],
   is_last: bool,
   available: f32,
   alignment: TextAlignment,
   open_links: &mut Vec<OpenLink>,
+  trailing_hyphen: Option<&HBox>,
 ) -> Line {
   // 行末の breakable glue を切り落とす
   let mut end = items.len();
@@ -196,9 +221,11 @@ fn build_line(
   }
   let items = &items[..end];
 
-  // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない
+  // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
+  // 行末ハイフンぶんを本文幅から差し引いた余り幅で配分する（ハイフン込みで右端に揃える）
+  let hyphen_width = trailing_hyphen.map_or(0.0, |hyphen| hyphen.width);
   let adjust_ratio = if alignment == TextAlignment::Justify && !is_last {
-    glue_adjust_ratio(items, available)
+    glue_adjust_ratio(items, available - hyphen_width)
   } else {
     0.0
   };
@@ -265,8 +292,21 @@ fn build_line(
           });
         }
       },
-      HItem::Penalty { .. } | HItem::ForcedBreak => {},
+      // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
+      HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
     }
+  }
+  // 語中で折り返した行は、行内アイテムの直後（両端揃えでは伸縮後の右端）にハイフンを置く
+  if let Some(hyphen) = trailing_hyphen {
+    boxes.push(PositionedBox {
+      content: hyphen.content.clone(),
+      x,
+      dy: 0.0,
+      width: hyphen.width,
+    });
+    x += hyphen.width;
+    height = height.max(hyphen.height);
+    depth = depth.max(hyphen.depth);
   }
   // 行末でまだ開いているリンクは、この行ぶんの矩形を出して次行へ継続する
   for open in open_links.iter() {
@@ -352,6 +392,21 @@ mod tests {
       stretch: 0.5,
       shrink: 0.0,
       breakable: true,
+    };
+  }
+
+  /// テスト用の語中ハイフネーション分割点（指定幅のハイフン箱・高さ 6・深さ 0）
+  fn discretionary(hyphen_width: f32) -> HItem {
+    return HItem::Discretionary {
+      hyphen: HBox {
+        content: HBoxContent::Rule {
+          width: hyphen_width,
+          height: 1.0,
+        },
+        width: hyphen_width,
+        height: 6.0,
+        depth: 0.0,
+      },
     };
   }
 
@@ -816,6 +871,88 @@ mod tests {
     assert!((lines[0].boxes[1].x - 10.3).abs() < 1e-4, "{lines:?}");
     let right_edge = lines[0].boxes[1].x + lines[0].boxes[1].width;
     assert!((right_edge - 20.3).abs() < 1e-4, "和文のみの非最終行の右端は版面右端に一致: {lines:?}");
+  }
+
+  #[test]
+  fn breaks_at_discretionary_and_appends_hyphen() {
+    // Arrange — box(10) disc(h=3) box(10) disc(h=3) box(10)、text_width=25 では
+    // 3 つ目の box が収まらず 2 つ目の disc で折り返し、行末にハイフン箱が付く
+    let items = vec![
+      test_box(),
+      discretionary(3.0),
+      test_box(),
+      discretionary(3.0),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 25.0, TextAlignment::RaggedRight);
+
+    // Assert — 1 行目は box2 つ + ハイフン箱、2 行目は残りの box 1 つ
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 3, "本文 box 2 つ + 行末ハイフン: {lines:?}");
+    // ハイフンは box2 の直後（x=20）に幅 3 で置かれ、右端 23 は本文幅 25 を超えない
+    assert!((lines[0].boxes[2].x - 20.0).abs() < f32::EPSILON, "{lines:?}");
+    assert!((lines[0].boxes[2].width - 3.0).abs() < f32::EPSILON, "{lines:?}");
+    let right_edge = lines[0].boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
+    assert!(right_edge <= 25.0 + f32::EPSILON, "ハイフン込みで右端超過なし: {right_edge}");
+    assert_eq!(lines[1].boxes.len(), 1);
+  }
+
+  #[test]
+  fn discretionary_not_used_when_word_fits() {
+    // 幅が十分なら語中では折り返さず、行末ハイフンも付かない（空白/語境界優先）
+    let items = vec![test_box(), discretionary(3.0), test_box()];
+
+    let lines = GreedyBreaker.break_lines(&items, 100.0, TextAlignment::RaggedRight);
+
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 2, "ハイフン箱は付かない: {lines:?}");
+  }
+
+  #[test]
+  fn discretionary_rejected_when_hyphen_would_overflow() {
+    // Arrange — box(10) disc(h=1) box(10) disc(h=20) box(10)、text_width=22。
+    // 2 つ目の disc はハイフン(20)を足すと右端を超えるため分割候補にならず、
+    // 収まる 1 つ目の disc(h=1) へ後退して折り返す
+    let items = vec![
+      test_box(),
+      discretionary(1.0),
+      test_box(),
+      discretionary(20.0),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 22.0, TextAlignment::RaggedRight);
+
+    // Assert — 1 行目は box1 + 幅 1 のハイフン（disc1 で折り返した証拠）、2 行目は box2 box3
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].boxes.len(), 2, "box1 + ハイフン: {lines:?}");
+    assert!((lines[0].boxes[1].width - 1.0).abs() < f32::EPSILON, "使われたのは disc1 のハイフン: {lines:?}");
+    assert_eq!(lines[1].boxes.len(), 2, "{lines:?}");
+  }
+
+  #[test]
+  fn justify_includes_hyphen_width_at_flush_right_edge() {
+    // Arrange — box(10) 伸縮glue(5±2.5) box(10) disc(h=3) box(10)、text_width=29 で disc 折り返し。
+    // 両端揃えはハイフン幅を差し引いた余り幅で glue を伸ばし、ハイフン込みで右端 29 に一致させる
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      discretionary(3.0),
+      test_box(),
+    ];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, 29.0, TextAlignment::Justify);
+
+    // Assert — glue が 6 に伸び box2 は x=16、行末ハイフン右端が本文幅 29 に一致
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!((lines[0].boxes[1].x - 16.0).abs() < 1e-4, "glue 伸長後の box2: {lines:?}");
+    let right_edge = lines[0].boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
+    assert!((right_edge - 29.0).abs() < 1e-4, "ハイフン込みで右端に揃う: {right_edge}");
   }
 
   #[test]

@@ -101,8 +101,9 @@ pub fn build_running_content(
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない
-  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0);
+  // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない。
+  // ヘッダー・フッターはハイフネーションしない（本文段落専用・#173）
+  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None);
   for (index, page) in pages.iter_mut().enumerate() {
     // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
     if spec.skip_first && index == 0 {

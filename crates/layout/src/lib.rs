@@ -33,7 +33,7 @@ use font::{
   shaper::{HarfRustShapers, UnicodeBuffer},
 };
 use hlist::{
-  Block, BreakKind, BreakPoint, Glyph, GlyphRun, HBox, HBoxContent, HItem, PlacedHItem, TableBox, TableCellBox,
+  Block, BreakKind, BreakPoint, Glyph, GlyphRun, HBox, HBoxContent, HItem, Lang, PlacedHItem, TableBox, TableCellBox,
   TableRowBox,
 };
 use lazy_regex::regex_replace_all;
@@ -71,6 +71,8 @@ const CJK_STRETCH_RATIO: f32 = 0.05;
 /// * `metrics` - 全フォント種別の基本メトリクス（box の寸法計測に使用）
 /// * `default_font_size` - 既定フォントサイズ（pt）。空段落の行送りのフォールバック
 /// * `line_height_factor` - 行高係数。段落の行送り（leading）の算出に使用
+/// * `language` - 文書ロケール（BCP 47、`config.document.language`）。欧文ハイフネーションの
+///   言語をこれから導出する。`None`・非対応言語ならハイフネーションなし
 #[must_use]
 pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
@@ -78,8 +80,10 @@ pub fn build_blocks(
   metrics: &FontMetrics,
   default_font_size: f32,
   line_height_factor: f32,
+  language: Option<&str>,
 ) -> Vec<Block> {
-  let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor);
+  let hyphenation = hlist::resolve_hyphenation(language);
+  let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
@@ -97,6 +101,8 @@ pub(crate) struct Measurer<'a> {
   buffer: UnicodeBuffer,
   default_font_size: f32,
   line_height_factor: f32,
+  /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
+  hyphenation: Option<Lang>,
 }
 
 impl<'a> Measurer<'a> {
@@ -106,6 +112,7 @@ impl<'a> Measurer<'a> {
     metrics: &'a FontMetrics,
     default_font_size: f32,
     line_height_factor: f32,
+    hyphenation: Option<Lang>,
   ) -> Self {
     return Measurer {
       shapers,
@@ -113,6 +120,7 @@ impl<'a> Measurer<'a> {
       buffer: UnicodeBuffer::new(),
       default_font_size,
       line_height_factor,
+      hyphenation,
     };
   }
 }
@@ -380,13 +388,21 @@ impl Measurer<'_> {
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = regex_replace_all!("\n", text, " ");
     for segment in script::split_text_by_script(style.font_kind, &text) {
+      let is_japanese = segment.category == script::ScriptCategory::Japanese;
       let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
         // 数式は行分割の対象にしない（閉じた box のまま行に載せる）
         out.push(HItem::Box(hbox));
         continue;
       }
-      self.split_run_into_items(hbox, &segment.text, segment.category == script::ScriptCategory::Japanese, out);
+      // 欧文セグメントかつハイフネーション有効時のみ、語中折り返しの行末に付すハイフン箱を
+      // このセグメントのフォントで計測しておく（`split_run_into_items` は `&self` で計測できないため）
+      let hyphen = if !is_japanese && self.hyphenation.is_some() {
+        Some(self.shape_segment("-", segment.font_type, style.font_size, style.color))
+      } else {
+        None
+      };
+      self.split_run_into_items(hbox, &segment.text, is_japanese, hyphen.as_ref(), out);
     }
   }
 
@@ -398,16 +414,27 @@ impl Measurer<'_> {
   ///   セグメントで分ける。和文（`is_japanese`）は幅 0・微小伸長の breakable な [`HItem::Glue`]
   ///   （両端揃えで字間に余り幅を配分する。issue #163）、欧文（ハイフン後等）は
   ///   `Penalty { value: 0 }`（伸縮なし）
+  /// - [`BreakKind::Hyphen`]（欧文語中のハイフネーション位置）: グリフ境界で run を割り、
+  ///   計測済みの `hyphen` 箱を持つ [`HItem::Discretionary`] を挿む（折り返した行だけ行末にハイフン）
   /// - リガチャ等でクラスタ途中に分割位置が落ちた場合は分割を抑制する
   /// - 分割で生じる各 `GlyphRun.text` は `Glyph.range` 整合にスライスし直す
   ///   （PDF テキスト抽出を壊さない）
-  fn split_run_into_items(&self, hbox: HBox, text: &str, is_japanese: bool, out: &mut Vec<HItem>) {
+  fn split_run_into_items(
+    &self,
+    hbox: HBox,
+    text: &str,
+    is_japanese: bool,
+    hyphen: Option<&HBox>,
+    out: &mut Vec<HItem>,
+  ) {
     let HBoxContent::Glyphs(run) = hbox.content else {
       out.push(HItem::Box(hbox));
       return;
     };
 
-    let mut breaks = hlist::break_opportunities(text);
+    // 和文セグメントはハイフネーションしない（`Lang` を渡さない＝Hyphen 分割点を生じさせない）
+    let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
+    let mut breaks = hlist::break_opportunities(text, hyphenation_lang);
     // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
     if text.ends_with(' ') {
       breaks.push(BreakPoint {
@@ -483,6 +510,25 @@ impl Measurer<'_> {
           } else {
             out.push(HItem::Penalty { value: 0 });
           }
+          seg_glyph_start = glyph_index;
+          seg_byte_start = break_point.byte;
+        },
+        BreakKind::Hyphen => {
+          // ハイフン箱が無い（通常発生しない）ときは語中分割しない
+          let Some(hyphen) = hyphen else {
+            continue;
+          };
+          let Some(glyph_index) = find_glyph_starting_at(&run.glyphs, break_point.byte) else {
+            continue; // クラスタ途中: 分割を抑制
+          };
+          if glyph_index <= seg_glyph_start {
+            continue;
+          }
+          // スペースを抜かずグリフ境界で割り、語断片の間に Discretionary を挿む（語は続く）
+          self.push_sub_run(&run, text, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
+          out.push(HItem::Discretionary {
+            hyphen: hyphen.clone(),
+          });
           seg_glyph_start = glyph_index;
           seg_byte_start = break_point.byte;
         },

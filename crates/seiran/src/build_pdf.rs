@@ -198,7 +198,14 @@ fn build_pages(
   let stage_start = Instant::now();
   let body_blocks = {
     let _span = debug_span!("build_blocks", region = "body").entered();
-    layout::build_blocks(body_layout_nodes, &harf_rust_shapers, &metrics, default_font_size, line_height_factor)
+    layout::build_blocks(
+      body_layout_nodes,
+      &harf_rust_shapers,
+      &metrics,
+      default_font_size,
+      line_height_factor,
+      config.document.language.as_deref(),
+    )
   };
   info!(
     block_count = body_blocks.len(),

@@ -47,6 +47,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "equation",
   "gather",
   "hyperref",
+  "hyphenation",
   "itemize",
   "justify",
   "matrix",
@@ -117,6 +118,20 @@ fn apply_input_style_overrides(name: &str, style: &mut read_style::Style) {
   }
 }
 
+/// 入力ごとの config 差分を適用する。
+///
+/// 欧文ハイフネーション（#173）は文書ロケールから言語を導出するため、その検証入力だけ
+/// `document.language` を英語に切り替える。あわせて本文幅を狭め（既定 fixture は版面が広く
+/// 語中折り返しが起きない）、長い欧文語が語中でハイフン分割される様子を golden に固定する。
+/// 対象外の入力はベース config をそのまま使う（既存 golden は language = "ja" のまま不変）。
+fn apply_input_config_overrides(name: &str, config: &mut read_config::Config) {
+  if name == "hyphenation" {
+    config.document.language = Some("en".to_string());
+    config.pdf.margin.left = types::Length::mm(275.0);
+    config.pdf.margin.right = types::Length::mm(275.0);
+  }
+}
+
 /// 指定入力 1 つを組版し、確定ページ列のダンプ文字列を返す。
 ///
 /// `sources` だけを対象入力へ差し替え、フォント・用紙はベース設定を共有する。style は
@@ -131,6 +146,7 @@ fn dump_input(
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
   apply_input_style_overrides(name, &mut style);
+  apply_input_config_overrides(name, &mut config);
   let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, references, &font_data).expect("build_pages の実行");
   return dump_pages(&laid_out.pages);
