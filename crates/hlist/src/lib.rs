@@ -23,7 +23,7 @@
 //! - [`line`] / [`page`] - 行分割・縦組版の出力型
 //! - [`break_opportunities`] - (b) ICU による分割可能点の探索（純粋関数）
 //! - [`hyphenation`] - 欧文ハイフネーション（語中分割位置の探索・`hypher`）
-//! - [`break_lines`] - (c) 貪欲法の行分割（`LineBreaker` / `GreedyBreaker`）
+//! - [`break_lines`] - (c) 行分割（`LineBreaker` / `GreedyBreaker` / `KnuthPlassBreaker`）
 //! - [`break_pages`] - (d) 縦組版（ベースライン送り・改ページ・表分割）
 //! - [`dump`] - 確定ページ列の決定的テキストダンプ（レイアウト回帰テスト用）
 
@@ -40,7 +40,7 @@ pub mod page;
 pub mod table_box;
 
 pub use block::{Block, MathRowNumber};
-pub use break_lines::{GreedyBreaker, LineBreaker};
+pub use break_lines::{GreedyBreaker, KnuthPlassBreaker, LineBreaker};
 pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
 pub use break_pages::{PageGeometry, break_pages, column_width};
 pub use dump::dump_pages;

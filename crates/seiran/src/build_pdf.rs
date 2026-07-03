@@ -228,7 +228,7 @@ fn build_pages(
   let stage_start = Instant::now();
   let body_pages = {
     let _span = debug_span!("break_pages", region = "body").entered();
-    hlist::break_pages(body_blocks, text_width, &body_geometry, &hlist::GreedyBreaker, style.text.alignment)
+    hlist::break_pages(body_blocks, text_width, &body_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
   };
   let body_page_count = body_pages.len();
   let heading_pages = heading_page_indices(&body_pages);
@@ -250,7 +250,7 @@ fn build_pages(
   let stage_start = Instant::now();
   let front_pages = {
     let _span = debug_span!("break_pages", region = "front").entered();
-    break_front_matter(front_blocks, text_width, &front_geometry, &hlist::GreedyBreaker, style.text.alignment)
+    break_front_matter(front_blocks, text_width, &front_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
   };
   let front_matter_count = front_pages.len();
   let mut pages = front_pages;
