@@ -31,7 +31,8 @@ pub(super) fn assemble_front_matter(
     let title_nodes = lower_title_page(title_metadata, &style.title_page);
     {
       let _span = debug_span!("build_blocks", region = "title").entered();
-      front_blocks.extend(build_blocks(title_nodes, shapers, metrics, default_font_size, line_height_factor));
+      // タイトルページ（表題・著者等の大きな見出し文字）はハイフネーションしない（#173）
+      front_blocks.extend(build_blocks(title_nodes, shapers, metrics, default_font_size, line_height_factor, None));
     }
     debug!("タイトルページを生成しました");
   }

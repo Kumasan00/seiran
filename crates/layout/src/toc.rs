@@ -69,8 +69,9 @@ pub fn build_toc_blocks(
   if entries.is_empty() {
     return Vec::new();
   }
-  // default_font_size / line_height_factor は目次のシェーピングでは使わない
-  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0);
+  // default_font_size / line_height_factor は目次のシェーピングでは使わない。
+  // 目次項目はハイフネーションしない（本文段落専用・#173）
+  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None);
   let mut blocks: Vec<Block> = Vec::new();
 
   // 見出し行

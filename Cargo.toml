@@ -46,6 +46,11 @@ hayagriva = {
   features = ["archive", "csl-json"]
 }
 hlist = { path = "crates/hlist" }
+hypher = {
+  version = "0.1.7",
+  default-features = false,
+  features = ["alloc", "english", "german", "french", "spanish", "italian", "portuguese", "dutch"]
+}
 icu = { version = "2.2.0", features = ["compiled_data"] }
 image = {
   version = "0.25.10",

@@ -422,6 +422,7 @@ fn draw_cell_items(
       // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
       // FlushRight（QED）は定理本体専用で表セル内には現れない
       hlist::HItem::Penalty { .. }
+      | hlist::HItem::Discretionary { .. }
       | hlist::HItem::ForcedBreak
       | hlist::HItem::LinkStart(_)
       | hlist::HItem::LinkEnd

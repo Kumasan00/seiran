@@ -22,6 +22,7 @@
 //! - [`block`] - 文書の縦リスト要素（`Block`）
 //! - [`line`] / [`page`] - 行分割・縦組版の出力型
 //! - [`break_opportunities`] - (b) ICU による分割可能点の探索（純粋関数）
+//! - [`hyphenation`] - 欧文ハイフネーション（語中分割位置の探索・`hypher`）
 //! - [`break_lines`] - (c) 貪欲法の行分割（`LineBreaker` / `GreedyBreaker`）
 //! - [`break_pages`] - (d) 縦組版（ベースライン送り・改ページ・表分割）
 //! - [`dump`] - 確定ページ列の決定的テキストダンプ（レイアウト回帰テスト用）
@@ -33,6 +34,7 @@ pub mod break_pages;
 pub mod dump;
 pub mod glyph_run;
 pub mod hitem;
+pub mod hyphenation;
 pub mod line;
 pub mod page;
 pub mod table_box;
@@ -44,6 +46,7 @@ pub use break_pages::{PageGeometry, break_pages, column_width};
 pub use dump::dump_pages;
 pub use glyph_run::{Glyph, GlyphRun};
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
+pub use hyphenation::{Lang, resolve as resolve_hyphenation};
 pub use line::{Line, LineLink, PositionedBox};
 pub use page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedMathNumber, PlacedTableRow};
 pub use table_box::{
