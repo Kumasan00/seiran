@@ -39,7 +39,7 @@ pub mod line;
 pub mod page;
 pub mod table_box;
 
-pub use block::{Block, MathRowNumber};
+pub use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
 pub use break_lines::{GreedyBreaker, KnuthPlassBreaker, LineBreaker};
 pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
 pub use break_pages::{PageGeometry, break_pages, column_width};

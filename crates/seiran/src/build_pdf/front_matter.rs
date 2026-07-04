@@ -50,7 +50,7 @@ pub(super) fn assemble_front_matter(
     let toc_blocks = build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
     if !toc_blocks.is_empty() {
       front_blocks.extend(toc_blocks);
-      front_blocks.push(Block::PageBreak);
+      front_blocks.push(Block::force_break());
       debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
     }
   }
@@ -115,8 +115,8 @@ fn build_toc_spec(style: &Style, text_width: f32) -> TocSpec {
 /// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
 ///
 /// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている `Block::PageBreak` は落とす（[`hlist::break_pages`] の `finish` が末尾ページを無条件に
-/// push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間 `PageBreak` は保持する。
+/// 付いている強制改ページ（[`Block::force_break`]）は落とす（[`hlist::break_pages`] の `finish` が末尾
+/// ページを無条件に push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間の強制改ページは保持する。
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
 pub(super) fn break_front_matter(
   mut front_blocks: Vec<Block>,
@@ -125,7 +125,7 @@ pub(super) fn break_front_matter(
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,
 ) -> Vec<Page> {
-  if matches!(front_blocks.last(), Some(Block::PageBreak)) {
+  if front_blocks.last().is_some_and(Block::is_force_break) {
     front_blocks.pop();
   }
   if front_blocks.is_empty() {

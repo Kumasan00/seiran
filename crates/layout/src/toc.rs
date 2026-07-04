@@ -81,7 +81,7 @@ pub fn build_toc_blocks(
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
   if spec.title_bottom_margin > 0.0 {
-    blocks.push(Block::VSpace(spec.title_bottom_margin));
+    blocks.push(Block::fixed_space(spec.title_bottom_margin));
   }
 
   // エントリ行
@@ -94,7 +94,7 @@ pub fn build_toc_blocks(
   }
 
   if spec.bottom_margin > 0.0 {
-    blocks.push(Block::VSpace(spec.bottom_margin));
+    blocks.push(Block::fixed_space(spec.bottom_margin));
   }
   return blocks;
 }
