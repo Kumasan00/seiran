@@ -39,7 +39,7 @@ figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
 font-types = "0.12.0"
 garde = { version = "0.23.0", features = ["derive"] }
-harfrust = "0.10.0"
+harfrust = "0.12.0"
 hayagriva = {
   version = "0.10.1",
   default-features = false,
