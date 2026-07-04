@@ -132,6 +132,14 @@ pub enum LayoutNode {
   },
   LineBreak,
   PageBreak,
+  /// keep-with-next マーカー（ゼロサイズ）
+  ///
+  /// 直前のブロック（見出し）とその直後のブロックの間で改ページしてはならないことを表す。
+  /// `layout::build_blocks` が `Block::Penalty { value: PENALTY_FORBID_BREAK }`（分割禁止・+∞）へ
+  /// 写す。`PageBreak` → `Block::force_break()`（強制改ページ・−∞）と対称の変換。`hlist::break_pages`
+  /// はこの禁止 penalty を「keep グループの連結」として走査し、見出しがページ末尾に孤立するなら
+  /// 見出しごと次リージョンへ送る。見出し（`page_break_after` を除く）が `lower_heading` で発行する。
+  KeepWithNext,
   /// 行の右端に寄せる末尾要素（証明の QED マーク等）
   ///
   /// `children`（QED の中身 = `Text` ノード列）を `layout` 段で 1 つの閉じた箱に畳み、

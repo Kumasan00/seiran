@@ -136,13 +136,14 @@ impl PageComposer {
   /// `next_height` は次に置く内容ブロックの高さ、`penalty` は直前の境界の分割コスト
   /// （[`PageComposer::take_pending_penalty`] の戻り値）。判定は次の一本:
   ///
-  /// - [`PENALTY_FORBID_BREAK`]（+∞）: 分割禁止。オーバーフローしても切らない（keep-with-next・#168 が発行）。
+  /// - [`PENALTY_FORBID_BREAK`]（+∞）: 分割禁止。オーバーフローしても切らない（防御的不変条件）。
   /// - それ以外: 高さがページ下限を超えるなら [`PageComposer::advance_region`] で改段 / 改ページする（幾何判定）。
   ///
   /// 強制改ページ（[`PENALTY_FORCE_BREAK`]）はここを通さず [`break_pages`] の match アームで eager に処理する
-  /// （直前のアキが旧ページ末尾に乗るのを避けるため）。本 issue（#166）では有限 / 禁止 penalty の発行者が
-  /// いないため常に `penalty == 0` で、実質は幾何判定のみ。有限 penalty を使う widow/orphan（#167）は
-  /// ここに badness 判定を足す。
+  /// （直前のアキが旧ページ末尾に乗るのを避けるため）。keep-with-next（#168）の分割禁止は `pending_penalty`
+  /// ではなく keep グループゲート（[`keep_group_orphaned`]）で処理するため、通常この経路には FORBID は流れない。
+  /// 現状の発行者は有限 penalty がおらず `penalty == 0` に帰着することが多い。有限 penalty を使う
+  /// widow/orphan（#167）はここに badness 判定を足す。
   fn consider_break(&mut self, next_height: f32, penalty: i32, geom: &PageGeometry) {
     if penalty == PENALTY_FORBID_BREAK {
       return;
@@ -151,6 +152,12 @@ impl PageComposer {
       self.advance_region(geom);
     }
   }
+
+  /// 現在のリージョン（段 / ページ）の先頭にいて、これ以上前へは送れない（回避不能）かを返す。
+  ///
+  /// keep-with-next ゲート（[`keep_group_orphaned`]）が真でも、既にリージョン先頭なら改段 / 改ページ
+  /// しても空間は増えないため送らない。`start_new_page` の空ページ抑止と併せ、無限ループを防ぐ。
+  fn at_region_top(&self, geom: &PageGeometry) -> bool { return self.y <= geom.margin_top && !self.cursor_at_edge; }
 
   /// 現在ページを確定し、新しいページを開始する
   ///
@@ -251,8 +258,34 @@ pub fn break_pages(
   let col_width = column_width(text_width, geom.num_columns, geom.column_gap);
   let mut composer = PageComposer::new(geom, col_width);
   let block_count = blocks.len();
+  let mut blocks = blocks;
 
-  for block in blocks {
+  // keep-with-next（見出し直後の分割禁止・#168）を尊重しつつ前から順に配置する。FORBID penalty で
+  // 連結された見出し群（keep グループ）の先頭で一度だけ、末尾ブロックの先頭チャンクが現在のリージョンに
+  // 収まるかを判定し、収まらなければグループごと次リージョンへ送る（見出しがページ末尾に孤立するのを防ぐ）。
+  let mut i = 0;
+  let mut gated_end: Option<usize> = None;
+  while i < blocks.len() {
+    if gated_end.is_none_or(|e| i > e)
+      && is_content_block(&blocks[i])
+      && let Some(end) = keep_group_end(&blocks, i)
+    {
+      if keep_group_orphaned(&composer, geom, breaker, alignment, col_width, &blocks[i..=end])
+        && !composer.at_region_top(geom)
+      {
+        composer.advance_region(geom);
+      }
+      gated_end = Some(end);
+    }
+    // 配置対象を取り出す（残したプレースホルダは以降参照しない）。
+    let block = std::mem::replace(
+      &mut blocks[i],
+      Block::Glue {
+        natural: 0.0,
+        stretch: 0.0,
+        shrink: 0.0,
+      },
+    );
     match block {
       Block::Paragraph {
         items,
@@ -282,11 +315,13 @@ pub fn break_pages(
       Block::Glue { natural, .. } => {
         composer.y += natural;
       },
-      // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限 / 禁止は次の内容ブロックへ持ち越す。
+      // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限は次の内容ブロックへ持ち越す。
+      // 分割禁止（+∞）は keep-with-next のグループ連結マーカーで、ゲート（keep_group_*）が処理済み
+      // なのでここでは配置上の副作用を持たない（pending にも積まない）。
       Block::Penalty { value } => {
         if value == PENALTY_FORCE_BREAK {
           composer.start_new_page(geom);
-        } else {
+        } else if value != PENALTY_FORBID_BREAK {
           composer.pending_penalty = value;
         }
       },
@@ -354,6 +389,7 @@ pub fn break_pages(
         composer.pending_anchors.push(mark);
       },
     }
+    i += 1;
   }
 
   let pages = composer.finish();
@@ -487,6 +523,172 @@ fn plan_paragraph_lines(
       _ => return plan,
     }
   }
+}
+
+/// 内容ブロック（実際の高さを占め、リージョン配置の対象になるブロック）か。
+///
+/// Glue（アキ）・Penalty（分割コスト）・Anchor（ゼロサイズマーカー）は内容ではない。
+/// keep-with-next のグループ判定・孤立判定で「見出し」「本文」に当たる実ブロックを選ぶのに使う。
+fn is_content_block(block: &Block) -> bool {
+  return matches!(
+    block,
+    Block::Paragraph { .. }
+      | Block::Table { .. }
+      | Block::Image { .. }
+      | Block::Rule { .. }
+      | Block::ComposedLine { .. }
+      | Block::MathBlock { .. }
+  );
+}
+
+/// `blocks[start]` が keep-with-next グループの先頭なら、グループ末尾（最後の内容ブロック）の
+/// index を返す（純粋・幾何非依存）。
+///
+/// グループは「内容ブロック →（アキ・アンカーを跨いで）[`PENALTY_FORBID_BREAK`] →次の内容ブロック」の
+/// 連鎖。連続する見出しは各々が FORBID を出すので 1 つの極大グループにまとまる。末尾の内容ブロック（本文）は
+/// keep 対象の相手であって、それ自身は次へ FORBID を持たない。強制改ページ（[`PENALTY_FORCE_BREAK`]）が
+/// 挟まれば連鎖を断つ。連結が 1 つも無ければ（先頭が見出しでなければ）`None`。
+fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
+  if !is_content_block(&blocks[start]) {
+    return None;
+  }
+  let mut end = start;
+  loop {
+    let mut saw_forbid = false;
+    let mut next_content = None;
+    let mut j = end + 1;
+    while j < blocks.len() {
+      match &blocks[j] {
+        Block::Penalty { value } if *value == PENALTY_FORBID_BREAK => saw_forbid = true,
+        Block::Penalty { value } if *value == PENALTY_FORCE_BREAK => break,
+        b if is_content_block(b) => {
+          next_content = Some(j);
+          break;
+        },
+        _ => {},
+      }
+      j += 1;
+    }
+    match next_content {
+      Some(k) if saw_forbid => end = k,
+      _ => break,
+    }
+  }
+  return if end > start { Some(end) } else { None };
+}
+
+/// keep グループの末尾が段落でない（図表・数式・罫線・合成行）ときの配置シミュレーション。
+///
+/// カーソル `y`（`cursor_at_edge = cae`）に置いたとき、そのブロックの配置関数が改段 / 改ページ
+/// する（= 見出しを孤立させる）かと、改段しない場合の配置後カーソルを返す。各 `place_*` の
+/// リージョン判定を鏡写しにする（`place_math_block` / `place_table` は「新リージョンなら収まるとき
+/// だけ先に改」、`consider_break`（画像・罫線）はオーバーフローで無条件に改）。
+fn atomic_place_sim(block: &Block, y: f32, cae: bool, geom: &PageGeometry) -> (bool, f32) {
+  match block {
+    Block::Image { height, .. } => {
+      let h = height.unwrap_or(0.0);
+      return (y + h > geom.page_limit, y + h);
+    },
+    Block::Rule { height, .. } => return (y + *height > geom.page_limit, y + *height),
+    Block::MathBlock { body, .. } => {
+      let h = body.height + body.depth;
+      return (y + h > geom.page_limit && geom.margin_top + h <= geom.page_limit, y + h);
+    },
+    Block::ComposedLine { line, leading } => {
+      let baseline = if cae { y + line.height } else { y };
+      return (baseline + line.depth > geom.page_limit, baseline + leading);
+    },
+    Block::Table { table, .. } => {
+      let row_h = |row| table_row_height(row, geom.default_font_size, geom.line_height_factor);
+      let total: f32 = table.head.iter().chain(table.rows.iter()).map(row_h).sum();
+      if table.breakable {
+        let first = table.head.first().or_else(|| table.rows.first());
+        return (first.is_some_and(|r| y + row_h(r) > geom.page_limit), y + total);
+      }
+      return (y + total > geom.page_limit && geom.margin_top + total <= geom.page_limit, y + total);
+    },
+    _ => return (false, y),
+  }
+}
+
+/// keep グループを現在のカーソルから配置したとき、末尾の内容ブロックの先頭チャンクが見出しと
+/// 別リージョンに落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、収まらなければ `true`。
+///
+/// 先頭チャンク: 見出し段落は全行、末尾が段落なら widow/orphan（[`MIN_LINES_AT_BREAK`]）で丸ごと次へ
+/// 送られない最小行数 `min(MIN_LINES_AT_BREAK, 行数)`。ベースライン漸化式は [`place_lines`] /
+/// [`place_paragraph`] と同一（段落先頭行は `cursor_at_edge` ならアセント分下げ、2 行目以降は
+/// `max(leading, 前行の深さ + 高さ)`）。末尾が図表等なら [`atomic_place_sim`] の改リージョン判定を使う。
+fn keep_group_orphaned(
+  composer: &PageComposer,
+  geom: &PageGeometry,
+  breaker: &dyn LineBreaker,
+  alignment: TextAlignment,
+  column_width: f32,
+  group: &[Block],
+) -> bool {
+  let Some(last_content) = group.iter().rposition(is_content_block) else {
+    return false;
+  };
+  let mut y = composer.y;
+  let mut cae = composer.cursor_at_edge;
+  // 同一段落内の直前行（baseline, depth, leading）。段落境界（glue 通過）でリセットする。
+  let mut prev: Option<(f32, f32, f32)> = None;
+  for (gi, block) in group.iter().enumerate() {
+    match block {
+      Block::Glue { natural, .. } => {
+        y += natural;
+        prev = None;
+      },
+      Block::Paragraph {
+        items,
+        leading,
+        indent,
+        right_indent,
+        align,
+      } => {
+        let available = (column_width - indent - right_indent).max(0.0);
+        let effective = if *align == types::Align::Left {
+          alignment
+        } else {
+          TextAlignment::RaggedRight
+        };
+        let lines = breaker.break_lines(items, available, effective);
+        // 末尾（本文）は widow/orphan で丸ごと送られない最小行数だけを keep 対象にする。見出しは全行。
+        let commit = if gi == last_content {
+          MIN_LINES_AT_BREAK.min(lines.len())
+        } else {
+          lines.len()
+        };
+        let mut last_baseline = y;
+        for (li, line) in lines.iter().enumerate() {
+          let baseline = match prev {
+            Some((pb, pd, pl)) => pb + pl.max(pd + line.height),
+            None if cae => y + line.height,
+            None => y,
+          };
+          if li < commit && baseline + line.depth > geom.page_limit {
+            return true;
+          }
+          last_baseline = baseline;
+          prev = Some((baseline, line.depth, *leading));
+        }
+        y = last_baseline + leading;
+        cae = false;
+        prev = None;
+      },
+      _ if is_content_block(block) => {
+        let (advance, y_after) = atomic_place_sim(block, y, cae, geom);
+        if gi == last_content || advance {
+          return advance;
+        }
+        y = y_after;
+        cae = true;
+        prev = None;
+      },
+      _ => {},
+    }
+  }
+  return false;
 }
 
 /// 段落を行に割ってベースライン送りで配置する
@@ -777,9 +979,11 @@ fn place_table(
 mod tests {
   use types::{ColumnAlign, ColumnWidth, TableColumn, TextAlignment};
 
-  use super::{LinePlacement, PageGeometry, break_pages, column_width, plan_paragraph_lines};
+  use super::{
+    LinePlacement, PageGeometry, break_pages, column_width, is_content_block, keep_group_end, plan_paragraph_lines,
+  };
   use crate::{
-    block::Block,
+    block::{Block, PENALTY_FORBID_BREAK},
     break_lines::GreedyBreaker,
     glyph_run::GlyphRun,
     hitem::{HBox, HBoxContent, HItem},
@@ -787,6 +991,16 @@ mod tests {
     page::{Page, PlacedBlock},
     table_box::{TableBox, TableCellBox, TableRowBox},
   };
+
+  /// keep-with-next マーカー（分割禁止 penalty）を作るテストヘルパ
+  fn forbid_break() -> Block {
+    return Block::Penalty {
+      value: PENALTY_FORBID_BREAK,
+    };
+  }
+
+  /// ページ末尾から本文先頭までの通し行ベースライン列（ページごと）を採取するヘルパ
+  fn line_counts(pages: &[Page]) -> Vec<usize> { return pages.iter().map(|p| page_baselines(p).len()).collect(); }
 
   /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`、単段）
   fn test_geometry() -> PageGeometry {
@@ -2119,5 +2333,198 @@ mod tests {
     assert_eq!(xs.len(), 2, "左段断片 + 右段断片の 2 つ: {xs:?}");
     assert!((xs[0] - 0.0).abs() < f32::EPSILON, "1 つ目（左段）x={}", xs[0]);
     assert!((xs[1] - 55.0).abs() < f32::EPSILON, "2 つ目（右段）x={}", xs[1]);
+  }
+
+  // ---- keep-with-next（見出し直後の改ページ禁止・#168）----
+
+  #[test]
+  fn is_content_block_classifies_variants() {
+    // Arrange / Act / Assert — 実ブロックだけ true、アキ・分割コスト・アンカーは false
+    assert!(is_content_block(&paragraph_of_lines(1)));
+    assert!(is_content_block(&Block::Rule {
+      width: 1.0,
+      height: 1.0,
+      align: types::Align::Left,
+    }));
+    assert!(!is_content_block(&Block::fixed_space(5.0)));
+    assert!(!is_content_block(&forbid_break()));
+    assert!(!is_content_block(&Block::force_break()));
+  }
+
+  #[test]
+  fn keep_group_end_links_heading_to_following_block() {
+    // Arrange — 見出し段落 → アキ → FORBID → 本文段落
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::fixed_space(3.0),
+      forbid_break(),
+      paragraph_of_lines(2),
+    ];
+
+    // Act / Assert — 先頭（見出し）から末尾内容ブロック（index 3）までが 1 グループ
+    assert_eq!(keep_group_end(&blocks, 0), Some(3));
+  }
+
+  #[test]
+  fn keep_group_end_none_without_forbid() {
+    // Arrange — FORBID の無い通常の段落並び
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::fixed_space(3.0),
+      paragraph_of_lines(2),
+    ];
+
+    // Act / Assert — 連結が無いのでグループにならない
+    assert_eq!(keep_group_end(&blocks, 0), None);
+  }
+
+  #[test]
+  fn keep_group_end_chains_consecutive_headings() {
+    // Arrange — 見出し → 見出し → 本文（各見出しが FORBID を出す）
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::fixed_space(3.0),
+      forbid_break(),
+      paragraph_of_lines(1),
+      Block::fixed_space(3.0),
+      forbid_break(),
+      paragraph_of_lines(2),
+    ];
+
+    // Act / Assert — 連続見出しは 1 つの極大グループにまとまる（index 6 まで）
+    assert_eq!(keep_group_end(&blocks, 0), Some(6));
+  }
+
+  #[test]
+  fn keep_group_end_severed_by_forced_break() {
+    // Arrange — 見出し直後に強制改ページ（page_break_after 相当）。FORBID は無い
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::fixed_space(3.0),
+      Block::force_break(),
+      paragraph_of_lines(2),
+    ];
+
+    // Act / Assert — 強制改ページは keep 連鎖を作らない
+    assert_eq!(keep_group_end(&blocks, 0), None);
+  }
+
+  #[test]
+  fn heading_kept_with_body_moves_to_next_page() {
+    // Arrange — filler 3 行でカーソルを 46 まで進め、見出し（1 行）+ FORBID + 本文（2 行）。
+    // 見出しは幾何的にはページ末尾（baseline 46）に入るが、本文先頭が入らない → 孤立。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(3), // filler
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(0.0),
+      forbid_break(),
+      paragraph_of_lines(2), // 本文
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 見出しごと 2 ページ目へ送られる（1 ページ目 = filler 3 行、2 ページ目 = 見出し + 本文 2 行）
+    assert_eq!(line_counts(&pages), vec![3, 3], "{pages:?}");
+  }
+
+  #[test]
+  fn heading_without_keep_marker_is_orphaned() {
+    // Arrange — 同じ配置だが FORBID 無し（keep-with-next の対照）。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(3),
+      paragraph_of_lines(1),
+      Block::fixed_space(0.0),
+      paragraph_of_lines(2),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 見出しは 1 ページ目末尾に孤立（1 ページ目 4 行 = filler + 見出し、2 ページ目 = 本文）
+    assert_eq!(line_counts(&pages), vec![4, 2], "{pages:?}");
+  }
+
+  #[test]
+  fn consecutive_headings_move_together() {
+    // Arrange — filler で末尾近くまで進め、見出し + 見出し + 本文。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(3),
+      paragraph_of_lines(1), // 見出し 1
+      Block::fixed_space(0.0),
+      forbid_break(),
+      paragraph_of_lines(1), // 見出し 2
+      Block::fixed_space(0.0),
+      forbid_break(),
+      paragraph_of_lines(2), // 本文
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 連続見出しが分断されず一体で 2 ページ目へ（1 ページ目 3 行、2 ページ目 = 見出し 2 + 本文 2 = 4 行）
+    assert_eq!(line_counts(&pages), vec![3, 4], "{pages:?}");
+  }
+
+  #[test]
+  fn heading_with_fitting_body_stays_in_place() {
+    // Arrange — 見出しと本文先頭が同ページに収まる位置。keep-with-next は余計な移動をしない。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1), // filler → y=22
+      paragraph_of_lines(1), // 見出し
+      Block::fixed_space(0.0),
+      forbid_break(),
+      paragraph_of_lines(2), // 本文
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 全 4 行が 1 ページに収まり、改ページは起きない
+    assert_eq!(line_counts(&pages), vec![4], "{pages:?}");
+  }
+
+  #[test]
+  fn doc_final_heading_without_body_does_not_hang() {
+    // Arrange — 文書末尾が見出し（後続の内容ブロック無し）。FORBID は宙に浮く。
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(3),
+      paragraph_of_lines(1),
+      Block::fixed_space(0.0),
+      forbid_break(),
+    ];
+
+    // Act — グループ相手が無いのでゲートは無効。ハングせず配置できる
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 1 ページに filler 3 行 + 見出し 1 行
+    assert_eq!(line_counts(&pages), vec![4], "{pages:?}");
+  }
+
+  #[test]
+  fn unavoidable_keep_at_region_top_does_not_add_blank_page() {
+    // Arrange — 見出しがリージョン先頭にあり、本文先頭がフレッシュなリージョンでも収まらない。
+    // 送っても空間は増えない（回避不能）ので、余計な空ページを差し込まない。
+    let geom = PageGeometry {
+      page_limit: 30.0,
+      ..test_geometry()
+    };
+    let blocks = vec![
+      paragraph_of_lines(1), // 見出し（ページ先頭）
+      Block::fixed_space(0.0),
+      forbid_break(),
+      paragraph_of_lines(2), // 本文
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 見出しは 1 ページ目先頭（回避不能で孤立を許容）、本文は 2 ページ目。空ページは生じない
+    assert_eq!(line_counts(&pages), vec![1, 2], "{pages:?}");
   }
 }

@@ -19,6 +19,10 @@ use crate::layout_node::{LayoutNode, TextStyle};
 /// PDF のしおり（アウトライン）と `\ref` 内部リンクの到達先を生成する。`label` は
 /// `\section[label=...]` で付与された参照ラベル（`\ref` 対象でなければ `None`）。
 ///
+/// 見出しブロックの直後には、`page_break_after` なら [`LayoutNode::PageBreak`]（強制改ページ）を、
+/// そうでなければ [`LayoutNode::KeepWithNext`]（直後ブロックとの分割禁止＝keep-with-next）を出力する
+/// （両者は排他）。これにより見出しがページ末尾に孤立するのを防ぐ（#168）。
+///
 /// ## TODO
 ///
 /// - [ ] 見出し番号のフォントスタイル（色、太さ等）を細かくカスタマイズ可能にする
@@ -61,8 +65,13 @@ pub(super) fn lower_heading(
     align: types::Align::Left,
   });
 
+  // 見出し直後の改ページ制御。強制改ページ（page_break_after）と keep-with-next は排他:
+  // page_break_after の見出し（Part 等）は意図的にページを終えるため keep-with-next を課さない。
+  // それ以外の見出しは直後のブロックとの分割を禁止し、見出しがページ末尾に孤立するのを防ぐ。
   if heading_style.page_break_after {
     result.push(LayoutNode::PageBreak);
+  } else {
+    result.push(LayoutNode::KeepWithNext);
   }
 
   return Ok(result);
@@ -169,6 +178,35 @@ mod tests {
     let anchor_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Anchor(_))).unwrap();
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     assert!(anchor_idx < vbox_idx, "アンカーは VBox より前: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_heading_emits_keep_with_next_after_vbox() {
+    // 通常の見出し（page_break_after 無し）は VBox の直後に KeepWithNext を出し、PageBreak は出さない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &[InlineNode::Text("Intro".to_string())], None, 0)
+      .expect("失敗しないはず");
+
+    let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
+    let keep_idx = nodes.iter().position(|n| matches!(n, LayoutNode::KeepWithNext)).expect("KeepWithNext が出るはず");
+    assert!(keep_idx > vbox_idx, "KeepWithNext は VBox の後に出る: {nodes:?}");
+    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "改ページは出ない: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_heading_with_page_break_after_omits_keep_with_next() {
+    // page_break_after=true の見出しは PageBreak を出し、KeepWithNext は出さない（両者は排他）
+    let mut style = ReadStyle::default();
+    style.heading[HeadingLevel::Section].page_break_after = true;
+    let ctx = LoweringContext::new(&style);
+
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &[InlineNode::Text("Intro".to_string())], None, 0)
+      .expect("失敗しないはず");
+
+    assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
+    assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
   }
 
   #[test]

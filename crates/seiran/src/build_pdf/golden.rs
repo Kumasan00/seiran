@@ -186,6 +186,44 @@ fn layout_dumps_match_golden() {
   );
 }
 
+/// ページの末尾（最下部）ブロックが見出し行かどうかを返す。
+///
+/// 見出しは配置時にページに `PlacedAnchor { mark: Heading, y }`（見出し行の上端）を残す。ページの
+/// 最終ブロックが `Line` で、その上端が見出しアンカーの y と一致すれば「見出しがページ末尾に孤立」。
+fn page_ends_with_heading(page: &hlist::Page) -> bool {
+  let Some(hlist::PlacedBlock::Line { line, baseline_y }) = page.blocks.last() else {
+    return false;
+  };
+  let top = baseline_y - line.height;
+  return page
+    .anchors
+    .iter()
+    .any(|anchor| matches!(anchor.mark, types::AnchorMark::Heading { .. }) && (anchor.y - top).abs() < 0.5);
+}
+
+#[test]
+fn keep_with_next_prevents_heading_orphan_end_to_end() {
+  // Arrange — 版面を小さくして見出しがページ境界に当たりやすくする（見出し + 本文数行は空ページに
+  // 収まる大きさ）。keepwithnext.sei は見出し直前を filler で埋め、見出しがページ末尾に来る配置。
+  enter_workspace_root();
+  let (mut config, style, references) = load_base();
+  config.pdf.height = types::Length::mm(45.0);
+  config.pdf.margin.top = types::Length::mm(10.0);
+  config.pdf.margin.bottom = types::Length::mm(10.0);
+  config.sources = vec![PathBuf::from("tests/text/keepwithnext.sei")];
+  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+
+  // Act
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+
+  // Assert — どのページも見出しで終わらない（見出し直後の改ページ禁止・#168）。複数ページに分かれ、
+  // 見出しがページ境界に絡むことでテストが空振りでないことも確認する。
+  assert!(laid_out.pages.len() >= 2, "複数ページに分かれるはず: {} ページ", laid_out.pages.len());
+  for (index, page) in laid_out.pages.iter().enumerate() {
+    assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
+  }
+}
+
 #[test]
 fn layout_dump_is_deterministic_across_builds() {
   // Arrange
