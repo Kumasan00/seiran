@@ -361,6 +361,134 @@ pub fn break_pages(
   return pages;
 }
 
+/// widow/orphan 制御でまとめて送る最小行数。
+///
+/// 段落の先頭 / 末尾のリージョン（次段・次ページ）に、この行数を下回る孤立行を残さない。
+/// 当面は固定値 2（先頭 1 行だけ / 末尾 1 行だけの孤立を防ぐ）。`style.toml` への公開は
+/// スコープ外（#167）— 必要になったら別 issue で読み込み値に差し替える。
+const MIN_LINES_AT_BREAK: usize = 2;
+
+/// 段落 1 行の配置計画（純粋な幾何判定の結果）
+///
+/// [`plan_paragraph_lines`] が段落の各行について確定する。副作用（アンカー解決・リンク収集・
+/// 段オフセット）は持たず、ベースライン位置と「この行から新しいリージョンが始まるか」だけを表す。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LinePlacement {
+  /// 行のベースライン（ページ上端からの距離、pt）
+  baseline: f32,
+  /// この行から新しいリージョン（次段 / 次ページ）が始まるか
+  starts_region: bool,
+}
+
+/// 強制改リージョン点（`forced`）を尊重しつつ、貪欲にベースラインを送って各行を配置する（純粋関数）
+///
+/// `forced[i]` が `true` の行は幾何的に収まっても新リージョンの先頭に置く。それ以外は
+/// `baseline + depth > page_limit` で改リージョンする従来どおりの貪欲判定。ベースライン漸化式は
+/// [`place_paragraph`] の配置ループと同一で、`forced` が全 `false` のときは移行前と同じ結果になる。
+fn place_lines(
+  lines: &[Line],
+  y0: f32,
+  cursor_at_edge: bool,
+  leading: f32,
+  margin_top: f32,
+  page_limit: f32,
+  forced: &[bool],
+) -> Vec<LinePlacement> {
+  let mut plan = Vec::with_capacity(lines.len());
+  let mut baseline = y0;
+  let mut prev_depth: Option<f32> = None;
+  for (i, line) in lines.iter().enumerate() {
+    match prev_depth {
+      // 段落先頭行: 直前が底辺基準ブロックならアセント分下げる
+      None => {
+        if cursor_at_edge {
+          baseline += line.height;
+        }
+      },
+      // 2 行目以降: leading か「前の行の深さ + この行の高さ」の大きい方だけ送る
+      Some(depth) => {
+        baseline += leading.max(depth + line.height);
+      },
+    }
+    let starts_region = forced[i] || baseline + line.depth > page_limit;
+    if starts_region {
+      baseline = margin_top;
+    }
+    plan.push(LinePlacement {
+      baseline,
+      starts_region,
+    });
+    prev_depth = Some(line.depth);
+  }
+  return plan;
+}
+
+/// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す（純粋関数）
+///
+/// 判定はどちらも段落の境界行（先頭 = index 0・末尾 = index n-1）だけを見る。中間リージョンが
+/// [`MIN_LINES_AT_BREAK`] 未満でも（伝統的な widow/orphan ではないので）対象にしない。
+///
+/// - **orphan**: 段落先頭リージョンの行数が最小行数未満 → 段落全体を次リージョンへ送る（`Some(0)`）。
+///   先頭行が既にリージョン先頭（回避不能）なら補正しない。
+/// - **widow**: 段落末尾リージョンの行数が最小行数未満 → 末尾 `min_lines` 行をまとめて送る
+///   （`Some(n - min_lines)`）。前側に最小行数を確保できない短い段落（`n < 2 * min_lines`）は
+///   段落全体を送る（`Some(0)`）。それも回避不能なら補正しない。
+///
+/// 返した点が既に強制済みなら呼び出し側（[`plan_paragraph_lines`]）は停止する（前進のみ・有限停止）。
+fn pick_correction(plan: &[LinePlacement], min_lines: usize) -> Option<usize> {
+  let n = plan.len();
+  if n < 2 {
+    return None;
+  }
+  // orphan: 先頭リージョン（index 0 から最初の改リージョンまで）の行数が最小行数未満
+  // （先頭行が既にリージョン先頭なら回避不能なので補正しない）
+  if let Some(first_break) = (1..n).find(|&i| plan[i].starts_region)
+    && first_break < min_lines
+    && !plan[0].starts_region
+  {
+    return Some(0);
+  }
+  // widow: 末尾リージョン（最後の改リージョンから末尾まで）の行数が最小行数未満
+  if let Some(last_break) = (1..n).rev().find(|&i| plan[i].starts_region)
+    && n - last_break < min_lines
+  {
+    // 前側に最小行数を残せるなら末尾 min_lines 行だけを送る。残せない短い段落は全体を送る
+    let target = if n >= 2 * min_lines { n - min_lines } else { 0 };
+    // 全体を送っても先頭が既にリージョン先頭なら回避不能
+    if target == 0 && plan[0].starts_region {
+      return None;
+    }
+    return Some(target);
+  }
+  return None;
+}
+
+/// 段落の行列を現在のカーソルから前から順に配置する計画を立てる（純粋関数・widow/orphan 制御込み）
+///
+/// まず [`place_lines`] で従来どおりの貪欲配置を求め、[`pick_correction`] が返す境界孤立の補正点を
+/// 強制改リージョン点として 1 つずつ足しては再フローする。補正は必ず前方（小さい index）へしか
+/// break を動かさず、返る補正点が既に強制済みになったら停止する（回避不能ケースは孤立を許容）。
+/// 孤立が生じない段落では `forced` が全 `false` のまま確定し、移行前と同一の計画になる。
+fn plan_paragraph_lines(
+  lines: &[Line],
+  y0: f32,
+  cursor_at_edge: bool,
+  leading: f32,
+  margin_top: f32,
+  page_limit: f32,
+) -> Vec<LinePlacement> {
+  let mut forced = vec![false; lines.len()];
+  loop {
+    let plan = place_lines(lines, y0, cursor_at_edge, leading, margin_top, page_limit, &forced);
+    match pick_correction(&plan, MIN_LINES_AT_BREAK) {
+      // 新しい補正点なら強制して再フロー
+      Some(idx) if !forced[idx] => forced[idx] = true,
+      // 補正不要、または前進しない（回避不能）なら確定
+      _ => return plan,
+    }
+  }
+}
+
 /// 段落を行に割ってベースライン送りで配置する
 ///
 /// ベースライン送り規則:
@@ -422,24 +550,17 @@ fn place_paragraph(
       }
     }
   }
-  let mut baseline = composer.y;
-  let mut prev_depth: Option<f32> = None;
-  for mut line in lines {
-    let is_first = prev_depth.is_none();
-    match prev_depth {
-      None => {
-        if composer.cursor_at_edge {
-          baseline += line.height;
-        }
-      },
-      Some(depth) => {
-        baseline += leading.max(depth + line.height);
-      },
-    }
-    if baseline + line.depth > geom.page_limit {
+  // ベースライン送りと改リージョン点を先に確定する（widow/orphan 制御込みの純粋計算）。
+  // 配置ループは計画に従うだけにして、計画と配置で幾何がずれないようにする。
+  let plan =
+    plan_paragraph_lines(&lines, composer.y, composer.cursor_at_edge, leading, geom.margin_top, geom.page_limit);
+  let mut last_baseline = composer.y;
+  for (i, mut line) in lines.into_iter().enumerate() {
+    if plan[i].starts_region {
       composer.advance_region(geom);
-      baseline = geom.margin_top;
     }
+    let baseline = plan[i].baseline;
+    last_baseline = baseline;
     // 着地段（advance_region 後）の左端オフセットを行ごとに加算する。リンク矩形の収集より前に行う。
     let col_off = composer.column_offset();
     if col_off != 0.0 {
@@ -452,17 +573,16 @@ fn place_paragraph(
       }
     }
     // 先頭行の確定位置（改段・改ページ後）で未解決アンカーを解決する。行の上端（段の左端）を指す
-    if is_first {
+    if i == 0 {
       composer.resolve_pending_anchors(col_off, baseline - line.height);
     }
-    prev_depth = Some(line.depth);
     composer.collect_line_links(&line, baseline);
     composer.current.push(PlacedBlock::Line {
       line,
       baseline_y: baseline,
     });
   }
-  composer.y = baseline + leading;
+  composer.y = last_baseline + leading;
   composer.cursor_at_edge = false;
 }
 
@@ -657,7 +777,7 @@ fn place_table(
 mod tests {
   use types::{ColumnAlign, ColumnWidth, TableColumn, TextAlignment};
 
-  use super::{PageGeometry, break_pages, column_width};
+  use super::{LinePlacement, PageGeometry, break_pages, column_width, plan_paragraph_lines};
   use crate::{
     block::Block,
     break_lines::GreedyBreaker,
@@ -745,8 +865,9 @@ mod tests {
 
   #[test]
   fn page_breaks_when_baseline_exceeds_limit() {
-    // Arrange — page_limit=50, leading=12: baseline 10, 22, 34, 46 (depth 2 → 48 ≤ 50),
-    // 5 行目は 58 + 2 > 50 で改ページ
+    // Arrange — page_limit=50, leading=12: 幾何だけなら 4 行目まで（10,22,34,46）が入り 5 行目が
+    // 改ページだが、それは末尾 1 行の孤立（widow）。widow 制御で末尾 2 行がまとめて 2 ページ目へ送られる
+    // （3 行 / 2 行の分割）。どちらでも「2 ページに分かれ、2 ページ目先頭 baseline = margin_top」は成り立つ。
     let geom = test_geometry();
 
     // Act
@@ -759,6 +880,188 @@ mod tests {
       panic!("Line を期待: {second_page_first:?}");
     };
     assert!((baseline_y - 10.0).abs() < f32::EPSILON);
+  }
+
+  /// 各ページの行ベースライン列を採取するヘルパ
+  fn page_baselines(page: &Page) -> Vec<f32> {
+    return page
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
+        _ => None,
+      })
+      .collect();
+  }
+
+  /// 高さ 8・深さ 2 の単純な行（純粋関数テスト用）
+  fn test_line() -> Line {
+    return Line {
+      boxes: Vec::new(),
+      height: 8.0,
+      depth: 2.0,
+      is_last: false,
+      links: Vec::new(),
+    };
+  }
+
+  #[test]
+  fn orphan_first_line_moves_to_next_page() {
+    // Arrange — 先行 3 行段落で 10,22,34 を埋め、カーソルは 46 へ。続く 3 行段落は幾何だけなら
+    // 先頭行が 46 に入り 2 行目が改ページ → 先頭 1 行の孤立（orphan）。orphan 制御で段落全体が次ページへ。
+    let geom = test_geometry();
+    let blocks = vec![paragraph_of_lines(3), paragraph_of_lines(3)];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 1 ページ目は先行段落の 3 行だけ、2 ページ目に後続段落の 3 行が揃う
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]), vec![10.0, 22.0, 34.0], "先頭行を孤立させず先行段落のみ");
+    assert_eq!(page_baselines(&pages[1]), vec![10.0, 22.0, 34.0], "後続段落は丸ごと 2 ページ目へ");
+  }
+
+  #[test]
+  fn widow_last_line_kept_with_previous() {
+    // Arrange — 5 行段落。幾何だけなら 4 行目まで入り 5 行目が改ページ = 末尾 1 行の孤立（widow）。
+    let geom = test_geometry();
+
+    // Act
+    let pages = break_pages(vec![paragraph_of_lines(5)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — widow 制御で 3 行 / 2 行に分かれ、末尾 2 行が 2 ページ目に揃う
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]), vec![10.0, 22.0, 34.0], "1 ページ目は 3 行（4 行目を繰り下げ）");
+    assert_eq!(page_baselines(&pages[1]), vec![10.0, 22.0], "末尾 2 行が 2 ページ目に揃う");
+  }
+
+  #[test]
+  fn short_paragraph_moves_whole_rather_than_split() {
+    // Arrange — 先行 2 行段落でカーソルを 34 へ。続く 3 行段落は幾何だけなら 2 行入り 3 行目が改ページ。
+    // n=3 は内部に許容 break が無い（分割すると必ず孤立）ので、段落全体が次ページへ送られる。
+    let geom = test_geometry();
+    let blocks = vec![paragraph_of_lines(2), paragraph_of_lines(3)];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(page_baselines(&pages[0]), vec![10.0, 22.0], "先行段落の 2 行だけ");
+    assert_eq!(page_baselines(&pages[1]), vec![10.0, 22.0, 34.0], "3 行段落は分割せず丸ごと次ページ");
+  }
+
+  #[test]
+  fn oversized_paragraph_builds_without_hang() {
+    // Arrange（回避不能ケースの番人）— 1 ページに 4 行しか入らないのに 20 行の段落。孤立を完全には
+    // 避けられないが、無限ループ・行の欠落なくビルドが完了し、全 20 行が保存されることを確認する。
+    let geom = test_geometry();
+
+    // Act
+    let pages = break_pages(vec![paragraph_of_lines(20)], 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 行総数は 20 のまま、複数ページに分かれる
+    let total: usize = pages.iter().map(|p| page_baselines(p).len()).sum();
+    assert_eq!(total, 20, "行が欠落しない: {pages:?}");
+    assert!(pages.len() >= 5, "4 行/ページなので 5 ページ以上に分かれる: {}", pages.len());
+  }
+
+  #[test]
+  fn plan_leaves_fitting_paragraph_untouched() {
+    // Arrange — 3 行がすべて収まる段落。widow/orphan 補正は起きず、貪欲配置と同一になる。
+    let lines = vec![test_line(), test_line(), test_line()];
+
+    // Act
+    let plan = plan_paragraph_lines(&lines, 10.0, false, 12.0, 10.0, 50.0);
+
+    // Assert — 10,22,34 で改リージョンなし
+    assert_eq!(
+      plan,
+      vec![
+        LinePlacement {
+          baseline: 10.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 22.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 34.0,
+          starts_region: false
+        },
+      ]
+    );
+  }
+
+  #[test]
+  fn plan_defers_orphan_first_line() {
+    // Arrange — カーソル 46 で 3 行。幾何だけなら先頭行が 46 に入り 2 行目で改ページ（orphan）。
+    let lines = vec![test_line(), test_line(), test_line()];
+
+    // Act — y0=46
+    let plan = plan_paragraph_lines(&lines, 46.0, false, 12.0, 10.0, 50.0);
+
+    // Assert — 先頭行から新リージョン開始、全行が新リージョンに 10,22,34 で並ぶ
+    assert_eq!(
+      plan,
+      vec![
+        LinePlacement {
+          baseline: 10.0,
+          starts_region: true
+        },
+        LinePlacement {
+          baseline: 22.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 34.0,
+          starts_region: false
+        },
+      ]
+    );
+  }
+
+  #[test]
+  fn plan_pulls_widow_last_line_back() {
+    // Arrange — カーソル 10 で 5 行。幾何だけなら 4 行入り 5 行目が widow。
+    let lines = vec![
+      test_line(),
+      test_line(),
+      test_line(),
+      test_line(),
+      test_line(),
+    ];
+
+    // Act
+    let plan = plan_paragraph_lines(&lines, 10.0, false, 12.0, 10.0, 50.0);
+
+    // Assert — 末尾 2 行（index 3,4）が新リージョンへまとまる（3 行 / 2 行）
+    assert_eq!(
+      plan,
+      vec![
+        LinePlacement {
+          baseline: 10.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 22.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 34.0,
+          starts_region: false
+        },
+        LinePlacement {
+          baseline: 10.0,
+          starts_region: true
+        },
+        LinePlacement {
+          baseline: 22.0,
+          starts_region: false
+        },
+      ]
+    );
   }
 
   #[test]
@@ -1707,8 +2010,9 @@ mod tests {
 
   #[test]
   fn two_column_flow_fills_left_then_right_then_next_page() {
-    // Arrange — 2 段（段幅 45・段オフセット 55）。9 行を流すと、左段 4 行 → 右段 4 行 → 次ページ 1 行
-    // になる（各段はカーソルが margin_top に戻り、右段は x に 55 が乗る）。
+    // Arrange — 2 段（段幅 45・段オフセット 55）。9 行を流す。幾何だけなら左段 4 行 → 右段 4 行 →
+    // 次ページ 1 行だが、その 9 行目は末尾 1 行の孤立（widow）になる。widow 制御が末尾 2 行
+    // （8・9 行目）をまとめて次ページへ送るので、右段は 3 行に減り、次ページ左段に 2 行が並ぶ。
     let geom = two_column_geometry();
 
     // Act
@@ -1727,17 +2031,17 @@ mod tests {
     };
     assert_eq!(pages.len(), 2, "{pages:?}");
     let p0 = page_lines(&pages[0]);
-    assert_eq!(p0.len(), 8, "1 ページ目は左段 4 行 + 右段 4 行: {p0:?}");
+    assert_eq!(p0.len(), 7, "1 ページ目は左段 4 行 + 右段 3 行（widow 制御で右段の 4 行目が繰り下がる）: {p0:?}");
     // 左段: x≈0、baseline は margin_top から leading(12) ずつ
     assert_eq!(p0[0..4], [(10.0, 0.0), (22.0, 0.0), (34.0, 0.0), (46.0, 0.0)], "左段は x=0 で 10,22,34,46");
-    // 右段: x≈55、baseline は margin_top にリセットされて再び 10,22,34,46
+    // 右段: x≈55、baseline は margin_top にリセット。widow 制御で 3 行のみ（46 は空く）
     assert_eq!(
-      p0[4..8],
-      [(10.0, 55.0), (22.0, 55.0), (34.0, 55.0), (46.0, 55.0)],
-      "右段は x=55 で baseline がリセット"
+      p0[4..7],
+      [(10.0, 55.0), (22.0, 55.0), (34.0, 55.0)],
+      "右段は x=55 で baseline がリセットされ、末尾 2 行を送るため 3 行"
     );
     let p1 = page_lines(&pages[1]);
-    assert_eq!(p1, [(10.0, 0.0)], "9 行目は次ページの左段先頭");
+    assert_eq!(p1, [(10.0, 0.0), (22.0, 0.0)], "末尾 2 行（8・9 行目）が次ページ左段に揃う");
   }
 
   #[test]
