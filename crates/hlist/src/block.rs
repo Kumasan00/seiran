@@ -17,9 +17,11 @@ use crate::{
 /// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
 pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
-/// 分割禁止の分割コスト（+∞）。この penalty を持つ [`Block::Penalty`] の直後では改ページしない。
+/// 分割禁止の分割コスト（+∞）。keep-with-next（見出し直後の分割禁止・#168）のグループ連結マーカー。
 ///
-/// keep-with-next（見出し直後の分割禁止・#168）が発行する想定で、本 issue（#166）では未発行。
+/// `layout::build_blocks` が見出し（`page_break_after` を除く）の直後に発行する。`break_pages` の
+/// keep グループゲート（`keep_group_end` / `keep_group_orphaned`）がこれを走査し、見出しと直後の
+/// ブロックが同一リージョンに載るよう配置する（載らないなら見出しごと次リージョンへ送る）。
 pub const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素

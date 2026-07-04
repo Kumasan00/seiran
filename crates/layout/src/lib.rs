@@ -34,8 +34,8 @@ use font::{
   shaper::{HarfRustShapers, UnicodeBuffer},
 };
 use hlist::{
-  Block, BreakKind, BreakPoint, Glyph, GlyphRun, HBox, HBoxContent, HItem, Lang, PlacedHItem, TableBox, TableCellBox,
-  TableRowBox,
+  Block, BreakKind, BreakPoint, Glyph, GlyphRun, HBox, HBoxContent, HItem, Lang, PENALTY_FORBID_BREAK, PlacedHItem,
+  TableBox, TableCellBox, TableRowBox,
 };
 use lazy_regex::regex_replace_all;
 use lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle};
@@ -251,6 +251,14 @@ impl Measurer<'_> {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::force_break());
         },
+        // keep-with-next（見出し直後の分割禁止）: 直前ブロックと直後ブロックの間の改ページを
+        // 禁止する +∞ penalty を出す。break_pages がこれを keep グループの連結として扱う。
+        LayoutNode::KeepWithNext => {
+          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
+          blocks.push(Block::Penalty {
+            value: PENALTY_FORBID_BREAK,
+          });
+        },
       }
     }
   }
@@ -340,7 +348,8 @@ impl Measurer<'_> {
       | LayoutNode::Image { .. }
       | LayoutNode::Table(_)
       | LayoutNode::MathBlock { .. }
-      | LayoutNode::PageBreak => {},
+      | LayoutNode::PageBreak
+      | LayoutNode::KeepWithNext => {},
     }
   }
 
