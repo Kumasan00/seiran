@@ -6,7 +6,7 @@ body:
 body:
   line baseline_y=280.63 height=28.78 depth=7.15 last=true
     box x=0.00 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="第"
-    box x=25.00 dy=0.00 w=12.38 glyphs font=SerifBold size=25.00 text="1"
-    box x=37.38 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="章"
-    box x=68.25 dy=0.00 w=39.60 glyphs font=SerifBold size=25.00 text="aaa"
+    box x=31.25 dy=0.00 w=12.38 glyphs font=SerifBold size=25.00 text="1"
+    box x=49.88 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="章"
+    box x=80.75 dy=0.00 w=39.60 glyphs font=SerifBold size=25.00 text="aaa"
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=251.85

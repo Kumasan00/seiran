@@ -105,9 +105,9 @@ body:
     box x=404.93 dy=0.00 w=11.88 glyphs font=Serif size=12.00 text="20"
     box x=416.81 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
     box x=422.57 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="5"
-    box x=428.51 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="月"
-    box x=443.33 dy=0.00 w=23.76 glyphs font=Serif size=12.00 text="2020"
-    box x=467.09 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text="."
+    box x=431.51 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="月"
+    box x=446.33 dy=0.00 w=23.76 glyphs font=Serif size=12.00 text="2020"
+    box x=470.09 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text="."
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
 anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=320.99
 anchor mark=Label("cite:kwan2014") x=0.00 y=358.09
