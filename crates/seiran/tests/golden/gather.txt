@@ -26,7 +26,8 @@ body:
     box x=179.10 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="央"
     box x=191.10 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
     box x=203.10 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="揃"
-    box x=215.10 dy=0.00 w=24.72 glyphs font=JapaneseSerif size=12.00 text="え、"
+    box x=215.10 dy=0.00 w=12.72 glyphs font=JapaneseSerif size=12.00 text="え"
+    box x=227.82 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="、"
     box x=239.82 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="各"
     box x=251.82 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="行"
     box x=263.82 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
@@ -45,7 +46,8 @@ body:
     box x=419.82 dy=0.00 w=23.04 glyphs font=JapaneseSerif size=12.00 text="フィ"
     box x=442.86 dy=0.00 w=11.88 glyphs font=JapaneseSerif size=12.00 text="ク"
     box x=454.74 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="ス"
-    box x=466.50 dy=0.00 w=35.64 glyphs font=JapaneseSerif size=12.00 text="チャ。"
+    box x=466.50 dy=0.00 w=23.64 glyphs font=JapaneseSerif size=12.00 text="チャ"
+    box x=490.14 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
   mathblock x=577.75 baseline_y=353.37 w=49.22 h=9.14 d=32.86
     child dx=0.00 dy=0.00 w=49.22 h=9.14 d=2.86 atom children=10
       child dx=0.00 dy=0.00 w=6.66 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑎"
@@ -100,7 +102,8 @@ body:
     box x=146.89 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="制"
     box x=158.89 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
     box x=170.89 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="き"
-    box x=182.89 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="る。"
+    box x=182.89 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
+    box x=194.89 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
   mathblock x=587.12 baseline_y=489.99 w=30.48 h=9.14 d=17.86
     child dx=0.00 dy=0.00 w=30.48 h=9.14 d=2.86 atom children=6
       child dx=0.00 dy=0.00 w=7.18 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑝"
@@ -153,7 +156,8 @@ body:
     box x=292.88 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ル"
     box x=304.88 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="が"
     box x=316.88 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="付"
-    box x=328.88 dy=0.00 w=23.52 glyphs font=JapaneseSerif size=12.00 text="き、"
+    box x=328.88 dy=0.00 w=11.52 glyphs font=JapaneseSerif size=12.00 text="き"
+    box x=340.40 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="、"
     box x=352.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="本"
     box x=364.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="文"
     box x=376.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="か"
@@ -162,7 +166,8 @@ body:
     box x=412.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="照"
     box x=424.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
     box x=436.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="き"
-    box x=448.40 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="る。"
+    box x=448.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
+    box x=460.40 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
   mathblock x=587.12 baseline_y=611.61 w=30.48 h=9.14 d=17.86
     child dx=0.00 dy=0.00 w=30.48 h=9.14 d=2.86 atom children=6
       child dx=0.00 dy=0.00 w=7.18 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑝"
@@ -196,7 +201,8 @@ body:
     box x=112.69 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="照"
     box x=124.69 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
     box x=136.69 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="き"
-    box x=148.69 dy=0.00 w=24.00 glyphs font=JapaneseSerif size=12.00 text="る。"
+    box x=148.69 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
+    box x=160.69 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
     linkspan target=Internal("eq:gather-pq") x0=71.58 x1=88.69
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
 anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=394.23

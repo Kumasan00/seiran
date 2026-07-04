@@ -205,6 +205,7 @@ fn build_pages(
       default_font_size,
       line_height_factor,
       config.document.language.as_deref(),
+      style.text.punctuation_spacing,
     )
   };
   info!(

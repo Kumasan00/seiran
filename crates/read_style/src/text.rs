@@ -27,6 +27,10 @@ use types::{
 ///
 /// `alignment` は行末処理（既定 justify = 両端揃え）。`ragged_right` で従来の左揃えになる。
 /// 中央・右寄せ段落（タイトルページ等）には効かない。
+///
+/// `punctuation_spacing` は和文約物（括弧・句読点・中点）の前後アキを JIS X 4051 に沿って
+/// 調整するか（既定 `true`）。連続約物の重複アキ詰め・行頭行末の版面揃え・両端揃えの収縮点化を行う。
+/// 半角約物を積む非標準フォントで詰めすぎる場合は `false` でフォントの送り幅そのままに戻せる。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -47,6 +51,8 @@ pub struct TextBlockStyle {
   pub font_kind: FontKind,
   /// 行末処理（両端揃え / 左揃え、既定は両端揃え）
   pub alignment: TextAlignment,
+  /// 和文約物アキ調整（JIS X 4051、既定は有効）
+  pub punctuation_spacing: bool,
 }
 
 impl Default for TextBlockStyle {
@@ -58,6 +64,7 @@ impl Default for TextBlockStyle {
       first_line_indent: Length::pt(0.0),
       font_kind: FontKind::Serif,
       alignment: TextAlignment::Justify,
+      punctuation_spacing: true,
     };
   }
 }
@@ -87,6 +94,7 @@ mod tests {
     assert!((style.first_line_indent.to_pt() - 0.0).abs() < f32::EPSILON);
     assert_eq!(style.font_kind, FontKind::Serif);
     assert_eq!(style.alignment, TextAlignment::Justify, "alignment 未指定の既定は両端揃え");
+    assert!(style.punctuation_spacing, "punctuation_spacing 未指定の既定は有効");
   }
 
   #[test]
@@ -96,6 +104,15 @@ mod tests {
 
     // Assert
     assert_eq!(style.alignment, TextAlignment::RaggedRight);
+  }
+
+  #[test]
+  fn deserializes_punctuation_spacing_toggle() {
+    // Arrange / Act — 部分指定 TOML で punctuation_spacing だけ上書きする
+    let style: TextBlockStyle = toml::from_str("punctuation_spacing = false").unwrap();
+
+    // Assert
+    assert!(!style.punctuation_spacing);
   }
 
   #[test]

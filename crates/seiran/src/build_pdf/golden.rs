@@ -60,6 +60,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "theorem",
   "title_page",
   "toc",
+  "yakumono",
 ];
 
 /// ワークスペースルート（このクレート = `crates/seiran` の 2 階層上）を返す。
@@ -214,4 +215,21 @@ fn layout_dump_changes_with_line_height() {
 
   // Assert — レイアウトに影響する定数変更はダンプの差分として現れる
   assert_ne!(base_dump, taller_dump);
+}
+
+#[test]
+fn layout_dump_changes_with_punctuation_spacing() {
+  // Arrange — 和文約物アキ調整（JIS X 4051）の on/off だけを変えた 2 スタイル。
+  // 約物が密な入力（yakumono）で連続約物の詰め・約物の収縮点化が座標差として現れる。
+  enter_workspace_root();
+  let (base_config, style, references) = load_base();
+  let mut disabled = style.clone();
+  disabled.text.punctuation_spacing = false;
+
+  // Act — 既定（有効）と無効（フォントの送り幅そのまま）を組版してダンプする
+  let enabled_dump = dump_input(&base_config, &style, &references, "yakumono");
+  let disabled_dump = dump_input(&base_config, &disabled, &references, "yakumono");
+
+  // Assert — 約物アキ調整はレイアウトを変える（無効化で従来出力へ戻せる）
+  assert_ne!(enabled_dump, disabled_dump);
 }
