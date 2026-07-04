@@ -64,6 +64,18 @@ const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 /// [`split_japanese_run`](Measurer::split_japanese_run) 参照）。
 const CJK_STRETCH_RATIO: f32 = 0.05;
 
+/// 和欧文間アキ（四分アキ）の自然幅（フォントサイズに対する倍率）
+///
+/// 和文文字と欧文文字が直接隣接する境界に挿む四分（1/4 em）のアキ（JIS X 4051、issue #174）。
+/// v1 では四分固定。量の style.toml 公開は別 issue に切り出す。
+const JA_LATIN_AKI_RATIO: f32 = 0.25;
+
+/// 和欧文間アキの伸長能力（フォントサイズに対する倍率）
+///
+/// 両端揃えでこの四分アキを微小に伸ばす伸縮点にする量。和文字間（[`CJK_STRETCH_RATIO`]）と
+/// 同オーダーの微小値に抑える。収縮は持たない（四分より詰めない）。
+const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
+
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
@@ -75,7 +87,8 @@ const CJK_STRETCH_RATIO: f32 = 0.05;
 /// * `line_height_factor` - 行高係数。段落の行送り（leading）の算出に使用
 /// * `language` - 文書ロケール（BCP 47、`config.document.language`）。欧文ハイフネーションの
 ///   言語をこれから導出する。`None`・非対応言語ならハイフネーションなし
-/// * `punctuation_spacing` - 和文約物アキ調整（JIS X 4051）を行うか（`style.text.punctuation_spacing`）
+/// * `punctuation_spacing` - JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を
+///   行うか（`style.text.punctuation_spacing`）
 #[must_use]
 pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
@@ -108,7 +121,7 @@ pub(crate) struct Measurer<'a> {
   line_height_factor: f32,
   /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
   hyphenation: Option<Lang>,
-  /// 和文約物アキ調整（JIS X 4051）を行うか
+  /// JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を行うか
   punctuation_spacing: bool,
 }
 
@@ -396,8 +409,21 @@ impl Measurer<'_> {
   /// 数式テキスト（`FontKind::Math`）は分割しない。
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = regex_replace_all!("\n", text, " ");
+    // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキ（#174）の境界判定に使う。
+    let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
     for segment in script::split_text_by_script(style.font_kind, &text) {
       let is_japanese = segment.category == script::ScriptCategory::Japanese;
+      // 和文↔欧文が直接隣接する（字・数字どうしの）境界に四分アキを挿む（JIS X 4051、issue #174）。
+      // 数式（Math）境界はスコープ外、約物アキ無効時（punctuation_spacing = false）も挿まない。
+      if style.font_kind != FontKind::Math
+        && self.punctuation_spacing
+        && let (Some((prev_category, prev_char)), Some(next_char)) = (prev_boundary, segment.text.chars().next())
+        && is_ja_latin_letter_boundary(prev_category, prev_char, segment.category, next_char)
+      {
+        out.push(ja_latin_aki(style.font_size));
+      }
+      prev_boundary = segment.text.chars().last().map(|last| (segment.category, last));
+
       let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
         // 数式は行分割の対象にしない（閉じた box のまま行に載せる）
@@ -800,6 +826,36 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| glyph.range.start == byte);
 }
 
+/// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
+///
+/// 自然幅は四分（[`JA_LATIN_AKI_RATIO`] em）。両端揃えの微小な伸長点として
+/// [`JA_LATIN_AKI_STRETCH_RATIO`] em の伸長を持ち、収縮はしない。分割不可（`breakable: false`）に
+/// することでこの境界に新たな行分割点を作らず（分割可否は現行の ICU 判定のまま）、和文↔欧文の
+/// 境界は分割点を持たないためアキが行頭・行末に露出することもない。
+fn ja_latin_aki(font_size: f32) -> HItem {
+  return HItem::Glue {
+    natural: font_size * JA_LATIN_AKI_RATIO,
+    stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
+    shrink: 0.0,
+    breakable: false,
+  };
+}
+
+/// 和文文字と欧文文字が直接隣接する境界か（四分アキ挿入の判定、issue #174）
+///
+/// セグメントのスクリプトカテゴリが和文↔欧文で異なり（現状カテゴリは 2 値なので不一致＝和欧境界）、
+/// かつ境界の両文字がともに字・数字（[`char::is_alphanumeric`]）のときだけ真。約物（括弧・句読点・
+/// 中点）や空白は境界文字が英数字にならないため除外され、約物アキ（#170）や既存の空白と二重に
+/// アキを作らない。数字は英数字判定に含まれるため和文↔数字の境界も真になる。
+fn is_ja_latin_letter_boundary(
+  left_category: script::ScriptCategory,
+  left_char: char,
+  right_category: script::ScriptCategory,
+  right_char: char,
+) -> bool {
+  return left_category != right_category && left_char.is_alphanumeric() && right_char.is_alphanumeric();
+}
+
 /// 隣接する実効約物クラス対（`left` → `right`）の境界に挿む glue を決める
 ///
 /// 約物が絡む境界は JIS X 4051 の標準アキ（[`yakumono::gap`]）を natural・shrink つき・伸長なしの
@@ -889,5 +945,59 @@ mod boundary_glue_tests {
     // Assert — 分割点は幅 0・微小伸長・収縮なし、非分割点は glue なし
     assert_eq!(at_break, Some((0.0, EM * CJK_STRETCH_RATIO, 0.0, true)));
     assert_eq!(no_break, None);
+  }
+}
+
+#[cfg(test)]
+mod ja_latin_aki_tests {
+  use hlist::HItem;
+
+  use super::{JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki};
+  use crate::script::ScriptCategory::{Japanese, Latin};
+
+  const EM: f32 = 10.0;
+
+  #[test]
+  fn aki_is_quarter_em_stretch_only_and_non_breakable() {
+    // Arrange / Act
+    let HItem::Glue {
+      natural,
+      stretch,
+      shrink,
+      breakable,
+    } = ja_latin_aki(EM)
+    else {
+      panic!("Glue を期待");
+    };
+
+    // Assert — 四分の natural・微小伸長・収縮なし・分割不可
+    assert!((natural - EM * JA_LATIN_AKI_RATIO).abs() < f32::EPSILON, "四分 = 0.25em");
+    assert!((stretch - EM * JA_LATIN_AKI_STRETCH_RATIO).abs() < f32::EPSILON, "微小伸長");
+    assert!((shrink - 0.0).abs() < f32::EPSILON, "収縮なし");
+    assert!(!breakable, "分割不可（境界に分割点を作らない）");
+  }
+
+  #[test]
+  fn boundary_true_between_letters_and_digits_both_directions() {
+    // Arrange / Act / Assert — 和文字↔欧文字・和文字↔数字は両方向で境界
+    assert!(is_ja_latin_letter_boundary(Japanese, '文', Latin, 'a'), "文→a");
+    assert!(is_ja_latin_letter_boundary(Latin, 'c', Japanese, '和'), "c→和");
+    assert!(is_ja_latin_letter_boundary(Japanese, '語', Latin, '1'), "語→1（数字）");
+    assert!(is_ja_latin_letter_boundary(Latin, '3', Japanese, '文'), "3→文（数字）");
+    // ギリシャ・キリルも Latin カテゴリの字として境界になる
+    assert!(is_ja_latin_letter_boundary(Japanese, '数', Latin, 'α'), "数→α（ギリシャ）");
+    assert!(is_ja_latin_letter_boundary(Latin, 'я', Japanese, '文'), "я→文（キリル）");
+  }
+
+  #[test]
+  fn boundary_false_for_punctuation_space_and_same_category() {
+    // Arrange / Act / Assert — 約物・空白は境界文字が英数字でないため除外（#170 と二重にしない）
+    assert!(!is_ja_latin_letter_boundary(Japanese, '」', Latin, 'a'), "」→a は約物側で除外");
+    assert!(!is_ja_latin_letter_boundary(Latin, 'c', Japanese, '「'), "c→「 は約物側で除外");
+    assert!(!is_ja_latin_letter_boundary(Japanese, '。', Latin, '1'), "。→1 は約物側で除外");
+    assert!(!is_ja_latin_letter_boundary(Latin, ' ', Japanese, '文'), "空白→文 は空白側で除外");
+    // 同一カテゴリ（和文どうし・欧文どうし）は境界にならない
+    assert!(!is_ja_latin_letter_boundary(Japanese, '文', Japanese, '字'), "和文どうし");
+    assert!(!is_ja_latin_letter_boundary(Latin, 'a', Latin, 'b'), "欧文どうし");
   }
 }
