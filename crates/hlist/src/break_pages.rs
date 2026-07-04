@@ -14,7 +14,7 @@ use tracing::debug;
 use types::{AnchorMark, TextAlignment};
 
 use crate::{
-  block::Block,
+  block::{Block, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK},
   break_lines::LineBreaker,
   line::Line,
   page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedMathNumber, PlacedTableRow},
@@ -79,6 +79,12 @@ struct PageComposer {
   column_gap: f32,
   /// 現在の段インデックス（0 = 左段）。`column_offset` の算出に使う
   col: usize,
+  /// 直前の [`Block::Penalty`] から引き継いだ分割コスト（次の内容ブロックの改ページ判定で参照）
+  ///
+  /// 内容ブロックを配置するたびに [`PageComposer::take_pending_penalty`] で読み取ってリセットする。
+  /// 既定 0（中立）。強制改ページ（−∞）は eager に処理するためここには積まない。本 issue（#166）では
+  /// 発行者がいないため常に 0 で、[`PageComposer::consider_break`] は幾何判定のみに帰着する。
+  pending_penalty: i32,
 }
 
 impl PageComposer {
@@ -95,6 +101,7 @@ impl PageComposer {
       column_width,
       column_gap: geom.column_gap,
       col: 0,
+      pending_penalty: 0,
     };
   }
 
@@ -118,6 +125,30 @@ impl PageComposer {
       self.cursor_at_edge = false;
     } else {
       self.start_new_page(geom);
+    }
+  }
+
+  /// 直前の [`Block::Penalty`] から引き継いだ分割コストを読み取ってリセットする。
+  fn take_pending_penalty(&mut self) -> i32 { return std::mem::replace(&mut self.pending_penalty, 0); }
+
+  /// ブロック配置前の改ページ判定（分割コスト参照の一本化ポイント）。
+  ///
+  /// `next_height` は次に置く内容ブロックの高さ、`penalty` は直前の境界の分割コスト
+  /// （[`PageComposer::take_pending_penalty`] の戻り値）。判定は次の一本:
+  ///
+  /// - [`PENALTY_FORBID_BREAK`]（+∞）: 分割禁止。オーバーフローしても切らない（keep-with-next・#168 が発行）。
+  /// - それ以外: 高さがページ下限を超えるなら [`PageComposer::advance_region`] で改段 / 改ページする（幾何判定）。
+  ///
+  /// 強制改ページ（[`PENALTY_FORCE_BREAK`]）はここを通さず [`break_pages`] の match アームで eager に処理する
+  /// （直前のアキが旧ページ末尾に乗るのを避けるため）。本 issue（#166）では有限 / 禁止 penalty の発行者が
+  /// いないため常に `penalty == 0` で、実質は幾何判定のみ。有限 penalty を使う widow/orphan（#167）は
+  /// ここに badness 判定を足す。
+  fn consider_break(&mut self, next_height: f32, penalty: i32, geom: &PageGeometry) {
+    if penalty == PENALTY_FORBID_BREAK {
+      return;
+    }
+    if self.y + next_height > geom.page_limit {
+      self.advance_region(geom);
     }
   }
 
@@ -246,20 +277,26 @@ pub fn break_pages(
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
       },
-      Block::VSpace(space) => {
-        composer.y += space;
+      // 伸縮アキ。本 issue（#166）では stretch / shrink を消費せず自然値のみカーソルへ加算する
+      // （VSpace と同一挙動）。cursor_at_edge は触らない（アキはフラグを変えない）。
+      Block::Glue { natural, .. } => {
+        composer.y += natural;
       },
-      Block::PageBreak => {
-        composer.start_new_page(geom);
+      // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限 / 禁止は次の内容ブロックへ持ち越す。
+      Block::Penalty { value } => {
+        if value == PENALTY_FORCE_BREAK {
+          composer.start_new_page(geom);
+        } else {
+          composer.pending_penalty = value;
+        }
       },
       Block::Rule {
         width,
         height,
         align,
       } => {
-        if composer.y + height > geom.page_limit {
-          composer.advance_region(geom);
-        }
+        let penalty = composer.take_pending_penalty();
+        composer.consider_break(height, penalty, geom);
         // 改段・改ページ後の段オフセットを読む（着地段に合わせる）
         let col_off = composer.column_offset();
         composer.resolve_pending_anchors(col_off, composer.y);
@@ -283,9 +320,8 @@ pub fn break_pages(
         // 縦組版は確定済みサイズを前提とする（resolve_images prepass 後）。未解決は 0 扱い
         let width = width.unwrap_or(0.0);
         let height = height.unwrap_or(0.0);
-        if composer.y + height > geom.page_limit {
-          composer.advance_region(geom);
-        }
+        let penalty = composer.take_pending_penalty();
+        composer.consider_break(height, penalty, geom);
         // 改段・改ページ後の段オフセットを読む（着地段に合わせる）
         let col_off = composer.column_offset();
         composer.resolve_pending_anchors(col_off, composer.y);
@@ -727,11 +763,11 @@ mod tests {
 
   #[test]
   fn vspace_shifts_following_baseline() {
-    // VSpace は次のブロックのベースラインを下へずらす
+    // 固定アキ（glue）は次のブロックのベースラインを下へずらす
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::VSpace(5.0),
+      Block::fixed_space(5.0),
       paragraph_of_lines(1),
     ];
 
@@ -754,7 +790,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::PageBreak,
+      Block::force_break(),
       paragraph_of_lines(1),
     ];
 
@@ -871,9 +907,9 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::PageBreak,
+      Block::force_break(),
       paragraph_of_lines(1),
-      Block::PageBreak,
+      Block::force_break(),
       paragraph_of_lines(1),
     ];
 
@@ -886,7 +922,7 @@ mod tests {
   fn leading_page_break_does_not_create_blank_page() {
     // 先頭が改ページ（Part 見出しの page_break_before 相当）でも、白紙の先頭ページを作らない
     let geom = test_geometry();
-    let blocks = vec![Block::PageBreak, paragraph_of_lines(1)];
+    let blocks = vec![Block::force_break(), paragraph_of_lines(1)];
 
     let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
@@ -901,8 +937,8 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::PageBreak,
-      Block::PageBreak,
+      Block::force_break(),
+      Block::force_break(),
       paragraph_of_lines(1),
     ];
 

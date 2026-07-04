@@ -197,11 +197,11 @@ impl Measurer<'_> {
           let child_right_indent = right_indent + vbox_right_indent.to_pt();
           self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
           self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
-          blocks.push(Block::VSpace(margin_bottom.to_pt()));
+          blocks.push(Block::fixed_space(margin_bottom.to_pt()));
         },
         LayoutNode::Vkern { length } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::VSpace(length.to_pt()));
+          blocks.push(Block::fixed_space(length.to_pt()));
         },
         LayoutNode::Rule { width, height } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
@@ -249,7 +249,7 @@ impl Measurer<'_> {
         },
         LayoutNode::PageBreak => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::PageBreak);
+          blocks.push(Block::force_break());
         },
       }
     }

@@ -11,6 +11,17 @@ use crate::{
   table_box::TableBox,
 };
 
+/// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
+///
+/// 水平リストの禁止規約（[`crate::hitem::HItem::Penalty`] は `i32::MAX` が禁止）と対称に、
+/// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
+pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
+
+/// 分割禁止の分割コスト（+∞）。この penalty を持つ [`Block::Penalty`] の直後では改ページしない。
+///
+/// keep-with-next（見出し直後の分割禁止・#168）が発行する想定で、本 issue（#166）では未発行。
+pub const PENALTY_FORBID_BREAK: i32 = i32::MAX;
+
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
 pub enum Block {
@@ -102,15 +113,66 @@ pub enum Block {
     /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
   },
-  /// 縦方向の固定アキ（pt）
-  VSpace(f32),
-  /// 強制改ページ
-  PageBreak,
+  /// 縦方向の伸縮アキ（glue）
+  ///
+  /// `natural` は自然値（pt）、`stretch` / `shrink` は伸長 / 収縮能力（pt）。固定アキは
+  /// `stretch = 0.0, shrink = 0.0`（[`Block::fixed_space`]）。伸縮は下端揃え（#169）が解決する想定で、
+  /// 本 issue（#166）では常に 0 で `break_pages` は `natural` のみカーソルへ加算する。
+  Glue {
+    /// 自然値（pt）
+    natural: f32,
+    /// 伸長能力（pt）
+    stretch: f32,
+    /// 収縮能力（pt）
+    shrink: f32,
+  },
+  /// 分割コスト（penalty）
+  ///
+  /// `value` はそのブロック境界で改ページする際のコスト。[`PENALTY_FORCE_BREAK`]（−∞）は強制改ページ、
+  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止。有限値は「避けたいが可能」を表し、widow/orphan（#167）が
+  /// 発行する想定。本 issue（#166）が発行するのは強制改ページ（[`Block::force_break`]）のみ。
+  Penalty {
+    /// 分割コスト（小さいほど切りやすい。−∞=強制 / +∞=禁止）
+    value: i32,
+  },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
   /// `break_pages` で次に配置される実ブロックの確定座標に解決され、`Page::anchors` に
   /// `PlacedAnchor` として格納される。それ自身は縦方向のアキを生まない。
   Anchor(AnchorMark),
+}
+
+impl Block {
+  /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = shrink = 0`。
+  ///
+  /// 「固定アキ = 伸縮 0 の glue」という表現の真実源。既存の固定アキ生成箇所はすべてこれを使う。
+  #[must_use]
+  pub fn fixed_space(pt: f32) -> Block {
+    return Block::Glue {
+      natural: pt,
+      stretch: 0.0,
+      shrink: 0.0,
+    };
+  }
+
+  /// 強制改ページ（`Penalty { value: PENALTY_FORCE_BREAK }`）を作る。
+  #[must_use]
+  pub fn force_break() -> Block {
+    return Block::Penalty {
+      value: PENALTY_FORCE_BREAK,
+    };
+  }
+
+  /// 強制改ページの penalty かどうかを返す。
+  #[must_use]
+  pub fn is_force_break(&self) -> bool {
+    return matches!(
+      self,
+      Block::Penalty {
+        value: PENALTY_FORCE_BREAK
+      }
+    );
+  }
 }
 
 /// 数式ブロックの行番号（測定済み）
