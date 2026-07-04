@@ -27,6 +27,7 @@ mod math;
 mod running;
 mod script;
 mod toc;
+mod yakumono;
 
 use font::{
   FontMetrics,
@@ -59,7 +60,8 @@ const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 /// 行の余り幅を字間に微量配分する（issue #163）。pLaTeX の `\kanjiskip`
 /// （0pt plus .4pt @10pt ≈ 0.04em）と同オーダーで視覚上目立たない量に抑え、
 /// 上限を超える行は #162 と同様に右端不一致を許容する。収縮は持たない
-/// （ベタ組の字間は詰めない。詰めは約物アキ調整 #170 の領分）。
+/// （ベタ組の字間は詰めない。行の収縮は約物アキで吸収する ＝ 約物アキ調整 #170 の領分。
+/// [`split_japanese_run`](Measurer::split_japanese_run) 参照）。
 const CJK_STRETCH_RATIO: f32 = 0.05;
 
 /// レイアウトノードを計測済みのブロック列に変換する
@@ -73,6 +75,7 @@ const CJK_STRETCH_RATIO: f32 = 0.05;
 /// * `line_height_factor` - 行高係数。段落の行送り（leading）の算出に使用
 /// * `language` - 文書ロケール（BCP 47、`config.document.language`）。欧文ハイフネーションの
 ///   言語をこれから導出する。`None`・非対応言語ならハイフネーションなし
+/// * `punctuation_spacing` - 和文約物アキ調整（JIS X 4051）を行うか（`style.text.punctuation_spacing`）
 #[must_use]
 pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
@@ -81,9 +84,11 @@ pub fn build_blocks(
   default_font_size: f32,
   line_height_factor: f32,
   language: Option<&str>,
+  punctuation_spacing: bool,
 ) -> Vec<Block> {
   let hyphenation = hlist::resolve_hyphenation(language);
-  let mut measurer = Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation);
+  let mut measurer =
+    Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
@@ -103,6 +108,8 @@ pub(crate) struct Measurer<'a> {
   line_height_factor: f32,
   /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
   hyphenation: Option<Lang>,
+  /// 和文約物アキ調整（JIS X 4051）を行うか
+  punctuation_spacing: bool,
 }
 
 impl<'a> Measurer<'a> {
@@ -113,6 +120,7 @@ impl<'a> Measurer<'a> {
     default_font_size: f32,
     line_height_factor: f32,
     hyphenation: Option<Lang>,
+    punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
       shapers,
@@ -121,6 +129,7 @@ impl<'a> Measurer<'a> {
       default_font_size,
       line_height_factor,
       hyphenation,
+      punctuation_spacing,
     };
   }
 }
@@ -432,6 +441,13 @@ impl Measurer<'_> {
       return;
     };
 
+    // 和文かつ約物アキ調整が有効なときは、隣接グリフ対を走査する専用パスへ委ねる
+    // （約物境界は禁則で ICU 分割点に現れないため、break 駆動の下の経路では拾えない）
+    if is_japanese && self.punctuation_spacing {
+      self.split_japanese_run(&run, text, out);
+      return;
+    }
+
     // 和文セグメントはハイフネーションしない（`Lang` を渡さない＝Hyphen 分割点を生じさせない）
     let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
     let mut breaks = hlist::break_opportunities(text, hyphenation_lang);
@@ -535,6 +551,129 @@ impl Measurer<'_> {
       }
     }
     self.push_sub_run(&run, text, seg_glyph_start..run.glyphs.len(), seg_byte_start..text.len(), out);
+  }
+
+  /// 和文セグメントを約物アキ調整つきで `HItem` 列に分割する（隣接グリフ対を走査）
+  ///
+  /// 通常文字（漢字・仮名）は極大列を 1 box に束ね、ICU 分割可能位置には幅 0・微小伸長の
+  /// breakable glue を挿む（issue #163、ベタ組字間の両端揃え）。約物グリフは内蔵アキを抜いた
+  /// 実寸 box に正規化し（[`push_punct_box`](Self::push_punct_box)）、隣接クラス対の標準アキ
+  /// （[`yakumono::gap`]）を natural・shrink つきの glue として境界に挿む。連続約物や括弧内側は
+  /// アキ 0（glue なし）で重複アキが残らず、行頭始め括弧・行末句読点の前後アキは breakable な
+  /// ため行境界で破棄され版面の左右端に揃う。ASCII スペースは欧文と同じ伸縮 glue にする。
+  #[allow(clippy::needless_range_loop)]
+  fn split_japanese_run(&self, run: &GlyphRun, text: &str, out: &mut Vec<HItem>) {
+    let glyphs = &run.glyphs;
+    if glyphs.is_empty() {
+      return;
+    }
+    let metric = self.metrics.get(run.font_type);
+    let scale = run.font_size / metric.upem;
+    let em = run.font_size;
+
+    // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
+    let break_bytes: std::collections::HashSet<usize> =
+      hlist::break_opportunities(text, None).into_iter().map(|point| point.byte).collect();
+
+    // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
+    let char_of = |g: usize| -> char { text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
+    // グリフ g が全角相当か（半角約物を積むフォントは正規化・アキ対象外にする）
+    #[allow(clippy::cast_precision_loss)]
+    let is_fullwidth = |g: usize| -> bool { glyphs[g].x_advance as f32 * scale >= 0.75 * em };
+    // グリフ g の実効約物クラス（全角でない約物は通常文字として扱う）
+    let eff_class = |g: usize| -> yakumono::YakumonoClass {
+      let class = yakumono::classify(char_of(g));
+      if class != yakumono::YakumonoClass::Normal && is_fullwidth(g) {
+        return class;
+      }
+      return yakumono::YakumonoClass::Normal;
+    };
+    // グリフ g が単独 ASCII スペースか（欧文語間スペースと同じ扱いにする）
+    let is_space = |g: usize| -> bool {
+      let range = &glyphs[g].range;
+      return range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
+    };
+    let byte_at = |g: usize| -> usize { glyphs.get(g).map_or(text.len(), |glyph| glyph.range.start) };
+
+    let mut normal_start = 0usize;
+    for i in 0..glyphs.len() {
+      // ASCII スペース: 直前までの通常列を流し、伸縮 glue に置き換える
+      if is_space(i) {
+        self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
+        #[allow(clippy::cast_precision_loss)]
+        let natural = glyphs[i].x_advance as f32 * scale;
+        out.push(HItem::Glue {
+          natural,
+          stretch: natural * SPACE_STRETCH_RATIO,
+          shrink: natural * SPACE_SHRINK_RATIO,
+          breakable: true,
+        });
+        normal_start = i + 1;
+        continue;
+      }
+
+      // グリフ i の直前（i-1 と i の間）の境界 glue。直前がスペースなら既に glue 済み
+      if i > 0 && !is_space(i - 1) {
+        let breakable = break_bytes.contains(&byte_at(i));
+        if let Some(item) = boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
+          self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
+          out.push(item);
+          normal_start = i;
+        }
+      }
+
+      // 約物グリフはアキを抜いた実寸 box に正規化して単独で積む
+      if let Some(normalize) = yakumono::normalize(eff_class(i)) {
+        self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
+        self.push_punct_box(run, text, i, normalize, scale, out);
+        normal_start = i + 1;
+      }
+    }
+    self.push_sub_run(run, text, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out);
+  }
+
+  /// 約物 1 グリフを内蔵アキ抜きの実寸 box にして `out` に追加する
+  ///
+  /// 送り幅から `normalize.trim_em`（em）ぶん box 幅を詰め、`normalize.shift_em` ぶん墨を左へ
+  /// 寄せる（`x_offset` を font unit で減算）。box 幅だけが後続アイテムの開始位置を決め、単独
+  /// グリフの墨位置は `x_offset` が決めるため、幅を詰めても墨は動かない（始め括弧・中点は
+  /// `shift_em` で左端に揃える）。
+  fn push_punct_box(
+    &self,
+    run: &GlyphRun,
+    text: &str,
+    glyph_index: usize,
+    normalize: yakumono::Normalize,
+    scale: f32,
+    out: &mut Vec<HItem>,
+  ) {
+    let src = &run.glyphs[glyph_index];
+    let metric = self.metrics.get(run.font_type);
+    #[allow(clippy::cast_possible_truncation)]
+    let shift_units = (normalize.shift_em * metric.upem) as i32;
+    let glyph = Glyph {
+      gid: src.gid,
+      range: 0..(src.range.end - src.range.start),
+      x_advance: src.x_advance,
+      y_advance: src.y_advance,
+      x_offset: src.x_offset - shift_units,
+      y_offset: src.y_offset,
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let advance = src.x_advance as f32 * scale;
+    let width = advance - normalize.trim_em * run.font_size;
+    out.push(HItem::Box(HBox {
+      content: HBoxContent::Glyphs(GlyphRun {
+        font_size: run.font_size,
+        text: text[src.range.clone()].to_string(),
+        glyphs: vec![glyph],
+        font_type: run.font_type,
+        color: run.color,
+      }),
+      width,
+      height: metric.ascender / metric.upem * run.font_size,
+      depth: metric.descender.abs() / metric.upem * run.font_size,
+    }));
   }
 
   /// `run` の部分グリフ列から計測済みの sub-box を作って `out` に追加する
@@ -659,4 +798,96 @@ impl Measurer<'_> {
 /// 見つからない場合（リガチャ等でクラスタ途中に位置が落ちた場合）は `None`。
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| glyph.range.start == byte);
+}
+
+/// 隣接する実効約物クラス対（`left` → `right`）の境界に挿む glue を決める
+///
+/// 約物が絡む境界は JIS X 4051 の標準アキ（[`yakumono::gap`]）を natural・shrink つき・伸長なしの
+/// glue にする（詰め代は両端揃えの収縮点／字間より先に吸収）。アキ 0（ベタ）の対は `None`。
+/// 通常文字どうしは ICU 分割可能位置にだけ幅 0・微小伸長の glue を置く（issue #163）。
+/// `breakable` は ICU 分割可能位置（禁則は除かれている）で、行頭行末の約物アキ破棄に効く。
+fn boundary_glue(
+  left: yakumono::YakumonoClass,
+  right: yakumono::YakumonoClass,
+  em: f32,
+  breakable: bool,
+) -> Option<HItem> {
+  use yakumono::YakumonoClass::Normal;
+
+  if left != Normal || right != Normal {
+    return yakumono::gap(left, right).map(|aki| HItem::Glue {
+      natural: aki.natural_em * em,
+      stretch: 0.0,
+      shrink: aki.shrink_em * em,
+      breakable,
+    });
+  }
+  if breakable {
+    return Some(HItem::Glue {
+      natural: 0.0,
+      stretch: em * CJK_STRETCH_RATIO,
+      shrink: 0.0,
+      breakable: true,
+    });
+  }
+  return None;
+}
+
+#[cfg(test)]
+mod boundary_glue_tests {
+  use hlist::HItem;
+
+  use super::{CJK_STRETCH_RATIO, boundary_glue};
+  use crate::yakumono::YakumonoClass::{Close, Comma, Normal, Open};
+
+  const EM: f32 = 10.0;
+
+  /// glue の各フィールドを取り出す（`HItem` は `PartialEq` 非実装のため分解して検証する）
+  fn glue_fields(item: Option<HItem>) -> Option<(f32, f32, f32, bool)> {
+    return match item {
+      Some(HItem::Glue {
+        natural,
+        stretch,
+        shrink,
+        breakable,
+      }) => Some((natural, stretch, shrink, breakable)),
+      Some(other) => panic!("glue を期待したが {other:?} だった"),
+      None => None,
+    };
+  }
+
+  #[test]
+  fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
+    // Arrange / Act — 前アキ（何か → 始め括弧）
+    let front = glue_fields(boundary_glue(Normal, Open, EM, true));
+    // 後アキ（終わり括弧・句読点 → 通常文字）
+    let back = glue_fields(boundary_glue(Close, Normal, EM, true));
+
+    // Assert — 二分（=5.0）の natural・shrink、伸長なし、breakable は引数を伝播
+    assert_eq!(front, Some((5.0, 0.0, 5.0, true)), "前アキ二分・詰め代二分・伸長なし");
+    assert_eq!(back, Some((5.0, 0.0, 5.0, true)), "後アキ二分・詰め代二分・伸長なし");
+  }
+
+  #[test]
+  fn consecutive_punctuation_has_no_glue() {
+    // Arrange / Act / Assert — 連続約物（。」）はベタ = glue なし
+    assert_eq!(glue_fields(boundary_glue(Comma, Close, EM, true)), None);
+  }
+
+  #[test]
+  fn breakable_flag_propagates_to_punctuation_glue() {
+    // Arrange / Act / Assert — ICU 非分割位置なら breakable=false で挿む
+    assert_eq!(glue_fields(boundary_glue(Normal, Open, EM, false)), Some((5.0, 0.0, 5.0, false)));
+  }
+
+  #[test]
+  fn normal_pair_gets_cjk_stretch_only_at_break_points() {
+    // Arrange / Act — 通常文字どうし
+    let at_break = glue_fields(boundary_glue(Normal, Normal, EM, true));
+    let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
+
+    // Assert — 分割点は幅 0・微小伸長・収縮なし、非分割点は glue なし
+    assert_eq!(at_break, Some((0.0, EM * CJK_STRETCH_RATIO, 0.0, true)));
+    assert_eq!(no_break, None);
+  }
 }

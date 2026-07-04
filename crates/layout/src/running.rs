@@ -102,8 +102,9 @@ pub fn build_running_content(
     return;
   }
   // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない。
-  // ヘッダー・フッターはハイフネーションしない（本文段落専用・#173）
-  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None);
+  // ヘッダー・フッターはハイフネーションしない（本文段落専用・#173）。
+  // 和文約物アキ調整は本文と同じく既定で有効にする
+  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None, true);
   for (index, page) in pages.iter_mut().enumerate() {
     // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
     if spec.skip_first && index == 0 {
