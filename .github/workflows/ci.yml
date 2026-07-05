@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Cache test assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vendor
           key: test-assets-${{ hashFiles('tools/fetch-test-assets.sh') }}
