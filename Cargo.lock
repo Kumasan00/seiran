@@ -192,9 +192,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.65"
+version = "1.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e228eec9be7c17ccb640b59b36a5cd805ea2a564a4c5e162c2f659fea30d3b96"
+checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -525,7 +525,7 @@ dependencies = [
  "harfrust",
  "miette",
  "rayon",
- "read-fonts 0.40.2",
+ "read-fonts 0.41.0",
  "read_config",
  "thiserror",
  "tracing",
@@ -668,13 +668,13 @@ dependencies = [
 
 [[package]]
 name = "harfrust"
-version = "0.10.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0589ddd0d2935dd2845827ac606b4081c266225d613b268ed2910f832889cab"
+checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
 dependencies = [
  "bitflags",
  "bytemuck",
- "read-fonts 0.40.2",
+ "read-fonts 0.41.0",
  "smallvec",
 ]
 
@@ -1476,9 +1476,9 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.4.6"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
 dependencies = [
  "num-integer",
  "num-traits",
@@ -1601,7 +1601,7 @@ dependencies = [
  "krilla",
  "krilla-svg",
  "miette",
- "read-fonts 0.40.2",
+ "read-fonts 0.41.0",
  "read_config",
  "read_style",
  "thiserror",
@@ -1788,9 +1788,9 @@ dependencies = [
 
 [[package]]
 name = "read-fonts"
-version = "0.40.2"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "487889119a5f19ff7c0a20637196bdc76b9f54ebec17e3588b5d75e4999f8773"
+checksum = "046a7d674daf459825b32f5062056d6882db0d2f5a479fbd76ccfc870ac18709"
 dependencies = [
  "bytemuck",
  "font-types 0.12.1",
@@ -2170,7 +2170,7 @@ name = "subcommand"
 version = "0.1.0"
 dependencies = [
  "miette",
- "read-fonts 0.40.2",
+ "read-fonts 0.41.0",
  "thiserror",
  "tracing",
 ]

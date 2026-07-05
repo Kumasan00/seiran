@@ -37,9 +37,9 @@ cli = { path = "crates/cli" }
 document = { path = "crates/document" }
 figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
-font-types = "0.12.0"
+font-types = "0.12.1"
 garde = { version = "0.23.0", features = ["derive"] }
-harfrust = "0.10.0"
+harfrust = "0.12.0"
 hayagriva = {
   version = "0.10.1",
   default-features = false,
@@ -69,7 +69,7 @@ pdf_gen = { path = "crates/pdf_gen" }
 phf = { version = "0.14.0", features = ["macros"] }
 rayon = "1.12.0"
 read_config = { path = "crates/read_config" }
-read-fonts = "0.40.2"
+read-fonts = "0.41.0"
 read_references = { path = "crates/read_references" }
 read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
