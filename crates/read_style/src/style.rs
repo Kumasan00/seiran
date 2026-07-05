@@ -16,6 +16,7 @@ use crate::{
   hyperref::HyperrefStyle,
   list::ListStyle,
   math::MathStyle,
+  page::PageStyle,
   page_numbering::PageNumbering,
   quote::QuoteStyle,
   reference::ReferenceStyle,
@@ -49,6 +50,9 @@ pub struct Style {
   /// 段組み（1 段 / 2 段切替）のスタイル
   #[garde(dive)]
   pub columns: ColumnsStyle,
+  /// ページ組版の挙動（下端揃え等）のスタイル
+  #[garde(dive)]
+  pub page: PageStyle,
   /// リストのスタイル
   #[garde(dive)]
   pub list: ListStyle,
@@ -104,6 +108,7 @@ impl Default for Style {
       heading: HeadingStyles::default(),
       text: TextBlockStyle::default(),
       columns: ColumnsStyle::default(),
+      page: PageStyle::default(),
       list: ListStyle::default(),
       quote: QuoteStyle::default(),
       table: TableStyle::default(),

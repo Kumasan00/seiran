@@ -22,6 +22,7 @@ pub mod hyperref;
 pub mod list;
 pub mod math;
 pub mod number_style;
+pub mod page;
 pub mod page_numbering;
 pub mod quote;
 pub mod reference;
@@ -53,6 +54,7 @@ pub use crate::{
   list::ListStyle,
   math::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide},
   number_style::NumberStyle,
+  page::PageStyle,
   page_numbering::PageNumbering,
   quote::QuoteStyle,
   reference::ReferenceStyle,

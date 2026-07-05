@@ -76,6 +76,39 @@ fn parse_style_columns_defaults_to_single_column() {
 }
 
 #[test]
+fn parse_style_enables_flush_bottom() {
+  // Arrange: [page] で下端揃えを有効化
+  let toml = "[page]\nflush_bottom = true\n";
+
+  // Act
+  let style = parse_style(toml, dummy_source()).unwrap();
+
+  // Assert
+  assert!(style.page.flush_bottom);
+}
+
+#[test]
+fn parse_style_flush_bottom_defaults_to_disabled() {
+  // Arrange / Act: 未指定なら既定で無効（従来どおりの ragged bottom）
+  let style = parse_style("", dummy_source()).unwrap();
+
+  // Assert
+  assert!(!style.page.flush_bottom);
+}
+
+#[test]
+fn parse_style_fails_on_unknown_page_key() {
+  // Arrange: [page] 内の typo は deny_unknown_fields で拒否
+  let toml = "[page]\nflush_botom = true\n";
+
+  // Act
+  let result = parse_style(toml, dummy_source());
+
+  // Assert
+  assert!(result.is_err());
+}
+
+#[test]
 fn parse_style_fails_on_unknown_columns_key() {
   // Arrange: [columns] 内の typo は deny_unknown_fields で拒否
   let toml = "[columns]\ncont = 2\n";

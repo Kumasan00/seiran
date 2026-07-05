@@ -41,6 +41,13 @@ pub struct PageGeometry {
   pub num_columns: usize,
   /// 段間（gutter、pt）。隣り合う段の間隔
   pub column_gap: f32,
+  /// 下端揃え（flush bottom）を有効にするか（`style.toml` の `[page] flush_bottom`）。
+  ///
+  /// `true` のとき、満杯になった段（リージョン）の不足高さを段内の伸縮アキ（glue の stretch）へ
+  /// 比例配分し、最終ベースラインを版面下端（`page_limit`）へ寄せる。最終ページ・強制改ページ直前の
+  /// リージョン・伸縮アキが無いリージョンは揃えない（自然高のまま）。前付け（`front_geometry`）は常に
+  /// `false`。既定 `false` で従来どおりの ragged bottom。
+  pub flush_bottom: bool,
 }
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
@@ -85,6 +92,31 @@ struct PageComposer {
   /// 既定 0（中立）。強制改ページ（−∞）は eager に処理するためここには積まない。本 issue（#166）では
   /// 発行者がいないため常に 0 で、[`PageComposer::consider_break`] は幾何判定のみに帰着する。
   pending_penalty: i32,
+  /// 現在リージョン（段）の先頭 index（`current` 内）。下端揃え（#169）がここから末尾までを揃える。
+  region_start: usize,
+  /// 現在リージョンの先頭 index（`current_links` 内）。下端揃えでリンク矩形を本体と同量シフトする。
+  region_link_start: usize,
+  /// 現在リージョンの先頭 index（`current_anchors` 内）。下端揃えでアンカーを本体と同量シフトする。
+  region_anchor_start: usize,
+  /// 現在リージョンの伸縮アキ（下端揃え用）。各アキ通過時点の `current` / `current_links` /
+  /// `current_anchors` の要素数（＝そのアキより後に来る要素の開始 index）と stretch を記録し、
+  /// [`PageComposer::end_region`] が不足高さを配置順ベースで比例配分する。
+  region_glues: Vec<GlueMark>,
+}
+
+/// 下端揃え（#169）用の伸縮アキ記録
+///
+/// アキを消費した時点の各配置ベクタの長さを覚えておくことで、座標比較に頼らずに「このアキより後に
+/// 置かれた要素」を index で厳密に判定する（行の箱がアキ帯へ食い込む等の座標曖昧性を回避する）。
+struct GlueMark {
+  /// 伸長能力（pt）。配分の重み
+  stretch: f32,
+  /// このアキ記録時点の `current` の要素数（このアキより後のブロックはこの index 以降）
+  block_at: usize,
+  /// このアキ記録時点の `current_links` の要素数
+  link_at: usize,
+  /// このアキ記録時点の `current_anchors` の要素数
+  anchor_at: usize,
 }
 
 impl PageComposer {
@@ -102,6 +134,10 @@ impl PageComposer {
       column_gap: geom.column_gap,
       col: 0,
       pending_penalty: 0,
+      region_start: 0,
+      region_link_start: 0,
+      region_anchor_start: 0,
+      region_glues: Vec::new(),
     };
   }
 
@@ -119,6 +155,10 @@ impl PageComposer {
   /// （次段の先頭は段落先頭行と同じ扱いにするため `cursor_at_edge` も倒す）。最終段で
   /// 超えたときだけ [`PageComposer::start_new_page`] へフォールスルーして実際に改ページする。
   fn advance_region(&mut self, geom: &PageGeometry) {
+    // 満杯になったリージョン（段）を先に確定する。下端揃え（#169）が有効なら不足高さを段内の
+    // 伸縮アキへ配分してから次段 / 次ページへ移る。強制改ページ・最終ページはこの経路を通らない
+    // （それぞれ match アームの `start_new_page` 直接呼び・`finish` が確定）ため揃えられない。
+    self.end_region(geom, true);
     if self.col + 1 < self.num_columns {
       self.col += 1;
       self.y = geom.margin_top;
@@ -184,6 +224,12 @@ impl PageComposer {
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
     self.col = 0;
+    // ページ確定で `current` / `current_links` / `current_anchors` を空にしたので、次ページ先頭段の
+    // リージョン追跡を 0 から開始する。伸縮アキも新ページに持ち越さない。
+    self.region_start = 0;
+    self.region_link_start = 0;
+    self.region_anchor_start = 0;
+    self.region_glues.clear();
   }
 
   /// 未解決アンカーを確定座標 `(x, y)` で現在ページに解決する
@@ -228,6 +274,97 @@ impl PageComposer {
       links: self.current_links,
     });
     return self.pages;
+  }
+
+  /// 現在リージョン（段）を確定し、下端揃え（#169）が有効なら不足高さを段内の伸縮アキへ配分する。
+  ///
+  /// `flush` は「このリージョンを揃える対象にするか」。満杯で改段・改ページする経路（[`advance_region`]）
+  /// だけが `true` を渡す。強制改ページ直前・最終ページはこのメソッドを通さない（=揃えない）。配分は
+  /// 配置順ベース: 各ブロック（およびリンク矩形・アンカー）を「それより前に記録された伸縮アキの
+  /// stretch 合計 × ratio」だけ下方へずらす。末尾ブロックが不足高さ全量だけ下がり、リージョン下端が
+  /// 版面下限（`page_limit`）に達する。リージョン末尾のアキ（末尾ブロックより後に記録された分＝改段で
+  /// 捨てられるアキ）は配分の分母から除く（除かないと下端が不足高さ分だけ届かなくなる）。
+  ///
+  /// いずれの場合も次リージョンのためにリージョン追跡（`region_*`）を現在の末尾へリセットする。
+  fn end_region(&mut self, geom: &PageGeometry, flush: bool) {
+    let glues = std::mem::take(&mut self.region_glues);
+    let region_start = self.region_start;
+    let link_start = self.region_link_start;
+    let anchor_start = self.region_anchor_start;
+    let has_blocks = region_start < self.current.len();
+    if flush && geom.flush_bottom && has_blocks && !glues.is_empty() {
+      let last_index = self.current.len() - 1;
+      // リージョン下端 = 段内ブロックの底辺の最大値（末尾ブロックが最下）。
+      let region_bottom = self.current[region_start..].iter().map(placed_block_bottom).fold(f32::MIN, f32::max);
+      let deficit = geom.page_limit - region_bottom;
+      // 分母 = 末尾ブロックより前に記録されたアキの stretch 合計（末尾アキは除く）。
+      let effective: f32 = glues.iter().filter(|g| g.block_at <= last_index).map(|g| g.stretch).sum();
+      // 不足高さ・分母が正のときだけ配分する（負・ゼロは揃えても意味がないので自然高のまま）。
+      if deficit > FLUSH_EPSILON && effective > 0.0 {
+        let ratio = deficit / effective;
+        for (offset, block) in self.current[region_start..].iter_mut().enumerate() {
+          let idx = region_start + offset;
+          let stretch: f32 = glues.iter().filter(|g| g.block_at <= idx).map(|g| g.stretch).sum();
+          shift_placed_block(block, ratio * stretch);
+        }
+        for (offset, link) in self.current_links[link_start..].iter_mut().enumerate() {
+          let idx = link_start + offset;
+          let stretch: f32 = glues.iter().filter(|g| g.link_at <= idx).map(|g| g.stretch).sum();
+          link.y += ratio * stretch;
+        }
+        for (offset, anchor) in self.current_anchors[anchor_start..].iter_mut().enumerate() {
+          let idx = anchor_start + offset;
+          let stretch: f32 = glues.iter().filter(|g| g.anchor_at <= idx).map(|g| g.stretch).sum();
+          anchor.y += ratio * stretch;
+        }
+      }
+    }
+    self.region_start = self.current.len();
+    self.region_link_start = self.current_links.len();
+    self.region_anchor_start = self.current_anchors.len();
+  }
+}
+
+/// 下端揃え（#169）で配分を行う不足高さの下限（pt）。これ未満は浮動小数の誤差とみなし揃えない。
+const FLUSH_EPSILON: f32 = 1e-3;
+
+/// [`PlacedBlock`] の底辺（ページ上端からの距離、pt）を返す。下端揃えのリージョン下端算出に使う。
+fn placed_block_bottom(block: &PlacedBlock) -> f32 {
+  return match block {
+    PlacedBlock::Line { line, baseline_y } => baseline_y + line.depth,
+    PlacedBlock::MathBlock {
+      body, baseline_y, ..
+    } => baseline_y + body.depth,
+    PlacedBlock::Image { y, height, .. } | PlacedBlock::Rule { y, height, .. } => y + height,
+    PlacedBlock::Table { rows, .. } => rows.last().map_or(f32::MIN, |r| r.top_y + r.height),
+  };
+}
+
+/// [`PlacedBlock`] とその内部の確定座標を下方へ `dy` だけずらす（下端揃えの配分で使う）。
+///
+/// 数式ブロックは本体ベースラインと各行番号を、表は全行の上端を一律にずらす。水平座標は変えない。
+fn shift_placed_block(block: &mut PlacedBlock, dy: f32) {
+  if dy == 0.0 {
+    return;
+  }
+  match block {
+    PlacedBlock::Line { baseline_y, .. } => *baseline_y += dy,
+    PlacedBlock::MathBlock {
+      baseline_y,
+      numbers,
+      ..
+    } => {
+      *baseline_y += dy;
+      for number in numbers {
+        number.baseline_y += dy;
+      }
+    },
+    PlacedBlock::Image { y, .. } | PlacedBlock::Rule { y, .. } => *y += dy,
+    PlacedBlock::Table { rows, .. } => {
+      for row in rows {
+        row.top_y += dy;
+      }
+    },
   }
 }
 
@@ -310,9 +447,20 @@ pub fn break_pages(
       Block::ComposedLine { line, leading } => {
         place_single_line(&mut composer, geom, line, leading);
       },
-      // 伸縮アキ。本 issue（#166）では stretch / shrink を消費せず自然値のみカーソルへ加算する
-      // （VSpace と同一挙動）。cursor_at_edge は触らない（アキはフラグを変えない）。
-      Block::Glue { natural, .. } => {
+      // 伸縮アキ。カーソルへは自然値のみ加算する（下端揃え無効時は VSpace と同一挙動）。stretch を持つ
+      // アキは下端揃え（#169）用に配置順（各配置ベクタの現在長）と stretch を記録しておき、リージョン確定時に
+      // 不足高さを配分する。cursor_at_edge は触らない（アキはフラグを変えない）。
+      Block::Glue {
+        natural, stretch, ..
+      } => {
+        if stretch != 0.0 {
+          composer.region_glues.push(GlueMark {
+            stretch,
+            block_at: composer.current.len(),
+            link_at: composer.current_links.len(),
+            anchor_at: composer.current_anchors.len(),
+          });
+        }
         composer.y += natural;
       },
       // 分割コスト。強制改ページ（−∞）は eager に改ページ。有限は次の内容ブロックへ持ち越す。
@@ -1012,6 +1160,7 @@ mod tests {
       table_cell_padding: 2.0,
       num_columns: 1,
       column_gap: 0.0,
+      flush_bottom: false,
     };
   }
 
@@ -2526,5 +2675,175 @@ mod tests {
 
     // Assert — 見出しは 1 ページ目先頭（回避不能で孤立を許容）、本文は 2 ページ目。空ページは生じない
     assert_eq!(line_counts(&pages), vec![1, 2], "{pages:?}");
+  }
+
+  // ---- 下端揃え（flush bottom・#169）--------------------------------------------------------------
+
+  /// 下端揃えを有効にしたテスト用ジオメトリ（他は `test_geometry` と同じ）
+  fn flush_geometry() -> PageGeometry {
+    return PageGeometry {
+      flush_bottom: true,
+      ..test_geometry()
+    };
+  }
+
+  /// 高さ `height` の罫線ブロック（幅 10・左揃え）
+  fn rule(height: f32) -> Block {
+    return Block::Rule {
+      width: 10.0,
+      height,
+      align: types::Align::Left,
+    };
+  }
+
+  /// ページ内の罫線の上端 y を上から順に集める
+  fn rule_ys(page: &Page) -> Vec<f32> {
+    return page
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Rule { y, .. } => Some(*y),
+        _ => None,
+      })
+      .collect();
+  }
+
+  /// ページ内ブロックの底辺の最大値（版面下端に達したかの確認用）
+  fn max_block_bottom(page: &Page) -> f32 {
+    return page.blocks.iter().map(super::placed_block_bottom).fold(f32::MIN, f32::max);
+  }
+
+  /// 2 つの `f32` がほぼ等しいか（配置座標の比較用）
+  fn approx(a: f32, b: f32) -> bool { return (a - b).abs() < 1e-3; }
+
+  #[test]
+  fn flush_bottom_distributes_deficit_into_stretch_glue() {
+    // Arrange — 罫線 3 本を伸縮アキ 2 個で挟み、4 本目でページを溢れさせる。1 ページ目は満杯（不足 2pt）
+    // なので下端揃えの対象になる。伸縮アキは等量なので不足高さは 1pt ずつ配分される。
+    let geom = flush_geometry();
+    let blocks = vec![
+      rule(10.0),                         // y=10..20
+      Block::stretchable_space(4.0, 4.0), // 24
+      rule(10.0),                         // y=24..34
+      Block::stretchable_space(4.0, 4.0), // 38
+      rule(10.0),                         // y=38..48（不足 2pt）
+      rule(10.0),                         // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 1 ページ目は各アキが 1pt ずつ伸び、末尾罫線の底辺が版面下限 50 に達する
+    assert_eq!(pages.len(), 2);
+    assert_eq!(rule_ys(&pages[0]), vec![10.0, 25.0, 40.0]);
+    assert!(approx(max_block_bottom(&pages[0]), 50.0), "{:?}", pages[0]);
+    // 最終ページは自然高のまま（揃えない）
+    assert_eq!(rule_ys(&pages[1]), vec![10.0]);
+  }
+
+  #[test]
+  fn flush_bottom_disabled_keeps_ragged_bottom() {
+    // Arrange — 下端揃え無効。同じ入力でも従来どおり自然高で終わる
+    let geom = test_geometry();
+    let blocks = vec![
+      rule(10.0),
+      Block::stretchable_space(4.0, 4.0),
+      rule(10.0),
+      Block::stretchable_space(4.0, 4.0),
+      rule(10.0),
+      rule(10.0),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — アキは自然値のまま、末尾は 48（<50）
+    assert_eq!(rule_ys(&pages[0]), vec![10.0, 24.0, 38.0]);
+    assert!(approx(max_block_bottom(&pages[0]), 48.0));
+  }
+
+  #[test]
+  fn flush_bottom_shifts_paragraph_lines() {
+    // Arrange — 段落（Line）3 個を伸縮アキで挟み、大きな罫線で溢れさせる。行の底辺（baseline+depth）で
+    // リージョン下端を測り、行を丸ごと下方シフトすることを確認する。
+    let geom = flush_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),              // baseline 10（bottom 12）、以後カーソルは +leading(12)
+      Block::stretchable_space(4.0, 4.0), // ba=1
+      paragraph_of_lines(1),              // baseline 26
+      Block::stretchable_space(4.0, 4.0), // ba=2
+      paragraph_of_lines(1),              // baseline 42（bottom 44・不足 6pt）
+      rule(30.0),                         // 溢れて改ページ
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 不足 6pt を等量アキへ 3:3 で配分（0.75 × 4 = 3pt ずつ累積）。末尾行の底辺が 50 に達する
+    assert_eq!(page_baselines(&pages[0]), vec![10.0, 29.0, 48.0]);
+    assert!(approx(max_block_bottom(&pages[0]), 50.0), "{:?}", pages[0]);
+  }
+
+  #[test]
+  fn flush_bottom_aligns_last_baseline_across_pages() {
+    // Arrange — 罫線 7 本を伸縮アキで連ね、2 ページを満杯にして 3 ページ目に 1 本残す
+    let geom = flush_geometry();
+    let mut blocks = Vec::new();
+    for i in 0..7 {
+      if i > 0 {
+        blocks.push(Block::stretchable_space(4.0, 4.0));
+      }
+      blocks.push(rule(10.0));
+    }
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 満杯の 1・2 ページ目は下端が版面下限で揃い、最終ページだけ自然高
+    assert_eq!(pages.len(), 3);
+    assert!(approx(max_block_bottom(&pages[0]), 50.0), "page0 {:?}", pages[0]);
+    assert!(approx(max_block_bottom(&pages[1]), 50.0), "page1 {:?}", pages[1]);
+    assert!(max_block_bottom(&pages[2]) < 50.0 - 1e-3, "last page ragged {:?}", pages[2]);
+  }
+
+  #[test]
+  fn flush_bottom_skips_page_before_forced_break() {
+    // Arrange — 強制改ページ直前のページは揃えない（自然高のまま）
+    let geom = flush_geometry();
+    let blocks = vec![
+      rule(10.0),
+      Block::stretchable_space(4.0, 4.0),
+      rule(10.0),
+      Block::force_break(), // このページは強制改ページで終わる → 揃えない
+      rule(10.0),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 1 ページ目は自然高（10, 24）のまま
+    assert_eq!(pages.len(), 2);
+    assert_eq!(rule_ys(&pages[0]), vec![10.0, 24.0]);
+    assert_eq!(rule_ys(&pages[1]), vec![10.0]);
+  }
+
+  #[test]
+  fn flush_bottom_skips_page_without_stretch() {
+    // Arrange — 固定アキ（stretch=0）だけのページは配分先が無いので揃えない
+    let geom = flush_geometry();
+    let blocks = vec![
+      rule(10.0),
+      Block::fixed_space(4.0),
+      rule(10.0),
+      Block::fixed_space(4.0),
+      rule(10.0),
+      rule(10.0), // 溢れて改ページ
+    ];
+
+    // Act
+    let pages = break_pages(blocks, 100.0, &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 伸縮アキが無いので自然高（10, 24, 38）のまま
+    assert_eq!(rule_ys(&pages[0]), vec![10.0, 24.0, 38.0]);
   }
 }
