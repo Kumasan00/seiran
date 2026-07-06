@@ -118,8 +118,10 @@ pub enum Block {
   /// 縦方向の伸縮アキ（glue）
   ///
   /// `natural` は自然値（pt）、`stretch` / `shrink` は伸長 / 収縮能力（pt）。固定アキは
-  /// `stretch = 0.0, shrink = 0.0`（[`Block::fixed_space`]）。伸縮は下端揃え（#169）が解決する想定で、
-  /// 本 issue（#166）では常に 0 で `break_pages` は `natural` のみカーソルへ加算する。
+  /// `stretch = 0.0, shrink = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
+  /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃え（#169）が満杯リージョンの不足高さを
+  /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`
+  /// のみカーソルへ加算するため出力は不変。
   Glue {
     /// 自然値（pt）
     natural: f32,
@@ -153,6 +155,20 @@ impl Block {
     return Block::Glue {
       natural: pt,
       stretch: 0.0,
+      shrink: 0.0,
+    };
+  }
+
+  /// 伸縮する縦アキ（glue）を作る。`natural = pt`, `stretch = stretch`, `shrink = 0`。
+  ///
+  /// ブロック間アキ（段落間・見出し前後等）に使う。下端揃え（#169）が満杯リージョンの不足高さを
+  /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
+  /// オーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
+  #[must_use]
+  pub fn stretchable_space(pt: f32, stretch: f32) -> Block {
+    return Block::Glue {
+      natural: pt,
+      stretch,
       shrink: 0.0,
     };
   }

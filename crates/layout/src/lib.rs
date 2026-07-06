@@ -76,6 +76,14 @@ const JA_LATIN_AKI_RATIO: f32 = 0.25;
 /// 同オーダーの微小値に抑える。収縮は持たない（四分より詰めない）。
 const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
 
+/// ブロック間アキ（`VBox::margin_bottom`）の伸長能力（自然値に対する倍率）
+///
+/// 下端揃え（#169）が満杯リージョンの不足高さを配分する重み。各アキが自然値に比例して伸びる
+/// （相対サイズを保つ）ようにするため `stretch = natural × この比率` とする。均一な比率は
+/// `deficit / total_stretch` の分配で相殺され結果に影響しないので値は 1.0 とする。下端揃えが無効なら
+/// `break_pages` は `stretch` を無視するため、この伸長は既定出力を一切変えない。
+const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
+
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
@@ -197,7 +205,10 @@ impl Measurer<'_> {
           let child_right_indent = right_indent + vbox_right_indent.to_pt();
           self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
           self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
-          blocks.push(Block::fixed_space(margin_bottom.to_pt()));
+          // ブロック間アキは伸縮 glue にする。下端揃え（#169）が満杯リージョンの不足高さを
+          // 自然値比で配分する。下端揃え無効時は break_pages が stretch を無視するため出力不変。
+          let natural = margin_bottom.to_pt();
+          blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
         },
         LayoutNode::Vkern { length } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);

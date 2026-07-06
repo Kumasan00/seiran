@@ -337,10 +337,13 @@ fn build_page_geometries(
     table_cell_padding: style.table.cell_padding.to_pt(),
     num_columns: body_columns,
     column_gap,
+    flush_bottom: style.page.flush_bottom,
   };
+  // 前付け（タイトルページ・目次）は下端揃えの対象外。struct-update で本文値を継ぐため明示的に落とす。
   let front_geometry = hlist::PageGeometry {
     num_columns: 1,
     column_gap: 0.0,
+    flush_bottom: false,
     ..body_geometry
   };
   return (body_geometry, front_geometry);
