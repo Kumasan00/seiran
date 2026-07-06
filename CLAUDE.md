@@ -56,8 +56,12 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
 ```
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
-本文の自動行折り返しは貪欲法（first-fit）・左揃え（ragged-right）で、分割可能点は
-ICU `LineSegmenter`（UAX #14）により和欧同時に求める（`hlist::break_opportunities`）。
+本文の自動行折り返しは Knuth–Plass（段落全体最適。`hlist::break_lines`。貪欲法 first-fit も
+`GreedyBreaker` として併存）で、既定は両端揃え（`[text]` の `alignment`。glue の伸縮で行幅を調整）。
+分割可能点は ICU `LineSegmenter`（UAX #14）により和欧同時に求め（`hlist::break_opportunities`）、
+欧文語中は discretionary ハイフネーション（`hlist::hyphenation`）を併用する。
+縦組版（`break_pages`）も glue/penalty モデルで、widow/orphan・keep-with-next・
+下端揃え（flush_bottom）を penalty と glue 伸縮で制御する。
 数式は `HBoxContent::Atom`（絶対 dx/dy の閉じた箱）として行分割をまたがない。
 
 ### クレート依存関係
