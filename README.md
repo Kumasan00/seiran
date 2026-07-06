@@ -43,40 +43,54 @@ cargo run -- build [-c <config_path>]
 ### バリアブルフォント軸情報の表示
 
 ```sh
-cargo run variation-axes <font_path> [--font-index <index>]
+cargo run -- variation-axes <font_path> [--font-index <index>]
 ```
 
 ### TTC ファイル内のフォント名一覧
 
 ```sh
-cargo run ttc-names <ttc_file_path>
+cargo run -- ttc-names <ttc_file_path>
 ```
 
 ### フォントのスクリプト / 言語情報
 
 ```sh
-cargo run script-langs <font_path> [--font-index <index>]
+cargo run -- script-langs <font_path> [--font-index <index>]
 ```
 
 ## 設定
 
 ### メイン設定（`config/config.toml`）
 
-PDF 生成の基本設定を行います。
+PDF 生成の基本設定を行います。長さの値はすべて単位付き文字列（`"12pt"` / `"5mm"`）で指定します。
 
 ```toml
-name = "document_name"         # ドキュメント名（出力PDFファイル名）
-references_path = "config/references.toml"  # 参照定義ファイルパス（オプション）
+sources = ["chapter1.sei", "chapter2.sei"]  # 入力テキストファイル
 style_path = "config/style.toml"            # スタイル設定ファイルパス（オプション）
+references_path = "config/references.toml"  # 参照定義ファイルパス（オプション）
+
+[document]                     # PDF メタデータ（すべてオプション）
+title = "ドキュメントタイトル"
+author = "著者名"
+date = "2026-01-01"
+language = "ja"                # 文書全体の言語（BCP 47。ハイフネーション等が参照）
+
+[output]
+name = "document_name"         # 出力 PDF ファイル名
+output_dir = "target/"         # 出力ディレクトリ
 
 [pdf]
-output_dir = "target/"         # 出力ディレクトリ
-height = 842.0                 # ページ高さ（pt, A4 = 842）
-width = 595.0                  # ページ幅（pt, A4 = 595）
-margin_top = 99.0              # 上余白（pt）
-margin_bottom = 99.0           # 下余白（pt）
-margin_left = 85.0             # 左余白（pt）
-margin_right = 85.0            # 右余白（pt）
+height = "842pt"               # ページ高さ（A4 = 842pt）
+width = "595pt"                # ページ幅（A4 = 595pt）
+margin_top = "99pt"            # 上余白
+margin_bottom = "99pt"         # 下余白
+margin_left = "85pt"           # 左余白
+margin_right = "85pt"          # 右余白
+# show_bookmarks = true        # しおり出力（既定 true）
+
+# [image]                      # ラスタ画像の埋め込み解像度（既定 max_dpi=300 / downsample=true）
+# max_dpi = 300
+# downsample = true
 
 [font_configs.serif]           # 19種別それぞれに設定
 font_name = "MyFont"           # PDF 内フォント名（一意必須）
@@ -94,36 +108,29 @@ features = [                   # OpenType フィーチャー（オプション�
 
 ### スタイル設定（`config/style.toml`）
 
-見出しのフォントサイズと下余白をカスタマイズします。指定しない項目はデフォルト値が使用されます。
+本文・見出し・図表・数式などの見た目をカスタマイズします。部分指定した項目だけがデフォルト値に上書きマージされます。
 
 ```toml
-font_size = 12.0               # 本文フォントサイズ（pt）
+# background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）
+
+[text]
+font_size = "12pt"             # 本文フォントサイズ
 line_height_factor = 1.05      # 行間係数（> 0）
-# background_color = [0.8, 0.7, 0.6]  # 背景色 RGB（各 0.0–1.0、オプション）
 
-[part]
-font_size = 40.0               # Part 見出しフォントサイズ
-bottom_margin = 20.0           # Part 見出し下余白
+[heading.part]                 # 見出しレベルは part / chapter / section /
+format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 6 種
+font_size = "40pt"             # 見出しフォントサイズ
+bottom_margin = "20pt"         # 見出し下余白
 
-[chapter]
-font_size = 25.0
-bottom_margin = 15.0
+[heading.chapter]
+format = "第{number}章 {title}"
+font_size = "25pt"
+bottom_margin = "15pt"
 
-[section]
-font_size = 20.0
-bottom_margin = 10.0
-
-[subsection]
-font_size = 16.0
-bottom_margin = 10.0
-
-[paragraph]
-font_size = 14.0
-bottom_margin = 5.0
-
-[subparagraph]
-font_size = 12.0
-bottom_margin = 5.0
+[heading.section]
+format = "{number} {title}"
+font_size = "20pt"
+bottom_margin = "10pt"
 ```
 
 ### 参照定義（`config/references.toml`）
@@ -145,16 +152,21 @@ given = "Taro"
 
 ```text
 crates/
+├── citation/         # \cite の CSL 整形（引用の採番・書誌生成）
 ├── cli/              # コマンドライン引数の解析
-├── font/             # フォント処理（読込・シェーピング・サブセット化）
-├── layout/           # レイアウトエンジン（Document IR → LayoutNode → Item）
-├── parser/           # テキストパース（Lexer → Parser → Evaluator → Document IR）
-├── pdf_gen/          # PDF 生成エンジン
+├── document/         # Document IR の型定義（parser と lowering の共有契約）
+├── font/             # フォント処理（読込・シェーピング・検証）
+├── hlist/            # フォント非依存の純粋組版パス（行分割・ページ分割）
+├── layout/           # レイアウトエンジン（LayoutNode のシェーピング・計測 → Block 列）
+├── lowering/         # Document IR → LayoutNode の論理変換
+├── parser/           # CST の評価変換（CST → Document IR）
+├── pdf_gen/          # PDF 生成エンジン（確定座標の描画）
 ├── read_config/      # TOML メイン設定ファイルの読み込みと検証
-├── read_references/  # TOML 参照定義ファイルの読み込み
+├── read_references/  # TOML / JSON 参照定義ファイルの読み込み
 ├── read_style/       # TOML スタイル設定ファイルの読み込み
 ├── seiran/           # メインアプリケーション（エントリーポイント）
 ├── subcommand/       # サブコマンド（バリアブルフォント軸情報、TTC 名称、スクリプト/言語情報）
+├── syntax/           # 字句解析・構文解析（Lexer → Parser → CST）
 └── types/            # 共通型定義
 ```
 

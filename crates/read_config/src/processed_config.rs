@@ -66,8 +66,8 @@ pub struct DocumentConfig {
   pub subject: Option<String>,
   /// ドキュメント全体の言語（BCP 47、PDF メタデータの /Lang）
   ///
-  /// 文書のロケール属性。PDF /Lang への反映に加え、将来のハイフネーション・cleveref の i18n
-  /// 表示（"Figure" / "図"）・禁則処理などが参照する基準言語として使用します。フォント単位の
+  /// 文書のロケール属性。PDF /Lang への反映とハイフネーションの言語解決に使用するほか、将来の
+  /// cleveref の i18n 表示（"Figure" / "図"）・禁則処理などが参照する基準言語です。フォント単位の
   /// [`FontConfig::language`] とは独立で、こちらは文書全体の言語、フォント側はシェイピング用の
   /// 言語タグです。BCP 47 として妥当であることが検証済みです。
   pub language: Option<String>,

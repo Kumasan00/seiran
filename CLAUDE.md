@@ -91,7 +91,7 @@ parser （syntax の CST を Document IR（document）に変換。read_style に
 citation （document, read_references, read_style, types に依存。hayagriva / citationberg で CSL 整形）
   ↑ seiran
 
-hlist （types, icu のみに依存。フォント・krilla 非依存の純粋組版パスとコア型）
+hlist （types, icu, hypher のみに依存。フォント・krilla 非依存の純粋組版パスとコア型）
   ↑ layout, pdf_gen, seiran
 
 font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
@@ -218,7 +218,7 @@ pub enum MyError {
 
 ### テスト
 
-- テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `figure.sei` / `itemize.sei` / `table.sei` / `ref.sei`）、フォント: リポジトリ直下の `fonts/`
+- テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
 - **golden テスト**（`crates/seiran/src/build_pdf/golden.rs`）: 入力はコミット済み fixture（`crates/seiran/tests/config/`）+ `tools/fetch-test-assets.sh` が `vendor/` へ取得するピン留め資産（フォント・CSL。SHA-256 検証、gitignore 対象・コミットしない）。初回はスクリプトを 1 度実行する。golden 再生成は `UPDATE_GOLDEN=1 cargo test -p seiran`。ユーザローカルの `config/` / `fonts/` はテストから参照しない
 
