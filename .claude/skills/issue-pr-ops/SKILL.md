@@ -30,11 +30,20 @@ Seiran リポジトリの issue・PR・branch・commit・ラベルの運用規�
 
 ## epic ↔ sub-issue
 
-- 親 epic と分解タスクの紐付けは **GitHub ネイティブ sub-issue 機能に一本化**する（本文に `- [ ] #番号` のチェックリストは作らない＝二重管理を避ける。進捗・親子双方向リンクは sub-issue パネルが追跡する）。**child（sub-issue）と related（関連）の線引きは「完了条件」で決める** — epic を閉じるのに**必須の分解タスク**は sub-issue、独立に閉じられる隣接 issue は本文の「関連（sub-issue ではない）」節にテキストで列挙する（同じ issue を両方に書かない）。epic 本文に「分割計画」を残すのは可だが、**存在する issue は sub-issue へ紐付け、未作成の予定だけテキストで**書く（issue 化した時点で sub-issue に昇格）。受け入れ条件に入る既存 issue は related ではなく sub-issue にする。ラベルは親に `epic`、**親・子とも `tier-*` を付ける**（sub-issue だから tier 免除にはしない）
+- **紐付けは GitHub ネイティブ sub-issue 機能に一本化**: 本文に `- [ ] #番号` のチェックリストは作らない（二重管理を避ける。進捗・親子双方向リンクは sub-issue パネルが追跡する）
+- **child（sub-issue）と related（関連）の線引きは「完了条件」で決める**: epic を閉じるのに**必須の分解タスク**は sub-issue、独立に閉じられる隣接 issue は本文の「関連（sub-issue ではない）」節にテキストで列挙する（同じ issue を両方に書かない）
+- **受け入れ条件に入る既存 issue は related ではなく sub-issue にする**
+- **分割計画の書き方**: epic 本文に「分割計画」を残すのは可だが、**存在する issue は sub-issue へ紐付け、未作成の予定だけテキストで**書く（issue 化した時点で sub-issue に昇格）
+- **ラベル**: 親に `epic`、**親・子とも `tier-*` を付ける**（sub-issue だから tier 免除にはしない）
 
 ## ラベル運用
 
-- 領域はタイトル接頭辞が担うので**領域ラベルは作らない**（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う — **Tier**（`tier-1a` / `tier-1b` / `tier-1c`、`seiran_feature_scope` の実装順序）と **epic**（sub-issue の親）と種別（`enhancement` / `bug` / `refactor`）。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`・リファクタは `refactor`（どちらも Tier は付けない＝ロードマップ軸ではないため）。PR には基本ラベルを付けない（squash で `Closes #` 紐付けの issue 側が分類軸を持つ）。Dependabot の `dependencies` 等の自動ラベルは放置でよい
+- **領域ラベルは作らない**: 領域はタイトル接頭辞が担う（二重管理を避ける）。ラベルはタイトルで表せない直交軸にだけ使う
+- **Tier**（実装ロードマップの優先順位軸）: `tier-1a`（既存スタブ完成＋全ジャンル必須）/ `tier-1b`（コア拡張）/ `tier-1c`（標準機能）/ `tier-2`（将来検討）
+- **種別**: `enhancement` / `bug` / `refactor`。機能 issue は `enhancement` + `tier-*` を全件付け（フィルタを信頼できる状態に保つ）、不具合は `bug`・リファクタは `refactor`（どちらも Tier は付けない＝ロードマップ軸ではないため）
+- **epic**: sub-issue の親に付ける（前節参照）
+- **PR には基本ラベルを付けない**: squash で `Closes #` 紐付けの issue 側が分類軸を持つ
+- Dependabot の `dependencies` 等の自動ラベルは放置でよい
 
 ## 参照・設定
 
