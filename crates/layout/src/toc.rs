@@ -12,7 +12,7 @@
 use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{Block, HBox, Line, LineLink, PositionedBox};
 use lowering::TextStyle;
-use types::{HeadingLevel, LinkTarget};
+use types::{HeadingLevel, Length, LinkTarget};
 
 use crate::Measurer;
 
@@ -24,21 +24,21 @@ pub struct TocSpec {
   /// 見出し文字列の書体
   pub title_style: TextStyle,
   /// 見出しとエントリ群の間の縦アキ（pt）
-  pub title_bottom_margin: f32,
+  pub title_bottom_margin: Length,
   /// エントリ本文・ページ番号・リーダーの書体
   pub entry_style: TextStyle,
   /// 見出しレベルの深さ 1 段ごとに加える左インデント（pt）
-  pub indent_per_level: f32,
+  pub indent_per_level: Length,
   /// リーダー単位文字列（`None` でリーダー無し）。残り幅いっぱいに反復する
   pub leader: Option<String>,
   /// ページ番号を表示するか
   pub show_page_numbers: bool,
   /// 本文幅（pt）。ページ番号の右端揃えの基準
-  pub text_width: f32,
+  pub text_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   pub line_height_factor: f32,
   /// 目次ブロック全体の下余白（pt）
-  pub bottom_margin: f32,
+  pub bottom_margin: Length,
 }
 
 /// 1 目次エントリの入力
@@ -72,7 +72,7 @@ pub fn build_toc_blocks(
   // default_font_size / line_height_factor は目次のシェーピングでは使わない。
   // 目次項目はハイフネーションしない（本文段落専用・#173）。
   // 和文約物アキ調整は本文と同じく既定で有効にする
-  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None, true);
+  let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
   let mut blocks: Vec<Block> = Vec::new();
 
   // 見出し行
@@ -80,7 +80,7 @@ pub fn build_toc_blocks(
     line: compose_left_line(&mut measurer, &spec.title, spec.title_style),
     leading: spec.title_style.font_size * spec.line_height_factor,
   });
-  if spec.title_bottom_margin > 0.0 {
+  if spec.title_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.title_bottom_margin));
   }
 
@@ -93,7 +93,7 @@ pub fn build_toc_blocks(
     });
   }
 
-  if spec.bottom_margin > 0.0 {
+  if spec.bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.bottom_margin));
   }
   return blocks;
@@ -103,13 +103,13 @@ pub fn build_toc_blocks(
 #[derive(Default)]
 struct LineAccum {
   boxes: Vec<PositionedBox>,
-  height: f32,
-  depth: f32,
+  height: Length,
+  depth: Length,
 }
 
 impl LineAccum {
   /// `HBox` 列を `x_start` から水平に並べて追加し、行の高さ・深さを更新する。末尾の x を返す
-  fn place(&mut self, hboxes: Vec<HBox>, x_start: f32) -> f32 {
+  fn place(&mut self, hboxes: Vec<HBox>, x_start: Length) -> Length {
     let mut x = x_start;
     for hbox in hboxes {
       self.height = self.height.max(hbox.height);
@@ -117,7 +117,7 @@ impl LineAccum {
       self.boxes.push(PositionedBox {
         content: hbox.content,
         x,
-        dy: 0.0,
+        dy: Length::ZERO,
         width: hbox.width,
       });
       x += hbox.width;
@@ -140,13 +140,13 @@ impl LineAccum {
 /// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
 fn compose_left_line(measurer: &mut Measurer, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
-  acc.place(measurer.shape_text(text, style), 0.0);
+  acc.place(measurer.shape_text(text, style), Length::ZERO);
   return acc.into_line(Vec::new());
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
 fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryInput) -> Line {
-  let indent = f32::from(entry.level.depth()) * spec.indent_per_level;
+  let indent = spec.indent_per_level * f32::from(entry.level.depth());
   let label = entry_label(&entry.number, &entry.title_plain);
 
   let mut acc = LineAccum::default();
@@ -156,7 +156,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryI
   let mut right_edge = left_end;
   if spec.show_page_numbers {
     let page_boxes = measurer.shape_text(&entry.page_label, spec.entry_style);
-    let page_width: f32 = page_boxes.iter().map(|b| b.width).sum();
+    let page_width: Length = page_boxes.iter().map(|b| b.width).sum();
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     // リーダーをページ番号側に寄せて充填する
@@ -188,29 +188,36 @@ fn entry_label(number: &str, title_plain: &str) -> String {
 }
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
-fn fill_leader(measurer: &mut Measurer, unit: &str, style: TextStyle, from_x: f32, to_x: f32, acc: &mut LineAccum) {
+fn fill_leader(
+  measurer: &mut Measurer,
+  unit: &str,
+  style: TextStyle,
+  from_x: Length,
+  to_x: Length,
+  acc: &mut LineAccum,
+) {
   let available = to_x - from_x;
-  if available <= 0.0 {
+  if !available.is_positive() {
     return;
   }
-  let unit_width: f32 = measurer.shape_text(unit, style).iter().map(|b| b.width).sum();
-  if unit_width <= 0.0 {
+  let unit_width: Length = measurer.shape_text(unit, style).iter().map(|b| b.width).sum();
+  if !unit_width.is_positive() {
     return;
   }
   // available / unit_width はここまでのガードで非負。truncation は意図どおり（収まる本数）。
   #[allow(clippy::cast_sign_loss)]
-  let count = (available / unit_width).floor() as usize;
+  let count = available.ratio(unit_width).floor() as usize;
   if count == 0 {
     return;
   }
   let leader_boxes = measurer.shape_text(&unit.repeat(count), style);
-  let leader_width: f32 = leader_boxes.iter().map(|b| b.width).sum();
+  let leader_width: Length = leader_boxes.iter().map(|b| b.width).sum();
   acc.place(leader_boxes, to_x - leader_width);
 }
 
 #[cfg(test)]
 mod tests {
-  use types::{FontKind, HeadingLevel, LinkTarget};
+  use types::{FontKind, HeadingLevel, Length, LinkTarget};
 
   use super::{TocEntryInput, TocSpec, entry_label};
   use crate::TextStyle;
@@ -219,22 +226,22 @@ mod tests {
     return TocSpec {
       title: "Contents".to_string(),
       title_style: TextStyle {
-        font_size: 16.0,
+        font_size: Length::pt(16.0),
         font_kind: FontKind::SerifBold,
         color: None,
       },
-      title_bottom_margin: 10.0,
+      title_bottom_margin: Length::pt(10.0),
       entry_style: TextStyle {
-        font_size: 12.0,
+        font_size: Length::pt(12.0),
         font_kind: FontKind::Serif,
         color: None,
       },
-      indent_per_level: 12.0,
+      indent_per_level: Length::pt(12.0),
       leader: Some(".".to_string()),
       show_page_numbers: true,
-      text_width: 400.0,
+      text_width: Length::pt(400.0),
       line_height_factor: 1.2,
-      bottom_margin: 8.0,
+      bottom_margin: Length::pt(8.0),
     };
   }
 

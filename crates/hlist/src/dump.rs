@@ -11,6 +11,8 @@
 
 use std::fmt::Write;
 
+use types::Length;
+
 use crate::{
   hitem::HBoxContent,
   line::{Line, PositionedBox},
@@ -136,7 +138,7 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
 }
 
 /// テキスト行を書き出す（ベースライン位置 + 行高 + 各配置ボックス + リンク矩形）。
-fn dump_line(out: &mut String, line: &Line, baseline_y: f32) {
+fn dump_line(out: &mut String, line: &Line, baseline_y: Length) {
   let _ = writeln!(
     out,
     "  line baseline_y={} height={} depth={} last={}",
@@ -242,9 +244,11 @@ fn color_desc(color: Option<[u8; 3]>) -> String {
   };
 }
 
-/// f32 を小数第 2 位に丸めた安定文字列にする（`-0.00` は `0.00` に正規化）。
-fn f2(value: f32) -> String {
-  let text = format!("{value:.2}");
+/// [`Length`] を pt の小数第 2 位に丸めた安定文字列にする（`-0.00` は `0.00` に正規化）。
+///
+/// 整形は sp 整数から f64（[`Length::to_pt_f64`]）を経て行うため、実行間・環境間で決定的。
+fn f2(value: Length) -> String {
+  let text = format!("{:.2}", value.to_pt_f64());
   return if text == "-0.00" {
     "0.00".to_string()
   } else {
@@ -254,7 +258,7 @@ fn f2(value: f32) -> String {
 
 #[cfg(test)]
 mod tests {
-  use types::FontType;
+  use types::{FontType, Length};
 
   use super::dump_pages;
   use crate::{
@@ -267,7 +271,7 @@ mod tests {
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {
     let content = HBoxContent::Glyphs(GlyphRun {
-      font_size: 10.0,
+      font_size: Length::pt(10.0),
       text: text.to_string(),
       glyphs: Vec::new(),
       font_type: FontType::Serif,
@@ -276,17 +280,20 @@ mod tests {
     let line = Line {
       boxes: vec![PositionedBox {
         content,
-        x: 0.0,
-        dy: 0.0,
-        width: 12.34,
+        x: Length::ZERO,
+        dy: Length::ZERO,
+        width: Length::pt(12.34),
       }],
-      height: 9.63,
-      depth: 2.71,
+      height: Length::pt(9.63),
+      depth: Length::pt(2.71),
       is_last: true,
       links: Vec::new(),
     };
     return Page {
-      blocks: vec![PlacedBlock::Line { line, baseline_y }],
+      blocks: vec![PlacedBlock::Line {
+        line,
+        baseline_y: Length::pt(baseline_y),
+      }],
       header: Vec::new(),
       footer: Vec::new(),
       anchors: Vec::new(),

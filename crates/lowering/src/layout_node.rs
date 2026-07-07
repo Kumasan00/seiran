@@ -57,9 +57,9 @@ pub enum LayoutNode {
     target_dpi: Option<u32>,
   },
   Glue {
-    natural: f32,
-    stretch: f32,
-    shrink: f32,
+    natural: Length,
+    stretch: Length,
+    shrink: Length,
   },
   /// 水平カーン（固定幅の空白）
   ///
@@ -81,7 +81,7 @@ pub enum LayoutNode {
   /// `offset < 0` で下方向。`layout::build_blocks` が絶対配置の `Atom` に畳むため、
   /// 後続要素のベースラインには影響しません。
   Raise {
-    offset: f32,
+    offset: Length,
     children: Vec<LayoutNode>,
   },
   /// 表（`table` 環境）
@@ -108,10 +108,10 @@ pub enum LayoutNode {
     align: Align,
     /// 番号を本文右端に寄せるか（`false` なら左端）
     numbers_on_right: bool,
-    /// 行間（pt）
-    row_gap: f32,
-    /// 列間（pt）
-    column_gap: f32,
+    /// 行間
+    row_gap: Length,
+    /// 列間
+    column_gap: Length,
   },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
@@ -201,7 +201,7 @@ pub struct MathBlockRow {
 /// シェーピング時に 1 つのテキストランへ直接渡す最終的な書体情報を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextStyle {
-  pub font_size: f32,
+  pub font_size: Length,
   pub font_kind: FontKind,
   /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
   /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。
@@ -211,7 +211,7 @@ pub struct TextStyle {
 impl TextStyle {
   /// 指定されたフォントサイズで新しい `TextStyle` を生成する（既定色 = 黒）
   #[must_use]
-  pub fn new(font_size: f32) -> Self {
+  pub fn new(font_size: Length) -> Self {
     return TextStyle {
       font_size,
       font_kind: FontKind::Serif,

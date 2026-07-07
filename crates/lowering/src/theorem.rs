@@ -119,7 +119,7 @@ fn build_heading(
 /// 出すと `.notdef`（豆腐）になる。LaTeX の qed 記号も数式記号由来であるため、[`FontKind::Math`]
 /// で描画する（layout のスクリプト解決で欧文部は数式フォント・和文部は和文セリフへ回り、
 /// いずれも `□` を持つ）。
-fn make_qed_node(qed_mark: &str, font_size: f32) -> LayoutNode {
+fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
   let qed_style = TextStyle {
     font_size,
     font_kind: FontKind::Math,

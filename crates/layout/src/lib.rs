@@ -84,6 +84,15 @@ const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
 /// `break_pages` は `stretch` を無視するため、この伸長は既定出力を一切変えない。
 const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 
+/// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
+///
+/// 整数（設計単位）を合算してから **1 回だけ**スケールする（丸めは [`Length::scale`] に集約）。pt を
+/// 経由した往復や、グリフごとの丸めによる誤差蓄積を避け、決定的な結果を得る。
+#[allow(clippy::cast_precision_loss)]
+fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
+  return font_size.scale(units as f64 / f64::from(upem));
+}
+
 /// レイアウトノードを計測済みのブロック列に変換する
 ///
 /// # Arguments
@@ -102,7 +111,7 @@ pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
   shapers: &HarfRustShapers,
   metrics: &FontMetrics,
-  default_font_size: f32,
+  default_font_size: Length,
   line_height_factor: f32,
   language: Option<&str>,
   punctuation_spacing: bool,
@@ -112,8 +121,8 @@ pub fn build_blocks(
     Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
-  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
-  measurer.flush_paragraph(&mut blocks, &mut paragraph, 0.0, 0.0, Align::Left);
+  measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
+  measurer.flush_paragraph(&mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
   debug!(block_count = blocks.len(), "ブロックの構築が完了しました");
   return blocks;
 }
@@ -125,7 +134,7 @@ pub(crate) struct Measurer<'a> {
   shapers: &'a HarfRustShapers<'a>,
   metrics: &'a FontMetrics,
   buffer: UnicodeBuffer,
-  default_font_size: f32,
+  default_font_size: Length,
   line_height_factor: f32,
   /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
   hyphenation: Option<Lang>,
@@ -138,7 +147,7 @@ impl<'a> Measurer<'a> {
   pub(crate) fn new(
     shapers: &'a HarfRustShapers<'a>,
     metrics: &'a FontMetrics,
-    default_font_size: f32,
+    default_font_size: Length,
     line_height_factor: f32,
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
@@ -168,8 +177,8 @@ impl Measurer<'_> {
     nodes: Vec<LayoutNode>,
     blocks: &mut Vec<Block>,
     paragraph: &mut Vec<HItem>,
-    indent: f32,
-    right_indent: f32,
+    indent: Length,
+    right_indent: Length,
     align: Align,
   ) {
     for node in nodes {
@@ -201,24 +210,24 @@ impl Measurer<'_> {
           // インデント（左右とも）は入れ子ごとに累積する（ネストしたリストが段ごとに深くなる）。
           // 揃えは累積せず、この VBox 自身の align を子へ渡す。
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          let child_indent = indent + vbox_indent.to_pt();
-          let child_right_indent = right_indent + vbox_right_indent.to_pt();
+          let child_indent = indent + vbox_indent;
+          let child_right_indent = right_indent + vbox_right_indent;
           self.walk_vertical(children, blocks, paragraph, child_indent, child_right_indent, vbox_align);
           self.flush_paragraph(blocks, paragraph, child_indent, child_right_indent, vbox_align);
           // ブロック間アキは伸縮 glue にする。下端揃え（#169）が満杯リージョンの不足高さを
           // 自然値比で配分する。下端揃え無効時は break_pages が stretch を無視するため出力不変。
-          let natural = margin_bottom.to_pt();
+          let natural = margin_bottom;
           blocks.push(Block::stretchable_space(natural, natural * BLOCK_GLUE_STRETCH_RATIO));
         },
         LayoutNode::Vkern { length } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::fixed_space(length.to_pt()));
+          blocks.push(Block::fixed_space(length));
         },
         LayoutNode::Rule { width, height } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Rule {
-            width: width.to_pt(),
-            height: height.to_pt(),
+            width,
+            height,
             align,
           });
         },
@@ -231,8 +240,8 @@ impl Measurer<'_> {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Image {
             path,
-            width: width.map(Length::to_pt),
-            height: height.map(Length::to_pt),
+            width,
+            height,
             target_dpi,
             align,
           });
@@ -284,8 +293,8 @@ impl Measurer<'_> {
     &self,
     blocks: &mut Vec<Block>,
     paragraph: &mut Vec<HItem>,
-    indent: f32,
-    right_indent: f32,
+    indent: Length,
+    right_indent: Length,
     align: Align,
   ) {
     if paragraph.is_empty() {
@@ -321,7 +330,7 @@ impl Measurer<'_> {
         });
       },
       LayoutNode::Kern { length } => {
-        out.push(HItem::Kern(length.to_pt()));
+        out.push(HItem::Kern(length));
       },
       LayoutNode::LineBreak => {
         out.push(HItem::ForcedBreak);
@@ -333,7 +342,7 @@ impl Measurer<'_> {
       // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
       // 右寄せ末尾ボックスにする。折り返し時はこの Penalty で QED だけが次行へ運ばれる
       LayoutNode::FlushRight(children) => {
-        let flush_box = self.build_atom(0.0, children);
+        let flush_box = self.build_atom(Length::ZERO, children);
         out.push(HItem::Penalty { value: 0 });
         out.push(HItem::FlushRight(flush_box));
       },
@@ -365,9 +374,9 @@ impl Measurer<'_> {
   }
 
   /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む
-  fn build_atom(&mut self, offset: f32, children: Vec<LayoutNode>) -> HBox {
+  fn build_atom(&mut self, offset: Length, children: Vec<LayoutNode>) -> HBox {
     let mut placed: Vec<PlacedHItem> = Vec::new();
-    let mut dx = 0.0f32;
+    let mut dx = Length::ZERO;
     self.place_atom_children(children, offset, &mut dx, &mut placed);
     return HBox::atom(placed);
   }
@@ -375,7 +384,7 @@ impl Measurer<'_> {
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
   ///
   /// ネストした `Raise` は `dy` を累積する（上付きで +、下付きで −）。
-  fn place_atom_children(&mut self, nodes: Vec<LayoutNode>, dy: f32, dx: &mut f32, out: &mut Vec<PlacedHItem>) {
+  fn place_atom_children(&mut self, nodes: Vec<LayoutNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
     for node in nodes {
       match node {
         LayoutNode::Text(text, style) => {
@@ -396,7 +405,7 @@ impl Measurer<'_> {
           self.place_atom_children(nested, dy + offset, dx, out);
         },
         LayoutNode::Kern { length } => {
-          *dx += length.to_pt();
+          *dx += length;
         },
         LayoutNode::Glue { natural, .. } => {
           *dx += natural;
@@ -515,7 +524,6 @@ impl Measurer<'_> {
     }
 
     let metric = self.metrics.get(run.font_type);
-    let scale = run.font_size / metric.upem;
     let mut seg_glyph_start = 0usize;
     let mut seg_byte_start = 0usize;
 
@@ -543,8 +551,7 @@ impl Measurer<'_> {
             continue; // スペースが前後とクラスタを成している場合は分割を抑制
           }
           self.push_sub_run(&run, text, seg_glyph_start..glyph_index - 1, seg_byte_start..break_point.byte - 1, out);
-          #[allow(clippy::cast_precision_loss)]
-          let natural = space.x_advance as f32 * scale;
+          let natural = units_to_length(i64::from(space.x_advance), run.font_size, metric.upem);
           out.push(HItem::Glue {
             natural,
             stretch: natural * SPACE_STRETCH_RATIO,
@@ -564,9 +571,9 @@ impl Measurer<'_> {
           self.push_sub_run(&run, text, seg_glyph_start..glyph_index, seg_byte_start..break_point.byte, out);
           if is_japanese {
             out.push(HItem::Glue {
-              natural: 0.0,
+              natural: Length::ZERO,
               stretch: run.font_size * CJK_STRETCH_RATIO,
-              shrink: 0.0,
+              shrink: Length::ZERO,
               breakable: true,
             });
           } else {
@@ -614,7 +621,6 @@ impl Measurer<'_> {
       return;
     }
     let metric = self.metrics.get(run.font_type);
-    let scale = run.font_size / metric.upem;
     let em = run.font_size;
 
     // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
@@ -624,8 +630,8 @@ impl Measurer<'_> {
     // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
     let char_of = |g: usize| -> char { text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
     // グリフ g が全角相当か（半角約物を積むフォントは正規化・アキ対象外にする）
-    #[allow(clippy::cast_precision_loss)]
-    let is_fullwidth = |g: usize| -> bool { glyphs[g].x_advance as f32 * scale >= 0.75 * em };
+    let is_fullwidth =
+      |g: usize| -> bool { units_to_length(i64::from(glyphs[g].x_advance), run.font_size, metric.upem) >= em * 0.75 };
     // グリフ g の実効約物クラス（全角でない約物は通常文字として扱う）
     let eff_class = |g: usize| -> yakumono::YakumonoClass {
       let class = yakumono::classify(char_of(g));
@@ -646,8 +652,7 @@ impl Measurer<'_> {
       // ASCII スペース: 直前までの通常列を流し、伸縮 glue に置き換える
       if is_space(i) {
         self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-        #[allow(clippy::cast_precision_loss)]
-        let natural = glyphs[i].x_advance as f32 * scale;
+        let natural = units_to_length(i64::from(glyphs[i].x_advance), run.font_size, metric.upem);
         out.push(HItem::Glue {
           natural,
           stretch: natural * SPACE_STRETCH_RATIO,
@@ -671,7 +676,7 @@ impl Measurer<'_> {
       // 約物グリフはアキを抜いた実寸 box に正規化して単独で積む
       if let Some(normalize) = yakumono::normalize(eff_class(i)) {
         self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
-        self.push_punct_box(run, text, i, normalize, scale, out);
+        self.push_punct_box(run, text, i, normalize, out);
         normal_start = i + 1;
       }
     }
@@ -690,7 +695,6 @@ impl Measurer<'_> {
     text: &str,
     glyph_index: usize,
     normalize: yakumono::Normalize,
-    scale: f32,
     out: &mut Vec<HItem>,
   ) {
     let src = &run.glyphs[glyph_index];
@@ -705,9 +709,8 @@ impl Measurer<'_> {
       x_offset: src.x_offset - shift_units,
       y_offset: src.y_offset,
     };
-    #[allow(clippy::cast_precision_loss)]
-    let advance = src.x_advance as f32 * scale;
-    let width = advance - normalize.trim_em * run.font_size;
+    let advance = units_to_length(i64::from(src.x_advance), run.font_size, metric.upem);
+    let width = advance - run.font_size * normalize.trim_em;
     out.push(HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: run.font_size,
@@ -717,8 +720,8 @@ impl Measurer<'_> {
         color: run.color,
       }),
       width,
-      height: metric.ascender / metric.upem * run.font_size,
-      depth: metric.descender.abs() / metric.upem * run.font_size,
+      height: units_to_length(metric.ascender as i64, run.font_size, metric.upem),
+      depth: units_to_length(metric.descender.abs() as i64, run.font_size, metric.upem),
     }));
   }
 
@@ -748,8 +751,7 @@ impl Measurer<'_> {
       })
       .collect();
     let metric = self.metrics.get(run.font_type);
-    #[allow(clippy::cast_precision_loss)]
-    let advance_units: f32 = glyphs.iter().map(|glyph| glyph.x_advance as f32).sum();
+    let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
     out.push(HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: run.font_size,
@@ -758,16 +760,16 @@ impl Measurer<'_> {
         font_type: run.font_type,
         color: run.color,
       }),
-      width: advance_units / metric.upem * run.font_size,
-      height: metric.ascender / metric.upem * run.font_size,
-      depth: metric.descender.abs() / metric.upem * run.font_size,
+      width: units_to_length(advance_units, run.font_size, metric.upem),
+      height: units_to_length(metric.ascender as i64, run.font_size, metric.upem),
+      depth: units_to_length(metric.descender.abs() as i64, run.font_size, metric.upem),
     }));
   }
 
   /// 1 セグメントをシェーピングして計測済みの `HBox` を返す
-  fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: f32, color: Option<Color>) -> HBox {
+  fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: Length, color: Option<Color>) -> HBox {
     let taken = std::mem::take(&mut self.buffer);
-    let result = self.shapers.get(font_type).shape(taken, text, font_size);
+    let result = self.shapers.get(font_type).shape(taken, text, font_size.to_pt());
     let glyph_infos = result.glyph_infos();
     let glyph_positions = result.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
@@ -786,11 +788,10 @@ impl Measurer<'_> {
     self.buffer = result.clear();
 
     let metric = self.metrics.get(font_type);
-    #[allow(clippy::cast_precision_loss)]
-    let advance_units: f32 = glyphs.iter().map(|glyph| glyph.x_advance as f32).sum();
-    let width = advance_units / metric.upem * font_size;
-    let height = metric.ascender / metric.upem * font_size;
-    let depth = metric.descender.abs() / metric.upem * font_size;
+    let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
+    let width = units_to_length(advance_units, font_size, metric.upem);
+    let height = units_to_length(metric.ascender as i64, font_size, metric.upem);
+    let depth = units_to_length(metric.descender.abs() as i64, font_size, metric.upem);
     return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size,
@@ -852,11 +853,11 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 /// [`JA_LATIN_AKI_STRETCH_RATIO`] em の伸長を持ち、収縮はしない。分割不可（`breakable: false`）に
 /// することでこの境界に新たな行分割点を作らず（分割可否は現行の ICU 判定のまま）、和文↔欧文の
 /// 境界は分割点を持たないためアキが行頭・行末に露出することもない。
-fn ja_latin_aki(font_size: f32) -> HItem {
+fn ja_latin_aki(font_size: Length) -> HItem {
   return HItem::Glue {
     natural: font_size * JA_LATIN_AKI_RATIO,
     stretch: font_size * JA_LATIN_AKI_STRETCH_RATIO,
-    shrink: 0.0,
+    shrink: Length::ZERO,
     breakable: false,
   };
 }
@@ -885,24 +886,24 @@ fn is_ja_latin_letter_boundary(
 fn boundary_glue(
   left: yakumono::YakumonoClass,
   right: yakumono::YakumonoClass,
-  em: f32,
+  em: Length,
   breakable: bool,
 ) -> Option<HItem> {
   use yakumono::YakumonoClass::Normal;
 
   if left != Normal || right != Normal {
     return yakumono::gap(left, right).map(|aki| HItem::Glue {
-      natural: aki.natural_em * em,
-      stretch: 0.0,
-      shrink: aki.shrink_em * em,
+      natural: em * aki.natural_em,
+      stretch: Length::ZERO,
+      shrink: em * aki.shrink_em,
       breakable,
     });
   }
   if breakable {
     return Some(HItem::Glue {
-      natural: 0.0,
+      natural: Length::ZERO,
       stretch: em * CJK_STRETCH_RATIO,
-      shrink: 0.0,
+      shrink: Length::ZERO,
       breakable: true,
     });
   }
@@ -912,14 +913,15 @@ fn boundary_glue(
 #[cfg(test)]
 mod boundary_glue_tests {
   use hlist::HItem;
+  use types::Length;
 
   use super::{CJK_STRETCH_RATIO, boundary_glue};
   use crate::yakumono::YakumonoClass::{Close, Comma, Normal, Open};
 
-  const EM: f32 = 10.0;
+  const EM: Length = Length::from_sp(10 * 65536);
 
   /// glue の各フィールドを取り出す（`HItem` は `PartialEq` 非実装のため分解して検証する）
-  fn glue_fields(item: Option<HItem>) -> Option<(f32, f32, f32, bool)> {
+  fn glue_fields(item: Option<HItem>) -> Option<(Length, Length, Length, bool)> {
     return match item {
       Some(HItem::Glue {
         natural,
@@ -940,8 +942,16 @@ mod boundary_glue_tests {
     let back = glue_fields(boundary_glue(Close, Normal, EM, true));
 
     // Assert — 二分（=5.0）の natural・shrink、伸長なし、breakable は引数を伝播
-    assert_eq!(front, Some((5.0, 0.0, 5.0, true)), "前アキ二分・詰め代二分・伸長なし");
-    assert_eq!(back, Some((5.0, 0.0, 5.0, true)), "後アキ二分・詰め代二分・伸長なし");
+    assert_eq!(
+      front,
+      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
+      "前アキ二分・詰め代二分・伸長なし"
+    );
+    assert_eq!(
+      back,
+      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
+      "後アキ二分・詰め代二分・伸長なし"
+    );
   }
 
   #[test]
@@ -953,7 +963,10 @@ mod boundary_glue_tests {
   #[test]
   fn breakable_flag_propagates_to_punctuation_glue() {
     // Arrange / Act / Assert — ICU 非分割位置なら breakable=false で挿む
-    assert_eq!(glue_fields(boundary_glue(Normal, Open, EM, false)), Some((5.0, 0.0, 5.0, false)));
+    assert_eq!(
+      glue_fields(boundary_glue(Normal, Open, EM, false)),
+      Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), false))
+    );
   }
 
   #[test]
@@ -963,7 +976,7 @@ mod boundary_glue_tests {
     let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
 
     // Assert — 分割点は幅 0・微小伸長・収縮なし、非分割点は glue なし
-    assert_eq!(at_break, Some((0.0, EM * CJK_STRETCH_RATIO, 0.0, true)));
+    assert_eq!(at_break, Some((Length::ZERO, EM * CJK_STRETCH_RATIO, Length::ZERO, true)));
     assert_eq!(no_break, None);
   }
 }
@@ -971,11 +984,11 @@ mod boundary_glue_tests {
 #[cfg(test)]
 mod ja_latin_aki_tests {
   use hlist::HItem;
+  use types::Length;
 
   use super::{JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki};
   use crate::script::ScriptCategory::{Japanese, Latin};
-
-  const EM: f32 = 10.0;
+  const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]
   fn aki_is_quarter_em_stretch_only_and_non_breakable() {
@@ -991,9 +1004,9 @@ mod ja_latin_aki_tests {
     };
 
     // Assert — 四分の natural・微小伸長・収縮なし・分割不可
-    assert!((natural - EM * JA_LATIN_AKI_RATIO).abs() < f32::EPSILON, "四分 = 0.25em");
-    assert!((stretch - EM * JA_LATIN_AKI_STRETCH_RATIO).abs() < f32::EPSILON, "微小伸長");
-    assert!((shrink - 0.0).abs() < f32::EPSILON, "収縮なし");
+    assert_eq!(natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
+    assert_eq!(stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
+    assert_eq!(shrink, Length::ZERO, "収縮なし");
     assert!(!breakable, "分割不可（境界に分割点を作らない）");
   }
 

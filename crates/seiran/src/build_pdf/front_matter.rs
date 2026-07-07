@@ -21,10 +21,10 @@ pub(super) fn assemble_front_matter(
   style: &Style,
   shapers: &HarfRustShapers,
   metrics: &FontMetrics,
-  text_width: f32,
+  text_width: types::Length,
 ) -> Vec<Block> {
   // build_blocks 用の既定サイズは style から導出する（呼び出し本体と同じ値）。
-  let default_font_size = style.text.font_size.to_pt();
+  let default_font_size = style.text.font_size;
   let line_height_factor = style.text.line_height_factor;
   let mut front_blocks: Vec<Block> = Vec::new();
   if style.title_page.enabled {
@@ -87,28 +87,28 @@ fn collect_toc_entries(
 /// `style.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
 ///
 /// 目次見出しの書体は文書の節見出しスタイル（[`document::HeadingLevel::Section`]）に揃える。
-fn build_toc_spec(style: &Style, text_width: f32) -> TocSpec {
+fn build_toc_spec(style: &Style, text_width: types::Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = style.heading(HeadingLevel::Section);
   return TocSpec {
     title: toc.title.clone(),
     title_style: TextStyle {
-      font_size: title_heading.font_size.to_pt(),
+      font_size: title_heading.font_size,
       font_kind: title_heading.font_kind,
       color: None,
     },
-    title_bottom_margin: title_heading.bottom_margin.to_pt(),
+    title_bottom_margin: title_heading.bottom_margin,
     entry_style: TextStyle {
-      font_size: toc.font_size.to_pt(),
+      font_size: toc.font_size,
       font_kind: FontKind::Serif,
       color: None,
     },
-    indent_per_level: toc.indent_per_level.to_pt(),
+    indent_per_level: toc.indent_per_level,
     leader: toc.leader.clone(),
     show_page_numbers: toc.show_page_numbers,
     text_width,
     line_height_factor: style.text.line_height_factor,
-    bottom_margin: toc.bottom_margin.to_pt(),
+    bottom_margin: toc.bottom_margin,
   };
 }
 
@@ -120,7 +120,7 @@ fn build_toc_spec(style: &Style, text_width: f32) -> TocSpec {
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
 pub(super) fn break_front_matter(
   mut front_blocks: Vec<Block>,
-  text_width: f32,
+  text_width: types::Length,
   front_geometry: &PageGeometry,
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,

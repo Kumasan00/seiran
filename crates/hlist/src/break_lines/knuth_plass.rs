@@ -11,7 +11,7 @@
 //! 伸縮で収まらない病的な段落（分割不能な長箱等）は、そのサブ段落だけ貪欲法へフォールバックし、
 //! 結果が貪欲法を下回らないことを保証する。
 
-use types::TextAlignment;
+use types::{Length, TextAlignment};
 
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
 use crate::{hitem::HItem, line::Line};
@@ -32,7 +32,7 @@ const INFINITE_BADNESS: f64 = 10_000.0;
 pub struct KnuthPlassBreaker;
 
 impl LineBreaker for KnuthPlassBreaker {
-  fn break_lines(&self, items: &[HItem], text_width: f32, alignment: TextAlignment) -> Vec<Line> {
+  fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line> {
     // 両端揃え以外（大域設定 ragged_right / 中央・右寄せ段落）は従来の貪欲法のまま
     if alignment != TextAlignment::Justify {
       return GreedyBreaker.break_lines(items, text_width, alignment);
@@ -103,7 +103,7 @@ enum Edge {
 ///
 /// 合法破断点を節とする最短経路 DP で総 demerits 最小の分割点集合を求め、各行を [`build_line`]
 /// で確定する。実現可能な経路が無い場合はこのサブ段落だけ貪欲法へフォールバックする。
-fn break_subparagraph(items: &[HItem], text_width: f32, open_links: &mut Vec<OpenLink>) -> Vec<Line> {
+fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<OpenLink>) -> Vec<Line> {
   // 合法破断点を列挙し、末尾に仮想の強制破断点（最終行）を足す
   let mut breaks: Vec<Breakpoint> = Vec::new();
   for (i, item) in items.iter().enumerate() {
@@ -212,14 +212,14 @@ fn break_subparagraph(items: &[HItem], text_width: f32, open_links: &mut Vec<Ope
 /// `r` に基づく badness `100·|r|³`（上限 [`INFINITE_BADNESS`]）から demerits を算出する。収縮能力を
 /// 超えて溢れる行は [`Edge::Overflow`]、伸縮点が無いのに余る行（孤立した長語など）は
 /// [`Edge::Infeasible`]（いずれも実現不能）。最終行（`is_end`）は伸縮しないため badness 0。
-fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: bool, text_width: f32) -> Edge {
+fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: bool, text_width: Length) -> Edge {
   let refs: Vec<&HItem> = items[line_start..brk.at].iter().collect();
   let refs = strip_leading_glue(&refs);
   let refs = trim_trailing_glue(refs);
 
   let (natural, stretch, shrink) = glue_metrics(refs);
   // FlushRight（QED）は右端を占有するため、収まり判定では幅に数える（build_line の自然幅からは除外済み）
-  let flush_width: f32 = refs
+  let flush_width: Length = refs
     .iter()
     .filter_map(|item| match item {
       HItem::FlushRight(hbox) => Some(hbox.width),
@@ -229,7 +229,7 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
   // 語中破断は行末ハイフンぶん本文幅を狭める
   let hyphen_width = match items.get(brk.at) {
     Some(HItem::Discretionary { hyphen }) => hyphen.width,
-    _ => 0.0,
+    _ => Length::ZERO,
   };
   let available = text_width - hyphen_width;
   let leftover = available - (natural + flush_width);
@@ -237,32 +237,32 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
   // 最終行は build_line が左揃え（伸縮なし）で組むため、自然幅で収まらなければ実現不能。
   // 収まってさえいれば疎密を罰しない（badness 0）。溢れは早期打ち切り対象（行頭を前へずらすと更に長い）。
   if brk.is_end {
-    if leftover < 0.0 {
+    if leftover < Length::ZERO {
       return Edge::Overflow;
     }
     return Edge::Feasible(demerits(0.0, brk.hyphen, prev_hyphen));
   }
 
   // 非最終行は収縮を使える。収縮能力を超えて溢れる行は実現不能（行頭を前へずらすと更に長いので打ち切り対象）
-  let overflows = leftover < 0.0 && (shrink <= 0.0 || leftover / shrink < -1.0);
+  let overflows = leftover < Length::ZERO && (!shrink.is_positive() || leftover.ratio(shrink) < -1.0);
   if overflows {
     return Edge::Overflow;
   }
 
   // 非最終行の調整比。伸縮点が無いのに余る行は両端揃えできない（孤立した長語など）→ 実現不能。
   // このケースは行頭を前へずらして空白を得れば組めることがあるので早期打ち切りにはしない。
-  let ratio: f32 = if leftover > 0.0 {
-    if stretch <= 0.0 {
-      return Edge::Infeasible;
-    }
-    leftover / stretch
-  } else if leftover < 0.0 {
-    leftover / shrink
-  } else {
-    0.0
+  let ratio: f64 = match leftover.cmp(&Length::ZERO) {
+    std::cmp::Ordering::Greater => {
+      if !stretch.is_positive() {
+        return Edge::Infeasible;
+      }
+      leftover.ratio(stretch)
+    },
+    std::cmp::Ordering::Less => leftover.ratio(shrink),
+    std::cmp::Ordering::Equal => 0.0,
   };
 
-  let badness = (100.0 * f64::from(ratio).abs().powi(3)).min(INFINITE_BADNESS);
+  let badness = (100.0 * ratio.abs().powi(3)).min(INFINITE_BADNESS);
   return Edge::Feasible(demerits(badness, brk.hyphen, prev_hyphen));
 }
 
@@ -283,7 +283,7 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use types::TextAlignment;
+  use types::{Length, TextAlignment};
 
   use super::{
     super::test_support::{box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box},
@@ -295,9 +295,18 @@ mod tests {
   };
 
   /// 行の右端（box 群の最大右端）
-  fn right_edge(line: &crate::line::Line) -> f32 {
-    return line.boxes.iter().map(|b| b.x + b.width).fold(0.0f32, f32::max);
+  fn right_edge(line: &crate::line::Line) -> Length {
+    return line.boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max);
   }
+
+  /// pt 値から `Length` を作る短縮子
+  fn pt(value: f32) -> Length { return Length::pt(value); }
+
+  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
+
+  /// 2 つの `Length` が（sp 丸め精度内で）一致するか
+  fn close_l(a: Length, b: Length) -> bool { return (a - b).abs() <= Length::from_sp(1); }
 
   #[test]
   fn ragged_right_delegates_to_greedy() {
@@ -311,15 +320,15 @@ mod tests {
     ];
 
     // Act
-    let kp = KnuthPlassBreaker.break_lines(&items, 27.0, TextAlignment::RaggedRight);
-    let greedy = GreedyBreaker.break_lines(&items, 27.0, TextAlignment::RaggedRight);
+    let kp = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
+    let greedy = GreedyBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::RaggedRight);
 
     // Assert — 行数・各 box の x が一致
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
       assert_eq!(kp_line.boxes.len(), greedy_line.boxes.len());
       for (a, b) in kp_line.boxes.iter().zip(&greedy_line.boxes) {
-        assert!((a.x - b.x).abs() < f32::EPSILON, "kp: {kp:?}, greedy: {greedy:?}");
+        assert!(close_l(a.x, b.x), "kp: {kp:?}, greedy: {greedy:?}");
       }
     }
   }
@@ -327,7 +336,7 @@ mod tests {
   #[test]
   fn empty_items_yield_single_empty_line() {
     // 空段落は空の最終行 1 本
-    let lines = KnuthPlassBreaker.break_lines(&[], 100.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&[], Length::pt(100.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -339,12 +348,12 @@ mod tests {
     // 1 行に収まるなら 1 行・最終行（伸縮しない）
     let items = vec![test_box(), stretch_glue(), test_box()];
 
-    let lines = KnuthPlassBreaker.break_lines(&items, 100.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].is_last);
     // 最終行なので glue は自然幅 5（box は 0 と 15）
-    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -360,12 +369,12 @@ mod tests {
     ];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     // Assert — 2 行、1 行目の右端 = 27
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(!lines[0].is_last);
-    assert!((right_edge(&lines[0]) - 27.0).abs() < 1e-4, "非最終行の右端は版面右端: {lines:?}");
+    assert!(close(right_edge(&lines[0]), 27.0), "非最終行の右端は版面右端: {lines:?}");
   }
 
   #[test]
@@ -378,9 +387,9 @@ mod tests {
     //   KP: 収縮を使い 1 行目に 3 個（自然幅 28 → 収縮 -0.75 で 25 に収める）→ (3,2)。
     //       非最終行の右端が版面右端 25 に一致し、行の疎密が均一化する。
     let glue = || HItem::Glue {
-      natural: 2.0,
-      stretch: 1.0,
-      shrink: 2.0,
+      natural: pt(2.0),
+      stretch: pt(1.0),
+      shrink: pt(2.0),
       breakable: true,
     };
     let items = vec![
@@ -396,18 +405,18 @@ mod tests {
     ];
 
     // Act
-    let greedy = GreedyBreaker.break_lines(&items, 25.0, TextAlignment::Justify);
-    let kp = KnuthPlassBreaker.break_lines(&items, 25.0, TextAlignment::Justify);
+    let greedy = GreedyBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
+    let kp = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
 
     // Assert — greedy は 3 行（非最終行が疎で右端が版面右端に届かない）
     assert_eq!(greedy.len(), 3, "greedy: {greedy:?}");
     assert!(!greedy[0].is_last);
-    assert!(right_edge(&greedy[0]) < 24.0, "greedy の非最終行は疎（右端 < 25）: {greedy:?}");
+    assert!(right_edge(&greedy[0]) < pt(24.0), "greedy の非最終行は疎（右端 < 25）: {greedy:?}");
 
     // KP は 2 行に詰め、非最終行の右端が版面右端に一致する（疎密が均一）
     assert_eq!(kp.len(), 2, "kp: {kp:?}");
     assert!(!kp[0].is_last);
-    assert!((right_edge(&kp[0]) - 25.0).abs() < 1e-4, "KP の非最終行は右端に揃う: {kp:?}");
+    assert!(close(right_edge(&kp[0]), 25.0), "KP の非最終行は右端に揃う: {kp:?}");
   }
 
   #[test]
@@ -422,13 +431,13 @@ mod tests {
     ];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     // Assert — 2 行、どちらも is_last。1 行目の glue は自然幅のまま（box は 0 と 15）
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(lines[0].is_last);
     assert!(lines[1].is_last);
-    assert!((lines[0].boxes[1].x - 15.0).abs() < f32::EPSILON, "{lines:?}");
+    assert!(close(lines[0].boxes[1].x, 15.0), "{lines:?}");
   }
 
   #[test]
@@ -436,7 +445,7 @@ mod tests {
     // 強制改行の前が空なら空行を 1 本作る（貪欲法と同じ）
     let items = vec![HItem::ForcedBreak, test_box()];
 
-    let lines = KnuthPlassBreaker.break_lines(&items, 100.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(lines[0].boxes.is_empty(), "1 行目は空: {lines:?}");
@@ -448,7 +457,7 @@ mod tests {
     // 末尾の強制改行の後ろには空行を作らない
     let items = vec![test_box(), HItem::ForcedBreak];
 
-    let lines = KnuthPlassBreaker.break_lines(&items, 100.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
@@ -465,13 +474,13 @@ mod tests {
     ];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 14.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(14.0), TextAlignment::Justify);
 
     // Assert — 2 行。2 行目に QED だけが右端（14 − 8 = 6）
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 1, "2 行目は QED のみ: {lines:?}");
-    assert!((lines[1].boxes[0].x - 6.0).abs() < f32::EPSILON, "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[1].boxes[0].x, 6.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -479,11 +488,11 @@ mod tests {
     // box(10) glue(5±) FlushRight(8)、text_width=50 なら最終行の右端に収まる
     let items = vec![test_box(), stretch_glue(), flush_right_box(8.0)];
 
-    let lines = KnuthPlassBreaker.break_lines(&items, 50.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(50.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED: {lines:?}");
-    assert!((lines[0].boxes[1].x - 42.0).abs() < f32::EPSILON, "QED は右端寄せ: {lines:?}");
+    assert!(close(lines[0].boxes[1].x, 42.0), "QED は右端寄せ: {lines:?}");
   }
 
   #[test]
@@ -500,12 +509,12 @@ mod tests {
     ];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 27.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(27.0), TextAlignment::Justify);
 
     // Assert — 1 行目の矩形右端は伸長後の右端 27
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
-    assert!((lines[0].links[0].x1 - 27.0).abs() < 1e-4, "リンク矩形は伸縮後の字位置: {:?}", lines[0].links);
+    assert!(close(lines[0].links[0].x1, 27.0), "リンク矩形は伸縮後の字位置: {:?}", lines[0].links);
   }
 
   #[test]
@@ -514,11 +523,11 @@ mod tests {
     // 分割点が無く末尾仮想破断点へ到達できないため貪欲法へフォールバックし、同じ結果になる
     let items = vec![box_width(50.0)];
 
-    let lines = KnuthPlassBreaker.break_lines(&items, 30.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
-    assert!((lines[0].boxes[0].width - 50.0).abs() < f32::EPSILON);
+    assert!(close(lines[0].boxes[0].width, 50.0));
   }
 
   #[test]
@@ -528,12 +537,12 @@ mod tests {
     let items = vec![box_width(20.0), discretionary(3.0), box_width(20.0)];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 25.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
 
     // Assert — 2 行。1 行目末尾にハイフン（幅 3）が付く
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box + 行末ハイフン: {lines:?}");
-    assert!((lines[0].boxes[1].width - 3.0).abs() < f32::EPSILON, "行末ハイフン: {lines:?}");
+    assert!(close(lines[0].boxes[1].width, 3.0), "行末ハイフン: {lines:?}");
     assert_eq!(lines[1].boxes.len(), 1);
   }
 
@@ -551,11 +560,11 @@ mod tests {
     ];
 
     // Act
-    let lines = KnuthPlassBreaker.break_lines(&items, 25.0, TextAlignment::Justify);
+    let lines = KnuthPlassBreaker.break_lines(&items, Length::pt(25.0), TextAlignment::Justify);
 
     // Assert — 2 行。1 行目末尾にハイフン箱が付かない（スペースで折り返した）
     assert_eq!(lines.len(), 2, "{lines:?}");
-    let has_hyphen = lines[0].boxes.len() > 1 && (lines[0].boxes.last().unwrap().width - 3.0).abs() < f32::EPSILON;
+    let has_hyphen = lines[0].boxes.len() > 1 && close(lines[0].boxes.last().unwrap().width, 3.0);
     assert!(!has_hyphen, "不要なハイフンを避ける: {lines:?}");
   }
 
@@ -570,8 +579,8 @@ mod tests {
     ];
 
     // Act
-    let kp = KnuthPlassBreaker.break_lines(&items, 30.0, TextAlignment::Justify);
-    let greedy = GreedyBreaker.break_lines(&items, 30.0, TextAlignment::Justify);
+    let kp = KnuthPlassBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
+    let greedy = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::Justify);
 
     // Assert — 行数・各 box の x が貪欲法と一致（下回らない）
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
@@ -593,7 +602,7 @@ mod tests {
 
     // Act
     let mut open_links = Vec::new();
-    let lines = break_subparagraph(&items, 22.0, &mut open_links);
+    let lines = break_subparagraph(&items, Length::pt(22.0), &mut open_links);
 
     // Assert — 3 行、最終行のみ is_last
     assert_eq!(lines.len(), 3, "{lines:?}");

@@ -59,7 +59,7 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
     body.push(LayoutNode::Text(
       text.to_string(),
       TextStyle {
-        font_size: font_size.to_pt(),
+        font_size,
         font_kind,
         color: None,
       },
@@ -167,7 +167,7 @@ mod tests {
         _ => None,
       })
       .expect("Text が見つからない");
-    assert!((text_style.font_size - 40.0).abs() < f32::EPSILON);
+    assert_eq!(text_style.font_size, Length::pt(40.0));
     assert_eq!(text_style.font_kind, style.title_font_kind);
   }
 

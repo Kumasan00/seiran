@@ -4,7 +4,7 @@ body:
     box x=0.00 dy=0.00 w=23.04 glyphs font=Serif size=12.00 text="aaaa"
 === page 1 ===
 body:
-  line baseline_y=280.63 height=28.78 depth=7.15 last=true
+  line baseline_y=280.63 height=28.77 depth=7.15 last=true
     box x=0.00 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="第"
     box x=31.25 dy=0.00 w=12.38 glyphs font=SerifBold size=25.00 text="1"
     box x=49.88 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="章"

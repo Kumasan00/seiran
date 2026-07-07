@@ -7,7 +7,7 @@
 
 use document::{MathNode, MathRow, MathStyle};
 use read_style::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
-use types::{Align, FontKind, MathEnvKind};
+use types::{Align, FontKind, Length, MathEnvKind};
 
 use self::alphanumeric::push_math_char;
 use super::LoweringContext;
@@ -16,8 +16,8 @@ use crate::layout_node::{LayoutNode, MathBlockRow, TextStyle};
 mod alphanumeric;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
-fn script_font_size(font_size: f32, math_style: &MathStyleConfig) -> f32 {
-  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size.to_pt());
+fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
+  return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
 }
 
 /// `DocNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）を
@@ -56,8 +56,8 @@ pub(super) fn lower_math_block(
     env_number,
     align: alignment_to_align(block.alignment),
     numbers_on_right: matches!(block.number_side, NumberSide::Right),
-    row_gap: block.row_gap.to_pt(),
-    column_gap: block.column_gap.to_pt(),
+    row_gap: block.row_gap,
+    column_gap: block.column_gap,
   };
 }
 
@@ -65,7 +65,7 @@ pub(super) fn lower_math_block(
 ///
 /// `number_format` の `{number}` を `n` で置換し（既定 `"({number})"` → `"(1)"`）、数字を
 /// `FontKind::Serif` で描く `LayoutNode::Text` 1 つにまとめる。行ごと番号と環境全体番号の双方で使う。
-fn number_box(number_format: &str, n: &str, font_size: f32) -> Vec<LayoutNode> {
+fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode> {
   let text = number_format.replace("{number}", n);
   return vec![LayoutNode::Text(
     text,
@@ -96,7 +96,7 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 /// [`MathStyleConfig::script_size_factor`] 倍に縮小して描画する。
 pub(super) fn lower_inline_math(
   math_nodes: &[MathNode],
-  base_font_size: f32,
+  base_font_size: Length,
   math_style: &MathStyleConfig,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
@@ -114,7 +114,7 @@ pub(super) fn lower_inline_math(
 /// `Styled` バリアントは内側の `style` で完全上書きする（ネストは内側優先）。
 fn lower_math_node(
   node: &MathNode,
-  font_size: f32,
+  font_size: Length,
   style: Option<MathStyle>,
   math_style: &MathStyleConfig,
 ) -> Vec<LayoutNode> {
@@ -207,7 +207,7 @@ fn lower_math_node(
 /// カリグラフィーでは基底文字 + VS1 が連続して書き込まれるが、同一文字列に含めることで
 /// 後段のシェーピングが 1 クラスタとして扱う。数式中に和文が混入した場合のスクリプト別
 /// フォント切替は後段の `split_text_by_script` / `resolve_font_type` が担うため、ここでは分割しない。
-fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<LayoutNode> {
+fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> Vec<LayoutNode> {
   if text.is_empty() {
     return Vec::new();
   }
@@ -226,6 +226,7 @@ fn lower_math_text(text: &str, font_size: f32, style: Option<MathStyle>) -> Vec<
 #[cfg(test)]
 mod tests {
   use read_style::Style as ReadStyle;
+  use types::Length;
 
   use super::*;
 
@@ -236,7 +237,7 @@ mod tests {
   fn lower_math_text_italicizes_ascii_letters_by_default() {
     // Arrange: デフォルトでは ASCII 英字 "x" のみ Mathematical Italic (U+1D44E) に変換、
     // 記号 "+" と数字 "1" は素通し。1 つの Math セグメントにまとまる
-    let nodes = lower_math_text("x+1", 12.0, None);
+    let nodes = lower_math_text("x+1", Length::pt(12.0), None);
 
     // Assert
     assert_eq!(nodes.len(), 1, "Math フォントの単一セグメントにまとまるはず: {nodes:?}");
@@ -253,7 +254,7 @@ mod tests {
   fn lower_math_text_keeps_japanese_in_math_kind() {
     // Arrange: 数式中に和文が混ざっても lowering 層ではスクリプト分割せず単一の Math セグメントで返す
     // x は italic 化される、和文と数字は素通し
-    let nodes = lower_math_text("x速度2", 12.0, None);
+    let nodes = lower_math_text("x速度2", Length::pt(12.0), None);
 
     // Assert
     assert_eq!(nodes.len(), 1, "Math フォントの単一セグメントになるはず: {nodes:?}");
@@ -269,7 +270,7 @@ mod tests {
   #[test]
   fn lower_math_text_empty_returns_no_nodes() {
     // 空文字列は空のノード列を返す
-    let nodes = lower_math_text("", 12.0, None);
+    let nodes = lower_math_text("", Length::pt(12.0), None);
     assert!(nodes.is_empty(), "空文字列は空のノード列を返すはず: {nodes:?}");
   }
 
@@ -279,17 +280,21 @@ mod tests {
     let node = MathNode::Superscript(Box::new(MathNode::Text("2".to_string())));
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
       LayoutNode::Raise { offset, children } => {
-        assert!(*offset > 0.0, "上付きは正の offset（上方向）になるべき: offset={offset}");
+        assert!(offset.is_positive(), "上付きは正の offset（上方向）になるべき: offset={}", offset.to_pt());
         // children に縮小サイズの Text が入っているはず
         assert!(!children.is_empty());
         if let LayoutNode::Text(_, style) = &children[0] {
-          assert!(style.font_size < 12.0, "上付きはフォントサイズが縮小される: size={}", style.font_size);
+          assert!(
+            style.font_size < Length::pt(12.0),
+            "上付きはフォントサイズが縮小される: size={}",
+            style.font_size.to_pt()
+          );
         } else {
           panic!("Text を期待: {:?}", children[0]);
         }
@@ -304,13 +309,13 @@ mod tests {
     let node = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
     match &result[0] {
       LayoutNode::Raise { offset, .. } => {
-        assert!(*offset < 0.0, "下付きは負の offset（下方向）になるべき: offset={offset}");
+        assert!(!offset.is_non_negative(), "下付きは負の offset（下方向）になるべき: offset={}", offset.to_pt());
       },
       other => panic!("Raise を期待: {other:?}"),
     }
@@ -322,7 +327,7 @@ mod tests {
     let node = MathNode::Symbol('α');
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -344,7 +349,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert: 何らかの Text に "/" が含まれていること
     let has_slash = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "/"));
@@ -360,7 +365,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert: √ を含む Text ノードが存在し、後ろに変数 x の italic Text が続く
     let has_radical = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "√"));
@@ -376,7 +381,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert — 連結すると "𝐱𝟏𝟐" + "𝛂"
     let texts: String = result
@@ -399,7 +404,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert — "𝒜<VS1>𝒷<VS1>1"（基底はスクリプトと共有、英字のみ VS1 付与）
     let texts: String = result
@@ -492,7 +497,7 @@ mod tests {
   #[test]
   fn lower_math_text_script_maps_letters_with_holes() {
     // Arrange & Act — \mathscript{ABb1} 相当: A は連続、B は穴(ℬ)、b は連続小文字、数字は素通し
-    let nodes = lower_math_text("ABb1", 12.0, Some(MathStyle::Script));
+    let nodes = lower_math_text("ABb1", Length::pt(12.0), Some(MathStyle::Script));
 
     // Assert — A→U+1D49C, B→U+212C(穴), b→U+1D4B7, 1 は素通し
     assert_eq!(nodes.len(), 1);
@@ -507,7 +512,7 @@ mod tests {
   #[test]
   fn lower_math_text_script_bold_maps_contiguous_block() {
     // Arrange & Act — \mathscriptbold{AZaz} 相当: 大文字・小文字とも連続（穴なし）
-    let nodes = lower_math_text("AZaz", 12.0, Some(MathStyle::ScriptBold));
+    let nodes = lower_math_text("AZaz", Length::pt(12.0), Some(MathStyle::ScriptBold));
 
     // Assert — A→U+1D4D0, Z→U+1D4E9, a→U+1D4EA, z→U+1D503
     assert_eq!(nodes.len(), 1);
@@ -522,7 +527,7 @@ mod tests {
   #[test]
   fn lower_math_text_fraktur_bold_maps_contiguous_block() {
     // Arrange & Act — \mathfrakturbold{AZaz} 相当: 大文字・小文字とも連続（穴なし）
-    let nodes = lower_math_text("AZaz", 12.0, Some(MathStyle::FrakturBold));
+    let nodes = lower_math_text("AZaz", Length::pt(12.0), Some(MathStyle::FrakturBold));
 
     // Assert — A→U+1D56C, Z→U+1D585, a→U+1D586, z→U+1D59F
     assert_eq!(nodes.len(), 1);
@@ -546,7 +551,7 @@ mod tests {
     };
 
     // Act
-    let result = lower_math_node(&node, 12.0, None, &default_math_style());
+    let result = lower_math_node(&node, Length::pt(12.0), None, &default_math_style());
 
     // Assert — bold a (U+1D41A) と bold b (U+1D41B) が含まれる
     let has_bold_a = result.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "\u{1D41A}"));

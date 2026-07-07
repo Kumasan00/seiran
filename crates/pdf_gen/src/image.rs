@@ -37,16 +37,22 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
       } => {
         let loaded = load_image(&path, None)?;
         let (nat_width, nat_height) = loaded.natural_size();
-        let (final_width, final_height) = resolve_image_size(width, height, nat_width, nat_height, text_width)
-          .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
-            path: path.clone(),
-            width: nat_width,
-            height: nat_height,
-          })?;
+        let (final_width, final_height) = resolve_image_size(
+          width.map(types::Length::to_pt),
+          height.map(types::Length::to_pt),
+          nat_width,
+          nat_height,
+          text_width,
+        )
+        .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
+          path: path.clone(),
+          width: nat_width,
+          height: nat_height,
+        })?;
         return Ok(Block::Image {
           path,
-          width: Some(final_width),
-          height: Some(final_height),
+          width: Some(types::Length::pt(final_width)),
+          height: Some(types::Length::pt(final_height)),
           target_dpi,
           align,
         });
