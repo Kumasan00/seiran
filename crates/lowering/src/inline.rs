@@ -143,6 +143,8 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<types::Color>) ->
 
 #[cfg(test)]
 mod tests {
+  use types::Length;
+
   use super::*;
 
   #[test]
@@ -155,7 +157,7 @@ mod tests {
       children: vec![InlineNode::Text("x".to_string())],
     };
     let parent = TextStyle {
-      font_size: 10.0,
+      font_size: Length::pt(10.0),
       font_kind: types::FontKind::SerifBold,
       color: None,
     };
@@ -169,7 +171,7 @@ mod tests {
     };
     assert_eq!(text, "x");
     assert_eq!(text_style.font_kind, types::FontKind::SerifItalic);
-    assert!((text_style.font_size - 10.0).abs() < f32::EPSILON);
+    assert_eq!(text_style.font_size, Length::pt(10.0));
   }
 
   #[test]
@@ -182,7 +184,7 @@ mod tests {
       children: vec![InlineNode::Text("x".to_string())],
     };
     let parent = TextStyle {
-      font_size: 10.0,
+      font_size: Length::pt(10.0),
       font_kind: types::FontKind::SansSerif,
       color: None,
     };
@@ -211,7 +213,7 @@ mod tests {
         children: vec![InlineNode::Text("x".to_string())],
       }],
     };
-    let parent = TextStyle::new(10.0);
+    let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
     let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
@@ -234,7 +236,7 @@ mod tests {
       number: Some("1.2".to_string()),
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     };
-    let parent = TextStyle::new(10.0);
+    let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
     let nodes = lower_inline(&ctx, &inline, parent).expect("解決済み Ref は失敗しない");
@@ -256,7 +258,7 @@ mod tests {
       url: "https://example.com".to_string(),
       children: vec![InlineNode::Text("ここ".to_string())],
     };
-    let parent = TextStyle::new(10.0);
+    let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
     let nodes = lower_inline(&ctx, &inline, parent).expect("失敗しない");
@@ -283,7 +285,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
 
     // Assert — リンク子の Text が link_color を持つ
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -308,7 +310,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
 
     // Assert
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -333,7 +335,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
 
     // Assert — 色は None（黒継承）
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -361,7 +363,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
 
     // Assert — 番号は赤（parent_style.color が Some なのでそちらを優先）
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -384,7 +386,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -411,7 +413,7 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(10.0)).expect("解決済み Cite は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Cite は失敗しない");
 
     // Assert — Internal リンクで、番号テキストが cite_color を継承
     let LayoutNode::Link { target, children } = &nodes[0] else {

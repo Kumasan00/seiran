@@ -96,7 +96,7 @@ mod tests {
     };
     assert_eq!(text, "body");
     assert_eq!(text_style.font_kind, style.text.font_kind);
-    assert!((text_style.font_size - ctx.default_font_size()).abs() < f32::EPSILON);
+    assert_eq!(text_style.font_size, ctx.default_font_size());
   }
 
   #[test]

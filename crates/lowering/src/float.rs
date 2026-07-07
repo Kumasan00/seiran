@@ -23,7 +23,7 @@ pub(super) fn build_caption(
   number: &str,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let base_style = TextStyle {
-    font_size: caption_style.font_size.to_pt(),
+    font_size: caption_style.font_size,
     font_kind: FontKind::Serif,
     color: None,
   };
@@ -104,7 +104,7 @@ mod tests {
     return LayoutNode::Text(
       text.to_string(),
       TextStyle {
-        font_size: 11.0,
+        font_size: Length::pt(11.0),
         font_kind: FontKind::Serif,
         color: None,
       },
@@ -239,7 +239,7 @@ mod tests {
       panic!("Text が期待されます: {nodes:?}");
     };
     assert_eq!(text, "Fig 3: Overview");
-    assert!((style.font_size - 9.0).abs() < f32::EPSILON);
+    assert_eq!(style.font_size, Length::pt(9.0));
     assert_eq!(style.font_kind, FontKind::Serif);
   }
 

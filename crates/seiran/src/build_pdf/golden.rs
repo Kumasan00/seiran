@@ -31,7 +31,11 @@ use std::{
 };
 
 use font::{FontData, FontDataExt};
-use hlist::dump_pages;
+use hlist::{Page, PlacedBlock, dump_pages};
+use read_config::Config;
+use read_references::References;
+use read_style::Style;
+use types::{AnchorMark, Length};
 
 use super::build_pages;
 
@@ -84,7 +88,7 @@ fn enter_workspace_root() {
 ///
 /// fixture が参照するフォント・CSL は `vendor/` の取得済み資産に依存するため、未取得なら
 /// 個々のフォント読込エラーではなく取得手順を先に案内して失敗させる。
-fn load_base() -> (read_config::Config, read_style::Style, read_references::References) {
+fn load_base() -> (Config, Style, References) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
@@ -125,11 +129,11 @@ fn apply_input_style_overrides(name: &str, style: &mut read_style::Style) {
 /// `document.language` を英語に切り替える。あわせて本文幅を狭め（既定 fixture は版面が広く
 /// 語中折り返しが起きない）、長い欧文語が語中でハイフン分割される様子を golden に固定する。
 /// 対象外の入力はベース config をそのまま使う（既存 golden は language = "ja" のまま不変）。
-fn apply_input_config_overrides(name: &str, config: &mut read_config::Config) {
+fn apply_input_config_overrides(name: &str, config: &mut Config) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
-    config.pdf.margin.left = types::Length::mm(275.0);
-    config.pdf.margin.right = types::Length::mm(275.0);
+    config.pdf.margin.left = Length::mm(275.0);
+    config.pdf.margin.right = Length::mm(275.0);
   }
 }
 
@@ -137,12 +141,7 @@ fn apply_input_config_overrides(name: &str, config: &mut read_config::Config) {
 ///
 /// `sources` だけを対象入力へ差し替え、フォント・用紙はベース設定を共有する。style は
 /// ベースに [`apply_input_style_overrides`] の入力別差分を重ねたものを使う。
-fn dump_input(
-  base_config: &read_config::Config,
-  style: &read_style::Style,
-  references: &read_references::References,
-  name: &str,
-) -> String {
+fn dump_input(base_config: &Config, style: &Style, references: &References, name: &str) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
@@ -190,15 +189,15 @@ fn layout_dumps_match_golden() {
 ///
 /// 見出しは配置時にページに `PlacedAnchor { mark: Heading, y }`（見出し行の上端）を残す。ページの
 /// 最終ブロックが `Line` で、その上端が見出しアンカーの y と一致すれば「見出しがページ末尾に孤立」。
-fn page_ends_with_heading(page: &hlist::Page) -> bool {
-  let Some(hlist::PlacedBlock::Line { line, baseline_y }) = page.blocks.last() else {
+fn page_ends_with_heading(page: &Page) -> bool {
+  let Some(PlacedBlock::Line { line, baseline_y }) = page.blocks.last() else {
     return false;
   };
-  let top = baseline_y - line.height;
+  let top = *baseline_y - line.height;
   return page
     .anchors
     .iter()
-    .any(|anchor| matches!(anchor.mark, types::AnchorMark::Heading { .. }) && (anchor.y - top).abs() < 0.5);
+    .any(|anchor| matches!(anchor.mark, AnchorMark::Heading { .. }) && (anchor.y - top).abs() < Length::pt(0.5));
 }
 
 #[test]
@@ -207,9 +206,9 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   // 収まる大きさ）。keepwithnext.sei は見出し直前を filler で埋め、見出しがページ末尾に来る配置。
   enter_workspace_root();
   let (mut config, style, references) = load_base();
-  config.pdf.height = types::Length::mm(45.0);
-  config.pdf.margin.top = types::Length::mm(10.0);
-  config.pdf.margin.bottom = types::Length::mm(10.0);
+  config.pdf.height = Length::mm(45.0);
+  config.pdf.margin.top = Length::mm(10.0);
+  config.pdf.margin.bottom = Length::mm(10.0);
   config.sources = vec![PathBuf::from("tests/text/keepwithnext.sei")];
   let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
 

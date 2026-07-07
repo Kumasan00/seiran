@@ -12,13 +12,13 @@ use types::Color;
 pub(super) fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
-  text_width: f32,
-  page_height: f32,
+  text_width: types::Length,
+  page_height: types::Length,
   page_numbers: Vec<(String, String)>,
 ) -> RunningContentSpec {
   return RunningContentSpec {
-    header: running_slots(&style.header, style.header.baseline_offset.to_pt(), true),
-    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset.to_pt(), false),
+    header: running_slots(&style.header, style.header.baseline_offset, true),
+    footer: running_slots(&style.footer, page_height - style.footer.baseline_offset, false),
     metadata: RunningMetadata {
       title: document.title.clone().unwrap_or_default(),
       author: document.author.clone().unwrap_or_default(),
@@ -36,7 +36,7 @@ pub(super) fn build_running_spec(
 /// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
 /// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
 /// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
-fn running_slots(style: &RunningContentStyle, baseline_y: f32, rule_below: bool) -> Option<RunningSlots> {
+fn running_slots(style: &RunningContentStyle, baseline_y: types::Length, rule_below: bool) -> Option<RunningSlots> {
   if style.is_empty() {
     return None;
   }
@@ -45,11 +45,11 @@ fn running_slots(style: &RunningContentStyle, baseline_y: f32, rule_below: bool)
     center: style.center.clone(),
     right: style.right.clone(),
     font_kind: style.font_kind,
-    font_size: style.font_size.to_pt(),
+    font_size: style.font_size,
     baseline_y,
     rule_below,
-    rule_thickness: style.rule_thickness.to_pt(),
-    rule_gap: style.rule_gap.to_pt(),
+    rule_thickness: style.rule_thickness,
+    rule_gap: style.rule_gap,
     rule_color: style.rule_color.map(Color::rgb),
   });
 }

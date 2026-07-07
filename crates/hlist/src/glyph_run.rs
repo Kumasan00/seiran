@@ -5,15 +5,15 @@
 
 use std::ops::Range;
 
-use types::{Color, FontType};
+use types::{Color, FontType, Length};
 
 /// シェーピング済みのグリフ列情報
 ///
 /// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
 #[derive(Debug, Clone)]
 pub struct GlyphRun {
-  /// テキストのフォントサイズ（ポイント）
-  pub font_size: f32,
+  /// テキストのフォントサイズ
+  pub font_size: Length,
   /// 元のテキスト（シェーピング前）
   pub text: String,
   /// シェーピング結果のグリフ列

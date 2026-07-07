@@ -97,13 +97,13 @@ fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
 #[cfg(test)]
 mod tests {
   use read_style::Style as ReadStyle;
-  use types::FontKind;
+  use types::{FontKind, Length};
 
   use super::*;
 
   fn base_style() -> TextStyle {
     return TextStyle {
-      font_size: 10.0,
+      font_size: Length::pt(10.0),
       font_kind: FontKind::Serif,
       color: None,
     };

@@ -8,12 +8,12 @@
 //! - [`bridge`]: `read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
 //! - [`render`]: `BibliographyDriver` の駆動・引用ラベルと書誌 `DocNode` の生成。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, io};
 
 use document::{DocNode, InlineNode};
 use hayagriva::{
   archive,
-  citationberg::{IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
+  citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
 use read_references::References;
@@ -62,7 +62,7 @@ pub enum CitationError {
     path: String,
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 
   /// CSL スタイル（`.csl`）の解析に失敗した場合。
@@ -76,7 +76,7 @@ pub enum CitationError {
     path: String,
     /// 元の citationberg パースエラー
     #[source]
-    source: hayagriva::citationberg::XmlDeError,
+    source: citationberg::XmlDeError,
   },
 
   /// CSL ロケール（`.xml`）ファイルの読み込みに失敗した場合。
@@ -90,7 +90,7 @@ pub enum CitationError {
     path: String,
     /// 元の I/O エラー
     #[source]
-    source: std::io::Error,
+    source: io::Error,
   },
 
   /// CSL ロケール（`.xml`）の解析に失敗した場合。
@@ -104,7 +104,7 @@ pub enum CitationError {
     path: String,
     /// 元の citationberg パースエラー
     #[source]
-    source: hayagriva::citationberg::XmlDeError,
+    source: citationberg::XmlDeError,
   },
 }
 

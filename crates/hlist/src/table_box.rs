@@ -4,7 +4,7 @@
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
 //! `pdf_gen` 段で行う。
 
-use types::{ColumnWidth, TableColumn};
+use types::{ColumnWidth, Length, TableColumn};
 
 use crate::hitem::{HBoxContent, HItem};
 
@@ -39,45 +39,46 @@ pub struct TableCellBox {
   pub span: u32,
 }
 
-/// アイテム列の自然幅（pt）を返す
+/// アイテム列の自然幅を返す
 ///
 /// box は計測済みの幅を持つため、フォントに触れずに合計できる。
 #[must_use]
-pub fn measure_items_width(items: &[HItem]) -> f32 { return items.iter().map(HItem::natural_width).sum(); }
+pub fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
 
 /// アイテム列に含まれるテキストの最大フォントサイズを返す（テキストがなければ `None`）
 ///
 /// Atom（数式）の子要素も再帰的に走査する。
 #[must_use]
-pub fn max_font_size_in_items(items: &[HItem]) -> Option<f32> {
+pub fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
     .iter()
     .filter_map(|item| match item {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => max_font_size_in_content(&hbox.content),
       _ => None,
     })
-    .reduce(f32::max);
+    .reduce(Length::max);
 }
 
 /// ボックス内容に含まれるテキストの最大フォントサイズを返す
-fn max_font_size_in_content(content: &HBoxContent) -> Option<f32> {
+fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
   return match content {
     HBoxContent::Glyphs(run) => Some(run.font_size),
     HBoxContent::Rule { .. } => None,
-    HBoxContent::Atom(children) => {
-      children.iter().filter_map(|child| max_font_size_in_content(&child.item.content)).reduce(f32::max)
-    },
+    HBoxContent::Atom(children) => children
+      .iter()
+      .filter_map(|child| max_font_size_in_content(&child.item.content))
+      .reduce(Length::max),
   };
 }
 
-/// 行の高さ（pt）= 行内の最大フォントサイズ × 行高係数
+/// 行の高さ = 行内の最大フォントサイズ × 行高係数
 #[must_use]
-pub fn table_row_height(row: &TableRowBox, default_font_size: f32, line_height_factor: f32) -> f32 {
+pub fn table_row_height(row: &TableRowBox, default_font_size: Length, line_height_factor: f32) -> Length {
   let max_font = row
     .cells
     .iter()
     .filter_map(|cell| max_font_size_in_items(&cell.items))
-    .reduce(f32::max)
+    .reduce(Length::max)
     .unwrap_or(default_font_size);
   return max_font * line_height_factor;
 }
@@ -91,16 +92,16 @@ pub fn table_row_height(row: &TableRowBox, default_font_size: f32, line_height_f
 ///
 /// 合計が本文幅を超える場合の縮小は行わない（セル折り返し未対応のため、はみ出しを許容する）。
 #[must_use]
-pub fn resolve_column_widths(table: &TableBox, available: f32, padding: f32) -> Vec<f32> {
+pub fn resolve_column_widths(table: &TableBox, available: Length, padding: Length) -> Vec<Length> {
   let column_count = table.columns.len();
-  let mut naturals = vec![0.0f32; column_count];
+  let mut naturals = vec![Length::ZERO; column_count];
 
   for row in table.head.iter().chain(table.rows.iter()) {
     let mut column_index = 0usize;
     for cell in &row.cells {
       let span = cell.span as usize;
       if span == 1 && column_index < column_count {
-        let width = measure_items_width(&cell.items) + 2.0 * padding;
+        let width = measure_items_width(&cell.items) + padding * 2;
         naturals[column_index] = naturals[column_index].max(width);
       }
       column_index += span;
@@ -112,8 +113,8 @@ pub fn resolve_column_widths(table: &TableBox, available: f32, padding: f32) -> 
     for cell in &row.cells {
       let span = cell.span as usize;
       if span > 1 && column_index + span <= column_count {
-        let width = measure_items_width(&cell.items) + 2.0 * padding;
-        let current: f32 = naturals[column_index..column_index + span].iter().sum();
+        let width = measure_items_width(&cell.items) + padding * 2;
+        let current: Length = naturals[column_index..column_index + span].iter().sum();
         if width > current {
           #[allow(clippy::cast_precision_loss)]
           let extra = (width - current) / span as f32;
@@ -126,21 +127,21 @@ pub fn resolve_column_widths(table: &TableBox, available: f32, padding: f32) -> 
     }
   }
 
-  let mut widths = vec![0.0f32; column_count];
+  let mut widths = vec![Length::ZERO; column_count];
   let mut flex_indices: Vec<usize> = Vec::new();
-  let mut used = 0.0f32;
+  let mut used = Length::ZERO;
   for (i, column) in table.columns.iter().enumerate() {
     match column.width {
       ColumnWidth::Fixed(length) => {
-        widths[i] = length.to_pt();
+        widths[i] = length;
         used += widths[i];
       },
       ColumnWidth::Ratio(ratio) => {
-        widths[i] = ratio * available;
+        widths[i] = available * ratio;
         used += widths[i];
       },
       ColumnWidth::Auto => {
-        widths[i] = naturals[i].max(2.0 * padding);
+        widths[i] = naturals[i].max(padding * 2);
         used += widths[i];
       },
       ColumnWidth::Flex => flex_indices.push(i),
@@ -148,7 +149,7 @@ pub fn resolve_column_widths(table: &TableBox, available: f32, padding: f32) -> 
   }
   if !flex_indices.is_empty() {
     #[allow(clippy::cast_precision_loss)]
-    let share = ((available - used) / flex_indices.len() as f32).max(0.0);
+    let share = ((available - used) / flex_indices.len() as f32).max(Length::ZERO);
     for i in flex_indices {
       widths[i] = share.max(naturals[i]);
     }
@@ -169,29 +170,38 @@ mod tests {
     hitem::{HBox, HBoxContent, HItem, PlacedHItem},
   };
 
+  /// pt 値から `Length` を作る短縮子
+  fn pt(value: f32) -> Length { return Length::pt(value); }
+
+  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
+
   /// 指定幅・指定フォントサイズの Glyphs ボックスを作るヘルパ
   fn glyph_box(width: f32, font_size: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
-        font_size,
+        font_size: pt(font_size),
         text: "x".to_string(),
         glyphs: Vec::new(),
         font_type: types::FontType::Serif,
         color: None,
       }),
-      width,
-      height: font_size,
-      depth: 0.0,
+      width: pt(width),
+      height: pt(font_size),
+      depth: Length::ZERO,
     });
   }
 
   /// 指定幅の Rule ボックス（テキストを含まない）を作るヘルパ
   fn rule_box(width: f32) -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule { width, height: 1.0 },
-      width,
-      height: 1.0,
-      depth: 0.0,
+      content: HBoxContent::Rule {
+        width: pt(width),
+        height: pt(1.0),
+      },
+      width: pt(width),
+      height: pt(1.0),
+      depth: Length::ZERO,
     });
   }
 
@@ -212,17 +222,17 @@ mod tests {
     let items = vec![
       rule_box(10.0),
       HItem::Glue {
-        natural: 5.0,
-        stretch: 0.0,
-        shrink: 0.0,
+        natural: pt(5.0),
+        stretch: Length::ZERO,
+        shrink: Length::ZERO,
         breakable: true,
       },
-      HItem::Kern(3.0),
+      HItem::Kern(pt(3.0)),
     ];
 
     // Act / Assert — Penalty / ForcedBreak は幅 0
-    assert!((measure_items_width(&items) - 18.0).abs() < f32::EPSILON);
-    assert!((measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]) - 0.0).abs() < f32::EPSILON);
+    assert!(close(measure_items_width(&items), 18.0));
+    assert!(close(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), 0.0));
   }
 
   #[test]
@@ -231,7 +241,7 @@ mod tests {
     let items = vec![glyph_box(20.0, 10.0), rule_box(5.0), glyph_box(20.0, 14.0)];
 
     // Act / Assert
-    assert_eq!(max_font_size_in_items(&items), Some(14.0));
+    assert_eq!(max_font_size_in_items(&items), Some(pt(14.0)));
   }
 
   #[test]
@@ -245,24 +255,24 @@ mod tests {
     // Arrange — Atom（数式）の子要素内の Glyphs フォントサイズも拾う
     let inner = HBox {
       content: HBoxContent::Glyphs(GlyphRun {
-        font_size: 20.0,
+        font_size: pt(20.0),
         text: "y".to_string(),
         glyphs: Vec::new(),
         font_type: types::FontType::Math,
         color: None,
       }),
-      width: 8.0,
-      height: 20.0,
-      depth: 0.0,
+      width: pt(8.0),
+      height: pt(20.0),
+      depth: Length::ZERO,
     };
     let atom = HBox::atom(vec![PlacedHItem {
       item: inner,
-      dy: 0.0,
-      dx: 0.0,
+      dy: Length::ZERO,
+      dx: Length::ZERO,
     }]);
 
     // Act / Assert
-    assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(20.0));
+    assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(pt(20.0)));
   }
 
   #[test]
@@ -274,7 +284,7 @@ mod tests {
     ]);
 
     // Act / Assert
-    assert!((table_row_height(&row, 9.0, 1.5) - 18.0).abs() < f32::EPSILON);
+    assert!(close(table_row_height(&row, pt(9.0), 1.5), 18.0));
   }
 
   #[test]
@@ -283,7 +293,7 @@ mod tests {
     let row = row(vec![cell(vec![rule_box(5.0)])]);
 
     // Act / Assert
-    assert!((table_row_height(&row, 9.0, 2.0) - 18.0).abs() < f32::EPSILON);
+    assert!(close(table_row_height(&row, pt(9.0), 2.0), 18.0));
   }
 
   #[test]
@@ -314,12 +324,12 @@ mod tests {
     };
 
     // Act
-    let widths = resolve_column_widths(&table, 200.0, 2.0);
+    let widths = resolve_column_widths(&table, pt(200.0), pt(2.0));
 
     // Assert
-    assert!((widths[0] - 40.0).abs() < f32::EPSILON, "Fixed: {widths:?}");
-    assert!((widths[1] - 34.0).abs() < f32::EPSILON, "Auto=内容+2*padding: {widths:?}");
-    assert!((widths[2] - 100.0).abs() < f32::EPSILON, "Ratio=比*available: {widths:?}");
+    assert!(close(widths[0], 40.0), "Fixed: {widths:?}");
+    assert!(close(widths[1], 34.0), "Auto=内容+2*padding: {widths:?}");
+    assert!(close(widths[2], 100.0), "Ratio=比*available: {widths:?}");
   }
 
   #[test]
@@ -345,11 +355,11 @@ mod tests {
     };
 
     // Act
-    let widths = resolve_column_widths(&table, 100.0, 0.0);
+    let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
 
     // Assert
-    assert!((widths[0] - 20.0).abs() < f32::EPSILON, "{widths:?}");
-    assert!((widths[1] - 80.0).abs() < f32::EPSILON, "Flex=残り幅の等分: {widths:?}");
+    assert!(close(widths[0], 20.0), "{widths:?}");
+    assert!(close(widths[1], 80.0), "Flex=残り幅の等分: {widths:?}");
   }
 
   #[test]
@@ -375,9 +385,9 @@ mod tests {
     };
 
     // Act — 残り = 100 - 90 = 10 だが natural[1]=40
-    let widths = resolve_column_widths(&table, 100.0, 0.0);
+    let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
 
     // Assert
-    assert!((widths[1] - 40.0).abs() < f32::EPSILON, "Flex は自然幅を下回らない: {widths:?}");
+    assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
   }
 }

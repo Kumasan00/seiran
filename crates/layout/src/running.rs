@@ -13,7 +13,7 @@ use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{HBox, Line, Page, PlacedBlock, PositionedBox};
 use lowering::TextStyle;
 use tracing::debug;
-use types::FontKind;
+use types::{FontKind, Length};
 
 use crate::Measurer;
 
@@ -31,7 +31,7 @@ pub struct RunningContentSpec {
   /// トークン置換に使う文書メタデータ
   pub metadata: RunningMetadata,
   /// 本文幅（pt）。スロットの左／中央／右揃えの基準
-  pub text_width: f32,
+  pub text_width: Length,
   /// 各物理ページの `(\{page\} ラベル, \{pages\} ラベル)`。`pages` と同じ長さ・同じ順序。
   ///
   /// 前付け（ローマ数字）と本文（算用数字、1 から振り直し）でリージョン別に採番した結果を
@@ -57,15 +57,15 @@ pub struct RunningSlots {
   /// フォント種別
   pub font_kind: FontKind,
   /// フォントサイズ（pt）
-  pub font_size: f32,
+  pub font_size: Length,
   /// ベースラインのページ上端からの距離（pt、絶対座標。フッターは呼び出し側で換算済み）
-  pub baseline_y: f32,
+  pub baseline_y: Length,
   /// 区切り線をテキストの下に置くか（`true`: ヘッダー、`false`: フッター）
   pub rule_below: bool,
   /// 区切り線の太さ（pt）。0 のとき線を描画しない
-  pub rule_thickness: f32,
+  pub rule_thickness: Length,
   /// テキストと区切り線の間隔（pt）
-  pub rule_gap: f32,
+  pub rule_gap: Length,
   /// 区切り線の色（RGB）。`None` は黒
   pub rule_color: Option<[u8; 3]>,
 }
@@ -104,7 +104,7 @@ pub fn build_running_content(
   // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない。
   // ヘッダー・フッターはハイフネーションしない（本文段落専用・#173）。
   // 和文約物アキ調整は本文と同じく既定で有効にする
-  let mut measurer = Measurer::new(shapers, metrics, 0.0, 1.0, None, true);
+  let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
   for (index, page) in pages.iter_mut().enumerate() {
     // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
     if spec.skip_first && index == 0 {
@@ -128,7 +128,7 @@ pub fn build_running_content(
 fn build_region(
   measurer: &mut Measurer,
   slots: &RunningSlots,
-  text_width: f32,
+  text_width: Length,
   page_label: &str,
   pages_label: &str,
   metadata: &RunningMetadata,
@@ -142,13 +142,13 @@ fn build_region(
   let center = shape_slot(measurer, &slots.center, page_label, pages_label, metadata, style);
   let right = shape_slot(measurer, &slots.right, page_label, pages_label, metadata, style);
 
-  let center_x = (text_width - slot_width(&center)) / 2.0;
+  let center_x = (text_width - slot_width(&center)) / 2.0f32;
   let right_x = text_width - slot_width(&right);
 
   let mut boxes: Vec<PositionedBox> = Vec::new();
-  let mut height = 0.0f32;
-  let mut depth = 0.0f32;
-  append_slot(left, 0.0, &mut boxes, &mut height, &mut depth);
+  let mut height = Length::ZERO;
+  let mut depth = Length::ZERO;
+  append_slot(left, Length::ZERO, &mut boxes, &mut height, &mut depth);
   append_slot(center, center_x, &mut boxes, &mut height, &mut depth);
   append_slot(right, right_x, &mut boxes, &mut height, &mut depth);
 
@@ -167,14 +167,14 @@ fn build_region(
     },
     baseline_y: slots.baseline_y,
   });
-  if slots.rule_thickness > 0.0 {
+  if slots.rule_thickness.is_positive() {
     let y = if slots.rule_below {
       slots.baseline_y + depth + slots.rule_gap
     } else {
       slots.baseline_y - height - slots.rule_gap - slots.rule_thickness
     };
     result.push(PlacedBlock::Rule {
-      x: 0.0,
+      x: Length::ZERO,
       y,
       width: text_width,
       height: slots.rule_thickness,
@@ -216,18 +216,24 @@ fn substitute(template: &str, page_label: &str, pages_label: &str, metadata: &Ru
 }
 
 /// `HBox` 列の合計幅（pt）を返す
-fn slot_width(hboxes: &[HBox]) -> f32 { return hboxes.iter().map(|hbox| hbox.width).sum(); }
+fn slot_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| hbox.width).sum(); }
 
 /// `HBox` 列を `x_start` から水平に並べて `boxes` へ追加し、行の高さ・深さを更新する
-fn append_slot(hboxes: Vec<HBox>, x_start: f32, boxes: &mut Vec<PositionedBox>, height: &mut f32, depth: &mut f32) {
+fn append_slot(
+  hboxes: Vec<HBox>,
+  x_start: Length,
+  boxes: &mut Vec<PositionedBox>,
+  height: &mut Length,
+  depth: &mut Length,
+) {
   let mut x = x_start;
   for hbox in hboxes {
-    *height = height.max(hbox.height);
-    *depth = depth.max(hbox.depth);
+    *height = (*height).max(hbox.height);
+    *depth = (*depth).max(hbox.depth);
     boxes.push(PositionedBox {
       content: hbox.content,
       x,
-      dy: 0.0,
+      dy: Length::ZERO,
       width: hbox.width,
     });
     x += hbox.width;
@@ -237,46 +243,59 @@ fn append_slot(hboxes: Vec<HBox>, x_start: f32, boxes: &mut Vec<PositionedBox>, 
 #[cfg(test)]
 mod tests {
   use hlist::{HBox, HBoxContent, PositionedBox};
+  use types::Length;
 
   use super::{RunningMetadata, append_slot, slot_width, substitute};
 
   /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
-  fn box_of_width(w: f32) -> HBox {
+  fn box_of_width(w: Length) -> HBox {
     return HBox {
       content: HBoxContent::Rule {
         width: w,
-        height: 8.0,
+        height: Length::pt(8.0),
       },
       width: w,
-      height: 8.0,
-      depth: 2.0,
+      height: Length::pt(8.0),
+      depth: Length::pt(2.0),
     };
   }
 
   #[test]
   fn slot_width_sums_box_widths() {
     // Arrange / Act
-    let width = slot_width(&[box_of_width(10.0), box_of_width(15.0)]);
+    let width = slot_width(&[
+      box_of_width(Length::pt(10.0)),
+      box_of_width(Length::pt(15.0)),
+    ]);
 
     // Assert
-    assert!((width - 25.0).abs() < f32::EPSILON);
+    assert_eq!(width, Length::pt(25.0));
   }
 
   #[test]
   fn append_slot_positions_boxes_left_to_right() {
     // Arrange — x_start=100 から幅 10, 15 のボックスを並べる
     let mut boxes: Vec<PositionedBox> = Vec::new();
-    let mut height = 0.0f32;
-    let mut depth = 0.0f32;
+    let mut height = Length::ZERO;
+    let mut depth = Length::ZERO;
 
     // Act
-    append_slot(vec![box_of_width(10.0), box_of_width(15.0)], 100.0, &mut boxes, &mut height, &mut depth);
+    append_slot(
+      vec![
+        box_of_width(Length::pt(10.0)),
+        box_of_width(Length::pt(15.0)),
+      ],
+      Length::pt(100.0),
+      &mut boxes,
+      &mut height,
+      &mut depth,
+    );
 
     // Assert — x は累積し、行の高さ・深さはボックスの最大値
-    let xs: Vec<f32> = boxes.iter().map(|b| b.x).collect();
-    assert_eq!(xs, vec![100.0, 110.0]);
-    assert!((height - 8.0).abs() < f32::EPSILON);
-    assert!((depth - 2.0).abs() < f32::EPSILON);
+    let xs: Vec<Length> = boxes.iter().map(|b| b.x).collect();
+    assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);
+    assert_eq!(height, Length::pt(8.0));
+    assert_eq!(depth, Length::pt(2.0));
   }
 
   fn metadata() -> RunningMetadata {

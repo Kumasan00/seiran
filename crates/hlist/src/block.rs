@@ -3,7 +3,7 @@
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（[`crate::break_lines`]）は `Block::Paragraph` の水平リストにだけ回る。
 
-use types::{Align, AnchorMark};
+use types::{Align, AnchorMark, Length};
 
 use crate::{
   hitem::{HBox, HItem},
@@ -31,19 +31,19 @@ pub enum Block {
   Paragraph {
     /// 段落内の水平リスト
     items: Vec<HItem>,
-    /// 行送り（pt）= 支配的フォントサイズ × 行高係数
-    leading: f32,
+    /// 行送り = 支配的フォントサイズ × 行高係数
+    leading: Length,
     /// 本文左端からの左インデント（pt）
     ///
     /// リスト項目などブロック単位で字下げする段落で使う。全行（折り返し行を含む）に
     /// 一律適用され、行折り返しの利用可能幅は `text_width - indent - right_indent` に縮む。
     /// 通常の段落は 0。
-    indent: f32,
+    indent: Length,
     /// 本文右端からの右インデント（pt）
     ///
     /// 引用ブロックなど左右に字下げする段落で使う。全行（折り返し行を含む）の利用可能幅を
     /// `text_width - indent - right_indent` に縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
-    right_indent: f32,
+    right_indent: Length,
     /// 段落内の各行の水平揃え（既定は左揃え）
     ///
     /// 折り返しには影響せず、確定した各行を利用可能幅（`text_width - indent - right_indent`）の中で
@@ -68,10 +68,10 @@ pub enum Block {
   Image {
     /// 画像ファイルへのパス
     path: String,
-    /// 描画幅（pt）。prepass 後は常に `Some`
-    width: Option<f32>,
-    /// 描画高さ（pt）。prepass 後は常に `Some`
-    height: Option<f32>,
+    /// 描画幅。prepass 後は常に `Some`
+    width: Option<Length>,
+    /// 描画高さ。prepass 後は常に `Some`
+    height: Option<Length>,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
     /// 本文幅の中での画像の水平揃え（既定は左揃え）
@@ -81,10 +81,10 @@ pub enum Block {
   },
   /// 罫線（本文幅とは独立な塗りつぶし矩形）
   Rule {
-    /// 幅（pt）
-    width: f32,
-    /// 高さ（pt）
-    height: f32,
+    /// 幅
+    width: Length,
+    /// 高さ
+    height: Length,
     /// 本文幅の中での罫線の水平揃え（既定は左揃え）
     align: Align,
   },
@@ -97,8 +97,8 @@ pub enum Block {
   ComposedLine {
     /// 配置する合成済みの行
     line: Line,
-    /// 行送り（pt）。配置後にカーソルをこの分だけ進める
-    leading: f32,
+    /// 行送り。配置後にカーソルをこの分だけ進める
+    leading: Length,
   },
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
   ///
@@ -123,12 +123,12 @@ pub enum Block {
   /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`
   /// のみカーソルへ加算するため出力は不変。
   Glue {
-    /// 自然値（pt）
-    natural: f32,
-    /// 伸長能力（pt）
-    stretch: f32,
-    /// 収縮能力（pt）
-    shrink: f32,
+    /// 自然値
+    natural: Length,
+    /// 伸長能力
+    stretch: Length,
+    /// 収縮能力
+    shrink: Length,
   },
   /// 分割コスト（penalty）
   ///
@@ -151,11 +151,11 @@ impl Block {
   ///
   /// 「固定アキ = 伸縮 0 の glue」という表現の真実源。既存の固定アキ生成箇所はすべてこれを使う。
   #[must_use]
-  pub fn fixed_space(pt: f32) -> Block {
+  pub fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
       natural: pt,
-      stretch: 0.0,
-      shrink: 0.0,
+      stretch: Length::ZERO,
+      shrink: Length::ZERO,
     };
   }
 
@@ -165,11 +165,11 @@ impl Block {
   /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
   /// オーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
   #[must_use]
-  pub fn stretchable_space(pt: f32, stretch: f32) -> Block {
+  pub fn stretchable_space(pt: Length, stretch: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch,
-      shrink: 0.0,
+      shrink: Length::ZERO,
     };
   }
 
@@ -201,6 +201,6 @@ impl Block {
 pub struct MathRowNumber {
   /// 番号ボックス（`"(1)"` 等、シェーピング済み）
   pub content: HBox,
-  /// 本体 Atom のベースラインからの縦オフセット（pt、正で上方向）＝その行のベースライン
-  pub dy: f32,
+  /// 本体 Atom のベースラインからの縦オフセット（正で上方向）＝その行のベースライン
+  pub dy: Length,
 }

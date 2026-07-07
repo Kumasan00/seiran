@@ -7,7 +7,7 @@
 
 use hlist::{Block, HBox, MathRowNumber, PlacedHItem};
 use lowering::{LayoutNode, MathBlockRow};
-use types::{Align, FontType, MathDelimiter, MathEnvKind};
+use types::{Align, FontType, Length, MathDelimiter, MathEnvKind};
 
 use crate::Measurer;
 
@@ -54,10 +54,10 @@ fn cell_align(kind: MathEnvKind, row_idx: usize, n_rows: usize, col: usize) -> C
 }
 
 /// 列幅 `col_width` の中に幅 `cell_width` のセルを置くときの水平オフセット（pt）
-fn column_offset(align: CellAlign, col_width: f32, cell_width: f32) -> f32 {
+fn column_offset(align: CellAlign, col_width: Length, cell_width: Length) -> Length {
   return match align {
-    CellAlign::Left => 0.0,
-    CellAlign::Center => (col_width - cell_width) / 2.0,
+    CellAlign::Left => Length::ZERO,
+    CellAlign::Center => (col_width - cell_width) / 2.0f32,
     CellAlign::Right => col_width - cell_width,
   };
 }
@@ -104,15 +104,15 @@ impl Measurer<'_> {
     env_number: Option<Vec<LayoutNode>>,
     align: Align,
     numbers_on_right: bool,
-    row_gap: f32,
-    column_gap: f32,
+    row_gap: Length,
+    column_gap: Length,
   ) -> Block {
     // 各セル・番号を閉じた Atom に measure する
     let measured: Vec<MeasuredRow> = rows
       .into_iter()
       .map(|row| {
-        let cells = row.cells.into_iter().map(|cell| self.build_atom(0.0, cell)).collect();
-        let number = row.number.map(|number| self.build_atom(0.0, number));
+        let cells = row.cells.into_iter().map(|cell| self.build_atom(Length::ZERO, cell)).collect();
+        let number = row.number.map(|number| self.build_atom(Length::ZERO, number));
         return MeasuredRow { cells, number };
       })
       .collect();
@@ -120,14 +120,14 @@ impl Measurer<'_> {
     // 列幅 = その列のセルの最大幅。列位置 = 列幅 + 列間アキの累積
     let n_rows = measured.len();
     let ncols = measured.iter().map(|row| row.cells.len()).max().unwrap_or(0);
-    let mut col_widths = vec![0.0f32; ncols];
+    let mut col_widths = vec![Length::ZERO; ncols];
     for row in &measured {
       for (c, cell) in row.cells.iter().enumerate() {
         col_widths[c] = col_widths[c].max(cell.width);
       }
     }
-    let mut col_x = vec![0.0f32; ncols];
-    let mut acc = 0.0f32;
+    let mut col_x = vec![Length::ZERO; ncols];
+    let mut acc = Length::ZERO;
     for c in 0..ncols {
       col_x[c] = acc;
       acc += col_widths[c] + column_gap;
@@ -136,11 +136,11 @@ impl Measurer<'_> {
     // 行を縦に積む。行 0 のベースラインを本体ベースライン（dy = 0）とし、以降は下方向へ。
     let mut placed: Vec<PlacedHItem> = Vec::new();
     let mut numbers: Vec<MathRowNumber> = Vec::new();
-    let mut baseline_dy = 0.0f32;
-    let mut prev_depth = 0.0f32;
+    let mut baseline_dy = Length::ZERO;
+    let mut prev_depth = Length::ZERO;
     for (i, row) in measured.into_iter().enumerate() {
-      let row_height = row.cells.iter().map(|cell| cell.height).fold(0.0f32, f32::max);
-      let row_depth = row.cells.iter().map(|cell| cell.depth).fold(0.0f32, f32::max);
+      let row_height = row.cells.iter().map(|cell| cell.height).fold(Length::ZERO, Length::max);
+      let row_depth = row.cells.iter().map(|cell| cell.depth).fold(Length::ZERO, Length::max);
       if i > 0 {
         baseline_dy -= prev_depth + row_gap + row_height;
       }
@@ -167,7 +167,7 @@ impl Measurer<'_> {
     // body のベースライン（dy = 0）基準でブロック中央へ番号の視覚中央を合わせる
     // （dy は正で上方向。`break_pages` が `baseline_y - dy` を番号ベースラインにする）。
     if let Some(env_number) = env_number {
-      let number = self.build_atom(0.0, env_number);
+      let number = self.build_atom(Length::ZERO, env_number);
       let center_dy = (body.height - body.depth) / 2.0 - (number.height - number.depth) / 2.0;
       numbers.push(MathRowNumber {
         content: number,
@@ -196,19 +196,19 @@ impl Measurer<'_> {
   /// （`target_height + target_depth` に上下の余白を足した値）に対する倍率でフォントサイズを拡大して
   /// 再シェーピングする。OpenType MATH 由来の伸縮グリフ組立ではなく、1 グリフの一様拡大で近似する
   /// （read-fonts が MATH 未対応のため。本物の伸縮は将来対応 → #67 周辺）。
-  fn shape_delimiter(&mut self, ch: &str, target_height: f32, target_depth: f32) -> HBox {
+  fn shape_delimiter(&mut self, ch: &str, target_height: Length, target_depth: Length) -> HBox {
     let base = self.default_font_size;
     let natural = self.shape_segment(ch, FontType::Math, base, None);
     let natural_total = natural.height + natural.depth;
     let pad = base * 0.1;
-    let target_total = target_height + target_depth + 2.0 * pad;
+    let target_total = target_height + target_depth + pad * 2;
     // 拡大のみ（自然サイズより小さくはしない）。小さなグリッドでも括弧は通常字より縮めない
-    let scale = if natural_total > 0.0 {
-      (target_total / natural_total).max(1.0)
+    let scale = if natural_total.is_positive() {
+      target_total.ratio(natural_total).max(1.0)
     } else {
       1.0
     };
-    return self.shape_segment(ch, FontType::Math, base * scale, None);
+    return self.shape_segment(ch, FontType::Math, base.scale(scale), None);
   }
 
   /// 本体 Atom を左右の区切り括弧で挟んで包み直す
@@ -223,7 +223,7 @@ impl Measurer<'_> {
     let gap = self.default_font_size * 0.15;
 
     let mut children: Vec<PlacedHItem> = Vec::new();
-    let mut dx = 0.0f32;
+    let mut dx = Length::ZERO;
     if let Some(ch) = left {
       let delim = self.shape_delimiter(ch, body_height, body_depth);
       let dy = body_center - (delim.height - delim.depth) / 2.0;
@@ -237,7 +237,7 @@ impl Measurer<'_> {
     }
     children.push(PlacedHItem {
       item: body,
-      dy: 0.0,
+      dy: Length::ZERO,
       dx,
     });
     dx += body_width + gap;
@@ -256,7 +256,7 @@ impl Measurer<'_> {
 
 #[cfg(test)]
 mod tests {
-  use types::{MathDelimiter, MathEnvKind};
+  use types::{Length, MathDelimiter, MathEnvKind};
 
   use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
 
@@ -346,8 +346,8 @@ mod tests {
   fn column_offset_places_cell_within_column_width() {
     // Arrange — 列幅 10、セル幅 4
     // Act & Assert — 左=0、中央=(10-4)/2=3、右=10-4=6
-    assert!((column_offset(CellAlign::Left, 10.0, 4.0) - 0.0).abs() < f32::EPSILON);
-    assert!((column_offset(CellAlign::Center, 10.0, 4.0) - 3.0).abs() < f32::EPSILON);
-    assert!((column_offset(CellAlign::Right, 10.0, 4.0) - 6.0).abs() < f32::EPSILON);
+    assert_eq!(column_offset(CellAlign::Left, Length::pt(10.0), Length::pt(4.0)), Length::ZERO);
+    assert_eq!(column_offset(CellAlign::Center, Length::pt(10.0), Length::pt(4.0)), Length::pt(3.0));
+    assert_eq!(column_offset(CellAlign::Right, Length::pt(10.0), Length::pt(4.0)), Length::pt(6.0));
   }
 }

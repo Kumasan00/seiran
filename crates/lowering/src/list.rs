@@ -175,7 +175,7 @@ mod tests {
     assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
     assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
     assert_eq!(marker_style.font_kind, FontKind::Serif);
-    assert!((marker_style.font_size - ctx.default_font_size()).abs() < f32::EPSILON);
+    assert_eq!(marker_style.font_size, ctx.default_font_size());
   }
 
   #[test]

@@ -63,7 +63,7 @@ pub use color::Color;
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use heading_level::HeadingLevel;
-pub use length::Length;
+pub use length::{Length, ParseLengthError};
 pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathClass, MathDelimiter, MathEnvKind};
 pub use quote::QuoteKind;

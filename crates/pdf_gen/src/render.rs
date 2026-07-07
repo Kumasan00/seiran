@@ -91,7 +91,7 @@ fn build_destination_index(pages: &[Page], margin_left: f32) -> (HashMap<String,
   let mut heading_dests: Vec<XyzDestination> = Vec::new();
   for (page_index, page) in pages.iter().enumerate() {
     for anchor in &page.anchors {
-      let dest = XyzDestination::new(page_index, Point::from_xy(margin_left + anchor.x, anchor.y));
+      let dest = XyzDestination::new(page_index, Point::from_xy(margin_left + anchor.x.to_pt(), anchor.y.to_pt()));
       match &anchor.mark {
         AnchorMark::Heading { key, label } => {
           heading_dests.push(dest.clone());
@@ -132,8 +132,8 @@ fn add_page_links(
       },
       LinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
     };
-    let rect =
-      Rect::from_xywh(margin_left + link.x, link.y, link.width, link.height).ok_or(PdfGenError::InvalidLinkRect)?;
+    let rect = Rect::from_xywh(margin_left + link.x.to_pt(), link.y.to_pt(), link.width.to_pt(), link.height.to_pt())
+      .ok_or(PdfGenError::InvalidLinkRect)?;
     page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
   }
   return Ok(());
@@ -222,8 +222,8 @@ fn draw_placed_block(
           metrics,
           krilla_fonts,
           &positioned.content,
-          margin_left + positioned.x,
-          baseline_y - positioned.dy,
+          margin_left + positioned.x.to_pt(),
+          (*baseline_y - positioned.dy).to_pt(),
         )?;
       }
     },
@@ -244,7 +244,7 @@ fn draw_placed_block(
       };
       // 表全体の揃えオフセット `x` を左マージンに足し込み、行帯・セルの起点を右へずらす
       for placed_row in rows {
-        draw_table_row(surface, &draw_ctx, placed_row, margin_left + x)?;
+        draw_table_row(surface, &draw_ctx, placed_row, margin_left + x.to_pt())?;
       }
     },
     PlacedBlock::MathBlock {
@@ -254,15 +254,15 @@ fn draw_placed_block(
       numbers,
     } => {
       // 本体 Atom はベースライン基準で確定済み。番号も確定座標で同じ要領で描く
-      draw_box_content(surface, metrics, krilla_fonts, &body.content, margin_left + x, *baseline_y)?;
+      draw_box_content(surface, metrics, krilla_fonts, &body.content, margin_left + x.to_pt(), baseline_y.to_pt())?;
       for number in numbers {
         draw_box_content(
           surface,
           metrics,
           krilla_fonts,
           &number.content.content,
-          margin_left + number.x,
-          number.baseline_y,
+          margin_left + number.x.to_pt(),
+          number.baseline_y.to_pt(),
         )?;
       }
     },
@@ -274,7 +274,7 @@ fn draw_placed_block(
       height,
       target_dpi,
     } => {
-      draw_image(surface, path, margin_left + x, *y, *width, *height, *target_dpi)?;
+      draw_image(surface, path, margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt(), *target_dpi)?;
     },
     PlacedBlock::Rule {
       x,
@@ -283,7 +283,14 @@ fn draw_placed_block(
       height,
       color,
     } => {
-      draw_filled_rect(surface, margin_left + x, *y, *width, *height, color.map(Color::from))?;
+      draw_filled_rect(
+        surface,
+        margin_left + x.to_pt(),
+        y.to_pt(),
+        width.to_pt(),
+        height.to_pt(),
+        color.map(Color::from),
+      )?;
     },
   }
   return Ok(());
@@ -313,18 +320,32 @@ fn draw_box_content(
           ..Fill::default()
         }));
       }
-      surface.draw_glyphs(Point::from_xy(x, baseline_y), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
+      surface.draw_glyphs(
+        Point::from_xy(x, baseline_y),
+        &krilla_glyphs,
+        font.clone(),
+        &run.text,
+        run.font_size.to_pt(),
+        false,
+      );
       if run.color.is_some() {
         surface.set_fill(None);
       }
     },
     HBoxContent::Rule { width, height } => {
       // インライン罫線はベースラインの上に載せる
-      draw_filled_rect(surface, x, baseline_y - height, *width, *height, None)?;
+      draw_filled_rect(surface, x, baseline_y - height.to_pt(), width.to_pt(), height.to_pt(), None)?;
     },
     HBoxContent::Atom(children) => {
       for child in children {
-        draw_box_content(surface, metrics, krilla_fonts, &child.item.content, x + child.dx, baseline_y - child.dy)?;
+        draw_box_content(
+          surface,
+          metrics,
+          krilla_fonts,
+          &child.item.content,
+          x + child.dx.to_pt(),
+          baseline_y - child.dy.to_pt(),
+        )?;
       }
     },
   }
@@ -343,8 +364,8 @@ struct TableDrawContext<'a> {
   krilla_fonts: &'a FontMap<Font>,
   /// 列の定義（揃えの参照用）
   columns: &'a [TableColumn],
-  /// 解決済みの列幅（pt）
-  col_widths: &'a [f32],
+  /// 解決済みの列幅
+  col_widths: &'a [types::Length],
   /// セル内側余白（pt、左右各）
   padding: f32,
   /// 罫線の太さ（pt）
@@ -364,8 +385,8 @@ fn draw_table_row(
   x0: f32,
 ) -> Result<(), PdfGenError> {
   let row = &placed_row.row;
-  let band_top = placed_row.top_y;
-  let table_width: f32 = ctx.col_widths.iter().sum();
+  let band_top = placed_row.top_y.to_pt();
+  let table_width: f32 = ctx.col_widths.iter().copied().sum::<types::Length>().to_pt();
   if row.rule_above {
     draw_filled_rect(surface, x0, band_top, table_width, ctx.rule_thickness, ctx.rule_color)?;
   }
@@ -375,16 +396,18 @@ fn draw_table_row(
     .cells
     .iter()
     .filter_map(|cell| hlist::max_font_size_in_items(&cell.items))
-    .reduce(f32::max)
-    .unwrap_or(placed_row.height);
+    .reduce(types::Length::max)
+    .unwrap_or(placed_row.height)
+    .to_pt();
   let baseline = band_top + max_font;
 
   let mut column_index = 0usize;
   let mut cell_x = x0;
   for cell in &row.cells {
     let span = (cell.span as usize).min(ctx.col_widths.len().saturating_sub(column_index));
-    let cell_width: f32 = ctx.col_widths[column_index..column_index + span].iter().sum();
-    let content_width = hlist::measure_items_width(&cell.items);
+    let cell_width: f32 =
+      ctx.col_widths[column_index..column_index + span].iter().copied().sum::<types::Length>().to_pt();
+    let content_width = hlist::measure_items_width(&cell.items).to_pt();
     let align = ctx.columns.get(column_index).map_or(ColumnAlign::Left, |c| c.align);
     let start_x = match align {
       ColumnAlign::Left => cell_x + ctx.padding,
@@ -414,10 +437,10 @@ fn draw_cell_items(
     match item {
       hlist::HItem::Box(hbox) => {
         draw_box_content(surface, ctx.metrics, ctx.krilla_fonts, &hbox.content, cursor_x, baseline)?;
-        cursor_x += hbox.width;
+        cursor_x += hbox.width.to_pt();
       },
-      hlist::HItem::Kern(value) => cursor_x += value,
-      hlist::HItem::Glue { natural, .. } => cursor_x += natural,
+      hlist::HItem::Kern(value) => cursor_x += value.to_pt(),
+      hlist::HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
       // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
       // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
       // FlushRight（QED）は定理本体専用で表セル内には現れない

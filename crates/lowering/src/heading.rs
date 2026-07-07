@@ -37,7 +37,7 @@ pub(super) fn lower_heading(
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
   let style = TextStyle {
-    font_size: heading_style.font_size.to_pt(),
+    font_size: heading_style.font_size,
     font_kind: heading_style.font_kind,
     color: None,
   };
@@ -134,7 +134,7 @@ mod tests {
       }
     });
     let children = vbox.expect("VBox が出力されるはず");
-    let heading_size = style.heading(HeadingLevel::Section).font_size.to_pt();
+    let heading_size = style.heading(HeadingLevel::Section).font_size;
     let italic = children
       .iter()
       .find_map(|n| match n {
@@ -143,7 +143,7 @@ mod tests {
       })
       .expect("イタリック部分の Text があるはず: {children:?}");
     assert_eq!(italic.font_kind, types::FontKind::SerifItalic);
-    assert!((italic.font_size - heading_size).abs() < f32::EPSILON, "フォントサイズは見出しスタイルを継承する");
+    assert_eq!(italic.font_size, heading_size, "フォントサイズは見出しスタイルを継承する");
   }
 
   #[test]

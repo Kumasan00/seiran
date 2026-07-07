@@ -1,6 +1,6 @@
 //! 行分割の出力（[`Line`] / [`PositionedBox`] / [`LineLink`]）の定義
 
-use types::LinkTarget;
+use types::{Length, LinkTarget};
 
 use crate::hitem::HBoxContent;
 
@@ -13,10 +13,10 @@ use crate::hitem::HBoxContent;
 pub struct Line {
   /// 行内の配置済みボックス（左から順）
   pub boxes: Vec<PositionedBox>,
-  /// ベースラインから上の高さ（pt）
-  pub height: f32,
-  /// ベースラインから下の深さ（pt、正値）
-  pub depth: f32,
+  /// ベースラインから上の高さ
+  pub height: Length,
+  /// ベースラインから下の深さ（正値）
+  pub depth: Length,
   /// 段落最終行・強制改行による行か
   pub is_last: bool,
   /// この行に含まれるクリック可能なリンク領域（機構 B・行頭からの水平範囲）
@@ -33,10 +33,10 @@ pub struct Line {
 pub struct LineLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
-  /// 領域左端の行頭からの水平オフセット（pt）
-  pub x0: f32,
-  /// 領域右端の行頭からの水平オフセット（pt）
-  pub x1: f32,
+  /// 領域左端の行頭からの水平オフセット
+  pub x0: Length,
+  /// 領域右端の行頭からの水平オフセット
+  pub x1: Length,
 }
 
 /// 行内に配置されたボックス
@@ -47,10 +47,10 @@ pub struct LineLink {
 pub struct PositionedBox {
   /// ボックスの内容
   pub content: HBoxContent,
-  /// 行頭からの水平オフセット（pt）
-  pub x: f32,
-  /// ベースラインからの縦オフセット（pt、正で上方向）
-  pub dy: f32,
-  /// 幅（pt）
-  pub width: f32,
+  /// 行頭からの水平オフセット
+  pub x: Length,
+  /// ベースラインからの縦オフセット（正で上方向）
+  pub dy: Length,
+  /// 幅
+  pub width: Length,
 }

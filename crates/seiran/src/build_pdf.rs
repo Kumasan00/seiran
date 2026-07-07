@@ -173,21 +173,21 @@ fn build_pages(
   let metrics = FontMetrics::new(&font_refs)?;
 
   // 本文幅は画像サイズ解決と行分割の双方で使うので先に算出する
-  let text_width = config.pdf.width.to_pt() - config.pdf.margin.left.to_pt() - config.pdf.margin.right.to_pt();
-  let default_font_size = style.text.font_size.to_pt();
+  let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
+  let default_font_size = style.text.font_size;
   let line_height_factor = style.text.line_height_factor;
 
   // 本文の段組み（前付けは常に単段）。1 段あたりの幅を算出し、非正なら早期にエラーにする
   // （config の用紙・余白 × style の [columns] の横断制約はこのステージでしか検証できない）。
   let body_columns = style.columns.count as usize;
-  let column_gap = style.columns.gap.to_pt();
+  let column_gap = style.columns.gap;
   let body_col_width = hlist::column_width(text_width, body_columns, column_gap);
-  if body_col_width <= 0.0 {
+  if !body_col_width.is_positive() {
     return Err(
       BuildPdfError::InvalidColumnWidth {
-        text_width,
+        text_width: text_width.to_pt(),
         num_columns: body_columns,
-        column_gap,
+        column_gap: column_gap.to_pt(),
       }
       .into(),
     );
@@ -216,7 +216,7 @@ fn build_pages(
 
   let stage_start = Instant::now();
   // 本文画像は段幅に合わせて解決する（段抜き＝全幅フロートは将来検討）。
-  let body_blocks = pdf_gen::resolve_images(body_blocks, body_col_width)?;
+  let body_blocks = pdf_gen::resolve_images(body_blocks, body_col_width.to_pt())?;
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
   // ジオメトリは本文（N 段）と前付け（常に 1 段）で分ける。両者は段数・段間以外を共有する。
@@ -268,7 +268,7 @@ fn build_pages(
   let page_numbers = page_number_labels(pages.len(), front_matter_count, body_page_count, &style.page_numbering);
 
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
-  let page_height = config.pdf.height.to_pt();
+  let page_height = config.pdf.height;
   let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_numbers);
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
@@ -324,17 +324,17 @@ fn parse_all_sources(
 fn build_page_geometries(
   config: &read_config::Config,
   style: &read_style::Style,
-  default_font_size: f32,
+  default_font_size: types::Length,
   line_height_factor: f32,
   body_columns: usize,
-  column_gap: f32,
+  column_gap: types::Length,
 ) -> (hlist::PageGeometry, hlist::PageGeometry) {
   let body_geometry = hlist::PageGeometry {
-    margin_top: config.pdf.margin.top.to_pt(),
-    page_limit: config.pdf.height.to_pt() - config.pdf.margin.bottom.to_pt(),
+    margin_top: config.pdf.margin.top,
+    page_limit: config.pdf.height - config.pdf.margin.bottom,
     default_font_size,
     line_height_factor,
-    table_cell_padding: style.table.cell_padding.to_pt(),
+    table_cell_padding: style.table.cell_padding,
     num_columns: body_columns,
     column_gap,
     flush_bottom: style.page.flush_bottom,
@@ -342,7 +342,7 @@ fn build_page_geometries(
   // 前付け（タイトルページ・目次）は下端揃えの対象外。struct-update で本文値を継ぐため明示的に落とす。
   let front_geometry = hlist::PageGeometry {
     num_columns: 1,
-    column_gap: 0.0,
+    column_gap: types::Length::ZERO,
     flush_bottom: false,
     ..body_geometry
   };
@@ -382,8 +382,8 @@ mod tests {
         .into_iter()
         .map(|mark| PlacedAnchor {
           mark,
-          x: 0.0,
-          y: 0.0,
+          x: types::Length::ZERO,
+          y: types::Length::ZERO,
         })
         .collect(),
       links: Vec::new(),

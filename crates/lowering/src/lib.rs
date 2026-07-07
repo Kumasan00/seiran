@@ -29,6 +29,7 @@ use miette::Diagnostic;
 use read_style::Style as ReadStyle;
 use thiserror::Error;
 use tracing::debug;
+use types::Length;
 
 mod figure;
 mod float;
@@ -218,7 +219,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
-  pub fn default_font_size(&self) -> f32 { return self.style.text.font_size.to_pt(); }
+  pub fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）
@@ -722,10 +723,10 @@ mod tests {
     let out = lower_node(&ctx, &DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])).expect("失敗しない");
 
     // Assert — default_font_size と段落 Text の font_size がともに 18pt
-    assert!((ctx.default_font_size() - 18.0).abs() < f32::EPSILON);
+    assert_eq!(ctx.default_font_size(), Length::pt(18.0));
     let LayoutNode::Text(_, text_style) = &out[0] else {
       panic!("先頭は Text であるべき: {out:?}");
     };
-    assert!((text_style.font_size - 18.0).abs() < f32::EPSILON);
+    assert_eq!(text_style.font_size, Length::pt(18.0));
   }
 }

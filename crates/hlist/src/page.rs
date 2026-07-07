@@ -6,7 +6,7 @@
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use types::{AnchorMark, LinkTarget, TableColumn};
+use types::{AnchorMark, Length, LinkTarget, TableColumn};
 
 use crate::{hitem::HBox, line::Line, table_box::TableRowBox};
 
@@ -43,9 +43,9 @@ pub struct PlacedAnchor {
   /// アンカー種別（見出し / ラベル付きブロック）
   pub mark: AnchorMark,
   /// 本文左端からの水平オフセット（pt、通常 0）
-  pub x: f32,
+  pub x: Length,
   /// ページ上端からの距離（pt）
-  pub y: f32,
+  pub y: Length,
 }
 
 /// 確定座標に解決されたクリック可能なリンク領域
@@ -57,13 +57,13 @@ pub struct PlacedLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
   /// 矩形左端の本文左端からの水平オフセット（pt）
-  pub x: f32,
+  pub x: Length,
   /// 矩形上端のページ上端からの距離（pt）
-  pub y: f32,
+  pub y: Length,
   /// 矩形の幅（pt）
-  pub width: f32,
+  pub width: Length,
   /// 矩形の高さ（pt）
-  pub height: f32,
+  pub height: Length,
 }
 
 /// ページ内に配置されたブロック
@@ -74,16 +74,16 @@ pub enum PlacedBlock {
     /// 行の内容
     line: Line,
     /// ベースラインのページ上端からの距離（pt）
-    baseline_y: f32,
+    baseline_y: Length,
   },
   /// 表の断片（このページに描く行の集まり。改ページ後のヘッダ再描画行も含む）
   Table {
     /// 表全体の本文左端からの水平オフセット（pt）。揃え（中央 / 右）で算出済み
-    x: f32,
+    x: Length,
     /// 列の定義（揃えの参照用）
     columns: Vec<TableColumn>,
     /// 解決済みの列幅（pt）。表全体から算出済み
-    col_widths: Vec<f32>,
+    col_widths: Vec<Length>,
     /// このページに描く行（上から順、位置確定済み）
     rows: Vec<PlacedTableRow>,
   },
@@ -92,26 +92,26 @@ pub enum PlacedBlock {
     /// 画像ファイルへのパス
     path: String,
     /// 本文左端からの水平オフセット（pt）
-    x: f32,
+    x: Length,
     /// ページ上端からの距離（pt、画像上端）
-    y: f32,
+    y: Length,
     /// 描画幅（pt）
-    width: f32,
+    width: Length,
     /// 描画高さ（pt）
-    height: f32,
+    height: Length,
     /// ラスタ画像のダウンサンプリング上限 DPI。`None` ならリサイズなし
     target_dpi: Option<u32>,
   },
   /// 罫線（塗りつぶし矩形）
   Rule {
     /// 本文左端からの水平オフセット（pt）
-    x: f32,
+    x: Length,
     /// ページ上端からの距離（pt、矩形上端）
-    y: f32,
+    y: Length,
     /// 幅（pt）
-    width: f32,
+    width: Length,
     /// 高さ（pt）
-    height: f32,
+    height: Length,
     /// 塗り色（RGB）。`None` は黒。`read_style` 非依存のため生の `[u8; 3]` で保持する
     color: Option<[u8; 3]>,
   },
@@ -120,9 +120,9 @@ pub enum PlacedBlock {
     /// 数式本体（閉じた Atom）
     body: HBox,
     /// 本体の本文左端からの水平オフセット（pt、揃えで算出済み）
-    x: f32,
+    x: Length,
     /// 本体ベースラインのページ上端からの距離（pt）
-    baseline_y: f32,
+    baseline_y: Length,
     /// 行番号（位置確定済み）
     numbers: Vec<PlacedMathNumber>,
   },
@@ -136,9 +136,9 @@ pub struct PlacedMathNumber {
   /// 番号ボックス（シェーピング済み）
   pub content: HBox,
   /// 本文左端からの水平オフセット（pt）
-  pub x: f32,
+  pub x: Length,
   /// ベースラインのページ上端からの距離（pt）
-  pub baseline_y: f32,
+  pub baseline_y: Length,
 }
 
 /// 位置確定済みの表の 1 行
@@ -147,7 +147,7 @@ pub struct PlacedTableRow {
   /// 行の内容
   pub row: TableRowBox,
   /// 行帯上端のページ上端からの距離（pt）
-  pub top_y: f32,
+  pub top_y: Length,
   /// 行帯の高さ（pt）
-  pub height: f32,
+  pub height: Length,
 }
