@@ -68,13 +68,13 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 
 ```text
 types （依存なし — 共通型の基盤。Length / HeadingLevel / TableColumn / ColumnAlign / ColumnWidth もここ）
-  ↑ read_config, read_style, document, font, hlist, lowering, layout, parser, pdf_gen, seiran
+  ↑ read_config, read_style, document, font, hlist, lowering, layout, parser, citation, pdf_gen, seiran
 
 read_config （types を使用）
   ↑ font, pdf_gen, seiran
 
 read_style （types を使用）
-  ↑ parser, lowering, pdf_gen, seiran
+  ↑ parser, citation, lowering, pdf_gen, seiran
 
 read_references （workspace クレートに依存しない独立クレート）
   ↑ citation, seiran
@@ -83,7 +83,7 @@ syntax （bumpalo アリーナ上に CST を構築。workspace クレートに�
   ↑ parser
 
 document （types のみに依存。Document IR の共有契約クレート）
-  ↑ parser, lowering, seiran
+  ↑ parser, citation, lowering, seiran
 
 parser （syntax の CST を Document IR（document）に変換。read_style に依存）
   ↑ seiran
