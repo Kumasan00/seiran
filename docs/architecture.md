@@ -20,7 +20,17 @@ clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` 
 
 ## `read_style`
 
-`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（`flush_bottom` 等の組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）はクレート直下のモジュール（`caption` / `heading` / `figure` 等）に置き、トップレベル（`read_style::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。`style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）。`header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）。
+`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）はクレート直下のモジュール（`caption` / `heading` / `figure` 等）に置き、トップレベル（`read_style::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
+
+主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
+
+- **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、スタイル側では指定しない。表示数式の番号体裁は `[math.block].tag_format` / `number_side`（番号 3 系統の **tag**＝式の横に出す。**number**＝`counters.equation.number_format`、**ref**＝`counters.equation.ref_format` とは別物）
+- **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
+- **カウンタ（`CounterStyle`）**: `[counters.<name>]` の `<name>` は固定 9 種（`part` / `chapter` / `section` / `subsection` / `paragraph` / `subparagraph` / `table` / `figure` / `equation`）のみ。各エントリは `display_name` / `number_format` / `number_style` / `ref_format` / `resets` を持ち、未知のカウンタ名は `deny_unknown_fields` で拒否
+- **数式（`MathStyle`）**: `[math.script]`（`MathScriptStyle`＝上付き / 下付きの倍率・シフト等。インライン数式 `$...$` にも効く。将来 OpenType MATH テーブルから自動取得する想定で現状は手動指定）と `[math.block]`（`MathBlockStyle`＝表示数式ブロックのレイアウト。`tag_format` / `number_side` / `alignment` / `row_gap` / `column_gap` / `top_margin` / `bottom_margin`。全表示数式環境 equation / align / gather / split / multiline / cases / matrix が共有）の 2 副テーブルを束ねる。旧 `[equation]` テーブルは廃止（`[math.block]` に統合）
+- **ページ組版（`PageStyle`）**: `[page]` に組版挙動フラグを集約（段組みは別テーブル `[columns]`）。`flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズム（伸縮アキへの比例配分・対象外リージョン）は `hlist` 節を参照
+- **文献（`ReferenceStyle`）**: `style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）
+- **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
 ## `read_references`
 
