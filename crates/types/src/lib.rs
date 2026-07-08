@@ -15,6 +15,29 @@
 //! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
 //! - [`align`] - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
 //! - [`text_alignment`] - 本文段落の行末処理 [`TextAlignment`]（両端揃え / 左揃え）
+//! - [`theorem`] - ビルトイン定理クラス [`TheoremClass`]（固定 10 種）
+//!
+//! ## 配置基準 — どんな型を置き、どんな型を置かないか
+//!
+//! **判定テスト**: 「この型の共有範囲は、types 以外に共通の下位クレートを持つか？」
+//!
+//! - 持たない（`document` に依存できないクレート — `read_config` / `read_style` / `font` / `hlist` —
+//!   と、`document` 系 — `parser` / `citation` / `lowering` — の両方が使い、types が唯一の合流点になる）
+//!   → **types に置く**
+//! - `document` 系だけが使う → **`document` に置く**（例: `QuoteKind`）
+//! - 1 クレートだけが使う → **そのクレートに置く**
+//! - 補助判定: `LayoutNode` に乗って lowering を生き延びる型は types に置く
+//!   （`layout` は意図的に `document` 非依存のため。例: `MathEnvKind`）
+//!
+//! 置くのは**語彙型**まで — 小さな `Copy` 値型・enum と、その正準変換
+//! （`as_str` / `from_name` / serde / `Display`）・純粋演算（[`Length`] の算術、[`Align::offset`]）。
+//! IR ノード（`document`）・設定スキーマ（`read_style` / `read_config`）・組版データ構造（`hlist`）・
+//! フォントや I/O など挙動を持つ処理は置かない。
+//!
+//! 例外: [`MathClass`] は現在 `parser` のみが使う先行配置
+//! （数式スペーシング実装時に `MathNode` 経由で `layout` まで届く予定のため）。
+//!
+//! 詳細な導出と各型の判定例は `docs/architecture.md` の types 節を参照。
 //!
 //! ## `FontMap<T>`
 //!
@@ -53,7 +76,6 @@ pub mod heading_level;
 pub mod length;
 pub mod link;
 pub mod math;
-pub mod quote;
 pub mod table;
 pub mod text_alignment;
 pub mod theorem;
@@ -66,7 +88,6 @@ pub use heading_level::HeadingLevel;
 pub use length::{Length, ParseLengthError};
 pub use link::{AnchorMark, LinkTarget};
 pub use math::{MathClass, MathDelimiter, MathEnvKind};
-pub use quote::QuoteKind;
 pub use table::{ColumnAlign, ColumnWidth, TableColumn};
 pub use text_alignment::TextAlignment;
 pub use theorem::TheoremClass;

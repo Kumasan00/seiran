@@ -1,9 +1,11 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
 use miette::SourceSpan;
-use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, QuoteKind, TheoremClass};
+use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, TheoremClass};
 
-use crate::{caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, table::TableRow};
+use crate::{
+  caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, quote::QuoteKind, table::TableRow,
+};
 
 // =============================================================================
 // ドキュメント全体

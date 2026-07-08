@@ -5,17 +5,16 @@
 //! ブロック内段落の先頭行を字下げし、`quote` は字下げしない（字下げ量や左右インデント・上下
 //! マージンといったスタイルは `read_style::QuoteStyle` 側が保持する）。
 //!
-//! `document::DocNode::Quote` と `lowering` の双方がこの単一の enum を共有する
-//! （`TheoremClass` / `HeadingLevel` と同じ配置方針）。
-
-use serde::{Deserialize, Serialize};
+//! `parser` が環境名から解決して [`DocNode::Quote`](crate::DocNode::Quote) に載せ、
+//! `lowering` が消費する。`LayoutNode` には乗らず、`read_style` もこの enum を使わない
+//! （`QuoteStyle` は種別ごとのフィールドで持つ）ため、`types` ではなく Document IR の
+//! 契約クレートである本クレートに置く。
 
 /// ビルトイン引用環境の種別（固定 2 種）。
 ///
 /// 環境名 `\begin{<name>}` として使われ、`<name>` は `snake_case` の [`QuoteKind::as_str`]
 /// と一致する。`quote` は段落先頭字下げなし、`quotation` は段落先頭字下げあり。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QuoteKind {
   /// 引用（段落先頭字下げなし）
   Quote,

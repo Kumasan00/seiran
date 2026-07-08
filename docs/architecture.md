@@ -10,6 +10,27 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 `FontType`, `FontKind`, `FontMap`, `Length`, `HeadingLevel`, `TableColumn` など全クレート共通型。
 
+**配置基準** — workspace には共有契約クレートが 3 つある: `types`（基盤）/ `document`（parser ↔ lowering の
+IR 契約）/ `hlist`（レイアウトのコア型）。`read_config` / `read_style` / `font` / `hlist` / `syntax` は
+`document` に依存しない設計なので、型の置き場所は共有範囲で決まる。
+判定テストは「**この型の共有範囲は、types 以外に共通の下位クレートを持つか？**」
+
+- 持たない（`document` に依存できないクレートと `document` 系の両方が使い、types が唯一の合流点）→ types。
+  例: `TheoremClass` / `HeadingLevel`（`read_style` + `document`）、`TableColumn` 系（`document` + `hlist`）、
+  `AnchorMark` / `LinkTarget`（`lowering` + `hlist`）、`FontType` / `FontMap`（`read_config` + `font` + `hlist`）
+- `document` 系（`parser` / `citation` / `lowering`）だけが使う → `document`。例: `QuoteKind`
+- 1 クレートだけが使う → そのクレート
+- 補助判定: `LayoutNode` に乗って lowering を生き延びる型は types に置く。`layout` は意図的に
+  `document` 非依存（LayoutNode だけを見る）なので、こうした型が `document` にあると `layout` に
+  `document` 依存が生える。例: `MathEnvKind` / `MathDelimiter`
+
+置くのは**語彙型**まで — 小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
+`Display`）・純粋演算（`Length` の算術、`Align::offset`）。IR ノード（`document`）・設定スキーマ
+（`read_style` / `read_config`）・組版データ構造（`hlist`）・フォントや I/O など挙動を持つ処理は置かない。
+
+例外: `MathClass` は現在 `parser` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
+`MathNode` 経由で `layout` まで届く予定で、最終的な合流点が types になるため留め置いている。
+
 ## `cli`
 
 clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）。
@@ -42,7 +63,7 @@ clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` 
 
 ## `document`
 
-Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell`）。`parser`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `table` サブモジュール）。
+Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`）。`parser`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `quote` / `table` サブモジュール）。
 
 ## `parser`
 
