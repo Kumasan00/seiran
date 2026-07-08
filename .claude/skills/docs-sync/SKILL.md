@@ -17,7 +17,7 @@ description: >-
 
 | ファイル | 持つもの |
 | --- | --- |
-| `CLAUDE.md` | 言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・style.toml 主要スキーマ・コーディング規約 |
+| `CLAUDE.md` | 言語設計原則の要約表（G1〜G3 / P1〜P10）・データフロー図・クレート依存グラフ・責務 1 行要約表・コマンド一覧・style.toml 主要スキーマ・コーディング規約（エラーハンドリングは要約のみ、詳細は `error-handling` skill） |
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/architecture.md` | クレート別の詳細（サブモジュール構成・内部設計・データ構造）。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
@@ -35,6 +35,7 @@ diff に含まれる変更ごとに、該当行の箇所をすべて確認する
 | config.toml / style.toml のスキーマ変更 | CLAUDE.md「設定ファイル」節（役割分担表・主要スキーマ）、architecture.md の read_config / read_style 節、README の設定例 |
 | CLI サブコマンド・フラグの変更 | CLAUDE.md「コマンド」節、README |
 | モジュール分割・再配置リファクタ | architecture.md の該当クレート節（サブモジュール構成） |
+| エラー型・バリデーションのパターン変更（診断属性・集約方式等） | `error-handling` skill、CLAUDE.md の要約箇条書き |
 | 公開 API・主要型の改名 | architecture.md + CLAUDE.md 責務表に型名が載っていれば更新 |
 | 新コマンド・新環境・新オプションの設計判断（原則の適用・境界事例・原則自体の改訂） | docs/language-design.md の判断事例集に追記。原則を改訂した場合は原則本文 + CLAUDE.md の要約表も更新 |
 
