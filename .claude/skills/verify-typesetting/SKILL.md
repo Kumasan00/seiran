@@ -16,8 +16,9 @@ description: >-
 
 ## 前提（初回のみ）
 
-golden テストの入力フォント・CSL は `tools/fetch-test-assets.sh` が SHA-256 検証付きで
-`vendor/` へ取得する（gitignore 対象・コミットしない）。`vendor/fonts` が無い状態で
+golden テストの入力はコミット済み fixture（`crates/seiran/tests/config/`）と、
+`tools/fetch-test-assets.sh` が SHA-256 検証付きで `vendor/` へ取得するピン留め資産
+（フォント・CSL。gitignore 対象・コミットしない）。`vendor/fonts` が無い状態で
 テストを走らせると assert で案内が出る。ユーザローカルの `config/` / `fonts/` は
 テストから参照されない。
 

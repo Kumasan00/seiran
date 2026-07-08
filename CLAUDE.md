@@ -188,8 +188,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
 - AAA パターン（Arrange / Act / Assert）で記述する
-- **golden テスト**（`crates/seiran/src/build_pdf/golden.rs`）: 入力はコミット済み fixture（`crates/seiran/tests/config/`）+ `tools/fetch-test-assets.sh` が `vendor/` へ取得するピン留め資産（フォント・CSL。SHA-256 検証、gitignore 対象・コミットしない）。初回はスクリプトを 1 度実行する。golden 再生成は `UPDATE_GOLDEN=1 cargo test -p seiran`。ユーザローカルの `config/` / `fonts/` はテストから参照しない
-- **組版変更の検証**: レイアウトダンプ golden と PDF バイト比較の使い分け・再生成の手順・新機能へのテスト追加は `verify-typesetting` skill を参照する
+- **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran/src/build_pdf/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
 
 ## 設定ファイル
 
