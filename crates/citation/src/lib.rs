@@ -656,7 +656,7 @@ mod tests {
     assert!(
       matches!(&nodes[pos + 1], DocNode::Paragraph(_)),
       "アンカーの直後は書誌段落のはず: {:?}",
-      &nodes[pos + 1]
+      nodes[pos + 1]
     );
   }
 
