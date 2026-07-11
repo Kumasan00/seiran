@@ -41,7 +41,7 @@ use crate::LoweringError;
 
 mod format;
 
-use format::{expand_placeholders, expand_ref_format, parse_counter_name};
+use format::{expand_placeholders, expand_ref_format};
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -193,7 +193,7 @@ impl CounterRegistry {
       let target = if name == "n" {
         Some(self_name)
       } else {
-        parse_counter_name(name)
+        CounterName::from_name(name)
       };
       return target.map_or_else(String::new, |t| self.render_counter_value(t));
     });
@@ -209,7 +209,7 @@ impl CounterRegistry {
       if name == "n" {
         return self_value.to_string();
       }
-      return parse_counter_name(name).map_or_else(String::new, |t| self.render_counter_value(t));
+      return CounterName::from_name(name).map_or_else(String::new, |t| self.render_counter_value(t));
     });
   }
 

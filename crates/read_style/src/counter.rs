@@ -269,6 +269,13 @@ impl CounterName {
       Self::Equation => "equation",
     };
   }
+
+  /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
+  ///
+  /// 固定 9 種の範囲内の名前のみを認識し、該当しない文字列は `None` を返す。
+  /// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
+  #[must_use]
+  pub fn from_name(name: &str) -> Option<Self> { return Self::ALL.into_iter().find(|c| c.as_str() == name); }
 }
 
 #[cfg(test)]
@@ -430,5 +437,18 @@ resets = [\"example\"]
     let counters = Counters::default();
     assert!(std::ptr::eq(counters.get(CounterName::Chapter), &raw const counters.chapter));
     assert!(std::ptr::eq(counters.get(CounterName::Table), &raw const counters.table));
+  }
+
+  #[test]
+  fn from_name_roundtrips_as_str_for_all() {
+    // Arrange / Act / Assert — from_name と as_str が往復する
+    for counter in CounterName::ALL {
+      let name_str = counter.as_str();
+      let recovered = CounterName::from_name(name_str);
+      assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
+    }
+
+    // Assert — 未知の名前は None を返す
+    assert_eq!(CounterName::from_name("foo"), None);
   }
 }

@@ -1,26 +1,5 @@
 //! カウンタ・定理・`ref_format` テンプレートのプレースホルダ展開（純粋関数）
 
-use read_style::CounterName;
-
-/// `snake_case` のカウンタ名文字列を [`CounterName`] に解決する
-///
-/// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
-/// 9 種以外の文字列は `None` を返す。
-pub(super) fn parse_counter_name(s: &str) -> Option<CounterName> {
-  return match s {
-    "part" => Some(CounterName::Part),
-    "chapter" => Some(CounterName::Chapter),
-    "section" => Some(CounterName::Section),
-    "subsection" => Some(CounterName::Subsection),
-    "paragraph" => Some(CounterName::Paragraph),
-    "subparagraph" => Some(CounterName::Subparagraph),
-    "figure" => Some(CounterName::Figure),
-    "equation" => Some(CounterName::Equation),
-    "table" => Some(CounterName::Table),
-    _ => None,
-  };
-}
-
 /// `ref_format` テンプレートを適用して `\ref` の表示文字列を作る
 ///
 /// 認識するプレースホルダは `{number}`（裸の番号）と `{display_name}`（種別名）のみ。
