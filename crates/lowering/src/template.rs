@@ -7,7 +7,7 @@
 use document::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
-use crate::layout_node::{LayoutNode, TextStyle};
+use crate::layout_node::{LayoutNode, TextStyle, merge_adjacent_text};
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
 ///
@@ -77,20 +77,6 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
     return;
   }
   nodes.push(LayoutNode::Text(std::mem::take(literal), style));
-}
-
-/// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
-fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
-  let mut out: Vec<LayoutNode> = Vec::with_capacity(nodes.len());
-  for node in nodes {
-    match (out.last_mut(), node) {
-      (Some(LayoutNode::Text(prev, prev_style)), LayoutNode::Text(cur, cur_style)) if *prev_style == cur_style => {
-        prev.push_str(&cur);
-      },
-      (_, node) => out.push(node),
-    }
-  }
-  return out;
 }
 
 #[cfg(test)]

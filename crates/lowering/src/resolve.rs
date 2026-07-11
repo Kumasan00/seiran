@@ -10,7 +10,7 @@ use types::LinkTarget;
 use crate::{
   LoweringError,
   counter::CounterRegistry,
-  layout_node::{LayoutNode, TableLayout},
+  layout_node::{LayoutNode, TableLayout, merge_adjacent_text_at},
 };
 
 /// `Vec<LayoutNode>` を再帰的に走査して `LayoutNode::Ref` を `CounterRegistry` で解決する
@@ -29,36 +29,14 @@ use crate::{
 ///
 /// 未定義ラベルが見つかった場合に [`LoweringError::UnresolvedReference`] を返します。
 pub(crate) fn resolve_refs(nodes: &mut Vec<LayoutNode>, registry: &CounterRegistry) -> Result<(), LoweringError> {
-  let mut resolved_as_text = vec![false; nodes.len()];
-  for (node, was_resolved) in nodes.iter_mut().zip(resolved_as_text.iter_mut()) {
-    *was_resolved = resolve_node(node, registry)?;
-  }
-  merge_resolved_text(nodes, &resolved_as_text);
-  return Ok(());
-}
-
-/// `resolved_as_text[i]` が立っている（`{of}` 解決で生まれた）箇所の前後だけ、隣接する同一スタイルの
-/// `Text` を 1 つに結合する
-fn merge_resolved_text(nodes: &mut Vec<LayoutNode>, resolved_as_text: &[bool]) {
-  let mut flags = resolved_as_text.to_vec();
-  let mut i = 0;
-  while i + 1 < nodes.len() {
-    let should_merge = (flags[i] || flags[i + 1])
-      && matches!((&nodes[i], &nodes[i + 1]), (LayoutNode::Text(_, s1), LayoutNode::Text(_, s2)) if s1 == s2);
-    if should_merge {
-      let LayoutNode::Text(next_text, _) = nodes.remove(i + 1) else {
-        unreachable!("直前の match で Text であることを確認済み");
-      };
-      let merged_flag = flags.remove(i + 1);
-      flags[i] = flags[i] || merged_flag;
-      let LayoutNode::Text(text, _) = &mut nodes[i] else {
-        unreachable!("直前の match で Text であることを確認済み");
-      };
-      text.push_str(&next_text);
-    } else {
-      i += 1;
+  let mut resolved_positions: Vec<usize> = Vec::new();
+  for (i, node) in nodes.iter_mut().enumerate() {
+    if resolve_node(node, registry)? {
+      resolved_positions.push(i);
     }
   }
+  merge_adjacent_text_at(nodes, &resolved_positions);
+  return Ok(());
 }
 
 /// 単一ノードを解決する。戻り値は「`{of}` 解決で `Text` に置き換わったか」（マージ判定に使う）
