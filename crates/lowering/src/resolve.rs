@@ -103,6 +103,13 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
   return Ok(false);
 }
 
+/// テーブルの各セルの内容を再帰的に走査して `\ref` を解決する（[`resolve_refs`] のテーブル専用エントリ）
+///
+/// `table.head` と `table.rows` の全セルの `content` に対して [`resolve_refs`] を適用する。
+///
+/// # Errors
+///
+/// 未定義ラベルが見つかった場合に [`LoweringError::UnresolvedReference`] を返します。
 fn resolve_table(table: &mut TableLayout, registry: &CounterRegistry) -> Result<(), LoweringError> {
   for row in table.head.iter_mut().chain(table.rows.iter_mut()) {
     for cell in &mut row.cells {

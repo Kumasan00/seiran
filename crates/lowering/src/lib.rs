@@ -454,13 +454,15 @@ fn lower_node_indexed(
       ];
       // ラベル付き行（`equation` の `[label=...]`、`align` / `gather` の行末 `\label{...}`）の `\ref`
       // 到達先アンカーを先頭に付ける。複数行がラベルを持つ場合も、いずれもブロック先頭座標に解決される。
-      for row in rows {
-        if let Some(label) = &row.label {
-          nodes = with_label_anchor(Some(label), nodes);
-        }
+      // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する。
+      let mut anchor_labels: Vec<&str> = Vec::new();
+      if let Some(env_label) = label.as_deref() {
+        anchor_labels.push(env_label);
       }
-      // 環境単位ラベル（`split` / `multiline` の `[label=...]`）も同様にブロック先頭へ解決する
-      nodes = with_label_anchor(label.as_deref(), nodes);
+      // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで
+      // 再現するため。`with_label_anchors` の doc comment も参照）
+      anchor_labels.extend(rows.iter().rev().filter_map(|row| row.label.as_deref()));
+      nodes = with_label_anchors(&anchor_labels, nodes);
       return Ok(nodes);
     },
     DocNode::Figure {
@@ -512,6 +514,20 @@ fn with_label_anchor(label: Option<&str>, nodes: Vec<LayoutNode>) -> Vec<LayoutN
   };
   let mut result = Vec::with_capacity(nodes.len() + 1);
   result.push(LayoutNode::Anchor(types::AnchorMark::Label(label.to_string())));
+  result.extend(nodes);
+  return result;
+}
+
+/// 複数のラベルを先頭からこの順でアンカーとして 1 回の構築でまとめて付与する
+///
+/// `labels` が空なら `nodes` をそのまま返す。`labels[0]` が最終的な先頭アンカーになる
+/// （[`with_label_anchor`] を繰り返し呼ぶより 1 回の Vec 構築で済む O(k+n) 版）。
+fn with_label_anchors(labels: &[&str], nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
+  if labels.is_empty() {
+    return nodes;
+  }
+  let mut result = Vec::with_capacity(nodes.len() + labels.len());
+  result.extend(labels.iter().map(|label| LayoutNode::Anchor(types::AnchorMark::Label((*label).to_string()))));
   result.extend(nodes);
   return result;
 }

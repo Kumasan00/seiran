@@ -59,15 +59,6 @@ pub(crate) struct CounterRegistry {
 }
 
 impl CounterRegistry {
-  /// seiran 既定のカウンタセットでレジストリを構築する
-  ///
-  /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
-  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
-  /// figure / equation / table）。テスト用ショートカット。
-  #[must_use]
-  #[allow(dead_code)] // テスト専用ヘルパ
-  pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
-
   /// `read_style::Style` からレジストリを構築する
   ///
   /// カウンタ定義（9 種）に加え、定理クラス定義（`style.theorems`）も取り込む。
@@ -77,22 +68,6 @@ impl CounterRegistry {
       defs: style.counters.clone(),
       values: HashMap::new(),
       theorems: style.theorems.clone(),
-      theorem_values: HashMap::new(),
-      labels: HashMap::new(),
-    };
-  }
-
-  /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
-  ///
-  /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
-  /// [`CounterRegistry::from_style`] を使うこと。
-  #[must_use]
-  #[allow(dead_code)] // 定理カウンタ導入後は from_style が直接構築するため、本関数はテスト専用ヘルパ
-  pub(crate) fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      defs: counters.clone(),
-      values: HashMap::new(),
-      theorems: Theorems::default(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
     };
@@ -306,6 +281,32 @@ impl CounterRegistry {
       HeadingLevel::Subsection => CounterName::Subsection,
       HeadingLevel::Paragraph => CounterName::Paragraph,
       HeadingLevel::Subparagraph => CounterName::Subparagraph,
+    };
+  }
+}
+
+#[cfg(test)]
+impl CounterRegistry {
+  /// seiran 既定のカウンタセットでレジストリを構築する
+  ///
+  /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
+  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
+  /// figure / equation / table）。テスト用ショートカット。
+  #[must_use]
+  pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
+
+  /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
+  ///
+  /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
+  /// [`CounterRegistry::from_style`] を使うこと。
+  #[must_use]
+  pub(crate) fn from_counters(counters: &Counters) -> Self {
+    return Self {
+      defs: counters.clone(),
+      values: HashMap::new(),
+      theorems: Theorems::default(),
+      theorem_values: HashMap::new(),
+      labels: HashMap::new(),
     };
   }
 }
