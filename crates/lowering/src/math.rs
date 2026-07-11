@@ -29,13 +29,14 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
 /// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower する。採番には 2 つの粒度があり、
 /// `kind` に応じてどちらか一方だけを使う（`document::DocNode::MathBlock` のドキュメント参照）:
 /// **行ごと採番**（`equation` / `align` / `gather`）は `row.numbered` の行を、**環境全体に 1 つ採番**
-/// （`split` / `multiline`）は `env_numbered && !rows.is_empty()` のとき環境全体を、それぞれ
-/// [`CounterName::Equation`] で発番する。発番した番号は `MathBlockStyle::tag_format` の `{number}` を
-/// 置換した文字列を `FontKind::Serif`（数字は立体）の番号ボックスに包む。`cases` / `matrix` は
-/// `kind` がどちらの粒度にも一致しないため常に非採番。列整列・行積み・区切り括弧の配置は `layout` 段が
-/// `kind` に応じて確定し、本体の中央寄せ（`align`）と番号の端寄せ（`numbers_on_right`）は
-/// `break_pages` 段が本文幅を使って決める。上下マージンは呼び出し側（[`crate`] のディスパッチ）が
-/// `Vkern` で前後に出す。
+/// （`split` / `multiline`）は `env_numbered` が `true` のとき環境全体を、それぞれ
+/// [`CounterName::Equation`] で発番する。`env_numbered` は parser（`assign_numbering`）が既に
+/// `numbered && !grid.is_empty()` を保証しているため、ここで条件を重複検査する必要はない。
+/// 発番した番号は `MathBlockStyle::tag_format` の `{number}` を置換した文字列を
+/// `FontKind::Serif`（数字は立体）の番号ボックスに包む。`cases` / `matrix` は非採番。
+/// 列整列・行積み・区切り括弧の配置は `layout` 段が `kind` に応じて確定し、本体の中央寄せ（`align`）
+/// と番号の端寄せ（`numbers_on_right`）は `break_pages` 段が本文幅を使って決める。
+/// 上下マージンは呼び出し側（[`crate`] のディスパッチ）が `Vkern` で前後に出す。
 ///
 /// # Errors
 ///
@@ -65,7 +66,7 @@ pub(super) fn lower_math_block(
     layout_rows.push(MathBlockRow { cells, number });
   }
 
-  let env_number = if is_single_env_kind(kind) && env_numbered && !rows.is_empty() {
+  let env_number = if env_numbered {
     let n = registry.increment_with_label(CounterName::Equation, env_label, span)?;
     Some(number_box(&block.tag_format, &n, font_size))
   } else {
@@ -82,9 +83,6 @@ pub(super) fn lower_math_block(
     column_gap: block.column_gap,
   });
 }
-
-/// 環境全体に 1 つだけ採番する種別（`split` / `multiline`）かどうかを返す
-fn is_single_env_kind(kind: MathEnvKind) -> bool { return matches!(kind, MathEnvKind::Split | MathEnvKind::Multiline); }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
 ///
