@@ -60,7 +60,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}引用本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -81,7 +81,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quotation}引用本文\end{quotation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -99,7 +99,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{quote}第一段落\n\n第二段落\\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -118,7 +118,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}{余分}本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -133,7 +133,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}[foo=1]本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

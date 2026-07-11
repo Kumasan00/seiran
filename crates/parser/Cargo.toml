@@ -13,7 +13,6 @@ document.workspace = true
 garde.workspace = true
 miette.workspace = true
 phf.workspace = true
-read_style.workspace = true
 serde.workspace = true
 syntax.workspace = true
 thiserror.workspace = true

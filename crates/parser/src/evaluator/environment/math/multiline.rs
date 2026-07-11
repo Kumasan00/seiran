@@ -45,7 +45,6 @@ pub(crate) fn multiline(view: &EnvironmentView, evaluator: &mut Evaluator) -> Re
 mod tests {
   use bumpalo::Bump;
   use document::MathEnvKind;
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -54,44 +53,37 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  /// equation カウンタの `format` を `"{n}"` に縮約した Style
-  fn style_with_plain_equation_format() -> Style {
-    let mut counters = Counters::default();
-    counters.equation.number_format = "{n}".to_string();
-    return Style {
-      counters,
-      ..Default::default()
-    };
-  }
-
-  fn block_of(result: &[DocNode]) -> (&[document::MathRow], Option<&str>) {
+  fn block_of(result: &[DocNode]) -> (&[document::MathRow], bool) {
     let DocNode::MathBlock {
-      kind, rows, number, ..
+      kind,
+      rows,
+      numbered,
+      ..
     } = &result[0]
     else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Multiline, "multiline は MathEnvKind::Multiline");
-    return (rows, number.as_deref());
+    return (rows, *numbered);
   }
 
   #[test]
   fn multiline_splits_rows_single_cell_and_numbers_whole_env_once() {
-    // Arrange — 3 行・各 1 セルの multiline。番号は環境全体に 1 つ
+    // Arrange — 3 行・各 1 セルの multiline。採番は環境全体に 1 つ
     let arena = Bump::new();
     let source = r"\begin{multiline}a + b \\ + c + d \\ + e\end{multiline}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 3 行・各 1 セル・行は無採番・環境全体の番号 "1"
-    let (rows, env_number) = block_of(&result);
+    // Assert — 3 行・各 1 セル・行は無採番・環境全体が採番対象
+    let (rows, numbered) = block_of(&result);
     assert_eq!(rows.len(), 3, "3 行: {rows:?}");
     assert!(rows.iter().all(|r| r.cells.len() == 1), "各行 1 セル: {rows:?}");
-    assert!(rows.iter().all(|r| r.number.is_none()), "行は無採番: {rows:?}");
-    assert_eq!(env_number, Some("1"));
+    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
+    assert!(numbered);
   }
 
   #[test]
@@ -100,7 +92,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{multiline}a & b\end{multiline}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -111,37 +103,40 @@ mod tests {
 
   #[test]
   fn multiline_numbered_false_suppresses_numbering() {
-    // Arrange — `[numbered=false]` で環境全体の番号も出ない
+    // Arrange — `[numbered=false]` で環境全体が無採番になる
     let arena = Bump::new();
     let source = r"\begin{multiline}[numbered=false]a + b \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    let (_, env_number) = block_of(&result);
-    assert_eq!(env_number, None, "無採番のはず");
+    let (_, numbered) = block_of(&result);
+    assert!(!numbered, "無採番のはず");
   }
 
   #[test]
   fn multiline_with_label_captures_block_label() {
-    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体に番号が付く
+    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体が採番対象になる
     let arena = Bump::new();
     let source = r"\begin{multiline}[label=eq:m]a + b \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — MathBlock.label と env number が両方付く
-    let DocNode::MathBlock { number, label, .. } = &result[0] else {
+    // Assert — MathBlock.label と numbered が両方付く
+    let DocNode::MathBlock {
+      numbered, label, ..
+    } = &result[0]
+    else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(label.as_deref(), Some("eq:m"), "環境単位ラベルが付く");
-    assert_eq!(number.as_deref(), Some("1"), "環境全体に 1 つの番号");
+    assert!(*numbered, "環境全体は採番対象");
   }
 
   #[test]
@@ -150,7 +145,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{multiline}a + b \label{eq:m} \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

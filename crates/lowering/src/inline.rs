@@ -62,25 +62,18 @@ pub(super) fn lower_inline(
       // 通常は同関数がマーカーを除去するためここには到達しないが、防御的に空を返す。
       return Ok(Vec::new());
     },
-    InlineNode::Ref {
-      label,
-      number,
-      span,
-    } => {
-      // 評価器の pass2 で参照解決が済んでいれば number は Some。未解決のまま
-      // lowering に到達した場合は `LoweringError::UnresolvedReference` で報告する。
-      let Some(resolved) = number.clone() else {
-        return Err(LoweringError::UnresolvedReference {
-          label: label.clone(),
-          span: *span,
-        });
-      };
-      // 番号テキストを内部リンク（機構 B）で囲み、参照先アンカーへジャンプできるようにする。
-      // 表示色はハイパーリンクの `link_color`（既定青、明示 `\color` があればそちらを優先）。
+    InlineNode::Ref { label, span } => {
+      // ここでは解決せず LayoutNode::Ref プレースホルダを発行する。前方参照（本文より後ろで
+      // 定義されるラベルを指す）を許すため、解決は pass1 完了後の pass2（resolve::resolve_refs）
+      // に委ねる（未定義ラベルはそこで `LoweringError::UnresolvedReference` になる）。
+      // 表示色はハイパーリンクの `link_color`（既定青、明示 `\color` があればそちらを優先）を
+      // 発行時点で確定させておく（pass2 はプレースホルダの `style` をそのまま使う）。
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
-      return Ok(vec![LayoutNode::Link {
-        target: LinkTarget::Internal(label.clone()),
-        children: vec![LayoutNode::Text(resolved, style)],
+      return Ok(vec![LayoutNode::Ref {
+        label: label.clone(),
+        span: *span,
+        style,
+        as_link: true,
       }]);
     },
     InlineNode::Link { url, children } => {
@@ -227,26 +220,35 @@ mod tests {
   }
 
   #[test]
-  fn lower_resolved_ref_wraps_number_in_internal_link() {
-    // Arrange — 解決済み Ref は番号テキストを内部リンク（Internal(label)）で囲む
+  fn lower_ref_emits_placeholder_with_label_and_span() {
+    // Arrange — Ref は即時解決せず LayoutNode::Ref プレースホルダを発行する
+    // （解決は pass2 = resolve::resolve_refs が担う）
     let style = read_style::Style::default();
     let ctx = LoweringContext::new(&style);
+    let span = miette::SourceSpan::from((3_usize, 4_usize));
     let inline = InlineNode::Ref {
       label: "sec:intro".to_string(),
-      number: Some("1.2".to_string()),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span,
     };
     let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, parent).expect("失敗しない");
 
-    // Assert — Link { Internal("sec:intro"), [Text("1.2")] }
-    let LayoutNode::Link { target, children } = &nodes[0] else {
-      panic!("Link が期待されます: {nodes:?}");
+    // Assert — Ref { label: "sec:intro", span, style: parent, as_link: true }
+    let LayoutNode::Ref {
+      label,
+      span: got_span,
+      style,
+      as_link,
+    } = &nodes[0]
+    else {
+      panic!("Ref が期待されます: {nodes:?}");
     };
-    assert_eq!(*target, LinkTarget::Internal("sec:intro".to_string()));
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "1.2"));
+    assert_eq!(label, "sec:intro");
+    assert_eq!(*got_span, span);
+    assert_eq!(*style, parent);
+    assert!(*as_link, "\\ref はリンク領域として発行されるはず");
   }
 
   #[test]
@@ -273,28 +275,28 @@ mod tests {
 
   #[test]
   fn lower_ref_applies_link_color() {
-    // Arrange — style で link_color を指定すると \ref の番号テキストに乗る
+    // Arrange — style で link_color を指定すると Ref プレースホルダの style に乗る
+    // （pass2 が解決後の Text へそのまま引き継ぐ）
     let blue = types::Color::new(0x00, 0x00, 0xff);
     let mut style = read_style::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "sec:intro".to_string(),
-      number: Some("1.2".to_string()),
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
 
-    // Assert — リンク子の Text が link_color を持つ
-    let LayoutNode::Link { children, .. } = &nodes[0] else {
-      panic!("Link が期待されます: {nodes:?}");
+    // Assert
+    let LayoutNode::Ref {
+      style: ref_style, ..
+    } = &nodes[0]
+    else {
+      panic!("Ref が期待されます: {nodes:?}");
     };
-    let LayoutNode::Text(_, text_style) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
-    };
-    assert_eq!(text_style.color, Some(blue));
+    assert_eq!(ref_style.color, Some(blue));
   }
 
   #[test]
@@ -330,21 +332,20 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "a".to_string(),
-      number: Some("1".to_string()),
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
 
     // Assert — 色は None（黒継承）
-    let LayoutNode::Link { children, .. } = &nodes[0] else {
-      panic!("Link が期待されます: {nodes:?}");
+    let LayoutNode::Ref {
+      style: ref_style, ..
+    } = &nodes[0]
+    else {
+      panic!("Ref が期待されます: {nodes:?}");
     };
-    let LayoutNode::Text(_, text_style) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
-    };
-    assert_eq!(text_style.color, None);
+    assert_eq!(ref_style.color, None);
   }
 
   #[test]
@@ -357,22 +358,21 @@ mod tests {
       color: red,
       children: vec![InlineNode::Ref {
         label: "a".to_string(),
-        number: Some("1".to_string()),
         span: miette::SourceSpan::from((0_usize, 0_usize)),
       }],
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Ref は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
 
     // Assert — 番号は赤（parent_style.color が Some なのでそちらを優先）
-    let LayoutNode::Link { children, .. } = &nodes[0] else {
-      panic!("Link が期待されます: {nodes:?}");
+    let LayoutNode::Ref {
+      style: ref_style, ..
+    } = &nodes[0]
+    else {
+      panic!("Ref が期待されます: {nodes:?}");
     };
-    let LayoutNode::Text(_, text_style) = &children[0] else {
-      panic!("Text が期待されます: {children:?}");
-    };
-    assert_eq!(text_style.color, Some(red));
+    assert_eq!(ref_style.color, Some(red));
   }
 
   #[test]

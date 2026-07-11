@@ -9,8 +9,13 @@ use document::{DocNode, InlineNode};
 use read_style::TheoremStyle;
 use types::{Align, FontKind, Length, TheoremClass};
 
-use super::{LoweringContext, LoweringError, lower_nodes, template::expand_template, with_label_anchor};
-use crate::layout_node::{LayoutNode, TextStyle};
+use super::{
+  LoweringContext, LoweringError, PendingHeading, lower_nodes_inner, template::expand_template, with_label_anchor,
+};
+use crate::{
+  counter::CounterRegistry,
+  layout_node::{LayoutNode, TextStyle},
+};
 
 /// 定理ブロックをレイアウトノードに変換する
 ///
@@ -22,14 +27,17 @@ use crate::layout_node::{LayoutNode, TextStyle};
 /// # Errors
 ///
 /// 見出しテンプレート・本体の lowering が返す [`LoweringError`]（未解決 `\ref` 等）を伝播する。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn lower_theorem(
   ctx: &LoweringContext,
   class: TheoremClass,
   number: Option<&str>,
   title: Option<&str>,
   body: &[DocNode],
-  of: Option<&str>,
+  of: Option<(&str, miette::SourceSpan)>,
   label: Option<&str>,
+  registry: &mut CounterRegistry,
+  headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let theorem_style = ctx.style.theorem(class);
   let pres = &theorem_style.style;
@@ -44,7 +52,7 @@ pub(super) fn lower_theorem(
   // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする。
   // 本文の段落先頭字下げは波及させない（定理本体はブロックとして 0 にリセット）。
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
-  let mut body_nodes = lower_nodes(&body_ctx, body)?;
+  let mut body_nodes = lower_nodes_inner(&body_ctx, body, registry, headings)?;
 
   // QED マーク（`qed_mark` を持つクラス = proof）を本体末尾に右寄せ配置する
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
@@ -71,15 +79,16 @@ pub(super) fn lower_theorem(
 ///
 /// `of`（証明対象）と `title`（サブタイトル）の有無の 4 通りで
 /// `heading_with_of_and_title` / `heading_with_of` / `heading_with_title` / `heading_format` を選び、
-/// プレーン文字列の `{display_name}` / `{of}` を素朴置換してから [`expand_template`] で
-/// `{number}` / `{title}` を解決する。書体は `heading_font_kind`、サイズは本文と同じ
-/// （`TheoremPresentation` に見出し専用サイズは無い）。
+/// プレーン文字列の `{display_name}` を素朴置換してから [`expand_template`] で
+/// `{number}` / `{title}` / `{of}` を解決する。`{of}` は前方参照になり得るため即時解決せず、
+/// `expand_template` が `LayoutNode::Ref` プレースホルダを発行し pass2 に委ねる。書体は
+/// `heading_font_kind`、サイズは本文と同じ（`TheoremPresentation` に見出し専用サイズは無い）。
 fn build_heading(
   ctx: &LoweringContext,
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
-  of: Option<&str>,
+  of: Option<(&str, miette::SourceSpan)>,
 ) -> Result<LayoutNode, LoweringError> {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
@@ -95,14 +104,12 @@ fn build_heading(
     (false, true) => &pres.heading_with_title,
     (false, false) => &pres.heading_format,
   };
-  // `{display_name}` / `{of}` は expand_template 非対応なので先に素朴置換する（いずれもプレーン文字列）
-  let template = raw_template
-    .replace("{display_name}", &theorem_style.display_name)
-    .replace("{of}", of.unwrap_or(""));
+  // `{display_name}` は expand_template 非対応なので先に素朴置換する（プレーン文字列）
+  let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
   let title_inlines: Vec<InlineNode> = title.map(|t| vec![InlineNode::Text(t.to_string())]).unwrap_or_default();
 
-  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, base_style)?;
+  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style)?;
 
   return Ok(LayoutNode::VBox {
     children,
@@ -139,6 +146,27 @@ mod tests {
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> DocNode { return DocNode::Paragraph(vec![InlineNode::Text(text.to_string())]); }
 
+  fn dummy_span() -> miette::SourceSpan { return miette::SourceSpan::from((0_usize, 0_usize)); }
+
+  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_theorem` を呼ぶヘルパ
+  ///
+  /// `of` はラベル名（`\ref` と同じく pass2 で解決するプレースホルダ）として渡す。
+  #[allow(clippy::too_many_arguments)]
+  fn lower_theorem_default(
+    ctx: &LoweringContext,
+    class: TheoremClass,
+    number: Option<&str>,
+    title: Option<&str>,
+    body: &[DocNode],
+    of: Option<&str>,
+    label: Option<&str>,
+  ) -> Result<Vec<LayoutNode>, LoweringError> {
+    let mut registry = CounterRegistry::from_style(ctx.style);
+    let mut headings = Vec::new();
+    let of = of.map(|l| (l, dummy_span()));
+    return lower_theorem(ctx, class, number, title, body, of, label, &mut registry, &mut headings);
+  }
+
   /// `nodes` の最初の `VBox`（= 見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す
   fn first_heading_text(nodes: &[LayoutNode]) -> (String, TextStyle) {
     let children = nodes
@@ -161,7 +189,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None, None)
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None, None)
       .expect("失敗しないはず");
 
     // Assert — 見出しは "Theorem 1"・太字、本体は斜体、上下に Vkern
@@ -188,7 +216,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes =
-      lower_theorem(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None, None)
+      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None, None)
         .expect("失敗しないはず");
 
     // Assert
@@ -203,8 +231,8 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None, None).expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None, None)
+      .expect("失敗しないはず");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -228,8 +256,8 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None, None).expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None, None)
+      .expect("失敗しないはず");
 
     // Assert — FlushRight の直後は Vkern（最終段落と同居 = 段落の途中に置かれている）
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -250,7 +278,8 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, None, &[list], None, None).expect("失敗しないはず");
+    let nodes =
+      lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[list], None, None).expect("失敗しないはず");
 
     // Assert — FlushRight は末尾の bottom_margin Vkern の直前（= 全体の最後から 2 番目）
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -258,19 +287,52 @@ mod tests {
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
   }
 
+  /// 見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `Ref` も含む）を連結する
+  fn heading_plain_text(nodes: &[LayoutNode]) -> String {
+    let children = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } => Some(children),
+        _ => None,
+      })
+      .expect("見出し VBox があるはず");
+    return children.iter().map(flatten_text).collect();
+  }
+
+  fn flatten_text(node: &LayoutNode) -> String {
+    return match node {
+      LayoutNode::Text(t, _) => t.clone(),
+      LayoutNode::Link { children, .. } => children.iter().map(flatten_text).collect(),
+      _ => String::new(),
+    };
+  }
+
   #[test]
   fn proof_with_of_renders_proof_of_target_heading() {
-    // Arrange — of=「Theorem 1」（pass2 解決済み）を持つ proof
+    // Arrange — of=thm:p（pass2 で「Theorem 1」の cleveref 文字列に解決される）を持つ proof
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
+    let mut registry = CounterRegistry::from_style(&style);
+    registry.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span()).unwrap();
+    let mut headings = Vec::new();
 
     // Act
-    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], Some("Theorem 1"), None)
-      .expect("失敗しないはず");
+    let mut nodes = lower_theorem(
+      &ctx,
+      TheoremClass::Proof,
+      None,
+      None,
+      &[paragraph("x")],
+      Some(("thm:p", dummy_span())),
+      None,
+      &mut registry,
+      &mut headings,
+    )
+    .expect("失敗しないはず");
+    crate::resolve::resolve_refs(&mut nodes, &registry).expect("thm:p は登録済みなので解決できる");
 
     // Assert — 見出しは "Proof of Theorem 1"
-    let (heading, _) = first_heading_text(&nodes);
-    assert_eq!(heading, "Proof of Theorem 1");
+    assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1");
   }
 
   #[test]
@@ -278,8 +340,8 @@ mod tests {
     // Arrange / Act — of=None の proof は従来どおり "Proof"
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None, None).expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None, None)
+      .expect("失敗しないはず");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -288,16 +350,30 @@ mod tests {
 
   #[test]
   fn proof_with_of_and_title_combines_both() {
-    // Arrange / Act — of と title を併用: of を先に、title を括弧で後置する
+    // Arrange — of と title を併用: of を先に、title を括弧で後置する
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes =
-      lower_theorem(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], Some("Theorem 1"), None)
-        .expect("失敗しないはず");
+    let mut registry = CounterRegistry::from_style(&style);
+    registry.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span()).unwrap();
+    let mut headings = Vec::new();
+
+    // Act
+    let mut nodes = lower_theorem(
+      &ctx,
+      TheoremClass::Proof,
+      None,
+      Some("sketch"),
+      &[paragraph("x")],
+      Some(("thm:p", dummy_span())),
+      None,
+      &mut registry,
+      &mut headings,
+    )
+    .expect("失敗しないはず");
+    crate::resolve::resolve_refs(&mut nodes, &registry).expect("thm:p は登録済みなので解決できる");
 
     // Assert
-    let (heading, _) = first_heading_text(&nodes);
-    assert_eq!(heading, "Proof of Theorem 1 (sketch)");
+    assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
   }
 
   #[test]
@@ -305,7 +381,7 @@ mod tests {
     // Arrange / Act — of なし・title あり: heading_with_title（"Proof (title)"）が選ばれる
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None, None)
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None, None)
       .expect("失敗しないはず");
 
     // Assert
@@ -318,8 +394,9 @@ mod tests {
     // Arrange / Act — label 付きは先頭に AnchorMark::Label を出す
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], None, Some("thm:x"))
-      .expect("失敗しないはず");
+    let nodes =
+      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], None, Some("thm:x"))
+        .expect("失敗しないはず");
 
     // Assert
     assert!(

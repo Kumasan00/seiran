@@ -147,6 +147,24 @@ pub enum LayoutNode {
   /// （本文幅 − 幅）へ寄せられ、現在行に収まらなければ次行へ折り返す。段落末（最終行と同居）
   /// もしくは独立した 1 行として置かれる。
   FlushRight(Vec<LayoutNode>),
+  /// 未解決の `\ref{label}`（または `proof` の `[of=...]`）プレースホルダ
+  ///
+  /// [`crate::inline::lower_inline`] / [`crate::template::expand_template`] が発行し、
+  /// pass1（[`crate::lower_nodes`] の主走査）完了後に pass2（[`crate::resolve::resolve_refs`]）が
+  /// 解決する。`as_link` が `true`（`\ref`）なら [`LayoutNode::Link`]（`target: Internal(label)`,
+  /// `children: [Text(resolved, style)]`）に、`false`（`proof` の `{of}`。従来クリック不可のプレーン
+  /// テキストだったため踏襲）なら `LayoutNode::Text(resolved, style)` 単体に書き換える。
+  /// pass2 を経ずに残った場合は `LoweringError::UnresolvedReference` の原因になる。
+  Ref {
+    /// 参照先のラベル名
+    label: String,
+    /// `\ref{...}` / `[of=...]` のソース位置。未解決時の診断に使う
+    span: miette::SourceSpan,
+    /// 解決後の番号テキストに適用するスタイル（リンク色等は発行時点で確定済み）
+    style: TextStyle,
+    /// 解決後にクリック可能な内部リンクとして囲むか（`\ref` は `true`、`proof` の `{of}` は `false`）
+    as_link: bool,
+  },
 }
 
 /// 表全体の物理レイアウト表現

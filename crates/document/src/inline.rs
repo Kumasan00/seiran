@@ -66,15 +66,13 @@ pub enum InlineNode {
 
   /// 相互参照（`\ref{label}`）
   ///
-  /// `CounterRegistry` での 2 パス評価で解決される。`number` は pass1 では `None`、
-  /// pass2 解決後に `Some(整形済み文字列)` になる。pass2 で未定義ラベルが残った場合は
-  /// `EvalError::UnknownLabel` を返し、`number: None` の状態は呼び出し側に届かない。
+  /// `lowering::CounterRegistry` の 2 パス評価で解決される（`label` を保持するだけの構造体で、
+  /// 解決結果の番号文字列は `lowering::resolve_refs` が `LayoutNode` 側で埋め込む）。
+  /// 未定義ラベルが残った場合は `LoweringError::UnresolvedReference` を返す。
   Ref {
     /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
-    /// 解決された番号文字列。pass2 完了時点で `Some` となる
-    number: Option<String>,
-    /// `\ref{...}` の `CommandCall` ノードのソース位置。pass2 で未解決時の診断に使う
+    /// `\ref{...}` の `CommandCall` ノードのソース位置。未解決時の診断に使う
     span: SourceSpan,
   },
 
@@ -147,9 +145,9 @@ impl InlineNode {
       InlineNode::InlineMath(_) => return "[Math]".to_string(),
       InlineNode::Symbol(ch) => return ch.to_string(),
       InlineNode::LineBreak => return "\n".to_string(),
-      // 非描画マーカーなのでプレーンテキストには何も寄与しない
-      InlineNode::NoIndent => return String::new(),
-      InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
+      // NoIndent は非描画マーカー、Ref の番号は `lowering::CounterRegistry` でのみ解決できるため、
+      // いずれもここでは寄与しない（解決済みテキストが必要な呼び出し側は `lowering` 側の結果を参照する）
+      InlineNode::NoIndent | InlineNode::Ref { .. } => return String::new(),
       InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
         return inline_nodes_to_plain_text(children);
       },

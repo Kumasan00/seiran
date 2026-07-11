@@ -25,7 +25,7 @@ fn smoke_through_lowering(name: &str) {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
 
   let style = Style::default();
-  let doc_nodes = parse_source(&content, &path.display().to_string(), &style, &HashSet::new())
+  let doc_nodes = parse_source(&content, &path.display().to_string(), &HashSet::new())
     .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
 
   let ctx = LoweringContext::new(&style);
@@ -72,7 +72,7 @@ fn lower_fixture(name: &str) -> Vec<LayoutNode> {
   let content =
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
   let style = Style::default();
-  let doc_nodes = parse_source(&content, &path.display().to_string(), &style, &HashSet::new())
+  let doc_nodes = parse_source(&content, &path.display().to_string(), &HashSet::new())
     .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
   let ctx = LoweringContext::new(&style);
   return lowering::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));

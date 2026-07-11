@@ -165,7 +165,7 @@ pub(crate) fn evaluate_grid(
 /// ラベル付与・重複ラベル時にエラーを返す。
 pub(crate) fn evaluate_math_env(
   view: &EnvironmentView,
-  evaluator: &mut Evaluator,
+  _evaluator: &mut Evaluator,
   kind: MathEnvKind,
   spec: &GridSpec,
   mode: &NumberingMode,
@@ -185,21 +185,22 @@ pub(crate) fn evaluate_math_env(
     return Err(EvalError::NotagWithUnnumberedEnv { span });
   }
 
-  let (rows, env_number) = assign_numbering(grid, mode, numbered, env_label.as_deref(), view, evaluator)?;
+  let (rows, env_numbered) = assign_numbering(grid, mode, numbered, view)?;
 
-  // 環境単位ラベルは採番できた場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
-  let block_label = env_number.as_ref().and(env_label);
+  // 環境単位ラベルは環境が採番対象の場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
+  let block_label = env_numbered.then_some(env_label).flatten();
   return Ok(vec![DocNode::MathBlock {
     kind,
     rows,
-    number: env_number,
+    numbered: env_numbered,
     label: block_label,
+    span: view.span().into(),
   }]);
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する
 ///
-/// 末尾の空行（行末 `\\` 由来）を除去したうえで、各行を採番なし（`number` / `label` ともに `None`）の
+/// 末尾の空行（行末 `\\` 由来）を除去したうえで、各行を採番なし（`numbered: false`・`label: None`）の
 /// [`MathRow`] に変換する。`cases` / `matrix` は番号を持たないため、`CounterName::Equation` を一切
 /// 消費しない（採番ありの環境と通し番号を共有しない）。
 pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
@@ -210,8 +211,9 @@ pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
     .into_iter()
     .map(|row| MathRow {
       cells: row.cells,
-      number: None,
+      numbered: false,
       label: None,
+      label_span: None,
     })
     .collect();
 }

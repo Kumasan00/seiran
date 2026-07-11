@@ -23,13 +23,12 @@ use std::collections::HashSet;
 use bumpalo::Bump;
 use document::DocNode;
 use miette::{Diagnostic, NamedSource};
-pub use read_style::Style;
 use thiserror::Error;
 use tracing::debug;
 
 mod evaluator;
 pub use evaluator::EvalError;
-use evaluator::{Evaluator, cite::resolve_cites, counter::resolve_refs};
+use evaluator::{Evaluator, cite::resolve_cites};
 
 /// `parse_source` が返すエラー型
 ///
@@ -75,12 +74,12 @@ pub enum ParseSourceError {
 ///
 /// bumpalo アリーナ上に CST を構築し、型付きビューを介して評価し、
 /// 所有権を持つ `Vec<DocNode>` を返します。アリーナは関数終了時に一括解放されます。
+/// 採番（見出し・図表・数式の自動採番とラベル解決）は行いません（`lowering` 層の責務）。
 ///
 /// # Arguments
 ///
 /// * `source` - パース対象のソーステキスト
 /// * `source_name` - エラー表示用のソース名（ファイルパス等）
-/// * `style` - カウンタ定義などを取り込む `read_style::Style`
 /// * `citation_keys` - 参照定義（references）の有効な参照 ID 集合。`\cite` のキー存在検証に使う
 ///
 /// # Errors
@@ -98,7 +97,6 @@ pub enum ParseSourceError {
 pub fn parse_source(
   source: &str,
   source_name: &str,
-  style: &Style,
   citation_keys: &HashSet<String>,
 ) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
@@ -108,14 +106,8 @@ pub fn parse_source(
       error,
     })?;
 
-  let mut evaluator = Evaluator::new(style);
-  let mut doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
-    src: NamedSource::new(source_name, source.to_string()),
-    error,
-  })?;
-
-  // pass2: `\ref{label}` を `CounterRegistry::labels` で解決して書き換える
-  resolve_refs(&mut doc_nodes, &evaluator.registry).map_err(|error| ParseSourceError::Eval {
+  let mut evaluator = Evaluator;
+  let doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
     src: NamedSource::new(source_name, source.to_string()),
     error,
   })?;

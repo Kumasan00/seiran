@@ -2,7 +2,7 @@
 //!
 //! `\begin{align}...\end{align}` を [`DocNode::MathBlock`]（`kind = Align`）に変換します。本体は
 //! [`syntax::ParseMode::Math`] で構造化された CST を行区切り `\\` × 列区切り `&` のグリッドに分割し、
-//! 各行を [`read_style::CounterName::Equation`] で採番します。実体は共通ハンドラ
+//! 各行を `read_style::CounterName::Equation` で採番します。実体は共通ハンドラ
 //! [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に委譲します。列整列（奇数列＝右・
 //! 偶数列＝左で `&` 位置に接合）は `layout` 段が [`MathEnvKind::Align`] に応じて確定します。
 //!
@@ -20,7 +20,7 @@ use crate::evaluator::{EvalError, Evaluator};
 
 /// `align` 環境を評価する
 ///
-/// 本体を `\\` で行・`&` で列に分割し、各行に [`read_style::CounterName::Equation`] の通し番号を
+/// 本体を `\\` で行・`&` で列に分割し、各行に `read_style::CounterName::Equation` の通し番号を
 /// 発番した `MathRow` 列を持つ `MathBlock`（`kind = Align`）を返す。`[numbered=false]` 指定時は採番しない。
 ///
 /// # Errors
@@ -44,7 +44,6 @@ pub(crate) fn align(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
 mod tests {
   use bumpalo::Bump;
   use document::{MathEnvKind, MathNode};
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -52,19 +51,6 @@ mod tests {
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
     return syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  /// equation カウンタの `format` を `"{n}"` に差し替えた Style を返す
-  ///
-  /// 既定の `"{chapter}.{n}"` は通し番号の確認には本質的でないため、番号を素朴な `"1"`, `"2"`
-  /// 形式に縮約してテストの意図を読みやすくする。
-  fn style_with_plain_equation_format() -> Style {
-    let mut counters = Counters::default();
-    counters.equation.number_format = "{n}".to_string();
-    return Style {
-      counters,
-      ..Default::default()
-    };
   }
 
   /// 結果の最初の `DocNode::MathBlock`（`Align`）の行スライスを取り出すヘルパ
@@ -82,28 +68,28 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — MathBlock(Align) 1 件、2 行・各 2 セル、各行が通し番号を持つ
+    // Assert — MathBlock(Align) 1 件、2 行・各 2 セル、各行が採番対象
     assert_eq!(result.len(), 1);
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert_eq!(rows[0].cells.len(), 2, "行 0 は 2 列");
     assert_eq!(rows[1].cells.len(), 2, "行 1 は 2 列");
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
-    assert_eq!(rows[1].number.as_deref(), Some("2"));
+    assert!(rows[0].numbered);
+    assert!(rows[1].numbered);
   }
 
   #[test]
   fn align_single_row_is_numbered() {
-    // Arrange — 行・列分割のない 1 行の align も採番される
+    // Arrange — 行・列分割のない 1 行の align も採番対象
     let arena = Bump::new();
     let source = r"\begin{align}x &= y\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -112,7 +98,7 @@ mod tests {
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].cells.len(), 2);
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[0].numbered);
   }
 
   #[test]
@@ -121,37 +107,15 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{align}a &= b \\\\\n\\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 末尾の空行は除去され、採番は 1 行ぶんだけ
+    // Assert — 末尾の空行は除去され、残る 1 行は採番対象
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 1, "末尾の空行が除去される: {rows:?}");
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
-  }
-
-  #[test]
-  fn align_numbers_share_equation_counter_with_equation() {
-    // Arrange — align の各行と後続 equation が同じ equation カウンタを共有して連番になる
-    let arena = Bump::new();
-    let source = r"\begin{align}a &= b \\ c &= d\end{align}\begin{equation}e\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — align の 2 行が 1, 2、続く equation が 3
-    assert_eq!(result.len(), 2);
-    let align_rows = rows_of(&result[..1]);
-    assert_eq!(align_rows[0].number.as_deref(), Some("1"));
-    assert_eq!(align_rows[1].number.as_deref(), Some("2"));
-    let DocNode::MathBlock { rows: eq_rows, .. } = &result[1] else {
-      panic!("equation の MathBlock が期待されます: {:?}", result[1]);
-    };
-    assert_eq!(eq_rows[0].number.as_deref(), Some("3"));
+    assert!(rows[0].numbered);
   }
 
   #[test]
@@ -160,15 +124,15 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 2 行とも number は None
+    // Assert — 2 行とも numbered は false
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|r| r.number.is_none()), "無採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| !r.numbered), "無採番のはず: {rows:?}");
   }
 
   #[test]
@@ -177,7 +141,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}x^2 &= y\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -198,7 +162,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[label=eq:foo]a &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -209,22 +173,22 @@ mod tests {
 
   #[test]
   fn align_row_label_captures_label_and_keeps_numbering() {
-    // Arrange — 1 行目の行末に `\label{...}` を置くと、その行に番号とラベルが付く
+    // Arrange — 1 行目の行末に `\label{...}` を置くと、その行にラベルが付き採番対象になる
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:foo} \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 1 行目: ラベルあり・番号 1、2 行目: ラベルなし・番号 2（通し番号は連続）
+    // Assert — 1 行目: ラベルあり・採番対象、2 行目: ラベルなし・採番対象
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert_eq!(rows[0].label.as_deref(), Some("eq:foo"));
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[0].numbered);
     assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
-    assert_eq!(rows[1].number.as_deref(), Some("2"));
+    assert!(rows[1].numbered);
   }
 
   #[test]
@@ -233,7 +197,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -248,7 +212,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -263,7 +227,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a \label{eq:x} &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -273,59 +237,40 @@ mod tests {
   }
 
   #[test]
-  fn align_duplicate_row_label_errors() {
-    // Arrange — 同名の行ラベルを 2 行に付けると重複エラー
+  fn align_duplicate_row_label_is_structured_without_error() {
+    // Arrange — 同名の行ラベルの重複検出は lowering 層（CounterRegistry）の責務。
+    // parser は両方の label をそのまま構造化するだけでエラーにしない。
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:x} \\ c &= d \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    assert!(matches!(result, Err(EvalError::DuplicateLabel { ref label, .. }) if label == "eq:x"));
+    let rows = rows_of(&result);
+    assert_eq!(rows[0].label.as_deref(), Some("eq:x"));
+    assert_eq!(rows[1].label.as_deref(), Some("eq:x"));
   }
 
   #[test]
   fn align_notag_suppresses_single_row() {
-    // Arrange — 中間行の行末に \notag を置くと、その行だけ無採番になり通し番号は連続する
+    // Arrange — 中間行の行末に \notag を置くと、その行だけ無採番になる
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d \notag \\ e &= f\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 1 行目 (1)、2 行目 無採番、3 行目 (2)
+    // Assert — 1・3 行目は採番対象、2 行目（\notag）は無採番
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
-    assert!(rows[1].number.is_none(), "\\notag 行は無採番: {:?}", rows[1].number);
-    assert_eq!(rows[2].number.as_deref(), Some("2"), "通し番号は連続する");
-  }
-
-  #[test]
-  fn align_notag_row_does_not_consume_counter() {
-    // Arrange — \notag 行はカウンタを消費しないので、後続 equation の採番が飛ばない
-    let arena = Bump::new();
-    let source = r"\begin{align}a &= b \notag \\ c &= d\end{align}\begin{equation}e\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — align: 1 行目 無採番・2 行目 (1)、続く equation が (2)
-    assert_eq!(result.len(), 2);
-    let align_rows = rows_of(&result[..1]);
-    assert!(align_rows[0].number.is_none(), "\\notag 行は無採番: {:?}", align_rows[0].number);
-    assert_eq!(align_rows[1].number.as_deref(), Some("1"));
-    let DocNode::MathBlock { rows: eq_rows, .. } = &result[1] else {
-      panic!("equation の MathBlock が期待されます: {:?}", result[1]);
-    };
-    assert_eq!(eq_rows[0].number.as_deref(), Some("2"));
+    assert!(rows[0].numbered);
+    assert!(!rows[1].numbered, "\\notag 行は無採番のはず");
+    assert!(rows[2].numbered);
   }
 
   #[test]
@@ -334,7 +279,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a \notag &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -349,7 +294,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

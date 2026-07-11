@@ -9,12 +9,15 @@ use document::InlineNode;
 use super::{LoweringContext, LoweringError, inline::lower_inline};
 use crate::layout_node::{LayoutNode, TextStyle};
 
-/// `{number}` / `{title}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
+/// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
 ///
 /// - リテラル部分と `{number}` は `base_style` の [`LayoutNode::Text`] として出力する
 /// - `{title}` は各インライン要素を [`lower_inline`] で展開する（書体・数式を保持）
+/// - `{of}`（`proof` の証明対象参照）は `of` が `Some((label, span))` のとき
+///   [`LayoutNode::Ref`] プレースホルダを 1 つ出力する。`\ref` と同じく前方参照になり得るため
+///   ここでは解決せず、pass2（[`crate::resolve::resolve_refs`]）に委ねる。`None` なら何も出力しない
+///   （旧 `of.unwrap_or("")` と同じ「証明対象なし」の空扱い）
 /// - 未知のプレースホルダ・閉じ括弧の欠落はリテラル扱いで残す
-///   （`parser::evaluator::counter` のテンプレート展開と同じ方針）
 /// - 出力前に隣接する同一スタイルの `Text` をマージするため、装飾なしタイトルは
 ///   単一の `Text` ノードに縮約される
 ///
@@ -26,6 +29,7 @@ pub(super) fn expand_template(
   template: &str,
   number: &str,
   title: &[InlineNode],
+  of: Option<(&str, miette::SourceSpan)>,
   base_style: TextStyle,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
@@ -58,6 +62,19 @@ pub(super) fn expand_template(
         flush_literal(&mut nodes, &mut literal, base_style);
         for inline in title {
           nodes.extend(lower_inline(ctx, inline, base_style)?);
+        }
+      },
+      "of" => {
+        if let Some((label, span)) = of {
+          flush_literal(&mut nodes, &mut literal, base_style);
+          // `{of}` は proof の証明対象参照。従来どおりクリック不可のプレーンテキストとして
+          // 埋め込む（`\ref` と違いリンク領域にはしない）
+          nodes.push(LayoutNode::Ref {
+            label: label.to_string(),
+            span,
+            style: base_style,
+            as_link: false,
+          });
         }
       },
       _ => {
@@ -114,7 +131,8 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::Text(title_text.to_string())];
-    return expand_template(&ctx, template, number, &title, base_style()).expect("プレーンタイトルは失敗しないはず");
+    return expand_template(&ctx, template, number, &title, None, base_style())
+      .expect("プレーンタイトルは失敗しないはず");
   }
 
   #[test]
@@ -155,7 +173,7 @@ mod tests {
       },
     ];
 
-    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, base_style()).expect("失敗しないはず");
+    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style()).expect("失敗しないはず");
 
     // Text("1 A ", Serif) + Text("B", SerifBold)
     assert_eq!(nodes.len(), 2, "{nodes:?}");
@@ -173,7 +191,7 @@ mod tests {
       "x".to_string(),
     )])];
 
-    let nodes = expand_template(&ctx, "{title}", "1", &title, base_style()).expect("失敗しないはず");
+    let nodes = expand_template(&ctx, "{title}", "1", &title, None, base_style()).expect("失敗しないはず");
 
     let has_placeholder = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t.contains("[Math]")));
     assert!(!has_placeholder, "[Math] プレースホルダは出力されない: {nodes:?}");
@@ -181,23 +199,57 @@ mod tests {
   }
 
   #[test]
-  fn unresolved_ref_in_title_propagates_error() {
-    // {title} 内の未解決 \ref は LoweringError::UnresolvedReference として伝播する
+  fn ref_in_title_becomes_placeholder() {
+    // {title} 内の \ref は即時解決せず LayoutNode::Ref プレースホルダとして埋め込まれる
+    // （解決は pass2 = resolve::resolve_refs が担う）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::Ref {
       label: "tab:missing".to_string(),
-      number: None,
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     }];
 
-    let err =
-      expand_template(&ctx, "{number} {title}", "1", &title, base_style()).expect_err("未解決 Ref はエラーになるべき");
+    let nodes =
+      expand_template(&ctx, "{number} {title}", "1", &title, None, base_style()).expect("即時エラーにはならない");
 
-    let LoweringError::UnresolvedReference { label, .. } = err else {
-      panic!("UnresolvedReference が期待されます: {err:?}");
-    };
-    assert_eq!(label, "tab:missing");
+    assert!(
+      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "tab:missing")),
+      "Ref プレースホルダが残るはず: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn of_placeholder_emits_ref_when_present() {
+    // {of} は of が Some のとき LayoutNode::Ref プレースホルダを 1 つ出力する
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let of_span = miette::SourceSpan::from((3_usize, 4_usize));
+
+    let nodes =
+      expand_template(&ctx, "Proof of {of}", "1", &[], Some(("thm:x", of_span)), base_style()).expect("失敗しないはず");
+
+    assert!(
+      nodes
+        .iter()
+        .any(|n| matches!(n, LayoutNode::Ref { label, span, .. } if label == "thm:x" && *span == of_span)),
+      "of の Ref プレースホルダが出るはず: {nodes:?}"
+    );
+  }
+
+  #[test]
+  fn of_placeholder_omitted_when_none() {
+    // {of} は of が None のとき何も出力しない（旧 of.unwrap_or("") と同じ空扱い）
+    let nodes = expand_plain_with_of("Proof{of}", "1", None);
+
+    assert_eq!(nodes.len(), 1, "{nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "Proof"), "{nodes:?}");
+  }
+
+  /// `of` パラメータを明示できる `expand_plain` の派生ヘルパ
+  fn expand_plain_with_of(template: &str, number: &str, of: Option<(&str, miette::SourceSpan)>) -> Vec<LayoutNode> {
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    return expand_template(&ctx, template, number, &[], of, base_style()).expect("失敗しないはず");
   }
 
   #[test]

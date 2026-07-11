@@ -10,9 +10,9 @@
 //! - `[label=thm:foo]` — `\ref` 解決用ラベル。採番ありクラスのみ（`proof` では受け付けない）
 //! - `[of=thm:foo]` — 証明対象の定理を指す参照。`proof` 専用（採番ありクラスでは受け付けない）
 //!
-//! 採番・ラベル登録（cleveref）は `CounterRegistry::increment_theorem_with_label` が担う。
-//! 見出し書式・本文フォント・QED マーク配置は `lowering` 層がクラスの `read_style::TheoremStyle` を
-//! 参照して決める（本ハンドラは番号・サブタイトル・本体・`of` 参照を構造化するだけ）。
+//! 採番・ラベル登録（cleveref）・見出し書式・本文フォント・QED マーク配置は、いずれも `lowering` 層が
+//! クラスの `read_style::TheoremStyle` を参照して決める（本ハンドラはクラス・サブタイトル・本体・
+//! `of` 参照を構造化するだけで、番号・書式情報は一切持たない）。
 
 use document::{DocNode, ProofTarget, TheoremClass};
 use syntax::ast::EnvironmentView;
@@ -66,29 +66,25 @@ pub(super) fn theorem(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resu
     });
   }
 
-  // 採番（`proof` 等の unnumbered クラスは None）とラベル登録（cleveref）を同時に行う。
-  let number = evaluator.registry.increment_theorem_with_label(class, label.as_deref(), view.span().into())?;
-
   // 本体は通常の本文と同様に再帰評価する（段落・数式・リスト等を含められる）。
   let body = match view.body() {
     Some(body) => evaluator.evaluate_children(view.source(), body)?,
     None => Vec::new(),
   };
 
-  // `of` は pass2（resolve_refs）で対象定理の cleveref 文字列に解決する。
+  // `of` の解決（対象定理の cleveref 文字列）は lowering 層の pass2 が担う。
   let of = of_label.map(|label| ProofTarget {
     label,
-    number: None,
     span: view.span().into(),
   });
 
   return Ok(vec![DocNode::Theorem {
     class,
-    number,
     title,
     body,
     of,
     label,
+    span: view.span().into(),
   }]);
 }
 
@@ -96,10 +92,10 @@ pub(super) fn theorem(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resu
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::{InlineNode, TheoremClass};
+  use document::TheoremClass;
 
   use super::*;
-  use crate::evaluator::{counter::resolve_refs, lookup_env_parse_mode};
+  use crate::evaluator::lookup_env_parse_mode;
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
@@ -107,12 +103,12 @@ mod tests {
   }
 
   #[test]
-  fn theorem_is_numbered_and_carries_class_and_body() {
-    // Arrange
+  fn theorem_carries_class_and_body_with_no_number() {
+    // Arrange — 採番（number）は持たず、lowering 層が発番する
     let arena = Bump::new();
     let source = r"\begin{theorem}本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -121,17 +117,16 @@ mod tests {
     assert_eq!(result.len(), 1);
     let DocNode::Theorem {
       class,
-      number,
       title,
       body,
       of,
       label,
+      ..
     } = &result[0]
     else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
     assert_eq!(*class, TheoremClass::Theorem);
-    assert_eq!(number.as_deref(), Some("1"));
     assert!(title.is_none());
     assert!(of.is_none());
     assert!(label.is_none());
@@ -141,66 +136,21 @@ mod tests {
   }
 
   #[test]
-  fn theorem_and_lemma_share_the_theorem_counter() {
-    // Arrange — 既定では lemma は counter "theorem" を共有するため連番になる
-    let arena = Bump::new();
-    let source = r"\begin{theorem}A\end{theorem}\begin{lemma}B\end{lemma}\begin{theorem}C\end{theorem}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert
-    let numbers: Vec<Option<&str>> = result
-      .iter()
-      .map(|n| match n {
-        DocNode::Theorem { number, .. } => number.as_deref(),
-        _ => panic!("Theorem が期待されます: {n:?}"),
-      })
-      .collect();
-    assert_eq!(numbers, vec![Some("1"), Some("2"), Some("3")]);
-  }
-
-  #[test]
-  fn definition_uses_its_own_counter() {
-    // Arrange — definition は既定で counter "definition" を持ち、theorem とは独立採番
-    let arena = Bump::new();
-    let source = r"\begin{theorem}A\end{theorem}\begin{definition}B\end{definition}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — theorem=1、definition=1（別カウンタ）
-    let DocNode::Theorem { number: thm, .. } = &result[0] else {
-      panic!("Theorem が期待されます");
-    };
-    let DocNode::Theorem { number: def, .. } = &result[1] else {
-      panic!("Theorem が期待されます");
-    };
-    assert_eq!(thm.as_deref(), Some("1"));
-    assert_eq!(def.as_deref(), Some("1"));
-  }
-
-  #[test]
-  fn proof_is_unnumbered() {
-    // Arrange
+  fn proof_class_is_structured() {
+    // Arrange — 採番の有無（unnumbered）は lowering 層が TheoremStyle から判定する
     let arena = Bump::new();
     let source = r"\begin{proof}証明本文\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    let DocNode::Theorem { class, number, .. } = &result[0] else {
+    let DocNode::Theorem { class, .. } = &result[0] else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
     assert_eq!(*class, TheoremClass::Proof);
-    assert!(number.is_none());
   }
 
   #[test]
@@ -209,7 +159,7 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{theorem}[title=\"ピタゴラスの定理\"]本文\\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -222,39 +172,37 @@ mod tests {
   }
 
   #[test]
-  fn theorem_label_resolves_to_cleveref_string() {
-    // Arrange — label を付けた theorem を `\ref` すると「Theorem 1」に解決される
+  fn theorem_captures_label_without_resolving() {
+    // Arrange — label は構造化されるだけで、\ref の解決（cleveref 文字列化）は lowering 層が行う
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\ref{thm:p}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
-    let mut result = evaluator.evaluate_children(source, cst).unwrap();
-    resolve_refs(&mut result, &evaluator.registry).unwrap();
+    let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 末尾の段落に Ref があり、cleveref 書式で解決される
+    // Assert
+    let DocNode::Theorem { label, .. } = &result[0] else {
+      panic!("Theorem が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(label.as_deref(), Some("thm:p"));
     let DocNode::Paragraph(inlines) = result.last().unwrap() else {
       panic!("Paragraph が期待されます: {:?}", result.last());
     };
-    let resolved = inlines.iter().find_map(|n| match n {
-      InlineNode::Ref { number, .. } => number.as_deref(),
-      _ => None,
-    });
-    assert_eq!(resolved, Some("Theorem 1"));
+    assert!(matches!(inlines.first(), Some(document::InlineNode::Ref { label, .. }) if label == "thm:p"));
   }
 
   #[test]
-  fn proof_of_resolves_target_theorem() {
-    // Arrange — proof[of=thm:p] が対象定理の cleveref 文字列に解決される
+  fn proof_of_captures_target_label_without_resolving() {
+    // Arrange — proof[of=thm:p] は対象ラベルを構造化するだけ（解決は lowering 層）
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:p]証明\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
-    let mut result = evaluator.evaluate_children(source, cst).unwrap();
-    resolve_refs(&mut result, &evaluator.registry).unwrap();
+    let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { of, .. } = &result[1] else {
@@ -262,7 +210,6 @@ mod tests {
     };
     let of = of.as_ref().expect("of 参照あり");
     assert_eq!(of.label, "thm:p");
-    assert_eq!(of.number.as_deref(), Some("Theorem 1"));
   }
 
   #[test]
@@ -271,7 +218,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[of=thm:p]本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -286,7 +233,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{proof}[label=pf:1]証明\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -301,7 +248,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[foo=1]本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -311,17 +258,26 @@ mod tests {
   }
 
   #[test]
-  fn duplicate_theorem_label_errors() {
-    // Arrange — 同名ラベルの二重定義は DuplicateLabel
+  fn duplicate_theorem_label_is_structured_without_error() {
+    // Arrange — 同名ラベルの重複検出は lowering 層（CounterRegistry）の責務。
+    // parser は両方の label をそのまま構造化するだけでエラーにしない。
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    assert!(matches!(result, Err(EvalError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    assert_eq!(result.len(), 2);
+    let DocNode::Theorem { label: a, .. } = &result[0] else {
+      panic!("Theorem が期待されます");
+    };
+    let DocNode::Theorem { label: b, .. } = &result[1] else {
+      panic!("Theorem が期待されます");
+    };
+    assert_eq!(a.as_deref(), Some("dup"));
+    assert_eq!(b.as_deref(), Some("dup"));
   }
 }

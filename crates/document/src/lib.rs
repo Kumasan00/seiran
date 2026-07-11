@@ -28,7 +28,7 @@ mod math;
 mod quote;
 mod table;
 
-pub use block::{DocNode, Document, HeadingInfo, ProofTarget, collect_headings, heading_anchor_key};
+pub use block::{DocNode, Document, ProofTarget, heading_anchor_key};
 pub use caption::CaptionPosition;
 pub use inline::{InlineNode, inline_nodes_to_plain_text};
 pub use list::ListItem;

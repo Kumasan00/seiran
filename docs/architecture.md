@@ -67,7 +67,7 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 ## `parser`
 
-`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・カウンタ（`counter`）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。
+`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`parser` は `read_style` に依存しない。
 
 ## `citation`
 
@@ -84,6 +84,8 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 ## `lowering`
 
 DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `quote` / `table` / `template` / `theorem` / `title_page` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ）。
+
+採番・`\ref` 解決も本クレートの責務（#192 で `parser` から移設。`document::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lib.rs::lower_nodes_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
 ## `layout`
 

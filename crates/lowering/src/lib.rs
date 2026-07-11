@@ -31,6 +31,7 @@ use thiserror::Error;
 use tracing::debug;
 use types::Length;
 
+mod counter;
 mod figure;
 mod float;
 mod heading;
@@ -40,6 +41,7 @@ mod list;
 mod math;
 mod paragraph;
 mod quote;
+mod resolve;
 mod table;
 mod template;
 mod theorem;
@@ -56,22 +58,28 @@ pub use types::TableColumn;
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum LoweringError {
-  /// 参照（`\ref{...}`）が pass2 で解決されないまま lowering に到達した場合に返されます。
+  /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合に返されます。
   ///
-  /// 評価器（`parser::evaluator`）の参照解決パスが、対応する `\label` を見つけられず
-  /// `number` を `None` のまま渡してきたことを示します。
+  /// `lowering` 層の pass2（[`resolve::resolve_refs`]）が `CounterRegistry` に対応するラベルを
+  /// 見つけられなかったことを示す、`\ref` 解決の主たるエラー経路です。
   #[error("未解決の参照が lowering に到達しました: ラベル `{label}`")]
-  #[diagnostic(
-    code(lowering::unresolved_reference),
-    help(
-      "対応する \\label が定義されているか確認してください。定義されている場合は評価器の参照解決パスにバグがある可能性があります。"
-    )
-  )]
+  #[diagnostic(code(lowering::unresolved_reference), help("対応する \\label が定義されているか確認してください。"))]
   UnresolvedReference {
     /// 解決できなかったラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
     /// `\ref{...}` のソース位置（`InlineNode::Ref` から引き継ぐ）
     #[label("この参照が未解決です")]
+    span: miette::SourceSpan,
+  },
+
+  /// `\section[label=...]` / 環境 `[label=...]` で同名ラベルが重複登録された場合に返されます。
+  #[error("ラベルが重複しています: {label}")]
+  #[diagnostic(code(lowering::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
+  DuplicateLabel {
+    /// 重複したラベル名
+    label: String,
+    /// 2 回目に定義したコマンド / 環境のソース位置
+    #[label("このラベルは既に定義されています")]
     span: miette::SourceSpan,
   },
 
@@ -222,15 +230,32 @@ impl<'a> LoweringContext<'a> {
   pub fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
 
+/// 見出し 1 件の記録（PDF しおり・目次生成が消費する）
+///
+/// [`lower_nodes_with_headings`] が pass1 の走査と同時に収集する。`number` は
+/// `CounterRegistry` が発番した書式化済み文字列（無採番の見出しは空文字列）、`title_plain` は
+/// タイトル中の `\ref` も解決済みのプレーンテキスト。
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeadingRecord {
+  /// 見出しの文書順インデックス（0 始まり）
+  pub index: usize,
+  /// 見出しレベル
+  pub level: types::HeadingLevel,
+  /// 書式化済みの見出し番号（無採番の見出しは空文字列）
+  pub number: String,
+  /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
+  pub title_plain: String,
+}
+
+/// pass1 走査中に集める見出しの生データ（`title` はまだ `\ref` 未解決）
+struct PendingHeading {
+  index: usize,
+  level: types::HeadingLevel,
+  number: String,
+  title: Vec<document::InlineNode>,
+}
+
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）
-///
-/// # Arguments
-///
-/// * `document` - `Document` 構造体
-///
-/// # Returns
-///
-/// レイアウトノードのリスト
 ///
 /// # Errors
 ///
@@ -241,33 +266,85 @@ pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Result<Vec<
 
 /// `DocNode` のリストをレイアウトノードに変換する
 ///
-/// `build_pdf.rs` から呼ばれる lowering のエントリーポイント。
+/// `build_pdf.rs` から呼ばれる lowering のエントリーポイント。見出し記録が不要な呼び出し向けの
+/// 薄いラッパーで、[`lower_nodes_with_headings`] の結果から `Vec<LayoutNode>` だけを返す。
 ///
 /// # Errors
 ///
 /// いずれかの `DocNode` の変換中に [`LoweringError`] が発生した場合に返します。
 pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<LayoutNode>, LoweringError> {
-  let mut result = Vec::new();
-  // 見出しの文書順インデックス。`heading_anchor_key` で暗黙 destination キーを採番するのに使う
-  // （目次エントリの内部リンク到達先と一致させるため、`document::collect_headings` の index と同じ規則）。
-  let mut heading_index = 0;
-  for node in nodes {
-    result.extend(lower_node_indexed(ctx, node, heading_index)?);
-    if node.is_heading() {
-      heading_index += 1;
-    }
-  }
+  let (layout, _headings) = lower_nodes_with_headings(ctx, nodes)?;
+  return Ok(layout);
+}
+
+/// `DocNode` のリストをレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
+///
+/// 採番（[`counter::CounterRegistry`]）は 1 回の呼び出しにつき 1 つのレジストリを共有し、
+/// 全ノードを通して連続して発番される。`\ref` は前方参照を許すため、pass1（本走査）完了後に
+/// pass2（[`resolve::resolve_refs`]）で `LayoutNode::Ref` プレースホルダを解決する。
+///
+/// # Errors
+///
+/// いずれかの `DocNode` の変換中、または pass2 の参照解決で [`LoweringError`] が発生した場合に返します。
+pub fn lower_nodes_with_headings(
+  ctx: &LoweringContext,
+  nodes: &[DocNode],
+) -> Result<(Vec<LayoutNode>, Vec<HeadingRecord>), LoweringError> {
+  let mut registry = counter::CounterRegistry::from_style(ctx.style);
+  let mut pending_headings = Vec::new();
+  let mut result = lower_nodes_inner(ctx, nodes, &mut registry, &mut pending_headings)?;
+
+  let headings = pending_headings
+    .into_iter()
+    .map(|pending| HeadingRecord {
+      index: pending.index,
+      level: pending.level,
+      number: pending.number,
+      title_plain: resolve_heading_title_plain(&pending.title, &registry),
+    })
+    .collect();
+
+  resolve::resolve_refs(&mut result, &registry)?;
+
   debug!(input_node_count = nodes.len(), layout_node_count = result.len(), "lowering が完了しました");
-  return Ok(result);
+  return Ok((result, headings));
 }
 
 /// 単一の `DocNode` をレイアウトノードに変換する（見出しインデックス 0 固定の単体エントリ）
 ///
 /// 見出しの暗黙キーが文書順に依存しないテスト・単発変換用。本文全体の変換は
-/// [`lower_nodes`] が [`lower_node_indexed`] を介して連番キーを与える。
+/// [`lower_nodes`] が [`lower_node_indexed`] を介して連番キーを与える。pass2（`\ref` 解決）は
+/// 実行しないため、`InlineNode::Ref` を含むノードは `LayoutNode::Ref` プレースホルダのまま返る。
 #[cfg(test)]
 fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, LoweringError> {
-  return lower_node_indexed(ctx, node, 0);
+  let mut registry = counter::CounterRegistry::from_style(ctx.style);
+  let mut headings = Vec::new();
+  return lower_node_indexed(ctx, node, 0, &mut registry, &mut headings);
+}
+
+/// `nodes` を順に [`lower_node_indexed`] へ渡す内部ウォーク（pass1 本体）
+///
+/// `registry` / `headings` は同一呼び出し内の再帰（`theorem` / `quote` / `list` の本体）を通して
+/// 共有する。見出しの文書順インデックス（`heading_index`）だけは再帰呼び出しごとにリセットする
+/// （見出しは環境本体に現れないため実質的に影響しない。既存の暗黙アンカーキー採番規則を保つための
+/// 挙動）。
+fn lower_nodes_inner(
+  ctx: &LoweringContext,
+  nodes: &[DocNode],
+  registry: &mut counter::CounterRegistry,
+  headings: &mut Vec<PendingHeading>,
+) -> Result<Vec<LayoutNode>, LoweringError> {
+  let mut result = Vec::new();
+  // 見出しの文書順インデックス。`heading_anchor_key` で暗黙 destination キーを採番するのに使う
+  // （目次エントリの内部リンク到達先と一致させるため、`HeadingRecord::index` と同じ規則）。
+  let mut heading_index = 0;
+  for node in nodes {
+    result.extend(lower_node_indexed(ctx, node, heading_index, registry, headings)?);
+    if node.is_heading() {
+      heading_index += 1;
+    }
+  }
+  return Ok(result);
 }
 
 /// 単一の `DocNode` をレイアウトノードに変換する
@@ -277,37 +354,67 @@ fn lower_node_indexed(
   ctx: &LoweringContext,
   node: &DocNode,
   heading_index: usize,
+  registry: &mut counter::CounterRegistry,
+  headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   match node {
     DocNode::Heading {
       level,
-      number,
+      numbered,
       title,
       label,
+      span,
     } => {
-      return heading::lower_heading(ctx, *level, number, title, label.clone(), heading_index);
+      let number = if *numbered {
+        registry.increment_with_label(
+          counter::CounterRegistry::counter_name_for_heading(*level),
+          label.as_deref(),
+          *span,
+        )?
+      } else {
+        String::new()
+      };
+      headings.push(PendingHeading {
+        index: heading_index,
+        level: *level,
+        number: number.clone(),
+        title: title.clone(),
+      });
+      return heading::lower_heading(ctx, *level, &number, title, label.clone(), heading_index);
     },
     DocNode::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines);
     },
     DocNode::List { ordered, items } => {
-      return list::lower_list(ctx, *ordered, items);
+      return list::lower_list(ctx, *ordered, items, registry, headings);
     },
     DocNode::Theorem {
       class,
-      number,
       title,
       body,
       of,
       label,
+      span,
     } => {
       // 見出し（独立行）＋ クラス別 font_kind 本文 ＋ 上下マージン、proof は末尾に QED。
-      // proof の `of` は pass2 で解決済みの cleveref 文字列（例「Theorem 1」）を見出しに織り込む。
-      let of = of.as_ref().and_then(|target| target.number.as_deref());
-      return theorem::lower_theorem(ctx, *class, number.as_deref(), title.as_deref(), body, of, label.as_deref());
+      // `of`（証明対象、proof のみ）は前方参照になり得るため、`{of}` プレースホルダとして
+      // 見出しテンプレートに埋め込み、pass2（`resolve::resolve_refs`）で解決する。
+      let of = of.as_ref().map(|target| (target.label.as_str(), target.span));
+      let number = registry.increment_theorem_with_label(*class, label.as_deref(), *span)?;
+      return theorem::lower_theorem(
+        ctx,
+        *class,
+        number.as_deref(),
+        title.as_deref(),
+        body,
+        of,
+        label.as_deref(),
+        registry,
+        headings,
+      );
     },
     DocNode::Quote { kind, body } => {
-      return quote::lower_quote(ctx, *kind, body);
+      return quote::lower_quote(ctx, *kind, body, registry, headings);
     },
     DocNode::Rule { width, height } => {
       return Ok(vec![LayoutNode::Rule {
@@ -329,15 +436,17 @@ fn lower_node_indexed(
     DocNode::MathBlock {
       kind,
       rows,
-      number,
+      numbered,
       label,
+      span,
     } => {
       let block = &ctx.style.math.block;
+      let math_block = math::lower_math_block(ctx, *kind, rows, *numbered, label.as_deref(), *span, registry)?;
       let mut nodes = vec![
         LayoutNode::Vkern {
           length: block.top_margin,
         },
-        math::lower_math_block(ctx, *kind, rows, number.as_deref()),
+        math_block,
         LayoutNode::Vkern {
           length: block.bottom_margin,
         },
@@ -361,15 +470,16 @@ fn lower_node_indexed(
       downsample,
       caption,
       caption_position,
-      number,
       label,
+      span,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
       let overrides = figure::ImageOverrides {
         dpi: *dpi,
         downsample: *downsample,
       };
-      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, number)?;
+      let number = registry.increment_with_label(read_style::CounterName::Figure, label.as_deref(), *span)?;
+      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
     DocNode::Table {
@@ -379,12 +489,13 @@ fn lower_node_indexed(
       rows,
       caption,
       caption_position,
-      number,
       breakable,
       label,
+      span,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
-      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, number, *breakable)?;
+      let number = registry.increment_with_label(read_style::CounterName::Table, label.as_deref(), *span)?;
+      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
   }
@@ -404,6 +515,37 @@ fn with_label_anchor(label: Option<&str>, nodes: Vec<LayoutNode>) -> Vec<LayoutN
   return result;
 }
 
+/// 見出しタイトルのプレーンテキストを、`\ref` を `CounterRegistry` で解決しながら組み立てる
+///
+/// [`document::InlineNode::to_plain_text`] と同じ規則だが、`Ref` は `registry.resolve_label` で
+/// 解決した文字列を使う（`InlineNode` 自体はもう解決済み番号を保持しないため）。
+/// pass1 完了後（`registry` の labels テーブルが確定した後）にのみ呼ぶこと。
+fn resolve_heading_title_plain(title: &[document::InlineNode], registry: &counter::CounterRegistry) -> String {
+  return title.iter().map(|inline| resolve_inline_plain(inline, registry)).collect();
+}
+
+/// 単一の `InlineNode` を、`Ref` は `registry` 解決込みでプレーンテキストへ変換する
+fn resolve_inline_plain(inline: &document::InlineNode, registry: &counter::CounterRegistry) -> String {
+  use document::InlineNode;
+  return match inline {
+    InlineNode::Text(s) => s.clone(),
+    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => {
+      children.iter().map(|c| resolve_inline_plain(c, registry)).collect()
+    },
+    InlineNode::InlineMath(_) => "[Math]".to_string(),
+    InlineNode::Symbol(ch) => ch.to_string(),
+    InlineNode::LineBreak => "\n".to_string(),
+    InlineNode::NoIndent => String::new(),
+    InlineNode::Ref { label, .. } => registry.resolve_label(label).unwrap_or_default().to_string(),
+    InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
+      children.iter().map(|c| resolve_inline_plain(c, registry)).collect()
+    },
+    InlineNode::Cite { keys, label, .. } => label
+      .as_deref()
+      .map_or_else(|| keys.join(", "), |inlines| inlines.iter().map(|c| resolve_inline_plain(c, registry)).collect()),
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use document::{HeadingLevel, InlineNode, ListItem, MathEnvKind, MathNode, MathRow};
@@ -412,17 +554,19 @@ mod tests {
   use super::*;
 
   /// 1 行 1 セルの `equation` 相当 `DocNode::MathBlock` を作るテストヘルパ
-  fn equation_block(number: Option<&str>, label: Option<&str>) -> DocNode {
+  fn equation_block(numbered: bool, label: Option<&str>) -> DocNode {
     return DocNode::MathBlock {
       kind: MathEnvKind::Equation,
       rows: vec![MathRow {
         cells: vec![vec![MathNode::Text("a".to_string())]],
-        number: number.map(str::to_string),
+        numbered,
         label: label.map(str::to_string),
+        label_span: None,
       }],
-      number: None,
+      numbered: false,
       // equation はラベルを行側（`MathRow::label`）に持つため、環境単位ラベルは None
       label: None,
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
     };
   }
 
@@ -516,17 +660,18 @@ mod tests {
 
   #[test]
   fn unresolved_ref_in_paragraph_returns_error() {
-    // 評価器の pass2 が走らずに number = None のまま lowering に到達した場合、
-    // LoweringError::UnresolvedReference が返ることを確認する。
+    // 未定義ラベルへの \ref は pass2（lower_nodes 内の resolve::resolve_refs）で
+    // LoweringError::UnresolvedReference になることを確認する。
+    // lower_node（単体テスト用エントリ）は pass2 を実行しないため、ここでは
+    // pass2 も走る公開 API の lower_nodes を使う。
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = DocNode::Paragraph(vec![InlineNode::Ref {
+    let nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
-      number: None,
       span: miette::SourceSpan::from((0_usize, 0_usize)),
-    }]);
+    }])];
 
-    let err = lower_node(&ctx, &node).expect_err("未解決の Ref は LoweringError を返すべき");
+    let err = lower_nodes(&ctx, &nodes).expect_err("未解決の Ref は LoweringError を返すべき");
 
     let LoweringError::UnresolvedReference { label, .. } = err else {
       panic!("UnresolvedReference が期待されます: {err:?}");
@@ -580,7 +725,7 @@ mod tests {
     // ディスプレイ数式は Vkern(top) → MathBlock → Vkern(bottom) で包まれ、LineBreak は出力しない
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = equation_block(None, None);
+    let node = equation_block(false, None);
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
@@ -595,10 +740,11 @@ mod tests {
 
   #[test]
   fn lower_math_block_carries_numbered_row() {
-    // number = Some("1") のとき MathBlock の行に番号ボックスが乗る
-    let style = ReadStyle::default();
+    // numbered: true のとき MathBlock の行に番号ボックスが乗る（実際の発番は lowering が行う）
+    let mut style = ReadStyle::default();
+    style.counters.equation.number_format = "{n}".to_string();
     let ctx = LoweringContext::new(&style);
-    let node = equation_block(Some("1"), None);
+    let node = equation_block(true, None);
 
     let nodes = lower_node(&ctx, &node).expect("display math lowering は失敗しないはず");
 
@@ -619,7 +765,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes = vec![
-      DocNode::heading(HeadingLevel::Section, "1", vec![InlineNode::Text("H".to_string())]),
+      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("H".to_string())]),
       DocNode::Paragraph(vec![InlineNode::Text("P".to_string())]),
       DocNode::List {
         ordered: false,
@@ -646,7 +792,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let document = Document::new(vec![
-      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::Text("Intro".to_string())]),
+      DocNode::heading(HeadingLevel::Chapter, vec![InlineNode::Text("Intro".to_string())]),
       DocNode::Paragraph(vec![InlineNode::Text("Body".to_string())]),
     ]);
 
@@ -664,7 +810,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes = vec![
-      DocNode::heading(HeadingLevel::Section, "1", vec![InlineNode::Text("Heading".to_string())]),
+      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Heading".to_string())]),
       DocNode::Paragraph(vec![InlineNode::Text("Para".to_string())]),
       DocNode::List {
         ordered: true,
@@ -686,7 +832,7 @@ mod tests {
     // Arrange — label 付きディスプレイ数式は先頭に AnchorMark::Label を出す
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = equation_block(Some("1"), Some("eq:foo"));
+    let node = equation_block(true, Some("eq:foo"));
 
     // Act
     let nodes = lower_node(&ctx, &node).expect("失敗しない");
@@ -703,7 +849,7 @@ mod tests {
     // Arrange — label なしのディスプレイ数式はアンカーを出さない
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let node = equation_block(Some("1"), None);
+    let node = equation_block(true, None);
 
     // Act
     let nodes = lower_node(&ctx, &node).expect("失敗しない");

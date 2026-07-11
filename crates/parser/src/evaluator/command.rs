@@ -90,11 +90,11 @@ pub(crate) enum CommandKind {
 
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
-  fn execute(self, view: &CommandView, evaluator: &mut Evaluator) -> Result<CommandResult, EvalError> {
+  fn execute(self, view: &CommandView) -> Result<CommandResult, EvalError> {
     match self {
       Self::Space => control::space(view).map(CommandResult::Block),
 
-      Self::Headline(level) => headline::heading(view, level, &mut evaluator.registry).map(CommandResult::Block),
+      Self::Headline(level) => headline::heading(view, level).map(CommandResult::Block),
 
       Self::StyledText(kind) => inline::styled_text(view, kind).map(CommandResult::Inline),
 
@@ -199,9 +199,9 @@ impl Evaluator {
   /// `COMMAND_MAP`（機能コマンド）を引いた後 miss なら [`SYMBOL_MAP`]（記号）を引く。
   /// 機能コマンド名が記号名に優先する（両マップにキー重複はテストで排除済み）。
   /// どちらにも無ければ未知コマンドとしてエラーにする。
-  pub(crate) fn evaluate_command(&mut self, view: &CommandView) -> Result<CommandResult, EvalError> {
+  pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, EvalError> {
     if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
-      return command_kind.execute(view, self);
+      return command_kind.execute(view);
     }
     if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
       return single_char(view, symbol.ch).map(CommandResult::Inline);
@@ -232,7 +232,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

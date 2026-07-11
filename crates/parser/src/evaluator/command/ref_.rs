@@ -1,8 +1,7 @@
 //! `\ref{label}` コマンド
 //!
-//! 必須引数 1 個（ラベル名）を取り、pass2 で `CounterRegistry::resolve_label` により
-//! 解決される [`InlineNode::Ref`] スタブを生成する。pass1 時点では `number` は `None`
-//! で、`parser::parse_source` の pass2 で書き換えられる。
+//! 必須引数 1 個（ラベル名）を取り、`InlineNode::Ref` を生成する。解決（`lowering` 層の
+//! `CounterRegistry` によるラベル → 番号の解決）は行わない。
 
 use document::InlineNode;
 use syntax::ast::{CommandView, extract_text_content};
@@ -33,7 +32,6 @@ pub(crate) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
   let label = extract_text_content(view.source(), first_arg).trim().to_string();
   return Ok(vec![InlineNode::Ref {
     label,
-    number: None,
     span: view.span().into(),
   }]);
 }
@@ -64,7 +62,7 @@ mod tests {
   }
 
   #[test]
-  fn ref_produces_inline_ref_with_none_number() {
+  fn ref_produces_inline_ref_stub() {
     // Arrange
     let arena = Bump::new();
     let source = r"\ref{sec:intro}";
@@ -76,11 +74,10 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Ref { label, number, .. } = &result[0] else {
+    let InlineNode::Ref { label, .. } = &result[0] else {
       panic!("Ref が期待されます");
     };
     assert_eq!(label, "sec:intro");
-    assert!(number.is_none());
   }
 
   #[test]

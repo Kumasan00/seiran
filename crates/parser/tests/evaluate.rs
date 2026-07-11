@@ -10,7 +10,7 @@
 use std::collections::HashSet;
 
 use document::{DocNode, HeadingLevel, InlineNode, MathNode, MathStyle};
-use parser::{EvalError, ParseSourceError, Style, parse_source};
+use parser::{EvalError, ParseSourceError, parse_source};
 use types::FontKind;
 
 /// 引用キーの集合を組み立てるテストヘルパ
@@ -20,13 +20,11 @@ fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).
 ///
 /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
 /// 引用キーは空集合（`\cite` を含まないソース向け）。
-fn evaluate_source(source: &str) -> Vec<DocNode> {
-  return parse_source(source, "test", &Style::default(), &HashSet::new()).unwrap();
-}
+fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "test", &HashSet::new()).unwrap(); }
 
 /// 引用キー集合を指定してソースを評価するテストヘルパ
 fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
-  return parse_source(source, "test", &Style::default(), citation_keys).unwrap();
+  return parse_source(source, "test", citation_keys).unwrap();
 }
 
 /// ソースを評価して `EvalError` を取り出すテストヘルパ
@@ -38,7 +36,7 @@ fn evaluate_error(source: &str) -> EvalError { return evaluate_error_with_keys(s
 
 /// 引用キー集合を指定してソースを評価し `EvalError` を取り出すテストヘルパ
 fn evaluate_error_with_keys(source: &str, citation_keys: &HashSet<String>) -> EvalError {
-  match parse_source(source, "test", &Style::default(), citation_keys) {
+  match parse_source(source, "test", citation_keys) {
     Err(ParseSourceError::Eval { error, .. }) => return error,
     other => panic!("評価エラーが期待されます: {other:?}"),
   }
@@ -135,20 +133,18 @@ fn evaluate_paragraph_break_creates_two_paragraphs() {
 
 #[test]
 fn evaluate_section_command_creates_heading() {
-  // Counters::default().section.number_format = "{chapter}.{n}" のため、`\chapter` 不在時は
-  // chapter 値（0）が `NumberStyle::Arabic.render(0) = ""` で空文字列となり、`.1` が出力される。
-  // 実ドキュメントでは通常 `\chapter` 配下で `\section` を使うため、この挙動は許容範囲。
+  // 採番（number）は行わない。lowering 層が numbered フラグを見て発番・書式化する。
   let result = evaluate_source("\\section{Introduction}");
   assert_eq!(result.len(), 1);
   match &result[0] {
     DocNode::Heading {
       level,
-      number,
+      numbered,
       title,
       ..
     } => {
       assert_eq!(*level, HeadingLevel::Section);
-      assert_eq!(number, ".1");
+      assert!(*numbered);
       assert_eq!(title.len(), 1);
       match &title[0] {
         InlineNode::Text(text) => assert_eq!(text, "Introduction"),
@@ -160,51 +156,35 @@ fn evaluate_section_command_creates_heading() {
 }
 
 #[test]
-fn evaluate_chapter_then_section_uses_chapter_prefix() {
-  // `\chapter` 後の `\section` は `{chapter}.{n}` テンプレで `"1.1"` になる
-  let result = evaluate_source("\\chapter{Foundations}\\section{Introduction}");
-  assert_eq!(result.len(), 2);
-  let DocNode::Heading { number: ch_num, .. } = &result[0] else {
-    panic!("Heading が期待されます");
-  };
-  assert_eq!(ch_num, "1");
-  let DocNode::Heading {
-    number: sec_num, ..
-  } = &result[1]
-  else {
-    panic!("Heading が期待されます");
-  };
-  assert_eq!(sec_num, "1.1");
-}
-
-#[test]
-fn evaluate_section_with_label_then_ref_resolves_via_registry() {
+fn evaluate_section_with_label_then_ref_is_structured_without_resolving() {
   // `\chapter{X}\section[label=sec:intro]{T}` の後に `\ref{sec:intro}` を書くと、
-  // `Counters::default().section.ref_format = "{display_name} {number}"` が適用されて
-  // `"Section 1.1"` という整形済み文字列で解決される。
+  // label とラベル参照の構造だけが組まれる（解決は lowering 層の CounterRegistry が担う）。
   let result = evaluate_source(r"\chapter{X}\section[label=sec:intro]{T}See \ref{sec:intro}.");
   // [Heading(chapter), Heading(section), Paragraph("See <Ref> .")]
   assert_eq!(result.len(), 3);
+  let DocNode::Heading { label, .. } = &result[1] else {
+    panic!("Heading が期待されます: {:?}", result[1]);
+  };
+  assert_eq!(label.as_deref(), Some("sec:intro"));
   let DocNode::Paragraph(inlines) = &result[2] else {
     panic!("Paragraph が期待されます: {:?}", result[2]);
   };
-  let ref_node = inlines
-    .iter()
-    .find_map(|n| match n {
-      InlineNode::Ref { number, .. } => Some(number.clone()),
-      _ => None,
-    })
-    .expect("Ref ノードが含まれるべき");
-  assert_eq!(ref_node.as_deref(), Some("Section 1.1"));
+  assert!(
+    inlines.iter().any(|n| matches!(n, InlineNode::Ref { label, .. } if label == "sec:intro")),
+    "Ref ノードが含まれるべき: {inlines:?}"
+  );
 }
 
 #[test]
-fn evaluate_equation_with_label_then_ref_resolves_with_parens() {
-  // equation は `CounterRegistry::increment(CounterName::Equation)` で書式化された
-  // "{chapter}.{n}" 形式の番号を発番し、`ref_format = "({number})"` が適用される。
-  // 直前の `\chapter` で chapter を 1 にしてから equation を発番すると "(1.1)" になる。
+fn evaluate_equation_with_label_is_structured_without_resolving() {
+  // equation の label・\ref は構造化されるだけで、採番・解決は lowering 層が担う。
   let source = r"\chapter{C}\begin{equation}[label=eq:p]a\end{equation}See \ref{eq:p}.";
   let result = evaluate_source(source);
+  let DocNode::MathBlock { rows, .. } = result.iter().find(|n| matches!(n, DocNode::MathBlock { .. })).unwrap() else {
+    unreachable!();
+  };
+  assert_eq!(rows[0].label.as_deref(), Some("eq:p"));
+  assert!(rows[0].numbered);
   let para = result
     .iter()
     .find_map(|n| {
@@ -215,71 +195,10 @@ fn evaluate_equation_with_label_then_ref_resolves_with_parens() {
       }
     })
     .expect("Paragraph が含まれるべき");
-  let ref_node = para
-    .iter()
-    .find_map(|n| match n {
-      InlineNode::Ref { number, .. } => Some(number.clone()),
-      _ => None,
-    })
-    .expect("Ref ノードが含まれるべき");
-  assert_eq!(ref_node.as_deref(), Some("(1.1)"));
-}
-
-#[test]
-fn evaluate_align_row_label_then_ref_resolves_with_parens() {
-  // align は行ごと採番。行末マーカー `\label{...}` を付けた行の番号を `\ref` で参照できる。
-  // `\chapter` で chapter を 1 にし、align の 1 行目に `\label` を付けると "(1.1)" に解決する。
-  let source = r"\chapter{C}\begin{align}a &= b \label{eq:a} \\ c &= d\end{align}See \ref{eq:a}.";
-  let result = evaluate_source(source);
-  let para = result
-    .iter()
-    .find_map(|n| {
-      if let DocNode::Paragraph(i) = n {
-        Some(i)
-      } else {
-        None
-      }
-    })
-    .expect("Paragraph が含まれるべき");
-  let ref_node = para
-    .iter()
-    .find_map(|n| match n {
-      InlineNode::Ref { number, .. } => Some(number.clone()),
-      _ => None,
-    })
-    .expect("Ref ノードが含まれるべき");
-  assert_eq!(ref_node.as_deref(), Some("(1.1)"), "1 行目の番号 1.1 が参照される");
-}
-
-#[test]
-fn evaluate_split_env_label_then_ref_resolves_with_parens() {
-  // split は環境単位採番。`[label=...]` で環境全体の番号を `\ref` で参照できる。
-  let source = r"\chapter{C}\begin{split}[label=eq:s]a &= b \\ &= c\end{split}See \ref{eq:s}.";
-  let result = evaluate_source(source);
-  let para = result
-    .iter()
-    .find_map(|n| {
-      if let DocNode::Paragraph(i) = n {
-        Some(i)
-      } else {
-        None
-      }
-    })
-    .expect("Paragraph が含まれるべき");
-  let ref_node = para
-    .iter()
-    .find_map(|n| match n {
-      InlineNode::Ref { number, .. } => Some(number.clone()),
-      _ => None,
-    })
-    .expect("Ref ノードが含まれるべき");
-  assert_eq!(ref_node.as_deref(), Some("(1.1)"), "環境単位の番号 1.1 が参照される");
-}
-
-#[test]
-fn evaluate_unknown_ref_returns_unknown_label_error() {
-  let err = evaluate_error(r"\ref{nope}");
-  assert!(matches!(err, EvalError::UnknownLabel { ref label, .. } if label == "nope"));
+  assert!(
+    para.iter().any(|n| matches!(n, InlineNode::Ref { label, .. } if label == "eq:p")),
+    "Ref ノードが含まれるべき: {para:?}"
+  );
 }
 
 #[test]
@@ -1105,8 +1024,17 @@ fn evaluate_environment_with_extra_mandatory_arg_is_error() {
 }
 
 #[test]
-fn evaluate_duplicate_label_is_error() {
-  // 同名ラベルの再定義は以前黙って上書きされていた
-  let error = evaluate_error(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
-  assert!(matches!(error, EvalError::DuplicateLabel { ref label, .. } if label == "sec:a"));
+fn evaluate_duplicate_label_is_structured_without_error() {
+  // 同名ラベルの重複検出は lowering 層（CounterRegistry）の責務。
+  // parser は両方の label をそのまま構造化するだけでエラーにしない。
+  let result = evaluate_source(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
+  assert_eq!(result.len(), 2);
+  let DocNode::Heading { label: a, .. } = &result[0] else {
+    panic!("Heading が期待されます");
+  };
+  let DocNode::Heading { label: b, .. } = &result[1] else {
+    panic!("Heading が期待されます");
+  };
+  assert_eq!(a.as_deref(), Some("sec:a"));
+  assert_eq!(b.as_deref(), Some("sec:a"));
 }

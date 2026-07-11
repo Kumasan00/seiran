@@ -19,7 +19,6 @@
 //! - `\caption{...}` — キャプション（任意）
 
 use document::{CaptionPosition, DocNode, InlineNode};
-use read_style::CounterName;
 use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
 use types::Length;
 
@@ -31,18 +30,15 @@ use crate::evaluator::{
 
 /// `figure` 環境を評価する
 ///
-/// [`CounterRegistry::increment`] で `CounterName::Figure` の通し番号を発番し、
 /// 本体内の `\image` / `\caption` を抽出して [`DocNode::Figure`] を生成する。
-/// 番号書式は `read_style::CounterStyle.number_format` テンプレ（既定 `"{chapter}.{n}"`）に従う。
+/// 採番（`CounterName::Figure` の発番・書式化）は行わない（`lowering` 層の責務）。
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(&opt_args, "label");
-
-  let number = evaluator.registry.increment_with_label(CounterName::Figure, label.as_deref(), view.span().into())?;
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -117,7 +113,7 @@ pub(super) fn figure(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
     caption,
     caption_position,
     label,
-    number,
+    span: view.span().into(),
   }]);
 }
 
@@ -222,7 +218,6 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -232,27 +227,13 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  /// figure カウンタの `format` を `"{n}"` に差し替えた Style を返す
-  ///
-  /// 既定の `"{chapter}.{n}"` はカウンタ経由化の通し番号テスト目的では本質的ではないため、
-  /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
-  fn style_with_plain_figure_format() -> Style {
-    let mut counters = Counters::default();
-    counters.figure.number_format = "{n}".to_string();
-    let style = Style {
-      counters,
-      ..Default::default()
-    };
-    return style;
-  }
-
   #[test]
   fn figure_extracts_image_and_caption() {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -268,7 +249,7 @@ mod tests {
       caption,
       caption_position,
       label,
-      number,
+      ..
     } = &result[0]
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
@@ -285,7 +266,6 @@ mod tests {
     // \image が先 → 既定の Bottom
     assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
-    assert_eq!(number, "1");
   }
 
   #[test]
@@ -294,7 +274,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -315,7 +295,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -336,7 +316,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -350,54 +330,12 @@ mod tests {
   }
 
   #[test]
-  fn figure_assigns_sequential_numbers() {
-    // Arrange
-    let arena = Bump::new();
-    let source = r"\begin{figure}\image[width=1mm, height=1mm]{a}\end{figure}\begin{figure}\image[width=1mm, height=1mm]{b}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_figure_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 2);
-    let numbers: Vec<&str> = result
-      .iter()
-      .map(|n| match n {
-        DocNode::Figure { number, .. } => number.as_str(),
-        _ => panic!("Figure が期待されます: {n:?}"),
-      })
-      .collect();
-    assert_eq!(numbers, vec!["1", "2"]);
-  }
-
-  #[test]
-  fn figure_number_picks_up_chapter_prefix_via_counter_format() {
-    // Arrange — `\chapter` で chapter が 1 に進んだあとの figure は "1.1" になる
-    let arena = Bump::new();
-    let source = r"\chapter{C}\begin{figure}\image[width=1mm, height=1mm]{a}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — Heading 1 件 + Figure 1 件、figure の number は既定書式 "{chapter}.{n}" で "1.1"
-    assert_eq!(result.len(), 2);
-    let DocNode::Figure { number, .. } = &result[1] else {
-      panic!("Figure が期待されます: {:?}", result[1]);
-    };
-    assert_eq!(number, "1.1");
-  }
-
-  #[test]
   fn figure_rejects_missing_image() {
     // Arrange — image なしはエラー
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -412,7 +350,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -439,7 +377,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -458,7 +396,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}[foo=1]\image[width=1mm, height=1mm]{a}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -473,7 +411,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
@@ -495,7 +433,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -510,7 +448,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

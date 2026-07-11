@@ -85,7 +85,7 @@ read_config （types を使用）
   ↑ font, pdf_gen, seiran
 
 read_style （types を使用）
-  ↑ parser, citation, lowering, pdf_gen, seiran
+  ↑ citation, lowering, pdf_gen, seiran
 
 read_references （workspace クレートに依存しない独立クレート）
   ↑ citation, seiran
@@ -96,7 +96,7 @@ syntax （bumpalo アリーナ上に CST を構築。workspace クレートに�
 document （types のみに依存。Document IR の共有契約クレート）
   ↑ parser, citation, lowering, seiran
 
-parser （syntax の CST を Document IR（document）に変換。read_style に依存）
+parser （syntax の CST を Document IR（document）に変換。採番・書式化は行わず lowering に委ねる）
   ↑ seiran
 
 citation （document, read_references, read_style, types に依存。hayagriva / citationberg で CSL 整形）
@@ -108,7 +108,7 @@ hlist （types, icu, hypher のみに依存。フォント・krilla 非依存の
 font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
   ↑ layout, pdf_gen, seiran
 
-lowering （document, read_style, types に依存。フォント非依存の論理変換層）
+lowering （document, read_style, types に依存。フォント非依存の論理変換層。採番・`\ref` 解決も担う）
   ↑ layout, seiran
 
 layout （font, hlist, lowering, types に依存。icu でスクリプト判定）
@@ -140,11 +140,11 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `read_references` | `references.toml` / `.json` の読込（CSL 文献情報、拡張子で判別）                         |
 | `syntax`          | 字句・構文解析（`lexer` → `parser`）、bumpalo アリーナ上にロスレス CST を構築           |
 | `document`        | Document IR の型定義（`parser` 生産・`lowering` 消費の共有契約クレート）                 |
-| `parser`          | CST → Document IR の評価変換。コマンド / 環境を phf レジストリでディスパッチ             |
+| `parser`          | CST → Document IR の評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）  |
 | `citation`        | `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                        |
 | `hlist`           | フォント非依存のコア型 + 純粋組版パス（(b) break_opportunities / (c) break_lines / (d) break_pages） |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
-| `lowering`        | DocNode → LayoutNode の論理変換（フォント非依存）                                       |
+| `lowering`        | DocNode → LayoutNode の論理変換（フォント非依存）。採番・`\ref` 解決（pass1/pass2）も担う |
 | `layout`          | (a) build_blocks: LayoutNode → `Vec<Block>`（シェーピング + 計測 + break 注入）。running でヘッダ / フッタ配置 |
 | `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |
 | `subcommand`      | `variation-axes` / `ttc-names` / `script-langs` 実装（read-fonts 直接使用）             |

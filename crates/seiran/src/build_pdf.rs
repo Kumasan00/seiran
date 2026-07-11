@@ -139,7 +139,7 @@ fn build_pages(
   let citation_keys: HashSet<String> = references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let mut doc_nodes = parse_all_sources(&config.sources, style, &citation_keys)?;
+  let mut doc_nodes = parse_all_sources(&config.sources, &citation_keys)?;
   info!(
     source_count = config.sources.len(),
     node_count = doc_nodes.len(),
@@ -155,8 +155,8 @@ fn build_pages(
 
   let stage_start = Instant::now();
   let lowering_ctx = LoweringContext::new(style).with_image_defaults(config.image.max_dpi, config.image.downsample);
-  let body_layout_nodes =
-    lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
+  let (body_layout_nodes, headings) = lowering::lower_nodes_with_headings(&lowering_ctx, &doc_nodes)
+    .map_err(|source| BuildPdfError::Lowering { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
@@ -243,7 +243,7 @@ fn build_pages(
     date: config.document.date.clone(),
   };
   let front_blocks =
-    assemble_front_matter(&doc_nodes, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
+    assemble_front_matter(&headings, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
   // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
@@ -274,7 +274,7 @@ fn build_pages(
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
   // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
-  let outline_entries = collect_outline_entries(&doc_nodes);
+  let outline_entries = collect_outline_entries(&headings);
 
   return Ok(LaidOutDocument {
     pages,
@@ -291,7 +291,6 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
 fn parse_all_sources(
   sources: &[std::path::PathBuf],
-  style: &read_style::Style,
   citation_keys: &HashSet<String>,
 ) -> Result<Vec<DocNode>, BuildPdfError> {
   let mut all_nodes: Vec<DocNode> = Vec::new();
@@ -303,7 +302,7 @@ fn parse_all_sources(
       source,
     })?;
     let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path, style, citation_keys) {
+    match parser::parse_source(&content, &display_path, citation_keys) {
       Ok(nodes) => all_nodes.extend(nodes),
       Err(error) => parse_errors.push(error),
     }

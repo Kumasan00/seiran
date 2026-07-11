@@ -19,7 +19,6 @@
 //!   `MathSuperscript` をそのまま `MathNode` に変換
 
 use document::{DocNode, InlineNode};
-use read_style::Style;
 use syntax::{
   SyntaxKind,
   ast::CommandView,
@@ -27,11 +26,10 @@ use syntax::{
   token::TokenKind,
 };
 
-use crate::evaluator::{command::CommandResult, counter::CounterRegistry};
+use crate::evaluator::command::CommandResult;
 
 pub(crate) mod cite;
 mod command;
-pub(crate) mod counter;
 mod environment;
 mod error;
 mod inline;
@@ -47,29 +45,11 @@ pub use error::EvalError;
 
 /// CST から Document IR を生成する評価器
 ///
-/// 見出し・数式・図の自動採番とラベル登録は [`CounterRegistry`] が一手に担う。
-/// 9 種の `CounterName`（part〜table）はすべて `Style::core.counters` のテンプレートに従って
-/// 書式化されるため、parser 側にフラットカウンタを別途持たない。
+/// 採番（見出し・数式・図表の自動採番とラベル登録）は行わない。`DocNode` は採番対象かどうか
+/// （`numbered` フラグ）とラベル・ソース位置だけを構造化し、実際の発番・書式化は `lowering` 層
+/// （`lowering::CounterRegistry`）が担う。
 #[derive(Debug)]
-pub(crate) struct Evaluator {
-  /// 自動採番とラベル登録のレジストリ。`read_style::Style.counters` から構築する
-  pub registry: CounterRegistry,
-}
-
-impl Evaluator {
-  /// `Style` からカウンタ定義を取り込んで評価器を構築する
-  #[must_use]
-  pub fn new(style: &Style) -> Self {
-    return Self {
-      registry: CounterRegistry::from_style(style),
-    };
-  }
-}
-
-impl Default for Evaluator {
-  /// `Style::default()` を使った評価器を返す（主にテスト用）
-  fn default() -> Self { return Self::new(&Style::default()); }
-}
+pub(crate) struct Evaluator;
 
 impl Evaluator {
   /// CST ノードの子要素を評価して Document IR（`Vec<DocNode>`）に変換する
@@ -122,7 +102,7 @@ impl Evaluator {
         GreenElement::Node(child_node) => match child_node.kind {
           SyntaxKind::CommandCall => {
             let view = CommandView::new(child_node, source);
-            let result = self.evaluate_command(&view)?;
+            let result = Self::evaluate_command(&view)?;
             match result {
               CommandResult::Block(block_nodes) => {
                 Self::flush_paragraph(&mut doc_nodes, &mut current_inlines);

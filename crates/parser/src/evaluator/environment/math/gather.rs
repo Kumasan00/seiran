@@ -1,7 +1,7 @@
 //! 数式環境 — `gather`
 //!
 //! `\begin{gather}...\end{gather}` を [`DocNode::MathBlock`]（`kind = Gather`）に変換します。各行は
-//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を [`read_style::CounterName::Equation`] で
+//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を `read_style::CounterName::Equation` で
 //! 採番します。実体は共通ハンドラ [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に
 //! 委譲します。各行の中央寄せは `layout` 段が [`MathEnvKind::Gather`] に応じて確定します。
 //!
@@ -43,23 +43,12 @@ pub(crate) fn gather(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resul
 mod tests {
   use bumpalo::Bump;
   use document::MathEnvKind;
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
 
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
     return syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  /// equation カウンタの `format` を `"{n}"` に縮約した Style
-  fn style_with_plain_equation_format() -> Style {
-    let mut counters = Counters::default();
-    counters.equation.number_format = "{n}".to_string();
-    return Style {
-      counters,
-      ..Default::default()
-    };
   }
 
   fn rows_of(result: &[DocNode]) -> &[document::MathRow] {
@@ -76,17 +65,16 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 2 行・各 1 セル・各行採番
+    // Assert — 2 行・各 1 セル・各行採番対象
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert!(rows.iter().all(|r| r.cells.len() == 1), "各行 1 セル: {rows:?}");
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
-    assert_eq!(rows[1].number.as_deref(), Some("2"));
+    assert!(rows.iter().all(|r| r.numbered));
   }
 
   #[test]
@@ -95,7 +83,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a & b\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -110,33 +98,33 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
     let rows = rows_of(&result);
-    assert!(rows.iter().all(|r| r.number.is_none()), "無採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| !r.numbered), "無採番のはず: {rows:?}");
   }
 
   #[test]
   fn gather_notag_suppresses_single_row() {
-    // Arrange — gather でも中間行の行末 \notag で 1 行だけ無採番にできる（通し番号は連続）
+    // Arrange — gather でも中間行の行末 \notag で 1 行だけ無採番にできる
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — (1)、無採番、(2)
+    // Assert — 採番、無採番、採番
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
-    assert!(rows[1].number.is_none(), "\\notag 行は無採番: {:?}", rows[1].number);
-    assert_eq!(rows[2].number.as_deref(), Some("2"), "通し番号は連続する");
+    assert!(rows[0].numbered);
+    assert!(!rows[1].numbered, "\\notag 行は無採番のはず");
+    assert!(rows[2].numbered);
   }
 
   #[test]
@@ -145,7 +133,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -160,17 +148,17 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 1 行目: ラベルあり・番号 1、2 行目: ラベルなし・番号 2
+    // Assert — 1 行目: ラベルあり・採番対象、2 行目: ラベルなし・採番対象
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert_eq!(rows[0].label.as_deref(), Some("eq:g"));
-    assert_eq!(rows[0].number.as_deref(), Some("1"));
+    assert!(rows[0].numbered);
     assert!(rows[1].label.is_none(), "2 行目はラベルなし: {:?}", rows[1].label);
-    assert_eq!(rows[1].number.as_deref(), Some("2"));
+    assert!(rows[1].numbered);
   }
 }

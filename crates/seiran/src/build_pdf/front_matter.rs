@@ -1,13 +1,13 @@
 //! 前付け（タイトルページ・目次）の組み立て・ページ分割・補助型
 
-use document::{DocNode, HeadingLevel, collect_headings, heading_anchor_key, inline_nodes_to_plain_text};
+use document::heading_anchor_key;
 use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{Block, LineBreaker, Page, PageGeometry};
 use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
-use lowering::{TextStyle, TitlePageMetadata, lower_title_page};
+use lowering::{HeadingRecord, TextStyle, TitlePageMetadata, lower_title_page};
 use read_style::{PageNumbering, Style, TocStyle};
 use tracing::{debug, debug_span};
-use types::{FontKind, TextAlignment};
+use types::{FontKind, HeadingLevel, TextAlignment};
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
 ///
@@ -15,7 +15,7 @@ use types::{FontKind, TextAlignment};
 /// （目次・本文）は次ページから始まる。目次の後にも `Block::PageBreak` を積み、本文を次ページから
 /// 始める（本文区間の独立性を保つ）。`title_page` / `toc` がともに無効なら空列を返す。
 pub(super) fn assemble_front_matter(
-  doc_nodes: &[DocNode],
+  headings: &[HeadingRecord],
   heading_pages: &[usize],
   title_metadata: &TitlePageMetadata,
   style: &Style,
@@ -45,7 +45,7 @@ pub(super) fn assemble_front_matter(
     debug!("タイトルページを生成しました");
   }
   if style.toc.enabled {
-    let toc_entries = collect_toc_entries(doc_nodes, heading_pages, &style.toc, &style.page_numbering);
+    let toc_entries = collect_toc_entries(headings, heading_pages, &style.toc, &style.page_numbering);
     let toc_spec = build_toc_spec(style, text_width);
     let toc_blocks = build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
     if !toc_blocks.is_empty() {
@@ -63,21 +63,20 @@ pub(super) fn assemble_front_matter(
 /// レンダリングし、内部リンクキーは見出しの文書順インデックスから [`document::heading_anchor_key`]
 /// で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
 fn collect_toc_entries(
-  doc_nodes: &[DocNode],
+  headings: &[HeadingRecord],
   heading_pages: &[usize],
   toc: &TocStyle,
   page_numbering: &PageNumbering,
 ) -> Vec<TocEntryInput> {
-  let headings = collect_headings(doc_nodes);
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
   return headings
-    .into_iter()
+    .iter()
     .zip(heading_pages.iter().copied())
     .filter(|(info, _)| u32::from(info.level.depth()) < toc.max_depth)
     .map(|(info, page_index)| TocEntryInput {
       level: info.level,
-      number: info.number.to_string(),
-      title_plain: inline_nodes_to_plain_text(info.title),
+      number: info.number.clone(),
+      title_plain: info.title_plain.clone(),
       page_label: page_numbering.body.render(page_index as u32 + 1),
       link_key: heading_anchor_key(info.index),
     })
@@ -163,10 +162,20 @@ pub(super) fn page_number_labels(
 
 #[cfg(test)]
 mod tests {
-  use document::{DocNode, HeadingLevel, InlineNode};
+  use lowering::HeadingRecord;
   use read_style::{PageNumbering, TocStyle};
+  use types::HeadingLevel;
 
   use super::{collect_toc_entries, page_number_labels};
+
+  fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
+    return HeadingRecord {
+      index,
+      level,
+      number: number.to_string(),
+      title_plain: title_plain.to_string(),
+    };
+  }
 
   #[test]
   fn page_number_labels_roman_front_arabic_body() {
@@ -194,10 +203,10 @@ mod tests {
   #[test]
   fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
     // Arrange — Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
-    let doc = vec![
-      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::text("Ch")]),
-      DocNode::heading(HeadingLevel::Section, "1.1", vec![InlineNode::text("Sec")]),
-      DocNode::heading(HeadingLevel::Subsection, "1.1.1", vec![InlineNode::text("Sub")]),
+    let headings = vec![
+      heading_record(0, HeadingLevel::Chapter, "1", "Ch"),
+      heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
+      heading_record(2, HeadingLevel::Subsection, "1.1.1", "Sub"),
     ];
     let heading_pages = vec![0, 1, 2];
     let toc = TocStyle {
@@ -206,7 +215,7 @@ mod tests {
     };
 
     // Act
-    let entries = collect_toc_entries(&doc, &heading_pages, &toc, &PageNumbering::default());
+    let entries = collect_toc_entries(&headings, &heading_pages, &toc, &PageNumbering::default());
 
     // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
     assert_eq!(entries.len(), 2);

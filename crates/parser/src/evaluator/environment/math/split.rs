@@ -42,7 +42,6 @@ pub(crate) fn split(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
 mod tests {
   use bumpalo::Bump;
   use document::MathEnvKind;
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -51,98 +50,71 @@ mod tests {
     return syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  /// equation カウンタの `format` を `"{n}"` に縮約した Style
-  fn style_with_plain_equation_format() -> Style {
-    let mut counters = Counters::default();
-    counters.equation.number_format = "{n}".to_string();
-    return Style {
-      counters,
-      ..Default::default()
-    };
-  }
-
-  /// 最初の `DocNode::MathBlock`（`Split`）を分解して (`rows`, `env_number`) を返す
-  fn block_of(result: &[DocNode]) -> (&[document::MathRow], Option<&str>) {
+  /// 最初の `DocNode::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
+  fn block_of(result: &[DocNode]) -> (&[document::MathRow], bool) {
     let DocNode::MathBlock {
-      kind, rows, number, ..
+      kind,
+      rows,
+      numbered,
+      ..
     } = &result[0]
     else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Split, "split は MathEnvKind::Split");
-    return (rows, number.as_deref());
+    return (rows, *numbered);
   }
 
   #[test]
   fn split_aligns_columns_and_numbers_whole_env_once() {
-    // Arrange — 2 行 × 2 列の split。番号は環境全体に 1 つ
+    // Arrange — 2 行 × 2 列の split。採番は環境全体に 1 つ
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — 2 行・各行は無採番・環境全体の番号が "1"
-    let (rows, env_number) = block_of(&result);
+    // Assert — 2 行・各行は無採番・環境全体が採番対象
+    let (rows, numbered) = block_of(&result);
     assert_eq!(rows.len(), 2, "2 行: {rows:?}");
-    assert!(rows.iter().all(|r| r.number.is_none()), "行は無採番: {rows:?}");
-    assert_eq!(env_number, Some("1"), "環境全体に 1 つの番号");
-  }
-
-  #[test]
-  fn split_consumes_single_counter_value() {
-    // Arrange — split（環境 1 つ分）の後の equation は 2 になる（split は 1 を 1 回だけ消費）
-    let arena = Bump::new();
-    let source = r"\begin{split}a &= b \\ &= c\end{split}\begin{equation}d\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — split の env number = 1、equation = 2
-    let (_, env_number) = block_of(&result);
-    assert_eq!(env_number, Some("1"));
-    let DocNode::MathBlock { rows: eq_rows, .. } = &result[1] else {
-      panic!("equation の MathBlock が期待されます: {:?}", result[1]);
-    };
-    assert_eq!(eq_rows[0].number.as_deref(), Some("2"));
+    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
+    assert!(numbered, "環境全体は採番対象");
   }
 
   #[test]
   fn split_numbered_false_suppresses_numbering() {
-    // Arrange — `[numbered=false]` で環境全体の番号も出ない
+    // Arrange — `[numbered=false]` で環境全体が無採番になる
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false]a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
     // Assert
-    let (rows, env_number) = block_of(&result);
-    assert!(rows.iter().all(|r| r.number.is_none()));
-    assert_eq!(env_number, None, "無採番のはず");
+    let (rows, numbered) = block_of(&result);
+    assert!(rows.iter().all(|r| !r.numbered));
+    assert!(!numbered, "無採番のはず");
   }
 
   #[test]
   fn split_with_label_captures_block_label() {
-    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体に番号が付く
+    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体が採番対象になる
     let arena = Bump::new();
     let source = r"\begin{split}[label=eq:s]a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst).unwrap();
 
-    // Assert — MathBlock.label と env number が両方付く（行は無採番）
+    // Assert — MathBlock.label と numbered が両方付く（行は無採番）
     let DocNode::MathBlock {
       rows,
-      number,
+      numbered,
       label,
       ..
     } = &result[0]
@@ -150,8 +122,8 @@ mod tests {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
-    assert_eq!(number.as_deref(), Some("1"), "環境全体に 1 つの番号");
-    assert!(rows.iter().all(|r| r.number.is_none()), "行は無採番: {rows:?}");
+    assert!(*numbered, "環境全体は採番対象");
+    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
   }
 
   #[test]
@@ -160,7 +132,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false][label=eq:s]a &= b\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);
@@ -175,7 +147,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \label{eq:s}\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

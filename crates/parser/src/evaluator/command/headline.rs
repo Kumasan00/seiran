@@ -1,38 +1,32 @@
 //! 見出しコマンド群
 //!
 //! `\part`, `\chapter`, `\section`, `\subsection`, `\paragraph`, `\subparagraph`
-//! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成し、
-//! [`CounterRegistry`](crate::evaluator::counter::CounterRegistry) で自動採番します。
+//! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成します。
+//! 自動採番は行わず、常に `numbered: true` を立てるだけで `lowering` 層に委ねます。
 
 use document::{DocNode, HeadingLevel};
 use syntax::ast::CommandView;
 
 use crate::evaluator::{
   EvalError,
-  counter::CounterRegistry,
   inline::extract_inline_nodes,
   opt_args::{OptType, collect_command_opt_args, find_string},
 };
 
 /// 見出しコマンドの共通処理
 ///
-/// カウンタのインクリメント・リセットは [`CounterRegistry`] に委ね、
-/// `[label=...]` 指定時はラベルレジストリに登録した上で `DocNode::Heading` を生成する。
+/// 採番（カウンタの発番・リセット）は行わない。`[label=...]` の捕捉とタイトルの抽出だけを行い、
+/// 常に `numbered: true` の `DocNode::Heading` を生成する（発番・書式化は `lowering` 層が担う）。
 ///
 /// # Arguments
 ///
 /// * `view` - コマンドの型付きビュー
 /// * `level` - 見出しレベル
-/// * `registry` - 採番・ラベル登録用のレジストリ
 ///
 /// # Errors
 ///
 /// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
-pub(super) fn heading(
-  view: &CommandView,
-  level: HeadingLevel,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<DocNode>, EvalError> {
   let name = level.command_name();
 
   let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
@@ -52,16 +46,14 @@ pub(super) fn heading(
     });
   }
 
-  let counter_name = CounterRegistry::counter_name_for_heading(level);
-  let number = registry.increment_with_label(counter_name, label.as_deref(), view.span().into())?;
-
   let title = extract_inline_nodes(view.source(), first_arg)?;
 
   return Ok(vec![DocNode::Heading {
     level,
-    number,
+    numbered: true,
     title,
     label,
+    span: view.span().into(),
   }]);
 }
 
@@ -106,25 +98,31 @@ mod tests {
   }
 
   #[test]
-  fn heading_captures_label_and_assigns_number() {
-    // Arrange — `\section[label=foo]{Title}` でラベル付きの section が登録される
+  fn heading_captures_label_and_is_numbered() {
+    // Arrange — `\section[label=foo]{Title}` でラベル付きの見出しが構造化される
     let arena = Bump::new();
     let source = r"\section[label=sec:foo]{Title}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
-    let mut registry = CounterRegistry::default_for_seiran();
 
     // Act
-    let result = heading(&view, HeadingLevel::Section, &mut registry).unwrap();
+    let result = heading(&view, HeadingLevel::Section).unwrap();
 
-    // Assert: Heading が 1 個生成され、label が保持される
+    // Assert: Heading が 1 個生成され、常に numbered: true・label が保持される
+    // （採番・書式化は lowering 層の責務）
     assert_eq!(result.len(), 1);
-    let DocNode::Heading { label, .. } = &result[0] else {
+    let DocNode::Heading {
+      level,
+      numbered,
+      label,
+      ..
+    } = &result[0]
+    else {
       panic!("Heading が期待されます");
     };
+    assert_eq!(*level, HeadingLevel::Section);
+    assert!(*numbered);
     assert_eq!(label.as_deref(), Some("sec:foo"));
-    // ラベルが registry にも登録されている
-    assert!(registry.labels.contains_key("sec:foo"));
   }
 
   #[test]
@@ -134,10 +132,9 @@ mod tests {
     let source = r"\section[draft=true]{Title}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
-    let mut registry = CounterRegistry::default_for_seiran();
 
     // Act
-    let result = heading(&view, HeadingLevel::Section, &mut registry);
+    let result = heading(&view, HeadingLevel::Section);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));

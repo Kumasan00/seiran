@@ -100,7 +100,7 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
+    let mut evaluator = Evaluator;
 
     // Act
     let result = evaluator.evaluate_children(source, cst);

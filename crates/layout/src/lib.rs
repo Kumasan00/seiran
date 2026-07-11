@@ -279,6 +279,9 @@ impl Measurer<'_> {
             value: PENALTY_FORBID_BREAK,
           });
         },
+        // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
+        // LoweringError::UnresolvedReference で早期に失敗させるため、layout 段には到達しない
+        LayoutNode::Ref { .. } => unreachable!("LayoutNode::Ref は lowering の pass2 で解決済みのはず"),
       }
     }
   }
@@ -370,6 +373,9 @@ impl Measurer<'_> {
       | LayoutNode::MathBlock { .. }
       | LayoutNode::PageBreak
       | LayoutNode::KeepWithNext => {},
+      // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
+      // LoweringError::UnresolvedReference で早期に失敗させるため、layout 段には到達しない
+      LayoutNode::Ref { .. } => unreachable!("LayoutNode::Ref は lowering の pass2 で解決済みのはず"),
     }
   }
 

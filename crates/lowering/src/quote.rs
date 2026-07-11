@@ -9,8 +9,8 @@
 use document::{DocNode, QuoteKind};
 use types::{Align, Length};
 
-use super::{LoweringContext, LoweringError, lower_nodes};
-use crate::layout_node::LayoutNode;
+use super::{LoweringContext, LoweringError, PendingHeading, lower_nodes_inner};
+use crate::{counter::CounterRegistry, layout_node::LayoutNode};
 
 /// 引用ブロックをレイアウトノードに変換する
 ///
@@ -25,6 +25,8 @@ pub(super) fn lower_quote(
   ctx: &LoweringContext,
   kind: QuoteKind,
   body: &[DocNode],
+  registry: &mut CounterRegistry,
+  headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.quote;
 
@@ -35,7 +37,7 @@ pub(super) fn lower_quote(
     Length::pt(0.0)
   };
   let body_ctx = ctx.with_body_font_kind(style.font_kind).with_first_line_indent(first_line_indent);
-  let children = lower_nodes(&body_ctx, body)?;
+  let children = lower_nodes_inner(&body_ctx, body, registry, headings)?;
 
   return Ok(vec![
     LayoutNode::Vkern {
@@ -64,6 +66,17 @@ mod tests {
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> DocNode { return DocNode::Paragraph(vec![InlineNode::Text(text.to_string())]); }
 
+  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_quote` を呼ぶヘルパ
+  fn lower_quote_default(
+    ctx: &LoweringContext,
+    kind: QuoteKind,
+    body: &[DocNode],
+  ) -> Result<Vec<LayoutNode>, LoweringError> {
+    let mut registry = CounterRegistry::from_style(ctx.style);
+    let mut headings = Vec::new();
+    return lower_quote(ctx, kind, body, &mut registry, &mut headings);
+  }
+
   /// `nodes` から本体 `VBox`（`indent` / `right_indent` / `children`）を取り出す
   fn body_vbox(nodes: &[LayoutNode]) -> (Length, Length, &[LayoutNode]) {
     return nodes
@@ -87,7 +100,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
 
     // Assert — 上下に Vkern、本体 VBox は左右とも style.quote.indent で字下げ
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
@@ -104,7 +117,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
 
     // Assert — 本体に字下げ Kern は出ない
     let (_, _, children) = body_vbox(&nodes);
@@ -122,7 +135,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote(&ctx, QuoteKind::Quotation, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quotation, &[paragraph("body")]).expect("失敗しないはず");
 
     // Assert — 本体先頭は first_line_indent 量の Kern
     let (_, _, children) = body_vbox(&nodes);
@@ -139,7 +152,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
