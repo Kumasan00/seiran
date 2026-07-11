@@ -1,15 +1,15 @@
-//! 複数行数式環境の採番（`CounterName::Equation` の消費と `MathRow` への割当）
+//! 複数行数式環境の採番判定（任意引数の解釈と `MathRow` への割当）
 //!
 //! 任意引数 `[numbered]` / `[label=...]` の解釈、末尾空行の除去、採番粒度（[`NumberingMode`]）に
-//! 応じた `CounterName::Equation` の消費を担う。
+//! 応じた `MathRow::numbered` / ラベルの割当を担う。実際の発番（`CounterName::Equation` の消費）は
+//! `lowering` 層が担うため、ここでは「採番対象かどうか」の構造化のみを行う。
 
 use document::MathRow;
-use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 
 use super::{GridRow, is_blank_row};
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
 };
 
@@ -90,31 +90,29 @@ pub(super) fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result
   return Ok(());
 }
 
-/// グリッドを採番粒度（`mode`）に応じて [`MathRow`] 列へ変換し、`CounterName::Equation` を消費する
+/// グリッドを採番粒度（`mode`）に応じて [`MathRow`] 列へ変換する
 ///
-/// `PerRow`（align / gather）は採番行ごとにカウンタを 1 回消費し、`\notag` 行はカウンタを消費せず無採番に
-/// する。`SingleEnv`（split / multiline）は環境全体で 1 回だけ消費し（空ブロックには採番しない）、各行は
-/// 無採番にする。`numbered == false` のときはいずれも採番しない。返り値は `(各行, 環境単位番号)` で、
-/// 環境単位番号は `SingleEnv` で採番できたときのみ `Some`。
+/// `PerRow`（align / gather）は `\notag` の付いていない行を採番対象（`numbered: true`）にする。
+/// `SingleEnv`（split / multiline）は各行を常に無採番にし、環境全体の採番要否（`numbered &&
+/// !grid.is_empty()`、空ブロックには採番しない）を呼び出し側（`evaluate_math_env`）へ返す。
+/// `numbered == false` のときはいずれも採番しない。実際の発番（`CounterName::Equation` の消費）は
+/// `lowering` 層が担うため、ここでは行ごとの `numbered` フラグとラベルの構造化のみを行う。
 ///
 /// # Errors
 ///
-/// 無採番の行への行ラベル付与（[`EvalError::LabelRequiresNumbering`]）、採番時の重複ラベル
-/// （[`EvalError::DuplicateLabel`]）でエラーを返す。
+/// 無採番の行への行ラベル付与時に [`EvalError::LabelRequiresNumbering`] を返す。
 pub(super) fn assign_numbering(
   grid: Vec<GridRow>,
   mode: &NumberingMode,
   numbered: bool,
-  env_label: Option<&str>,
   view: &EnvironmentView,
-  evaluator: &mut Evaluator,
-) -> Result<(Vec<MathRow>, Option<String>), EvalError> {
-  let mut env_number = None;
+) -> Result<(Vec<MathRow>, bool), EvalError> {
+  let mut env_numbered = false;
   let rows: Vec<MathRow> = match mode {
     NumberingMode::PerRow => grid
       .into_iter()
       .map(|row| -> Result<MathRow, EvalError> {
-        // `\notag` 行（`notag_span` あり）はカウンタを消費せず無採番にする
+        // `\notag` 行（`notag_span` あり）は無採番にする
         let numbered_row = numbered && row.notag_span.is_none();
         // 無採番の行に行ラベルは付けられない（参照番号が無いため）
         if let Some(span) = row.label_span
@@ -125,37 +123,27 @@ pub(super) fn assign_numbering(
             span,
           });
         }
-        let number = if numbered_row {
-          Some(evaluator.registry.increment_with_label(
-            CounterName::Equation,
-            row.label.as_deref(),
-            row.label_span.unwrap_or_else(|| view.span().into()),
-          )?)
-        } else {
-          None
-        };
         return Ok(MathRow {
           cells: row.cells,
-          number,
+          numbered: numbered_row,
           label: row.label,
+          label_span: row.label_span,
         });
       })
       .collect::<Result<Vec<MathRow>, EvalError>>()?,
     NumberingMode::SingleEnv => {
-      // 行は無採番。環境全体に 1 つだけ（空ブロックには採番しない）
-      if numbered && !grid.is_empty() {
-        env_number =
-          Some(evaluator.registry.increment_with_label(CounterName::Equation, env_label, view.span().into())?);
-      }
+      // 行は常に無採番。環境全体の採番要否（空ブロックには採番しない）を返す
+      env_numbered = numbered && !grid.is_empty();
       grid
         .into_iter()
         .map(|row| MathRow {
           cells: row.cells,
-          number: None,
+          numbered: false,
           label: None,
+          label_span: None,
         })
         .collect()
     },
   };
-  return Ok((rows, env_number));
+  return Ok((rows, env_numbered));
 }

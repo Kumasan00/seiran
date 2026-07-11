@@ -49,7 +49,8 @@ pub(super) struct BuildSummary {
 /// 設定ファイルの `sources` から PDF を生成
 ///
 /// 各 source ファイルを順次読み込み、`parser::parse_source` でパース・評価して
-/// `Vec<DocNode>` を結合し、1 つのドキュメントとして扱う。
+/// ファイルごとに [`ParsedSource`] を作る（平坦化せずソース帰属を保持）。lowering は
+/// 全ファイル + 書誌を 1 回の `lower_sources_with_headings` でまとめて処理し、1 つの文書として扱う。
 ///
 /// # エラー戦略
 ///
@@ -139,24 +140,28 @@ fn build_pages(
   let citation_keys: HashSet<String> = references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let mut doc_nodes = parse_all_sources(&config.sources, style, &citation_keys)?;
+  let mut parsed = parse_all_sources(&config.sources, &citation_keys)?;
   info!(
     source_count = config.sources.len(),
-    node_count = doc_nodes.len(),
+    node_count = parsed.iter().map(|p| p.nodes.len()).sum::<usize>(),
     elapsed_ms = elapsed_ms(stage_start),
     "全ソースのパースが完了しました"
   );
 
-  // `\cite` を CSL 整形し、引用された文献の書誌を本文末尾に追加する（parser の後・lowering の前）。
+  // `\cite` を CSL 整形し、引用された文献の書誌を最後の合成グループとして受け取る（parser の後・lowering の前）。
   let stage_start = Instant::now();
-  citation::process_citations(&mut doc_nodes, references, style)
+  let bibliography = citation::process_citations(parsed.iter_mut().map(|p| &mut p.nodes), references, style)
     .map_err(|source| BuildPdfError::Citation { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let stage_start = Instant::now();
   let lowering_ctx = LoweringContext::new(style).with_image_defaults(config.image.max_dpi, config.image.downsample);
-  let body_layout_nodes =
-    lowering::lower_nodes(&lowering_ctx, &doc_nodes).map_err(|source| BuildPdfError::Lowering { source })?;
+  // 各ソースファイルを 1 グループとし、書誌を末尾の合成グループとして連結する。グループの並び順が
+  // SourceId のインデックスになり、書誌グループの SourceId は parsed.len()（範囲外）になる。
+  let groups: Vec<&[DocNode]> =
+    parsed.iter().map(|p| p.nodes.as_slice()).chain(std::iter::once(bibliography.as_slice())).collect();
+  let (body_layout_nodes, headings) = lowering::lower_sources_with_headings(&lowering_ctx, &groups)
+    .map_err(|error| wrap_lowering_error(error, &parsed))?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
@@ -243,7 +248,7 @@ fn build_pages(
     date: config.document.date.clone(),
   };
   let front_blocks =
-    assemble_front_matter(&doc_nodes, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
+    assemble_front_matter(&headings, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
   // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
@@ -274,7 +279,7 @@ fn build_pages(
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
   // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
-  let outline_entries = collect_outline_entries(&doc_nodes);
+  let outline_entries = collect_outline_entries(&headings);
 
   return Ok(LaidOutDocument {
     pages,
@@ -285,16 +290,33 @@ fn build_pages(
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
-/// 全 source を順次読み込み、パース結果を結合した `Vec<DocNode>` を返す。
+/// 1 ソースファイルのパース結果と、そのファイル名・内容（診断用）。
 ///
-/// I/O 失敗は早期にエラーを返し、パース・評価エラーは全 source で集約して
-/// [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
+/// `parse_all_sources` が平坦化せずファイルごとに 1 件生成する。`nodes` の並び順（`Vec<ParsedSource>`
+/// のインデックス）が [`lowering::SourceId`] に一致し、lowering エラー発生時に `name` / `content` を
+/// `NamedSource` へ逆引きしてファイル名・スニペット付きの診断を表示するのに使う。
+struct ParsedSource {
+  /// 表示用のソースパス文字列（`NamedSource` の名前になる）
+  name: String,
+  /// ソースファイルの元テキスト全体（`NamedSource` のスニペット元になる）
+  content: String,
+  /// パース・評価済みの Document IR ノード列
+  nodes: Vec<DocNode>,
+}
+
+/// 全 source を順次読み込み、ファイルごとに [`ParsedSource`] を生成して返す。
+///
+/// 旧実装のように 1 つの `Vec<DocNode>` へ平坦化せず、どの `DocNode` がどのソース由来かを
+/// 保持する（lowering エラーのソース帰属に必要）。I/O 失敗は早期にエラーを返し、
+/// パース・評価エラーは全 source で集約して [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
+// BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
+// parser::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+#[allow(clippy::result_large_err)]
 fn parse_all_sources(
   sources: &[std::path::PathBuf],
-  style: &read_style::Style,
   citation_keys: &HashSet<String>,
-) -> Result<Vec<DocNode>, BuildPdfError> {
-  let mut all_nodes: Vec<DocNode> = Vec::new();
+) -> Result<Vec<ParsedSource>, BuildPdfError> {
+  let mut parsed: Vec<ParsedSource> = Vec::new();
   let mut parse_errors: Vec<ParseSourceError> = Vec::new();
 
   for source_path in sources {
@@ -303,8 +325,12 @@ fn parse_all_sources(
       source,
     })?;
     let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path, style, citation_keys) {
-      Ok(nodes) => all_nodes.extend(nodes),
+    match parser::parse_source(&content, &display_path, citation_keys) {
+      Ok(nodes) => parsed.push(ParsedSource {
+        name: display_path,
+        content,
+        nodes,
+      }),
       Err(error) => parse_errors.push(error),
     }
   }
@@ -314,7 +340,26 @@ fn parse_all_sources(
       errors: parse_errors,
     });
   }
-  return Ok(all_nodes);
+  return Ok(parsed);
+}
+
+/// `LoweringError` を、`source_id()` で特定できるソースファイルに `NamedSource` を紐付けて
+/// [`BuildPdfError`] に変換する。
+///
+/// `source_id()` が `parsed` の範囲内を指す場合はそのファイル名・内容を `NamedSource` に載せた
+/// [`BuildPdfError::Lowering`] にし、パースエラーと同じくファイル名・スニペット付きで診断できるようにする。
+/// 範囲外（= 合成された書誌グループ、`SourceId` が `parsed.len()`）を指す場合は帰属元を特定できないため
+/// [`BuildPdfError::LoweringInternal`] にフォールバックする。span は各ファイル内のオフセットのまま
+/// 使える（各 `NamedSource` はその 1 ファイル分の `content` だけを持つため、グローバル変換は不要）。
+fn wrap_lowering_error(error: lowering::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
+  let index = error.source_id().index();
+  return match parsed.get(index) {
+    Some(source) => BuildPdfError::Lowering {
+      src: miette::NamedSource::new(&source.name, source.content.clone()),
+      source: error,
+    },
+    None => BuildPdfError::LoweringInternal { source: error },
+  };
 }
 
 /// 本文（N 段）と前付け（常に 1 段）の [`hlist::PageGeometry`] を組み立てる。
@@ -370,7 +415,7 @@ mod tests {
   use hlist::{Page, PlacedAnchor};
   use types::AnchorMark;
 
-  use super::heading_page_indices;
+  use super::{BuildPdfError, ParsedSource, heading_page_indices, wrap_lowering_error};
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ
   fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {
@@ -412,5 +457,63 @@ mod tests {
 
     // Assert — 見出しアンカーのページ index だけを文書順に拾う（Label は無視）
     assert_eq!(indices, vec![0, 1]);
+  }
+
+  /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
+  /// `LoweringError` を生成するテストヘルパ
+  fn lowering_error_with_source_id_1(style: &read_style::Style) -> lowering::LoweringError {
+    use document::{DocNode, InlineNode};
+    let ctx = lowering::LoweringContext::new(style);
+    let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
+      "plain".to_string(),
+    )])];
+    let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "missing".to_string(),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }])];
+    let error = lowering::lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
+      .expect_err("未定義ラベルはエラーになるはず");
+    assert_eq!(error.source_id().index(), 1, "グループ 1 の \\ref が帰属源のはず");
+    return error;
+  }
+
+  #[test]
+  fn lowering_error_attributes_named_source_by_source_id() {
+    // Arrange — source_id()==1 の LoweringError を生成する（範囲内・範囲外の両方に流し込む）
+    let style = read_style::Style::default();
+
+    // Act / Assert 1 — parsed が 2 要素なら index=1 の 2 番目のファイルに NamedSource が紐づく
+    let parsed = vec![
+      ParsedSource {
+        name: "a.sei".to_string(),
+        content: "A".to_string(),
+        nodes: Vec::new(),
+      },
+      ParsedSource {
+        name: "b.sei".to_string(),
+        content: "B content".to_string(),
+        nodes: Vec::new(),
+      },
+    ];
+    match wrap_lowering_error(lowering_error_with_source_id_1(&style), &parsed) {
+      BuildPdfError::Lowering { src, .. } => {
+        assert_eq!(src.name(), "b.sei", "source_id=1 は 2 番目のファイルに帰属するはず");
+      },
+      other => panic!("Lowering が期待されます: {other:?}"),
+    }
+
+    // Act / Assert 2 — parsed が 1 要素だけなら index=1 は範囲外で LoweringInternal にフォールバックする
+    let parsed_short = vec![ParsedSource {
+      name: "only.sei".to_string(),
+      content: "X".to_string(),
+      nodes: Vec::new(),
+    }];
+    assert!(
+      matches!(
+        wrap_lowering_error(lowering_error_with_source_id_1(&style), &parsed_short),
+        BuildPdfError::LoweringInternal { .. }
+      ),
+      "範囲外の SourceId は LoweringInternal になるはず"
+    );
   }
 }

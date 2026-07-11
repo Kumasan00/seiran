@@ -22,7 +22,7 @@ use document::DocNode;
 use phf::phf_map;
 use syntax::{ParseMode, ast::EnvironmentView};
 
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 pub(crate) mod body_scan;
 mod caption;
@@ -34,7 +34,7 @@ mod table;
 mod theorem;
 
 /// 環境ハンドラの関数ポインタ型
-type EnvHandler = fn(&EnvironmentView, &mut Evaluator) -> Result<Vec<DocNode>, EvalError>;
+type EnvHandler = fn(&EnvironmentView) -> Result<Vec<DocNode>, EvalError>;
 
 /// 環境の定義
 ///
@@ -89,23 +89,21 @@ pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
   return ENVIRONMENTS.get(name).map_or(ParseMode::Text, |def| def.parse_mode);
 }
 
-impl Evaluator {
-  /// 環境を評価し、対応する `Vec<DocNode>` を生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `view` - 環境の型付きビュー
-  ///
-  /// # Errors
-  ///
-  /// 未知の環境やハンドラ実行中のエラーが発生した場合
-  pub(crate) fn evaluate_environment(&mut self, view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
-    return match ENVIRONMENTS.get(view.name()).and_then(|def| def.handler) {
-      Some(handler) => handler(view, self),
-      None => Err(EvalError::UnknownEnvironment {
-        name: view.name().to_string(),
-        span: view.span().into(),
-      }),
-    };
-  }
+/// 環境を評価し、対応する `Vec<DocNode>` を生成する
+///
+/// # Arguments
+///
+/// * `view` - 環境の型付きビュー
+///
+/// # Errors
+///
+/// 未知の環境やハンドラ実行中のエラーが発生した場合
+pub(crate) fn evaluate_environment(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+  return match ENVIRONMENTS.get(view.name()).and_then(|def| def.handler) {
+    Some(handler) => handler(view),
+    None => Err(EvalError::UnknownEnvironment {
+      name: view.name().to_string(),
+      span: view.span().into(),
+    }),
+  };
 }

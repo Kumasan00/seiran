@@ -12,6 +12,7 @@ use hayagriva::{
   Formatting, RenderedBibliography,
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
+use miette::SourceSpan;
 use types::FontKind;
 
 /// hayagriva 整形の結果。所有値のみを保持し、`nodes` への借用は残さない。
@@ -129,13 +130,15 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
     return Vec::new();
   };
 
-  // 見出し + 各エントリ（アンカー + 段落）。
+  // 見出し + 各エントリ（アンカー + 段落）。parser を経由しない合成見出しなので numbered: false
+  // （lowering 層のカウンタを発番させない）。ソース位置を持たないためダミー span を使う。
   let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
   nodes.push(DocNode::Heading {
     level: HeadingLevel::Section,
-    number: String::new(),
+    numbered: false,
     title: vec![InlineNode::Text(bib_title.to_string())],
     label: None,
+    span: SourceSpan::from((0_usize, 0_usize)),
   });
 
   for item in &bibliography.items {

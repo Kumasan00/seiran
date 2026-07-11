@@ -5,6 +5,8 @@
 
 use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
+use crate::SourceId;
+
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub enum LayoutNode {
@@ -147,6 +149,27 @@ pub enum LayoutNode {
   /// （本文幅 − 幅）へ寄せられ、現在行に収まらなければ次行へ折り返す。段落末（最終行と同居）
   /// もしくは独立した 1 行として置かれる。
   FlushRight(Vec<LayoutNode>),
+  /// 未解決の `\ref{label}`（または `proof` の `[of=...]`）プレースホルダ
+  ///
+  /// [`crate::inline::lower_inline`] / [`crate::template::expand_template`] が発行し、
+  /// pass1（[`crate::lower_nodes`] の主走査）完了後に pass2（[`crate::resolve::resolve_refs`]）が
+  /// 解決する。`as_link` が `true`（`\ref`）なら [`LayoutNode::Link`]（`target: Internal(label)`,
+  /// `children: [Text(resolved, style)]`）に、`false`（`proof` の `{of}`。従来クリック不可のプレーン
+  /// テキストだったため踏襲）なら `LayoutNode::Text(resolved, style)` 単体に書き換える。
+  /// pass2 を経ずに残った場合は `LoweringError::UnresolvedReference` の原因になる。
+  Ref {
+    /// 参照先のラベル名
+    label: String,
+    /// `\ref{...}` / `[of=...]` のソース位置。未解決時の診断に使う
+    span: miette::SourceSpan,
+    /// 解決後の番号テキストに適用するスタイル（リンク色等は発行時点で確定済み）
+    style: TextStyle,
+    /// 解決後にクリック可能な内部リンクとして囲むか（`\ref` は `true`、`proof` の `{of}` は `false`）
+    as_link: bool,
+    /// この参照が属するソースグループの識別子。pass2 で未解決だった場合に
+    /// `LoweringError::UnresolvedReference` の帰属ソースとして引き継ぐ
+    source: SourceId,
+  },
 }
 
 /// 表全体の物理レイアウト表現
@@ -217,5 +240,134 @@ impl TextStyle {
       font_kind: FontKind::Serif,
       color: None,
     };
+  }
+}
+
+/// 隣接する同一スタイルの `Text` ノードを 1 つに結合する
+///
+/// [`crate::template::expand_template`] がプレースホルダ展開直後の縮約に使う。
+pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
+  let mut out: Vec<LayoutNode> = Vec::with_capacity(nodes.len());
+  for node in nodes {
+    match (out.last_mut(), node) {
+      (Some(LayoutNode::Text(prev, prev_style)), LayoutNode::Text(cur, cur_style)) if *prev_style == cur_style => {
+        prev.push_str(&cur);
+      },
+      (_, node) => out.push(node),
+    }
+  }
+  return out;
+}
+
+/// `resolved_positions` に含まれる位置（`{of}` 解決で `Text` に置き換わった箇所）の前後だけ、
+/// 隣接する同一スタイルの `Text` を 1 つに結合する
+///
+/// [`crate::resolve::resolve_refs`] が使う。`resolved_positions` は昇順ソート済みの
+/// 元インデックス列を渡すこと。単一の前進パス（O(n)）で、`nodes.remove` を繰り返す
+/// O(n²) 実装と完全に等価な結果を返す。
+pub(crate) fn merge_adjacent_text_at(nodes: &mut Vec<LayoutNode>, resolved_positions: &[usize]) {
+  if resolved_positions.is_empty() {
+    return;
+  }
+  let taken = std::mem::take(nodes);
+  let mut out: Vec<LayoutNode> = Vec::with_capacity(taken.len());
+  // out.last() が「resolved 由来の結合」を含むか
+  let mut pending_resolved = false;
+  // resolved_positions への走査ポインタ
+  let mut next = 0usize;
+  for (i, node) in taken.into_iter().enumerate() {
+    let is_resolved = next < resolved_positions.len() && resolved_positions[next] == i;
+    if is_resolved {
+      next += 1;
+    }
+    let should_merge = matches!(
+      (out.last(), &node),
+      (Some(LayoutNode::Text(_, prev_style)), LayoutNode::Text(_, cur_style)) if prev_style == cur_style
+    ) && (pending_resolved || is_resolved);
+    if should_merge {
+      let LayoutNode::Text(text, _) = node else {
+        unreachable!("直前の matches! で Text を確認済み")
+      };
+      let LayoutNode::Text(prev_text, _) = out.last_mut().expect("直前の matches! で Some を確認済み") else {
+        unreachable!("直前の matches! で Text を確認済み")
+      };
+      prev_text.push_str(&text);
+      pending_resolved = true;
+    } else {
+      out.push(node);
+      pending_resolved = is_resolved;
+    }
+  }
+  *nodes = out;
+}
+
+#[cfg(test)]
+mod tests {
+  use types::FontKind;
+
+  use super::*;
+
+  fn style(font_kind: FontKind) -> TextStyle {
+    return TextStyle {
+      font_size: Length::pt(10.0),
+      font_kind,
+      color: None,
+    };
+  }
+
+  #[test]
+  fn of_resolution_merges_surrounding_text_only() {
+    // Arrange — {of} 相当の 3 要素。真ん中が {of} 解決由来の Text（resolved_positions=[1]）
+    let s1 = style(FontKind::Serif);
+    let mut nodes = vec![
+      LayoutNode::Text("A".to_string(), s1),
+      LayoutNode::Text("B".to_string(), s1),
+      LayoutNode::Text("C".to_string(), s1),
+    ];
+
+    // Act
+    merge_adjacent_text_at(&mut nodes, &[1]);
+
+    // Assert — resolved 位置を挟んで前後とも同一スタイルなので 1 つに結合される
+    assert_eq!(nodes.len(), 1, "{nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "ABC"), "{nodes:?}");
+  }
+
+  #[test]
+  fn unrelated_adjacent_pair_is_not_merged() {
+    // Arrange — resolved_positions に無関係な先頭ペアは同一スタイルでも結合されない
+    let s1 = style(FontKind::Serif);
+    let s2 = style(FontKind::SerifBold);
+    let mut nodes = vec![
+      LayoutNode::Text("A".to_string(), s1),
+      LayoutNode::Text("B".to_string(), s1),
+      LayoutNode::Text("C".to_string(), s2),
+      LayoutNode::Text("D".to_string(), s2),
+    ];
+
+    // Act — resolved 位置は index 2 のみ（先頭ペアとは無関係）
+    merge_adjacent_text_at(&mut nodes, &[2]);
+
+    // Assert — 先頭ペア (A, B) は resolved 位置に隣接しないため結合されない
+    assert_eq!(nodes.len(), 3, "{nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "A"), "{nodes:?}");
+    assert!(matches!(&nodes[1], LayoutNode::Text(t, _) if t == "B"), "{nodes:?}");
+    assert!(matches!(&nodes[2], LayoutNode::Text(t, _) if t == "CD"), "{nodes:?}");
+  }
+
+  #[test]
+  fn empty_resolved_positions_is_noop() {
+    // Arrange
+    let s1 = style(FontKind::Serif);
+    let mut nodes = vec![
+      LayoutNode::Text("A".to_string(), s1),
+      LayoutNode::Text("B".to_string(), s1),
+    ];
+
+    // Act
+    merge_adjacent_text_at(&mut nodes, &[]);
+
+    // Assert — resolved_positions が空なら何も結合しない（同一スタイル隣接でも触れない）
+    assert_eq!(nodes.len(), 2, "{nodes:?}");
   }
 }

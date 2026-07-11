@@ -3,8 +3,11 @@
 use document::ListItem;
 use read_style::NumberStyle;
 
-use super::{LoweringContext, LoweringError, lower_nodes};
-use crate::layout_node::{LayoutNode, TextStyle};
+use super::{LoweringContext, LoweringError, PendingHeading, lower_nodes_inner};
+use crate::{
+  counter::CounterRegistry,
+  layout_node::{LayoutNode, TextStyle},
+};
 
 /// ネスト段（深さ 1 以上）の unordered マーカー系列（LaTeX itemize 準拠）
 ///
@@ -32,6 +35,8 @@ pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
   items: &[ListItem],
+  registry: &mut CounterRegistry,
+  headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let list_style = &ctx.style.list;
   let depth = ctx.list_depth;
@@ -71,7 +76,7 @@ pub(super) fn lower_list(
     item_nodes.push(LayoutNode::Text(marker, marker_style));
 
     // アイテム内容を変換
-    let content_nodes = lower_nodes(&item_ctx, &item.content)?;
+    let content_nodes = lower_nodes_inner(&item_ctx, &item.content, registry, headings)?;
     item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {
@@ -99,6 +104,17 @@ mod tests {
     return ListItem::new(vec![DocNode::Paragraph(vec![InlineNode::Text(text.to_string())])]);
   }
 
+  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_list` を呼ぶヘルパ
+  fn lower_list_default(
+    ctx: &LoweringContext,
+    ordered: bool,
+    items: &[ListItem],
+  ) -> Result<Vec<LayoutNode>, LoweringError> {
+    let mut registry = CounterRegistry::from_style(ctx.style);
+    let mut headings = Vec::new();
+    return lower_list(ctx, ordered, items, &mut registry, &mut headings);
+  }
+
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
   ///
   /// インデントは `VBox.indent`（ブロック単位）で表すため、項目の先頭インラインはマーカー。
@@ -120,7 +136,7 @@ mod tests {
     let items = [item_with_text("apple")];
 
     // Act
-    let nodes = lower_list(&ctx, false, &items).expect("解決済み内容なので失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items).expect("解決済み内容なので失敗しない");
 
     // Assert — マーカーは "• "（末尾スペース付き）
     let (marker, _) = marker_of(&nodes[0]);
@@ -139,7 +155,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_list(&ctx, true, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items).expect("失敗しない");
 
     // Assert — 1,2,3 と連番で展開され、末尾スペースが付く
     assert_eq!(nodes.len(), 3);
@@ -155,7 +171,7 @@ mod tests {
     let items = [item_with_text("x")];
 
     // Act
-    let nodes = lower_list(&ctx, false, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
 
     // Assert — VBox.indent=indent（ブロック単位）・先頭に Kern は出さない、
     // margin_bottom=item_margin_bottom、marker_style は規定どおり
@@ -196,7 +212,7 @@ mod tests {
     ])];
 
     // Act
-    let nodes = lower_list(&ctx, false, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
 
     // Assert — 外側 item VBox.indent == list.indent、内側ネスト item VBox にも同じ indent が乗る
     let indent = style.list.indent.to_pt();
@@ -226,7 +242,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_list(&ctx, true, &[]).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &[]).expect("失敗しない");
 
     // Assert
     assert!(nodes.is_empty());
@@ -281,7 +297,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
 
     // Assert — • → – → *（AC#1）
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
@@ -296,7 +312,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
 
     // Assert — 1. → (a) → i.（AC#2）
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
@@ -311,7 +327,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
 
     // Assert — 外 itemize は深さ 0 の •、中 enumerate は深さ 1 の (a)、内 itemize は深さ 2 の *
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
@@ -326,7 +342,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
 
     // Assert — • → – → * → · → –（循環）
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);

@@ -27,7 +27,7 @@ pub(super) fn build_caption(
     font_kind: FontKind::Serif,
     color: None,
   };
-  return expand_template(ctx, &caption_style.format, number, inlines, base_style);
+  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style);
 }
 
 /// フロートの余白の指定
@@ -244,24 +244,24 @@ mod tests {
   }
 
   #[test]
-  fn build_caption_unresolved_ref_returns_error() {
-    // Arrange — キャプション内の未解決 \ref は LoweringError::UnresolvedReference を返す
+  fn build_caption_ref_becomes_placeholder() {
+    // Arrange — キャプション内の \ref は即時解決せず LayoutNode::Ref プレースホルダになる
+    // （解決は pass2 = resolve::resolve_refs が担う）
     let read_style = ReadStyle::default();
     let ctx = LoweringContext::new(&read_style);
     let caption_style = CaptionStyle::default();
     let inlines = [InlineNode::Ref {
       label: "fig:missing".to_string(),
-      number: None,
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     }];
 
     // Act
-    let err = build_caption(&ctx, &caption_style, &inlines, "1").expect_err("未解決 Ref はエラー");
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "1").expect("即時エラーにはならない");
 
     // Assert
-    let LoweringError::UnresolvedReference { label, .. } = err else {
-      panic!("UnresolvedReference が期待されます: {err:?}");
-    };
-    assert_eq!(label, "fig:missing");
+    assert!(
+      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "fig:missing")),
+      "Ref プレースホルダが残るはず: {nodes:?}"
+    );
   }
 }

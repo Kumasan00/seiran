@@ -6,12 +6,15 @@
 //! VS1 異体字セレクタを付与）、数式フォントが持つ字形バリアントを直接呼び出します。
 
 use document::{MathNode, MathRow, MathStyle};
-use read_style::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
+use read_style::{Alignment, CounterName, MathScriptStyle as MathStyleConfig, NumberSide};
 use types::{Align, FontKind, Length, MathEnvKind};
 
 use self::alphanumeric::push_math_char;
-use super::LoweringContext;
-use crate::layout_node::{LayoutNode, MathBlockRow, TextStyle};
+use super::{LoweringContext, LoweringError};
+use crate::{
+  counter::CounterRegistry,
+  layout_node::{LayoutNode, MathBlockRow, TextStyle},
+};
 
 mod alphanumeric;
 
@@ -23,34 +26,54 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
 /// `DocNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）を
 /// `LayoutNode::MathBlock` に変換する
 ///
-/// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower し、採番された行・環境は
-/// `MathBlockStyle::tag_format` の `{number}` を発番番号で置換した文字列を `FontKind::Serif`
-/// （数字は立体）の番号ボックスに包む。`env_number_str` は `split` / `multiline` の環境全体に 1 つの
-/// 番号で、`layout` 段がブロック縦中央に配置する。列整列・行積み・区切り括弧の配置は `layout` 段が
-/// `kind` に応じて確定し、本体の中央寄せ（`align`）と番号の端寄せ（`numbers_on_right`）は
-/// `break_pages` 段が本文幅を使って決める。上下マージンは呼び出し側（[`crate`] のディスパッチ）が
-/// `Vkern` で前後に出す。
+/// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower する。採番には 2 つの粒度があり、
+/// `kind` に応じてどちらか一方だけを使う（`document::DocNode::MathBlock` のドキュメント参照）:
+/// **行ごと採番**（`equation` / `align` / `gather`）は `row.numbered` の行を、**環境全体に 1 つ採番**
+/// （`split` / `multiline`）は `env_numbered` が `true` のとき環境全体を、それぞれ
+/// [`CounterName::Equation`] で発番する。`env_numbered` は parser（`assign_numbering`）が既に
+/// `numbered && !grid.is_empty()` を保証しているため、ここで条件を重複検査する必要はない。
+/// 発番した番号は `MathBlockStyle::tag_format` の `{number}` を置換した文字列を
+/// `FontKind::Serif`（数字は立体）の番号ボックスに包む。`cases` / `matrix` は非採番。
+/// 列整列・行積み・区切り括弧の配置は `layout` 段が `kind` に応じて確定し、本体の中央寄せ（`align`）
+/// と番号の端寄せ（`numbers_on_right`）は `break_pages` 段が本文幅を使って決める。
+/// 上下マージンは呼び出し側（[`crate`] のディスパッチ）が `Vkern` で前後に出す。
+///
+/// # Errors
+///
+/// 重複ラベルの場合に [`LoweringError::DuplicateLabel`] を返します。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext,
   kind: MathEnvKind,
   rows: &[MathRow],
-  env_number_str: Option<&str>,
-) -> LayoutNode {
+  env_numbered: bool,
+  env_label: Option<&str>,
+  span: miette::SourceSpan,
+  registry: &mut CounterRegistry,
+) -> Result<LayoutNode, LoweringError> {
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
-  let layout_rows: Vec<MathBlockRow> = rows
-    .iter()
-    .map(|row| {
-      let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math.script)).collect();
-      let number = row.number.as_deref().map(|n| number_box(&block.tag_format, n, font_size));
-      return MathBlockRow { cells, number };
-    })
-    .collect();
+  let mut layout_rows = Vec::with_capacity(rows.len());
+  for row in rows {
+    let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math.script)).collect();
+    let number = if row.numbered {
+      let row_span = row.label_span.unwrap_or(span);
+      let n = registry.increment_with_label(CounterName::Equation, row.label.as_deref(), row_span, ctx.source)?;
+      Some(number_box(&block.tag_format, &n, font_size))
+    } else {
+      None
+    };
+    layout_rows.push(MathBlockRow { cells, number });
+  }
 
-  let env_number = env_number_str.map(|n| number_box(&block.tag_format, n, font_size));
+  let env_number = if env_numbered {
+    let n = registry.increment_with_label(CounterName::Equation, env_label, span, ctx.source)?;
+    Some(number_box(&block.tag_format, &n, font_size))
+  } else {
+    None
+  };
 
-  return LayoutNode::MathBlock {
+  return Ok(LayoutNode::MathBlock {
     kind,
     rows: layout_rows,
     env_number,
@@ -58,7 +81,7 @@ pub(super) fn lower_math_block(
     numbers_on_right: matches!(block.number_side, NumberSide::Right),
     row_gap: block.row_gap,
     column_gap: block.column_gap,
-  };
+  });
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
@@ -66,7 +89,10 @@ pub(super) fn lower_math_block(
 /// `number_format` の `{number}` を `n` で置換し（既定 `"({number})"` → `"(1)"`）、数字を
 /// `FontKind::Serif` で描く `LayoutNode::Text` 1 つにまとめる。行ごと番号と環境全体番号の双方で使う。
 fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode> {
-  let text = number_format.replace("{number}", n);
+  let text = crate::placeholder::expand(number_format, |name| match name {
+    "number" => n.to_string(),
+    _ => format!("{{{name}}}"),
+  });
   return vec![LayoutNode::Text(
     text,
     TextStyle {
@@ -418,25 +444,37 @@ mod tests {
   }
 
   /// 番号付き 1 行 1 セルの `MathRow` を作るヘルパ
-  fn numbered_row(number: &str) -> MathRow {
+  fn numbered_row() -> MathRow {
     return MathRow {
       cells: vec![vec![MathNode::Text("a".to_string())]],
-      number: Some(number.to_string()),
+      numbered: true,
       label: None,
+      label_span: None,
     };
+  }
+
+  fn dummy_span() -> miette::SourceSpan { return miette::SourceSpan::from((0_usize, 0_usize)); }
+
+  /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
+  fn style_with_plain_equation_format() -> ReadStyle {
+    let mut style = ReadStyle::default();
+    style.counters.equation.number_format = "{n}".to_string();
+    return style;
   }
 
   #[test]
   fn lower_math_block_formats_number_with_template_and_serif_font() {
-    // Arrange: number = Some("2") → 既定書式 "({number})" で "(2)"、数字は立体（FontKind::Serif）
-    let style = ReadStyle::default();
+    // Arrange: 採番された行 → 既定書式 "({number})" で "(1)"、数字は立体（FontKind::Serif）
+    let style = style_with_plain_equation_format();
     let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row("2")];
+    let mut registry = CounterRegistry::from_style(&style);
+    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
+      .expect("失敗しないはず");
 
-    // Assert: その行の number ボックスが "(2)" の Serif Text 1 個
+    // Assert: その行の number ボックスが "(1)" の Serif Text 1 個
     let LayoutNode::MathBlock {
       rows: layout_rows, ..
     } = node
@@ -445,20 +483,22 @@ mod tests {
     };
     let number = layout_rows[0].number.as_ref().expect("番号あり");
     assert!(
-      matches!(&number[0], LayoutNode::Text(t, s) if t == "(2)" && s.font_kind == FontKind::Serif),
-      "(2) の Serif Text が番号ボックスに入るはず: {number:?}"
+      matches!(&number[0], LayoutNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
+      "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
     );
   }
 
   #[test]
   fn lower_math_block_uses_right_numbers_and_center_align_by_default() {
     // Arrange: 既定は番号右寄せ・本体中央寄せ
-    let style = ReadStyle::default();
+    let style = style_with_plain_equation_format();
     let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row("3")];
+    let mut registry = CounterRegistry::from_style(&style);
+    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
+      .expect("失敗しないはず");
 
     // Assert
     let LayoutNode::MathBlock {
@@ -476,13 +516,15 @@ mod tests {
   #[test]
   fn lower_math_block_left_number_side_sets_numbers_on_left() {
     // Arrange: number_side = Left → numbers_on_right = false
-    let mut style = ReadStyle::default();
+    let mut style = style_with_plain_equation_format();
     style.math.block.number_side = NumberSide::Left;
     let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row("3")];
+    let mut registry = CounterRegistry::from_style(&style);
+    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
+      .expect("失敗しないはず");
 
     // Assert
     let LayoutNode::MathBlock {

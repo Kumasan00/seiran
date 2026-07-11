@@ -13,28 +13,25 @@
 //!   無採番の式に `[label=...]` を併用するとエラー（参照番号が存在しないため）
 
 use document::{DocNode, MathEnvKind, MathRow};
-use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, evaluate_grid};
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
 };
 
 /// `equation` 環境を評価する
 ///
-/// 既定では [`CounterRegistry::increment`] で `CounterName::Equation` の通し番号を発番し、
-/// `[label=...]` 指定時はそのレジストリにラベルを登録する。番号書式は
-/// `read_style::CounterStyle.number_format` テンプレ（既定 `"{chapter}.{n}"`）に従う。`[numbered=false]`
-/// 指定時は採番を一切行わず（カウンタを消費しない）、`row.number` は `None` になる。本体は
-/// 単一行・単一セルとして評価し、`MathRow` 1 件の `MathBlock` を返す。
+/// `[label=...]` を捕捉し、`[numbered=false]`（既定は採番あり）で採番対象かどうかを決める。
+/// 採番の発番・書式化（`CounterName::Equation` の消費、`number_format` テンプレ適用）は行わない
+/// （`lowering` 層の責務）。本体は単一行・単一セルとして評価し、`MathRow` 1 件の `MathBlock` を返す。
 ///
 /// # Errors
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   let label = find_string(&opt_args, "label");
@@ -51,17 +48,6 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
       span: view.span().into(),
     });
   }
-
-  // `[numbered=false]` のときは採番せず（カウンタも消費しない）番号は持たせない
-  let number = if numbered {
-    Some(
-      evaluator
-        .registry
-        .increment_with_label(CounterName::Equation, label.as_deref(), view.span().into())?,
-    )
-  } else {
-    None
-  };
 
   let source = view.source();
   // equation は単一行・単一セル。行区切り `\\`・列区切り `&` はエラーにする
@@ -82,15 +68,17 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 
   let row = MathRow {
     cells,
-    number,
+    numbered,
     label,
+    label_span: None,
   };
   return Ok(vec![DocNode::MathBlock {
     kind: MathEnvKind::Equation,
     rows: vec![row],
-    // equation は行ごと採番（`row.number`）。環境全体の番号・ラベルは使わない（ラベルは `row.label`）
-    number: None,
+    // equation は行ごと採番（`row.numbered`）。環境全体の採番・ラベルは使わない（ラベルは `row.label`）
+    numbered: false,
     label: None,
+    span: view.span().into(),
   }]);
 }
 
@@ -99,7 +87,6 @@ pub(crate) fn equation(view: &EnvironmentView, evaluator: &mut Evaluator) -> Res
 mod tests {
   use bumpalo::Bump;
   use document::{MathEnvKind, MathNode};
-  use read_style::{Counters, Style};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -107,20 +94,6 @@ mod tests {
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a syntax::green::GreenNode<'a>, syntax::ParserError> {
     return syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  /// equation カウンタの `format` を `"{n}"` に差し替えた Style を返す
-  ///
-  /// 既定の `"{chapter}.{n}"` はカウンタ経由化の通し番号テスト目的では本質的ではないため、
-  /// 番号を素朴な `"1"`, `"2"` 形式に縮約してテストの意図を読みやすくする。
-  fn style_with_plain_equation_format() -> Style {
-    let mut counters = Counters::default();
-    counters.equation.number_format = "{n}".to_string();
-    let style = read_style::Style {
-      counters,
-      ..Default::default()
-    };
-    return style;
   }
 
   /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
@@ -139,16 +112,15 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}x^2 = y\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — MathBlock(Equation) が 1 件、1 行 1 セル、label は None、セルに Superscript
+    // Assert — MathBlock(Equation) が 1 件、1 行 1 セル、label は None、既定で採番対象、セルに Superscript
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert!(row.label.is_none());
-    assert_eq!(row.number.as_deref(), Some("1"));
+    assert!(row.numbered);
     assert_eq!(row.cells.len(), 1, "equation は 1 セル");
     assert!(
       row.cells[0].iter().any(|n| matches!(n, MathNode::Superscript(_))),
@@ -163,39 +135,15 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — label と number が両方保持されること
+    // Assert — label と numbered が両方保持されること
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
     assert_eq!(row.label.as_deref(), Some("eq:pythag"));
-    assert_eq!(row.number.as_deref(), Some("1"));
-  }
-
-  #[test]
-  fn equation_assigns_sequential_numbers() {
-    // Arrange — 連続する 2 つの equation は 1, 2 と通し番号が振られる
-    let arena = Bump::new();
-    let source = r"\begin{equation}a\end{equation}\begin{equation}b\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert
-    assert_eq!(result.len(), 2);
-    let numbers: Vec<Option<&str>> = result
-      .iter()
-      .map(|n| match n {
-        DocNode::MathBlock { rows, .. } => rows[0].number.as_deref(),
-        _ => panic!("MathBlock が期待されます: {n:?}"),
-      })
-      .collect();
-    assert_eq!(numbers, vec![Some("1"), Some("2")]);
+    assert!(row.numbered);
   }
 
   #[test]
@@ -204,10 +152,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -219,10 +166,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \\ b\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -234,10 +180,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -245,42 +190,18 @@ mod tests {
 
   #[test]
   fn equation_numbered_false_suppresses_numbering() {
-    // Arrange — `[numbered=false]` で無採番（number が None）になる
+    // Arrange — `[numbered=false]` で無採番（numbered が false）になる
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 行は出るが番号は持たない
+    // Assert — 行は出るが採番対象ではない
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
-    assert!(row.number.is_none(), "無採番なので number は None: {:?}", row.number);
-  }
-
-  #[test]
-  fn equation_numbered_false_does_not_consume_counter() {
-    // Arrange — 無採番 → 採番の並びで、採番側の通し番号が "1" から始まる（無採番はカウンタ非消費）
-    let arena = Bump::new();
-    let source = r"\begin{equation}[numbered=false]a\end{equation}\begin{equation}b\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — 1 つ目は無採番、2 つ目は通し番号が連続して "1"
-    assert_eq!(result.len(), 2);
-    let numbers: Vec<Option<&str>> = result
-      .iter()
-      .map(|n| match n {
-        DocNode::MathBlock { rows, .. } => rows[0].number.as_deref(),
-        _ => panic!("MathBlock が期待されます: {n:?}"),
-      })
-      .collect();
-    assert_eq!(numbers, vec![None, Some("1")]);
+    assert!(!row.numbered, "無採番なので numbered は false のはず");
   }
 
   #[test]
@@ -289,15 +210,14 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=true]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::new(&style_with_plain_equation_format());
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
     let row = first_row(&result);
-    assert_eq!(row.number.as_deref(), Some("1"));
+    assert!(row.numbered);
   }
 
   #[test]
@@ -306,32 +226,12 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false][label=eq:x]a\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
-  }
-
-  #[test]
-  fn equation_number_picks_up_chapter_prefix_via_counter_format() {
-    // Arrange — `\chapter` で chapter が 1 に進んだあとの equation は "1.1" になる
-    let arena = Bump::new();
-    let source = r"\chapter{C}\begin{equation}a\end{equation}";
-    let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
-
-    // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
-
-    // Assert — Heading 1 件 + MathBlock 1 件、equation の number は既定書式 "{chapter}.{n}" で "1.1"
-    assert_eq!(result.len(), 2);
-    let DocNode::MathBlock { rows, .. } = &result[1] else {
-      panic!("MathBlock が期待されます: {:?}", result[1]);
-    };
-    assert_eq!(rows[0].number.as_deref(), Some("1.1"));
   }
 
   #[test]
@@ -340,10 +240,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \notag\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
@@ -355,10 +254,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \label{eq:x}\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

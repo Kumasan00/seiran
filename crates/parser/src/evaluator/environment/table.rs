@@ -25,30 +25,24 @@ mod opts;
 use body::{resolve_column_count, scan_table_body};
 use document::DocNode;
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
-use read_style::CounterName;
 use syntax::ast::EnvironmentView;
 use types::{ColumnAlign, ColumnWidth};
 
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 /// `table` 環境を評価する
 ///
-/// [`crate::evaluator::counter::CounterRegistry::increment`] で `CounterName::Table` の
-/// 通し番号を発番し、本体内の `\head` / `\row` / `\caption` を抽出して
-/// [`DocNode::Table`] を生成する。`columns` / `widths` は列数に正規化され、
-/// 各行のセル数（`span` 合計）が列数と一致しない場合はエラーになる。
+/// 本体内の `\head` / `\row` / `\caption` を抽出して [`DocNode::Table`] を生成する。
+/// 採番（`CounterName::Table` の発番・書式化）は行わない（`lowering` 層の責務）。
+/// `columns` / `widths` は列数に正規化され、各行のセル数（`span` 合計）が列数と
+/// 一致しない場合はエラーになる。
 ///
 /// # Errors
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opts = collect_table_opts(view)?;
-
-  let number =
-    evaluator
-      .registry
-      .increment_with_label(CounterName::Table, opts.label.as_deref(), view.span().into())?;
 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -84,7 +78,7 @@ pub(super) fn table(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
     caption: body.caption,
     caption_position: body.caption_position,
     label: opts.label,
-    number,
+    span: view.span().into(),
     breakable: opts.breakable,
   }]);
 }
@@ -107,8 +101,7 @@ mod tests {
   fn eval_table(source: &str) -> Result<Vec<DocNode>, EvalError> {
     let arena = Bump::new();
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
-    return evaluator.evaluate_children(source, cst);
+    return crate::evaluator::evaluate_children(source, cst);
   }
 
   /// セル内容のプレーンテキストを行ごとに並べるヘルパ
@@ -144,8 +137,8 @@ mod tests {
       caption,
       caption_position,
       label,
-      number,
       breakable,
+      ..
     } = &result[0]
     else {
       panic!("Table が期待されます: {:?}", result[0]);
@@ -162,7 +155,6 @@ mod tests {
     // \caption は行より後 → Bottom
     assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
-    assert!(!number.is_empty());
     assert!(*breakable);
   }
 
@@ -377,8 +369,8 @@ mod tests {
   }
 
   #[test]
-  fn table_captures_label_and_sequential_numbers() {
-    // Arrange — label 登録と通し番号
+  fn table_captures_label() {
+    // Arrange — label は構造化されるが採番はしない（lowering 層の責務）
     let source = r"\begin{table}[label=tab:a]\row{A}\end{table}\begin{table}\row{B}\end{table}";
 
     // Act
@@ -386,17 +378,14 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 2);
-    let DocNode::Table { label, number, .. } = &result[0] else {
+    let DocNode::Table { label, .. } = &result[0] else {
       panic!("Table が期待されます");
     };
     assert_eq!(label.as_deref(), Some("tab:a"));
-    // 既定書式 "{chapter}.{n}" — chapter 未進行なので "{空}.1" 相当の ".1" になるが、
-    // ここでは連番部分のみを検証する
-    assert!(number.ends_with('1'), "1 番目の表: {number}");
-    let DocNode::Table { number, .. } = &result[1] else {
+    let DocNode::Table { label, .. } = &result[1] else {
       panic!("Table が期待されます");
     };
-    assert!(number.ends_with('2'), "2 番目の表: {number}");
+    assert!(label.is_none());
   }
 
   #[test]

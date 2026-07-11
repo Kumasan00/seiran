@@ -42,7 +42,7 @@ pub(super) fn lower_heading(
     color: None,
   };
 
-  let children = expand_template(ctx, &heading_style.format, number, title, style)?;
+  let children = expand_template(ctx, &heading_style.format, number, title, None, style)?;
 
   let mut result = Vec::new();
 
@@ -210,29 +210,35 @@ mod tests {
   }
 
   #[test]
-  fn unresolved_ref_in_heading_title_returns_error() {
-    // 見出しタイトルに含まれる未解決 Ref も inline_nodes_to_plain_text 経由で
-    // 同じエラーとして伝播することを確認する。
+  fn ref_in_heading_title_becomes_placeholder() {
+    // 見出しタイトルに含まれる \ref は即時解決せず LayoutNode::Ref プレースホルダになる
+    // （解決は pass2 = resolve::resolve_refs が担う）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
-    let err = lower_heading(
+    let nodes = lower_heading(
       &ctx,
       HeadingLevel::Section,
       "1",
       &[InlineNode::Ref {
         label: "sec:missing".to_string(),
-        number: None,
         span: miette::SourceSpan::from((0_usize, 0_usize)),
       }],
       None,
       0,
     )
-    .expect_err("見出しタイトルの未解決 Ref は LoweringError を返すべき");
+    .expect("即時エラーにはならない");
 
-    let LoweringError::UnresolvedReference { label, .. } = err else {
-      panic!("UnresolvedReference が期待されます: {err:?}");
-    };
-    assert_eq!(label, "sec:missing");
+    let vbox = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } => Some(children),
+        _ => None,
+      })
+      .expect("見出し VBox があるはず");
+    assert!(
+      vbox.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "sec:missing")),
+      "Ref プレースホルダが残るはず: {vbox:?}"
+    );
   }
 }

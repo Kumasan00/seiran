@@ -173,23 +173,23 @@ mod tests {
   }
 
   #[test]
-  fn paragraph_propagates_unresolved_ref_error() {
-    // Arrange
+  fn paragraph_ref_becomes_placeholder() {
+    // Arrange — \ref は即時解決せず LayoutNode::Ref プレースホルダになる
+    // （解決・未解決エラーは pass2 = resolve::resolve_refs が担う。lower_paragraph 単体では実行しない）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let inlines = [InlineNode::Ref {
       label: "eq:missing".to_string(),
-      number: None,
       span: miette::SourceSpan::from((0_usize, 0_usize)),
     }];
 
     // Act
-    let err = lower_paragraph(&ctx, &inlines).expect_err("未解決 Ref はエラー");
+    let nodes = lower_paragraph(&ctx, &inlines).expect("即時エラーにはならない");
 
     // Assert
-    let LoweringError::UnresolvedReference { label, .. } = err else {
-      panic!("UnresolvedReference が期待されます: {err:?}");
-    };
-    assert_eq!(label, "eq:missing");
+    assert!(
+      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "eq:missing")),
+      "Ref プレースホルダが残るはず: {nodes:?}"
+    );
   }
 }

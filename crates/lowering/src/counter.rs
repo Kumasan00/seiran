@@ -3,21 +3,21 @@
 //! `\section`、`\begin{equation}`、`\begin{figure}` 等で発番される番号を一元管理し、
 //! `\ref{label}` の解決に使うラベル → 番号の対応表を保持します。
 //!
-//! ## 2 パス評価との関係
+//! ## 2 パス lowering との関係
 //!
-//! - **pass1**: `Evaluator::evaluate_children` がブロックを走査するたびに
+//! - **pass1**: [`crate::lower_nodes`] が `DocNode` ツリーを走査するたびに
 //!   [`CounterRegistry::increment`] を呼び、`Heading.label` 等の任意ラベルが
 //!   付いていれば [`CounterRegistry::register_label`] で登録する。
-//! - **pass2**: `InlineNode::Ref { label, .. }` を [`CounterRegistry::resolve_label`] で
-//!   解決し、`number: Some(ref_format 適用済みの文字列)` に書き換える。
+//! - **pass2**: [`crate::resolve::resolve_refs`] が `LayoutNode::Ref { label, .. }` を
+//!   [`CounterRegistry::resolve_label`] で解決し、`LayoutNode::Link` に書き換える。
 //!
 //! ## 番号書式について
 //!
 //! 各カウンタは [`read_style::CounterStyle`] の `format` テンプレート（例: `"{n}"`、
 //! `"{chapter}.{n}"`）に従って文字列化される。`{n}` は自身のカウンタ値、`{<name>}` は
 //! 他カウンタの値を参照先カウンタの [`read_style::NumberStyle`] でレンダリングする
-//! （再帰展開はしない）。「3章」「第3部」のような装飾文字列は **lowering 側** で
-//! `read_style::HeadingStyle.format` テンプレを介して付ける。
+//! （再帰展開はしない）。「3章」「第3部」のような装飾文字列は見出しの
+//! `read_style::HeadingStyle.format` テンプレを介して付ける（`crate::heading`）。
 //!
 //! ## `\ref` の書式について
 //!
@@ -31,22 +31,17 @@
 //! カウンタ定義の真のソースは `read_style::Style.counters` テーブル。
 //! [`CounterRegistry::from_style`] が [`read_style::Counters`] を `defs` に複製し、
 //! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
-//! 既定 9 種（part〜table）も `Style::default()` が `read_style::Counters::default()`
-//! 経由で供給するため、parser 側に同じ定義を重複して持たない。新しいカウンタの追加で
-//! parser 側に必要な変更は [`parse_counter_name`] への 1 行だけ。
 
 use std::collections::HashMap;
 
 use document::HeadingLevel;
 use read_style::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
 
-use crate::evaluator::EvalError;
+use crate::{LoweringError, SourceId};
 
 mod format;
-mod resolve;
 
-use format::{expand_placeholders, expand_ref_format, parse_counter_name};
-pub(crate) use resolve::resolve_refs;
+use format::expand_ref_format;
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -60,44 +55,19 @@ pub(crate) struct CounterRegistry {
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
-  pub labels: HashMap<String, ResolvedLabel>,
+  labels: HashMap<String, ResolvedLabel>,
 }
 
 impl CounterRegistry {
-  /// seiran 既定のカウンタセットでレジストリを構築する
-  ///
-  /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
-  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
-  /// figure / equation / table）。テスト用ショートカット。
-  #[must_use]
-  #[allow(dead_code)] // テスト専用ヘルパ
-  pub fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
-
   /// `read_style::Style` からレジストリを構築する
   ///
   /// カウンタ定義（9 種）に加え、定理クラス定義（`style.theorems`）も取り込む。
   #[must_use]
-  pub fn from_style(style: &Style) -> Self {
+  pub(crate) fn from_style(style: &Style) -> Self {
     return Self {
       defs: style.counters.clone(),
       values: HashMap::new(),
       theorems: style.theorems.clone(),
-      theorem_values: HashMap::new(),
-      labels: HashMap::new(),
-    };
-  }
-
-  /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
-  ///
-  /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
-  /// [`CounterRegistry::from_style`] を使うこと。
-  #[must_use]
-  #[allow(dead_code)] // 定理カウンタ導入後は from_style が直接構築するため、本関数はテスト専用ヘルパ
-  pub fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      defs: counters.clone(),
-      values: HashMap::new(),
-      theorems: Theorems::default(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
     };
@@ -108,7 +78,7 @@ impl CounterRegistry {
   /// 見出しカウンタ（part / chapter / section / subsection）の増加時には、その見出しレベルを
   /// `reset_by` に指定した定理カウンタも 0 に戻す（`reset_by` カウンタの「増加」に連動。LaTeX の
   /// `\newtheorem{thm}{Theorem}[section]` と同じく、上位カウンタのリセットでは戻さない）。
-  pub fn increment(&mut self, name: CounterName) -> String {
+  pub(crate) fn increment(&mut self, name: CounterName) -> String {
     *self.values.entry(name).or_insert(0) += 1;
     for r in &self.defs.get(name).resets {
       self.values.insert(*r, 0);
@@ -143,13 +113,14 @@ impl CounterRegistry {
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`EvalError::DuplicateLabel`] を返します。
-  pub fn increment_theorem_with_label(
+  /// `label` が既に登録済みの場合に [`LoweringError::DuplicateLabel`] を返します。
+  pub(crate) fn increment_theorem_with_label(
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
     span: miette::SourceSpan,
-  ) -> Result<Option<String>, EvalError> {
+    source: SourceId,
+  ) -> Result<Option<String>, LoweringError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, number_format, display_name, unnumbered) = {
       let def = self.theorems.get(class);
@@ -169,9 +140,10 @@ impl CounterRegistry {
     if let Some(l) = label {
       let formatted = expand_ref_format("{display_name} {number}", &number, &display_name);
       if !self.register_formatted_label(l.to_string(), formatted) {
-        return Err(EvalError::DuplicateLabel {
+        return Err(LoweringError::DuplicateLabel {
           label: l.to_string(),
           span,
+          source_id: source,
         });
       }
     }
@@ -180,7 +152,7 @@ impl CounterRegistry {
 
   /// 現在のカウンタ値を `number_format` テンプレートに従って書式化する
   #[must_use]
-  pub fn format_number(&self, name: CounterName) -> String {
+  pub(crate) fn format_number(&self, name: CounterName) -> String {
     return self.expand_template(&self.defs.get(name).number_format, name);
   }
 
@@ -194,11 +166,11 @@ impl CounterRegistry {
   ///   （テンプレートは再帰展開しない）
   /// - 未知のカウンタ名（9 種以外）は空文字列に置換する
   fn expand_template(&self, template: &str, self_name: CounterName) -> String {
-    return expand_placeholders(template, |name| {
+    return crate::placeholder::expand(template, |name| {
       let target = if name == "n" {
         Some(self_name)
       } else {
-        parse_counter_name(name)
+        CounterName::from_name(name)
       };
       return target.map_or_else(String::new, |t| self.render_counter_value(t));
     });
@@ -210,11 +182,11 @@ impl CounterRegistry {
   /// - `{<name>}` は見出し等のカウンタ値を参照先の `number_style` でレンダリングする
   /// - 未知のプレースホルダは空文字列に置換する
   fn expand_theorem_template(&self, template: &str, self_value: u32) -> String {
-    return expand_placeholders(template, |name| {
+    return crate::placeholder::expand(template, |name| {
       if name == "n" {
         return self_value.to_string();
       }
-      return parse_counter_name(name).map_or_else(String::new, |t| self.render_counter_value(t));
+      return CounterName::from_name(name).map_or_else(String::new, |t| self.render_counter_value(t));
     });
   }
 
@@ -229,9 +201,14 @@ impl CounterRegistry {
   /// 文字列を作って保存する（例: `"1.2"` → `"Section 1.2"`、`"({number})"` 形式なら `"(1.2)"`）。
   ///
   /// 同名ラベルが登録済みの場合は上書きせず `false` を返す。呼び出し側はこれを
-  /// [`EvalError::DuplicateLabel`] に変換して報告する（黙って上書きしない）。
+  /// [`LoweringError::DuplicateLabel`] に変換して報告する（黙って上書きしない）。
   #[must_use]
-  pub fn register_label(&mut self, label: impl Into<String>, counter: CounterName, number: impl Into<String>) -> bool {
+  pub(crate) fn register_label(
+    &mut self,
+    label: impl Into<String>,
+    counter: CounterName,
+    number: impl Into<String>,
+  ) -> bool {
     let label = label.into();
     if self.labels.contains_key(&label) {
       return false;
@@ -264,25 +241,27 @@ impl CounterRegistry {
   ///
   /// [`CounterRegistry::increment`] で番号を発番し、`label` があれば
   /// [`CounterRegistry::register_label`] で登録する。同名ラベルが登録済みの場合は
-  /// [`EvalError::DuplicateLabel`] を返す。見出し・`equation`・`figure`・`table` の
+  /// [`LoweringError::DuplicateLabel`] を返す。見出し・`equation`・`figure`・`table` の
   /// 各ハンドラが共用する。
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`EvalError::DuplicateLabel`] を返します。
-  pub fn increment_with_label(
+  /// `label` が既に登録済みの場合に [`LoweringError::DuplicateLabel`] を返します。
+  pub(crate) fn increment_with_label(
     &mut self,
     counter: CounterName,
     label: Option<&str>,
     span: miette::SourceSpan,
-  ) -> Result<String, EvalError> {
+    source: SourceId,
+  ) -> Result<String, LoweringError> {
     let number = self.increment(counter);
     if let Some(l) = label
       && !self.register_label(l.to_string(), counter, &number)
     {
-      return Err(EvalError::DuplicateLabel {
+      return Err(LoweringError::DuplicateLabel {
         label: l.to_string(),
         span,
+        source_id: source,
       });
     }
     return Ok(number);
@@ -292,11 +271,13 @@ impl CounterRegistry {
   ///
   /// 未登録ラベルの場合は `None`。呼び出し側でエラー化する想定。
   #[must_use]
-  pub fn resolve_label(&self, label: &str) -> Option<&str> { return self.labels.get(label).map(|r| r.number.as_str()); }
+  pub(crate) fn resolve_label(&self, label: &str) -> Option<&str> {
+    return self.labels.get(label).map(|r| r.number.as_str());
+  }
 
   /// 見出しレベルから seiran 既定の [`CounterName`] を返す
   #[must_use]
-  pub fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
+  pub(crate) fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
     return match level {
       HeadingLevel::Part => CounterName::Part,
       HeadingLevel::Chapter => CounterName::Chapter,
@@ -308,11 +289,37 @@ impl CounterRegistry {
   }
 }
 
+#[cfg(test)]
+impl CounterRegistry {
+  /// seiran 既定のカウンタセットでレジストリを構築する
+  ///
+  /// 既定値は `read_style::Style::default()` が `Counters::default()` 経由で供給する
+  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
+  /// figure / equation / table）。テスト用ショートカット。
+  #[must_use]
+  pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
+
+  /// `read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
+  ///
+  /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
+  /// [`CounterRegistry::from_style`] を使うこと。
+  #[must_use]
+  pub(crate) fn from_counters(counters: &Counters) -> Self {
+    return Self {
+      defs: counters.clone(),
+      values: HashMap::new(),
+      theorems: Theorems::default(),
+      theorem_values: HashMap::new(),
+      labels: HashMap::new(),
+    };
+  }
+}
+
 /// pass1 で登録される、ラベル名から確定済み番号への解決結果
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedLabel {
+struct ResolvedLabel {
   /// 確定済みの `\ref` 表示文字列（カウンタは `ref_format`、定理は cleveref 書式を適用済み）
-  pub number: String,
+  number: String,
 }
 
 /// 見出しカウンタ [`CounterName`] を、定理カウンタの `reset_by` に対応する [`TheoremReset`] に写す
@@ -332,7 +339,6 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
 
 #[cfg(test)]
 mod tests {
-  use document::{DocNode, InlineNode};
   use miette::SourceSpan;
   use read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
 
@@ -347,11 +353,15 @@ mod tests {
 
     // Act / Assert
     assert_eq!(
-      r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap().as_deref(),
+      r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+        .unwrap()
+        .as_deref(),
       Some("1")
     );
     assert_eq!(
-      r.increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span()).unwrap().as_deref(),
+      r.increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), SourceId::new(0))
+        .unwrap()
+        .as_deref(),
       Some("2")
     );
   }
@@ -362,7 +372,11 @@ mod tests {
     let mut r = CounterRegistry::from_style(&Style::default());
 
     // Act / Assert — proof は採番なし
-    assert!(r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span()).unwrap().is_none());
+    assert!(
+      r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), SourceId::new(0))
+        .unwrap()
+        .is_none()
+    );
   }
 
   #[test]
@@ -371,8 +385,12 @@ mod tests {
     let mut r = CounterRegistry::from_style(&Style::default());
 
     // Act
-    let thm = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
-    let def = r.increment_theorem_with_label(TheoremClass::Definition, None, theorem_span()).unwrap();
+    let thm = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
+    let def = r
+      .increment_theorem_with_label(TheoremClass::Definition, None, theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Assert — 別カウンタなので両方 "1"
     assert_eq!(thm.as_deref(), Some("1"));
@@ -389,7 +407,9 @@ mod tests {
     // Act — section を 1 に進めてから theorem を採番
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section);
-    let number = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
+    let number = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Assert — section=1、theorem=1 → "1.1"
     assert_eq!(number.as_deref(), Some("1.1"));
@@ -406,10 +426,16 @@ mod tests {
     r.increment(CounterName::Section); // section = 1
 
     // Act
-    let a = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
-    let b = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
+    let a = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
+    let b = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
-    let c = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
+    let c = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Assert
     assert_eq!(a.as_deref(), Some("1.1"));
@@ -426,9 +452,13 @@ mod tests {
     r.increment(CounterName::Chapter); // chapter = 1
 
     // Act
-    let a = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
+    let a = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
     r.increment(CounterName::Chapter); // chapter = 2（section は増えていない）
-    let b = r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span()).unwrap();
+    let b = r
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Assert — 連番が維持される
     assert_eq!(a.as_deref(), Some("1"));
@@ -441,7 +471,8 @@ mod tests {
     let mut r = CounterRegistry::from_style(&Style::default());
 
     // Act
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:x"), theorem_span()).unwrap();
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:x"), theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Assert — "{display_name} {number}" で解決される
     assert_eq!(r.resolve_label("thm:x"), Some("Theorem 1"));
@@ -451,13 +482,14 @@ mod tests {
   fn increment_theorem_duplicate_label_errors() {
     // Arrange
     let mut r = CounterRegistry::from_style(&Style::default());
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span()).unwrap();
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), SourceId::new(0))
+      .unwrap();
 
     // Act
-    let result = r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span());
+    let result = r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), SourceId::new(0));
 
     // Assert
-    assert!(matches!(result, Err(EvalError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    assert!(matches!(result, Err(LoweringError::DuplicateLabel { ref label, .. }) if label == "dup"));
   }
 
   #[test]
@@ -583,80 +615,5 @@ mod tests {
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
-  }
-
-  fn dummy_span() -> SourceSpan { return SourceSpan::from((0_usize, 0_usize)); }
-
-  #[test]
-  fn resolve_refs_rewrites_paragraph_ref_number() {
-    // Arrange — chapter を 1 進めて section にラベルを登録、Paragraph 内の Ref を解決
-    let mut registry = CounterRegistry::default_for_seiran();
-    registry.increment(CounterName::Chapter);
-    let number = registry.increment(CounterName::Section);
-    assert!(registry.register_label("sec:intro", CounterName::Section, &number));
-    let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
-      label: "sec:intro".to_string(),
-      number: None,
-      span: dummy_span(),
-    }])];
-
-    // Act
-    resolve_refs(&mut nodes, &registry).unwrap();
-
-    // Assert
-    let DocNode::Paragraph(inlines) = &nodes[0] else {
-      panic!("Paragraph が期待されます");
-    };
-    let InlineNode::Ref { number, .. } = &inlines[0] else {
-      panic!("Ref が期待されます");
-    };
-    assert_eq!(number.as_deref(), Some("Section 1.1"));
-  }
-
-  #[test]
-  fn resolve_refs_returns_unknown_label_error_for_missing_label() {
-    // Arrange — ラベル未登録の状態で Ref を解決
-    let registry = CounterRegistry::default_for_seiran();
-    let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
-      label: "nope".to_string(),
-      number: None,
-      span: dummy_span(),
-    }])];
-
-    // Act
-    let result = resolve_refs(&mut nodes, &registry);
-
-    // Assert
-    assert!(matches!(result, Err(EvalError::UnknownLabel { ref label, .. }) if label == "nope"));
-  }
-
-  #[test]
-  fn resolve_refs_recurses_into_heading_title() {
-    // Arrange
-    let mut registry = CounterRegistry::default_for_seiran();
-    registry.increment(CounterName::Chapter);
-    assert!(registry.register_label("ch:intro", CounterName::Chapter, "1"));
-    let mut nodes = vec![DocNode::Heading {
-      level: HeadingLevel::Section,
-      number: "1.1".to_string(),
-      title: vec![InlineNode::Ref {
-        label: "ch:intro".to_string(),
-        number: None,
-        span: dummy_span(),
-      }],
-      label: None,
-    }];
-
-    // Act
-    resolve_refs(&mut nodes, &registry).unwrap();
-
-    // Assert
-    let DocNode::Heading { title, .. } = &nodes[0] else {
-      panic!("Heading が期待されます");
-    };
-    let InlineNode::Ref { number, .. } = &title[0] else {
-      panic!("Ref が期待されます");
-    };
-    assert_eq!(number.as_deref(), Some("Chapter 1"));
   }
 }

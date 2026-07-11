@@ -158,20 +158,6 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
-  /// `\ref{label}` で参照されたラベルが未登録の場合
-  #[error("不明なラベルです: {label}")]
-  #[diagnostic(
-    code(parser::eval::unknown_label),
-    help("\\ref で参照しているラベルが \\section[label=...] / 環境 [label=...] で定義されているか確認してください")
-  )]
-  UnknownLabel {
-    /// 参照しようとしたラベル名
-    label: String,
-    /// `\ref{...}` のソース位置
-    #[label("このラベルは未定義です")]
-    span: SourceSpan,
-  },
-
   /// `\cite{...}` で参照された引用キーが参照定義（references）に未定義の場合（集約）
   ///
   /// 1 ファイル内のすべての未定義キーを 1 度に報告する。各 `\cite` のソース位置を
@@ -185,17 +171,6 @@ pub enum EvalError {
     /// 未定義キーを含む各 `\cite` のラベル（ソース位置付き）
     #[label(collection)]
     labels: Vec<LabeledSpan>,
-  },
-
-  /// 同じラベル名が複数回定義された場合
-  #[error("ラベルが重複しています: {label}")]
-  #[diagnostic(code(parser::eval::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
-  DuplicateLabel {
-    /// 重複したラベル名
-    label: String,
-    /// 2 回目に定義したコマンド / 環境のソース位置
-    #[label("このラベルは既に定義されています")]
-    span: SourceSpan,
   },
 
   /// 無採番（`[numbered=false]`）の数式環境にラベル（`[label=...]`）を付与した場合

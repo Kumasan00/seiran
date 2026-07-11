@@ -7,7 +7,7 @@ use document::{DocNode, ListItem};
 use syntax::ast::EnvironmentView;
 
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   environment::body_scan,
   opt_args::{collect_command_opt_args, collect_environment_opt_args},
 };
@@ -17,18 +17,14 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, false);
-}
+pub(super) fn itemize(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> { return list_common(view, false); }
 
 /// `enumerate` 環境を評価する（順序付きリスト）
 ///
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
-  return list_common(view, evaluator, true);
-}
+pub(super) fn enumerate(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> { return list_common(view, true); }
 
 /// リスト環境の共通処理
 ///
@@ -39,13 +35,12 @@ pub(super) fn enumerate(view: &EnvironmentView, evaluator: &mut Evaluator) -> Re
 /// # Arguments
 ///
 /// * `view` - 環境の型付きビュー
-/// * `evaluator` - 評価器への可変参照
 /// * `ordered` - 順序付きリストかどうか
 ///
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-fn list_common(view: &EnvironmentView, evaluator: &mut Evaluator, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
+fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
   let _opt_args = collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -73,7 +68,7 @@ fn list_common(view: &EnvironmentView, evaluator: &mut Evaluator, ordered: bool)
           span: cmd_view.span().into(),
         });
       }
-      let content = evaluator.evaluate_children(source, first_arg)?;
+      let content = crate::evaluator::evaluate_children(source, first_arg)?;
       items.push(ListItem { content });
     }
   }
@@ -100,10 +95,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));

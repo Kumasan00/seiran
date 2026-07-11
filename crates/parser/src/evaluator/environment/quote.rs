@@ -11,7 +11,7 @@
 use document::{DocNode, QuoteKind};
 use syntax::ast::EnvironmentView;
 
-use crate::evaluator::{EvalError, Evaluator, opt_args::collect_environment_opt_args};
+use crate::evaluator::{EvalError, opt_args::collect_environment_opt_args};
 
 /// 引用環境（`quote` / `quotation`）を評価する
 ///
@@ -20,7 +20,7 @@ use crate::evaluator::{EvalError, Evaluator, opt_args::collect_environment_opt_a
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let kind = QuoteKind::from_name(view.name()).expect("ENVIRONMENTS は quote / quotation のみを本ハンドラに登録する");
 
   let _opt_args = collect_environment_opt_args(view, &[])?;
@@ -33,7 +33,7 @@ pub(super) fn quote(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result
 
   // 本体は通常の本文と同様に再帰評価する（段落・リスト・数式等を含められる）。
   let body = match view.body() {
-    Some(body) => evaluator.evaluate_children(view.source(), body)?,
+    Some(body) => crate::evaluator::evaluate_children(view.source(), body)?,
     None => Vec::new(),
   };
 
@@ -60,10 +60,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}引用本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — kind=Quote、本体は段落 1 つ
     assert_eq!(result.len(), 1);
@@ -81,10 +80,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quotation}引用本文\end{quotation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Quote { kind, .. } = &result[0] else {
@@ -99,10 +97,9 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{quote}第一段落\n\n第二段落\\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 本体に段落が 2 つ
     let DocNode::Quote { body, .. } = &result[0] else {
@@ -118,10 +115,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}{余分}本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraEnvironmentArgument { ref name, .. }) if name == "quote"));
@@ -133,10 +129,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{quote}[foo=1]本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator::default();
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));

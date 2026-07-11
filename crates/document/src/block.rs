@@ -26,13 +26,6 @@ impl Document {
   #[must_use]
   pub fn new(body: Vec<DocNode>) -> Self { return Document { body }; }
 
-  /// ドキュメント内の全見出しを文書順に収集する
-  ///
-  /// 目次生成や PDF ブックマーク構築に使用します。意味側の単一ソースである
-  /// 自由関数 [`collect_headings`] に委譲します。
-  #[must_use]
-  pub fn collect_headings(&self) -> Vec<HeadingInfo<'_>> { return collect_headings(&self.body); }
-
   /// ドキュメント内のブロック要素の数を返す
   #[must_use]
   pub fn len(&self) -> usize { return self.body.len(); }
@@ -43,58 +36,16 @@ impl Document {
 }
 
 // =============================================================================
-// 見出しの収集（目次生成・PDF しおりの共通ソース）
+// 見出しの暗黙 destination キー
 // =============================================================================
-
-/// 文書順インデックス付きの見出しビュー
-///
-/// [`collect_headings`] が返す軽量な参照ビュー。目次生成と PDF しおり構築の双方が
-/// この単一ソースを消費する。`index` は本文中の見出し出現順（0 始まり）で、
-/// [`heading_anchor_key`] に渡すと目次エントリの内部リンク到達先キーが得られる。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HeadingInfo<'a> {
-  /// 見出しの文書順インデックス（0 始まり）
-  pub index: usize,
-  /// 見出しレベル
-  pub level: HeadingLevel,
-  /// 書式化済みの見出し番号
-  pub number: &'a str,
-  /// 見出しタイトル（インライン要素）
-  pub title: &'a [InlineNode],
-}
 
 /// 見出しの暗黙 destination キーを文書順インデックスから生成する
 ///
 /// lowering（採番側 = `AnchorMark::Heading.key`）と目次ビルダ（参照側 =
-/// `LinkTarget::Internal`）が同じ規則を共有するための単一ソース。
+/// `LinkTarget::Internal`）が同じ規則を共有するための単一ソース。見出しの収集自体は
+/// `lowering::lower_sources_with_headings`（採番・書式解決を伴うため lowering 側の責務）が担う。
 #[must_use]
 pub fn heading_anchor_key(index: usize) -> String { return format!("heading:{index}"); }
-
-/// ブロックノード列から全見出しを文書順に収集する
-///
-/// 目次生成と PDF しおり構築が共通で使う意味側の単一ソース。`index` は出現順に
-/// 0 から振られる。
-#[must_use]
-pub fn collect_headings(nodes: &[DocNode]) -> Vec<HeadingInfo<'_>> {
-  let mut headings = Vec::new();
-  for node in nodes {
-    if let DocNode::Heading {
-      level,
-      number,
-      title,
-      ..
-    } = node
-    {
-      headings.push(HeadingInfo {
-        index: headings.len(),
-        level: *level,
-        number: number.as_str(),
-        title: title.as_slice(),
-      });
-    }
-  }
-  return headings;
-}
 
 // =============================================================================
 // ブロックレベル要素
@@ -114,16 +65,20 @@ pub enum DocNode {
   Heading {
     /// 見出しのレベル（Part〜Subparagraph）
     level: HeadingLevel,
-    /// 自動採番された見出し番号（`CounterRegistry::increment` の出力に
-    /// `format` テンプレートを適用済みの文字列。例: `"1.2"`、`"第3章"`）
-    number: String,
+    /// 採番対象かどうか。`true` なら `lowering` 層が対応するカウンタを発番する。
+    ///
+    /// 通常の見出しコマンド（`\section` 等）は常に `true`。CSL 整形ステージ（`citation` クレート）が
+    /// 合成する「References」見出しのように、parser を経由せず直接構築される見出しは `false` になる。
+    numbered: bool,
     /// 見出しのタイトル（インライン要素として保持）
     title: Vec<InlineNode>,
     /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル（任意）
     ///
-    /// `\ref{sec:intro}` 解決時に `CounterRegistry::labels` から番号を引くキーとなる。
+    /// `\ref{sec:intro}` 解決時に `lowering::CounterRegistry` の labels から番号を引くキーとなる。
     /// `None` の場合はラベル付与なし（参照対象外）。
     label: Option<String>,
+    /// 見出しコマンドのソース位置。重複ラベルの診断に使う
+    span: SourceSpan,
   },
 
   /// 段落（インライン要素の集合）
@@ -148,15 +103,16 @@ pub enum DocNode {
   /// 格納する（env body は math モードで構造化される）。採番には 2 つの粒度があり、kind ごとに
   /// **どちらか一方だけ**を使う:
   ///
-  /// - **行ごと採番**（`equation` / `align` / `gather`）: 各行の `MathRow::number` に通し番号が入る。
-  ///   環境全体の `number` は `None`。
-  /// - **環境全体に 1 つ採番**（`split` / `multiline`）: この `number` フィールドに 1 つだけ通し番号が入り、
-  ///   `layout` 段がブロックの縦中央に配置する。各行の `MathRow::number` は `None`。
+  /// - **行ごと採番**（`equation` / `align` / `gather`）: 各行の `MathRow::numbered` が採番対象かを表す。
+  ///   環境全体の採番（この `numbered` フィールド）は使わない。
+  /// - **環境全体に 1 つ採番**（`split` / `multiline`）: この `numbered` フィールドが `true` かつ
+  ///   `rows` が空でなければ、`lowering` 層が環境全体に 1 つだけ通し番号を発番し、ブロックの縦中央に
+  ///   配置する。各行の `MathRow::numbered` は常に `false`。
   ///
-  /// いずれも番号は `CounterRegistry::increment(CounterName::Equation)` で発番された通し番号
-  /// （`number_format` テンプレ適用済みの文字列）で、lowering 層が `MathBlockStyle::tag_format` でさらに
-  /// 装飾する。`[numbered=false]` で採番ありの環境を無採番にした場合は両方とも `None`。`kind` に応じて
-  /// lowering 以降が列整列・区切り括弧・中央寄せを決める。
+  /// `cases` / `matrix` は非採番（`numbered: false` 固定）で `CounterName::Equation` を一切消費しない。
+  /// 番号の書式化（`number_format` テンプレ・`MathBlockStyle::tag_format` による装飾）は
+  /// すべて `lowering` 層が `Style` を参照して行う。`kind` に応じて lowering 以降が列整列・
+  /// 区切り括弧・中央寄せを決める。
   ///
   /// ラベルの担い手も採番粒度に揃える。行ごと採番（`equation` / `align` / `gather`）は各行の
   /// `MathRow::label`（`align` / `gather` は行末マーカー `\label{...}`、`equation` は `[label=...]`）が、
@@ -167,12 +123,14 @@ pub enum DocNode {
     kind: MathEnvKind,
     /// 行（各行は `&` 区切りの列を持つ）
     rows: Vec<MathRow>,
-    /// 環境全体に 1 つだけ付く通し番号（`split` / `multiline` 用、縦中央配置）。
-    /// 行ごと採番の環境（`equation` / `align` / `gather`）や無採番では `None`
-    number: Option<String>,
+    /// 環境全体で 1 つ採番するか（`split` / `multiline` 用）。行ごと採番の環境（`equation` /
+    /// `align` / `gather`）や `cases` / `matrix` では意味を持たない（常に `false`）
+    numbered: bool,
     /// `\ref{eq:foo}` 解決用の環境単位ラベル（`split` / `multiline` の `[label=...]`）。
     /// 行ごと採番の環境（ラベルは `MathRow::label` 側）や無採番では `None`
     label: Option<String>,
+    /// 環境のソース位置。重複ラベルの診断や行ラベルの位置未指定時のフォールバックに使う
+    span: SourceSpan,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）
@@ -180,8 +138,7 @@ pub enum DocNode {
   /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
   /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。両方とも省略可で、
   /// 未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。
-  /// `number` は `CounterRegistry::increment(CounterName::Figure)` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）。`caption_position` は
+  /// 通し番号（`CounterName::Figure`）の発番・書式化は `lowering` 層が担う。`caption_position` は
   /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
@@ -201,8 +158,8 @@ pub enum DocNode {
     caption_position: CaptionPosition,
     /// `\ref{fig:foo}` 解決用ラベル（環境の任意引数 `[label=fig:foo]`）
     label: Option<String>,
-    /// 評価時に発番された通し番号（プレーン文字列）
-    number: String,
+    /// 環境のソース位置。重複ラベルの診断に使う
+    span: SourceSpan,
   },
 
   /// 表環境（`\begin{table}...\end{table}`）
@@ -211,7 +168,7 @@ pub enum DocNode {
   /// `columns` / `widths` は環境の任意引数 `columns="left center right"` /
   /// `widths="auto auto 5cm"` のパース結果で、長さは列数に揃えられている
   /// （未指定分は `ColumnAlign::Left` / `ColumnWidth::Auto` で埋める）。
-  /// `number` は `CounterRegistry::increment(CounterName::Table)` で発番された通し番号。
+  /// 通し番号（`CounterName::Table`）の発番・書式化は `lowering` 層が担う。
   /// `caption_position` は `\caption` が最初の行（`\head` / `\row`）より前に
   /// 書かれた場合 `Top`、それ以外は `Bottom`。
   Table {
@@ -229,8 +186,8 @@ pub enum DocNode {
     caption_position: CaptionPosition,
     /// `\ref{tab:foo}` 解決用ラベル（環境の任意引数 `[label=tab:foo]`）
     label: Option<String>,
-    /// 評価時に発番された通し番号（プレーン文字列）
-    number: String,
+    /// 環境のソース位置。重複ラベルの診断に使う
+    span: SourceSpan,
     /// 改ページによる分割を許可するか（`[breakable=false]` で禁止、既定 `true`）
     breakable: bool,
   },
@@ -239,15 +196,13 @@ pub enum DocNode {
   ///
   /// 環境ハンドラがクラスをを解決し、`[title=...]` / `[label=...]` / `[of=...]` の任意引数を
   /// 抽出して構造化する。本体（`body`）は通常の本文と同様に再帰評価された `Vec<DocNode>`。
-  /// 採番済みクラスは `CounterRegistry::increment_theorem_with_label` で発番された通し番号
-  /// （`format` テンプレ適用済みの文字列）を `number` に持ち、`unnumbered` クラス（`proof`）は
-  /// `None`。見出し書式・本文フォント・QED マーク配置は `lowering` 層がクラスの
-  /// `read_style::TheoremStyle` を参照して決める（このノードは物理スタイルを持たない）。
+  /// 採番（共有カウンタの発番・cleveref 文字列の組み立て）・見出し書式・本文フォント・
+  /// QED マーク配置は、いずれも `lowering` 層がクラスの `read_style::TheoremStyle` を参照して
+  /// 決める（このノードは `class` 以外に物理・書式情報を持たない）。`unnumbered` クラス（`proof`）
+  /// かどうかも `TheoremStyle.unnumbered` から `lowering` が判定する。
   Theorem {
     /// 定理クラス（`theorem` / `lemma` / … / `proof`）。`lowering` がスタイル解決に使う
     class: TheoremClass,
-    /// 採番済みの番号文字列（`format` テンプレ適用済み）。`unnumbered` クラスでは `None`
-    number: Option<String>,
     /// サブタイトル（`[title="..."]` の中身）。見出しの `{title}` に反映される。未指定は `None`
     title: Option<String>,
     /// 本体（再帰評価された `Vec<DocNode>`）
@@ -256,6 +211,8 @@ pub enum DocNode {
     of: Option<ProofTarget>,
     /// `\ref{thm:foo}` 解決用ラベル（環境の任意引数 `[label=thm:foo]`）。未指定は `None`
     label: Option<String>,
+    /// 環境のソース位置。重複ラベルの診断に使う
+    span: SourceSpan,
   },
 
   /// 引用ブロック（`\begin{quote}...\end{quote}` / `\begin{quotation}...\end{quotation}`）
@@ -298,40 +255,34 @@ pub enum DocNode {
 
 /// `proof` 環境の `[of=label]` 参照（証明対象の定理）
 ///
-/// `\ref` と同じ 2 パスで解決する。pass1 では `label` を確定し `number: None` のスタブを
-/// 生成、pass2（`CounterRegistry` による解決）で対象定理の cleveref 文字列（例 `"Theorem 1.2"`）を
-/// `number: Some(...)` に書き換える。`lowering` 層が証明見出しの「… の証明」に埋め込む。
+/// `\ref` と同じく `lowering` 層の 2 パスで解決する（`label` を保持するだけの構造体で、
+/// 解決結果の cleveref 文字列（例 `"Theorem 1.2"`）は `lowering::resolve_refs` が
+/// `LayoutNode` 側で埋め込む）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProofTarget {
   /// 参照先のラベル名（`[of=thm:foo]` の `thm:foo`）
   pub label: String,
-  /// 解決済みの参照文字列。pass2 完了時点で `Some` となる
-  pub number: Option<String>,
-  /// `[of=...]` 任意引数のソース位置。pass2 で未解決時の診断に使う
+  /// `[of=...]` 任意引数のソース位置。未解決時の診断に使う
   pub span: SourceSpan,
 }
 
 impl DocNode {
-  /// 見出しノードを生成するヘルパー（label なし）
+  /// 採番ありの見出しノードを生成するヘルパー（label なし、テスト用ダミー span）
   ///
   /// # Arguments
   ///
   /// * `level` - 見出しレベル
-  /// * `number` - 書式化済みの見出し番号文字列
   /// * `title` - タイトルのインライン要素
   #[must_use]
-  pub fn heading(level: HeadingLevel, number: impl Into<String>, title: Vec<InlineNode>) -> Self {
+  pub fn heading(level: HeadingLevel, title: Vec<InlineNode>) -> Self {
     return DocNode::Heading {
       level,
-      number: number.into(),
+      numbered: true,
       title,
       label: None,
+      span: SourceSpan::from((0_usize, 0_usize)),
     };
   }
-
-  /// このノードが見出しかどうかを判定する
-  #[must_use]
-  pub fn is_heading(&self) -> bool { return matches!(self, DocNode::Heading { .. }); }
 
   /// このノードが段落かどうかを判定する
   #[must_use]
@@ -406,8 +357,7 @@ mod tests {
 
   #[test]
   fn doc_node_heading_helper() {
-    let node = DocNode::heading(HeadingLevel::Section, "1.2", vec![InlineNode::text("Title")]);
-    assert!(node.is_heading());
+    let node = DocNode::heading(HeadingLevel::Section, vec![InlineNode::text("Title")]);
     assert!(!node.is_paragraph());
     assert!(!node.is_list());
   }
@@ -416,7 +366,6 @@ mod tests {
   fn doc_node_is_paragraph() {
     let node = DocNode::Paragraph(vec![InlineNode::text("text")]);
     assert!(node.is_paragraph());
-    assert!(!node.is_heading());
   }
 
   #[test]
@@ -436,9 +385,9 @@ mod tests {
   #[test]
   fn document_new_and_accessors() {
     let doc = Document::new(vec![
-      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::text("Intro")]),
+      DocNode::heading(HeadingLevel::Chapter, vec![InlineNode::text("Intro")]),
       DocNode::Paragraph(vec![InlineNode::text("Hello")]),
-      DocNode::heading(HeadingLevel::Section, "1.1", vec![InlineNode::text("Basics")]),
+      DocNode::heading(HeadingLevel::Section, vec![InlineNode::text("Basics")]),
     ]);
 
     assert_eq!(doc.len(), 3);
@@ -446,28 +395,15 @@ mod tests {
   }
 
   #[test]
-  fn document_collect_headings() {
-    let doc = Document::new(vec![
-      DocNode::heading(HeadingLevel::Chapter, "1", vec![InlineNode::text("Ch1")]),
-      DocNode::Paragraph(vec![InlineNode::text("text")]),
-      DocNode::heading(HeadingLevel::Section, "1.1", vec![InlineNode::text("Sec1.1")]),
-    ]);
-
-    let headings = doc.collect_headings();
-    assert_eq!(headings.len(), 2);
-    assert_eq!(headings[0].index, 0);
-    assert_eq!(headings[0].level, HeadingLevel::Chapter);
-    assert_eq!(headings[0].number, "1");
-    assert_eq!(headings[1].index, 1);
-    assert_eq!(headings[1].level, HeadingLevel::Section);
-    assert_eq!(headings[1].number, "1.1");
-  }
-
-  #[test]
   fn document_empty() {
     let doc = Document::new(vec![]);
     assert!(doc.is_empty());
     assert_eq!(doc.len(), 0);
-    assert!(doc.collect_headings().is_empty());
+  }
+
+  #[test]
+  fn heading_anchor_key_formats_index() {
+    assert_eq!(heading_anchor_key(0), "heading:0");
+    assert_eq!(heading_anchor_key(3), "heading:3");
   }
 }

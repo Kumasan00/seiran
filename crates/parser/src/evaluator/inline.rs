@@ -171,7 +171,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
 /// `None` を返します。
 ///
 /// 解決の単一ソースは [`SYMBOL_MAP`]。記号追加はそちらだけを編集すれば、
-/// 本関数（数式文脈）・`Evaluator::evaluate_command`・`extract_inline_nodes`（本文文脈）の
+/// 本関数（数式文脈）・`command::evaluate_command`・`extract_inline_nodes`（本文文脈）の
 /// すべてに反映される。
 #[must_use]
 pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {

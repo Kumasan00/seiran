@@ -43,9 +43,7 @@ const RUNNING: &[&str] = &["page", "pages", "title", "author", "date"];
 ///
 /// `{n}` は「そのカウンタ自身の値」を指す特別トークン、それ以外は固定 9 種の他カウンタ名
 /// （[`CounterName::ALL`]）のみを許可する。
-fn is_counter_placeholder(name: &str) -> bool {
-  return name == "n" || CounterName::ALL.iter().any(|counter| counter.as_str() == name);
-}
+fn is_counter_placeholder(name: &str) -> bool { return name == "n" || CounterName::from_name(name).is_some(); }
 
 /// テンプレート文字列中の `{name}` プレースホルダを走査し、不正を一括検出する。
 ///

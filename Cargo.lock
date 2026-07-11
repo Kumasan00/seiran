@@ -1564,7 +1564,6 @@ dependencies = [
  "garde",
  "miette",
  "phf",
- "read_style",
  "serde",
  "syntax",
  "thiserror",

@@ -66,15 +66,13 @@ pub enum InlineNode {
 
   /// 相互参照（`\ref{label}`）
   ///
-  /// `CounterRegistry` での 2 パス評価で解決される。`number` は pass1 では `None`、
-  /// pass2 解決後に `Some(整形済み文字列)` になる。pass2 で未定義ラベルが残った場合は
-  /// `EvalError::UnknownLabel` を返し、`number: None` の状態は呼び出し側に届かない。
+  /// `lowering::CounterRegistry` の 2 パス評価で解決される（`label` を保持するだけの構造体で、
+  /// 解決結果の番号文字列は `lowering::resolve_refs` が `LayoutNode` 側で埋め込む）。
+  /// 未定義ラベルが残った場合は `LoweringError::UnresolvedReference` を返す。
   Ref {
     /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
-    /// 解決された番号文字列。pass2 完了時点で `Some` となる
-    number: Option<String>,
-    /// `\ref{...}` の `CommandCall` ノードのソース位置。pass2 で未解決時の診断に使う
+    /// `\ref{...}` の `CommandCall` ノードのソース位置。未解決時の診断に使う
     span: SourceSpan,
   },
 
@@ -133,37 +131,84 @@ impl InlineNode {
   #[must_use]
   pub fn symbol(ch: char) -> Self { return InlineNode::Symbol(ch); }
 
-  /// このノードをプレーンテキストに変換する
+  /// このノードをプレーンテキストに変換する（`\ref` は `resolve_ref` で解決する）
   ///
-  /// スタイル情報を無視して、含まれる文字列を連結して返します。
-  /// 見出しタイトルのプレーンテキスト取得などに使用します。
-  #[must_use]
-  pub fn to_plain_text(&self) -> String {
+  /// スタイル情報を無視して、含まれる文字列を連結して返す。`InlineNode::Ref` に遭遇するたびに
+  /// `resolve_ref(label, span)` を呼び、その戻り値を埋め込む。エラー型 `E` は呼び出し側のエラー型を
+  /// そのまま伝播できるよう総称化してある（[`to_plain_text`] は `Infallible` で薄くラップしたもの）。
+  ///
+  /// # Errors
+  ///
+  /// `resolve_ref` がエラーを返した場合にそのまま伝播します。
+  pub fn try_to_plain_text<E>(
+    &self,
+    resolve_ref: &mut impl FnMut(&str, SourceSpan) -> Result<String, E>,
+  ) -> Result<String, E> {
     match self {
-      InlineNode::Text(s) => return s.clone(),
-      InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => {
-        return children.iter().map(InlineNode::to_plain_text).collect();
+      InlineNode::Text(s) => return Ok(s.clone()),
+      InlineNode::Styled { children, .. }
+      | InlineNode::Colored { children, .. }
+      | InlineNode::Link { children, .. }
+      | InlineNode::InternalLink { children, .. } => {
+        return try_inline_nodes_to_plain_text(children, resolve_ref);
       },
-      InlineNode::InlineMath(_) => return "[Math]".to_string(),
-      InlineNode::Symbol(ch) => return ch.to_string(),
-      InlineNode::LineBreak => return "\n".to_string(),
-      // 非描画マーカーなのでプレーンテキストには何も寄与しない
-      InlineNode::NoIndent => return String::new(),
-      InlineNode::Ref { number, .. } => return number.clone().unwrap_or_default(),
-      InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
-        return inline_nodes_to_plain_text(children);
-      },
+      InlineNode::InlineMath(_) => return Ok("[Math]".to_string()),
+      InlineNode::Symbol(ch) => return Ok(ch.to_string()),
+      InlineNode::LineBreak => return Ok("\n".to_string()),
+      InlineNode::NoIndent => return Ok(String::new()),
+      InlineNode::Ref { label, span } => return resolve_ref(label, *span),
       InlineNode::Cite { keys, label, .. } => {
-        return label.as_deref().map_or_else(|| keys.join(", "), inline_nodes_to_plain_text);
+        return match label.as_deref() {
+          Some(inlines) => try_inline_nodes_to_plain_text(inlines, resolve_ref),
+          None => Ok(keys.join(", ")),
+        };
       },
     }
   }
+
+  /// このノードをプレーンテキストに変換する
+  ///
+  /// スタイル情報を無視して、含まれる文字列を連結して返す。`\ref` は解決できないため空文字列扱い
+  /// （解決済みテキストが必要な呼び出し側は [`try_to_plain_text`] を使う）。見出しタイトルの
+  /// プレーンテキスト取得などに使用します。
+  #[must_use]
+  pub fn to_plain_text(&self) -> String {
+    let mut resolve_ref = |_label: &str, _span: SourceSpan| -> Result<String, std::convert::Infallible> {
+      return Ok(String::new());
+    };
+    return match self.try_to_plain_text(&mut resolve_ref) {
+      Ok(text) => text,
+      Err(err) => match err {},
+    };
+  }
+}
+
+/// インラインノードのスライスをプレーンテキストに一括変換する（`\ref` は `resolve_ref` で解決する）
+///
+/// # Errors
+///
+/// `resolve_ref` がエラーを返した場合にそのまま伝播します。
+pub fn try_inline_nodes_to_plain_text<E>(
+  inlines: &[InlineNode],
+  resolve_ref: &mut impl FnMut(&str, SourceSpan) -> Result<String, E>,
+) -> Result<String, E> {
+  let mut out = String::new();
+  for inline in inlines {
+    out.push_str(&inline.try_to_plain_text(resolve_ref)?);
+  }
+  return Ok(out);
 }
 
 /// インラインノードのスライスをプレーンテキストに一括変換する
 #[must_use]
 pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
-  return inlines.iter().map(InlineNode::to_plain_text).collect();
+  let mut resolve_ref = |_label: &str, _span: SourceSpan| -> Result<String, std::convert::Infallible> {
+    return Ok(String::new());
+  };
+  return match try_inline_nodes_to_plain_text(inlines, &mut resolve_ref) {
+    Ok(text) => text,
+    Err(err) => match err {},
+  };
 }
 
 // =============================================================================
@@ -233,5 +278,44 @@ mod tests {
       InlineNode::text("!"),
     ];
     assert_eq!(inline_nodes_to_plain_text(&inlines), "Hello world!");
+  }
+
+  #[test]
+  fn try_plain_text_resolves_ref_via_callback() {
+    let span = SourceSpan::from((0, 0));
+    let inlines = vec![
+      InlineNode::text("See "),
+      InlineNode::Ref {
+        label: "sec:x".to_string(),
+        span,
+      },
+      InlineNode::text("."),
+    ];
+    let mut call_count = 0;
+    let mut resolve_ref = |label: &str, _span: SourceSpan| -> Result<String, String> {
+      call_count += 1;
+      assert_eq!(label, "sec:x");
+      return Ok("Section 1".to_string());
+    };
+    let result = try_inline_nodes_to_plain_text(&inlines, &mut resolve_ref);
+    assert_eq!(result, Ok("See Section 1.".to_string()));
+    assert_eq!(call_count, 1);
+  }
+
+  #[test]
+  fn try_plain_text_propagates_resolver_error() {
+    let span = SourceSpan::from((0, 0));
+    let inlines = vec![
+      InlineNode::text("See "),
+      InlineNode::Ref {
+        label: "sec:missing".to_string(),
+        span,
+      },
+      InlineNode::text("."),
+    ];
+    let mut resolve_ref =
+      |_label: &str, _span: SourceSpan| -> Result<String, String> { return Err("unresolved reference".to_string()) };
+    let result = try_inline_nodes_to_plain_text(&inlines, &mut resolve_ref);
+    assert_eq!(result, Err("unresolved reference".to_string()));
   }
 }

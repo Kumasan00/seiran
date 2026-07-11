@@ -439,15 +439,13 @@ fn canonicalize_or_record(
   errors: &mut Vec<ValidationError>,
   make_err: impl FnOnce(String, std::io::Error) -> ValidationError,
 ) -> Option<PathBuf> {
-  match path {
-    Some(p) => match p.canonicalize() {
-      Ok(canon) => return Some(canon),
-      Err(source) => {
-        errors.push(make_err(p.display().to_string(), source));
-        return None;
-      },
+  let p = path?;
+  match p.canonicalize() {
+    Ok(canon) => return Some(canon),
+    Err(source) => {
+      errors.push(make_err(p.display().to_string(), source));
+      return None;
     },
-    None => return None,
   }
 }
 
