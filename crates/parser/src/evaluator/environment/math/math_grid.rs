@@ -19,7 +19,7 @@ use syntax::{
   token::TokenKind,
 };
 
-use crate::evaluator::{EvalError, Evaluator, math::evaluate_math_elements};
+use crate::evaluator::{EvalError, math::evaluate_math_elements};
 
 mod markers;
 mod numbering;
@@ -165,7 +165,6 @@ pub(crate) fn evaluate_grid(
 /// ラベル付与・重複ラベル時にエラーを返す。
 pub(crate) fn evaluate_math_env(
   view: &EnvironmentView,
-  _evaluator: &mut Evaluator,
   kind: MathEnvKind,
   spec: &GridSpec,
   mode: &NumberingMode,

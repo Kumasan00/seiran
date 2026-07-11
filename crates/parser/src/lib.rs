@@ -28,7 +28,7 @@ use tracing::debug;
 
 mod evaluator;
 pub use evaluator::EvalError;
-use evaluator::{Evaluator, cite::resolve_cites};
+use evaluator::cite::resolve_cites;
 
 /// `parse_source` が返すエラー型
 ///
@@ -106,8 +106,7 @@ pub fn parse_source(
       error,
     })?;
 
-  let mut evaluator = Evaluator;
-  let doc_nodes = evaluator.evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
+  let doc_nodes = evaluator::evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
     src: NamedSource::new(source_name, source.to_string()),
     error,
   })?;

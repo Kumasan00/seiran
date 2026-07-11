@@ -16,7 +16,7 @@ use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 /// `align` 環境を評価する
 ///
@@ -26,10 +26,9 @@ use crate::evaluator::{EvalError, Evaluator};
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn align(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn align(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   return evaluate_math_env(
     view,
-    evaluator,
     MathEnvKind::Align,
     &GridSpec {
       allow_row_breaks: true,
@@ -68,10 +67,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — MathBlock(Align) 1 件、2 行・各 2 セル、各行が採番対象
     assert_eq!(result.len(), 1);
@@ -89,10 +87,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}x &= y\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let rows = rows_of(&result);
@@ -107,10 +104,9 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{align}a &= b \\\\\n\\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 末尾の空行は除去され、残る 1 行は採番対象
     let rows = rows_of(&result);
@@ -124,10 +120,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 2 行とも numbered は false
     let rows = rows_of(&result);
@@ -141,10 +136,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}x^2 &= y\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 左セルに Superscript が含まれる
     let rows = rows_of(&result);
@@ -162,10 +156,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[label=eq:foo]a &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
@@ -177,10 +170,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:foo} \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 1 行目: ラベルあり・採番対象、2 行目: ラベルなし・採番対象
     let rows = rows_of(&result);
@@ -197,10 +189,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \notag \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
@@ -212,10 +203,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "align"));
@@ -227,10 +217,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a \label{eq:x} &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotAtRowEnd { .. })));
@@ -243,10 +232,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \label{eq:x} \\ c &= d \label{eq:x}\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let rows = rows_of(&result);
@@ -260,10 +248,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a &= b \\ c &= d \notag \\ e &= f\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 1・3 行目は採番対象、2 行目（\notag）は無採番
     let rows = rows_of(&result);
@@ -279,10 +266,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}a \notag &= b\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
@@ -294,10 +280,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{align}[numbered=false]a &= b \notag \\ c &= d\end{align}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagWithUnnumberedEnv { .. })));

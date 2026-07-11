@@ -28,7 +28,7 @@ use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 use syntax::ast::EnvironmentView;
 use types::{ColumnAlign, ColumnWidth};
 
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 /// `table` 環境を評価する
 ///
@@ -41,7 +41,7 @@ use crate::evaluator::{EvalError, Evaluator};
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opts = collect_table_opts(view)?;
 
   if !view.args().is_empty() {
@@ -101,8 +101,7 @@ mod tests {
   fn eval_table(source: &str) -> Result<Vec<DocNode>, EvalError> {
     let arena = Bump::new();
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
-    return evaluator.evaluate_children(source, cst);
+    return crate::evaluator::evaluate_children(source, cst);
   }
 
   /// セル内容のプレーンテキストを行ごとに並べるヘルパ

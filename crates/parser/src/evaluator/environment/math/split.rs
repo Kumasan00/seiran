@@ -13,7 +13,7 @@ use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 /// `split` 環境を評価する
 ///
@@ -24,10 +24,9 @@ use crate::evaluator::{EvalError, Evaluator};
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn split(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn split(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   return evaluate_math_env(
     view,
-    evaluator,
     MathEnvKind::Split,
     &GridSpec {
       allow_row_breaks: true,
@@ -71,10 +70,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 2 行・各行は無採番・環境全体が採番対象
     let (rows, numbered) = block_of(&result);
@@ -89,10 +87,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false]a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let (rows, numbered) = block_of(&result);
@@ -106,10 +103,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}[label=eq:s]a &= b \\ &= c\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — MathBlock.label と numbered が両方付く（行は無採番）
     let DocNode::MathBlock {
@@ -132,10 +128,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}[numbered=false][label=eq:s]a &= b\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "split"));
@@ -147,10 +142,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{split}a &= b \label{eq:s}\end{split}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

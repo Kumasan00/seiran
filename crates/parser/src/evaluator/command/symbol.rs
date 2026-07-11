@@ -52,7 +52,7 @@ impl MathSymbol {
 /// 記号コマンド名 → [`MathSymbol`] のパーフェクトハッシュマップ
 ///
 /// ギリシャ文字と数学記号を数式クラス付きで集約する。記号の追加は本マップだけを
-/// 編集すれば、本文・数式の両文脈（`Evaluator::evaluate_command` /
+/// 編集すれば、本文・数式の両文脈（`command::evaluate_command` /
 /// `extract_inline_nodes` / `resolve_symbol_command`）に反映される。
 pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   // ───────────────────────────── ギリシャ文字（大文字, Ord）─────────────────────────────

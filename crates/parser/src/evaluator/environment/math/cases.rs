@@ -12,7 +12,7 @@ use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
-use crate::evaluator::{EvalError, Evaluator, opt_args::collect_environment_opt_args};
+use crate::evaluator::{EvalError, opt_args::collect_environment_opt_args};
 
 /// `cases` 環境を評価する
 ///
@@ -22,7 +22,7 @@ use crate::evaluator::{EvalError, Evaluator, opt_args::collect_environment_opt_a
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(crate) fn cases(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   // cases は任意引数を受け付けない（未知キーはエラー）
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
@@ -99,10 +99,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 2 行・各 2 セル・全行 numbered は false
     assert_eq!(result.len(), 1);
@@ -118,10 +117,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{cases}a & b & c\end{cases}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::CasesColumnOverflow { found: 3, .. })));
@@ -133,10 +131,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{cases}[foo=1]a & b\end{cases}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -148,10 +145,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{cases}a & b \notag\end{cases}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));

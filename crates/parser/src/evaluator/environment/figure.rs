@@ -23,7 +23,7 @@ use syntax::ast::{CommandView, EnvironmentView, extract_text_content};
 use types::Length;
 
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   environment::{body_scan, caption::extract_caption},
   opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
 };
@@ -36,7 +36,7 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(&opt_args, "label");
 
@@ -233,10 +233,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -274,10 +273,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -295,10 +293,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -316,10 +313,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure { label, caption, .. } = &result[0] else {
@@ -335,10 +331,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingEnvironmentArgument { ref name, .. }) if name == "figure"));
@@ -350,10 +345,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — width/height は None のまま伝播し、pdf_gen 段で解決される
     assert_eq!(result.len(), 1);
@@ -377,10 +371,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure { width, height, .. } = &result[0] else {
@@ -396,10 +389,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}[foo=1]\image[width=1mm, height=1mm]{a}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -411,10 +403,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -433,10 +424,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
@@ -448,10 +438,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));

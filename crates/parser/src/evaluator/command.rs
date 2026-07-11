@@ -28,7 +28,7 @@ use phf::phf_map;
 use syntax::ast::CommandView;
 use types::FontKind;
 
-use crate::evaluator::{EvalError, Evaluator, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args};
+use crate::evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args};
 
 pub(crate) mod cite;
 mod control;
@@ -179,38 +179,36 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 記号（ギリシャ文字・数学記号）は機能コマンドと分離して `symbol::SYMBOL_MAP` に置く。
 };
 
-impl Evaluator {
-  /// コマンドを評価し、対応する `CommandResult` を生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `view` - コマンドの型付きビュー
-  ///
-  /// # Returns
-  ///
-  /// 生成された `CommandResult`、またはエラー
-  ///
-  /// # Errors
-  ///
-  /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-  ///
-  /// # 解決順序
-  ///
-  /// `COMMAND_MAP`（機能コマンド）を引いた後 miss なら [`SYMBOL_MAP`]（記号）を引く。
-  /// 機能コマンド名が記号名に優先する（両マップにキー重複はテストで排除済み）。
-  /// どちらにも無ければ未知コマンドとしてエラーにする。
-  pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, EvalError> {
-    if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
-      return command_kind.execute(view);
-    }
-    if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-      return single_char(view, symbol.ch).map(CommandResult::Inline);
-    }
-    return Err(EvalError::UnknownCommand {
-      name: view.name().to_string(),
-      span: view.span().into(),
-    });
+/// コマンドを評価し、対応する `CommandResult` を生成する
+///
+/// # Arguments
+///
+/// * `view` - コマンドの型付きビュー
+///
+/// # Returns
+///
+/// 生成された `CommandResult`、またはエラー
+///
+/// # Errors
+///
+/// 未知のコマンドやコマンド実行中のエラーが発生した場合
+///
+/// # 解決順序
+///
+/// `COMMAND_MAP`（機能コマンド）を引いた後 miss なら [`SYMBOL_MAP`]（記号）を引く。
+/// 機能コマンド名が記号名に優先する（両マップにキー重複はテストで排除済み）。
+/// どちらにも無ければ未知コマンドとしてエラーにする。
+pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, EvalError> {
+  if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
+    return command_kind.execute(view);
   }
+  if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
+    return single_char(view, symbol.ch).map(CommandResult::Inline);
+  }
+  return Err(EvalError::UnknownCommand {
+    name: view.name().to_string(),
+    span: view.span().into(),
+  });
 }
 
 #[cfg(test)]
@@ -232,10 +230,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));

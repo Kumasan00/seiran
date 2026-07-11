@@ -15,7 +15,7 @@ use document::{DocNode, MathEnvKind};
 use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::evaluator::{EvalError, Evaluator};
+use crate::evaluator::EvalError;
 
 /// `gather` 環境を評価する
 ///
@@ -25,10 +25,9 @@ use crate::evaluator::{EvalError, Evaluator};
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体への `&`（列区切り）混入、セル評価失敗時にエラーを返します
-pub(crate) fn gather(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn gather(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   return evaluate_math_env(
     view,
-    evaluator,
     MathEnvKind::Gather,
     &GridSpec {
       allow_row_breaks: true,
@@ -65,10 +64,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 2 行・各 1 セル・各行採番対象
     let rows = rows_of(&result);
@@ -83,10 +81,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a & b\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -98,10 +95,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let rows = rows_of(&result);
@@ -114,10 +110,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 採番、無採番、採番
     let rows = rows_of(&result);
@@ -133,10 +128,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotAtRowEnd { .. })));
@@ -148,10 +142,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 1 行目: ラベルあり・採番対象、2 行目: ラベルなし・採番対象
     let rows = rows_of(&result);

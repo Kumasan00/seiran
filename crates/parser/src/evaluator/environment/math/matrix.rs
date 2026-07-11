@@ -17,7 +17,7 @@ use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   opt_args::{OptType, collect_environment_opt_args, find_string},
 };
 
@@ -29,7 +29,7 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn matrix(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(&opt_args, "delimiter") {
     Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| EvalError::InvalidOptArgValue {
@@ -110,10 +110,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{matrix}a & b \\ c & d\end{matrix}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — Matrix { None }、2 行・各 2 セル・非採番
     assert_eq!(result.len(), 1);
@@ -130,10 +129,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let (delimiter, _) = matrix_of(&result);
@@ -146,10 +144,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=angle]a & b\end{matrix}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "delimiter"));
@@ -161,10 +158,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "numbered"));

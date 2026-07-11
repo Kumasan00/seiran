@@ -17,7 +17,7 @@ use syntax::ast::EnvironmentView;
 
 use super::math_grid::{GridSpec, evaluate_grid};
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
 };
 
@@ -31,7 +31,7 @@ use crate::evaluator::{
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView, _evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   let label = find_string(&opt_args, "label");
@@ -112,10 +112,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}x^2 = y\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — MathBlock(Equation) が 1 件、1 行 1 セル、label は None、既定で採番対象、セルに Superscript
     assert_eq!(result.len(), 1);
@@ -136,10 +135,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — label と numbered が両方保持されること
     assert_eq!(result.len(), 1);
@@ -154,10 +152,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -169,10 +166,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \\ b\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -184,10 +180,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -199,10 +194,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert — 行は出るが採番対象ではない
     assert_eq!(result.len(), 1);
@@ -216,10 +210,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=true]x\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -233,10 +226,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false][label=eq:x]a\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
@@ -248,10 +240,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \notag\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
@@ -263,10 +254,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{equation}a \label{eq:x}\end{equation}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

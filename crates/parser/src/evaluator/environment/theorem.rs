@@ -18,7 +18,7 @@ use document::{DocNode, ProofTarget, TheoremClass};
 use syntax::ast::EnvironmentView;
 
 use crate::evaluator::{
-  EvalError, Evaluator,
+  EvalError,
   opt_args::{OptType, OptValue, collect_environment_opt_args},
 };
 
@@ -31,7 +31,7 @@ use crate::evaluator::{
 /// # Errors
 ///
 /// 未知の任意引数キー、余分な必須引数、ラベル重複などが発生した場合にエラーを返します。
-pub(super) fn theorem(view: &EnvironmentView, evaluator: &mut Evaluator) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let class =
     TheoremClass::from_name(view.name()).expect("ENVIRONMENTS は 10 種の定理クラスのみを本ハンドラに登録する");
 
@@ -68,7 +68,7 @@ pub(super) fn theorem(view: &EnvironmentView, evaluator: &mut Evaluator) -> Resu
 
   // 本体は通常の本文と同様に再帰評価する（段落・数式・リスト等を含められる）。
   let body = match view.body() {
-    Some(body) => evaluator.evaluate_children(view.source(), body)?,
+    Some(body) => crate::evaluator::evaluate_children(view.source(), body)?,
     None => Vec::new(),
   };
 
@@ -108,10 +108,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -141,10 +140,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{proof}証明本文\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { class, .. } = &result[0] else {
@@ -159,10 +157,9 @@ mod tests {
     let arena = Bump::new();
     let source = "\\begin{theorem}[title=\"ピタゴラスの定理\"]本文\\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { title, .. } = &result[0] else {
@@ -177,10 +174,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\ref{thm:p}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { label, .. } = &result[0] else {
@@ -199,10 +195,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:p]証明\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { of, .. } = &result[1] else {
@@ -218,10 +213,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[of=thm:p]本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "of"));
@@ -233,10 +227,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{proof}[label=pf:1]証明\end{proof}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
@@ -248,10 +241,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[foo=1]本文\end{theorem}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst);
+    let result = crate::evaluator::evaluate_children(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -264,10 +256,9 @@ mod tests {
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
     let cst = parse(source, &arena).unwrap();
-    let mut evaluator = Evaluator;
 
     // Act
-    let result = evaluator.evaluate_children(source, cst).unwrap();
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 2);
