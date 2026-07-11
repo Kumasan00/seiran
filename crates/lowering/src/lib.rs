@@ -320,15 +320,14 @@ pub fn lower_nodes_with_headings(
 fn lower_node(ctx: &LoweringContext, node: &DocNode) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut registry = counter::CounterRegistry::from_style(ctx.style);
   let mut headings = Vec::new();
-  return lower_node_indexed(ctx, node, 0, &mut registry, &mut headings);
+  return lower_node_indexed(ctx, node, &mut registry, &mut headings);
 }
 
 /// `nodes` を順に [`lower_node_indexed`] へ渡す内部ウォーク（pass1 本体）
 ///
 /// `registry` / `headings` は同一呼び出し内の再帰（`theorem` / `quote` / `list` の本体）を通して
-/// 共有する。見出しの文書順インデックス（`heading_index`）だけは再帰呼び出しごとにリセットする
-/// （見出しは環境本体に現れないため実質的に影響しない。既存の暗黙アンカーキー採番規則を保つための
-/// 挙動）。
+/// 共有する。見出しの文書順インデックスは `lower_node_indexed` 側で `headings.len()`（push 前の
+/// 長さ）から都度導出するため、再帰の深さに関わらず文書全体で単調増加し一意になる。
 fn lower_nodes_inner(
   ctx: &LoweringContext,
   nodes: &[DocNode],
@@ -336,25 +335,16 @@ fn lower_nodes_inner(
   headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut result = Vec::new();
-  // 見出しの文書順インデックス。`heading_anchor_key` で暗黙 destination キーを採番するのに使う
-  // （目次エントリの内部リンク到達先と一致させるため、`HeadingRecord::index` と同じ規則）。
-  let mut heading_index = 0;
   for node in nodes {
-    result.extend(lower_node_indexed(ctx, node, heading_index, registry, headings)?);
-    if node.is_heading() {
-      heading_index += 1;
-    }
+    result.extend(lower_node_indexed(ctx, node, registry, headings)?);
   }
   return Ok(result);
 }
 
 /// 単一の `DocNode` をレイアウトノードに変換する
-///
-/// `heading_index` は見出しの文書順インデックス（[`document::heading_anchor_key`] に渡す）。
 fn lower_node_indexed(
   ctx: &LoweringContext,
   node: &DocNode,
-  heading_index: usize,
   registry: &mut counter::CounterRegistry,
   headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -375,6 +365,10 @@ fn lower_node_indexed(
       } else {
         String::new()
       };
+      // 見出しの文書順インデックス。`headings`（呼び出しツリー全体で共有された Vec）の
+      // push 前の長さを使うことで、再帰（quote / theorem / list item 本体）を挟んでも
+      // 単調増加する一意な値になる（`heading_anchor_key` の暗黙 destination キー採番に使う）。
+      let heading_index = headings.len();
       headings.push(PendingHeading {
         index: heading_index,
         level: *level,
@@ -565,7 +559,7 @@ fn resolve_inline_plain(inline: &document::InlineNode, registry: &counter::Count
 
 #[cfg(test)]
 mod tests {
-  use document::{HeadingLevel, InlineNode, ListItem, MathEnvKind, MathNode, MathRow};
+  use document::{HeadingLevel, InlineNode, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind};
   use types::Length;
 
   use super::*;
@@ -801,6 +795,35 @@ mod tests {
     assert!(vbox_count >= 2, "見出しとリスト項目で VBox が複数出る: {out:?}");
     assert!(out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "P")), "段落 Text が出る: {out:?}");
     assert!(matches!(out.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {out:?}");
+  }
+
+  #[test]
+  fn nested_heading_gets_sequential_anchor_index() {
+    // Arrange — トップレベル見出し → quote 本体内の見出し → トップレベル見出し、の順に並べる。
+    // 修正前は lower_nodes_inner の heading_index がローカル変数で、quote 本体（再帰呼び出し）に
+    // 入るたび 0 にリセットされていたため、本体内見出しの index が先頭見出しの index 0 と衝突していた。
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes = vec![
+      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Top1".to_string())]),
+      DocNode::Quote {
+        kind: QuoteKind::Quote,
+        body: vec![DocNode::heading(
+          HeadingLevel::Section,
+          vec![InlineNode::Text("Nested".to_string())],
+        )],
+      },
+      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Top2".to_string())]),
+    ];
+
+    // Act
+    let (_layout, headings) = lower_nodes_with_headings(&ctx, &nodes).expect("失敗しないはず");
+
+    // Assert — quote 本体内の見出しを挟んでも index が 0, 1, 2 と重複なく連番になる
+    assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
+    let mut indices: Vec<usize> = headings.iter().map(|h| h.index).collect();
+    indices.sort_unstable();
+    assert_eq!(indices, vec![0, 1, 2], "見出し index は重複なく連番のはず: {headings:?}");
   }
 
   #[test]

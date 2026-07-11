@@ -284,10 +284,6 @@ impl DocNode {
     };
   }
 
-  /// このノードが見出しかどうかを判定する
-  #[must_use]
-  pub fn is_heading(&self) -> bool { return matches!(self, DocNode::Heading { .. }); }
-
   /// このノードが段落かどうかを判定する
   #[must_use]
   pub fn is_paragraph(&self) -> bool { return matches!(self, DocNode::Paragraph(_)); }
@@ -362,7 +358,6 @@ mod tests {
   #[test]
   fn doc_node_heading_helper() {
     let node = DocNode::heading(HeadingLevel::Section, vec![InlineNode::text("Title")]);
-    assert!(node.is_heading());
     assert!(!node.is_paragraph());
     assert!(!node.is_list());
   }
@@ -371,7 +366,6 @@ mod tests {
   fn doc_node_is_paragraph() {
     let node = DocNode::Paragraph(vec![InlineNode::text("text")]);
     assert!(node.is_paragraph());
-    assert!(!node.is_heading());
   }
 
   #[test]
