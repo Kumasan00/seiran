@@ -41,7 +41,7 @@ use crate::LoweringError;
 
 mod format;
 
-use format::{expand_placeholders, expand_ref_format};
+use format::expand_ref_format;
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -189,7 +189,7 @@ impl CounterRegistry {
   ///   （テンプレートは再帰展開しない）
   /// - 未知のカウンタ名（9 種以外）は空文字列に置換する
   fn expand_template(&self, template: &str, self_name: CounterName) -> String {
-    return expand_placeholders(template, |name| {
+    return crate::placeholder::expand(template, |name| {
       let target = if name == "n" {
         Some(self_name)
       } else {
@@ -205,7 +205,7 @@ impl CounterRegistry {
   /// - `{<name>}` は見出し等のカウンタ値を参照先の `number_style` でレンダリングする
   /// - 未知のプレースホルダは空文字列に置換する
   fn expand_theorem_template(&self, template: &str, self_value: u32) -> String {
-    return expand_placeholders(template, |name| {
+    return crate::placeholder::expand(template, |name| {
       if name == "n" {
         return self_value.to_string();
       }

@@ -34,54 +34,36 @@ pub(super) fn expand_template(
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
   let mut literal = String::new();
-  let mut chars = template.chars().peekable();
-  while let Some(c) = chars.next() {
-    if c != '{' {
-      literal.push(c);
-      continue;
-    }
-    let mut name = String::new();
-    let mut closed = false;
-    while let Some(&nc) = chars.peek() {
-      chars.next();
-      if nc == '}' {
-        closed = true;
-        break;
-      }
-      name.push(nc);
-    }
-    if !closed {
-      // 閉じ括弧なしの `{...` はリテラル扱いとして残す
-      literal.push('{');
-      literal.push_str(&name);
-      continue;
-    }
-    match name.as_str() {
-      "number" => literal.push_str(number),
-      "title" => {
-        flush_literal(&mut nodes, &mut literal, base_style);
-        for inline in title {
-          nodes.extend(lower_inline(ctx, inline, base_style)?);
-        }
-      },
-      "of" => {
-        if let Some((label, span)) = of {
+  for segment in crate::placeholder::segments(template) {
+    match segment {
+      crate::placeholder::Segment::Literal(s) => literal.push_str(s),
+      crate::placeholder::Segment::Placeholder(name) => match name {
+        "number" => literal.push_str(number),
+        "title" => {
           flush_literal(&mut nodes, &mut literal, base_style);
-          // `{of}` は proof の証明対象参照。従来どおりクリック不可のプレーンテキストとして
-          // 埋め込む（`\ref` と違いリンク領域にはしない）
-          nodes.push(LayoutNode::Ref {
-            label: label.to_string(),
-            span,
-            style: base_style,
-            as_link: false,
-          });
-        }
-      },
-      _ => {
-        // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
-        literal.push('{');
-        literal.push_str(&name);
-        literal.push('}');
+          for inline in title {
+            nodes.extend(lower_inline(ctx, inline, base_style)?);
+          }
+        },
+        "of" => {
+          if let Some((label, span)) = of {
+            flush_literal(&mut nodes, &mut literal, base_style);
+            // `{of}` は proof の証明対象参照。従来どおりクリック不可のプレーンテキストとして
+            // 埋め込む（`\ref` と違いリンク領域にはしない）
+            nodes.push(LayoutNode::Ref {
+              label: label.to_string(),
+              span,
+              style: base_style,
+              as_link: false,
+            });
+          }
+        },
+        _ => {
+          // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
+          literal.push('{');
+          literal.push_str(name);
+          literal.push('}');
+        },
       },
     }
   }

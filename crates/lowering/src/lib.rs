@@ -40,6 +40,7 @@ mod layout_node;
 mod list;
 mod math;
 mod paragraph;
+mod placeholder;
 mod quote;
 mod resolve;
 mod table;

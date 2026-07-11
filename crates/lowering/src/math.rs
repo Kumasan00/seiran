@@ -91,7 +91,10 @@ fn is_single_env_kind(kind: MathEnvKind) -> bool { return matches!(kind, MathEnv
 /// `number_format` の `{number}` を `n` で置換し（既定 `"({number})"` → `"(1)"`）、数字を
 /// `FontKind::Serif` で描く `LayoutNode::Text` 1 つにまとめる。行ごと番号と環境全体番号の双方で使う。
 fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode> {
-  let text = number_format.replace("{number}", n);
+  let text = crate::placeholder::expand(number_format, |name| match name {
+    "number" => n.to_string(),
+    _ => format!("{{{name}}}"),
+  });
   return vec![LayoutNode::Text(
     text,
     TextStyle {
