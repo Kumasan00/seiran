@@ -24,7 +24,7 @@
 //! - スタイルシート（`read_style` クレート）を `LoweringContext` 経由で受け取り、
 //!   見出しレベルごとのフォントサイズ・フォーマット文字列・余白を適用する
 
-use document::{DocNode, Document};
+use document::{DocNode, Document, try_inline_nodes_to_plain_text};
 use miette::Diagnostic;
 use read_style::Style as ReadStyle;
 use thiserror::Error;
@@ -329,10 +329,7 @@ struct PendingHeading {
   level: types::HeadingLevel,
   number: String,
   title: Vec<document::InlineNode>,
-  /// この見出しが属するソースグループの識別子（Task F3 が見出しタイトル内の未解決 `\ref` を
-  /// エラー化する際に帰属ソースとして使う。本 Task では収集のみで実際には参照しないため
-  /// `dead_code` を明示的に許可する）。
-  #[allow(dead_code)]
+  /// 見出しが属するソースグループの識別子。未解決 `\ref` のエラー帰属に使う。
   source: SourceId,
 }
 
@@ -384,13 +381,16 @@ pub fn lower_sources_with_headings(
 
   let headings = pending_headings
     .into_iter()
-    .map(|pending| HeadingRecord {
-      index: pending.index,
-      level: pending.level,
-      number: pending.number,
-      title_plain: resolve_heading_title_plain(&pending.title, &registry),
+    .map(|pending| {
+      let title_plain = try_resolve_heading_title_plain(&pending.title, &registry, pending.source)?;
+      return Ok(HeadingRecord {
+        index: pending.index,
+        level: pending.level,
+        number: pending.number,
+        title_plain,
+      });
     })
-    .collect();
+    .collect::<Result<Vec<HeadingRecord>, LoweringError>>()?;
 
   resolve::resolve_refs(&mut result, &registry)?;
 
@@ -620,33 +620,29 @@ fn with_label_anchors(labels: &[&str], nodes: Vec<LayoutNode>) -> Vec<LayoutNode
 
 /// 見出しタイトルのプレーンテキストを、`\ref` を `CounterRegistry` で解決しながら組み立てる
 ///
-/// [`document::InlineNode::to_plain_text`] と同じ規則だが、`Ref` は `registry.resolve_label` で
-/// 解決した文字列を使う（`InlineNode` 自体はもう解決済み番号を保持しないため）。
+/// [`document::try_inline_nodes_to_plain_text`] に resolver を注入する薄いラッパー。
+/// `\ref` が未定義ラベルを参照している場合は黙って空文字列にせず
+/// [`LoweringError::UnresolvedReference`] を返す。`source` は呼び出し元（このタイトルが属する
+/// 見出しの [`PendingHeading::source`]）をそのままエラーへ引き継ぐための帰属ソース。
 /// pass1 完了後（`registry` の labels テーブルが確定した後）にのみ呼ぶこと。
-fn resolve_heading_title_plain(title: &[document::InlineNode], registry: &counter::CounterRegistry) -> String {
-  return title.iter().map(|inline| resolve_inline_plain(inline, registry)).collect();
-}
-
-/// 単一の `InlineNode` を、`Ref` は `registry` 解決込みでプレーンテキストへ変換する
-fn resolve_inline_plain(inline: &document::InlineNode, registry: &counter::CounterRegistry) -> String {
-  use document::InlineNode;
-  return match inline {
-    InlineNode::Text(s) => s.clone(),
-    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => {
-      children.iter().map(|c| resolve_inline_plain(c, registry)).collect()
-    },
-    InlineNode::InlineMath(_) => "[Math]".to_string(),
-    InlineNode::Symbol(ch) => ch.to_string(),
-    InlineNode::LineBreak => "\n".to_string(),
-    InlineNode::NoIndent => String::new(),
-    InlineNode::Ref { label, .. } => registry.resolve_label(label).unwrap_or_default().to_string(),
-    InlineNode::Link { children, .. } | InlineNode::InternalLink { children, .. } => {
-      children.iter().map(|c| resolve_inline_plain(c, registry)).collect()
-    },
-    InlineNode::Cite { keys, label, .. } => label
-      .as_deref()
-      .map_or_else(|| keys.join(", "), |inlines| inlines.iter().map(|c| resolve_inline_plain(c, registry)).collect()),
+///
+/// # Errors
+///
+/// タイトル中の `\ref` が未定義ラベルを参照している場合に [`LoweringError::UnresolvedReference`]
+/// を返します。
+fn try_resolve_heading_title_plain(
+  title: &[document::InlineNode],
+  registry: &counter::CounterRegistry,
+  source: SourceId,
+) -> Result<String, LoweringError> {
+  let mut resolve_ref = |label: &str, span: miette::SourceSpan| -> Result<String, LoweringError> {
+    return registry.resolve_label(label).map(str::to_string).ok_or_else(|| LoweringError::UnresolvedReference {
+      label: label.to_string(),
+      span,
+      source_id: source,
+    });
   };
+  return try_inline_nodes_to_plain_text(title, &mut resolve_ref);
 }
 
 #[cfg(test)]
@@ -1119,5 +1115,33 @@ mod tests {
     };
     assert_eq!(label, "missing");
     assert_eq!(err.source_id().index(), 1, "\\ref を含むグループ index を指すはず");
+  }
+
+  #[test]
+  fn heading_title_with_unresolved_ref_errors() {
+    // Arrange — 既定の見出しフォーマット（"{number} {title}"）は {title} を含むので、
+    // 見出しタイトル内の未定義ラベルへの \ref が headings 変換で検出されるはず
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nodes = vec![DocNode::heading(
+      HeadingLevel::Chapter,
+      vec![
+        InlineNode::Text("見出し ".to_string()),
+        InlineNode::Ref {
+          label: "typo".to_string(),
+          span: miette::SourceSpan::from((0_usize, 0_usize)),
+        },
+      ],
+    )];
+
+    // Act
+    let err = lower_sources_with_headings(&ctx, &[nodes.as_slice()])
+      .expect_err("見出しタイトル内の未定義ラベルへの \\ref はエラーになるはず");
+
+    // Assert — UnresolvedReference として検出され、ラベルは期待どおり
+    let LoweringError::UnresolvedReference { ref label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "typo");
   }
 }
