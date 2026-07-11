@@ -313,7 +313,9 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
-    registry.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span()).unwrap();
+    registry
+      .increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span(), crate::SourceId::new(0))
+      .unwrap();
     let mut headings = Vec::new();
 
     // Act
@@ -354,7 +356,9 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
-    registry.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span()).unwrap();
+    registry
+      .increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span(), crate::SourceId::new(0))
+      .unwrap();
     let mut headings = Vec::new();
 
     // Act

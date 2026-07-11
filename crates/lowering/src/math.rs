@@ -58,7 +58,7 @@ pub(super) fn lower_math_block(
     let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math.script)).collect();
     let number = if row.numbered {
       let row_span = row.label_span.unwrap_or(span);
-      let n = registry.increment_with_label(CounterName::Equation, row.label.as_deref(), row_span)?;
+      let n = registry.increment_with_label(CounterName::Equation, row.label.as_deref(), row_span, ctx.source)?;
       Some(number_box(&block.tag_format, &n, font_size))
     } else {
       None
@@ -67,7 +67,7 @@ pub(super) fn lower_math_block(
   }
 
   let env_number = if env_numbered {
-    let n = registry.increment_with_label(CounterName::Equation, env_label, span)?;
+    let n = registry.increment_with_label(CounterName::Equation, env_label, span, ctx.source)?;
     Some(number_box(&block.tag_format, &n, font_size))
   } else {
     None

@@ -55,6 +55,7 @@ pub(super) fn expand_template(
               span,
               style: base_style,
               as_link: false,
+              source: ctx.source,
             });
           }
         },

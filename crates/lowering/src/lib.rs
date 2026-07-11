@@ -52,6 +52,24 @@ pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, Ta
 pub use title_page::{TitlePageMetadata, lower_title_page};
 pub use types::TableColumn;
 
+/// 複数ソースファイルを 1 回の lowering 呼び出しでまとめて処理する際の、ソースの位置識別子
+///
+/// lowering はソース名・内容を知らない。`seiran`（呼び出し元）が渡した `sources` スライスの
+/// インデックスをそのまま識別子として運び、エラー発生時に `seiran` 側でファイル名・内容へ
+/// 逆引きする（[`lower_sources_with_headings`] の `sources` 引数の並びと対応する）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceId(usize);
+
+impl SourceId {
+  /// 新しい `SourceId` を生成する
+  #[must_use]
+  pub fn new(index: usize) -> Self { return SourceId(index); }
+
+  /// 元のインデックスを返す
+  #[must_use]
+  pub fn index(self) -> usize { return self.0; }
+}
+
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
 ///
 /// 新しい lowering 失敗ケースを追加する際は本 enum にバリアントを追加してください。
@@ -71,6 +89,11 @@ pub enum LoweringError {
     /// `\ref{...}` のソース位置（`InlineNode::Ref` から引き継ぐ）
     #[label("この参照が未解決です")]
     span: miette::SourceSpan,
+    /// この参照が属するソースの識別子（`seiran` 側で `NamedSource` へ逆引きする）
+    ///
+    /// `thiserror` は `source` という名のフィールドを誤ってエラー源（`#[source]`）と解釈するため、
+    /// エラー源ではないこの識別子は `source_id` と命名して衝突を避ける。
+    source_id: SourceId,
   },
 
   /// `\section[label=...]` / 環境 `[label=...]` で同名ラベルが重複登録された場合に返されます。
@@ -82,6 +105,10 @@ pub enum LoweringError {
     /// 2 回目に定義したコマンド / 環境のソース位置
     #[label("このラベルは既に定義されています")]
     span: miette::SourceSpan,
+    /// この重複定義が属するソースの識別子（`seiran` 側で `NamedSource` へ逆引きする）
+    ///
+    /// `source` はエラー源として `thiserror` に予約されているため `source_id` と命名する。
+    source_id: SourceId,
   },
 
   /// 文献引用（`\cite{...}`）が CSL 整形ステージを経ずに lowering に到達した場合に返されます。
@@ -102,7 +129,27 @@ pub enum LoweringError {
     /// `\cite{...}` のソース位置（`InlineNode::Cite` から引き継ぐ）
     #[label("この引用が未整形です")]
     span: miette::SourceSpan,
+    /// この引用が属するソースの識別子（`seiran` 側で `NamedSource` へ逆引きする）
+    ///
+    /// `source` はエラー源として `thiserror` に予約されているため `source_id` と命名する。
+    source_id: SourceId,
   },
+}
+
+impl LoweringError {
+  /// このエラーが帰属するソースの識別子を返す
+  ///
+  /// `seiran`（呼び出し元）はこの値を [`SourceId::index`] で `sources` スライスの位置に戻し、
+  /// 対応するファイル名・内容を `NamedSource` に紐付けて診断を表示する。範囲外（合成された
+  /// 書誌グループ）を指す場合はフォールバック診断に切り替える。
+  #[must_use]
+  pub fn source_id(&self) -> SourceId {
+    return match self {
+      LoweringError::UnresolvedReference { source_id, .. }
+      | LoweringError::DuplicateLabel { source_id, .. }
+      | LoweringError::UnresolvedCitation { source_id, .. } => *source_id,
+    };
+  }
 }
 
 /// Lowering のコンテキスト
@@ -142,6 +189,13 @@ pub struct LoweringContext<'a> {
   /// リスト項目の内容を lower する際に [`LoweringContext::with_list_depth`] で +1 した文脈を
   /// 渡すことで、item 内容中のネストしたリストが深さ +1 として lower される。
   pub list_depth: usize,
+  /// 現在 lower 中のソースグループの識別子
+  ///
+  /// [`lower_sources_with_headings`] がグループ `i` を lower する際に [`LoweringContext::with_source`]
+  /// で `SourceId::new(i)` に差し替える。この文脈から発行される `LayoutNode::Ref` / `PendingHeading` /
+  /// `LoweringError` に帰属ソースとして刻まれ、`seiran` 側でファイル名・内容へ逆引きされる。
+  /// 単発変換（[`lower_nodes`] / [`lower_document`]）は常にグループ 0 として扱う。
+  pub source: SourceId,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -162,6 +216,8 @@ impl<'a> LoweringContext<'a> {
       image_downsample: true,
       // 文書のトップレベルは深さ 0。リストに入るたび with_list_depth で +1 する。
       list_depth: 0,
+      // 単発変換はグループ 0 固定。複数ソースは lower_sources_with_headings が with_source で差し替える。
+      source: SourceId::new(0),
     };
   }
 
@@ -189,6 +245,7 @@ impl<'a> LoweringContext<'a> {
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
       list_depth: self.list_depth,
+      source: self.source,
     };
   }
 
@@ -206,6 +263,7 @@ impl<'a> LoweringContext<'a> {
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
       list_depth: self.list_depth,
+      source: self.source,
     };
   }
 
@@ -223,6 +281,23 @@ impl<'a> LoweringContext<'a> {
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
       list_depth,
+      source: self.source,
+    };
+  }
+
+  /// ソース識別子だけを差し替えた派生文脈を返す
+  ///
+  /// [`lower_sources_with_headings`] がグループ `i` を lower する際に `SourceId::new(i)` を渡して使う。
+  #[must_use]
+  pub fn with_source(&self, source: SourceId) -> LoweringContext<'a> {
+    return LoweringContext {
+      style: self.style,
+      body_font_kind: self.body_font_kind,
+      first_line_indent: self.first_line_indent,
+      image_max_dpi: self.image_max_dpi,
+      image_downsample: self.image_downsample,
+      list_depth: self.list_depth,
+      source,
     };
   }
 
@@ -233,7 +308,7 @@ impl<'a> LoweringContext<'a> {
 
 /// 見出し 1 件の記録（PDF しおり・目次生成が消費する）
 ///
-/// [`lower_nodes_with_headings`] が pass1 の走査と同時に収集する。`number` は
+/// [`lower_sources_with_headings`] が pass1 の走査と同時に収集する。`number` は
 /// `CounterRegistry` が発番した書式化済み文字列（無採番の見出しは空文字列）、`title_plain` は
 /// タイトル中の `\ref` も解決済みのプレーンテキスト。
 #[derive(Debug, Clone, PartialEq)]
@@ -254,6 +329,11 @@ struct PendingHeading {
   level: types::HeadingLevel,
   number: String,
   title: Vec<document::InlineNode>,
+  /// この見出しが属するソースグループの識別子（Task F3 が見出しタイトル内の未解決 `\ref` を
+  /// エラー化する際に帰属ソースとして使う。本 Task では収集のみで実際には参照しないため
+  /// `dead_code` を明示的に許可する）。
+  #[allow(dead_code)]
+  source: SourceId,
 }
 
 /// Document IR をレイアウトノードに変換する（ドキュメント全体）
@@ -267,33 +347,40 @@ pub fn lower_document(ctx: &LoweringContext, document: &Document) -> Result<Vec<
 
 /// `DocNode` のリストをレイアウトノードに変換する
 ///
-/// `build_pdf.rs` から呼ばれる lowering のエントリーポイント。見出し記録が不要な呼び出し向けの
-/// 薄いラッパーで、[`lower_nodes_with_headings`] の結果から `Vec<LayoutNode>` だけを返す。
+/// 見出し記録が不要な単一ソースの呼び出し向けの薄いラッパー。1 要素スライスとして
+/// [`lower_sources_with_headings`] に委譲し、その結果から `Vec<LayoutNode>` だけを返す。
 ///
 /// # Errors
 ///
 /// いずれかの `DocNode` の変換中に [`LoweringError`] が発生した場合に返します。
 pub fn lower_nodes(ctx: &LoweringContext, nodes: &[DocNode]) -> Result<Vec<LayoutNode>, LoweringError> {
-  let (layout, _headings) = lower_nodes_with_headings(ctx, nodes)?;
+  let (layout, _headings) = lower_sources_with_headings(ctx, &[nodes])?;
   return Ok(layout);
 }
 
-/// `DocNode` のリストをレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
+/// 複数ソースグループを 1 回の lowering でまとめて変換し、見出し記録（PDF しおり・目次生成用）も返す
 ///
-/// 採番（[`counter::CounterRegistry`]）は 1 回の呼び出しにつき 1 つのレジストリを共有し、
-/// 全ノードを通して連続して発番される。`\ref` は前方参照を許すため、pass1（本走査）完了後に
-/// pass2（[`resolve::resolve_refs`]）で `LayoutNode::Ref` プレースホルダを解決する。
+/// `sources` の各要素は 1 ソースファイル分の `&[DocNode]` で、その並び順が [`SourceId`] のインデックス
+/// になる。採番（[`counter::CounterRegistry`]）と見出し収集（`pending_headings`）は**全グループで共有**し、
+/// 文書全体を通して連続して発番・連番付けする。`\ref` は前方参照（別グループ含む）を許すため、
+/// pass1（本走査）を全グループ完了させたあと pass2（[`resolve::resolve_refs`]）で `LayoutNode::Ref`
+/// プレースホルダを解決する。グループ `i` を lower する間だけ [`LoweringContext::with_source`] で
+/// `SourceId::new(i)` を刻んだ文脈を使い、そこから発行されるエラー・プレースホルダに帰属ソースが乗る。
 ///
 /// # Errors
 ///
 /// いずれかの `DocNode` の変換中、または pass2 の参照解決で [`LoweringError`] が発生した場合に返します。
-pub fn lower_nodes_with_headings(
+pub fn lower_sources_with_headings(
   ctx: &LoweringContext,
-  nodes: &[DocNode],
+  sources: &[&[DocNode]],
 ) -> Result<(Vec<LayoutNode>, Vec<HeadingRecord>), LoweringError> {
   let mut registry = counter::CounterRegistry::from_style(ctx.style);
   let mut pending_headings = Vec::new();
-  let mut result = lower_nodes_inner(ctx, nodes, &mut registry, &mut pending_headings)?;
+  let mut result = Vec::new();
+  for (i, nodes) in sources.iter().enumerate() {
+    let group_ctx = ctx.with_source(SourceId::new(i));
+    result.extend(lower_nodes_inner(&group_ctx, nodes, &mut registry, &mut pending_headings)?);
+  }
 
   let headings = pending_headings
     .into_iter()
@@ -307,7 +394,8 @@ pub fn lower_nodes_with_headings(
 
   resolve::resolve_refs(&mut result, &registry)?;
 
-  debug!(input_node_count = nodes.len(), layout_node_count = result.len(), "lowering が完了しました");
+  let input_node_count: usize = sources.iter().map(|nodes| nodes.len()).sum();
+  debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return Ok((result, headings));
 }
 
@@ -361,6 +449,7 @@ fn lower_node_indexed(
           counter::CounterRegistry::counter_name_for_heading(*level),
           label.as_deref(),
           *span,
+          ctx.source,
         )?
       } else {
         String::new()
@@ -374,6 +463,7 @@ fn lower_node_indexed(
         level: *level,
         number: number.clone(),
         title: title.clone(),
+        source: ctx.source,
       });
       return heading::lower_heading(ctx, *level, &number, title, label.clone(), heading_index);
     },
@@ -395,7 +485,7 @@ fn lower_node_indexed(
       // `of`（証明対象、proof のみ）は前方参照になり得るため、`{of}` プレースホルダとして
       // 見出しテンプレートに埋め込み、pass2（`resolve::resolve_refs`）で解決する。
       let of = of.as_ref().map(|target| (target.label.as_str(), target.span));
-      let number = registry.increment_theorem_with_label(*class, label.as_deref(), *span)?;
+      let number = registry.increment_theorem_with_label(*class, label.as_deref(), *span, ctx.source)?;
       return theorem::lower_theorem(
         ctx,
         *class,
@@ -475,7 +565,8 @@ fn lower_node_indexed(
         dpi: *dpi,
         downsample: *downsample,
       };
-      let number = registry.increment_with_label(read_style::CounterName::Figure, label.as_deref(), *span)?;
+      let number =
+        registry.increment_with_label(read_style::CounterName::Figure, label.as_deref(), *span, ctx.source)?;
       let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
@@ -491,7 +582,8 @@ fn lower_node_indexed(
       span,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
-      let number = registry.increment_with_label(read_style::CounterName::Table, label.as_deref(), *span)?;
+      let number =
+        registry.increment_with_label(read_style::CounterName::Table, label.as_deref(), *span, ctx.source)?;
       let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
@@ -817,7 +909,7 @@ mod tests {
     ];
 
     // Act
-    let (_layout, headings) = lower_nodes_with_headings(&ctx, &nodes).expect("失敗しないはず");
+    let (_layout, headings) = lower_sources_with_headings(&ctx, &[nodes.as_slice()]).expect("失敗しないはず");
 
     // Assert — quote 本体内の見出しを挟んでも index が 0, 1, 2 と重複なく連番になる
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
@@ -914,5 +1006,118 @@ mod tests {
       panic!("先頭は Text であるべき: {out:?}");
     };
     assert_eq!(text_style.font_size, Length::pt(18.0));
+  }
+
+  /// ラベル付き Chapter 見出しを作るテストヘルパ
+  fn labeled_chapter(title: &str, label: &str) -> DocNode {
+    return DocNode::Heading {
+      level: HeadingLevel::Chapter,
+      numbered: true,
+      title: vec![InlineNode::Text(title.to_string())],
+      label: Some(label.to_string()),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    };
+  }
+
+  #[test]
+  fn numbering_continues_across_sources() {
+    // Arrange — 2 ソースグループにそれぞれ Chapter 見出しを 1 つずつ置く
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let g0 = vec![DocNode::heading(
+      HeadingLevel::Chapter,
+      vec![InlineNode::Text("A".to_string())],
+    )];
+    let g1 = vec![DocNode::heading(
+      HeadingLevel::Chapter,
+      vec![InlineNode::Text("B".to_string())],
+    )];
+
+    // Act
+    let (_layout, headings) =
+      lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()]).expect("失敗しないはず");
+
+    // Assert — 採番レジストリは全グループで共有され、2 番目のグループが 1 番目の続きから発番される
+    assert_eq!(headings.len(), 2, "{headings:?}");
+    assert_eq!(headings[0].number, "1", "1 グループ目の chapter は 1");
+    assert_eq!(headings[1].number, "2", "2 グループ目の chapter は連番の 2: {headings:?}");
+  }
+
+  #[test]
+  fn ref_resolves_across_sources() {
+    // Arrange — グループ 0 でラベルを定義し、グループ 1 からそのラベルを `\ref` する
+    // （グループごとに registry が分かれていれば解決できず、共有していれば解決できる）
+    fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
+      return nodes.iter().any(|n| match n {
+        LayoutNode::Link {
+          target: types::LinkTarget::Internal(t),
+          ..
+        } => t == target,
+        LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
+          contains_internal_link(children, target)
+        },
+        _ => false,
+      });
+    }
+
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let g0 = vec![labeled_chapter("Intro", "ch:intro")];
+    let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "ch:intro".to_string(),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }])];
+
+    // Act
+    let (layout, _headings) =
+      lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()]).expect("跨りラベルは解決されるはず");
+
+    // Assert — pass2 が `\ref` を内部リンク（Internal("ch:intro")）に解決している
+    assert!(contains_internal_link(&layout, "ch:intro"), "跨りの \\ref が解決されるはず: {layout:?}");
+  }
+
+  #[test]
+  fn duplicate_label_across_sources_reports_second_source_id() {
+    // Arrange — グループ 0 と グループ 1 の両方で同名ラベル `dup` を定義する
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let g0 = vec![labeled_chapter("First", "dup")];
+    let g1 = vec![labeled_chapter("Second", "dup")];
+
+    // Act — 2 回目の登録（グループ 1）で衝突する
+    let err = lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
+      .expect_err("同名ラベルの重複はエラーになるはず");
+
+    // Assert — DuplicateLabel の帰属ソースは衝突した 2 番目の定義（グループ 1）を指す
+    let LoweringError::DuplicateLabel { ref label, .. } = err else {
+      panic!("DuplicateLabel が期待されます: {err:?}");
+    };
+    assert_eq!(label, "dup");
+    assert_eq!(err.source_id().index(), 1, "衝突した 2 番目の定義のグループ index を指すはず");
+  }
+
+  #[test]
+  fn unresolved_ref_reports_owning_source_id() {
+    // Arrange — グループ 1 に未定義ラベルへの `\ref` を置く（どのグループにも定義は無い）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
+      "plain".to_string(),
+    )])];
+    let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "missing".to_string(),
+      span: miette::SourceSpan::from((0_usize, 0_usize)),
+    }])];
+
+    // Act
+    let err = lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
+      .expect_err("未定義ラベルへの \\ref はエラーになるはず");
+
+    // Assert — UnresolvedReference の帰属ソースは `\ref` を含むグループ 1 を指す
+    let LoweringError::UnresolvedReference { ref label, .. } = err else {
+      panic!("UnresolvedReference が期待されます: {err:?}");
+    };
+    assert_eq!(label, "missing");
+    assert_eq!(err.source_id().index(), 1, "\\ref を含むグループ index を指すはず");
   }
 }

@@ -108,27 +108,33 @@ pub enum CitationError {
   },
 }
 
-/// `\cite` を CSL 整形し、書誌ブロックを本文末尾に追加する。
+/// `\cite` を CSL 整形し、生成した書誌ブロックを返す。
 ///
-/// `nodes` 内の `InlineNode::Cite` を**ドキュメント順**に走査し、CSL スタイルに従って `label` を
-/// 確定（採番 `[1][2]…`）したうえで、引用された文献の書誌（References 見出し + 段落群）を `nodes`
-/// 末尾に追加する。引用が 1 件もなければ何もしない。
+/// `docs` は複数ソースグループの本文（各 `&mut Vec<DocNode>`）を**ドキュメント順**に並べたもの。
+/// 全グループを横断して `InlineNode::Cite` を走査し、CSL スタイルに従って `label` を確定
+/// （採番 `[1][2]…`）して各 `Cite` ノードへ書き戻す。引用された文献の書誌（References 見出し +
+/// 段落群）は各グループの本文には追加せず、**関数の戻り値として返す**（呼び出し側が最後のグループ
+/// として連結する）。引用が 1 件もなければ空の `Vec` を返す。
+///
+/// グループ構造には依存せず、走査順（`docs` のイテレーション順）がそのままドキュメント順になる。
 ///
 /// # Errors
 ///
 /// 引用があるのに `style.reference.csl_path` が未設定の場合、または CSL スタイル / ロケール
 /// ファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
-pub fn process_citations(
-  nodes: &mut Vec<DocNode>,
+pub fn process_citations<'a>(
+  docs: impl IntoIterator<Item = &'a mut Vec<DocNode>>,
   references: &References,
   style: &Style,
-) -> Result<(), CitationError> {
-  // ドキュメント順に Cite ノードへの可変参照を集める。収集順がそのまま hayagriva への投入順となり、
-  // ラベルの書き戻し順とも一致する（同一の走査結果を使うので index がずれない）。
+) -> Result<Vec<DocNode>, CitationError> {
+  // 全グループをドキュメント順に走査し、Cite ノードへの可変参照を集める。収集順がそのまま hayagriva
+  // への投入順となり、ラベルの書き戻し順とも一致する（同一の走査結果を使うので index がずれない）。
   let mut cite_nodes: Vec<&mut InlineNode> = Vec::new();
-  collect_cite_nodes(nodes, &mut cite_nodes);
+  for nodes in docs {
+    collect_cite_nodes(nodes, &mut cite_nodes);
+  }
   if cite_nodes.is_empty() {
-    return Ok(());
+    return Ok(Vec::new());
   }
 
   // 各 cite サイトの引用キー列（ドキュメント順）。
@@ -183,13 +189,12 @@ pub fn process_citations(
       *slot = Some(label);
     }
   }
-  // 可変借用を解放してから書誌を末尾に追加する。
+  // 可変借用を解放してから書誌を返す（呼び出し側が最後のグループとして連結する）。
   drop(cite_nodes);
 
   let bibliography_count = rendered.bibliography.len();
-  nodes.extend(rendered.bibliography);
   debug!(citation_count, bibliography_count, "文献引用の整形が完了しました");
-  return Ok(());
+  return Ok(rendered.bibliography);
 }
 
 /// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
@@ -381,6 +386,20 @@ mod tests {
   use super::{CitationError, load_locales, process_citations};
   use crate::test_fixtures::{ieee_csl_path, sample_references};
 
+  /// テスト用: 単一ドキュメントに [`process_citations`] を適用し、返った書誌を末尾へ連結する。
+  ///
+  /// `process_citations` は書誌を戻り値で返す（グループ構造非依存）ように変わったため、旧来の
+  /// 「`nodes` 末尾へ追加する」挙動を再現して既存アサーションをそのまま活かすためのヘルパ。
+  fn process_and_append(
+    nodes: &mut Vec<DocNode>,
+    references: &read_references::References,
+    style: &Style,
+  ) -> Result<(), CitationError> {
+    let bibliography = process_citations(std::iter::once(&mut *nodes), references, style)?;
+    nodes.extend(bibliography);
+    return Ok(());
+  }
+
   /// クレート同梱のカスタム en-US ロケール（`tests/data/custom-en-US.xml`）への絶対パスを返す。
   fn custom_locale_path() -> PathBuf {
     return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/custom-en-US.xml");
@@ -517,7 +536,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("カスタムロケールでも整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("カスタムロケールでも整形は成功するはず");
 
     // Assert — 書誌見出しが追加される
     let has_heading = nodes.iter().any(|node| matches!(node, DocNode::Heading { .. }));
@@ -546,7 +565,7 @@ mod tests {
     ])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
     // Assert — 両方の cite に非空の番号ラベルが付く（IEEE は [n] 形式）
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -584,7 +603,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
     // Assert — ラベル内に cite:kwan2014 への内部リンク（番号）が含まれる
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -614,7 +633,7 @@ mod tests {
     }])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
     // Assert — 各番号が対応キーへの個別 InternalLink になる
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -646,7 +665,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
     // Assert — 書誌に cite:kwan2014 アンカーが入り、その直後が書誌段落
     let pos = nodes
@@ -671,7 +690,7 @@ mod tests {
     let before = nodes.len();
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("成功するはず");
 
     // Assert — 書誌は追加されない
     assert_eq!(nodes.len(), before, "引用がなければ書誌は追加されない");
@@ -685,7 +704,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    let error = process_citations(&mut nodes, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
+    let error = process_and_append(&mut nodes, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
 
     // Assert
     assert!(matches!(error, CitationError::MissingCslPath), "got: {error:?}");
@@ -718,7 +737,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act — 正常な kwan2014 のみを引用（bad9999 は未引用）
-    let result = process_citations(&mut nodes, &references, &style);
+    let result = process_and_append(&mut nodes, &references, &style);
 
     // Assert — 未引用の不正文献は変換対象外なのでビルドを巻き込まない
     assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
@@ -755,7 +774,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014"), cite("doe2020")])];
 
     // Act
-    process_citations(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
     // Assert — 書誌段落のどこかに、イタリックで包まれた書名/誌名が現れる
     let mut italic_texts: Vec<String> = Vec::new();

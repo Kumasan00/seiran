@@ -2,7 +2,7 @@
 
 use citation::CitationError;
 use lowering::LoweringError;
-use miette::Diagnostic;
+use miette::{Diagnostic, NamedSource};
 use parser::ParseSourceError;
 use thiserror::Error;
 
@@ -49,13 +49,30 @@ pub(super) enum BuildPdfError {
     source: CitationError,
   },
 
-  /// Document IR → `LayoutNode` 変換（lowering）で発生したエラー
+  /// Document IR → `LayoutNode` 変換（lowering）で発生したエラー（帰属ソースが特定できる場合）
   ///
-  /// 内側の [`LoweringError`] が持つ `code` / `help` は `#[diagnostic_source]` により
-  /// 外側へ伝播されます。
+  /// `LoweringError::source_id()` が指すソースファイルの `NamedSource` を同梱するため、
+  /// 未解決参照・重複ラベル等の診断がパースエラーと同じくファイル名・スニペット・下線付きで表示される。
+  /// 内側の [`LoweringError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播されます。
   #[error("ドキュメントのレイアウト変換に失敗しました。")]
   #[diagnostic(code(build::lowering))]
   Lowering {
+    /// エラーが帰属するソースファイルの名前と内容（診断スニペット用）
+    #[source_code]
+    src: NamedSource<String>,
+    /// 元の lowering エラー
+    #[source]
+    #[diagnostic_source]
+    source: LoweringError,
+  },
+
+  /// Document IR → `LayoutNode` 変換で発生したが、特定ソースファイルに帰属できないエラー
+  ///
+  /// 書誌（合成グループ、`parsed` の範囲外の `SourceId`）由来のエラーなど、`NamedSource` を
+  /// 特定できないケース用のフォールバック。通常は発生しない（書誌ノードはラベル・`\ref` を持たない）。
+  #[error("ドキュメントのレイアウト変換に失敗しました（帰属元ソース不明）。")]
+  #[diagnostic(code(build::lowering_internal))]
+  LoweringInternal {
     /// 元の lowering エラー
     #[source]
     #[diagnostic_source]

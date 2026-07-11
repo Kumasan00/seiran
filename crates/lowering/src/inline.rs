@@ -74,6 +74,7 @@ pub(super) fn lower_inline(
         span: *span,
         style,
         as_link: true,
+        source: ctx.source,
       }]);
     },
     InlineNode::Link { url, children } => {
@@ -108,6 +109,7 @@ pub(super) fn lower_inline(
         return Err(LoweringError::UnresolvedCitation {
           keys: keys.join(", "),
           span: *span,
+          source_id: ctx.source,
         });
       };
       // 引用ラベル全体（括弧含む）に `cite_color` を適用する。番号部分は `InlineNode::InternalLink`
@@ -241,6 +243,7 @@ mod tests {
       span: got_span,
       style,
       as_link,
+      ..
     } = &nodes[0]
     else {
       panic!("Ref が期待されます: {nodes:?}");

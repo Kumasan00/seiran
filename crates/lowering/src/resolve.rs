@@ -47,11 +47,13 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
       span,
       style,
       as_link,
+      source,
     } => {
       let Some(resolved) = registry.resolve_label(label) else {
         return Err(LoweringError::UnresolvedReference {
           label: label.clone(),
           span: *span,
+          source_id: *source,
         });
       };
       let text = LayoutNode::Text(resolved.to_string(), *style);
@@ -144,6 +146,7 @@ mod tests {
       span: dummy_span(),
       style: style(),
       as_link: true,
+      source: crate::SourceId::new(0),
     };
   }
 

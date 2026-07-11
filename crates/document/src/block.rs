@@ -43,7 +43,7 @@ impl Document {
 ///
 /// lowering（採番側 = `AnchorMark::Heading.key`）と目次ビルダ（参照側 =
 /// `LinkTarget::Internal`）が同じ規則を共有するための単一ソース。見出しの収集自体は
-/// `lowering::lower_nodes_with_headings`（採番・書式解決を伴うため lowering 側の責務）が担う。
+/// `lowering::lower_sources_with_headings`（採番・書式解決を伴うため lowering 側の責務）が担う。
 #[must_use]
 pub fn heading_anchor_key(index: usize) -> String { return format!("heading:{index}"); }
 

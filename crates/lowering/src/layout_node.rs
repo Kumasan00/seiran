@@ -5,6 +5,8 @@
 
 use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
+use crate::SourceId;
+
 /// レイアウトエンジン（`layout::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub enum LayoutNode {
@@ -164,6 +166,9 @@ pub enum LayoutNode {
     style: TextStyle,
     /// 解決後にクリック可能な内部リンクとして囲むか（`\ref` は `true`、`proof` の `{of}` は `false`）
     as_link: bool,
+    /// この参照が属するソースグループの識別子。pass2 で未解決だった場合に
+    /// `LoweringError::UnresolvedReference` の帰属ソースとして引き継ぐ
+    source: SourceId,
   },
 }
 
