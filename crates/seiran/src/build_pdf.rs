@@ -5,6 +5,7 @@
 mod error;
 mod front_matter;
 mod outline;
+mod page_values;
 mod running;
 
 #[cfg(test)]
@@ -24,14 +25,14 @@ use font::{
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
-use front_matter::{assemble_front_matter, break_front_matter, page_number_labels};
+use front_matter::{assemble_front_matter, break_front_matter};
 use lowering::LoweringContext;
 use outline::collect_outline_entries;
+use page_values::BodyPageValues;
 use parser::ParseSourceError;
 use pdf_gen::OutlineEntry;
 use running::build_running_spec;
 use tracing::{debug, debug_span, info};
-use types::AnchorMark;
 
 /// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
 ///
@@ -237,7 +238,7 @@ fn build_pages(
     hlist::break_pages(body_blocks, text_width, &body_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
   };
   let body_page_count = body_pages.len();
-  let heading_pages = heading_page_indices(&body_pages);
+  let body_page_values = BodyPageValues::from_body_pages(&body_pages, &style.page_numbering);
   info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました");
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
@@ -247,8 +248,15 @@ fn build_pages(
     author: config.document.author.clone(),
     date: config.document.date.clone(),
   };
-  let front_blocks =
-    assemble_front_matter(&headings, &heading_pages, &title_metadata, style, &harf_rust_shapers, &metrics, text_width);
+  let front_blocks = assemble_front_matter(
+    &headings,
+    &body_page_values,
+    &title_metadata,
+    style,
+    &harf_rust_shapers,
+    &metrics,
+    text_width,
+  );
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
   // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
@@ -259,8 +267,11 @@ fn build_pages(
     break_front_matter(front_blocks, text_width, &front_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
   };
   let front_matter_count = front_pages.len();
+  // 前付けページ列が確定した時点（`pages` への move の前）でラベルを解決する。
+  let page_labels = body_page_values.finalize(&front_pages);
   let mut pages = front_pages;
   pages.extend(body_pages);
+  debug_assert_eq!(page_labels.len(), pages.len(), "ラベル数は物理ページ総数と一致するはず");
   info!(
     page_count = pages.len(),
     front_matter_count,
@@ -269,12 +280,9 @@ fn build_pages(
     "ページ分割が完了しました"
   );
 
-  // ページ番号ラベルを算出する（前付け = ローマ数字 / 本文 = 算用数字、各リージョン 1 から）。
-  let page_numbers = page_number_labels(pages.len(), front_matter_count, body_page_count, &style.page_numbering);
-
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height;
-  let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_numbers);
+  let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_labels);
   layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
@@ -394,70 +402,9 @@ fn build_page_geometries(
   return (body_geometry, front_geometry);
 }
 
-/// 本文 Pass のページ列から、各見出しの本文内ページ index を文書順に採取する。
-///
-/// `pdf_gen::build_destination_index` と同型のアンカー走査。`document::collect_headings` が返す
-/// 見出し列と 1 対 1 に対応する（どちらも文書順）。
-fn heading_page_indices(pages: &[hlist::Page]) -> Vec<usize> {
-  let mut indices = Vec::new();
-  for (page_index, page) in pages.iter().enumerate() {
-    for anchor in &page.anchors {
-      if matches!(anchor.mark, AnchorMark::Heading { .. }) {
-        indices.push(page_index);
-      }
-    }
-  }
-  return indices;
-}
-
 #[cfg(test)]
 mod tests {
-  use hlist::{Page, PlacedAnchor};
-  use types::AnchorMark;
-
-  use super::{BuildPdfError, ParsedSource, heading_page_indices, wrap_lowering_error};
-
-  /// 指定マークのアンカーだけを持つページを作るヘルパ
-  fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {
-    return Page {
-      blocks: Vec::new(),
-      header: Vec::new(),
-      footer: Vec::new(),
-      anchors: marks
-        .into_iter()
-        .map(|mark| PlacedAnchor {
-          mark,
-          x: types::Length::ZERO,
-          y: types::Length::ZERO,
-        })
-        .collect(),
-      links: Vec::new(),
-    };
-  }
-
-  #[test]
-  fn heading_page_indices_picks_heading_anchors_in_order() {
-    // Arrange — page0 に見出し 1 つ、page1 に Label（無視）+ 見出し 1 つ
-    let pages = vec![
-      page_with_anchors(vec![AnchorMark::Heading {
-        key: "heading:0".to_string(),
-        label: None,
-      }]),
-      page_with_anchors(vec![
-        AnchorMark::Label("tab:1".to_string()),
-        AnchorMark::Heading {
-          key: "heading:1".to_string(),
-          label: None,
-        },
-      ]),
-    ];
-
-    // Act
-    let indices = heading_page_indices(&pages);
-
-    // Assert — 見出しアンカーのページ index だけを文書順に拾う（Label は無視）
-    assert_eq!(indices, vec![0, 1]);
-  }
+  use super::{BuildPdfError, ParsedSource, wrap_lowering_error};
 
   /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
   /// `LoweringError` を生成するテストヘルパ
