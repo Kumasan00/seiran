@@ -5,9 +5,11 @@ use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{Block, LineBreaker, Page, PageGeometry};
 use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
 use lowering::{HeadingRecord, TextStyle, TitlePageMetadata, lower_title_page};
-use read_style::{PageNumbering, Style, TocStyle};
+use read_style::{Style, TocStyle};
 use tracing::{debug, debug_span};
 use types::{FontKind, HeadingLevel, TextAlignment};
+
+use super::page_values::BodyPageValues;
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
 ///
@@ -16,7 +18,7 @@ use types::{FontKind, HeadingLevel, TextAlignment};
 /// 始める（本文区間の独立性を保つ）。`title_page` / `toc` がともに無効なら空列を返す。
 pub(super) fn assemble_front_matter(
   headings: &[HeadingRecord],
-  heading_pages: &[usize],
+  page_values: &BodyPageValues,
   title_metadata: &TitlePageMetadata,
   style: &Style,
   shapers: &HarfRustShapers,
@@ -45,7 +47,7 @@ pub(super) fn assemble_front_matter(
     debug!("タイトルページを生成しました");
   }
   if style.toc.enabled {
-    let toc_entries = collect_toc_entries(headings, heading_pages, &style.toc, &style.page_numbering);
+    let toc_entries = collect_toc_entries(headings, page_values, &style.toc);
     let toc_spec = build_toc_spec(style, text_width);
     let toc_blocks = build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
     if !toc_blocks.is_empty() {
@@ -59,15 +61,11 @@ pub(super) fn assemble_front_matter(
 
 /// 見出しと本文内ページ index から目次エントリ列を組み立てる。
 ///
-/// `max_depth` を超える深さの見出しは除外する。ページラベルは本文の番号スタイル（算用数字）で
-/// レンダリングし、内部リンクキーは見出しの文書順インデックスから [`document::heading_anchor_key`]
-/// で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
-fn collect_toc_entries(
-  headings: &[HeadingRecord],
-  heading_pages: &[usize],
-  toc: &TocStyle,
-  page_numbering: &PageNumbering,
-) -> Vec<TocEntryInput> {
+/// `max_depth` を超える深さの見出しは除外する。ページラベルは [`BodyPageValues::body_page_label`]
+/// （本文の番号スタイル＝算用数字）でレンダリングし、内部リンクキーは見出しの文書順インデックスから
+/// [`document::heading_anchor_key`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
+fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
+  let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
   return headings
     .iter()
@@ -77,7 +75,7 @@ fn collect_toc_entries(
       level: info.level,
       number: info.number.clone(),
       title_plain: info.title_plain.clone(),
-      page_label: page_numbering.body.render(page_index as u32 + 1),
+      page_label: page_values.body_page_label(page_index),
       link_key: heading_anchor_key(info.index),
     })
     .collect();
@@ -133,40 +131,14 @@ pub(super) fn break_front_matter(
   return hlist::break_pages(front_blocks, text_width, front_geometry, breaker, alignment);
 }
 
-/// 各物理ページの `(\{page\}, \{pages\})` ラベルをリージョン別に算出する。
-///
-/// 前付け（index `< front_count`）は `page_numbering.front_matter`（既定ローマ数字）で 1 から、
-/// 本文はそれ以降を `page_numbering.body`（既定算用数字）で 1 から振り直す。`\{pages\}` は同じ
-/// リージョンの総数を同じスタイルでレンダリングしたもの。
-pub(super) fn page_number_labels(
-  total: usize,
-  front_count: usize,
-  body_count: usize,
-  page_numbering: &PageNumbering,
-) -> Vec<(String, String)> {
-  let mut labels = Vec::with_capacity(total);
-  for index in 0..total {
-    if index < front_count {
-      let page = page_numbering.front_matter.render(index as u32 + 1);
-      let pages = page_numbering.front_matter.render(front_count as u32);
-      labels.push((page, pages));
-    } else {
-      let body_index = index - front_count;
-      let page = page_numbering.body.render(body_index as u32 + 1);
-      let pages = page_numbering.body.render(body_count as u32);
-      labels.push((page, pages));
-    }
-  }
-  return labels;
-}
-
 #[cfg(test)]
 mod tests {
+  use hlist::PlacedAnchor;
   use lowering::HeadingRecord;
   use read_style::{PageNumbering, TocStyle};
-  use types::HeadingLevel;
+  use types::{AnchorMark, HeadingLevel};
 
-  use super::{collect_toc_entries, page_number_labels};
+  use super::{BodyPageValues, Page, collect_toc_entries};
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
     return HeadingRecord {
@@ -177,27 +149,25 @@ mod tests {
     };
   }
 
-  #[test]
-  fn page_number_labels_roman_front_arabic_body() {
-    // Arrange — 既定（前付け=ローマ小文字 / 本文=算用）。total=5, front=2, body=3
-    let pn = PageNumbering::default();
-
-    // Act
-    let labels = page_number_labels(5, 2, 3, &pn);
-
-    // Assert — 前付けは i, ii（総数 ii）、本文は 1..3（総数 3）でリージョン別に振り直す
-    assert_eq!(labels[0], ("i".to_string(), "ii".to_string()));
-    assert_eq!(labels[1], ("ii".to_string(), "ii".to_string()));
-    assert_eq!(labels[2], ("1".to_string(), "3".to_string()));
-    assert_eq!(labels[4], ("3".to_string(), "3".to_string()));
-  }
-
-  #[test]
-  fn page_number_labels_without_front_matter_is_plain_arabic() {
-    // 前付けが無ければ全ページが本文系列（算用数字 1 から）= 従来挙動
-    let labels = page_number_labels(3, 0, 3, &PageNumbering::default());
-    assert_eq!(labels[0].0, "1");
-    assert_eq!(labels[2], ("3".to_string(), "3".to_string()));
+  /// 各ページに 1 つずつ見出しアンカーを持つ本文ページ列から [`BodyPageValues`] を作るヘルパ
+  fn body_page_values_with_headings(heading_count: usize) -> BodyPageValues {
+    let pages: Vec<Page> = (0..heading_count)
+      .map(|index| Page {
+        blocks: Vec::new(),
+        header: Vec::new(),
+        footer: Vec::new(),
+        anchors: vec![PlacedAnchor {
+          mark: AnchorMark::Heading {
+            key: format!("heading:{index}"),
+            label: None,
+          },
+          x: types::Length::ZERO,
+          y: types::Length::ZERO,
+        }],
+        links: Vec::new(),
+      })
+      .collect();
+    return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
   }
 
   #[test]
@@ -208,14 +178,14 @@ mod tests {
       heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
       heading_record(2, HeadingLevel::Subsection, "1.1.1", "Sub"),
     ];
-    let heading_pages = vec![0, 1, 2];
+    let page_values = body_page_values_with_headings(3);
     let toc = TocStyle {
       max_depth: 3,
       ..TocStyle::default()
     };
 
     // Act
-    let entries = collect_toc_entries(&headings, &heading_pages, &toc, &PageNumbering::default());
+    let entries = collect_toc_entries(&headings, &page_values, &toc);
 
     // Assert — Subsection は除外、ページラベルは本文算用数字、リンクキーは文書順インデックス由来
     assert_eq!(entries.len(), 2);
