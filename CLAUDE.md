@@ -84,9 +84,6 @@ config （types を使用。`read_config` / `read_style` 子 module を内包し
         データモデル + 読込・検証を 1 クレートにまとめる）
   ↑ citation, font, lowering, pdf_gen, seiran
 
-read_references （workspace クレートに依存しない独立クレート）
-  ↑ citation, seiran
-
 document （types のみに依存。Document IR の共有契約クレート）
   ↑ frontend, citation, lowering, seiran
 
@@ -95,7 +92,9 @@ frontend （document, types に依存。bumpalo アリーナ上に CST を構築
           採番・書式化は行わず lowering に委ねる）
   ↑ seiran
 
-citation （document, read_references, config, types に依存。hayagriva / citationberg で CSL 整形）
+citation （document, config, types に依存。参照定義ファイル（references.toml / .json）の読込を
+          非公開の内部実装（`read_references` 子 module）として内包し、hayagriva / citationberg で
+          CSL 整形・書誌生成まで行う）
   ↑ seiran
 
 hlist （types, icu, hypher のみに依存。フォント・krilla 非依存の純粋組版パスとコア型）
@@ -127,10 +126,9 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | ----------------- | ------------------------------------------------------------------------------------- |
 | `types`           | 全クレート共通型（`FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等） |
 | `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（`read_config` / `read_style` 子 module） |
-| `read_references` | `references.toml` / `.json` の読込（CSL 文献情報、拡張子で判別）                         |
 | `document`        | Document IR の型定義（`frontend` 生産・`lowering` 消費の共有契約クレート）               |
 | `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
-| `citation`        | `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                        |
+| `citation`        | `references.toml` / `.json` の読込（`read_references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
 | `hlist`           | フォント非依存のコア型 + 純粋組版パス（(b) break_opportunities / (c) break_lines / (d) break_pages） |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
 | `lowering`        | DocNode → LayoutNode の論理変換（フォント非依存）。採番・`\ref` 解決（pass1/pass2）も担う |

@@ -30,10 +30,10 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use citation::{References, read_references};
 use config::{read_config::Config, read_style::Style};
 use font::{FontData, FontDataExt};
 use hlist::{Page, PlacedBlock, dump_pages};
-use read_references::References;
 use types::{AnchorMark, Length};
 
 use super::build_pages;
@@ -95,8 +95,7 @@ fn load_base() -> (Config, Style, References) {
   let config = config::read_config::read_config(Path::new("crates/seiran/tests/config/config.toml"))
     .expect("fixture config.toml の読込");
   let style = config::read_style::read_style(config.style_path.as_deref()).expect("fixture style.toml の読込");
-  let references =
-    read_references::read_references(config.references_path.as_deref()).expect("fixture references の読込");
+  let references = read_references(config.references_path.as_deref()).expect("fixture references の読込");
   return (config, style, references);
 }
 

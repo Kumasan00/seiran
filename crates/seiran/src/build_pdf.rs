@@ -18,6 +18,7 @@ use std::{
   time::Instant,
 };
 
+use citation::{References, read_references};
 use document::DocNode;
 use error::BuildPdfError;
 use font::{
@@ -72,7 +73,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let config = config::read_config::read_config(config_path)?;
   let style = config::read_style::read_style(config.style_path.as_deref())?;
-  let references = read_references::read_references(config.references_path.as_deref())?;
+  let references = read_references(config.references_path.as_deref())?;
 
   let stage_start = Instant::now();
   let font_data = FontData::new(&config.font_configs)?;
@@ -134,7 +135,7 @@ pub(super) struct LaidOutDocument {
 fn build_pages(
   config: &config::read_config::Config,
   style: &config::read_style::Style,
-  references: &read_references::References,
+  references: &References,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
   // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）

@@ -1,5 +1,8 @@
 //! 参照定義ファイルの読み込みモジュール
 //!
+//! `citation` クレート内部の実装詳細で、公開する型は crate root で再エクスポートし
+//! `citation::Reference` のように参照する（`citation::read_references::Reference` は使わない）。
+//!
 //! TOML / JSON 形式の参照定義ファイルを読み込み、`id` をキーとする参照定義のマップを返す。参照定義は
 //! ファイルのトップレベルそのものを keyed-table 形式（テーブルキーが参照 ID）で記述する（`references.`
 //! 接頭辞は不要で、`[kwan2014]` のように直接エントリを書く）。
@@ -14,8 +17,8 @@
 //! これらの値検証エラーはいずれも TOML / JSON の解析エラー（[`ReadReferencesError::ParseToml`] /
 //! [`ReadReferencesError::ParseJson`]）として、ソース上の位置情報付きで報告される。
 //!
-//! [`Reference`] は CSL-JSN（kebab-case キー）へ [`Serialize`](serde::Serialize) でき、`citation`
-//! クレートが hayagriva の担体 `citationberg::json::Item` を組み立てる出力経路に使う。
+//! [`Reference`] は CSL-JSN（kebab-case キー）へ [`Serialize`](serde::Serialize) でき、
+//! [`crate::bridge`] が hayagriva の担体 `citationberg::json::Item` を組み立てる出力経路に使う。
 //!
 //! ファイル形式は拡張子 (`.toml` / `.json`) で判別する。
 //!

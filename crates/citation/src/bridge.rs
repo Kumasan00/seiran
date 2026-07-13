@@ -1,4 +1,4 @@
-//! `read_references::Reference`（CSL-JSN 型付きモデル）から hayagriva の担体
+//! [`Reference`]（CSL-JSN 型付きモデル）から hayagriva の担体
 //! `citationberg::json::Item`（CSL-JSN の全フィールドを保持するマップ）への変換アダプタ。
 //!
 //! Seiran は入口で `Reference` を強い型で厳格に検証し、出口では `Reference` を CSL-JSN へ
@@ -16,8 +16,9 @@
 //! 呼び出し側へエラーとして伝播する。
 
 use hayagriva::citationberg::json::Item;
-use read_references::Reference;
 use serde_json::{Map, Value};
+
+use crate::Reference;
 
 /// `Reference` を CSL-JSN 担体 `Item` に変換する。
 ///
@@ -74,16 +75,15 @@ mod tests {
   use std::io::Write;
 
   use hayagriva::citationberg::json::Value;
-  use read_references::References;
 
   use super::to_item;
-  use crate::test_fixtures::sample_references;
+  use crate::{References, read_references, test_fixtures::sample_references};
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    return read_references::read_references(Some(file.path())).expect("references を読み込めるはず");
+    return read_references(Some(file.path())).expect("references を読み込めるはず");
   }
 
   #[test]
