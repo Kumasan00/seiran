@@ -20,7 +20,7 @@ mod get_variation_axes;
 /// - フォント調査 - どの軸が利用可能か確認
 /// - 設定ファイル作成 - `variation_axes` フィールドの記入時に参考
 /// - バリアブルフォント仕様確認 - 軸の最小値・デフォルト・最大値を把握
-pub use get_variation_axes::get_variation_axes;
+pub(super) use get_variation_axes::get_variation_axes;
 
 mod get_ttc_names;
 /// TrueType Collection ファイル内のフォント名を取得・表示するサブコマンド
@@ -34,7 +34,7 @@ mod get_ttc_names;
 /// - TTC 構成確認 - ファイルに含まれるフォント一覧を表示
 /// - コレクション検査 - 期待するフォントが含まれているか確認
 /// - 設定ファイル作成 - 複数フォント構成時に正しいインデックスを利用
-pub use get_ttc_names::get_ttc_names;
+pub(super) use get_ttc_names::get_ttc_names;
 
 mod script_langs;
 /// フォント対応の OpenType Script/Language タグを取得・表示するサブコマンド
@@ -53,4 +53,4 @@ mod script_langs;
 /// - 言語対応確認 - フォントが特定言語をサポートしているか確認
 /// - シェイピング設定 - 正しい Script/Language タグを設定ファイルに記入
 /// - 多言語フォント検査 - 複数言語サポート状況を把握
-pub use script_langs::script_langs;
+pub(super) use script_langs::script_langs;

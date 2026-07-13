@@ -138,7 +138,7 @@ enum VariationAxesError {
 /// ```ignore
 /// seiran variation-axes fonts/RobotoFlex-VariableFont.ttf
 /// ```
-pub fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
+pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::Result<()> {
   // ファイルパスとインデックスをログに記録
   info!(font_path = %font_path.display(), font_index, "フォントファイルを読み込みます");
 
