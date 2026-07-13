@@ -9,11 +9,11 @@ license.workspace = true
 
 [dependencies]
 ciborium.workspace = true
+config.workspace = true
 document.workspace = true
 hayagriva.workspace = true
 miette.workspace = true
 read_references.workspace = true
-read_style.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

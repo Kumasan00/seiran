@@ -12,10 +12,9 @@ mod metadata;
 mod render;
 
 use ::font::{FontData, FontMetrics, FontRefs};
+use config::{read_config::Config, read_style::Style};
 use hlist::Page;
 use krilla::{Document, page::PageSettings};
-use read_config::Config;
-use read_style::Style;
 use tracing::debug;
 use types::HeadingLevel;
 

@@ -11,7 +11,7 @@
 //! - `[of=thm:foo]` — 証明対象の定理を指す参照。`proof` 専用（採番ありクラスでは受け付けない）
 //!
 //! 採番・ラベル登録（cleveref）・見出し書式・本文フォント・QED マーク配置は、いずれも `lowering` 層が
-//! クラスの `read_style::TheoremStyle` を参照して決める（本ハンドラはクラス・サブタイトル・本体・
+//! クラスの `config::read_style::TheoremStyle` を参照して決める（本ハンドラはクラス・サブタイトル・本体・
 //! `of` 参照を構造化するだけで、番号・書式情報は一切持たない）。
 
 use document::{DocNode, ProofTarget, TheoremClass};

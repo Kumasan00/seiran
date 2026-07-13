@@ -46,9 +46,9 @@
 //!
 //! ```ignore
 //! # use font::{FontData, FontDataExt, FontRefs, FontRefsExt, validate_font};
-//! # use read_config::FontConfigs;
+//! # use config::read_config::FontConfigs;
 //!
-//! // 1. 設定（事前に read_config::read_config で生成済み）から
+//! // 1. 設定（事前に config::read_config::read_config で生成済み）から
 //! //    フォントバイナリを読み込み
 //! let font_data = FontData::new(&font_configs)?;
 //!
@@ -61,9 +61,9 @@
 
 use std::fs;
 
+use config::read_config::FontConfigs;
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use read_config::FontConfigs;
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 use types::{FontMap, FontType};

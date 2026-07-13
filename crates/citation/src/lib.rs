@@ -10,6 +10,7 @@
 
 use std::{collections::HashMap, io};
 
+use config::read_style::Style;
 use document::{DocNode, InlineNode};
 use hayagriva::{
   archive,
@@ -17,7 +18,6 @@ use hayagriva::{
 };
 use miette::Diagnostic;
 use read_references::References;
-use read_style::Style;
 use thiserror::Error;
 use tracing::debug;
 
@@ -165,7 +165,7 @@ pub fn process_citations<'a>(
   }
 
   // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
-  // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は read_style::ReferenceStyle）。
+  // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は config::read_style::ReferenceStyle）。
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
   let style_xml = std::fs::read_to_string(csl_path).map_err(|source| CitationError::ReadStyleFile {
@@ -377,10 +377,10 @@ mod tests {
     path::{Path, PathBuf},
   };
 
+  use config::read_style::Style;
   use document::{DocNode, InlineNode};
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
   use miette::SourceSpan;
-  use read_style::Style;
   use types::FontKind;
 
   use super::{CitationError, load_locales, process_citations};

@@ -79,13 +79,11 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 
 ```text
 types （依存なし — 共通型の基盤。Length / HeadingLevel / TableColumn / ColumnAlign / ColumnWidth もここ）
-  ↑ read_config, read_style, document, font, hlist, lowering, layout, parser, citation, pdf_gen, seiran
+  ↑ config, document, font, hlist, lowering, layout, parser, citation, pdf_gen, seiran
 
-read_config （types を使用）
-  ↑ font, pdf_gen, seiran
-
-read_style （types を使用）
-  ↑ citation, lowering, pdf_gen, seiran
+config （types を使用。`read_config` / `read_style` 子 module を内包し、config.toml / style.toml の
+        データモデル + 読込・検証を 1 クレートにまとめる）
+  ↑ citation, font, lowering, pdf_gen, seiran
 
 read_references （workspace クレートに依存しない独立クレート）
   ↑ citation, seiran
@@ -99,22 +97,22 @@ document （types のみに依存。Document IR の共有契約クレート）
 parser （syntax の CST を Document IR（document）に変換。採番・書式化は行わず lowering に委ねる）
   ↑ seiran
 
-citation （document, read_references, read_style, types に依存。hayagriva / citationberg で CSL 整形）
+citation （document, read_references, config, types に依存。hayagriva / citationberg で CSL 整形）
   ↑ seiran
 
 hlist （types, icu, hypher のみに依存。フォント・krilla 非依存の純粋組版パスとコア型）
   ↑ layout, pdf_gen, seiran
 
-font （types, read_config に依存。read-fonts / harfrust / rayon を使用）
+font （types, config に依存。read-fonts / harfrust / rayon を使用）
   ↑ layout, pdf_gen, seiran
 
-lowering （document, read_style, types に依存。フォント非依存の論理変換層。採番・`\ref` 解決も担う）
+lowering （document, config, types に依存。フォント非依存の論理変換層。採番・`\ref` 解決も担う）
   ↑ layout, seiran
 
 layout （font, hlist, lowering, types に依存。icu でスクリプト判定）
   ↑ seiran
 
-pdf_gen （font, hlist, read_config, read_style, types に依存。krilla / krilla-svg で PDF を生成）
+pdf_gen （font, hlist, config, types に依存。krilla / krilla-svg で PDF を生成）
   ↑ seiran
 
 seiran （エントリーポイント。全クレートを統合してパイプラインを実行。clap / miette / read-fonts /
@@ -130,8 +128,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | クレート          | 責務（要約）                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------- |
 | `types`           | 全クレート共通型（`FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等） |
-| `read_config`     | `config.toml` の読込・`garde` バリデーション                                            |
-| `read_style`      | `style.toml` の読込・デフォルトマージ・`garde` バリデーション。単層 `Style` を提供       |
+| `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（`read_config` / `read_style` 子 module） |
 | `read_references` | `references.toml` / `.json` の読込（CSL 文献情報、拡張子で判別）                         |
 | `syntax`          | 字句・構文解析（`lexer` → `parser`）、bumpalo アリーナ上にロスレス CST を構築           |
 | `document`        | Document IR の型定義（`parser` 生産・`lowering` 消費の共有契約クレート）                 |
@@ -164,7 +161,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
   src/foo/bar.rs  ← 子モジュール
   ```
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `syntax::span` / `types::length` の garde バリデータ / `read_config::test_support`）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `syntax::span` / `types::length` の garde バリデータ / `config::read_config::test_support`。`config` は `read_config` / `read_style` の双方が `ValidationError` を持ち衝突するため両方を `pub mod` にしている）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。
@@ -198,7 +195,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 - **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
-- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の read_style 節を参照
+- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の config（read_style）節を参照
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
 

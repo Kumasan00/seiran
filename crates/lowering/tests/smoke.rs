@@ -6,9 +6,9 @@
 
 use std::{collections::HashSet, path::PathBuf};
 
+use config::read_style::Style;
 use lowering::{LayoutNode, LoweringContext};
 use parser::parse_source;
-use read_style::Style;
 
 /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
 fn fixture_path(name: &str) -> PathBuf {

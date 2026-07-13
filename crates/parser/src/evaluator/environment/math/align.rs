@@ -2,7 +2,7 @@
 //!
 //! `\begin{align}...\end{align}` を [`DocNode::MathBlock`]（`kind = Align`）に変換します。本体は
 //! [`syntax::ParseMode::Math`] で構造化された CST を行区切り `\\` × 列区切り `&` のグリッドに分割し、
-//! 各行を `read_style::CounterName::Equation` で採番します。実体は共通ハンドラ
+//! 各行を `config::read_style::CounterName::Equation` で採番します。実体は共通ハンドラ
 //! [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に委譲します。列整列（奇数列＝右・
 //! 偶数列＝左で `&` 位置に接合）は `layout` 段が [`MathEnvKind::Align`] に応じて確定します。
 //!
@@ -20,7 +20,7 @@ use crate::evaluator::EvalError;
 
 /// `align` 環境を評価する
 ///
-/// 本体を `\\` で行・`&` で列に分割し、各行に `read_style::CounterName::Equation` の通し番号を
+/// 本体を `\\` で行・`&` で列に分割し、各行に `config::read_style::CounterName::Equation` の通し番号を
 /// 発番した `MathRow` 列を持つ `MathBlock`（`kind = Align`）を返す。`[numbered=false]` 指定時は採番しない。
 ///
 /// # Errors

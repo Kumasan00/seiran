@@ -5,7 +5,7 @@
 //! ラベルから、各エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の 1 行に組み、
 //! [`hlist::Block::ComposedLine`] として返します。
 //!
-//! `read_style` / `read_config` には依存せず、呼び出し側がプリミティブの [`TocSpec`] /
+//! `config` には依存せず、呼び出し側がプリミティブの [`TocSpec`] /
 //! [`TocEntryInput`] を組み立てて渡します（[`crate::running`] と同じ流儀）。各エントリ行には
 //! 対応見出しへの内部リンク（[`hlist::LineLink`]）を付与し、PDF 上でクリック可能にします。
 
@@ -16,7 +16,7 @@ use types::{HeadingLevel, Length, LinkTarget};
 
 use crate::Measurer;
 
-/// 目次生成に必要なプリミティブ設定（`read_style` 非依存）
+/// 目次生成に必要なプリミティブ設定（`config` 非依存）
 #[derive(Debug, Clone)]
 pub struct TocSpec {
   /// 目次の見出し文字列（例: `"Contents"`）

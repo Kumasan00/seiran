@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use config::{read_config::Config, read_style::Style};
 use font::FontMetrics;
 use hlist::{HBoxContent, Page, PlacedBlock, PlacedTableRow};
 use krilla::{
@@ -23,8 +24,6 @@ use krilla::{
   text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use read_config::Config;
-use read_style::Style;
 use types::{AnchorMark, Color, ColumnAlign, FontMap, LinkTarget, TableColumn};
 
 use crate::{

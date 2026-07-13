@@ -251,11 +251,11 @@ name = "citation"
 version = "0.1.0"
 dependencies = [
  "ciborium",
+ "config",
  "document",
  "hayagriva",
  "miette",
  "read_references",
- "read_style",
  "serde",
  "serde_json",
  "tempfile",
@@ -340,6 +340,21 @@ dependencies = [
  "rustversion",
  "ryu",
  "static_assertions",
+]
+
+[[package]]
+name = "config"
+version = "0.1.0"
+dependencies = [
+ "garde",
+ "miette",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "tracing",
+ "types",
+ "unic-langid",
 ]
 
 [[package]]
@@ -514,12 +529,12 @@ dependencies = [
 name = "font"
 version = "0.1.0"
 dependencies = [
+ "config",
  "font-types 0.12.1",
  "harfrust",
  "miette",
  "rayon",
  "read-fonts 0.41.0",
- "read_config",
  "thiserror",
  "tracing",
  "types",
@@ -1375,10 +1390,10 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 name = "lowering"
 version = "0.1.0"
 dependencies = [
+ "config",
  "document",
  "miette",
  "parser",
- "read_style",
  "thiserror",
  "tracing",
  "types",
@@ -1587,6 +1602,7 @@ name = "pdf_gen"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "config",
  "font",
  "hlist",
  "image",
@@ -1594,8 +1610,6 @@ dependencies = [
  "krilla-svg",
  "miette",
  "read-fonts 0.41.0",
- "read_config",
- "read_style",
  "thiserror",
  "tracing",
  "types",
@@ -1790,21 +1804,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "read_config"
-version = "0.1.0"
-dependencies = [
- "garde",
- "miette",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
- "types",
- "unic-langid",
-]
-
-[[package]]
 name = "read_references"
 version = "0.1.0"
 dependencies = [
@@ -1815,21 +1814,6 @@ dependencies = [
  "thiserror",
  "toml",
  "tracing",
-]
-
-[[package]]
-name = "read_style"
-version = "0.1.0"
-dependencies = [
- "garde",
- "miette",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
- "types",
- "unic-langid",
 ]
 
 [[package]]
@@ -1969,6 +1953,7 @@ version = "0.1.0"
 dependencies = [
  "citation",
  "clap",
+ "config",
  "document",
  "font",
  "hlist",
@@ -1978,9 +1963,7 @@ dependencies = [
  "parser",
  "pdf_gen",
  "read-fonts 0.41.0",
- "read_config",
  "read_references",
- "read_style",
  "thiserror",
  "tracing",
  "tracing-subscriber",

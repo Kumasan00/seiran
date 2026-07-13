@@ -220,7 +220,7 @@ pub struct MathBlockRow {
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 ///
-/// `read_style::Style`（ドキュメント全体のスタイルツリー）とは別物で、こちらは
+/// `config::read_style::Style`（ドキュメント全体のスタイルツリー）とは別物で、こちらは
 /// シェーピング時に 1 つのテキストランへ直接渡す最終的な書体情報を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextStyle {

@@ -11,13 +11,13 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 `FontType`, `FontKind`, `FontMap`, `Length`, `HeadingLevel`, `TableColumn` など全クレート共通型。
 
 **配置基準** — workspace には共有契約クレートが 3 つある: `types`（基盤）/ `document`（parser ↔ lowering の
-IR 契約）/ `hlist`（レイアウトのコア型）。`read_config` / `read_style` / `font` / `hlist` / `syntax` は
+IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hlist` / `syntax` は
 `document` に依存しない設計なので、型の置き場所は共有範囲で決まる。
 判定テストは「**この型の共有範囲は、types 以外に共通の下位クレートを持つか？**」
 
 - 持たない（`document` に依存できないクレートと `document` 系の両方が使い、types が唯一の合流点）→ types。
-  例: `TheoremClass` / `HeadingLevel`（`read_style` + `document`）、`TableColumn` 系（`document` + `hlist`）、
-  `AnchorMark` / `LinkTarget`（`lowering` + `hlist`）、`FontType` / `FontMap`（`read_config` + `font` + `hlist`）
+  例: `TheoremClass` / `HeadingLevel`（`config`（`read_style`）+ `document`）、`TableColumn` 系（`document` + `hlist`）、
+  `AnchorMark` / `LinkTarget`（`lowering` + `hlist`）、`FontType` / `FontMap`（`config`（`read_config`）+ `font` + `hlist`）
 - `document` 系（`parser` / `citation` / `lowering`）だけが使う → `document`。例: `QuoteKind`
 - 1 クレートだけが使う → そのクレート
 - 補助判定: `LayoutNode` に乗って lowering を生き延びる型は types に置く。`layout` は意図的に
@@ -26,18 +26,25 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`read_config` / `read_s
 
 置くのは**語彙型**まで — 小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
 `Display`）・純粋演算（`Length` の算術、`Align::offset`）。IR ノード（`document`）・設定スキーマ
-（`read_style` / `read_config`）・組版データ構造（`hlist`）・フォントや I/O など挙動を持つ処理は置かない。
+（`config`）・組版データ構造（`hlist`）・フォントや I/O など挙動を持つ処理は置かない。
 
 例外: `MathClass` は現在 `parser` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
 `MathNode` 経由で `layout` まで届く予定で、最終的な合流点が types になるため留め置いている。
 
-## `read_config`
+## `config`
+
+ユーザ設定（config.toml / style.toml）のデータモデルと読込・検証。旧 `read_config` / `read_style` の
+2 クレートを統合したもので、両モジュールは `read_config` / `read_style` 子 module としてそのまま内包する。
+双方が `ValidationError` を持ち名前が衝突するため、フラットな root facade にはせず `pub mod read_config;`
+`pub mod read_style;` として名前空間で公開する（`config::read_config::Config` / `config::read_style::Style`）。
+
+### `read_config`（`config::read_config`）
 
 `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約）。
 
-## `read_style`
+### `read_style`（`config::read_style`）
 
-`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）はクレート直下のモジュール（`caption` / `heading` / `figure` 等）に置き、トップレベル（`read_style::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
+`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）は `read_style` モジュール直下のモジュール（`caption` / `heading` / `figure` 等）に置き、`read_style` モジュールのトップレベル（`config::read_style::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
 
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 
@@ -63,7 +70,7 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 ## `parser`
 
-`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`parser` は `read_style` に依存しない。
+`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`parser` は `config` に依存しない。
 
 ## `citation`
 

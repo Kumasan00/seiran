@@ -6,7 +6,7 @@
 //! `[delimiter=none|paren|bracket|brace|bar|dbar]` で選びます（既定 `none`）。中央揃えセルと区切り括弧の
 //! 描画は `layout` 段が [`MathEnvKind::Matrix`] に応じて確定します。
 //!
-//! `matrix` は**非採番**であり、`read_style::CounterName::Equation` を一切消費しません。
+//! `matrix` は**非採番**であり、`config::read_style::CounterName::Equation` を一切消費しません。
 //!
 //! ## 任意引数
 //!

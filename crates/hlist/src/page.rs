@@ -112,7 +112,7 @@ pub enum PlacedBlock {
     width: Length,
     /// 高さ（pt）
     height: Length,
-    /// 塗り色（RGB）。`None` は黒。`read_style` 非依存のため生の `[u8; 3]` で保持する
+    /// 塗り色（RGB）。`None` は黒。`config`（`read_style`）非依存のため生の `[u8; 3]` で保持する
     color: Option<[u8; 3]>,
   },
   /// ディスプレイ数式ブロック（本体 Atom + 行番号、いずれも確定座標）

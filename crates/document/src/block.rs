@@ -197,7 +197,7 @@ pub enum DocNode {
   /// 環境ハンドラがクラスをを解決し、`[title=...]` / `[label=...]` / `[of=...]` の任意引数を
   /// 抽出して構造化する。本体（`body`）は通常の本文と同様に再帰評価された `Vec<DocNode>`。
   /// 採番（共有カウンタの発番・cleveref 文字列の組み立て）・見出し書式・本文フォント・
-  /// QED マーク配置は、いずれも `lowering` 層がクラスの `read_style::TheoremStyle` を参照して
+  /// QED マーク配置は、いずれも `lowering` 層がクラスの `config::read_style::TheoremStyle` を参照して
   /// 決める（このノードは `class` 以外に物理・書式情報を持たない）。`unnumbered` クラス（`proof`）
   /// かどうかも `TheoremStyle.unnumbered` から `lowering` が判定する。
   Theorem {
@@ -220,7 +220,7 @@ pub enum DocNode {
   /// 本文より左右に字下げされたブロック引用。本体（`body`）は通常の本文と同様に再帰評価された
   /// `Vec<DocNode>`（段落・リスト・数式などを含められる）。`kind` が `Quotation` のときブロック内
   /// 段落の先頭行を字下げし、`Quote` のときは字下げしない。左右インデント量・上下マージン・
-  /// 段落先頭字下げ量・本文フォントは `lowering` 層が `read_style::QuoteStyle` を参照して決める
+  /// 段落先頭字下げ量・本文フォントは `lowering` 層が `config::read_style::QuoteStyle` を参照して決める
   /// （このノードは物理スタイルを持たない）。
   Quote {
     /// 引用の種別（`quote` / `quotation`）。`lowering` が段落先頭字下げの有無に使う

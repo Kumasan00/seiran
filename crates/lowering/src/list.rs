@@ -1,7 +1,7 @@
 //! リスト（`DocNode::List`）の lowering
 
+use config::read_style::NumberStyle;
 use document::ListItem;
-use read_style::NumberStyle;
 
 use super::{LoweringContext, LoweringError, PendingHeading, lower_nodes_inner};
 use crate::{
@@ -93,8 +93,8 @@ pub(super) fn lower_list(
 
 #[cfg(test)]
 mod tests {
+  use config::read_style::Style as ReadStyle;
   use document::{DocNode, InlineNode, ListItem};
-  use read_style::Style as ReadStyle;
   use types::FontKind;
 
   use super::*;

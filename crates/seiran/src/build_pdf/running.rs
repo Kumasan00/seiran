@@ -1,8 +1,10 @@
 //! ヘッダー・フッターの配置仕様組み立て
 
+use config::{
+  read_config::DocumentConfig,
+  read_style::{RunningContentStyle, Style},
+};
 use layout::{RunningContentSpec, RunningMetadata, RunningSlots};
-use read_config::DocumentConfig;
-use read_style::{RunningContentStyle, Style};
 use types::Color;
 
 use super::page_values::PageLabels;

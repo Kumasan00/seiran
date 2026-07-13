@@ -153,6 +153,7 @@ given = "Taro"
 ```text
 crates/
 ├── citation/         # \cite の CSL 整形（引用の採番・書誌生成）
+├── config/           # TOML メイン設定・スタイル設定ファイルの読み込みと検証（read_config / read_style 子 module）
 ├── document/         # Document IR の型定義（parser と lowering の共有契約）
 ├── font/             # フォント処理（読込・シェーピング・検証）
 ├── hlist/            # フォント非依存の純粋組版パス（行分割・ページ分割）
@@ -160,9 +161,7 @@ crates/
 ├── lowering/         # Document IR → LayoutNode の論理変換
 ├── parser/           # CST の評価変換（CST → Document IR）
 ├── pdf_gen/          # PDF 生成エンジン（確定座標の描画）
-├── read_config/      # TOML メイン設定ファイルの読み込みと検証
 ├── read_references/  # TOML / JSON 参照定義ファイルの読み込み
-├── read_style/       # TOML スタイル設定ファイルの読み込み
 ├── seiran/           # メインアプリケーション（エントリーポイント。CLI 引数解析・サブコマンドを内包）
 ├── syntax/           # 字句解析・構文解析（Lexer → Parser → CST）
 └── types/            # 共通型定義
