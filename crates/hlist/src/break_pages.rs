@@ -946,7 +946,7 @@ fn place_paragraph(
 ///
 /// 段落先頭行と同じ規則で配置する: 直前が底辺基準ブロックならアセント分下げ、段下限を
 /// 超えるなら改段または改ページし、確定位置で未解決アンカーを解決してリンク矩形を収集する。配置後は
-/// カーソルを `baseline + leading` まで進める。行分割（[`crate::break_lines`]）は通さない。
+/// カーソルを `baseline + leading` まで進める。行分割（`break_lines`）は通さない。
 /// 段組みでは着地段の左端オフセットを行のボックス・リンクに加算する（行は段左端基準で組まれているため）。
 fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line: Line, leading: Length) {
   let mut baseline = composer.y;

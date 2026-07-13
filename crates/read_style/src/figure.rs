@@ -2,7 +2,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, non_negative};
+use types::{Length, length::non_negative};
 
 use crate::caption::CaptionStyle;
 
@@ -45,7 +45,7 @@ impl Default for FigureStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::length::Length;
+  use types::Length;
 
   use super::FigureStyle;
 

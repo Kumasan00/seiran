@@ -58,7 +58,7 @@ impl Default for TableStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::length::Length;
+  use types::Length;
 
   use super::TableStyle;
 

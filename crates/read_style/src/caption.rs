@@ -7,7 +7,7 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, positive};
+use types::{Length, length::positive};
 
 /// キャプションの共通設定（figure / table で共有）。
 ///
@@ -39,7 +39,7 @@ impl Default for CaptionStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::length::Length;
+  use types::Length;
 
   use super::CaptionStyle;
 

@@ -5,17 +5,17 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`font`] - フォント種別 [`FontType`]（19 種別）とスタイル分類 [`FontKind`]（13 種別）
-//! - [`font_map`] - 全フォント種別に値を対応付ける汎用コンテナ [`FontMap`]
-//! - [`heading_level`] - 見出しのレベル [`HeadingLevel`]
+//! - `font` - フォント種別 [`FontType`]（19 種別）とスタイル分類 [`FontKind`]（13 種別）
+//! - `font_map` - 全フォント種別に値を対応付ける汎用コンテナ [`FontMap`]
+//! - `heading_level` - 見出しのレベル [`HeadingLevel`]
 //! - [`length`] - 単位付き長さ値 [`Length`]
-//! - [`math`] - 数式環境の種別 [`MathEnvKind`] / 区切り括弧 [`MathDelimiter`] / 記号の数式クラス [`MathClass`]
-//! - [`table`] - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
-//! - [`link`] - ハイパーリンク機構の到達先 [`AnchorMark`]（機構 A）とリンク行き先 [`LinkTarget`]（機構 B）
-//! - [`color`] - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
-//! - [`align`] - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
-//! - [`text_alignment`] - 本文段落の行末処理 [`TextAlignment`]（両端揃え / 左揃え）
-//! - [`theorem`] - ビルトイン定理クラス [`TheoremClass`]（固定 10 種）
+//! - `math` - 数式環境の種別 [`MathEnvKind`] / 区切り括弧 [`MathDelimiter`] / 記号の数式クラス [`MathClass`]
+//! - `table` - 表の列指定 [`TableColumn`] / [`ColumnAlign`] / [`ColumnWidth`]
+//! - `link` - ハイパーリンク機構の到達先 [`AnchorMark`]（機構 A）とリンク行き先 [`LinkTarget`]（機構 B）
+//! - `color` - 8bit RGB 色 [`Color`]（背景色 / 罫線色 / テキスト色の共通表現）
+//! - `align` - 水平方向の揃え [`Align`]（段落・行の左 / 中央 / 右寄せ）
+//! - `text_alignment` - 本文段落の行末処理 [`TextAlignment`]（両端揃え / 左揃え）
+//! - `theorem` - ビルトイン定理クラス [`TheoremClass`]（固定 10 種）
 //!
 //! ## 配置基準 — どんな型を置き、どんな型を置かないか
 //!
@@ -68,17 +68,19 @@
 //! - フォント処理: `font`
 //! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 
-pub mod align;
-pub mod color;
-pub mod font;
-pub mod font_map;
-pub mod heading_level;
+mod align;
+mod color;
+mod font;
+mod font_map;
+mod heading_level;
+// length は garde 用バリデータ（`length::non_negative` / `length::positive`）を
+// モジュール名前空間ごと公開するため pub を維持する
 pub mod length;
-pub mod link;
-pub mod math;
-pub mod table;
-pub mod text_alignment;
-pub mod theorem;
+mod link;
+mod math;
+mod table;
+mod text_alignment;
+mod theorem;
 
 pub use align::Align;
 pub use color::Color;

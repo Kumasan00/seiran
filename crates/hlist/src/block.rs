@@ -1,7 +1,7 @@
 //! 文書の縦リスト要素（[`Block`]）の定義
 //!
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
-//! 行分割（[`crate::break_lines`]）は `Block::Paragraph` の水平リストにだけ回る。
+//! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
 use types::{Align, AnchorMark, Length};
 
@@ -93,7 +93,7 @@ pub enum Block {
   /// 目次エントリの「番号＋タイトル …リーダー… ページ番号（右寄せ）」のように、
   /// 生成側で絶対座標まで組み上げた [`Line`] を 1 行として配置するためのプリミティブ。
   /// `break_pages` は段落 1 行分と同じ規則（ベースライン送り・改ページ・アンカー解決・
-  /// リンク収集）で扱うが、[`crate::break_lines`] は通さない。
+  /// リンク収集）で扱うが、`break_lines` は通さない。
   ComposedLine {
     /// 配置する合成済みの行
     line: Line,

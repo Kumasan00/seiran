@@ -2,7 +2,10 @@
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use types::length::{Length, non_negative, positive};
+use types::{
+  Length,
+  length::{non_negative, positive},
+};
 
 /// 目次のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

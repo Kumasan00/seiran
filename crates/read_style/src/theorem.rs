@@ -511,7 +511,7 @@ mod tests {
   fn validate_rejects_negative_top_margin() {
     // Arrange
     let mut style = TheoremStyle::default();
-    style.style.top_margin = types::length::Length::pt(-0.1);
+    style.style.top_margin = types::Length::pt(-0.1);
 
     // Act / Assert
     assert!(style.validate().is_err());

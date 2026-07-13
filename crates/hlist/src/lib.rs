@@ -16,28 +16,28 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`hitem`] - 水平リストの最小単位（`HItem` / `HBox` / `Atom`）
-//! - [`glyph_run`] - シェーピング済みグリフ列（plain data）
-//! - [`table_box`] - 表ボックスと列幅・行高の純粋計測
-//! - [`block`] - 文書の縦リスト要素（`Block`）
-//! - [`line`] / [`page`] - 行分割・縦組版の出力型
-//! - [`break_opportunities`] - (b) ICU による分割可能点の探索（純粋関数）
-//! - [`hyphenation`] - 欧文ハイフネーション（語中分割位置の探索・`hypher`）
-//! - [`break_lines`] - (c) 行分割（`LineBreaker` / `GreedyBreaker` / `KnuthPlassBreaker`）
-//! - [`break_pages`] - (d) 縦組版（ベースライン送り・改ページ・表分割）
-//! - [`dump`] - 確定ページ列の決定的テキストダンプ（レイアウト回帰テスト用）
+//! - `hitem` - 水平リストの最小単位（[`HItem`] / [`HBox`] / `Atom`）
+//! - `glyph_run` - シェーピング済みグリフ列（plain data）
+//! - `table_box` - 表ボックスと列幅・行高の純粋計測
+//! - `block` - 文書の縦リスト要素（[`Block`]）
+//! - `line` / `page` - 行分割・縦組版の出力型
+//! - `break_opportunities` - (b) ICU による分割可能点の探索（純粋関数）
+//! - `hyphenation` - 欧文ハイフネーション（語中分割位置の探索・`hypher`）
+//! - `break_lines` - (c) 行分割（[`LineBreaker`] / [`GreedyBreaker`] / [`KnuthPlassBreaker`]）
+//! - `break_pages` - (d) 縦組版（ベースライン送り・改ページ・表分割）
+//! - `dump` - 確定ページ列の決定的テキストダンプ（レイアウト回帰テスト用）
 
-pub mod block;
-pub mod break_lines;
-pub mod break_opportunities;
-pub mod break_pages;
-pub mod dump;
-pub mod glyph_run;
-pub mod hitem;
-pub mod hyphenation;
-pub mod line;
-pub mod page;
-pub mod table_box;
+mod block;
+mod break_lines;
+mod break_opportunities;
+mod break_pages;
+mod dump;
+mod glyph_run;
+mod hitem;
+mod hyphenation;
+mod line;
+mod page;
+mod table_box;
 
 pub use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
 pub use break_lines::{GreedyBreaker, KnuthPlassBreaker, LineBreaker};

@@ -9,33 +9,32 @@
 //! 既定値は各サブ struct の [`Default`] 実装が提供し、TOML 側は `#[serde(default)]` で
 //! 部分指定をサポートします（未指定キーはデフォルト値で埋まる）。
 //!
-//! 各サブスタイル型はクレート直下のモジュール（[`caption`] / [`heading`] / [`figure`] 等）に置き、
+//! 各サブスタイル型はクレート直下のモジュール（`caption` / `heading` / `figure` 等）に置き、
 //! [`Style`] がそれらをトップレベルのフィールドとして集約する。これらは `lowering` / `pdf_gen`
 //! から参照される実働フィールドである。主要な型は本モジュールで再エクスポートする。
 
-pub mod caption;
-pub mod columns;
-pub mod counter;
-pub mod figure;
-pub mod heading;
-pub mod hyperref;
-pub mod list;
-pub mod math;
-pub mod number_style;
-pub mod page;
-pub mod page_numbering;
-pub mod quote;
-pub mod reference;
-pub mod running;
-pub mod table;
-pub mod text;
-pub mod theorem;
-pub mod title_page;
-pub mod toc;
-
+mod caption;
+mod columns;
+mod counter;
 mod error;
+mod figure;
+mod heading;
+mod hyperref;
+mod list;
+mod math;
+mod number_style;
+mod page;
+mod page_numbering;
 mod placeholder;
+mod quote;
+mod reference;
+mod running;
 mod style;
+mod table;
+mod text;
+mod theorem;
+mod title_page;
+mod toc;
 
 use std::{fs, path::Path};
 
