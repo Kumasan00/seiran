@@ -56,10 +56,6 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hl
 - **文献（`ReferenceStyle`）**: `style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
-## `read_references`
-
-`config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）。
-
 ## `document`
 
 Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`）。`frontend`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `quote` / `table` サブモジュール）。
@@ -78,7 +74,11 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 ## `citation`
 
-`\cite` の CSL 整形ステージ（frontend の後・lowering の前）。`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature 内蔵ロケール + `citationberg` で `.csl` 解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。引用された文献の書誌（References 見出し + 段落群）は各グループへは追加せず**戻り値として返し**、呼び出し元（`seiran`）が lowering の最後の合成グループとして連結する（グループ構造非依存。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない）。CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath` エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの前段に重ねて採番に渡し（同一言語コードはカスタム優先）、出力言語（active locale）は `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override する。`bridge`（`read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` 変換）/ `render`（`BibliographyDriver` 駆動・`ElemChildren` → `InlineNode` 変換）サブモジュール構成。初版は引用/書誌ともプレーン文字列（斜体等は段階対応）。
+参照定義ファイルの読込から `\cite` の CSL 整形・書誌生成までを 1 クレートに閉じる（旧 `read_references` を統合。#202）。
+
+`read_references`（`citation::read_references`、非公開）は `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）を担う。公開型（`Reference` / `References` / `Name` / `Date` 等）と `read_references` 関数は crate root で再エクスポートし、`citation::Reference` の形で参照する（`citation::read_references::Reference` は使わない）。
+
+`\cite` の CSL 整形ステージ（frontend の後・lowering の前）。`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature 内蔵ロケール + `citationberg` で `.csl` 解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。引用された文献の書誌（References 見出し + 段落群）は各グループへは追加せず**戻り値として返し**、呼び出し元（`seiran`）が lowering の最後の合成グループとして連結する（グループ構造非依存。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない）。CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath` エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの前段に重ねて採番に渡し（同一言語コードはカスタム優先）、出力言語（active locale）は `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override する。`bridge`（`Reference` → CSL-JSN 担体 `citationberg::json::Item` 変換）/ `render`（`BibliographyDriver` 駆動・`ElemChildren` → `InlineNode` 変換）サブモジュール構成。初版は引用/書誌ともプレーン文字列（斜体等は段階対応）。
 
 ## `hlist`
 

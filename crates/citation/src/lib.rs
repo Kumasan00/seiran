@@ -1,11 +1,14 @@
-//! 文献引用（`\cite`）の CSL 整形と参考文献リスト（書誌）生成。
+//! 参照定義ファイルの読込（`references.toml` / `.json`）から文献引用（`\cite`）の CSL 整形・
+//! 参考文献リスト（書誌）生成までを 1 クレートに閉じる。
 //!
 //! パーサ（pass1/pass2）が確定した `InlineNode::Cite`（`label: None`）のスタブを、CSL エンジン
 //! hayagriva で整形して `label` を確定し、引用された文献の書誌を本文末尾に自動追加する。
 //! パイプライン上は parser の後・lowering の前に挟む 1 ステージで、以降は通常の `DocNode` なので
 //! lowering 以降は無改修。
 //!
-//! - [`bridge`]: `read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
+//! - `read_references`（非公開） — 参照定義ファイルの読込。公開型（[`Reference`] / [`References`] 等）
+//!   はこの crate root で再エクスポートする。
+//! - [`bridge`]: [`Reference`] → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
 //! - [`render`]: `BibliographyDriver` の駆動・引用ラベルと書誌 `DocNode` の生成。
 
 use std::{collections::HashMap, io};
@@ -17,14 +20,19 @@ use hayagriva::{
   citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
-use read_references::References;
 use thiserror::Error;
 use tracing::debug;
 
 mod bridge;
+mod read_references;
 mod render;
 #[cfg(test)]
 mod test_fixtures;
+
+pub use read_references::{
+  Date, DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, Reference, ReferenceType,
+  References, read_references,
+};
 
 /// CSL 整形ステージのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -384,17 +392,16 @@ mod tests {
   use types::FontKind;
 
   use super::{CitationError, load_locales, process_citations};
-  use crate::test_fixtures::{ieee_csl_path, sample_references};
+  use crate::{
+    References, read_references,
+    test_fixtures::{ieee_csl_path, sample_references},
+  };
 
   /// テスト用: 単一ドキュメントに [`process_citations`] を適用し、返った書誌を末尾へ連結する。
   ///
   /// `process_citations` は書誌を戻り値で返す（グループ構造非依存）ように変わったため、旧来の
   /// 「`nodes` 末尾へ追加する」挙動を再現して既存アサーションをそのまま活かすためのヘルパ。
-  fn process_and_append(
-    nodes: &mut Vec<DocNode>,
-    references: &read_references::References,
-    style: &Style,
-  ) -> Result<(), CitationError> {
+  fn process_and_append(nodes: &mut Vec<DocNode>, references: &References, style: &Style) -> Result<(), CitationError> {
     let bibliography = process_citations(std::iter::once(&mut *nodes), references, style)?;
     nodes.extend(bibliography);
     return Ok(());
@@ -732,7 +739,7 @@ mod tests {
     );
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references = read_references::read_references(Some(file.path())).expect("references を読み込めるはず");
+    let references = read_references(Some(file.path())).expect("references を読み込めるはず");
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 

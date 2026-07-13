@@ -255,11 +255,11 @@ dependencies = [
  "document",
  "hayagriva",
  "miette",
- "read_references",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
+ "toml",
  "tracing",
  "types",
 ]
@@ -1802,19 +1802,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "read_references"
-version = "0.1.0"
-dependencies = [
- "miette",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
-]
-
-[[package]]
 name = "regex"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1961,7 +1948,6 @@ dependencies = [
  "miette",
  "pdf_gen",
  "read-fonts 0.41.0",
- "read_references",
  "thiserror",
  "tracing",
  "tracing-subscriber",

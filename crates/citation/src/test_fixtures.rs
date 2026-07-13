@@ -9,7 +9,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use read_references::References;
+use crate::{References, read_references};
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
 ///
@@ -49,5 +49,5 @@ pub(crate) fn sample_references() -> References {
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
   // read_references は同期的に読み切るので、戻り後に file が drop（削除）されても問題ない。
-  return read_references::read_references(Some(file.path())).expect("references を読み込めるはず");
+  return read_references(Some(file.path())).expect("references を読み込めるはず");
 }
