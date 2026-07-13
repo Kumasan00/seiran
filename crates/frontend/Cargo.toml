@@ -1,5 +1,5 @@
 [package]
-name = "lowering"
+name = "frontend"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -8,15 +8,14 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-config.workspace = true
+bumpalo.workspace = true
 document.workspace = true
+memchr.workspace = true
 miette.workspace = true
+phf.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 types.workspace = true
-
-[dev-dependencies]
-frontend.workspace = true
 
 [lints]
 workspace = true

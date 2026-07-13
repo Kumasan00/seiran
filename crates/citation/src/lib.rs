@@ -199,7 +199,7 @@ pub fn process_citations<'a>(
 
 /// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
 ///
-/// 走査範囲は `parser::evaluator::cite` のキー存在検証と同じ木構造（見出しタイトル・段落・図キャプ
+/// 走査範囲は `frontend::evaluator::cite` のキー存在検証と同じ木構造（見出しタイトル・段落・図キャプ
 /// ション・リスト項目・表セル/キャプション）。`\cite` が出現しない数式・罫線等はスキップする。
 fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut InlineNode>) {
   for node in nodes {

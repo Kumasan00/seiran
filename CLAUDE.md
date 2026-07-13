@@ -55,8 +55,7 @@ cargo test -p <crate_name>                                 # 特定クレート�
 
 ```text
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
-  → 字句解析・構文解析（syntax: Lexer → Parser → CST）
-  → 評価（parser: CST → Document IR（document::DocNode））
+  → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → Document IR（document::DocNode））
   → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を本文末尾に追加）
   → ローワリング（lowering: DocNode → LayoutNode）→ フォント読込・検証
   → (a) build_blocks（layout: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
@@ -79,7 +78,7 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 
 ```text
 types （依存なし — 共通型の基盤。Length / HeadingLevel / TableColumn / ColumnAlign / ColumnWidth もここ）
-  ↑ config, document, font, hlist, lowering, layout, parser, citation, pdf_gen, seiran
+  ↑ config, document, font, hlist, lowering, layout, frontend, citation, pdf_gen, seiran
 
 config （types を使用。`read_config` / `read_style` 子 module を内包し、config.toml / style.toml の
         データモデル + 読込・検証を 1 クレートにまとめる）
@@ -88,13 +87,12 @@ config （types を使用。`read_config` / `read_style` 子 module を内包し
 read_references （workspace クレートに依存しない独立クレート）
   ↑ citation, seiran
 
-syntax （bumpalo アリーナ上に CST を構築。workspace クレートに依存しない）
-  ↑ parser
-
 document （types のみに依存。Document IR の共有契約クレート）
-  ↑ parser, citation, lowering, seiran
+  ↑ frontend, citation, lowering, seiran
 
-parser （syntax の CST を Document IR（document）に変換。採番・書式化は行わず lowering に委ねる）
+frontend （document, types に依存。bumpalo アリーナ上に CST を構築し、Document IR（document）に
+          評価変換。CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）。
+          採番・書式化は行わず lowering に委ねる）
   ↑ seiran
 
 citation （document, read_references, config, types に依存。hayagriva / citationberg で CSL 整形）
@@ -130,9 +128,8 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `types`           | 全クレート共通型（`FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等） |
 | `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（`read_config` / `read_style` 子 module） |
 | `read_references` | `references.toml` / `.json` の読込（CSL 文献情報、拡張子で判別）                         |
-| `syntax`          | 字句・構文解析（`lexer` → `parser`）、bumpalo アリーナ上にロスレス CST を構築           |
-| `document`        | Document IR の型定義（`parser` 生産・`lowering` 消費の共有契約クレート）                 |
-| `parser`          | CST → Document IR の評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）  |
+| `document`        | Document IR の型定義（`frontend` 生産・`lowering` 消費の共有契約クレート）               |
+| `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
 | `citation`        | `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                        |
 | `hlist`           | フォント非依存のコア型 + 純粋組版パス（(b) break_opportunities / (c) break_lines / (d) break_pages） |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
@@ -161,7 +158,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
   src/foo/bar.rs  ← 子モジュール
   ```
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `syntax::span` / `types::length` の garde バリデータ / `config::read_config::test_support`。`config` は `read_config` / `read_style` の双方が `ValidationError` を持ち衝突するため両方を `pub mod` にしている）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `types::length` の garde バリデータ / `config::read_config::test_support`。`config` は `read_config` / `read_style` の双方が `ValidationError` を持ち衝突するため両方を `pub mod` にしている）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。

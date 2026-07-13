@@ -1,9 +1,9 @@
 //! PDF ビルドエラー型の定義
 
 use citation::CitationError;
+use frontend::ParseSourceError;
 use lowering::LoweringError;
 use miette::{Diagnostic, NamedSource};
-use parser::ParseSourceError;
 use thiserror::Error;
 
 /// PDF ビルド時のエラー型

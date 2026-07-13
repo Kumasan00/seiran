@@ -12,7 +12,7 @@ model: sonnet
 
 - Cargo workspace 構成。クレート責務とパイプラインは `CLAUDE.md` の
   アーキテクチャ節、詳細は `docs/architecture.md` を必要に応じて参照する。
-- 探索の起点に迷ったら、データフロー（syntax → parser → document → citation →
+- 探索の起点に迷ったら、データフロー（frontend → document → citation →
   lowering → layout → hlist → pdf_gen → seiran）のどの段の話かをまず特定する。
 
 ## 手順

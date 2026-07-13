@@ -591,6 +591,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "frontend"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "document",
+ "memchr",
+ "miette",
+ "phf",
+ "thiserror",
+ "tracing",
+ "types",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1392,8 +1406,8 @@ version = "0.1.0"
 dependencies = [
  "config",
  "document",
+ "frontend",
  "miette",
- "parser",
  "thiserror",
  "tracing",
  "types",
@@ -1562,22 +1576,6 @@ name = "owo-colors"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "document",
- "garde",
- "miette",
- "phf",
- "serde",
- "syntax",
- "thiserror",
- "tracing",
- "types",
-]
 
 [[package]]
 name = "paste"
@@ -1956,11 +1954,11 @@ dependencies = [
  "config",
  "document",
  "font",
+ "frontend",
  "hlist",
  "layout",
  "lowering",
  "miette",
- "parser",
  "pdf_gen",
  "read-fonts 0.41.0",
  "read_references",
@@ -2203,17 +2201,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "syntax"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "memchr",
- "miette",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
