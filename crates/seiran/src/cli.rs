@@ -14,22 +14,22 @@ use clap::{Parser, Subcommand};
 #[command(author = "Kuma")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "PDFテキスト生成ツール", long_about = None)]
-pub struct Cli {
+pub(super) struct Cli {
   /// ログの冗長度を上げる（`-v` = INFO 進捗、`-vv` = DEBUG、`-vvv` = TRACE）。`RUST_LOG` 未設定時のみ有効
   #[arg(short, long, global = true, action = clap::ArgAction::Count, conflicts_with = "quiet")]
-  pub verbose: u8,
+  pub(super) verbose: u8,
 
   /// 警告も抑止しエラーのみ表示する（成功時は無言）。`RUST_LOG` 未設定時のみ有効
   #[arg(short, long, global = true)]
-  pub quiet: bool,
+  pub(super) quiet: bool,
 
   #[command(subcommand)]
-  pub command: Command,
+  pub(super) command: Command,
 }
 
 /// アプリケーションがサポートするサブコマンド
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
-pub enum Command {
+pub(super) enum Command {
   /// 設定ファイルの `sources` 配列に列挙されたファイルから PDF を生成する
   Build {
     /// 設定ファイルのパス（オプション、指定しない場合はデフォルトの `config.toml` を使用）
@@ -66,21 +66,19 @@ pub enum Command {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// # use cli::parse_arg;
+/// ```ignore
 /// let cli = parse_arg();
 /// match cli.command {
-///   cli::Command::Build { config_path } => println!("設定ファイル: {:?}", config_path),
-///   cli::Command::VariationAxes {
+///   Command::Build { config_path } => println!("設定ファイル: {:?}", config_path),
+///   Command::VariationAxes {
 ///     font_path,
 ///     font_index,
 ///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
-///   cli::Command::TtcNames { ttc_file_path } => println!("TTC: {:?}", ttc_file_path),
-///   cli::Command::ScriptLangs {
+///   Command::TtcNames { ttc_file_path } => println!("TTC: {:?}", ttc_file_path),
+///   Command::ScriptLangs {
 ///     font_path,
 ///     font_index,
 ///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
 /// }
 /// ```
-#[must_use]
-pub fn parse_arg() -> Cli { Cli::parse() }
+pub(super) fn parse_arg() -> Cli { Cli::parse() }

@@ -31,10 +31,6 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`read_config` / `read_s
 例外: `MathClass` は現在 `parser` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
 `MathNode` 経由で `layout` まで届く予定で、最終的な合流点が types になるため留め置いている。
 
-## `cli`
-
-clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）。
-
 ## `read_config`
 
 `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約）。
@@ -97,10 +93,6 @@ DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `float` / `
 
 (e) `render_pages`（`render`）: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定、`image`）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）。`error` / `font` / `image` / `metadata` / `render` サブモジュール構成。
 
-## `subcommand`
-
-`variation-axes` / `ttc-names` / `script-langs` サブコマンド実装。`read-fonts` を直接使用（font クレート非依存）。
-
 ## `seiran`
 
-`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。
+`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。

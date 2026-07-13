@@ -117,13 +117,9 @@ layout （font, hlist, lowering, types に依存。icu でスクリプト判定�
 pdf_gen （font, hlist, read_config, read_style, types に依存。krilla / krilla-svg で PDF を生成）
   ↑ seiran
 
-cli （clap のみに依存）
-  ↑ seiran
-
-subcommand （miette / read-fonts / thiserror / tracing のみに依存。workspace クレート非依存）
-  ↑ seiran
-
-seiran （エントリーポイント。全クレートを統合してパイプラインを実行）
+seiran （エントリーポイント。全クレートを統合してパイプラインを実行。clap / miette / read-fonts /
+         thiserror / tracing にも直接依存し、CLI 引数定義と variation-axes / ttc-names /
+         script-langs サブコマンド実装を cli / subcommand 子 module として内包）
 ```
 
 ### 各クレートの責務
@@ -134,7 +130,6 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | クレート          | 責務（要約）                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------- |
 | `types`           | 全クレート共通型（`FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等） |
-| `cli`             | clap derive の CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）  |
 | `read_config`     | `config.toml` の読込・`garde` バリデーション                                            |
 | `read_style`      | `style.toml` の読込・デフォルトマージ・`garde` バリデーション。単層 `Style` を提供       |
 | `read_references` | `references.toml` / `.json` の読込（CSL 文献情報、拡張子で判別）                         |
@@ -147,8 +142,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `lowering`        | DocNode → LayoutNode の論理変換（フォント非依存）。採番・`\ref` 解決（pass1/pass2）も担う |
 | `layout`          | (a) build_blocks: LayoutNode → `Vec<Block>`（シェーピング + 計測 + break 注入）。running でヘッダ / フッタ配置 |
 | `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |
-| `subcommand`      | `variation-axes` / `ttc-names` / `script-langs` 実装（read-fonts 直接使用）             |
-| `seiran`          | main エントリ。全クレート統合・パイプライン実行                                          |
+| `seiran`          | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包 |
 
 ## コーディング規約
 

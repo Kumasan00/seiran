@@ -9,7 +9,7 @@ license.workspace = true
 
 [dependencies]
 citation.workspace = true
-cli.workspace = true
+clap.workspace = true
 document.workspace = true
 font.workspace = true
 hlist.workspace = true
@@ -19,9 +19,9 @@ miette.workspace = true
 parser.workspace = true
 pdf_gen.workspace = true
 read_config.workspace = true
+read-fonts.workspace = true
 read_references.workspace = true
 read_style.workspace = true
-subcommand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

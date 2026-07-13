@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
   "crates/citation",
-  "crates/cli",
   "crates/document",
   "crates/font",
   "crates/hlist",
@@ -14,7 +13,6 @@ members = [
   "crates/read_references",
   "crates/read_style",
   "crates/seiran",
-  "crates/subcommand",
   "crates/syntax",
   "crates/types",
 ]
@@ -33,7 +31,6 @@ chrono = "0.4.45"
 ciborium = "0.2.2"
 citation = { path = "crates/citation" }
 clap = { version = "4.6.1", features = ["derive"] }
-cli = { path = "crates/cli" }
 document = { path = "crates/document" }
 figment2 = { version = "0.11.5", features = ["toml"] }
 font = { path = "crates/font" }
@@ -75,7 +72,6 @@ read_style = { path = "crates/read_style" }
 seiran = { path = "crates/seiran" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
-subcommand = { path = "crates/subcommand" }
 syntax = { path = "crates/syntax" }
 tempfile = "3.27.0"
 thiserror = "2.0.18"

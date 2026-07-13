@@ -238,7 +238,7 @@ enum ScriptLangsError {
 /// ```ignore
 /// seiran script-langs fonts/NotoSerifJP.otf
 /// ```
-pub fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
+pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<()> {
   info!(font_path = %file_path.display(), font_index, "フォントファイルを読み込みます");
 
   // Script/Language System から参照された Feature タグを収集する（統計処理で使用）

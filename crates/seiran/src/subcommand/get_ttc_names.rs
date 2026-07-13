@@ -123,7 +123,7 @@ enum TtcNamesError {
 /// ```ignore
 /// seiran ttc-names fonts/SourceHanCodeJP.ttc
 /// ```
-pub fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
+pub(crate) fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
   // TTC ファイルパスをログに記録
   info!(ttc_path = %file_path.display(), "TTC ファイルを読み込みます");
 

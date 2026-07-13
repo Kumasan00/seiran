@@ -82,6 +82,9 @@
 //! 設定にフォールバックし、警告を 1 行出す（黙って無効化しない）。
 
 mod build_pdf;
+mod cli;
+mod subcommand;
+
 use std::io::IsTerminal;
 
 use tracing_subscriber::{EnvFilter, fmt};
