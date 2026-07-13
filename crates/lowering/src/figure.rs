@@ -79,8 +79,8 @@ pub(super) fn lower_figure(
 
 #[cfg(test)]
 mod tests {
+  use config::read_style::Style as ReadStyle;
   use document::InlineNode;
-  use read_style::Style as ReadStyle;
 
   use super::*;
 

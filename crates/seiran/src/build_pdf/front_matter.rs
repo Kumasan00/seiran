@@ -1,11 +1,11 @@
 //! 前付け（タイトルページ・目次）の組み立て・ページ分割・補助型
 
+use config::read_style::{Style, TocStyle};
 use document::heading_anchor_key;
 use font::{FontMetrics, shaper::HarfRustShapers};
 use hlist::{Block, LineBreaker, Page, PageGeometry};
 use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
 use lowering::{HeadingRecord, TextStyle, TitlePageMetadata, lower_title_page};
-use read_style::{Style, TocStyle};
 use tracing::{debug, debug_span};
 use types::{FontKind, HeadingLevel, TextAlignment};
 
@@ -133,9 +133,9 @@ pub(super) fn break_front_matter(
 
 #[cfg(test)]
 mod tests {
+  use config::read_style::{PageNumbering, TocStyle};
   use hlist::PlacedAnchor;
   use lowering::HeadingRecord;
-  use read_style::{PageNumbering, TocStyle};
   use types::{AnchorMark, HeadingLevel};
 
   use super::{BodyPageValues, Page, collect_toc_entries};

@@ -30,11 +30,10 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use config::{read_config::Config, read_style::Style};
 use font::{FontData, FontDataExt};
 use hlist::{Page, PlacedBlock, dump_pages};
-use read_config::Config;
 use read_references::References;
-use read_style::Style;
 use types::{AnchorMark, Length};
 
 use super::build_pages;
@@ -93,9 +92,9 @@ fn load_base() -> (Config, Style, References) {
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
-  let config =
-    read_config::read_config(Path::new("crates/seiran/tests/config/config.toml")).expect("fixture config.toml の読込");
-  let style = read_style::read_style(config.style_path.as_deref()).expect("fixture style.toml の読込");
+  let config = config::read_config::read_config(Path::new("crates/seiran/tests/config/config.toml"))
+    .expect("fixture config.toml の読込");
+  let style = config::read_style::read_style(config.style_path.as_deref()).expect("fixture style.toml の読込");
   let references =
     read_references::read_references(config.references_path.as_deref()).expect("fixture references の読込");
   return (config, style, references);
@@ -106,7 +105,7 @@ fn load_base() -> (Config, Style, References) {
 /// 既定で無効の機能（タイトルページ・目次・ヘッダー / フッター）は、fixture で全入力に対して
 /// 有効化すると全 golden にタイトルページ等が乗ってノイズになるため、その機能の検証用に
 /// 書かれた入力に限ってここで有効化する。対象外の入力はベース style をそのまま使う。
-fn apply_input_style_overrides(name: &str, style: &mut read_style::Style) {
+fn apply_input_style_overrides(name: &str, style: &mut config::read_style::Style) {
   match name {
     // タイトルページ + ヘッダー / フッター（入力の本文が「ヘッダー・フッターはタイトルページには
     // 描画されず、本文ページから現れる」ことの検証を前提に書かれている）。前付けページの挿入で

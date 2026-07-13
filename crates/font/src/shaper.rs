@@ -68,7 +68,7 @@
 //!
 //! ```ignore
 //! # use font::shaper::*;
-//! # use read_config::FontConfigs;
+//! # use config::read_config::FontConfigs;
 //! # use font::FontRefs;
 //!
 //! // フォント参照とシェイパーデータを準備
@@ -85,6 +85,7 @@
 
 use std::str::FromStr;
 
+use config::read_config::{FontConfig, FontConfigs, TextDirection};
 pub use harfrust::UnicodeBuffer;
 use harfrust::{
   Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapeOptions, ShapePlan, Shaper, ShaperData,
@@ -92,7 +93,6 @@ use harfrust::{
 };
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use read_config::{FontConfig, FontConfigs, TextDirection};
 use thiserror::Error;
 use types::FontMap;
 

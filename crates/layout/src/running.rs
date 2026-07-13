@@ -6,7 +6,7 @@
 //! `Page::header` / `Page::footer` に配置します。
 //!
 //! 出力はフォント非依存の [`PlacedBlock`] なので、`pdf_gen` は本文ブロックと同一の描画ロジックで
-//! 扱えます。`read_style` / `read_config` には依存せず、呼び出し側（`seiran::build_pdf`）が
+//! 扱えます。`config` には依存せず、呼び出し側（`seiran::build_pdf`）が
 //! 設定からプリミティブの [`RunningContentSpec`] を組み立てて渡します（`PageGeometry` と同じ流儀）。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
@@ -19,7 +19,7 @@ use crate::Measurer;
 
 /// ヘッダー・フッター配置に必要なプリミティブ設定
 ///
-/// `read_style` / `read_config` 型を持ち込まないよう、呼び出し側が設定から組み立てて渡す。
+/// `config` 型を持ち込まないよう、呼び出し側が設定から組み立てて渡す。
 /// `header` / `footer` が `None` のリージョンは配置しない（全スロット空のとき呼び出し側が `None`
 /// にする）。
 #[derive(Debug, Clone)]

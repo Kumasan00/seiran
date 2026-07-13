@@ -80,9 +80,9 @@
 //! validate_fonts(&font_configs, &font_refs)?;
 //! ```
 
+use config::read_config::{FontConfig, FontConfigs, VariationAxis};
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
-use read_config::{FontConfig, FontConfigs, VariationAxis};
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{debug, warn};

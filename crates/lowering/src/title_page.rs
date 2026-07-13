@@ -8,7 +8,7 @@
 //! 空（`None` または空白のみ）の要素は描画しない。要素間の縦アキは「直前要素の下マージン」を
 //! 次の要素の前に挿入することで、欠落要素があってもアキが二重に出ないようにする。
 
-use read_style::TitlePageStyle;
+use config::read_style::TitlePageStyle;
 use types::{Align, FontKind, Length};
 
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -93,7 +93,7 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
 
 #[cfg(test)]
 mod tests {
-  use read_style::TitlePageStyle;
+  use config::read_style::TitlePageStyle;
   use types::{Align, Length};
 
   use super::{TitlePageMetadata, lower_title_page};

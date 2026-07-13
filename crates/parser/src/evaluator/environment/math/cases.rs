@@ -5,7 +5,7 @@
 //! 各行を「式 & 条件」の 2 列固定として扱います（3 列以上は [`EvalError::CasesColumnOverflow`]）。
 //! 左の大波括弧と 2 列の左揃えは `layout` 段が [`MathEnvKind::Cases`] に応じて確定します。
 //!
-//! `cases` は**非採番**であり、`read_style::CounterName::Equation` を一切消費しません（採番ありの
+//! `cases` は**非採番**であり、`config::read_style::CounterName::Equation` を一切消費しません（採番ありの
 //! 数式環境と通し番号を共有しない）。任意引数も位置引数も受け付けません。
 
 use document::{DocNode, MathEnvKind};

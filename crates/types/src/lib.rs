@@ -21,7 +21,7 @@
 //!
 //! **判定テスト**: 「この型の共有範囲は、types 以外に共通の下位クレートを持つか？」
 //!
-//! - 持たない（`document` に依存できないクレート — `read_config` / `read_style` / `font` / `hlist` —
+//! - 持たない（`document` に依存できないクレート — `config` / `font` / `hlist` —
 //!   と、`document` 系 — `parser` / `citation` / `lowering` — の両方が使い、types が唯一の合流点になる）
 //!   → **types に置く**
 //! - `document` 系だけが使う → **`document` に置く**（例: `QuoteKind`）
@@ -31,7 +31,7 @@
 //!
 //! 置くのは**語彙型**まで — 小さな `Copy` 値型・enum と、その正準変換
 //! （`as_str` / `from_name` / serde / `Display`）・純粋演算（[`Length`] の算術、[`Align::offset`]）。
-//! IR ノード（`document`）・設定スキーマ（`read_style` / `read_config`）・組版データ構造（`hlist`）・
+//! IR ノード（`document`）・設定スキーマ（`config`）・組版データ構造（`hlist`）・
 //! フォントや I/O など挙動を持つ処理は置かない。
 //!
 //! 例外: [`MathClass`] は現在 `parser` のみが使う先行配置
@@ -64,7 +64,7 @@
 //! - **`FontKind`**: 言語判定前のスタイル分類（13 個、日本語フォント除外）
 //!
 //! 関連クレート：
-//! - 設定: `read_config`
+//! - 設定: `config`（`read_config`）
 //! - フォント処理: `font`
 //! - スクリプト判定と `FontKind` → `FontType` の解決: `layout`
 

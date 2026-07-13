@@ -4,7 +4,7 @@
 //! 余り幅を行内の伸縮点（欧文単語間スペース等）へ比例配分して行末を版面右端に
 //! 揃え、左揃え（ragged-right）は自然幅のまま並べて行末を成り行きに任せる。
 //!
-//! `style.toml` の `[text] alignment` が値の出どころで、`read_style` →
+//! `style.toml` の `[text] alignment` が値の出どころで、`config`（`read_style`） →
 //! `hlist::break_pages` → `hlist::break_lines` へ透過する。段落単位の水平揃え
 //! （[`crate::Align`] の中央・右寄せ）とは独立で、中央・右寄せ段落には適用されない。
 

@@ -8,11 +8,11 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+config.workspace = true
 font-types.workspace = true
 harfrust.workspace = true
 miette.workspace = true
 rayon.workspace = true
-read_config.workspace = true
 read-fonts.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

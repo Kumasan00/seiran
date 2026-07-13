@@ -23,7 +23,7 @@ use crate::{
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
 ///
-/// `read_config` / `read_style` に依存しないよう、呼び出し側（`build_pdf`）が
+/// `config` に依存しないよう、呼び出し側（`build_pdf`）が
 /// 設定から組み立てて渡す。
 #[derive(Debug, Clone, Copy)]
 pub struct PageGeometry {

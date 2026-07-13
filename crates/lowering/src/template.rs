@@ -82,7 +82,7 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 
 #[cfg(test)]
 mod tests {
-  use read_style::Style as ReadStyle;
+  use config::read_style::Style as ReadStyle;
   use types::{FontKind, Length};
 
   use super::*;
