@@ -26,10 +26,10 @@ use font::{
   validate_font,
 };
 use front_matter::{assemble_front_matter, break_front_matter};
+use frontend::ParseSourceError;
 use lowering::LoweringContext;
 use outline::collect_outline_entries;
 use page_values::BodyPageValues;
-use parser::ParseSourceError;
 use pdf_gen::OutlineEntry;
 use running::build_running_spec;
 use tracing::{debug, debug_span, info};
@@ -49,7 +49,7 @@ pub(super) struct BuildSummary {
 
 /// 設定ファイルの `sources` から PDF を生成
 ///
-/// 各 source ファイルを順次読み込み、`parser::parse_source` でパース・評価して
+/// 各 source ファイルを順次読み込み、`frontend::parse_source` でパース・評価して
 /// ファイルごとに [`ParsedSource`] を作る（平坦化せずソース帰属を保持）。lowering は
 /// 全ファイル + 書誌を 1 回の `lower_sources_with_headings` でまとめて処理し、1 つの文書として扱う。
 ///
@@ -318,7 +318,7 @@ struct ParsedSource {
 /// 保持する（lowering エラーのソース帰属に必要）。I/O 失敗は早期にエラーを返し、
 /// パース・評価エラーは全 source で集約して [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
 // BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
-// parser::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+// frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
 #[allow(clippy::result_large_err)]
 fn parse_all_sources(
   sources: &[std::path::PathBuf],
@@ -333,7 +333,7 @@ fn parse_all_sources(
       source,
     })?;
     let display_path = source_path.display().to_string();
-    match parser::parse_source(&content, &display_path, citation_keys) {
+    match frontend::parse_source(&content, &display_path, citation_keys) {
       Ok(nodes) => parsed.push(ParsedSource {
         name: display_path,
         content,

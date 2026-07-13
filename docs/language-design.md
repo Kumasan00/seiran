@@ -59,7 +59,7 @@ Seiran は **LaTeX の主要機能を組み込みで提供する汎用組版言�
 LaTeX の `\parbox[c][3cm]` のような位置依存オプションは作らない。
 
 値は宣言済みスキーマ（String / Bool / Number / Length / Color）で検証する
-（`parser::evaluator::opt_args`）。実例: `\image[width=5cm, dpi=300]`、
+（`frontend::evaluator::opt_args`）。実例: `\image[width=5cm, dpi=300]`、
 equation 環境の `[label=eq1, numbered=false]`、`\cell[span=2]`、`\row[rule_above]`、
 theorem 環境の `[title=...]`。
 

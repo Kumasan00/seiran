@@ -26,7 +26,7 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 | 変更した層 | 手段 |
 | --- | --- |
-| レイアウト（座標・寸法）に効く変更 — hlist / layout / lowering / parser / read_style 等 | layout dump golden（下記） |
+| レイアウト（座標・寸法）に効く変更 — hlist / layout / lowering / frontend / read_style 等 | layout dump golden（下記） |
 | ダンプに映らない層 — pdf_gen の render・PDF メタデータ・リンク・しおり | PDF バイト比較（下記、日時固定が必須） |
 
 ## layout dump golden

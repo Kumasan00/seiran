@@ -10,15 +10,15 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 `FontType`, `FontKind`, `FontMap`, `Length`, `HeadingLevel`, `TableColumn` など全クレート共通型。
 
-**配置基準** — workspace には共有契約クレートが 3 つある: `types`（基盤）/ `document`（parser ↔ lowering の
-IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hlist` / `syntax` は
+**配置基準** — workspace には共有契約クレートが 3 つある: `types`（基盤）/ `document`（frontend ↔ lowering の
+IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hlist` は
 `document` に依存しない設計なので、型の置き場所は共有範囲で決まる。
 判定テストは「**この型の共有範囲は、types 以外に共通の下位クレートを持つか？**」
 
 - 持たない（`document` に依存できないクレートと `document` 系の両方が使い、types が唯一の合流点）→ types。
   例: `TheoremClass` / `HeadingLevel`（`config`（`read_style`）+ `document`）、`TableColumn` 系（`document` + `hlist`）、
   `AnchorMark` / `LinkTarget`（`lowering` + `hlist`）、`FontType` / `FontMap`（`config`（`read_config`）+ `font` + `hlist`）
-- `document` 系（`parser` / `citation` / `lowering`）だけが使う → `document`。例: `QuoteKind`
+- `document` 系（`frontend` / `citation` / `lowering`）だけが使う → `document`。例: `QuoteKind`
 - 1 クレートだけが使う → そのクレート
 - 補助判定: `LayoutNode` に乗って lowering を生き延びる型は types に置く。`layout` は意図的に
   `document` 非依存（LayoutNode だけを見る）なので、こうした型が `document` にあると `layout` に
@@ -28,7 +28,7 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hl
 `Display`）・純粋演算（`Length` の算術、`Align::offset`）。IR ノード（`document`）・設定スキーマ
 （`config`）・組版データ構造（`hlist`）・フォントや I/O など挙動を持つ処理は置かない。
 
-例外: `MathClass` は現在 `parser` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
+例外: `MathClass` は現在 `frontend` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
 `MathNode` 経由で `layout` まで届く予定で、最終的な合流点が types になるため留め置いている。
 
 ## `config`
@@ -60,21 +60,25 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hl
 
 `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）。
 
-## `syntax`
+## `document`
+
+Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`）。`frontend`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `quote` / `table` サブモジュール）。
+
+## `frontend`
+
+テキストソースから Document IR への変換を担う（旧 `syntax` + `parser` を統合。#201）。公開 API は `parse_source` のみで、CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）に閉じる。
+
+### `syntax`（`frontend::syntax`、非公開）
 
 字句解析・構文解析（`lexer` → `parser`）、`bumpalo::Bump` アリーナ上にロスレスな CST（`green::GreenNode`）を構築。型付きビュー（`ast::CommandView`, `ast::EnvironmentView`）を提供。
 
-## `document`
+### `evaluator`（`frontend::evaluator`）
 
-Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`）。`parser`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `quote` / `table` サブモジュール）。
-
-## `parser`
-
-`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`parser` は `config` に依存しない。
+`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
 
 ## `citation`
 
-`\cite` の CSL 整形ステージ（parser の後・lowering の前）。`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature 内蔵ロケール + `citationberg` で `.csl` 解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。引用された文献の書誌（References 見出し + 段落群）は各グループへは追加せず**戻り値として返し**、呼び出し元（`seiran`）が lowering の最後の合成グループとして連結する（グループ構造非依存。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない）。CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath` エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの前段に重ねて採番に渡し（同一言語コードはカスタム優先）、出力言語（active locale）は `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override する。`bridge`（`read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` 変換）/ `render`（`BibliographyDriver` 駆動・`ElemChildren` → `InlineNode` 変換）サブモジュール構成。初版は引用/書誌ともプレーン文字列（斜体等は段階対応）。
+`\cite` の CSL 整形ステージ（frontend の後・lowering の前）。`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature 内蔵ロケール + `citationberg` で `.csl` 解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。引用された文献の書誌（References 見出し + 段落群）は各グループへは追加せず**戻り値として返し**、呼び出し元（`seiran`）が lowering の最後の合成グループとして連結する（グループ構造非依存。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない）。CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath` エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの前段に重ねて採番に渡し（同一言語コードはカスタム優先）、出力言語（active locale）は `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override する。`bridge`（`read_references::Reference` → CSL-JSN 担体 `citationberg::json::Item` 変換）/ `render`（`BibliographyDriver` 駆動・`ElemChildren` → `InlineNode` 変換）サブモジュール構成。初版は引用/書誌ともプレーン文字列（斜体等は段階対応）。
 
 ## `hlist`
 
@@ -88,7 +92,7 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `quote` / `table` / `template` / `theorem` / `title_page` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ）。
 
-採番・`\ref` 解決も本クレートの責務（#192 で `parser` から移設。`document::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lib.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
+採番・`\ref` 解決も本クレートの責務（#192 で `parser`（現 `frontend`）から移設。`document::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lib.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
 複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
 
