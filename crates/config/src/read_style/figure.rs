@@ -1,8 +1,8 @@
 //! 図（figure）環境のスタイル設定型。
 
 use garde::Validate;
+use model::{Length, length::non_negative};
 use serde::{Deserialize, Serialize};
-use types::{Length, length::non_negative};
 
 use crate::read_style::caption::CaptionStyle;
 
@@ -45,7 +45,7 @@ impl Default for FigureStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::Length;
+  use model::Length;
 
   use super::FigureStyle;
 

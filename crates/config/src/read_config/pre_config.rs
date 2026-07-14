@@ -52,11 +52,11 @@
 use std::path::PathBuf;
 
 use garde::Validate;
-use serde::Deserialize;
-use types::{
+use model::{
   FontType,
   length::{Length, non_negative, positive},
 };
+use serde::Deserialize;
 
 use crate::read_config::ValidationError;
 

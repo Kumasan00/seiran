@@ -8,7 +8,7 @@ use config::read_config::{
   Config, ReadConfigError, TextDirection, ValidationError, read_config,
   test_support::{font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section},
 };
-use types::FontType;
+use model::FontType;
 
 mod common;
 use common::setup_config;

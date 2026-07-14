@@ -15,7 +15,7 @@
 //! CST 形が揃っているため共通化でき、`InlineMath` 専用の `$` 開閉トークンは
 //! 共通ヘルパ内で `_ => {}` に落ちて無視されます。
 
-use document::{MathNode, MathStyle};
+use model::{MathNode, MathStyle};
 
 use crate::{
   evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},

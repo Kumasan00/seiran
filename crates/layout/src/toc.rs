@@ -3,16 +3,15 @@
 //! `seiran::build_pdf` が本文を一度ページ分割して各見出しのページ番号を確定した**後**に走る、
 //! フォント依存の生成パスです。見出しの意味情報（レベル・番号・タイトル）と確定済みページ
 //! ラベルから、各エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の 1 行に組み、
-//! [`hlist::Block::ComposedLine`] として返します。
+//! [`model::Block::ComposedLine`] として返します。
 //!
 //! `config` には依存せず、呼び出し側がプリミティブの [`TocSpec`] /
 //! [`TocEntryInput`] を組み立てて渡します（[`crate::running`] と同じ流儀）。各エントリ行には
-//! 対応見出しへの内部リンク（[`hlist::LineLink`]）を付与し、PDF 上でクリック可能にします。
+//! 対応見出しへの内部リンク（[`model::LineLink`]）を付与し、PDF 上でクリック可能にします。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
-use hlist::{Block, HBox, Line, LineLink, PositionedBox};
 use lowering::TextStyle;
-use types::{HeadingLevel, Length, LinkTarget};
+use model::{Block, HBox, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
 
 use crate::Measurer;
 
@@ -217,7 +216,7 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use types::{FontKind, HeadingLevel, Length, LinkTarget};
+  use model::{FontKind, HeadingLevel, Length, LinkTarget};
 
   use super::{TocEntryInput, TocSpec, entry_label};
   use crate::TextStyle;

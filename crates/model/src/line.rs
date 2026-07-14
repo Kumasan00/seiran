@@ -1,8 +1,6 @@
 //! 行分割の出力（[`Line`] / [`PositionedBox`] / [`LineLink`]）の定義
 
-use types::{Length, LinkTarget};
-
-use crate::hitem::HBoxContent;
+use crate::{HBoxContent, Length, LinkTarget};
 
 /// 行分割で確定した 1 行
 ///

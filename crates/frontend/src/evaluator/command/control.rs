@@ -2,8 +2,7 @@
 //!
 //! スペース挿入などの制御コマンドを提供します。
 
-use document::DocNode;
-use types::Length;
+use model::{DocNode, Length};
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},

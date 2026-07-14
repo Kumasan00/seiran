@@ -1,5 +1,5 @@
 [package]
-name = "document"
+name = "model"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -8,8 +8,11 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-miette.workspace = true
-types.workspace = true
+garde.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
 
 [lints]
 workspace = true

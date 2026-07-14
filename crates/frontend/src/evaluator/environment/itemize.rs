@@ -3,7 +3,7 @@
 //! `\begin{itemize}...\end{itemize}` および `\begin{enumerate}...\end{enumerate}`
 //! 環境内の `\item{...}` コマンドを `DocNode::List` に変換します。
 
-use document::{DocNode, ListItem};
+use model::{DocNode, ListItem};
 
 use crate::{
   evaluator::{

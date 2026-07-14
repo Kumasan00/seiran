@@ -8,7 +8,7 @@
 //! ```text
 //! CST (green::GreenNode)
 //!   ↓ [evaluator (このモジュール)]
-//! Document IR (document::DocNode, document::InlineNode)
+//! Document IR (model::DocNode, model::InlineNode)
 //! ```
 //!
 //! ## 設計方針
@@ -18,7 +18,7 @@
 //! - 数式ノードは CST の `InlineMath` / `MathGroup` / `MathSubscript` /
 //!   `MathSuperscript` をそのまま `MathNode` に変換
 
-use document::{DocNode, InlineNode};
+use model::{DocNode, InlineNode};
 
 use crate::{
   evaluator::command::CommandResult,

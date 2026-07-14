@@ -1,11 +1,12 @@
-//! ソース位置情報
+//! ソース位置情報 [`Span`]
 //!
-//! トークンや CST ノードのソース上のバイト範囲を表現します。
-//! `miette::SourceSpan` への変換（`From`）を提供し、エラー診断のソース位置表示に使われます。
+//! Document IR（[`crate::DocNode`] / [`crate::InlineNode`] / [`crate::MathNode`]）が保持する
+//! ソーステキスト上のバイト範囲。`model` は診断表示（`miette`）を持ち込まないため、`miette::SourceSpan`
+//! への変換は消費側（`frontend` の構築点・`lowering` の診断構築点）が担う。
 
 /// ソーステキスト上のバイト範囲
 ///
-/// 開始位置と終了位置のバイトオフセットを保持します。
+/// 開始位置と終了位置のバイトオフセットを保持する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
@@ -49,18 +50,6 @@ impl Span {
   }
 }
 
-/// `Span` から `miette::SourceSpan` への変換
-impl From<Span> for miette::SourceSpan {
-  fn from(span: Span) -> Self {
-    return miette::SourceSpan::new(miette::SourceOffset::from(span.start as usize), span.len() as usize);
-  }
-}
-
-/// `Span` から `model::Span`（Document IR が持つ軽量なソース位置型）への変換
-impl From<Span> for model::Span {
-  fn from(span: Span) -> Self { return model::Span::new(span.start, span.end); }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -98,13 +87,5 @@ mod tests {
   fn default_is_zero_span() {
     let span = Span::default();
     assert_eq!(span, Span::new(0, 0));
-  }
-
-  #[test]
-  fn converts_to_miette_source_span() {
-    let span = Span::new(10, 25);
-    let source_span: miette::SourceSpan = span.into();
-    assert_eq!(source_span.offset(), 10);
-    assert_eq!(source_span.len(), 15);
   }
 }

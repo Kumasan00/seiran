@@ -6,8 +6,7 @@
 //! （最終段落と同居、入らなければ次行・本体末が非段落なら独立行）。
 
 use config::read_style::TheoremStyle;
-use document::{DocNode, InlineNode};
-use types::{Align, FontKind, Length, TheoremClass};
+use model::{Align, DocNode, FontKind, InlineNode, Length, TheoremClass};
 
 use super::{
   LoweringContext, LoweringError, PendingHeading, lower_nodes_inner, template::expand_template, with_label_anchor,
@@ -34,7 +33,7 @@ pub(super) fn lower_theorem(
   number: Option<&str>,
   title: Option<&str>,
   body: &[DocNode],
-  of: Option<(&str, miette::SourceSpan)>,
+  of: Option<(&str, model::Span)>,
   label: Option<&str>,
   registry: &mut CounterRegistry,
   headings: &mut Vec<PendingHeading>,
@@ -88,7 +87,7 @@ fn build_heading(
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
-  of: Option<(&str, miette::SourceSpan)>,
+  of: Option<(&str, model::Span)>,
 ) -> Result<LayoutNode, LoweringError> {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
@@ -138,15 +137,14 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use document::DocNode;
-  use types::FontKind;
+  use model::{DocNode, FontKind};
 
   use super::*;
 
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> DocNode { return DocNode::Paragraph(vec![InlineNode::Text(text.to_string())]); }
 
-  fn dummy_span() -> miette::SourceSpan { return miette::SourceSpan::from((0_usize, 0_usize)); }
+  fn dummy_span() -> model::Span { return model::Span::DUMMY; }
 
   /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_theorem` を呼ぶヘルパ
   ///
@@ -274,7 +272,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let list = DocNode::List {
       ordered: false,
-      items: vec![document::ListItem::new(vec![paragraph("item")])],
+      items: vec![model::ListItem::new(vec![paragraph("item")])],
     };
 
     // Act
@@ -404,7 +402,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(types::AnchorMark::Label(l))) if l == "thm:x"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }

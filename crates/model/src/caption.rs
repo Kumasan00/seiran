@@ -8,7 +8,7 @@
 ///
 /// 図・表ともにソース上の `\caption` の出現位置から決定される
 /// （本体より前なら [`CaptionPosition::Top`]、後なら [`CaptionPosition::Bottom`]）。
-/// スタイル設定では指定せず、`parser` 側で出現順から決めて [`crate::DocNode::Figure`] に格納する。
+/// スタイル設定では指定せず、`frontend` 側で出現順から決めて [`crate::DocNode::Figure`] に格納する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptionPosition {
   /// キャプションを本体の上に配置

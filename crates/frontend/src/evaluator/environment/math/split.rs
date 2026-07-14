@@ -9,7 +9,7 @@
 //!
 //! - `[numbered=false]` — 環境全体を無採番にする
 
-use document::{DocNode, MathEnvKind};
+use model::{DocNode, MathEnvKind};
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
@@ -39,7 +39,7 @@ pub(crate) fn split(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::MathEnvKind;
+  use model::MathEnvKind;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -52,7 +52,7 @@ mod tests {
   }
 
   /// 最初の `DocNode::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
-  fn block_of(result: &[DocNode]) -> (&[document::MathRow], bool) {
+  fn block_of(result: &[DocNode]) -> (&[model::MathRow], bool) {
     let DocNode::MathBlock {
       kind,
       rows,

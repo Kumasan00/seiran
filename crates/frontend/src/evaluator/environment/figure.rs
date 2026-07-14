@@ -18,8 +18,7 @@
 //!   を上書き）
 //! - `\caption{...}` — キャプション（任意）
 
-use document::{CaptionPosition, DocNode, InlineNode};
-use types::Length;
+use model::{CaptionPosition, DocNode, InlineNode, Length};
 
 use crate::{
   evaluator::{

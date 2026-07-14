@@ -6,8 +6,7 @@
 //! 左右の字下げは `VBox` の `indent` / `right_indent` で表し、`layout::build_blocks` が配下の
 //! 段落へ確定値を刻む。
 
-use document::{DocNode, QuoteKind};
-use types::{Align, Length};
+use model::{Align, DocNode, Length, QuoteKind};
 
 use super::{LoweringContext, LoweringError, PendingHeading, lower_nodes_inner};
 use crate::{counter::CounterRegistry, layout_node::LayoutNode};
@@ -59,7 +58,7 @@ pub(super) fn lower_quote(
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use document::{DocNode, InlineNode, QuoteKind};
+  use model::{DocNode, InlineNode, QuoteKind};
 
   use super::*;
 

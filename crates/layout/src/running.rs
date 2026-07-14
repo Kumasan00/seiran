@@ -10,10 +10,9 @@
 //! 設定からプリミティブの [`RunningContentSpec`] を組み立てて渡します（`PageGeometry` と同じ流儀）。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
-use hlist::{HBox, Line, Page, PlacedBlock, PositionedBox};
 use lowering::TextStyle;
+use model::{FontKind, HBox, Length, Line, Page, PlacedBlock, PositionedBox};
 use tracing::debug;
-use types::{FontKind, Length};
 
 use crate::Measurer;
 
@@ -242,8 +241,7 @@ fn append_slot(
 
 #[cfg(test)]
 mod tests {
-  use hlist::{HBox, HBoxContent, PositionedBox};
-  use types::Length;
+  use model::{HBox, HBoxContent, Length, PositionedBox};
 
   use super::{RunningMetadata, append_slot, slot_width, substitute};
 

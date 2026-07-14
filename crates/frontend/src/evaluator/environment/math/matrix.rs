@@ -12,7 +12,7 @@
 //!
 //! - `[delimiter=...]` — 区切り括弧の種別（`none` / `paren` / `bracket` / `brace` / `bar` / `dbar`）
 
-use document::{DocNode, MathDelimiter, MathEnvKind};
+use model::{DocNode, MathDelimiter, MathEnvKind};
 
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
@@ -79,7 +79,7 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::{MathDelimiter, MathEnvKind};
+  use model::{MathDelimiter, MathEnvKind};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -92,7 +92,7 @@ mod tests {
   }
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
-  fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[document::MathRow]) {
+  fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[model::MathRow]) {
     let DocNode::MathBlock {
       kind,
       rows,

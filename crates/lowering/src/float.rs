@@ -5,8 +5,7 @@
 //! 書体指定・インライン数式もスタイルを保持したまま埋め込まれる。
 
 use config::read_style::CaptionStyle;
-use document::{CaptionPosition, InlineNode};
-use types::{FontKind, Length};
+use model::{CaptionPosition, FontKind, InlineNode, Length};
 
 use super::{LoweringContext, LoweringError, template::expand_template};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -86,7 +85,7 @@ pub(super) fn wrap_float(
       margin_bottom: spec.bottom_margin,
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     },
   ];
 }
@@ -94,8 +93,7 @@ pub(super) fn wrap_float(
 #[cfg(test)]
 mod tests {
   use config::read_style::{CaptionStyle, Style as ReadStyle};
-  use document::{CaptionPosition, InlineNode};
-  use types::{FontKind, Length};
+  use model::{CaptionPosition, FontKind, InlineNode, Length};
 
   use super::*;
 
@@ -152,7 +150,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
-    assert_eq!(*align, types::Align::Center, "図表は既定で中央寄せ");
+    assert_eq!(*align, model::Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Rule { .. }));
@@ -252,7 +250,7 @@ mod tests {
     let caption_style = CaptionStyle::default();
     let inlines = [InlineNode::Ref {
       label: "fig:missing".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }];
 
     // Act

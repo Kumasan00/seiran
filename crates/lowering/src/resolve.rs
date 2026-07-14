@@ -5,7 +5,7 @@
 //! `\ref` は前方参照（本文より後ろで定義されるラベルを指す）を許すため、pass1 とは別の
 //! 走査として全体完了後にもう一度木を歩く必要がある。
 
-use types::LinkTarget;
+use model::LinkTarget;
 
 use crate::{
   LoweringError,
@@ -125,7 +125,7 @@ fn resolve_table(table: &mut TableLayout, registry: &CounterRegistry) -> Result<
 mod tests {
   use config::read_style::{CounterName, Style};
   use miette::SourceSpan;
-  use types::{FontKind, Length};
+  use model::{FontKind, Length};
 
   use super::*;
   use crate::layout_node::{TableCellLayout, TableRowLayout, TextStyle};
@@ -162,7 +162,7 @@ mod tests {
       margin_bottom: Length::ZERO,
       indent: Length::ZERO,
       right_indent: Length::ZERO,
-      align: types::Align::Left,
+      align: model::Align::Left,
     }];
 
     // Act
@@ -175,7 +175,7 @@ mod tests {
     let LayoutNode::Link { target, children } = &children[0] else {
       panic!("Link が期待されます: {:?}", children[0]);
     };
-    assert_eq!(*target, types::LinkTarget::Internal("sec:intro".to_string()));
+    assert_eq!(*target, model::LinkTarget::Internal("sec:intro".to_string()));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "Section 1.1"));
   }
 

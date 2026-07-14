@@ -14,11 +14,11 @@
 //! 既定では全スロットが空文字列のため、何も指定しなければヘッダー・フッターは描画されない。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   Color, FontKind,
   length::{Length, non_negative, positive},
 };
+use serde::{Deserialize, Serialize};
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
 ///
@@ -87,7 +87,7 @@ impl Default for RunningContentStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, length::Length};
+  use model::{FontKind, length::Length};
 
   use super::RunningContentStyle;
 

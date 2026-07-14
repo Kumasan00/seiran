@@ -3,17 +3,11 @@
 //! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
-use types::{Align, AnchorMark, Length};
-
-use crate::{
-  hitem::{HBox, HItem},
-  line::Line,
-  table_box::TableBox,
-};
+use crate::{Align, AnchorMark, HBox, HItem, Length, Line, TableBox};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///
-/// 水平リストの禁止規約（[`crate::hitem::HItem::Penalty`] は `i32::MAX` が禁止）と対称に、
+/// 水平リストの禁止規約（[`crate::HItem::Penalty`] は `i32::MAX` が禁止）と対称に、
 /// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
 pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
@@ -196,7 +190,7 @@ impl Block {
 /// 数式ブロックの行番号（測定済み）
 ///
 /// `break_pages` が `dy`（本体ベースラインからのオフセット）と本文幅から本文端に寄せて
-/// 確定座標を与え、[`crate::page::PlacedMathNumber`] にする。
+/// 確定座標を与え、[`crate::PlacedMathNumber`] にする。
 #[derive(Debug, Clone)]
 pub struct MathRowNumber {
   /// 番号ボックス（`"(1)"` 等、シェーピング済み）

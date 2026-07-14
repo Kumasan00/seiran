@@ -1,7 +1,7 @@
 //! リスト（`DocNode::List`）の lowering
 
 use config::read_style::NumberStyle;
-use document::ListItem;
+use model::ListItem;
 
 use super::{LoweringContext, LoweringError, PendingHeading, lower_nodes_inner};
 use crate::{
@@ -44,7 +44,7 @@ pub(super) fn lower_list(
 
   // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
   // 同時にネスト深さを +1 して渡し、item 内容中のネストしたリストが深さ +1 で lower されるようにする。
-  let item_ctx = ctx.with_first_line_indent(types::Length::pt(0.0)).with_list_depth(depth + 1);
+  let item_ctx = ctx.with_first_line_indent(model::Length::pt(0.0)).with_list_depth(depth + 1);
 
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
@@ -83,8 +83,8 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: list_style.item_margin_bottom,
       indent: list_style.indent,
-      right_indent: types::Length::pt(0.0),
-      align: types::Align::Left,
+      right_indent: model::Length::pt(0.0),
+      align: model::Align::Left,
     });
   }
 
@@ -94,8 +94,7 @@ pub(super) fn lower_list(
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use document::{DocNode, InlineNode, ListItem};
-  use types::FontKind;
+  use model::{DocNode, FontKind, InlineNode, ListItem};
 
   use super::*;
 

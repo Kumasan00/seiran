@@ -11,10 +11,9 @@
 //! 伸縮で収まらない病的な段落（分割不能な長箱等）は、そのサブ段落だけ貪欲法へフォールバックし、
 //! 結果が貪欲法を下回らないことを保証する。
 
-use types::{Length, TextAlignment};
+use model::{HItem, Length, Line, TextAlignment};
 
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
-use crate::{hitem::HItem, line::Line};
 
 /// 1 行ぶんの demerits に加える基礎ペナルティ（TeX の `\linepenalty` 相当）
 const LINE_PENALTY: f64 = 10.0;
@@ -283,19 +282,16 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use types::{Length, TextAlignment};
+  use model::{HItem, Length, TextAlignment};
 
   use super::{
     super::test_support::{box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box},
     KnuthPlassBreaker, break_subparagraph,
   };
-  use crate::{
-    break_lines::{GreedyBreaker, LineBreaker},
-    hitem::HItem,
-  };
+  use crate::break_lines::{GreedyBreaker, LineBreaker};
 
   /// 行の右端（box 群の最大右端）
-  fn right_edge(line: &crate::line::Line) -> Length {
+  fn right_edge(line: &model::Line) -> Length {
     return line.boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max);
   }
 

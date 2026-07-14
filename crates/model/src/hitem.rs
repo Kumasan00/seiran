@@ -3,9 +3,7 @@
 //! box の width / height / depth は生成時（`layout::build_blocks`）に 1 回だけ計測して
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
-use types::{Length, LinkTarget};
-
-use crate::glyph_run::GlyphRun;
+use crate::{GlyphRun, Length, LinkTarget};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]
@@ -147,9 +145,8 @@ pub struct PlacedHItem {
 
 #[cfg(test)]
 mod tests {
-  use types::Length;
-
   use super::{HBox, HBoxContent, HItem, PlacedHItem};
+  use crate::Length;
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
   fn pt(value: f32) -> Length { return Length::pt(value); }

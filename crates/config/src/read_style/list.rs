@@ -1,11 +1,11 @@
 //! リスト要素（順序付き / 順序なし）のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   FontKind,
   length::{Length, non_negative},
 };
+use serde::{Deserialize, Serialize};
 
 /// リスト要素のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -44,7 +44,7 @@ impl Default for ListStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, length::Length};
+  use model::{FontKind, length::Length};
 
   use super::ListStyle;
 

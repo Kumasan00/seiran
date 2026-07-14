@@ -9,9 +9,8 @@
 
 use std::collections::HashSet;
 
-use document::{DocNode, HeadingLevel, InlineNode, MathNode, MathStyle};
 use frontend::{EvalError, ParseSourceError, parse_source};
-use types::FontKind;
+use model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
 
 /// 引用キーの集合を組み立てるテストヘルパ
 fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).to_string()).collect(); }

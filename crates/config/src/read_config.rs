@@ -10,9 +10,9 @@ use std::{
 
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
-use types::FontType;
 
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};

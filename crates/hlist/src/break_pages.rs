@@ -10,16 +10,13 @@
 //! ただし画像・表・罫線はブロックの底辺で終わるため、直後の段落はベースラインを
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
-use tracing::debug;
-use types::{AnchorMark, Length, TextAlignment};
-
-use crate::{
-  block::{Block, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK},
-  break_lines::LineBreaker,
-  line::Line,
-  page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedMathNumber, PlacedTableRow},
-  table_box::{TableBox, resolve_column_widths, table_row_height},
+use model::{
+  AnchorMark, Block, Length, Line, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock,
+  PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TextAlignment, resolve_column_widths, table_row_height,
 };
+use tracing::debug;
+
+use crate::break_lines::LineBreaker;
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
 ///
@@ -383,7 +380,7 @@ fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
 /// * `geom` - ページジオメトリ（段組み数・段間を含む）
 /// * `breaker` - 行分割アルゴリズム
 /// * `alignment` - 本文段落の行末処理（`style.toml` の `[text] alignment`）。両端揃えは
-///   左揃え段落にのみ適用し、中央・右寄せ段落（[`types::Align::Center`] / [`types::Align::Right`]）は
+///   左揃え段落にのみ適用し、中央・右寄せ段落（[`model::Align::Center`] / [`model::Align::Right`]）は
 ///   伸縮しない
 ///
 /// 段組み時は本文を左段 → 右段 → 次ページの順に流す。各ブロックは 1 段あたりの幅 `col_width` で
@@ -801,7 +798,7 @@ fn keep_group_orphaned(
         align,
       } => {
         let available = (column_width - *indent - *right_indent).max(Length::ZERO);
-        let effective = if *align == types::Align::Left {
+        let effective = if *align == model::Align::Left {
           alignment
         } else {
           TextAlignment::RaggedRight
@@ -874,17 +871,17 @@ fn place_paragraph(
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,
-  items: &[crate::hitem::HItem],
+  items: &[model::HItem],
   leading: Length,
   column_width: Length,
   indent: Length,
   right_indent: Length,
-  align: types::Align,
+  align: model::Align,
 ) {
   let available = (column_width - indent - right_indent).max(Length::ZERO);
   // 両端揃えは左揃え段落にのみ適用する。中央・右寄せ段落は行を自然幅のまま組み、
   // 確定後に揃えオフセットでシフトする（伸縮すると余り幅が消えて揃え自体が無意味になる）
-  let effective_alignment = if align == types::Align::Left {
+  let effective_alignment = if align == model::Align::Left {
     alignment
   } else {
     TextAlignment::RaggedRight
@@ -989,10 +986,10 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
 fn place_math_block(
   composer: &mut PageComposer,
   geom: &PageGeometry,
-  body: crate::hitem::HBox,
-  numbers: Vec<crate::block::MathRowNumber>,
+  body: model::HBox,
+  numbers: Vec<model::MathRowNumber>,
   numbers_on_right: bool,
-  align: types::Align,
+  align: model::Align,
   column_width: Length,
 ) {
   let total_height = body.height + body.depth;
@@ -1048,7 +1045,7 @@ fn place_table(
   geom: &PageGeometry,
   table: &TableBox,
   column_width: Length,
-  align: types::Align,
+  align: model::Align,
 ) {
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
   // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
@@ -1131,20 +1128,15 @@ fn place_table(
 
 #[cfg(test)]
 mod tests {
-  use types::{ColumnAlign, ColumnWidth, Length, TableColumn, TextAlignment};
+  use model::{
+    Block, ColumnAlign, ColumnWidth, GlyphRun, HBox, HBoxContent, HItem, Length, Line, PENALTY_FORBID_BREAK, Page,
+    PlacedBlock, TableBox, TableCellBox, TableColumn, TableRowBox, TextAlignment,
+  };
 
   use super::{
     LinePlacement, PageGeometry, break_pages, column_width, is_content_block, keep_group_end, plan_paragraph_lines,
   };
-  use crate::{
-    block::{Block, PENALTY_FORBID_BREAK},
-    break_lines::GreedyBreaker,
-    glyph_run::GlyphRun,
-    hitem::{HBox, HBoxContent, HItem},
-    line::Line,
-    page::{Page, PlacedBlock},
-    table_box::{TableBox, TableCellBox, TableRowBox},
-  };
+  use crate::break_lines::GreedyBreaker;
 
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }
@@ -1216,7 +1208,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     };
   }
 
@@ -1496,7 +1488,7 @@ mod tests {
         width: Some(pt(20.0)),
         height: Some(pt(15.0)),
         target_dpi: None,
-        align: types::Align::Left,
+        align: model::Align::Left,
       },
       paragraph_of_lines(1),
     ];
@@ -1526,7 +1518,7 @@ mod tests {
         width: Some(pt(20.0)),
         height: Some(pt(30.0)),
         target_dpi: None,
-        align: types::Align::Left,
+        align: model::Align::Left,
       },
     ];
 
@@ -1548,7 +1540,7 @@ mod tests {
             font_size: pt(10.0),
             text: text.to_string(),
             glyphs: Vec::new(),
-            font_type: types::FontType::Serif,
+            font_type: model::FontType::Serif,
             color: None,
           }),
           width: Length::pt(20.0),
@@ -1652,7 +1644,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: types::Align::Left,
+        align: model::Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -1669,7 +1661,7 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_to_next_paragraph_top() {
     // Arrange — Anchor の直後の段落の先頭行の上端にアンカーが解決される
-    use types::AnchorMark;
+    use model::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
@@ -1693,7 +1685,7 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_on_page_after_break() {
     // Arrange — ページ 1 を埋めた後の Anchor は、改ページした次段落とともにページ 2 に解決される
-    use types::AnchorMark;
+    use model::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
@@ -1714,7 +1706,7 @@ mod tests {
   #[test]
   fn paragraph_link_becomes_placed_link() {
     // Arrange — リンクマーカーで囲んだ段落から PlacedLink が確定する
-    use types::LinkTarget;
+    use model::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -1727,7 +1719,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     }];
 
     // Act
@@ -1764,7 +1756,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(20.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     }];
 
     // Act
@@ -1816,7 +1808,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(10.0),
       right_indent: Length::pt(10.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     }];
 
     // Act
@@ -1848,7 +1840,7 @@ mod tests {
   #[test]
   fn paragraph_indent_shifts_links() {
     // Arrange — indent=15 のリンク付き段落。リンク矩形も indent ぶん右へシフトされる
-    use types::LinkTarget;
+    use model::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -1861,7 +1853,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(15.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     }];
 
     // Act
@@ -1883,7 +1875,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -1910,7 +1902,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Right,
+      align: model::Align::Right,
     }];
 
     // Act
@@ -1939,7 +1931,7 @@ mod tests {
   }
 
   /// 伸縮能力付き glue で折り返す 2 行の段落（1 行目自然幅 25）を作る
-  fn stretchable_paragraph(align: types::Align) -> Block {
+  fn stretchable_paragraph(align: model::Align) -> Block {
     return Block::Paragraph {
       items: vec![
         test_box(),
@@ -1959,7 +1951,7 @@ mod tests {
   fn justify_stretches_left_aligned_paragraph() {
     // Arrange — text_width=27 で折り返す左揃え段落を justify 設定で配置する
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(types::Align::Left)];
+    let blocks = vec![stretchable_paragraph(model::Align::Left)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -1980,7 +1972,7 @@ mod tests {
   fn justify_does_not_stretch_centered_paragraph() {
     // Arrange — 同じ段落を align=Center にすると justify 設定でも伸縮しない
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(types::Align::Center)];
+    let blocks = vec![stretchable_paragraph(model::Align::Center)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -2003,7 +1995,7 @@ mod tests {
   fn justify_does_not_stretch_right_aligned_paragraph() {
     // Arrange — align=Right も伸縮せず、自然幅のまま右端へ寄る
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(types::Align::Right)];
+    let blocks = vec![stretchable_paragraph(model::Align::Right)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -2039,7 +2031,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2084,7 +2076,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2109,7 +2101,7 @@ mod tests {
   fn centered_paragraph_shifts_links() {
     // Arrange — box 2 つ（幅 20）を囲むリンクを align=Center、text_width=100 で配置する。
     // リンク矩形も中央オフセット分シフトされ、確定 PlacedLink に追従する。
-    use types::LinkTarget;
+    use model::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -2122,7 +2114,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2149,7 +2141,7 @@ mod tests {
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2171,7 +2163,7 @@ mod tests {
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
-      align: types::Align::Right,
+      align: model::Align::Right,
     }];
 
     // Act
@@ -2191,7 +2183,7 @@ mod tests {
     let blocks = vec![Block::Rule {
       width: Length::pt(30.0),
       height: Length::pt(2.0),
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2221,7 +2213,7 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2251,7 +2243,7 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
-      align: types::Align::Center,
+      align: model::Align::Center,
     }];
 
     // Act
@@ -2291,12 +2283,12 @@ mod tests {
   }
 
   /// 合成済み単一行（[`Block::ComposedLine`]）のテスト用ヘルパ。幅・高さ・深さと任意のリンクを持つ
-  fn composed_line(width: f32, height: f32, depth: f32, link: Option<types::LinkTarget>) -> Block {
+  fn composed_line(width: f32, height: f32, depth: f32, link: Option<model::LinkTarget>) -> Block {
     let width = pt(width);
     let height = pt(height);
     let depth = pt(depth);
     let links = link.map_or_else(Vec::new, |target| {
-      vec![crate::line::LineLink {
+      vec![model::LineLink {
         target,
         x0: Length::ZERO,
         x1: width,
@@ -2304,7 +2296,7 @@ mod tests {
     });
     return Block::ComposedLine {
       line: Line {
-        boxes: vec![crate::line::PositionedBox {
+        boxes: vec![model::PositionedBox {
           content: HBoxContent::Rule { width, height },
           x: Length::ZERO,
           dy: Length::ZERO,
@@ -2346,7 +2338,7 @@ mod tests {
   #[test]
   fn composed_line_resolves_anchor_and_collects_link() {
     // Arrange — 見出しアンカー直後の ComposedLine（内部リンク付き）
-    use types::{AnchorMark, LinkTarget};
+    use model::{AnchorMark, LinkTarget};
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
@@ -2436,7 +2428,7 @@ mod tests {
   fn two_column_paragraph_link_rect_uses_column_offset() {
     // Arrange（Hole A の番人）— 左段を埋めた後に右段へ入るリンク付き段落を置く。リンク矩形は
     // ボックスと一緒に段オフセット分シフトされていなければならない。
-    use types::LinkTarget;
+    use model::LinkTarget;
     let geom = two_column_geometry();
     let link_para = Block::Paragraph {
       items: vec![
@@ -2448,7 +2440,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     };
     // paragraph_of_lines(5) で左段を埋め、カーソルを右段へ送ってからリンク段落を置く
     let blocks = vec![paragraph_of_lines(5), link_para];
@@ -2486,7 +2478,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: types::Align::Left,
+        align: model::Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -2518,7 +2510,7 @@ mod tests {
     assert!(is_content_block(&Block::Rule {
       width: Length::pt(1.0),
       height: Length::pt(1.0),
-      align: types::Align::Left,
+      align: model::Align::Left,
     }));
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
     assert!(!is_content_block(&forbid_break()));
@@ -2717,7 +2709,7 @@ mod tests {
     return Block::Rule {
       width: Length::pt(10.0),
       height: pt(height),
-      align: types::Align::Left,
+      align: model::Align::Left,
     };
   }
 

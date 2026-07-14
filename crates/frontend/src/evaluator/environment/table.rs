@@ -23,9 +23,8 @@ mod cell;
 mod opts;
 
 use body::{resolve_column_count, scan_table_body};
-use document::DocNode;
+use model::{ColumnAlign, ColumnWidth, DocNode};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
-use types::{ColumnAlign, ColumnWidth};
 
 use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
 
@@ -86,7 +85,7 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::{CaptionPosition, InlineNode, TableRow, inline_nodes_to_plain_text};
+  use model::{CaptionPosition, InlineNode, TableRow, inline_nodes_to_plain_text};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -435,7 +434,7 @@ mod tests {
     assert!(matches!(
       &rows[0].cells[0].content[0],
       InlineNode::Styled {
-        kind: types::FontKind::SerifBold,
+        kind: model::FontKind::SerifBold,
         ..
       }
     ));

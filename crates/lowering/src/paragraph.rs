@@ -4,7 +4,7 @@
 //! 段落間のアキは `Vkern`（`text.paragraph_spacing`）で構造的に表します。
 //! 段落先頭行の字下げは先頭に水平カーン（`ctx.first_line_indent`）を前置して表します。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -103,7 +103,7 @@ mod tests {
   fn paragraph_prepends_first_line_indent_kern_when_positive() {
     // Arrange — first_line_indent を 15pt にした文脈
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(types::Length::pt(15.0));
+    let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
     let inlines = [InlineNode::Text("body".to_string())];
 
     // Act
@@ -121,7 +121,7 @@ mod tests {
   fn paragraph_noindent_marker_suppresses_indent_kern() {
     // Arrange — first_line_indent を 15pt にした文脈で、先頭に NoIndent マーカーがある段落
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(types::Length::pt(15.0));
+    let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
     let inlines = [InlineNode::NoIndent, InlineNode::Text("body".to_string())];
 
     // Act
@@ -180,7 +180,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let inlines = [InlineNode::Ref {
       label: "eq:missing".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }];
 
     // Act

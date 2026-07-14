@@ -2,9 +2,9 @@
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
+use model::FontType;
 use read_fonts::ReadError;
 use thiserror::Error;
-use types::FontType;
 
 /// PDF 生成中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]

@@ -5,8 +5,7 @@
 //! 各コマンドは子要素を再帰的に `InlineNode` に変換し、対応する `FontKind` を持つ
 //! [`InlineNode::Styled`] を生成します。ネスト時は内側の書体が完全に上書きします。
 
-use document::InlineNode;
-use types::FontKind;
+use model::{FontKind, InlineNode};
 
 use crate::{
   evaluator::{
@@ -223,7 +222,7 @@ mod tests {
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, types::Color::new(0xff, 0x00, 0x00));
+    assert_eq!(*color, model::Color::new(0xff, 0x00, 0x00));
     assert_eq!(children.len(), 1);
     assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
   }
@@ -279,7 +278,7 @@ mod tests {
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, types::Color::new(0x00, 0x00, 0xff));
+    assert_eq!(*color, model::Color::new(0x00, 0x00, 0xff));
     let InlineNode::Styled { kind, .. } = &children[0] else {
       panic!("内側は Styled が期待されます: {children:?}");
     };

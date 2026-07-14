@@ -8,7 +8,7 @@
 //! ## 設計方針
 //!
 //! - 型変換とキー検証は本モジュールに集約。各ハンドラの変換ボイラープレートを排除する
-//! - 長さは [`types::Length`] として返し、入力では `(無印) / mm / cm` を許可（大文字小文字非依存）。
+//! - 長さは [`model::Length`] として返し、入力では `(無印) / mm / cm` を許可（大文字小文字非依存）。
 //!   無印は `mm` 扱い。`pt`/`em`/`in` 等の単位は受け付けない（必要になったら拡張する）
 //! - boolean は `[draft]` の bare key ショートハンドを `Bool(true)` として受理。
 //!   bare key が来たがスキーマ側で `OptType::Bool` 以外を期待していた場合は型エラー
@@ -17,7 +17,7 @@
 
 use std::fmt;
 
-use types::{Color, Length};
+use model::{Color, Length};
 
 use crate::{
   evaluator::EvalError,
@@ -36,9 +36,9 @@ pub(crate) enum OptType {
   Number,
   /// 任意の文字列
   String,
-  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`types::Length`] に正規化する
+  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`model::Length`] に正規化する
   Length,
-  /// 色。`#rrggbb` の 16 進文字列を [`types::Color`] に変換する（大文字小文字不問）
+  /// 色。`#rrggbb` の 16 進文字列を [`model::Color`] に変換する（大文字小文字不問）
   Color,
 }
 
@@ -61,9 +61,9 @@ pub(crate) enum OptValue {
   Bool(bool),
   Number(f64),
   String(String),
-  /// [`types::Length`] に正規化された長さ
+  /// [`model::Length`] に正規化された長さ
   Length(Length),
-  /// [`types::Color`] に変換された色
+  /// [`model::Color`] に変換された色
   Color(Color),
 }
 

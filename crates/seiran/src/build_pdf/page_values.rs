@@ -11,7 +11,7 @@
 //! 流儀を型に昇格させたもの。
 
 use config::read_style::PageNumbering;
-use types::AnchorMark;
+use model::AnchorMark;
 
 /// 本文ページ分割後にしか構築できない確定値（目次構築の引数型）
 ///
@@ -32,7 +32,7 @@ impl BodyPageValues {
   ///
   /// `pdf_gen::build_destination_index` と同型のアンカー走査で、各ページの `AnchorMark::Heading`
   /// アンカーだけを文書順に拾う（`AnchorMark::Label` は無視）。
-  pub(super) fn from_body_pages(body_pages: &[hlist::Page], numbering: &PageNumbering) -> Self {
+  pub(super) fn from_body_pages(body_pages: &[model::Page], numbering: &PageNumbering) -> Self {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
@@ -65,7 +65,7 @@ impl BodyPageValues {
   /// 本文はそれ以降を `numbering.body`（既定算用数字）で 1 から振り直す。`{pages}` は同じリージョンの
   /// 総数を同じスタイルでレンダリングしたもの。素の `usize` でなく前付けページ列そのものを引数に取る
   /// ことで、「連結前の前付けページ列が確定していること」を型で要求する（0 や本文数の誤渡しを防ぐ）。
-  pub(super) fn finalize(self, front_pages: &[hlist::Page]) -> PageLabels {
+  pub(super) fn finalize(self, front_pages: &[model::Page]) -> PageLabels {
     let front_count = front_pages.len();
     let body_count = self.body_page_count;
     let total = front_count + body_count;
@@ -102,8 +102,7 @@ impl PageLabels {
 #[cfg(test)]
 mod tests {
   use config::read_style::PageNumbering;
-  use hlist::{Page, PlacedAnchor};
-  use types::AnchorMark;
+  use model::{AnchorMark, Page, PlacedAnchor};
 
   use super::BodyPageValues;
 
@@ -117,8 +116,8 @@ mod tests {
         .into_iter()
         .map(|mark| PlacedAnchor {
           mark,
-          x: types::Length::ZERO,
-          y: types::Length::ZERO,
+          x: model::Length::ZERO,
+          y: model::Length::ZERO,
         })
         .collect(),
       links: Vec::new(),

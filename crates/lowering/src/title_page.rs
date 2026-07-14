@@ -9,7 +9,7 @@
 //! 次の要素の前に挿入することで、欠落要素があってもアキが二重に出ないようにする。
 
 use config::read_style::TitlePageStyle;
-use types::{Align, FontKind, Length};
+use model::{Align, FontKind, Length};
 
 use crate::layout_node::{LayoutNode, TextStyle};
 
@@ -94,7 +94,7 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
 #[cfg(test)]
 mod tests {
   use config::read_style::TitlePageStyle;
-  use types::{Align, Length};
+  use model::{Align, Length};
 
   use super::{TitlePageMetadata, lower_title_page};
   use crate::layout_node::LayoutNode;

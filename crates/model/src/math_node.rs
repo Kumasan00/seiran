@@ -1,6 +1,6 @@
 //! 数式要素の型定義
 
-use miette::SourceSpan;
+use crate::Span;
 
 // =============================================================================
 // 数式要素
@@ -111,7 +111,7 @@ pub struct MathRow {
   pub label: Option<String>,
   /// 行末マーカー `\label{...}` のソース位置。`None` の場合は環境（`DocNode::MathBlock`）の
   /// `span` をフォールバックとして使う（`equation` の `[label=...]` など、行に固有の位置がない場合）
-  pub label_span: Option<SourceSpan>,
+  pub label_span: Option<Span>,
 }
 
 impl MathStyle {

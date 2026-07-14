@@ -1,14 +1,12 @@
 //! 縦組版の出力（[`Page`] / [`PlacedBlock`]）の定義
 //!
-//! [`crate::break_pages`] がすべてのレイアウト判断（行送り・改ページ・表の分割）を
+//! `hlist::break_pages` がすべてのレイアウト判断（行送り・改ページ・表の分割）を
 //! 終えた確定座標を保持する。`pdf_gen` はこれを描画するだけでよい。
 //!
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use types::{AnchorMark, Length, LinkTarget, TableColumn};
-
-use crate::{hitem::HBox, line::Line, table_box::TableRowBox};
+use crate::{AnchorMark, HBox, Length, Line, LinkTarget, TableColumn, TableRowBox};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]

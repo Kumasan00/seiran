@@ -6,8 +6,8 @@
 
 use std::{fs, path::Path};
 
-use hlist::Block;
 use krilla::image::Image;
+use model::Block;
 use tracing::debug;
 use usvg::Tree;
 
@@ -17,7 +17,7 @@ use crate::error::PdfGenError;
 ///
 /// `Block::Image` の `width` / `height` が未指定（`None`）の場合に画像ファイルを開いて
 /// 自然寸法を取得し、縦横比と本文幅から最終物理サイズ（pt）を確定する。
-/// 縦組版（`hlist::break_pages`）が画像高さで改ページ判定できるよう、
+/// 縦組版（`model::break_pages`）が画像高さで改ページ判定できるよう、
 /// (a) `build_blocks` と (c+d) `break_pages` の間に挟む。
 ///
 /// # Errors
@@ -38,8 +38,8 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
         let loaded = load_image(&path, None)?;
         let (nat_width, nat_height) = loaded.natural_size();
         let (final_width, final_height) = resolve_image_size(
-          width.map(types::Length::to_pt),
-          height.map(types::Length::to_pt),
+          width.map(model::Length::to_pt),
+          height.map(model::Length::to_pt),
           nat_width,
           nat_height,
           text_width,
@@ -51,8 +51,8 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
         })?;
         return Ok(Block::Image {
           path,
-          width: Some(types::Length::pt(final_width)),
-          height: Some(types::Length::pt(final_height)),
+          width: Some(model::Length::pt(final_width)),
+          height: Some(model::Length::pt(final_height)),
           target_dpi,
           align,
         });

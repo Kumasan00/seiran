@@ -1,7 +1,7 @@
 //! 表（table 環境）の列指定に関する共通型
 //!
-//! `parser`（`columns=` / `widths=` の解析）、`document` / `lowering`（IR・レイアウトノード）、
-//! `hlist`（列幅解決）、`pdf_gen`（描画）の全段で共有されるため `types` クレートに置く。
+//! `frontend`（`columns=` / `widths=` の解析）、`DocNode` / `lowering`（IR・レイアウトノード）、
+//! `pdf_gen`（列幅解決・描画）の全段で共有されるため契約クレートである本クレートに置く。
 
 use crate::Length;
 

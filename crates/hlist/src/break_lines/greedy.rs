@@ -4,10 +4,9 @@
 //! 分割点の選択は常に自然幅で行い、両端揃えは確定した行内の伸縮点の幅だけを変える仕上げ
 //! （[`build_line`]）として適用する。
 
-use types::{Length, TextAlignment};
+use model::{HItem, Length, Line, TextAlignment};
 
 use super::{LineBreaker, OpenLink, build_line};
-use crate::{hitem::HItem, line::Line};
 
 /// 貪欲法（first-fit）による行分割
 ///
@@ -118,7 +117,7 @@ impl LineBreaker for GreedyBreaker {
 
 #[cfg(test)]
 mod tests {
-  use types::{Length, TextAlignment};
+  use model::{HBox, HBoxContent, HItem, Length, TextAlignment};
 
   use super::{
     super::test_support::{
@@ -127,10 +126,7 @@ mod tests {
     },
     GreedyBreaker,
   };
-  use crate::{
-    break_lines::LineBreaker,
-    hitem::{HBox, HBoxContent, HItem},
-  };
+  use crate::break_lines::LineBreaker;
 
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }

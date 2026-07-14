@@ -1,6 +1,6 @@
 //! PDF 生成モジュール
 //!
-//! 組版済みの `hlist::Page` 列（確定座標）を Krilla で描画し、PDF バイト列を生成します。
+//! 組版済みの `model::Page` 列（確定座標）を Krilla で描画し、PDF バイト列を生成します。
 //! レイアウト判断は前段（`layout` / `hlist`）で完了しており、本クレートが担うのは
 //! 画像サイズ確定の prepass（[`resolve_images`]）と描画（[`create_pdf`]）のみです。
 //! フォントサブセット化は krilla が内部で実施します。
@@ -13,10 +13,9 @@ mod render;
 
 use ::font::{FontData, FontMetrics, FontRefs};
 use config::{read_config::Config, read_style::Style};
-use hlist::Page;
 use krilla::{Document, page::PageSettings};
+use model::{HeadingLevel, Page};
 use tracing::debug;
-use types::HeadingLevel;
 
 pub use crate::{error::PdfGenError, image::resolve_images};
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
@@ -42,7 +41,7 @@ pub struct OutlineEntry {
 /// * `font_bytes` - フォントバイナリ
 /// * `font_refs` - 解析済みフォント参照
 /// * `metrics` - 全フォント種別の基本メトリクス（upem / ascender / descender）
-/// * `pages` - 組版済みページ列（`hlist::break_pages` の出力）
+/// * `pages` - 組版済みページ列（`model::break_pages` の出力）
 /// * `style` - スタイル設定
 /// * `outline_entries` - PDF しおり用の見出し情報（文書順、見出しアンカーと 1 対 1 対応）
 ///

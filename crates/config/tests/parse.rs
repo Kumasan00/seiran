@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use config::read_style::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
-use types::HeadingLevel;
+use model::HeadingLevel;
 
 fn dummy_source() -> &'static str { return "test.toml"; }
 
@@ -165,9 +165,9 @@ fn parse_style_overrides_header_and_footer() {
   // Assert: header は指定値、footer は center のみ指定で他はデフォルト
   assert_eq!(style.header.right, "{page} / {pages}");
   assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-  assert_eq!(style.header.font_kind, types::FontKind::SansSerif);
+  assert_eq!(style.header.font_kind, model::FontKind::SansSerif);
   assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-  assert_eq!(style.header.rule_color.map(types::Color::rgb), Some([0x33, 0x33, 0x33]));
+  assert_eq!(style.header.rule_color.map(model::Color::rgb), Some([0x33, 0x33, 0x33]));
   assert_eq!(style.footer.center, "{title}");
   assert!(style.footer.left.is_empty());
   // 既定では header/footer は空（描画なし）

@@ -30,7 +30,7 @@
 //!   - Sans Serif: 標準、太字
 //!   - Monospace: 標準、太字
 //!
-//! これらはすべて `types::FontType` enum で定義され、
+//! これらはすべて `model::FontType` enum で定義され、
 //! 各フォント種別に対応した処理が並列実行されます。
 //!
 //! ## サブモジュール
@@ -63,10 +63,10 @@ use std::fs;
 
 use config::read_config::FontConfigs;
 use miette::Diagnostic;
+use model::{FontMap, FontType};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
-use types::{FontMap, FontType};
 
 pub mod shaper;
 pub mod validate_font;

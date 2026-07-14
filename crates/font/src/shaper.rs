@@ -92,9 +92,9 @@ use harfrust::{
   ShaperInstance, Tag, Variation,
 };
 use miette::Diagnostic;
+use model::FontMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
-use types::FontMap;
 
 use crate::{FontRefs, FontType};
 

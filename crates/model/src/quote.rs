@@ -5,10 +5,9 @@
 //! ブロック内段落の先頭行を字下げし、`quote` は字下げしない（字下げ量や左右インデント・上下
 //! マージンといったスタイルは `config::read_style::QuoteStyle` 側が保持する）。
 //!
-//! `parser` が環境名から解決して [`DocNode::Quote`](crate::DocNode::Quote) に載せ、
+//! `frontend` が環境名から解決して [`DocNode::Quote`](crate::DocNode::Quote) に載せ、
 //! `lowering` が消費する。`LayoutNode` には乗らず、`read_style` もこの enum を使わない
-//! （`QuoteStyle` は種別ごとのフィールドで持つ）ため、`types` ではなく Document IR の
-//! 契約クレートである本クレートに置く。
+//! （`QuoteStyle` は種別ごとのフィールドで持つ）。
 
 /// ビルトイン引用環境の種別（固定 2 種）。
 ///
@@ -34,7 +33,7 @@ impl QuoteKind {
 
   /// 環境名（`snake_case`）から対応する種別を取得する。
   ///
-  /// 2 種以外の名前は `None` を返す。`parser` が `\begin{<name>}` の環境名を
+  /// 2 種以外の名前は `None` を返す。`frontend` が `\begin{<name>}` の環境名を
   /// 種別に解決するために使う。
   #[must_use]
   pub fn from_name(name: &str) -> Option<Self> {

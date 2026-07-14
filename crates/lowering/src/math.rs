@@ -6,8 +6,7 @@
 //! VS1 異体字セレクタを付与）、数式フォントが持つ字形バリアントを直接呼び出します。
 
 use config::read_style::{Alignment, CounterName, MathScriptStyle as MathStyleConfig, NumberSide};
-use document::{MathNode, MathRow, MathStyle};
-use types::{Align, FontKind, Length, MathEnvKind};
+use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathRow, MathStyle};
 
 use self::alphanumeric::push_math_char;
 use super::{LoweringContext, LoweringError};
@@ -27,7 +26,7 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
 /// `LayoutNode::MathBlock` に変換する
 ///
 /// 各行の各セル（`&` 区切りの列）を [`lower_inline_math`] で lower する。採番には 2 つの粒度があり、
-/// `kind` に応じてどちらか一方だけを使う（`document::DocNode::MathBlock` のドキュメント参照）:
+/// `kind` に応じてどちらか一方だけを使う（`model::DocNode::MathBlock` のドキュメント参照）:
 /// **行ごと採番**（`equation` / `align` / `gather`）は `row.numbered` の行を、**環境全体に 1 つ採番**
 /// （`split` / `multiline`）は `env_numbered` が `true` のとき環境全体を、それぞれ
 /// [`CounterName::Equation`] で発番する。`env_numbered` は parser（`assign_numbering`）が既に
@@ -47,7 +46,7 @@ pub(super) fn lower_math_block(
   rows: &[MathRow],
   env_numbered: bool,
   env_label: Option<&str>,
-  span: miette::SourceSpan,
+  span: model::Span,
   registry: &mut CounterRegistry,
 ) -> Result<LayoutNode, LoweringError> {
   let font_size = ctx.default_font_size();
@@ -103,7 +102,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `config::read_style::Alignment`（数式本体の揃え）を `types::Align` に対応付ける
+/// `config::read_style::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,
@@ -252,7 +251,7 @@ fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> V
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use types::Length;
+  use model::Length;
 
   use super::*;
 
@@ -453,7 +452,7 @@ mod tests {
     };
   }
 
-  fn dummy_span() -> miette::SourceSpan { return miette::SourceSpan::from((0_usize, 0_usize)); }
+  fn dummy_span() -> model::Span { return model::Span::DUMMY; }
 
   /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
   fn style_with_plain_equation_format() -> ReadStyle {

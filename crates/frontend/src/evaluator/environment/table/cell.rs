@@ -1,6 +1,6 @@
 //! `\row` の `&` 区切り区画からセル（[`TableCell`]）を構築する
 
-use document::{InlineNode, TableCell};
+use model::{InlineNode, TableCell};
 
 use crate::{
   evaluator::{

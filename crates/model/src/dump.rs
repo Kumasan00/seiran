@@ -11,13 +11,8 @@
 
 use std::fmt::Write;
 
-use types::Length;
-
 use crate::{
-  hitem::HBoxContent,
-  line::{Line, PositionedBox},
-  page::{Page, PlacedBlock, PlacedMathNumber, PlacedTableRow},
-  table_box::measure_items_width,
+  HBoxContent, Length, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
 
 /// ページ列を決定的なテキスト形式へダンプする。
@@ -258,15 +253,8 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use types::{FontType, Length};
-
   use super::dump_pages;
-  use crate::{
-    glyph_run::GlyphRun,
-    hitem::HBoxContent,
-    line::{Line, PositionedBox},
-    page::{Page, PlacedBlock},
-  };
+  use crate::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PositionedBox};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {

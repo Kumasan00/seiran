@@ -8,7 +8,7 @@
 //! `resolve_symbol_command` はコマンド名から単一 Unicode 文字を返す純粋関数で、
 //! 数式ノード変換（[`crate::evaluator::math`] モジュール）からも参照される。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use crate::{
   evaluator::{
@@ -210,7 +210,7 @@ mod tests {
     assert!(matches!(
       &inlines[0],
       InlineNode::Styled {
-        kind: types::FontKind::SerifBold,
+        kind: model::FontKind::SerifBold,
         ..
       }
     ));
@@ -294,7 +294,7 @@ mod tests {
     assert!(matches!(
       &inlines[2],
       InlineNode::Styled {
-        kind: types::FontKind::SerifBold,
+        kind: model::FontKind::SerifBold,
         ..
       }
     ));

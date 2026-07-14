@@ -16,7 +16,7 @@
 //! CST (syntax::green::GreenNode) — bumpalo::Bump アリーナ上
 //!   ↓ [evaluator]       型付きビュー (CommandView, EnvironmentView) を介して
 //!                        コマンド・環境を評価し Document IR に変換
-//! Document IR (document::DocNode, document::InlineNode)
+//! Document IR (model::DocNode, model::InlineNode)
 //! ```
 //!
 //! ## モジュール構成
@@ -27,8 +27,8 @@
 use std::collections::HashSet;
 
 use bumpalo::Bump;
-use document::DocNode;
 use miette::{Diagnostic, NamedSource};
+use model::DocNode;
 use thiserror::Error;
 use tracing::debug;
 

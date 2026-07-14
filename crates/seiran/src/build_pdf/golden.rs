@@ -1,7 +1,7 @@
 //! 確定レイアウトの golden スナップショット回帰テスト
 //!
 //! `tests/text/` の各入力を [`super::build_pages`] で組版し、確定ページ列を
-//! [`hlist::dump_pages`] で決定的テキストへ書き出して、`tests/golden/<name>.txt` と比較する。
+//! [`model::dump_pages`] で決定的テキストへ書き出して、`tests/golden/<name>.txt` と比較する。
 //! これにより PDF バイト列の非決定性（生成時刻・ID ハッシュ）を避けて、座標レベルの
 //! レイアウト回帰を `cargo test` で検出できる。
 //!
@@ -33,8 +33,7 @@ use std::{
 use citation::{References, read_references};
 use config::{read_config::Config, read_style::Style};
 use font::{FontData, FontDataExt};
-use hlist::{Page, PlacedBlock, dump_pages};
-use types::{AnchorMark, Length};
+use model::{AnchorMark, Length, Page, PlacedBlock, dump_pages};
 
 use super::build_pages;
 

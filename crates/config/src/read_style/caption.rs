@@ -3,11 +3,11 @@
 //! [`FigureStyle`](crate::read_style::FigureStyle) と [`TableStyle`](crate::read_style::TableStyle) が共有する 2 フィールド
 //! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置は図・表ともに
 //! ソース上の `\caption` の出現位置で決まるため、スタイル側では持たず Document IR
-//! （`document::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
+//! （`model::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
 
 use garde::Validate;
+use model::{Length, length::positive};
 use serde::{Deserialize, Serialize};
-use types::{Length, length::positive};
 
 /// キャプションの共通設定（figure / table で共有）。
 ///
@@ -39,7 +39,7 @@ impl Default for CaptionStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::Length;
+  use model::Length;
 
   use super::CaptionStyle;
 

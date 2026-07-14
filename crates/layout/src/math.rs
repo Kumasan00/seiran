@@ -5,9 +5,8 @@
 //! すべて自然幅なので、列幅・行高・区切り括弧の配置はすべてこの段で局所座標まで確定できる。
 //! 本文幅に依存する処理（本体の中央寄せ・番号の端寄せ）だけを `hlist::break_pages` に委ねる。
 
-use hlist::{Block, HBox, MathRowNumber, PlacedHItem};
 use lowering::{LayoutNode, MathBlockRow};
-use types::{Align, FontType, Length, MathDelimiter, MathEnvKind};
+use model::{Align, Block, FontType, HBox, Length, MathDelimiter, MathEnvKind, MathRowNumber, PlacedHItem};
 
 use crate::Measurer;
 
@@ -256,7 +255,7 @@ impl Measurer<'_> {
 
 #[cfg(test)]
 mod tests {
-  use types::{Length, MathDelimiter, MathEnvKind};
+  use model::{Length, MathDelimiter, MathEnvKind};
 
   use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
 

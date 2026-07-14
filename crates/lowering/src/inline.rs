@@ -3,8 +3,7 @@
 //! 親から継承されたスタイル（`parent_style`）を基に、インライン要素の種類に応じて
 //! フォント種別やサイズを変更します。
 
-use document::InlineNode;
-use types::LinkTarget;
+use model::{InlineNode, LinkTarget};
 
 use super::{LoweringContext, LoweringError, math::lower_inline_math};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -71,7 +70,7 @@ pub(super) fn lower_inline(
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       return Ok(vec![LayoutNode::Ref {
         label: label.clone(),
-        span: *span,
+        span: crate::span_to_source_span(*span),
         style,
         as_link: true,
         source: ctx.source,
@@ -108,7 +107,7 @@ pub(super) fn lower_inline(
       let Some(inlines) = label else {
         return Err(LoweringError::UnresolvedCitation {
           keys: keys.join(", "),
-          span: *span,
+          span: crate::span_to_source_span(*span),
           source_id: ctx.source,
         });
       };
@@ -129,7 +128,7 @@ pub(super) fn lower_inline(
 /// 明示的な `\color` を優先するため、親が既に色を持つ場合はそれを保ち、親が無色（`None`）の
 /// ときだけ `link_color` をデフォルトとして適用する。`link_color` 自体が `None`（色指定なし）なら
 /// 本文色（黒）を継承する（受け入れ条件: 色未指定時は黒継承）。
-fn with_link_color(parent_style: TextStyle, link_color: Option<types::Color>) -> TextStyle {
+fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) -> TextStyle {
   return TextStyle {
     color: parent_style.color.or(link_color),
     ..parent_style
@@ -138,7 +137,7 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<types::Color>) ->
 
 #[cfg(test)]
 mod tests {
-  use types::Length;
+  use model::Length;
 
   use super::*;
 
@@ -148,12 +147,12 @@ mod tests {
     let style = config::read_style::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Styled {
-      kind: types::FontKind::SerifItalic,
+      kind: model::FontKind::SerifItalic,
       children: vec![InlineNode::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
-      font_kind: types::FontKind::SerifBold,
+      font_kind: model::FontKind::SerifBold,
       color: None,
     };
 
@@ -165,7 +164,7 @@ mod tests {
       panic!("Text が期待されます: {nodes:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, types::FontKind::SerifItalic);
+    assert_eq!(text_style.font_kind, model::FontKind::SerifItalic);
     assert_eq!(text_style.font_size, Length::pt(10.0));
   }
 
@@ -175,12 +174,12 @@ mod tests {
     let style = config::read_style::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Colored {
-      color: types::Color::new(0xff, 0x00, 0x00),
+      color: model::Color::new(0xff, 0x00, 0x00),
       children: vec![InlineNode::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
-      font_kind: types::FontKind::SansSerif,
+      font_kind: model::FontKind::SansSerif,
       color: None,
     };
 
@@ -192,8 +191,8 @@ mod tests {
       panic!("Text が期待されます: {nodes:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, types::FontKind::SansSerif);
-    assert_eq!(text_style.color, Some(types::Color::new(0xff, 0x00, 0x00)));
+    assert_eq!(text_style.font_kind, model::FontKind::SansSerif);
+    assert_eq!(text_style.color, Some(model::Color::new(0xff, 0x00, 0x00)));
   }
 
   #[test]
@@ -202,9 +201,9 @@ mod tests {
     let style = config::read_style::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Colored {
-      color: types::Color::new(0x00, 0x80, 0x00),
+      color: model::Color::new(0x00, 0x80, 0x00),
       children: vec![InlineNode::Styled {
-        kind: types::FontKind::SerifBold,
+        kind: model::FontKind::SerifBold,
         children: vec![InlineNode::Text("x".to_string())],
       }],
     };
@@ -217,8 +216,8 @@ mod tests {
     let LayoutNode::Text(_, text_style) = &nodes[0] else {
       panic!("Text が期待されます: {nodes:?}");
     };
-    assert_eq!(text_style.font_kind, types::FontKind::SerifBold);
-    assert_eq!(text_style.color, Some(types::Color::new(0x00, 0x80, 0x00)));
+    assert_eq!(text_style.font_kind, model::FontKind::SerifBold);
+    assert_eq!(text_style.color, Some(model::Color::new(0x00, 0x80, 0x00)));
   }
 
   #[test]
@@ -227,7 +226,7 @@ mod tests {
     // （解決は pass2 = resolve::resolve_refs が担う）
     let style = config::read_style::Style::default();
     let ctx = LoweringContext::new(&style);
-    let span = miette::SourceSpan::from((3_usize, 4_usize));
+    let span = model::Span::new(3, 4);
     let inline = InlineNode::Ref {
       label: "sec:intro".to_string(),
       span,
@@ -249,7 +248,7 @@ mod tests {
       panic!("Ref が期待されます: {nodes:?}");
     };
     assert_eq!(label, "sec:intro");
-    assert_eq!(*got_span, span);
+    assert_eq!(*got_span, crate::span_to_source_span(span));
     assert_eq!(*style, parent);
     assert!(*as_link, "\\ref はリンク領域として発行されるはず");
   }
@@ -280,13 +279,13 @@ mod tests {
   fn lower_ref_applies_link_color() {
     // Arrange — style で link_color を指定すると Ref プレースホルダの style に乗る
     // （pass2 が解決後の Text へそのまま引き継ぐ）
-    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let blue = model::Color::new(0x00, 0x00, 0xff);
     let mut style = config::read_style::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "sec:intro".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     };
 
     // Act
@@ -305,7 +304,7 @@ mod tests {
   #[test]
   fn lower_external_link_applies_url_color() {
     // Arrange — style で url_color を指定すると外部リンクの表示テキストに乗る
-    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let blue = model::Color::new(0x00, 0x00, 0xff);
     let mut style = config::read_style::Style::default();
     style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
@@ -335,7 +334,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
       label: "a".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     };
 
     // Act
@@ -356,12 +355,12 @@ mod tests {
     // Arrange — \color[red]{\ref{a}} は明示色（赤）がリンク色より優先される
     let style = config::read_style::Style::default();
     let ctx = LoweringContext::new(&style);
-    let red = types::Color::new(0xff, 0x00, 0x00);
+    let red = model::Color::new(0xff, 0x00, 0x00);
     let inline = InlineNode::Colored {
       color: red,
       children: vec![InlineNode::Ref {
         label: "a".to_string(),
-        span: miette::SourceSpan::from((0_usize, 0_usize)),
+        span: model::Span::DUMMY,
       }],
     };
 
@@ -402,7 +401,7 @@ mod tests {
   #[test]
   fn lower_cite_label_applies_cite_color_and_links() {
     // Arrange — Cite ラベル内の InternalLink 番号は cite_color を継承しつつ内部リンクになる
-    let blue = types::Color::new(0x00, 0x00, 0xff);
+    let blue = model::Color::new(0x00, 0x00, 0xff);
     let mut style = config::read_style::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
@@ -412,7 +411,7 @@ mod tests {
         target: "cite:foo".to_string(),
         children: vec![InlineNode::Text("1".to_string())],
       }]),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     };
 
     // Act

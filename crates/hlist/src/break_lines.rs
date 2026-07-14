@@ -9,12 +9,7 @@
 //! （[`build_line`]）として適用する。分割点の「選択」だけが貪欲法と Knuth–Plass で異なり、
 //! 行の確定・glue 配分・リンク矩形収集・右寄せ・行末ハイフンは両者が [`build_line`] を共有する。
 
-use types::{Length, LinkTarget, TextAlignment};
-
-use crate::{
-  hitem::{HBox, HItem},
-  line::{Line, LineLink, PositionedBox},
-};
+use model::{HBox, HItem, Length, Line, LineLink, LinkTarget, PositionedBox, TextAlignment};
 
 mod greedy;
 mod knuth_plass;
@@ -263,9 +258,7 @@ pub(super) fn build_line(
 /// 行分割テストの共有フィクスチャ（[`greedy`] / [`knuth_plass`] 両モジュールのテストが使う）
 #[cfg(test)]
 pub(super) mod test_support {
-  use types::Length;
-
-  use crate::hitem::{HBox, HBoxContent, HItem};
+  use model::{HBox, HBoxContent, HItem, Length};
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
   fn pt(value: f32) -> Length { return Length::pt(value); }
@@ -365,5 +358,5 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> types::LinkTarget { return types::LinkTarget::Internal("sec:x".to_string()); }
+  pub(super) fn link_target() -> model::LinkTarget { return model::LinkTarget::Internal("sec:x".to_string()); }
 }

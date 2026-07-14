@@ -10,11 +10,11 @@
 //! 追加しない。タイトル・著者・日付は中央寄せの段落として縦に積まれる（揃えは中央固定）。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   FontKind,
   length::{Length, non_negative, positive},
 };
+use serde::{Deserialize, Serialize};
 
 /// タイトルページのスタイル設定。
 ///
@@ -78,7 +78,7 @@ impl Default for TitlePageStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, length::Length};
+  use model::{FontKind, length::Length};
 
   use super::TitlePageStyle;
 

@@ -3,7 +3,7 @@
 //! 必須引数 1 個（ラベル名）を取り、`InlineNode::Ref` を生成する。解決（`lowering` 層の
 //! `CounterRegistry` によるラベル → 番号の解決）は行わない。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},

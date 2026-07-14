@@ -4,9 +4,7 @@
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
 //! `pdf_gen` 段で行う。
 
-use types::{ColumnWidth, Length, TableColumn};
-
-use crate::hitem::{HBoxContent, HItem};
+use crate::{ColumnWidth, HBoxContent, HItem, Length, TableColumn};
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
@@ -159,15 +157,12 @@ pub fn resolve_column_widths(table: &TableBox, available: Length, padding: Lengt
 
 #[cfg(test)]
 mod tests {
-  use types::{ColumnAlign, ColumnWidth, Length, TableColumn};
-
   use super::{
     TableBox, TableCellBox, TableRowBox, max_font_size_in_items, measure_items_width, resolve_column_widths,
     table_row_height,
   };
   use crate::{
-    glyph_run::GlyphRun,
-    hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+    ColumnAlign, ColumnWidth, FontType, GlyphRun, HBox, HBoxContent, HItem, Length, PlacedHItem, TableColumn,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -183,7 +178,7 @@ mod tests {
         font_size: pt(font_size),
         text: "x".to_string(),
         glyphs: Vec::new(),
-        font_type: types::FontType::Serif,
+        font_type: FontType::Serif,
         color: None,
       }),
       width: pt(width),
@@ -258,7 +253,7 @@ mod tests {
         font_size: pt(20.0),
         text: "y".to_string(),
         glyphs: Vec::new(),
-        font_type: types::FontType::Math,
+        font_type: FontType::Math,
         color: None,
       }),
       width: pt(8.0),
