@@ -4,12 +4,12 @@ use config::{
   read_config::DocumentConfig,
   read_style::{RunningContentStyle, Style},
 };
-use layout::{RunningContentSpec, RunningMetadata, RunningSlots};
 use model::Color;
+use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
 use super::page_values::PageLabels;
 
-/// ページ数確定後のヘッダー・フッター配置仕様 [`layout::RunningContentSpec`] を組み立てる。
+/// ページ数確定後のヘッダー・フッター配置仕様 [`typeset::RunningContentSpec`] を組み立てる。
 ///
 /// ヘッダー / フッターの各スロットは [`running_slots`] で構築し（全スロット空なら描画省略）、`skip_first`
 /// でタイトルページ（先頭ページ）への非描画を指示する。`page_labels` を要求することで、前付けページ列が
@@ -37,7 +37,7 @@ pub(super) fn build_running_spec(
   };
 }
 
-/// `RunningContentStyle` をヘッダー・フッター配置用の [`layout::RunningSlots`] に変換する。
+/// `RunningContentStyle` をヘッダー・フッター配置用の [`typeset::RunningSlots`] に変換する。
 ///
 /// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
 /// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、

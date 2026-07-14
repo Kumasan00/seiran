@@ -5,12 +5,10 @@ members = [
   "crates/config",
   "crates/font",
   "crates/frontend",
-  "crates/hlist",
-  "crates/layout",
-  "crates/lowering",
   "crates/model",
   "crates/pdf_gen",
   "crates/seiran",
+  "crates/typeset",
 ]
 
 [workspace.package]
@@ -39,7 +37,6 @@ hayagriva = {
   default-features = false,
   features = ["archive", "csl-json"]
 }
-hlist = { path = "crates/hlist" }
 hypher = {
   version = "0.1.7",
   default-features = false,
@@ -53,9 +50,7 @@ image = {
 }
 krilla = "0.8.2"
 krilla-svg = "0.8.1"
-layout = { path = "crates/layout" }
 lazy-regex = "3.6.0"
-lowering = { path = "crates/lowering" }
 memchr = "2.8.2"
 miette = { version = "7.6.0", features = ["fancy"] }
 model = { path = "crates/model" }
@@ -71,6 +66,7 @@ thiserror = "2.0.18"
 toml = "1.1.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["local-time", "env-filter"] }
+typeset = { path = "crates/typeset" }
 unic-langid = "0.9.6"
 usvg = "0.47.0"
 

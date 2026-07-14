@@ -27,13 +27,13 @@ use font::{
 };
 use front_matter::{assemble_front_matter, break_front_matter};
 use frontend::ParseSourceError;
-use lowering::LoweringContext;
 use model::DocNode;
 use outline::collect_outline_entries;
 use page_values::BodyPageValues;
 use pdf_gen::OutlineEntry;
 use running::build_running_spec;
 use tracing::{debug, debug_span, info};
+use typeset::LoweringContext;
 
 /// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
 ///
@@ -162,7 +162,7 @@ fn build_pages(
   // SourceId のインデックスになり、書誌グループの SourceId は parsed.len()（範囲外）になる。
   let groups: Vec<&[DocNode]> =
     parsed.iter().map(|p| p.nodes.as_slice()).chain(std::iter::once(bibliography.as_slice())).collect();
-  let (body_layout_nodes, headings) = lowering::lower_sources_with_headings(&lowering_ctx, &groups)
+  let (body_layout_nodes, headings) = typeset::lower_sources_with_headings(&lowering_ctx, &groups)
     .map_err(|error| wrap_lowering_error(error, &parsed))?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
@@ -188,7 +188,7 @@ fn build_pages(
   // （config の用紙・余白 × style の [columns] の横断制約はこのステージでしか検証できない）。
   let body_columns = style.columns.count as usize;
   let column_gap = style.columns.gap;
-  let body_col_width = hlist::column_width(text_width, body_columns, column_gap);
+  let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
   if !body_col_width.is_positive() {
     return Err(
       BuildPdfError::InvalidColumnWidth {
@@ -205,7 +205,7 @@ fn build_pages(
   let stage_start = Instant::now();
   let body_blocks = {
     let _span = debug_span!("build_blocks", region = "body").entered();
-    layout::build_blocks(
+    typeset::build_blocks(
       body_layout_nodes,
       &harf_rust_shapers,
       &metrics,
@@ -236,7 +236,7 @@ fn build_pages(
   let stage_start = Instant::now();
   let body_pages = {
     let _span = debug_span!("break_pages", region = "body").entered();
-    hlist::break_pages(body_blocks, text_width, &body_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
+    typeset::break_pages(body_blocks, text_width, &body_geometry, &typeset::KnuthPlassBreaker, style.text.alignment)
   };
   let body_page_count = body_pages.len();
   let body_page_values = BodyPageValues::from_body_pages(&body_pages, &style.page_numbering);
@@ -244,7 +244,7 @@ fn build_pages(
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
   // タイトルページのメタデータは config 形状から疎結合にするため本体で構築して渡す。
-  let title_metadata = lowering::TitlePageMetadata {
+  let title_metadata = typeset::TitlePageMetadata {
     title: config.document.title.clone(),
     author: config.document.author.clone(),
     date: config.document.date.clone(),
@@ -265,7 +265,7 @@ fn build_pages(
   let stage_start = Instant::now();
   let front_pages = {
     let _span = debug_span!("break_pages", region = "front").entered();
-    break_front_matter(front_blocks, text_width, &front_geometry, &hlist::KnuthPlassBreaker, style.text.alignment)
+    break_front_matter(front_blocks, text_width, &front_geometry, &typeset::KnuthPlassBreaker, style.text.alignment)
   };
   let front_matter_count = front_pages.len();
   // 前付けページ列が確定した時点（`pages` への move の前）でラベルを解決する。
@@ -284,7 +284,7 @@ fn build_pages(
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height;
   let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_labels);
-  layout::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
+  typeset::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
   // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
@@ -302,7 +302,7 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 1 ソースファイルのパース結果と、そのファイル名・内容（診断用）。
 ///
 /// `parse_all_sources` が平坦化せずファイルごとに 1 件生成する。`nodes` の並び順（`Vec<ParsedSource>`
-/// のインデックス）が [`lowering::SourceId`] に一致し、lowering エラー発生時に `name` / `content` を
+/// のインデックス）が [`typeset::SourceId`] に一致し、lowering エラー発生時に `name` / `content` を
 /// `NamedSource` へ逆引きしてファイル名・スニペット付きの診断を表示するのに使う。
 struct ParsedSource {
   /// 表示用のソースパス文字列（`NamedSource` の名前になる）
@@ -360,7 +360,7 @@ fn parse_all_sources(
 /// 範囲外（= 合成された書誌グループ、`SourceId` が `parsed.len()`）を指す場合は帰属元を特定できないため
 /// [`BuildPdfError::LoweringInternal`] にフォールバックする。span は各ファイル内のオフセットのまま
 /// 使える（各 `NamedSource` はその 1 ファイル分の `content` だけを持つため、グローバル変換は不要）。
-fn wrap_lowering_error(error: lowering::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
+fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
   let index = error.source_id().index();
   return match parsed.get(index) {
     Some(source) => BuildPdfError::Lowering {
@@ -371,7 +371,7 @@ fn wrap_lowering_error(error: lowering::LoweringError, parsed: &[ParsedSource]) 
   };
 }
 
-/// 本文（N 段）と前付け（常に 1 段）の [`hlist::PageGeometry`] を組み立てる。
+/// 本文（N 段）と前付け（常に 1 段）の [`typeset::PageGeometry`] を組み立てる。
 ///
 /// 両者は段数・段間以外を共有するため、本文側を組んでから前付けは `num_columns` / `column_gap` だけ
 /// 差し替える。
@@ -382,8 +382,8 @@ fn build_page_geometries(
   line_height_factor: f32,
   body_columns: usize,
   column_gap: model::Length,
-) -> (hlist::PageGeometry, hlist::PageGeometry) {
-  let body_geometry = hlist::PageGeometry {
+) -> (typeset::PageGeometry, typeset::PageGeometry) {
+  let body_geometry = typeset::PageGeometry {
     margin_top: config.pdf.margin.top,
     page_limit: config.pdf.height - config.pdf.margin.bottom,
     default_font_size,
@@ -394,7 +394,7 @@ fn build_page_geometries(
     flush_bottom: style.page.flush_bottom,
   };
   // 前付け（タイトルページ・目次）は下端揃えの対象外。struct-update で本文値を継ぐため明示的に落とす。
-  let front_geometry = hlist::PageGeometry {
+  let front_geometry = typeset::PageGeometry {
     num_columns: 1,
     column_gap: model::Length::ZERO,
     flush_bottom: false,
@@ -409,9 +409,9 @@ mod tests {
 
   /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
   /// `LoweringError` を生成するテストヘルパ
-  fn lowering_error_with_source_id_1(style: &config::read_style::Style) -> lowering::LoweringError {
+  fn lowering_error_with_source_id_1(style: &config::read_style::Style) -> typeset::LoweringError {
     use model::{DocNode, InlineNode};
-    let ctx = lowering::LoweringContext::new(style);
+    let ctx = typeset::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
     )])];
@@ -419,7 +419,7 @@ mod tests {
       label: "missing".to_string(),
       span: model::Span::DUMMY,
     }])];
-    let error = lowering::lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
+    let error = typeset::lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
       .expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(error.source_id().index(), 1, "グループ 1 の \\ref が帰属源のはず");
     return error;

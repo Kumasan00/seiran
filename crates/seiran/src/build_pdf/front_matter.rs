@@ -2,11 +2,12 @@
 
 use config::read_style::{Style, TocStyle};
 use font::{FontMetrics, shaper::HarfRustShapers};
-use hlist::{LineBreaker, PageGeometry};
-use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
-use lowering::{HeadingRecord, TextStyle, TitlePageMetadata, lower_title_page};
 use model::{Block, FontKind, HeadingLevel, Page, TextAlignment, heading_anchor_key};
 use tracing::{debug, debug_span};
+use typeset::{
+  HeadingRecord, LineBreaker, PageGeometry, TextStyle, TitlePageMetadata, TocEntryInput, TocSpec, build_blocks,
+  build_toc_blocks, lower_title_page,
+};
 
 use super::page_values::BodyPageValues;
 
@@ -80,7 +81,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
     .collect();
 }
 
-/// `style.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
+/// `style.toc` と本文スタイルから目次生成用の [`typeset::TocSpec`] を組み立てる。
 ///
 /// 目次見出しの書体は文書の節見出しスタイル（[`model::HeadingLevel::Section`]）に揃える。
 fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
@@ -111,7 +112,7 @@ fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
 /// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
 ///
 /// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている強制改ページ（[`Block::force_break`]）は落とす（[`hlist::break_pages`] の `finish` が末尾
+/// 付いている強制改ページ（[`Block::force_break`]）は落とす（[`typeset::break_pages`] の `finish` が末尾
 /// ページを無条件に push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間の強制改ページは保持する。
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
 pub(super) fn break_front_matter(
@@ -127,14 +128,14 @@ pub(super) fn break_front_matter(
   if front_blocks.is_empty() {
     return Vec::new();
   }
-  return hlist::break_pages(front_blocks, text_width, front_geometry, breaker, alignment);
+  return typeset::break_pages(front_blocks, text_width, front_geometry, breaker, alignment);
 }
 
 #[cfg(test)]
 mod tests {
   use config::read_style::{PageNumbering, TocStyle};
-  use lowering::HeadingRecord;
   use model::{AnchorMark, HeadingLevel, PlacedAnchor};
+  use typeset::HeadingRecord;
 
   use super::{BodyPageValues, Page, collect_toc_entries};
 
