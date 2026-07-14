@@ -57,19 +57,19 @@ cargo test -p <crate_name>                                 # 特定クレート�
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
   → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → Document IR（model::DocNode））
   → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を本文末尾に追加）
-  → ローワリング（lowering: DocNode → LayoutNode）→ フォント読込・検証
-  → (a) build_blocks（layout: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
+  → ローワリング（typeset::lowering: DocNode → LayoutNode）→ フォント読込・検証
+  → (a) build_blocks（typeset::layout: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
   → (prepass) resolve_images（pdf_gen: 画像の自然寸法から width/height を確定）
-  → (c+d) break_pages（hlist: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
+  → (c+d) break_pages（typeset::hlist: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
   → (e) render_pages（pdf_gen: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
   → ファイル出力
 ```
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
-本文の自動行折り返しは Knuth–Plass（段落全体最適。`hlist::break_lines`。貪欲法 first-fit も
+本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::hlist::break_lines`。貪欲法 first-fit も
 `GreedyBreaker` として併存）で、既定は両端揃え（`[text]` の `alignment`。glue の伸縮で行幅を調整）。
-分割可能点は ICU `LineSegmenter`（UAX #14）により和欧同時に求め（`hlist::break_opportunities`）、
-欧文語中は discretionary ハイフネーション（`hlist::hyphenation`）を併用する。
+分割可能点は ICU `LineSegmenter`（UAX #14）により和欧同時に求め（`typeset::hlist::break_opportunities`）、
+欧文語中は discretionary ハイフネーション（`typeset::hlist::hyphenation`）を併用する。
 縦組版（`break_pages`）も glue/penalty モデルで、widow/orphan・keep-with-next・
 下端揃え（flush_bottom）を penalty と glue 伸縮で制御する。
 数式は `HBoxContent::Atom`（絶対 dx/dy の閉じた箱）として行分割をまたがない。
@@ -82,15 +82,15 @@ model （依存なし（serde / garde のみ）— 全段共有のデータモ�
         ColumnWidth 等の共通型・Document IR（DocNode / InlineNode / MathNode）・組版コア型
         （Block / Page / HItem / GlyphRun / TableBox）+ dump_pages + 計測ヘルパを持つ。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
-  ↑ config, citation, frontend, hlist, font, lowering, layout, pdf_gen, seiran
+  ↑ config, citation, frontend, font, typeset, pdf_gen, seiran
 
 config （model を使用。`read_config` / `read_style` 子 module を内包し、config.toml / style.toml の
         データモデル + 読込・検証を 1 クレートにまとめる）
-  ↑ citation, font, lowering, pdf_gen, seiran
+  ↑ citation, font, typeset, pdf_gen, seiran
 
 frontend （model に依存。bumpalo アリーナ上に CST を構築し、Document IR（model）に
           評価変換。CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）。
-          採番・書式化は行わず lowering に委ねる）
+          採番・書式化は行わず typeset::lowering に委ねる）
   ↑ seiran
 
 citation （model, config に依存。参照定義ファイル（references.toml / .json）の読込を
@@ -98,22 +98,19 @@ citation （model, config に依存。参照定義ファイル（references.toml
           CSL 整形・書誌生成まで行う）
   ↑ seiran
 
-hlist （model, icu, hypher のみに依存。フォント・krilla 非依存の純粋組版パス（break_opportunities /
-        break_lines / break_pages / hyphenation）。コア型は model にあるため、本クレートは
-        break 系パス本体だけを持つ薄いクレート）
-  ↑ layout, seiran
-
 font （model, config に依存。read-fonts / harfrust / rayon を使用）
-  ↑ layout, pdf_gen, seiran
+  ↑ typeset, pdf_gen, seiran
 
-lowering （model, config に依存。フォント非依存の論理変換層。採番・`\ref` 解決も担う）
-  ↑ layout, seiran
-
-layout （font, hlist, lowering, model に依存。icu でスクリプト判定）
+typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
+          3 クレートを module として統合（#204）。Document IR（DocNode）→ LayoutNode 変換
+          （lowering、採番・`\ref` 解決も担う）→ (a) build_blocks（layout、シェーピング + 計測 +
+          break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
+          （hlist、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
+          3 module とも非公開で、公開 API はクレート root の `pub use` に揃える）
   ↑ seiran
 
-pdf_gen （font, config, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（hlist）には
-         依存しない — 確定座標を描くだけであることが依存グラフで強制される）
+pdf_gen （font, config, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::hlist）
+         には依存しない — 確定座標を描くだけであることが依存グラフで強制される）
   ↑ seiran
 
 seiran （エントリーポイント。全クレートを統合してパイプラインを実行。clap / miette / read-fonts /
@@ -132,10 +129,8 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（`read_config` / `read_style` 子 module） |
 | `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
 | `citation`        | `references.toml` / `.json` の読込（`read_references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
-| `hlist`           | フォント非依存の純粋組版パス（(b) break_opportunities / (c) break_lines / (d) break_pages）。コア型は `model` にある |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
-| `lowering`        | DocNode → LayoutNode の論理変換（フォント非依存）。採番・`\ref` 解決（pass1/pass2）も担う |
-| `layout`          | (a) build_blocks: LayoutNode → `Vec<Block>`（シェーピング + 計測 + break 注入）。running でヘッダ / フッタ配置 |
+| `typeset`         | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`layout` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`hlist` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
 | `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |
 | `seiran`          | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包 |
 

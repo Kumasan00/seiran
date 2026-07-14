@@ -1,0 +1,400 @@
+//! 表環境（`DocNode::Table`）の lowering
+//!
+//! セル内容を [`super::inline::lower_inline`] でスタイル付きレイアウトノードに変換し、
+//! [`TableLayout`] に詰めます。ヘッダ行のセルは本文フォントの太字バリアントで
+//! 描画されます。キャプションは `TableStyle.caption` の書式で構築し、図と同様に
+//! `caption_position`（ソース上の `\caption` の出現順）に従って表の上下に配置します。
+//! キャプション構築と `VBox` 包みは [`super::float`] の共通ヘルパで行います。
+//!
+//! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
+//! `hlist` の `resolve_column_widths` で行い、ここでは列指定をそのまま保持します。
+
+use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, TableColumn, TableRow};
+
+use super::{
+  LoweringContext, LoweringError,
+  float::{FloatSpec, build_caption, wrap_float},
+  inline::lower_inline,
+  layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
+};
+
+/// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
+fn bold_kind(kind: FontKind) -> FontKind {
+  return match kind {
+    FontKind::Serif => FontKind::SerifBold,
+    FontKind::SerifItalic => FontKind::SerifBoldItalic,
+    FontKind::SansSerif => FontKind::SansSerifBold,
+    FontKind::SansSerifItalic => FontKind::SansSerifBoldItalic,
+    FontKind::Monospace => FontKind::MonospaceBold,
+    FontKind::MonospaceItalic => FontKind::MonospaceBoldItalic,
+    other => other,
+  };
+}
+
+/// `TableRow` の列を [`TableRowLayout`] の列に変換する
+fn lower_rows(
+  ctx: &LoweringContext,
+  rows: &[TableRow],
+  cell_style: TextStyle,
+) -> Result<Vec<TableRowLayout>, LoweringError> {
+  let mut result = Vec::with_capacity(rows.len());
+  for row in rows {
+    let mut cells = Vec::with_capacity(row.cells.len());
+    for cell in &row.cells {
+      let mut content = Vec::new();
+      for inline in &cell.content {
+        content.extend(lower_inline(ctx, inline, cell_style)?);
+      }
+      cells.push(TableCellLayout {
+        content,
+        span: cell.span,
+      });
+    }
+    result.push(TableRowLayout {
+      cells,
+      rule_above: row.rule_above,
+    });
+  }
+  return Ok(result);
+}
+
+/// 表をレイアウトノードに変換する
+///
+/// 表本体とキャプションを `caption_position` の順序で積み、上下マージン付きの
+/// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力しない。
+///
+/// # Errors
+///
+/// キャプション・セル内に未解決の `\ref` がある場合に
+/// [`LoweringError::UnresolvedReference`] を返します。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn lower_table(
+  ctx: &LoweringContext,
+  columns: &[ColumnAlign],
+  widths: &[ColumnWidth],
+  head: &[TableRow],
+  rows: &[TableRow],
+  caption: Option<(CaptionPosition, &[InlineNode])>,
+  number: &str,
+  breakable: bool,
+) -> Result<Vec<LayoutNode>, LoweringError> {
+  let style = &ctx.style.table;
+
+  let body_style = TextStyle {
+    font_size: ctx.default_font_size(),
+    font_kind: ctx.style.text.font_kind,
+    color: None,
+  };
+  let head_style = TextStyle {
+    font_size: body_style.font_size,
+    font_kind: bold_kind(body_style.font_kind),
+    color: None,
+  };
+
+  let table_node = LayoutNode::Table(TableLayout {
+    columns: columns
+      .iter()
+      .zip(widths)
+      .map(|(align, width)| TableColumn {
+        align: *align,
+        width: *width,
+      })
+      .collect(),
+    head: lower_rows(ctx, head, head_style)?,
+    rows: lower_rows(ctx, rows, body_style)?,
+    breakable,
+  });
+
+  let caption_nodes = match caption {
+    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number)?)),
+    None => None,
+  };
+  let spec = FloatSpec {
+    top_margin: style.top_margin,
+    bottom_margin: style.bottom_margin,
+    inner_margin: style.inner_margin,
+  };
+  return Ok(wrap_float(table_node, caption_nodes, &spec));
+}
+
+#[cfg(test)]
+mod tests {
+  use config::read_style::Style as ReadStyle;
+  use model::{InlineNode, TableCell};
+
+  use super::*;
+
+  /// 1 セルの `TableRow` を作るテスト用ヘルパ
+  fn row_of(texts: &[&str]) -> TableRow {
+    return TableRow {
+      cells: texts.iter().map(|t| TableCell::new(vec![InlineNode::Text((*t).to_string())])).collect(),
+      rule_above: false,
+    };
+  }
+
+  /// `lower_table` の結果から `TableLayout` を取り出すヘルパ
+  fn find_table(nodes: &[LayoutNode]) -> &TableLayout {
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    return children
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Table(t) => Some(t),
+        _ => None,
+      })
+      .expect("VBox 内に Table があるはず");
+  }
+
+  #[test]
+  fn lower_table_builds_columns_and_rows() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let head = [row_of(&["Name", "Score"])];
+    let rows = [row_of(&["Alice", "92"]), row_of(&["Bob", "88"])];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left, ColumnAlign::Right],
+      &[ColumnWidth::Auto, ColumnWidth::Auto],
+      &head,
+      &rows,
+      None,
+      "1",
+      true,
+    )
+    .expect("解決済みインラインなのでエラーにならない");
+
+    // Assert — 先頭は top_margin の Vkern、VBox 内に Table
+    assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
+    let table = find_table(&nodes);
+    assert_eq!(table.columns.len(), 2);
+    assert_eq!(table.columns[0].align, ColumnAlign::Left);
+    assert_eq!(table.columns[1].align, ColumnAlign::Right);
+    assert_eq!(table.head.len(), 1);
+    assert_eq!(table.rows.len(), 2);
+    assert!(table.breakable);
+  }
+
+  #[test]
+  fn lower_table_head_cells_use_bold_font() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let head = [row_of(&["Name"])];
+    let rows = [row_of(&["Alice"])];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &head, &rows, None, "1", true).expect("失敗しない");
+
+    // Assert — ヘッダセルは太字、本体セルは通常
+    let table = find_table(&nodes);
+    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+      panic!("ヘッダセルは Text であるべき");
+    };
+    assert_eq!(head_style.font_kind, FontKind::SerifBold);
+    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+      panic!("本体セルは Text であるべき");
+    };
+    assert_eq!(body_style.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn lower_table_caption_bottom_places_caption_after_table() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+    let caption = [InlineNode::Text("得点表".to_string())];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      Some((CaptionPosition::Bottom, &caption)),
+      "1",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert — VBox 内で Table がキャプション Text より前、書式は "Table {number}: {title}"
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
+    let caption_idx = children
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Text(t, _) if t == "Table 1: 得点表"))
+      .expect("キャプション Text あり");
+    assert!(table_idx < caption_idx, "Bottom: table がキャプションの前");
+  }
+
+  #[test]
+  fn lower_table_caption_top_places_caption_before_table() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+    let caption = [InlineNode::Text("得点表".to_string())];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      Some((CaptionPosition::Top, &caption)),
+      "2",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
+    let caption_idx = children
+      .iter()
+      .position(|n| matches!(n, LayoutNode::Text(t, _) if t.starts_with("Table 2")))
+      .expect("キャプション Text あり");
+    assert!(caption_idx < table_idx, "Top: キャプションが table の前");
+  }
+
+  #[test]
+  fn lower_table_inserts_inner_margin_between_table_and_caption() {
+    // Arrange — キャプション付きの表は本体とキャプションの間に inner_margin の Vkern を挟む（図と対称）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+    let caption = [InlineNode::Text("得点表".to_string())];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      Some((CaptionPosition::Bottom, &caption)),
+      "1",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert — VBox children は Table → Vkern(inner_margin) → caption Text の順
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
+    let inner_kern = children.get(table_idx + 1);
+    assert!(
+      matches!(inner_kern, Some(LayoutNode::Vkern { length }) if (length.to_pt() - style.table.inner_margin.to_pt()).abs() < f32::EPSILON),
+      "本体の直後に inner_margin の Vkern が入る: {children:?}"
+    );
+  }
+
+  #[test]
+  fn bold_kind_maps_regular_to_bold() {
+    assert_eq!(bold_kind(FontKind::Serif), FontKind::SerifBold);
+    assert_eq!(bold_kind(FontKind::SansSerifItalic), FontKind::SansSerifBoldItalic);
+    assert_eq!(bold_kind(FontKind::Monospace), FontKind::MonospaceBold);
+    // 既に太字のものはそのまま
+    assert_eq!(bold_kind(FontKind::SerifBold), FontKind::SerifBold);
+  }
+
+  #[test]
+  fn lower_table_preserves_column_widths() {
+    // Arrange — Fixed / Ratio / Flex の幅指定が TableColumn にそのまま保持される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["a", "b", "c"])];
+    let widths = [
+      ColumnWidth::Fixed(model::Length::pt(40.0)),
+      ColumnWidth::Ratio(0.25),
+      ColumnWidth::Flex,
+    ];
+
+    // Act
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right],
+      &widths,
+      &[],
+      &rows,
+      None,
+      "1",
+      true,
+    )
+    .expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert_eq!(table.columns.len(), 3);
+    assert!(matches!(table.columns[0].width, ColumnWidth::Fixed(l) if (l.to_pt() - 40.0).abs() < f32::EPSILON));
+    assert!(matches!(table.columns[1].width, ColumnWidth::Ratio(r) if (r - 0.25).abs() < f32::EPSILON));
+    assert!(matches!(table.columns[2].width, ColumnWidth::Flex));
+    assert_eq!(table.columns[1].align, ColumnAlign::Center);
+  }
+
+  #[test]
+  fn lower_table_breakable_false_is_preserved() {
+    // Arrange
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", false).expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert!(!table.breakable);
+  }
+
+  #[test]
+  fn lower_table_preserves_rule_above_flag() {
+    // Arrange — rule_above=true の行が TableRowLayout に保持される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [TableRow {
+      cells: vec![TableCell::new(vec![InlineNode::Text("A".to_string())])],
+      rule_above: true,
+    }];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+
+    // Assert
+    let table = find_table(&nodes);
+    assert!(table.rows[0].rule_above);
+  }
+
+  #[test]
+  fn lower_table_without_caption_omits_caption_text() {
+    // Arrange — caption が None なら VBox にキャプション Text を出さない
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [row_of(&["A"])];
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("VBox が期待されます");
+    };
+    let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
+    assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
+  }
+}

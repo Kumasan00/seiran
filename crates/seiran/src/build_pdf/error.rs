@@ -2,9 +2,9 @@
 
 use citation::CitationError;
 use frontend::ParseSourceError;
-use lowering::LoweringError;
 use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
+use typeset::LoweringError;
 
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]

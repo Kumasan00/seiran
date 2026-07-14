@@ -1,12 +1,12 @@
 //! PDF しおり（アウトライン）エントリの組み立て
 
-use lowering::HeadingRecord;
 use pdf_gen::OutlineEntry;
+use typeset::HeadingRecord;
 
 /// lowering が収集した見出し記録から PDF しおり用の [`pdf_gen::OutlineEntry`] を文書順に組み立てる。
 ///
 /// テキストは `"{number} {plain title}"`（番号が空なら表題のみ）。見出しの収集は
-/// `lowering::lower_sources_with_headings`（目次生成と同じソース）に委譲する。
+/// `typeset::lower_sources_with_headings`（目次生成と同じソース）に委譲する。
 pub(super) fn collect_outline_entries(headings: &[HeadingRecord]) -> Vec<OutlineEntry> {
   return headings
     .iter()

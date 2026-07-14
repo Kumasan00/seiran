@@ -725,16 +725,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "hlist"
-version = "0.1.0"
-dependencies = [
- "hypher",
- "icu",
- "model",
- "tracing",
-]
-
-[[package]]
 name = "hypher"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1319,19 +1309,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "layout"
-version = "0.1.0"
-dependencies = [
- "font",
- "hlist",
- "icu",
- "lazy-regex",
- "lowering",
- "model",
- "tracing",
-]
-
-[[package]]
 name = "lazy-regex"
 version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1389,18 +1366,6 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
-
-[[package]]
-name = "lowering"
-version = "0.1.0"
-dependencies = [
- "config",
- "frontend",
- "miette",
- "model",
- "thiserror",
- "tracing",
-]
 
 [[package]]
 name = "matchers"
@@ -1938,9 +1903,6 @@ dependencies = [
  "config",
  "font",
  "frontend",
- "hlist",
- "layout",
- "lowering",
  "miette",
  "model",
  "pdf_gen",
@@ -1948,6 +1910,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "typeset",
 ]
 
 [[package]]
@@ -2439,6 +2402,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
+]
+
+[[package]]
+name = "typeset"
+version = "0.1.0"
+dependencies = [
+ "config",
+ "font",
+ "frontend",
+ "hypher",
+ "icu",
+ "lazy-regex",
+ "miette",
+ "model",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
