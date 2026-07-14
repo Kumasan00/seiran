@@ -6,8 +6,7 @@
 //! キャプション行を一切出力しません。キャプション構築と `VBox` 包みは
 //! [`crate::float`] の共通ヘルパで行います。
 
-use document::{CaptionPosition, InlineNode};
-use types::Length;
+use model::{CaptionPosition, InlineNode, Length};
 
 use super::{
   LoweringContext, LoweringError,
@@ -80,7 +79,7 @@ pub(super) fn lower_figure(
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use document::InlineNode;
+  use model::InlineNode;
 
   use super::*;
 

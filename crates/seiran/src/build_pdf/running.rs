@@ -5,7 +5,7 @@ use config::{
   read_style::{RunningContentStyle, Style},
 };
 use layout::{RunningContentSpec, RunningMetadata, RunningSlots};
-use types::Color;
+use model::Color;
 
 use super::page_values::PageLabels;
 
@@ -18,8 +18,8 @@ use super::page_values::PageLabels;
 pub(super) fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
-  text_width: types::Length,
-  page_height: types::Length,
+  text_width: model::Length,
+  page_height: model::Length,
   page_labels: PageLabels,
 ) -> RunningContentSpec {
   return RunningContentSpec {
@@ -42,7 +42,7 @@ pub(super) fn build_running_spec(
 /// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
 /// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
 /// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
-fn running_slots(style: &RunningContentStyle, baseline_y: types::Length, rule_below: bool) -> Option<RunningSlots> {
+fn running_slots(style: &RunningContentStyle, baseline_y: model::Length, rule_below: bool) -> Option<RunningSlots> {
   if style.is_empty() {
     return None;
   }

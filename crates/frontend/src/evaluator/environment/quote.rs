@@ -8,7 +8,7 @@
 //! 任意引数・必須引数は受け付けません（左右インデント量・上下マージン・段落先頭字下げ量は
 //! `config::read_style::QuoteStyle` 側で決まり、ソースには現れない）。
 
-use document::{DocNode, QuoteKind};
+use model::{DocNode, QuoteKind};
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_environment_opt_args},
@@ -46,7 +46,7 @@ pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::QuoteKind;
+  use model::QuoteKind;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;

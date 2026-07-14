@@ -6,11 +6,11 @@
 //! （`quotation` は適用、`quote` は適用しない）。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   FontKind,
   length::{Length, non_negative},
 };
+use serde::{Deserialize, Serialize};
 
 /// 引用ブロックのスタイル設定
 ///
@@ -52,7 +52,7 @@ impl Default for QuoteStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, length::Length};
+  use model::{FontKind, length::Length};
 
   use super::QuoteStyle;
 

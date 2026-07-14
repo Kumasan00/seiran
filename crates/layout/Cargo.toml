@@ -13,8 +13,8 @@ hlist.workspace = true
 icu.workspace = true
 lazy-regex.workspace = true
 lowering.workspace = true
+model.workspace = true
 tracing.workspace = true
-types.workspace = true
 
 [lints]
 workspace = true

@@ -4,7 +4,7 @@
 //! `{title}` の中身はインライン要素のまま [`lower_inline`] で展開するため、
 //! タイトル内の書体指定（`\bold` 等）やインライン数式が失われない。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use super::{LoweringContext, LoweringError, inline::lower_inline};
 use crate::layout_node::{LayoutNode, TextStyle, merge_adjacent_text};
@@ -29,7 +29,7 @@ pub(super) fn expand_template(
   template: &str,
   number: &str,
   title: &[InlineNode],
-  of: Option<(&str, miette::SourceSpan)>,
+  of: Option<(&str, model::Span)>,
   base_style: TextStyle,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
@@ -52,7 +52,7 @@ pub(super) fn expand_template(
             // 埋め込む（`\ref` と違いリンク領域にはしない）
             nodes.push(LayoutNode::Ref {
               label: label.to_string(),
-              span,
+              span: crate::span_to_source_span(span),
               style: base_style,
               as_link: false,
               source: ctx.source,
@@ -83,7 +83,7 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use types::{FontKind, Length};
+  use model::{FontKind, Length};
 
   use super::*;
 
@@ -153,7 +153,7 @@ mod tests {
   #[test]
   fn inline_math_in_title_is_lowered() {
     // タイトル内のインライン数式は "[Math]" プレースホルダではなく実ノードに展開される
-    use document::MathNode;
+    use model::MathNode;
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::InlineMath(vec![MathNode::Text(
@@ -175,7 +175,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::Ref {
       label: "tab:missing".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }];
 
     let nodes =
@@ -192,15 +192,16 @@ mod tests {
     // {of} は of が Some のとき LayoutNode::Ref プレースホルダを 1 つ出力する
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let of_span = miette::SourceSpan::from((3_usize, 4_usize));
+    let of_span = model::Span::new(3, 4);
 
     let nodes =
       expand_template(&ctx, "Proof of {of}", "1", &[], Some(("thm:x", of_span)), base_style()).expect("失敗しないはず");
 
+    let expected_span = crate::span_to_source_span(of_span);
     assert!(
       nodes
         .iter()
-        .any(|n| matches!(n, LayoutNode::Ref { label, span, .. } if label == "thm:x" && *span == of_span)),
+        .any(|n| matches!(n, LayoutNode::Ref { label, span, .. } if label == "thm:x" && *span == expected_span)),
       "of の Ref プレースホルダが出るはず: {nodes:?}"
     );
   }
@@ -215,7 +216,7 @@ mod tests {
   }
 
   /// `of` パラメータを明示できる `expand_plain` の派生ヘルパ
-  fn expand_plain_with_of(template: &str, number: &str, of: Option<(&str, miette::SourceSpan)>) -> Vec<LayoutNode> {
+  fn expand_plain_with_of(template: &str, number: &str, of: Option<(&str, model::Span)>) -> Vec<LayoutNode> {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     return expand_template(&ctx, template, number, &[], of, base_style()).expect("失敗しないはず");

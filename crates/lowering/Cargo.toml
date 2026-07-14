@@ -9,11 +9,10 @@ license.workspace = true
 
 [dependencies]
 config.workspace = true
-document.workspace = true
 miette.workspace = true
+model.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-types.workspace = true
 
 [dev-dependencies]
 frontend.workspace = true

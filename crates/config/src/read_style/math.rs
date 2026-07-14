@@ -5,17 +5,17 @@
 //! [`MathStyle`] がまとめる。`[math.script]` はインライン数式（`$...$`）にも効き、`[math.block]`
 //! は全表示数式環境（equation / align / gather / split / multiline / cases / matrix）が共有する。
 //!
-//! `document::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
+//! `model::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
 //! および将来 OpenType MATH テーブルから自動取得する範囲を明確化するため、スクリプト設定は
 //! `MathScriptStyle` と命名している。MATH テーブル対応時にはこれを `Option<MathScriptStyle>`
 //! （`None` = MATH テーブルから自動取得）に変える想定で、現状の手動設定は暫定的な API 境界。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   Length,
   length::{non_negative, positive},
 };
+use serde::{Deserialize, Serialize};
 
 /// 数式設定全体（`[math]` テーブル）。
 ///

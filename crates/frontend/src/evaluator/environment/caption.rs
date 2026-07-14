@@ -2,7 +2,7 @@
 //!
 //! `figure` / `table`（および将来のキャプション付き環境）の環境ハンドラが共用する。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},

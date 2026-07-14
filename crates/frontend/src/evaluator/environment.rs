@@ -18,7 +18,7 @@
 //!    },
 //!    ```
 
-use document::DocNode;
+use model::DocNode;
 use phf::phf_map;
 
 use crate::{

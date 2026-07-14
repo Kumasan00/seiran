@@ -12,11 +12,11 @@ config.workspace = true
 font-types.workspace = true
 harfrust.workspace = true
 miette.workspace = true
+model.workspace = true
 rayon.workspace = true
 read-fonts.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-types.workspace = true
 
 [lints]
 workspace = true

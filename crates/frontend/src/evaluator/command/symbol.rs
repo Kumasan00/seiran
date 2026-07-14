@@ -24,8 +24,8 @@
 //! コマンド名は unicode-math の csname に一致させず、慣用の短縮形を優先して
 //! Seiran 独自に決める（`\leq` `\subseteq` `\rightarrow`）。冗長で長すぎる名前は避ける。
 
+use model::MathClass;
 use phf::phf_map;
-use types::MathClass;
 
 /// 記号コマンドが出力する単一文字とその数式クラス
 ///
@@ -374,7 +374,7 @@ mod tests {
   #[test]
   fn representative_symbols_have_expected_class() {
     // Arrange & Act & Assert — 代表記号のクラスが各カテゴリで正しいこと
-    use types::MathClass;
+    use model::MathClass;
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| s.class), Some(MathClass::Ord));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| s.class), Some(MathClass::Rel));
     assert_eq!(SYMBOL_MAP.get("times").map(|s| s.class), Some(MathClass::Bin));

@@ -1,6 +1,6 @@
 //! 箇条書きリストのアイテムを表す型
 
-use crate::block::DocNode;
+use crate::DocNode;
 
 // =============================================================================
 // リスト関連の型
@@ -29,7 +29,7 @@ impl ListItem {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::inline::InlineNode;
+  use crate::InlineNode;
 
   #[test]
   fn list_item_new() {

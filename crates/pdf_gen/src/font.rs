@@ -6,10 +6,9 @@
 
 use config::read_config::Config;
 use font::{FontData, FontRefs};
-use hlist::Glyph;
 use krilla::text::{Font, GlyphId, KrillaGlyph, Tag};
+use model::{FontMap, FontType, Glyph};
 use read_fonts::{ReadError, TableProvider};
-use types::{FontMap, FontType};
 
 use crate::error::PdfGenError;
 
@@ -73,7 +72,7 @@ pub(crate) fn build_krilla_fonts(
 /// レイアウト済みグリフ列を Krilla のグリフ列へ変換します。
 ///
 /// Krilla の `KrillaGlyph` はメトリクス値を UPEM で正規化した値で受け取るため、
-/// `hlist::Glyph` の整数値を `upem` で除算して変換します。
+/// `model::Glyph` の整数値を `upem` で除算して変換します。
 #[allow(clippy::cast_precision_loss)]
 pub(crate) fn convert_to_krilla_glyphs(glyphs: &[Glyph], upem: f32) -> Vec<KrillaGlyph> {
   let krilla_glyphs = glyphs

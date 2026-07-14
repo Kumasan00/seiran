@@ -11,7 +11,7 @@
 //! - `\notag` — 行の**末尾**に置くと、その**行だけ**を無採番にする（採番カウンタも消費しないため、他行の
 //!   通し番号は連続する）。`[numbered=false]` との併用は冗長なためエラー
 
-use document::{DocNode, MathEnvKind};
+use model::{DocNode, MathEnvKind};
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
@@ -40,7 +40,7 @@ pub(crate) fn gather(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::MathEnvKind;
+  use model::MathEnvKind;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -52,7 +52,7 @@ mod tests {
     return crate::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  fn rows_of(result: &[DocNode]) -> &[document::MathRow] {
+  fn rows_of(result: &[DocNode]) -> &[model::MathRow] {
     let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };

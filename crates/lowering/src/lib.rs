@@ -1,6 +1,6 @@
 //! Lowering 層: Document IR → `LayoutNode` 変換
 //!
-//! `document` クレートの `DocNode`（セマンティックな論理構造）を
+//! `model` クレートの `DocNode`（セマンティックな論理構造）を
 //! `LayoutNode`（物理的なレイアウト表現）に変換するクレートです。
 //!
 //! ## アーキテクチャ上の位置づけ
@@ -25,11 +25,10 @@
 //!   見出しレベルごとのフォントサイズ・フォーマット文字列・余白を適用する
 
 use config::read_style::Style as ReadStyle;
-use document::{DocNode, Document, try_inline_nodes_to_plain_text};
 use miette::Diagnostic;
+use model::{DocNode, Document, Length, try_inline_nodes_to_plain_text};
 use thiserror::Error;
 use tracing::debug;
-use types::Length;
 
 mod counter;
 mod figure;
@@ -49,8 +48,8 @@ mod theorem;
 mod title_page;
 
 pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
+pub use model::TableColumn;
 pub use title_page::{TitlePageMetadata, lower_title_page};
-pub use types::TableColumn;
 
 /// 複数ソースファイルを 1 回の lowering 呼び出しでまとめて処理する際の、ソースの位置識別子
 ///
@@ -68,6 +67,14 @@ impl SourceId {
   /// 元のインデックスを返す
   #[must_use]
   pub fn index(self) -> usize { return self.0; }
+}
+
+/// `DocNode` 由来の軽量な `model::Span` を診断用の `miette::SourceSpan` へ変換する
+///
+/// `model` は診断ライブラリに依存しないため（#203）、`LoweringError` の `#[label]` を構築する
+/// 直前でのみ変換する。
+fn span_to_source_span(span: model::Span) -> miette::SourceSpan {
+  return miette::SourceSpan::from((span.start as usize, span.len() as usize));
 }
 
 /// Lowering（Document IR → `LayoutNode` 変換）で発生し得るエラー
@@ -165,14 +172,14 @@ pub struct LoweringContext<'a> {
   /// 通常は `style.text.font_kind`。定理本体のように既定書体を差し替えたいブロックでは
   /// [`LoweringContext::with_body_font_kind`] で派生した文脈を本体の lowering に渡す
   /// （斜体の定理本文・ローマンの証明本文など）。段落・本体内リストへ伝播する。
-  pub body_font_kind: types::FontKind,
+  pub body_font_kind: model::FontKind,
   /// 段落先頭行の字下げ量
   ///
   /// 通常は `style.text.first_line_indent`。[`crate::paragraph::lower_paragraph`] が正のとき
   /// 段落先頭に水平カーンを前置し、先頭行だけを字下げする。リスト項目・表セルのように
   /// 内部段落へ字下げを波及させたくないブロックは [`LoweringContext::with_first_line_indent`]
   /// で 0 にリセットした文脈を本体に渡す。`quotation` ブロックは逆に正の値を設定する。
-  pub first_line_indent: types::Length,
+  pub first_line_indent: model::Length,
   /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
   ///
   /// `\image[dpi=...]` の per-image 上書きが無いときの既定値。production では
@@ -237,7 +244,7 @@ impl<'a> LoweringContext<'a> {
   /// `style` 参照は共有したまま `body_font_kind` のみ上書きする。定理本体を斜体・証明本体を
   /// ローマンで lower する際に、本体ノード列の lowering へ渡す。
   #[must_use]
-  pub fn with_body_font_kind(&self, body_font_kind: types::FontKind) -> LoweringContext<'a> {
+  pub fn with_body_font_kind(&self, body_font_kind: model::FontKind) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
@@ -255,7 +262,7 @@ impl<'a> LoweringContext<'a> {
   /// リスト項目・表セル・定理本体などへ字下げを波及させないため 0 にリセットしたり、
   /// `quotation` ブロックで正の値を与えたりするのに使う。
   #[must_use]
-  pub fn with_first_line_indent(&self, first_line_indent: types::Length) -> LoweringContext<'a> {
+  pub fn with_first_line_indent(&self, first_line_indent: model::Length) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,
@@ -316,7 +323,7 @@ pub struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
-  pub level: types::HeadingLevel,
+  pub level: model::HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
   /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
@@ -326,9 +333,9 @@ pub struct HeadingRecord {
 /// pass1 走査中に集める見出しの生データ（`title` はまだ `\ref` 未解決）
 struct PendingHeading {
   index: usize,
-  level: types::HeadingLevel,
+  level: model::HeadingLevel,
   number: String,
-  title: Vec<document::InlineNode>,
+  title: Vec<model::InlineNode>,
   /// 見出しが属するソースグループの識別子。未解決 `\ref` のエラー帰属に使う。
   source: SourceId,
 }
@@ -516,7 +523,7 @@ fn lower_node_indexed(
     DocNode::Anchor(target) => {
       // CSL 整形ステージが付与した参照アンカー点（参考文献エントリの直前）。
       // ラベル付きブロックと同じ `AnchorMark::Label` でジャンプ先に解決させる。
-      return Ok(vec![LayoutNode::Anchor(types::AnchorMark::Label(target.clone()))]);
+      return Ok(vec![LayoutNode::Anchor(model::AnchorMark::Label(target.clone()))]);
     },
     DocNode::MathBlock {
       kind,
@@ -599,7 +606,7 @@ fn with_label_anchor(label: Option<&str>, nodes: Vec<LayoutNode>) -> Vec<LayoutN
     return nodes;
   };
   let mut result = Vec::with_capacity(nodes.len() + 1);
-  result.push(LayoutNode::Anchor(types::AnchorMark::Label(label.to_string())));
+  result.push(LayoutNode::Anchor(model::AnchorMark::Label(label.to_string())));
   result.extend(nodes);
   return result;
 }
@@ -613,14 +620,14 @@ fn with_label_anchors(labels: &[&str], nodes: Vec<LayoutNode>) -> Vec<LayoutNode
     return nodes;
   }
   let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(labels.iter().map(|label| LayoutNode::Anchor(types::AnchorMark::Label((*label).to_string()))));
+  result.extend(labels.iter().map(|label| LayoutNode::Anchor(model::AnchorMark::Label((*label).to_string()))));
   result.extend(nodes);
   return result;
 }
 
 /// 見出しタイトルのプレーンテキストを、`\ref` を `CounterRegistry` で解決しながら組み立てる
 ///
-/// [`document::try_inline_nodes_to_plain_text`] に resolver を注入する薄いラッパー。
+/// [`model::try_inline_nodes_to_plain_text`] に resolver を注入する薄いラッパー。
 /// `\ref` が未定義ラベルを参照している場合は黙って空文字列にせず
 /// [`LoweringError::UnresolvedReference`] を返す。`source` は呼び出し元（このタイトルが属する
 /// 見出しの [`PendingHeading::source`]）をそのままエラーへ引き継ぐための帰属ソース。
@@ -631,14 +638,14 @@ fn with_label_anchors(labels: &[&str], nodes: Vec<LayoutNode>) -> Vec<LayoutNode
 /// タイトル中の `\ref` が未定義ラベルを参照している場合に [`LoweringError::UnresolvedReference`]
 /// を返します。
 fn try_resolve_heading_title_plain(
-  title: &[document::InlineNode],
+  title: &[model::InlineNode],
   registry: &counter::CounterRegistry,
   source: SourceId,
 ) -> Result<String, LoweringError> {
-  let mut resolve_ref = |label: &str, span: miette::SourceSpan| -> Result<String, LoweringError> {
+  let mut resolve_ref = |label: &str, span: model::Span| -> Result<String, LoweringError> {
     return registry.resolve_label(label).map(str::to_string).ok_or_else(|| LoweringError::UnresolvedReference {
       label: label.to_string(),
-      span,
+      span: span_to_source_span(span),
       source_id: source,
     });
   };
@@ -647,8 +654,7 @@ fn try_resolve_heading_title_plain(
 
 #[cfg(test)]
 mod tests {
-  use document::{HeadingLevel, InlineNode, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind};
-  use types::Length;
+  use model::{HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind};
 
   use super::*;
 
@@ -665,7 +671,7 @@ mod tests {
       numbered: false,
       // equation はラベルを行側（`MathRow::label`）に持つため、環境単位ラベルは None
       label: None,
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     };
   }
 
@@ -715,7 +721,7 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], LayoutNode::Anchor(types::AnchorMark::Label(l)) if l == "cite:foo"));
+    assert!(matches!(&result[0], LayoutNode::Anchor(model::AnchorMark::Label(l)) if l == "cite:foo"));
   }
 
   #[test]
@@ -767,7 +773,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let nodes = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }])];
 
     let err = lower_nodes(&ctx, &nodes).expect_err("未解決の Ref は LoweringError を返すべき");
@@ -787,7 +793,7 @@ mod tests {
     let node = DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["smith2020".to_string(), "jones2021".to_string()],
       label: None,
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }]);
 
     let err = lower_node(&ctx, &node).expect_err("未整形の Cite は LoweringError を返すべき");
@@ -967,7 +973,7 @@ mod tests {
 
     // Assert — 先頭が Anchor(Label("eq:foo"))
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(types::AnchorMark::Label(l))) if l == "eq:foo"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l == "eq:foo"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }
@@ -1011,7 +1017,7 @@ mod tests {
       numbered: true,
       title: vec![InlineNode::Text(title.to_string())],
       label: Some(label.to_string()),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     };
   }
 
@@ -1046,7 +1052,7 @@ mod tests {
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
         LayoutNode::Link {
-          target: types::LinkTarget::Internal(t),
+          target: model::LinkTarget::Internal(t),
           ..
         } => t == target,
         LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
@@ -1061,7 +1067,7 @@ mod tests {
     let g0 = vec![labeled_chapter("Intro", "ch:intro")];
     let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }])];
 
     // Act
@@ -1102,7 +1108,7 @@ mod tests {
     )])];
     let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "missing".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }])];
 
     // Act
@@ -1129,7 +1135,7 @@ mod tests {
         InlineNode::Text("見出し ".to_string()),
         InlineNode::Ref {
           label: "typo".to_string(),
-          span: miette::SourceSpan::from((0_usize, 0_usize)),
+          span: model::Span::DUMMY,
         },
       ],
     )];

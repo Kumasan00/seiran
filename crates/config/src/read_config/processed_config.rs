@@ -24,8 +24,8 @@
 
 use std::{path::PathBuf, str::FromStr};
 
+use model::{FontMap, Length};
 use thiserror::Error;
-use types::{FontMap, Length};
 
 /// PDF 生成に必要な完全な設定情報
 ///

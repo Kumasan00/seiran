@@ -11,15 +11,14 @@ license.workspace = true
 chrono.workspace = true
 config.workspace = true
 font.workspace = true
-hlist.workspace = true
 image.workspace = true
 krilla.workspace = true
 krilla-svg.workspace = true
 miette.workspace = true
+model.workspace = true
 read-fonts.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-types.workspace = true
 usvg.workspace = true
 
 [lints]

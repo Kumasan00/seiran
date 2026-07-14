@@ -6,7 +6,7 @@
 //!
 //! クラス固有のスタイル（表示名・カウンタ・番号書式・本文フォント等）は
 //! `config::read_style::TheoremStyle` 側で保持し、ここではクラスそのものに関する基本変換のみを提供する。
-//! `document::DocNode::Theorem` と `config::read_style::Theorems` の双方がこの単一の enum を共有する
+//! `DocNode::Theorem` と `config::read_style::Theorems` の双方がこの単一の enum を共有する
 //! （`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
 
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,7 @@ impl TheoremClass {
 
   /// 環境名（`snake_case`）から対応するクラスを取得する。
   ///
-  /// 10 種以外の名前は `None` を返す。`parser` が `\begin{<name>}` の環境名を
+  /// 10 種以外の名前は `None` を返す。`frontend` が `\begin{<name>}` の環境名を
   /// クラスに解決するために使う。
   #[must_use]
   pub fn from_name(name: &str) -> Option<Self> {

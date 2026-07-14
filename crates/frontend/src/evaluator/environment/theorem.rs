@@ -14,7 +14,7 @@
 //! クラスの `config::read_style::TheoremStyle` を参照して決める（本ハンドラはクラス・サブタイトル・本体・
 //! `of` 参照を構造化するだけで、番号・書式情報は一切持たない）。
 
-use document::{DocNode, ProofTarget, TheoremClass};
+use model::{DocNode, ProofTarget, TheoremClass};
 
 use crate::{
   evaluator::{
@@ -94,7 +94,7 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::TheoremClass;
+  use model::TheoremClass;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -191,7 +191,7 @@ mod tests {
     let DocNode::Paragraph(inlines) = result.last().unwrap() else {
       panic!("Paragraph が期待されます: {:?}", result.last());
     };
-    assert!(matches!(inlines.first(), Some(document::InlineNode::Ref { label, .. }) if label == "thm:p"));
+    assert!(matches!(inlines.first(), Some(model::InlineNode::Ref { label, .. }) if label == "thm:p"));
   }
 
   #[test]

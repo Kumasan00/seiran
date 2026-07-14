@@ -6,14 +6,12 @@
 
 use std::collections::HashMap;
 
-use document::{DocNode, HeadingLevel, InlineNode};
 use hayagriva::{
   BibliographyDriver, BibliographyRequest, CitationItem, CitationRequest, ElemChild, ElemChildren, ElemMeta, Formatted,
   Formatting, RenderedBibliography,
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
-use miette::SourceSpan;
-use types::FontKind;
+use model::{DocNode, FontKind, HeadingLevel, InlineNode, Span};
 
 /// hayagriva 整形の結果。所有値のみを保持し、`nodes` への借用は残さない。
 pub(crate) struct Rendered {
@@ -138,7 +136,7 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
     numbered: false,
     title: vec![InlineNode::Text(bib_title.to_string())],
     label: None,
-    span: SourceSpan::from((0_usize, 0_usize)),
+    span: Span::DUMMY,
   });
 
   for item in &bibliography.items {

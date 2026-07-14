@@ -10,11 +10,11 @@
 use std::ops::{Index, IndexMut};
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   FontKind, HeadingLevel,
   length::{Length, non_negative, positive},
 };
+use serde::{Deserialize, Serialize};
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
 ///
@@ -259,7 +259,7 @@ pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, HeadingLevel, length::Length};
+  use model::{FontKind, HeadingLevel, length::Length};
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
 

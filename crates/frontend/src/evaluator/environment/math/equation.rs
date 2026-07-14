@@ -12,7 +12,7 @@
 //!   同一意味論。無採番のときは equation カウンタを消費しない（後続の採番式の通し番号が連続する）。
 //!   無採番の式に `[label=...]` を併用するとエラー（参照番号が存在しないため）
 
-use document::{DocNode, MathEnvKind, MathRow};
+use model::{DocNode, MathEnvKind, MathRow};
 
 use super::math_grid::{GridSpec, evaluate_grid};
 use crate::{
@@ -88,7 +88,7 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::{MathEnvKind, MathNode};
+  use model::{MathEnvKind, MathNode};
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -102,7 +102,7 @@ mod tests {
   }
 
   /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
-  fn first_row(result: &[DocNode]) -> &document::MathRow {
+  fn first_row(result: &[DocNode]) -> &model::MathRow {
     let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };

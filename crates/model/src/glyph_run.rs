@@ -1,11 +1,11 @@
 //! シェーピング済みグリフ列（[`GlyphRun`] / [`Glyph`]）の定義
 //!
 //! `layout` クレートのシェーピング結果を保持する plain data 型。
-//! フォントパース結果（`FontRef`）には依存しないため `hlist` に置く。
+//! フォントパース結果（`FontRef`）には依存しないため `model` に置く。
 
 use std::ops::Range;
 
-use types::{Color, FontType, Length};
+use crate::{Color, FontType, Length};
 
 /// シェーピング済みのグリフ列情報
 ///

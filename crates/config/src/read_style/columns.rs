@@ -5,8 +5,8 @@
 //! `hlist::break_pages` が担い、本型はその段数と段間だけを保持する。
 
 use garde::Validate;
+use model::{Length, length::non_negative};
 use serde::{Deserialize, Serialize};
-use types::{Length, length::non_negative};
 
 /// 段組みのスタイル設定
 ///
@@ -38,7 +38,7 @@ impl Default for ColumnsStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::Length;
+  use model::Length;
 
   use super::ColumnsStyle;
 

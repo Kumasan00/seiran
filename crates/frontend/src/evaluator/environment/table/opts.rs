@@ -1,6 +1,6 @@
 //! `table` 環境の任意引数（`columns` / `widths` / `label` / `breakable`）解析
 
-use types::{ColumnAlign, ColumnWidth, Length};
+use model::{ColumnAlign, ColumnWidth, Length};
 
 use crate::{
   evaluator::{

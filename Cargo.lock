@@ -252,16 +252,15 @@ version = "0.1.0"
 dependencies = [
  "ciborium",
  "config",
- "document",
  "hayagriva",
  "miette",
+ "model",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "toml",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -348,12 +347,12 @@ version = "0.1.0"
 dependencies = [
  "garde",
  "miette",
+ "model",
  "serde",
  "tempfile",
  "thiserror",
  "toml",
  "tracing",
- "types",
  "unic-langid",
 ]
 
@@ -433,14 +432,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "document"
-version = "0.1.0"
-dependencies = [
- "miette",
- "types",
 ]
 
 [[package]]
@@ -533,11 +524,11 @@ dependencies = [
  "font-types 0.12.1",
  "harfrust",
  "miette",
+ "model",
  "rayon",
  "read-fonts 0.41.0",
  "thiserror",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -595,13 +586,12 @@ name = "frontend"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
- "document",
  "memchr",
  "miette",
+ "model",
  "phf",
  "thiserror",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -740,8 +730,8 @@ version = "0.1.0"
 dependencies = [
  "hypher",
  "icu",
+ "model",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -1337,8 +1327,8 @@ dependencies = [
  "icu",
  "lazy-regex",
  "lowering",
+ "model",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -1405,12 +1395,11 @@ name = "lowering"
 version = "0.1.0"
 dependencies = [
  "config",
- "document",
  "frontend",
  "miette",
+ "model",
  "thiserror",
  "tracing",
- "types",
 ]
 
 [[package]]
@@ -1475,6 +1464,15 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "model"
+version = "0.1.0"
+dependencies = [
+ "garde",
+ "serde",
+ "toml",
 ]
 
 [[package]]
@@ -1602,15 +1600,14 @@ dependencies = [
  "chrono",
  "config",
  "font",
- "hlist",
  "image",
  "krilla",
  "krilla-svg",
  "miette",
+ "model",
  "read-fonts 0.41.0",
  "thiserror",
  "tracing",
- "types",
  "usvg",
 ]
 
@@ -1939,19 +1936,18 @@ dependencies = [
  "citation",
  "clap",
  "config",
- "document",
  "font",
  "frontend",
  "hlist",
  "layout",
  "lowering",
  "miette",
+ "model",
  "pdf_gen",
  "read-fonts 0.41.0",
  "thiserror",
  "tracing",
  "tracing-subscriber",
- "types",
 ]
 
 [[package]]
@@ -2443,15 +2439,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
-]
-
-[[package]]
-name = "types"
-version = "0.1.0"
-dependencies = [
- "garde",
- "serde",
- "toml",
 ]
 
 [[package]]

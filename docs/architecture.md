@@ -6,30 +6,32 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 データフロー全体・クレート依存グラフ・コーディング規約は CLAUDE.md を参照。
 
-## `types`
+## `model`
 
-`FontType`, `FontKind`, `FontMap`, `Length`, `HeadingLevel`, `TableColumn` など全クレート共通型。
+全段共有のデータモデル。旧 `types`（共通型の基盤）/ `document`（frontend ↔ lowering の IR 契約）/
+`hlist`（レイアウトのコア型）の 3 クレートを 1 つに統合した（#203）。3 クレートの境界は形骸化して
+いた（`document` が `types` の 7 型を `pub use` で再エクスポートし、`document::HeadingLevel` /
+`types::HeadingLevel` の 2 通りの参照パスが混在する等）ため、単一の root facade に一本化して
+「新しい共有型をどこに置くか」の判断を不要にした。3 層構成:
 
-**配置基準** — workspace には共有契約クレートが 3 つある: `types`（基盤）/ `document`（frontend ↔ lowering の
-IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hlist` は
-`document` に依存しない設計なので、型の置き場所は共有範囲で決まる。
-判定テストは「**この型の共有範囲は、types 以外に共通の下位クレートを持つか？**」
-
-- 持たない（`document` に依存できないクレートと `document` 系の両方が使い、types が唯一の合流点）→ types。
-  例: `TheoremClass` / `HeadingLevel`（`config`（`read_style`）+ `document`）、`TableColumn` 系（`document` + `hlist`）、
-  `AnchorMark` / `LinkTarget`（`lowering` + `hlist`）、`FontType` / `FontMap`（`config`（`read_config`）+ `font` + `hlist`）
-- `document` 系（`frontend` / `citation` / `lowering`）だけが使う → `document`。例: `QuoteKind`
-- 1 クレートだけが使う → そのクレート
-- 補助判定: `LayoutNode` に乗って lowering を生き延びる型は types に置く。`layout` は意図的に
-  `document` 非依存（LayoutNode だけを見る）なので、こうした型が `document` にあると `layout` に
-  `document` 依存が生える。例: `MathEnvKind` / `MathDelimiter`
-
-置くのは**語彙型**まで — 小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
-`Display`）・純粋演算（`Length` の算術、`Align::offset`）。IR ノード（`document`）・設定スキーマ
-（`config`）・組版データ構造（`hlist`）・フォントや I/O など挙動を持つ処理は置かない。
-
-例外: `MathClass` は現在 `frontend` の記号テーブルのみが使う先行配置。数式スペーシング実装時に
-`MathNode` 経由で `layout` まで届く予定で、最終的な合流点が types になるため留め置いている。
+- **語彙型**（旧 `types`）: `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` /
+  `TableColumn` / `ColumnAlign` / `ColumnWidth` / `AnchorMark` / `LinkTarget` / `MathClass` /
+  `MathDelimiter` / `MathEnvKind` / `TheoremClass` / `Color` / `Align` / `TextAlignment` 等。
+  小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde / `Display`）・
+  純粋演算（`Length` の算術、`Align::offset`）のみを持つ。IR ノード・組版データ構造・フォントや
+  I/O など挙動を持つ処理は置かない。
+- **Document IR**（旧 `document`）: `Document` / `DocNode` / `InlineNode` / `MathNode` /
+  `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`。`frontend`（生産者）と
+  `lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみ保持し物理レイアウト情報は
+  持たない。ソース位置は `Span`（`{start, end}` の軽量なバイトオフセット型）で持ち、
+  `miette::SourceSpan` への変換は消費側（`frontend` の `DocNode` 構築点・`lowering` の診断
+  構築点）が `From<Span>` / tuple 変換で担う（`model` 自体は miette に依存しない — 外部依存は
+  serde / garde のみ）。
+- **組版コア型**（旧 `hlist` のコア型部分）: `HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
+  `GlyphRun` / `TableBox`。フォント非依存。`dump_pages`（確定レイアウトの決定的テキストダンプ、
+  レイアウトダンプ golden テストの基盤）・`measure_items_width` / `max_font_size_in_items`
+  （表の純粋計測ヘルパ）もここに置く。純粋パス本体（break_opportunities / break_lines /
+  break_pages / hyphenation）は `hlist` クレートに残り、これらの型に依存する。
 
 ## `config`
 
@@ -56,10 +58,6 @@ IR 契約）/ `hlist`（レイアウトのコア型）。`config` / `font` / `hl
 - **文献（`ReferenceStyle`）**: `style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
-## `document`
-
-Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`）。`frontend`（生産者）と `lowering`（消費者）双方が依存する共有契約クレート。セマンティック情報のみ保持し、物理レイアウト情報は持たない（`block` / `caption` / `inline` / `list` / `math` / `quote` / `table` サブモジュール）。
-
 ## `frontend`
 
 テキストソースから Document IR への変換を担う（旧 `syntax` + `parser` を統合。#201）。公開 API は `parse_source` のみで、CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）に閉じる。
@@ -70,7 +68,7 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 ### `evaluator`（`frontend::evaluator`）
 
-`syntax` の生成した CST を走査し、Document IR（`document` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
+`syntax` の生成した CST を走査し、Document IR（`model` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
 
 ## `citation`
 
@@ -82,7 +80,17 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 ## `hlist`
 
-フォント非依存のコア型（`HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` / `GlyphRun` / `TableBox`）と純粋組版パス: (b) `break_opportunities`（ICU UAX #14 に `hyphenation`（`hypher`）の欧文語中分割点＝`BreakKind::Hyphen` を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決）、(c) `break_lines`（`LineBreaker` / `GreedyBreaker`。語中折り返しは `HItem::Discretionary` で表し、折り返した行末だけハイフンを出す）、(d) `break_pages`（ベースライン送り・改ページ・表分割・`PageGeometry`）。表の列幅・行高の純粋計測もここ。改ページ制御は glue（伸縮アキ）/ penalty（分割コスト）モデルで、widow/orphan・keep-with-next・下端揃え（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に不足高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ直前・伸縮アキ 0 のリージョンは対象外）。`dump` は確定レイアウト（`Page` 列）の決定的テキストダンプで、レイアウトダンプ golden テストの基盤。
+フォント非依存の純粋組版パス。コア型（`HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
+`GlyphRun` / `TableBox`）は `model` クレートに移り（#203）、本クレートには純粋パス本体だけが残る:
+(b) `break_opportunities`（ICU UAX #14 に `hyphenation`（`hypher`）の欧文語中分割点＝
+`BreakKind::Hyphen` を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決）、(c) `break_lines`
+（`LineBreaker` / `GreedyBreaker`。語中折り返しは `HItem::Discretionary` で表し、折り返した行末だけ
+ハイフンを出す）、(d) `break_pages`（ベースライン送り・改ページ・表分割・`PageGeometry`）。改ページ
+制御は glue（伸縮アキ）/ penalty（分割コスト）モデルで、widow/orphan・keep-with-next・下端揃え
+（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に
+不足高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ
+直前・伸縮アキ 0 のリージョンは対象外）。表の列幅・行高の純粋計測ヘルパ・`dump_pages`（確定レイアウト
+の決定的テキストダンプ、レイアウトダンプ golden テストの基盤）は `model` 側にある。
 
 ## `font`
 
@@ -92,7 +100,7 @@ Document IR の型定義（`Document` / `DocNode` / `InlineNode` / `MathNode` / 
 
 DocNode → LayoutNode への論理変換層（`lib.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `quote` / `table` / `template` / `theorem` / `title_page` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ）。
 
-採番・`\ref` 解決も本クレートの責務（#192 で `parser`（現 `frontend`）から移設。`document::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lib.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
+採番・`\ref` 解決も本クレートの責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lib.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
 複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
 

@@ -14,12 +14,12 @@
 use std::{collections::HashMap, io};
 
 use config::read_style::Style;
-use document::{DocNode, InlineNode};
 use hayagriva::{
   archive,
   citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
+use model::{DocNode, InlineNode};
 use thiserror::Error;
 use tracing::debug;
 
@@ -386,10 +386,8 @@ mod tests {
   };
 
   use config::read_style::Style;
-  use document::{DocNode, InlineNode};
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
-  use miette::SourceSpan;
-  use types::FontKind;
+  use model::{DocNode, FontKind, InlineNode, Span};
 
   use super::{CitationError, load_locales, process_citations};
   use crate::{
@@ -555,7 +553,7 @@ mod tests {
     return InlineNode::Cite {
       keys: vec![key.to_string()],
       label: None,
-      span: SourceSpan::from((0_usize, 0_usize)),
+      span: Span::DUMMY,
     };
   }
 
@@ -636,7 +634,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["kwan2014".to_string(), "doe2020".to_string()],
       label: None,
-      span: SourceSpan::from((0_usize, 0_usize)),
+      span: Span::DUMMY,
     }])];
 
     // Act

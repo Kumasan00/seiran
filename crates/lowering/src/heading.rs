@@ -3,8 +3,7 @@
 //! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`config::read_style::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
-use document::{HeadingLevel, InlineNode, heading_anchor_key};
-use types::AnchorMark;
+use model::{AnchorMark, HeadingLevel, InlineNode, heading_anchor_key};
 
 use super::{LoweringContext, LoweringError, template::expand_template};
 use crate::layout_node::{LayoutNode, TextStyle};
@@ -60,9 +59,9 @@ pub(super) fn lower_heading(
   result.push(LayoutNode::VBox {
     children,
     margin_bottom: heading_style.bottom_margin,
-    indent: types::Length::pt(0.0),
-    right_indent: types::Length::pt(0.0),
-    align: types::Align::Left,
+    indent: model::Length::pt(0.0),
+    right_indent: model::Length::pt(0.0),
+    align: model::Align::Left,
   });
 
   // 見出し直後の改ページ制御。強制改ページ（page_break_after）と keep-with-next は排他:
@@ -118,7 +117,7 @@ mod tests {
     let title = [
       InlineNode::Text("Intro ".to_string()),
       InlineNode::Styled {
-        kind: types::FontKind::SerifItalic,
+        kind: model::FontKind::SerifItalic,
         children: vec![InlineNode::Text("Italic".to_string())],
       },
     ];
@@ -142,7 +141,7 @@ mod tests {
         _ => None,
       })
       .expect("イタリック部分の Text があるはず: {children:?}");
-    assert_eq!(italic.font_kind, types::FontKind::SerifItalic);
+    assert_eq!(italic.font_kind, model::FontKind::SerifItalic);
     assert_eq!(italic.font_size, heading_size, "フォントサイズは見出しスタイルを継承する");
   }
 
@@ -169,7 +168,7 @@ mod tests {
     // key は文書順インデックス（3）由来、label は \ref 用ラベル
     assert_eq!(
       anchor,
-      Some(types::AnchorMark::Heading {
+      Some(model::AnchorMark::Heading {
         key: "heading:3".to_string(),
         label: Some("sec:intro".to_string()),
       })
@@ -222,7 +221,7 @@ mod tests {
       "1",
       &[InlineNode::Ref {
         label: "sec:missing".to_string(),
-        span: miette::SourceSpan::from((0_usize, 0_usize)),
+        span: model::Span::DUMMY,
       }],
       None,
       0,

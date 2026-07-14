@@ -35,7 +35,7 @@
 use std::collections::HashMap;
 
 use config::read_style::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
-use document::HeadingLevel;
+use model::HeadingLevel;
 
 use crate::{LoweringError, SourceId};
 
@@ -118,7 +118,7 @@ impl CounterRegistry {
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
-    span: miette::SourceSpan,
+    span: model::Span,
     source: SourceId,
   ) -> Result<Option<String>, LoweringError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
@@ -142,7 +142,7 @@ impl CounterRegistry {
       if !self.register_formatted_label(l.to_string(), formatted) {
         return Err(LoweringError::DuplicateLabel {
           label: l.to_string(),
-          span,
+          span: crate::span_to_source_span(span),
           source_id: source,
         });
       }
@@ -251,7 +251,7 @@ impl CounterRegistry {
     &mut self,
     counter: CounterName,
     label: Option<&str>,
-    span: miette::SourceSpan,
+    span: model::Span,
     source: SourceId,
   ) -> Result<String, LoweringError> {
     let number = self.increment(counter);
@@ -260,7 +260,7 @@ impl CounterRegistry {
     {
       return Err(LoweringError::DuplicateLabel {
         label: l.to_string(),
-        span,
+        span: crate::span_to_source_span(span),
         source_id: source,
       });
     }
@@ -340,11 +340,11 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
 #[cfg(test)]
 mod tests {
   use config::read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
-  use miette::SourceSpan;
+  use model::Span;
 
   use super::*;
 
-  fn theorem_span() -> SourceSpan { return SourceSpan::from((0_usize, 0_usize)); }
+  fn theorem_span() -> Span { return Span::DUMMY; }
 
   #[test]
   fn increment_theorem_numbers_with_default_format() {

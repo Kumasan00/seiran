@@ -23,7 +23,7 @@ use crate::FontType;
 /// # Examples
 ///
 /// ```
-/// use types::{FontMap, FontType};
+/// use model::{FontMap, FontType};
 ///
 /// let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
 /// assert_eq!(map.get(FontType::Serif), "Serif");

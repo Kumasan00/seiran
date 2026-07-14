@@ -11,8 +11,8 @@
 //! また、`align` / `gather` / `split` / `multiline` の各ハンドラが共有する評価本体 [`evaluate_math_env`]
 //! もここに置く（任意引数 `[numbered]` の解釈・グリッド分割・末尾空行除去・採番までを一手に行う）。
 
-use document::{DocNode, MathEnvKind, MathNode, MathRow};
 use miette::SourceSpan;
+use model::{DocNode, MathEnvKind, MathNode, MathRow};
 
 use crate::{
   evaluator::{EvalError, math::evaluate_math_elements},
@@ -249,7 +249,7 @@ fn is_trivia_element(child: &GreenElement) -> bool {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::MathNode;
+  use model::MathNode;
 
   use super::*;
   use crate::{

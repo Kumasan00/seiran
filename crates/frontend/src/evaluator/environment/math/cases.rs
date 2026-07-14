@@ -8,7 +8,7 @@
 //! `cases` は**非採番**であり、`config::read_style::CounterName::Equation` を一切消費しません（採番ありの
 //! 数式環境と通し番号を共有しない）。任意引数も位置引数も受け付けません。
 
-use document::{DocNode, MathEnvKind};
+use model::{DocNode, MathEnvKind};
 
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
@@ -71,7 +71,7 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use document::MathEnvKind;
+  use model::MathEnvKind;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -83,7 +83,7 @@ mod tests {
     return crate::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  fn rows_of(result: &[DocNode]) -> &[document::MathRow] {
+  fn rows_of(result: &[DocNode]) -> &[model::MathRow] {
     let DocNode::MathBlock {
       kind,
       rows,

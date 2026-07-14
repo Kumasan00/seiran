@@ -4,7 +4,7 @@
 //! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成します。
 //! 自動採番は行わず、常に `numbered: true` を立てるだけで `lowering` 層に委ねます。
 
-use document::{DocNode, HeadingLevel};
+use model::{DocNode, HeadingLevel};
 
 use crate::{
   evaluator::{

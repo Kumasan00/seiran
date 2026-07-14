@@ -1,11 +1,11 @@
 //! 表（table）環境のスタイル設定型。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   Color,
   length::{Length, non_negative},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::read_style::caption::CaptionStyle;
 
@@ -58,7 +58,7 @@ impl Default for TableStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::Length;
+  use model::Length;
 
   use super::TableStyle;
 

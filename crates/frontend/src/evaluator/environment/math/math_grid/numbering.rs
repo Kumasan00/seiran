@@ -4,7 +4,8 @@
 //! 応じた `MathRow::numbered` / ラベルの割当を担う。実際の発番（`CounterName::Equation` の消費）は
 //! `lowering` 層が担うため、ここでは「採番対象かどうか」の構造化のみを行う。
 
-use document::MathRow;
+use miette::SourceSpan;
+use model::MathRow;
 
 use super::{GridRow, is_blank_row};
 use crate::{
@@ -14,6 +15,16 @@ use crate::{
   },
   syntax::ast::EnvironmentView,
 };
+
+/// 行末マーカー `\label{...}` の診断用 `SourceSpan` を `MathRow::label_span`（`model::Span`）へ変換する
+///
+/// `GridRow::label_span` は行末マーカーの重複診断（`EvalError`）用に `SourceSpan` を保持するが、
+/// Document IR（`model`）は診断ライブラリに依存しない軽量な `Span` を使う（#203）。
+fn to_model_span(span: SourceSpan) -> model::Span {
+  let start = u32::try_from(span.offset()).unwrap_or(u32::MAX);
+  let end = u32::try_from(span.offset() + span.len()).unwrap_or(u32::MAX);
+  return model::Span::new(start, end);
+}
 
 /// 採番の粒度
 ///
@@ -129,7 +140,7 @@ pub(super) fn assign_numbering(
           cells: row.cells,
           numbered: numbered_row,
           label: row.label,
-          label_span: row.label_span,
+          label_span: row.label_span.map(to_model_span),
         });
       })
       .collect::<Result<Vec<MathRow>, EvalError>>()?,

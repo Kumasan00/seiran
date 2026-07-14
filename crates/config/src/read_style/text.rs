@@ -4,11 +4,11 @@
 //! `Style::text` フィールドに置く。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use types::{
+use model::{
   FontKind, TextAlignment,
   length::{Length, non_negative, positive},
 };
+use serde::{Deserialize, Serialize};
 
 /// 本文段落のスタイル設定
 ///
@@ -73,7 +73,7 @@ impl Default for TextBlockStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{FontKind, TextAlignment, length::Length};
+  use model::{FontKind, TextAlignment, length::Length};
 
   use super::TextBlockStyle;
 

@@ -11,7 +11,7 @@
 //! [`extract_text_content`] / `parse_key_value_options` が解除するため、表示・リンク先とも
 //! `https://example.com` になる。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use crate::{
   evaluator::{

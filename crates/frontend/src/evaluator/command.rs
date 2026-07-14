@@ -22,10 +22,9 @@
 //! 4. **独自ロジックを持つコマンド**:
 //!    `CommandKind` にバリアントを追加し、`execute()` にハンドラを実装します。
 
-use document::{DocNode, HeadingLevel, InlineNode};
 use miette::SourceSpan;
+use model::{DocNode, FontKind, HeadingLevel, InlineNode};
 use phf::phf_map;
-use types::FontKind;
 
 use crate::{
   evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},

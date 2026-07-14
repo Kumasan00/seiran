@@ -1,13 +1,12 @@
 //! 前付け（タイトルページ・目次）の組み立て・ページ分割・補助型
 
 use config::read_style::{Style, TocStyle};
-use document::heading_anchor_key;
 use font::{FontMetrics, shaper::HarfRustShapers};
-use hlist::{Block, LineBreaker, Page, PageGeometry};
+use hlist::{LineBreaker, PageGeometry};
 use layout::{TocEntryInput, TocSpec, build_blocks, build_toc_blocks};
 use lowering::{HeadingRecord, TextStyle, TitlePageMetadata, lower_title_page};
+use model::{Block, FontKind, HeadingLevel, Page, TextAlignment, heading_anchor_key};
 use tracing::{debug, debug_span};
-use types::{FontKind, HeadingLevel, TextAlignment};
 
 use super::page_values::BodyPageValues;
 
@@ -23,7 +22,7 @@ pub(super) fn assemble_front_matter(
   style: &Style,
   shapers: &HarfRustShapers,
   metrics: &FontMetrics,
-  text_width: types::Length,
+  text_width: model::Length,
 ) -> Vec<Block> {
   // build_blocks 用の既定サイズは style から導出する（呼び出し本体と同じ値）。
   let default_font_size = style.text.font_size;
@@ -63,7 +62,7 @@ pub(super) fn assemble_front_matter(
 ///
 /// `max_depth` を超える深さの見出しは除外する。ページラベルは [`BodyPageValues::body_page_label`]
 /// （本文の番号スタイル＝算用数字）でレンダリングし、内部リンクキーは見出しの文書順インデックスから
-/// [`document::heading_anchor_key`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
+/// [`model::heading_anchor_key`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
@@ -83,8 +82,8 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
 
 /// `style.toc` と本文スタイルから目次生成用の [`layout::TocSpec`] を組み立てる。
 ///
-/// 目次見出しの書体は文書の節見出しスタイル（[`document::HeadingLevel::Section`]）に揃える。
-fn build_toc_spec(style: &Style, text_width: types::Length) -> TocSpec {
+/// 目次見出しの書体は文書の節見出しスタイル（[`model::HeadingLevel::Section`]）に揃える。
+fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = style.heading(HeadingLevel::Section);
   return TocSpec {
@@ -117,7 +116,7 @@ fn build_toc_spec(style: &Style, text_width: types::Length) -> TocSpec {
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
 pub(super) fn break_front_matter(
   mut front_blocks: Vec<Block>,
-  text_width: types::Length,
+  text_width: model::Length,
   front_geometry: &PageGeometry,
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,
@@ -134,9 +133,8 @@ pub(super) fn break_front_matter(
 #[cfg(test)]
 mod tests {
   use config::read_style::{PageNumbering, TocStyle};
-  use hlist::PlacedAnchor;
   use lowering::HeadingRecord;
-  use types::{AnchorMark, HeadingLevel};
+  use model::{AnchorMark, HeadingLevel, PlacedAnchor};
 
   use super::{BodyPageValues, Page, collect_toc_entries};
 
@@ -161,8 +159,8 @@ mod tests {
             key: format!("heading:{index}"),
             label: None,
           },
-          x: types::Length::ZERO,
-          y: types::Length::ZERO,
+          x: model::Length::ZERO,
+          y: model::Length::ZERO,
         }],
         links: Vec::new(),
       })

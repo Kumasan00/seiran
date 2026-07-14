@@ -5,8 +5,8 @@
 //! （[`crate::read_style::caption::CaptionStyle`] 等）はクレート直下の各モジュールに置く。
 
 use garde::Validate;
+use model::{Color, HeadingLevel};
 use serde::{Deserialize, Serialize};
-use types::{Color, HeadingLevel};
 
 use crate::read_style::{
   columns::ColumnsStyle,
@@ -147,7 +147,7 @@ impl Style {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::{Color, HeadingLevel, length::Length};
+  use model::{Color, HeadingLevel, length::Length};
 
   use super::Style;
   use crate::read_style::{counter::CounterName, theorem::TheoremClass};

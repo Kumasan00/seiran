@@ -16,14 +16,14 @@
 //! 共有・採番は parser、見出し書式・斜体本文・QED 描画は lowering / `pdf_gen` が後段で担当する。
 
 use garde::Validate;
-use serde::{Deserialize, Serialize};
 // 定理クラス enum は `types` を単一ソースとし、`read_style::theorem::TheoremClass` として再エクスポートする。
-// `document::DocNode::Theorem` も同じ enum を共有するため（`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
-pub use types::TheoremClass;
-use types::{
+// `model::DocNode::Theorem` も同じ enum を共有するため（`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
+pub use model::TheoremClass;
+use model::{
   FontKind,
   length::{Length, non_negative},
 };
+use serde::{Deserialize, Serialize};
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
 ///
@@ -424,7 +424,7 @@ impl TheoremPresentationOverride {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use types::FontKind;
+  use model::FontKind;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
 
@@ -511,7 +511,7 @@ mod tests {
   fn validate_rejects_negative_top_margin() {
     // Arrange
     let mut style = TheoremStyle::default();
-    style.style.top_margin = types::Length::pt(-0.1);
+    style.style.top_margin = model::Length::pt(-0.1);
 
     // Act / Assert
     assert!(style.validate().is_err());

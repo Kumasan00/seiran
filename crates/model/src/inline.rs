@@ -1,9 +1,6 @@
 //! インラインレベル要素の型定義
 
-use miette::SourceSpan;
-use types::{Color, FontKind};
-
-use crate::math::MathNode;
+use crate::{Color, FontKind, Span, math_node::MathNode};
 
 // =============================================================================
 // インラインレベル要素
@@ -73,7 +70,7 @@ pub enum InlineNode {
     /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
     /// `\ref{...}` の `CommandCall` ノードのソース位置。未解決時の診断に使う
-    span: SourceSpan,
+    span: Span,
   },
 
   /// 外部リンク（`\url{uri}` / `\href[url=uri]{表示}`）
@@ -118,7 +115,7 @@ pub enum InlineNode {
     /// CSL 整形ステージで `Some` に確定する。
     label: Option<Vec<InlineNode>>,
     /// `\cite{...}` の `CommandCall` ノードのソース位置。キー存在検証時の診断に使う
-    span: SourceSpan,
+    span: Span,
   },
 }
 
@@ -142,7 +139,7 @@ impl InlineNode {
   /// `resolve_ref` がエラーを返した場合にそのまま伝播します。
   pub fn try_to_plain_text<E>(
     &self,
-    resolve_ref: &mut impl FnMut(&str, SourceSpan) -> Result<String, E>,
+    resolve_ref: &mut impl FnMut(&str, Span) -> Result<String, E>,
   ) -> Result<String, E> {
     match self {
       InlineNode::Text(s) => return Ok(s.clone()),
@@ -173,7 +170,7 @@ impl InlineNode {
   /// プレーンテキスト取得などに使用します。
   #[must_use]
   pub fn to_plain_text(&self) -> String {
-    let mut resolve_ref = |_label: &str, _span: SourceSpan| -> Result<String, std::convert::Infallible> {
+    let mut resolve_ref = |_label: &str, _span: Span| -> Result<String, std::convert::Infallible> {
       return Ok(String::new());
     };
     return match self.try_to_plain_text(&mut resolve_ref) {
@@ -190,7 +187,7 @@ impl InlineNode {
 /// `resolve_ref` がエラーを返した場合にそのまま伝播します。
 pub fn try_inline_nodes_to_plain_text<E>(
   inlines: &[InlineNode],
-  resolve_ref: &mut impl FnMut(&str, SourceSpan) -> Result<String, E>,
+  resolve_ref: &mut impl FnMut(&str, Span) -> Result<String, E>,
 ) -> Result<String, E> {
   let mut out = String::new();
   for inline in inlines {
@@ -202,7 +199,7 @@ pub fn try_inline_nodes_to_plain_text<E>(
 /// インラインノードのスライスをプレーンテキストに一括変換する
 #[must_use]
 pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
-  let mut resolve_ref = |_label: &str, _span: SourceSpan| -> Result<String, std::convert::Infallible> {
+  let mut resolve_ref = |_label: &str, _span: Span| -> Result<String, std::convert::Infallible> {
     return Ok(String::new());
   };
   return match try_inline_nodes_to_plain_text(inlines, &mut resolve_ref) {
@@ -282,7 +279,7 @@ mod tests {
 
   #[test]
   fn try_plain_text_resolves_ref_via_callback() {
-    let span = SourceSpan::from((0, 0));
+    let span = Span::DUMMY;
     let inlines = vec![
       InlineNode::text("See "),
       InlineNode::Ref {
@@ -292,7 +289,7 @@ mod tests {
       InlineNode::text("."),
     ];
     let mut call_count = 0;
-    let mut resolve_ref = |label: &str, _span: SourceSpan| -> Result<String, String> {
+    let mut resolve_ref = |label: &str, _span: Span| -> Result<String, String> {
       call_count += 1;
       assert_eq!(label, "sec:x");
       return Ok("Section 1".to_string());
@@ -304,7 +301,7 @@ mod tests {
 
   #[test]
   fn try_plain_text_propagates_resolver_error() {
-    let span = SourceSpan::from((0, 0));
+    let span = Span::DUMMY;
     let inlines = vec![
       InlineNode::text("See "),
       InlineNode::Ref {
@@ -314,7 +311,7 @@ mod tests {
       InlineNode::text("."),
     ];
     let mut resolve_ref =
-      |_label: &str, _span: SourceSpan| -> Result<String, String> { return Err("unresolved reference".to_string()) };
+      |_label: &str, _span: Span| -> Result<String, String> { return Err("unresolved reference".to_string()) };
     let result = try_inline_nodes_to_plain_text(&inlines, &mut resolve_ref);
     assert_eq!(result, Err("unresolved reference".to_string()));
   }

@@ -5,7 +5,7 @@
 
 use config::read_style::{CounterName, Style, TheoremClass};
 use garde::Validate;
-use types::HeadingLevel;
+use model::HeadingLevel;
 
 #[test]
 fn default_style_passes_validation() {

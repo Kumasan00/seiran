@@ -9,8 +9,7 @@
 //! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
 //! `hlist` の `resolve_column_widths` で行い、ここでは列指定をそのまま保持します。
 
-use document::{CaptionPosition, InlineNode, TableRow};
-use types::{ColumnAlign, ColumnWidth, FontKind, TableColumn};
+use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, TableColumn, TableRow};
 
 use super::{
   LoweringContext, LoweringError,
@@ -121,7 +120,7 @@ pub(super) fn lower_table(
 #[cfg(test)]
 mod tests {
   use config::read_style::Style as ReadStyle;
-  use document::{InlineNode, TableCell};
+  use model::{InlineNode, TableCell};
 
   use super::*;
 
@@ -318,7 +317,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["a", "b", "c"])];
     let widths = [
-      ColumnWidth::Fixed(types::Length::pt(40.0)),
+      ColumnWidth::Fixed(model::Length::pt(40.0)),
       ColumnWidth::Ratio(0.25),
       ColumnWidth::Flex,
     ];

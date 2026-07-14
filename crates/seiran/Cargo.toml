@@ -11,19 +11,18 @@ license.workspace = true
 citation.workspace = true
 clap.workspace = true
 config.workspace = true
-document.workspace = true
 font.workspace = true
 frontend.workspace = true
 hlist.workspace = true
 layout.workspace = true
 lowering.workspace = true
 miette.workspace = true
+model.workspace = true
 pdf_gen.workspace = true
 read-fonts.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-types.workspace = true
 
 [lints]
 workspace = true

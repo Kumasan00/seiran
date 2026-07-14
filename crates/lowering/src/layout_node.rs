@@ -3,7 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use types::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
+use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
 use crate::SourceId;
 
@@ -303,7 +303,7 @@ pub(crate) fn merge_adjacent_text_at(nodes: &mut Vec<LayoutNode>, resolved_posit
 
 #[cfg(test)]
 mod tests {
-  use types::FontKind;
+  use model::FontKind;
 
   use super::*;
 

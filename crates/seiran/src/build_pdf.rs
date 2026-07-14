@@ -19,7 +19,6 @@ use std::{
 };
 
 use citation::{References, read_references};
-use document::DocNode;
 use error::BuildPdfError;
 use font::{
   FontData, FontDataExt, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
@@ -29,6 +28,7 @@ use font::{
 use front_matter::{assemble_front_matter, break_front_matter};
 use frontend::ParseSourceError;
 use lowering::LoweringContext;
+use model::DocNode;
 use outline::collect_outline_entries;
 use page_values::BodyPageValues;
 use pdf_gen::OutlineEntry;
@@ -110,12 +110,12 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
 /// [`build_pages`] の出力＝描画パスへ渡す確定レイアウト。
 ///
-/// いずれもフォント非依存の所有データ（[`hlist::Page`] は計測済みグリフ列を持ち `FontRef` を
+/// いずれもフォント非依存の所有データ（[`model::Page`] は計測済みグリフ列を持ち `FontRef` を
 /// 借用しない、[`OutlineEntry`] はプレーンな見出し情報）なので、フォント関連の借用を伴わずに
 /// `build_pages` の外へ持ち出せる。golden スナップショットテストは `pages` をダンプ対象にする。
 pub(super) struct LaidOutDocument {
   /// 前付け + 本文を連結した確定ページ列（走り文配置済み）
-  pub(super) pages: Vec<hlist::Page>,
+  pub(super) pages: Vec<model::Page>,
   /// PDF しおり用の見出し情報（文書順）
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
@@ -378,10 +378,10 @@ fn wrap_lowering_error(error: lowering::LoweringError, parsed: &[ParsedSource]) 
 fn build_page_geometries(
   config: &config::read_config::Config,
   style: &config::read_style::Style,
-  default_font_size: types::Length,
+  default_font_size: model::Length,
   line_height_factor: f32,
   body_columns: usize,
-  column_gap: types::Length,
+  column_gap: model::Length,
 ) -> (hlist::PageGeometry, hlist::PageGeometry) {
   let body_geometry = hlist::PageGeometry {
     margin_top: config.pdf.margin.top,
@@ -396,7 +396,7 @@ fn build_page_geometries(
   // 前付け（タイトルページ・目次）は下端揃えの対象外。struct-update で本文値を継ぐため明示的に落とす。
   let front_geometry = hlist::PageGeometry {
     num_columns: 1,
-    column_gap: types::Length::ZERO,
+    column_gap: model::Length::ZERO,
     flush_bottom: false,
     ..body_geometry
   };
@@ -410,14 +410,14 @@ mod tests {
   /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
   /// `LoweringError` を生成するテストヘルパ
   fn lowering_error_with_source_id_1(style: &config::read_style::Style) -> lowering::LoweringError {
-    use document::{DocNode, InlineNode};
+    use model::{DocNode, InlineNode};
     let ctx = lowering::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
     )])];
     let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "missing".to_string(),
-      span: miette::SourceSpan::from((0_usize, 0_usize)),
+      span: model::Span::DUMMY,
     }])];
     let error = lowering::lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
       .expect_err("未定義ラベルはエラーになるはず");

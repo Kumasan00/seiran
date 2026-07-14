@@ -10,8 +10,8 @@ license.workspace = true
 [dependencies]
 hypher.workspace = true
 icu.workspace = true
+model.workspace = true
 tracing.workspace = true
-types.workspace = true
 
 [lints]
 workspace = true

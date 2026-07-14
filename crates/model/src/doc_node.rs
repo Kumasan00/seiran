@@ -1,10 +1,8 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
-use miette::SourceSpan;
-use types::{ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, TheoremClass};
-
 use crate::{
-  caption::CaptionPosition, inline::InlineNode, list::ListItem, math::MathRow, quote::QuoteKind, table::TableRow,
+  CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathRow,
+  QuoteKind, Span, TableRow, TheoremClass,
 };
 
 // =============================================================================
@@ -68,7 +66,7 @@ pub enum DocNode {
     /// 採番対象かどうか。`true` なら `lowering` 層が対応するカウンタを発番する。
     ///
     /// 通常の見出しコマンド（`\section` 等）は常に `true`。CSL 整形ステージ（`citation` クレート）が
-    /// 合成する「References」見出しのように、parser を経由せず直接構築される見出しは `false` になる。
+    /// 合成する「References」見出しのように、frontend を経由せず直接構築される見出しは `false` になる。
     numbered: bool,
     /// 見出しのタイトル（インライン要素として保持）
     title: Vec<InlineNode>,
@@ -78,7 +76,7 @@ pub enum DocNode {
     /// `None` の場合はラベル付与なし（参照対象外）。
     label: Option<String>,
     /// 見出しコマンドのソース位置。重複ラベルの診断に使う
-    span: SourceSpan,
+    span: Span,
   },
 
   /// 段落（インライン要素の集合）
@@ -130,7 +128,7 @@ pub enum DocNode {
     /// 行ごと採番の環境（ラベルは `MathRow::label` 側）や無採番では `None`
     label: Option<String>,
     /// 環境のソース位置。重複ラベルの診断や行ラベルの位置未指定時のフォールバックに使う
-    span: SourceSpan,
+    span: Span,
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）
@@ -159,7 +157,7 @@ pub enum DocNode {
     /// `\ref{fig:foo}` 解決用ラベル（環境の任意引数 `[label=fig:foo]`）
     label: Option<String>,
     /// 環境のソース位置。重複ラベルの診断に使う
-    span: SourceSpan,
+    span: Span,
   },
 
   /// 表環境（`\begin{table}...\end{table}`）
@@ -187,7 +185,7 @@ pub enum DocNode {
     /// `\ref{tab:foo}` 解決用ラベル（環境の任意引数 `[label=tab:foo]`）
     label: Option<String>,
     /// 環境のソース位置。重複ラベルの診断に使う
-    span: SourceSpan,
+    span: Span,
     /// 改ページによる分割を許可するか（`[breakable=false]` で禁止、既定 `true`）
     breakable: bool,
   },
@@ -212,7 +210,7 @@ pub enum DocNode {
     /// `\ref{thm:foo}` 解決用ラベル（環境の任意引数 `[label=thm:foo]`）。未指定は `None`
     label: Option<String>,
     /// 環境のソース位置。重複ラベルの診断に使う
-    span: SourceSpan,
+    span: Span,
   },
 
   /// 引用ブロック（`\begin{quote}...\end{quote}` / `\begin{quotation}...\end{quotation}`）
@@ -263,7 +261,7 @@ pub struct ProofTarget {
   /// 参照先のラベル名（`[of=thm:foo]` の `thm:foo`）
   pub label: String,
   /// `[of=...]` 任意引数のソース位置。未解決時の診断に使う
-  pub span: SourceSpan,
+  pub span: Span,
 }
 
 impl DocNode {
@@ -280,7 +278,7 @@ impl DocNode {
       numbered: true,
       title,
       label: None,
-      span: SourceSpan::from((0_usize, 0_usize)),
+      span: Span::DUMMY,
     };
   }
 

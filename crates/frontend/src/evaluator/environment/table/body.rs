@@ -1,7 +1,6 @@
 //! `table` 本体の走査（`\head` / `\row` / `\caption`）と列数の解決・検証
 
-use document::{CaptionPosition, InlineNode, TableCell, TableRow};
-use types::{ColumnAlign, ColumnWidth};
+use model::{CaptionPosition, ColumnAlign, ColumnWidth, InlineNode, TableCell, TableRow};
 
 use super::cell::{build_cell, contains_line_break};
 use crate::{

@@ -9,7 +9,7 @@
 
 use std::fmt::Write as _;
 
-use types::FontType;
+use model::FontType;
 
 /// 19 フォント種別すべての `[font_configs.<key>]` セクションを生成します。
 ///

@@ -5,7 +5,7 @@
 //! `crate::parse_source` の pass2（`cite::resolve_cites`）が行う。最終的な引用ラベルの
 //! 整形は CSL 整形ステージ（`citation` クレート）に委ねる。
 
-use document::InlineNode;
+use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},

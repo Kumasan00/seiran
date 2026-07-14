@@ -9,8 +9,8 @@
 
 use std::collections::HashSet;
 
-use document::{DocNode, InlineNode, ListItem};
 use miette::LabeledSpan;
+use model::{DocNode, InlineNode, ListItem};
 
 use crate::evaluator::EvalError;
 
@@ -98,7 +98,9 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
         let missing: Vec<&str> =
           cite_keys.iter().filter(|key| !keys.contains(key.as_str())).map(String::as_str).collect();
         if !missing.is_empty() {
-          labels.push(LabeledSpan::new_with_span(Some(format!("未定義の引用キー: {}", missing.join(", "))), *span));
+          let source_span = miette::SourceSpan::from((span.start as usize, span.len() as usize));
+          labels
+            .push(LabeledSpan::new_with_span(Some(format!("未定義の引用キー: {}", missing.join(", "))), source_span));
         }
       },
       InlineNode::Text(_)
@@ -113,12 +115,11 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
 
 #[cfg(test)]
 mod tests {
-  use document::{DocNode, InlineNode};
-  use miette::SourceSpan;
+  use model::{DocNode, InlineNode, Span};
 
   use super::*;
 
-  fn span() -> SourceSpan { return SourceSpan::from((0_usize, 5_usize)); }
+  fn span() -> Span { return Span::new(0, 5); }
 
   fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).to_string()).collect(); }
 

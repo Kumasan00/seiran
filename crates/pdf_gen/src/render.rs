@@ -1,15 +1,14 @@
 //! (e) 組版済みページ列の PDF 描画
 //!
-//! [`render_pages`] が [`hlist::Page`] 列を順に走査し、確定済み座標の
+//! [`render_pages`] が [`model::Page`] 列を順に走査し、確定済み座標の
 //! [`PlacedBlock`] を Krilla の [`Surface`] に書き出す。行送り・改ページ・表の分割
-//! などのレイアウト判断は (c)(d)（`hlist::break_pages`）で完了しており、
+//! などのレイアウト判断は (c)(d)（`model::break_pages`）で完了しており、
 //! このパスは描画のみを行う。
 
 use std::collections::HashMap;
 
 use config::{read_config::Config, read_style::Style};
 use font::FontMetrics;
-use hlist::{HBoxContent, Page, PlacedBlock, PlacedTableRow};
 use krilla::{
   Document,
   action::{Action, LinkAction},
@@ -24,7 +23,9 @@ use krilla::{
   text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use types::{AnchorMark, Color, ColumnAlign, FontMap, LinkTarget, TableColumn};
+use model::{
+  AnchorMark, Color, ColumnAlign, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
+};
 
 use crate::{
   OutlineEntry,
@@ -36,8 +37,8 @@ use crate::{
 /// 組版済みページ列を `document` に描画します。
 ///
 /// 描画に加えて、ハイパーリンク（hyperref 相当）を出力する:
-/// - 各ページの [`hlist::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
-/// - 各ページの [`hlist::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
+/// - 各ページの [`model::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
+/// - 各ページの [`model::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
 /// - 見出しアンカーと `outline_entries` から PDF のしおり（アウトライン）を構築し、
 ///   `style.hyperref.show_bookmarks` が真なら設定する
 // 設定・フォント・スタイル・しおり情報を個別に受け取る描画オーケストレーション関数のため、
@@ -364,7 +365,7 @@ struct TableDrawContext<'a> {
   /// 列の定義（揃えの参照用）
   columns: &'a [TableColumn],
   /// 解決済みの列幅
-  col_widths: &'a [types::Length],
+  col_widths: &'a [model::Length],
   /// セル内側余白（pt、左右各）
   padding: f32,
   /// 罫線の太さ（pt）
@@ -385,7 +386,7 @@ fn draw_table_row(
 ) -> Result<(), PdfGenError> {
   let row = &placed_row.row;
   let band_top = placed_row.top_y.to_pt();
-  let table_width: f32 = ctx.col_widths.iter().copied().sum::<types::Length>().to_pt();
+  let table_width: f32 = ctx.col_widths.iter().copied().sum::<model::Length>().to_pt();
   if row.rule_above {
     draw_filled_rect(surface, x0, band_top, table_width, ctx.rule_thickness, ctx.rule_color)?;
   }
@@ -394,8 +395,8 @@ fn draw_table_row(
   let max_font = row
     .cells
     .iter()
-    .filter_map(|cell| hlist::max_font_size_in_items(&cell.items))
-    .reduce(types::Length::max)
+    .filter_map(|cell| model::max_font_size_in_items(&cell.items))
+    .reduce(model::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
   let baseline = band_top + max_font;
@@ -405,8 +406,8 @@ fn draw_table_row(
   for cell in &row.cells {
     let span = (cell.span as usize).min(ctx.col_widths.len().saturating_sub(column_index));
     let cell_width: f32 =
-      ctx.col_widths[column_index..column_index + span].iter().copied().sum::<types::Length>().to_pt();
-    let content_width = hlist::measure_items_width(&cell.items).to_pt();
+      ctx.col_widths[column_index..column_index + span].iter().copied().sum::<model::Length>().to_pt();
+    let content_width = model::measure_items_width(&cell.items).to_pt();
     let align = ctx.columns.get(column_index).map_or(ColumnAlign::Left, |c| c.align);
     let start_x = match align {
       ColumnAlign::Left => cell_x + ctx.padding,
@@ -427,28 +428,28 @@ fn draw_table_row(
 fn draw_cell_items(
   surface: &mut Surface<'_>,
   ctx: &TableDrawContext<'_>,
-  items: &[hlist::HItem],
+  items: &[model::HItem],
   start_x: f32,
   baseline: f32,
 ) -> Result<(), PdfGenError> {
   let mut cursor_x = start_x;
   for item in items {
     match item {
-      hlist::HItem::Box(hbox) => {
+      model::HItem::Box(hbox) => {
         draw_box_content(surface, ctx.metrics, ctx.krilla_fonts, &hbox.content, cursor_x, baseline)?;
         cursor_x += hbox.width.to_pt();
       },
-      hlist::HItem::Kern(value) => cursor_x += value.to_pt(),
-      hlist::HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
+      model::HItem::Kern(value) => cursor_x += value.to_pt(),
+      model::HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
       // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
       // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
       // FlushRight（QED）は定理本体専用で表セル内には現れない
-      hlist::HItem::Penalty { .. }
-      | hlist::HItem::Discretionary { .. }
-      | hlist::HItem::ForcedBreak
-      | hlist::HItem::LinkStart(_)
-      | hlist::HItem::LinkEnd
-      | hlist::HItem::FlushRight(_) => {},
+      model::HItem::Penalty { .. }
+      | model::HItem::Discretionary { .. }
+      | model::HItem::ForcedBreak
+      | model::HItem::LinkStart(_)
+      | model::HItem::LinkEnd
+      | model::HItem::FlushRight(_) => {},
     }
   }
   return Ok(());
