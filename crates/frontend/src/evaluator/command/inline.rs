@@ -13,6 +13,7 @@ use crate::{
     inline::extract_inline_nodes,
     opt_args::{OptType, collect_command_opt_args, find_color},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::CommandView,
 };
 
@@ -35,13 +36,13 @@ pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<Inli
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: "テキスト".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -66,20 +67,20 @@ pub(crate) fn colored_text(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: "色 (color=#rrggbb)".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: "テキスト".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 

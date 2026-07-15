@@ -19,6 +19,7 @@ use model::{MathNode, MathStyle};
 
 use crate::{
   evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
     ast::{CommandView, EnvironmentView},
@@ -69,14 +70,14 @@ pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) ->
           // インライン数式や単一行 equation のセル内に紛れ込んだ `&` はエラーにする
           return Err(EvalError::UnsupportedInMath {
             what: r"&（列区切り）".to_string(),
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         },
         TokenKind::LineBreak => {
           // `\\` 行区切りも複数行数式環境の本体でのみ意味を持つ。それ以外ではエラー
           return Err(EvalError::UnsupportedInMath {
             what: r"\\（行区切り）".to_string(),
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         },
         // 構造トークン（$, {, }）・トリビア（コメント・段落区切り）はスキップ
@@ -116,7 +117,7 @@ pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) ->
           let view = EnvironmentView::new(child_node, source);
           return Err(EvalError::UnsupportedInMath {
             what: format!("環境 {}", view.name()),
-            span: child_node.span.into(),
+            span: child_node.span.to_source_span(),
           });
         },
         _ => {},
@@ -144,7 +145,7 @@ fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Result
         TokenKind::LineBreak => {
           return Err(EvalError::UnsupportedInMath {
             what: r"\\（強制改行）".to_string(),
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         },
         // `^`/`_` 自体と内容前後のトリビア（空白・改行・コメント）はスキップ
@@ -186,13 +187,13 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
       return Err(EvalError::MissingCommandArgument {
         name: name.to_string(),
         expected: "1 個（数式本体）".to_string(),
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     }
     if arg_count > 1 {
       return Err(EvalError::ExtraCommandArgument {
         name: name.to_string(),
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     }
     #[allow(clippy::unwrap_used)]
@@ -207,7 +208,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
       if view.args_count() > 2 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       }
       let mut args = view.args();
@@ -215,7 +216,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "2 個（分子と分母）".to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       };
       return Ok(MathNode::Frac {
@@ -228,13 +229,13 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
       if view.opt_args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       }
       if view.args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: name.to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       }
       let index = match view.opt_args().next() {
@@ -245,7 +246,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         return Err(EvalError::MissingCommandArgument {
           name: name.to_string(),
           expected: "1 個（被開平数）".to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       };
       return Ok(MathNode::Sqrt {
@@ -260,7 +261,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         if !view.args_is_empty() {
           return Err(EvalError::ExtraCommandArgument {
             name: name.to_string(),
-            span: view.span().into(),
+            span: view.span().to_source_span(),
           });
         }
         return Ok(MathNode::Symbol(ch));
@@ -269,7 +270,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
       // 未知の数式コマンドはテキスト等へのフォールバックを行わずエラーにする
       return Err(EvalError::UnknownCommand {
         name: name.to_string(),
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     },
   }

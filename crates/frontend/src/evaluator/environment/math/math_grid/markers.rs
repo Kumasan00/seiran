@@ -7,6 +7,7 @@ use miette::SourceSpan;
 
 use crate::{
   evaluator::EvalError,
+  span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
     ast::{CommandView, extract_text_content},
@@ -61,7 +62,7 @@ pub(super) fn try_take_row_marker(
     return Ok(false);
   }
   let view = CommandView::new(node, source);
-  let span: SourceSpan = node.span.into();
+  let span: SourceSpan = node.span.to_source_span();
   match view.name() {
     "notag" => {
       take_notag_marker(&view, span, row_markers_allowed, current_notag)?;

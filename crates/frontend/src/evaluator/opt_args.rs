@@ -21,6 +21,7 @@ use model::{Color, Length};
 
 use crate::{
   evaluator::EvalError,
+  span_ext::ToSourceSpan,
   syntax::{
     ast::{CommandView, EnvironmentView, parse_key_value_options},
     green::GreenNode,
@@ -161,11 +162,11 @@ where
           name: name.to_string(),
           key,
           expected_keys: format_expected(schema),
-          span: opt.span.into(),
+          span: opt.span.to_source_span(),
         });
       };
 
-      let opt_value = parse_value(&key, &value, expected, name, opt.span.into())?;
+      let opt_value = parse_value(&key, &value, expected, name, opt.span.to_source_span())?;
       pairs.push((key, opt_value));
     }
   }

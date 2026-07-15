@@ -9,6 +9,7 @@ use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::{CommandView, extract_text_content},
 };
 
@@ -27,13 +28,13 @@ pub(crate) fn cite_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     return Err(EvalError::MissingCommandArgument {
       name: "cite".to_string(),
       expected: "引用キー".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "cite".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -46,7 +47,7 @@ pub(crate) fn cite_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
       return Err(EvalError::InvalidCommandArgument {
         name: "cite".to_string(),
         reason: "空の引用キーが含まれています".to_string(),
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     }
     keys.push(key.to_string());
@@ -55,7 +56,7 @@ pub(crate) fn cite_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
   return Ok(vec![InlineNode::Cite {
     keys,
     label: None,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

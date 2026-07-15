@@ -26,6 +26,7 @@ use crate::{
     environment::{body_scan, caption::extract_caption},
     opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::{CommandView, EnvironmentView, extract_text_content},
 };
 
@@ -44,7 +45,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "figure".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -68,7 +69,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
               name: "image".to_string(),
-              span: cmd_view.span().into(),
+              span: cmd_view.span().to_source_span(),
             });
           }
           let extracted = extract_image(&cmd_view)?;
@@ -83,7 +84,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
               name: "caption".to_string(),
-              span: cmd_view.span().into(),
+              span: cmd_view.span().to_source_span(),
             });
           }
           // image 抽出より先に caption が現れた場合は Top 配置
@@ -101,7 +102,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     return Err(EvalError::MissingEnvironmentArgument {
       name: "figure".to_string(),
       expected: "\\image コマンド".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
 
@@ -114,7 +115,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     caption,
     caption_position,
     label,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 
@@ -163,7 +164,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "dpi".to_string(),
             expected: "positive integer".to_string(),
-            span: view.span().into(),
+            span: view.span().to_source_span(),
           });
         }
         #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -173,7 +174,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
             name: "image".to_string(),
             key: "dpi".to_string(),
             expected: "positive integer".to_string(),
-            span: view.span().into(),
+            span: view.span().to_source_span(),
           });
         }
         dpi = Some(rounded);
@@ -187,13 +188,13 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
     return Err(EvalError::MissingCommandArgument {
       name: "image".to_string(),
       expected: "画像ファイルのパス".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "image".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -202,7 +203,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
     return Err(EvalError::InvalidCommandArgument {
       name: "image".to_string(),
       reason: "画像ファイルのパスが空です".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 

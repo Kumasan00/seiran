@@ -33,6 +33,7 @@ use thiserror::Error;
 use tracing::debug;
 
 mod evaluator;
+mod span_ext;
 mod syntax;
 
 pub use evaluator::EvalError;

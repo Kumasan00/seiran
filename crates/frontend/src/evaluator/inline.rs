@@ -24,6 +24,7 @@ use crate::{
     },
     math,
   },
+  span_ext::ToSourceSpan,
   syntax::{
     ast::{CommandView, EnvironmentView},
     green::{GreenElement, GreenNode},
@@ -89,7 +90,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
         },
         TokenKind::ParagraphBreak => {
           return Err(EvalError::ParagraphBreakInArgument {
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         },
         // コメント・構造トークン（引数の括弧類）は無視
@@ -126,7 +127,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent) => {
               return Err(EvalError::BlockInInline {
                 what: format!("\\{}", view.name()),
-                span: view.span().into(),
+                span: view.span().to_source_span(),
               });
             },
             None => {
@@ -136,7 +137,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
               } else {
                 return Err(EvalError::UnknownCommand {
                   name: view.name().to_string(),
-                  span: view.span().into(),
+                  span: view.span().to_source_span(),
                 });
               }
             },
@@ -151,7 +152,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = EnvironmentView::new(child_node, source);
           return Err(EvalError::BlockInInline {
             what: format!("環境 {}", view.name()),
-            span: child_node.span.into(),
+            span: child_node.span.to_source_span(),
           });
         },
         SyntaxKind::Group => {

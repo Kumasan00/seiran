@@ -23,9 +23,12 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 - **Document IR**（旧 `document`）: `Document` / `DocNode` / `InlineNode` / `MathNode` /
   `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`。`frontend`（生産者）と
   `lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみ保持し物理レイアウト情報は
-  持たない。ソース位置は `Span`（`{start, end}` の軽量なバイトオフセット型）で持ち、
-  `miette::SourceSpan` への変換は消費側（`frontend` の `DocNode` 構築点・`lowering` の診断
-  構築点）が `From<Span>` / tuple 変換で担う（`model` 自体は miette に依存しない — 外部依存は
+  持たない。ソース位置は `Span`（`{start, end}` の軽量なバイトオフセット型）で持ち、`frontend` の
+  lexer / parser / CST もこの `model::Span` を直接使う（frontend 固有の `Span` 型は持たない、#215）。
+  `miette::SourceSpan` への変換は診断構築点（`frontend` の `ParserError` / `EvalError` 構築点・
+  `lowering` の診断構築点）が担う。`Span` と `SourceSpan` はいずれも consumer にとって外部型のため
+  orphan rule により `From` を書けず、`frontend` は非公開の変換ヘルパー（`span_ext::ToSourceSpan`）、
+  `lowering` はモジュール内 `fn` でそれぞれ変換する（`model` 自体は miette に依存しない — 外部依存は
   serde / garde のみ）。
 - **組版コア型**（旧 `hlist` のコア型部分）: `HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
   `GlyphRun` / `TableBox`。フォント非依存。`dump_pages`（確定レイアウトの決定的テキストダンプ、

@@ -23,6 +23,7 @@ use phf::phf_map;
 
 use crate::{
   evaluator::EvalError,
+  span_ext::ToSourceSpan,
   syntax::{ParseMode, ast::EnvironmentView},
 };
 
@@ -105,7 +106,7 @@ pub(crate) fn evaluate_environment(view: &EnvironmentView) -> Result<Vec<DocNode
     Some(handler) => handler(view),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     }),
   };
 }

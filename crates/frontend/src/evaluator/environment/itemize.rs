@@ -11,6 +11,7 @@ use crate::{
     environment::body_scan,
     opt_args::{collect_command_opt_args, collect_environment_opt_args},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -47,7 +48,7 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -61,13 +62,13 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
         return Err(EvalError::MissingCommandArgument {
           name: "item".to_string(),
           expected: "項目の内容".to_string(),
-          span: cmd_view.span().into(),
+          span: cmd_view.span().to_source_span(),
         });
       };
       if cmd_view.args_count() > 1 {
         return Err(EvalError::ExtraCommandArgument {
           name: "item".to_string(),
-          span: cmd_view.span().into(),
+          span: cmd_view.span().to_source_span(),
         });
       }
       let content = crate::evaluator::evaluate_children(source, first_arg)?;

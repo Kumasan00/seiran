@@ -9,6 +9,7 @@ use crate::{
     environment::{body_scan, caption::extract_caption},
     opt_args::{OptType, OptValue, collect_command_opt_args},
   },
+  span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
     ast::{CommandView, EnvironmentView},
@@ -53,13 +54,13 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
               name: "head".to_string(),
-              span: cmd_view.span().into(),
+              span: cmd_view.span().to_source_span(),
             });
           }
           head = extract_head(&cmd_view)?;
         },
         "row" => {
-          let span = cmd_view.span().into();
+          let span = cmd_view.span().to_source_span();
           rows.push((extract_row(&cmd_view)?, span));
         },
         "caption" => {
@@ -67,7 +68,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "table".to_string(),
               name: "caption".to_string(),
-              span: cmd_view.span().into(),
+              span: cmd_view.span().to_source_span(),
             });
           }
           if head.is_empty() && rows.is_empty() {
@@ -98,13 +99,13 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
     return Err(EvalError::MissingCommandArgument {
       name: "head".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "head".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -123,7 +124,7 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: "table".to_string(),
             expected: "\\head の中の \\row".to_string(),
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         },
       },
@@ -131,21 +132,21 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
         if node.kind == SyntaxKind::CommandCall {
           let row_view = CommandView::new(node, source);
           if row_view.name() == "row" {
-            let span = row_view.span().into();
+            let span = row_view.span().to_source_span();
             rows.push((extract_row(&row_view)?, span));
           } else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: "table".to_string(),
               name: row_view.name().to_string(),
               expected: "\\head の中の \\row".to_string(),
-              span: node.span.into(),
+              span: node.span.to_source_span(),
             });
           }
         } else {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: "table".to_string(),
             expected: "\\head の中の \\row".to_string(),
-            span: node.span.into(),
+            span: node.span.to_source_span(),
           });
         }
       },
@@ -155,7 +156,7 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
     return Err(EvalError::MissingCommandArgument {
       name: "head".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   return Ok(rows);
@@ -174,13 +175,13 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
     return Err(EvalError::MissingCommandArgument {
       name: "row".to_string(),
       expected: "セル内容".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "row".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -202,7 +203,7 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
   for cell in &cells {
     if contains_line_break(&cell.content) {
       return Err(EvalError::LineBreakInTableCell {
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     }
   }
@@ -230,7 +231,7 @@ pub(super) fn resolve_column_count(
         return Err(EvalError::TableColumnsWidthsMismatch {
           columns: c.len(),
           widths: w.len(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       }
       c.len()

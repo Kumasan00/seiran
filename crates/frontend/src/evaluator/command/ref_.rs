@@ -7,6 +7,7 @@ use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::{CommandView, extract_text_content},
 };
 
@@ -21,20 +22,20 @@ pub(crate) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
     return Err(EvalError::MissingCommandArgument {
       name: "ref".to_string(),
       expected: "ラベル名".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "ref".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
   let label = extract_text_content(view.source(), first_arg).trim().to_string();
   return Ok(vec![InlineNode::Ref {
     label,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

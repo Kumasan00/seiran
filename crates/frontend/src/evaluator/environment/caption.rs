@@ -6,6 +6,7 @@ use model::InlineNode;
 
 use crate::{
   evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::CommandView,
 };
 
@@ -22,13 +23,13 @@ pub(super) fn extract_caption(view: &CommandView) -> Result<Vec<InlineNode>, Eva
     return Err(EvalError::MissingCommandArgument {
       name: "caption".to_string(),
       expected: "キャプション本文".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "caption".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   return extract_inline_nodes(view.source(), first_arg);

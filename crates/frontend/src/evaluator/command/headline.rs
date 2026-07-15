@@ -12,6 +12,7 @@ use crate::{
     inline::extract_inline_nodes,
     opt_args::{OptType, collect_command_opt_args, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::CommandView,
 };
 
@@ -38,13 +39,13 @@ pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<Doc
     return Err(EvalError::MissingCommandArgument {
       name: name.to_string(),
       expected: expected_name(level).to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: name.to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -55,7 +56,7 @@ pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<Doc
     numbered: true,
     title,
     label,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

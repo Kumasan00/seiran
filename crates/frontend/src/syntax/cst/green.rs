@@ -9,9 +9,10 @@
 //! - **ロスレス**: コメント・空白を含む完全なソース表現を保持
 //! - **Error ノード**: パースエラー時もエラーノードとして木に残す
 
+use model::Span;
+
 use crate::syntax::{
   cst::kind::SyntaxKind,
-  span::Span,
   token::{Token, TokenKind},
 };
 

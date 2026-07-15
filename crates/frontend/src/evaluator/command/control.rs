@@ -6,6 +6,7 @@ use model::{DocNode, Length};
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::{CommandView, extract_text_content},
 };
 
@@ -24,13 +25,13 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
     return Err(EvalError::MissingCommandArgument {
       name: "space".to_string(),
       expected: "スペース量（数値）".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "space".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -41,7 +42,7 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
     return Err(EvalError::InvalidCommandArgument {
       name: "space".to_string(),
       reason: "数値のみ".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -51,7 +52,7 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
       return Err(EvalError::InvalidCommandArgument {
         name: "space".to_string(),
         reason: "数値".to_string(),
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       });
     },
   };
@@ -73,7 +74,7 @@ pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   return Ok(());
