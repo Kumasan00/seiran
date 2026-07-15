@@ -152,7 +152,7 @@ given = "Taro"
 
 ```text
 crates/
-├── citation/         # 参照定義ファイルの読込・\cite の CSL 整形（引用の採番・書誌生成、read_references 子 module）
+├── citation/         # 参照定義ファイルの読込・\cite の CSL 整形（引用の採番・書誌生成、references 子 module）
 ├── config/           # TOML メイン設定・スタイル設定ファイルの読み込みと検証（read_config / read_style 子 module）
 ├── font/             # フォント処理（読込・シェーピング・検証）
 ├── frontend/         # 字句解析・構文解析・評価（Lexer → Parser → CST → Document IR。CST は非公開）

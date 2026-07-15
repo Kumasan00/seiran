@@ -1,7 +1,7 @@
 //! 参照定義ファイルの読み込みモジュール
 //!
 //! `citation` クレート内部の実装詳細で、公開する型は crate root で再エクスポートし
-//! `citation::Reference` のように参照する（`citation::read_references::Reference` は使わない）。
+//! `citation::Reference` のように参照する（`citation::references::Reference` は使わない）。
 //!
 //! TOML / JSON 形式の参照定義ファイルを読み込み、`id` をキーとする参照定義のマップを返す。参照定義は
 //! ファイルのトップレベルそのものを keyed-table 形式（テーブルキーが参照 ID）で記述する（`references.`

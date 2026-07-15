@@ -11,7 +11,7 @@
 //! - 非整数の数値は `Value::Number`(i64) に嵌らないので文字列化する（CSL の number 変数は文字列可）。
 //! - `Item` は cite id をマップ内の `"id"` キーから読むため、keyed-table のキーを注入する。
 //!
-//! 日付の差異（範囲不可・`date-parts` 必須）は `read_references` 側の検証と `Serialize for Date` で
+//! 日付の差異（範囲不可・`date-parts` 必須）は `references` 側の検証と `Serialize for Date` で
 //! 吸収済み。`date-parts` に文字列の年（紀元前等）や i16 を超える年がある場合は `Item` 化に失敗し、
 //! 呼び出し側へエラーとして伝播する。
 

@@ -74,7 +74,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 参照定義ファイルの読込から `\cite` の CSL 整形・書誌生成までを 1 クレートに閉じる（旧 `read_references` を統合。#202）。
 
-`read_references`（`citation::read_references`、非公開）は `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）を担う。公開型（`Reference` / `References` / `Name` / `Date` 等）と `read_references` 関数は crate root で再エクスポートし、`citation::Reference` の形で参照する（`citation::read_references::Reference` は使わない）。
+`references`（非公開。旧 `read_references`、#206 で改名）は `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式判別）を担う。公開型（`Reference` / `References` / `Name` / `Date` 等）と `read_references` 関数は crate root で再エクスポートし、`citation::Reference` の形で参照する（`citation::references::Reference` は使わない）。
 
 `\cite` の CSL 整形ステージ（frontend の後・lowering の前）。`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature 内蔵ロケール + `citationberg` で `.csl` 解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。引用された文献の書誌（References 見出し + 段落群）は各グループへは追加せず**戻り値として返し**、呼び出し元（`seiran`）が lowering の最後の合成グループとして連結する（グループ構造非依存。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない）。CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath` エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの前段に重ねて採番に渡し（同一言語コードはカスタム優先）、出力言語（active locale）は `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override する。`bridge`（`Reference` → CSL-JSN 担体 `citationberg::json::Item` 変換）/ `render`（`BibliographyDriver` 駆動・`ElemChildren` → `InlineNode` 変換）サブモジュール構成。初版は引用/書誌ともプレーン文字列（斜体等は段階対応）。
 
