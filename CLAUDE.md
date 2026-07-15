@@ -94,7 +94,7 @@ frontend （model に依存。bumpalo アリーナ上に CST を構築し、Docu
   ↑ seiran
 
 citation （model, config に依存。参照定義ファイル（references.toml / .json）の読込を
-          非公開の内部実装（`read_references` 子 module）として内包し、hayagriva / citationberg で
+          非公開の内部実装（`references` 子 module）として内包し、hayagriva / citationberg で
           CSL 整形・書誌生成まで行う）
   ↑ seiran
 
@@ -129,7 +129,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `model`           | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode` + 組版コア型 `Block` / `Page` / `HItem` / `GlyphRun` / `TableBox`） |
 | `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade） |
 | `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
-| `citation`        | `references.toml` / `.json` の読込（`read_references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
+| `citation`        | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
 | `typeset`         | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
 | `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |

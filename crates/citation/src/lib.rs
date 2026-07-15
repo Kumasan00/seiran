@@ -6,7 +6,7 @@
 //! パイプライン上は parser の後・lowering の前に挟む 1 ステージで、以降は通常の `DocNode` なので
 //! lowering 以降は無改修。
 //!
-//! - `read_references`（非公開） — 参照定義ファイルの読込。公開型（[`Reference`] / [`References`] 等）
+//! - `references`（非公開） — 参照定義ファイルの読込。公開型（[`Reference`] / [`References`] 等）
 //!   はこの crate root で再エクスポートする。
 //! - [`bridge`]: [`Reference`] → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
 //! - [`render`]: `BibliographyDriver` の駆動・引用ラベルと書誌 `DocNode` の生成。
@@ -24,12 +24,12 @@ use thiserror::Error;
 use tracing::debug;
 
 mod bridge;
-mod read_references;
+mod references;
 mod render;
 #[cfg(test)]
 mod test_fixtures;
 
-pub use read_references::{
+pub use references::{
   Date, DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, Reference, ReferenceType,
   References, read_references,
 };
