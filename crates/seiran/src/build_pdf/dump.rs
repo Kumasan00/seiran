@@ -2,8 +2,9 @@
 //!
 //! `break_pages` / `build_running_content` が座標・寸法を確定したページ列を、
 //! タイムスタンプ・乱数・実行環境依存の値を含まない安定なテキストへ書き出す。
-//! golden ファイル比較によるレイアウト回帰検出（テスト専用）に用いる想定で、
-//! 同一入力・同一設定なら常に同一出力になる。
+//! 唯一の消費者は golden テスト（`super::golden`）で、同一入力・同一設定なら
+//! 常に同一出力になることをレイアウト回帰検出に用いる。golden テスト専用の
+//! 出力ツールのため `model` ではなく本クレートに置く（#216）。
 //!
 //! 座標・寸法はすべて小数第 2 位（0.01pt ≒ サブミクロン）に丸めて出力する。
 //! 行送り等レイアウトに影響する変更は 0.01pt を超えて座標を動かすため差分に現れ、
@@ -11,7 +12,7 @@
 
 use std::fmt::Write;
 
-use crate::{
+use model::{
   HBoxContent, Length, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
 
@@ -22,7 +23,7 @@ use crate::{
 /// 寸法・内容（グリフのテキストとフォント種別、罫線・画像・数式・表の寸法）を含むため、
 /// レイアウトに影響する変更はダンプの差分として現れる。
 #[must_use]
-pub fn dump_pages(pages: &[Page]) -> String {
+pub(super) fn dump_pages(pages: &[Page]) -> String {
   let mut out = String::new();
   for (index, page) in pages.iter().enumerate() {
     let _ = writeln!(out, "=== page {index} ===");
@@ -253,8 +254,9 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
+  use model::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PositionedBox};
+
   use super::dump_pages;
-  use crate::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PositionedBox};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {

@@ -19,11 +19,12 @@
 //!   情報は含まない。ソース位置は診断ライブラリに依存しない軽量な [`Span`] で持ち、
 //!   `miette::SourceSpan` への変換は消費側（`frontend` の構築点・`lowering` の診断構築点）が担う。
 //! - **組版コア型**（旧 `hlist` のコア型部分）: `hitem` / `block` / `glyph_run` / `table_box` /
-//!   `line` / `page` / `dump`。フォント非依存の [`Block`] / [`Page`] / [`HItem`] 等と、確定
-//!   ページ列の決定的テキストダンプ（[`dump_pages`]、golden テスト用）・表の純粋計測ヘルパ
-//!   （[`measure_items_width`] / [`max_font_size_in_items`]）を持つ。行分割・縦組版などの
+//!   `line` / `page`。フォント非依存の [`Block`] / [`Page`] / [`HItem`] 等と、表の純粋計測
+//!   ヘルパ（[`measure_items_width`] / [`max_font_size_in_items`]）を持つ。行分割・縦組版などの
 //!   純粋パス本体（`break_opportunities` / `break_lines` / `break_pages` / `hyphenation`）は
-//!   `typeset` クレートの `breaking` module にあり、本クレートの型に依存する。
+//!   `typeset` クレートの `breaking` module にあり、本クレートの型に依存する。確定ページ列の
+//!   決定的テキストダンプ（`dump_pages`）は golden テスト専用の出力ツールで、唯一の消費者
+//!   `seiran` 側（`build_pdf::dump`）に置く（#216）。
 //!
 //! ## パイプライン上の位置づけ
 //!
@@ -48,7 +49,6 @@ mod block;
 mod caption;
 mod color;
 mod doc_node;
-mod dump;
 mod font;
 mod font_map;
 mod glyph_run;
@@ -77,7 +77,6 @@ pub use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK}
 pub use caption::CaptionPosition;
 pub use color::Color;
 pub use doc_node::{DocNode, Document, ProofTarget, heading_anchor_key};
-pub use dump::dump_pages;
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use glyph_run::{Glyph, GlyphRun};
@@ -88,7 +87,7 @@ pub use length::{Length, ParseLengthError};
 pub use line::{Line, LineLink, PositionedBox};
 pub use link::{AnchorMark, LinkTarget};
 pub use list::ListItem;
-pub use math_class::{MathClass, MathDelimiter, MathEnvKind};
+pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_node::{MathNode, MathRow, MathStyle};
 pub use page::{Page, PlacedAnchor, PlacedBlock, PlacedLink, PlacedMathNumber, PlacedTableRow};
 pub use quote::QuoteKind;

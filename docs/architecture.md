@@ -15,7 +15,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 「新しい共有型をどこに置くか」の判断を不要にした。3 層構成:
 
 - **語彙型**（旧 `types`）: `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` /
-  `TableColumn` / `ColumnAlign` / `ColumnWidth` / `AnchorMark` / `LinkTarget` / `MathClass` /
+  `TableColumn` / `ColumnAlign` / `ColumnWidth` / `AnchorMark` / `LinkTarget` /
   `MathDelimiter` / `MathEnvKind` / `TheoremClass` / `Color` / `Align` / `TextAlignment` 等。
   小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde / `Display`）・
   純粋演算（`Length` の算術、`Align::offset`）のみを持つ。IR ノード・組版データ構造・フォントや
@@ -31,10 +31,11 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
   `lowering` はモジュール内 `fn` でそれぞれ変換する（`model` 自体は miette に依存しない — 外部依存は
   serde / garde のみ）。
 - **組版コア型**（旧 `hlist` のコア型部分）: `HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
-  `GlyphRun` / `TableBox`。フォント非依存。`dump_pages`（確定レイアウトの決定的テキストダンプ、
-  レイアウトダンプ golden テストの基盤）・`measure_items_width` / `max_font_size_in_items`
+  `GlyphRun` / `TableBox`。フォント非依存。`measure_items_width` / `max_font_size_in_items`
   （表の純粋計測ヘルパ）もここに置く。純粋パス本体（break_opportunities / break_lines /
   break_pages / hyphenation）は `typeset` クレートの `breaking` module に残り、これらの型に依存する。
+  `dump_pages`（確定レイアウトの決定的テキストダンプ）は唯一の消費者が `seiran` の golden テスト
+  なため、本クレートには置かず `seiran::build_pdf::dump` に置く（#216）。
 
 ## `config`
 
@@ -73,7 +74,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 ### `evaluator`（`frontend::evaluator`）
 
-`syntax` の生成した CST を走査し、Document IR（`model` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
+`syntax` の生成した CST を走査し、Document IR（`model` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等、将来の数式スペーシング実装向けにテーブルへ記録するのみ）は `command::symbol` 内の `pub(crate)` 型（唯一の消費者のため、複数段共有の `MathDelimiter` / `MathEnvKind` と異なり `model` には置かない。#216）。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
 
 ## `citation`
 
@@ -114,8 +115,7 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 制御は glue（伸縮アキ）/ penalty（分割コスト）モデルで、widow/orphan・keep-with-next・下端揃え
 （`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に
 不足高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ
-直前・伸縮アキ 0 のリージョンは対象外）。表の列幅・行高の純粋計測ヘルパ・`dump_pages`（確定レイアウト
-の決定的テキストダンプ、レイアウトダンプ golden テストの基盤）は `model` 側にある。
+直前・伸縮アキ 0 のリージョンは対象外）。表の列幅・行高の純粋計測ヘルパは `model` 側にある。
 
 ## `pdf_gen`
 
@@ -123,4 +123,4 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 ## `seiran`
 
-`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。
+`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。`build_pdf` 配下の `dump`（`dump_pages`、確定ページ列の決定的テキストダンプ）・`golden`（golden ファイル比較テスト）は `#[cfg(test)]` 限定の子 module で、唯一の消費者がテストであるため `model` ではなく本クレートに置く（#216）。
