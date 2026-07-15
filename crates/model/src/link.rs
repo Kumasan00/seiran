@@ -11,7 +11,7 @@
 ///
 /// ブロック先頭に置くゼロサイズのマーカー（機構 A）。PDF のしおり（アウトライン）の
 /// ジャンプ先と、`\ref` 内部リンク（機構 B）の到達先（destination）を表す。
-/// `lowering` 層が `LayoutNode::Anchor` で運び、`hlist::break_pages` が確定座標
+/// `lowering` 層が `LayoutNode::Anchor` で運び、`typeset::breaking::break_pages` が確定座標
 /// （`PlacedAnchor`）に解決し、`pdf_gen` が `XyzDestination` として登録する。
 ///
 /// - [`AnchorMark::Heading`] — 見出しに付くアンカー。PDF アウトライン（しおり）の
@@ -37,7 +37,7 @@ pub enum AnchorMark {
 ///
 /// クリック可能なリンク領域（機構 B）が指す行き先を表す。文書内の参照先
 /// （`\ref`）と外部 URL（`\url` / `\href`）の 2 種を持つ。`lowering` 層が
-/// `LayoutNode::Link` で運び、`hlist` の `HItem::LinkStart` / `PlacedLink`
+/// `LayoutNode::Link` で運び、`typeset::breaking` の `HItem::LinkStart` / `PlacedLink`
 /// を経て `pdf_gen` がリンク注釈（destination / action）として出力する。
 ///
 /// - [`LinkTarget::Internal`] — 文書内アンカー（`\ref` の参照先ラベル）への

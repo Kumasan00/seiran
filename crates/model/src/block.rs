@@ -1,6 +1,6 @@
 //! 文書の縦リスト要素（[`Block`]）の定義
 //!
-//! `layout::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
+//! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
 use crate::{Align, AnchorMark, HBox, HItem, Length, Line, TableBox};
@@ -13,7 +13,7 @@ pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
 /// 分割禁止の分割コスト（+∞）。keep-with-next（見出し直後の分割禁止・#168）のグループ連結マーカー。
 ///
-/// `layout::build_blocks` が見出し（`page_break_after` を除く）の直後に発行する。`break_pages` の
+/// `typeset::block::build_blocks` が見出し（`page_break_after` を除く）の直後に発行する。`break_pages` の
 /// keep グループゲート（`keep_group_end` / `keep_group_orphaned`）がこれを走査し、見出しと直後の
 /// ブロックが同一リージョンに載るよう配置する（載らないなら見出しごと次リージョンへ送る）。
 pub const PENALTY_FORBID_BREAK: i32 = i32::MAX;
@@ -97,7 +97,7 @@ pub enum Block {
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `cases` / `matrix`）
   ///
   /// 全セルを絶対配置した 1 つの閉じた Atom（`body`）として保持する（行分割をまたがない）。
-  /// 列整列・行積み・区切り括弧は `layout` 段で `body` の局所座標へ解決済み。`break_pages` は
+  /// 列整列・行積み・区切り括弧は `block` 段で `body` の局所座標へ解決済み。`break_pages` は
   /// `align` で本体を本文幅の中に中央寄せし、各行番号（`numbers`）を本文端へ寄せるだけ。
   MathBlock {
     /// 数式本体（全セル + 区切り括弧を絶対配置した閉じた Atom）

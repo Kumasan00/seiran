@@ -23,7 +23,7 @@
 //!   ページ列の決定的テキストダンプ（[`dump_pages`]、golden テスト用）・表の純粋計測ヘルパ
 //!   （[`measure_items_width`] / [`max_font_size_in_items`]）を持つ。行分割・縦組版などの
 //!   純粋パス本体（`break_opportunities` / `break_lines` / `break_pages` / `hyphenation`）は
-//!   引き続き `hlist` クレートにあり、本クレートの型に依存する。
+//!   `typeset` クレートの `breaking` module にあり、本クレートの型に依存する。
 //!
 //! ## パイプライン上の位置づけ
 //!
@@ -32,10 +32,10 @@
 //!   ↓ [frontend: Lexer → Parser → Evaluator]
 //! Document IR (DocNode, InlineNode, MathNode)  ← このクレート
 //!   ↓ [lowering]
-//! LayoutNode (物理レイアウト、lowering クレート)
-//!   ↓ [layout::build_blocks]
+//! LayoutNode (物理レイアウト、typeset::lowering)
+//!   ↓ [typeset::block::build_blocks]
 //! Vec<Block>  ← このクレート
-//!   ↓ [hlist::break_pages]（本クレートの型に依存する純粋パス）
+//!   ↓ [typeset::breaking::break_pages]（本クレートの型に依存する純粋パス）
 //! Vec<Page>  ← このクレート
 //!   ↓ [pdf_gen::render_pages]
 //! PDF bytes

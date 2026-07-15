@@ -3,7 +3,7 @@
 //! 引用環境を「上マージン → 左右字下げ `VBox`（本体） → 下マージン」に変換する。本体は
 //! [`config::read_style::QuoteStyle`] の `font_kind` を既定書体にして lower し、`quotation`（`kind` が
 //! 段落先頭字下げありのとき）はブロック内段落へ `first_line_indent` を波及させる（`quote` は 0）。
-//! 左右の字下げは `VBox` の `indent` / `right_indent` で表し、`crate::layout::build_blocks` が配下の
+//! 左右の字下げは `VBox` の `indent` / `right_indent` で表し、`crate::block::build_blocks` が配下の
 //! 段落へ確定値を刻む。
 
 use model::{Align, DocNode, Length, QuoteKind};

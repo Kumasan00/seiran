@@ -47,7 +47,7 @@ impl ColumnAlign {
 /// 列幅の指定方法
 ///
 /// 環境任意引数 `widths="auto 5cm 0.3 *"` の各トークンに対応する。
-/// 実際の幅解決（自然幅の実測・残余分配）は `hlist` の `resolve_column_widths` で行われる。
+/// 実際の幅解決（自然幅の実測・残余分配）は本クレートの [`resolve_column_widths`] で行われる（`typeset::breaking` が呼ぶ）。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ColumnWidth {
   /// 内容の自然幅に合わせる（既定）

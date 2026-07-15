@@ -5,7 +5,7 @@
 //! 中央寄せなど、確定済みの行を本文幅の中で水平にずらす用途で使う。
 //!
 //! `Block::Paragraph` と `lowering::LayoutNode::VBox` の双方が保持し、
-//! lowering → layout → `hlist::break_pages` を透過して確定行のオフセットに反映される。
+//! lowering → layout → `typeset::breaking::break_pages` を透過して確定行のオフセットに反映される。
 
 use serde::{Deserialize, Serialize};
 

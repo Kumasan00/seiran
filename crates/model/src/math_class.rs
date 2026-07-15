@@ -1,9 +1,9 @@
 //! 数式環境の種別 [`MathEnvKind`]・区切り括弧 [`MathDelimiter`]・記号の数式クラス [`MathClass`]。
 //!
 //! ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）の
-//! 種別を表す共通型。`DocNode`（IR）・`lowering`（`LayoutNode`）・`layout`（組版）が
+//! 種別を表す共通型。`DocNode`（IR）・`lowering`（`LayoutNode`）・`block`（組版）が
 //! 共有するため、依存の基盤である本クレートに置く。`frontend` が環境名から決定し、
-//! `layout` 段の列整列・区切り括弧・行採番まで透過的に伝播する。
+//! `block` 段の列整列・区切り括弧・行採番まで透過的に伝播する。
 //!
 //! [`MathClass`] は数式記号のクラス（順序子・演算子・二項演算子・関係子・開き / 閉じ括弧・区切り）を
 //! 表す。`frontend` の記号テーブルが各記号に付与し、将来の数式スペーシング実装がクラスの
@@ -38,7 +38,7 @@ pub enum MathClass {
 
 /// ディスプレイ数式環境の種別
 ///
-/// `frontend` が `\begin{...}` の環境名から決定する。`layout` 段がこの種別に応じて
+/// `frontend` が `\begin{...}` の環境名から決定する。`block` 段がこの種別に応じて
 /// 列の揃え（`align` は `&` 位置で交互、`matrix` は中央）・区切り括弧・行採番を決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathEnvKind {
