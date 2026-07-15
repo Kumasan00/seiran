@@ -16,8 +16,8 @@
 //! 通常の PDF 生成フロー（`build` サブコマンド）：
 //! 1. CLI パース → TOML 設定読み込み（config / style / references）
 //! 2. 字句解析・構文解析 → 評価（Document IR）→ lowering（`LayoutNode`）
-//! 3. フォント読み込み・検証 → シェーピング + 計測（`layout::build_blocks`）
-//! 4. 画像サイズ確定（`pdf_gen::resolve_images`）→ 行分割・縦組版（`hlist::break_pages`）
+//! 3. フォント読み込み・検証 → シェーピング + 計測（`typeset::block::build_blocks`）
+//! 4. 画像サイズ確定（`pdf_gen::resolve_images`）→ 行分割・縦組版（`typeset::breaking::break_pages`）
 //! 5. PDF 描画（`pdf_gen::create_pdf`）→ ファイル出力
 //!
 //! ## サブコマンド

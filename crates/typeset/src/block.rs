@@ -8,7 +8,7 @@
 //! ```text
 //! lowering (Vec<LayoutNode>)
 //!   → (a) build_blocks（この module） … シェーピング + 計測 + break 注入 [フォント依存]
-//!   → (c+d) crate::hlist::break_pages … 行分割 + 縦組版 [純粋]
+//!   → (c+d) crate::breaking::break_pages … 行分割 + 縦組版 [純粋]
 //!   → (e) pdf_gen::render_pages       … 描画のみ
 //! ```
 //!
@@ -43,7 +43,7 @@ pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
 use tracing::debug;
 
 use crate::{
-  hlist::{self, BreakKind, BreakPoint, Lang},
+  breaking::{self, BreakKind, BreakPoint, Lang},
   lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
 };
 
@@ -119,7 +119,7 @@ pub fn build_blocks(
   language: Option<&str>,
   punctuation_spacing: bool,
 ) -> Vec<Block> {
-  let hyphenation = hlist::resolve_hyphenation(language);
+  let hyphenation = breaking::resolve_hyphenation(language);
   let mut measurer =
     Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
   let mut blocks: Vec<Block> = Vec::new();
@@ -283,7 +283,7 @@ impl Measurer<'_> {
           });
         },
         // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
-        // LoweringError::UnresolvedReference で早期に失敗させるため、layout 段には到達しない
+        // LoweringError::UnresolvedReference で早期に失敗させるため、block 段には到達しない
         LayoutNode::Ref { .. } => unreachable!("LayoutNode::Ref は lowering の pass2 で解決済みのはず"),
       }
     }
@@ -377,7 +377,7 @@ impl Measurer<'_> {
       | LayoutNode::PageBreak
       | LayoutNode::KeepWithNext => {},
       // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
-      // LoweringError::UnresolvedReference で早期に失敗させるため、layout 段には到達しない
+      // LoweringError::UnresolvedReference で早期に失敗させるため、block 段には到達しない
       LayoutNode::Ref { .. } => unreachable!("LayoutNode::Ref は lowering の pass2 で解決済みのはず"),
     }
   }
@@ -514,7 +514,7 @@ impl Measurer<'_> {
 
     // 和文セグメントはハイフネーションしない（`Lang` を渡さない＝Hyphen 分割点を生じさせない）
     let hyphenation_lang = if is_japanese { None } else { self.hyphenation };
-    let mut breaks = hlist::break_opportunities(text, hyphenation_lang);
+    let mut breaks = breaking::break_opportunities(text, hyphenation_lang);
     // セグメント末尾のスペースは（次の Text ノードとの境界として）glue に変換する
     if text.ends_with(' ') {
       breaks.push(BreakPoint {
@@ -634,7 +634,7 @@ impl Measurer<'_> {
 
     // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
     let break_bytes: std::collections::HashSet<usize> =
-      hlist::break_opportunities(text, None).into_iter().map(|point| point.byte).collect();
+      breaking::break_opportunities(text, None).into_iter().map(|point| point.byte).collect();
 
     // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
     let char_of = |g: usize| -> char { text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };

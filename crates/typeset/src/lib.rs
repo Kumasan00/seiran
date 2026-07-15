@@ -1,37 +1,38 @@
 //! 組版パス統合クレート — Document IR（`model::DocNode`）から計測済み・配置済みページ直前までを担う
 //!
-//! 旧 `lowering` / `layout` / `hlist` の 3 クレートを module として統合する（#204。#203 の後続）。
-//! 各 module は旧クレートの構成をそのまま引き継ぐ非公開 module とし、公開 API はこのファイルの
-//! `pub use` で 1 本のパスに揃える（`typeset::lower_document` 等。`typeset::lowering::...` は使わない）。
+//! 旧 `lowering` / `layout` / `hlist` の 3 クレートを module として統合し（#204。#203 の後続）、
+//! module 名は責務基準で `lowering` / `block` / `breaking` に改めた（#206）。
+//! 各 module は非公開とし、公開 API はこのファイルの `pub use` で 1 本のパスに揃える
+//! （`typeset::lower_document` 等。`typeset::lowering::...` は使わない）。
 //!
 //! ## アーキテクチャ上の位置づけ
 //!
 //! ```text
 //! document (DocNode)
 //!   → [lowering]                         Document IR → LayoutNode 変換
-//!   → (a) [layout::build_blocks]         シェーピング + 計測 + break 注入 [フォント依存]
+//!   → (a) [block::build_blocks]         シェーピング + 計測 + break 注入 [フォント依存]
 //!   → (prepass) pdf_gen::resolve_images  画像の自然寸法から width/height を確定
-//!   → (c+d) [hlist::break_pages]         行分割 + 縦組版 [フォント非依存の純粋パス]
+//!   → (c+d) [breaking::break_pages]         行分割 + 縦組版 [フォント非依存の純粋パス]
 //!   → (e) pdf_gen::render_pages          確定座標の描画のみ
 //! ```
 //!
 //! ## module 構成
 //!
 //! - `lowering`（非公開）— Document IR → `LayoutNode` 変換。採番・`\ref` 解決も担う
-//! - `layout`（非公開）— (a) `build_blocks`。シェーピング + 計測 + break 注入、ヘッダー/フッター配置・目次生成
-//! - `hlist`（非公開）— (b)(c)(d) 行分割・縦組版・ハイフネーション。フォント非依存の純粋パス
+//! - `block`（非公開）— (a) `build_blocks`。シェーピング + 計測 + break 注入、ヘッダー/フッター配置・目次生成
+//! - `breaking`（非公開）— (b)(c)(d) 行分割・縦組版・ハイフネーション。フォント非依存の純粋パス
 
-mod hlist;
-mod layout;
+mod block;
+mod breaking;
 mod lowering;
 
-pub use hlist::{
-  BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
-  break_pages, column_width, resolve_hyphenation,
-};
-pub use layout::{
+pub use block::{
   RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput, TocSpec, build_blocks, build_running_content,
   build_toc_blocks,
+};
+pub use breaking::{
+  BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
+  break_pages, column_width, resolve_hyphenation,
 };
 pub use lowering::{
   HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceId, TableCellLayout, TableLayout,

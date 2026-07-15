@@ -31,7 +31,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
   `GlyphRun` / `TableBox`。フォント非依存。`dump_pages`（確定レイアウトの決定的テキストダンプ、
   レイアウトダンプ golden テストの基盤）・`measure_items_width` / `max_font_size_in_items`
   （表の純粋計測ヘルパ）もここに置く。純粋パス本体（break_opportunities / break_lines /
-  break_pages / hyphenation）は `typeset` クレートの `hlist` module に残り、これらの型に依存する。
+  break_pages / hyphenation）は `typeset` クレートの `breaking` module に残り、これらの型に依存する。
 
 ## `config`
 
@@ -54,7 +54,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 - **見出し（2 レイヤーマージ）**: `default_for_level()` (Rust) → `[heading.<level>]`（レベル別差分）の順に重畳。`[heading]` 直下にスカラーは書けない（テーブル形式のみ）
 - **カウンタ（`CounterStyle`）**: `[counters.<name>]` の `<name>` は固定 9 種（`part` / `chapter` / `section` / `subsection` / `paragraph` / `subparagraph` / `table` / `figure` / `equation`）のみ。各エントリは `display_name` / `number_format` / `number_style` / `ref_format` / `resets` を持ち、未知のカウンタ名は `deny_unknown_fields` で拒否
 - **数式（`MathStyle`）**: `[math.script]`（`MathScriptStyle`＝上付き / 下付きの倍率・シフト等。インライン数式 `$...$` にも効く。将来 OpenType MATH テーブルから自動取得する想定で現状は手動指定）と `[math.block]`（`MathBlockStyle`＝表示数式ブロックのレイアウト。`tag_format` / `number_side` / `alignment` / `row_gap` / `column_gap` / `top_margin` / `bottom_margin`。全表示数式環境 equation / align / gather / split / multiline / cases / matrix が共有）の 2 副テーブルを束ねる。旧 `[equation]` テーブルは廃止（`[math.block]` に統合）
-- **ページ組版（`PageStyle`）**: `[page]` に組版挙動フラグを集約（段組みは別テーブル `[columns]`）。`flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズム（伸縮アキへの比例配分・対象外リージョン）は `typeset` の `hlist` 節を参照
+- **ページ組版（`PageStyle`）**: `[page]` に組版挙動フラグを集約（段組みは別テーブル `[columns]`）。`flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズム（伸縮アキへの比例配分・対象外リージョン）は `typeset` の `breaking` 節を参照
 - **文献（`ReferenceStyle`）**: `style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
@@ -84,7 +84,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 ## `typeset`
 
-旧 `lowering` / `layout` / `hlist` の 3 クレートを module として統合する（#204。#203 の後続）。各 module は旧クレートの構成をそのまま引き継ぐ非公開 module とし、公開 API はクレート root（`lib.rs`）の `pub use` で 1 本のパスに揃える（`typeset::lower_document` / `typeset::build_blocks` / `typeset::break_pages` 等。`typeset::lowering::...` は使わない）。
+旧 `lowering` / `layout` / `hlist` の 3 クレートを module として統合し（#204。#203 の後続）、module 名は責務基準で `lowering` / `block` / `breaking` に改めた（#206）。各 module は非公開とし、公開 API はクレート root（`lib.rs`）の `pub use` で 1 本のパスに揃える（`typeset::lower_document` / `typeset::build_blocks` / `typeset::break_pages` 等。`typeset::lowering::...` は使わない）。
 
 ### `lowering`
 
@@ -94,13 +94,13 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
 
-### `layout`
+### `block`
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストのスクリプト分割・シェーピング・計測、break 注入（シェーピング後に `GlyphRun` を ICU の分割可能位置で分割。欧文スペースは伸縮 `Glue`、和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済みハイフン箱を持つ `Discretionary`（`build_blocks` の `language` 引数から言語を導出。和文・数式は分割しない）。数式は分割しない）、`Raise` ツリーの `Atom` 化。ブロック間アキ（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Block::Glue` として出し（下端揃え #169 の配分先）、`Vkern`（数式上下・フロート内）は固定アキのまま。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
 
-### `hlist`
+### `breaking`
 
-フォント非依存の純粋組版パス。コア型（`HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
+フォント非依存の純粋組版パス（旧 `hlist`。行分割だけでなくページ分割も担うため `breaking` に改名）。コア型（`HItem` / `HBox` / `Atom` / `Block` / `Line` / `Page` /
 `GlyphRun` / `TableBox`）は `model` クレートに移り（#203）、本 module には純粋パス本体だけが残る:
 (b) `break_opportunities`（ICU UAX #14 に `hyphenation`（`hypher`）の欧文語中分割点＝
 `BreakKind::Hyphen` を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決）、(c) `break_lines`

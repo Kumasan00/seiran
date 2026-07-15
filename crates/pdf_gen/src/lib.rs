@@ -1,7 +1,7 @@
 //! PDF 生成モジュール
 //!
 //! 組版済みの `model::Page` 列（確定座標）を Krilla で描画し、PDF バイト列を生成します。
-//! レイアウト判断は前段（`layout` / `hlist`）で完了しており、本クレートが担うのは
+//! レイアウト判断は前段（`typeset` の `block` / `breaking`）で完了しており、本クレートが担うのは
 //! 画像サイズ確定の prepass（[`resolve_images`]）と描画（[`create_pdf`]）のみです。
 //! フォントサブセット化は krilla が内部で実施します。
 

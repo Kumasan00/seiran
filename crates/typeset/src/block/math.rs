@@ -3,7 +3,7 @@
 //! 各セル（`&` 区切りの列）を閉じた Atom（`HBox`）に measure し、環境種別 [`MathEnvKind`]
 //! に応じて列を整列・行を縦積みして「環境全体 = 1 つの本体 Atom」に合成する。数式の列は
 //! すべて自然幅なので、列幅・行高・区切り括弧の配置はすべてこの段で局所座標まで確定できる。
-//! 本文幅に依存する処理（本体の中央寄せ・番号の端寄せ）だけを `crate::hlist::break_pages` に委ねる。
+//! 本文幅に依存する処理（本体の中央寄せ・番号の端寄せ）だけを `crate::breaking::break_pages` に委ねる。
 
 use model::{Align, Block, FontType, HBox, Length, MathDelimiter, MathEnvKind, MathRowNumber, PlacedHItem};
 

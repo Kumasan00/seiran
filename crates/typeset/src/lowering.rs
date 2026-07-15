@@ -9,7 +9,7 @@
 //! document (DocNode)
 //!   ↓ [lowering]  ← この module
 //! LayoutNode
-//!   ↓ [crate::layout::build_blocks → crate::hlist::break_pages]
+//!   ↓ [crate::block::build_blocks → crate::breaking::break_pages]
 //! Vec<Page> (確定座標)
 //!   ↓ [pdf_gen::render_pages]
 //! PDF bytes

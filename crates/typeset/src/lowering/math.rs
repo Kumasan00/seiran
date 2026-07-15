@@ -33,7 +33,7 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
 /// `numbered && !grid.is_empty()` を保証しているため、ここで条件を重複検査する必要はない。
 /// 発番した番号は `MathBlockStyle::tag_format` の `{number}` を置換した文字列を
 /// `FontKind::Serif`（数字は立体）の番号ボックスに包む。`cases` / `matrix` は非採番。
-/// 列整列・行積み・区切り括弧の配置は `layout` 段が `kind` に応じて確定し、本体の中央寄せ（`align`）
+/// 列整列・行積み・区切り括弧の配置は `block` 段が `kind` に応じて確定し、本体の中央寄せ（`align`）
 /// と番号の端寄せ（`numbers_on_right`）は `break_pages` 段が本文幅を使って決める。
 /// 上下マージンは呼び出し側（[`crate`] のディスパッチ）が `Vkern` で前後に出す。
 ///

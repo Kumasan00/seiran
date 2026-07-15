@@ -1,6 +1,6 @@
 //! ヘッダー・フッター（running header/footer）の配置パス
 //!
-//! `crate::hlist::break_pages` がページ数を確定した**後**に走る、フォント依存の後処理パスです。
+//! `crate::breaking::break_pages` がページ数を確定した**後**に走る、フォント依存の後処理パスです。
 //! 各ページについて左・中央・右スロットのテンプレートを展開（`{page}` などのトークン置換）し、
 //! 既存の [`super::Measurer`] でシェーピングして、本文と同じ [`PlacedBlock`] として
 //! `Page::header` / `Page::footer` に配置します。
