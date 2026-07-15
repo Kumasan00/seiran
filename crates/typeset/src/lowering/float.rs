@@ -4,7 +4,7 @@
 //! キャプションは [`expand_template`] で展開するため、キャプション内の
 //! 書体指定・インライン数式もスタイルを保持したまま埋め込まれる。
 
-use config::read_style::CaptionStyle;
+use config::CaptionStyle;
 use model::{CaptionPosition, FontKind, InlineNode, Length};
 
 use super::{
@@ -95,7 +95,7 @@ pub(super) fn wrap_float(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::{CaptionStyle, Style as ReadStyle};
+  use config::{CaptionStyle, Style as ReadStyle};
   use model::{CaptionPosition, FontKind, InlineNode, Length};
 
   use super::*;

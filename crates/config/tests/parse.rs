@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use config::read_style::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
+use config::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
 use model::HeadingLevel;
 
 fn dummy_source() -> &'static str { return "test.toml"; }

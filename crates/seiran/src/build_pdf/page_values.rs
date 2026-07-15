@@ -10,7 +10,7 @@
 //! lowering の pass1/pass2（`LayoutNode::Ref` → `resolve_refs`）と同じ「確定後に別走査で解決する」
 //! 流儀を型に昇格させたもの。
 
-use config::read_style::PageNumbering;
+use config::PageNumbering;
 use model::AnchorMark;
 
 /// 本文ページ分割後にしか構築できない確定値（目次構築の引数型）
@@ -101,7 +101,7 @@ impl PageLabels {
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::PageNumbering;
+  use config::PageNumbering;
   use model::{AnchorMark, Page, PlacedAnchor};
 
   use super::BodyPageValues;

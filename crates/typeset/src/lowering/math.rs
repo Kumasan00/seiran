@@ -5,7 +5,7 @@
 //! によって Unicode Mathematical Alphanumeric Symbols へ変換され（カリグラフィーは
 //! VS1 異体字セレクタを付与）、数式フォントが持つ字形バリアントを直接呼び出します。
 
-use config::read_style::{Alignment, CounterName, MathScriptStyle as MathStyleConfig, NumberSide};
+use config::{Alignment, CounterName, MathScriptStyle as MathStyleConfig, NumberSide};
 use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathRow, MathStyle};
 
 use self::alphanumeric::push_math_char;
@@ -102,7 +102,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `config::read_style::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
+/// `config::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,
@@ -250,7 +250,7 @@ fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> V
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
   use model::Length;
 
   use super::*;

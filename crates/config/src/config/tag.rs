@@ -20,7 +20,7 @@ use thiserror::Error;
 /// OpenType タグ文字列の検証に失敗した理由。
 ///
 /// `read_config` 内部の検証・変換でのみ使用し、最終的に
-/// [`crate::read_config::ValidationError::Field`] の `message` へ畳み込まれます。
+/// [`crate::config::ConfigValidationError::Field`] の `message` へ畳み込まれます。
 #[derive(Debug, Error)]
 pub(crate) enum TagError {
   /// `script` タグが 4 文字 ASCII アルファベットでない

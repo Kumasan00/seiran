@@ -2,10 +2,10 @@
 //!
 //! ファイル I/O・パス解決・出力ディレクトリ作成までを含めた一連の流れを検証する。
 //! 純粋関数（`parse_config` / `validate_values` 等）のユニットテストは
-//! `src/read_config.rs` の `#[cfg(test)] mod tests` 側に置いている。
+//! `src/config.rs` の `#[cfg(test)] mod tests` 側に置いている。
 
-use config::read_config::{
-  Config, ReadConfigError, TextDirection, ValidationError, read_config,
+use config::{
+  Config, ConfigValidationError, ReadConfigError, TextDirection, read_config,
   test_support::{font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section},
 };
 use model::FontType;
@@ -100,7 +100,7 @@ fn read_config_fails_on_nonexistent_font_path() {
   let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
     panic!("expected MultipleValidationErrors, got {result:?}");
   };
-  assert!(errors.iter().all(|error| matches!(error, ValidationError::FontPathResolution { .. })));
+  assert!(errors.iter().all(|error| matches!(error, ConfigValidationError::FontPathResolution { .. })));
   assert_eq!(errors.len(), 19);
 }
 
@@ -123,7 +123,7 @@ fn read_config_fails_on_nonexistent_source_path() {
   let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
     panic!("expected MultipleValidationErrors, got {result:?}");
   };
-  assert!(errors.iter().any(|error| matches!(error, ValidationError::SourcePathResolution { .. })));
+  assert!(errors.iter().any(|error| matches!(error, ConfigValidationError::SourcePathResolution { .. })));
 }
 
 #[test]

@@ -2,7 +2,7 @@
 //!
 //! `\part` 〜 `\subparagraph` の 6 段階の論理レベルを表す列挙型と、
 //! コマンド名との相互変換を提供します。見出し固有のフォント・余白・番号書式は
-//! `config::read_style::HeadingStyle` 側で保持し、ここではレベルそのものに関する
+//! `config::HeadingStyle` 側で保持し、ここではレベルそのものに関する
 //! 基本変換のみを提供します。
 
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// LaTeX の見出しコマンドに対応する 6 段階の論理レベル。
 /// `\part` を最上位とし、`\subparagraph` を最下位とする。
-/// 見出し固有のフォント・余白・番号書式は `config::read_style::HeadingStyle` で持たせ、
+/// 見出し固有のフォント・余白・番号書式は `config::HeadingStyle` で持たせ、
 /// このクレートではレベルの enum と基本変換のみを提供する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]

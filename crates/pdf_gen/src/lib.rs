@@ -12,7 +12,7 @@ mod metadata;
 mod render;
 
 use ::font::{FontData, FontMetrics, FontRefs};
-use config::{read_config::Config, read_style::Style};
+use config::{Config, Style};
 use krilla::{Document, page::PageSettings};
 use model::{HeadingLevel, Page};
 use tracing::debug;

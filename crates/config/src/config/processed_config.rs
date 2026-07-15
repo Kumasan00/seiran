@@ -30,7 +30,7 @@ use thiserror::Error;
 /// PDF 生成に必要な完全な設定情報
 ///
 /// すべてのパス、バリデーション、型変換が完了した最終形式の設定です。
-/// [`crate::read_config::read_config`] で生成され、すべての値が検証済みであることが保証されます。
+/// [`crate::config::read_config`] で生成され、すべての値が検証済みであることが保証されます。
 ///
 /// アプリケーションはこの構造体から設定を読み取り、PDF 生成パイプラインに渡します。
 #[derive(Debug, Clone)]
@@ -257,7 +257,7 @@ pub enum TextDirection {
 ///
 /// 受理する値はハイフン区切りの長形 4 種のみで、短縮形（`"ltr"` 等）や大文字・
 /// スペース区切りは拒否します。`read_config` 内部の検証・変換でのみ使用し、最終的に
-/// [`crate::read_config::ValidationError::Field`] の `message` へ畳み込まれます。
+/// [`crate::config::ConfigValidationError::Field`] の `message` へ畳み込まれます。
 #[derive(Debug, Error)]
 #[error(
   "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります"

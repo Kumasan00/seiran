@@ -1,6 +1,6 @@
 //! 図・表のキャプションスタイル設定型。
 //!
-//! [`FigureStyle`](crate::read_style::FigureStyle) と [`TableStyle`](crate::read_style::TableStyle) が共有する 2 フィールド
+//! [`FigureStyle`](crate::style::FigureStyle) と [`TableStyle`](crate::style::TableStyle) が共有する 2 フィールド
 //! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置は図・表ともに
 //! ソース上の `\caption` の出現位置で決まるため、スタイル側では持たず Document IR
 //! （`model::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields, default)]
 pub struct CaptionStyle {
   /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::caption_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::caption_format))]
   pub format: String,
   /// キャプションのフォントサイズ
   #[garde(custom(positive))]

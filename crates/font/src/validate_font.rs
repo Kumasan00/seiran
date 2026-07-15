@@ -80,7 +80,7 @@
 //! validate_fonts(&font_configs, &font_refs)?;
 //! ```
 
-use config::read_config::{FontConfig, FontConfigs, VariationAxis};
+use config::{FontConfig, FontConfigs, VariationAxis};
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use model::FontType;

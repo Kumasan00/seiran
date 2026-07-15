@@ -25,10 +25,10 @@
 //! 1. `garde::Validate` 派生によるフィールド検証
 //! 2. 派生では表現できない相互制約を補う自由関数（[`validate_margin_sums`] /
 //!    [`validate_unique_font_names`] / [`validate_font_language_constraints`]）。
-//!    [`crate::read_config::validate_and_convert`] が `pre.validate()` の後に明示的に呼び出します。
-//! 3. タグ・書字方向の構造的検証は専用の **失敗しうるコンストラクタ**（[`crate::read_config::tag`] の各関数 /
+//!    [`crate::config::validate_and_convert`] が `pre.validate()` の後に明示的に呼び出します。
+//! 3. タグ・書字方向の構造的検証は専用の **失敗しうるコンストラクタ**（[`crate::config::tag`] の各関数 /
 //!    [`TextDirection`] の `FromStr` 実装）に集約し、検証と `[u8; 4]` / enum への変換を同じ関数で
-//!    行います。[`crate::read_config::parse_font_values`] が変換時に呼び出すため、`garde` 側には重複した規則を
+//!    行います。[`crate::config::parse_font_values`] が変換時に呼び出すため、`garde` 側には重複した規則を
 //!    持ちません。
 //!
 //! | 項目 | 条件 | 実装 |
@@ -38,16 +38,16 @@
 //! | `pdf.margin_*` | >= 0 | `garde(range(min = 0.0))` |
 //! | 余白合計 | < 寸法 | 自由関数 [`validate_margin_sums`] |
 //! | `language` | BCP 47 として妥当・予約サブタグ非含有 | `garde(custom(validate_bcp47_language))` |
-//! | `script` | 4 文字 ASCII アルファベット | [`crate::read_config::tag::parse_script_tag`]（変換時） |
-//! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | [`crate::read_config::tag::parse_ot_language_tag`]（変換時） |
+//! | `script` | 4 文字 ASCII アルファベット | [`crate::config::tag::parse_script_tag`]（変換時） |
+//! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | [`crate::config::tag::parse_ot_language_tag`]（変換時） |
 //! | `ot_language` の前提 | `script` 必須 | 自由関数 [`validate_font_language_constraints`] |
 //! | `direction` | `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` | [`TextDirection`] の `FromStr`（変換時） |
-//! | feature `tag` | 4 文字 ASCII | [`crate::read_config::tag::parse_opentype_tag`]（変換時） |
-//! | 軸 `name` | 4 文字 ASCII | [`crate::read_config::tag::parse_opentype_tag`]（変換時） |
+//! | feature `tag` | 4 文字 ASCII | [`crate::config::tag::parse_opentype_tag`]（変換時） |
+//! | 軸 `name` | 4 文字 ASCII | [`crate::config::tag::parse_opentype_tag`]（変換時） |
 //! | `font_name` 長さ | >= 1 | `garde(length(min = 1))` |
 //! | `font_name` 重複 | なし | 自由関数 [`validate_unique_font_names`] |
 //!
-//! [`TextDirection`]: crate::read_config::TextDirection
+//! [`TextDirection`]: crate::config::TextDirection
 
 use std::path::PathBuf;
 
@@ -58,7 +58,7 @@ use model::{
 };
 use serde::Deserialize;
 
-use crate::read_config::ValidationError;
+use crate::config::ConfigValidationError;
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]
@@ -325,7 +325,7 @@ pub(crate) struct PreFontConfig {
   pub font_index: u32,
   /// バリアブルフォント軸の設定値配列
   ///
-  /// 軸名タグの検証は `garde` ではなく [`crate::read_config::tag::parse_opentype_tag`] による変換時に
+  /// 軸名タグの検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による変換時に
   /// 行います（検証と構築の単一情報源）。
   pub variation_axes: Option<Vec<PreVariationAxis>>,
   /// BCP 47 言語タグ（例: `"ja"`, `"en-US"`, `"zh-Hant"`）
@@ -355,7 +355,7 @@ pub(crate) struct PreFontConfig {
   /// 特別扱いしないため）。harfrust は script 未指定時に DFLT を自動 fallback として試行する
   /// ので、強制 DFLT が欲しい場合は `script` を省略してください。
   ///
-  /// 構造的妥当性の検証は `garde` ではなく [`crate::read_config::tag::parse_script_tag`] による変換時に
+  /// 構造的妥当性の検証は `garde` ではなく [`crate::config::tag::parse_script_tag`] による変換時に
   /// 行います（検証と構築の単一情報源）。
   pub script: Option<String>,
   /// OpenType 言語システムタグ（3 または 4 文字 ASCII alphanumeric、例: `"JAN"`, `"ENG"`）
@@ -364,7 +364,7 @@ pub(crate) struct PreFontConfig {
   /// 言語サブテーブルはスクリプト配下にあるため）。3 文字の場合は内部で末尾を空白パディングし
   /// 4 バイトに正規化します。
   ///
-  /// 構造的妥当性の検証は `garde` ではなく [`crate::read_config::tag::parse_ot_language_tag`] による
+  /// 構造的妥当性の検証は `garde` ではなく [`crate::config::tag::parse_ot_language_tag`] による
   /// 変換時に行います（検証と構築の単一情報源）。`script` 必須の相互制約のみ
   /// [`validate_font_language_constraints`] が別途検査します。
   pub ot_language: Option<String>,
@@ -376,11 +376,11 @@ pub(crate) struct PreFontConfig {
   /// 値の検証は `garde` ではなく [`TextDirection`] の `FromStr` 実装による変換時に行います
   /// （検証と構築の単一情報源）。
   ///
-  /// [`TextDirection`]: crate::read_config::TextDirection
+  /// [`TextDirection`]: crate::config::TextDirection
   pub direction: Option<String>,
   /// OpenType フィーチャー設定配列
   ///
-  /// フィーチャータグの検証は `garde` ではなく [`crate::read_config::tag::parse_opentype_tag`] による
+  /// フィーチャータグの検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
   /// 変換時に行います（検証と構築の単一情報源）。
   pub features: Option<Vec<PreFontFeature>>,
 }
@@ -409,7 +409,7 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
 
 /// バリアブルフォント軸の単一設定値
 ///
-/// 軸名タグの構造的検証は `garde` ではなく [`crate::read_config::tag::parse_opentype_tag`] による
+/// 軸名タグの構造的検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
 /// 変換時に行うため、この DTO は `Validate` を導出しません。
 #[derive(Deserialize, Debug)]
 pub(crate) struct PreVariationAxis {
@@ -421,7 +421,7 @@ pub(crate) struct PreVariationAxis {
 
 /// OpenType フィーチャータグと値のペア
 ///
-/// フィーチャータグの構造的検証は `garde` ではなく [`crate::read_config::tag::parse_opentype_tag`] による
+/// フィーチャータグの構造的検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
 /// 変換時に行うため、この DTO は `Validate` を導出しません。
 #[derive(Deserialize, Debug)]
 pub(crate) struct PreFontFeature {
@@ -494,10 +494,10 @@ impl Default for PreImageConfig {
 ///
 /// garde の field-level 検証では表現できない相互制約のため、`PreConfig::validate` の
 /// 後に明示的に呼び出します。
-pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ValidationError>) {
+pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ConfigValidationError>) {
   let vertical = value.margin_top.to_pt() + value.margin_bottom.to_pt();
   if vertical >= value.height.to_pt() {
-    errors.push(ValidationError::Field {
+    errors.push(ConfigValidationError::Field {
       path: "pdf".to_string(),
       message: format!(
         "方向 vertical の余白合計 ({vertical}pt) が寸法 {}pt 未満である必要があります",
@@ -507,7 +507,7 @@ pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<Valida
   }
   let horizontal = value.margin_left.to_pt() + value.margin_right.to_pt();
   if horizontal >= value.width.to_pt() {
-    errors.push(ValidationError::Field {
+    errors.push(ConfigValidationError::Field {
       path: "pdf".to_string(),
       message: format!(
         "方向 horizontal の余白合計 ({horizontal}pt) が寸法 {}pt 未満である必要があります",
@@ -518,12 +518,12 @@ pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<Valida
 }
 
 /// 19 フォント種別の `font_name` がすべて一意であることを検証し、違反を `errors` に追加します。
-pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Vec<ValidationError>) {
+pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   let mut seen = std::collections::HashSet::new();
   for font_type in FontType::ALL {
     let name = value.get(font_type).font_name.as_str();
     if !seen.insert(name) {
-      errors.push(ValidationError::Field {
+      errors.push(ConfigValidationError::Field {
         path: format!("font_configs.{}", font_type.as_toml_key()),
         message: format!("フォント名 '{name}' が重複しています"),
       });
@@ -536,11 +536,11 @@ pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Ve
 /// 検証ルール:
 /// - `ot_language` を指定する場合は `script` が必須（OT 言語システムは GSUB/GPOS の
 ///   スクリプトサブテーブル配下に定義されるため、スクリプトなしでは指定意義がない）
-pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors: &mut Vec<ValidationError>) {
+pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for font_type in FontType::ALL {
     let cfg = value.get(font_type);
     if cfg.ot_language.is_some() && cfg.script.is_none() {
-      errors.push(ValidationError::Field {
+      errors.push(ConfigValidationError::Field {
         path: format!("font_configs.{}", font_type.as_toml_key()),
         message: "ot_language を指定する場合は script も指定する必要があります".to_string(),
       });

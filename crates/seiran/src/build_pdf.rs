@@ -71,8 +71,8 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
 
-  let config = config::read_config::read_config(config_path)?;
-  let style = config::read_style::read_style(config.style_path.as_deref())?;
+  let config = config::read_config(config_path)?;
+  let style = config::read_style(config.style_path.as_deref())?;
   let references = read_references(config.references_path.as_deref())?;
 
   let stage_start = Instant::now();
@@ -133,8 +133,8 @@ pub(super) struct LaidOutDocument {
 /// ソース読込・パース・文献整形・lowering・フォント検証・段組み幅の不正のいずれかで失敗した場合に
 /// エラーを返す。
 fn build_pages(
-  config: &config::read_config::Config,
-  style: &config::read_style::Style,
+  config: &config::Config,
+  style: &config::Style,
   references: &References,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -376,8 +376,8 @@ fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -
 /// 両者は段数・段間以外を共有するため、本文側を組んでから前付けは `num_columns` / `column_gap` だけ
 /// 差し替える。
 fn build_page_geometries(
-  config: &config::read_config::Config,
-  style: &config::read_style::Style,
+  config: &config::Config,
+  style: &config::Style,
   default_font_size: model::Length,
   line_height_factor: f32,
   body_columns: usize,
@@ -409,7 +409,7 @@ mod tests {
 
   /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
   /// `LoweringError` を生成するテストヘルパ
-  fn lowering_error_with_source_id_1(style: &config::read_style::Style) -> typeset::LoweringError {
+  fn lowering_error_with_source_id_1(style: &config::Style) -> typeset::LoweringError {
     use model::{DocNode, InlineNode};
     let ctx = typeset::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
@@ -428,7 +428,7 @@ mod tests {
   #[test]
   fn lowering_error_attributes_named_source_by_source_id() {
     // Arrange — source_id()==1 の LoweringError を生成する（範囲内・範囲外の両方に流し込む）
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
 
     // Act / Assert 1 — parsed が 2 要素なら index=1 の 2 番目のファイルに NamedSource が紐づく
     let parsed = vec![

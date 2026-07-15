@@ -27,8 +27,8 @@ pub struct ReferenceStyle {
   /// IEEE / APA などの整形規則（採番方式・書誌の体裁）を定める独立 CSL スタイル
   /// （independent style）を指す。引用の見た目を決める設定なので style.toml に置く。
   /// `None`（既定）で引用（`\cite`）が存在する場合は `citation` がエラーを報告する。
-  /// パスは [`read_style`](crate::read_style::read_style) が `canonicalize` で絶対パスへ正規化し、同時に
-  /// ファイルの存在を検証する（解決できなければ [`crate::read_style::ValidationError::CslPathResolution`]）。
+  /// パスは [`read_style`](crate::style::read_style) が `canonicalize` で絶対パスへ正規化し、同時に
+  /// ファイルの存在を検証する（解決できなければ [`crate::style::StyleValidationError::CslPathResolution`]）。
   /// ファイル内容の読み込み・解析（CSL スタイルのパース）は `citation` クレートが後段で行う。
   #[garde(skip)]
   pub csl_path: Option<PathBuf>,
@@ -39,8 +39,8 @@ pub struct ReferenceStyle {
   /// 同一言語コードのロケールは内蔵より優先される。`None`（既定）の場合は内蔵ロケールのみを使う。
   /// なお書誌の出力言語（active locale）は [`locale`](Self::locale) で決まり、`locale` が未指定の
   /// ときに限り、本ファイルの `xml:lang` がその既定値として採用される。
-  /// パスは [`read_style`](crate::read_style::read_style) が `canonicalize` で絶対パスへ正規化し、ファイルの
-  /// 存在を検証する（解決できなければ [`crate::read_style::ValidationError::LocalePathResolution`]）。
+  /// パスは [`read_style`](crate::style::read_style) が `canonicalize` で絶対パスへ正規化し、ファイルの
+  /// 存在を検証する（解決できなければ [`crate::style::StyleValidationError::LocalePathResolution`]）。
   /// ファイル内容の読み込み・解析（ロケール XML のパース）は `citation` クレートが後段で行う。
   #[garde(skip)]
   pub locale_path: Option<PathBuf>,
@@ -51,8 +51,8 @@ pub struct ReferenceStyle {
   /// active locale は次の優先順位で決まる: 本フィールド → [`locale_path`](Self::locale_path) の
   /// ファイルの `xml:lang` → `.csl` の `default-locale`（最終的に en-US）。`citation` クレートが
   /// `BibliographyRequest` / `CitationRequest` の locale override として解釈する。
-  /// [`read_style`](crate::read_style::read_style) がロケールコードの構文を検証し（不正なら
-  /// [`crate::read_style::ValidationError::Field`]）、大文字小文字を BCP 47 の標準形へ正規化する
+  /// [`read_style`](crate::style::read_style) がロケールコードの構文を検証し（不正なら
+  /// [`crate::style::StyleValidationError::Field`]）、大文字小文字を BCP 47 の標準形へ正規化する
   /// （例 `ja-jp` → `ja-JP`。言語=小文字・地域=大文字・用字=先頭大文字）。
   #[garde(custom(validate_locale))]
   pub locale: Option<String>,
@@ -74,13 +74,13 @@ impl Default for ReferenceStyle {
 impl ReferenceStyle {
   /// 値を正規化する（現状はロケールコードを BCP 47 の標準形へ揃える）。
   ///
-  /// [`crate::read_style::parse_style`] が値検証の後に呼び出す純粋処理。`locale` が `Some` のとき、
+  /// [`crate::style::parse_style`] が値検証の後に呼び出す純粋処理。`locale` が `Some` のとき、
   /// [`unic_langid::LanguageIdentifier`] でパースしてから `to_string` で標準形へ整える（言語サブ
   /// タグを小文字・地域サブタグを大文字・用字サブタグを先頭大文字へ、区切りは `-` へ揃える。
   /// 例 `ja-jp` → `ja-JP`、`ja_JP` → `ja-JP`）。`citation` の内蔵ロケール照合は文字列一致のため、
   /// ここで標準形へ揃えておくと照合が安定する。`None` のときは何もしない。検証済みの値はパースに
   /// 成功する前提だが、万一失敗した場合は元の値を温存する。パスの正規化（`canonicalize`）は I/O を
-  /// 伴うため [`crate::read_style::read_style`] 側で行う。
+  /// 伴うため [`crate::style::read_style`] 側で行う。
   pub fn normalize(&mut self) {
     if let Some(code) = &self.locale
       && let Ok(langid) = unic_langid::LanguageIdentifier::from_bytes(code.as_bytes())
@@ -113,7 +113,7 @@ mod tests {
   use garde::Validate;
 
   use super::ReferenceStyle;
-  use crate::read_style::parse_style;
+  use crate::style::parse_style;
 
   #[test]
   fn validate_accepts_default() {
