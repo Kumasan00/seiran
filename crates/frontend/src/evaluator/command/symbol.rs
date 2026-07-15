@@ -24,8 +24,41 @@
 //! コマンド名は unicode-math の csname に一致させず、慣用の短縮形を優先して
 //! Seiran 独自に決める（`\leq` `\subseteq` `\rightarrow`）。冗長で長すぎる名前は避ける。
 
-use model::MathClass;
 use phf::phf_map;
+
+/// 数式記号のクラス
+///
+/// TeX 系の数式組版では、記号同士の間隔がこのクラスの組み合わせで決まる
+/// （`a + b` の `+`（[`Bin`](MathClass::Bin)）は中アキ、`a = b` の `=`（[`Rel`](MathClass::Rel)）は太アキ）。
+/// 現状の Seiran はこのスペーシングを実装していないが、[`SYMBOL_MAP`] に
+/// クラスを記録しておくことで、将来の数式スペーシング実装が記号表を
+/// 作り直さずにクラスを消費できる。唯一の消費者は本モジュールのため `model` ではなく
+/// ここに置く（#216）。
+///
+/// クラスは上流の `unicode-math-table.tex` の `\mathord` / `\mathbin` 等から取得する。
+///
+/// `model` 移設前は pub API（公開型）だったため dead code 解析の対象外だったが、
+/// `pub(crate)` 化で対象になった。[`Punct`](MathClass::Punct) は現行 [`SYMBOL_MAP`] のどの記号にも
+/// 未使用のため未消費と警告されるが、クラス自体は将来の記号追加・スペーシング実装で使う想定のため
+/// バリアント単位で削らず `dead_code` を許容する。
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MathClass {
+  /// 順序子（`\mathord`）— 変数・名前付き記号など（`\alpha` `\infty` `\hbar`）
+  Ord,
+  /// 大型演算子（`\mathop`）— 総和・積分など（`\sum` `\int` `\prod`）
+  Op,
+  /// 二項演算子（`\mathbin`）— 中アキを伴う演算子（`\times` `\oplus` `\cup`）
+  Bin,
+  /// 関係子（`\mathrel`）— 太アキを伴う関係・矢印（`\leq` `\subseteq` `\rightarrow`）
+  Rel,
+  /// 開き括弧（`\mathopen`）— 開き区切り（`\langle` `\lceil`）
+  Open,
+  /// 閉じ括弧（`\mathclose`）— 閉じ区切り（`\rangle` `\rceil`）
+  Close,
+  /// 区切り（`\mathpunct`）— 句読点的記号（`\colon` 等）
+  Punct,
+}
 
 /// 記号コマンドが出力する単一文字とその数式クラス
 ///
@@ -374,7 +407,7 @@ mod tests {
   #[test]
   fn representative_symbols_have_expected_class() {
     // Arrange & Act & Assert — 代表記号のクラスが各カテゴリで正しいこと
-    use model::MathClass;
+    use super::MathClass;
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| s.class), Some(MathClass::Ord));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| s.class), Some(MathClass::Rel));
     assert_eq!(SYMBOL_MAP.get("times").map(|s| s.class), Some(MathClass::Bin));

@@ -80,7 +80,7 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 model （依存なし（serde / garde のみ）— 全段共有のデータモデル。旧 types / document / hlist の
         コア型 3 クレートを統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
         ColumnWidth 等の共通型・Document IR（DocNode / InlineNode / MathNode）・組版コア型
-        （Block / Page / HItem / GlyphRun / TableBox）+ dump_pages + 計測ヘルパを持つ。
+        （Block / Page / HItem / GlyphRun / TableBox）+ 計測ヘルパを持つ。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
   ↑ config, citation, frontend, font, typeset, pdf_gen, seiran
 

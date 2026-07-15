@@ -31,7 +31,8 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 ## layout dump golden
 
-`crates/seiran/src/build_pdf/golden.rs` が `model::dump_pages` の決定的テキストを
+`crates/seiran/src/build_pdf/golden.rs` が `build_pdf::dump::dump_pages`（seiran クレート内、
+golden テスト専用）の決定的テキストを
 `crates/seiran/tests/golden/<name>.txt` と比較する。**PDF バイト比較ではない**
 （ダンプは確定座標のテキスト表現。krilla の描画・メタデータは含まない）。
 

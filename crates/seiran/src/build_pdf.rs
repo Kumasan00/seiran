@@ -9,6 +9,8 @@ mod page_values;
 mod running;
 
 #[cfg(test)]
+mod dump;
+#[cfg(test)]
 mod golden;
 
 use std::{
