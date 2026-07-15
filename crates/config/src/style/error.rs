@@ -1,4 +1,4 @@
-//! [`crate::read_style::read_style`] が返すエラー型の定義。
+//! [`crate::style::read_style`] が返すエラー型の定義。
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
@@ -39,13 +39,13 @@ pub enum ReadStyleError {
   MultipleValidationErrors {
     /// 検証で検出されたすべてのエラー
     #[related]
-    errors: Vec<ValidationError>,
+    errors: Vec<StyleValidationError>,
   },
 }
 
 /// スタイル設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ValidationError {
+pub enum StyleValidationError {
   /// garde が検出したスタイル設定値の不正
   #[error("'{path}': {message}")]
   #[diagnostic(code(style::validation::field), help("style.toml の該当フィールドの値を確認してください。"))]

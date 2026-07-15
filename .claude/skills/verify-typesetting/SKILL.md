@@ -26,12 +26,12 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 | 変更した層 | 手段 |
 | --- | --- |
-| レイアウト（座標・寸法）に効く変更 — hlist / layout / lowering / frontend / read_style 等 | layout dump golden（下記） |
+| レイアウト（座標・寸法）に効く変更 — breaking / block / lowering / frontend / config の style 等 | layout dump golden（下記） |
 | ダンプに映らない層 — pdf_gen の render・PDF メタデータ・リンク・しおり | PDF バイト比較（下記、日時固定が必須） |
 
 ## layout dump golden
 
-`crates/seiran/src/build_pdf/golden.rs` が `hlist::dump_pages` の決定的テキストを
+`crates/seiran/src/build_pdf/golden.rs` が `model::dump_pages` の決定的テキストを
 `crates/seiran/tests/golden/<name>.txt` と比較する。**PDF バイト比較ではない**
 （ダンプは確定座標のテキスト表現。krilla の描画・メタデータは含まない）。
 

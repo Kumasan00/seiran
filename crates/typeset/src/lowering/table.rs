@@ -119,7 +119,7 @@ pub(super) fn lower_table(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
   use model::{InlineNode, TableCell};
 
   use super::*;

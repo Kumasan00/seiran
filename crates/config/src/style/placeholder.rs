@@ -7,14 +7,14 @@
 //!
 //! 本モジュールは設定読込時にプレースホルダ名を文脈ごとの許可セットと照合し、未知の名前や
 //! 不正な波括弧構文（未閉じ・空・ネスト・孤立 `}`）を [`garde::Error`] として報告する。各
-//! フィールドのバリデーターは `#[garde(custom(crate::read_style::placeholder::…))]` から参照され、検出された
-//! エラーは既存の `validate_values` 経由で [`crate::read_style::ReadStyleError::MultipleValidationErrors`] に
+//! フィールドのバリデーターは `#[garde(custom(crate::style::placeholder::…))]` から参照され、検出された
+//! エラーは既存の `validate_values` 経由で [`crate::style::ReadStyleError::MultipleValidationErrors`] に
 //! 集約される。
 //!
 //! 波括弧 `{` `}` はプレースホルダ専用とし、リテラルの波括弧やエスケープ（`{{`）は現状サポート
 //! しない（将来導入する場合も本モジュールの仕様変更として扱う）。
 
-use crate::read_style::counter::CounterName;
+use crate::style::counter::CounterName;
 
 /// 見出し書式（`heading.<level>.format`）で許可するプレースホルダ。
 const HEADING: &[&str] = &["number", "title"];

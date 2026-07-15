@@ -1,11 +1,11 @@
 //! 定理ブロック（`DocNode::Theorem`）の lowering
 //!
-//! クラス別スタイル（[`config::read_style::TheoremStyle`]）を参照し、定理ブロックを
+//! クラス別スタイル（[`config::TheoremStyle`]）を参照し、定理ブロックを
 //! 「見出し（独立行）＋ クラス別 `font_kind` の本文 ＋ 上下マージン」に変換する。
 //! `proof` のように `qed_mark` を持つクラスは、本体末尾に右寄せの QED マークを置く
 //! （最終段落と同居、入らなければ次行・本体末が非段落なら独立行）。
 
-use config::read_style::TheoremStyle;
+use config::TheoremStyle;
 use model::{Align, DocNode, FontKind, InlineNode, Length, TheoremClass};
 
 use super::{
@@ -137,7 +137,7 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
   use model::{DocNode, FontKind};
 
   use super::*;

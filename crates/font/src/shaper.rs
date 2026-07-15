@@ -68,7 +68,7 @@
 //!
 //! ```ignore
 //! # use font::shaper::*;
-//! # use config::read_config::FontConfigs;
+//! # use config::FontConfigs;
 //! # use font::FontRefs;
 //!
 //! // フォント参照とシェイパーデータを準備
@@ -85,7 +85,7 @@
 
 use std::str::FromStr;
 
-use config::read_config::{FontConfig, FontConfigs, TextDirection};
+use config::{FontConfig, FontConfigs, TextDirection};
 pub use harfrust::UnicodeBuffer;
 use harfrust::{
   Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapeOptions, ShapePlan, Shaper, ShaperData,

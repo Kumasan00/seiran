@@ -26,14 +26,14 @@
 //! - 例: 日本語化したい場合は `display_name = "図"` + `ref_format = "{display_name} {number}"` → `"図 1.2"`
 //!
 //! equation の `ref_format` は `\ref{eq:x}` の表示専用で、式の横に出る番号の体裁を決める
-//! [`crate::read_style::EquationStyle::number_format`]（`[equation]`）とは別物。既定値がどちらも `"({number})"`
+//! [`crate::style::EquationStyle::number_format`]（`[equation]`）とは別物。既定値がどちらも `"({number})"`
 //! で一致するのは LaTeX 慣習で「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に
 //! 変更できる（`EquationStyle::number_format` は `figure` の `caption.format` に相当する数式ブロックの体裁）。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::read_style::number_style::NumberStyle;
+use crate::style::number_style::NumberStyle;
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
 ///
@@ -178,7 +178,7 @@ pub struct CounterStyle {
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::counter_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
   pub number_format: String,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
@@ -186,7 +186,7 @@ pub struct CounterStyle {
   /// 種別名を埋め込む
   ///
   /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::ref_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ref_format))]
   pub ref_format: String,
   /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
   pub resets: Vec<CounterName>,
@@ -240,7 +240,7 @@ pub enum CounterName {
 impl CounterName {
   /// 固定 9 種のカウンタ名を宣言順（部 → 章 → … → 数式）で並べた配列。
   ///
-  /// プレースホルダ検証（`crate::read_style::placeholder`）が `{<counter_name>}` 参照の許可セットを
+  /// プレースホルダ検証（`crate::style::placeholder`）が `{<counter_name>}` 参照の許可セットを
   /// 構築する際の単一ソースとして使う。
   pub const ALL: [CounterName; 9] = [
     Self::Part,

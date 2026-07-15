@@ -147,7 +147,7 @@ mod tests {
   #[test]
   fn lower_inline_styled_overrides_parent_kind() {
     // Arrange — 太字文脈（親 SerifBold）の中の \italic は内側の SerifItalic に完全上書きされる
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Styled {
       kind: model::FontKind::SerifItalic,
@@ -174,7 +174,7 @@ mod tests {
   #[test]
   fn lower_inline_colored_overrides_color_keeps_font() {
     // Arrange — \color は親の font_kind / font_size を継承し、色だけ上書きする
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Colored {
       color: model::Color::new(0xff, 0x00, 0x00),
@@ -201,7 +201,7 @@ mod tests {
   #[test]
   fn lower_bold_inside_color_keeps_color() {
     // Arrange — \color[...]{\bold{x}} は内側で書体を変えても色が保持される（直交合成）
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Colored {
       color: model::Color::new(0x00, 0x80, 0x00),
@@ -227,7 +227,7 @@ mod tests {
   fn lower_ref_emits_placeholder_with_label_and_span() {
     // Arrange — Ref は即時解決せず LayoutNode::Ref プレースホルダを発行する
     // （解決は pass2 = resolve::resolve_refs が担う）
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let span = model::Span::new(3, 4);
     let inline = InlineNode::Ref {
@@ -259,7 +259,7 @@ mod tests {
   #[test]
   fn lower_external_link_maps_to_external_target() {
     // Arrange — InlineNode::Link は External リンクに変換され、表示テキストを子に持つ
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Link {
       url: "https://example.com".to_string(),
@@ -283,7 +283,7 @@ mod tests {
     // Arrange — style で link_color を指定すると Ref プレースホルダの style に乗る
     // （pass2 が解決後の Text へそのまま引き継ぐ）
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::read_style::Style::default();
+    let mut style = config::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
@@ -308,7 +308,7 @@ mod tests {
   fn lower_external_link_applies_url_color() {
     // Arrange — style で url_color を指定すると外部リンクの表示テキストに乗る
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::read_style::Style::default();
+    let mut style = config::Style::default();
     style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Link {
@@ -332,7 +332,7 @@ mod tests {
   #[test]
   fn lower_ref_inherits_black_when_link_color_none() {
     // Arrange — link_color = None のとき、本文色（黒 = None）を継承する
-    let mut style = config::read_style::Style::default();
+    let mut style = config::Style::default();
     style.hyperref.link_color = None;
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Ref {
@@ -356,7 +356,7 @@ mod tests {
   #[test]
   fn lower_explicit_color_overrides_link_color() {
     // Arrange — \color[red]{\ref{a}} は明示色（赤）がリンク色より優先される
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let red = model::Color::new(0xff, 0x00, 0x00);
     let inline = InlineNode::Colored {
@@ -383,7 +383,7 @@ mod tests {
   #[test]
   fn lower_internal_link_maps_to_internal_target() {
     // Arrange — InternalLink は内部リンク（Internal(target)）に変換され、色は触らない
-    let style = config::read_style::Style::default();
+    let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::InternalLink {
       target: "cite:foo".to_string(),
@@ -405,7 +405,7 @@ mod tests {
   fn lower_cite_label_applies_cite_color_and_links() {
     // Arrange — Cite ラベル内の InternalLink 番号は cite_color を継承しつつ内部リンクになる
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::read_style::Style::default();
+    let mut style = config::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::Cite {

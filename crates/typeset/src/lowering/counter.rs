@@ -13,28 +13,28 @@
 //!
 //! ## 番号書式について
 //!
-//! 各カウンタは [`config::read_style::CounterStyle`] の `format` テンプレート（例: `"{n}"`、
+//! 各カウンタは [`config::CounterStyle`] の `format` テンプレート（例: `"{n}"`、
 //! `"{chapter}.{n}"`）に従って文字列化される。`{n}` は自身のカウンタ値、`{<name>}` は
-//! 他カウンタの値を参照先カウンタの [`config::read_style::NumberStyle`] でレンダリングする
+//! 他カウンタの値を参照先カウンタの [`config::NumberStyle`] でレンダリングする
 //! （再帰展開はしない）。「3章」「第3部」のような装飾文字列は見出しの
-//! `config::read_style::HeadingStyle.format` テンプレを介して付ける（`super::heading`）。
+//! `config::HeadingStyle.format` テンプレを介して付ける（`super::heading`）。
 //!
 //! ## `\ref` の書式について
 //!
-//! `\ref{label}` の表示は [`config::read_style::CounterStyle::ref_format`] テンプレートで決まる
+//! `\ref{label}` の表示は [`config::CounterStyle::ref_format`] テンプレートで決まる
 //! （例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`）。
 //! `register_label` 時点でテンプレートを適用するため、`resolve_label` は整形済み文字列を
 //! 返す（呼び出し側は装飾を気にせず使える）。
 //!
 //! ## カウンタ定義のソース
 //!
-//! カウンタ定義の真のソースは `config::read_style::Style.counters` テーブル。
-//! [`CounterRegistry::from_style`] が [`config::read_style::Counters`] を `defs` に複製し、
+//! カウンタ定義の真のソースは `config::Style.counters` テーブル。
+//! [`CounterRegistry::from_style`] が [`config::Counters`] を `defs` に複製し、
 //! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
 
 use std::collections::HashMap;
 
-use config::read_style::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
+use config::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
 use model::HeadingLevel;
 
 use super::{LoweringError, SourceId};
@@ -46,11 +46,11 @@ use format::expand_ref_format;
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
-  /// カウンタ定義（`config::read_style::Counters` の複製）
+  /// カウンタ定義（`config::Counters` の複製）
   defs: Counters,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
-  /// 定理クラス定義（`config::read_style::Theorems` の複製）。共有カウンタ名・リセット先・番号書式を引く
+  /// 定理クラス定義（`config::Theorems` の複製）。共有カウンタ名・リセット先・番号書式を引く
   theorems: Theorems,
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
@@ -59,7 +59,7 @@ pub(crate) struct CounterRegistry {
 }
 
 impl CounterRegistry {
-  /// `config::read_style::Style` からレジストリを構築する
+  /// `config::Style` からレジストリを構築する
   ///
   /// カウンタ定義（9 種）に加え、定理クラス定義（`style.theorems`）も取り込む。
   #[must_use]
@@ -293,13 +293,13 @@ impl CounterRegistry {
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   ///
-  /// 既定値は `config::read_style::Style::default()` が `Counters::default()` 経由で供給する
+  /// 既定値は `config::Style::default()` が `Counters::default()` 経由で供給する
   /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
   /// figure / equation / table）。テスト用ショートカット。
   #[must_use]
   pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
 
-  /// `config::read_style::Counters` から直接レジストリを構築する（テスト・カスタム用）
+  /// `config::Counters` から直接レジストリを構築する（テスト・カスタム用）
   ///
   /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
   /// [`CounterRegistry::from_style`] を使うこと。
@@ -339,7 +339,7 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
+  use config::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
   use model::Span;
 
   use super::*;

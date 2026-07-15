@@ -4,7 +4,7 @@
 //! フォント・レイアウト・PDF 描画には依存しない。
 
 use chrono::{Datelike, Timelike, Utc};
-use config::read_config::Config;
+use config::Config;
 use krilla::metadata::{DateTime, Metadata};
 
 /// `config.document` から PDF メタデータを構築します。

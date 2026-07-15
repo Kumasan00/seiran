@@ -6,7 +6,7 @@
 //! 含められる）。
 //!
 //! 任意引数・必須引数は受け付けません（左右インデント量・上下マージン・段落先頭字下げ量は
-//! `config::read_style::QuoteStyle` 側で決まり、ソースには現れない）。
+//! `config::QuoteStyle` 側で決まり、ソースには現れない）。
 
 use model::{DocNode, QuoteKind};
 

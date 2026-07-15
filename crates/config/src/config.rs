@@ -66,13 +66,13 @@ pub enum ReadConfigError {
   #[diagnostic(code(config::multiple_validation_errors))]
   MultipleValidationErrors {
     #[related]
-    errors: Vec<ValidationError>,
+    errors: Vec<ConfigValidationError>,
   },
 }
 
 /// 設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ValidationError {
+pub enum ConfigValidationError {
   /// garde が検出した設定値の不正
   #[error("'{path}': {message}")]
   #[diagnostic(code(config::validation::field), help("config.toml の該当フィールドの値を確認してください。"))]
@@ -149,7 +149,7 @@ pub enum ValidationError {
 /// 読み取り I/O フェーズで集約する解決済みパス群。
 ///
 /// [`resolve_paths`] がフォント・ソース・スタイル・参照の各パスを `canonicalize` し、
-/// 成功したものはここに詰め、失敗したものは別途返す [`Vec<ValidationError>`] に集約します。
+/// 成功したものはここに詰め、失敗したものは別途返す [`Vec<ConfigValidationError>`] に集約します。
 /// `font_paths` は [`FontType::ALL`] の順序に対応する正規化済みフォントパスで、エラーが
 /// 1 件もない場合のみ 19 要素が揃います（[`resolve`] はエラー時に早期 return するため、
 /// 組み立て時には必ず揃っています）。タグ・書字方向の変換は I/O に依存しない純粋処理として
@@ -346,12 +346,12 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
+/// 1 つ以上の違反が見つかった場合は [`ConfigValidationError`] のリストを `Err` で返します。
 /// 違反が皆無の場合は [`FontType::ALL`] の順序に対応する [`FontValues`] のベクタを返します。
-fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ValidationError>> {
-  let mut errors: Vec<ValidationError> = Vec::new();
+fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigValidationError>> {
+  let mut errors: Vec<ConfigValidationError> = Vec::new();
   if let Err(report) = pre.validate() {
-    errors.extend(report.iter().map(|(path, error)| ValidationError::Field {
+    errors.extend(report.iter().map(|(path, error)| ConfigValidationError::Field {
       path: path.to_string(),
       message: error.to_string(),
     }));
@@ -381,30 +381,30 @@ fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<Validati
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反が見つかった場合は [`ValidationError`] のリストを `Err` で返します。
+/// 1 つ以上の違反が見つかった場合は [`ConfigValidationError`] のリストを `Err` で返します。
 #[cfg(test)]
-fn validate_values(pre: &PreConfig) -> Result<(), Vec<ValidationError>> {
+fn validate_values(pre: &PreConfig) -> Result<(), Vec<ConfigValidationError>> {
   return validate_and_convert(pre).map(|_| ());
 }
 
 /// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを解決します。
 ///
 /// 各パスを独立に `canonicalize` し、解決できたものは [`ResolvedPaths`] に詰め、失敗した
-/// ものは [`ValidationError`] として集約して返します。書き込み I/O は行わないため、ここで
+/// ものは [`ConfigValidationError`] として集約して返します。書き込み I/O は行わないため、ここで
 /// 失敗があっても呼び出し側が安全に中断できます。タグ・書字方向の変換は純粋処理として
 /// [`parse_font_values`] が担当するため、このフェーズはパス解決のみに専念します。
 ///
 /// `font_paths` は [`FontType::ALL`] の順序で `canonicalize` に成功したものだけを詰めます。
 /// 1 件でも失敗があれば [`resolve`] は組み立て前に早期 return するため、組み立て時には
 /// 必ず 19 要素が順序どおり揃っています。
-fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<ValidationError>) {
-  let mut errors: Vec<ValidationError> = Vec::new();
+fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<ConfigValidationError>) {
+  let mut errors: Vec<ConfigValidationError> = Vec::new();
 
   let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
-    ValidationError::StylePathResolution { path, source }
+    ConfigValidationError::StylePathResolution { path, source }
   });
   let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
-    ValidationError::ReferencesPathResolution { path, source }
+    ConfigValidationError::ReferencesPathResolution { path, source }
   });
 
   let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
@@ -412,7 +412,7 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Val
     let pre_font_config = pre.font_configs.get(font_type);
     match pre_font_config.font_path.canonicalize() {
       Ok(font_path) => font_paths.push(font_path),
-      Err(source) => errors.push(ValidationError::FontPathResolution {
+      Err(source) => errors.push(ConfigValidationError::FontPathResolution {
         font_type,
         path: pre_font_config.font_path.display().to_string(),
         source,
@@ -436,8 +436,8 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Val
 /// オプションのパスを `canonicalize` し、失敗時はエラーを `errors` に追加します。
 fn canonicalize_or_record(
   path: Option<&Path>,
-  errors: &mut Vec<ValidationError>,
-  make_err: impl FnOnce(String, std::io::Error) -> ValidationError,
+  errors: &mut Vec<ConfigValidationError>,
+  make_err: impl FnOnce(String, std::io::Error) -> ConfigValidationError,
 ) -> Option<PathBuf> {
   let p = path?;
   match p.canonicalize() {
@@ -450,7 +450,11 @@ fn canonicalize_or_record(
 }
 
 /// 各 source パスを `canonicalize` し、失敗時はエラーを `errors` に追加する。
-fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Vec<ValidationError>) -> Vec<PathBuf> {
+fn canonicalize_sources(
+  sources: &[PathBuf],
+  current_dir: &Path,
+  errors: &mut Vec<ConfigValidationError>,
+) -> Vec<PathBuf> {
   let mut resolved = Vec::with_capacity(sources.len());
   for source_path in sources {
     if source_path.extension().and_then(|ext| ext.to_str()) != Some("sei") {
@@ -466,7 +470,7 @@ fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Ve
     };
     match absolute.canonicalize() {
       Ok(canon) => resolved.push(canon),
-      Err(source) => errors.push(ValidationError::SourcePathResolution {
+      Err(source) => errors.push(ConfigValidationError::SourcePathResolution {
         path: absolute.display().to_string(),
         source,
       }),
@@ -478,17 +482,20 @@ fn canonicalize_sources(sources: &[PathBuf], current_dir: &Path, errors: &mut Ve
 /// `PreFontConfig` のタグ・書字方向を検証・変換し、[`FontValues`] を生成します（I/O なし）。
 ///
 /// `script` / `ot_language` / `direction` / フィーチャー / バリアブル軸の各タグを
-/// [`crate::read_config::tag`] の失敗しうるコンストラクタ・[`TextDirection`] の `FromStr` 実装でパースします。
+/// [`crate::config::tag`] の失敗しうるコンストラクタ・[`TextDirection`] の `FromStr` 実装でパースします。
 /// これらの関数が検証と `[u8; 4]` / enum への変換を兼ねるため、ここがタグ・書字方向の
 /// 唯一の検証点です（旧 `four_byte_tag` の `unwrap()` による長さ不正パニックや、検証と変換の
 /// ドリフトは生じません）。`font_path` の解決は I/O フェーズ（[`resolve_paths`]）が担当します。
 ///
 /// # Errors
 ///
-/// 1 つ以上のタグ・書字方向が不正な場合、当該フォント種別の [`ValidationError::Field`] を
+/// 1 つ以上のタグ・書字方向が不正な場合、当該フォント種別の [`ConfigValidationError::Field`] を
 /// すべて集約して `Err` で返します（途中で打ち切らず、複数の不正を 1 度に報告します）。
-fn parse_font_values(font_type: FontType, pre_font_config: &PreFontConfig) -> Result<FontValues, Vec<ValidationError>> {
-  let mut errors: Vec<ValidationError> = Vec::new();
+fn parse_font_values(
+  font_type: FontType,
+  pre_font_config: &PreFontConfig,
+) -> Result<FontValues, Vec<ConfigValidationError>> {
+  let mut errors: Vec<ConfigValidationError> = Vec::new();
 
   let script = match pre_font_config.script.as_deref() {
     None => None,
@@ -575,13 +582,13 @@ fn parse_font_values(font_type: FontType, pre_font_config: &PreFontConfig) -> Re
   });
 }
 
-/// フォント種別とフィールド名から、タグ・書字方向の不正を表す [`ValidationError::Field`] を作ります。
+/// フォント種別とフィールド名から、タグ・書字方向の不正を表す [`ConfigValidationError::Field`] を作ります。
 ///
 /// `path` は `garde` のフィールドパス（例: `"font_configs.serif.script"`）と同じ書式に揃え、
-/// `message` には [`crate::read_config::tag::TagError`] / [`processed_config::TextDirectionParseError`] の
+/// `message` には [`crate::config::tag::TagError`] / [`processed_config::TextDirectionParseError`] の
 /// 説明文をそのまま使用します。
-fn field_error(font_type: FontType, field: &str, error: impl std::fmt::Display) -> ValidationError {
-  return ValidationError::Field {
+fn field_error(font_type: FontType, field: &str, error: impl std::fmt::Display) -> ConfigValidationError {
+  return ConfigValidationError::Field {
     path: format!("font_configs.{}.{field}", font_type.as_toml_key()),
     message: error.to_string(),
   };
@@ -622,15 +629,15 @@ fn resolve_output_dir_path(current_dir: &Path, output_dir: Option<&Path>) -> Pat
 /// （`create_dir_all`）と `canonicalize` の I/O だけを担います。
 /// `output_dir` が `None` の場合は `current_dir` をそのまま出力先とします（カレント直下に出力）。
 /// 実際の PDF パス（`{output_dir}/{name}.pdf`）は [`OutputConfig::pdf_path`] が組み立てます。
-/// エラーは [`ValidationError`] として返し、呼び出し側で他の検証エラーと同じ
+/// エラーは [`ConfigValidationError`] として返し、呼び出し側で他の検証エラーと同じ
 /// [`ReadConfigError::MultipleValidationErrors`] に集約します。
-fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ValidationError> {
+fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ConfigValidationError> {
   let output_dir_path = resolve_output_dir_path(current_dir, output_dir);
-  fs::create_dir_all(&output_dir_path).map_err(|source| ValidationError::CreateOutputDir {
+  fs::create_dir_all(&output_dir_path).map_err(|source| ConfigValidationError::CreateOutputDir {
     path: output_dir_path.display().to_string(),
     source,
   })?;
-  let canonical = output_dir_path.canonicalize().map_err(|source| ValidationError::CanonicalizeOutputDir {
+  let canonical = output_dir_path.canonicalize().map_err(|source| ConfigValidationError::CanonicalizeOutputDir {
     path: output_dir_path.display().to_string(),
     source,
   })?;
@@ -642,9 +649,10 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    ReadConfigError, ValidationError, build_language_string, parse_config, resolve_output_dir_path, validate_values,
+    ConfigValidationError, ReadConfigError, build_language_string, parse_config, resolve_output_dir_path,
+    validate_values,
   };
-  use crate::read_config::test_support::{make_font_sections, valid_output_section, valid_pdf_section};
+  use crate::config::test_support::{make_font_sections, valid_output_section, valid_pdf_section};
 
   /// `parse_config` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
@@ -740,7 +748,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, .. } if path.contains("margin_top")
+      ConfigValidationError::Field { path, .. } if path.contains("margin_top")
     )));
   }
 
@@ -761,7 +769,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, message } if path == "pdf" && message.contains("vertical")
+      ConfigValidationError::Field { path, message } if path == "pdf" && message.contains("vertical")
     )));
   }
 
@@ -782,7 +790,7 @@ mod tests {
     let dup_path = errors
       .iter()
       .find_map(|error| match error {
-        ValidationError::Field { path, message } if message.contains("重複") => Some(path.as_str()),
+        ConfigValidationError::Field { path, message } if message.contains("重複") => Some(path.as_str()),
         _ => None,
       })
       .expect("expected duplicate font name error");
@@ -815,7 +823,7 @@ mod tests {
     let errors = validate_values(&pre).unwrap_err();
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, .. } if path == "sources"
+      ConfigValidationError::Field { path, .. } if path == "sources"
     )));
   }
 
@@ -828,7 +836,7 @@ mod tests {
     let errors = validate_values(&pre).unwrap_err();
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, .. } if path == "sources"
+      ConfigValidationError::Field { path, .. } if path == "sources"
     )));
   }
 
@@ -845,7 +853,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, .. } if path == "output.output_dir"
+      ConfigValidationError::Field { path, .. } if path == "output.output_dir"
     )));
   }
 
@@ -866,7 +874,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, .. } if path == "image.max_dpi"
+      ConfigValidationError::Field { path, .. } if path == "image.max_dpi"
     )));
   }
 
@@ -874,12 +882,12 @@ mod tests {
   ///
   /// `validate_values` は I/O を行わないので、`sources` のパスは実在しなくても構わない
   /// （`resolve` でのみ canonicalize される）。空配列だけ避ければ良い。
-  fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ValidationError>> {
+  fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ConfigValidationError>> {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      crate::read_config::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
+      crate::config::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
     let pre = parse_config(&toml, dummy_source()).unwrap();
     return validate_values(&pre);
@@ -902,7 +910,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
+      ConfigValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
     )));
   }
 
@@ -915,7 +923,7 @@ mod tests {
       assert!(
         errors.iter().any(|error| matches!(
           error,
-          ValidationError::Field { path, message }
+          ConfigValidationError::Field { path, message }
             if path.contains("language") && (message.contains("-x-hbsc") || message.contains("-x-hbot"))
         )),
         "expected '{forbidden}' to be rejected"
@@ -948,7 +956,7 @@ mod tests {
       assert!(
         errors.iter().any(|error| matches!(
           error,
-          ValidationError::Field { path, .. } if path.contains("script")
+          ConfigValidationError::Field { path, .. } if path.contains("script")
         )),
         "expected script='{script}' to be rejected"
       );
@@ -973,7 +981,7 @@ mod tests {
       assert!(
         errors.iter().any(|error| matches!(
           error,
-          ValidationError::Field { path, .. } if path.contains("ot_language")
+          ConfigValidationError::Field { path, .. } if path.contains("ot_language")
         )),
         "expected ot_language='{ot_lang}' to be rejected"
       );
@@ -991,7 +999,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, message }
+      ConfigValidationError::Field { path, message }
         if path == "font_configs.serif" && message.contains("ot_language") && message.contains("script")
     )));
   }
@@ -1035,7 +1043,7 @@ mod tests {
       assert!(
         errors.iter().any(|error| matches!(
           error,
-          ValidationError::Field { path, .. } if path.contains("direction")
+          ConfigValidationError::Field { path, .. } if path.contains("direction")
         )),
         "expected direction='{direction}' to be rejected"
       );
@@ -1074,7 +1082,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
+      ConfigValidationError::Field { path, message } if path.contains("language") && message.contains("BCP 47")
     )));
   }
 
@@ -1095,7 +1103,7 @@ mod tests {
     // Assert
     assert!(errors.iter().any(|error| matches!(
       error,
-      ValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
+      ConfigValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
     )));
   }
 }

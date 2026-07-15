@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use config::{read_config::Config, read_style::Style};
+use config::{Config, Style};
 use font::FontMetrics;
 use krilla::{
   Document,

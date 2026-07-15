@@ -4,7 +4,7 @@
 //! `style.toml` の `[theorems.<class>]` で宣言する。`<class>` は固定 10 種（[`TheoremClass`]）の
 //! みが許可され、それ以外のキーは TOML パース時に拒否される。
 //!
-//! TOML 上の `[theorems]` テーブルは [`crate::read_style::heading`] と同じ 2 レイヤーで解釈する:
+//! TOML 上の `[theorems]` テーブルは [`crate::style::heading`] と同じ 2 レイヤーで解釈する:
 //!
 //! 1. [`default_for_class`] で得る Rust 既定（定理は本文斜体・見出し太字、証明は本文ローマン＋QED）
 //! 2. `[theorems.<class>]` テーブル（クラス別の差分上書き）
@@ -12,11 +12,11 @@
 //! このマージは [`TheoremsTable`] が `#[serde(from = ...)]` 経由で実行する。ネストした
 //! `[theorems.<class>.style]` の部分上書きも [`TheoremPresentationOverride`] で同様に処理する。
 //!
-//! 本モジュールは `read_style` 層の責務（読込・検証・既定マージ）のみを担う。環境登録・カウンタ
-//! 共有・採番は parser、見出し書式・斜体本文・QED 描画は lowering / `pdf_gen` が後段で担当する。
+//! 本モジュールは `style` 層の責務（読込・検証・既定マージ）のみを担う。環境登録・カウンタ
+//! 共有・採番は frontend、見出し書式・斜体本文・QED 描画は lowering / `pdf_gen` が後段で担当する。
 
 use garde::Validate;
-// 定理クラス enum は `types` を単一ソースとし、`read_style::theorem::TheoremClass` として再エクスポートする。
+// 定理クラス enum は `model` を単一ソースとし、`style::theorem::TheoremClass` として再エクスポートする。
 // `model::DocNode::Theorem` も同じ enum を共有するため（`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
 pub use model::TheoremClass;
 use model::{
@@ -117,7 +117,7 @@ pub struct TheoremStyle {
   pub reset_by: TheoremReset,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::counter_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
   pub number_format: String,
   /// 採番しない（`proof` 等）。`true` のとき番号は付かない
   pub unnumbered: bool,
@@ -174,23 +174,23 @@ pub enum TheoremReset {
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_format: String,
   /// サブタイトルありの見出し書式。`{display_name}` / `{number}` / `{title}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_title: String,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
   ///
   /// `proof` の `[of=...]` 指定時にのみ選択される（`{of}` は対象定理の cleveref 文字列
   /// ＝「Theorem 1」等に解決される）。前置語「of」を含む結合書式ごとこのフィールドで上書きでき、
   /// 国際化（`{display_name}（{of} の証明）` 等）も可能。`proof` 以外のクラスでは `of` を取れないため未使用。
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of: String,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
   ///
   /// `of` と `title` を併用したときの結合書式。既定は `of` を先に、`title` を括弧で後置する
   /// （「Proof of Theorem 1 (…)」）。
-  #[garde(length(chars, min = 1), custom(crate::read_style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of_and_title: String,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
   pub font_kind: FontKind,

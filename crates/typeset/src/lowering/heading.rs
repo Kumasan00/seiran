@@ -1,6 +1,6 @@
 //! 見出し（`DocNode::Heading`）の lowering
 //!
-//! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`config::read_style::Style`] から取得し、
+//! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`config::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
 use model::{AnchorMark, HeadingLevel, InlineNode, heading_anchor_key};
@@ -81,7 +81,7 @@ pub(super) fn lower_heading(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
 
   use super::*;
 

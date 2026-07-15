@@ -6,7 +6,7 @@
 
 use std::{collections::HashSet, path::PathBuf};
 
-use config::read_style::Style;
+use config::Style;
 use frontend::parse_source;
 use typeset::{LayoutNode, LoweringContext};
 

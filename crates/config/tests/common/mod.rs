@@ -1,6 +1,6 @@
 //! 統合テスト専用のフィクスチャ生成ヘルパ
 //!
-//! 純文字列ヘルパ（`make_font_sections` 等）は `config::read_config::test_support` に集約済みで、
+//! 純文字列ヘルパ（`make_font_sections` 等）は `config::test_support` に集約済みで、
 //! ここではユニットテストでは不要な「実ファイル配置を伴う」ヘルパだけを保持します。
 //! `tempfile` を dev-dependency に閉じ込めるための分離です。
 

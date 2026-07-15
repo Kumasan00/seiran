@@ -1,9 +1,6 @@
 //! ヘッダー・フッターの配置仕様組み立て
 
-use config::{
-  read_config::DocumentConfig,
-  read_style::{RunningContentStyle, Style},
-};
+use config::{DocumentConfig, RunningContentStyle, Style};
 use model::Color;
 use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 

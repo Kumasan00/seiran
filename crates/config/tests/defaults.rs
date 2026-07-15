@@ -3,7 +3,7 @@
 //! 各 struct 内 `mod tests` の `validate_accepts_default` と重複するが、トップレベルの
 //! Style とサブ型の組合せが矛盾しないことを保証する統合確認として残す。
 
-use config::read_style::{CounterName, Style, TheoremClass};
+use config::{CounterName, Style, TheoremClass};
 use garde::Validate;
 use model::HeadingLevel;
 

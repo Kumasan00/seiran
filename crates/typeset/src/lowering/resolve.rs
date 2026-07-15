@@ -123,7 +123,7 @@ fn resolve_table(table: &mut TableLayout, registry: &CounterRegistry) -> Result<
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::{CounterName, Style};
+  use config::{CounterName, Style};
   use miette::SourceSpan;
   use model::{FontKind, Length};
 

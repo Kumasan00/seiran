@@ -36,17 +36,19 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 ## `config`
 
 ユーザ設定（config.toml / style.toml）のデータモデルと読込・検証。旧 `read_config` / `read_style` の
-2 クレートを統合したもので、両モジュールは `read_config` / `read_style` 子 module としてそのまま内包する。
-双方が `ValidationError` を持ち名前が衝突するため、フラットな root facade にはせず `pub mod read_config;`
-`pub mod read_style;` として名前空間で公開する（`config::read_config::Config` / `config::read_style::Style`）。
+2 クレートを統合したもので、module 名は責務基準で `config` / `style` に改めた（#206）。両 module は
+非公開とし、公開 API はクレート root の `pub use` で 1 本のパスに揃える（`config::Config` /
+`config::Style`。テスト用ヘルパ module は `config::test_support` として再エクスポート）。かつて双方が
+持っていた `ValidationError` は `ConfigValidationError` / `StyleValidationError` と接頭辞で区別し、
+名前衝突を理由とした `pub mod` 公開（旧 `config::read_config::Config` 形式）は廃止した。
 
-### `read_config`（`config::read_config`）
+### `config`（config.toml）
 
 `config/config.toml` の読み込み・バリデーション（`garde` 派生 + `MultipleValidationErrors` 集約）。
 
-### `read_style`（`config::read_style`）
+### `style`（style.toml）
 
-`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）は `read_style` モジュール直下のモジュール（`caption` / `heading` / `figure` 等）に置き、`read_style` モジュールのトップレベル（`config::read_style::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
+`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）は `style` モジュール直下のモジュール（`caption` / `heading` / `figure` 等）に置き、クレート root（`config::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
 
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 

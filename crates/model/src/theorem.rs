@@ -5,8 +5,8 @@
 //! `\newtheorem` 相当は持たず、定理クラスは固定 10 種に確定している。
 //!
 //! クラス固有のスタイル（表示名・カウンタ・番号書式・本文フォント等）は
-//! `config::read_style::TheoremStyle` 側で保持し、ここではクラスそのものに関する基本変換のみを提供する。
-//! `DocNode::Theorem` と `config::read_style::Theorems` の双方がこの単一の enum を共有する
+//! `config::TheoremStyle` 側で保持し、ここではクラスそのものに関する基本変換のみを提供する。
+//! `DocNode::Theorem` と `config::Theorems` の双方がこの単一の enum を共有する
 //! （`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
 
 use serde::{Deserialize, Serialize};

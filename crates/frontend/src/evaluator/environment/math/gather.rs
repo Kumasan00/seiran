@@ -1,7 +1,7 @@
 //! 数式環境 — `gather`
 //!
 //! `\begin{gather}...\end{gather}` を [`DocNode::MathBlock`]（`kind = Gather`）に変換します。各行は
-//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を `config::read_style::CounterName::Equation` で
+//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を `config::CounterName::Equation` で
 //! 採番します。実体は共通ハンドラ [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に
 //! 委譲します。各行の中央寄せは `layout` 段が [`MathEnvKind::Gather`] に応じて確定します。
 //!

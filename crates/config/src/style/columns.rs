@@ -2,7 +2,7 @@
 //!
 //! 段組み数は「同じ本文 + 同じ用紙で見た目だけ差し替える」対象なので `style.toml`（`[columns]`）に置く。
 //! 用紙サイズ・余白は物理設定として `config.toml` 側に残る。段組みのフロー（左段 → 右段 → 次ページ）は
-//! `hlist::break_pages` が担い、本型はその段数と段間だけを保持する。
+//! `typeset::breaking::break_pages` が担い、本型はその段数と段間だけを保持する。
 
 use garde::Validate;
 use model::{Length, length::non_negative};
@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// 段組みのスタイル設定
 ///
 /// `count` は段数（既定 1 = 単段）。issue #32 のスコープに合わせ 1〜2 段に限定する
-/// （`hlist` のフロー自体は任意 N に一般化されるが、契約としては `[1, 2]` を受け入れる）。
+/// （`typeset::breaking` のフロー自体は任意 N に一般化されるが、契約としては `[1, 2]` を受け入れる）。
 /// `gap` は段間（gutter、既定 18pt）。本文幅 `text_width` から段幅は
-/// `(text_width - (count - 1) * gap) / count` で求める（`hlist::column_width`）。
+/// `(text_width - (count - 1) * gap) / count` で求める（`typeset::breaking::column_width`）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

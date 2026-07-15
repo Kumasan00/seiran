@@ -4,7 +4,7 @@
 //! [`build_krilla_fonts`] と、レイアウト済みの [`Glyph`] 列を UPEM 正規化した
 //! [`KrillaGlyph`] 列へ変換する [`convert_to_krilla_glyphs`] を提供する。
 
-use config::read_config::Config;
+use config::Config;
 use font::{FontData, FontRefs};
 use krilla::text::{Font, GlyphId, KrillaGlyph, Tag};
 use model::{FontMap, FontType, Glyph};

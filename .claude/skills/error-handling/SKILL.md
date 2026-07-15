@@ -67,6 +67,6 @@ pub enum MyError {
 
 ## バリデーション（garde）
 
-設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `ValidationError::Field { path, message }` に変換して `MultipleValidationErrors { #[related] errors: Vec<ValidationError> }` に集約し、すべての違反を 1 度に報告する（`read_config` / `read_style` で同パターン）。
+設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換して `MultipleValidationErrors { #[related] errors: Vec<...> }` に集約し、すべての違反を 1 度に報告する（config クレートの `ConfigValidationError` / `StyleValidationError` で同パターン）。
 
 例外: `read_references` は集約せず deserialize 時に fail-fast（著者名 / ID 検証）。集約方式に戻さない。

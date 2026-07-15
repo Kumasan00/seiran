@@ -2,7 +2,7 @@
 //!
 //! ページ上端／下端の余白領域に出る走り文（fancyhdr 相当）の見た目を定義する。
 //! `[header]` と `[footer]` は同一の [`RunningContentStyle`] を共有し、それぞれ
-//! [`crate::read_style::Style`] の `header` / `footer` フィールドに置かれる。
+//! [`crate::style::Style`] の `header` / `footer` フィールドに置かれる。
 //!
 //! スロットは左・中央・右の 3 つ。各スロットのテンプレート文字列には静的テキストに加え、
 //! 次のトークンを埋め込める（実際の置換は `layout` クレートのヘッダー・フッター配置パスで行う）:
@@ -30,13 +30,13 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields, default)]
 pub struct RunningContentStyle {
   /// 左スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::read_style::placeholder::running_slot))]
+  #[garde(custom(crate::style::placeholder::running_slot))]
   pub left: String,
   /// 中央スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::read_style::placeholder::running_slot))]
+  #[garde(custom(crate::style::placeholder::running_slot))]
   pub center: String,
   /// 右スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::read_style::placeholder::running_slot))]
+  #[garde(custom(crate::style::placeholder::running_slot))]
   pub right: String,
   /// フォント種別
   #[garde(skip)]

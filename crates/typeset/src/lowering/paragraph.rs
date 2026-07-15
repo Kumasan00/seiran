@@ -60,7 +60,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
 
   use super::*;
 
