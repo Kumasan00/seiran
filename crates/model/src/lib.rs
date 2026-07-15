@@ -24,7 +24,9 @@
 //!   純粋パス本体（`break_opportunities` / `break_lines` / `break_pages` / `hyphenation`）は
 //!   `typeset` クレートの `breaking` module にあり、本クレートの型に依存する。確定ページ列の
 //!   決定的テキストダンプ（`dump_pages`）は golden テスト専用の出力ツールで、唯一の消費者
-//!   `seiran` 側（`build_pdf::dump`）に置く（#216）。
+//!   `seiran` 側（`build_pdf::dump`）に置く（#216）。段組みの 1 段あたりの幅を求める純粋計算
+//!   （[`column_width`]）も本クレートに置き、`config`（横断バリデーション）と
+//!   `typeset::breaking`（実配置）の双方が同じ式を参照する（#214）。
 //!
 //! ## パイプライン上の位置づけ
 //!
@@ -48,6 +50,7 @@ mod align;
 mod block;
 mod caption;
 mod color;
+mod column_width;
 mod doc_node;
 mod font;
 mod font_map;
@@ -76,6 +79,7 @@ pub use align::Align;
 pub use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK};
 pub use caption::CaptionPosition;
 pub use color::Color;
+pub use column_width::column_width;
 pub use doc_node::{DocNode, Document, ProofTarget, heading_anchor_key};
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};

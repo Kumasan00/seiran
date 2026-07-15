@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 /// `count` は段数（既定 1 = 単段）。issue #32 のスコープに合わせ 1〜2 段に限定する
 /// （`typeset::breaking` のフロー自体は任意 N に一般化されるが、契約としては `[1, 2]` を受け入れる）。
 /// `gap` は段間（gutter、既定 18pt）。本文幅 `text_width` から段幅は
-/// `(text_width - (count - 1) * gap) / count` で求める（`typeset::breaking::column_width`）。
+/// `(text_width - (count - 1) * gap) / count` で求める（[`model::column_width`]）。
+/// `count` と `config.toml` の用紙・余白との横断制約は [`crate::validate_layout`] が検証する。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

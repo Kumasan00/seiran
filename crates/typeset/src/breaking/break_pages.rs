@@ -12,7 +12,8 @@
 
 use model::{
   AnchorMark, Block, Length, Line, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock,
-  PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TextAlignment, resolve_column_widths, table_row_height,
+  PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TextAlignment, column_width, resolve_column_widths,
+  table_row_height,
 };
 use tracing::debug;
 
@@ -45,21 +46,6 @@ pub struct PageGeometry {
   /// リージョン・伸縮アキが無いリージョンは揃えない（自然高のまま）。前付け（`front_geometry`）は常に
   /// `false`。既定 `false` で従来どおりの ragged bottom。
   pub flush_bottom: bool,
-}
-
-/// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
-///
-/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`build_pdf` の `resolve_images`
-/// と `break_pages` の双方がこの 1 つの式を真実源として段幅を求める（重複した算出を避ける）。
-#[must_use]
-pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
-  let count = num_columns.max(1);
-  // 段数は実用上 1〜2。桁あふれ・精度低下する桁数にはならない
-  #[allow(clippy::cast_precision_loss)]
-  let n = count as f32;
-  #[allow(clippy::cast_possible_wrap)]
-  let gaps = (count - 1) as i32;
-  return (text_width - column_gap * gaps) / n;
 }
 
 /// 縦組版の内部状態（現在ページ・カーソル）
@@ -1134,8 +1120,8 @@ mod tests {
   };
 
   use super::{
-    super::break_lines::GreedyBreaker, LinePlacement, PageGeometry, break_pages, column_width, is_content_block,
-    keep_group_end, plan_paragraph_lines,
+    super::break_lines::GreedyBreaker, LinePlacement, PageGeometry, break_pages, is_content_block, keep_group_end,
+    plan_paragraph_lines,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -2378,13 +2364,6 @@ mod tests {
       panic!("Line を期待");
     };
     assert!(close(*baseline_y, 10.0));
-  }
-
-  #[test]
-  fn column_width_helper_divides_text_width() {
-    // Arrange / Act / Assert — (100 - 1*10)/2 = 45、単段は本文幅そのまま
-    assert!(close(column_width(pt(100.0), 2, pt(10.0)), 45.0));
-    assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
 
   #[test]
