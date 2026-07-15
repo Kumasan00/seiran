@@ -3,7 +3,7 @@
 //! `quote` / `quotation` の 2 種ビルトイン引用環境を表す列挙型と、環境名（`snake_case`
 //! 文字列）との相互変換を提供します。両者の違いは段落先頭字下げの有無だけで、`quotation` は
 //! ブロック内段落の先頭行を字下げし、`quote` は字下げしない（字下げ量や左右インデント・上下
-//! マージンといったスタイルは `config::read_style::QuoteStyle` 側が保持する）。
+//! マージンといったスタイルは `config::QuoteStyle` 側が保持する）。
 //!
 //! `frontend` が環境名から解決して [`DocNode::Quote`](crate::DocNode::Quote) に載せ、
 //! `lowering` が消費する。`LayoutNode` には乗らず、`read_style` もこの enum を使わない

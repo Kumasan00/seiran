@@ -7,7 +7,7 @@ use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind,
 
 use super::SourceId;
 
-/// レイアウトエンジン（`crate::layout::build_blocks`）が処理する最小単位
+/// レイアウトエンジン（`crate::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub enum LayoutNode {
   /// スタイル付きテキスト
@@ -18,18 +18,18 @@ pub enum LayoutNode {
     margin_bottom: Length,
     /// この `VBox` 配下の縦リストに加える左インデント（pt 換算で累積）
     ///
-    /// リスト項目で字下げに使う。`crate::layout::build_blocks` が `VBox` の入れ子ごとに加算し、
+    /// リスト項目で字下げに使う。`crate::block::build_blocks` が `VBox` の入れ子ごとに加算し、
     /// 配下の段落（`Block::Paragraph`）へ確定値を刻む。通常の `VBox` は 0。
     indent: Length,
     /// この `VBox` 配下の縦リストに加える右インデント（pt 換算で累積）
     ///
-    /// 引用ブロックで本文右端からの字下げに使う。`crate::layout::build_blocks` が `VBox` の入れ子ごとに
+    /// 引用ブロックで本文右端からの字下げに使う。`crate::block::build_blocks` が `VBox` の入れ子ごとに
     /// 加算し、配下の段落（`Block::Paragraph`）へ確定値を刻む。折り返し幅は
     /// `text_width - indent - right_indent` に縮む。通常の `VBox` は 0。
     right_indent: Length,
     /// この `VBox` 配下の段落に適用する水平揃え（既定は左揃え）
     ///
-    /// `crate::layout::build_blocks` が `VBox` 配下の段落（`Block::Paragraph`）へ伝播する。
+    /// `crate::block::build_blocks` が `VBox` 配下の段落（`Block::Paragraph`）へ伝播する。
     /// 入れ子の `VBox` は自身の `align` で上書きする（インデントのように累積はしない）。
     /// タイトルページの中央寄せで [`Align::Center`] を使う。通常の `VBox` は [`Align::Left`]。
     align: Align,
@@ -80,7 +80,7 @@ pub enum LayoutNode {
   /// ベースラインから子要素を垂直方向にずらすコンテナ
   ///
   /// 数式の上付き・下付きのレイアウトに使用します。`offset > 0` で上方向、
-  /// `offset < 0` で下方向。`crate::layout::build_blocks` が絶対配置の `Atom` に畳むため、
+  /// `offset < 0` で下方向。`crate::block::build_blocks` が絶対配置の `Atom` に畳むため、
   /// 後続要素のベースラインには影響しません。
   Raise {
     offset: Length,
@@ -88,23 +88,23 @@ pub enum LayoutNode {
   },
   /// 表（`table` 環境）
   ///
-  /// セル内容はシェーピング前の `LayoutNode` のまま保持し、`layout` 段で
+  /// セル内容はシェーピング前の `LayoutNode` のまま保持し、`block` 段で
   /// セルごとに `HItem` 列へ変換される。列幅の解決（自然幅の実測・残余分配）は
-  /// `hlist` 段、罫線・行の描画は `pdf_gen` 段で行う。
+  /// `breaking` 段、罫線・行の描画は `pdf_gen` 段で行う。
   Table(TableLayout),
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   ///
   /// 各セルはシェーピング前の lower 済みインライン数式（`Vec<LayoutNode>`）のまま保持し、
-  /// `layout` 段が `kind` に応じてセルを閉じた Atom に measure・列整列・行積みして
-  /// 1 つの本体 Atom（`crate::hlist::Block::MathBlock`）に合成する。番号は `Vec<LayoutNode>`
-  /// （`"(1)"` の Serif Text）として保持し、`layout` 段でシェーピングされる。
+  /// `block` 段が `kind` に応じてセルを閉じた Atom に measure・列整列・行積みして
+  /// 1 つの本体 Atom（`crate::breaking::Block::MathBlock`）に合成する。番号は `Vec<LayoutNode>`
+  /// （`"(1)"` の Serif Text）として保持し、`block` 段でシェーピングされる。
   MathBlock {
     /// 環境種別（列整列・区切り括弧・採番の決定に使う）
     kind: MathEnvKind,
     /// 行（各行は `&` 区切りの列と任意の行番号を持つ）
     rows: Vec<MathBlockRow>,
     /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
-    /// `layout` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
+    /// `block` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
     env_number: Option<Vec<LayoutNode>>,
     /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
@@ -117,14 +117,14 @@ pub enum LayoutNode {
   },
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
-  /// ブロック先頭に置く destination マーカー。`layout` 段で `Block::Anchor` に透過され、
-  /// `crate::hlist::break_pages` が確定座標（`PlacedAnchor`）に解決する。見出し（しおり用）と
+  /// ブロック先頭に置く destination マーカー。`block` 段で `Block::Anchor` に透過され、
+  /// `crate::breaking::break_pages` が確定座標（`PlacedAnchor`）に解決する。見出し（しおり用）と
   /// ラベル付きブロック（`\ref` の到達先）に付与される。
   Anchor(AnchorMark),
   /// クリック可能なリンク領域（機構 B）
   ///
-  /// `children` を囲むクリック矩形を表す。`layout` 段で幅 0 のマーカー対
-  /// （`HItem::LinkStart` / `LinkEnd`）に展開され、`hlist` が行ごとの矩形を
+  /// `children` を囲むクリック矩形を表す。`block` 段で幅 0 のマーカー対
+  /// （`HItem::LinkStart` / `LinkEnd`）に展開され、`breaking` が行ごとの矩形を
   /// 収集して `pdf_gen` がリンク注釈にする。`\ref`（内部）と `\url` / `\href`（外部）の双方。
   Link {
     /// リンクの行き先（内部アンカー / 外部 URI）
@@ -137,15 +137,15 @@ pub enum LayoutNode {
   /// keep-with-next マーカー（ゼロサイズ）
   ///
   /// 直前のブロック（見出し）とその直後のブロックの間で改ページしてはならないことを表す。
-  /// `crate::layout::build_blocks` が `Block::Penalty { value: PENALTY_FORBID_BREAK }`（分割禁止・+∞）へ
-  /// 写す。`PageBreak` → `Block::force_break()`（強制改ページ・−∞）と対称の変換。`crate::hlist::break_pages`
+  /// `crate::block::build_blocks` が `Block::Penalty { value: PENALTY_FORBID_BREAK }`（分割禁止・+∞）へ
+  /// 写す。`PageBreak` → `Block::force_break()`（強制改ページ・−∞）と対称の変換。`crate::breaking::break_pages`
   /// はこの禁止 penalty を「keep グループの連結」として走査し、見出しがページ末尾に孤立するなら
   /// 見出しごと次リージョンへ送る。見出し（`page_break_after` を除く）が `lower_heading` で発行する。
   KeepWithNext,
   /// 行の右端に寄せる末尾要素（証明の QED マーク等）
   ///
-  /// `children`（QED の中身 = `Text` ノード列）を `layout` 段で 1 つの閉じた箱に畳み、
-  /// 直前に分割機会を挿んだうえで `crate::hlist::HItem::FlushRight` に変換する。確定行内で右端
+  /// `children`（QED の中身 = `Text` ノード列）を `block` 段で 1 つの閉じた箱に畳み、
+  /// 直前に分割機会を挿んだうえで `crate::breaking::HItem::FlushRight` に変換する。確定行内で右端
   /// （本文幅 − 幅）へ寄せられ、現在行に収まらなければ次行へ折り返す。段落末（最終行と同居）
   /// もしくは独立した 1 行として置かれる。
   FlushRight(Vec<LayoutNode>),
@@ -220,7 +220,7 @@ pub struct MathBlockRow {
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 ///
-/// `config::read_style::Style`（ドキュメント全体のスタイルツリー）とは別物で、こちらは
+/// `config::Style`（ドキュメント全体のスタイルツリー）とは別物で、こちらは
 /// シェーピング時に 1 つのテキストランへ直接渡す最終的な書体情報を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextStyle {

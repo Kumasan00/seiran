@@ -7,7 +7,7 @@
 //! キャプション構築と `VBox` 包みは [`super::float`] の共通ヘルパで行います。
 //!
 //! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
-//! `hlist` の `resolve_column_widths` で行い、ここでは列指定をそのまま保持します。
+//! `breaking` 段（`model::resolve_column_widths`）で行い、ここでは列指定をそのまま保持します。
 
 use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, TableColumn, TableRow};
 
@@ -119,7 +119,7 @@ pub(super) fn lower_table(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
   use model::{InlineNode, TableCell};
 
   use super::*;

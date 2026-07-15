@@ -58,18 +58,18 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → Document IR（model::DocNode））
   → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を本文末尾に追加）
   → ローワリング（typeset::lowering: DocNode → LayoutNode）→ フォント読込・検証
-  → (a) build_blocks（typeset::layout: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
+  → (a) build_blocks（typeset::block: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
   → (prepass) resolve_images（pdf_gen: 画像の自然寸法から width/height を確定）
-  → (c+d) break_pages（typeset::hlist: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
+  → (c+d) break_pages（typeset::breaking: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
   → (e) render_pages（pdf_gen: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
   → ファイル出力
 ```
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
-本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::hlist::break_lines`。貪欲法 first-fit も
+本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::breaking::break_lines`。貪欲法 first-fit も
 `GreedyBreaker` として併存）で、既定は両端揃え（`[text]` の `alignment`。glue の伸縮で行幅を調整）。
-分割可能点は ICU `LineSegmenter`（UAX #14）により和欧同時に求め（`typeset::hlist::break_opportunities`）、
-欧文語中は discretionary ハイフネーション（`typeset::hlist::hyphenation`）を併用する。
+分割可能点は ICU `LineSegmenter`（UAX #14）により和欧同時に求め（`typeset::breaking::break_opportunities`）、
+欧文語中は discretionary ハイフネーション（`typeset::breaking::hyphenation`）を併用する。
 縦組版（`break_pages`）も glue/penalty モデルで、widow/orphan・keep-with-next・
 下端揃え（flush_bottom）を penalty と glue 伸縮で制御する。
 数式は `HBoxContent::Atom`（絶対 dx/dy の閉じた箱）として行分割をまたがない。
@@ -84,8 +84,8 @@ model （依存なし（serde / garde のみ）— 全段共有のデータモ�
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
   ↑ config, citation, frontend, font, typeset, pdf_gen, seiran
 
-config （model を使用。`read_config` / `read_style` 子 module を内包し、config.toml / style.toml の
-        データモデル + 読込・検証を 1 クレートにまとめる）
+config （model を使用。非公開の `config` / `style` 子 module を内包し、config.toml / style.toml の
+        データモデル + 読込・検証を 1 クレートにまとめる。公開 API は root の `pub use` に揃える）
   ↑ citation, font, typeset, pdf_gen, seiran
 
 frontend （model に依存。bumpalo アリーナ上に CST を構築し、Document IR（model）に
@@ -102,14 +102,15 @@ font （model, config に依存。read-fonts / harfrust / rayon を使用）
   ↑ typeset, pdf_gen, seiran
 
 typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
-          3 クレートを module として統合（#204）。Document IR（DocNode）→ LayoutNode 変換
-          （lowering、採番・`\ref` 解決も担う）→ (a) build_blocks（layout、シェーピング + 計測 +
+          3 クレートを module として統合（#204）し、責務基準で lowering / block / breaking に
+          改名（#206）。Document IR（DocNode）→ LayoutNode 変換
+          （lowering、採番・`\ref` 解決も担う）→ (a) build_blocks（block、シェーピング + 計測 +
           break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
-          （hlist、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
+          （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
           3 module とも非公開で、公開 API はクレート root の `pub use` に揃える）
   ↑ seiran
 
-pdf_gen （font, config, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::hlist）
+pdf_gen （font, config, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
          には依存しない — 確定座標を描くだけであることが依存グラフで強制される）
   ↑ seiran
 
@@ -126,11 +127,11 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | クレート          | 責務（要約）                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------- |
 | `model`           | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode` + 組版コア型 `Block` / `Page` / `HItem` / `GlyphRun` / `TableBox`） |
-| `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（`read_config` / `read_style` 子 module） |
+| `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade） |
 | `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
 | `citation`        | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
 | `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
-| `typeset`         | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`layout` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`hlist` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
+| `typeset`         | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
 | `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |
 | `seiran`          | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包 |
 
@@ -154,7 +155,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
   src/foo/bar.rs  ← 子モジュール
   ```
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `model::length` の garde バリデータ / `config::read_config::test_support`。`config` は `read_config` / `read_style` の双方が `ValidationError` を持ち衝突するため両方を `pub mod` にしている）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `model::length` の garde バリデータ / `config::test_support`。かつて `config` は 2 つの `ValidationError` の衝突を理由に `pub mod` 公開だったが、`ConfigValidationError` / `StyleValidationError` へ改名して root facade に揃えた）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。
@@ -188,7 +189,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 - **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
-- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の config（read_style）節を参照
+- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の config（style）節を参照
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
 

@@ -159,7 +159,7 @@ crates/
 ├── model/            # 全段共有のデータモデル（共通型・Document IR・組版コア型）
 ├── pdf_gen/          # PDF 生成エンジン（確定座標の描画）
 ├── seiran/           # メインアプリケーション（エントリーポイント。CLI 引数解析・サブコマンドを内包）
-└── typeset/          # Document IR → LayoutNode 変換・シェーピング・計測・行分割・縦組版（lowering / layout / hlist 子 module）
+└── typeset/          # Document IR → LayoutNode 変換・シェーピング・計測・行分割・縦組版（lowering / block / breaking 子 module）
 ```
 
 ## License

@@ -1,6 +1,6 @@
 //! リスト（`DocNode::List`）の lowering
 
-use config::read_style::NumberStyle;
+use config::NumberStyle;
 use model::ListItem;
 
 use super::{
@@ -94,7 +94,7 @@ pub(super) fn lower_list(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::Style as ReadStyle;
+  use config::Style as ReadStyle;
   use model::{DocNode, FontKind, InlineNode, ListItem};
 
   use super::*;

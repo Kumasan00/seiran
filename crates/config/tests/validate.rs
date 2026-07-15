@@ -3,24 +3,24 @@
 //! `parse_style` 経由で TOML を受け取り、`MultipleValidationErrors` の中身を観察する。
 //! `validate_values` は private なので直接呼ばず、`parse_style` → Err パスを使う。
 
-use config::read_style::{ReadStyleError, Style, ValidationError, parse_style};
+use config::{ReadStyleError, Style, StyleValidationError, parse_style};
 
 fn dummy_source() -> &'static str { return "test.toml"; }
 
-fn expect_validation_errors(result: Result<Style, ReadStyleError>) -> Vec<ValidationError> {
+fn expect_validation_errors(result: Result<Style, ReadStyleError>) -> Vec<StyleValidationError> {
   match result {
     Err(ReadStyleError::MultipleValidationErrors { errors }) => return errors,
     other => panic!("expected MultipleValidationErrors, got {other:?}"),
   }
 }
 
-fn paths(errors: &[ValidationError]) -> Vec<&str> {
+fn paths(errors: &[StyleValidationError]) -> Vec<&str> {
   return errors
     .iter()
     .map(|error| match error {
-      ValidationError::Field { path, .. }
-      | ValidationError::CslPathResolution { path, .. }
-      | ValidationError::LocalePathResolution { path, .. } => path.as_str(),
+      StyleValidationError::Field { path, .. }
+      | StyleValidationError::CslPathResolution { path, .. }
+      | StyleValidationError::LocalePathResolution { path, .. } => path.as_str(),
     })
     .collect();
 }
@@ -167,7 +167,7 @@ fn placeholder_error_message_names_the_offending_token() {
   let message = errors
     .iter()
     .find_map(|error| match error {
-      ValidationError::Field { path, message } if path == "math.block.tag_format" => Some(message.as_str()),
+      StyleValidationError::Field { path, message } if path == "math.block.tag_format" => Some(message.as_str()),
       _ => None,
     })
     .expect("math.block.tag_format のエラーがあるはず");

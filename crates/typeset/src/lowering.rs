@@ -9,7 +9,7 @@
 //! document (DocNode)
 //!   ↓ [lowering]  ← この module
 //! LayoutNode
-//!   ↓ [crate::layout::build_blocks → crate::hlist::break_pages]
+//!   ↓ [crate::block::build_blocks → crate::breaking::break_pages]
 //! Vec<Page> (確定座標)
 //!   ↓ [pdf_gen::render_pages]
 //! PDF bytes
@@ -24,7 +24,7 @@
 //! - スタイルシート（`read_style` クレート）を `LoweringContext` 経由で受け取り、
 //!   見出しレベルごとのフォントサイズ・フォーマット文字列・余白を適用する
 
-use config::read_style::Style as ReadStyle;
+use config::Style as ReadStyle;
 use miette::Diagnostic;
 use model::{DocNode, Document, Length, try_inline_nodes_to_plain_text};
 use thiserror::Error;
@@ -160,7 +160,7 @@ impl LoweringError {
 
 /// Lowering のコンテキスト
 ///
-/// 変換中に必要なスタイル設定（`config::read_style::Style`）への参照を保持します。
+/// 変換中に必要なスタイル設定（`config::Style`）への参照を保持します。
 ///
 /// ライフタイム `'a` は `Style` の借用元（typically `build_pdf` でのスコープ）に紐づきます。
 pub struct LoweringContext<'a> {
@@ -209,7 +209,7 @@ impl<'a> LoweringContext<'a> {
   ///
   /// # Arguments
   ///
-  /// * `style` - `config::read_style::read_style()` の結果への参照
+  /// * `style` - `config::read_style()` の結果への参照
   #[must_use]
   pub fn new(style: &'a ReadStyle) -> Self {
     return LoweringContext {
@@ -217,7 +217,7 @@ impl<'a> LoweringContext<'a> {
       body_font_kind: style.text.font_kind,
       first_line_indent: style.text.first_line_indent,
       // 画像 DPI の既定。production は build_pdf が with_image_defaults で config 由来値へ差し替える
-      // （config::read_config::ImageConfig::default と同値）。テストはこの既定をそのまま使う。
+      // （config::ImageConfig::default と同値）。テストはこの既定をそのまま使う。
       image_max_dpi: 300,
       image_downsample: true,
       // 文書のトップレベルは深さ 0。リストに入るたび with_list_depth で +1 する。
@@ -571,8 +571,7 @@ fn lower_node_indexed(
         dpi: *dpi,
         downsample: *downsample,
       };
-      let number =
-        registry.increment_with_label(config::read_style::CounterName::Figure, label.as_deref(), *span, ctx.source)?;
+      let number = registry.increment_with_label(config::CounterName::Figure, label.as_deref(), *span, ctx.source)?;
       let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
@@ -588,8 +587,7 @@ fn lower_node_indexed(
       span,
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
-      let number =
-        registry.increment_with_label(config::read_style::CounterName::Table, label.as_deref(), *span, ctx.source)?;
+      let number = registry.increment_with_label(config::CounterName::Table, label.as_deref(), *span, ctx.source)?;
       let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
@@ -994,7 +992,7 @@ mod tests {
   #[test]
   fn default_font_size_reflects_core_font_size() {
     // Arrange — text.font_size を 18pt に上書きする（#124 で [text] に集約）
-    let mut style = config::read_style::Style::default();
+    let mut style = config::Style::default();
     style.text.font_size = Length::pt(18.0);
     let ctx = LoweringContext::new(&style);
 

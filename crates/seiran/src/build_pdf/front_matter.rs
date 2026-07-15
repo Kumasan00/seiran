@@ -1,6 +1,6 @@
 //! 前付け（タイトルページ・目次）の組み立て・ページ分割・補助型
 
-use config::read_style::{Style, TocStyle};
+use config::{Style, TocStyle};
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{Block, FontKind, HeadingLevel, Page, TextAlignment, heading_anchor_key};
 use tracing::{debug, debug_span};
@@ -133,7 +133,7 @@ pub(super) fn break_front_matter(
 
 #[cfg(test)]
 mod tests {
-  use config::read_style::{PageNumbering, TocStyle};
+  use config::{PageNumbering, TocStyle};
   use model::{AnchorMark, HeadingLevel, PlacedAnchor};
   use typeset::HeadingRecord;
 

@@ -22,7 +22,7 @@
 //! ## モジュール構成
 //!
 //! - `syntax`（非公開） — 字句解析・構文解析（`lexer` → `parser`）、CST の表現（`cst`）
-//! - [`evaluator`] — CST → Document IR の変換器（IR の型定義は `document` クレートに分離）
+//! - [`evaluator`] — CST → Document IR の変換器（IR の型定義は `model` クレートにある）
 
 use std::collections::HashSet;
 

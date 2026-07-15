@@ -1,9 +1,23 @@
 //! ユーザ設定（config.toml / style.toml）のデータモデルと読込・検証
 //!
-//! 物理・実体・メタデータを扱う [`read_config`] と、見た目を扱う [`read_style`] を
-//! 子モジュールとして内包します。両モジュールはそれぞれ `ValidationError` 型を持ち
-//! 名前が衝突するため、`pub mod` で名前空間として公開し `config::read_config::Config`
-//! / `config::read_style::Style` の形で参照します。
+//! 物理・実体・メタデータを扱う `config` と、見た目を扱う `style` を非公開の
+//! 子モジュールとして内包し、公開 API はこの root の `pub use` で 1 本のパスに揃える
+//! （`config::Config` / `config::Style` 等）。エラー型は [`ConfigValidationError`] /
+//! [`StyleValidationError`] と接頭辞で区別する。
 
-pub mod read_config;
-pub mod read_style;
+mod config;
+mod style;
+
+#[doc(hidden)]
+pub use config::test_support;
+pub use config::{
+  Config, ConfigValidationError, DocumentConfig, Feature, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig,
+  PdfConfig, ReadConfigError, TextDirection, VariationAxis, read_config,
+};
+pub use style::{
+  Alignment, CaptionStyle, ColumnsStyle, CounterName, CounterStyle, Counters, FigureStyle, HeadingStyle, HeadingStyles,
+  HyperrefStyle, ListStyle, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide, NumberStyle, PageNumbering,
+  PageStyle, QuoteStyle, ReadStyleError, ReferenceStyle, RunningContentStyle, Style, StyleValidationError, TableStyle,
+  TextBlockStyle, TheoremClass, TheoremPresentation, TheoremReset, TheoremStyle, Theorems, TitlePageStyle, TocStyle,
+  default_for_class, default_for_level, parse_style, read_style,
+};
