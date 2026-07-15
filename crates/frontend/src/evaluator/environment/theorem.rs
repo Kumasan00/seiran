@@ -21,6 +21,7 @@ use crate::{
     EvalError,
     opt_args::{OptType, OptValue, collect_environment_opt_args},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -64,7 +65,7 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -77,7 +78,7 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
   // `of` の解決（対象定理の cleveref 文字列）は lowering 層の pass2 が担う。
   let of = of_label.map(|label| ProofTarget {
     label,
-    span: view.span().into(),
+    span: view.span(),
   });
 
   return Ok(vec![DocNode::Theorem {
@@ -86,7 +87,7 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
     body,
     of,
     label,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

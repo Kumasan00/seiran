@@ -19,6 +19,7 @@ use crate::{
     inline::extract_inline_nodes,
     opt_args::{OptType, collect_command_opt_args, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::{CommandView, extract_text_content},
 };
 
@@ -33,13 +34,13 @@ pub(crate) fn url_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
     return Err(EvalError::MissingCommandArgument {
       name: "url".to_string(),
       expected: "URI".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "url".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -61,20 +62,20 @@ pub(crate) fn href_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     return Err(EvalError::MissingCommandArgument {
       name: "href".to_string(),
       expected: "[url=...]（リンク先 URI）".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
       name: "href".to_string(),
       expected: "表示テキスト".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "href".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 

@@ -16,6 +16,7 @@ use model::{DocNode, MathEnvKind, MathNode, MathRow};
 
 use crate::{
   evaluator::{EvalError, math::evaluate_math_elements},
+  span_ext::ToSourceSpan,
   syntax::{
     ast::EnvironmentView,
     green::{GreenElement, GreenNode},
@@ -94,7 +95,7 @@ pub(crate) fn evaluate_grid(
           if !spec.allow_column_breaks {
             return Err(EvalError::UnsupportedInMath {
               what: r"&（列区切り）".to_string(),
-              span: token.span.into(),
+              span: token.span.to_source_span(),
             });
           }
           // 行末マーカーの後ろに列が続くなら、マーカーは行末になく不正
@@ -107,7 +108,7 @@ pub(crate) fn evaluate_grid(
           if !spec.allow_row_breaks {
             return Err(EvalError::UnsupportedInMath {
               what: r"\\（行区切り）".to_string(),
-              span: token.span.into(),
+              span: token.span.to_source_span(),
             });
           }
           current_row.push(evaluate_math_elements(source, &current_cell)?);
@@ -195,7 +196,7 @@ pub(crate) fn evaluate_math_env(
     rows,
     numbered: env_numbered,
     label: block_label,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

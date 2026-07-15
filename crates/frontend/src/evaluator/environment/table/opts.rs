@@ -7,6 +7,7 @@ use crate::{
     EvalError,
     opt_args::{OptType, OptValue, collect_environment_opt_args},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -60,7 +61,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<V
     name: "table".to_string(),
     key: "columns".to_string(),
     expected: "left / center / right の空白区切り".to_string(),
-    span: view.span().into(),
+    span: view.span().to_source_span(),
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();
   if tokens.is_empty() {
@@ -75,7 +76,7 @@ pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView) -> Result<Ve
     name: "table".to_string(),
     key: "widths".to_string(),
     expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
-    span: view.span().into(),
+    span: view.span().to_source_span(),
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();
   if tokens.is_empty() {

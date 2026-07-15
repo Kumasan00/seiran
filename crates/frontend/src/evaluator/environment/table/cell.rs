@@ -8,6 +8,7 @@ use crate::{
     inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
     opt_args::{OptType, OptValue, collect_command_opt_args},
   },
+  span_ext::ToSourceSpan,
   syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
 };
 
@@ -32,7 +33,7 @@ pub(super) fn build_cell(source: &str, elements: &[GreenElement]) -> Result<Tabl
             if cell_view.is_some() {
               // 同一区画に \cell が 2 つ — `&` の書き忘れ
               return Err(EvalError::TableCellMixedContent {
-                span: node.span.into(),
+                span: node.span.to_source_span(),
               });
             }
             cell_view = Some(candidate);
@@ -49,7 +50,7 @@ pub(super) fn build_cell(source: &str, elements: &[GreenElement]) -> Result<Tabl
   if let Some(cell_cmd) = cell_view {
     if has_other_content {
       return Err(EvalError::TableCellMixedContent {
-        span: cell_cmd.span().into(),
+        span: cell_cmd.span().to_source_span(),
       });
     }
     return extract_cell_command(&cell_cmd);
@@ -71,7 +72,7 @@ fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
           name: "cell".to_string(),
           key: "span".to_string(),
           expected: "1 以上の整数".to_string(),
-          span: view.span().into(),
+          span: view.span().to_source_span(),
         });
       }
       #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -85,13 +86,13 @@ fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
     return Err(EvalError::MissingCommandArgument {
       name: "cell".to_string(),
       expected: "セル内容".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   };
   if view.args_count() > 1 {
     return Err(EvalError::ExtraCommandArgument {
       name: "cell".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 

@@ -28,6 +28,7 @@ use phf::phf_map;
 
 use crate::{
   evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::CommandView,
 };
 
@@ -110,7 +111,7 @@ impl CommandKind {
       Self::Href => link::href_command(view).map(CommandResult::Inline),
 
       Self::NoIndent => control::noindent(view).map(|()| CommandResult::NoIndent {
-        span: view.span().into(),
+        span: view.span().to_source_span(),
       }),
     }
   }
@@ -128,7 +129,7 @@ pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   return Ok(vec![InlineNode::Symbol(ch)]);
@@ -208,7 +209,7 @@ pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, Eval
   }
   return Err(EvalError::UnknownCommand {
     name: view.name().to_string(),
-    span: view.span().into(),
+    span: view.span().to_source_span(),
   });
 }
 

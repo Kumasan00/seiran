@@ -16,9 +16,10 @@
 //!
 //! ## モジュール構成
 //!
-//! - [`span`] — ソース位置 `Span` の定義（共通基盤）
 //! - [`token`] — トークン型の定義（lexer の出力 / parser の入力語彙）
 //! - [`cst`] — CST の表現（`kind` / `green` / `ast` を束ねる出力データモデル）
+//!
+//! ソース位置は `model::Span` を直接使う（`syntax` 固有の `Span` 型は持たない）。
 //!
 //! `cst` 配下の `green` / `ast` / `kind::SyntaxKind` はルートで再エクスポートし、
 //! `syntax::green::*` / `syntax::ast::*` / `syntax::SyntaxKind` のパスを維持します。
@@ -26,7 +27,6 @@
 mod cst;
 mod lexer;
 mod parser;
-pub mod span;
 pub mod token;
 
 pub use cst::{ast, green, kind, kind::SyntaxKind};

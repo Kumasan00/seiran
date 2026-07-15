@@ -9,12 +9,13 @@
 //! - `GreenNode` を直接参照するため、コピーやクローンが不要
 //! - ビューのライフタイムは CST（アリーナ）のライフタイムに紐づく
 
+use model::Span;
+
 use crate::syntax::{
   cst::{
     green::{GreenElement, GreenNode},
     kind::SyntaxKind,
   },
-  span::Span,
   token::TokenKind,
 };
 

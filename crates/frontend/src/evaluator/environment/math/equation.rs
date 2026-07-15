@@ -20,6 +20,7 @@ use crate::{
     EvalError,
     opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -40,14 +41,14 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "equation".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   // 無採番の式は参照番号を持たないため、ラベルとの併用を禁じる
   if !numbered && label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: "equation".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -80,7 +81,7 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
     // equation は行ごと採番（`row.numbered`）。環境全体の採番・ラベルは使わない（ラベルは `row.label`）
     numbered: false,
     label: None,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

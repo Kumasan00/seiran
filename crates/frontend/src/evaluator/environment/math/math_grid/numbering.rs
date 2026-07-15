@@ -13,6 +13,7 @@ use crate::{
     EvalError,
     opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -65,14 +66,14 @@ pub(super) fn parse_math_env_opts(
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   // 無採番の環境は参照番号を持たないため、環境単位ラベルとの併用を禁じる（equation と同じ規則）
   if !numbered && env_label.is_some() {
     return Err(EvalError::LabelRequiresNumbering {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
   return Ok((numbered, env_label));

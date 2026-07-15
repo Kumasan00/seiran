@@ -20,6 +20,7 @@ use crate::{
     EvalError,
     opt_args::{OptType, collect_environment_opt_args, find_string},
   },
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -38,14 +39,14 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
       name: "matrix".to_string(),
       key: "delimiter".to_string(),
       expected: "none / paren / bracket / brace / bar / dbar".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     })?,
     None => MathDelimiter::None,
   };
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "matrix".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -71,7 +72,7 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     numbered: false,
     // matrix は非採番のため参照対象外
     label: None,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

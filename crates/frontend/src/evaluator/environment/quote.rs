@@ -12,6 +12,7 @@ use model::{DocNode, QuoteKind};
 
 use crate::{
   evaluator::{EvalError, opt_args::collect_environment_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -29,7 +30,7 @@ pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 

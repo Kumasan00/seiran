@@ -13,6 +13,7 @@ use model::{DocNode, MathEnvKind};
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
   evaluator::{EvalError, opt_args::collect_environment_opt_args},
+  span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
 };
 
@@ -30,7 +31,7 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "cases".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -53,7 +54,7 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   if let Some(row) = rows.iter().find(|row| row.cells.len() > 2) {
     return Err(EvalError::CasesColumnOverflow {
       found: row.cells.len(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -63,7 +64,7 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     numbered: false,
     // cases は非採番のため参照対象外
     label: None,
-    span: view.span().into(),
+    span: view.span(),
   }]);
 }
 

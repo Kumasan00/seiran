@@ -26,7 +26,7 @@ use body::{resolve_column_count, scan_table_body};
 use model::{ColumnAlign, ColumnWidth, DocNode};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
-use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
+use crate::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView};
 
 /// `table` 環境を評価する
 ///
@@ -45,7 +45,7 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: "table".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -58,7 +58,7 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     return Err(EvalError::MissingEnvironmentArgument {
       name: "table".to_string(),
       expected: "\\row コマンド".to_string(),
-      span: view.span().into(),
+      span: view.span().to_source_span(),
     });
   }
 
@@ -76,7 +76,7 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     caption: body.caption,
     caption_position: body.caption_position,
     label: opts.label,
-    span: view.span().into(),
+    span: view.span(),
     breakable: opts.breakable,
   }]);
 }

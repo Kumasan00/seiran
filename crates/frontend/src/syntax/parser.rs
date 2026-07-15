@@ -13,16 +13,19 @@
 //!   `Vec` の個別ヒープ確保を排除
 
 use bumpalo::Bump;
+use model::Span;
 use tracing::debug;
 
-use crate::syntax::{
-  cst::{
-    green::{GreenElement, GreenNode},
-    kind::SyntaxKind,
+use crate::{
+  span_ext::ToSourceSpan,
+  syntax::{
+    cst::{
+      green::{GreenElement, GreenNode},
+      kind::SyntaxKind,
+    },
+    lexer::Lexer,
+    token::{Token, TokenKind},
   },
-  lexer::Lexer,
-  span::Span,
-  token::{Token, TokenKind},
 };
 
 mod error;
@@ -168,7 +171,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           children.push(GreenElement::Node(env_node));
         } else if name == "end" {
           return Err(ParserError::StrayEnd {
-            span: token.span.into(),
+            span: token.span.to_source_span(),
           });
         } else {
           let cmd_node = self.parse_command_call(token, mode)?;
@@ -184,7 +187,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           #[allow(clippy::unwrap_used)]
           let second_dollar = self.next_token().unwrap();
           return Err(ParserError::DollarDollarNotSupported {
-            span: first_dollar.span.merge(second_dollar.span).into(),
+            span: first_dollar.span.merge(second_dollar.span).to_source_span(),
           });
         }
 
@@ -197,7 +200,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::DollarInMathMode {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       TokenKind::LBrace if mode == ParseMode::Math => {
@@ -218,7 +221,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareGroup {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       TokenKind::LBracket => {
@@ -228,7 +231,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
@@ -241,7 +244,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       TokenKind::Unknown => {
@@ -249,7 +252,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       _ => {
@@ -337,7 +340,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     if self.peek_kind() != Some(TokenKind::Command) {
       return Err(ParserError::UnclosedEnvironment {
         name: env_name,
-        span: start_span.into(),
+        span: start_span.to_source_span(),
       });
     }
 
@@ -356,7 +359,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       return Err(ParserError::MismatchedEnvironment {
         expected: env_name,
         found: end_env_name,
-        span: end_token.span.merge(self.last_span).into(),
+        span: end_token.span.merge(self.last_span).to_source_span(),
       });
     }
 
@@ -427,7 +430,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           // 閉じ括弧不在のまま EOF — 開き括弧の位置をラベルにして UnclosedDelimiter を返す
           return Err(ParserError::UnclosedDelimiter {
             open_kind,
-            span: start_span.into(),
+            span: start_span.to_source_span(),
           });
         },
         _ => {},
@@ -468,7 +471,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     loop {
       if self.peek_token().is_none() {
         return Err(ParserError::UnclosedInlineMath {
-          span: start_span.into(),
+          span: start_span.to_source_span(),
         });
       }
 
@@ -507,7 +510,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         Some(TokenKind::Dollar) | None => {
           // 数式区切りの $ や EOF が来た時点で `}` がないため UnclosedMathGroup
           return Err(ParserError::UnclosedMathGroup {
-            span: start_span.into(),
+            span: start_span.to_source_span(),
           });
         },
         _ => self.parse_math_atom(&mut children)?,
@@ -553,7 +556,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::LBracket) => {
@@ -561,7 +564,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
@@ -570,7 +573,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       _ => {
@@ -613,7 +616,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
-          span: token.span.into(),
+          span: token.span.to_source_span(),
         });
       },
       Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
@@ -623,7 +626,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let span = self.peek_token().unwrap().span;
         return Err(ParserError::UnexpectedToken {
           kind: token_kind,
-          span: span.into(),
+          span: span.to_source_span(),
         });
       },
       Some(_) => {
@@ -633,7 +636,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       },
       None => {
         return Err(ParserError::UnexpectedEof {
-          span: self.last_span.into(),
+          span: self.last_span.to_source_span(),
         });
       },
     }
@@ -655,12 +658,12 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let span = self.peek_token().unwrap().span;
         return Err(ParserError::UnexpectedToken {
           kind,
-          span: span.into(),
+          span: span.to_source_span(),
         });
       },
       None => {
         return Err(ParserError::UnexpectedEof {
-          span: self.last_span.into(),
+          span: self.last_span.to_source_span(),
         });
       },
     }
