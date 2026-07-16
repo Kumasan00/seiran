@@ -290,6 +290,9 @@ fn build_pages(
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
+///
+/// ビルド処理時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
+#[allow(clippy::cast_possible_truncation)]
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
 /// 1 ソースファイルのパース結果と、そのファイル名・内容（診断用）。

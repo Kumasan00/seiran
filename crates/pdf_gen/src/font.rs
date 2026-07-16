@@ -40,6 +40,8 @@ pub(crate) fn build_krilla_fonts(
             .iter()
             .map(|cfg_axis| {
               let tag = Tag::new(&cfg_axis.name);
+              // krilla variable font 軸値は f32 のみ受け付ける（API 境界での精度低下は許容）
+              #[allow(clippy::cast_possible_truncation)]
               let value = cfg_axis.value as f32;
               let axis = (tag, value);
               return axis;

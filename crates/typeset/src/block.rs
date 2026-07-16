@@ -737,6 +737,12 @@ impl Measurer<'_> {
     };
     let advance = units_to_length(i64::from(src.x_advance), run.font_size, metric.upem);
     let width = advance - run.font_size * normalize.trim_em;
+    // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
+    // 精度で、shift_units（上記）と同じく font unit 空間での意図した truncation。
+    #[allow(clippy::cast_possible_truncation)]
+    let ascender_units = metric.ascender as i64;
+    #[allow(clippy::cast_possible_truncation)]
+    let descender_units = metric.descender.abs() as i64;
     out.push(HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: run.font_size,
@@ -746,8 +752,8 @@ impl Measurer<'_> {
         color: run.color,
       }),
       width,
-      height: units_to_length(metric.ascender as i64, run.font_size, metric.upem),
-      depth: units_to_length(metric.descender.abs() as i64, run.font_size, metric.upem),
+      height: units_to_length(ascender_units, run.font_size, metric.upem),
+      depth: units_to_length(descender_units, run.font_size, metric.upem),
     }));
   }
 
@@ -778,6 +784,12 @@ impl Measurer<'_> {
       .collect();
     let metric = self.metrics.get(run.font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
+    // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
+    // 精度で、push_punct_box の shift_units と同じく font unit 空間での意図した truncation。
+    #[allow(clippy::cast_possible_truncation)]
+    let ascender_units = metric.ascender as i64;
+    #[allow(clippy::cast_possible_truncation)]
+    let descender_units = metric.descender.abs() as i64;
     out.push(HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: run.font_size,
@@ -787,8 +799,8 @@ impl Measurer<'_> {
         color: run.color,
       }),
       width: units_to_length(advance_units, run.font_size, metric.upem),
-      height: units_to_length(metric.ascender as i64, run.font_size, metric.upem),
-      depth: units_to_length(metric.descender.abs() as i64, run.font_size, metric.upem),
+      height: units_to_length(ascender_units, run.font_size, metric.upem),
+      depth: units_to_length(descender_units, run.font_size, metric.upem),
     }));
   }
 
@@ -816,8 +828,14 @@ impl Measurer<'_> {
     let metric = self.metrics.get(font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
     let width = units_to_length(advance_units, font_size, metric.upem);
-    let height = units_to_length(metric.ascender as i64, font_size, metric.upem);
-    let depth = units_to_length(metric.descender.abs() as i64, font_size, metric.upem);
+    // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
+    // 精度で、push_punct_box の shift_units と同じく font unit 空間での意図した truncation。
+    #[allow(clippy::cast_possible_truncation)]
+    let ascender_units = metric.ascender as i64;
+    #[allow(clippy::cast_possible_truncation)]
+    let descender_units = metric.descender.abs() as i64;
+    let height = units_to_length(ascender_units, font_size, metric.upem);
+    let depth = units_to_length(descender_units, font_size, metric.upem);
     return HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size,

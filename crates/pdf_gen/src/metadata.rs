@@ -12,7 +12,8 @@ use krilla::metadata::{DateTime, Metadata};
 /// `/Title` は `document.title` を優先し、未設定なら `output.name` にフォールバックします。
 pub(crate) fn build_metadata(config: &Config) -> Metadata {
   let now = Utc::now();
-  #[allow(clippy::cast_sign_loss)]
+  // 暦の値は範囲が保証されている（year は妥当な西暦、month/day/hour/minute は仕様上の範囲内）ため truncation は発生しない
+  #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
   let time = DateTime::new(now.year() as u16)
     .month(now.month() as u8)
     .day(now.day() as u8)

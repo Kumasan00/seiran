@@ -158,7 +158,9 @@ impl<'a> Lexer<'a> {
       _ => self.read_text()?,
     };
 
-    let span = Span::new(start as u32, self.cursor as u32);
+    let start = u32::try_from(start).expect("ソースは u32::MAX バイトを超えない前提");
+    let end = u32::try_from(self.cursor).expect("ソースは u32::MAX バイトを超えない前提");
+    let span = Span::new(start, end);
     return Some(Token::new(kind, span));
   }
 
