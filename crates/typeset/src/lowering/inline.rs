@@ -7,6 +7,7 @@ use model::{InlineNode, LinkTarget};
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   layout_node::{LayoutNode, TextStyle},
   math::lower_inline_math,
 };
@@ -15,10 +16,12 @@ use super::{
 ///
 /// 書体指定（`InlineNode::Styled`）はパーサ段で `FontKind` まで確定しているため、
 /// ここでは `font_kind` を完全に上書きするだけでよい（親スタイルとの合成はしない）。
+/// `registry` は `InlineNode::Footnote` の採番（`CounterRegistry::increment_footnote`）に使う。
 pub(super) fn lower_inline(
   ctx: &LoweringContext,
   inline: &InlineNode,
   parent_style: TextStyle,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   match inline {
     InlineNode::Text(text) => {
@@ -33,7 +36,7 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(ctx, child, styled)?);
+        result.extend(lower_inline(ctx, child, styled, registry)?);
       }
       return Ok(result);
     },
@@ -46,7 +49,7 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(ctx, child, colored)?);
+        result.extend(lower_inline(ctx, child, colored, registry)?);
       }
       return Ok(result);
     },
@@ -85,7 +88,7 @@ pub(super) fn lower_inline(
       let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
       let mut inner = Vec::new();
       for child in children {
-        inner.extend(lower_inline(ctx, child, style)?);
+        inner.extend(lower_inline(ctx, child, style, registry)?);
       }
       return Ok(vec![LayoutNode::Link {
         target: LinkTarget::External(url.clone()),
@@ -97,7 +100,7 @@ pub(super) fn lower_inline(
       // cite_color 等）から継承するため、ここでは色を触らずリンク領域で囲むだけにする。
       let mut inner = Vec::new();
       for child in children {
-        inner.extend(lower_inline(ctx, child, parent_style)?);
+        inner.extend(lower_inline(ctx, child, parent_style, registry)?);
       }
       return Ok(vec![LayoutNode::Link {
         target: LinkTarget::Internal(target.clone()),
@@ -119,9 +122,23 @@ pub(super) fn lower_inline(
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
       let mut result = Vec::new();
       for child in inlines {
-        result.extend(lower_inline(ctx, child, style)?);
+        result.extend(lower_inline(ctx, child, style, registry)?);
       }
       return Ok(result);
+    },
+    InlineNode::Footnote { body, .. } => {
+      // 番号は出現順の連番（ラベル解決不要なので単純増加のみ、pass2 は経由しない）。
+      // ページ下部への配置・マーカーの上付き描画は #35 / #36 の責務で、ここでは番号確定と
+      // 本体の再帰 lowering までを行う。
+      let number = registry.increment_footnote();
+      let mut lowered_body = Vec::new();
+      for child in body {
+        lowered_body.extend(lower_inline(ctx, child, parent_style, registry)?);
+      }
+      return Ok(vec![LayoutNode::Footnote {
+        number,
+        body: lowered_body,
+      }]);
     },
   }
 }
@@ -160,7 +177,8 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
+      .expect("Text のみなので失敗しないはず");
 
     // Assert — フォントサイズは親から継承し、font_kind は内側の指定になる
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -187,7 +205,8 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
+      .expect("Text のみなので失敗しないはず");
 
     // Assert — font_kind は親 SansSerif を維持し、色だけが Some に上書きされる
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -213,7 +232,8 @@ mod tests {
     let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
+      .expect("Text のみなので失敗しないはず");
 
     // Assert — 内側 \bold で SerifBold になっても色は外側 \color のまま
     let LayoutNode::Text(_, text_style) = &nodes[0] else {
@@ -237,7 +257,7 @@ mod tests {
     let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — Ref { label: "sec:intro", span, style: parent, as_link: true }
     let LayoutNode::Ref {
@@ -268,7 +288,7 @@ mod tests {
     let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — Link { External(url), [Text("ここ")] }
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -292,7 +312,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert
     let LayoutNode::Ref {
@@ -317,7 +339,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -341,7 +365,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert — 色は None（黒継承）
     let LayoutNode::Ref {
@@ -368,7 +394,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert — 番号は赤（parent_style.color が Some なのでそちらを優先）
     let LayoutNode::Ref {
@@ -391,7 +419,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -418,7 +448,9 @@ mod tests {
     };
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0))).expect("解決済み Cite は失敗しない");
+    let nodes =
+      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
+        .expect("解決済み Cite は失敗しない");
 
     // Assert — Internal リンクで、番号テキストが cite_color を継承
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -429,5 +461,75 @@ mod tests {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(text_style.color, Some(blue));
+  }
+
+  #[test]
+  fn lower_footnote_assigns_sequential_number_and_lowers_body() {
+    // Arrange — 番号は registry から発番、本体は再帰 lowering される
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Footnote {
+      body: vec![InlineNode::Text("note".to_string())],
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::Footnote { number, body } = &nodes[0] else {
+      panic!("Footnote が期待されます: {nodes:?}");
+    };
+    assert_eq!(*number, 1);
+    assert!(matches!(&body[0], LayoutNode::Text(t, _) if t == "note"));
+  }
+
+  #[test]
+  fn lower_footnote_body_preserves_nested_styling() {
+    // Arrange — 本体に \bold を含む場合も再帰的に lowering される
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Footnote {
+      body: vec![InlineNode::Styled {
+        kind: model::FontKind::SerifBold,
+        children: vec![InlineNode::Text("x".to_string())],
+      }],
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::Footnote { body, .. } = &nodes[0] else {
+      panic!("Footnote が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(text, text_style) = &body[0] else {
+      panic!("Text が期待されます: {body:?}");
+    };
+    assert_eq!(text, "x");
+    assert_eq!(text_style.font_kind, model::FontKind::SerifBold);
+  }
+
+  #[test]
+  fn lower_footnote_increments_registry_across_calls() {
+    // Arrange — 同一 registry を共有する複数回の lowering で連番になる
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let mut registry = CounterRegistry::default_for_seiran();
+    let make = |text: &str| InlineNode::Footnote {
+      body: vec![InlineNode::Text(text.to_string())],
+      span: model::Span::DUMMY,
+    };
+
+    // Act
+    let first = lower_inline(&ctx, &make("a"), TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let second = lower_inline(&ctx, &make("b"), TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+
+    // Assert
+    assert!(matches!(&first[0], LayoutNode::Footnote { number: 1, .. }));
+    assert!(matches!(&second[0], LayoutNode::Footnote { number: 2, .. }));
   }
 }

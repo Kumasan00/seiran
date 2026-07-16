@@ -1,0 +1,162 @@
+//! `\footnote{...}` コマンド
+//!
+//! 必須引数 1 個（脚注本体）を取り、本体をテキストモードのインライン列として再帰評価した上で
+//! `InlineNode::Footnote` を生成する。採番は行わない（P10: frontend の evaluator は採番を一切
+//! 行わない。採番は `typeset::lowering::CounterRegistry::increment_footnote` の責務）。
+
+use model::InlineNode;
+
+use crate::{
+  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+  span_ext::ToSourceSpan,
+  syntax::ast::CommandView,
+};
+
+/// `\footnote{...}` を `InlineNode::Footnote` に変換する
+///
+/// 本体は太字・数式等を含む任意のインライン内容として再帰評価される。
+///
+/// # Errors
+///
+/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
+pub(crate) fn footnote_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+  let _opt_args = collect_command_opt_args(view, &[])?;
+  let Some(first_arg) = view.first_arg() else {
+    return Err(EvalError::MissingCommandArgument {
+      name: "footnote".to_string(),
+      expected: "脚注本体".to_string(),
+      span: view.span().to_source_span(),
+    });
+  };
+  if view.args_count() > 1 {
+    return Err(EvalError::ExtraCommandArgument {
+      name: "footnote".to_string(),
+      span: view.span().to_source_span(),
+    });
+  }
+
+  let body = extract_inline_nodes(view.source(), first_arg)?;
+  return Ok(vec![InlineNode::Footnote {
+    body,
+    span: view.span(),
+  }]);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+
+  use super::*;
+  use crate::{
+    evaluator::lookup_env_parse_mode,
+    syntax::{SyntaxKind, green::GreenElement},
+  };
+
+  fn parse<'a>(
+    source: &'a str,
+    arena: &'a Bump,
+  ) -> Result<&'a crate::syntax::green::GreenNode<'a>, crate::syntax::ParserError> {
+    return crate::syntax::parse(source, arena, lookup_env_parse_mode);
+  }
+
+  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::syntax::green::GreenNode<'a> {
+    let cst = parse(source, arena).unwrap();
+    for child in cst.children {
+      if let GreenElement::Node(n) = child
+        && n.kind == SyntaxKind::CommandCall
+      {
+        return n;
+      }
+    }
+    panic!("CommandCall ノードが見つかりません");
+  }
+
+  #[test]
+  fn footnote_with_plain_text_produces_footnote_node() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\footnote{hello}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = footnote_command(&view).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let InlineNode::Footnote { body, .. } = &result[0] else {
+      panic!("Footnote が期待されます");
+    };
+    assert_eq!(body.len(), 1);
+    assert!(matches!(&body[0], InlineNode::Text(t) if t == "hello"));
+  }
+
+  #[test]
+  fn footnote_with_styled_body_recursively_evaluates() {
+    // Arrange — 本体は \ref と異なりテキスト抽出だけでなく再帰評価される
+    let arena = Bump::new();
+    let source = r"\footnote{\bold{x}}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = footnote_command(&view).unwrap();
+
+    // Assert
+    let InlineNode::Footnote { body, .. } = &result[0] else {
+      panic!("Footnote が期待されます");
+    };
+    assert_eq!(body.len(), 1);
+    let InlineNode::Styled { kind, children } = &body[0] else {
+      panic!("Styled が期待されます: {body:?}");
+    };
+    assert_eq!(*kind, model::FontKind::SerifBold);
+    assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
+  }
+
+  #[test]
+  fn footnote_rejects_missing_argument() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\footnote";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = footnote_command(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
+  }
+
+  #[test]
+  fn footnote_rejects_extra_arguments() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\footnote{a}{b}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = footnote_command(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
+  }
+
+  #[test]
+  fn footnote_rejects_opt_args() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\footnote[k=v]{body}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = footnote_command(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+  }
+}

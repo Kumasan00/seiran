@@ -7,6 +7,7 @@ use model::{AnchorMark, HeadingLevel, InlineNode, heading_anchor_key};
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
@@ -36,6 +37,7 @@ pub(super) fn lower_heading(
   title: &[InlineNode],
   label: Option<String>,
   heading_index: usize,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let heading_style = ctx.style.heading(level);
   let style = TextStyle {
@@ -44,7 +46,7 @@ pub(super) fn lower_heading(
     color: None,
   };
 
-  let children = expand_template(ctx, &heading_style.format, number, title, None, style)?;
+  let children = expand_template(ctx, &heading_style.format, number, title, None, style, registry)?;
 
   let mut result = Vec::new();
 
@@ -92,9 +94,16 @@ mod tests {
     style.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
 
-    let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "4.7", &[InlineNode::Text("Custom Title".to_string())], None, 0)
-        .expect("解決済みテキストのみの見出しは失敗しないはず");
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "4.7",
+      &[InlineNode::Text("Custom Title".to_string())],
+      None,
+      0,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("解決済みテキストのみの見出しは失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -125,8 +134,9 @@ mod tests {
       },
     ];
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1.1", &title, None, 0)
-      .expect("解決済みインラインのみなので失敗しないはず");
+    let nodes =
+      lower_heading(&ctx, HeadingLevel::Section, "1.1", &title, None, 0, &mut CounterRegistry::default_for_seiran())
+        .expect("解決済みインラインのみなので失敗しないはず");
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
@@ -161,6 +171,7 @@ mod tests {
       &[InlineNode::Text("Intro".to_string())],
       Some("sec:intro".to_string()),
       3,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しないはず");
 
@@ -188,8 +199,16 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &[InlineNode::Text("Intro".to_string())], None, 0)
-      .expect("失敗しないはず");
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      &[InlineNode::Text("Intro".to_string())],
+      None,
+      0,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しないはず");
 
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     let keep_idx = nodes.iter().position(|n| matches!(n, LayoutNode::KeepWithNext)).expect("KeepWithNext が出るはず");
@@ -204,8 +223,16 @@ mod tests {
     style.heading[HeadingLevel::Section].page_break_after = true;
     let ctx = LoweringContext::new(&style);
 
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &[InlineNode::Text("Intro".to_string())], None, 0)
-      .expect("失敗しないはず");
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      &[InlineNode::Text("Intro".to_string())],
+      None,
+      0,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しないはず");
 
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
@@ -228,6 +255,7 @@ mod tests {
       }],
       None,
       0,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("即時エラーにはならない");
 

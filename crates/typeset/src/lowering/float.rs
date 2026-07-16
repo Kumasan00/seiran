@@ -9,6 +9,7 @@ use model::{CaptionPosition, FontKind, InlineNode, Length};
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
@@ -23,13 +24,14 @@ pub(super) fn build_caption(
   caption_style: &CaptionStyle,
   inlines: &[InlineNode],
   number: &str,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
     font_kind: FontKind::Serif,
     color: None,
   };
-  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style);
+  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style, registry);
 }
 
 /// フロートの余白の指定
@@ -232,7 +234,8 @@ mod tests {
     let inlines = [InlineNode::Text("Overview".to_string())];
 
     // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "3").expect("解決済みインラインなので失敗しない");
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "3", &mut CounterRegistry::default_for_seiran())
+      .expect("解決済みインラインなので失敗しない");
 
     // Assert — 単一 Text "Fig 3: Overview"、font_size=9.0、font_kind=Serif
     assert_eq!(nodes.len(), 1, "プレーンタイトルは 1 つの Text に縮約される: {nodes:?}");
@@ -257,7 +260,8 @@ mod tests {
     }];
 
     // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "1").expect("即時エラーにはならない");
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "1", &mut CounterRegistry::default_for_seiran())
+      .expect("即時エラーにはならない");
 
     // Assert
     assert!(

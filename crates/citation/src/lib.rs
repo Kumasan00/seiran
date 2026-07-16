@@ -257,7 +257,8 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
-      | InlineNode::InternalLink { children, .. } => collect_cite_inlines(children, out),
+      | InlineNode::InternalLink { children, .. }
+      | InlineNode::Footnote { body: children, .. } => collect_cite_inlines(children, out),
       InlineNode::Cite { .. } => out.push(inline),
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
@@ -759,7 +760,8 @@ mod tests {
         InlineNode::Styled { children, .. }
         | InlineNode::Colored { children, .. }
         | InlineNode::Link { children, .. }
-        | InlineNode::InternalLink { children, .. } => collect_italic_texts(children, out),
+        | InlineNode::InternalLink { children, .. }
+        | InlineNode::Footnote { body: children, .. } => collect_italic_texts(children, out),
         InlineNode::Text(_)
         | InlineNode::InlineMath(_)
         | InlineNode::Symbol(_)

@@ -117,6 +117,18 @@ pub enum InlineNode {
     /// `\cite{...}` の `CommandCall` ノードのソース位置。キー存在検証時の診断に使う
     span: Span,
   },
+
+  /// 脚注（`\footnote{...}`）
+  ///
+  /// 前方参照解決が不要な単純な出現順連番のため、`Ref`/`Cite` と異なり 2 段階
+  /// （スタブ→pass2 解決）にはせず、`lowering::CounterRegistry` が pass1 の単一パスで
+  /// 直接採番する（`lowering::CounterRegistry::increment_footnote`）。
+  Footnote {
+    /// 脚注本体（テキストモードで再帰評価済みのインライン列。太字・数式等を許容）
+    body: Vec<InlineNode>,
+    /// `\footnote{...}` の `CommandCall` ノードのソース位置
+    span: Span,
+  },
 }
 
 impl InlineNode {
@@ -152,7 +164,8 @@ impl InlineNode {
       InlineNode::InlineMath(_) => return Ok("[Math]".to_string()),
       InlineNode::Symbol(ch) => return Ok(ch.to_string()),
       InlineNode::LineBreak => return Ok("\n".to_string()),
-      InlineNode::NoIndent => return Ok(String::new()),
+      // 脚注本体は見出し・書誌等のプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
+      InlineNode::NoIndent | InlineNode::Footnote { .. } => return Ok(String::new()),
       InlineNode::Ref { label, span } => return resolve_ref(label, *span),
       InlineNode::Cite { keys, label, .. } => {
         return match label.as_deref() {

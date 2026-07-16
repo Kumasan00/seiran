@@ -16,6 +16,7 @@ use crate::{
     command::{
       COMMAND_MAP, CommandKind,
       cite::cite_command,
+      footnote::footnote_command,
       inline::{colored_text, styled_text},
       link::{href_command, url_command},
       ref_::ref_command,
@@ -117,6 +118,11 @@ pub(crate) fn extract_inline_nodes_from_elements(
               // 見出しタイトル・キャプション内に出現する `\cite{...}` も
               // pass1 ではスタブを生成し pass2 でキー存在を検証する
               inlines.extend(cite_command(&view)?);
+            },
+            Some(CommandKind::Footnote) => {
+              // ネストしたインライン文脈（`\bold{\footnote{...}}` 等）に出現する `\footnote` も
+              // 本体を再帰評価してスタブを生成する（採番は typeset::lowering の責務）
+              inlines.extend(footnote_command(&view)?);
             },
             Some(CommandKind::Url) => {
               inlines.extend(url_command(&view)?);

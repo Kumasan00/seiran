@@ -471,10 +471,10 @@ fn lower_node_indexed(
         title: title.clone(),
         source: ctx.source,
       });
-      return heading::lower_heading(ctx, *level, &number, title, label.clone(), heading_index);
+      return heading::lower_heading(ctx, *level, &number, title, label.clone(), heading_index, registry);
     },
     DocNode::Paragraph(inlines) => {
-      return paragraph::lower_paragraph(ctx, inlines);
+      return paragraph::lower_paragraph(ctx, inlines, registry);
     },
     DocNode::List { ordered, items } => {
       return list::lower_list(ctx, *ordered, items, registry, headings);
@@ -572,7 +572,7 @@ fn lower_node_indexed(
         downsample: *downsample,
       };
       let number = registry.increment_with_label(config::CounterName::Figure, label.as_deref(), *span, ctx.source)?;
-      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number)?;
+      let nodes = figure::lower_figure(ctx, image_path, *width, *height, overrides, caption_arg, &number, registry)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
     DocNode::Table {
@@ -588,7 +588,7 @@ fn lower_node_indexed(
     } => {
       let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
       let number = registry.increment_with_label(config::CounterName::Table, label.as_deref(), *span, ctx.source)?;
-      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable)?;
+      let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable, registry)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
     },
   }
@@ -956,6 +956,35 @@ mod tests {
 
     // Assert — ブロック境界は Vkern / VBox.margin_bottom で表され、裸の LineBreak は出ない
     assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
+  }
+
+  #[test]
+  fn footnotes_across_paragraphs_number_sequentially() {
+    // Arrange — 3 つの段落それぞれに \footnote 由来の InlineNode::Footnote を 1 つずつ置く
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let footnote = |text: &str| InlineNode::Footnote {
+      body: vec![InlineNode::Text(text.to_string())],
+      span: model::Span::DUMMY,
+    };
+    let nodes = vec![
+      DocNode::Paragraph(vec![InlineNode::Text("one ".to_string()), footnote("a")]),
+      DocNode::Paragraph(vec![InlineNode::Text("two ".to_string()), footnote("b")]),
+      DocNode::Paragraph(vec![InlineNode::Text("three ".to_string()), footnote("c")]),
+    ];
+
+    // Act
+    let out = lower_nodes(&ctx, &nodes).expect("解決済みノードのみなので失敗しない");
+
+    // Assert — LayoutNode::Footnote が文書順に 1, 2, 3 と連番になる
+    let numbers: Vec<u32> = out
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Footnote { number, .. } => Some(*number),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(numbers, vec![1, 2, 3], "{out:?}");
   }
 
   #[test]

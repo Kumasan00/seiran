@@ -56,6 +56,8 @@ pub(crate) struct CounterRegistry {
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   labels: HashMap<String, ResolvedLabel>,
+  /// 脚注カウンタの現在値（出現順の連番。ページ単位リセットは #35 で対応、現状は文書全体で連番）
+  footnote_value: u32,
 }
 
 impl CounterRegistry {
@@ -70,6 +72,7 @@ impl CounterRegistry {
       theorems: style.theorems.clone(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
+      footnote_value: 0,
     };
   }
 
@@ -148,6 +151,14 @@ impl CounterRegistry {
       }
     }
     return Ok(Some(number));
+  }
+
+  /// 脚注を 1 つ採番し、番号を返す（出現順の連番。ラベル解決は不要なので単純増加のみ）
+  ///
+  /// ページ単位でのリセットは行わない（#35 の責務。改ページ情報は lowering 時点では未確定）。
+  pub(crate) fn increment_footnote(&mut self) -> u32 {
+    self.footnote_value += 1;
+    return self.footnote_value;
   }
 
   /// 現在のカウンタ値を `number_format` テンプレートに従って書式化する
@@ -311,6 +322,7 @@ impl CounterRegistry {
       theorems: Theorems::default(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
+      footnote_value: 0,
     };
   }
 }
@@ -608,6 +620,32 @@ mod tests {
     // Assert: 既定 Style 経由と default_for_seiran() が同じ振る舞いをする
     assert_eq!(from_default.increment(CounterName::Chapter), from_helper.increment(CounterName::Chapter));
     assert_eq!(from_default.increment(CounterName::Section), from_helper.increment(CounterName::Section));
+  }
+
+  #[test]
+  fn increment_footnote_returns_sequential_numbers() {
+    // Arrange
+    let mut r = CounterRegistry::default_for_seiran();
+
+    // Act / Assert
+    assert_eq!(r.increment_footnote(), 1);
+    assert_eq!(r.increment_footnote(), 2);
+    assert_eq!(r.increment_footnote(), 3);
+  }
+
+  #[test]
+  fn increment_footnote_unaffected_by_unrelated_counters() {
+    // Arrange — section 等の見出しカウンタの増加は脚注カウンタに影響しない
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment_footnote(); // 1
+
+    // Act
+    r.increment(CounterName::Chapter);
+    r.increment(CounterName::Section);
+    let next = r.increment_footnote();
+
+    // Assert
+    assert_eq!(next, 2);
   }
 
   #[test]

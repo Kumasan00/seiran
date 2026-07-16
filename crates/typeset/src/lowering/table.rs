@@ -13,6 +13,7 @@ use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, Tab
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   float::{FloatSpec, build_caption, wrap_float},
   inline::lower_inline,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
@@ -36,6 +37,7 @@ fn lower_rows(
   ctx: &LoweringContext,
   rows: &[TableRow],
   cell_style: TextStyle,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<TableRowLayout>, LoweringError> {
   let mut result = Vec::with_capacity(rows.len());
   for row in rows {
@@ -43,7 +45,7 @@ fn lower_rows(
     for cell in &row.cells {
       let mut content = Vec::new();
       for inline in &cell.content {
-        content.extend(lower_inline(ctx, inline, cell_style)?);
+        content.extend(lower_inline(ctx, inline, cell_style, registry)?);
       }
       cells.push(TableCellLayout {
         content,
@@ -77,6 +79,7 @@ pub(super) fn lower_table(
   caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
   breakable: bool,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.table;
 
@@ -100,13 +103,13 @@ pub(super) fn lower_table(
         width: *width,
       })
       .collect(),
-    head: lower_rows(ctx, head, head_style)?,
-    rows: lower_rows(ctx, rows, body_style)?,
+    head: lower_rows(ctx, head, head_style, registry)?,
+    rows: lower_rows(ctx, rows, body_style, registry)?,
     breakable,
   });
 
   let caption_nodes = match caption {
-    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number)?)),
+    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number, registry)?)),
     None => None,
   };
   let spec = FloatSpec {
@@ -164,6 +167,7 @@ mod tests {
       None,
       "1",
       true,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("解決済みインラインなのでエラーにならない");
 
@@ -187,8 +191,18 @@ mod tests {
     let rows = [row_of(&["Alice"])];
 
     // Act
-    let nodes =
-      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &head, &rows, None, "1", true).expect("失敗しない");
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &head,
+      &rows,
+      None,
+      "1",
+      true,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert — ヘッダセルは太字、本体セルは通常
     let table = find_table(&nodes);
@@ -220,6 +234,7 @@ mod tests {
       Some((CaptionPosition::Bottom, &caption)),
       "1",
       true,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しない");
 
@@ -253,6 +268,7 @@ mod tests {
       Some((CaptionPosition::Top, &caption)),
       "2",
       true,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しない");
 
@@ -286,6 +302,7 @@ mod tests {
       Some((CaptionPosition::Bottom, &caption)),
       "1",
       true,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しない");
 
@@ -332,6 +349,7 @@ mod tests {
       None,
       "1",
       true,
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しない");
 
@@ -352,8 +370,18 @@ mod tests {
     let rows = [row_of(&["A"])];
 
     // Act
-    let nodes =
-      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", false).expect("失敗しない");
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      None,
+      "1",
+      false,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let table = find_table(&nodes);
@@ -371,8 +399,18 @@ mod tests {
     }];
 
     // Act
-    let nodes =
-      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      None,
+      "1",
+      true,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let table = find_table(&nodes);
@@ -387,8 +425,18 @@ mod tests {
     let rows = [row_of(&["A"])];
 
     // Act
-    let nodes =
-      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true).expect("失敗しない");
+    let nodes = lower_table(
+      &ctx,
+      &[ColumnAlign::Left],
+      &[ColumnWidth::Auto],
+      &[],
+      &rows,
+      None,
+      "1",
+      true,
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -396,5 +444,34 @@ mod tests {
     };
     let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
+  }
+
+  #[test]
+  fn lower_table_cell_footnote_shares_document_wide_counter() {
+    // Arrange — セル内の \footnote 由来ノードも他の脚注と同じ registry を共有して連番になる
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let rows = [TableRow {
+      cells: vec![TableCell::new(vec![InlineNode::Footnote {
+        body: vec![InlineNode::Text("cell note".to_string())],
+        span: model::Span::DUMMY,
+      }])],
+      rule_above: false,
+    }];
+    let mut registry = CounterRegistry::default_for_seiran();
+    registry.increment_footnote(); // 本文側で既に 1 個採番済みという想定
+
+    // Act
+    let nodes =
+      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut registry)
+        .expect("失敗しない");
+
+    // Assert — セル内の脚注は 2 番目として採番される（本文側の 1 個目の続き）
+    let table = find_table(&nodes);
+    assert!(
+      matches!(&table.rows[0].cells[0].content[0], LayoutNode::Footnote { number: 2, .. }),
+      "{:?}",
+      table.rows[0].cells[0].content
+    );
   }
 }

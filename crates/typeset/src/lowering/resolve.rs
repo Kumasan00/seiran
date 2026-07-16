@@ -71,7 +71,8 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
     LayoutNode::VBox { children, .. }
     | LayoutNode::HBox { children, .. }
     | LayoutNode::Raise { children, .. }
-    | LayoutNode::Link { children, .. } => {
+    | LayoutNode::Link { children, .. }
+    | LayoutNode::Footnote { body: children, .. } => {
       resolve_refs(children, registry)?;
     },
     LayoutNode::FlushRight(children) => resolve_refs(children, registry)?,
