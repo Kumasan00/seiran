@@ -163,7 +163,7 @@ mod tests {
   ) -> Result<Vec<LayoutNode>, LoweringError> {
     let mut registry = CounterRegistry::from_style(ctx.style);
     let mut headings = Vec::new();
-    let of = of.map(|l| (l, dummy_span()));
+    let of = of.map(|l| return (l, dummy_span()));
     return lower_theorem(ctx, class, number, title, body, of, label, &mut registry, &mut headings);
   }
 
@@ -172,8 +172,8 @@ mod tests {
     let children = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => Some(children),
-        _ => None,
+        LayoutNode::VBox { children, .. } => return Some(children),
+        _ => return None,
       })
       .expect("見出し VBox があるはず");
     return match &children[0] {
@@ -199,8 +199,8 @@ mod tests {
     let body = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "body" => Some(*s),
-        _ => None,
+        LayoutNode::Text(t, s) if t == "body" => return Some(*s),
+        _ => return None,
       })
       .expect("本体 Text があるはず");
     assert_eq!(body.font_kind, FontKind::SerifItalic);
@@ -240,8 +240,8 @@ mod tests {
     let body = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "qed" => Some(*s),
-        _ => None,
+        LayoutNode::Text(t, s) if t == "qed" => return Some(*s),
+        _ => return None,
       })
       .expect("本体 Text があるはず");
     assert_eq!(body.font_kind, FontKind::Serif, "証明本体はローマン");
@@ -292,8 +292,8 @@ mod tests {
     let children = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => Some(children),
-        _ => None,
+        LayoutNode::VBox { children, .. } => return Some(children),
+        _ => return None,
       })
       .expect("見出し VBox があるはず");
     return children.iter().map(flatten_text).collect();

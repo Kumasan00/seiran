@@ -64,7 +64,7 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
       // （無採番なら `[numbered=false]`、ラベルは `[label=...]`）
       let grid = evaluate_grid(source, body_node, &spec, false)?;
       // 分割を許していないので必ず 1 行。その行のセル列（1 セル）を取り出す
-      grid.into_iter().next().map_or_else(|| vec![Vec::new()], |row| row.cells)
+      grid.into_iter().next().map_or_else(|| vec![Vec::new()], |row| return row.cells)
     },
     None => vec![Vec::new()],
   };

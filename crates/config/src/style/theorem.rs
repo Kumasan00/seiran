@@ -562,7 +562,7 @@ mod tests {
     let theorems = Theorems::default();
 
     // Act
-    let classes: Vec<TheoremClass> = theorems.iter_with_class().map(|(class, _)| class).collect();
+    let classes: Vec<TheoremClass> = theorems.iter_with_class().map(|(class, _)| return class).collect();
 
     // Assert
     assert_eq!(classes, TheoremClass::ALL.to_vec());

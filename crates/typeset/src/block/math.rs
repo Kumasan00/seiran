@@ -110,15 +110,15 @@ impl Measurer<'_> {
     let measured: Vec<MeasuredRow> = rows
       .into_iter()
       .map(|row| {
-        let cells = row.cells.into_iter().map(|cell| self.build_atom(Length::ZERO, cell)).collect();
-        let number = row.number.map(|number| self.build_atom(Length::ZERO, number));
+        let cells = row.cells.into_iter().map(|cell| return self.build_atom(Length::ZERO, cell)).collect();
+        let number = row.number.map(|number| return self.build_atom(Length::ZERO, number));
         return MeasuredRow { cells, number };
       })
       .collect();
 
     // 列幅 = その列のセルの最大幅。列位置 = 列幅 + 列間アキの累積
     let n_rows = measured.len();
-    let ncols = measured.iter().map(|row| row.cells.len()).max().unwrap_or(0);
+    let ncols = measured.iter().map(|row| return row.cells.len()).max().unwrap_or(0);
     let mut col_widths = vec![Length::ZERO; ncols];
     for row in &measured {
       for (c, cell) in row.cells.iter().enumerate() {
@@ -138,8 +138,8 @@ impl Measurer<'_> {
     let mut baseline_dy = Length::ZERO;
     let mut prev_depth = Length::ZERO;
     for (i, row) in measured.into_iter().enumerate() {
-      let row_height = row.cells.iter().map(|cell| cell.height).fold(Length::ZERO, Length::max);
-      let row_depth = row.cells.iter().map(|cell| cell.depth).fold(Length::ZERO, Length::max);
+      let row_height = row.cells.iter().map(|cell| return cell.height).fold(Length::ZERO, Length::max);
+      let row_depth = row.cells.iter().map(|cell| return cell.depth).fold(Length::ZERO, Length::max);
       if i > 0 {
         baseline_dy -= prev_depth + row_gap + row_height;
       }

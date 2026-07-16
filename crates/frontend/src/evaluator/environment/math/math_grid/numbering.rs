@@ -150,11 +150,13 @@ pub(super) fn assign_numbering(
       env_numbered = numbered && !grid.is_empty();
       grid
         .into_iter()
-        .map(|row| MathRow {
-          cells: row.cells,
-          numbered: false,
-          label: None,
-          label_span: None,
+        .map(|row| {
+          return MathRow {
+            cells: row.cells,
+            numbered: false,
+            label: None,
+            label_span: None,
+          };
         })
         .collect()
     },

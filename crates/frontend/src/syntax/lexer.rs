@@ -30,11 +30,11 @@ impl<'a> Lexer<'a> {
   ///
   /// カーソルが先頭に設定された `Lexer` インスタンス
   pub(crate) fn new(input: &'a str) -> Self {
-    Self {
+    return Self {
       input,
       bytes: input.as_bytes(),
       cursor: 0,
-    }
+    };
   }
 
   /// 現在のカーソル位置の文字を返す（カーソルは進めない）
@@ -42,7 +42,7 @@ impl<'a> Lexer<'a> {
   /// # Returns
   ///
   /// カーソル位置の文字。入力末尾の場合は `None`
-  fn peek_char(&self) -> Option<char> { self.input[self.cursor..].chars().next() }
+  fn peek_char(&self) -> Option<char> { return self.input[self.cursor..].chars().next() }
 
   /// カーソル位置から指定オフセット先のバイトを返す（カーソルは進めない）
   ///
@@ -53,7 +53,7 @@ impl<'a> Lexer<'a> {
   /// # Returns
   ///
   /// 指定位置のバイト値。範囲外の場合は `None`
-  fn peek_byte_at(&self, offset: usize) -> Option<u8> { self.bytes.get(self.cursor + offset).copied() }
+  fn peek_byte_at(&self, offset: usize) -> Option<u8> { return self.bytes.get(self.cursor + offset).copied() }
 
   /// カーソルを指定バイト数だけ前進させる
   ///
@@ -72,7 +72,7 @@ impl<'a> Lexer<'a> {
   fn advance_char(&mut self) -> Option<char> {
     let c = self.peek_char()?;
     self.cursor += c.len_utf8();
-    Some(c)
+    return Some(c);
   }
 
   /// カーソルが入力の末尾に到達しているかを判定する
@@ -80,14 +80,14 @@ impl<'a> Lexer<'a> {
   /// # Returns
   ///
   /// 末尾に到達している場合は `true`
-  fn is_at_end(&self) -> bool { self.cursor >= self.input.len() }
+  fn is_at_end(&self) -> bool { return self.cursor >= self.input.len() }
 
   /// カーソル位置以降の残りのバイト列を返す
   ///
   /// # Returns
   ///
   /// カーソル位置から入力末尾までのバイトスライス
-  fn remaining_bytes(&self) -> &[u8] { &self.bytes[self.cursor..] }
+  fn remaining_bytes(&self) -> &[u8] { return &self.bytes[self.cursor..] }
 
   /// 次のトークンを生成して返す
   ///
@@ -183,15 +183,15 @@ impl<'a> Lexer<'a> {
     match next_char {
       Some('\\') => {
         self.advance_bytes(1);
-        TokenKind::LineBreak
+        return TokenKind::LineBreak;
       },
-      Some(ch) if ch.is_ascii_alphanumeric() => self.read_command(),
-      Some(ch) if ch.is_whitespace() => TokenKind::Unknown,
+      Some(ch) if ch.is_ascii_alphanumeric() => return self.read_command(),
+      Some(ch) if ch.is_whitespace() => return TokenKind::Unknown,
       Some(_ch) => {
         self.advance_char();
-        TokenKind::Escaped
+        return TokenKind::Escaped;
       },
-      None => TokenKind::Unknown,
+      None => return TokenKind::Unknown,
     }
   }
 
@@ -211,7 +211,7 @@ impl<'a> Lexer<'a> {
         break;
       }
     }
-    TokenKind::Command
+    return TokenKind::Command;
   }
 
   /// コメントを読み取る（`//` から行末まで）
@@ -226,7 +226,7 @@ impl<'a> Lexer<'a> {
     self.advance_bytes(2); // consume '//'
     let len = memchr::memchr(b'\n', self.remaining_bytes()).unwrap_or(self.bytes.len() - self.cursor);
     self.advance_bytes(len);
-    TokenKind::Comment
+    return TokenKind::Comment;
   }
 
   /// テキストトークンを読み取る
@@ -260,7 +260,7 @@ impl<'a> Lexer<'a> {
       return None;
     }
 
-    Some(TokenKind::Text)
+    return Some(TokenKind::Text);
   }
 
   /// 指定バイトが構造文字（`\`, `{`, `}`, `[`, `]`, `$`, `_`, `^`, `&`, `,`, `=`）であるかを判定する
@@ -273,7 +273,7 @@ impl<'a> Lexer<'a> {
   ///
   /// 構造文字の場合は `true`
   fn is_structural_char(b: u8) -> bool {
-    matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&' | b',' | b'=')
+    return matches!(b, b'\\' | b'{' | b'}' | b'[' | b']' | b'$' | b'_' | b'^' | b'&' | b',' | b'=');
   }
 
   /// 水平空白（スペース・タブ等）を読み取る
@@ -291,7 +291,7 @@ impl<'a> Lexer<'a> {
         break;
       }
     }
-    TokenKind::Whitespace
+    return TokenKind::Whitespace;
   }
 
   /// カーソル位置以降が空行（段落区切り）であるかを判定する
@@ -303,8 +303,11 @@ impl<'a> Lexer<'a> {
   ///
   /// 空行が続く場合は `true`
   fn is_empty_line_next(&self) -> bool {
-    self.bytes[self.cursor..].iter().take_while(|&&b| b.is_ascii_whitespace()).any(|&b| b == b'\n')
-      || self.bytes[self.cursor..].iter().all(|&b| b.is_ascii_whitespace())
+    return self.bytes[self.cursor..]
+      .iter()
+      .take_while(|&&b| return b.is_ascii_whitespace())
+      .any(|&b| return b == b'\n')
+      || self.bytes[self.cursor..].iter().all(|&b| return b.is_ascii_whitespace());
   }
 
   /// 連続する空行（空白文字と改行）をすべて消費する
@@ -341,11 +344,11 @@ mod tests {
   use super::*;
 
   /// 入力文字列から全トークンの種類を収集するヘルパー
-  fn tokenize(input: &str) -> Vec<TokenKind> { return Lexer::new(input).map(|t| t.kind).collect(); }
+  fn tokenize(input: &str) -> Vec<TokenKind> { return Lexer::new(input).map(|t| return t.kind).collect(); }
 
   /// 入力文字列から (`TokenKind`, &str) のペア列を収集するヘルパー
   fn tokenize_texts(input: &str) -> Vec<(TokenKind, &str)> {
-    return Lexer::new(input).map(|t| (t.kind, t.text(input))).collect();
+    return Lexer::new(input).map(|t| return (t.kind, t.text(input))).collect();
   }
 
   /// 入力文字列から Span 付きトークン列を収集するヘルパー

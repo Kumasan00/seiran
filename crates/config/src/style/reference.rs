@@ -101,8 +101,9 @@ fn validate_locale(value: &Option<String>, _: &()) -> garde::Result {
   let Some(code) = value else {
     return Ok(());
   };
-  unic_langid::LanguageIdentifier::from_bytes(code.as_bytes())
-    .map_err(|e| garde::Error::new(format!("ロケールコードが BCP 47 として不正です: {e}（受け取った値: {code:?}）")))?;
+  unic_langid::LanguageIdentifier::from_bytes(code.as_bytes()).map_err(|e| {
+    return garde::Error::new(format!("ロケールコードが BCP 47 として不正です: {e}（受け取った値: {code:?}）"));
+  })?;
   return Ok(());
 }
 

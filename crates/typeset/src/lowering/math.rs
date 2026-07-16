@@ -54,7 +54,11 @@ pub(super) fn lower_math_block(
 
   let mut layout_rows = Vec::with_capacity(rows.len());
   for row in rows {
-    let cells = row.cells.iter().map(|cell| lower_inline_math(cell, font_size, &ctx.style.math.script)).collect();
+    let cells = row
+      .cells
+      .iter()
+      .map(|cell| return lower_inline_math(cell, font_size, &ctx.style.math.script))
+      .collect();
     let number = if row.numbered {
       let row_span = row.label_span.unwrap_or(span);
       let n = registry.increment_with_label(CounterName::Equation, row.label.as_deref(), row_span, ctx.source)?;
@@ -89,8 +93,8 @@ pub(super) fn lower_math_block(
 /// `FontKind::Serif` で描く `LayoutNode::Text` 1 つにまとめる。行ごと番号と環境全体番号の双方で使う。
 fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode> {
   let text = super::placeholder::expand(number_format, |name| match name {
-    "number" => n.to_string(),
-    _ => format!("{{{name}}}"),
+    "number" => return n.to_string(),
+    _ => return format!("{{{name}}}"),
   });
   return vec![LayoutNode::Text(
     text,
@@ -412,8 +416,8 @@ mod tests {
     let texts: String = result
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(t, _) => Some(t.as_str()),
-        _ => None,
+        LayoutNode::Text(t, _) => return Some(t.as_str()),
+        _ => return None,
       })
       .collect();
     assert_eq!(texts, "\u{1D431}\u{1D7CF}\u{1D7D0}\u{1D6C2}");
@@ -435,8 +439,8 @@ mod tests {
     let texts: String = result
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(t, _) => Some(t.as_str()),
-        _ => None,
+        LayoutNode::Text(t, _) => return Some(t.as_str()),
+        _ => return None,
       })
       .collect();
     assert_eq!(texts, "\u{1D49C}\u{FE00}\u{1D4B7}\u{FE00}1");

@@ -119,8 +119,8 @@ mod tests {
   /// テスト用: ソース中の最初の Environment ノードの body を取得する
   fn first_env_body<'a>(cst: &'a crate::syntax::green::GreenNode<'a>) -> &'a crate::syntax::green::GreenNode<'a> {
     let env = cst.children.iter().find_map(|c| match c {
-      crate::syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => Some(n),
-      _ => None,
+      crate::syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => return Some(n),
+      _ => return None,
     });
     let env = env.expect("Environment ノードが期待されます");
     return env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();

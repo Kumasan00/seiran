@@ -14,12 +14,12 @@ use common::setup_config;
 
 fn read_test_config() -> (tempfile::TempDir, Config) {
   let (tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
   let config = read_config(&config_path).unwrap();
   return (tempdir, config);

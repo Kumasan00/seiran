@@ -75,8 +75,8 @@ pub(crate) enum OptValue {
 /// 値が文字列型でない場合は `None` を返す。
 pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<String> {
   return opt_args.iter().find_map(|(k, value)| match value {
-    OptValue::String(s) if k == key => Some(s.clone()),
-    _ => None,
+    OptValue::String(s) if k == key => return Some(s.clone()),
+    _ => return None,
   });
 }
 
@@ -86,8 +86,8 @@ pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<
 /// 複数のキーを続けて抽出できる。キーが存在しない、または値が色型でない場合は `None` を返す。
 pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<Color> {
   return opt_args.iter().find_map(|(k, value)| match value {
-    OptValue::Color(c) if k == key => Some(*c),
-    _ => None,
+    OptValue::Color(c) if k == key => return Some(*c),
+    _ => return None,
   });
 }
 
@@ -98,8 +98,8 @@ pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<C
 /// 場合は `None` を返す。
 pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bool> {
   return opt_args.iter().find_map(|(k, value)| match value {
-    OptValue::Bool(b) if k == key => Some(*b),
-    _ => None,
+    OptValue::Bool(b) if k == key => return Some(*b),
+    _ => return None,
   });
 }
 
@@ -157,7 +157,7 @@ where
   let mut pairs: Vec<(String, OptValue)> = Vec::new();
   for opt in opt_arg_nodes {
     for (key, value) in parse_key_value_options(source, opt) {
-      let Some(expected) = schema.iter().find(|(k, _)| *k == key).map(|(_, t)| *t) else {
+      let Some(expected) = schema.iter().find(|(k, _)| return *k == key).map(|(_, t)| return *t) else {
         return Err(EvalError::UnknownOptArgKey {
           name: name.to_string(),
           key,
@@ -193,7 +193,7 @@ fn parse_value(
       return Err(invalid(name, key, expected, span));
     },
     OptType::Number => {
-      let v: f64 = raw.trim().parse().map_err(|_| invalid(name, key, expected, span))?;
+      let v: f64 = raw.trim().parse().map_err(|_| return invalid(name, key, expected, span))?;
       return Ok(OptValue::Number(v));
     },
     OptType::String => {
@@ -207,11 +207,11 @@ fn parse_value(
       return Ok(OptValue::String(unquoted.to_string()));
     },
     OptType::Length => {
-      let v = parse_length(raw).ok_or_else(|| invalid(name, key, expected, span))?;
+      let v = parse_length(raw).ok_or_else(|| return invalid(name, key, expected, span))?;
       return Ok(OptValue::Length(v));
     },
     OptType::Color => {
-      let v = Color::from_hex(raw.trim()).ok_or_else(|| invalid(name, key, expected, span))?;
+      let v = Color::from_hex(raw.trim()).ok_or_else(|| return invalid(name, key, expected, span))?;
       return Ok(OptValue::Color(v));
     },
   }

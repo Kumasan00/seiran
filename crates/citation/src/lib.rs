@@ -149,8 +149,8 @@ pub fn process_citations<'a>(
   let cite_sites: Vec<Vec<String>> = cite_nodes
     .iter()
     .map(|node| match node {
-      InlineNode::Cite { keys, .. } => keys.clone(),
-      _ => Vec::new(),
+      InlineNode::Cite { keys, .. } => return keys.clone(),
+      _ => return Vec::new(),
     })
     .collect();
 
@@ -165,9 +165,11 @@ pub fn process_citations<'a>(
     let Some(reference) = references.get(key) else {
       continue;
     };
-    let item = bridge::to_item(key, reference).map_err(|source| CitationError::BuildEntry {
-      id: key.clone(),
-      source,
+    let item = bridge::to_item(key, reference).map_err(|source| {
+      return CitationError::BuildEntry {
+        id: key.clone(),
+        source,
+      };
     })?;
     entries.insert(key.clone(), item);
   }
@@ -176,13 +178,17 @@ pub fn process_citations<'a>(
   // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は config::ReferenceStyle）。
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
-  let style_xml = std::fs::read_to_string(csl_path).map_err(|source| CitationError::ReadStyleFile {
-    path: csl_path_str.clone(),
-    source,
+  let style_xml = std::fs::read_to_string(csl_path).map_err(|source| {
+    return CitationError::ReadStyleFile {
+      path: csl_path_str.clone(),
+      source,
+    };
   })?;
-  let csl_style = IndependentStyle::from_xml(&style_xml).map_err(|source| CitationError::ParseStyle {
-    path: csl_path_str,
-    source,
+  let csl_style = IndependentStyle::from_xml(&style_xml).map_err(|source| {
+    return CitationError::ParseStyle {
+      path: csl_path_str,
+      source,
+    };
   })?;
   // ロケールプール（必要な内蔵ロケールにカスタムを overlay）と、出力言語の override を組み立てる。
   // active locale 解決に .csl の default-locale を渡し、実際に引かれる内蔵ロケールだけを読む。
@@ -295,13 +301,17 @@ fn load_locales(
   // カスタムロケールがあれば先頭に重ね、そのファイル言語を override 既定値として控える。
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
-    let xml = std::fs::read_to_string(path).map_err(|source| CitationError::ReadLocaleFile {
-      path: path_str.clone(),
-      source,
+    let xml = std::fs::read_to_string(path).map_err(|source| {
+      return CitationError::ReadLocaleFile {
+        path: path_str.clone(),
+        source,
+      };
     })?;
-    let locale_file = LocaleFile::from_xml(&xml).map_err(|source| CitationError::ParseLocale {
-      path: path_str,
-      source,
+    let locale_file = LocaleFile::from_xml(&xml).map_err(|source| {
+      return CitationError::ParseLocale {
+        path: path_str,
+        source,
+      };
     })?;
     let file_lang = locale_file.lang.clone();
     (Some(locale_file.into()), Some(file_lang))
@@ -310,12 +320,15 @@ fn load_locales(
   };
 
   // 明示指定の locale が最優先、無ければカスタムファイルの言語、それも無ければ None。
-  let locale_override = style.reference.locale.as_ref().map(|code| LocaleCode(code.clone())).or(file_lang);
+  let locale_override = style.reference.locale.as_ref().map(|code| return LocaleCode(code.clone())).or(file_lang);
 
   // hayagriva の lookup_locale がプール（locale_files）に対して引くのは「出力ロケール（active locale）・
   // その地域フォールバック・最終フォールバックの en-US」だけ。active = override → .csl default → en-US の
   // 順で解決し（hayagriva の self.locale() と一致）、その 3 コードだけを内蔵から読む（重複は除く）。
-  let active = locale_override.clone().or_else(|| csl_default_locale.cloned()).unwrap_or_else(LocaleCode::en_us);
+  let active = locale_override
+    .clone()
+    .or_else(|| return csl_default_locale.cloned())
+    .unwrap_or_else(LocaleCode::en_us);
   let mut wanted: Vec<LocaleCode> = Vec::with_capacity(3);
   for code in [
     Some(active.clone()),
@@ -368,7 +381,7 @@ fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
     let Ok(peek) = ciborium::de::from_reader::<LocaleLang, _>(*bytes) else {
       continue;
     };
-    if !peek.lang.is_some_and(|lang| wanted.contains(&lang)) {
+    if !peek.lang.is_some_and(|lang| return wanted.contains(&lang)) {
       continue;
     }
     // 一致したものだけを完全復元する。内蔵 CBOR が壊れていることはないが、失敗時は飛ばす。
@@ -426,7 +439,7 @@ mod tests {
   }
 
   /// ロケールの言語コード（`xml:lang`）を文字列スライスで取り出すヘルパ。
-  fn lang_of(locale: &Locale) -> Option<&str> { return locale.lang.as_ref().map(|code| code.0.as_str()); }
+  fn lang_of(locale: &Locale) -> Option<&str> { return locale.lang.as_ref().map(|code| return code.0.as_str()); }
 
   #[test]
   fn load_locales_without_custom_loads_only_active() {
@@ -455,7 +468,7 @@ mod tests {
     let expected: Locale = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
     assert_eq!(locales[0], expected, "先頭はカスタムロケール（同一言語コードはカスタム優先）");
     assert!(
-      locales[1..].iter().any(|locale| lang_of(locale) == Some("en-US")),
+      locales[1..].iter().any(|locale| return lang_of(locale) == Some("en-US")),
       "内蔵 en-US フォールバックが続くはず: {locales:?}"
     );
     // locale 明示が無いので、override 既定値はカスタムファイルの言語（custom-en-US.xml → en-US）
@@ -582,8 +595,8 @@ mod tests {
       .filter_map(|node| match node {
         InlineNode::Cite {
           label: Some(label), ..
-        } => Some(label.iter().map(InlineNode::to_plain_text).collect()),
-        _ => None,
+        } => return Some(label.iter().map(InlineNode::to_plain_text).collect()),
+        _ => return None,
       })
       .collect();
     assert_eq!(labels.len(), 2, "両方の cite にラベルが付くはず: {labels:?}");
@@ -593,8 +606,8 @@ mod tests {
 
     // Assert — 末尾に References 見出し + 書誌段落が追加される
     let has_heading = nodes.iter().any(|node| {
-      matches!(node, DocNode::Heading { title, .. }
-        if title.iter().map(InlineNode::to_plain_text).collect::<String>().contains("References"))
+      return matches!(node, DocNode::Heading { title, .. }
+        if title.iter().map(InlineNode::to_plain_text).collect::<String>().contains("References"));
     });
     assert!(has_heading, "References 見出しが追加されるはず");
     let paragraphs = nodes.iter().filter(|node| matches!(node, DocNode::Paragraph(_))).count();
@@ -654,8 +667,8 @@ mod tests {
     let targets: Vec<&str> = label
       .iter()
       .filter_map(|node| match node {
-        InlineNode::InternalLink { target, .. } => Some(target.as_str()),
-        _ => None,
+        InlineNode::InternalLink { target, .. } => return Some(target.as_str()),
+        _ => return None,
       })
       .collect();
     assert_eq!(targets.len(), 2, "2 つの番号が個別リンクになるはず: {targets:?}");
@@ -791,7 +804,9 @@ mod tests {
       }
     }
     assert!(
-      italic_texts.iter().any(|t| t.contains("Crazy Rich Asians") || t.contains("Journal of Things")),
+      italic_texts
+        .iter()
+        .any(|t| return t.contains("Crazy Rich Asians") || t.contains("Journal of Things")),
       "書名/誌名が InlineNode::Styled（serif italic 系）で組まれるはず: {italic_texts:?}"
     );
   }

@@ -129,7 +129,7 @@ mod tests {
     // Assert — 2 行とも numbered は false
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|r| !r.numbered), "無採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "無採番のはず: {rows:?}");
   }
 
   #[test]

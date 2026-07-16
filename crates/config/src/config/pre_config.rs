@@ -138,7 +138,7 @@ fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
     return Ok(());
   };
   unic_langid::LanguageIdentifier::from_bytes(language.as_bytes())
-    .map_err(|e| garde::Error::new(format!("BCP 47 言語タグとして不正です: {e}")))?;
+    .map_err(|e| return garde::Error::new(format!("BCP 47 言語タグとして不正です: {e}")))?;
   return Ok(());
 }
 
@@ -288,25 +288,25 @@ impl PreFontConfigs {
   /// フォント種別に対応する `PreFontConfig` を取得します。
   pub fn get(&self, font_type: FontType) -> &PreFontConfig {
     match font_type {
-      FontType::Serif => &self.serif,
-      FontType::SerifBold => &self.serif_bold,
-      FontType::SerifItalic => &self.serif_italic,
-      FontType::SerifBoldItalic => &self.serif_bold_italic,
-      FontType::SansSerif => &self.sans_serif,
-      FontType::SansSerifBold => &self.sans_serif_bold,
-      FontType::SansSerifItalic => &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
-      FontType::Monospace => &self.monospace,
-      FontType::MonospaceBold => &self.monospace_bold,
-      FontType::MonospaceItalic => &self.monospace_italic,
-      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
-      FontType::Math => &self.math,
-      FontType::JapaneseSerif => &self.japanese_serif,
-      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
+      FontType::Serif => return &self.serif,
+      FontType::SerifBold => return &self.serif_bold,
+      FontType::SerifItalic => return &self.serif_italic,
+      FontType::SerifBoldItalic => return &self.serif_bold_italic,
+      FontType::SansSerif => return &self.sans_serif,
+      FontType::SansSerifBold => return &self.sans_serif_bold,
+      FontType::SansSerifItalic => return &self.sans_serif_italic,
+      FontType::SansSerifBoldItalic => return &self.sans_serif_bold_italic,
+      FontType::Monospace => return &self.monospace,
+      FontType::MonospaceBold => return &self.monospace_bold,
+      FontType::MonospaceItalic => return &self.monospace_italic,
+      FontType::MonospaceBoldItalic => return &self.monospace_bold_italic,
+      FontType::Math => return &self.math,
+      FontType::JapaneseSerif => return &self.japanese_serif,
+      FontType::JapaneseSerifBold => return &self.japanese_serif_bold,
+      FontType::JapaneseSansSerif => return &self.japanese_sans_serif,
+      FontType::JapaneseSansSerifBold => return &self.japanese_sans_serif_bold,
+      FontType::JapaneseMonospace => return &self.japanese_monospace,
+      FontType::JapaneseMonospaceBold => return &self.japanese_monospace_bold,
     }
   }
 }
@@ -403,7 +403,7 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
     ));
   }
   unic_langid::LanguageIdentifier::from_bytes(language.as_bytes())
-    .map_err(|e| garde::Error::new(format!("BCP 47 言語タグとして不正です: {e}")))?;
+    .map_err(|e| return garde::Error::new(format!("BCP 47 言語タグとして不正です: {e}")))?;
   return Ok(());
 }
 

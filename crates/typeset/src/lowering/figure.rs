@@ -127,8 +127,8 @@ mod tests {
     assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
-      LayoutNode::Text(text, _) => Some(text.as_str()),
-      _ => None,
+      LayoutNode::Text(text, _) => return Some(text.as_str()),
+      _ => return None,
     });
     assert_eq!(caption_text, Some("Figure 1: せいらん"));
   }

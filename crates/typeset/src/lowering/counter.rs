@@ -99,8 +99,8 @@ impl CounterRegistry {
     let to_reset: Vec<String> = self
       .theorems
       .iter_with_class()
-      .filter(|(_, def)| def.reset_by == level)
-      .map(|(_, def)| def.counter.clone())
+      .filter(|(_, def)| return def.reset_by == level)
+      .map(|(_, def)| return def.counter.clone())
       .collect();
     for counter in to_reset {
       self.theorem_values.insert(counter, 0);
@@ -183,7 +183,7 @@ impl CounterRegistry {
       } else {
         CounterName::from_name(name)
       };
-      return target.map_or_else(String::new, |t| self.render_counter_value(t));
+      return target.map_or_else(String::new, |t| return self.render_counter_value(t));
     });
   }
 
@@ -197,7 +197,7 @@ impl CounterRegistry {
       if name == "n" {
         return self_value.to_string();
       }
-      return CounterName::from_name(name).map_or_else(String::new, |t| self.render_counter_value(t));
+      return CounterName::from_name(name).map_or_else(String::new, |t| return self.render_counter_value(t));
     });
   }
 
@@ -283,7 +283,7 @@ impl CounterRegistry {
   /// 未登録ラベルの場合は `None`。呼び出し側でエラー化する想定。
   #[must_use]
   pub(crate) fn resolve_label(&self, label: &str) -> Option<&str> {
-    return self.labels.get(label).map(|r| r.number.as_str());
+    return self.labels.get(label).map(|r| return r.number.as_str());
   }
 
   /// 見出しレベルから seiran 既定の [`CounterName`] を返す

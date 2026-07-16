@@ -40,7 +40,7 @@ pub(crate) enum TagError {
 /// それぞれ異なるバイト列になります）。harfrust 側の case 正規化やフォント実態との突合せは
 /// `font` クレートが担当します。
 pub(crate) fn parse_script_tag(value: &str) -> Result<[u8; 4], TagError> {
-  if value.len() == 4 && value.bytes().all(|b| b.is_ascii_alphabetic()) {
+  if value.len() == 4 && value.bytes().all(|b| return b.is_ascii_alphabetic()) {
     return Ok(to_array(value));
   }
   return Err(TagError::Script);
@@ -51,7 +51,7 @@ pub(crate) fn parse_script_tag(value: &str) -> Result<[u8; 4], TagError> {
 /// OpenType 言語システムタグの慣習に従い、大文字化したうえで 4 バイト未満は末尾を空白で
 /// パディングします（例: `"JAN"` → `b"JAN "`、`"eng"` → `b"ENG "`）。
 pub(crate) fn parse_ot_language_tag(value: &str) -> Result<[u8; 4], TagError> {
-  if (3..=4).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+  if (3..=4).contains(&value.len()) && value.bytes().all(|b| return b.is_ascii_alphanumeric()) {
     let mut bytes = [b' '; 4];
     for (i, b) in value.bytes().enumerate() {
       bytes[i] = b.to_ascii_uppercase();

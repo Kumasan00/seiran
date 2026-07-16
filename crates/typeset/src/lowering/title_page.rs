@@ -48,7 +48,7 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
   // 直前に積んだ要素の下マージン。次の present な要素を積む直前に Vkern として挿入する。
   let mut pending_gap: Option<Length> = None;
   for (text, font_size, font_kind, gap_after) in entries {
-    let Some(text) = text.map(str::trim).filter(|trimmed| !trimmed.is_empty()) else {
+    let Some(text) = text.map(str::trim).filter(|trimmed| return !trimmed.is_empty()) else {
       continue;
     };
     if let Some(gap) = pending_gap.take()
@@ -117,8 +117,8 @@ mod tests {
     return children
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(text, _) => Some(text.clone()),
-        _ => None,
+        LayoutNode::Text(text, _) => return Some(text.clone()),
+        _ => return None,
       })
       .collect();
   }
@@ -162,8 +162,8 @@ mod tests {
     let text_style = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "T" => Some(*s),
-        _ => None,
+        LayoutNode::Text(t, s) if t == "T" => return Some(*s),
+        _ => return None,
       })
       .expect("Text が見つからない");
     assert_eq!(text_style.font_size, Length::pt(40.0));

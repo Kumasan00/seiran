@@ -81,8 +81,8 @@ mod tests {
     // Assert — 3 行・各 1 セル・行は無採番・環境全体が採番対象
     let (rows, numbered) = block_of(&result);
     assert_eq!(rows.len(), 3, "3 行: {rows:?}");
-    assert!(rows.iter().all(|r| r.cells.len() == 1), "各行 1 セル: {rows:?}");
-    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
     assert!(numbered);
   }
 

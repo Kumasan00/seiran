@@ -98,9 +98,11 @@ pub(super) fn lower_table(
     columns: columns
       .iter()
       .zip(widths)
-      .map(|(align, width)| TableColumn {
-        align: *align,
-        width: *width,
+      .map(|(align, width)| {
+        return TableColumn {
+          align: *align,
+          width: *width,
+        };
       })
       .collect(),
     head: lower_rows(ctx, head, head_style, registry)?,
@@ -130,7 +132,7 @@ mod tests {
   /// 1 セルの `TableRow` を作るテスト用ヘルパ
   fn row_of(texts: &[&str]) -> TableRow {
     return TableRow {
-      cells: texts.iter().map(|t| TableCell::new(vec![InlineNode::Text((*t).to_string())])).collect(),
+      cells: texts.iter().map(|t| return TableCell::new(vec![InlineNode::Text((*t).to_string())])).collect(),
       rule_above: false,
     };
   }
@@ -143,8 +145,8 @@ mod tests {
     return children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Table(t) => Some(t),
-        _ => None,
+        LayoutNode::Table(t) => return Some(t),
+        _ => return None,
       })
       .expect("VBox 内に Table があるはず");
   }

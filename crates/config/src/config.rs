@@ -197,12 +197,14 @@ struct FontValues {
 #[allow(clippy::result_large_err)]
 pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
   debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
-  let config_content = fs::read_to_string(config_path).map_err(|source| ReadConfigError::ReadFile {
-    path: config_path.display().to_string(),
-    source,
+  let config_content = fs::read_to_string(config_path).map_err(|source| {
+    return ReadConfigError::ReadFile {
+      path: config_path.display().to_string(),
+      source,
+    };
   })?;
   let pre_config = parse_config(&config_content, config_path)?;
-  let current_dir = std::env::current_dir().map_err(|source| ReadConfigError::CurrentDir { source })?;
+  let current_dir = std::env::current_dir().map_err(|source| return ReadConfigError::CurrentDir { source })?;
   let config = resolve(pre_config, &current_dir)?;
 
   info!(
@@ -226,8 +228,8 @@ pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
 fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConfigError> {
   return toml::from_str(content).map_err(|mut source| {
     let span = source.span().map_or_else(
-      || SourceSpan::new(0.into(), 0),
-      |range| SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
+      || return SourceSpan::new(0.into(), 0),
+      |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
     );
     // toml::de::Error::Display は input が設定されていると line/column の自前スニペットを描画する。
     // miette の #[label] と二重に位置情報が出るため、ここで input をクリアして抑止する。
@@ -290,16 +292,18 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
 
   // FontType::ALL の順序で揃った検証済み値と正規化済みパスを zip して FontConfig を組み立てる。
   let font_configs =
-    FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| FontConfig {
-      font_name: values.font_name,
-      font_path,
-      font_index: values.font_index,
-      variation_axes: values.variation_axes,
-      script: values.script,
-      language: values.language,
-      ot_language_tag: values.ot_language_tag,
-      direction: values.direction,
-      features: values.features,
+    FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| {
+      return FontConfig {
+        font_name: values.font_name,
+        font_path,
+        font_index: values.font_index,
+        variation_axes: values.variation_axes,
+        script: values.script,
+        language: values.language,
+        ot_language_tag: values.ot_language_tag,
+        direction: values.direction,
+        features: values.features,
+      };
     }));
 
   return Ok(Config {
@@ -351,9 +355,11 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
 fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigValidationError>> {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
   if let Err(report) = pre.validate() {
-    errors.extend(report.iter().map(|(path, error)| ConfigValidationError::Field {
-      path: path.to_string(),
-      message: error.to_string(),
+    errors.extend(report.iter().map(|(path, error)| {
+      return ConfigValidationError::Field {
+        path: path.to_string(),
+        message: error.to_string(),
+      };
     }));
   }
   pre_config::validate_margin_sums(&pre.pdf, &mut errors);
@@ -401,10 +407,10 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Con
   let mut errors: Vec<ConfigValidationError> = Vec::new();
 
   let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
-    ConfigValidationError::StylePathResolution { path, source }
+    return ConfigValidationError::StylePathResolution { path, source };
   });
   let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
-    ConfigValidationError::ReferencesPathResolution { path, source }
+    return ConfigValidationError::ReferencesPathResolution { path, source };
   });
 
   let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
@@ -457,7 +463,7 @@ fn canonicalize_sources(
 ) -> Vec<PathBuf> {
   let mut resolved = Vec::with_capacity(sources.len());
   for source_path in sources {
-    if source_path.extension().and_then(|ext| ext.to_str()) != Some("sei") {
+    if source_path.extension().and_then(|ext| return ext.to_str()) != Some("sei") {
       warn!(
         source_path = %source_path.display(),
         "ソースファイルの拡張子が `.sei` ではありません（`.sei` を推奨します）"
@@ -532,19 +538,21 @@ fn parse_font_values(
 
   // 軸: 入力が Some なら（空配列でも）Some を維持する（旧挙動）。不正な軸名は集約。
   let variation_axes = pre_font_config.variation_axes.as_deref().map(|axes| {
-    axes
+    return axes
       .iter()
       .filter_map(|axis| match tag::parse_opentype_tag(&axis.name) {
-        Ok(name) => Some(VariationAxis {
-          name,
-          value: axis.value,
-        }),
+        Ok(name) => {
+          return Some(VariationAxis {
+            name,
+            value: axis.value,
+          });
+        },
         Err(error) => {
           errors.push(field_error(font_type, "variation_axes", error));
-          None
+          return None;
         },
       })
-      .collect::<Vec<_>>()
+      .collect::<Vec<_>>();
   });
 
   // フィーチャー: 空配列は None 扱い（旧挙動）。不正なタグは集約。
@@ -552,17 +560,19 @@ fn parse_font_values(
     let converted: Vec<Feature> = feats
       .iter()
       .filter_map(|feature| match tag::parse_opentype_tag(&feature.tag) {
-        Ok(tag) => Some(Feature {
-          tag,
-          value: feature.value,
-        }),
+        Ok(tag) => {
+          return Some(Feature {
+            tag,
+            value: feature.value,
+          });
+        },
         Err(error) => {
           errors.push(field_error(font_type, "features", error));
-          None
+          return None;
         },
       })
       .collect();
-    (!converted.is_empty()).then_some(converted)
+    return (!converted.is_empty()).then_some(converted);
   });
 
   let language = build_language_string(pre_font_config.language.as_deref(), pre_font_config.ot_language.as_deref());
@@ -633,13 +643,17 @@ fn resolve_output_dir_path(current_dir: &Path, output_dir: Option<&Path>) -> Pat
 /// [`ReadConfigError::MultipleValidationErrors`] に集約します。
 fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ConfigValidationError> {
   let output_dir_path = resolve_output_dir_path(current_dir, output_dir);
-  fs::create_dir_all(&output_dir_path).map_err(|source| ConfigValidationError::CreateOutputDir {
-    path: output_dir_path.display().to_string(),
-    source,
+  fs::create_dir_all(&output_dir_path).map_err(|source| {
+    return ConfigValidationError::CreateOutputDir {
+      path: output_dir_path.display().to_string(),
+      source,
+    };
   })?;
-  let canonical = output_dir_path.canonicalize().map_err(|source| ConfigValidationError::CanonicalizeOutputDir {
-    path: output_dir_path.display().to_string(),
-    source,
+  let canonical = output_dir_path.canonicalize().map_err(|source| {
+    return ConfigValidationError::CanonicalizeOutputDir {
+      path: output_dir_path.display().to_string(),
+      source,
+    };
   })?;
   return Ok(canonical);
 }
@@ -790,8 +804,8 @@ mod tests {
     let dup_path = errors
       .iter()
       .find_map(|error| match error {
-        ConfigValidationError::Field { path, message } if message.contains("重複") => Some(path.as_str()),
-        _ => None,
+        ConfigValidationError::Field { path, message } if message.contains("重複") => return Some(path.as_str()),
+        _ => return None,
       })
       .expect("expected duplicate font name error");
     assert_eq!(dup_path, "font_configs.serif_bold");

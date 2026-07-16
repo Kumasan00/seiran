@@ -110,21 +110,25 @@ pub fn parse_source(
 ) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
   let cst = crate::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| {
-    ParseSourceError::Syntax {
+    return ParseSourceError::Syntax {
       src: NamedSource::new(source_name, source.to_string()),
       error,
-    }
+    };
   })?;
 
-  let doc_nodes = evaluator::evaluate_children(source, cst).map_err(|error| ParseSourceError::Eval {
-    src: NamedSource::new(source_name, source.to_string()),
-    error,
+  let doc_nodes = evaluator::evaluate_children(source, cst).map_err(|error| {
+    return ParseSourceError::Eval {
+      src: NamedSource::new(source_name, source.to_string()),
+      error,
+    };
   })?;
 
   // pass2: `\cite{...}` の引用キーが references に存在するかを検証する（未定義は集約報告）
-  resolve_cites(&doc_nodes, citation_keys).map_err(|error| ParseSourceError::Eval {
-    src: NamedSource::new(source_name, source.to_string()),
-    error,
+  resolve_cites(&doc_nodes, citation_keys).map_err(|error| {
+    return ParseSourceError::Eval {
+      src: NamedSource::new(source_name, source.to_string()),
+      error,
+    };
   })?;
 
   debug!(source_path = source_name, node_count = doc_nodes.len(), "ソースのパース・評価が完了しました");

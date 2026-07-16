@@ -163,8 +163,10 @@ impl FromStr for Length {
 
   /// `"<数値>pt"` / `"<数値>mm"` / `"<数値>cm"` を解釈する。前後の空白は許容する。
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    return parse_length(s).ok_or_else(|| ParseLengthError {
-      input: s.to_string(),
+    return parse_length(s).ok_or_else(|| {
+      return ParseLengthError {
+        input: s.to_string(),
+      };
     });
   }
 }
@@ -275,11 +277,11 @@ impl Div<f32> for Length {
 }
 
 impl Sum for Length {
-  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| acc + x); }
+  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| return acc + x); }
 }
 
 impl<'a> Sum<&'a Length> for Length {
-  fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| acc + *x); }
+  fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self { return iter.fold(Length::ZERO, |acc, x| return acc + *x); }
 }
 
 #[cfg(test)]

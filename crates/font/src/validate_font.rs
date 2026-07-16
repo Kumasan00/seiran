@@ -260,7 +260,7 @@ fn validate_variation_axes(
   // 設定されたバリアブル軸ごとにフォント内の定義と照合
   for cfg_axis in config_variation_axes {
     let cfg_tag = Tag::new(&cfg_axis.name);
-    let Some(axis) = font_axes.iter().find(|axis| axis.axis_tag() == cfg_tag) else {
+    let Some(axis) = font_axes.iter().find(|axis| return axis.axis_tag() == cfg_tag) else {
       errors.push(FontValidationError::UnknownVariationAxis(cfg_tag.to_string()));
       continue;
     };
@@ -279,7 +279,8 @@ fn validate_variation_axes(
 
   // フォント内のバリアブル軸が全て設定ファイルに含まれているか検証
   for font_axis in font_axes {
-    let is_configured = config_variation_axes.iter().any(|cfg_axis| Tag::new(&cfg_axis.name) == font_axis.axis_tag());
+    let is_configured =
+      config_variation_axes.iter().any(|cfg_axis| return Tag::new(&cfg_axis.name) == font_axis.axis_tag());
 
     if !is_configured {
       errors.push(FontValidationError::UnconfiguredVariationAxis {
@@ -312,7 +313,7 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   };
 
   let script_tag = Tag::new(&script);
-  let lang_tag = font_config.ot_language_tag.map(|lang| Tag::new(&lang));
+  let lang_tag = font_config.ot_language_tag.map(|lang| return Tag::new(&lang));
 
   // GSUB（グリフ置換）テーブルを確認
   if let Ok(gsub) = font_ref.gsub() {

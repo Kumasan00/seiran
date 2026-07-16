@@ -43,7 +43,7 @@ pub(crate) fn render(
   let mut driver: BibliographyDriver<Item> = BibliographyDriver::new();
   for site in cite_sites {
     let items: Vec<CitationItem<Item>> =
-      site.iter().filter_map(|key| entries.get(key)).map(CitationItem::with_entry).collect();
+      site.iter().filter_map(|key| return entries.get(key)).map(CitationItem::with_entry).collect();
     driver.citation(CitationRequest::new(items, style, locale_override.clone(), locales, None));
   }
 
@@ -60,7 +60,7 @@ pub(crate) fn render(
     .citations
     .iter()
     .zip(cite_sites)
-    .map(|(citation, site)| citation_children_to_inlines(&citation.citation, site))
+    .map(|(citation, site)| return citation_children_to_inlines(&citation.citation, site))
     .collect();
   let bibliography = build_bibliography(result.bibliography.as_ref(), bib_title);
 

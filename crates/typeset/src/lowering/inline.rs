@@ -134,8 +134,8 @@ pub(super) fn lower_inline(
       let number = registry.increment_footnote();
       let footnote_style = &ctx.style.footnote;
       let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
-        "number" => number.to_string(),
-        _ => format!("{{{name}}}"),
+        "number" => return number.to_string(),
+        _ => return format!("{{{name}}}"),
       });
 
       // 本文中マーカー: 呼び出し位置の文脈フォントサイズを基準に上付き縮小する
@@ -566,9 +566,11 @@ mod tests {
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::default_for_seiran();
-    let make = |text: &str| InlineNode::Footnote {
-      body: vec![InlineNode::Text(text.to_string())],
-      span: model::Span::DUMMY,
+    let make = |text: &str| {
+      return InlineNode::Footnote {
+        body: vec![InlineNode::Text(text.to_string())],
+        span: model::Span::DUMMY,
+      };
     };
 
     // Act

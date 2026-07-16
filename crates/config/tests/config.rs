@@ -17,12 +17,12 @@ use common::setup_config;
 fn read_config_succeeds_with_valid_config() {
   // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n[document]\ntitle = \"Test Doc\"\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -45,12 +45,12 @@ fn read_config_succeeds_with_valid_config() {
 fn read_config_reads_image_overrides() {
   // Arrange: `[image]` で max_dpi / downsample を明示
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
       valid_output_section("test", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -65,13 +65,13 @@ fn read_config_reads_image_overrides() {
 fn read_config_respects_show_bookmarks_false() {
   // Arrange: `[pdf]` に show_bookmarks = false を明示
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
        margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\
        show_bookmarks = false\n\n{}",
       valid_output_section("test", output_dir),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -85,12 +85,12 @@ fn read_config_respects_show_bookmarks_false() {
 fn read_config_fails_on_nonexistent_font_path() {
   // Arrange
   let (_tempdir, config_path) = setup_config(|_font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test", output_dir),
       valid_pdf_section(),
       make_font_sections("/nonexistent/path/to/font.ttf"),
-    )
+    );
   });
 
   // Act
@@ -108,12 +108,12 @@ fn read_config_fails_on_nonexistent_font_path() {
 fn read_config_fails_on_nonexistent_source_path() {
   // Arrange: 存在しない source パスを指定
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
-    format!(
+    return format!(
       "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
       valid_output_section("test", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -131,11 +131,11 @@ fn read_config_uses_current_dir_when_output_dir_omitted() {
   // Arrange: TOML から output_dir を省略。CWD を変えると並列テストに影響するため、
   // 現在の CWD を期待値として観察する。
   let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
   let expected_output_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
 
@@ -153,12 +153,12 @@ fn read_config_preserves_user_script_tag_case() {
   // そのまま保存される。フォントとの突合せは font::validate_font が担当する。
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "script = \"Latn\"";
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       font_sections_with_serif_extra(font_path, extra),
-    )
+    );
   });
 
   let config: Config = read_config(&config_path).unwrap();
@@ -172,12 +172,12 @@ fn read_config_builds_language_string_with_ot_language_suffix() {
   // Arrange: BCP 47 + script + ot_language を指定
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       font_sections_with_serif_extra(font_path, extra),
-    )
+    );
   });
 
   // Act
@@ -195,12 +195,12 @@ fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
   // Arrange: language 未指定で script + ot_language のみ → `und-x-hbot<TAG>` が生成される
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "script = \"latn\"\not_language = \"ENG\"";
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       font_sections_with_serif_extra(font_path, extra),
-    )
+    );
   });
 
   // Act
@@ -217,12 +217,12 @@ fn read_config_preserves_user_direction() {
   // Arrange: right-to-left を指定
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "direction = \"right-to-left\"";
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       font_sections_with_serif_extra(font_path, extra),
-    )
+    );
   });
 
   // Act
@@ -237,12 +237,12 @@ fn read_config_preserves_user_direction() {
 fn read_config_preserves_document_language_and_keywords() {
   // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -257,12 +257,12 @@ fn read_config_preserves_document_language_and_keywords() {
 fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
   // Arrange: language / keywords を省略
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act
@@ -277,12 +277,12 @@ fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
 fn read_config_keeps_direction_none_when_omitted() {
   // Arrange: direction を指定せず最小構成で読み込む
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
-    format!(
+    return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
       valid_output_section("test_doc", output_dir),
       valid_pdf_section(),
       make_font_sections(font_path),
-    )
+    );
   });
 
   // Act

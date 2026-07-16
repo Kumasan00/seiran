@@ -73,8 +73,8 @@ mod tests {
     // Assert — 2 行・各 1 セル・各行採番対象
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
-    assert!(rows.iter().all(|r| r.cells.len() == 1), "各行 1 セル: {rows:?}");
-    assert!(rows.iter().all(|r| r.numbered));
+    assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
+    assert!(rows.iter().all(|r| return r.numbered));
   }
 
   #[test]
@@ -103,7 +103,7 @@ mod tests {
 
     // Assert
     let rows = rows_of(&result);
-    assert!(rows.iter().all(|r| !r.numbered), "無採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "無採番のはず: {rows:?}");
   }
 
   #[test]

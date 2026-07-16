@@ -26,25 +26,25 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       return mapped;
     }
     match ch {
-      'A'..='Z' => char::from_u32(upper_base + (ch as u32 - 'A' as u32)).unwrap_or(ch),
-      'a'..='z' => char::from_u32(lower_base + (ch as u32 - 'a' as u32)).unwrap_or(ch),
-      _ => ch,
+      'A'..='Z' => return char::from_u32(upper_base + (ch as u32 - 'A' as u32)).unwrap_or(ch),
+      'a'..='z' => return char::from_u32(lower_base + (ch as u32 - 'a' as u32)).unwrap_or(ch),
+      _ => return ch,
     }
   };
 
   // 共通ヘルパ: ASCII 数字を base に応じてシフト
   let map_digit = |ch: char, base: u32| -> char {
     match ch {
-      '0'..='9' => char::from_u32(base + (ch as u32 - '0' as u32)).unwrap_or(ch),
-      _ => ch,
+      '0'..='9' => return char::from_u32(base + (ch as u32 - '0' as u32)).unwrap_or(ch),
+      _ => return ch,
     }
   };
 
   // 共通ヘルパ: Greek 文字を base に応じてシフト
   let map_greek = |ch: char, base: u32| -> char {
     match greek_math_offset(ch) {
-      Some(offset) => char::from_u32(base + offset).unwrap_or(ch),
-      None => ch,
+      Some(offset) => return char::from_u32(base + offset).unwrap_or(ch),
+      None => return ch,
     }
   };
 

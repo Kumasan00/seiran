@@ -108,14 +108,19 @@ impl Counters {
 
 impl Default for Counters {
   fn default() -> Self {
-    use CounterName::{Chapter, Equation, Figure, Paragraph, Section, Subparagraph, Subsection, Table};
     return Self {
       part: CounterStyle::new(
         "Part",
         "{n}",
         NumberStyle::RomanUpper,
         "{display_name} {number}",
-        &[Chapter, Section, Subsection, Paragraph, Subparagraph],
+        &[
+          CounterName::Chapter,
+          CounterName::Section,
+          CounterName::Subsection,
+          CounterName::Paragraph,
+          CounterName::Subparagraph,
+        ],
       ),
       chapter: CounterStyle::new(
         "Chapter",
@@ -123,13 +128,13 @@ impl Default for Counters {
         NumberStyle::Arabic,
         "{display_name} {number}",
         &[
-          Section,
-          Subsection,
-          Paragraph,
-          Subparagraph,
-          Figure,
-          Equation,
-          Table,
+          CounterName::Section,
+          CounterName::Subsection,
+          CounterName::Paragraph,
+          CounterName::Subparagraph,
+          CounterName::Figure,
+          CounterName::Equation,
+          CounterName::Table,
         ],
       ),
       section: CounterStyle::new(
@@ -137,21 +142,25 @@ impl Default for Counters {
         "{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
-        &[Subsection, Paragraph, Subparagraph],
+        &[
+          CounterName::Subsection,
+          CounterName::Paragraph,
+          CounterName::Subparagraph,
+        ],
       ),
       subsection: CounterStyle::new(
         "Subsection",
         "{chapter}.{section}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
-        &[Paragraph, Subparagraph],
+        &[CounterName::Paragraph, CounterName::Subparagraph],
       ),
       paragraph: CounterStyle::new(
         "Paragraph",
         "{chapter}.{section}.{subsection}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
-        &[Subparagraph],
+        &[CounterName::Subparagraph],
       ),
       subparagraph: CounterStyle::new(
         "Subparagraph",
@@ -275,7 +284,7 @@ impl CounterName {
   /// 固定 9 種の範囲内の名前のみを認識し、該当しない文字列は `None` を返す。
   /// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
   #[must_use]
-  pub fn from_name(name: &str) -> Option<Self> { return Self::ALL.into_iter().find(|c| c.as_str() == name); }
+  pub fn from_name(name: &str) -> Option<Self> { return Self::ALL.into_iter().find(|c| return c.as_str() == name); }
 }
 
 #[cfg(test)]
@@ -311,7 +320,7 @@ mod tests {
   #[test]
   fn default_counters_contains_expected_names() {
     let counters = Counters::default();
-    let names: Vec<CounterName> = counters.iter().map(|(n, _)| n).collect();
+    let names: Vec<CounterName> = counters.iter().map(|(n, _)| return n).collect();
     for expected in [
       CounterName::Part,
       CounterName::Chapter,

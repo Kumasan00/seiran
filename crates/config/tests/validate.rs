@@ -20,7 +20,7 @@ fn paths(errors: &[StyleValidationError]) -> Vec<&str> {
     .map(|error| match error {
       StyleValidationError::Field { path, .. }
       | StyleValidationError::CslPathResolution { path, .. }
-      | StyleValidationError::LocalePathResolution { path, .. } => path.as_str(),
+      | StyleValidationError::LocalePathResolution { path, .. } => return path.as_str(),
     })
     .collect();
 }
@@ -167,8 +167,10 @@ fn placeholder_error_message_names_the_offending_token() {
   let message = errors
     .iter()
     .find_map(|error| match error {
-      StyleValidationError::Field { path, message } if path == "math.block.tag_format" => Some(message.as_str()),
-      _ => None,
+      StyleValidationError::Field { path, message } if path == "math.block.tag_format" => {
+        return Some(message.as_str());
+      },
+      _ => return None,
     })
     .expect("math.block.tag_format のエラーがあるはず");
   assert!(message.contains("{num}"), "メッセージに {{num}} を含むべき: {message}");

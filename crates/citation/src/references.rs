@@ -77,9 +77,11 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
   };
   let path_ref = path.as_ref();
   debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
-  let content = std::fs::read_to_string(path_ref).map_err(|source| ReadReferencesError::ReadFile {
-    path: path_ref.display().to_string(),
-    source,
+  let content = std::fs::read_to_string(path_ref).map_err(|source| {
+    return ReadReferencesError::ReadFile {
+      path: path_ref.display().to_string(),
+      source,
+    };
   })?;
   let references = parse_references(&content, path_ref)?;
   let reference_count = references.len();
@@ -99,17 +101,23 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
 /// - TOML の構文・値が不正な場合は [`ReadReferencesError::ParseToml`] を返します。
 /// - JSON の構文・値が不正な場合は [`ReadReferencesError::ParseJson`] を返します。
 fn parse_references(text: &str, source_path: &Path) -> Result<References, ReadReferencesError> {
-  let format = Format::from_extension(source_path).ok_or_else(|| ReadReferencesError::UnsupportedExtension {
-    path: source_path.display().to_string(),
+  let format = Format::from_extension(source_path).ok_or_else(|| {
+    return ReadReferencesError::UnsupportedExtension {
+      path: source_path.display().to_string(),
+    };
   })?;
   return match format {
-    Format::Toml => toml::from_str(text).map_err(|source| ReadReferencesError::ParseToml {
-      path: source_path.display().to_string(),
-      source,
+    Format::Toml => toml::from_str(text).map_err(|source| {
+      return ReadReferencesError::ParseToml {
+        path: source_path.display().to_string(),
+        source,
+      };
     }),
-    Format::Json => serde_json::from_str(text).map_err(|source| ReadReferencesError::ParseJson {
-      path: source_path.display().to_string(),
-      source,
+    Format::Json => serde_json::from_str(text).map_err(|source| {
+      return ReadReferencesError::ParseJson {
+        path: source_path.display().to_string(),
+        source,
+      };
     }),
   };
 }

@@ -128,9 +128,11 @@ pub(crate) fn get_ttc_names(file_path: &Path) -> miette::Result<()> {
   info!(ttc_path = %file_path.display(), "TTC ファイルを読み込みます");
 
   // TTC ファイルをすべてメモリに読み込み
-  let data = fs::read(file_path).map_err(|source| TtcNamesError::ReadFile {
-    path: file_path.display().to_string(),
-    source,
+  let data = fs::read(file_path).map_err(|source| {
+    return TtcNamesError::ReadFile {
+      path: file_path.display().to_string(),
+      source,
+    };
   })?;
 
   // TTC に含まれるすべてのフォントを反復

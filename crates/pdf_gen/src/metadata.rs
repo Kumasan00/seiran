@@ -19,7 +19,7 @@ pub(crate) fn build_metadata(config: &Config) -> Metadata {
     .day(now.day() as u8)
     .hour(now.hour() as u8)
     .minute(now.minute() as u8);
-  let title = config.document.title.clone().unwrap_or_else(|| config.output.name.clone());
+  let title = config.document.title.clone().unwrap_or_else(|| return config.output.name.clone());
   let mut metadata = Metadata::new()
     .title(title)
     .creation_date(time)

@@ -32,7 +32,7 @@ impl Color {
   #[must_use]
   pub fn from_hex(value: &str) -> Option<Color> {
     let body = value.strip_prefix('#')?;
-    if body.len() != 6 || !body.chars().all(|c| c.is_ascii_hexdigit()) {
+    if body.len() != 6 || !body.chars().all(|c| return c.is_ascii_hexdigit()) {
       return None;
     }
     let r = u8::from_str_radix(&body[0..2], 16).ok()?;
@@ -54,7 +54,7 @@ impl<'de> Deserialize<'de> for Color {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     let hex = String::deserialize(deserializer)?;
     return Color::from_hex(&hex)
-      .ok_or_else(|| D::Error::custom(format!("色の 16 進表記が不正です: {hex:?}（期待形式: \"#rrggbb\"）")));
+      .ok_or_else(|| return D::Error::custom(format!("色の 16 進表記が不正です: {hex:?}（期待形式: \"#rrggbb\"）")));
   }
 }
 

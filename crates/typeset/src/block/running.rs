@@ -216,7 +216,7 @@ fn substitute(template: &str, page_label: &str, pages_label: &str, metadata: &Ru
 }
 
 /// `HBox` 列の合計幅（pt）を返す
-fn slot_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| hbox.width).sum(); }
+fn slot_width(hboxes: &[HBox]) -> Length { return hboxes.iter().map(|hbox| return hbox.width).sum(); }
 
 /// `HBox` 列を `x_start` から水平に並べて `boxes` へ追加し、行の高さ・深さを更新する
 fn append_slot(
@@ -291,7 +291,7 @@ mod tests {
     );
 
     // Assert — x は累積し、行の高さ・深さはボックスの最大値
-    let xs: Vec<Length> = boxes.iter().map(|b| b.x).collect();
+    let xs: Vec<Length> = boxes.iter().map(|b| return b.x).collect();
     assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);
     assert_eq!(height, Length::pt(8.0));
     assert_eq!(depth, Length::pt(2.0));

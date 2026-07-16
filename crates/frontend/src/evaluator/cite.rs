@@ -97,7 +97,7 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
         ..
       } => {
         let missing: Vec<&str> =
-          cite_keys.iter().filter(|key| !keys.contains(key.as_str())).map(String::as_str).collect();
+          cite_keys.iter().filter(|key| return !keys.contains(key.as_str())).map(String::as_str).collect();
         if !missing.is_empty() {
           let source_span = miette::SourceSpan::from((span.start as usize, span.len() as usize));
           labels
@@ -122,7 +122,7 @@ mod tests {
 
   fn span() -> Span { return Span::new(0, 5); }
 
-  fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).to_string()).collect(); }
+  fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| return (*v).to_string()).collect(); }
 
   #[test]
   fn resolve_cites_accepts_known_keys() {

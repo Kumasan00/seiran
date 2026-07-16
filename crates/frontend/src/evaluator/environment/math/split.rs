@@ -79,7 +79,7 @@ mod tests {
     // Assert — 2 行・各行は無採番・環境全体が採番対象
     let (rows, numbered) = block_of(&result);
     assert_eq!(rows.len(), 2, "2 行: {rows:?}");
-    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
     assert!(numbered, "環境全体は採番対象");
   }
 
@@ -95,7 +95,7 @@ mod tests {
 
     // Assert
     let (rows, numbered) = block_of(&result);
-    assert!(rows.iter().all(|r| !r.numbered));
+    assert!(rows.iter().all(|r| return !r.numbered));
     assert!(!numbered, "無採番のはず");
   }
 
@@ -121,7 +121,7 @@ mod tests {
     };
     assert_eq!(label.as_deref(), Some("eq:s"), "環境単位ラベルが付く");
     assert!(*numbered, "環境全体は採番対象");
-    assert!(rows.iter().all(|r| !r.numbered), "行は無採番: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "行は無採番: {rows:?}");
   }
 
   #[test]

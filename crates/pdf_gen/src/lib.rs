@@ -71,7 +71,7 @@ pub fn create_pdf(
   let mut document = Document::new();
   document.set_metadata(build_metadata(config));
   render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style, outline_entries)?;
-  let pdf_bytes = document.finish().map_err(|source| PdfGenError::FinalizeDocument { source })?;
+  let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
   debug!(page_count = pages.len(), "PDF 描画が完了しました");
   return Ok(pdf_bytes);
 }

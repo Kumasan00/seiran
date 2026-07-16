@@ -337,23 +337,23 @@ impl PageComposer {
       // （`region_limit`）にする（そうしないと本文が脚注エリアへ伸びて重なる）。
       let deficit = self.region_limit(geom) - region_bottom;
       // 分母 = 末尾ブロックより前に記録されたアキの stretch 合計（末尾アキは除く）。
-      let effective: Length = glues.iter().filter(|g| g.block_at <= last_index).map(|g| g.stretch).sum();
+      let effective: Length = glues.iter().filter(|g| return g.block_at <= last_index).map(|g| return g.stretch).sum();
       // 不足高さ・分母が正のときだけ配分する（負・ゼロは揃えても意味がないので自然高のまま）。
       if deficit > FLUSH_EPSILON && effective.is_positive() {
         let ratio = deficit.ratio(effective);
         for (offset, block) in self.current[region_start..].iter_mut().enumerate() {
           let idx = region_start + offset;
-          let stretch: Length = glues.iter().filter(|g| g.block_at <= idx).map(|g| g.stretch).sum();
+          let stretch: Length = glues.iter().filter(|g| return g.block_at <= idx).map(|g| return g.stretch).sum();
           shift_placed_block(block, stretch.scale(ratio));
         }
         for (offset, link) in self.current_links[link_start..].iter_mut().enumerate() {
           let idx = link_start + offset;
-          let stretch: Length = glues.iter().filter(|g| g.link_at <= idx).map(|g| g.stretch).sum();
+          let stretch: Length = glues.iter().filter(|g| return g.link_at <= idx).map(|g| return g.stretch).sum();
           link.y += stretch.scale(ratio);
         }
         for (offset, anchor) in self.current_anchors[anchor_start..].iter_mut().enumerate() {
           let idx = anchor_start + offset;
-          let stretch: Length = glues.iter().filter(|g| g.anchor_at <= idx).map(|g| g.stretch).sum();
+          let stretch: Length = glues.iter().filter(|g| return g.anchor_at <= idx).map(|g| return g.stretch).sum();
           anchor.y += stretch.scale(ratio);
         }
       }
@@ -383,7 +383,7 @@ impl PageComposer {
         }
         top += geom.footnote_rule_gap;
         blocks.reserve(pending.lines.len());
-        let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| line.height);
+        let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| return line.height);
         let mut prev_depth = Length::ZERO;
         for (i, line) in pending.lines.into_iter().enumerate() {
           if i > 0 {
@@ -420,7 +420,7 @@ fn placed_block_bottom(block: &PlacedBlock) -> Length {
       body, baseline_y, ..
     } => *baseline_y + body.depth,
     PlacedBlock::Image { y, height, .. } | PlacedBlock::Rule { y, height, .. } => *y + *height,
-    PlacedBlock::Table { rows, .. } => rows.last().map_or(Length::from_sp(i64::MIN), |r| r.top_y + r.height),
+    PlacedBlock::Table { rows, .. } => rows.last().map_or(Length::from_sp(i64::MIN), |r| return r.top_y + r.height),
   };
 }
 
@@ -506,7 +506,7 @@ pub fn break_pages(
   let mut i = 0;
   let mut gated_end: Option<usize> = None;
   while i < blocks.len() {
-    if gated_end.is_none_or(|e| i > e)
+    if gated_end.is_none_or(|e| return i > e)
       && is_content_block(&blocks[i])
       && let Some(end) = keep_group_end(&blocks, i)
     {
@@ -775,14 +775,14 @@ fn pick_correction(plan: &[LinePlacement], min_lines: usize) -> Option<usize> {
   }
   // orphan: 先頭リージョン（index 0 から最初の改リージョンまで）の行数が最小行数未満
   // （先頭行が既にリージョン先頭なら回避不能なので補正しない）
-  if let Some(first_break) = (1..n).find(|&i| plan[i].starts_region)
+  if let Some(first_break) = (1..n).find(|&i| return plan[i].starts_region)
     && first_break < min_lines
     && !plan[0].starts_region
   {
     return Some(0);
   }
   // widow: 末尾リージョン（最後の改リージョンから末尾まで）の行数が最小行数未満
-  if let Some(last_break) = (1..n).rev().find(|&i| plan[i].starts_region)
+  if let Some(last_break) = (1..n).rev().find(|&i| return plan[i].starts_region)
     && n - last_break < min_lines
   {
     // 前側に最小行数を残せるなら末尾 min_lines 行だけを送る。残せない短い段落は全体を送る
@@ -916,11 +916,11 @@ fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) ->
       return (baseline + line.depth > geom.page_limit, baseline + *leading);
     },
     Block::Table { table, .. } => {
-      let row_h = |row| table_row_height(row, geom.default_font_size, geom.line_height_factor);
+      let row_h = |row| return table_row_height(row, geom.default_font_size, geom.line_height_factor);
       let total: Length = table.head.iter().chain(table.rows.iter()).map(row_h).sum();
       if table.breakable {
-        let first = table.head.first().or_else(|| table.rows.first());
-        return (first.is_some_and(|r| y + row_h(r) > geom.page_limit), y + total);
+        let first = table.head.first().or_else(|| return table.rows.first());
+        return (first.is_some_and(|r| return y + row_h(r) > geom.page_limit), y + total);
       }
       return (y + total > geom.page_limit && geom.margin_top + total <= geom.page_limit, y + total);
     },
@@ -1057,7 +1057,7 @@ fn place_paragraph(
   // 全行に加算する。揃えオフセットは行ごとに（行幅に応じて）異なる。段オフセットは段をまたぐと
   // 行ごとに変わるため、この事前ループには含めず、配置ループ内で着地段ごとに足す。
   for line in &mut lines {
-    let line_width = line.boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max);
+    let line_width = line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
     let shift = indent + align.offset(available, line_width);
     if shift != Length::ZERO {
       for positioned in &mut line.boxes {
@@ -1266,12 +1266,12 @@ fn place_table(
   let head_heights: Vec<Length> = table
     .head
     .iter()
-    .map(|row| table_row_height(row, geom.default_font_size, geom.line_height_factor))
+    .map(|row| return table_row_height(row, geom.default_font_size, geom.line_height_factor))
     .collect();
   let row_heights: Vec<Length> = table
     .rows
     .iter()
-    .map(|row| table_row_height(row, geom.default_font_size, geom.line_height_factor))
+    .map(|row| return table_row_height(row, geom.default_font_size, geom.line_height_factor))
     .collect();
 
   // 分割禁止の表は、現ページに収まらず新しいページなら収まる場合のみ先に改ページする
@@ -1352,7 +1352,7 @@ mod tests {
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// pt 値の `Vec` を `Length` の `Vec` に変換する短縮子
-  fn pts(values: &[f32]) -> Vec<Length> { return values.iter().map(|v| Length::pt(*v)).collect(); }
+  fn pts(values: &[f32]) -> Vec<Length> { return values.iter().map(|v| return Length::pt(*v)).collect(); }
 
   /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
@@ -1365,7 +1365,9 @@ mod tests {
   }
 
   /// ページ末尾から本文先頭までの通し行ベースライン列（ページごと）を採取するヘルパ
-  fn line_counts(pages: &[Page]) -> Vec<usize> { return pages.iter().map(|p| page_baselines(p).len()).collect(); }
+  fn line_counts(pages: &[Page]) -> Vec<usize> {
+    return pages.iter().map(|p| return page_baselines(p).len()).collect();
+  }
 
   /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`、単段）
   fn test_geometry() -> PageGeometry {
@@ -1455,13 +1457,13 @@ mod tests {
     return page
       .footnotes
       .iter()
-      .find(|f| f.number == number)
+      .find(|f| return f.number == number)
       .expect("指定番号の脚注があるはず")
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .collect();
   }
@@ -1560,7 +1562,7 @@ mod tests {
     return page
       .footnotes
       .iter()
-      .flat_map(|f| &f.blocks)
+      .flat_map(|f| return &f.blocks)
       .filter(|b| matches!(b, PlacedBlock::Rule { .. }))
       .count();
   }
@@ -1641,8 +1643,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .collect();
     assert_eq!(baselines, pts(&[10.0, 22.0, 34.0]));
@@ -1674,8 +1676,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .collect();
   }
@@ -1750,7 +1752,7 @@ mod tests {
       break_pages(vec![paragraph_of_lines(20)], Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert — 行総数は 20 のまま、複数ページに分かれる
-    let total: usize = pages.iter().map(|p| page_baselines(p).len()).sum();
+    let total: usize = pages.iter().map(|p| return page_baselines(p).len()).sum();
     assert_eq!(total, 20, "行が欠落しない: {pages:?}");
     assert!(pages.len() >= 5, "4 行/ページなので 5 ページ以上に分かれる: {}", pages.len());
   }
@@ -1913,8 +1915,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .collect();
     // 1 つ目: 10。段落後カーソル 10+12=22、VSpace で 27
@@ -1959,8 +1961,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(baseline, 33.0), "baseline={}", baseline.to_pt());
@@ -2095,7 +2097,7 @@ mod tests {
         width: ColumnWidth::Auto,
       }],
       head: vec![table_row("HEAD")],
-      rows: (0..5).map(|i| table_row(&format!("R{i}"))).collect(),
+      rows: (0..5).map(|i| return table_row(&format!("R{i}"))).collect(),
       breakable: true,
     };
 
@@ -2226,8 +2228,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .collect();
     assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
@@ -2278,8 +2280,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .collect();
     assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
@@ -2345,8 +2347,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[0].x, 45.0), "box.x={}", line.boxes[0].x.to_pt());
@@ -2372,8 +2374,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[0].x, 90.0), "box.x={}", line.boxes[0].x.to_pt());
@@ -2420,8 +2422,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[1].x + line.boxes[1].width, 27.0), "{:?}", line.boxes);
@@ -2442,8 +2444,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[0].x, 1.0), "{:?}", line.boxes);
@@ -2464,8 +2466,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[0].x, 2.0), "{:?}", line.boxes);
@@ -2501,8 +2503,8 @@ mod tests {
       .blocks
       .iter()
       .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .expect("行があるはず");
     assert!(close(line.boxes[0].x, 0.0), "box.x={}", line.boxes[0].x.to_pt());
@@ -2547,8 +2549,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => Some(line),
-        _ => None,
+        PlacedBlock::Line { line, .. } => return Some(line),
+        _ => return None,
       })
       .collect();
     assert_eq!(lines.len(), 2, "text_width=35 で 2 行に折り返すはず: {} 行", lines.len());
@@ -2747,11 +2749,11 @@ mod tests {
     let height = pt(height);
     let depth = pt(depth);
     let links = link.map_or_else(Vec::new, |target| {
-      vec![model::LineLink {
+      return vec![model::LineLink {
         target,
         x0: Length::ZERO,
         x1: width,
-      }]
+      }];
     });
     return Block::ComposedLine {
       line: Line {
@@ -2788,8 +2790,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Line { baseline_y, .. } => Some(*baseline_y),
-        _ => None,
+        PlacedBlock::Line { baseline_y, .. } => return Some(*baseline_y),
+        _ => return None,
       })
       .collect();
     assert_eq!(baselines, pts(&[10.0, 22.0]));
@@ -2826,7 +2828,7 @@ mod tests {
     // Arrange — page_limit=50, margin_top=10, leading=12, depth=2:
     // baseline 10,22,34,46（46+2=48≤50）まで 1 ページ、5 本目で改ページ
     let geom = test_geometry();
-    let blocks: Vec<Block> = (0..5).map(|_| composed_line(20.0, 8.0, 2.0, None)).collect();
+    let blocks: Vec<Block> = (0..5).map(|_| return composed_line(20.0, 8.0, 2.0, None)).collect();
 
     // Act
     let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
@@ -2857,8 +2859,8 @@ mod tests {
         .blocks
         .iter()
         .filter_map(|b| match b {
-          PlacedBlock::Line { line, baseline_y } => Some(((*baseline_y).to_pt(), line.boxes[0].x.to_pt())),
-          _ => None,
+          PlacedBlock::Line { line, baseline_y } => return Some(((*baseline_y).to_pt(), line.boxes[0].x.to_pt())),
+          _ => return None,
         })
         .collect();
     };
@@ -2923,7 +2925,7 @@ mod tests {
         width: ColumnWidth::Auto,
       }],
       head: Vec::new(),
-      rows: (0..6).map(|i| table_row(&format!("R{i}"))).collect(),
+      rows: (0..6).map(|i| return table_row(&format!("R{i}"))).collect(),
       breakable: true,
     };
 
@@ -2945,8 +2947,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Table { x, .. } => Some(*x),
-        _ => None,
+        PlacedBlock::Table { x, .. } => return Some(*x),
+        _ => return None,
       })
       .collect();
     assert_eq!(xs.len(), 2, "左段断片 + 右段断片の 2 つ: {xs:?}");
@@ -3172,8 +3174,8 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Rule { y, .. } => Some(*y),
-        _ => None,
+        PlacedBlock::Rule { y, .. } => return Some(*y),
+        _ => return None,
       })
       .collect();
   }

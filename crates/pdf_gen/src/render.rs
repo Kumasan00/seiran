@@ -73,7 +73,7 @@ pub(crate) fn render_pages(
       .iter()
       .chain(&page_blocks.header)
       .chain(&page_blocks.footer)
-      .chain(page_blocks.footnotes.iter().flat_map(|f| &f.blocks))
+      .chain(page_blocks.footnotes.iter().flat_map(|f| return &f.blocks))
     {
       draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
     }
@@ -403,7 +403,7 @@ fn draw_table_row(
   let max_font = row
     .cells
     .iter()
-    .filter_map(|cell| model::max_font_size_in_items(&cell.items))
+    .filter_map(|cell| return model::max_font_size_in_items(&cell.items))
     .reduce(model::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
@@ -416,7 +416,7 @@ fn draw_table_row(
     let cell_width: f32 =
       ctx.col_widths[column_index..column_index + span].iter().copied().sum::<model::Length>().to_pt();
     let content_width = model::measure_items_width(&cell.items).to_pt();
-    let align = ctx.columns.get(column_index).map_or(ColumnAlign::Left, |c| c.align);
+    let align = ctx.columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
     let start_x = match align {
       ColumnAlign::Left => cell_x + ctx.padding,
       ColumnAlign::Center => cell_x + (cell_width - content_width) / 2.0,
@@ -502,8 +502,10 @@ fn draw_image(
       surface.draw_image(image, size);
     },
     LoadedImage::Svg(tree) => {
-      surface.draw_svg(tree.as_ref(), size, SvgSettings::default()).ok_or_else(|| PdfGenError::DrawSvg {
-        path: path.to_string(),
+      surface.draw_svg(tree.as_ref(), size, SvgSettings::default()).ok_or_else(|| {
+        return PdfGenError::DrawSvg {
+          path: path.to_string(),
+        };
       })?;
     },
   }

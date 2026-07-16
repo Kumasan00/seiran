@@ -160,11 +160,13 @@ impl FontDataExt for FontData {
       .map(|&font_type| {
         let font_config = font_configs.get(font_type);
         let font_path = &font_config.font_path;
-        fs::read(font_path).map_err(|source| FontLoadError::ReadFont {
-          font_type,
-          path: font_path.display().to_string(),
-          source,
-        })
+        return fs::read(font_path).map_err(|source| {
+          return FontLoadError::ReadFont {
+            font_type,
+            path: font_path.display().to_string(),
+            source,
+          };
+        });
       })
       .collect::<Result<Vec<Vec<u8>>, FontLoadError>>()?;
     return Ok(FontMap::from_all(font_datas));
@@ -213,11 +215,13 @@ impl<'a> FontRefsExt<'a> for FontRefs<'a> {
         let font_data = font_data.get(font_type);
         let font_config = config.get(font_type);
         let index = font_config.font_index;
-        FontRef::from_index(font_data, index).map_err(|source| FontLoadError::ParseFont {
-          font_type,
-          index,
-          source,
-        })
+        return FontRef::from_index(font_data, index).map_err(|source| {
+          return FontLoadError::ParseFont {
+            font_type,
+            index,
+            source,
+          };
+        });
       })
       .collect::<Result<Vec<FontRef<'a>>, FontLoadError>>()?;
     return Ok(FontMap::from_all(font_refs));
@@ -268,15 +272,19 @@ impl FontMetricsExt for FontMetrics {
       .iter()
       .map(|&font_type| {
         let font_ref = font_refs.get(font_type);
-        let head = font_ref.head().map_err(|source| FontLoadError::ReadMetricsTable {
-          font_type,
-          table: "head",
-          source,
+        let head = font_ref.head().map_err(|source| {
+          return FontLoadError::ReadMetricsTable {
+            font_type,
+            table: "head",
+            source,
+          };
         })?;
-        let hhea = font_ref.hhea().map_err(|source| FontLoadError::ReadMetricsTable {
-          font_type,
-          table: "hhea",
-          source,
+        let hhea = font_ref.hhea().map_err(|source| {
+          return FontLoadError::ReadMetricsTable {
+            font_type,
+            table: "hhea",
+            source,
+          };
         })?;
         return Ok(FontMetric {
           upem: f32::from(head.units_per_em()),

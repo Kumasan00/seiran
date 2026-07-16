@@ -70,13 +70,15 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
   return headings
     .iter()
     .zip(heading_pages.iter().copied())
-    .filter(|(info, _)| u32::from(info.level.depth()) < toc.max_depth)
-    .map(|(info, page_index)| TocEntryInput {
-      level: info.level,
-      number: info.number.clone(),
-      title_plain: info.title_plain.clone(),
-      page_label: page_values.body_page_label(page_index),
-      link_key: heading_anchor_key(info.index),
+    .filter(|(info, _)| return u32::from(info.level.depth()) < toc.max_depth)
+    .map(|(info, page_index)| {
+      return TocEntryInput {
+        level: info.level,
+        number: info.number.clone(),
+        title_plain: info.title_plain.clone(),
+        page_label: page_values.body_page_label(page_index),
+        link_key: heading_anchor_key(info.index),
+      };
     })
     .collect();
 }
@@ -151,20 +153,22 @@ mod tests {
   /// 各ページに 1 つずつ見出しアンカーを持つ本文ページ列から [`BodyPageValues`] を作るヘルパ
   fn body_page_values_with_headings(heading_count: usize) -> BodyPageValues {
     let pages: Vec<Page> = (0..heading_count)
-      .map(|index| Page {
-        blocks: Vec::new(),
-        header: Vec::new(),
-        footer: Vec::new(),
-        footnotes: Vec::new(),
-        anchors: vec![PlacedAnchor {
-          mark: AnchorMark::Heading {
-            key: format!("heading:{index}"),
-            label: None,
-          },
-          x: model::Length::ZERO,
-          y: model::Length::ZERO,
-        }],
-        links: Vec::new(),
+      .map(|index| {
+        return Page {
+          blocks: Vec::new(),
+          header: Vec::new(),
+          footer: Vec::new(),
+          footnotes: Vec::new(),
+          anchors: vec![PlacedAnchor {
+            mark: AnchorMark::Heading {
+              key: format!("heading:{index}"),
+              label: None,
+            },
+            x: model::Length::ZERO,
+            y: model::Length::ZERO,
+          }],
+          links: Vec::new(),
+        };
       })
       .collect();
     return BodyPageValues::from_body_pages(&pages, &PageNumbering::default());

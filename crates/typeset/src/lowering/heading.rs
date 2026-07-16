@@ -107,10 +107,9 @@ mod tests {
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
-        Some(children)
-      } else {
-        None
+        return Some(children);
       }
+      return None;
     });
     let children = vbox.expect("VBox が出力されるはず");
     let text = match &children[0] {
@@ -140,18 +139,17 @@ mod tests {
 
     let vbox = nodes.iter().find_map(|n| {
       if let LayoutNode::VBox { children, .. } = n {
-        Some(children)
-      } else {
-        None
+        return Some(children);
       }
+      return None;
     });
     let children = vbox.expect("VBox が出力されるはず");
     let heading_size = style.heading(HeadingLevel::Section).font_size;
     let italic = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::Text(t, s) if t == "Italic" => Some(*s),
-        _ => None,
+        LayoutNode::Text(t, s) if t == "Italic" => return Some(*s),
+        _ => return None,
       })
       .expect("イタリック部分の Text があるはず: {children:?}");
     assert_eq!(italic.font_kind, model::FontKind::SerifItalic);
@@ -176,8 +174,8 @@ mod tests {
     .expect("失敗しないはず");
 
     let anchor = nodes.iter().find_map(|n| match n {
-      LayoutNode::Anchor(mark) => Some(mark.clone()),
-      _ => None,
+      LayoutNode::Anchor(mark) => return Some(mark.clone()),
+      _ => return None,
     });
     // key は文書順インデックス（3）由来、label は \ref 用ラベル
     assert_eq!(
@@ -262,8 +260,8 @@ mod tests {
     let vbox = nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => Some(children),
-        _ => None,
+        LayoutNode::VBox { children, .. } => return Some(children),
+        _ => return None,
       })
       .expect("見出し VBox があるはず");
     assert!(

@@ -400,7 +400,7 @@ pub fn lower_sources_with_headings(
 
   resolve::resolve_refs(&mut result, &registry)?;
 
-  let input_node_count: usize = sources.iter().map(|nodes| nodes.len()).sum();
+  let input_node_count: usize = sources.iter().map(|nodes| return nodes.len()).sum();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return Ok((result, headings));
 }
@@ -490,7 +490,7 @@ fn lower_node_indexed(
       // 見出し（独立行）＋ クラス別 font_kind 本文 ＋ 上下マージン、proof は末尾に QED。
       // `of`（証明対象、proof のみ）は前方参照になり得るため、`{of}` プレースホルダとして
       // 見出しテンプレートに埋め込み、pass2（`resolve::resolve_refs`）で解決する。
-      let of = of.as_ref().map(|target| (target.label.as_str(), target.span));
+      let of = of.as_ref().map(|target| return (target.label.as_str(), target.span));
       let number = registry.increment_theorem_with_label(*class, label.as_deref(), *span, ctx.source)?;
       return theorem::lower_theorem(
         ctx,
@@ -551,7 +551,7 @@ fn lower_node_indexed(
       }
       // 行ラベルは逆順で積む（「後から prepend」を繰り返す旧実装と同じ最終順序を 1 パスで
       // 再現するため。`with_label_anchors` の doc comment も参照）
-      anchor_labels.extend(rows.iter().rev().filter_map(|row| row.label.as_deref()));
+      anchor_labels.extend(rows.iter().rev().filter_map(|row| return row.label.as_deref()));
       nodes = with_label_anchors(&anchor_labels, nodes);
       return Ok(nodes);
     },
@@ -566,7 +566,7 @@ fn lower_node_indexed(
       label,
       span,
     } => {
-      let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
+      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
       let overrides = figure::ImageOverrides {
         dpi: *dpi,
         downsample: *downsample,
@@ -586,7 +586,7 @@ fn lower_node_indexed(
       label,
       span,
     } => {
-      let caption_arg = caption.as_deref().map(|inlines| (*caption_position, inlines));
+      let caption_arg = caption.as_deref().map(|inlines| return (*caption_position, inlines));
       let number = registry.increment_with_label(config::CounterName::Table, label.as_deref(), *span, ctx.source)?;
       let nodes = table::lower_table(ctx, columns, widths, head, rows, caption_arg, &number, *breakable, registry)?;
       return Ok(with_label_anchor(label.as_deref(), nodes));
@@ -617,7 +617,7 @@ fn with_label_anchors(labels: &[&str], nodes: Vec<LayoutNode>) -> Vec<LayoutNode
     return nodes;
   }
   let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(labels.iter().map(|label| LayoutNode::Anchor(model::AnchorMark::Label((*label).to_string()))));
+  result.extend(labels.iter().map(|label| return LayoutNode::Anchor(model::AnchorMark::Label((*label).to_string()))));
   result.extend(nodes);
   return result;
 }
@@ -640,10 +640,12 @@ fn try_resolve_heading_title_plain(
   source: SourceId,
 ) -> Result<String, LoweringError> {
   let mut resolve_ref = |label: &str, span: model::Span| -> Result<String, LoweringError> {
-    return registry.resolve_label(label).map(str::to_string).ok_or_else(|| LoweringError::UnresolvedReference {
-      label: label.to_string(),
-      span: span_to_source_span(span),
-      source_id: source,
+    return registry.resolve_label(label).map(str::to_string).ok_or_else(|| {
+      return LoweringError::UnresolvedReference {
+        label: label.to_string(),
+        span: span_to_source_span(span),
+        source_id: source,
+      };
     });
   };
   return try_inline_nodes_to_plain_text(title, &mut resolve_ref);
@@ -675,16 +677,18 @@ mod tests {
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
     return nodes.iter().any(|n| match n {
-      LayoutNode::LineBreak => true,
+      LayoutNode::LineBreak => return true,
       LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } | LayoutNode::Raise { children, .. } => {
-        contains_line_break(children)
+        return contains_line_break(children);
       },
-      LayoutNode::Table(table) => table
-        .head
-        .iter()
-        .chain(table.rows.iter())
-        .any(|row| row.cells.iter().any(|cell| contains_line_break(&cell.content))),
-      _ => false,
+      LayoutNode::Table(table) => {
+        return table
+          .head
+          .iter()
+          .chain(table.rows.iter())
+          .any(|row| return row.cells.iter().any(|cell| return contains_line_break(&cell.content)));
+      },
+      _ => return false,
     });
   }
 
@@ -912,7 +916,7 @@ mod tests {
 
     // Assert — quote 本体内の見出しを挟んでも index が 0, 1, 2 と重複なく連番になる
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
-    let mut indices: Vec<usize> = headings.iter().map(|h| h.index).collect();
+    let mut indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
     indices.sort_unstable();
     assert_eq!(indices, vec![0, 1, 2], "見出し index は重複なく連番のはず: {headings:?}");
   }
@@ -963,9 +967,11 @@ mod tests {
     // Arrange — 3 つの段落それぞれに \footnote 由来の InlineNode::Footnote を 1 つずつ置く
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let footnote = |text: &str| InlineNode::Footnote {
-      body: vec![InlineNode::Text(text.to_string())],
-      span: model::Span::DUMMY,
+    let footnote = |text: &str| {
+      return InlineNode::Footnote {
+        body: vec![InlineNode::Text(text.to_string())],
+        span: model::Span::DUMMY,
+      };
     };
     let nodes = vec![
       DocNode::Paragraph(vec![InlineNode::Text("one ".to_string()), footnote("a")]),
@@ -980,8 +986,8 @@ mod tests {
     let numbers: Vec<u32> = out
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Footnote { number, .. } => Some(*number),
-        _ => None,
+        LayoutNode::Footnote { number, .. } => return Some(*number),
+        _ => return None,
       })
       .collect();
     assert_eq!(numbers, vec![1, 2, 3], "{out:?}");
@@ -1080,11 +1086,11 @@ mod tests {
         LayoutNode::Link {
           target: model::LinkTarget::Internal(t),
           ..
-        } => t == target,
+        } => return t == target,
         LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
-          contains_internal_link(children, target)
+          return contains_internal_link(children, target);
         },
-        _ => false,
+        _ => return false,
       });
     }
 

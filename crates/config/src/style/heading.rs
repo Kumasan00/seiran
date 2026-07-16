@@ -424,7 +424,7 @@ format = \"§ {number} {title}\"
     let styles = HeadingStyles::default();
 
     // Act
-    let levels: Vec<HeadingLevel> = styles.iter_with_level().map(|(level, _)| level).collect();
+    let levels: Vec<HeadingLevel> = styles.iter_with_level().map(|(level, _)| return level).collect();
 
     // Assert
     assert_eq!(levels, HeadingLevel::ALL.to_vec());

@@ -76,9 +76,11 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
   };
 
   // `of` の解決（対象定理の cleveref 文字列）は lowering 層の pass2 が担う。
-  let of = of_label.map(|label| ProofTarget {
-    label,
-    span: view.span(),
+  let of = of_label.map(|label| {
+    return ProofTarget {
+      label,
+      span: view.span(),
+    };
   });
 
   return Ok(vec![DocNode::Theorem {

@@ -49,8 +49,8 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     });
   }
 
-  let columns_tokens = opts.columns_spec.as_deref().map(|s| parse_columns_spec(s, view)).transpose()?;
-  let widths_tokens = opts.widths_spec.as_deref().map(|s| parse_widths_spec(s, view)).transpose()?;
+  let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
+  let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;
 
   let body = scan_table_body(view)?;
 
@@ -71,8 +71,8 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   return Ok(vec![DocNode::Table {
     columns,
     widths,
-    head: body.head.into_iter().map(|(row, _)| row).collect(),
-    rows: body.rows.into_iter().map(|(row, _)| row).collect(),
+    head: body.head.into_iter().map(|(row, _)| return row).collect(),
+    rows: body.rows.into_iter().map(|(row, _)| return row).collect(),
     caption: body.caption,
     caption_position: body.caption_position,
     label: opts.label,
@@ -109,7 +109,7 @@ mod tests {
   fn row_texts(rows: &[TableRow]) -> Vec<Vec<String>> {
     return rows
       .iter()
-      .map(|row| row.cells.iter().map(|cell| inline_nodes_to_plain_text(&cell.content)).collect())
+      .map(|row| return row.cells.iter().map(|cell| return inline_nodes_to_plain_text(&cell.content)).collect())
       .collect();
   }
 

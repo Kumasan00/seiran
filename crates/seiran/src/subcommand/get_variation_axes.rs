@@ -143,15 +143,17 @@ pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::R
   info!(font_path = %font_path.display(), font_index, "フォントファイルを読み込みます");
 
   // フォントファイルをすべてメモリに読み込み
-  let font_bytes = fs::read(font_path).map_err(|source| VariationAxesError::ReadFile {
-    path: font_path.display().to_string(),
-    source,
+  let font_bytes = fs::read(font_path).map_err(|source| {
+    return VariationAxesError::ReadFile {
+      path: font_path.display().to_string(),
+      source,
+    };
   })?;
 
   // 指定されたインデックスのフォント参照を取得
   // TTC の場合は複数フォントから選択、単一フォントの場合は font_index=0
   let font_ref = FontRef::from_index(&font_bytes, font_index)
-    .map_err(|source| VariationAxesError::FontParse { font_index, source })?;
+    .map_err(|source| return VariationAxesError::FontParse { font_index, source })?;
 
   // fvar テーブルを取得（OpenType バリエーション軸定義テーブル）
   match font_ref.fvar() {
@@ -183,9 +185,9 @@ pub(crate) fn get_variation_axes(font_path: &Path, font_index: u32) -> miette::R
         // 見つからない場合はフォールバック（Name ID を直接表示）
         let subfamily_name = name_records
           .iter()
-          .find(|nr| nr.name_id() == subfamily_name_id)
-          .and_then(|nr| nr.string(name_table.string_data()).ok())
-          .map_or_else(|| format!("NameID({subfamily_name_id})"), |s: NameString<'_>| s.to_string());
+          .find(|nr| return nr.name_id() == subfamily_name_id)
+          .and_then(|nr| return nr.string(name_table.string_data()).ok())
+          .map_or_else(|| format!("NameID({subfamily_name_id})"), |s: NameString<'_>| return s.to_string());
 
         // インスタンスの軸座標をデバッグ出力（{axis_tag: value} 形式）
         let coordinates = instance.coordinates;

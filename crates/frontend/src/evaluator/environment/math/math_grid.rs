@@ -183,7 +183,7 @@ pub(crate) fn evaluate_math_env(
   trim_trailing_blank_marker_rows(&mut grid)?;
 
   // `[numbered=false]` で既に全行が無採番なら、行単位の `\notag` は冗長・矛盾
-  if !numbered && let Some(span) = grid.iter().find_map(|row| row.notag_span) {
+  if !numbered && let Some(span) = grid.iter().find_map(|row| return row.notag_span) {
     return Err(EvalError::NotagWithUnnumberedEnv { span });
   }
 
@@ -206,16 +206,18 @@ pub(crate) fn evaluate_math_env(
 /// [`MathRow`] に変換する。`cases` / `matrix` は番号を持たないため、`CounterName::Equation` を一切
 /// 消費しない（採番ありの環境と通し番号を共有しない）。
 pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
-  while grid.last().is_some_and(|row| is_blank_row(&row.cells)) {
+  while grid.last().is_some_and(|row| return is_blank_row(&row.cells)) {
     grid.pop();
   }
   return grid
     .into_iter()
-    .map(|row| MathRow {
-      cells: row.cells,
-      numbered: false,
-      label: None,
-      label_span: None,
+    .map(|row| {
+      return MathRow {
+        cells: row.cells,
+        numbered: false,
+        label: None,
+        label_span: None,
+      };
     })
     .collect();
 }
@@ -227,7 +229,7 @@ pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
 fn is_blank_row(row: &[Vec<MathNode>]) -> bool {
   return row
     .iter()
-    .all(|cell| cell.iter().all(|node| matches!(node, MathNode::Text(t) if t.trim().is_empty())));
+    .all(|cell| return cell.iter().all(|node| matches!(node, MathNode::Text(t) if t.trim().is_empty())));
 }
 
 /// 要素がトリビア（空白・改行・コメント・段落区切り）かどうかを判定する
@@ -288,8 +290,8 @@ mod tests {
     return cell
       .iter()
       .filter_map(|n| match n {
-        MathNode::Text(t) => Some(t.as_str()),
-        _ => None,
+        MathNode::Text(t) => return Some(t.as_str()),
+        _ => return None,
       })
       .collect::<String>()
       .split_whitespace()

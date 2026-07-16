@@ -44,10 +44,12 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
           nat_height,
           text_width,
         )
-        .ok_or_else(|| PdfGenError::InvalidImageNaturalSize {
-          path: path.clone(),
-          width: nat_width,
-          height: nat_height,
+        .ok_or_else(|| {
+          return PdfGenError::InvalidImageNaturalSize {
+            path: path.clone(),
+            width: nat_width,
+            height: nat_height,
+          };
         })?;
         return Ok(Block::Image {
           path,
@@ -57,7 +59,7 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
           align,
         });
       },
-      other => Ok(other),
+      other => return Ok(other),
     })
     .collect::<Result<Vec<Block>, PdfGenError>>()?;
   let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
@@ -145,13 +147,15 @@ pub(crate) fn resolve_image_size(
 /// （ベクタなので再ラスタライズは不要）。フォーマット変換は行わず、入力が PNG なら PNG、
 /// JPEG なら JPEG のまま出力します。
 pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<LoadedImage, PdfGenError> {
-  let bytes = fs::read(path).map_err(|source| PdfGenError::ReadImage {
-    path: path.to_string(),
-    source,
+  let bytes = fs::read(path).map_err(|source| {
+    return PdfGenError::ReadImage {
+      path: path.to_string(),
+      source,
+    };
   })?;
   let extension = Path::new(path)
     .extension()
-    .and_then(|e| e.to_str())
+    .and_then(|e| return e.to_str())
     .map(str::to_ascii_lowercase)
     .unwrap_or_default();
   match extension.as_str() {
@@ -161,9 +165,11 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
       } else {
         bytes
       };
-      let image = Image::from_png(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
-        path: path.to_string(),
-        reason,
+      let image = Image::from_png(bytes.into(), false).map_err(|reason| {
+        return PdfGenError::DecodeImage {
+          path: path.to_string(),
+          reason,
+        };
       })?;
       return Ok(LoadedImage::Raster(image));
     },
@@ -173,16 +179,20 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
       } else {
         bytes
       };
-      let image = Image::from_jpeg(bytes.into(), false).map_err(|reason| PdfGenError::DecodeImage {
-        path: path.to_string(),
-        reason,
+      let image = Image::from_jpeg(bytes.into(), false).map_err(|reason| {
+        return PdfGenError::DecodeImage {
+          path: path.to_string(),
+          reason,
+        };
       })?;
       return Ok(LoadedImage::Raster(image));
     },
     "svg" => {
-      let tree = Tree::from_data(&bytes, &usvg::Options::default()).map_err(|source| PdfGenError::ParseSvg {
-        path: path.to_string(),
-        source,
+      let tree = Tree::from_data(&bytes, &usvg::Options::default()).map_err(|source| {
+        return PdfGenError::ParseSvg {
+          path: path.to_string(),
+          source,
+        };
       })?;
       return Ok(LoadedImage::Svg(Box::new(tree)));
     },
@@ -205,18 +215,20 @@ fn downsample_raster(
   format: image::ImageFormat,
   path: &str,
 ) -> Result<Vec<u8>, PdfGenError> {
-  let img = image::load_from_memory_with_format(bytes, format).map_err(|source| PdfGenError::ResizeImage {
-    path: path.to_string(),
-    source,
+  let img = image::load_from_memory_with_format(bytes, format).map_err(|source| {
+    return PdfGenError::ResizeImage {
+      path: path.to_string(),
+      source,
+    };
   })?;
   let resized = img.resize(target_px.0, target_px.1, image::imageops::FilterType::Lanczos3);
   let mut out: Vec<u8> = Vec::new();
-  resized
-    .write_to(&mut std::io::Cursor::new(&mut out), format)
-    .map_err(|source| PdfGenError::ResizeImage {
+  resized.write_to(&mut std::io::Cursor::new(&mut out), format).map_err(|source| {
+    return PdfGenError::ResizeImage {
       path: path.to_string(),
       source,
-    })?;
+    };
+  })?;
   return Ok(out);
 }
 

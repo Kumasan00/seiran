@@ -75,7 +75,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let config = config::read_config(config_path)?;
   let style = config::read_style(config.style_path.as_deref())?;
-  config::validate_layout(&config, &style).map_err(|source| BuildPdfError::Layout { source })?;
+  config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
   let references = read_references(config.references_path.as_deref())?;
 
   let stage_start = Instant::now();
@@ -98,9 +98,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let stage_start = Instant::now();
   let output_path = config.output.pdf_path();
-  fs::write(&output_path, pdf_bytes).map_err(|source| BuildPdfError::WritePdf {
-    path: output_path.display().to_string(),
-    source,
+  fs::write(&output_path, pdf_bytes).map_err(|source| {
+    return BuildPdfError::WritePdf {
+      path: output_path.display().to_string(),
+      source,
+    };
   })?;
   info!(output_path = %output_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
 
@@ -148,25 +150,28 @@ fn build_pages(
   let mut parsed = parse_all_sources(&config.sources, &citation_keys)?;
   info!(
     source_count = config.sources.len(),
-    node_count = parsed.iter().map(|p| p.nodes.len()).sum::<usize>(),
+    node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
     elapsed_ms = elapsed_ms(stage_start),
     "全ソースのパースが完了しました"
   );
 
   // `\cite` を CSL 整形し、引用された文献の書誌を最後の合成グループとして受け取る（parser の後・lowering の前）。
   let stage_start = Instant::now();
-  let bibliography = citation::process_citations(parsed.iter_mut().map(|p| &mut p.nodes), references, style)
-    .map_err(|source| BuildPdfError::Citation { source })?;
+  let bibliography = citation::process_citations(parsed.iter_mut().map(|p| return &mut p.nodes), references, style)
+    .map_err(|source| return BuildPdfError::Citation { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let stage_start = Instant::now();
   let lowering_ctx = LoweringContext::new(style).with_image_defaults(config.image.max_dpi, config.image.downsample);
   // 各ソースファイルを 1 グループとし、書誌を末尾の合成グループとして連結する。グループの並び順が
   // SourceId のインデックスになり、書誌グループの SourceId は parsed.len()（範囲外）になる。
-  let groups: Vec<&[DocNode]> =
-    parsed.iter().map(|p| p.nodes.as_slice()).chain(std::iter::once(bibliography.as_slice())).collect();
+  let groups: Vec<&[DocNode]> = parsed
+    .iter()
+    .map(|p| return p.nodes.as_slice())
+    .chain(std::iter::once(bibliography.as_slice()))
+    .collect();
   let (body_layout_nodes, headings) = typeset::lower_sources_with_headings(&lowering_ctx, &groups)
-    .map_err(|error| wrap_lowering_error(error, &parsed))?;
+    .map_err(|error| return wrap_lowering_error(error, &parsed))?;
   info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
@@ -325,9 +330,11 @@ fn parse_all_sources(
   let mut parse_errors: Vec<ParseSourceError> = Vec::new();
 
   for source_path in sources {
-    let content = std::fs::read_to_string(source_path).map_err(|source| BuildPdfError::ReadTextFile {
-      path: source_path.display().to_string(),
-      source,
+    let content = std::fs::read_to_string(source_path).map_err(|source| {
+      return BuildPdfError::ReadTextFile {
+        path: source_path.display().to_string(),
+        source,
+      };
     })?;
     let display_path = source_path.display().to_string();
     match frontend::parse_source(&content, &display_path, citation_keys) {

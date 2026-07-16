@@ -453,7 +453,7 @@ impl Measurer<'_> {
     let segments = script::split_text_by_script(style.font_kind, &text);
     return segments
       .into_iter()
-      .map(|segment| self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color))
+      .map(|segment| return self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color))
       .collect();
   }
 
@@ -477,7 +477,7 @@ impl Measurer<'_> {
       {
         out.push(ja_latin_aki(style.font_size));
       }
-      prev_boundary = segment.text.chars().last().map(|last| (segment.category, last));
+      prev_boundary = segment.text.chars().last().map(|last| return (segment.category, last));
 
       let hbox = self.shape_segment(&segment.text, segment.font_type, style.font_size, style.color);
       if style.font_kind == FontKind::Math {
@@ -651,13 +651,14 @@ impl Measurer<'_> {
 
     // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
     let break_bytes: std::collections::HashSet<usize> =
-      breaking::break_opportunities(text, None).into_iter().map(|point| point.byte).collect();
+      breaking::break_opportunities(text, None).into_iter().map(|point| return point.byte).collect();
 
     // グリフ g の先頭文字を返す（クラスタは先頭文字で代表させる）
-    let char_of = |g: usize| -> char { text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
+    let char_of = |g: usize| -> char { return text[glyphs[g].range.clone()].chars().next().unwrap_or(' ') };
     // グリフ g が全角相当か（半角約物を積むフォントは正規化・アキ対象外にする）
-    let is_fullwidth =
-      |g: usize| -> bool { units_to_length(i64::from(glyphs[g].x_advance), run.font_size, metric.upem) >= em * 0.75 };
+    let is_fullwidth = |g: usize| -> bool {
+      return units_to_length(i64::from(glyphs[g].x_advance), run.font_size, metric.upem) >= em * 0.75;
+    };
     // グリフ g の実効約物クラス（全角でない約物は通常文字として扱う）
     let eff_class = |g: usize| -> yakumono::YakumonoClass {
       let class = yakumono::classify(char_of(g));
@@ -671,7 +672,7 @@ impl Measurer<'_> {
       let range = &glyphs[g].range;
       return range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
     };
-    let byte_at = |g: usize| -> usize { glyphs.get(g).map_or(text.len(), |glyph| glyph.range.start) };
+    let byte_at = |g: usize| -> usize { return glyphs.get(g).map_or(text.len(), |glyph| return glyph.range.start) };
 
     let mut normal_start = 0usize;
     for i in 0..glyphs.len() {
@@ -773,17 +774,19 @@ impl Measurer<'_> {
     }
     let glyphs: Vec<Glyph> = run.glyphs[glyph_range]
       .iter()
-      .map(|glyph| Glyph {
-        gid: glyph.gid,
-        range: glyph.range.start - byte_range.start..glyph.range.end - byte_range.start,
-        x_advance: glyph.x_advance,
-        y_advance: glyph.y_advance,
-        x_offset: glyph.x_offset,
-        y_offset: glyph.y_offset,
+      .map(|glyph| {
+        return Glyph {
+          gid: glyph.gid,
+          range: glyph.range.start - byte_range.start..glyph.range.end - byte_range.start,
+          x_advance: glyph.x_advance,
+          y_advance: glyph.y_advance,
+          x_offset: glyph.x_offset,
+          y_offset: glyph.y_offset,
+        };
       })
       .collect();
     let metric = self.metrics.get(run.font_type);
-    let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
+    let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
     // 精度で、push_punct_box の shift_units と同じく font unit 空間での意図した truncation。
     #[allow(clippy::cast_possible_truncation)]
@@ -813,7 +816,7 @@ impl Measurer<'_> {
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
     for (i, (glyph_info, glyph_position)) in glyph_infos.iter().zip(glyph_positions.iter()).enumerate() {
       let start = glyph_info.cluster as usize;
-      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| next_glyph_info.cluster as usize);
+      let end = glyph_infos.get(i + 1).map_or(text.len(), |next_glyph_info| return next_glyph_info.cluster as usize);
       glyphs.push(Glyph {
         gid: glyph_info.glyph_id,
         range: start..end,
@@ -826,7 +829,7 @@ impl Measurer<'_> {
     self.buffer = result.clear();
 
     let metric = self.metrics.get(font_type);
-    let advance_units: i64 = glyphs.iter().map(|glyph| i64::from(glyph.x_advance)).sum();
+    let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     let width = units_to_length(advance_units, font_size, metric.upem);
     // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
     // 精度で、push_punct_box の shift_units と同じく font unit 空間での意図した truncation。
@@ -888,7 +891,7 @@ impl Measurer<'_> {
 ///
 /// 見つからない場合（リガチャ等でクラスタ途中に位置が落ちた場合）は `None`。
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
-  return glyphs.iter().position(|glyph| glyph.range.start == byte);
+  return glyphs.iter().position(|glyph| return glyph.range.start == byte);
 }
 
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
@@ -936,11 +939,13 @@ fn boundary_glue(
   use yakumono::YakumonoClass::Normal;
 
   if left != Normal || right != Normal {
-    return yakumono::gap(left, right).map(|aki| HItem::Glue {
-      natural: em * aki.natural_em,
-      stretch: Length::ZERO,
-      shrink: em * aki.shrink_em,
-      breakable,
+    return yakumono::gap(left, right).map(|aki| {
+      return HItem::Glue {
+        natural: em * aki.natural_em,
+        stretch: Length::ZERO,
+        shrink: em * aki.shrink_em,
+        breakable,
+      };
     });
   }
   if breakable {

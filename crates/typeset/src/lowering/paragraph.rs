@@ -175,8 +175,8 @@ mod tests {
     let texts: Vec<&str> = nodes
       .iter()
       .filter_map(|n| match n {
-        LayoutNode::Text(t, _) => Some(t.as_str()),
-        _ => None,
+        LayoutNode::Text(t, _) => return Some(t.as_str()),
+        _ => return None,
       })
       .collect();
     assert_eq!(texts, vec!["one", "two", "three"]);

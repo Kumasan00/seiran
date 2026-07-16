@@ -156,7 +156,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryI
   let mut right_edge = left_end;
   if spec.show_page_numbers {
     let page_boxes = measurer.shape_text(&entry.page_label, spec.entry_style);
-    let page_width: Length = page_boxes.iter().map(|b| b.width).sum();
+    let page_width: Length = page_boxes.iter().map(|b| return b.width).sum();
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
     let page_x = (spec.text_width - page_width).max(left_end);
     // リーダーをページ番号側に寄せて充填する
@@ -200,7 +200,7 @@ fn fill_leader(
   if !available.is_positive() {
     return;
   }
-  let unit_width: Length = measurer.shape_text(unit, style).iter().map(|b| b.width).sum();
+  let unit_width: Length = measurer.shape_text(unit, style).iter().map(|b| return b.width).sum();
   if !unit_width.is_positive() {
     return;
   }
@@ -211,7 +211,7 @@ fn fill_leader(
     return;
   }
   let leader_boxes = measurer.shape_text(&unit.repeat(count), style);
-  let leader_width: Length = leader_boxes.iter().map(|b| b.width).sum();
+  let leader_width: Length = leader_boxes.iter().map(|b| return b.width).sum();
   acc.place(leader_boxes, to_x - leader_width);
 }
 

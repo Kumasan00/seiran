@@ -221,8 +221,8 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
   let flush_width: Length = refs
     .iter()
     .filter_map(|item| match item {
-      HItem::FlushRight(hbox) => Some(hbox.width),
-      _ => None,
+      HItem::FlushRight(hbox) => return Some(hbox.width),
+      _ => return None,
     })
     .sum();
   // 語中破断は行末ハイフンぶん本文幅を狭める
@@ -291,7 +291,7 @@ mod tests {
 
   /// 行の右端（box 群の最大右端）
   fn right_edge(line: &model::Line) -> Length {
-    return line.boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max);
+    return line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
   }
 
   /// pt 値から `Length` を作る短縮子
@@ -381,11 +381,13 @@ mod tests {
     //           非最終行は伸長能力 1 に対し余り 7 で、上限クランプ後も右端 19（< 25）と疎。
     //   KP: 収縮を使い 1 行目に 3 個（自然幅 28 → 収縮 -0.75 で 25 に収める）→ (3,2)。
     //       非最終行の右端が版面右端 25 に一致し、行の疎密が均一化する。
-    let glue = || HItem::Glue {
-      natural: pt(2.0),
-      stretch: pt(1.0),
-      shrink: pt(2.0),
-      breakable: true,
+    let glue = || {
+      return HItem::Glue {
+        natural: pt(2.0),
+        stretch: pt(1.0),
+        shrink: pt(2.0),
+        breakable: true,
+      };
     };
     let items = vec![
       box_width(8.0),

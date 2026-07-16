@@ -97,27 +97,31 @@ impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
   fn execute(self, view: &CommandView) -> Result<CommandResult, EvalError> {
     match self {
-      Self::Space => control::space(view).map(CommandResult::Block),
+      Self::Space => return control::space(view).map(CommandResult::Block),
 
-      Self::Headline(level) => headline::heading(view, level).map(CommandResult::Block),
+      Self::Headline(level) => return headline::heading(view, level).map(CommandResult::Block),
 
-      Self::StyledText(kind) => inline::styled_text(view, kind).map(CommandResult::Inline),
+      Self::StyledText(kind) => return inline::styled_text(view, kind).map(CommandResult::Inline),
 
-      Self::ColoredText => inline::colored_text(view).map(CommandResult::Inline),
+      Self::ColoredText => return inline::colored_text(view).map(CommandResult::Inline),
 
-      Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
+      Self::Ref => return ref_::ref_command(view).map(CommandResult::Inline),
 
-      Self::Cite => cite::cite_command(view).map(CommandResult::Inline),
+      Self::Cite => return cite::cite_command(view).map(CommandResult::Inline),
 
-      Self::Footnote => footnote::footnote_command(view).map(CommandResult::Inline),
+      Self::Footnote => return footnote::footnote_command(view).map(CommandResult::Inline),
 
-      Self::Url => link::url_command(view).map(CommandResult::Inline),
+      Self::Url => return link::url_command(view).map(CommandResult::Inline),
 
-      Self::Href => link::href_command(view).map(CommandResult::Inline),
+      Self::Href => return link::href_command(view).map(CommandResult::Inline),
 
-      Self::NoIndent => control::noindent(view).map(|()| CommandResult::NoIndent {
-        span: view.span().to_source_span(),
-      }),
+      Self::NoIndent => {
+        return control::noindent(view).map(|()| {
+          return CommandResult::NoIndent {
+            span: view.span().to_source_span(),
+          };
+        });
+      },
     }
   }
 }

@@ -120,8 +120,8 @@ mod tests {
   fn expand_replaces_placeholders_and_keeps_literal() {
     // Arrange / Act
     let out = expand("第{n}章", |name| match name {
-      "n" => "3".to_string(),
-      _ => format!("{{{name}}}"),
+      "n" => return "3".to_string(),
+      _ => return format!("{{{name}}}"),
     });
 
     // Assert

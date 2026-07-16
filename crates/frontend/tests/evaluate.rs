@@ -13,7 +13,7 @@ use frontend::{EvalError, ParseSourceError, parse_source};
 use model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
 
 /// 引用キーの集合を組み立てるテストヘルパ
-fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| (*v).to_string()).collect(); }
+fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| return (*v).to_string()).collect(); }
 
 /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
 ///
@@ -79,10 +79,9 @@ fn evaluate_body_text_preserves_comma_and_equals() {
         .iter()
         .filter_map(|n| {
           if let InlineNode::Text(t) = n {
-            Some(t.as_str())
-          } else {
-            None
+            return Some(t.as_str());
           }
+          return None;
         })
         .collect();
       assert_eq!(joined, "Hello, world = ok");
@@ -103,20 +102,18 @@ fn evaluate_inline_math_preserves_comma_and_equals() {
   };
   let math = inlines.iter().find_map(|n| {
     if let InlineNode::InlineMath(m) = n {
-      Some(m)
-    } else {
-      None
+      return Some(m);
     }
+    return None;
   });
   let math = math.expect("InlineMath ノードが含まれるはず");
   let joined: String = math
     .iter()
     .filter_map(|n| {
       if let MathNode::Text(t) = n {
-        Some(t.as_str())
-      } else {
-        None
+        return Some(t.as_str());
       }
+      return None;
     })
     .collect();
   assert_eq!(joined, "f(x, y) = 0");
@@ -188,10 +185,9 @@ fn evaluate_equation_with_label_is_structured_without_resolving() {
     .iter()
     .find_map(|n| {
       if let DocNode::Paragraph(i) = n {
-        Some(i)
-      } else {
-        None
+        return Some(i);
       }
+      return None;
     })
     .expect("Paragraph が含まれるべき");
   assert!(
@@ -212,8 +208,8 @@ fn evaluate_cite_with_known_key_produces_cite_stub() {
   let cite = inlines
     .iter()
     .find_map(|node| match node {
-      InlineNode::Cite { keys, label, .. } => Some((keys.clone(), label.clone())),
-      _ => None,
+      InlineNode::Cite { keys, label, .. } => return Some((keys.clone(), label.clone())),
+      _ => return None,
     })
     .expect("Cite ノードが含まれるべき");
   assert_eq!(cite.0, vec!["rika".to_string()]);
@@ -885,10 +881,9 @@ fn evaluate_underscore_in_heading_title_is_text() {
     .iter()
     .filter_map(|n| {
       if let InlineNode::Text(t) = n {
-        Some(t.as_str())
-      } else {
-        None
+        return Some(t.as_str());
       }
+      return None;
     })
     .collect();
   assert_eq!(joined, "a_b");

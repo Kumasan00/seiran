@@ -57,32 +57,36 @@ pub(super) fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, Ev
 
 /// `columns="left center right"` の値を [`ColumnAlign`] の列に変換する
 pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnAlign>, EvalError> {
-  let invalid = || EvalError::InvalidOptArgValue {
-    name: "table".to_string(),
-    key: "columns".to_string(),
-    expected: "left / center / right の空白区切り".to_string(),
-    span: view.span().to_source_span(),
+  let invalid = || {
+    return EvalError::InvalidOptArgValue {
+      name: "table".to_string(),
+      key: "columns".to_string(),
+      expected: "left / center / right の空白区切り".to_string(),
+      span: view.span().to_source_span(),
+    };
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();
   if tokens.is_empty() {
     return Err(invalid());
   }
-  return tokens.iter().map(|t| ColumnAlign::from_keyword(t).ok_or_else(invalid)).collect();
+  return tokens.iter().map(|t| return ColumnAlign::from_keyword(t).ok_or_else(invalid)).collect();
 }
 
 /// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する
 pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnWidth>, EvalError> {
-  let invalid = || EvalError::InvalidOptArgValue {
-    name: "table".to_string(),
-    key: "widths".to_string(),
-    expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
-    span: view.span().to_source_span(),
+  let invalid = || {
+    return EvalError::InvalidOptArgValue {
+      name: "table".to_string(),
+      key: "widths".to_string(),
+      expected: "auto / <num>mm / <num>cm / 0〜1 の比率 / * の空白区切り".to_string(),
+      span: view.span().to_source_span(),
+    };
   };
   let tokens: Vec<&str> = spec.split_whitespace().collect();
   if tokens.is_empty() {
     return Err(invalid());
   }
-  return tokens.iter().map(|t| parse_width_token(t).ok_or_else(invalid)).collect();
+  return tokens.iter().map(|t| return parse_width_token(t).ok_or_else(invalid)).collect();
 }
 
 /// `widths=` の 1 トークンを [`ColumnWidth`] に変換する

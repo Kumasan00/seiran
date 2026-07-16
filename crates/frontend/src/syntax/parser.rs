@@ -76,14 +76,14 @@ pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
 impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// 新しいパーサーを生成する
   fn new(source: &'a str, lexer: Lexer<'a>, arena: &'a Bump, env_mode: F) -> Self {
-    Self {
+    return Self {
       source,
       lexer,
       arena,
       peeked_token: None,
       last_span: Span::DUMMY,
       env_mode,
-    }
+    };
   }
 
   /// トークンを1つ消費して返す
@@ -106,7 +106,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// 次のトークンの種類を消費せずに確認する
-  fn peek_kind(&mut self) -> Option<TokenKind> { return self.peek_token().map(|t| t.kind); }
+  fn peek_kind(&mut self) -> Option<TokenKind> { return self.peek_token().map(|t| return t.kind); }
 
   /// トリビア（空白・改行・コメント）をスキップして次の意味のあるトークンまで進む
   ///
@@ -306,7 +306,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let body_mode = (self.env_mode)(env_name.as_str());
 
     let last_span_end = self.last_span.end;
-    let body_start = self.peek_token().map_or(last_span_end, |t| t.span.start);
+    let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
     let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
 
     loop {
@@ -331,7 +331,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     }
 
     let last_span_end = self.last_span.end;
-    let body_end = self.peek_token().map_or(last_span_end, |t| t.span.start);
+    let body_end = self.peek_token().map_or(last_span_end, |t| return t.span.start);
     let body_node = self.alloc_node(SyntaxKind::EnvironmentBody, Span::new(body_start, body_end), body_children);
     env_children.push(GreenElement::Node(body_node));
 
@@ -1286,10 +1286,9 @@ mod tests {
       .iter()
       .filter_map(|e| {
         if let GreenElement::Token(t) = e {
-          Some(t.kind)
-        } else {
-          None
+          return Some(t.kind);
         }
+        return None;
       })
       .collect();
     assert_eq!(kinds, vec![TokenKind::Text, TokenKind::Underscore, TokenKind::Text]);
@@ -1304,10 +1303,9 @@ mod tests {
       .iter()
       .filter_map(|e| {
         if let GreenElement::Token(t) = e {
-          Some(t.kind)
-        } else {
-          None
+          return Some(t.kind);
         }
+        return None;
       })
       .collect();
     assert_eq!(kinds, vec![TokenKind::Text, TokenKind::Caret, TokenKind::Text]);

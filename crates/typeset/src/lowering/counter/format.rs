@@ -6,9 +6,9 @@
 /// 未知のプレースホルダや閉じ括弧の欠落はリテラル扱いで残す。
 pub(super) fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String {
   return super::super::placeholder::expand(template, |name| match name {
-    "number" => number.to_string(),
-    "display_name" => display_name.to_string(),
+    "number" => return number.to_string(),
+    "display_name" => return display_name.to_string(),
     // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
-    _ => format!("{{{name}}}"),
+    _ => return format!("{{{name}}}"),
   });
 }

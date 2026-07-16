@@ -209,9 +209,11 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   let path_str = path.display().to_string();
   debug!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
 
-  let content = fs::read_to_string(path).map_err(|source| ReadStyleError::ReadFile {
-    path: path_str.clone(),
-    source,
+  let content = fs::read_to_string(path).map_err(|source| {
+    return ReadStyleError::ReadFile {
+      path: path_str.clone(),
+      source,
+    };
   })?;
 
   let mut style = parse_style(&content, &path_str)?;
@@ -248,10 +250,10 @@ pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleE
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(
-      || SourceSpan::new(0.into(), 0),
-      |range| SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
+      || return SourceSpan::new(0.into(), 0),
+      |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
     );
-    ReadStyleError::ParseToml { src, span, source }
+    return ReadStyleError::ParseToml { src, span, source };
   })?;
   if let Err(errors) = validate_values(&style) {
     return Err(ReadStyleError::MultipleValidationErrors { errors });
@@ -277,18 +279,22 @@ fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
 
   // Style 本体を検証する。パス文字列はそのまま TOML のキー階層と一致する。
   if let Err(report) = style.validate() {
-    errors.extend(report.iter().map(|(path, error)| StyleValidationError::Field {
-      path: path.to_string(),
-      message: error.to_string(),
+    errors.extend(report.iter().map(|(path, error)| {
+      return StyleValidationError::Field {
+        path: path.to_string(),
+        message: error.to_string(),
+      };
     }));
   }
 
   // HeadingStyles は #[garde(skip)] にしているため別途検証する
   for (level, heading) in style.heading.iter_with_level() {
     if let Err(report) = heading.validate() {
-      errors.extend(report.iter().map(|(path, error)| StyleValidationError::Field {
-        path: format!("heading.{}.{path}", level.command_name()),
-        message: error.to_string(),
+      errors.extend(report.iter().map(|(path, error)| {
+        return StyleValidationError::Field {
+          path: format!("heading.{}.{path}", level.command_name()),
+          message: error.to_string(),
+        };
       }));
     }
   }
@@ -296,9 +302,11 @@ fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
   // Theorems も #[garde(skip)] にしているため別途検証する（ネストは theorems.<class>.style.<field>）
   for (class, theorem) in style.theorems.iter_with_class() {
     if let Err(report) = theorem.validate() {
-      errors.extend(report.iter().map(|(path, error)| StyleValidationError::Field {
-        path: format!("theorems.{}.{path}", class.as_str()),
-        message: error.to_string(),
+      errors.extend(report.iter().map(|(path, error)| {
+        return StyleValidationError::Field {
+          path: format!("theorems.{}.{path}", class.as_str()),
+          message: error.to_string(),
+        };
       }));
     }
   }

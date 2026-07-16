@@ -109,7 +109,7 @@ fn itemize_fixture_produces_depth_varying_markers() {
   // Assert — parse → lower を通した全パイプラインで、深さ別マーカーが実際に現れる。
   // unordered は • → – → *、ordered は 1. → (a) → i. がそれぞれ生成される。
   for expected in ["• ", "– ", "* ", "1. ", "(a) ", "i. "] {
-    assert!(markers.iter().any(|m| m == expected), "マーカー {expected:?} が見つからない: {markers:?}");
+    assert!(markers.iter().any(|m| return m == expected), "マーカー {expected:?} が見つからない: {markers:?}");
   }
 }
 

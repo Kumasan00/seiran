@@ -43,34 +43,34 @@ impl<'a> GreenNode<'a> {
   /// 子ノード（`GreenNode` のみ）をイテレートする
   pub fn child_nodes(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
     return self.children.iter().filter_map(|e| match e {
-      GreenElement::Node(n) => Some(*n),
-      GreenElement::Token(_) => None,
+      GreenElement::Node(n) => return Some(*n),
+      GreenElement::Token(_) => return None,
     });
   }
 
   /// 子トークン（`Token` のみ）をイテレートする
   pub fn child_tokens(&self) -> impl Iterator<Item = &Token> + '_ {
     return self.children.iter().filter_map(|e| match e {
-      GreenElement::Token(t) => Some(t),
-      GreenElement::Node(_) => None,
+      GreenElement::Token(t) => return Some(t),
+      GreenElement::Node(_) => return None,
     });
   }
 
   /// 指定された種別の最初の子ノードを返す
   #[must_use]
   pub fn first_child_of_kind(&self, kind: SyntaxKind) -> Option<&'a GreenNode<'a>> {
-    return self.child_nodes().find(|n| n.kind == kind);
+    return self.child_nodes().find(|n| return n.kind == kind);
   }
 
   /// 指定された種別のすべての子ノードをイテレートする
   pub fn children_of_kind(&self, kind: SyntaxKind) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
-    return self.child_nodes().filter(move |n| n.kind == kind);
+    return self.child_nodes().filter(move |n| return n.kind == kind);
   }
 
   /// 指定された種別の最初の子トークンを返す
   #[must_use]
   pub fn first_token_of_kind(&self, kind: TokenKind) -> Option<&Token> {
-    return self.child_tokens().find(|t| t.kind == kind);
+    return self.child_tokens().find(|t| return t.kind == kind);
   }
 }
 

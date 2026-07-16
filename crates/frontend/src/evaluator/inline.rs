@@ -184,7 +184,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
 /// すべてに反映される。
 #[must_use]
 pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
-  return SYMBOL_MAP.get(name).map(|symbol| symbol.ch);
+  return SYMBOL_MAP.get(name).map(|symbol| return symbol.ch);
 }
 
 #[cfg(test)]

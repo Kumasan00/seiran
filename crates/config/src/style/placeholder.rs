@@ -118,7 +118,7 @@ fn check_placeholders(template: &str, is_allowed: impl Fn(&str) -> bool) -> gard
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn heading_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| HEADING.contains(&name));
+  return check_placeholders(value, |name| return HEADING.contains(&name));
 }
 
 /// キャプション書式（`figure.caption.format` / `table.caption.format`）用のバリデーター。
@@ -128,7 +128,7 @@ pub(crate) fn heading_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn caption_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| CAPTION.contains(&name));
+  return check_placeholders(value, |name| return CAPTION.contains(&name));
 }
 
 /// 数式タグ書式（`math.block.tag_format`、式の横に出る番号）用のバリデーター。
@@ -138,7 +138,7 @@ pub(crate) fn caption_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn tag_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| TAG.contains(&name));
+  return check_placeholders(value, |name| return TAG.contains(&name));
 }
 
 /// 順序付きリストのマーカー書式（`list.ordered_marker_format`）用のバリデーター。
@@ -148,7 +148,7 @@ pub(crate) fn tag_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn ordered_list_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| ORDERED_LIST.contains(&name));
+  return check_placeholders(value, |name| return ORDERED_LIST.contains(&name));
 }
 
 /// カウンタ番号書式（`counters.<name>.number_format` / `theorems.<class>.number_format`）用のバリデーター。
@@ -170,7 +170,7 @@ pub(crate) fn counter_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn ref_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| REF_FORMAT.contains(&name));
+  return check_placeholders(value, |name| return REF_FORMAT.contains(&name));
 }
 
 /// 定理の見出し書式（`theorems.<class>.style.heading_*` の 4 フィールド）用のバリデーター。
@@ -182,7 +182,7 @@ pub(crate) fn ref_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn theorem_heading_format(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| THEOREM_HEADING.contains(&name));
+  return check_placeholders(value, |name| return THEOREM_HEADING.contains(&name));
 }
 
 /// 走り文スロット（`header` / `footer` の左中右）用のバリデーター。
@@ -194,7 +194,7 @@ pub(crate) fn theorem_heading_format(value: &str, _: &()) -> garde::Result {
 /// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn running_slot(value: &str, _: &()) -> garde::Result {
-  return check_placeholders(value, |name| RUNNING.contains(&name));
+  return check_placeholders(value, |name| return RUNNING.contains(&name));
 }
 
 #[cfg(test)]
@@ -215,9 +215,9 @@ mod tests {
     // Arrange / Act / Assert — リテラルのみ・空文字列・正当なプレースホルダは通る
     assert!(check_placeholders("", allow_all).is_ok());
     assert!(check_placeholders("第 章", allow_all).is_ok());
-    assert!(check_placeholders("{number} {title}", |n| ["number", "title"].contains(&n)).is_ok());
-    assert!(check_placeholders("({number})", |n| n == "number").is_ok());
-    assert!(check_placeholders("第{n}章", |n| n == "n").is_ok());
+    assert!(check_placeholders("{number} {title}", |n| return ["number", "title"].contains(&n)).is_ok());
+    assert!(check_placeholders("({number})", |n| return n == "number").is_ok());
+    assert!(check_placeholders("第{n}章", |n| return n == "n").is_ok());
   }
 
   #[test]

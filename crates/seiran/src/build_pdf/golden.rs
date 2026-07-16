@@ -192,10 +192,9 @@ fn page_ends_with_heading(page: &Page) -> bool {
     return false;
   };
   let top = *baseline_y - line.height;
-  return page
-    .anchors
-    .iter()
-    .any(|anchor| matches!(anchor.mark, AnchorMark::Heading { .. }) && (anchor.y - top).abs() < Length::pt(0.5));
+  return page.anchors.iter().any(|anchor| {
+    return matches!(anchor.mark, AnchorMark::Heading { .. }) && (anchor.y - top).abs() < Length::pt(0.5);
+  });
 }
 
 #[test]

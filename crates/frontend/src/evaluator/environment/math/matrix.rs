@@ -35,11 +35,13 @@ use crate::{
 pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(&opt_args, "delimiter") {
-    Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| EvalError::InvalidOptArgValue {
-      name: "matrix".to_string(),
-      key: "delimiter".to_string(),
-      expected: "none / paren / bracket / brace / bar / dbar".to_string(),
-      span: view.span().to_source_span(),
+    Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| {
+      return EvalError::InvalidOptArgValue {
+        name: "matrix".to_string(),
+        key: "delimiter".to_string(),
+        expected: "none / paren / bracket / brace / bar / dbar".to_string(),
+        span: view.span().to_source_span(),
+      };
     })?,
     None => MathDelimiter::None,
   };
@@ -125,8 +127,8 @@ mod tests {
     let (delimiter, rows) = matrix_of(&result);
     assert_eq!(delimiter, MathDelimiter::None, "既定は区切りなし");
     assert_eq!(rows.len(), 2, "2 行: {rows:?}");
-    assert!(rows.iter().all(|r| r.cells.len() == 2), "各行 2 列: {rows:?}");
-    assert!(rows.iter().all(|r| !r.numbered), "非採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 2), "各行 2 列: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "非採番のはず: {rows:?}");
   }
 
   #[test]

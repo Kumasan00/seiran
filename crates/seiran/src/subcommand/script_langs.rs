@@ -246,13 +246,13 @@ pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<
 
   let font_data = fs::read(file_path).map_err(ScriptLangsError::from)?;
   let font_ref = FontRef::from_index(&font_data, font_index)
-    .map_err(|source| ScriptLangsError::FontParseError { font_index, source })?;
+    .map_err(|source| return ScriptLangsError::FontParseError { font_index, source })?;
 
   // GSUB（グリフ置換）・GPOS（グリフ位置調整）の各テーブルを処理
-  let gsub = font_ref.gsub().map_err(|source| ScriptLangsError::GsubError { source })?;
+  let gsub = font_ref.gsub().map_err(|source| return ScriptLangsError::GsubError { source })?;
   let gsub_features = process_layout_table("GSUB", gsub.feature_list(), gsub.script_list(), &mut referenced_features)?;
 
-  let gpos = font_ref.gpos().map_err(|source| ScriptLangsError::GposError { source })?;
+  let gpos = font_ref.gpos().map_err(|source| return ScriptLangsError::GposError { source })?;
   let gpos_features = process_layout_table("GPOS", gpos.feature_list(), gpos.script_list(), &mut referenced_features)?;
 
   // GSUB/GPOS の全 Feature を統合し、未参照 Feature の統計を表示
@@ -304,8 +304,8 @@ fn process_layout_table<'a>(
 ) -> Result<FeatureList<'a>, ScriptLangsError> {
   println!("{table_name} Table:");
 
-  let feature_list = feature_list.map_err(|source| ScriptLangsError::FeatureListError { table_name, source })?;
-  let script_list = script_list.map_err(|source| ScriptLangsError::ScriptListError { table_name, source })?;
+  let feature_list = feature_list.map_err(|source| return ScriptLangsError::FeatureListError { table_name, source })?;
+  let script_list = script_list.map_err(|source| return ScriptLangsError::ScriptListError { table_name, source })?;
 
   print_scripts(&script_list, &feature_list, referenced_features)?;
 
@@ -352,10 +352,12 @@ fn print_scripts(
     if let Ok(subtable) = script_record.script(scripts.offset_data()) {
       // Default Language System: すべての言語に共通して適用される Feature を定義する
       if let Some(default_lang_sys) = subtable.default_lang_sys() {
-        let default_lang = default_lang_sys.map_err(|source| ScriptLangsError::LangSysError {
-          index: 0,
-          script_tag: script_tag.clone(),
-          source,
+        let default_lang = default_lang_sys.map_err(|source| {
+          return ScriptLangsError::LangSysError {
+            index: 0,
+            script_tag: script_tag.clone(),
+            source,
+          };
         })?;
         let feature_tags = get_language_features(&default_lang, features, referenced_features)?;
         println!("    Default Language System: {feature_tags:?}");
@@ -472,18 +474,22 @@ fn get_language_features(
   let mut feature_tags = Vec::new();
 
   for feature_index in lang_sys.feature_indices() {
-    let feature = features.get(feature_index.get()).map_err(|source| ScriptLangsError::FeatureError {
-      index: feature_index.get(),
-      source,
+    let feature = features.get(feature_index.get()).map_err(|source| {
+      return ScriptLangsError::FeatureError {
+        index: feature_index.get(),
+        source,
+      };
     })?;
 
     let mut feature_tag = feature.tag.to_string();
     referenced_features.insert(feature_tag.clone());
 
     if let Some(params) = feature.feature_params() {
-      let feature_params = params.map_err(|source| ScriptLangsError::FeatureParamsError {
-        feature_tag: feature_tag.clone(),
-        source,
+      let feature_params = params.map_err(|source| {
+        return ScriptLangsError::FeatureParamsError {
+          feature_tag: feature_tag.clone(),
+          source,
+        };
       })?;
       match feature_params {
         // StylisticSet・Size はパラメータ情報を表示しない

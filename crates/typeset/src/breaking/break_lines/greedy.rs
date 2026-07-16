@@ -99,7 +99,7 @@ impl LineBreaker for GreedyBreaker {
             ) {
               buffer.remove(0);
             }
-            width_so_far = buffer.iter().map(|i| i.natural_width()).sum();
+            width_so_far = buffer.iter().map(|i| return i.natural_width()).sum();
             last_break = None;
           }
           buffer.push(item);
@@ -326,7 +326,7 @@ mod tests {
     let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), TextAlignment::RaggedRight);
 
     for line in &lines {
-      let width = line.boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
+      let width = line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
       assert!(width <= 30.0 + f32::EPSILON, "行幅 {width} が段幅 30 を超えた: {line:?}");
     }
   }
@@ -618,7 +618,7 @@ mod tests {
     // ハイフンは box2 の直後（x=20）に幅 3 で置かれ、右端 23 は本文幅 25 を超えない
     assert!(close(lines[0].boxes[2].x, 20.0), "{lines:?}");
     assert!(close(lines[0].boxes[2].width, 3.0), "{lines:?}");
-    let right_edge = lines[0].boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
+    let right_edge = lines[0].boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max).to_pt();
     assert!(right_edge <= 25.0 + f32::EPSILON, "ハイフン込みで右端超過なし: {right_edge}");
     assert_eq!(lines[1].boxes.len(), 1);
   }
@@ -675,7 +675,7 @@ mod tests {
     // Assert — glue が 6 に伸び box2 は x=16、行末ハイフン右端が本文幅 29 に一致
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].x, 16.0), "glue 伸長後の box2: {lines:?}");
-    let right_edge = lines[0].boxes.iter().map(|b| b.x + b.width).fold(Length::ZERO, Length::max);
+    let right_edge = lines[0].boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
     assert!(close(right_edge, 29.0), "ハイフン込みで右端に揃う: {}", right_edge.to_pt());
   }
 

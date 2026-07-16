@@ -87,8 +87,8 @@ mod tests {
           right_indent,
           children,
           ..
-        } => Some((*indent, *right_indent, children.as_slice())),
-        _ => None,
+        } => return Some((*indent, *right_indent, children.as_slice())),
+        _ => return None,
       })
       .expect("本体 VBox があるはず");
   }
@@ -157,8 +157,8 @@ mod tests {
     // Assert
     let (_, _, children) = body_vbox(&nodes);
     let body_kind = children.iter().find_map(|n| match n {
-      LayoutNode::Text(t, s) if t == "body" => Some(s.font_kind),
-      _ => None,
+      LayoutNode::Text(t, s) if t == "body" => return Some(s.font_kind),
+      _ => return None,
     });
     assert_eq!(body_kind, Some(style.quote.font_kind));
   }

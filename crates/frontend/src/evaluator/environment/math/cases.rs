@@ -51,7 +51,7 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   };
   let rows = into_unnumbered_rows(grid);
   // cases は「式 & 条件」の 2 列固定。3 列以上はエラーにする
-  if let Some(row) = rows.iter().find(|row| row.cells.len() > 2) {
+  if let Some(row) = rows.iter().find(|row| return row.cells.len() > 2) {
     return Err(EvalError::CasesColumnOverflow {
       found: row.cells.len(),
       span: view.span().to_source_span(),
@@ -113,8 +113,8 @@ mod tests {
     assert_eq!(result.len(), 1);
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
-    assert!(rows.iter().all(|r| r.cells.len() == 2), "各行 2 列: {rows:?}");
-    assert!(rows.iter().all(|r| !r.numbered), "非採番のはず: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 2), "各行 2 列: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "非採番のはず: {rows:?}");
   }
 
   #[test]

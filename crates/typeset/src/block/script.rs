@@ -195,8 +195,8 @@ mod tests {
     // 和文部分は FontType::JapaneseSerif として別セグメントに分割される
     let segments = split_text_by_script(FontKind::Math, "x速度+1");
 
-    let types: Vec<FontType> = segments.iter().map(|s| s.font_type).collect();
-    let texts: Vec<&str> = segments.iter().map(|s| s.text.as_str()).collect();
+    let types: Vec<FontType> = segments.iter().map(|s| return s.font_type).collect();
+    let texts: Vec<&str> = segments.iter().map(|s| return s.text.as_str()).collect();
     assert_eq!(texts, vec!["x", "速度", "+1"], "スクリプトごとに分割されるはず: {segments:?}");
     assert_eq!(types, vec![FontType::Math, FontType::JapaneseSerif, FontType::Math]);
   }

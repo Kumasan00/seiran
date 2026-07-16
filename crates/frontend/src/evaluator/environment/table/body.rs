@@ -169,7 +169,9 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
 /// それ以外はインライン内容のセルとして評価する。
 fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
-  let rule_above = opt_args.iter().any(|(key, value)| key == "rule_above" && matches!(value, OptValue::Bool(true)));
+  let rule_above = opt_args
+    .iter()
+    .any(|(key, value)| return key == "rule_above" && matches!(value, OptValue::Bool(true)));
 
   let Some(arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -238,7 +240,7 @@ pub(super) fn resolve_column_count(
     },
     (Some(c), None) => c.len(),
     (None, Some(w)) => w.len(),
-    (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| row_span_sum(row)).max().unwrap_or(0),
+    (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| return row_span_sum(row)).max().unwrap_or(0),
   };
 
   // 各行のセル数（span 合計）が列数と一致するか検証する
@@ -257,4 +259,4 @@ pub(super) fn resolve_column_count(
 }
 
 /// 行のセル数（`span` 合計）を返す
-fn row_span_sum(row: &TableRow) -> usize { return row.cells.iter().map(|cell| cell.span as usize).sum(); }
+fn row_span_sum(row: &TableRow) -> usize { return row.cells.iter().map(|cell| return cell.span as usize).sum(); }

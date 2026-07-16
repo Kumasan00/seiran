@@ -1,3 +1,5 @@
+//! カウンタ番号の数字表記スタイル（アラビア数字・ローマ数字・アルファベット・漢数字）。
+
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 

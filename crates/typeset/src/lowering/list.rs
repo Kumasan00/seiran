@@ -159,7 +159,7 @@ mod tests {
 
     // Assert — 1,2,3 と連番で展開され、末尾スペースが付く
     assert_eq!(nodes.len(), 3);
-    let markers: Vec<&str> = nodes.iter().map(|n| marker_of(n).0).collect();
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
   }
 
@@ -228,8 +228,8 @@ mod tests {
     let nested_indent = children
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { indent, .. } => Some(indent.to_pt()),
-        _ => None,
+        LayoutNode::VBox { indent, .. } => return Some(indent.to_pt()),
+        _ => return None,
       })
       .expect("ネストした item VBox があるはず");
     assert!((nested_indent - indent).abs() < f32::EPSILON, "ネスト item にも indent が乗る");

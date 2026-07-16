@@ -81,4 +81,4 @@ pub(super) enum Command {
 ///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
 /// }
 /// ```
-pub(super) fn parse_arg() -> Cli { Cli::parse() }
+pub(super) fn parse_arg() -> Cli { return Cli::parse() }

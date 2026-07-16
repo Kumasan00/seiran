@@ -130,7 +130,7 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
       col_widths,
       rows,
     } => {
-      let widths: Vec<String> = col_widths.iter().map(|w| f2(*w)).collect();
+      let widths: Vec<String> = col_widths.iter().map(|w| return f2(*w)).collect();
       let _ = writeln!(out, "  table x={} cols={} col_widths=[{}]", f2(*x), columns.len(), widths.join(", "));
       for row in rows {
         dump_table_row(out, row);

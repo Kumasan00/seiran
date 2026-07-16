@@ -89,7 +89,7 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
 ///
 /// `crate::syntax::parse` に渡すコールバック用。未登録の環境は [`ParseMode::Text`] が既定。
 pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
-  return ENVIRONMENTS.get(name).map_or(ParseMode::Text, |def| def.parse_mode);
+  return ENVIRONMENTS.get(name).map_or(ParseMode::Text, |def| return def.parse_mode);
 }
 
 /// 環境を評価し、対応する `Vec<DocNode>` を生成する
@@ -102,7 +102,7 @@ pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
 ///
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
 pub(crate) fn evaluate_environment(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
-  return match ENVIRONMENTS.get(view.name()).and_then(|def| def.handler) {
+  return match ENVIRONMENTS.get(view.name()).and_then(|def| return def.handler) {
     Some(handler) => handler(view),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),

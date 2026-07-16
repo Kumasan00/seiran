@@ -116,9 +116,9 @@ impl HBox {
   /// 上付き・下付きを含む行の行高はこの寸法から自然に決まる。
   #[must_use]
   pub fn atom(children: Vec<PlacedHItem>) -> Self {
-    let width = children.iter().map(|c| c.dx + c.item.width).fold(Length::ZERO, Length::max);
-    let height = children.iter().map(|c| c.dy + c.item.height).fold(Length::ZERO, Length::max);
-    let depth = children.iter().map(|c| c.item.depth - c.dy).fold(Length::ZERO, Length::max);
+    let width = children.iter().map(|c| return c.dx + c.item.width).fold(Length::ZERO, Length::max);
+    let height = children.iter().map(|c| return c.dy + c.item.height).fold(Length::ZERO, Length::max);
+    let depth = children.iter().map(|c| return c.item.depth - c.dy).fold(Length::ZERO, Length::max);
     return HBox {
       content: HBoxContent::Atom(children),
       width,

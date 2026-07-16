@@ -120,10 +120,12 @@ mod tests {
       footnotes: Vec::new(),
       anchors: marks
         .into_iter()
-        .map(|mark| PlacedAnchor {
-          mark,
-          x: model::Length::ZERO,
-          y: model::Length::ZERO,
+        .map(|mark| {
+          return PlacedAnchor {
+            mark,
+            x: model::Length::ZERO,
+            y: model::Length::ZERO,
+          };
         })
         .collect(),
       links: Vec::new(),

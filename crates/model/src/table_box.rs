@@ -51,8 +51,8 @@ pub fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
     .iter()
     .filter_map(|item| match item {
-      HItem::Box(hbox) | HItem::FlushRight(hbox) => max_font_size_in_content(&hbox.content),
-      _ => None,
+      HItem::Box(hbox) | HItem::FlushRight(hbox) => return max_font_size_in_content(&hbox.content),
+      _ => return None,
     })
     .reduce(Length::max);
 }
@@ -64,7 +64,7 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
     HBoxContent::Rule { .. } => None,
     HBoxContent::Atom(children) => children
       .iter()
-      .filter_map(|child| max_font_size_in_content(&child.item.content))
+      .filter_map(|child| return max_font_size_in_content(&child.item.content))
       .reduce(Length::max),
   };
 }
@@ -75,7 +75,7 @@ pub fn table_row_height(row: &TableRowBox, default_font_size: Length, line_heigh
   let max_font = row
     .cells
     .iter()
-    .filter_map(|cell| max_font_size_in_items(&cell.items))
+    .filter_map(|cell| return max_font_size_in_items(&cell.items))
     .reduce(Length::max)
     .unwrap_or(default_font_size);
   return max_font * line_height_factor;

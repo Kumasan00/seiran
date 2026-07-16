@@ -155,7 +155,7 @@ pub(super) fn build_line(
 
   // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
   // 行末ハイフンぶんを本文幅から差し引いた余り幅で配分する（ハイフン込みで右端に揃える）
-  let hyphen_width = trailing_hyphen.map_or(Length::ZERO, |hyphen| hyphen.width);
+  let hyphen_width = trailing_hyphen.map_or(Length::ZERO, |hyphen| return hyphen.width);
   let adjust_ratio: f64 = if alignment == TextAlignment::Justify && !is_last {
     glue_adjust_ratio(items, available - hyphen_width)
   } else {

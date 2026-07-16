@@ -123,8 +123,8 @@ fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
 /// セル内容に強制改行（`\\`）が含まれるかを再帰的に判定する
 pub(super) fn contains_line_break(nodes: &[InlineNode]) -> bool {
   return nodes.iter().any(|node| match node {
-    InlineNode::LineBreak => true,
-    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => contains_line_break(children),
-    _ => false,
+    InlineNode::LineBreak => return true,
+    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => return contains_line_break(children),
+    _ => return false,
   });
 }

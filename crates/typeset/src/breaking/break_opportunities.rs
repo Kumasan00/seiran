@@ -44,7 +44,7 @@ pub fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<Br
   let segmenter = LineSegmenter::new_auto(LineBreakOptions::default());
   let mut breaks: Vec<BreakPoint> = segmenter
     .segment_str(text)
-    .filter(|&byte| byte > 0 && byte < text.len())
+    .filter(|&byte| return byte > 0 && byte < text.len())
     .map(|byte| {
       let kind = if text[..byte].ends_with(' ') {
         BreakKind::Glue
@@ -56,7 +56,7 @@ pub fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<Br
     .collect();
 
   if let Some(lang) = hyphenation_lang {
-    let occupied: Vec<usize> = breaks.iter().map(|break_point| break_point.byte).collect();
+    let occupied: Vec<usize> = breaks.iter().map(|break_point| return break_point.byte).collect();
     for byte in hyphenation::hyphenation_points(text, lang) {
       if !occupied.contains(&byte) {
         breaks.push(BreakPoint {
@@ -65,7 +65,7 @@ pub fn break_opportunities(text: &str, hyphenation_lang: Option<Lang>) -> Vec<Br
         });
       }
     }
-    breaks.sort_by_key(|break_point| break_point.byte);
+    breaks.sort_by_key(|break_point| return break_point.byte);
   }
 
   return breaks;

@@ -63,7 +63,7 @@ impl<'a> CommandView<'a> {
   /// コマンド名を返す（先頭の `\` を除いた名前）
   #[must_use]
   pub fn name(&self) -> &'a str {
-    return self.node.first_token_of_kind(TokenKind::Command).map_or("", |t| t.command_name(self.source));
+    return self.node.first_token_of_kind(TokenKind::Command).map_or("", |t| return t.command_name(self.source));
   }
 
   /// ソース上のバイト範囲を返す
@@ -158,7 +158,7 @@ impl<'a> EnvironmentView<'a> {
     let Some(name_arg) = begin.first_child_of_kind(SyntaxKind::MandatoryArg) else {
       return "";
     };
-    return name_arg.first_token_of_kind(TokenKind::Text).map_or("", |t| t.text(self.source));
+    return name_arg.first_token_of_kind(TokenKind::Text).map_or("", |t| return t.text(self.source));
   }
 
   /// ソース上のバイト範囲を返す
@@ -444,7 +444,7 @@ mod tests {
     // env optarg からの key=value 抽出（複数 key、空白トリム込み）
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::Environment);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -463,7 +463,7 @@ mod tests {
     // command optarg からも同じ関数で抽出できる
     let arena = bumpalo::Bump::new();
     let source = r"\image[width=10cm]{img.png}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -476,7 +476,7 @@ mod tests {
     // `=` を含まないエントリは boolean フラグとして "true" 値を生成する
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -495,7 +495,7 @@ mod tests {
     // 空エントリ（連続した `,` や前後空白のみ）は無視される
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[ , draft , ,key=val]{x}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);
@@ -514,7 +514,7 @@ mod tests {
     // Arrange — `[a=1, b=2]` の OptArg を実際にパースして取得
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[a=1, b=2]{x}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     // Act
@@ -529,7 +529,7 @@ mod tests {
     // `[]` は空 Vec を返す
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
-    let cst = crate::syntax::parser::parse(source, &arena, |_| crate::syntax::parser::ParseMode::Text).unwrap();
+    let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
 
     let pairs = parse_key_value_options(source, opt_arg);

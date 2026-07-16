@@ -408,23 +408,23 @@ mod tests {
   fn representative_symbols_have_expected_class() {
     // Arrange & Act & Assert — 代表記号のクラスが各カテゴリで正しいこと
     use super::MathClass;
-    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| s.class), Some(MathClass::Ord));
-    assert_eq!(SYMBOL_MAP.get("leq").map(|s| s.class), Some(MathClass::Rel));
-    assert_eq!(SYMBOL_MAP.get("times").map(|s| s.class), Some(MathClass::Bin));
-    assert_eq!(SYMBOL_MAP.get("sum").map(|s| s.class), Some(MathClass::Op));
-    assert_eq!(SYMBOL_MAP.get("rightarrow").map(|s| s.class), Some(MathClass::Rel));
-    assert_eq!(SYMBOL_MAP.get("langle").map(|s| s.class), Some(MathClass::Open));
-    assert_eq!(SYMBOL_MAP.get("rangle").map(|s| s.class), Some(MathClass::Close));
+    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.class), Some(MathClass::Ord));
+    assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.class), Some(MathClass::Rel));
+    assert_eq!(SYMBOL_MAP.get("times").map(|s| return s.class), Some(MathClass::Bin));
+    assert_eq!(SYMBOL_MAP.get("sum").map(|s| return s.class), Some(MathClass::Op));
+    assert_eq!(SYMBOL_MAP.get("rightarrow").map(|s| return s.class), Some(MathClass::Rel));
+    assert_eq!(SYMBOL_MAP.get("langle").map(|s| return s.class), Some(MathClass::Open));
+    assert_eq!(SYMBOL_MAP.get("rangle").map(|s| return s.class), Some(MathClass::Close));
   }
 
   #[test]
   fn representative_symbols_map_to_expected_char() {
     // Arrange & Act & Assert — 移設した既存記号・新規 amssymb 記号が正しい文字に解決される
-    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| s.ch), Some('\u{03B1}'));
-    assert_eq!(SYMBOL_MAP.get("leq").map(|s| s.ch), Some('\u{2264}'));
-    assert_eq!(SYMBOL_MAP.get("geq").map(|s| s.ch), Some('\u{2265}'));
-    assert_eq!(SYMBOL_MAP.get("subseteq").map(|s| s.ch), Some('\u{2286}'));
-    assert_eq!(SYMBOL_MAP.get("Rightarrow").map(|s| s.ch), Some('\u{21D2}'));
+    assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.ch), Some('\u{03B1}'));
+    assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.ch), Some('\u{2264}'));
+    assert_eq!(SYMBOL_MAP.get("geq").map(|s| return s.ch), Some('\u{2265}'));
+    assert_eq!(SYMBOL_MAP.get("subseteq").map(|s| return s.ch), Some('\u{2286}'));
+    assert_eq!(SYMBOL_MAP.get("Rightarrow").map(|s| return s.ch), Some('\u{21D2}'));
   }
 
   #[test]

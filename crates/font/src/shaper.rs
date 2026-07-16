@@ -136,7 +136,7 @@ pub trait ShaperDatasExt {
 impl ShaperDatasExt for ShaperDatas {
   fn new(font_refs: &FontRefs) -> Self {
     let shaper_datas: Vec<ShaperData> =
-      FontType::ALL.iter().map(|&font_type| ShaperData::new(font_refs.get(font_type))).collect();
+      FontType::ALL.iter().map(|&font_type| return ShaperData::new(font_refs.get(font_type))).collect();
     return ShaperDatas::from_all(shaper_datas);
   }
 }
@@ -168,7 +168,7 @@ impl ShaperInstancesExt for ShaperInstances {
       .map(|&font_type| {
         let config = configs.get(font_type);
         let font_ref = font_refs.get(font_type);
-        build_shaper_instance(config, font_ref)
+        return build_shaper_instance(config, font_ref);
       })
       .collect();
     return ShaperInstances::from_all(shaper_instances);
@@ -193,18 +193,18 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
   config.variation_axes.as_ref()?;
 
   let variations = config.variation_axes.as_ref().map(|axes| {
-    axes
+    return axes
       .iter()
       .map(|axis| {
         // harfrust `Variation` の軸値は f32 のみ受け付ける（API 境界での精度低下は許容）
         #[allow(clippy::cast_possible_truncation)]
         let value = axis.value as f32;
-        Variation::from((Tag::new(&axis.name), value))
+        return Variation::from((Tag::new(&axis.name), value));
       })
-      .collect::<Vec<Variation>>()
+      .collect::<Vec<Variation>>();
   });
 
-  let instance = variations.as_ref().map(|variations| ShaperInstance::from_variations(font_ref, variations));
+  let instance = variations.as_ref().map(|variations| return ShaperInstance::from_variations(font_ref, variations));
 
   return instance;
 }
@@ -255,7 +255,7 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
         let font_ref = font_refs.get(font_type);
         let shaper_data = shaper_datas.get(font_type);
         let instance = instances.get(font_type).as_ref();
-        HarfRustShaper::new(config, font_ref, shaper_data, instance)
+        return HarfRustShaper::new(config, font_ref, shaper_data, instance);
       })
       .collect::<Result<Vec<HarfRustShaper>, ShaperError>>()?;
     return Ok(HarfRustShapers::from_all(harfrust_shapers));
@@ -324,16 +324,18 @@ impl<'a> HarfRustShaper<'a> {
       None => None,
     };
     let language = match &config.language {
-      Some(tag) => Some(Language::from_str(tag).map_err(|e| ShaperError::LanguageParse {
-        tag: tag.clone(),
-        error_message: e.to_string(),
+      Some(tag) => Some(Language::from_str(tag).map_err(|e| {
+        return ShaperError::LanguageParse {
+          tag: tag.clone(),
+          error_message: e.to_string(),
+        };
       })?),
       None => None,
     };
     let features = match config.features {
       Some(ref feature_configs) => feature_configs
         .iter()
-        .map(|feature| Feature::new(Tag::from_be_bytes(feature.tag), feature.value, 0..usize::MAX))
+        .map(|feature| return Feature::new(Tag::from_be_bytes(feature.tag), feature.value, 0..usize::MAX))
         .collect(),
       None => vec![],
     };
