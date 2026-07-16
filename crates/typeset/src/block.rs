@@ -367,9 +367,10 @@ impl Measurer<'_> {
         }
         out.push(HItem::LinkEnd);
       },
-      // 脚注本体を独立に計測し、幅 0 の運搬マーカーとして積む（本文中には何も残さない）。
-      // 実際のページ下部配置は `crate::breaking`（`Line::footnotes` 経由）が行う。本文中の
-      // 上付きマーカー表示は #36（`style.toml` の `FootnoteStyle` 配線後）の責務。
+      // 脚注本体を独立に計測し、幅 0 の運搬マーカーとして積む（本文中の上付きマーカーは
+      // `lower_inline` が本 variant の手前に別ノードとして発行済みで、通常の Box として
+      // 既にこの直前で積まれている）。実際のページ下部配置・区切り罫線の描画は
+      // `crate::breaking`（`Line::footnotes` 経由）が行う。
       LayoutNode::Footnote { number, body } => {
         let mut items = Vec::new();
         for child in body {

@@ -64,9 +64,17 @@ pub(crate) fn render_pages(
     let mut page = document.start_page_with(page_settings.clone());
     let mut surface = page.surface();
     draw_page_background(&mut surface, config, style)?;
-    // 本文・ヘッダー・フッターはすべて同じ PlacedBlock なので同一ロジックで描画する
-    // （配置座標が重ならないよう、ヘッダー・フッターは余白領域に置かれている）
-    for block in page_blocks.blocks.iter().chain(&page_blocks.header).chain(&page_blocks.footer) {
+    // 本文・ヘッダー・フッター・脚注はすべて同じ PlacedBlock なので同一ロジックで描画する
+    // （配置座標が重ならないよう、ヘッダー・フッターは余白領域、脚注はページ下部の脚注エリアに
+    // 置かれている。脚注の区切り罫線も `PlacedBlock::Rule` として `PlacedFootnote.blocks` の
+    // 先頭に混ざっているため、追加の分岐は不要）
+    for block in page_blocks
+      .blocks
+      .iter()
+      .chain(&page_blocks.header)
+      .chain(&page_blocks.footer)
+      .chain(page_blocks.footnotes.iter().flat_map(|f| &f.blocks))
+    {
       draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
     }
     surface.finish();

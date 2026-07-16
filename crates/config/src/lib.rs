@@ -19,9 +19,9 @@ pub use config::{
 };
 pub use layout::{LayoutValidationError, validate_layout};
 pub use style::{
-  Alignment, CaptionStyle, ColumnsStyle, CounterName, CounterStyle, Counters, FigureStyle, HeadingStyle, HeadingStyles,
-  HyperrefStyle, ListStyle, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide, NumberStyle, PageNumbering,
-  PageStyle, QuoteStyle, ReadStyleError, ReferenceStyle, RunningContentStyle, Style, StyleValidationError, TableStyle,
-  TextBlockStyle, TheoremClass, TheoremPresentation, TheoremReset, TheoremStyle, Theorems, TitlePageStyle, TocStyle,
-  default_for_class, default_for_level, parse_style, read_style,
+  Alignment, CaptionStyle, ColumnsStyle, CounterName, CounterStyle, Counters, FigureStyle, FootnoteStyle, HeadingStyle,
+  HeadingStyles, HyperrefStyle, ListStyle, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide, NumberStyle,
+  PageNumbering, PageStyle, QuoteStyle, ReadStyleError, ReferenceStyle, RunningContentStyle, Style,
+  StyleValidationError, TableStyle, TextBlockStyle, TheoremClass, TheoremPresentation, TheoremReset, TheoremStyle,
+  Theorems, TitlePageStyle, TocStyle, default_for_class, default_for_level, parse_style, read_style,
 };

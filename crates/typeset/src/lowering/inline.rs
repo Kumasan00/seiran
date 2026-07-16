@@ -3,7 +3,8 @@
 //! 親から継承されたスタイル（`parent_style`）を基に、インライン要素の種類に応じて
 //! フォント種別やサイズを変更します。
 
-use model::{InlineNode, LinkTarget};
+use config::FootnoteStyle;
+use model::{FontKind, InlineNode, Length, LinkTarget};
 
 use super::{
   LoweringContext, LoweringError,
@@ -128,19 +129,62 @@ pub(super) fn lower_inline(
     },
     InlineNode::Footnote { body, .. } => {
       // 番号は出現順の連番（ラベル解決不要なので単純増加のみ、pass2 は経由しない）。
-      // ページ下部への配置・マーカーの上付き描画は #35 / #36 の責務で、ここでは番号確定と
-      // 本体の再帰 lowering までを行う。
+      // ページ下部への配置は #35 の責務（typeset::breaking）。ここでは番号確定・本文中マーカーの
+      // 生成・脚注本体のフォントサイズ適用・本体先頭マーカーの前置までを行う。
       let number = registry.increment_footnote();
-      let mut lowered_body = Vec::new();
+      let footnote_style = &ctx.style.footnote;
+      let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
+        "number" => number.to_string(),
+        _ => format!("{{{name}}}"),
+      });
+
+      // 本文中マーカー: 呼び出し位置の文脈フォントサイズを基準に上付き縮小する
+      let inline_marker = footnote_marker_node(&marker_text, parent_style.font_size, parent_style, footnote_style);
+
+      // 脚注本体は独自のフォントサイズを基準に lower し、先頭に本体用マーカーを前置する
+      let body_style = TextStyle {
+        font_size: footnote_style.font_size,
+        font_kind: parent_style.font_kind,
+        color: parent_style.color,
+      };
+      let body_marker = footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style);
+      let mut lowered_body = vec![body_marker];
       for child in body {
-        lowered_body.extend(lower_inline(ctx, child, parent_style, registry)?);
+        lowered_body.extend(lower_inline(ctx, child, body_style, registry)?);
       }
-      return Ok(vec![LayoutNode::Footnote {
-        number,
-        body: lowered_body,
-      }]);
+
+      return Ok(vec![
+        inline_marker,
+        LayoutNode::Footnote {
+          number,
+          body: lowered_body,
+        },
+      ]);
     },
   }
+}
+
+/// 脚注マーカー（上付き番号）1 個を `LayoutNode::Raise` で組み立てる
+///
+/// `base_font_size` を基準に `marker_size_factor` で縮小し、`marker_raise_factor` ぶん上付きに
+/// シフトする（`typeset::lowering::math` の `MathNode::Superscript` 処理と同型）。本文中マーカーは
+/// 呼び出し位置の文脈フォントサイズを、脚注本体先頭マーカーは脚注本体のフォントサイズを
+/// `base_font_size` として渡す。数字は立体（Serif）で描く。
+fn footnote_marker_node(
+  marker_text: &str,
+  base_font_size: Length,
+  base_style: TextStyle,
+  footnote_style: &FootnoteStyle,
+) -> LayoutNode {
+  let marker_style = TextStyle {
+    font_size: base_font_size * footnote_style.marker_size_factor,
+    font_kind: FontKind::Serif,
+    color: base_style.color,
+  };
+  return LayoutNode::Raise {
+    offset: base_font_size * footnote_style.marker_raise_factor,
+    children: vec![LayoutNode::Text(marker_text.to_string(), marker_style)],
+  };
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
@@ -477,12 +521,15 @@ mod tests {
     // Act
     let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
 
-    // Assert
-    let LayoutNode::Footnote { number, body } = &nodes[0] else {
+    // Assert — nodes[0] は本文中マーカー（Raise）、nodes[1] が Footnote 本体
+    assert!(matches!(&nodes[0], LayoutNode::Raise { .. }));
+    let LayoutNode::Footnote { number, body } = &nodes[1] else {
       panic!("Footnote が期待されます: {nodes:?}");
     };
     assert_eq!(*number, 1);
-    assert!(matches!(&body[0], LayoutNode::Text(t, _) if t == "note"));
+    // body[0] は本体先頭マーカー（Raise）、body[1] が実内容
+    assert!(matches!(&body[0], LayoutNode::Raise { .. }));
+    assert!(matches!(&body[1], LayoutNode::Text(t, _) if t == "note"));
   }
 
   #[test]
@@ -503,10 +550,10 @@ mod tests {
     let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
 
     // Assert
-    let LayoutNode::Footnote { body, .. } = &nodes[0] else {
+    let LayoutNode::Footnote { body, .. } = &nodes[1] else {
       panic!("Footnote が期待されます: {nodes:?}");
     };
-    let LayoutNode::Text(text, text_style) = &body[0] else {
+    let LayoutNode::Text(text, text_style) = &body[1] else {
       panic!("Text が期待されます: {body:?}");
     };
     assert_eq!(text, "x");
@@ -529,7 +576,54 @@ mod tests {
     let second = lower_inline(&ctx, &make("b"), TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
 
     // Assert
-    assert!(matches!(&first[0], LayoutNode::Footnote { number: 1, .. }));
-    assert!(matches!(&second[0], LayoutNode::Footnote { number: 2, .. }));
+    assert!(matches!(&first[1], LayoutNode::Footnote { number: 1, .. }));
+    assert!(matches!(&second[1], LayoutNode::Footnote { number: 2, .. }));
+  }
+
+  #[test]
+  fn lower_footnote_reflects_non_default_footnote_style() {
+    // Arrange — style.footnote をデフォルトから変更し、実際に出力へ反映されることを確認する
+    // （受け入れ条件「style.toml の指定どおり描画される」の lowering 側の検証）
+    let mut style = config::Style::default();
+    style.footnote.font_size = Length::pt(20.0);
+    style.footnote.marker_size_factor = 0.5;
+    style.footnote.marker_format = "[{number}]".to_string();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Footnote {
+      body: vec![InlineNode::Text("note".to_string())],
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+    let parent_style = TextStyle::new(Length::pt(10.0));
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent_style, &mut registry).expect("失敗しない");
+
+    // Assert — 本文中マーカー（nodes[0]）は親フォントサイズ(10pt) × 0.5 = 5pt、書式は "[1]"
+    let LayoutNode::Raise { children, .. } = &nodes[0] else {
+      panic!("Raise が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(marker_text, marker_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(marker_text, "[1]");
+    assert!((marker_style.font_size.to_pt() - 5.0).abs() < 1e-3, "{}", marker_style.font_size.to_pt());
+
+    // Assert — 脚注本体（nodes[1]）は style.footnote.font_size(20pt) を基準にする。
+    // body[0] は本体先頭マーカー（20pt × 0.5 = 10pt）、body[1] の本文テキストは 20pt
+    let LayoutNode::Footnote { body, .. } = &nodes[1] else {
+      panic!("Footnote が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Raise { children, .. } = &body[0] else {
+      panic!("Raise が期待されます: {body:?}");
+    };
+    let LayoutNode::Text(_, body_marker_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert!((body_marker_style.font_size.to_pt() - 10.0).abs() < 1e-3, "{}", body_marker_style.font_size.to_pt());
+    let LayoutNode::Text(_, body_text_style) = &body[1] else {
+      panic!("Text が期待されます: {body:?}");
+    };
+    assert!((body_text_style.font_size.to_pt() - 20.0).abs() < 1e-3, "{}", body_text_style.font_size.to_pt());
   }
 }
