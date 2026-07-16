@@ -2,10 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(cargo build:*)",
-      "Bash(cargo test:*)",
+      "Bash(cargo check:*)",
       "Bash(cargo clippy:*)",
       "Bash(cargo fmt:*)",
       "Bash(cargo +nightly fmt:*)",
+      "Bash(cargo test:*)",
       "Bash(UPDATE_GOLDEN=1 cargo test:*)"
     ]
   }
