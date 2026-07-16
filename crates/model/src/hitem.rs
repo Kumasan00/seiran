@@ -55,12 +55,24 @@ pub enum HItem {
   LinkStart(LinkTarget),
   /// リンク領域（機構 B）の終了マーカー（幅 0・分割不可）
   LinkEnd,
+  /// 脚注本体（`\footnote{...}`）の運搬マーカー（幅 0・分割不可）
+  ///
+  /// `LinkStart`/`LinkEnd` と同様、行内では場所取りをしない。実際の行分割・ページ下部配置は
+  /// `typeset::breaking` が `Line::footnotes`（`build_line` が本バリアントから収集する）経由で行う。
+  Footnote {
+    /// 発番済みの脚注番号（出現順の連番）
+    number: u32,
+    /// 脚注本体（計測済みの水平アイテム列）
+    items: Vec<HItem>,
+    /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
+    leading: Length,
+  },
 }
 
 impl HItem {
   /// アイテムの自然幅（pt）を返す
   ///
-  /// `Penalty` / `ForcedBreak` / リンクマーカーは 0。`Discretionary` も自然幅 0
+  /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` は 0。`Discretionary` も自然幅 0
   /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。
   #[must_use]
   pub fn natural_width(&self) -> Length {
@@ -72,7 +84,8 @@ impl HItem {
       | HItem::Discretionary { .. }
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
-      | HItem::LinkEnd => Length::ZERO,
+      | HItem::LinkEnd
+      | HItem::Footnote { .. } => Length::ZERO,
     };
   }
 }

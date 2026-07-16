@@ -34,6 +34,12 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     if !page.footer.is_empty() {
       dump_section(&mut out, "footer", &page.footer);
     }
+    if !page.footnotes.is_empty() {
+      let _ = writeln!(out, "footnotes:");
+      for footnote in &page.footnotes {
+        dump_section(&mut out, &format!("  footnote number={}", footnote.number), &footnote.blocks);
+      }
+    }
     for anchor in &page.anchors {
       let _ = writeln!(out, "anchor mark={:?} x={} y={}", anchor.mark, f2(anchor.x), f2(anchor.y));
     }
@@ -278,6 +284,7 @@ mod tests {
       depth: Length::pt(2.71),
       is_last: true,
       links: Vec::new(),
+      footnotes: Vec::new(),
     };
     return Page {
       blocks: vec![PlacedBlock::Line {
@@ -286,6 +293,7 @@ mod tests {
       }],
       header: Vec::new(),
       footer: Vec::new(),
+      footnotes: Vec::new(),
       anchors: Vec::new(),
       links: Vec::new(),
     };

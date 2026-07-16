@@ -444,12 +444,14 @@ fn draw_cell_items(
       // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
       // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
       // FlushRight（QED）は定理本体専用で表セル内には現れない
+      // 脚注は表セル内では本体が配置されない（既知の制限。リンクの #61 と同様の扱い）
       model::HItem::Penalty { .. }
       | model::HItem::Discretionary { .. }
       | model::HItem::ForcedBreak
       | model::HItem::LinkStart(_)
       | model::HItem::LinkEnd
-      | model::HItem::FlushRight(_) => {},
+      | model::HItem::FlushRight(_)
+      | model::HItem::Footnote { .. } => {},
     }
   }
   return Ok(());

@@ -155,6 +155,7 @@ mod tests {
         blocks: Vec::new(),
         header: Vec::new(),
         footer: Vec::new(),
+        footnotes: Vec::new(),
         anchors: vec![PlacedAnchor {
           mark: AnchorMark::Heading {
             key: format!("heading:{index}"),

@@ -47,6 +47,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "cite",
   "color",
   "equation",
+  "footnote",
   "gather",
   "hyperref",
   "hyphenation",

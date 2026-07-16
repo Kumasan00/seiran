@@ -105,13 +105,16 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `quote` / `table` / `template` / `theorem` / `title_page` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ）。
 
-採番・`\ref` 解決も本 module の責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lowering.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理・段落の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。脚注（`InlineNode::Footnote`）は定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ（`footnote_value`）を持ち、`inline::lower_inline` が出現順に `increment_footnote` で連番を発行して `LayoutNode::Footnote { number, body }` を生成する（ラベル解決を伴わない単純な連番のため `Ref`/`Cite` の 2 段階プレースホルダ構造は取らない。ページ単位リセットは `typeset::breaking::break_pages` 以降でしか改ページ情報が得られないため未実装 — #35 で対応）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
+採番・`\ref` 解決も本 module の責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lowering.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理・段落の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。脚注（`InlineNode::Footnote`）は定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ（`footnote_value`）を持ち、`inline::lower_inline` が出現順に `increment_footnote` で連番を発行して `LayoutNode::Footnote { number, body }` を生成する（ラベル解決を伴わない単純な連番のため `Ref`/`Cite` の 2 段階プレースホルダ構造は取らない。ページ単位リセットは `typeset::breaking::break_pages` 以降でしか改ページ情報が得られない上、
+`style.toml` にリセット方式を選ぶキーがまだ無いため未実装 — 通し番号のみの対応で別 issue に切り出し済み）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
 複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
 
 ### `block`
 
-(a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストのスクリプト分割・シェーピング・計測、break 注入（シェーピング後に `GlyphRun` を ICU の分割可能位置で分割。欧文スペースは伸縮 `Glue`、和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済みハイフン箱を持つ `Discretionary`（`build_blocks` の `language` 引数から言語を導出。和文・数式は分割しない）。数式は分割しない）、`Raise` ツリーの `Atom` 化。ブロック間アキ（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Block::Glue` として出し（下端揃え #169 の配分先）、`Vkern`（数式上下・フロート内）は固定アキのまま。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
+(a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストのスクリプト分割・シェーピング・計測、break 注入（シェーピング後に `GlyphRun` を ICU の分割可能位置で分割。欧文スペースは伸縮 `Glue`、和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済みハイフン箱を持つ `Discretionary`（`build_blocks` の `language` 引数から言語を導出。和文・数式は分割しない）。数式は分割しない）、`Raise` ツリーの `Atom` 化。ブロック間アキ（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Block::Glue` として出し（下端揃え #169 の配分先）、`Vkern`（数式上下・フロート内）は固定アキのまま。脚注（`LayoutNode::Footnote`）は本体を独立に計測して幅 0 の
+`HItem::Footnote`（`LinkStart`/`LinkEnd` と同じ運搬用マーカー）にする。本文中には何も残さない（上付き
+マーカー表示は #36 の責務）。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
 
 ### `breaking`
 
@@ -125,6 +128,14 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 （`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に
 不足高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ
 直前・伸縮アキ 0 のリージョンは対象外）。表の列幅・行高の純粋計測ヘルパは `model` 側にある。
+
+脚注（`Line::footnotes`）はページ下部への配置を `break_pages` が担う（#35）。行を確定するたびに
+その行に付いた脚注を行分割して高さを求め、リージョン（段）の実効下限（`PageComposer::region_limit`
+= `page_limit − region_footnote_height`）へ即座に織り込む（遅延加算だと脚注込みで溢れる行が
+実効下限をすり抜けて本文と重なるため）。リージョンが閉じるとき（`end_region`）に確定座標へ変換して
+`Page::footnotes`（`PlacedFootnote` の列、脚注番号ごと）へ積む。段組みでは段（リージョン）単位で
+独立（ページ全幅で共有しない）。ページ単位番号リセット・上付きマーカー描画・区切り罫線は別 issue
+（#36 等）に委ねる。
 
 ## `pdf_gen`
 

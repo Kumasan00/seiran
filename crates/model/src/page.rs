@@ -21,6 +21,12 @@ pub struct Page {
   pub header: Vec<PlacedBlock>,
   /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
   pub footer: Vec<PlacedBlock>,
+  /// このページに出現した脚注（本文下部、出現順）
+  ///
+  /// `break_pages` がページ確定時に埋める（`header`/`footer` と異なり走り文ではなく、
+  /// 本文の実効下限から差し引いた分の実領域に確定座標で配置済み）。脚注番号ごとに
+  /// [`PlacedFootnote`] を分けて保持し、`pdf_gen`（#36）がマーカー番号の描画に使えるようにする。
+  pub footnotes: Vec<PlacedFootnote>,
   /// このページに解決されたリンク到達先アンカー（機構 A）
   ///
   /// `pdf_gen` がページ index + 座標から `XyzDestination` を作り、PDF しおりや
@@ -30,6 +36,18 @@ pub struct Page {
   ///
   /// `pdf_gen` が各ページにリンク注釈として付与する。
   pub links: Vec<PlacedLink>,
+}
+
+/// ページ下部に配置された脚注 1 個
+///
+/// 本体は複数行に分かれ得るため `blocks`（通常は [`PlacedBlock::Line`] の列）として保持する。
+/// 座標系は [`PlacedBlock`] と同じ（本文左端・ページ上端からの距離）。
+#[derive(Debug, Clone)]
+pub struct PlacedFootnote {
+  /// 発番済みの脚注番号（出現順の連番）
+  pub number: u32,
+  /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]）
+  pub blocks: Vec<PlacedBlock>,
 }
 
 /// 確定座標に解決されたリンク到達先アンカー
