@@ -87,7 +87,8 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
-      | InlineNode::InternalLink { children, .. } => {
+      | InlineNode::InternalLink { children, .. }
+      | InlineNode::Footnote { body: children, .. } => {
         collect_unknown_in_inlines(children, keys, labels);
       },
       InlineNode::Cite {

@@ -46,7 +46,7 @@ pub(super) fn lower_theorem(
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number, title, of)?,
+    build_heading(ctx, theorem_style, number, title, of, registry)?,
   ];
 
   // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする。
@@ -89,6 +89,7 @@ fn build_heading(
   number: Option<&str>,
   title: Option<&str>,
   of: Option<(&str, model::Span)>,
+  registry: &mut CounterRegistry,
 ) -> Result<LayoutNode, LoweringError> {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
@@ -109,7 +110,7 @@ fn build_heading(
 
   let title_inlines: Vec<InlineNode> = title.map(|t| vec![InlineNode::Text(t.to_string())]).unwrap_or_default();
 
-  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style)?;
+  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style, registry)?;
 
   return Ok(LayoutNode::VBox {
     children,

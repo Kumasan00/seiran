@@ -8,6 +8,7 @@ use model::InlineNode;
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle},
 };
@@ -17,11 +18,16 @@ use super::{
 /// `ctx.first_line_indent` が正のとき、結果先頭に水平カーンを前置する。貪欲法の行分割は
 /// 行頭の `Kern` を「先頭行だけに効く幅」として消費するため、折り返し 2 行目以降・`\\` 直後の
 /// 行には字下げが効かず、「段落先頭のみ字下げ」が自動的に成立する。
+/// `registry` は段落内の `\footnote` 採番（`CounterRegistry::increment_footnote`）に使う。
 ///
 /// ## TODO
 ///
 /// - [ ] 段落内テキストの結合最適化（隣接する同スタイルの `Text` をまとめる）
-pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> Result<Vec<LayoutNode>, LoweringError> {
+pub(super) fn lower_paragraph(
+  ctx: &LoweringContext,
+  inlines: &[InlineNode],
+  registry: &mut CounterRegistry,
+) -> Result<Vec<LayoutNode>, LoweringError> {
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.body_font_kind,
@@ -47,7 +53,7 @@ pub(super) fn lower_paragraph(ctx: &LoweringContext, inlines: &[InlineNode]) -> 
     if matches!(inline, InlineNode::NoIndent) {
       continue;
     }
-    result.extend(lower_inline(ctx, inline, default_style)?);
+    result.extend(lower_inline(ctx, inline, default_style, registry)?);
   }
 
   // 段落間スペースは縦カーンで構造的に表す（段落の行送り自体は縦組版層が担う）
@@ -72,7 +78,8 @@ mod tests {
     let inlines = [InlineNode::Text("hello".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("解決済みテキストなので失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran())
+      .expect("解決済みテキストなので失敗しない");
 
     // Assert — 末尾は paragraph_spacing 値の Vkern が 1 つだけ
     let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
@@ -91,7 +98,7 @@ mod tests {
     let inlines = [InlineNode::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — 本文 Text は text.font_kind / default_font_size を持つ
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -110,7 +117,7 @@ mod tests {
     let inlines = [InlineNode::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — 先頭は first_line_indent 量の Kern、その次が本文 Text
     let LayoutNode::Kern { length } = &nodes[0] else {
@@ -128,7 +135,7 @@ mod tests {
     let inlines = [InlineNode::NoIndent, InlineNode::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — 字下げ Kern は出ず、マーカーも描画されず、先頭は本文 Text
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は抑止される: {nodes:?}");
@@ -143,7 +150,7 @@ mod tests {
     let inlines = [InlineNode::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — 先頭は本文 Text（字下げ Kern は無い）
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
@@ -162,7 +169,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("失敗しない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
 
     // Assert — Text ノードが入力順に並ぶ
     let texts: Vec<&str> = nodes
@@ -187,7 +194,8 @@ mod tests {
     }];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines).expect("即時エラーにはならない");
+    let nodes =
+      lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("即時エラーにはならない");
 
     // Assert
     assert!(

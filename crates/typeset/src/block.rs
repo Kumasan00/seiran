@@ -194,7 +194,8 @@ impl Measurer<'_> {
         | LayoutNode::Raise { .. }
         | LayoutNode::Link { .. }
         | LayoutNode::FlushRight(..)
-        | LayoutNode::HBox { .. } => {
+        | LayoutNode::HBox { .. }
+        | LayoutNode::Footnote { .. } => {
           self.collect_inline(node, paragraph);
         },
         // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
@@ -365,6 +366,14 @@ impl Measurer<'_> {
           self.collect_inline(child, out);
         }
         out.push(HItem::LinkEnd);
+      },
+      // 暫定実装: ページ下部への配置（#35）・上付きマーカー描画（#36）が未実装のため、
+      // 番号は捨てて本体を本文中にそのまま展開する。パニックはしない（`\footnote` は
+      // 本チケットで有効な構文になるため、使用時にクラッシュさせてはならない）。
+      LayoutNode::Footnote { body, .. } => {
+        for child in body {
+          self.collect_inline(child, out);
+        }
       },
       // 縦リスト要素・アンカーはインライン文脈（表セル等）には現れない（構造上の不変条件）
       LayoutNode::Anchor(_)

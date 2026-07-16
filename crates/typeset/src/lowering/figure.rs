@@ -10,6 +10,7 @@ use model::{CaptionPosition, InlineNode, Length};
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   float::{FloatSpec, build_caption, wrap_float},
   layout_node::LayoutNode,
 };
@@ -37,6 +38,7 @@ pub(crate) struct ImageOverrides {
 /// # Errors
 ///
 /// キャプション内に未解決の `\ref` がある場合に [`LoweringError::UnresolvedReference`] を返します。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
   image_path: &str,
@@ -45,6 +47,7 @@ pub(super) fn lower_figure(
   overrides: ImageOverrides,
   caption: Option<(CaptionPosition, &[InlineNode])>,
   number: &str,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.figure;
 
@@ -65,7 +68,7 @@ pub(super) fn lower_figure(
   };
 
   let caption_nodes = match caption {
-    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number)?)),
+    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number, registry)?)),
     None => None,
   };
   let spec = FloatSpec {
@@ -99,6 +102,7 @@ mod tests {
       ImageOverrides::default(),
       Some((CaptionPosition::Bottom, &caption)),
       "1",
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("解決済みインラインなのでエラーにならない");
 
@@ -145,6 +149,7 @@ mod tests {
       ImageOverrides::default(),
       Some((CaptionPosition::Top, &caption)),
       "2",
+      &mut CounterRegistry::default_for_seiran(),
     )
     .expect("失敗しない");
 
@@ -164,9 +169,17 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes =
-      lower_figure(&ctx, "a.png", Some(Length::pt(10.0)), Some(Length::pt(10.0)), ImageOverrides::default(), None, "3")
-        .expect("失敗しない");
+    let nodes = lower_figure(
+      &ctx,
+      "a.png",
+      Some(Length::pt(10.0)),
+      Some(Length::pt(10.0)),
+      ImageOverrides::default(),
+      None,
+      "3",
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert — VBox に Text ノードが含まれていない（"Figure 3: " のような空タイトル行を出さない）
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -189,7 +202,9 @@ mod tests {
       downsample: Some(false),
       ..ImageOverrides::default()
     };
-    let nodes = lower_figure(&ctx, "a.png", None, None, overrides, None, "1").expect("失敗しない");
+    let nodes =
+      lower_figure(&ctx, "a.png", None, None, overrides, None, "1", &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -212,7 +227,9 @@ mod tests {
       dpi: Some(600),
       ..ImageOverrides::default()
     };
-    let nodes = lower_figure(&ctx, "a.png", None, None, overrides, None, "1").expect("失敗しない");
+    let nodes =
+      lower_figure(&ctx, "a.png", None, None, overrides, None, "1", &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -231,7 +248,17 @@ mod tests {
     let ctx = LoweringContext::new(&style).with_image_defaults(300, false);
 
     // Act
-    let nodes = lower_figure(&ctx, "a.png", None, None, ImageOverrides::default(), None, "1").expect("失敗しない");
+    let nodes = lower_figure(
+      &ctx,
+      "a.png",
+      None,
+      None,
+      ImageOverrides::default(),
+      None,
+      "1",
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {

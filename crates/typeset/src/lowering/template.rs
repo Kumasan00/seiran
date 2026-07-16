@@ -8,6 +8,7 @@ use model::InlineNode;
 
 use super::{
   LoweringContext, LoweringError,
+  counter::CounterRegistry,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
@@ -34,6 +35,7 @@ pub(super) fn expand_template(
   title: &[InlineNode],
   of: Option<(&str, model::Span)>,
   base_style: TextStyle,
+  registry: &mut CounterRegistry,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
   let mut literal = String::new();
@@ -45,7 +47,7 @@ pub(super) fn expand_template(
         "title" => {
           flush_literal(&mut nodes, &mut literal, base_style);
           for inline in title {
-            nodes.extend(lower_inline(ctx, inline, base_style)?);
+            nodes.extend(lower_inline(ctx, inline, base_style, registry)?);
           }
         },
         "of" => {
@@ -103,8 +105,16 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::Text(title_text.to_string())];
-    return expand_template(&ctx, template, number, &title, None, base_style())
-      .expect("プレーンタイトルは失敗しないはず");
+    return expand_template(
+      &ctx,
+      template,
+      number,
+      &title,
+      None,
+      base_style(),
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("プレーンタイトルは失敗しないはず");
   }
 
   #[test]
@@ -145,7 +155,16 @@ mod tests {
       },
     ];
 
-    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style()).expect("失敗しないはず");
+    let nodes = expand_template(
+      &ctx,
+      "{number} {title}",
+      "1",
+      &title,
+      None,
+      base_style(),
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しないはず");
 
     // Text("1 A ", Serif) + Text("B", SerifBold)
     assert_eq!(nodes.len(), 2, "{nodes:?}");
@@ -163,7 +182,9 @@ mod tests {
       "x".to_string(),
     )])];
 
-    let nodes = expand_template(&ctx, "{title}", "1", &title, None, base_style()).expect("失敗しないはず");
+    let nodes =
+      expand_template(&ctx, "{title}", "1", &title, None, base_style(), &mut CounterRegistry::default_for_seiran())
+        .expect("失敗しないはず");
 
     let has_placeholder = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t.contains("[Math]")));
     assert!(!has_placeholder, "[Math] プレースホルダは出力されない: {nodes:?}");
@@ -181,8 +202,16 @@ mod tests {
       span: model::Span::DUMMY,
     }];
 
-    let nodes =
-      expand_template(&ctx, "{number} {title}", "1", &title, None, base_style()).expect("即時エラーにはならない");
+    let nodes = expand_template(
+      &ctx,
+      "{number} {title}",
+      "1",
+      &title,
+      None,
+      base_style(),
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("即時エラーにはならない");
 
     assert!(
       nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "tab:missing")),
@@ -197,8 +226,16 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let of_span = model::Span::new(3, 4);
 
-    let nodes =
-      expand_template(&ctx, "Proof of {of}", "1", &[], Some(("thm:x", of_span)), base_style()).expect("失敗しないはず");
+    let nodes = expand_template(
+      &ctx,
+      "Proof of {of}",
+      "1",
+      &[],
+      Some(("thm:x", of_span)),
+      base_style(),
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しないはず");
 
     let expected_span = super::super::span_to_source_span(of_span);
     assert!(
@@ -222,7 +259,8 @@ mod tests {
   fn expand_plain_with_of(template: &str, number: &str, of: Option<(&str, model::Span)>) -> Vec<LayoutNode> {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    return expand_template(&ctx, template, number, &[], of, base_style()).expect("失敗しないはず");
+    return expand_template(&ctx, template, number, &[], of, base_style(), &mut CounterRegistry::default_for_seiran())
+      .expect("失敗しないはず");
   }
 
   #[test]

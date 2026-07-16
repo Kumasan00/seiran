@@ -34,6 +34,7 @@ use crate::{
 
 pub(crate) mod cite;
 mod control;
+pub(crate) mod footnote;
 mod headline;
 pub(crate) mod inline;
 pub(crate) mod link;
@@ -82,6 +83,8 @@ pub(crate) enum CommandKind {
   Ref,
   /// `\cite{key}` — 文献引用のスタブを生成し、pass2 でキー存在を検証する
   Cite,
+  /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番は `typeset::lowering` の責務）
+  Footnote,
   /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
@@ -105,6 +108,8 @@ impl CommandKind {
       Self::Ref => ref_::ref_command(view).map(CommandResult::Inline),
 
       Self::Cite => cite::cite_command(view).map(CommandResult::Inline),
+
+      Self::Footnote => footnote::footnote_command(view).map(CommandResult::Inline),
 
       Self::Url => link::url_command(view).map(CommandResult::Inline),
 
@@ -145,6 +150,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
   // 文献引用
   "cite" => CommandKind::Cite,
+
+  // 脚注
+  "footnote" => CommandKind::Footnote,
 
   // 外部リンク
   "url" => CommandKind::Url,
