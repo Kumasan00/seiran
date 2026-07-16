@@ -143,8 +143,21 @@ pub(crate) fn evaluate_children(source: &str, node: &GreenNode) -> Result<Vec<Do
             }
           }
         },
-        // MandatoryArg, OptArg 等はトップレベルには出現しない
-        _ => {},
+        // Root は子要素になり得ず、EnvironmentBegin/End・OptArg/MandatoryArg は
+        // それぞれ Environment/CommandCall の内部でのみ生成され、MathGroup/MathSubscript/
+        // MathSuperscript は InlineMath 内部（math::evaluate_inline_math）でのみ生成されるため、
+        // トップレベル（Root/Group の直接の子）には出現しない
+        SyntaxKind::Root
+        | SyntaxKind::EnvironmentBegin
+        | SyntaxKind::EnvironmentEnd
+        | SyntaxKind::EnvironmentBody
+        | SyntaxKind::OptArg
+        | SyntaxKind::MandatoryArg
+        | SyntaxKind::MathGroup
+        | SyntaxKind::MathSubscript
+        | SyntaxKind::MathSuperscript => {
+          unreachable!("トップレベルにはコマンド呼び出し・環境・数式・グループ以外現れない")
+        },
       },
     }
   }

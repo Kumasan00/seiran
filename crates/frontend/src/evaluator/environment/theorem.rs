@@ -58,7 +58,7 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
       "title" => title = Some(s),
       "label" => label = Some(s),
       "of" => of_label = Some(s),
-      _ => {},
+      _ => unreachable!("collect_environment_opt_args が未知キーを弾くのでここには来ない"),
     }
   }
 

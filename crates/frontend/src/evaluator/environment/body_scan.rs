@@ -62,7 +62,9 @@ pub(crate) fn strict_command_calls<'a>(
   for child in body.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {},
+        TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {
+          // トリビアは黙ってスキップする
+        },
         _ => {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),

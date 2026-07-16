@@ -43,7 +43,7 @@ pub(super) fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, Ev
       ("widths", OptValue::String(s)) => widths_spec = Some(s),
       ("label", OptValue::String(s)) => label = Some(s),
       ("breakable", OptValue::Bool(b)) => breakable = b,
-      _ => {},
+      _ => unreachable!("collect_environment_opt_args が未知キーを弾くのでここには来ない"),
     }
   }
 

@@ -40,7 +40,16 @@ hayagriva = {
 hypher = {
   version = "0.1.7",
   default-features = false,
-  features = ["alloc", "english", "german", "french", "spanish", "italian", "portuguese", "dutch"]
+  features = [
+    "alloc",
+    "dutch",
+    "english",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
+    "spanish"
+  ]
 }
 icu = { version = "2.2.0", features = ["compiled_data"] }
 image = {
@@ -65,7 +74,10 @@ tempfile = "3.27.0"
 thiserror = "2.0.18"
 toml = "1.1.2"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["local-time", "env-filter"] }
+tracing-subscriber = {
+  version = "0.3.23",
+  features = ["env-filter", "local-time"]
+}
 typeset = { path = "crates/typeset" }
 unic-langid = "0.9.6"
 usvg = "0.47.0"

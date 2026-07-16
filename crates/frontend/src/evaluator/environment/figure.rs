@@ -180,7 +180,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
         dpi = Some(rounded);
       },
       ("downsample", OptValue::Bool(b)) => downsample = Some(b),
-      _ => {},
+      _ => unreachable!(),
     }
   }
 
