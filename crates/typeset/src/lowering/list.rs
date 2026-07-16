@@ -56,7 +56,7 @@ pub(super) fn lower_list(
   for (i, item) in items.iter().enumerate() {
     // マーカーの生成。将来 `\item[override]` の個別上書きを入れる場合は、この深さ別の自動選択の
     // 前段で上書き指定を優先する分岐を挿す（上書きが自動マーカーより優先される）。
-    let n = (i + 1) as u32;
+    let n = u32::try_from(i + 1).expect("リスト項目数は u32 に収まる前提");
     let marker_body = if ordered {
       if depth == 0 {
         list_style.ordered_marker_format.replace("{number}", &n.to_string())

@@ -205,7 +205,7 @@ fn fill_leader(
     return;
   }
   // available / unit_width はここまでのガードで非負。truncation は意図どおり（収まる本数）。
-  #[allow(clippy::cast_sign_loss)]
+  #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
   let count = available.ratio(unit_width).floor() as usize;
   if count == 0 {
     return;

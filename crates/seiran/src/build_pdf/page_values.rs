@@ -13,6 +13,11 @@
 use config::PageNumbering;
 use model::AnchorMark;
 
+/// ページ index/count（`usize`）を番号レンダリング用の `u32` に変換する。
+///
+/// ページ数が `u32::MAX` に達することはない前提。
+fn page_num(n: usize) -> u32 { return u32::try_from(n).expect("ページ数は u32 に収まる前提"); }
+
 /// 本文ページ分割後にしか構築できない確定値（目次構築の引数型）
 ///
 /// 見出しの本文内ページ index とページ番号スタイルを保持する。目次のページラベルは本文の
@@ -56,7 +61,7 @@ impl BodyPageValues {
   /// 目次のページラベル用。前付けのラベル体系（[`Self::finalize`]）とは独立に、本文スタイルだけで
   /// 確定できる。
   pub(super) fn body_page_label(&self, body_page_index: usize) -> String {
-    return self.numbering.body.render(body_page_index as u32 + 1);
+    return self.numbering.body.render(page_num(body_page_index) + 1);
   }
 
   /// 前付けページ列が確定した後、物理ページ順の `({page}, {pages})` ラベル列 [`PageLabels`] を返す。
@@ -72,13 +77,13 @@ impl BodyPageValues {
     let mut labels = Vec::with_capacity(total);
     for index in 0..total {
       if index < front_count {
-        let page = self.numbering.front_matter.render(index as u32 + 1);
-        let pages = self.numbering.front_matter.render(front_count as u32);
+        let page = self.numbering.front_matter.render(page_num(index) + 1);
+        let pages = self.numbering.front_matter.render(page_num(front_count));
         labels.push((page, pages));
       } else {
         let body_index = index - front_count;
-        let page = self.numbering.body.render(body_index as u32 + 1);
-        let pages = self.numbering.body.render(body_count as u32);
+        let page = self.numbering.body.render(page_num(body_index) + 1);
+        let pages = self.numbering.body.render(page_num(body_count));
         labels.push((page, pages));
       }
     }

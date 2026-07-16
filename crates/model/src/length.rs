@@ -35,6 +35,7 @@ const CM_TO_PT: f64 = 10.0 * MM_TO_PT;
 ///
 /// 半偶数（round-half-to-even）を採るのは、比例配分で `stretch * ratio` を反復して丸める際に
 /// 方向性バイアスが蓄積しないようにするため。IEEE-754 準拠環境では決定的に同じ結果になる。
+#[allow(clippy::cast_possible_truncation)]
 fn round_sp(sp: f64) -> i64 { return sp.round_ties_even() as i64; }
 
 /// pt 値（f64）を sp へ丸める。
@@ -74,6 +75,7 @@ impl Length {
 
   /// pt 値を f32 で返す（PDF 座標などの出力境界用）。
   #[must_use]
+  #[allow(clippy::cast_possible_truncation)]
   pub fn to_pt(self) -> f32 { return (self.0 as f64 / SP_PER_PT as f64) as f32; }
 
   /// pt 値を f64 で返す（ダンプ整形など高精度が要る出力境界用）。
@@ -82,6 +84,7 @@ impl Length {
 
   /// mm 値を f32 で返す。
   #[must_use]
+  #[allow(clippy::cast_possible_truncation)]
   pub fn to_mm(self) -> f32 { return (self.to_pt_f64() / MM_TO_PT) as f32; }
 
   /// 厳密に正の値か。

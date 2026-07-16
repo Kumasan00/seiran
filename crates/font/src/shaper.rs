@@ -195,7 +195,12 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
   let variations = config.variation_axes.as_ref().map(|axes| {
     axes
       .iter()
-      .map(|axis| Variation::from((Tag::new(&axis.name), axis.value as f32)))
+      .map(|axis| {
+        // harfrust `Variation` の軸値は f32 のみ受け付ける（API 境界での精度低下は許容）
+        #[allow(clippy::cast_possible_truncation)]
+        let value = axis.value as f32;
+        Variation::from((Tag::new(&axis.name), value))
+      })
       .collect::<Vec<Variation>>()
   });
 

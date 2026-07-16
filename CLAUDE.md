@@ -169,7 +169,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 ### Clippy
 
-`clippy::all` が deny、`pedantic` が warn。`needless_return` / `cast_possible_truncation` / `similar_names` / `too_many_lines` は allow。
+`clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` は allow。
 
 ### テスト
 
