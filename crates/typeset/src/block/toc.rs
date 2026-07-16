@@ -132,6 +132,7 @@ impl LineAccum {
       depth: self.depth,
       is_last: true,
       links,
+      footnotes: Vec::new(),
     };
   }
 }

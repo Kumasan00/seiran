@@ -112,6 +112,7 @@ mod tests {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
+      footnotes: Vec::new(),
       anchors: marks
         .into_iter()
         .map(|mark| PlacedAnchor {

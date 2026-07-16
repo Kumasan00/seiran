@@ -163,6 +163,7 @@ fn build_region(
       depth,
       is_last: true,
       links: Vec::new(),
+      footnotes: Vec::new(),
     },
     baseline_y: slots.baseline_y,
   });

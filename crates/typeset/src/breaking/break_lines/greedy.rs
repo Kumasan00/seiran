@@ -64,8 +64,8 @@ impl LineBreaker for GreedyBreaker {
             last_break = Some(buffer.len() - 1);
           }
         },
-        // リンクマーカーは幅 0・分割不可。行に積むだけで build_line が矩形を収集する
-        HItem::LinkStart(_) | HItem::LinkEnd => {
+        // リンクマーカー・脚注マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
+        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote { .. } => {
           buffer.push(item);
         },
         HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {

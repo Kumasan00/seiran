@@ -367,13 +367,20 @@ impl Measurer<'_> {
         }
         out.push(HItem::LinkEnd);
       },
-      // 暫定実装: ページ下部への配置（#35）・上付きマーカー描画（#36）が未実装のため、
-      // 番号は捨てて本体を本文中にそのまま展開する。パニックはしない（`\footnote` は
-      // 本チケットで有効な構文になるため、使用時にクラッシュさせてはならない）。
-      LayoutNode::Footnote { body, .. } => {
+      // 脚注本体を独立に計測し、幅 0 の運搬マーカーとして積む（本文中には何も残さない）。
+      // 実際のページ下部配置は `crate::breaking`（`Line::footnotes` 経由）が行う。本文中の
+      // 上付きマーカー表示は #36（`style.toml` の `FootnoteStyle` 配線後）の責務。
+      LayoutNode::Footnote { number, body } => {
+        let mut items = Vec::new();
         for child in body {
-          self.collect_inline(child, out);
+          self.collect_inline(child, &mut items);
         }
+        let dominant_font_size = model::max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+        out.push(HItem::Footnote {
+          number,
+          items,
+          leading: dominant_font_size * self.line_height_factor,
+        });
       },
       // 縦リスト要素・アンカーはインライン文脈（表セル等）には現れない（構造上の不変条件）
       LayoutNode::Anchor(_)

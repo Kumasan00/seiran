@@ -1,6 +1,6 @@
 //! 行分割の出力（[`Line`] / [`PositionedBox`] / [`LineLink`]）の定義
 
-use crate::{HBoxContent, Length, LinkTarget};
+use crate::{HBoxContent, HItem, Length, LinkTarget};
 
 /// 行分割で確定した 1 行
 ///
@@ -21,6 +21,25 @@ pub struct Line {
   ///
   /// 1 つのリンクが折り返しをまたぐ場合は行ごとに 1 つの矩形へ分割される。
   pub links: Vec<LineLink>,
+  /// この行に含まれる脚注（出現順）
+  ///
+  /// `typeset::breaking::break_pages` がこの行を配置する際に本体を行分割し、
+  /// 実効ページ下限（`page_limit` から脚注ぶんを差し引いた値）へ織り込む。
+  pub footnotes: Vec<LineFootnote>,
+}
+
+/// 行内の脚注（`\footnote{...}`）本体
+///
+/// `HItem::Footnote` から `build_line` が収集する。行分割・ページ下部配置は
+/// `typeset::breaking::break_pages` の責務（本クレートはデータを運ぶだけ）。
+#[derive(Debug, Clone)]
+pub struct LineFootnote {
+  /// 発番済みの脚注番号（出現順の連番）
+  pub number: u32,
+  /// 脚注本体（計測済みの水平アイテム列。ページ下部配置時に行分割する）
+  pub items: Vec<HItem>,
+  /// 脚注本体の行送り（支配的フォントサイズ × 行高係数）
+  pub leading: Length,
 }
 
 /// 行内のリンク領域（クリック矩形の水平範囲）

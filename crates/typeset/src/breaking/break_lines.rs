@@ -9,7 +9,7 @@
 //! （[`build_line`]）として適用する。分割点の「選択」だけが貪欲法と Knuth–Plass で異なり、
 //! 行の確定・glue 配分・リンク矩形収集・右寄せ・行末ハイフンは両者が [`build_line`] を共有する。
 
-use model::{HBox, HItem, Length, Line, LineLink, LinkTarget, PositionedBox, TextAlignment};
+use model::{HBox, HItem, Length, Line, LineFootnote, LineLink, LinkTarget, PositionedBox, TextAlignment};
 
 mod greedy;
 mod knuth_plass;
@@ -131,6 +131,8 @@ pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
 /// 行末の breakable glue は破棄する。`Penalty` は幅を持たないため位置決めに影響しない。
 /// `open_links` は折り返しをまたいで開いているリンク領域の状態で、`LinkStart` / `LinkEnd`
 /// に応じて更新しつつ、この行に属するクリック矩形（[`LineLink`]）を収集する。
+/// `HItem::Footnote` はこの行の脚注（[`model::LineFootnote`]）としてそのまま収集する
+/// （行分割・ページ下部配置は `break_pages` の責務）。
 /// `available` は本文幅（折り返し幅）で、`FlushRight` を `available − 幅` に右寄せするのに使う。
 ///
 /// `alignment` が [`TextAlignment::Justify`] かつ最終行（段落最終行・強制改行直前）でない
@@ -167,6 +169,7 @@ pub(super) fn build_line(
 
   let mut boxes: Vec<PositionedBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
+  let mut footnotes: Vec<LineFootnote> = Vec::new();
   let mut x = Length::ZERO;
   let mut height = Length::ZERO;
   let mut depth = Length::ZERO;
@@ -222,6 +225,17 @@ pub(super) fn build_line(
           });
         }
       },
+      // 脚注マーカーは幅 0・分割不可。行に積むだけで、この行の脚注として収集する
+      // （ページ下部への行分割・配置は `break_pages` の責務）
+      HItem::Footnote {
+        number,
+        items,
+        leading,
+      } => footnotes.push(LineFootnote {
+        number: *number,
+        items: items.clone(),
+        leading: *leading,
+      }),
       // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
     }
@@ -252,6 +266,7 @@ pub(super) fn build_line(
     depth,
     is_last,
     links,
+    footnotes,
   };
 }
 
