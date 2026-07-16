@@ -32,11 +32,11 @@ pub use block::{
 };
 pub use breaking::{
   BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
-  break_pages, column_width, resolve_hyphenation,
+  break_pages, resolve_hyphenation,
 };
 pub use lowering::{
   HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceId, TableCellLayout, TableLayout,
   TableRowLayout, TextStyle, TitlePageMetadata, lower_document, lower_nodes, lower_sources_with_headings,
   lower_title_page,
 };
-pub use model::TableColumn;
+pub use model::{TableColumn, column_width};

@@ -1,6 +1,7 @@
 //! PDF ビルドエラー型の定義
 
 use citation::CitationError;
+use config::LayoutValidationError;
 use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
@@ -90,26 +91,15 @@ pub(super) enum BuildPdfError {
     source: std::io::Error,
   },
 
-  /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
+  /// config（用紙・余白）× style（`[columns]`）の横断バリデーションで発生したエラー
   ///
-  /// 段幅 = `(本文幅 − (段数 − 1) × 段間) / 段数`。段間が本文幅に対して大きすぎると非正になる。
-  /// この制約は config（用紙・余白）と style（`[columns]`）の横断で決まるため `config`（`read_style`）単体では
-  /// 検証できず、両者が揃うこのステージで判定する。
-  #[error(
-    "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
-  )]
-  #[diagnostic(
-    code(build::invalid_columns),
-    help(
-      "style.toml の [columns].gap を小さくするか、count を減らしてください。または config.toml の用紙幅を広げる・左右余白を狭めて本文幅を確保してください。"
-    )
-  )]
-  InvalidColumnWidth {
-    /// 本文幅（pt）
-    text_width: f32,
-    /// 段数
-    num_columns: usize,
-    /// 段間（pt）
-    column_gap: f32,
+  /// 内側の [`LayoutValidationError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播される。
+  #[error("ページレイアウトの検証に失敗しました。")]
+  #[diagnostic(code(build::layout))]
+  Layout {
+    /// 元の横断バリデーションエラー
+    #[source]
+    #[diagnostic_source]
+    source: LayoutValidationError,
   },
 }

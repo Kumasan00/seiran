@@ -35,7 +35,9 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
   （表の純粋計測ヘルパ）もここに置く。純粋パス本体（break_opportunities / break_lines /
   break_pages / hyphenation）は `typeset` クレートの `breaking` module に残り、これらの型に依存する。
   `dump_pages`（確定レイアウトの決定的テキストダンプ）は唯一の消費者が `seiran` の golden テスト
-  なため、本クレートには置かず `seiran::build_pdf::dump` に置く（#216）。
+  なため、本クレートには置かず `seiran::build_pdf::dump` に置く（#216）。段組みの 1 段あたりの幅を
+  求める純粋計算 `column_width` もここに置き、`config`（横断バリデーション）と
+  `typeset::breaking::break_pages`（実配置）の双方が同じ式を参照する（#214）。
 
 ## `config`
 
@@ -45,6 +47,13 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 `config::Style`。テスト用ヘルパ module は `config::test_support` として再エクスポート）。かつて双方が
 持っていた `ValidationError` は `ConfigValidationError` / `StyleValidationError` と接頭辞で区別し、
 名前衝突を理由とした `pub mod` 公開（旧 `config::read_config::Config` 形式）は廃止した。
+
+`config` と `style` のどちらか片方だけでは判定できない横断制約（用紙・余白 × `[columns]` の段幅など）
+は、非公開の `layout` 子モジュールに `validate_layout(&Config, &Style) -> Result<(), LayoutValidationError>`
+として置く（旧構成ではこの制約は 2 クレートに分かれていたことを理由に `seiran` のビルドステージへ
+置かれていたが、統合後はそう分ける理由がないため config クレート側へ移した、#214）。段幅の算出式
+自体（`(text_width - (num_columns - 1) * column_gap) / num_columns`）は `config` と
+`typeset::breaking::break_pages` の双方が使うため [`model::column_width`] に集約する。
 
 ### `config`（config.toml）
 

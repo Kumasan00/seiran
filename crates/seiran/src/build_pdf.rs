@@ -75,6 +75,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let config = config::read_config(config_path)?;
   let style = config::read_style(config.style_path.as_deref())?;
+  config::validate_layout(&config, &style).map_err(|source| BuildPdfError::Layout { source })?;
   let references = read_references(config.references_path.as_deref())?;
 
   let stage_start = Instant::now();
@@ -186,21 +187,11 @@ fn build_pages(
   let default_font_size = style.text.font_size;
   let line_height_factor = style.text.line_height_factor;
 
-  // 本文の段組み（前付けは常に単段）。1 段あたりの幅を算出し、非正なら早期にエラーにする
-  // （config の用紙・余白 × style の [columns] の横断制約はこのステージでしか検証できない）。
+  // 本文の段組み（前付けは常に単段）。1 段あたりの幅を算出する。config × style の横断制約
+  // （段幅が非正にならないこと）は `build_pdf` 冒頭の `config::validate_layout` で検証済み。
   let body_columns = style.columns.count as usize;
   let column_gap = style.columns.gap;
   let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
-  if !body_col_width.is_positive() {
-    return Err(
-      BuildPdfError::InvalidColumnWidth {
-        text_width: text_width.to_pt(),
-        num_columns: body_columns,
-        column_gap: column_gap.to_pt(),
-      }
-      .into(),
-    );
-  }
 
   // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
   // span の `region` で呼び出し区間を区別できるようにする（INFO 時は span 非活性でゼロコスト）。
