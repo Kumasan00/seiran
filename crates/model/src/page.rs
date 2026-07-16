@@ -25,7 +25,8 @@ pub struct Page {
   ///
   /// `break_pages` がページ確定時に埋める（`header`/`footer` と異なり走り文ではなく、
   /// 本文の実効下限から差し引いた分の実領域に確定座標で配置済み）。脚注番号ごとに
-  /// [`PlacedFootnote`] を分けて保持し、`pdf_gen`（#36）がマーカー番号の描画に使えるようにする。
+  /// [`PlacedFootnote`] を分けて保持する。区切り罫線は `break_pages` がリージョン内最初の
+  /// `PlacedFootnote.blocks` の先頭に `PlacedBlock::Rule` として混ぜて持たせる。
   pub footnotes: Vec<PlacedFootnote>,
   /// このページに解決されたリンク到達先アンカー（機構 A）
   ///
@@ -41,12 +42,15 @@ pub struct Page {
 /// ページ下部に配置された脚注 1 個
 ///
 /// 本体は複数行に分かれ得るため `blocks`（通常は [`PlacedBlock::Line`] の列）として保持する。
+/// リージョン内で最初に確定する脚注だけは、区切り罫線（`style.footnote`）が
+/// [`PlacedBlock::Rule`] として `blocks` の先頭に混ざる（2 個目以降の脚注には付かない）。
 /// 座標系は [`PlacedBlock`] と同じ（本文左端・ページ上端からの距離）。
 #[derive(Debug, Clone)]
 pub struct PlacedFootnote {
   /// 発番済みの脚注番号（出現順の連番）
   pub number: u32,
-  /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]）
+  /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]。リージョン内最初の
+  /// 脚注は先頭に区切り罫線 [`PlacedBlock::Rule`] を持つ）
   pub blocks: Vec<PlacedBlock>,
 }
 

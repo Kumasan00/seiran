@@ -170,16 +170,19 @@ pub enum LayoutNode {
     /// `LoweringError::UnresolvedReference` の帰属ソースとして引き継ぐ
     source: SourceId,
   },
-  /// 脚注（`\footnote{...}`）の確定済みマーカー + 本体
+  /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   ///
   /// 番号は lowering 時点で確定済み（連番、[`super::counter::CounterRegistry::increment_footnote`]
-  /// が pass1 で発番）。ページ下部への実配置（本体の計測・ページ振り分け）は `crate::block` /
-  /// `crate::breaking` が、マーカーの上付き表示・区切り罫線の描画は `pdf_gen` がそれぞれ本 variant を
-  /// 使って行う（いずれも本クレートの本 variant 追加時点では未実装）。
+  /// が pass1 で発番）。本文中の上付きマーカー（`Raise` + `Text`）は本 variant の**手前**に
+  /// 別ノードとして発行され（`super::inline::lower_inline`）、本体先頭にも同じマーカーが
+  /// prepend 済み。ページ下部への実配置（本体の計測・ページ振り分け）は `crate::block` /
+  /// `crate::breaking` が本 variant を使って行う。区切り罫線の描画は `crate::breaking::break_pages`
+  /// が `style.footnote` から生成した `PlacedBlock::Rule` を `PlacedFootnote.blocks` に混ぜて持たせる
+  /// （`pdf_gen` 側の追加変更は不要）。
   Footnote {
     /// 発番済みの脚注番号（出現順の連番）
     number: u32,
-    /// 脚注本体（再帰的に lowering 済みの `LayoutNode` 列）
+    /// 脚注本体（先頭に本体用マーカーを含む、再帰的に lowering 済みの `LayoutNode` 列）
     body: Vec<LayoutNode>,
   },
 }

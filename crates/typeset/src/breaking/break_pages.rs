@@ -46,6 +46,17 @@ pub struct PageGeometry {
   /// リージョン・伸縮アキが無いリージョンは揃えない（自然高のまま）。前付け（`front_geometry`）は常に
   /// `false`。既定 `false` で従来どおりの ragged bottom。
   pub flush_bottom: bool,
+  /// 脚注: 本文と区切り罫線の間隔（`style.footnote.top_margin`）
+  pub footnote_top_margin: Length,
+  /// 脚注: 区切り罫線の長さ（`style.footnote.rule_length`）
+  pub footnote_rule_length: Length,
+  /// 脚注: 区切り罫線の太さ（0 のとき描画しない、`style.footnote.rule_thickness`）
+  pub footnote_rule_thickness: Length,
+  /// 脚注: 区切り罫線の色（RGB）。`None` は黒。呼び出し側が `config::Color::rgb()` で
+  /// 変換済みの値を渡す（`RunningSlots.rule_color` と同じ規約）
+  pub footnote_rule_color: Option<[u8; 3]>,
+  /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
+  pub footnote_rule_gap: Length,
 }
 
 /// 縦組版の内部状態（現在ページ・カーソル）
@@ -108,9 +119,6 @@ struct PendingFootnote {
   /// 行送り（[`stacked_height`] / 確定配置の両方が使う）
   leading: Length,
 }
-
-/// 脚注間・本文と脚注エリアの間のアキ（4pt、暫定値。#36 で `style.toml` の `FootnoteStyle` 化を検討する）
-const FOOTNOTE_GAP: Length = Length::from_sp(4 * 65536);
 
 /// 下端揃え（#169）用の伸縮アキ記録
 ///
@@ -352,12 +360,29 @@ impl PageComposer {
     }
     // 脚注はリージョンが閉じるたびに常に確定する（flush-bottom の対象ではないため `flush` を問わない。
     // 強制改ページ・最終ページでも脚注を落とさないようにする）。開始 Y は `region_limit`
-    // （脚注ぶんを差し引く前段、= 脚注エリアの上端）。以降 `FOOTNOTE_GAP` を挟んで出現順に積む。
+    // （脚注ぶんを差し引く前段、= 脚注エリアの上端）。区切り罫線は「このリージョンで最初の脚注」の
+    // 直前にのみ 1 本出す（`top_margin` + 罫線 + `rule_gap`）。2 個目以降は `rule_gap` のみを挟む
+    // （`place_lines` の予約計算と対称になるよう揃える。行 653 以降のコメント参照）。
     if !self.region_footnotes.is_empty() {
       let mut top = self.region_limit(geom);
-      for pending in std::mem::take(&mut self.region_footnotes) {
-        top += FOOTNOTE_GAP;
-        let mut blocks = Vec::with_capacity(pending.lines.len());
+      let column_x = self.column_offset();
+      for (index, pending) in std::mem::take(&mut self.region_footnotes).into_iter().enumerate() {
+        let mut blocks = Vec::new();
+        if index == 0 {
+          top += geom.footnote_top_margin;
+          if geom.footnote_rule_thickness.is_positive() {
+            blocks.push(PlacedBlock::Rule {
+              x: column_x,
+              y: top,
+              width: geom.footnote_rule_length,
+              height: geom.footnote_rule_thickness,
+              color: geom.footnote_rule_color,
+            });
+            top += geom.footnote_rule_thickness;
+          }
+        }
+        top += geom.footnote_rule_gap;
+        blocks.reserve(pending.lines.len());
         let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| line.height);
         let mut prev_depth = Length::ZERO;
         for (i, line) in pending.lines.into_iter().enumerate() {
@@ -653,13 +678,20 @@ struct LinePlacement {
 /// （`reserved` は脚注予約、下記）。ベースライン漸化式は [`place_paragraph`] の配置ループと同一で、
 /// `forced` が全 `false`・`footnote_deltas` が全 0 のときは移行前と同じ結果になる。
 ///
-/// `footnote_deltas[i]` は行 `i` 自身に付いた脚注が新たに占有する高さ（[`FOOTNOTE_GAP`] 込み、
-/// 脚注が無ければ 0）。行 `i` を判定する**前**に `reserved` へ加算する（advisor 指摘のとおり、
-/// 判定後に加算すると脚注込みで溢れる行自身が実効下限をすり抜けて本文と脚注が重なる）。
-/// `initial_reserved` は呼び出し時点で既にこのリージョンに確定している脚注予約高さ
-/// （`composer.region_footnote_height`）。新リージョンが始まった行では、そのリージョンの予約は
-/// この行自身の `footnote_deltas[i]` だけにリセットする（旧リージョンの予約は `end_region` が
-/// 既に確定させている）。
+/// `footnote_deltas[i]` は行 `i` 自身に付いた脚注が新たに占有する高さ（`style.footnote.rule_gap`
+/// 込み、脚注が無ければ 0。区切り罫線・`top_margin` は含まない）。行 `i` を判定する**前**に
+/// `reserved` へ加算する（advisor 指摘のとおり、判定後に加算すると脚注込みで溢れる行自身が
+/// 実効下限をすり抜けて本文と脚注が重なる）。`initial_reserved` は呼び出し時点で既にこのリージョンに
+/// 確定している脚注予約高さ（`composer.region_footnote_height`）。新リージョンが始まった行では、
+/// そのリージョンの予約はこの行自身の `footnote_deltas[i]` だけにリセットする（旧リージョンの予約は
+/// `end_region` が既に確定させている）。
+///
+/// 区切り罫線・`top_margin` は「そのリージョンで初めて脚注を確保する瞬間」にのみ
+/// [`footnote_reserved_delta`] 経由で 1 回だけ上乗せする（`end_region` が罫線を「最初の脚注の直前」に
+/// 1 本だけ描くのと対称。通常の積み上げパスだけでなく `starts_region` によるリセットパスでも
+/// 同じ関数を通す必要がある — リセット時の `reserved`（旧リージョンぶん）は必ず 0 とみなして渡す。
+/// これを怠ると、脚注を伴う行がリージョンの新規先頭行になったケースで罫線ぶんの高さが見積りから
+/// 漏れ、脚注エリアが `page_limit` を超えて後続コンテンツと重なる）。
 #[allow(clippy::too_many_arguments)]
 fn place_lines(
   lines: &[Line],
@@ -671,6 +703,8 @@ fn place_lines(
   forced: &[bool],
   footnote_deltas: &[Length],
   initial_reserved: Length,
+  footnote_top_margin: Length,
+  footnote_rule_thickness: Length,
 ) -> Vec<LinePlacement> {
   let mut plan = Vec::with_capacity(lines.len());
   let mut baseline = y0;
@@ -689,12 +723,14 @@ fn place_lines(
         baseline += leading.max(depth + line.height);
       },
     }
-    reserved += footnote_deltas[i];
+    reserved = footnote_reserved_delta(reserved, footnote_deltas[i], footnote_top_margin, footnote_rule_thickness);
     let starts_region = forced[i] || baseline + line.depth > page_limit - reserved;
     if starts_region {
       baseline = margin_top;
-      // 新リージョンの予約はこの行自身の脚注ぶんだけ（旧リージョンぶんは持ち越さない）
-      reserved = footnote_deltas[i];
+      // 新リージョンの予約はこの行自身の脚注ぶんだけ（旧リージョンぶんは持ち越さない）。
+      // 「このリージョンではまだ脚注を確保していない」ので base は常に 0 で計算する。
+      reserved =
+        footnote_reserved_delta(Length::ZERO, footnote_deltas[i], footnote_top_margin, footnote_rule_thickness);
     }
     plan.push(LinePlacement {
       baseline,
@@ -704,6 +740,20 @@ fn place_lines(
     prev_depth = Some(line.depth);
   }
   return plan;
+}
+
+/// 行 1 個ぶんの脚注予約高さ `delta` を、区切り罫線の一度きり課金込みで `base_reserved` に足した
+/// 結果を返す（純粋関数）。
+///
+/// `base_reserved == 0 && delta > 0`（＝このリージョンでまだ脚注を確保していないところへ、
+/// この行で初めて脚注が付く）のときだけ `top_margin + rule_thickness` を上乗せする。
+/// `end_region` が区切り罫線を「リージョン内最初の脚注の直前」に 1 本だけ描くのと対称になるよう、
+/// [`place_lines`] の通常積み上げパス・`starts_region` リセットパスの両方から呼ぶ。
+fn footnote_reserved_delta(base_reserved: Length, delta: Length, top_margin: Length, rule_thickness: Length) -> Length {
+  if base_reserved == Length::ZERO && delta > Length::ZERO {
+    return base_reserved + delta + top_margin + rule_thickness;
+  }
+  return base_reserved + delta;
 }
 
 /// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す（純粋関数）
@@ -765,6 +815,8 @@ fn plan_paragraph_lines(
   page_limit: Length,
   footnote_deltas: &[Length],
   initial_reserved: Length,
+  footnote_top_margin: Length,
+  footnote_rule_thickness: Length,
 ) -> Vec<LinePlacement> {
   let mut forced = vec![false; lines.len()];
   loop {
@@ -778,6 +830,8 @@ fn plan_paragraph_lines(
       &forced,
       footnote_deltas,
       initial_reserved,
+      footnote_top_margin,
+      footnote_rule_thickness,
     );
     match pick_correction(&plan, MIN_LINES_AT_BREAK) {
       // 新しい補正点なら強制して再フロー
@@ -1016,8 +1070,10 @@ fn place_paragraph(
     }
   }
   // 各行に付いた脚注（`line.footnotes`）を行分割し、この行が新たに占有する高さを求める
-  // （[`FOOTNOTE_GAP`] 込み）。ここで 1 回だけ計算し、widow/orphan の再フロー（`plan_paragraph_lines`
-  // 内のリトライ）では再計算しない（脚注の構成は改リージョン点の選び方で変わらないため）。
+  // （`style.footnote.rule_gap` 込み。区切り罫線・`top_margin` は [`footnote_reserved_delta`] が
+  // 一度きり課金するのでここには含めない）。ここで 1 回だけ計算し、widow/orphan の再フロー
+  // （`plan_paragraph_lines` 内のリトライ）では再計算しない（脚注の構成は改リージョン点の
+  // 選び方で変わらないため）。
   let mut footnote_deltas: Vec<Length> = Vec::with_capacity(lines.len());
   let mut footnote_bodies: Vec<Vec<PendingFootnote>> = Vec::with_capacity(lines.len());
   for line in &lines {
@@ -1025,7 +1081,7 @@ fn place_paragraph(
     let mut bodies = Vec::with_capacity(line.footnotes.len());
     for footnote in &line.footnotes {
       let broken = breaker.break_lines(&footnote.items, column_width, TextAlignment::RaggedRight);
-      let own_height = FOOTNOTE_GAP + stacked_height(&broken, footnote.leading);
+      let own_height = geom.footnote_rule_gap + stacked_height(&broken, footnote.leading);
       // 病的ケース: 脚注 1 個だけで新しいページ全体（margin_top 〜 page_limit）より高い場合、
       // どのページに送ってもそれ単独で溢れる。次ページ繰越の複雑な分割はスコープ外とし、
       // そのまま配置してオーバーフローを許容しつつ警告する（#35: 初期は単純な方針で可）。
@@ -1056,6 +1112,8 @@ fn place_paragraph(
     geom.page_limit,
     &footnote_deltas,
     composer.region_footnote_height,
+    geom.footnote_top_margin,
+    geom.footnote_rule_thickness,
   );
   let mut last_baseline = composer.y;
   for (i, (mut line, bodies)) in lines.into_iter().zip(footnote_bodies).enumerate() {
@@ -1320,6 +1378,13 @@ mod tests {
       num_columns: 1,
       column_gap: Length::pt(0.0),
       flush_bottom: false,
+      // 罫線・top_margin は 0（無効）にし、rule_gap だけ旧 FOOTNOTE_GAP と同じ 4pt にすることで、
+      // 既存の脚注テストの数値（qualitative な比較込み）を変えずに保つ。
+      footnote_top_margin: Length::ZERO,
+      footnote_rule_length: Length::ZERO,
+      footnote_rule_thickness: Length::ZERO,
+      footnote_rule_color: None,
+      footnote_rule_gap: Length::pt(4.0),
     };
   }
 
@@ -1478,6 +1543,89 @@ mod tests {
     assert!(second.to_pt() > first.to_pt(), "脚注 2 は脚注 1 より下");
   }
 
+  /// 区切り罫線・`top_margin` を有効にしたテスト用ジオメトリ（他は `test_geometry` と同じ）
+  fn geometry_with_footnote_rule() -> PageGeometry {
+    return PageGeometry {
+      footnote_top_margin: Length::pt(3.0),
+      footnote_rule_length: Length::pt(20.0),
+      footnote_rule_thickness: Length::pt(1.0),
+      footnote_rule_color: Some([255, 0, 0]),
+      footnote_rule_gap: Length::pt(2.0),
+      ..test_geometry()
+    };
+  }
+
+  /// ページ内の脚注エリアに描かれた区切り罫線（`PlacedBlock::Rule`）の総数
+  fn footnote_rule_count(page: &Page) -> usize {
+    return page
+      .footnotes
+      .iter()
+      .flat_map(|f| &f.blocks)
+      .filter(|b| matches!(b, PlacedBlock::Rule { .. }))
+      .count();
+  }
+
+  #[test]
+  fn footnote_rule_drawn_once_before_first_footnote_in_region() {
+    // Arrange — 1 行の段落に脚注 2 個、区切り罫線を有効にする
+    let geom = geometry_with_footnote_rule();
+    let blocks = vec![single_line_paragraph(vec![
+      footnote_item(1, vec![test_box()], pt(12.0)),
+      footnote_item(2, vec![test_box()], pt(12.0)),
+    ])];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 罫線は 1 本だけ（脚注 2 個目には付かない）、脚注 1 の blocks 先頭に置かれる
+    assert_eq!(pages.len(), 1);
+    assert_eq!(footnote_rule_count(&pages[0]), 1, "罫線は 1 リージョンに 1 本だけのはず");
+    let first_block = pages[0].footnotes[0].blocks.first().expect("脚注 1 は空でないはず");
+    assert!(
+      matches!(
+        first_block,
+        PlacedBlock::Rule { width, height, color, .. }
+        if close(*width, 20.0) && close(*height, 1.0) && *color == Some([255, 0, 0])
+      ),
+      "{first_block:?}"
+    );
+  }
+
+  #[test]
+  fn footnote_rule_reservation_does_not_overlap_when_footnote_starts_new_region() {
+    // Arrange — line_with_overflowing_footnote_moves_to_next_page_with_it と同型だが、区切り罫線
+    // ぶんの追加予約（top_margin + rule_thickness）が新リージョンの先頭行でも正しく効くかを見る
+    // （advisor 指摘の回帰テスト: 見積りと配置が非対称だと脚注エリアが page_limit を超えて重なる）。
+    let geom = geometry_with_footnote_rule();
+    let blocks = vec![
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![footnote_item(
+        2,
+        vec![test_box(), HItem::ForcedBreak, test_box()],
+        pt(12.0),
+      )]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 行と脚注は 2 ページ目へ一緒に送られ、罫線は新リージョンに 1 本だけ、
+    // かつ脚注の最終行が page_limit をはみ出さない（見積りと配置が一致している証拠）
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(pages[0].footnotes.is_empty(), "1 ページ目に脚注が漏れてはいけない");
+    assert_eq!(footnote_rule_count(&pages[1]), 1, "新リージョンにも罫線は 1 本だけのはず");
+    let footnote_lines = footnote_baselines(&pages[1], 2);
+    assert_eq!(footnote_lines.len(), 2, "脚注本体は 2 行");
+    let last_line_bottom = footnote_lines[1] + pt(2.0); // test_box() の depth=2
+    assert!(
+      last_line_bottom.to_pt() <= geom.page_limit.to_pt() + 1e-3,
+      "脚注の最終行が page_limit を超えないはず（見積りと配置の非対称バグの回帰）: {}",
+      last_line_bottom.to_pt()
+    );
+  }
+
   #[test]
   fn paragraph_lines_advance_by_leading() {
     // Arrange — 3 行の段落。ベースラインは margin_top から leading ずつ進む
@@ -1613,8 +1761,18 @@ mod tests {
     let lines = vec![test_line(), test_line(), test_line()];
 
     // Act
-    let plan =
-      plan_paragraph_lines(&lines, pt(10.0), false, pt(12.0), pt(10.0), pt(50.0), &[Length::ZERO; 3], Length::ZERO);
+    let plan = plan_paragraph_lines(
+      &lines,
+      pt(10.0),
+      false,
+      pt(12.0),
+      pt(10.0),
+      pt(50.0),
+      &[Length::ZERO; 3],
+      Length::ZERO,
+      Length::ZERO,
+      Length::ZERO,
+    );
 
     // Assert — 10,22,34 で改リージョンなし
     assert_eq!(
@@ -1645,8 +1803,18 @@ mod tests {
     let lines = vec![test_line(), test_line(), test_line()];
 
     // Act — y0=46
-    let plan =
-      plan_paragraph_lines(&lines, pt(46.0), false, pt(12.0), pt(10.0), pt(50.0), &[Length::ZERO; 3], Length::ZERO);
+    let plan = plan_paragraph_lines(
+      &lines,
+      pt(46.0),
+      false,
+      pt(12.0),
+      pt(10.0),
+      pt(50.0),
+      &[Length::ZERO; 3],
+      Length::ZERO,
+      Length::ZERO,
+      Length::ZERO,
+    );
 
     // Assert — 先頭行から新リージョン開始、全行が新リージョンに 10,22,34 で並ぶ
     assert_eq!(
@@ -1683,8 +1851,18 @@ mod tests {
     ];
 
     // Act
-    let plan =
-      plan_paragraph_lines(&lines, pt(10.0), false, pt(12.0), pt(10.0), pt(50.0), &[Length::ZERO; 5], Length::ZERO);
+    let plan = plan_paragraph_lines(
+      &lines,
+      pt(10.0),
+      false,
+      pt(12.0),
+      pt(10.0),
+      pt(50.0),
+      &[Length::ZERO; 5],
+      Length::ZERO,
+      Length::ZERO,
+      Length::ZERO,
+    );
 
     // Assert — 末尾 2 行（index 3,4）が新リージョンへまとまる（3 行 / 2 行）
     assert_eq!(

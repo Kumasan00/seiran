@@ -18,6 +18,7 @@ mod columns;
 mod counter;
 mod error;
 mod figure;
+mod footnote;
 mod heading;
 mod hyperref;
 mod list;
@@ -49,6 +50,7 @@ pub use crate::style::{
   counter::{CounterName, CounterStyle, Counters},
   error::{ReadStyleError, StyleValidationError},
   figure::FigureStyle,
+  footnote::FootnoteStyle,
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
   list::ListStyle,
@@ -103,6 +105,9 @@ pub struct Style {
   /// 図フロートのスタイル
   #[garde(dive)]
   pub figure: FigureStyle,
+  /// 脚注のスタイル
+  #[garde(dive)]
+  pub footnote: FootnoteStyle,
   /// 数式のスタイル（`[math.script]` スクリプト / `[math.block]` 表示数式ブロックのレイアウト）
   #[garde(dive)]
   pub math: MathStyle,
@@ -151,6 +156,7 @@ impl Default for Style {
       quote: QuoteStyle::default(),
       table: TableStyle::default(),
       figure: FigureStyle::default(),
+      footnote: FootnoteStyle::default(),
       math: MathStyle::default(),
       counters: Counters::default(),
       theorems: Theorems::default(),

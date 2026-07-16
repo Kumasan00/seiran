@@ -466,10 +466,11 @@ mod tests {
       lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut registry)
         .expect("失敗しない");
 
-    // Assert — セル内の脚注は 2 番目として採番される（本文側の 1 個目の続き）
+    // Assert — セル内の脚注は 2 番目として採番される（本文側の 1 個目の続き）。
+    // content[0] は本文中マーカー（Raise）、content[1] が Footnote 本体
     let table = find_table(&nodes);
     assert!(
-      matches!(&table.rows[0].cells[0].content[0], LayoutNode::Footnote { number: 2, .. }),
+      matches!(&table.rows[0].cells[0].content[1], LayoutNode::Footnote { number: 2, .. }),
       "{:?}",
       table.rows[0].cells[0].content
     );
