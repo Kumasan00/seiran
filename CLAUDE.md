@@ -16,8 +16,8 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 各原則の導出・根拠・適合例・過去の判断事例は **`docs/language-design.md`** に集約してあり、
 原則と欲しい機能が衝突したときは例外を継ぎ足さず、目的に照らして原則側の改訂も検討する。
 
-| #   | 原則（要約）                                                                    | 目的   |
-| --- | ------------------------------------------------------------------------------- | ------ |
+| #   | 原則（要約）                                                                     | 目的   |
+| --- | -------------------------------------------------------------------------------- | ------ |
 | P1  | トークン規則は固定 — カテゴリコードなし、コメント `//`、特殊文字はエスケープ必須 | G1     |
 | P2  | 必須引数は `{}` で明示・個数順序固定、コマンド名は英数字                         | G1     |
 | P3  | オプションは `[key=value]` の名前付きのみ（位置依存オプション禁止）              | G1     |
@@ -124,16 +124,16 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 ナビゲーション用の 1 行要約。サブモジュール構成・内部設計・データ構造などの詳細は
 `docs/architecture.md` に集約しているので、特定クレートを触る前にそちらを参照する。
 
-| クレート          | 責務（要約）                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `model`           | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode` + 組版コア型 `Block` / `Page` / `HItem` / `GlyphRun` / `TableBox`） |
-| `config`          | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade） |
-| `frontend`        | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし） |
-| `citation`        | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg） |
-| `font`            | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）   |
-| `typeset`         | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
-| `pdf_gen`         | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成           |
-| `seiran`          | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包 |
+| クレート   | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode` + 組版コア型 `Block` / `Page` / `HItem` / `GlyphRun` / `TableBox`）                                                                                                                                            |
+| `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade）                                                                                                                                                                                                                                                                   |
+| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
+| `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
+| `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）                                                                                                                                                                                                                                                                                                |
+| `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
+| `pdf_gen`  | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成                                                                                                                                                                                                                                                                                                        |
+| `seiran`   | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
 
 ## コーディング規約
 
@@ -180,11 +180,11 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 3 ファイルの役割分担原則 — **「同じ本文 + 同じ用紙で style.toml だけ差し替えて見た目を変えられる」** を新フィールド追加時の判断基準にする。
 
-| ファイル                            | 役割                       | 主な内容                                                                                                                                             |
-| ----------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config.toml`                       | **実体・物理・メタデータ** | title/author/date、用紙サイズ・余白、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語             |
-| `style.toml`                        | **見た目**                 | 見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、段組み数、参照リンク色、フロート挙動デフォルト |
-| `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                   |
+| ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                           |
+| ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config.toml`                       | **実体・物理・メタデータ** | title/author/date、用紙サイズ・余白、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語 |
+| `style.toml`                        | **見た目**                 | 見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、段組み数、参照リンク色、フロート挙動デフォルト                                                               |
+| `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                 |
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
