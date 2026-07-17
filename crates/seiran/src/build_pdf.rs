@@ -519,6 +519,7 @@ mod tests {
           return model::PlacedFootnote {
             number: index + 1,
             index: *index,
+            continued: false,
             blocks: Vec::new(),
           };
         })

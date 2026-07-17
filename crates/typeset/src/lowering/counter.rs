@@ -71,7 +71,10 @@ use format::expand_ref_format;
 pub fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
   let mut numbers: Vec<u32> = Vec::new();
   for page in pages {
-    for (position, footnote) in page.footnotes.iter().enumerate() {
+    // 繰越（前ページからの続き、#227）はこのページで「始まった」脚注ではないので数えない。
+    // 数えると (a) 自分自身が本体を置いた前ページの番号を上書きし、(b) このページの本当の
+    // 1 個目を 2 番へずらす。
+    for (position, footnote) in page.footnotes.iter().filter(|footnote| return !footnote.continued).enumerate() {
       let index = usize::try_from(footnote.index).expect("脚注の出現 index は usize に収まる前提");
       // 目的の index まで通し値で伸ばしてから、配置が分かっている脚注だけを上書きする。
       // 伸ばした途中の穴（未配置の脚注）は通し値のまま残る。
@@ -407,19 +410,26 @@ mod tests {
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
   ///
-  /// `per_page_footnote_numbers` は `index` と並び順しか見ないので、本体（`blocks`）は空でよい。
+  /// `per_page_footnote_numbers` は `index` / `continued` と並び順しか見ないので、本体（`blocks`）は
+  /// 空でよい。ここで作る脚注はすべてそのページで始まる（`continued: false`）。
   fn page_with_footnotes(indices: &[u32]) -> Page {
+    return page_with_footnote_fragments(&indices.iter().map(|index| return (*index, false)).collect::<Vec<_>>());
+  }
+
+  /// 出現 index と「繰越（前ページからの続き）か」の組から 1 ページを作るテストヘルパ
+  fn page_with_footnote_fragments(fragments: &[(u32, bool)]) -> Page {
     return Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
-      footnotes: indices
+      footnotes: fragments
         .iter()
-        .map(|index| {
+        .map(|(index, continued)| {
           return PlacedFootnote {
             // 入力側の表示番号は割り当てに影響しない（前回の反復の値が入っている想定）
             number: index + 1,
             index: *index,
+            continued: *continued,
             blocks: Vec::new(),
           };
         })
@@ -457,6 +467,22 @@ mod tests {
     let numbers = per_page_footnote_numbers(&pages);
 
     // Assert — 脚注のないページを挟んでも、次に脚注が現れるページは 1 から始まる
+    assert_eq!(numbers, vec![1, 1]);
+  }
+
+  #[test]
+  fn per_page_numbers_ignore_carried_over_fragments() {
+    // Arrange — 脚注 0 が 1 ページ目から 2 ページ目へ繰り越され（#227）、2 ページ目には自前の脚注 1 がある
+    let pages = vec![
+      page_with_footnote_fragments(&[(0, false)]),
+      page_with_footnote_fragments(&[(0, true), (1, false)]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert — 繰越の断片は数えない。脚注 0 は本体を置いた 1 ページ目の 1 番のまま、
+    // 2 ページ目の自前の脚注 1 がそのページの 1 番になる
     assert_eq!(numbers, vec![1, 1]);
   }
 
