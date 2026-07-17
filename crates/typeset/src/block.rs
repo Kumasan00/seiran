@@ -376,7 +376,11 @@ impl Measurer<'_> {
       // `lower_inline` が本 variant の手前に別ノードとして発行済みで、通常の Box として
       // 既にこの直前で積まれている）。実際のページ下部配置・区切り罫線の描画は
       // `crate::breaking`（`Line::footnotes` 経由）が行う。
-      LayoutNode::Footnote { number, body } => {
+      LayoutNode::Footnote {
+        number,
+        index,
+        body,
+      } => {
         let mut items = Vec::new();
         for child in body {
           self.collect_inline(child, &mut items);
@@ -384,6 +388,7 @@ impl Measurer<'_> {
         let dominant_font_size = model::max_font_size_in_items(&items).unwrap_or(self.default_font_size);
         out.push(HItem::Footnote {
           number,
+          index,
           items,
           leading: dominant_font_size * self.line_height_factor,
         });

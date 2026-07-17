@@ -114,8 +114,10 @@ struct PageComposer {
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
 struct PendingFootnote {
-  /// 発番済みの脚注番号
+  /// 発番済みの表示番号
   number: u32,
+  /// 出現順の識別子（0 起点。`PlacedFootnote` へ素通しする）
+  index: u32,
   /// 行分割済みの本体
   lines: Vec<Line>,
   /// 行送り（[`stacked_height`] / 確定配置の両方が使う）
@@ -401,6 +403,7 @@ impl PageComposer {
         top = baseline + prev_depth;
         self.page_footnotes.push(PlacedFootnote {
           number: pending.number,
+          index: pending.index,
           blocks,
         });
       }
@@ -1097,6 +1100,7 @@ fn place_paragraph(
       delta += own_height;
       bodies.push(PendingFootnote {
         number: footnote.number,
+        index: footnote.index,
         lines: broken,
         leading: footnote.leading,
       });
@@ -1438,6 +1442,8 @@ mod tests {
   fn footnote_item(number: u32, body: Vec<HItem>, leading: Length) -> HItem {
     return HItem::Footnote {
       number,
+      // テストヘルパは通し採番相当（index と表示番号が 1 対 1）で十分
+      index: number - 1,
       items: body,
       leading,
     };

@@ -61,7 +61,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 ### `style`（style.toml）
 
-`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）は `style` モジュール直下のモジュール（`caption` / `heading` / `figure` 等）に置き、クレート root（`config::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
+`config/style.toml` の読み込み（`serde(default)` でデフォルト値マージ、`garde` 派生によるバリデーション）。単層の `Style` 構造体が lowering/pdf_gen の読むフィールド（`background_color` / `heading` / `text`（本文の `font_size` / `line_height_factor` / `paragraph_spacing` / `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約）/ `columns`（段組み）/ `page`（組版挙動フラグ）/ `list` / `quote` / `table` / `figure` / `math`（`[math.script]` + `[math.block]`）/ `counters` / `theorems` / `footnote` / `page_numbering` / `header` / `footer` / `reference` / `hyperref` / `title_page` / `toc`）をトップレベルに保持する。各サブスタイル型（`CaptionStyle` 等）は `style` モジュール直下のモジュール（`caption` / `heading` / `figure` 等）に置き、クレート root（`config::FigureStyle` 等）で再エクスポートする。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
 
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 
@@ -71,6 +71,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 - **数式（`MathStyle`）**: `[math.script]`（`MathScriptStyle`＝上付き / 下付きの倍率・シフト等。インライン数式 `$...$` にも効く。将来 OpenType MATH テーブルから自動取得する想定で現状は手動指定）と `[math.block]`（`MathBlockStyle`＝表示数式ブロックのレイアウト。`tag_format` / `number_side` / `alignment` / `row_gap` / `column_gap` / `top_margin` / `bottom_margin`。全表示数式環境 equation / align / gather / split / multiline / cases / matrix が共有）の 2 副テーブルを束ねる。旧 `[equation]` テーブルは廃止（`[math.block]` に統合）
 - **ページ組版（`PageStyle`）**: `[page]` に組版挙動フラグを集約（段組みは別テーブル `[columns]`）。`flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズム（伸縮アキへの比例配分・対象外リージョン）は `typeset` の `breaking` 節を参照
 - **文献（`ReferenceStyle`）**: `style.reference` は `citation` が参照（`title` は書誌見出し文字列、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝active locale を選ぶロケールコード）
+- **脚注（`FootnoteStyle`）**: `[footnote]` に本体のフォントサイズ・マーカー体裁（`marker_format` の `{number}` 置換・`marker_size_factor` / `marker_raise_factor`）・区切り罫線（`top_margin` → `rule_length` × `rule_thickness` → `rule_gap` の順に積む）を持つ。`numbering`（`continuous` = 文書通しの連番 / `per_page` = ページごとに 1 から振り直す、既定 `continuous`）は番号の振り方＝「脚注という種類の既定」なので P10 によりソースのオプションではなく style が持つ。`per_page` の実現方法（本文パスの不動点反復）は `seiran` の該当節を参照
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
 ## `frontend`
@@ -105,8 +106,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `float` / `heading` / `inline` / `list` / `math` / `paragraph` / `quote` / `table` / `template` / `theorem` / `title_page` サブモジュール）。`LayoutNode` / `TextStyle` / `TableLayout` の型定義は `layout_node` に置く。フォント・シェーピング非依存。縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す（残る `LineBreak` は段落内 `\\` 由来のみ）。
 
-採番・`\ref` 解決も本 module の責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lowering.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理・段落の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。脚注（`InlineNode::Footnote`）は定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ（`footnote_value`）を持ち、`inline::lower_inline` が出現順に `increment_footnote` で連番を発行して `LayoutNode::Footnote { number, body }` を生成する（ラベル解決を伴わない単純な連番のため `Ref`/`Cite` の 2 段階プレースホルダ構造は取らない。ページ単位リセットは `typeset::breaking::break_pages` 以降でしか改ページ情報が得られない上、
-`style.toml` にリセット方式を選ぶキーがまだ無いため未実装 — 通し番号のみの対応で別 issue に切り出し済み）。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
+採番・`\ref` 解決も本 module の責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lowering.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理・段落の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。脚注（`InlineNode::Footnote`）は定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ（`footnote_count`）を持つ。ただし他のカウンタと違い、`next_footnote_index` が振るのは表示番号ではなく**出現 index**（0 起点の同一性）で、表示番号は `inline::lower_inline` が決めて `LayoutNode::Footnote { number, index, body }` を生成する（ラベル解決を伴わないため `Ref`/`Cite` の 2 段階プレースホルダ構造は取らない）。表示番号の既定は `index + 1`（＝文書通しの連番）だが、`LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位リセット（`style.footnote.numbering = "per_page"`、#226）はこのマップ経由で実現する — 詳細は下の「脚注のページ単位採番」節。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
 複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
 
@@ -133,9 +133,35 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 その行に付いた脚注を行分割して高さを求め、リージョン（段）の実効下限（`PageComposer::region_limit`
 = `page_limit − region_footnote_height`）へ即座に織り込む（遅延加算だと脚注込みで溢れる行が
 実効下限をすり抜けて本文と重なるため）。リージョンが閉じるとき（`end_region`）に確定座標へ変換して
-`Page::footnotes`（`PlacedFootnote` の列、脚注番号ごと）へ積む。段組みでは段（リージョン）単位で
-独立（ページ全幅で共有しない）。ページ単位番号リセット・上付きマーカー描画・区切り罫線は別 issue
-（#36 等）に委ねる。
+`Page::footnotes`（`PlacedFootnote` の列、脚注ごと）へ積む。段組みでは段（リージョン）単位で
+独立（ページ全幅で共有しない）が、`Page::footnotes` はページ単位でまとまるので、ページ単位採番
+（#226）の基準は段ではなくページになる。`PlacedFootnote` は表示番号（`number`）と出現 index
+（`index`）の両方を運ぶ — 前者は既にマーカーのグリフとして焼き込み済みの値、後者は採番方式に
+依らない同一性で、ページ単位採番の反復が「どの脚注がどのページに載ったか」を追う鍵になる。
+
+### 脚注のページ単位採番（`build_pdf::break_body_per_page_footnotes`、#226）
+
+`style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
+決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
+`break_pages` はフォント非依存の純粋パスなので、ページ確定後にマーカーのグリフを作り直すことはできない
+（この不変条件が「後段で番号だけ差し替える」実装を封じている）。そこで**本文パスごと不動点まで反復する**：
+
+1. 1 回目は空の上書きマップ（＝全脚注が通し番号へフォールバック）で lowering → `build_blocks` →
+   `resolve_images` → `break_pages` を通し、脚注のページ割り当てを知る
+2. 確定ページ列から `typeset::per_page_footnote_numbers` で表示番号を割り当て直す
+3. そのマップを `LoweringContext::with_footnote_numbers` で与えて組み直す
+4. 得られたページ列から番号を割り当て直しても同じマップになれば、表示とページ割り当てが一致した
+   ＝不動点なので確定。違えば 2 へ戻る（上限 `MAX_FOOTNOTE_NUMBERING_PASSES` = 4 回）
+
+反復が成り立つのは、番号が**表示値しか変えない**から。どの脚注が存在するか・その文書順は番号に依存
+しないので、出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。加えてページ内番号は
+通し番号以下（部分集合を数えるため）なので、`per_page` でマーカーは縮むか同じで、行があふれる方向には
+動かない。実質 2 回目で収束する。上限まで収束しなかった場合（脚注が 9 → 10 の桁境界でページ境界に
+乗り続ける等）は `tracing::warn` で報告して最後の結果を採用する。
+
+通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。
+表セル内の脚注はページ列に配置されない（`pdf_gen::render` の既知の制限）ためマップに載らず、
+`per_page` でも通し番号のまま表示される。
 
 ## `pdf_gen`
 

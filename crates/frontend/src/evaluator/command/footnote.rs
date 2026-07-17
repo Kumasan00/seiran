@@ -2,7 +2,7 @@
 //!
 //! 必須引数 1 個（脚注本体）を取り、本体をテキストモードのインライン列として再帰評価した上で
 //! `InlineNode::Footnote` を生成する。採番は行わない（P10: frontend の evaluator は採番を一切
-//! 行わない。採番は `typeset::lowering::CounterRegistry::increment_footnote` の責務）。
+//! 行わない。採番は `typeset::lowering::CounterRegistry::next_footnote_index` の責務）。
 
 use model::InlineNode;
 

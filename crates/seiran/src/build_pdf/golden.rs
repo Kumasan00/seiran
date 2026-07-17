@@ -48,6 +48,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "color",
   "equation",
   "footnote",
+  "footnote_per_page",
   "gather",
   "hyperref",
   "hyphenation",
@@ -117,6 +118,9 @@ fn apply_input_style_overrides(name: &str, style: &mut config::Style) {
     },
     // 目次（エントリ収集・リーダー・ページ番号・レベル別字下げ）
     "toc" => style.toc.enabled = true,
+    // 脚注のページ単位採番（#226）。既定は通し番号なので、この入力だけ切り替える
+    // （通し番号の golden は `footnote` が押さえる）。
+    "footnote_per_page" => style.footnote.numbering = config::FootnoteNumbering::PerPage,
     _ => {},
   }
 }
@@ -132,6 +136,16 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
     config.document.language = Some("en".to_string());
     config.pdf.margin.left = Length::mm(275.0);
     config.pdf.margin.right = Length::mm(275.0);
+  }
+  // ページ単位採番は複数ページにまたがらないと検証にならない。既定 fixture の版面は
+  // 1 ページが広大で改ページが起きないため、この入力だけ小さい紙面にする。
+  if name == "footnote_per_page" {
+    config.pdf.width = Length::mm(150.0);
+    config.pdf.height = Length::mm(130.0);
+    config.pdf.margin.left = Length::mm(20.0);
+    config.pdf.margin.right = Length::mm(20.0);
+    config.pdf.margin.top = Length::mm(15.0);
+    config.pdf.margin.bottom = Length::mm(15.0);
   }
 }
 
@@ -218,6 +232,49 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   for (index, page) in laid_out.pages.iter().enumerate() {
     assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
   }
+}
+
+/// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
+fn footnote_numbers_per_page(numbering: config::FootnoteNumbering) -> Vec<Vec<u32>> {
+  enter_workspace_root();
+  let (mut config, mut style, references) = load_base();
+  style.footnote.numbering = numbering;
+  config.sources = vec![PathBuf::from("tests/text/footnote_per_page.sei")];
+  apply_input_config_overrides("footnote_per_page", &mut config);
+  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+  return laid_out
+    .pages
+    .iter()
+    .map(|page| return page.footnotes.iter().map(|footnote| return footnote.number).collect())
+    .collect();
+}
+
+#[test]
+fn per_page_footnote_numbering_restarts_on_each_page() {
+  // Act
+  let per_page = footnote_numbers_per_page(config::FootnoteNumbering::PerPage);
+
+  // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
+  // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
+  // ページ単位採番では 1 桁に縮み、その幅の変化が行分割へ跳ね返る循環を踏んだうえで収束している。
+  let pages_with_footnotes: Vec<&Vec<u32>> = per_page.iter().filter(|numbers| return !numbers.is_empty()).collect();
+  assert!(pages_with_footnotes.len() >= 2, "脚注が 2 ページ以上に分かれるはず: {per_page:?}");
+  for numbers in pages_with_footnotes {
+    let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
+    assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
+  }
+}
+
+#[test]
+fn continuous_footnote_numbering_runs_through_pages() {
+  // Act — 同じ入力を既定（通し）で組む
+  let continuous = footnote_numbers_per_page(config::FootnoteNumbering::Continuous);
+
+  // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
+  let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();
+  let expected: Vec<u32> = (1..=u32::try_from(flattened.len()).expect("脚注数は u32 に収まる")).collect();
+  assert_eq!(flattened, expected, "通し採番はページをまたいで連番のはず: {continuous:?}");
 }
 
 #[test]

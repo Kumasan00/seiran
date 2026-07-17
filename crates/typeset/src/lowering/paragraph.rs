@@ -18,7 +18,7 @@ use super::{
 /// `ctx.first_line_indent` が正のとき、結果先頭に水平カーンを前置する。貪欲法の行分割は
 /// 行頭の `Kern` を「先頭行だけに効く幅」として消費するため、折り返し 2 行目以降・`\\` 直後の
 /// 行には字下げが効かず、「段落先頭のみ字下げ」が自動的に成立する。
-/// `registry` は段落内の `\footnote` 採番（`CounterRegistry::increment_footnote`）に使う。
+/// `registry` は段落内の `\footnote` 採番（`CounterRegistry::next_footnote_index`）に使う。
 ///
 /// ## TODO
 ///

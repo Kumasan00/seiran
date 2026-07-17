@@ -17,7 +17,7 @@ use super::{
 ///
 /// 書体指定（`InlineNode::Styled`）はパーサ段で `FontKind` まで確定しているため、
 /// ここでは `font_kind` を完全に上書きするだけでよい（親スタイルとの合成はしない）。
-/// `registry` は `InlineNode::Footnote` の採番（`CounterRegistry::increment_footnote`）に使う。
+/// `registry` は `InlineNode::Footnote` の採番（`CounterRegistry::next_footnote_index`）に使う。
 pub(super) fn lower_inline(
   ctx: &LoweringContext,
   inline: &InlineNode,
@@ -128,10 +128,14 @@ pub(super) fn lower_inline(
       return Ok(result);
     },
     InlineNode::Footnote { body, .. } => {
-      // 番号は出現順の連番（ラベル解決不要なので単純増加のみ、pass2 は経由しない）。
-      // ページ下部への配置は #35 の責務（typeset::breaking）。ここでは番号確定・本文中マーカーの
+      // 脚注の同一性は出現 index（0 起点。ラベル解決不要なので単純増加のみ、pass2 は経由しない）。
+      // 表示番号は既定で `index + 1`（＝文書通しの連番）だが、ページ単位採番のときは
+      // `ctx.footnote_numbers` が確定済みの番号を与える（改ページ情報を要するため lowering 単体では
+      // 決められない。`seiran::build_pdf` がページ確定後に与え直して不動点まで反復する）。
+      // ページ下部への配置は typeset::breaking の責務。ここでは番号確定・本文中マーカーの
       // 生成・脚注本体のフォントサイズ適用・本体先頭マーカーの前置までを行う。
-      let number = registry.increment_footnote();
+      let index = registry.next_footnote_index();
+      let number = footnote_number(ctx, index);
       let footnote_style = &ctx.style.footnote;
       let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
         "number" => return number.to_string(),
@@ -157,11 +161,26 @@ pub(super) fn lower_inline(
         inline_marker,
         LayoutNode::Footnote {
           number,
+          index,
           body: lowered_body,
         },
       ]);
     },
   }
+}
+
+/// 出現 index の脚注に振る表示番号を返す
+///
+/// [`LoweringContext::footnote_numbers`] に上書きマップがあればそれを引き、無ければ（＝通し採番、
+/// あるいはマップに載らなかった脚注）`index + 1` の連番にフォールバックする。ページ列に配置され
+/// ない脚注（表セル内。`pdf_gen::render` の既知の制限）はページ単位採番でもマップに載らないので、
+/// このフォールバックで通し番号のまま表示される。
+fn footnote_number(ctx: &LoweringContext, index: u32) -> u32 {
+  let continuous = index + 1;
+  return ctx
+    .footnote_numbers
+    .and_then(|numbers| return numbers.get(index as usize).copied())
+    .unwrap_or(continuous);
 }
 
 /// 脚注マーカー（上付き番号）1 個を `LayoutNode::Raise` で組み立てる
@@ -523,13 +542,95 @@ mod tests {
 
     // Assert — nodes[0] は本文中マーカー（Raise）、nodes[1] が Footnote 本体
     assert!(matches!(&nodes[0], LayoutNode::Raise { .. }));
-    let LayoutNode::Footnote { number, body } = &nodes[1] else {
+    let LayoutNode::Footnote {
+      number,
+      index,
+      body,
+    } = &nodes[1]
+    else {
       panic!("Footnote が期待されます: {nodes:?}");
     };
+    // 上書きマップなし（通し採番）なので表示番号は index + 1
     assert_eq!(*number, 1);
+    assert_eq!(*index, 0);
     // body[0] は本体先頭マーカー（Raise）、body[1] が実内容
     assert!(matches!(&body[0], LayoutNode::Raise { .. }));
     assert!(matches!(&body[1], LayoutNode::Text(t, _) if t == "note"));
+  }
+
+  /// 脚注マーカー（`LayoutNode::Raise` + `Text`）の表示テキストを取り出すテストヘルパ
+  fn marker_text(node: &LayoutNode) -> &str {
+    let LayoutNode::Raise { children, .. } = node else {
+      panic!("Raise が期待されます: {node:?}");
+    };
+    let LayoutNode::Text(text, _) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    return text;
+  }
+
+  #[test]
+  fn lower_footnote_applies_number_override_to_both_markers() {
+    // Arrange — ページ単位採番の 2 回目以降の反復を模す。出現 index 1 の脚注に表示番号 1 を与える
+    // （1 ページ目に 1 個、2 ページ目の先頭がこの脚注、という配置の想定）
+    let style = config::Style::default();
+    let numbers = [1, 1];
+    let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
+    let inline = InlineNode::Footnote {
+      body: vec![InlineNode::Text("note".to_string())],
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+    registry.next_footnote_index(); // 1 個目は本文側で採番済みという想定
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+
+    // Assert — 通し番号なら 2 になるところが、上書きマップにより 1 になる
+    let LayoutNode::Footnote {
+      number,
+      index,
+      body,
+    } = &nodes[1]
+    else {
+      panic!("Footnote が期待されます: {nodes:?}");
+    };
+    assert_eq!(*number, 1);
+    // 同一性は上書きされない（マップを引くキーであり続ける）
+    assert_eq!(*index, 1);
+    // 本文中マーカーと本体先頭マーカーが同じ番号を表示する（別経路で作らないことの担保）
+    assert_eq!(marker_text(&nodes[0]), "1");
+    assert_eq!(marker_text(&body[0]), "1");
+  }
+
+  #[test]
+  fn lower_footnote_falls_back_to_continuous_number_outside_override_map() {
+    // Arrange — マップに載らない脚注（ページ列に配置されない表セル内の脚注が該当）
+    let style = config::Style::default();
+    let numbers = [1];
+    let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
+    let inline = InlineNode::Footnote {
+      body: vec![InlineNode::Text("note".to_string())],
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+    registry.next_footnote_index(); // index 0 は消費済み。この脚注は index 1 = マップの範囲外
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+
+    // Assert — 範囲外は通し値（index + 1）へフォールバックする
+    assert!(
+      matches!(
+        &nodes[1],
+        LayoutNode::Footnote {
+          number: 2,
+          index: 1,
+          ..
+        }
+      ),
+      "{nodes:?}"
+    );
   }
 
   #[test]

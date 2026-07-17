@@ -122,7 +122,7 @@ pub enum InlineNode {
   ///
   /// 前方参照解決が不要な単純な出現順連番のため、`Ref`/`Cite` と異なり 2 段階
   /// （スタブ→pass2 解決）にはせず、`lowering::CounterRegistry` が pass1 の単一パスで
-  /// 直接採番する（`lowering::CounterRegistry::increment_footnote`）。
+  /// 直接採番する（`lowering::CounterRegistry::next_footnote_index`）。
   Footnote {
     /// 脚注本体（テキストモードで再帰評価済みのインライン列。太字・数式等を許容）
     body: Vec<InlineNode>,
