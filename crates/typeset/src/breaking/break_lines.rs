@@ -229,10 +229,12 @@ pub(super) fn build_line(
       // （ページ下部への行分割・配置は `break_pages` の責務）
       HItem::Footnote {
         number,
+        index,
         items,
         leading,
       } => footnotes.push(LineFootnote {
         number: *number,
+        index: *index,
         items: items.clone(),
         leading: *leading,
       }),

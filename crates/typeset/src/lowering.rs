@@ -47,6 +47,7 @@ mod template;
 mod theorem;
 mod title_page;
 
+pub use counter::per_page_footnote_numbers;
 pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
 pub use title_page::{TitlePageMetadata, lower_title_page};
 
@@ -202,6 +203,14 @@ pub struct LoweringContext<'a> {
   /// `LoweringError` に帰属ソースとして刻まれ、`seiran` 側でファイル名・内容へ逆引きされる。
   /// 単発変換（[`lower_nodes`] / [`lower_document`]）は常にグループ 0 として扱う。
   pub source: SourceId,
+  /// 脚注の表示番号の上書きマップ（出現 index 引き）。`None` は文書通しの連番
+  ///
+  /// ページ単位採番（`config::FootnoteNumbering::PerPage`）は改ページ情報を要するため lowering
+  /// 単体では決められない。`seiran::build_pdf` が「番号なしで 1 度組んだ結果のページ列」から
+  /// 番号を割り当て直し、この文脈経由で与えて組み直す（不動点まで反復）。
+  /// 添字は [`counter::CounterRegistry::next_footnote_index`] が返す出現 index で、範囲外・穴は
+  /// 通し値（`index + 1`）にフォールバックする（[`crate::per_page_footnote_numbers`]）。
+  pub footnote_numbers: Option<&'a [u32]>,
 }
 
 impl<'a> LoweringContext<'a> {
@@ -224,6 +233,8 @@ impl<'a> LoweringContext<'a> {
       list_depth: 0,
       // 単発変換はグループ 0 固定。複数ソースは lower_sources_with_headings が with_source で差し替える。
       source: SourceId::new(0),
+      // 既定は文書通しの連番。ページ単位採番のときだけ build_pdf が with_footnote_numbers で与える。
+      footnote_numbers: None,
     };
   }
 
@@ -235,6 +246,17 @@ impl<'a> LoweringContext<'a> {
   pub fn with_image_defaults(mut self, image_max_dpi: u32, image_downsample: bool) -> Self {
     self.image_max_dpi = image_max_dpi;
     self.image_downsample = image_downsample;
+    return self;
+  }
+
+  /// 脚注の表示番号の上書きマップを与えた文脈を返す
+  ///
+  /// `numbers` は出現 index 引きの表示番号（[`crate::per_page_footnote_numbers`] の出力）。
+  /// ページ単位採番のときだけ `seiran::build_pdf` が注入する。通し採番では呼ばず `None` のまま
+  /// にする（`index + 1` にフォールバックし、上書きマップを通さない経路になる）。
+  #[must_use]
+  pub fn with_footnote_numbers(mut self, numbers: &'a [u32]) -> Self {
+    self.footnote_numbers = Some(numbers);
     return self;
   }
 
@@ -252,6 +274,7 @@ impl<'a> LoweringContext<'a> {
       image_downsample: self.image_downsample,
       list_depth: self.list_depth,
       source: self.source,
+      footnote_numbers: self.footnote_numbers,
     };
   }
 
@@ -270,6 +293,7 @@ impl<'a> LoweringContext<'a> {
       image_downsample: self.image_downsample,
       list_depth: self.list_depth,
       source: self.source,
+      footnote_numbers: self.footnote_numbers,
     };
   }
 
@@ -288,6 +312,7 @@ impl<'a> LoweringContext<'a> {
       image_downsample: self.image_downsample,
       list_depth,
       source: self.source,
+      footnote_numbers: self.footnote_numbers,
     };
   }
 
@@ -302,6 +327,7 @@ impl<'a> LoweringContext<'a> {
       first_line_indent: self.first_line_indent,
       image_max_dpi: self.image_max_dpi,
       image_downsample: self.image_downsample,
+      footnote_numbers: self.footnote_numbers,
       list_depth: self.list_depth,
       source,
     };

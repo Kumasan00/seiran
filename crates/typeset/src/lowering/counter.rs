@@ -26,6 +26,14 @@
 //! `register_label` 時点でテンプレートを適用するため、`resolve_label` は整形済み文字列を
 //! 返す（呼び出し側は装飾を気にせず使える）。
 //!
+//! ## 脚注の採番について
+//!
+//! 脚注だけは他のカウンタと事情が違う。[`CounterRegistry::next_footnote_index`] が振るのは
+//! 表示番号ではなく出現 index（同一性）で、表示番号は `super::inline::lower_inline` が決める。
+//! ページ単位採番（`config::FootnoteNumbering::PerPage`）は改ページ情報を要するため lowering
+//! 単体では決められず、確定ページ列から [`per_page_footnote_numbers`] で番号を割り当て直して
+//! 組み直す（不動点までの反復は `seiran::build_pdf` が回す）。
+//!
 //! ## カウンタ定義のソース
 //!
 //! カウンタ定義の真のソースは `config::Style.counters` テーブル。
@@ -35,13 +43,47 @@
 use std::collections::HashMap;
 
 use config::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
-use model::HeadingLevel;
+use model::{HeadingLevel, Page};
 
 use super::{LoweringError, SourceId};
 
 mod format;
 
 use format::expand_ref_format;
+
+/// 確定したページ列から、脚注のページ単位表示番号を割り当てる（`FootnoteNumbering::PerPage`）
+///
+/// 返り値は出現 index 引きの表示番号（[`super::LoweringContext::with_footnote_numbers`] にそのまま
+/// 渡す形）。各ページの `footnotes` を出現順に 1, 2, … と振り直すので、脚注のないページを挟んでも
+/// 次に脚注が現れるページは 1 から始まる。
+///
+/// ページ列に現れない脚注（表セル内の脚注は配置されない。`pdf_gen::render` の既知の制限）は
+/// 番号を決めようがないので、その穴は通し値（`index + 1`）で埋める。同じ理由で長さは
+/// 「配置済みの最大 index + 1」までで足り、末尾の未配置ぶんは lowering 側の同じフォールバックが拾う。
+///
+/// ページ単位採番は「番号 → マーカー幅 → 行分割 → ページ割り当て → 番号」と循環しているため、
+/// 呼び出し元（`seiran::build_pdf`）はこの割り当てと再組版を不動点まで反復する。
+///
+/// # Panics
+///
+/// 文書中の脚注数、または 1 ページの脚注数が `u32` に収まらない場合にパニックします。
+#[must_use]
+pub fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
+  let mut numbers: Vec<u32> = Vec::new();
+  for page in pages {
+    for (position, footnote) in page.footnotes.iter().enumerate() {
+      let index = usize::try_from(footnote.index).expect("脚注の出現 index は usize に収まる前提");
+      // 目的の index まで通し値で伸ばしてから、配置が分かっている脚注だけを上書きする。
+      // 伸ばした途中の穴（未配置の脚注）は通し値のまま残る。
+      while numbers.len() <= index {
+        let continuous = u32::try_from(numbers.len() + 1).expect("脚注の個数は u32 に収まる前提");
+        numbers.push(continuous);
+      }
+      numbers[index] = u32::try_from(position + 1).expect("1 ページの脚注数は u32 に収まる前提");
+    }
+  }
+  return numbers;
+}
 
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
@@ -56,8 +98,8 @@ pub(crate) struct CounterRegistry {
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   labels: HashMap<String, ResolvedLabel>,
-  /// 脚注カウンタの現在値（出現順の連番。ページ単位リセットは #35 で対応、現状は文書全体で連番）
-  footnote_value: u32,
+  /// これまでに発番した脚注の個数（次の脚注の出現 index になる）
+  footnote_count: u32,
 }
 
 impl CounterRegistry {
@@ -72,7 +114,7 @@ impl CounterRegistry {
       theorems: style.theorems.clone(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
-      footnote_value: 0,
+      footnote_count: 0,
     };
   }
 
@@ -153,12 +195,17 @@ impl CounterRegistry {
     return Ok(Some(number));
   }
 
-  /// 脚注を 1 つ採番し、番号を返す（出現順の連番。ラベル解決は不要なので単純増加のみ）
+  /// 脚注を 1 つ数え、その出現 index（0 起点）を返す（ラベル解決は不要なので単純増加のみ）
   ///
-  /// ページ単位でのリセットは行わない（#35 の責務。改ページ情報は lowering 時点では未確定）。
-  pub(crate) fn increment_footnote(&mut self) -> u32 {
-    self.footnote_value += 1;
-    return self.footnote_value;
+  /// 返すのは**表示番号ではなく同一性**。表示番号は `super::inline::lower_inline` が
+  /// [`super::LoweringContext::footnote_numbers`] を index で引いて決める（未指定なら `index + 1`
+  /// ＝文書通しの連番）。ページ単位リセット（`FootnoteNumbering::PerPage`）は改ページ情報を
+  /// 要するため lowering 単体では決められず、`seiran::build_pdf` がページ確定後の番号を
+  /// この上書きマップとして与え直し、不動点まで反復する。
+  pub(crate) fn next_footnote_index(&mut self) -> u32 {
+    let index = self.footnote_count;
+    self.footnote_count += 1;
+    return index;
   }
 
   /// 現在のカウンタ値を `number_format` テンプレートに従って書式化する
@@ -322,7 +369,7 @@ impl CounterRegistry {
       theorems: Theorems::default(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
-      footnote_value: 0,
+      footnote_count: 0,
     };
   }
 }
@@ -352,11 +399,87 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
 #[cfg(test)]
 mod tests {
   use config::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
-  use model::Span;
+  use model::{PlacedFootnote, Span};
 
   use super::*;
 
   fn theorem_span() -> Span { return Span::DUMMY; }
+
+  /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
+  ///
+  /// `per_page_footnote_numbers` は `index` と並び順しか見ないので、本体（`blocks`）は空でよい。
+  fn page_with_footnotes(indices: &[u32]) -> Page {
+    return Page {
+      blocks: Vec::new(),
+      header: Vec::new(),
+      footer: Vec::new(),
+      footnotes: indices
+        .iter()
+        .map(|index| {
+          return PlacedFootnote {
+            // 入力側の表示番号は割り当てに影響しない（前回の反復の値が入っている想定）
+            number: index + 1,
+            index: *index,
+            blocks: Vec::new(),
+          };
+        })
+        .collect(),
+      anchors: Vec::new(),
+      links: Vec::new(),
+    };
+  }
+
+  #[test]
+  fn per_page_numbers_restart_from_one_on_each_page() {
+    // Arrange — 1 ページ目に 3 個、2 ページ目に 2 個
+    let pages = vec![
+      page_with_footnotes(&[0, 1, 2]),
+      page_with_footnotes(&[3, 4]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert — 2 ページ目は 1 に戻る
+    assert_eq!(numbers, vec![1, 2, 3, 1, 2]);
+  }
+
+  #[test]
+  fn per_page_numbers_restart_after_page_without_footnotes() {
+    // Arrange — 脚注のないページを挟む
+    let pages = vec![
+      page_with_footnotes(&[0]),
+      page_with_footnotes(&[]),
+      page_with_footnotes(&[1]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert — 脚注のないページを挟んでも、次に脚注が現れるページは 1 から始まる
+    assert_eq!(numbers, vec![1, 1]);
+  }
+
+  #[test]
+  fn per_page_numbers_fill_unplaced_footnotes_with_continuous_value() {
+    // Arrange — index 1 はページ列に現れない（表セル内の脚注は配置されない）
+    let pages = vec![page_with_footnotes(&[0, 2])];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert — 配置済みはページ内順、未配置の穴は通し値のまま
+    assert_eq!(numbers, vec![1, 2, 2]);
+  }
+
+  #[test]
+  fn per_page_numbers_are_empty_without_footnotes() {
+    // Arrange / Act
+    let numbers = per_page_footnote_numbers(&[page_with_footnotes(&[])]);
+
+    // Assert — 引く先が無ければ空。lowering 側が通し値へフォールバックする
+    assert!(numbers.is_empty());
+  }
 
   #[test]
   fn increment_theorem_numbers_with_default_format() {
@@ -623,29 +746,29 @@ mod tests {
   }
 
   #[test]
-  fn increment_footnote_returns_sequential_numbers() {
+  fn next_footnote_index_returns_sequential_indices() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
 
-    // Act / Assert
-    assert_eq!(r.increment_footnote(), 1);
-    assert_eq!(r.increment_footnote(), 2);
-    assert_eq!(r.increment_footnote(), 3);
+    // Act / Assert — 0 起点の出現順
+    assert_eq!(r.next_footnote_index(), 0);
+    assert_eq!(r.next_footnote_index(), 1);
+    assert_eq!(r.next_footnote_index(), 2);
   }
 
   #[test]
-  fn increment_footnote_unaffected_by_unrelated_counters() {
+  fn next_footnote_index_unaffected_by_unrelated_counters() {
     // Arrange — section 等の見出しカウンタの増加は脚注カウンタに影響しない
     let mut r = CounterRegistry::default_for_seiran();
-    r.increment_footnote(); // 1
+    r.next_footnote_index(); // 0
 
     // Act
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section);
-    let next = r.increment_footnote();
+    let next = r.next_footnote_index();
 
     // Assert
-    assert_eq!(next, 2);
+    assert_eq!(next, 1);
   }
 
   #[test]

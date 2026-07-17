@@ -50,7 +50,7 @@ pub use crate::style::{
   counter::{CounterName, CounterStyle, Counters},
   error::{ReadStyleError, StyleValidationError},
   figure::FigureStyle,
-  footnote::FootnoteStyle,
+  footnote::{FootnoteNumbering, FootnoteStyle},
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
   list::ListStyle,

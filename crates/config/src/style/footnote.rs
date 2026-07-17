@@ -3,6 +3,9 @@
 //! 本文中のマーカー（上付き番号）と脚注本体先頭のマーカーは同じ書式・縮小率・上付きシフト量を
 //! 共有する（`typeset::lowering` が基準フォントサイズだけを使い分けて適用する）。区切り罫線は
 //! `top_margin` → 罫線（`rule_length` × `rule_thickness`） → `rule_gap` → 脚注本体、の順に積む。
+//!
+//! 番号の振り方（[`FootnoteNumbering`]）は「脚注という種類の既定」なので個別要素のオプションでは
+//! なく style.toml が持つ（P10）。
 
 use garde::Validate;
 use model::{
@@ -11,11 +14,29 @@ use model::{
 };
 use serde::{Deserialize, Serialize};
 
+/// 脚注番号のリセット方式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
+#[serde(rename_all = "snake_case")]
+#[garde(allow_unvalidated)]
+pub enum FootnoteNumbering {
+  /// 文書全体を通した連番。例: `1, 2, 3, ...`（章・ページをまたいでも増え続ける）
+  #[default]
+  Continuous,
+  /// 脚注が置かれたページごとに 1 から振り直す
+  ///
+  /// 番号は「脚注本体が実際に配置されたページ」を基準に決まる。行がページに収まらず脚注ごと
+  /// 次ページへ送られた場合は送り先ページが基準になる（本文マーカーと脚注本体が別ページに
+  /// 割れないという `typeset::breaking::break_pages` の既存不変条件による）。
+  PerPage,
+}
+
 /// 脚注のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub struct FootnoteStyle {
+  /// 脚注番号のリセット方式（文書通し / ページ単位）
+  pub numbering: FootnoteNumbering,
   /// 脚注本体のフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -47,6 +68,7 @@ pub struct FootnoteStyle {
 impl Default for FootnoteStyle {
   fn default() -> Self {
     return Self {
+      numbering: FootnoteNumbering::default(),
       font_size: Length::pt(9.0),
       marker_format: "{number}".to_string(),
       marker_size_factor: 0.7,
@@ -65,11 +87,33 @@ mod tests {
   use garde::Validate;
   use model::Length;
 
-  use super::FootnoteStyle;
+  use super::{FootnoteNumbering, FootnoteStyle};
 
   #[test]
   fn validate_accepts_default() {
     assert!(FootnoteStyle::default().validate().is_ok());
+  }
+
+  #[test]
+  fn default_numbering_is_continuous() {
+    // Act / Assert — 既定は現状の振る舞い（文書通しの連番）
+    assert_eq!(FootnoteStyle::default().numbering, FootnoteNumbering::Continuous);
+  }
+
+  #[test]
+  fn deserialize_accepts_per_page_numbering() {
+    // Arrange / Act
+    let style: FootnoteStyle = toml::from_str("numbering = \"per_page\"\n").expect("per_page は受理されるはず");
+
+    // Assert
+    assert_eq!(style.numbering, FootnoteNumbering::PerPage);
+  }
+
+  #[test]
+  fn deserialize_rejects_unknown_numbering() {
+    // Act / Assert — 未知の値は静かに既定へ落とさず読込時に弾く（P6）。呼び出し元の `parse_style` が
+    // この deserialize エラーを `ReadStyleError::ParseToml` としてソース位置付きで報告する。
+    assert!(toml::from_str::<FootnoteStyle>("numbering = \"per_chapter\"\n").is_err());
   }
 
   #[test]

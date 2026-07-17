@@ -47,8 +47,13 @@ pub struct Page {
 /// 座標系は [`PlacedBlock`] と同じ（本文左端・ページ上端からの距離）。
 #[derive(Debug, Clone)]
 pub struct PlacedFootnote {
-  /// 発番済みの脚注番号（出現順の連番）
+  /// 発番済みの表示番号（[`crate::LineFootnote`] から素通し）
   pub number: u32,
+  /// 出現順の識別子（0 起点。[`crate::LineFootnote`] から素通し）
+  ///
+  /// ページ単位採番の反復（`seiran::build_pdf`）が、確定したページ列から
+  /// 「どの脚注に何番を振り直すか」を決めるためのキー。
+  pub index: u32,
   /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]。リージョン内最初の
   /// 脚注は先頭に区切り罫線 [`PlacedBlock::Rule`] を持つ）
   pub blocks: Vec<PlacedBlock>,

@@ -172,16 +172,19 @@ pub enum LayoutNode {
   },
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   ///
-  /// 番号は lowering 時点で確定済み（連番、[`super::counter::CounterRegistry::increment_footnote`]
-  /// が pass1 で発番）。本文中の上付きマーカー（`Raise` + `Text`）は本 variant の**手前**に
+  /// 番号は lowering 時点で確定済み（[`super::counter::CounterRegistry::next_footnote_index`] が
+  /// pass1 で出現 index を振り、`super::inline::lower_inline` が表示番号を決める）。
+  /// 本文中の上付きマーカー（`Raise` + `Text`）は本 variant の**手前**に
   /// 別ノードとして発行され（`super::inline::lower_inline`）、本体先頭にも同じマーカーが
   /// prepend 済み。ページ下部への実配置（本体の計測・ページ振り分け）は `crate::block` /
   /// `crate::breaking` が本 variant を使って行う。区切り罫線の描画は `crate::breaking::break_pages`
   /// が `style.footnote` から生成した `PlacedBlock::Rule` を `PlacedFootnote.blocks` に混ぜて持たせる
   /// （`pdf_gen` 側の追加変更は不要）。
   Footnote {
-    /// 発番済みの脚注番号（出現順の連番）
+    /// 発番済みの表示番号（マーカーのテキストとして既に埋め込み済みの値）
     number: u32,
+    /// 出現順の識別子（0 起点。採番方式に依らず脚注を一意に指す）
+    index: u32,
     /// 脚注本体（先頭に本体用マーカーを含む、再帰的に lowering 済みの `LayoutNode` 列）
     body: Vec<LayoutNode>,
   },

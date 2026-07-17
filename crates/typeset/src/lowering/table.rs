@@ -461,7 +461,7 @@ mod tests {
       rule_above: false,
     }];
     let mut registry = CounterRegistry::default_for_seiran();
-    registry.increment_footnote(); // 本文側で既に 1 個採番済みという想定
+    registry.next_footnote_index(); // 本文側で既に 1 個採番済みという想定
 
     // Act
     let nodes =

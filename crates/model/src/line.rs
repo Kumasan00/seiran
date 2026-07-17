@@ -34,8 +34,10 @@ pub struct Line {
 /// `typeset::breaking::break_pages` の責務（本クレートはデータを運ぶだけ）。
 #[derive(Debug, Clone)]
 pub struct LineFootnote {
-  /// 発番済みの脚注番号（出現順の連番）
+  /// 発番済みの表示番号（[`HItem::Footnote`] から素通し）
   pub number: u32,
+  /// 出現順の識別子（0 起点。[`HItem::Footnote`] から素通し）
+  pub index: u32,
   /// 脚注本体（計測済みの水平アイテム列。ページ下部配置時に行分割する）
   pub items: Vec<HItem>,
   /// 脚注本体の行送り（支配的フォントサイズ × 行高係数）
