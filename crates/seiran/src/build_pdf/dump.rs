@@ -37,7 +37,9 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     if !page.footnotes.is_empty() {
       let _ = writeln!(out, "footnotes:");
       for footnote in &page.footnotes {
-        dump_section(&mut out, &format!("  footnote number={}", footnote.number), &footnote.blocks);
+        // 繰越（前ページからの続き、#227）だけ印を付ける。分割の起きない文書のダンプは不変
+        let continued = if footnote.continued { " continued" } else { "" };
+        dump_section(&mut out, &format!("  footnote number={}{continued}", footnote.number), &footnote.blocks);
       }
     }
     for anchor in &page.anchors {

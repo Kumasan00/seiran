@@ -73,6 +73,9 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 縦組版（`break_pages`）も glue/penalty モデルで、widow/orphan・keep-with-next・
 下端揃え（flush_bottom）を penalty と glue 伸縮で制御する。
 数式は `HBoxContent::Atom`（絶対 dx/dy の閉じた箱）として行分割をまたがない。
+脚注はページ下部の脚注エリアぶんだけ本文の実効下限を縮めて配置し、1 個が収まらないときは
+組版済みの行単位で分割して残りを次ページの脚注エリア先頭へ繰り越す（詰め込みの算術は
+`pack_footnotes` に一本化。詳細は `docs/architecture.md`）。
 脚注をページ単位で採番する設定（`[footnote]` の `numbering = "per_page"`）のときだけ、本文の
 lowering →(a)→(c+d) をページ割り当てが安定するまで反復する（番号がマーカー幅を変え、それが
 ページ割り当てを変えうる循環のため。既定の通し採番は 1 回で確定＝上図のまま）。

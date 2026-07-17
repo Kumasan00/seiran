@@ -49,6 +49,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "equation",
   "footnote",
   "footnote_per_page",
+  "footnote_split",
   "gather",
   "hyperref",
   "hyphenation",
@@ -146,6 +147,16 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
     config.pdf.margin.right = Length::mm(20.0);
     config.pdf.margin.top = Length::mm(15.0);
     config.pdf.margin.bottom = Length::mm(15.0);
+  }
+  // 長い脚注の繰越（#227）は、脚注 1 個が 1 ページの脚注領域に収まらないと起きない。
+  // `footnote_per_page` よりさらに紙面を詰めて、繰越の連鎖が確実に起きるようにする。
+  if name == "footnote_split" {
+    config.pdf.width = Length::mm(120.0);
+    config.pdf.height = Length::mm(85.0);
+    config.pdf.margin.left = Length::mm(15.0);
+    config.pdf.margin.right = Length::mm(15.0);
+    config.pdf.margin.top = Length::mm(12.0);
+    config.pdf.margin.bottom = Length::mm(12.0);
   }
 }
 
@@ -264,6 +275,71 @@ fn per_page_footnote_numbering_restarts_on_each_page() {
     let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
     assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
   }
+}
+
+#[test]
+fn long_footnote_splits_across_pages_without_overlapping_body() {
+  // Arrange
+  enter_workspace_root();
+  let (mut config, style, references) = load_base();
+  config.sources = vec![PathBuf::from("tests/text/footnote_split.sei")];
+  apply_input_config_overrides("footnote_split", &mut config);
+  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+
+  // Act
+  let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+
+  // Assert — 脚注 1 が分割され、続きが次ページの脚注領域へ繰り越される（#227）
+  let fragments: Vec<Vec<(u32, bool)>> = laid_out
+    .pages
+    .iter()
+    .map(|page| return page.footnotes.iter().map(|f| return (f.number, f.continued)).collect())
+    .collect();
+  let carried = fragments
+    .iter()
+    .position(|page| return page.iter().any(|(_, continued)| return *continued))
+    .unwrap_or_else(|| panic!("脚注が分割されて繰越が生じるはず（空振り検知）: {fragments:?}"));
+  assert!(carried > 0, "繰越は 2 ページ目以降に現れるはず: {fragments:?}");
+  // 繰越はそのページの脚注領域の先頭（自前の脚注より前）に置かれる
+  assert_eq!(fragments[carried].first(), Some(&(1, true)), "繰越が脚注領域の先頭のはず: {fragments:?}");
+  assert!(
+    fragments[carried].iter().any(|(number, continued)| return *number == 2 && !continued),
+    "繰越先ページの自前の脚注が繰越の後ろに積まれるはず: {fragments:?}"
+  );
+  // 本文と脚注が重ならない（繰越ページも含めて）
+  for (index, page) in laid_out.pages.iter().enumerate() {
+    let Some(body_bottom) = page.blocks.iter().filter_map(block_bottom).reduce(Length::max) else {
+      continue;
+    };
+    let Some(footnote_top) =
+      page.footnotes.iter().flat_map(|f| return &f.blocks).filter_map(block_top).reduce(Length::min)
+    else {
+      continue;
+    };
+    assert!(
+      footnote_top >= body_bottom,
+      "page {index}: 本文の下端 {} と脚注の上端 {} が重なっている",
+      body_bottom.to_pt(),
+      footnote_top.to_pt()
+    );
+  }
+}
+
+/// 配置済みブロックの上端（脚注領域の重なり判定に使う。行・罫線のみを見る）
+fn block_top(block: &model::PlacedBlock) -> Option<Length> {
+  return match block {
+    model::PlacedBlock::Line { line, baseline_y } => Some(*baseline_y - line.height),
+    model::PlacedBlock::Rule { y, .. } => Some(*y),
+    _ => None,
+  };
+}
+
+/// 配置済みブロックの下端（本文の重なり判定に使う。行のみを見る）
+fn block_bottom(block: &model::PlacedBlock) -> Option<Length> {
+  return match block {
+    model::PlacedBlock::Line { line, baseline_y } => Some(*baseline_y + line.depth),
+    _ => None,
+  };
 }
 
 #[test]

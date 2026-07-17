@@ -39,12 +39,15 @@ pub struct Page {
   pub links: Vec<PlacedLink>,
 }
 
-/// ページ下部に配置された脚注 1 個
+/// ページ下部に配置された脚注 1 個（または長い脚注の断片）
 ///
 /// 本体は複数行に分かれ得るため `blocks`（通常は [`PlacedBlock::Line`] の列）として保持する。
 /// リージョン内で最初に確定する脚注だけは、区切り罫線（`style.footnote`）が
 /// [`PlacedBlock::Rule`] として `blocks` の先頭に混ざる（2 個目以降の脚注には付かない）。
 /// 座標系は [`PlacedBlock`] と同じ（本文左端・ページ上端からの距離）。
+///
+/// 脚注 1 個がページ下部に収まらないときは行単位で分割され、同じ `number` / `index` を持つ
+/// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
 pub struct PlacedFootnote {
   /// 発番済みの表示番号（[`crate::LineFootnote`] から素通し）
@@ -54,6 +57,16 @@ pub struct PlacedFootnote {
   /// ページ単位採番の反復（`seiran::build_pdf`）が、確定したページ列から
   /// 「どの脚注に何番を振り直すか」を決めるためのキー。
   pub index: u32,
+  /// 前ページからの繰越（長い脚注の続き）か
+  ///
+  /// `true` のとき、この断片は本体の先頭ではないため番号マーカーを持たない（マーカーは
+  /// 分割前の先頭行に入っており、分割は行単位なので繰越側には現れない）。マーカーのある行を
+  /// 持つ先頭の断片だけが `false` になる。
+  ///
+  /// 「この脚注がこのページで始まったか」を表すので、ページ単位採番
+  /// （`typeset::per_page_footnote_numbers`）は `true` の断片を数えない — 数えると繰越先の
+  /// ページで番号を振り直してしまう。
+  pub continued: bool,
   /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]。リージョン内最初の
   /// 脚注は先頭に区切り罫線 [`PlacedBlock::Rule`] を持つ）
   pub blocks: Vec<PlacedBlock>,
