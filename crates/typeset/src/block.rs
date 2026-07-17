@@ -134,10 +134,15 @@ pub fn build_blocks(
 ///
 /// `build_blocks`（本文）とヘッダー・フッター配置パス（[`crate::running`]）の双方が共有する。
 pub(crate) struct Measurer<'a> {
+  /// フォント種別ごとのシェイパー
   shapers: &'a HarfRustShapers<'a>,
+  /// フォント種別ごとのメトリクス
   metrics: &'a FontMetrics,
+  /// シェイピングに再利用する `harfrust` バッファ
   buffer: UnicodeBuffer,
+  /// 既定のフォントサイズ
   default_font_size: Length,
+  /// 行送りに掛ける倍率
   line_height_factor: f32,
   /// 欧文ハイフネーション言語。`None` ならハイフネーションなし（現状どおり）
   hyphenation: Option<Lang>,

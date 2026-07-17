@@ -94,6 +94,7 @@ use crate::FontRefs;
 #[error("複数のフォント設定にエラーがあります")]
 #[diagnostic(code(font::validation::multiple_errors))]
 pub struct MultipleFontValidationErrors {
+  /// フォント種別ごとに集約された検証エラー
   #[related]
   errors: Vec<FontValidationErrors>,
 }
@@ -102,7 +103,9 @@ pub struct MultipleFontValidationErrors {
 #[error("フォントの検証に失敗しました: {font_type:?}")]
 #[diagnostic(code(font::validation::error))]
 pub struct FontValidationErrors {
+  /// 検証対象のフォント種別
   font_type: FontType,
+  /// この種別で発生した個別の検証エラー
   #[related]
   errors: Vec<FontValidationError>,
 }

@@ -31,6 +31,7 @@ use crate::FontType;
 /// ```
 #[derive(Debug, Clone)]
 pub struct FontMap<T> {
+  /// フォント種別ごとの値
   inner: HashMap<FontType, T>,
 }
 
@@ -119,7 +120,9 @@ impl<T> FontMap<T> {
 ///
 /// [`FontType::ALL`] の順序で `(FontType, &T)` を返します。
 pub struct FontMapIter<'a, T> {
+  /// 走査対象のマップ本体
   inner: &'a HashMap<FontType, T>,
+  /// `FontType::ALL` 内の現在位置
   index: usize,
 }
 
@@ -148,7 +151,9 @@ impl<T> ExactSizeIterator for FontMapIter<'_, T> {}
 ///
 /// [`FontType::ALL`] の順序で `(FontType, &mut T)` を返します。
 pub struct FontMapIterMut<'a, T> {
+  /// 走査対象のマップ本体
   inner: &'a mut HashMap<FontType, T>,
+  /// `FontType::ALL` 内の現在位置
   index: usize,
 }
 

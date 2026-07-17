@@ -90,6 +90,9 @@ needless_return = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
+implicit_return = { level = "warn", priority = 2 }
+missing_docs_in_private_items = { level = "warn", priority = 2 }
+
 [profile.release]
 opt-level = 3
 debug = false

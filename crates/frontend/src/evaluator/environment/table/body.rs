@@ -20,9 +20,13 @@ use crate::{
 
 /// 本体走査で収集した行・キャプション情報
 pub(super) struct TableBody {
+  /// `\head` 行（列数確定後のセル数検証に使うソース位置つき）
   pub(super) head: Vec<(TableRow, miette::SourceSpan)>,
+  /// `\row` 行（列数確定後のセル数検証に使うソース位置つき）
   pub(super) rows: Vec<(TableRow, miette::SourceSpan)>,
+  /// `\caption` の内容（未指定なら `None`）
   pub(super) caption: Option<Vec<InlineNode>>,
+  /// キャプションを表の上下どちらに配置するか
   pub(super) caption_position: CaptionPosition,
 }
 

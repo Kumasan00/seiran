@@ -27,6 +27,7 @@ pub(crate) fn segments(template: &str) -> impl Iterator<Item = Segment<'_>> { re
 
 /// [`segments`] の内部イテレータ状態（未処理の残り文字列を保持する）
 struct Segments<'a> {
+  /// 未処理の残り文字列
   rest: &'a str,
 }
 

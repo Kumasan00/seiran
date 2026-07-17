@@ -269,6 +269,7 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
 /// スクリプト、言語、シェイピング機能（フィーチャー）などの
 /// タイポグラフィック情報を保持します。
 pub struct HarfRustShaper<'a> {
+  /// `harfrust` のシェイパー本体
   shaper: Shaper<'a>,
   /// `direction` と `script` の **両方が** `Some` のときに事前構築される `ShapePlan`。
   ///
@@ -282,8 +283,11 @@ pub struct HarfRustShaper<'a> {
   shape_plan: Option<ShapePlan>,
   /// 書字方向。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
   direction: Option<Direction>,
+  /// スクリプト。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
   script: Option<Script>,
+  /// 言語。`None` の場合は明示的な言語指定なしでシェイピングします。
   language: Option<Language>,
+  /// 適用するシェイピング機能（フィーチャー）の一覧
   features: Vec<Feature>,
 }
 

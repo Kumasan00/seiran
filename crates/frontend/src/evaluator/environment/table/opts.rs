@@ -13,9 +13,13 @@ use crate::{
 
 /// `table` 環境の任意引数を集約した構造体
 pub(super) struct TableOpts {
+  /// `columns` オプションの生文字列（未指定なら `None`）
   pub(super) columns_spec: Option<String>,
+  /// `widths` オプションの生文字列（未指定なら `None`）
   pub(super) widths_spec: Option<String>,
+  /// `label` オプション（`\ref` からの参照用）
   pub(super) label: Option<String>,
+  /// 改ページによる表の分割を許可するか（既定 `true`）
   pub(super) breakable: bool,
 }
 

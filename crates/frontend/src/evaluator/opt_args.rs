@@ -59,8 +59,11 @@ impl fmt::Display for OptType {
 /// 型変換済みの任意引数値
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum OptValue {
+  /// 真偽値
   Bool(bool),
+  /// 数値
   Number(f64),
+  /// 文字列
   String(String),
   /// [`model::Length`] に正規化された長さ
   Length(Length),

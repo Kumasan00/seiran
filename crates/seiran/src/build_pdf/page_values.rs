@@ -93,6 +93,7 @@ impl BodyPageValues {
 
 /// 前付けページ列確定後にしか得られない、物理ページ順の `({page}, {pages})` ラベル列（running の引数型）
 pub(super) struct PageLabels {
+  /// 物理ページ順の `({page}, {pages})` ラベル
   labels: Vec<(String, String)>,
 }
 

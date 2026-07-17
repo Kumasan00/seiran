@@ -54,7 +54,10 @@ pub(crate) enum CommandResult {
   ///
   /// 「段落の先頭にのみ置ける」という位置検証は段落境界を知る `evaluate_children` が行うため、
   /// ここではマーカーであることとソース位置だけを運ぶ（`span` は位置エラー時の診断に使う）。
-  NoIndent { span: SourceSpan },
+  NoIndent {
+    /// 位置検証エラー時の診断に使うソース位置
+    span: SourceSpan,
+  },
 }
 
 /// コマンドの種類
@@ -144,6 +147,7 @@ pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode
   return Ok(vec![InlineNode::Symbol(ch)]);
 }
 
+/// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
 pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,

@@ -23,6 +23,7 @@ pub(super) struct Cli {
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
+  /// 実行するサブコマンド
   #[command(subcommand)]
   pub(super) command: Command,
 }

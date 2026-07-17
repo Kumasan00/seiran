@@ -285,15 +285,25 @@ pub fn default_for_class(class: TheoremClass) -> TheoremStyle {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct TheoremsTable {
+  /// `theorem` クラスの上書き
   theorem: TheoremStyleOverride,
+  /// `lemma` クラスの上書き
   lemma: TheoremStyleOverride,
+  /// `proposition` クラスの上書き
   proposition: TheoremStyleOverride,
+  /// `corollary` クラスの上書き
   corollary: TheoremStyleOverride,
+  /// `definition` クラスの上書き
   definition: TheoremStyleOverride,
+  /// `axiom` クラスの上書き
   axiom: TheoremStyleOverride,
+  /// `example` クラスの上書き
   example: TheoremStyleOverride,
+  /// `remark` クラスの上書き
   remark: TheoremStyleOverride,
+  /// `claim` クラスの上書き
   claim: TheoremStyleOverride,
+  /// `proof` クラスの上書き
   proof: TheoremStyleOverride,
 }
 

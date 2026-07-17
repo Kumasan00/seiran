@@ -155,9 +155,13 @@ pub enum ConfigValidationError {
 /// 組み立て時には必ず揃っています）。タグ・書字方向の変換は I/O に依存しない純粋処理として
 /// [`validate_and_convert`] が別途担当し、このフェーズはパス解決のみを行います。
 struct ResolvedPaths {
+  /// `FontType::ALL` の順序に対応する正規化済みフォントパス
   font_paths: Vec<PathBuf>,
+  /// 正規化済みソースファイルパス
   sources: Vec<PathBuf>,
+  /// 正規化済みスタイルファイルパス（未指定なら `None`）
   style_path: Option<PathBuf>,
+  /// 正規化済み参照定義ファイルパス（未指定なら `None`）
   references_path: Option<PathBuf>,
 }
 

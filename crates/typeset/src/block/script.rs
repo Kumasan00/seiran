@@ -15,8 +15,11 @@ use model::{FontKind, FontType};
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]
 pub(crate) struct TextSegment {
+  /// セグメントの文字列本体
   pub(crate) text: String,
+  /// このセグメントに割り当てるフォント種別
   pub(crate) font_type: FontType,
+  /// 分類された言語カテゴリ
   pub(crate) category: ScriptCategory,
 }
 

@@ -331,9 +331,13 @@ pub struct HeadingRecord {
 
 /// pass1 走査中に集める見出しの生データ（`title` はまだ `\ref` 未解決）
 struct PendingHeading {
+  /// 見出しの文書順インデックス（0 始まり）
   index: usize,
+  /// 見出しレベル
   level: model::HeadingLevel,
+  /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   number: String,
+  /// 見出しタイトル（`\ref` 未解決）
   title: Vec<model::InlineNode>,
   /// 見出しが属するソースグループの識別子。未解決 `\ref` のエラー帰属に使う。
   source: SourceId,

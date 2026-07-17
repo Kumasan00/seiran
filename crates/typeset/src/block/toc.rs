@@ -101,8 +101,11 @@ pub fn build_toc_blocks(
 /// 単一行を組み立てる際の累積状態（配置済みボックス・行の高さ・深さ）
 #[derive(Default)]
 struct LineAccum {
+  /// 配置済みボックス列
   boxes: Vec<PositionedBox>,
+  /// 行の高さ（ベースラインより上）
   height: Length,
+  /// 行の深さ（ベースラインより下）
   depth: Length,
 }
 

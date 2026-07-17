@@ -34,6 +34,7 @@ pub(super) enum BuildPdfError {
   #[error("複数のソースファイルでエラーが発生しました。")]
   #[diagnostic(code(build::multiple_source_errors))]
   MultipleSourceErrors {
+    /// ソースファイルごとのパース・評価エラー
     #[related]
     errors: Vec<ParseSourceError>,
   },

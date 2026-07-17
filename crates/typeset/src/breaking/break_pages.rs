@@ -61,7 +61,9 @@ pub struct PageGeometry {
 
 /// 縦組版の内部状態（現在ページ・カーソル）
 struct PageComposer {
+  /// 確定済みページ
   pages: Vec<Page>,
+  /// 現在ページに配置済みのブロック
   current: Vec<PlacedBlock>,
   /// 現在ページに解決済みのリンク到達先アンカー（機構 A）
   current_anchors: Vec<PlacedAnchor>,
@@ -136,6 +138,7 @@ struct GlueMark {
 }
 
 impl PageComposer {
+  /// 先頭ページの初期状態で `PageComposer` を生成する
   fn new(geom: &PageGeometry, column_width: Length) -> Self {
     return PageComposer {
       pages: Vec::new(),

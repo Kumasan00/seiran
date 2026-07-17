@@ -146,11 +146,17 @@ impl Default for HeadingStyle {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct HeadingStylesTable {
+  /// `part` レベルの上書き
   part: HeadingStyleOverride,
+  /// `chapter` レベルの上書き
   chapter: HeadingStyleOverride,
+  /// `section` レベルの上書き
   section: HeadingStyleOverride,
+  /// `subsection` レベルの上書き
   subsection: HeadingStyleOverride,
+  /// `paragraph` レベルの上書き
   paragraph: HeadingStyleOverride,
+  /// `subparagraph` レベルの上書き
   subparagraph: HeadingStyleOverride,
 }
 
