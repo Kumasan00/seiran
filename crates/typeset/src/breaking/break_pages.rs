@@ -1748,7 +1748,7 @@ mod tests {
 
   use super::{
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, LinePlacement, PageGeometry, break_pages,
-    is_content_block, keep_group_end, pack_footnotes, plan_paragraph_lines,
+    is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -2079,6 +2079,135 @@ mod tests {
 
     // Assert — 繰越ぶんだけのページが最後に足される（置く本文がもう無いので本文 0 行は正しい）
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (0, vec![(1, true, 1)])], "{pages:?}");
+  }
+
+  /// `lines` 行の段落を作り、`at` 行目（0 起点）の末尾に脚注マーカーを置く
+  fn paragraph_with_footnote_at(lines: usize, at: usize, footnote: HItem) -> Block {
+    let mut footnote = Some(footnote);
+    let mut items = Vec::new();
+    for i in 0..lines {
+      if i > 0 {
+        items.push(HItem::ForcedBreak);
+      }
+      items.push(test_box());
+      if i == at
+        && let Some(marker) = footnote.take()
+      {
+        items.push(marker);
+      }
+    }
+    return Block::Paragraph {
+      items,
+      leading: Length::pt(12.0),
+      indent: Length::pt(0.0),
+      right_indent: Length::pt(0.0),
+      align: model::Align::Left,
+    };
+  }
+
+  /// ページごとの「本文の下端」と「脚注エリアの上端」を返す（重なり検証用。無ければ `None`）
+  fn body_bottom_and_footnote_top(page: &Page) -> (Option<Length>, Option<Length>) {
+    let body_bottom = page
+      .blocks
+      .iter()
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, baseline_y } => return Some(*baseline_y + line.depth),
+        _ => return None,
+      })
+      .reduce(Length::max);
+    let footnote_top = page
+      .footnotes
+      .iter()
+      .flat_map(|f| return &f.blocks)
+      .filter_map(|b| match b {
+        PlacedBlock::Line { line, baseline_y } => return Some(*baseline_y - line.height),
+        PlacedBlock::Rule { y, .. } => return Some(*y),
+        _ => return None,
+      })
+      .reduce(Length::min);
+    return (body_bottom, footnote_top);
+  }
+
+  /// 全ページで本文と脚注が重なっていないことを表明する
+  fn assert_no_body_footnote_overlap(pages: &[Page]) {
+    for (index, page) in pages.iter().enumerate() {
+      let (Some(body_bottom), Some(footnote_top)) = body_bottom_and_footnote_top(page) else {
+        continue;
+      };
+      assert!(
+        footnote_top.to_pt() >= body_bottom.to_pt() - 1e-3,
+        "page {index}: 本文の下端 {} と脚注の上端 {} が重なっている",
+        body_bottom.to_pt(),
+        footnote_top.to_pt()
+      );
+    }
+  }
+
+  #[test]
+  fn footnote_splits_mid_paragraph_and_remaining_lines_reflow_after_the_carry() {
+    // Arrange — 6 行段落の 2 行目（baseline 22・下端 24）に 4 行の脚注。脚注エリアに使えるのは
+    // 50-24=26 で rule_gap 4 を引くと 22 = 2 行ぶん。段落の途中で分割が起き、残りの行は繰越を
+    // 詰めた後の縮んだ実効下限で組み直される（chunk 再計画の経路）
+    let geom = test_geometry();
+    let blocks = vec![paragraph_with_footnote_at(6, 1, footnote_of_lines(1, 4))];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 脚注は 2 + 2 行に割れ、段落の残り 4 行は繰越の下（実効下限 24）へ流れ続ける
+    assert_eq!(
+      footnote_layout(&pages),
+      vec![
+        (2, vec![(1, false, 2)]),
+        (2, vec![(1, true, 2)]),
+        (2, vec![])
+      ],
+      "{pages:?}"
+    );
+    assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 22.0]));
+    assert_eq!(page_baselines(&pages[1]), pts(&[10.0, 22.0]), "繰越ページでも本文は実効下限まで流れる");
+    assert_no_body_footnote_overlap(&pages);
+  }
+
+  #[test]
+  fn footnote_split_coexists_with_flush_bottom() {
+    // Arrange — 下端揃え有効。伸縮アキを挟んだ先の段落で脚注が分割される。下端揃えの目標が
+    // 版面下限ではなく脚注エリアの上端（`region_limit`）でないと、本文がアキで引き伸ばされて
+    // 脚注に重なる（#169 × #227 の両立）
+    let geom = flush_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::Glue {
+        natural: Length::ZERO,
+        stretch: pt(10.0),
+        shrink: Length::ZERO,
+      },
+      paragraph_with_footnote_at(4, 0, footnote_of_lines(1, 4)),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 分割が実際に起きたうえで（空振り検知）、どのページでも本文が脚注へ食い込まない
+    let split_pages: Vec<usize> = pages
+      .iter()
+      .enumerate()
+      .filter(|(_, p)| return p.footnotes.iter().any(|f| return f.continued))
+      .map(|(i, _)| return i)
+      .collect();
+    assert!(!split_pages.is_empty(), "脚注が分割されるはず（空振り検知）: {:?}", footnote_layout(&pages));
+    assert_no_body_footnote_overlap(&pages);
+    // 脚注エリアは版面下限を超えない
+    for (index, page) in pages.iter().enumerate() {
+      for block in page.footnotes.iter().flat_map(|f| return &f.blocks) {
+        let bottom = placed_block_bottom(block);
+        assert!(
+          bottom.to_pt() <= geom.page_limit.to_pt() + 1e-3,
+          "page {index}: 脚注が page_limit を超えている: {}",
+          bottom.to_pt()
+        );
+      }
+    }
   }
 
   /// 脚注 1 個ぶんの需要を作るテストヘルパ（各行は [`test_line`] = 高さ 8・深さ 2、行送り 12）
