@@ -1,6 +1,6 @@
 //! 箇条書きリストのアイテムを表す型
 
-use crate::DocNode;
+use crate::{DocNode, Length};
 
 // =============================================================================
 // リスト関連の型
@@ -19,6 +19,10 @@ pub struct ListItem {
   /// `None` は自動生成マーカー（深さ・番号から算出）を使うことを表す。`Some("")` は
   /// マーカーを表示しない（ぶら下げインデントのみ）ことを表す。
   pub marker: Option<String>,
+  /// この項目直後の縦アキの個別上書き。
+  ///
+  /// 環境の `item_gap`・style 既定より優先する。`None` はどちらかにフォールバック。
+  pub item_gap: Option<Length>,
 }
 
 impl ListItem {
@@ -28,6 +32,7 @@ impl ListItem {
     return ListItem {
       content,
       marker: None,
+      item_gap: None,
     };
   }
 }

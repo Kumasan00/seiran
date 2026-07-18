@@ -1,7 +1,7 @@
 //! リスト（`DocNode::List`）の lowering
 
 use config::NumberStyle;
-use model::ListItem;
+use model::{Length, ListItem};
 
 use super::{
   LoweringContext, LoweringError, PendingHeading,
@@ -32,11 +32,15 @@ const NESTED_ORDERED_FORMATS: [(NumberStyle, &str); 3] = [
 /// 最上位は `style.list` の設定（`unordered_marker` / `ordered_marker_format`）をそのまま使い、
 /// 1 段以上ネストした段は [`NESTED_UNORDERED_MARKERS`] / [`NESTED_ORDERED_FORMATS`] の固定系列を
 /// `(depth - 1) % 3` で循環的に引く。字下げ量（インデント）は深さに依らず `VBox.indent` で表す。
+///
+/// 項目間の縦アキ（`margin_bottom`）は `\item` 個別の `item.item_gap` > 環境の `item_gap` 引数 >
+/// `style.list.item_margin_bottom` の優先順位で決まる。
 pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
   items: &[ListItem],
   start: Option<u32>,
+  item_gap: Option<Length>,
   registry: &mut CounterRegistry,
   headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -90,7 +94,7 @@ pub(super) fn lower_list(
 
     result.push(LayoutNode::VBox {
       children: item_nodes,
-      margin_bottom: list_style.item_margin_bottom,
+      margin_bottom: item.item_gap.or(item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
       right_indent: model::Length::pt(0.0),
       align: model::Align::Left,
@@ -119,9 +123,20 @@ mod tests {
     items: &[ListItem],
     start: Option<u32>,
   ) -> Result<Vec<LayoutNode>, LoweringError> {
+    return lower_list_with_gap(ctx, ordered, items, start, None);
+  }
+
+  /// `item_gap`（環境単位の縦アキ上書き）も指定できるテストヘルパ
+  fn lower_list_with_gap(
+    ctx: &LoweringContext,
+    ordered: bool,
+    items: &[ListItem],
+    start: Option<u32>,
+    item_gap: Option<model::Length>,
+  ) -> Result<Vec<LayoutNode>, LoweringError> {
     let mut registry = CounterRegistry::from_style(ctx.style);
     let mut headings = Vec::new();
-    return lower_list(ctx, ordered, items, start, &mut registry, &mut headings);
+    return lower_list(ctx, ordered, items, start, item_gap, &mut registry, &mut headings);
   }
 
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
@@ -201,6 +216,7 @@ mod tests {
       ordered: true,
       items: vec![item_with_text("inner-a"), item_with_text("inner-b")],
       start: Some(10),
+      item_gap: None,
     };
     let items = [
       item_with_text("outer-a"),
@@ -230,11 +246,13 @@ mod tests {
         ordered: true,
         items: vec![item_with_text("a"), item_with_text("b")],
         start: Some(5),
+        item_gap: None,
       },
       DocNode::List {
         ordered: true,
         items: vec![item_with_text("x")],
         start: None,
+        item_gap: None,
       },
     ];
 
@@ -290,6 +308,7 @@ mod tests {
         InlineNode::Text("inner".to_string()),
       ])])],
       start: None,
+      item_gap: None,
     };
     let items = [ListItem::new(vec![
       DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
@@ -388,6 +407,7 @@ mod tests {
         ordered: kinds[1],
         items: build_nested_items(&kinds[1..]),
         start: None,
+        item_gap: None,
       });
     }
     return vec![ListItem::new(content)];
@@ -460,6 +480,105 @@ mod tests {
 
     // Assert — 外 itemize は深さ 0 の •、中 enumerate は深さ 1 の (a)、内 itemize は深さ 2 の *
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
+  }
+
+  #[test]
+  fn item_gap_env_override_applies_to_all_items() {
+    // Arrange — 環境単位の item_gap 指定は全項目の margin_bottom に反映される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let items = [item_with_text("a"), item_with_text("b")];
+
+    // Act
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0))).expect("失敗しない");
+
+    // Assert
+    for node in &nodes {
+      let LayoutNode::VBox { margin_bottom, .. } = node else {
+        panic!("item は VBox であるべき: {node:?}");
+      };
+      assert!((margin_bottom.to_pt() - model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+    }
+  }
+
+  #[test]
+  fn item_gap_item_override_takes_priority_over_env() {
+    // Arrange — `\item[item_gap=...]` は環境単位の item_gap より優先される
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let mut items = [item_with_text("a"), item_with_text("b")];
+    items[0].item_gap = Some(model::Length::mm(1.0));
+
+    // Act
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0))).expect("失敗しない");
+
+    // Assert — 1 項目目は個別上書き、2 項目目は環境の item_gap
+    let LayoutNode::VBox {
+      margin_bottom: gap0,
+      ..
+    } = &nodes[0]
+    else {
+      panic!("item は VBox であるべき");
+    };
+    let LayoutNode::VBox {
+      margin_bottom: gap1,
+      ..
+    } = &nodes[1]
+    else {
+      panic!("item は VBox であるべき");
+    };
+    assert!((gap0.to_pt() - model::Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
+    assert!((gap1.to_pt() - model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn item_gap_unspecified_falls_back_to_style_default() {
+    // Arrange — 環境・項目どちらも未指定なら style.list.item_margin_bottom を使う（回帰）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let items = [item_with_text("a")];
+
+    // Act
+    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
+
+    // Assert
+    let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
+      panic!("item は VBox であるべき");
+    };
+    assert!((margin_bottom.to_pt() - style.list.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn item_gap_does_not_propagate_to_nested_list() {
+    // Arrange — 外側 item_gap 指定はネストしたリストへ非伝播（DocNode::List ごとに独立フィールド）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nested = DocNode::List {
+      ordered: false,
+      items: vec![item_with_text("inner")],
+      start: None,
+      item_gap: None,
+    };
+    let items = [ListItem::new(vec![
+      DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
+      nested,
+    ])];
+
+    // Act — 外側 item_gap = 5mm だが、ネストしたリストの lowering には渡らず None で扱われる
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(5.0))).expect("失敗しない");
+
+    // Assert — ネスト側 item の margin_bottom は style 既定のまま
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("外側 item は VBox であるべき");
+    };
+    let nested_vbox = children
+      .iter()
+      .find(|c| matches!(c, LayoutNode::VBox { .. }))
+      .expect("ネストしたリストの item VBox があるはず");
+    let LayoutNode::VBox { margin_bottom, .. } = nested_vbox else {
+      panic!("ネスト item は VBox であるべき");
+    };
+    assert!((margin_bottom.to_pt() - style.list.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
   }
 
   #[test]

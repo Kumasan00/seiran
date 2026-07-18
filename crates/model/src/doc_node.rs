@@ -96,6 +96,8 @@ pub enum DocNode {
     /// 開始番号（`enumerate[start=N]`）。`None` は既定（1 から開始）。
     /// `itemize`（unordered）では常に `None`
     start: Option<u32>,
+    /// 項目間の縦アキの上書き。`None` は style.toml の既定値
+    item_gap: Option<Length>,
   },
 
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
@@ -375,6 +377,7 @@ mod tests {
       ordered: false,
       items: vec![],
       start: None,
+      item_gap: None,
     };
     assert!(node.is_list());
     assert!(!node.is_paragraph());

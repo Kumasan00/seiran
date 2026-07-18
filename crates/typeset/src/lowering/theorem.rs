@@ -276,6 +276,7 @@ mod tests {
       ordered: false,
       items: vec![model::ListItem::new(vec![paragraph("item")])],
       start: None,
+      item_gap: None,
     };
 
     // Act
