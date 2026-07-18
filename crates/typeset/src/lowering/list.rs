@@ -54,10 +54,13 @@ pub(super) fn lower_list(
   };
 
   for (i, item) in items.iter().enumerate() {
-    // マーカーの生成。将来 `\item[override]` の個別上書きを入れる場合は、この深さ別の自動選択の
-    // 前段で上書き指定を優先する分岐を挿す（上書きが自動マーカーより優先される）。
+    // マーカーの生成。`\item[marker=...]` による個別上書きがあれば自動生成より優先する。
+    // 連番カウンタ n はこの上書きと独立に i から算出するため、上書きされた項目があっても
+    // 後続項目の自動番号はズレない。
     let n = u32::try_from(i + 1).expect("リスト項目数は u32 に収まる前提");
-    let marker_body = if ordered {
+    let marker_body = if let Some(marker) = &item.marker {
+      marker.clone()
+    } else if ordered {
       if depth == 0 {
         list_style.ordered_marker_format.replace("{number}", &n.to_string())
       } else {
@@ -69,12 +72,14 @@ pub(super) fn lower_list(
     } else {
       NESTED_UNORDERED_MARKERS[(depth - 1) % NESTED_UNORDERED_MARKERS.len()].to_string()
     };
-    let marker = format!("{marker_body} ");
 
     // マーカー + 内容。左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
-    // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。
+    // ネストにも一律適用する。マーカーは先頭行の行頭インラインとして置く。`marker=""` の
+    // 明示指定時（marker_body が空）はマーカー Text 自体を出さず、ぶら下げインデントのみにする。
     let mut item_nodes = Vec::new();
-    item_nodes.push(LayoutNode::Text(marker, marker_style));
+    if !marker_body.is_empty() {
+      item_nodes.push(LayoutNode::Text(format!("{marker_body} "), marker_style));
+    }
 
     // アイテム内容を変換
     let content_nodes = lower_nodes_inner(&item_ctx, &item.content, registry, headings)?;
@@ -233,6 +238,49 @@ mod tests {
       })
       .expect("ネストした item VBox があるはず");
     assert!((nested_indent - indent).abs() < f32::EPSILON, "ネスト item にも indent が乗る");
+  }
+
+  #[test]
+  fn item_marker_override_replaces_auto_marker() {
+    // Arrange — 3 項目中 2 番目だけ marker 上書き（AC: 未指定項目の自動番号はズレない）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let mut items = [
+      item_with_text("a"),
+      item_with_text("b"),
+      item_with_text("c"),
+    ];
+    items[1].marker = Some("Q1.".to_string());
+
+    // Act
+    let nodes = lower_list_default(&ctx, true, &items).expect("失敗しない");
+
+    // Assert — 1・3 番目は自動番号のまま、2 番目だけ上書きマーカー
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["1. ", "Q1. ", "3. "]);
+  }
+
+  #[test]
+  fn item_marker_override_empty_string_omits_marker_text() {
+    // Arrange — marker="" はマーカー非表示・ぶら下げインデントのみ
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let mut items = [item_with_text("x")];
+    items[0].marker = Some(String::new());
+
+    // Act
+    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
+
+    // Assert — item VBox の先頭子がマーカーではなく内容そのもの（"x"）から始まる。
+    // マーカーが出力される場合は先頭が "x " や "• " 等のマーカー文字列になるはずなので、
+    // 先頭 Text が内容と完全一致することがマーカー省略の証拠になる。
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("item は VBox であるべき: {:?}", nodes[0]);
+    };
+    let LayoutNode::Text(text, _) = &children[0] else {
+      panic!("先頭は内容の Text であるべき: {children:?}");
+    };
+    assert_eq!(text, "x", "マーカー Text を挟まず内容の Text から始まるべき");
   }
 
   #[test]

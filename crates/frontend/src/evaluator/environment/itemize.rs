@@ -9,7 +9,7 @@ use crate::{
   evaluator::{
     EvalError,
     environment::body_scan,
-    opt_args::{collect_command_opt_args, collect_environment_opt_args},
+    opt_args::{OptType, collect_command_opt_args, collect_environment_opt_args, find_string},
   },
   span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
@@ -57,7 +57,8 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
 
   if let Some(body) = view.body() {
     for cmd_view in body_scan::strict_command_calls(source, body, view.name(), &["item"], "\\item{...}")? {
-      let _item_opt_args = collect_command_opt_args(&cmd_view, &[])?;
+      let item_opt_args = collect_command_opt_args(&cmd_view, &[("marker", OptType::String)])?;
+      let marker = find_string(&item_opt_args, "marker");
       let Some(first_arg) = cmd_view.first_arg() else {
         return Err(EvalError::MissingCommandArgument {
           name: "item".to_string(),
@@ -72,7 +73,7 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
         });
       }
       let content = crate::evaluator::evaluate_children(source, first_arg)?;
-      items.push(ListItem { content });
+      items.push(ListItem { content, marker });
     }
   }
 
@@ -107,5 +108,53 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
+  }
+
+  #[test]
+  fn item_marker_option_sets_list_item_marker() {
+    // Arrange — `\item[marker=☆]{...}` はその項目の marker フィールドに反映される
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List { items, .. } = &nodes[0] else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(items[0].marker, Some("☆".to_string()));
+  }
+
+  #[test]
+  fn item_marker_option_accepts_empty_string() {
+    // Arrange — `\item[marker=]{...}`（空文字列）は Some("") になる
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\item[marker=]{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List { items, .. } = &nodes[0] else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(items[0].marker, Some(String::new()));
+  }
+
+  #[test]
+  fn item_rejects_unknown_opt_arg_key_other_than_marker() {
+    // Arrange — `\item` に `marker` 以外の未知キーを指定するとエラー
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\item[foo=bar]{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
   }
 }

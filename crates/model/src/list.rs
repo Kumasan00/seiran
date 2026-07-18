@@ -14,12 +14,22 @@ use crate::DocNode;
 pub struct ListItem {
   /// アイテムの内容（段落、ネストされたリスト等）
   pub content: Vec<DocNode>,
+  /// `\item[marker=...]` で指定された個別マーカー文字列。
+  ///
+  /// `None` は自動生成マーカー（深さ・番号から算出）を使うことを表す。`Some("")` は
+  /// マーカーを表示しない（ぶら下げインデントのみ）ことを表す。
+  pub marker: Option<String>,
 }
 
 impl ListItem {
-  /// 新しい `ListItem` を生成する
+  /// 新しい `ListItem` を生成する（マーカーは自動生成）
   #[must_use]
-  pub fn new(content: Vec<DocNode>) -> Self { return ListItem { content }; }
+  pub fn new(content: Vec<DocNode>) -> Self {
+    return ListItem {
+      content,
+      marker: None,
+    };
+  }
 }
 
 // =============================================================================
