@@ -510,8 +510,9 @@ fn lower_node_indexed(
       ordered,
       items,
       start,
+      item_gap,
     } => {
-      return list::lower_list(ctx, *ordered, items, *start, registry, headings);
+      return list::lower_list(ctx, *ordered, items, *start, *item_gap, registry, headings);
     },
     DocNode::Theorem {
       class,
@@ -913,6 +914,7 @@ mod tests {
           InlineNode::Text("L".to_string()),
         ])])],
         start: None,
+        item_gap: None,
       },
       DocNode::PageBreak,
     ];
@@ -988,6 +990,7 @@ mod tests {
           InlineNode::Text("Item".to_string()),
         ])])],
         start: None,
+        item_gap: None,
       },
     ];
 

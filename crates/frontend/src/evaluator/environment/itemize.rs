@@ -9,7 +9,7 @@ use crate::{
   evaluator::{
     EvalError,
     environment::body_scan,
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
+    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
   },
   span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
@@ -45,11 +45,12 @@ pub(super) fn enumerate(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalErro
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
 fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
-    &[("start", OptType::Number)]
+    &[("start", OptType::Number), ("item_gap", OptType::Length)]
   } else {
-    &[]
+    &[("item_gap", OptType::Length)]
   };
   let opt_args = collect_environment_opt_args(view, schema)?;
+  let item_gap = find_length(&opt_args, "item_gap");
   let mut start: Option<u32> = None;
   for (key, value) in &opt_args {
     if let ("start", OptValue::Number(n)) = (key.as_str(), value) {
@@ -79,8 +80,10 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
 
   if let Some(body) = view.body() {
     for cmd_view in body_scan::strict_command_calls(source, body, view.name(), &["item"], "\\item{...}")? {
-      let item_opt_args = collect_command_opt_args(&cmd_view, &[("marker", OptType::String)])?;
+      let item_opt_args =
+        collect_command_opt_args(&cmd_view, &[("marker", OptType::String), ("item_gap", OptType::Length)])?;
       let marker = find_string(&item_opt_args, "marker");
+      let item_gap = find_length(&item_opt_args, "item_gap");
       let Some(first_arg) = cmd_view.first_arg() else {
         return Err(EvalError::MissingCommandArgument {
           name: "item".to_string(),
@@ -95,7 +98,11 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
         });
       }
       let content = crate::evaluator::evaluate_children(source, first_arg)?;
-      items.push(ListItem { content, marker });
+      items.push(ListItem {
+        content,
+        marker,
+        item_gap,
+      });
     }
   }
 
@@ -103,6 +110,7 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
     ordered,
     items,
     start,
+    item_gap,
   }]);
 }
 
@@ -269,5 +277,60 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn itemize_item_gap_option_sets_list_item_gap() {
+    // Arrange — `\begin{itemize}[item_gap=0]` は DocNode::List.item_gap に反映される
+    let arena = Bump::new();
+    let source = r"\begin{itemize}[item_gap=0]\item{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List { item_gap, .. } = &nodes[0] else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(*item_gap, Some(model::Length::mm(0.0)));
+  }
+
+  #[test]
+  fn enumerate_item_gap_option_combines_with_start() {
+    // Arrange — `start` と `item_gap` を併用できる
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=2, item_gap=8mm]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List {
+      start, item_gap, ..
+    } = &nodes[0]
+    else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(*start, Some(2));
+    assert_eq!(*item_gap, Some(model::Length::mm(8.0)));
+  }
+
+  #[test]
+  fn item_gap_option_accepts_negative_value() {
+    // Arrange — 負値も parse_length を通るのでそのまま通る
+    let arena = Bump::new();
+    let source = r"\begin{itemize}\item[item_gap=-1mm]{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List { items, .. } = &nodes[0] else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(items[0].item_gap, Some(model::Length::mm(-1.0)));
   }
 }

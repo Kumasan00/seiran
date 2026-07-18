@@ -86,4 +86,32 @@ itemize と enumerate を混在させたネストでも、各種別のシーケ�
 }
 \end{itemize}
 
+\section{項目間隔の上書き}
+
+環境単位 item_gap オプションと項目単位 item_gap オプションで項目間の縦アキを上書きできることを
+確認する。優先順位は「項目個別 > 環境単位 > style.toml 既定」。
+
+\begin{itemize}[item_gap=0]
+\item{環境単位で item_gap=0 を指定したリストの 1 番目。項目間の縦アキが詰まる。}
+\item{同じく item_gap=0 が効いている 2 番目の項目。}
+\end{itemize}
+
+\begin{enumerate}[item_gap=10mm]
+\item{環境単位で item_gap=10mm を指定した番号付きリストの 1 番目。項目間が広がる。}
+\item[item_gap=0]{2 番目だけ item_gap=0 で個別上書き。環境単位の 10mm より優先される。}
+\item{3 番目は環境単位の item_gap=10mm に戻る。}
+\end{enumerate}
+
+外側リストに item_gap を指定しても、ネストした内側リストには伝播しないことを確認する。
+
+\begin{itemize}[item_gap=10mm]
+\item{外側は item_gap=10mm。
+\begin{itemize}
+\item{内側は item_gap 未指定なので style.toml の既定値のまま。}
+\item{内側のもう 1 つの項目。}
+\end{itemize}
+}
+\item{外側のもう 1 つの項目。}
+\end{itemize}
+
 箇条書きの後の段落です。

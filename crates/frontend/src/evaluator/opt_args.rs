@@ -71,6 +71,18 @@ pub(crate) enum OptValue {
   Color(Color),
 }
 
+/// 収集済み任意引数から指定キーの真偽値を取り出す
+///
+/// `[numbered=false]` / `[breakable=false]` のような bool キーを取り出す。引数を借用するため、
+/// 同じ `opt_args` から複数のキーを続けて抽出できる。キーが存在しない、または値が bool 型でない
+/// 場合は `None` を返す。
+pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bool> {
+  return opt_args.iter().find_map(|(k, value)| match value {
+    OptValue::Bool(b) if k == key => return Some(*b),
+    _ => return None,
+  });
+}
+
 /// 収集済み任意引数から指定キーの文字列値を取り出す
 ///
 /// `[label=...]` のような文字列キーを取り出す。引数を借用するため、同じ `opt_args` から
@@ -83,6 +95,17 @@ pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<
   });
 }
 
+/// 収集済み任意引数から指定キーの長さ値を取り出す
+///
+/// `[width=10mm]` / `[height=5cm]` のような長さキーを取り出す。引数を借用するため、同じ `opt_args` から複数のキーを続けて抽出できる。
+/// キーが存在しない、または値が長さ型でない場合は `None` を返す。
+pub(crate) fn find_length(opt_args: &[(String, OptValue)], key: &str) -> Option<Length> {
+  return opt_args.iter().find_map(|(k, value)| match value {
+    OptValue::Length(l) if k == key => return Some(*l),
+    _ => return None,
+  });
+}
+
 /// 収集済み任意引数から指定キーの色値を取り出す
 ///
 /// `[color=#rrggbb]` のような色キーを取り出す。引数を借用するため、同じ `opt_args` から
@@ -90,18 +113,6 @@ pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<
 pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<Color> {
   return opt_args.iter().find_map(|(k, value)| match value {
     OptValue::Color(c) if k == key => return Some(*c),
-    _ => return None,
-  });
-}
-
-/// 収集済み任意引数から指定キーの真偽値を取り出す
-///
-/// `[numbered=false]` / `[breakable=false]` のような bool キーを取り出す。引数を借用するため、
-/// 同じ `opt_args` から複数のキーを続けて抽出できる。キーが存在しない、または値が bool 型でない
-/// 場合は `None` を返す。
-pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bool> {
-  return opt_args.iter().find_map(|(k, value)| match value {
-    OptValue::Bool(b) if k == key => return Some(*b),
     _ => return None,
   });
 }
