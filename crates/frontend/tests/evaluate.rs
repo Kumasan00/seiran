@@ -1032,3 +1032,43 @@ fn evaluate_duplicate_label_is_structured_without_error() {
   assert_eq!(a.as_deref(), Some("sec:a"));
   assert_eq!(b.as_deref(), Some("sec:a"));
 }
+
+#[test]
+fn evaluate_item_indented_nested_list_matches_packed_equivalent() {
+  // issue #160 — \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
+  // 完全に同じ Document IR になるべき（余分な空白・空段落が出ない）
+  let indented = evaluate_source(
+    "\\begin{itemize}\n  \\item{1 段目の項目。マーカーは黒丸。\n    \\begin{itemize}\n      \
+     \\item{2 段目の項目。}\n    \\end{itemize}\n  }\n\\end{itemize}",
+  );
+  let packed = evaluate_source(
+    r"\begin{itemize}\item{1 段目の項目。マーカーは黒丸。\begin{itemize}\item{2 段目の項目。}\end{itemize}}\end{itemize}",
+  );
+
+  assert_eq!(indented, packed, "インデント整形の有無で Document IR が一致するべき");
+}
+
+#[test]
+fn evaluate_trailing_whitespace_after_nested_environment_produces_no_blank_paragraph() {
+  // issue #160 — ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
+  let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
+  assert_eq!(result.len(), 1);
+  let DocNode::Quote { body, .. } = &result[0] else {
+    panic!("Quote が期待されます: {result:?}");
+  };
+  assert_eq!(body.len(), 1, "空白のみの段落が生成されてはいけない: {body:?}");
+  assert!(matches!(&body[0], DocNode::List { .. }));
+}
+
+#[test]
+fn evaluate_inter_word_space_is_preserved_after_paragraph_trim_fix() {
+  // issue #160 の修正（段落先頭・末尾の空白トリム）が語間の意味のある空白まで壊さないことの回帰テスト
+  let result = evaluate_source("a b");
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます: {result:?}");
+  };
+  assert_eq!(inlines.len(), 3);
+  assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "a"));
+  assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
+  assert!(matches!(&inlines[2], InlineNode::Text(t) if t == "b"));
+}
