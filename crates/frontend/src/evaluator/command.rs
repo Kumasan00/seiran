@@ -94,6 +94,11 @@ pub(crate) enum CommandKind {
   Href,
   /// `\noindent` — 段落先頭行の字下げを抑止するマーカー（引数なし）
   NoIndent,
+  /// `\pagebreak` — その位置で強制改ページするマーカー（引数なし）
+  ///
+  /// `DocNode::PageBreak` → `LayoutNode::PageBreak` → `Block::force_break()` の既存経路に
+  /// 載るだけで、採番・位置検証は行わない。
+  PageBreak,
 }
 
 impl CommandKind {
@@ -101,6 +106,8 @@ impl CommandKind {
   fn execute(self, view: &CommandView) -> Result<CommandResult, EvalError> {
     match self {
       Self::Space => return control::space(view).map(CommandResult::Block),
+
+      Self::PageBreak => return control::pagebreak(view).map(CommandResult::Block),
 
       Self::Headline(level) => return headline::heading(view, level).map(CommandResult::Block),
 
@@ -152,6 +159,7 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 制御コマンド
   "space" => CommandKind::Space,
   "noindent" => CommandKind::NoIndent,
+  "pagebreak" => CommandKind::PageBreak,
 
   // 相互参照
   "ref" => CommandKind::Ref,

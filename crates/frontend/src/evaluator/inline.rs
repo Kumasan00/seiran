@@ -130,7 +130,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::Href) => {
               inlines.extend(href_command(&view)?);
             },
-            Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent) => {
+            Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
                 what: format!("\\{}", view.name()),
                 span: view.span().to_source_span(),
@@ -269,6 +269,23 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
+  }
+
+  #[test]
+  fn extract_inline_nodes_rejects_pagebreak() {
+    // Arrange — インライン文脈（脚注・表セル・キャプション相当）の `\pagebreak` はブロックコマンド
+    let arena = Bump::new();
+    let source = r"\section{\pagebreak}";
+    let cst = parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let result = extract_inline_nodes(source, arg);
+
+    // Assert — 黙殺せず BlockInInline で拒否する
+    assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
   }
 
   #[test]

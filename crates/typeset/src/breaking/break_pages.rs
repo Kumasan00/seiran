@@ -329,6 +329,18 @@ impl PageComposer {
   /// ただし確定済みの脚注（`page_footnotes`）があるページは、本文ブロックが無くても送る —
   /// 長い脚注の繰越（#227）だけでページ全体が埋まると本文 0 行のページが生じるためで、
   /// ここで送らないとその脚注が次ページへ silently に合流して重なる。
+  ///
+  /// この「内容の無いリージョンは送らない」は実装上の都合ではなく **仕様** で、ユーザが書いた
+  /// `\pagebreak`（`model::DocNode::PageBreak`）にも同じ規則が適用される。すなわち強制改ページは
+  /// **冪等** で、内容（本文ブロックまたは確定脚注）を挟まない限り何個並べてもページ境界は 1 つ:
+  ///   - 文書先頭の `\pagebreak` → 白紙の先頭ページを作らない（no-op）
+  ///   - `\pagebreak\pagebreak` → 境界 1 つに畳まれる
+  ///   - `\part{...}` 直後の `\pagebreak` → `page_break_after` で既に送っているので no-op
+  ///
+  /// エラーにはしない — 「この `\pagebreak` が実際にページを送るか」は組版結果に依存し、
+  /// フロントエンドでは判定できないため、break 段でのエラー化は診断の質を下げる（span が失われる）。
+  /// 冪等な no-op として畳むのが定義された振る舞い。文書末尾の `\pagebreak` については
+  /// [`PageComposer::finish`] が同じ述語で同じ規則を適用する。
   fn start_new_page(&mut self, geom: &PageGeometry) {
     // 強制改ページ（[`PENALTY_FORCE_BREAK`]）はこのメソッドを [`PageComposer::advance_region`] 経由せず
     // [`PageComposer::force_new_page`] から呼ぶため、現在リージョンに残っている脚注をここで必ず確定させる
@@ -386,6 +398,18 @@ impl PageComposer {
   }
 
   /// 全ブロックの配置後に最終ページを確定して返す
+  ///
+  /// 現在ページに本文ブロックも確定脚注も無ければページを push しない
+  /// （[`PageComposer::start_new_page`] の白紙ページ抑止と同じ述語・同じ仕様）。これにより
+  /// 文書末尾の強制改ページ（`\pagebreak`・末尾見出しの `page_break_after`）が空の末尾ページを
+  /// 作らない。ただし 1 ページも確定していないとき（空文書、`\pagebreak` だけの文書）は push する
+  /// — `break_pages` は「入力が空でも 1 ページ返す」ことを約束しており、PDF は 0 ページでは
+  /// 成立しないため。
+  ///
+  /// 述語に `current_anchors` を含めないのは、`current` が空のまま `current_anchors` が埋まるのが
+  /// 冒頭の `resolve_pending_anchors` 経路だけで、`DocNode::Anchor` の唯一の生産者（citation の
+  /// 書誌整形）が必ず直後に段落を置くため、末尾に未解決アンカーが残る入力が存在しないから。
+  /// 繰越脚注（#227）だけで終わる文書は `page_footnotes` が非空になるので、この判定を素通りする。
   fn finish(mut self, geom: &PageGeometry) -> Vec<Page> {
     // 末尾に残った未解決アンカーは現在カーソル位置（現在の段の左端）で解決する
     let y = self.y;
@@ -400,6 +424,11 @@ impl PageComposer {
       self.next_region(geom);
       self.seed_carry(geom);
       self.end_region(geom, false);
+    }
+    // 本文も確定脚注も無い末尾ページは push しない（`start_new_page` と同じ述語）。ただし 1 ページも
+    // 確定していなければ push する（空文書でも最低 1 ページを返す `break_pages` の事後条件のため）。
+    if !self.pages.is_empty() && self.current.is_empty() && self.page_footnotes.is_empty() {
+      return self.pages;
     }
     self.pages.push(Page {
       blocks: self.current,
@@ -2832,6 +2861,34 @@ mod tests {
     assert_eq!(pages.len(), 2, "中間に白紙ページは生じない: {pages:?}");
     assert_eq!(pages[0].blocks.len(), 1);
     assert_eq!(pages[1].blocks.len(), 1);
+  }
+
+  #[test]
+  fn trailing_page_break_does_not_create_blank_page() {
+    // Arrange — 末尾の強制改ページ（`\pagebreak`・末尾見出しの page_break_after 相当）
+    let geom = test_geometry();
+    let blocks = vec![paragraph_of_lines(1), Block::force_break()];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 空の末尾ページを作らない
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(pages[0].blocks.len(), 1);
+  }
+
+  #[test]
+  fn page_break_only_input_returns_single_empty_page() {
+    // Arrange — 内容がなく強制改ページだけの入力
+    let geom = test_geometry();
+    let blocks = vec![Block::force_break()];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 空文書と同様に最低 1 ページ（空ページ）を返す
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert!(pages[0].blocks.is_empty());
   }
 
   #[test]

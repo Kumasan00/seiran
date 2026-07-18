@@ -127,7 +127,11 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 制御は glue（伸縮アキ）/ penalty（分割コスト）モデルで、widow/orphan・keep-with-next・下端揃え
 （`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に
 不足高さ `page_limit − 下端` を段内の伸縮アキへ配置順ベースで比例配分する（末尾ページ・強制改ページ
-直前・伸縮アキ 0 のリージョンは対象外）。表の列幅・行高の純粋計測ヘルパは `model` 側にある。
+直前・伸縮アキ 0 のリージョンは対象外）。強制改ページ（`PENALTY_FORCE_BREAK`。見出しの
+`page_break_before` / `page_break_after` と `\pagebreak` の双方が発行する）は冪等で、内容（本文
+ブロックまたは確定脚注）を挟まない限りページ境界は 1 つに畳まれ、文書先頭・連続・末尾のいずれでも
+白紙ページを作らない（`PageComposer::start_new_page` と `finish` が同じ述語で判定）。表の列幅・
+行高の純粋計測ヘルパは `model` 側にある。
 
 脚注（`Line::footnotes`）はページ下部への配置を `break_pages` が担う（#35）。行を確定するたびに
 その行に付いた脚注を行分割して高さを求め、リージョン（段）の実効下限（`PageComposer::region_limit`

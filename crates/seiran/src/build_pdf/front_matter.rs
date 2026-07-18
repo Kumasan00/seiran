@@ -114,8 +114,11 @@ fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
 /// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
 ///
 /// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている強制改ページ（[`Block::force_break`]）は落とす（[`typeset::break_pages`] の `finish` が末尾
-/// ページを無条件に push するため、残すと空の末尾ページが生じる）。タイトル → 目次間の中間の強制改ページは保持する。
+/// 付いている強制改ページ（[`Block::force_break`]）は落とす。末尾の空ページ抑止自体は
+/// [`typeset::break_pages`] の `finish` が担うので、この pop が効くのは「前付けが強制改ページだけ」のとき
+/// （タイトルページ有効・メタデータが全て空 → `lowering::title_page` が `[PageBreak]` を返す）で、
+/// 落とさないと `break_pages` が「1 ページも確定していない入力」として空ページを 1 枚返す。
+/// タイトル → 目次間の中間の強制改ページは保持する。
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
 pub(super) fn break_front_matter(
   mut front_blocks: Vec<Block>,
