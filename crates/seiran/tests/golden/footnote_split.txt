@@ -34,6 +34,7 @@ body:
     box x=216.00 dy=0.00 w=4.16 atom children=1
       child dx=0.00 dy=4.80 w=4.16 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="1"
     box x=220.16 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
+    linkspan target=Internal("footnote:0") x0=216.00 x1=220.16
 footnotes:
   footnote number=1:
   rule x=0.00 y=86.13 w=72.00 h=0.40 color=default
@@ -287,6 +288,8 @@ footnotes:
     box x=231.44 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="の"
     box x=240.44 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="本"
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=11.00
+anchor mark=Label("footnote:0") x=0.00 y=90.53
+link target=Internal("footnote:0") x=216.00 y=51.20 w=4.16 h=17.24
 === page 1 ===
 body:
   line baseline_y=34.02 height=13.81 depth=3.43 last=false
@@ -332,6 +335,7 @@ body:
     box x=219.12 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="が"
     box x=231.12 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="先"
     box x=243.12 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
+    linkspan target=Internal("footnote:1") x0=155.76 x1=159.92
   line baseline_y=68.50 height=13.81 depth=3.43 last=true
     box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="来"
     box x=12.00 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="て"
@@ -581,6 +585,8 @@ footnotes:
     box x=176.05 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="脚"
     box x=185.05 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="注"
     box x=194.05 dy=0.00 w=4.50 glyphs font=JapaneseSerif size=9.00 text="。"
+anchor mark=Label("footnote:1") x=0.00 y=194.00
+link target=Internal("footnote:1") x=155.76 y=37.45 w=4.16 h=17.24
 === page 2 ===
 body:
   line baseline_y=34.02 height=13.81 depth=3.43 last=false

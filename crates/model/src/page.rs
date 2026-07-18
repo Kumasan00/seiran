@@ -39,6 +39,14 @@ pub struct Page {
   pub links: Vec<PlacedLink>,
 }
 
+/// 脚注 `index`（出現順一意 id）から内部リンクのラベル文字列を作る
+///
+/// 本文中マーカー（[`crate::LinkTarget::Internal`]）と脚注本体アンカー（[`AnchorMark::Label`]）が
+/// 独立に同じキーを組み立てて初めて内部リンクが解決するため、両側は必ずこのヘルパを経由する。
+/// `"footnote:"` プレフィックスは `citation` crate の `"cite:<key>"` と同じ名前空間化の先例。
+#[must_use]
+pub fn footnote_anchor_key(index: u32) -> String { return format!("footnote:{index}"); }
+
 /// ページ下部に配置された脚注 1 個（または長い脚注の断片）
 ///
 /// 本体は複数行に分かれ得るため `blocks`（通常は [`PlacedBlock::Line`] の列）として保持する。

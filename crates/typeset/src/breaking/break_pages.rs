@@ -518,6 +518,17 @@ impl PageComposer {
           }
         }
         top += geom.footnote_rule_gap;
+        // 繰越でない（＝本体先頭の、マーカーを持つ行を含む）断片だけに到達先アンカーを打つ。
+        // 長い脚注のページ間分割（#227）が入っても、本文中マーカーからは常に本体の先頭位置へ
+        // 飛べるようにするため。座標 `top` はこの箱の上端で、`collect_line_links` が定義する
+        // 「行 box の上端」（`baseline_y - line.height`）と同じ意味。
+        if !pending.continued {
+          self.current_anchors.push(PlacedAnchor {
+            mark: AnchorMark::Label(model::footnote_anchor_key(pending.index)),
+            x: column_x,
+            y: top,
+          });
+        }
         blocks.reserve(pending.lines.len());
         let mut baseline = top + pending.lines.first().map_or(Length::ZERO, |line| return line.height);
         let mut prev_depth = Length::ZERO;
@@ -2079,6 +2090,42 @@ mod tests {
     let carried = footnote_baselines(&pages[1], 1)[0];
     assert!(carried.to_pt() > 12.0, "繰越が本文と重ならないはず: {}", carried.to_pt());
     assert!(carried.to_pt() + 2.0 <= geom.page_limit.to_pt() + 1e-3, "繰越が page_limit を超えないはず");
+  }
+
+  #[test]
+  fn footnote_anchor_is_placed_only_on_non_continued_fragment() {
+    // Arrange — `long_footnote_splits_and_carries_remainder_to_next_page` と同条件（4 行の脚注が
+    // 1 ページに収まらず、4 行目だけ次ページへ繰り越される）
+    use model::AnchorMark;
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 4)]),
+      single_line_paragraph(vec![]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — アンカーはマーカーを持つ先頭断片（1 ページ目、`footnote_item` の index=number-1=0）に
+    // 1 個だけ。繰越側（2 ページ目）には現れない（本文中マーカーからの飛び先は常に本体先頭）
+    let anchors_on: fn(&Page) -> usize = |page| {
+      return page
+        .anchors
+        .iter()
+        .filter(|a| return matches!(&a.mark, AnchorMark::Label(l) if l == "footnote:0"))
+        .count();
+    };
+    assert_eq!(anchors_on(&pages[0]), 1, "{:?}", pages[0].anchors);
+    assert_eq!(anchors_on(&pages[1]), 0, "繰越側にアンカーは無いはず: {:?}", pages[1].anchors);
+    let anchor = pages[0]
+      .anchors
+      .iter()
+      .find(|a| return matches!(&a.mark, AnchorMark::Label(l) if l == "footnote:0"))
+      .expect("先頭断片のアンカーがあるはず");
+    // 先頭行 baseline=24（`long_footnote_splits_and_carries_remainder_to_next_page` 参照）、
+    // 行高 8（`test_box`）→ アンカー y = 24 - 8 = 16（行 box の上端）
+    assert!(close(anchor.y, 16.0), "アンカーは脚注先頭行の上端のはず: {anchor:?}");
+    assert!(close(anchor.x, 0.0));
   }
 
   #[test]

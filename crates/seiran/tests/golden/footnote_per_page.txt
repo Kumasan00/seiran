@@ -43,6 +43,9 @@ body:
       child dx=0.00 dy=4.80 w=4.16 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="3"
     box x=287.81 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
     box x=299.81 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="四"
+    linkspan target=Internal("footnote:0") x0=108.99 x1=113.15
+    linkspan target=Internal("footnote:1") x0=197.77 x1=201.92
+    linkspan target=Internal("footnote:2") x0=283.65 x1=287.81
   line baseline_y=90.76 height=13.81 depth=3.43 last=false
     box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="つ"
     box x=12.25 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="目"
@@ -75,6 +78,9 @@ body:
     box x=275.31 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="目"
     box x=287.56 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
     box x=299.81 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="置"
+    linkspan target=Internal("footnote:3") x0=61.00 x1=65.16
+    linkspan target=Internal("footnote:4") x0=147.83 x1=151.98
+    linkspan target=Internal("footnote:5") x0=237.24 x1=241.40
   line baseline_y=108.01 height=13.81 depth=3.43 last=true
     box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="く"
     box x=12.00 dy=0.00 w=4.16 atom children=1
@@ -107,6 +113,10 @@ body:
     box x=273.29 dy=0.00 w=8.32 atom children=1
       child dx=0.00 dy=4.80 w=8.32 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="10"
     box x=281.61 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
+    linkspan target=Internal("footnote:6") x0=12.00 x1=16.16
+    linkspan target=Internal("footnote:7") x0=100.16 x1=104.32
+    linkspan target=Internal("footnote:8") x0=185.14 x1=189.29
+    linkspan target=Internal("footnote:9") x0=273.29 x1=281.61
 footnotes:
   footnote number=1:
   rule x=0.00 y=156.25 w=72.00 h=0.40 color=default
@@ -250,6 +260,26 @@ footnotes:
     box x=80.26 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="体"
     box x=89.26 dy=0.00 w=4.50 glyphs font=JapaneseSerif size=9.00 text="。"
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=19.50
+anchor mark=Label("footnote:0") x=0.00 y=160.65
+anchor mark=Label("footnote:1") x=0.00 y=177.59
+anchor mark=Label("footnote:2") x=0.00 y=194.52
+anchor mark=Label("footnote:3") x=0.00 y=211.45
+anchor mark=Label("footnote:4") x=0.00 y=228.39
+anchor mark=Label("footnote:5") x=0.00 y=245.32
+anchor mark=Label("footnote:6") x=0.00 y=262.25
+anchor mark=Label("footnote:7") x=0.00 y=279.19
+anchor mark=Label("footnote:8") x=0.00 y=296.12
+anchor mark=Label("footnote:9") x=0.00 y=313.05
+link target=Internal("footnote:0") x=108.99 y=59.71 w=4.16 h=17.24
+link target=Internal("footnote:1") x=197.77 y=59.71 w=4.16 h=17.24
+link target=Internal("footnote:2") x=283.65 y=59.71 w=4.16 h=17.24
+link target=Internal("footnote:3") x=61.00 y=76.95 w=4.16 h=17.24
+link target=Internal("footnote:4") x=147.83 y=76.95 w=4.16 h=17.24
+link target=Internal("footnote:5") x=237.24 y=76.95 w=4.16 h=17.24
+link target=Internal("footnote:6") x=12.00 y=94.20 w=4.16 h=17.24
+link target=Internal("footnote:7") x=100.16 y=94.20 w=4.16 h=17.24
+link target=Internal("footnote:8") x=185.14 y=94.20 w=4.16 h=17.24
+link target=Internal("footnote:9") x=273.29 y=94.20 w=8.32 h=17.24
 === page 1 ===
 body:
   line baseline_y=42.52 height=13.81 depth=3.43 last=false
@@ -330,6 +360,9 @@ body:
     box x=253.48 dy=0.00 w=4.16 atom children=1
       child dx=0.00 dy=4.80 w=4.16 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="3"
     box x=257.63 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
+    linkspan target=Internal("footnote:10") x0=12.00 x1=16.16
+    linkspan target=Internal("footnote:11") x0=132.74 x1=136.90
+    linkspan target=Internal("footnote:12") x0=253.48 x1=257.63
 footnotes:
   footnote number=1:
   rule x=0.00 y=274.79 w=72.00 h=0.40 color=default
@@ -395,3 +428,9 @@ footnotes:
     box x=139.74 dy=0.00 w=8.91 glyphs font=Serif size=9.00 text="13"
     box x=150.76 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="番"
     box x=159.76 dy=0.00 w=4.50 glyphs font=JapaneseSerif size=9.00 text="。"
+anchor mark=Label("footnote:10") x=0.00 y=279.19
+anchor mark=Label("footnote:11") x=0.00 y=296.12
+anchor mark=Label("footnote:12") x=0.00 y=313.05
+link target=Internal("footnote:10") x=12.00 y=63.20 w=4.16 h=17.24
+link target=Internal("footnote:11") x=132.74 y=63.20 w=4.16 h=17.24
+link target=Internal("footnote:12") x=253.48 y=63.20 w=4.16 h=17.24

@@ -47,6 +47,8 @@ body:
     box x=384.98 dy=0.00 w=4.16 atom children=1
       child dx=0.00 dy=4.80 w=4.16 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="2"
     box x=389.14 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
+    linkspan target=Internal("footnote:0") x0=132.00 x1=136.16
+    linkspan target=Internal("footnote:1") x0=384.98 x1=389.14
   line baseline_y=336.23 height=13.81 depth=3.43 last=true
     box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="続"
     box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="く"
@@ -72,6 +74,7 @@ body:
     box x=252.00 dy=0.00 w=4.16 atom children=1
       child dx=0.00 dy=4.80 w=4.16 h=6.40 d=2.00 glyphs font=Serif size=8.40 text="3"
     box x=256.16 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
+    linkspan target=Internal("footnote:2") x0=252.00 x1=256.16
 footnotes:
   footnote number=1:
   rule x=0.00 y=2054.94 w=72.00 h=0.40 color=default
@@ -126,3 +129,9 @@ footnotes:
     box x=84.12 dy=0.00 w=9.00 glyphs font=JapaneseSerif size=9.00 text="注"
     box x=93.12 dy=0.00 w=4.50 glyphs font=JapaneseSerif size=9.00 text="。"
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
+anchor mark=Label("footnote:0") x=0.00 y=2059.34
+anchor mark=Label("footnote:1") x=0.00 y=2076.28
+anchor mark=Label("footnote:2") x=0.00 y=2093.21
+link target=Internal("footnote:0") x=132.00 y=297.82 w=4.16 h=17.24
+link target=Internal("footnote:1") x=384.98 y=297.82 w=4.16 h=17.24
+link target=Internal("footnote:2") x=252.00 y=322.42 w=4.16 h=17.24

@@ -142,8 +142,19 @@ pub(super) fn lower_inline(
         _ => return format!("{{{name}}}"),
       });
 
-      // 本文中マーカー: 呼び出し位置の文脈フォントサイズを基準に上付き縮小する
-      let inline_marker = footnote_marker_node(&marker_text, parent_style.font_size, parent_style, footnote_style);
+      // 本文中マーカー: 呼び出し位置の文脈フォントサイズを基準に上付き縮小する。対応する脚注本体
+      // （`model::footnote_anchor_key(index)`）へのクリック領域として `Link` で包む。色は `\ref` と
+      // 同じ既存の `link_color` を流用する（脚注専用の色設定は追加しない、P10）。
+      let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
+      let inline_marker = LayoutNode::Link {
+        target: LinkTarget::Internal(model::footnote_anchor_key(index)),
+        children: vec![footnote_marker_node(
+          &marker_text,
+          parent_style.font_size,
+          link_style,
+          footnote_style,
+        )],
+      };
 
       // 脚注本体は独自のフォントサイズを基準に lower し、先頭に本体用マーカーを前置する
       let body_style = TextStyle {
@@ -540,8 +551,12 @@ mod tests {
     // Act
     let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
 
-    // Assert — nodes[0] は本文中マーカー（Raise）、nodes[1] が Footnote 本体
-    assert!(matches!(&nodes[0], LayoutNode::Raise { .. }));
+    // Assert — nodes[0] は本文中マーカー（脚注本体へのクリック領域として Raise を包む Link）、
+    // nodes[1] が Footnote 本体
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    assert!(matches!(&children[0], LayoutNode::Raise { .. }));
     let LayoutNode::Footnote {
       number,
       index,
@@ -553,13 +568,22 @@ mod tests {
     // 上書きマップなし（通し採番）なので表示番号は index + 1
     assert_eq!(*number, 1);
     assert_eq!(*index, 0);
-    // body[0] は本体先頭マーカー（Raise）、body[1] が実内容
+    // マーカーのリンク先は脚注本体と同じ index から作るキー（issue #228: 両側が独立に
+    // `model::footnote_anchor_key` を経由して初めて内部リンクが解決する）
+    assert_eq!(*target, LinkTarget::Internal(model::footnote_anchor_key(*index)));
+    // body[0] は本体先頭マーカー（Raise、逆方向リンクは張らないので Link で包まない）、
+    // body[1] が実内容
     assert!(matches!(&body[0], LayoutNode::Raise { .. }));
     assert!(matches!(&body[1], LayoutNode::Text(t, _) if t == "note"));
   }
 
-  /// 脚注マーカー（`LayoutNode::Raise` + `Text`）の表示テキストを取り出すテストヘルパ
+  /// 脚注マーカー（`LayoutNode::Raise` + `Text`。本文中マーカーは `Link` で包まれているので、
+  /// あれば先に剥がしてから読む）の表示テキストを取り出すテストヘルパ
   fn marker_text(node: &LayoutNode) -> &str {
+    let node = match node {
+      LayoutNode::Link { children, .. } => &children[0],
+      other => other,
+    };
     let LayoutNode::Raise { children, .. } = node else {
       panic!("Raise が期待されます: {node:?}");
     };
@@ -703,8 +727,15 @@ mod tests {
     let nodes = lower_inline(&ctx, &inline, parent_style, &mut registry).expect("失敗しない");
 
     // Assert — 本文中マーカー（nodes[0]）は親フォントサイズ(10pt) × 0.5 = 5pt、書式は "[1]"
-    let LayoutNode::Raise { children, .. } = &nodes[0] else {
-      panic!("Raise が期待されます: {nodes:?}");
+    let LayoutNode::Link {
+      children: link_children,
+      ..
+    } = &nodes[0]
+    else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Raise { children, .. } = &link_children[0] else {
+      panic!("Raise が期待されます: {link_children:?}");
     };
     let LayoutNode::Text(marker_text, marker_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
