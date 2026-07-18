@@ -170,8 +170,15 @@ pub(crate) fn evaluate_children(source: &str, node: &GreenNode) -> Result<Vec<Do
 
 /// 蓄積中のインラインノードを `DocNode::Paragraph` としてフラッシュする
 ///
-/// インラインノードリストが空の場合は何もしません。
+/// ブロック境界（環境・グループ境界）に隣接する先頭・末尾の空白のみのインラインは畳んで
+/// 捨てる。結果が空（空白のみだった、またはもともと空）の場合は段落を生成しない。
+/// 段落内部（語間）の空白はトリム対象外なので保持される。
 fn flush_paragraph(doc_nodes: &mut Vec<DocNode>, current_inlines: &mut Vec<InlineNode>) {
+  let leading_blank = current_inlines.iter().take_while(|inline| return !is_non_blank_inline(inline)).count();
+  current_inlines.drain(..leading_blank);
+  let trailing_blank = current_inlines.iter().rev().take_while(|inline| return !is_non_blank_inline(inline)).count();
+  current_inlines.truncate(current_inlines.len() - trailing_blank);
+
   if current_inlines.is_empty() {
     return;
   }
