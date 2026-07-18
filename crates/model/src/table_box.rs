@@ -4,7 +4,7 @@
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
 //! `pdf_gen` 段で行う。
 
-use crate::{ColumnWidth, HBoxContent, HItem, Length, TableColumn};
+use crate::{ColumnAlign, ColumnWidth, HBoxContent, HItem, Length, LinkTarget, TableColumn};
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
@@ -31,7 +31,8 @@ pub struct TableRowBox {
 /// 表の 1 セル（シェーピング済み）
 #[derive(Debug, Clone)]
 pub struct TableCellBox {
-  /// セル内容のアイテム列（`Box` / `Kern` / `Glue` のみを想定）
+  /// セル内容のアイテム列（`Box` / `Kern` / `Glue` が主だが、`\ref`/`\url`/`\href` を
+  /// 含む場合は `LinkStart`/`LinkEnd` も現れる。行分割・ページ分割はセル内では無効）
   pub items: Vec<HItem>,
   /// 列方向の結合数（colspan、1 以上）
   pub span: u32,
@@ -155,14 +156,116 @@ pub fn resolve_column_widths(table: &TableBox, available: Length, padding: Lengt
   return widths;
 }
 
+/// 1 行の各セルの帯位置・内容開始位置（表左端からの相対 x）
+pub struct CellPlacement<'a> {
+  /// 対象のセル
+  pub cell: &'a TableCellBox,
+  /// セル帯（結合列込み）の表左端からの開始オフセット
+  pub band_x: Length,
+  /// セル帯の幅
+  pub band_width: Length,
+  /// 内容の開始位置（表左端からの相対 x。揃え + padding 適用済み）
+  pub content_x: Length,
+}
+
+/// 1 行の各セルの帯位置・内容開始位置を順に計算する
+///
+/// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める、フォントに触れない
+/// 純粋計算。`typeset::breaking::place_table`（リンク矩形収集）と
+/// `pdf_gen::render::draw_table_row`（描画）の双方が本関数を共有し、揃え計算を
+/// 二重実装しない。
+#[must_use]
+pub fn layout_row_cells<'a>(
+  row: &'a TableRowBox,
+  columns: &[TableColumn],
+  col_widths: &[Length],
+  padding: Length,
+) -> Vec<CellPlacement<'a>> {
+  let mut column_index = 0usize;
+  let mut cell_x = Length::ZERO;
+  let mut placements = Vec::with_capacity(row.cells.len());
+  for cell in &row.cells {
+    let span = (cell.span as usize).min(col_widths.len().saturating_sub(column_index));
+    let band_width: Length = col_widths[column_index..column_index + span].iter().copied().sum();
+    let content_width = measure_items_width(&cell.items);
+    let align = columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
+    let content_x = match align {
+      ColumnAlign::Left => cell_x + padding,
+      ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
+      ColumnAlign::Right => cell_x + band_width - padding - content_width,
+    };
+    placements.push(CellPlacement {
+      cell,
+      band_x: cell_x,
+      band_width,
+      content_x,
+    });
+    cell_x += band_width;
+    column_index += span;
+  }
+  return placements;
+}
+
+/// 表セル内のリンク領域（表左端からの相対座標）
+#[derive(Debug)]
+pub struct RowLink {
+  /// リンクの行き先
+  pub target: LinkTarget,
+  /// 表左端からの相対な左端オフセット
+  pub x0: Length,
+  /// 表左端からの相対な右端オフセット
+  pub x1: Length,
+}
+
+/// 1 行内のセルに含まれるリンク領域を、表左端からの相対 x0/x1 として収集する
+///
+/// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
+/// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
+/// [`HItem::natural_width`] を使い、`pdf_gen::render::draw_cell_items` の描画カーソルと
+/// 同じ値になることを保証する。ただし `natural_width` は `FlushRight`/`Footnote` にも非ゼロ／
+/// 実質幅を返し得るのに対し、`draw_cell_items` は現状これらを表セル内では出現しないものとして
+/// 無視（no-op）している。両者のカーソルが一致するのはその前提（表セルに `FlushRight`/`Footnote`
+/// が現れない）が成り立つ間だけであり、将来これらがセル内に許可される変更をする際は本関数も
+/// 合わせて見直すこと。
+#[must_use]
+pub fn collect_row_links(
+  row: &TableRowBox,
+  columns: &[TableColumn],
+  col_widths: &[Length],
+  padding: Length,
+) -> Vec<RowLink> {
+  let mut links = Vec::new();
+  for placement in layout_row_cells(row, columns, col_widths, padding) {
+    let mut cursor = placement.content_x;
+    let mut open: Vec<(LinkTarget, Length)> = Vec::new();
+    for item in &placement.cell.items {
+      match item {
+        HItem::LinkStart(target) => open.push((target.clone(), cursor)),
+        HItem::LinkEnd => {
+          if let Some((target, x0)) = open.pop() {
+            links.push(RowLink {
+              target,
+              x0,
+              x1: cursor,
+            });
+          }
+        },
+        _ => cursor += item.natural_width(),
+      }
+    }
+  }
+  return links;
+}
+
 #[cfg(test)]
 mod tests {
   use super::{
-    TableBox, TableCellBox, TableRowBox, max_font_size_in_items, measure_items_width, resolve_column_widths,
-    table_row_height,
+    TableBox, TableCellBox, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
+    resolve_column_widths, table_row_height,
   };
   use crate::{
-    ColumnAlign, ColumnWidth, FontType, GlyphRun, HBox, HBoxContent, HItem, Length, PlacedHItem, TableColumn,
+    ColumnAlign, ColumnWidth, FontType, GlyphRun, HBox, HBoxContent, HItem, Length, LinkTarget, PlacedHItem,
+    TableColumn,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -384,5 +487,152 @@ mod tests {
 
     // Assert
     assert!(close(widths[1], 40.0), "Flex は自然幅を下回らない: {widths:?}");
+  }
+
+  /// 左揃え 2 列（幅 50/50）の共通カラム定義
+  fn two_left_columns() -> Vec<TableColumn> {
+    return vec![
+      TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      },
+      TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      },
+    ];
+  }
+
+  #[test]
+  fn collect_row_links_single_link_fills_cell() {
+    // Arrange — 1 セル全体がリンク（幅 20 の box を挟む）
+    let target = LinkTarget::External("https://example.com".to_string());
+    let row = row(vec![cell(vec![
+      HItem::LinkStart(target.clone()),
+      rule_box(20.0),
+      HItem::LinkEnd,
+    ])]);
+    let col_widths = vec![pt(30.0)];
+
+    // Act
+    let links = collect_row_links(
+      &row,
+      &[TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      &col_widths,
+      pt(2.0),
+    );
+
+    // Assert — 内容開始位置は左 padding 分（2.0）、終端は開始 + 幅 20
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, target);
+    assert!(close(links[0].x0, 2.0));
+    assert!(close(links[0].x1, 22.0));
+  }
+
+  #[test]
+  fn collect_row_links_multiple_links_in_one_cell() {
+    // Arrange — 1 セル内に 2 つのリンク（間に非リンクの box）
+    let first = LinkTarget::Internal("fig:1".to_string());
+    let second = LinkTarget::External("https://example.com".to_string());
+    let row = row(vec![cell(vec![
+      HItem::LinkStart(first.clone()),
+      rule_box(5.0),
+      HItem::LinkEnd,
+      rule_box(3.0),
+      HItem::LinkStart(second.clone()),
+      rule_box(5.0),
+      HItem::LinkEnd,
+    ])]);
+    let col_widths = vec![pt(30.0)];
+    let columns = vec![TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Auto,
+    }];
+
+    // Act
+    let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
+
+    // Assert
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0].target, first);
+    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 5.0));
+    assert_eq!(links[1].target, second);
+    assert!(close(links[1].x0, 8.0) && close(links[1].x1, 13.0));
+  }
+
+  #[test]
+  fn collect_row_links_in_spanned_cell() {
+    // Arrange — span=2 のセル（2 列ぶんの帯を占有）にリンク 1 個
+    let target = LinkTarget::Internal("tab:x".to_string());
+    let row = row(vec![TableCellBox {
+      items: vec![
+        HItem::LinkStart(target.clone()),
+        rule_box(10.0),
+        HItem::LinkEnd,
+      ],
+      span: 2,
+    }]);
+    let col_widths = vec![pt(20.0), pt(20.0)];
+
+    // Act
+    let links = collect_row_links(&row, &two_left_columns(), &col_widths, pt(0.0));
+
+    // Assert — 帯は 2 列ぶん（40）だが、内容開始は左端（padding 0）でセル内容の幅ぶんのみ
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, target);
+    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 10.0));
+  }
+
+  #[test]
+  fn collect_row_links_ignores_unbalanced_link_end() {
+    // Arrange — LinkStart 直後に LinkEnd（0 幅の退化矩形）、その後に対応する
+    // LinkStart のない余分な LinkEnd。退化矩形自体のスキップは呼び出し側
+    // （`typeset::breaking::place_table`）の責務なので、ここでは「対応の取れない
+    // LinkEnd がスタック不足で無視され panic しない」ことのみ確認する
+    let target = LinkTarget::Internal("x".to_string());
+    let row = row(vec![cell(vec![
+      HItem::LinkStart(target.clone()),
+      HItem::LinkEnd,
+      HItem::LinkEnd,
+    ])]);
+    let col_widths = vec![pt(30.0)];
+    let columns = vec![TableColumn {
+      align: ColumnAlign::Left,
+      width: ColumnWidth::Auto,
+    }];
+
+    // Act
+    let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
+
+    // Assert — LinkStart/LinkEnd の対 1 組ぶんの退化矩形（x0 == x1）だけが返る
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, target);
+    assert!(close(links[0].x0, 0.0) && close(links[0].x1, 0.0));
+  }
+
+  #[test]
+  fn collect_row_links_respects_column_alignment() {
+    // Arrange — 右揃え列。帯幅 30、padding 2、内容（リンク込み）幅 10
+    // → content_x = 30 - 2 - 10 = 18
+    let target = LinkTarget::External("https://example.com".to_string());
+    let row = row(vec![cell(vec![
+      HItem::LinkStart(target),
+      rule_box(10.0),
+      HItem::LinkEnd,
+    ])]);
+    let col_widths = vec![pt(30.0)];
+    let columns = vec![TableColumn {
+      align: ColumnAlign::Right,
+      width: ColumnWidth::Auto,
+    }];
+
+    // Act
+    let links = collect_row_links(&row, &columns, &col_widths, pt(2.0));
+
+    // Assert
+    assert!(close(links[0].x0, 18.0) && close(links[0].x1, 28.0), "{links:?}");
   }
 }

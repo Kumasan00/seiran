@@ -23,9 +23,7 @@ use krilla::{
   text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use model::{
-  AnchorMark, Color, ColumnAlign, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
-};
+use model::{AnchorMark, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn};
 
 use crate::{
   OutlineEntry,
@@ -409,22 +407,9 @@ fn draw_table_row(
     .to_pt();
   let baseline = band_top + max_font;
 
-  let mut column_index = 0usize;
-  let mut cell_x = x0;
-  for cell in &row.cells {
-    let span = (cell.span as usize).min(ctx.col_widths.len().saturating_sub(column_index));
-    let cell_width: f32 =
-      ctx.col_widths[column_index..column_index + span].iter().copied().sum::<model::Length>().to_pt();
-    let content_width = model::measure_items_width(&cell.items).to_pt();
-    let align = ctx.columns.get(column_index).map_or(ColumnAlign::Left, |c| return c.align);
-    let start_x = match align {
-      ColumnAlign::Left => cell_x + ctx.padding,
-      ColumnAlign::Center => cell_x + (cell_width - content_width) / 2.0,
-      ColumnAlign::Right => cell_x + cell_width - ctx.padding - content_width,
-    };
-    draw_cell_items(surface, ctx, &cell.items, start_x, baseline)?;
-    cell_x += cell_width;
-    column_index += span;
+  let padding = model::Length::pt(ctx.padding);
+  for placement in model::layout_row_cells(row, ctx.columns, ctx.col_widths, padding) {
+    draw_cell_items(surface, ctx, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline)?;
   }
   return Ok(());
 }
@@ -450,9 +435,9 @@ fn draw_cell_items(
       model::HItem::Kern(value) => cursor_x += value.to_pt(),
       model::HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
       // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
-      // リンクマーカーは表セル内ではクリック矩形を生成しない（#61 でフォロー）。
+      // リンク矩形は typeset::breaking::place_table が Page.links へ収集済み（本関数は描画のみ）。
       // FlushRight（QED）は定理本体専用で表セル内には現れない
-      // 脚注は表セル内では本体が配置されない（既知の制限。リンクの #61 と同様の扱い）
+      // 脚注は表セル内では本体が配置されない（既知の制限）
       model::HItem::Penalty { .. }
       | model::HItem::Discretionary { .. }
       | model::HItem::ForcedBreak

@@ -98,8 +98,8 @@ pub use quote::QuoteKind;
 pub use span::Span;
 pub use table::{TableCell, TableRow};
 pub use table_box::{
-  TableBox, TableCellBox, TableRowBox, max_font_size_in_items, measure_items_width, resolve_column_widths,
-  table_row_height,
+  CellPlacement, RowLink, TableBox, TableCellBox, TableRowBox, collect_row_links, layout_row_cells,
+  max_font_size_in_items, measure_items_width, resolve_column_widths, table_row_height,
 };
 pub use table_column::{ColumnAlign, ColumnWidth, TableColumn};
 pub use text_alignment::TextAlignment;

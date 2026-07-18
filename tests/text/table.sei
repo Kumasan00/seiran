@@ -25,4 +25,17 @@
 \row{インライン数式 & $x^2 + y$}
 \end{table}
 
+表セル内のリンクを確認する表です。ヘッダーセル・内部参照・外部 URL・href・
+1 セル内の複数リンクを含みます。
+
+\begin{table}[label=tab:links, columns="left left"]
+\head{
+  \row{種別 & 内容（\ref{tab:scores}）}
+}
+\row{内部参照 & \ref{tab:scores}}
+\row{外部 URL & \url{https:\/\/example.com}}
+\row{href & \href[url=https:\/\/example.com]{リンクテキスト}}
+\row{複数リンク & \ref{tab:scores} と \url{https:\/\/example.com}}
+\end{table}
+
 表の後の段落です。
