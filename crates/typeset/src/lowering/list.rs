@@ -1,6 +1,5 @@
 //! リスト（`DocNode::List`）の lowering
 
-use config::NumberStyle;
 use model::{Length, ListItem};
 
 use super::{
@@ -10,28 +9,13 @@ use super::{
   lower_nodes_inner,
 };
 
-/// ネスト段（深さ 1 以上）の unordered マーカー系列（LaTeX itemize 準拠）
-///
-/// 深さ `d >= 1` のとき `(d - 1) % 3` で引く。en dash → asterisk → middle dot を循環し、
-/// 5 段目（深さ 4）は 2 段目（深さ 1）と同じ `–` に戻る。
-const NESTED_UNORDERED_MARKERS: [&str; 3] = ["–", "*", "·"];
-
-/// ネスト段（深さ 1 以上）の ordered マーカー系列（番号書式 + 装飾テンプレート）
-///
-/// 各要素は `(番号書式, "{number}" を含むテンプレート)`。深さ `d >= 1` のとき `(d - 1) % 3` で引き、
-/// `(a)`（小文字英字 + 丸括弧）→ `i.`（小文字ローマ数字）→ `A.`（大文字英字）を循環する。
-const NESTED_ORDERED_FORMATS: [(NumberStyle, &str); 3] = [
-  (NumberStyle::AlphaLower, "({number})"),
-  (NumberStyle::RomanLower, "{number}."),
-  (NumberStyle::AlphaUpper, "{number}."),
-];
-
 /// リストをレイアウトノードに変換する
 ///
 /// マーカーの見た目は `ctx.list_depth`（ネスト深さ、0 = 最上位）に応じて自動的に切り替わる。
 /// 最上位は `style.list` の設定（`unordered_marker` / `ordered_marker_format`）をそのまま使い、
-/// 1 段以上ネストした段は [`NESTED_UNORDERED_MARKERS`] / [`NESTED_ORDERED_FORMATS`] の固定系列を
-/// `(depth - 1) % 3` で循環的に引く。字下げ量（インデント）は深さに依らず `VBox.indent` で表す。
+/// 1 段以上ネストした段は `style.list` の `nested_unordered_markers` / `nested_ordered_formats`
+/// （未指定時は既定シーケンス: en dash → asterisk → middle dot / `(a)` → `i.` → `A.`）を
+/// `(depth - 1) % 系列の要素数` で循環的に引く。字下げ量（インデント）は深さに依らず `VBox.indent` で表す。
 ///
 /// 項目間の縦アキ（`margin_bottom`）は `\item` 個別の `item.item_gap` > 環境の `item_gap` 引数 >
 /// `style.list.item_margin_bottom` の優先順位で決まる。
@@ -71,13 +55,13 @@ pub(super) fn lower_list(
       if depth == 0 {
         list_style.ordered_marker_format.replace("{number}", &n.to_string())
       } else {
-        let (number_style, template) = NESTED_ORDERED_FORMATS[(depth - 1) % NESTED_ORDERED_FORMATS.len()];
-        template.replace("{number}", &number_style.render(n))
+        let format = &list_style.nested_ordered_formats[(depth - 1) % list_style.nested_ordered_formats.len()];
+        format.format.replace("{number}", &format.number_style.render(n))
       }
     } else if depth == 0 {
       list_style.unordered_marker.clone()
     } else {
-      NESTED_UNORDERED_MARKERS[(depth - 1) % NESTED_UNORDERED_MARKERS.len()].to_string()
+      list_style.nested_unordered_markers[(depth - 1) % list_style.nested_unordered_markers.len()].clone()
     };
 
     // マーカー + 内容。左インデントは VBox.indent（ブロック単位）で表し、折り返し行・
@@ -594,5 +578,46 @@ mod tests {
 
     // Assert — • → – → * → · → –（循環）
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);
+  }
+
+  #[test]
+  fn nested_unordered_markers_use_style_override() {
+    // Arrange — style.list.nested_unordered_markers をカスタム系列に上書き
+    let mut style = ReadStyle::default();
+    style.list.nested_unordered_markers = vec!["§".to_string(), "†".to_string()];
+    let ctx = LoweringContext::new(&style);
+    let kinds = [false, false, false];
+    let items = build_nested_items(&kinds);
+
+    // Act
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+
+    // Assert — 最上位は既定の • のまま、ネスト段はカスタム系列を (depth - 1) % 2 で循環
+    assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "§ ", "† "]);
+  }
+
+  #[test]
+  fn nested_ordered_formats_use_style_override() {
+    // Arrange — style.list.nested_ordered_formats をカスタム系列に上書き（要素数 2 で循環を確認）
+    let mut style = ReadStyle::default();
+    style.list.nested_ordered_formats = vec![
+      config::NestedOrderedFormat {
+        number_style: config::NumberStyle::RomanUpper,
+        format: "[{number}]".to_string(),
+      },
+      config::NestedOrderedFormat {
+        number_style: config::NumberStyle::Kanji,
+        format: "{number}、".to_string(),
+      },
+    ];
+    let ctx = LoweringContext::new(&style);
+    let kinds = [true, true, true];
+    let items = build_nested_items(&kinds);
+
+    // Act
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+
+    // Assert — 最上位は既定の "1. " のまま、深さ 1 は [I]、深さ 2 は要素数 2 で循環して一、に戻る
+    assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);
   }
 }

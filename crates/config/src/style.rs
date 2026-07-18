@@ -53,7 +53,7 @@ pub use crate::style::{
   footnote::{FootnoteNumbering, FootnoteStyle},
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
-  list::ListStyle,
+  list::{ListStyle, NestedOrderedFormat},
   math::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide},
   number_style::NumberStyle,
   page::PageStyle,
