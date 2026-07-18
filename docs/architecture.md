@@ -84,7 +84,7 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 
 ### `evaluator`（`frontend::evaluator`）
 
-`syntax` の生成した CST を走査し、Document IR（`model` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `footnote` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `itemize` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等、将来の数式スペーシング実装向けにテーブルへ記録するのみ）は `command::symbol` 内の `pub(crate)` 型（唯一の消費者のため、複数段共有の `MathDelimiter` / `MathEnvKind` と異なり `model` には置かない。#216）。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
+`syntax` の生成した CST を走査し、Document IR（`model` クレートの `DocNode` 等）に評価変換。`evaluator/` 配下にコマンド（`command/` = `control` / `footnote` / `headline` / `inline` / `link` / `ref_` / `cite` / `symbol`）・環境（`environment/` 直下にテキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `table` / `theorem`、`environment/math/` に数式系 `equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix` ＋これらが共有する複数行分割の共通基盤 `math_grid` を集約し、ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録）・`\cite` キー存在検証の pass2（`cite`、`command/cite` のスタブ生成とは別物）・インライン要素（`inline`）・数式評価（`math`）・オプション引数（`opt_args`）のサブモジュール。コマンドは `COMMAND_MAP` / 記号 `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源にディスパッチ。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等、将来の数式スペーシング実装向けにテーブルへ記録するのみ）は `command::symbol` 内の `pub(crate)` 型（唯一の消費者のため、複数段共有の `MathDelimiter` / `MathEnvKind` と異なり `model` には置かない。#216）。`Evaluator` はフィールドを持たない（採番は行わない）。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置だけを構造化し、実際の発番・書式化・`\ref` 解決（`CounterRegistry` 相当）は `lowering` 層が担う（P10: 書式は種類の既定＝style.toml 管轄という分離原則に沿わせるため #192 で移設）。`frontend` は `config` に依存しない。
 
 ## `citation`
 
@@ -149,8 +149,8 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 リージョンの脚注エリアの**先頭**へ繰り越す（LaTeX の split footnotes 相当）。設計上の要点は 4 つ。
 
 - **分割 = 予約をページ下端まで満たす**: 収まらない行では `region_footnote_height` をその行の本文下端
-  まで拡げる（＝入るだけ入れる）。すると次の行は既存の幾何判定（`baseline + depth > page_limit −
-  予約`）だけで自動的に改リージョンになる。改リージョン規則を足さないので、脚注が溢れない文書では
+  まで拡げる（＝入るだけ入れる）。すると次の行は既存の幾何判定（`baseline + depth > page_limit −予約`）
+  だけで自動的に改リージョンになる。改リージョン規則を足さないので、脚注が溢れない文書では
   この経路が完全に inert（既存 golden がバイト不変）。
 - **詰め込みの算術は `pack_footnotes` 1 箇所**: 「予算に何行入るか」を決めるのはこの純粋関数だけで、
   行の自前脚注の分割判定（`place_lines`）と繰越の詰め込み（`PageComposer::seed_carry`）が共用する。

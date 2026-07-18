@@ -30,7 +30,7 @@ use crate::{
 pub(crate) mod body_scan;
 mod caption;
 mod figure;
-mod itemize;
+mod list;
 mod math;
 mod quote;
 mod table;
@@ -58,8 +58,8 @@ pub(crate) struct EnvDef {
 /// このマップが「環境のソース・オブ・トゥルース」。syntax クレートの構文解析モード判定と
 /// parser クレートの評価ディスパッチの双方がここを参照する。
 pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
-  "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::itemize),   display_name: "箇条書きリスト" },
-  "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(itemize::enumerate), display_name: "番号付きリスト" },
+  "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::itemize),   display_name: "箇条書きリスト" },
+  "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::enumerate), display_name: "番号付きリスト" },
   "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::equation),     display_name: "数式" },
   "align"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::align),         display_name: "整列数式" },
   "gather"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::gather),        display_name: "中央寄せ数式" },
