@@ -138,7 +138,7 @@ pub(super) fn lower_inline(
       let number = footnote_number(ctx, index);
       let footnote_style = &ctx.style.footnote;
       let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
-        "number" => return number.to_string(),
+        "number" => return footnote_style.number_style.render(number),
         _ => return format!("{{{name}}}"),
       });
 
@@ -759,5 +759,47 @@ mod tests {
       panic!("Text が期待されます: {body:?}");
     };
     assert!((body_text_style.font_size.to_pt() - 20.0).abs() < 1e-3, "{}", body_text_style.font_size.to_pt());
+  }
+
+  #[test]
+  fn lower_footnote_applies_number_style_to_both_markers() {
+    // Arrange — number_style をローマ数字にし、本文中マーカー・脚注本体先頭マーカーの
+    // 両方に同じ表記が反映されることを確認する（受け入れ条件「マーカーと脚注本体の表示が
+    // 全ケースで一致する」）
+    let mut style = config::Style::default();
+    style.footnote.number_style = config::NumberStyle::RomanUpper;
+    let ctx = LoweringContext::new(&style);
+    let make = |text: &str| {
+      return InlineNode::Footnote {
+        body: vec![InlineNode::Text(text.to_string())],
+        span: model::Span::DUMMY,
+      };
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+    let parent_style = TextStyle::new(Length::pt(10.0));
+
+    // Act
+    let first = lower_inline(&ctx, &make("a"), parent_style, &mut registry).expect("失敗しない");
+    let second = lower_inline(&ctx, &make("b"), parent_style, &mut registry).expect("失敗しない");
+
+    // Assert — 1 個目は "I"、2 個目は "II"。本文中マーカー（[0]）と脚注本体先頭マーカー
+    // （[1] の body[0]）が一致する
+    let LayoutNode::Footnote {
+      body: first_body, ..
+    } = &first[1]
+    else {
+      panic!("Footnote が期待されます: {first:?}");
+    };
+    assert_eq!(marker_text(&first[0]), "I");
+    assert_eq!(marker_text(&first_body[0]), "I");
+
+    let LayoutNode::Footnote {
+      body: second_body, ..
+    } = &second[1]
+    else {
+      panic!("Footnote が期待されます: {second:?}");
+    };
+    assert_eq!(marker_text(&second[0]), "II");
+    assert_eq!(marker_text(&second_body[0]), "II");
   }
 }
