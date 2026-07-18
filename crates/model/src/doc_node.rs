@@ -93,6 +93,9 @@ pub enum DocNode {
     ordered: bool,
     /// リストアイテム
     items: Vec<ListItem>,
+    /// 開始番号（`enumerate[start=N]`）。`None` は既定（1 から開始）。
+    /// `itemize`（unordered）では常に `None`
+    start: Option<u32>,
   },
 
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
@@ -371,6 +374,7 @@ mod tests {
     let node = DocNode::List {
       ordered: false,
       items: vec![],
+      start: None,
     };
     assert!(node.is_list());
     assert!(!node.is_paragraph());

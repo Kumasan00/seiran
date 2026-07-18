@@ -9,7 +9,7 @@ use crate::{
   evaluator::{
     EvalError,
     environment::body_scan,
-    opt_args::{OptType, collect_command_opt_args, collect_environment_opt_args, find_string},
+    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
   },
   span_ext::ToSourceSpan,
   syntax::ast::EnvironmentView,
@@ -44,7 +44,29 @@ pub(super) fn enumerate(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalErro
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
 fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
-  let _opt_args = collect_environment_opt_args(view, &[])?;
+  let schema: &[(&str, OptType)] = if ordered {
+    &[("start", OptType::Number)]
+  } else {
+    &[]
+  };
+  let opt_args = collect_environment_opt_args(view, schema)?;
+  let mut start: Option<u32> = None;
+  for (key, value) in &opt_args {
+    if let ("start", OptValue::Number(n)) = (key.as_str(), value) {
+      if !(n.is_finite() && *n >= 1.0 && n.fract() == 0.0 && *n <= f64::from(u32::MAX)) {
+        return Err(EvalError::InvalidOptArgValue {
+          name: view.name().to_string(),
+          key: "start".to_string(),
+          expected: "1 以上の整数".to_string(),
+          span: view.span().to_source_span(),
+        });
+      }
+      #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+      {
+        start = Some(*n as u32);
+      }
+    }
+  }
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
       name: view.name().to_string(),
@@ -77,7 +99,11 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
     }
   }
 
-  return Ok(vec![DocNode::List { ordered, items }]);
+  return Ok(vec![DocNode::List {
+    ordered,
+    items,
+    start,
+  }]);
 }
 
 #[cfg(test)]
@@ -108,6 +134,93 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
+  }
+
+  #[test]
+  fn enumerate_start_option_sets_list_start() {
+    // Arrange — `\begin{enumerate}[start=5]` は DocNode::List.start に 5 を反映する
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=5]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let nodes = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    let DocNode::List { start, .. } = &nodes[0] else {
+      panic!("List ノードであるべき: {nodes:?}");
+    };
+    assert_eq!(*start, Some(5));
+  }
+
+  #[test]
+  fn itemize_rejects_start_opt_arg_key() {
+    // Arrange — itemize は unordered なので `start` は未知キー扱い
+    let arena = Bump::new();
+    let source = r"\begin{itemize}[start=5]\item{A}\end{itemize}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "start"));
+  }
+
+  #[test]
+  fn enumerate_start_zero_is_invalid() {
+    // Arrange — start は 1 以上の整数のみ有効
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=0]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
+  }
+
+  #[test]
+  fn enumerate_start_negative_is_invalid() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=-1]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
+  }
+
+  #[test]
+  fn enumerate_start_non_integer_is_invalid() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=1.5]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
+  }
+
+  #[test]
+  fn enumerate_start_non_numeric_is_invalid() {
+    // Arrange — `start` は Number 型スキーマなので非数値は opt_args の型変換段階で弾かれる
+    let arena = Bump::new();
+    let source = r"\begin{enumerate}[start=foo]\item{A}\end{enumerate}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
   }
 
   #[test]

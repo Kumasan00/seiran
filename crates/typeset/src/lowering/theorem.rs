@@ -275,6 +275,7 @@ mod tests {
     let list = DocNode::List {
       ordered: false,
       items: vec![model::ListItem::new(vec![paragraph("item")])],
+      start: None,
     };
 
     // Act
