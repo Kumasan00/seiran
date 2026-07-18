@@ -14,6 +14,8 @@ use model::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::style::number_style::NumberStyle;
+
 /// 脚注番号のリセット方式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +39,8 @@ pub enum FootnoteNumbering {
 pub struct FootnoteStyle {
   /// 脚注番号のリセット方式（文書通し / ページ単位）
   pub numbering: FootnoteNumbering,
+  /// マーカー番号・脚注本体先頭番号の数字表記スタイル。既定はアラビア数字
+  pub number_style: NumberStyle,
   /// 脚注本体のフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -69,6 +73,7 @@ impl Default for FootnoteStyle {
   fn default() -> Self {
     return Self {
       numbering: FootnoteNumbering::default(),
+      number_style: NumberStyle::default(),
       font_size: Length::pt(9.0),
       marker_format: "{number}".to_string(),
       marker_size_factor: 0.7,
@@ -88,6 +93,7 @@ mod tests {
   use model::Length;
 
   use super::{FootnoteNumbering, FootnoteStyle};
+  use crate::style::number_style::NumberStyle;
 
   #[test]
   fn validate_accepts_default() {
@@ -98,6 +104,28 @@ mod tests {
   fn default_numbering_is_continuous() {
     // Act / Assert — 既定は現状の振る舞い（文書通しの連番）
     assert_eq!(FootnoteStyle::default().numbering, FootnoteNumbering::Continuous);
+  }
+
+  #[test]
+  fn default_number_style_is_arabic() {
+    // Act / Assert — 既定は現状の振る舞い（アラビア数字）
+    assert_eq!(FootnoteStyle::default().number_style, NumberStyle::Arabic);
+  }
+
+  #[test]
+  fn deserialize_accepts_roman_number_style() {
+    // Arrange / Act
+    let style: FootnoteStyle =
+      toml::from_str("number_style = \"roman_upper\"\n").expect("roman_upper は受理されるはず");
+
+    // Assert
+    assert_eq!(style.number_style, NumberStyle::RomanUpper);
+  }
+
+  #[test]
+  fn deserialize_rejects_unknown_number_style() {
+    // Act / Assert — 未知の値は静かに既定へ落とさず読込時に弾く（P6）
+    assert!(toml::from_str::<FootnoteStyle>("number_style = \"circled\"\n").is_err());
   }
 
   #[test]
