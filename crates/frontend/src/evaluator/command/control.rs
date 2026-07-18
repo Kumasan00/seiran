@@ -80,6 +80,42 @@ pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
   return Ok(());
 }
 
+/// `\pagebreak` — その位置で強制的に改ページするマーカーコマンド
+///
+/// 引数も任意引数も取らない（`\noindent` / `\notag` と同じ引数なしマーカー）。効果は
+/// 「この 1 点で改ページする」ことに閉じる（P7）。エイリアス（`\newpage` / `\clearpage`）も
+/// 強度オプション（`[weight=N]`）も持たない — 同じ結果への書き方を増やさないため。
+///
+/// 見出しの `[heading].page_break_before` / `page_break_after` が「見出しという種類の既定」を
+/// 決めるのに対し、本コマンドは「この 1 点」の個別指定（P10）。
+///
+/// 段落の途中に置いた場合、結果が `CommandResult::Block` なので `evaluate_children` が段落を
+/// フラッシュし、以降のテキストは新しい段落になる（`first_line_indent` が有効なら先頭行に字下げが
+/// 付く）。`\space{N}` と同じ挙動で、意図した結果。
+///
+/// 内容を挟まない位置（文書先頭・`\pagebreak\pagebreak`・`\part` 直後・文書末尾）では冪等な
+/// no-op として畳まれる（`typeset::break_pages` の `PageComposer::start_new_page` / `finish` の
+/// 責務）。「この `\pagebreak` が実際にページを送るか」は組版結果に依存しフロントエンドでは
+/// 判定できないため、ここで位置を裁くことはしない。
+///
+/// # Arguments
+///
+/// * `view` - コマンドの型付きビュー
+///
+/// # Errors
+///
+/// 任意引数や必須引数が指定されている場合にエラーを返します
+pub(super) fn pagebreak(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
+  let _opt_args = collect_command_opt_args(view, &[])?;
+  if !view.args_is_empty() {
+    return Err(EvalError::ExtraCommandArgument {
+      name: view.name().to_string(),
+      span: view.span().to_source_span(),
+    });
+  }
+  return Ok(vec![DocNode::PageBreak]);
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -169,5 +205,71 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
+  }
+
+  #[test]
+  fn pagebreak_produces_page_break_node() {
+    // Arrange — 引数なしの `\pagebreak`
+    let arena = Bump::new();
+    let source = r"\pagebreak";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = pagebreak(&view);
+
+    // Assert — `DocNode::PageBreak` を 1 つだけ生成する
+    assert!(matches!(result.as_deref(), Ok([DocNode::PageBreak])));
+  }
+
+  #[test]
+  fn pagebreak_rejects_mandatory_argument() {
+    // Arrange — `\pagebreak{x}` は引数過剰でエラー
+    let arena = Bump::new();
+    let source = r"\pagebreak{x}";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = pagebreak(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
+  }
+
+  #[test]
+  fn pagebreak_rejects_unknown_opt_arg_key() {
+    // Arrange — 強度オプションは設けないので `[weight=2]` は未知キーで拒否される
+    let arena = Bump::new();
+    let source = r"\pagebreak[weight=2]";
+    let node = get_command_view(source, &arena);
+    let view = CommandView::new(node, source);
+
+    // Act
+    let result = pagebreak(&view);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));
+  }
+
+  #[test]
+  fn pagebreak_splits_surrounding_paragraph() {
+    // Arrange — 段落の途中に置いた `\pagebreak` は前後を別段落に割る
+    let arena = Bump::new();
+    let source = r"前\pagebreak 後";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert — `[Paragraph, PageBreak, Paragraph]` になる
+    assert!(matches!(
+      result.as_slice(),
+      [
+        DocNode::Paragraph(_),
+        DocNode::PageBreak,
+        DocNode::Paragraph(_)
+      ]
+    ));
   }
 }

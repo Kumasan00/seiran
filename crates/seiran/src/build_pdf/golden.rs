@@ -57,6 +57,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "justify",
   "matrix",
   "multiline",
+  "pagebreak",
   "quote",
   "ref",
   "split",
