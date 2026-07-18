@@ -36,6 +36,7 @@ pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
   items: &[ListItem],
+  start: Option<u32>,
   registry: &mut CounterRegistry,
   headings: &mut Vec<PendingHeading>,
 ) -> Result<Vec<LayoutNode>, LoweringError> {
@@ -57,7 +58,9 @@ pub(super) fn lower_list(
     // マーカーの生成。`\item[marker=...]` による個別上書きがあれば自動生成より優先する。
     // 連番カウンタ n はこの上書きと独立に i から算出するため、上書きされた項目があっても
     // 後続項目の自動番号はズレない。
-    let n = u32::try_from(i + 1).expect("リスト項目数は u32 に収まる前提");
+    let base = start.unwrap_or(1);
+    let offset = u32::try_from(i).expect("リスト項目数は u32 に収まる前提");
+    let n = base.saturating_add(offset);
     let marker_body = if let Some(marker) = &item.marker {
       marker.clone()
     } else if ordered {
@@ -114,10 +117,11 @@ mod tests {
     ctx: &LoweringContext,
     ordered: bool,
     items: &[ListItem],
+    start: Option<u32>,
   ) -> Result<Vec<LayoutNode>, LoweringError> {
     let mut registry = CounterRegistry::from_style(ctx.style);
     let mut headings = Vec::new();
-    return lower_list(ctx, ordered, items, &mut registry, &mut headings);
+    return lower_list(ctx, ordered, items, start, &mut registry, &mut headings);
   }
 
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
@@ -141,7 +145,7 @@ mod tests {
     let items = [item_with_text("apple")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items).expect("解決済み内容なので失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None).expect("解決済み内容なので失敗しない");
 
     // Assert — マーカーは "• "（末尾スペース付き）
     let (marker, _) = marker_of(&nodes[0]);
@@ -160,12 +164,87 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
 
     // Assert — 1,2,3 と連番で展開され、末尾スペースが付く
     assert_eq!(nodes.len(), 3);
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
+  }
+
+  #[test]
+  fn ordered_list_with_start_numbers_from_start() {
+    // Arrange — `enumerate[start=5]` 相当。既定 ordered_marker_format は "{number}."
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let items = [
+      item_with_text("a"),
+      item_with_text("b"),
+      item_with_text("c"),
+    ];
+
+    // Act
+    let nodes = lower_list_default(&ctx, true, &items, Some(5)).expect("失敗しない");
+
+    // Assert — 5,6,7 と start からの連番で展開される
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
+  }
+
+  #[test]
+  fn nested_start_does_not_affect_outer_numbering() {
+    // Arrange — 外側 enumerate（start 未指定）の 2 番目の item 内容に
+    // 内側 enumerate[start=10] を持たせる（AC: ネストは自リストのみに作用）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let nested = DocNode::List {
+      ordered: true,
+      items: vec![item_with_text("inner-a"), item_with_text("inner-b")],
+      start: Some(10),
+    };
+    let items = [
+      item_with_text("outer-a"),
+      ListItem::new(vec![
+        DocNode::Paragraph(vec![InlineNode::Text("outer-b".to_string())]),
+        nested,
+      ]),
+    ];
+
+    // Act
+    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
+
+    // Assert — 外側は 1,2 のまま。内側は 10 番目相当（深さ 1 の書式は AlphaLower なので "(j)"）から始まる
+    let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(outer_markers, vec!["1. ", "2. "]);
+    let inner_vbox = first_nested_vbox(&nodes[1]);
+    assert_eq!(marker_of(inner_vbox).0, "(j) ");
+  }
+
+  #[test]
+  fn sibling_list_after_start_list_is_unaffected() {
+    // Arrange — 同じ registry を共有する 2 つの独立した最上位 enumerate（AC: 兄弟リストへの波及なし）
+    let style = ReadStyle::default();
+    let ctx = LoweringContext::new(&style);
+    let doc_nodes = vec![
+      DocNode::List {
+        ordered: true,
+        items: vec![item_with_text("a"), item_with_text("b")],
+        start: Some(5),
+      },
+      DocNode::List {
+        ordered: true,
+        items: vec![item_with_text("x")],
+        start: None,
+      },
+    ];
+
+    // Act — `lower_nodes` は全ノードで 1 個の CounterRegistry を共有するため、
+    // list 呼び出し間の意図しない状態共有があればここで検出できる
+    let nodes = crate::lower_nodes(&ctx, &doc_nodes).expect("失敗しない");
+
+    // Assert — 1 つ目は 5,6。2 つ目（兄弟リスト）は start に影響されず 1 から始まる
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["5. ", "6. ", "1. "]);
   }
 
   #[test]
@@ -176,7 +255,7 @@ mod tests {
     let items = [item_with_text("x")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
     // Assert — VBox.indent=indent（ブロック単位）・先頭に Kern は出さない、
     // margin_bottom=item_margin_bottom、marker_style は規定どおり
@@ -210,6 +289,7 @@ mod tests {
       items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
         InlineNode::Text("inner".to_string()),
       ])])],
+      start: None,
     };
     let items = [ListItem::new(vec![
       DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
@@ -217,7 +297,7 @@ mod tests {
     ])];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
     // Assert — 外側 item VBox.indent == list.indent、内側ネスト item VBox にも同じ indent が乗る
     let indent = style.list.indent.to_pt();
@@ -253,7 +333,7 @@ mod tests {
     items[1].marker = Some("Q1.".to_string());
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
 
     // Assert — 1・3 番目は自動番号のまま、2 番目だけ上書きマーカー
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
@@ -269,7 +349,7 @@ mod tests {
     items[0].marker = Some(String::new());
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
     // Assert — item VBox の先頭子がマーカーではなく内容そのもの（"x"）から始まる。
     // マーカーが出力される場合は先頭が "x " や "• " 等のマーカー文字列になるはずなので、
@@ -290,7 +370,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &[]).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &[], None).expect("失敗しない");
 
     // Assert
     assert!(nodes.is_empty());
@@ -307,6 +387,7 @@ mod tests {
       content.push(DocNode::List {
         ordered: kinds[1],
         items: build_nested_items(&kinds[1..]),
+        start: None,
       });
     }
     return vec![ListItem::new(content)];
@@ -345,7 +426,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
     // Assert — • → – → *（AC#1）
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
@@ -360,7 +441,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
     // Assert — 1. → (a) → i.（AC#2）
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
@@ -375,7 +456,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
     // Assert — 外 itemize は深さ 0 の •、中 enumerate は深さ 1 の (a)、内 itemize は深さ 2 の *
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
@@ -390,7 +471,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
     // Assert — • → – → * → · → –（循環）
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);

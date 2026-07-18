@@ -635,7 +635,7 @@ fn evaluate_enumerate_creates_ordered_list() {
   let result = evaluate_source("\\begin{enumerate}\\item{First}\\item{Second}\\end{enumerate}");
   assert_eq!(result.len(), 1);
   match &result[0] {
-    DocNode::List { ordered, items } => {
+    DocNode::List { ordered, items, .. } => {
       assert!(ordered);
       assert_eq!(items.len(), 2);
     },
@@ -744,7 +744,7 @@ fn evaluate_itemize_creates_unordered_list() {
   let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
   assert_eq!(result.len(), 1);
   match &result[0] {
-    DocNode::List { ordered, items } => {
+    DocNode::List { ordered, items, .. } => {
       assert!(!ordered);
       assert_eq!(items.len(), 2);
     },

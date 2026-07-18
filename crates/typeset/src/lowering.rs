@@ -506,8 +506,12 @@ fn lower_node_indexed(
     DocNode::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines, registry);
     },
-    DocNode::List { ordered, items } => {
-      return list::lower_list(ctx, *ordered, items, registry, headings);
+    DocNode::List {
+      ordered,
+      items,
+      start,
+    } => {
+      return list::lower_list(ctx, *ordered, items, *start, registry, headings);
     },
     DocNode::Theorem {
       class,
@@ -908,6 +912,7 @@ mod tests {
         items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
           InlineNode::Text("L".to_string()),
         ])])],
+        start: None,
       },
       DocNode::PageBreak,
     ];
@@ -982,6 +987,7 @@ mod tests {
         items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
           InlineNode::Text("Item".to_string()),
         ])])],
+        start: None,
       },
     ];
 

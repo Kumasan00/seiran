@@ -20,6 +20,17 @@ itemize 環境（順序なしリスト）と enumerate 環境（順序付きリ�
 \item{3 番目の手順。}
 \end{enumerate}
 
+\begin{enumerate}[start=5]
+\item{5 番目から開始する手順。}
+\item{6 番目。連番が続くことを確認する。}
+\end{enumerate}
+
+直前の enumerate に start を指定していても、続く enumerate に影響しないことを確認する。
+
+\begin{enumerate}
+\item{start を指定していないので 1 から開始する。}
+\end{enumerate}
+
 個別の項目だけマーカーを上書きできることを確認する。上書きされていない項目の自動番号は
 ズレないままであることも合わせて確認する。
 
@@ -50,18 +61,19 @@ itemize 環境（順序なしリスト）と enumerate 環境（順序付きリ�
 \end{itemize}
 
 順序付きリストを 3 段ネストすると、番号書式が「算用数字・小文字英字（丸括弧）・小文字ローマ数字」と
-段ごとに変化する。
+段ごとに変化する。内側のリストにだけ `start` を指定し、外側の採番に影響しないことも確認する。
 
 \begin{enumerate}
 \item{1 段目の手順。番号は算用数字。
+\begin{enumerate}[start=3]
+\item{2 段目の手順。番号は小文字英字の丸括弧、3 番目（c）から開始する。
 \begin{enumerate}
-\item{2 段目の手順。番号は小文字英字の丸括弧。
-\begin{enumerate}
-\item{3 段目の手順。番号は小文字ローマ数字。}
+\item{3 段目の手順。番号は小文字ローマ数字。内側の start はここには影響しない。}
 \end{enumerate}
 }
 \end{enumerate}
 }
+\item{1 段目のもう 1 つの項目。番号は 2 のまま（内側の start に影響されない）。}
 \end{enumerate}
 
 itemize と enumerate を混在させたネストでも、各種別のシーケンスに従うことを確認する。
