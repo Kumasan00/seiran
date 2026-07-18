@@ -11,9 +11,9 @@
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
 use model::{
-  AnchorMark, Block, Length, Line, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock,
-  PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TextAlignment, column_width,
-  resolve_column_widths, table_row_height,
+  AnchorMark, Block, Length, Line, LinkTarget, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor,
+  PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, TextAlignment,
+  collect_row_links, column_width, resolve_column_widths, table_row_height,
 };
 use tracing::{debug, warn};
 
@@ -1673,6 +1673,23 @@ fn place_math_block(
   composer.y += total_height;
 }
 
+/// 表セル内のリンク領域（表左端からの相対座標）を保持する
+///
+/// `place_table` が行を配置する時点ではまだ断片の `x`（段オフセット）が未確定なため、
+/// 絶対座標への変換は `x` が確定する `flush` 時まで遅延する。
+struct PendingCellLink {
+  /// リンクが属する行帯の上端
+  top_y: Length,
+  /// リンクが属する行帯の高さ
+  height: Length,
+  /// リンクの行き先
+  target: LinkTarget,
+  /// 表左端からの相対な左端オフセット
+  x0: Length,
+  /// 表左端からの相対な右端オフセット
+  x1: Length,
+}
+
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
 ///
 /// 配置規則:
@@ -1717,62 +1734,88 @@ fn place_table(
   composer.resolve_pending_anchors(composer.column_offset(), composer.y);
 
   let mut placed_rows: Vec<PlacedTableRow> = Vec::new();
-  // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ。断片の x は着地段の
-  // オフセット + 段内揃えオフセット（flush は advance_region の前に呼ばれるので col は正しい）。
-  let flush = |composer: &mut PageComposer, placed_rows: &mut Vec<PlacedTableRow>| {
-    if placed_rows.is_empty() {
-      return;
-    }
-    let x = composer.column_offset() + table_align_offset;
-    composer.current.push(PlacedBlock::Table {
-      x,
-      columns: table.columns.clone(),
-      col_widths: col_widths.clone(),
-      rows: std::mem::take(placed_rows),
-    });
-  };
-
-  for (row, height) in table.head.iter().zip(&head_heights) {
-    if composer.y + *height > composer.region_limit(geom) {
-      flush(composer, &mut placed_rows);
-      composer.advance_region(geom);
+  let mut pending_links: Vec<PendingCellLink> = Vec::new();
+  // 1 行を placed_rows へ積みつつ、その行のセル内リンクを pending_links へ集める
+  // （head 行・本体行・改ページ後のヘッダ再描画が同じ経路を通るため、ヘッダセル内の
+  // リンクも自動的に拾える）。
+  let push_row = |placed_rows: &mut Vec<PlacedTableRow>,
+                  pending_links: &mut Vec<PendingCellLink>,
+                  row: &TableRowBox,
+                  top_y: Length,
+                  height: Length| {
+    for link in collect_row_links(row, &table.columns, &col_widths, geom.table_cell_padding) {
+      if link.x1 <= link.x0 {
+        continue; // 退化矩形はスキップ（collect_line_links と同じ規則）
+      }
+      pending_links.push(PendingCellLink {
+        top_y,
+        height,
+        target: link.target,
+        x0: link.x0,
+        x1: link.x1,
+      });
     }
     placed_rows.push(PlacedTableRow {
       row: row.clone(),
-      top_y: composer.y,
-      height: *height,
+      top_y,
+      height,
     });
+  };
+  // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ。断片の x は着地段の
+  // オフセット + 段内揃えオフセット（flush は advance_region の前に呼ばれるので col は正しい）。
+  // pending_links もこの時点で同じ x を使って絶対座標の PlacedLink に変換する。
+  let flush =
+    |composer: &mut PageComposer, placed_rows: &mut Vec<PlacedTableRow>, pending_links: &mut Vec<PendingCellLink>| {
+      if placed_rows.is_empty() {
+        return;
+      }
+      let x = composer.column_offset() + table_align_offset;
+      for link in std::mem::take(pending_links) {
+        composer.current_links.push(PlacedLink {
+          target: link.target,
+          x: x + link.x0,
+          y: link.top_y,
+          width: link.x1 - link.x0,
+          height: link.height,
+        });
+      }
+      composer.current.push(PlacedBlock::Table {
+        x,
+        columns: table.columns.clone(),
+        col_widths: col_widths.clone(),
+        rows: std::mem::take(placed_rows),
+      });
+    };
+
+  for (row, height) in table.head.iter().zip(&head_heights) {
+    if composer.y + *height > composer.region_limit(geom) {
+      flush(composer, &mut placed_rows, &mut pending_links);
+      composer.advance_region(geom);
+    }
+    push_row(&mut placed_rows, &mut pending_links, row, composer.y, *height);
     composer.y += *height;
   }
   for (row, height) in table.rows.iter().zip(&row_heights) {
     if composer.y + *height > composer.region_limit(geom) {
-      flush(composer, &mut placed_rows);
+      flush(composer, &mut placed_rows, &mut pending_links);
       composer.advance_region(geom);
       // 改段・改ページ後の先頭にヘッダ行を再描画する
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
-        placed_rows.push(PlacedTableRow {
-          row: head_row.clone(),
-          top_y: composer.y,
-          height: *head_height,
-        });
+        push_row(&mut placed_rows, &mut pending_links, head_row, composer.y, *head_height);
         composer.y += *head_height;
       }
     }
-    placed_rows.push(PlacedTableRow {
-      row: row.clone(),
-      top_y: composer.y,
-      height: *height,
-    });
+    push_row(&mut placed_rows, &mut pending_links, row, composer.y, *height);
     composer.y += *height;
   }
-  flush(composer, &mut placed_rows);
+  flush(composer, &mut placed_rows, &mut pending_links);
 }
 
 #[cfg(test)]
 mod tests {
   use model::{
-    Block, ColumnAlign, ColumnWidth, GlyphRun, HBox, HBoxContent, HItem, Length, Line, PENALTY_FORBID_BREAK, Page,
-    PlacedBlock, TableBox, TableCellBox, TableColumn, TableRowBox, TextAlignment,
+    Block, ColumnAlign, ColumnWidth, GlyphRun, HBox, HBoxContent, HItem, Length, Line, LinkTarget,
+    PENALTY_FORBID_BREAK, Page, PlacedBlock, TableBox, TableCellBox, TableColumn, TableRowBox, TextAlignment,
   };
 
   use super::{
@@ -2921,6 +2964,106 @@ mod tests {
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("HEAD"), "1 ページ目もヘッダ始まり");
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("HEAD"), "2 ページ目はヘッダ再描画");
+  }
+
+  /// 1 列 1 行、セル内容がまるごとリンク（`LinkStart`, box(幅20), `LinkEnd`）の表を作る
+  fn single_cell_link_table(target: LinkTarget) -> TableBox {
+    return TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![TableRowBox {
+        cells: vec![TableCellBox {
+          items: vec![
+            HItem::LinkStart(target),
+            HItem::Box(HBox {
+              content: HBoxContent::Glyphs(GlyphRun {
+                font_size: pt(10.0),
+                text: "リンク".to_string(),
+                glyphs: Vec::new(),
+                font_type: model::FontType::Serif,
+                color: None,
+              }),
+              width: Length::pt(20.0),
+              height: Length::pt(10.0),
+              depth: Length::ZERO,
+            }),
+            HItem::LinkEnd,
+          ],
+          span: 1,
+        }],
+        rule_above: false,
+      }],
+      breakable: true,
+    };
+  }
+
+  #[test]
+  fn table_cell_link_becomes_placed_link_on_page() {
+    // Arrange — 1 列 1 行、セル内容がまるごとリンク
+    let geom = test_geometry();
+    let target = LinkTarget::External("https://example.com".to_string());
+    let table = single_cell_link_table(target.clone());
+
+    // Act
+    let pages = break_pages(
+      vec![Block::Table {
+        table,
+        align: model::Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert — margin_top=10 が行帯の上端。padding=2（test_geometry）が内容開始位置
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    let link = &pages[0].links[0];
+    assert_eq!(link.target, target);
+    assert!(close(link.x, 2.0), "{link:?}");
+    assert!(close(link.y, 10.0), "{link:?}");
+    assert!(close(link.width, 20.0), "{link:?}");
+  }
+
+  #[test]
+  fn table_link_shifts_with_its_row_under_flush_bottom() {
+    // Arrange — 罫線(8) → 伸縮アキ(4/4) → リンク入り表、の後に大きな罫線を置いて溢れさせる。
+    // 表はアキより後ろにあるので下端揃えでシフトされる側。表自身とその行内リンクが
+    // 同じ量だけシフトされ、シフト後も `link.y == row.top_y` のまま揃っていることを確認する。
+    let geom = flush_geometry();
+    let target = LinkTarget::Internal("fig:1".to_string());
+    let table = single_cell_link_table(target.clone());
+    let blocks = vec![
+      rule(8.0),                                  // idx0, bottom=18（シフト対象外）
+      Block::stretchable_space(pt(4.0), pt(4.0)), // stretch アキ
+      Block::Table {
+        table,
+        align: model::Align::Left,
+      }, // idx1, 行高10。glue 後の y=22、bottom=32
+      rule(40.0),                                 // 溢れて改ページ（不足 50-32=18 を配分）
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 罫線(8) はアキより前なのでシフトなし。表はアキより後ろなので不足分だけ下方シフトされ、
+    // 行帯下端が版面下限(50)に達する。表内リンクの y は、シフト後の行 top_y と一致し続ける。
+    assert_eq!(rule_ys(&pages[0]), vec![Length::pt(10.0)], "先頭の罫線はシフトされない");
+    let PlacedBlock::Table { rows, .. } =
+      pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
+    else {
+      unreachable!("直前の matches! で確認済み");
+    };
+    let row_top_y = rows[0].top_y;
+    assert!(close(row_top_y, 40.0), "行帯下端が 50 に達するよう +18 シフトされるはず: {row_top_y:?}");
+    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
+    let link = &pages[0].links[0];
+    assert_eq!(link.target, target);
+    assert!(close(link.y, row_top_y.to_pt()), "リンクは行と同量シフトされ揃ったままのはず: {link:?}");
   }
 
   #[test]
