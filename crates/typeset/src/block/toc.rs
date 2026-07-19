@@ -136,6 +136,7 @@ impl LineAccum {
       is_last: true,
       links,
       footnotes: Vec::new(),
+      index_marks: Vec::new(),
     };
   }
 }

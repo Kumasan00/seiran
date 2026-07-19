@@ -26,6 +26,11 @@ pub struct Line {
   /// `typeset::breaking::break_pages` がこの行を配置する際に本体を行分割し、
   /// 実効ページ下限（`page_limit` から脚注ぶんを差し引いた値）へ織り込む。
   pub footnotes: Vec<LineFootnote>,
+  /// この行に含まれる索引語（`\index{語}`、出現順）
+  ///
+  /// `typeset::breaking::break_pages` がこの行の所属ページを索引語の出現ページとして扱い、
+  /// 重複除去のうえ `Page::index_entries` へ集約する。
+  pub index_marks: Vec<LineIndexEntry>,
 }
 
 /// 行内の脚注（`\footnote{...}`）本体
@@ -42,6 +47,19 @@ pub struct LineFootnote {
   pub items: Vec<HItem>,
   /// 脚注本体の行送り（支配的フォントサイズ × 行高係数）
   pub leading: Length,
+}
+
+/// 行内の索引語（`\index{語}`）1 件
+///
+/// `HItem::IndexMark` から `build_line` が収集する。重複除去（同一ページ内で同一
+/// word/reading を 1 出現に畳む）は `typeset::breaking::break_pages` の責務
+/// （本クレートはデータを運ぶだけ）。
+#[derive(Debug, Clone)]
+pub struct LineIndexEntry {
+  /// 索引語
+  pub word: String,
+  /// 読みソートキー（`[reading=...]`）
+  pub reading: Option<String>,
 }
 
 /// 行内のリンク領域（クリック矩形の水平範囲）

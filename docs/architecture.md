@@ -114,7 +114,13 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストのスクリプト分割・シェーピング・計測、break 注入（シェーピング後に `GlyphRun` を ICU の分割可能位置で分割。欧文スペースは伸縮 `Glue`、和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は計測済みハイフン箱を持つ `Discretionary`（`build_blocks` の `language` 引数から言語を導出。和文・数式は分割しない）。数式は分割しない）、`Raise` ツリーの `Atom` 化。ブロック間アキ（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Block::Glue` として出し（下端揃え #169 の配分先）、`Vkern`（数式上下・フロート内）は固定アキのまま。脚注（`LayoutNode::Footnote`）は本体を独立に計測して幅 0 の
 `HItem::Footnote`（`LinkStart`/`LinkEnd` と同じ運搬用マーカー）にする。本文中には何も残さない（上付き
-マーカー表示は #36 の責務）。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
+マーカー表示は #36 の責務）。索引語（`\index{語}`、#246）も同じ運搬パターンで `LayoutNode::IndexMark` →
+`HItem::IndexMark`（幅 0・分割不可）にする。脚注と異なり本体の再配置は不要で、`breaking::break_lines`
+が `Line::index_marks` へ素通しし、`break_pages` がその行の所属ページへ (word, reading) を重複除去
+つきで集約する（`Page::index_entries`）。`AnchorMark`（見出し・ラベル付きブロックの到達先）とは異なり
+段落を分割しないマーカーである点が要 — `\pagebreak`/`\ref` の `AnchorMark` はブロック境界でしか
+発行されないのに対し、`\index` は段落内の任意の位置に置けるため、分割すると Knuth–Plass の行分割
+結果が変わってしまう（受け入れ条件「`\index` を取り除いたレイアウトと一致する」）。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
 
 ### `breaking`
 

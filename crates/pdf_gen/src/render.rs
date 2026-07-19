@@ -444,7 +444,8 @@ fn draw_cell_items(
       | model::HItem::LinkStart(_)
       | model::HItem::LinkEnd
       | model::HItem::FlushRight(_)
-      | model::HItem::Footnote { .. } => {},
+      | model::HItem::Footnote { .. }
+      | model::HItem::IndexMark { .. } => {},
     }
   }
   return Ok(());

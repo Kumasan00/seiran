@@ -1,0 +1,5 @@
+\section{Index Sample}
+
+\index{typesetting}Seiran typesets plain text into PDF. The word typesetting appears again here \index{typesetting}to test deduplication within a single page.
+
+A separately indexed term with an explicit reading option \index[reading=example-reading]{example} sits at the end of this sentence.

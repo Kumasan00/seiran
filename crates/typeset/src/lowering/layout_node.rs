@@ -188,6 +188,19 @@ pub enum LayoutNode {
     /// 脚注本体（先頭に本体用マーカーを含む、再帰的に lowering 済みの `LayoutNode` 列）
     body: Vec<LayoutNode>,
   },
+  /// 索引語（`\index{語}`）の運搬マーカー（ゼロサイズ）
+  ///
+  /// [`LayoutNode::Anchor`] と異なり **ブロック境界のマーカーではない** — `block` 段
+  /// （`crate::block::build_blocks`）が段落を切らずに行内アイテム列へそのまま透過し
+  /// （`HItem::IndexMark`）、`crate::breaking::break_pages` が確定した行の所属ページを
+  /// そのまま「出現ページ」として使う。段落を分割しないことが `\index` の組版不変条件
+  /// （PDF レイアウトが `\index` を取り除いたソースと一致する）を満たす鍵。
+  IndexMark {
+    /// 索引語
+    word: String,
+    /// 読みソートキー（`[reading=...]`）
+    reading: Option<String>,
+  },
 }
 
 /// 表全体の物理レイアウト表現

@@ -36,6 +36,7 @@ pub(crate) mod cite;
 mod control;
 pub(crate) mod footnote;
 mod headline;
+pub(crate) mod index;
 pub(crate) mod inline;
 pub(crate) mod link;
 pub(crate) mod ref_;
@@ -88,6 +89,12 @@ pub(crate) enum CommandKind {
   Cite,
   /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番は `typeset::lowering` の責務）
   Footnote,
+  /// `\index{語}` — 索引マーカー。本文に出力を持たず、語・reading を収集用に運ぶだけ
+  ///
+  /// 位置制限（`extract_inline_nodes` 経由の見出しタイトル・キャプション・脚注本体・表セル・
+  /// リンク表示テキスト・書体指定コマンドの中身では使用不可）は本 enum のディスパッチではなく、
+  /// `crate::evaluator::inline::extract_inline_nodes_from_elements` の専用アームが担う。
+  Index,
   /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
@@ -120,6 +127,8 @@ impl CommandKind {
       Self::Cite => return cite::cite_command(view).map(CommandResult::Inline),
 
       Self::Footnote => return footnote::footnote_command(view).map(CommandResult::Inline),
+
+      Self::Index => return index::index_command(view).map(CommandResult::Inline),
 
       Self::Url => return link::url_command(view).map(CommandResult::Inline),
 
@@ -169,6 +178,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
   // 脚注
   "footnote" => CommandKind::Footnote,
+
+  // 索引
+  "index" => CommandKind::Index,
 
   // 外部リンク
   "url" => CommandKind::Url,

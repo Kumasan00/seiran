@@ -75,12 +75,23 @@ pub enum HItem {
     /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
     leading: Length,
   },
+  /// 索引語（`\index{語}`）の運搬マーカー（幅 0・分割不可）
+  ///
+  /// `LinkStart`/`LinkEnd`/`Footnote` と同様、行内では場所取りをしない。この行がどのページに
+  /// 置かれるかで「出現ページ」が自然に決まる（`typeset::breaking::break_pages` が
+  /// `Line::index_marks` 経由で収集し、ページ確定時に重複を畳んで `Page::index_entries` へ積む）。
+  IndexMark {
+    /// 索引語
+    word: String,
+    /// 読みソートキー（`[reading=...]`）
+    reading: Option<String>,
+  },
 }
 
 impl HItem {
   /// アイテムの自然幅（pt）を返す
   ///
-  /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` は 0。`Discretionary` も自然幅 0
+  /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` / `IndexMark` は 0。`Discretionary` も自然幅 0
   /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。
   #[must_use]
   pub fn natural_width(&self) -> Length {
@@ -93,7 +104,8 @@ impl HItem {
       | HItem::ForcedBreak
       | HItem::LinkStart(_)
       | HItem::LinkEnd
-      | HItem::Footnote { .. } => Length::ZERO,
+      | HItem::Footnote { .. }
+      | HItem::IndexMark { .. } => Length::ZERO,
     };
   }
 }
@@ -257,5 +269,14 @@ mod tests {
     assert_eq!(HItem::Kern(pt(3.0)).natural_width(), pt(3.0));
     assert_eq!(HItem::Penalty { value: 0 }.natural_width(), Length::ZERO);
     assert_eq!(HItem::ForcedBreak.natural_width(), Length::ZERO);
+  }
+
+  #[test]
+  fn index_mark_is_zero_width() {
+    let mark = HItem::IndexMark {
+      word: "語".to_string(),
+      reading: None,
+    };
+    assert_eq!(mark.natural_width(), Length::ZERO);
   }
 }

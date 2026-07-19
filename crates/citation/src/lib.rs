@@ -271,7 +271,8 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
       | InlineNode::Symbol(_)
       | InlineNode::LineBreak
       | InlineNode::NoIndent
-      | InlineNode::Ref { .. } => {},
+      | InlineNode::Ref { .. }
+      | InlineNode::Index { .. } => {},
     }
   }
 }
@@ -781,7 +782,8 @@ mod tests {
         | InlineNode::LineBreak
         | InlineNode::NoIndent
         | InlineNode::Ref { .. }
-        | InlineNode::Cite { .. } => {},
+        | InlineNode::Cite { .. }
+        | InlineNode::Index { .. } => {},
       }
     }
   }

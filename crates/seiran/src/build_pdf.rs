@@ -526,6 +526,7 @@ mod tests {
         .collect(),
       anchors: Vec::new(),
       links: Vec::new(),
+      index_entries: Vec::new(),
     };
   }
 

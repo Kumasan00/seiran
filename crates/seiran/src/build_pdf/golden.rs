@@ -53,6 +53,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "gather",
   "hyperref",
   "hyphenation",
+  "index",
   "itemize",
   "justify",
   "matrix",
@@ -207,6 +208,32 @@ fn layout_dumps_match_golden() {
     mismatches.is_empty(),
     "レイアウトダンプが golden と一致しません: {mismatches:?}（意図した変更なら UPDATE_GOLDEN=1 で再生成し git diff で確認）"
   );
+}
+
+/// `\index` マーカーの有無だけを差分とする 2 つの入力（`index.sei` / `index_baseline.sei`）を
+/// 比較し、`\index` を取り除いたソースとレイアウトが完全に一致することを確認する
+/// （issue #246 の受け入れ条件）。`index.sei` 側のダンプから `"index "` で始まる行（索引語自体の
+/// 出力）を除いた残りが、`index_baseline.sei`（`\index` を含まない、`GOLDEN_INPUTS` 非登録）の
+/// ダンプと一致するかを見る。`index_baseline` はレイアウトが変わらないことの基準としてのみ
+/// 使うため golden ファイルは持たない。
+#[test]
+fn index_marks_are_invisible_to_layout() {
+  // Arrange
+  enter_workspace_root();
+  let (base_config, style, references) = load_base();
+
+  // Act
+  let with_index = dump_input(&base_config, &style, &references, "index");
+  let without_index = dump_input(&base_config, &style, &references, "index_baseline");
+  let stripped_lines: Vec<&str> = with_index.lines().filter(|line| return !line.starts_with("index ")).collect();
+  let stripped = stripped_lines.iter().fold(String::new(), |mut acc, line| {
+    acc.push_str(line);
+    acc.push('\n');
+    return acc;
+  });
+
+  // Assert
+  assert_eq!(stripped, without_index, "\\index の有無でレイアウトが変わってはならない");
 }
 
 /// ページの末尾（最下部）ブロックが見出し行かどうかを返す。

@@ -204,6 +204,23 @@ pub enum EvalError {
     span: SourceSpan,
   },
 
+  /// `\index{語}` が許可されない位置（見出しタイトル・キャプション・インライン装飾の引数・
+  /// 脚注本体・表セル・リンク表示テキスト等、`extract_inline_nodes` を経由する文脈）に
+  /// 出現した場合
+  #[error("この位置に \\index は置けません")]
+  #[diagnostic(
+    code(frontend::eval::index_not_allowed_here),
+    help(
+      "\\index は本文段落・箇条書き・定理環境などの通常のインライン文脈にのみ置けます \
+       （見出し・リンク表示テキスト・書体指定コマンド・脚注・キャプション・表セル内では使用できません）"
+    )
+  )]
+  IndexNotAllowedHere {
+    /// `\index{...}` のソース位置
+    #[label("この \\index はこの位置では使用できません")]
+    span: SourceSpan,
+  },
+
   /// コマンドの引数内に空行（段落区切り）が出現した場合
   #[error("コマンドの引数内に空行（段落区切り）を含めることはできません")]
   #[diagnostic(code(frontend::eval::paragraph_break_in_argument), help("引数内の文章は 1 段落に収めてください"))]

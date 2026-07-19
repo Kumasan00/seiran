@@ -129,6 +129,21 @@ pub enum InlineNode {
     /// `\footnote{...}` の `CommandCall` ノードのソース位置
     span: Span,
   },
+
+  /// 索引マーカー（`\index{語}` / `\index[reading=...]{語}`）
+  ///
+  /// 本文に出力を持たない（組版結果に影響しないゼロサイズマーカー）。語・reading・出現ページを
+  /// 索引生成（親issue #33 のもう一方の sub-issue）のために収集する。`typeset::lowering` が
+  /// `LayoutNode::IndexMark` に変換し、`typeset::breaking::break_pages` が出現ページを確定する。
+  Index {
+    /// 索引語（プレーンテキストのみ、空文字列不可。パーサ段で検証済み）
+    word: String,
+    /// 読みソートキー（`[reading=...]`）。`None` なら `word` 自身でソートする
+    /// （索引生成側＝親issue #33 のもう一方の sub-issue の責務）
+    reading: Option<String>,
+    /// `\index{...}` の `CommandCall` ノードのソース位置
+    span: Span,
+  },
 }
 
 impl InlineNode {
@@ -164,8 +179,8 @@ impl InlineNode {
       InlineNode::InlineMath(_) => return Ok("[Math]".to_string()),
       InlineNode::Symbol(ch) => return Ok(ch.to_string()),
       InlineNode::LineBreak => return Ok("\n".to_string()),
-      // 脚注本体は見出し・書誌等のプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
-      InlineNode::NoIndent | InlineNode::Footnote { .. } => return Ok(String::new()),
+      // 脚注本体・索引マーカーは見出し・書誌等のプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
+      InlineNode::NoIndent | InlineNode::Footnote { .. } | InlineNode::Index { .. } => return Ok(String::new()),
       InlineNode::Ref { label, span } => return resolve_ref(label, *span),
       InlineNode::Cite { keys, label, .. } => {
         return match label.as_deref() {

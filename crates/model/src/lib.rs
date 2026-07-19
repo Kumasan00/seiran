@@ -88,13 +88,14 @@ pub use heading_level::HeadingLevel;
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
 pub use inline::{InlineNode, inline_nodes_to_plain_text, try_inline_nodes_to_plain_text};
 pub use length::{Length, ParseLengthError};
-pub use line::{Line, LineFootnote, LineLink, PositionedBox};
+pub use line::{Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
 pub use link::{AnchorMark, LinkTarget};
 pub use list::ListItem;
 pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_node::{MathNode, MathRow, MathStyle};
 pub use page::{
-  Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, footnote_anchor_key,
+  Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
+  footnote_anchor_key,
 };
 pub use quote::QuoteKind;
 pub use span::Span;

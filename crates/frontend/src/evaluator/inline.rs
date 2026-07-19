@@ -136,6 +136,14 @@ pub(crate) fn extract_inline_nodes_from_elements(
                 span: view.span().to_source_span(),
               });
             },
+            // \index は本文段落・箇条書き・定理環境などの直接の本文文脈（evaluate_children 経由）
+            // のみ許可する。見出しタイトル・キャプション・書体指定コマンドの中身・脚注本体・表セル・
+            // リンク表示テキストはすべてこの関数（引数の再帰評価）を経由するため一律拒否する
+            Some(CommandKind::Index) => {
+              return Err(EvalError::IndexNotAllowedHere {
+                span: view.span().to_source_span(),
+              });
+            },
             None => {
               // 機能コマンドに無ければ記号テーブルを引く（COMMAND_MAP→miss→SYMBOL_MAP）
               if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
@@ -286,6 +294,23 @@ mod tests {
 
     // Assert — 黙殺せず BlockInInline で拒否する
     assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
+  }
+
+  #[test]
+  fn extract_inline_nodes_rejects_index() {
+    // Arrange — 見出しタイトル相当（extract_inline_nodes 経由）の `\index` は不許可
+    let arena = Bump::new();
+    let source = r"\section{\index{語}}";
+    let cst = parse(source, &arena).unwrap();
+    let section_node = cst.child_nodes().next().unwrap();
+    let view = CommandView::new(section_node, source);
+    let arg = view.first_arg().unwrap();
+
+    // Act
+    let result = extract_inline_nodes(source, arg);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
   }
 
   #[test]

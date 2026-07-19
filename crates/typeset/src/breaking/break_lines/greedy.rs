@@ -64,8 +64,8 @@ impl LineBreaker for GreedyBreaker {
             last_break = Some(buffer.len() - 1);
           }
         },
-        // リンクマーカー・脚注マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
-        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote { .. } => {
+        // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可。行に積むだけで build_line が収集する
+        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote { .. } | HItem::IndexMark { .. } => {
           buffer.push(item);
         },
         HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
@@ -121,8 +121,8 @@ mod tests {
 
   use super::{
     super::test_support::{
-      cjk_glue, discretionary, flush_right_box, link_target, non_breakable_stretch_glue, space_glue, stretch_glue,
-      test_box,
+      cjk_glue, discretionary, flush_right_box, index_mark, link_target, non_breakable_stretch_glue, space_glue,
+      stretch_glue, test_box,
     },
     GreedyBreaker, LineBreaker,
   };
@@ -189,6 +189,24 @@ mod tests {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
     assert!(lines[0].is_last);
+  }
+
+  #[test]
+  fn index_mark_is_collected_without_affecting_width_or_breaks() {
+    // Arrange — box index_mark box を text_width=100 に通す。索引マーカーは幅 0 なので
+    // 1 行に収まり、box の位置（幅）も変わらない
+    let items = vec![test_box(), index_mark("語", None), test_box()];
+
+    // Act
+    let lines = GreedyBreaker.break_lines(&items, Length::pt(100.0), TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].boxes.len(), 2, "index_mark はボックスとして描画されない");
+    assert!(close(lines[0].boxes[1].x, 10.0), "index_mark を挟んでも 2 つ目の box の x は不変: {lines:?}");
+    assert_eq!(lines[0].index_marks.len(), 1);
+    assert_eq!(lines[0].index_marks[0].word, "語");
+    assert_eq!(lines[0].index_marks[0].reading, None);
   }
 
   #[test]
