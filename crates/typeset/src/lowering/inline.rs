@@ -68,6 +68,14 @@ pub(super) fn lower_inline(
       // 通常は同関数がマーカーを除去するためここには到達しないが、防御的に空を返す。
       return Ok(Vec::new());
     },
+    InlineNode::Index { word, reading, .. } => {
+      // 語・reading はパーサ段で検証済み。ここでは採番も解決もせず、行内をゼロ幅で通過する
+      // マーカーへそのまま透過する（出現ページの確定は `typeset::breaking::break_pages` の責務）。
+      return Ok(vec![LayoutNode::IndexMark {
+        word: word.clone(),
+        reading: reading.clone(),
+      }]);
+    },
     InlineNode::Ref { label, span } => {
       // ここでは解決せず LayoutNode::Ref プレースホルダを発行する。前方参照（本文より後ろで
       // 定義されるラベルを指す）を許すため、解決は pass1 完了後の pass2（resolve::resolve_refs）
@@ -801,5 +809,77 @@ mod tests {
     };
     assert_eq!(marker_text(&second[0]), "II");
     assert_eq!(marker_text(&second_body[0]), "II");
+  }
+
+  #[test]
+  fn lower_inline_index_produces_index_mark_layout_node() {
+    // Arrange
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Index {
+      word: "語".to_string(),
+      reading: None,
+      span: model::Span::DUMMY,
+    };
+    let parent_style = TextStyle::new(Length::pt(10.0));
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent_style, &mut CounterRegistry::default_for_seiran())
+      .expect("Index の lowering は失敗しないはず");
+
+    // Assert
+    assert_eq!(nodes.len(), 1);
+    assert!(matches!(
+      &nodes[0],
+      LayoutNode::IndexMark { word, reading } if word == "語" && reading.is_none()
+    ));
+  }
+
+  #[test]
+  fn lower_inline_index_with_reading_preserves_reading() {
+    // Arrange
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Index {
+      word: "語".to_string(),
+      reading: Some("よみ".to_string()),
+      span: model::Span::DUMMY,
+    };
+    let parent_style = TextStyle::new(Length::pt(10.0));
+
+    // Act
+    let nodes = lower_inline(&ctx, &inline, parent_style, &mut CounterRegistry::default_for_seiran())
+      .expect("Index の lowering は失敗しないはず");
+
+    // Assert
+    assert!(matches!(
+      &nodes[0],
+      LayoutNode::IndexMark { reading, .. } if reading.as_deref() == Some("よみ")
+    ));
+  }
+
+  #[test]
+  fn lower_inline_index_does_not_consume_footnote_counter() {
+    // Arrange — \index は採番対象ではないため、脚注カウンタに影響してはならない
+    let style = config::Style::default();
+    let ctx = LoweringContext::new(&style);
+    let inline = InlineNode::Index {
+      word: "語".to_string(),
+      reading: None,
+      span: model::Span::DUMMY,
+    };
+    let mut registry = CounterRegistry::default_for_seiran();
+    let parent_style = TextStyle::new(Length::pt(10.0));
+
+    // Act
+    lower_inline(&ctx, &inline, parent_style, &mut registry).expect("Index の lowering は失敗しないはず");
+
+    // Assert — 直後に発番される脚注番号は 1 個目のまま（"I"）
+    let footnote = InlineNode::Footnote {
+      body: vec![InlineNode::Text("a".to_string())],
+      span: model::Span::DUMMY,
+    };
+    let nodes = lower_inline(&ctx, &footnote, parent_style, &mut registry).expect("失敗しない");
+    assert_eq!(marker_text(&nodes[0]), "1");
   }
 }

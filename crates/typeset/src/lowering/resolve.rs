@@ -101,7 +101,8 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
     | LayoutNode::Anchor(_)
     | LayoutNode::LineBreak
     | LayoutNode::PageBreak
-    | LayoutNode::KeepWithNext => {},
+    | LayoutNode::KeepWithNext
+    | LayoutNode::IndexMark { .. } => {},
   }
   return Ok(false);
 }

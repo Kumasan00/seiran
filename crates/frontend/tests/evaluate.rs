@@ -1072,3 +1072,85 @@ fn evaluate_inter_word_space_is_preserved_after_paragraph_trim_fix() {
   assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
   assert!(matches!(&inlines[2], InlineNode::Text(t) if t == "b"));
 }
+
+// =============================================================================
+// \index マーカー（issue #246）
+// =============================================================================
+
+#[test]
+fn evaluate_index_in_paragraph_produces_index_node() {
+  // 本文段落中では許可され、段落は分割されない
+  let result = evaluate_source("本文\\index{語}続き");
+  assert_eq!(result.len(), 1, "段落が分割されてはいけない: {result:?}");
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます: {result:?}");
+  };
+  let index_count = inlines
+    .iter()
+    .filter(|n| matches!(n, InlineNode::Index { word, reading, .. } if word == "語" && reading.is_none()))
+    .count();
+  assert_eq!(index_count, 1, "{inlines:?}");
+}
+
+#[test]
+fn evaluate_index_with_reading_in_paragraph() {
+  let result = evaluate_source("本文\\index[reading=よみ]{語}続き");
+  let DocNode::Paragraph(inlines) = &result[0] else {
+    panic!("Paragraph が期待されます: {result:?}");
+  };
+  assert!(inlines.iter().any(
+    |n| matches!(n, InlineNode::Index { word, reading, .. } if word == "語" && reading.as_deref() == Some("よみ"))
+  ));
+}
+
+#[test]
+fn evaluate_index_in_list_item() {
+  // 箇条書き項目内（evaluate_children 経由の本文文脈）は許可される
+  let result = evaluate_source("\\begin{itemize}\\item{項目\\index{語}}\\end{itemize}");
+  assert_eq!(result.len(), 1);
+  assert!(matches!(&result[0], DocNode::List { .. }));
+}
+
+#[test]
+fn evaluate_index_in_theorem_body() {
+  // 定理環境本体（evaluate_children 経由）は許可される
+  let result = evaluate_source("\\begin{theorem}本文\\index{語}続き\\end{theorem}");
+  assert_eq!(result.len(), 1);
+}
+
+#[test]
+fn evaluate_index_in_headline_title_errors() {
+  let error = evaluate_error("\\section{\\index{語}}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}
+
+#[test]
+fn evaluate_index_in_table_cell_errors() {
+  let error = evaluate_error("\\begin{table}\\row{\\index{語} & B}\\end{table}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}
+
+#[test]
+fn evaluate_index_in_footnote_body_errors() {
+  let error = evaluate_error("本文\\footnote{\\index{語}}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}
+
+#[test]
+fn evaluate_index_in_caption_errors() {
+  let error = evaluate_error("\\begin{table}\\caption{\\index{語}}\\row{A}\\end{table}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}
+
+#[test]
+fn evaluate_index_in_href_display_text_errors() {
+  let error = evaluate_error(r"\href[url=https:\/\/example.com]{\index{語}}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}
+
+#[test]
+fn evaluate_index_in_bold_errors() {
+  // 書体指定コマンドの中身も extract_inline_nodes 経由なので不許可
+  let error = evaluate_error("\\bold{\\index{語}}");
+  assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
+}

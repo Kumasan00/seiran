@@ -37,6 +37,13 @@ pub struct Page {
   ///
   /// `pdf_gen` が各ページにリンク注釈として付与する。
   pub links: Vec<PlacedLink>,
+  /// このページに出現した索引語（重複除去済み、出現順）
+  ///
+  /// `break_pages` がページ確定時に `Line::index_marks` から集約する。同一 word/reading の
+  /// 重複は 1 出現に畳む。座標を持たない — 索引は場所ではなくページ番号だけを必要とするため
+  /// （[`PlacedAnchor`] とは異なる）。巻末索引ページの描画（親issue #33 のもう一方の
+  /// sub-issue）はここから語・reading・所属ページ index を読むだけでよい。
+  pub index_entries: Vec<PlacedIndexEntry>,
 }
 
 /// 脚注 `index`（出現順一意 id）から内部リンクのラベル文字列を作る
@@ -110,6 +117,17 @@ pub struct PlacedLink {
   pub width: Length,
   /// 矩形の高さ（pt）
   pub height: Length,
+}
+
+/// ページに出現した索引語 1 件
+///
+/// `HItem::IndexMark` → `Line::index_marks` を経て `break_pages` がページ単位に集約する。
+#[derive(Debug, Clone)]
+pub struct PlacedIndexEntry {
+  /// 索引語
+  pub word: String,
+  /// 読みソートキー（`[reading=...]`）
+  pub reading: Option<String>,
 }
 
 /// ページ内に配置されたブロック

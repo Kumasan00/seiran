@@ -9,7 +9,9 @@
 //! （[`build_line`]）として適用する。分割点の「選択」だけが貪欲法と Knuth–Plass で異なり、
 //! 行の確定・glue 配分・リンク矩形収集・右寄せ・行末ハイフンは両者が [`build_line`] を共有する。
 
-use model::{HBox, HItem, Length, Line, LineFootnote, LineLink, LinkTarget, PositionedBox, TextAlignment};
+use model::{
+  HBox, HItem, Length, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox, TextAlignment,
+};
 
 mod greedy;
 mod knuth_plass;
@@ -170,6 +172,7 @@ pub(super) fn build_line(
   let mut boxes: Vec<PositionedBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
   let mut footnotes: Vec<LineFootnote> = Vec::new();
+  let mut index_marks: Vec<LineIndexEntry> = Vec::new();
   let mut x = Length::ZERO;
   let mut height = Length::ZERO;
   let mut depth = Length::ZERO;
@@ -238,6 +241,12 @@ pub(super) fn build_line(
         items: items.clone(),
         leading: *leading,
       }),
+      // 索引マーカーは幅 0・分割不可。行に積むだけで、この行の索引語として収集する
+      // （重複除去・ページ確定座標化は break_pages の責務）
+      HItem::IndexMark { word, reading } => index_marks.push(LineIndexEntry {
+        word: word.clone(),
+        reading: reading.clone(),
+      }),
       // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
     }
@@ -269,6 +278,7 @@ pub(super) fn build_line(
     is_last,
     links,
     footnotes,
+    index_marks,
   };
 }
 
@@ -376,4 +386,12 @@ pub(super) mod test_support {
 
   /// テスト用の内部リンク行き先
   pub(super) fn link_target() -> model::LinkTarget { return model::LinkTarget::Internal("sec:x".to_string()); }
+
+  /// テスト用の索引マーカー（幅 0・分割不可）
+  pub(super) fn index_mark(word: &str, reading: Option<&str>) -> HItem {
+    return HItem::IndexMark {
+      word: word.to_string(),
+      reading: reading.map(str::to_string),
+    };
+  }
 }

@@ -164,6 +164,7 @@ fn build_region(
       is_last: true,
       links: Vec::new(),
       footnotes: Vec::new(),
+      index_marks: Vec::new(),
     },
     baseline_y: slots.baseline_y,
   });

@@ -109,7 +109,8 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
       | InlineNode::Symbol(_)
       | InlineNode::LineBreak
       | InlineNode::NoIndent
-      | InlineNode::Ref { .. } => {},
+      | InlineNode::Ref { .. }
+      | InlineNode::Index { .. } => {},
     }
   }
 }

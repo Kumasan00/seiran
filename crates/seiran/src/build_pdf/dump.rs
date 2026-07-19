@@ -19,7 +19,7 @@ use model::{
 /// ページ列を決定的なテキスト形式へダンプする。
 ///
 /// 各ページを `=== page N ===` 見出しで区切り、本文（`body`）・ヘッダー・フッターの
-/// 配置済みブロックと、解決済みアンカー・リンクを出現順に書き出す。ブロックの座標・
+/// 配置済みブロックと、解決済みアンカー・リンク・索引語を出現順に書き出す。ブロックの座標・
 /// 寸法・内容（グリフのテキストとフォント種別、罫線・画像・数式・表の寸法）を含むため、
 /// レイアウトに影響する変更はダンプの差分として現れる。
 #[must_use]
@@ -44,6 +44,9 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     }
     for anchor in &page.anchors {
       let _ = writeln!(out, "anchor mark={:?} x={} y={}", anchor.mark, f2(anchor.x), f2(anchor.y));
+    }
+    for entry in &page.index_entries {
+      let _ = writeln!(out, "index word={:?} reading={:?}", entry.word, entry.reading);
     }
     for link in &page.links {
       let _ = writeln!(
@@ -262,7 +265,7 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use model::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PositionedBox};
+  use model::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   use super::dump_pages;
 
@@ -287,6 +290,7 @@ mod tests {
       is_last: true,
       links: Vec::new(),
       footnotes: Vec::new(),
+      index_marks: Vec::new(),
     };
     return Page {
       blocks: vec![PlacedBlock::Line {
@@ -298,6 +302,7 @@ mod tests {
       footnotes: Vec::new(),
       anchors: Vec::new(),
       links: Vec::new(),
+      index_entries: Vec::new(),
     };
   }
 
@@ -336,5 +341,37 @@ mod tests {
     assert!(dump.contains("body:"));
     assert!(dump.contains("text=\"Test\""));
     assert!(dump.contains("w=12.34"));
+  }
+
+  #[test]
+  fn dump_pages_includes_index_entries() {
+    // Arrange
+    let mut page = page_with_text_line(734.0, "Test");
+    page.index_entries = vec![
+      PlacedIndexEntry {
+        word: "組版".to_string(),
+        reading: Some("くみはん".to_string()),
+      },
+      PlacedIndexEntry {
+        word: "typesetting".to_string(),
+        reading: None,
+      },
+    ];
+
+    // Act
+    let dump = dump_pages(&[page]);
+
+    // Assert
+    assert!(dump.contains(r#"index word="組版" reading=Some("くみはん")"#));
+    assert!(dump.contains(r#"index word="typesetting" reading=None"#));
+  }
+
+  #[test]
+  fn dump_pages_omits_index_lines_when_empty() {
+    // Arrange / Act
+    let dump = dump_pages(&[page_with_text_line(734.0, "Test")]);
+
+    // Assert
+    assert!(!dump.contains("index word="));
   }
 }

@@ -200,7 +200,8 @@ impl Measurer<'_> {
         | LayoutNode::Link { .. }
         | LayoutNode::FlushRight(..)
         | LayoutNode::HBox { .. }
-        | LayoutNode::Footnote { .. } => {
+        | LayoutNode::Footnote { .. }
+        | LayoutNode::IndexMark { .. } => {
           self.collect_inline(node, paragraph);
         },
         // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
@@ -392,6 +393,11 @@ impl Measurer<'_> {
           items,
           leading: dominant_font_size * self.line_height_factor,
         });
+      },
+      // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
+      // `crate::breaking`（`Line::index_marks` 経由）が行う
+      LayoutNode::IndexMark { word, reading } => {
+        out.push(HItem::IndexMark { word, reading });
       },
       // 縦リスト要素・アンカーはインライン文脈（表セル等）には現れない（構造上の不変条件）
       LayoutNode::Anchor(_)

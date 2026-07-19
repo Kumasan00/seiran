@@ -12,8 +12,8 @@
 
 use model::{
   AnchorMark, Block, Length, Line, LinkTarget, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor,
-  PlacedBlock, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, TextAlignment,
-  collect_row_links, column_width, resolve_column_widths, table_row_height,
+  PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox,
+  TextAlignment, collect_row_links, column_width, resolve_column_widths, table_row_height,
 };
 use tracing::{debug, warn};
 
@@ -69,6 +69,8 @@ struct PageComposer {
   current_anchors: Vec<PlacedAnchor>,
   /// 現在ページに確定済みのクリック可能リンク領域（機構 B）
   current_links: Vec<PlacedLink>,
+  /// 現在ページに確定済みの索引語（重複除去済み、出現順）
+  current_index_entries: Vec<PlacedIndexEntry>,
   /// 未解決のアンカー。次に配置される実ブロックの確定座標で解決する
   pending_anchors: Vec<AnchorMark>,
   /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
@@ -175,6 +177,7 @@ impl PageComposer {
       current: Vec::new(),
       current_anchors: Vec::new(),
       current_links: Vec::new(),
+      current_index_entries: Vec::new(),
       pending_anchors: Vec::new(),
       y: geom.margin_top,
       cursor_at_edge: false,
@@ -357,6 +360,7 @@ impl PageComposer {
       footnotes: std::mem::take(&mut self.page_footnotes),
       anchors: std::mem::take(&mut self.current_anchors),
       links: std::mem::take(&mut self.current_links),
+      index_entries: std::mem::take(&mut self.current_index_entries),
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
@@ -394,6 +398,23 @@ impl PageComposer {
         width: link.x1 - link.x0,
         height,
       });
+    }
+  }
+
+  /// 行の索引語を現在ページの索引語集合へマージする
+  ///
+  /// 同一 (word, reading) の組が既にあれば追加しない（`current_links`/`current_anchors` と
+  /// 同程度の少数想定なので線形探索で十分）。座標は不要 — 索引は場所ではなくページ番号だけを
+  /// 必要とするため、`collect_line_links` と異なりベースライン位置は受け取らない。
+  fn collect_line_index_entries(&mut self, line: &Line) {
+    for entry in &line.index_marks {
+      let exists = self.current_index_entries.iter().any(|e| return e.word == entry.word && e.reading == entry.reading);
+      if !exists {
+        self.current_index_entries.push(PlacedIndexEntry {
+          word: entry.word.clone(),
+          reading: entry.reading.clone(),
+        });
+      }
     }
   }
 
@@ -437,6 +458,7 @@ impl PageComposer {
       footnotes: self.page_footnotes,
       anchors: self.current_anchors,
       links: self.current_links,
+      index_entries: self.current_index_entries,
     });
     return self.pages;
   }
@@ -1564,6 +1586,7 @@ fn place_paragraph(
         composer.resolve_pending_anchors(col_off, baseline - line.height);
       }
       composer.collect_line_links(&line, baseline);
+      composer.collect_line_index_entries(&line);
       // この行の脚注を、計画が決めた行数だけ現在リージョンへ登録する。残りは繰越へ回す
       // （実際のページ下部配置は `end_region` が行う）。
       for (footnote, &placed) in footnotes.into_iter().zip(&placement.own_splits) {
@@ -1622,6 +1645,7 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
   // 行の上端を未解決アンカーの解決位置にする（段落先頭行と同じ）
   composer.resolve_pending_anchors(col_off, baseline - line.height);
   composer.collect_line_links(&line, baseline);
+  composer.collect_line_index_entries(&line);
   composer.current.push(PlacedBlock::Line {
     line,
     baseline_y: baseline,
@@ -1954,6 +1978,122 @@ mod tests {
         _ => return None,
       })
       .collect();
+  }
+
+  /// 幅 0 の索引マーカー（`HItem::IndexMark`）を作るテストヘルパ
+  fn index_mark_item(word: &str, reading: Option<&str>) -> HItem {
+    return HItem::IndexMark {
+      word: word.to_string(),
+      reading: reading.map(str::to_string),
+    };
+  }
+
+  #[test]
+  fn index_entries_collected_per_page_in_order() {
+    // Arrange — 1 ページに収まる 2 段落、それぞれ異なる索引語を 1 個ずつ持つ
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![index_mark_item("A", None)]),
+      single_line_paragraph(vec![index_mark_item("B", None)]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].index_entries.len(), 2);
+    assert_eq!(pages[0].index_entries[0].word, "A");
+    assert_eq!(pages[0].index_entries[1].word, "B");
+  }
+
+  #[test]
+  fn index_entries_dedup_same_word_and_reading_on_same_page() {
+    // Arrange — 同一ページ内に同じ語・reading が 2 回出現する
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![index_mark_item("語", None)]),
+      single_line_paragraph(vec![index_mark_item("語", None)]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 1 出現に畳まれる
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].index_entries.len(), 1);
+    assert_eq!(pages[0].index_entries[0].word, "語");
+  }
+
+  #[test]
+  fn index_entries_different_reading_are_separate_entries() {
+    // Arrange — 同じ語でも reading が異なれば別エントリ
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![index_mark_item("語", None)]),
+      single_line_paragraph(vec![index_mark_item("語", Some("よみ"))]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].index_entries.len(), 2);
+  }
+
+  #[test]
+  fn index_entries_split_across_pages_are_not_merged() {
+    // Arrange — test_geometry（margin_top=10, page_limit=50, leading=12）だと 1 ページに 4 行
+    // （baseline 10,22,34,46）まで収まり、5 個目の段落は次ページへ送られる。1 個目と 5 個目に
+    // 同じ語の索引マーカーを置く
+    let geom = test_geometry();
+    let blocks = vec![
+      single_line_paragraph(vec![index_mark_item("語", None)]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![index_mark_item("語", None)]),
+    ];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 各ページに独立して記録され、ページをまたいでは畳まれない
+    assert_eq!(pages.len(), 2, "{:?}", line_counts(&pages));
+    assert_eq!(pages[0].index_entries.len(), 1);
+    assert_eq!(pages[1].index_entries.len(), 1);
+  }
+
+  #[test]
+  fn index_mark_does_not_affect_page_layout() {
+    // Arrange — 索引マーカーの有無以外は同一の 4 段落。幅 0 のマーカーはページ割り当て・
+    // 各行の baseline を一切変えないはず（\index を取り除いたソースとレイアウトが一致する、
+    // という受け入れ条件のブロックレベルでの直接検証）
+    let geom = test_geometry();
+    let with_marks = vec![
+      single_line_paragraph(vec![index_mark_item("A", None)]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![index_mark_item("B", Some("びー"))]),
+      single_line_paragraph(vec![]),
+    ];
+    let without_marks = vec![
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+      single_line_paragraph(vec![]),
+    ];
+
+    // Act
+    let with_pages = break_pages(with_marks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+    let without_pages =
+      break_pages(without_marks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert
+    assert_eq!(line_counts(&with_pages), line_counts(&without_pages));
+    for (with_page, without_page) in with_pages.iter().zip(&without_pages) {
+      assert_eq!(page_baselines(with_page), page_baselines(without_page));
+    }
   }
 
   #[test]
@@ -2528,6 +2668,7 @@ mod tests {
       is_last: false,
       links: Vec::new(),
       footnotes: Vec::new(),
+      index_marks: Vec::new(),
     };
   }
 
@@ -3762,6 +3903,7 @@ mod tests {
         is_last: true,
         links,
         footnotes: Vec::new(),
+        index_marks: Vec::new(),
       },
       leading: Length::pt(12.0),
     };

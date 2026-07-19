@@ -171,6 +171,7 @@ mod tests {
             y: model::Length::ZERO,
           }],
           links: Vec::new(),
+          index_entries: Vec::new(),
         };
       })
       .collect();

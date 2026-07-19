@@ -1,0 +1,46 @@
+=== page 0 ===
+body:
+  line baseline_y=280.63 height=15.24 depth=4.76 last=true
+    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
+    box x=20.12 dy=0.00 w=53.58 glyphs font=SerifBold size=20.00 text="Index"
+    box x=78.40 dy=0.00 w=68.66 glyphs font=SerifBold size=20.00 text="Sample"
+  line baseline_y=311.63 height=9.14 depth=2.86 last=true
+    box x=0.00 dy=0.00 w=32.09 glyphs font=Serif size=12.00 text="Seiran"
+    box x=34.91 dy=0.00 w=40.42 glyphs font=Serif size=12.00 text="typesets"
+    box x=78.14 dy=0.00 w=25.93 glyphs font=Serif size=12.00 text="plain"
+    box x=106.90 dy=0.00 w=18.70 glyphs font=Serif size=12.00 text="text"
+    box x=128.41 dy=0.00 w=20.22 glyphs font=Serif size=12.00 text="into"
+    box x=151.45 dy=0.00 w=24.86 glyphs font=Serif size=12.00 text="PDF."
+    box x=179.14 dy=0.00 w=19.73 glyphs font=Serif size=12.00 text="The"
+    box x=201.68 dy=0.00 w=26.00 glyphs font=Serif size=12.00 text="word"
+    box x=230.51 dy=0.00 w=55.42 glyphs font=Serif size=12.00 text="typesetting"
+    box x=288.74 dy=0.00 w=39.28 glyphs font=Serif size=12.00 text="appears"
+    box x=330.84 dy=0.00 w=27.54 glyphs font=Serif size=12.00 text="again"
+    box x=361.20 dy=0.00 w=22.50 glyphs font=Serif size=12.00 text="here"
+    box x=386.52 dy=0.00 w=9.89 glyphs font=Serif size=12.00 text="to"
+    box x=399.23 dy=0.00 w=17.81 glyphs font=Serif size=12.00 text="test"
+    box x=419.86 dy=0.00 w=70.00 glyphs font=Serif size=12.00 text="deduplication"
+    box x=492.67 dy=0.00 w=33.44 glyphs font=Serif size=12.00 text="within"
+    box x=528.94 dy=0.00 w=5.76 glyphs font=Serif size=12.00 text="a"
+    box x=537.52 dy=0.00 w=29.84 glyphs font=Serif size=12.00 text="single"
+    box x=570.18 dy=0.00 w=26.58 glyphs font=Serif size=12.00 text="page."
+  line baseline_y=336.23 height=9.14 depth=2.86 last=true
+    box x=0.00 dy=0.00 w=8.62 glyphs font=Serif size=12.00 text="A"
+    box x=11.44 dy=0.00 w=51.13 glyphs font=Serif size=12.00 text="separately"
+    box x=65.39 dy=0.00 w=39.91 glyphs font=Serif size=12.00 text="indexed"
+    box x=108.12 dy=0.00 w=24.07 glyphs font=Serif size=12.00 text="term"
+    box x=135.01 dy=0.00 w=23.11 glyphs font=Serif size=12.00 text="with"
+    box x=160.94 dy=0.00 w=12.67 glyphs font=Serif size=12.00 text="an"
+    box x=176.44 dy=0.00 w=37.01 glyphs font=Serif size=12.00 text="explicit"
+    box x=216.26 dy=0.00 w=38.38 glyphs font=Serif size=12.00 text="reading"
+    box x=257.46 dy=0.00 w=32.89 glyphs font=Serif size=12.00 text="option"
+    box x=293.17 dy=0.00 w=16.68 glyphs font=Serif size=12.00 text="sits"
+    box x=312.67 dy=0.00 w=9.54 glyphs font=Serif size=12.00 text="at"
+    box x=325.03 dy=0.00 w=16.27 glyphs font=Serif size=12.00 text="the"
+    box x=344.12 dy=0.00 w=18.95 glyphs font=Serif size=12.00 text="end"
+    box x=365.89 dy=0.00 w=9.85 glyphs font=Serif size=12.00 text="of"
+    box x=378.56 dy=0.00 w=18.86 glyphs font=Serif size=12.00 text="this"
+    box x=400.25 dy=0.00 w=47.28 glyphs font=Serif size=12.00 text="sentence."
+anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=265.39
+index word="typesetting" reading=None
+index word="example" reading=Some("example-reading")
