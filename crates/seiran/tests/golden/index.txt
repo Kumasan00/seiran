@@ -42,5 +42,20 @@ body:
     box x=378.56 dy=0.00 w=18.86 glyphs font=Serif size=12.00 text="this"
     box x=400.25 dy=0.00 w=47.28 glyphs font=Serif size=12.00 text="sentence."
 anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=265.39
+anchor mark=Label("index-page:0") x=0.00 y=0.00
 index word="typesetting" reading=None
 index word="example" reading=Some("example-reading")
+=== page 1 ===
+body:
+  line baseline_y=280.63 height=13.72 depth=4.28 last=true
+    box x=0.00 dy=0.00 w=43.29 glyphs font=Serif size=18.00 text="Index"
+  line baseline_y=311.53 height=7.62 depth=2.38 last=true
+    box x=0.00 dy=0.00 w=35.49 glyphs font=Serif size=10.00 text="example"
+    box x=41.49 dy=0.00 w=4.95 glyphs font=Serif size=10.00 text="1"
+    linkspan target=Internal("index-page:0") x0=41.49 x1=46.44
+  line baseline_y=322.03 height=7.62 depth=2.38 last=true
+    box x=0.00 dy=0.00 w=46.18 glyphs font=Serif size=10.00 text="typesetting"
+    box x=52.18 dy=0.00 w=4.95 glyphs font=Serif size=10.00 text="1"
+    linkspan target=Internal("index-page:0") x0=52.18 x1=57.13
+link target=Internal("index-page:0") x=41.49 y=303.91 w=4.95 h=10.00
+link target=Internal("index-page:0") x=52.18 y=314.41 w=4.95 h=10.00

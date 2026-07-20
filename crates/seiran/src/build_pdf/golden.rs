@@ -212,10 +212,12 @@ fn layout_dumps_match_golden() {
 
 /// `\index` マーカーの有無だけを差分とする 2 つの入力（`index.sei` / `index_baseline.sei`）を
 /// 比較し、`\index` を取り除いたソースとレイアウトが完全に一致することを確認する
-/// （issue #246 の受け入れ条件）。`index.sei` 側のダンプから `"index "` で始まる行（索引語自体の
-/// 出力）を除いた残りが、`index_baseline.sei`（`\index` を含まない、`GOLDEN_INPUTS` 非登録）の
-/// ダンプと一致するかを見る。`index_baseline` はレイアウトが変わらないことの基準としてのみ
-/// 使うため golden ファイルは持たない。
+/// （issue #246 の受け入れ条件）。`index.sei` 側のダンプから (a) `"index "` で始まる行（索引語
+/// 自体の出力）、(b) 索引ページ生成が事後追加する内部リンクアンカー行
+/// （`anchor mark=Label("index-page:...")`）、(c) 巻末に追加される索引ページ自体（issue #247）を
+/// 除いた残りが、`index_baseline.sei`（`\index` を含まない、`GOLDEN_INPUTS` 非登録）のダンプと
+/// 一致するかを見る。`index_baseline` はレイアウトが変わらないことの基準としてのみ使うため golden
+/// ファイルは持たない。
 #[test]
 fn index_marks_are_invisible_to_layout() {
   // Arrange
@@ -225,15 +227,28 @@ fn index_marks_are_invisible_to_layout() {
   // Act
   let with_index = dump_input(&base_config, &style, &references, "index");
   let without_index = dump_input(&base_config, &style, &references, "index_baseline");
-  let stripped_lines: Vec<&str> = with_index.lines().filter(|line| return !line.starts_with("index ")).collect();
+  let body_page_count = without_index.lines().filter(|line| return line.starts_with("=== page ")).count();
+  let mut page_index: isize = -1;
+  let stripped_lines: Vec<&str> = with_index
+    .lines()
+    .filter(|line| {
+      if line.starts_with("=== page ") {
+        page_index += 1;
+      }
+      return usize::try_from(page_index).is_ok_and(|index| return index < body_page_count)
+        && !line.starts_with("index ")
+        && !line.starts_with("anchor mark=Label(\"index-page:");
+    })
+    .collect();
   let stripped = stripped_lines.iter().fold(String::new(), |mut acc, line| {
     acc.push_str(line);
     acc.push('\n');
     return acc;
   });
 
-  // Assert
-  assert_eq!(stripped, without_index, "\\index の有無でレイアウトが変わってはならない");
+  // Assert — 本文ページ範囲だけを比較する（巻末索引ページ自体は issue #247 で新規に追加される内容
+  // なので、本文と \index の有無を比較する本テストの対象外）
+  assert_eq!(stripped, without_index, "\\index の有無で本文のレイアウトが変わってはならない");
 }
 
 /// ページの末尾（最下部）ブロックが見出し行かどうかを返す。

@@ -27,8 +27,8 @@ mod breaking;
 mod lowering;
 
 pub use block::{
-  RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput, TocSpec, build_blocks, build_running_content,
-  build_toc_blocks,
+  IndexEntryInput, IndexPageRef, IndexSpec, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput, TocSpec,
+  build_blocks, build_index_blocks, build_running_content, build_toc_blocks, sort_index_entries,
 };
 pub use breaking::{
   BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
