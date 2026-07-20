@@ -211,4 +211,4 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 ## `seiran`
 
-`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。`build_pdf` 配下の `dump`（`dump_pages`、確定ページ列の決定的テキストダンプ）・`golden`（golden ファイル比較テスト）は `#[cfg(test)]` 限定の子 module で、唯一の消費者がテストであるため `model` ではなく本クレートに置く（#216）。
+`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。`build_pdf` 配下の `dump`（`dump_pages`、確定ページ列の決定的テキストダンプ）・`golden`（golden ファイル比較テスト）は `#[cfg(test)]` 限定の子 module で、唯一の消費者がテストであるため `model` ではなく本クレートに置く（#216）。同じ理由で `diagnostics`（miette 診断メッセージの golden テスト、#253）・`pdf_structure`（`lopdf` による独立 reader での PDF 構造 golden テスト、#253）も `#[cfg(test)]` 限定の子 module としてここに置く。

@@ -1,0 +1,19 @@
+build::multiple_source_errors
+
+  × 複数のソースファイルでエラーが発生しました。
+
+Error: frontend::parse_source::syntax
+
+  × 構文解析に失敗しました
+  ╰─▶ frontend::parse::bare_group
+      
+        × 裸の {...} は構文エラーです
+         ╭─[tests/text/diagnostics/bare_braces.sei:3:14]
+       2 │
+       3 │ 本文中に {裸括弧} が出現します。
+         ·          ┬
+         ·          ╰── この { は許可されない位置にあります
+         ╰────
+        help: `{...}` はコマンドの引数または数式内グループでのみ使用できます。装飾は \bold{...} な
+              どの引数型コマンド、または \begin{...}\end{...} 環境を使ってください
+      

@@ -1,0 +1,6 @@
+\section{欠落画像のサンプル}
+
+\begin{figure}[label=fig:missing]
+\image[width=80mm]{./tests/image/does-not-exist.jpg}
+\caption{存在しない画像}
+\end{figure}

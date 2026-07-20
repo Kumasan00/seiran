@@ -71,7 +71,10 @@ const GOLDEN_INPUTS: &[&str] = &[
 ];
 
 /// ワークスペースルート（このクレート = `crates/seiran` の 2 階層上）を返す。
-fn workspace_root() -> PathBuf {
+///
+/// `diagnostics` テストモジュールも同じ fixture 前提（cwd 固定・fixture config 読込）を共有するため
+/// `pub(super)` にして再利用する。
+pub(super) fn workspace_root() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
     .nth(2)
@@ -83,7 +86,7 @@ fn workspace_root() -> PathBuf {
 fn golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"); }
 
 /// カレントディレクトリをワークスペースルートへ固定する（相対パス解決を実ビルドに合わせる）。
-fn enter_workspace_root() {
+pub(super) fn enter_workspace_root() {
   std::env::set_current_dir(workspace_root()).expect("カレントディレクトリをワークスペースルートへ固定");
 }
 
@@ -91,7 +94,7 @@ fn enter_workspace_root() {
 ///
 /// fixture が参照するフォント・CSL は `vendor/` の取得済み資産に依存するため、未取得なら
 /// 個々のフォント読込エラーではなく取得手順を先に案内して失敗させる。
-fn load_base() -> (Config, Style, References) {
+pub(super) fn load_base() -> (Config, Style, References) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
