@@ -12,7 +12,7 @@ use super::error::BuildPdfError;
 /// 追加のファイル I/O を行わない。画像だけは `\image{...}` でしかパスが分からないため含めない
 /// （`parse_project` が返す `ImageManifest` に従って driver が別途読み込む）。
 pub(super) struct ProjectSnapshot {
-  /// 検証済みの設定（用紙・余白・sources・font_configs 等）
+  /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
   pub(super) config: config::Config,
   /// 検証済みのスタイル
   pub(super) style: config::Style,
@@ -32,6 +32,9 @@ impl ProjectSnapshot {
   /// # Errors
   ///
   /// いずれかのソースファイルの読込に失敗した場合にエラーを返す。
+  // BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
+  // frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+  #[allow(clippy::result_large_err)]
   pub(super) fn assemble(
     config: config::Config,
     style: config::Style,
@@ -73,6 +76,9 @@ impl SourceMap {
   ///
   /// いずれかのファイルの読込に失敗した場合、その時点で早期にエラーを返す
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
+  // BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
+  // frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+  #[allow(clippy::result_large_err)]
   fn read(sources: &[PathBuf]) -> Result<SourceMap, BuildPdfError> {
     let mut entries = Vec::with_capacity(sources.len());
     for source_path in sources {

@@ -28,6 +28,7 @@
 use std::{
   fs,
   path::{Path, PathBuf},
+  sync::Arc,
 };
 
 use citation::{References, read_references};
@@ -94,7 +95,7 @@ pub(super) fn enter_workspace_root() {
 ///
 /// fixture が参照するフォント・CSL は `vendor/` の取得済み資産に依存するため、未取得なら
 /// 個々のフォント読込エラーではなく取得手順を先に案内して失敗させる。
-pub(super) fn load_base() -> (Config, Style, References) {
+pub(super) fn load_base() -> (Config, Style, Arc<References>) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
@@ -103,7 +104,7 @@ pub(super) fn load_base() -> (Config, Style, References) {
     config::read_config(Path::new("crates/seiran/tests/config/config.toml")).expect("fixture config.toml の読込");
   let style = config::read_style(config.style_path.as_deref()).expect("fixture style.toml の読込");
   let references = read_references(config.references_path.as_deref()).expect("fixture references の読込");
-  return (config, style, references);
+  return (config, style, Arc::new(references));
 }
 
 /// 入力ごとの style 差分を適用する。
@@ -169,7 +170,7 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
 ///
 /// `sources` だけを対象入力へ差し替え、フォント・用紙はベース設定を共有する。style は
 /// ベースに [`apply_input_style_overrides`] の入力別差分を重ねたものを使う。
-fn dump_input(base_config: &Config, style: &Style, references: &References, name: &str) -> String {
+fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>, name: &str) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
