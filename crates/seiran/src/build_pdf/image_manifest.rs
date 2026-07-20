@@ -16,6 +16,7 @@ pub(super) struct ImageManifest {
 /// `groups` に含まれる全 `DocNode` を再帰的に走査し、`Figure` の画像パスを重複なく収集する。
 ///
 /// `Theorem` / `Quote` は本体に `Vec<DocNode>` を持つため、`Figure` はネストして出現しうる。
+/// `List` も各 `ListItem.content`（`Vec<DocNode>`）にネストしうる（`\item{...}` 内の `figure` 環境）。
 /// それ以外の variant は子に `DocNode` を持たない。
 pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
   let mut paths: BTreeSet<String> = BTreeSet::new();
@@ -37,9 +38,13 @@ fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<String>) {
       DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => {
         walk_nodes(body, paths);
       },
+      DocNode::List { items, .. } => {
+        for item in items {
+          walk_nodes(&item.content, paths);
+        }
+      },
       DocNode::Heading { .. }
       | DocNode::Paragraph(_)
-      | DocNode::List { .. }
       | DocNode::MathBlock { .. }
       | DocNode::Table { .. }
       | DocNode::Rule { .. }
@@ -52,7 +57,7 @@ fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<String>) {
 
 #[cfg(test)]
 mod tests {
-  use model::{CaptionPosition, DocNode, QuoteKind, Span, TheoremClass};
+  use model::{CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
 
   use super::collect_image_paths;
 
@@ -104,6 +109,24 @@ mod tests {
 
     // Assert
     assert_eq!(manifest.paths, vec!["nested.png".to_string()]);
+  }
+
+  #[test]
+  fn collects_figure_paths_nested_in_list_items() {
+    // Arrange — \item{...} の中に figure 環境が入るケース
+    let item = ListItem::new(vec![figure("in-list.png")]);
+    let list = DocNode::List {
+      ordered: false,
+      items: vec![item],
+      start: None,
+      item_gap: None,
+    };
+
+    // Act
+    let manifest = collect_image_paths(&[&[list]]);
+
+    // Assert
+    assert_eq!(manifest.paths, vec!["in-list.png".to_string()]);
   }
 
   #[test]
