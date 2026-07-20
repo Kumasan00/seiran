@@ -21,6 +21,7 @@ mod figure;
 mod footnote;
 mod heading;
 mod hyperref;
+mod index;
 mod list;
 mod math;
 mod number_style;
@@ -53,6 +54,7 @@ pub use crate::style::{
   footnote::{FootnoteNumbering, FootnoteStyle},
   heading::{HeadingStyle, HeadingStyles, default_for_level},
   hyperref::HyperrefStyle,
+  index::IndexStyle,
   list::{ListStyle, NestedOrderedFormat},
   math::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide},
   number_style::NumberStyle,
@@ -142,6 +144,9 @@ pub struct Style {
   /// 目次（table of contents）のスタイル
   #[garde(dive)]
   pub toc: TocStyle,
+  /// 巻末索引のスタイル
+  #[garde(dive)]
+  pub index: IndexStyle,
 }
 
 impl Default for Style {
@@ -167,6 +172,7 @@ impl Default for Style {
       hyperref: HyperrefStyle::default(),
       title_page: TitlePageStyle::default(),
       toc: TocStyle::default(),
+      index: IndexStyle::default(),
     };
   }
 }

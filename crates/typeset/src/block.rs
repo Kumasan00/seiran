@@ -23,6 +23,7 @@
 //!
 //! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
+mod index;
 mod math;
 mod running;
 mod script;
@@ -33,6 +34,7 @@ use font::{
   FontMetrics,
   shaper::{HarfRustShapers, UnicodeBuffer},
 };
+pub use index::{IndexEntryInput, IndexPageRef, IndexSpec, build_index_blocks, sort_index_entries};
 use lazy_regex::regex_replace_all;
 use model::{
   Align, Block, Color, FontKind, FontType, Glyph, GlyphRun, HBox, HBoxContent, HItem, Length, PENALTY_FORBID_BREAK,

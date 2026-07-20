@@ -2,6 +2,7 @@
 //! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
 //! PDF を生成するための主要な機能を提供します。
 
+mod back_matter;
 mod error;
 mod front_matter;
 mod outline;
@@ -20,6 +21,7 @@ use std::{
   time::Instant,
 };
 
+use back_matter::{assemble_back_matter, break_back_matter};
 use citation::{References, read_references};
 use error::BuildPdfError;
 use font::{
@@ -252,8 +254,8 @@ fn build_pages(
   let column_gap = style.columns.gap;
   let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
 
-  // ジオメトリは本文（N 段）と前付け（常に 1 段）で分ける。両者は段数・段間以外を共有する。
-  let (body_geometry, front_geometry) =
+  // ジオメトリは本文（N 段）・前付け（常に 1 段）・後付け＝索引（独自の段組み数）で分ける。
+  let (body_geometry, front_geometry, back_geometry) =
     build_page_geometries(config, style, default_font_size, line_height_factor, body_columns, column_gap);
 
   // 本文の lowering → シェーピング → 画像確定 → ページ分割を 1 回通す。
@@ -316,7 +318,7 @@ fn build_pages(
 
   // 脚注の採番方式で本文パスの回し方が変わる（他は一切変わらない）。
   let BodyLayout {
-    pages: body_pages,
+    pages: mut body_pages,
     headings,
   } = match style.footnote.numbering {
     // 通し採番: 1 回だけ通す。番号はページに依存しないので反復する理由がない。
@@ -353,15 +355,29 @@ fn build_pages(
     break_front_matter(front_blocks, text_width, &front_geometry, &typeset::KnuthPlassBreaker, style.text.alignment)
   };
   let front_matter_count = front_pages.len();
-  // 前付けページ列が確定した時点（`pages` への move の前）でラベルを解決する。
-  let page_labels = body_page_values.finalize(&front_pages);
+
+  // 後付け（索引）ブロックを組み立てる。本文の index_entries から全ページの索引語を集約し、
+  // 出現ページへ内部リンクの到達先アンカーを事後追加する（`body_pages` の破壊的更新）。
+  // `\index` が 1 個もなければ空ページ列になる。
+  let back_blocks = assemble_back_matter(&mut body_pages, &body_page_values, style, &harf_rust_shapers, &metrics);
+  let back_pages = {
+    let _span = debug_span!("break_pages", region = "back").entered();
+    break_back_matter(back_blocks, text_width, &back_geometry, &typeset::KnuthPlassBreaker, style.text.alignment)
+  };
+  let back_matter_count = back_pages.len();
+
+  // 索引ページも本文からの通し番号（独立した番号体系を持たない）。前付けページ列が確定した時点
+  // （`pages` への move の前）でラベルを解決する。
+  let page_labels = body_page_values.with_back_matter(&back_pages).finalize(&front_pages);
   let mut pages = front_pages;
   pages.extend(body_pages);
+  pages.extend(back_pages);
   debug_assert_eq!(page_labels.len(), pages.len(), "ラベル数は物理ページ総数と一致するはず");
   info!(
     page_count = pages.len(),
     front_matter_count,
     body_page_count,
+    back_matter_count,
     elapsed_ms = elapsed_ms(stage_start),
     "ページ分割が完了しました"
   );
@@ -461,10 +477,10 @@ fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -
   };
 }
 
-/// 本文（N 段）と前付け（常に 1 段）の [`typeset::PageGeometry`] を組み立てる。
+/// 本文（N 段）・前付け（常に 1 段）・後付け（索引、独自の段組み数）の [`typeset::PageGeometry`] を
+/// 組み立てる。
 ///
-/// 両者は段数・段間以外を共有するため、本文側を組んでから前付けは `num_columns` / `column_gap` だけ
-/// 差し替える。
+/// いずれも段数・段間以外を共有するため、本文側を組んでから前付け・後付けはそれぞれ差し替える。
 fn build_page_geometries(
   config: &config::Config,
   style: &config::Style,
@@ -472,7 +488,7 @@ fn build_page_geometries(
   line_height_factor: f32,
   body_columns: usize,
   column_gap: model::Length,
-) -> (typeset::PageGeometry, typeset::PageGeometry) {
+) -> (typeset::PageGeometry, typeset::PageGeometry, typeset::PageGeometry) {
   let body_geometry = typeset::PageGeometry {
     margin_top: config.pdf.margin.top,
     page_limit: config.pdf.height - config.pdf.margin.bottom,
@@ -495,7 +511,14 @@ fn build_page_geometries(
     flush_bottom: false,
     ..body_geometry
   };
-  return (body_geometry, front_geometry);
+  // 後付け（索引）は本文とは独立の段組み数を持つ（style.index.column_count）。段間は本文と共通。
+  // 前付けと同様、下端揃えの対象外。
+  let back_geometry = typeset::PageGeometry {
+    num_columns: usize::from(style.index.column_count),
+    flush_bottom: false,
+    ..body_geometry
+  };
+  return (body_geometry, front_geometry, back_geometry);
 }
 
 #[cfg(test)]

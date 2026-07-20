@@ -95,7 +95,7 @@ pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_node::{MathNode, MathRow, MathStyle};
 pub use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
-  footnote_anchor_key,
+  footnote_anchor_key, index_page_anchor_key,
 };
 pub use quote::QuoteKind;
 pub use span::Span;

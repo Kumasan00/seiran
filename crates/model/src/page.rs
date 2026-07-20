@@ -54,6 +54,17 @@ pub struct Page {
 #[must_use]
 pub fn footnote_anchor_key(index: u32) -> String { return format!("footnote:{index}"); }
 
+/// 本文内ページ index（0 起点）から、索引ページのページ番号リンクが指す到達先ラベルを作る
+///
+/// 索引語（[`PlacedIndexEntry`]）は座標を持たず「出現ページ」しか持たないため、`\ref`/見出しの
+/// ような語単位のアンカーではなく、ページ単位の到達先アンカーへ飛ぶ。索引ページ生成側
+/// （`seiran::build_pdf::back_matter`）が `index_entries` が非空のページへこのキーで
+/// [`AnchorMark::Label`] を事後追加し、索引ページの各ページ番号は同じキーで
+/// [`crate::LinkTarget::Internal`] を張る。`"index-page:"` プレフィックスは
+/// [`footnote_anchor_key`] と同じ名前空間化の先例。
+#[must_use]
+pub fn index_page_anchor_key(body_page_index: usize) -> String { return format!("index-page:{body_page_index}"); }
+
 /// ページ下部に配置された脚注 1 個（または長い脚注の断片）
 ///
 /// 本体は複数行に分かれ得るため `blocks`（通常は [`PlacedBlock::Line`] の列）として保持する。

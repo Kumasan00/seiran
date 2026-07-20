@@ -56,6 +56,17 @@ impl BodyPageValues {
   /// 見出し → 本文内ページ index の列（文書順）を返す。
   pub(super) fn heading_pages(&self) -> &[usize] { return &self.heading_pages; }
 
+  /// 索引ページ（back matter）を本文領域の通し番号に合算する。
+  ///
+  /// 索引は本文の**後**に追記され、独立した番号体系を持たない（issue #247 の仕様）。前付け
+  /// （[`Self::finalize`]）が「前付け／本文」の 2 領域で番号を振り直すのに対し、索引は単に
+  /// 本文ページ数へ加算するだけで「本文からの通し」を満たせる。索引が無ければ `back_pages` は
+  /// 空なので無変更（既存呼び出しと同じ結果）。
+  pub(super) fn with_back_matter(mut self, back_pages: &[model::Page]) -> Self {
+    self.body_page_count += back_pages.len();
+    return self;
+  }
+
   /// 本文内ページ index（0 起点）から、本文の番号スタイル（1 起点）でレンダリングしたラベルを返す。
   ///
   /// 目次のページラベル用。前付けのラベル体系（[`Self::finalize`]）とは独立に、本文スタイルだけで
@@ -189,6 +200,41 @@ mod tests {
     assert_eq!(labels[1], ("ii".to_string(), "ii".to_string()));
     assert_eq!(labels[2], ("1".to_string(), "3".to_string()));
     assert_eq!(labels[4], ("3".to_string(), "3".to_string()));
+  }
+
+  #[test]
+  fn with_back_matter_extends_body_region_numbering() {
+    // Arrange — 前付け 1 ページ・本文 2 ページ・索引（back matter）1 ページ
+    let front_pages = vec![page_with_anchors(vec![])];
+    let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
+    let back_pages = vec![page_with_anchors(vec![])];
+    let page_values =
+      BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default()).with_back_matter(&back_pages);
+
+    // Act
+    let labels = page_values.finalize(&front_pages).into_vec();
+
+    // Assert — 索引ページも本文領域の通し番号（算用数字）に含まれ、総数は本文+索引の 3
+    assert_eq!(labels.len(), 4);
+    assert_eq!(labels[1], ("1".to_string(), "3".to_string()));
+    assert_eq!(labels[2], ("2".to_string(), "3".to_string()));
+    assert_eq!(labels[3], ("3".to_string(), "3".to_string()), "索引ページも本文の通し番号を継続するはず");
+  }
+
+  #[test]
+  fn with_back_matter_is_no_op_when_no_index() {
+    // 索引が無ければ back_pages は空 — finalize の結果は with_back_matter を呼ばない場合と同じ
+    let front_pages = vec![page_with_anchors(vec![])];
+    let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
+    let labels_with_empty_back = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
+      .with_back_matter(&[])
+      .finalize(&front_pages)
+      .into_vec();
+    let labels_without_call = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
+      .finalize(&front_pages)
+      .into_vec();
+
+    assert_eq!(labels_with_empty_back, labels_without_call);
   }
 
   #[test]
