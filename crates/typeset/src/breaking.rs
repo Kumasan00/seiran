@@ -11,7 +11,8 @@
 //! ```text
 //! lowering (Vec<LayoutNode>)
 //!   → (a) crate::block::build_blocks   … シェーピング + 計測 + break 注入 [フォント依存]
-//!   → (prepass) pdf_gen::resolve_images … 画像サイズの確定 [ファイル I/O]
+//!   → (prepass) pdf_gen::resolve_images … 画像サイズの確定（ImageSet 参照。ファイル I/O は
+//!     driver が ImageManifest 読込時に完了済み）
 //!   → (c+d) break_pages（この module）   … 行分割 + 縦組版 [純粋]
 //!   → (e) pdf_gen::render_pages          … 描画のみ
 //! ```
