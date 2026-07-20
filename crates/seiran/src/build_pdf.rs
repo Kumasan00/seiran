@@ -8,6 +8,7 @@ mod front_matter;
 mod image_manifest;
 mod outline;
 mod page_values;
+mod project;
 mod running;
 
 #[cfg(test)]
