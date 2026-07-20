@@ -1,0 +1,3 @@
+\section{見出し}
+
+本文中に \ref{missing-label} を参照します。

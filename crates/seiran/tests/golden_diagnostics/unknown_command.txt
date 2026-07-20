@@ -1,0 +1,19 @@
+build::multiple_source_errors
+
+  × 複数のソースファイルでエラーが発生しました。
+
+Error: frontend::parse_source::eval
+
+  × 評価に失敗しました
+  ╰─▶ frontend::eval::unknown_command
+      
+        × 不明なコマンドです: \nonexistentcommand
+         ╭─[tests/text/diagnostics/unknown_command.sei:3:14]
+       2 │
+       3 │ 本文中に \nonexistentcommand が出現します。
+         ·          ──────────┬─────────
+         ·                    ╰── このコマンドは定義されていません
+         ╰────
+        help: コマンド名 \nonexistentcommand のスペルを確認してください。利用可能なコマンド一覧は
+              ドキュメントを参照してください
+      

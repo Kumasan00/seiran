@@ -10,9 +10,13 @@ mod page_values;
 mod running;
 
 #[cfg(test)]
+mod diagnostics;
+#[cfg(test)]
 mod dump;
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+mod pdf_structure;
 
 use std::{
   collections::HashSet,
