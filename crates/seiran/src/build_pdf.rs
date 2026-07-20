@@ -5,6 +5,7 @@
 mod back_matter;
 mod error;
 mod front_matter;
+mod image_manifest;
 mod outline;
 mod page_values;
 mod running;
