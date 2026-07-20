@@ -58,14 +58,10 @@ pub(super) struct BuildSummary {
 
 /// 設定ファイルの `sources` から PDF を生成
 ///
-/// 各 source ファイルを順次読み込み、`frontend::parse_source` でパース・評価して
-/// ファイルごとに [`ParsedSource`] を作る（平坦化せずソース帰属を保持）。lowering は
-/// 全ファイル + 書誌を 1 回の `lower_sources_with_headings` でまとめて処理し、1 つの文書として扱う。
-///
-/// # エラー戦略
-///
-/// - I/O 失敗（ファイル読み込み）は早期失敗
-/// - パース・評価エラーは全ソースで集約して `MultipleSourceErrors` で報告
+/// `load_project`（設定・スタイル・文献・フォントの読込）→ `parse_project`（ソースのパース・
+/// `\cite` の CSL 整形）→ `compile_project`（lowering 〜 走り文配置までの組版）→
+/// `encode_pdf`（PDF バイト列への描画）→ 保存・報告、を順に呼ぶだけの薄い driver。
+/// 各段の実処理・エラー戦略は各関数のドキュメントを参照。
 ///
 /// # Arguments
 ///
@@ -79,28 +75,10 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
 
-  let config = config::read_config(config_path)?;
-  let style = config::read_style(config.style_path.as_deref())?;
-  config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
-  let references = read_references(config.references_path.as_deref())?;
-
-  let stage_start = Instant::now();
-  let font_data = FontData::new(&config.font_configs)?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
-
-  // 描画前パイプライン（パース〜走り文配置）を 1 つの seam に束ねて確定レイアウトを得る。
-  let laid_out = build_pages(&config, &style, &references, &font_data)?;
-
-  // 描画は font_refs / metrics を再構築して使う。両者は `font_data` 上のゼロコピービュー
-  // （FontRef のパース + head/hhea 参照）で、`build_pages` 内で使ったものは borrow が閉じていて
-  // 持ち出せないため描画パス用にもう一度組み直す。フォントファイル自体の再読込は起きない。
-  let font_refs = FontRefs::new(&config.font_configs, &font_data)?;
-  let metrics = FontMetrics::new(&font_refs)?;
-
-  let stage_start = Instant::now();
-  let pdf_bytes =
-    pdf_gen::create_pdf(&config, &font_data, &font_refs, &metrics, &laid_out.pages, &style, &laid_out.outline_entries)?;
-  info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
+  let (config, style, references, font_data) = load_project(config_path)?;
+  let parsed_project = parse_project(&config, &style, &references)?;
+  let laid_out = compile_project(&config, &style, &font_data, &parsed_project)?;
+  let pdf_bytes = encode_pdf(&config, &style, &font_data, &laid_out)?;
 
   let stage_start = Instant::now();
   let output_path = config.output.pdf_path();
@@ -119,11 +97,81 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   });
 }
 
-/// [`build_pages`] の出力＝描画パスへ渡す確定レイアウト。
+/// 設定ファイル・スタイル・文献・フォントを読み込む（`build_pdf` の 1 段目）。
+///
+/// I/O とバリデーションだけを担い、ソースのパースや組版には踏み込まない。
+///
+/// # Errors
+///
+/// 設定・スタイルの読込／レイアウト検証、文献の読込、フォントの読込のいずれかで失敗した場合に
+/// エラーを返す。
+fn load_project(config_path: &Path) -> miette::Result<(config::Config, config::Style, References, FontData)> {
+  let config = config::read_config(config_path)?;
+  let style = config::read_style(config.style_path.as_deref())?;
+  config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
+  let references = read_references(config.references_path.as_deref())?;
+
+  let stage_start = Instant::now();
+  let font_data = FontData::new(&config.font_configs)?;
+  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
+
+  return Ok((config, style, references, font_data));
+}
+
+/// [`parse_project`] の出力＝ソースファイルごとのパース結果と、`\cite` を CSL 整形した書誌。
+///
+/// [`compile_project`] が groups（`Vec<&[DocNode]>`）を組み立てる元データであり、`parsed` は
+/// lowering エラーのソース帰属（[`wrap_lowering_error`]）にも使う。
+struct ParsedProject {
+  /// ファイルごとのパース結果（ソース帰属を保持したまま、平坦化しない）
+  parsed: Vec<ParsedSource>,
+  /// `\cite` の CSL 整形で生成した書誌（合成グループとして groups の末尾に連結する）
+  bibliography: Vec<DocNode>,
+}
+
+/// 全ソースファイルをパースし、`\cite` を CSL 整形して書誌を作る（`build_pdf` の 2 段目）。
+///
+/// ファイル I/O・構文解析・文献整形だけを担い、lowering 以降（[`compile_project`]）には踏み込まない。
+///
+/// # Errors
+///
+/// - I/O 失敗（ファイル読み込み）は早期失敗
+/// - パース・評価エラーは全ソースで集約して `MultipleSourceErrors` で報告
+/// - `\cite` の CSL 整形に失敗した場合もエラーを返す
+fn parse_project(
+  config: &config::Config,
+  style: &config::Style,
+  references: &References,
+) -> miette::Result<ParsedProject> {
+  // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
+  let citation_keys: HashSet<String> = references.keys().cloned().collect();
+
+  let stage_start = Instant::now();
+  let mut parsed = parse_all_sources(&config.sources, &citation_keys)?;
+  info!(
+    source_count = config.sources.len(),
+    node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "全ソースのパースが完了しました"
+  );
+
+  // `\cite` を CSL 整形し、引用された文献の書誌を最後の合成グループとして受け取る（parser の後・lowering の前）。
+  let stage_start = Instant::now();
+  let bibliography = citation::process_citations(parsed.iter_mut().map(|p| return &mut p.nodes), references, style)
+    .map_err(|source| return BuildPdfError::Citation { source })?;
+  info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
+
+  return Ok(ParsedProject {
+    parsed,
+    bibliography,
+  });
+}
+
+/// [`compile_project`] の出力＝描画パスへ渡す確定レイアウト。
 ///
 /// いずれもフォント非依存の所有データ（[`model::Page`] は計測済みグリフ列を持ち `FontRef` を
 /// 借用しない、[`OutlineEntry`] はプレーンな見出し情報）なので、フォント関連の借用を伴わずに
-/// `build_pages` の外へ持ち出せる。golden スナップショットテストは `pages` をダンプ対象にする。
+/// `compile_project` の外へ持ち出せる。golden スナップショットテストは `pages` をダンプ対象にする。
 pub(super) struct LaidOutDocument {
   /// 前付け + 本文を連結した確定ページ列（走り文配置済み）
   pub(super) pages: Vec<model::Page>,
@@ -190,48 +238,32 @@ fn break_body_per_page_footnotes(
   }
 }
 
-/// 読込済みの設定・スタイル・文献とフォントデータから、描画直前の確定レイアウトを構築する。
+/// パース済みプロジェクトとフォントデータから、描画直前の確定レイアウトを構築する
+/// （`build_pdf` の 3 段目）。
 ///
-/// `build_pdf` の描画前パイプライン（ソースのパース → 文献 CSL 整形 → Document IR → `LayoutNode` →
-/// `build_blocks` → 画像サイズ確定 → `break_pages` → 走り文配置 → しおり収集）を 1 つの関数に束ねたもの。
-/// フォントは `font_data` から内部で `FontRefs` / シェーパー / メトリクスを組み立てて使い、
-/// 返り値はフォント非依存の所有データのみ（[`LaidOutDocument`]）。これにより本文組版のロジックを
-/// PDF 描画・ファイル I/O から切り離し、確定ページ列を golden テストで直接検証できる。
+/// Document IR → `LayoutNode` → `build_blocks` → 画像サイズ確定 → `break_pages` → 走り文配置 →
+/// しおり収集を 1 つの関数に束ねたもの。フォントは `font_data` から内部で `FontRefs` / シェーパー /
+/// メトリクスを組み立てて使い、返り値はフォント非依存の所有データのみ（[`LaidOutDocument`]）。
+/// これにより本文組版のロジックを PDF 描画・ファイル I/O から切り離し、確定ページ列を golden
+/// テストで直接検証できる。
 ///
 /// # Errors
 ///
-/// ソース読込・パース・文献整形・lowering・フォント検証・段組み幅の不正のいずれかで失敗した場合に
-/// エラーを返す。
-fn build_pages(
+/// lowering・フォント検証・段組み幅の不正のいずれかで失敗した場合にエラーを返す。
+fn compile_project(
   config: &config::Config,
   style: &config::Style,
-  references: &References,
   font_data: &FontData,
+  parsed_project: &ParsedProject,
 ) -> miette::Result<LaidOutDocument> {
-  // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
-  let citation_keys: HashSet<String> = references.keys().cloned().collect();
-
-  let stage_start = Instant::now();
-  let mut parsed = parse_all_sources(&config.sources, &citation_keys)?;
-  info!(
-    source_count = config.sources.len(),
-    node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "全ソースのパースが完了しました"
-  );
-
-  // `\cite` を CSL 整形し、引用された文献の書誌を最後の合成グループとして受け取る（parser の後・lowering の前）。
-  let stage_start = Instant::now();
-  let bibliography = citation::process_citations(parsed.iter_mut().map(|p| return &mut p.nodes), references, style)
-    .map_err(|source| return BuildPdfError::Citation { source })?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
+  let parsed = &parsed_project.parsed;
 
   // 各ソースファイルを 1 グループとし、書誌を末尾の合成グループとして連結する。グループの並び順が
   // SourceId のインデックスになり、書誌グループの SourceId は parsed.len()（範囲外）になる。
   let groups: Vec<&[DocNode]> = parsed
     .iter()
     .map(|p| return p.nodes.as_slice())
-    .chain(std::iter::once(bibliography.as_slice()))
+    .chain(std::iter::once(parsed_project.bibliography.as_slice()))
     .collect();
 
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
@@ -275,7 +307,7 @@ fn build_pages(
       lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
     }
     let (body_layout_nodes, headings) = typeset::lower_sources_with_headings(&lowering_ctx, &groups)
-      .map_err(|error| return wrap_lowering_error(error, &parsed))?;
+      .map_err(|error| return wrap_lowering_error(error, parsed))?;
     info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
 
     // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
@@ -399,6 +431,49 @@ fn build_pages(
     pages,
     outline_entries,
   });
+}
+
+/// 確定レイアウトを PDF バイト列へ描画する（`build_pdf` の 4 段目）。
+///
+/// `font_refs` / `metrics` を（`compile_project` 内で使ったものとは別に）再構築して使う。両者は
+/// `font_data` 上のゼロコピービュー（`FontRef` のパース + head/hhea 参照）で、`compile_project` 内で
+/// 使ったものは borrow が閉じていて持ち出せないため描画パス用にもう一度組み直す。フォントファイル
+/// 自体の再読込は起きない。
+///
+/// # Errors
+///
+/// フォント参照の再構築、または `pdf_gen::create_pdf` の描画に失敗した場合にエラーを返す。
+fn encode_pdf(
+  config: &config::Config,
+  style: &config::Style,
+  font_data: &FontData,
+  laid_out: &LaidOutDocument,
+) -> miette::Result<Vec<u8>> {
+  let font_refs = FontRefs::new(&config.font_configs, font_data)?;
+  let metrics = FontMetrics::new(&font_refs)?;
+
+  let stage_start = Instant::now();
+  let pdf_bytes =
+    pdf_gen::create_pdf(config, font_data, &font_refs, &metrics, &laid_out.pages, style, &laid_out.outline_entries)?;
+  info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
+
+  return Ok(pdf_bytes);
+}
+
+/// テスト専用: `parse_project` → `compile_project` を通しで実行するヘルパ。
+///
+/// `build_pdf` 本体は `load_project` の結果からまず `parse_project` を呼び、その結果を
+/// `compile_project` へ渡す 2 段の driver だが、golden / diagnostic / PDF 構造テストは分割前の
+/// 1 呼び出しインターフェース（旧 `build_pages`）を前提に書かれているため、ここで束ねて提供する。
+#[cfg(test)]
+fn build_pages(
+  config: &config::Config,
+  style: &config::Style,
+  references: &References,
+  font_data: &FontData,
+) -> miette::Result<LaidOutDocument> {
+  let parsed_project = parse_project(config, style, references)?;
+  return compile_project(config, style, font_data, &parsed_project);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
