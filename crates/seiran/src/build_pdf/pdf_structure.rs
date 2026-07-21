@@ -31,8 +31,8 @@ fn pdf_structure_golden_dir() -> PathBuf {
 }
 
 /// 指定入力を `build_pdf` と同じ手順（パース〜描画）でフルビルドし、PDF バイト列を返す
-/// （ファイル書き込みは行わない）。
-fn build_pdf_bytes(name: &str) -> Vec<u8> {
+/// （ファイル書き込みは行わない）。`publication_diff` からも再利用する。
+pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
   let mut config = base_config.clone();
@@ -63,19 +63,46 @@ fn dict_name_is(object: &Object, key: &[u8], expected: &[u8]) -> bool {
     .is_some_and(|name| return name == expected);
 }
 
-/// PDF バイト列から構造だけを決定的テキストへ書き出す。座標・resource bytes 自体は対象にしない。
-fn dump_pdf_structure(bytes: &[u8]) -> String {
+/// PDF バイト列から独立 reader（`lopdf`）で読み取れる構造的事実
+///
+/// `publication_diff` が `Publication` の対応する事実と突き合わせる differential test に使う。
+pub(super) struct PdfStructureFacts {
+  /// ページ数
+  pub(super) page_count: usize,
+  /// 埋め込みフォント数
+  pub(super) embedded_font_count: usize,
+  /// リンク注釈数
+  pub(super) link_annotation_count: usize,
+  /// しおり（アウトライン）の有無
+  pub(super) has_outline: bool,
+}
+
+/// PDF バイト列から構造的事実を読み取る
+pub(super) fn compute_pdf_structure_facts(bytes: &[u8]) -> PdfStructureFacts {
   let document = Document::load_mem(bytes).expect("lopdf での PDF 読込");
   let page_count = document.get_pages().len();
-  let font_count = document.objects.values().filter(|object| return dict_name_is(object, b"Type", b"Font")).count();
-  let link_count = document
+  let embedded_font_count =
+    document.objects.values().filter(|object| return dict_name_is(object, b"Type", b"Font")).count();
+  let link_annotation_count = document
     .objects
     .values()
     .filter(|object| return dict_name_is(object, b"Type", b"Annot") && dict_name_is(object, b"Subtype", b"Link"))
     .count();
   let has_outline = document.catalog().is_ok_and(|catalog| return catalog.get(b"Outlines").is_ok());
+  return PdfStructureFacts {
+    page_count,
+    embedded_font_count,
+    link_annotation_count,
+    has_outline,
+  };
+}
+
+/// PDF バイト列から構造だけを決定的テキストへ書き出す。座標・resource bytes 自体は対象にしない。
+fn dump_pdf_structure(bytes: &[u8]) -> String {
+  let facts = compute_pdf_structure_facts(bytes);
   return format!(
-    "page_count={page_count}\nembedded_font_count={font_count}\nlink_annotation_count={link_count}\nhas_outline={has_outline}\n"
+    "page_count={}\nembedded_font_count={}\nlink_annotation_count={}\nhas_outline={}\n",
+    facts.page_count, facts.embedded_font_count, facts.link_annotation_count, facts.has_outline
   );
 }
 
