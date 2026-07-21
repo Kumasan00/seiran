@@ -146,9 +146,8 @@ struct ParsedProject {
 impl ParsedProject {
   /// 各ソースファイルを 1 グループとし、書誌を末尾の合成グループとして連結する。
   ///
-  /// グループの並び順が [`typeset::SourceId`] のインデックスになり、書誌グループの
-  /// `SourceId` は `parsed.len()`（範囲外）になる。`parse_project` の画像パス収集と
-  /// `compile_project` の lowering の両方がこの並びを使う。
+  /// 画像パス収集（`image_manifest::collect_image_paths`）は起源を必要としないため、
+  /// `DocNode` 列だけを返す。lowering に渡す起源付きの並びは [`ParsedProject::lowering_groups`] を使う。
   fn groups(&self) -> Vec<&[DocNode]> {
     return self
       .parsed
@@ -156,6 +155,25 @@ impl ParsedProject {
       .map(|p| return p.nodes.as_slice())
       .chain(std::iter::once(self.bibliography.as_slice()))
       .collect();
+  }
+
+  /// [`typeset::lower_sources_with_headings`] に渡す、起源付きのグループ列を組み立てる。
+  ///
+  /// 各ソースファイルには `Origin::Source(SourceId::new(i))` を、末尾に連結する書誌の合成グループには
+  /// `Origin::Generated(GeneratedOrigin::Bibliography)` を明示的に割り当てる。「配列範囲外の
+  /// `SourceId`」という暗黙の sentinel で合成グループを表さない（#259）。
+  fn lowering_groups(&self) -> Vec<typeset::SourceGroup<'_>> {
+    let real_sources = self.parsed.iter().enumerate().map(|(i, p)| {
+      return typeset::SourceGroup {
+        nodes: p.nodes.as_slice(),
+        origin: model::Origin::Source(model::SourceId::new(i)),
+      };
+    });
+    let bibliography = std::iter::once(typeset::SourceGroup {
+      nodes: self.bibliography.as_slice(),
+      origin: model::Origin::Generated(model::GeneratedOrigin::Bibliography),
+    });
+    return real_sources.chain(bibliography).collect();
   }
 }
 
@@ -291,9 +309,9 @@ fn compile_project(
   let font_data = &snapshot.font_data;
 
   // wrap_lowering_error（run_body_pass クロージャ内）が引き続き参照するため、元の
-  // `let parsed = &parsed_project.parsed;` は残す。groups だけ `groups()` メソッド経由にする。
+  // `let parsed = &parsed_project.parsed;` は残す。groups だけ `lowering_groups()` メソッド経由にする。
   let parsed = &parsed_project.parsed;
-  let groups = parsed_project.groups();
+  let groups = parsed_project.lowering_groups();
 
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
 
@@ -562,22 +580,26 @@ fn parse_all_sources(
   return Ok(parsed);
 }
 
-/// `LoweringError` を、`source_id()` で特定できるソースファイルに `NamedSource` を紐付けて
+/// `LoweringError` を、`origin()` で特定できるソースファイルに `NamedSource` を紐付けて
 /// [`BuildPdfError`] に変換する。
 ///
-/// `source_id()` が `parsed` の範囲内を指す場合はそのファイル名・内容を `NamedSource` に載せた
+/// `origin()` が `Origin::Source` を指す場合はそのファイル名・内容を `NamedSource` に載せた
 /// [`BuildPdfError::Lowering`] にし、パースエラーと同じくファイル名・スニペット付きで診断できるようにする。
-/// 範囲外（= 合成された書誌グループ、`SourceId` が `parsed.len()`）を指す場合は帰属元を特定できないため
-/// [`BuildPdfError::LoweringInternal`] にフォールバックする。span は各ファイル内のオフセットのまま
-/// 使える（各 `NamedSource` はその 1 ファイル分の `content` だけを持つため、グローバル変換は不要）。
+/// `Origin::Generated`（合成された書誌グループ等）を指す場合は帰属元となる実ソースがないため
+/// [`BuildPdfError::LoweringInternal`] にする。span は各ファイル内のオフセットのまま使える
+/// （各 `NamedSource` はその 1 ファイル分の `content` だけを持つため、グローバル変換は不要）。
 fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
-  let index = error.source_id().index();
-  return match parsed.get(index) {
-    Some(source) => BuildPdfError::Lowering {
-      src: miette::NamedSource::new(&source.name, source.content.clone()),
-      source: error,
+  return match error.origin() {
+    model::Origin::Source(source_id) => {
+      let source = parsed
+        .get(source_id.index())
+        .expect("Origin::Source は lowering_groups() が割り当てた実ソース配列の範囲内を指すはず");
+      BuildPdfError::Lowering {
+        src: miette::NamedSource::new(&source.name, source.content.clone()),
+        source: error,
+      }
     },
-    None => BuildPdfError::LoweringInternal { source: error },
+    model::Origin::Generated(_) => BuildPdfError::LoweringInternal { source: error },
   };
 }
 
@@ -712,9 +734,12 @@ mod tests {
     assert_eq!(layout.pages[1].footnotes.len(), 1, "最後のパスのレイアウトを返すはず");
   }
 
-  /// index=1 のグループに未定義ラベルの `\ref` を含む 2 グループを作り、`source_id()==1` の
+  /// グループ 1 に、指定した起源を持たせたうえで未定義ラベルの `\ref` を置き、その起源が帰属源になる
   /// `LoweringError` を生成するテストヘルパ
-  fn lowering_error_with_source_id_1(style: &config::Style) -> typeset::LoweringError {
+  ///
+  /// `origin` を呼び出し側が指定できる（＝グループの位置と起源が独立している）ことが、
+  /// 「配列範囲外の `SourceId`」という暗黙の sentinel をやめて `Origin` を導入した狙いそのもの。
+  fn lowering_error_with_origin(style: &config::Style, origin: model::Origin) -> typeset::LoweringError {
     use model::{DocNode, InlineNode};
     let ctx = typeset::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
@@ -724,18 +749,22 @@ mod tests {
       label: "missing".to_string(),
       span: model::Span::DUMMY,
     }])];
-    let error = typeset::lower_sources_with_headings(&ctx, &[g0.as_slice(), g1.as_slice()])
-      .expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(error.source_id().index(), 1, "グループ 1 の \\ref が帰属源のはず");
+    let groups = [
+      typeset::SourceGroup {
+        nodes: &g0,
+        origin: model::Origin::Source(model::SourceId::new(0)),
+      },
+      typeset::SourceGroup { nodes: &g1, origin },
+    ];
+    let error = typeset::lower_sources_with_headings(&ctx, &groups).expect_err("未定義ラベルはエラーになるはず");
+    assert_eq!(error.origin(), origin, "指定した起源が帰属源のはず");
     return error;
   }
 
   #[test]
-  fn lowering_error_attributes_named_source_by_source_id() {
-    // Arrange — source_id()==1 の LoweringError を生成する（範囲内・範囲外の両方に流し込む）
+  fn lowering_error_attributes_named_source_for_real_source_origin() {
+    // Arrange — Origin::Source(SourceId::new(1)) に帰属する LoweringError を生成する
     let style = config::Style::default();
-
-    // Act / Assert 1 — parsed が 2 要素なら index=1 の 2 番目のファイルに NamedSource が紐づく
     let parsed = vec![
       ParsedSource {
         name: "a.sei".to_string(),
@@ -748,25 +777,33 @@ mod tests {
         nodes: Vec::new(),
       },
     ];
-    match wrap_lowering_error(lowering_error_with_source_id_1(&style), &parsed) {
+    let error = lowering_error_with_origin(&style, model::Origin::Source(model::SourceId::new(1)));
+
+    // Act / Assert — index=1 の 2 番目のファイルに NamedSource が紐づく
+    match wrap_lowering_error(error, &parsed) {
       BuildPdfError::Lowering { src, .. } => {
-        assert_eq!(src.name(), "b.sei", "source_id=1 は 2 番目のファイルに帰属するはず");
+        assert_eq!(src.name(), "b.sei", "SourceId(1) は 2 番目のファイルに帰属するはず");
       },
       other => panic!("Lowering が期待されます: {other:?}"),
     }
+  }
 
-    // Act / Assert 2 — parsed が 1 要素だけなら index=1 は範囲外で LoweringInternal にフォールバックする
-    let parsed_short = vec![ParsedSource {
+  #[test]
+  fn lowering_error_falls_back_to_internal_for_generated_origin() {
+    // Arrange — 合成グループ（書誌）に帰属する LoweringError を生成する。実ソース配列の範囲外
+    // インデックスに頼らず、Origin::Generated を直接割り当てられることを確認する。
+    let style = config::Style::default();
+    let parsed = vec![ParsedSource {
       name: "only.sei".to_string(),
       content: "X".to_string(),
       nodes: Vec::new(),
     }];
+    let error = lowering_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
+
+    // Act / Assert
     assert!(
-      matches!(
-        wrap_lowering_error(lowering_error_with_source_id_1(&style), &parsed_short),
-        BuildPdfError::LoweringInternal { .. }
-      ),
-      "範囲外の SourceId は LoweringInternal になるはず"
+      matches!(wrap_lowering_error(error, &parsed), BuildPdfError::LoweringInternal { .. }),
+      "合成グループ（Origin::Generated）は LoweringInternal になるはず"
     );
   }
 }

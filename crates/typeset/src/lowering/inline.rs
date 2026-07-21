@@ -4,7 +4,7 @@
 //! フォント種別やサイズを変更します。
 
 use config::FootnoteStyle;
-use model::{FontKind, InlineNode, Length, LinkTarget};
+use model::{AnchorId, FontKind, FootnoteId, InlineNode, Length, LinkTarget};
 
 use super::{
   LoweringContext, LoweringError,
@@ -112,7 +112,7 @@ pub(super) fn lower_inline(
         inner.extend(lower_inline(ctx, child, parent_style, registry)?);
       }
       return Ok(vec![LayoutNode::Link {
-        target: LinkTarget::Internal(target.clone()),
+        target: LinkTarget::Internal(AnchorId::Citation(target.clone())),
         children: inner,
       }]);
     },
@@ -123,7 +123,7 @@ pub(super) fn lower_inline(
         return Err(LoweringError::UnresolvedCitation {
           keys: keys.join(", "),
           span: super::span_to_source_span(*span),
-          source_id: ctx.source,
+          origin: ctx.source,
         });
       };
       // 引用ラベル全体（括弧含む）に `cite_color` を適用する。番号部分は `InlineNode::InternalLink`
@@ -151,11 +151,11 @@ pub(super) fn lower_inline(
       });
 
       // 本文中マーカー: 呼び出し位置の文脈フォントサイズを基準に上付き縮小する。対応する脚注本体
-      // （`model::footnote_anchor_key(index)`）へのクリック領域として `Link` で包む。色は `\ref` と
+      // （`AnchorId::Footnote(index)`）へのクリック領域として `Link` で包む。色は `\ref` と
       // 同じ既存の `link_color` を流用する（脚注専用の色設定は追加しない、P10）。
       let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       let inline_marker = LayoutNode::Link {
-        target: LinkTarget::Internal(model::footnote_anchor_key(index)),
+        target: LinkTarget::Internal(AnchorId::Footnote(FootnoteId::new(index))),
         children: vec![footnote_marker_node(
           &marker_text,
           parent_style.font_size,
@@ -496,7 +496,7 @@ mod tests {
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = InlineNode::InternalLink {
-      target: "cite:foo".to_string(),
+      target: model::CitationId::new("foo"),
       children: vec![InlineNode::Text("1".to_string())],
     };
 
@@ -509,7 +509,7 @@ mod tests {
     let LayoutNode::Link { target, children } = &nodes[0] else {
       panic!("Link が期待されます: {nodes:?}");
     };
-    assert_eq!(*target, LinkTarget::Internal("cite:foo".to_string()));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(model::CitationId::new("foo"))));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "1"));
   }
 
@@ -523,7 +523,7 @@ mod tests {
     let inline = InlineNode::Cite {
       keys: vec!["foo".to_string()],
       label: Some(vec![InlineNode::InternalLink {
-        target: "cite:foo".to_string(),
+        target: model::CitationId::new("foo"),
         children: vec![InlineNode::Text("1".to_string())],
       }]),
       span: model::Span::DUMMY,
@@ -538,7 +538,7 @@ mod tests {
     let LayoutNode::Link { target, children } = &nodes[0] else {
       panic!("Link が期待されます: {nodes:?}");
     };
-    assert_eq!(*target, LinkTarget::Internal("cite:foo".to_string()));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(model::CitationId::new("foo"))));
     let LayoutNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
@@ -576,9 +576,9 @@ mod tests {
     // 上書きマップなし（通し採番）なので表示番号は index + 1
     assert_eq!(*number, 1);
     assert_eq!(*index, 0);
-    // マーカーのリンク先は脚注本体と同じ index から作るキー（issue #228: 両側が独立に
-    // `model::footnote_anchor_key` を経由して初めて内部リンクが解決する）
-    assert_eq!(*target, LinkTarget::Internal(model::footnote_anchor_key(*index)));
+    // マーカーのリンク先は脚注本体と同じ index から作る AnchorId::Footnote（issue #228: 両側が
+    // 独立に同じ index から FootnoteId を構築して初めて内部リンクが解決する）
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Footnote(model::FootnoteId::new(*index))));
     // body[0] は本体先頭マーカー（Raise、逆方向リンクは張らないので Link で包まない）、
     // body[1] が実内容
     assert!(matches!(&body[0], LayoutNode::Raise { .. }));

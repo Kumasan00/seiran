@@ -43,9 +43,9 @@
 use std::collections::HashMap;
 
 use config::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
-use model::{HeadingLevel, Page};
+use model::{HeadingLevel, LabelId, Origin, Page};
 
-use super::{LoweringError, SourceId};
+use super::LoweringError;
 
 mod format;
 
@@ -100,7 +100,7 @@ pub(crate) struct CounterRegistry {
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
-  labels: HashMap<String, ResolvedLabel>,
+  labels: HashMap<LabelId, ResolvedLabel>,
   /// これまでに発番した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
 }
@@ -167,7 +167,7 @@ impl CounterRegistry {
     class: TheoremClass,
     label: Option<&str>,
     span: model::Span,
-    source: SourceId,
+    source: Origin,
   ) -> Result<Option<String>, LoweringError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, number_format, display_name, unnumbered) = {
@@ -191,7 +191,7 @@ impl CounterRegistry {
         return Err(LoweringError::DuplicateLabel {
           label: l.to_string(),
           span: super::span_to_source_span(span),
-          source_id: source,
+          origin: source,
         });
       }
     }
@@ -266,7 +266,7 @@ impl CounterRegistry {
   #[must_use]
   pub(crate) fn register_label(
     &mut self,
-    label: impl Into<String>,
+    label: impl Into<LabelId>,
     counter: CounterName,
     number: impl Into<String>,
   ) -> bool {
@@ -289,7 +289,7 @@ impl CounterRegistry {
   ///
   /// 同名ラベルが登録済みの場合は上書きせず `false` を返す。
   #[must_use]
-  fn register_formatted_label(&mut self, label: impl Into<String>, formatted: String) -> bool {
+  fn register_formatted_label(&mut self, label: impl Into<LabelId>, formatted: String) -> bool {
     let label = label.into();
     if self.labels.contains_key(&label) {
       return false;
@@ -313,7 +313,7 @@ impl CounterRegistry {
     counter: CounterName,
     label: Option<&str>,
     span: model::Span,
-    source: SourceId,
+    source: Origin,
   ) -> Result<String, LoweringError> {
     let number = self.increment(counter);
     if let Some(l) = label
@@ -322,7 +322,7 @@ impl CounterRegistry {
       return Err(LoweringError::DuplicateLabel {
         label: l.to_string(),
         span: super::span_to_source_span(span),
-        source_id: source,
+        origin: source,
       });
     }
     return Ok(number);
@@ -515,15 +515,25 @@ mod tests {
 
     // Act / Assert
     assert_eq!(
-      r.increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
-        .unwrap()
-        .as_deref(),
+      r.increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0))
+      )
+      .unwrap()
+      .as_deref(),
       Some("1")
     );
     assert_eq!(
-      r.increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), SourceId::new(0))
-        .unwrap()
-        .as_deref(),
+      r.increment_theorem_with_label(
+        TheoremClass::Lemma,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0))
+      )
+      .unwrap()
+      .as_deref(),
       Some("2")
     );
   }
@@ -535,9 +545,14 @@ mod tests {
 
     // Act / Assert — proof は採番なし
     assert!(
-      r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), SourceId::new(0))
-        .unwrap()
-        .is_none()
+      r.increment_theorem_with_label(
+        TheoremClass::Proof,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0))
+      )
+      .unwrap()
+      .is_none()
     );
   }
 
@@ -548,10 +563,20 @@ mod tests {
 
     // Act
     let thm = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     let def = r
-      .increment_theorem_with_label(TheoremClass::Definition, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Definition,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
 
     // Assert — 別カウンタなので両方 "1"
@@ -570,7 +595,12 @@ mod tests {
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section);
     let number = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
 
     // Assert — section=1、theorem=1 → "1.1"
@@ -589,14 +619,29 @@ mod tests {
 
     // Act
     let a = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     let b = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
 
     // Assert
@@ -615,11 +660,21 @@ mod tests {
 
     // Act
     let a = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     r.increment(CounterName::Chapter); // chapter = 2（section は増えていない）
     let b = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        None,
+        theorem_span(),
+        Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
 
     // Assert — 連番が維持される
@@ -633,8 +688,13 @@ mod tests {
     let mut r = CounterRegistry::from_style(&Style::default());
 
     // Act
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("thm:x"), theorem_span(), SourceId::new(0))
-      .unwrap();
+    r.increment_theorem_with_label(
+      TheoremClass::Theorem,
+      Some("thm:x"),
+      theorem_span(),
+      Origin::Source(model::SourceId::new(0)),
+    )
+    .unwrap();
 
     // Assert — "{display_name} {number}" で解決される
     assert_eq!(r.resolve_label("thm:x"), Some("Theorem 1"));
@@ -644,11 +704,21 @@ mod tests {
   fn increment_theorem_duplicate_label_errors() {
     // Arrange
     let mut r = CounterRegistry::from_style(&Style::default());
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), SourceId::new(0))
-      .unwrap();
+    r.increment_theorem_with_label(
+      TheoremClass::Theorem,
+      Some("dup"),
+      theorem_span(),
+      Origin::Source(model::SourceId::new(0)),
+    )
+    .unwrap();
 
     // Act
-    let result = r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), SourceId::new(0));
+    let result = r.increment_theorem_with_label(
+      TheoremClass::Lemma,
+      Some("dup"),
+      theorem_span(),
+      Origin::Source(model::SourceId::new(0)),
+    );
 
     // Assert
     assert!(matches!(result, Err(LoweringError::DuplicateLabel { ref label, .. }) if label == "dup"));

@@ -385,7 +385,9 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> model::LinkTarget { return model::LinkTarget::Internal("sec:x".to_string()); }
+  pub(super) fn link_target() -> model::LinkTarget {
+    return model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("sec:x")));
+  }
 
   /// テスト用の索引マーカー（幅 0・分割不可）
   pub(super) fn index_mark(word: &str, reading: Option<&str>) -> HItem {

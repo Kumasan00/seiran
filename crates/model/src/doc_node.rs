@@ -1,8 +1,8 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
 use crate::{
-  CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathRow,
-  QuoteKind, Span, TableRow, TheoremClass,
+  AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingLevel, InlineNode, Length, ListItem,
+  MathEnvKind, MathRow, QuoteKind, Span, TableRow, TheoremClass,
 };
 
 // =============================================================================
@@ -32,18 +32,6 @@ impl Document {
   #[must_use]
   pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
 }
-
-// =============================================================================
-// 見出しの暗黙 destination キー
-// =============================================================================
-
-/// 見出しの暗黙 destination キーを文書順インデックスから生成する
-///
-/// lowering（採番側 = `AnchorMark::Heading.key`）と目次ビルダ（参照側 =
-/// `LinkTarget::Internal`）が同じ規則を共有するための単一ソース。見出しの収集自体は
-/// `lowering::lower_sources_with_headings`（採番・書式解決を伴うため lowering 側の責務）が担う。
-#[must_use]
-pub fn heading_anchor_key(index: usize) -> String { return format!("heading:{index}"); }
 
 // =============================================================================
 // ブロックレベル要素
@@ -145,7 +133,7 @@ pub enum DocNode {
   /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
-    image_path: String,
+    image_path: AssetId,
     /// 画像の幅（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
     width: Option<Length>,
     /// 画像の高さ（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
@@ -246,14 +234,14 @@ pub enum DocNode {
   /// 固定幅スペース（`\space{N}` コマンド、pt 単位）
   Space(Length),
 
-  /// ゼロサイズの参照アンカー点（指定キーで参照可能な位置）
+  /// ゼロサイズの参照アンカー点（引用キーで参照可能な位置）
   ///
-  /// それ自身は縦アキを生まず、`lowering` 層で `LayoutNode::Anchor(AnchorMark::Label(key))` に
+  /// それ自身は縦アキを生まず、`lowering` 層で `LayoutNode::Anchor(AnchorMark::Citation(key))` に
   /// 変換され、直後のブロックの確定座標にジャンプ先として解決される。見出し・図・表・式の
   /// ラベルは各 `DocNode` の `label` フィールドが担うため、これは本文構造に label フィールドを
   /// 持たないブロック（CSL 整形ステージが追加する参考文献エントリ段落）にアンカーを付けるための
-  /// プリミティブ。キーは衝突回避のため `"cite:<引用キー>"` の形で名前空間化される。
-  Anchor(String),
+  /// プリミティブ。現状の唯一の producer は CSL 整形ステージ（`citation` クレート）。
+  Anchor(CitationId),
 }
 
 /// `proof` 環境の `[of=label]` 参照（証明対象の定理）
@@ -404,11 +392,5 @@ mod tests {
     let doc = Document::new(vec![]);
     assert!(doc.is_empty());
     assert_eq!(doc.len(), 0);
-  }
-
-  #[test]
-  fn heading_anchor_key_formats_index() {
-    assert_eq!(heading_anchor_key(0), "heading:0");
-    assert_eq!(heading_anchor_key(3), "heading:3");
   }
 }

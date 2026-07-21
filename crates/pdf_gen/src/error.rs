@@ -2,7 +2,7 @@
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
-use model::FontType;
+use model::{AssetId, FontType};
 use read_fonts::ReadError;
 use thiserror::Error;
 
@@ -159,7 +159,7 @@ pub enum PdfGenError {
   )]
   InvalidImageNaturalSize {
     /// 画像ファイルのパス。
-    path: String,
+    path: AssetId,
     /// 自然幅（ラスタはピクセル、SVG は pt）。
     width: f32,
     /// 自然高さ（ラスタはピクセル、SVG は pt）。
@@ -189,6 +189,6 @@ pub enum PdfGenError {
   )]
   ImageNotInManifest {
     /// 画像ファイルのパス。
-    path: String,
+    path: AssetId,
   },
 }

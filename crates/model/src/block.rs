@@ -3,7 +3,7 @@
 //! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
-use crate::{Align, AnchorMark, HBox, HItem, Length, Line, TableBox};
+use crate::{Align, AnchorMark, AssetId, HBox, HItem, Length, Line, TableBox};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///
@@ -61,7 +61,7 @@ pub enum Block {
   /// 縦組版（`break_pages`）は確定済みであることを前提とし、未解決は 0 として扱う。
   Image {
     /// 画像ファイルへのパス
-    path: String,
+    path: AssetId,
     /// 描画幅。prepass 後は常に `Some`
     width: Option<Length>,
     /// 描画高さ。prepass 後は常に `Some`

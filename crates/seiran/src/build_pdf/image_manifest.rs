@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use model::DocNode;
+use model::{AssetId, DocNode};
 
 /// `parse_project` が収集した画像パスの一覧（重複なし・パス文字列の昇順）。
 ///
@@ -10,7 +10,7 @@ use model::DocNode;
 /// `ImageSet` を作って `compile_project` へ渡す。
 pub(super) struct ImageManifest {
   /// 画像ファイルへのパス（`\image{...}` の必須引数、重複なし・昇順）
-  pub(super) paths: Vec<String>,
+  pub(super) paths: Vec<AssetId>,
 }
 
 /// `groups` に含まれる全 `DocNode` を再帰的に走査し、`Figure` の画像パスを重複なく収集する。
@@ -19,7 +19,7 @@ pub(super) struct ImageManifest {
 /// `List` も各 `ListItem.content`（`Vec<DocNode>`）にネストしうる（`\item{...}` 内の `figure` 環境）。
 /// それ以外の variant は子に `DocNode` を持たない。
 pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
-  let mut paths: BTreeSet<String> = BTreeSet::new();
+  let mut paths: BTreeSet<AssetId> = BTreeSet::new();
   for group in groups {
     walk_nodes(group, &mut paths);
   }
@@ -29,7 +29,7 @@ pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
 }
 
 /// `nodes` を再帰的に走査し、`Figure` の `image_path` を `paths` へ集める。
-fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<String>) {
+fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<AssetId>) {
   for node in nodes {
     match node {
       DocNode::Figure { image_path, .. } => {
@@ -57,14 +57,14 @@ fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<String>) {
 
 #[cfg(test)]
 mod tests {
-  use model::{CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
+  use model::{AssetId, CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
 
   use super::collect_image_paths;
 
   /// `image_path` だけを差し替えた最小の `Figure` ノードを作るテストヘルパ
   fn figure(path: &str) -> DocNode {
     return DocNode::Figure {
-      image_path: path.to_string(),
+      image_path: AssetId::new(path),
       width: None,
       height: None,
       dpi: None,
@@ -85,7 +85,7 @@ mod tests {
     let manifest = collect_image_paths(&[group.as_slice()]);
 
     // Assert — 重複が除かれ、パス文字列の昇順で並ぶ
-    assert_eq!(manifest.paths, vec!["a.png".to_string(), "b.png".to_string()]);
+    assert_eq!(manifest.paths, vec![AssetId::new("a.png"), AssetId::new("b.png")]);
   }
 
   #[test]
@@ -108,7 +108,7 @@ mod tests {
     let manifest = collect_image_paths(&[&[theorem]]);
 
     // Assert
-    assert_eq!(manifest.paths, vec!["nested.png".to_string()]);
+    assert_eq!(manifest.paths, vec![AssetId::new("nested.png")]);
   }
 
   #[test]
@@ -126,7 +126,7 @@ mod tests {
     let manifest = collect_image_paths(&[&[list]]);
 
     // Assert
-    assert_eq!(manifest.paths, vec!["in-list.png".to_string()]);
+    assert_eq!(manifest.paths, vec![AssetId::new("in-list.png")]);
   }
 
   #[test]

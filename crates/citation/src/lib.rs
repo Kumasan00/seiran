@@ -637,7 +637,7 @@ mod tests {
     };
     let has_link = label
       .iter()
-      .any(|node| matches!(node, InlineNode::InternalLink { target, .. } if target == "cite:kwan2014"));
+      .any(|node| matches!(node, InlineNode::InternalLink { target, .. } if target.as_str() == "kwan2014"));
     assert!(has_link, "単一キーの番号も内部リンクになるはず: {label:?}");
   }
 
@@ -673,8 +673,8 @@ mod tests {
       })
       .collect();
     assert_eq!(targets.len(), 2, "2 つの番号が個別リンクになるはず: {targets:?}");
-    assert!(targets.contains(&"cite:kwan2014"), "targets: {targets:?}");
-    assert!(targets.contains(&"cite:doe2020"), "targets: {targets:?}");
+    assert!(targets.contains(&"kwan2014"), "targets: {targets:?}");
+    assert!(targets.contains(&"doe2020"), "targets: {targets:?}");
   }
 
   #[test]
@@ -687,11 +687,11 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — 書誌に cite:kwan2014 アンカーが入り、その直後が書誌段落
+    // Assert — 書誌に kwan2014 の CitationId アンカーが入り、その直後が書誌段落
     let pos = nodes
       .iter()
-      .position(|node| matches!(node, DocNode::Anchor(key) if key == "cite:kwan2014"))
-      .expect("cite:kwan2014 アンカーが追加されるはず");
+      .position(|node| matches!(node, DocNode::Anchor(key) if key.as_str() == "kwan2014"))
+      .expect("kwan2014 の CitationId アンカーが追加されるはず");
     assert!(
       matches!(&nodes[pos + 1], DocNode::Paragraph(_)),
       "アンカーの直後は書誌段落のはず: {:?}",

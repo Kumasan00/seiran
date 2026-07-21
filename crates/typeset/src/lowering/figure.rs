@@ -6,7 +6,7 @@
 //! キャプション行を一切出力しません。キャプション構築と `VBox` 包みは
 //! [`super::float`] の共通ヘルパで行います。
 
-use model::{CaptionPosition, InlineNode, Length};
+use model::{AssetId, CaptionPosition, InlineNode, Length};
 
 use super::{
   LoweringContext, LoweringError,
@@ -41,7 +41,7 @@ pub(crate) struct ImageOverrides {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
-  image_path: &str,
+  image_path: &AssetId,
   width: Option<Length>,
   height: Option<Length>,
   overrides: ImageOverrides,
@@ -61,7 +61,7 @@ pub(super) fn lower_figure(
   };
 
   let image_node = LayoutNode::Image {
-    path: image_path.to_string(),
+    path: image_path.clone(),
     width,
     height,
     target_dpi,
@@ -96,7 +96,7 @@ mod tests {
     // Act
     let nodes = lower_figure(
       &ctx,
-      "./images/seiran.jpg",
+      &AssetId::new("./images/seiran.jpg"),
       Some(Length::pt(80.0)),
       Some(Length::pt(60.0)),
       ImageOverrides::default(),
@@ -120,7 +120,7 @@ mod tests {
     else {
       panic!("先頭は Image であるべき: {children:?}");
     };
-    assert_eq!(path, "./images/seiran.jpg");
+    assert_eq!(path.as_str(), "./images/seiran.jpg");
     assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
     assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
     // 既定（config `[image]`）では downsample=true / max_dpi=300 なので target_dpi=Some(300)
@@ -143,7 +143,7 @@ mod tests {
     // Act
     let nodes = lower_figure(
       &ctx,
-      "a.png",
+      &AssetId::new("a.png"),
       Some(Length::pt(10.0)),
       Some(Length::pt(10.0)),
       ImageOverrides::default(),
@@ -171,7 +171,7 @@ mod tests {
     // Act
     let nodes = lower_figure(
       &ctx,
-      "a.png",
+      &AssetId::new("a.png"),
       Some(Length::pt(10.0)),
       Some(Length::pt(10.0)),
       ImageOverrides::default(),
@@ -202,9 +202,17 @@ mod tests {
       downsample: Some(false),
       ..ImageOverrides::default()
     };
-    let nodes =
-      lower_figure(&ctx, "a.png", None, None, overrides, None, "1", &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_figure(
+      &ctx,
+      &AssetId::new("a.png"),
+      None,
+      None,
+      overrides,
+      None,
+      "1",
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -227,9 +235,17 @@ mod tests {
       dpi: Some(600),
       ..ImageOverrides::default()
     };
-    let nodes =
-      lower_figure(&ctx, "a.png", None, None, overrides, None, "1", &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_figure(
+      &ctx,
+      &AssetId::new("a.png"),
+      None,
+      None,
+      overrides,
+      None,
+      "1",
+      &mut CounterRegistry::default_for_seiran(),
+    )
+    .expect("失敗しない");
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -250,7 +266,7 @@ mod tests {
     // Act
     let nodes = lower_figure(
       &ctx,
-      "a.png",
+      &AssetId::new("a.png"),
       None,
       None,
       ImageOverrides::default(),

@@ -35,7 +35,7 @@ pub use breaking::{
   break_pages, resolve_hyphenation,
 };
 pub use lowering::{
-  HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceId, TableCellLayout, TableLayout,
+  HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceGroup, TableCellLayout, TableLayout,
   TableRowLayout, TextStyle, TitlePageMetadata, lower_document, lower_nodes, lower_sources_with_headings,
   lower_title_page, per_page_footnote_numbers,
 };

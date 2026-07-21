@@ -11,7 +11,7 @@ use hayagriva::{
   Formatting, RenderedBibliography,
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
-use model::{DocNode, FontKind, HeadingLevel, InlineNode, Span};
+use model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode, Span};
 
 /// hayagriva 整形の結果。所有値のみを保持し、`nodes` への借用は残さない。
 pub(crate) struct Rendered {
@@ -97,7 +97,7 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
           }
           match site.get(idx) {
             Some(key) => out.push(InlineNode::InternalLink {
-              target: format!("cite:{key}"),
+              target: CitationId::new(key.as_str()),
               children: item_inlines,
             }),
             // 想定外（idx が範囲外）の場合はリンクにせず整形済みインラインをそのまま積む。
@@ -150,8 +150,9 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
       }
     }
     inlines.extend(elem_children_to_inlines(&item.content));
-    // `\cite` のジャンプ先アンカー。`\ref` の `\label` と衝突しないよう `cite:` で名前空間化する。
-    nodes.push(DocNode::Anchor(format!("cite:{}", item.key)));
+    // `\cite` のジャンプ先アンカー。`CitationId` は `\ref` の `LabelId` とは別の型なので、
+    // 生 String だった頃と違いラベルと衝突しようがない。
+    nodes.push(DocNode::Anchor(CitationId::new(&item.key)));
     nodes.push(DocNode::Paragraph(inlines));
   }
 
