@@ -2,7 +2,7 @@
 
 use config::{Style, TocStyle};
 use font::{FontMetrics, shaper::HarfRustShapers};
-use model::{Block, FontKind, HeadingLevel, Page, TextAlignment, heading_anchor_key};
+use model::{Block, FontKind, HeadingKey, HeadingLevel, Page, TextAlignment};
 use tracing::{debug, debug_span};
 use typeset::{
   HeadingRecord, LineBreaker, PageGeometry, TextStyle, TitlePageMetadata, TocEntryInput, TocSpec, build_blocks,
@@ -63,7 +63,7 @@ pub(super) fn assemble_front_matter(
 ///
 /// `max_depth` を超える深さの見出しは除外する。ページラベルは [`BodyPageValues::body_page_label`]
 /// （本文の番号スタイル＝算用数字）でレンダリングし、内部リンクキーは見出しの文書順インデックスから
-/// [`model::heading_anchor_key`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
+/// [`HeadingKey::new`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
@@ -77,7 +77,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
         number: info.number.clone(),
         title_plain: info.title_plain.clone(),
         page_label: page_values.body_page_label(page_index),
-        link_key: heading_anchor_key(info.index),
+        link_key: HeadingKey::new(info.index),
       };
     })
     .collect();
@@ -139,7 +139,7 @@ pub(super) fn break_front_matter(
 #[cfg(test)]
 mod tests {
   use config::{PageNumbering, TocStyle};
-  use model::{AnchorMark, HeadingLevel, PlacedAnchor};
+  use model::{AnchorMark, HeadingKey, HeadingLevel, PlacedAnchor};
   use typeset::HeadingRecord;
 
   use super::{BodyPageValues, Page, collect_toc_entries};
@@ -164,7 +164,7 @@ mod tests {
           footnotes: Vec::new(),
           anchors: vec![PlacedAnchor {
             mark: AnchorMark::Heading {
-              key: format!("heading:{index}"),
+              key: HeadingKey::new(index),
               label: None,
             },
             x: model::Length::ZERO,
@@ -199,9 +199,9 @@ mod tests {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].number, "1");
     assert_eq!(entries[0].page_label, "1");
-    assert_eq!(entries[0].link_key, "heading:0");
+    assert_eq!(entries[0].link_key, HeadingKey::new(0));
     assert_eq!(entries[1].title_plain, "Sec");
     assert_eq!(entries[1].page_label, "2");
-    assert_eq!(entries[1].link_key, "heading:1");
+    assert_eq!(entries[1].link_key, HeadingKey::new(1));
   }
 }

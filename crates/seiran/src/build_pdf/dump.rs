@@ -13,7 +13,8 @@
 use std::fmt::Write;
 
 use model::{
-  HBoxContent, Length, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
+  AnchorId, AnchorMark, HBoxContent, Length, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
+  PositionedBox, measure_items_width,
 };
 
 /// ページ列を決定的なテキスト形式へダンプする。
@@ -43,7 +44,7 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
       }
     }
     for anchor in &page.anchors {
-      let _ = writeln!(out, "anchor mark={:?} x={} y={}", anchor.mark, f2(anchor.x), f2(anchor.y));
+      let _ = writeln!(out, "anchor mark={} x={} y={}", anchor_mark_desc(&anchor.mark), f2(anchor.x), f2(anchor.y));
     }
     for entry in &page.index_entries {
       let _ = writeln!(out, "index word={:?} reading={:?}", entry.word, entry.reading);
@@ -51,8 +52,8 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     for link in &page.links {
       let _ = writeln!(
         out,
-        "link target={:?} x={} y={} w={} h={}",
-        link.target,
+        "link target={} x={} y={} w={} h={}",
+        link_target_desc(&link.target),
         f2(link.x),
         f2(link.y),
         f2(link.width),
@@ -158,7 +159,8 @@ fn dump_line(out: &mut String, line: &Line, baseline_y: Length) {
     dump_positioned_box(out, pbox);
   }
   for link in &line.links {
-    let _ = writeln!(out, "    linkspan target={:?} x0={} x1={}", link.target, f2(link.x0), f2(link.x1));
+    let _ =
+      writeln!(out, "    linkspan target={} x0={} x1={}", link_target_desc(&link.target), f2(link.x0), f2(link.x1));
   }
 }
 
@@ -240,6 +242,46 @@ fn content_summary(content: &HBoxContent) -> String {
     },
     HBoxContent::Rule { width, height } => format!("rule w={} h={}", f2(*width), f2(*height)),
     HBoxContent::Atom(children) => format!("atom children={}", children.len()),
+  };
+}
+
+/// [`AnchorMark`] を golden 資産と同じ文字列表現にする。
+///
+/// #259 で `AnchorMark` のペイロードを typed ID 化した際、golden ダンプは旧実装（文字列ベース、
+/// `"prefix:"` で名前空間化）の derived `Debug` 文字列をそのまま固定資産にしていたため、
+/// 内部型を変えても golden の文字列が変わらないようここで明示的に再現する
+/// （テスト専用のダンプ形式と内部表現を分離し、型変更のたびに golden を再生成せずに済ませる）。
+fn anchor_mark_desc(mark: &AnchorMark) -> String {
+  return match mark {
+    AnchorMark::Heading { key, label } => {
+      let label = label
+        .as_ref()
+        .map_or_else(|| return "None".to_string(), |l| return format!("Some({:?})", l.as_str()));
+      format!("Heading {{ key: {:?}, label: {label} }}", format!("heading:{}", key.index()))
+    },
+    AnchorMark::Label(id) => format!("Label({:?})", id.as_str()),
+    AnchorMark::Citation(id) => format!("Label({:?})", format!("cite:{}", id.as_str())),
+    AnchorMark::Footnote(id) => format!("Label({:?})", format!("footnote:{}", id.index())),
+    AnchorMark::IndexPage(index) => format!("Label({:?})", format!("index-page:{index}")),
+  };
+}
+
+/// [`LinkTarget`] を golden 資産と同じ文字列表現にする（[`anchor_mark_desc`] と対）。
+fn link_target_desc(target: &LinkTarget) -> String {
+  return match target {
+    LinkTarget::Internal(id) => format!("Internal({:?})", anchor_id_desc(id)),
+    LinkTarget::External(uri) => format!("External({uri:?})"),
+  };
+}
+
+/// [`AnchorId`] を、対応する旧 `"prefix:"` 文字列に戻す（[`link_target_desc`] 用）。
+fn anchor_id_desc(id: &AnchorId) -> String {
+  return match id {
+    AnchorId::Heading(key) => format!("heading:{}", key.index()),
+    AnchorId::Label(label) => label.as_str().to_string(),
+    AnchorId::Citation(key) => format!("cite:{}", key.as_str()),
+    AnchorId::Footnote(index) => format!("footnote:{}", index.index()),
+    AnchorId::IndexPage(index) => format!("index-page:{index}"),
   };
 }
 

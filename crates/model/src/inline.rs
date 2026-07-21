@@ -1,6 +1,6 @@
 //! インラインレベル要素の型定義
 
-use crate::{Color, FontKind, Span, math_node::MathNode};
+use crate::{CitationId, Color, FontKind, Span, math_node::MathNode};
 
 // =============================================================================
 // インラインレベル要素
@@ -96,8 +96,8 @@ pub enum InlineNode {
   /// エントリへのリンクにする用途で生成する（`target` は衝突回避のため `"cite:<key>"` で名前空間化）。
   /// 色ロジックは持たず、親文脈（`Cite` 側で適用した `cite_color` 等）の色をそのまま継承する。
   InternalLink {
-    /// ジャンプ先アンカーのキー（`AnchorMark::Label(target)` と一致させる）
-    target: String,
+    /// ジャンプ先の引用キー（`AnchorMark::Citation(target)` と一致させる）
+    target: CitationId,
     /// 表示テキスト（インライン要素）
     children: Vec<InlineNode>,
   },

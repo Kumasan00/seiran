@@ -10,7 +10,7 @@
 //! 対応見出しへの内部リンク（[`model::LineLink`]）を付与し、PDF 上でクリック可能にします。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
-use model::{Block, HBox, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
+use model::{AnchorId, Block, HBox, HeadingKey, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
 
 use super::Measurer;
 use crate::lowering::TextStyle;
@@ -52,7 +52,7 @@ pub struct TocEntryInput {
   /// 表示するページ番号ラベル
   pub page_label: String,
   /// 対応見出しの暗黙 destination キー（内部リンクの行き先）
-  pub link_key: String,
+  pub link_key: HeadingKey,
 }
 
 /// 目次エントリ列を計測済みのブロック列に変換する
@@ -173,7 +173,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryI
 
   // 行全体を見出しへの内部リンクにする
   let links = vec![LineLink {
-    target: LinkTarget::Internal(entry.link_key.clone()),
+    target: LinkTarget::Internal(AnchorId::Heading(entry.link_key)),
     x0: indent,
     x1: right_edge,
   }];
@@ -221,7 +221,7 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use model::{FontKind, HeadingLevel, Length, LinkTarget};
+  use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
 
   use super::{TextStyle, TocEntryInput, TocSpec, entry_label};
 
@@ -248,13 +248,13 @@ mod tests {
     };
   }
 
-  fn entry(level: HeadingLevel, number: &str, title: &str, page: &str, key: &str) -> TocEntryInput {
+  fn entry(level: HeadingLevel, number: &str, title: &str, page: &str, key: usize) -> TocEntryInput {
     return TocEntryInput {
       level,
       number: number.to_string(),
       title_plain: title.to_string(),
       page_label: page.to_string(),
-      link_key: key.to_string(),
+      link_key: HeadingKey::new(key),
     };
   }
 
@@ -271,12 +271,14 @@ mod tests {
   fn spec_and_entry_constructors_are_consistent() {
     // Arrange / Act
     let s = spec();
-    let e = entry(HeadingLevel::Section, "1.1", "Basics", "3", "heading:1");
+    let e = entry(HeadingLevel::Section, "1.1", "Basics", "3", 1);
 
     // Assert — 入力の素通しを確認（型整合のスモーク）
     assert!(s.show_page_numbers);
     assert_eq!(s.leader.as_deref(), Some("."));
-    assert_eq!(e.link_key, "heading:1");
-    assert!(matches!(LinkTarget::Internal(e.link_key.clone()), LinkTarget::Internal(k) if k == "heading:1"));
+    assert_eq!(e.link_key, HeadingKey::new(1));
+    assert!(
+      matches!(LinkTarget::Internal(AnchorId::Heading(e.link_key)), LinkTarget::Internal(k) if k == AnchorId::Heading(HeadingKey::new(1)))
+    );
   }
 }

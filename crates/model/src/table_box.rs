@@ -264,8 +264,8 @@ mod tests {
     resolve_column_widths, table_row_height,
   };
   use crate::{
-    ColumnAlign, ColumnWidth, FontType, GlyphRun, HBox, HBoxContent, HItem, Length, LinkTarget, PlacedHItem,
-    TableColumn,
+    AnchorId, ColumnAlign, ColumnWidth, FontType, GlyphRun, HBox, HBoxContent, HItem, LabelId, Length, LinkTarget,
+    PlacedHItem, TableColumn,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -535,7 +535,7 @@ mod tests {
   #[test]
   fn collect_row_links_multiple_links_in_one_cell() {
     // Arrange — 1 セル内に 2 つのリンク（間に非リンクの box）
-    let first = LinkTarget::Internal("fig:1".to_string());
+    let first = LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:1")));
     let second = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(first.clone()),
@@ -566,7 +566,7 @@ mod tests {
   #[test]
   fn collect_row_links_in_spanned_cell() {
     // Arrange — span=2 のセル（2 列ぶんの帯を占有）にリンク 1 個
-    let target = LinkTarget::Internal("tab:x".to_string());
+    let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("tab:x")));
     let row = row(vec![TableCellBox {
       items: vec![
         HItem::LinkStart(target.clone()),
@@ -592,7 +592,7 @@ mod tests {
     // LinkStart のない余分な LinkEnd。退化矩形自体のスキップは呼び出し側
     // （`typeset::breaking::place_table`）の責務なので、ここでは「対応の取れない
     // LinkEnd がスタック不足で無視され panic しない」ことのみ確認する
-    let target = LinkTarget::Internal("x".to_string());
+    let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("x")));
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
       HItem::LinkEnd,

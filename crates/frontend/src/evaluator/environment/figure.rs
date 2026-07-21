@@ -107,7 +107,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
   };
 
   return Ok(vec![DocNode::Figure {
-    image_path,
+    image_path: model::AssetId::new(image_path),
     width,
     height,
     dpi,
@@ -258,7 +258,7 @@ mod tests {
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(image_path, "./images/seiran.jpg");
+    assert_eq!(image_path.as_str(), "./images/seiran.jpg");
     // Length は内部 pt（f32）を経由するため、mm への往復変換に小さい誤差を許容する
     assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
     assert!((height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
@@ -365,7 +365,7 @@ mod tests {
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(image_path, "a.png");
+    assert_eq!(image_path.as_str(), "a.png");
     assert!(width.is_none());
     assert!(height.is_none());
   }

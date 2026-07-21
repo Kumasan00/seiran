@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use config::Style;
 use font::{FontMetrics, shaper::HarfRustShapers};
-use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment, index_page_anchor_key};
+use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment};
 use typeset::{
   IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, PageGeometry, TextStyle, build_index_blocks,
   sort_index_entries,
@@ -22,7 +22,7 @@ type IndexEntryKey = (String, Option<String>);
 
 /// 全 `body_pages` の索引語を集約し、ソート済みの [`typeset::IndexEntryInput`] 列を返す。
 ///
-/// 併せて、索引語が出現した各ページへ内部リンクの到達先アンカー（[`index_page_anchor_key`]）を
+/// 併せて、索引語が出現した各ページへ内部リンクの到達先アンカー（[`model::AnchorMark::IndexPage`]）を
 /// 事後追加する（`body_pages` を破壊的に更新する副作用を持つ）。フォントに依存しない純粋ロジックの
 /// 部分だけを切り出しているので、`build_index_blocks`（フォント依存）を経由せずに単体テストできる。
 /// `\index` が 1 個もなければ空ベクタを返す。
@@ -44,7 +44,7 @@ pub(super) fn collect_index_entries(
   let anchored_pages: BTreeSet<usize> = occurrences.values().flatten().copied().collect();
   for page_index in anchored_pages {
     body_pages[page_index].anchors.push(PlacedAnchor {
-      mark: AnchorMark::Label(index_page_anchor_key(page_index)),
+      mark: AnchorMark::IndexPage(page_index),
       x: Length::ZERO,
       y: Length::ZERO,
     });
@@ -61,7 +61,7 @@ pub(super) fn collect_index_entries(
           .map(|page_index| {
             return IndexPageRef {
               label: body_page_values.body_page_label(page_index),
-              link_key: index_page_anchor_key(page_index),
+              link_key: page_index,
             };
           })
           .collect(),
@@ -197,8 +197,8 @@ mod tests {
     assert!(!entries.is_empty());
     assert_eq!(body_pages[0].anchors.len(), 1, "page0 は 2 語出現しても事後アンカーは 1 個");
     assert_eq!(body_pages[1].anchors.len(), 1);
-    assert!(matches!(&body_pages[0].anchors[0].mark, AnchorMark::Label(key) if key == "index-page:0"));
-    assert!(matches!(&body_pages[1].anchors[0].mark, AnchorMark::Label(key) if key == "index-page:1"));
+    assert!(matches!(body_pages[0].anchors[0].mark, AnchorMark::IndexPage(0)));
+    assert!(matches!(body_pages[1].anchors[0].mark, AnchorMark::IndexPage(1)));
   }
 
   #[test]

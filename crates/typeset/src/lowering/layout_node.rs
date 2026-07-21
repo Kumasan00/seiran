@@ -3,9 +3,7 @@
 //! Lowering 層が `DocNode` から生成する物理的なレイアウト表現を定義します。
 //! パイプライン上の位置づけはクレートルート（[`crate`]）のドキュメントを参照。
 
-use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
-
-use super::SourceId;
+use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, Origin, TableColumn};
 
 /// レイアウトエンジン（`crate::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -50,7 +48,7 @@ pub enum LayoutNode {
   /// `resolve_images` prepass が元画像の自然寸法の縦横比と本文幅から確定する。
   Image {
     /// 画像ファイルへのパス
-    path: String,
+    path: model::AssetId,
     /// 描画幅（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
     width: Option<Length>,
     /// 描画高さ（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
@@ -166,9 +164,9 @@ pub enum LayoutNode {
     style: TextStyle,
     /// 解決後にクリック可能な内部リンクとして囲むか（`\ref` は `true`、`proof` の `{of}` は `false`）
     as_link: bool,
-    /// この参照が属するソースグループの識別子。pass2 で未解決だった場合に
-    /// `LoweringError::UnresolvedReference` の帰属ソースとして引き継ぐ
-    source: SourceId,
+    /// この参照が属するソースグループの起源。pass2 で未解決だった場合に
+    /// `LoweringError::UnresolvedReference` の帰属として引き継ぐ
+    source: Origin,
   },
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   ///

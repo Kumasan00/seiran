@@ -119,7 +119,7 @@ impl PageLabels {
 #[cfg(test)]
 mod tests {
   use config::PageNumbering;
-  use model::{AnchorMark, Page, PlacedAnchor};
+  use model::{AnchorMark, HeadingKey, LabelId, Page, PlacedAnchor};
 
   use super::BodyPageValues;
 
@@ -150,13 +150,13 @@ mod tests {
     // Arrange — page0 に見出し 1 つ、page1 に Label（無視）+ 見出し 1 つ
     let pages = vec![
       page_with_anchors(vec![AnchorMark::Heading {
-        key: "heading:0".to_string(),
+        key: HeadingKey::new(0),
         label: None,
       }]),
       page_with_anchors(vec![
-        AnchorMark::Label("tab:1".to_string()),
+        AnchorMark::Label(LabelId::new("tab:1")),
         AnchorMark::Heading {
-          key: "heading:1".to_string(),
+          key: HeadingKey::new(1),
           label: None,
         },
       ]),

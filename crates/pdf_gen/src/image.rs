@@ -7,7 +7,7 @@
 use std::{collections::HashMap, fs, path::Path};
 
 use krilla::image::Image;
-use model::Block;
+use model::{AssetId, Block};
 use tracing::debug;
 use usvg::Tree;
 
@@ -20,12 +20,12 @@ use crate::error::PdfGenError;
 #[derive(Debug)]
 pub struct ImageSet {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
-  natural_sizes: HashMap<String, (f32, f32)>,
+  natural_sizes: HashMap<AssetId, (f32, f32)>,
 }
 
 impl ImageSet {
   /// `path` の自然寸法を返す。`load_image_set` に渡さなかったパスは `None`。
-  fn natural_size(&self, path: &str) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
+  fn natural_size(&self, path: &AssetId) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
 }
 
 /// `paths` が指す画像ファイルを読み込み、自然寸法を確定した `ImageSet` を返す。
@@ -37,10 +37,10 @@ impl ImageSet {
 /// # Errors
 ///
 /// 画像の読み込み・デコードに失敗した場合に [`PdfGenError`] を返します。
-pub fn load_image_set(paths: &[String]) -> Result<ImageSet, PdfGenError> {
+pub fn load_image_set(paths: &[AssetId]) -> Result<ImageSet, PdfGenError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   for path in paths {
-    let loaded = load_image(path, None)?;
+    let loaded = load_image(path.as_str(), None)?;
     natural_sizes.insert(path.clone(), loaded.natural_size());
   }
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");

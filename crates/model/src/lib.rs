@@ -27,6 +27,9 @@
 //!   `seiran` 側（`build_pdf::dump`）に置く（#216）。段組みの 1 段あたりの幅を求める純粋計算
 //!   （[`column_width`]）も本クレートに置き、`config`（横断バリデーション）と
 //!   `typeset::breaking`（実配置）の双方が同じ式を参照する（#214）。
+//! - **起源識別子**: `origin`。複数ソースを 1 回でまとめて lowering する際の位置識別子
+//!   （[`SourceId`]）と、実ソース由来か CSL 整形ステージ等が合成したノード由来かを表す
+//!   [`Origin`]。配列範囲外インデックスのような暗黙の sentinel に頼らず診断の帰属を区別する（#259）。
 //!
 //! ## パイプライン上の位置づけ
 //!
@@ -57,7 +60,9 @@ mod font_map;
 mod glyph_run;
 mod heading_level;
 mod hitem;
+mod ids;
 mod inline;
+mod origin;
 // length は garde 用バリデータ（`length::non_negative` / `length::positive`）を
 // モジュール名前空間ごと公開するため pub を維持する
 pub mod length;
@@ -80,22 +85,23 @@ pub use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK}
 pub use caption::CaptionPosition;
 pub use color::Color;
 pub use column_width::column_width;
-pub use doc_node::{DocNode, Document, ProofTarget, heading_anchor_key};
+pub use doc_node::{DocNode, Document, ProofTarget};
 pub use font::{FontKind, FontType};
 pub use font_map::{FontMap, FontMapIter, FontMapIterMut};
 pub use glyph_run::{Glyph, GlyphRun};
 pub use heading_level::HeadingLevel;
 pub use hitem::{HBox, HBoxContent, HItem, PlacedHItem};
+pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 pub use inline::{InlineNode, inline_nodes_to_plain_text, try_inline_nodes_to_plain_text};
 pub use length::{Length, ParseLengthError};
 pub use line::{Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
-pub use link::{AnchorMark, LinkTarget};
+pub use link::{AnchorId, AnchorMark, LinkTarget};
 pub use list::ListItem;
 pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_node::{MathNode, MathRow, MathStyle};
+pub use origin::{GeneratedOrigin, Origin, SourceId};
 pub use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
-  footnote_anchor_key, index_page_anchor_key,
 };
 pub use quote::QuoteKind;
 pub use span::Span;

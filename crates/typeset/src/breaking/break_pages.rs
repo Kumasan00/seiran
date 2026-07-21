@@ -11,9 +11,9 @@
 //! 1 行分のアセント（`line.height`）だけ下げて重なりを防ぐ。
 
 use model::{
-  AnchorMark, Block, Length, Line, LinkTarget, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor,
-  PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox,
-  TextAlignment, collect_row_links, column_width, resolve_column_widths, table_row_height,
+  AnchorMark, Block, FootnoteId, Length, Line, LinkTarget, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page,
+  PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox,
+  TableRowBox, TextAlignment, collect_row_links, column_width, resolve_column_widths, table_row_height,
 };
 use tracing::{debug, warn};
 
@@ -546,7 +546,7 @@ impl PageComposer {
         // 「行 box の上端」（`baseline_y - line.height`）と同じ意味。
         if !pending.continued {
           self.current_anchors.push(PlacedAnchor {
-            mark: AnchorMark::Label(model::footnote_anchor_key(pending.index)),
+            mark: AnchorMark::Footnote(FootnoteId::new(pending.index)),
             x: column_x,
             y: top,
           });
@@ -2252,7 +2252,7 @@ mod tests {
       return page
         .anchors
         .iter()
-        .filter(|a| return matches!(&a.mark, AnchorMark::Label(l) if l == "footnote:0"))
+        .filter(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == model::FootnoteId::new(0)))
         .count();
     };
     assert_eq!(anchors_on(&pages[0]), 1, "{:?}", pages[0].anchors);
@@ -2260,7 +2260,7 @@ mod tests {
     let anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(&a.mark, AnchorMark::Label(l) if l == "footnote:0"))
+      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == model::FootnoteId::new(0)))
       .expect("先頭断片のアンカーがあるはず");
     // 先頭行 baseline=24（`long_footnote_splits_and_carries_remainder_to_next_page` 参照）、
     // 行高 8（`test_box`）→ アンカー y = 24 - 8 = 16（行 box の上端）
@@ -2952,7 +2952,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Image {
-        path: "x.png".to_string(),
+        path: model::AssetId::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(15.0)),
         target_dpi: None,
@@ -2982,7 +2982,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Image {
-        path: "x.png".to_string(),
+        path: model::AssetId::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(30.0)),
         target_dpi: None,
@@ -3223,7 +3223,7 @@ mod tests {
     // 表はアキより後ろにあるので下端揃えでシフトされる側。表自身とその行内リンクが
     // 同じ量だけシフトされ、シフト後も `link.y == row.top_y` のまま揃っていることを確認する。
     let geom = flush_geometry();
-    let target = LinkTarget::Internal("fig:1".to_string());
+    let target = LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
       rule(8.0),                                  // idx0, bottom=18（シフト対象外）
@@ -3261,7 +3261,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
-        key: "heading:0".to_string(),
+        key: model::HeadingKey::new(0),
         label: None,
       }),
       paragraph_of_lines(1),
@@ -3285,7 +3285,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
-      Block::Anchor(AnchorMark::Label("tab:x".to_string())),
+      Block::Anchor(AnchorMark::Label(model::LabelId::new("tab:x"))),
       paragraph_of_lines(1),
     ];
 
@@ -3733,7 +3733,7 @@ mod tests {
     // Arrange — 幅 20 の画像を align=Center、text_width=100 で配置する
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: "x.png".to_string(),
+      path: model::AssetId::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
@@ -3755,7 +3755,7 @@ mod tests {
     // Arrange — 幅 20 の画像を align=Right、text_width=100 で配置する
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: "x.png".to_string(),
+      path: model::AssetId::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
@@ -3936,14 +3936,14 @@ mod tests {
   #[test]
   fn composed_line_resolves_anchor_and_collects_link() {
     // Arrange — 見出しアンカー直後の ComposedLine（内部リンク付き）
-    use model::{AnchorMark, LinkTarget};
+    use model::{AnchorId, AnchorMark, HeadingKey, LinkTarget};
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
-        key: "heading:0".to_string(),
+        key: HeadingKey::new(0),
         label: None,
       }),
-      composed_line(20.0, 8.0, 2.0, Some(LinkTarget::Internal("heading:5".to_string()))),
+      composed_line(20.0, 8.0, 2.0, Some(LinkTarget::Internal(AnchorId::Heading(HeadingKey::new(5))))),
     ];
 
     // Act
@@ -3954,7 +3954,9 @@ mod tests {
     assert!(close(pages[0].anchors[0].y, 2.0));
     // リンクは PlacedLink 化（top=2, height=height+depth=10, 行き先は内部キー）
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
-    assert!(matches!(&pages[0].links[0].target, LinkTarget::Internal(k) if k == "heading:5"));
+    assert!(
+      matches!(&pages[0].links[0].target, LinkTarget::Internal(k) if *k == AnchorId::Heading(HeadingKey::new(5)))
+    );
     assert!(close(pages[0].links[0].y, 2.0));
     assert!(close(pages[0].links[0].height, 10.0));
   }

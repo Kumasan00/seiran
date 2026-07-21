@@ -23,7 +23,9 @@ use krilla::{
   text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use model::{AnchorMark, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn};
+use model::{
+  AnchorId, AnchorMark, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
+};
 
 use crate::{
   OutlineEntry,
@@ -56,7 +58,7 @@ pub(crate) fn render_pages(
 
   // pass 1: 全ページのアンカーから destination 索引と見出し destination 列（文書順）を作る。
   // 内部リンクは前方参照もあり得るため、描画前に全ページ分を集める。
-  let (dest_by_label, heading_dests) = build_destination_index(pages, margin_left);
+  let (dest_by_id, heading_dests) = build_destination_index(pages, margin_left);
 
   for page_blocks in pages {
     let mut page = document.start_page_with(page_settings.clone());
@@ -76,7 +78,7 @@ pub(crate) fn render_pages(
       draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
     }
     surface.finish();
-    add_page_links(&mut page, page_blocks, margin_left, &dest_by_label)?;
+    add_page_links(&mut page, page_blocks, margin_left, &dest_by_id)?;
     page.finish();
   }
 
@@ -88,12 +90,15 @@ pub(crate) fn render_pages(
   return Ok(());
 }
 
-/// 全ページのアンカーを走査し、内部リンク用の `label → XyzDestination` 索引と、
+/// 全ページのアンカーを走査し、内部リンク用の `AnchorId → XyzDestination` 索引と、
 /// しおり用の見出し destination 列（文書順）を作る。
 ///
 /// 見出しアンカーにラベルが付いていれば `\ref` の到達先も兼ねるため索引にも登録する。
-fn build_destination_index(pages: &[Page], margin_left: f32) -> (HashMap<String, XyzDestination>, Vec<XyzDestination>) {
-  let mut dest_by_label: HashMap<String, XyzDestination> = HashMap::new();
+fn build_destination_index(
+  pages: &[Page],
+  margin_left: f32,
+) -> (HashMap<AnchorId, XyzDestination>, Vec<XyzDestination>) {
+  let mut dest_by_id: HashMap<AnchorId, XyzDestination> = HashMap::new();
   let mut heading_dests: Vec<XyzDestination> = Vec::new();
   for (page_index, page) in pages.iter().enumerate() {
     for anchor in &page.anchors {
@@ -102,19 +107,28 @@ fn build_destination_index(pages: &[Page], margin_left: f32) -> (HashMap<String,
         AnchorMark::Heading { key, label } => {
           heading_dests.push(dest.clone());
           // 暗黙キーを常に登録する（目次エントリの内部リンク到達先）。
-          dest_by_label.insert(key.clone(), dest.clone());
+          dest_by_id.insert(AnchorId::Heading(*key), dest.clone());
           // `\ref` ラベルが付いていれば従来どおり追加登録する。
           if let Some(label) = label {
-            dest_by_label.insert(label.clone(), dest);
+            dest_by_id.insert(AnchorId::Label(label.clone()), dest);
           }
         },
         AnchorMark::Label(label) => {
-          dest_by_label.insert(label.clone(), dest);
+          dest_by_id.insert(AnchorId::Label(label.clone()), dest);
+        },
+        AnchorMark::Citation(key) => {
+          dest_by_id.insert(AnchorId::Citation(key.clone()), dest);
+        },
+        AnchorMark::Footnote(index) => {
+          dest_by_id.insert(AnchorId::Footnote(*index), dest);
+        },
+        AnchorMark::IndexPage(page_index) => {
+          dest_by_id.insert(AnchorId::IndexPage(*page_index), dest);
         },
       }
     }
   }
-  return (dest_by_label, heading_dests);
+  return (dest_by_id, heading_dests);
 }
 
 /// 1 ページの確定済みリンク領域をリンク注釈として付与する
@@ -126,12 +140,12 @@ fn add_page_links(
   page: &mut KrillaPage<'_>,
   page_blocks: &Page,
   margin_left: f32,
-  dest_by_label: &HashMap<String, XyzDestination>,
+  dest_by_id: &HashMap<AnchorId, XyzDestination>,
 ) -> Result<(), PdfGenError> {
   for link in &page_blocks.links {
     let target = match &link.target {
-      LinkTarget::Internal(label) => {
-        let Some(dest) = dest_by_label.get(label) else {
+      LinkTarget::Internal(id) => {
+        let Some(dest) = dest_by_id.get(id) else {
           continue;
         };
         Target::Destination(Destination::from(dest.clone()))
@@ -280,7 +294,15 @@ fn draw_placed_block(
       height,
       target_dpi,
     } => {
-      draw_image(surface, path, margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt(), *target_dpi)?;
+      draw_image(
+        surface,
+        path.as_str(),
+        margin_left + x.to_pt(),
+        y.to_pt(),
+        width.to_pt(),
+        height.to_pt(),
+        *target_dpi,
+      )?;
     },
     PlacedBlock::Rule {
       x,

@@ -3,7 +3,7 @@
 //! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`config::Style`] から取得し、
 //! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
-use model::{AnchorMark, HeadingLevel, InlineNode, heading_anchor_key};
+use model::{AnchorMark, HeadingKey, HeadingLevel, InlineNode, LabelId};
 
 use super::{
   LoweringContext, LoweringError,
@@ -57,8 +57,8 @@ pub(super) fn lower_heading(
   // しおり・目次リンク・`\ref` の到達先アンカー。改ページ後に置くことで正しいページに解決される。
   // `key` は文書順インデックスから決まる暗黙キー（目次エントリの内部リンクと一致させる）。
   result.push(LayoutNode::Anchor(AnchorMark::Heading {
-    key: heading_anchor_key(heading_index),
-    label,
+    key: HeadingKey::new(heading_index),
+    label: label.map(LabelId::new),
   }));
 
   result.push(LayoutNode::VBox {
@@ -181,8 +181,8 @@ mod tests {
     assert_eq!(
       anchor,
       Some(model::AnchorMark::Heading {
-        key: "heading:3".to_string(),
-        label: Some("sec:intro".to_string()),
+        key: model::HeadingKey::new(3),
+        label: Some(model::LabelId::new("sec:intro")),
       })
     );
     // アンカーは VBox より前に出る

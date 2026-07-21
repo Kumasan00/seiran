@@ -15,11 +15,20 @@ CLAUDE.md の「各クレートの責務」テーブルの詳細版。CLAUDE.md 
 「新しい共有型をどこに置くか」の判断を不要にした。3 層構成:
 
 - **語彙型**（旧 `types`）: `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` /
-  `TableColumn` / `ColumnAlign` / `ColumnWidth` / `AnchorMark` / `LinkTarget` /
+  `TableColumn` / `ColumnAlign` / `ColumnWidth` / `AnchorMark` / `AnchorId` / `LinkTarget` /
   `MathDelimiter` / `MathEnvKind` / `TheoremClass` / `Color` / `Align` / `TextAlignment` 等。
   小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde / `Display`）・
   純粋演算（`Length` の算術、`Align::offset`）のみを持つ。IR ノード・組版データ構造・フォントや
   I/O など挙動を持つ処理は置かない。
+- **起源識別子**（`origin` / `ids` module、#259）: `origin` が `SourceId(usize)` / `Origin`
+  （`Source(SourceId)` / `Generated(GeneratedOrigin)`）／`GeneratedOrigin`（`Bibliography` の
+  1 variant）を持ち、`typeset::lowering` が複数ソースグループを跨いでエラー・`\ref` を帰属させる
+  起源を表す（実ソースの配列インデックスと citation 由来の合成書誌グループを型で区別し、旧来の
+  「配列範囲外＝合成グループ」という暗黙の sentinel 方式を廃止）。`ids` が `LabelId` /
+  `CitationId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を持ち、`AnchorMark` /
+  `LinkTarget::Internal`（`AnchorId` 経由）・画像パスの各名前空間を型で分離する（旧来は
+  `"prefix:"` という文字列命名規約だけで `\ref` ラベル・引用キー・脚注・索引ページ番号を
+  区別しており、コンパイラは何も保証していなかった）。
 - **Document IR**（旧 `document`）: `Document` / `DocNode` / `InlineNode` / `MathNode` /
   `CaptionPosition` / `ListItem` / `TableRow` / `TableCell` / `QuoteKind`。`frontend`（生産者）と
   `lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみ保持し物理レイアウト情報は
@@ -109,7 +118,7 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 採番・`\ref` 解決も本 module の責務（#192 で `parser`（現 `frontend`）から移設。`model::DocNode` は `numbered: bool` / `label` / `span` の生データのみ持ち、書式化済み文字列を持たない）。`counter`（+ `counter/format`）が `CounterRegistry`（`style.toml` の `[counters]`/`[theorems]` に基づく発番・リセットカスケード・`number_format`/`number_style`/`ref_format`/cleveref 書式化）を保持し、`lowering.rs::lower_sources_with_headings` が構築した 1 個のレジストリを見出し・図・表・数式・定理・段落の各サブモジュールへ `&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しし、同一レジストリを共有 — ネストしてもカウンタはリセットされない）。脚注（`InlineNode::Footnote`）は定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ（`footnote_count`）を持つ。ただし他のカウンタと違い、`next_footnote_index` が振るのは表示番号ではなく**出現 index**（0 起点の同一性）で、表示番号は `inline::lower_inline` が決めて `LayoutNode::Footnote { number, index, body }` を生成する（ラベル解決を伴わないため `Ref`/`Cite` の 2 段階プレースホルダ構造は取らない）。表示番号の既定は `index + 1`（＝文書通しの連番）だが、`LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位リセット（`style.footnote.numbering = "per_page"`、#226）はこのマップ経由で実現する — 詳細は下の「脚注のページ単位採番」節。`\ref` と `{of}`（proof の証明対象参照）は前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1（`lower_nodes_inner`）完了後に `resolve`（`resolve_refs`）が pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は `LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 のウォークから集める。
 
-複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[&[DocNode]])` が 1 回でまとめて lower する。`sources` の並び順を位置識別子 `SourceId`（0 始まりのインデックス）として各グループの `LoweringContext`（`with_source` で差し替え）に載せ、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `source_id` フィールド）へ帰属ソースとして刻む。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran`）が `LoweringError::source_id()` を `sources` の位置に戻して `NamedSource` を紐付ける（範囲外＝合成書誌グループは帰属不能フォールバック）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` はグループ 0 固定で `lower_sources_with_headings` に委譲する。
+複数ソースファイルは `lower_sources_with_headings(ctx, sources: &[SourceGroup])` が 1 回でまとめて lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グループの起源は `model::Origin`（`Source(SourceId)` / `Generated(GeneratedOrigin)` の 2 variant。`SourceId(usize)` は実ソース配列の位置、`GeneratedOrigin::Bibliography` は citation が生成する合成書誌グループを表す）で `LoweringContext.source`（`with_source` で差し替え）に載り、そこから発行される `LayoutNode::Ref` / `PendingHeading` / `LoweringError`（3 variant共通の `origin` フィールド）へ帰属として刻まれる。採番レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番・連番付けする（`\ref` は別グループへの前方参照も解決可能）。`lowering` はソース名・内容を知らないため、エラーの帰属先ファイルは呼び出し元（`seiran::build_pdf::ParsedProject::lowering_groups()` が実ソースに `Origin::Source` を、合成書誌グループに `Origin::Generated(Bibliography)` を明示的に割り当てる）が `LoweringError::origin()` の variant で分岐し、`Origin::Source` なら `NamedSource` を紐付け、`Origin::Generated` なら内部エラー（`LoweringInternal`）として扱う（旧来の「配列範囲外＝合成グループ」という暗黙の sentinel 方式は廃止、#259）。単一ソース用の薄いラッパー `lower_nodes` / `lower_document` は `Origin::Source(SourceId::new(0))` 固定で `lower_sources_with_headings` に委譲する。
 
 ### `block`
 
@@ -121,7 +130,7 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 つきで集約する（`Page::index_entries`）。`AnchorMark`（見出し・ラベル付きブロックの到達先）とは異なり
 段落を分割しないマーカーである点が要 — `\pagebreak`/`\ref` の `AnchorMark` はブロック境界でしか
 発行されないのに対し、`\index` は段落内の任意の位置に置けるため、分割すると Knuth–Plass の行分割
-結果が変わってしまう（受け入れ条件「`\index` を取り除いたレイアウトと一致する」）。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `index`（巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート（`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で `reading` があればそれ、なければ `word` をキーにする。呼び出し元＝`seiran::build_pdf::back_matter` が全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::Label`（`model::index_page_anchor_key`。`footnote_anchor_key` と同じ名前空間化の先例）を事後追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
+結果が変わってしまう（受け入れ条件「`\index` を取り除いたレイアウトと一致する」）。`icu` でスクリプト判定、`font` のシェーパーと `FontMetrics` を利用。`running` サブモジュールの `build_running_content` は `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する。他のサブモジュール: `math`（ディスプレイ数式環境の組版＝`LayoutNode::MathBlock` → `Block::MathBlock`）/ `script`（スクリプト判定・分割）/ `toc`（目次ブロック生成。ページ分割で見出しのページ番号が確定した後に走る）/ `index`（巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート（`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で `reading` があればそれ、なければ `word` をキーにする。呼び出し元＝`seiran::build_pdf::back_matter` が全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後追加してから内部リンクを張る（`AnchorMark`/`LinkTarget::Internal` は見出し・ラベル・引用・脚注・索引ページの 5 namespace を `model::AnchorId` enum + 各 typed ID（`HeadingKey` / `LabelId` / `CitationId` / `FootnoteId`）で分離しており、旧 `"prefix:"` 文字列命名規約の free function 群（`heading_anchor_key` / `footnote_anchor_key` / `index_page_anchor_key`）は廃止済み、#259）。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる）/ `yakumono`（和文約物の分類と JIS X 4051 の前後アキ規則）。
 
 ### `breaking`
 

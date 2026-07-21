@@ -316,7 +316,12 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
     registry
-      .increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span(), super::super::SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        Some("thm:p"),
+        dummy_span(),
+        model::Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     let mut headings = Vec::new();
 
@@ -359,7 +364,12 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
     registry
-      .increment_theorem_with_label(TheoremClass::Theorem, Some("thm:p"), dummy_span(), super::super::SourceId::new(0))
+      .increment_theorem_with_label(
+        TheoremClass::Theorem,
+        Some("thm:p"),
+        dummy_span(),
+        model::Origin::Source(model::SourceId::new(0)),
+      )
       .unwrap();
     let mut headings = Vec::new();
 
@@ -406,7 +416,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l == "thm:x"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l.as_str() == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }

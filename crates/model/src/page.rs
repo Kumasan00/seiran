@@ -6,7 +6,7 @@
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use crate::{AnchorMark, HBox, Length, Line, LinkTarget, TableColumn, TableRowBox};
+use crate::{AnchorMark, AssetId, HBox, Length, Line, LinkTarget, TableColumn, TableRowBox};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]
@@ -45,25 +45,6 @@ pub struct Page {
   /// sub-issue）はここから語・reading・所属ページ index を読むだけでよい。
   pub index_entries: Vec<PlacedIndexEntry>,
 }
-
-/// 脚注 `index`（出現順一意 id）から内部リンクのラベル文字列を作る
-///
-/// 本文中マーカー（[`crate::LinkTarget::Internal`]）と脚注本体アンカー（[`AnchorMark::Label`]）が
-/// 独立に同じキーを組み立てて初めて内部リンクが解決するため、両側は必ずこのヘルパを経由する。
-/// `"footnote:"` プレフィックスは `citation` crate の `"cite:<key>"` と同じ名前空間化の先例。
-#[must_use]
-pub fn footnote_anchor_key(index: u32) -> String { return format!("footnote:{index}"); }
-
-/// 本文内ページ index（0 起点）から、索引ページのページ番号リンクが指す到達先ラベルを作る
-///
-/// 索引語（[`PlacedIndexEntry`]）は座標を持たず「出現ページ」しか持たないため、`\ref`/見出しの
-/// ような語単位のアンカーではなく、ページ単位の到達先アンカーへ飛ぶ。索引ページ生成側
-/// （`seiran::build_pdf::back_matter`）が `index_entries` が非空のページへこのキーで
-/// [`AnchorMark::Label`] を事後追加し、索引ページの各ページ番号は同じキーで
-/// [`crate::LinkTarget::Internal`] を張る。`"index-page:"` プレフィックスは
-/// [`footnote_anchor_key`] と同じ名前空間化の先例。
-#[must_use]
-pub fn index_page_anchor_key(body_page_index: usize) -> String { return format!("index-page:{body_page_index}"); }
 
 /// ページ下部に配置された脚注 1 個（または長い脚注の断片）
 ///
@@ -165,7 +146,7 @@ pub enum PlacedBlock {
   /// 画像
   Image {
     /// 画像ファイルへのパス
-    path: String,
+    path: AssetId,
     /// 本文左端からの水平オフセット（pt）
     x: Length,
     /// ページ上端からの距離（pt、画像上端）

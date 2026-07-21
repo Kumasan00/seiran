@@ -14,7 +14,7 @@ use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
 };
-use model::{Block, HBox, Length, Line, LineLink, LinkTarget, PositionedBox};
+use model::{AnchorId, Block, HBox, Length, Line, LineLink, LinkTarget, PositionedBox};
 
 use super::Measurer;
 use crate::lowering::TextStyle;
@@ -45,8 +45,8 @@ pub struct IndexSpec {
 pub struct IndexPageRef {
   /// 表示するページ番号ラベル
   pub label: String,
-  /// 出現ページの内部リンク到達先キー（[`model::index_page_anchor_key`]）
-  pub link_key: String,
+  /// 出現ページの内部リンク到達先（本文内ページ index、0 起点）
+  pub link_key: usize,
 }
 
 /// 1 索引エントリの入力
@@ -190,7 +190,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEn
     let start_x = x;
     x = acc.place(measurer.shape_text(&page.label, spec.page_number_style), x);
     links.push(LineLink {
-      target: LinkTarget::Internal(page.link_key.clone()),
+      target: LinkTarget::Internal(AnchorId::IndexPage(page.link_key)),
       x0: start_x,
       x1: x,
     });
@@ -201,7 +201,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEn
 
 #[cfg(test)]
 mod tests {
-  use model::LinkTarget;
+  use model::{AnchorId, LinkTarget};
 
   use super::{IndexEntryInput, IndexPageRef, sort_index_entries};
 
@@ -211,7 +211,7 @@ mod tests {
       reading: reading.map(str::to_string),
       pages: vec![IndexPageRef {
         label: "1".to_string(),
-        link_key: "index-page:0".to_string(),
+        link_key: 0,
       }],
     };
   }
@@ -251,7 +251,7 @@ mod tests {
         reading: None,
         pages: vec![IndexPageRef {
           label: "1".to_string(),
-          link_key: "index-page:0".to_string(),
+          link_key: 0,
         }],
       },
       IndexEntryInput {
@@ -259,7 +259,7 @@ mod tests {
         reading: None,
         pages: vec![IndexPageRef {
           label: "2".to_string(),
-          link_key: "index-page:1".to_string(),
+          link_key: 1,
         }],
       },
     ];
@@ -276,7 +276,9 @@ mod tests {
   // `seiran` の結合テストで確認する。ここでは純粋ロジック（ソート）のみ検証する。
   #[test]
   fn link_target_wraps_link_key() {
-    let key = "index-page:3".to_string();
-    assert!(matches!(LinkTarget::Internal(key.clone()), LinkTarget::Internal(k) if k == key));
+    let key = 3;
+    assert!(
+      matches!(LinkTarget::Internal(AnchorId::IndexPage(key)), LinkTarget::Internal(AnchorId::IndexPage(k)) if k == key)
+    );
   }
 }

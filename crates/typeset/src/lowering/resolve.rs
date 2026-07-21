@@ -5,7 +5,7 @@
 //! `\ref` は前方参照（本文より後ろで定義されるラベルを指す）を許すため、pass1 とは別の
 //! 走査として全体完了後にもう一度木を歩く必要がある。
 
-use model::LinkTarget;
+use model::{AnchorId, LabelId, LinkTarget};
 
 use super::{
   LoweringError,
@@ -53,14 +53,14 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
         return Err(LoweringError::UnresolvedReference {
           label: label.clone(),
           span: *span,
-          source_id: *source,
+          origin: *source,
         });
       };
       let text = LayoutNode::Text(resolved.to_string(), *style);
       let resolved_as_text = !*as_link;
       *node = if *as_link {
         LayoutNode::Link {
-          target: LinkTarget::Internal(label.clone()),
+          target: LinkTarget::Internal(AnchorId::Label(LabelId::new(label.clone()))),
           children: vec![text],
         }
       } else {
@@ -150,7 +150,7 @@ mod tests {
       span: dummy_span(),
       style: style(),
       as_link: true,
-      source: super::super::SourceId::new(0),
+      source: model::Origin::Source(model::SourceId::new(0)),
     };
   }
 
@@ -179,7 +179,7 @@ mod tests {
     let LayoutNode::Link { target, children } = &children[0] else {
       panic!("Link が期待されます: {:?}", children[0]);
     };
-    assert_eq!(*target, model::LinkTarget::Internal("sec:intro".to_string()));
+    assert_eq!(*target, model::LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "Section 1.1"));
   }
 
