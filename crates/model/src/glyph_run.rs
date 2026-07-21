@@ -10,7 +10,7 @@ use crate::{Color, FontType, Length};
 /// シェーピング済みのグリフ列情報
 ///
 /// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GlyphRun {
   /// テキストのフォントサイズ
   pub font_size: Length,
@@ -26,7 +26,7 @@ pub struct GlyphRun {
 }
 
 /// 単一グリフの配置情報
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Glyph {
   /// グリフ ID
   pub gid: u32,

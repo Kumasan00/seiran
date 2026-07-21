@@ -216,7 +216,9 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 ## `pdf_gen`
 
-(e) `render_pages`（`render`）: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定、`image`）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）。`error` / `font` / `image` / `metadata` / `render` サブモジュール構成。
+(e) `render_pages`（`render`）: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定、`image`）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）。`error` / `font` / `image` / `metadata` / `publication` / `render` サブモジュール構成。
+
+`publication`（epic #252 step5、issue #261）: `Vec<Page>` から `Publication`（座標・描画順が確定した中間表現。`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種、現行 renderer が実際に使う描画能力の最小集合）への純粋変換 `PublicationBuilder` を提供する。`render` と同じ 5 箇所（左マージン・`show_bookmarks`・表のセル余白/罫線太さ/罫線色・ページ背景色）だけ `Config`/`Style` に依存し、フォント資源には依存しない。`create_pdf` はまだこの型を消費しない（`Publication` からの encode 置き換えは step7）。
 
 ## `seiran`
 

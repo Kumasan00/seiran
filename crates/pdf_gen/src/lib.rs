@@ -9,6 +9,7 @@ mod error;
 mod font;
 mod image;
 mod metadata;
+mod publication;
 mod render;
 
 use ::font::{FontData, FontMetrics, FontRefs};
@@ -20,6 +21,10 @@ use tracing::debug;
 pub use crate::{
   error::PdfGenError,
   image::{ImageSet, load_image_set, resolve_images},
+  publication::{
+    Destination, PaintOp, Point, Publication, PublicationBuilder, PublicationLink, PublicationLinkTarget,
+    PublicationOutlineEntry, PublicationPage, Rect,
+  },
 };
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
 
