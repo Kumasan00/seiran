@@ -4,7 +4,7 @@
 //! [`LoadedImage`] に変換する。最終描画寸法（pt）の算出と、ラスタ画像の
 //! 必要ピクセル数の見積もりもこのモジュールが受け持つ。
 
-use std::{fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 use krilla::image::Image;
 use model::Block;
@@ -13,18 +13,53 @@ use usvg::Tree;
 
 use crate::error::PdfGenError;
 
+/// driver が `ImageManifest` の各パスを読み込んで作る、画像の自然寸法一覧。
+///
+/// `resolve_images` prepass はここから自然寸法を引くだけで、ファイルを直接読まない
+/// （ファイル I/O は `load_image_set` が 1 回だけ行う）。
+#[derive(Debug)]
+pub struct ImageSet {
+  /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
+  natural_sizes: HashMap<String, (f32, f32)>,
+}
+
+impl ImageSet {
+  /// `path` の自然寸法を返す。`load_image_set` に渡さなかったパスは `None`。
+  fn natural_size(&self, path: &str) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
+}
+
+/// `paths` が指す画像ファイルを読み込み、自然寸法を確定した `ImageSet` を返す。
+///
+/// `ImageManifest`（`\image{...}` から発見した画像パスの一覧）を driver がこの関数へ渡し、
+/// 返った `ImageSet` を `compile_project` の `resolve_images` へ渡す。これにより compiler core
+/// （`parse_project` / `compile_project`）からファイル I/O を除ける。
+///
+/// # Errors
+///
+/// 画像の読み込み・デコードに失敗した場合に [`PdfGenError`] を返します。
+pub fn load_image_set(paths: &[String]) -> Result<ImageSet, PdfGenError> {
+  let mut natural_sizes = HashMap::with_capacity(paths.len());
+  for path in paths {
+    let loaded = load_image(path, None)?;
+    natural_sizes.insert(path.clone(), loaded.natural_size());
+  }
+  debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
+  return Ok(ImageSet { natural_sizes });
+}
+
 /// ブロック列中の画像サイズを確定する prepass
 ///
-/// `Block::Image` の `width` / `height` が未指定（`None`）の場合に画像ファイルを開いて
-/// 自然寸法を取得し、縦横比と本文幅から最終物理サイズ（pt）を確定する。
+/// `Block::Image` の `width` / `height` が未指定（`None`）の場合に `images`（driver が事前に
+/// `load_image_set` で読み込んだ自然寸法一覧）から自然寸法を引き、縦横比と本文幅から最終物理
+/// サイズ（pt）を確定する。ファイルは読まない（読込は `load_image_set` が 1 回だけ行う）。
 /// 縦組版（`model::break_pages`）が画像高さで改ページ判定できるよう、
 /// (a) `build_blocks` と (c+d) `break_pages` の間に挟む。
 ///
 /// # Errors
 ///
-/// 画像の読み込み・デコードに失敗した場合、または自然寸法から縦横比を
-/// 算出できない場合に [`PdfGenError`] を返します。
-pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>, PdfGenError> {
+/// 自然寸法から縦横比を算出できない場合、または `images` に該当パスが存在しない場合
+/// （`ImageManifest` の収集漏れ、実装バグ）に [`PdfGenError`] を返します。
+pub fn resolve_images(blocks: Vec<Block>, text_width: f32, images: &ImageSet) -> Result<Vec<Block>, PdfGenError> {
   let resolved = blocks
     .into_iter()
     .map(|block| match block {
@@ -35,8 +70,9 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32) -> Result<Vec<Block>,
         target_dpi,
         align,
       } => {
-        let loaded = load_image(&path, None)?;
-        let (nat_width, nat_height) = loaded.natural_size();
+        let (nat_width, nat_height) = images.natural_size(&path).ok_or_else(|| {
+          return PdfGenError::ImageNotInManifest { path: path.clone() };
+        })?;
         let (final_width, final_height) = resolve_image_size(
           width.map(model::Length::to_pt),
           height.map(model::Length::to_pt),

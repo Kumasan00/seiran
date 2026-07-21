@@ -17,7 +17,10 @@ use krilla::{Document, page::PageSettings};
 use model::{HeadingLevel, Page};
 use tracing::debug;
 
-pub use crate::{error::PdfGenError, image::resolve_images};
+pub use crate::{
+  error::PdfGenError,
+  image::{ImageSet, load_image_set, resolve_images},
+};
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
 
 /// PDF のしおり（アウトライン）1 項目の論理情報

@@ -178,4 +178,17 @@ pub enum PdfGenError {
     #[source]
     source: image::ImageError,
   },
+  /// `resolve_images` が `ImageSet` に存在しない画像パスを参照しました（内部不整合）。
+  ///
+  /// `ImageManifest` の収集（`seiran::build_pdf::image_manifest`）と `resolve_images` が処理する
+  /// `Block::Image` の集合が食い違った場合にのみ発生する、実装バグ検出用のフォールバックです。
+  #[error("ImageSet に存在しない画像パスです（内部エラー）: {path}")]
+  #[diagnostic(
+    code(pdf_gen::image_not_in_manifest),
+    help("seiran 側の ImageManifest 収集ロジックに不具合があります。issue を報告してください。")
+  )]
+  ImageNotInManifest {
+    /// 画像ファイルのパス。
+    path: String,
+  },
 }
