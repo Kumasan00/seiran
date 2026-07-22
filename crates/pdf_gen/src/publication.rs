@@ -316,6 +316,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, style: &Style, margin_left: mod
       columns,
       col_widths,
       rows,
+      ..
     } => {
       for placed_row in rows {
         push_table_row_ops(ops, style, columns, col_widths, placed_row, margin_left + *x);
@@ -886,6 +887,9 @@ mod tests {
       columns: vec![column],
       col_widths: vec![Length::pt(100.0)],
       rows: vec![placed_row],
+      cell_padding: Length::pt(4.0),
+      rule_thickness: Length::pt(0.5),
+      rule_color: None,
     }];
 
     // Act

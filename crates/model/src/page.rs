@@ -145,6 +145,13 @@ pub enum PlacedBlock {
     col_widths: Vec<Length>,
     /// このページに描く行（上から順、位置確定済み）
     rows: Vec<PlacedTableRow>,
+    /// セル内容の左右内側余白（`config`（`read_style`）非依存の解決済み値、
+    /// `style.table.cell_padding`）
+    cell_padding: Length,
+    /// 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
+    rule_thickness: Length,
+    /// 罫線色（RGB）。`None` は黒。`PlacedBlock::Rule.color` と同じ規約
+    rule_color: Option<[u8; 3]>,
   },
   /// 画像
   Image {

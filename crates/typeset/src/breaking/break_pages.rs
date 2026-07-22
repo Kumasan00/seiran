@@ -1829,6 +1829,9 @@ fn place_table(
         columns: table.columns.clone(),
         col_widths: col_widths.clone(),
         rows: std::mem::take(placed_rows),
+        cell_padding: geom.table_cell_padding,
+        rule_thickness: geom.table_rule_thickness,
+        rule_color: geom.table_rule_color,
       });
     };
 
@@ -3244,6 +3247,58 @@ mod tests {
     assert!(close(link.x, 2.0), "{link:?}");
     assert!(close(link.y, 10.0), "{link:?}");
     assert!(close(link.width, 20.0), "{link:?}");
+  }
+
+  #[test]
+  fn place_table_carries_padding_and_rule_from_geometry() {
+    // Arrange — 罫線太さ・色・セル余白を設定したジオメトリで最小の表（1 行 1 列）を配置する
+    let geom = PageGeometry {
+      table_cell_padding: Length::pt(3.0),
+      table_rule_thickness: Length::pt(1.5),
+      table_rule_color: Some([9, 9, 9]),
+      ..test_geometry()
+    };
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![TableRowBox {
+        cells: vec![TableCellBox {
+          items: vec![test_box()],
+          span: 1,
+        }],
+        rule_above: false,
+      }],
+      breakable: false,
+    };
+
+    // Act
+    let pages = break_pages(
+      vec![Block::Table {
+        table,
+        align: model::Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert
+    let PlacedBlock::Table {
+      cell_padding,
+      rule_thickness,
+      rule_color,
+      ..
+    } = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
+    else {
+      unreachable!("直前の matches! で確認済み");
+    };
+    assert_eq!(*cell_padding, Length::pt(3.0));
+    assert_eq!(*rule_thickness, Length::pt(1.5));
+    assert_eq!(*rule_color, Some([9, 9, 9]));
   }
 
   #[test]

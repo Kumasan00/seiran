@@ -252,6 +252,7 @@ fn draw_placed_block(
       columns,
       col_widths,
       rows,
+      ..
     } => {
       let draw_ctx = TableDrawContext {
         metrics,
