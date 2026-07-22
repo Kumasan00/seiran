@@ -57,6 +57,14 @@ pub struct PageGeometry {
   pub footnote_rule_color: Option<[u8; 3]>,
   /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
   pub footnote_rule_gap: Length,
+  /// 表: 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
+  pub table_rule_thickness: Length,
+  /// 表: 罫線の色（RGB）。`None` は黒。呼び出し側が `config::Color::rgb()` で
+  /// 変換済みの値を渡す（`footnote_rule_color` と同じ規約）
+  pub table_rule_color: Option<[u8; 3]>,
+  /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）。
+  /// 呼び出し側が `config::Color::rgb()` で変換済みの値を渡す
+  pub background_color: Option<[u8; 3]>,
 }
 
 /// 縦組版の内部状態（現在ページ・カーソル）
@@ -361,6 +369,7 @@ impl PageComposer {
       anchors: std::mem::take(&mut self.current_anchors),
       links: std::mem::take(&mut self.current_links),
       index_entries: std::mem::take(&mut self.current_index_entries),
+      background_color: geom.background_color,
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
@@ -459,6 +468,7 @@ impl PageComposer {
       anchors: self.current_anchors,
       links: self.current_links,
       index_entries: self.current_index_entries,
+      background_color: geom.background_color,
     });
     return self.pages;
   }
@@ -1819,6 +1829,9 @@ fn place_table(
         columns: table.columns.clone(),
         col_widths: col_widths.clone(),
         rows: std::mem::take(placed_rows),
+        cell_padding: geom.table_cell_padding,
+        rule_thickness: geom.table_rule_thickness,
+        rule_color: geom.table_rule_color,
       });
     };
 
@@ -1897,6 +1910,9 @@ mod tests {
       footnote_rule_thickness: Length::ZERO,
       footnote_rule_color: None,
       footnote_rule_gap: Length::pt(4.0),
+      table_rule_thickness: Length::ZERO,
+      table_rule_color: None,
+      background_color: None,
     };
   }
 
@@ -2571,6 +2587,22 @@ mod tests {
   }
 
   #[test]
+  fn break_pages_carries_background_color_from_geometry() {
+    // Arrange — 背景色を設定したジオメトリ、内容は空でよい
+    let geom = PageGeometry {
+      background_color: Some([10, 20, 30]),
+      ..test_geometry()
+    };
+    let blocks = vec![paragraph_of_lines(1)];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 生成された全ページが同じ背景色を持つ
+    assert_eq!(pages[0].background_color, Some([10, 20, 30]));
+  }
+
+  #[test]
   fn footnote_rule_reservation_does_not_overlap_when_footnote_starts_new_region() {
     // Arrange — line_with_overflowing_footnote_moves_to_next_page_with_it と同型だが、区切り罫線
     // ぶんの追加予約（top_margin + rule_thickness）が新リージョンの先頭行でも正しく効くかを見る
@@ -3215,6 +3247,58 @@ mod tests {
     assert!(close(link.x, 2.0), "{link:?}");
     assert!(close(link.y, 10.0), "{link:?}");
     assert!(close(link.width, 20.0), "{link:?}");
+  }
+
+  #[test]
+  fn place_table_carries_padding_and_rule_from_geometry() {
+    // Arrange — 罫線太さ・色・セル余白を設定したジオメトリで最小の表（1 行 1 列）を配置する
+    let geom = PageGeometry {
+      table_cell_padding: Length::pt(3.0),
+      table_rule_thickness: Length::pt(1.5),
+      table_rule_color: Some([9, 9, 9]),
+      ..test_geometry()
+    };
+    let table = TableBox {
+      columns: vec![TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      }],
+      head: Vec::new(),
+      rows: vec![TableRowBox {
+        cells: vec![TableCellBox {
+          items: vec![test_box()],
+          span: 1,
+        }],
+        rule_above: false,
+      }],
+      breakable: false,
+    };
+
+    // Act
+    let pages = break_pages(
+      vec![Block::Table {
+        table,
+        align: model::Align::Left,
+      }],
+      Length::pt(100.0),
+      &geom,
+      &GreedyBreaker,
+      TextAlignment::RaggedRight,
+    );
+
+    // Assert
+    let PlacedBlock::Table {
+      cell_padding,
+      rule_thickness,
+      rule_color,
+      ..
+    } = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
+    else {
+      unreachable!("直前の matches! で確認済み");
+    };
+    assert_eq!(*cell_padding, Length::pt(3.0));
+    assert_eq!(*rule_thickness, Length::pt(1.5));
+    assert_eq!(*rule_color, Some([9, 9, 9]));
   }
 
   #[test]

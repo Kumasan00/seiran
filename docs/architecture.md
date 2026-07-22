@@ -218,7 +218,7 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 
 (e) `render_pages`（`render`）: 確定座標の `Vec<Page>` を描画するだけ（レイアウト判断ゼロ）。`resolve_images` prepass（画像サイズ確定、`image`）もここ。`krilla` / `krilla-svg` による PDF バイナリ生成（フォントサブセット化は krilla が内部で実施）。`error` / `font` / `image` / `metadata` / `publication` / `render` サブモジュール構成。
 
-`publication`（epic #252 step5、issue #261）: `Vec<Page>` から `Publication`（座標・描画順が確定した中間表現。`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種、現行 renderer が実際に使う描画能力の最小集合）への純粋変換 `PublicationBuilder` を提供する。`render` と同じ 5 箇所（左マージン・`show_bookmarks`・表のセル余白/罫線太さ/罫線色・ページ背景色）だけ `Config`/`Style` に依存し、フォント資源には依存しない。`create_pdf` はまだこの型を消費しない（`Publication` からの encode 置き換えは step7）。
+`publication`（epic #252 step5〜6、issue #261/#263）: `Vec<Page>` から `Publication`（座標・描画順が確定した中間表現。`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種、現行 renderer が実際に使う描画能力の最小集合）への純粋変換 `PublicationBuilder` を提供する。表のセル余白/罫線太さ/罫線色・ページ背景色は前段（`typeset::breaking`）が `Style` から解決済みの値として `model::Page.background_color` / `model::PlacedBlock::Table` の `cell_padding`/`rule_thickness`/`rule_color` に持たせており、`PublicationBuilder` はそれを読むだけ。残る `Config` 依存は左マージンと `show_bookmarks` の 2 箇所のみで、`Style` には依存しない。フォント資源にも依存しない。旧 renderer（`render`）は今回変更しておらず、引き続き `Style` から直接 5 箇所を読む（両者の依存範囲はここで乖離した）。`create_pdf` はまだ `Publication` を消費しない（`Publication` からの encode 置き換えは step7）。
 
 ## `seiran`
 

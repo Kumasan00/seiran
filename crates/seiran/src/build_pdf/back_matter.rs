@@ -161,6 +161,7 @@ mod tests {
           };
         })
         .collect(),
+      background_color: None,
     };
   }
 
