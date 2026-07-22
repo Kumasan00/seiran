@@ -369,6 +369,7 @@ impl PageComposer {
       anchors: std::mem::take(&mut self.current_anchors),
       links: std::mem::take(&mut self.current_links),
       index_entries: std::mem::take(&mut self.current_index_entries),
+      background_color: geom.background_color,
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
@@ -467,6 +468,7 @@ impl PageComposer {
       anchors: self.current_anchors,
       links: self.current_links,
       index_entries: self.current_index_entries,
+      background_color: geom.background_color,
     });
     return self.pages;
   }
@@ -2579,6 +2581,22 @@ mod tests {
       ),
       "{first_block:?}"
     );
+  }
+
+  #[test]
+  fn break_pages_carries_background_color_from_geometry() {
+    // Arrange — 背景色を設定したジオメトリ、内容は空でよい
+    let geom = PageGeometry {
+      background_color: Some([10, 20, 30]),
+      ..test_geometry()
+    };
+    let blocks = vec![paragraph_of_lines(1)];
+
+    // Act
+    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
+
+    // Assert — 生成された全ページが同じ背景色を持つ
+    assert_eq!(pages[0].background_color, Some([10, 20, 30]));
   }
 
   #[test]

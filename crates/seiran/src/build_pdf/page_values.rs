@@ -142,6 +142,7 @@ mod tests {
         .collect(),
       links: Vec::new(),
       index_entries: Vec::new(),
+      background_color: None,
     };
   }
 

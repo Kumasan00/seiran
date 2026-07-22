@@ -44,6 +44,9 @@ pub struct Page {
   /// （[`PlacedAnchor`] とは異なる）。巻末索引ページの描画（親issue #33 のもう一方の
   /// sub-issue）はここから語・reading・所属ページ index を読むだけでよい。
   pub index_entries: Vec<PlacedIndexEntry>,
+  /// ページ背景色（RGB）。`None` は塗りつぶさない。`config`（`read_style`）非依存のため
+  /// 生の `[u8; 3]` で保持する（`PlacedBlock::Rule.color` と同じ規約）
+  pub background_color: Option<[u8; 3]>,
 }
 
 /// ページ下部に配置された脚注 1 個（または長い脚注の断片）

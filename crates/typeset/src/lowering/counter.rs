@@ -437,6 +437,7 @@ mod tests {
       anchors: Vec::new(),
       links: Vec::new(),
       index_entries: Vec::new(),
+      background_color: None,
     };
   }
 
