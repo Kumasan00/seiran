@@ -40,7 +40,7 @@ fn publication_matches_old_renderer_structure() {
     let laid_out = super::build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
 
     // Act
-    let publication = PublicationBuilder::new(&config, &style).build(&laid_out.pages, &laid_out.outline_entries);
+    let publication = PublicationBuilder::new(&config).build(&laid_out.pages, &laid_out.outline_entries);
     let facts = compute_pdf_structure_facts(&build_pdf_bytes(name));
 
     // Assert（即 panic せず全入力を集めてから一括報告する)
