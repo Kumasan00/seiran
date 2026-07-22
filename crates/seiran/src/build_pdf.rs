@@ -631,6 +631,9 @@ fn build_page_geometries(
     footnote_rule_thickness: style.footnote.rule_thickness,
     footnote_rule_color: style.footnote.rule_color.map(model::Color::rgb),
     footnote_rule_gap: style.footnote.rule_gap,
+    table_rule_thickness: style.table.rule_thickness,
+    table_rule_color: style.table.rule_color.map(model::Color::rgb),
+    background_color: style.background_color.map(model::Color::rgb),
   };
   // 前付け（タイトルページ・目次）は下端揃えの対象外。struct-update で本文値を継ぐため明示的に落とす。
   let front_geometry = typeset::PageGeometry {
