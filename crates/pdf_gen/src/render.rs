@@ -370,9 +370,7 @@ fn draw_paint_op(
 /// 本関数は `PaintOp` 列を順に描画するだけ。`model::Page`/`Config`/`Style` には一切触れない。
 ///
 /// 旧 `render_pages`（`model::Page` 版）とは並存させる新規関数。Task 4 で byte-for-byte 一致を
-/// 証明したのち、Task 5 で旧関数を削除しこちらを `render_pages` へ改名する
-/// （それまでどこからも呼ばれないため `dead_code` を一時的に許容する）。
-#[allow(dead_code)]
+/// 証明したのち、Task 5 で旧関数を削除しこちらを `render_pages` へ改名する。
 pub(crate) fn render_publication_pages(
   document: &mut Document,
   publication: &Publication,

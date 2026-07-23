@@ -246,6 +246,9 @@ impl<'a> PublicationBuilder<'a> {
         color: Some(Color::from(color)),
       });
     }
+    // push_placed_block_ops 以下は旧 renderer と同じ浮動小数演算順序に合わせるため `f32`（pt）で
+    // 座標を持ち回る（push_placed_block_ops の doc コメント参照）。ここで 1 回だけ変換する。
+    let margin_left_pt = margin_left.to_pt();
     for block in page
       .blocks
       .iter()
@@ -253,7 +256,7 @@ impl<'a> PublicationBuilder<'a> {
       .chain(&page.footer)
       .chain(page.footnotes.iter().flat_map(|f| return &f.blocks))
     {
-      push_placed_block_ops(&mut ops, margin_left, block);
+      push_placed_block_ops(&mut ops, margin_left_pt, block);
     }
 
     let mut links = Vec::new();
@@ -270,7 +273,7 @@ impl<'a> PublicationBuilder<'a> {
       links.push(PublicationLink {
         target,
         rect: Rect {
-          x: margin_left + link.x,
+          x: add_margin_left(margin_left, link.x),
           y: link.y,
           width: link.width,
           height: link.height,
@@ -300,7 +303,7 @@ fn build_destination_index(
       let dest = Destination {
         page_index,
         point: Point {
-          x: margin_left + anchor.x,
+          x: add_margin_left(margin_left, anchor.x),
           y: anchor.y,
         },
       };
@@ -330,6 +333,21 @@ fn build_destination_index(
   return (dest_by_id, heading_dests);
 }
 
+/// 左マージンを足した水平座標を、旧 `render::render_pages` と同じ浮動小数演算順序で計算する
+///
+/// `model::Length` はマージンと座標を sp（固定小数点整数）のまま加算でき、単純にそうすると
+/// 丸め誤差が一切乗らず数学的にはより正確になる。しかし旧 renderer は `margin_left` を
+/// `f32`（pt）へ変換してから毎回 `f32` 同士で加算しており、この 2 経路は実数として等しくても
+/// `f32` の丸め誤差が異なるため、変換後の PDF 座標が最終桁で食い違うことがある
+/// （`crates/seiran/src/build_pdf/publication_encode_diff.rs` が byte-for-byte 比較で検出した）。
+/// 新旧 encode 経路の出力を一致させるため、ここでは意図的に旧実装と同じ順序
+/// （`f32` へ変換 → `f32` で加算 → sp へ丸め直す）で計算する。sp の分解能（1/65536 pt）は
+/// この関数が扱う座標の大きさにおける `f32` の表現精度より十分細かいため、丸め直した
+/// `Length` を再度 `to_pt()` した値は加算直後の `f32` 値と一致する。
+fn add_margin_left(margin_left: model::Length, x: model::Length) -> model::Length {
+  return model::Length::pt(margin_left.to_pt() + x.to_pt());
+}
+
 /// 解決済みの表スタイル値（`typeset::breaking` が `Style` から解決済みの生値を
 /// `PlacedBlock::Table` に持たせたものをそのまま束ねる。フォント資源を持たない点が
 /// `render::TableDrawContext` と異なる）
@@ -343,11 +361,27 @@ struct ResolvedTableStyle {
 }
 
 /// 配置済みブロック 1 個の描画命令を `ops` に積む
-fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, block: &PlacedBlock) {
+///
+/// `margin_left` を含め、ここから下（[`push_box_content_ops`] / [`push_table_row_ops`] /
+/// [`push_cell_items_ops`]）は座標を `f32`（pt）で持ち回し、旧 `render::draw_placed_block` /
+/// `draw_box_content` / `draw_table_row` / `draw_cell_items` と全く同じ順序で加算する。
+/// [`model::Length`] は sp（固定小数点整数）域で加算すれば誤差なく正確に計算できるが、旧
+/// renderer は逐次 `.to_pt()` してから `f32` で加算しており、多段の加算（Atom の入れ子・
+/// 表セルの `cursor_x` 累積・表の baseline 計算）では実数として同じでも `f32` の丸め誤差の
+/// 乗り方が違う。新旧 encode 経路の出力を byte-for-byte 一致させるため、この描画命令の組み立て
+/// 区間だけは意図的に旧実装の浮動小数演算順序をそのまま再現し、`PaintOp` へ積む直前にのみ
+/// [`model::Length::pt`] へ変換し直す（PDF 座標出力という変換境界に閉じるため、
+/// `model::Length` の doc コメントが挙げる正当な `f32` 変換箇所の 1 つにあたる）。
+fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &PlacedBlock) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
       for positioned in &line.boxes {
-        push_box_content_ops(ops, margin_left + positioned.x, *baseline_y - positioned.dy, &positioned.content);
+        push_box_content_ops(
+          ops,
+          margin_left + positioned.x.to_pt(),
+          (*baseline_y - positioned.dy).to_pt(),
+          &positioned.content,
+        );
       }
     },
     PlacedBlock::Table {
@@ -364,8 +398,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, blo
         rule_thickness: *rule_thickness,
         rule_color: *rule_color,
       };
+      let x0 = margin_left + x.to_pt();
       for placed_row in rows {
-        push_table_row_ops(ops, columns, col_widths, placed_row, margin_left + *x, &table_style);
+        push_table_row_ops(ops, columns, col_widths, placed_row, x0, &table_style);
       }
     },
     PlacedBlock::MathBlock {
@@ -374,9 +409,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, blo
       baseline_y,
       numbers,
     } => {
-      push_box_content_ops(ops, margin_left + *x, *baseline_y, &body.content);
+      push_box_content_ops(ops, margin_left + x.to_pt(), baseline_y.to_pt(), &body.content);
       for number in numbers {
-        push_box_content_ops(ops, margin_left + number.x, number.baseline_y, &number.content.content);
+        push_box_content_ops(ops, margin_left + number.x.to_pt(), number.baseline_y.to_pt(), &number.content.content);
       }
     },
     PlacedBlock::Image {
@@ -390,7 +425,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, blo
       ops.push(PaintOp::DrawImage {
         path: path.clone(),
         rect: Rect {
-          x: margin_left + *x,
+          x: model::Length::pt(margin_left + x.to_pt()),
           y: *y,
           width: *width,
           height: *height,
@@ -407,7 +442,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, blo
     } => {
       ops.push(PaintOp::FillRect {
         rect: Rect {
-          x: margin_left + *x,
+          x: model::Length::pt(margin_left + x.to_pt()),
           y: *y,
           width: *width,
           height: *height,
@@ -418,20 +453,26 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: model::Length, blo
   }
 }
 
-/// 1 つのボックス内容の描画命令を `ops` に積む（`(x, baseline_y)` 基準）
-fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: model::Length, baseline_y: model::Length, content: &HBoxContent) {
+/// 1 つのボックス内容の描画命令を `ops` に積む（`(x, baseline_y)` 基準、`f32` pt）
+///
+/// 旧 `render::draw_box_content` と同じ浮動小数演算順序で計算する（[`push_placed_block_ops`]
+/// の doc コメント参照）。
+fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content: &HBoxContent) {
   match content {
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
-        origin: Point { x, y: baseline_y },
+        origin: Point {
+          x: model::Length::pt(x),
+          y: model::Length::pt(baseline_y),
+        },
         run: run.clone(),
       });
     },
     HBoxContent::Rule { width, height } => {
       ops.push(PaintOp::FillRect {
         rect: Rect {
-          x,
-          y: baseline_y - *height,
+          x: model::Length::pt(x),
+          y: model::Length::pt(baseline_y - height.to_pt()),
           width: *width,
           height: *height,
         },
@@ -440,29 +481,30 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: model::Length, baseline_y: mo
     },
     HBoxContent::Atom(children) => {
       for child in children {
-        push_box_content_ops(ops, x + child.dx, baseline_y - child.dy, &child.item.content);
+        push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), &child.item.content);
       }
     },
   }
 }
 
-/// 位置確定済みの表の 1 行の描画命令を `ops` に積む（`render::draw_table_row` と同じロジック）
+/// 位置確定済みの表の 1 行の描画命令を `ops` に積む（`render::draw_table_row` と同じロジック・
+/// 同じ浮動小数演算順序、`f32` pt）
 fn push_table_row_ops(
   ops: &mut Vec<PaintOp>,
   columns: &[model::TableColumn],
   col_widths: &[model::Length],
   placed_row: &PlacedTableRow,
-  x0: model::Length,
+  x0: f32,
   table_style: &ResolvedTableStyle,
 ) {
   let row = &placed_row.row;
-  let band_top = placed_row.top_y;
+  let band_top = placed_row.top_y.to_pt();
   let table_width: model::Length = col_widths.iter().copied().sum();
   if row.rule_above {
     ops.push(PaintOp::FillRect {
       rect: Rect {
-        x: x0,
-        y: band_top,
+        x: model::Length::pt(x0),
+        y: model::Length::pt(band_top),
         width: table_width,
         height: table_style.rule_thickness,
       },
@@ -475,25 +517,28 @@ fn push_table_row_ops(
     .iter()
     .filter_map(|cell| return model::max_font_size_in_items(&cell.items))
     .reduce(model::Length::max)
-    .unwrap_or(placed_row.height);
+    .unwrap_or(placed_row.height)
+    .to_pt();
   let baseline = band_top + max_font;
 
-  for placement in model::layout_row_cells(row, columns, col_widths, table_style.cell_padding) {
-    push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x, baseline);
+  let padding = model::Length::pt(table_style.cell_padding.to_pt());
+  for placement in model::layout_row_cells(row, columns, col_widths, padding) {
+    push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
   }
 }
 
-/// セル内容のアイテム列の描画命令を `ops` に積む（`render::draw_cell_items` と同じロジック）
-fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: model::Length, baseline: model::Length) {
+/// セル内容のアイテム列の描画命令を `ops` に積む（`render::draw_cell_items` と同じロジック・
+/// 同じ浮動小数演算順序、`f32` pt）
+fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, baseline: f32) {
   let mut cursor_x = start_x;
   for item in items {
     match item {
       HItem::Box(hbox) => {
         push_box_content_ops(ops, cursor_x, baseline, &hbox.content);
-        cursor_x += hbox.width;
+        cursor_x += hbox.width.to_pt();
       },
-      HItem::Kern(value) => cursor_x += *value,
-      HItem::Glue { natural, .. } => cursor_x += *natural,
+      HItem::Kern(value) => cursor_x += value.to_pt(),
+      HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
       HItem::Penalty { .. }
       | HItem::Discretionary { .. }
       | HItem::ForcedBreak

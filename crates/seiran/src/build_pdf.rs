@@ -21,6 +21,8 @@ mod golden;
 mod pdf_structure;
 #[cfg(test)]
 mod publication_diff;
+#[cfg(test)]
+mod publication_encode_diff;
 
 use std::{
   collections::HashSet,

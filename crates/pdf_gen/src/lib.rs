@@ -90,3 +90,28 @@ pub fn create_pdf(
   debug!(page_count = pages.len(), "PDF 描画が完了しました");
   return Ok(pdf_bytes);
 }
+
+/// `Publication` から PDF バイト列を生成する（epic #252 step7 / issue #265 の移行用、暫定名）
+///
+/// 旧 `create_pdf`（`Config`/`Style`/`model::Page` を直接受け取る）と同じ入力から同じ PDF を
+/// 生成することを `crates/seiran/src/build_pdf/publication_encode_diff.rs` で証明した後、
+/// `create_pdf` にリネームして旧実装を置き換える。
+///
+/// # Errors
+///
+/// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
+pub fn create_pdf_from_publication(
+  publication: &Publication,
+  font_bytes: &FontData,
+  font_refs: &FontRefs,
+  metrics: &FontMetrics,
+  font_configs: &config::FontConfigs,
+) -> Result<Vec<u8>, PdfGenError> {
+  let krilla_fonts = build_krilla_fonts(font_configs, font_bytes, font_refs)?;
+  let mut document = Document::new();
+  document.set_metadata(build_metadata(&publication.metadata));
+  render::render_publication_pages(&mut document, publication, metrics, &krilla_fonts)?;
+  let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
+  debug!(page_count = publication.pages.len(), "PDF 描画が完了しました（Publication 経路）");
+  return Ok(pdf_bytes);
+}
