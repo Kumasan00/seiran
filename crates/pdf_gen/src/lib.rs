@@ -23,7 +23,7 @@ pub use crate::{
   image::{ImageSet, load_image_set, resolve_images},
   publication::{
     Destination, PaintOp, Point, Publication, PublicationBuilder, PublicationLink, PublicationLinkTarget,
-    PublicationOutlineEntry, PublicationPage, Rect,
+    PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect,
   },
 };
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
@@ -77,7 +77,14 @@ pub fn create_pdf(
     height: page_height,
   })?;
   let mut document = Document::new();
-  document.set_metadata(build_metadata(config));
+  let metadata = crate::publication::PublicationMetadata {
+    title: config.document.title.clone().unwrap_or_else(|| return config.output.name.clone()),
+    author: config.document.author.clone(),
+    subject: config.document.subject.clone(),
+    language: config.document.language.clone(),
+    keywords: config.document.keywords.clone(),
+  };
+  document.set_metadata(build_metadata(&metadata));
   render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style, outline_entries)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
   debug!(page_count = pages.len(), "PDF 描画が完了しました");

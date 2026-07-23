@@ -31,6 +31,25 @@ pub struct Publication {
   /// PDF しおり（アウトライン）のフラット列（文書順、ネスト構築は encode 側の責務のまま）。
   /// `show_bookmarks` が偽、またはエントリが 0 件なら `None`
   pub outline: Option<Vec<PublicationOutlineEntry>>,
+  /// PDF メタデータ（`config.document` から前倒し解決済み）
+  pub metadata: PublicationMetadata,
+}
+
+/// PDF メタデータ（`config.document` から前倒し解決済み）
+///
+/// `title` は `document.title` を優先し、未設定なら `output.name` にフォールバック済み。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublicationMetadata {
+  /// 文書タイトル（フォールバック解決済み）
+  pub title: String,
+  /// 著者名
+  pub author: Option<String>,
+  /// 主題
+  pub subject: Option<String>,
+  /// 文書全体の言語（BCP 47）
+  pub language: Option<String>,
+  /// キーワード
+  pub keywords: Option<Vec<String>>,
 }
 
 /// 1 ページぶんの確定描画データ
@@ -191,9 +210,18 @@ impl<'a> PublicationBuilder<'a> {
       None
     };
 
+    let metadata = PublicationMetadata {
+      title: self.config.document.title.clone().unwrap_or_else(|| return self.config.output.name.clone()),
+      author: self.config.document.author.clone(),
+      subject: self.config.document.subject.clone(),
+      language: self.config.document.language.clone(),
+      keywords: self.config.document.keywords.clone(),
+    };
+
     return Publication {
       pages: publication_pages,
       outline,
+      metadata,
     };
   }
 
@@ -1090,5 +1118,52 @@ mod tests {
 
     // Assert — zip の対象がないので空、よって None
     assert!(publication.outline.is_none());
+  }
+
+  #[test]
+  fn build_resolves_title_from_document_title_when_present() {
+    // Arrange — document.title が設定済み
+    let mut config = test_config();
+    config.document.title = Some("本のタイトル".to_string());
+    let page = empty_page();
+
+    // Act
+    let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
+
+    // Assert
+    assert_eq!(publication.metadata.title, "本のタイトル");
+  }
+
+  #[test]
+  fn build_falls_back_title_to_output_name_when_document_title_absent() {
+    // Arrange — document.title 未設定、output.name = "out"（test_config() 既定）
+    let config = test_config();
+    let page = empty_page();
+
+    // Act
+    let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
+
+    // Assert
+    assert_eq!(publication.metadata.title, "out", "document.title 未設定時は output.name にフォールバックするはず");
+  }
+
+  #[test]
+  fn build_carries_author_subject_language_keywords_through() {
+    // Arrange
+    let mut config = test_config();
+    config.document.author = Some("著者".to_string());
+    config.document.subject = Some("主題".to_string());
+    config.document.language = Some("ja".to_string());
+    config.document.keywords = Some(vec!["a".to_string(), "b".to_string()]);
+    let page = empty_page();
+
+    // Act
+    let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
+
+    // Assert
+    assert_eq!(publication.metadata.author, Some("著者".to_string()));
+    assert_eq!(publication.metadata.subject, Some("主題".to_string()));
+    assert_eq!(publication.metadata.language, Some("ja".to_string()));
+    assert_eq!(publication.metadata.keywords, Some(vec!["a".to_string(), "b".to_string()]));
   }
 }
