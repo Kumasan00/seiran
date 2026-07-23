@@ -1,9 +1,9 @@
 //! PDF 生成モジュール
 //!
-//! 組版済みの `model::Page` 列（確定座標）を Krilla で描画し、PDF バイト列を生成します。
-//! レイアウト判断は前段（`typeset` の `block` / `breaking`）で完了しており、本クレートが担うのは
-//! 画像サイズ確定の prepass（[`resolve_images`]）と描画（[`create_pdf`]）のみです。
-//! フォントサブセット化は krilla が内部で実施します。
+//! 組版済みの `Publication`（確定座標）を Krilla で描画し、PDF バイト列を生成します。
+//! レイアウト判断は前段（`typeset` の `block` / `breaking`、および `PublicationBuilder`）で
+//! 完了しており、本クレートが担うのは画像サイズ確定の prepass（[`resolve_images`]）と
+//! 描画（[`create_pdf`]）のみです。フォントサブセット化は krilla が内部で実施します。
 
 mod error;
 mod font;
@@ -13,9 +13,8 @@ mod publication;
 mod render;
 
 use ::font::{FontData, FontMetrics, FontRefs};
-use config::{Config, Style};
-use krilla::{Document, page::PageSettings};
-use model::{HeadingLevel, Page};
+use config::FontConfigs;
+use krilla::Document;
 use tracing::debug;
 
 pub use crate::{
@@ -36,82 +35,36 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 #[derive(Debug, Clone)]
 pub struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
-  pub level: HeadingLevel,
+  pub level: model::HeadingLevel,
   /// しおりに表示するテキスト（`"{number} {plain title}"`）
   pub text: String,
 }
 
-/// フォント情報を使用して PDF バイト列を生成します。
+/// `Publication` から PDF バイト列を生成します。
 ///
 /// # Arguments
 ///
-/// * `config` - PDF 生成設定
+/// * `publication` - 座標・描画順が確定済みの中間表現
 /// * `font_bytes` - フォントバイナリ
 /// * `font_refs` - 解析済みフォント参照
 /// * `metrics` - 全フォント種別の基本メトリクス（upem / ascender / descender）
-/// * `pages` - 組版済みページ列（`model::break_pages` の出力）
-/// * `style` - スタイル設定
-/// * `outline_entries` - PDF しおり用の見出し情報（文書順、見出しアンカーと 1 対 1 対応）
-///
-/// # Returns
-///
-/// 生成した PDF のバイト列を返します。
+/// * `font_configs` - フォント埋め込みに必要な設定（`variation_axes` / `font_index`）
 ///
 /// # Errors
 ///
 /// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
 pub fn create_pdf(
-  config: &Config,
-  font_bytes: &FontData,
-  font_refs: &FontRefs,
-  metrics: &FontMetrics,
-  pages: &[Page],
-  style: &Style,
-  outline_entries: &[OutlineEntry],
-) -> Result<Vec<u8>, PdfGenError> {
-  let krilla_fonts = build_krilla_fonts(&config.font_configs, font_bytes, font_refs)?;
-  let page_width = config.pdf.width.to_pt();
-  let page_height = config.pdf.height.to_pt();
-  let page_settings = PageSettings::from_wh(page_width, page_height).ok_or(PdfGenError::InvalidPageSize {
-    width: page_width,
-    height: page_height,
-  })?;
-  let mut document = Document::new();
-  let metadata = crate::publication::PublicationMetadata {
-    title: config.document.title.clone().unwrap_or_else(|| return config.output.name.clone()),
-    author: config.document.author.clone(),
-    subject: config.document.subject.clone(),
-    language: config.document.language.clone(),
-    keywords: config.document.keywords.clone(),
-  };
-  document.set_metadata(build_metadata(&metadata));
-  render_pages(&mut document, &page_settings, config, metrics, &krilla_fonts, pages, style, outline_entries)?;
-  let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
-  debug!(page_count = pages.len(), "PDF 描画が完了しました");
-  return Ok(pdf_bytes);
-}
-
-/// `Publication` から PDF バイト列を生成する（epic #252 step7 / issue #265 の移行用、暫定名）
-///
-/// 旧 `create_pdf`（`Config`/`Style`/`model::Page` を直接受け取る）と同じ入力から同じ PDF を
-/// 生成することを `crates/seiran/src/build_pdf/publication_encode_diff.rs` で証明した後、
-/// `create_pdf` にリネームして旧実装を置き換える。
-///
-/// # Errors
-///
-/// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
-pub fn create_pdf_from_publication(
   publication: &Publication,
   font_bytes: &FontData,
   font_refs: &FontRefs,
   metrics: &FontMetrics,
-  font_configs: &config::FontConfigs,
+  font_configs: &FontConfigs,
 ) -> Result<Vec<u8>, PdfGenError> {
   let krilla_fonts = build_krilla_fonts(font_configs, font_bytes, font_refs)?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(&publication.metadata));
-  render::render_publication_pages(&mut document, publication, metrics, &krilla_fonts)?;
+  render_pages(&mut document, publication, metrics, &krilla_fonts)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
-  debug!(page_count = publication.pages.len(), "PDF 描画が完了しました（Publication 経路）");
+  debug!(page_count = publication.pages.len(), "PDF 描画が完了しました");
   return Ok(pdf_bytes);
 }

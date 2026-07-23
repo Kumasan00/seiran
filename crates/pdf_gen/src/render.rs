@@ -1,13 +1,10 @@
-//! (e) 組版済みページ列の PDF 描画
+//! (e) 確定座標の PDF 描画
 //!
-//! [`render_pages`] が [`model::Page`] 列を順に走査し、確定済み座標の
-//! [`PlacedBlock`] を Krilla の [`Surface`] に書き出す。行送り・改ページ・表の分割
-//! などのレイアウト判断は (c)(d)（`model::break_pages`）で完了しており、
+//! [`render_pages`] が [`Publication`] のページ列を順に走査し、確定済み座標の
+//! [`PaintOp`] を Krilla の [`Surface`] に書き出す。行送り・改ページ・表の分割などの
+//! レイアウト判断は前段（`typeset::breaking` および `PublicationBuilder`）で完了しており、
 //! このパスは描画のみを行う。
 
-use std::collections::HashMap;
-
-use config::{Config, Style};
 use font::FontMetrics;
 use krilla::{
   Document,
@@ -23,13 +20,9 @@ use krilla::{
   text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use model::{
-  AnchorId, AnchorMark, AssetId, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow,
-  TableColumn,
-};
+use model::{AssetId, FontMap};
 
 use crate::{
-  OutlineEntry,
   error::PdfGenError,
   font::convert_to_krilla_glyphs,
   image::{LoadedImage, load_image, required_pixels},
@@ -39,140 +32,30 @@ use crate::{
   },
 };
 
-/// 組版済みページ列を `document` に描画します。
+/// `Publication::Point`（`model::Length`）を krilla の `geom::Point`（`f32`）へ変換する
 ///
-/// 描画に加えて、ハイパーリンク（hyperref 相当）を出力する:
-/// - 各ページの [`model::PlacedAnchor`] から `label → XyzDestination` の索引を作る（pass 1）
-/// - 各ページの [`model::PlacedLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
-/// - 見出しアンカーと `outline_entries` から PDF のしおり（アウトライン）を構築し、
-///   `style.hyperref.show_bookmarks` が真なら設定する
-// 設定・フォント・スタイル・しおり情報を個別に受け取る描画オーケストレーション関数のため、
-// 引数をまとめず素直に並べる（束ねても呼び出し側の見通しは良くならない）。
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_pages(
-  document: &mut Document,
-  page_settings: &PageSettings,
-  config: &Config,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-  pages: &[Page],
-  style: &Style,
-  outline_entries: &[OutlineEntry],
-) -> Result<(), PdfGenError> {
-  let margin_left = config.pdf.margin.left.to_pt();
+/// `Publication` の座標は `PublicationBuilder` が左マージンを加算済みなので、ここでは
+/// 単位変換のみ行い margin を足さない。
+fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
 
-  // pass 1: 全ページのアンカーから destination 索引と見出し destination 列（文書順）を作る。
-  // 内部リンクは前方参照もあり得るため、描画前に全ページ分を集める。
-  let (dest_by_id, heading_dests) = build_destination_index(pages, margin_left);
-
-  for page_blocks in pages {
-    let mut page = document.start_page_with(page_settings.clone());
-    let mut surface = page.surface();
-    draw_page_background(&mut surface, config, style)?;
-    // 本文・ヘッダー・フッター・脚注はすべて同じ PlacedBlock なので同一ロジックで描画する
-    // （配置座標が重ならないよう、ヘッダー・フッターは余白領域、脚注はページ下部の脚注エリアに
-    // 置かれている。脚注の区切り罫線も `PlacedBlock::Rule` として `PlacedFootnote.blocks` の
-    // 先頭に混ざっているため、追加の分岐は不要）
-    for block in page_blocks
-      .blocks
-      .iter()
-      .chain(&page_blocks.header)
-      .chain(&page_blocks.footer)
-      .chain(page_blocks.footnotes.iter().flat_map(|f| return &f.blocks))
-    {
-      draw_placed_block(&mut surface, metrics, krilla_fonts, style, margin_left, block)?;
-    }
-    surface.finish();
-    add_page_links(&mut page, page_blocks, margin_left, &dest_by_id)?;
-    page.finish();
-  }
-
-  if config.pdf.show_bookmarks
-    && let Some(outline) = build_outline(&heading_dests, outline_entries)
-  {
-    document.set_outline(outline);
-  }
-  return Ok(());
+/// `Publication::Rect` を krilla の `geom::Rect` へ変換する
+fn to_krilla_rect(rect: PubRect) -> Result<Rect, PdfGenError> {
+  return Rect::from_xywh(rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt())
+    .ok_or(PdfGenError::InvalidRuleRect);
 }
 
-/// 全ページのアンカーを走査し、内部リンク用の `AnchorId → XyzDestination` 索引と、
-/// しおり用の見出し destination 列（文書順）を作る。
-///
-/// 見出しアンカーにラベルが付いていれば `\ref` の到達先も兼ねるため索引にも登録する。
-fn build_destination_index(
-  pages: &[Page],
-  margin_left: f32,
-) -> (HashMap<AnchorId, XyzDestination>, Vec<XyzDestination>) {
-  let mut dest_by_id: HashMap<AnchorId, XyzDestination> = HashMap::new();
-  let mut heading_dests: Vec<XyzDestination> = Vec::new();
-  for (page_index, page) in pages.iter().enumerate() {
-    for anchor in &page.anchors {
-      let dest = XyzDestination::new(page_index, Point::from_xy(margin_left + anchor.x.to_pt(), anchor.y.to_pt()));
-      match &anchor.mark {
-        AnchorMark::Heading { key, label } => {
-          heading_dests.push(dest.clone());
-          // 暗黙キーを常に登録する（目次エントリの内部リンク到達先）。
-          dest_by_id.insert(AnchorId::Heading(*key), dest.clone());
-          // `\ref` ラベルが付いていれば従来どおり追加登録する。
-          if let Some(label) = label {
-            dest_by_id.insert(AnchorId::Label(label.clone()), dest);
-          }
-        },
-        AnchorMark::Label(label) => {
-          dest_by_id.insert(AnchorId::Label(label.clone()), dest);
-        },
-        AnchorMark::Citation(key) => {
-          dest_by_id.insert(AnchorId::Citation(key.clone()), dest);
-        },
-        AnchorMark::Footnote(index) => {
-          dest_by_id.insert(AnchorId::Footnote(*index), dest);
-        },
-        AnchorMark::IndexPage(page_index) => {
-          dest_by_id.insert(AnchorId::IndexPage(*page_index), dest);
-        },
-      }
-    }
-  }
-  return (dest_by_id, heading_dests);
+/// `Publication::Destination` を krilla の `XyzDestination` へ変換する
+fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
+  return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
 }
 
-/// 1 ページの確定済みリンク領域をリンク注釈として付与する
+/// `Publication::outline` の各エントリから krilla の `Outline` を構築する
 ///
-/// 内部リンク（`\ref`）は索引から `XyzDestination` を引いて `Target::Destination` に、
-/// 外部リンク（`\url` / `\href`）は `Target::Action(LinkAction)` にする。索引に無い内部
-/// リンクは（参照解決済みの前提では発生しないが）安全側に倒してスキップする。
-fn add_page_links(
-  page: &mut KrillaPage<'_>,
-  page_blocks: &Page,
-  margin_left: f32,
-  dest_by_id: &HashMap<AnchorId, XyzDestination>,
-) -> Result<(), PdfGenError> {
-  for link in &page_blocks.links {
-    let target = match &link.target {
-      LinkTarget::Internal(id) => {
-        let Some(dest) = dest_by_id.get(id) else {
-          continue;
-        };
-        Target::Destination(Destination::from(dest.clone()))
-      },
-      LinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
-    };
-    let rect = Rect::from_xywh(margin_left + link.x.to_pt(), link.y.to_pt(), link.width.to_pt(), link.height.to_pt())
-      .ok_or(PdfGenError::InvalidLinkRect)?;
-    page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
-  }
-  return Ok(());
-}
-
-/// 見出し destination 列と `outline_entries` から PDF のしおり（アウトライン）を構築する
-///
-/// 両者は文書順で 1 対 1 に対応する（短い方に合わせる）。見出しレベルの深さで入れ子にし、
-/// エントリが無ければ `None` を返す（しおりを設定しない）。
-fn build_outline(heading_dests: &[XyzDestination], outline_entries: &[OutlineEntry]) -> Option<Outline> {
-  // 見出し destination とエントリ（レベル + テキスト）を文書順に対応付ける
+/// エントリは既に `depth`/`text`/`dest` が文書順で確定済みのフラット列。
+fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Outline> {
   let mut roots: Vec<OutlineTreeNode> = Vec::new();
-  for (entry, dest) in outline_entries.iter().zip(heading_dests.iter()) {
-    insert_outline_node(&mut roots, entry.level.depth(), entry.text.clone(), dest.clone());
+  for entry in entries {
+    insert_outline_node(&mut roots, entry.depth, entry.text.clone(), to_xyz_destination(entry.dest));
   }
   if roots.is_empty() {
     return None;
@@ -227,56 +110,11 @@ fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: Str
   });
 }
 
-// =============================================================================
-// Publication ベースの描画（新設、旧 render_pages 系とは並存。Task 4 で cutover）
-// =============================================================================
-//
-// `crate::publication::Destination` は krilla の `destination::Destination`（上の import で
-// 既に bare `Destination` として使用中）と名前が衝突するため import せず、必要な箇所は
-// `crate::publication::Destination` とフルパスで書く（krilla 側は既存の bare `Destination`
-// をそのまま使う。既存 import・既存関数は一切変更しない）。
-
-/// `Publication::Point`（`model::Length`）を krilla の `geom::Point`（`f32`）へ変換する
-///
-/// `Publication` の座標は `PublicationBuilder` が左マージンを加算済みなので、ここでは
-/// 単位変換のみ行い margin を足さない。
-fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
-
-/// `Publication::Rect` を krilla の `geom::Rect` へ変換する
-fn to_krilla_rect(rect: PubRect) -> Result<Rect, PdfGenError> {
-  return Rect::from_xywh(rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt())
-    .ok_or(PdfGenError::InvalidRuleRect);
-}
-
-/// `Publication::Destination` を krilla の `XyzDestination` へ変換する
-fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
-  return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
-}
-
-/// `Publication::outline` の各エントリから krilla の `Outline` を構築する
-///
-/// エントリは既に `depth`/`text`/`dest` が文書順で確定済みのフラット列なので、旧実装のような
-/// `outline_entries` と見出し destination の zip は不要。
-fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Outline> {
-  let mut roots: Vec<OutlineTreeNode> = Vec::new();
-  for entry in entries {
-    insert_outline_node(&mut roots, entry.depth, entry.text.clone(), to_xyz_destination(entry.dest));
-  }
-  if roots.is_empty() {
-    return None;
-  }
-  let mut outline = Outline::new();
-  for root in roots {
-    outline.push_child(root.into_krilla());
-  }
-  return Some(outline);
-}
-
 /// `Publication::PublicationLink` 列をページのリンク注釈として付与する
 ///
-/// 到達不能な内部リンクは `Publication` 構築時に既に除外済みなので、旧実装にあった
-/// `dest_by_id` 索引引き + `continue` 分岐は不要。
-fn add_publication_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Result<(), PdfGenError> {
+/// 到達不能な内部リンクは `Publication` 構築時に既に除外済みなので、索引引き +
+/// `continue` 分岐は不要。
+fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Result<(), PdfGenError> {
   for link in links {
     let target = match &link.target {
       PublicationLinkTarget::Internal(dest) => Target::Destination(Destination::from(to_xyz_destination(*dest))),
@@ -364,14 +202,14 @@ fn draw_paint_op(
   return Ok(());
 }
 
-/// `Publication` を `document` に描画する
+/// `Publication` を `document` に描画します。
 ///
 /// 行送り・改ページ・表分割等のレイアウト判断は `Publication` 構築時に完了済みのため、
-/// 本関数は `PaintOp` 列を順に描画するだけ。`model::Page`/`Config`/`Style` には一切触れない。
-///
-/// 旧 `render_pages`（`model::Page` 版）とは並存させる新規関数。Task 4 で byte-for-byte 一致を
-/// 証明したのち、Task 5 で旧関数を削除しこちらを `render_pages` へ改名する。
-pub(crate) fn render_publication_pages(
+/// 本関数は `PaintOp` 列を順に描画するだけ。加えて、ハイパーリンク（hyperref 相当）を出力する:
+/// - 各ページの [`PublicationLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
+/// - `Publication::outline` があれば PDF のしおり（アウトライン）を設定する
+///   （`show_bookmarks` の判定は `PublicationBuilder` 側で `outline: None` として反映済み）
+pub(crate) fn render_pages(
   document: &mut Document,
   publication: &Publication,
   metrics: &FontMetrics,
@@ -387,265 +225,13 @@ pub(crate) fn render_publication_pages(
       draw_paint_op(&mut surface, metrics, krilla_fonts, op)?;
     }
     surface.finish();
-    add_publication_links(&mut krilla_page, &page.links)?;
+    add_page_links(&mut krilla_page, &page.links)?;
     krilla_page.finish();
   }
   if let Some(entries) = &publication.outline
     && let Some(outline) = build_outline_from_entries(entries)
   {
     document.set_outline(outline);
-  }
-  return Ok(());
-}
-
-/// 配置済みブロック 1 個を描画する
-///
-/// 行送り・改ページなどのレイアウト判断は前段で完了しているため、本関数は確定座標を
-/// Krilla の `Surface` に書き出すだけ。本文・ヘッダー・フッターで共有する。
-fn draw_placed_block(
-  surface: &mut Surface<'_>,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-  style: &Style,
-  margin_left: f32,
-  block: &PlacedBlock,
-) -> Result<(), PdfGenError> {
-  match block {
-    PlacedBlock::Line { line, baseline_y } => {
-      for positioned in &line.boxes {
-        draw_box_content(
-          surface,
-          metrics,
-          krilla_fonts,
-          &positioned.content,
-          margin_left + positioned.x.to_pt(),
-          (*baseline_y - positioned.dy).to_pt(),
-        )?;
-      }
-    },
-    PlacedBlock::Table {
-      x,
-      columns,
-      col_widths,
-      rows,
-      ..
-    } => {
-      let draw_ctx = TableDrawContext {
-        metrics,
-        krilla_fonts,
-        columns,
-        col_widths,
-        padding: style.table.cell_padding.to_pt(),
-        rule_thickness: style.table.rule_thickness.to_pt(),
-        rule_color: style.table.rule_color,
-      };
-      // 表全体の揃えオフセット `x` を左マージンに足し込み、行帯・セルの起点を右へずらす
-      for placed_row in rows {
-        draw_table_row(surface, &draw_ctx, placed_row, margin_left + x.to_pt())?;
-      }
-    },
-    PlacedBlock::MathBlock {
-      body,
-      x,
-      baseline_y,
-      numbers,
-    } => {
-      // 本体 Atom はベースライン基準で確定済み。番号も確定座標で同じ要領で描く
-      draw_box_content(surface, metrics, krilla_fonts, &body.content, margin_left + x.to_pt(), baseline_y.to_pt())?;
-      for number in numbers {
-        draw_box_content(
-          surface,
-          metrics,
-          krilla_fonts,
-          &number.content.content,
-          margin_left + number.x.to_pt(),
-          number.baseline_y.to_pt(),
-        )?;
-      }
-    },
-    PlacedBlock::Image {
-      path,
-      x,
-      y,
-      width,
-      height,
-      target_dpi,
-    } => {
-      draw_image(
-        surface,
-        path.as_str(),
-        margin_left + x.to_pt(),
-        y.to_pt(),
-        width.to_pt(),
-        height.to_pt(),
-        *target_dpi,
-      )?;
-    },
-    PlacedBlock::Rule {
-      x,
-      y,
-      width,
-      height,
-      color,
-    } => {
-      draw_filled_rect(
-        surface,
-        margin_left + x.to_pt(),
-        y.to_pt(),
-        width.to_pt(),
-        height.to_pt(),
-        color.map(Color::from),
-      )?;
-    },
-  }
-  return Ok(());
-}
-
-/// 1 つのボックス内容を `(x, baseline_y)` を基準に描画する
-///
-/// Atom は子要素を `(x + dx, baseline_y - dy)` で再帰描画する。
-fn draw_box_content(
-  surface: &mut Surface<'_>,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-  content: &HBoxContent,
-  x: f32,
-  baseline_y: f32,
-) -> Result<(), PdfGenError> {
-  match content {
-    HBoxContent::Glyphs(run) => {
-      let font = krilla_fonts.get(run.font_type);
-      let upem = metrics.get(run.font_type).upem;
-      let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
-      // `\color` 由来の色があれば塗り色を設定し、描画後に解除して後続を既定色（黒）に戻す
-      if let Some(color) = run.color {
-        let [r, g, b] = color.rgb();
-        surface.set_fill(Some(Fill {
-          paint: rgb::Color::new(r, g, b).into(),
-          ..Fill::default()
-        }));
-      }
-      surface.draw_glyphs(
-        Point::from_xy(x, baseline_y),
-        &krilla_glyphs,
-        font.clone(),
-        &run.text,
-        run.font_size.to_pt(),
-        false,
-      );
-      if run.color.is_some() {
-        surface.set_fill(None);
-      }
-    },
-    HBoxContent::Rule { width, height } => {
-      // インライン罫線はベースラインの上に載せる
-      draw_filled_rect(surface, x, baseline_y - height.to_pt(), width.to_pt(), height.to_pt(), None)?;
-    },
-    HBoxContent::Atom(children) => {
-      for child in children {
-        draw_box_content(
-          surface,
-          metrics,
-          krilla_fonts,
-          &child.item.content,
-          x + child.dx.to_pt(),
-          baseline_y - child.dy.to_pt(),
-        )?;
-      }
-    },
-  }
-  return Ok(());
-}
-
-// =============================================================================
-// 表の描画
-// =============================================================================
-
-/// 表描画に必要な情報の束
-struct TableDrawContext<'a> {
-  /// フォントメトリクス（グリフ advance の UPEM 正規化に使用）
-  metrics: &'a FontMetrics,
-  /// krilla フォントマップ
-  krilla_fonts: &'a FontMap<Font>,
-  /// 列の定義（揃えの参照用）
-  columns: &'a [TableColumn],
-  /// 解決済みの列幅
-  col_widths: &'a [model::Length],
-  /// セル内側余白（pt、左右各）
-  padding: f32,
-  /// 罫線の太さ（pt）
-  rule_thickness: f32,
-  /// 罫線色。`None` は黒
-  rule_color: Option<Color>,
-}
-
-/// 位置確定済みの表の 1 行を描画する
-///
-/// 行帯（`top_y` から `height`）にセル内容を配置し、`rule_above` が指定されていれば
-/// 帯の上端に表幅いっぱいの横罫線を引く。ベースラインは帯上端 + 行内最大フォントサイズ。
-fn draw_table_row(
-  surface: &mut Surface<'_>,
-  ctx: &TableDrawContext<'_>,
-  placed_row: &PlacedTableRow,
-  x0: f32,
-) -> Result<(), PdfGenError> {
-  let row = &placed_row.row;
-  let band_top = placed_row.top_y.to_pt();
-  let table_width: f32 = ctx.col_widths.iter().copied().sum::<model::Length>().to_pt();
-  if row.rule_above {
-    draw_filled_rect(surface, x0, band_top, table_width, ctx.rule_thickness, ctx.rule_color)?;
-  }
-
-  // ベースライン = 帯上端 + 行内最大フォントサイズ（ディセンダ分は行高係数の余りで吸収）
-  let max_font = row
-    .cells
-    .iter()
-    .filter_map(|cell| return model::max_font_size_in_items(&cell.items))
-    .reduce(model::Length::max)
-    .unwrap_or(placed_row.height)
-    .to_pt();
-  let baseline = band_top + max_font;
-
-  let padding = model::Length::pt(ctx.padding);
-  for placement in model::layout_row_cells(row, ctx.columns, ctx.col_widths, padding) {
-    draw_cell_items(surface, ctx, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline)?;
-  }
-  return Ok(());
-}
-
-/// セル内容のアイテム列を `(start_x, baseline)` から描画する
-///
-/// セル内に出現し得るのはボックス・カーン・グルーのみ
-/// （行分割・ページ分割はセル内では無効）。
-fn draw_cell_items(
-  surface: &mut Surface<'_>,
-  ctx: &TableDrawContext<'_>,
-  items: &[model::HItem],
-  start_x: f32,
-  baseline: f32,
-) -> Result<(), PdfGenError> {
-  let mut cursor_x = start_x;
-  for item in items {
-    match item {
-      model::HItem::Box(hbox) => {
-        draw_box_content(surface, ctx.metrics, ctx.krilla_fonts, &hbox.content, cursor_x, baseline)?;
-        cursor_x += hbox.width.to_pt();
-      },
-      model::HItem::Kern(value) => cursor_x += value.to_pt(),
-      model::HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
-      // セル内の行分割は無効（パーサ段で \\ は拒否済み）。
-      // リンク矩形は typeset::breaking::place_table が Page.links へ収集済み（本関数は描画のみ）。
-      // FlushRight（QED）は定理本体専用で表セル内には現れない
-      // 脚注は表セル内では本体が配置されない（既知の制限）
-      model::HItem::Penalty { .. }
-      | model::HItem::Discretionary { .. }
-      | model::HItem::ForcedBreak
-      | model::HItem::LinkStart(_)
-      | model::HItem::LinkEnd
-      | model::HItem::FlushRight(_)
-      | model::HItem::Footnote { .. }
-      | model::HItem::IndexMark { .. } => {},
-    }
   }
   return Ok(());
 }
@@ -699,10 +285,10 @@ fn draw_image(
 }
 
 // =============================================================================
-// 矩形・背景の描画
+// 矩形の描画
 // =============================================================================
 
-/// 塗りつぶし矩形（罫線）を描画する
+/// 塗りつぶし矩形（罫線・背景）を描画する
 ///
 /// `color` が `None` の場合は既定（黒）で塗る。
 fn draw_filled_rect(
@@ -711,7 +297,7 @@ fn draw_filled_rect(
   top: f32,
   width: f32,
   height: f32,
-  color: Option<Color>,
+  color: Option<model::Color>,
 ) -> Result<(), PdfGenError> {
   let rect = Rect::from_xywh(left, top, width, height).ok_or(PdfGenError::InvalidRuleRect)?;
   let mut path_builder = PathBuilder::new();
@@ -728,28 +314,6 @@ fn draw_filled_rect(
   } else {
     surface.draw_path(&path);
   }
-  return Ok(());
-}
-
-/// `style.background_color` が指定されていればページ全体を塗りつぶします。
-///
-/// 塗りつぶし後はフィルを解除し、後続の描画（テキスト・罫線）が黒で描画されるようにします。
-fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Style) -> Result<(), PdfGenError> {
-  let Some(color) = style.background_color else {
-    return Ok(());
-  };
-  let [r, g, b] = color.rgb();
-  let rect = Rect::from_xywh(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt())
-    .ok_or(PdfGenError::InvalidBackgroundRect)?;
-  let mut path_builder = PathBuilder::new();
-  path_builder.push_rect(rect);
-  let path = path_builder.finish().ok_or(PdfGenError::InvalidBackgroundPath)?;
-  surface.set_fill(Some(Fill {
-    paint: rgb::Color::new(r, g, b).into(),
-    ..Fill::default()
-  }));
-  surface.draw_path(&path);
-  surface.set_fill(None);
   return Ok(());
 }
 

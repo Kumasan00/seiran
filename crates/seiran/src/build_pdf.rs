@@ -19,10 +19,6 @@ mod dump;
 mod golden;
 #[cfg(test)]
 mod pdf_structure;
-#[cfg(test)]
-mod publication_diff;
-#[cfg(test)]
-mod publication_encode_diff;
 
 use std::{
   collections::HashSet,
@@ -91,7 +87,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
   let image_set = pdf_gen::load_image_set(&image_manifest.paths)?;
   let laid_out = compile_project(&snapshot, &parsed_project, &image_set)?;
-  let pdf_bytes = encode_pdf(&snapshot.config, &snapshot.style, &snapshot.font_data, &laid_out)?;
+  let pdf_bytes = encode_pdf(&snapshot.config, &snapshot.font_data, &laid_out)?;
 
   let stage_start = Instant::now();
   fs::write(&output.pdf_path, pdf_bytes).map_err(|source| {
@@ -486,26 +482,16 @@ fn compile_project(
 
 /// 確定レイアウトを PDF バイト列へ描画する（`build_pdf` の 4 段目）。
 ///
-/// `font_refs` / `metrics` を（`compile_project` 内で使ったものとは別に）再構築して使う。両者は
-/// `font_data` 上のゼロコピービュー（`FontRef` のパース + head/hhea 参照）で、`compile_project` 内で
-/// 使ったものは borrow が閉じていて持ち出せないため描画パス用にもう一度組み直す。フォントファイル
-/// 自体の再読込は起きない。
-///
 /// # Errors
 ///
 /// フォント参照の再構築、または `pdf_gen::create_pdf` の描画に失敗した場合にエラーを返す。
-fn encode_pdf(
-  config: &config::Config,
-  style: &config::Style,
-  font_data: &FontData,
-  laid_out: &LaidOutDocument,
-) -> miette::Result<Vec<u8>> {
+fn encode_pdf(config: &config::Config, font_data: &FontData, laid_out: &LaidOutDocument) -> miette::Result<Vec<u8>> {
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
   let metrics = FontMetrics::new(&font_refs)?;
+  let publication = pdf_gen::PublicationBuilder::new(config).build(&laid_out.pages, &laid_out.outline_entries);
 
   let stage_start = Instant::now();
-  let pdf_bytes =
-    pdf_gen::create_pdf(config, font_data, &font_refs, &metrics, &laid_out.pages, style, &laid_out.outline_entries)?;
+  let pdf_bytes = pdf_gen::create_pdf(&publication, font_data, &font_refs, &metrics, &config.font_configs)?;
   info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
 
   return Ok(pdf_bytes);
