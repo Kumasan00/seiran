@@ -66,17 +66,6 @@ pub enum PdfGenError {
     help("リンク領域の x / y / width / height が正の有限値であることを確認してください。")
   )]
   InvalidLinkRect,
-  /// 背景塗りつぶし用の矩形を生成できませんでした。
-  #[error("背景の矩形を生成できませんでした")]
-  #[diagnostic(
-    code(pdf_gen::invalid_background_rect),
-    help("config.pdf.width と config.pdf.height が正の有限値であることを確認してください。")
-  )]
-  InvalidBackgroundRect,
-  /// 背景塗りつぶし用のパスを生成できませんでした。
-  #[error("背景のパスを生成できませんでした")]
-  #[diagnostic(code(pdf_gen::invalid_background_path), help("背景の矩形が正しく構築されているか確認してください。"))]
-  InvalidBackgroundPath,
   /// PDF の最終化に失敗しました。
   #[error("PDF の最終化に失敗しました: {source}")]
   #[diagnostic(

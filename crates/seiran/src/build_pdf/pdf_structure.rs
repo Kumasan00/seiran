@@ -8,6 +8,9 @@
 //! （`lopdf`）で PDF バイト列を読み返し、ページ数・embedded font 数・outline（しおり）有無・
 //! link アノテーション数だけを検証する最小版に留める。
 //!
+//! PDF 生成自体は `PublicationBuilder` で `Publication` を組み立ててから `pdf_gen::create_pdf`
+//! に渡す経路（`build_pdf::encode_pdf` と同じ手順）を通す。
+//!
 //! PDF バイト列自体（`crates/pdf_gen/src/metadata.rs` が埋め込む生成時刻を含む）は非決定的なので
 //! 比較対象にしない（`.claude/skills/verify-typesetting` の PDF バイト比較とは別の検証軸）。
 
@@ -31,7 +34,7 @@ fn pdf_structure_golden_dir() -> PathBuf {
 }
 
 /// 指定入力を `build_pdf` と同じ手順（パース〜描画）でフルビルドし、PDF バイト列を返す
-/// （ファイル書き込みは行わない）。`publication_diff` からも再利用する。
+/// （ファイル書き込みは行わない）。
 pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
@@ -41,16 +44,9 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> {
   let laid_out = super::build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
   let font_refs = FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
   let metrics = FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-  return pdf_gen::create_pdf(
-    &config,
-    &font_data,
-    &font_refs,
-    &metrics,
-    &laid_out.pages,
-    &style,
-    &laid_out.outline_entries,
-  )
-  .expect("PDF の描画");
+  let publication = pdf_gen::PublicationBuilder::new(&config).build(&laid_out.pages, &laid_out.outline_entries);
+  return pdf_gen::create_pdf(&publication, &font_data, &font_refs, &metrics, &config.font_configs)
+    .expect("PDF の描画");
 }
 
 /// 辞書オブジェクトの `/Type` または `/Subtype` が期待の名前と一致するかを見る。
@@ -64,8 +60,6 @@ fn dict_name_is(object: &Object, key: &[u8], expected: &[u8]) -> bool {
 }
 
 /// PDF バイト列から独立 reader（`lopdf`）で読み取れる構造的事実
-///
-/// `publication_diff` が `Publication` の対応する事実と突き合わせる differential test に使う。
 pub(super) struct PdfStructureFacts {
   /// ページ数
   pub(super) page_count: usize,
