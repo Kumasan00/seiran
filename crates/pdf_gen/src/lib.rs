@@ -69,7 +69,7 @@ pub fn create_pdf(
   style: &Style,
   outline_entries: &[OutlineEntry],
 ) -> Result<Vec<u8>, PdfGenError> {
-  let krilla_fonts = build_krilla_fonts(config, font_bytes, font_refs)?;
+  let krilla_fonts = build_krilla_fonts(&config.font_configs, font_bytes, font_refs)?;
   let page_width = config.pdf.width.to_pt();
   let page_height = config.pdf.height.to_pt();
   let page_settings = PageSettings::from_wh(page_width, page_height).ok_or(PdfGenError::InvalidPageSize {
