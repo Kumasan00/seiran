@@ -1,14 +1,14 @@
 //! (e) 描画直前の中間表現 `Publication` とその純粋変換 `PublicationBuilder`
 //!
 //! [`model::Page`] 列（確定座標）から、座標・描画順が確定した [`Publication`] への
-//! 純粋変換を提供する。残る `Config` 依存は左マージンと `show_bookmarks` の 2 箇所のみ
-//! （表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値
+//! 純粋変換を提供する。残る `Config` 依存は左マージン・ページサイズ・`show_bookmarks` の
+//! 3 箇所のみ（表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値
 //! として `model::Page` / `model::PlacedBlock::Table` に持たせている）。フォント資源
 //! （`FontData`/`FontRefs`/`FontMetrics`）には依存しない。
 //!
-//! `pdf_gen::create_pdf` はまだこの型を消費しない（epic #252 step 7 で置き換える）。
-//! この段階では `Publication` を作れることと、旧 renderer との構造的な一致を確認する
-//! differential test（`crates/seiran/src/build_pdf/publication_diff.rs`）を通すことが目的。
+//! `pdf_gen::create_pdf`（`lib.rs`）は本型を直接引数に取り、これだけから PDF を描画する。
+//! `model::Page` 列を直接描画する経路はもう存在せず、[`PublicationBuilder::build`] が
+//! 唯一の入り口になっている。
 
 use std::collections::HashMap;
 
@@ -161,9 +161,9 @@ pub struct PublicationOutlineEntry {
 
 /// `model::Page` 列から [`Publication`] への純粋変換を行う
 ///
-/// `Config` 依存は左マージンと `show_bookmarks` の 2 箇所のみ（表のセル余白・罫線太さ・罫線色・
-/// ページ背景色は前段（`typeset::breaking`）が解決済みの値として `model::Page` /
-/// `model::PlacedBlock::Table` に持たせている）。フォント資源には依存しない
+/// `Config` 依存は左マージン・ページサイズ・`show_bookmarks` の 3 箇所のみ（表のセル余白・
+/// 罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値として
+/// `model::Page` / `model::PlacedBlock::Table` に持たせている）。フォント資源には依存しない
 pub struct PublicationBuilder<'a> {
   /// PDF ページレイアウト設定（左マージン・ページサイズ・しおり出力可否を読む）
   config: &'a Config,
@@ -339,7 +339,7 @@ fn build_destination_index(
 /// 丸め誤差が一切乗らず数学的にはより正確になる。しかし旧 renderer は `margin_left` を
 /// `f32`（pt）へ変換してから毎回 `f32` 同士で加算しており、この 2 経路は実数として等しくても
 /// `f32` の丸め誤差が異なるため、変換後の PDF 座標が最終桁で食い違うことがある
-/// （`crates/seiran/src/build_pdf/publication_encode_diff.rs` が byte-for-byte 比較で検出した）。
+/// （#265 で新旧 encode 経路の byte-for-byte 一致を検証する統合テストがこれを検出した）。
 /// 新旧 encode 経路の出力を一致させるため、ここでは意図的に旧実装と同じ順序
 /// （`f32` へ変換 → `f32` で加算 → sp へ丸め直す）で計算する。sp の分解能（1/65536 pt）は
 /// この関数が扱う座標の大きさにおける `f32` の表現精度より十分細かいため、丸め直した

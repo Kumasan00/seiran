@@ -38,12 +38,6 @@ use crate::{
 /// 単位変換のみ行い margin を足さない。
 fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
 
-/// `Publication::Rect` を krilla の `geom::Rect` へ変換する
-fn to_krilla_rect(rect: PubRect) -> Result<Rect, PdfGenError> {
-  return Rect::from_xywh(rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt())
-    .ok_or(PdfGenError::InvalidRuleRect);
-}
-
 /// `Publication::Destination` を krilla の `XyzDestination` へ変換する
 fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
   return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
@@ -120,7 +114,9 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
       PublicationLinkTarget::Internal(dest) => Target::Destination(Destination::from(to_xyz_destination(*dest))),
       PublicationLinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
     };
-    let rect = to_krilla_rect(link.rect)?;
+    let rect =
+      Rect::from_xywh(link.rect.x.to_pt(), link.rect.y.to_pt(), link.rect.width.to_pt(), link.rect.height.to_pt())
+        .ok_or(PdfGenError::InvalidLinkRect)?;
     page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
   }
   return Ok(());
@@ -321,8 +317,8 @@ fn draw_filled_rect(
 mod tests {
   use krilla::{destination::XyzDestination, geom::Point};
 
-  use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_krilla_rect, to_xyz_destination};
-  use crate::publication::{Destination as PubDestination, Point as PubPoint, Rect as PubRect};
+  use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_xyz_destination};
+  use crate::publication::{Destination as PubDestination, Point as PubPoint};
 
   #[test]
   #[allow(clippy::float_cmp)]
@@ -339,25 +335,6 @@ mod tests {
     // Assert
     assert_eq!(converted.x, 123.0);
     assert_eq!(converted.y, 45.0);
-  }
-
-  #[test]
-  fn to_krilla_rect_converts_all_four_fields() {
-    // Arrange
-    let rect = PubRect {
-      x: model::Length::pt(1.0),
-      y: model::Length::pt(2.0),
-      width: model::Length::pt(3.0),
-      height: model::Length::pt(4.0),
-    };
-
-    // Act
-    let converted = to_krilla_rect(rect).expect("有限値なので変換は成功するはず");
-
-    // Assert — krilla の `geom::Rect` に x()/y() getter が無いため、`from_xywh` で構築した
-    // 期待値との構造的な等価性（`PartialEq`）で比較する
-    let expected = krilla::geom::Rect::from_xywh(1.0, 2.0, 3.0, 4.0).expect("固定値なので構築は成功するはず");
-    assert_eq!(converted, expected);
   }
 
   #[test]
