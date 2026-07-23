@@ -24,7 +24,8 @@ use krilla::{
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
 use model::{
-  AnchorId, AnchorMark, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
+  AnchorId, AnchorMark, AssetId, Color, FontMap, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow,
+  TableColumn,
 };
 
 use crate::{
@@ -32,6 +33,10 @@ use crate::{
   error::PdfGenError,
   font::convert_to_krilla_glyphs,
   image::{LoadedImage, load_image, required_pixels},
+  publication::{
+    PaintOp, Point as PubPoint, Publication, PublicationLink, PublicationLinkTarget, PublicationOutlineEntry,
+    Rect as PubRect,
+  },
 };
 
 /// 組版済みページ列を `document` に描画します。
@@ -220,6 +225,179 @@ fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: Str
     dest,
     children: Vec::new(),
   });
+}
+
+// =============================================================================
+// Publication ベースの描画（新設、旧 render_pages 系とは並存。Task 4 で cutover）
+// =============================================================================
+//
+// `crate::publication::Destination` は krilla の `destination::Destination`（上の import で
+// 既に bare `Destination` として使用中）と名前が衝突するため import せず、必要な箇所は
+// `crate::publication::Destination` とフルパスで書く（krilla 側は既存の bare `Destination`
+// をそのまま使う。既存 import・既存関数は一切変更しない）。
+
+/// `Publication::Point`（`model::Length`）を krilla の `geom::Point`（`f32`）へ変換する
+///
+/// `Publication` の座標は `PublicationBuilder` が左マージンを加算済みなので、ここでは
+/// 単位変換のみ行い margin を足さない。
+fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
+
+/// `Publication::Rect` を krilla の `geom::Rect` へ変換する
+fn to_krilla_rect(rect: PubRect) -> Result<Rect, PdfGenError> {
+  return Rect::from_xywh(rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt())
+    .ok_or(PdfGenError::InvalidRuleRect);
+}
+
+/// `Publication::Destination` を krilla の `XyzDestination` へ変換する
+fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
+  return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
+}
+
+/// `Publication::outline` の各エントリから krilla の `Outline` を構築する
+///
+/// エントリは既に `depth`/`text`/`dest` が文書順で確定済みのフラット列なので、旧実装のような
+/// `outline_entries` と見出し destination の zip は不要。
+fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Outline> {
+  let mut roots: Vec<OutlineTreeNode> = Vec::new();
+  for entry in entries {
+    insert_outline_node(&mut roots, entry.depth, entry.text.clone(), to_xyz_destination(entry.dest));
+  }
+  if roots.is_empty() {
+    return None;
+  }
+  let mut outline = Outline::new();
+  for root in roots {
+    outline.push_child(root.into_krilla());
+  }
+  return Some(outline);
+}
+
+/// `Publication::PublicationLink` 列をページのリンク注釈として付与する
+///
+/// 到達不能な内部リンクは `Publication` 構築時に既に除外済みなので、旧実装にあった
+/// `dest_by_id` 索引引き + `continue` 分岐は不要。
+fn add_publication_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Result<(), PdfGenError> {
+  for link in links {
+    let target = match &link.target {
+      PublicationLinkTarget::Internal(dest) => Target::Destination(Destination::from(to_xyz_destination(*dest))),
+      PublicationLinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
+    };
+    let rect = to_krilla_rect(link.rect)?;
+    page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
+  }
+  return Ok(());
+}
+
+/// `PaintOp::DrawGlyphRun` を描画する
+fn draw_glyph_run(
+  surface: &mut Surface<'_>,
+  metrics: &FontMetrics,
+  krilla_fonts: &FontMap<Font>,
+  origin: PubPoint,
+  run: &model::GlyphRun,
+) {
+  let font = krilla_fonts.get(run.font_type);
+  let upem = metrics.get(run.font_type).upem;
+  let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
+  if let Some(color) = run.color {
+    let [r, g, b] = color.rgb();
+    surface.set_fill(Some(Fill {
+      paint: rgb::Color::new(r, g, b).into(),
+      ..Fill::default()
+    }));
+  }
+  surface.draw_glyphs(to_krilla_point(origin), &krilla_glyphs, font.clone(), &run.text, run.font_size.to_pt(), false);
+  if run.color.is_some() {
+    surface.set_fill(None);
+  }
+}
+
+/// `PaintOp::DrawImage` を描画する（画像バイト列は encode 時にディスクから都度読む、既存の設計を維持）
+fn draw_publication_image(
+  surface: &mut Surface<'_>,
+  path: &AssetId,
+  rect: PubRect,
+  target_dpi: Option<u32>,
+) -> Result<(), PdfGenError> {
+  return draw_image(
+    surface,
+    path.as_str(),
+    rect.x.to_pt(),
+    rect.y.to_pt(),
+    rect.width.to_pt(),
+    rect.height.to_pt(),
+    target_dpi,
+  );
+}
+
+/// `PaintOp::FillRect` を描画する
+fn draw_publication_fill(
+  surface: &mut Surface<'_>,
+  rect: PubRect,
+  color: Option<model::Color>,
+) -> Result<(), PdfGenError> {
+  return draw_filled_rect(surface, rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt(), color);
+}
+
+/// `PaintOp` 1 個を描画する
+fn draw_paint_op(
+  surface: &mut Surface<'_>,
+  metrics: &FontMetrics,
+  krilla_fonts: &FontMap<Font>,
+  op: &PaintOp,
+) -> Result<(), PdfGenError> {
+  match op {
+    PaintOp::DrawGlyphRun { origin, run } => {
+      draw_glyph_run(surface, metrics, krilla_fonts, *origin, run);
+    },
+    PaintOp::DrawImage {
+      path,
+      rect,
+      target_dpi,
+    } => {
+      draw_publication_image(surface, path, *rect, *target_dpi)?;
+    },
+    PaintOp::FillRect { rect, color } => {
+      draw_publication_fill(surface, *rect, *color)?;
+    },
+  }
+  return Ok(());
+}
+
+/// `Publication` を `document` に描画する
+///
+/// 行送り・改ページ・表分割等のレイアウト判断は `Publication` 構築時に完了済みのため、
+/// 本関数は `PaintOp` 列を順に描画するだけ。`model::Page`/`Config`/`Style` には一切触れない。
+///
+/// 旧 `render_pages`（`model::Page` 版）とは並存させる新規関数。Task 4 で byte-for-byte 一致を
+/// 証明したのち、Task 5 で旧関数を削除しこちらを `render_pages` へ改名する
+/// （それまでどこからも呼ばれないため `dead_code` を一時的に許容する）。
+#[allow(dead_code)]
+pub(crate) fn render_publication_pages(
+  document: &mut Document,
+  publication: &Publication,
+  metrics: &FontMetrics,
+  krilla_fonts: &FontMap<Font>,
+) -> Result<(), PdfGenError> {
+  for page in &publication.pages {
+    let width = page.page_box.width.to_pt();
+    let height = page.page_box.height.to_pt();
+    let page_settings = PageSettings::from_wh(width, height).ok_or(PdfGenError::InvalidPageSize { width, height })?;
+    let mut krilla_page = document.start_page_with(page_settings);
+    let mut surface = krilla_page.surface();
+    for op in &page.ops {
+      draw_paint_op(&mut surface, metrics, krilla_fonts, op)?;
+    }
+    surface.finish();
+    add_publication_links(&mut krilla_page, &page.links)?;
+    krilla_page.finish();
+  }
+  if let Some(entries) = &publication.outline
+    && let Some(outline) = build_outline_from_entries(entries)
+  {
+    document.set_outline(outline);
+  }
+  return Ok(());
 }
 
 /// 配置済みブロック 1 個を描画する
@@ -581,7 +759,71 @@ fn draw_page_background(surface: &mut Surface<'_>, config: &Config, style: &Styl
 mod tests {
   use krilla::{destination::XyzDestination, geom::Point};
 
-  use super::{OutlineTreeNode, insert_outline_node};
+  use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_krilla_rect, to_xyz_destination};
+  use crate::publication::{Destination as PubDestination, Point as PubPoint, Rect as PubRect};
+
+  #[test]
+  #[allow(clippy::float_cmp)]
+  fn to_krilla_point_converts_length_to_pt_without_adding_margin() {
+    // Arrange — Publication の座標は margin_left 加算済みという前提のもと、単位変換のみ行う
+    let point = PubPoint {
+      x: model::Length::pt(123.0),
+      y: model::Length::pt(45.0),
+    };
+
+    // Act
+    let converted = to_krilla_point(point);
+
+    // Assert
+    assert_eq!(converted.x, 123.0);
+    assert_eq!(converted.y, 45.0);
+  }
+
+  #[test]
+  fn to_krilla_rect_converts_all_four_fields() {
+    // Arrange
+    let rect = PubRect {
+      x: model::Length::pt(1.0),
+      y: model::Length::pt(2.0),
+      width: model::Length::pt(3.0),
+      height: model::Length::pt(4.0),
+    };
+
+    // Act
+    let converted = to_krilla_rect(rect).expect("有限値なので変換は成功するはず");
+
+    // Assert — krilla の `geom::Rect` に x()/y() getter が無いため、`from_xywh` で構築した
+    // 期待値との構造的な等価性（`PartialEq`）で比較する
+    let expected = krilla::geom::Rect::from_xywh(1.0, 2.0, 3.0, 4.0).expect("固定値なので構築は成功するはず");
+    assert_eq!(converted, expected);
+  }
+
+  #[test]
+  fn to_xyz_destination_preserves_page_index_and_point() {
+    // Arrange
+    let dest = PubDestination {
+      page_index: 2,
+      point: PubPoint {
+        x: model::Length::pt(1.0),
+        y: model::Length::pt(2.0),
+      },
+    };
+
+    // Act
+    let xyz = to_xyz_destination(dest);
+
+    // Assert
+    assert_eq!(format!("{xyz:?}"), format!("{:?}", XyzDestination::new(2, Point::from_xy(1.0, 2.0))));
+  }
+
+  #[test]
+  fn build_outline_from_entries_returns_none_for_empty_slice() {
+    // Arrange / Act
+    let outline = super::build_outline_from_entries(&[]);
+
+    // Assert
+    assert!(outline.is_none());
+  }
 
   /// テスト用のダミー destination（ページ 0・原点）
   fn dummy_dest() -> XyzDestination { return XyzDestination::new(0, Point::from_xy(0.0, 0.0)); }
