@@ -1,18 +1,23 @@
 //! ヘッダー・フッターの配置仕様組み立て
 
+use std::time::Instant;
+
 use config::{DocumentConfig, RunningContentStyle, Style};
 use model::Color;
+use tracing::info;
 use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
-use super::{compile::CompileContext, page_values::PageLabels};
+use super::{compile::CompileContext, elapsed_ms, page_values::PageLabels};
 
 /// phase 6: 全ページのラベル確定後に、ヘッダー・フッターを各ページへ配置する。
 ///
 /// [`PageLabels`] を要求することで、前付け・後付けを含む全ページが確定した後にしか呼べない
 /// 順序制約を型で表す（`PageLabels` は `BodyPageValues::finalize` 経由でしか作れない）。
 pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [model::Page], page_labels: PageLabels) {
+  let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
   typeset::build_running_content(pages, ctx.shapers, ctx.metrics, &spec);
+  info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様 [`typeset::RunningContentSpec`] を組み立てる。
@@ -21,7 +26,7 @@ pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [model
 /// でタイトルページ（先頭ページ）への非描画を指示する。`page_labels` を要求することで、前付けページ列が
 /// 確定した後（[`PageLabels`] は `BodyPageValues::finalize` を経由してしか作れない）にしか呼べないという
 /// 順序制約を型で表す。ラベルのトークン置換自体は配置パス側が担う。
-pub(super) fn build_running_spec(
+fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
   text_width: model::Length,

@@ -1,9 +1,11 @@
 //! 前付け（タイトルページ・目次）の組み立て・ページ分割・補助型
 
+use std::time::Instant;
+
 use config::{Style, TocStyle};
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{Block, FontKind, HeadingKey, HeadingLevel, Page, TextAlignment};
-use tracing::{debug, debug_span};
+use tracing::{debug, debug_span, info};
 use typeset::{
   HeadingRecord, LineBreaker, PageGeometry, TextStyle, TitlePageMetadata, TocEntryInput, TocSpec, build_blocks,
   build_toc_blocks, lower_title_page,
@@ -11,6 +13,7 @@ use typeset::{
 
 use super::{
   compile::{BodyPageFacts, CompileContext},
+  elapsed_ms,
   page_values::BodyPageValues,
 };
 
@@ -19,6 +22,7 @@ use super::{
 /// タイトルページのメタデータは config 形状から疎結合にするためここで組み立てる。前付けは常に
 /// 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。
 pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFacts) -> Vec<Page> {
+  let stage_start = Instant::now();
   let title_metadata = TitlePageMetadata {
     title: ctx.config.document.title.clone(),
     author: ctx.config.document.author.clone(),
@@ -33,14 +37,22 @@ pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFac
     ctx.metrics,
     ctx.text_width,
   );
-  let _span = debug_span!("break_pages", region = "front").entered();
-  return break_front_matter(
-    front_blocks,
-    ctx.text_width,
-    &ctx.front_geometry,
-    &typeset::KnuthPlassBreaker,
-    ctx.style.text.alignment,
+  let pages = {
+    let _span = debug_span!("break_pages", region = "front").entered();
+    break_front_matter(
+      front_blocks,
+      ctx.text_width,
+      &ctx.front_geometry,
+      &typeset::KnuthPlassBreaker,
+      ctx.style.text.alignment,
+    )
+  };
+  info!(
+    front_page_count = pages.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "前付けのページ分割が完了しました"
   );
+  return pages;
 }
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
@@ -48,7 +60,7 @@ pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFac
 /// 各リージョンは改ページ境界で始まる。`lower_title_page` は末尾に `PageBreak` を含むため、後続
 /// （目次・本文）は次ページから始まる。目次の後にも `Block::PageBreak` を積み、本文を次ページから
 /// 始める（本文区間の独立性を保つ）。`title_page` / `toc` がともに無効なら空列を返す。
-pub(super) fn assemble_front_matter(
+fn assemble_front_matter(
   headings: &[HeadingRecord],
   page_values: &BodyPageValues,
   title_metadata: &TitlePageMetadata,
@@ -152,7 +164,7 @@ fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
 /// 落とさないと `break_pages` が「1 ページも確定していない入力」として空ページを 1 枚返す。
 /// タイトル → 目次間の中間の強制改ページは保持する。
 /// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
-pub(super) fn break_front_matter(
+fn break_front_matter(
   mut front_blocks: Vec<Block>,
   text_width: model::Length,
   front_geometry: &PageGeometry,

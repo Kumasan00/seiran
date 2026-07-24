@@ -31,7 +31,7 @@ use super::{
 /// 借用しない、[`OutlineEntry`] はプレーンな見出し情報）なので、フォント関連の借用を伴わずに
 /// `compile_project` の外へ持ち出せる。golden スナップショットテストは `pages` をダンプ対象にする。
 pub(super) struct LaidOutDocument {
-  /// 前付け + 本文を連結した確定ページ列（走り文配置済み）
+  /// 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
   pub(super) pages: Vec<model::Page>,
   /// PDF しおり用の見出し情報（文書順）
   pub(super) outline_entries: Vec<OutlineEntry>,
@@ -79,14 +79,7 @@ impl<'a> CompileContext<'a> {
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
     let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
-    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(
-      config,
-      style,
-      style.text.font_size,
-      style.text.line_height_factor,
-      body_columns,
-      column_gap,
-    );
+    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, body_columns, column_gap);
     return Self {
       config,
       style,
@@ -214,19 +207,19 @@ fn concat_pages(
 /// 組み立てる。
 ///
 /// いずれも段数・段間以外を共有するため、本文側を組んでから前付け・後付けはそれぞれ差し替える。
+/// 既定フォントサイズ・行高は `style.text` から読む（呼び出し元の `CompileContext::new` が
+/// 渡していた 2 引数を、唯一の呼び元がどちらも `style` から導出していたため引数から外した）。
 fn build_page_geometries(
   config: &config::Config,
   style: &config::Style,
-  default_font_size: model::Length,
-  line_height_factor: f32,
   body_columns: usize,
   column_gap: model::Length,
 ) -> (typeset::PageGeometry, typeset::PageGeometry, typeset::PageGeometry) {
   let body_geometry = typeset::PageGeometry {
     margin_top: config.pdf.margin.top,
     page_limit: config.pdf.height - config.pdf.margin.bottom,
-    default_font_size,
-    line_height_factor,
+    default_font_size: style.text.font_size,
+    line_height_factor: style.text.line_height_factor,
     table_cell_padding: style.table.cell_padding,
     num_columns: body_columns,
     column_gap,

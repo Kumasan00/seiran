@@ -4,12 +4,15 @@
 //! ページ番号は本文からの通し（独立した番号体系を持たない）なので、[`super::page_values`] 側は
 //! `BodyPageValues::with_back_matter` で本文ページ数へ合算するだけでよい。
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+  collections::{BTreeMap, BTreeSet},
+  time::Instant,
+};
 
 use config::Style;
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment};
-use tracing::debug_span;
+use tracing::{debug_span, info};
 use typeset::{
   IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, PageGeometry, TextStyle, build_index_blocks,
   sort_index_entries,
@@ -17,6 +20,7 @@ use typeset::{
 
 use super::{
   compile::{BodyPageFacts, CompileContext},
+  elapsed_ms,
   page_values::BodyPageValues,
 };
 
@@ -29,15 +33,24 @@ pub(super) fn typeset_back_matter(
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
 ) -> Vec<Page> {
+  let stage_start = Instant::now();
   let back_blocks = assemble_back_matter(body_pages, &facts.page_values, ctx.style, ctx.shapers, ctx.metrics);
-  let _span = debug_span!("break_pages", region = "back").entered();
-  return break_back_matter(
-    back_blocks,
-    ctx.text_width,
-    &ctx.back_geometry,
-    &typeset::KnuthPlassBreaker,
-    ctx.style.text.alignment,
+  let pages = {
+    let _span = debug_span!("break_pages", region = "back").entered();
+    break_back_matter(
+      back_blocks,
+      ctx.text_width,
+      &ctx.back_geometry,
+      &typeset::KnuthPlassBreaker,
+      ctx.style.text.alignment,
+    )
+  };
+  info!(
+    back_page_count = pages.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "後付けのページ分割が完了しました"
   );
+  return pages;
 }
 
 /// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる
@@ -99,7 +112,7 @@ pub(super) fn collect_index_entries(
 /// 索引ブロック（タイトル → エントリ列）を組み立てる。
 ///
 /// `\index` が 1 個もなければ空ベクタを返す（索引ページを出さない）。
-pub(super) fn assemble_back_matter(
+fn assemble_back_matter(
   body_pages: &mut [Page],
   body_page_values: &BodyPageValues,
   style: &Style,
@@ -147,7 +160,7 @@ fn build_index_spec(style: &Style) -> IndexSpec {
 ///
 /// 索引専用の段組み（`back_geometry`、`style.index.column_count`）で分割する。`back_blocks` が
 /// 空（索引なし）のときは空ページ列を返す。
-pub(super) fn break_back_matter(
+fn break_back_matter(
   back_blocks: Vec<Block>,
   text_width: Length,
   back_geometry: &PageGeometry,
