@@ -4,6 +4,7 @@
 
 mod back_matter;
 mod error;
+mod footnote_numbering;
 mod front_matter;
 mod image_manifest;
 mod outline;
@@ -47,7 +48,7 @@ use page_values::BodyPageValues;
 use pdf_gen::{ImageSet, OutlineEntry};
 use project::{OutputPlan, ProjectSnapshot};
 use running::build_running_spec;
-use tracing::{debug, debug_span, info, warn};
+use tracing::{debug, debug_span, info};
 use typeset::LoweringContext;
 
 /// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
@@ -228,63 +229,13 @@ pub(super) struct LaidOutDocument {
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
 
-/// 本文パス 1 回ぶんの出力（[`break_body_per_page_footnotes`] が反復する単位）。
+/// 本文パス 1 回ぶんの出力（[`footnote_numbering::solve_per_page_numbering`] が反復する単位）。
+#[derive(Debug)]
 struct BodyLayout {
   /// 確定した本文ページ列
   pages: Vec<model::Page>,
   /// 目次・しおり用の見出し情報（文書順）
   headings: Vec<typeset::HeadingRecord>,
-}
-
-/// 脚注のページ単位採番（`FootnoteNumbering::PerPage`）で本文パスを回す上限回数。
-///
-/// 1 回目は通し番号で組んで脚注のページ割り当てを知り、2 回目でページ単位番号を反映する。
-/// 実質はここで収束するので、残りは番号の変化がページ割り当てを揺らすケース用の余裕。
-const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
-
-/// 脚注のページ単位採番を不動点まで反復して本文ページを確定する。
-///
-/// ページ単位採番は「番号 → マーカーの桁数 → マーカー幅 → 行分割 → ページ分割 → 脚注のページ
-/// 割り当て → 番号」と循環している。`break_pages` はフォント非依存の純粋パスで、ページ確定後に
-/// マーカーのグリフを作り直すことはできない（アーキテクチャ上の不変条件）ため、番号を与えて
-/// 組み直す反復で解く。
-///
-/// 各パスは「そのパスで表示した番号」で組まれたページ列を返す。そのページ列から番号を割り当て
-/// 直しても同じ番号になれば、表示とページ割り当てが一致した＝不動点なのでそこで止める。
-/// 脚注のない文書は 1 回目で（マップが空のまま）収束する。
-///
-/// 反復が成り立つのは、番号が**表示値しか変えない**から。どの脚注が存在するか・文書順は番号に
-/// 依存しないので、出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。
-///
-/// # Errors
-///
-/// `body_pass` が失敗した場合（lowering・画像サイズ確定のエラー）にそのまま伝播する。
-fn break_body_per_page_footnotes(
-  body_pass: &impl Fn(Option<&[u32]>) -> miette::Result<BodyLayout>,
-) -> miette::Result<BodyLayout> {
-  // 1 回目は空マップ＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
-  let mut numbers: Vec<u32> = Vec::new();
-  let mut pass: u32 = 1;
-  loop {
-    let layout = body_pass(Some(&numbers))?;
-    let next = typeset::per_page_footnote_numbers(&layout.pages);
-    if next == numbers {
-      debug!(pass, "脚注のページ単位採番が収束しました");
-      return Ok(layout);
-    }
-    if pass == MAX_FOOTNOTE_NUMBERING_PASSES {
-      // 番号の桁数変化がページ割り当てを揺らし続けるケース（脚注が 9 → 10 の桁境界でページ境界に
-      // 乗る等）。最後のパスの結果を採用するので、一部のページで番号が 1 から始まらない可能性が
-      // ある。黙って出さずに報告する。
-      warn!(
-        passes = MAX_FOOTNOTE_NUMBERING_PASSES,
-        "脚注のページ単位採番が収束しませんでした。最後の組版結果を採用します（一部のページで脚注番号が 1 から始まらない可能性があります）"
-      );
-      return Ok(layout);
-    }
-    numbers = next;
-    pass += 1;
-  }
 }
 
 /// パース済みプロジェクトとフォントデータから、描画直前の確定レイアウトを構築する
@@ -345,7 +296,7 @@ fn compile_project(
   //
   // `footnote_numbers` は脚注の表示番号の上書きマップ（出現 index 引き）。通し採番では `None` を
   // 渡し、上書きマップを一切通さない現状どおりの経路になる。ページ単位採番のときだけ
-  // [`break_body_per_page_footnotes`] がページ確定後の番号を与えて複数回呼ぶ。
+  // [`footnote_numbering::solve_per_page_numbering`] がページ確定後の番号を与えて複数回呼ぶ。
   let run_body_pass = |footnote_numbers: Option<&[u32]>| -> miette::Result<BodyLayout> {
     let stage_start = Instant::now();
     let mut lowering_ctx =
@@ -406,7 +357,7 @@ fn compile_project(
   } = match style.footnote.numbering {
     // 通し採番: 1 回だけ通す。番号はページに依存しないので反復する理由がない。
     config::FootnoteNumbering::Continuous => run_body_pass(None)?,
-    config::FootnoteNumbering::PerPage => break_body_per_page_footnotes(&run_body_pass)?,
+    config::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_body_pass)?,
   };
   let body_page_count = body_pages.len();
   let body_page_values = BodyPageValues::from_body_pages(&body_pages, &style.page_numbering);
@@ -642,91 +593,7 @@ fn build_page_geometries(
 
 #[cfg(test)]
 mod tests {
-  use std::cell::RefCell;
-
-  use super::{
-    BodyLayout, BuildPdfError, MAX_FOOTNOTE_NUMBERING_PASSES, ParsedSource, break_body_per_page_footnotes,
-    wrap_lowering_error,
-  };
-
-  /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
-  fn page_with_footnotes(indices: &[u32]) -> model::Page {
-    return model::Page {
-      blocks: Vec::new(),
-      header: Vec::new(),
-      footer: Vec::new(),
-      footnotes: indices
-        .iter()
-        .map(|index| {
-          return model::PlacedFootnote {
-            number: index + 1,
-            index: *index,
-            continued: false,
-            blocks: Vec::new(),
-          };
-        })
-        .collect(),
-      anchors: Vec::new(),
-      links: Vec::new(),
-      index_entries: Vec::new(),
-      background_color: None,
-    };
-  }
-
-  #[test]
-  fn per_page_footnote_passes_stop_at_fixed_point() {
-    // Arrange — ページ割り当てが番号に依らず安定している本文パスを模す（実文書の通常ケース）。
-    // 1 ページ目に 2 個・2 ページ目に 1 個で固定。
-    let calls = RefCell::new(0_u32);
-    let body_pass = |_numbers: Option<&[u32]>| {
-      *calls.borrow_mut() += 1;
-      return Ok(BodyLayout {
-        pages: vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[2])],
-        headings: Vec::new(),
-      });
-    };
-
-    // Act
-    let layout = break_body_per_page_footnotes(&body_pass).expect("失敗しない");
-
-    // Assert — 1 回目（通し番号）でページ割り当てを知り、2 回目でページ単位番号を反映して組み直す。
-    // 2 回目の結果から番号を割り当て直しても同じマップになる＝不動点なのでそこで止まる。
-    assert_eq!(*calls.borrow(), 2, "実質 2 回で収束するはず");
-    assert_eq!(layout.pages.len(), 2);
-  }
-
-  #[test]
-  fn per_page_footnote_passes_give_up_at_max_and_keep_last_layout() {
-    // Arrange — 番号を与えるたびにページ割り当てが変わり続けて収束しない本文パスを模す
-    // （脚注が桁境界でページ境界に乗り続けるケースの極端版）。呼ばれるたびに脚注の配置を
-    // 1 ページ目・2 ページ目で交互に入れ替える。
-    let calls = RefCell::new(0_u32);
-    let body_pass = |_numbers: Option<&[u32]>| {
-      let call = {
-        let mut c = calls.borrow_mut();
-        *c += 1;
-        *c
-      };
-      let pages = if call % 2 == 0 {
-        vec![page_with_footnotes(&[0]), page_with_footnotes(&[1])]
-      } else {
-        vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[])]
-      };
-      return Ok(BodyLayout {
-        pages,
-        headings: Vec::new(),
-      });
-    };
-
-    // Act
-    let layout = break_body_per_page_footnotes(&body_pass).expect("収束しなくてもエラーにはしない");
-
-    // Assert — 上限回数で打ち切り（無限ループしない）、最後のパスの結果を返す。
-    // 上限回（4）は偶数なので、最後は各ページ 1 個ずつの側（奇数回の 2 個・0 個ではない）。
-    assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");
-    assert_eq!(layout.pages[0].footnotes.len(), 1, "最後のパスのレイアウトを返すはず");
-    assert_eq!(layout.pages[1].footnotes.len(), 1, "最後のパスのレイアウトを返すはず");
-  }
+  use super::{BuildPdfError, ParsedSource, wrap_lowering_error};
 
   /// グループ 1 に、指定した起源を持たせたうえで未定義ラベルの `\ref` を置き、その起源が帰属源になる
   /// `LoweringError` を生成するテストヘルパ
