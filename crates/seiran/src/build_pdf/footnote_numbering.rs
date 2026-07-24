@@ -7,7 +7,7 @@
 
 use tracing::debug;
 
-use super::{compile::BodyLayout, error::BuildPdfError};
+use super::{body::BodyLayout, error::BuildPdfError};
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///

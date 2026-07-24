@@ -14,11 +14,15 @@ use font::{
 };
 use pdf_gen::{ImageSet, OutlineEntry};
 use tracing::{debug, debug_span, info};
-use typeset::LoweringContext;
 
 use super::{
-  ParsedProject, back_matter, elapsed_ms, footnote_numbering, front_matter, outline::collect_outline_entries,
-  page_values::BodyPageValues, project::ProjectSnapshot, running::build_running_spec, wrap_lowering_error,
+  ParsedProject, back_matter,
+  body::{self, BodyLayout},
+  elapsed_ms, front_matter,
+  outline::collect_outline_entries,
+  page_values::BodyPageValues,
+  project::ProjectSnapshot,
+  running::build_running_spec,
 };
 
 /// [`compile_project`] の出力＝描画パスへ渡す確定レイアウト。
@@ -33,13 +37,68 @@ pub(super) struct LaidOutDocument {
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
 
-/// 本文パス 1 回ぶんの出力（[`footnote_numbering::solve_per_page_numbering`] が反復する単位）。
-#[derive(Debug)]
-pub(super) struct BodyLayout {
-  /// 確定した本文ページ列
-  pub(super) pages: Vec<model::Page>,
-  /// 目次・しおり用の見出し情報（文書順）
-  pub(super) headings: Vec<typeset::HeadingRecord>,
+/// 全 phase が共有する組版資源と寸法。
+///
+/// フォント資源（`FontRefs` → `ShaperDatas` / `ShaperInstances` → `HarfRustShapers`）は互いを借用する
+/// チェーンになっており 1 個の struct に所有させられないため、[`compile_project`] のローカルで組み立て、
+/// ここでは参照だけを束ねる。ジオメトリは本文（N 段）・前付け（常に 1 段）・後付け（索引の段組み数）で
+/// 分かれる。
+pub(super) struct CompileContext<'a> {
+  /// 実体・物理・メタデータ設定
+  pub(super) config: &'a config::Config,
+  /// 見た目の設定
+  pub(super) style: &'a config::Style,
+  /// 19 種別ぶんのシェーパー
+  pub(super) shapers: &'a HarfRustShapers<'a>,
+  /// フォントメトリクス
+  pub(super) metrics: &'a FontMetrics,
+  /// 版面幅（段組み前）
+  pub(super) text_width: model::Length,
+  /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
+  pub(super) body_col_width: model::Length,
+  /// 本文のページジオメトリ（N 段）
+  pub(super) body_geometry: typeset::PageGeometry,
+  /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
+  pub(super) front_geometry: typeset::PageGeometry,
+  /// 後付け（索引）のページジオメトリ（`style.index.column_count` 段・下端揃えなし）
+  pub(super) back_geometry: typeset::PageGeometry,
+}
+
+impl<'a> CompileContext<'a> {
+  /// 設定とフォント資源から、幅・ジオメトリを解決して組み立てる。
+  ///
+  /// config × style の横断制約（段幅が非正にならないこと）は `build_pdf` 冒頭の
+  /// `config::validate_layout` で検証済み。
+  pub(super) fn new(
+    config: &'a config::Config,
+    style: &'a config::Style,
+    shapers: &'a HarfRustShapers<'a>,
+    metrics: &'a FontMetrics,
+  ) -> Self {
+    let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
+    let body_columns = style.columns.count as usize;
+    let column_gap = style.columns.gap;
+    let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
+    let (body_geometry, front_geometry, back_geometry) = build_page_geometries(
+      config,
+      style,
+      style.text.font_size,
+      style.text.line_height_factor,
+      body_columns,
+      column_gap,
+    );
+    return Self {
+      config,
+      style,
+      shapers,
+      metrics,
+      text_width,
+      body_col_width,
+      body_geometry,
+      front_geometry,
+      back_geometry,
+    };
+  }
 }
 
 /// パース済みプロジェクトとフォントデータから、描画直前の確定レイアウトを構築する
@@ -63,11 +122,6 @@ pub(super) fn compile_project(
   let style = &snapshot.style;
   let font_data = &snapshot.font_data;
 
-  // wrap_lowering_error（run_body_pass クロージャ内）が引き続き参照するため、元の
-  // `let parsed = &parsed_project.parsed;` は残す。groups だけ `lowering_groups()` メソッド経由にする。
-  let parsed = &parsed_project.parsed;
-  let groups = parsed_project.lowering_groups();
-
   let font_refs = FontRefs::new(&config.font_configs, font_data)?;
 
   let stage_start = Instant::now();
@@ -81,90 +135,15 @@ pub(super) fn compile_project(
 
   let metrics = FontMetrics::new(&font_refs)?;
 
-  // 本文幅は画像サイズ解決と行分割の双方で使うので先に算出する
-  let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
-  let default_font_size = style.text.font_size;
-  let line_height_factor = style.text.line_height_factor;
+  let ctx = CompileContext::new(config, style, &harf_rust_shapers, &metrics);
 
-  // 本文の段組み（前付けは常に単段）。1 段あたりの幅を算出する。config × style の横断制約
-  // （段幅が非正にならないこと）は `build_pdf` 冒頭の `config::validate_layout` で検証済み。
-  let body_columns = style.columns.count as usize;
-  let column_gap = style.columns.gap;
-  let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
-
-  // ジオメトリは本文（N 段）・前付け（常に 1 段）・後付け＝索引（独自の段組み数）で分ける。
-  let (body_geometry, front_geometry, back_geometry) =
-    build_page_geometries(config, style, default_font_size, line_height_factor, body_columns, column_gap);
-
-  // 本文の lowering → シェーピング → 画像確定 → ページ分割を 1 回通す。
-  //
-  // `footnote_numbers` は脚注の表示番号の上書きマップ（出現 index 引き）。通し採番では `None` を
-  // 渡し、上書きマップを一切通さない現状どおりの経路になる。ページ単位採番のときだけ
-  // [`footnote_numbering::solve_per_page_numbering`] がページ確定後の番号を与えて複数回呼ぶ。
-  let run_body_pass = |footnote_numbers: Option<&[u32]>| -> miette::Result<BodyLayout> {
-    let stage_start = Instant::now();
-    let mut lowering_ctx =
-      LoweringContext::new(style).with_image_defaults(config.image.max_dpi, config.image.downsample);
-    if let Some(numbers) = footnote_numbers {
-      lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
-    }
-    let (body_layout_nodes, headings) = typeset::lower_sources_with_headings(&lowering_ctx, &groups)
-      .map_err(|error| return wrap_lowering_error(error, parsed))?;
-    info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
-
-    // build_blocks は本文・タイトルページで複数回呼ばれ、自段完了を同じ文面の DEBUG で出すため、
-    // span の `region` で呼び出し区間を区別できるようにする（INFO 時は span 非活性でゼロコスト）。
-    let stage_start = Instant::now();
-    let body_blocks = {
-      let _span = debug_span!("build_blocks", region = "body").entered();
-      typeset::build_blocks(
-        body_layout_nodes,
-        &harf_rust_shapers,
-        &metrics,
-        default_font_size,
-        line_height_factor,
-        config.document.language.as_deref(),
-        style.text.punctuation_spacing,
-      )
-    };
-    info!(
-      block_count = body_blocks.len(),
-      elapsed_ms = elapsed_ms(stage_start),
-      "本文ブロックの構築が完了しました"
-    );
-
-    let stage_start = Instant::now();
-    // 本文画像は段幅に合わせて解決する（段抜き＝全幅フロートは将来検討）。
-    let body_blocks = pdf_gen::resolve_images(body_blocks, body_col_width.to_pt(), image_set)?;
-    info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
-
-    // 本文をページ分割する。各見出しの本文内ページ index もここから採取する。本文は前付け
-    // （タイトルページ・目次）と別系列で 1 から番号付けするため、得られる本文内ページ番号が
-    // 最終値になる（前付けの長さに不依存 = R1。break_pages は純粋）。
-    let stage_start = Instant::now();
-    let pages = {
-      let _span = debug_span!("break_pages", region = "body").entered();
-      typeset::break_pages(body_blocks, text_width, &body_geometry, &typeset::KnuthPlassBreaker, style.text.alignment)
-    };
-    info!(
-      body_page_count = pages.len(),
-      elapsed_ms = elapsed_ms(stage_start),
-      "本文のページ分割が完了しました"
-    );
-    return Ok(BodyLayout { pages, headings });
-  };
-
-  // 脚注の採番方式で本文パスの回し方が変わる（他は一切変わらない）。
+  // 本文の lowering → シェーピング → 画像確定 → ページ分割（脚注の採番方式で回し方が変わる）。
   let BodyLayout {
     pages: mut body_pages,
     headings,
-  } = match style.footnote.numbering {
-    // 通し採番: 1 回だけ通す。番号はページに依存しないので反復する理由がない。
-    config::FootnoteNumbering::Continuous => run_body_pass(None)?,
-    config::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_body_pass)?,
-  };
+  } = body::typeset_body(&ctx, parsed_project, image_set)?;
   let body_page_count = body_pages.len();
-  let body_page_values = BodyPageValues::from_body_pages(&body_pages, &style.page_numbering);
+  let body_page_values = BodyPageValues::from_body_pages(&body_pages, &ctx.style.page_numbering);
   info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました");
 
   // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
@@ -178,10 +157,10 @@ pub(super) fn compile_project(
     &headings,
     &body_page_values,
     &title_metadata,
-    style,
+    ctx.style,
     &harf_rust_shapers,
     &metrics,
-    text_width,
+    ctx.text_width,
   );
 
   // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
@@ -192,10 +171,10 @@ pub(super) fn compile_project(
     let _span = debug_span!("break_pages", region = "front").entered();
     front_matter::break_front_matter(
       front_blocks,
-      text_width,
-      &front_geometry,
+      ctx.text_width,
+      &ctx.front_geometry,
       &typeset::KnuthPlassBreaker,
-      style.text.alignment,
+      ctx.style.text.alignment,
     )
   };
   let front_matter_count = front_pages.len();
@@ -204,15 +183,15 @@ pub(super) fn compile_project(
   // 出現ページへ内部リンクの到達先アンカーを事後追加する（`body_pages` の破壊的更新）。
   // `\index` が 1 個もなければ空ページ列になる。
   let back_blocks =
-    back_matter::assemble_back_matter(&mut body_pages, &body_page_values, style, &harf_rust_shapers, &metrics);
+    back_matter::assemble_back_matter(&mut body_pages, &body_page_values, ctx.style, &harf_rust_shapers, &metrics);
   let back_pages = {
     let _span = debug_span!("break_pages", region = "back").entered();
     back_matter::break_back_matter(
       back_blocks,
-      text_width,
-      &back_geometry,
+      ctx.text_width,
+      &ctx.back_geometry,
       &typeset::KnuthPlassBreaker,
-      style.text.alignment,
+      ctx.style.text.alignment,
     )
   };
   let back_matter_count = back_pages.len();
@@ -235,7 +214,7 @@ pub(super) fn compile_project(
 
   // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
   let page_height = config.pdf.height;
-  let running_spec = build_running_spec(style, &config.document, text_width, page_height, page_labels);
+  let running_spec = build_running_spec(ctx.style, &config.document, ctx.text_width, page_height, page_labels);
   typeset::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
 
   // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。

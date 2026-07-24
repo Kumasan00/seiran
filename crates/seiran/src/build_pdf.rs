@@ -3,6 +3,7 @@
 //! PDF を生成するための主要な機能を提供します。
 
 mod back_matter;
+mod body;
 mod compile;
 mod error;
 mod footnote_numbering;
