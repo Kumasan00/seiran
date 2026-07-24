@@ -4,7 +4,16 @@ use config::{DocumentConfig, RunningContentStyle, Style};
 use model::Color;
 use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
-use super::page_values::PageLabels;
+use super::{compile::CompileContext, page_values::PageLabels};
+
+/// phase 6: 全ページのラベル確定後に、ヘッダー・フッターを各ページへ配置する。
+///
+/// [`PageLabels`] を要求することで、前付け・後付けを含む全ページが確定した後にしか呼べない
+/// 順序制約を型で表す（`PageLabels` は `BodyPageValues::finalize` 経由でしか作れない）。
+pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [model::Page], page_labels: PageLabels) {
+  let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
+  typeset::build_running_content(pages, ctx.shapers, ctx.metrics, &spec);
+}
 
 /// ページ数確定後のヘッダー・フッター配置仕様 [`typeset::RunningContentSpec`] を組み立てる。
 ///

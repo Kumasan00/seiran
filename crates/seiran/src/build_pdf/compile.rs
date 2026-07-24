@@ -13,7 +13,7 @@ use font::{
   validate_font,
 };
 use pdf_gen::{ImageSet, OutlineEntry};
-use tracing::{debug, debug_span, info};
+use tracing::{debug, info};
 
 use super::{
   ParsedProject, back_matter,
@@ -22,7 +22,7 @@ use super::{
   outline::collect_outline_entries,
   page_values::BodyPageValues,
   project::ProjectSnapshot,
-  running::build_running_spec,
+  running,
 };
 
 /// [`compile_project`] の出力＝描画パスへ渡す確定レイアウト。
@@ -101,130 +101,113 @@ impl<'a> CompileContext<'a> {
   }
 }
 
-/// パース済みプロジェクトとフォントデータから、描画直前の確定レイアウトを構築する
-/// （`build_pdf` の 3 段目）。
+/// 本文 pagination が確定させた、後続 phase が参照するページ事実。
 ///
-/// Document IR → `LayoutNode` → `build_blocks` → 画像サイズ確定 → `break_pages` → 走り文配置 →
-/// しおり収集を 1 つの関数に束ねたもの。フォントは `font_data` から内部で `FontRefs` / シェーパー /
-/// メトリクスを組み立てて使い、返り値はフォント非依存の所有データのみ（[`LaidOutDocument`]）。
-/// これにより本文組版のロジックを PDF 描画・ファイル I/O から切り離し、確定ページ列を golden
-/// テストで直接検証できる。
+/// `docs/redesign-from-scratch.md` の phase graph における `BodyPageFacts`。見出しのページ・本文ページ
+/// ラベル・本文ページ数を [`BodyPageValues`] が、目次・しおりの見出し記録を `headings` が持つ。
+/// 索引語のページだけは本文ページへアンカーを事後追加する必要があるため、ここには複製せず
+/// [`super::back_matter::typeset_back_matter`] が本文ページ列から直接集約する。
+pub(super) struct BodyPageFacts {
+  /// 見出しページ・本文ページラベル・本文ページ数
+  pub(super) page_values: BodyPageValues,
+  /// 目次・PDF しおり用の見出し情報（文書順）
+  pub(super) headings: Vec<typeset::HeadingRecord>,
+}
+
+impl BodyPageFacts {
+  /// 確定した本文ページ列と見出し記録から組み立てる。
+  fn new(body_pages: &[model::Page], headings: Vec<typeset::HeadingRecord>, numbering: &config::PageNumbering) -> Self {
+    return Self {
+      page_values: BodyPageValues::from_body_pages(body_pages, numbering),
+      headings,
+    };
+  }
+}
+
+/// 不変な入力から描画直前の確定レイアウトを構築する（`build_pdf` の 3 段目）。
+///
+/// ページ依存処理は `docs/redesign-from-scratch.md`「ページ依存処理は phase graph で表す」の順序
+/// （本文 pagination →（per-page 脚注採番のときだけ専用 solver）→ [`BodyPageFacts`] → 前付け →
+/// 後付け → 全ページラベル確定 → 走り文配置）で並ぶ。本文ページ番号は前付けの長さから独立し、
+/// 索引は本文確定後に生成し、走り文は全ページ確定後に配置するため、「安定するまで全工程を反復」
+/// する汎用 solver は要らない。返り値はフォント非依存の所有データのみ（[`LaidOutDocument`]）。
 ///
 /// # Errors
 ///
-/// lowering・フォント検証・段組み幅の不正のいずれかで失敗した場合にエラーを返す。
+/// フォントの読込・検証、lowering、画像サイズ確定、脚注のページ単位採番の非収束のいずれかで失敗
+/// した場合にエラーを返す。
 pub(super) fn compile_project(
   snapshot: &ProjectSnapshot,
   parsed_project: &ParsedProject,
   image_set: &ImageSet,
 ) -> miette::Result<LaidOutDocument> {
-  let config = &snapshot.config;
-  let style = &snapshot.style;
-  let font_data = &snapshot.font_data;
-
-  let font_refs = FontRefs::new(&config.font_configs, font_data)?;
-
+  // phase 0: フォント資源の準備。互いを借用するチェーンなので `CompileContext` には持たせずここに置く。
+  let font_refs = FontRefs::new(&snapshot.config.font_configs, &snapshot.font_data)?;
   let stage_start = Instant::now();
-  validate_font::validate_fonts(&config.font_configs, &font_refs)?;
+  validate_font::validate_fonts(&snapshot.config.font_configs, &font_refs)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
-
   let shaper_datas = ShaperDatas::new(&font_refs);
-  let shaper_instances = ShaperInstances::new(&config.font_configs, &font_refs);
-  let harf_rust_shapers = HarfRustShapers::new(&config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
+  let shaper_instances = ShaperInstances::new(&snapshot.config.font_configs, &font_refs);
+  let shapers = HarfRustShapers::new(&snapshot.config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
   debug!("シェーパーの初期化が完了しました");
-
   let metrics = FontMetrics::new(&font_refs)?;
+  let ctx = CompileContext::new(&snapshot.config, &snapshot.style, &shapers, &metrics);
 
-  let ctx = CompileContext::new(config, style, &harf_rust_shapers, &metrics);
-
-  // 本文の lowering → シェーピング → 画像確定 → ページ分割（脚注の採番方式で回し方が変わる）。
+  // phase 1: 本文の block 構築 → pagination（ページ単位脚注採番のときだけ専用 solver を通る）
   let BodyLayout {
     pages: mut body_pages,
     headings,
   } = body::typeset_body(&ctx, parsed_project, image_set)?;
-  let body_page_count = body_pages.len();
-  let body_page_values = BodyPageValues::from_body_pages(&body_pages, &ctx.style.page_numbering);
-  info!(body_page_count, elapsed_ms = elapsed_ms(stage_start), "本文のページ分割が完了しました");
 
-  // 前付けブロック（タイトルページ → 目次）を組み立てる。各リージョンは改ページ境界で始まる。
-  // タイトルページのメタデータは config 形状から疎結合にするため本体で構築して渡す。
-  let title_metadata = typeset::TitlePageMetadata {
-    title: config.document.title.clone(),
-    author: config.document.author.clone(),
-    date: config.document.date.clone(),
-  };
-  let front_blocks = front_matter::assemble_front_matter(
-    &headings,
-    &body_page_values,
-    &title_metadata,
-    ctx.style,
-    &harf_rust_shapers,
-    &metrics,
-    ctx.text_width,
-  );
+  // phase 2: 後続 phase が参照する本文のページ事実を確定する
+  let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);
 
-  // 前付け（1 段）を本文（N 段）と別に分割し、ページ列として連結する。前付けと本文は段数が異なるため
-  // 1 回の break_pages では兼ねられない。連結することで本文ページは後ろの index へ自動的にずれ、内部
-  // リンク・しおりの参照ページもレンダリング時の列挙で正しく解決される。
-  let stage_start = Instant::now();
-  let front_pages = {
-    let _span = debug_span!("break_pages", region = "front").entered();
-    front_matter::break_front_matter(
-      front_blocks,
-      ctx.text_width,
-      &ctx.front_geometry,
-      &typeset::KnuthPlassBreaker,
-      ctx.style.text.alignment,
-    )
-  };
-  let front_matter_count = front_pages.len();
+  // phase 3: 前付け（タイトルページ・目次）を生成・pagination
+  let front_pages = front_matter::typeset_front_matter(&ctx, &facts);
 
-  // 後付け（索引）ブロックを組み立てる。本文の index_entries から全ページの索引語を集約し、
-  // 出現ページへ内部リンクの到達先アンカーを事後追加する（`body_pages` の破壊的更新）。
-  // `\index` が 1 個もなければ空ページ列になる。
-  let back_blocks =
-    back_matter::assemble_back_matter(&mut body_pages, &body_page_values, ctx.style, &harf_rust_shapers, &metrics);
-  let back_pages = {
-    let _span = debug_span!("break_pages", region = "back").entered();
-    back_matter::break_back_matter(
-      back_blocks,
-      ctx.text_width,
-      &ctx.back_geometry,
-      &typeset::KnuthPlassBreaker,
-      ctx.style.text.alignment,
-    )
-  };
-  let back_matter_count = back_pages.len();
+  // phase 4: 後付け（索引）を生成・pagination（本文ページへ索引アンカーを事後追加する）
+  let back_pages = back_matter::typeset_back_matter(&ctx, &mut body_pages, &facts);
 
-  // 索引ページも本文からの通し番号（独立した番号体系を持たない）。前付けページ列が確定した時点
-  // （`pages` への move の前）でラベルを解決する。
-  let page_labels = body_page_values.with_back_matter(&back_pages).finalize(&front_pages);
-  let mut pages = front_pages;
-  pages.extend(body_pages);
-  pages.extend(back_pages);
+  // phase 5: 全ページラベルを確定し、前付け → 本文 → 後付けの順に連結する
+  let BodyPageFacts {
+    page_values,
+    headings,
+  } = facts;
+  let page_labels = page_values.with_back_matter(&back_pages).finalize(&front_pages);
+  let mut pages = concat_pages(front_pages, body_pages, back_pages);
   debug_assert_eq!(page_labels.len(), pages.len(), "ラベル数は物理ページ総数と一致するはず");
-  info!(
-    page_count = pages.len(),
-    front_matter_count,
-    body_page_count,
-    back_matter_count,
-    elapsed_ms = elapsed_ms(stage_start),
-    "ページ分割が完了しました"
-  );
 
-  // ページ数確定後にヘッダー・フッターを配置する（ページ番号トークンの解決にラベルが必要なため）
-  let page_height = config.pdf.height;
-  let running_spec = build_running_spec(ctx.style, &config.document, ctx.text_width, page_height, page_labels);
-  typeset::build_running_content(&mut pages, &harf_rust_shapers, &metrics, &running_spec);
+  // phase 6: ページ数確定後にヘッダー・フッターを配置する
+  running::place_running_content(&ctx, &mut pages, page_labels);
 
-  // PDF しおり用の見出し情報を文書順に集める（CSL 整形で追加された References 見出しも含む）。
-  // lowering が各見出しの直前に出すアンカーと文書順で 1 対 1 に対応する。
+  // phase 7: PDF しおり用の見出し情報を文書順に集め、Publication 構築へ渡す形にする
   let outline_entries = collect_outline_entries(&headings);
 
   return Ok(LaidOutDocument {
     pages,
     outline_entries,
   });
+}
+
+/// 前付け → 本文 → 後付けの順にページ列を連結する（物理ページ index の確定）。
+///
+/// 本文ページは前付けのぶんだけ後ろの index へずれ、内部リンク・しおりの参照ページは
+/// レンダリング時の列挙で解決される。
+fn concat_pages(
+  front_pages: Vec<model::Page>,
+  body_pages: Vec<model::Page>,
+  back_pages: Vec<model::Page>,
+) -> Vec<model::Page> {
+  let (front_matter_count, body_page_count, back_matter_count) =
+    (front_pages.len(), body_pages.len(), back_pages.len());
+  let mut pages = front_pages;
+  pages.extend(body_pages);
+  pages.extend(back_pages);
+  info!(
+    page_count = pages.len(),
+    front_matter_count, body_page_count, back_matter_count, "ページ分割が完了しました"
+  );
+  return pages;
 }
 
 /// 本文（N 段）・前付け（常に 1 段）・後付け（索引、独自の段組み数）の [`typeset::PageGeometry`] を

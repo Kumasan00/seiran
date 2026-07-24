@@ -9,12 +9,36 @@ use std::collections::{BTreeMap, BTreeSet};
 use config::Style;
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment};
+use tracing::debug_span;
 use typeset::{
   IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, PageGeometry, TextStyle, build_index_blocks,
   sort_index_entries,
 };
 
-use super::page_values::BodyPageValues;
+use super::{
+  compile::{BodyPageFacts, CompileContext},
+  page_values::BodyPageValues,
+};
+
+/// phase 4: 後付け（巻末索引）を生成してページ分割する。
+///
+/// 本文全ページの索引語を集約し、出現ページへ内部リンクの到達先アンカーを事後追加する
+/// （`body_pages` の破壊的更新）。`\index` が 1 個もなければ空ページ列を返す。
+pub(super) fn typeset_back_matter(
+  ctx: &CompileContext<'_>,
+  body_pages: &mut [Page],
+  facts: &BodyPageFacts,
+) -> Vec<Page> {
+  let back_blocks = assemble_back_matter(body_pages, &facts.page_values, ctx.style, ctx.shapers, ctx.metrics);
+  let _span = debug_span!("break_pages", region = "back").entered();
+  return break_back_matter(
+    back_blocks,
+    ctx.text_width,
+    &ctx.back_geometry,
+    &typeset::KnuthPlassBreaker,
+    ctx.style.text.alignment,
+  );
+}
 
 /// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる
 /// （同じ語でも `reading` が異なれば別エントリとして扱う）。

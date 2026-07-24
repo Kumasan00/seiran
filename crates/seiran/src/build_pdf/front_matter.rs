@@ -9,7 +9,39 @@ use typeset::{
   build_toc_blocks, lower_title_page,
 };
 
-use super::page_values::BodyPageValues;
+use super::{
+  compile::{BodyPageFacts, CompileContext},
+  page_values::BodyPageValues,
+};
+
+/// phase 3: 前付け（タイトルページ・目次）を生成してページ分割する。
+///
+/// タイトルページのメタデータは config 形状から疎結合にするためここで組み立てる。前付けは常に
+/// 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。
+pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFacts) -> Vec<Page> {
+  let title_metadata = TitlePageMetadata {
+    title: ctx.config.document.title.clone(),
+    author: ctx.config.document.author.clone(),
+    date: ctx.config.document.date.clone(),
+  };
+  let front_blocks = assemble_front_matter(
+    &facts.headings,
+    &facts.page_values,
+    &title_metadata,
+    ctx.style,
+    ctx.shapers,
+    ctx.metrics,
+    ctx.text_width,
+  );
+  let _span = debug_span!("break_pages", region = "front").entered();
+  return break_front_matter(
+    front_blocks,
+    ctx.text_width,
+    &ctx.front_geometry,
+    &typeset::KnuthPlassBreaker,
+    ctx.style.text.alignment,
+  );
+}
 
 /// 前付けブロック（タイトルページ → 目次）を文書順に組み立てて返す。
 ///
