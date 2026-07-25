@@ -384,11 +384,12 @@ mod tests {
   use super::build_publication;
   use crate::build_pdf::{compile::LaidOutDocument, outline::OutlineEntry};
 
-  /// テスト用の最小フォント設定を返す（`fonts/` 直下の静的フォント。`variation_axes` 不要）。
+  /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
+  /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
   fn test_font_config() -> FontConfig {
     return FontConfig {
       font_name: "test".to_string(),
-      font_path: PathBuf::from("fonts/STIXTwoMath-Regular.ttf"),
+      font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
       font_index: 0,
       variation_axes: None,
       script: None,
@@ -440,6 +441,10 @@ mod tests {
   /// 実フォントを 1 個読み込んで `ResourceBundle::new` を通せれば足りる）。
   fn test_resources() -> ResourceBundle {
     super::super::golden::enter_workspace_root();
+    assert!(
+      std::path::Path::new("vendor/fonts").is_dir(),
+      "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
+    );
     let config = test_config();
     let font_data = font::FontData::new(&config.font_configs).expect("テストフォントの読み込み");
     let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
