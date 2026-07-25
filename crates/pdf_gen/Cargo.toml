@@ -9,7 +9,6 @@ license.workspace = true
 
 [dependencies]
 chrono.workspace = true
-config.workspace = true
 font.workspace = true
 image.workspace = true
 krilla.workspace = true

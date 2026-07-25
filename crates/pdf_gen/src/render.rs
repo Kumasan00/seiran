@@ -1,6 +1,5 @@
 //! 確定済みの描画命令を Krilla で PDF に描画する。
 
-use font::FontMetrics;
 use krilla::{
   Document,
   action::{Action, LinkAction},
@@ -12,10 +11,9 @@ use krilla::{
   page::{Page as KrillaPage, PageSettings},
   paint::Fill,
   surface::Surface,
-  text::Font,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use model::{AssetId, FontMap};
+use model::AssetId;
 
 use crate::{
   error::PdfGenError,
@@ -25,6 +23,7 @@ use crate::{
     PaintOp, Point as PubPoint, Publication, PublicationLink, PublicationLinkTarget, PublicationOutlineEntry,
     Rect as PubRect,
   },
+  resources::ResourceBundle,
 };
 
 /// Publication の点を Krilla の点へ単位変換する。
@@ -108,15 +107,9 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
 }
 
 /// `PaintOp::DrawGlyphRun` を描画する
-fn draw_glyph_run(
-  surface: &mut Surface<'_>,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-  origin: PubPoint,
-  run: &model::GlyphRun,
-) {
-  let font = krilla_fonts.get(run.font_type);
-  let upem = metrics.get(run.font_type).upem;
+fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin: PubPoint, run: &model::GlyphRun) {
+  let font = resources.fonts.get(run.font_type);
+  let upem = resources.font_metrics.get(run.font_type).upem;
   let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
   if let Some(color) = run.color {
     let [r, g, b] = color.rgb();
@@ -134,19 +127,16 @@ fn draw_glyph_run(
 /// `PaintOp::DrawImage` を描画する。
 fn draw_publication_image(
   surface: &mut Surface<'_>,
+  resources: &ResourceBundle,
   path: &AssetId,
   rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfGenError> {
-  return draw_image(
-    surface,
-    path.as_str(),
-    rect.x.to_pt(),
-    rect.y.to_pt(),
-    rect.width.to_pt(),
-    rect.height.to_pt(),
-    target_dpi,
-  );
+  let bytes = resources
+    .image_bytes
+    .get(path)
+    .ok_or_else(|| return PdfGenError::ImageNotInManifest { path: path.clone() })?;
+  return draw_image(surface, path.as_str(), bytes, rect, target_dpi);
 }
 
 /// `PaintOp::FillRect` を描画する
@@ -159,22 +149,17 @@ fn draw_publication_fill(
 }
 
 /// `PaintOp` 1 個を描画する
-fn draw_paint_op(
-  surface: &mut Surface<'_>,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-  op: &PaintOp,
-) -> Result<(), PdfGenError> {
+fn draw_paint_op(surface: &mut Surface<'_>, resources: &ResourceBundle, op: &PaintOp) -> Result<(), PdfGenError> {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
-      draw_glyph_run(surface, metrics, krilla_fonts, *origin, run);
+      draw_glyph_run(surface, resources, *origin, run);
     },
     PaintOp::DrawImage {
       path,
       rect,
       target_dpi,
     } => {
-      draw_publication_image(surface, path, *rect, *target_dpi)?;
+      draw_publication_image(surface, resources, path, *rect, *target_dpi)?;
     },
     PaintOp::FillRect { rect, color } => {
       draw_publication_fill(surface, *rect, *color)?;
@@ -185,13 +170,10 @@ fn draw_paint_op(
 
 /// [`Publication`] を Krilla の文書へ描画する。
 ///
-/// 描画命令に加えてリンク注釈としおりを出力する。
-pub(crate) fn render_pages(
-  document: &mut Document,
-  publication: &Publication,
-  metrics: &FontMetrics,
-  krilla_fonts: &FontMap<Font>,
-) -> Result<(), PdfGenError> {
+/// 描画命令に加えてリンク注釈としおりを出力する。フォント・画像資源は `publication.resources` から
+/// 取るだけで、ここではファイル I/O もフォント資源の構築も行わない。
+pub(crate) fn render_pages(document: &mut Document, publication: &Publication) -> Result<(), PdfGenError> {
+  let resources = &publication.resources;
   for page in &publication.pages {
     let width = page.page_box.width.to_pt();
     let height = page.page_box.height.to_pt();
@@ -199,7 +181,7 @@ pub(crate) fn render_pages(
     let mut krilla_page = document.start_page_with(page_settings);
     let mut surface = krilla_page.surface();
     for op in &page.ops {
-      draw_paint_op(&mut surface, metrics, krilla_fonts, op)?;
+      draw_paint_op(&mut surface, resources, op)?;
     }
     surface.finish();
     add_page_links(&mut krilla_page, &page.links)?;
@@ -219,13 +201,12 @@ pub(crate) fn render_pages(
 fn draw_image(
   surface: &mut Surface<'_>,
   path: &str,
-  x: f32,
-  y: f32,
-  width: f32,
-  height: f32,
+  bytes: &[u8],
+  rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfGenError> {
-  let loaded = load_image(path, None)?;
+  let (x, y, width, height) = (rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt());
+  let loaded = load_image(path, bytes, None)?;
   let (nat_width, nat_height) = loaded.natural_size();
   let loaded = if matches!(loaded, LoadedImage::Raster(_))
     && let Some(dpi) = target_dpi
@@ -234,7 +215,7 @@ fn draw_image(
   {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
-    load_image(path, Some(target_u))?
+    load_image(path, bytes, Some(target_u))?
   } else {
     loaded
   };

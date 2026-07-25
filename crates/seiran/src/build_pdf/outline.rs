@@ -1,7 +1,15 @@
 //! PDF しおり（アウトライン）エントリの組み立て
 
-use pdf_gen::OutlineEntry;
 use typeset::HeadingRecord;
+
+/// PDF のしおりに使う見出し。
+#[derive(Debug, Clone)]
+pub(super) struct OutlineEntry {
+  /// 見出しレベル（ネストの深さに使う）
+  pub(super) level: model::HeadingLevel,
+  /// しおりに表示するテキスト（`"{number} {plain title}"`）
+  pub(super) text: String,
+}
 
 /// 見出し記録から PDF しおりを文書順に組み立てる。
 ///

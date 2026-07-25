@@ -9,31 +9,53 @@ use usvg::Tree;
 
 use crate::error::PdfGenError;
 
-/// 画像パスごとの自然寸法。
+/// 画像パスごとの自然寸法と生バイト列。
 #[derive(Debug)]
 pub struct ImageSet {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
   natural_sizes: HashMap<AssetId, (f32, f32)>,
+  /// パス → ファイルから読み込んだ生バイト列（未デコード）。
+  bytes: HashMap<AssetId, Vec<u8>>,
 }
 
 impl ImageSet {
   /// `path` の自然寸法を返す。`load_image_set` に渡さなかったパスは `None`。
   fn natural_size(&self, path: &AssetId) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
+
+  /// 保持していた画像の生バイト列を消費して返す。
+  ///
+  /// render 用 [`crate::ResourceBundle`] の構築に使う。これを呼んだ後は自然寸法の参照はできない。
+  #[must_use]
+  pub fn into_image_bytes(self) -> HashMap<AssetId, Vec<u8>> { return self.bytes; }
 }
 
-/// 画像ファイルを読み込み、自然寸法を格納した [`ImageSet`] を返す。
+/// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageSet`] を返す。
+///
+/// `pdf_gen` 内でファイルシステムを読む唯一の箇所。ここで保持した生バイト列は
+/// [`ImageSet::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
 /// # Errors
 ///
 /// 画像の読み込み・デコードに失敗した場合に [`PdfGenError`] を返します。
 pub fn load_image_set(paths: &[AssetId]) -> Result<ImageSet, PdfGenError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
+  let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
-    let loaded = load_image(path.as_str(), None)?;
+    let file_bytes = fs::read(path.as_str()).map_err(|source| {
+      return PdfGenError::ReadImage {
+        path: path.as_str().to_string(),
+        source,
+      };
+    })?;
+    let loaded = load_image(path.as_str(), &file_bytes, None)?;
     natural_sizes.insert(path.clone(), loaded.natural_size());
+    bytes_map.insert(path.clone(), file_bytes);
   }
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
-  return Ok(ImageSet { natural_sizes });
+  return Ok(ImageSet {
+    natural_sizes,
+    bytes: bytes_map,
+  });
 }
 
 /// ブロック列中の画像サイズを自然寸法と本文幅から確定する。
@@ -145,14 +167,11 @@ pub(crate) fn resolve_image_size(
   }
 }
 
-/// PNG、JPEG、SVG を読み込み、必要ならラスタ画像を指定サイズ以下に縮小する。
-pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<LoadedImage, PdfGenError> {
-  let bytes = fs::read(path).map_err(|source| {
-    return PdfGenError::ReadImage {
-      path: path.to_string(),
-      source,
-    };
-  })?;
+/// PNG、JPEG、SVG のバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
+///
+/// `path` は拡張子判定とエラーメッセージにのみ使い、ファイルシステムは読まない
+/// （読み込み済みの `bytes` をそのままデコードする）。
+pub(crate) fn load_image(path: &str, bytes: &[u8], resize_to: Option<(u32, u32)>) -> Result<LoadedImage, PdfGenError> {
   let extension = Path::new(path)
     .extension()
     .and_then(|e| return e.to_str())
@@ -160,10 +179,10 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
     .unwrap_or_default();
   match extension.as_str() {
     "png" => {
-      let bytes = if let Some(target) = resize_to {
-        downsample_raster(&bytes, target, image::ImageFormat::Png, path)?
+      let bytes: Vec<u8> = if let Some(target) = resize_to {
+        downsample_raster(bytes, target, image::ImageFormat::Png, path)?
       } else {
-        bytes
+        bytes.to_vec()
       };
       let image = Image::from_png(bytes.into(), false).map_err(|reason| {
         return PdfGenError::DecodeImage {
@@ -174,10 +193,10 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
       return Ok(LoadedImage::Raster(image));
     },
     "jpg" | "jpeg" => {
-      let bytes = if let Some(target) = resize_to {
-        downsample_raster(&bytes, target, image::ImageFormat::Jpeg, path)?
+      let bytes: Vec<u8> = if let Some(target) = resize_to {
+        downsample_raster(bytes, target, image::ImageFormat::Jpeg, path)?
       } else {
-        bytes
+        bytes.to_vec()
       };
       let image = Image::from_jpeg(bytes.into(), false).map_err(|reason| {
         return PdfGenError::DecodeImage {
@@ -188,7 +207,7 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
       return Ok(LoadedImage::Raster(image));
     },
     "svg" => {
-      let tree = Tree::from_data(&bytes, &usvg::Options::default()).map_err(|source| {
+      let tree = Tree::from_data(bytes, &usvg::Options::default()).map_err(|source| {
         return PdfGenError::ParseSvg {
           path: path.to_string(),
           source,

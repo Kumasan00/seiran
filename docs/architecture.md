@@ -420,30 +420,38 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 (e) 描画。確定座標の `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。`krilla` /
 `krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。`typeset::breaking` に依存しない
-ことが依存グラフで強制されている。
+ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
+`PdfGenError`、および `Publication` を組み立てるための入力型・prepass ヘルパのみ（下記）。`Vec<Page>` →
+`Publication` への変換（旧 `PublicationBuilder`）は compiler 側（`seiran::build_pdf::publication`）に
+移設済み（epic #276 / #277）— pdf_gen は `config::Config` / `model::Page` のどちらにも依存しない。
 
 ### モジュール構成
 
-- `publication`: `Vec<Page>` → `Publication`（座標・描画順が確定した中間表現）への純粋変換
-  `PublicationBuilder`。公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` /
-  `PublicationLinkTarget` / `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` /
-  `Destination`
-- `render`: `render_pages` が `Publication` を krilla の描画呼び出しへ落とす
+- `publication`: `Publication`（座標・描画順が確定した中間表現）の型定義のみ（構築ロジックは持たない）。
+  公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
+  `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
+- `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
+  バイト列）と、それを組み立てる `ResourceBundle::new`。フォント設定は `config::FontConfigs` ではなく
+  pdf_gen 自前の `FontResourceConfig` / `FontResourceConfigs`（config 非依存の複製）を受け取る
+- `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
+  の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
 - `image`: `resolve_images` prepass（画像の自然寸法から width / height を確定）と `ImageSet` /
-  `load_image_set`
-- `font` / `metadata` / `error`: krilla フォント構築 / PDF メタデータ構築 / `PdfGenError`
+  `load_image_set`。`load_image_set` が画像ファイルを読む pdf_gen 内で唯一の箇所で、読んだ生バイト列は
+  `ImageSet::into_image_bytes` で取り出して `ResourceBundle` へ渡す
+- `font` / `metadata` / `error`: グリフの krilla 型変換 / PDF メタデータ構築 / `PdfGenError`
 
 ### 不変条件・注意点
 
 - **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
   集合）。ここを増やすときは「前段で決められない描画か」を確認する。
-- **`Style` に依存しない**。表のセル余白 / 罫線太さ / 罫線色・ページ背景色は前段（`typeset::breaking`）が
-  `Style` から解決済みの値として `model::Page.background_color` / `model::PlacedBlock::Table` の
-  `cell_padding` / `rule_thickness` / `rule_color` に載せており、`PublicationBuilder` はそれを読むだけ。
-  残る `Config` 依存は左マージン・ページサイズ・`show_bookmarks` の 3 箇所のみ。
-- `create_pdf`（crate root）は `Publication` と解決済みのフォント資源（`FontData` / `FontRefs` /
-  `FontMetrics` / `config::FontConfigs`）だけを消費する。`model::Page` / `Config` / `Style` を直接読む旧
-  描画経路は削除済みで、復活させない。
+- **`Style` / `Config` に依存しない**。表のセル余白 / 罫線太さ / 罫線色・ページ背景色は前段
+  （`typeset::breaking`）が `Style` から解決済みの値として `model::Page.background_color` /
+  `model::PlacedBlock::Table` の `cell_padding` / `rule_thickness` / `rule_color` に載せており、左マージン・
+  ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`seiran::build_pdf::publication`）が
+  `config::Config` から読んで `Publication` に前倒し解決してから渡す。
+- `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
+  `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
+  行わない。`model::Page` / `Config` / `Style` を直接読む旧描画経路は削除済みで、復活させない。
 - 既知の制限: 表セル内の脚注はページ列に配置されない。
 
 ## `seiran`
@@ -463,8 +471,10 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 ### build driver（`build_pdf.rs` 直下）
 
-`build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `encode_pdf` /
-`parse_all_sources` / `wrap_lowering_error`）だけを置く。子 module:
+`build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `render_pdf` /
+`build_font_resource_configs` / `parse_all_sources` / `wrap_lowering_error`）だけを置く。`build_pdf` が
+`FontRefs` / `FontMetrics` を 1 回だけ構築し、`compile_project` と `render_pdf` の両方へ `&` で渡す
+（描画段での再構築はしない）。子 module:
 
 - `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
@@ -474,18 +484,23 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 - `page_values`: ページ分割後に確定する値の解決機構。本文ページ列からしか構築できない `BodyPageValues`
   （stage 1）と、前付けページ列確定後にしか得られない `PageLabels`（stage 2）に分け、目次と走り文が必要と
   する確定順序の制約を型で表す
-- `outline`: 見出し記録から PDF しおり用 `pdf_gen::OutlineEntry` を文書順に組み立てる
-  `collect_outline_entries`
+- `outline`: 見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる `collect_outline_entries`。
+  `OutlineEntry` はここで定義する（旧 `pdf_gen::OutlineEntry` を移設。生産者・消費者とも compiler 側だけ
+  になったため）
+- `publication`: `LaidOutDocument`（`Vec<model::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
+  `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
+  epic #276 / #277）
 - `error`: `BuildPdfError`（各クレートのエラーを束ね、`Origin::Source` なら `NamedSource` を紐付け、
   `Origin::Generated` は `LoweringInternal` として扱う）
 
 ### compiler core（phase graph）
 
-`compile` の `compile_project` が phase graph 全体をオーケストレーションする。phase 順序:
+`compile` の `compile_project` が phase graph 全体をオーケストレーションする。フォント資源
+（`FontRefs` / `FontMetrics`）は driver が構築済みのものを受け取るだけで、ここでは構築しない。phase 順序:
 
 | phase | 内容                       | 実装                                  |
 | ----- | -------------------------- | ------------------------------------- |
-| 0     | フォント資源準備           | `compile`                             |
+| 0     | フォント検証・シェーパー準備 | `compile`                           |
 | 1     | 本文 pagination            | `body::typeset_body` / `BodyLayout`   |
 | 2     | `BodyPageFacts` 確定       | `phase_context`                       |
 | 3     | 前付け生成・pagination     | `front_matter::typeset_front_matter`  |

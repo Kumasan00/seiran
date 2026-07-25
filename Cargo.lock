@@ -1746,7 +1746,6 @@ name = "pdf_gen"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "config",
  "font",
  "image",
  "krilla",
