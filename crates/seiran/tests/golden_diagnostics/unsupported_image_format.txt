@@ -1,0 +1,4 @@
+pdf_gen::unsupported_image_format
+
+  × 画像ファイルの拡張子が未対応です: ./tests/image/unsupported.gif
+  help: 対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。

@@ -2,14 +2,20 @@
 //!
 //! [`super::golden`]（確定レイアウト座標の baseline）と対になる、診断メッセージの baseline。
 //! issue #253（#252 step1）で `build_pdf` の分離リファクタに着手する前に、現状の診断表示を
-//! 固定するために追加した。
+//! 固定するために追加した。typed ID / `Origin`（#260）導入後の issue #271 で
+//! `docs/redesign-from-scratch.md` の「テスト戦略」節が目標とする範囲（複数 source・合成
+//! bibliography 由来診断・未知 command・未定義参照・binary asset failure）まで拡張した。
 //!
-//! `docs/redesign-from-scratch.md` の「テスト戦略」節が目標とする Diagnostic golden
-//! （`Origin` / typed ID を前提に、複数 source・合成 bibliography・overfull まで含めて検証するもの）
-//! とは別物。`Publication` / `Origin` / typed ID は #252 の step4 以降でないと導入されないため、
-//! ここでは現行コードのままで再現できる代表的なエラーだけを対象にした最小版に留める。overfull は
-//! 現状ユーザー向け診断が存在せず（`typeset::breaking::break_pages` の `tracing::warn!` に留まる）、
-//! 対象から外す。
+//! 合成 bibliography（`Origin::Generated(GeneratedOrigin::Bibliography)`）由来の診断だけは
+//! フルパイプラインでは検証できない。`citation::render::build_bibliography` が生成する
+//! `DocNode` は `LabelId` も `\ref` も持たない（書誌エントリのアンカーは `\ref` と衝突しない
+//! `CitationId`）ため、`Origin::Generated` を帰属源とする `LoweringError` はユーザー入力からは
+//! 到達不能な防御的フォールバックにとどまる。`diagnostic_lowering_internal_for_generated_origin`
+//! は `build_pdf::tests::lowering_error_with_origin` で `LoweringError` を直接構築し、
+//! `wrap_lowering_error` 以降のレンダリング経路だけを golden で固定する。
+//!
+//! overfull は現状ユーザー向け診断が存在せず（`typeset::breaking::break_pages` の
+//! `tracing::warn!` に留まる）、対象から外す。
 //!
 //! [`miette::Report`] を [`miette::GraphicalReportHandler`]（幅固定・色無効）でテキスト化し、
 //! `tests/golden_diagnostics/<name>.txt` と比較する。再生成は `golden` と同じ
@@ -101,12 +107,43 @@ fn diagnostic_multiple_source_errors() {
 }
 
 #[test]
+fn diagnostic_multi_source_lowering_error_attributes_second_source() {
+  // Arrange / Act — 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（lowering 段）。
+  // `typeset::lower_sources_with_headings` はラベル名前空間を全ソースで共有するため
+  // （単一の `CounterRegistry` に対して逐次 lowering し、`resolve_refs` を全体へ 1 回だけ実行する）、
+  // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、lowering 段の複数 source でも
+  // `Origin::Source` が正しいファイルへ帰属することを確認する。
+  let report = build_pages_err(&[
+    "tests/text/diagnostics/multi_source_a.sei",
+    "tests/text/diagnostics/multi_source_b.sei",
+  ]);
+
+  // Assert
+  assert_matches_golden("multi_source_lowering_error", &render_diagnostic(&report));
+}
+
+#[test]
 fn diagnostic_undefined_ref() {
   // Arrange / Act — `\ref` の未定義ラベル（source 帰属つき `Lowering` エラー）
   let report = build_pages_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
   // Assert
   assert_matches_golden("undefined_ref", &render_diagnostic(&report));
+}
+
+#[test]
+fn diagnostic_lowering_internal_for_generated_origin() {
+  // Arrange — Origin::Generated(GeneratedOrigin::Bibliography) はフルパイプラインでは構造的に
+  // 到達不能（モジュール冒頭のコメント参照）。build_pdf::tests のテストヘルパで LoweringError を
+  // 直接構築し、wrap_lowering_error 以降のレンダリング経路だけを golden で固定する。
+  let style = config::Style::default();
+  let error =
+    super::tests::lowering_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
+  let build_error = super::wrap_lowering_error(error, &[]);
+  let report: miette::Report = build_error.into();
+
+  // Assert
+  assert_matches_golden("lowering_internal_generated_origin", &render_diagnostic(&report));
 }
 
 #[test]
@@ -125,6 +162,17 @@ fn diagnostic_missing_image() {
 
   // Assert
   assert_matches_golden("missing_image", &render_diagnostic(&report));
+}
+
+#[test]
+fn diagnostic_unsupported_image_format() {
+  // Arrange / Act — `pdf_gen::load_image` は拡張子判定より先にファイル読込を行うため、実在するが
+  // 未対応拡張子（`.gif`）のファイルで `PdfGenError::UnsupportedImageFormat`（`missing_image` の
+  // `ReadImage` とは別コードパス）を起こす
+  let report = build_pages_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);
+
+  // Assert
+  assert_matches_golden("unsupported_image_format", &render_diagnostic(&report));
 }
 
 #[test]

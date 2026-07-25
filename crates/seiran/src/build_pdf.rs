@@ -331,7 +331,7 @@ mod tests {
   ///
   /// `origin` を呼び出し側が指定できる（＝グループの位置と起源が独立している）ことが、
   /// 「配列範囲外の `SourceId`」という暗黙の sentinel をやめて `Origin` を導入した狙いそのもの。
-  fn lowering_error_with_origin(style: &config::Style, origin: model::Origin) -> typeset::LoweringError {
+  pub(super) fn lowering_error_with_origin(style: &config::Style, origin: model::Origin) -> typeset::LoweringError {
     use model::{DocNode, InlineNode};
     let ctx = typeset::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
