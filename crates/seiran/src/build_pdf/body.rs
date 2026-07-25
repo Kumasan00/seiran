@@ -10,7 +10,7 @@ use pdf_gen::ImageSet;
 use tracing::{debug_span, info};
 use typeset::LoweringContext;
 
-use super::{ParsedProject, compile::CompileContext, elapsed_ms, footnote_numbering, wrap_lowering_error};
+use super::{ParsedProject, elapsed_ms, footnote_numbering, phase_context::CompileContext, wrap_lowering_error};
 
 /// 本文パス 1 回ぶんの出力。
 #[derive(Debug)]

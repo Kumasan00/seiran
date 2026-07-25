@@ -7,7 +7,7 @@ use model::Color;
 use tracing::info;
 use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
-use super::{compile::CompileContext, elapsed_ms, page_values::PageLabels};
+use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
 
 /// phase 6: 全ページのラベル確定後に、ヘッダー・フッターを各ページへ配置する。
 ///
