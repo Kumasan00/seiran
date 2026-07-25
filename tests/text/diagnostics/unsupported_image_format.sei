@@ -1,0 +1,8 @@
+\section{未対応形式画像のサンプル}
+
+\begin{figure}[label=fig:unsupported]
+// tests/image/unsupported.gif は実データを持たないプレースホルダ。
+// 拡張子判定がデコードより先に走るため中身は問わない（意図的に本物の GIF にしない）。
+\image[width=80mm]{./tests/image/unsupported.gif}
+\caption{未対応の画像形式}
+\end{figure}
