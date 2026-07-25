@@ -1,7 +1,4 @@
 //! リスト環境 — 箇条書き・番号付きリスト
-//!
-//! `\begin{itemize}...\end{itemize}` および `\begin{enumerate}...\end{enumerate}`
-//! 環境内の `\item{...}` コマンドを `DocNode::List` に変換します。
 
 use model::{DocNode, ListItem};
 
@@ -30,15 +27,6 @@ pub(super) fn itemize(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
 pub(super) fn enumerate(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> { return list_common(view, true); }
 
 /// リスト環境の共通処理
-///
-/// `\item{...}` コマンドを収集し、`DocNode::List` を生成します。
-/// body 直下の `\item` 以外のコンテンツ（テキスト・他コマンド等）は黙って捨てず
-/// エラーとして報告します。
-///
-/// # Arguments
-///
-/// * `view` - 環境の型付きビュー
-/// * `ordered` - 順序付きリストかどうか
 ///
 /// # Errors
 ///
@@ -132,7 +120,7 @@ mod tests {
 
   #[test]
   fn itemize_rejects_unknown_opt_arg_key() {
-    // Arrange — itemize は任意引数を受け付けないので `[noitemsep]` は不明キー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -146,7 +134,7 @@ mod tests {
 
   #[test]
   fn enumerate_start_option_sets_list_start() {
-    // Arrange — `\begin{enumerate}[start=5]` は DocNode::List.start に 5 を反映する
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=5]\item{A}\end{enumerate}";
     let cst = parse(source, &arena).unwrap();
@@ -163,7 +151,7 @@ mod tests {
 
   #[test]
   fn itemize_rejects_start_opt_arg_key() {
-    // Arrange — itemize は unordered なので `start` は未知キー扱い
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[start=5]\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -177,7 +165,7 @@ mod tests {
 
   #[test]
   fn enumerate_start_zero_is_invalid() {
-    // Arrange — start は 1 以上の整数のみ有効
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=0]\item{A}\end{enumerate}";
     let cst = parse(source, &arena).unwrap();
@@ -219,7 +207,7 @@ mod tests {
 
   #[test]
   fn enumerate_start_non_numeric_is_invalid() {
-    // Arrange — `start` は Number 型スキーマなので非数値は opt_args の型変換段階で弾かれる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=foo]\item{A}\end{enumerate}";
     let cst = parse(source, &arena).unwrap();
@@ -233,7 +221,7 @@ mod tests {
 
   #[test]
   fn item_marker_option_sets_list_item_marker() {
-    // Arrange — `\item[marker=☆]{...}` はその項目の marker フィールドに反映される
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -250,7 +238,7 @@ mod tests {
 
   #[test]
   fn item_marker_option_accepts_empty_string() {
-    // Arrange — `\item[marker=]{...}`（空文字列）は Some("") になる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=]{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -267,7 +255,7 @@ mod tests {
 
   #[test]
   fn item_rejects_unknown_opt_arg_key_other_than_marker() {
-    // Arrange — `\item` に `marker` 以外の未知キーを指定するとエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[foo=bar]{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -281,7 +269,7 @@ mod tests {
 
   #[test]
   fn itemize_item_gap_option_sets_list_item_gap() {
-    // Arrange — `\begin{itemize}[item_gap=0]` は DocNode::List.item_gap に反映される
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[item_gap=0]\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -298,7 +286,7 @@ mod tests {
 
   #[test]
   fn enumerate_item_gap_option_combines_with_start() {
-    // Arrange — `start` と `item_gap` を併用できる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=2, item_gap=8mm]\item{A}\end{enumerate}";
     let cst = parse(source, &arena).unwrap();
@@ -319,7 +307,7 @@ mod tests {
 
   #[test]
   fn item_gap_option_accepts_negative_value() {
-    // Arrange — 負値も parse_length を通るのでそのまま通る
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[item_gap=-1mm]{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();

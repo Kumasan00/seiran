@@ -1,22 +1,6 @@
 //! 環境ディスパッチ
 //!
-//! 環境名を [`ENVIRONMENTS`] パーフェクトハッシュマップで [`EnvDef`] に解決し、
-//! 対応するハンドラに委譲します。同じレジストリから syntax クレートへ
-//! 「環境名 → ParseMode」のコールバック（[`lookup_parse_mode`]）も供給され、
-//! 環境追加が **レジストリ 1 行 + ハンドラ関数 1 つ** に圧縮されています。
-//!
-//! ## 環境の追加方法
-//!
-//! 1. 必要ならハンドラ関数を追加（テキスト環境は `environment/<name>.rs`、既存の `itemize` を参照。
-//!    数式環境は `environment/math/<name>.rs` に置き、`math` モジュールから再エクスポートする。[`math`] を参照）
-//! 2. [`ENVIRONMENTS`] にエントリを追加:
-//!    ```ignore
-//!    "name" => EnvDef {
-//!      parse_mode: ParseMode::Text,        // または Math
-//!      handler: Some(name::handler),       // 数式環境は Some(math::name)。評価未実装なら None
-//!      display_name: "人間可読な名前",
-//!    },
-//!    ```
+//! [`ENVIRONMENTS`] はハンドラとパースモードの対応を一元管理する。
 
 use model::DocNode;
 use phf::phf_map;
@@ -40,8 +24,6 @@ mod theorem;
 type EnvHandler = fn(&EnvironmentView) -> Result<Vec<DocNode>, EvalError>;
 
 /// 環境の定義
-///
-/// 構文解析モードと評価ハンドラ、診断用の表示名をまとめて保持する。
 pub(crate) struct EnvDef {
   /// 本体の構文解析モード（Text / Math 等）
   pub parse_mode: ParseMode,
@@ -54,9 +36,6 @@ pub(crate) struct EnvDef {
 }
 
 /// 環境名 → 定義 の単一レジストリ
-///
-/// このマップが「環境のソース・オブ・トゥルース」。syntax クレートの構文解析モード判定と
-/// parser クレートの評価ディスパッチの双方がここを参照する。
 pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::itemize),   display_name: "箇条書きリスト" },
   "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::enumerate), display_name: "番号付きリスト" },
@@ -69,7 +48,6 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "matrix"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::matrix),        display_name: "行列" },
   "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),      display_name: "図" },
   "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),        display_name: "表" },
-  // 定理環境 10 種は単一ハンドラ（環境名からクラスを解決）に集約して登録する
   "theorem"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "定理" },
   "lemma"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "補題" },
   "proposition" => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "命題" },
@@ -80,7 +58,6 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "remark"      => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
   "claim"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
   "proof"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
-  // 引用環境 2 種は単一ハンドラ（環境名から種別を解決）に集約して登録する
   "quote"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用" },
   "quotation"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
 };
@@ -93,10 +70,6 @@ pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
 }
 
 /// 環境を評価し、対応する `Vec<DocNode>` を生成する
-///
-/// # Arguments
-///
-/// * `view` - 環境の型付きビュー
 ///
 /// # Errors
 ///

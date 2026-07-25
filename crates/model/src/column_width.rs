@@ -1,15 +1,11 @@
-//! 段組みの 1 段あたりの幅を求める純粋計算
-//!
-//! `config`（用紙・余白 × `[columns]` の横断バリデーション）と `typeset::breaking`（実際の段組み
-//! 配置）の双方がこの式を必要とするため、両クレートが依存できる `model` に置く。
+//! 段組みの 1 段あたりの幅を求める計算。
 
 use crate::Length;
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
 ///
 /// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`config::validate_layout`・
-/// `build_pdf` の `resolve_images`・`typeset::breaking::break_pages` がこの 1 つの式を真実源として
-/// 段幅を求める（重複した算出を避ける）。
+/// `build_pdf`・`typeset::breaking` が共通して使用する。
 #[must_use]
 pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);

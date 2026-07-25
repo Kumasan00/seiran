@@ -1,27 +1,9 @@
 //! 評価器のエラー型
-//!
-//! CST → Document IR の評価中に発生するエラーを表現します。
-//! 各バリアントは `#[label]` によるソース位置情報を持ち、
-//! `miette::NamedSource` と組み合わせることでソースコード付きの
-//! エラー表示が可能です。
-//!
-//! ## ソース位置の付与方針
-//!
-//! 評価器内部で生成するエラーは [`SourceSpan`] のみを保持し、
-//! `miette::NamedSource` の添付はエントリポイント
-//! ([`crate::parse_source`]) の [`crate::ParseSourceError::Eval`] バリアントで行う。
-//! これにより `EvalError` 自身は `#[source_code]` を持たず、
-//! `#[related]` 集約にも安全に乗せられる。
 
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use thiserror::Error;
 
 /// 評価器のエラー型
-///
-/// CST の評価中に発生するエラーを表現します。
-/// 各バリアントは `#[label]` によるソース位置情報を持ち、
-/// `miette::NamedSource` と組み合わせることでソースコード付きの
-/// エラー表示が可能です。
 #[derive(Debug, Error, Diagnostic)]
 pub enum EvalError {
   /// コマンドの必須引数が不足している場合
@@ -159,9 +141,6 @@ pub enum EvalError {
   },
 
   /// `\cite{...}` で参照された引用キーが参照定義（references）に未定義の場合（集約）
-  ///
-  /// 1 ファイル内のすべての未定義キーを 1 度に報告する。各 `\cite` のソース位置を
-  /// [`LabeledSpan`] のコレクションとして保持し、ソースコード付きでまとめてラベル表示する。
   #[error("未定義の引用キーがあります")]
   #[diagnostic(
     code(frontend::eval::unknown_citation_key),
@@ -174,8 +153,6 @@ pub enum EvalError {
   },
 
   /// 無採番（`[numbered=false]`）の数式環境にラベル（`[label=...]`）を付与した場合
-  ///
-  /// 無採番の式は参照番号を持たないため、ラベルを付けても `\ref` で解決できる対象がない。
   #[error("無採番の数式にラベルは付けられません: {name}")]
   #[diagnostic(
     code(frontend::eval::label_requires_numbering),
@@ -245,8 +222,6 @@ pub enum EvalError {
   },
 
   /// `cases` 環境の 1 行が 3 列以上に分割された場合
-  ///
-  /// `cases` は「式 & 条件」の 2 列固定なので、`&` が 1 行に 2 個以上現れるとエラーにする。
   #[error("cases 環境の行は 2 列までです（{found} 列が指定されています）")]
   #[diagnostic(
     code(frontend::eval::cases_column_overflow),
@@ -261,9 +236,6 @@ pub enum EvalError {
   },
 
   /// `\notag`（行単位の無採番マーカー）が行末以外に置かれた場合
-  ///
-  /// `\notag` は「その行を無採番にする」マーカーで、行の末尾（`\\` または `\end` の直前）にのみ
-  /// 置ける。行の途中・列区切り `&` の前・1 行に複数・引数付き（`\notag{...}`）はエラーにする。
   #[error("\\notag は行の末尾にのみ置けます")]
   #[diagnostic(
     code(frontend::eval::notag_not_at_row_end),
@@ -276,9 +248,6 @@ pub enum EvalError {
   },
 
   /// `\notag` が行ごと採番でない数式環境に現れた場合
-  ///
-  /// `\notag` は行ごとに採番する `align` / `gather` の行末でのみ意味を持つ。`equation`（無採番にするなら
-  /// `[numbered=false]`）・`split` / `multiline`（環境全体で 1 番号）・`cases` / `matrix`（非採番）では使えない。
   #[error("\\notag はこの数式環境では使用できません")]
   #[diagnostic(
     code(frontend::eval::notag_not_supported),
@@ -293,8 +262,6 @@ pub enum EvalError {
   },
 
   /// 環境全体が無採番（`[numbered=false]`）なのに `\notag` を併用した場合
-  ///
-  /// `[numbered=false]` で既に全行が無採番なので、行単位の `\notag` は冗長・矛盾する。
   #[error("[numbered=false] の環境では \\notag を併用できません")]
   #[diagnostic(
     code(frontend::eval::notag_with_unnumbered_env),
@@ -307,10 +274,6 @@ pub enum EvalError {
   },
 
   /// `\noindent`（段落先頭行の字下げ抑止マーカー）が段落の先頭以外に置かれた場合
-  ///
-  /// `\noindent` は「その段落の先頭行を字下げしない」マーカーで、段落の先頭（先行する空白・改行
-  /// トリビアを除く最初の内容）にのみ置ける。段落の途中・引数付き（`\noindent{...}`）・同一段落に
-  /// 複数（2 つ目以降）はエラーにする。
   #[error("\\noindent は段落の先頭にのみ置けます")]
   #[diagnostic(
     code(frontend::eval::noindent_not_at_paragraph_start),
@@ -323,10 +286,6 @@ pub enum EvalError {
   },
 
   /// 行ラベルマーカー `\label` が行ごと採番でない数式環境に現れた場合
-  ///
-  /// `\label{...}` は行ごとに採番する `align` / `gather` の行末でのみ意味を持つ。`equation` /
-  /// `split` / `multiline` は環境の任意引数 `[label=...]` でラベルを付け、`cases` / `matrix` は非採番なので
-  /// 参照対象がない。
   #[error("行ラベル \\label はこの数式環境では使用できません")]
   #[diagnostic(
     code(frontend::eval::row_label_not_supported),
@@ -341,10 +300,6 @@ pub enum EvalError {
   },
 
   /// 行ラベルマーカー `\label` が行末以外に置かれた・引数が不正だった場合
-  ///
-  /// `\label{name}` は「その行にラベルを付ける」マーカーで、行の末尾（`\\` または `\end` の直前）にのみ
-  /// 置ける。行の途中・列区切り `&` の前・1 行に複数・必須引数 1 個以外（`\label` / `\label{a}{b}`）・
-  /// 任意引数付きはエラーにする。
   #[error("\\label は行の末尾に、ラベル名 1 個の引数付きで置けます")]
   #[diagnostic(
     code(frontend::eval::row_label_not_at_row_end),

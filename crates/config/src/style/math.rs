@@ -1,14 +1,4 @@
 //! 数式のスタイル設定型（`[math]` テーブル）。
-//!
-//! `[math.script]`（[`MathScriptStyle`]、上付き / 下付きスクリプトのサイズ・位置）と
-//! `[math.block]`（[`MathBlockStyle`]、表示数式ブロックのレイアウト）の 2 つの副テーブルを
-//! [`MathStyle`] がまとめる。`[math.script]` はインライン数式（`$...$`）にも効き、`[math.block]`
-//! は全表示数式環境（equation / align / gather / split / multiline / cases / matrix）が共有する。
-//!
-//! `model::MathStyle`（Bold/Italic などの意味的スタイル）との名前衝突を避けるため、
-//! および将来 OpenType MATH テーブルから自動取得する範囲を明確化するため、スクリプト設定は
-//! `MathScriptStyle` と命名している。MATH テーブル対応時にはこれを `Option<MathScriptStyle>`
-//! （`None` = MATH テーブルから自動取得）に変える想定で、現状の手動設定は暫定的な API 境界。
 
 use garde::Validate;
 use model::{
@@ -18,8 +8,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// 数式設定全体（`[math]` テーブル）。
-///
-/// `[math.script]`（スクリプト）と `[math.block]`（表示数式ブロックのレイアウト）の 2 つを束ねる。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -72,10 +60,6 @@ impl Default for MathScriptStyle {
 }
 
 /// 表示数式ブロックのレイアウトスタイル（`[math.block]`）
-///
-/// 旧 `[equation]` テーブル（タグ書式・配置側・揃え・上下マージン）と旧 `[math_block]`
-/// （行間・列間）を統合したもの。equation / align / gather / split / multiline / cases / matrix の
-/// 全表示数式環境がこの設定を共有する（`equation` 環境固有の設定は存在しない）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -202,7 +186,7 @@ mod tests {
 
   #[test]
   fn validate_accepts_zero_raise_factor() {
-    // Arrange: 上付きシフトを 0 にする（同じベースライン）も有効
+    // Arrange
     let style = MathScriptStyle {
       superscript_raise_factor: 0.0,
       ..MathScriptStyle::default()
@@ -214,8 +198,6 @@ mod tests {
 
   #[test]
   fn rejects_renamed_equation_table_keys() {
-    // 旧テーブル `[equation]` / `[math_block]` と旧キー `number_format` はハードリネームで廃止された
-    // （→ `[math.script]` / `[math.block]` / `tag_format`）。`deny_unknown_fields` が弾く。
     assert!(toml::from_str::<MathBlockStyle>("number_format = \"({number})\"\n").is_err());
   }
 }

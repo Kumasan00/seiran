@@ -4,20 +4,15 @@ use std::collections::BTreeSet;
 
 use model::{AssetId, DocNode};
 
-/// `parse_project` が収集した画像パスの一覧（重複なし・パス文字列の昇順）。
-///
-/// driver（`build_pdf`）がこれに従って画像ファイルを読み、`pdf_gen::load_image_set` で
-/// `ImageSet` を作って `compile_project` へ渡す。
+/// 画像パスの一覧（重複なし・パス文字列の昇順）。
 pub(super) struct ImageManifest {
   /// 画像ファイルへのパス（`\image{...}` の必須引数、重複なし・昇順）
   pub(super) paths: Vec<AssetId>,
 }
 
-/// `groups` に含まれる全 `DocNode` を再帰的に走査し、`Figure` の画像パスを重複なく収集する。
+/// 全 `DocNode` を再帰的に走査し、画像パスを重複なく収集する。
 ///
-/// `Theorem` / `Quote` は本体に `Vec<DocNode>` を持つため、`Figure` はネストして出現しうる。
-/// `List` も各 `ListItem.content`（`Vec<DocNode>`）にネストしうる（`\item{...}` 内の `figure` 環境）。
-/// それ以外の variant は子に `DocNode` を持たない。
+/// 定理、引用、リスト内の入れ子も探索する。
 pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
   let mut paths: BTreeSet<AssetId> = BTreeSet::new();
   for group in groups {

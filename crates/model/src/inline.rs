@@ -2,14 +2,9 @@
 
 use crate::{CitationId, Color, FontKind, Span, math_node::MathNode};
 
-// =============================================================================
-// インラインレベル要素
-// =============================================================================
-
 /// インラインレベルのドキュメント要素
 ///
-/// 段落や見出しの内部に配置されるテキスト片やスタイル修飾を表現します。
-/// セマンティックな意図を保持し、物理的なスタイルは Lowering 層で付与されます。
+/// セマンティックな意図を保持し、物理スタイルは lowering 層で付与される。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineNode {
   /// プレーンテキスト
@@ -54,18 +49,10 @@ pub enum InlineNode {
 
   /// 段落先頭行の字下げ抑止マーカー（`\noindent`）
   ///
-  /// 描画されない制御マーカー。パーサ（`evaluate_children`）が段落の先頭にのみ許可して
-  /// 段落のインライン列の先頭に置き、`lowering` 層がこれを見つけたら段落先頭行の字下げ
-  /// （`first_line_indent`）を抑止しつつマーカー自体は出力しない。位置検証はパーサが行うため、
-  /// `lowering` は出現位置を問わず「存在すれば抑止」とみなしてよい。`\\`（[`InlineNode::LineBreak`]）
-  /// と同じく本文の意味を持たないレイアウト制御マーカー。
+  /// 描画されない制御マーカーで、パーサが段落先頭にのみ許可する。
   NoIndent,
 
   /// 相互参照（`\ref{label}`）
-  ///
-  /// `lowering::CounterRegistry` の 2 パス評価で解決される（`label` を保持するだけの構造体で、
-  /// 解決結果の番号文字列は `lowering::resolve_refs` が `LayoutNode` 側で埋め込む）。
-  /// 未定義ラベルが残った場合は `LoweringError::UnresolvedReference` を返す。
   Ref {
     /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
     label: String,
@@ -74,12 +61,6 @@ pub enum InlineNode {
   },
 
   /// 外部リンク（`\url{uri}` / `\href[url=uri]{表示}`）
-  ///
-  /// 外部 URI を行き先とするクリック可能なテキスト。`\url` は URI 自身を表示テキストに
-  /// 持ち（`children = [Text(uri)]`）、`\href` は本文を表示テキストに持つ。`lowering` 層で
-  /// `LayoutNode::Link { target: External(url), children }` に変換され、`pdf_gen` が
-  /// `LinkAction` のリンク注釈として出力する。内部参照（`\ref`）は [`InlineNode::Ref`]
-  /// が担い、こちらは外部 URI 専用。
   Link {
     /// リンク先の外部 URI（`\url{...}` / `\href[url=...]{...}` の URI）
     url: String,
@@ -88,13 +69,6 @@ pub enum InlineNode {
   },
 
   /// 整形済みの内部リンク（文書内アンカーへのジャンプ）
-  ///
-  /// 表示テキスト `children` を文書内アンカー `target` へジャンプさせるクリック可能なテキスト。
-  /// 外部 URI を行き先とする [`InlineNode::Link`] の内部版で、`lowering` 層で
-  /// `LayoutNode::Link { target: Internal(target), children }` に変換される。`\ref`（[`InlineNode::Ref`]）
-  /// と異なり表示テキストを任意に持てるため、CSL 整形ステージが `\cite` の各番号を対応する書誌
-  /// エントリへのリンクにする用途で生成する（`target` は衝突回避のため `"cite:<key>"` で名前空間化）。
-  /// 色ロジックは持たず、親文脈（`Cite` 側で適用した `cite_color` 等）の色をそのまま継承する。
   InternalLink {
     /// ジャンプ先の引用キー（`AnchorMark::Citation(target)` と一致させる）
     target: CitationId,
@@ -119,10 +93,6 @@ pub enum InlineNode {
   },
 
   /// 脚注（`\footnote{...}`）
-  ///
-  /// 前方参照解決が不要な単純な出現順連番のため、`Ref`/`Cite` と異なり 2 段階
-  /// （スタブ→pass2 解決）にはせず、`lowering::CounterRegistry` が pass1 の単一パスで
-  /// 直接採番する（`lowering::CounterRegistry::next_footnote_index`）。
   Footnote {
     /// 脚注本体（テキストモードで再帰評価済みのインライン列。太字・数式等を許容）
     body: Vec<InlineNode>,
@@ -133,13 +103,11 @@ pub enum InlineNode {
   /// 索引マーカー（`\index{語}` / `\index[reading=...]{語}`）
   ///
   /// 本文に出力を持たない（組版結果に影響しないゼロサイズマーカー）。語・reading・出現ページを
-  /// 索引生成（親issue #33 のもう一方の sub-issue）のために収集する。`typeset::lowering` が
-  /// `LayoutNode::IndexMark` に変換し、`typeset::breaking::break_pages` が出現ページを確定する。
+  /// 索引生成のために収集し、`typeset::breaking::break_pages` が出現ページを確定する。
   Index {
     /// 索引語（プレーンテキストのみ、空文字列不可。パーサ段で検証済み）
     word: String,
     /// 読みソートキー（`[reading=...]`）。`None` なら `word` 自身でソートする
-    /// （索引生成側＝親issue #33 のもう一方の sub-issue の責務）
     reading: Option<String>,
     /// `\index{...}` の `CommandCall` ノードのソース位置
     span: Span,
@@ -235,10 +203,6 @@ pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
     Err(err) => match err {},
   };
 }
-
-// =============================================================================
-// テスト
-// =============================================================================
 
 #[cfg(test)]
 mod tests {

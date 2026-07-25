@@ -17,9 +17,6 @@ pub enum ReadStyleError {
     source: std::io::Error,
   },
   /// TOML の構文・型・未知キー等のパース失敗
-  ///
-  /// `toml` クレートが返すエラーは行・列・スパンを保持しているため、
-  /// それを `miette` の `#[label]` にそのまま渡してハイライト表示する。
   #[error("スタイル設定の TOML 解析に失敗しました")]
   #[diagnostic(code(style::parse_toml), help("TOML の構文とフィールドの型を確認してください。"))]
   ParseToml {
@@ -57,8 +54,6 @@ pub enum StyleValidationError {
   },
 
   /// `csl_path`（CSL スタイルファイル）の正規化（`canonicalize`）失敗。
-  ///
-  /// ファイルが存在しない・読み取り権限が無い等で絶対パスへ解決できなかった場合に発生する。
   #[error("CSL スタイルファイルのパスを正規化できませんでした: {path}")]
   #[diagnostic(
     code(style::validation::csl_path_resolution),
@@ -73,8 +68,6 @@ pub enum StyleValidationError {
   },
 
   /// `locale_path`（CSL ロケールファイル）の正規化（`canonicalize`）失敗。
-  ///
-  /// ファイルが存在しない・読み取り権限が無い等で絶対パスへ解決できなかった場合に発生する。
   #[error("CSL ロケールファイルのパスを正規化できませんでした: {path}")]
   #[diagnostic(
     code(style::validation::locale_path_resolution),

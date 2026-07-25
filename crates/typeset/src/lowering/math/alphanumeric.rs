@@ -1,23 +1,9 @@
 //! Mathematical Alphanumeric Symbols へのコードポイント変換
-//!
-//! 数式中の 1 文字を、外側の [`MathStyle`] に応じて Unicode の
-//! Mathematical Alphanumeric Symbols（U+1D400–U+1D7FF）と Greek ブロックへ
-//! 変換するヘルパー群。
-//!
-//! 親モジュール [`super`]（`math.rs`）からのみ参照される内部モジュール。
 
 use model::MathStyle;
 
 /// 1 文字を `style` に応じた Mathematical Alphanumeric コードポイントへ変換する
-///
-/// - `style == None`: ASCII 英字のみ Mathematical Italic（小文字 `h` は U+210E PLANCK CONSTANT）。
-///   数字・Greek・記号は素通し
-/// - `style == Some(_)`: ASCII 英字・ASCII 数字・Greek 文字を該当スタイルのコードポイントに変換。
-///   当該スタイル × 種別の組み合わせが Unicode に存在しない場合（例: `\mathmono` の Greek、
-///   italic の数字）は素通しでフォント側のグリフ選択に委ねる
 pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
-  // 共通ヘルパ: ASCII 英字を base に応じてシフト
-  //
   // `hole` は連続ブロックではなく Letterlike Symbols ブロックに散在する文字
   // （例: 黒板太字の ℝ=U+211D、italic の h=U+210E）を上書きするためのルックアップ。
   // 該当文字がなければ `None` を返し、通常の base + offset 変換を行う。
@@ -32,7 +18,6 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
     }
   };
 
-  // 共通ヘルパ: ASCII 数字を base に応じてシフト
   let map_digit = |ch: char, base: u32| -> char {
     match ch {
       '0'..='9' => return char::from_u32(base + (ch as u32 - '0' as u32)).unwrap_or(ch),
@@ -40,7 +25,6 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
     }
   };
 
-  // 共通ヘルパ: Greek 文字を base に応じてシフト
   let map_greek = |ch: char, base: u32| -> char {
     match greek_math_offset(ch) {
       Some(offset) => return char::from_u32(base + offset).unwrap_or(ch),
@@ -145,15 +129,6 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
 }
 
 /// 1 文字を `style` に応じて変換し、必要なら異体字セレクタを付けて `out` に書き込む
-///
-/// [`translate_math_char`] が返す基底文字を push したうえで、`style` が
-/// [`MathStyle::Calligraphic`] かつ入力が ASCII 英字のときだけ chancery 異体字セレクタ
-/// VS1（U+FE00）を続けて push する。基底文字 + VS1 を同一の `LayoutNode::Text` 文字列に
-/// 含めることで、後段のシェーピング（harfrust）が 1 クラスタとして処理し、Unicode 数式
-/// 異体字シーケンスに対応した数式フォントで chancery 字形が選ばれる。
-///
-/// 数字・Greek・記号には chancery 異体字が存在しないため VS1 は付与しない。
-/// [`MathStyle::Calligraphic`] 以外のスタイルでは VS1 を一切付与せず、従来挙動を保つ。
 pub(super) fn push_math_char(out: &mut String, ch: char, style: Option<MathStyle>) {
   out.push(translate_math_char(ch, style));
   if style == Some(MathStyle::Calligraphic) && ch.is_ascii_alphabetic() {
@@ -173,8 +148,6 @@ fn italic_hole(ch: char) -> Option<char> {
 }
 
 /// Mathematical Double-Struck（黒板太字）の穴
-///
-/// 大文字 C H N P Q R Z は連続ブロックの予約位置を避け、Letterlike Symbols に置かれる。
 fn double_struck_hole(ch: char) -> Option<char> {
   return match ch {
     'C' => Some('\u{2102}'), // ℂ
@@ -189,10 +162,6 @@ fn double_struck_hole(ch: char) -> Option<char> {
 }
 
 /// Mathematical Script（スクリプト / カリグラフィー共用の基底）の穴
-///
-/// 大文字 B E F H I L M R と小文字 e g o が Letterlike Symbols に散在する。
-/// スクリプト（roundhand）とカリグラフィー（chancery）は同一の基底コードポイントを共有し、
-/// カリグラフィーはこの基底に VS1 を付けて字形を切り替える（[`push_math_char`] 参照）。
 fn script_hole(ch: char) -> Option<char> {
   return match ch {
     'B' => Some('\u{212C}'), // ℬ
@@ -211,8 +180,6 @@ fn script_hole(ch: char) -> Option<char> {
 }
 
 /// Mathematical Fraktur（フラクトゥール）の穴
-///
-/// 大文字 C H I R Z が Letterlike Symbols に置かれる。
 fn fraktur_hole(ch: char) -> Option<char> {
   return match ch {
     'C' => Some('\u{212D}'), // ℭ
@@ -225,14 +192,6 @@ fn fraktur_hole(ch: char) -> Option<char> {
 }
 
 /// Greek 文字 1 文字の Mathematical Greek block 内オフセットを返す
-///
-/// 大文字 Α..Ρ → 0..16, ϴ → 17, Σ..Ω → 18..24, ∇ → 25。
-/// 小文字 α..ρ → 26..42, ς → 43, σ..ω → 44..50。
-/// variants は ∂ → 51, ϵ → 52, ϑ → 53, ϰ → 54, ϕ → 55, ϱ → 56, ϖ → 57。
-///
-/// Unicode Mathematical Greek block（Bold: U+1D6A8〜 / Italic: U+1D6E2〜 等）は
-/// すべて同じ 58 要素のレイアウトを持つので、base codepoint にこのオフセットを
-/// 加えるだけで該当スタイルのコードポイントを得られる。
 fn greek_math_offset(ch: char) -> Option<u32> {
   return match ch {
     // 大文字 Α..Ρ
@@ -311,7 +270,7 @@ mod tests {
 
   #[test]
   fn translate_default_italicizes_ascii_letters_only() {
-    // Arrange & Act & Assert — デフォルト: ASCII 英字のみ italic 化、他は素通し
+    // Arrange & Act
     assert_eq!(translate_math_char('a', None), '\u{1D44E}'); // mathematical italic a
     assert_eq!(translate_math_char('z', None), '\u{1D467}'); // mathematical italic z
     assert_eq!(translate_math_char('A', None), '\u{1D434}'); // mathematical italic A
@@ -324,7 +283,7 @@ mod tests {
 
   #[test]
   fn translate_bold_covers_letters_digits_greek() {
-    // Arrange & Act & Assert
+    // Arrange & Act
     let style = Some(MathStyle::Bold);
     assert_eq!(translate_math_char('x', style), '\u{1D431}'); // mathematical bold x
     assert_eq!(translate_math_char('A', style), '\u{1D400}'); // mathematical bold A
@@ -337,7 +296,7 @@ mod tests {
 
   #[test]
   fn translate_italic_h_uses_planck_constant_exception() {
-    // Arrange & Act & Assert — italic 系のみ h の例外
+    // Arrange & Act
     assert_eq!(translate_math_char('h', Some(MathStyle::Italic)), '\u{210E}');
     assert_eq!(
       translate_math_char('h', Some(MathStyle::BoldItalic)),
@@ -348,7 +307,7 @@ mod tests {
 
   #[test]
   fn translate_mono_keeps_greek_passthrough() {
-    // Arrange & Act & Assert — Mono は Greek 未対応 → 素通し
+    // Arrange & Act
     assert_eq!(translate_math_char('α', Some(MathStyle::Mono)), 'α');
     assert_eq!(translate_math_char('a', Some(MathStyle::Mono)), '\u{1D68A}'); // mono a
     assert_eq!(translate_math_char('5', Some(MathStyle::Mono)), '\u{1D7FB}'); // mono digit 5
@@ -356,7 +315,7 @@ mod tests {
 
   #[test]
   fn translate_serif_is_passthrough() {
-    // Arrange & Act & Assert — Serif (Roman) は全部素通し
+    // Arrange & Act
     let style = Some(MathStyle::Serif);
     assert_eq!(translate_math_char('x', style), 'x');
     assert_eq!(translate_math_char('1', style), '1');
@@ -365,7 +324,7 @@ mod tests {
 
   #[test]
   fn translate_sans_skips_greek() {
-    // Arrange & Act & Assert — Sans は Greek 未対応 (Unicode に該当コードポイントなし)
+    // Arrange & Act
     let style = Some(MathStyle::Sans);
     assert_eq!(translate_math_char('a', style), '\u{1D5BA}'); // sans a
     assert_eq!(translate_math_char('1', style), '\u{1D7E3}'); // sans digit 1
@@ -374,7 +333,7 @@ mod tests {
 
   #[test]
   fn translate_double_struck_handles_letterlike_holes() {
-    // Arrange & Act & Assert — 黒板太字: 連続位置と Letterlike Symbols の穴の双方
+    // Arrange & Act
     let style = Some(MathStyle::DoubleStruck);
     assert_eq!(translate_math_char('A', style), '\u{1D538}'); // 連続 (穴なし)
     assert_eq!(translate_math_char('D', style), '\u{1D53B}'); // 連続
@@ -392,7 +351,7 @@ mod tests {
 
   #[test]
   fn translate_fraktur_handles_letterlike_holes() {
-    // Arrange & Act & Assert — フラクトゥール: 連続と穴
+    // Arrange & Act
     let style = Some(MathStyle::Fraktur);
     assert_eq!(translate_math_char('A', style), '\u{1D504}'); // 連続
     assert_eq!(translate_math_char('C', style), '\u{212D}'); // ℭ (穴)
@@ -407,7 +366,7 @@ mod tests {
 
   #[test]
   fn translate_script_handles_letterlike_holes() {
-    // Arrange & Act & Assert — スクリプト: 連続と大文字 8 個・小文字 3 個の穴
+    // Arrange & Act
     let style = Some(MathStyle::Script);
     assert_eq!(translate_math_char('A', style), '\u{1D49C}'); // 連続
     assert_eq!(translate_math_char('B', style), '\u{212C}'); // ℬ (穴)
@@ -423,7 +382,7 @@ mod tests {
 
   #[test]
   fn translate_script_bold_maps_contiguous_block() {
-    // Arrange & Act & Assert — 太字スクリプト: 大文字・小文字とも連続（穴なし）、base 先頭/末尾を確認
+    // Arrange & Act
     let style = Some(MathStyle::ScriptBold);
     assert_eq!(translate_math_char('A', style), '\u{1D4D0}'); // 大文字 base 先頭
     assert_eq!(translate_math_char('Z', style), '\u{1D4E9}'); // 大文字 base 末尾
@@ -435,7 +394,7 @@ mod tests {
 
   #[test]
   fn translate_calligraphic_reuses_script_codepoints() {
-    // Arrange & Act & Assert — カリグラフィーの基底はスクリプトと同一（穴も共有）。VS1 は別途付与
+    // Arrange & Act
     let cal = Some(MathStyle::Calligraphic);
     let script = Some(MathStyle::Script);
     assert_eq!(translate_math_char('A', cal), translate_math_char('A', script));
@@ -449,7 +408,7 @@ mod tests {
 
   #[test]
   fn push_math_char_appends_vs1_only_for_calligraphic_letters() {
-    // Arrange — カリグラフィーは ASCII 英字に VS1 (U+FE00) を付与、数字・Greek には付けない
+    // Arrange
     let cal = Some(MathStyle::Calligraphic);
 
     // Act & Assert
@@ -468,7 +427,7 @@ mod tests {
 
   #[test]
   fn push_math_char_keeps_other_styles_unchanged() {
-    // Arrange & Act & Assert — カリグラフィー以外は VS1 を一切付けず従来挙動（単一コードポイント）
+    // Arrange & Act
     let mut script = String::new();
     push_math_char(&mut script, 'A', Some(MathStyle::Script));
     assert_eq!(script, "\u{1D49C}", "スクリプトは VS1 無し（既存挙動不変）");
@@ -480,7 +439,7 @@ mod tests {
 
   #[test]
   fn translate_fraktur_bold_maps_contiguous_block() {
-    // Arrange & Act & Assert — 太字フラクトゥール: 大文字・小文字とも連続（穴なし）、base 先頭/末尾を確認
+    // Arrange & Act
     let style = Some(MathStyle::FrakturBold);
     assert_eq!(translate_math_char('A', style), '\u{1D56C}'); // 大文字 base 先頭
     assert_eq!(translate_math_char('Z', style), '\u{1D585}'); // 大文字 base 末尾

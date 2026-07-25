@@ -1,8 +1,4 @@
-//! 画像のロード・自然寸法解決・ダウンサンプリング。
-//!
-//! `\image` コマンドが指定するパスを読み込み、PNG / JPEG / SVG を統一的に扱う
-//! [`LoadedImage`] に変換する。最終描画寸法（pt）の算出と、ラスタ画像の
-//! 必要ピクセル数の見積もりもこのモジュールが受け持つ。
+//! 画像の読み込み、寸法解決、ダウンサンプリングを行う。
 
 use std::{collections::HashMap, fs, path::Path};
 
@@ -13,10 +9,7 @@ use usvg::Tree;
 
 use crate::error::PdfGenError;
 
-/// driver が `ImageManifest` の各パスを読み込んで作る、画像の自然寸法一覧。
-///
-/// `resolve_images` prepass はここから自然寸法を引くだけで、ファイルを直接読まない
-/// （ファイル I/O は `load_image_set` が 1 回だけ行う）。
+/// 画像パスごとの自然寸法。
 #[derive(Debug)]
 pub struct ImageSet {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
@@ -28,11 +21,7 @@ impl ImageSet {
   fn natural_size(&self, path: &AssetId) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
 }
 
-/// `paths` が指す画像ファイルを読み込み、自然寸法を確定した `ImageSet` を返す。
-///
-/// `ImageManifest`（`\image{...}` から発見した画像パスの一覧）を driver がこの関数へ渡し、
-/// 返った `ImageSet` を `compile_project` の `resolve_images` へ渡す。これにより compiler core
-/// （`parse_project` / `compile_project`）からファイル I/O を除ける。
+/// 画像ファイルを読み込み、自然寸法を格納した [`ImageSet`] を返す。
 ///
 /// # Errors
 ///
@@ -47,18 +36,11 @@ pub fn load_image_set(paths: &[AssetId]) -> Result<ImageSet, PdfGenError> {
   return Ok(ImageSet { natural_sizes });
 }
 
-/// ブロック列中の画像サイズを確定する prepass
-///
-/// `Block::Image` の `width` / `height` が未指定（`None`）の場合に `images`（driver が事前に
-/// `load_image_set` で読み込んだ自然寸法一覧）から自然寸法を引き、縦横比と本文幅から最終物理
-/// サイズ（pt）を確定する。ファイルは読まない（読込は `load_image_set` が 1 回だけ行う）。
-/// 縦組版（`model::break_pages`）が画像高さで改ページ判定できるよう、
-/// (a) `build_blocks` と (c+d) `break_pages` の間に挟む。
+/// ブロック列中の画像サイズを自然寸法と本文幅から確定する。
 ///
 /// # Errors
 ///
-/// 自然寸法から縦横比を算出できない場合、または `images` に該当パスが存在しない場合
-/// （`ImageManifest` の収集漏れ、実装バグ）に [`PdfGenError`] を返します。
+/// 自然寸法が不正な場合、または画像が `images` にない場合に [`PdfGenError`] を返す。
 pub fn resolve_images(blocks: Vec<Block>, text_width: f32, images: &ImageSet) -> Result<Vec<Block>, PdfGenError> {
   let resolved = blocks
     .into_iter()
@@ -103,17 +85,13 @@ pub fn resolve_images(blocks: Vec<Block>, text_width: f32, images: &ImageSet) ->
   return Ok(resolved);
 }
 
-/// `load_image` が返す画像表現。
-///
-/// ラスタ画像は krilla の [`Image`] として、SVG は usvg の [`Tree`] として保持し、
-/// レンダリング時に呼び出し側が分岐して描画します。
+/// 読み込んだラスタ画像または SVG。
 pub(crate) enum LoadedImage {
   /// PNG / JPEG などのラスタ画像。
   Raster(Image),
-  /// SVG を usvg でパースした結果。
+  /// usvg でパースした SVG。
   ///
-  /// `usvg::Tree` は数百バイト規模のため、列挙の他バリアントとのサイズ差を抑える目的で
-  /// ヒープに退避します（`clippy::large_enum_variant` 対策）。
+  /// バリアント間のサイズ差を抑えるためヒープに保持する。
   Svg(Box<Tree>),
 }
 
@@ -134,15 +112,9 @@ impl LoadedImage {
   }
 }
 
-/// 画像の最終描画寸法（pt）を解決します。
+/// 画像の最終描画寸法を指定値または自然寸法の縦横比から求める。
 ///
-/// `\image` の `width` / `height` 任意引数は両方とも省略可能で、未指定分は元画像の
-/// 自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）の縦横比から
-/// 自動算出します。両方とも省略された場合は本文幅にフィットさせ、高さは縦横比から
-/// 算出します（Typst 方式）。
-///
-/// 戻り値が `None` になるのは、`width` / `height` のどちらかを算出する必要があるにも
-/// かかわらず自然寸法が 0 以下または非有限値で縦横比を取れないケースです。
+/// 寸法の推論に必要な自然寸法が不正な場合は `None` を返す。
 pub(crate) fn resolve_image_size(
   width: Option<f32>,
   height: Option<f32>,
@@ -173,15 +145,7 @@ pub(crate) fn resolve_image_size(
   }
 }
 
-/// 画像ファイルを読み込み、拡張子に応じて [`LoadedImage`] に変換します。
-///
-/// 対応形式は PNG（`.png`）, JPEG（`.jpg` / `.jpeg`）, SVG（`.svg`）です。
-/// それ以外の拡張子は [`PdfGenError::UnsupportedImageFormat`] を返します。
-///
-/// `resize_to` が `Some((w_px, h_px))` のときはラスタ画像をデコード → Lanczos3 リサイズ →
-/// 同一フォーマットで再エンコードしてから krilla に渡します。SVG は無視されます
-/// （ベクタなので再ラスタライズは不要）。フォーマット変換は行わず、入力が PNG なら PNG、
-/// JPEG なら JPEG のまま出力します。
+/// PNG、JPEG、SVG を読み込み、必要ならラスタ画像を指定サイズ以下に縮小する。
 pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<LoadedImage, PdfGenError> {
   let bytes = fs::read(path).map_err(|source| {
     return PdfGenError::ReadImage {
@@ -240,11 +204,7 @@ pub(crate) fn load_image(path: &str, resize_to: Option<(u32, u32)>) -> Result<Lo
   }
 }
 
-/// ラスタ画像を `target_px = (w_px, h_px)` 以下に縮小して同一フォーマットで再エンコードする。
-///
-/// `image::load_from_memory_with_format` でデコードし、`Lanczos3` フィルタで縮小、
-/// `format` で再エンコードしたバイト列を返す。JPEG 品質は image クレートの既定値
-/// （現状 75）に従う。フォーマットを跨いだ変換（PNG → JPEG 等）は行わない。
+/// ラスタ画像を指定ピクセル寸法以下に縮小し、同じ形式で再エンコードする。
 fn downsample_raster(
   bytes: &[u8],
   target_px: (u32, u32),
@@ -268,9 +228,7 @@ fn downsample_raster(
   return Ok(out);
 }
 
-/// 描画寸法（pt）と上限 DPI から必要なピクセル寸法を算出する。
-///
-/// 1 pt = 1/72 inch なので `px = pt / 72 * dpi`。負値や非有限値、ゼロは `None` を返す。
+/// 描画寸法と上限 DPI から必要なピクセル寸法を求める。
 pub(crate) fn required_pixels(width_pt: f32, height_pt: f32, dpi: u32) -> Option<(f32, f32)> {
   if !width_pt.is_finite() || !height_pt.is_finite() || width_pt <= 0.0 || height_pt <= 0.0 || dpi == 0 {
     return None;
@@ -292,7 +250,7 @@ mod tests {
     // Act
     let resolved = resolve_image_size(Some(80.0), Some(60.0), 800.0, 600.0, column_width);
 
-    // Assert — 両指定は自然寸法に依存せずそのまま返る
+    // Assert
     let (w, h) = resolved.expect("両指定なら必ず Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
@@ -300,13 +258,13 @@ mod tests {
 
   #[test]
   fn resolve_image_size_infers_height_from_aspect_when_only_width_given() {
-    // Arrange — 4:3 の画像で width のみ指定
+    // Arrange
     let column_width = 400.0;
 
     // Act
     let resolved = resolve_image_size(Some(80.0), None, 800.0, 600.0, column_width);
 
-    // Assert — height = width * (nat_h / nat_w) = 80 * (600 / 800) = 60
+    // Assert
     let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
@@ -314,13 +272,13 @@ mod tests {
 
   #[test]
   fn resolve_image_size_infers_width_from_aspect_when_only_height_given() {
-    // Arrange — 4:3 の画像で height のみ指定
+    // Arrange
     let column_width = 400.0;
 
     // Act
     let resolved = resolve_image_size(None, Some(60.0), 800.0, 600.0, column_width);
 
-    // Assert — width = height * (nat_w / nat_h) = 60 * (800 / 600) = 80
+    // Assert
     let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 80.0).abs() < 1e-4);
     assert!((h - 60.0).abs() < 1e-4);
@@ -328,13 +286,13 @@ mod tests {
 
   #[test]
   fn resolve_image_size_fits_to_column_when_both_omitted() {
-    // Arrange — 4:3 の画像でサイズ全省略
+    // Arrange
     let column_width = 400.0;
 
     // Act
     let resolved = resolve_image_size(None, None, 800.0, 600.0, column_width);
 
-    // Assert — width=column_width, height は縦横比から
+    // Assert
     let (w, h) = resolved.expect("自然寸法が有効なので Some");
     assert!((w - 400.0).abs() < 1e-4);
     assert!((h - 300.0).abs() < 1e-4);
@@ -342,25 +300,25 @@ mod tests {
 
   #[test]
   fn resolve_image_size_returns_none_when_natural_size_zero_and_inference_needed() {
-    // Arrange — 自然寸法が 0 だと縦横比が出せない
+    // Arrange
     let column_width = 400.0;
 
     // Act
     let resolved = resolve_image_size(None, None, 0.0, 600.0, column_width);
 
-    // Assert — None を返してエラーへ
+    // Assert
     assert!(resolved.is_none());
   }
 
   #[test]
   fn resolve_image_size_accepts_fractional_svg_natural_size() {
-    // Arrange — SVG の自然寸法は f32 で来る。縦横比 16:9 のベクタ画像で width のみ指定
+    // Arrange
     let column_width = 400.0;
 
     // Act
     let resolved = resolve_image_size(Some(160.0), None, 320.5, 180.0, column_width);
 
-    // Assert — height = 160 * (180 / 320.5)
+    // Assert
     let (w, h) = resolved.expect("自然寸法が有効なので Some");
     let expected_height = 160.0 * (180.0_f32 / 320.5_f32);
     assert!((w - 160.0).abs() < 1e-4);
@@ -369,7 +327,7 @@ mod tests {
 
   #[test]
   fn resolve_image_size_returns_none_when_natural_size_non_finite() {
-    // Arrange — NaN / 無限大は安全側に倒して None
+    // Arrange
     let column_width = 400.0;
 
     // Act

@@ -1,13 +1,4 @@
-//! 引用ブロックの種別 [`QuoteKind`] の定義
-//!
-//! `quote` / `quotation` の 2 種ビルトイン引用環境を表す列挙型と、環境名（`snake_case`
-//! 文字列）との相互変換を提供します。両者の違いは段落先頭字下げの有無だけで、`quotation` は
-//! ブロック内段落の先頭行を字下げし、`quote` は字下げしない（字下げ量や左右インデント・上下
-//! マージンといったスタイルは `config::QuoteStyle` 側が保持する）。
-//!
-//! `frontend` が環境名から解決して [`DocNode::Quote`](crate::DocNode::Quote) に載せ、
-//! `lowering` が消費する。`LayoutNode` には乗らず、`read_style` もこの enum を使わない
-//! （`QuoteStyle` は種別ごとのフィールドで持つ）。
+//! 引用ブロックの種別 [`QuoteKind`]。
 
 /// ビルトイン引用環境の種別（固定 2 種）。
 ///
@@ -59,7 +50,7 @@ mod tests {
 
   #[test]
   fn as_str_and_from_name_roundtrip() {
-    // Arrange / Act / Assert — 両種で as_str → from_name が往復する
+    // Arrange / Act / Assert
     for kind in [QuoteKind::Quote, QuoteKind::Quotation] {
       assert_eq!(QuoteKind::from_name(kind.as_str()), Some(kind));
     }

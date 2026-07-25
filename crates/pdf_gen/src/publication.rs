@@ -1,14 +1,4 @@
-//! (e) 描画直前の中間表現 `Publication` とその純粋変換 `PublicationBuilder`
-//!
-//! [`model::Page`] 列（確定座標）から、座標・描画順が確定した [`Publication`] への
-//! 純粋変換を提供する。残る `Config` 依存は左マージン・ページサイズ・`show_bookmarks` の
-//! 3 箇所のみ（表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値
-//! として `model::Page` / `model::PlacedBlock::Table` に持たせている）。フォント資源
-//! （`FontData`/`FontRefs`/`FontMetrics`）には依存しない。
-//!
-//! `pdf_gen::create_pdf`（`lib.rs`）は本型を直接引数に取り、これだけから PDF を描画する。
-//! `model::Page` 列を直接描画する経路はもう存在せず、[`PublicationBuilder::build`] が
-//! 唯一の入り口になっている。
+//! 配置済みページを描画直前の中間表現へ変換する。
 
 use std::collections::HashMap;
 
@@ -20,22 +10,18 @@ use model::{
 
 use crate::OutlineEntry;
 
-/// 座標・描画順が確定した文書全体の中間表現（PDF encode 前）
-///
-/// `model::Page` 列と、必要な `Config` の情報から [`PublicationBuilder`] が構築する
-/// 純粋変換の出力。永続化・外部 encoder・semver 互換性は提供しない workspace 内部型。
+/// 座標と描画順が確定した文書。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Publication {
   /// 確定ページ列（文書順）
   pub pages: Vec<PublicationPage>,
-  /// PDF しおり（アウトライン）のフラット列（文書順、ネスト構築は encode 側の責務のまま）。
-  /// `show_bookmarks` が偽、またはエントリが 0 件なら `None`
+  /// PDF しおりのフラット列。出力しない場合は `None`
   pub outline: Option<Vec<PublicationOutlineEntry>>,
   /// PDF メタデータ（`config.document` から前倒し解決済み）
   pub metadata: PublicationMetadata,
 }
 
-/// PDF メタデータ（`config.document` から前倒し解決済み）
+/// 解決済みの PDF メタデータ。
 ///
 /// `title` は `document.title` を優先し、未設定なら `output.name` にフォールバック済み。
 #[derive(Debug, Clone, PartialEq)]
@@ -63,11 +49,7 @@ pub struct PublicationPage {
   pub links: Vec<PublicationLink>,
 }
 
-/// 描画命令 1 個
-///
-/// 現行 PDF renderer（`render::render_pages`）が実際に使う描画能力のみを inventory した
-/// 最小集合。`StrokePath` は現行 renderer に使用箇所がないため含めない
-/// （`docs/redesign-from-scratch.md` の `PaintOp` 終状態スケッチとの意図的な差分）。
+/// 描画命令。
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintOp {
   /// シェーピング済みグリフ列の描画（`origin` はベースライン左端）
@@ -144,11 +126,7 @@ pub struct Destination {
   pub point: Point,
 }
 
-/// PDF しおりの 1 エントリ（フラット、文書順）
-///
-/// ネスト構築（`render::insert_outline_node`/`OutlineTreeNode`）はこの段では移さない。
-/// `PublicationBuilder` は見出し destination と `OutlineEntry` を文書順で対応付けた
-/// 「深さ + テキスト + 到達先」のフラット列だけを持つ。
+/// PDF しおりのフラットなエントリ。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublicationOutlineEntry {
   /// 見出しレベルの深さ（`HeadingLevel::depth()`、0 = Part）
@@ -159,11 +137,7 @@ pub struct PublicationOutlineEntry {
   pub dest: Destination,
 }
 
-/// `model::Page` 列から [`Publication`] への純粋変換を行う
-///
-/// `Config` 依存は左マージン・ページサイズ・`show_bookmarks` の 3 箇所のみ（表のセル余白・
-/// 罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値として
-/// `model::Page` / `model::PlacedBlock::Table` に持たせている）。フォント資源には依存しない
+/// 配置済みページから [`Publication`] を構築する。
 pub struct PublicationBuilder<'a> {
   /// PDF ページレイアウト設定（左マージン・ページサイズ・しおり出力可否を読む）
   config: &'a Config,
@@ -174,11 +148,7 @@ impl<'a> PublicationBuilder<'a> {
   #[must_use]
   pub fn new(config: &'a Config) -> Self { return PublicationBuilder { config }; }
 
-  /// 確定ページ列としおりエントリから `Publication` を構築する
-  ///
-  /// 幾何を `model::Length`（sp 整数）で表現するため構築は失敗しない
-  /// （krilla の `f32` ベース矩形と異なり `Result` を返す必要がない）。画像 I/O は行わない
-  /// （実ファイルの読込・デコードは encode 時の責務のまま）。
+  /// 確定ページ列としおりエントリから [`Publication`] を構築する。
   #[must_use]
   pub fn build(&self, pages: &[Page], outline_entries: &[OutlineEntry]) -> Publication {
     let margin_left = self.config.pdf.margin.left;
@@ -246,8 +216,6 @@ impl<'a> PublicationBuilder<'a> {
         color: Some(Color::from(color)),
       });
     }
-    // push_placed_block_ops 以下は旧 renderer と同じ浮動小数演算順序に合わせるため `f32`（pt）で
-    // 座標を持ち回る（push_placed_block_ops の doc コメント参照）。ここで 1 回だけ変換する。
     let margin_left_pt = margin_left.to_pt();
     for block in page
       .blocks
@@ -289,9 +257,9 @@ impl<'a> PublicationBuilder<'a> {
   }
 }
 
-/// 全ページのアンカーから `AnchorId → Destination` 索引と、しおり用の見出し destination 列
-/// （文書順）を作る。内部リンクは前方参照もあり得るため、描画前に全ページ分を集める
-/// （`render::build_destination_index` と同じ二段構成）。
+/// 全ページのアンカーからリンク索引と文書順の見出し到達先を構築する。
+///
+/// 内部リンクの前方参照に対応するため、描画命令より先に全ページを走査する。
 fn build_destination_index(
   pages: &[Page],
   margin_left: model::Length,
@@ -333,24 +301,14 @@ fn build_destination_index(
   return (dest_by_id, heading_dests);
 }
 
-/// 左マージンを足した水平座標を、旧 `render::render_pages` と同じ浮動小数演算順序で計算する
+/// Krilla と同じ `f32` の演算順序で左マージンを加える。
 ///
-/// `model::Length` はマージンと座標を sp（固定小数点整数）のまま加算でき、単純にそうすると
-/// 丸め誤差が一切乗らず数学的にはより正確になる。しかし旧 renderer は `margin_left` を
-/// `f32`（pt）へ変換してから毎回 `f32` 同士で加算しており、この 2 経路は実数として等しくても
-/// `f32` の丸め誤差が異なるため、変換後の PDF 座標が最終桁で食い違うことがある
-/// （#265 で新旧 encode 経路の byte-for-byte 一致を検証する統合テストがこれを検出した）。
-/// 新旧 encode 経路の出力を一致させるため、ここでは意図的に旧実装と同じ順序
-/// （`f32` へ変換 → `f32` で加算 → sp へ丸め直す）で計算する。sp の分解能（1/65536 pt）は
-/// この関数が扱う座標の大きさにおける `f32` の表現精度より十分細かいため、丸め直した
-/// `Length` を再度 `to_pt()` した値は加算直後の `f32` 値と一致する。
+/// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
 fn add_margin_left(margin_left: model::Length, x: model::Length) -> model::Length {
   return model::Length::pt(margin_left.to_pt() + x.to_pt());
 }
 
-/// 解決済みの表スタイル値（`typeset::breaking` が `Style` から解決済みの生値を
-/// `PlacedBlock::Table` に持たせたものをそのまま束ねる。フォント資源を持たない点が
-/// `render::TableDrawContext` と異なる）
+/// 描画に必要な解決済みの表スタイル。
 struct ResolvedTableStyle {
   /// セル内容の左右内側余白
   cell_padding: model::Length,
@@ -360,18 +318,9 @@ struct ResolvedTableStyle {
   rule_color: Option<[u8; 3]>,
 }
 
-/// 配置済みブロック 1 個の描画命令を `ops` に積む
+/// 配置済みブロックの描画命令を追加する。
 ///
-/// `margin_left` を含め、ここから下（[`push_box_content_ops`] / [`push_table_row_ops`] /
-/// [`push_cell_items_ops`]）は座標を `f32`（pt）で持ち回し、旧 `render::draw_placed_block` /
-/// `draw_box_content` / `draw_table_row` / `draw_cell_items` と全く同じ順序で加算する。
-/// [`model::Length`] は sp（固定小数点整数）域で加算すれば誤差なく正確に計算できるが、旧
-/// renderer は逐次 `.to_pt()` してから `f32` で加算しており、多段の加算（Atom の入れ子・
-/// 表セルの `cursor_x` 累積・表の baseline 計算）では実数として同じでも `f32` の丸め誤差の
-/// 乗り方が違う。新旧 encode 経路の出力を byte-for-byte 一致させるため、この描画命令の組み立て
-/// 区間だけは意図的に旧実装の浮動小数演算順序をそのまま再現し、`PaintOp` へ積む直前にのみ
-/// [`model::Length::pt`] へ変換し直す（PDF 座標出力という変換境界に閉じるため、
-/// `model::Length` の doc コメントが挙げる正当な `f32` 変換箇所の 1 つにあたる）。
+/// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
 fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &PlacedBlock) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
@@ -453,10 +402,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
   }
 }
 
-/// 1 つのボックス内容の描画命令を `ops` に積む（`(x, baseline_y)` 基準、`f32` pt）
-///
-/// 旧 `render::draw_box_content` と同じ浮動小数演算順序で計算する（[`push_placed_block_ops`]
-/// の doc コメント参照）。
+/// ボックス内容の描画命令を基準座標から追加する。
 fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content: &HBoxContent) {
   match content {
     HBoxContent::Glyphs(run) => {
@@ -487,8 +433,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
   }
 }
 
-/// 位置確定済みの表の 1 行の描画命令を `ops` に積む（`render::draw_table_row` と同じロジック・
-/// 同じ浮動小数演算順序、`f32` pt）
+/// 位置確定済みの表の 1 行から描画命令を追加する。
 fn push_table_row_ops(
   ops: &mut Vec<PaintOp>,
   columns: &[model::TableColumn],
@@ -527,8 +472,7 @@ fn push_table_row_ops(
   }
 }
 
-/// セル内容のアイテム列の描画命令を `ops` に積む（`render::draw_cell_items` と同じロジック・
-/// 同じ浮動小数演算順序、`f32` pt）
+/// セル内容のアイテム列から描画命令を追加する。
 fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, baseline: f32) {
   let mut cursor_x = start_x;
   for item in items {
@@ -566,7 +510,7 @@ mod tests {
   use super::{PaintOp, Point, Publication, PublicationBuilder, PublicationLinkTarget, Rect};
   use crate::OutlineEntry;
 
-  /// テスト用の最小 `FontConfig`（`PublicationBuilder` はフォント資源を読まないため中身は無意味）
+  /// テスト用の最小フォント設定を返す。
   fn test_font_config() -> FontConfig {
     return FontConfig {
       font_name: "test".to_string(),
@@ -581,10 +525,7 @@ mod tests {
     };
   }
 
-  /// テスト用の最小 `Config`（A4・50pt 余白・しおり無効）。
-  ///
-  /// `Config` は `read_config` の検証済み出力のみを想定した型で `Default` を実装しないため、
-  /// `PublicationBuilder` が読む `pdf` 以外は最小限のプレースホルダで埋める。
+  /// テスト用の最小設定を返す。
   fn test_config() -> Config {
     return Config {
       document: DocumentConfig {
@@ -666,7 +607,7 @@ mod tests {
 
   #[test]
   fn build_flattens_single_glyph_run_line() {
-    // Arrange — 1 行・1 ボックス（Glyphs）だけの Page
+    // Arrange
     let config = test_config();
     let run = glyph_run("hello");
     let mut page = empty_page();
@@ -680,7 +621,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — margin_left + x の原点で 1 個の DrawGlyphRun だけが出る
+    // Assert
     let margin_left = config.pdf.margin.left;
     assert_eq!(publication.pages.len(), 1, "ページは 1 枚");
     let ops = &publication.pages[0].ops;
@@ -699,7 +640,7 @@ mod tests {
 
   #[test]
   fn build_flattens_inline_rule_above_baseline() {
-    // Arrange — HBoxContent::Rule（インライン罫線）を含む 1 行
+    // Arrange
     let config = test_config();
     let mut page = empty_page();
     page.blocks = vec![line_with_box(
@@ -715,7 +656,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — ベースラインの上に載る（y = baseline - height）
+    // Assert
     let margin_left = config.pdf.margin.left;
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 1);
@@ -735,7 +676,7 @@ mod tests {
 
   #[test]
   fn build_flattens_atom_children_recursively() {
-    // Arrange — Atom の中に Glyphs を 2 個（dx/dy でオフセット）
+    // Arrange
     let config = test_config();
     let run_a = glyph_run("a");
     let run_b = glyph_run("b");
@@ -772,7 +713,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — 子 2 個ぶんの DrawGlyphRun が dx/dy 込みの座標で出る
+    // Assert
     let margin_left = config.pdf.margin.left;
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2);
@@ -815,7 +756,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — 背景が先頭、本文の Rule が 2 番目
+    // Assert
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2, "背景 1 個 + 本文 Rule 1 個");
     assert_eq!(
@@ -834,7 +775,7 @@ mod tests {
 
   #[test]
   fn build_omits_background_fill_when_style_has_no_background_color() {
-    // Arrange — background_color: None（既定）
+    // Arrange
     let config = test_config();
     let page = empty_page();
 
@@ -881,7 +822,7 @@ mod tests {
 
   #[test]
   fn build_flattens_math_block_body_before_numbers() {
-    // Arrange — 本体 Atom（中身は 1 Glyphs）+ 番号 1 個
+    // Arrange
     let config = test_config();
     let body_run = glyph_run("x=1");
     let number_run = glyph_run("(1)");
@@ -910,7 +851,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — 本体が ops[0]、番号が ops[1]
+    // Assert
     let margin_left = config.pdf.margin.left;
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2);
@@ -938,7 +879,7 @@ mod tests {
 
   #[test]
   fn build_flattens_table_rule_above_then_cell_content() {
-    // Arrange — 1 行 1 列、rule_above: true、セル内容は Glyphs 1 個
+    // Arrange
     let config = test_config();
     let cell_run = glyph_run("cell");
     let column = TableColumn {
@@ -976,7 +917,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — rule_above の FillRect が先、セル内容の DrawGlyphRun が後
+    // Assert
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2, "罫線 1 個 + セル内容 1 個");
     assert!(matches!(ops[0], PaintOp::FillRect { .. }), "先頭は rule_above の罫線");
@@ -985,7 +926,7 @@ mod tests {
 
   #[test]
   fn build_walks_blocks_header_footer_footnotes_in_render_order() {
-    // Arrange — blocks/header/footer/footnotes.blocks それぞれに識別可能な Rule を 1 個ずつ
+    // Arrange
     let config = test_config();
     let rule_at = |y: f32| {
       return PlacedBlock::Rule {
@@ -1010,7 +951,7 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — render_pages と同じ順序 (blocks, header, footer, footnotes)
+    // Assert
     let ops = &publication.pages[0].ops;
     let ys: Vec<f32> = ops
       .iter()
@@ -1049,7 +990,7 @@ mod tests {
 
   #[test]
   fn build_resolves_internal_link_with_matching_anchor() {
-    // Arrange — Label アンカーと、それを指す内部リンク
+    // Arrange
     let config = test_config();
     let label = LabelId::new("fig:1");
     let mut page = empty_page();
@@ -1078,7 +1019,7 @@ mod tests {
 
   #[test]
   fn build_drops_internal_link_with_no_matching_anchor() {
-    // Arrange — 到達先アンカーが存在しない内部リンク
+    // Arrange
     let config = test_config();
     let mut page = empty_page();
     page.links = vec![PlacedLink {
@@ -1092,13 +1033,13 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &[]);
 
-    // Assert — 未解決の内部リンクは破棄され links は空
+    // Assert
     assert!(publication.pages[0].links.is_empty());
   }
 
   #[test]
   fn build_produces_outline_entries_when_bookmarks_enabled_and_headings_present() {
-    // Arrange — show_bookmarks: true、見出しアンカー 1 個 + 対応する OutlineEntry 1 個
+    // Arrange
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let key = HeadingKey::new(0);
@@ -1126,7 +1067,7 @@ mod tests {
 
   #[test]
   fn build_omits_outline_when_bookmarks_disabled() {
-    // Arrange — show_bookmarks: false（既定）だが見出しアンカー・エントリはある
+    // Arrange
     let config = test_config();
     let key = HeadingKey::new(0);
     let mut page = empty_page();
@@ -1149,7 +1090,7 @@ mod tests {
 
   #[test]
   fn build_omits_outline_when_no_heading_anchors_even_if_bookmarks_enabled() {
-    // Arrange — show_bookmarks: true だが見出しアンカーが 1 個もない
+    // Arrange
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let page = empty_page();
@@ -1161,13 +1102,13 @@ mod tests {
     // Act
     let publication = PublicationBuilder::new(&config).build(std::slice::from_ref(&page), &outline_entries);
 
-    // Assert — zip の対象がないので空、よって None
+    // Assert
     assert!(publication.outline.is_none());
   }
 
   #[test]
   fn build_resolves_title_from_document_title_when_present() {
-    // Arrange — document.title が設定済み
+    // Arrange
     let mut config = test_config();
     config.document.title = Some("本のタイトル".to_string());
     let page = empty_page();
@@ -1181,7 +1122,7 @@ mod tests {
 
   #[test]
   fn build_falls_back_title_to_output_name_when_document_title_absent() {
-    // Arrange — document.title 未設定、output.name = "out"（test_config() 既定）
+    // Arrange
     let config = test_config();
     let page = empty_page();
 

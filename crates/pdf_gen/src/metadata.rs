@@ -1,17 +1,14 @@
-//! PDF メタデータの組み立て。
-//!
-//! `PublicationMetadata` を Krilla の [`Metadata`] に詰め替える純粋なデータ変換層で、
-//! フォント・レイアウト・PDF 描画には依存しない。
+//! PDF メタデータを組み立てる。
 
 use chrono::{Datelike, Timelike, Utc};
 use krilla::metadata::{DateTime, Metadata};
 
 use crate::publication::PublicationMetadata;
 
-/// `PublicationMetadata` から PDF メタデータを構築します。
+/// [`PublicationMetadata`] から Krilla のメタデータを構築する。
 pub(crate) fn build_metadata(metadata: &PublicationMetadata) -> Metadata {
   let now = Utc::now();
-  // 暦の値は範囲が保証されている（year は妥当な西暦、month/day/hour/minute は仕様上の範囲内）ため truncation は発生しない
+  // chrono が各暦要素の範囲を保証する。
   #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
   let time = DateTime::new(now.year() as u16)
     .month(now.month() as u8)

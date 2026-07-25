@@ -1,10 +1,4 @@
 //! 引用ブロック（`DocNode::Quote`）の lowering
-//!
-//! 引用環境を「上マージン → 左右字下げ `VBox`（本体） → 下マージン」に変換する。本体は
-//! [`config::QuoteStyle`] の `font_kind` を既定書体にして lower し、`quotation`（`kind` が
-//! 段落先頭字下げありのとき）はブロック内段落へ `first_line_indent` を波及させる（`quote` は 0）。
-//! 左右の字下げは `VBox` の `indent` / `right_indent` で表し、`crate::block::build_blocks` が配下の
-//! 段落へ確定値を刻む。
 
 use model::{Align, DocNode, Length, QuoteKind};
 
@@ -13,10 +7,6 @@ use super::{
 };
 
 /// 引用ブロックをレイアウトノードに変換する
-///
-/// 構成: `Vkern(top_margin)` → 本体 `VBox`（左右 `indent` 字下げ）→ `Vkern(bottom_margin)`。
-/// 本体は `font_kind` を既定書体にし、`quotation` のときだけ段落先頭字下げ（`first_line_indent`）を
-/// 与える。`quote` は段落先頭字下げなし。
 ///
 /// # Errors
 ///
@@ -30,7 +20,6 @@ pub(super) fn lower_quote(
 ) -> Result<Vec<LayoutNode>, LoweringError> {
   let style = &ctx.style.quote;
 
-  // 段落先頭字下げは quotation のみ。本体は quote スタイルの font_kind を既定書体にする。
   let first_line_indent = if kind.indents_first_line() {
     style.first_line_indent
   } else {
@@ -95,14 +84,14 @@ mod tests {
 
   #[test]
   fn quote_wraps_body_in_symmetric_indent_vbox_with_margins() {
-    // Arrange — 既定スタイル
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
     // Act
     let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
 
-    // Assert — 上下に Vkern、本体 VBox は左右とも style.quote.indent で字下げ
+    // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
     let (indent, right_indent, _) = body_vbox(&nodes);
@@ -119,7 +108,7 @@ mod tests {
     // Act
     let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
 
-    // Assert — 本体に字下げ Kern は出ない
+    // Assert
     let (_, _, children) = body_vbox(&nodes);
     assert!(
       !children.iter().any(|n| matches!(n, LayoutNode::Kern { .. })),
@@ -137,7 +126,7 @@ mod tests {
     // Act
     let nodes = lower_quote_default(&ctx, QuoteKind::Quotation, &[paragraph("body")]).expect("失敗しないはず");
 
-    // Assert — 本体先頭は first_line_indent 量の Kern
+    // Assert
     let (_, _, children) = body_vbox(&nodes);
     let LayoutNode::Kern { length } = &children[0] else {
       panic!("quotation の本体先頭は字下げ Kern であるべき: {children:?}");
@@ -147,7 +136,7 @@ mod tests {
 
   #[test]
   fn quote_body_uses_quote_style_font_kind() {
-    // Arrange — quote スタイルの font_kind を本体の既定書体にする
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 

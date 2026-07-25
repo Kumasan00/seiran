@@ -151,8 +151,7 @@ mod tests {
 
   #[test]
   fn rejects_renamed_ordered_format_key() {
-    // Arrange: 旧キー `ordered_format` はハードリネームで廃止された（→ `ordered_marker_format`）。
-    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    // Arrange
     let toml = "
 indent = \"20pt\"
 item_margin_bottom = \"4pt\"
@@ -206,7 +205,7 @@ marker_font_kind = \"serif\"
 
   #[test]
   fn validate_rejects_nested_ordered_format_with_unknown_placeholder() {
-    // Arrange: `{number}` 以外のプレースホルダはバリデーションエラー（`ordered_list_format` と同じ検証）
+    // Arrange
     let style = ListStyle {
       nested_ordered_formats: vec![NestedOrderedFormat {
         number_style: NumberStyle::AlphaLower,

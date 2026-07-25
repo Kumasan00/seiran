@@ -1,19 +1,6 @@
 //! 任意引数（OptArg）の収集・型変換と許可キー検証
 //!
-//! 各コマンド/環境ハンドラは「許可キー名 + 期待型」のスキーマを渡し、
-//! `[key=value, key2=value2, ...]` 形式の任意引数群を `Vec<(String, OptValue)>`
-//! として受け取る。スキーマに無いキーは [`EvalError::UnknownOptArgKey`]、
-//! 値が期待型に変換できない場合は [`EvalError::InvalidOptArgValue`] を返す。
-//!
-//! ## 設計方針
-//!
-//! - 型変換とキー検証は本モジュールに集約。各ハンドラの変換ボイラープレートを排除する
-//! - 長さは [`model::Length`] として返し、入力では `(無印) / mm / cm` を許可（大文字小文字非依存）。
-//!   無印は `mm` 扱い。`pt`/`em`/`in` 等の単位は受け付けない（必要になったら拡張する）
-//! - boolean は `[draft]` の bare key ショートハンドを `Bool(true)` として受理。
-//!   bare key が来たがスキーマ側で `OptType::Bool` 以外を期待していた場合は型エラー
-//! - 数値は `f64::parse` に通す。指数表記・負値も許可（数値範囲のバリデーションは呼び出し側責務）
-//! - エラー span は対応する `OptArg` ノードの span をそのまま使う（個別の値 token までは絞らない）
+//! ハンドラが渡すキーと型のスキーマに従って値を変換する。
 
 use std::fmt;
 
@@ -72,10 +59,6 @@ pub(crate) enum OptValue {
 }
 
 /// 収集済み任意引数から指定キーの真偽値を取り出す
-///
-/// `[numbered=false]` / `[breakable=false]` のような bool キーを取り出す。引数を借用するため、
-/// 同じ `opt_args` から複数のキーを続けて抽出できる。キーが存在しない、または値が bool 型でない
-/// 場合は `None` を返す。
 pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bool> {
   return opt_args.iter().find_map(|(k, value)| match value {
     OptValue::Bool(b) if k == key => return Some(*b),
@@ -84,10 +67,6 @@ pub(crate) fn find_bool(opt_args: &[(String, OptValue)], key: &str) -> Option<bo
 }
 
 /// 収集済み任意引数から指定キーの文字列値を取り出す
-///
-/// `[label=...]` のような文字列キーを取り出す。引数を借用するため、同じ `opt_args` から
-/// 複数のキー（例: `label` と `numbered`）を続けて抽出できる。キーが存在しない、または
-/// 値が文字列型でない場合は `None` を返す。
 pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<String> {
   return opt_args.iter().find_map(|(k, value)| match value {
     OptValue::String(s) if k == key => return Some(s.clone()),
@@ -96,9 +75,6 @@ pub(crate) fn find_string(opt_args: &[(String, OptValue)], key: &str) -> Option<
 }
 
 /// 収集済み任意引数から指定キーの長さ値を取り出す
-///
-/// `[width=10mm]` / `[height=5cm]` のような長さキーを取り出す。引数を借用するため、同じ `opt_args` から複数のキーを続けて抽出できる。
-/// キーが存在しない、または値が長さ型でない場合は `None` を返す。
 pub(crate) fn find_length(opt_args: &[(String, OptValue)], key: &str) -> Option<Length> {
   return opt_args.iter().find_map(|(k, value)| match value {
     OptValue::Length(l) if k == key => return Some(*l),
@@ -107,9 +83,6 @@ pub(crate) fn find_length(opt_args: &[(String, OptValue)], key: &str) -> Option<
 }
 
 /// 収集済み任意引数から指定キーの色値を取り出す
-///
-/// `[color=#rrggbb]` のような色キーを取り出す。引数を借用するため、同じ `opt_args` から
-/// 複数のキーを続けて抽出できる。キーが存在しない、または値が色型でない場合は `None` を返す。
 pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<Color> {
   return opt_args.iter().find_map(|(k, value)| match value {
     OptValue::Color(c) if k == key => return Some(*c),
@@ -144,16 +117,6 @@ pub(crate) fn collect_environment_opt_args(
 }
 
 /// 任意引数群を集約・型変換してスキーマで検証する低レベル関数
-///
-/// `opt_arg_nodes` の各 `OptArg` ノードに対して [`parse_key_value_options`] を呼び、
-/// 得られた `(key, value)` ペアをスキーマと照合・型変換する。
-///
-/// # Arguments
-///
-/// * `source`        - 元のソース文字列
-/// * `name`          - エラー表示時に使うコマンド名または環境名
-/// * `opt_arg_nodes` - `OptArg` ノードの並び
-/// * `schema`        - 許可キー名と期待型の組。空スライスはすべてのキーを不明扱いにする
 ///
 /// # Errors
 ///
@@ -211,7 +174,6 @@ fn parse_value(
       return Ok(OptValue::Number(v));
     },
     OptType::String => {
-      // `columns="left center right"` のような囲み二重引用符は剥がして値だけを返す
       let trimmed = raw.trim();
       let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
         &trimmed[1..trimmed.len() - 1]
@@ -272,10 +234,6 @@ fn format_expected(schema: &[(&str, OptType)]) -> String {
   }
   return schema.iter().map(|(k, t)| format!("{k}: {t}")).collect::<Vec<_>>().join(", ");
 }
-
-// =============================================================================
-// テスト
-// =============================================================================
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
@@ -355,7 +313,7 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_unknown_boolean_shorthand() {
-    // Arrange — bare key も boolean ショートハンドとして拾われ、未許可なら同様にエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{Title}";
     let cst = parse(source, &arena).unwrap();
@@ -370,7 +328,7 @@ mod tests {
 
   #[test]
   fn collect_aggregates_multiple_opt_args() {
-    // Arrange — `[a=1][b=2]` のように複数の OptArg を順次集約できる
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[a=1][b=2]{Title}";
     let cst = parse(source, &arena).unwrap();
@@ -391,7 +349,7 @@ mod tests {
 
   #[test]
   fn collect_returns_length_with_no_suffix() {
-    // Arrange — サフィックスなし → mm 扱い
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -421,7 +379,7 @@ mod tests {
 
   #[test]
   fn collect_returns_length_with_cm_suffix() {
-    // Arrange — cm サフィックスは Length::cm として構築される
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[width=5cm]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -436,7 +394,7 @@ mod tests {
 
   #[test]
   fn collect_returns_length_case_insensitive_suffix() {
-    // Arrange — サフィックスの大小は無視
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[width=2CM]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -451,7 +409,7 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_invalid_length_suffix() {
-    // Arrange — pt/em/in 等は受け付けない
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -466,7 +424,7 @@ mod tests {
 
   #[test]
   fn collect_returns_bool_for_bare_key() {
-    // Arrange — bare key `[draft]` は Bool スキーマで true として受理される
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
     let cst = parse(source, &arena).unwrap();
@@ -496,7 +454,7 @@ mod tests {
 
   #[test]
   fn collect_returns_error_for_bare_key_on_non_bool() {
-    // Arrange — bare key の自動値 "true" を String スキーマで受けると型エラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
     let cst = parse(source, &arena).unwrap();

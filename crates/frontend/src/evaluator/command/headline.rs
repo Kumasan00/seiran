@@ -1,8 +1,4 @@
 //! 見出しコマンド群
-//!
-//! `\part`, `\chapter`, `\section`, `\subsection`, `\paragraph`, `\subparagraph`
-//! コマンドの実装です。各コマンドは見出しレベルに応じた `DocNode::Heading` を生成します。
-//! 自動採番は行わず、常に `numbered: true` を立てるだけで `lowering` 層に委ねます。
 
 use model::{DocNode, HeadingLevel};
 
@@ -18,13 +14,7 @@ use crate::{
 
 /// 見出しコマンドの共通処理
 ///
-/// 採番（カウンタの発番・リセット）は行わない。`[label=...]` の捕捉とタイトルの抽出だけを行い、
-/// 常に `numbered: true` の `DocNode::Heading` を生成する（発番・書式化は `lowering` 層が担う）。
-///
-/// # Arguments
-///
-/// * `view` - コマンドの型付きビュー
-/// * `level` - 見出しレベル
+/// ラベルとタイトルだけを構造化し、採番は後段に委ねる。
 ///
 /// # Errors
 ///
@@ -61,8 +51,6 @@ pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<Doc
 }
 
 /// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
-///
-/// 文言は parser エラーレポート専用のため、`document` クレート側ではなく parser に置く。
 fn expected_name(level: HeadingLevel) -> &'static str {
   return match level {
     HeadingLevel::Part => "部名",
@@ -107,7 +95,7 @@ mod tests {
 
   #[test]
   fn heading_captures_label_and_is_numbered() {
-    // Arrange — `\section[label=foo]{Title}` でラベル付きの見出しが構造化される
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[label=sec:foo]{Title}";
     let node = get_command_view(source, &arena);
@@ -116,8 +104,7 @@ mod tests {
     // Act
     let result = heading(&view, HeadingLevel::Section).unwrap();
 
-    // Assert: Heading が 1 個生成され、常に numbered: true・label が保持される
-    // （採番・書式化は lowering 層の責務）
+    // Assert
     assert_eq!(result.len(), 1);
     let DocNode::Heading {
       level,
@@ -135,7 +122,7 @@ mod tests {
 
   #[test]
   fn heading_rejects_unknown_opt_arg_key() {
-    // Arrange — `label` 以外の任意引数キーは未許可
+    // Arrange
     let arena = Bump::new();
     let source = r"\section[draft=true]{Title}";
     let node = get_command_view(source, &arena);

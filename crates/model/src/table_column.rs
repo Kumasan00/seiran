@@ -1,7 +1,4 @@
-//! 表（table 環境）の列指定に関する共通型
-//!
-//! `frontend`（`columns=` / `widths=` の解析）、`DocNode` / `lowering`（IR・レイアウトノード）、
-//! `pdf_gen`（列幅解決・描画）の全段で共有されるため契約クレートである本クレートに置く。
+//! 表の列指定に関する共通型。
 
 use crate::Length;
 
@@ -68,19 +65,19 @@ mod tests {
 
   #[test]
   fn column_align_default_is_left() {
-    // #[default] が Left であることを確認する
+    // Arrange / Act / Assert
     assert_eq!(ColumnAlign::default(), ColumnAlign::Left);
   }
 
   #[test]
   fn column_width_default_is_auto() {
-    // #[default] が Auto であることを確認する
+    // Arrange / Act / Assert
     assert_eq!(ColumnWidth::default(), ColumnWidth::Auto);
   }
 
   #[test]
   fn column_width_equality_by_variant_and_value() {
-    // 同一変種・同一値は等しく、値や変種が違えば等しくない
+    // Arrange / Act / Assert
     assert_eq!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(5.0)));
     assert_ne!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(6.0)));
     assert_ne!(ColumnWidth::Ratio(0.3), ColumnWidth::Ratio(0.5));
@@ -89,11 +86,13 @@ mod tests {
 
   #[test]
   fn table_column_holds_align_and_width() {
-    // TableColumn は揃えと幅指定をそのまま保持する
+    // Arrange
     let col = TableColumn {
       align: ColumnAlign::Right,
       width: ColumnWidth::Ratio(0.25),
     };
+
+    // Assert
     assert_eq!(col.align, ColumnAlign::Right);
     assert_eq!(col.width, ColumnWidth::Ratio(0.25));
   }
@@ -107,7 +106,7 @@ mod tests {
 
   #[test]
   fn from_keyword_rejects_abbreviations_and_unknown() {
-    // LaTeX 風の 1 文字略記は採用しない
+    // Arrange / Act / Assert
     assert_eq!(ColumnAlign::from_keyword("l"), None);
     assert_eq!(ColumnAlign::from_keyword("c"), None);
     assert_eq!(ColumnAlign::from_keyword("r"), None);

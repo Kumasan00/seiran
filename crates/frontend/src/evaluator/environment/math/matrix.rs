@@ -1,16 +1,6 @@
 //! 数式環境 — `matrix`
 //!
-//! `\begin{matrix}...\end{matrix}` を [`DocNode::MathBlock`]（`kind = Matrix`）に変換します。本体は
-//! [`crate::syntax::ParseMode::Math`] で構造化された CST を行区切り `\\` × 列区切り `&` のグリッドに分割します。
-//! 区切り括弧は環境名を分けず（pmatrix / bmatrix … を作らず）、単一 `matrix` 環境の任意引数
-//! `[delimiter=none|paren|bracket|brace|bar|dbar]` で選びます（既定 `none`）。中央揃えセルと区切り括弧の
-//! 描画は `layout` 段が [`MathEnvKind::Matrix`] に応じて確定します。
-//!
-//! `matrix` は**非採番**であり、`config::CounterName::Equation` を一切消費しません。
-//!
-//! ## 任意引数
-//!
-//! - `[delimiter=...]` — 区切り括弧の種別（`none` / `paren` / `bracket` / `brace` / `bar` / `dbar`）
+//! 行と列に分割する非採番の数式環境。
 
 use model::{DocNode, MathDelimiter, MathEnvKind};
 
@@ -25,9 +15,6 @@ use crate::{
 };
 
 /// `matrix` 環境を評価する
-///
-/// 任意引数 `[delimiter=...]` で区切り括弧を選び（既定 `none`）、本体を `\\` で行・`&` で列に分割した
-/// 非採番の `MathRow` 列を持つ `MathBlock`（`kind = Matrix { delimiter }`）を返す。
 ///
 /// # Errors
 ///
@@ -61,7 +48,6 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
-      // matrix は非採番のため行末マーカー `\notag` / `\label` は不可
       false,
     )?,
     None => Vec::new(),
@@ -72,7 +58,6 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     kind: MathEnvKind::Matrix { delimiter },
     rows,
     numbered: false,
-    // matrix は非採番のため参照対象外
     label: None,
     span: view.span(),
   }]);
@@ -114,7 +99,7 @@ mod tests {
 
   #[test]
   fn matrix_splits_grid_default_delimiter_none_unnumbered() {
-    // Arrange — 2 行 × 2 列のグリッド（区切り指定なし）
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}a & b \\ c & d\end{matrix}";
     let cst = parse(source, &arena).unwrap();
@@ -122,7 +107,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — Matrix { None }、2 行・各 2 セル・非採番
+    // Assert
     assert_eq!(result.len(), 1);
     let (delimiter, rows) = matrix_of(&result);
     assert_eq!(delimiter, MathDelimiter::None, "既定は区切りなし");
@@ -133,7 +118,7 @@ mod tests {
 
   #[test]
   fn matrix_parses_delimiter_option() {
-    // Arrange — `[delimiter=bracket]` で角括弧を選ぶ
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}";
     let cst = parse(source, &arena).unwrap();
@@ -148,7 +133,7 @@ mod tests {
 
   #[test]
   fn matrix_rejects_unknown_delimiter_value() {
-    // Arrange — 未知の区切り値はエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=angle]a & b\end{matrix}";
     let cst = parse(source, &arena).unwrap();
@@ -162,7 +147,7 @@ mod tests {
 
   #[test]
   fn matrix_rejects_unknown_opt_key() {
-    // Arrange — matrix は `[delimiter]` のみ許可。未知キーはエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";
     let cst = parse(source, &arena).unwrap();

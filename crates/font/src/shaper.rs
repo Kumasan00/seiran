@@ -1,87 +1,7 @@
 //! テキストシェイピング管理モジュール
 //!
-//! **`HarfRust`**（`HarfBuzz` の Rust 移植）によるテキストシェイピング機能を提供します。
-//! テキストシェイピングとは、テキスト文字列をフォント固有のグリフシーケンスに変換するプロセスです。
-//!
-//! ## シェイピングとは
-//!
-//! テキストシェイピングは以下の処理を行います：
-//!
-//! - **文字 → グリフ変換**: Unicode コードポイントを OpenType グリフに対応
-//! - **スクリプト処理**: 言語特有の字形変形（例：アラビア文字のダイアクリティクス）
-//! - **リガチャ処理**: 複数文字を単一グリフに統合（例：f + i → fi）
-//! - **位置情報計算**: 各グリフの x, y オフセットと幅を計算
-//! - **フィーチャー適用**: OpenType Advanced Typography 機能（smallcaps など）
-//!
-//! ## モジュール構成
-//!
-//! - [`ShaperError`] - エラー型（言語タグ解析エラー）
-//! - [`ShaperDatas`] - 19 フォント種別のシェイパーデータ（HarfRust の事前構築データ）
-//! - [`ShaperInstances`] - バリアブルフォント軸のインスタンス管理
-//! - [`HarfRustShapers`] - 19 種類のフォント種別に対応するシェイパー群
-//! - [`HarfRustShaper`] - 単一フォント種別のシェイパー実装
-//!
-//! ## データフロー
-//!
-//! ```text
-//! FontRefs（フォント参照）
-//!   ↓
-//! ShaperDatas（HarfRust 事前構築データ）
-//!   ↓ + FontConfigs（スクリプト、言語設定）
-//! ShaperInstances（バリアブル軸設定）
-//!   ↓
-//! HarfRustShapers（19 フォント用のシェイパー群）
-//!   ↓ + Text（テキスト入力）
-//! GlyphBuffer（グリフシーケンス + 位置情報）
-//! ```
-//!
-//! ## `HarfRust` との統合
-//!
-//! このモジュールは以下のような方法で `HarfRust` と統合します：
-//!
-//! | 処理 | `HarfRust` クラス | 説明 |
-//! |------|----------------|------|
-//! | 事前構築 | `ShaperData` | テーブルデータを事前にメモリにロード |
-//! | インスタンス化 | `ShaperInstance` | バリアブルフォント軸を設定 |
-//! | シェイピング | `ShapePlan` + `Shaper` | 文字→グリフ変換を実行 |
-//! | 結果格納 | `GlyphBuffer` | グリフ列、クラスタ、位置情報を格納 |
-//!
-//! ## スクリプト・言語・フィーチャー
-//!
-//! 各フォント種別のシェイパーは設定から以下の情報を取得します：
-//!
-//! - **Script**: OpenType Script タグ（例："arab"、"beng"）
-//! - **Language**: BCP 47 言語タグ（例："ja"、"en-US"）
-//! - **Features**: OpenType フィーチャータグと値（例：smallcaps、ligatures）
-//!
-//! ## バリアブルフォント対応
-//!
-//! 設定にバリアブルフォント軸が指定されている場合（例：Weight=700）、
-//! `ShaperInstance` を生成して、シェイピング時に軸値が反映されます。
-//!
-//! ## 19 フォント並列処理
-//!
-//! すべての構造体初期化は **rayon** で並列実行され、
-//! 19 種類のフォント（Latin 12 + Math 1 + 日本語 6）を効率的に処理します。
-//!
-//! ## 使用例
-//!
-//! ```ignore
-//! # use font::shaper::*;
-//! # use config::FontConfigs;
-//! # use font::FontRefs;
-//!
-//! // フォント参照とシェイパーデータを準備
-//! let font_refs = FontRefs::new(&configs, &font_data)?;
-//! let shaper_datas = ShaperDatas::new(&font_refs);
-//! let instances = ShaperInstances::new(&configs, &font_refs);
-//!
-//! // シェイパー群を生成
-//! let shapers = HarfRustShapers::new(&configs, &font_refs, &shaper_datas, &instances)?;
-//!
-//! // テキストを Serif フォントでシェイピング（10.5pt 想定）
-//! let glyph_buffer = shapers.get(FontType::Serif).shape(buffer, "Hello World", 10.5);
-//! ```
+//! `HarfRust` を使い、フォント設定の書字方向・スクリプト・言語・OpenType
+//! フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する。
 
 use std::str::FromStr;
 
@@ -98,12 +18,10 @@ use thiserror::Error;
 
 use crate::{FontRefs, FontType};
 
-/// テキストシェイピング中に発生するエラーの種類
-///
-/// `HarfRust` によるシェイピング処理やフォント設定の解析で発生するエラーを表します。
+/// テキストシェイピングの初期化エラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum ShaperError {
-  /// 言語タグの解析に失敗
+  /// 言語タグを解析できない。
   #[error("言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
     code(shaper::language_parse),
@@ -117,19 +35,12 @@ pub enum ShaperError {
   },
 }
 
-/// `HarfRust` シェイピングに必要なフォント解析データの集合
-///
-/// 19 種類のフォント種別ごとの `ShaperData` を保持します。
-/// `ShaperData` はテキストシェイピング時にグリフ情報を参照するために使用されます。
+/// 全フォント種別の `HarfRust` 解析データ。
 pub type ShaperDatas = FontMap<ShaperData>;
 
-/// `ShaperDatas` のコンストラクタを提供するトレイト
+/// [`ShaperDatas`] の構築機能。
 pub trait ShaperDatasExt {
-  /// フォント参照から `HarfRust` シェイピング用のデータを生成します
-  ///
-  /// # Arguments
-  ///
-  /// * `font_refs` - 各フォント種別のロード済みフォント参照
+  /// 全フォント参照からシェイピング用の解析データを生成する。
   fn new(font_refs: &FontRefs) -> Self;
 }
 
@@ -141,23 +52,12 @@ impl ShaperDatasExt for ShaperDatas {
   }
 }
 
-/// バリアブルフォント軸に対応するシェイパーインスタンスの集合
-///
-/// 19 種類のフォント種別ごとに、バリアブルフォント軸の設定がある場合は
-/// `ShaperInstance` を保持します（軸設定がない場合は `None`）。
+/// 全フォント種別のバリエーション軸インスタンス。
 pub type ShaperInstances = FontMap<Option<ShaperInstance>>;
 
-/// `ShaperInstances` のコンストラクタを提供するトレイト
+/// [`ShaperInstances`] の構築機能。
 pub trait ShaperInstancesExt {
-  /// フォント設定からシェイパーインスタンスを生成します
-  ///
-  /// バリアブルフォント軸の設定がある場合は `ShaperInstance` を生成します。
-  /// 軸設定がない場合は `None` を保持します。生成は並列処理で実行されます。
-  ///
-  /// # Arguments
-  ///
-  /// * `configs` - 各フォント種別の設定情報（バリアブルフォント軸を含む）
-  /// * `font_refs` - 各フォント種別のロード済みフォント参照
+  /// 設定にバリエーション軸があるフォントのインスタンスを並列に生成する。
   fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self;
 }
 
@@ -175,20 +75,7 @@ impl ShaperInstancesExt for ShaperInstances {
   }
 }
 
-/// バリアブルフォント軸設定からシェイパーインスタンスを生成します
-///
-/// フォント設定にバリアブルフォント軸が指定されている場合、
-/// それらの軸値から `ShaperInstance` を生成します。
-/// 軸設定がない場合は `None` を返します。
-///
-/// # Arguments
-///
-/// * `config` - フォント設定情報（バリアブル軸を含む）
-/// * `font_ref` - フォント参照
-///
-/// # Returns
-///
-/// 軸設定がある場合は `Some(ShaperInstance)`、ない場合は `None`
+/// バリエーション軸設定があればシェイパーインスタンスを生成する。
 fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<ShaperInstance> {
   config.variation_axes.as_ref()?;
 
@@ -196,7 +83,7 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
     return axes
       .iter()
       .map(|axis| {
-        // harfrust `Variation` の軸値は f32 のみ受け付ける（API 境界での精度低下は許容）
+        // `harfrust` の API が要求する f32 へ境界で変換する。
         #[allow(clippy::cast_possible_truncation)]
         let value = axis.value as f32;
         return Variation::from((Tag::new(&axis.name), value));
@@ -209,30 +96,16 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
   return instance;
 }
 
-/// `HarfRust` のテキストシェイピングエンジンの集合
-///
-/// 19 種類のフォント種別ごとに `HarfRustShaper` を保持します。
-/// このシェイパー群は、与えられたテキストを各フォント種別で
-/// シェイピング（グリフ配置の計算）するための統一インターフェースを提供します。
+/// 全フォント種別の [`HarfRustShaper`]。
 pub type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 
-/// `HarfRustShapers` のコンストラクタを提供するトレイト
+/// [`HarfRustShapers`] の構築機能。
 pub trait HarfRustShapersExt<'a>: Sized {
-  /// `HarfRust` シェイパー一式を生成します
-  ///
-  /// フォント設定、シェイパーデータ、シェイパーインスタンスから
-  /// 19 種類全てのフォント種別に対応する `HarfRust` シェイパーを生成します。
-  ///
-  /// # Arguments
-  ///
-  /// * `configs` - 各フォント種別の設定情報
-  /// * `font_refs` - 各フォント種別の OpenType フォント参照
-  /// * `shaper_datas` - `HarfRust` シェイピング用の事前構築データ
-  /// * `instances` - バリアブルフォント軸のインスタンス情報
+  /// 全フォント種別のシェイパーを並列に生成する。
   ///
   /// # Errors
   ///
-  /// 言語タグの解析に失敗した場合やシェイパーの初期化に失敗した場合にエラーを返します。
+  /// 言語タグを解析できない場合に [`ShaperError`] を返す。
   fn new(
     configs: &FontConfigs,
     font_refs: &'a FontRefs,
@@ -262,24 +135,13 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
   }
 }
 
-/// 単一フォントに対するテキストシェイピングエンジン
-///
-/// `HarfRust` を使用して、特定のフォントに対してテキストをシェイピングします。
-/// シェイピングとは、テキスト文字列からグリフシーケンスを生成するプロセスです。
-/// スクリプト、言語、シェイピング機能（フィーチャー）などの
-/// タイポグラフィック情報を保持します。
+/// 単一フォントの `HarfRust` シェイパー。
 pub struct HarfRustShaper<'a> {
   /// `harfrust` のシェイパー本体
   shaper: Shaper<'a>,
-  /// `direction` と `script` の **両方が** `Some` のときに事前構築される `ShapePlan`。
+  /// 書字方向とスクリプトを明示した場合だけ再利用できるシェイピングプラン。
   ///
-  /// `harfrust::Shaper::shape` は plan を渡すと内部で `buffer.direction == plan.direction` と
-  /// `buffer.script == plan.script` を `assert_eq!` で検証するため、いずれかが `None` の場合は
-  /// plan をキャッシュできず `None` になります。特に script が `None` のときは
-  /// `UnicodeBuffer::guess_segment_properties` がテキスト内容から `buffer.script` を埋めるため、
-  /// `plan.script = None` と不一致になりパニックします。キャッシュできない場合は
-  /// [`HarfRustShaper::shape`] が plan 未指定の `ShapeOptions` を渡し、`harfrust` 側で
-  /// per-call に plan を構築します。
+  /// 片方でも自動判定すると入力ごとに値が変わり得るため、その場合は呼び出しごとに構築する。
   shape_plan: Option<ShapePlan>,
   /// 書字方向。`None` の場合は `UnicodeBuffer::guess_segment_properties` に委譲します。
   direction: Option<Direction>,
@@ -292,26 +154,11 @@ pub struct HarfRustShaper<'a> {
 }
 
 impl<'a> HarfRustShaper<'a> {
-  /// フォント設定とシェイパーデータから `HarfRustShaper` を生成します
-  ///
-  /// フォント設定からスクリプト、言語、シェイピング機能を取得し、
-  /// `HarfRust` のシェイパーとシェイピングプランを初期化します。
-  /// バリアブルフォント軸の設定がある場合はインスタンスとして適用されます。
-  ///
-  /// # Arguments
-  ///
-  /// * `config` - フォント設定（スクリプト、言語、機能を含む）
-  /// * `font_ref` - OpenType フォント参照
-  /// * `shaper_data` - `HarfRust` シェイピング用の事前構築データ
-  /// * `instance` - バリアブルフォント軸のインスタンス（軸設定がある場合）
-  ///
-  /// # Returns
-  ///
-  /// 初期化されたシェイパー
+  /// フォント設定と解析データからシェイパーを生成する。
   ///
   /// # Errors
   ///
-  /// 言語タグの解析に失敗した場合に `ShaperError` を返します。
+  /// 言語タグを解析できない場合に [`ShaperError`] を返す。
   fn new(
     config: &FontConfig,
     font_ref: &FontRef<'a>,
@@ -344,10 +191,6 @@ impl<'a> HarfRustShaper<'a> {
       None => vec![],
     };
 
-    // harfrust 0.8.0 の `shape_with_plan` は direction と script の両方が buffer と plan で
-    // 一致することを assert する。`config.script = None` のときは `guess_segment_properties()` が
-    // テキスト内容から `buffer.script` を埋めてしまうため、`plan.script = None` と不一致になり
-    // パニックする。direction と script の両方が明示指定されているときだけ plan をキャッシュする。
     let shape_plan = match (direction, script) {
       (Some(d), Some(_)) => Some(ShapePlan::new(&shaper, d, script, language.as_ref(), &features)),
       _ => None,
@@ -373,33 +216,10 @@ impl<'a> HarfRustShaper<'a> {
     };
   }
 
-  /// 与えられたテキストをシェイピングし、グリフバッファを返します
+  /// テキストをグリフ列と位置情報へシェイピングする。
   ///
-  /// テキスト文字列を複数のグリフ ID、グリフクラスタ、位置情報に変換します。
-  /// このメソッドは
-  /// - スクリプトと言語の自動検出
-  /// - シェイピング機能（フィーチャー）の適用
-  /// - OpenType テーブルの参照
-  ///
-  /// などを行い、正確なシェイピング結果を生成します。
-  ///
-  /// 呼び出し側が `UnicodeBuffer` を所有して持ち回すことで、内部の `Vec<GlyphInfo>` /
-  /// `Vec<GlyphPosition>` 等のアロケーションを再利用できます。返却された
-  /// `GlyphBuffer` に対して `clear()` を呼ぶと、同じアロケーションを使った
-  /// 空の `UnicodeBuffer` が得られます。
-  ///
-  /// # Arguments
-  ///
-  /// * `buffer` - 使い回し可能な `UnicodeBuffer`。`direction` / `script` / `language` は
-  ///   このメソッドが上書きするため、呼び出し側が事前に設定する必要はありません。
-  /// * `text` - シェイピング対象のテキスト
-  /// * `point_size` - 組版時のポイントサイズ。AAT `trak` テーブルを持つフォントで
-  ///   サイズ依存のトラッキング量に反映される。`trak` を持たないフォントでは無視される。
-  ///   `<= 0.0` を渡すと `harfrust` 側で 12.0pt にフォールバックされる。
-  ///
-  /// # Returns
-  ///
-  /// シェイピング結果を含む `GlyphBuffer`
+  /// `buffer` は返り値に `clear()` を呼ぶことで再利用できる。`point_size` は AAT `trak`
+  /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
   #[must_use]
   pub fn shape(&self, mut buffer: UnicodeBuffer, text: &str, point_size: f32) -> GlyphBuffer {
     if let Some(direction) = self.direction {
@@ -413,10 +233,6 @@ impl<'a> HarfRustShaper<'a> {
     }
     buffer.push_str(text);
     buffer.guess_segment_properties();
-    // direction と script の両方が config で明示された場合はキャッシュ済み ShapePlan を渡し、
-    // いずれかが未指定（guess_segment_properties に委譲）の場合は plan を渡さず harfrust 側で
-    // per-call に plan を組ませる（`self.shape_plan` が `None` のため自動的にこちらになる）。
-    // `point_size` は `ShapePlan` の構築入力ではないため、サイズが変動してもキャッシュは無効化されない。
     let options = ShapeOptions::new()
       .plan(self.shape_plan.as_ref())
       .point_size(Some(point_size))

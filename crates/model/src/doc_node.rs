@@ -5,14 +5,7 @@ use crate::{
   MathEnvKind, MathRow, QuoteKind, Span, TableRow, TheoremClass,
 };
 
-// =============================================================================
-// ドキュメント全体
-// =============================================================================
-
 /// ドキュメント全体を表す構造体
-///
-/// ドキュメント本体のブロック要素を保持します。
-/// 目次生成やメタデータ管理にも利用されます。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
   /// ドキュメント本体のブロック要素
@@ -33,21 +26,12 @@ impl Document {
   pub fn is_empty(&self) -> bool { return self.body.is_empty(); }
 }
 
-// =============================================================================
-// ブロックレベル要素
-// =============================================================================
-
 /// ブロックレベルのドキュメント要素
 ///
-/// ドキュメントの最上位に配置される論理的な構造単位です。
-/// 各バリアントはセマンティック情報を保持し、
-/// 物理的なレイアウト情報（フォントサイズ、座標等）は含みません。
+/// セマンティック情報のみを保持し、フォントサイズや座標などの物理レイアウトは含まない。
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocNode {
   /// 見出し（`\part` 〜 `\subparagraph`）
-  ///
-  /// 番号・レベル・タイトルを構造的に保持し、
-  /// スタイル情報は Lowering 層で決定されます。
   Heading {
     /// 見出しのレベル（Part〜Subparagraph）
     level: HeadingLevel,
@@ -58,24 +42,16 @@ pub enum DocNode {
     numbered: bool,
     /// 見出しのタイトル（インライン要素として保持）
     title: Vec<InlineNode>,
-    /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル（任意）
-    ///
-    /// `\ref{sec:intro}` 解決時に `lowering::CounterRegistry` の labels から番号を引くキーとなる。
-    /// `None` の場合はラベル付与なし（参照対象外）。
+    /// `\section[label=sec:intro]{...}` 形式で付与された参照ラベル
     label: Option<String>,
     /// 見出しコマンドのソース位置。重複ラベルの診断に使う
     span: Span,
   },
 
   /// 段落（インライン要素の集合）
-  ///
-  /// 連続するテキスト・インラインコマンドを 1 つの段落にグルーピングしたものです。
-  /// `ParagraphBreak` が段落の区切りとなります。
   Paragraph(Vec<InlineNode>),
 
   /// 箇条書きリスト（`\begin{itemize}` / `\begin{enumerate}`）
-  ///
-  /// リストアイテムを構造的に保持し、ネスト（リスト内リスト）にも対応可能です。
   List {
     /// 順序付き（enumerate）かどうか
     ordered: bool,
@@ -90,25 +66,8 @@ pub enum DocNode {
 
   /// ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）
   ///
-  /// Parser が環境種別を `kind` に決め、本体を `\\` で行・`&` で列に分割して `rows` に
-  /// 格納する（env body は math モードで構造化される）。採番には 2 つの粒度があり、kind ごとに
-  /// **どちらか一方だけ**を使う:
-  ///
-  /// - **行ごと採番**（`equation` / `align` / `gather`）: 各行の `MathRow::numbered` が採番対象かを表す。
-  ///   環境全体の採番（この `numbered` フィールド）は使わない。
-  /// - **環境全体に 1 つ採番**（`split` / `multiline`）: この `numbered` フィールドが `true` かつ
-  ///   `rows` が空でなければ、`lowering` 層が環境全体に 1 つだけ通し番号を発番し、ブロックの縦中央に
-  ///   配置する。各行の `MathRow::numbered` は常に `false`。
-  ///
-  /// `cases` / `matrix` は非採番（`numbered: false` 固定）で `CounterName::Equation` を一切消費しない。
-  /// 番号の書式化（`number_format` テンプレ・`MathBlockStyle::tag_format` による装飾）は
-  /// すべて `lowering` 層が `Style` を参照して行う。`kind` に応じて lowering 以降が列整列・
-  /// 区切り括弧・中央寄せを決める。
-  ///
-  /// ラベルの担い手も採番粒度に揃える。行ごと採番（`equation` / `align` / `gather`）は各行の
-  /// `MathRow::label`（`align` / `gather` は行末マーカー `\label{...}`、`equation` は `[label=...]`）が、
-  /// 環境単位採番（`split` / `multiline`）は環境の任意引数 `[label=...]` を受けるこの `label` フィールドが
-  /// 担う。lowering 層がいずれも `AnchorMark::Label` でブロック先頭の `\ref` 到達先に解決する。
+  /// `equation` / `align` / `gather` は行単位、`split` / `multiline` は環境単位で採番する。
+  /// `cases` / `matrix` は採番しない。ラベルも同じ粒度で保持する。
   MathBlock {
     /// 環境種別
     kind: MathEnvKind,
@@ -125,12 +84,6 @@ pub enum DocNode {
   },
 
   /// 図環境（`\begin{figure}...\end{figure}`）
-  ///
-  /// 環境ハンドラが body 内の `\image` / `\caption` を抽出して構造化する。
-  /// `width` / `height` は `\image` の任意引数で mm/cm 単位指定。両方とも省略可で、
-  /// 未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。
-  /// 通し番号（`CounterName::Figure`）の発番・書式化は `lowering` 層が担う。`caption_position` は
-  /// `\caption` が `\image` より前に書かれた場合 `Top`、それ以外は `Bottom`。
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
     image_path: AssetId,
@@ -154,14 +107,6 @@ pub enum DocNode {
   },
 
   /// 表環境（`\begin{table}...\end{table}`）
-  ///
-  /// 環境ハンドラが body 内の `\head` / `\row` / `\caption` を抽出して構造化する。
-  /// `columns` / `widths` は環境の任意引数 `columns="left center right"` /
-  /// `widths="auto auto 5cm"` のパース結果で、長さは列数に揃えられている
-  /// （未指定分は `ColumnAlign::Left` / `ColumnWidth::Auto` で埋める）。
-  /// 通し番号（`CounterName::Table`）の発番・書式化は `lowering` 層が担う。
-  /// `caption_position` は `\caption` が最初の行（`\head` / `\row`）より前に
-  /// 書かれた場合 `Top`、それ以外は `Bottom`。
   Table {
     /// 列ごとの揃え方向（列数に正規化済み）
     columns: Vec<ColumnAlign>,
@@ -184,13 +129,6 @@ pub enum DocNode {
   },
 
   /// 定理ブロック（`\begin{theorem}...\end{theorem}` 等の 10 種）
-  ///
-  /// 環境ハンドラがクラスをを解決し、`[title=...]` / `[label=...]` / `[of=...]` の任意引数を
-  /// 抽出して構造化する。本体（`body`）は通常の本文と同様に再帰評価された `Vec<DocNode>`。
-  /// 採番（共有カウンタの発番・cleveref 文字列の組み立て）・見出し書式・本文フォント・
-  /// QED マーク配置は、いずれも `lowering` 層がクラスの `config::TheoremStyle` を参照して
-  /// 決める（このノードは `class` 以外に物理・書式情報を持たない）。`unnumbered` クラス（`proof`）
-  /// かどうかも `TheoremStyle.unnumbered` から `lowering` が判定する。
   Theorem {
     /// 定理クラス（`theorem` / `lemma` / … / `proof`）。`lowering` がスタイル解決に使う
     class: TheoremClass,
@@ -207,12 +145,6 @@ pub enum DocNode {
   },
 
   /// 引用ブロック（`\begin{quote}...\end{quote}` / `\begin{quotation}...\end{quotation}`）
-  ///
-  /// 本文より左右に字下げされたブロック引用。本体（`body`）は通常の本文と同様に再帰評価された
-  /// `Vec<DocNode>`（段落・リスト・数式などを含められる）。`kind` が `Quotation` のときブロック内
-  /// 段落の先頭行を字下げし、`Quote` のときは字下げしない。左右インデント量・上下マージン・
-  /// 段落先頭字下げ量・本文フォントは `lowering` 層が `config::QuoteStyle` を参照して決める
-  /// （このノードは物理スタイルを持たない）。
   Quote {
     /// 引用の種別（`quote` / `quotation`）。`lowering` が段落先頭字下げの有無に使う
     kind: QuoteKind,
@@ -234,21 +166,11 @@ pub enum DocNode {
   /// 固定幅スペース（`\space{N}` コマンド、pt 単位）
   Space(Length),
 
-  /// ゼロサイズの参照アンカー点（引用キーで参照可能な位置）
-  ///
-  /// それ自身は縦アキを生まず、`lowering` 層で `LayoutNode::Anchor(AnchorMark::Citation(key))` に
-  /// 変換され、直後のブロックの確定座標にジャンプ先として解決される。見出し・図・表・式の
-  /// ラベルは各 `DocNode` の `label` フィールドが担うため、これは本文構造に label フィールドを
-  /// 持たないブロック（CSL 整形ステージが追加する参考文献エントリ段落）にアンカーを付けるための
-  /// プリミティブ。現状の唯一の producer は CSL 整形ステージ（`citation` クレート）。
+  /// 参考文献エントリに置くゼロサイズの参照アンカー
   Anchor(CitationId),
 }
 
 /// `proof` 環境の `[of=label]` 参照（証明対象の定理）
-///
-/// `\ref` と同じく `lowering` 層の 2 パスで解決する（`label` を保持するだけの構造体で、
-/// 解決結果の cleveref 文字列（例 `"Theorem 1.2"`）は `lowering::resolve_refs` が
-/// `LayoutNode` 側で埋め込む）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProofTarget {
   /// 参照先のラベル名（`[of=thm:foo]` の `thm:foo`）
@@ -258,12 +180,7 @@ pub struct ProofTarget {
 }
 
 impl DocNode {
-  /// 採番ありの見出しノードを生成するヘルパー（label なし、テスト用ダミー span）
-  ///
-  /// # Arguments
-  ///
-  /// * `level` - 見出しレベル
-  /// * `title` - タイトルのインライン要素
+  /// 採番あり・ラベルなしの見出しノードを生成する
   #[must_use]
   pub fn heading(level: HeadingLevel, title: Vec<InlineNode>) -> Self {
     return DocNode::Heading {
@@ -284,17 +201,9 @@ impl DocNode {
   pub fn is_list(&self) -> bool { return matches!(self, DocNode::List { .. }); }
 }
 
-// =============================================================================
-// テスト
-// =============================================================================
-
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  // ==========================================================
-  // HeadingLevel のテスト
-  // ==========================================================
 
   #[test]
   fn heading_level_depth_returns_correct_values() {
@@ -342,10 +251,6 @@ mod tests {
     assert_eq!(format!("{}", HeadingLevel::Part), "part");
   }
 
-  // ==========================================================
-  // DocNode のテスト
-  // ==========================================================
-
   #[test]
   fn doc_node_heading_helper() {
     let node = DocNode::heading(HeadingLevel::Section, vec![InlineNode::text("Title")]);
@@ -370,10 +275,6 @@ mod tests {
     assert!(node.is_list());
     assert!(!node.is_paragraph());
   }
-
-  // ==========================================================
-  // Document のテスト
-  // ==========================================================
 
   #[test]
   fn document_new_and_accessors() {

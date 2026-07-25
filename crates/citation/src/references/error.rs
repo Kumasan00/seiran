@@ -1,8 +1,4 @@
 //! 参照定義ファイル読み込み時のエラー型。
-//!
-//! 読み込み・TOML / JSON 解析・拡張子判定の失敗を表す [`ReadReferencesError`] を定義する。著者名の
-//! 排他性違反や空・重複 ID は、デシリアライズ時点で fail-fast に検出され
-//! [`ReadReferencesError::ParseToml`] / [`ReadReferencesError::ParseJson`] として報告される。
 
 use miette::Diagnostic;
 use thiserror::Error;

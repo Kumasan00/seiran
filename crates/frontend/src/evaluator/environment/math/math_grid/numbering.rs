@@ -1,8 +1,6 @@
 //! 複数行数式環境の採番判定（任意引数の解釈と `MathRow` への割当）
 //!
-//! 任意引数 `[numbered]` / `[label=...]` の解釈、末尾空行の除去、採番粒度（[`NumberingMode`]）に
-//! 応じた `MathRow::numbered` / ラベルの割当を担う。実際の発番（`CounterName::Equation` の消費）は
-//! `lowering` 層が担うため、ここでは「採番対象かどうか」の構造化のみを行う。
+//! 実際の発番は行わず、採番対象とラベルだけを構造化する。
 
 use miette::SourceSpan;
 use model::MathRow;
@@ -19,8 +17,7 @@ use crate::{
 
 /// 行末マーカー `\label{...}` の診断用 `SourceSpan` を `MathRow::label_span`（`model::Span`）へ変換する
 ///
-/// `GridRow::label_span` は行末マーカーの重複診断（`EvalError`）用に `SourceSpan` を保持するが、
-/// Document IR（`model`）は診断ライブラリに依存しない軽量な `Span` を使う（#203）。
+/// Document IR は診断ライブラリに依存しないため、境界で変換する。
 fn to_model_span(span: SourceSpan) -> model::Span {
   let start = u32::try_from(span.offset()).unwrap_or(u32::MAX);
   let end = u32::try_from(span.offset() + span.len()).unwrap_or(u32::MAX);
@@ -28,21 +25,16 @@ fn to_model_span(span: SourceSpan) -> model::Span {
 }
 
 /// 採番の粒度
-///
-/// 複数行数式環境が `CounterName::Equation` をどの単位で消費するかを表す。
 pub(crate) enum NumberingMode {
-  /// 各行に 1 つ採番する（`align` / `gather`）。番号は `MathRow::number` に入る
+  /// 各行を採番対象にする（`align` / `gather`）
   PerRow,
-  /// 環境全体に 1 つだけ採番する（`split` / `multiline`）。番号は `DocNode::MathBlock::number` に入り
-  /// `layout` 段が縦中央へ配置する
+  /// 環境全体を採番対象にする（`split` / `multiline`）
   SingleEnv,
 }
 
 /// 数式環境の任意引数 `[numbered]` / `[label=...]` を解析・検証する
 ///
-/// `[numbered]`（既定 `true`）はすべての環境で受理する。環境単位ラベル `[label=...]` は環境全体へ 1 番号を
-/// 振る `SingleEnv`（split / multiline）でのみ受理する（行ごと採番 `PerRow` = align / gather の行単位ラベルは
-/// 行末マーカー `\label{...}` で指定するため、ここでは受理しない）。返り値は `(numbered, 環境単位ラベル)`。
+/// 環境ラベルは [`NumberingMode::SingleEnv`] の場合だけ受理する。
 ///
 /// # Errors
 ///
@@ -81,9 +73,6 @@ pub(super) fn parse_math_env_opts(
 
 /// グリッド末尾の空白行を除去し、マーカーだけ残る不正な末尾行を検出する
 ///
-/// 行末の `\\` は分割器が末尾に空白だけの行を 1 つ生むため、採番前に除去する。中身が空なのにマーカー
-/// （`\notag` / `\label`）だけ付いた末尾行は、行末に式が無いためエラーにする。
-///
 /// # Errors
 ///
 /// 末尾の空白行に `\notag` が残る場合は [`EvalError::NotagNotAtRowEnd`]、`\label` が残る場合は
@@ -106,11 +95,7 @@ pub(super) fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result
 
 /// グリッドを採番粒度（`mode`）に応じて [`MathRow`] 列へ変換する
 ///
-/// `PerRow`（align / gather）は `\notag` の付いていない行を採番対象（`numbered: true`）にする。
-/// `SingleEnv`（split / multiline）は各行を常に無採番にし、環境全体の採番要否（`numbered &&
-/// !grid.is_empty()`、空ブロックには採番しない）を呼び出し側（`evaluate_math_env`）へ返す。
-/// `numbered == false` のときはいずれも採番しない。実際の発番（`CounterName::Equation` の消費）は
-/// `lowering` 層が担うため、ここでは行ごとの `numbered` フラグとラベルの構造化のみを行う。
+/// 実際の番号は付けず、行と環境の採番対象フラグだけを返す。
 ///
 /// # Errors
 ///
@@ -126,9 +111,7 @@ pub(super) fn assign_numbering(
     NumberingMode::PerRow => grid
       .into_iter()
       .map(|row| -> Result<MathRow, EvalError> {
-        // `\notag` 行（`notag_span` あり）は無採番にする
         let numbered_row = numbered && row.notag_span.is_none();
-        // 無採番の行に行ラベルは付けられない（参照番号が無いため）
         if let Some(span) = row.label_span
           && !numbered_row
         {
@@ -146,7 +129,6 @@ pub(super) fn assign_numbering(
       })
       .collect::<Result<Vec<MathRow>, EvalError>>()?,
     NumberingMode::SingleEnv => {
-      // 行は常に無採番。環境全体の採番要否（空ブロックには採番しない）を返す
       env_numbered = numbered && !grid.is_empty();
       grid
         .into_iter()

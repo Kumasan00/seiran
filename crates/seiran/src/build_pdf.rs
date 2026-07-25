@@ -1,6 +1,4 @@
-//! PDF を生成するモジュール
-//! このモジュールは、設定ファイルの `sources` に列挙されたテキストファイルから
-//! PDF を生成するための主要な機能を提供します。
+//! 設定ファイルの `sources` から PDF を生成するパイプライン
 
 mod back_matter;
 mod body;
@@ -44,10 +42,7 @@ use model::DocNode;
 use project::{OutputPlan, ProjectSnapshot};
 use tracing::info;
 
-/// ビルド成功時のサマリ（ユーザーチャンネルのレポータが表示する最小情報）
-///
-/// `tracing` の段ログとは別物で、コンパイラ型 CLI の「成果報告 1 行」（出力先・ページ数・所要
-/// 時間）だけを運ぶ。表示は呼び出し側（`main::report_build`）が担う。
+/// ビルド成功時に表示するサマリ。
 pub(super) struct BuildSummary {
   /// 出力した PDF のパス
   pub(super) output_path: PathBuf,
@@ -57,22 +52,9 @@ pub(super) struct BuildSummary {
   pub(super) total_elapsed_ms: u64,
 }
 
-/// 設定ファイルの `sources` から PDF を生成
+/// 設定ファイルの `sources` から PDF を生成する。
 ///
-/// `load_project`（設定・スタイル・文献・フォント・ソーステキストの読込 → `ProjectSnapshot` /
-/// `OutputPlan`）→ `parse_project`（ソースのパース・`\cite` の CSL 整形・画像パス収集）→
-/// （driver が `ImageManifest` の画像を読み `ImageSet` を作る）→ `compile_project`（lowering 〜
-/// 走り文配置までの組版）→ `encode_pdf`（PDF バイト列への描画）→ 保存・報告、を順に呼ぶだけの
-/// 薄い driver。各段の実処理・エラー戦略は各関数のドキュメントを参照。
-///
-/// # Arguments
-///
-/// * `config_path` - 設定ファイルのパス
-///
-/// # Returns
-///
-/// 成功時は [`BuildSummary`]（出力先・ページ数・所要時間）。ユーザー向けの成果報告は呼び出し側の
-/// `report_build` が担うため、ここでは最終サマリを `tracing` には出さない（二重表示を避ける）。
+/// 読み込み、パース、組版、描画、保存の各段を順に実行する。
 pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
@@ -99,15 +81,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   });
 }
 
-/// 設定ファイル・スタイル・文献・フォントを読み込み、`ProjectSnapshot` / `OutputPlan` を組み立てる
-/// （`build_pdf` の 1 段目）。
-///
-/// I/O とバリデーションだけを担い、ソースのパースや組版には踏み込まない。
+/// 設定・スタイル・文献・フォントを読み込み、プロジェクトを組み立てる。
 ///
 /// # Errors
 ///
-/// 設定・スタイルの読込／レイアウト検証、文献の読込、フォントの読込、ソースファイルの読込の
-/// いずれかで失敗した場合にエラーを返す。
+/// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
 fn load_project(config_path: &Path) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
   let config = config::read_config(config_path)?;
   let style = config::read_style(config.style_path.as_deref())?;
@@ -126,10 +104,7 @@ fn load_project(config_path: &Path) -> miette::Result<(ProjectSnapshot, OutputPl
   return Ok((snapshot, output));
 }
 
-/// [`parse_project`] の出力＝ソースファイルごとのパース結果と、`\cite` を CSL 整形した書誌。
-///
-/// [`compile_project`] が groups（`Vec<&[DocNode]>`）を組み立てる元データであり、`parsed` は
-/// lowering エラーのソース帰属（[`wrap_lowering_error`]）にも使う。
+/// ソースごとのパース結果と CSL で整形した書誌。
 struct ParsedProject {
   /// ファイルごとのパース結果（ソース帰属を保持したまま、平坦化しない）
   parsed: Vec<ParsedSource>,
@@ -138,10 +113,7 @@ struct ParsedProject {
 }
 
 impl ParsedProject {
-  /// 各ソースファイルを 1 グループとし、書誌を末尾の合成グループとして連結する。
-  ///
-  /// 画像パス収集（`image_manifest::collect_image_paths`）は起源を必要としないため、
-  /// `DocNode` 列だけを返す。lowering に渡す起源付きの並びは [`ParsedProject::lowering_groups`] を使う。
+  /// 各ソースと末尾の書誌を `DocNode` のグループ列として返す。
   fn groups(&self) -> Vec<&[DocNode]> {
     return self
       .parsed
@@ -151,11 +123,9 @@ impl ParsedProject {
       .collect();
   }
 
-  /// [`typeset::lower_sources_with_headings`] に渡す、起源付きのグループ列を組み立てる。
+  /// lowering に渡す起源付きのグループ列を組み立てる。
   ///
-  /// 各ソースファイルには `Origin::Source(SourceId::new(i))` を、末尾に連結する書誌の合成グループには
-  /// `Origin::Generated(GeneratedOrigin::Bibliography)` を明示的に割り当てる。「配列範囲外の
-  /// `SourceId`」という暗黙の sentinel で合成グループを表さない（#259）。
+  /// 書誌には実ソースと区別できる `Origin::Generated` を割り当てる。
   fn lowering_groups(&self) -> Vec<typeset::SourceGroup<'_>> {
     let real_sources = self.parsed.iter().enumerate().map(|(i, p)| {
       return typeset::SourceGroup {
@@ -171,18 +141,14 @@ impl ParsedProject {
   }
 }
 
-/// 全ソースファイルをパースし、`\cite` を CSL 整形して書誌を作り、画像パス一覧を収集する
-/// （`build_pdf` の 2 段目）。
+/// 全ソースをパースし、書誌と画像パス一覧を作る。
 ///
-/// `snapshot` の読込済みデータだけを見る純粋関数で、ファイル I/O を行わない
-/// （ソースの読込は `ProjectSnapshot::assemble` が既に済ませている）。
+/// `snapshot` の読込済みデータだけを使い、ファイル I/O は行わない。
 ///
 /// # Errors
 ///
-/// - パース・評価エラーは全ソースで集約して `MultipleSourceErrors` で報告
-/// - `\cite` の CSL 整形に失敗した場合もエラーを返す
+/// パース・評価エラーまたは CSL 整形に失敗した場合にエラーを返す。
 fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, ImageManifest)> {
-  // `\cite` のキー存在検証に使う有効な参照 ID 集合（CSL 整形そのものは後続の citation ステージで実施）
   let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
 
   let stage_start = Instant::now();
@@ -194,7 +160,6 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
     "全ソースのパースが完了しました"
   );
 
-  // `\cite` を CSL 整形し、引用された文献の書誌を最後の合成グループとして受け取る（parser の後・lowering の前）。
   let stage_start = Instant::now();
   let bibliography =
     citation::process_citations(parsed.iter_mut().map(|p| return &mut p.nodes), &snapshot.references, &snapshot.style)
@@ -210,7 +175,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
   return Ok((parsed_project, image_manifest));
 }
 
-/// 確定レイアウトを PDF バイト列へ描画する（`build_pdf` の 4 段目）。
+/// 確定レイアウトを PDF バイト列へ描画する。
 ///
 /// # Errors
 ///
@@ -227,13 +192,7 @@ fn encode_pdf(config: &config::Config, font_data: &FontData, laid_out: &LaidOutD
   return Ok(pdf_bytes);
 }
 
-/// テスト専用: `parse_project` → 画像読込 → `compile_project` を通しで実行するヘルパ。
-///
-/// `build_pdf` 本体は `load_project` の結果からまず `parse_project` を呼び、`ImageManifest` の
-/// 画像を読んでから `compile_project` へ渡す driver だが、golden / diagnostic / PDF 構造テストは
-/// 分割前の 1 呼び出しインターフェース（旧 `build_pages`）を前提に書かれているため、ここで束ねて
-/// 提供する。`config` / `style` / `font_data` は呼出元（`pdf_structure.rs` 等）が呼出後も使うため
-/// 借用のまま受け取り、内部でだけ複製して `ProjectSnapshot` へ移す。
+/// パースからページ確定までを実行するテストヘルパ。
 #[cfg(test)]
 fn build_pages(
   config: &config::Config,
@@ -253,11 +212,7 @@ fn build_pages(
 #[allow(clippy::cast_possible_truncation)]
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
-/// 1 ソースファイルのパース結果と、そのファイル名・内容（診断用）。
-///
-/// `parse_all_sources` が平坦化せずファイルごとに 1 件生成する。`nodes` の並び順（`Vec<ParsedSource>`
-/// のインデックス）が [`typeset::SourceId`] に一致し、lowering エラー発生時に `name` / `content` を
-/// `NamedSource` へ逆引きしてファイル名・スニペット付きの診断を表示するのに使う。
+/// 1 ソースのパース結果と診断用の元テキスト。
 struct ParsedSource {
   /// 表示用のソースパス文字列（`NamedSource` の名前になる）
   name: String,
@@ -267,12 +222,8 @@ struct ParsedSource {
   nodes: Vec<DocNode>,
 }
 
-/// `source_map` の全エントリをパースし、[`ParsedSource`] を生成して返す。
-///
-/// I/O は行わない（`SourceMap::read` が既に読込済み）。パース・評価エラーは全 source で
-/// 集約して [`BuildPdfError::MultipleSourceErrors`] にまとめて返す。
-// BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
-// frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+/// 全ソースをパースし、パース・評価エラーを集約する。
+// NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 fn parse_all_sources(
   source_map: &project::SourceMap,
@@ -300,14 +251,9 @@ fn parse_all_sources(
   return Ok(parsed);
 }
 
-/// `LoweringError` を、`origin()` で特定できるソースファイルに `NamedSource` を紐付けて
-/// [`BuildPdfError`] に変換する。
+/// lowering エラーに起源となるソースを紐付ける。
 ///
-/// `origin()` が `Origin::Source` を指す場合はそのファイル名・内容を `NamedSource` に載せた
-/// [`BuildPdfError::Lowering`] にし、パースエラーと同じくファイル名・スニペット付きで診断できるようにする。
-/// `Origin::Generated`（合成された書誌グループ等）を指す場合は帰属元となる実ソースがないため
-/// [`BuildPdfError::LoweringInternal`] にする。span は各ファイル内のオフセットのまま使える
-/// （各 `NamedSource` はその 1 ファイル分の `content` だけを持つため、グローバル変換は不要）。
+/// 合成されたノードが起源なら、実ソースを持たない内部エラーとして扱う。
 fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
   return match error.origin() {
     model::Origin::Source(source_id) => {
@@ -327,11 +273,7 @@ fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -
 mod tests {
   use super::{BuildPdfError, ParsedSource, wrap_lowering_error};
 
-  /// グループ 1 に、指定した起源を持たせたうえで未定義ラベルの `\ref` を置き、その起源が帰属源になる
-  /// `LoweringError` を生成するテストヘルパ
-  ///
-  /// `origin` を呼び出し側が指定できる（＝グループの位置と起源が独立している）ことが、
-  /// 「配列範囲外の `SourceId`」という暗黙の sentinel をやめて `Origin` を導入した狙いそのもの。
+  /// 指定した起源を持つ未定義参照の lowering エラーを作る。
   pub(super) fn lowering_error_with_origin(style: &config::Style, origin: model::Origin) -> typeset::LoweringError {
     use model::{DocNode, InlineNode};
     let ctx = typeset::LoweringContext::new(style);
@@ -383,8 +325,7 @@ mod tests {
 
   #[test]
   fn lowering_error_falls_back_to_internal_for_generated_origin() {
-    // Arrange — 合成グループ（書誌）に帰属する LoweringError を生成する。実ソース配列の範囲外
-    // インデックスに頼らず、Origin::Generated を直接割り当てられることを確認する。
+    // Arrange — 合成グループに帰属する LoweringError を生成する
     let style = config::Style::default();
     let parsed = vec![ParsedSource {
       name: "only.sei".to_string(),

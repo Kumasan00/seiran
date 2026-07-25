@@ -1,64 +1,34 @@
 //! フォーマットテンプレート文字列中の `{name}` プレースホルダを検証する共通ロジック。
 //!
-//! `style.toml` の見出し・カウンタ・キャプション・数式番号・定理・リスト・走り文
-//! （header / footer）の各テンプレート文字列は、消費側（`lowering` / `layout` / `parser`）が
-//! `str::replace("{number}", …)` 方式で実体に置換する。置換対象に無い名前を書いても無言で
-//! 素通りし、`{nubmer}` のようなタイポがそのまま誌面に出てしまう。
-//!
-//! 本モジュールは設定読込時にプレースホルダ名を文脈ごとの許可セットと照合し、未知の名前や
-//! 不正な波括弧構文（未閉じ・空・ネスト・孤立 `}`）を [`garde::Error`] として報告する。各
-//! フィールドのバリデーターは `#[garde(custom(crate::style::placeholder::…))]` から参照され、検出された
-//! エラーは既存の `validate_values` 経由で [`crate::style::ReadStyleError::MultipleValidationErrors`] に
-//! 集約される。
-//!
-//! 波括弧 `{` `}` はプレースホルダ専用とし、リテラルの波括弧やエスケープ（`{{`）は現状サポート
-//! しない（将来導入する場合も本モジュールの仕様変更として扱う）。
+//! 波括弧はプレースホルダ専用で、リテラルやエスケープ（`{{`）は扱わない。
 
 use crate::style::counter::CounterName;
 
-/// 見出し書式（`heading.<level>.format`）で許可するプレースホルダ。
+/// 見出し書式で許可するプレースホルダ。
 const HEADING: &[&str] = &["number", "title"];
 
-/// キャプション書式（`figure.caption.format` / `table.caption.format`）で許可するプレースホルダ。
+/// キャプション書式で許可するプレースホルダ。
 const CAPTION: &[&str] = &["number", "title"];
 
-/// 数式タグ書式（`math.block.tag_format`、式の横に出る番号）で許可するプレースホルダ。
+/// 数式タグ書式で許可するプレースホルダ。
 const TAG: &[&str] = &["number"];
 
-/// 順序付きリストのマーカー書式（`list.ordered_marker_format`）で許可するプレースホルダ。
+/// 順序付きリストのマーカー書式で許可するプレースホルダ。
 const ORDERED_LIST: &[&str] = &["number"];
 
-/// カウンタの参照書式（`counters.<name>.ref_format`）で許可するプレースホルダ。
+/// カウンタの参照書式で許可するプレースホルダ。
 const REF_FORMAT: &[&str] = &["number", "display_name"];
 
-/// 定理の見出し書式（`theorems.<class>.style.heading_*`）で許可するプレースホルダ。
+/// 定理の見出し書式で許可するプレースホルダ。
 const THEOREM_HEADING: &[&str] = &["display_name", "number", "title", "of"];
 
-/// 走り文スロット（`header.{left,center,right}` / `footer.{left,center,right}`）で許可する
-/// プレースホルダ。
+/// 走り文スロットで許可するプレースホルダ。
 const RUNNING: &[&str] = &["page", "pages", "title", "author", "date"];
 
-/// カウンタ番号書式（`counters.<name>.number_format` / `theorems.<class>.number_format`）で許可する
-/// プレースホルダかどうかを判定する。
-///
-/// `{n}` は「そのカウンタ自身の値」を指す特別トークン、それ以外は固定 9 種の他カウンタ名
-/// （[`CounterName::ALL`]）のみを許可する。
+/// カウンタ番号書式で許可するプレースホルダかどうかを判定する。
 fn is_counter_placeholder(name: &str) -> bool { return name == "n" || CounterName::from_name(name).is_some(); }
 
 /// テンプレート文字列中の `{name}` プレースホルダを走査し、不正を一括検出する。
-///
-/// `is_allowed` がその文脈で妥当なプレースホルダ名を判定するクロージャ。検出した不正は
-/// 途中で打ち切らずに集約し、1 件以上あれば全件を 1 つの [`garde::Error`] にまとめて返す。
-/// 不正の種類は次のとおり:
-///
-/// - 未知のプレースホルダ名（`is_allowed` が `false`）
-/// - 空のプレースホルダ `{}`
-/// - 閉じられていない `{`（文字列終端まで `}` が無い）
-/// - ネストした波括弧（`{` の内側に `{`）
-/// - 対応する `{` の無い孤立した `}`
-///
-/// プレースホルダを含まない文字列（空文字列を含む）は妥当として `Ok(())` を返す。空文字列自体の
-/// 可否は呼び出し側の `length` ルールが別途決める。
 fn check_placeholders(template: &str, is_allowed: impl Fn(&str) -> bool) -> garde::Result {
   let mut problems: Vec<String> = Vec::new();
   let mut chars = template.chars().peekable();
@@ -112,86 +82,48 @@ fn check_placeholders(template: &str, is_allowed: impl Fn(&str) -> bool) -> gard
 }
 
 /// 見出し書式（`heading.<level>.format`）用の `garde` カスタムバリデーター。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn heading_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return HEADING.contains(&name));
 }
 
 /// キャプション書式（`figure.caption.format` / `table.caption.format`）用のバリデーター。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn caption_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return CAPTION.contains(&name));
 }
 
 /// 数式タグ書式（`math.block.tag_format`、式の横に出る番号）用のバリデーター。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn tag_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return TAG.contains(&name));
 }
 
 /// 順序付きリストのマーカー書式（`list.ordered_marker_format`）用のバリデーター。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn ordered_list_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return ORDERED_LIST.contains(&name));
 }
 
 /// カウンタ番号書式（`counters.<name>.number_format` / `theorems.<class>.number_format`）用のバリデーター。
-///
-/// `{n}`（自身）と固定 9 種の他カウンタ名のみを許可する。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn counter_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, is_counter_placeholder);
 }
 
 /// カウンタの参照書式（`counters.<name>.ref_format`）用のバリデーター。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn ref_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return REF_FORMAT.contains(&name));
 }
 
 /// 定理の見出し書式（`theorems.<class>.style.heading_*` の 4 フィールド）用のバリデーター。
-///
-/// 検証は構造的妥当性のみで、意味的妥当性（`heading_format` に `{of}` を書く等）は問わない。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn theorem_heading_format(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return THEOREM_HEADING.contains(&name));
 }
 
 /// 走り文スロット（`header` / `footer` の左中右）用のバリデーター。
-///
-/// 空文字列（描画なし）は妥当として許可する。
-///
-/// # Errors
-///
-/// 未知のプレースホルダまたは不正な波括弧構文を含む場合に [`garde::Error`] を返す。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn running_slot(value: &str, _: &()) -> garde::Result {
   return check_placeholders(value, |name| return RUNNING.contains(&name));
@@ -212,7 +144,7 @@ mod tests {
 
   #[test]
   fn accepts_literals_and_valid_placeholders() {
-    // Arrange / Act / Assert — リテラルのみ・空文字列・正当なプレースホルダは通る
+    // Arrange / Act / Assert
     assert!(check_placeholders("", allow_all).is_ok());
     assert!(check_placeholders("第 章", allow_all).is_ok());
     assert!(check_placeholders("{number} {title}", |n| return ["number", "title"].contains(&n)).is_ok());
@@ -252,10 +184,10 @@ mod tests {
 
   #[test]
   fn reports_multiple_unknown_placeholders_together() {
-    // Arrange / Act — 2 つの未知名を含む
+    // Arrange / Act
     let result = check_placeholders("{a} {b}", allow_none);
 
-    // Assert — 1 つのエラーに両名が列挙される
+    // Assert
     let message = result.expect_err("未知名 2 件はエラーになるはず").to_string();
     assert!(message.contains("{a}"), "メッセージに {{a}} を含むべき: {message}");
     assert!(message.contains("{b}"), "メッセージに {{b}} を含むべき: {message}");
@@ -263,7 +195,7 @@ mod tests {
 
   #[test]
   fn is_counter_placeholder_accepts_self_and_nine_counters() {
-    // Arrange / Act / Assert — {n}（自身）と固定 9 種を許可
+    // Arrange / Act / Assert
     assert!(is_counter_placeholder("n"));
     for counter in CounterName::ALL {
       assert!(is_counter_placeholder(counter.as_str()), "{} は許可されるべき", counter.as_str());
@@ -273,7 +205,7 @@ mod tests {
 
   #[test]
   fn counter_format_accepts_all_counter_references() {
-    // Arrange — 9 カウンタ名 + {n} をすべて含むテンプレート
+    // Arrange
     let template: String = std::iter::once("{n}".to_string())
       .chain(CounterName::ALL.iter().map(|c| format!("{{{}}}", c.as_str())))
       .collect();
@@ -285,7 +217,7 @@ mod tests {
 
   #[test]
   fn field_validators_accept_their_tokens() {
-    // Arrange / Act / Assert — 各フィールドの代表的な正当値
+    // Arrange / Act / Assert
     assert!(heading_format("{number} {title}", &()).is_ok());
     assert!(caption_format("Figure {number}: {title}", &()).is_ok());
     assert!(tag_format("({number})", &()).is_ok());
@@ -296,7 +228,7 @@ mod tests {
 
   #[test]
   fn field_validators_reject_foreign_tokens() {
-    // Arrange / Act / Assert — 文脈に無いトークンは弾く
+    // Arrange / Act / Assert
     assert!(heading_format("{display_name}", &()).is_err());
     assert!(tag_format("{title}", &()).is_err());
     assert!(ordered_list_format("{title}", &()).is_err());
@@ -306,7 +238,7 @@ mod tests {
 
   #[test]
   fn running_slot_accepts_empty_and_five_tokens() {
-    // Arrange / Act / Assert — 空（描画なし）と 5 トークンは通り、タイポは弾く
+    // Arrange / Act / Assert
     assert!(running_slot("", &()).is_ok());
     assert!(running_slot("{page} / {pages}", &()).is_ok());
     assert!(running_slot("{title} — {author} ({date})", &()).is_ok());

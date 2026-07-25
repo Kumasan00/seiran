@@ -1,46 +1,12 @@
 //! 数式記号テーブル
 //!
-//! 引数なしで単一の Unicode 文字を出力する記号コマンド（ギリシャ文字・数学記号）を
-//! [`SYMBOL_MAP`] に集約する。各記号は出力文字 [`MathSymbol::ch`] と
-//! 数式クラス [`MathSymbol::class`] を持つ。
-//!
-//! ## 機能コマンドとの分離
-//!
-//! 制御・書体・色・見出し・参照・リンクといった**機能コマンド**は
-//! [`crate::evaluator::command::COMMAND_MAP`] に置き、本モジュールには
-//! **記号**だけを置く。コマンド解決は `COMMAND_MAP` を引いた後 miss なら
-//! `SYMBOL_MAP` を引く（機能コマンド名が記号名に優先する）。両マップにキー重複が
-//! ないことはテスト（`no_key_collision_between_command_and_symbol_maps`）で保証する。
-//!
-//! ## 数式クラスの位置づけ
-//!
-//! 各記号の [`MathClass`] は上流 `unicode-math-table.tex` の `\mathord` / `\mathbin` 等から
-//! 取得して記録するのみで、**本モジュールではスペーシングを実装しない**
-//! （`MathNode::Symbol` は `char` のまま）。クラスを今データに持たせておくことで、
-//! 将来の数式スペーシング実装が記号表を作り直さずに消費できる。
-//!
-//! ## 命名規則（構文設計原則 B・分かりやすさ第一）
-//!
-//! コマンド名は unicode-math の csname に一致させず、慣用の短縮形を優先して
-//! Seiran 独自に決める（`\leq` `\subseteq` `\rightarrow`）。冗長で長すぎる名前は避ける。
+//! 単一の Unicode 文字と、将来のスペーシング処理で使う数式クラスを保持する。
 
 use phf::phf_map;
 
 /// 数式記号のクラス
 ///
-/// TeX 系の数式組版では、記号同士の間隔がこのクラスの組み合わせで決まる
-/// （`a + b` の `+`（[`Bin`](MathClass::Bin)）は中アキ、`a = b` の `=`（[`Rel`](MathClass::Rel)）は太アキ）。
-/// 現状の Seiran はこのスペーシングを実装していないが、[`SYMBOL_MAP`] に
-/// クラスを記録しておくことで、将来の数式スペーシング実装が記号表を
-/// 作り直さずにクラスを消費できる。唯一の消費者は本モジュールのため `model` ではなく
-/// ここに置く（#216）。
-///
-/// クラスは上流の `unicode-math-table.tex` の `\mathord` / `\mathbin` 等から取得する。
-///
-/// `model` 移設前は pub API（公開型）だったため dead code 解析の対象外だったが、
-/// `pub(crate)` 化で対象になった。[`Punct`](MathClass::Punct) は現行 [`SYMBOL_MAP`] のどの記号にも
-/// 未使用のため未消費と警告されるが、クラス自体は将来の記号追加・スペーシング実装で使う想定のため
-/// バリアント単位で削らず `dead_code` を許容する。
+/// 将来の記号間スペーシング処理のため `unicode-math-table.tex` の分類を保持する。
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathClass {
@@ -61,18 +27,11 @@ pub(crate) enum MathClass {
 }
 
 /// 記号コマンドが出力する単一文字とその数式クラス
-///
-/// [`SYMBOL_MAP`] の値として使い、記号の Unicode 文字（[`ch`](Self::ch)）と
-/// 数式クラス（[`class`](Self::class)）を対にして保持する。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MathSymbol {
   /// 出力する Unicode 文字
   pub(crate) ch: char,
   /// 数式クラス（スペーシング用に記録、現状は未消費）
-  ///
-  /// 本 issue（#26）ではスペーシングを実装しないため、クラスはテーブルに記録するだけで
-  /// 本体コードからは読まれない（テストでは検証する）。将来の数式スペーシング実装
-  /// （#83 配下）がこのフィールドを消費する想定のため、`dead_code` を意図的に許容する。
   #[allow(dead_code)]
   pub(crate) class: MathClass,
 }
@@ -83,12 +42,8 @@ impl MathSymbol {
 }
 
 /// 記号コマンド名 → [`MathSymbol`] のパーフェクトハッシュマップ
-///
-/// ギリシャ文字と数学記号を数式クラス付きで集約する。記号の追加は本マップだけを
-/// 編集すれば、本文・数式の両文脈（`command::evaluate_command` /
-/// `extract_inline_nodes` / `resolve_symbol_command`）に反映される。
 pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
-  // ───────────────────────────── ギリシャ文字（大文字, Ord）─────────────────────────────
+  // ギリシャ文字（大文字）
   "Alpha" => MathSymbol::new('\u{0391}', MathClass::Ord),
   "Beta" => MathSymbol::new('\u{0392}', MathClass::Ord),
   "Gamma" => MathSymbol::new('\u{0393}', MathClass::Ord),
@@ -114,7 +69,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "Psi" => MathSymbol::new('\u{03A8}', MathClass::Ord),
   "Omega" => MathSymbol::new('\u{03A9}', MathClass::Ord),
 
-  // ───────────────────────────── ギリシャ文字（小文字, Ord）─────────────────────────────
+  // ギリシャ文字（小文字）
   "alpha" => MathSymbol::new('\u{03B1}', MathClass::Ord),
   "beta" => MathSymbol::new('\u{03B2}', MathClass::Ord),
   "gamma" => MathSymbol::new('\u{03B3}', MathClass::Ord),
@@ -147,7 +102,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "psi" => MathSymbol::new('\u{03C8}', MathClass::Ord),
   "omega" => MathSymbol::new('\u{03C9}', MathClass::Ord),
 
-  // ───────────────────────────── 名前付き記号・定数（Ord）─────────────────────────────
+  // 名前付き記号・定数
   "forall" => MathSymbol::new('\u{2200}', MathClass::Ord),
   "complement" => MathSymbol::new('\u{2201}', MathClass::Ord),
   "partial" => MathSymbol::new('\u{2202}', MathClass::Ord),
@@ -209,7 +164,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "vdots" => MathSymbol::new('\u{22EE}', MathClass::Ord),
   "ddots" => MathSymbol::new('\u{22F1}', MathClass::Ord),
 
-  // ───────────────────────────── 大型演算子（Op）─────────────────────────────
+  // 大型演算子
   "prod" => MathSymbol::new('\u{220F}', MathClass::Op),
   "coprod" => MathSymbol::new('\u{2210}', MathClass::Op),
   "sum" => MathSymbol::new('\u{2211}', MathClass::Op),
@@ -229,7 +184,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "bigotimes" => MathSymbol::new('\u{2A02}', MathClass::Op),
   "biguplus" => MathSymbol::new('\u{2A04}', MathClass::Op),
 
-  // ───────────────────────────── 二項演算子（Bin）─────────────────────────────
+  // 二項演算子
   "minus" => MathSymbol::new('\u{2212}', MathClass::Bin),
   "mp" => MathSymbol::new('\u{2213}', MathClass::Bin),
   "pm" => MathSymbol::new('\u{00B1}', MathClass::Bin),
@@ -278,7 +233,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "Cap" => MathSymbol::new('\u{22D2}', MathClass::Bin),
   "Cup" => MathSymbol::new('\u{22D3}', MathClass::Bin),
 
-  // ───────────────────────────── 関係子（Rel）─────────────────────────────
+  // 関係子
   "in" => MathSymbol::new('\u{2208}', MathClass::Rel),
   "notin" => MathSymbol::new('\u{2209}', MathClass::Rel),
   "ni" => MathSymbol::new('\u{220B}', MathClass::Rel),
@@ -337,7 +292,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "models" => MathSymbol::new('\u{22A8}', MathClass::Rel),
   "nvdash" => MathSymbol::new('\u{22AC}', MathClass::Rel),
 
-  // ───────────────────────────── 矢印（Rel）─────────────────────────────
+  // 矢印
   "leftarrow" => MathSymbol::new('\u{2190}', MathClass::Rel),
   "uparrow" => MathSymbol::new('\u{2191}', MathClass::Rel),
   "rightarrow" => MathSymbol::new('\u{2192}', MathClass::Rel),
@@ -388,7 +343,7 @@ pub(crate) static SYMBOL_MAP: phf::Map<&'static str, MathSymbol> = phf_map! {
   "Longleftrightarrow" => MathSymbol::new('\u{27FA}', MathClass::Rel),
   "longmapsto" => MathSymbol::new('\u{27FC}', MathClass::Rel),
 
-  // ───────────────────────────── 開き / 閉じ括弧（Open / Close）─────────────────────────────
+  // 開き括弧・閉じ括弧
   "langle" => MathSymbol::new('\u{27E8}', MathClass::Open),
   "rangle" => MathSymbol::new('\u{27E9}', MathClass::Close),
   "lceil" => MathSymbol::new('\u{2308}', MathClass::Open),
@@ -406,7 +361,7 @@ mod tests {
 
   #[test]
   fn representative_symbols_have_expected_class() {
-    // Arrange & Act & Assert — 代表記号のクラスが各カテゴリで正しいこと
+    // Arrange & Act & Assert
     use super::MathClass;
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.class), Some(MathClass::Ord));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.class), Some(MathClass::Rel));
@@ -419,7 +374,7 @@ mod tests {
 
   #[test]
   fn representative_symbols_map_to_expected_char() {
-    // Arrange & Act & Assert — 移設した既存記号・新規 amssymb 記号が正しい文字に解決される
+    // Arrange & Act & Assert
     assert_eq!(SYMBOL_MAP.get("alpha").map(|s| return s.ch), Some('\u{03B1}'));
     assert_eq!(SYMBOL_MAP.get("leq").map(|s| return s.ch), Some('\u{2264}'));
     assert_eq!(SYMBOL_MAP.get("geq").map(|s| return s.ch), Some('\u{2265}'));
@@ -429,7 +384,7 @@ mod tests {
 
   #[test]
   fn no_key_collision_between_command_and_symbol_maps() {
-    // Arrange & Act & Assert — 機能コマンドと記号のキーは重複してはならない（解決順序の衝突ガード）
+    // Arrange & Act & Assert
     for key in SYMBOL_MAP.keys() {
       assert!(!COMMAND_MAP.contains_key(key), "COMMAND_MAP と SYMBOL_MAP にキーが重複しています: {key}");
     }

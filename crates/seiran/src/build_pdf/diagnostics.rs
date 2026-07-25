@@ -1,25 +1,6 @@
 //! 診断（miette diagnostic）出力の golden スナップショット回帰テスト
 //!
-//! [`super::golden`]（確定レイアウト座標の baseline）と対になる、診断メッセージの baseline。
-//! issue #253（#252 step1）で `build_pdf` の分離リファクタに着手する前に、現状の診断表示を
-//! 固定するために追加した。typed ID / `Origin`（#260）導入後の issue #271 で
-//! `docs/redesign-from-scratch.md` の「テスト戦略」節が目標とする範囲（複数 source・合成
-//! bibliography 由来診断・未知 command・未定義参照・binary asset failure）まで拡張した。
-//!
-//! 合成 bibliography（`Origin::Generated(GeneratedOrigin::Bibliography)`）由来の診断だけは
-//! フルパイプラインでは検証できない。`citation::render::build_bibliography` が生成する
-//! `DocNode` は `LabelId` も `\ref` も持たない（書誌エントリのアンカーは `\ref` と衝突しない
-//! `CitationId`）ため、`Origin::Generated` を帰属源とする `LoweringError` はユーザー入力からは
-//! 到達不能な防御的フォールバックにとどまる。`diagnostic_lowering_internal_for_generated_origin`
-//! は `build_pdf::tests::lowering_error_with_origin` で `LoweringError` を直接構築し、
-//! `wrap_lowering_error` 以降のレンダリング経路だけを golden で固定する。
-//!
-//! overfull は現状ユーザー向け診断が存在せず（`typeset::breaking::break_pages` の
-//! `tracing::warn!` に留まる）、対象から外す。
-//!
-//! [`miette::Report`] を [`miette::GraphicalReportHandler`]（幅固定・色無効）でテキスト化し、
-//! `tests/golden_diagnostics/<name>.txt` と比較する。再生成は `golden` と同じ
-//! `UPDATE_GOLDEN=1 cargo test -p seiran` で行う。
+//! 幅と色を固定して診断をテキスト化し、`tests/golden_diagnostics/` と比較する。
 
 use std::{
   fs,
@@ -38,10 +19,7 @@ use super::{
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。
 fn diagnostic_golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_diagnostics"); }
 
-/// `report` を固定幅・色無効でテキストへレンダリングする。
-///
-/// 幅・色を固定するのは、golden をターミナル幅や TTY 判定に依存させないため（CI・ローカルの
-/// どちらで実行しても同じ文字列になる）。
+/// 診断を固定幅・色なしのテキストへレンダリングする。
 fn render_diagnostic(report: &miette::Report) -> String {
   let mut rendered = String::new();
   let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_width(100);
@@ -133,9 +111,7 @@ fn diagnostic_undefined_ref() {
 
 #[test]
 fn diagnostic_lowering_internal_for_generated_origin() {
-  // Arrange — Origin::Generated(GeneratedOrigin::Bibliography) はフルパイプラインでは構造的に
-  // 到達不能（モジュール冒頭のコメント参照）。build_pdf::tests のテストヘルパで LoweringError を
-  // 直接構築し、wrap_lowering_error 以降のレンダリング経路だけを golden で固定する。
+  // Arrange — 合成書誌からは起こせないエラーを直接構築する
   let style = config::Style::default();
   let error =
     super::tests::lowering_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
@@ -166,9 +142,7 @@ fn diagnostic_missing_image() {
 
 #[test]
 fn diagnostic_unsupported_image_format() {
-  // Arrange / Act — `pdf_gen::load_image` は拡張子判定より先にファイル読込を行うため、実在するが
-  // 未対応拡張子（`.gif`）のファイルで `PdfGenError::UnsupportedImageFormat`（`missing_image` の
-  // `ReadImage` とは別コードパス）を起こす
+  // Arrange / Act — 実在する未対応 GIF で形式エラーを起こす
   let report = build_pages_err(&["tests/text/diagnostics/unsupported_image_format.sei"]);
 
   // Assert
@@ -177,8 +151,7 @@ fn diagnostic_unsupported_image_format() {
 
 #[test]
 fn diagnostic_style_validation_aggregate() {
-  // Arrange — text と heading.chapter の font_size を同時に不正値にし、2 件集約させる
-  // （`crates/config/tests/validate.rs` の既存パターンを流用）
+  // Arrange — 2 つの font_size を同時に不正にする
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
   // Act

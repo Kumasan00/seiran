@@ -1,6 +1,4 @@
 //! パーサーのエラー型定義
-//!
-//! [`super::Parser`] がトークン列の解析中に返す構文エラーを表現します。
 
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
@@ -8,11 +6,6 @@ use thiserror::Error;
 use crate::syntax::token::TokenKind;
 
 /// パーサーのエラー型
-///
-/// トークン列の解析中に発生する構文エラーを表現します。
-/// 各バリアントは `#[label]` によるソース位置情報を持ち、
-/// `miette::NamedSource` と組み合わせることでソースコード付きの
-/// エラー表示が可能です。
 #[derive(Debug, Error, Diagnostic)]
 pub enum ParserError {
   /// 入力が途中で終了した場合（閉じ括弧の不足など）

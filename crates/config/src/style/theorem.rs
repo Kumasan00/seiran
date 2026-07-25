@@ -1,23 +1,6 @@
 //! 定理環境（theorem / lemma / proof …）のスタイル設定型。
-//!
-//! マクロ禁止（軸 1-C）のため `\newtheorem` 相当は持たず、10 種のビルトイン定理クラスを
-//! `style.toml` の `[theorems.<class>]` で宣言する。`<class>` は固定 10 種（[`TheoremClass`]）の
-//! みが許可され、それ以外のキーは TOML パース時に拒否される。
-//!
-//! TOML 上の `[theorems]` テーブルは [`crate::style::heading`] と同じ 2 レイヤーで解釈する:
-//!
-//! 1. [`default_for_class`] で得る Rust 既定（定理は本文斜体・見出し太字、証明は本文ローマン＋QED）
-//! 2. `[theorems.<class>]` テーブル（クラス別の差分上書き）
-//!
-//! このマージは [`TheoremsTable`] が `#[serde(from = ...)]` 経由で実行する。ネストした
-//! `[theorems.<class>.style]` の部分上書きも [`TheoremPresentationOverride`] で同様に処理する。
-//!
-//! 本モジュールは `style` 層の責務（読込・検証・既定マージ）のみを担う。環境登録・カウンタ
-//! 共有・採番は frontend、見出し書式・斜体本文・QED 描画は lowering / `pdf_gen` が後段で担当する。
 
 use garde::Validate;
-// 定理クラス enum は `model` を単一ソースとし、`style::theorem::TheoremClass` として再エクスポートする。
-// `model::DocNode::Theorem` も同じ enum を共有するため（`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
 pub use model::TheoremClass;
 use model::{
   FontKind,
@@ -26,9 +9,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
-///
-/// TOML 上は `[theorems.<class>]` テーブル群（[`TheoremsTable`] 経由）から 2 レイヤーマージ
-/// （クラス別既定 → 差分）でデシリアライズする。消費側は [`Theorems::get`] でアクセスする。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(from = "TheoremsTable")]
 pub struct Theorems {
@@ -73,8 +53,6 @@ impl Theorems {
   }
 
   /// 各クラスにクラス名を添えて走査するイテレータ。
-  ///
-  /// バリデーションのパスプレフィックス（例 `theorems.theorem`）を構築する用途で使う。
   pub fn iter_with_class(&self) -> impl Iterator<Item = (TheoremClass, &TheoremStyle)> {
     return [
       (TheoremClass::Theorem, &self.theorem),
@@ -93,15 +71,10 @@ impl Theorems {
 }
 
 impl Default for Theorems {
-  /// 各クラスの [`default_for_class`] を集めた既定値。
   fn default() -> Self { return Self::from(TheoremsTable::default()); }
 }
 
 /// 1 つの定理クラスのスタイル定義（クラス別既定 + 差分上書きで解決済み）。
-///
-/// TOML 上では `[theorems.<class>]` テーブルにマップされる。`number_format` はカウンタと同形の
-/// テンプレート文字列（`"{n}"` / `"{chapter}.{n}"`）で、プレースホルダの実レンダリングは
-/// parser 段で行う（本層では非空のみ検証）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -130,10 +103,6 @@ pub struct TheoremStyle {
 }
 
 impl Default for TheoremStyle {
-  /// 汎用デフォルト（定理クラス相当: `"Theorem"` / counter `"theorem"` / 本文斜体）。
-  ///
-  /// クラスごとの差分は [`default_for_class`] が与える。デシリアライズ時の `#[serde(default)]`
-  /// で部分指定をサポートするために必要。
   fn default() -> Self {
     return Self {
       display_name: "Theorem".to_string(),
@@ -148,9 +117,6 @@ impl Default for TheoremStyle {
 }
 
 /// 定理カウンタのリセット先。`reset_by` フィールドで指定する。
-///
-/// 見出しレベル（part / chapter / section / subsection）でリセットするか、リセットしない
-/// （[`TheoremReset::None`]＝文書全体で連番）かを選ぶ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TheoremReset {
@@ -167,8 +133,6 @@ pub enum TheoremReset {
 }
 
 /// 定理ブロックの見た目（見出し書式・フォント・マージン）。
-///
-/// TOML 上では `[theorems.<class>.style]` テーブルにマップされる。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -180,16 +144,10 @@ pub struct TheoremPresentation {
   #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_title: String,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
-  ///
-  /// `proof` の `[of=...]` 指定時にのみ選択される（`{of}` は対象定理の cleveref 文字列
-  /// ＝「Theorem 1」等に解決される）。前置語「of」を含む結合書式ごとこのフィールドで上書きでき、
-  /// 国際化（`{display_name}（{of} の証明）` 等）も可能。`proof` 以外のクラスでは `of` を取れないため未使用。
+  /// `proof` の `[of=...]` 指定時に使う。
   #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of: String,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
-  ///
-  /// `of` と `title` を併用したときの結合書式。既定は `of` を先に、`title` を括弧で後置する
-  /// （「Proof of Theorem 1 (…)」）。
   #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of_and_title: String,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
@@ -205,7 +163,6 @@ pub struct TheoremPresentation {
 }
 
 impl Default for TheoremPresentation {
-  /// 既定値: `"{display_name} {number}"`（`of` ありは `"{display_name} of {of}"`）/ 本文斜体・見出し太字 / 上下 12pt。
   fn default() -> Self {
     return Self {
       heading_format: "{display_name} {number}".to_string(),
@@ -221,10 +178,6 @@ impl Default for TheoremPresentation {
 }
 
 /// 指定クラスの [`TheoremStyle`] デフォルトを返す。
-///
-/// 汎用既定（[`TheoremStyle::default`]＝定理クラス相当）に対し、クラスごとの差分のみ上書きする。
-/// theorem / lemma / proposition / corollary / claim は counter `"theorem"` を共有して本文斜体、
-/// definition / example / remark は各自のカウンタで本文ローマン、proof は採番なし＋QED マーク。
 #[must_use]
 pub fn default_for_class(class: TheoremClass) -> TheoremStyle {
   let mut style = TheoremStyle::default();
@@ -277,11 +230,6 @@ pub fn default_for_class(class: TheoremClass) -> TheoremStyle {
 }
 
 /// `[theorems]` テーブル全体の TOML スキーマ。
-///
-/// 各クラスキー（`theorem` / `lemma` / …）には [`TheoremStyleOverride`] が入る。
-/// `#[serde(deny_unknown_fields)]` により、未知のクラス名は TOML パース時に拒否される。
-///
-/// 実行時は [`From`] 実装が各 override を [`default_for_class`] に適用し、[`Theorems`] を構築する。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct TheoremsTable {
@@ -330,9 +278,6 @@ impl From<TheoremsTable> for Theorems {
 }
 
 /// [`TheoremStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
-///
-/// `[theorems.<class>]` のクラス別差分を受ける TOML スキーマ。未指定（`None`）フィールドは
-/// [`default_for_class`] の既定値を残す。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremStyleOverride {
@@ -378,8 +323,6 @@ impl TheoremStyleOverride {
 }
 
 /// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型。
-///
-/// `[theorems.<class>.style]` のネストした差分を受ける TOML スキーマ。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentationOverride {
@@ -485,7 +428,7 @@ mod tests {
 
   #[test]
   fn validate_rejects_empty_qed_mark() {
-    // Arrange: Some("") は inner 検証で弾かれる
+    // Arrange
     let style = TheoremStyle {
       qed_mark: Some(String::new()),
       ..TheoremStyle::default()
@@ -497,7 +440,7 @@ mod tests {
 
   #[test]
   fn validate_rejects_unknown_heading_placeholder() {
-    // Arrange: 見出し書式に許可外トークン `{page}` を入れる
+    // Arrange
     let mut style = TheoremStyle::default();
     style.style.heading_format = "{page}".to_string();
 
@@ -507,7 +450,7 @@ mod tests {
 
   #[test]
   fn validate_rejects_unknown_counter_reference_in_number_format() {
-    // Arrange: number_format（カウンタ規則）に未知のカウンタ参照 `{chaptr}`
+    // Arrange
     let style = TheoremStyle {
       number_format: "{chaptr}.{n}".to_string(),
       ..TheoremStyle::default()
@@ -541,7 +484,7 @@ mod tests {
 
   #[test]
   fn default_theorem_like_classes_share_counter_and_italic_body() {
-    // Arrange / Act / Assert: theorem / lemma / proposition / corollary / claim は counter 共有・斜体
+    // Arrange / Act / Assert
     for class in [
       TheoremClass::Theorem,
       TheoremClass::Lemma,
@@ -590,7 +533,7 @@ mod tests {
 
   #[test]
   fn partial_override_keeps_other_class_defaults() {
-    // Arrange: lemma の display_name だけ上書き
+    // Arrange
     let toml = "
 [theorems.lemma]
 display_name = \"補題\"
@@ -600,18 +543,17 @@ display_name = \"補題\"
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let theorems = wrapper.theorems;
 
-    // Assert: lemma は display_name のみ変わり、counter 等はクラス既定を維持
+    // Assert
     assert_eq!(theorems.lemma.display_name, "補題");
     assert_eq!(theorems.lemma.counter, "theorem");
     assert_eq!(theorems.lemma.style.font_kind, FontKind::SerifItalic);
-    // 他クラスは default_for_class のまま
     assert_eq!(theorems.theorem.display_name, "Theorem");
     assert!(theorems.proof.unnumbered);
   }
 
   #[test]
   fn partial_override_nested_style_keeps_other_style_fields() {
-    // Arrange: theorem.style の font_kind だけ上書き
+    // Arrange
     let toml = "
 [theorems.theorem.style]
 font_kind = \"sans_serif_bold\"
@@ -621,7 +563,7 @@ font_kind = \"sans_serif_bold\"
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
     let theorem = wrapper.theorems.theorem;
 
-    // Assert: font_kind は上書き、heading_format 等はクラス既定を維持
+    // Assert
     assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
     assert_eq!(theorem.style.heading_format, "{display_name} {number}");
     assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
@@ -629,17 +571,17 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn default_proof_of_templates_render_proof_of_target() {
-    // Arrange / Act — proof の of テンプレート既定（generic default を継承）
+    // Arrange / Act
     let proof = default_for_class(TheoremClass::Proof);
 
-    // Assert — of ありは「Proof of {of}」、of＋title 併用は括弧で後置
+    // Assert
     assert_eq!(proof.style.heading_with_of, "{display_name} of {of}");
     assert_eq!(proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
   }
 
   #[test]
   fn override_proof_of_template_localizes_prefix() {
-    // Arrange: 前置語「of」を日本語化する上書き
+    // Arrange
     let toml = "
 [theorems.proof.style]
 heading_with_of = \"{display_name}（{of} の証明）\"
@@ -648,7 +590,7 @@ heading_with_of = \"{display_name}（{of} の証明）\"
     // Act
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
-    // Assert: of テンプレートだけ変わり、他は既定を維持
+    // Assert
     assert_eq!(wrapper.theorems.proof.style.heading_with_of, "{display_name}（{of} の証明）");
     assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
   }
@@ -670,7 +612,7 @@ reset_by = \"section\"
 
   #[test]
   fn rejects_unknown_class_key() {
-    // Arrange: `conjecture` は固定 10 種に含まれない
+    // Arrange
     let toml = "
 [theorems.conjecture]
 display_name = \"Conjecture\"
@@ -685,7 +627,7 @@ display_name = \"Conjecture\"
 
   #[test]
   fn rejects_unknown_field_key() {
-    // Arrange: `[theorems.theorem]` 内の typo
+    // Arrange
     let toml = "
 [theorems.theorem]
 displ_name = \"Theorem\"
@@ -700,7 +642,7 @@ displ_name = \"Theorem\"
 
   #[test]
   fn accepts_number_format_override() {
-    // Arrange: 新キー `number_format` でクラス別の番号書式を上書きできる
+    // Arrange
     let toml = "
 [theorems.theorem]
 number_format = \"{section}.{n}\"
@@ -715,8 +657,7 @@ number_format = \"{section}.{n}\"
 
   #[test]
   fn rejects_renamed_format_key() {
-    // Arrange: 旧キー `format` はハードリネームで廃止された（→ `number_format`）。
-    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    // Arrange
     let toml = "
 [theorems.theorem]
 format = \"{section}.{n}\"
@@ -731,7 +672,7 @@ format = \"{section}.{n}\"
 
   #[test]
   fn rejects_unknown_nested_style_key() {
-    // Arrange: `[theorems.theorem.style]` 内の typo
+    // Arrange
     let toml = "
 [theorems.theorem.style]
 font_knd = \"serif\"

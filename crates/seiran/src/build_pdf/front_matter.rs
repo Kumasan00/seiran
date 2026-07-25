@@ -17,7 +17,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 
-/// phase 3: 前付け（タイトルページ・目次）を生成してページ分割する。
+/// 前付け（タイトルページ・目次）を生成してページ分割する。
 ///
 /// タイトルページのメタデータは config 形状から疎結合にするためここで組み立てる。前付けは常に
 /// 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。
@@ -69,7 +69,6 @@ fn assemble_front_matter(
   metrics: &FontMetrics,
   text_width: model::Length,
 ) -> Vec<Block> {
-  // build_blocks 用の既定サイズは style から導出する（呼び出し本体と同じ値）。
   let default_font_size = style.text.font_size;
   let line_height_factor = style.text.line_height_factor;
   let mut front_blocks: Vec<Block> = Vec::new();
@@ -77,7 +76,7 @@ fn assemble_front_matter(
     let title_nodes = lower_title_page(title_metadata, &style.title_page);
     {
       let _span = debug_span!("build_blocks", region = "title").entered();
-      // タイトルページ（表題・著者等の大きな見出し文字）はハイフネーションしない（#173）
+      // タイトルページはハイフネーションしない
       front_blocks.extend(build_blocks(
         title_nodes,
         shapers,
@@ -103,11 +102,9 @@ fn assemble_front_matter(
   return front_blocks;
 }
 
-/// 見出しと本文内ページ index から目次エントリ列を組み立てる。
+/// 見出しと本文内ページ index から目次エントリを組み立てる。
 ///
-/// `max_depth` を超える深さの見出しは除外する。ページラベルは [`BodyPageValues::body_page_label`]
-/// （本文の番号スタイル＝算用数字）でレンダリングし、内部リンクキーは見出しの文書順インデックスから
-/// [`HeadingKey::new`] で得る（lowering 側の `AnchorMark::Heading.key` と一致する）。
+/// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
@@ -127,7 +124,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
     .collect();
 }
 
-/// `style.toc` と本文スタイルから目次生成用の [`typeset::TocSpec`] を組み立てる。
+/// スタイルから目次生成用の [`typeset::TocSpec`] を組み立てる。
 ///
 /// 目次見出しの書体は文書の節見出しスタイル（[`model::HeadingLevel::Section`]）に揃える。
 fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
@@ -155,15 +152,9 @@ fn build_toc_spec(style: &Style, text_width: model::Length) -> TocSpec {
   };
 }
 
-/// 前付け（タイトルページ → 目次）ブロックを単独でページ分割する。
+/// 前付けブロックを単独でページ分割する。
 ///
-/// 前付けは常に単段（`front_geometry`）。本文ページ列と連結する前提なので、本文との区切り用に末尾へ
-/// 付いている強制改ページ（[`Block::force_break`]）は落とす。末尾の空ページ抑止自体は
-/// [`typeset::break_pages`] の `finish` が担うので、この pop が効くのは「前付けが強制改ページだけ」のとき
-/// （タイトルページ有効・メタデータが全て空 → `lowering::title_page` が `[PageBreak]` を返す）で、
-/// 落とさないと `break_pages` が「1 ページも確定していない入力」として空ページを 1 枚返す。
-/// タイトル → 目次間の中間の強制改ページは保持する。
-/// 前付けが空（タイトルページ・目次ともに無効）のときは空ページを作らず空の列を返す。
+/// 本文との境界用に末尾へ置いた強制改ページは、空ページを作らないよう分割前に除く。
 fn break_front_matter(
   mut front_blocks: Vec<Block>,
   text_width: model::Length,

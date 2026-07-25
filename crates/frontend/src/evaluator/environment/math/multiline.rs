@@ -1,16 +1,6 @@
 //! 数式環境 — `multiline`
 //!
-//! `\begin{multiline}...\end{multiline}` を [`DocNode::MathBlock`]（`kind = Multiline`）に変換します。
-//! 長い 1 つの式を `\\` で複数行に折り、先頭行を左・末尾行を右・中間行を中央へ配置する「階段」レイアウト
-//! を取ります（列区切り `&` は不可）。採番は **環境全体に 1 つ**だけ（縦中央配置）。実体は共通ハンドラ
-//! [`super::math_grid::evaluate_math_env`]（`NumberingMode::SingleEnv`）に委譲します。階段配置は
-//! `layout` 段が [`MathEnvKind::Multiline`] に応じて確定します。
-//!
-//! 綴りは amsmath の `multline`（`i` 抜け）ではなく正しい `multiline` を採用します（親 issue #25）。
-//!
-//! ## 任意引数
-//!
-//! - `[numbered=false]` — 環境全体を無採番にする
+//! 複数行に分割し、環境全体を 1 単位として採番する。
 
 use model::{DocNode, MathEnvKind};
 
@@ -18,10 +8,6 @@ use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
 
 /// `multiline` 環境を評価する
-///
-/// 本体を `\\` で行に分割（`&` は不可）し、環境全体に 1 つだけ通し番号を発番した `MathBlock`
-/// （`kind = Multiline`）を返す。階段配置と番号の縦中央配置は `layout` 段が決める。`[numbered=false]`
-/// 指定時は採番しない。
 ///
 /// # Errors
 ///
@@ -70,7 +56,7 @@ mod tests {
 
   #[test]
   fn multiline_splits_rows_single_cell_and_numbers_whole_env_once() {
-    // Arrange — 3 行・各 1 セルの multiline。採番は環境全体に 1 つ
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{multiline}a + b \\ + c + d \\ + e\end{multiline}";
     let cst = parse(source, &arena).unwrap();
@@ -78,7 +64,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 3 行・各 1 セル・行は無採番・環境全体が採番対象
+    // Assert
     let (rows, numbered) = block_of(&result);
     assert_eq!(rows.len(), 3, "3 行: {rows:?}");
     assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
@@ -88,7 +74,7 @@ mod tests {
 
   #[test]
   fn multiline_rejects_column_break() {
-    // Arrange — multiline は `&`（列区切り）を許さない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{multiline}a & b\end{multiline}";
     let cst = parse(source, &arena).unwrap();
@@ -102,7 +88,7 @@ mod tests {
 
   #[test]
   fn multiline_numbered_false_suppresses_numbering() {
-    // Arrange — `[numbered=false]` で環境全体が無採番になる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{multiline}[numbered=false]a + b \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();
@@ -117,7 +103,7 @@ mod tests {
 
   #[test]
   fn multiline_with_label_captures_block_label() {
-    // Arrange — `[label=...]` で環境単位ラベルが付き、環境全体が採番対象になる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{multiline}[label=eq:m]a + b \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();
@@ -125,7 +111,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — MathBlock.label と numbered が両方付く
+    // Assert
     let DocNode::MathBlock {
       numbered, label, ..
     } = &result[0]
@@ -138,7 +124,7 @@ mod tests {
 
   #[test]
   fn multiline_rejects_row_label_marker() {
-    // Arrange — multiline は環境単位採番。行末マーカー `\label{...}` は使えない（`[label=...]` を使う）
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{multiline}a + b \label{eq:m} \\ + c\end{multiline}";
     let cst = parse(source, &arena).unwrap();

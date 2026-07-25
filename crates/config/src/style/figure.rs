@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::style::caption::CaptionStyle;
 
 /// 図環境のスタイル設定
-///
-/// キャプション位置は `\image` と `\caption` のソース上の出現順で決まるため、
-/// スタイル側では持たない。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -79,8 +76,6 @@ mod tests {
 
   #[test]
   fn rejects_moved_image_keys() {
-    // `max_dpi` / `downsample` は出力物理の設定として config.toml `[image]` へ移動した（#125）。
-    // style 側旧キーは `deny_unknown_fields` で未知フィールドとして弾く。
     assert!(toml::from_str::<FigureStyle>("max_dpi = 300\n").is_err());
     assert!(toml::from_str::<FigureStyle>("downsample = true\n").is_err());
   }

@@ -1,11 +1,6 @@
 //! 見出し要素（part / chapter / section …）のスタイル設定型。
 //!
-//! TOML 上の `[heading]` テーブルは 2 レイヤーで解釈する:
-//!
-//! 1. [`default_for_level`] で得る Rust 既定（Part: 40pt 改ページあり、Section: 20pt …）
-//! 2. `[heading.<level>]` テーブル（レベル別の差分上書き）
-//!
-//! このマージは [`HeadingStylesTable`] が `#[serde(from = ...)]` 経由で実行する。
+//! `[heading.<level>]` の指定を [`default_for_level`] に重ねて解釈する。
 
 use std::ops::{Index, IndexMut};
 
@@ -17,10 +12,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
-///
-/// TOML 上は `[heading.<level>]` テーブル群（`HeadingStylesTable` 経由）から
-/// 2 レイヤーマージ（Rust 既定 → レベル別差分）でデシリアライズする。
-/// 消費側は `style.heading(level)` または `style.heading[level]` でアクセスする。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(from = "HeadingStylesTable")]
 pub struct HeadingStyles {
@@ -39,7 +30,6 @@ pub struct HeadingStyles {
 }
 
 impl Default for HeadingStyles {
-  /// 各レベルの [`default_for_level`] を集めた既定値。
   fn default() -> Self {
     return Self {
       part: default_for_level(HeadingLevel::Part),
@@ -82,8 +72,6 @@ impl IndexMut<HeadingLevel> for HeadingStyles {
 
 impl HeadingStyles {
   /// 各レベルにレベル名を添えて走査するイテレータ。
-  ///
-  /// バリデーションのパスプレフィックス（例 `heading.section`）を構築する用途で使う。
   pub fn iter_with_level(&self) -> impl Iterator<Item = (HeadingLevel, &HeadingStyle)> {
     return [
       (HeadingLevel::Part, &self.part),
@@ -120,10 +108,6 @@ pub struct HeadingStyle {
 }
 
 impl Default for HeadingStyle {
-  /// `HeadingLevel::Section` 相当の汎用デフォルト（`{number} {title}` / 20pt / 太字セリフ）。
-  ///
-  /// レベルごとの差分は [`default_for_level`] が与える。デシリアライズ時の `#[serde(default)]`
-  /// で部分指定をサポートするために必要。
   fn default() -> Self {
     return Self {
       format: "{number} {title}".to_string(),
@@ -137,12 +121,6 @@ impl Default for HeadingStyle {
 }
 
 /// `[heading]` テーブル全体の TOML スキーマ。
-///
-/// 各レベルキー（`part` / `chapter` / …）には [`HeadingStyleOverride`] が入る。
-/// `#[serde(deny_unknown_fields)]` により、未知のレベル名や `[heading]` 直下のスカラー指定は拒否される。
-///
-/// 実行時は [`From`] 実装が各 override を [`default_for_level`] に適用し、
-/// [`HeadingStyles`] を構築する。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 struct HeadingStylesTable {
@@ -179,9 +157,6 @@ impl From<HeadingStylesTable> for HeadingStyles {
 }
 
 /// [`HeadingStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
-///
-/// `[heading.<level>]` のレベル別差分を受ける TOML スキーマ。
-/// 未指定（`None`）フィールドは [`default_for_level`] の既定値を残す。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct HeadingStyleOverride {
@@ -224,9 +199,6 @@ impl HeadingStyleOverride {
 }
 
 /// 指定レベルの [`HeadingStyle`] デフォルトを返す。
-///
-/// テンプレ・フォントサイズ・改頁の差分のみテーブル化し、フォント種別等は
-/// `HeadingStyle::default` の値をそのまま継承する。
 #[must_use]
 pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
   let mut style = HeadingStyle::default();
@@ -271,7 +243,7 @@ mod tests {
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {
-    // Arrange: `{number}` のタイポ `{nubmer}` を含む書式
+    // Arrange
     let style = HeadingStyle {
       format: "{nubmer} {title}".to_string(),
       ..HeadingStyle::default()
@@ -391,7 +363,7 @@ font_size = \"12pt\"
 
   #[test]
   fn heading_styles_rejects_base_scalar_keys() {
-    // Arrange: かつての base 層書式（[heading] 直下のスカラー）はもう許容しない
+    // Arrange
     let toml = "
 [heading]
 font_kind = \"sans_serif_bold\"
@@ -406,7 +378,7 @@ font_kind = \"sans_serif_bold\"
 
   #[test]
   fn heading_styles_partial_level_keeps_other_defaults() {
-    // Arrange: Section の format のみ上書き
+    // Arrange
     let toml = "
 [heading.section]
 format = \"§ {number} {title}\"
@@ -416,10 +388,9 @@ format = \"§ {number} {title}\"
     let wrapper: HeadingWrapper = toml::from_str(toml).unwrap();
     let styles = wrapper.heading;
 
-    // Assert: Section の font_size はレベル既定の 20pt を維持
+    // Assert
     assert_eq!(styles[HeadingLevel::Section].format, "§ {number} {title}");
     assert!((styles[HeadingLevel::Section].font_size.to_pt() - 20.0).abs() < f32::EPSILON);
-    // 他レベルは default_for_level のまま
     assert!(styles[HeadingLevel::Part].page_break_after);
     assert_eq!(styles[HeadingLevel::Part].font_kind, FontKind::SerifBold);
   }

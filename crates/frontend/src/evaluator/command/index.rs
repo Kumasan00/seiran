@@ -1,7 +1,4 @@
 //! `\index{語}` コマンド
-//!
-//! 必須引数 1 個（索引語、プレーンテキストのみ）とオプション `[reading=...]` を取り、
-//! `InlineNode::Index` を生成する。本文に出力を持たない索引収集用マーカー。
 
 use model::InlineNode;
 
@@ -212,7 +209,7 @@ mod tests {
 
   #[test]
   fn index_rejects_symbol_inside_word() {
-    // Arrange — 単一文字コマンド（`\alpha`）も Text ではないため拒否される
+    // Arrange
     let arena = Bump::new();
     let source = r"\index{\alpha}";
     let node = get_command_view(source, &arena);

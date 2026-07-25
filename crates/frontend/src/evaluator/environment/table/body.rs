@@ -31,13 +31,8 @@ pub(super) struct TableBody {
 }
 
 /// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
-///
-/// `\head` / `\caption` は高々 1 回（重複は [`EvalError::DuplicateCommandInEnvironment`]）。
-/// 行はソース位置とともに収集し、列数確定後のセル数検証に使う。キャプション位置は、
-/// `\caption` が最初の行（`\head` / `\row`）よりソース上で先に現れた場合のみ `Top`。
 pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalError> {
   let source = view.source();
-  // 行はソース位置とともに収集し、列数確定後にセル数を検証する
   let mut head: Vec<(TableRow, miette::SourceSpan)> = Vec::new();
   let mut rows: Vec<(TableRow, miette::SourceSpan)> = Vec::new();
   let mut caption: Option<Vec<InlineNode>> = None;
@@ -94,9 +89,6 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
 }
 
 /// `\head{\row{...} ...}` からヘッダ行を抽出する
-///
-/// 引数の直下に書けるのは `\row` のみ。トリビア（空白・改行・段落区切り・コメント・
-/// 引数の括弧）はスキップし、それ以外はエラーにする。
 fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(arg) = view.first_arg() else {
@@ -167,10 +159,6 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
 }
 
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
-///
-/// 引数の子要素をトップレベルの `&`（[`TokenKind::Ampersand`]）で分割し、
-/// 各区画をセルに変換する。区画全体が `\cell` コマンドの場合は属性付きセルとして、
-/// それ以外はインライン内容のセルとして評価する。
 fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
   let rule_above = opt_args
@@ -218,11 +206,6 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
 }
 
 /// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
-///
-/// 列数は `columns` / `widths` の明示指定を優先し、両方未指定なら行のセル数（`span` 合計）の
-/// 最大値を採る。`columns` と `widths` の長さが食い違う場合は
-/// [`EvalError::TableColumnsWidthsMismatch`]、列数と一致しない行があれば
-/// [`EvalError::TableRowCellCountMismatch`] を返す。
 pub(super) fn resolve_column_count(
   columns_tokens: Option<&[ColumnAlign]>,
   widths_tokens: Option<&[ColumnWidth]>,
@@ -230,7 +213,6 @@ pub(super) fn resolve_column_count(
   rows: &[(TableRow, miette::SourceSpan)],
   view: &EnvironmentView,
 ) -> Result<usize, EvalError> {
-  // 列数の決定: columns / widths の明示指定を優先し、両方未指定なら行のセル数（span 合計）の最大値
   let column_count = match (columns_tokens, widths_tokens) {
     (Some(c), Some(w)) => {
       if c.len() != w.len() {
@@ -247,7 +229,6 @@ pub(super) fn resolve_column_count(
     (None, None) => head.iter().chain(rows.iter()).map(|(row, _)| return row_span_sum(row)).max().unwrap_or(0),
   };
 
-  // 各行のセル数（span 合計）が列数と一致するか検証する
   for (row, span) in head.iter().chain(rows.iter()) {
     let actual = row_span_sum(row);
     if actual != column_count {

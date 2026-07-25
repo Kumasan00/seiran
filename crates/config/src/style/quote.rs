@@ -1,9 +1,4 @@
 //! 引用ブロック（`quote` / `quotation`）のスタイル設定型。
-//!
-//! 左右のブロック字下げ量・上下マージン・段落先頭字下げ量・本文フォントを保持する。
-//! `quote` と `quotation` はこの単一の `QuoteStyle` を共有し、両者の差（段落先頭字下げの有無）は
-//! `lowering` 層が `QuoteKind` を見て `first_line_indent` を適用するかどうかで表す
-//! （`quotation` は適用、`quote` は適用しない）。
 
 use garde::Validate;
 use model::{
@@ -13,10 +8,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// 引用ブロックのスタイル設定
-///
-/// `indent` は本文左右端からのブロック字下げ量（左右に同量適用）。`top_margin` / `bottom_margin` は
-/// ブロックの上下アキ。`first_line_indent` は `quotation` のブロック内段落先頭行の字下げ量
-/// （`quote` では使われない）。`font_kind` はブロック本文の既定フォント種別。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

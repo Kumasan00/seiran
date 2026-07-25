@@ -10,8 +10,6 @@ use serde::{Deserialize, Serialize};
 use crate::style::caption::CaptionStyle;
 
 /// 表のスタイル設定
-///
-/// キャプション位置は図と同様、ソース上の `\caption` の出現位置で決まるためスタイル側では持たない。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

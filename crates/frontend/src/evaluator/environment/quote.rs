@@ -1,12 +1,4 @@
 //! 引用環境 — `quote` / `quotation`
-//!
-//! `\begin{quote}...\end{quote}` および `\begin{quotation}...\end{quotation}` を
-//! [`DocNode::Quote`] に変換します。環境名から [`QuoteKind`] を解決し、両環境とも本ハンドラに
-//! 登録されています。本体（`...`）は通常の本文と同様に再帰評価されます（段落・リスト・数式などを
-//! 含められる）。
-//!
-//! 任意引数・必須引数は受け付けません（左右インデント量・上下マージン・段落先頭字下げ量は
-//! `config::QuoteStyle` 側で決まり、ソースには現れない）。
 
 use model::{DocNode, QuoteKind};
 
@@ -17,8 +9,6 @@ use crate::{
 };
 
 /// 引用環境（`quote` / `quotation`）を評価する
-///
-/// 環境名から [`QuoteKind`] を解決し、本体を再帰評価して [`DocNode::Quote`] を 1 つ返す。
 ///
 /// # Errors
 ///
@@ -34,7 +24,6 @@ pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     });
   }
 
-  // 本体は通常の本文と同様に再帰評価する（段落・リスト・数式等を含められる）。
   let body = match view.body() {
     Some(body) => crate::evaluator::evaluate_children(view.source(), body)?,
     None => Vec::new(),
@@ -70,7 +59,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — kind=Quote、本体は段落 1 つ
+    // Assert
     assert_eq!(result.len(), 1);
     let DocNode::Quote { kind, body } = &result[0] else {
       panic!("Quote が期待されます: {:?}", result[0]);
@@ -99,7 +88,7 @@ mod tests {
 
   #[test]
   fn quote_body_can_contain_multiple_paragraphs() {
-    // Arrange — 段落区切り（空行）で 2 段落
+    // Arrange
     let arena = Bump::new();
     let source = "\\begin{quote}第一段落\n\n第二段落\\end{quote}";
     let cst = parse(source, &arena).unwrap();
@@ -107,7 +96,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 本体に段落が 2 つ
+    // Assert
     let DocNode::Quote { body, .. } = &result[0] else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
@@ -117,7 +106,7 @@ mod tests {
 
   #[test]
   fn quote_rejects_extra_argument() {
-    // Arrange — quote は必須引数を取らない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quote}{余分}本文\end{quote}";
     let cst = parse(source, &arena).unwrap();
@@ -131,7 +120,7 @@ mod tests {
 
   #[test]
   fn quote_rejects_unknown_opt_key() {
-    // Arrange — quote は任意引数を取らない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{quote}[foo=1]本文\end{quote}";
     let cst = parse(source, &arena).unwrap();

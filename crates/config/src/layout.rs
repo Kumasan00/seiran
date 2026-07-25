@@ -1,9 +1,4 @@
 //! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーション
-//!
-//! 段幅 = `(本文幅 − (段数 − 1) × 段間) / 段数` は [`Config`] と [`Style`] の双方の値がないと
-//! 判定できないため、`read_config` / `read_style` それぞれの単体検証では検証できない
-//! （旧構成ではこの理由で `seiran` のビルドステージに置かれていた）。両者が揃った時点で
-//! [`validate_layout`] を呼ぶことで、config クレートがこの横断制約を一括で担う。
 
 use miette::Diagnostic;
 use model::column_width;
@@ -15,8 +10,6 @@ use crate::{Config, Style};
 #[derive(Debug, Error, Diagnostic)]
 pub enum LayoutValidationError {
   /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
-  ///
-  /// 段幅 = `(本文幅 − (段数 − 1) × 段間) / 段数`。段間が本文幅に対して大きすぎると非正になる。
   #[error(
     "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
   )]

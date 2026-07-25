@@ -1,9 +1,4 @@
-//! (e) 確定座標の PDF 描画
-//!
-//! [`render_pages`] が [`Publication`] のページ列を順に走査し、確定済み座標の
-//! [`PaintOp`] を Krilla の [`Surface`] に書き出す。行送り・改ページ・表の分割などの
-//! レイアウト判断は前段（`typeset::breaking` および `PublicationBuilder`）で完了しており、
-//! このパスは描画のみを行う。
+//! 確定済みの描画命令を Krilla で PDF に描画する。
 
 use font::FontMetrics;
 use krilla::{
@@ -32,10 +27,7 @@ use crate::{
   },
 };
 
-/// `Publication::Point`（`model::Length`）を krilla の `geom::Point`（`f32`）へ変換する
-///
-/// `Publication` の座標は `PublicationBuilder` が左マージンを加算済みなので、ここでは
-/// 単位変換のみ行い margin を足さない。
+/// Publication の点を Krilla の点へ単位変換する。
 fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
 
 /// `Publication::Destination` を krilla の `XyzDestination` へ変換する
@@ -43,9 +35,7 @@ fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
   return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
 }
 
-/// `Publication::outline` の各エントリから krilla の `Outline` を構築する
-///
-/// エントリは既に `depth`/`text`/`dest` が文書順で確定済みのフラット列。
+/// フラットなしおりエントリから Krilla のアウトラインを構築する。
 fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Outline> {
   let mut roots: Vec<OutlineTreeNode> = Vec::new();
   for entry in entries {
@@ -61,7 +51,7 @@ fn build_outline_from_entries(entries: &[PublicationOutlineEntry]) -> Option<Out
   return Some(outline);
 }
 
-/// アウトライン構築用の中間ツリーノード（krilla の `OutlineNode` 化前）
+/// アウトライン構築用の中間ツリーノード。
 struct OutlineTreeNode {
   /// 見出しレベルの深さ（`HeadingLevel::depth()`、0 = Part）
   depth: u8,
@@ -84,11 +74,9 @@ impl OutlineTreeNode {
   }
 }
 
-/// 見出しを深さに基づいて中間ツリーへ挿入する
+/// 見出しを深さに基づいて中間ツリーへ挿入する。
 ///
-/// 末尾の兄弟がより浅ければ（`last.depth < depth`）その子として再帰挿入し、
-/// そうでなければこの階層の兄弟として追加する。レベルが飛んでも（章を飛ばして節など）
-/// 直近の浅いノードの下に収まる。
+/// レベルが飛んだ場合も直近の浅いノードの子にする。
 fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: String, dest: XyzDestination) {
   if let Some(last) = siblings.last_mut()
     && last.depth < depth
@@ -104,10 +92,7 @@ fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: Str
   });
 }
 
-/// `Publication::PublicationLink` 列をページのリンク注釈として付与する
-///
-/// 到達不能な内部リンクは `Publication` 構築時に既に除外済みなので、索引引き +
-/// `continue` 分岐は不要。
+/// ページにリンク注釈を付与する。
 fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Result<(), PdfGenError> {
   for link in links {
     let target = match &link.target {
@@ -146,7 +131,7 @@ fn draw_glyph_run(
   }
 }
 
-/// `PaintOp::DrawImage` を描画する（画像バイト列は encode 時にディスクから都度読む、既存の設計を維持）
+/// `PaintOp::DrawImage` を描画する。
 fn draw_publication_image(
   surface: &mut Surface<'_>,
   path: &AssetId,
@@ -198,13 +183,9 @@ fn draw_paint_op(
   return Ok(());
 }
 
-/// `Publication` を `document` に描画します。
+/// [`Publication`] を Krilla の文書へ描画する。
 ///
-/// 行送り・改ページ・表分割等のレイアウト判断は `Publication` 構築時に完了済みのため、
-/// 本関数は `PaintOp` 列を順に描画するだけ。加えて、ハイパーリンク（hyperref 相当）を出力する:
-/// - 各ページの [`PublicationLink`] をリンク注釈（内部 = destination / 外部 = action）として付与
-/// - `Publication::outline` があれば PDF のしおり（アウトライン）を設定する
-///   （`show_bookmarks` の判定は `PublicationBuilder` 側で `outline: None` として反映済み）
+/// 描画命令に加えてリンク注釈としおりを出力する。
 pub(crate) fn render_pages(
   document: &mut Document,
   publication: &Publication,
@@ -232,14 +213,9 @@ pub(crate) fn render_pages(
   return Ok(());
 }
 
-// =============================================================================
-// 画像の描画
-// =============================================================================
-
-/// 確定済みの矩形に画像を描画する
+/// 確定済みの矩形に画像を描画する。
 ///
-/// ラスタ画像かつ `target_dpi` が指定されている場合は、最終物理サイズと DPI から
-/// 必要ピクセル数を算出し、元画像が上回っていればリサイズして再ロードする。
+/// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する。
 fn draw_image(
   surface: &mut Surface<'_>,
   path: &str,
@@ -280,13 +256,7 @@ fn draw_image(
   return Ok(());
 }
 
-// =============================================================================
-// 矩形の描画
-// =============================================================================
-
-/// 塗りつぶし矩形（罫線・背景）を描画する
-///
-/// `color` が `None` の場合は既定（黒）で塗る。
+/// 塗りつぶし矩形を描画する。
 fn draw_filled_rect(
   surface: &mut Surface<'_>,
   left: f32,
@@ -323,7 +293,7 @@ mod tests {
   #[test]
   #[allow(clippy::float_cmp)]
   fn to_krilla_point_converts_length_to_pt_without_adding_margin() {
-    // Arrange — Publication の座標は margin_left 加算済みという前提のもと、単位変換のみ行う
+    // Arrange
     let point = PubPoint {
       x: model::Length::pt(123.0),
       y: model::Length::pt(45.0),
@@ -364,18 +334,18 @@ mod tests {
     assert!(outline.is_none());
   }
 
-  /// テスト用のダミー destination（ページ 0・原点）
+  /// テスト用の到達先を返す。
   fn dummy_dest() -> XyzDestination { return XyzDestination::new(0, Point::from_xy(0.0, 0.0)); }
 
   #[test]
   fn insert_outline_node_nests_by_depth() {
-    // Arrange — Part(0) > Chapter(1) > Section(2), Section(2), Chapter(1) の順に挿入
+    // Arrange
     let mut roots: Vec<OutlineTreeNode> = Vec::new();
     for (depth, text) in [(0, "P"), (1, "C1"), (2, "S1"), (2, "S2"), (1, "C2")] {
       insert_outline_node(&mut roots, depth, text.to_string(), dummy_dest());
     }
 
-    // Assert — Part 1 個がルート。その下に Chapter が 2 個、最初の Chapter の下に Section が 2 個
+    // Assert
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].depth, 0);
     assert_eq!(roots[0].children.len(), 2, "Part の下に Chapter が 2 個");
@@ -387,12 +357,12 @@ mod tests {
 
   #[test]
   fn insert_outline_node_handles_level_skip() {
-    // Arrange — Part(0) の直後に Section(2)（Chapter を飛ばす）
+    // Arrange
     let mut roots: Vec<OutlineTreeNode> = Vec::new();
     insert_outline_node(&mut roots, 0, "P".to_string(), dummy_dest());
     insert_outline_node(&mut roots, 2, "S".to_string(), dummy_dest());
 
-    // Assert — Section は直近の浅いノード（Part）の子に収まる
+    // Assert
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].children.len(), 1);
     assert_eq!(roots[0].children[0].depth, 2);

@@ -1,14 +1,6 @@
 //! 確定レイアウト（[`Page`] 列）の決定的テキストダンプ
 //!
-//! `break_pages` / `build_running_content` が座標・寸法を確定したページ列を、
-//! タイムスタンプ・乱数・実行環境依存の値を含まない安定なテキストへ書き出す。
-//! 唯一の消費者は golden テスト（`super::golden`）で、同一入力・同一設定なら
-//! 常に同一出力になることをレイアウト回帰検出に用いる。golden テスト専用の
-//! 出力ツールのため `model` ではなく本クレートに置く（#216）。
-//!
-//! 座標・寸法はすべて小数第 2 位（0.01pt ≒ サブミクロン）に丸めて出力する。
-//! 行送り等レイアウトに影響する変更は 0.01pt を超えて座標を動かすため差分に現れ、
-//! 一方でこの精度未満の浮動小数点ノイズは吸収される。
+//! golden テスト用に、座標・寸法を 0.01pt へ丸めて環境依存の差を抑える。
 
 use std::fmt::Write;
 
@@ -18,11 +10,6 @@ use model::{
 };
 
 /// ページ列を決定的なテキスト形式へダンプする。
-///
-/// 各ページを `=== page N ===` 見出しで区切り、本文（`body`）・ヘッダー・フッターの
-/// 配置済みブロックと、解決済みアンカー・リンク・索引語を出現順に書き出す。ブロックの座標・
-/// 寸法・内容（グリフのテキストとフォント種別、罫線・画像・数式・表の寸法）を含むため、
-/// レイアウトに影響する変更はダンプの差分として現れる。
 #[must_use]
 pub(super) fn dump_pages(pages: &[Page]) -> String {
   let mut out = String::new();
@@ -38,7 +25,7 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     if !page.footnotes.is_empty() {
       let _ = writeln!(out, "footnotes:");
       for footnote in &page.footnotes {
-        // 繰越（前ページからの続き、#227）だけ印を付ける。分割の起きない文書のダンプは不変
+        // 前ページから繰り越された脚注だけ印を付ける
         let continued = if footnote.continued { " continued" } else { "" };
         dump_section(&mut out, &format!("  footnote number={}{continued}", footnote.number), &footnote.blocks);
       }
@@ -246,12 +233,9 @@ fn content_summary(content: &HBoxContent) -> String {
   };
 }
 
-/// [`AnchorMark`] を golden 資産と同じ文字列表現にする。
+/// [`AnchorMark`] を従来の golden 形式へ変換する。
 ///
-/// #259 で `AnchorMark` のペイロードを typed ID 化した際、golden ダンプは旧実装（文字列ベース、
-/// `"prefix:"` で名前空間化）の derived `Debug` 文字列をそのまま固定資産にしていたため、
-/// 内部型を変えても golden の文字列が変わらないようここで明示的に再現する
-/// （テスト専用のダンプ形式と内部表現を分離し、型変更のたびに golden を再生成せずに済ませる）。
+/// 内部の typed ID とスナップショット形式を分離し、型変更だけでは golden を変えない。
 fn anchor_mark_desc(mark: &AnchorMark) -> String {
   return match mark {
     AnchorMark::Heading { key, label } => {
@@ -294,9 +278,7 @@ fn color_desc(color: Option<[u8; 3]>) -> String {
   };
 }
 
-/// [`Length`] を pt の小数第 2 位に丸めた安定文字列にする（`-0.00` は `0.00` に正規化）。
-///
-/// 整形は sp 整数から f64（[`Length::to_pt_f64`]）を経て行うため、実行間・環境間で決定的。
+/// [`Length`] を pt の小数第 2 位へ丸め、負のゼロを正規化する。
 fn f2(value: Length) -> String {
   let text = format!("{:.2}", value.to_pt_f64());
   return if text == "-0.00" {

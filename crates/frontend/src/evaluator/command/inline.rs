@@ -1,9 +1,4 @@
 //! 書体指定コマンド群
-//!
-//! `\bold`, `\italic`, `\sans`, `\monobold` など、テキストに書体（ファミリ × スタイル）を
-//! 適用するインラインコマンドの共通処理を提供します。
-//! 各コマンドは子要素を再帰的に `InlineNode` に変換し、対応する `FontKind` を持つ
-//! [`InlineNode::Styled`] を生成します。ネスト時は内側の書体が完全に上書きします。
 
 use model::{FontKind, InlineNode};
 
@@ -18,13 +13,6 @@ use crate::{
 };
 
 /// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
-///
-/// `CommandKind::StyledText` から呼ばれます。
-///
-/// # Arguments
-///
-/// * `view` - コマンドの型付きビュー
-/// * `kind` - 適用する書体
 ///
 /// # Errors
 ///
@@ -51,9 +39,6 @@ pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<Inli
 }
 
 /// `\color[color=#rrggbb]{...}` を評価し、子要素を [`InlineNode::Colored`] でラップする
-///
-/// 色は任意引数 `color`（`#rrggbb`）で必須指定する。原則 A（引数は `{}` で明示）に従い
-/// 色は opt arg、着色対象は必須引数 1 つで受ける。`CommandKind::ColoredText` から呼ばれます。
 ///
 /// # Errors
 ///
@@ -145,7 +130,7 @@ mod tests {
 
   #[test]
   fn nested_styled_commands_keep_inner_kind() {
-    // Arrange — \bold{\italic{x}} のネストは内側が完全上書き（合成しない）
+    // Arrange
     let arena = Bump::new();
     let source = r"\bold{\italic{x}}";
     let node = get_command_view(source, &arena);
@@ -154,7 +139,7 @@ mod tests {
     // Act
     let result = styled_text(&view, FontKind::SerifBold).unwrap();
 
-    // Assert — 外側 SerifBold の子として内側 SerifItalic がそのまま保持される
+    // Assert
     let InlineNode::Styled { kind, children } = &result[0] else {
       panic!("Styled が期待されます");
     };
@@ -194,7 +179,7 @@ mod tests {
 
   #[test]
   fn bold_rejects_unknown_opt_arg_key() {
-    // Arrange — 書体指定コマンドは任意引数を受け付けないので `[heavy]` は不明キー
+    // Arrange
     let arena = Bump::new();
     let source = r"\bold[heavy]{x}";
     let node = get_command_view(source, &arena);
@@ -203,7 +188,7 @@ mod tests {
     // Act
     let result = styled_text(&view, FontKind::SerifBold);
 
-    // Assert — boolean ショートハンドの `heavy` も未許可キーとして拒否される
+    // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
   }
 
@@ -218,7 +203,7 @@ mod tests {
     // Act
     let result = colored_text(&view).unwrap();
 
-    // Assert — 指定色の Colored ノードが生成され、子はそのテキスト
+    // Assert
     assert_eq!(result.len(), 1);
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
@@ -230,7 +215,7 @@ mod tests {
 
   #[test]
   fn color_rejects_missing_color() {
-    // Arrange — `color` 任意引数を欠くと色を確定できない
+    // Arrange
     let arena = Bump::new();
     let source = r"\color{x}";
     let node = get_command_view(source, &arena);
@@ -242,13 +227,13 @@ mod tests {
 
   #[test]
   fn color_rejects_invalid_hex() {
-    // Arrange — `#zzzzzz` は 16 進表記として不正
+    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#zzzzzz]{x}";
     let node = get_command_view(source, &arena);
     let view = CommandView::new(node, source);
 
-    // Act & Assert — opt arg 解析段で型エラーになる
+    // Act & Assert
     assert!(matches!(colored_text(&view), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color"));
   }
 
@@ -266,7 +251,7 @@ mod tests {
 
   #[test]
   fn nested_bold_inside_color_keeps_both() {
-    // Arrange — \color[...]{\bold{x}} は色（Colored）の中に書体（Styled）が保持される
+    // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#0000ff]{\bold{x}}";
     let node = get_command_view(source, &arena);
@@ -275,7 +260,7 @@ mod tests {
     // Act
     let result = colored_text(&view).unwrap();
 
-    // Assert — 外側 Colored の子として内側 Styled(SerifBold) がそのまま保持される
+    // Assert
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
     };

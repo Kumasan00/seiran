@@ -1,25 +1,6 @@
 //! 環境本体（`EnvironmentBody`）を走査する共通ヘルパ
 //!
-//! 図環境（`figure`）・リスト環境（`itemize`/`enumerate`）・表環境（`table`）など
-//! 複数の環境ハンドラから利用される **body 直下の `CommandCall` 走査** を一本化する。
-//!
-//! ## 設計
-//!
-//! - body の子要素のうち [`SyntaxKind::CommandCall`] を許可リストと照合して収集する
-//! - トリビア（空白・改行・段落区切り・コメント）は黙ってスキップする
-//! - それ以外のコンテンツ（テキスト・許可外コマンド・入れ子環境・インライン数式等）は
-//!   黙って捨てずにエラーとして報告する
-//!
-//! ## 使用例
-//!
-//! ```ignore
-//! for view in body_scan::strict_command_calls(source, body, "itemize", &["item"], "\\item")? {
-//!   match view.name() {
-//!     "item" => { /* ... */ }
-//!     _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
-//!   }
-//! }
-//! ```
+//! 許可したコマンドとトリビア以外が直下に現れた場合はエラーにする。
 
 use crate::{
   evaluator::EvalError,
@@ -33,18 +14,6 @@ use crate::{
 };
 
 /// 環境本体の直下にある `CommandCall` を許可リストで検証しながら収集する
-///
-/// `body.children` を走査し、`allowed` に含まれる名前の `CommandCall` を
-/// `CommandView` でラップして返す。トリビア（空白・改行・段落区切り・コメント）は
-/// スキップする。
-///
-/// # Arguments
-///
-/// * `source`   - 元のソーステキスト
-/// * `body`     - `EnvironmentBody` ノード
-/// * `env_name` - エラーメッセージに使う環境名
-/// * `allowed`  - 許可するコマンド名のリスト
-/// * `expected` - エラーメッセージに使う「書けるもの」の説明（例: `"\\item"`）
 ///
 /// # Errors
 ///
@@ -62,9 +31,7 @@ pub(crate) fn strict_command_calls<'a>(
   for child in body.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {
-          // トリビアは黙ってスキップする
-        },
+        TokenKind::Whitespace | TokenKind::Newline | TokenKind::ParagraphBreak | TokenKind::Comment => {},
         _ => {
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
@@ -87,7 +54,6 @@ pub(crate) fn strict_command_calls<'a>(
             });
           }
         } else {
-          // 入れ子環境・インライン数式など
           return Err(EvalError::UnexpectedContentInEnvironment {
             env: env_name.to_string(),
             expected: expected.to_string(),
@@ -128,7 +94,7 @@ mod tests {
 
   #[test]
   fn strict_scan_collects_allowed_commands() {
-    // Arrange — body には \item だけが並ぶ（間のトリビアはスキップされる）
+    // Arrange
     let arena = Bump::new();
     let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -144,7 +110,7 @@ mod tests {
 
   #[test]
   fn strict_scan_rejects_stray_text() {
-    // Arrange — body 直下のテキストは以前は黙って捨てられていた
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}some text\item{A}\end{itemize}";
     let cst = parse(source, &arena).unwrap();
@@ -159,7 +125,7 @@ mod tests {
 
   #[test]
   fn strict_scan_rejects_disallowed_command() {
-    // Arrange — itemize 内の \bold は許可リスト外
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\bold{x}\end{itemize}";
     let cst = parse(source, &arena).unwrap();

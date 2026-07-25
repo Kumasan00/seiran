@@ -1,9 +1,4 @@
 //! 巻末索引のスタイル設定型。
-//!
-//! `[reference]` と同じく `enabled` を持たない — ソースに `\index` マーカーが 1 個以上あるときだけ
-//! 自動出力される（issue #247）。段組み数は本文用 [`crate::style::ColumnsStyle`]（issue #32、1〜2 段
-//! の contract）とは独立に持つ（索引は本文より多段にすることが一般的なため）。段間は本文と共通の
-//! [`crate::style::ColumnsStyle::gap`] を流用し、専用フィールドは持たない。
 
 use garde::Validate;
 use model::{
@@ -67,7 +62,6 @@ mod tests {
 
   #[test]
   fn default_has_no_enabled_flag_and_two_columns() {
-    // 索引はマーカー駆動の自動出力（enabled フラグを持たない）。既定は 2 段組み
     let style = IndexStyle::default();
     assert_eq!(style.title, "Index");
     assert_eq!(style.column_count, 2);
@@ -75,7 +69,7 @@ mod tests {
 
   #[test]
   fn partial_toml_keeps_other_defaults() {
-    // Arrange / Act: title だけ指定しても他フィールドは既定で埋まる
+    // Arrange / Act
     let style: IndexStyle = toml::from_str("title = \"索引\"\n").unwrap();
 
     // Assert

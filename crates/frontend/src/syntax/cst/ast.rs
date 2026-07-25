@@ -1,13 +1,6 @@
 //! CST 上の型付きビュー
 //!
-//! `GreenNode` を内部に保持し、特定の構文ノード（コマンド・環境）に対する
-//! 型安全なアクセサを提供するゼロコスト抽象化です。
-//!
-//! ## 設計意図
-//!
-//! - 独立した AST 層を持たず、CST 上のビューとして提供する
-//! - `GreenNode` を直接参照するため、コピーやクローンが不要
-//! - ビューのライフタイムは CST（アリーナ）のライフタイムに紐づく
+//! 独立した AST は構築せず、[`GreenNode`] を直接参照する。
 
 use model::Span;
 
@@ -19,23 +12,7 @@ use crate::syntax::{
   token::TokenKind,
 };
 
-// =============================================================================
-// コマンドビュー
-// =============================================================================
-
 /// コマンド呼び出しの型付きビュー
-///
-/// CST 上の `CommandCall` ノードをラップし、コマンド名・引数への
-/// 型安全なアクセスを提供します。
-///
-/// ## 例
-///
-/// ```text
-/// \cmd[opt]{arg}
-/// ```
-///
-/// 上記の CST ノードから `CommandView` を構築すると、
-/// `name()` → `"cmd"`, `args_count()` → `1`, `opt_args_count()` → `1` となります。
 pub struct CommandView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
@@ -45,11 +22,6 @@ pub struct CommandView<'a> {
 
 impl<'a> CommandView<'a> {
   /// コマンドビューを生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `node` - `SyntaxKind::CommandCall` の CST ノード
-  /// * `source` - 元のソーステキスト
   #[must_use]
   pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(node.kind, SyntaxKind::CommandCall);
@@ -104,25 +76,7 @@ impl<'a> CommandView<'a> {
   pub fn opt_args_is_empty(&self) -> bool { return self.opt_args_count() == 0; }
 }
 
-// =============================================================================
-// 環境ビュー
-// =============================================================================
-
 /// 環境の型付きビュー
-///
-/// CST 上の `Environment` ノードをラップし、環境名・引数・本体への
-/// 型安全なアクセスを提供します。
-///
-/// ## 例
-///
-/// ```text
-/// \begin{itemize}[opt]
-///   \item{First}
-/// \end{itemize}
-/// ```
-///
-/// 上記の CST ノードから `EnvironmentView` を構築すると、
-/// `name()` → `"itemize"`, `opt_args()` → `[...]` となります。
 pub struct EnvironmentView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
@@ -132,11 +86,6 @@ pub struct EnvironmentView<'a> {
 
 impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `node` - `SyntaxKind::Environment` の CST ノード
-  /// * `source` - 元のソーステキスト
   #[must_use]
   pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(node.kind, SyntaxKind::Environment);
@@ -148,8 +97,6 @@ impl<'a> EnvironmentView<'a> {
   pub fn source(&self) -> &'a str { return self.source; }
 
   /// 環境名を返す
-  ///
-  /// `EnvironmentBegin` の最初の `MandatoryArg` 内の `Text` トークンから取得します。
   #[must_use]
   pub fn name(&self) -> &'a str {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
@@ -175,7 +122,6 @@ impl<'a> EnvironmentView<'a> {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
       return vec![];
     };
-    // 最初の MandatoryArg は環境名なのでスキップ
     return begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
   }
 
@@ -189,22 +135,15 @@ impl<'a> EnvironmentView<'a> {
   }
 }
 
-// =============================================================================
-// ユーティリティ
-// =============================================================================
-
 /// `GreenNode` の子要素からテキスト内容を抽出する
 ///
-/// `MandatoryArg` や `OptArg` などのノード内のテキストトークンを連結して返します。
-/// 構造トークン（括弧類）やコメントは無視されます。
+/// 構造トークンとコメントを除いて連結する。
 #[must_use]
 pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
   let mut text = String::new();
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        // Underscore / Caret / Ampersand は数式外では意味を持たないため、
-        // ファイルパスや key=value（例: `rule_above`）の一部としてそのまま保持する
         TokenKind::Text
         | TokenKind::Whitespace
         | TokenKind::Newline
@@ -222,7 +161,6 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
         _ => {},
       },
       GreenElement::Node(child_node) => {
-        // 再帰的に子ノードのテキストも取得
         text.push_str(&extract_text_content(source, child_node));
       },
     }
@@ -232,17 +170,8 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
 
 /// `OptArg` ノードを `key=value` 形式としてパースする
 ///
-/// 入力例: `[label=fig:foo, position=h]` → `[("label", "fig:foo"), ("position", "h")]`
-///
-/// `extract_text_content` で `[` `]` を除いた本文を取り出し、`,` で分割し、
-/// 各エントリを最初の `=` で key と value に分け、両側を `trim()` する。
 /// `=` を含まないエントリは boolean フラグとして扱い `("key", "true")` を生成する
-/// （例: `[draft, label=fig:foo]` → `[("draft", "true"), ("label", "fig:foo")]`）。
-/// key が空のエントリは無視される。
-///
-/// 値や key 内のクォート / カンマエスケープは現状非対応（必要になり次第拡張）。
-/// 入力ノードの種別は `SyntaxKind::OptArg` を期待するが、`extract_text_content`
-/// の挙動に依存しており他種別を渡しても panic はしない（`debug_assert` のみ）。
+/// （例: `[draft]`）。
 #[must_use]
 pub fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
   debug_assert_eq!(opt_arg.kind, SyntaxKind::OptArg);
@@ -327,7 +256,6 @@ mod tests {
     let arena = bumpalo::Bump::new();
     let source = "\\begin{center}body\\end{center}";
 
-    // EnvironmentBegin > \begin token + MandatoryArg({center})
     let begin_token = Token::new(TokenKind::Command, Span::new(0, 6));
     let lbrace = Token::new(TokenKind::LBrace, Span::new(6, 7));
     let name_text = Token::new(TokenKind::Text, Span::new(7, 13));
@@ -354,7 +282,6 @@ mod tests {
       children: begin_children,
     });
 
-    // EnvironmentBody
     let body_text = Token::new(TokenKind::Text, Span::new(14, 18));
     let body_children = arena.alloc_slice_copy(&[GreenElement::Token(body_text)]);
     let body_node = arena.alloc(GreenNode {
@@ -363,7 +290,6 @@ mod tests {
       children: body_children,
     });
 
-    // EnvironmentEnd (simplified)
     let end_token = Token::new(TokenKind::Command, Span::new(18, 22));
     let end_children = arena.alloc_slice_copy(&[GreenElement::Token(end_token)]);
     let end_node = arena.alloc(GreenNode {
@@ -372,7 +298,6 @@ mod tests {
       children: end_children,
     });
 
-    // Environment
     let env_children = arena.alloc_slice_copy(&[
       GreenElement::Node(begin_node),
       GreenElement::Node(body_node),
@@ -414,10 +339,8 @@ mod tests {
   }
 
   fn first_opt_arg<'a>(root: &'a GreenNode<'a>, container_kind: SyntaxKind) -> &'a GreenNode<'a> {
-    // Root 直下 → CommandCall または Environment の中の OptArg を 1 つ取り出す
     fn find<'a>(node: &'a GreenNode<'a>, container_kind: SyntaxKind) -> Option<&'a GreenNode<'a>> {
       if node.kind == container_kind {
-        // CommandCall は OptArg を直に持つ。Environment は EnvironmentBegin の下に持つ。
         if let Some(opt) = node.first_child_of_kind(SyntaxKind::OptArg) {
           return Some(opt);
         }
@@ -441,7 +364,6 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_env_optarg_basic() {
-    // env optarg からの key=value 抽出（複数 key、空白トリム込み）
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
@@ -460,7 +382,6 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_command_optarg_basic() {
-    // command optarg からも同じ関数で抽出できる
     let arena = bumpalo::Bump::new();
     let source = r"\image[width=10cm]{img.png}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
@@ -473,7 +394,6 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_treats_bare_key_as_boolean_true() {
-    // `=` を含まないエントリは boolean フラグとして "true" 値を生成する
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
@@ -492,7 +412,6 @@ mod tests {
 
   #[test]
   fn parse_key_value_options_skips_empty_entries() {
-    // 空エントリ（連続した `,` や前後空白のみ）は無視される
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[ , draft , ,key=val]{x}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
@@ -511,7 +430,7 @@ mod tests {
 
   #[test]
   fn extract_text_content_preserves_comma_and_equals() {
-    // Arrange — `[a=1, b=2]` の OptArg を実際にパースして取得
+    // Arrange
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[a=1, b=2]{x}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();
@@ -520,13 +439,12 @@ mod tests {
     // Act
     let text = extract_text_content(source, opt_arg);
 
-    // Assert — `[` と `]` は構造トークンなので除外され、本文のみ復元される
+    // Assert
     assert_eq!(text, "a=1, b=2");
   }
 
   #[test]
   fn parse_key_value_options_empty_optarg() {
-    // `[]` は空 Vec を返す
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
     let cst = crate::syntax::parser::parse(source, &arena, |_| return crate::syntax::parser::ParseMode::Text).unwrap();

@@ -1,53 +1,4 @@
 //! TOML ファイルからのデシリアライズ用設定構造体
-//!
-//! このモジュールは、TOML ファイルの形式に直接対応した構造体群を定義します。
-//! `serde` による自動デシリアライズと `garde` による宣言的バリデーションを
-//! 組み合わせ、TOML テキストを構造化データに変換しつつ値の妥当性を検証する
-//! 中間層（プリプロセス層）として機能します。
-//!
-//! ## 処理フロー
-//!
-//! ```text
-//! config.toml（TOML テキスト）
-//!   ↓
-//! toml::from_str()（デシリアライズ）
-//!   ↓
-//! PreConfig（TOML そのものの構造）
-//!   ↓ garde::Validate（範囲・長さ・相互制約の検証）
-//!   ↓ + パス解決・型変換
-//! processed_config::Config（処理済み・検証済み設定）
-//! ```
-//!
-//! ## バリデーション項目
-//!
-//! 検証は 3 系統に分かれます:
-//!
-//! 1. `garde::Validate` 派生によるフィールド検証
-//! 2. 派生では表現できない相互制約を補う自由関数（[`validate_margin_sums`] /
-//!    [`validate_unique_font_names`] / [`validate_font_language_constraints`]）。
-//!    [`crate::config::validate_and_convert`] が `pre.validate()` の後に明示的に呼び出します。
-//! 3. タグ・書字方向の構造的検証は専用の **失敗しうるコンストラクタ**（[`crate::config::tag`] の各関数 /
-//!    [`TextDirection`] の `FromStr` 実装）に集約し、検証と `[u8; 4]` / enum への変換を同じ関数で
-//!    行います。[`crate::config::parse_font_values`] が変換時に呼び出すため、`garde` 側には重複した規則を
-//!    持ちません。
-//!
-//! | 項目 | 条件 | 実装 |
-//! |-----|------|------|
-//! | `name` | 空文字 / パスセパレータ / `.` `..` 不可 | `garde(custom(validate_document_name))` |
-//! | `pdf.height/width` | > 0 | `garde(range(min = f32::MIN_POSITIVE))` |
-//! | `pdf.margin_*` | >= 0 | `garde(range(min = 0.0))` |
-//! | 余白合計 | < 寸法 | 自由関数 [`validate_margin_sums`] |
-//! | `language` | BCP 47 として妥当・予約サブタグ非含有 | `garde(custom(validate_bcp47_language))` |
-//! | `script` | 4 文字 ASCII アルファベット | [`crate::config::tag::parse_script_tag`]（変換時） |
-//! | `ot_language` | 3-4 文字 ASCII alphanumeric（OT 言語タグ） | [`crate::config::tag::parse_ot_language_tag`]（変換時） |
-//! | `ot_language` の前提 | `script` 必須 | 自由関数 [`validate_font_language_constraints`] |
-//! | `direction` | `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` | [`TextDirection`] の `FromStr`（変換時） |
-//! | feature `tag` | 4 文字 ASCII | [`crate::config::tag::parse_opentype_tag`]（変換時） |
-//! | 軸 `name` | 4 文字 ASCII | [`crate::config::tag::parse_opentype_tag`]（変換時） |
-//! | `font_name` 長さ | >= 1 | `garde(length(min = 1))` |
-//! | `font_name` 重複 | なし | 自由関数 [`validate_unique_font_names`] |
-//!
-//! [`TextDirection`]: crate::config::TextDirection
 
 use std::path::PathBuf;
 
@@ -64,8 +15,6 @@ use crate::config::ConfigValidationError;
 #[derive(Deserialize, Debug, Validate)]
 pub(crate) struct PreConfig {
   /// ドキュメントメタデータ（title / author / date / subject）
-  ///
-  /// 全フィールドが optional なため省略可。
   #[serde(default)]
   #[garde(dive)]
   pub document: PreDocumentConfig,
@@ -83,8 +32,6 @@ pub(crate) struct PreConfig {
   #[garde(dive)]
   pub font_configs: PreFontConfigs,
   /// ソースファイル一覧（順次パースして 1 ドキュメントに結合）
-  ///
-  /// `serde(default)` により TOML での省略を許すが、空配列は許可されない。
   #[serde(default)]
   #[garde(custom(validate_non_empty_sources))]
   pub sources: Vec<PathBuf>,
@@ -113,25 +60,14 @@ pub(crate) struct PreDocumentConfig {
   #[garde(skip)]
   pub subject: Option<String>,
   /// ドキュメント全体の言語（BCP 47、例: `"ja"`, `"en-US"`, `"zh-Hant"`）
-  ///
-  /// PDF メタデータの /Lang や i18n に使用する文書レベルのロケール属性。
-  /// フォント単位の `language` とは別レイヤです。
   #[garde(custom(validate_document_language))]
   pub language: Option<String>,
   /// キーワード（PDF メタデータの /Keywords）
-  ///
-  /// 各要素は非空文字列であることを検証します。
   #[garde(custom(validate_keywords))]
   pub keywords: Option<Vec<String>>,
 }
 
 /// ドキュメント全体の言語タグを検証します（BCP 47 構造的妥当性のみ）。
-///
-/// `None` は省略を表すため許可します。`Some` の場合は
-/// [`unic_langid::LanguageIdentifier::from_bytes`] による BCP 47 パースが成功する必要があります。
-/// フォント単位の [`validate_bcp47_language`] と異なり、document.language は harfrust に渡らない
-/// 純粋な文書ロケールのため、`-x-hbsc` / `-x-hbot` 予約サブタグの直接記述は禁止対象に含めません
-/// （直接記述は意味を成しませんが、ここで弾く責務はフォント側固有）。
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
   let Some(language) = value else {
@@ -143,9 +79,6 @@ fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
 }
 
 /// キーワード配列の各要素が非空であることを検証します。
-///
-/// `None` および空配列は省略相当として許可します。`Some` の場合は各要素が空文字列でない
-/// ことを確認します（PDF /Keywords に空エントリを混入させない目的）。
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
   let Some(keywords) = value else {
@@ -166,15 +99,11 @@ pub(crate) struct PreOutputConfig {
   #[garde(custom(validate_document_name))]
   pub name: String,
   /// 出力ディレクトリ（PDF ファイルの保存先）。
-  ///
-  /// 省略時はカレントディレクトリに出力する。指定する場合は空文字列を許可しない。
   #[garde(custom(validate_output_dir))]
   pub output_dir: Option<PathBuf>,
 }
 
 /// `sources` 配列が空でないことを検証します。
-///
-/// 軸補（補足設計）: ソース分割は最低 1 ファイルが必要。
 #[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
 fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
   if value.is_empty() {
@@ -184,10 +113,6 @@ fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
 }
 
 /// `output_dir` を検証します。
-///
-/// `None`（TOML で省略）はカレントディレクトリ出力を意味するため許可します。
-/// `Some` の場合のみ空 `PathBuf`（`""`）を弾きます。`.` や `..`、絶対パスは
-/// 通常のディレクトリパスとして許可します。
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
   let Some(path) = value else {
@@ -200,14 +125,6 @@ fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
 }
 
 /// ドキュメント名を検証します。
-///
-/// `name` は `{name}.pdf` として出力ファイル名に直接使われるため、
-/// パストラバーサルや空ファイル名を防ぐために以下を確認します:
-/// - 空文字列でない
-/// - パスセパレータ（`/`、`\`）を含まない
-/// - `.` または `..` 単独でない
-///
-/// 引数の型は `garde` のカスタムバリデーター API に従います。
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn validate_document_name(value: &str, _: &()) -> garde::Result {
   if value.is_empty() {
@@ -324,73 +241,25 @@ pub(crate) struct PreFontConfig {
   #[serde(default)]
   pub font_index: u32,
   /// バリアブルフォント軸の設定値配列
-  ///
-  /// 軸名タグの検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による変換時に
-  /// 行います（検証と構築の単一情報源）。
   pub variation_axes: Option<Vec<PreVariationAxis>>,
   /// BCP 47 言語タグ（例: `"ja"`, `"en-US"`, `"zh-Hant"`）
   ///
-  /// harfrust 内部で OpenType 言語タグへ変換されます。OT 言語タグを直接指定したい場合は
-  /// [`PreFontConfig::ot_language`] を使用してください。`-x-hbsc` / `-x-hbot` 予約サブタグの
-  /// 直接記述は禁止です（[`PreFontConfig::script`] / [`PreFontConfig::ot_language`] 経由で
-  /// 組み立てられます）。
+  /// `-x-hbsc` / `-x-hbot` 予約サブタグの直接記述は禁止。
   #[garde(custom(validate_bcp47_language))]
   pub language: Option<String>,
   /// OpenType / ISO 15924 script タグ（4 文字 ASCII アルファベット、例: `"latn"`, `"Latn"`, `"kana"`）
-  ///
-  /// 上級向けオーバーライド。指定すると harfrust が `language` から導出するスクリプトを
-  /// 上書きします（例: `"zh"` に対して `"kana"` を明示するなど）。ユーザが書いた値は
-  /// `harfrust::Script::from_iso15924_tag` にそのまま渡され、harfrust 内部で case 正規化
-  /// （先頭大文字 + 残り小文字）と OT script タグ導出が行われます。したがって `"latn"` /
-  /// `"Latn"` / `"LATN"` はすべて同じ Latin script として shape されます。
-  ///
-  /// フォントの GSUB/GPOS `ScriptList` に書いた値が literally に存在するかは `font` クレートの
-  /// `validate_font::check_script_language_support` がバイト完全一致でチェックし、存在しなければ
-  /// `tracing::warn!` で報告します。表記揺れがあれば `validate_font` が指摘します。
-  ///
-  /// # 注意: `"DFLT"` を明示指定しないこと
-  ///
-  /// `"DFLT"` を渡すと harfrust 内部で `Dflt` → `dflt` と変換され、フォントの `b"DFLT"`
-  /// subtable とは別物が lookup されます（harfrust の `Script::from_iso15924_tag` が DFLT を
-  /// 特別扱いしないため）。harfrust は script 未指定時に DFLT を自動 fallback として試行する
-  /// ので、強制 DFLT が欲しい場合は `script` を省略してください。
-  ///
-  /// 構造的妥当性の検証は `garde` ではなく [`crate::config::tag::parse_script_tag`] による変換時に
-  /// 行います（検証と構築の単一情報源）。
   pub script: Option<String>,
   /// OpenType 言語システムタグ（3 または 4 文字 ASCII alphanumeric、例: `"JAN"`, `"ENG"`）
   ///
-  /// 上級向けオーバーライド。指定時は [`PreFontConfig::script`] が必須です（GSUB/GPOS の
-  /// 言語サブテーブルはスクリプト配下にあるため）。3 文字の場合は内部で末尾を空白パディングし
-  /// 4 バイトに正規化します。
-  ///
-  /// 構造的妥当性の検証は `garde` ではなく [`crate::config::tag::parse_ot_language_tag`] による
-  /// 変換時に行います（検証と構築の単一情報源）。`script` 必須の相互制約のみ
-  /// [`validate_font_language_constraints`] が別途検査します。
+  /// 3 文字の場合は末尾を空白で埋める。指定時は `script` も必須。
   pub ot_language: Option<String>,
   /// 書字方向（ハイフン区切りの長形のみ受理）
-  ///
-  /// 受理する値は `"left-to-right"` / `"right-to-left"` / `"top-to-bottom"` / `"bottom-to-top"` の
-  /// 4 つ。省略時は harfrust の `guess_segment_properties` が入力テキストから自動判定します。
-  ///
-  /// 値の検証は `garde` ではなく [`TextDirection`] の `FromStr` 実装による変換時に行います
-  /// （検証と構築の単一情報源）。
-  ///
-  /// [`TextDirection`]: crate::config::TextDirection
   pub direction: Option<String>,
   /// OpenType フィーチャー設定配列
-  ///
-  /// フィーチャータグの検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
-  /// 変換時に行います（検証と構築の単一情報源）。
   pub features: Option<Vec<PreFontFeature>>,
 }
 
 /// BCP 47 言語タグを検証します（`unic-langid` による構造的パース）。
-///
-/// `None` は省略を表すため許可します。`Some` の場合は以下を満たす必要があります:
-/// - `-x-hbsc` / `-x-hbot` 予約サブタグを含まない（これらは内部で OT タグ強制に使うため、
-///   ユーザが直接記述するとセマンティクスが崩れる）
-/// - [`unic_langid::LanguageIdentifier::from_bytes`] による BCP 47 パースが成功する
 #[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
 fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
   let Some(language) = value else {
@@ -408,9 +277,6 @@ fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
 }
 
 /// バリアブルフォント軸の単一設定値
-///
-/// 軸名タグの構造的検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
-/// 変換時に行うため、この DTO は `Validate` を導出しません。
 #[derive(Deserialize, Debug)]
 pub(crate) struct PreVariationAxis {
   /// 軸名（4 バイト ASCII の OpenType 軸タグ、例："wght"、"wdth"）
@@ -420,9 +286,6 @@ pub(crate) struct PreVariationAxis {
 }
 
 /// OpenType フィーチャータグと値のペア
-///
-/// フィーチャータグの構造的検証は `garde` ではなく [`crate::config::tag::parse_opentype_tag`] による
-/// 変換時に行うため、この DTO は `Validate` を導出しません。
 #[derive(Deserialize, Debug)]
 pub(crate) struct PreFontFeature {
   /// フィーチャータグ（4 バイト ASCII、例："liga"、"smcp"、"dlig"）
@@ -453,9 +316,6 @@ pub(crate) struct PrePdfConfig {
   #[garde(custom(non_negative))]
   pub margin_right: Length,
   /// PDF のしおり（ブックマーク）を出力するか（省略時 true）
-  ///
-  /// しおりは PDF の構造的な出力機能で、視覚スタイル（リンク色など）とは別軸のため config が持つ
-  /// （#127 で style `[hyperref]` から移動）。
   #[garde(skip)]
   #[serde(default = "default_show_bookmarks")]
   pub show_bookmarks: bool,
@@ -465,10 +325,6 @@ pub(crate) struct PrePdfConfig {
 fn default_show_bookmarks() -> bool { return true; }
 
 /// `[image]` セクション: ラスタ画像のダウンサンプリング設定
-///
-/// 画像の埋め込み解像度（ファイルサイズ・物理画素数）を決める「出力物理」の設定で、
-/// 見た目（レイアウト）ではないため style ではなく config が持つ（#125 で style `[figure]` から移動）。
-/// `\image[dpi=...]` / `[downsample=...]` の per-image 上書きはここで決めるグローバル既定を上書きする。
 #[derive(Deserialize, Debug, Validate)]
 #[serde(default)]
 pub(crate) struct PreImageConfig {
@@ -491,9 +347,6 @@ impl Default for PreImageConfig {
 }
 
 /// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
-///
-/// garde の field-level 検証では表現できない相互制約のため、`PreConfig::validate` の
-/// 後に明示的に呼び出します。
 pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ConfigValidationError>) {
   let vertical = value.margin_top.to_pt() + value.margin_bottom.to_pt();
   if vertical >= value.height.to_pt() {
@@ -532,10 +385,6 @@ pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Ve
 }
 
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
-///
-/// 検証ルール:
-/// - `ot_language` を指定する場合は `script` が必須（OT 言語システムは GSUB/GPOS の
-///   スクリプトサブテーブル配下に定義されるため、スクリプトなしでは指定意義がない）
 pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for font_type in FontType::ALL {
     let cfg = value.get(font_type);

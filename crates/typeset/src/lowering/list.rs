@@ -10,15 +10,6 @@ use super::{
 };
 
 /// リストをレイアウトノードに変換する
-///
-/// マーカーの見た目は `ctx.list_depth`（ネスト深さ、0 = 最上位）に応じて自動的に切り替わる。
-/// 最上位は `style.list` の設定（`unordered_marker` / `ordered_marker_format`）をそのまま使い、
-/// 1 段以上ネストした段は `style.list` の `nested_unordered_markers` / `nested_ordered_formats`
-/// （未指定時は既定シーケンス: en dash → asterisk → middle dot / `(a)` → `i.` → `A.`）を
-/// `(depth - 1) % 系列の要素数` で循環的に引く。字下げ量（インデント）は深さに依らず `VBox.indent` で表す。
-///
-/// 項目間の縦アキ（`margin_bottom`）は `\item` 個別の `item.item_gap` > 環境の `item_gap` 引数 >
-/// `style.list.item_margin_bottom` の優先順位で決まる。
 pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
@@ -72,7 +63,6 @@ pub(super) fn lower_list(
       item_nodes.push(LayoutNode::Text(format!("{marker_body} "), marker_style));
     }
 
-    // アイテム内容を変換
     let content_nodes = lower_nodes_inner(&item_ctx, &item.content, registry, headings)?;
     item_nodes.extend(content_nodes);
 
@@ -124,8 +114,6 @@ mod tests {
   }
 
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
-  ///
-  /// インデントは `VBox.indent`（ブロック単位）で表すため、項目の先頭インラインはマーカー。
   fn marker_of(node: &LayoutNode) -> (&str, TextStyle) {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
@@ -138,7 +126,7 @@ mod tests {
 
   #[test]
   fn unordered_list_uses_marker_with_trailing_space() {
-    // Arrange — 既定 unordered_marker は "•"
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [item_with_text("apple")];
@@ -146,14 +134,14 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, false, &items, None).expect("解決済み内容なので失敗しない");
 
-    // Assert — マーカーは "• "（末尾スペース付き）
+    // Assert
     let (marker, _) = marker_of(&nodes[0]);
     assert_eq!(marker, "• ");
   }
 
   #[test]
   fn ordered_list_numbers_start_at_one_and_increment() {
-    // Arrange — 既定 ordered_marker_format は "{number}."
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [
@@ -165,7 +153,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
 
-    // Assert — 1,2,3 と連番で展開され、末尾スペースが付く
+    // Assert
     assert_eq!(nodes.len(), 3);
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
@@ -173,7 +161,7 @@ mod tests {
 
   #[test]
   fn ordered_list_with_start_numbers_from_start() {
-    // Arrange — `enumerate[start=5]` 相当。既定 ordered_marker_format は "{number}."
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [
@@ -185,15 +173,14 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, true, &items, Some(5)).expect("失敗しない");
 
-    // Assert — 5,6,7 と start からの連番で展開される
+    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
   }
 
   #[test]
   fn nested_start_does_not_affect_outer_numbering() {
-    // Arrange — 外側 enumerate（start 未指定）の 2 番目の item 内容に
-    // 内側 enumerate[start=10] を持たせる（AC: ネストは自リストのみに作用）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nested = DocNode::List {
@@ -213,7 +200,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
 
-    // Assert — 外側は 1,2 のまま。内側は 10 番目相当（深さ 1 の書式は AlphaLower なので "(j)"）から始まる
+    // Assert
     let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(outer_markers, vec!["1. ", "2. "]);
     let inner_vbox = first_nested_vbox(&nodes[1]);
@@ -222,7 +209,7 @@ mod tests {
 
   #[test]
   fn sibling_list_after_start_list_is_unaffected() {
-    // Arrange — 同じ registry を共有する 2 つの独立した最上位 enumerate（AC: 兄弟リストへの波及なし）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let doc_nodes = vec![
@@ -240,11 +227,10 @@ mod tests {
       },
     ];
 
-    // Act — `lower_nodes` は全ノードで 1 個の CounterRegistry を共有するため、
-    // list 呼び出し間の意図しない状態共有があればここで検出できる
+    // Act
     let nodes = crate::lower_nodes(&ctx, &doc_nodes).expect("失敗しない");
 
-    // Assert — 1 つ目は 5,6。2 つ目（兄弟リスト）は start に影響されず 1 から始まる
+    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["5. ", "6. ", "1. "]);
   }
@@ -259,8 +245,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
-    // Assert — VBox.indent=indent（ブロック単位）・先頭に Kern は出さない、
-    // margin_bottom=item_margin_bottom、marker_style は規定どおり
+    // Assert
     let list_style = &style.list;
     let (_, marker_style) = marker_of(&nodes[0]);
     let LayoutNode::VBox {
@@ -282,8 +267,7 @@ mod tests {
 
   #[test]
   fn nested_list_item_also_carries_indent() {
-    // Arrange — 項目内容にネストしたリストを含める。各段の item VBox に indent が乗ることで、
-    // build_blocks 側で外側 indent と累積され、ネスト項目が段ごとに深く字下げされる。
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nested = DocNode::List {
@@ -302,7 +286,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
-    // Assert — 外側 item VBox.indent == list.indent、内側ネスト item VBox にも同じ indent が乗る
+    // Assert
     let indent = style.list.indent.to_pt();
     let LayoutNode::VBox {
       children,
@@ -325,7 +309,7 @@ mod tests {
 
   #[test]
   fn item_marker_override_replaces_auto_marker() {
-    // Arrange — 3 項目中 2 番目だけ marker 上書き（AC: 未指定項目の自動番号はズレない）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut items = [
@@ -338,14 +322,14 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
 
-    // Assert — 1・3 番目は自動番号のまま、2 番目だけ上書きマーカー
+    // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
     assert_eq!(markers, vec!["1. ", "Q1. ", "3. "]);
   }
 
   #[test]
   fn item_marker_override_empty_string_omits_marker_text() {
-    // Arrange — marker="" はマーカー非表示・ぶら下げインデントのみ
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut items = [item_with_text("x")];
@@ -354,9 +338,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
 
-    // Assert — item VBox の先頭子がマーカーではなく内容そのもの（"x"）から始まる。
-    // マーカーが出力される場合は先頭が "x " や "• " 等のマーカー文字列になるはずなので、
-    // 先頭 Text が内容と完全一致することがマーカー省略の証拠になる。
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
       panic!("item は VBox であるべき: {:?}", nodes[0]);
     };
@@ -380,10 +362,6 @@ mod tests {
   }
 
   /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストの items を構築する
-  ///
-  /// `kinds[0]` は最上位リストの ordered フラグ。返り値は最上位リストの `items` で、
-  /// 呼び出し側は `lower_list(ctx, kinds[0], &items)` で lower する。各段は本文 1 段落と、
-  /// 最深でなければ次段のリスト（ordered フラグは `kinds[1]`）を 1 つ持つ。
   fn build_nested_items(kinds: &[bool]) -> Vec<ListItem> {
     let mut content = vec![DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])];
     if kinds.len() > 1 {
@@ -398,8 +376,6 @@ mod tests {
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す
-  ///
-  /// 段落は `VBox` にならないため、子のうち最初の `VBox` がネストしたリストの item に相当する。
   fn first_nested_vbox(node: &LayoutNode) -> &LayoutNode {
     let LayoutNode::VBox { children, .. } = node else {
       panic!("item は VBox であるべき: {node:?}");
@@ -423,7 +399,7 @@ mod tests {
 
   #[test]
   fn nested_unordered_markers_vary_by_depth() {
-    // Arrange — 3 段ネストした itemize（全段 unordered）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let kinds = [false, false, false];
@@ -432,13 +408,13 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — • → – → *（AC#1）
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
   }
 
   #[test]
   fn nested_ordered_markers_vary_by_depth() {
-    // Arrange — 3 段ネストした enumerate（全段 ordered）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let kinds = [true, true, true];
@@ -447,13 +423,13 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — 1. → (a) → i.（AC#2）
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
   }
 
   #[test]
   fn mixed_nesting_advances_each_kind_by_depth() {
-    // Arrange — itemize > enumerate > itemize の混在ネスト（AC#4）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let kinds = [false, true, false];
@@ -462,13 +438,13 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — 外 itemize は深さ 0 の •、中 enumerate は深さ 1 の (a)、内 itemize は深さ 2 の *
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
   }
 
   #[test]
   fn item_gap_env_override_applies_to_all_items() {
-    // Arrange — 環境単位の item_gap 指定は全項目の margin_bottom に反映される
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [item_with_text("a"), item_with_text("b")];
@@ -487,7 +463,7 @@ mod tests {
 
   #[test]
   fn item_gap_item_override_takes_priority_over_env() {
-    // Arrange — `\item[item_gap=...]` は環境単位の item_gap より優先される
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut items = [item_with_text("a"), item_with_text("b")];
@@ -496,7 +472,7 @@ mod tests {
     // Act
     let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0))).expect("失敗しない");
 
-    // Assert — 1 項目目は個別上書き、2 項目目は環境の item_gap
+    // Assert
     let LayoutNode::VBox {
       margin_bottom: gap0,
       ..
@@ -517,7 +493,7 @@ mod tests {
 
   #[test]
   fn item_gap_unspecified_falls_back_to_style_default() {
-    // Arrange — 環境・項目どちらも未指定なら style.list.item_margin_bottom を使う（回帰）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let items = [item_with_text("a")];
@@ -534,7 +510,7 @@ mod tests {
 
   #[test]
   fn item_gap_does_not_propagate_to_nested_list() {
-    // Arrange — 外側 item_gap 指定はネストしたリストへ非伝播（DocNode::List ごとに独立フィールド）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nested = DocNode::List {
@@ -548,10 +524,10 @@ mod tests {
       nested,
     ])];
 
-    // Act — 外側 item_gap = 5mm だが、ネストしたリストの lowering には渡らず None で扱われる
+    // Act
     let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(5.0))).expect("失敗しない");
 
-    // Assert — ネスト側 item の margin_bottom は style 既定のまま
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
       panic!("外側 item は VBox であるべき");
     };
@@ -567,7 +543,7 @@ mod tests {
 
   #[test]
   fn unordered_marker_sequence_cycles_after_fourth_level() {
-    // Arrange — 5 段ネストした itemize。5 段目（深さ 4）は 2 段目（深さ 1）の – に戻る
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let kinds = [false; 5];
@@ -576,13 +552,13 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — • → – → * → · → –（循環）
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);
   }
 
   #[test]
   fn nested_unordered_markers_use_style_override() {
-    // Arrange — style.list.nested_unordered_markers をカスタム系列に上書き
+    // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_unordered_markers = vec!["§".to_string(), "†".to_string()];
     let ctx = LoweringContext::new(&style);
@@ -592,13 +568,13 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — 最上位は既定の • のまま、ネスト段はカスタム系列を (depth - 1) % 2 で循環
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "§ ", "† "]);
   }
 
   #[test]
   fn nested_ordered_formats_use_style_override() {
-    // Arrange — style.list.nested_ordered_formats をカスタム系列に上書き（要素数 2 で循環を確認）
+    // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_ordered_formats = vec![
       config::NestedOrderedFormat {
@@ -617,7 +593,7 @@ mod tests {
     // Act
     let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
 
-    // Assert — 最上位は既定の "1. " のまま、深さ 1 は [I]、深さ 2 は要素数 2 で循環して一、に戻る
+    // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);
   }
 }

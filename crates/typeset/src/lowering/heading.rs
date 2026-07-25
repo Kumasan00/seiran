@@ -1,7 +1,4 @@
 //! 見出し（`DocNode::Heading`）の lowering
-//!
-//! 見出しレベルごとのフォントサイズ・番号書式・前後改頁を [`config::Style`] から取得し、
-//! スタイル付きテキストを `LayoutNode::VBox` に詰めて出力する。
 
 use model::{AnchorMark, HeadingKey, HeadingLevel, InlineNode, LabelId};
 
@@ -13,23 +10,6 @@ use super::{
 };
 
 /// 見出しをレイアウトノードに変換する
-///
-/// `HeadingStyle.format` テンプレートを [`expand_template`] で展開し、`VBox` に配置します。
-/// タイトル内の書体指定・インライン数式はスタイルを保持したまま埋め込まれます。
-/// Part レベルの場合は `PageBreak` を先行して出力します。
-///
-/// 見出しブロックの直前に [`LayoutNode::Anchor`]（[`AnchorMark::Heading`]）を出力し、
-/// PDF のしおり（アウトライン）と `\ref` 内部リンクの到達先を生成する。`label` は
-/// `\section[label=...]` で付与された参照ラベル（`\ref` 対象でなければ `None`）。
-///
-/// 見出しブロックの直後には、`page_break_after` なら [`LayoutNode::PageBreak`]（強制改ページ）を、
-/// そうでなければ [`LayoutNode::KeepWithNext`]（直後ブロックとの分割禁止＝keep-with-next）を出力する
-/// （両者は排他）。これにより見出しがページ末尾に孤立するのを防ぐ（#168）。
-///
-/// ## TODO
-///
-/// - [ ] 見出し番号のフォントスタイル（色、太さ等）を細かくカスタマイズ可能にする
-/// - [ ] 見出し前後のスペース（`margin_top` 等）を追加する
 pub(super) fn lower_heading(
   ctx: &LoweringContext,
   level: HeadingLevel,
@@ -89,7 +69,6 @@ mod tests {
 
   #[test]
   fn lower_heading_uses_style_template() {
-    // style.toml でテンプレを差し替えると見出し出力が追従することを確認する
     let mut style = ReadStyle::default();
     style.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
     let ctx = LoweringContext::new(&style);
@@ -121,8 +100,6 @@ mod tests {
 
   #[test]
   fn lower_heading_preserves_styled_title() {
-    // 見出しタイトル内の \italic は見出しのフォントサイズのまま SerifItalic の Text として保持される
-    // （見出しの既定書体は SerifBold なので、異なる書体としてマージされずに残る）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [
@@ -158,7 +135,6 @@ mod tests {
 
   #[test]
   fn lower_heading_emits_anchor_with_label() {
-    // 見出しは VBox の直前に AnchorMark::Heading（ラベル付き）を出す
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -177,7 +153,6 @@ mod tests {
       LayoutNode::Anchor(mark) => return Some(mark.clone()),
       _ => return None,
     });
-    // key は文書順インデックス（3）由来、label は \ref 用ラベル
     assert_eq!(
       anchor,
       Some(model::AnchorMark::Heading {
@@ -185,7 +160,6 @@ mod tests {
         label: Some(model::LabelId::new("sec:intro")),
       })
     );
-    // アンカーは VBox より前に出る
     let anchor_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Anchor(_))).unwrap();
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
     assert!(anchor_idx < vbox_idx, "アンカーは VBox より前: {nodes:?}");
@@ -193,7 +167,6 @@ mod tests {
 
   #[test]
   fn lower_heading_emits_keep_with_next_after_vbox() {
-    // 通常の見出し（page_break_after 無し）は VBox の直後に KeepWithNext を出し、PageBreak は出さない
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -216,7 +189,6 @@ mod tests {
 
   #[test]
   fn lower_heading_with_page_break_after_omits_keep_with_next() {
-    // page_break_after=true の見出しは PageBreak を出し、KeepWithNext は出さない（両者は排他）
     let mut style = ReadStyle::default();
     style.heading[HeadingLevel::Section].page_break_after = true;
     let ctx = LoweringContext::new(&style);
@@ -238,8 +210,6 @@ mod tests {
 
   #[test]
   fn ref_in_heading_title_becomes_placeholder() {
-    // 見出しタイトルに含まれる \ref は即時解決せず LayoutNode::Ref プレースホルダになる
-    // （解決は pass2 = resolve::resolve_refs が担う）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 

@@ -1,15 +1,7 @@
 //! 参照定義ファイルの読込（`references.toml` / `.json`）から文献引用（`\cite`）の CSL 整形・
 //! 参考文献リスト（書誌）生成までを 1 クレートに閉じる。
 //!
-//! パーサ（pass1/pass2）が確定した `InlineNode::Cite`（`label: None`）のスタブを、CSL エンジン
-//! hayagriva で整形して `label` を確定し、引用された文献の書誌を本文末尾に自動追加する。
-//! パイプライン上は parser の後・lowering の前に挟む 1 ステージで、以降は通常の `DocNode` なので
-//! lowering 以降は無改修。
-//!
-//! - `references`（非公開） — 参照定義ファイルの読込。公開型（[`Reference`] / [`References`] 等）
-//!   はこの crate root で再エクスポートする。
-//! - [`bridge`]: [`Reference`] → CSL-JSN 担体 `citationberg::json::Item` への変換アダプタ。
-//! - [`render`]: `BibliographyDriver` の駆動・引用ラベルと書誌 `DocNode` の生成。
+//! parser の後・lowering の前で `InlineNode::Cite` を整形し、生成した書誌を返す。
 
 use std::{collections::HashMap, io};
 
@@ -118,13 +110,8 @@ pub enum CitationError {
 
 /// `\cite` を CSL 整形し、生成した書誌ブロックを返す。
 ///
-/// `docs` は複数ソースグループの本文（各 `&mut Vec<DocNode>`）を**ドキュメント順**に並べたもの。
-/// 全グループを横断して `InlineNode::Cite` を走査し、CSL スタイルに従って `label` を確定
-/// （採番 `[1][2]…`）して各 `Cite` ノードへ書き戻す。引用された文献の書誌（References 見出し +
-/// 段落群）は各グループの本文には追加せず、**関数の戻り値として返す**（呼び出し側が最後のグループ
-/// として連結する）。引用が 1 件もなければ空の `Vec` を返す。
-///
-/// グループ構造には依存せず、走査順（`docs` のイテレーション順）がそのままドキュメント順になる。
+/// `docs` を順に走査して各 `InlineNode::Cite` のラベルを書き換える。書誌は本文へ追加せず返し、
+/// 引用が無ければ空の `Vec` を返す。
 ///
 /// # Errors
 ///
@@ -135,8 +122,6 @@ pub fn process_citations<'a>(
   references: &References,
   style: &Style,
 ) -> Result<Vec<DocNode>, CitationError> {
-  // 全グループをドキュメント順に走査し、Cite ノードへの可変参照を集める。収集順がそのまま hayagriva
-  // への投入順となり、ラベルの書き戻し順とも一致する（同一の走査結果を使うので index がずれない）。
   let mut cite_nodes: Vec<&mut InlineNode> = Vec::new();
   for nodes in docs {
     collect_cite_nodes(nodes, &mut cite_nodes);
@@ -145,7 +130,6 @@ pub fn process_citations<'a>(
     return Ok(Vec::new());
   }
 
-  // 各 cite サイトの引用キー列（ドキュメント順）。
   let cite_sites: Vec<Vec<String>> = cite_nodes
     .iter()
     .map(|node| match node {
@@ -154,14 +138,12 @@ pub fn process_citations<'a>(
     })
     .collect();
 
-  // 引用されたキーのみ CSL-JSN 担体 Item 化する。採番・整列・書誌生成は引用集合だけで完結し
-  // （未引用文献は hayagriva に渡らない）、未引用の不正な文献で build を巻き込まないため。
+  // 未引用文献の変換エラーでビルドを失敗させないよう、引用された文献だけを変換する。
   let mut entries: HashMap<String, Item> = HashMap::new();
   for key in cite_sites.iter().flatten() {
     if entries.contains_key(key) {
       continue;
     }
-    // parser がキー存在を保証するが、念のため references に無いキーはスキップ（render の filter_map と整合）。
     let Some(reference) = references.get(key) else {
       continue;
     };
@@ -174,8 +156,6 @@ pub fn process_citations<'a>(
     entries.insert(key.clone(), item);
   }
 
-  // CSL スタイルは style.toml の [reference].csl_path が指す .csl を読む。引用があるのに未設定なら
-  // エラーとする（整形規則＝見た目なので style.toml 側に置く。詳細は config::ReferenceStyle）。
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
   let style_xml = std::fs::read_to_string(csl_path).map_err(|source| {
@@ -190,20 +170,16 @@ pub fn process_citations<'a>(
       source,
     };
   })?;
-  // ロケールプール（必要な内蔵ロケールにカスタムを overlay）と、出力言語の override を組み立てる。
-  // active locale 解決に .csl の default-locale を渡し、実際に引かれる内蔵ロケールだけを読む。
   let (locales, locale_override) = load_locales(style, csl_style.default_locale.as_ref())?;
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
   let citation_count = cite_nodes.len();
-  // ラベルを書き戻す（収集と同じドキュメント順なので zip で対応づく）。
   for (node, label) in cite_nodes.iter_mut().zip(rendered.labels) {
     if let InlineNode::Cite { label: slot, .. } = node {
       *slot = Some(label);
     }
   }
-  // 可変借用を解放してから書誌を返す（呼び出し側が最後のグループとして連結する）。
   drop(cite_nodes);
 
   let bibliography_count = rendered.bibliography.len();
@@ -212,9 +188,6 @@ pub fn process_citations<'a>(
 }
 
 /// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
-///
-/// 走査範囲は `frontend::evaluator::cite` のキー存在検証と同じ木構造（見出しタイトル・段落・図キャプ
-/// ション・リスト項目・表セル/キャプション）。`\cite` が出現しない数式・罫線等はスキップする。
 fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut InlineNode>) {
   for node in nodes {
     match node {
@@ -229,7 +202,6 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
           collect_cite_nodes(&mut item.content, out);
         }
       },
-      // 定理本体・引用本体は通常の本文と同じく `\cite` を含みうるため再帰する
       DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_cite_nodes(body, out),
       DocNode::Table {
         head,
@@ -279,18 +251,8 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 
 /// 引用整形に用いるロケールプールと、出力言語（active locale）の override を組み立てる。
 ///
-/// `style.reference.locale_path` が指定されていれば、その CSL ロケール XML を読み込み・解析して
-/// プールの**先頭**に重ねる（overlay。`lookup_locale` は先頭一致を採るため、同一言語コードは
-/// カスタムが内蔵より優先される）。続けて、引用整形で実際に参照される内蔵ロケールだけを
-/// [`load_builtin_locales`] で読み足す（en-US フォールバックは常に含むので全言語のフォールバックは効く）。
-///
-/// 出力言語の override は次の優先順位で決まる:
-/// 1. `style.reference.locale`（明示指定のロケールコード）
-/// 2. `locale_path` のファイルの `xml:lang`（カスタムロケール指定時のみ）
-/// 3. いずれも無ければ `None`（`.csl` の `default-locale`、最終的に en-US に委ねる）
-///
-/// `csl_default_locale` は `.csl` の `default-locale`。override も無いときの active locale を
-/// hayagriva と同じ順序（override → `.csl` default → en-US）で解決し、読み込む内蔵ロケールを絞るのに使う。
+/// カスタムロケールを内蔵ロケールより前に置く。active locale は `style.reference.locale`、
+/// カスタムファイルの `xml:lang`、`csl_default_locale`、en-US の順に解決する。
 ///
 /// # Errors
 ///
@@ -299,7 +261,6 @@ fn load_locales(
   style: &Style,
   csl_default_locale: Option<&LocaleCode>,
 ) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
-  // カスタムロケールがあれば先頭に重ね、そのファイル言語を override 既定値として控える。
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
     let xml = std::fs::read_to_string(path).map_err(|source| {
@@ -320,12 +281,8 @@ fn load_locales(
     (None, None)
   };
 
-  // 明示指定の locale が最優先、無ければカスタムファイルの言語、それも無ければ None。
   let locale_override = style.reference.locale.as_ref().map(|code| return LocaleCode(code.clone())).or(file_lang);
 
-  // hayagriva の lookup_locale がプール（locale_files）に対して引くのは「出力ロケール（active locale）・
-  // その地域フォールバック・最終フォールバックの en-US」だけ。active = override → .csl default → en-US の
-  // 順で解決し（hayagriva の self.locale() と一致）、その 3 コードだけを内蔵から読む（重複は除く）。
   let active = locale_override
     .clone()
     .or_else(|| return csl_default_locale.cloned())
@@ -344,7 +301,6 @@ fn load_locales(
     }
   }
 
-  // カスタムを先頭に、必要な内蔵ロケールを後続に並べる（同一コードはカスタムが先頭一致で勝つ）。
   let mut locales = Vec::with_capacity(wanted.len() + usize::from(custom.is_some()));
   locales.extend(custom);
   load_builtin_locales(&wanted, &mut locales);
@@ -353,10 +309,6 @@ fn load_locales(
 }
 
 /// `archive::LOCALES` の CBOR から `lang`（`@xml:lang`）だけを安価に読み出すための部分デコード対象。
-///
-/// 完全な [`Locale`] は用語表・日付書式まで構築するため 1 件あたりのデコードが重い。目的のロケール
-/// かどうかは `lang` だけで判定できるので、まずこの構造体で `lang` のみを取り出し（残りのフィールドは
-/// serde が読み飛ばす）、一致したものだけを完全復元する。
 #[derive(serde::Deserialize)]
 struct LocaleLang {
   /// ロケールの言語コード（`@xml:lang`）。
@@ -366,26 +318,18 @@ struct LocaleLang {
 
 /// `wanted` に挙げたコードに一致する内蔵ロケールだけを `archive::LOCALES`（CBOR バイト列）から
 /// 復元して `out` に追加する。すべて見つかった時点で走査を打ち切る。
-///
-/// 全 63 ロケールを完全復元する [`archive::locales`] は約 30ms かかるが、引用整形が実際に参照するのは
-/// 出力ロケール・その地域フォールバック・en-US の高々 3 件。ここでは各バイト列からまず [`LocaleLang`]
-/// で `lang` だけを読んで非一致を読み飛ばし、一致した数件のみ完全復元することで起動コストを抑える
-/// （全件読み飛ばしても約 5ms）。`archive::LOCALES` は公開された CBOR バイト列で各要素は公開型 [`Locale`]
-/// にデコードでき、ロケールの並び順には依存しない。
 fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
   let mut remaining = wanted.len();
   for bytes in archive::LOCALES {
     if remaining == 0 {
       break;
     }
-    // まず lang だけを安価に読み、目的のロケールでなければ用語表を構築せずに読み飛ばす。
     let Ok(peek) = ciborium::de::from_reader::<LocaleLang, _>(*bytes) else {
       continue;
     };
     if !peek.lang.is_some_and(|lang| return wanted.contains(&lang)) {
       continue;
     }
-    // 一致したものだけを完全復元する。内蔵 CBOR が壊れていることはないが、失敗時は飛ばす。
     if let Ok(locale) = ciborium::de::from_reader::<Locale, _>(*bytes) {
       out.push(locale);
       remaining -= 1;
@@ -410,47 +354,44 @@ mod tests {
     test_fixtures::{ieee_csl_path, sample_references},
   };
 
-  /// テスト用: 単一ドキュメントに [`process_citations`] を適用し、返った書誌を末尾へ連結する。
-  ///
-  /// `process_citations` は書誌を戻り値で返す（グループ構造非依存）ように変わったため、旧来の
-  /// 「`nodes` 末尾へ追加する」挙動を再現して既存アサーションをそのまま活かすためのヘルパ。
+  /// 単一ドキュメントを処理し、返った書誌を末尾へ連結する。
   fn process_and_append(nodes: &mut Vec<DocNode>, references: &References, style: &Style) -> Result<(), CitationError> {
     let bibliography = process_citations(std::iter::once(&mut *nodes), references, style)?;
     nodes.extend(bibliography);
     return Ok(());
   }
 
-  /// クレート同梱のカスタム en-US ロケール（`tests/data/custom-en-US.xml`）への絶対パスを返す。
+  /// テスト用カスタムロケールへの絶対パスを返す。
   fn custom_locale_path() -> PathBuf {
     return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/custom-en-US.xml");
   }
 
-  /// CSL スタイル（IEEE）を設定した `Style` を作る。引用整形に最低限必要な設定。
+  /// IEEE の CSL スタイルを設定した `Style` を作る。
   fn style_with_csl() -> Style {
     let mut style = Style::default();
     style.reference.csl_path = Some(ieee_csl_path());
     return style;
   }
 
-  /// CSL スタイルに加えてカスタムロケール（`locale_path`）を設定した `Style` を作る。
+  /// CSL スタイルとカスタムロケールを設定した `Style` を作る。
   fn style_with_locale_path(path: PathBuf) -> Style {
     let mut style = style_with_csl();
     style.reference.locale_path = Some(path);
     return style;
   }
 
-  /// ロケールの言語コード（`xml:lang`）を文字列スライスで取り出すヘルパ。
+  /// ロケールの言語コードを返す。
   fn lang_of(locale: &Locale) -> Option<&str> { return locale.lang.as_ref().map(|code| return code.0.as_str()); }
 
   #[test]
   fn load_locales_without_custom_loads_only_active() {
-    // Arrange — locale_path / locale ともに未指定、.csl default も無し（active = en-US）
+    // Arrange
     let style = Style::default();
 
     // Act
     let (locales, locale_override) = load_locales(&style, None).expect("内蔵 en-US のみで成功するはず");
 
-    // Assert — 全 63 ロケールではなく en-US 1 件だけを読む、override は無し
+    // Assert
     assert_eq!(locales.len(), 1, "active=en-US なら en-US 1 件だけ: {locales:?}");
     assert_eq!(lang_of(&locales[0]), Some("en-US"));
     assert!(locale_override.is_none(), "override 指定が無ければ None");
@@ -458,13 +399,13 @@ mod tests {
 
   #[test]
   fn load_locales_overlays_custom_before_builtin() {
-    // Arrange — カスタム en-US ロケールを指定
+    // Arrange
     let style = style_with_locale_path(custom_locale_path());
 
     // Act
     let (locales, locale_override) = load_locales(&style, None).expect("カスタムロケールの読み込みは成功するはず");
 
-    // Assert — 先頭がカスタム、後続に内蔵 en-US フォールバック（同一コードはカスタムが先頭一致で勝つ）
+    // Assert
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
     let expected: Locale = LocaleFile::from_xml(&xml).expect("フィクスチャは有効な CSL ロケールのはず").into();
     assert_eq!(locales[0], expected, "先頭はカスタムロケール（同一言語コードはカスタム優先）");
@@ -472,33 +413,32 @@ mod tests {
       locales[1..].iter().any(|locale| return lang_of(locale) == Some("en-US")),
       "内蔵 en-US フォールバックが続くはず: {locales:?}"
     );
-    // locale 明示が無いので、override 既定値はカスタムファイルの言語（custom-en-US.xml → en-US）
     assert_eq!(locale_override.expect("ファイル言語が override 既定になる").0.as_str(), "en-US");
   }
 
   #[test]
   fn load_locales_explicit_locale_overrides_file_lang() {
-    // Arrange — カスタムは en-US だが、明示 locale = ja-JP を指定
+    // Arrange
     let mut style = style_with_locale_path(custom_locale_path());
     style.reference.locale = Some("ja-JP".to_string());
 
     // Act
     let (_locales, locale_override) = load_locales(&style, None).expect("読み込みは成功するはず");
 
-    // Assert — 明示指定がファイル言語(en-US)より優先される
+    // Assert
     assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
   }
 
   #[test]
   fn load_locales_explicit_locale_loads_active_and_fallback() {
-    // Arrange — ロケールファイル無し、明示 locale = ja-JP（内蔵 ja-JP 用語を使う想定）
+    // Arrange
     let mut style = Style::default();
     style.reference.locale = Some("ja-JP".to_string());
 
     // Act
     let (locales, locale_override) = load_locales(&style, None).expect("成功するはず");
 
-    // Assert — active(ja-JP) と en-US フォールバックだけを読む（全 63 件は読まない）
+    // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
     assert!(langs.contains(&"ja-JP"), "明示 locale ja-JP を読むはず: {langs:?}");
     assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
@@ -508,14 +448,14 @@ mod tests {
 
   #[test]
   fn load_locales_uses_csl_default_when_no_override() {
-    // Arrange — override も locale_path も無いが、.csl の default-locale が de-DE
+    // Arrange
     let style = Style::default();
     let csl_default = LocaleCode("de-DE".to_string());
 
     // Act
     let (locales, locale_override) = load_locales(&style, Some(&csl_default)).expect("成功するはず");
 
-    // Assert — active=de-DE を内蔵から読み、en-US フォールバックも含む。override は None のまま
+    // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
     assert!(langs.contains(&"de-DE"), ".csl default の de-DE を読むはず: {langs:?}");
     assert!(langs.contains(&"en-US"), "en-US フォールバックも読むはず: {langs:?}");
@@ -524,7 +464,7 @@ mod tests {
 
   #[test]
   fn load_locales_reports_missing_file() {
-    // Arrange — 実在しないパス
+    // Arrange
     let style = style_with_locale_path(PathBuf::from("/nonexistent/locales-en-US.xml"));
 
     // Act
@@ -536,7 +476,7 @@ mod tests {
 
   #[test]
   fn load_locales_reports_malformed_file() {
-    // Arrange — CSL ロケールでない内容のファイル
+    // Arrange
     let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
     let style = style_with_locale_path(file.path().to_path_buf());
@@ -550,7 +490,7 @@ mod tests {
 
   #[test]
   fn process_citations_succeeds_with_custom_locale() {
-    // Arrange — カスタムロケールを設定して引用を含む本文を整形
+    // Arrange
     let references = sample_references();
     let style = style_with_locale_path(custom_locale_path());
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
@@ -558,7 +498,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("カスタムロケールでも整形は成功するはず");
 
-    // Assert — 書誌見出しが追加される
+    // Assert
     let has_heading = nodes.iter().any(|node| matches!(node, DocNode::Heading { .. }));
     assert!(has_heading, "References 見出しが追加されるはず");
   }
@@ -574,7 +514,7 @@ mod tests {
 
   #[test]
   fn process_citations_resolves_labels_and_appends_bibliography() {
-    // Arrange — 2 件を引用する段落
+    // Arrange
     let references = sample_references();
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![
@@ -587,7 +527,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — 両方の cite に非空の番号ラベルが付く（IEEE は [n] 形式）
+    // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
       panic!("先頭は段落のはず");
     };
@@ -605,7 +545,7 @@ mod tests {
       assert!(label.contains('['), "IEEE numeric は [n] 形式のはず: {label}");
     }
 
-    // Assert — 末尾に References 見出し + 書誌段落が追加される
+    // Assert
     let has_heading = nodes.iter().any(|node| {
       return matches!(node, DocNode::Heading { title, .. }
         if title.iter().map(InlineNode::to_plain_text).collect::<String>().contains("References"));
@@ -617,7 +557,7 @@ mod tests {
 
   #[test]
   fn process_citations_single_key_links_label() {
-    // Arrange — 単一キーの引用
+    // Arrange
     let references = sample_references();
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
@@ -625,7 +565,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — ラベル内に cite:kwan2014 への内部リンク（番号）が含まれる
+    // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
       panic!("先頭は段落のはず");
     };
@@ -643,7 +583,7 @@ mod tests {
 
   #[test]
   fn process_citations_multi_key_produces_per_entry_links() {
-    // Arrange — 1 つの \cite で 2 件を引用（\cite{kwan2014, doe2020}）
+    // Arrange
     let references = sample_references();
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
@@ -655,7 +595,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — 各番号が対応キーへの個別 InternalLink になる
+    // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
       panic!("先頭は段落のはず");
     };
@@ -679,7 +619,7 @@ mod tests {
 
   #[test]
   fn process_citations_adds_bibliography_anchors() {
-    // Arrange — 引用 1 件
+    // Arrange
     let references = sample_references();
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
@@ -687,7 +627,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — 書誌に kwan2014 の CitationId アンカーが入り、その直後が書誌段落
+    // Assert
     let pos = nodes
       .iter()
       .position(|node| matches!(node, DocNode::Anchor(key) if key.as_str() == "kwan2014"))
@@ -701,7 +641,7 @@ mod tests {
 
   #[test]
   fn process_citations_without_cites_is_noop() {
-    // Arrange — 引用を含まない本文
+    // Arrange
     let references = sample_references();
     let style = Style::default();
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Text(
@@ -712,13 +652,13 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("成功するはず");
 
-    // Assert — 書誌は追加されない
+    // Assert
     assert_eq!(nodes.len(), before, "引用がなければ書誌は追加されない");
   }
 
   #[test]
   fn process_citations_errors_when_csl_path_missing() {
-    // Arrange — 引用はあるが csl_path 未設定（既定の Style）
+    // Arrange
     let references = sample_references();
     let style = Style::default();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
@@ -732,9 +672,7 @@ mod tests {
 
   #[test]
   fn process_citations_ignores_uncited_malformed_reference() {
-    // Arrange — 引用する正常な文献 + 引用しない不正な文献（date-parts の年が i16 を超え to_item で
-    // 失敗する）。修正前は全文献を Item 化していたため未引用の不正文献だけで build が
-    // CitationError::BuildEntry で落ちていたが、引用集合のみ変換する現在は成功する。
+    // Arrange
     let toml = String::from(
       "[kwan2014]\n\
        type = \"book\"\n\
@@ -756,10 +694,10 @@ mod tests {
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
-    // Act — 正常な kwan2014 のみを引用（bad9999 は未引用）
+    // Act
     let result = process_and_append(&mut nodes, &references, &style);
 
-    // Assert — 未引用の不正文献は変換対象外なのでビルドを巻き込まない
+    // Assert
     assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
   }
 
@@ -790,7 +728,7 @@ mod tests {
 
   #[test]
   fn process_citations_bibliography_italicizes_titles() {
-    // Arrange — 書籍 1 件・論文 1 件を引用（IEEE は書名・誌名をイタリックで組む）
+    // Arrange
     let references = sample_references();
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014"), cite("doe2020")])];
@@ -798,7 +736,7 @@ mod tests {
     // Act
     process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
 
-    // Assert — 書誌段落のどこかに、イタリックで包まれた書名/誌名が現れる
+    // Assert
     let mut italic_texts: Vec<String> = Vec::new();
     for node in &nodes {
       if let DocNode::Paragraph(inlines) = node {

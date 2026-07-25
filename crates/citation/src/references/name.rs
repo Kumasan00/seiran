@@ -1,10 +1,6 @@
 //! 著者名の型と検証付きデシリアライズ。
 //!
-//! CSL の name オブジェクトはフィールドに判別タグを持たないため、`family`（個人著者）と
-//! `literal`（組織著者）の排他性を手書きの [`Deserialize`] 実装（同モジュールの [`Date`](crate::references::Date) と
-//! 同じ方式）で検証し、確定型 [`Name`]（`Personal` / `Organization` の 2 択）へ直接デシリアライズする。
-//! これにより不正状態（両方指定／両方不指定）は確定型 [`Name`] には表現できなくなる。検証違反は
-//! デシリアライズ時点で fail-fast にエラーとし、未知のフィールドも拒否してフィールド名のタイポを検出する。
+//! `family` と `literal` の排他性を検証し、個人名または組織名として確定する。
 
 use std::fmt;
 
@@ -17,9 +13,7 @@ use thiserror::Error;
 
 /// 検証済みの著者情報を表す列挙型
 ///
-/// 個人著者（`family` 必須）と組織著者（`literal` 必須）を型レベルで区別する。`family` と `literal`
-/// が同時に存在する／いずれも存在しないという不正状態は構築不能であり、手書きの [`Deserialize`] 実装が
-/// この不変条件を保証する。組織著者では個人名専用フィールド（`given` 等）は意味を持たないため保持しない。
+/// 個人著者と組織著者を型レベルで区別する。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Name {
   /// 個人著者
@@ -43,9 +37,6 @@ pub enum Name {
 }
 
 /// name オブジェクトの検証失敗を表すメッセージ。
-///
-/// `family` と `literal` の排他性違反を表す。`Diagnostic` は実装せず、メッセージはデシリアライズ時に
-/// [`serde::de::Error::custom`] へ渡され、TOML / JSON の解析エラーとして報告される。
 #[derive(Debug, Error)]
 pub enum NameError {
   /// `family` と `literal` が同時に指定された
@@ -64,9 +55,6 @@ impl<'de> Deserialize<'de> for Name {
     D: serde::Deserializer<'de>,
   {
     /// `Name` のデシリアライズを担う `Visitor`。
-    ///
-    /// CSL の name オブジェクトを受理し、`family`（個人著者）と `literal`（組織著者）の排他性を検証して
-    /// [`Name`] に確定する。未知のキーはエラーとして拒否する（フィールド名のタイポ検出のため）。
     struct NameVisitor;
 
     impl<'de> Visitor<'de> for NameVisitor {
@@ -130,11 +118,6 @@ impl<'de> Deserialize<'de> for Name {
 
 impl Serialize for Name {
   /// CSL の name オブジェクト（フラットなマップ）として出力する。
-  ///
-  /// [`Deserialize`] の逆変換であり、個人著者は `family` と任意の補助フィールド（`given` /
-  /// `dropping-particle` / `non-dropping-particle` / `suffix`）を、組織著者は `literal` のみを出す。
-  /// キー名は CSL の kebab-case に合わせる（hayagriva の CSL-JSN 担体 `citationberg::json::NameItem`
-  /// が読む形）。`None` のフィールドは出力しない。
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: serde::Serializer,

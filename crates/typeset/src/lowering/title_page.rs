@@ -1,12 +1,4 @@
 //! タイトルページ（`\maketitle` 相当）の lowering
-//!
-//! ソース側にコマンドを追加せず、`config.toml` の `[document]` メタデータ（title / author /
-//! date）と `style.toml` の `[title_page]` から自動生成する。タイトル・著者・日付を中央寄せの
-//! 段落として縦に積んだ [`LayoutNode::VBox`]（`align = Center`）に、本文を次ページから始める
-//! ための [`LayoutNode::PageBreak`] を続けた列を返す。
-//!
-//! 空（`None` または空白のみ）の要素は描画しない。要素間の縦アキは「直前要素の下マージン」を
-//! 次の要素の前に挿入することで、欠落要素があってもアキが二重に出ないようにする。
 
 use config::TitlePageStyle;
 use model::{Align, FontKind, Length};
@@ -14,9 +6,6 @@ use model::{Align, FontKind, Length};
 use super::layout_node::{LayoutNode, TextStyle};
 
 /// タイトルページに載せる文書メタデータ。
-///
-/// `config.toml` の `[document]` から `build_pdf` が組み立てる。各要素は `Option` で、
-/// 未設定（`None`）または空白のみの場合はタイトルページに描画しない。
 #[derive(Debug, Clone, Default)]
 pub struct TitlePageMetadata {
   /// タイトル（`[document] title`）
@@ -28,17 +17,10 @@ pub struct TitlePageMetadata {
 }
 
 /// タイトルページのレイアウトノード列を生成する。
-///
-/// 戻り値は `[VBox(中央寄せ), PageBreak]`（メタデータが全て空なら `[PageBreak]`）。`build_pdf` が
-/// この列を本文の先頭に prepend することで、タイトルページが先頭ページ・本文が次ページから始まる。
-///
-/// 呼び出し側は `style.title_page.enabled` が真のときだけ呼ぶこと（有効判定はここでは行わない）。
 #[must_use]
 pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec<LayoutNode> {
-  // タイトル/著者/日付の本体（テキスト + 要素間アキ）を先に組み立てる。
   let mut body: Vec<LayoutNode> = Vec::new();
 
-  // (テキスト, フォントサイズ, フォント種別, この要素の下マージン) を文書順に並べる。
   let entries: [(Option<&str>, Length, FontKind, Length); 3] = [
     (meta.title.as_deref(), style.title_font_size, style.title_font_kind, style.title_bottom_margin),
     (meta.author.as_deref(), style.author_font_size, style.author_font_kind, style.author_bottom_margin),
@@ -68,10 +50,8 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
   }
 
   let mut result: Vec<LayoutNode> = Vec::with_capacity(2);
-  // 載せる要素が 1 つでもあるときだけ中央寄せ VBox を出す（空のタイトルページは作らない）。
   if !body.is_empty() {
     let mut children: Vec<LayoutNode> = Vec::with_capacity(body.len() + 1);
-    // ページ上端からタイトルまでの送り（垂直位置の簡易指定）。本体があるときだけ付ける。
     if style.top_margin.is_positive() {
       children.push(LayoutNode::Vkern {
         length: style.top_margin,
@@ -86,7 +66,6 @@ pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec
       align: Align::Center,
     });
   }
-  // タイトルページの後に改ページし、本文を次ページから始める
   result.push(LayoutNode::PageBreak);
   return result;
 }
@@ -136,7 +115,7 @@ mod tests {
     // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert — 末尾は PageBreak、VBox は中央寄せでタイトル/著者/日付の順
+    // Assert
     assert!(matches!(nodes.last(), Some(LayoutNode::PageBreak)), "末尾は PageBreak: {nodes:?}");
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["My Title", "Me", "2026-06-15"]);
@@ -144,7 +123,7 @@ mod tests {
 
   #[test]
   fn title_uses_style_font_size_and_kind() {
-    // Arrange — タイトルのフォントサイズ・種別がスタイルから反映される
+    // Arrange
     let meta = TitlePageMetadata {
       title: Some("T".to_string()),
       ..TitlePageMetadata::default()
@@ -172,7 +151,7 @@ mod tests {
 
   #[test]
   fn missing_author_skips_element_and_its_gap() {
-    // Arrange — 著者なし。タイトルと日付だけが並び、間の Vkern は 1 つ（title_bottom_margin）
+    // Arrange
     let meta = TitlePageMetadata {
       title: Some("T".to_string()),
       author: None,
@@ -183,17 +162,16 @@ mod tests {
     // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert — Text は T, D の 2 つ。両者の間に Vkern が 1 つだけ
+    // Assert
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["T", "D"]);
     let vkern_count = children.iter().filter(|n| matches!(n, LayoutNode::Vkern { .. })).count();
-    // 先頭 top_margin Vkern + 要素間 1 つ = 2
     assert_eq!(vkern_count, 2, "top_margin と要素間アキで Vkern は 2 つ: {children:?}");
   }
 
   #[test]
   fn empty_metadata_yields_only_page_break() {
-    // Arrange — メタデータが全て空のとき VBox は出さず PageBreak のみ
+    // Arrange
     let meta = TitlePageMetadata::default();
     let style = TitlePageStyle::default();
 
@@ -207,7 +185,7 @@ mod tests {
 
   #[test]
   fn blank_title_is_treated_as_empty() {
-    // Arrange — 空白のみのタイトルは描画しない
+    // Arrange
     let meta = TitlePageMetadata {
       title: Some("   ".to_string()),
       author: Some("A".to_string()),
@@ -218,7 +196,7 @@ mod tests {
     // Act
     let nodes = lower_title_page(&meta, &style);
 
-    // Assert — 著者だけが残る
+    // Assert
     let children = title_vbox_children(&nodes);
     assert_eq!(texts(children), vec!["A"]);
   }

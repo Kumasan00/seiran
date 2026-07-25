@@ -1,8 +1,4 @@
-//! ソース位置情報 [`Span`]
-//!
-//! Document IR（[`crate::DocNode`] / [`crate::InlineNode`] / [`crate::MathNode`]）が保持する
-//! ソーステキスト上のバイト範囲。`model` は診断表示（`miette`）を持ち込まないため、`miette::SourceSpan`
-//! への変換は消費側（`frontend` の構築点・`lowering` の診断構築点）が担う。
+//! ソーステキスト上のバイト範囲 [`Span`]。
 
 /// ソーステキスト上のバイト範囲
 ///
@@ -19,12 +15,7 @@ impl Span {
   /// 空の Span（位置情報がない場合のプレースホルダー）
   pub const DUMMY: Span = Span { start: 0, end: 0 };
 
-  /// 新しい Span を生成する
-  ///
-  /// # Arguments
-  ///
-  /// * `start` - 開始バイトオフセット
-  /// * `end` - 終了バイトオフセット（exclusive）
+  /// 開始・終了バイトオフセットから生成する
   #[must_use]
   pub fn new(start: u32, end: u32) -> Self { return Span { start, end }; }
 
@@ -36,11 +27,7 @@ impl Span {
   #[must_use]
   pub fn is_empty(self) -> bool { return self.end == self.start; }
 
-  /// 2 つの Span を結合して、両方を含む最小の Span を返す
-  ///
-  /// # Arguments
-  ///
-  /// * `other` - 結合対象の Span
+  /// 2 つの Span を含む最小の Span を返す
   #[must_use]
   pub fn merge(self, other: Span) -> Span {
     return Span {

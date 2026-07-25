@@ -1,8 +1,4 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
-//!
-//! `figure` / `table`（および将来の定理環境などのブロック要素）が共用する。
-//! キャプションは [`expand_template`] で展開するため、キャプション内の
-//! 書体指定・インライン数式もスタイルを保持したまま埋め込まれる。
 
 use config::CaptionStyle;
 use model::{CaptionPosition, FontKind, InlineNode, Length};
@@ -47,14 +43,6 @@ pub(super) struct FloatSpec {
 }
 
 /// 本体とキャプションを `caption_position` の順序で積み、上下マージン付きの `VBox` で包む
-///
-/// `caption` が `None` のときはキャプション行を一切出力しない。
-/// 本体とキャプションの縦区切りは `Vkern`（`inner_margin`）のみで表し、
-/// ブロック境界の判断は縦組版層（`build_blocks` の `VBox` 再帰平坦化）に委ねる。
-///
-/// 図表は既定で中央寄せ（`align = Center`）にする。`VBox` の `align` は配下の本体
-/// （画像・表）とキャプション段落の双方に伝播するため、本体が本文幅より狭ければ
-/// 本体・キャプションがともに中央へ寄る（全幅の表・画像はオフセット 0 で動かない）。
 pub(super) fn wrap_float(
   main: LayoutNode,
   caption: Option<(CaptionPosition, Vec<LayoutNode>)>,
@@ -132,7 +120,7 @@ mod tests {
 
   #[test]
   fn wrap_float_top_orders_caption_inner_kern_then_main() {
-    // Arrange — top=5 / bottom=7 / inner=3 で各 Vkern を区別できるようにする
+    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
@@ -142,7 +130,7 @@ mod tests {
     // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
 
-    // Assert — [Vkern(top), VBox{ [caption, Vkern(inner), main], margin_bottom=bottom }]
+    // Assert
     assert_eq!(nodes.len(), 2);
     assert_vkern(&nodes[0], 5.0);
     let LayoutNode::VBox {
@@ -173,7 +161,7 @@ mod tests {
     // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Bottom, vec![caption_node("cap")])), &spec);
 
-    // Assert — VBox children が main → Vkern(inner) → caption の順
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
@@ -184,7 +172,7 @@ mod tests {
 
   #[test]
   fn wrap_float_zero_inner_margin_still_emits_harmless_vkern() {
-    // Arrange — inner_margin が 0pt でも Vkern は常に出る（VSpace(0) は縦組版層で no-op）
+    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
@@ -194,7 +182,7 @@ mod tests {
     // Act
     let nodes = wrap_float(main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &spec);
 
-    // Assert — caption → Vkern(0) → main の 3 要素。間の Vkern は 0pt
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
@@ -204,7 +192,7 @@ mod tests {
 
   #[test]
   fn wrap_float_without_caption_contains_only_main() {
-    // Arrange — caption が None なら VBox には本体のみ
+    // Arrange
     let spec = FloatSpec {
       top_margin: Length::pt(5.0),
       bottom_margin: Length::pt(7.0),
@@ -224,7 +212,7 @@ mod tests {
 
   #[test]
   fn build_caption_expands_template_with_serif_caption_style() {
-    // Arrange — format の {number}/{title} が展開され、base_style が caption の font_size + Serif になる
+    // Arrange
     let read_style = ReadStyle::default();
     let ctx = LoweringContext::new(&read_style);
     let caption_style = CaptionStyle {
@@ -237,7 +225,7 @@ mod tests {
     let nodes = build_caption(&ctx, &caption_style, &inlines, "3", &mut CounterRegistry::default_for_seiran())
       .expect("解決済みインラインなので失敗しない");
 
-    // Assert — 単一 Text "Fig 3: Overview"、font_size=9.0、font_kind=Serif
+    // Assert
     assert_eq!(nodes.len(), 1, "プレーンタイトルは 1 つの Text に縮約される: {nodes:?}");
     let LayoutNode::Text(text, style) = &nodes[0] else {
       panic!("Text が期待されます: {nodes:?}");
@@ -249,8 +237,7 @@ mod tests {
 
   #[test]
   fn build_caption_ref_becomes_placeholder() {
-    // Arrange — キャプション内の \ref は即時解決せず LayoutNode::Ref プレースホルダになる
-    // （解決は pass2 = resolve::resolve_refs が担う）
+    // Arrange
     let read_style = ReadStyle::default();
     let ctx = LoweringContext::new(&read_style);
     let caption_style = CaptionStyle::default();

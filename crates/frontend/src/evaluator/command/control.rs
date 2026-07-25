@@ -1,6 +1,4 @@
-//! 制御コマンド群
-//!
-//! スペース挿入などの制御コマンドを提供します。
+//! スペースや改ページなどの制御コマンド群
 
 use model::{DocNode, Length};
 
@@ -11,10 +9,6 @@ use crate::{
 };
 
 /// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド
-///
-/// # Arguments
-///
-/// * `view` - コマンドの型付きビュー
 ///
 /// # Errors
 ///
@@ -62,9 +56,7 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
 ///
-/// 引数も任意引数も取らない（`\notag` と同じ引数なしマーカー）。「段落の先頭にのみ置ける」
-/// という位置検証は段落境界を知る `evaluate_children` が担うため、ここでは引数の不在だけを
-/// 検証し、結果は呼び出し側（`CommandKind::execute`）が `CommandResult::NoIndent` に詰める。
+/// 段落先頭の位置検証は段落境界を知る `evaluate_children` が行う。
 ///
 /// # Errors
 ///
@@ -81,26 +73,6 @@ pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
 }
 
 /// `\pagebreak` — その位置で強制的に改ページするマーカーコマンド
-///
-/// 引数も任意引数も取らない（`\noindent` / `\notag` と同じ引数なしマーカー）。効果は
-/// 「この 1 点で改ページする」ことに閉じる（P7）。エイリアス（`\newpage` / `\clearpage`）も
-/// 強度オプション（`[weight=N]`）も持たない — 同じ結果への書き方を増やさないため。
-///
-/// 見出しの `[heading].page_break_before` / `page_break_after` が「見出しという種類の既定」を
-/// 決めるのに対し、本コマンドは「この 1 点」の個別指定（P10）。
-///
-/// 段落の途中に置いた場合、結果が `CommandResult::Block` なので `evaluate_children` が段落を
-/// フラッシュし、以降のテキストは新しい段落になる（`first_line_indent` が有効なら先頭行に字下げが
-/// 付く）。`\space{N}` と同じ挙動で、意図した結果。
-///
-/// 内容を挟まない位置（文書先頭・`\pagebreak\pagebreak`・`\part` 直後・文書末尾）では冪等な
-/// no-op として畳まれる（`typeset::break_pages` の `PageComposer::start_new_page` / `finish` の
-/// 責務）。「この `\pagebreak` が実際にページを送るか」は組版結果に依存しフロントエンドでは
-/// 判定できないため、ここで位置を裁くことはしない。
-///
-/// # Arguments
-///
-/// * `view` - コマンドの型付きビュー
 ///
 /// # Errors
 ///
@@ -149,7 +121,7 @@ mod tests {
 
   #[test]
   fn space_rejects_unknown_opt_arg_key() {
-    // Arrange — `\space` は任意引数を受け付けないので未知キーで UnknownOptArgKey
+    // Arrange
     let arena = Bump::new();
     let source = r"\space[draft]{10}";
     let node = get_command_view(source, &arena);
@@ -164,7 +136,7 @@ mod tests {
 
   #[test]
   fn noindent_accepts_no_args() {
-    // Arrange — 引数なしの `\noindent` は受理される
+    // Arrange
     let arena = Bump::new();
     let source = r"\noindent";
     let node = get_command_view(source, &arena);
@@ -179,7 +151,7 @@ mod tests {
 
   #[test]
   fn noindent_rejects_mandatory_argument() {
-    // Arrange — `\noindent{x}` は引数過剰でエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\noindent{x}";
     let node = get_command_view(source, &arena);
@@ -194,7 +166,7 @@ mod tests {
 
   #[test]
   fn noindent_rejects_unknown_opt_arg_key() {
-    // Arrange — `\noindent` は任意引数を受け付けない
+    // Arrange
     let arena = Bump::new();
     let source = r"\noindent[draft]";
     let node = get_command_view(source, &arena);
@@ -209,7 +181,7 @@ mod tests {
 
   #[test]
   fn pagebreak_produces_page_break_node() {
-    // Arrange — 引数なしの `\pagebreak`
+    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak";
     let node = get_command_view(source, &arena);
@@ -218,13 +190,13 @@ mod tests {
     // Act
     let result = pagebreak(&view);
 
-    // Assert — `DocNode::PageBreak` を 1 つだけ生成する
+    // Assert
     assert!(matches!(result.as_deref(), Ok([DocNode::PageBreak])));
   }
 
   #[test]
   fn pagebreak_rejects_mandatory_argument() {
-    // Arrange — `\pagebreak{x}` は引数過剰でエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak{x}";
     let node = get_command_view(source, &arena);
@@ -239,7 +211,7 @@ mod tests {
 
   #[test]
   fn pagebreak_rejects_unknown_opt_arg_key() {
-    // Arrange — 強度オプションは設けないので `[weight=2]` は未知キーで拒否される
+    // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak[weight=2]";
     let node = get_command_view(source, &arena);
@@ -254,7 +226,7 @@ mod tests {
 
   #[test]
   fn pagebreak_splits_surrounding_paragraph() {
-    // Arrange — 段落の途中に置いた `\pagebreak` は前後を別段落に割る
+    // Arrange
     let arena = Bump::new();
     let source = r"前\pagebreak 後";
     let cst = parse(source, &arena).unwrap();
@@ -262,7 +234,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — `[Paragraph, PageBreak, Paragraph]` になる
+    // Assert
     assert!(matches!(
       result.as_slice(),
       [

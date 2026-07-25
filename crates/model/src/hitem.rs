@@ -1,4 +1,4 @@
-//! 水平リストの最小単位（[`HItem`]）と計測済みボックス（[`HBox`]）の定義
+//! 水平リストの最小単位 [`HItem`] と計測済みボックス [`HBox`]。
 //!
 //! box の width / height / depth は生成時（`typeset::block::build_blocks`）に 1 回だけ計測して
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
@@ -181,10 +181,10 @@ mod tests {
   use super::{HBox, HBoxContent, HItem, PlacedHItem};
   use crate::Length;
 
-  /// pt 値から `Length` を作る短縮子（テスト可読性のため）
+  /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// テスト用の合成 Rule ボックスを作る
+  /// 合成 Rule ボックスを作る
   fn rule_box(width: f32, height: f32, depth: f32) -> HBox {
     return HBox {
       content: HBoxContent::Rule {
@@ -256,8 +256,10 @@ mod tests {
 
   #[test]
   fn natural_width_per_variant() {
-    // Box は計測済みの width、Glue は natural、Kern は値、Penalty / ForcedBreak は 0
+    // Arrange
     let box_item = HItem::Box(rule_box(12.0, 8.0, 2.0));
+
+    // Act / Assert
     assert_eq!(box_item.natural_width(), pt(12.0));
     let glue = HItem::Glue {
       natural: pt(5.0),

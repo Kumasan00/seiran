@@ -1,12 +1,4 @@
-//! 数式環境の種別 [`MathEnvKind`]・区切り括弧 [`MathDelimiter`]。
-//!
-//! ディスプレイ数式環境（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）の
-//! 種別を表す共通型。`DocNode`（IR）・`lowering`（`LayoutNode`）・`block`（組版）が
-//! 共有するため、依存の基盤である本クレートに置く。`frontend` が環境名から決定し、
-//! `block` 段の列整列・区切り括弧・行採番まで透過的に伝播する。
-//!
-//! 数式記号のクラス（`MathClass`）は `frontend` の記号テーブルのみが消費するため
-//! `frontend` 側に置く（#216）。
+//! 数式環境の種別 [`MathEnvKind`] と区切り括弧 [`MathDelimiter`]。
 
 /// ディスプレイ数式環境の種別
 ///
@@ -78,7 +70,7 @@ mod tests {
 
   #[test]
   fn from_opt_str_maps_known_values_case_insensitively() {
-    // Arrange & Act & Assert — 既知の値はすべて対応する変種に（大小無視で）変換される
+    // Arrange / Act / Assert
     assert_eq!(MathDelimiter::from_opt_str("none"), Some(MathDelimiter::None));
     assert_eq!(MathDelimiter::from_opt_str("paren"), Some(MathDelimiter::Paren));
     assert_eq!(MathDelimiter::from_opt_str("BRACKET"), Some(MathDelimiter::Bracket));
@@ -89,7 +81,7 @@ mod tests {
 
   #[test]
   fn from_opt_str_rejects_unknown_value() {
-    // Arrange & Act & Assert — 未知の値は None
+    // Arrange / Act / Assert
     assert_eq!(MathDelimiter::from_opt_str("angle"), None);
   }
 }

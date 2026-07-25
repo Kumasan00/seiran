@@ -1,63 +1,7 @@
 //! フォント処理エンジン
 //!
-//! TrueType/OpenType フォントの読み込み、パース、テキストシェーピング、検証など、
-//! PDF 生成に必要なフォント処理機能を提供します。フォントサブセット化は本クレートでは
-//! 行わず、`pdf_gen` クレートが利用する `krilla` が PDF 生成時に内部で実施します。
-//!
-//! ## アーキテクチャ概要
-//!
-//! このモジュールは 19 種類のフォント種別を同時に管理し、以下のパイプラインを実装します：
-//!
-//! 1. **読み込み** ([`FontData`]) - ディスクからすべてのフォントバイナリを並列読み込み
-//! 2. **パース** ([`FontRefs`]) - `read-fonts` で OpenType テーブル構造をメモリ内で解析
-//! 3. **テキストシェーピング** ([`shaper`]) - `HarfRust` による字形配置
-//! 4. **検証** ([`validate_font`]) - フォント設定の妥当性確認
-//!
-//! ## フォント種別システム
-//!
-//! 19 種類のフォント種別を管理：
-//!
-//! - **Latin フォント**（12 種類）
-//!   - Serif: 標準、太字、イタリック、太字イタリック
-//!   - Sans Serif: 標準、太字、イタリック、太字イタリック
-//!   - Monospace: 標準、太字、イタリック、太字イタリック
-//!
-//! - **特殊フォント**（1 種類）
-//!   - Math: 数式用
-//!
-//! - **日本語フォント**（6 種類）
-//!   - Serif: 標準、太字
-//!   - Sans Serif: 標準、太字
-//!   - Monospace: 標準、太字
-//!
-//! これらはすべて `model::FontType` enum で定義され、
-//! 各フォント種別に対応した処理が並列実行されます。
-//!
-//! ## サブモジュール
-//!
-//! - [`shaper`] - `HarfRust` によるテキストシェーピング（スクリプト、言語、フィーチャ対応）
-//! - [`validate_font`] - フォント設定と OpenType テーブルの妥当性検証
-//!
-//! ## パフォーマンス特性
-//!
-//! - 並列処理：`rayon` を使用した 19 フォント種別の並列読み込み・パース
-//!
-//! ## 使用例
-//!
-//! ```ignore
-//! # use font::{FontData, FontDataExt, FontRefs, FontRefsExt, validate_font};
-//! # use config::FontConfigs;
-//!
-//! // 1. 設定（事前に config::read_config で生成済み）から
-//! //    フォントバイナリを読み込み
-//! let font_data = FontData::new(&font_configs)?;
-//!
-//! // 2. フォント参照を生成
-//! let font_refs = FontRefs::new(&font_configs, &font_data)?;
-//!
-//! // 3. フォントを検証
-//! validate_font::validate_fonts(&font_configs, &font_refs)?;
-//! ```
+//! 全フォント種別の読み込み・OpenType 解析・メトリクス取得を担い、シェイピングと
+//! 設定検証を各サブモジュールで提供する。フォントのサブセット化は `krilla` に委ねる。
 
 use std::fs;
 
@@ -71,10 +15,10 @@ use thiserror::Error;
 pub mod shaper;
 pub mod validate_font;
 
-/// フォント読み込み・解析時のエラー
+/// フォントの読み込み・解析エラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum FontLoadError {
-  /// フォントファイルの読み込みに失敗した場合
+  /// フォントファイルを読み込めない。
   #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(code(font::load::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
   ReadFont {
@@ -86,7 +30,7 @@ pub enum FontLoadError {
     #[source]
     source: std::io::Error,
   },
-  /// フォントの解析に失敗した場合
+  /// フォントを解析できない。
   #[error("{font_type:?} のフォント解析に失敗しました (index: {index})")]
   #[diagnostic(
     code(font::load::parse),
@@ -103,7 +47,7 @@ pub enum FontLoadError {
     #[source]
     source: read_fonts::ReadError,
   },
-  /// メトリクス取得に必要な OpenType テーブルの読み込みに失敗した場合
+  /// メトリクス取得に必要な OpenType テーブルを読めない。
   #[error("{font_type:?} の {table} テーブルの読み込みに失敗しました")]
   #[diagnostic(
     code(font::load::metrics_table),
@@ -120,36 +64,16 @@ pub enum FontLoadError {
   },
 }
 
-/// 全フォント種別のバイナリデータを保持するデータ構造
-///
-/// 19 種類のフォント種別ごとのバイナリデータ（オンメモリ）を保持します。
-/// このデータから複数の `FontRef` インスタンスを生成でき、
-/// 効率的にフォント情報にアクセスできます。
-///
-/// 内部的には [`FontMap<Vec<u8>>`] を使用しています。
+/// 全フォント種別のバイナリデータ。
 pub type FontData = FontMap<Vec<u8>>;
 
-/// `FontData` のコンストラクタと拡張メソッド
+/// [`FontData`] の構築機能。
 pub trait FontDataExt: Sized {
-  /// 設定に従ってすべてのフォントファイルを読み込みます
-  ///
-  /// `FontType::ALL` に列挙されたすべてのフォント種別に対応するファイルを
-  /// ディスクから読み込み、メモリに配置します。読み込みは並列処理で実行されます。
-  ///
-  /// # Arguments
-  ///
-  /// * `font_configs` - 各フォント種別のパスと設定情報
-  ///
-  /// # Returns
-  ///
-  /// 全フォント種別のバイナリデータをまとめた `FontData`
+  /// 設定された全フォントファイルを並列に読み込む。
   ///
   /// # Errors
   ///
-  /// 以下の場合にエラーを返します：
-  /// - ファイルが見つからない
-  /// - ファイルの読み込み権限がない
-  /// - ディスク I/O エラーが発生した
+  /// いずれかのファイルを読み込めない場合に [`FontLoadError::ReadFont`] を返す。
   fn new(font_configs: &FontConfigs) -> Result<Self, FontLoadError>;
 }
 
@@ -173,37 +97,17 @@ impl FontDataExt for FontData {
   }
 }
 
-/// 全フォント種別の解析済みフォント参照（`FontRef`）を保持するデータ構造
-///
-/// 19 種類のフォント種別ごとの `FontRef` を保持します。
-/// `FontRef` は `read_fonts` クレートが提供する型で、OpenType フォント内の
-/// テーブルにアクセスするための API を提供します。
-///
-/// 内部的には [`FontMap<FontRef>`] を使用しています。
+/// 全フォント種別の解析済み OpenType フォント参照。
 pub type FontRefs<'a> = FontMap<FontRef<'a>>;
 
-/// `FontRefs` のコンストラクタと拡張メソッド
+/// [`FontRefs`] の構築機能。
 pub trait FontRefsExt<'a>: Sized {
-  /// フォント設定とバイナリデータから OpenType フォント参照を生成します
-  ///
-  /// バイナリデータから各フォント種別の `FontRef` を生成します。
-  /// 必要に応じて TTC（TrueType Collection）ファイルから指定されたインデックスのフォントを抽出します。
-  ///
-  /// # Arguments
-  ///
-  /// * `config` - フォント設定情報（インデックスを含む）
-  /// * `font_data` - フォントバイナリデータ
-  ///
-  /// # Returns
-  ///
-  /// 各フォント種別の `FontRef` を保持する `FontRefs`
+  /// バイナリデータから設定されたフェースのフォント参照を生成する。
   ///
   /// # Errors
   ///
-  /// 以下の場合にエラーを返します：
-  /// - バイナリデータが有効な OpenType フォントではない
-  /// - TTC 内の指定されたインデックスが範囲外
-  /// - 必須 OpenType テーブルが見つからない
+  /// フォントを解析できない場合、または TTC のインデックスが範囲外の場合に
+  /// [`FontLoadError::ParseFont`] を返す。
   fn new(config: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, FontLoadError>;
 }
 
@@ -228,11 +132,9 @@ impl<'a> FontRefsExt<'a> for FontRefs<'a> {
   }
 }
 
-/// 1 フォントの基本メトリクス（フォントユニット系）
+/// 1 フォントの基本メトリクス。
 ///
-/// `upem` は `head` テーブルの units-per-em、`ascender` / `descender` は `hhea` テーブル由来です。
-/// グリフ advance の pt 換算は `advance / upem * font_size` で行います。
-/// `descender` は OpenType の慣例どおり負値（ベースラインより下）を保持します。
+/// 値はフォントユニット系で、`descender` は OpenType の慣例どおり通常は負値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FontMetric {
   /// units-per-em（`head` テーブル由来）
@@ -243,26 +145,16 @@ pub struct FontMetric {
   pub descender: f32,
 }
 
-/// 全フォント種別の基本メトリクスを保持するデータ構造
-///
-/// `head` / `hhea` テーブルの散在呼び出しを排除するため、`build_pdf` で 1 回だけ構築し、
-/// 計測（`layout`）と描画（`pdf_gen`）の双方へ参照で渡します。
+/// 全フォント種別の基本メトリクス。
 pub type FontMetrics = FontMap<FontMetric>;
 
-/// `FontMetrics` のコンストラクタと拡張メソッド
-///
-/// [`FontMap`] は `types` クレート定義のため inherent impl が書けず、
-/// [`FontDataExt`] / [`FontRefsExt`] と同様に拡張トレイトでコンストラクタを提供します。
+/// [`FontMetrics`] の構築機能。
 pub trait FontMetricsExt: Sized {
-  /// 解析済みフォント参照から全種別のメトリクスを取得します
-  ///
-  /// 各フォント種別の `head` / `hhea` テーブルをそれぞれ 1 回ずつ読み、
-  /// upem / ascender / descender を確定します。
+  /// 全フォントの `head` / `hhea` テーブルからメトリクスを取得する。
   ///
   /// # Errors
   ///
-  /// `head` / `hhea` テーブルの読み込みに失敗した場合に
-  /// [`FontLoadError::ReadMetricsTable`] を返します。
+  /// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を返す。
   fn new(font_refs: &FontRefs) -> Result<Self, FontLoadError>;
 }
 

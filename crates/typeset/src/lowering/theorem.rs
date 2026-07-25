@@ -1,9 +1,4 @@
 //! 定理ブロック（`DocNode::Theorem`）の lowering
-//!
-//! クラス別スタイル（[`config::TheoremStyle`]）を参照し、定理ブロックを
-//! 「見出し（独立行）＋ クラス別 `font_kind` の本文 ＋ 上下マージン」に変換する。
-//! `proof` のように `qed_mark` を持つクラスは、本体末尾に右寄せの QED マークを置く
-//! （最終段落と同居、入らなければ次行・本体末が非段落なら独立行）。
 
 use config::TheoremStyle;
 use model::{Align, DocNode, FontKind, InlineNode, Length, TheoremClass};
@@ -18,11 +13,6 @@ use super::{
 };
 
 /// 定理ブロックをレイアウトノードに変換する
-///
-/// 構成: `Vkern(top_margin)` → 見出し `VBox` → 本体（`body_font_kind` 上書き）→ `Vkern(bottom_margin)`。
-/// `label` が `Some` のとき先頭に `\ref` 到達先アンカー（[`with_label_anchor`]）を付ける。
-/// `of` は `proof` の証明対象（pass2 で解決済みの cleveref 文字列、例「Theorem 1」）で、
-/// `Some` のとき見出しを「Proof of Theorem 1」相当に組む。
 ///
 /// # Errors
 ///
@@ -49,20 +39,16 @@ pub(super) fn lower_theorem(
     build_heading(ctx, theorem_style, number, title, of, registry)?,
   ];
 
-  // 本体はクラス別 font_kind（定理は斜体・証明や定義系はローマン）を既定書体にする。
-  // 本文の段落先頭字下げは波及させない（定理本体はブロックとして 0 にリセット）。
+  // 定理本体では文書本文の字下げを引き継がない。
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
   let mut body_nodes = lower_nodes_inner(&body_ctx, body, registry, headings)?;
 
-  // QED マーク（`qed_mark` を持つクラス = proof）を本体末尾に右寄せ配置する
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
     if matches!(body.last(), Some(DocNode::Paragraph(_))) {
-      // 本体末が段落: 最終段落と同居させるため、末尾の paragraph_spacing Vkern の直前に挿す
       let insert_at = body_nodes.len().saturating_sub(1);
       body_nodes.insert(insert_at, qed_node);
     } else {
-      // 本体が空 / 末尾が非段落（リスト・数式など）: 独立した右寄せ 1 行として末尾に足す
       body_nodes.push(qed_node);
     }
   }
@@ -76,13 +62,6 @@ pub(super) fn lower_theorem(
 }
 
 /// 定理見出し（独立行）の `VBox` を構築する
-///
-/// `of`（証明対象）と `title`（サブタイトル）の有無の 4 通りで
-/// `heading_with_of_and_title` / `heading_with_of` / `heading_with_title` / `heading_format` を選び、
-/// プレーン文字列の `{display_name}` を素朴置換してから [`expand_template`] で
-/// `{number}` / `{title}` / `{of}` を解決する。`{of}` は前方参照になり得るため即時解決せず、
-/// `expand_template` が `LayoutNode::Ref` プレースホルダを発行し pass2 に委ねる。書体は
-/// `heading_font_kind`、サイズは本文と同じ（`TheoremPresentation` に見出し専用サイズは無い）。
 fn build_heading(
   ctx: &LoweringContext,
   theorem_style: &TheoremStyle,
@@ -98,14 +77,12 @@ fn build_heading(
     color: None,
   };
 
-  // 証明対象（`of`）とサブタイトル（`title`）の有無でテンプレートを選ぶ。`of` は proof のみ。
   let raw_template = match (of.is_some(), title.is_some()) {
     (true, true) => &pres.heading_with_of_and_title,
     (true, false) => &pres.heading_with_of,
     (false, true) => &pres.heading_with_title,
     (false, false) => &pres.heading_format,
   };
-  // `{display_name}` は expand_template 非対応なので先に素朴置換する（プレーン文字列）
   let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
   let title_inlines: Vec<InlineNode> = title.map(|t| vec![InlineNode::Text(t.to_string())]).unwrap_or_default();
@@ -122,11 +99,6 @@ fn build_heading(
 }
 
 /// QED マークの右寄せノードを作る（既定サイズ・数式フォント）
-///
-/// `□`（U+25A1）等の QED 記号は本文セリフ（STIX Two Text 等）に欠けることが多く、本体書体で
-/// 出すと `.notdef`（豆腐）になる。LaTeX の qed 記号も数式記号由来であるため、[`FontKind::Math`]
-/// で描画する（layout のスクリプト解決で欧文部は数式フォント・和文部は和文セリフへ回り、
-/// いずれも `□` を持つ）。
 fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
   let qed_style = TextStyle {
     font_size,
@@ -149,8 +121,6 @@ mod tests {
   fn dummy_span() -> model::Span { return model::Span::DUMMY; }
 
   /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_theorem` を呼ぶヘルパ
-  ///
-  /// `of` はラベル名（`\ref` と同じく pass2 で解決するプレースホルダ）として渡す。
   #[allow(clippy::too_many_arguments)]
   fn lower_theorem_default(
     ctx: &LoweringContext,
@@ -184,7 +154,7 @@ mod tests {
 
   #[test]
   fn theorem_renders_block_heading_and_italic_body() {
-    // Arrange — 採番付き theorem（number=Some("1")、title なし）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -192,7 +162,7 @@ mod tests {
     let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None, None)
       .expect("失敗しないはず");
 
-    // Assert — 見出しは "Theorem 1"・太字、本体は斜体、上下に Vkern
+    // Assert
     let (heading, heading_style) = first_heading_text(&nodes);
     assert_eq!(heading, "Theorem 1");
     assert_eq!(heading_style.font_kind, FontKind::SerifBold);
@@ -206,13 +176,12 @@ mod tests {
     assert_eq!(body.font_kind, FontKind::SerifItalic);
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })), "末尾は bottom_margin Vkern: {nodes:?}");
-    // theorem は QED を持たない
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::FlushRight(_))), "theorem に QED は出ない: {nodes:?}");
   }
 
   #[test]
   fn theorem_with_title_uses_heading_with_title_template() {
-    // Arrange / Act — title 付きは heading_with_title（"{display_name} {number} ({title})"）
+    // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes =
@@ -226,7 +195,7 @@ mod tests {
 
   #[test]
   fn proof_has_unnumbered_heading_roman_body_and_qed() {
-    // Arrange — proof は number=None。見出し "Proof"・本体ローマン・末尾に QED
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -251,7 +220,7 @@ mod tests {
 
   #[test]
   fn proof_qed_sits_in_last_paragraph_before_trailing_vkern() {
-    // Arrange — 本体末が段落: QED は段落末の paragraph_spacing Vkern の直前に入る
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -259,17 +228,16 @@ mod tests {
     let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None, None)
       .expect("失敗しないはず");
 
-    // Assert — FlushRight の直後は Vkern（最終段落と同居 = 段落の途中に置かれている）
+    // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
     assert!(matches!(nodes.get(qed_idx + 1), Some(LayoutNode::Vkern { .. })), "QED の直後は Vkern: {nodes:?}");
-    // 本体 Text "last" は QED より前にある（QED は段落末尾）
     let text_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Text(t, _) if t == "last")).unwrap();
     assert!(text_idx < qed_idx, "本体テキストは QED より前: {nodes:?}");
   }
 
   #[test]
   fn proof_qed_on_own_line_when_body_ends_with_non_paragraph() {
-    // Arrange — 本体末がリスト（非段落）: QED は末尾 bottom_margin Vkern の直前に独立配置される
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let list = DocNode::List {
@@ -283,7 +251,7 @@ mod tests {
     let nodes =
       lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[list], None, None).expect("失敗しないはず");
 
-    // Assert — FlushRight は末尾の bottom_margin Vkern の直前（= 全体の最後から 2 番目）
+    // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
     assert_eq!(qed_idx, nodes.len() - 2, "QED は bottom_margin Vkern の直前: {nodes:?}");
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
@@ -311,7 +279,7 @@ mod tests {
 
   #[test]
   fn proof_with_of_renders_proof_of_target_heading() {
-    // Arrange — of=thm:p（pass2 で「Theorem 1」の cleveref 文字列に解決される）を持つ proof
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
@@ -340,13 +308,13 @@ mod tests {
     .expect("失敗しないはず");
     super::super::resolve::resolve_refs(&mut nodes, &registry).expect("thm:p は登録済みなので解決できる");
 
-    // Assert — 見出しは "Proof of Theorem 1"
+    // Assert
     assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1");
   }
 
   #[test]
   fn proof_without_of_keeps_plain_proof_heading() {
-    // Arrange / Act — of=None の proof は従来どおり "Proof"
+    // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None, None)
@@ -359,7 +327,7 @@ mod tests {
 
   #[test]
   fn proof_with_of_and_title_combines_both() {
-    // Arrange — of と title を併用: of を先に、title を括弧で後置する
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut registry = CounterRegistry::from_style(&style);
@@ -394,7 +362,7 @@ mod tests {
 
   #[test]
   fn proof_with_title_only_ignores_of_templates() {
-    // Arrange / Act — of なし・title あり: heading_with_title（"Proof (title)"）が選ばれる
+    // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None, None)
@@ -407,7 +375,7 @@ mod tests {
 
   #[test]
   fn theorem_with_label_prepends_anchor() {
-    // Arrange / Act — label 付きは先頭に AnchorMark::Label を出す
+    // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes =

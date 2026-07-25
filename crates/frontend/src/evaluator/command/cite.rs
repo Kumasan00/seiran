@@ -1,9 +1,6 @@
 //! `\cite{key}` / `\cite{a,b}` コマンド
 //!
-//! 必須引数 1 個（カンマ区切りの引用キー列）を取り、[`InlineNode::Cite`] スタブを
-//! 生成する。pass1 時点では `label` は `None` で、キーの存在検証は
-//! `crate::parse_source` の pass2（`cite::resolve_cites`）が行う。最終的な引用ラベルの
-//! 整形は CSL 整形ステージ（`citation` クレート）に委ねる。
+//! 引用キーの存在検証と表示ラベルの整形は後段に委ねる。
 
 use model::InlineNode;
 
@@ -153,7 +150,7 @@ mod tests {
 
   #[test]
   fn cite_rejects_empty_key() {
-    // Arrange — 末尾カンマで空のキーが生じる
+    // Arrange
     let arena = Bump::new();
     let source = r"\cite{a,}";
     let node = get_command_view(source, &arena);

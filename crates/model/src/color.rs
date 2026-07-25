@@ -1,18 +1,8 @@
-//! 色を表す `Color` newtype。
-//!
-//! TOML / コマンド任意引数のいずれでも `"#rrggbb"` の 16 進文字列形式のみを受け付ける
-//! （大文字小文字は不問）。`[204, 179, 153]` の配列形式は受け付けない
-//! （破壊的: スタイル側の視認性を優先）。
-//!
-//! 内部表現は 8bit RGB に正規化した `Color([u8; 3])`。背景色・罫線色・テキスト色など
-//! 全クレート共通の色表現としてここ（`types`）に置く。
+//! 8bit RGB 色 [`Color`]。
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 /// 8bit RGB 色（`[u8; 3]`）の newtype
-///
-/// PDF レンダリング側に渡す前段の入口で色表現を統一する。
-/// 透明度（alpha）が必要になった場合はバリアントを増やすか別型を作る。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Color(pub [u8; 3]);
 
@@ -25,10 +15,9 @@ impl Color {
   #[must_use]
   pub fn rgb(self) -> [u8; 3] { return self.0; }
 
-  /// `"#rrggbb"` 形式の文字列を `Color` に変換する（大文字小文字不問）
+  /// `"#rrggbb"` 形式の文字列を `Color` に変換する
   ///
-  /// `#` 接頭辞・6 桁・全桁が 16 進数のいずれかを満たさない場合は `None` を返す。
-  /// デシリアライズとパーサの任意引数解析の双方から再利用する。
+  /// 大文字小文字は区別しない。不正な形式には `None` を返す。
   #[must_use]
   pub fn from_hex(value: &str) -> Option<Color> {
     let body = value.strip_prefix('#')?;
@@ -60,7 +49,6 @@ impl<'de> Deserialize<'de> for Color {
 
 impl Serialize for Color {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    // 内部表現は RGB だが、デシリアライズと往復させるため `#rrggbb` 形式で書き出す
     let [r, g, b] = self.0;
     return format!("#{r:02x}{g:02x}{b:02x}").serialize(serializer);
   }
@@ -84,7 +72,7 @@ mod tests {
 
   #[test]
   fn rejects_rgb_array() {
-    // Arrange: 旧形式の配列指定は受け付けない（破壊的）
+    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = [204, 179, 153]");
 
     // Assert
@@ -111,7 +99,7 @@ mod tests {
 
   #[test]
   fn rejects_invalid_hex_length() {
-    // Arrange: 5 文字
+    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = \"#abcde\"");
 
     // Assert
@@ -129,7 +117,7 @@ mod tests {
 
   #[test]
   fn rejects_non_hex_chars_in_body() {
-    // Arrange: 'g' は 16 進数ではない
+    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("color = \"#gghhii\"");
 
     // Assert
@@ -147,7 +135,7 @@ mod tests {
 
   #[test]
   fn from_hex_rejects_invalid_string() {
-    // Arrange / Act / Assert — 接頭辞なし・桁数不足・非 16 進はいずれも None
+    // Arrange / Act / Assert
     assert_eq!(Color::from_hex("ff0000"), None);
     assert_eq!(Color::from_hex("#fff"), None);
     assert_eq!(Color::from_hex("#gg0000"), None);
@@ -163,7 +151,7 @@ mod tests {
     // Act
     let s = toml::to_string(&value).unwrap();
 
-    // Assert: 内部表現と往復可能な形式で書き出される
+    // Assert
     assert!(s.contains("color = \"#cc9966\""), "serialized form: {s}");
   }
 }

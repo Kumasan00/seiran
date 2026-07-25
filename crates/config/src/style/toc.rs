@@ -72,7 +72,6 @@ mod tests {
 
   #[test]
   fn default_is_disabled_with_dot_leader() {
-    // 既定では目次は無効（オプトイン）でリーダーは "."
     let style = TocStyle::default();
     assert!(!style.enabled);
     assert_eq!(style.leader.as_deref(), Some("."));
@@ -80,7 +79,7 @@ mod tests {
 
   #[test]
   fn partial_toml_keeps_other_defaults() {
-    // Arrange / Act: enabled だけ指定しても他フィールドは既定で埋まる
+    // Arrange / Act
     let style: TocStyle = toml::from_str("enabled = true\n").unwrap();
 
     // Assert

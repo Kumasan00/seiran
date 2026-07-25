@@ -1,15 +1,6 @@
 //! 複数行数式環境の構造分割器と共通ハンドラ
 //!
-//! 数式環境の本体（`EnvironmentBody`）をトップレベルの行区切り `\\`（[`TokenKind::LineBreak`]）で
-//! 行に、各行をトップレベルの列区切り `&`（[`TokenKind::Ampersand`]）でセルに分割し、各セルを
-//! [`crate::evaluator::math::evaluate_math_elements`] で `MathNode` 列に評価する。
-//!
-//! 表環境の `\row` のセル分割（`environment/table.rs` の `extract_row`）と同じ「トップレベルの
-//! 区切りトークンで要素列を割る」方式を数式モードへ流用したもの。`equation` のように行・列分割を
-//! 許さない環境では、分割トークンの出現を [`EvalError::UnsupportedInMath`] にする。
-//!
-//! また、`align` / `gather` / `split` / `multiline` の各ハンドラが共有する評価本体 [`evaluate_math_env`]
-//! もここに置く（任意引数 `[numbered]` の解釈・グリッド分割・末尾空行除去・採番までを一手に行う）。
+//! トップレベルの `\\` と `&` で本体を行とセルに分割する。
 
 use miette::SourceSpan;
 use model::{DocNode, MathEnvKind, MathNode, MathRow};
@@ -32,9 +23,6 @@ pub(crate) use numbering::NumberingMode;
 use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
 
 /// グリッド分割の許可設定（環境種別ごと）
-///
-/// `equation` は両方 `false`（単一行・単一セル）、`gather` / `multiline` は行のみ、
-/// `align` / `split` / `matrix` / `cases` は両方 `true`。
 pub(crate) struct GridSpec {
   /// 行区切り `\\` を許可するか
   pub allow_row_breaks: bool,
@@ -43,11 +31,6 @@ pub(crate) struct GridSpec {
 }
 
 /// グリッド 1 行の評価結果
-///
-/// `cells` は `&` で分割した各列の `MathNode` 列。`notag_span` はその行に行末マーカー `\notag` が
-/// 付いていた場合の `\notag` のソース位置（`None` は採番対象）。行ごと採番の `align` / `gather` では
-/// `notag_span.is_some()` の行を無採番にする。`label` / `label_span` は行末マーカー `\label{...}` で
-/// 付与された行ラベルとその位置（`None` は参照対象外）。
 #[derive(Debug)]
 pub(crate) struct GridRow {
   /// 列（`&` 区切り）。各列は数式ノード列
@@ -62,13 +45,7 @@ pub(crate) struct GridRow {
 
 /// 数式環境本体を行 × 列のグリッドに分割して評価する
 ///
-/// 戻り値は [`GridRow`] のリスト。各行はセル（列）のリストと行末マーカー（`\notag` / `\label`）の
-/// 情報を持つ。`equation` のように分割を許さない環境では常に「1 行 1 セル」を返す（本体が空でも
-/// 1 行 1 空セル）。
-///
-/// `row_markers_allowed` が `true`（行ごと採番の `align` / `gather`）のときのみ行末マーカー
-/// `\notag`（その行を無採番にする）と `\label{...}`（その行にラベルを付ける）を受理し、行の
-/// `notag_span` / `label` を立てる（マーカー自体はセルに残さないため後段の数式評価には現れない）。
+/// 行末マーカーは行のメタデータへ移し、セルには残さない。
 ///
 /// # Errors
 ///
@@ -153,14 +130,7 @@ pub(crate) fn evaluate_grid(
 
 /// `align` / `gather` / `split` / `multiline` の共通評価本体
 ///
-/// 任意引数 `[numbered]`（既定 `true`）を許可し、環境単位採番（`SingleEnv` = `split` / `multiline`）では
-/// 加えて `[label=...]` を受理する。本体を `spec` に従って `\\`×`&` のグリッドへ分割（[`evaluate_grid`]）
-/// したのち末尾の空行を除去し、`mode` に応じて採番した `DocNode::MathBlock` を返す。`numbered == false`
-/// のときは採番を一切行わない（採番ありの環境を無採番にする）。
-///
-/// ラベルは採番粒度に揃える。`PerRow`（`align` / `gather`）は行末マーカー `\label{...}` をその行の
-/// `MathRow::label` に、`SingleEnv`（`split` / `multiline`）は環境の `[label=...]` を `MathBlock::label` に
-/// 載せる。いずれも無採番の行/環境にラベルは付けられない（参照番号が無いため [`EvalError::LabelRequiresNumbering`]）。
+/// グリッド分割後に [`NumberingMode`] に応じた採番対象とラベルを構造化する。
 ///
 /// # Errors
 ///
@@ -182,14 +152,14 @@ pub(crate) fn evaluate_math_env(
   };
   trim_trailing_blank_marker_rows(&mut grid)?;
 
-  // `[numbered=false]` で既に全行が無採番なら、行単位の `\notag` は冗長・矛盾
+  // 全行が無採番なら、行単位の `\notag` は矛盾する。
   if !numbered && let Some(span) = grid.iter().find_map(|row| return row.notag_span) {
     return Err(EvalError::NotagWithUnnumberedEnv { span });
   }
 
   let (rows, env_numbered) = assign_numbering(grid, mode, numbered, view)?;
 
-  // 環境単位ラベルは環境が採番対象の場合のみ持たせる（無採番・空ブロックはダングリングアンカーを避け None）
+  // 無採番・空ブロックにダングリングアンカーを残さない。
   let block_label = env_numbered.then_some(env_label).flatten();
   return Ok(vec![DocNode::MathBlock {
     kind,
@@ -201,10 +171,6 @@ pub(crate) fn evaluate_math_env(
 }
 
 /// 非採番環境（`cases` / `matrix`）の行リストを構築する
-///
-/// 末尾の空行（行末 `\\` 由来）を除去したうえで、各行を採番なし（`numbered: false`・`label: None`）の
-/// [`MathRow`] に変換する。`cases` / `matrix` は番号を持たないため、`CounterName::Equation` を一切
-/// 消費しない（採番ありの環境と通し番号を共有しない）。
 pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
   while grid.last().is_some_and(|row| return is_blank_row(&row.cells)) {
     grid.pop();
@@ -223,9 +189,6 @@ pub(crate) fn into_unnumbered_rows(mut grid: Vec<GridRow>) -> Vec<MathRow> {
 }
 
 /// 行が空（全セルが空白のみ）かどうかを判定する
-///
-/// 構造分割器は行末 `\\` のあとに空白テキストだけの行を 1 つ残すため、採番前にその末尾行を
-/// 除去する。空セル、または改行・スペースだけの `Text` ノードしか含まない行を空とみなす。
 fn is_blank_row(row: &[Vec<MathNode>]) -> bool {
   return row
     .iter()
@@ -233,10 +196,6 @@ fn is_blank_row(row: &[Vec<MathNode>]) -> bool {
 }
 
 /// 要素がトリビア（空白・改行・コメント・段落区切り）かどうかを判定する
-///
-/// 行末マーカー `\notag` の位置検証で、`\notag` の後ろに来てよい無意味な要素（末尾の空白・改行・
-/// コメント）を許容するために使う。これら以外のトークン / ノードが `\notag` の後ろに続く場合は
-/// 「行末ではない」と判断する。
 fn is_trivia_element(child: &GreenElement) -> bool {
   return matches!(
     child,
@@ -260,10 +219,6 @@ mod tests {
     syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
   };
 
-  /// ソースをパースし、最初の `Environment` ノードの本体（math モード構造化済み）を返す
-  ///
-  /// `equation` は `ParseMode::Math` で登録されているため、本体の `&` / `\\` はトップレベルの
-  /// トークンとして現れ、分割器の入力になる。
   /// 緑ツリーを再帰的に走査して最初の `Environment` ノードを返す
   fn find_env<'a>(node: &'a GreenNode<'a>) -> Option<&'a GreenNode<'a>> {
     for child in node.children {
@@ -279,6 +234,7 @@ mod tests {
     return None;
   }
 
+  /// ソースをパースし、最初の数式環境の本体を返す
   fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
     let root = crate::syntax::parse(source, arena, lookup_env_parse_mode).unwrap();
     let env = find_env(root).expect("Environment ノードが見つからない");
@@ -300,7 +256,7 @@ mod tests {
 
   #[test]
   fn splits_rows_and_columns_when_allowed() {
-    // Arrange — `a & b \\ c & d` を 2 行 × 2 列に分割する
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a & b \\ c & d\end{equation}";
     let body = first_env_body(source, &arena);
@@ -312,7 +268,7 @@ mod tests {
     // Act
     let grid = evaluate_grid(source, body, &spec, true).unwrap_or_else(|e| panic!("分割に失敗: {e:?}"));
 
-    // Assert — 2 行、各行 2 セル、内容は a/b/c/d
+    // Assert
     assert_eq!(grid.len(), 2, "2 行に分割される: {grid:?}");
     assert_eq!(grid[0].cells.len(), 2);
     assert_eq!(grid[1].cells.len(), 2);
@@ -324,7 +280,7 @@ mod tests {
 
   #[test]
   fn single_cell_when_no_breaks_present() {
-    // Arrange — 区切りなしの本体は許可設定に関わらず 1 行 1 セル
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}x + y\end{equation}";
     let body = first_env_body(source, &arena);
@@ -343,7 +299,7 @@ mod tests {
 
   #[test]
   fn rejects_column_break_when_not_allowed() {
-    // Arrange — 列区切りを許可しない設定で `&` が現れるとエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
     let body = first_env_body(source, &arena);

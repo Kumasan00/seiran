@@ -1,15 +1,4 @@
 //! 和文約物（括弧・句読点・中点）のクラス分類と JIS X 4051 の前後アキ規則
-//!
-//! 標準の全角約物グリフは片側（始め括弧は左、終わり括弧・句読点は右、中点は両側）に
-//! 固有のアキ（二分・四分）を送り幅として内蔵する。本モジュールは約物を 4 クラスに分類し、
-//! グリフの内蔵アキを抜いた実寸へ正規化する量（[`normalize`]）と、隣接クラス対ごとの
-//! 標準アキ・詰め可能量（[`gap`]）を与える。呼び出し側（`super::split_japanese_run`）は
-//! これを `HItem::Glue` として組み、連続約物の重複アキ詰め・行頭行末の版面揃え・両端揃えの
-//! 収縮点化を実現する。
-//!
-//! 内蔵アキ量は「全角 1em ＝ 二分の墨 ＋ 二分のアキ」という慣習値（pTeX の min10 / jis JFM と
-//! 同前提）を用いる。実測ではなく規約値なので、半角約物を積む非標準フォントは呼び出し側の
-//! 全角判定ガードで正規化対象外にする。
 
 /// 二分（1em の 1/2）
 pub(crate) const NIBU: f32 = 0.5;
@@ -51,8 +40,6 @@ pub(crate) struct Aki {
 }
 
 /// 文字を約物クラスへ分類する
-///
-/// 未収載の文字（漢字・仮名・英数字・全角スペース等）はすべて [`YakumonoClass::Normal`]。
 pub(crate) fn classify(ch: char) -> YakumonoClass {
   return match ch {
     // 始め括弧類（全角・互換全角）
@@ -72,10 +59,6 @@ pub(crate) fn classify(ch: char) -> YakumonoClass {
 }
 
 /// 約物グリフの正規化量を返す（`Normal` は正規化しないので `None`）
-///
-/// - 終わり括弧・句読点: 右にアキ → 幅を二分詰め、墨は動かさない
-/// - 始め括弧: 左にアキ → 幅を二分詰め、墨を二分左へ寄せる
-/// - 中点: 両側にアキ → 幅を四分×2 詰め、墨を四分左へ寄せる
 pub(crate) fn normalize(class: YakumonoClass) -> Option<Normalize> {
   return match class {
     YakumonoClass::Close | YakumonoClass::Comma => Some(Normalize {
@@ -95,12 +78,6 @@ pub(crate) fn normalize(class: YakumonoClass) -> Option<Normalize> {
 }
 
 /// 隣接する約物クラス対（`left` → `right`）の境界アキを返す
-///
-/// `None` は「アキなし（ベタ）」を表す。連続約物の重複アキ（`。」`・`」。`・`」」` 等）や
-/// 括弧内側（`「…` 直後・`…」` 直前）はここで `None` となり、余分なアキが残らない。
-/// `Normal → Normal` は本表の対象外（字間ベタ + 分割点の伸長は呼び出し側の既存経路が扱う）で
-/// `None` を返す。境界の分割可否（行頭行末の版面揃えに使う breakable）は ICU の分割可能位置で
-/// 別途決めるため、本表は幅だけを与える。
 pub(crate) fn gap(left: YakumonoClass, right: YakumonoClass) -> Option<Aki> {
   use YakumonoClass::{Close, Comma, MiddleDot, Normal, Open};
 
@@ -135,7 +112,7 @@ mod tests {
 
   #[test]
   fn classify_sorts_each_class() {
-    // Arrange / Act / Assert
+    // Arrange / Act
     assert_eq!(classify('（'), YakumonoClass::Open);
     assert_eq!(classify('「'), YakumonoClass::Open);
     assert_eq!(classify('）'), YakumonoClass::Close);
@@ -149,7 +126,7 @@ mod tests {
 
   #[test]
   fn gap_inserts_nibu_before_open_and_after_close_comma() {
-    // Arrange / Act / Assert — 前アキ・後アキは二分
+    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Open), Some(aki(NIBU)), "kanji「");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Open), Some(aki(NIBU)), "」「");
     assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Open), Some(aki(NIBU)), "。「");
@@ -159,7 +136,7 @@ mod tests {
 
   #[test]
   fn gap_collapses_consecutive_and_inside_brackets() {
-    // Arrange / Act / Assert — 連続約物・括弧内側はベタ（アキなし）
+    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Close), None, "。」");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Comma), None, "」。");
     assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Close), None, "」」");
@@ -170,7 +147,7 @@ mod tests {
 
   #[test]
   fn gap_uses_shibu_around_middle_dot() {
-    // Arrange / Act / Assert — 中点は片側四分、括弧内側はベタ
+    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::MiddleDot), Some(aki(SHIBU)), "kanji・");
     assert_eq!(gap(YakumonoClass::MiddleDot, YakumonoClass::Normal), Some(aki(SHIBU)), "・kanji");
     assert_eq!(gap(YakumonoClass::Open, YakumonoClass::MiddleDot), None, "「・");
@@ -179,13 +156,13 @@ mod tests {
 
   #[test]
   fn gap_returns_none_for_normal_pair() {
-    // Arrange / Act / Assert — 通常文字どうしは本表の対象外
+    // Arrange / Act
     assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Normal), None);
   }
 
   #[test]
   fn normalize_trims_and_shifts_per_class() {
-    // Arrange / Act / Assert
+    // Arrange / Act
     assert_eq!(
       normalize(YakumonoClass::Close),
       Some(Normalize {

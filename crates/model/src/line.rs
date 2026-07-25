@@ -1,4 +1,4 @@
-//! 行分割の出力（[`Line`] / [`PositionedBox`] / [`LineLink`]）の定義
+//! 行分割の出力。
 
 use crate::{HBoxContent, HItem, Length, LinkTarget};
 
@@ -34,9 +34,6 @@ pub struct Line {
 }
 
 /// 行内の脚注（`\footnote{...}`）本体
-///
-/// `HItem::Footnote` から `build_line` が収集する。行分割・ページ下部配置は
-/// `typeset::breaking::break_pages` の責務（本クレートはデータを運ぶだけ）。
 #[derive(Debug, Clone)]
 pub struct LineFootnote {
   /// 発番済みの表示番号（[`HItem::Footnote`] から素通し）
@@ -50,10 +47,6 @@ pub struct LineFootnote {
 }
 
 /// 行内の索引語（`\index{語}`）1 件
-///
-/// `HItem::IndexMark` から `build_line` が収集する。重複除去（同一ページ内で同一
-/// word/reading を 1 出現に畳む）は `typeset::breaking::break_pages` の責務
-/// （本クレートはデータを運ぶだけ）。
 #[derive(Debug, Clone)]
 pub struct LineIndexEntry {
   /// 索引語

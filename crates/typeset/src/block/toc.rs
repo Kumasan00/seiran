@@ -1,13 +1,4 @@
 //! 目次（table of contents）ブロックの生成パス
-//!
-//! `seiran::build_pdf` が本文を一度ページ分割して各見出しのページ番号を確定した**後**に走る、
-//! フォント依存の生成パスです。見出しの意味情報（レベル・番号・タイトル）と確定済みページ
-//! ラベルから、各エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の 1 行に組み、
-//! [`model::Block::ComposedLine`] として返します。
-//!
-//! `config` には依存せず、呼び出し側がプリミティブの [`TocSpec`] /
-//! [`TocEntryInput`] を組み立てて渡します（[`super::running`] と同じ流儀）。各エントリ行には
-//! 対応見出しへの内部リンク（[`model::LineLink`]）を付与し、PDF 上でクリック可能にします。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{AnchorId, Block, HBox, HeadingKey, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
@@ -56,8 +47,6 @@ pub struct TocEntryInput {
 }
 
 /// 目次エントリ列を計測済みのブロック列に変換する
-///
-/// `entries` が空のときは空ベクタを返す（目次を出さない）。
 #[must_use]
 pub fn build_toc_blocks(
   spec: &TocSpec,
@@ -68,13 +57,9 @@ pub fn build_toc_blocks(
   if entries.is_empty() {
     return Vec::new();
   }
-  // default_font_size / line_height_factor は目次のシェーピングでは使わない。
-  // 目次項目はハイフネーションしない（本文段落専用・#173）。
-  // 和文約物アキ調整は本文と同じく既定で有効にする
   let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
   let mut blocks: Vec<Block> = Vec::new();
 
-  // 見出し行
   blocks.push(Block::ComposedLine {
     line: compose_left_line(&mut measurer, &spec.title, spec.title_style),
     leading: spec.title_style.font_size * spec.line_height_factor,
@@ -83,7 +68,6 @@ pub fn build_toc_blocks(
     blocks.push(Block::fixed_space(spec.title_bottom_margin));
   }
 
-  // エントリ行
   let entry_leading = spec.entry_style.font_size * spec.line_height_factor;
   for entry in entries {
     blocks.push(Block::ComposedLine {
@@ -154,7 +138,6 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryI
   let label = entry_label(&entry.number, &entry.title_plain);
 
   let mut acc = LineAccum::default();
-  // 左: 番号＋タイトル（インデント位置から）
   let left_end = acc.place(measurer.shape_text(&label, spec.entry_style), indent);
 
   let mut right_edge = left_end;
@@ -171,7 +154,6 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryI
     right_edge = spec.text_width;
   }
 
-  // 行全体を見出しへの内部リンクにする
   let links = vec![LineLink {
     target: LinkTarget::Internal(AnchorId::Heading(entry.link_key)),
     x0: indent,
@@ -265,15 +247,13 @@ mod tests {
     assert_eq!(entry_label("1.2", ""), "1.2");
   }
 
-  // フォントを使う build_toc_blocks の配置検証（リーダー充填・右端揃え・リンク span）は
-  // フォント依存のため `seiran` の結合テストで確認する。ここでは純粋ロジックのみ検証する。
   #[test]
   fn spec_and_entry_constructors_are_consistent() {
     // Arrange / Act
     let s = spec();
     let e = entry(HeadingLevel::Section, "1.1", "Basics", "3", 1);
 
-    // Assert — 入力の素通しを確認（型整合のスモーク）
+    // Assert
     assert!(s.show_page_numbers);
     assert_eq!(s.leader.as_deref(), Some("."));
     assert_eq!(e.link_key, HeadingKey::new(1));

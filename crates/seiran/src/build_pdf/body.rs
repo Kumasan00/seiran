@@ -1,8 +1,4 @@
-//! phase 1: 本文の block 構築とページ分割
-//!
-//! Document IR → `LayoutNode` → `build_blocks` → 画像サイズ確定 → `break_pages` を 1 本の
-//! パスとして通す。脚注の採番方式でこのパスの回し方だけが変わり（通し採番は 1 回、ページ単位
-//! 採番は [`super::footnote_numbering`] の不動点反復）、パスの中身は同一。
+//! 本文のブロック構築とページ分割
 
 use std::time::Instant;
 
@@ -21,15 +17,13 @@ pub(super) struct BodyLayout {
   pub(super) headings: Vec<typeset::HeadingRecord>,
 }
 
-/// 本文を組版し、確定ページ列と見出し記録を返す（phase graph の 1 段目）。
+/// 本文を組版し、確定ページ列と見出し記録を返す。
 ///
-/// 脚注の採番方式で本文パスの回し方が変わる（他は一切変わらない）。通し採番は番号がページに
-/// 依存しないので 1 回だけ通し、ページ単位採番のときだけ [`super::footnote_numbering`] の
-/// 専用 solver が番号を与えて複数回呼ぶ。
+/// ページ単位の脚注採番では、不動点まで本文パスを反復する。
 ///
 /// # Errors
 ///
-/// lowering・画像サイズ確定に失敗した場合、またはページ単位採番が収束しなかった場合にエラーを返す。
+/// lowering、画像解決、脚注採番のいずれかに失敗した場合にエラーを返す。
 pub(super) fn typeset_body(
   ctx: &CompileContext<'_>,
   parsed_project: &ParsedProject,
@@ -47,8 +41,7 @@ pub(super) fn typeset_body(
 
 /// 本文パスを 1 回通す（lowering → `build_blocks` → 画像サイズ確定 → `break_pages`）。
 ///
-/// `footnote_numbers` は脚注の表示番号の上書きマップ（出現 index 引き）。通し採番では `None` を
-/// 渡し、上書きマップを一切通さない経路になる。
+/// `footnote_numbers` は出現順で引く脚注番号の上書き列。
 fn run_body_pass(
   ctx: &CompileContext<'_>,
   parsed_project: &ParsedProject,
@@ -86,12 +79,10 @@ fn run_body_pass(
   );
 
   let stage_start = Instant::now();
-  // 本文画像は段幅に合わせて解決する（段抜き＝全幅フロートは将来検討）。
+  // 本文画像は段幅に合わせて解決する
   let body_blocks = pdf_gen::resolve_images(body_blocks, ctx.body_col_width.to_pt(), image_set)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
-  // 本文は前付け（タイトルページ・目次）と別系列で 1 から番号付けするため、得られる本文内ページ
-  // 番号が最終値になる（前付けの長さに不依存。break_pages は純粋）。
   let stage_start = Instant::now();
   let pages = {
     let _span = debug_span!("break_pages", region = "body").entered();

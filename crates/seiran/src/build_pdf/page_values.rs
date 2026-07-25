@@ -1,14 +1,9 @@
 //! ページ分割後に確定する値（ページ番号・総ページ数）の解決機構
 //!
-//! ページ番号・総ページ数はページ分割（`typeset::breaking::break_pages`）が終わるまで確定しない。目次と
-//! running content（ヘッダー・フッター）はこの確定値をそれぞれ異なる時点で必要とするため、
-//! その順序制約を型で表す 2 段階に分ける。
+//! 値が確定する順序を型で表すため、2 段階に分ける。
 //!
 //! - Stage 1 [`BodyPageValues`]: 本文ページ列からしか構築できない（目次構築の引数型）
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
-//!
-//! lowering の pass1/pass2（`LayoutNode::Ref` → `resolve_refs`）と同じ「確定後に別走査で解決する」
-//! 流儀を型に昇格させたもの。
 
 use config::PageNumbering;
 use model::AnchorMark;
@@ -18,11 +13,9 @@ use model::AnchorMark;
 /// ページ数が `u32::MAX` に達することはない前提。
 fn page_num(n: usize) -> u32 { return u32::try_from(n).expect("ページ数は u32 に収まる前提"); }
 
-/// 本文ページ分割後にしか構築できない確定値（目次構築の引数型）
+/// 本文ページ分割後に確定する、目次生成用の値。
 ///
-/// 見出しの本文内ページ index とページ番号スタイルを保持する。目次のページラベルは本文の
-/// break 完了時点ですでに確定している（本文ページ番号は前付け長に不依存 = R1）ため、
-/// このステージだけで [`Self::body_page_label`] によるレンダリングが可能。
+/// 見出しの本文内ページ index とページ番号スタイルを保持する。
 pub(super) struct BodyPageValues {
   /// 見出し → 本文内ページ index（文書順）
   heading_pages: Vec<usize>,
@@ -33,10 +26,7 @@ pub(super) struct BodyPageValues {
 }
 
 impl BodyPageValues {
-  /// 本文ページ列とページ番号スタイルから [`BodyPageValues`] を構築する。
-  ///
-  /// `pdf_gen::build_destination_index` と同型のアンカー走査で、各ページの `AnchorMark::Heading`
-  /// アンカーだけを文書順に拾う（`AnchorMark::Label` は無視）。
+  /// 本文ページ列とページ番号スタイルから構築する。
   pub(super) fn from_body_pages(body_pages: &[model::Page], numbering: &PageNumbering) -> Self {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
@@ -56,31 +46,20 @@ impl BodyPageValues {
   /// 見出し → 本文内ページ index の列（文書順）を返す。
   pub(super) fn heading_pages(&self) -> &[usize] { return &self.heading_pages; }
 
-  /// 索引ページ（back matter）を本文領域の通し番号に合算する。
-  ///
-  /// 索引は本文の**後**に追記され、独立した番号体系を持たない（issue #247 の仕様）。前付け
-  /// （[`Self::finalize`]）が「前付け／本文」の 2 領域で番号を振り直すのに対し、索引は単に
-  /// 本文ページ数へ加算するだけで「本文からの通し」を満たせる。索引が無ければ `back_pages` は
-  /// 空なので無変更（既存呼び出しと同じ結果）。
+  /// 索引ページを本文領域の通し番号へ加算する。
   pub(super) fn with_back_matter(mut self, back_pages: &[model::Page]) -> Self {
     self.body_page_count += back_pages.len();
     return self;
   }
 
-  /// 本文内ページ index（0 起点）から、本文の番号スタイル（1 起点）でレンダリングしたラベルを返す。
-  ///
-  /// 目次のページラベル用。前付けのラベル体系（[`Self::finalize`]）とは独立に、本文スタイルだけで
-  /// 確定できる。
+  /// 本文内ページ index を本文の番号スタイルでレンダリングする。
   pub(super) fn body_page_label(&self, body_page_index: usize) -> String {
     return self.numbering.body.render(page_num(body_page_index) + 1);
   }
 
-  /// 前付けページ列が確定した後、物理ページ順の `({page}, {pages})` ラベル列 [`PageLabels`] を返す。
+  /// 物理ページ順の `({page}, {pages})` ラベル列を確定する。
   ///
-  /// 前付け（index `< front_pages.len()`）は `numbering.front_matter`（既定ローマ数字）で 1 から、
-  /// 本文はそれ以降を `numbering.body`（既定算用数字）で 1 から振り直す。`{pages}` は同じリージョンの
-  /// 総数を同じスタイルでレンダリングしたもの。素の `usize` でなく前付けページ列そのものを引数に取る
-  /// ことで、「連結前の前付けページ列が確定していること」を型で要求する（0 や本文数の誤渡しを防ぐ）。
+  /// 前付けと本文はそれぞれ 1 から番号を振り直す。
   pub(super) fn finalize(self, front_pages: &[model::Page]) -> PageLabels {
     let front_count = front_pages.len();
     let body_count = self.body_page_count;
@@ -102,17 +81,17 @@ impl BodyPageValues {
   }
 }
 
-/// 前付けページ列確定後にしか得られない、物理ページ順の `({page}, {pages})` ラベル列（running の引数型）
+/// 物理ページ順の `({page}, {pages})` ラベル列。
 pub(super) struct PageLabels {
   /// 物理ページ順の `({page}, {pages})` ラベル
   labels: Vec<(String, String)>,
 }
 
 impl PageLabels {
-  /// ラベル総数（物理ページ総数と一致するはず）。`build_pages` の `debug_assert` 用。
+  /// ラベル総数を返す。
   pub(super) fn len(&self) -> usize { return self.labels.len(); }
 
-  /// `layout::RunningContentSpec::page_numbers` へ渡すため、所有権ごと `Vec` に変換する。
+  /// 所有権ごとラベル列へ変換する。
   pub(super) fn into_vec(self) -> Vec<(String, String)> { return self.labels; }
 }
 
@@ -224,7 +203,7 @@ mod tests {
 
   #[test]
   fn with_back_matter_is_no_op_when_no_index() {
-    // 索引が無ければ back_pages は空 — finalize の結果は with_back_matter を呼ばない場合と同じ
+    // Arrange
     let front_pages = vec![page_with_anchors(vec![])];
     let body_pages = vec![page_with_anchors(vec![]), page_with_anchors(vec![])];
     let labels_with_empty_back = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default())
@@ -235,12 +214,13 @@ mod tests {
       .finalize(&front_pages)
       .into_vec();
 
+    // Act / Assert
     assert_eq!(labels_with_empty_back, labels_without_call);
   }
 
   #[test]
   fn finalize_without_front_matter_is_plain_arabic() {
-    // 前付けが無ければ全ページが本文系列（算用数字 1 から）= 従来挙動
+    // Arrange
     let body_pages = vec![
       page_with_anchors(vec![]),
       page_with_anchors(vec![]),
@@ -248,8 +228,10 @@ mod tests {
     ];
     let page_values = BodyPageValues::from_body_pages(&body_pages, &PageNumbering::default());
 
+    // Act
     let labels = page_values.finalize(&[]).into_vec();
 
+    // Assert
     assert_eq!(labels[0].0, "1");
     assert_eq!(labels[2], ("3".to_string(), "3".to_string()));
   }

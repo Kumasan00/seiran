@@ -1,15 +1,8 @@
 //! `\url{uri}` / `\href[url=uri]{表示}` コマンド
 //!
-//! 外部 URI を行き先とするクリック可能なリンク（[`InlineNode::Link`]）を生成する。
-//! 構文設計原則 A（引数は `{}`）に従い、表示テキストは必須引数、URL は `\url` では
-//! 必須引数自身・`\href` では任意引数 `[url=...]` で与える。
-//!
 //! ## URL 内の `//` のエスケープ
 //!
-//! Seiran では `//` が行コメント開始（設計原則 F）のため、URL の `//` はそのまま書けない。
-//! `\/` でスラッシュをエスケープする（例: `\url{https:\/\/example.com}`）。エスケープは
-//! [`extract_text_content`] / `parse_key_value_options` が解除するため、表示・リンク先とも
-//! `https://example.com` になる。
+//! `//` はコメント開始として解釈されるため、URL 内では `\/` と書く。
 
 use model::InlineNode;
 
@@ -115,7 +108,7 @@ mod tests {
 
   #[test]
   fn url_uses_uri_as_display_text() {
-    // Arrange — URL の `//` は `\/` でエスケープする（`//` は行コメント）
+    // Arrange
     let arena = Bump::new();
     let source = r"\url{https:\/\/example.com}";
     let view = CommandView::new(get_command_view(source, &arena), source);
@@ -123,7 +116,7 @@ mod tests {
     // Act
     let result = url_command(&view).unwrap();
 
-    // Assert — url と children の Text がともにエスケープ解除済みの URI 自身になる
+    // Assert
     let InlineNode::Link { url, children } = &result[0] else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -143,7 +136,7 @@ mod tests {
 
   #[test]
   fn href_uses_opt_url_and_inline_display() {
-    // Arrange — opt 引数の URL も `//` を `\/` でエスケープする
+    // Arrange
     let arena = Bump::new();
     let source = r"\href[url=https:\/\/example.com]{ここ}";
     let view = CommandView::new(get_command_view(source, &arena), source);
@@ -151,7 +144,7 @@ mod tests {
     // Act
     let result = href_command(&view).unwrap();
 
-    // Assert — url は opt 引数、表示テキストは本文のインライン評価
+    // Assert
     let InlineNode::Link { url, children } = &result[0] else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -161,7 +154,7 @@ mod tests {
 
   #[test]
   fn href_rejects_missing_url_opt() {
-    // Arrange — url 任意引数なし
+    // Arrange
     let arena = Bump::new();
     let source = r"\href{表示だけ}";
     let view = CommandView::new(get_command_view(source, &arena), source);

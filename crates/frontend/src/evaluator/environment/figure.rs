@@ -1,22 +1,6 @@
 //! 図環境 — `figure`
 //!
-//! `\begin{figure}...\end{figure}` を [`DocNode::Figure`] に変換します。
-//! 本体には `\image`（必須）と `\caption`（任意）をそれぞれ 1 つだけ書けます。
-//! それ以外のコマンド・テキスト、および `\image` / `\caption` の重複は
-//! 黙って無視せずエラーとして報告します。
-//!
-//! ## 任意引数
-//!
-//! - `[label=fig:foo]` — `\ref` 解決用ラベル（任意）
-//!
-//! ## 本体内のコマンド
-//!
-//! - `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` — 画像（必須）。
-//!   `width` / `height` はともに任意で、未指定分は `pdf_gen` 段で元画像の自然寸法の縦横比と
-//!   本文幅から算出される。`dpi` は per-image の DPI 上限上書き（config `[image].max_dpi`
-//!   を上書き）、`downsample` は per-image のリサイズ ON/OFF（config `[image].downsample`
-//!   を上書き）
-//! - `\caption{...}` — キャプション（任意）
+//! `\image` と `\caption` を [`DocNode::Figure`] に変換する。
 
 use model::{CaptionPosition, DocNode, InlineNode, Length};
 
@@ -31,9 +15,6 @@ use crate::{
 };
 
 /// `figure` 環境を評価する
-///
-/// 本体内の `\image` / `\caption` を抽出して [`DocNode::Figure`] を生成する。
-/// 採番（`CounterName::Figure` の発番・書式化）は行わない（`lowering` 層の責務）。
 ///
 /// # Errors
 ///
@@ -87,7 +68,6 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
               span: cmd_view.span().to_source_span(),
             });
           }
-          // image 抽出より先に caption が現れた場合は Top 配置
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
@@ -134,10 +114,6 @@ struct ImageArgs {
 }
 
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` から各引数を抽出する
-///
-/// `width` / `height` / `dpi` / `downsample` はいずれも任意引数。`width` / `height` の未指定分は
-/// `pdf_gen` 段で元画像の自然寸法の縦横比と本文幅から自動算出される。`dpi` / `downsample` の
-/// 未指定分は config `[image].max_dpi` / `[image].downsample` が使われる。
 fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
   let opt_args = collect_command_opt_args(
     view,
@@ -158,7 +134,6 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
       ("width", OptValue::Length(l)) => width = Some(l),
       ("height", OptValue::Length(l)) => height = Some(l),
       ("dpi", OptValue::Number(n)) => {
-        // dpi は正の整数のみ受理する
         if !(n.is_finite() && n > 0.0 && n <= f64::from(u32::MAX)) {
           return Err(EvalError::InvalidOptArgValue {
             name: "image".to_string(),
@@ -259,7 +234,6 @@ mod tests {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
     assert_eq!(image_path.as_str(), "./images/seiran.jpg");
-    // Length は内部 pt（f32）を経由するため、mm への往復変換に小さい誤差を許容する
     assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
     assert!((height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
     assert!(dpi.is_none());
@@ -267,14 +241,13 @@ mod tests {
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
-    // \image が先 → 既定の Bottom
     assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
   }
 
   #[test]
   fn figure_caption_before_image_yields_top_position() {
-    // Arrange — \caption が \image より先に書かれている
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -294,7 +267,7 @@ mod tests {
 
   #[test]
   fn figure_image_before_caption_yields_bottom_position() {
-    // Arrange — \image が \caption より先（典型的な記法）
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -332,7 +305,7 @@ mod tests {
 
   #[test]
   fn figure_rejects_missing_image() {
-    // Arrange — image なしはエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -346,7 +319,7 @@ mod tests {
 
   #[test]
   fn figure_accepts_image_without_size() {
-    // Arrange — width / height はともに任意。\image{path} のみで通る
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -354,7 +327,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — width/height は None のまま伝播し、pdf_gen 段で解決される
+    // Assert
     assert_eq!(result.len(), 1);
     let DocNode::Figure {
       image_path,
@@ -372,7 +345,7 @@ mod tests {
 
   #[test]
   fn figure_accepts_image_with_only_width() {
-    // Arrange — width のみ指定。height は省略可
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -404,7 +377,7 @@ mod tests {
 
   #[test]
   fn image_captures_dpi_and_downsample() {
-    // Arrange — \image[dpi=600, downsample=false]
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();
@@ -425,7 +398,7 @@ mod tests {
 
   #[test]
   fn image_rejects_zero_dpi() {
-    // Arrange — dpi=0 は正の整数ではないので拒否
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
     let cst = parse(source, &arena).unwrap();

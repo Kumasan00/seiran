@@ -1,16 +1,6 @@
 //! パーサー — トークン列からアリーナベースの CST（具象構文木）を構築する
 //!
-//! 再帰下降パーサーにより、Lexer が生成したトークン列を
-//! `bumpalo::Bump` アリーナ上のロスレスな CST に構造化します。
-//!
-//! ## 設計方針
-//!
-//! - **ロスレス**: 空白・改行・コメントを含むすべてのトークンを CST に保持
-//! - **エラー回復しない**: パース失敗時は即座に `ParserError` を返し、
-//!   デフォルト引数の挿入や閉じ括弧のスキップなど、ユーザに気づかれない補完は行わない
-//! - **1 トークン先読み**: `peek` / `next` の単純な先読みパーサー
-//! - **アリーナベース**: 全ノードを `bumpalo::Bump` アリーナに確保し、
-//!   `Vec` の個別ヒープ確保を排除
+//! 空白・改行・コメントを含む全トークンを保持し、エラー回復による暗黙の補完は行わない。
 
 use bumpalo::Bump;
 use model::Span;
@@ -32,16 +22,9 @@ mod error;
 
 pub use error::ParserError;
 
-// =============================================================================
-// パース モード
-// =============================================================================
-
 /// 環境本体および入れ子要素のパース時に、どの語彙的解釈を適用するかを示すモード
 ///
-/// 既定は [`ParseMode::Text`]。`\begin{...}...\end{...}` の本体パース時に、
-/// 環境名 → [`ParseMode`] の対応を [`parse`] 呼び出し側から注入される
-/// コールバックで決定する。将来 `verbatim` / `align` 等を追加する際は、
-/// このバリアントを増やし、対応する分岐を [`Parser::parse_element`] に足す。
+/// 環境本体のモードは [`parse`] に渡すコールバックで決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseMode {
   /// 通常のテキストモード（`$` でインライン数式に入る）
@@ -49,10 +32,6 @@ pub enum ParseMode {
   /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
   Math,
 }
-
-// =============================================================================
-// パーサー実装
-// =============================================================================
 
 /// アリーナベース CST 構築パーサー
 pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
@@ -67,9 +46,6 @@ pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
   /// 最後に消費したトークンの Span
   last_span: Span,
   /// 環境名 → [`ParseMode`] を解決するコールバック
-  ///
-  /// `\begin{name}` の本体パース時に呼ばれ、本体の語彙的解釈を決定する。
-  /// 呼び出し側（評価器）が環境レジストリを参照して構築する。
   env_mode: F,
 }
 
@@ -130,8 +106,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         break;
       }
 
-      // トップレベルでは終端を持たないため None を渡す。
-      // parse_element 内で stray な `}` / `]` は UnexpectedToken エラーになる。
       self.parse_element(&mut children, ParseMode::Text, None)?;
     }
 
@@ -141,13 +115,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
   /// 1つの構文要素をパースして `children` に追加する
   ///
-  /// `mode` が [`ParseMode::Math`] の場合、`^` `_` を上付き・下付きとして構造化し、
-  /// `{...}` を `MathGroup` として解釈する。
-  ///
-  /// `expected_closer` には呼び出し側が閉じるべき終端トークン（`RBrace` / `RBracket`）を渡す。
-  /// 一致する終端を見つけたら何も消費せず `Ok(())` を返し、呼び出し側の次の peek で break する。
-  /// 一致しない（=想定外の）閉じトークンは `UnexpectedToken` エラーとして即座に報告する。
-  /// トップレベルや環境本体のように終端を持たない文脈では `None` を渡す。
+  /// `expected_closer` と一致する終端は消費せず、呼び出し側に制御を戻す。
   fn parse_element(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
@@ -183,7 +151,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let first_dollar = self.next_token().unwrap();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
-          // 連続する $ は不採用（設計原則 G）。最初の $ と二つ目の $ をまとめてエラー範囲とする。
+          // 最初の 2 つの `$` をまとめてエラー範囲にする。
           #[allow(clippy::unwrap_used)]
           let second_dollar = self.next_token().unwrap();
           return Err(ParserError::DollarDollarNotSupported {
@@ -191,12 +159,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           });
         }
 
-        // 単独の $ はインライン数式
         let math_node = self.parse_inline_math(first_dollar)?;
         children.push(GreenElement::Node(math_node));
       },
       TokenKind::Dollar => {
-        // mode == Math（Text は上のアームで処理済み）。数式モードの中に `$` は書けない
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::DollarInMathMode {
@@ -216,8 +182,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
-        // テキストモードでの裸の `{...}` は構文エラー（設計原則 E2）。
-        // コマンド引数の `{...}` は parse_command_call で個別に消費するためここには来ない。
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareGroup {
@@ -225,9 +189,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       TokenKind::LBracket => {
-        // 任意引数の `[...]` は parse_command_call / parse_environment で個別に消費する。
-        // ここに来る `[` は任意引数の開始位置にない裸のブラケットなので、黙って素通し
-        // （評価器で捨てられて出力から消える）にせず構文エラーとして報告する。
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
@@ -235,11 +196,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       TokenKind::RBrace | TokenKind::RBracket if Some(kind) == expected_closer => {
-        // 呼び出し側が期待する終端 — 消費せずに戻し、呼び出し側の loop で break させる
+        // 終端は呼び出し側が消費する。
         return Ok(());
       },
       TokenKind::RBrace | TokenKind::RBracket => {
-        // 想定外の閉じトークン — 即エラー（無限ループ防止）
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
@@ -248,7 +208,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       TokenKind::Unknown => {
-        // 不正なバックスラッシュ（`\<空白>` や入力末尾の `\`）— 黙認せず即エラー
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
@@ -272,25 +231,21 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let start_span = begin_token.span;
     let mut env_children = bumpalo::collections::Vec::new_in(self.arena);
 
-    // === EnvironmentBegin ===
     let mut begin_children = bumpalo::collections::Vec::new_in(self.arena);
     begin_children.push(GreenElement::Token(begin_token));
 
-    // 環境名 {name}
     let name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let env_name = self.extract_text_from_arg(name_arg);
     begin_children.push(GreenElement::Node(name_arg));
 
     self.skip_trivia(&mut begin_children);
 
-    // 任意引数 [opt]
     while let Some(TokenKind::LBracket) = self.peek_kind() {
       let opt = self.parse_opt_arg()?;
       begin_children.push(GreenElement::Node(opt));
       self.skip_trivia(&mut begin_children);
     }
 
-    // 必須引数 {arg}
     while let Some(TokenKind::LBrace) = self.peek_kind() {
       let arg = self.parse_mandatory_arg(ParseMode::Text)?;
       begin_children.push(GreenElement::Node(arg));
@@ -301,8 +256,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let begin_node = self.alloc_node(SyntaxKind::EnvironmentBegin, begin_span, begin_children);
     env_children.push(GreenElement::Node(begin_node));
 
-    // === EnvironmentBody ===
-    // 環境名 → ParseMode を呼び出し側から注入されたコールバックで引く
     let body_mode = (self.env_mode)(env_name.as_str());
 
     let last_span_end = self.last_span.end;
@@ -325,8 +278,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         }
       }
 
-      // 環境本体は単独で終端を持たない（`\end` で終わる）ため None を渡す。
-      // 本体内に stray な `}` / `]` が混入した場合は UnexpectedToken エラーで報告する。
       self.parse_element(&mut body_children, body_mode, None)?;
     }
 
@@ -335,8 +286,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let body_node = self.alloc_node(SyntaxKind::EnvironmentBody, Span::new(body_start, body_end), body_children);
     env_children.push(GreenElement::Node(body_node));
 
-    // === EnvironmentEnd ===
-    // 本体ループは `\end` 検出または EOF で抜ける。EOF で抜けた場合（=`\end` 不在）はエラー。
     if self.peek_kind() != Some(TokenKind::Command) {
       return Err(ParserError::UnclosedEnvironment {
         name: env_name,
@@ -351,7 +300,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
     end_node_children.push(GreenElement::Token(end_token));
 
-    // {name}
     let end_name_arg = self.parse_mandatory_arg(ParseMode::Text)?;
     let end_env_name = self.extract_text_from_arg(end_name_arg);
 
@@ -375,10 +323,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
   /// コマンド呼び出しをパース: `\cmd[opt]{arg}`
   ///
-  /// コマンドトークンは既に消費済み。`mode` は必須引数 `{...}` の本体の語彙的解釈に
-  /// 使われる（数式モード中の `\frac{x^2}{y}` の `^` を `MathSuperscript` として
-  /// 構造化するため）。任意引数 `[...]` は key=value / インデックス指定のため常に
-  /// テキストモードでパースする。
+  /// 必須引数には `mode` を引き継ぎ、任意引数はテキストモードでパースする。
   fn parse_command_call(&mut self, cmd_token: Token, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = cmd_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -386,14 +331,12 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     self.skip_trivia(&mut children);
 
-    // 任意引数 [ ... ] の解析
     while let Some(TokenKind::LBracket) = self.peek_kind() {
       let opt_node = self.parse_opt_arg()?;
       children.push(GreenElement::Node(opt_node));
       self.skip_trivia(&mut children);
     }
 
-    // 必須引数 { ... } の解析
     while let Some(TokenKind::LBrace) = self.peek_kind() {
       let arg_node = self.parse_mandatory_arg(mode)?;
       children.push(GreenElement::Node(arg_node));
@@ -405,11 +348,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// `(open, close)` で囲まれた区間をパースする共通ヘルパ
-  ///
-  /// `[...]` (`OptArg`), `{...}` (`MandatoryArg`, `Group`) の 3 つの構造に共通する
-  /// 「開き → 内容 → 閉じ」の枠組みを集約する。`expected_closer` は内側の
-  /// `parse_element` に伝えられ、想定外の閉じトークンが混入したときの
-  /// 早期エラー判定に使われる。
   fn parse_delimited(
     &mut self,
     open_kind: TokenKind,
@@ -427,7 +365,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       match self.peek_kind() {
         Some(k) if k == close_kind => break,
         None => {
-          // 閉じ括弧不在のまま EOF — 開き括弧の位置をラベルにして UnclosedDelimiter を返す
           return Err(ParserError::UnclosedDelimiter {
             open_kind,
             span: start_span.to_source_span(),
@@ -438,7 +375,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       self.parse_element(&mut children, mode, Some(close_kind))?;
     }
 
-    // 直前の peek で close_kind を確認済み
     #[allow(clippy::unwrap_used)]
     let close = self.next_token().unwrap();
     children.push(GreenElement::Token(close));
@@ -459,10 +395,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// インライン数式をパース: `$...$`
-  ///
-  /// 開き `$` トークンは呼び出し元で既に消費済みのため引数として受け取る。
-  /// 閉じ `$` がないまま EOF に達した場合は [`ParserError::UnclosedInlineMath`] を返す
-  /// （不完全な数式ノードを黙って構築しない）。
   fn parse_inline_math(&mut self, dollar_open: Token) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = dollar_open.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -508,7 +440,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           break;
         },
         Some(TokenKind::Dollar) | None => {
-          // 数式区切りの $ や EOF が来た時点で `}` がないため UnclosedMathGroup
           return Err(ParserError::UnclosedMathGroup {
             span: start_span.to_source_span(),
           });
@@ -522,12 +453,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// 数式コンテキスト内で 1 トークン分の内部要素を消費する共通ヘルパ
-  ///
-  /// `parse_inline_math` と `parse_math_group` の本体ループから、終端トークン
-  /// （`$` / `}`）の判定を除いた共通分岐をくくり出したもの。
-  /// `LBrace` は再帰的に `parse_math_group` を呼び、`Underscore` / `Caret` は
-  /// 上付き・下付きスクリプトとして構造化する。それ以外は単一のトークンとして
-  /// 子に追加する。
   fn parse_math_atom(
     &mut self,
     children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>,
@@ -552,7 +477,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       Some(TokenKind::Unknown) => {
-        // 数式中でも不正なバックスラッシュは黙認せず即エラー
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
@@ -560,7 +484,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       Some(TokenKind::LBracket) => {
-        // 数式中の裸の `[` も黙って捨てずエラーにする（文字として書くなら \[ ）
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
@@ -568,7 +491,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
-        // 対応する開き括弧のない閉じトークンは構文エラーとして報告する
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
@@ -577,7 +499,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       _ => {
-        // Ampersand やその他のトークンはそのまま CST に保持
         #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         children.push(GreenElement::Token(token));
@@ -587,10 +508,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 
   /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
-  ///
-  /// `_` または `^` トークンはこのメソッド内で消費する。
-  /// 内容が来るべき位置に終端トークン（`$` / `}` 等）や不正なトークンが現れた場合は、
-  /// それを黙って内容として消費せずエラーを返す。
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
     #[allow(clippy::unwrap_used)]
     let script_token = self.next_token().unwrap();
@@ -620,8 +537,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
-        // `$x^$` のように内容なしで数式やグループが終わる場合 — 終端トークンを
-        // 内容として黙って消費せずエラーにする
         #[allow(clippy::unwrap_used)]
         let span = self.peek_token().unwrap().span;
         return Err(ParserError::UnexpectedToken {
@@ -698,17 +613,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   }
 }
 
-// =============================================================================
-// エントリーポイント
-// =============================================================================
-
 /// ソーステキストをパースしてアリーナベースの CST を返す
-///
-/// # Arguments
-///
-/// * `source` - パース対象のソーステキスト
-/// * `arena` - ノード確保用の bumpalo アリーナ
-/// * `env_mode` - 環境名から本体の [`ParseMode`] を決定するコールバック
 ///
 /// # Errors
 ///
@@ -731,10 +636,6 @@ mod tests {
   use super::*;
 
   /// テスト用の環境 → [`ParseMode`] 解決クロージャ
-  ///
-  /// 本番経路では `parser` クレートのレジストリ（`evaluator::environment::lookup_parse_mode`）が
-  /// 注入されるが、`syntax` クレート単体テストではそのレジストリを参照できないため、
-  /// 既存テストが依存する `equation` 系のみ Math、それ以外を Text とする簡易マップを使う。
   fn test_env_mode(name: &str) -> ParseMode {
     return match name {
       "equation" => ParseMode::Math,
@@ -743,10 +644,6 @@ mod tests {
   }
 
   /// テスト用の `parse` ラッパ
-  ///
-  /// 本物の `super::parse` は `env_mode` コールバックを要求するが、既存テストは
-  /// 旧シグネチャ `parse(source, &arena)` を多数使っているため、同名関数を
-  /// テストモジュール内に定義してシャドウし、`test_env_mode` を自動注入する。
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
     return super::parse(source, arena, test_env_mode);
   }
@@ -766,7 +663,6 @@ mod tests {
     let arena = Bump::new();
     let cst = parse_source("hello world", &arena);
     assert_eq!(cst.kind, SyntaxKind::Root);
-    // Text("hello"), Whitespace(" "), Text("world")
     assert_eq!(cst.children.len(), 3);
     assert!(matches!(&cst.children[0], GreenElement::Token(t) if t.kind == TokenKind::Text));
     assert!(matches!(&cst.children[1], GreenElement::Token(t) if t.kind == TokenKind::Whitespace));
@@ -909,7 +805,6 @@ mod tests {
 
   #[test]
   fn bare_group_at_top_level_is_error() {
-    // 設計原則 E2: 裸の `{...}` は構文エラー。
     let arena = Bump::new();
     let result = parse("{hello}", &arena);
     assert!(matches!(result, Err(ParserError::BareGroup { .. })));
@@ -917,7 +812,6 @@ mod tests {
 
   #[test]
   fn bare_group_in_paragraph_is_error() {
-    // 段落の途中に裸の `{...}` が混ざってもエラー。
     let arena = Bump::new();
     let result = parse("hello {world}", &arena);
     assert!(matches!(result, Err(ParserError::BareGroup { .. })));
@@ -925,7 +819,6 @@ mod tests {
 
   #[test]
   fn bare_group_in_environment_body_is_error() {
-    // 環境本体内の裸の `{...}` もエラー。
     // 注意: `\begin{env}{x}\end{env}` の `{x}` は \begin の追加 mandatory arg として
     // 解釈されるため、本体内 bare group のテストには `text{bare}` のように先頭にテキストを置く。
     let arena = Bump::new();
@@ -935,7 +828,6 @@ mod tests {
 
   #[test]
   fn command_argument_brace_is_not_bare_group() {
-    // コマンド引数の `{...}` は parse_command_call で個別に消費されるため BareGroup にならない。
     let arena = Bump::new();
     let cst = parse_source(r"\bold{hello}", &arena);
     if let GreenElement::Node(cmd) = &cst.children[0] {
@@ -1002,7 +894,6 @@ mod tests {
 
   #[test]
   fn stray_rbrace_in_opt_arg_is_error_not_hang() {
-    // 任意引数 `[...]` の中に stray `}` が出た場合も同様。
     let arena = Bump::new();
     let result = parse(r"\cmd[abc}def]{x}", &arena);
     assert!(matches!(
@@ -1016,9 +907,6 @@ mod tests {
 
   #[test]
   fn unclosed_brace_in_command_arg_returns_unclosed_delimiter() {
-    // 設計原則 E2 によりトップレベルの `{` は BareGroup エラーになるが、
-    // コマンド引数 `\cmd{...` の `{` が閉じられないまま EOF に達した場合は
-    // 引き続き UnclosedDelimiter を返す。
     let arena = Bump::new();
     let result = parse(r"\cmd{unclosed", &arena);
     assert!(matches!(
@@ -1032,7 +920,6 @@ mod tests {
 
   #[test]
   fn unclosed_bracket_in_opt_arg_returns_unclosed_delimiter() {
-    // 任意引数の `[` が閉じられないまま EOF。span は開き `[` を指す。
     let arena = Bump::new();
     let result = parse(r"\cmd[opt", &arena);
     assert!(matches!(
@@ -1046,7 +933,6 @@ mod tests {
 
   #[test]
   fn top_level_end_is_stray_end_error() {
-    // \begin に対応しないトップレベルの \end は StrayEnd エラー。
     let arena = Bump::new();
     let result = parse(r"\end{foo}", &arena);
     assert!(matches!(result, Err(ParserError::StrayEnd { .. })));
@@ -1054,8 +940,6 @@ mod tests {
 
   #[test]
   fn unexpected_token_error_message_uses_display() {
-    // UnexpectedToken のメッセージには Display 由来の記号が現れ、
-    // Debug 由来の内部識別子 (RBrace 等) が漏れないこと。
     let arena = Bump::new();
     let err = parse("}", &arena).unwrap_err();
     let msg = format!("{err}");
@@ -1065,8 +949,6 @@ mod tests {
 
   #[test]
   fn lone_backslash_at_eof_is_error() {
-    // 入力末尾の単独 `\` は Lexer が Unknown トークンとして出すが、
-    // Parser はこれを黙認せず InvalidBackslash エラーで報告する。
     let arena = Bump::new();
     let result = parse(r"\", &arena);
     assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
@@ -1074,7 +956,6 @@ mod tests {
 
   #[test]
   fn backslash_followed_by_whitespace_is_error() {
-    // `\<空白>` も同様に InvalidBackslash で報告される。
     let arena = Bump::new();
     let result = parse("hello \\ world", &arena);
     assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
@@ -1082,7 +963,6 @@ mod tests {
 
   #[test]
   fn invalid_backslash_in_math_is_error() {
-    // 数式モード中の不正なバックスラッシュも黙認しない。
     let arena = Bump::new();
     let result = parse(r"$x \ y$", &arena);
     assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
@@ -1090,8 +970,6 @@ mod tests {
 
   #[test]
   fn environment_without_end_is_error() {
-    // \begin{env} に対応する \end{env} がないまま EOF に達した場合は
-    // 静かに通すのではなく UnclosedEnvironment エラーになる必要がある。
     let arena = Bump::new();
     let result = parse(r"\begin{env}body without end", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
@@ -1099,7 +977,6 @@ mod tests {
 
   #[test]
   fn environment_without_end_after_args_is_error() {
-    // \begin の引数のあとに本体だけあって \end がない場合もエラー。
     let arena = Bump::new();
     let result = parse(r"\begin{env}[opt]body", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedEnvironment { .. })));
@@ -1107,8 +984,6 @@ mod tests {
 
   #[test]
   fn math_group_unclosed_by_dollar_is_error() {
-    // インライン数式 ${x$ では MathGroup の `}` が来ないまま `$` で数式が閉じる。
-    // 不完全な MathGroup を構築するのではなく UnclosedMathGroup エラーになる必要がある。
     let arena = Bump::new();
     let result = parse(r"${x$", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
@@ -1116,7 +991,6 @@ mod tests {
 
   #[test]
   fn math_group_unclosed_by_eof_is_error() {
-    // ${x のように EOF で終わった場合も同様。
     let arena = Bump::new();
     let result = parse(r"${x", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedMathGroup { .. })));
@@ -1151,8 +1025,6 @@ mod tests {
 
   #[test]
   fn unclosed_inline_math_is_error() {
-    // `$x` のように閉じ $ がないまま EOF に達した場合、以前は不完全な
-    // InlineMath ノードが黙って構築されていた。UnclosedInlineMath で報告する。
     let arena = Bump::new();
     let result = parse(r"$x", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
@@ -1160,7 +1032,6 @@ mod tests {
 
   #[test]
   fn currency_dollar_without_escape_is_error() {
-    // 通貨の `$` をエスケープせず書くと数式開始とみなされ、閉じられないためエラー。
     let arena = Bump::new();
     let result = parse(r"price is 100$", &arena);
     assert!(matches!(result, Err(ParserError::UnclosedInlineMath { .. })));
@@ -1168,8 +1039,6 @@ mod tests {
 
   #[test]
   fn bare_lbracket_in_text_is_error() {
-    // 裸の `[` は以前は raw トークンとして CST に残り、評価器で黙って捨てられていた。
-    // stray `]` がエラーになるのと対称に、`[` も構文エラーとして報告する。
     let arena = Bump::new();
     let result = parse("hello [world", &arena);
     assert!(matches!(result, Err(ParserError::BareBracket { .. })));
@@ -1177,7 +1046,6 @@ mod tests {
 
   #[test]
   fn escaped_bracket_in_text_is_ok() {
-    // `\[` エスケープなら文字として書ける。
     let arena = Bump::new();
     let cst = parse_source(r"hello \[0\]", &arena);
     let has_escaped = cst.children.iter().any(|e| matches!(e, GreenElement::Token(t) if t.kind == TokenKind::Escaped));
@@ -1186,7 +1054,6 @@ mod tests {
 
   #[test]
   fn bare_lbracket_in_inline_math_is_error() {
-    // 数式中の `[` も同様に黙って捨てずエラーにする。
     let arena = Bump::new();
     let result = parse(r"$[0,1]$", &arena);
     assert!(matches!(result, Err(ParserError::BareBracket { .. })));
@@ -1194,7 +1061,6 @@ mod tests {
 
   #[test]
   fn stray_rbrace_in_inline_math_is_error() {
-    // 数式中の対応しない `}` は以前は CST に残り評価器で捨てられていた。
     let arena = Bump::new();
     let result = parse(r"$x}$", &arena);
     assert!(matches!(
@@ -1208,8 +1074,6 @@ mod tests {
 
   #[test]
   fn dollar_in_math_environment_is_error() {
-    // 数式環境の本体は既に数式モードなので `$` は書けない。
-    // 以前は raw トークンとして黙って無視されていた。
     let arena = Bump::new();
     let result = parse(r"\begin{equation}$x$\end{equation}", &arena);
     assert!(matches!(result, Err(ParserError::DollarInMathMode { .. })));
@@ -1217,8 +1081,6 @@ mod tests {
 
   #[test]
   fn math_script_without_content_before_dollar_is_error() {
-    // `$x^$` — `^` の内容が来るべき位置で数式が閉じる場合はエラー。
-    // 以前は閉じ $ を内容として消費し、数式全体が閉じられない扱いになっていた。
     let arena = Bump::new();
     let result = parse(r"$x^$", &arena);
     assert!(matches!(
@@ -1232,7 +1094,6 @@ mod tests {
 
   #[test]
   fn math_script_skips_whitespace_before_content() {
-    // `$x^ 2$` — `^` と内容の間の空白は内容とみなさずスキップされる。
     let arena = Bump::new();
     let cst = parse_source(r"$x^ 2$", &arena);
     let GreenElement::Node(math) = &cst.children[0] else {
@@ -1247,7 +1108,6 @@ mod tests {
 
   #[test]
   fn math_script_invalid_backslash_content_is_error() {
-    // `$x^\ $` — スクリプト内容が不正なバックスラッシュの場合もエラー。
     let arena = Bump::new();
     let result = parse("$x^\\ $", &arena);
     assert!(matches!(result, Err(ParserError::InvalidBackslash { .. })));
@@ -1255,7 +1115,6 @@ mod tests {
 
   #[test]
   fn dollar_dollar_returns_error() {
-    // 設計原則 G: `$$` は不採用。ディスプレイ数式は \begin{equation} を使う。
     let arena = Bump::new();
     let result = parse("$$", &arena);
     assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
@@ -1263,7 +1122,6 @@ mod tests {
 
   #[test]
   fn triple_dollar_returns_error() {
-    // 連続 $ も同様にエラー。最初の `$$` 検出時点で報告される。
     let arena = Bump::new();
     let result = parse("$$$", &arena);
     assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
@@ -1271,7 +1129,6 @@ mod tests {
 
   #[test]
   fn dollar_dollar_in_paragraph_returns_error() {
-    // 段落途中の `$$` もエラー。
     let arena = Bump::new();
     let result = parse("hello $$ world", &arena);
     assert!(matches!(result, Err(ParserError::DollarDollarNotSupported { .. })));
@@ -1365,8 +1222,6 @@ mod tests {
 
   #[test]
   fn equation_env_body_is_parsed_in_math_mode() {
-    // ENVIRONMENT_PARSE_MODES で equation が Math と紐付いているため、body 内の
-    // `^` は MathSuperscript ノードに、`{ij}` は MathGroup ノードになる必要がある。
     let arena = Bump::new();
     let cst = parse_source(r"\begin{equation}x^{ij}\end{equation}", &arena);
     let GreenElement::Node(env) = &cst.children[0] else {
@@ -1382,7 +1237,6 @@ mod tests {
 
   #[test]
   fn non_math_env_body_keeps_caret_as_raw_token() {
-    // itemize は ENVIRONMENT_PARSE_MODES に未登録なので Text モード。`^` は raw Caret トークン。
     let arena = Bump::new();
     let cst = parse_source(r"\begin{itemize}a^b\end{itemize}", &arena);
     let GreenElement::Node(env) = &cst.children[0] else {

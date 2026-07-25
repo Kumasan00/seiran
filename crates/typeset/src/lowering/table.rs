@@ -1,13 +1,4 @@
 //! 表環境（`DocNode::Table`）の lowering
-//!
-//! セル内容を [`super::inline::lower_inline`] でスタイル付きレイアウトノードに変換し、
-//! [`TableLayout`] に詰めます。ヘッダ行のセルは本文フォントの太字バリアントで
-//! 描画されます。キャプションは `TableStyle.caption` の書式で構築し、図と同様に
-//! `caption_position`（ソース上の `\caption` の出現順）に従って表の上下に配置します。
-//! キャプション構築と `VBox` 包みは [`super::float`] の共通ヘルパで行います。
-//!
-//! 列幅の解決（自然幅の実測・残余分配）はシェーピング結果が必要なため
-//! `breaking` 段（`model::resolve_column_widths`）で行い、ここでは列指定をそのまま保持します。
 
 use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, TableColumn, TableRow};
 
@@ -61,9 +52,6 @@ fn lower_rows(
 }
 
 /// 表をレイアウトノードに変換する
-///
-/// 表本体とキャプションを `caption_position` の順序で積み、上下マージン付きの
-/// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力しない。
 ///
 /// # Errors
 ///
@@ -173,7 +161,7 @@ mod tests {
     )
     .expect("解決済みインラインなのでエラーにならない");
 
-    // Assert — 先頭は top_margin の Vkern、VBox 内に Table
+    // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
     let table = find_table(&nodes);
     assert_eq!(table.columns.len(), 2);
@@ -206,7 +194,7 @@ mod tests {
     )
     .expect("失敗しない");
 
-    // Assert — ヘッダセルは太字、本体セルは通常
+    // Assert
     let table = find_table(&nodes);
     let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
       panic!("ヘッダセルは Text であるべき");
@@ -240,7 +228,7 @@ mod tests {
     )
     .expect("失敗しない");
 
-    // Assert — VBox 内で Table がキャプション Text より前、書式は "Table {number}: {title}"
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("VBox が期待されます");
     };
@@ -288,7 +276,7 @@ mod tests {
 
   #[test]
   fn lower_table_inserts_inner_margin_between_table_and_caption() {
-    // Arrange — キャプション付きの表は本体とキャプションの間に inner_margin の Vkern を挟む（図と対称）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["A"])];
@@ -308,7 +296,7 @@ mod tests {
     )
     .expect("失敗しない");
 
-    // Assert — VBox children は Table → Vkern(inner_margin) → caption Text の順
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("VBox が期待されます");
     };
@@ -325,13 +313,12 @@ mod tests {
     assert_eq!(bold_kind(FontKind::Serif), FontKind::SerifBold);
     assert_eq!(bold_kind(FontKind::SansSerifItalic), FontKind::SansSerifBoldItalic);
     assert_eq!(bold_kind(FontKind::Monospace), FontKind::MonospaceBold);
-    // 既に太字のものはそのまま
     assert_eq!(bold_kind(FontKind::SerifBold), FontKind::SerifBold);
   }
 
   #[test]
   fn lower_table_preserves_column_widths() {
-    // Arrange — Fixed / Ratio / Flex の幅指定が TableColumn にそのまま保持される
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["a", "b", "c"])];
@@ -392,7 +379,7 @@ mod tests {
 
   #[test]
   fn lower_table_preserves_rule_above_flag() {
-    // Arrange — rule_above=true の行が TableRowLayout に保持される
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [TableRow {
@@ -421,7 +408,7 @@ mod tests {
 
   #[test]
   fn lower_table_without_caption_omits_caption_text() {
-    // Arrange — caption が None なら VBox にキャプション Text を出さない
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["A"])];
@@ -450,7 +437,7 @@ mod tests {
 
   #[test]
   fn lower_table_cell_footnote_shares_document_wide_counter() {
-    // Arrange — セル内の \footnote 由来ノードも他の脚注と同じ registry を共有して連番になる
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [TableRow {
@@ -468,8 +455,7 @@ mod tests {
       lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut registry)
         .expect("失敗しない");
 
-    // Assert — セル内の脚注は 2 番目として採番される（本文側の 1 個目の続き）。
-    // content[0] は本文中マーカー（Raise）、content[1] が Footnote 本体
+    // Assert
     let table = find_table(&nodes);
     assert!(
       matches!(&table.rows[0].cells[0].content[1], LayoutNode::Footnote { number: 2, .. }),

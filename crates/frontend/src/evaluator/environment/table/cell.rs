@@ -13,10 +13,6 @@ use crate::{
 };
 
 /// `&` 分割後の 1 区画を [`TableCell`] に変換する
-///
-/// 区画の非トリビア要素が `\cell` コマンド 1 つだけなら属性付きセルとして評価し、
-/// `\cell` と他の内容が混在していればエラーにする。それ以外の区画は
-/// インライン内容として評価し、前後の空白をトリムする。
 pub(super) fn build_cell(source: &str, elements: &[GreenElement]) -> Result<TableCell, EvalError> {
   let mut cell_view: Option<CommandView> = None;
   let mut has_other_content = false;
@@ -66,7 +62,6 @@ fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
   let mut span: u32 = 1;
   for (key, value) in opt_args {
     if let ("span", OptValue::Number(n)) = (key.as_str(), value) {
-      // span は 1 以上の整数のみ受理する
       if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= f64::from(u32::MAX)) {
         return Err(EvalError::InvalidOptArgValue {
           name: "cell".to_string(),
@@ -102,8 +97,7 @@ fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
 
 /// セル内容の前後の空白由来 `Text` ノードをトリムする
 ///
-/// `\row{Alice & 92}` の区切り前後の空白がセル内容に残ると揃えがずれるため、
-/// 先頭・末尾の空白のみの `Text` を除去し、境界の `Text` の端も削る。
+/// 境界にある空白だけのノードと、境界のテキスト端を削る。
 fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
   while matches!(content.first(), Some(InlineNode::Text(t)) if t.trim().is_empty()) {
     content.remove(0);

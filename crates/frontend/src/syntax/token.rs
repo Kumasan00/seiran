@@ -1,24 +1,10 @@
 //! トークンの型定義
 //!
-//! Lexer が生成するトークン列の型を定義します。
-//! `Token` 構造体は `TokenKind`（トークンの種類）と `Span`（ソース位置）を保持します。
-//!
-//! ## 設計意図
-//!
-//! - `TokenKind` は **Copy** — 文字列ペイロードを持たず、テキスト内容は `Span` 経由で元ソースから取得
-//! - パーサー内でのパターンマッチやルックアヘッドが軽量になる
-//! - エスケープ文字やコマンド名もソースの部分文字列として取得可能
+//! テキスト内容はトークンに複製せず、[`Span`] 経由で元ソースから取得する。
 
 use model::Span;
 
-// =============================================================================
-// トークン構造体
-// =============================================================================
-
 /// トークン
-///
-/// トークンの種類（`kind`）とソース位置情報（`span`）を保持します。
-/// テキスト内容はソースを参照して取得します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token {
   /// トークンの種類
@@ -33,10 +19,6 @@ impl Token {
   pub fn new(kind: TokenKind, span: Span) -> Self { return Token { kind, span }; }
 
   /// トークンが対応するソーステキストの部分文字列を返す
-  ///
-  /// # Arguments
-  ///
-  /// * `source` - 元のソーステキスト全体
   #[must_use]
   pub fn text<'s>(&self, source: &'s str) -> &'s str {
     return &source[self.span.start as usize..self.span.end as usize];
@@ -55,15 +37,7 @@ impl Token {
   }
 }
 
-// =============================================================================
-// トークン種別
-// =============================================================================
-
 /// トークンの種類
-///
-/// Lexer がソーステキストを分割して生成するトークンの種別です。
-/// 文字列ペイロードを持たず、`Copy` を実装します。
-/// テキスト内容は `Token::text(source)` でソースから取得してください。
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenKind {
   /// コマンド（`\name`）
@@ -108,10 +82,7 @@ pub enum TokenKind {
 
 /// `TokenKind` のユーザ向け表示文字列
 ///
-/// `ParserError` などのエラーメッセージで `{:?}`（`Debug`）の内部識別子をそのまま
-/// 露出させないために用いる。LaTeX 風ソースを書くユーザに馴染む記号を返す。
-/// 単一記号トークンは記号そのもの、ペイロード付きトークンや内部トリビアは
-/// 山括弧で囲んだ日本語の説明文字列を返す。
+/// 診断に内部の列挙子名を露出させず、ソース上の記号や説明を表示する。
 impl std::fmt::Display for TokenKind {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let s = match self {
@@ -147,7 +118,7 @@ mod tests {
   #[test]
   fn token_kind_is_copy() {
     let kind = TokenKind::Command;
-    let kind2 = kind; // Copy
+    let kind2 = kind;
     assert_eq!(kind, kind2);
     return;
   }
@@ -170,7 +141,7 @@ mod tests {
 
   #[test]
   fn display_returns_symbol_for_single_char_tokens() {
-    // Arrange & Act & Assert — 単一記号トークンはその記号がそのまま返る
+    // Arrange & Act & Assert
     assert_eq!(format!("{}", TokenKind::LBrace), "{");
     assert_eq!(format!("{}", TokenKind::RBrace), "}");
     assert_eq!(format!("{}", TokenKind::LBracket), "[");
@@ -193,7 +164,7 @@ mod tests {
 
   #[test]
   fn display_does_not_leak_debug_identifiers() {
-    // Arrange & Act & Assert — 内部識別子 (Debug 由来) が露出しないことを確認
+    // Arrange & Act & Assert
     let kinds = [
       TokenKind::Command,
       TokenKind::Escaped,

@@ -1,4 +1,4 @@
-//! 文書の縦リスト要素（[`Block`]）の定義
+//! 文書の縦リスト要素 [`Block`]。
 //!
 //! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
@@ -11,11 +11,9 @@ use crate::{Align, AnchorMark, AssetId, HBox, HItem, Length, Line, TableBox};
 /// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
 pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
-/// 分割禁止の分割コスト（+∞）。keep-with-next（見出し直後の分割禁止・#168）のグループ連結マーカー。
+/// 分割禁止の分割コスト（+∞）
 ///
-/// `typeset::block::build_blocks` が見出し（`page_break_after` を除く）の直後に発行する。`break_pages` の
-/// keep グループゲート（`keep_group_end` / `keep_group_orphaned`）がこれを走査し、見出しと直後の
-/// ブロックが同一リージョンに載るよう配置する（載らないなら見出しごと次リージョンへ送る）。
+/// keep-with-next など、隣接ブロックを同じリージョンに置く制御に使用する。
 pub const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素
@@ -113,7 +111,7 @@ pub enum Block {
   ///
   /// `natural` は自然値（pt）、`stretch` / `shrink` は伸長 / 収縮能力（pt）。固定アキは
   /// `stretch = 0.0, shrink = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
-  /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃え（#169）が満杯リージョンの不足高さを
+  /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃えが満杯リージョンの不足高さを
   /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`
   /// のみカーソルへ加算するため出力は不変。
   Glue {
@@ -127,8 +125,7 @@ pub enum Block {
   /// 分割コスト（penalty）
   ///
   /// `value` はそのブロック境界で改ページする際のコスト。[`PENALTY_FORCE_BREAK`]（−∞）は強制改ページ、
-  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止。有限値は「避けたいが可能」を表し、widow/orphan（#167）が
-  /// 発行する想定。本 issue（#166）が発行するのは強制改ページ（[`Block::force_break`]）のみ。
+  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止、有限値は「避けたいが可能」を表す。
   Penalty {
     /// 分割コスト（小さいほど切りやすい。−∞=強制 / +∞=禁止）
     value: i32,
@@ -142,8 +139,6 @@ pub enum Block {
 
 impl Block {
   /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = shrink = 0`。
-  ///
-  /// 「固定アキ = 伸縮 0 の glue」という表現の真実源。既存の固定アキ生成箇所はすべてこれを使う。
   #[must_use]
   pub fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
@@ -155,7 +150,7 @@ impl Block {
 
   /// 伸縮する縦アキ（glue）を作る。`natural = pt`, `stretch = stretch`, `shrink = 0`。
   ///
-  /// ブロック間アキ（段落間・見出し前後等）に使う。下端揃え（#169）が満杯リージョンの不足高さを
+  /// ブロック間アキ（段落間・見出し前後等）に使う。下端揃えが満杯リージョンの不足高さを
   /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
   /// オーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
   #[must_use]

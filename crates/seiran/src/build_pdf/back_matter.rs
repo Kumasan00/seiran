@@ -1,8 +1,4 @@
-//! 後付け（巻末索引）の組み立て・ページ分割・補助型
-//!
-//! [`super::front_matter`] と対になるモジュールだが、前付けと違い本文の**後**に連結する。索引の
-//! ページ番号は本文からの通し（独立した番号体系を持たない）なので、[`super::page_values`] 側は
-//! `BodyPageValues::with_back_matter` で本文ページ数へ合算するだけでよい。
+//! 後付け（巻末索引）の組み立てとページ分割
 
 use std::{
   collections::{BTreeMap, BTreeSet},
@@ -24,7 +20,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 
-/// phase 4: 後付け（巻末索引）を生成してページ分割する。
+/// 巻末索引を生成してページ分割する。
 ///
 /// 本文全ページの索引語を集約し、出現ページへ内部リンクの到達先アンカーを事後追加する
 /// （`body_pages` の破壊的更新）。`\index` が 1 個もなければ空ページ列を返す。
@@ -57,12 +53,9 @@ pub(super) fn typeset_back_matter(
 /// （同じ語でも `reading` が異なれば別エントリとして扱う）。
 type IndexEntryKey = (String, Option<String>);
 
-/// 全 `body_pages` の索引語を集約し、ソート済みの [`typeset::IndexEntryInput`] 列を返す。
+/// 本文の索引語を集約し、ソート済みの索引エントリを返す。
 ///
-/// 併せて、索引語が出現した各ページへ内部リンクの到達先アンカー（[`model::AnchorMark::IndexPage`]）を
-/// 事後追加する（`body_pages` を破壊的に更新する副作用を持つ）。フォントに依存しない純粋ロジックの
-/// 部分だけを切り出しているので、`build_index_blocks`（フォント依存）を経由せずに単体テストできる。
-/// `\index` が 1 個もなければ空ベクタを返す。
+/// 索引語があるページには内部リンク用アンカーも追加する。
 pub(super) fn collect_index_entries(
   body_pages: &mut [Page],
   body_page_values: &BodyPageValues,
@@ -77,7 +70,6 @@ pub(super) fn collect_index_entries(
     return Vec::new();
   }
 
-  // 索引語が出現した各ページへ、内部リンクの到達先アンカーを事後追加する（1 ページにつき 1 個）。
   let anchored_pages: BTreeSet<usize> = occurrences.values().flatten().copied().collect();
   for page_index in anchored_pages {
     body_pages[page_index].anchors.push(PlacedAnchor {
@@ -127,9 +119,7 @@ fn assemble_back_matter(
   return build_index_blocks(&spec, &entries, shapers, metrics);
 }
 
-/// `style.index` / `style.hyperref` から索引生成用の [`typeset::IndexSpec`] を組み立てる。
-///
-/// ページ番号の文字色は既存の参照リンク色（`style.hyperref.link_color`）に従う（issue #247 の仕様）。
+/// スタイルから索引生成用の [`typeset::IndexSpec`] を組み立てる。
 fn build_index_spec(style: &Style) -> IndexSpec {
   let index = &style.index;
   return IndexSpec {
@@ -156,10 +146,7 @@ fn build_index_spec(style: &Style) -> IndexSpec {
   };
 }
 
-/// 索引ブロックを単独でページ分割する。
-///
-/// 索引専用の段組み（`back_geometry`、`style.index.column_count`）で分割する。`back_blocks` が
-/// 空（索引なし）のときは空ページ列を返す。
+/// 索引専用のページジオメトリでブロックを分割する。
 fn break_back_matter(
   back_blocks: Vec<Block>,
   text_width: Length,

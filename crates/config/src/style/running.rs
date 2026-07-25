@@ -1,17 +1,11 @@
 //! ヘッダー・フッター（running header/footer）のスタイル設定型。
 //!
-//! ページ上端／下端の余白領域に出る走り文（fancyhdr 相当）の見た目を定義する。
-//! `[header]` と `[footer]` は同一の [`RunningContentStyle`] を共有し、それぞれ
-//! [`crate::style::Style`] の `header` / `footer` フィールドに置かれる。
-//!
 //! スロットは左・中央・右の 3 つ。各スロットのテンプレート文字列には静的テキストに加え、
-//! 次のトークンを埋め込める（実際の置換は `layout` クレートのヘッダー・フッター配置パスで行う）:
+//! 次のトークンを埋め込める:
 //!
 //! - `{page}` — 現在のページ番号（1 始まり）
 //! - `{pages}` — 総ページ数
 //! - `{title}` / `{author}` / `{date}` — `config.toml` の `[document]` メタデータ
-//!
-//! 既定では全スロットが空文字列のため、何も指定しなければヘッダー・フッターは描画されない。
 
 use garde::Validate;
 use model::{
@@ -21,10 +15,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
-///
-/// 左・中央・右の 3 スロットのテンプレートと、フォント・配置・区切り線の見た目を持つ。
-/// `baseline_offset` の基準はヘッダーがページ上端、フッターがページ下端（いずれもベースラインまで
-/// の距離）で、解釈の違いは `layout` の配置パスが担う（本型は値だけを保持する）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -60,8 +50,6 @@ pub struct RunningContentStyle {
 
 impl RunningContentStyle {
   /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
-  ///
-  /// `true` のとき、このヘッダー／フッターは何も描画しないため配置パスを省略できる。
   #[must_use]
   pub fn is_empty(&self) -> bool {
     return self.left.trim().is_empty() && self.center.trim().is_empty() && self.right.trim().is_empty();
@@ -102,7 +90,7 @@ mod tests {
     // Arrange / Act
     let style = RunningContentStyle::default();
 
-    // Assert — 既定は全スロット空なので描画されない
+    // Assert
     assert!(style.is_empty());
     assert_eq!(style.font_kind, FontKind::Serif);
     assert!((style.font_size.to_pt() - 10.0).abs() < f32::EPSILON);
@@ -146,7 +134,7 @@ mod tests {
 
   #[test]
   fn validate_rejects_unknown_slot_token() {
-    // Arrange: `{page}` のタイポ `{pagee}` を center スロットに
+    // Arrange
     let style = RunningContentStyle {
       center: "{pagee}".to_string(),
       ..RunningContentStyle::default()
@@ -158,7 +146,7 @@ mod tests {
 
   #[test]
   fn validate_accepts_valid_slot_tokens() {
-    // Arrange: 5 トークンと空スロットの混在は妥当
+    // Arrange
     let style = RunningContentStyle {
       left: "{title}".to_string(),
       center: "{author}".to_string(),

@@ -1,4 +1,4 @@
-//! [`crate::create_pdf`] が返すエラー型の定義。
+//! PDF 生成時のエラーを定義する。
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
@@ -139,8 +139,6 @@ pub enum PdfGenError {
     height: f32,
   },
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
-  ///
-  /// ラスタ画像の場合はピクセル幅 / 高さ、SVG の場合は usvg が報告した width / height を保持します。
   #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
   #[diagnostic(
     code(pdf_gen::invalid_image_natural_size),
@@ -167,10 +165,7 @@ pub enum PdfGenError {
     #[source]
     source: image::ImageError,
   },
-  /// `resolve_images` が `ImageSet` に存在しない画像パスを参照しました（内部不整合）。
-  ///
-  /// `ImageManifest` の収集（`seiran::build_pdf::image_manifest`）と `resolve_images` が処理する
-  /// `Block::Image` の集合が食い違った場合にのみ発生する、実装バグ検出用のフォールバックです。
+  /// `resolve_images` が `ImageSet` にない画像を参照しました。
   #[error("ImageSet に存在しない画像パスです（内部エラー）: {path}")]
   #[diagnostic(
     code(pdf_gen::image_not_in_manifest),

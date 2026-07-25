@@ -1,29 +1,7 @@
-//! 参照定義ファイルの読み込みモジュール
+//! 参照定義ファイルの読み込み。
 //!
-//! `citation` クレート内部の実装詳細で、公開する型は crate root で再エクスポートし
-//! `citation::Reference` のように参照する（`citation::references::Reference` は使わない）。
-//!
-//! TOML / JSON 形式の参照定義ファイルを読み込み、`id` をキーとする参照定義のマップを返す。参照定義は
-//! ファイルのトップレベルそのものを keyed-table 形式（テーブルキーが参照 ID）で記述する（`references.`
-//! 接頭辞は不要で、`[kwan2014]` のように直接エントリを書く）。
-//!
-//! 著者名は確定型 [`Name`]（`Personal` / `Organization` の 2 択 enum）として直接デシリアライズする。
-//! `family`（個人著者）と `literal`（組織著者）の同時指定／不指定という不正状態は、[`Name`] の手書き
-//! [`Deserialize`](serde::Deserialize) 実装が検証して fail-fast に拒否するため、確定後の型には表現でき
-//! なくなる。空（空白のみを含む）・重複の参照 ID も同様にデシリアライズ時点で拒否する（TOML はパーサ段階、
-//! JSON は専用デシリアライザで検出）。未知のフィールドは `deny_unknown_fields` で拒否し、日付オブジェクト・
-//! name オブジェクトの未知キーも同様にエラーとする（タイポ検出のため、CSL 前方互換より厳格性を優先）。
-//! 日付範囲（`date-parts` の 2 要素指定）は CSL-JSN 担体経由の hayagriva が未対応のため拒否する。
-//! これらの値検証エラーはいずれも TOML / JSON の解析エラー（[`ReadReferencesError::ParseToml`] /
-//! [`ReadReferencesError::ParseJson`]）として、ソース上の位置情報付きで報告される。
-//!
-//! [`Reference`] は CSL-JSN（kebab-case キー）へ [`Serialize`](serde::Serialize) でき、
-//! [`crate::bridge`] が hayagriva の担体 `citationberg::json::Item` を組み立てる出力経路に使う。
-//!
-//! ファイル形式は拡張子 (`.toml` / `.json`) で判別する。
-//!
-//! 型定義はサブモジュール（`error` / `date` / `name` / `reference`）に分割し、本モジュールはそれらを
-//! 再エクスポートしつつ、読み込み・パースのオーケストレーションを担う。
+//! TOML / JSON のトップレベルを、参照 ID をキーとする [`References`] として読み込む。
+//! ファイル形式は拡張子で判別する。
 
 mod date;
 mod error;
@@ -61,9 +39,7 @@ impl Format {
 
 /// 参照定義ファイルを読み込む。
 ///
-/// # Arguments
-///
-/// * `path` - 参照定義ファイル（`.toml` / `.json`）のパス。`None` の場合は空の参照定義を返す。
+/// `path` が `None` の場合は空の参照定義を返す。
 ///
 /// # Errors
 ///
@@ -91,9 +67,7 @@ pub fn read_references<P: AsRef<Path>>(path: Option<P>) -> Result<References, Re
 
 /// テキストを [`References`] にパースします（I/O なし）。
 ///
-/// `source_path` の拡張子（`.toml` / `.json`）から形式を判別します。エラー報告に使う表示用パスでもあり、
-/// ファイルシステムへのアクセスには使われません。著者名の排他性・空 / 重複 ID・未知フィールドといった値
-/// 検証は、各型のデシリアライザがパース時点で実施します。
+/// `source_path` は形式判別とエラー表示だけに使い、ファイルシステムへはアクセスしない。
 ///
 /// # Errors
 ///
@@ -159,7 +133,7 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_empty_id() {
-    // Arrange: 空文字列の参照 ID はデシリアライズ時に拒否される
+    // Arrange
     let toml = String::from(
       "[\"\"]\n\
        type = \"book\"\n\
@@ -179,7 +153,7 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_whitespace_only_id() {
-    // Arrange: 空白のみの参照 ID
+    // Arrange
     let toml = String::from(
       "[\"  \"]\n\
        type = \"book\"\n\
@@ -199,7 +173,7 @@ mod tests {
 
   #[test]
   fn parse_references_fails_on_duplicate_toml_keys() {
-    // Arrange: keyed-table 形式では重複 ID は同一テーブルの再定義となり TOML パースエラーになる
+    // Arrange
     let toml = String::from(
       "[dup]\n\
        type = \"book\"\n\
@@ -220,7 +194,7 @@ mod tests {
 
   #[test]
   fn parse_references_reads_personal_author() {
-    // Arrange: family のみ → 個人著者
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -249,7 +223,7 @@ mod tests {
 
   #[test]
   fn parse_references_reads_organization_author() {
-    // Arrange: literal のみ → 組織著者
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -272,7 +246,7 @@ mod tests {
 
   #[test]
   fn parse_references_fails_when_author_has_both_family_and_literal() {
-    // Arrange: family/literal 同時指定は排他性違反
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -293,7 +267,7 @@ mod tests {
 
   #[test]
   fn parse_references_fails_when_author_has_neither_family_nor_literal() {
-    // Arrange: given のみ（family も literal もない）
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -413,7 +387,7 @@ mod tests {
 
   #[test]
   fn read_references_parses_structured_date_in_toml() {
-    // Arrange — 単一日付（範囲はサポートしない）
+    // Arrange
     let tempdir = tempfile::tempdir().unwrap();
     let references_path = tempdir.path().join("references.toml");
     std::fs::write(
@@ -451,7 +425,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_date_range_in_toml() {
-    // Arrange — date-parts 2 要素（日付範囲）は CSL-JSN 担体が未対応のため拒否される
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -599,7 +573,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_unknown_field_in_reference() {
-    // Arrange: Reference に未知フィールドを含める
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -617,7 +591,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_unknown_field_in_name() {
-    // Arrange: 著者名に未知フィールドを含める
+    // Arrange
     let toml = String::from(
       "[ref1]\n\
        type = \"book\"\n\
@@ -635,8 +609,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_non_table_top_level_value() {
-    // Arrange: トップレベルの値はすべて参照テーブルでなければならない（スカラー値は Reference に
-    // デシリアライズできず拒否される）
+    // Arrange
     let toml = "unexpected = true\n";
 
     // Act
@@ -648,7 +621,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_unknown_date_field() {
-    // Arrange: 日付オブジェクトに未知キーを含める
+    // Arrange
     let json = json_doc(
       "{\"ref1\": {\
          \"type\": \"book\", \
@@ -666,7 +639,7 @@ mod tests {
 
   #[test]
   fn parse_references_rejects_duplicate_json_keys() {
-    // Arrange: JSON はキー重複を許すが、Seiran は後勝ちを許さず厳格に拒否する
+    // Arrange
     let json = json_doc(
       "{\"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Doe\"}]}, \
         \"dup\": {\"type\": \"book\", \"author\": [{\"family\": \"Roe\"}]}}",

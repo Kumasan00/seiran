@@ -1,17 +1,10 @@
 //! 図・表のキャプションスタイル設定型。
-//!
-//! [`FigureStyle`](crate::style::FigureStyle) と [`TableStyle`](crate::style::TableStyle) が共有する 2 フィールド
-//! （書式テンプレートとフォントサイズ）を [`CaptionStyle`] にまとめる。配置は図・表ともに
-//! ソース上の `\caption` の出現位置で決まるため、スタイル側では持たず Document IR
-//! （`model::CaptionPosition` / `DocNode::Figure` 等）が直接保持する。
 
 use garde::Validate;
 use model::{Length, length::positive};
 use serde::{Deserialize, Serialize};
 
-/// キャプションの共通設定（figure / table で共有）。
-///
-/// TOML 上では `[figure.caption]` / `[table.caption]` の各テーブルにマップされる。
+/// キャプションの共通設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -25,9 +18,6 @@ pub struct CaptionStyle {
 }
 
 impl Default for CaptionStyle {
-  /// 既定値: `"{number}: {title}"` / 11pt。
-  ///
-  /// `format` の文言は要素ごとに上書きする想定（`FigureStyle` は "Figure ..."、`TableStyle` は "Table ..."）。
   fn default() -> Self {
     return Self {
       format: "{number}: {title}".to_string(),
@@ -68,7 +58,7 @@ mod tests {
 
   #[test]
   fn deserializes_partial_table_with_default_font_size() {
-    // Arrange: format のみ指定
+    // Arrange
     let toml = "format = \"Figure {number}: {title}\"\n";
 
     // Act

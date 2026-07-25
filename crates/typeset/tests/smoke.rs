@@ -1,8 +1,4 @@
 //! 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → lower_nodes` を
-//! パニックなしで通す smoke テスト
-//!
-//! フォント読み込みを避けるため `lower_nodes` までで打ち切り、出力構造は検証しない。
-//! `lower_nodes` より下（`build_blocks` / `break_pages`）の検証は各クレート側に委ねる。
 
 use std::{collections::HashSet, path::PathBuf};
 
@@ -79,9 +75,6 @@ fn lower_fixture(name: &str) -> Vec<LayoutNode> {
 }
 
 /// レイアウト木を再帰的に辿り、リスト項目の先頭に置かれるマーカー文字列を集める
-///
-/// `lower_list` は各項目 `VBox` の先頭に `Text(marker, _)` を置く。ここでは
-/// 「先頭の子が `Text` である `VBox`」の先頭文字列を収集し、深さ別マーカーの検証に使う。
 fn collect_item_markers(nodes: &[LayoutNode], out: &mut Vec<String>) {
   for node in nodes {
     match node {
@@ -99,14 +92,14 @@ fn collect_item_markers(nodes: &[LayoutNode], out: &mut Vec<String>) {
 
 #[test]
 fn itemize_fixture_produces_depth_varying_markers() {
-  // Arrange — ネストを含む itemize フィクスチャを parse → lower する
+  // Arrange
   let nodes = lower_fixture("itemize");
 
-  // Act — レイアウト木からリスト項目のマーカー文字列を集める
+  // Act
   let mut markers = Vec::new();
   collect_item_markers(&nodes, &mut markers);
 
-  // Assert — parse → lower を通した全パイプラインで、深さ別マーカーが実際に現れる。
+  // Assert
   // unordered は • → – → *、ordered は 1. → (a) → i. がそれぞれ生成される。
   for expected in ["• ", "– ", "* ", "1. ", "(a) ", "i. "] {
     assert!(markers.iter().any(|m| return m == expected), "マーカー {expected:?} が見つからない: {markers:?}");

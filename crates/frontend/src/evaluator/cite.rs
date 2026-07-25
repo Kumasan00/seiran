@@ -1,11 +1,6 @@
 //! `\cite` のキー存在検証（pass2）
 //!
-//! パーサ（pass1）が生成した [`InlineNode::Cite`] スタブを走査し、各引用キーが参照定義
-//! （references）に存在するかを検証する。`\ref` の解決（[`crate::evaluator::counter::resolve_refs`]）と
-//! 異なり、`label` の書き換えは行わない（最終的な引用ラベルの整形は CSL 整形ステージの責務）。
-//!
-//! 未定義キーは最初の 1 件で短絡せず、ファイル内のすべてを収集して
-//! [`EvalError::UnknownCitationKeys`] に集約して報告する。
+//! 未定義キーをすべて収集し、[`EvalError::UnknownCitationKeys`] として報告する。
 
 use std::collections::HashSet;
 
@@ -15,9 +10,6 @@ use model::{DocNode, InlineNode, ListItem};
 use crate::evaluator::EvalError;
 
 /// `Vec<DocNode>` を再帰的に走査して `\cite` の引用キー存在を検証する
-///
-/// `keys` は参照定義（references）の有効な参照 ID の集合。未定義のキーを含む `\cite` を
-/// すべて収集し、1 件でもあれば [`EvalError::UnknownCitationKeys`] に集約して返す。
 ///
 /// # Errors
 ///
@@ -46,7 +38,6 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
           collect_unknown_in_list_item(item, keys, labels);
         }
       },
-      // 定理本体・引用本体は通常の本文と同じく `\cite` を含みうるため再帰する（`title` は文字列で `\cite` を含まない）
       DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_unknown_in_nodes(body, keys, labels),
       DocNode::Table {
         head,
@@ -63,8 +54,7 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
           collect_unknown_in_inlines(inlines, keys, labels);
         }
       },
-      // 数式・図（キャプションなし）・罫線・改ページ・スペース・アンカーには `\cite` は出現しない
-      // （`DocNode::Anchor` は CSL 整形ステージが parser の後に追加するため、ここには届かない）
+      // `Anchor` は CST 評価より後の段階で追加される。
       DocNode::MathBlock { .. }
       | DocNode::Figure { caption: None, .. }
       | DocNode::Rule { .. }
@@ -159,7 +149,7 @@ mod tests {
 
   #[test]
   fn resolve_cites_aggregates_multiple_unknown_sites() {
-    // Arrange — 2 つの段落それぞれに未定義キーを含む \cite がある
+    // Arrange
     let nodes = vec![
       DocNode::Paragraph(vec![InlineNode::Cite {
         keys: vec!["x".to_string()],
@@ -176,7 +166,7 @@ mod tests {
     // Act
     let result = resolve_cites(&nodes, &keys(&["a"]));
 
-    // Assert — 2 件すべてが集約される
+    // Assert
     let Err(EvalError::UnknownCitationKeys { labels }) = result else {
       panic!("UnknownCitationKeys が期待されます");
     };

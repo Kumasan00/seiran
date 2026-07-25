@@ -5,9 +5,6 @@ use model::Color;
 use serde::{Deserialize, Serialize};
 
 /// ハイパーリンクの文字色に関するスタイル設定
-///
-/// しおり（ブックマーク）の出力可否は「文字の見た目」ではなく PDF の構造的な出力機能のため、
-/// `config.toml` の `[pdf].show_bookmarks` が担う（#127 で style から config へ移動）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
@@ -23,8 +20,6 @@ pub struct HyperrefStyle {
 impl Default for HyperrefStyle {
   fn default() -> Self {
     return Self {
-      // 既定はリンク色を付けず、本文色（黒）を継承する（`None`）。色を付けたい場合は
-      // style.toml の `[hyperref]` で `link_color` 等を明示する。
       link_color: None,
       url_color: None,
       cite_color: None,
@@ -45,13 +40,11 @@ mod tests {
 
   #[test]
   fn rejects_renamed_show_bookmarks_key() {
-    // しおり出力は #127 で config `[pdf]` へ移動した。style 側旧キーは未知フィールドとして弾く。
     assert!(toml::from_str::<HyperrefStyle>("show_bookmarks = true\n").is_err());
   }
 
   #[test]
   fn default_colors_are_none() {
-    // 既定はリンク色を付けず本文色（黒）を継承する（`None`）
     let style = HyperrefStyle::default();
     assert_eq!(style.link_color, None);
     assert_eq!(style.url_color, None);

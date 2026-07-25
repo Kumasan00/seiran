@@ -1,34 +1,4 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
-//!
-//! TOML 上では `[counters.<name>]` のキーに [`CounterStyle`] の各フィールド
-//! （`display_name` / `number_format` / `number_style` / `ref_format` / `resets`）を書く。
-//! `<name>` は固定 9 種（[`CounterName`]）のみが許可され、それ以外のキーは TOML
-//! パース時に拒否される。
-//!
-//! ## `number_format` テンプレート（カウンタ番号の構築）
-//!
-//! `number_format` はテンプレート文字列で、`{n}` がそのカウンタ自身の値、`{<counter_name>}` が
-//! 他カウンタの値を表す。各プレースホルダは参照先カウンタの [`NumberStyle`] に従って
-//! レンダリングされる（再帰展開はしない）。番号を「構築」する書式であり、`\ref` に出す
-//! [`CounterStyle::ref_format`] とは役割が異なる（number = 構築 / ref = 参照）。
-//!
-//! - 例: chapter の `number_format = "{n}"` → `"1"`、`"2"`
-//! - 例: section の `number_format = "{chapter}.{n}"` → `"1.1"`、`"1.2"`
-//! - 例: 部の `number_format = "{n}"` + `number_style = "roman_upper"` → `"I"`、`"II"`
-//!
-//! ## `ref_format` テンプレート（`\ref` の表示）
-//!
-//! `\ref{label}` が返す文字列の整形に使うテンプレート。`{number}` が `number_format` の出力（裸の
-//! 番号）、`{display_name}` が `display_name` フィールドの値を指す。
-//!
-//! - 例: section の `ref_format = "{display_name} {number}"` → `"Section 1.2"`
-//! - 例: equation の `ref_format = "({number})"` → `"(1.2)"`
-//! - 例: 日本語化したい場合は `display_name = "図"` + `ref_format = "{display_name} {number}"` → `"図 1.2"`
-//!
-//! equation の `ref_format` は `\ref{eq:x}` の表示専用で、式の横に出る番号の体裁を決める
-//! [`crate::style::EquationStyle::number_format`]（`[equation]`）とは別物。既定値がどちらも `"({number})"`
-//! で一致するのは LaTeX 慣習で「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に
-//! 変更できる（`EquationStyle::number_format` は `figure` の `caption.format` に相当する数式ブロックの体裁）。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -36,10 +6,6 @@ use serde::{Deserialize, Serialize};
 use crate::style::number_style::NumberStyle;
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
-///
-/// TOML では各カウンタが独立したサブテーブルとして現れる。`#[serde(default)]` により
-/// 未指定フィールドは [`Counters::default`] の値で埋まり、`deny_unknown_fields` により
-/// 9 種以外のキー（例: `[counters.example]`）は TOML パース時に拒否される。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct Counters {
@@ -221,8 +187,7 @@ impl CounterStyle {
   }
 }
 
-/// カウンタ名（固定 9 種）。TOML 上の `[counters.<name>]` キーおよび `resets` 配列の要素として
-/// 使われ、未知の名前は TOML パース時に弾かれる。
+/// カウンタ名（固定 9 種）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CounterName {
@@ -248,9 +213,6 @@ pub enum CounterName {
 
 impl CounterName {
   /// 固定 9 種のカウンタ名を宣言順（部 → 章 → … → 数式）で並べた配列。
-  ///
-  /// プレースホルダ検証（`crate::style::placeholder`）が `{<counter_name>}` 参照の許可セットを
-  /// 構築する際の単一ソースとして使う。
   pub const ALL: [CounterName; 9] = [
     Self::Part,
     Self::Chapter,
@@ -280,9 +242,6 @@ impl CounterName {
   }
 
   /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
-  ///
-  /// 固定 9 種の範囲内の名前のみを認識し、該当しない文字列は `None` を返す。
-  /// テンプレート内の `{chapter}` のような自由記述プレースホルダから enum に戻すために使う。
   #[must_use]
   pub fn from_name(name: &str) -> Option<Self> { return Self::ALL.into_iter().find(|c| return c.as_str() == name); }
 }
@@ -379,8 +338,7 @@ resets = []
 
   #[test]
   fn rejects_renamed_format_key() {
-    // Arrange: 旧キー `format` はハードリネームで廃止された（→ `number_format`）。
-    // `deny_unknown_fields` が未知フィールドとして弾く（移行: 旧 config は即エラー）。
+    // Arrange
     let toml = "
 display_name = \"Figure\"
 format = \"{chapter}.{n}\"
@@ -398,7 +356,7 @@ resets = []
 
   #[test]
   fn counters_rejects_unknown_counter_name() {
-    // Arrange: `example` は固定 9 種に含まれない
+    // Arrange
     let toml = "
 [example]
 display_name = \"Example\"
@@ -417,7 +375,7 @@ resets = []
 
   #[test]
   fn counters_rejects_unknown_reset_target() {
-    // Arrange: `chapter` の resets に未知の名前 `example` を入れる
+    // Arrange
     let toml = "
 [chapter]
 display_name = \"Chapter\"
@@ -450,14 +408,14 @@ resets = [\"example\"]
 
   #[test]
   fn from_name_roundtrips_as_str_for_all() {
-    // Arrange / Act / Assert — from_name と as_str が往復する
+    // Arrange / Act / Assert
     for counter in CounterName::ALL {
       let name_str = counter.as_str();
       let recovered = CounterName::from_name(name_str);
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
     }
 
-    // Assert — 未知の名前は None を返す
+    // Assert
     assert_eq!(CounterName::from_name("foo"), None);
   }
 }

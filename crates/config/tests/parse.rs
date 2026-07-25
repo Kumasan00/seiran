@@ -1,7 +1,4 @@
 //! TOML パース系の統合テスト。
-//!
-//! 構文エラー / 未知キー / 各種型（`Length` / `Color`）の受理/拒否を網羅する。
-//! 検証エラーは `validate.rs` 側で扱う。
 
 use std::path::PathBuf;
 
@@ -25,7 +22,7 @@ fn read_style_returns_default_when_path_is_none() {
 
 #[test]
 fn parse_style_overrides_heading_section_format() {
-  // Arrange: [heading.section] テーブルを上書き
+  // Arrange
   let toml = "[heading.section]\nformat = \"§ {number} {title}\"\n";
 
   // Act
@@ -33,14 +30,13 @@ fn parse_style_overrides_heading_section_format() {
 
   // Assert
   assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
-  // 他のレベルはデフォルトを維持
   let default = Style::default();
   assert_eq!(style.heading(HeadingLevel::Chapter).format, default.heading(HeadingLevel::Chapter).format);
 }
 
 #[test]
 fn parse_style_overrides_only_specified_fields() {
-  // Arrange: [text].font_size のみ上書き
+  // Arrange
   let toml = "[text]\nfont_size = \"15pt\"\n";
 
   // Act
@@ -54,7 +50,7 @@ fn parse_style_overrides_only_specified_fields() {
 
 #[test]
 fn parse_style_overrides_columns() {
-  // Arrange: [columns] で段数・段間を上書き
+  // Arrange
   let toml = "[columns]\ncount = 2\ngap = \"24pt\"\n";
 
   // Act
@@ -67,7 +63,7 @@ fn parse_style_overrides_columns() {
 
 #[test]
 fn parse_style_columns_defaults_to_single_column() {
-  // Arrange / Act: 未指定なら既定（1 段・18pt）
+  // Arrange / Act
   let style = parse_style("", dummy_source()).unwrap();
 
   // Assert
@@ -77,7 +73,7 @@ fn parse_style_columns_defaults_to_single_column() {
 
 #[test]
 fn parse_style_enables_flush_bottom() {
-  // Arrange: [page] で下端揃えを有効化
+  // Arrange
   let toml = "[page]\nflush_bottom = true\n";
 
   // Act
@@ -89,7 +85,7 @@ fn parse_style_enables_flush_bottom() {
 
 #[test]
 fn parse_style_flush_bottom_defaults_to_disabled() {
-  // Arrange / Act: 未指定なら既定で無効（従来どおりの ragged bottom）
+  // Arrange / Act
   let style = parse_style("", dummy_source()).unwrap();
 
   // Assert
@@ -98,7 +94,7 @@ fn parse_style_flush_bottom_defaults_to_disabled() {
 
 #[test]
 fn parse_style_fails_on_unknown_page_key() {
-  // Arrange: [page] 内の typo は deny_unknown_fields で拒否
+  // Arrange
   let toml = "[page]\nflush_botom = true\n";
 
   // Act
@@ -110,7 +106,7 @@ fn parse_style_fails_on_unknown_page_key() {
 
 #[test]
 fn parse_style_fails_on_unknown_columns_key() {
-  // Arrange: [columns] 内の typo は deny_unknown_fields で拒否
+  // Arrange
   let toml = "[columns]\ncont = 2\n";
 
   // Act
@@ -122,7 +118,7 @@ fn parse_style_fails_on_unknown_columns_key() {
 
 #[test]
 fn parse_style_rejects_color_array() {
-  // Arrange: 旧形式の RGB 配列は破壊的に廃止された
+  // Arrange
   let toml = "background_color = [204, 179, 153]\n";
 
   // Act
@@ -147,7 +143,7 @@ fn parse_style_accepts_color_hex_string() {
 
 #[test]
 fn parse_style_overrides_header_and_footer() {
-  // Arrange: [header] / [footer] のスロットと見た目を上書き
+  // Arrange
   let toml = concat!(
     "[header]\n",
     "right = \"{page} / {pages}\"\n",
@@ -162,7 +158,7 @@ fn parse_style_overrides_header_and_footer() {
   // Act
   let style = parse_style(toml, dummy_source()).unwrap();
 
-  // Assert: header は指定値、footer は center のみ指定で他はデフォルト
+  // Assert
   assert_eq!(style.header.right, "{page} / {pages}");
   assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
   assert_eq!(style.header.font_kind, model::FontKind::SansSerif);
@@ -170,13 +166,12 @@ fn parse_style_overrides_header_and_footer() {
   assert_eq!(style.header.rule_color.map(model::Color::rgb), Some([0x33, 0x33, 0x33]));
   assert_eq!(style.footer.center, "{title}");
   assert!(style.footer.left.is_empty());
-  // 既定では header/footer は空（描画なし）
   assert!(!style.header.is_empty());
 }
 
 #[test]
 fn parse_style_fails_on_unknown_header_key() {
-  // Arrange: [header] 内の typo は deny_unknown_fields で拒否
+  // Arrange
   let toml = "[header]\nrght = \"{page}\"\n";
 
   // Act
@@ -188,7 +183,7 @@ fn parse_style_fails_on_unknown_header_key() {
 
 #[test]
 fn parse_style_fails_on_unknown_top_level_key() {
-  // Arrange: typo
+  // Arrange
   let toml = "font_sze = \"15pt\"\n";
 
   // Act
@@ -200,7 +195,7 @@ fn parse_style_fails_on_unknown_top_level_key() {
 
 #[test]
 fn parse_style_fails_on_unknown_nested_key() {
-  // Arrange: typo inside [heading.chapter]
+  // Arrange
   let toml = "[heading.chapter]\nfont_sze = \"30pt\"\n";
 
   // Act
@@ -236,26 +231,26 @@ fn read_style_fails_on_nonexistent_path() {
 
 #[test]
 fn parse_style_reads_minimal_fixture() {
-  // Arrange: 部分指定のみの代表 fixture
+  // Arrange
   let toml = include_str!("fixtures/minimal.toml");
 
   // Act
   let style = parse_style(toml, "minimal.toml").unwrap();
 
-  // Assert: 指定したフィールドだけ上書きされ、他はデフォルト
+  // Assert
   assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
   assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
 }
 
 #[test]
 fn parse_style_overrides_theorem_class_partially() {
-  // Arrange: [theorems.lemma] の display_name だけ上書き
+  // Arrange
   let toml = "[theorems.lemma]\ndisplay_name = \"補題\"\n";
 
   // Act
   let style = parse_style(toml, dummy_source()).unwrap();
 
-  // Assert: lemma は display_name のみ変わり counter 等はクラス既定を維持、他クラスはデフォルト
+  // Assert
   assert_eq!(style.theorem(TheoremClass::Lemma).display_name, "補題");
   assert_eq!(style.theorem(TheoremClass::Lemma).counter, "theorem");
   let default = Style::default();
@@ -267,7 +262,7 @@ fn parse_style_overrides_theorem_class_partially() {
 
 #[test]
 fn parse_style_fails_on_unknown_theorem_class() {
-  // Arrange: `conjecture` は固定 10 種に含まれない
+  // Arrange
   let toml = "[theorems.conjecture]\ndisplay_name = \"Conjecture\"\n";
 
   // Act
@@ -279,7 +274,7 @@ fn parse_style_fails_on_unknown_theorem_class() {
 
 #[test]
 fn parse_style_fails_on_unknown_theorem_field() {
-  // Arrange: [theorems.theorem] 内の typo
+  // Arrange
   let toml = "[theorems.theorem]\ndispl_name = \"Theorem\"\n";
 
   // Act

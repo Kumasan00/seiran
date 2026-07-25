@@ -1,9 +1,4 @@
 //! pass2: `\ref` 解決 — `LayoutNode` ツリーを歩いて `LayoutNode::Ref` を埋める
-//!
-//! pass1（[`super::lower_nodes`] の主走査）が発行した `LayoutNode::Ref` プレースホルダを、
-//! pass1 完了時点で確定している [`super::counter::CounterRegistry`] の labels テーブルで解決する。
-//! `\ref` は前方参照（本文より後ろで定義されるラベルを指す）を許すため、pass1 とは別の
-//! 走査として全体完了後にもう一度木を歩く必要がある。
 
 use model::{AnchorId, LabelId, LinkTarget};
 
@@ -14,16 +9,6 @@ use super::{
 };
 
 /// `Vec<LayoutNode>` を再帰的に走査して `LayoutNode::Ref` を `CounterRegistry` で解決する
-///
-/// 見つかった `Ref { label, span, style, as_link }` は `registry.resolve_label(label)` の結果で
-/// `as_link` が `true`（`\ref`）なら `LayoutNode::Link { target: Internal(label),
-/// children: [Text(resolved, style)] }` に、`false`（`proof` の `{of}`）なら
-/// `LayoutNode::Text(resolved, style)` 単体に置き換える。
-///
-/// `{of}` 解決後は隣接する同一スタイルの `Text` と結合する（[`super::template::expand_template`] が
-/// 元々プレーン文字列として埋め込んでいたときと同じシェーピング結果にするため）。このマージは
-/// **今まさに `{of}` を解決した箇所の前後のみ**に限定する（`as_link: true` で `Link` に解決した場合や、
-/// 数式のように意図的に個別 `Text` ノードのまま保つ既存の隣接ペアには一切触れない）。
 ///
 /// # Errors
 ///
@@ -109,8 +94,6 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
 
 /// テーブルの各セルの内容を再帰的に走査して `\ref` を解決する（[`resolve_refs`] のテーブル専用エントリ）
 ///
-/// `table.head` と `table.rows` の全セルの `content` に対して [`resolve_refs`] を適用する。
-///
 /// # Errors
 ///
 /// 未定義ラベルが見つかった場合に [`LoweringError::UnresolvedReference`] を返します。
@@ -156,7 +139,7 @@ mod tests {
 
   #[test]
   fn resolve_refs_rewrites_ref_to_link() {
-    // Arrange — chapter を 1 進めて section にラベルを登録した registry
+    // Arrange
     let mut registry = CounterRegistry::from_style(&Style::default());
     registry.increment(CounterName::Chapter);
     let number = registry.increment(CounterName::Section);
@@ -185,7 +168,7 @@ mod tests {
 
   #[test]
   fn resolve_refs_returns_unresolved_reference_for_missing_label() {
-    // Arrange — ラベル未登録の状態で Ref を解決
+    // Arrange
     let registry = CounterRegistry::default_for_seiran();
     let mut nodes = vec![ref_node("nope")];
 

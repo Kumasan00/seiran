@@ -1,7 +1,4 @@
 //! `Style::default()` および各サブ型の既定値が `validate` を通ることの確認。
-//!
-//! 各 struct 内 `mod tests` の `validate_accepts_default` と重複するが、トップレベルの
-//! Style とサブ型の組合せが矛盾しないことを保証する統合確認として残す。
 
 use config::{CounterName, Style, TheoremClass};
 use garde::Validate;
@@ -15,7 +12,6 @@ fn default_style_passes_validation() {
 
 #[test]
 fn default_heading_has_descending_font_size() {
-  // 既定値（default_for_level）でレベル順にフォントサイズが単調減少することを確認
   let style = Style::default();
   let part = style.heading(HeadingLevel::Part).font_size.to_pt();
   let chapter = style.heading(HeadingLevel::Chapter).font_size.to_pt();
@@ -46,7 +42,6 @@ fn default_counters_contains_canonical_set() {
 
 #[test]
 fn default_theorems_all_classes_have_display_name() {
-  // 10 種すべてのクラスに非空の表示名が既定で設定されていることを確認
   let style = Style::default();
   for class in TheoremClass::ALL {
     assert!(

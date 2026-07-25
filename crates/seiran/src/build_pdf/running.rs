@@ -9,10 +9,9 @@ use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
 use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
 
-/// phase 6: 全ページのラベル確定後に、ヘッダー・フッターを各ページへ配置する。
+/// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///
-/// [`PageLabels`] を要求することで、前付け・後付けを含む全ページが確定した後にしか呼べない
-/// 順序制約を型で表す（`PageLabels` は `BodyPageValues::finalize` 経由でしか作れない）。
+/// [`PageLabels`] を引数に要求して呼び出し順を制約する。
 pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [model::Page], page_labels: PageLabels) {
   let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
@@ -20,12 +19,7 @@ pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [model
   info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
-/// ページ数確定後のヘッダー・フッター配置仕様 [`typeset::RunningContentSpec`] を組み立てる。
-///
-/// ヘッダー / フッターの各スロットは [`running_slots`] で構築し（全スロット空なら描画省略）、`skip_first`
-/// でタイトルページ（先頭ページ）への非描画を指示する。`page_labels` を要求することで、前付けページ列が
-/// 確定した後（[`PageLabels`] は `BodyPageValues::finalize` を経由してしか作れない）にしか呼べないという
-/// 順序制約を型で表す。ラベルのトークン置換自体は配置パス側が担う。
+/// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
@@ -43,16 +37,13 @@ fn build_running_spec(
     },
     text_width,
     page_numbers: page_labels.into_vec(),
-    // タイトルページ（先頭ページ）にはヘッダー・フッターを描画しない
     skip_first: style.title_page.enabled,
   };
 }
 
-/// `RunningContentStyle` をヘッダー・フッター配置用の [`typeset::RunningSlots`] に変換する。
+/// `RunningContentStyle` を配置用の [`typeset::RunningSlots`] に変換する。
 ///
-/// 全スロットが空のリージョンは描画不要なので `None` を返し、配置パスを省略させる。
-/// `baseline_y` はベースラインのページ上端からの絶対距離（フッターは呼び出し側で換算済み）、
-/// `rule_below` は区切り線をテキストの下に置くか（ヘッダーは `true`、フッターは `false`）。
+/// 全スロットが空なら描画を省略するため `None` を返す。
 fn running_slots(style: &RunningContentStyle, baseline_y: model::Length, rule_below: bool) -> Option<RunningSlots> {
   if style.is_empty() {
     return None;

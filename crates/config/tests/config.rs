@@ -1,8 +1,4 @@
 //! `read_config` の公開 API を経由するエンドツーエンド統合テスト。
-//!
-//! ファイル I/O・パス解決・出力ディレクトリ作成までを含めた一連の流れを検証する。
-//! 純粋関数（`parse_config` / `validate_values` 等）のユニットテストは
-//! `src/config.rs` の `#[cfg(test)] mod tests` 側に置いている。
 
 use config::{
   Config, ConfigValidationError, ReadConfigError, TextDirection, read_config,
@@ -34,16 +30,14 @@ fn read_config_succeeds_with_valid_config() {
   assert_eq!(config.sources.len(), 1);
   assert_eq!(config.font_configs.iter().count(), 19);
   assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
-  // しおりは省略時 true（#127 で style から config `[pdf]` へ移動）
   assert!(config.pdf.show_bookmarks);
-  // 画像設定は省略時 max_dpi=300 / downsample=true（#125 で style から config `[image]` へ移動）
   assert_eq!(config.image.max_dpi, 300);
   assert!(config.image.downsample);
 }
 
 #[test]
 fn read_config_reads_image_overrides() {
-  // Arrange: `[image]` で max_dpi / downsample を明示
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     return format!(
       "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
@@ -63,7 +57,7 @@ fn read_config_reads_image_overrides() {
 
 #[test]
 fn read_config_respects_show_bookmarks_false() {
-  // Arrange: `[pdf]` に show_bookmarks = false を明示
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     return format!(
       "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
@@ -106,7 +100,7 @@ fn read_config_fails_on_nonexistent_font_path() {
 
 #[test]
 fn read_config_fails_on_nonexistent_source_path() {
-  // Arrange: 存在しない source パスを指定
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
     return format!(
       "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
@@ -128,8 +122,7 @@ fn read_config_fails_on_nonexistent_source_path() {
 
 #[test]
 fn read_config_uses_current_dir_when_output_dir_omitted() {
-  // Arrange: TOML から output_dir を省略。CWD を変えると並列テストに影響するため、
-  // 現在の CWD を期待値として観察する。
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
     return format!(
       "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
@@ -142,15 +135,14 @@ fn read_config_uses_current_dir_when_output_dir_omitted() {
   // Act
   let config = read_config(&config_path).unwrap();
 
-  // Assert: 出力先は省略時の CWD と一致する
+  // Assert
   assert_eq!(config.output.output_dir, expected_output_dir);
   assert_eq!(config.output.pdf_path(), expected_output_dir.join("out.pdf"));
 }
 
 #[test]
 fn read_config_preserves_user_script_tag_case() {
-  // 構造的に妥当な OT 慣例外 ("Latn" 等) は read_config 段階では受け付け、ユーザ指定の case が
-  // そのまま保存される。フォントとの突合せは font::validate_font が担当する。
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "script = \"Latn\"";
     return format!(
@@ -169,7 +161,7 @@ fn read_config_preserves_user_script_tag_case() {
 
 #[test]
 fn read_config_builds_language_string_with_ot_language_suffix() {
-  // Arrange: BCP 47 + script + ot_language を指定
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
     return format!(
@@ -183,7 +175,7 @@ fn read_config_builds_language_string_with_ot_language_suffix() {
   // Act
   let config: Config = read_config(&config_path).unwrap();
 
-  // Assert: final language string is `ja-x-hbotJAN`、script/ot_language_tag は正規化済み
+  // Assert
   let serif = config.font_configs.get(FontType::Serif);
   assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
   assert_eq!(serif.script, Some(*b"kana"));
@@ -192,7 +184,7 @@ fn read_config_builds_language_string_with_ot_language_suffix() {
 
 #[test]
 fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
-  // Arrange: language 未指定で script + ot_language のみ → `und-x-hbot<TAG>` が生成される
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "script = \"latn\"\not_language = \"ENG\"";
     return format!(
@@ -214,7 +206,7 @@ fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
 
 #[test]
 fn read_config_preserves_user_direction() {
-  // Arrange: right-to-left を指定
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     let extra = "direction = \"right-to-left\"";
     return format!(
@@ -255,7 +247,7 @@ fn read_config_preserves_document_language_and_keywords() {
 
 #[test]
 fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
-  // Arrange: language / keywords を省略
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -275,7 +267,7 @@ fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
 
 #[test]
 fn read_config_keeps_direction_none_when_omitted() {
-  // Arrange: direction を指定せず最小構成で読み込む
+  // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
     return format!(
       "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -288,7 +280,7 @@ fn read_config_keeps_direction_none_when_omitted() {
   // Act
   let config: Config = read_config(&config_path).unwrap();
 
-  // Assert: 19 フォントすべて direction = None
+  // Assert
   for font_type in FontType::ALL {
     assert_eq!(config.font_configs.get(font_type).direction, None, "{font_type:?}");
   }

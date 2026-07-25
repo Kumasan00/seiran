@@ -1,4 +1,4 @@
-//! 表ボックス（シェーピング済みの表全体）と表の純粋計測関数
+//! シェーピング済みの表ボックスと計測関数。
 //!
 //! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅の解決・行高の算出は
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
@@ -170,10 +170,7 @@ pub struct CellPlacement<'a> {
 
 /// 1 行の各セルの帯位置・内容開始位置を順に計算する
 ///
-/// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める、フォントに触れない
-/// 純粋計算。`typeset::breaking::place_table`（リンク矩形収集）と
-/// `pdf_gen::render::draw_table_row`（描画）の双方が本関数を共有し、揃え計算を
-/// 二重実装しない。
+/// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める。
 #[must_use]
 pub fn layout_row_cells<'a>(
   row: &'a TableRowBox,
@@ -268,13 +265,13 @@ mod tests {
     PlacedHItem, TableColumn,
   };
 
-  /// pt 値から `Length` を作る短縮子
+  /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  /// `Length` が pt 値 `expected` に一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
-  /// 指定幅・指定フォントサイズの Glyphs ボックスを作るヘルパ
+  /// 指定幅・指定フォントサイズの Glyphs ボックスを作る
   fn glyph_box(width: f32, font_size: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Glyphs(GlyphRun {
@@ -290,7 +287,7 @@ mod tests {
     });
   }
 
-  /// 指定幅の Rule ボックス（テキストを含まない）を作るヘルパ
+  /// 指定幅の Rule ボックスを作る
   fn rule_box(width: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Rule {
@@ -303,10 +300,10 @@ mod tests {
     });
   }
 
-  /// `span=1` のセルを作るヘルパ
+  /// `span=1` のセルを作る
   fn cell(items: Vec<HItem>) -> TableCellBox { return TableCellBox { items, span: 1 }; }
 
-  /// `rule_above = false` の行を作るヘルパ
+  /// `rule_above = false` の行を作る
   fn row(cells: Vec<TableCellBox>) -> TableRowBox {
     return TableRowBox {
       cells,
@@ -316,7 +313,7 @@ mod tests {
 
   #[test]
   fn measure_items_width_is_additive() {
-    // Arrange — box(10) + glue(5) + kern(3) = 18
+    // Arrange
     let items = vec![
       rule_box(10.0),
       HItem::Glue {
@@ -328,14 +325,14 @@ mod tests {
       HItem::Kern(pt(3.0)),
     ];
 
-    // Act / Assert — Penalty / ForcedBreak は幅 0
+    // Act / Assert
     assert!(close(measure_items_width(&items), 18.0));
     assert!(close(measure_items_width(&[HItem::Penalty { value: 0 }, HItem::ForcedBreak]), 0.0));
   }
 
   #[test]
   fn max_font_size_in_items_returns_largest_text_size() {
-    // Arrange — フォント 10 と 14 が混在
+    // Arrange
     let items = vec![glyph_box(20.0, 10.0), rule_box(5.0), glyph_box(20.0, 14.0)];
 
     // Act / Assert
@@ -344,13 +341,13 @@ mod tests {
 
   #[test]
   fn max_font_size_in_items_none_without_text() {
-    // Rule のみ（テキストなし）なら None
+    // Arrange / Act / Assert
     assert_eq!(max_font_size_in_items(&[rule_box(5.0)]), None);
   }
 
   #[test]
   fn max_font_size_in_items_recurses_into_atom() {
-    // Arrange — Atom（数式）の子要素内の Glyphs フォントサイズも拾う
+    // Arrange
     let inner = HBox {
       content: HBoxContent::Glyphs(GlyphRun {
         font_size: pt(20.0),
@@ -375,7 +372,7 @@ mod tests {
 
   #[test]
   fn table_row_height_is_max_font_times_factor() {
-    // Arrange — フォント 10 と 12 のセル、行高係数 1.5 → 12 * 1.5 = 18
+    // Arrange
     let row = row(vec![
       cell(vec![glyph_box(10.0, 10.0)]),
       cell(vec![glyph_box(10.0, 12.0)]),
@@ -387,7 +384,7 @@ mod tests {
 
   #[test]
   fn table_row_height_falls_back_to_default_font() {
-    // Arrange — テキストのない行は default_font_size を使う（9 * 2.0 = 18）
+    // Arrange
     let row = row(vec![cell(vec![rule_box(5.0)])]);
 
     // Act / Assert
@@ -396,7 +393,7 @@ mod tests {
 
   #[test]
   fn resolve_column_widths_fixed_auto_ratio() {
-    // Arrange — Fixed(40) / Auto(内容30+padding4=34) / Ratio(0.5*200=100)
+    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -432,7 +429,7 @@ mod tests {
 
   #[test]
   fn resolve_column_widths_flex_shares_remaining() {
-    // Arrange — Auto(20) + Flex。available=100、padding=0 → Flex は残り 80
+    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -462,7 +459,7 @@ mod tests {
 
   #[test]
   fn resolve_column_widths_flex_never_below_natural() {
-    // Arrange — Auto(90) で残りが少なくても、Flex は自然幅(40)を下回らない
+    // Arrange
     let table = TableBox {
       columns: vec![
         TableColumn {
@@ -482,7 +479,7 @@ mod tests {
       breakable: true,
     };
 
-    // Act — 残り = 100 - 90 = 10 だが natural[1]=40
+    // Act
     let widths = resolve_column_widths(&table, pt(100.0), pt(0.0));
 
     // Assert
@@ -505,7 +502,7 @@ mod tests {
 
   #[test]
   fn collect_row_links_single_link_fills_cell() {
-    // Arrange — 1 セル全体がリンク（幅 20 の box を挟む）
+    // Arrange
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
@@ -525,7 +522,7 @@ mod tests {
       pt(2.0),
     );
 
-    // Assert — 内容開始位置は左 padding 分（2.0）、終端は開始 + 幅 20
+    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 2.0));
@@ -534,7 +531,7 @@ mod tests {
 
   #[test]
   fn collect_row_links_multiple_links_in_one_cell() {
-    // Arrange — 1 セル内に 2 つのリンク（間に非リンクの box）
+    // Arrange
     let first = LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:1")));
     let second = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
@@ -565,7 +562,7 @@ mod tests {
 
   #[test]
   fn collect_row_links_in_spanned_cell() {
-    // Arrange — span=2 のセル（2 列ぶんの帯を占有）にリンク 1 個
+    // Arrange
     let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("tab:x")));
     let row = row(vec![TableCellBox {
       items: vec![
@@ -580,7 +577,7 @@ mod tests {
     // Act
     let links = collect_row_links(&row, &two_left_columns(), &col_widths, pt(0.0));
 
-    // Assert — 帯は 2 列ぶん（40）だが、内容開始は左端（padding 0）でセル内容の幅ぶんのみ
+    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 10.0));
@@ -588,10 +585,7 @@ mod tests {
 
   #[test]
   fn collect_row_links_ignores_unbalanced_link_end() {
-    // Arrange — LinkStart 直後に LinkEnd（0 幅の退化矩形）、その後に対応する
-    // LinkStart のない余分な LinkEnd。退化矩形自体のスキップは呼び出し側
-    // （`typeset::breaking::place_table`）の責務なので、ここでは「対応の取れない
-    // LinkEnd がスタック不足で無視され panic しない」ことのみ確認する
+    // Arrange
     let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("x")));
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
@@ -607,7 +601,7 @@ mod tests {
     // Act
     let links = collect_row_links(&row, &columns, &col_widths, pt(0.0));
 
-    // Assert — LinkStart/LinkEnd の対 1 組ぶんの退化矩形（x0 == x1）だけが返る
+    // Assert
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 0.0) && close(links[0].x1, 0.0));
@@ -615,8 +609,7 @@ mod tests {
 
   #[test]
   fn collect_row_links_respects_column_alignment() {
-    // Arrange — 右揃え列。帯幅 30、padding 2、内容（リンク込み）幅 10
-    // → content_x = 30 - 2 - 10 = 18
+    // Arrange
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target),

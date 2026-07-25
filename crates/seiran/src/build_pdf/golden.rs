@@ -1,29 +1,7 @@
 //! 確定レイアウトの golden スナップショット回帰テスト
 //!
-//! `tests/text/` の各入力を [`super::build_pages`] で組版し、確定ページ列を
-//! [`super::dump::dump_pages`] で決定的テキストへ書き出して、`tests/golden/<name>.txt` と比較する。
-//! これにより PDF バイト列の非決定性（生成時刻・ID ハッシュ）を避けて、座標レベルの
-//! レイアウト回帰を `cargo test` で検出できる。
-//!
-//! golden の再生成は `UPDATE_GOLDEN=1 cargo test -p seiran` で行い、差分は `git diff` で確認する。
-//!
-//! ## 入力の固定（fixture と vendor/）
-//!
-//! 設定・スタイル・文献はユーザローカルの `config/`（gitignore 対象）ではなく、コミット済みの
-//! fixture（`crates/seiran/tests/config/`）を読む。fixture が参照するフォント・CSL・ロケールは
-//! `tools/fetch-test-assets.sh` がピン留めハッシュ付きで `vendor/` へ取得する（未取得なら
-//! このテストは取得手順を案内して失敗する）。golden の座標はフォントのバイト列に依存するため、
-//! 入力をコミット済み fixture + ハッシュ検証済み資産に固定することで、環境やローカル設定の
-//! 差異による偽陽性を防ぎ、CI でも同一の golden 比較が回る。
-//!
-//! ## カレントディレクトリについて
-//!
-//! fixture の `config.toml` / `style.toml` が参照する相対パス（フォント・CSL・ロケール等）は、
-//! 実運用（リポジトリルートからの `cargo run`）と同じくプロセスのカレントディレクトリ基準で
-//! 解決される。一方 `cargo test` の作業ディレクトリはパッケージ配下（`crates/seiran`）になるため、
-//! 実ビルドを忠実に再現するようテスト冒頭でカレントディレクトリをワークスペースルートへ固定する。
-//! seiran クレートの他テストはカレントディレクトリに依存しないため、同一値への固定は並行実行でも
-//! 競合しない。
+//! fixture を組版した決定的テキストを `tests/golden/` と比較する。再生成は
+//! `UPDATE_GOLDEN=1 cargo test -p seiran` で行う。
 
 use std::{
   fs,
@@ -38,10 +16,7 @@ use model::{AnchorMark, Length, Page, PlacedBlock};
 
 use super::{build_pages, dump::dump_pages};
 
-/// golden 比較対象の入力（`tests/text/` 配下の `.sei`、拡張子なし）。
-///
-/// `figure.sei` は外部画像ファイルの読込を伴い（`\image` のパスをカレントディレクトリ基準で
-/// 解決して寸法を確定する）、レイアウトが画像実体に依存するため対象から除外する。
+/// golden 比較対象の入力名。
 const GOLDEN_INPUTS: &[&str] = &[
   "align",
   "cases",
@@ -71,10 +46,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "yakumono",
 ];
 
-/// ワークスペースルート（このクレート = `crates/seiran` の 2 階層上）を返す。
-///
-/// `diagnostics` テストモジュールも同じ fixture 前提（cwd 固定・fixture config 読込）を共有するため
-/// `pub(super)` にして再利用する。
+/// ワークスペースルートを返す。
 pub(super) fn workspace_root() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
@@ -91,10 +63,9 @@ pub(super) fn enter_workspace_root() {
   std::env::set_current_dir(workspace_root()).expect("カレントディレクトリをワークスペースルートへ固定");
 }
 
-/// fixture の設定・スタイル・文献を読み込む（カレントディレクトリ = ワークスペースルート前提）。
+/// fixture の設定・スタイル・文献を読み込む。
 ///
-/// fixture が参照するフォント・CSL は `vendor/` の取得済み資産に依存するため、未取得なら
-/// 個々のフォント読込エラーではなく取得手順を先に案内して失敗させる。
+/// テスト資産が未取得なら取得手順を案内して失敗する。
 pub(super) fn load_base() -> (Config, Style, Arc<References>) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
@@ -107,45 +78,29 @@ pub(super) fn load_base() -> (Config, Style, Arc<References>) {
   return (config, style, Arc::new(references));
 }
 
-/// 入力ごとの style 差分を適用する。
-///
-/// 既定で無効の機能（タイトルページ・目次・ヘッダー / フッター）は、fixture で全入力に対して
-/// 有効化すると全 golden にタイトルページ等が乗ってノイズになるため、その機能の検証用に
-/// 書かれた入力に限ってここで有効化する。対象外の入力はベース style をそのまま使う。
+/// 検証対象の機能に必要な style 差分を入力ごとに適用する。
 fn apply_input_style_overrides(name: &str, style: &mut config::Style) {
   match name {
-    // タイトルページ + ヘッダー / フッター（入力の本文が「ヘッダー・フッターはタイトルページには
-    // 描画されず、本文ページから現れる」ことの検証を前提に書かれている）。前付けページの挿入で
-    // page_numbering（前付け roman / 本文 arabic）の系列分離もここで踏む
     "title_page" => {
       style.title_page.enabled = true;
       style.header.left = "{title}".to_string();
       style.header.right = "{page} / {pages}".to_string();
       style.footer.center = "{page}".to_string();
     },
-    // 目次（エントリ収集・リーダー・ページ番号・レベル別字下げ）
     "toc" => style.toc.enabled = true,
-    // 脚注のページ単位採番（#226）。既定は通し番号なので、この入力だけ切り替える
-    // （通し番号の golden は `footnote` が押さえる）。
     "footnote_per_page" => style.footnote.numbering = config::FootnoteNumbering::PerPage,
     _ => {},
   }
 }
 
-/// 入力ごとの config 差分を適用する。
-///
-/// 欧文ハイフネーション（#173）は文書ロケールから言語を導出するため、その検証入力だけ
-/// `document.language` を英語に切り替える。あわせて本文幅を狭め（既定 fixture は版面が広く
-/// 語中折り返しが起きない）、長い欧文語が語中でハイフン分割される様子を golden に固定する。
-/// 対象外の入力はベース config をそのまま使う（既存 golden は language = "ja" のまま不変）。
+/// 検証対象の機能に必要な config 差分を入力ごとに適用する。
 fn apply_input_config_overrides(name: &str, config: &mut Config) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
     config.pdf.margin.left = Length::mm(275.0);
     config.pdf.margin.right = Length::mm(275.0);
   }
-  // ページ単位採番は複数ページにまたがらないと検証にならない。既定 fixture の版面は
-  // 1 ページが広大で改ページが起きないため、この入力だけ小さい紙面にする。
+  // ページ単位採番が複数ページにまたがる版面にする
   if name == "footnote_per_page" {
     config.pdf.width = Length::mm(150.0);
     config.pdf.height = Length::mm(130.0);
@@ -154,8 +109,7 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
     config.pdf.margin.top = Length::mm(15.0);
     config.pdf.margin.bottom = Length::mm(15.0);
   }
-  // 長い脚注の繰越（#227）は、脚注 1 個が 1 ページの脚注領域に収まらないと起きない。
-  // `footnote_per_page` よりさらに紙面を詰めて、繰越の連鎖が確実に起きるようにする。
+  // 1 個の脚注が収まらず、繰越が連鎖する版面にする
   if name == "footnote_split" {
     config.pdf.width = Length::mm(120.0);
     config.pdf.height = Length::mm(85.0);
@@ -166,10 +120,7 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
   }
 }
 
-/// 指定入力 1 つを組版し、確定ページ列のダンプ文字列を返す。
-///
-/// `sources` だけを対象入力へ差し替え、フォント・用紙はベース設定を共有する。style は
-/// ベースに [`apply_input_style_overrides`] の入力別差分を重ねたものを使う。
+/// 指定入力を組版し、確定ページ列のダンプを返す。
 fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>, name: &str) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
@@ -214,14 +165,7 @@ fn layout_dumps_match_golden() {
   );
 }
 
-/// `\index` マーカーの有無だけを差分とする 2 つの入力（`index.sei` / `index_baseline.sei`）を
-/// 比較し、`\index` を取り除いたソースとレイアウトが完全に一致することを確認する
-/// （issue #246 の受け入れ条件）。`index.sei` 側のダンプから (a) `"index "` で始まる行（索引語
-/// 自体の出力）、(b) 索引ページ生成が事後追加する内部リンクアンカー行
-/// （`anchor mark=Label("index-page:...")`）、(c) 巻末に追加される索引ページ自体（issue #247）を
-/// 除いた残りが、`index_baseline.sei`（`\index` を含まない、`GOLDEN_INPUTS` 非登録）のダンプと
-/// 一致するかを見る。`index_baseline` はレイアウトが変わらないことの基準としてのみ使うため golden
-/// ファイルは持たない。
+/// 索引マーカーを除けば本文レイアウトが変わらないことを確認する。
 #[test]
 fn index_marks_are_invisible_to_layout() {
   // Arrange
@@ -250,15 +194,11 @@ fn index_marks_are_invisible_to_layout() {
     return acc;
   });
 
-  // Assert — 本文ページ範囲だけを比較する（巻末索引ページ自体は issue #247 で新規に追加される内容
-  // なので、本文と \index の有無を比較する本テストの対象外）
+  // Assert — 索引ページを除いた本文だけを比較する
   assert_eq!(stripped, without_index, "\\index の有無で本文のレイアウトが変わってはならない");
 }
 
-/// ページの末尾（最下部）ブロックが見出し行かどうかを返す。
-///
-/// 見出しは配置時にページに `PlacedAnchor { mark: Heading, y }`（見出し行の上端）を残す。ページの
-/// 最終ブロックが `Line` で、その上端が見出しアンカーの y と一致すれば「見出しがページ末尾に孤立」。
+/// ページ末尾のブロックが見出し行かを返す。
 fn page_ends_with_heading(page: &Page) -> bool {
   let Some(PlacedBlock::Line { line, baseline_y }) = page.blocks.last() else {
     return false;
@@ -284,8 +224,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   // Act
   let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
 
-  // Assert — どのページも見出しで終わらない（見出し直後の改ページ禁止・#168）。複数ページに分かれ、
-  // 見出しがページ境界に絡むことでテストが空振りでないことも確認する。
+  // Assert — 見出しがページ末尾に孤立せず、テストが複数ページを使っている
   assert!(laid_out.pages.len() >= 2, "複数ページに分かれるはず: {} ページ", laid_out.pages.len());
   for (index, page) in laid_out.pages.iter().enumerate() {
     assert!(!page_ends_with_heading(page), "page {index} が見出しで終わっている（孤立）: {:#?}", page.blocks);
@@ -336,7 +275,7 @@ fn long_footnote_splits_across_pages_without_overlapping_body() {
   // Act
   let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
 
-  // Assert — 脚注 1 が分割され、続きが次ページの脚注領域へ繰り越される（#227）
+  // Assert — 脚注 1 の続きが次ページへ繰り越される
   let fragments: Vec<Vec<(u32, bool)>> = laid_out
     .pages
     .iter()

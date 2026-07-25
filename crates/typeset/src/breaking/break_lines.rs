@@ -1,13 +1,4 @@
 //! (c) 行分割
-//!
-//! [`LineBreaker`] トレイトと 2 つの実装を提供する:
-//! - [`GreedyBreaker`]（貪欲法・first-fit）— [`greedy`] モジュール
-//! - [`KnuthPlassBreaker`]（段落全体最適）— [`knuth_plass`] モジュール
-//!
-//! box は計測済みの幅を持つため、行分割はフォントに一切触れない純粋計算になる。両端揃え
-//! （[`TextAlignment::Justify`]）は確定した行内の伸縮点（glue）の幅だけを変える仕上げの工程
-//! （[`build_line`]）として適用する。分割点の「選択」だけが貪欲法と Knuth–Plass で異なり、
-//! 行の確定・glue 配分・リンク矩形収集・右寄せ・行末ハイフンは両者が [`build_line`] を共有する。
 
 use model::{
   HBox, HItem, Length, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox, TextAlignment,
@@ -22,17 +13,10 @@ pub use knuth_plass::KnuthPlassBreaker;
 /// 行分割アルゴリズムの抽象
 pub trait LineBreaker {
   /// 水平リストを本文幅で行に分割する
-  ///
-  /// `text_width` は本文幅。分割点が存在しない場合は overflow を許容する。
-  /// `alignment` は行末処理で、[`TextAlignment::Justify`] のとき段落最終行・強制改行
-  /// 直前の行を除く各行の余り幅を伸縮点へ比例配分する。
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line>;
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
-///
-/// 折り返しをまたいで継続するため、`break_lines` のループ全体で 1 つ保持し、
-/// 各行（[`build_line`]）に渡して引き継ぐ。
 pub(super) struct OpenLink {
   /// リンクの行き先
   target: LinkTarget,
@@ -41,9 +25,6 @@ pub(super) struct OpenLink {
 }
 
 /// 行頭の breakable glue を切り落としたスライスを返す
-///
-/// 折り返し直後・段落頭のスペースは不可視にするため、行の先頭に来た breakable glue を落とす
-/// （貪欲法の持ち越し先頭 glue 破棄・段落頭 glue 破棄と同じ規則）。
 pub(super) fn strip_leading_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
   let mut start = 0;
   while start < items.len()
@@ -78,9 +59,6 @@ pub(super) fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HIt
 }
 
 /// 行内アイテムの自然幅合計・伸長能力合計・収縮能力合計を求める
-///
-/// `FlushRight` は行内の x 進行を消費しない（右端へ独立に寄る）ため自然幅の合計から除く。
-/// 伸長・収縮能力は breakable / non-breakable を問わず `Glue` の `stretch` / `shrink` を合算する。
 pub(super) fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
   let mut natural = Length::ZERO;
   let mut stretch = Length::ZERO;
@@ -105,11 +83,6 @@ pub(super) fn glue_metrics(items: &[&HItem]) -> (Length, Length, Length) {
 }
 
 /// 行の余り幅から glue の伸縮係数を求める（両端揃えの配分係数）
-///
-/// 正の値は伸長（各 glue の `stretch` に乗算）、負の値は収縮（`shrink` に乗算）を表し、
-/// 大きさは 1.0 でクランプする。行の余り幅が伸縮能力を超える場合は上限で止まり、
-/// 右端不一致を許容する。伸縮点が存在しない行（`stretch` / `shrink` の総和が 0）は 0 を返し、
-/// 左揃えのまま置く。
 pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
   let (natural, total_stretch, total_shrink) = glue_metrics(items);
   let leftover = available - natural;
@@ -129,21 +102,6 @@ pub(super) fn glue_adjust_ratio(items: &[&HItem], available: Length) -> f64 {
 }
 
 /// アイテム列から 1 行を組み立てる（位置確定）
-///
-/// 行末の breakable glue は破棄する。`Penalty` は幅を持たないため位置決めに影響しない。
-/// `open_links` は折り返しをまたいで開いているリンク領域の状態で、`LinkStart` / `LinkEnd`
-/// に応じて更新しつつ、この行に属するクリック矩形（[`LineLink`]）を収集する。
-/// `HItem::Footnote` はこの行の脚注（[`model::LineFootnote`]）としてそのまま収集する
-/// （行分割・ページ下部配置は `break_pages` の責務）。
-/// `available` は本文幅（折り返し幅）で、`FlushRight` を `available − 幅` に右寄せするのに使う。
-///
-/// `alignment` が [`TextAlignment::Justify`] かつ最終行（段落最終行・強制改行直前）でない
-/// とき、行の余り幅を各 glue の伸縮能力に比例して配分し行末を右端に揃える。リンク矩形は
-/// 伸縮後の x を読むため字位置に自動追従する。
-///
-/// `trailing_hyphen` が `Some` のとき（語中 [`HItem::Discretionary`] で折り返した行）、
-/// 行内アイテムを配置した後の行末にハイフン箱を置く。両端揃えではハイフン幅を差し引いた
-/// 余り幅で glue を伸縮させ、ハイフン込みで右端に揃える。
 pub(super) fn build_line(
   items: &[&HItem],
   is_last: bool,

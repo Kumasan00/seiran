@@ -1,15 +1,6 @@
 //! 数式環境 — `gather`
 //!
-//! `\begin{gather}...\end{gather}` を [`DocNode::MathBlock`]（`kind = Gather`）に変換します。各行は
-//! `\\` で分割した単一セル（列区切り `&` は不可）で、各行を `config::CounterName::Equation` で
-//! 採番します。実体は共通ハンドラ [`super::math_grid::evaluate_math_env`]（`NumberingMode::PerRow`）に
-//! 委譲します。各行の中央寄せは `layout` 段が [`MathEnvKind::Gather`] に応じて確定します。
-//!
-//! ## 任意引数・行マーカー
-//!
-//! - `[numbered=false]` — 環境**全体**を無採番にする
-//! - `\notag` — 行の**末尾**に置くと、その**行だけ**を無採番にする（採番カウンタも消費しないため、他行の
-//!   通し番号は連続する）。`[numbered=false]` との併用は冗長なためエラー
+//! 単一セルの行に分割し、行単位で採番する。
 
 use model::{DocNode, MathEnvKind};
 
@@ -17,9 +8,6 @@ use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{evaluator::EvalError, syntax::ast::EnvironmentView};
 
 /// `gather` 環境を評価する
-///
-/// 本体を `\\` で行に分割（`&` は不可）し、各行に通し番号を発番した `MathBlock`（`kind = Gather`）を
-/// 返す。`[numbered=false]` 指定時は採番しない。
 ///
 /// # Errors
 ///
@@ -62,7 +50,7 @@ mod tests {
 
   #[test]
   fn gather_splits_rows_each_single_cell_and_numbers_each_row() {
-    // Arrange — 2 行・各 1 セルの gather
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -70,7 +58,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 2 行・各 1 セル・各行採番対象
+    // Assert
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert!(rows.iter().all(|r| return r.cells.len() == 1), "各行 1 セル: {rows:?}");
@@ -79,7 +67,7 @@ mod tests {
 
   #[test]
   fn gather_rejects_column_break() {
-    // Arrange — gather は `&`（列区切り）を許さない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a & b\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -93,7 +81,7 @@ mod tests {
 
   #[test]
   fn gather_numbered_false_suppresses_numbering() {
-    // Arrange — `[numbered=false]` で無採番
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -108,7 +96,7 @@ mod tests {
 
   #[test]
   fn gather_notag_suppresses_single_row() {
-    // Arrange — gather でも中間行の行末 \notag で 1 行だけ無採番にできる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -116,7 +104,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 採番、無採番、採番
+    // Assert
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 3, "3 行に分割される: {rows:?}");
     assert!(rows[0].numbered);
@@ -126,7 +114,7 @@ mod tests {
 
   #[test]
   fn gather_notag_not_at_row_end_errors() {
-    // Arrange — \notag の後ろに内容が続くとエラー
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -140,7 +128,7 @@ mod tests {
 
   #[test]
   fn gather_row_label_captures_label_and_keeps_numbering() {
-    // Arrange — gather でも行末マーカー `\label{...}` でその行にラベルを付けられる
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
     let cst = parse(source, &arena).unwrap();
@@ -148,7 +136,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 1 行目: ラベルあり・採番対象、2 行目: ラベルなし・採番対象
+    // Assert
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
     assert_eq!(rows[0].label.as_deref(), Some("eq:g"));

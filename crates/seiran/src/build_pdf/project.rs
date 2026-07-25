@@ -6,11 +6,9 @@ use citation::References;
 
 use super::error::BuildPdfError;
 
-/// 設定・source・文献・CSL・font の読込済みデータを 1 つに束ねた不変な入力。
+/// 読込済みの設定・ソース・文献・フォントを束ねた不変な入力。
 ///
-/// `load_project` が 1 回だけ組み立て、`parse_project` / `compile_project` はこれだけを見て
-/// 追加のファイル I/O を行わない。画像だけは `\image{...}` でしかパスが分からないため含めない
-/// （`parse_project` が返す `ImageManifest` に従って driver が別途読み込む）。
+/// 画像はパース後にパスが分かるため含めない。
 pub(super) struct ProjectSnapshot {
   /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
   pub(super) config: config::Config,
@@ -26,14 +24,12 @@ pub(super) struct ProjectSnapshot {
 }
 
 impl ProjectSnapshot {
-  /// 読込済みの設定・スタイル・文献・フォントから、`config.sources` のテキストを読み込んで
-  /// `ProjectSnapshot` を組み立てる。
+  /// `config.sources` を読み込んで `ProjectSnapshot` を組み立てる。
   ///
   /// # Errors
   ///
   /// いずれかのソースファイルの読込に失敗した場合にエラーを返す。
-  // BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
-  // frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+  // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
   pub(super) fn assemble(
     config: config::Config,
@@ -54,7 +50,7 @@ impl ProjectSnapshot {
 
 /// ソースファイルごとの読込済みテキスト（表示パス + 内容）の集合。
 ///
-/// 並び順が [`typeset::SourceId`] のインデックスに一致する。
+/// 並び順が [`model::SourceId`] のインデックスに一致する。
 pub(super) struct SourceMap {
   /// ソースファイルごとのエントリ（`config.sources` と同じ順序）
   pub(super) sources: Vec<SourceEntry>,
@@ -69,15 +65,13 @@ pub(super) struct SourceEntry {
 }
 
 impl SourceMap {
-  /// `sources` を順に読み込む。project loader が担う唯一のソース I/O で、`parse_project` 側は
-  /// 一切ファイルを読まない。
+  /// `sources` を順に読み込む。
   ///
   /// # Errors
   ///
   /// いずれかのファイルの読込に失敗した場合、その時点で早期にエラーを返す
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
-  // BuildPdfError は診断用の NamedSource を同梱するため大きい。ソース位置付き診断を優先する方針で、
-  // frontend::parse_source と同じく result_large_err を許可する（Err は稀な失敗時のみ構築される）。
+  // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
   fn read(sources: &[PathBuf]) -> Result<SourceMap, BuildPdfError> {
     let mut entries = Vec::with_capacity(sources.len());

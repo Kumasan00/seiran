@@ -1,4 +1,4 @@
-//! 縦組版の出力（[`Page`] / [`PlacedBlock`]）の定義
+//! 縦組版の出力 [`Page`] と [`PlacedBlock`]。
 //!
 //! `typeset::breaking::break_pages` がすべてのレイアウト判断（行送り・改ページ・表の分割）を
 //! 終えた確定座標を保持する。`pdf_gen` はこれを描画するだけでよい。
@@ -41,8 +41,7 @@ pub struct Page {
   ///
   /// `break_pages` がページ確定時に `Line::index_marks` から集約する。同一 word/reading の
   /// 重複は 1 出現に畳む。座標を持たない — 索引は場所ではなくページ番号だけを必要とするため
-  /// （[`PlacedAnchor`] とは異なる）。巻末索引ページの描画（親issue #33 のもう一方の
-  /// sub-issue）はここから語・reading・所属ページ index を読むだけでよい。
+  /// （[`PlacedAnchor`] とは異なる）。
   pub index_entries: Vec<PlacedIndexEntry>,
   /// ページ背景色（RGB）。`None` は塗りつぶさない。`config`（`read_style`）非依存のため
   /// 生の `[u8; 3]` で保持する（`PlacedBlock::Rule.color` と同じ規約）

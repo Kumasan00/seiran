@@ -1,8 +1,4 @@
-//! テスト用フィクスチャ: 一時 references ファイルを生成して読み込むヘルパ。
-//!
-//! 文献データ（`References`）は一時 TOML を作って読み込む。CSL スタイル（`.csl`）の選択は style.toml の
-//! `[reference].csl_path` に移管したため、テストでは [`ieee_csl_path`] が返す絶対パスを `Style` 側に設定する。
-//! `config/` はリポジトリで gitignore されるため、テストはクレート内にフィクスチャを持ち自己完結させる。
+//! 文献引用テスト用のフィクスチャ。
 
 use std::{
   io::Write,
@@ -12,8 +8,6 @@ use std::{
 use crate::{References, read_references};
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
-///
-/// `style.reference.csl_path` に設定する CSL スタイルのパスとして使う。
 pub(crate) fn ieee_csl_path() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .join("tests/data/ieee.csl")
@@ -48,6 +42,5 @@ pub(crate) fn sample_references() -> References {
   );
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-  // read_references は同期的に読み切るので、戻り後に file が drop（削除）されても問題ない。
   return read_references(Some(file.path())).expect("references を読み込めるはず");
 }

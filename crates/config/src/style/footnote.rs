@@ -1,11 +1,4 @@
 //! 脚注（`\footnote`）のスタイル設定型（`[footnote]` テーブル）。
-//!
-//! 本文中のマーカー（上付き番号）と脚注本体先頭のマーカーは同じ書式・縮小率・上付きシフト量を
-//! 共有する（`typeset::lowering` が基準フォントサイズだけを使い分けて適用する）。区切り罫線は
-//! `top_margin` → 罫線（`rule_length` × `rule_thickness`） → `rule_gap` → 脚注本体、の順に積む。
-//!
-//! 番号の振り方（[`FootnoteNumbering`]）は「脚注という種類の既定」なので個別要素のオプションでは
-//! なく style.toml が持つ（P10）。
 
 use garde::Validate;
 use model::{
@@ -102,13 +95,13 @@ mod tests {
 
   #[test]
   fn default_numbering_is_continuous() {
-    // Act / Assert — 既定は現状の振る舞い（文書通しの連番）
+    // Act / Assert
     assert_eq!(FootnoteStyle::default().numbering, FootnoteNumbering::Continuous);
   }
 
   #[test]
   fn default_number_style_is_arabic() {
-    // Act / Assert — 既定は現状の振る舞い（アラビア数字）
+    // Act / Assert
     assert_eq!(FootnoteStyle::default().number_style, NumberStyle::Arabic);
   }
 
@@ -124,7 +117,7 @@ mod tests {
 
   #[test]
   fn deserialize_rejects_unknown_number_style() {
-    // Act / Assert — 未知の値は静かに既定へ落とさず読込時に弾く（P6）
+    // Act / Assert
     assert!(toml::from_str::<FootnoteStyle>("number_style = \"circled\"\n").is_err());
   }
 
@@ -139,8 +132,7 @@ mod tests {
 
   #[test]
   fn deserialize_rejects_unknown_numbering() {
-    // Act / Assert — 未知の値は静かに既定へ落とさず読込時に弾く（P6）。呼び出し元の `parse_style` が
-    // この deserialize エラーを `ReadStyleError::ParseToml` としてソース位置付きで報告する。
+    // Act / Assert
     assert!(toml::from_str::<FootnoteStyle>("numbering = \"per_chapter\"\n").is_err());
   }
 
@@ -173,7 +165,6 @@ mod tests {
 
   #[test]
   fn validate_accepts_zero_marker_raise_factor() {
-    // 上付きシフトを 0 にする（同じベースライン）も有効
     let style = FootnoteStyle {
       marker_raise_factor: 0.0,
       ..FootnoteStyle::default()

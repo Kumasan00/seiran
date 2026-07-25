@@ -1,27 +1,4 @@
 //! レイアウトエンジン module — (a) `build_blocks`
-//!
-//! `crate::lowering` が生成した [`LayoutNode`] をフォントシェーピング・メトリクス情報と
-//! 組み合わせて、計測済みの縦リスト（[`Block`] 列）に変換します。
-//!
-//! ## アーキテクチャ上の位置づけ
-//!
-//! ```text
-//! lowering (Vec<LayoutNode>)
-//!   → (a) build_blocks（この module） … シェーピング + 計測 + break 注入 [フォント依存]
-//!   → (c+d) crate::breaking::break_pages … 行分割 + 縦組版 [純粋]
-//!   → (e) pdf_gen::render_pages       … 描画のみ
-//! ```
-//!
-//! ## 責務
-//!
-//! 1. トップレベルの `Vec<LayoutNode>` を縦リストとして走査し、同じ規則を `VBox` の中にも
-//!    再帰適用する（`VBox` は単一 Block ではなく副縦リスト）
-//! 2. 連続するインライン要素の極大列を 1 個の [`Block::Paragraph`] にまとめる
-//! 3. テキストを Unicode スクリプトに基づいて分割し、各セグメントを 1 回シェーピングして
-//!    width / height / depth を [`FontMetrics`] で計測した [`HBox`] にする
-//! 4. 数式の `Raise` ツリーを絶対配置の [`HBoxContent::Atom`] に畳む
-//!
-//! box は本パスで寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 
 mod index;
 mod math;
@@ -50,67 +27,30 @@ use crate::{
 };
 
 /// 欧文単語間スペースの伸長能力（自然幅に対する倍率）
-///
-/// 両端揃え（`TextAlignment::Justify`）で行の余り幅を配分するときの上限。
-/// 自然幅の 1/2 伸長・1/3 収縮は Computer Modern のスペース伸縮比と同じで、
-/// issue #162 の目安値。上限を超える行は上限で止め、右端不一致を許容する。
 const SPACE_STRETCH_RATIO: f32 = 1.0 / 2.0;
 
 /// 欧文単語間スペースの収縮能力（自然幅に対する倍率）
 const SPACE_SHRINK_RATIO: f32 = 1.0 / 3.0;
 
 /// 和文字間の伸長能力（フォントサイズに対する倍率）
-///
-/// 和文セグメント内の分割可能位置に置く幅 0 glue の伸長上限。両端揃えで
-/// 行の余り幅を字間に微量配分する（issue #163）。pLaTeX の `\kanjiskip`
-/// （0pt plus .4pt @10pt ≈ 0.04em）と同オーダーで視覚上目立たない量に抑え、
-/// 上限を超える行は #162 と同様に右端不一致を許容する。収縮は持たない
-/// （ベタ組の字間は詰めない。行の収縮は約物アキで吸収する ＝ 約物アキ調整 #170 の領分。
-/// [`split_japanese_run`](Measurer::split_japanese_run) 参照）。
 const CJK_STRETCH_RATIO: f32 = 0.05;
 
 /// 和欧文間アキ（四分アキ）の自然幅（フォントサイズに対する倍率）
-///
-/// 和文文字と欧文文字が直接隣接する境界に挿む四分（1/4 em）のアキ（JIS X 4051、issue #174）。
-/// v1 では四分固定。量の style.toml 公開は別 issue に切り出す。
 const JA_LATIN_AKI_RATIO: f32 = 0.25;
 
 /// 和欧文間アキの伸長能力（フォントサイズに対する倍率）
-///
-/// 両端揃えでこの四分アキを微小に伸ばす伸縮点にする量。和文字間（[`CJK_STRETCH_RATIO`]）と
-/// 同オーダーの微小値に抑える。収縮は持たない（四分より詰めない）。
 const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
 
 /// ブロック間アキ（`VBox::margin_bottom`）の伸長能力（自然値に対する倍率）
-///
-/// 下端揃え（#169）が満杯リージョンの不足高さを配分する重み。各アキが自然値に比例して伸びる
-/// （相対サイズを保つ）ようにするため `stretch = natural × この比率` とする。均一な比率は
-/// `deficit / total_stretch` の分配で相殺され結果に影響しないので値は 1.0 とする。下端揃えが無効なら
-/// `break_pages` は `stretch` を無視するため、この伸長は既定出力を一切変えない。
 const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
-///
-/// 整数（設計単位）を合算してから **1 回だけ**スケールする（丸めは [`Length::scale`] に集約）。pt を
-/// 経由した往復や、グリフごとの丸めによる誤差蓄積を避け、決定的な結果を得る。
 #[allow(clippy::cast_precision_loss)]
 fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
   return font_size.scale(units as f64 / f64::from(upem));
 }
 
 /// レイアウトノードを計測済みのブロック列に変換する
-///
-/// # Arguments
-///
-/// * `layout_nodes` - 変換するノードのリスト
-/// * `shapers` - フォント形成エンジンへの参照
-/// * `metrics` - 全フォント種別の基本メトリクス（box の寸法計測に使用）
-/// * `default_font_size` - 既定フォントサイズ（pt）。空段落の行送りのフォールバック
-/// * `line_height_factor` - 行高係数。段落の行送り（leading）の算出に使用
-/// * `language` - 文書ロケール（BCP 47、`config.document.language`）。欧文ハイフネーションの
-///   言語をこれから導出する。`None`・非対応言語ならハイフネーションなし
-/// * `punctuation_spacing` - JIS X 4051 のアキ調整（和文約物アキ＝#170・和欧文間アキ＝#174）を
-///   行うか（`style.text.punctuation_spacing`）
 #[must_use]
 pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
@@ -133,8 +73,6 @@ pub fn build_blocks(
 }
 
 /// シェーピング・計測の状態を束ねた内部ワーカー
-///
-/// `build_blocks`（本文）とヘッダー・フッター配置パス（[`crate::running`]）の双方が共有する。
 pub(crate) struct Measurer<'a> {
   /// フォント種別ごとのシェイパー
   shapers: &'a HarfRustShapers<'a>,
@@ -176,12 +114,6 @@ impl<'a> Measurer<'a> {
 
 impl Measurer<'_> {
   /// 縦リストを走査してブロック列を構築する（`VBox` に再帰適用）
-  ///
-  /// `indent` は本文左端からの累積左インデント（pt）。`VBox` の入れ子ごとに
-  /// `VBox::indent` を加算し、配下の段落（`Block::Paragraph`）へ確定値として刻む。
-  ///
-  /// `align` は配下の段落に適用する水平揃え。`indent` と異なり累積せず、`VBox` は自身の
-  /// `align` で子の揃えを上書きする（タイトルページの中央寄せで使う）。
   fn walk_vertical(
     &mut self,
     nodes: Vec<LayoutNode>,
@@ -193,7 +125,6 @@ impl Measurer<'_> {
   ) {
     for node in nodes {
       match node {
-        // インライン要素の極大列は 1 個の段落にまとめる
         LayoutNode::Text(..)
         | LayoutNode::Glue { .. }
         | LayoutNode::Kern { .. }
@@ -206,7 +137,6 @@ impl Measurer<'_> {
         | LayoutNode::IndexMark { .. } => {
           self.collect_inline(node, paragraph);
         },
-        // アンカーはブロック境界のゼロサイズマーカー。段落を切って Block::Anchor を出す
         LayoutNode::Anchor(mark) => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::Anchor(mark));
@@ -299,11 +229,6 @@ impl Measurer<'_> {
   }
 
   /// 溜めた段落アイテムを `Block::Paragraph` として確定する
-  ///
-  /// 行送り（leading）は段落内の支配的（最大）フォントサイズ × 行高係数。
-  /// `indent` / `right_indent` は本文左右端からのインデント（pt）で、`break_pages` が折り返し幅の
-  /// 縮小（`text_width - indent - right_indent`）と行の右シフトに用いる。`align` は確定行の水平揃え
-  /// （中央寄せ等）で、同じく `break_pages` が各行のシフトに用いる。
   fn flush_paragraph(
     &self,
     blocks: &mut Vec<Block>,
@@ -351,7 +276,6 @@ impl Measurer<'_> {
         out.push(HItem::ForcedBreak);
       },
       LayoutNode::Raise { offset, children } => {
-        // 上付き・下付きの Raise ツリーは 1 個の閉じた Atom に畳む
         out.push(HItem::Box(self.build_atom(offset, children)));
       },
       // QED マーク: 子テキストを 1 つの閉じた箱に畳み、直前に分割機会（Penalty）を挿んで
@@ -426,8 +350,6 @@ impl Measurer<'_> {
   }
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  ///
-  /// ネストした `Raise` は `dy` を累積する（上付きで +、下付きで −）。
   fn place_atom_children(&mut self, nodes: Vec<LayoutNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
     for node in nodes {
       match node {
@@ -476,10 +398,6 @@ impl Measurer<'_> {
   }
 
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
-  ///
-  /// セグメントをまるごと 1 回シェーピング（約物詰め・カーニングを維持）してから、
-  /// ICU の分割可能位置（[`break_opportunities`]）で `GlyphRun` を分割する。
-  /// 数式テキスト（`FontKind::Math`）は分割しない。
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
     let text = regex_replace_all!("\n", text, " ");
     // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキ（#174）の境界判定に使う。
@@ -515,18 +433,6 @@ impl Measurer<'_> {
   }
 
   /// シェーピング済みの `HBox`（Glyphs）を分割可能位置で `HItem` 列に分割する
-  ///
-  /// - [`BreakKind::Glue`]（欧文空白）: 分割位置直前のスペースグリフを run から抜き、
-  ///   その advance を breakable な [`HItem::Glue`] にする
-  /// - [`BreakKind::Penalty`]（スペースなし分割点）: グリフ境界で run を割り、間に挿むアイテムを
-  ///   セグメントで分ける。和文（`is_japanese`）は幅 0・微小伸長の breakable な [`HItem::Glue`]
-  ///   （両端揃えで字間に余り幅を配分する。issue #163）、欧文（ハイフン後等）は
-  ///   `Penalty { value: 0 }`（伸縮なし）
-  /// - [`BreakKind::Hyphen`]（欧文語中のハイフネーション位置）: グリフ境界で run を割り、
-  ///   計測済みの `hyphen` 箱を持つ [`HItem::Discretionary`] を挿む（折り返した行だけ行末にハイフン）
-  /// - リガチャ等でクラスタ途中に分割位置が落ちた場合は分割を抑制する
-  /// - 分割で生じる各 `GlyphRun.text` は `Glyph.range` 整合にスライスし直す
-  ///   （PDF テキスト抽出を壊さない）
   fn split_run_into_items(
     &self,
     hbox: HBox,
@@ -574,7 +480,6 @@ impl Measurer<'_> {
     for break_point in breaks {
       match break_point.kind {
         BreakKind::Glue => {
-          // 分割位置から始まるグリフ（仮想の末尾 break は glyphs.len()）
           let glyph_index = if break_point.byte == text.len() {
             run.glyphs.len()
           } else {
@@ -586,7 +491,6 @@ impl Measurer<'_> {
           if glyph_index <= seg_glyph_start {
             continue;
           }
-          // 直前のグリフが単独のスペースであることを確認する
           let space = &run.glyphs[glyph_index - 1];
           let is_single_space = space.range.start == break_point.byte - 1
             && space.range.end == break_point.byte
@@ -627,7 +531,6 @@ impl Measurer<'_> {
           seg_byte_start = break_point.byte;
         },
         BreakKind::Hyphen => {
-          // ハイフン箱が無い（通常発生しない）ときは語中分割しない
           let Some(hyphen) = hyphen else {
             continue;
           };
@@ -651,13 +554,6 @@ impl Measurer<'_> {
   }
 
   /// 和文セグメントを約物アキ調整つきで `HItem` 列に分割する（隣接グリフ対を走査）
-  ///
-  /// 通常文字（漢字・仮名）は極大列を 1 box に束ね、ICU 分割可能位置には幅 0・微小伸長の
-  /// breakable glue を挿む（issue #163、ベタ組字間の両端揃え）。約物グリフは内蔵アキを抜いた
-  /// 実寸 box に正規化し（[`push_punct_box`](Self::push_punct_box)）、隣接クラス対の標準アキ
-  /// （[`yakumono::gap`]）を natural・shrink つきの glue として境界に挿む。連続約物や括弧内側は
-  /// アキ 0（glue なし）で重複アキが残らず、行頭始め括弧・行末句読点の前後アキは breakable な
-  /// ため行境界で破棄され版面の左右端に揃う。ASCII スペースは欧文と同じ伸縮 glue にする。
   #[allow(clippy::needless_range_loop)]
   fn split_japanese_run(&self, run: &GlyphRun, text: &str, out: &mut Vec<HItem>) {
     let glyphs = &run.glyphs;
@@ -694,7 +590,6 @@ impl Measurer<'_> {
 
     let mut normal_start = 0usize;
     for i in 0..glyphs.len() {
-      // ASCII スペース: 直前までの通常列を流し、伸縮 glue に置き換える
       if is_space(i) {
         self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
         let natural = units_to_length(i64::from(glyphs[i].x_advance), run.font_size, metric.upem);
@@ -708,7 +603,6 @@ impl Measurer<'_> {
         continue;
       }
 
-      // グリフ i の直前（i-1 と i の間）の境界 glue。直前がスペースなら既に glue 済み
       if i > 0 && !is_space(i - 1) {
         let breakable = break_bytes.contains(&byte_at(i));
         if let Some(item) = boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
@@ -718,7 +612,6 @@ impl Measurer<'_> {
         }
       }
 
-      // 約物グリフはアキを抜いた実寸 box に正規化して単独で積む
       if let Some(normalize) = yakumono::normalize(eff_class(i)) {
         self.push_sub_run(run, text, normal_start..i, byte_at(normal_start)..byte_at(i), out);
         self.push_punct_box(run, text, i, normalize, out);
@@ -729,11 +622,6 @@ impl Measurer<'_> {
   }
 
   /// 約物 1 グリフを内蔵アキ抜きの実寸 box にして `out` に追加する
-  ///
-  /// 送り幅から `normalize.trim_em`（em）ぶん box 幅を詰め、`normalize.shift_em` ぶん墨を左へ
-  /// 寄せる（`x_offset` を font unit で減算）。box 幅だけが後続アイテムの開始位置を決め、単独
-  /// グリフの墨位置は `x_offset` が決めるため、幅を詰めても墨は動かない（始め括弧・中点は
-  /// `shift_em` で左端に揃える）。
   fn push_punct_box(
     &self,
     run: &GlyphRun,
@@ -777,8 +665,6 @@ impl Measurer<'_> {
   }
 
   /// `run` の部分グリフ列から計測済みの sub-box を作って `out` に追加する
-  ///
-  /// `Glyph.range` は sub-run のテキスト先頭基準にスライスし直す。空の場合は何も追加しない。
   fn push_sub_run(
     &self,
     run: &GlyphRun,
@@ -906,18 +792,11 @@ impl Measurer<'_> {
 }
 
 /// `byte` 位置から始まるグリフのインデックスを返す（クラスタ境界の判定）
-///
-/// 見つからない場合（リガチャ等でクラスタ途中に位置が落ちた場合）は `None`。
 fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
   return glyphs.iter().position(|glyph| return glyph.range.start == byte);
 }
 
 /// 和欧文間アキ（四分アキ）の glue を作る（JIS X 4051、issue #174）
-///
-/// 自然幅は四分（[`JA_LATIN_AKI_RATIO`] em）。両端揃えの微小な伸長点として
-/// [`JA_LATIN_AKI_STRETCH_RATIO`] em の伸長を持ち、収縮はしない。分割不可（`breakable: false`）に
-/// することでこの境界に新たな行分割点を作らず（分割可否は現行の ICU 判定のまま）、和文↔欧文の
-/// 境界は分割点を持たないためアキが行頭・行末に露出することもない。
 fn ja_latin_aki(font_size: Length) -> HItem {
   return HItem::Glue {
     natural: font_size * JA_LATIN_AKI_RATIO,
@@ -928,11 +807,6 @@ fn ja_latin_aki(font_size: Length) -> HItem {
 }
 
 /// 和文文字と欧文文字が直接隣接する境界か（四分アキ挿入の判定、issue #174）
-///
-/// セグメントのスクリプトカテゴリが和文↔欧文で異なり（現状カテゴリは 2 値なので不一致＝和欧境界）、
-/// かつ境界の両文字がともに字・数字（[`char::is_alphanumeric`]）のときだけ真。約物（括弧・句読点・
-/// 中点）や空白は境界文字が英数字にならないため除外され、約物アキ（#170）や既存の空白と二重に
-/// アキを作らない。数字は英数字判定に含まれるため和文↔数字の境界も真になる。
 fn is_ja_latin_letter_boundary(
   left_category: script::ScriptCategory,
   left_char: char,
@@ -943,11 +817,6 @@ fn is_ja_latin_letter_boundary(
 }
 
 /// 隣接する実効約物クラス対（`left` → `right`）の境界に挿む glue を決める
-///
-/// 約物が絡む境界は JIS X 4051 の標準アキ（[`yakumono::gap`]）を natural・shrink つき・伸長なしの
-/// glue にする（詰め代は両端揃えの収縮点／字間より先に吸収）。アキ 0（ベタ）の対は `None`。
-/// 通常文字どうしは ICU 分割可能位置にだけ幅 0・微小伸長の glue を置く（issue #163）。
-/// `breakable` は ICU 分割可能位置（禁則は除かれている）で、行頭行末の約物アキ破棄に効く。
 fn boundary_glue(
   left: yakumono::YakumonoClass,
   right: yakumono::YakumonoClass,
@@ -1004,12 +873,12 @@ mod boundary_glue_tests {
 
   #[test]
   fn punctuation_boundary_carries_nibu_natural_and_shrink_no_stretch() {
-    // Arrange / Act — 前アキ（何か → 始め括弧）
+    // Arrange / Act
     let front = glue_fields(boundary_glue(Normal, Open, EM, true));
     // 後アキ（終わり括弧・句読点 → 通常文字）
     let back = glue_fields(boundary_glue(Close, Normal, EM, true));
 
-    // Assert — 二分（=5.0）の natural・shrink、伸長なし、breakable は引数を伝播
+    // Assert
     assert_eq!(
       front,
       Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), true)),
@@ -1024,13 +893,13 @@ mod boundary_glue_tests {
 
   #[test]
   fn consecutive_punctuation_has_no_glue() {
-    // Arrange / Act / Assert — 連続約物（。」）はベタ = glue なし
+    // Arrange / Act
     assert_eq!(glue_fields(boundary_glue(Comma, Close, EM, true)), None);
   }
 
   #[test]
   fn breakable_flag_propagates_to_punctuation_glue() {
-    // Arrange / Act / Assert — ICU 非分割位置なら breakable=false で挿む
+    // Arrange / Act
     assert_eq!(
       glue_fields(boundary_glue(Normal, Open, EM, false)),
       Some((Length::pt(5.0), Length::ZERO, Length::pt(5.0), false))
@@ -1039,11 +908,11 @@ mod boundary_glue_tests {
 
   #[test]
   fn normal_pair_gets_cjk_stretch_only_at_break_points() {
-    // Arrange / Act — 通常文字どうし
+    // Arrange / Act
     let at_break = glue_fields(boundary_glue(Normal, Normal, EM, true));
     let no_break = glue_fields(boundary_glue(Normal, Normal, EM, false));
 
-    // Assert — 分割点は幅 0・微小伸長・収縮なし、非分割点は glue なし
+    // Assert
     assert_eq!(at_break, Some((Length::ZERO, EM * CJK_STRETCH_RATIO, Length::ZERO, true)));
     assert_eq!(no_break, None);
   }
@@ -1072,7 +941,7 @@ mod ja_latin_aki_tests {
       panic!("Glue を期待");
     };
 
-    // Assert — 四分の natural・微小伸長・収縮なし・分割不可
+    // Assert
     assert_eq!(natural, EM * JA_LATIN_AKI_RATIO, "四分 = 0.25em");
     assert_eq!(stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
     assert_eq!(shrink, Length::ZERO, "収縮なし");
@@ -1081,7 +950,7 @@ mod ja_latin_aki_tests {
 
   #[test]
   fn boundary_true_between_letters_and_digits_both_directions() {
-    // Arrange / Act / Assert — 和文字↔欧文字・和文字↔数字は両方向で境界
+    // Arrange / Act
     assert!(is_ja_latin_letter_boundary(Japanese, '文', Latin, 'a'), "文→a");
     assert!(is_ja_latin_letter_boundary(Latin, 'c', Japanese, '和'), "c→和");
     assert!(is_ja_latin_letter_boundary(Japanese, '語', Latin, '1'), "語→1（数字）");
@@ -1093,7 +962,7 @@ mod ja_latin_aki_tests {
 
   #[test]
   fn boundary_false_for_punctuation_space_and_same_category() {
-    // Arrange / Act / Assert — 約物・空白は境界文字が英数字でないため除外（#170 と二重にしない）
+    // Arrange / Act
     assert!(!is_ja_latin_letter_boundary(Japanese, '」', Latin, 'a'), "」→a は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Latin, 'c', Japanese, '「'), "c→「 は約物側で除外");
     assert!(!is_ja_latin_letter_boundary(Japanese, '。', Latin, '1'), "。→1 は約物側で除外");

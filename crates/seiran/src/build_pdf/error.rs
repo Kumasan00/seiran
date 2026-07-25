@@ -10,7 +10,7 @@ use typeset::LoweringError;
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum BuildPdfError {
-  /// テキストファイルの読み込みに失敗した場合
+  /// テキストファイルの読み込みエラー
   #[error("テキストファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
     code(build::read_text_file),
@@ -26,11 +26,9 @@ pub(super) enum BuildPdfError {
     source: std::io::Error,
   },
 
-  /// 複数ソースのパース・評価で発生したエラーの集約
+  /// 複数ソースのパース・評価エラー
   ///
-  /// 補足設計のエラー戦略: 文法・評価エラーは集約して 1 度に報告する。
-  /// 各 `ParseSourceError` は `NamedSource` と内側エラーの label を保持しているため、
-  /// `#[related]` 経由で `miette` のフル診断（ソースコード付き）が表示される。
+  /// `#[related]` で全エラーをまとめて表示する。
   #[error("複数のソースファイルでエラーが発生しました。")]
   #[diagnostic(code(build::multiple_source_errors))]
   MultipleSourceErrors {
@@ -39,9 +37,7 @@ pub(super) enum BuildPdfError {
     errors: Vec<ParseSourceError>,
   },
 
-  /// 文献引用（`\cite`）の CSL 整形ステージで発生したエラー
-  ///
-  /// 内側の [`CitationError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播される。
+  /// 文献引用の CSL 整形エラー
   #[error("文献引用の整形に失敗しました。")]
   #[diagnostic(code(build::citation))]
   Citation {
@@ -51,11 +47,9 @@ pub(super) enum BuildPdfError {
     source: CitationError,
   },
 
-  /// Document IR → `LayoutNode` 変換（lowering）で発生したエラー（帰属ソースが特定できる場合）
+  /// 帰属ソースを特定できる lowering エラー
   ///
-  /// `LoweringError::source_id()` が指すソースファイルの `NamedSource` を同梱するため、
-  /// 未解決参照・重複ラベル等の診断がパースエラーと同じくファイル名・スニペット・下線付きで表示される。
-  /// 内側の [`LoweringError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播されます。
+  /// `NamedSource` を同梱し、該当箇所を診断へ表示する。
   #[error("ドキュメントのレイアウト変換に失敗しました。")]
   #[diagnostic(code(build::lowering))]
   Lowering {
@@ -68,10 +62,7 @@ pub(super) enum BuildPdfError {
     source: LoweringError,
   },
 
-  /// Document IR → `LayoutNode` 変換で発生したが、特定ソースファイルに帰属できないエラー
-  ///
-  /// 書誌（合成グループ、`parsed` の範囲外の `SourceId`）由来のエラーなど、`NamedSource` を
-  /// 特定できないケース用のフォールバック。通常は発生しない（書誌ノードはラベル・`\ref` を持たない）。
+  /// 特定ソースに帰属できない lowering エラー
   #[error("ドキュメントのレイアウト変換に失敗しました（帰属元ソース不明）。")]
   #[diagnostic(code(build::lowering_internal))]
   LoweringInternal {
@@ -81,7 +72,7 @@ pub(super) enum BuildPdfError {
     source: LoweringError,
   },
 
-  /// PDF ファイルの書き込みに失敗した場合
+  /// PDF ファイルの書き込みエラー
   #[error("PDF ファイルの保存に失敗しました: {path}")]
   #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
   WritePdf {
@@ -92,9 +83,7 @@ pub(super) enum BuildPdfError {
     source: std::io::Error,
   },
 
-  /// config（用紙・余白）× style（`[columns]`）の横断バリデーションで発生したエラー
-  ///
-  /// 内側の [`LayoutValidationError`] が持つ `code` / `help` は `#[diagnostic_source]` により外側へ伝播される。
+  /// config と style の横断バリデーションエラー
   #[error("ページレイアウトの検証に失敗しました。")]
   #[diagnostic(code(build::layout))]
   Layout {
@@ -104,11 +93,9 @@ pub(super) enum BuildPdfError {
     source: LayoutValidationError,
   },
 
-  /// 脚注のページ単位採番（`[footnote] numbering = "per_page"`）が上限回数の組版で収束しなかった場合
+  /// 脚注のページ単位採番が上限回数で収束しないエラー
   ///
-  /// 番号の桁数変化がマーカー幅を通じてページ割り当てを揺らし続けるケース（脚注が 9 → 10 の桁境界で
-  /// ページ境界に乗り続ける等）。一部のページで番号が 1 から始まらない不整合な結果を成功として
-  /// 出力せず、回避策付きの診断として報告する。
+  /// 不整合なページ列は採用せず、回避策付きの診断を返す。
   #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
   #[diagnostic(
     code(build::footnote::per_page_not_converged),

@@ -1,13 +1,4 @@
 //! 巻末索引ブロックの生成パス
-//!
-//! `seiran::build_pdf` が本文を一度ページ分割して各索引語の出現ページ（`model::PlacedIndexEntry`）を
-//! 確定した**後**に走る、フォント依存の生成パスです（[`super::toc`] と同型）。`toc` と異なり右寄せ・
-//! リーダーは使わず、1 エントリを「語 … ページ番号列（カンマ区切り、番号ごとに個別の内部リンク）」の
-//! 単一行に組みます。
-//!
-//! `config` には依存せず、呼び出し側がプリミティブの [`IndexSpec`] / [`IndexEntryInput`] を組み立てて
-//! 渡します。ソート（[`sort_index_entries`]）はこの module が ICU `Collator`（ロケール固定 `ja`）で行い、
-//! `reading` があればそれを、なければ `word` をキーにします。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
 use icu::{
@@ -62,9 +53,6 @@ pub struct IndexEntryInput {
 
 /// エントリ列を ICU `Collator`（ロケール固定 `ja`）でソートする
 ///
-/// キーは `reading` があればそれ、なければ `word`。安定ソートなので、キーが完全一致する
-/// エントリ同士は入力の順序を保つ。
-///
 /// # Panics
 ///
 /// `ja` ロケールの照合データはワークスペースの `icu`（`compiled_data`）に常に同梱されているため、
@@ -80,9 +68,6 @@ pub fn sort_index_entries(entries: &mut [IndexEntryInput]) {
 }
 
 /// 索引エントリ列を計測済みのブロック列に変換する
-///
-/// `entries` が空のときは空ベクタを返す（索引ページを出さない）。呼び出し前に
-/// [`sort_index_entries`] でソート済みであることを期待する（本関数は並べ替えない）。
 #[must_use]
 pub fn build_index_blocks(
   spec: &IndexSpec,
@@ -93,8 +78,6 @@ pub fn build_index_blocks(
   if entries.is_empty() {
     return Vec::new();
   }
-  // 索引項目はハイフネーションしない（目次と同様・本文段落専用の #173 を踏襲）。
-  // 和文約物アキ調整は本文と同じく既定で有効にする。
   let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
   let mut blocks: Vec<Block> = Vec::new();
 
@@ -171,9 +154,6 @@ fn compose_left_line(measurer: &mut Measurer, text: &str, style: TextStyle) -> L
 }
 
 /// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組む
-///
-/// ページ番号ごとに個別の [`LineLink`] を張るので、複数ページにまたがるエントリでも
-/// クリックした番号に対応するページへ飛べる。
 fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEntryInput) -> Line {
   let mut acc = LineAccum::default();
   let mut links = Vec::new();
@@ -218,13 +198,13 @@ mod tests {
 
   #[test]
   fn sort_index_entries_prefers_reading_over_word() {
-    // Arrange — 語の字面では逆順だが、reading を使えば五十音順になる語を用意する
+    // Arrange
     let mut entries = vec![entry("後", Some("うしろ")), entry("前", Some("あいうえお"))];
 
     // Act
     sort_index_entries(&mut entries);
 
-    // Assert — reading（あいうえお < うしろ）でソートされる
+    // Assert
     assert_eq!(entries[0].word, "前");
     assert_eq!(entries[1].word, "後");
   }
@@ -244,7 +224,7 @@ mod tests {
 
   #[test]
   fn sort_index_entries_is_stable_for_equal_keys() {
-    // Arrange — 同じ語が異なる情報（ここではダミーの pages）で 2 件存在する場合、入力順を保つ
+    // Arrange
     let mut entries = vec![
       IndexEntryInput {
         word: "same".to_string(),
@@ -267,13 +247,11 @@ mod tests {
     // Act
     sort_index_entries(&mut entries);
 
-    // Assert — 安定ソートなので最初のページが 1 のままのはず
+    // Assert
     assert_eq!(entries[0].pages[0].label, "1");
     assert_eq!(entries[1].pages[0].label, "2");
   }
 
-  // フォントを使う build_index_blocks の配置検証（リンク span・列幅）はフォント依存のため
-  // `seiran` の結合テストで確認する。ここでは純粋ロジック（ソート）のみ検証する。
   #[test]
   fn link_target_wraps_link_key() {
     let key = 3;

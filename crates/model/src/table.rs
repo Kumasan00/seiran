@@ -1,10 +1,6 @@
-//! 表（`table` 環境）の行・セルを表す型
+//! 表の行とセル。
 
 use crate::InlineNode;
-
-// =============================================================================
-// 表関連の型
-// =============================================================================
 
 /// 表の 1 行（`\row{...}` に対応）
 ///
@@ -35,35 +31,35 @@ impl TableCell {
   pub fn new(content: Vec<InlineNode>) -> Self { return TableCell { content, span: 1 }; }
 }
 
-// =============================================================================
-// テスト
-// =============================================================================
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn table_cell_new_defaults_to_span_one() {
-    // TableCell::new は span = 1 の通常セルを作り、内容を保持する
+    // Arrange
     let cell = TableCell::new(vec![InlineNode::text("a")]);
+
+    // Assert
     assert_eq!(cell.span, 1);
     assert_eq!(cell.content.len(), 1);
   }
 
   #[test]
   fn table_cell_supports_explicit_span() {
-    // \cell[span=N] 相当の明示 span を保持できる
+    // Arrange
     let cell = TableCell {
       content: vec![InlineNode::text("x")],
       span: 3,
     };
+
+    // Assert
     assert_eq!(cell.span, 3);
   }
 
   #[test]
   fn table_row_holds_cells_and_rule_above() {
-    // TableRow はセル列と rule_above フラグをそのまま保持する
+    // Arrange
     let row = TableRow {
       cells: vec![
         TableCell::new(vec![InlineNode::text("a")]),
@@ -71,6 +67,8 @@ mod tests {
       ],
       rule_above: true,
     };
+
+    // Assert
     assert_eq!(row.cells.len(), 2);
     assert!(row.rule_above);
   }

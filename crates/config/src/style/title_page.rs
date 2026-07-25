@@ -1,13 +1,4 @@
 //! タイトルページ（`\maketitle` 相当）のスタイル設定型。
-//!
-//! 文書の先頭に自動生成のタイトルページを挿入する機能（LaTeX の `titlepage` 相当）の
-//! 見た目と有効化を定義する。`[title_page]` テーブルにマップされ、[`crate::style::Style`]
-//! の `title_page` フィールドに置かれる。
-//!
-//! 「コンテンツとプレゼンテーションの完全分離」「プリアンブル相当はソースに書けない」に従い、
-//! タイトルページの **内容** は `config.toml` の `[document]`（title / author / date）から、
-//! **見た目・有効化** はこのスタイルから供給する。ソース側にコマンド（`\maketitle` 等）は
-//! 追加しない。タイトル・著者・日付は中央寄せの段落として縦に積まれる（揃えは中央固定）。
 
 use garde::Validate;
 use model::{
@@ -17,11 +8,6 @@ use model::{
 use serde::{Deserialize, Serialize};
 
 /// タイトルページのスタイル設定。
-///
-/// `enabled` が `false`（既定）のときはタイトルページを生成しない（オプトイン）。
-/// 各要素（タイトル / 著者 / 日付）のフォントサイズ・種別と要素間の縦アキ、ページ上端から
-/// タイトルまでの送り（`top_margin`）を持つ。垂直方向は `top_margin` による簡易指定のみで、
-/// 垂直中央寄せは将来対応（issue のスコープ外）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
 pub struct TitlePageStyle {
@@ -58,7 +44,6 @@ pub struct TitlePageStyle {
 }
 
 impl Default for TitlePageStyle {
-  /// 既定値: 無効（`enabled = false`）。タイトル 36pt 太字、著者 18pt、日付 14pt。
   fn default() -> Self {
     return Self {
       enabled: false,
@@ -93,7 +78,7 @@ mod tests {
     // Arrange / Act
     let style = TitlePageStyle::default();
 
-    // Assert — 既定はオプトインなので無効
+    // Assert
     assert!(!style.enabled);
     assert_eq!(style.title_font_kind, FontKind::SerifBold);
     assert!((style.title_font_size.to_pt() - 36.0).abs() < f32::EPSILON);
@@ -101,7 +86,7 @@ mod tests {
 
   #[test]
   fn deserializes_partial_with_defaults() {
-    // Arrange — enabled だけ指定し、残りは既定値でマージされる
+    // Arrange
     let toml = "enabled = true\n";
 
     // Act
@@ -138,7 +123,7 @@ mod tests {
 
   #[test]
   fn validate_accepts_zero_bottom_margin() {
-    // Arrange — 縦アキ 0 は許容（非負）
+    // Arrange
     let style = TitlePageStyle {
       title_bottom_margin: Length::pt(0.0),
       author_bottom_margin: Length::pt(0.0),

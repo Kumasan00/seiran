@@ -1,13 +1,4 @@
-//! 定理クラス [`TheoremClass`] の定義
-//!
-//! `theorem` / `lemma` / … / `proof` の 10 種ビルトイン定理クラスを表す列挙型と、
-//! 環境名（`snake_case` 文字列）との相互変換を提供します。マクロ禁止（軸 1-C）のため
-//! `\newtheorem` 相当は持たず、定理クラスは固定 10 種に確定している。
-//!
-//! クラス固有のスタイル（表示名・カウンタ・番号書式・本文フォント等）は
-//! `config::TheoremStyle` 側で保持し、ここではクラスそのものに関する基本変換のみを提供する。
-//! `DocNode::Theorem` と `config::Theorems` の双方がこの単一の enum を共有する
-//! （`HeadingLevel` / `MathEnvKind` と同じ配置方針）。
+//! 定理クラス [`TheoremClass`]。
 
 use serde::{Deserialize, Serialize};
 
@@ -114,7 +105,7 @@ mod tests {
 
   #[test]
   fn as_str_and_from_name_roundtrip() {
-    // Arrange / Act / Assert — 全クラスで as_str → from_name が往復する
+    // Arrange / Act / Assert
     for class in TheoremClass::ALL {
       assert_eq!(TheoremClass::from_name(class.as_str()), Some(class));
     }

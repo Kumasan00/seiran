@@ -1,11 +1,4 @@
 //! 水平方向の揃え [`Align`]。
-//!
-//! 段落・行を本文幅のどこに寄せるかを表す。既定は左揃え（ragged-right）で、
-//! 本文の自動折り返しはこれを前提にしている。中央・右揃えはタイトルページの
-//! 中央寄せなど、確定済みの行を本文幅の中で水平にずらす用途で使う。
-//!
-//! `Block::Paragraph` と `lowering::LayoutNode::VBox` の双方が保持し、
-//! lowering → layout → `typeset::breaking::break_pages` を透過して確定行のオフセットに反映される。
 
 use serde::{Deserialize, Serialize};
 
@@ -51,31 +44,31 @@ mod tests {
 
   #[test]
   fn default_is_left() {
-    // Arrange / Act / Assert — 既定は左揃え
+    // Arrange / Act / Assert
     assert_eq!(Align::default(), Align::Left);
   }
 
   #[test]
   fn offset_left_is_always_zero() {
-    // Arrange / Act / Assert — 左揃えは常に 0
+    // Arrange / Act / Assert
     assert_eq!(Align::Left.offset(Length::pt(100.0), Length::pt(30.0)), Length::ZERO);
   }
 
   #[test]
   fn offset_center_is_half_remaining() {
-    // Arrange / Act / Assert — 中央は余白の半分
+    // Arrange / Act / Assert
     assert_eq!(Align::Center.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(35.0));
   }
 
   #[test]
   fn offset_right_is_full_remaining() {
-    // Arrange / Act / Assert — 右は余白いっぱい
+    // Arrange / Act / Assert
     assert_eq!(Align::Right.offset(Length::pt(100.0), Length::pt(30.0)), Length::pt(70.0));
   }
 
   #[test]
   fn offset_clamps_to_zero_when_content_overflows() {
-    // Arrange / Act / Assert — 内容が利用可能幅を超えたら 0 にクランプ
+    // Arrange / Act / Assert
     assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
     assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
   }

@@ -1,15 +1,10 @@
-//! シェーピング済みグリフ列（[`GlyphRun`] / [`Glyph`]）の定義
-//!
-//! `typeset::block` のシェーピング結果を保持する plain data 型。
-//! フォントパース結果（`FontRef`）には依存しないため `model` に置く。
+//! シェーピング済みグリフ列 [`GlyphRun`] と [`Glyph`]。
 
 use std::ops::Range;
 
 use crate::{Color, FontType, Length};
 
-/// シェーピング済みのグリフ列情報
-///
-/// 1 つのフォント種別で連続するテキストをシェーピングした結果を保持します。
+/// 1 つのフォント種別でシェーピングしたグリフ列
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlyphRun {
   /// テキストのフォントサイズ

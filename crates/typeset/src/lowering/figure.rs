@@ -1,10 +1,4 @@
 //! 図環境（`DocNode::Figure`）の lowering
-//!
-//! 画像 ([`LayoutNode::Image`]) と、`FigureStyle.caption` で書式化したキャプションを
-//! caption の位置指定の順序で `VBox` に詰めます。位置はパーサがソース上の
-//! `\image` / `\caption` の出現順から決定します。caption が `None` のときは
-//! キャプション行を一切出力しません。キャプション構築と `VBox` 包みは
-//! [`super::float`] の共通ヘルパで行います。
 
 use model::{AssetId, CaptionPosition, InlineNode, Length};
 
@@ -25,15 +19,6 @@ pub(crate) struct ImageOverrides {
 }
 
 /// 図をレイアウトノードに変換する
-///
-/// 画像とキャプションを指定された [`CaptionPosition`] の順序で積み、上下マージン付きの
-/// `VBox` で囲んで返す。`caption` が `None` のときはキャプション行を出力せず、
-/// `VBox` には画像のみが入る。
-///
-/// per-image の `dpi` / `downsample` 上書きと config `[image].max_dpi` / `[image].downsample`
-/// （`ctx.image_max_dpi` / `ctx.image_downsample`）の既定値を解決し、ラスタ画像のダウンサンプリング上限 DPI を `target_dpi` として
-/// [`LayoutNode::Image`] に焼き付ける。`downsample` が `false` に解決された場合は `None`
-/// （リサイズなし）になる。
 ///
 /// # Errors
 ///
@@ -88,7 +73,7 @@ mod tests {
 
   #[test]
   fn lower_figure_emits_image_and_caption_in_bottom_order() {
-    // Arrange — \image が先（DocNode から CaptionPosition::Bottom が渡される）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let caption = [InlineNode::Text("せいらん".to_string())];
@@ -106,7 +91,7 @@ mod tests {
     )
     .expect("解決済みインラインなのでエラーにならない");
 
-    // Assert — top_margin Vkern → VBox（画像 → 内マージン Vkern → キャプション）
+    // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
     let LayoutNode::VBox { children, .. } = nodes.get(1).expect("VBox があるはず") else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
@@ -123,7 +108,6 @@ mod tests {
     assert_eq!(path.as_str(), "./images/seiran.jpg");
     assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
     assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
-    // 既定（config `[image]`）では downsample=true / max_dpi=300 なので target_dpi=Some(300)
     assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
@@ -135,7 +119,7 @@ mod tests {
 
   #[test]
   fn lower_figure_caption_position_top_swaps_order() {
-    // Arrange — DocNode 側で CaptionPosition::Top を指定（\caption が先）
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let caption = [InlineNode::Text("せいらん".to_string())];
@@ -153,7 +137,7 @@ mod tests {
     )
     .expect("失敗しない");
 
-    // Assert — VBox 内で キャプションが画像より前
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("VBox が期待");
     };
@@ -164,7 +148,7 @@ mod tests {
 
   #[test]
   fn lower_figure_without_caption_omits_caption_node() {
-    // Arrange — caption が None ならキャプション行は出力しない
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -181,7 +165,7 @@ mod tests {
     )
     .expect("失敗しない");
 
-    // Assert — VBox に Text ノードが含まれていない（"Figure 3: " のような空タイトル行を出さない）
+    // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("VBox が期待");
     };
@@ -193,7 +177,7 @@ mod tests {
 
   #[test]
   fn lower_figure_per_image_downsample_false_yields_no_target_dpi() {
-    // Arrange — per-image downsample=false なら target_dpi は None
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -226,7 +210,7 @@ mod tests {
 
   #[test]
   fn lower_figure_per_image_dpi_overrides_style() {
-    // Arrange — per-image dpi=600 は既定（config `[image]` の 300）を上書きする
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
 
@@ -259,7 +243,7 @@ mod tests {
 
   #[test]
   fn lower_figure_style_downsample_false_yields_no_target_dpi() {
-    // Arrange — グローバル downsample=false（config `[image]` 由来）ならリサイズしない
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style).with_image_defaults(300, false);
 

@@ -343,7 +343,7 @@ mod tests {
 
   #[test]
   fn from_str_parses_all_units() {
-    // Arrange / Act / Assert: FromStr は Deserialize と同じ解釈をする
+    // Arrange / Act / Assert
     assert_eq!("12pt".parse::<Length>().unwrap(), Length::pt(12.0));
     assert_eq!("  25.4mm ".parse::<Length>().unwrap(), Length::mm(25.4));
     assert_eq!("2.54cm".parse::<Length>().unwrap(), Length::cm(2.54));
@@ -354,7 +354,7 @@ mod tests {
     // Arrange / Act
     let result = "12px".parse::<Length>();
 
-    // Assert: エラー型が入力を保持する
+    // Assert
     assert!(result.is_err());
   }
 
@@ -373,7 +373,7 @@ mod tests {
 
   #[test]
   fn rejects_bare_number() {
-    // Arrange: 単位なしの素 f32 は拒否
+    // Arrange / Act
     let result: Result<Wrapper, _> = toml::from_str("length = 12.0");
 
     // Assert
@@ -489,8 +489,7 @@ mod tests {
 
   #[test]
   fn mul_by_integer_is_exact() {
-    // Arrange: 3 sp × 2 = 6 sp（sp 整数のまま乗算・丸めなし）
-    // Assert: 整数因子では scale と一致し、リテラルは Mul<i64> に一意解決する
+    // Arrange / Act / Assert
     assert_eq!(Length::from_sp(3) * 2, Length::from_sp(6));
     assert_eq!(Length::pt(3.0) * 2, Length::pt(6.0));
   }
@@ -565,7 +564,7 @@ mod tests {
     set.insert(Length::pt(1.0));
     set.insert(Length::pt(1.0));
 
-    // Assert: Eq + Hash による重複排除、Ord による比較
+    // Assert
     assert_eq!(set.len(), 1);
     assert!(Length::pt(1.0) < Length::pt(2.0));
   }

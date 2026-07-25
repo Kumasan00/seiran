@@ -1,13 +1,4 @@
 //! ヘッダー・フッター（running header/footer）の配置パス
-//!
-//! `crate::breaking::break_pages` がページ数を確定した**後**に走る、フォント依存の後処理パスです。
-//! 各ページについて左・中央・右スロットのテンプレートを展開（`{page}` などのトークン置換）し、
-//! 既存の [`super::Measurer`] でシェーピングして、本文と同じ [`PlacedBlock`] として
-//! `Page::header` / `Page::footer` に配置します。
-//!
-//! 出力はフォント非依存の [`PlacedBlock`] なので、`pdf_gen` は本文ブロックと同一の描画ロジックで
-//! 扱えます。`config` には依存せず、呼び出し側（`seiran::build_pdf`）が
-//! 設定からプリミティブの [`RunningContentSpec`] を組み立てて渡します（`PageGeometry` と同じ流儀）。
 
 use font::{FontMetrics, shaper::HarfRustShapers};
 use model::{FontKind, HBox, Length, Line, Page, PlacedBlock, PositionedBox};
@@ -17,10 +8,6 @@ use super::Measurer;
 use crate::lowering::TextStyle;
 
 /// ヘッダー・フッター配置に必要なプリミティブ設定
-///
-/// `config` 型を持ち込まないよう、呼び出し側が設定から組み立てて渡す。
-/// `header` / `footer` が `None` のリージョンは配置しない（全スロット空のとき呼び出し側が `None`
-/// にする）。
 #[derive(Debug, Clone)]
 pub struct RunningContentSpec {
   /// ヘッダー（ページ上端側）のスロット。`None` なら描画しない
@@ -32,15 +19,8 @@ pub struct RunningContentSpec {
   /// 本文幅（pt）。スロットの左／中央／右揃えの基準
   pub text_width: Length,
   /// 各物理ページの `(\{page\} ラベル, \{pages\} ラベル)`。`pages` と同じ長さ・同じ順序。
-  ///
-  /// 前付け（ローマ数字）と本文（算用数字、1 から振り直し）でリージョン別に採番した結果を
-  /// 呼び出し側（`build_pdf`）が算出して渡す。`build_running_content` はこれをトークン置換に使う。
   pub page_numbers: Vec<(String, String)>,
   /// 先頭ページ（タイトルページ）のヘッダー・フッターを抑止するか
-  ///
-  /// `true` のとき index 0 のページはヘッダー・フッターを配置しない。タイトルページ
-  /// 有効時に `build_pdf` が `true` を渡す。ページ番号トークン（`{page}` / `{pages}`）の
-  /// 採番自体には影響せず、描画の有無だけを制御する。
   pub skip_first: bool,
 }
 
@@ -81,16 +61,6 @@ pub struct RunningMetadata {
 }
 
 /// 各ページにヘッダー・フッターを配置する
-///
-/// `pages` を走査し、`spec` に従って `page.header` / `page.footer` を埋める。
-/// ヘッダー・フッターともに未指定（`None`）の場合は何もしない。
-///
-/// # Arguments
-///
-/// * `pages` - 配置先のページ列（`break_pages` の出力）
-/// * `shapers` - フォント形成エンジン
-/// * `metrics` - フォントメトリクス
-/// * `spec` - ヘッダー・フッターのプリミティブ設定
 pub fn build_running_content(
   pages: &mut [Page],
   shapers: &HarfRustShapers,
@@ -100,16 +70,11 @@ pub fn build_running_content(
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  // default_font_size / line_height_factor はヘッダー・フッターのシェーピングでは使わない。
-  // ヘッダー・フッターはハイフネーションしない（本文段落専用・#173）。
-  // 和文約物アキ調整は本文と同じく既定で有効にする
   let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
   for (index, page) in pages.iter_mut().enumerate() {
-    // 先頭ページ（タイトルページ）はヘッダー・フッターを描画しない
     if spec.skip_first && index == 0 {
       continue;
     }
-    // ページ番号ラベルが無いページ（通常は発生しない）は安全側でスキップする
     let Some((page_label, pages_label)) = spec.page_numbers.get(index) else {
       continue;
     };
@@ -186,8 +151,6 @@ fn build_region(
 }
 
 /// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
-///
-/// 置換後が空（空白のみ）の場合は空ベクタを返す。
 fn shape_slot(
   measurer: &mut Measurer,
   template: &str,
@@ -204,9 +167,6 @@ fn shape_slot(
 }
 
 /// テンプレート中のトークンを実値へ置換する
-///
-/// `{page}` は `{pages}` の部分文字列ではない（直後が `s` か `}` かで異なる）ため、置換順は不問。
-/// `page_label` / `pages_label` は呼び出し側がリージョン別に採番済みのラベル文字列。
 fn substitute(template: &str, page_label: &str, pages_label: &str, metadata: &RunningMetadata) -> String {
   return template
     .replace("{page}", page_label)
@@ -274,7 +234,7 @@ mod tests {
 
   #[test]
   fn append_slot_positions_boxes_left_to_right() {
-    // Arrange — x_start=100 から幅 10, 15 のボックスを並べる
+    // Arrange
     let mut boxes: Vec<PositionedBox> = Vec::new();
     let mut height = Length::ZERO;
     let mut depth = Length::ZERO;
@@ -291,7 +251,7 @@ mod tests {
       &mut depth,
     );
 
-    // Assert — x は累積し、行の高さ・深さはボックスの最大値
+    // Assert
     let xs: Vec<Length> = boxes.iter().map(|b| return b.x).collect();
     assert_eq!(xs, vec![Length::pt(100.0), Length::pt(110.0)]);
     assert_eq!(height, Length::pt(8.0));
@@ -311,13 +271,13 @@ mod tests {
     // Arrange / Act
     let result = substitute("{page} / {pages}", "3", "12", &metadata());
 
-    // Assert — {page} が {pages} を壊さない
+    // Assert
     assert_eq!(result, "3 / 12");
   }
 
   #[test]
   fn substitute_supports_roman_front_matter_labels() {
-    // Arrange / Act — 前付けのローマ数字ラベルもそのまま埋め込める
+    // Arrange / Act
     let result = substitute("{page} / {pages}", "ii", "iv", &metadata());
 
     // Assert
@@ -335,7 +295,7 @@ mod tests {
 
   #[test]
   fn substitute_unset_metadata_becomes_empty() {
-    // Arrange — 既定（空）メタデータ
+    // Arrange
     let result = substitute("[{title}]", "1", "1", &RunningMetadata::default());
 
     // Assert

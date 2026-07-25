@@ -1,9 +1,4 @@
-//! PDF 生成モジュール
-//!
-//! 組版済みの `Publication`（確定座標）を Krilla で描画し、PDF バイト列を生成します。
-//! レイアウト判断は前段（`typeset` の `block` / `breaking`、および `PublicationBuilder`）で
-//! 完了しており、本クレートが担うのは画像サイズ確定の prepass（[`resolve_images`]）と
-//! 描画（[`create_pdf`]）のみです。フォントサブセット化は krilla が内部で実施します。
+//! 画像寸法を解決し、組版済みの [`Publication`] から PDF を生成する。
 
 mod error;
 mod font;
@@ -27,11 +22,7 @@ pub use crate::{
 };
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
 
-/// PDF のしおり（アウトライン）1 項目の論理情報
-///
-/// `seiran` の `build_pdf` が Document IR の見出しから文書順に組み立て、[`create_pdf`] に
-/// 渡す。確定座標（ページ index + 座標）は `pdf_gen` 側が各ページの見出しアンカーから
-/// 補い、本型が持つレベル・テキストと文書順で 1 対 1 に対応付けてしおりツリーを構築する。
+/// PDF のしおりに使う見出し。
 #[derive(Debug, Clone)]
 pub struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
@@ -40,19 +31,11 @@ pub struct OutlineEntry {
   pub text: String,
 }
 
-/// `Publication` から PDF バイト列を生成します。
-///
-/// # Arguments
-///
-/// * `publication` - 座標・描画順が確定済みの中間表現
-/// * `font_bytes` - フォントバイナリ
-/// * `font_refs` - 解析済みフォント参照
-/// * `metrics` - 全フォント種別の基本メトリクス（upem / ascender / descender）
-/// * `font_configs` - フォント埋め込みに必要な設定（`variation_axes` / `font_index`）
+/// [`Publication`] から PDF バイト列を生成する。
 ///
 /// # Errors
 ///
-/// フォント生成、ページ設定、罫線描画の構築に失敗した場合は [`PdfGenError`] を返します。
+/// フォントや描画要素の生成、PDF の最終化に失敗した場合は [`PdfGenError`] を返す。
 pub fn create_pdf(
   publication: &Publication,
   font_bytes: &FontData,

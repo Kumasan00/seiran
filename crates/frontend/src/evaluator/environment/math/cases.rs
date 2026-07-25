@@ -1,12 +1,6 @@
 //! 数式環境 — `cases`
 //!
-//! `\begin{cases}...\end{cases}` を [`DocNode::MathBlock`]（`kind = Cases`）に変換します。本体は
-//! [`crate::syntax::ParseMode::Math`] で構造化された CST を行区切り `\\` × 列区切り `&` のグリッドに分割し、
-//! 各行を「式 & 条件」の 2 列固定として扱います（3 列以上は [`EvalError::CasesColumnOverflow`]）。
-//! 左の大波括弧と 2 列の左揃えは `layout` 段が [`MathEnvKind::Cases`] に応じて確定します。
-//!
-//! `cases` は**非採番**であり、`config::CounterName::Equation` を一切消費しません（採番ありの
-//! 数式環境と通し番号を共有しない）。任意引数も位置引数も受け付けません。
+//! 各行を最大 2 セルに分割する非採番の数式環境。
 
 use model::{DocNode, MathEnvKind};
 
@@ -19,14 +13,10 @@ use crate::{
 
 /// `cases` 環境を評価する
 ///
-/// 本体を `\\` で行・`&` で列に分割し、各行を非採番の `MathRow` にした `MathBlock`（`kind = Cases`）を
-/// 返す。各行は最大 2 列まで（`式 & 条件`）。番号は付かない。
-///
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
 pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
-  // cases は任意引数を受け付けない（未知キーはエラー）
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -44,13 +34,11 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
         allow_row_breaks: true,
         allow_column_breaks: true,
       },
-      // cases は非採番のため行末マーカー `\notag` / `\label` は不可
       false,
     )?,
     None => Vec::new(),
   };
   let rows = into_unnumbered_rows(grid);
-  // cases は「式 & 条件」の 2 列固定。3 列以上はエラーにする
   if let Some(row) = rows.iter().find(|row| return row.cells.len() > 2) {
     return Err(EvalError::CasesColumnOverflow {
       found: row.cells.len(),
@@ -62,7 +50,6 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     kind: MathEnvKind::Cases,
     rows,
     numbered: false,
-    // cases は非採番のため参照対象外
     label: None,
     span: view.span(),
   }]);
@@ -101,7 +88,7 @@ mod tests {
 
   #[test]
   fn cases_splits_rows_and_two_columns_unnumbered() {
-    // Arrange — 2 行・各 2 列（式 & 条件）の cases
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
     let cst = parse(source, &arena).unwrap();
@@ -109,7 +96,7 @@ mod tests {
     // Act
     let result = crate::evaluator::evaluate_children(source, cst).unwrap();
 
-    // Assert — 2 行・各 2 セル・全行 numbered は false
+    // Assert
     assert_eq!(result.len(), 1);
     let rows = rows_of(&result);
     assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
@@ -119,7 +106,7 @@ mod tests {
 
   #[test]
   fn cases_rejects_three_columns() {
-    // Arrange — 1 行 3 列はエラー（cases は 2 列固定）
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b & c\end{cases}";
     let cst = parse(source, &arena).unwrap();
@@ -133,7 +120,7 @@ mod tests {
 
   #[test]
   fn cases_rejects_unknown_opt_key() {
-    // Arrange — cases は任意引数を受け付けない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}[foo=1]a & b\end{cases}";
     let cst = parse(source, &arena).unwrap();
@@ -147,7 +134,7 @@ mod tests {
 
   #[test]
   fn cases_rejects_notag() {
-    // Arrange — cases は非採番のため \notag は使えない
+    // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b \notag\end{cases}";
     let cst = parse(source, &arena).unwrap();

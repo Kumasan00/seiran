@@ -1,7 +1,4 @@
 //! `config` × `style` 横断バリデーション（[`validate_layout`]）の統合テスト。
-//!
-//! `read_config` / `parse_style` の公開 API を経由して実際のパイプラインと同じ形の
-//! [`Config`] / [`Style`] を組み立て、`validate_layout` に渡す。
 
 use config::{
   Config, LayoutValidationError, Style, read_config,
@@ -27,7 +24,7 @@ fn read_test_config() -> (tempfile::TempDir, Config) {
 
 #[test]
 fn validate_layout_accepts_default_config_and_style() {
-  // Arrange: `valid_pdf_section` は A4・50pt 余白、既定スタイルは単段
+  // Arrange
   let (_tempdir, config) = read_test_config();
   let style = Style::default();
 
@@ -37,7 +34,7 @@ fn validate_layout_accepts_default_config_and_style() {
 
 #[test]
 fn validate_layout_rejects_column_gap_wider_than_text_width() {
-  // Arrange: 2 段組みで段間を本文幅（595 - 50*2 = 495pt）以上に広げる
+  // Arrange
   let (_tempdir, config) = read_test_config();
   let mut style = Style::default();
   style.columns.count = 2;

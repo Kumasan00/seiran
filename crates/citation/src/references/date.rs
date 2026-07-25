@@ -1,8 +1,6 @@
 //! CSL (Citation Style Language) の日付値の型と手書きデシリアライザ。
 //!
-//! 構造化された日付オブジェクト（`date-parts` / `season` / `circa` / `literal` / `raw`）のみを
-//! 受理する。未知のキーはエラーとして拒否し、フィールド名のタイポを検出する
-//! （CSL 前方互換より厳格性を優先）。
+//! 構造化された日付オブジェクトのみを受理し、未知のキーを拒否する。
 
 use std::fmt;
 
@@ -14,14 +12,7 @@ use serde::{
 
 /// CSL (Citation Style Language) の日付値を表す構造体。
 ///
-/// CSL JSON Date 仕様に対応し、`date-parts` / `season` / `circa` / `literal` / `raw` を保持する。
-/// <https://docs.citationstyles.org/en/stable/specification.html#date-variables>
-///
-/// 入力は CSL の構造化された日付オブジェクト（JSON object または TOML テーブル）のみを受理する。
-/// 例: `{ "date-parts": [[2024, 1, 15]], "circa": true }`。
-///
-/// 単純なISO 8601文字列（`"2024-01-15"`）や TOML の datetime リテラル（`2024-01-15`）は
-/// サポートしない。日付は `date-parts`（例: `{ "date-parts": [[2024, 1, 15]] }`）で指定する。
+/// JSON object または TOML テーブルの構造化された日付のみを受理する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#date>
 #[derive(Debug, Default)]
 pub struct Date {
@@ -86,9 +77,6 @@ impl<'de> Deserialize<'de> for Date {
     D: serde::Deserializer<'de>,
   {
     /// `Date` のデシリアライズを担う `Visitor`。
-    ///
-    /// CSL の構造化日付オブジェクトを受理し、各フィールドを `Date` に取り込む。
-    /// 未知のキーはエラーとして拒否する（フィールド名のタイポ検出のため）。
     struct DateVisitor;
 
     impl<'de> Visitor<'de> for DateVisitor {
@@ -106,7 +94,6 @@ impl<'de> Deserialize<'de> for Date {
         while let Some(key) = map.next_key::<String>()? {
           match key.as_str() {
             "date-parts" => {
-              // 日付範囲（外側配列 2 要素）は CSL-JSN 担体経由の hayagriva が未対応のため拒否する。
               let parts: Vec<Vec<DatePart>> = map.next_value()?;
               if parts.len() > 1 {
                 return Err(<A::Error as serde::de::Error>::custom(
@@ -136,14 +123,10 @@ impl<'de> Deserialize<'de> for Date {
 }
 
 impl Serialize for Date {
-  /// CSL-JSN の date オブジェクトとして出力する（hayagriva の担体 `citationberg::json::DateValue`
-  /// が読む形）。
+  /// CSL-JSN の date オブジェクトとして出力する。
   ///
-  /// `date-parts`（範囲拒否済みなので単一日付）に加え、`season` / `circa` / `literal` が在れば出力する。
-  /// `DateValue` が読めるのは `date-parts` か `raw` を持つオブジェクトだけなので、`date-parts` を持たない
-  /// 日付（`raw` / `literal` のみ等）は `null` として出力し、Item 化アダプタで欠落させる
-  /// （現行の整形でも `date-parts` の無い日付は書誌に出ない）。`raw` は未パース文字列であり
-  /// `DateValue::Raw` のパースを失敗させ得るため、出力しない。
+  /// `date-parts` が無ければ `null`、あれば `season` / `circa` / `literal` とともに出力する。
+  /// `raw` は `citationberg::json::DateValue` での再解析に失敗し得るため出力しない。
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: serde::Serializer,

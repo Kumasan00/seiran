@@ -1,44 +1,4 @@
 //! 番号カウンタとラベル登録のレジストリ
-//!
-//! `\section`、`\begin{equation}`、`\begin{figure}` 等で発番される番号を一元管理し、
-//! `\ref{label}` の解決に使うラベル → 番号の対応表を保持します。
-//!
-//! ## 2 パス lowering との関係
-//!
-//! - **pass1**: [`super::lower_nodes`] が `DocNode` ツリーを走査するたびに
-//!   [`CounterRegistry::increment`] を呼び、`Heading.label` 等の任意ラベルが
-//!   付いていれば [`CounterRegistry::register_label`] で登録する。
-//! - **pass2**: [`super::resolve::resolve_refs`] が `LayoutNode::Ref { label, .. }` を
-//!   [`CounterRegistry::resolve_label`] で解決し、`LayoutNode::Link` に書き換える。
-//!
-//! ## 番号書式について
-//!
-//! 各カウンタは [`config::CounterStyle`] の `format` テンプレート（例: `"{n}"`、
-//! `"{chapter}.{n}"`）に従って文字列化される。`{n}` は自身のカウンタ値、`{<name>}` は
-//! 他カウンタの値を参照先カウンタの [`config::NumberStyle`] でレンダリングする
-//! （再帰展開はしない）。「3章」「第3部」のような装飾文字列は見出しの
-//! `config::HeadingStyle.format` テンプレを介して付ける（`super::heading`）。
-//!
-//! ## `\ref` の書式について
-//!
-//! `\ref{label}` の表示は [`config::CounterStyle::ref_format`] テンプレートで決まる
-//! （例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`）。
-//! `register_label` 時点でテンプレートを適用するため、`resolve_label` は整形済み文字列を
-//! 返す（呼び出し側は装飾を気にせず使える）。
-//!
-//! ## 脚注の採番について
-//!
-//! 脚注だけは他のカウンタと事情が違う。[`CounterRegistry::next_footnote_index`] が振るのは
-//! 表示番号ではなく出現 index（同一性）で、表示番号は `super::inline::lower_inline` が決める。
-//! ページ単位採番（`config::FootnoteNumbering::PerPage`）は改ページ情報を要するため lowering
-//! 単体では決められず、確定ページ列から [`per_page_footnote_numbers`] で番号を割り当て直して
-//! 組み直す（不動点までの反復は `seiran::build_pdf` が回す）。
-//!
-//! ## カウンタ定義のソース
-//!
-//! カウンタ定義の真のソースは `config::Style.counters` テーブル。
-//! [`CounterRegistry::from_style`] が [`config::Counters`] を `defs` に複製し、
-//! 実行時のカウンタ値は `HashMap<CounterName, u32>` で保持する（未登場のカウンタは 0）。
 
 use std::collections::HashMap;
 
@@ -52,17 +12,6 @@ mod format;
 use format::expand_ref_format;
 
 /// 確定したページ列から、脚注のページ単位表示番号を割り当てる（`FootnoteNumbering::PerPage`）
-///
-/// 返り値は出現 index 引きの表示番号（[`super::LoweringContext::with_footnote_numbers`] にそのまま
-/// 渡す形）。各ページの `footnotes` を出現順に 1, 2, … と振り直すので、脚注のないページを挟んでも
-/// 次に脚注が現れるページは 1 から始まる。
-///
-/// ページ列に現れない脚注（表セル内の脚注は配置されない。`pdf_gen::render` の既知の制限）は
-/// 番号を決めようがないので、その穴は通し値（`index + 1`）で埋める。同じ理由で長さは
-/// 「配置済みの最大 index + 1」までで足り、末尾の未配置ぶんは lowering 側の同じフォールバックが拾う。
-///
-/// ページ単位採番は「番号 → マーカー幅 → 行分割 → ページ割り当て → 番号」と循環しているため、
-/// 呼び出し元（`seiran::build_pdf`）はこの割り当てと再組版を不動点まで反復する。
 ///
 /// # Panics
 ///
@@ -107,8 +56,6 @@ pub(crate) struct CounterRegistry {
 
 impl CounterRegistry {
   /// `config::Style` からレジストリを構築する
-  ///
-  /// カウンタ定義（9 種）に加え、定理クラス定義（`style.theorems`）も取り込む。
   #[must_use]
   pub(crate) fn from_style(style: &Style) -> Self {
     return Self {
@@ -122,10 +69,6 @@ impl CounterRegistry {
   }
 
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、書式化済みの番号文字列を返す
-  ///
-  /// 見出しカウンタ（part / chapter / section / subsection）の増加時には、その見出しレベルを
-  /// `reset_by` に指定した定理カウンタも 0 に戻す（`reset_by` カウンタの「増加」に連動。LaTeX の
-  /// `\newtheorem{thm}{Theorem}[section]` と同じく、上位カウンタのリセットでは戻さない）。
   pub(crate) fn increment(&mut self, name: CounterName) -> String {
     *self.values.entry(name).or_insert(0) += 1;
     for r in &self.defs.get(name).resets {
@@ -153,11 +96,6 @@ impl CounterRegistry {
   }
 
   /// 定理環境を採番し、`label` があれば cleveref 形式で登録する
-  ///
-  /// クラスの共有カウンタ（`TheoremStyle.counter`）を 1 増やし、クラスの `number_format` テンプレート
-  /// （`"{n}"` / `"{chapter}.{n}"` 等）で番号文字列を作って返す。`unnumbered` クラス（`proof`）は
-  /// 採番せず `None` を返す。`label` が与えられた採番ありクラスでは `"{display_name} {number}"`
-  /// （cleveref）で整形した文字列を `labels` に登録し、`\ref{label}` が「Theorem 1.2」等に解決される。
   ///
   /// # Errors
   ///
@@ -199,12 +137,6 @@ impl CounterRegistry {
   }
 
   /// 脚注を 1 つ数え、その出現 index（0 起点）を返す（ラベル解決は不要なので単純増加のみ）
-  ///
-  /// 返すのは**表示番号ではなく同一性**。表示番号は `super::inline::lower_inline` が
-  /// [`super::LoweringContext::footnote_numbers`] を index で引いて決める（未指定なら `index + 1`
-  /// ＝文書通しの連番）。ページ単位リセット（`FootnoteNumbering::PerPage`）は改ページ情報を
-  /// 要するため lowering 単体では決められず、`seiran::build_pdf` がページ確定後の番号を
-  /// この上書きマップとして与え直し、不動点まで反復する。
   pub(crate) fn next_footnote_index(&mut self) -> u32 {
     let index = self.footnote_count;
     self.footnote_count += 1;
@@ -221,11 +153,6 @@ impl CounterRegistry {
   fn value(&self, name: CounterName) -> u32 { return self.values.get(&name).copied().unwrap_or(0); }
 
   /// テンプレートのプレースホルダ `{n}` / `{<counter_name>}` を値で置換する
-  ///
-  /// - `{n}` は `self_name` カウンタの値を、その `number_style` でレンダリングする
-  /// - `{<name>}` は参照先カウンタの値を、参照先の `number_style` でレンダリングする
-  ///   （テンプレートは再帰展開しない）
-  /// - 未知のカウンタ名（9 種以外）は空文字列に置換する
   fn expand_template(&self, template: &str, self_name: CounterName) -> String {
     return super::placeholder::expand(template, |name| {
       let target = if name == "n" {
@@ -238,10 +165,6 @@ impl CounterRegistry {
   }
 
   /// 定理の番号テンプレート（`"{n}"` / `"{chapter}.{n}"` 等）を値で置換する
-  ///
-  /// - `{n}` は定理カウンタの現在値をアラビア数字で描画する（定理は `number_style` を持たない）
-  /// - `{<name>}` は見出し等のカウンタ値を参照先の `number_style` でレンダリングする
-  /// - 未知のプレースホルダは空文字列に置換する
   fn expand_theorem_template(&self, template: &str, self_value: u32) -> String {
     return super::placeholder::expand(template, |name| {
       if name == "n" {
@@ -257,12 +180,6 @@ impl CounterRegistry {
   }
 
   /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
-  ///
-  /// 渡された `number`（裸の番号）にカウンタの `ref_format` を適用し、`\ref` 時の表示
-  /// 文字列を作って保存する（例: `"1.2"` → `"Section 1.2"`、`"({number})"` 形式なら `"(1.2)"`）。
-  ///
-  /// 同名ラベルが登録済みの場合は上書きせず `false` を返す。呼び出し側はこれを
-  /// [`LoweringError::DuplicateLabel`] に変換して報告する（黙って上書きしない）。
   #[must_use]
   pub(crate) fn register_label(
     &mut self,
@@ -281,13 +198,6 @@ impl CounterRegistry {
   }
 
   /// 整形済みの `\ref` 表示文字列をそのまま登録する（定理の cleveref 用）
-  ///
-  /// `register_label` がカウンタの `ref_format` を適用するのに対し、こちらは呼び出し側で
-  /// 整形済みの文字列（例 `"Theorem 1.2"`）を受け取りそのまま保存する。定理クラスは
-  /// `ref_format` フィールドを持たず、cleveref 書式（`"{display_name} {number}"`）を
-  /// `increment_theorem_with_label` 側で適用するため、この経路を使う。
-  ///
-  /// 同名ラベルが登録済みの場合は上書きせず `false` を返す。
   #[must_use]
   fn register_formatted_label(&mut self, label: impl Into<LabelId>, formatted: String) -> bool {
     let label = label.into();
@@ -299,11 +209,6 @@ impl CounterRegistry {
   }
 
   /// 採番とラベル登録を一括で行う共通処理
-  ///
-  /// [`CounterRegistry::increment`] で番号を発番し、`label` があれば
-  /// [`CounterRegistry::register_label`] で登録する。同名ラベルが登録済みの場合は
-  /// [`LoweringError::DuplicateLabel`] を返す。見出し・`equation`・`figure`・`table` の
-  /// 各ハンドラが共用する。
   ///
   /// # Errors
   ///
@@ -329,8 +234,6 @@ impl CounterRegistry {
   }
 
   /// pass2 で `\ref{label}` を解決して番号文字列を返す
-  ///
-  /// 未登録ラベルの場合は `None`。呼び出し側でエラー化する想定。
   #[must_use]
   pub(crate) fn resolve_label(&self, label: &str) -> Option<&str> {
     return self.labels.get(label).map(|r| return r.number.as_str());
@@ -353,17 +256,10 @@ impl CounterRegistry {
 #[cfg(test)]
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
-  ///
-  /// 既定値は `config::Style::default()` が `Counters::default()` 経由で供給する
-  /// 9 種（part / chapter / section / subsection / paragraph / subparagraph /
-  /// figure / equation / table）。テスト用ショートカット。
   #[must_use]
   pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
 
   /// `config::Counters` から直接レジストリを構築する（テスト・カスタム用）
-  ///
-  /// 定理クラス定義は [`Theorems::default`] を使う。定理カウンタを伴うテストでは
-  /// [`CounterRegistry::from_style`] を使うこと。
   #[must_use]
   pub(crate) fn from_counters(counters: &Counters) -> Self {
     return Self {
@@ -385,10 +281,6 @@ struct ResolvedLabel {
 }
 
 /// 見出しカウンタ [`CounterName`] を、定理カウンタの `reset_by` に対応する [`TheoremReset`] に写す
-///
-/// part / chapter / section / subsection の 4 種だけが定理リセットのトリガになりうる。
-/// それ以外（paragraph / subparagraph / figure / equation / table）は `None` を返し、
-/// 定理カウンタを巻き戻さない。
 fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
   return match name {
     CounterName::Part => Some(TheoremReset::Part),
@@ -409,9 +301,6 @@ mod tests {
   fn theorem_span() -> Span { return Span::DUMMY; }
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
-  ///
-  /// `per_page_footnote_numbers` は `index` / `continued` と並び順しか見ないので、本体（`blocks`）は
-  /// 空でよい。ここで作る脚注はすべてそのページで始まる（`continued: false`）。
   fn page_with_footnotes(indices: &[u32]) -> Page {
     return page_with_footnote_fragments(&indices.iter().map(|index| return (*index, false)).collect::<Vec<_>>());
   }
@@ -426,7 +315,6 @@ mod tests {
         .iter()
         .map(|(index, continued)| {
           return PlacedFootnote {
-            // 入力側の表示番号は割り当てに影響しない（前回の反復の値が入っている想定）
             number: index + 1,
             index: *index,
             continued: *continued,
@@ -443,7 +331,7 @@ mod tests {
 
   #[test]
   fn per_page_numbers_restart_from_one_on_each_page() {
-    // Arrange — 1 ページ目に 3 個、2 ページ目に 2 個
+    // Arrange
     let pages = vec![
       page_with_footnotes(&[0, 1, 2]),
       page_with_footnotes(&[3, 4]),
@@ -452,13 +340,13 @@ mod tests {
     // Act
     let numbers = per_page_footnote_numbers(&pages);
 
-    // Assert — 2 ページ目は 1 に戻る
+    // Assert
     assert_eq!(numbers, vec![1, 2, 3, 1, 2]);
   }
 
   #[test]
   fn per_page_numbers_restart_after_page_without_footnotes() {
-    // Arrange — 脚注のないページを挟む
+    // Arrange
     let pages = vec![
       page_with_footnotes(&[0]),
       page_with_footnotes(&[]),
@@ -468,13 +356,13 @@ mod tests {
     // Act
     let numbers = per_page_footnote_numbers(&pages);
 
-    // Assert — 脚注のないページを挟んでも、次に脚注が現れるページは 1 から始まる
+    // Assert
     assert_eq!(numbers, vec![1, 1]);
   }
 
   #[test]
   fn per_page_numbers_ignore_carried_over_fragments() {
-    // Arrange — 脚注 0 が 1 ページ目から 2 ページ目へ繰り越され（#227）、2 ページ目には自前の脚注 1 がある
+    // Arrange
     let pages = vec![
       page_with_footnote_fragments(&[(0, false)]),
       page_with_footnote_fragments(&[(0, true), (1, false)]),
@@ -483,20 +371,19 @@ mod tests {
     // Act
     let numbers = per_page_footnote_numbers(&pages);
 
-    // Assert — 繰越の断片は数えない。脚注 0 は本体を置いた 1 ページ目の 1 番のまま、
-    // 2 ページ目の自前の脚注 1 がそのページの 1 番になる
+    // Assert
     assert_eq!(numbers, vec![1, 1]);
   }
 
   #[test]
   fn per_page_numbers_fill_unplaced_footnotes_with_continuous_value() {
-    // Arrange — index 1 はページ列に現れない（表セル内の脚注は配置されない）
+    // Arrange
     let pages = vec![page_with_footnotes(&[0, 2])];
 
     // Act
     let numbers = per_page_footnote_numbers(&pages);
 
-    // Assert — 配置済みはページ内順、未配置の穴は通し値のまま
+    // Assert
     assert_eq!(numbers, vec![1, 2, 2]);
   }
 
@@ -505,13 +392,13 @@ mod tests {
     // Arrange / Act
     let numbers = per_page_footnote_numbers(&[page_with_footnotes(&[])]);
 
-    // Assert — 引く先が無ければ空。lowering 側が通し値へフォールバックする
+    // Assert
     assert!(numbers.is_empty());
   }
 
   #[test]
   fn increment_theorem_numbers_with_default_format() {
-    // Arrange — 既定 theorem は format "{n}"・counter "theorem"
+    // Arrange
     let mut r = CounterRegistry::from_style(&Style::default());
 
     // Act / Assert
@@ -544,7 +431,7 @@ mod tests {
     // Arrange
     let mut r = CounterRegistry::from_style(&Style::default());
 
-    // Act / Assert — proof は採番なし
+    // Act / Assert
     assert!(
       r.increment_theorem_with_label(
         TheoremClass::Proof,
@@ -580,19 +467,19 @@ mod tests {
       )
       .unwrap();
 
-    // Assert — 別カウンタなので両方 "1"
+    // Assert
     assert_eq!(thm.as_deref(), Some("1"));
     assert_eq!(def.as_deref(), Some("1"));
   }
 
   #[test]
   fn theorem_format_embeds_section_counter() {
-    // Arrange — theorem の number_format を "{section}.{n}" に変える
+    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.number_format = "{section}.{n}".to_string();
     let mut r = CounterRegistry::from_style(&style);
 
-    // Act — section を 1 に進めてから theorem を採番
+    // Act
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section);
     let number = r
@@ -604,13 +491,13 @@ mod tests {
       )
       .unwrap();
 
-    // Assert — section=1、theorem=1 → "1.1"
+    // Assert
     assert_eq!(number.as_deref(), Some("1.1"));
   }
 
   #[test]
   fn theorem_counter_resets_on_reset_by_heading() {
-    // Arrange — theorem を reset_by=section・number_format "{section}.{n}" に設定
+    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     style.theorems.theorem.number_format = "{section}.{n}".to_string();
@@ -653,7 +540,7 @@ mod tests {
 
   #[test]
   fn theorem_counter_not_reset_by_unrelated_heading() {
-    // Arrange — reset_by=section の theorem は chapter の増加では戻らない（LaTeX と同じ）
+    // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
     let mut r = CounterRegistry::from_style(&style);
@@ -678,7 +565,7 @@ mod tests {
       )
       .unwrap();
 
-    // Assert — 連番が維持される
+    // Assert
     assert_eq!(a.as_deref(), Some("1"));
     assert_eq!(b.as_deref(), Some("2"));
   }
@@ -697,7 +584,7 @@ mod tests {
     )
     .unwrap();
 
-    // Assert — "{display_name} {number}" で解決される
+    // Assert
     assert_eq!(r.resolve_label("thm:x"), Some("Theorem 1"));
   }
 
@@ -755,7 +642,7 @@ mod tests {
 
   #[test]
   fn template_with_literal_decoration() {
-    // Arrange: chapter を "第{n}章" 形式で発番する
+    // Arrange
     let counters = Counters {
       chapter: CounterStyle {
         display_name: "Chapter".to_string(),
@@ -775,7 +662,7 @@ mod tests {
 
   #[test]
   fn template_cross_counter_uses_target_number_style() {
-    // Arrange: part を roman、chapter は part を参照する arabic
+    // Arrange
     let counters = Counters {
       part: CounterStyle {
         display_name: "Part".to_string(),
@@ -800,13 +687,12 @@ mod tests {
     r.increment(CounterName::Part); // II
     let ch = r.increment(CounterName::Chapter);
 
-    // Assert: part は Roman、chapter 自身は Arabic で展開される
+    // Assert
     assert_eq!(ch, "II-1");
   }
 
   #[test]
   fn evaluate_ref_pass2_applies_ref_format() {
-    // 既定 chapter は ref_format = "{display_name} {number}" なので "Chapter 1" が返る
     let mut r = CounterRegistry::default_for_seiran();
     r.increment(CounterName::Chapter);
     let bare = r.format_number(CounterName::Chapter);
@@ -817,7 +703,6 @@ mod tests {
 
   #[test]
   fn evaluate_ref_equation_uses_parenthesized_ref_format() {
-    // 既定 equation は ref_format = "({number})" なので "(1.1)" が返る
     let mut r = CounterRegistry::default_for_seiran();
     r.increment(CounterName::Chapter);
     let bare = r.increment(CounterName::Equation);
@@ -838,7 +723,7 @@ mod tests {
     let mut from_default = CounterRegistry::from_style(&Style::default());
     let mut from_helper = CounterRegistry::default_for_seiran();
 
-    // Assert: 既定 Style 経由と default_for_seiran() が同じ振る舞いをする
+    // Assert
     assert_eq!(from_default.increment(CounterName::Chapter), from_helper.increment(CounterName::Chapter));
     assert_eq!(from_default.increment(CounterName::Section), from_helper.increment(CounterName::Section));
   }
@@ -848,7 +733,7 @@ mod tests {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
 
-    // Act / Assert — 0 起点の出現順
+    // Act / Assert
     assert_eq!(r.next_footnote_index(), 0);
     assert_eq!(r.next_footnote_index(), 1);
     assert_eq!(r.next_footnote_index(), 2);
@@ -856,7 +741,7 @@ mod tests {
 
   #[test]
   fn next_footnote_index_unaffected_by_unrelated_counters() {
-    // Arrange — section 等の見出しカウンタの増加は脚注カウンタに影響しない
+    // Arrange
     let mut r = CounterRegistry::default_for_seiran();
     r.next_footnote_index(); // 0
 

@@ -1,8 +1,6 @@
 //! hayagriva の `BibliographyDriver` を駆動し、引用ラベルと参考文献リスト（書誌）を生成する。
 //!
-//! cite サイトを**ドキュメント順**に積み、`finish` で各引用ラベル（採番 `[1][2]…`）と書誌を
-//! 一括確定する（採番・整列・曖昧性回避は CSL スタイル＝hayagriva に委譲する）。書誌は
-//! 引用された文献のみを含み、CSL 整列順に並ぶ。
+//! cite サイトをドキュメント順に積み、引用ラベルと書誌を一括確定する。
 
 use std::collections::HashMap;
 
@@ -13,7 +11,7 @@ use hayagriva::{
 };
 use model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode, Span};
 
-/// hayagriva 整形の結果。所有値のみを保持し、`nodes` への借用は残さない。
+/// hayagriva による整形結果。
 pub(crate) struct Rendered {
   /// 各 cite サイトの整形済み引用ラベル（収集と同じドキュメント順）。
   pub labels: Vec<Vec<InlineNode>>,
@@ -22,16 +20,6 @@ pub(crate) struct Rendered {
 }
 
 /// cite サイト群を CSL 整形し、引用ラベルと書誌ブロックを返す。
-///
-/// # Arguments
-///
-/// * `entries` - cite key → CSL-JSN 担体 `citationberg::json::Item`（全参照定義から構築済み）
-/// * `cite_sites` - 各 `\cite` のキー列（ドキュメント順）
-/// * `style` - CSL スタイル（`ieee.csl` 等）
-/// * `locales` - 採番に使うロケールプール（カスタムロケールを内蔵ロケールの前に重ねた overlay）
-/// * `locale_override` - 出力言語（active locale）の override。`None` なら `.csl` の `default-locale`
-///   に委ねる（詳細は `crate::load_locales`）
-/// * `bib_title` - 書誌見出しの文字列（`style.reference.title`）
 pub(crate) fn render(
   entries: &HashMap<String, Item>,
   cite_sites: &[Vec<String>],
@@ -53,9 +41,6 @@ pub(crate) fn render(
     locale_files: locales,
   });
 
-  // 各引用ラベルは、対応する cite サイトのキー列を参照しながら走査する。引用アイテム
-  // （`ElemMeta::Entry`）を対応キーへの内部リンクにするため、`result.citations` と `cite_sites`
-  // を順番対応（投入順 = 収集順 = ドキュメント順）で zip する。
   let labels = result
     .citations
     .iter()
@@ -72,11 +57,7 @@ pub(crate) fn render(
 
 /// rendered citation の `ElemChildren` を `Vec<InlineNode>` に平坦化する（引用アイテムは内部リンク化）。
 ///
-/// `site` はこの引用の引用キー列（ドキュメント順）。hayagriva は引用ラベル内の各引用アイテムを
-/// `Elem { meta: Some(ElemMeta::Entry(idx)) }` で包む。`idx` は引用リクエスト内のローカル番号なので
-/// `site[idx]` がそのアイテムの引用キー。各アイテムのテキスト（`[1]` の番号部分など）を
-/// `InlineNode::InternalLink { target: "cite:<key>", .. }` で包んで対応する書誌エントリへのリンクにし、
-/// 括弧・区切りなど非アイテム部分はプレーンな `InlineNode::Text` とする。
+/// `ElemMeta::Entry` のインデックスを `site` の引用キーへ対応させる。
 fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<InlineNode> {
   let mut out = Vec::new();
   collect_citation_inlines(children, site, &mut out);
@@ -89,7 +70,6 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
     match child {
       ElemChild::Elem(elem) => {
         if let Some(ElemMeta::Entry(idx)) = elem.meta {
-          // 引用アイテム: 子を実効整形付きで取り出し、対応キーへの内部リンクで包む。
           let mut item_inlines = Vec::new();
           collect_inlines(&elem.children, &mut item_inlines);
           if item_inlines.is_empty() {
@@ -100,15 +80,12 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
               target: CitationId::new(key.as_str()),
               children: item_inlines,
             }),
-            // 想定外（idx が範囲外）の場合はリンクにせず整形済みインラインをそのまま積む。
             None => out.extend(item_inlines),
           }
         } else {
-          // 非アイテムの入れ子要素（書式グループ等）は再帰的に降りる。
           collect_citation_inlines(&elem.children, site, out);
         }
       },
-      // 括弧・区切り（`[`, `, `, `]` 等）やリンク・マークアップは実効整形付きで積む。
       ElemChild::Text(_) | ElemChild::Markup(_) | ElemChild::Link { .. } | ElemChild::Transparent { .. } => {
         push_elem_child(child, out);
       },
@@ -118,18 +95,12 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
 
 /// 整形済み書誌（`RenderedBibliography`）から書誌 `DocNode` 群を組み立てる。
 ///
-/// 見出しは `DocNode::Heading`（Section レベル・番号なし）、各文献は `DocNode::Paragraph` とする。
-/// IEEE 等の numeric スタイルでは `first_field`（`[1]` ラベル）が `content` と別に来るため、先頭に
-/// 連結する。各エントリ段落の直前には `DocNode::Anchor("cite:<引用キー>")` を置き、本文中の `\cite`
-/// リンク（`InlineNode::InternalLink { target: "cite:<引用キー>" }`）のジャンプ先にする。書誌が空
-/// （引用なし等）なら空ベクタを返し、呼び出し側は何も追加しない。
+/// 番号なしの見出しに続けて、各文献のアンカーと段落を追加する。
 fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &str) -> Vec<DocNode> {
   let Some(bibliography) = bibliography else {
     return Vec::new();
   };
 
-  // 見出し + 各エントリ（アンカー + 段落）。parser を経由しない合成見出しなので numbered: false
-  // （lowering 層のカウンタを発番させない）。ソース位置を持たないためダミー span を使う。
   let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
   nodes.push(DocNode::Heading {
     level: HeadingLevel::Section,
@@ -142,7 +113,6 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
   for item in &bibliography.items {
     let mut inlines: Vec<InlineNode> = Vec::new();
     if let Some(first_field) = &item.first_field {
-      // 番号ラベル（`[1]` 等）を実効整形付きで取り出し、本文との間に空白を 1 つ挟む。
       let before = inlines.len();
       push_elem_child(first_field, &mut inlines);
       if inlines.len() > before {
@@ -150,8 +120,6 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
       }
     }
     inlines.extend(elem_children_to_inlines(&item.content));
-    // `\cite` のジャンプ先アンカー。`CitationId` は `\ref` の `LabelId` とは別の型なので、
-    // 生 String だった頃と違いラベルと衝突しようがない。
     nodes.push(DocNode::Anchor(CitationId::new(&item.key)));
     nodes.push(DocNode::Paragraph(inlines));
   }
@@ -160,9 +128,6 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
 }
 
 /// hayagriva の整形ツリー `ElemChildren` を `Vec<InlineNode>` に変換する。
-///
-/// 各リーフ（`Formatted`）の実効 `Formatting` を本文系 serif の `FontKind` に落とし、装飾のある
-/// テキストランだけ [`InlineNode::Styled`] で包む（斜体・ボールド・両方）。空のときは空ベクタを返す。
 fn elem_children_to_inlines(children: &ElemChildren) -> Vec<InlineNode> {
   let mut out = Vec::new();
   collect_inlines(children, &mut out);
@@ -199,9 +164,6 @@ fn push_elem_child(child: &ElemChild, out: &mut Vec<InlineNode>) {
 }
 
 /// 整形済みテキストラン `Formatted` を実効スタイル付き `InlineNode` にする。
-///
-/// 空テキストは `None`。実効 `FontKind` が装飾なし（`Serif`）ならプレーン [`InlineNode::Text`]、
-/// 斜体・ボールド等があるときだけ [`InlineNode::Styled`] で包む（ノードを無駄に増やさない）。
 fn formatted_to_inline(formatted: &Formatted) -> Option<InlineNode> {
   if formatted.text.is_empty() {
     return None;

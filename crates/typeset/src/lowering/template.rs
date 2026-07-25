@@ -1,8 +1,4 @@
 //! `"{number} {title}"` 形式テンプレートの `LayoutNode` 展開
-//!
-//! 見出し（`HeadingStyle.format`）とキャプション（`CaptionStyle.format`）が共用する。
-//! `{title}` の中身はインライン要素のまま [`lower_inline`] で展開するため、
-//! タイトル内の書体指定（`\bold` 等）やインライン数式が失われない。
 
 use model::InlineNode;
 
@@ -14,16 +10,6 @@ use super::{
 };
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
-///
-/// - リテラル部分と `{number}` は `base_style` の [`LayoutNode::Text`] として出力する
-/// - `{title}` は各インライン要素を [`lower_inline`] で展開する（書体・数式を保持）
-/// - `{of}`（`proof` の証明対象参照）は `of` が `Some((label, span))` のとき
-///   [`LayoutNode::Ref`] プレースホルダを 1 つ出力する。`\ref` と同じく前方参照になり得るため
-///   ここでは解決せず、pass2（[`super::resolve::resolve_refs`]）に委ねる。`None` なら何も出力しない
-///   （旧 `of.unwrap_or("")` と同じ「証明対象なし」の空扱い）
-/// - 未知のプレースホルダ・閉じ括弧の欠落はリテラル扱いで残す
-/// - 出力前に隣接する同一スタイルの `Text` をマージするため、装飾なしタイトルは
-///   単一の `Text` ノードに縮約される
 ///
 /// # Errors
 ///
@@ -119,7 +105,6 @@ mod tests {
 
   #[test]
   fn plain_title_merges_into_single_text() {
-    // 英語デフォルト: section は "{number} {title}"
     let nodes = expand_plain("{number} {title}", "2.3", "Intro");
 
     assert_eq!(nodes.len(), 1, "同一スタイルなので 1 つの Text に縮約される: {nodes:?}");
@@ -128,7 +113,6 @@ mod tests {
 
   #[test]
   fn japanese_decoration_template() {
-    // 日本語化（style.toml 上書き例）が正しく置換されること
     let nodes = expand_plain("第{number}章 {title}", "3", "序論");
 
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "第3章 序論"));
@@ -136,7 +120,6 @@ mod tests {
 
   #[test]
   fn unknown_placeholders_are_literal() {
-    // 未知プレースホルダと閉じ括弧の欠落はリテラルのまま残る
     let nodes = expand_plain("{foo} {number} {title} {bar", "1", "T");
 
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "{foo} 1 T {bar"), "{nodes:?}");
@@ -144,7 +127,6 @@ mod tests {
 
   #[test]
   fn styled_title_keeps_font_kind() {
-    // タイトル内の \bold は base_style と異なるスタイルの Text として分離される
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [
@@ -166,7 +148,6 @@ mod tests {
     )
     .expect("失敗しないはず");
 
-    // Text("1 A ", Serif) + Text("B", SerifBold)
     assert_eq!(nodes.len(), 2, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, s) if t == "1 A " && s.font_kind == FontKind::Serif));
     assert!(matches!(&nodes[1], LayoutNode::Text(t, s) if t == "B" && s.font_kind == FontKind::SerifBold));
@@ -174,7 +155,6 @@ mod tests {
 
   #[test]
   fn inline_math_in_title_is_lowered() {
-    // タイトル内のインライン数式は "[Math]" プレースホルダではなく実ノードに展開される
     use model::MathNode;
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
@@ -193,8 +173,6 @@ mod tests {
 
   #[test]
   fn ref_in_title_becomes_placeholder() {
-    // {title} 内の \ref は即時解決せず LayoutNode::Ref プレースホルダとして埋め込まれる
-    // （解決は pass2 = resolve::resolve_refs が担う）
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [InlineNode::Ref {
@@ -221,7 +199,6 @@ mod tests {
 
   #[test]
   fn of_placeholder_emits_ref_when_present() {
-    // {of} は of が Some のとき LayoutNode::Ref プレースホルダを 1 つ出力する
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let of_span = model::Span::new(3, 4);
@@ -248,7 +225,6 @@ mod tests {
 
   #[test]
   fn of_placeholder_omitted_when_none() {
-    // {of} は of が None のとき何も出力しない（旧 of.unwrap_or("") と同じ空扱い）
     let nodes = expand_plain_with_of("Proof{of}", "1", None);
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
@@ -265,7 +241,6 @@ mod tests {
 
   #[test]
   fn number_only_template_without_title_placeholder() {
-    // {title} を含まないテンプレートでは title は展開されず、{number} だけ置換される
     let nodes = expand_plain("No.{number}", "7", "Ignored");
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");

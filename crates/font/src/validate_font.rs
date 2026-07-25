@@ -1,84 +1,7 @@
 //! フォント設定と OpenType テーブルの検証モジュール
 //!
-//! フォント設定の妥当性、バリアブルフォント軸設定の完全性、
-//! スクリプト・言語のサポート状況などを検証し、
-//! PDF 生成前にフォント関連の問題を早期発見します。
-//!
-//! ## 検証項目
-//!
-//! ### 1. バリアブルフォント軸検証
-//!
-//! バリアブルフォントの軸設定に関して以下を検証：
-//!
-//! - **軸の存在確認**: 設定された軸がフォント内に存在すること
-//! - **値の範囲チェック**: 軸値が最小値〜最大値の範囲内であること
-//! - **完全性チェック**: フォント内のすべての軸が設定に含まれていること
-//!
-//! 例えば Weight 軸が [100, 900] の範囲を持つフォントで、
-//! 設定値が 950 の場合は範囲外エラーを報告します。
-//!
-//! ### 2. スクリプト・言語サポート検証
-//!
-//! フォントの OpenType テーブルで指定されたスクリプト・言語が
-//! サポートされているか確認：
-//!
-//! - **GSUB テーブル**: グリフ置換（字形の変形など）のサポート確認
-//! - **GPOS テーブル**: グリフ配置（カーニング、リガチャなど）のサポート確認
-//!
-//! サポートされていない場合は警告ログを出力（エラーではなく警告）。
-//!
-//! ## エラー型
-//!
-//! [`FontValidationError`] は 6 つのエラーバリアントを定義：
-//!
-//! | エラー | 条件 | 対応 |
-//! |-------|------|------|
-//! | `Parse` | フォント形式解析失敗 | ファイル形式を確認 |
-//! | `NotVariableFont` | 静的フォントに軸設定 | 設定から軸を削除 |
-//! | `MissingVariationAxes` | バリアブルに軸設定なし | 設定に軸を追加 |
-//! | `UnknownVariationAxis` | 不明な軸名 | `variation-axes` コマンドで確認 |
-//! | `VariationValueOutOfRange` | 軸値が範囲外 | 値をクリップまたは調整 |
-//! | `UnconfiguredVariationAxis` | フォント内の軸が未設定 | 設定に軸を追加 |
-//!
-//! ## ライフサイクル
-//!
-//! ```text
-//! FontConfigs + FontRefs
-//!   ↓
-//! validate_fonts()（公開関数、全 19 種別を検証）
-//!   ↓ 種別ごとに
-//! validate_font()
-//!   ├→ validate_variation_axes()
-//!   └→ check_script_language_support()
-//!       └→ check_script_in_table()
-//!   ↓
-//! Result<(), MultipleFontValidationErrors>
-//! ```
-//!
-//! ## 検証タイミング
-//!
-//! 検証はフォント読み込み（`font::FontData::new`）・フォントパース
-//! （`font::FontRefs::new`）の直後、シェイピング（`font::shaper`）・PDF 生成
-//! （`pdf_gen`）の前に実行されます。検証に失敗すると後続の処理は実行されません。
-//!
-//! ## 警告 vs エラー
-//!
-//! - **エラー**: 処理を中断する（`FontValidationError` を返す）
-//!   - バリアブル軸の検証失敗
-//!   - OpenType テーブルの読み込み失敗設定値の矛盾
-//!
-//! - **警告**: ログ出力のみ、処理は続行（`warn!` マクロ）
-//!   - スクリプト・言語がサポートされていない
-//!   - 言語が指定されているがスクリプトが未指定
-//!
-//! ## 使用例
-//!
-//! ```ignore
-//! # use font::validate_font::validate_fonts;
-//!
-//! // 全フォント種別の検証を実行（検証成功後は PDF 生成処理に進む）
-//! validate_fonts(&font_configs, &font_refs)?;
-//! ```
+//! バリエーション軸設定の存在・範囲・完全性を検証する。GSUB/GPOS の
+//! スクリプト・言語サポート不足は処理を止めず、警告として報告する。
 
 use config::{FontConfig, FontConfigs, VariationAxis};
 use font_types::{Fixed, Tag};
@@ -90,6 +13,7 @@ use tracing::{debug, warn};
 
 use crate::FontRefs;
 
+/// 複数のフォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]
 #[error("複数のフォント設定にエラーがあります")]
 #[diagnostic(code(font::validation::multiple_errors))]
@@ -99,6 +23,7 @@ pub struct MultipleFontValidationErrors {
   errors: Vec<FontValidationErrors>,
 }
 
+/// 1 フォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]
 #[error("フォントの検証に失敗しました: {font_type:?}")]
 #[diagnostic(code(font::validation::error))]
@@ -110,27 +35,24 @@ pub struct FontValidationErrors {
   errors: Vec<FontValidationError>,
 }
 
-/// フォント検証に関連するエラー
-///
-/// フォント形式のパース、バリアブルフォント軸の検証、
-/// スクリプト/言語サポートの検証などで発生するエラーを表します。
+/// フォント設定の検証エラー。
 #[derive(Debug, Error, Diagnostic)]
 pub enum FontValidationError {
-  /// OpenType フォント形式解析エラー
+  /// OpenType フォントを解析できない。
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
     code(font::validation::parse),
     help("フォントファイルが破損していないか、正しい形式であるか確認してください。")
   )]
   Parse(#[from] read_fonts::ReadError),
-  /// 静的フォントにバリアブル軸設定が指定されたエラー
+  /// 静的フォントにバリエーション軸が設定されている。
   #[error("このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。")]
   #[diagnostic(
     code(font::validation::not_variable_font),
     help("バリアブル対応ではないフォントの場合は、設定ファイルから 'variation_axes' を削除してください。")
   )]
   NotVariableFont,
-  /// バリアブルフォント軸設定不足エラー
+  /// バリアブルフォントに軸設定がない。
   #[error("バリアブルフォントにはバリエーション軸の設定が必須です。")]
   #[diagnostic(
     code(font::validation::missing_variation_axes),
@@ -139,14 +61,14 @@ pub enum FontValidationError {
     )
   )]
   MissingVariationAxes,
-  /// 不明なバリエーション軸名エラー
+  /// フォントに存在しない軸が設定されている。
   #[error("不明なバリエーション軸: {0}")]
   #[diagnostic(
     code(font::validation::unknown_axis),
     help("'variation-axes' コマンドでフォントがサポートする軸を確認してください。")
   )]
   UnknownVariationAxis(String),
-  /// バリアブル軸値が許容範囲外エラー
+  /// 軸値が許容範囲外にある。
   #[error("軸 '{name}' の値が範囲外です: {value} (許容範囲: {min}..={max})")]
   #[diagnostic(code(font::validation::value_out_of_range), help("値をフォントの許容範囲内に設定してください。"))]
   VariationValueOutOfRange {
@@ -159,7 +81,7 @@ pub enum FontValidationError {
     /// 指定された値
     value: f64,
   },
-  /// フォント内の軸が設定に含まれていないエラー
+  /// フォントが持つ軸の設定がない。
   #[error("フォントのバリエーション軸 '{axis}' が設定されていません (デフォルト: {default}, 最小: {min}, 最大: {max})")]
   #[diagnostic(
     code(font::validation::unconfigured_axis),
@@ -177,19 +99,11 @@ pub enum FontValidationError {
   },
 }
 
-/// すべてのフォント設定を検証します
-///
-/// 19 フォント種別を順に検証し、検出した違反を種別ごとに集約します。
-///
-/// # Arguments
-///
-/// * `font_configs` - フォント設定情報
-/// * `font_refs` - フォント参照
+/// 全フォント種別を検証し、違反を種別ごとに集約する。
 ///
 /// # Errors
 ///
-/// 1 つ以上のフォントで検証に失敗した場合は、全違反を `#[related]` で集約した
-/// [`MultipleFontValidationErrors`] を返します。
+/// 1 つ以上の違反がある場合に [`MultipleFontValidationErrors`] を返す。
 pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), MultipleFontValidationErrors> {
   let mut all_errors = Vec::new();
   for font_type in FontType::ALL {
@@ -207,16 +121,7 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
   return Ok(());
 }
 
-/// 1 フォント分の検証を実行し、検出した違反をすべて返します
-///
-/// # Arguments
-///
-/// * `config` - フォント設定情報
-/// * `font_ref` - OpenType フォント参照
-///
-/// # Returns
-///
-/// 検出した [`FontValidationError`] のリスト。違反がなければ空。
+/// 1 フォント分を検証し、検出した違反をすべて返す。
 #[must_use]
 pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationError> {
   let mut errors = Vec::new();
@@ -230,24 +135,12 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidat
   return errors;
 }
 
-/// バリアブルフォントの軸設定を検証します
-///
-/// 以下の検証を行います：
-/// - 設定された軸がフォント内に存在すること
-/// - 軸値が最小値から最大値の範囲内であること
-/// - フォント内のすべての軸が設定に含まれていること
-///
-/// # Arguments
-///
-/// * `font_ref` - フォント参照（fvar テーブル読み込み用）
-/// * `config_variation_axes` - 設定ファイルに指定されたバリアブル軸
-/// * `errors` - 検出した違反の追加先
+/// バリエーション軸の存在・値域・設定漏れを検証する。
 fn validate_variation_axes(
   font_ref: &FontRef,
   config_variation_axes: &[VariationAxis],
   errors: &mut Vec<FontValidationError>,
 ) {
-  // fvar テーブルからフォント内のバリアブル軸定義を取得
   let Ok(fvar) = font_ref.fvar() else {
     errors.push(FontValidationError::NotVariableFont);
     return;
@@ -260,7 +153,6 @@ fn validate_variation_axes(
     },
   };
 
-  // 設定されたバリアブル軸ごとにフォント内の定義と照合
   for cfg_axis in config_variation_axes {
     let cfg_tag = Tag::new(&cfg_axis.name);
     let Some(axis) = font_axes.iter().find(|axis| return axis.axis_tag() == cfg_tag) else {
@@ -280,7 +172,6 @@ fn validate_variation_axes(
     }
   }
 
-  // フォント内のバリアブル軸が全て設定ファイルに含まれているか検証
   for font_axis in font_axes {
     let is_configured =
       config_variation_axes.iter().any(|cfg_axis| return Tag::new(&cfg_axis.name) == font_axis.axis_tag());
@@ -296,20 +187,9 @@ fn validate_variation_axes(
   }
 }
 
-/// スクリプト・言語のサポート状況を確認します
+/// GSUB/GPOS で設定されたスクリプトと言語のサポートを確認する。
 ///
-/// フォントの GSUB（グリフ置換）および GPOS（グリフ配置）テーブルで、
-/// 指定されたスクリプトと OpenType 言語サブテーブルがサポートされているかを確認します。
-/// サポートされていない場合は警告ログを出力します。
-///
-/// 言語サブテーブルのチェックはユーザが `ot_language` を明示指定した場合のみ実施します。
-/// BCP 47 のみ指定時は harfrust の内部処理に OT 言語タグの導出を委ねるため、ここでは
-/// 言語サブテーブルの確認をスキップします（スクリプトのチェックは引き続き実施）。
-///
-/// # Arguments
-///
-/// * `font_ref` - フォント参照
-/// * `font_config` - フォント設定情報（スクリプト、OT 言語タグを含む）
+/// 言語は `ot_language` が明示された場合だけ確認し、BCP 47 からの導出は `harfrust` に委ねる。
 fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   let Some(script) = font_config.script else {
     return;
@@ -318,14 +198,12 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   let script_tag = Tag::new(&script);
   let lang_tag = font_config.ot_language_tag.map(|lang| return Tag::new(&lang));
 
-  // GSUB（グリフ置換）テーブルを確認
   if let Ok(gsub) = font_ref.gsub() {
     check_script_in_table(gsub.script_list(), script_tag, lang_tag, "GSUB");
   } else {
     warn!(table_name = "GSUB", "テーブルが見つかりません");
   }
 
-  // GPOS（グリフ配置）テーブルを確認
   if let Ok(gpos) = font_ref.gpos() {
     check_script_in_table(gpos.script_list(), script_tag, lang_tag, "GPOS");
   } else {
@@ -333,17 +211,7 @@ fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
   }
 }
 
-/// 特定のテーブル内でスクリプト・言語のサポートを確認します
-///
-/// GSUB または GPOS テーブルの `ScriptList` から、
-/// 指定されたスクリプトと言語がサポートされているかを調べます。
-///
-/// # Arguments
-///
-/// * `script_list_result` - `ScriptList` の取得結果
-/// * `script_tag` - 確認するスクリプトタグ
-/// * `lang_tag` - 確認する言語タグ（オプション）
-/// * `table_name` - テーブル名（"GSUB" または "GPOS"）
+/// GSUB または GPOS の `ScriptList` でスクリプトと言語を確認する。
 fn check_script_in_table(
   script_list_result: Result<ScriptList<'_>, ReadError>,
   script_tag: Tag,

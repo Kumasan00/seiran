@@ -1,7 +1,4 @@
-//! コマンドライン引数解析モジュール
-//!
-//! このモジュールは、コマンドラインからの引数を解析し、
-//! アプリケーションが使用する設定情報を提供します。
+//! コマンドライン引数の定義と解析
 
 use std::path::PathBuf;
 
@@ -63,23 +60,5 @@ pub(super) enum Command {
   },
 }
 
-/// コマンドライン引数をパースして `Cli` 構造体を返します
-///
-/// # Examples
-///
-/// ```ignore
-/// let cli = parse_arg();
-/// match cli.command {
-///   Command::Build { config_path } => println!("設定ファイル: {:?}", config_path),
-///   Command::VariationAxes {
-///     font_path,
-///     font_index,
-///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
-///   Command::TtcNames { ttc_file_path } => println!("TTC: {:?}", ttc_file_path),
-///   Command::ScriptLangs {
-///     font_path,
-///     font_index,
-///   } => println!("フォント: {:?}, インデックス: {}", font_path, font_index),
-/// }
-/// ```
+/// コマンドライン引数を解析する。
 pub(super) fn parse_arg() -> Cli { return Cli::parse() }

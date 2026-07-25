@@ -1,8 +1,4 @@
 //! CSL (Citation Style Language) 文献情報のデータモデル。
-//!
-//! 参照定義ファイル全体を表す [`References`] と個々の文献を表す [`Reference`]、文献タイプの
-//! [`ReferenceType`]、数値または文字列を許容する [`NumberOrString`] を定義する。著者名は手書きの
-//! [`Deserialize`] 実装を持つ確定型 [`Name`] として直接デシリアライズする（検証は [`Name`] 側で実施）。
 
 use std::{collections::HashMap, fmt};
 
@@ -15,15 +11,7 @@ use crate::references::{date::Date, name::Name};
 
 /// 参照定義ファイル全体を表す構造体
 ///
-/// ファイルのトップレベルそのものが keyed-table 形式（テーブルキーが参照 ID）であり、`id` をキーと
-/// するマップに直接展開される（`references` ラッパーテーブルは持たない）。本構造体は検証済みのマップを
-/// 包む newtype であり、[`Deref`](std::ops::Deref) 経由で `HashMap` の API（`get` / `keys` / `iter`
-/// など）をそのまま使える。著者名は [`Name`] として確定済みで読み込まれる（family/literal の排他性は
-/// [`Name`] の [`Deserialize`] 実装が保証する）。空・空白のみの参照 ID と重複キーは厳格にエラーとする
-/// （JSON の後勝ちを許さない。詳細は [`deserialize_unique_references`] を参照）。
-///
-/// CSL スタイル（`.csl`）の選択は「見た目」設定として style.toml の `[reference].csl_path` に置く
-/// （`citation` クレートが参照する）。本構造体は文献データのみを保持する。
+/// トップレベルのテーブルキーを参照 ID として保持し、空・空白のみ・重複する ID を拒否する。
 #[derive(Debug)]
 pub struct References(pub HashMap<String, Reference>);
 
@@ -35,9 +23,7 @@ impl std::ops::Deref for References {
 }
 
 impl<'de> Deserialize<'de> for References {
-  /// ファイルのトップレベル（参照 ID をキーとするテーブル）を直接デシリアライズする。`references.`
-  /// 接頭辞を付けずに `[kwan2014]` のように直接エントリを記述できる。derive を使わないのは、フィールド名が
-  /// そのまま TOML / JSON のキー接頭辞になるのを避けるため。
+  /// 参照 ID をキーとするトップレベルテーブルをデシリアライズする。
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
@@ -49,10 +35,7 @@ impl<'de> Deserialize<'de> for References {
 
 /// 参照定義マップを参照 ID の検証付きでデシリアライズする。
 ///
-/// 以下を fail-fast で拒否する:
-/// - 空文字列・空白のみの参照 ID（keyed-table のキーは値検証と独立に明示チェックする）
-/// - 重複キー。JSON は仕様上キーの重複を許し標準の `HashMap` デシリアライズでは後勝ちで黙殺されるため、
-///   ここで検出して即座にエラーとし、TOML（パーサ段階で重複テーブルを拒否）と挙動を揃える。
+/// 空・空白のみの参照 ID と重複キーを拒否する。
 fn deserialize_unique_references<'de, D>(deserializer: D) -> Result<HashMap<String, Reference>, D::Error>
 where
   D: Deserializer<'de>,
@@ -95,8 +78,6 @@ where
 ///
 /// CSL (Citation Style Language) に基づく文献情報を保持する。
 /// 参照 ID は keyed-table 形式のテーブルキーとして保持されるため、本構造体には持たない。
-/// 著者名フィールドは確定型 [`Name`] として読み込む（family/literal の排他性は [`Name`] の
-/// [`Deserialize`] 実装が保証する）。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
