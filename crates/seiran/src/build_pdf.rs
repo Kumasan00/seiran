@@ -11,6 +11,7 @@ mod outline;
 mod page_values;
 mod phase_context;
 mod project;
+mod publication;
 mod running;
 
 #[cfg(test)]
@@ -23,7 +24,7 @@ mod golden;
 mod pdf_structure;
 
 use std::{
-  collections::HashSet,
+  collections::{HashMap, HashSet},
   fs,
   path::{Path, PathBuf},
   sync::Arc,
@@ -62,8 +63,17 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let (snapshot, output) = load_project(config_path)?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
   let image_set = pdf_gen::load_image_set(&image_manifest.paths)?;
-  let laid_out = compile_project(&snapshot, &parsed_project, &image_set)?;
-  let pdf_bytes = encode_pdf(&snapshot.config, &snapshot.font_data, &laid_out)?;
+  let font_refs = FontRefs::new(&snapshot.config.font_configs, &snapshot.font_data)?;
+  let font_metrics = FontMetrics::new(&font_refs)?;
+  let laid_out = compile_project(&snapshot, &parsed_project, &image_set, &font_refs, &font_metrics)?;
+  let pdf_bytes = render_pdf(
+    &snapshot.config,
+    &snapshot.font_data,
+    &font_refs,
+    font_metrics,
+    image_set.into_image_bytes(),
+    &laid_out,
+  )?;
 
   let stage_start = Instant::now();
   fs::write(&output.pdf_path, pdf_bytes).map_err(|source| {
@@ -175,21 +185,52 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
   return Ok((parsed_project, image_manifest));
 }
 
-/// 確定レイアウトを PDF バイト列へ描画する。
+/// 構築済みフォント資源と画像バイト列から `Publication` を組み立て、PDF バイト列へ描画する。
+///
+/// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
 ///
 /// # Errors
 ///
-/// フォント参照の再構築、または `pdf_gen::create_pdf` の描画に失敗した場合にエラーを返す。
-fn encode_pdf(config: &config::Config, font_data: &FontData, laid_out: &LaidOutDocument) -> miette::Result<Vec<u8>> {
-  let font_refs = FontRefs::new(&config.font_configs, font_data)?;
-  let metrics = FontMetrics::new(&font_refs)?;
-  let publication = pdf_gen::PublicationBuilder::new(config).build(&laid_out.pages, &laid_out.outline_entries);
+/// `pdf_gen::ResourceBundle` の構築、または `pdf_gen::render` の描画に失敗した場合にエラーを返す。
+fn render_pdf(
+  config: &config::Config,
+  font_data: &FontData,
+  font_refs: &FontRefs<'_>,
+  font_metrics: FontMetrics,
+  image_bytes: HashMap<model::AssetId, Vec<u8>>,
+  laid_out: &LaidOutDocument,
+) -> miette::Result<Vec<u8>> {
+  let font_resource_configs = build_font_resource_configs(&config.font_configs);
+  let resources =
+    pdf_gen::ResourceBundle::new(&font_resource_configs, font_data, font_refs, font_metrics, image_bytes)?;
+  let publication = publication::build_publication(config, resources, laid_out);
 
   let stage_start = Instant::now();
-  let pdf_bytes = pdf_gen::create_pdf(&publication, font_data, &font_refs, &metrics, &config.font_configs)?;
+  let pdf_bytes = pdf_gen::render(&publication)?;
   info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
 
   return Ok(pdf_bytes);
+}
+
+/// `config::FontConfigs` から `pdf_gen::FontResourceConfigs`（config 非依存の複製）を組む。
+fn build_font_resource_configs(font_configs: &config::FontConfigs) -> pdf_gen::FontResourceConfigs {
+  return model::FontMap::from_all(model::FontType::ALL.iter().map(|font_type| {
+    let font_config = font_configs.get(*font_type);
+    return pdf_gen::FontResourceConfig {
+      font_index: font_config.font_index,
+      variation_axes: font_config.variation_axes.as_ref().map(|axes| {
+        return axes
+          .iter()
+          .map(|axis| {
+            return pdf_gen::VariationAxisConfig {
+              name: axis.name,
+              value: axis.value,
+            };
+          })
+          .collect();
+      }),
+    };
+  }));
 }
 
 /// パースからページ確定までを実行するテストヘルパ。
@@ -203,7 +244,9 @@ fn build_pages(
   let snapshot = ProjectSnapshot::assemble(config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
   let image_set = pdf_gen::load_image_set(&image_manifest.paths)?;
-  return compile_project(&snapshot, &parsed_project, &image_set);
+  let font_refs = FontRefs::new(&config.font_configs, font_data)?;
+  let font_metrics = FontMetrics::new(&font_refs)?;
+  return compile_project(&snapshot, &parsed_project, &image_set, &font_refs, &font_metrics);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。

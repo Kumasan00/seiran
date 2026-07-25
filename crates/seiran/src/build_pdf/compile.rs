@@ -3,18 +3,18 @@
 use std::time::Instant;
 
 use font::{
-  FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
+  FontMetrics, FontRefs,
   shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
   validate_font,
 };
-use pdf_gen::{ImageSet, OutlineEntry};
+use pdf_gen::ImageSet;
 use tracing::{debug, info};
 
 use super::{
   ParsedProject, back_matter,
   body::{self, BodyLayout},
   elapsed_ms, front_matter,
-  outline::collect_outline_entries,
+  outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},
   project::ProjectSnapshot,
   running,
@@ -39,18 +39,18 @@ pub(super) fn compile_project(
   snapshot: &ProjectSnapshot,
   parsed_project: &ParsedProject,
   image_set: &ImageSet,
+  font_refs: &FontRefs<'_>,
+  metrics: &FontMetrics,
 ) -> miette::Result<LaidOutDocument> {
-  // phase 0: フォント資源を準備する
-  let font_refs = FontRefs::new(&snapshot.config.font_configs, &snapshot.font_data)?;
+  // phase 0: フォント資源を検証し、シェーパーを準備する（フォント資源自体は呼び出し元が 1 回だけ構築済み）
   let stage_start = Instant::now();
-  validate_font::validate_fonts(&snapshot.config.font_configs, &font_refs)?;
+  validate_font::validate_fonts(&snapshot.config.font_configs, font_refs)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
-  let shaper_datas = ShaperDatas::new(&font_refs);
-  let shaper_instances = ShaperInstances::new(&snapshot.config.font_configs, &font_refs);
-  let shapers = HarfRustShapers::new(&snapshot.config.font_configs, &font_refs, &shaper_datas, &shaper_instances)?;
+  let shaper_datas = ShaperDatas::new(font_refs);
+  let shaper_instances = ShaperInstances::new(&snapshot.config.font_configs, font_refs);
+  let shapers = HarfRustShapers::new(&snapshot.config.font_configs, font_refs, &shaper_datas, &shaper_instances)?;
   debug!("シェーパーの初期化が完了しました");
-  let metrics = FontMetrics::new(&font_refs)?;
-  let ctx = CompileContext::new(&snapshot.config, &snapshot.style, &shapers, &metrics);
+  let ctx = CompileContext::new(&snapshot.config, &snapshot.style, &shapers, metrics);
 
   // phase 1: 本文を組版する
   let BodyLayout {

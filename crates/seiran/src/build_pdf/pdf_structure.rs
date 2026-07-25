@@ -5,12 +5,16 @@
 use std::{
   fs,
   path::{Path, PathBuf},
+  sync::Arc,
 };
 
 use font::{FontData, FontDataExt, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt};
 use lopdf::{Document, Object, content::Content};
 
-use super::golden::{enter_workspace_root, load_base};
+use super::{
+  golden::{enter_workspace_root, load_base},
+  project::ProjectSnapshot,
+};
 
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
@@ -25,6 +29,10 @@ fn pdf_structure_golden_dir() -> PathBuf {
 pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_style(name, |_| {}); }
 
 /// style の一時的な差分を適用して PDF を生成する。
+///
+/// `build_pdf` 本体と同じ手順（`parse_project` → `load_image_set` → `compile_project` →
+/// `ResourceBundle` 構築 → `build_publication` → `pdf_gen::render`）を通す — golden が検証したいのは
+/// 本番の描画経路そのものであり、ここでショートカットを作らない。
 fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config::Style)) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
@@ -33,12 +41,25 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let mut style = style.clone();
   adjust_style(&mut style);
   let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
-  let laid_out = super::build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
+  let snapshot = ProjectSnapshot::assemble(config.clone(), style, Arc::clone(&references), font_data.clone())
+    .expect("ProjectSnapshot の構築");
+  let (parsed_project, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let image_set = pdf_gen::load_image_set(&image_manifest.paths).expect("画像の自然寸法解決");
   let font_refs = FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
-  let metrics = FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-  let publication = pdf_gen::PublicationBuilder::new(&config).build(&laid_out.pages, &laid_out.outline_entries);
-  return pdf_gen::create_pdf(&publication, &font_data, &font_refs, &metrics, &config.font_configs)
-    .expect("PDF の描画");
+  let font_metrics = FontMetrics::new(&font_refs).expect("FontMetrics の構築");
+  let laid_out = super::compile::compile_project(&snapshot, &parsed_project, &image_set, &font_refs, &font_metrics)
+    .expect("compile_project の実行");
+  let font_resource_configs = super::build_font_resource_configs(&config.font_configs);
+  let resources = pdf_gen::ResourceBundle::new(
+    &font_resource_configs,
+    &font_data,
+    &font_refs,
+    font_metrics,
+    image_set.into_image_bytes(),
+  )
+  .expect("ResourceBundle の構築");
+  let publication = super::publication::build_publication(&config, resources, &laid_out);
+  return pdf_gen::render(&publication).expect("PDF の描画");
 }
 
 /// 辞書オブジェクトの `/Type` または `/Subtype` を照合する。
@@ -153,8 +174,8 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
-/// `PublicationPage.ops`（`pdf_gen::publication::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
-/// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`PublicationBuilder::build_page` 参照）。
+/// `PublicationPage.ops`（`pdf_gen::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
+/// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`build_pdf::publication::build_page` 参照）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),
@@ -166,7 +187,7 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // Arrange — figure（本文段落 + 画像）に背景色を明示的に設定し、PublicationBuilder::build_page が
+  // Arrange — figure（本文段落 + 画像）に背景色を明示的に設定し、build_pdf::publication::build_page が
   // 定める描画順（背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する
   let bytes = build_pdf_bytes_with_style("figure", |style| {
     style.background_color = Some(model::Color::new(220, 220, 220));

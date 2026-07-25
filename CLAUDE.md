@@ -118,8 +118,9 @@ typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering
           3 module とも非公開で、公開 API はクレート root の `pub use` に揃える）
   ↑ seiran
 
-pdf_gen （font, config, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
-         には依存しない — 確定座標を描くだけであることが依存グラフで強制される）
+pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
+         には依存しない — 確定座標を描くだけであることが依存グラフで強制される。config には依存せず、
+         フォント・画像資源は呼び出し元が組み立てた ResourceBundle 経由で受け取る）
   ↑ seiran
 
 seiran （エントリーポイント。全クレートを統合してパイプラインを実行。clap / miette / read-fonts /
