@@ -103,4 +103,21 @@ pub(super) enum BuildPdfError {
     #[diagnostic_source]
     source: LayoutValidationError,
   },
+
+  /// 脚注のページ単位採番（`[footnote] numbering = "per_page"`）が上限回数の組版で収束しなかった場合
+  ///
+  /// 番号の桁数変化がマーカー幅を通じてページ割り当てを揺らし続けるケース（脚注が 9 → 10 の桁境界で
+  /// ページ境界に乗り続ける等）。一部のページで番号が 1 から始まらない不整合な結果を成功として
+  /// 出力せず、回避策付きの診断として報告する。
+  #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
+  #[diagnostic(
+    code(build::footnote::per_page_not_converged),
+    help(
+      "style.toml の [footnote] を numbering = \"continuous\"（文書通しの採番）に切り替えるか、ページ境界に脚注が集中している箇所の本文量・脚注の長さを調整してください。"
+    )
+  )]
+  PerPageFootnoteNotConverged {
+    /// 打ち切った組版パスの回数
+    passes: u32,
+  },
 }

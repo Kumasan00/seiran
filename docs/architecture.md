@@ -190,12 +190,14 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 ページ単位採番（`per_page_footnote_numbers`）は `continued` の断片を数えない — 数えると繰越先ページで
 番号を振り直してしまう。
 
-### 脚注のページ単位採番（`build_pdf::break_body_per_page_footnotes`、#226）
+### 脚注のページ単位採番（`build_pdf::footnote_numbering::solve_per_page_numbering`、#226/#267）
 
 `style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
 決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
 `break_pages` はフォント非依存の純粋パスなので、ページ確定後にマーカーのグリフを作り直すことはできない
-（この不変条件が「後段で番号だけ差し替える」実装を封じている）。そこで**本文パスごと不動点まで反復する**：
+（この不変条件が「後段で番号だけ差し替える」実装を封じている）。そこで**本文パスごと不動点まで反復する**
+専用 module `build_pdf::footnote_numbering` がこの状態（番号 → マーカー寸法 → 行分割 → ページ分割 →
+ページごとの番号）を所有する：
 
 1. 1 回目は空の上書きマップ（＝全脚注が通し番号へフォールバック）で lowering → `build_blocks` →
    `resolve_images` → `break_pages` を通し、脚注のページ割り当てを知る
@@ -208,7 +210,8 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 しないので、出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。加えてページ内番号は
 通し番号以下（部分集合を数えるため）なので、`per_page` でマーカーは縮むか同じで、行があふれる方向には
 動かない。実質 2 回目で収束する。上限まで収束しなかった場合（脚注が 9 → 10 の桁境界でページ境界に
-乗り続ける等）は `tracing::warn` で報告して最後の結果を採用する。
+乗り続ける等）は、一部のページで番号が 1 から始まらない不整合な結果を成功として出さず、
+`BuildPdfError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す（#267）。
 
 通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。
 表セル内の脚注はページ列に配置されない（`pdf_gen::render` の既知の制限）ためマップに載らず、
@@ -223,3 +226,5 @@ DocNode → LayoutNode への論理変換 module（`lowering.rs` + `figure` / `f
 ## `seiran`
 
 `main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` サブコマンド実装（`read-fonts` を直接使用、`font` クレート非依存）を持つ（#199 で `cli` / `subcommand` クレートを統合）。`build_pdf` 配下の `dump`（`dump_pages`、確定ページ列の決定的テキストダンプ）・`golden`（golden ファイル比較テスト）は `#[cfg(test)]` 限定の子 module で、唯一の消費者がテストであるため `model` ではなく本クレートに置く（#216）。同じ理由で `diagnostics`（miette 診断メッセージの golden テスト、#253）・`pdf_structure`（`lopdf` による独立 reader での PDF 構造 golden テスト、#253）も `#[cfg(test)]` 限定の子 module としてここに置く。
+
+`build_pdf`（クレート root の `build_pdf.rs`）は driver（`build_pdf` / `load_project` / `parse_project` / `encode_pdf` / `parse_all_sources` / `wrap_lowering_error`）だけを残し、compiler core は `docs/redesign-from-scratch.md`「ページ依存処理は phase graph で表す」に沿って子 module へ分離している（epic #252 step 8、issue #267 で完了）。`compile`（`compile_project` が phase graph 全体をオーケストレーションする本体。全 phase 共有のフォント資源参照・幅・ジオメトリを持つ `CompileContext`、本文 pagination 確定後の事実＝`BodyPageValues` + 見出し記録を持つ `BodyPageFacts`、返り値の `LaidOutDocument`、`build_page_geometries` / `concat_pages` を収める）・`body`（phase 1: 本文の lowering → `build_blocks` → `resolve_images` → `break_pages` を 1 パスにまとめる `typeset_body` / `BodyLayout`。脚注がページ単位採番のときだけ `footnote_numbering` の不動点 solver から複数回呼ばれ、それ以外は本パスの中身自体は変わらない）・`footnote_numbering`（ページ単位脚注採番の不動点 solver。詳細は前掲「脚注のページ単位採番」節）が中心。前付け・後付け・走り文の各 phase も同様に子 module 化されており、`front_matter` の `typeset_front_matter`（phase 3）・`back_matter` の `typeset_back_matter`（phase 4）・`running` の `place_running_content`（phase 6）がそれぞれの façade になる。`compile_project` の phase 順序は、phase 0 フォント資源準備 → 1 本文 pagination（ページ単位脚注採番のときだけ専用 solver）→ 2 `BodyPageFacts` 確定 → 3 前付け生成・pagination → 4 後付け（索引）生成・pagination → 5 全ページラベル確定 + ページ連結 → 6 走り文配置 → 7 PDF しおり用見出し収集（`LaidOutDocument`）。

@@ -79,6 +79,8 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 脚注をページ単位で採番する設定（`[footnote]` の `numbering = "per_page"`）のときだけ、本文の
 lowering →(a)→(c+d) をページ割り当てが安定するまで反復する（番号がマーカー幅を変え、それが
 ページ割り当てを変えうる循環のため。既定の通し採番は 1 回で確定＝上図のまま）。
+この反復は `seiran::build_pdf::footnote_numbering` の専用 solver に閉じており、上限回数まで
+収束しない場合は最後の結果を採用せず、回避策付きの診断エラー（`BuildPdfError::PerPageFootnoteNotConverged`）を返す。
 
 ### クレート依存関係
 
