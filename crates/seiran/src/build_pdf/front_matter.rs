@@ -12,9 +12,9 @@ use typeset::{
 };
 
 use super::{
-  compile::{BodyPageFacts, CompileContext},
   elapsed_ms,
   page_values::BodyPageValues,
+  phase_context::{BodyPageFacts, CompileContext},
 };
 
 /// phase 3: 前付け（タイトルページ・目次）を生成してページ分割する。
