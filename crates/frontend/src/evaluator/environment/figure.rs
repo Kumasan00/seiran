@@ -155,7 +155,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
         dpi = Some(rounded);
       },
       ("downsample", OptValue::Bool(b)) => downsample = Some(b),
-      _ => unreachable!(),
+      _ => unreachable!("collect_command_opt_args が未知キーと型不一致を弾くのでここには来ない"),
     }
   }
 
