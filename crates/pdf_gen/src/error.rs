@@ -77,16 +77,6 @@ pub enum PdfGenError {
     #[source]
     source: KrillaError,
   },
-  /// 画像ファイルを読み込めませんでした。
-  #[error("画像ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(pdf_gen::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
-  ReadImage {
-    /// 画像ファイルのパス。
-    path: String,
-    /// 元の I/O エラー。
-    #[source]
-    source: std::io::Error,
-  },
   /// 画像ファイルの形式が未対応です。
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(
@@ -138,20 +128,6 @@ pub enum PdfGenError {
     /// 描画高さ。
     height: f32,
   },
-  /// 画像の自然寸法が不正です（縦横比を算出できません）。
-  #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
-  #[diagnostic(
-    code(pdf_gen::invalid_image_natural_size),
-    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
-  )]
-  InvalidImageNaturalSize {
-    /// 画像ファイルのパス。
-    path: AssetId,
-    /// 自然幅（ラスタはピクセル、SVG は pt）。
-    width: f32,
-    /// 自然高さ（ラスタはピクセル、SVG は pt）。
-    height: f32,
-  },
   /// ラスタ画像のダウンサンプリング時の処理（デコード / リサイズ / 再エンコード）に失敗しました。
   #[error("画像のリサイズに失敗しました: {path}")]
   #[diagnostic(
@@ -165,8 +141,8 @@ pub enum PdfGenError {
     #[source]
     source: image::ImageError,
   },
-  /// `resolve_images` が `ImageSet` にない画像を参照しました。
-  #[error("ImageSet に存在しない画像パスです（内部エラー）: {path}")]
+  /// `draw_publication_image` が `ResourceBundle.image_bytes` にない画像を参照しました。
+  #[error("リソースに存在しない画像パスです（内部エラー）: {path}")]
   #[diagnostic(
     code(pdf_gen::image_not_in_manifest),
     help("seiran 側の ImageManifest 収集ロジックに不具合があります。issue を報告してください。")
