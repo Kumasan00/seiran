@@ -1,13 +1,13 @@
 //! 不変な入力から確定レイアウトを作る組版オーケストレーション
 
 use font::FontSystem;
-use pdf_gen::ImageSet;
 use tracing::info;
 
 use super::{
   ParsedProject, back_matter,
   body::{self, BodyLayout},
   front_matter,
+  image_resources::ImageResources,
   outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},
   project::ProjectSnapshot,
@@ -32,7 +32,7 @@ pub(super) struct LaidOutDocument {
 pub(super) fn compile_project(
   snapshot: &ProjectSnapshot,
   parsed_project: &ParsedProject,
-  image_set: &ImageSet,
+  image_set: &ImageResources,
   font_system: &FontSystem<'_>,
 ) -> miette::Result<LaidOutDocument> {
   let ctx = CompileContext::new(&snapshot.config, &snapshot.style, font_system);

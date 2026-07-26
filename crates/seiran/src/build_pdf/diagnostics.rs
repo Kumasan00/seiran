@@ -134,7 +134,7 @@ fn diagnostic_unknown_cite_key() {
 
 #[test]
 fn diagnostic_missing_image() {
-  // Arrange / Act — 画像アセット欠落（`pdf_gen::resolve_images` が `build_pages` 内で検出）
+  // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `fs::read` が検出）
   let report = build_pages_err(&["tests/text/diagnostics/missing_image.sei"]);
 
   // Assert

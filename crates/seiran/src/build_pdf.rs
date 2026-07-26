@@ -7,6 +7,7 @@ mod error;
 mod footnote_numbering;
 mod front_matter;
 mod image_manifest;
+mod image_resources;
 mod outline;
 mod page_values;
 mod phase_context;
@@ -62,7 +63,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let (snapshot, output) = load_project(config_path)?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
-  let image_set = pdf_gen::load_image_set(&image_manifest.paths)?;
+  let image_set = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
   let laid_out = compile_project(&snapshot, &parsed_project, &image_set, &font_system)?;
@@ -241,7 +242,7 @@ fn build_pages(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot = ProjectSnapshot::assemble(config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
-  let image_set = pdf_gen::load_image_set(&image_manifest.paths)?;
+  let image_set = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
   return compile_project(&snapshot, &parsed_project, &image_set, &font_system);

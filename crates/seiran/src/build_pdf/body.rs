@@ -2,11 +2,13 @@
 
 use std::time::Instant;
 
-use pdf_gen::ImageSet;
 use tracing::{debug_span, info};
 use typeset::LoweringContext;
 
-use super::{ParsedProject, elapsed_ms, footnote_numbering, phase_context::CompileContext, wrap_lowering_error};
+use super::{
+  ParsedProject, elapsed_ms, footnote_numbering, image_resources::ImageResources, phase_context::CompileContext,
+  wrap_lowering_error,
+};
 
 /// 本文パス 1 回ぶんの出力。
 #[derive(Debug)]
@@ -27,7 +29,7 @@ pub(super) struct BodyLayout {
 pub(super) fn typeset_body(
   ctx: &CompileContext<'_>,
   parsed_project: &ParsedProject,
-  image_set: &ImageSet,
+  image_set: &ImageResources,
 ) -> miette::Result<BodyLayout> {
   let groups = parsed_project.lowering_groups();
   let run_pass = |footnote_numbers: Option<&[u32]>| {
@@ -46,7 +48,7 @@ fn run_body_pass(
   ctx: &CompileContext<'_>,
   parsed_project: &ParsedProject,
   groups: &[typeset::SourceGroup<'_>],
-  image_set: &ImageSet,
+  image_set: &ImageResources,
   footnote_numbers: Option<&[u32]>,
 ) -> miette::Result<BodyLayout> {
   let stage_start = Instant::now();
@@ -79,7 +81,7 @@ fn run_body_pass(
 
   let stage_start = Instant::now();
   // 本文画像は段幅に合わせて解決する
-  let body_blocks = pdf_gen::resolve_images(body_blocks, ctx.body_col_width.to_pt(), image_set)?;
+  let body_blocks = super::image_resources::resolve_images(body_blocks, ctx.body_col_width.to_pt(), image_set)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
   let stage_start = Instant::now();

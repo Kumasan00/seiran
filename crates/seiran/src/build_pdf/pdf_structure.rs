@@ -30,7 +30,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 
 /// style の一時的な差分を適用して PDF を生成する。
 ///
-/// `build_pdf` 本体と同じ手順（`parse_project` → `load_image_set` → `compile_project` →
+/// `build_pdf` 本体と同じ手順（`parse_project` → `load_image_resources` → `compile_project` →
 /// `ResourceBundle` 構築 → `build_publication` → `pdf_gen::render`）を通す — golden が検証したいのは
 /// 本番の描画経路そのものであり、ここでショートカットを作らない。
 fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config::Style)) -> Vec<u8> {
@@ -44,7 +44,7 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let snapshot = ProjectSnapshot::assemble(config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
   let (parsed_project, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
-  let image_set = pdf_gen::load_image_set(&image_manifest.paths).expect("画像の自然寸法解決");
+  let image_set = super::image_resources::load_image_resources(&image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
   let laid_out = super::compile::compile_project(&snapshot, &parsed_project, &image_set, &font_system)

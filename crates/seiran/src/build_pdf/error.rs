@@ -4,6 +4,7 @@ use citation::CitationError;
 use config::LayoutValidationError;
 use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
+use model::AssetId;
 use thiserror::Error;
 use typeset::LoweringError;
 
@@ -106,5 +107,57 @@ pub(super) enum BuildPdfError {
   PerPageFootnoteNotConverged {
     /// 打ち切った組版パスの回数
     passes: u32,
+  },
+
+  /// 画像ファイルを読み込めませんでした。
+  #[error("画像ファイルを読み込めませんでした: {path}")]
+  #[diagnostic(code(build::image::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
+  ReadImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の I/O エラー。
+    #[source]
+    source: std::io::Error,
+  },
+
+  /// 画像ファイルのデコードに失敗しました。
+  #[error("画像ファイルのデコードに失敗しました: {path}")]
+  #[diagnostic(
+    code(build::image::load_image),
+    help("画像ファイルが破損していないか、対応形式（PNG / JPEG / SVG）か確認してください。")
+  )]
+  LoadImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の `pdf_gen` デコードエラー。
+    #[source]
+    #[diagnostic_source]
+    source: pdf_gen::PdfGenError,
+  },
+
+  /// 画像の自然寸法が不正です（縦横比を算出できません）。
+  #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
+  #[diagnostic(
+    code(build::image::invalid_natural_size),
+    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
+  )]
+  InvalidImageNaturalSize {
+    /// 画像ファイルのパス。
+    path: AssetId,
+    /// 自然幅（ラスタはピクセル、SVG は pt）。
+    width: f32,
+    /// 自然高さ（ラスタはピクセル、SVG は pt）。
+    height: f32,
+  },
+
+  /// `resolve_images` が `ImageResources` にない画像を参照しました。
+  #[error("ImageResources に存在しない画像パスです（内部エラー）: {path}")]
+  #[diagnostic(
+    code(build::image::not_in_manifest),
+    help("ImageManifest の収集ロジックに不具合があります。issue を報告してください。")
+  )]
+  ImageNotInManifest {
+    /// 画像ファイルのパス。
+    path: AssetId,
   },
 }
