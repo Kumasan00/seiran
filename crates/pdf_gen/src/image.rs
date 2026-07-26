@@ -167,6 +167,18 @@ pub(crate) fn resolve_image_size(
   }
 }
 
+/// 画像バイト列をデコードし、自然寸法（ラスタは px、SVG は usvg が報告した width / height）を返す。
+///
+/// デコードのみを行い、width / height の確定（縦横比・本文幅からの推論）は行わない
+/// （compiler 側 `seiran::build_pdf::image_resources::resolve_images` の責務）。
+///
+/// # Errors
+///
+/// 画像のデコードに失敗した場合に [`PdfGenError`] を返す。
+pub fn natural_image_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), PdfGenError> {
+  return load_image(path, bytes, None).map(|loaded| return loaded.natural_size());
+}
+
 /// PNG、JPEG、SVG のバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
 ///
 /// `path` は拡張子判定とエラーメッセージにのみ使い、ファイルシステムは読まない
@@ -354,5 +366,30 @@ mod tests {
 
     // Assert
     assert!(resolved.is_none());
+  }
+
+  #[test]
+  fn natural_image_size_returns_svg_dimensions_from_bytes() {
+    // Arrange
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
+
+    // Act
+    let size = natural_image_size("icon.svg", svg).expect("有効な SVG はデコードできるはず");
+
+    // Assert
+    assert!((size.0 - 80.0).abs() < 1e-4);
+    assert!((size.1 - 60.0).abs() < 1e-4);
+  }
+
+  #[test]
+  fn natural_image_size_propagates_unsupported_format_error() {
+    // Arrange
+    let bytes = b"not an image";
+
+    // Act
+    let result = natural_image_size("icon.gif", bytes);
+
+    // Assert
+    assert!(matches!(result, Err(PdfGenError::UnsupportedImageFormat { path }) if path == "icon.gif"));
   }
 }
