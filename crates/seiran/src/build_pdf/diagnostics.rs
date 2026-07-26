@@ -8,8 +8,9 @@ use std::{
 };
 
 use config::parse_style;
-use font::{FontData, FontDataExt};
+use font::{FontData, FontDataExt, FontResources};
 use miette::{GraphicalReportHandler, GraphicalTheme};
+use model::FontType;
 
 use super::{
   build_pages,
@@ -147,6 +148,26 @@ fn diagnostic_unsupported_image_format() {
 
   // Assert
   assert_matches_golden("unsupported_image_format", &render_diagnostic(&report));
+}
+
+#[test]
+fn diagnostic_font_validation_error() {
+  // Arrange — 実在するバリアブルフォントに不明なバリエーション軸を設定し、`FontResources::load`
+  // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
+  enter_workspace_root();
+  let (mut config, _style, _references) = load_base();
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![config::VariationAxis {
+    name: *b"zzzz",
+    value: 0.0,
+  }]);
+  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+  let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
+    Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
+    Err(error) => error.into(),
+  };
+
+  // Assert
+  assert_matches_golden("font_validation_error", &render_diagnostic(&report));
 }
 
 #[test]

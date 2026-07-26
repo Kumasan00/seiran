@@ -1,21 +1,17 @@
 //! `compile_project` の各 phase が共有する値
 
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 
 use super::page_values::BodyPageValues;
 
 /// 全 phase が共有する組版資源と寸法。
-///
-/// フォント資源は互いを借用するため、ここでは参照だけを束ねる。
 pub(super) struct CompileContext<'a> {
   /// 実体・物理・メタデータ設定
   pub(super) config: &'a config::Config,
   /// 見た目の設定
   pub(super) style: &'a config::Style,
-  /// 19 種別ぶんのシェーパー
-  pub(super) shapers: &'a HarfRustShapers<'a>,
-  /// フォントメトリクス
-  pub(super) metrics: &'a FontMetrics,
+  /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
+  pub(super) resources: &'a FontSystem<'a>,
   /// 版面幅（段組み前）
   pub(super) text_width: model::Length,
   /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
@@ -30,12 +26,7 @@ pub(super) struct CompileContext<'a> {
 
 impl<'a> CompileContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
-  pub(super) fn new(
-    config: &'a config::Config,
-    style: &'a config::Style,
-    shapers: &'a HarfRustShapers<'a>,
-    metrics: &'a FontMetrics,
-  ) -> Self {
+  pub(super) fn new(config: &'a config::Config, style: &'a config::Style, resources: &'a FontSystem<'a>) -> Self {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
@@ -44,8 +35,7 @@ impl<'a> CompileContext<'a> {
     return Self {
       config,
       style,
-      shapers,
-      metrics,
+      resources,
       text_width,
       body_col_width,
       body_geometry,

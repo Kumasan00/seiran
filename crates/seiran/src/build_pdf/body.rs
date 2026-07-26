@@ -64,8 +64,7 @@ fn run_body_pass(
     let _span = debug_span!("build_blocks", region = "body").entered();
     typeset::build_blocks(
       body_layout_nodes,
-      ctx.shapers,
-      ctx.metrics,
+      ctx.resources,
       ctx.style.text.font_size,
       ctx.style.text.line_height_factor,
       ctx.config.document.language.as_deref(),

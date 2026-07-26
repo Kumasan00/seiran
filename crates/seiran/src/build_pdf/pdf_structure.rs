@@ -8,7 +8,7 @@ use std::{
   sync::Arc,
 };
 
-use font::{FontData, FontDataExt, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt};
+use font::{FontData, FontDataExt, FontResources};
 use lopdf::{Document, Object, content::Content};
 
 use super::{
@@ -45,16 +45,16 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
     .expect("ProjectSnapshot の構築");
   let (parsed_project, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
   let image_set = pdf_gen::load_image_set(&image_manifest.paths).expect("画像の自然寸法解決");
-  let font_refs = FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
-  let font_metrics = FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-  let laid_out = super::compile::compile_project(&snapshot, &parsed_project, &image_set, &font_refs, &font_metrics)
+  let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
+  let font_system = font_resources.system().expect("FontSystem の構築");
+  let laid_out = super::compile::compile_project(&snapshot, &parsed_project, &image_set, &font_system)
     .expect("compile_project の実行");
   let font_resource_configs = super::build_font_resource_configs(&config.font_configs);
   let resources = pdf_gen::ResourceBundle::new(
     &font_resource_configs,
     &font_data,
-    &font_refs,
-    font_metrics,
+    font_resources.font_refs(),
+    font_resources.metrics().clone(),
     image_set.into_image_bytes(),
   )
   .expect("ResourceBundle の構築");

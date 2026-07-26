@@ -1,6 +1,6 @@
 //! 目次（table of contents）ブロックの生成パス
 
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 use model::{AnchorId, Block, HBox, HeadingKey, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
 
 use super::Measurer;
@@ -48,16 +48,11 @@ pub struct TocEntryInput {
 
 /// 目次エントリ列を計測済みのブロック列に変換する
 #[must_use]
-pub fn build_toc_blocks(
-  spec: &TocSpec,
-  entries: &[TocEntryInput],
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
-) -> Vec<Block> {
+pub fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
+  let mut measurer = Measurer::new(resources, Length::ZERO, 1.0, None, true);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {

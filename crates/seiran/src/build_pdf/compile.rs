@@ -1,19 +1,13 @@
 //! 不変な入力から確定レイアウトを作る組版オーケストレーション
 
-use std::time::Instant;
-
-use font::{
-  FontMetrics, FontRefs,
-  shaper::{HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperInstances, ShaperInstancesExt},
-  validate_font,
-};
+use font::FontSystem;
 use pdf_gen::ImageSet;
-use tracing::{debug, info};
+use tracing::info;
 
 use super::{
   ParsedProject, back_matter,
   body::{self, BodyLayout},
-  elapsed_ms, front_matter,
+  front_matter,
   outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},
   project::ProjectSnapshot,
@@ -39,18 +33,9 @@ pub(super) fn compile_project(
   snapshot: &ProjectSnapshot,
   parsed_project: &ParsedProject,
   image_set: &ImageSet,
-  font_refs: &FontRefs<'_>,
-  metrics: &FontMetrics,
+  font_system: &FontSystem<'_>,
 ) -> miette::Result<LaidOutDocument> {
-  // phase 0: フォント資源を検証し、シェーパーを準備する（フォント資源自体は呼び出し元が 1 回だけ構築済み）
-  let stage_start = Instant::now();
-  validate_font::validate_fonts(&snapshot.config.font_configs, font_refs)?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
-  let shaper_datas = ShaperDatas::new(font_refs);
-  let shaper_instances = ShaperInstances::new(&snapshot.config.font_configs, font_refs);
-  let shapers = HarfRustShapers::new(&snapshot.config.font_configs, font_refs, &shaper_datas, &shaper_instances)?;
-  debug!("シェーパーの初期化が完了しました");
-  let ctx = CompileContext::new(&snapshot.config, &snapshot.style, &shapers, metrics);
+  let ctx = CompileContext::new(&snapshot.config, &snapshot.style, font_system);
 
   // phase 1: 本文を組版する
   let BodyLayout {

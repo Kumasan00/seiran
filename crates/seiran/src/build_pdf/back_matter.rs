@@ -6,7 +6,7 @@ use std::{
 };
 
 use config::Style;
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment};
 use tracing::{debug_span, info};
 use typeset::{
@@ -30,7 +30,7 @@ pub(super) fn typeset_back_matter(
   facts: &BodyPageFacts,
 ) -> Vec<Page> {
   let stage_start = Instant::now();
-  let back_blocks = assemble_back_matter(body_pages, &facts.page_values, ctx.style, ctx.shapers, ctx.metrics);
+  let back_blocks = assemble_back_matter(body_pages, &facts.page_values, ctx.style, ctx.resources);
   let pages = {
     let _span = debug_span!("break_pages", region = "back").entered();
     break_back_matter(
@@ -108,15 +108,14 @@ fn assemble_back_matter(
   body_pages: &mut [Page],
   body_page_values: &BodyPageValues,
   style: &Style,
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
+  resources: &FontSystem<'_>,
 ) -> Vec<Block> {
   let entries = collect_index_entries(body_pages, body_page_values);
   if entries.is_empty() {
     return Vec::new();
   }
   let spec = build_index_spec(style);
-  return build_index_blocks(&spec, &entries, shapers, metrics);
+  return build_index_blocks(&spec, &entries, resources);
 }
 
 /// スタイルから索引生成用の [`typeset::IndexSpec`] を組み立てる。

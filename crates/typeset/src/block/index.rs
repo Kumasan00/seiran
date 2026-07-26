@@ -1,6 +1,6 @@
 //! 巻末索引ブロックの生成パス
 
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
@@ -69,16 +69,11 @@ pub fn sort_index_entries(entries: &mut [IndexEntryInput]) {
 
 /// 索引エントリ列を計測済みのブロック列に変換する
 #[must_use]
-pub fn build_index_blocks(
-  spec: &IndexSpec,
-  entries: &[IndexEntryInput],
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
-) -> Vec<Block> {
+pub fn build_index_blocks(spec: &IndexSpec, entries: &[IndexEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }
-  let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
+  let mut measurer = Measurer::new(resources, Length::ZERO, 1.0, None, true);
   let mut blocks: Vec<Block> = Vec::new();
 
   blocks.push(Block::ComposedLine {

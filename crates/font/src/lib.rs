@@ -13,7 +13,11 @@ use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
 pub mod shaper;
-pub mod validate_font;
+mod system;
+mod validate_font;
+
+pub use system::{FontResources, FontSystem, FontSystemError};
+pub use validate_font::{FontValidationError, FontValidationErrors, MultipleFontValidationErrors};
 
 /// フォントの読み込み・解析エラー。
 #[derive(Debug, Error, Diagnostic)]
