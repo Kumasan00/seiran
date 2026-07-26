@@ -59,7 +59,8 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を本文末尾に追加）
   → ローワリング（typeset::lowering: DocNode → LayoutNode）→ フォント読込・検証
   → (a) build_blocks（typeset::block: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
-  → (prepass) resolve_images（pdf_gen: 画像の自然寸法から width/height を確定）
+  → (prepass) resolve_images（seiran::build_pdf::image_resources: 画像の自然寸法から width/height を
+    確定。旧 pdf_gen::resolve_images、epic #276 / #279 で compiler 側へ移設）
   → (c+d) break_pages（typeset::breaking: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
   → (e) render_pages（pdf_gen: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
   → ファイル出力
@@ -141,7 +142,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）                                                                                                                                                                                                                                                                                                |
 | `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
-| `pdf_gen`  | (e) render_pages: 確定座標を描画 + resolve_images prepass。krilla で PDF 生成                                                                                                                                                                                                                                                                                                        |
+| `pdf_gen`  | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成（画像の自然寸法解決 resolve_images prepass は compiler 側 seiran::build_pdf::image_resources へ移設済み） |
 | `seiran`   | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
 
 ## コーディング規約
