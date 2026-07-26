@@ -29,7 +29,7 @@ impl ImageResources {
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// `seiran::build_pdf` 内でファイルシステムを読む唯一の箇所。ここで保持した生バイト列は
+/// 画像ファイルを読む唯一の箇所。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
 /// # Errors

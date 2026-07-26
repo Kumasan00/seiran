@@ -1,4 +1,4 @@
-//! 画像寸法を解決し、組版済みの [`Publication`] から PDF を生成する。
+//! 組版済みの [`Publication`] から PDF を生成する。
 
 mod error;
 mod font;

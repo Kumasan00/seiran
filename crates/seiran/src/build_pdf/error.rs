@@ -5,6 +5,7 @@ use config::LayoutValidationError;
 use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
 use model::AssetId;
+use pdf_gen::PdfGenError;
 use thiserror::Error;
 use typeset::LoweringError;
 
@@ -132,7 +133,7 @@ pub(super) enum BuildPdfError {
     /// 元の `pdf_gen` デコードエラー。
     #[source]
     #[diagnostic_source]
-    source: pdf_gen::PdfGenError,
+    source: PdfGenError,
   },
 
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
