@@ -7,10 +7,7 @@ mod script;
 mod toc;
 mod yakumono;
 
-use font::{
-  FontMetrics,
-  shaper::{HarfRustShapers, UnicodeBuffer},
-};
+use font::{FontSystem, shaper::UnicodeBuffer};
 pub use index::{IndexEntryInput, IndexPageRef, IndexSpec, build_index_blocks, sort_index_entries};
 use lazy_regex::regex_replace_all;
 use model::{
@@ -54,16 +51,14 @@ fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
 #[must_use]
 pub fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
+  resources: &FontSystem<'_>,
   default_font_size: Length,
   line_height_factor: f32,
   language: Option<&str>,
   punctuation_spacing: bool,
 ) -> Vec<Block> {
   let hyphenation = breaking::resolve_hyphenation(language);
-  let mut measurer =
-    Measurer::new(shapers, metrics, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
+  let mut measurer = Measurer::new(resources, default_font_size, line_height_factor, hyphenation, punctuation_spacing);
   let mut blocks: Vec<Block> = Vec::new();
   let mut paragraph: Vec<HItem> = Vec::new();
   measurer.walk_vertical(layout_nodes, &mut blocks, &mut paragraph, Length::ZERO, Length::ZERO, Align::Left);
@@ -74,10 +69,8 @@ pub fn build_blocks(
 
 /// シェーピング・計測の状態を束ねた内部ワーカー
 pub(crate) struct Measurer<'a> {
-  /// フォント種別ごとのシェイパー
-  shapers: &'a HarfRustShapers<'a>,
-  /// フォント種別ごとのメトリクス
-  metrics: &'a FontMetrics,
+  /// シェイプ・メトリクス取得の窓口
+  resources: &'a FontSystem<'a>,
   /// シェイピングに再利用する `harfrust` バッファ
   buffer: UnicodeBuffer,
   /// 既定のフォントサイズ
@@ -93,16 +86,14 @@ pub(crate) struct Measurer<'a> {
 impl<'a> Measurer<'a> {
   /// シェーパーとメトリクスから新しい `Measurer` を生成する
   pub(crate) fn new(
-    shapers: &'a HarfRustShapers<'a>,
-    metrics: &'a FontMetrics,
+    resources: &'a FontSystem<'a>,
     default_font_size: Length,
     line_height_factor: f32,
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
   ) -> Self {
     return Measurer {
-      shapers,
-      metrics,
+      resources,
       buffer: UnicodeBuffer::new(),
       default_font_size,
       line_height_factor,
@@ -473,7 +464,7 @@ impl Measurer<'_> {
       return;
     }
 
-    let metric = self.metrics.get(run.font_type);
+    let metric = self.resources.metric(run.font_type);
     let mut seg_glyph_start = 0usize;
     let mut seg_byte_start = 0usize;
 
@@ -560,7 +551,7 @@ impl Measurer<'_> {
     if glyphs.is_empty() {
       return;
     }
-    let metric = self.metrics.get(run.font_type);
+    let metric = self.resources.metric(run.font_type);
     let em = run.font_size;
 
     // ICU 分割可能位置（バイト集合）。約物アキ glue の breakable 判定にも使う（禁則は ICU が除く）
@@ -631,7 +622,7 @@ impl Measurer<'_> {
     out: &mut Vec<HItem>,
   ) {
     let src = &run.glyphs[glyph_index];
-    let metric = self.metrics.get(run.font_type);
+    let metric = self.resources.metric(run.font_type);
     #[allow(clippy::cast_possible_truncation)]
     let shift_units = (normalize.shift_em * metric.upem) as i32;
     let glyph = Glyph {
@@ -689,7 +680,7 @@ impl Measurer<'_> {
         };
       })
       .collect();
-    let metric = self.metrics.get(run.font_type);
+    let metric = self.resources.metric(run.font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な
     // 精度で、push_punct_box の shift_units と同じく font unit 空間での意図した truncation。
@@ -714,7 +705,7 @@ impl Measurer<'_> {
   /// 1 セグメントをシェーピングして計測済みの `HBox` を返す
   fn shape_segment(&mut self, text: &str, font_type: FontType, font_size: Length, color: Option<Color>) -> HBox {
     let taken = std::mem::take(&mut self.buffer);
-    let result = self.shapers.get(font_type).shape(taken, text, font_size.to_pt());
+    let result = self.resources.shape(font_type, taken, text, font_size.to_pt());
     let glyph_infos = result.glyph_infos();
     let glyph_positions = result.glyph_positions();
     let mut glyphs: Vec<Glyph> = Vec::with_capacity(glyph_infos.len());
@@ -732,7 +723,7 @@ impl Measurer<'_> {
     }
     self.buffer = result.clear();
 
-    let metric = self.metrics.get(font_type);
+    let metric = self.resources.metric(font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     let width = units_to_length(advance_units, font_size, metric.upem);
     // ascender/descender は font design units（f32）。端数（sub-unit）切り捨ては視覚的に無意味な

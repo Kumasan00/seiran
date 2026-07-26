@@ -1,6 +1,6 @@
 //! ヘッダー・フッター（running header/footer）の配置パス
 
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 use model::{FontKind, HBox, Length, Line, Page, PlacedBlock, PositionedBox};
 use tracing::debug;
 
@@ -61,16 +61,11 @@ pub struct RunningMetadata {
 }
 
 /// 各ページにヘッダー・フッターを配置する
-pub fn build_running_content(
-  pages: &mut [Page],
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
-  spec: &RunningContentSpec,
-) {
+pub fn build_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }
-  let mut measurer = Measurer::new(shapers, metrics, Length::ZERO, 1.0, None, true);
+  let mut measurer = Measurer::new(resources, Length::ZERO, 1.0, None, true);
   for (index, page) in pages.iter_mut().enumerate() {
     if spec.skip_first && index == 0 {
       continue;

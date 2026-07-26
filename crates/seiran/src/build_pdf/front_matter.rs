@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use config::{Style, TocStyle};
-use font::{FontMetrics, shaper::HarfRustShapers};
+use font::FontSystem;
 use model::{Block, FontKind, HeadingKey, HeadingLevel, Page, TextAlignment};
 use tracing::{debug, debug_span, info};
 use typeset::{
@@ -33,8 +33,7 @@ pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFac
     &facts.page_values,
     &title_metadata,
     ctx.style,
-    ctx.shapers,
-    ctx.metrics,
+    ctx.resources,
     ctx.text_width,
   );
   let pages = {
@@ -65,8 +64,7 @@ fn assemble_front_matter(
   page_values: &BodyPageValues,
   title_metadata: &TitlePageMetadata,
   style: &Style,
-  shapers: &HarfRustShapers,
-  metrics: &FontMetrics,
+  resources: &FontSystem<'_>,
   text_width: model::Length,
 ) -> Vec<Block> {
   let default_font_size = style.text.font_size;
@@ -79,8 +77,7 @@ fn assemble_front_matter(
       // タイトルページはハイフネーションしない
       front_blocks.extend(build_blocks(
         title_nodes,
-        shapers,
-        metrics,
+        resources,
         default_font_size,
         line_height_factor,
         None,
@@ -92,7 +89,7 @@ fn assemble_front_matter(
   if style.toc.enabled {
     let toc_entries = collect_toc_entries(headings, page_values, &style.toc);
     let toc_spec = build_toc_spec(style, text_width);
-    let toc_blocks = build_toc_blocks(&toc_spec, &toc_entries, shapers, metrics);
+    let toc_blocks = build_toc_blocks(&toc_spec, &toc_entries, resources);
     if !toc_blocks.is_empty() {
       front_blocks.extend(toc_blocks);
       front_blocks.push(Block::force_break());

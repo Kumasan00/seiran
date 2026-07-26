@@ -254,14 +254,27 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
   種別ごとに並列化する。
 - `shaper`（`pub mod`）: `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・
   バリエーション軸を反映して文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（`pub mod`）: バリエーション軸設定の存在・範囲・完全性を検証する。GSUB / GPOS の
-  スクリプト・言語サポート不足は処理を止めず警告として報告する。
+- `validate_font`（非公開、root facade で `FontValidationError` / `FontValidationErrors` /
+  `MultipleFontValidationErrors` を再エクスポート）: バリエーション軸設定の存在・範囲・完全性を検証する。
+  GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。
+- `system`（非公開、root facade で `FontResources` / `FontSystem` / `FontSystemError` を再エクスポート）:
+  `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
+  寿命関係をここに閉じ込める窓口（issue #278）。`FontResources::load(configs, &font_data)` が検証済みの
+  所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）を構築し、
+  `FontResources::system(configs)` がそれを借用してシェーパー一式を構築し、`shape` / `metric` の
+  2 操作だけを公開する `FontSystem` を返す。`HarfRustShapers` が `FontRefs` と
+  `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
+  まとめると自己参照構造体になる — これを避けて `FontResources`（所有）と `FontSystem`（借用ビュー）の
+  2 段に分けている。呼び出し側（`seiran`）は個々の型の構築順序を一切知らない。
 
 ### 不変条件・注意点
 
 - フォントのサブセット化は行わない（`krilla` が PDF 生成時に内部で実施する）。
 - フォントに触れてよいのは (a) `build_blocks` の計測・シェーピングと (e) 描画だけ。box は (a) で
   width / height / depth を 1 回計測して保持し、`typeset::breaking` 以降はフォントに触れない。
+- フォント資源の構築順序は `font::system` に閉じる。呼び出し側は `FontResources::load` →
+  `FontResources::system` の 2 段呼び出しだけを知り、`ShaperDatas` / `ShaperInstances` /
+  `HarfRustShapers` / `validate_fonts` を直接構築しない。
 
 ## `typeset`
 
@@ -318,7 +331,7 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
-`font` のシェーパーと `FontMetrics` を利用する。
+`font::FontSystem`（シェイプ・メトリクス取得の窓口）を利用する。
 
 **break 注入**は、シェーピング後の `GlyphRun` を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、
 和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は
@@ -473,8 +486,11 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 `build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `render_pdf` /
 `build_font_resource_configs` / `parse_all_sources` / `wrap_lowering_error`）だけを置く。`build_pdf` が
-`FontRefs` / `FontMetrics` を 1 回だけ構築し、`compile_project` と `render_pdf` の両方へ `&` で渡す
-（描画段での再構築はしない）。子 module:
+`font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`render_pdf` 用、`FontRefs` /
+`FontMetrics` へのアクセサを持つ）と `FontSystem`（`compile_project` 用、シェイプ・メトリクス取得の窓口）の
+両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` / `ShaperInstances` /
+`HarfRustShapers` / `FontMetrics`）の構築順序・寿命関係は `font::system` に閉じており、driver はこれを
+知らない（issue #278）。子 module:
 
 - `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
@@ -496,11 +512,12 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 ### compiler core（phase graph）
 
 `compile` の `compile_project` が phase graph 全体をオーケストレーションする。フォント資源
-（`FontRefs` / `FontMetrics`）は driver が構築済みのものを受け取るだけで、ここでは構築しない。phase 順序:
+（`font::FontSystem`）は driver が構築済みのものを受け取って `CompileContext` に束ねるだけで、
+`ShaperDatas` / `ShaperInstances` / `HarfRustShapers` / `FontRefs` の構築は行わない（旧 phase 0 は
+`font::system` へ移設済み）。phase 順序:
 
 | phase | 内容                       | 実装                                  |
 | ----- | -------------------------- | ------------------------------------- |
-| 0     | フォント検証・シェーパー準備 | `compile`                           |
 | 1     | 本文 pagination            | `body::typeset_body` / `BodyLayout`   |
 | 2     | `BodyPageFacts` 確定       | `phase_context`                       |
 | 3     | 前付け生成・pagination     | `front_matter::typeset_front_matter`  |
