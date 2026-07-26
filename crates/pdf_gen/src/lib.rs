@@ -1,4 +1,4 @@
-//! 画像寸法を解決し、組版済みの [`Publication`] から PDF を生成する。
+//! 組版済みの [`Publication`] から PDF を生成する。
 
 mod error;
 mod font;
@@ -13,7 +13,7 @@ use tracing::debug;
 
 pub use crate::{
   error::PdfGenError,
-  image::{ImageSet, load_image_set, resolve_images},
+  image::natural_image_size,
   publication::{
     Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
     PublicationOutlineEntry, PublicationPage, Rect,

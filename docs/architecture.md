@@ -434,9 +434,11 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 (e) 描画。確定座標の `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。`krilla` /
 `krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。`typeset::breaking` に依存しない
 ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
-`PdfGenError`、および `Publication` を組み立てるための入力型・prepass ヘルパのみ（下記）。`Vec<Page>` →
+`PdfGenError`、および `Publication` を組み立てるための入力型・画像デコードヘルパのみ（下記）。`Vec<Page>` →
 `Publication` への変換（旧 `PublicationBuilder`）は compiler 側（`seiran::build_pdf::publication`）に
 移設済み（epic #276 / #277）— pdf_gen は `config::Config` / `model::Page` のどちらにも依存しない。
+画像の自然寸法解決（旧 `resolve_images` prepass）と `ImageSet` も compiler 側
+（`seiran::build_pdf::image_resources`）に移設済み（epic #276 / #279）。
 
 ### モジュール構成
 
@@ -448,9 +450,10 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
   pdf_gen 自前の `FontResourceConfig` / `FontResourceConfigs`（config 非依存の複製）を受け取る
 - `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
   の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
-- `image`: `resolve_images` prepass（画像の自然寸法から width / height を確定）と `ImageSet` /
-  `load_image_set`。`load_image_set` が画像ファイルを読む pdf_gen 内で唯一の箇所で、読んだ生バイト列は
-  `ImageSet::into_image_bytes` で取り出して `ResourceBundle` へ渡す
+- `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
+  薄い公開関数 `natural_image_size` を持つ（デコードの実装は pdf_gen に 1 本化されたまま）。`ImageSet`
+  相当の自然寸法解決・width / height 確定ロジック（旧 `resolve_images` prepass）は compiler 側
+  （`seiran::build_pdf::image_resources`）へ移設済み（epic #276 / #279）
 - `font` / `metadata` / `error`: グリフの krilla 型変換 / PDF メタデータ構築 / `PdfGenError`
 
 ### 不変条件・注意点
@@ -497,6 +500,10 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
   `parse_project` が返す `ImageManifest` に従って driver が別途読み込む
 - `image_manifest`: `parse_project` が本文 `DocNode` 列から集める画像パス一覧 `ImageManifest`（重複なし・
   `AssetId` の昇順）
+- `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
+  `pdf_gen::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
+  `resolve_images`（旧 `pdf_gen::resolve_images`）。driver が読込を 1 回だけ呼び、`resolve_images` は
+  phase 1（`body`）から呼ばれる
 - `page_values`: ページ分割後に確定する値の解決機構。本文ページ列からしか構築できない `BodyPageValues`
   （stage 1）と、前付けページ列確定後にしか得られない `PageLabels`（stage 2）に分け、目次と走り文が必要と
   する確定順序の制約を型で表す
@@ -531,7 +538,8 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
   （`BodyPageValues` + 見出し記録）、`build_page_geometries`。`compile` ↔ 各 phase module の相互依存を
   解消するためにここへ切り出してある
 - `body`: phase 1 の本文パス（lowering → `build_blocks` → `resolve_images` → `break_pages`）を 1 パスに
-  まとめる。脚注がページ単位採番のときだけ後述の solver から複数回呼ばれる（パスの中身自体は変わらない）
+  まとめる（`resolve_images` の実装は `image_resources` へ移設済み、epic #276 / #279）。脚注がページ単位
+  採番のときだけ後述の solver から複数回呼ばれる（パスの中身自体は変わらない）
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
 ### 脚注のページ単位採番（`build_pdf::footnote_numbering`、#226 / #267）
