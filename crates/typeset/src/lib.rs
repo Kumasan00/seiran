@@ -17,4 +17,10 @@ pub use lowering::{
   TableRowLayout, TextStyle, TitlePageMetadata, lower_document, lower_nodes, lower_sources_with_headings,
   lower_title_page, per_page_footnote_numbers,
 };
-pub use model::{TableColumn, column_width};
+pub use model::{
+  Block, CellPlacement, HBox, HBoxContent, HItem, Line, LineFootnote, LineIndexEntry, LineLink, MathRowNumber,
+  PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem,
+  PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, RowLink, TableBox, TableCellBox,
+  TableColumn, TableRowBox, collect_row_links, column_width, layout_row_cells, max_font_size_in_items,
+  measure_items_width, resolve_column_widths, table_row_height,
+};
