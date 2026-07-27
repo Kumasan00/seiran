@@ -296,7 +296,26 @@ Document IR（`DocNode`）から、配置済み直前のブロック列・ペー
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある（旧 `model` から #280 で
-移設）。シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照）。
+移設）。シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照。
+ただし呼び出し元の便宜のため `typeset` root は `pub use font::{Glyph, GlyphRun};` で再エクスポートして
+おり、`typeset::GlyphRun` としても到達できる）。
+
+### `layout`
+
+組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
+所有物にもせず本 module に集約する（旧 `model` から #280 で移設）。
+
+- `block`: `Block`（縦リスト要素 enum）/ `MathRowNumber` / `PENALTY_FORCE_BREAK` / `PENALTY_FORBID_BREAK`
+- `hitem`: `HItem`（水平リストの最小単位）/ `HBox`（計測済みボックス）/ `HBoxContent` / `PlacedHItem`
+- `line`: `Line`（行分割の出力）/ `LineFootnote` / `LineIndexEntry` / `LineLink` / `PositionedBox`
+- `page`: `Page`（縦組版の出力）/ `PlacedAnchor` / `PlacedBlock` / `PlacedFootnote` / `PlacedIndexEntry` /
+  `PlacedLink` / `PlacedMathNumber` / `PlacedTableRow`
+- `table_box`: `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
+  （`measure_items_width` / `max_font_size_in_items` / `resolve_column_widths` / `table_row_height` /
+  `layout_row_cells` / `collect_row_links` / `CellPlacement` / `RowLink`）。フォント非依存
+
+いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。5 ファイルの
+相互参照は `super::` で解決し、`crate::layout::{...}` のパスを通じて `block` / `breaking` 側から使う。
 
 ### `lowering`
 
