@@ -373,12 +373,10 @@ mod tests {
 
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
   use font::{FontDataExt, FontMetricsExt, FontRefsExt};
-  use model::{
-    AnchorId, AnchorMark, FontType, GlyphRun, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn,
-  };
+  use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{FontResourceConfigs, PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
   use typeset::{
-    HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
+    GlyphRun, HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
     PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
   };
 

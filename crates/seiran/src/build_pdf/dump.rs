@@ -290,8 +290,8 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use model::{FontType, GlyphRun, Length};
-  use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
+  use model::{FontType, Length};
+  use typeset::{GlyphRun, HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   use super::dump_pages;
 

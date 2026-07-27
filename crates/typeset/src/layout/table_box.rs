@@ -258,7 +258,8 @@ pub fn collect_row_links(
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorId, ColumnAlign, ColumnWidth, FontType, GlyphRun, LabelId, Length, LinkTarget, TableColumn};
+  use font::GlyphRun;
+  use model::{AnchorId, ColumnAlign, ColumnWidth, FontType, LabelId, Length, LinkTarget, TableColumn};
 
   use super::{
     super::hitem::{HBox, HBoxContent, HItem, PlacedHItem},

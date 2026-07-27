@@ -1,5 +1,6 @@
 //! 確定済みの描画命令を Krilla で PDF に描画する。
 
+use font::GlyphRun;
 use krilla::{
   Document,
   action::{Action, LinkAction},
@@ -107,7 +108,7 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
 }
 
 /// `PaintOp::DrawGlyphRun` を描画する
-fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin: PubPoint, run: &model::GlyphRun) {
+fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin: PubPoint, run: &GlyphRun) {
   let font = resources.fonts.get(run.font_type);
   let upem = resources.font_metrics.get(run.font_type).upem;
   let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);

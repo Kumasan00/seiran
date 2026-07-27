@@ -16,6 +16,7 @@ pub use breaking::{
   BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
   break_pages, resolve_hyphenation,
 };
+pub use font::{Glyph, GlyphRun};
 pub use layout::{
   Block, CellPlacement, HBox, HBoxContent, HItem, Line, LineFootnote, LineIndexEntry, LineLink, MathRowNumber,
   PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem,

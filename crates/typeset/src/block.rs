@@ -7,10 +7,10 @@ mod script;
 mod toc;
 mod yakumono;
 
-use font::{FontSystem, shaper::UnicodeBuffer};
+use font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer};
 pub use index::{IndexEntryInput, IndexPageRef, IndexSpec, build_index_blocks, sort_index_entries};
 use lazy_regex::regex_replace_all;
-use model::{Align, Color, FontKind, FontType, Glyph, GlyphRun, Length};
+use model::{Align, Color, FontKind, FontType, Length};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
 pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
 use tracing::debug;

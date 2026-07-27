@@ -1327,7 +1327,8 @@ fn place_table(
 
 #[cfg(test)]
 mod tests {
-  use model::{ColumnAlign, ColumnWidth, GlyphRun, Length, LinkTarget, TableColumn, TextAlignment};
+  use font::GlyphRun;
+  use model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn, TextAlignment};
 
   use super::{
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, LinePlacement, PageGeometry, break_pages,

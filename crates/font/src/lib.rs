@@ -12,10 +12,12 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
+mod glyph_run;
 pub mod shaper;
 mod system;
 mod validate_font;
 
+pub use glyph_run::{Glyph, GlyphRun};
 pub use system::{FontResources, FontSystem, FontSystemError};
 pub use validate_font::{FontValidationError, FontValidationErrors, MultipleFontValidationErrors};
 

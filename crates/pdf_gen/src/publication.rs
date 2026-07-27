@@ -1,6 +1,7 @@
 //! 描画直前の確定済み中間表現。
 
-use model::{AssetId, Color, GlyphRun};
+use font::GlyphRun;
+use model::{AssetId, Color};
 
 use crate::ResourceBundle;
 
