@@ -7,11 +7,11 @@ use std::{
 
 use config::Style;
 use font::FontSystem;
-use model::{AnchorMark, Block, FontKind, Length, Page, PlacedAnchor, TextAlignment};
+use model::{AnchorMark, FontKind, Length, TextAlignment};
 use tracing::{debug_span, info};
 use typeset::{
-  IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, PageGeometry, TextStyle, build_index_blocks,
-  sort_index_entries,
+  Block, IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, Page, PageGeometry, PlacedAnchor, TextStyle,
+  build_index_blocks, sort_index_entries,
 };
 
 use super::{
@@ -162,7 +162,8 @@ fn break_back_matter(
 #[cfg(test)]
 mod tests {
   use config::PageNumbering;
-  use model::{AnchorMark, Page, PlacedIndexEntry};
+  use model::AnchorMark;
+  use typeset::{Page, PlacedIndexEntry};
 
   use super::{BodyPageValues, collect_index_entries};
 

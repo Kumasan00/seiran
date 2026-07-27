@@ -2,8 +2,9 @@
 
 use std::{collections::HashMap, fs};
 
-use model::{AssetId, Block, Length};
+use model::{AssetId, Length};
 use tracing::debug;
+use typeset::Block;
 
 use super::error::BuildPdfError;
 

@@ -17,7 +17,7 @@ use super::{
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {
   /// 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
-  pub(super) pages: Vec<model::Page>,
+  pub(super) pages: Vec<typeset::Page>,
   /// PDF しおり用の見出し情報（文書順）
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
@@ -75,10 +75,10 @@ pub(super) fn compile_project(
 
 /// 前付け、本文、後付けの順にページ列を連結する。
 fn concat_pages(
-  front_pages: Vec<model::Page>,
-  body_pages: Vec<model::Page>,
-  back_pages: Vec<model::Page>,
-) -> Vec<model::Page> {
+  front_pages: Vec<typeset::Page>,
+  body_pages: Vec<typeset::Page>,
+  back_pages: Vec<typeset::Page>,
+) -> Vec<typeset::Page> {
   let (front_matter_count, body_page_count, back_matter_count) =
     (front_pages.len(), body_pages.len(), back_pages.len());
   let mut pages = front_pages;

@@ -4,9 +4,9 @@
 
 use std::fmt::Write;
 
-use model::{
-  AnchorId, AnchorMark, HBoxContent, Length, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
-  PositionedBox, measure_items_width,
+use model::{AnchorId, AnchorMark, Length, LinkTarget};
+use typeset::{
+  HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
 
 /// ページ列を決定的なテキスト形式へダンプする。
@@ -290,7 +290,8 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use model::{FontType, GlyphRun, HBoxContent, Length, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
+  use model::{FontType, GlyphRun, Length};
+  use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   use super::dump_pages;
 

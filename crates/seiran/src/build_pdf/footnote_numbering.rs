@@ -54,15 +54,15 @@ mod tests {
   use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, solve_per_page_numbering};
 
   /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
-  fn page_with_footnotes(indices: &[u32]) -> model::Page {
-    return model::Page {
+  fn page_with_footnotes(indices: &[u32]) -> typeset::Page {
+    return typeset::Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
       footnotes: indices
         .iter()
         .map(|index| {
-          return model::PlacedFootnote {
+          return typeset::PlacedFootnote {
             number: index + 1,
             index: *index,
             continued: false,

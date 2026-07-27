@@ -1,18 +1,17 @@
-//! 確定ページ列（`Vec<model::Page>`）から `pdf_gen::Publication` への変換
+//! 確定ページ列（`Vec<typeset::Page>`）から `pdf_gen::Publication` への変換
 //!
 //! epic #276 の一環で `pdf_gen` から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
 //! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値を
-//! `model::Page` / `model::PlacedBlock` に載せており、ここはそれを読むだけ。
+//! `typeset::Page` / `typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 
 use std::collections::HashMap;
 
-use model::{
-  AnchorId, AnchorMark, Color, HBoxContent, HItem, LinkTarget as ModelLinkTarget, Page, PlacedBlock, PlacedTableRow,
-};
+use model::{AnchorId, AnchorMark, Color, LinkTarget as ModelLinkTarget};
 use pdf_gen::{
   Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
   PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
+use typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
 use super::compile::LaidOutDocument;
 
@@ -332,14 +331,14 @@ fn push_table_row_ops(
   let max_font = row
     .cells
     .iter()
-    .filter_map(|cell| return model::max_font_size_in_items(&cell.items))
+    .filter_map(|cell| return typeset::max_font_size_in_items(&cell.items))
     .reduce(model::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
   let baseline = band_top + max_font;
 
   let padding = model::Length::pt(table_style.cell_padding.to_pt());
-  for placement in model::layout_row_cells(row, columns, col_widths, padding) {
+  for placement in typeset::layout_row_cells(row, columns, col_widths, padding) {
     push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
   }
 }
@@ -375,11 +374,13 @@ mod tests {
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
   use font::{FontDataExt, FontMetricsExt, FontRefsExt};
   use model::{
-    AnchorId, AnchorMark, FontType, GlyphRun, HBox, HBoxContent, HeadingKey, HeadingLevel, LabelId, Length, Line,
-    LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber,
-    PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,
+    AnchorId, AnchorMark, FontType, GlyphRun, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn,
   };
   use pdf_gen::{FontResourceConfigs, PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
+  use typeset::{
+    HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
+    PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
+  };
 
   use super::build_publication;
   use crate::build_pdf::{compile::LaidOutDocument, outline::OutlineEntry};
@@ -802,7 +803,7 @@ mod tests {
     };
     let row = TableRowBox {
       cells: vec![TableCellBox {
-        items: vec![model::HItem::Box(HBox {
+        items: vec![typeset::HItem::Box(HBox {
           content: HBoxContent::Glyphs(cell_run),
           width: Length::pt(30.0),
           height: Length::pt(10.0),

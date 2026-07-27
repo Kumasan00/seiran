@@ -4,11 +4,11 @@ use std::time::Instant;
 
 use config::{Style, TocStyle};
 use font::FontSystem;
-use model::{Block, FontKind, HeadingKey, HeadingLevel, Page, TextAlignment};
+use model::{FontKind, HeadingKey, HeadingLevel, TextAlignment};
 use tracing::{debug, debug_span, info};
 use typeset::{
-  HeadingRecord, LineBreaker, PageGeometry, TextStyle, TitlePageMetadata, TocEntryInput, TocSpec, build_blocks,
-  build_toc_blocks, lower_title_page,
+  Block, HeadingRecord, LineBreaker, Page, PageGeometry, TextStyle, TitlePageMetadata, TocEntryInput, TocSpec,
+  build_blocks, build_toc_blocks, lower_title_page,
 };
 
 use super::{
@@ -171,8 +171,8 @@ fn break_front_matter(
 #[cfg(test)]
 mod tests {
   use config::{PageNumbering, TocStyle};
-  use model::{AnchorMark, HeadingKey, HeadingLevel, PlacedAnchor};
-  use typeset::HeadingRecord;
+  use model::{AnchorMark, HeadingKey, HeadingLevel};
+  use typeset::{HeadingRecord, PlacedAnchor};
 
   use super::{BodyPageValues, Page, collect_toc_entries};
 
