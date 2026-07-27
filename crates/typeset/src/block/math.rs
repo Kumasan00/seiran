@@ -1,9 +1,12 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::MathBlock`）
 
-use model::{Align, Block, FontType, HBox, Length, MathDelimiter, MathEnvKind, MathRowNumber, PlacedHItem};
+use model::{Align, FontType, Length, MathDelimiter, MathEnvKind};
 
 use super::Measurer;
-use crate::lowering::{LayoutNode, MathBlockRow};
+use crate::{
+  layout::{Block, HBox, MathRowNumber, PlacedHItem},
+  lowering::{LayoutNode, MathBlockRow},
+};
 
 /// セルの列内での水平揃え（環境種別ごとに決まる）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

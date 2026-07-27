@@ -1,11 +1,14 @@
 //! ヘッダー・フッター（running header/footer）の配置パス
 
 use font::FontSystem;
-use model::{FontKind, HBox, Length, Line, Page, PlacedBlock, PositionedBox};
+use model::{FontKind, Length};
 use tracing::debug;
 
 use super::Measurer;
-use crate::lowering::TextStyle;
+use crate::{
+  layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
+  lowering::TextStyle,
+};
 
 /// ヘッダー・フッター配置に必要なプリミティブ設定
 #[derive(Debug, Clone)]
@@ -198,9 +201,10 @@ fn append_slot(
 
 #[cfg(test)]
 mod tests {
-  use model::{HBox, HBoxContent, Length, PositionedBox};
+  use model::Length;
 
   use super::{RunningMetadata, append_slot, slot_width, substitute};
+  use crate::layout::{HBox, HBoxContent, PositionedBox};
 
   /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
   fn box_of_width(w: Length) -> HBox {

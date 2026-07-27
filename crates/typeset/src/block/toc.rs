@@ -1,10 +1,13 @@
 //! 目次（table of contents）ブロックの生成パス
 
 use font::FontSystem;
-use model::{AnchorId, Block, HBox, HeadingKey, HeadingLevel, Length, Line, LineLink, LinkTarget, PositionedBox};
+use model::{AnchorId, HeadingKey, HeadingLevel, Length, LinkTarget};
 
 use super::Measurer;
-use crate::lowering::TextStyle;
+use crate::{
+  layout::{Block, HBox, Line, LineLink, PositionedBox},
+  lowering::TextStyle,
+};
 
 /// 目次生成に必要なプリミティブ設定（`config` 非依存）
 #[derive(Debug, Clone)]

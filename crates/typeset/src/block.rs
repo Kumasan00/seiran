@@ -10,16 +10,17 @@ mod yakumono;
 use font::{FontSystem, shaper::UnicodeBuffer};
 pub use index::{IndexEntryInput, IndexPageRef, IndexSpec, build_index_blocks, sort_index_entries};
 use lazy_regex::regex_replace_all;
-use model::{
-  Align, Block, Color, FontKind, FontType, Glyph, GlyphRun, HBox, HBoxContent, HItem, Length, PENALTY_FORBID_BREAK,
-  PlacedHItem, TableBox, TableCellBox, TableRowBox,
-};
+use model::{Align, Color, FontKind, FontType, Glyph, GlyphRun, Length};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
 pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
 use tracing::debug;
 
 use crate::{
   breaking::{self, BreakKind, BreakPoint, Lang},
+  layout::{
+    Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
+    max_font_size_in_items,
+  },
   lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
 };
 
@@ -232,7 +233,7 @@ impl Measurer<'_> {
       return;
     }
     let items = std::mem::take(paragraph);
-    let dominant_font_size = model::max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+    let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
     blocks.push(Block::Paragraph {
       items,
       leading: dominant_font_size * self.line_height_factor,
@@ -303,7 +304,7 @@ impl Measurer<'_> {
         for child in body {
           self.collect_inline(child, &mut items);
         }
-        let dominant_font_size = model::max_font_size_in_items(&items).unwrap_or(self.default_font_size);
+        let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.default_font_size);
         out.push(HItem::Footnote {
           number,
           index,
@@ -839,12 +840,13 @@ fn boundary_glue(
 
 #[cfg(test)]
 mod boundary_glue_tests {
-  use model::{HItem, Length};
+  use model::Length;
 
   use super::{
     CJK_STRETCH_RATIO, boundary_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
+  use crate::layout::HItem;
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -911,12 +913,13 @@ mod boundary_glue_tests {
 
 #[cfg(test)]
 mod ja_latin_aki_tests {
-  use model::{HItem, Length};
+  use model::Length;
 
   use super::{
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
+  use crate::layout::HItem;
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]

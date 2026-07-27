@@ -1,13 +1,14 @@
 //! (d) 縦組版 — ブロック列をページへ配置する
 
-use model::{
-  AnchorMark, Block, FootnoteId, Length, Line, LinkTarget, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page,
-  PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox,
-  TableRowBox, TextAlignment, collect_row_links, column_width, resolve_column_widths, table_row_height,
-};
+use model::{AnchorMark, FootnoteId, Length, LinkTarget, TextAlignment, column_width};
 use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
+use crate::layout::{
+  Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock,
+  PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox,
+  collect_row_links, resolve_column_widths, table_row_height,
+};
 
 mod footnote_packing;
 
@@ -985,7 +986,7 @@ fn place_paragraph(
   geom: &PageGeometry,
   breaker: &dyn LineBreaker,
   alignment: TextAlignment,
-  items: &[model::HItem],
+  items: &[HItem],
   leading: Length,
   column_width: Length,
   indent: Length,
@@ -1155,8 +1156,8 @@ fn place_single_line(composer: &mut PageComposer, geom: &PageGeometry, mut line:
 fn place_math_block(
   composer: &mut PageComposer,
   geom: &PageGeometry,
-  body: model::HBox,
-  numbers: Vec<model::MathRowNumber>,
+  body: HBox,
+  numbers: Vec<MathRowNumber>,
   numbers_on_right: bool,
   align: model::Align,
   column_width: Length,
@@ -1326,14 +1327,15 @@ fn place_table(
 
 #[cfg(test)]
 mod tests {
-  use model::{
-    Block, ColumnAlign, ColumnWidth, GlyphRun, HBox, HBoxContent, HItem, Length, Line, LinkTarget,
-    PENALTY_FORBID_BREAK, Page, PlacedBlock, TableBox, TableCellBox, TableColumn, TableRowBox, TextAlignment,
-  };
+  use model::{ColumnAlign, ColumnWidth, GlyphRun, Length, LinkTarget, TableColumn, TextAlignment};
 
   use super::{
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, LinePlacement, PageGeometry, break_pages,
     is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
+  };
+  use crate::layout::{
+    Block, HBox, HBoxContent, HItem, Line, LineLink, PENALTY_FORBID_BREAK, Page, PlacedBlock, PositionedBox, TableBox,
+    TableCellBox, TableRowBox,
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -3378,7 +3380,7 @@ mod tests {
     let height = pt(height);
     let depth = pt(depth);
     let links = link.map_or_else(Vec::new, |target| {
-      return vec![model::LineLink {
+      return vec![LineLink {
         target,
         x0: Length::ZERO,
         x1: width,
@@ -3386,7 +3388,7 @@ mod tests {
     });
     return Block::ComposedLine {
       line: Line {
-        boxes: vec![model::PositionedBox {
+        boxes: vec![PositionedBox {
           content: HBoxContent::Rule { width, height },
           x: Length::ZERO,
           dy: Length::ZERO,

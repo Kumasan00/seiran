@@ -5,10 +5,13 @@ use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
 };
-use model::{AnchorId, Block, HBox, Length, Line, LineLink, LinkTarget, PositionedBox};
+use model::{AnchorId, Length, LinkTarget};
 
 use super::Measurer;
-use crate::lowering::TextStyle;
+use crate::{
+  layout::{Block, HBox, Line, LineLink, PositionedBox},
+  lowering::TextStyle,
+};
 
 /// 索引生成に必要なプリミティブ設定（`config` 非依存）
 #[derive(Debug, Clone)]
