@@ -1,7 +1,9 @@
 //! 脚注エリアへの詰め込み計算（#227）— 純粋関数・データのみ。`PageComposer` には依存しない。
 
-use model::{Length, Line};
+use model::Length;
 use tracing::warn;
+
+use crate::layout::Line;
 
 /// `demands` を全行そのまま積んだときの脚注エリアの高さ（pt、固定費込み）を返す（純粋関数）
 pub(super) fn footnote_area_full(demands: &[FootnoteDemand], reserved: Length, charges: FootnoteCharges) -> Length {

@@ -1,8 +1,9 @@
 //! Knuth–Plass 方式の段落全体最適な行分割
 
-use model::{HItem, Length, Line, TextAlignment};
+use model::{Length, TextAlignment};
 
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
+use crate::layout::{HItem, Line};
 
 /// 1 行ぶんの demerits に加える基礎ペナルティ（TeX の `\linepenalty` 相当）
 const LINE_PENALTY: f64 = 10.0;
@@ -255,15 +256,16 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use model::{HItem, Length, TextAlignment};
+  use model::{Length, TextAlignment};
 
   use super::{
     super::test_support::{box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box},
     GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph,
   };
+  use crate::layout::{HItem, Line};
 
   /// 行の右端（box 群の最大右端）
-  fn right_edge(line: &model::Line) -> Length {
+  fn right_edge(line: &Line) -> Length {
     return line.boxes.iter().map(|b| return b.x + b.width).fold(Length::ZERO, Length::max);
   }
 

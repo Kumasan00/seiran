@@ -6,7 +6,9 @@
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use crate::{AnchorMark, AssetId, HBox, Length, Line, LinkTarget, TableColumn, TableRowBox};
+use model::{AnchorMark, AssetId, Length, LinkTarget, TableColumn};
+
+use super::{hitem::HBox, line::Line, table_box::TableRowBox};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]
@@ -59,9 +61,9 @@ pub struct Page {
 /// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
 pub struct PlacedFootnote {
-  /// 発番済みの表示番号（[`crate::LineFootnote`] から素通し）
+  /// 発番済みの表示番号（[`super::line::LineFootnote`] から素通し）
   pub number: u32,
-  /// 出現順の識別子（0 起点。[`crate::LineFootnote`] から素通し）
+  /// 出現順の識別子（0 起点。[`super::line::LineFootnote`] から素通し）
   ///
   /// ページ単位採番の反復（`seiran::build_pdf`）が、確定したページ列から
   /// 「どの脚注に何番を振り直すか」を決めるためのキー。

@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 
 use config::{CounterName, Counters, Style, TheoremClass, TheoremReset, Theorems};
-use model::{HeadingLevel, LabelId, Origin, Page};
+use model::{HeadingLevel, LabelId, Origin};
 
 use super::LoweringError;
+use crate::layout::Page;
 
 mod format;
 
@@ -294,9 +295,10 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
 #[cfg(test)]
 mod tests {
   use config::{CounterName, CounterStyle, Counters, NumberStyle, Style, TheoremClass, TheoremReset};
-  use model::{PlacedFootnote, Span};
+  use model::Span;
 
   use super::*;
+  use crate::layout::PlacedFootnote;
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 

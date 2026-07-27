@@ -1,7 +1,7 @@
 //! グリフを Krilla の型へ変換する。
 
+use font::Glyph;
 use krilla::text::{GlyphId, KrillaGlyph};
-use model::Glyph;
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。
 #[allow(clippy::cast_precision_loss)]

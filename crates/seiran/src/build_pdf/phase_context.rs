@@ -58,7 +58,7 @@ pub(super) struct BodyPageFacts {
 impl BodyPageFacts {
   /// 確定した本文ページ列と見出し記録から組み立てる。
   pub(super) fn new(
-    body_pages: &[model::Page],
+    body_pages: &[typeset::Page],
     headings: Vec<typeset::HeadingRecord>,
     numbering: &config::PageNumbering,
   ) -> Self {

@@ -14,7 +14,7 @@ use super::{
 #[derive(Debug)]
 pub(super) struct BodyLayout {
   /// 確定した本文ページ列
-  pub(super) pages: Vec<model::Page>,
+  pub(super) pages: Vec<typeset::Page>,
   /// 目次・しおり用の見出し情報（文書順）
   pub(super) headings: Vec<typeset::HeadingRecord>,
 }

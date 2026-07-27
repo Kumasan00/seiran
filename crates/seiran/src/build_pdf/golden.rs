@@ -12,7 +12,8 @@ use std::{
 use citation::{References, read_references};
 use config::{Config, Style};
 use font::{FontData, FontDataExt};
-use model::{AnchorMark, Length, Page, PlacedBlock};
+use model::{AnchorMark, Length};
+use typeset::{Page, PlacedBlock};
 
 use super::{build_pages, dump::dump_pages};
 
@@ -312,18 +313,18 @@ fn long_footnote_splits_across_pages_without_overlapping_body() {
 }
 
 /// 配置済みブロックの上端（脚注領域の重なり判定に使う。行・罫線のみを見る）
-fn block_top(block: &model::PlacedBlock) -> Option<Length> {
+fn block_top(block: &PlacedBlock) -> Option<Length> {
   return match block {
-    model::PlacedBlock::Line { line, baseline_y } => Some(*baseline_y - line.height),
-    model::PlacedBlock::Rule { y, .. } => Some(*y),
+    PlacedBlock::Line { line, baseline_y } => Some(*baseline_y - line.height),
+    PlacedBlock::Rule { y, .. } => Some(*y),
     _ => None,
   };
 }
 
 /// 配置済みブロックの下端（本文の重なり判定に使う。行のみを見る）
-fn block_bottom(block: &model::PlacedBlock) -> Option<Length> {
+fn block_bottom(block: &PlacedBlock) -> Option<Length> {
   return match block {
-    model::PlacedBlock::Line { line, baseline_y } => Some(*baseline_y + line.depth),
+    PlacedBlock::Line { line, baseline_y } => Some(*baseline_y + line.depth),
     _ => None,
   };
 }

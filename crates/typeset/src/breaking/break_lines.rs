@@ -1,8 +1,8 @@
 //! (c) 行分割
 
-use model::{
-  HBox, HItem, Length, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox, TextAlignment,
-};
+use model::{Length, LinkTarget, TextAlignment};
+
+use crate::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
 
 mod greedy;
 mod knuth_plass;
@@ -243,7 +243,9 @@ pub(super) fn build_line(
 /// 行分割テストの共有フィクスチャ（[`greedy`] / [`knuth_plass`] 両モジュールのテストが使う）
 #[cfg(test)]
 pub(super) mod test_support {
-  use model::{HBox, HBoxContent, HItem, Length};
+  use model::Length;
+
+  use crate::layout::{HBox, HBoxContent, HItem};
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
   fn pt(value: f32) -> Length { return Length::pt(value); }
