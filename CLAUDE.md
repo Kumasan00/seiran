@@ -88,8 +88,9 @@ lowering →(a)→(c+d) をページ割り当てが安定するまで反復す�
 ```text
 model （依存なし（serde / garde のみ）— 全段共有のデータモデル。旧 types / document / hlist の
         コア型 3 クレートを統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
-        ColumnWidth 等の共通型・Document IR（DocNode / InlineNode / MathNode）・組版コア型
-        （Block / Page / HItem / GlyphRun / TableBox）+ 計測ヘルパを持つ。
+        ColumnWidth 等の共通型 + Document IR（DocNode / InlineNode / MathNode）のみを持つ。
+        組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
+        （GlyphRun / Glyph）は font クレートへ移設済み（#280、model は意味モデルと共通値型に縮小）。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
   ↑ config, citation, frontend, font, typeset, pdf_gen, seiran
 
@@ -107,7 +108,9 @@ citation （model, config に依存。参照定義ファイル（references.toml
           CSL 整形・書誌生成まで行う）
   ↑ seiran
 
-font （model, config に依存。read-fonts / harfrust / rayon を使用）
+font （model, config に依存。read-fonts / harfrust / rayon を使用。シェーピング結果型 GlyphRun / Glyph
+      を持つ（#280 で model から移設。typeset・pdf_gen 双方が既に font に依存済みだったため新規
+      Cargo 依存を増やさずに済む置き場所として選んだ））
   ↑ typeset, pdf_gen, seiran
 
 typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
@@ -116,7 +119,10 @@ typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering
           （lowering、採番・`\ref` 解決も担う）→ (a) build_blocks（block、シェーピング + 計測 +
           break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
           （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
-          3 module とも非公開で、公開 API はクレート root の `pub use` に揃える）
+          組版中間型（Block / HItem / Line / Page / TableBox 系）は非公開 module layout に集約し
+          （#280、旧 model から移設。block/breaking 双方から対称参照されるためどちらの所有物にも
+          しない）、公開 API はクレート root の `pub use` に揃える。lowering / block / breaking /
+          layout の 4 module とも非公開）
   ↑ seiran
 
 pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
@@ -136,12 +142,12 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 
 | クレート   | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode` + 組版コア型 `Block` / `Page` / `HItem` / `GlyphRun` / `TableBox`）                                                                                                                                            |
+| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade）                                                                                                                                                                                                                                                                   |
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
-| `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）                                                                                                                                                                                                                                                                                                |
-| `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は `model` にある） |
+| `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
+| `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）|
 | `pdf_gen`  | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成（画像の自然寸法解決 resolve_images prepass は compiler 側 seiran::build_pdf::image_resources へ移設済み） |
 | `seiran`   | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
 

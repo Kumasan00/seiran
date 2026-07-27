@@ -27,15 +27,17 @@
 
 ### モジュール構成
 
-4 層に分かれる（すべて非公開 module。`length` だけは garde のカスタムバリデータを名前空間付きで
-参照するため `pub mod`）。
+3 層に分かれる（すべて非公開 module。`length` だけは garde のカスタムバリデータを名前空間付きで
+参照するため `pub mod`）。組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）と
+シェーピング結果型（`GlyphRun` / `Glyph`）はここには置かない（#280、後述）。
 
 - **語彙型**: `align`（`Align`）/ `color`（`Color`）/ `font`（`FontType` / `FontKind`）/ `font_map`
   （`FontMap`）/ `heading_level`（`HeadingLevel`）/ `length`（`Length`）/ `table_column`
   （`TableColumn` / `ColumnAlign` / `ColumnWidth`）/ `text_alignment`（`TextAlignment`）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
-  `span`（`Span`）。小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
-  `Display`）・純粋演算（`Length` の算術、`Align::offset`）のみを持つ。
+  `span`（`Span`）/ `column_width`（段組みの 1 段あたりの幅を求める純粋計算）。小さな `Copy` 値型・enum
+  と、その正準変換（`as_str` / `from_name` / serde / `Display`）・純粋演算（`Length` の算術、
+  `Align::offset`）のみを持つ。
 - **起源識別子**: `origin` が `SourceId(usize)` / `Origin`（`Source(SourceId)` /
   `Generated(GeneratedOrigin)`）/ `GeneratedOrigin`（現状 `Bibliography` の 1 variant）を持ち、
   `ids` が `LabelId` / `CitationId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
@@ -45,11 +47,6 @@
   （`ListItem`）/ `quote`（`QuoteKind`）/ `table`（`TableRow` / `TableCell`）。`frontend`（生産者）と
   `typeset::lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみを持ち、物理レイアウト
   情報は持たない。
-- **組版コア型**: `block`（`Block` / `MathRowNumber` / `PENALTY_FORCE_BREAK` / `PENALTY_FORBID_BREAK`）/
-  `hitem`（`HItem` / `HBox` / `HBoxContent` / `PlacedHItem`）/ `line`（`Line` とその付随情報）/ `page`
-  （`Page` / `PlacedBlock` / `PlacedFootnote` 等）/ `glyph_run`（`GlyphRun` / `Glyph`）/ `table_box`
-  （`TableBox` と表の純粋計測ヘルパ `measure_items_width` / `max_font_size_in_items` /
-  `resolve_column_widths` / `table_row_height` / `layout_row_cells`）/ `column_width`。フォント非依存。
 
 ### 不変条件・注意点
 
@@ -74,6 +71,13 @@
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
   ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は frontend →
   lowering → block の複数段が共有するので `model` にあるのが正しい — ファイル名だけを見て移さない。
+- **組版中間型は model に置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と
+  その表計測ヘルパは `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果
+  `GlyphRun` / `Glyph` は `font` crate の公開型（`font` 節参照）。いずれも消費者が model のように
+  複数クレートへ広がっているわけではなく、`typeset` 内の複数 module（`block` / `breaking`）や
+  `typeset` と `pdf_gen` の 2 crate にとどまるため、「複数 consumer の型でも consumer が同一 crate
+  内 / 同一依存関係内にとどまるなら crate 外（model）ではなくその内部へ置く」という判断で model の
+  外へ移した（#280）。
 
 ## `config`
 
@@ -252,6 +256,11 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
   与える拡張トレイト `FontDataExt` / `FontRefsExt` / `FontMetricsExt`、1 フォントぶんのメトリクス
   `FontMetric`（upem / ascender / descender の一元化）、エラー `FontLoadError`。読み込みは `rayon` で
   種別ごとに並列化する。
+- `glyph_run`（非公開、root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング結果 1 個の
+  グリフ列とその配置情報。値は `Color` / `FontType` / `Length` という model の共通値型にしか依存しない
+  leaf 型だが、`typeset::block`（生成）と `pdf_gen`（最終描画）の双方が同じ型を必要とし、どちらも既に
+  `font` crate に依存済みだったため、新規 Cargo 依存を増やさずに置ける唯一の場所として `model` から
+  ここへ移した（#280）。
 - `shaper`（`pub mod`）: `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・
   バリエーション軸を反映して文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
 - `validate_font`（非公開、root facade で `FontValidationError` / `FontValidationErrors` /
@@ -281,9 +290,13 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
 ### 責務
 
 Document IR（`DocNode`）から、配置済み直前のブロック列・ページ列までの組版パスを統合する。`lowering` /
-`block` / `breaking` の 3 module はすべて非公開で、公開 API はクレート root の `pub use` に揃える
-（`typeset::lower_document` / `typeset::build_blocks` / `typeset::break_pages` 等。`typeset::lowering::...`
-は使わない）。
+`block` / `breaking` / `layout` の 4 module はすべて非公開で、公開 API はクレート root の `pub use` に
+揃える（`typeset::lower_document` / `typeset::build_blocks` / `typeset::break_pages` /
+`typeset::Block` / `typeset::Page` 等。`typeset::lowering::...` / `typeset::layout::...` は使わない）。
+`layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
+配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
+縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある（旧 `model` から #280 で
+移設）。シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照）。
 
 ### `lowering`
 
@@ -369,7 +382,7 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 ### `breaking`
 
-フォント非依存の純粋組版パス（コア型は `model` にあり、本 module には純粋パス本体だけが残る）。
+フォント非依存の純粋組版パス（コア型は `typeset::layout` にあり、本 module には純粋パス本体だけが残る）。
 
 - (b) `break_opportunities`: ICU の `LineSegmenter`（UAX #14）に `hyphenation`（`hypher`）の欧文語中分割点
   （`BreakKind::Hyphen`）を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決する
@@ -436,7 +449,7 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
 `PdfGenError`、および `Publication` を組み立てるための入力型・画像デコードヘルパのみ（下記）。`Vec<Page>` →
 `Publication` への変換（旧 `PublicationBuilder`）は compiler 側（`seiran::build_pdf::publication`）に
-移設済み（epic #276 / #277）— pdf_gen は `config::Config` / `model::Page` のどちらにも依存しない。
+移設済み（epic #276 / #277）— pdf_gen は `config::Config` / `typeset::Page` のどちらにも依存しない。
 画像の自然寸法解決（旧 `resolve_images` prepass）と `ImageSet` も compiler 側
 （`seiran::build_pdf::image_resources`）に移設済み（epic #276 / #279）。
 
@@ -454,20 +467,21 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
   薄い公開関数 `natural_image_size` を持つ（デコードの実装は pdf_gen に 1 本化されたまま）。`ImageSet`
   相当の自然寸法解決・width / height 確定ロジック（旧 `resolve_images` prepass）は compiler 側
   （`seiran::build_pdf::image_resources`）へ移設済み（epic #276 / #279）
-- `font` / `metadata` / `error`: グリフの krilla 型変換 / PDF メタデータ構築 / `PdfGenError`
+- `font` / `metadata` / `error`: グリフ（`font::Glyph`）の krilla 型変換 / PDF メタデータ構築 /
+  `PdfGenError`
 
 ### 不変条件・注意点
 
 - **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
   集合）。ここを増やすときは「前段で決められない描画か」を確認する。
 - **`Style` / `Config` に依存しない**。表のセル余白 / 罫線太さ / 罫線色・ページ背景色は前段
-  （`typeset::breaking`）が `Style` から解決済みの値として `model::Page.background_color` /
-  `model::PlacedBlock::Table` の `cell_padding` / `rule_thickness` / `rule_color` に載せており、左マージン・
+  （`typeset::breaking`）が `Style` から解決済みの値として `typeset::Page.background_color` /
+  `typeset::PlacedBlock::Table` の `cell_padding` / `rule_thickness` / `rule_color` に載せており、左マージン・
   ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`seiran::build_pdf::publication`）が
   `config::Config` から読んで `Publication` に前倒し解決してから渡す。
 - `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
   `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
-  行わない。`model::Page` / `Config` / `Style` を直接読む旧描画経路は削除済みで、復活させない。
+  行わない。`typeset::Page` / `Config` / `Style` を直接読む旧描画経路は削除済みで、復活させない。
 - 既知の制限: 表セル内の脚注はページ列に配置されない。
 
 ## `seiran`
@@ -510,7 +524,7 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 - `outline`: 見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる `collect_outline_entries`。
   `OutlineEntry` はここで定義する（旧 `pdf_gen::OutlineEntry` を移設。生産者・消費者とも compiler 側だけ
   になったため）
-- `publication`: `LaidOutDocument`（`Vec<model::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
+- `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
   `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
   epic #276 / #277）
 - `error`: `BuildPdfError`（各クレートのエラーを束ね、`Origin::Source` なら `NamedSource` を紐付け、
