@@ -121,8 +121,12 @@ typeset （font, config, model, icu, hypher, lazy-regex に依存。旧 lowering
           （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
           組版中間型（Block / HItem / Line / Page / TableBox 系）は非公開 module layout に集約し
           （#280、旧 model から移設。block/breaking 双方から対称参照されるためどちらの所有物にも
-          しない）、公開 API はクレート root の `pub use` に揃える。lowering / block / breaking /
-          layout の 4 module とも非公開）
+          しない）。段の呼び出し順序（lowering → build_blocks → 画像サイズ確定 → break_pages 等）は
+          非公開 module pipeline の layout_body / layout_front_matter / layout_back_matter /
+          layout_running_content に閉じ、build_blocks / break_pages / build_toc_blocks /
+          build_index_blocks / resolve_hyphenation は個別には公開しない（#281）。公開 API はクレート
+          root の `pub use` に揃える。lowering / block / breaking / layout / pipeline の 5 module
+          とも非公開）
   ↑ seiran
 
 pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
@@ -147,7 +151,7 @@ seiran （エントリーポイント。全クレートを統合してパイプ�
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
-| `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）|
+| `typeset`  | Document IR → 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が DocNode → LayoutNode 変換 + 採番・`\ref` 解決、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
 | `pdf_gen`  | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成（画像の自然寸法解決 resolve_images prepass は compiler 側 seiran::build_pdf::image_resources へ移設済み） |
 | `seiran`   | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
 

@@ -1,11 +1,12 @@
 //! 巻末索引ブロックの生成パス
 
+use config::Style;
 use font::FontSystem;
 use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
 };
-use model::{AnchorId, Length, LinkTarget};
+use model::{AnchorId, FontKind, Length, LinkTarget};
 
 use super::Measurer;
 use crate::{
@@ -13,9 +14,9 @@ use crate::{
   lowering::TextStyle,
 };
 
-/// 索引生成に必要なプリミティブ設定（`config` 非依存）
+/// 索引生成に必要なプリミティブ設定。
 #[derive(Debug, Clone)]
-pub struct IndexSpec {
+pub(crate) struct IndexSpec {
   /// 索引ページのタイトル文字列（例: `"Index"`）
   pub title: String,
   /// タイトル文字列の書体
@@ -70,9 +71,40 @@ pub fn sort_index_entries(entries: &mut [IndexEntryInput]) {
   });
 }
 
+/// スタイルから索引生成用の [`IndexSpec`] を組み立てる。
+pub(crate) fn build_index_spec(style: &Style) -> IndexSpec {
+  let index = &style.index;
+  return IndexSpec {
+    title: index.title.clone(),
+    title_style: TextStyle {
+      font_size: index.title_font_size,
+      font_kind: FontKind::Serif,
+      color: None,
+    },
+    title_bottom_margin: index.title_bottom_margin,
+    entry_style: TextStyle {
+      font_size: index.font_size,
+      font_kind: FontKind::Serif,
+      color: None,
+    },
+    page_number_style: TextStyle {
+      font_size: index.font_size,
+      font_kind: FontKind::Serif,
+      color: style.hyperref.link_color,
+    },
+    entry_gap: index.entry_gap,
+    line_height_factor: style.text.line_height_factor,
+    bottom_margin: index.bottom_margin,
+  };
+}
+
 /// 索引エントリ列を計測済みのブロック列に変換する
 #[must_use]
-pub fn build_index_blocks(spec: &IndexSpec, entries: &[IndexEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
+pub(crate) fn build_index_blocks(
+  spec: &IndexSpec,
+  entries: &[IndexEntryInput],
+  resources: &FontSystem<'_>,
+) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }

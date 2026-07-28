@@ -290,15 +290,37 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
 ### 責務
 
 Document IR（`DocNode`）から、配置済み直前のブロック列・ページ列までの組版パスを統合する。`lowering` /
-`block` / `breaking` / `layout` の 4 module はすべて非公開で、公開 API はクレート root の `pub use` に
-揃える（`typeset::lower_document` / `typeset::build_blocks` / `typeset::break_pages` /
-`typeset::Block` / `typeset::Page` 等。`typeset::lowering::...` / `typeset::layout::...` は使わない）。
+`block` / `breaking` / `layout` / `pipeline` の 5 module はすべて非公開で、公開 API はクレート root の
+`pub use` に揃える。段順序（lowering → `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline`
+module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶのは次の入口関数だけである（issue #281）。
+
+- `layout_body`: 本文パス 1 回ぶん。lowering → `build_blocks` → 画像サイズ確定（`resolve_images`
+  クロージャを注入で受け取る。typeset は画像デコードに依存しないため呼び出し元が実装する）→
+  `break_pages` を 1 呼び出しに畳む。入力 `BodyLayoutInput` / 出力 `BodyLayout` / エラー
+  `BodyLayoutError<E>`（`E` は `resolve_images` クロージャのエラー型のジェネリクス）
+- `layout_front_matter`: タイトルページ・目次のブロック組み立て（`TocEntryInput` 列を受け取る）と
+  `break_pages` を畳む。入力 `FrontMatterInput`
+- `layout_back_matter`: 巻末索引のブロック組み立て（`IndexEntryInput` 列を受け取る）と `break_pages`
+  を畳む。入力 `BackMatterInput`
+- `layout_running_content`: 確定ページ列にヘッダー・フッターを配置する（旧 `build_running_content`。
+  他 3 関数と異なり元から単発呼び出しのため改名のみ）
+
+`build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` / `resolve_hyphenation` /
+`break_opportunities` はこれらの入口関数からのみ呼ばれる非公開実装になり、個別には公開しない
+（acceptance criteria）。`lower_document` / `lower_nodes` / `lower_sources_with_headings` /
+`LoweringContext` / `SourceGroup` / `LayoutNode` は例外的に公開のまま残す —
+`crates/typeset/tests/smoke.rs`（crate 外統合テスト）が直接呼ぶため。`LineBreaker` トレイトと
+`KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam なので入口関数の引数として公開を維持する。
+
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある（旧 `model` から #280 で
-移設）。シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照。
-ただし呼び出し元の便宜のため `typeset` root は `pub use font::{Glyph, GlyphRun};` で再エクスポートして
-おり、`typeset::GlyphRun` としても到達できる）。
+移設）。`Page` / `Block` は入口関数の入出力境界型として引き続き公開する一方、`HItem` / `HBoxContent` /
+`PlacedTableRow` 等の内部ツリー型は `crates/seiran/src/build_pdf/publication.rs` / `dump.rs` が直接
+走査するために公開のまま残っている（組版中間型の所有者移動は #281 のスコープ外・別 issue）。
+シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照）。
+`typeset` root からの `Glyph` / `GlyphRun` 再エクスポートは廃止した（消費者は `font::Glyph` /
+`font::GlyphRun` を直接 import する）。
 
 ### `layout`
 
@@ -388,8 +410,9 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 
 - `math`: ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::MathBlock`）
 - `script`: スクリプト判定・分割
-- `running`: `build_running_content` が `break_pages` 後（ページ数確定後）にヘッダー・フッターをトークン
-  展開・シェーピングして各 `Page::header` / `footer` に `PlacedBlock` として配置する
+- `running`: `layout_running_content`（公開名、旧 `build_running_content`）が `break_pages` 後
+  （ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に
+  `PlacedBlock` として配置する
 - `toc`: 目次ブロック生成（ページ分割で見出しのページ番号が確定した後に走る）
 - `index`: 巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・
   リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート
@@ -570,9 +593,11 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
   本文 / 前付け / 後付けの `PageGeometry`）と、本文 pagination 確定後の事実 `BodyPageFacts`
   （`BodyPageValues` + 見出し記録）、`build_page_geometries`。`compile` ↔ 各 phase module の相互依存を
   解消するためにここへ切り出してある
-- `body`: phase 1 の本文パス（lowering → `build_blocks` → `resolve_images` → `break_pages`）を 1 パスに
-  まとめる（`resolve_images` の実装は `image_resources` へ移設済み、epic #276 / #279）。脚注がページ単位
-  採番のときだけ後述の solver から複数回呼ばれる（パスの中身自体は変わらない）
+- `body`: phase 1 の本文パス。段順序（lowering → `build_blocks` → `resolve_images` → `break_pages`）は
+  `typeset::layout_body` 1 呼び出しに畳んである（issue #281）。`resolve_images`（実装は
+  `image_resources`、epic #276 / #279）は typeset が画像デコードに依存しないよう、`layout_body` に
+  クロージャとして注入する。脚注がページ単位採番のときだけ後述の solver から複数回呼ばれる
+  （パスの中身自体は変わらない）
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
 ### 脚注のページ単位採番（`build_pdf::footnote_numbering`、#226 / #267）

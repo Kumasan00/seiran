@@ -3,8 +3,9 @@
 //! 番号とページ割り当ての循環をこのモジュールに閉じ込める。
 
 use tracing::debug;
+use typeset::BodyLayout;
 
-use super::{body::BodyLayout, error::BuildPdfError};
+use super::error::BuildPdfError;
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///

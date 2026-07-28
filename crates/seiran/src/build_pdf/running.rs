@@ -15,7 +15,7 @@ use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
 pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [typeset::Page], page_labels: PageLabels) {
   let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
-  typeset::build_running_content(pages, ctx.resources, &spec);
+  typeset::layout_running_content(pages, ctx.resources, &spec);
   info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 

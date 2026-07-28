@@ -372,11 +372,11 @@ mod tests {
   use std::path::PathBuf;
 
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
-  use font::{FontDataExt, FontMetricsExt, FontRefsExt};
+  use font::{FontDataExt, FontMetricsExt, FontRefsExt, GlyphRun};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{FontResourceConfigs, PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
   use typeset::{
-    GlyphRun, HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
+    HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
     PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
   };
 

@@ -1,18 +1,17 @@
-//! 後付け（巻末索引）の組み立てとページ分割
+//! 後付け（巻末索引）のページ分割オーケストレーション
+//!
+//! ブロックの組み立て順序自体は `typeset::layout_back_matter` に閉じている。ここでは本文全
+//! ページから索引語を集約する（`BodyPageValues` 依存のため typeset に移せない、phase レベルの
+//! 計装ごと）だけを担う。
 
 use std::{
   collections::{BTreeMap, BTreeSet},
   time::Instant,
 };
 
-use config::Style;
-use font::FontSystem;
-use model::{AnchorMark, FontKind, Length, TextAlignment};
-use tracing::{debug_span, info};
-use typeset::{
-  Block, IndexEntryInput, IndexPageRef, IndexSpec, LineBreaker, Page, PageGeometry, PlacedAnchor, TextStyle,
-  build_index_blocks, sort_index_entries,
-};
+use model::{AnchorMark, Length};
+use tracing::info;
+use typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries};
 
 use super::{
   elapsed_ms,
@@ -30,17 +29,15 @@ pub(super) fn typeset_back_matter(
   facts: &BodyPageFacts,
 ) -> Vec<Page> {
   let stage_start = Instant::now();
-  let back_blocks = assemble_back_matter(body_pages, &facts.page_values, ctx.style, ctx.resources);
-  let pages = {
-    let _span = debug_span!("break_pages", region = "back").entered();
-    break_back_matter(
-      back_blocks,
-      ctx.text_width,
-      &ctx.back_geometry,
-      &typeset::KnuthPlassBreaker,
-      ctx.style.text.alignment,
-    )
+  let entries = collect_index_entries(body_pages, &facts.page_values);
+  let input = BackMatterInput {
+    style: ctx.style,
+    resources: ctx.resources,
+    text_width: ctx.text_width,
+    geometry: &ctx.back_geometry,
+    breaker: &typeset::KnuthPlassBreaker,
   };
+  let pages = typeset::layout_back_matter(&input, &entries);
   info!(
     back_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -99,64 +96,6 @@ pub(super) fn collect_index_entries(
     .collect();
   sort_index_entries(&mut entries);
   return entries;
-}
-
-/// 索引ブロック（タイトル → エントリ列）を組み立てる。
-///
-/// `\index` が 1 個もなければ空ベクタを返す（索引ページを出さない）。
-fn assemble_back_matter(
-  body_pages: &mut [Page],
-  body_page_values: &BodyPageValues,
-  style: &Style,
-  resources: &FontSystem<'_>,
-) -> Vec<Block> {
-  let entries = collect_index_entries(body_pages, body_page_values);
-  if entries.is_empty() {
-    return Vec::new();
-  }
-  let spec = build_index_spec(style);
-  return build_index_blocks(&spec, &entries, resources);
-}
-
-/// スタイルから索引生成用の [`typeset::IndexSpec`] を組み立てる。
-fn build_index_spec(style: &Style) -> IndexSpec {
-  let index = &style.index;
-  return IndexSpec {
-    title: index.title.clone(),
-    title_style: TextStyle {
-      font_size: index.title_font_size,
-      font_kind: FontKind::Serif,
-      color: None,
-    },
-    title_bottom_margin: index.title_bottom_margin,
-    entry_style: TextStyle {
-      font_size: index.font_size,
-      font_kind: FontKind::Serif,
-      color: None,
-    },
-    page_number_style: TextStyle {
-      font_size: index.font_size,
-      font_kind: FontKind::Serif,
-      color: style.hyperref.link_color,
-    },
-    entry_gap: index.entry_gap,
-    line_height_factor: style.text.line_height_factor,
-    bottom_margin: index.bottom_margin,
-  };
-}
-
-/// 索引専用のページジオメトリでブロックを分割する。
-fn break_back_matter(
-  back_blocks: Vec<Block>,
-  text_width: Length,
-  back_geometry: &PageGeometry,
-  breaker: &dyn LineBreaker,
-  alignment: TextAlignment,
-) -> Vec<Page> {
-  if back_blocks.is_empty() {
-    return Vec::new();
-  }
-  return typeset::break_pages(back_blocks, text_width, back_geometry, breaker, alignment);
 }
 
 #[cfg(test)]
