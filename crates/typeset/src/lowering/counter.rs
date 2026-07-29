@@ -109,24 +109,21 @@ impl CounterRegistry {
     source: Origin,
   ) -> Result<Option<String>, LoweringError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
-    let (counter, number_format, display_name, unnumbered) = {
+    let (counter, display_name, unnumbered) = {
       let def = self.theorems.get(class);
-      (def.counter.clone(), def.number_format.clone(), def.display_name.clone(), def.unnumbered)
+      (def.counter.clone(), def.display_name.clone(), def.unnumbered)
     };
     if unnumbered {
       return Ok(None);
     }
 
-    let value = {
-      let v = self.theorem_values.entry(counter).or_insert(0);
-      *v += 1;
-      *v
-    };
-    let number = self.expand_theorem_template(&number_format, value);
+    *self.theorem_values.entry(counter).or_insert(0) += 1;
+    let counter_value = self.theorem_counter_value(class);
+    let number = self.format_counter_value(&counter_value);
 
     if let Some(l) = label {
       let formatted = expand_ref_format("{display_name} {number}", &number, &display_name);
-      if !self.register_formatted_label(l.to_string(), formatted) {
+      if !self.register_formatted_label(l.to_string(), counter_value, formatted) {
         return Err(LoweringError::DuplicateLabel {
           label: l.to_string(),
           span: super::span_to_source_span(span),
@@ -180,6 +177,60 @@ impl CounterRegistry {
     return self.defs.get(name).number_style.render(self.value(name));
   }
 
+  /// 指定カウンタの現在値を、祖先チェーンを辿って [`CounterValue`] として返す
+  ///
+  /// 表示側フィールド（`number_format` 等）は一切参照しない。祖先は「自分を `resets` に
+  /// 含み、かつ `CounterName::ALL` の宣言順で自身より手前にあるカウンタのうち最も近いもの」
+  /// を 1 段ずつ遡って求める（`resets` は値に影響する構造データであり、issue #282 の
+  /// style 分類では「値側」に属する）。既定の `Counters` は祖先の `resets` に子孫を平坦に
+  /// 列挙する（例: `part.resets` は `chapter` を含む）ため、探索範囲を「自身より手前」に
+  /// 限定して最も近い候補を選ぶ。これにより祖先の飛び越え（`part` が `section` の直接の
+  /// 親と誤認されること）を防ぎ、かつ候補の添字が再帰のたびに単調に減るため必ず停止する
+  #[must_use]
+  pub(crate) fn counter_value(&self, name: CounterName) -> CounterValue {
+    let mut parts = self.ancestor_values(name);
+    parts.push(self.value(name));
+    return CounterValue {
+      kind: CounterKind::Counter(name),
+      parts,
+    };
+  }
+
+  /// `name` の祖先カウンタの現在値を、最も遠い祖先から順に集める（末尾が直近の親）
+  fn ancestor_values(&self, name: CounterName) -> Vec<u32> {
+    let own_index = CounterName::ALL
+      .iter()
+      .position(|candidate| return *candidate == name)
+      .expect("CounterName::ALL は全 9 バリアントを含む");
+    let parent = CounterName::ALL[..own_index]
+      .iter()
+      .rev()
+      .find(|candidate| return self.defs.get(**candidate).resets.contains(&name))
+      .copied();
+    let Some(parent) = parent else {
+      return Vec::new();
+    };
+    let mut chain = self.ancestor_values(parent);
+    chain.push(self.value(parent));
+    return chain;
+  }
+
+  /// 定理クラスの現在値を、`reset_by` が指す見出しカウンタを祖先として [`CounterValue`] で返す
+  #[must_use]
+  pub(crate) fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
+    let def = self.theorems.get(class);
+    let own = *self.theorem_values.get(&def.counter).unwrap_or(&0);
+    let mut parts = match theorem_reset_counter_name(def.reset_by) {
+      Some(heading_counter) => vec![self.value(heading_counter)],
+      None => Vec::new(),
+    };
+    parts.push(own);
+    return CounterValue {
+      kind: CounterKind::Theorem(class),
+      parts,
+    };
+  }
+
   /// pass1 で `\section[label=sec:intro]{...}` などからラベルを登録する
   #[must_use]
   pub(crate) fn register_label(
@@ -193,19 +244,26 @@ impl CounterRegistry {
       return false;
     }
     let def = self.defs.get(counter);
-    let formatted = expand_ref_format(&def.ref_format, &number.into(), &def.display_name);
-    self.labels.insert(label, ResolvedLabel { number: formatted });
+    let display = expand_ref_format(&def.ref_format, &number.into(), &def.display_name);
+    let value = self.counter_value(counter);
+    self.labels.insert(label, ResolvedLabel { value, display });
     return true;
   }
 
-  /// 整形済みの `\ref` 表示文字列をそのまま登録する（定理の cleveref 用）
+  /// 整形済みの `\ref` 表示文字列と、その時点のカウンタ構造値をそのまま登録する（定理の cleveref 用）
   #[must_use]
-  fn register_formatted_label(&mut self, label: impl Into<LabelId>, formatted: String) -> bool {
+  fn register_formatted_label(&mut self, label: impl Into<LabelId>, value: CounterValue, formatted: String) -> bool {
     let label = label.into();
     if self.labels.contains_key(&label) {
       return false;
     }
-    self.labels.insert(label, ResolvedLabel { number: formatted });
+    self.labels.insert(
+      label,
+      ResolvedLabel {
+        value,
+        display: formatted,
+      },
+    );
     return true;
   }
 
@@ -234,10 +292,26 @@ impl CounterRegistry {
     return Ok(number);
   }
 
-  /// pass2 で `\ref{label}` を解決して番号文字列を返す
+  /// pass2 で `\ref{label}` を解決してカウンタの構造値（[`CounterValue`]）を返す
+  ///
+  /// 表示文字列がそのまま欲しい呼び出し元は [`Self::resolve_label_display`] を使う
+  /// （`ref_format` はカウンタ種別ごとに異なり、値からの再構築は本 Task の対象外のため、
+  /// 表示文字列は登録時に確定させた [`ResolvedLabel::display`] をそのまま返す）。
+  /// 現時点では `resolve.rs` / `lowering.rs` は表示文字列のみ必要なため
+  /// [`Self::resolve_label_display`] だけを呼び、この構造値アクセサ自体は本クレート内では
+  /// まだ未使用（issue #282 の resolve クレート抽出後、`\ref` 以外の値ベースの解決に使われる
+  /// 想定の先行 API）。テストからは呼ばれているが、`#[cfg(test)]` を外した通常ビルドの
+  /// `dead_code` 判定はテスト側の呼び出しを数えないため、明示的に許可する
   #[must_use]
-  pub(crate) fn resolve_label(&self, label: &str) -> Option<&str> {
-    return self.labels.get(label).map(|r| return r.number.as_str());
+  #[allow(dead_code)]
+  pub(crate) fn resolve_label(&self, label: &str) -> Option<&CounterValue> {
+    return self.labels.get(label).map(|r| return &r.value);
+  }
+
+  /// pass2 で `\ref{label}` を解決して、登録時に確定済みの表示文字列を返す
+  #[must_use]
+  pub(crate) fn resolve_label_display(&self, label: &str) -> Option<&str> {
+    return self.labels.get(label).map(|r| return r.display.as_str());
   }
 
   /// 見出しレベルから seiran 既定の [`CounterName`] を返す
@@ -274,11 +348,33 @@ impl CounterRegistry {
   }
 }
 
-/// pass1 で登録される、ラベル名から確定済み番号への解決結果
+/// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
+/// 2 系統をひとつの型で表す
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum CounterKind {
+  /// `config::Counters` が定義する固定 9 種のいずれか
+  Counter(CounterName),
+  /// 定理クラス（共有カウンタは `TheoremStyle::counter` で複数クラスが 1 つを共有しうる）
+  Theorem(TheoremClass),
+}
+
+/// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
+/// [`CounterRegistry::format_counter_value`] が別途生成する
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CounterValue {
+  /// このカウンタの種別
+  pub(crate) kind: CounterKind,
+  /// 祖先カウンタから自身までの値列（祖先を辿った順。末尾が自身の値）
+  pub(crate) parts: Vec<u32>,
+}
+
+/// pass1 で登録される、ラベル名から確定済み解決結果への対応
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedLabel {
+  /// 登録時点のカウンタ構造値のスナップショット
+  value: CounterValue,
   /// 確定済みの `\ref` 表示文字列（カウンタは `ref_format`、定理は cleveref 書式を適用済み）
-  number: String,
+  display: String,
 }
 
 /// 見出しカウンタ [`CounterName`] を、定理カウンタの `reset_by` に対応する [`TheoremReset`] に写す
@@ -289,6 +385,17 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
     CounterName::Section => Some(TheoremReset::Section),
     CounterName::Subsection => Some(TheoremReset::Subsection),
     _ => None,
+  };
+}
+
+/// 定理の `reset_by`（見出しレベル）を、対応する見出しカウンタ [`CounterName`] に写す
+fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
+  return match reset_by {
+    TheoremReset::None => None,
+    TheoremReset::Part => Some(CounterName::Part),
+    TheoremReset::Chapter => Some(CounterName::Chapter),
+    TheoremReset::Section => Some(CounterName::Section),
+    TheoremReset::Subsection => Some(CounterName::Subsection),
   };
 }
 
@@ -587,7 +694,7 @@ mod tests {
     .unwrap();
 
     // Assert
-    assert_eq!(r.resolve_label("thm:x"), Some("Theorem 1"));
+    assert_eq!(r.resolve_label_display("thm:x"), Some("Theorem 1"));
   }
 
   #[test]
@@ -700,7 +807,7 @@ mod tests {
     let bare = r.format_number(CounterName::Chapter);
     assert!(r.register_label("ch:intro", CounterName::Chapter, bare));
 
-    assert_eq!(r.resolve_label("ch:intro"), Some("Chapter 1"));
+    assert_eq!(r.resolve_label_display("ch:intro"), Some("Chapter 1"));
   }
 
   #[test]
@@ -710,13 +817,30 @@ mod tests {
     let bare = r.increment(CounterName::Equation);
     assert!(r.register_label("eq:foo", CounterName::Equation, bare));
 
-    assert_eq!(r.resolve_label("eq:foo"), Some("(1.1)"));
+    assert_eq!(r.resolve_label_display("eq:foo"), Some("(1.1)"));
   }
 
   #[test]
   fn evaluate_unknown_label_errors() {
     let r = CounterRegistry::default_for_seiran();
     assert!(r.resolve_label("nonexistent").is_none());
+    assert!(r.resolve_label_display("nonexistent").is_none());
+  }
+
+  #[test]
+  fn resolve_label_returns_counter_value_snapshot() {
+    // Arrange
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment(CounterName::Chapter); // chapter = 1
+    let number = r.increment(CounterName::Section); // section = 1（"1.1"）
+    assert!(r.register_label("sec:x", CounterName::Section, &number));
+
+    // Act
+    let value = r.resolve_label("sec:x").unwrap();
+
+    // Assert
+    assert_eq!(value.kind, CounterKind::Counter(CounterName::Section));
+    assert_eq!(value.parts, vec![0, 1, 1], "part（未登場につき 0）→ chapter → section の順");
   }
 
   #[test]
@@ -761,5 +885,88 @@ mod tests {
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
     assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
+  }
+
+  #[test]
+  fn counter_value_of_section_includes_ancestor_chain() {
+    // Arrange
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment(CounterName::Chapter); // chapter = 1
+    r.increment(CounterName::Section); // section = 1（chapter 配下で 1 番目）
+
+    // Act
+    let value = r.counter_value(CounterName::Section);
+
+    // Assert
+    assert_eq!(value.kind, CounterKind::Counter(CounterName::Section));
+    // 既定の Counters は part.resets が chapter を含むため、祖先チェーンは
+    // part（未登場につき 0）→ chapter → section の 3 段になる（brief 記載の 2 段
+    // [1, 1] は既定の resets 構成と矛盾するため [0, 1, 1] に補正、詳細は報告書参照）
+    assert_eq!(value.parts, vec![0, 1, 1], "祖先は part（未登場につき 0）→ chapter → section の順");
+  }
+
+  #[test]
+  fn counter_value_of_part_has_no_ancestor() {
+    // Arrange
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment(CounterName::Part);
+    r.increment(CounterName::Part);
+
+    // Act
+    let value = r.counter_value(CounterName::Part);
+
+    // Assert
+    // brief は chapter を対象に「祖先なし」を主張していたが、既定の Counters では
+    // part.resets が chapter を含むため chapter には part という祖先が実在する。
+    // 「祖先が本当に存在しない」例として、対象を part 自身に差し替えている
+    assert_eq!(value.parts, vec![2], "part を resets に含むカウンタは既定に無いので祖先なし");
+  }
+
+  #[test]
+  fn counter_value_of_theorem_includes_reset_by_heading() {
+    // Arrange
+    let mut style = Style::default();
+    style.theorems.theorem.reset_by = TheoremReset::Section;
+    let mut r = CounterRegistry::from_style(&style);
+    r.increment(CounterName::Chapter);
+    r.increment(CounterName::Section); // section = 1
+    r.increment_theorem_with_label(
+      TheoremClass::Theorem,
+      None,
+      theorem_span(),
+      Origin::Source(model::SourceId::new(0)),
+    )
+    .unwrap();
+
+    // Act
+    let value = r.theorem_counter_value(TheoremClass::Theorem);
+
+    // Assert
+    assert_eq!(value.kind, CounterKind::Theorem(TheoremClass::Theorem));
+    assert_eq!(value.parts, vec![1, 1], "reset_by=Section の祖先は section の現在値");
+  }
+
+  #[test]
+  fn format_counter_value_applies_number_style_and_template() {
+    // Arrange
+    let counters = Counters {
+      chapter: CounterStyle {
+        display_name: "Chapter".to_string(),
+        number_format: "{n}".to_string(),
+        number_style: NumberStyle::RomanUpper,
+        ref_format: "{number}".to_string(),
+        resets: vec![],
+      },
+      ..Counters::default()
+    };
+    let mut r = CounterRegistry::from_counters(&counters);
+    r.increment(CounterName::Chapter);
+
+    // Act
+    let value = r.counter_value(CounterName::Chapter);
+    let display = r.format_counter_value(&value);
+
+    // Assert
+    assert_eq!(display, "I", "RomanUpper で表示されるはず");
   }
 }

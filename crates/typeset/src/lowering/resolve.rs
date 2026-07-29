@@ -34,7 +34,7 @@ fn resolve_node(node: &mut LayoutNode, registry: &CounterRegistry) -> Result<boo
       as_link,
       source,
     } => {
-      let Some(resolved) = registry.resolve_label(label) else {
+      let Some(resolved) = registry.resolve_label_display(label) else {
         return Err(LoweringError::UnresolvedReference {
           label: label.clone(),
           span: *span,

@@ -521,7 +521,7 @@ fn try_resolve_heading_title_plain(
   source: Origin,
 ) -> Result<String, LoweringError> {
   let mut resolve_ref = |label: &str, span: model::Span| -> Result<String, LoweringError> {
-    return registry.resolve_label(label).map(str::to_string).ok_or_else(|| {
+    return registry.resolve_label_display(label).map(str::to_string).ok_or_else(|| {
       return LoweringError::UnresolvedReference {
         label: label.to_string(),
         span: span_to_source_span(span),
