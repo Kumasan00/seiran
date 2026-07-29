@@ -5,6 +5,8 @@
 //! 存在確認は pass1（`resolve_group`）が全ラベルの登録を終えた後にしか行えない。
 //! これが pass1 とは別の走査（本モジュール）として独立している理由
 
+use model::Origin;
+
 use crate::{
   ResolveError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
 };
@@ -19,7 +21,7 @@ use crate::{
 pub(crate) fn validate_refs(
   nodes: &[ResolvedNode],
   registry: &CounterRegistry,
-  origin: model::Origin,
+  origin: Origin,
 ) -> Result<(), ResolveError> {
   for node in nodes {
     validate_node(node, registry, origin)?;
@@ -28,7 +30,7 @@ pub(crate) fn validate_refs(
 }
 
 /// 単一の `ResolvedNode` を検証する
-fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: model::Origin) -> Result<(), ResolveError> {
+fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: Origin) -> Result<(), ResolveError> {
   match node {
     ResolvedNode::Heading { title, .. } => validate_inlines(title, registry, origin)?,
     ResolvedNode::Paragraph(inlines) => validate_inlines(inlines, registry, origin)?,
@@ -83,7 +85,7 @@ fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: model:
 fn validate_inlines(
   inlines: &[ResolvedInline],
   registry: &CounterRegistry,
-  origin: model::Origin,
+  origin: Origin,
 ) -> Result<(), ResolveError> {
   for inline in inlines {
     validate_inline(inline, registry, origin)?;
@@ -92,11 +94,7 @@ fn validate_inlines(
 }
 
 /// 単一のインライン要素を検証する
-fn validate_inline(
-  inline: &ResolvedInline,
-  registry: &CounterRegistry,
-  origin: model::Origin,
-) -> Result<(), ResolveError> {
+fn validate_inline(inline: &ResolvedInline, registry: &CounterRegistry, origin: Origin) -> Result<(), ResolveError> {
   match inline {
     ResolvedInline::Ref { target, span } => {
       if registry.resolve_label(target.as_str()).is_none() {
