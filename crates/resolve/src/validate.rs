@@ -17,7 +17,6 @@ use crate::{
 /// # Errors
 ///
 /// 未登録のラベルを参照している場合に [`ResolveError::UnresolvedReference`] を返します。
-#[allow(dead_code)] // Task 6 の resolve_project から配線されるまで未使用
 pub(crate) fn validate_refs(
   nodes: &[ResolvedNode],
   registry: &CounterRegistry,

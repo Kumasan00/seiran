@@ -61,11 +61,7 @@ pub(crate) struct CounterRegistry {
 
 impl CounterRegistry {
   /// `config::Style` からレジストリを構築する
-  ///
-  /// テストからは呼ばれているが、Task 6 の `resolve_project` から配線されるまで通常ビルドの
-  /// `dead_code` 判定はテスト側の呼び出しを数えないため、明示的に許可する
   #[must_use]
-  #[allow(dead_code)]
   pub(crate) fn from_style(style: &Style) -> Self {
     return Self {
       defs: style.counters.clone(),
@@ -233,14 +229,17 @@ impl CounterRegistry {
   }
 
   /// pass2 で `\ref{label}` を解決してカウンタの構造値（[`CounterValue`]）を返す
-  ///
-  /// テストからは呼ばれているが、Task 6 の `resolve_project`（`\ref` 解決を行う pass2）から
-  /// 配線されるまで通常ビルドの `dead_code` 判定はテスト側の呼び出しを数えないため、
-  /// 明示的に許可する
   #[must_use]
-  #[allow(dead_code)]
   pub(crate) fn resolve_label(&self, label: &str) -> Option<&CounterValue> {
     return self.labels.get(label).map(|r| return &r.value);
+  }
+
+  /// 登録済み全ラベルのカウンタ構造値を `HashMap<LabelId, CounterValue>` として取り出す
+  ///
+  /// `resolve_project` が最終的な [`crate::ResolvedDocument::counter_values`] を組み立てる際に使う。
+  #[must_use]
+  pub(crate) fn into_counter_values(self) -> HashMap<LabelId, CounterValue> {
+    return self.labels.into_iter().map(|(label, resolved)| return (label, resolved.value)).collect();
   }
 
   /// 見出しレベルから seiran 既定の [`CounterName`] を返す

@@ -12,10 +12,7 @@ use crate::{
 
 /// pass1 走査中に集める見出しの生データ（表示文字列化は typeset 側の責務）
 ///
-/// Task 6（`resolve_project`）が見出し一覧の組み立てに使う想定の先行 API。現時点では
-/// `resolve_group` がテストからのみ呼ばれ、フィールドの読み出し側がまだ無いため
-/// `dead_code` を明示的に許可する
-#[allow(dead_code)]
+/// `resolve_project` が見出し一覧（`ResolvedDocument::headings`）の組み立てに使う。
 pub(crate) struct PendingHeading {
   /// 見出しの文書順インデックス
   pub(crate) index: usize,
@@ -36,10 +33,6 @@ pub(crate) struct PendingHeading {
 /// # Errors
 ///
 /// ラベルの重複登録・未整形の `\cite` に遭遇した場合に [`ResolveError`] を返します。
-///
-/// テストからは呼ばれているが、Task 6 の `resolve_project` から配線されるまで通常ビルドの
-/// `dead_code` 判定はテスト側の呼び出しを数えないため、明示的に許可する
-#[allow(dead_code)]
 pub(crate) fn resolve_group(
   nodes: &[DocNode],
   registry: &mut CounterRegistry,
