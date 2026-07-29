@@ -10,6 +10,7 @@ mod error;
 mod inline;
 mod node;
 mod resolver;
+mod validate;
 
 pub use counter::{CounterKind, CounterValue};
 pub use document::{ResolvedDocument, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGroup};
