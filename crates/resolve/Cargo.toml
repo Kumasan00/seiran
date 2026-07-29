@@ -1,0 +1,17 @@
+[package]
+name = "resolve"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+config.workspace = true
+miette.workspace = true
+model.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
