@@ -3,3 +3,15 @@
 //!
 //! citation クレートの後・typeset クレートの前で実行する。カウンタの値（構造）算出もここに
 //! 閉じ、表示文字列の生成（`number_format` 等 style 依存）は typeset 側に残す。
+
+mod counter;
+mod document;
+mod error;
+mod inline;
+mod node;
+
+pub use counter::{CounterKind, CounterValue};
+pub use document::{ResolvedDocument, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGroup};
+pub use error::ResolveError;
+pub use inline::{IndexKey, ResolvedInline};
+pub use node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedTableCell, ResolvedTableRow};
