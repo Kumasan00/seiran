@@ -25,7 +25,7 @@ mod title_page;
 
 pub use counter::per_page_footnote_numbers;
 pub use layout_node::{LayoutNode, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle};
-pub use title_page::{TitlePageMetadata, lower_title_page};
+pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 /// [`lower_sources_with_headings`] に渡す 1 グループ分の入力
 pub struct SourceGroup<'a> {

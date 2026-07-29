@@ -64,7 +64,7 @@ pub struct RunningMetadata {
 }
 
 /// 各ページにヘッダー・フッターを配置する
-pub fn build_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
+pub fn layout_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }

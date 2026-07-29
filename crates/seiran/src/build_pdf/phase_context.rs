@@ -30,7 +30,7 @@ impl<'a> CompileContext<'a> {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
-    let body_col_width = typeset::column_width(text_width, body_columns, column_gap);
+    let body_col_width = model::column_width(text_width, body_columns, column_gap);
     let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, body_columns, column_gap);
     return Self {
       config,

@@ -1,7 +1,8 @@
 //! 目次（table of contents）ブロックの生成パス
 
+use config::Style;
 use font::FontSystem;
-use model::{AnchorId, HeadingKey, HeadingLevel, Length, LinkTarget};
+use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
 
 use super::Measurer;
 use crate::{
@@ -9,9 +10,9 @@ use crate::{
   lowering::TextStyle,
 };
 
-/// 目次生成に必要なプリミティブ設定（`config` 非依存）
+/// 目次生成に必要なプリミティブ設定。
 #[derive(Debug, Clone)]
-pub struct TocSpec {
+pub(crate) struct TocSpec {
   /// 目次の見出し文字列（例: `"Contents"`）
   pub title: String,
   /// 見出し文字列の書体
@@ -49,9 +50,37 @@ pub struct TocEntryInput {
   pub link_key: HeadingKey,
 }
 
+/// スタイルから目次生成用の [`TocSpec`] を組み立てる。
+///
+/// 目次見出しの書体は文書の節見出しスタイル（[`model::HeadingLevel::Section`]）に揃える。
+pub(crate) fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
+  let toc = &style.toc;
+  let title_heading = style.heading(HeadingLevel::Section);
+  return TocSpec {
+    title: toc.title.clone(),
+    title_style: TextStyle {
+      font_size: title_heading.font_size,
+      font_kind: title_heading.font_kind,
+      color: None,
+    },
+    title_bottom_margin: title_heading.bottom_margin,
+    entry_style: TextStyle {
+      font_size: toc.font_size,
+      font_kind: FontKind::Serif,
+      color: None,
+    },
+    indent_per_level: toc.indent_per_level,
+    leader: toc.leader.clone(),
+    show_page_numbers: toc.show_page_numbers,
+    text_width,
+    line_height_factor: style.text.line_height_factor,
+    bottom_margin: toc.bottom_margin,
+  };
+}
+
 /// 目次エントリ列を計測済みのブロック列に変換する
 #[must_use]
-pub fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
+pub(crate) fn build_toc_blocks(spec: &TocSpec, entries: &[TocEntryInput], resources: &FontSystem<'_>) -> Vec<Block> {
   if entries.is_empty() {
     return Vec::new();
   }

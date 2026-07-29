@@ -8,11 +8,13 @@ mod toc;
 mod yakumono;
 
 use font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer};
-pub use index::{IndexEntryInput, IndexPageRef, IndexSpec, build_index_blocks, sort_index_entries};
+pub use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
+pub(crate) use index::{build_index_blocks, build_index_spec};
 use lazy_regex::regex_replace_all;
 use model::{Align, Color, FontKind, FontType, Length};
-pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, build_running_content};
-pub use toc::{TocEntryInput, TocSpec, build_toc_blocks};
+pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
+pub use toc::TocEntryInput;
+pub(crate) use toc::{build_toc_blocks, build_toc_spec};
 use tracing::debug;
 
 use crate::{

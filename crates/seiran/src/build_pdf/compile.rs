@@ -2,11 +2,10 @@
 
 use font::FontSystem;
 use tracing::info;
+use typeset::BodyLayout;
 
 use super::{
-  ParsedProject, back_matter,
-  body::{self, BodyLayout},
-  front_matter,
+  ParsedProject, back_matter, body, front_matter,
   image_resources::ImageResources,
   outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},

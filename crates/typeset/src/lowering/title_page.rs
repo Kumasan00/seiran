@@ -7,7 +7,7 @@ use super::layout_node::{LayoutNode, TextStyle};
 
 /// タイトルページに載せる文書メタデータ。
 #[derive(Debug, Clone, Default)]
-pub struct TitlePageMetadata {
+pub(crate) struct TitlePageMetadata {
   /// タイトル（`[document] title`）
   pub title: Option<String>,
   /// 著者（`[document] author`）
@@ -18,7 +18,7 @@ pub struct TitlePageMetadata {
 
 /// タイトルページのレイアウトノード列を生成する。
 #[must_use]
-pub fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec<LayoutNode> {
+pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle) -> Vec<LayoutNode> {
   let mut body: Vec<LayoutNode> = Vec::new();
 
   let entries: [(Option<&str>, Length, FontKind, Length); 3] = [

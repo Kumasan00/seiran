@@ -7,26 +7,24 @@ mod block;
 mod breaking;
 mod layout;
 mod lowering;
+mod pipeline;
 
 pub use block::{
-  IndexEntryInput, IndexPageRef, IndexSpec, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput, TocSpec,
-  build_blocks, build_index_blocks, build_running_content, build_toc_blocks, sort_index_entries,
+  IndexEntryInput, IndexPageRef, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput,
+  layout_running_content, sort_index_entries,
 };
-pub use breaking::{
-  BreakKind, BreakPoint, GreedyBreaker, KnuthPlassBreaker, Lang, LineBreaker, PageGeometry, break_opportunities,
-  break_pages, resolve_hyphenation,
-};
-pub use font::{Glyph, GlyphRun};
+pub use breaking::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PageGeometry};
 pub use layout::{
-  Block, CellPlacement, HBox, HBoxContent, HItem, Line, LineFootnote, LineIndexEntry, LineLink, MathRowNumber,
-  PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem,
-  PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, RowLink, TableBox, TableCellBox,
-  TableRowBox, collect_row_links, layout_row_cells, max_font_size_in_items, measure_items_width, resolve_column_widths,
-  table_row_height,
+  Block, CellPlacement, HBox, HBoxContent, HItem, Line, LineFootnote, LineIndexEntry, LineLink, MathRowNumber, Page,
+  PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber,
+  PlacedTableRow, PositionedBox, TableBox, TableCellBox, TableRowBox, layout_row_cells, max_font_size_in_items,
+  measure_items_width,
 };
 pub use lowering::{
   HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceGroup, TableCellLayout, TableLayout,
-  TableRowLayout, TextStyle, TitlePageMetadata, lower_document, lower_nodes, lower_sources_with_headings,
-  lower_title_page, per_page_footnote_numbers,
+  TableRowLayout, TextStyle, lower_document, lower_nodes, lower_sources_with_headings, per_page_footnote_numbers,
 };
-pub use model::{TableColumn, column_width};
+pub use pipeline::{
+  BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
+  layout_front_matter,
+};
