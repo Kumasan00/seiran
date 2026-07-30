@@ -1,10 +1,9 @@
-//! 段落（`DocNode::Paragraph`）の lowering
+//! 段落（`resolve::ResolvedNode::Paragraph`）の lowering
 
-use model::InlineNode;
+use resolve::ResolvedInline;
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle},
 };
@@ -12,9 +11,9 @@ use super::{
 /// 段落をレイアウトノードに変換する
 pub(super) fn lower_paragraph(
   ctx: &LoweringContext,
-  inlines: &[InlineNode],
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  inlines: &[ResolvedInline],
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let default_style = TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.body_font_kind,
@@ -23,9 +22,9 @@ pub(super) fn lower_paragraph(
 
   let mut result = Vec::new();
 
-  // `\noindent`（[`InlineNode::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
+  // `\noindent`（[`ResolvedInline::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
   // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
-  let suppress_indent = inlines.iter().any(|inline| matches!(inline, InlineNode::NoIndent));
+  let suppress_indent = inlines.iter().any(|inline| matches!(inline, ResolvedInline::NoIndent));
 
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
   // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
@@ -36,35 +35,42 @@ pub(super) fn lower_paragraph(
   }
 
   for inline in inlines {
-    if matches!(inline, InlineNode::NoIndent) {
+    if matches!(inline, ResolvedInline::NoIndent) {
       continue;
     }
-    result.extend(lower_inline(ctx, inline, default_style, registry)?);
+    result.extend(lower_inline(ctx, inline, default_style, state));
   }
 
   result.push(LayoutNode::Vkern {
     length: ctx.style.text.paragraph_spacing,
   });
 
-  return Ok(result);
+  return result;
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
+  use config::{CounterName, Style as ReadStyle};
+  use resolve::{CounterKind, CounterValue};
 
-  use super::*;
+  use super::{super::test_support, *};
+
+  /// テキスト 1 つだけの段落を lower するテストヘルパ
+  fn lower_plain(ctx: &LoweringContext, inlines: &[ResolvedInline]) -> Vec<LayoutNode> {
+    let document = test_support::document(&[]);
+    return lower_paragraph(ctx, inlines, &mut LoweringState::new(&document));
+  }
 
   #[test]
   fn paragraph_appends_single_trailing_vkern_with_paragraph_spacing() {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let inlines = [InlineNode::Text("hello".to_string())];
+    let inlines = [ResolvedInline::Text("hello".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran())
-      .expect("解決済みテキストなので失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
@@ -80,10 +86,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let inlines = [InlineNode::Text("body".to_string())];
+    let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -99,10 +105,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
-    let inlines = [InlineNode::Text("body".to_string())];
+    let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     let LayoutNode::Kern { length } = &nodes[0] else {
@@ -117,10 +123,13 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
-    let inlines = [InlineNode::NoIndent, InlineNode::Text("body".to_string())];
+    let inlines = [
+      ResolvedInline::NoIndent,
+      ResolvedInline::Text("body".to_string()),
+    ];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は抑止される: {nodes:?}");
@@ -132,10 +141,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let inlines = [InlineNode::Text("body".to_string())];
+    let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
@@ -148,13 +157,13 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let inlines = [
-      InlineNode::Text("one".to_string()),
-      InlineNode::Text("two".to_string()),
-      InlineNode::Text("three".to_string()),
+      ResolvedInline::Text("one".to_string()),
+      ResolvedInline::Text("two".to_string()),
+      ResolvedInline::Text("three".to_string()),
     ];
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_plain(&ctx, &inlines);
 
     // Assert
     let texts: Vec<&str> = nodes
@@ -168,23 +177,30 @@ mod tests {
   }
 
   #[test]
-  fn paragraph_ref_becomes_placeholder() {
+  fn paragraph_ref_is_resolved_to_internal_link() {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let inlines = [InlineNode::Ref {
-      label: "eq:missing".to_string(),
+    let inlines = [ResolvedInline::Ref {
+      target: model::LabelId::new("eq:one"),
       span: model::Span::DUMMY,
     }];
+    let document = test_support::document(&[(
+      "eq:one",
+      CounterValue {
+        kind: CounterKind::Counter(CounterName::Equation),
+        parts: vec![0, 1, 1],
+      },
+    )]);
 
     // Act
-    let nodes =
-      lower_paragraph(&ctx, &inlines, &mut CounterRegistry::default_for_seiran()).expect("即時エラーにはならない");
+    let nodes = lower_paragraph(&ctx, &inlines, &mut LoweringState::new(&document));
 
     // Assert
-    assert!(
-      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "eq:missing")),
-      "Ref プレースホルダが残るはず: {nodes:?}"
-    );
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("解決済み \\ref は Link になるはず: {nodes:?}");
+    };
+    assert_eq!(*target, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("eq:one"))));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "(1.1)"), "{children:?}");
   }
 }

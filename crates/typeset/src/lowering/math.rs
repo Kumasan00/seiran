@@ -1,12 +1,13 @@
 //! 数式（インライン / ディスプレイ）の lowering
 
-use config::{Alignment, CounterName, MathScriptStyle as MathStyleConfig, NumberSide};
-use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathRow, MathStyle};
+use config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
+use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle};
+use resolve::{CounterValue, ResolvedMathRow};
 
 use self::alphanumeric::push_math_char;
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext,
+  counter::format_counter_value,
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
 
@@ -17,21 +18,17 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
 }
 
-/// `DocNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` / `cases` / `matrix`）を
-/// `LayoutNode::MathBlock` に変換する
+/// `resolve::ResolvedNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
+/// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
 ///
-/// # Errors
-///
-/// 重複ラベルの場合に [`LoweringError::DuplicateLabel`] を返します。
+/// 行ごと・環境ごとの採番値は `resolve` が確定させたものを受け取り、ここでは
+/// `number_format` / `tag_format` による表示文字列化だけを行う。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext,
   kind: MathEnvKind,
-  rows: &[MathRow],
-  env_numbered: bool,
-  env_label: Option<&str>,
-  span: model::Span,
-  registry: &mut CounterRegistry,
-) -> Result<LayoutNode, LoweringError> {
+  rows: &[ResolvedMathRow],
+  env_counter_value: Option<&CounterValue>,
+) -> LayoutNode {
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
 
@@ -42,24 +39,16 @@ pub(super) fn lower_math_block(
       .iter()
       .map(|cell| return lower_inline_math(cell, font_size, &ctx.style.math.script))
       .collect();
-    let number = if row.numbered {
-      let row_span = row.label_span.unwrap_or(span);
-      let n = registry.increment_with_label(CounterName::Equation, row.label.as_deref(), row_span, ctx.source)?;
-      Some(number_box(&block.tag_format, &n, font_size))
-    } else {
-      None
-    };
+    let number = row.counter_value.as_ref().map(|value| {
+      return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size);
+    });
     layout_rows.push(MathBlockRow { cells, number });
   }
 
-  let env_number = if env_numbered {
-    let n = registry.increment_with_label(CounterName::Equation, env_label, span, ctx.source)?;
-    Some(number_box(&block.tag_format, &n, font_size))
-  } else {
-    None
-  };
+  let env_number = env_counter_value
+    .map(|value| return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size));
 
-  return Ok(LayoutNode::MathBlock {
+  return LayoutNode::MathBlock {
     kind,
     rows: layout_rows,
     env_number,
@@ -67,7 +56,7 @@ pub(super) fn lower_math_block(
     numbers_on_right: matches!(block.number_side, NumberSide::Right),
     row_gap: block.row_gap,
     column_gap: block.column_gap,
-  });
+  };
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
@@ -403,17 +392,19 @@ mod tests {
     assert_eq!(texts, "\u{1D49C}\u{FE00}\u{1D4B7}\u{FE00}1");
   }
 
-  /// 番号付き 1 行 1 セルの `MathRow` を作るヘルパ
-  fn numbered_row() -> MathRow {
-    return MathRow {
+  /// 番号付き 1 行 1 セルの `ResolvedMathRow`（equation 1 個目相当）を作るヘルパ
+  fn numbered_row() -> ResolvedMathRow {
+    return ResolvedMathRow {
       cells: vec![vec![MathNode::Text("a".to_string())]],
       numbered: true,
       label: None,
       label_span: None,
+      counter_value: Some(CounterValue {
+        kind: resolve::CounterKind::Counter(config::CounterName::Equation),
+        parts: vec![0, 0, 1],
+      }),
     };
   }
-
-  fn dummy_span() -> model::Span { return model::Span::DUMMY; }
 
   /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
   fn style_with_plain_equation_format() -> ReadStyle {
@@ -427,12 +418,10 @@ mod tests {
     // Arrange
     let style = style_with_plain_equation_format();
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::from_style(&style);
     let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
-      .expect("失敗しないはず");
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert
     let LayoutNode::MathBlock {
@@ -453,12 +442,10 @@ mod tests {
     // Arrange
     let style = style_with_plain_equation_format();
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::from_style(&style);
     let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
-      .expect("失敗しないはず");
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert
     let LayoutNode::MathBlock {
@@ -479,12 +466,10 @@ mod tests {
     let mut style = style_with_plain_equation_format();
     style.math.block.number_side = NumberSide::Left;
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::from_style(&style);
     let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, false, None, dummy_span(), &mut registry)
-      .expect("失敗しないはず");
+    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
 
     // Assert
     let LayoutNode::MathBlock {

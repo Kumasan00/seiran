@@ -2671,6 +2671,7 @@ dependencies = [
  "lazy-regex",
  "miette",
  "model",
+ "resolve",
  "thiserror",
  "tracing",
 ]

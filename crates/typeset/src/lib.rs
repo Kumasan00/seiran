@@ -1,4 +1,5 @@
-//! 組版パス統合クレート — Document IR（`model::DocNode`）から計測済み・配置済みページ直前までを担う
+//! 組版パス統合クレート — 解決済みドキュメント（`resolve::ResolvedDocument`）から計測済み・
+//! 配置済みページ直前までを担う
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本クレート非公開 module
 //! `layout` が所有する（#280）。
@@ -21,8 +22,8 @@ pub use layout::{
   measure_items_width,
 };
 pub use lowering::{
-  HeadingRecord, LayoutNode, LoweringContext, LoweringError, MathBlockRow, SourceGroup, TableCellLayout, TableLayout,
-  TableRowLayout, TextStyle, lower_document, lower_nodes, lower_sources_with_headings, per_page_footnote_numbers,
+  HeadingRecord, LayoutNode, LoweringContext, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle,
+  lower_sources_with_headings, per_page_footnote_numbers,
 };
 pub use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,

@@ -1,16 +1,16 @@
-//! 脚注のページ単位表示番号割り当て
+//! カウンタ番号の表示文字列化（子 module `format`）と、脚注のページ単位表示番号割り当て
 //!
 //! ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は issue #282 で `resolve` クレートへ
-//! 移設した。ページ単位表示番号割り当ては、ラベル・カウンタ解決とは無関係の別関心事
-//! （`resolve` クレートが持つべき責務ではない）なのでこのファイルに残す。
+//! 移設し、このクレートには「確定した構造値を style の表示側フィールドで文字列にする」側だけが
+//! 残った（子 module `format`）。ページ単位表示番号割り当ては、ラベル・カウンタ解決とは無関係の
+//! 別関心事（`resolve` クレートが持つべき責務ではない）なのでこのファイルに残す。
 //!
-//! 脚注の出現 index 発番（旧 `CounterRegistry::next_footnote_index` / `footnote_count`
-//! フィールド）は、`CounterRegistry` 自体がこのクレートから無くなったことで
-//! `impl CounterRegistry` に閉じたメソッドとしては存在できなくなったため、この移設時点で
-//! いったん削除した（0 起点で単純増加する出現 index を、呼び出しごとに 1 つ払い出し
-//! インクリメントする前の値を返すだけの機能だった）。`typeset::lowering::inline` /
-//! `typeset::lowering::table` に呼び出し元が残っているため、Task 7 で `typeset` 側の
-//! 置き場所（`CounterRegistry` とは別の小さな struct 等）を再設計して復元する
+//! 脚注の出現 index 発番（旧 `CounterRegistry::next_footnote_index`）は `CounterRegistry` の
+//! 消滅にともない `crate::lowering::LoweringState` へ移した（走査中の可変状態はそちらに一本化した）。
+
+mod format;
+
+pub(crate) use format::{format_counter_value, format_ref_display};
 
 use crate::layout::Page;
 

@@ -15,6 +15,7 @@ icu.workspace = true
 lazy-regex.workspace = true
 miette.workspace = true
 model.workspace = true
+resolve.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

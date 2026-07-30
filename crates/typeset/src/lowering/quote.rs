@@ -1,23 +1,17 @@
-//! 引用ブロック（`DocNode::Quote`）の lowering
+//! 引用ブロック（`resolve::ResolvedNode::Quote`）の lowering
 
-use model::{Align, DocNode, Length, QuoteKind};
+use model::{Align, Length, QuoteKind};
+use resolve::ResolvedNode;
 
-use super::{
-  LoweringContext, LoweringError, PendingHeading, counter::CounterRegistry, layout_node::LayoutNode, lower_nodes_inner,
-};
+use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
 
 /// 引用ブロックをレイアウトノードに変換する
-///
-/// # Errors
-///
-/// 本体の lowering が返す [`LoweringError`]（未解決 `\ref` 等）を伝播する。
 pub(super) fn lower_quote(
   ctx: &LoweringContext,
   kind: QuoteKind,
-  body: &[DocNode],
-  registry: &mut CounterRegistry,
-  headings: &mut Vec<PendingHeading>,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  body: &[ResolvedNode],
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let style = &ctx.style.quote;
 
   let first_line_indent = if kind.indents_first_line() {
@@ -26,9 +20,9 @@ pub(super) fn lower_quote(
     Length::pt(0.0)
   };
   let body_ctx = ctx.with_body_font_kind(style.font_kind).with_first_line_indent(first_line_indent);
-  let children = lower_nodes_inner(&body_ctx, body, registry, headings)?;
+  let children = lower_nodes_inner(&body_ctx, body, state);
 
-  return Ok(vec![
+  return vec![
     LayoutNode::Vkern {
       length: style.top_margin,
     },
@@ -42,28 +36,27 @@ pub(super) fn lower_quote(
     LayoutNode::Vkern {
       length: style.bottom_margin,
     },
-  ]);
+  ];
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use model::{DocNode, InlineNode, QuoteKind};
+  use model::QuoteKind;
+  use resolve::ResolvedInline;
 
-  use super::*;
+  use super::{super::test_support, *};
 
   /// テキスト 1 段落の本体を作るヘルパ
-  fn paragraph(text: &str) -> DocNode { return DocNode::Paragraph(vec![InlineNode::Text(text.to_string())]); }
+  fn paragraph(text: &str) -> ResolvedNode {
+    return ResolvedNode::Paragraph(vec![ResolvedInline::Text(text.to_string())]);
+  }
 
-  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_quote` を呼ぶヘルパ
-  fn lower_quote_default(
-    ctx: &LoweringContext,
-    kind: QuoteKind,
-    body: &[DocNode],
-  ) -> Result<Vec<LayoutNode>, LoweringError> {
-    let mut registry = CounterRegistry::from_style(ctx.style);
-    let mut headings = Vec::new();
-    return lower_quote(ctx, kind, body, &mut registry, &mut headings);
+  /// テスト用に `LoweringState` を構築して `lower_quote` を呼ぶヘルパ
+  fn lower_quote_default(ctx: &LoweringContext, kind: QuoteKind, body: &[ResolvedNode]) -> Vec<LayoutNode> {
+    let document = test_support::document(&[]);
+    return lower_quote(ctx, kind, body, &mut LoweringState::new(&document));
   }
 
   /// `nodes` から本体 `VBox`（`indent` / `right_indent` / `children`）を取り出す
@@ -89,7 +82,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
 
     // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
@@ -106,7 +99,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -124,7 +117,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quotation, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quotation, &[paragraph("body")]);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -141,7 +134,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]).expect("失敗しないはず");
+    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
