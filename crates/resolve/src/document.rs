@@ -39,7 +39,7 @@ pub struct ResolvedHeading {
 }
 
 /// 1 ソースグループぶんの解決済みノード列
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ResolvedGroup {
   /// このグループの `ResolvedNode` 列
   pub nodes: Vec<ResolvedNode>,
@@ -51,7 +51,7 @@ pub struct ResolvedGroup {
 ///
 /// ラベル名・`\ref` 参照名・引用キー・索引語の**未解決値は型として表現できない**
 /// （`ResolvedNode` / `ResolvedInline` はいずれも `String` 名ではなく typed ID しか持たない）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ResolvedDocument {
   /// ソースグループ列（実ソース + 書誌グループ）
   pub groups: Vec<ResolvedGroup>,
