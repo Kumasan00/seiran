@@ -170,6 +170,62 @@
 （`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体は `config` と
 `typeset::breaking::break_pages` の双方が使うため `model::column_width` にある。
 
+## `resolve`
+
+### 責務
+
+`SemanticDocument`（`frontend::parse_source` と `citation::process_citations` を経た直後の、ラベル名・
+`\ref` 参照名・引用キー・索引語が未解決のまま保持できる生 `DocNode` 群）を `ResolvedDocument`（`LabelId` /
+`CitationId` の typed ID へ解決済み。`ResolvedNode` / `ResolvedInline` が `DocNode` / `InlineNode` の解決
+済み対応物）へ変換する。citation の後・typeset の前で 1 回だけ走るステージ。カウンタの**値**（構造のみ。
+例: 節 1.2 → `parts: [1, 2]`）もここで確定するが、**表示**に関わる style フィールド（`number_format` /
+`ref_format` / `display_name` / `number_style`）は一切読まない — 値と表示の分離は G3（内容は見た目から
+独立）の型による実装で、`typeset::lowering` 側が `&config::Style` と `CounterValue` を合わせて表示文字列を
+作る。
+
+### モジュール構成
+
+いずれも非公開で、公開 API は crate root の `pub use` に揃える。
+
+- `document`: `SemanticDocument` / `SemanticGroup`（入力。`&[DocNode]` を借用するだけで複製しない）と
+  `ResolvedDocument` / `ResolvedGroup` / `ResolvedHeading`（出力）
+- `node` / `inline`: `ResolvedNode` / `ResolvedInline`。ラベル宣言箇所・`\ref` 参照・`\cite` 参照・索引語
+  （`IndexKey`）だけが生の `String` ではなく typed ID（`LabelId` / `CitationId`）を持つ
+- `counter`: `CounterValue` / `CounterKind` と、それを組み立てる `CounterRegistry`。`typeset::lowering` 側
+  にあった旧 `CounterRegistry`（issue #282 以前）から移設したもので、`increment` 系メソッドの戻り値を
+  書式化済み `String` から構造値 `CounterValue` のみに変更し、`ref_format` / `number_format` 展開などの
+  表示生成コードは一切持ち込んでいない
+- `resolver`: pass1（登録 + ツリー構築）の実装 `resolve_group`
+- `validate`: pass2（`\ref` / `Theorem::of` の存在検証）の実装 `validate_refs`
+- `error`: `ResolveError`（`UnresolvedReference` / `DuplicateLabel` / 未整形 `\cite` の到達エラー等）
+
+公開関数は `resolve_project(semantic: &SemanticDocument, style: &config::Style) -> Result<ResolvedDocument,
+ResolveError>` の 1 つに絞る。
+
+### 2 パス構成
+
+`resolve_project` は全ソースグループを 1 個の `CounterRegistry` で通しで解決してから（pass1）、全体に
+対して `\ref` の存在検証を行う（pass2）。カウンタ・ラベルの登録はソース間で共有されるため、`\ref` は
+自ソースだけでなく他ソースのラベルも参照できる。
+
+- **pass1（`resolver::resolve_group`）**: `SemanticGroup` ごとに `DocNode` 列を走査し、`ResolvedNode` /
+  `ResolvedInline` へ変換しながらラベル・カウンタを `CounterRegistry` へ登録する。見出しは表示文字列化せず
+  構造値のみの `PendingHeading` として集め、`resolve_project` が全グループの走査後に `ResolvedHeading` へ
+  組み立てる
+- **pass2（`validate::validate_refs`）**: pass1 の出力 `ResolvedNode` 木を再走査し、`Ref` / `Theorem::of`
+  の参照先 `LabelId` が `CounterRegistry` に登録済みか検証するだけで、木の書き換えは行わない。ラベルは前方
+  参照を許す（`\ref` が指すラベルが文書上その後に定義されうる）ため、この検証は pass1 が全ラベルの登録を
+  終えた後にしか行えない — pass2 が pass1 と別の走査として独立している理由
+
+### `CounterValue` の祖先チェーン算出規則
+
+`CounterRegistry::counter_value` / `theorem_counter_value` が組み立てる `parts` は、`resets` / `reset_by`
+（値に影響する構造データ）だけから求め、表示側フィールドは一切参照しない。祖先は「自分を `resets` に含み、
+かつ `CounterName::ALL` の宣言順で自身より手前にあるカウンタのうち最も近いもの」を 1 段ずつ遡って決める
+（既定の `Counters` は祖先の `resets` に子孫を平坦に列挙する — 例えば `part.resets` は `chapter` を含む —
+ため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。定理クラスは `reset_by`
+（見出しレベル）が指す見出しカウンタを唯一の祖先とする。
+
 ## `frontend`
 
 ### 責務
@@ -205,8 +261,8 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 - **評価器は状態を持たない**（`Evaluator` のような構造体は存在せず、module 内の関数群で構成する）。
   採番も行わない。
 - **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置
-  だけを構造化し、実際の発番・書式化・`\ref` 解決は `typeset::lowering` が担う。書式は「種類の既定」＝
-  style.toml 管轄という P10 の分離原則に沿わせるため。
+  だけを構造化し、実際の発番・`\ref` 解決は `resolve` クレートが、書式化（表示文字列の生成）は
+  `typeset::lowering` が担う。書式は「種類の既定」＝ style.toml 管轄という P10 の分離原則に沿わせるため。
 - **`config` に依存しない**。style / config の値を見ずに評価できる形を保つ。
 - 診断は `model::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
@@ -289,7 +345,10 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
 
 ### 責務
 
-Document IR（`DocNode`）から、配置済み直前のブロック列・ページ列までの組版パスを統合する。`lowering` /
+解決済みドキュメント（`resolve::ResolvedDocument`）から、配置済み直前のブロック列・ページ列までの組版
+パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` クレートが上流で済ませて
+いるため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
+（`### lowering` 節を参照）。`lowering` /
 `block` / `breaking` / `layout` / `pipeline` の 5 module はすべて非公開で、公開 API はクレート root の
 `pub use` に揃える。段順序（lowering → `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline`
 module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶのは次の入口関数だけである（issue #281）。
@@ -307,9 +366,12 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 
 `build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` / `resolve_hyphenation` /
 `break_opportunities` はこれらの入口関数からのみ呼ばれる非公開実装になり、個別には公開しない
-（acceptance criteria）。`lower_document` / `lower_nodes` / `lower_sources_with_headings` /
-`LoweringContext` / `SourceGroup` / `LayoutNode` は例外的に公開のまま残す —
-`crates/typeset/tests/smoke.rs`（crate 外統合テスト）が直接呼ぶため。`LineBreaker` トレイトと
+（acceptance criteria）。`lower_sources_with_headings` / `LoweringContext` / `LayoutNode` /
+`HeadingRecord` は例外的に公開のまま残す — `crates/typeset/tests/smoke.rs`（crate 外統合テスト）が
+直接呼ぶため（旧 `lower_document` / `lower_nodes` / `SourceGroup` / `LoweringError` は issue #282 で
+`lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
+`ResolvedDocument` 1 本になり、複数ソースの束ね方も `resolve::SemanticGroup` / `ResolvedGroup` 側の
+関心事になったため、単一ソース用の薄いラッパーも不要になった）。`LineBreaker` トレイトと
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam なので入口関数の引数として公開を維持する。
 
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
@@ -341,45 +403,51 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 
 ### `lowering`
 
-DocNode → LayoutNode への論理変換。フォント・シェーピング非依存。
+解決済みドキュメント（`resolve::ResolvedDocument`）→ `LayoutNode` への変換。フォント・シェーピング
+非依存。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` クレートが上流で済ませているため、
+この module は「解決済みの構造値（`resolve::CounterValue`）を style の表示側フィールドで文字列にして
+箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す公開関数が無い、`## resolve` 節
+参照）。
 
 - `layout_node`: `LayoutNode` / `TextStyle` / `TableLayout` 等の型定義
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` / `template` /
   `theorem` / `title_page`
-- `counter`（+ `counter::format`）: `CounterRegistry`（`style.toml` の `[counters]` / `[theorems]` に基づく
-  発番・リセットカスケード・`number_format` / `number_style` / `ref_format` / cleveref 書式化）
+- `counter`（+ `counter::format`）: `resolve::CounterValue` から `number_format` / `number_style` /
+  `ref_format` / cleveref 相当の書式（定理は固定 `"{display_name} {number}"`）で表示文字列を作る純粋関数群。
+  値の算出（発番・リセットカスケード）は持たない — それは `resolve::CounterRegistry`（`resolve` クレート
+  非公開）の責務
 - `placeholder`: `{name}` 形式プレースホルダの共通トークナイザ
-- `resolve`: `\ref` の pass2 解決（`resolve_refs`）
 
 **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
 段落内 `\\` 由来のみ）。
 
-**採番と `\ref` 解決**: `lower_sources_with_headings` が構築した 1 個の `CounterRegistry` を各サブモジュールへ
-`&mut` で通す（`theorem` / `quote` / `list` のネスト本文は `lower_nodes_inner` を再帰呼び出しして同一
-レジストリを共有 — ネストしてもカウンタはリセットされない）。`\ref` と `{of}`（proof の証明対象参照）は
-前方参照になり得るため即時解決せず、`LayoutNode::Ref` プレースホルダを発行して pass1 完了後に `resolve` が
-pass2 として `LayoutNode` ツリーを再帰し `Link` / `Text` へ解決する（未解決は
-`LoweringError::UnresolvedReference`）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）も同じ pass1 の
-ウォークから集める。
+**`\ref` はもう 2 段階プレースホルダを使わない**: `resolve` が pass1（登録 + ツリー構築）→ pass2（存在
+検証）を終えた時点で `ResolvedInline::Ref { target: LabelId, .. }` は参照先が存在することが型で保証されて
+いる。`lowering` は走査中の可変状態 `LoweringState`（旧 `CounterRegistry` の可変部分の置き換え。持つのは
+`ResolvedDocument` への参照と、脚注・見出しの通し index 発行だけ）の `ref_display` で
+`ResolvedDocument::counter_values` を引いて表示文字列を作り、その場でノードへ変換する — 旧来のように
+`LayoutNode::Ref` プレースホルダを発行して pass2 で `Link` / `Text` へ書き換える走査は行わない（参照先が
+見つからない場合は `resolve::validate_refs` の不変条件違反として `unreachable!` で落ちる）。TOC・PDF
+しおり用の見出し記録（`HeadingRecord`）は `ResolvedDocument::headings`（`resolve` が pass1 で集めた
+見出し一覧）から `lower_sources_with_headings` が組み立てる。
 
 **脚注のカウンタは特殊**: 定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ
-（`footnote_count`）を持つが、`next_footnote_index` が振るのは表示番号ではなく**出現 index**（0 起点の
-同一性）で、表示番号は `inline::lower_inline` が決めて `LayoutNode::Footnote { number, index, body }` を
-生成する（ラベル解決を伴わないため `Ref` / `Cite` の 2 段階プレースホルダ構造は取らない）。表示番号の
-既定は `index + 1`（＝文書通しの連番）だが、`LoweringContext::footnote_numbers`（出現 index 引きの上書き
-マップ）があればそれを引く。ページ単位リセットはこのマップ経由で実現する（`seiran` の該当節を参照）。
+（`footnote_count`）を持つが、これは表示番号ではなく**出現 index**（0 起点の同一性）の発番であり、ラベルに
+紐づかないため `resolve` の管轄外（`resolve::CounterRegistry` はラベル付きカウンタしか持たない）。
+`LoweringState::next_footnote_index` が振り、表示番号は `inline::lower_inline` が決めて
+`LayoutNode::Footnote { number, index, body }` を生成する（ラベル解決を伴わないため `Ref` の 2 段階
+プレースホルダ構造は元々取らない）。表示番号の既定は `index + 1`（＝文書通しの連番）だが、
+`LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位
+リセットはこのマップ経由で実現する（`seiran` の該当節を参照）。
 
-**複数ソース**: `lower_sources_with_headings(ctx, sources: &[SourceGroup])` が全グループを 1 回でまとめて
-lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グループの起源は `model::Origin` で
-`LoweringContext.source`（`with_source` で差し替え）に載り、そこから発行される `LayoutNode::Ref` /
-`PendingHeading` / `LoweringError`（3 variant 共通の `origin` フィールド）へ帰属として刻まれる。採番
-レジストリ・見出し収集は全グループで共有し、文書全体を通して連続採番する（`\ref` は別グループへの前方
-参照も解決可能）。`lowering` はソース名・内容を知らないため、起源の割り当ては呼び出し元
-（`seiran::build_pdf::ParsedProject::lowering_groups()` が実ソースに `Origin::Source`、合成書誌グループに
-`Origin::Generated(Bibliography)` を明示的に割り当てる）が行い、エラーの帰属先ファイルは
-`LoweringError::origin()` の variant で分岐して決める。単一ソース用の薄いラッパー `lower_nodes` /
-`lower_document` は `Origin::Source(SourceId::new(0))` 固定で委譲する。
+**複数ソース**: `lower_sources_with_headings(ctx, document: &ResolvedDocument) -> (Vec<LayoutNode>,
+Vec<HeadingRecord>)` が `ResolvedDocument::groups`（`ResolvedGroup { nodes: Vec<ResolvedNode>, origin:
+Origin }`）を 1 回でまとめて lower する。グループの起源（`Origin`）は `resolve` が診断のソース位置付けに
+使うためのもので、`resolve` が検証を終えた後の `lowering` にはエラーを出す先が無いため読まない
+（`ResolvedGroup::origin` は素通りする）。見出し収集・カウンタ値の参照は `ResolvedDocument` 全体を通して
+行われるため、`\ref` は別ソース（別グループ）のラベルも指せる（複数ソースの束ね方自体は `resolve` 側の
+関心事になり、`lowering` は 1 個の `ResolvedDocument` を受け取るだけになった）。
 
 ### `block`
 
@@ -544,7 +612,7 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 ### build driver（`build_pdf.rs` 直下）
 
 `build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `render_pdf` /
-`build_font_resource_configs` / `parse_all_sources` / `wrap_lowering_error`）だけを置く。`build_pdf` が
+`build_font_resource_configs` / `parse_all_sources` / `wrap_resolve_error`）だけを置く。`build_pdf` が
 `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`render_pdf` 用、`FontRefs` /
 `FontMetrics` へのアクセサを持つ）と `FontSystem`（`compile_project` 用、シェイプ・メトリクス取得の窓口）の
 両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` / `ShaperInstances` /
@@ -569,8 +637,10 @@ lower する（`SourceGroup { nodes: &[DocNode], origin: Origin }`）。各グ�
 - `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
   `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
   epic #276 / #277）
-- `error`: `BuildPdfError`（各クレートのエラーを束ね、`Origin::Source` なら `NamedSource` を紐付け、
-  `Origin::Generated` は `LoweringInternal` として扱う）
+- `error`: `BuildPdfError`（各クレートのエラーを束ね、`resolve::ResolveError` は帰属ソースが特定できれば
+  `NamedSource` を紐付けた `Resolve`、特定できなければ `ResolveInternal` として扱う。`wrap_resolve_error`
+  がこの帰属先ソースの解決を行う。ラベル・カウンタの解決は `resolve` クレートが行うため、`typeset::lowering`
+  由来の診断エラーはもう無い）
 
 ### compiler core（phase graph）
 
