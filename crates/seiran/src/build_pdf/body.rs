@@ -2,10 +2,7 @@
 
 use typeset::{BodyLayout, BodyLayoutError, BodyLayoutInput};
 
-use super::{
-  ParsedProject, error::BuildPdfError, footnote_numbering, image_resources::ImageResources,
-  phase_context::CompileContext, wrap_lowering_error,
-};
+use super::{error::BuildPdfError, footnote_numbering, image_resources::ImageResources, phase_context::CompileContext};
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。
 ///
@@ -13,15 +10,15 @@ use super::{
 ///
 /// # Errors
 ///
-/// lowering、画像解決、脚注採番のいずれかに失敗した場合にエラーを返す。
+/// 画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref` 解決は
+/// `resolve::resolve_project` が呼び出し元で既に完了しているため、ここでは失敗しない）。
 pub(super) fn typeset_body(
   ctx: &CompileContext<'_>,
-  parsed_project: &ParsedProject,
+  document: &resolve::ResolvedDocument,
   image_resources: &ImageResources,
 ) -> miette::Result<BodyLayout> {
-  let groups = parsed_project.lowering_groups();
   let run_pass = |footnote_numbers: Option<&[u32]>| {
-    return run_body_pass(ctx, parsed_project, &groups, image_resources, footnote_numbers);
+    return run_body_pass(ctx, document, image_resources, footnote_numbers);
   };
   return match ctx.style.footnote.numbering {
     config::FootnoteNumbering::Continuous => run_pass(None),
@@ -34,8 +31,7 @@ pub(super) fn typeset_body(
 /// `footnote_numbers` は出現順で引く脚注番号の上書き列。
 fn run_body_pass(
   ctx: &CompileContext<'_>,
-  parsed_project: &ParsedProject,
-  groups: &[typeset::SourceGroup<'_>],
+  document: &resolve::ResolvedDocument,
   image_resources: &ImageResources,
   footnote_numbers: Option<&[u32]>,
 ) -> miette::Result<BodyLayout> {
@@ -50,9 +46,8 @@ fn run_body_pass(
   // 本文画像は段幅に合わせて解決する
   #[allow(clippy::result_large_err)]
   let resolve_images = |blocks| return resolve_body_images(blocks, ctx, image_resources);
-  return match typeset::layout_body(&input, groups, footnote_numbers, resolve_images) {
+  return match typeset::layout_body(&input, document, footnote_numbers, resolve_images) {
     Ok(layout) => Ok(layout),
-    Err(BodyLayoutError::Lowering { source }) => Err(wrap_lowering_error(source, &parsed_project.parsed).into()),
     Err(BodyLayoutError::Images { source }) => Err(source.into()),
   };
 }

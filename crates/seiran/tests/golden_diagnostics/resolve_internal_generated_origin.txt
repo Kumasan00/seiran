@@ -1,0 +1,8 @@
+build::resolve_internal
+
+  × ラベル・参照・引用の解決に失敗しました（帰属元ソース不明）。
+  ╰─▶ resolve::unresolved_reference
+      
+        × 未解決の参照です: ラベル `missing`
+        help: 対応する label が定義されているか確認してください。
+      

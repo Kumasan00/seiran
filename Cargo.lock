@@ -2123,6 +2123,7 @@ dependencies = [
  "model",
  "pdf_gen",
  "read-fonts 0.41.0",
+ "resolve",
  "thiserror",
  "tracing",
  "tracing-subscriber",

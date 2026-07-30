@@ -5,7 +5,7 @@ use tracing::info;
 use typeset::BodyLayout;
 
 use super::{
-  ParsedProject, back_matter, body, front_matter,
+  back_matter, body, front_matter,
   image_resources::ImageResources,
   outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},
@@ -27,10 +27,11 @@ pub(super) struct LaidOutDocument {
 ///
 /// # Errors
 ///
-/// フォント処理、lowering、画像解決、脚注採番のいずれかに失敗した場合にエラーを返す。
+/// フォント処理、画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref`・
+/// 引用の解決は呼び出し元で `resolve::resolve_project` が既に完了している）。
 pub(super) fn compile_project(
   snapshot: &ProjectSnapshot,
-  parsed_project: &ParsedProject,
+  document: &resolve::ResolvedDocument,
   image_resources: &ImageResources,
   font_system: &FontSystem<'_>,
 ) -> miette::Result<LaidOutDocument> {
@@ -40,7 +41,7 @@ pub(super) fn compile_project(
   let BodyLayout {
     pages: mut body_pages,
     headings,
-  } = body::typeset_body(&ctx, parsed_project, image_resources)?;
+  } = body::typeset_body(&ctx, document, image_resources)?;
 
   // phase 2: 本文のページ事実を確定する
   let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);

@@ -1,8 +1,0 @@
-build::lowering_internal
-
-  × ドキュメントのレイアウト変換に失敗しました（帰属元ソース不明）。
-  ╰─▶ lowering::unresolved_reference
-      
-        × 未解決の参照が lowering に到達しました: ラベル `missing`
-        help: 対応する \label が定義されているか確認してください。
-      

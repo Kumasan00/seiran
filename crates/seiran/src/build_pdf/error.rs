@@ -6,8 +6,8 @@ use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
 use model::AssetId;
 use pdf_gen::PdfGenError;
+use resolve::ResolveError;
 use thiserror::Error;
-use typeset::LoweringError;
 
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -49,29 +49,29 @@ pub(super) enum BuildPdfError {
     source: CitationError,
   },
 
-  /// 帰属ソースを特定できる lowering エラー
+  /// 帰属ソースを特定できる resolve エラー
   ///
   /// `NamedSource` を同梱し、該当箇所を診断へ表示する。
-  #[error("ドキュメントのレイアウト変換に失敗しました。")]
-  #[diagnostic(code(build::lowering))]
-  Lowering {
+  #[error("ラベル・参照・引用の解決に失敗しました。")]
+  #[diagnostic(code(build::resolve))]
+  Resolve {
     /// エラーが帰属するソースファイルの名前と内容（診断スニペット用）
     #[source_code]
     src: NamedSource<String>,
-    /// 元の lowering エラー
+    /// 元の resolve エラー
     #[source]
     #[diagnostic_source]
-    source: LoweringError,
+    source: ResolveError,
   },
 
-  /// 特定ソースに帰属できない lowering エラー
-  #[error("ドキュメントのレイアウト変換に失敗しました（帰属元ソース不明）。")]
-  #[diagnostic(code(build::lowering_internal))]
-  LoweringInternal {
-    /// 元の lowering エラー
+  /// 特定ソースに帰属できない resolve エラー
+  #[error("ラベル・参照・引用の解決に失敗しました（帰属元ソース不明）。")]
+  #[diagnostic(code(build::resolve_internal))]
+  ResolveInternal {
+    /// 元の resolve エラー
     #[source]
     #[diagnostic_source]
-    source: LoweringError,
+    source: ResolveError,
   },
 
   /// PDF ファイルの書き込みエラー

@@ -30,9 +30,10 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 
 /// style の一時的な差分を適用して PDF を生成する。
 ///
-/// `build_pdf` 本体と同じ手順（`parse_project` → `load_image_resources` → `compile_project` →
-/// `ResourceBundle` 構築 → `build_publication` → `pdf_gen::render`）を通す — golden が検証したいのは
-/// 本番の描画経路そのものであり、ここでショートカットを作らない。
+/// `build_pdf` 本体と同じ手順（`parse_project` → `resolve::resolve_project` →
+/// `load_image_resources` → `compile_project` → `ResourceBundle` 構築 → `build_publication` →
+/// `pdf_gen::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
+/// ショートカットを作らない。
 fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config::Style)) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
@@ -44,11 +45,13 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let snapshot = ProjectSnapshot::assemble(config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
   let (parsed_project, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let resolved =
+    resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style).expect("resolve_project の実行");
   let image_resources =
     super::image_resources::load_image_resources(&image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
-  let laid_out = super::compile::compile_project(&snapshot, &parsed_project, &image_resources, &font_system)
+  let laid_out = super::compile::compile_project(&snapshot, &resolved, &image_resources, &font_system)
     .expect("compile_project の実行");
   let font_resource_configs = super::build_font_resource_configs(&config.font_configs);
   let resources = pdf_gen::ResourceBundle::new(
