@@ -146,9 +146,10 @@ pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行�
          フォント・画像資源は呼び出し元が組み立てた ResourceBundle 経由で受け取る）
   ↑ seiran
 
-seiran （エントリーポイント。全クレートを統合してパイプラインを実行。clap / miette / read-fonts /
-         thiserror / tracing にも直接依存し、CLI 引数定義と variation-axes / ttc-names /
-         script-langs サブコマンド実装を cli / subcommand 子 module として内包）
+seiran （エントリーポイント。全クレート（`resolve` を含む）を統合してパイプラインを実行。
+         clap / miette / read-fonts / thiserror / tracing にも直接依存し、CLI 引数定義と
+         variation-axes / ttc-names / script-langs サブコマンド実装を cli / subcommand
+         子 module として内包）
 ```
 
 ### 各クレートの責務
