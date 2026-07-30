@@ -644,7 +644,7 @@ dependencies = [
  "miette",
  "model",
  "rayon",
- "read-fonts 0.41.0",
+ "read-fonts 0.42.1",
  "thiserror",
  "tracing",
 ]
@@ -1752,7 +1752,7 @@ dependencies = [
  "krilla-svg",
  "miette",
  "model",
- "read-fonts 0.41.0",
+ "read-fonts 0.42.1",
  "thiserror",
  "tracing",
  "usvg",
@@ -1969,6 +1969,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.42.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c69341f5f744623061a258e9d06a0213783a89ec23b6efb88a1c0c4ed285559"
+dependencies = [
+ "bytemuck",
+ "font-types 0.12.2",
+ "once_cell",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2122,7 +2133,7 @@ dependencies = [
  "miette",
  "model",
  "pdf_gen",
- "read-fonts 0.41.0",
+ "read-fonts 0.42.1",
  "resolve",
  "thiserror",
  "tracing",
