@@ -16,7 +16,9 @@ pub use counter::{CounterKind, CounterValue};
 pub use document::{ResolvedDocument, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGroup};
 pub use error::ResolveError;
 pub use inline::{IndexKey, ResolvedInline};
-pub use node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedTableCell, ResolvedTableRow};
+pub use node::{
+  ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow,
+};
 
 /// `SemanticDocument` を `ResolvedDocument` へ解決する
 ///

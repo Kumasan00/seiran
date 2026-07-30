@@ -307,7 +307,7 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &ResolvedNode, state: &mut Lo
         number.as_deref(),
         title.as_deref(),
         body,
-        of.as_ref(),
+        of.as_ref().map(|target| return &target.target),
         label.as_ref(),
         state,
       );
@@ -721,14 +721,13 @@ mod tests {
 
     // Assert
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
-    let mut indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
-    indices.sort_unstable();
-    assert_eq!(indices, vec![0, 1, 2], "見出し index は重複なく連番のはず: {headings:?}");
-    // `AnchorMark::Heading` の key が `HeadingRecord::index` と 1:1 で対応することを確かめる
-    // （`resolve` 側の走査順とこちらの走査順が食い違うと目次の内部リンクが静かに壊れる）。
-    let mut anchor_keys = collect_heading_anchor_keys(&layout);
-    anchor_keys.sort_unstable();
-    assert_eq!(anchor_keys, indices, "アンカーの key は見出し記録の index と一致するはず: {layout:?}");
+    let indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
+    assert_eq!(indices, vec![0, 1, 2], "見出し index は文書順に連番のはず: {headings:?}");
+    // `AnchorMark::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる
+    // （`resolve` 側の走査順とこちらの走査順が食い違うと目次の内部リンクが静かに壊れる。集合一致では
+    // key が入れ替わっていても検出できないため、ソートせず順序も含めて比較する）。
+    let anchor_keys = collect_heading_anchor_keys(&layout);
+    assert_eq!(anchor_keys, indices, "アンカーの key は見出し記録の index と順序込みで一致するはず: {layout:?}");
   }
 
   /// レイアウトノード木から `AnchorMark::Heading` の key（文書順インデックス）を集める

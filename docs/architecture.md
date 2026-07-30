@@ -180,8 +180,11 @@
 済み対応物）へ変換する。citation の後・typeset の前で 1 回だけ走るステージ。カウンタの**値**（構造のみ。
 例: 節 1.2 → `parts: [1, 2]`）もここで確定するが、**表示**に関わる style フィールド（`number_format` /
 `ref_format` / `display_name` / `number_style`）は一切読まない — 値と表示の分離は G3（内容は見た目から
-独立）の型による実装で、`typeset::lowering` 側が `&config::Style` と `CounterValue` を合わせて表示文字列を
-作る。
+独立）の実現だが、型で強制されているわけではない（`resolve_project` は `&config::Style` 全体を受け取り、
+表示フィールドを読むこと自体は型上可能）。実際の保証は「`resolve` の関数はこれらのフィールドを参照しない」
+という規約と、`crates/resolve/tests/style_independence.rs` の property test（表示のみ異なる style を
+差し替えても `ResolvedDocument` が変わらないことを検証）による。`typeset::lowering` 側が
+`&config::Style` と `CounterValue` を合わせて表示文字列を作る。
 
 ### モジュール構成
 

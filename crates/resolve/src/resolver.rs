@@ -7,7 +7,7 @@ use crate::{
   counter::CounterRegistry,
   error::span_to_source_span,
   inline::{IndexKey, ResolvedInline},
-  node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedTableCell, ResolvedTableRow},
+  node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
 };
 
 /// pass1 走査中に集める見出しの生データ（表示文字列化は typeset 側の責務）
@@ -123,7 +123,14 @@ fn resolve_node(
       let counter_value = registry.increment_theorem_with_label(*class, label.as_deref(), *span, source)?;
       // `of` の参照先はこの時点ではまだ登録済みとは限らない（前方参照— 定理は後で
       // 定義されうる）。存在確認は pass2（`validate_refs`）に委ね、ここでは LabelId 化のみ行う。
-      let of = of.as_ref().map(|target| return LabelId::new(target.label.clone()));
+      // span は `[of=...]` 引数自身のもの（未解決時の診断で定理環境全体ではなく引数の
+      // ソース位置を指すために必要）を保持する。
+      let of = of.as_ref().map(|target| {
+        return ResolvedProofTarget {
+          target: LabelId::new(target.label.clone()),
+          span: target.span,
+        };
+      });
       return Ok(ResolvedNode::Theorem {
         class: *class,
         title: title.clone(),

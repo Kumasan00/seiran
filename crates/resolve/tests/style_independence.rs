@@ -52,8 +52,8 @@ fn resolve_sample(nodes: &[DocNode], style: &Style) -> resolve::ResolvedDocument
 
 #[test]
 fn resolved_document_is_identical_across_display_only_style_variants() {
-  // Arrange: 表示側フィールド（number_format / ref_format / display_name）だけが異なる
-  // 3 通りの style を用意する。resets（値側フィールド）はいずれも既定のまま変えない。
+  // Arrange: 表示側フィールド（number_format / ref_format / display_name / number_style）だけが
+  // 異なる 4 通りの style を用意する。resets（値側フィールド）はいずれも既定のまま変えない。
   let nodes = sample_nodes();
   let base = Style::default();
 
@@ -67,18 +67,26 @@ fn resolved_document_is_identical_across_display_only_style_variants() {
   let mut different_display_name = Style::default();
   different_display_name.counters.chapter.display_name = "章".to_string();
 
+  let mut different_number_style = Style::default();
+  different_number_style.counters.chapter.number_style = config::NumberStyle::RomanUpper;
+
   // Act
   let base_resolved = resolve_sample(&nodes, &base);
   let variants = [
-    resolve_sample(&nodes, &different_number_format),
-    resolve_sample(&nodes, &different_ref_format),
-    resolve_sample(&nodes, &different_display_name),
+    ("number_format", resolve_sample(&nodes, &different_number_format)),
+    ("ref_format", resolve_sample(&nodes, &different_ref_format)),
+    ("display_name", resolve_sample(&nodes, &different_display_name)),
+    ("number_style", resolve_sample(&nodes, &different_number_style)),
   ];
 
   // Assert: ResolvedDocument（構造値・LabelId・headings すべて）は表示側 style を
-  // 変えても完全に同一になる（G3 の直接検証）
-  for variant in &variants {
-    assert_eq!(&base_resolved, variant, "表示のみ異なる style で ResolvedDocument が変わってはいけない");
+  // 変えても完全に同一になる（G3 の直接検証）。失敗時にどの variant が壊れたか
+  // 分かるようラベル付きでメッセージに含める。
+  for (label, variant) in &variants {
+    assert_eq!(
+      &base_resolved, variant,
+      "表示のみ異なる style（variant: {label}）で ResolvedDocument が変わってはいけない"
+    );
   }
 }
 

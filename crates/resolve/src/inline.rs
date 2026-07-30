@@ -1,7 +1,7 @@
 //! 解決済みインライン要素。`model::InlineNode` と 1:1 だが、`\ref` / `\cite` / `\index` の
 //! 使用箇所だけが生の名前ではなく typed ID を持つ
 
-use model::{CitationId, Color, FontKind, LabelId, Span};
+use model::{CitationId, Color, FontKind, LabelId, MathNode, Span};
 
 /// 索引語の同一性キー（正規化した語 + reading）
 ///
@@ -33,8 +33,8 @@ pub enum ResolvedInline {
     /// 着色対象のインライン要素
     children: Vec<ResolvedInline>,
   },
-  /// インライン数式（`model::MathNode` は名前を持たないため無変更で保持する）
-  InlineMath(Vec<model::MathNode>),
+  /// インライン数式（`MathNode` は名前を持たないため無変更で保持する）
+  InlineMath(Vec<MathNode>),
   /// 特殊文字・記号
   Symbol(char),
   /// 強制改行

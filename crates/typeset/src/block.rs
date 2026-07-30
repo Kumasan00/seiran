@@ -215,7 +215,6 @@ impl Measurer<'_> {
             value: PENALTY_FORBID_BREAK,
           });
         },
-        // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
       }
     }
   }
@@ -327,7 +326,6 @@ impl Measurer<'_> {
       | LayoutNode::MathBlock { .. }
       | LayoutNode::PageBreak
       | LayoutNode::KeepWithNext => {},
-      // \ref プレースホルダは lowering の pass2（resolve::resolve_refs）が必ず Link に解決するか
     }
   }
 

@@ -106,7 +106,8 @@ config （model を使用。非公開の `config` / `style` 子 module を内包
 resolve （model, config に依存。citation には依存しない。SemanticDocument（未解決のラベル名・
         \ref 参照名・引用キー・索引語を保持できる）と ResolvedDocument（typed ID へ解決済み）
         を分離する。resolve_project がラベル登録・\ref 存在検証・カウンタ構造値（CounterValue）
-        の算出まで行う。表示文字列（number_format 等）は一切読まない — G3 を型で保証する）
+        の算出まで行う。表示文字列（number_format 等）は一切読まない（`resolve` の関数がこれらの
+        フィールドを参照しない設計で、`style_independence.rs` の property test が回帰を検出する）
   ↑ typeset, seiran
 
 frontend （model に依存。bumpalo アリーナ上に CST を構築し、Document IR（model）に
@@ -161,7 +162,7 @@ seiran （エントリーポイント。全クレート（`resolve` を含む）
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade）                                                                                                                                                                                                                                                                   |
-| `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（G3 を型で保証） |
+| `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence.rs` の property test で保証） |
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |

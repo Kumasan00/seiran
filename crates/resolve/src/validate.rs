@@ -38,13 +38,13 @@ fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: Origin
         validate_refs(&item.content, registry, origin)?;
       }
     },
-    ResolvedNode::Theorem { body, of, span, .. } => {
+    ResolvedNode::Theorem { body, of, .. } => {
       if let Some(of) = of
-        && registry.resolve_label(of.as_str()).is_none()
+        && registry.resolve_label(of.target.as_str()).is_none()
       {
         return Err(ResolveError::UnresolvedReference {
-          label: of.as_str().to_string(),
-          span: span_to_source_span(*span),
+          label: of.target.as_str().to_string(),
+          span: span_to_source_span(of.span),
           origin,
         });
       }
@@ -127,7 +127,7 @@ mod tests {
   use super::*;
   use crate::{
     counter::CounterRegistry,
-    node::{ResolvedListItem, ResolvedTableCell, ResolvedTableRow},
+    node::{ResolvedListItem, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
   };
 
   #[allow(clippy::unwrap_used)]
@@ -202,7 +202,10 @@ mod tests {
       class: model::TheoremClass::Proof,
       title: None,
       body: Vec::new(),
-      of: Some(LabelId::new("thm:missing")),
+      of: Some(ResolvedProofTarget {
+        target: LabelId::new("thm:missing"),
+        span: Span::DUMMY,
+      }),
       label: None,
       counter_value: None,
       span: Span::DUMMY,
@@ -213,6 +216,38 @@ mod tests {
 
     // Assert
     assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "thm:missing"));
+  }
+
+  #[allow(clippy::unwrap_used)]
+  #[test]
+  fn validate_refs_reports_of_targets_own_span_not_theorem_span() {
+    // Arrange: `[of=...]` 引数のソース位置（span）と定理環境自体のソース位置を
+    // 意図的に異なる値にし、未解決診断がどちらの span を報告するかを区別できるようにする
+    let registry = CounterRegistry::from_style(&config::Style::default());
+    let of_span = Span::new(10, 20);
+    let theorem_span = Span::new(100, 200);
+    let nodes = vec![ResolvedNode::Theorem {
+      class: model::TheoremClass::Proof,
+      title: None,
+      body: Vec::new(),
+      of: Some(ResolvedProofTarget {
+        target: LabelId::new("thm:missing"),
+        span: of_span,
+      }),
+      label: None,
+      counter_value: None,
+      span: theorem_span,
+    }];
+
+    // Act
+    let err = validate_refs(&nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
+
+    // Assert: 報告される span は `of` 引数自身の span であり、定理環境の span ではない
+    let ResolveError::UnresolvedReference { span, .. } = err else {
+      panic!("UnresolvedReference が返るはず: {err:?}");
+    };
+    assert_eq!(span, span_to_source_span(of_span), "報告される span は [of=...] 引数自身の位置のはず");
+    assert_ne!(span, span_to_source_span(theorem_span), "定理環境の span が使われてはいけない");
   }
 
   #[allow(clippy::unwrap_used)]

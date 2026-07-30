@@ -109,8 +109,8 @@ pub enum ResolvedNode {
     title: Option<String>,
     /// 本体
     body: Vec<ResolvedNode>,
-    /// `proof` の `[of=...]`（解決済み — 参照先は必ず存在する）
-    of: Option<LabelId>,
+    /// `proof` の `[of=...]`（参照先ラベルとソース位置の両方を保持する。存在検証は pass2 が行う）
+    of: Option<ResolvedProofTarget>,
     /// `\ref{thm:foo}` 解決用ラベル
     label: Option<LabelId>,
     /// この定理の採番値（`unnumbered` クラスは `None`）
@@ -138,6 +138,15 @@ pub enum ResolvedNode {
   Space(Length),
   /// 参考文献エントリのアンカー（citation クレートが合成。既に typed なので無変更）
   Anchor(CitationId),
+}
+
+/// 解決済みの `proof` の `[of=...]`（参照先ラベルとソース位置の両方を保持する）
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedProofTarget {
+  /// 参照先ラベル
+  pub target: LabelId,
+  /// `[of=...]` 引数のソース位置（未解決時の診断に使う）
+  pub span: Span,
 }
 
 /// 解決済みリスト項目
