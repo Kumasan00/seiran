@@ -86,11 +86,11 @@ fn diagnostic_multiple_source_errors() {
 }
 
 #[test]
-fn diagnostic_multi_source_lowering_error_attributes_second_source() {
-  // Arrange / Act — 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（lowering 段）。
-  // `typeset::lower_sources_with_headings` はラベル名前空間を全ソースで共有するため
-  // （単一の `CounterRegistry` に対して逐次 lowering し、`resolve_refs` を全体へ 1 回だけ実行する）、
-  // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、lowering 段の複数 source でも
+fn diagnostic_multi_source_resolve_error_attributes_second_source() {
+  // Arrange / Act — 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（resolve 段）。
+  // `resolve::resolve_project` はラベル名前空間を全ソースで共有するため
+  // （単一の `CounterRegistry` に対して逐次解決し、`\ref` の存在検証を全体へ 1 回だけ実行する）、
+  // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、resolve 段の複数 source でも
   // `Origin::Source` が正しいファイルへ帰属することを確認する。
   let report = build_pages_err(&[
     "tests/text/diagnostics/multi_source_a.sei",
@@ -98,12 +98,12 @@ fn diagnostic_multi_source_lowering_error_attributes_second_source() {
   ]);
 
   // Assert
-  assert_matches_golden("multi_source_lowering_error", &render_diagnostic(&report));
+  assert_matches_golden("multi_source_resolve_error", &render_diagnostic(&report));
 }
 
 #[test]
 fn diagnostic_undefined_ref() {
-  // Arrange / Act — `\ref` の未定義ラベル（source 帰属つき `Lowering` エラー）
+  // Arrange / Act — `\ref` の未定義ラベル（source 帰属つき `Resolve` エラー）
   let report = build_pages_err(&["tests/text/diagnostics/undefined_ref.sei"]);
 
   // Assert
@@ -111,16 +111,16 @@ fn diagnostic_undefined_ref() {
 }
 
 #[test]
-fn diagnostic_lowering_internal_for_generated_origin() {
+fn diagnostic_resolve_internal_for_generated_origin() {
   // Arrange — 合成書誌からは起こせないエラーを直接構築する
   let style = config::Style::default();
   let error =
-    super::tests::lowering_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
-  let build_error = super::wrap_lowering_error(error, &[]);
+    super::tests::resolve_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
+  let build_error = super::wrap_resolve_error(error, &[]);
   let report: miette::Report = build_error.into();
 
   // Assert
-  assert_matches_golden("lowering_internal_generated_origin", &render_diagnostic(&report));
+  assert_matches_golden("resolve_internal_generated_origin", &render_diagnostic(&report));
 }
 
 #[test]

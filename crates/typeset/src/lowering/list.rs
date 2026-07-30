@@ -1,10 +1,10 @@
-//! リスト（`DocNode::List`）の lowering
+//! リスト（`resolve::ResolvedNode::List`）の lowering
 
-use model::{Length, ListItem};
+use model::Length;
+use resolve::ResolvedListItem;
 
 use super::{
-  LoweringContext, LoweringError, PendingHeading,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
@@ -13,12 +13,11 @@ use super::{
 pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
-  items: &[ListItem],
+  items: &[ResolvedListItem],
   start: Option<u32>,
   item_gap: Option<Length>,
-  registry: &mut CounterRegistry,
-  headings: &mut Vec<PendingHeading>,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let list_style = &ctx.style.list;
   let depth = ctx.list_depth;
   let mut result = Vec::new();
@@ -63,7 +62,7 @@ pub(super) fn lower_list(
       item_nodes.push(LayoutNode::Text(format!("{marker_body} "), marker_style));
     }
 
-    let content_nodes = lower_nodes_inner(&item_ctx, &item.content, registry, headings)?;
+    let content_nodes = lower_nodes_inner(&item_ctx, &item.content, state);
     item_nodes.extend(content_nodes);
 
     result.push(LayoutNode::VBox {
@@ -75,28 +74,45 @@ pub(super) fn lower_list(
     });
   }
 
-  return Ok(result);
+  return result;
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use model::{DocNode, FontKind, InlineNode, ListItem};
+  use model::FontKind;
+  use resolve::{ResolvedInline, ResolvedNode};
 
-  use super::*;
+  use super::{super::test_support, *};
 
-  /// テキスト 1 段落だけを内容に持つ `ListItem` を作るヘルパ
-  fn item_with_text(text: &str) -> ListItem {
-    return ListItem::new(vec![DocNode::Paragraph(vec![InlineNode::Text(text.to_string())])]);
+  /// テキスト 1 段落だけを内容に持つ `ResolvedListItem` を作るヘルパ
+  fn item_with_text(text: &str) -> ResolvedListItem {
+    return ResolvedListItem {
+      content: vec![ResolvedNode::Paragraph(vec![ResolvedInline::Text(
+        text.to_string(),
+      )])],
+      marker: None,
+      item_gap: None,
+    };
   }
 
-  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_list` を呼ぶヘルパ
+  /// 任意の内容ノード列を持つ `ResolvedListItem` を作るヘルパ
+  fn item_with_content(content: Vec<ResolvedNode>) -> ResolvedListItem {
+    return ResolvedListItem {
+      content,
+      marker: None,
+      item_gap: None,
+    };
+  }
+
+  /// テスト用に `LoweringState` を構築して `lower_list` を呼ぶヘルパ
   fn lower_list_default(
     ctx: &LoweringContext,
     ordered: bool,
-    items: &[ListItem],
+    items: &[ResolvedListItem],
     start: Option<u32>,
-  ) -> Result<Vec<LayoutNode>, LoweringError> {
+  ) -> Vec<LayoutNode> {
     return lower_list_with_gap(ctx, ordered, items, start, None);
   }
 
@@ -104,13 +120,12 @@ mod tests {
   fn lower_list_with_gap(
     ctx: &LoweringContext,
     ordered: bool,
-    items: &[ListItem],
+    items: &[ResolvedListItem],
     start: Option<u32>,
     item_gap: Option<model::Length>,
-  ) -> Result<Vec<LayoutNode>, LoweringError> {
-    let mut registry = CounterRegistry::from_style(ctx.style);
-    let mut headings = Vec::new();
-    return lower_list(ctx, ordered, items, start, item_gap, &mut registry, &mut headings);
+  ) -> Vec<LayoutNode> {
+    let document = test_support::document(&[]);
+    return lower_list(ctx, ordered, items, start, item_gap, &mut LoweringState::new(&document));
   }
 
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
@@ -132,7 +147,7 @@ mod tests {
     let items = [item_with_text("apple")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None).expect("解決済み内容なので失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None);
 
     // Assert
     let (marker, _) = marker_of(&nodes[0]);
@@ -151,7 +166,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, None);
 
     // Assert
     assert_eq!(nodes.len(), 3);
@@ -171,7 +186,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items, Some(5)).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, Some(5));
 
     // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
@@ -183,7 +198,7 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nested = DocNode::List {
+    let nested = ResolvedNode::List {
       ordered: true,
       items: vec![item_with_text("inner-a"), item_with_text("inner-b")],
       start: Some(10),
@@ -191,14 +206,14 @@ mod tests {
     };
     let items = [
       item_with_text("outer-a"),
-      ListItem::new(vec![
-        DocNode::Paragraph(vec![InlineNode::Text("outer-b".to_string())]),
+      item_with_content(vec![
+        ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer-b".to_string())]),
         nested,
       ]),
     ];
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, None);
 
     // Assert
     let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
@@ -213,13 +228,13 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let doc_nodes = vec![
-      DocNode::List {
+      ResolvedNode::List {
         ordered: true,
         items: vec![item_with_text("a"), item_with_text("b")],
         start: Some(5),
         item_gap: None,
       },
-      DocNode::List {
+      ResolvedNode::List {
         ordered: true,
         items: vec![item_with_text("x")],
         start: None,
@@ -228,7 +243,8 @@ mod tests {
     ];
 
     // Act
-    let nodes = crate::lower_nodes(&ctx, &doc_nodes).expect("失敗しない");
+    let document = test_support::document(&[]);
+    let nodes = super::super::lower_nodes_inner(&ctx, &doc_nodes, &mut LoweringState::new(&document));
 
     // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
@@ -243,7 +259,7 @@ mod tests {
     let items = [item_with_text("x")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None);
 
     // Assert
     let list_style = &style.list;
@@ -270,21 +286,21 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nested = DocNode::List {
+    let nested = ResolvedNode::List {
       ordered: false,
-      items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
-        InlineNode::Text("inner".to_string()),
+      items: vec![item_with_content(vec![ResolvedNode::Paragraph(vec![
+        ResolvedInline::Text("inner".to_string()),
       ])])],
       start: None,
       item_gap: None,
     };
-    let items = [ListItem::new(vec![
-      DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
+    let items = [item_with_content(vec![
+      ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer".to_string())]),
       nested,
     ])];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None);
 
     // Assert
     let indent = style.list.indent.to_pt();
@@ -320,7 +336,7 @@ mod tests {
     items[1].marker = Some("Q1.".to_string());
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &items, None);
 
     // Assert
     let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
@@ -336,7 +352,7 @@ mod tests {
     items[0].marker = Some(String::new());
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None);
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
@@ -355,24 +371,26 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_list_default(&ctx, true, &[], None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, true, &[], None);
 
     // Assert
     assert!(nodes.is_empty());
   }
 
   /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストの items を構築する
-  fn build_nested_items(kinds: &[bool]) -> Vec<ListItem> {
-    let mut content = vec![DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])];
+  fn build_nested_items(kinds: &[bool]) -> Vec<ResolvedListItem> {
+    let mut content = vec![ResolvedNode::Paragraph(vec![ResolvedInline::Text(
+      "x".to_string(),
+    )])];
     if kinds.len() > 1 {
-      content.push(DocNode::List {
+      content.push(ResolvedNode::List {
         ordered: kinds[1],
         items: build_nested_items(&kinds[1..]),
         start: None,
         item_gap: None,
       });
     }
-    return vec![ListItem::new(content)];
+    return vec![item_with_content(content)];
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す
@@ -406,7 +424,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
@@ -421,7 +439,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
@@ -436,7 +454,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
@@ -450,7 +468,7 @@ mod tests {
     let items = [item_with_text("a"), item_with_text("b")];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0))).expect("失敗しない");
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0)));
 
     // Assert
     for node in &nodes {
@@ -470,7 +488,7 @@ mod tests {
     items[0].item_gap = Some(model::Length::mm(1.0));
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0))).expect("失敗しない");
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0)));
 
     // Assert
     let LayoutNode::VBox {
@@ -499,7 +517,7 @@ mod tests {
     let items = [item_with_text("a")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, false, &items, None);
 
     // Assert
     let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
@@ -513,19 +531,19 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nested = DocNode::List {
+    let nested = ResolvedNode::List {
       ordered: false,
       items: vec![item_with_text("inner")],
       start: None,
       item_gap: None,
     };
-    let items = [ListItem::new(vec![
-      DocNode::Paragraph(vec![InlineNode::Text("outer".to_string())]),
+    let items = [item_with_content(vec![
+      ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer".to_string())]),
       nested,
     ])];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(5.0))).expect("失敗しない");
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(5.0)));
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {
@@ -550,7 +568,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);
@@ -566,7 +584,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "§ ", "† "]);
@@ -591,7 +609,7 @@ mod tests {
     let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None).expect("失敗しない");
+    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);

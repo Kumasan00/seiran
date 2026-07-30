@@ -1,5 +1,5 @@
 [package]
-name = "typeset"
+name = "resolve"
 version.workspace = true
 edition.workspace = true
 description.workspace = true
@@ -9,18 +9,9 @@ license.workspace = true
 
 [dependencies]
 config.workspace = true
-font.workspace = true
-hypher.workspace = true
-icu.workspace = true
-lazy-regex.workspace = true
 miette.workspace = true
 model.workspace = true
-resolve.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-
-[dev-dependencies]
-frontend.workspace = true
 
 [lints]
 workspace = true

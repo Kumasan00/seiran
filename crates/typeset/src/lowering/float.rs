@@ -1,33 +1,29 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
 use config::CaptionStyle;
-use model::{CaptionPosition, FontKind, InlineNode, Length};
+use model::{CaptionPosition, FontKind, Length};
+use resolve::ResolvedInline;
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
-///
-/// # Errors
-///
-/// キャプション内に未解決の `\ref` がある場合に [`LoweringError::UnresolvedReference`] を返します。
 pub(super) fn build_caption(
   ctx: &LoweringContext,
   caption_style: &CaptionStyle,
-  inlines: &[InlineNode],
+  inlines: &[ResolvedInline],
   number: &str,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
     font_kind: FontKind::Serif,
     color: None,
   };
-  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style, registry);
+  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style, state);
 }
 
 /// フロートの余白の指定
@@ -84,11 +80,13 @@ pub(super) fn wrap_float(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
-  use config::{CaptionStyle, Style as ReadStyle};
-  use model::{CaptionPosition, FontKind, InlineNode, Length};
+  use config::{CaptionStyle, CounterName, Style as ReadStyle};
+  use model::{CaptionPosition, FontKind, Length};
+  use resolve::{CounterKind, CounterValue};
 
-  use super::*;
+  use super::{super::test_support, *};
 
   /// テスト用のキャプション本体（識別しやすい固定文字列の Text）を作る
   fn caption_node(text: &str) -> LayoutNode {
@@ -219,11 +217,11 @@ mod tests {
       format: "Fig {number}: {title}".to_string(),
       font_size: Length::pt(9.0),
     };
-    let inlines = [InlineNode::Text("Overview".to_string())];
+    let inlines = [ResolvedInline::Text("Overview".to_string())];
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "3", &mut CounterRegistry::default_for_seiran())
-      .expect("解決済みインラインなので失敗しない");
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "3", &mut LoweringState::new(&document));
 
     // Assert
     assert_eq!(nodes.len(), 1, "プレーンタイトルは 1 つの Text に縮約される: {nodes:?}");
@@ -236,24 +234,35 @@ mod tests {
   }
 
   #[test]
-  fn build_caption_ref_becomes_placeholder() {
+  fn build_caption_ref_is_resolved_to_internal_link() {
     // Arrange
     let read_style = ReadStyle::default();
     let ctx = LoweringContext::new(&read_style);
     let caption_style = CaptionStyle::default();
-    let inlines = [InlineNode::Ref {
-      label: "fig:missing".to_string(),
+    let inlines = [ResolvedInline::Ref {
+      target: model::LabelId::new("fig:one"),
       span: model::Span::DUMMY,
     }];
+    let document = test_support::document(&[(
+      "fig:one",
+      CounterValue {
+        kind: CounterKind::Counter(CounterName::Figure),
+        parts: vec![0, 1, 2],
+      },
+    )]);
 
     // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "1", &mut CounterRegistry::default_for_seiran())
-      .expect("即時エラーにはならない");
+    let nodes = build_caption(&ctx, &caption_style, &inlines, "1", &mut LoweringState::new(&document));
 
     // Assert
-    assert!(
-      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "fig:missing")),
-      "Ref プレースホルダが残るはず: {nodes:?}"
-    );
+    let link = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Link { target, children } => return Some((target, children)),
+        _ => return None,
+      })
+      .expect("解決済み \\ref は Link になるはず");
+    assert_eq!(*link.0, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("fig:one"))));
+    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Figure 1.2"), "{:?}", link.1);
   }
 }

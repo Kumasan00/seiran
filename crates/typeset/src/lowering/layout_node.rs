@@ -1,6 +1,6 @@
 //! レイアウトノードおよびスタイルの型定義
 
-use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, Origin, TableColumn};
+use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
 /// レイアウトエンジン（`crate::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -92,20 +92,6 @@ pub enum LayoutNode {
   KeepWithNext,
   /// 行の右端に寄せる末尾要素（証明の QED マーク等）
   FlushRight(Vec<LayoutNode>),
-  /// 未解決の `\ref{label}`（または `proof` の `[of=...]`）プレースホルダ
-  Ref {
-    /// 参照先のラベル名
-    label: String,
-    /// `\ref{...}` / `[of=...]` のソース位置。未解決時の診断に使う
-    span: miette::SourceSpan,
-    /// 解決後の番号テキストに適用するスタイル（リンク色等は発行時点で確定済み）
-    style: TextStyle,
-    /// 解決後にクリック可能な内部リンクとして囲むか（`\ref` は `true`、`proof` の `{of}` は `false`）
-    as_link: bool,
-    /// この参照が属するソースグループの起源。pass2 で未解決だった場合に
-    /// `LoweringError::UnresolvedReference` の帰属として引き継ぐ
-    source: Origin,
-  },
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   Footnote {
     /// 発番済みの表示番号（マーカーのテキストとして既に埋め込み済みの値）
@@ -200,44 +186,6 @@ pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
   return out;
 }
 
-/// `resolved_positions` に含まれる位置（`{of}` 解決で `Text` に置き換わった箇所）の前後だけ、
-/// 隣接する同一スタイルの `Text` を 1 つに結合する
-pub(crate) fn merge_adjacent_text_at(nodes: &mut Vec<LayoutNode>, resolved_positions: &[usize]) {
-  if resolved_positions.is_empty() {
-    return;
-  }
-  let taken = std::mem::take(nodes);
-  let mut out: Vec<LayoutNode> = Vec::with_capacity(taken.len());
-  // out.last() が「resolved 由来の結合」を含むか
-  let mut pending_resolved = false;
-  // resolved_positions への走査ポインタ
-  let mut next = 0usize;
-  for (i, node) in taken.into_iter().enumerate() {
-    let is_resolved = next < resolved_positions.len() && resolved_positions[next] == i;
-    if is_resolved {
-      next += 1;
-    }
-    let should_merge = matches!(
-      (out.last(), &node),
-      (Some(LayoutNode::Text(_, prev_style)), LayoutNode::Text(_, cur_style)) if prev_style == cur_style
-    ) && (pending_resolved || is_resolved);
-    if should_merge {
-      let LayoutNode::Text(text, _) = node else {
-        unreachable!("直前の matches! で Text を確認済み")
-      };
-      let LayoutNode::Text(prev_text, _) = out.last_mut().expect("直前の matches! で Some を確認済み") else {
-        unreachable!("直前の matches! で Text を確認済み")
-      };
-      prev_text.push_str(&text);
-      pending_resolved = true;
-    } else {
-      out.push(node);
-      pending_resolved = is_resolved;
-    }
-  }
-  *nodes = out;
-}
-
 #[cfg(test)]
 mod tests {
   use model::FontKind;
@@ -253,29 +201,29 @@ mod tests {
   }
 
   #[test]
-  fn of_resolution_merges_surrounding_text_only() {
+  fn adjacent_same_style_text_is_merged() {
     // Arrange
     let s1 = style(FontKind::Serif);
-    let mut nodes = vec![
+    let nodes = vec![
       LayoutNode::Text("A".to_string(), s1),
       LayoutNode::Text("B".to_string(), s1),
       LayoutNode::Text("C".to_string(), s1),
     ];
 
     // Act
-    merge_adjacent_text_at(&mut nodes, &[1]);
+    let merged = merge_adjacent_text(nodes);
 
     // Assert
-    assert_eq!(nodes.len(), 1, "{nodes:?}");
-    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "ABC"), "{nodes:?}");
+    assert_eq!(merged.len(), 1, "{merged:?}");
+    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "ABC"), "{merged:?}");
   }
 
   #[test]
-  fn unrelated_adjacent_pair_is_not_merged() {
+  fn different_style_text_is_not_merged() {
     // Arrange
     let s1 = style(FontKind::Serif);
     let s2 = style(FontKind::SerifBold);
-    let mut nodes = vec![
+    let nodes = vec![
       LayoutNode::Text("A".to_string(), s1),
       LayoutNode::Text("B".to_string(), s1),
       LayoutNode::Text("C".to_string(), s2),
@@ -283,28 +231,28 @@ mod tests {
     ];
 
     // Act
-    merge_adjacent_text_at(&mut nodes, &[2]);
+    let merged = merge_adjacent_text(nodes);
 
     // Assert
-    assert_eq!(nodes.len(), 3, "{nodes:?}");
-    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "A"), "{nodes:?}");
-    assert!(matches!(&nodes[1], LayoutNode::Text(t, _) if t == "B"), "{nodes:?}");
-    assert!(matches!(&nodes[2], LayoutNode::Text(t, _) if t == "CD"), "{nodes:?}");
+    assert_eq!(merged.len(), 2, "{merged:?}");
+    assert!(matches!(&merged[0], LayoutNode::Text(t, _) if t == "AB"), "{merged:?}");
+    assert!(matches!(&merged[1], LayoutNode::Text(t, _) if t == "CD"), "{merged:?}");
   }
 
   #[test]
-  fn empty_resolved_positions_is_noop() {
+  fn non_text_node_breaks_merging() {
     // Arrange
     let s1 = style(FontKind::Serif);
-    let mut nodes = vec![
+    let nodes = vec![
       LayoutNode::Text("A".to_string(), s1),
+      LayoutNode::LineBreak,
       LayoutNode::Text("B".to_string(), s1),
     ];
 
     // Act
-    merge_adjacent_text_at(&mut nodes, &[]);
+    let merged = merge_adjacent_text(nodes);
 
     // Assert
-    assert_eq!(nodes.len(), 2, "{nodes:?}");
+    assert_eq!(merged.len(), 3, "{merged:?}");
   }
 }

@@ -1,10 +1,10 @@
-//! 図環境（`DocNode::Figure`）の lowering
+//! 図環境（`resolve::ResolvedNode::Figure`）の lowering
 
-use model::{AssetId, CaptionPosition, InlineNode, Length};
+use model::{AssetId, CaptionPosition, Length};
+use resolve::ResolvedInline;
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
   layout_node::LayoutNode,
 };
@@ -19,10 +19,6 @@ pub(crate) struct ImageOverrides {
 }
 
 /// 図をレイアウトノードに変換する
-///
-/// # Errors
-///
-/// キャプション内に未解決の `\ref` がある場合に [`LoweringError::UnresolvedReference`] を返します。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
@@ -30,10 +26,10 @@ pub(super) fn lower_figure(
   width: Option<Length>,
   height: Option<Length>,
   overrides: ImageOverrides,
-  caption: Option<(CaptionPosition, &[InlineNode])>,
+  caption: Option<(CaptionPosition, &[ResolvedInline])>,
   number: &str,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let style = &ctx.style.figure;
 
   // ダウンサンプリングの既定（max_dpi / downsample）は出力物理の設定で config `[image]` 由来。
@@ -52,31 +48,29 @@ pub(super) fn lower_figure(
     target_dpi,
   };
 
-  let caption_nodes = match caption {
-    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number, registry)?)),
-    None => None,
-  };
+  let caption_nodes =
+    caption.map(|(position, inlines)| return (position, build_caption(ctx, &style.caption, inlines, number, state)));
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: style.inner_margin,
   };
-  return Ok(wrap_float(image_node, caption_nodes, &spec));
+  return wrap_float(image_node, caption_nodes, &spec);
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use model::InlineNode;
 
-  use super::*;
+  use super::{super::test_support, *};
 
   #[test]
   fn lower_figure_emits_image_and_caption_in_bottom_order() {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let caption = [InlineNode::Text("せいらん".to_string())];
+    let caption = [ResolvedInline::Text("せいらん".to_string())];
 
     // Act
     let nodes = lower_figure(
@@ -87,9 +81,8 @@ mod tests {
       ImageOverrides::default(),
       Some((CaptionPosition::Bottom, &caption)),
       "1",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("解決済みインラインなのでエラーにならない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
@@ -122,7 +115,7 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let caption = [InlineNode::Text("せいらん".to_string())];
+    let caption = [ResolvedInline::Text("せいらん".to_string())];
 
     // Act
     let nodes = lower_figure(
@@ -133,9 +126,8 @@ mod tests {
       ImageOverrides::default(),
       Some((CaptionPosition::Top, &caption)),
       "2",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -161,9 +153,8 @@ mod tests {
       ImageOverrides::default(),
       None,
       "3",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -194,9 +185,8 @@ mod tests {
       overrides,
       None,
       "1",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -227,9 +217,8 @@ mod tests {
       overrides,
       None,
       "1",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -256,9 +245,8 @@ mod tests {
       ImageOverrides::default(),
       None,
       "1",
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {

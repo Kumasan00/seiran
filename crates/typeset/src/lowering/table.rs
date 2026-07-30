@@ -1,10 +1,10 @@
-//! 表環境（`DocNode::Table`）の lowering
+//! 表環境（`resolve::ResolvedNode::Table`）の lowering
 
-use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, InlineNode, TableColumn, TableRow};
+use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, TableColumn};
+use resolve::{ResolvedInline, ResolvedTableRow};
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
   inline::lower_inline,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
@@ -23,20 +23,20 @@ fn bold_kind(kind: FontKind) -> FontKind {
   };
 }
 
-/// `TableRow` の列を [`TableRowLayout`] の列に変換する
+/// `ResolvedTableRow` の列を [`TableRowLayout`] の列に変換する
 fn lower_rows(
   ctx: &LoweringContext,
-  rows: &[TableRow],
+  rows: &[ResolvedTableRow],
   cell_style: TextStyle,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<TableRowLayout>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<TableRowLayout> {
   let mut result = Vec::with_capacity(rows.len());
   for row in rows {
     let mut cells = Vec::with_capacity(row.cells.len());
     for cell in &row.cells {
       let mut content = Vec::new();
       for inline in &cell.content {
-        content.extend(lower_inline(ctx, inline, cell_style, registry)?);
+        content.extend(lower_inline(ctx, inline, cell_style, state));
       }
       cells.push(TableCellLayout {
         content,
@@ -48,27 +48,22 @@ fn lower_rows(
       rule_above: row.rule_above,
     });
   }
-  return Ok(result);
+  return result;
 }
 
 /// 表をレイアウトノードに変換する
-///
-/// # Errors
-///
-/// キャプション・セル内に未解決の `\ref` がある場合に
-/// [`LoweringError::UnresolvedReference`] を返します。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_table(
   ctx: &LoweringContext,
   columns: &[ColumnAlign],
   widths: &[ColumnWidth],
-  head: &[TableRow],
-  rows: &[TableRow],
-  caption: Option<(CaptionPosition, &[InlineNode])>,
+  head: &[ResolvedTableRow],
+  rows: &[ResolvedTableRow],
+  caption: Option<(CaptionPosition, &[ResolvedInline])>,
   number: &str,
   breakable: bool,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let style = &ctx.style.table;
 
   let body_style = TextStyle {
@@ -93,34 +88,41 @@ pub(super) fn lower_table(
         };
       })
       .collect(),
-    head: lower_rows(ctx, head, head_style, registry)?,
-    rows: lower_rows(ctx, rows, body_style, registry)?,
+    head: lower_rows(ctx, head, head_style, state),
+    rows: lower_rows(ctx, rows, body_style, state),
     breakable,
   });
 
-  let caption_nodes = match caption {
-    Some((position, inlines)) => Some((position, build_caption(ctx, &style.caption, inlines, number, registry)?)),
-    None => None,
-  };
+  let caption_nodes =
+    caption.map(|(position, inlines)| return (position, build_caption(ctx, &style.caption, inlines, number, state)));
   let spec = FloatSpec {
     top_margin: style.top_margin,
     bottom_margin: style.bottom_margin,
     inner_margin: style.inner_margin,
   };
-  return Ok(wrap_float(table_node, caption_nodes, &spec));
+  return wrap_float(table_node, caption_nodes, &spec);
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use model::{InlineNode, TableCell};
+  use resolve::ResolvedTableCell;
 
-  use super::*;
+  use super::{super::test_support, *};
 
-  /// 1 セルの `TableRow` を作るテスト用ヘルパ
-  fn row_of(texts: &[&str]) -> TableRow {
-    return TableRow {
-      cells: texts.iter().map(|t| return TableCell::new(vec![InlineNode::Text((*t).to_string())])).collect(),
+  /// 1 セルの `ResolvedTableRow` を作るテスト用ヘルパ
+  fn row_of(texts: &[&str]) -> ResolvedTableRow {
+    return ResolvedTableRow {
+      cells: texts
+        .iter()
+        .map(|t| {
+          return ResolvedTableCell {
+            content: vec![ResolvedInline::Text((*t).to_string())],
+            span: 1,
+          };
+        })
+        .collect(),
       rule_above: false,
     };
   }
@@ -157,9 +159,8 @@ mod tests {
       None,
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("解決済みインラインなのでエラーにならない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
@@ -190,9 +191,8 @@ mod tests {
       None,
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let table = find_table(&nodes);
@@ -212,7 +212,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["A"])];
-    let caption = [InlineNode::Text("得点表".to_string())];
+    let caption = [ResolvedInline::Text("得点表".to_string())];
 
     // Act
     let nodes = lower_table(
@@ -224,9 +224,8 @@ mod tests {
       Some((CaptionPosition::Bottom, &caption)),
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -246,7 +245,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["A"])];
-    let caption = [InlineNode::Text("得点表".to_string())];
+    let caption = [ResolvedInline::Text("得点表".to_string())];
 
     // Act
     let nodes = lower_table(
@@ -258,9 +257,8 @@ mod tests {
       Some((CaptionPosition::Top, &caption)),
       "2",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -280,7 +278,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["A"])];
-    let caption = [InlineNode::Text("得点表".to_string())];
+    let caption = [ResolvedInline::Text("得点表".to_string())];
 
     // Act
     let nodes = lower_table(
@@ -292,9 +290,8 @@ mod tests {
       Some((CaptionPosition::Bottom, &caption)),
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -338,9 +335,8 @@ mod tests {
       None,
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let table = find_table(&nodes);
@@ -368,9 +364,8 @@ mod tests {
       None,
       "1",
       false,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let table = find_table(&nodes);
@@ -382,8 +377,11 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let rows = [TableRow {
-      cells: vec![TableCell::new(vec![InlineNode::Text("A".to_string())])],
+    let rows = [ResolvedTableRow {
+      cells: vec![ResolvedTableCell {
+        content: vec![ResolvedInline::Text("A".to_string())],
+        span: 1,
+      }],
       rule_above: true,
     }];
 
@@ -397,9 +395,8 @@ mod tests {
       None,
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let table = find_table(&nodes);
@@ -423,9 +420,8 @@ mod tests {
       None,
       "1",
       true,
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しない");
+      &mut LoweringState::new(&test_support::document(&[])),
+    );
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
@@ -440,20 +436,22 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let rows = [TableRow {
-      cells: vec![TableCell::new(vec![InlineNode::Footnote {
-        body: vec![InlineNode::Text("cell note".to_string())],
-        span: model::Span::DUMMY,
-      }])],
+    let rows = [ResolvedTableRow {
+      cells: vec![ResolvedTableCell {
+        content: vec![ResolvedInline::Footnote {
+          body: vec![ResolvedInline::Text("cell note".to_string())],
+          span: model::Span::DUMMY,
+        }],
+        span: 1,
+      }],
       rule_above: false,
     }];
-    let mut registry = CounterRegistry::default_for_seiran();
-    registry.next_footnote_index(); // 本文側で既に 1 個採番済みという想定
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
+    state.next_footnote_index(); // 本文側で既に 1 個採番済みという想定
 
     // Act
-    let nodes =
-      lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut registry)
-        .expect("失敗しない");
+    let nodes = lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut state);
 
     // Assert
     let table = find_table(&nodes);

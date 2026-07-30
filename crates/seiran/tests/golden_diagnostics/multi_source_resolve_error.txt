@@ -1,9 +1,9 @@
-build::lowering
+build::resolve
 
-  × ドキュメントのレイアウト変換に失敗しました。
-  ╰─▶ lowering::unresolved_reference
+  × ラベル・参照・引用の解決に失敗しました。
+  ╰─▶ resolve::unresolved_reference
       
-        × 未解決の参照が lowering に到達しました: ラベル `undefined-in-b`
+        × 未解決の参照です: ラベル `undefined-in-b`
          ╭─[tests/text/diagnostics/multi_source_b.sei:3:18]
        2 │
        3 │ ソースBから \ref{undefined-in-b} を参照しますが、このラベルはどこにも定義されていませ
@@ -11,5 +11,5 @@ build::lowering
          ·             ──────────┬──────────
          ·                       ╰── この参照が未解決です
          ╰────
-        help: 対応する \label が定義されているか確認してください。
+        help: 対応する label が定義されているか確認してください。
       

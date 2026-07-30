@@ -1,11 +1,11 @@
-//! インライン要素（`InlineNode`）の lowering
+//! インライン要素（`resolve::ResolvedInline`）の lowering
 
 use config::FootnoteStyle;
-use model::{AnchorId, FontKind, FootnoteId, InlineNode, Length, LinkTarget};
+use model::{AnchorId, FontKind, FootnoteId, Length, LinkTarget};
+use resolve::ResolvedInline;
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   math::lower_inline_math,
 };
@@ -13,15 +13,15 @@ use super::{
 /// インライン要素をレイアウトノードに変換する
 pub(super) fn lower_inline(
   ctx: &LoweringContext,
-  inline: &InlineNode,
+  inline: &ResolvedInline,
   parent_style: TextStyle,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   match inline {
-    InlineNode::Text(text) => {
-      return Ok(vec![LayoutNode::Text(text.clone(), parent_style)]);
+    ResolvedInline::Text(text) => {
+      return vec![LayoutNode::Text(text.clone(), parent_style)];
     },
-    InlineNode::Styled { kind, children } => {
+    ResolvedInline::Styled { kind, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
         font_kind: *kind,
@@ -29,11 +29,11 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(ctx, child, styled, registry)?);
+        result.extend(lower_inline(ctx, child, styled, state));
       }
-      return Ok(result);
+      return result;
     },
-    InlineNode::Colored { color, children } => {
+    ResolvedInline::Colored { color, children } => {
       let colored = TextStyle {
         font_size: parent_style.font_size,
         font_kind: parent_style.font_kind,
@@ -41,79 +41,72 @@ pub(super) fn lower_inline(
       };
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_inline(ctx, child, colored, registry)?);
+        result.extend(lower_inline(ctx, child, colored, state));
       }
-      return Ok(result);
+      return result;
     },
-    InlineNode::InlineMath(math_nodes) => {
-      return Ok(lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script));
+    ResolvedInline::InlineMath(math_nodes) => {
+      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
     },
-    InlineNode::Symbol(ch) => {
-      return Ok(vec![LayoutNode::Text(ch.to_string(), parent_style)]);
+    ResolvedInline::Symbol(ch) => {
+      return vec![LayoutNode::Text(ch.to_string(), parent_style)];
     },
-    InlineNode::LineBreak => {
-      return Ok(vec![LayoutNode::LineBreak]);
+    ResolvedInline::LineBreak => {
+      return vec![LayoutNode::LineBreak];
     },
-    InlineNode::NoIndent => {
+    ResolvedInline::NoIndent => {
       // 通常は段落変換時に除去されるが、単独変換でも描画しない。
-      return Ok(Vec::new());
+      return Vec::new();
     },
-    InlineNode::Index { word, reading, .. } => {
-      return Ok(vec![LayoutNode::IndexMark {
-        word: word.clone(),
-        reading: reading.clone(),
-      }]);
+    ResolvedInline::Index { key, .. } => {
+      return vec![LayoutNode::IndexMark {
+        word: key.word.clone(),
+        reading: key.reading.clone(),
+      }];
     },
-    InlineNode::Ref { label, span } => {
-      // 前方参照を許すため、表示スタイルだけ確定して pass 2 へ送る。
+    ResolvedInline::Ref { target, .. } => {
+      // 参照先の存在と番号は `resolve` が確定させているので、ここで表示文字列まで作る。
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
-      return Ok(vec![LayoutNode::Ref {
-        label: label.clone(),
-        span: super::span_to_source_span(*span),
-        style,
-        as_link: true,
-        source: ctx.source,
-      }]);
+      return vec![LayoutNode::Link {
+        target: LinkTarget::Internal(AnchorId::Label(target.clone())),
+        children: vec![LayoutNode::Text(
+          state.ref_display(ctx.style, target),
+          style,
+        )],
+      }];
     },
-    InlineNode::Link { url, children } => {
+    ResolvedInline::Link { url, children } => {
       let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
       let mut inner = Vec::new();
       for child in children {
-        inner.extend(lower_inline(ctx, child, style, registry)?);
+        inner.extend(lower_inline(ctx, child, style, state));
       }
-      return Ok(vec![LayoutNode::Link {
+      return vec![LayoutNode::Link {
         target: LinkTarget::External(url.clone()),
         children: inner,
-      }]);
+      }];
     },
-    InlineNode::InternalLink { target, children } => {
+    ResolvedInline::InternalLink { target, children } => {
       let mut inner = Vec::new();
       for child in children {
-        inner.extend(lower_inline(ctx, child, parent_style, registry)?);
+        inner.extend(lower_inline(ctx, child, parent_style, state));
       }
-      return Ok(vec![LayoutNode::Link {
+      return vec![LayoutNode::Link {
         target: LinkTarget::Internal(AnchorId::Citation(target.clone())),
         children: inner,
-      }]);
+      }];
     },
-    InlineNode::Cite { keys, label, span } => {
-      // 引用整形済みであることを lowering の境界で検証する。
-      let Some(inlines) = label else {
-        return Err(LoweringError::UnresolvedCitation {
-          keys: keys.join(", "),
-          span: super::span_to_source_span(*span),
-          origin: ctx.source,
-        });
-      };
+    ResolvedInline::Cite { label, .. } => {
+      // `label`（CSL 整形済みインライン列）は `resolve` の時点で必ず埋まっている。
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
       let mut result = Vec::new();
-      for child in inlines {
-        result.extend(lower_inline(ctx, child, style, registry)?);
+      for child in label {
+        result.extend(lower_inline(ctx, child, style, state));
       }
-      return Ok(result);
+      return result;
     },
-    InlineNode::Footnote { body, .. } => {
-      let index = registry.next_footnote_index();
+    ResolvedInline::Footnote { body, .. } => {
+      let index = state.next_footnote_index();
       let number = footnote_number(ctx, index);
       let footnote_style = &ctx.style.footnote;
       let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
@@ -141,17 +134,17 @@ pub(super) fn lower_inline(
       let body_marker = footnote_marker_node(&marker_text, footnote_style.font_size, body_style, footnote_style);
       let mut lowered_body = vec![body_marker];
       for child in body {
-        lowered_body.extend(lower_inline(ctx, child, body_style, registry)?);
+        lowered_body.extend(lower_inline(ctx, child, body_style, state));
       }
 
-      return Ok(vec![
+      return vec![
         inline_marker,
         LayoutNode::Footnote {
           number,
           index,
           body: lowered_body,
         },
-      ]);
+      ];
     },
   }
 }
@@ -192,29 +185,59 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) ->
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
-  use model::Length;
+  use config::CounterName;
+  use model::{LabelId, Length, Span};
+  use resolve::{CounterKind, CounterValue, ResolvedDocument};
 
-  use super::*;
+  use super::{super::test_support, *};
+
+  /// `sec:intro`（既定スタイルで section = 1.1）だけを登録した解決済みドキュメントを作る
+  fn document_with_section() -> ResolvedDocument {
+    return test_support::document(&[(
+      "sec:intro",
+      CounterValue {
+        kind: CounterKind::Counter(CounterName::Section),
+        parts: vec![0, 1, 1],
+      },
+    )]);
+  }
+
+  /// `sec:intro` を指す解決済み `\ref` を作る
+  fn ref_inline() -> ResolvedInline {
+    return ResolvedInline::Ref {
+      target: LabelId::new("sec:intro"),
+      span: Span::DUMMY,
+    };
+  }
+
+  /// 脚注 1 個ぶんの解決済みインラインを作る
+  fn footnote_inline(text: &str) -> ResolvedInline {
+    return ResolvedInline::Footnote {
+      body: vec![ResolvedInline::Text(text.to_string())],
+      span: Span::DUMMY,
+    };
+  }
 
   #[test]
   fn lower_inline_styled_overrides_parent_kind() {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Styled {
+    let inline = ResolvedInline::Styled {
       kind: model::FontKind::SerifItalic,
-      children: vec![InlineNode::Text("x".to_string())],
+      children: vec![ResolvedInline::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
       font_kind: model::FontKind::SerifBold,
       color: None,
     };
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
-      .expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -230,19 +253,19 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Colored {
+    let inline = ResolvedInline::Colored {
       color: model::Color::new(0xff, 0x00, 0x00),
-      children: vec![InlineNode::Text("x".to_string())],
+      children: vec![ResolvedInline::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
       font_kind: model::FontKind::SansSerif,
       color: None,
     };
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
-      .expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -258,18 +281,18 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Colored {
+    let inline = ResolvedInline::Colored {
       color: model::Color::new(0x00, 0x80, 0x00),
-      children: vec![InlineNode::Styled {
+      children: vec![ResolvedInline::Styled {
         kind: model::FontKind::SerifBold,
-        children: vec![InlineNode::Text("x".to_string())],
+        children: vec![ResolvedInline::Text("x".to_string())],
       }],
     };
     let parent = TextStyle::new(Length::pt(10.0));
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran())
-      .expect("Text のみなので失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Text(_, text_style) = &nodes[0] else {
@@ -280,35 +303,22 @@ mod tests {
   }
 
   #[test]
-  fn lower_ref_emits_placeholder_with_label_and_span() {
+  fn lower_ref_resolves_to_internal_link_with_display_number() {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let span = model::Span::new(3, 4);
-    let inline = InlineNode::Ref {
-      label: "sec:intro".to_string(),
-      span,
-    };
+    let document = document_with_section();
     let parent = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &ref_inline(), parent, &mut LoweringState::new(&document));
 
     // Assert
-    let LayoutNode::Ref {
-      label,
-      span: got_span,
-      style,
-      as_link,
-      ..
-    } = &nodes[0]
-    else {
-      panic!("Ref が期待されます: {nodes:?}");
+    let LayoutNode::Link { target, children } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
     };
-    assert_eq!(label, "sec:intro");
-    assert_eq!(*got_span, super::super::span_to_source_span(span));
-    assert_eq!(*style, parent);
-    assert!(*as_link, "\\ref はリンク領域として発行されるはず");
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "Section 1.1"), "{children:?}");
   }
 
   #[test]
@@ -316,14 +326,15 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Link {
+    let inline = ResolvedInline::Link {
       url: "https://example.com".to_string(),
-      children: vec![InlineNode::Text("ここ".to_string())],
+      children: vec![ResolvedInline::Text("ここ".to_string())],
     };
     let parent = TextStyle::new(Length::pt(10.0));
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent, &mut CounterRegistry::default_for_seiran()).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, parent, &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -333,6 +344,17 @@ mod tests {
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "ここ"));
   }
 
+  /// 解決済み `\ref` の表示テキストに付いたスタイルを取り出すテストヘルパ
+  fn ref_text_style(nodes: &[LayoutNode]) -> TextStyle {
+    let LayoutNode::Link { children, .. } = &nodes[0] else {
+      panic!("Link が期待されます: {nodes:?}");
+    };
+    let LayoutNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    return *text_style;
+  }
+
   #[test]
   fn lower_ref_applies_link_color() {
     // Arrange
@@ -340,24 +362,13 @@ mod tests {
     let mut style = config::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Ref {
-      label: "sec:intro".to_string(),
-      span: model::Span::DUMMY,
-    };
+    let document = document_with_section();
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_inline(&ctx, &ref_inline(), TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
-    let LayoutNode::Ref {
-      style: ref_style, ..
-    } = &nodes[0]
-    else {
-      panic!("Ref が期待されます: {nodes:?}");
-    };
-    assert_eq!(ref_style.color, Some(blue));
+    assert_eq!(ref_text_style(&nodes).color, Some(blue));
   }
 
   #[test]
@@ -367,15 +378,14 @@ mod tests {
     let mut style = config::Style::default();
     style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Link {
+    let inline = ResolvedInline::Link {
       url: "https://example.com".to_string(),
-      children: vec![InlineNode::Text("ここ".to_string())],
+      children: vec![ResolvedInline::Text("ここ".to_string())],
     };
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Link { children, .. } = &nodes[0] else {
@@ -393,24 +403,13 @@ mod tests {
     let mut style = config::Style::default();
     style.hyperref.link_color = None;
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Ref {
-      label: "a".to_string(),
-      span: model::Span::DUMMY,
-    };
+    let document = document_with_section();
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_inline(&ctx, &ref_inline(), TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
-    let LayoutNode::Ref {
-      style: ref_style, ..
-    } = &nodes[0]
-    else {
-      panic!("Ref が期待されます: {nodes:?}");
-    };
-    assert_eq!(ref_style.color, None);
+    assert_eq!(ref_text_style(&nodes).color, None);
   }
 
   #[test]
@@ -419,27 +418,17 @@ mod tests {
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
     let red = model::Color::new(0xff, 0x00, 0x00);
-    let inline = InlineNode::Colored {
+    let inline = ResolvedInline::Colored {
       color: red,
-      children: vec![InlineNode::Ref {
-        label: "a".to_string(),
-        span: model::Span::DUMMY,
-      }],
+      children: vec![ref_inline()],
     };
+    let document = document_with_section();
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
-    let LayoutNode::Ref {
-      style: ref_style, ..
-    } = &nodes[0]
-    else {
-      panic!("Ref が期待されます: {nodes:?}");
-    };
-    assert_eq!(ref_style.color, Some(red));
+    assert_eq!(ref_text_style(&nodes).color, Some(red));
   }
 
   #[test]
@@ -447,15 +436,14 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::InternalLink {
+    let inline = ResolvedInline::InternalLink {
       target: model::CitationId::new("foo"),
-      children: vec![InlineNode::Text("1".to_string())],
+      children: vec![ResolvedInline::Text("1".to_string())],
     };
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -472,19 +460,18 @@ mod tests {
     let mut style = config::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Cite {
-      keys: vec!["foo".to_string()],
-      label: Some(vec![InlineNode::InternalLink {
+    let inline = ResolvedInline::Cite {
+      targets: vec![model::CitationId::new("foo")],
+      label: vec![ResolvedInline::InternalLink {
         target: model::CitationId::new("foo"),
-        children: vec![InlineNode::Text("1".to_string())],
-      }]),
-      span: model::Span::DUMMY,
+        children: vec![ResolvedInline::Text("1".to_string())],
+      }],
+      span: Span::DUMMY,
     };
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes =
-      lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut CounterRegistry::default_for_seiran())
-        .expect("解決済み Cite は失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -502,14 +489,15 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Footnote {
-      body: vec![InlineNode::Text("note".to_string())],
-      span: model::Span::DUMMY,
-    };
-    let mut registry = CounterRegistry::default_for_seiran();
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let nodes = lower_inline(
+      &ctx,
+      &footnote_inline("note"),
+      TextStyle::new(Length::pt(10.0)),
+      &mut LoweringState::new(&document),
+    );
 
     // Assert
     let LayoutNode::Link { target, children } = &nodes[0] else {
@@ -553,15 +541,12 @@ mod tests {
     let style = config::Style::default();
     let numbers = [1, 1];
     let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
-    let inline = InlineNode::Footnote {
-      body: vec![InlineNode::Text("note".to_string())],
-      span: model::Span::DUMMY,
-    };
-    let mut registry = CounterRegistry::default_for_seiran();
-    registry.next_footnote_index(); // 1 個目は本文側で採番済みという想定
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
+    state.next_footnote_index(); // 1 個目は本文側で採番済みという想定
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &footnote_inline("note"), TextStyle::new(Length::pt(10.0)), &mut state);
 
     // Assert
     let LayoutNode::Footnote {
@@ -584,15 +569,12 @@ mod tests {
     let style = config::Style::default();
     let numbers = [1];
     let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
-    let inline = InlineNode::Footnote {
-      body: vec![InlineNode::Text("note".to_string())],
-      span: model::Span::DUMMY,
-    };
-    let mut registry = CounterRegistry::default_for_seiran();
-    registry.next_footnote_index(); // index 0 は消費済み。この脚注は index 1 = マップの範囲外
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
+    state.next_footnote_index(); // index 0 は消費済み。この脚注は index 1 = マップの範囲外
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &footnote_inline("note"), TextStyle::new(Length::pt(10.0)), &mut state);
 
     // Assert
     assert!(
@@ -613,17 +595,17 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Footnote {
-      body: vec![InlineNode::Styled {
+    let inline = ResolvedInline::Footnote {
+      body: vec![ResolvedInline::Styled {
         kind: model::FontKind::SerifBold,
-        children: vec![InlineNode::Text("x".to_string())],
+        children: vec![ResolvedInline::Text("x".to_string())],
       }],
-      span: model::Span::DUMMY,
+      span: Span::DUMMY,
     };
-    let mut registry = CounterRegistry::default_for_seiran();
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Footnote { body, .. } = &nodes[1] else {
@@ -637,21 +619,16 @@ mod tests {
   }
 
   #[test]
-  fn lower_footnote_increments_registry_across_calls() {
+  fn lower_footnote_increments_state_across_calls() {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::default_for_seiran();
-    let make = |text: &str| {
-      return InlineNode::Footnote {
-        body: vec![InlineNode::Text(text.to_string())],
-        span: model::Span::DUMMY,
-      };
-    };
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
 
     // Act
-    let first = lower_inline(&ctx, &make("a"), TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
-    let second = lower_inline(&ctx, &make("b"), TextStyle::new(Length::pt(10.0)), &mut registry).expect("失敗しない");
+    let first = lower_inline(&ctx, &footnote_inline("a"), TextStyle::new(Length::pt(10.0)), &mut state);
+    let second = lower_inline(&ctx, &footnote_inline("b"), TextStyle::new(Length::pt(10.0)), &mut state);
 
     // Assert
     assert!(matches!(&first[1], LayoutNode::Footnote { number: 1, .. }));
@@ -666,15 +643,11 @@ mod tests {
     style.footnote.marker_size_factor = 0.5;
     style.footnote.marker_format = "[{number}]".to_string();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Footnote {
-      body: vec![InlineNode::Text("note".to_string())],
-      span: model::Span::DUMMY,
-    };
-    let mut registry = CounterRegistry::default_for_seiran();
+    let document = test_support::document(&[]);
     let parent_style = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent_style, &mut registry).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &footnote_inline("note"), parent_style, &mut LoweringState::new(&document));
 
     // Assert
     let LayoutNode::Link {
@@ -716,18 +689,13 @@ mod tests {
     let mut style = config::Style::default();
     style.footnote.number_style = config::NumberStyle::RomanUpper;
     let ctx = LoweringContext::new(&style);
-    let make = |text: &str| {
-      return InlineNode::Footnote {
-        body: vec![InlineNode::Text(text.to_string())],
-        span: model::Span::DUMMY,
-      };
-    };
-    let mut registry = CounterRegistry::default_for_seiran();
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
     let parent_style = TextStyle::new(Length::pt(10.0));
 
     // Act
-    let first = lower_inline(&ctx, &make("a"), parent_style, &mut registry).expect("失敗しない");
-    let second = lower_inline(&ctx, &make("b"), parent_style, &mut registry).expect("失敗しない");
+    let first = lower_inline(&ctx, &footnote_inline("a"), parent_style, &mut state);
+    let second = lower_inline(&ctx, &footnote_inline("b"), parent_style, &mut state);
 
     // Assert
     let LayoutNode::Footnote {
@@ -754,16 +722,17 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Index {
-      word: "語".to_string(),
-      reading: None,
-      span: model::Span::DUMMY,
+    let inline = ResolvedInline::Index {
+      key: resolve::IndexKey {
+        word: "語".to_string(),
+        reading: None,
+      },
+      span: Span::DUMMY,
     };
-    let parent_style = TextStyle::new(Length::pt(10.0));
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent_style, &mut CounterRegistry::default_for_seiran())
-      .expect("Index の lowering は失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     assert_eq!(nodes.len(), 1);
@@ -778,16 +747,17 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Index {
-      word: "語".to_string(),
-      reading: Some("よみ".to_string()),
-      span: model::Span::DUMMY,
+    let inline = ResolvedInline::Index {
+      key: resolve::IndexKey {
+        word: "語".to_string(),
+        reading: Some("よみ".to_string()),
+      },
+      span: Span::DUMMY,
     };
-    let parent_style = TextStyle::new(Length::pt(10.0));
+    let document = test_support::document(&[]);
 
     // Act
-    let nodes = lower_inline(&ctx, &inline, parent_style, &mut CounterRegistry::default_for_seiran())
-      .expect("Index の lowering は失敗しないはず");
+    let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));
 
     // Assert
     assert!(matches!(
@@ -801,23 +771,22 @@ mod tests {
     // Arrange
     let style = config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let inline = InlineNode::Index {
-      word: "語".to_string(),
-      reading: None,
-      span: model::Span::DUMMY,
+    let inline = ResolvedInline::Index {
+      key: resolve::IndexKey {
+        word: "語".to_string(),
+        reading: None,
+      },
+      span: Span::DUMMY,
     };
-    let mut registry = CounterRegistry::default_for_seiran();
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
     let parent_style = TextStyle::new(Length::pt(10.0));
 
     // Act
-    lower_inline(&ctx, &inline, parent_style, &mut registry).expect("Index の lowering は失敗しないはず");
+    lower_inline(&ctx, &inline, parent_style, &mut state);
 
     // Assert
-    let footnote = InlineNode::Footnote {
-      body: vec![InlineNode::Text("a".to_string())],
-      span: model::Span::DUMMY,
-    };
-    let nodes = lower_inline(&ctx, &footnote, parent_style, &mut registry).expect("失敗しない");
+    let nodes = lower_inline(&ctx, &footnote_inline("a"), parent_style, &mut state);
     assert_eq!(marker_text(&nodes[0]), "1");
   }
 }

@@ -12,7 +12,7 @@ use crate::{
   block::build_blocks,
   breaking::{LineBreaker, PageGeometry, break_pages},
   layout::{Block, Page},
-  lowering::{HeadingRecord, LoweringContext, SourceGroup, lower_sources_with_headings},
+  lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
 };
 
 /// `layout_body` に渡す、脚注ページ単位採番の反復を跨いで変わらない入力。
@@ -43,19 +43,11 @@ pub struct BodyLayout {
 /// `layout_body` の失敗理由。
 ///
 /// 画像解決の失敗型はジェネリクス `E` で受け取り、`typeset` が呼び出し元（`seiran`）の
-/// エラー型を名指しで知らない状態を保つ。
+/// エラー型を名指しで知らない状態を保つ。lowering は解決済みツリーを描くだけになり
+/// （ラベル・カウンタ解決は `resolve` クレートが上流で済ませる）失敗しなくなったため、
+/// この enum に残る失敗理由は画像解決だけになった。
 #[derive(Debug, Error, Diagnostic)]
 pub enum BodyLayoutError<E: std::error::Error + Diagnostic + 'static> {
-  /// Document IR → `LayoutNode` への変換（lowering）に失敗した場合に返される。
-  #[error("Document IR → LayoutNode への変換に失敗しました")]
-  #[diagnostic(code(pipeline::body::lowering))]
-  Lowering {
-    /// 元の lowering エラー
-    #[source]
-    #[diagnostic_source]
-    source: crate::lowering::LoweringError,
-  },
-
   /// 画像サイズの解決（`resolve_images` コールバック）に失敗した場合に返される。
   #[error("画像サイズの解決に失敗しました")]
   #[diagnostic(code(pipeline::body::image_resolution))]
@@ -81,10 +73,10 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 ///
 /// # Errors
 ///
-/// lowering または画像解決のいずれかに失敗した場合にエラーを返す。
+/// 画像解決に失敗した場合にエラーを返す（lowering は解決済みツリーを描くだけなので失敗しない）。
 pub fn layout_body<E: std::error::Error + Diagnostic + 'static>(
   input: &BodyLayoutInput<'_>,
-  groups: &[SourceGroup<'_>],
+  document: &resolve::ResolvedDocument,
   footnote_numbers: Option<&[u32]>,
   resolve_images: impl FnOnce(Vec<Block>) -> Result<Vec<Block>, E>,
 ) -> Result<BodyLayout, BodyLayoutError<E>> {
@@ -94,9 +86,8 @@ pub fn layout_body<E: std::error::Error + Diagnostic + 'static>(
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }
-  let (body_layout_nodes, headings) =
-    lower_sources_with_headings(&lowering_ctx, groups).map_err(|source| return BodyLayoutError::Lowering { source })?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "Document IR → LayoutNode への変換が完了しました");
+  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
+  info!(elapsed_ms = elapsed_ms(stage_start), "解決済みドキュメント → LayoutNode への変換が完了しました");
 
   let stage_start = Instant::now();
   let body_blocks = {

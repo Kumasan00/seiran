@@ -1,28 +1,24 @@
 //! `"{number} {title}"` 形式テンプレートの `LayoutNode` 展開
 
-use model::InlineNode;
+use model::LabelId;
+use resolve::ResolvedInline;
 
 use super::{
-  LoweringContext, LoweringError,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
-///
-/// # Errors
-///
-/// `{title}` 内に未解決の `\ref` がある場合に [`LoweringError::UnresolvedReference`] を返します。
 pub(super) fn expand_template(
   ctx: &LoweringContext,
   template: &str,
   number: &str,
-  title: &[InlineNode],
-  of: Option<(&str, model::Span)>,
+  title: &[ResolvedInline],
+  of: Option<&LabelId>,
   base_style: TextStyle,
-  registry: &mut CounterRegistry,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
   let mut literal = String::new();
   for segment in super::placeholder::segments(template) {
@@ -33,21 +29,14 @@ pub(super) fn expand_template(
         "title" => {
           flush_literal(&mut nodes, &mut literal, base_style);
           for inline in title {
-            nodes.extend(lower_inline(ctx, inline, base_style, registry)?);
+            nodes.extend(lower_inline(ctx, inline, base_style, state));
           }
         },
         "of" => {
-          if let Some((label, span)) = of {
-            flush_literal(&mut nodes, &mut literal, base_style);
+          if let Some(target) = of {
             // `{of}` は proof の証明対象参照。従来どおりクリック不可のプレーンテキストとして
-            // 埋め込む（`\ref` と違いリンク領域にはしない）
-            nodes.push(LayoutNode::Ref {
-              label: label.to_string(),
-              span: super::span_to_source_span(span),
-              style: base_style,
-              as_link: false,
-              source: ctx.source,
-            });
+            // 埋め込む（`\ref` と違いリンク領域にはしない）ので、リテラル文字列として繋ぐ
+            literal.push_str(&state.ref_display(ctx.style, target));
           }
         },
         _ => {
@@ -60,7 +49,7 @@ pub(super) fn expand_template(
     }
   }
   flush_literal(&mut nodes, &mut literal, base_style);
-  return Ok(merge_adjacent_text(nodes));
+  return merge_adjacent_text(nodes);
 }
 
 /// 溜めたリテラル文字列を `Text` ノードとして書き出し、バッファを空にする
@@ -72,11 +61,13 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
+  use config::{CounterName, Style as ReadStyle};
   use model::{FontKind, Length};
+  use resolve::{CounterKind, CounterValue};
 
-  use super::*;
+  use super::{super::test_support, *};
 
   fn base_style() -> TextStyle {
     return TextStyle {
@@ -90,17 +81,10 @@ mod tests {
   fn expand_plain(template: &str, number: &str, title_text: &str) -> Vec<LayoutNode> {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let title = [InlineNode::Text(title_text.to_string())];
-    return expand_template(
-      &ctx,
-      template,
-      number,
-      &title,
-      None,
-      base_style(),
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("プレーンタイトルは失敗しないはず");
+    let title = [ResolvedInline::Text(title_text.to_string())];
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
+    return expand_template(&ctx, template, number, &title, None, base_style(), &mut state);
   }
 
   #[test]
@@ -130,23 +114,16 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [
-      InlineNode::Text("A ".to_string()),
-      InlineNode::Styled {
+      ResolvedInline::Text("A ".to_string()),
+      ResolvedInline::Styled {
         kind: FontKind::SerifBold,
-        children: vec![InlineNode::Text("B".to_string())],
+        children: vec![ResolvedInline::Text("B".to_string())],
       },
     ];
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
 
-    let nodes = expand_template(
-      &ctx,
-      "{number} {title}",
-      "1",
-      &title,
-      None,
-      base_style(),
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しないはず");
+    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style(), &mut state);
 
     assert_eq!(nodes.len(), 2, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, s) if t == "1 A " && s.font_kind == FontKind::Serif));
@@ -158,13 +135,13 @@ mod tests {
     use model::MathNode;
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let title = [InlineNode::InlineMath(vec![MathNode::Text(
+    let title = [ResolvedInline::InlineMath(vec![MathNode::Text(
       "x".to_string(),
     )])];
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
 
-    let nodes =
-      expand_template(&ctx, "{title}", "1", &title, None, base_style(), &mut CounterRegistry::default_for_seiran())
-        .expect("失敗しないはず");
+    let nodes = expand_template(&ctx, "{title}", "1", &title, None, base_style(), &mut state);
 
     let has_placeholder = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t.contains("[Math]")));
     assert!(!has_placeholder, "[Math] プレースホルダは出力されない: {nodes:?}");
@@ -172,55 +149,59 @@ mod tests {
   }
 
   #[test]
-  fn ref_in_title_becomes_placeholder() {
+  fn ref_in_title_is_resolved_to_internal_link() {
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let title = [InlineNode::Ref {
-      label: "tab:missing".to_string(),
+    let title = [ResolvedInline::Ref {
+      target: model::LabelId::new("tab:one"),
       span: model::Span::DUMMY,
     }];
+    let document = test_support::document(&[(
+      "tab:one",
+      CounterValue {
+        kind: CounterKind::Counter(CounterName::Table),
+        parts: vec![0, 1, 1],
+      },
+    )]);
+    let mut state = LoweringState::new(&document);
 
-    let nodes = expand_template(
-      &ctx,
-      "{number} {title}",
-      "1",
-      &title,
-      None,
-      base_style(),
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("即時エラーにはならない");
+    // Act
+    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style(), &mut state);
 
-    assert!(
-      nodes.iter().any(|n| matches!(n, LayoutNode::Ref { label, .. } if label == "tab:missing")),
-      "Ref プレースホルダが残るはず: {nodes:?}"
-    );
+    // Assert
+    let link = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Link { target, children } => return Some((target, children)),
+        _ => return None,
+      })
+      .expect("解決済み \\ref は Link になるはず");
+    assert_eq!(*link.0, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("tab:one"))));
+    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Table 1.1"), "{:?}", link.1);
   }
 
   #[test]
-  fn of_placeholder_emits_ref_when_present() {
+  fn of_placeholder_is_resolved_into_surrounding_literal() {
+    // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let of_span = model::Span::new(3, 4);
+    let document = test_support::document(&[(
+      "thm:x",
+      CounterValue {
+        kind: CounterKind::Theorem(model::TheoremClass::Theorem),
+        parts: vec![1],
+      },
+    )]);
+    let mut state = LoweringState::new(&document);
 
-    let nodes = expand_template(
-      &ctx,
-      "Proof of {of}",
-      "1",
-      &[],
-      Some(("thm:x", of_span)),
-      base_style(),
-      &mut CounterRegistry::default_for_seiran(),
-    )
-    .expect("失敗しないはず");
+    // Act
+    let nodes =
+      expand_template(&ctx, "Proof of {of}", "1", &[], Some(&model::LabelId::new("thm:x")), base_style(), &mut state);
 
-    let expected_span = super::super::span_to_source_span(of_span);
-    assert!(
-      nodes
-        .iter()
-        .any(|n| matches!(n, LayoutNode::Ref { label, span, .. } if label == "thm:x" && *span == expected_span)),
-      "of の Ref プレースホルダが出るはず: {nodes:?}"
-    );
+    // Assert
+    assert_eq!(nodes.len(), 1, "リンクにはせず前後のリテラルと 1 つの Text に繋がる: {nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "Proof of Theorem 1"), "{nodes:?}");
   }
 
   #[test]
@@ -232,11 +213,12 @@ mod tests {
   }
 
   /// `of` パラメータを明示できる `expand_plain` の派生ヘルパ
-  fn expand_plain_with_of(template: &str, number: &str, of: Option<(&str, model::Span)>) -> Vec<LayoutNode> {
+  fn expand_plain_with_of(template: &str, number: &str, of: Option<&LabelId>) -> Vec<LayoutNode> {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    return expand_template(&ctx, template, number, &[], of, base_style(), &mut CounterRegistry::default_for_seiran())
-      .expect("失敗しないはず");
+    let document = test_support::document(&[]);
+    let mut state = LoweringState::new(&document);
+    return expand_template(&ctx, template, number, &[], of, base_style(), &mut state);
   }
 
   #[test]

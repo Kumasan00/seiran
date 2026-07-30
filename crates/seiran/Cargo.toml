@@ -17,6 +17,7 @@ miette.workspace = true
 model.workspace = true
 pdf_gen.workspace = true
 read-fonts.workspace = true
+resolve.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

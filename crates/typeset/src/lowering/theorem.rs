@@ -1,11 +1,11 @@
-//! 定理ブロック（`DocNode::Theorem`）の lowering
+//! 定理ブロック（`resolve::ResolvedNode::Theorem`）の lowering
 
 use config::TheoremStyle;
-use model::{Align, DocNode, FontKind, InlineNode, Length, TheoremClass};
+use model::{Align, FontKind, LabelId, Length, TheoremClass};
+use resolve::{ResolvedInline, ResolvedNode};
 
 use super::{
-  LoweringContext, LoweringError, PendingHeading,
-  counter::CounterRegistry,
+  LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
   template::expand_template,
@@ -13,22 +13,17 @@ use super::{
 };
 
 /// 定理ブロックをレイアウトノードに変換する
-///
-/// # Errors
-///
-/// 見出しテンプレート・本体の lowering が返す [`LoweringError`]（未解決 `\ref` 等）を伝播する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_theorem(
   ctx: &LoweringContext,
   class: TheoremClass,
   number: Option<&str>,
   title: Option<&str>,
-  body: &[DocNode],
-  of: Option<(&str, model::Span)>,
-  label: Option<&str>,
-  registry: &mut CounterRegistry,
-  headings: &mut Vec<PendingHeading>,
-) -> Result<Vec<LayoutNode>, LoweringError> {
+  body: &[ResolvedNode],
+  of: Option<&LabelId>,
+  label: Option<&LabelId>,
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
   let theorem_style = ctx.style.theorem(class);
   let pres = &theorem_style.style;
 
@@ -36,16 +31,16 @@ pub(super) fn lower_theorem(
     LayoutNode::Vkern {
       length: pres.top_margin,
     },
-    build_heading(ctx, theorem_style, number, title, of, registry)?,
+    build_heading(ctx, theorem_style, number, title, of, state),
   ];
 
   // 定理本体では文書本文の字下げを引き継がない。
   let body_ctx = ctx.with_body_font_kind(pres.font_kind).with_first_line_indent(Length::pt(0.0));
-  let mut body_nodes = lower_nodes_inner(&body_ctx, body, registry, headings)?;
+  let mut body_nodes = lower_nodes_inner(&body_ctx, body, state);
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
-    if matches!(body.last(), Some(DocNode::Paragraph(_))) {
+    if matches!(body.last(), Some(ResolvedNode::Paragraph(_))) {
       let insert_at = body_nodes.len().saturating_sub(1);
       body_nodes.insert(insert_at, qed_node);
     } else {
@@ -58,7 +53,7 @@ pub(super) fn lower_theorem(
     length: pres.bottom_margin,
   });
 
-  return Ok(with_label_anchor(label, nodes));
+  return with_label_anchor(label, nodes);
 }
 
 /// 定理見出し（独立行）の `VBox` を構築する
@@ -67,9 +62,9 @@ fn build_heading(
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
-  of: Option<(&str, model::Span)>,
-  registry: &mut CounterRegistry,
-) -> Result<LayoutNode, LoweringError> {
+  of: Option<&LabelId>,
+  state: &mut LoweringState,
+) -> LayoutNode {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
     font_size: ctx.default_font_size(),
@@ -85,17 +80,17 @@ fn build_heading(
   };
   let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
-  let title_inlines: Vec<InlineNode> = title.map(|t| vec![InlineNode::Text(t.to_string())]).unwrap_or_default();
+  let title_inlines: Vec<ResolvedInline> = title.map(|t| vec![ResolvedInline::Text(t.to_string())]).unwrap_or_default();
 
-  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style, registry)?;
+  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style, state);
 
-  return Ok(LayoutNode::VBox {
+  return LayoutNode::VBox {
     children,
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),
     align: Align::Left,
-  });
+  };
 }
 
 /// QED マークの右寄せノードを作る（既定サイズ・数式フォント）
@@ -109,32 +104,40 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use model::{DocNode, FontKind};
+  use resolve::{CounterKind, CounterValue, ResolvedDocument};
 
-  use super::*;
+  use super::{super::test_support, *};
 
   /// テキスト 1 段落の本体を作るヘルパ
-  fn paragraph(text: &str) -> DocNode { return DocNode::Paragraph(vec![InlineNode::Text(text.to_string())]); }
+  fn paragraph(text: &str) -> ResolvedNode {
+    return ResolvedNode::Paragraph(vec![ResolvedInline::Text(text.to_string())]);
+  }
 
-  fn dummy_span() -> model::Span { return model::Span::DUMMY; }
+  /// `thm:p`（Theorem 1）を登録した解決済みドキュメントを作るヘルパ
+  fn document_with_theorem() -> ResolvedDocument {
+    return test_support::document(&[(
+      "thm:p",
+      CounterValue {
+        kind: CounterKind::Theorem(TheoremClass::Theorem),
+        parts: vec![1],
+      },
+    )]);
+  }
 
-  /// テスト用に新規 `CounterRegistry` / 見出し記録バッファを構築して `lower_theorem` を呼ぶヘルパ
-  #[allow(clippy::too_many_arguments)]
+  /// テスト用に `LoweringState` を構築して `lower_theorem` を呼ぶヘルパ
   fn lower_theorem_default(
     ctx: &LoweringContext,
     class: TheoremClass,
     number: Option<&str>,
     title: Option<&str>,
-    body: &[DocNode],
-    of: Option<&str>,
-    label: Option<&str>,
-  ) -> Result<Vec<LayoutNode>, LoweringError> {
-    let mut registry = CounterRegistry::from_style(ctx.style);
-    let mut headings = Vec::new();
-    let of = of.map(|l| return (l, dummy_span()));
-    return lower_theorem(ctx, class, number, title, body, of, label, &mut registry, &mut headings);
+    body: &[ResolvedNode],
+    label: Option<&LabelId>,
+  ) -> Vec<LayoutNode> {
+    let document = test_support::document(&[]);
+    return lower_theorem(ctx, class, number, title, body, None, label, &mut LoweringState::new(&document));
   }
 
   /// `nodes` の最初の `VBox`（= 見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す
@@ -159,8 +162,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None, None)
-      .expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None);
 
     // Assert
     let (heading, heading_style) = first_heading_text(&nodes);
@@ -185,8 +187,7 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let nodes =
-      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None, None)
-        .expect("失敗しないはず");
+      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None);
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -200,8 +201,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None, None)
-      .expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None);
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -225,8 +225,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None, None)
-      .expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None);
 
     // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -240,16 +239,19 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let list = DocNode::List {
+    let list = ResolvedNode::List {
       ordered: false,
-      items: vec![model::ListItem::new(vec![paragraph("item")])],
+      items: vec![resolve::ResolvedListItem {
+        content: vec![paragraph("item")],
+        marker: None,
+        item_gap: None,
+      }],
       start: None,
       item_gap: None,
     };
 
     // Act
-    let nodes =
-      lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[list], None, None).expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[list], None);
 
     // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -257,7 +259,7 @@ mod tests {
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
   }
 
-  /// 見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `Ref` も含む）を連結する
+  /// 見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `\ref` も含む）を連結する
   fn heading_plain_text(nodes: &[LayoutNode]) -> String {
     let children = nodes
       .iter()
@@ -282,31 +284,19 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::from_style(&style);
-    registry
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        Some("thm:p"),
-        dummy_span(),
-        model::Origin::Source(model::SourceId::new(0)),
-      )
-      .unwrap();
-    let mut headings = Vec::new();
+    let document = document_with_theorem();
 
     // Act
-    let mut nodes = lower_theorem(
+    let nodes = lower_theorem(
       &ctx,
       TheoremClass::Proof,
       None,
       None,
       &[paragraph("x")],
-      Some(("thm:p", dummy_span())),
+      Some(&LabelId::new("thm:p")),
       None,
-      &mut registry,
-      &mut headings,
-    )
-    .expect("失敗しないはず");
-    super::super::resolve::resolve_refs(&mut nodes, &registry).expect("thm:p は登録済みなので解決できる");
+      &mut LoweringState::new(&document),
+    );
 
     // Assert
     assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1");
@@ -317,8 +307,7 @@ mod tests {
     // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None, None)
-      .expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None);
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -330,31 +319,19 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let mut registry = CounterRegistry::from_style(&style);
-    registry
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        Some("thm:p"),
-        dummy_span(),
-        model::Origin::Source(model::SourceId::new(0)),
-      )
-      .unwrap();
-    let mut headings = Vec::new();
+    let document = document_with_theorem();
 
     // Act
-    let mut nodes = lower_theorem(
+    let nodes = lower_theorem(
       &ctx,
       TheoremClass::Proof,
       None,
       Some("sketch"),
       &[paragraph("x")],
-      Some(("thm:p", dummy_span())),
+      Some(&LabelId::new("thm:p")),
       None,
-      &mut registry,
-      &mut headings,
-    )
-    .expect("失敗しないはず");
-    super::super::resolve::resolve_refs(&mut nodes, &registry).expect("thm:p は登録済みなので解決できる");
+      &mut LoweringState::new(&document),
+    );
 
     // Assert
     assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
@@ -365,8 +342,7 @@ mod tests {
     // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None, None)
-      .expect("失敗しないはず");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None);
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -378,9 +354,8 @@ mod tests {
     // Arrange / Act
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes =
-      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], None, Some("thm:x"))
-        .expect("失敗しないはず");
+    let label = LabelId::new("thm:x");
+    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], Some(&label));
 
     // Assert
     assert!(

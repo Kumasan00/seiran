@@ -63,10 +63,12 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let (snapshot, output) = load_project(config_path)?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
+  let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
+    .map_err(|source| return wrap_resolve_error(source, &parsed_project.parsed))?;
   let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
-  let laid_out = compile_project(&snapshot, &parsed_project, &image_resources, &font_system)?;
+  let laid_out = compile_project(&snapshot, &resolved, &image_resources, &font_system)?;
   let pdf_bytes = render_pdf(
     &snapshot.config,
     &snapshot.font_data,
@@ -133,21 +135,23 @@ impl ParsedProject {
       .collect();
   }
 
-  /// lowering に渡す起源付きのグループ列を組み立てる。
+  /// resolve に渡す起源付きの `SemanticDocument` を組み立てる。
   ///
   /// 書誌には実ソースと区別できる `Origin::Generated` を割り当てる。
-  fn lowering_groups(&self) -> Vec<typeset::SourceGroup<'_>> {
+  fn semantic_document(&self) -> resolve::SemanticDocument<'_> {
     let real_sources = self.parsed.iter().enumerate().map(|(i, p)| {
-      return typeset::SourceGroup {
+      return resolve::SemanticGroup {
         nodes: p.nodes.as_slice(),
         origin: model::Origin::Source(model::SourceId::new(i)),
       };
     });
-    let bibliography = std::iter::once(typeset::SourceGroup {
+    let bibliography = std::iter::once(resolve::SemanticGroup {
       nodes: self.bibliography.as_slice(),
       origin: model::Origin::Generated(model::GeneratedOrigin::Bibliography),
     });
-    return real_sources.chain(bibliography).collect();
+    return resolve::SemanticDocument {
+      groups: real_sources.chain(bibliography).collect(),
+    };
   }
 }
 
@@ -247,10 +251,12 @@ fn build_pages(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot = ProjectSnapshot::assemble(config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
+  let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
+    .map_err(|source| return wrap_resolve_error(source, &parsed_project.parsed))?;
   let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return compile_project(&snapshot, &parsed_project, &image_resources, &font_system);
+  return compile_project(&snapshot, &resolved, &image_resources, &font_system);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
@@ -298,32 +304,31 @@ fn parse_all_sources(
   return Ok(parsed);
 }
 
-/// lowering エラーに起源となるソースを紐付ける。
+/// resolve エラーに起源となるソースを紐付ける。
 ///
 /// 合成されたノードが起源なら、実ソースを持たない内部エラーとして扱う。
-fn wrap_lowering_error(error: typeset::LoweringError, parsed: &[ParsedSource]) -> BuildPdfError {
+fn wrap_resolve_error(error: resolve::ResolveError, parsed: &[ParsedSource]) -> BuildPdfError {
   return match error.origin() {
     model::Origin::Source(source_id) => {
       let source = parsed
         .get(source_id.index())
-        .expect("Origin::Source は lowering_groups() が割り当てた実ソース配列の範囲内を指すはず");
-      BuildPdfError::Lowering {
+        .expect("Origin::Source は semantic_document() が割り当てた実ソース配列の範囲内を指すはず");
+      BuildPdfError::Resolve {
         src: miette::NamedSource::new(&source.name, source.content.clone()),
         source: error,
       }
     },
-    model::Origin::Generated(_) => BuildPdfError::LoweringInternal { source: error },
+    model::Origin::Generated(_) => BuildPdfError::ResolveInternal { source: error },
   };
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{BuildPdfError, ParsedSource, wrap_lowering_error};
+  use super::{BuildPdfError, ParsedSource, wrap_resolve_error};
 
-  /// 指定した起源を持つ未定義参照の lowering エラーを作る。
-  pub(super) fn lowering_error_with_origin(style: &config::Style, origin: model::Origin) -> typeset::LoweringError {
+  /// 指定した起源を持つ未定義参照の resolve エラーを作る。
+  pub(super) fn resolve_error_with_origin(style: &config::Style, origin: model::Origin) -> resolve::ResolveError {
     use model::{DocNode, InlineNode};
-    let ctx = typeset::LoweringContext::new(style);
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
     )])];
@@ -331,21 +336,23 @@ mod tests {
       label: "missing".to_string(),
       span: model::Span::DUMMY,
     }])];
-    let groups = [
-      typeset::SourceGroup {
-        nodes: &g0,
-        origin: model::Origin::Source(model::SourceId::new(0)),
-      },
-      typeset::SourceGroup { nodes: &g1, origin },
-    ];
-    let error = typeset::lower_sources_with_headings(&ctx, &groups).expect_err("未定義ラベルはエラーになるはず");
+    let semantic = resolve::SemanticDocument {
+      groups: vec![
+        resolve::SemanticGroup {
+          nodes: &g0,
+          origin: model::Origin::Source(model::SourceId::new(0)),
+        },
+        resolve::SemanticGroup { nodes: &g1, origin },
+      ],
+    };
+    let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(error.origin(), origin, "指定した起源が帰属源のはず");
     return error;
   }
 
   #[test]
-  fn lowering_error_attributes_named_source_for_real_source_origin() {
-    // Arrange — Origin::Source(SourceId::new(1)) に帰属する LoweringError を生成する
+  fn resolve_error_attributes_named_source_for_real_source_origin() {
+    // Arrange — Origin::Source(SourceId::new(1)) に帰属する ResolveError を生成する
     let style = config::Style::default();
     let parsed = vec![
       ParsedSource {
@@ -359,32 +366,32 @@ mod tests {
         nodes: Vec::new(),
       },
     ];
-    let error = lowering_error_with_origin(&style, model::Origin::Source(model::SourceId::new(1)));
+    let error = resolve_error_with_origin(&style, model::Origin::Source(model::SourceId::new(1)));
 
     // Act / Assert — index=1 の 2 番目のファイルに NamedSource が紐づく
-    match wrap_lowering_error(error, &parsed) {
-      BuildPdfError::Lowering { src, .. } => {
+    match wrap_resolve_error(error, &parsed) {
+      BuildPdfError::Resolve { src, .. } => {
         assert_eq!(src.name(), "b.sei", "SourceId(1) は 2 番目のファイルに帰属するはず");
       },
-      other => panic!("Lowering が期待されます: {other:?}"),
+      other => panic!("Resolve が期待されます: {other:?}"),
     }
   }
 
   #[test]
-  fn lowering_error_falls_back_to_internal_for_generated_origin() {
-    // Arrange — 合成グループに帰属する LoweringError を生成する
+  fn resolve_error_falls_back_to_internal_for_generated_origin() {
+    // Arrange — 合成グループに帰属する ResolveError を生成する
     let style = config::Style::default();
     let parsed = vec![ParsedSource {
       name: "only.sei".to_string(),
       content: "X".to_string(),
       nodes: Vec::new(),
     }];
-    let error = lowering_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
+    let error = resolve_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
 
     // Act / Assert
     assert!(
-      matches!(wrap_lowering_error(error, &parsed), BuildPdfError::LoweringInternal { .. }),
-      "合成グループ（Origin::Generated）は LoweringInternal になるはず"
+      matches!(wrap_resolve_error(error, &parsed), BuildPdfError::ResolveInternal { .. }),
+      "合成グループ（Origin::Generated）は ResolveInternal になるはず"
     );
   }
 }

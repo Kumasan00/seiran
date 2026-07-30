@@ -1,9 +1,11 @@
-//! 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → lower_nodes` を
+//! 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → resolve_project → lowering` を
 
 use std::{collections::HashSet, path::PathBuf};
 
 use config::Style;
 use frontend::parse_source;
+use model::{Origin, SourceId};
+use resolve::{SemanticDocument, SemanticGroup};
 use typeset::{LayoutNode, LoweringContext};
 
 /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
@@ -14,20 +16,8 @@ fn fixture_path(name: &str) -> PathBuf {
   return path;
 }
 
-/// 1 ファイルに対して parse → lower までを実行し、パニックしないことを確認する
-fn smoke_through_lowering(name: &str) {
-  let path = fixture_path(name);
-  let content =
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
-
-  let style = Style::default();
-  let doc_nodes = parse_source(&content, &path.display().to_string(), &HashSet::new())
-    .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
-
-  let ctx = LoweringContext::new(&style);
-  let _layout_nodes =
-    typeset::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
-}
+/// 1 ファイルに対して parse → resolve → lower までを実行し、パニックしないことを確認する
+fn smoke_through_lowering(name: &str) { let _layout_nodes = lower_fixture(name); }
 
 #[test]
 fn smoke_text_fixture() { smoke_through_lowering("text"); }
@@ -62,7 +52,7 @@ fn smoke_ref_fixture() { smoke_through_lowering("ref"); }
 #[test]
 fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
 
-/// `tests/text/<name>.sei` を parse → lower し、レイアウトノード列を返すヘルパ
+/// `tests/text/<name>.sei` を parse → resolve → lower し、レイアウトノード列を返すヘルパ
 fn lower_fixture(name: &str) -> Vec<LayoutNode> {
   let path = fixture_path(name);
   let content =
@@ -70,8 +60,17 @@ fn lower_fixture(name: &str) -> Vec<LayoutNode> {
   let style = Style::default();
   let doc_nodes = parse_source(&content, &path.display().to_string(), &HashSet::new())
     .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
+  let semantic = SemanticDocument {
+    groups: vec![SemanticGroup {
+      nodes: &doc_nodes,
+      origin: Origin::Source(SourceId::new(0)),
+    }],
+  };
+  let document =
+    resolve::resolve_project(&semantic, &style).unwrap_or_else(|e| panic!("resolve_project 失敗 ({name}): {e:?}"));
   let ctx = LoweringContext::new(&style);
-  return typeset::lower_nodes(&ctx, &doc_nodes).unwrap_or_else(|e| panic!("lower_nodes 失敗 ({name}): {e:?}"));
+  let (layout_nodes, _headings) = typeset::lower_sources_with_headings(&ctx, &document);
+  return layout_nodes;
 }
 
 /// レイアウト木を再帰的に辿り、リスト項目の先頭に置かれるマーカー文字列を集める
