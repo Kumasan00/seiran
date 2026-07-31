@@ -120,7 +120,8 @@ fn load_project(config_path: &Path) -> miette::Result<(ProjectSnapshot, OutputPl
 struct ParsedProject {
   /// ファイルごとのパース結果（ソース帰属を保持したまま、平坦化しない）
   parsed: Vec<ParsedSource>,
-  /// `\cite` の CSL 整形で生成した書誌（合成グループとして groups の末尾に連結する）
+  /// `\cite` の CSL 整形で生成した書誌（`resolve::SemanticDocument::bibliography` へ渡す。
+  /// 実ソースの `groups` とは別に保持し、連結しない）
   bibliography: Vec<DocNode>,
 }
 
@@ -137,20 +138,23 @@ impl ParsedProject {
 
   /// resolve に渡す起源付きの `SemanticDocument` を組み立てる。
   ///
-  /// 書誌には実ソースと区別できる `Origin::Generated` を割り当てる。
+  /// 書誌は `groups` へ連結せず、`SemanticDocument::bibliography` として別に渡す
+  /// （resolve 側で `Origin::Generated` を割り当てて解決する）。
   fn semantic_document(&self) -> resolve::SemanticDocument<'_> {
-    let real_sources = self.parsed.iter().enumerate().map(|(i, p)| {
-      return resolve::SemanticGroup {
-        nodes: p.nodes.as_slice(),
-        origin: model::Origin::Source(model::SourceId::new(i)),
-      };
-    });
-    let bibliography = std::iter::once(resolve::SemanticGroup {
-      nodes: self.bibliography.as_slice(),
-      origin: model::Origin::Generated(model::GeneratedOrigin::Bibliography),
-    });
+    let groups = self
+      .parsed
+      .iter()
+      .enumerate()
+      .map(|(i, p)| {
+        return resolve::SemanticGroup {
+          nodes: p.nodes.as_slice(),
+          origin: model::Origin::Source(model::SourceId::new(i)),
+        };
+      })
+      .collect();
     return resolve::SemanticDocument {
-      groups: real_sources.chain(bibliography).collect(),
+      groups,
+      bibliography: self.bibliography.as_slice(),
     };
   }
 }
@@ -344,6 +348,7 @@ mod tests {
         },
         resolve::SemanticGroup { nodes: &g1, origin },
       ],
+      bibliography: &[],
     };
     let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(error.origin(), origin, "指定した起源が帰属源のはず");

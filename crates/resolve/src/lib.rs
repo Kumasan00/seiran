@@ -36,6 +36,7 @@ pub fn resolve_project(
 ) -> Result<ResolvedDocument, ResolveError> {
   let mut registry = counter::CounterRegistry::from_style(style);
   let mut pending_headings = Vec::new();
+
   let mut groups = Vec::with_capacity(semantic.groups.len());
   for group in &semantic.groups {
     let nodes = resolver::resolve_group(group.nodes, &mut registry, &mut pending_headings, group.origin)?;
@@ -44,10 +45,14 @@ pub fn resolve_project(
       origin: group.origin,
     });
   }
+  let bibliography_origin = model::Origin::Generated(model::GeneratedOrigin::Bibliography);
+  let bibliography =
+    resolver::resolve_group(semantic.bibliography, &mut registry, &mut pending_headings, bibliography_origin)?;
 
   for group in &groups {
     validate::validate_refs(&group.nodes, &registry, group.origin)?;
   }
+  validate::validate_refs(&bibliography, &registry, bibliography_origin)?;
 
   let headings = pending_headings
     .into_iter()
@@ -66,6 +71,7 @@ pub fn resolve_project(
 
   return Ok(ResolvedDocument {
     groups,
+    bibliography,
     headings,
     counter_values,
   });
@@ -107,6 +113,7 @@ mod tests {
           origin: Origin::Source(SourceId::new(1)),
         },
       ],
+      bibliography: &[],
     };
 
     // Act
@@ -130,6 +137,7 @@ mod tests {
         nodes: &g0,
         origin: Origin::Source(SourceId::new(0)),
       }],
+      bibliography: &[],
     };
 
     // Act

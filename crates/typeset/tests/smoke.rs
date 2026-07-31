@@ -65,6 +65,7 @@ fn lower_fixture(name: &str) -> Vec<LayoutNode> {
       nodes: &doc_nodes,
       origin: Origin::Source(SourceId::new(0)),
     }],
+    bibliography: &[],
   };
   let document =
     resolve::resolve_project(&semantic, &style).unwrap_or_else(|e| panic!("resolve_project 失敗 ({name}): {e:?}"));

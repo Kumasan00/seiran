@@ -153,6 +153,7 @@ pub(super) mod test_support {
   pub(crate) fn document(counter_values: &[(&str, CounterValue)]) -> ResolvedDocument {
     return ResolvedDocument {
       groups: Vec::new(),
+      bibliography: Vec::new(),
       headings: Vec::new(),
       counter_values: counter_values
         .iter()
@@ -229,6 +230,9 @@ pub fn lower_sources_with_headings(
   for group in &document.groups {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
   }
+  // 書誌は常に groups の後に lower する（`next_heading_index()` が `document.headings` の
+  // 添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っていることに依存する）
+  result.extend(lower_nodes_inner(ctx, &document.bibliography, &mut state));
 
   let headings = document
     .headings
@@ -246,7 +250,8 @@ pub fn lower_sources_with_headings(
     })
     .collect();
 
-  let input_node_count: usize = document.groups.iter().map(|group| return group.nodes.len()).sum();
+  let input_node_count: usize =
+    document.groups.iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography.len();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return (result, headings);
 }
@@ -491,6 +496,7 @@ mod tests {
           };
         })
         .collect(),
+      bibliography: &[],
     };
     return resolve::resolve_project(&semantic, style).expect("解決できる入力のはず");
   }

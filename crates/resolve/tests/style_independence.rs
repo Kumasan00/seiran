@@ -46,6 +46,7 @@ fn resolve_sample(nodes: &[DocNode], style: &Style) -> resolve::ResolvedDocument
       nodes,
       origin: Origin::Source(SourceId::new(0)),
     }],
+    bibliography: &[],
   };
   return resolve_project(&semantic, style).expect("サンプルは解決に成功するはず");
 }
