@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin};
+use model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin, SourceId};
 
 use crate::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode};
 
@@ -10,8 +10,9 @@ use crate::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode};
 pub struct SemanticGroup<'a> {
   /// このグループの `DocNode` 列（ラベル名・`\ref` 参照名・引用キーは未解決の生 `String`）
   pub nodes: &'a [DocNode],
-  /// このグループの起源
-  pub origin: Origin,
+  /// このグループの起源となる実ソース（グループ列は実ソースしか持てない — 生成物は
+  /// `SemanticDocument::bibliography` 側に分離済み）
+  pub source_id: SourceId,
 }
 
 /// プロジェクト全体の未解決ドキュメント
@@ -19,8 +20,10 @@ pub struct SemanticGroup<'a> {
 /// `frontend::parse_source` と `citation::process_citations` を経た直後の状態に相当する。
 /// ラベル名・`\ref` 参照名・引用キー・索引語は未解決のまま保持できる（型として禁止しない）。
 pub struct SemanticDocument<'a> {
-  /// ソースグループ列（実ソース + citation が合成した書誌グループ）
+  /// 実ソースのグループ列（citation が合成した書誌は含まない）
   pub groups: Vec<SemanticGroup<'a>>,
+  /// citation が合成した書誌の未解決ノード列（引用がなければ空スライス）
+  pub bibliography: &'a [DocNode],
 }
 
 /// 見出し 1 件の解決結果（PDF しおり・目次生成が消費する）
@@ -43,8 +46,8 @@ pub struct ResolvedHeading {
 pub struct ResolvedGroup {
   /// このグループの `ResolvedNode` 列
   pub nodes: Vec<ResolvedNode>,
-  /// このグループの起源
-  pub origin: Origin,
+  /// このグループの起源となる実ソース
+  pub source_id: SourceId,
 }
 
 /// プロジェクト全体の解決済みドキュメント
@@ -53,9 +56,11 @@ pub struct ResolvedGroup {
 /// （`ResolvedNode` / `ResolvedInline` はいずれも `String` 名ではなく typed ID しか持たない）。
 #[derive(Debug, PartialEq)]
 pub struct ResolvedDocument {
-  /// ソースグループ列（実ソース + 書誌グループ）
+  /// 実ソースのグループ列（書誌は含まない）
   pub groups: Vec<ResolvedGroup>,
-  /// 見出し一覧（文書順）
+  /// citation が合成した書誌の解決済みノード列（引用がなければ空）
+  pub bibliography: Vec<ResolvedNode>,
+  /// 見出し一覧（文書順。実ソースと書誌の見出しが混在する — PDF しおり・目次生成が両方必要とするため）
   pub headings: Vec<ResolvedHeading>,
   /// ラベル → カウンタ値（`\ref` の表示文字列生成に使う。見出し・図・表・式・定理を含む）
   pub counter_values: HashMap<LabelId, CounterValue>,

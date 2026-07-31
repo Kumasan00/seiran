@@ -65,7 +65,7 @@
   コンパイラが何も保証していなかったため、free function 群（`heading_anchor_key` /
   `footnote_anchor_key` / `index_page_anchor_key`）ごと廃止した（#259）。文字列規約へ戻さない。
 - **`Origin` を配列インデックスへ戻さない**。合成書誌グループを「実ソース配列の範囲外インデックス」で
-  表す暗黙の sentinel 方式は廃止済み（#259）。実ソースと生成ノードは型で区別する。
+  表す暗黙の sentinel 方式は廃止済み（#259）。実ソースと生成ノードは型で区別する。書誌はさらに `resolve::SemanticDocument`/`ResolvedDocument` の別フィールド（`bibliography`）に分離されており（#283）、実ソースのグループ列（`groups: Vec<SemanticGroup>`）は起源として `SourceId` しか持てず、生成物が紛れ込むこと自体が型として起こらない。
 - 段組みの 1 段あたりの幅を求める純粋計算 `column_width` をここに置き、`config` の横断バリデーションと
   `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
@@ -190,8 +190,10 @@
 
 いずれも非公開で、公開 API は crate root の `pub use` に揃える。
 
-- `document`: `SemanticDocument` / `SemanticGroup`（入力。`&[DocNode]` を借用するだけで複製しない）と
-  `ResolvedDocument` / `ResolvedGroup` / `ResolvedHeading`（出力）
+- `document`: `SemanticDocument`（`groups: Vec<SemanticGroup>` + `bibliography: &[DocNode]`。`&[DocNode]` を
+  借用するだけで複製しない）/ `SemanticGroup`（`nodes` + 起源 `source_id: SourceId`）と
+  `ResolvedDocument`（`groups: Vec<ResolvedGroup>` + `bibliography: Vec<ResolvedNode>` + `headings` +
+  `counter_values`）/ `ResolvedGroup`（`nodes` + `source_id: SourceId`）/ `ResolvedHeading`（出力）
 - `node` / `inline`: `ResolvedNode` / `ResolvedInline`。ラベル宣言箇所・`\ref` 参照・`\cite` 参照・索引語
   （`IndexKey`）だけが生の `String` ではなく typed ID（`LabelId` / `CitationId`）を持つ
 - `counter`: `CounterValue` / `CounterKind` と、それを組み立てる `CounterRegistry`。`typeset::lowering` 側
@@ -219,6 +221,10 @@ ResolveError>` の 1 つに絞る。
   の参照先 `LabelId` が `CounterRegistry` に登録済みか検証するだけで、木の書き換えは行わない。ラベルは前方
   参照を許す（`\ref` が指すラベルが文書上その後に定義されうる）ため、この検証は pass1 が全ラベルの登録を
   終えた後にしか行えない — pass2 が pass1 と別の走査として独立している理由
+
+書誌（`SemanticDocument::bibliography`）は実ソースの `groups` とは別フィールドで保持されるが、
+解決順序は「groups の pass1 → bibliography の pass1 → groups の pass2 → bibliography の pass2」
+（書誌が実ソースより後に解決される旧実装の順序と同一）を維持する。
 
 ### `CounterValue` の祖先チェーン算出規則
 
@@ -293,8 +299,9 @@ frontend の後・lowering の前に走るステージ。
 で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元（`seiran`）が
-lowering の最後の合成グループとして連結する — こうすることで citation がグループ構造に依存しない。書誌
-ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
+`resolve::SemanticDocument::bibliography` として実ソースの `groups` とは別に渡す（#283 以降、
+「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで citation がグループ構造に
+依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
 
 CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath`
 エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの
@@ -374,7 +381,7 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 直接呼ぶため（旧 `lower_document` / `lower_nodes` / `SourceGroup` / `LoweringError` は issue #282 で
 `lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
 `ResolvedDocument` 1 本になり、複数ソースの束ね方も `resolve::SemanticGroup` / `ResolvedGroup` 側の
-関心事になったため、単一ソース用の薄いラッパーも不要になった）。`LineBreaker` トレイトと
+関心事になったため（書誌は `SemanticDocument`/`ResolvedDocument` の `bibliography` フィールドとして groups とは別に保持する）、単一ソース用の薄いラッパーも不要になった）。`LineBreaker` トレイトと
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam なので入口関数の引数として公開を維持する。
 
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
@@ -445,12 +452,15 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 リセットはこのマップ経由で実現する（`seiran` の該当節を参照）。
 
 **複数ソース**: `lower_sources_with_headings(ctx, document: &ResolvedDocument) -> (Vec<LayoutNode>,
-Vec<HeadingRecord>)` が `ResolvedDocument::groups`（`ResolvedGroup { nodes: Vec<ResolvedNode>, origin:
-Origin }`）を 1 回でまとめて lower する。グループの起源（`Origin`）は `resolve` が診断のソース位置付けに
-使うためのもので、`resolve` が検証を終えた後の `lowering` にはエラーを出す先が無いため読まない
-（`ResolvedGroup::origin` は素通りする）。見出し収集・カウンタ値の参照は `ResolvedDocument` 全体を通して
-行われるため、`\ref` は別ソース（別グループ）のラベルも指せる（複数ソースの束ね方自体は `resolve` 側の
-関心事になり、`lowering` は 1 個の `ResolvedDocument` を受け取るだけになった）。
+Vec<HeadingRecord>)` が `ResolvedDocument::groups`（`ResolvedGroup { nodes: Vec<ResolvedNode>, source_id:
+SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocument::bibliography`（書誌の解決済み
+ノード列）を lower する（#283。書誌は常に groups の後に lower する — `next_heading_index()` が
+`ResolvedDocument::headings` の添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っている
+ことに依存する）。グループの起源（`SourceId`）は `resolve` が診断のソース位置付けに使うためのもので、
+`resolve` が検証を終えた後の `lowering` にはエラーを出す先が無いため読まない（`ResolvedGroup::source_id`
+は素通りする）。見出し収集・カウンタ値の参照は `ResolvedDocument` 全体を通して行われるため、`\ref` は
+別ソース（別グループ）や書誌のラベルも指せる（複数ソースの束ね方自体は `resolve` 側の関心事になり、
+`lowering` は 1 個の `ResolvedDocument` を受け取るだけになった）。
 
 ### `block`
 

@@ -153,6 +153,7 @@ pub(super) mod test_support {
   pub(crate) fn document(counter_values: &[(&str, CounterValue)]) -> ResolvedDocument {
     return ResolvedDocument {
       groups: Vec::new(),
+      bibliography: Vec::new(),
       headings: Vec::new(),
       counter_values: counter_values
         .iter()
@@ -224,11 +225,14 @@ pub fn lower_sources_with_headings(
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
-  // グループの起源（`ResolvedGroup::origin`）はエラー帰属のための情報で、`resolve` が
+  // グループの起源（`ResolvedGroup::source_id`）はエラー帰属のための情報で、`resolve` が
   // 診断を出し終えた後の lowering では読む先が無い（診断を出さないので文脈に持たない）。
   for group in &document.groups {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
   }
+  // 書誌は常に groups の後に lower する（`next_heading_index()` が `document.headings` の
+  // 添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っていることに依存する）
+  result.extend(lower_nodes_inner(ctx, &document.bibliography, &mut state));
 
   let headings = document
     .headings
@@ -246,7 +250,8 @@ pub fn lower_sources_with_headings(
     })
     .collect();
 
-  let input_node_count: usize = document.groups.iter().map(|group| return group.nodes.len()).sum();
+  let input_node_count: usize =
+    document.groups.iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography.len();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return (result, headings);
 }
@@ -470,7 +475,7 @@ fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle,
 #[allow(clippy::unwrap_used)]
 mod tests {
   use model::{
-    DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, Origin, QuoteKind, SourceId,
+    DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId,
   };
   use resolve::{SemanticDocument, SemanticGroup};
 
@@ -487,10 +492,11 @@ mod tests {
         .map(|(index, nodes)| {
           return SemanticGroup {
             nodes,
-            origin: Origin::Source(SourceId::new(index)),
+            source_id: SourceId::new(index),
           };
         })
         .collect(),
+      bibliography: &[],
     };
     return resolve::resolve_project(&semantic, style).expect("解決できる入力のはず");
   }
