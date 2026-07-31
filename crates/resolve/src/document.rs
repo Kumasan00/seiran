@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin};
+use model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin, SourceId};
 
 use crate::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode};
 
@@ -10,8 +10,9 @@ use crate::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode};
 pub struct SemanticGroup<'a> {
   /// このグループの `DocNode` 列（ラベル名・`\ref` 参照名・引用キーは未解決の生 `String`）
   pub nodes: &'a [DocNode],
-  /// このグループの起源
-  pub origin: Origin,
+  /// このグループの起源となる実ソース（グループ列は実ソースしか持てない — 生成物は
+  /// `SemanticDocument::bibliography` 側に分離済み）
+  pub source_id: SourceId,
 }
 
 /// プロジェクト全体の未解決ドキュメント
@@ -45,8 +46,8 @@ pub struct ResolvedHeading {
 pub struct ResolvedGroup {
   /// このグループの `ResolvedNode` 列
   pub nodes: Vec<ResolvedNode>,
-  /// このグループの起源
-  pub origin: Origin,
+  /// このグループの起源となる実ソース
+  pub source_id: SourceId,
 }
 
 /// プロジェクト全体の解決済みドキュメント

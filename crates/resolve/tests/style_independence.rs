@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used)]
 
 use config::Style;
-use model::{DocNode, HeadingLevel, InlineNode, Origin, SourceId, Span};
+use model::{DocNode, HeadingLevel, InlineNode, SourceId, Span};
 use resolve::{SemanticDocument, SemanticGroup, resolve_project};
 
 /// 見出し・本文・`\ref` を含む代表的なドキュメントを組み立てる
@@ -44,7 +44,7 @@ fn resolve_sample(nodes: &[DocNode], style: &Style) -> resolve::ResolvedDocument
   let semantic = SemanticDocument {
     groups: vec![SemanticGroup {
       nodes,
-      origin: Origin::Source(SourceId::new(0)),
+      source_id: SourceId::new(0),
     }],
     bibliography: &[],
   };

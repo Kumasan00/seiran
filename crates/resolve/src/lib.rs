@@ -39,10 +39,11 @@ pub fn resolve_project(
 
   let mut groups = Vec::with_capacity(semantic.groups.len());
   for group in &semantic.groups {
-    let nodes = resolver::resolve_group(group.nodes, &mut registry, &mut pending_headings, group.origin)?;
+    let origin = model::Origin::Source(group.source_id);
+    let nodes = resolver::resolve_group(group.nodes, &mut registry, &mut pending_headings, origin)?;
     groups.push(ResolvedGroup {
       nodes,
-      origin: group.origin,
+      source_id: group.source_id,
     });
   }
   let bibliography_origin = model::Origin::Generated(model::GeneratedOrigin::Bibliography);
@@ -50,7 +51,7 @@ pub fn resolve_project(
     resolver::resolve_group(semantic.bibliography, &mut registry, &mut pending_headings, bibliography_origin)?;
 
   for group in &groups {
-    validate::validate_refs(&group.nodes, &registry, group.origin)?;
+    validate::validate_refs(&group.nodes, &registry, model::Origin::Source(group.source_id))?;
   }
   validate::validate_refs(&bibliography, &registry, bibliography_origin)?;
 
@@ -79,7 +80,7 @@ pub fn resolve_project(
 
 #[cfg(test)]
 mod tests {
-  use model::{HeadingLevel, InlineNode, Origin, SourceId, Span};
+  use model::{HeadingLevel, InlineNode, SourceId, Span};
 
   use super::*;
 
@@ -106,11 +107,11 @@ mod tests {
       groups: vec![
         SemanticGroup {
           nodes: &g0,
-          origin: Origin::Source(SourceId::new(0)),
+          source_id: SourceId::new(0),
         },
         SemanticGroup {
           nodes: &g1,
-          origin: Origin::Source(SourceId::new(1)),
+          source_id: SourceId::new(1),
         },
       ],
       bibliography: &[],
@@ -135,7 +136,7 @@ mod tests {
     let semantic = SemanticDocument {
       groups: vec![SemanticGroup {
         nodes: &g0,
-        origin: Origin::Source(SourceId::new(0)),
+        source_id: SourceId::new(0),
       }],
       bibliography: &[],
     };

@@ -4,7 +4,7 @@ use std::{collections::HashSet, path::PathBuf};
 
 use config::Style;
 use frontend::parse_source;
-use model::{Origin, SourceId};
+use model::SourceId;
 use resolve::{SemanticDocument, SemanticGroup};
 use typeset::{LayoutNode, LoweringContext};
 
@@ -63,7 +63,7 @@ fn lower_fixture(name: &str) -> Vec<LayoutNode> {
   let semantic = SemanticDocument {
     groups: vec![SemanticGroup {
       nodes: &doc_nodes,
-      origin: Origin::Source(SourceId::new(0)),
+      source_id: SourceId::new(0),
     }],
     bibliography: &[],
   };

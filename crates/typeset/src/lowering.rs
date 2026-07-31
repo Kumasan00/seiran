@@ -225,7 +225,7 @@ pub fn lower_sources_with_headings(
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
   let mut result = Vec::new();
-  // グループの起源（`ResolvedGroup::origin`）はエラー帰属のための情報で、`resolve` が
+  // グループの起源（`ResolvedGroup::source_id`）はエラー帰属のための情報で、`resolve` が
   // 診断を出し終えた後の lowering では読む先が無い（診断を出さないので文脈に持たない）。
   for group in &document.groups {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
@@ -475,7 +475,7 @@ fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle,
 #[allow(clippy::unwrap_used)]
 mod tests {
   use model::{
-    DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, Origin, QuoteKind, SourceId,
+    DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId,
   };
   use resolve::{SemanticDocument, SemanticGroup};
 
@@ -492,7 +492,7 @@ mod tests {
         .map(|(index, nodes)| {
           return SemanticGroup {
             nodes,
-            origin: Origin::Source(SourceId::new(index)),
+            source_id: SourceId::new(index),
           };
         })
         .collect(),

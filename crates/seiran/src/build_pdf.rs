@@ -136,7 +136,7 @@ impl ParsedProject {
       .collect();
   }
 
-  /// resolve に渡す起源付きの `SemanticDocument` を組み立てる。
+  /// resolve に渡すソース ID 付きの `SemanticDocument` を組み立てる。
   ///
   /// 書誌は `groups` へ連結せず、`SemanticDocument::bibliography` として別に渡す
   /// （resolve 側で `Origin::Generated` を割り当てて解決する）。
@@ -148,7 +148,7 @@ impl ParsedProject {
       .map(|(i, p)| {
         return resolve::SemanticGroup {
           nodes: p.nodes.as_slice(),
-          origin: model::Origin::Source(model::SourceId::new(i)),
+          source_id: model::SourceId::new(i),
         };
       })
       .collect();
@@ -330,8 +330,8 @@ fn wrap_resolve_error(error: resolve::ResolveError, parsed: &[ParsedSource]) -> 
 mod tests {
   use super::{BuildPdfError, ParsedSource, wrap_resolve_error};
 
-  /// 指定した起源を持つ未定義参照の resolve エラーを作る。
-  pub(super) fn resolve_error_with_origin(style: &config::Style, origin: model::Origin) -> resolve::ResolveError {
+  /// 2番目の実ソースグループに未解決 `\ref` を仕込み、`Origin::Source` に帰属する resolve エラーを作る。
+  pub(super) fn resolve_error_attributed_to_source(style: &config::Style) -> resolve::ResolveError {
     use model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
@@ -344,20 +344,45 @@ mod tests {
       groups: vec![
         resolve::SemanticGroup {
           nodes: &g0,
-          origin: model::Origin::Source(model::SourceId::new(0)),
+          source_id: model::SourceId::new(0),
         },
-        resolve::SemanticGroup { nodes: &g1, origin },
+        resolve::SemanticGroup {
+          nodes: &g1,
+          source_id: model::SourceId::new(1),
+        },
       ],
       bibliography: &[],
     };
     let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(error.origin(), origin, "指定した起源が帰属源のはず");
+    assert_eq!(error.origin(), model::Origin::Source(model::SourceId::new(1)), "2番目の実ソースが帰属源のはず");
+    return error;
+  }
+
+  /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
+  pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> resolve::ResolveError {
+    use model::{DocNode, InlineNode};
+    let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
+      "plain".to_string(),
+    )])];
+    let bibliography = vec![DocNode::Paragraph(vec![InlineNode::Ref {
+      label: "missing".to_string(),
+      span: model::Span::DUMMY,
+    }])];
+    let semantic = resolve::SemanticDocument {
+      groups: vec![resolve::SemanticGroup {
+        nodes: &g0,
+        source_id: model::SourceId::new(0),
+      }],
+      bibliography: &bibliography,
+    };
+    let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
+    assert_eq!(error.origin(), model::Origin::Generated(model::GeneratedOrigin::Bibliography), "書誌が帰属源のはず");
     return error;
   }
 
   #[test]
   fn resolve_error_attributes_named_source_for_real_source_origin() {
-    // Arrange — Origin::Source(SourceId::new(1)) に帰属する ResolveError を生成する
+    // Arrange
     let style = config::Style::default();
     let parsed = vec![
       ParsedSource {
@@ -371,9 +396,9 @@ mod tests {
         nodes: Vec::new(),
       },
     ];
-    let error = resolve_error_with_origin(&style, model::Origin::Source(model::SourceId::new(1)));
+    let error = resolve_error_attributed_to_source(&style);
 
-    // Act / Assert — index=1 の 2 番目のファイルに NamedSource が紐づく
+    // Act / Assert
     match wrap_resolve_error(error, &parsed) {
       BuildPdfError::Resolve { src, .. } => {
         assert_eq!(src.name(), "b.sei", "SourceId(1) は 2 番目のファイルに帰属するはず");
@@ -384,19 +409,19 @@ mod tests {
 
   #[test]
   fn resolve_error_falls_back_to_internal_for_generated_origin() {
-    // Arrange — 合成グループに帰属する ResolveError を生成する
+    // Arrange
     let style = config::Style::default();
     let parsed = vec![ParsedSource {
       name: "only.sei".to_string(),
       content: "X".to_string(),
       nodes: Vec::new(),
     }];
-    let error = resolve_error_with_origin(&style, model::Origin::Generated(model::GeneratedOrigin::Bibliography));
+    let error = resolve_error_attributed_to_bibliography(&style);
 
     // Act / Assert
     assert!(
       matches!(wrap_resolve_error(error, &parsed), BuildPdfError::ResolveInternal { .. }),
-      "合成グループ（Origin::Generated）は ResolveInternal になるはず"
+      "書誌（Origin::Generated）は ResolveInternal になるはず"
     );
   }
 }
