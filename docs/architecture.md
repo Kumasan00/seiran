@@ -461,6 +461,8 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 は素通りする）。見出し収集・カウンタ値の参照は `ResolvedDocument` 全体を通して行われるため、`\ref` は
 別ソース（別グループ）や書誌のラベルも指せる（複数ソースの束ね方自体は `resolve` 側の関心事になり、
 `lowering` は 1 個の `ResolvedDocument` を受け取るだけになった）。
+（`SourceId` は `seiran::build_pdf::project::SourceDb::register` が唯一の発行元であり、`resolve` はここで
+発行された ID を受け取って運ぶだけで自ら発行しない。#299）
 
 ### `block`
 
@@ -650,10 +652,18 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 - `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
   `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
   epic #276 / #277）
-- `error`: `BuildPdfError`（各クレートのエラーを束ね、`resolve::ResolveError` は帰属ソースが特定できれば
-  `NamedSource` を紐付けた `Resolve`、特定できなければ `ResolveInternal` として扱う。`wrap_resolve_error`
-  がこの帰属先ソースの解決を行う。ラベル・カウンタの解決は `resolve` クレートが行うため、`typeset::lowering`
-  由来の診断エラーはもう無い）
+- `error`: `BuildPdfError`（各クレートのエラーを束ねる。ラベル・カウンタの解決は `resolve` クレートが行うため、
+  `typeset::lowering` 由来の診断エラーはもう無い。`resolve::ResolveError` は `Origin::Source(SourceId)` /
+  `Origin::Generated` を発生時点から運んでおり、`wrap_resolve_error` は `project::SourceDb`（`SourceId` の
+  唯一の発行元。`config.sources` の読込時に `register` する）から `NamedSource` を引き当てて `Resolve` /
+  `ResolveInternal` を組み立てる（#299。旧 `SourceMap` は独立採番に頼っていたが `SourceDb` へ統一した）。
+  `frontend::ParseSourceError` も `NamedSource` を自前で持たず `SourceId` のみを運び、`MultipleSourceErrors`
+  の各要素は `AttributedParseError`（`SourceDb` から引いた `NamedSource` を添える手書き `Diagnostic` 実装、
+  code/message/help/label/related は内側の `ParseSourceError` へ委譲）として集約する。`config.toml` /
+  `style.toml` の `ParseToml` は `read_config` / `read_style` 自身が `fs::read_to_string` を行うため未移行
+  （filesystem 呼び出しを driver 側へ追い出す #300 の後に揃える）。compiler 側の不変条件違反
+  （`ImageManifest` の収集ロジック不具合等）は `BuildPdfError::Bug(CompilerBug)` として、ユーザー向け診断
+  とは型を分けて扱う）
 
 ### compiler core（phase graph）
 

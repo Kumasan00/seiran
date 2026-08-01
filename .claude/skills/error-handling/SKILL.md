@@ -17,7 +17,22 @@ description: >-
 
 ## ソース位置付きエラー
 
-- ソーステキストに紐づくエラー（パース・評価系）は `#[label("...")] span: miette::SourceSpan` を持たせる。エントリポイント（例: `frontend::parse_source`）では `miette::NamedSource` を保持するラッパー enum（例: `ParseSourceError`）を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播する。これにより `#[related]` 集約時もソースコード付きの label がレンダリングされる
+- ソーステキストに紐づくエラー（パース・評価系）は `#[label("...")] span: miette::SourceSpan` を持たせる。
+- **ソース本文を持つかどうかで扱いが分かれる。** ソース本文（ファイル名・全文）を直接読める場所で
+  エラーを構築する場合（例: TOML パーサ呼び出し直後）は、その場で `miette::NamedSource` を保持するラッパー
+  enum を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの
+  `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播してよい。
+  一方、ソース本文を持たない下位クレート（呼び出し元が `SourceId → 本文` の対応表（`SourceDb` 等）を
+  一元管理している場合。例: `frontend::ParseSourceError` は `crates/seiran::build_pdf::project::SourceDb`
+  に対して本文を持たない）は、`#[source_code]` を持たず `source_id`（発行元が単一の識別子。生の `usize`
+  や array index を独自に採番しない）だけを運ぶ。この場合、`#[related]` 集約や最終 `Report` 化を行う
+  呼び出し側が、`SourceId` から引いた `NamedSource` を添える薄いラッパー型を用意する。このラッパーは
+  `#[diagnostic(transparent)]` を使わず（`source_code` も内側へ委譲されてしまうため）、`code` / `severity` /
+  `help` / `url` / `labels` / `related` / `diagnostic_source` を内側へ委譲し `source_code` だけを差し替える
+  `miette::Diagnostic` を手書きする（例: `seiran::build_pdf::error::AttributedParseError`、issue #299）
+- どちらの形でも、ソース ID・array index を独立した場所で 2 回採番しない。1 箇所（`SourceDb::register` 等）
+  だけが ID を発行し、他はそれを運ぶだけにする（2 箇所で独立に採番すると、両者の順序が一致するかが
+  規約でしか保証されなくなる。#299 で修正した `wrap_resolve_error` の帰属復元バグはこれが原因だった）
 
 ## 複数エラーの集約
 
