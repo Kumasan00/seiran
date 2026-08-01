@@ -115,7 +115,7 @@ fn diagnostic_resolve_internal_for_generated_origin() {
   // Arrange — 合成書誌からは起こせないエラーを直接構築する
   let style = config::Style::default();
   let error = super::tests::resolve_error_attributed_to_bibliography(&style);
-  let build_error = super::wrap_resolve_error(error, &[]);
+  let build_error = super::wrap_resolve_error(error, &super::project::SourceDb::new());
   let report: miette::Report = build_error.into();
 
   // Assert
