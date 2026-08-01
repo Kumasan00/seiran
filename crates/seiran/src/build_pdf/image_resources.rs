@@ -6,7 +6,7 @@ use model::{AssetId, Length};
 use tracing::debug;
 use typeset::Block;
 
-use super::error::BuildPdfError;
+use super::error::{BuildPdfError, CompilerBug};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
@@ -36,7 +36,6 @@ impl ImageResources {
 /// # Errors
 ///
 /// 画像の読み込み・デコードに失敗した場合に [`BuildPdfError`] を返す。
-// NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 pub(super) fn load_image_resources(paths: &[AssetId]) -> Result<ImageResources, BuildPdfError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
@@ -69,7 +68,6 @@ pub(super) fn load_image_resources(paths: &[AssetId]) -> Result<ImageResources, 
 /// # Errors
 ///
 /// 自然寸法が不正な場合、または画像が `images` にない場合に [`BuildPdfError`] を返す。
-// NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 pub(super) fn resolve_images(
   blocks: Vec<Block>,
@@ -87,7 +85,9 @@ pub(super) fn resolve_images(
         align,
       } => {
         let (nat_width, nat_height) = images.natural_size(&path).ok_or_else(|| {
-          return BuildPdfError::ImageNotInManifest { path: path.clone() };
+          return BuildPdfError::Bug(CompilerBug::new(format!(
+            "ImageResources に存在しない画像パスです: {path}（ImageManifest の収集ロジックに不具合があります）"
+          )));
         })?;
         let (final_width, final_height) =
           resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), nat_width, nat_height, text_width)

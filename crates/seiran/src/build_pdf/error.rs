@@ -59,6 +59,27 @@ impl Diagnostic for AttributedParseError {
   fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
 }
 
+/// compiler の不変条件違反（ユーザー入力に起因しない内部バグ）。
+///
+/// `BuildPdfError` の他バリアントが表す「設定・入力の誤り」とは型を分け、
+/// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
+#[derive(Debug, Error, Diagnostic)]
+#[error("内部エラー: {message}")]
+#[diagnostic(code(build::internal_bug), help("再現手順とともに issue を報告してください。"))]
+pub(super) struct CompilerBug {
+  /// エラーメッセージ
+  message: String,
+}
+
+impl CompilerBug {
+  /// 新しい `CompilerBug` を構築する
+  pub(super) fn new(message: impl Into<String>) -> Self {
+    return CompilerBug {
+      message: message.into(),
+    };
+  }
+}
+
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum BuildPdfError {
@@ -201,14 +222,8 @@ pub(super) enum BuildPdfError {
     height: f32,
   },
 
-  /// `resolve_images` が `ImageResources` にない画像を参照しました。
-  #[error("ImageResources に存在しない画像パスです（内部エラー）: {path}")]
-  #[diagnostic(
-    code(build::image::not_in_manifest),
-    help("ImageManifest の収集ロジックに不具合があります。issue を報告してください。")
-  )]
-  ImageNotInManifest {
-    /// 画像ファイルのパス。
-    path: AssetId,
-  },
+  /// compiler の不変条件違反（ユーザー向け診断とは別の型・経路）
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Bug(#[from] CompilerBug),
 }
