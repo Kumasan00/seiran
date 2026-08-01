@@ -36,12 +36,11 @@ use std::{
 use citation::References;
 use citation::read_references;
 use compile::{LaidOutDocument, compile_project};
-use error::BuildPdfError;
+use error::{AttributedParseError, BuildPdfError};
 use font::{FontData, FontDataExt, FontResources};
-use frontend::ParseSourceError;
 use image_manifest::ImageManifest;
 use model::DocNode;
-use project::{OutputPlan, ProjectSnapshot};
+use project::{OutputPlan, ProjectSnapshot, SourceDb};
 use tracing::info;
 
 /// ビルド成功時に表示するサマリ。
@@ -64,7 +63,7 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let (snapshot, output) = load_project(config_path)?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
   let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
-    .map_err(|source| return wrap_resolve_error(source, &parsed_project.parsed))?;
+    .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
@@ -144,11 +143,10 @@ impl ParsedProject {
     let groups = self
       .parsed
       .iter()
-      .enumerate()
-      .map(|(i, p)| {
+      .map(|p| {
         return resolve::SemanticGroup {
           nodes: p.nodes.as_slice(),
-          source_id: model::SourceId::new(i),
+          source_id: p.source_id,
         };
       })
       .collect();
@@ -170,7 +168,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
   let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let mut parsed = parse_all_sources(&snapshot.source_map, &citation_keys)?;
+  let mut parsed = parse_all_sources(&snapshot.source_db, &citation_keys)?;
   info!(
     source_count = parsed.len(),
     node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
@@ -256,7 +254,7 @@ fn build_pages(
   let snapshot = ProjectSnapshot::assemble(config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (parsed_project, image_manifest) = parse_project(&snapshot)?;
   let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
-    .map_err(|source| return wrap_resolve_error(source, &parsed_project.parsed))?;
+    .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
@@ -269,12 +267,10 @@ fn build_pages(
 #[allow(clippy::cast_possible_truncation)]
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
-/// 1 ソースのパース結果と診断用の元テキスト。
+/// 1 ソースのパース結果。本文の表示名・内容は `SourceDb` が持つため、ここでは持たない。
 struct ParsedSource {
-  /// 表示用のソースパス文字列（`NamedSource` の名前になる）
-  name: String,
-  /// ソースファイルの元テキスト全体（`NamedSource` のスニペット元になる）
-  content: String,
+  /// パース元ソースの識別子
+  source_id: model::SourceId,
   /// パース・評価済みの Document IR ノード列
   nodes: Vec<DocNode>,
 }
@@ -283,20 +279,19 @@ struct ParsedSource {
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 fn parse_all_sources(
-  source_map: &project::SourceMap,
+  source_db: &SourceDb,
   citation_keys: &HashSet<String>,
 ) -> Result<Vec<ParsedSource>, BuildPdfError> {
   let mut parsed: Vec<ParsedSource> = Vec::new();
-  let mut parse_errors: Vec<ParseSourceError> = Vec::new();
+  let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
-  for entry in &source_map.sources {
-    match frontend::parse_source(&entry.content, &entry.name, citation_keys) {
-      Ok(nodes) => parsed.push(ParsedSource {
-        name: entry.name.clone(),
-        content: entry.content.clone(),
-        nodes,
-      }),
-      Err(error) => parse_errors.push(error),
+  for (source_id, entry) in source_db.iter() {
+    match frontend::parse_source(&entry.content, source_id, citation_keys) {
+      Ok(nodes) => parsed.push(ParsedSource { source_id, nodes }),
+      Err(error) => {
+        parse_errors
+          .push(AttributedParseError::new(miette::NamedSource::new(&entry.name, entry.content.clone()), error));
+      },
     }
   }
 
@@ -308,17 +303,16 @@ fn parse_all_sources(
   return Ok(parsed);
 }
 
-/// resolve エラーに起源となるソースを紐付ける。
+/// resolve エラーが帰属するソースを `SourceDb` から引き当てる。
 ///
-/// 合成されたノードが起源なら、実ソースを持たない内部エラーとして扱う。
-fn wrap_resolve_error(error: resolve::ResolveError, parsed: &[ParsedSource]) -> BuildPdfError {
+/// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
+/// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
+fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> BuildPdfError {
   return match error.origin() {
     model::Origin::Source(source_id) => {
-      let source = parsed
-        .get(source_id.index())
-        .expect("Origin::Source は semantic_document() が割り当てた実ソース配列の範囲内を指すはず");
+      let entry = source_db.get(source_id);
       BuildPdfError::Resolve {
-        src: miette::NamedSource::new(&source.name, source.content.clone()),
+        src: miette::NamedSource::new(&entry.name, entry.content.clone()),
         source: error,
       }
     },
@@ -328,36 +322,6 @@ fn wrap_resolve_error(error: resolve::ResolveError, parsed: &[ParsedSource]) -> 
 
 #[cfg(test)]
 mod tests {
-  use super::{BuildPdfError, ParsedSource, wrap_resolve_error};
-
-  /// 2番目の実ソースグループに未解決 `\ref` を仕込み、`Origin::Source` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_source(style: &config::Style) -> resolve::ResolveError {
-    use model::{DocNode, InlineNode};
-    let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
-      "plain".to_string(),
-    )])];
-    let g1 = vec![DocNode::Paragraph(vec![InlineNode::Ref {
-      label: "missing".to_string(),
-      span: model::Span::DUMMY,
-    }])];
-    let semantic = resolve::SemanticDocument {
-      groups: vec![
-        resolve::SemanticGroup {
-          nodes: &g0,
-          source_id: model::SourceId::new(0),
-        },
-        resolve::SemanticGroup {
-          nodes: &g1,
-          source_id: model::SourceId::new(1),
-        },
-      ],
-      bibliography: &[],
-    };
-    let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(error.origin(), model::Origin::Source(model::SourceId::new(1)), "2番目の実ソースが帰属源のはず");
-    return error;
-  }
-
   /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
   pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> resolve::ResolveError {
     use model::{DocNode, InlineNode};
@@ -378,50 +342,5 @@ mod tests {
     let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(error.origin(), model::Origin::Generated(model::GeneratedOrigin::Bibliography), "書誌が帰属源のはず");
     return error;
-  }
-
-  #[test]
-  fn resolve_error_attributes_named_source_for_real_source_origin() {
-    // Arrange
-    let style = config::Style::default();
-    let parsed = vec![
-      ParsedSource {
-        name: "a.sei".to_string(),
-        content: "A".to_string(),
-        nodes: Vec::new(),
-      },
-      ParsedSource {
-        name: "b.sei".to_string(),
-        content: "B content".to_string(),
-        nodes: Vec::new(),
-      },
-    ];
-    let error = resolve_error_attributed_to_source(&style);
-
-    // Act / Assert
-    match wrap_resolve_error(error, &parsed) {
-      BuildPdfError::Resolve { src, .. } => {
-        assert_eq!(src.name(), "b.sei", "SourceId(1) は 2 番目のファイルに帰属するはず");
-      },
-      other => panic!("Resolve が期待されます: {other:?}"),
-    }
-  }
-
-  #[test]
-  fn resolve_error_falls_back_to_internal_for_generated_origin() {
-    // Arrange
-    let style = config::Style::default();
-    let parsed = vec![ParsedSource {
-      name: "only.sei".to_string(),
-      content: "X".to_string(),
-      nodes: Vec::new(),
-    }];
-    let error = resolve_error_attributed_to_bibliography(&style);
-
-    // Act / Assert
-    assert!(
-      matches!(wrap_resolve_error(error, &parsed), BuildPdfError::ResolveInternal { .. }),
-      "書誌（Origin::Generated）は ResolveInternal になるはず"
-    );
   }
 }

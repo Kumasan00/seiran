@@ -9,6 +9,77 @@ use pdf_gen::PdfGenError;
 use resolve::ResolveError;
 use thiserror::Error;
 
+/// [`frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
+///
+/// `ParseSourceError` は `SourceId` だけを持ち、ソース本文を持たない（本文は
+/// `project::SourceDb` が一元管理する）。code / message / help / label / related は
+/// すべて内側の `ParseSourceError` へ委譲し、`source_code` だけをここで補う
+/// （`#[diagnostic(transparent)]` は `source_code` も内側へ委譲してしまうため使えず、手書きする）。
+#[derive(Debug)]
+pub(super) struct AttributedParseError {
+  /// `SourceDb` から引いたソース名・本文（`source_code` の供給元）
+  named_source: NamedSource<String>,
+  /// 内側のパース・評価エラー（`SourceId` のみを持ち本文は持たない）
+  inner: ParseSourceError,
+}
+
+impl AttributedParseError {
+  /// `SourceDb` から引いた `NamedSource` と内側の `ParseSourceError` を束ねる
+  pub(super) fn new(named_source: NamedSource<String>, inner: ParseSourceError) -> Self {
+    return AttributedParseError {
+      named_source,
+      inner,
+    };
+  }
+}
+
+impl std::fmt::Display for AttributedParseError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.inner.fmt(f); }
+}
+
+impl std::error::Error for AttributedParseError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.inner); }
+}
+
+impl Diagnostic for AttributedParseError {
+  fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.code(); }
+
+  fn severity(&self) -> Option<miette::Severity> { return self.inner.severity(); }
+
+  fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.help(); }
+
+  fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.url(); }
+
+  fn source_code(&self) -> Option<&dyn miette::SourceCode> { return Some(&self.named_source); }
+
+  fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.inner.labels(); }
+
+  fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> { return self.inner.related(); }
+
+  fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
+}
+
+/// compiler の不変条件違反（ユーザー入力に起因しない内部バグ）。
+///
+/// `BuildPdfError` の他バリアントが表す「設定・入力の誤り」とは型を分け、
+/// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
+#[derive(Debug, Error, Diagnostic)]
+#[error("内部エラー: {message}")]
+#[diagnostic(code(build::internal_bug), help("再現手順とともに issue を報告してください。"))]
+pub(super) struct CompilerBug {
+  /// エラーメッセージ
+  message: String,
+}
+
+impl CompilerBug {
+  /// 新しい `CompilerBug` を構築する
+  pub(super) fn new(message: impl Into<String>) -> Self {
+    return CompilerBug {
+      message: message.into(),
+    };
+  }
+}
+
 /// PDF ビルド時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum BuildPdfError {
@@ -34,9 +105,9 @@ pub(super) enum BuildPdfError {
   #[error("複数のソースファイルでエラーが発生しました。")]
   #[diagnostic(code(build::multiple_source_errors))]
   MultipleSourceErrors {
-    /// ソースファイルごとのパース・評価エラー
+    /// ソースファイルごとのパース・評価エラー（`SourceDb` から引いた本文を添えたもの）
     #[related]
-    errors: Vec<ParseSourceError>,
+    errors: Vec<AttributedParseError>,
   },
 
   /// 文献引用の CSL 整形エラー
@@ -151,14 +222,8 @@ pub(super) enum BuildPdfError {
     height: f32,
   },
 
-  /// `resolve_images` が `ImageResources` にない画像を参照しました。
-  #[error("ImageResources に存在しない画像パスです（内部エラー）: {path}")]
-  #[diagnostic(
-    code(build::image::not_in_manifest),
-    help("ImageManifest の収集ロジックに不具合があります。issue を報告してください。")
-  )]
-  ImageNotInManifest {
-    /// 画像ファイルのパス。
-    path: AssetId,
-  },
+  /// compiler の不変条件違反（ユーザー向け診断とは別の型・経路）
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Bug(#[from] CompilerBug),
 }

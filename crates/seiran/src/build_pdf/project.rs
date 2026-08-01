@@ -19,8 +19,8 @@ pub(super) struct ProjectSnapshot {
   pub(super) references: Arc<References>,
   /// 読込済みの全フォントバイナリ
   pub(super) font_data: font::FontData,
-  /// ソースファイルごとの読込済みテキスト
-  pub(super) source_map: SourceMap,
+  /// ソースファイルごとの読込済みテキスト（`SourceId` で引ける）
+  pub(super) source_db: SourceDb,
 }
 
 impl ProjectSnapshot {
@@ -37,23 +37,26 @@ impl ProjectSnapshot {
     references: Arc<References>,
     font_data: font::FontData,
   ) -> Result<Self, BuildPdfError> {
-    let source_map = SourceMap::read(&config.sources)?;
+    let source_db = SourceDb::read(&config.sources)?;
     return Ok(ProjectSnapshot {
       config,
       style,
       references,
       font_data,
-      source_map,
+      source_db,
     });
   }
 }
 
-/// ソースファイルごとの読込済みテキスト（表示パス + 内容）の集合。
+/// 全ソースの表示名・本文を [`model::SourceId`] で引けるデータベース。
 ///
-/// 並び順が [`model::SourceId`] のインデックスに一致する。
-pub(super) struct SourceMap {
-  /// ソースファイルごとのエントリ（`config.sources` と同じ順序）
-  pub(super) sources: Vec<SourceEntry>,
+/// [`SourceDb::register`] が唯一の `SourceId` 発行元。呼び出し元は発行された ID をそのまま
+/// 運ぶだけで、別の場所で ID を作り直したり、配列の並び順から ID を推測したりしない
+/// （旧 `SourceMap` は「並び順が `SourceId` のインデックスに一致する」という規約だけで
+/// `build_pdf.rs` 側の別の採番と結び付いていた。この struct はその規約を型に落とす）。
+pub(super) struct SourceDb {
+  /// ソースエントリの配列（`register` によって逐次追加される）
+  entries: Vec<SourceEntry>,
 }
 
 /// 1 ソースファイルの表示用パスと内容。
@@ -64,8 +67,35 @@ pub(super) struct SourceEntry {
   pub(super) content: String,
 }
 
-impl SourceMap {
-  /// `sources` を順に読み込む。
+impl SourceDb {
+  /// 空の `SourceDb` を作る（テスト・`Origin::Generated` 用の埋め込みなし診断構築に使う）。
+  pub(super) fn new() -> Self {
+    return SourceDb {
+      entries: Vec::new(),
+    };
+  }
+
+  /// ソースを登録し、新しい `SourceId` を発行する。
+  fn register(&mut self, name: String, content: String) -> model::SourceId {
+    let id = model::SourceId::new(self.entries.len());
+    self.entries.push(SourceEntry { name, content });
+    return id;
+  }
+
+  /// `id` に対応するソースを返す。
+  ///
+  /// `id` はこの `SourceDb` の `register` が発行した値だけが渡される前提
+  /// （driver が発行元と参照元を分けないため、範囲外は構造的に起こらない）。
+  pub(super) fn get(&self, id: model::SourceId) -> &SourceEntry {
+    return self.entries.get(id.index()).expect("SourceId は SourceDb.register が発行した範囲内のはず");
+  }
+
+  /// 登録順に `(SourceId, &SourceEntry)` を返す。
+  pub(super) fn iter(&self) -> impl Iterator<Item = (model::SourceId, &SourceEntry)> {
+    return self.entries.iter().enumerate().map(|(i, entry)| return (model::SourceId::new(i), entry));
+  }
+
+  /// `sources` を順に読み込んで登録する。
   ///
   /// # Errors
   ///
@@ -73,8 +103,8 @@ impl SourceMap {
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
-  fn read(sources: &[PathBuf]) -> Result<SourceMap, BuildPdfError> {
-    let mut entries = Vec::with_capacity(sources.len());
+  fn read(sources: &[PathBuf]) -> Result<SourceDb, BuildPdfError> {
+    let mut db = SourceDb::new();
     for source_path in sources {
       let content = fs::read_to_string(source_path).map_err(|source| {
         return BuildPdfError::ReadTextFile {
@@ -82,12 +112,9 @@ impl SourceMap {
           source,
         };
       })?;
-      entries.push(SourceEntry {
-        name: source_path.display().to_string(),
-        content,
-      });
+      db.register(source_path.display().to_string(), content);
     }
-    return Ok(SourceMap { sources: entries });
+    return Ok(db);
   }
 }
 
@@ -101,7 +128,7 @@ pub(super) struct OutputPlan {
 mod tests {
   use std::path::PathBuf;
 
-  use super::{BuildPdfError, SourceMap};
+  use super::{BuildPdfError, SourceDb};
   use crate::build_pdf::golden::enter_workspace_root;
 
   #[test]
@@ -111,12 +138,13 @@ mod tests {
     let sources = vec![PathBuf::from("tests/text/text.sei")];
 
     // Act
-    let source_map = SourceMap::read(&sources).expect("既存 fixture の読込に成功するはず");
+    let source_db = SourceDb::read(&sources).expect("既存 fixture の読込に成功するはず");
 
     // Assert
-    assert_eq!(source_map.sources.len(), 1);
-    assert_eq!(source_map.sources[0].name, "tests/text/text.sei");
-    assert!(!source_map.sources[0].content.is_empty(), "fixture は空でないはず");
+    let entries: Vec<_> = source_db.iter().collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].1.name, "tests/text/text.sei");
+    assert!(!entries[0].1.content.is_empty(), "fixture は空でないはず");
   }
 
   #[test]
@@ -129,12 +157,26 @@ mod tests {
     ];
 
     // Act
-    let result = SourceMap::read(&sources);
+    let result = SourceDb::read(&sources);
 
     // Assert
     assert!(
       matches!(result, Err(BuildPdfError::ReadTextFile { .. })),
       "存在しないファイルは ReadTextFile で早期失敗するはず"
     );
+  }
+
+  #[test]
+  fn register_issues_sequential_ids_and_get_looks_them_up() {
+    // Arrange
+    let mut db = SourceDb::new();
+
+    // Act
+    let id_a = db.register("a.sei".to_string(), "content-a".to_string());
+    let id_b = db.register("b.sei".to_string(), "content-b".to_string());
+
+    // Assert
+    assert_eq!(db.get(id_a).name, "a.sei");
+    assert_eq!(db.get(id_b).name, "b.sei");
   }
 }
