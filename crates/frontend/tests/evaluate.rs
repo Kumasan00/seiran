@@ -14,11 +14,13 @@ fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| retur
 ///
 /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
 /// 引用キーは空集合（`\cite` を含まないソース向け）。
-fn evaluate_source(source: &str) -> Vec<DocNode> { return parse_source(source, "test", &HashSet::new()).unwrap(); }
+fn evaluate_source(source: &str) -> Vec<DocNode> {
+  return parse_source(source, model::SourceId::new(0), &HashSet::new()).unwrap();
+}
 
 /// 引用キー集合を指定してソースを評価するテストヘルパ
 fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
-  return parse_source(source, "test", citation_keys).unwrap();
+  return parse_source(source, model::SourceId::new(0), citation_keys).unwrap();
 }
 
 /// ソースを評価して `EvalError` を取り出すテストヘルパ
@@ -30,7 +32,7 @@ fn evaluate_error(source: &str) -> EvalError { return evaluate_error_with_keys(s
 
 /// 引用キー集合を指定してソースを評価し `EvalError` を取り出すテストヘルパ
 fn evaluate_error_with_keys(source: &str, citation_keys: &HashSet<String>) -> EvalError {
-  match parse_source(source, "test", citation_keys) {
+  match parse_source(source, model::SourceId::new(0), citation_keys) {
     Err(ParseSourceError::Eval { error, .. }) => return error,
     other => panic!("評価エラーが期待されます: {other:?}"),
   }

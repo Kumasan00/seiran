@@ -36,9 +36,8 @@ use std::{
 use citation::References;
 use citation::read_references;
 use compile::{LaidOutDocument, compile_project};
-use error::BuildPdfError;
+use error::{AttributedParseError, BuildPdfError};
 use font::{FontData, FontDataExt, FontResources};
-use frontend::ParseSourceError;
 use image_manifest::ImageManifest;
 use model::DocNode;
 use project::{OutputPlan, ProjectSnapshot, SourceDb};
@@ -284,12 +283,15 @@ fn parse_all_sources(
   citation_keys: &HashSet<String>,
 ) -> Result<Vec<ParsedSource>, BuildPdfError> {
   let mut parsed: Vec<ParsedSource> = Vec::new();
-  let mut parse_errors: Vec<ParseSourceError> = Vec::new();
+  let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {
-    match frontend::parse_source(&entry.content, &entry.name, citation_keys) {
+    match frontend::parse_source(&entry.content, source_id, citation_keys) {
       Ok(nodes) => parsed.push(ParsedSource { source_id, nodes }),
-      Err(error) => parse_errors.push(error),
+      Err(error) => {
+        parse_errors
+          .push(AttributedParseError::new(miette::NamedSource::new(&entry.name, entry.content.clone()), error));
+      },
     }
   }
 
