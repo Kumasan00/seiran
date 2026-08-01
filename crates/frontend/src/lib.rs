@@ -43,16 +43,6 @@ pub enum ParseSourceError {
   },
 }
 
-impl ParseSourceError {
-  /// このエラーが属するソースの識別子を返す
-  #[must_use]
-  pub fn source_id(&self) -> model::SourceId {
-    return match self {
-      ParseSourceError::Syntax { source_id, .. } | ParseSourceError::Eval { source_id, .. } => *source_id,
-    };
-  }
-}
-
 /// ソーステキストをパースして Document IR（`Vec<DocNode>`）を生成する
 ///
 /// # Errors

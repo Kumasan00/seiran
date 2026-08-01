@@ -32,11 +32,23 @@ description: >-
   `miette::Diagnostic` を手書きする（例: `seiran::build_pdf::error::AttributedParseError`、issue #299）
 - どちらの形でも、ソース ID・array index を独立した場所で 2 回採番しない。1 箇所（`SourceDb::register` 等）
   だけが ID を発行し、他はそれを運ぶだけにする（2 箇所で独立に採番すると、両者の順序が一致するかが
-  規約でしか保証されなくなる。#299 で修正した `wrap_resolve_error` の帰属復元バグはこれが原因だった）
+  規約でしか保証されなくなる。#299 以前の `wrap_resolve_error` はこの規約に依存していた —
+  実際に誤動作していたわけではないが、`SourceDb` へ統一して依存を除いた）
 
 ## 複数エラーの集約
 
 - 複数エラーを 1 度にまとめて報告する場合は `#[related] errors: Vec<...>` を持つ集約バリアント（例: `MultipleValidationErrors`）を作る。`#[related]` の要素は **`Diagnostic` 実装が必須**であり、`miette::Report` は実装しないため、`Report` を直接ベクタに詰めることはできない。クレート固有のエラー型（例: `ParseSourceError`）を返すことでこの問題を回避する
+
+## compiler 内部バグ
+
+- ユーザー入力に起因しない内部不変条件違反が `Result` を返す経路（`.map_err` / `?` の途中）で発覚した場合、
+  `panic!` せず専用の小さな struct（例: `seiran::build_pdf::error::CompilerBug`）を作り、通常のユーザー向け
+  エラーバリアントには混ぜない
+- `#[diagnostic(code(...))]` は `internal_bug` 系のサフィックスにし、`help("...")` はトラブルシュート手順ではなく
+  issue 報告を促す文言にする（ユーザー側に誤りがあるわけではないため）
+- `unreachable!` との使い分け: 手元に `Result` / `Option` があり、それを使ってエラーを返すほうが panic より
+  安全・安価なら `CompilerBug`。手元に `Result` がなく、その状態が構造的に到達不能なら CLAUDE.md 規約 5 の
+  `unreachable!` を使う
 
 ## シグネチャの原則
 
