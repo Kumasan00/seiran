@@ -1,6 +1,6 @@
 //! TOML パース系の統合テスト。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
 use model::HeadingLevel;
@@ -9,8 +9,11 @@ fn dummy_source() -> &'static str { return "test.toml"; }
 
 #[test]
 fn read_style_returns_default_when_path_is_none() {
-  // Arrange / Act
-  let style = read_style(None).unwrap();
+  // Arrange
+  let source = config::FilesystemProjectSource::new();
+
+  // Act
+  let style = read_style(&source, None, Path::new(".")).unwrap();
 
   // Assert
   let default = Style::default();
@@ -221,9 +224,11 @@ fn parse_style_fails_on_invalid_toml_syntax() {
 fn read_style_fails_on_nonexistent_path() {
   // Arrange
   let path = PathBuf::from("/nonexistent/style.toml");
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = path.parent().expect("フィクスチャパスは親ディレクトリを持つはず");
 
   // Act
-  let result = read_style(Some(path.as_path()));
+  let result = read_style(&source, Some(path.as_path()), base_dir);
 
   // Assert
   assert!(matches!(result, Err(ReadStyleError::ReadFile { .. })));

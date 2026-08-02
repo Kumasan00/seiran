@@ -24,7 +24,7 @@ mod theorem;
 mod title_page;
 mod toc;
 
-use std::{fs, path::Path};
+use std::path::Path;
 
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
@@ -32,6 +32,7 @@ use model::{Color, HeadingLevel};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
+use crate::project_source::{ProjectPath, ProjectSource};
 pub use crate::style::{
   caption::CaptionStyle,
   columns::ColumnsStyle,
@@ -171,13 +172,14 @@ impl Style {
 /// スタイル設定ファイルを読み込みます。
 ///
 /// `path = None` の場合はファイルを読み込まずに [`Style::default`] を返します。
+/// `path` が相対パスの場合は `base_dir` を基準に解決します。
 ///
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
 // 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
 #[allow(clippy::result_large_err)]
-pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
+pub fn read_style(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
   let Some(path) = path else {
     info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
     return Ok(Style::default());
@@ -185,7 +187,12 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
   let path_str = path.display().to_string();
   debug!(style_path = %path_str, "スタイル設定ファイルの読み込みを開始します");
 
-  let content = fs::read_to_string(path).map_err(|source| {
+  let joined = if path.is_absolute() {
+    path.to_path_buf()
+  } else {
+    base_dir.join(path)
+  };
+  let content = source.read_text(&ProjectPath::new(&joined)).map_err(|source| {
     return ReadStyleError::ReadFile {
       path: path_str.clone(),
       source,
@@ -194,7 +201,7 @@ pub fn read_style(path: Option<&Path>) -> Result<Style, ReadStyleError> {
 
   let mut style = parse_style(&content, &path_str)?;
 
-  let errors = resolve_reference_paths(&mut style.reference);
+  let errors = resolve_reference_paths(&mut style.reference, source, base_dir);
   if !errors.is_empty() {
     return Err(ReadStyleError::MultipleValidationErrors { errors });
   }
@@ -270,28 +277,42 @@ fn validate_values(style: &Style) -> Result<(), Vec<StyleValidationError>> {
   return Err(errors);
 }
 
-/// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `canonicalize` で絶対パスへ
-/// 正規化し、ファイルの存在を同時に検証します（I/O フェーズ）。
-fn resolve_reference_paths(reference: &mut ReferenceStyle) -> Vec<StyleValidationError> {
+/// `style.reference` の CSL 関連パス（`csl_path` / `locale_path`）を `base_dir` 基準の絶対パスへ
+/// 解決し、`source.exists` でファイルの存在を同時に検証します（I/O フェーズ）。
+fn resolve_reference_paths(
+  reference: &mut ReferenceStyle,
+  source: &dyn ProjectSource,
+  base_dir: &Path,
+) -> Vec<StyleValidationError> {
   let mut errors: Vec<StyleValidationError> = Vec::new();
 
   if let Some(path) = reference.csl_path.take() {
-    match path.canonicalize() {
-      Ok(canonical) => reference.csl_path = Some(canonical),
-      Err(source) => errors.push(StyleValidationError::CslPathResolution {
-        path: path.display().to_string(),
-        source,
-      }),
+    let joined = if path.is_absolute() {
+      path.clone()
+    } else {
+      base_dir.join(&path)
+    };
+    if source.exists(&ProjectPath::new(&joined)) {
+      reference.csl_path = Some(joined);
+    } else {
+      errors.push(StyleValidationError::CslPathResolution {
+        path: joined.display().to_string(),
+      });
     }
   }
 
   if let Some(path) = reference.locale_path.take() {
-    match path.canonicalize() {
-      Ok(canonical) => reference.locale_path = Some(canonical),
-      Err(source) => errors.push(StyleValidationError::LocalePathResolution {
-        path: path.display().to_string(),
-        source,
-      }),
+    let joined = if path.is_absolute() {
+      path.clone()
+    } else {
+      base_dir.join(&path)
+    };
+    if source.exists(&ProjectPath::new(&joined)) {
+      reference.locale_path = Some(joined);
+    } else {
+      errors.push(StyleValidationError::LocalePathResolution {
+        path: joined.display().to_string(),
+      });
     }
   }
 
@@ -300,25 +321,32 @@ fn resolve_reference_paths(reference: &mut ReferenceStyle) -> Vec<StyleValidatio
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
+  use std::path::{Path, PathBuf};
 
   use garde::Validate;
   use model::{Color, HeadingLevel, length::Length};
   use tempfile::NamedTempFile;
 
-  use crate::style::{CounterName, ReferenceStyle, Style, StyleValidationError, TheoremClass, resolve_reference_paths};
+  use crate::{
+    project_source::{FilesystemProjectSource, MemoryProjectSource},
+    style::{
+      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
+      resolve_reference_paths,
+    },
+  };
 
   #[test]
   fn resolve_reference_paths_makes_csl_path_absolute() {
     // Arrange
     let file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
+    let source = FilesystemProjectSource::new();
     let mut reference = ReferenceStyle {
       csl_path: Some(file.path().to_path_buf()),
       ..ReferenceStyle::default()
     };
 
     // Act
-    let errors = resolve_reference_paths(&mut reference);
+    let errors = resolve_reference_paths(&mut reference, &source, Path::new("/unused"));
 
     // Assert
     assert!(errors.is_empty(), "実在パスはエラーにならないはず: {errors:?}");
@@ -328,6 +356,7 @@ mod tests {
   #[test]
   fn resolve_reference_paths_reports_missing_files() {
     // Arrange
+    let source = FilesystemProjectSource::new();
     let mut reference = ReferenceStyle {
       csl_path: Some(PathBuf::from("/nonexistent/style.csl")),
       locale_path: Some(PathBuf::from("/nonexistent/locale.xml")),
@@ -335,7 +364,7 @@ mod tests {
     };
 
     // Act
-    let errors = resolve_reference_paths(&mut reference);
+    let errors = resolve_reference_paths(&mut reference, &source, Path::new("/unused"));
 
     // Assert
     assert_eq!(errors.len(), 2, "csl_path / locale_path 双方が報告されるはず: {errors:?}");
@@ -345,10 +374,61 @@ mod tests {
 
   #[test]
   fn resolve_reference_paths_skips_none() {
-    // Arrange / Act / Assert
+    // Arrange
+    let source = FilesystemProjectSource::new();
     let mut reference = ReferenceStyle::default();
-    let errors = resolve_reference_paths(&mut reference);
+
+    // Act
+    let errors = resolve_reference_paths(&mut reference, &source, Path::new("/unused"));
+
+    // Assert
     assert!(errors.is_empty());
+  }
+
+  #[test]
+  fn read_style_reads_through_project_source() {
+    // Arrange
+    let source = MemoryProjectSource::new().with_text("/project/style.toml", "");
+    let path = PathBuf::from("style.toml");
+
+    // Act
+    let style = read_style(&source, Some(&path), Path::new("/project")).expect("空の TOML は既定値になるはず");
+
+    // Assert
+    assert_eq!(style.text.font_size, Style::default().text.font_size);
+  }
+
+  #[test]
+  fn read_style_reports_missing_csl_path_without_touching_real_disk() {
+    // Arrange
+    let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
+    let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
+    let path = PathBuf::from("style.toml");
+
+    // Act
+    let result = read_style(&source, Some(&path), Path::new("/project"));
+
+    // Assert
+    assert!(matches!(result, Err(ReadStyleError::MultipleValidationErrors { .. })));
+  }
+
+  #[test]
+  fn read_style_aggregates_both_missing_csl_and_locale_paths() {
+    // Arrange — csl_path / locale_path のどちらも欠落している場合、片方だけで
+    // fail-fast せず、両方が同じ Vec に集約されることを検証する
+    let toml = "[reference]\ncsl_path = \"missing.csl\"\nlocale_path = \"missing.xml\"\n";
+    let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
+    let path = PathBuf::from("style.toml");
+
+    // Act
+    let result = read_style(&source, Some(&path), Path::new("/project"));
+
+    // Assert
+    let Err(ReadStyleError::MultipleValidationErrors { errors }) = result else {
+      panic!("MultipleValidationErrors を期待したが実際は {result:?}");
+    };
+    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::CslPathResolution { .. })));
+    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::LocalePathResolution { .. })));
   }
 
   #[test]

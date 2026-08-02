@@ -3,6 +3,8 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
+use crate::project_source::SourceReadError;
+
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub enum ReadStyleError {
@@ -12,9 +14,10 @@ pub enum ReadStyleError {
   ReadFile {
     /// ファイルパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読み込みエラー
     #[source]
-    source: std::io::Error,
+    #[diagnostic_source]
+    source: SourceReadError,
   },
   /// TOML の構文・型・未知キー等のパース失敗
   #[error("スタイル設定の TOML 解析に失敗しました")]
@@ -53,31 +56,25 @@ pub enum StyleValidationError {
     message: String,
   },
 
-  /// `csl_path`（CSL スタイルファイル）の正規化（`canonicalize`）失敗。
-  #[error("CSL スタイルファイルのパスを正規化できませんでした: {path}")]
+  /// `csl_path`（CSL スタイルファイル）が見つからない。
+  #[error("CSL スタイルファイルが見つかりません: {path}")]
   #[diagnostic(
     code(style::validation::csl_path_resolution),
     help("style.toml の [reference].csl_path が指すファイルが存在し、読み取り権限があることを確認してください。")
   )]
   CslPathResolution {
-    /// 正規化に失敗したパス
+    /// 見つからなかったパス
     path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
   },
 
-  /// `locale_path`（CSL ロケールファイル）の正規化（`canonicalize`）失敗。
-  #[error("CSL ロケールファイルのパスを正規化できませんでした: {path}")]
+  /// `locale_path`（CSL ロケールファイル）が見つからない。
+  #[error("CSL ロケールファイルが見つかりません: {path}")]
   #[diagnostic(
     code(style::validation::locale_path_resolution),
     help("style.toml の [reference].locale_path が指すファイルが存在し、読み取り権限があることを確認してください。")
   )]
   LocalePathResolution {
-    /// 正規化に失敗したパス
+    /// 見つからなかったパス
     path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
   },
 }
