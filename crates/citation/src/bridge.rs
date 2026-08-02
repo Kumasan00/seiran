@@ -55,6 +55,7 @@ fn sanitize_value(value: Value) -> Value {
 mod tests {
   use std::io::Write;
 
+  use config::FilesystemProjectSource;
   use hayagriva::citationberg::json::Value;
 
   use super::to_item;
@@ -62,9 +63,10 @@ mod tests {
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {
+    let source = FilesystemProjectSource::new();
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    return read_references(Some(file.path())).expect("references を読み込めるはず");
+    return read_references(&source, Some(file.path())).expect("references を読み込めるはず");
   }
 
   #[test]

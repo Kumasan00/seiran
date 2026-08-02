@@ -344,7 +344,7 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use config::Style;
+  use config::{FilesystemProjectSource, Style};
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
   use model::{DocNode, FontKind, InlineNode, Span};
 
@@ -673,6 +673,7 @@ mod tests {
   #[test]
   fn process_citations_ignores_uncited_malformed_reference() {
     // Arrange
+    let source = FilesystemProjectSource::new();
     let toml = String::from(
       "[kwan2014]\n\
        type = \"book\"\n\
@@ -690,7 +691,7 @@ mod tests {
     );
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-    let references = read_references(Some(file.path())).expect("references を読み込めるはず");
+    let references = read_references(&source, Some(file.path())).expect("references を読み込めるはず");
     let style = style_with_csl();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 

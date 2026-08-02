@@ -5,6 +5,8 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use config::FilesystemProjectSource;
+
 use crate::{References, read_references};
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
@@ -40,7 +42,8 @@ pub(crate) fn sample_references() -> References {
      [doe2020.issued]\n\
      date-parts = [[2020, 5, 1]]\n",
   );
+  let source = FilesystemProjectSource::new();
   let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
   file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
-  return read_references(Some(file.path())).expect("references を読み込めるはず");
+  return read_references(&source, Some(file.path())).expect("references を読み込めるはず");
 }
