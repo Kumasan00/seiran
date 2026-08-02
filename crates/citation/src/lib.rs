@@ -3,7 +3,7 @@
 //!
 //! parser の後・lowering の前で `InlineNode::Cite` を整形し、生成した書誌を返す。
 
-use std::{collections::HashMap, io};
+use std::collections::HashMap;
 
 use config::Style;
 use hayagriva::{
@@ -60,9 +60,10 @@ pub enum CitationError {
   ReadStyleFile {
     /// スタイルファイルのパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読み込みエラー
     #[source]
-    source: io::Error,
+    #[diagnostic_source]
+    source: config::SourceReadError,
   },
 
   /// CSL スタイル（`.csl`）の解析に失敗した場合。
@@ -88,9 +89,10 @@ pub enum CitationError {
   ReadLocaleFile {
     /// ロケールファイルのパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読み込みエラー
     #[source]
-    source: io::Error,
+    #[diagnostic_source]
+    source: config::SourceReadError,
   },
 
   /// CSL ロケール（`.xml`）の解析に失敗した場合。
@@ -121,6 +123,7 @@ pub fn process_citations<'a>(
   docs: impl IntoIterator<Item = &'a mut Vec<DocNode>>,
   references: &References,
   style: &Style,
+  source: &dyn config::ProjectSource,
 ) -> Result<Vec<DocNode>, CitationError> {
   let mut cite_nodes: Vec<&mut InlineNode> = Vec::new();
   for nodes in docs {
@@ -158,7 +161,7 @@ pub fn process_citations<'a>(
 
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
-  let style_xml = std::fs::read_to_string(csl_path).map_err(|source| {
+  let style_xml = source.read_text(&config::ProjectPath::new(csl_path)).map_err(|source| {
     return CitationError::ReadStyleFile {
       path: csl_path_str.clone(),
       source,
@@ -170,7 +173,7 @@ pub fn process_citations<'a>(
       source,
     };
   })?;
-  let (locales, locale_override) = load_locales(style, csl_style.default_locale.as_ref())?;
+  let (locales, locale_override) = load_locales(style, csl_style.default_locale.as_ref(), source)?;
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
@@ -260,10 +263,11 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
 fn load_locales(
   style: &Style,
   csl_default_locale: Option<&LocaleCode>,
+  source: &dyn config::ProjectSource,
 ) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
-    let xml = std::fs::read_to_string(path).map_err(|source| {
+    let xml = source.read_text(&config::ProjectPath::new(path)).map_err(|source| {
       return CitationError::ReadLocaleFile {
         path: path_str.clone(),
         source,
@@ -344,7 +348,7 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use config::{FilesystemProjectSource, Style};
+  use config::{FilesystemProjectSource, MemoryProjectSource, Style};
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
   use model::{DocNode, FontKind, InlineNode, Span};
 
@@ -355,8 +359,16 @@ mod tests {
   };
 
   /// 単一ドキュメントを処理し、返った書誌を末尾へ連結する。
-  fn process_and_append(nodes: &mut Vec<DocNode>, references: &References, style: &Style) -> Result<(), CitationError> {
-    let bibliography = process_citations(std::iter::once(&mut *nodes), references, style)?;
+  ///
+  /// 実フィクスチャの CSL / ロケールファイルをディスクから読む既存テスト向けに、
+  /// `source` には常に `FilesystemProjectSource` を渡す想定。
+  fn process_and_append(
+    nodes: &mut Vec<DocNode>,
+    references: &References,
+    style: &Style,
+    source: &dyn config::ProjectSource,
+  ) -> Result<(), CitationError> {
+    let bibliography = process_citations(std::iter::once(&mut *nodes), references, style, source)?;
     nodes.extend(bibliography);
     return Ok(());
   }
@@ -387,9 +399,10 @@ mod tests {
   fn load_locales_without_custom_loads_only_active() {
     // Arrange
     let style = Style::default();
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let (locales, locale_override) = load_locales(&style, None).expect("内蔵 en-US のみで成功するはず");
+    let (locales, locale_override) = load_locales(&style, None, &source).expect("内蔵 en-US のみで成功するはず");
 
     // Assert
     assert_eq!(locales.len(), 1, "active=en-US なら en-US 1 件だけ: {locales:?}");
@@ -401,9 +414,11 @@ mod tests {
   fn load_locales_overlays_custom_before_builtin() {
     // Arrange
     let style = style_with_locale_path(custom_locale_path());
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let (locales, locale_override) = load_locales(&style, None).expect("カスタムロケールの読み込みは成功するはず");
+    let (locales, locale_override) =
+      load_locales(&style, None, &source).expect("カスタムロケールの読み込みは成功するはず");
 
     // Assert
     let xml = std::fs::read_to_string(custom_locale_path()).expect("フィクスチャを読めるはず");
@@ -421,9 +436,10 @@ mod tests {
     // Arrange
     let mut style = style_with_locale_path(custom_locale_path());
     style.reference.locale = Some("ja-JP".to_string());
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let (_locales, locale_override) = load_locales(&style, None).expect("読み込みは成功するはず");
+    let (_locales, locale_override) = load_locales(&style, None, &source).expect("読み込みは成功するはず");
 
     // Assert
     assert_eq!(locale_override.expect("明示 locale が override になる").0.as_str(), "ja-JP");
@@ -434,9 +450,10 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.reference.locale = Some("ja-JP".to_string());
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let (locales, locale_override) = load_locales(&style, None).expect("成功するはず");
+    let (locales, locale_override) = load_locales(&style, None, &source).expect("成功するはず");
 
     // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
@@ -451,9 +468,10 @@ mod tests {
     // Arrange
     let style = Style::default();
     let csl_default = LocaleCode("de-DE".to_string());
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let (locales, locale_override) = load_locales(&style, Some(&csl_default)).expect("成功するはず");
+    let (locales, locale_override) = load_locales(&style, Some(&csl_default), &source).expect("成功するはず");
 
     // Assert
     let langs: Vec<&str> = locales.iter().filter_map(lang_of).collect();
@@ -466,9 +484,10 @@ mod tests {
   fn load_locales_reports_missing_file() {
     // Arrange
     let style = style_with_locale_path(PathBuf::from("/nonexistent/locales-en-US.xml"));
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let error = load_locales(&style, None).expect_err("読み込み失敗するはず");
+    let error = load_locales(&style, None, &source).expect_err("読み込み失敗するはず");
 
     // Assert
     assert!(matches!(error, CitationError::ReadLocaleFile { .. }), "got: {error:?}");
@@ -480,9 +499,10 @@ mod tests {
     let mut file = tempfile::Builder::new().suffix(".xml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(b"this is not a CSL locale").expect("一時ファイルへ書き込めるはず");
     let style = style_with_locale_path(file.path().to_path_buf());
+    let source = FilesystemProjectSource::new();
 
     // Act
-    let error = load_locales(&style, None).expect_err("解析失敗するはず");
+    let error = load_locales(&style, None, &source).expect_err("解析失敗するはず");
 
     // Assert
     assert!(matches!(error, CitationError::ParseLocale { .. }), "got: {error:?}");
@@ -493,14 +513,37 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_locale_path(custom_locale_path());
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("カスタムロケールでも整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("カスタムロケールでも整形は成功するはず");
 
     // Assert
     let has_heading = nodes.iter().any(|node| matches!(node, DocNode::Heading { .. }));
     assert!(has_heading, "References 見出しが追加されるはず");
+  }
+
+  #[test]
+  fn process_citations_reads_csl_style_through_project_source() {
+    // Arrange
+    let csl_xml = std::fs::read_to_string(ieee_csl_path()).expect("fixture CSL を読めるはず");
+    let source = MemoryProjectSource::new().with_text("/project/ieee.csl", csl_xml);
+    let mut style = Style::default();
+    style.reference.csl_path = Some(PathBuf::from("/project/ieee.csl"));
+    let references = sample_references();
+    let mut docs = vec![DocNode::Paragraph(vec![InlineNode::Cite {
+      keys: vec!["kwan2014".to_string()],
+      label: None,
+      span: Span::DUMMY,
+    }])];
+
+    // Act
+    let result = process_citations(std::iter::once(&mut docs), &references, &style, &source);
+
+    // Assert
+    assert!(result.is_ok(), "MemoryProjectSource からの CSL 読み込みで成功するはず: {result:?}");
+    assert_eq!(source.read_count("/project/ieee.csl"), 1, "実ディスクを介さず seam 経由で 1 回だけ読むはず");
   }
 
   /// 単一キーの `\cite` スタブを作る。
@@ -517,6 +560,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_csl();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![
       InlineNode::Text("本文 ".to_string()),
       cite("kwan2014"),
@@ -525,7 +569,7 @@ mod tests {
     ])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("CSL 整形は成功するはず");
 
     // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -560,10 +604,11 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_csl();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("CSL 整形は成功するはず");
 
     // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -586,6 +631,7 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_csl();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["kwan2014".to_string(), "doe2020".to_string()],
       label: None,
@@ -593,7 +639,7 @@ mod tests {
     }])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("CSL 整形は成功するはず");
 
     // Assert
     let DocNode::Paragraph(inlines) = &nodes[0] else {
@@ -622,10 +668,11 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_csl();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("CSL 整形は成功するはず");
 
     // Assert
     let pos = nodes
@@ -644,13 +691,14 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = Style::default();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "引用なし".to_string(),
     )])];
     let before = nodes.len();
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("成功するはず");
 
     // Assert
     assert_eq!(nodes.len(), before, "引用がなければ書誌は追加されない");
@@ -661,10 +709,12 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = Style::default();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    let error = process_and_append(&mut nodes, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
+    let error =
+      process_and_append(&mut nodes, &references, &style, &source).expect_err("csl_path 未設定はエラーになるはず");
 
     // Assert
     assert!(matches!(error, CitationError::MissingCslPath), "got: {error:?}");
@@ -696,7 +746,7 @@ mod tests {
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014")])];
 
     // Act
-    let result = process_and_append(&mut nodes, &references, &style);
+    let result = process_and_append(&mut nodes, &references, &style, &source);
 
     // Assert
     assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
@@ -732,10 +782,11 @@ mod tests {
     // Arrange
     let references = sample_references();
     let style = style_with_csl();
+    let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![cite("kwan2014"), cite("doe2020")])];
 
     // Act
-    process_and_append(&mut nodes, &references, &style).expect("CSL 整形は成功するはず");
+    process_and_append(&mut nodes, &references, &style, &source).expect("CSL 整形は成功するはず");
 
     // Assert
     let mut italic_texts: Vec<String> = Vec::new();

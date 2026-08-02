@@ -185,9 +185,16 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
   );
 
   let stage_start = Instant::now();
-  let bibliography =
-    citation::process_citations(parsed.iter_mut().map(|p| return &mut p.nodes), &snapshot.references, &snapshot.style)
-      .map_err(|source| return BuildPdfError::Citation { source })?;
+  // TODO(#300 Task 10): parse_project の呼び出し元が持つ共有 ProjectSource を受け取り、
+  // このローカル構築を置き換える。
+  let source = config::FilesystemProjectSource::new();
+  let bibliography = citation::process_citations(
+    parsed.iter_mut().map(|p| return &mut p.nodes),
+    &snapshot.references,
+    &snapshot.style,
+    &source,
+  )
+  .map_err(|source| return BuildPdfError::Citation { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
 
   let parsed_project = ParsedProject {
