@@ -32,13 +32,14 @@ impl FilesystemProjectSource {
 
   /// キャッシュ済みなら複製を返し、なければ実ディスクから読んでキャッシュする。
   fn read_cached(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
-    if let Some(cached) = self.cache.lock().expect("cache mutex は poison しない").get(path) {
+    let mut cache = self.cache.lock().expect("cache mutex は poison しない");
+
+    // キャッシュに存在すれば複製を返す
+    if let Some(cached) = cache.get(path) {
       return Ok(Arc::clone(cached));
     }
-    #[cfg(test)]
-    {
-      *self.disk_reads.lock().expect("disk_reads mutex は poison しない").entry(path.clone()).or_insert(0) += 1;
-    }
+
+    // キャッシュに無い場合、ディスクから読む（ロック保持中に実施してTOCTOU回避）
     let bytes: Arc<[u8]> = std::fs::read(path.as_path())
       .map_err(|source| {
         return SourceReadError::Io {
@@ -47,7 +48,15 @@ impl FilesystemProjectSource {
         };
       })?
       .into();
-    self.cache.lock().expect("cache mutex は poison しない").insert(path.clone(), Arc::clone(&bytes));
+
+    // テスト用：ディスク読み込み回数を記録
+    #[cfg(test)]
+    {
+      *self.disk_reads.lock().expect("disk_reads mutex は poison しない").entry(path.clone()).or_insert(0) += 1;
+    }
+
+    // キャッシュに挿入
+    cache.insert(path.clone(), Arc::clone(&bytes));
     return Ok(bytes);
   }
 
@@ -140,5 +149,30 @@ mod tests {
     // Act / Assert
     assert!(source.exists(&ProjectPath::new(file.path())));
     assert!(!source.exists(&ProjectPath::new("/nonexistent/does-not-exist.toml")));
+  }
+
+  #[test]
+  fn read_bytes_avoids_toctou_race_under_concurrent_access() {
+    // Arrange
+    let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
+    write!(file, "concurrent").expect("書き込めるはず");
+    let source = std::sync::Arc::new(FilesystemProjectSource::new());
+    let path = ProjectPath::new(file.path());
+
+    // Act: スレッドプールで複数スレッドから同一パスを同時読み込み
+    let mut handles = vec![];
+    for _ in 0..4 {
+      let source_clone = std::sync::Arc::clone(&source);
+      let path_clone = path.clone();
+      handles.push(std::thread::spawn(move || {
+        let _ = source_clone.read_bytes(&path_clone);
+      }));
+    }
+    for handle in handles {
+      handle.join().expect("スレッド終了待ち");
+    }
+
+    // Assert: 実ディスク読み込みは 1 回だけのはず（TOCTOU レースがなければ）
+    assert_eq!(source.disk_read_count(&path), 1, "TOCTOU レース回避により実ディスク読み込みは 1 回だけのはず");
   }
 }

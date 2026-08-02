@@ -90,7 +90,7 @@ impl ProjectSource for MemoryProjectSource {
     return Ok(Arc::from(text));
   }
 
-  fn exists(&self, path: &ProjectPath) -> bool { return self.files.contains_key(&ProjectPath::new(path.as_path())); }
+  fn exists(&self, path: &ProjectPath) -> bool { return self.files.contains_key(path); }
 }
 
 #[cfg(test)]
