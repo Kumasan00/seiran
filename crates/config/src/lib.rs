@@ -2,6 +2,7 @@
 
 mod config;
 mod layout;
+mod project_source;
 mod style;
 
 #[doc(hidden)]
@@ -11,6 +12,7 @@ pub use config::{
   PdfConfig, ReadConfigError, TextDirection, VariationAxis, read_config,
 };
 pub use layout::{LayoutValidationError, validate_layout};
+pub use project_source::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 pub use style::{
   Alignment, CaptionStyle, ColumnsStyle, CounterName, CounterStyle, Counters, FigureStyle, FootnoteNumbering,
   FootnoteStyle, HeadingStyle, HeadingStyles, HyperrefStyle, ListStyle, MathBlockStyle, MathScriptStyle, MathStyle,
