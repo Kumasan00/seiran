@@ -11,6 +11,8 @@ use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
+use crate::project_source::{ProjectPath, ProjectSource};
+
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
 mod processed_config;
@@ -69,51 +71,34 @@ pub enum ConfigValidationError {
   #[error("'{path}': {message}")]
   #[diagnostic(code(config::validation::field), help("config.toml の該当フィールドの値を確認してください。"))]
   Field { path: String, message: String },
-  /// フォントパスを解決できない
-  #[error("フォントファイルのパスを解決できませんでした: {path}")]
+  /// フォントパスが見つからない
+  #[error("フォントファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::font_path),
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  FontPathResolution {
-    font_type: FontType,
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
-  /// スタイル設定ファイルのパスを解決できない
-  #[error("スタイル設定ファイルのパスを解決できませんでした: {path}")]
+  FontPathResolution { font_type: FontType, path: String },
+  /// スタイル設定ファイルが見つからない
+  #[error("スタイル設定ファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::style_path),
     help("スタイル設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  StylePathResolution {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
-  /// 参照設定ファイルのパスを解決できない
-  #[error("参照設定ファイルのパスを解決できませんでした: {path}")]
+  StylePathResolution { path: String },
+  /// 参照設定ファイルが見つからない
+  #[error("参照設定ファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::references_path),
     help("参照設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  ReferencesPathResolution {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
-  /// ソースファイルのパスを解決できない
-  #[error("ソースファイルのパスを解決できませんでした: {path}")]
+  ReferencesPathResolution { path: String },
+  /// ソースファイルが見つからない
+  #[error("ソースファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::source_path),
     help("`sources` に列挙したファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  SourcePathResolution {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
+  SourcePathResolution { path: String },
   /// 出力ディレクトリの作成失敗
   #[error("出力ディレクトリを作成できませんでした: {path}")]
   #[diagnostic(
@@ -191,7 +176,10 @@ pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
   })?;
   let pre_config = parse_config(&config_content, config_path)?;
   let current_dir = std::env::current_dir().map_err(|source| return ReadConfigError::CurrentDir { source })?;
-  let config = resolve(pre_config, &current_dir)?;
+  // TODO(#300 タスク 3): read_config 全体を ProjectSource 経由に切り替えたら、この一時的な
+  // FilesystemProjectSource ではなく呼び出し元から渡された source を使う。
+  let source = crate::project_source::FilesystemProjectSource::new();
+  let config = resolve(pre_config, &source, &current_dir)?;
 
   info!(
     config_path = %config_path.display(),
@@ -228,9 +216,9 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
 ///
 /// 値検証と読み取り I/O の違反を集約し、成功した場合だけ出力ディレクトリを作成します。
 #[allow(clippy::result_large_err)]
-fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError> {
+fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Result<Config, ReadConfigError> {
   let validation = validate_and_convert(&pre);
-  let (resolved, path_errors) = resolve_paths(&pre, current_dir);
+  let (resolved, path_errors) = resolve_paths(&pre, source, base_dir);
 
   let font_values = match validation {
     Ok(font_values) if path_errors.is_empty() => font_values,
@@ -244,7 +232,7 @@ fn resolve(pre: PreConfig, current_dir: &Path) -> Result<Config, ReadConfigError
     },
   };
 
-  let output_dir = match build_output_dir(current_dir, pre.output.output_dir.as_deref()) {
+  let output_dir = match build_output_dir(base_dir, pre.output.output_dir.as_deref()) {
     Ok(dir) => dir,
     Err(error) => {
       return Err(ReadConfigError::MultipleValidationErrors {
@@ -346,31 +334,40 @@ fn validate_values(pre: &PreConfig) -> Result<(), Vec<ConfigValidationError>> {
   return validate_and_convert(pre).map(|_| ());
 }
 
-/// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを解決します。
-fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<ConfigValidationError>) {
+/// 読み取り I/O フェーズ: フォント・ソース・スタイル・参照のパスを `source.exists` で確認します。
+///
+/// `canonicalize`（実ディスクの symlink 解決込みの存在確認）は使わず、`ProjectPath` へ正規化した
+/// パスの存在有無だけを見る。`MemoryProjectSource` のような実ファイルシステムに触れないテスト
+/// adapter と両立させるための変更（issue #300）。
+fn resolve_paths(
+  pre: &PreConfig,
+  source: &dyn ProjectSource,
+  base_dir: &Path,
+) -> (ResolvedPaths, Vec<ConfigValidationError>) {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
 
-  let style_path = canonicalize_or_record(pre.style_path.as_deref(), &mut errors, |path, source| {
-    return ConfigValidationError::StylePathResolution { path, source };
+  let style_path = resolve_optional_path(pre.style_path.as_deref(), base_dir, source, &mut errors, |path| {
+    return ConfigValidationError::StylePathResolution { path };
   });
-  let references_path = canonicalize_or_record(pre.references_path.as_deref(), &mut errors, |path, source| {
-    return ConfigValidationError::ReferencesPathResolution { path, source };
+  let references_path = resolve_optional_path(pre.references_path.as_deref(), base_dir, source, &mut errors, |path| {
+    return ConfigValidationError::ReferencesPathResolution { path };
   });
 
   let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
     let pre_font_config = pre.font_configs.get(font_type);
-    match pre_font_config.font_path.canonicalize() {
-      Ok(font_path) => font_paths.push(font_path),
-      Err(source) => errors.push(ConfigValidationError::FontPathResolution {
+    let joined = join_with_base(&pre_font_config.font_path, base_dir);
+    if source.exists(&ProjectPath::new(&joined)) {
+      font_paths.push(joined);
+    } else {
+      errors.push(ConfigValidationError::FontPathResolution {
         font_type,
-        path: pre_font_config.font_path.display().to_string(),
-        source,
-      }),
+        path: joined.display().to_string(),
+      });
     }
   }
 
-  let sources = canonicalize_sources(&pre.sources, current_dir, &mut errors);
+  let sources = resolve_sources(&pre.sources, base_dir, source, &mut errors);
 
   return (
     ResolvedPaths {
@@ -383,26 +380,36 @@ fn resolve_paths(pre: &PreConfig, current_dir: &Path) -> (ResolvedPaths, Vec<Con
   );
 }
 
-/// オプションのパスを `canonicalize` し、失敗時はエラーを `errors` に追加します。
-fn canonicalize_or_record(
-  path: Option<&Path>,
-  errors: &mut Vec<ConfigValidationError>,
-  make_err: impl FnOnce(String, std::io::Error) -> ConfigValidationError,
-) -> Option<PathBuf> {
-  let p = path?;
-  match p.canonicalize() {
-    Ok(canon) => return Some(canon),
-    Err(source) => {
-      errors.push(make_err(p.display().to_string(), source));
-      return None;
-    },
+/// 相対パスを `base_dir` へ結合します（絶対パスはそのまま）。
+fn join_with_base(path: &Path, base_dir: &Path) -> PathBuf {
+  if path.is_absolute() {
+    return path.to_path_buf();
   }
+  return base_dir.join(path);
 }
 
-/// 各 source パスを `canonicalize` し、失敗時はエラーを `errors` に追加する。
-fn canonicalize_sources(
+/// オプションのパスを `base_dir` へ結合し、`source.exists` で存在確認します。
+fn resolve_optional_path(
+  path: Option<&Path>,
+  base_dir: &Path,
+  source: &dyn ProjectSource,
+  errors: &mut Vec<ConfigValidationError>,
+  make_err: impl FnOnce(String) -> ConfigValidationError,
+) -> Option<PathBuf> {
+  let p = path?;
+  let joined = join_with_base(p, base_dir);
+  if source.exists(&ProjectPath::new(&joined)) {
+    return Some(joined);
+  }
+  errors.push(make_err(joined.display().to_string()));
+  return None;
+}
+
+/// 各 source パスを `base_dir` へ結合し、`source.exists` で存在確認します。
+fn resolve_sources(
   sources: &[PathBuf],
-  current_dir: &Path,
+  base_dir: &Path,
+  project_source: &dyn ProjectSource,
   errors: &mut Vec<ConfigValidationError>,
 ) -> Vec<PathBuf> {
   let mut resolved = Vec::with_capacity(sources.len());
@@ -413,17 +420,13 @@ fn canonicalize_sources(
         "ソースファイルの拡張子が `.sei` ではありません（`.sei` を推奨します）"
       );
     }
-    let absolute = if source_path.is_absolute() {
-      source_path.clone()
+    let joined = join_with_base(source_path, base_dir);
+    if project_source.exists(&ProjectPath::new(&joined)) {
+      resolved.push(joined);
     } else {
-      current_dir.join(source_path)
-    };
-    match absolute.canonicalize() {
-      Ok(canon) => resolved.push(canon),
-      Err(source) => errors.push(ConfigValidationError::SourcePathResolution {
-        path: absolute.display().to_string(),
-        source,
-      }),
+      errors.push(ConfigValidationError::SourcePathResolution {
+        path: joined.display().to_string(),
+      });
     }
   }
   return resolved;
@@ -577,12 +580,60 @@ mod tests {
 
   use super::{
     ConfigValidationError, ReadConfigError, build_language_string, parse_config, resolve_output_dir_path,
-    validate_values,
+    resolve_paths, validate_values,
   };
-  use crate::config::test_support::{make_font_sections, valid_output_section, valid_pdf_section};
+  use crate::{
+    config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
+    project_source::MemoryProjectSource,
+  };
 
   /// `parse_config` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
+
+  #[test]
+  fn resolve_paths_reports_missing_paths_without_touching_disk() {
+    // Arrange — MemoryProjectSource は何も登録しない＝存在しないパスとして扱われる
+    let toml = format!(
+      "sources = [\"a.sei\"]\nstyle_path = \"style.toml\"\nreferences_path = \"references.toml\"\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("fonts/dummy.ttf"),
+    );
+    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let source = MemoryProjectSource::new();
+
+    // Act
+    let (_, errors) = resolve_paths(&pre, &source, Path::new("/project"));
+
+    // Assert — スタイル・文献・ソース・フォント全種のパス不存在が集約されるはず
+    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
+    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::ReferencesPathResolution { .. })));
+    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::SourcePathResolution { .. })));
+    assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::FontPathResolution { .. })));
+  }
+
+  #[test]
+  fn resolve_paths_succeeds_when_memory_source_has_all_paths() {
+    // Arrange
+    let toml = format!(
+      "style_path = \"style.toml\"\n\n{}{}{}",
+      valid_output_section("test", "out"),
+      valid_pdf_section(),
+      make_font_sections("fonts/dummy.ttf"),
+    );
+    let pre = parse_config(&toml, dummy_source()).unwrap();
+    let source = MemoryProjectSource::new()
+      .with_text("/project/style.toml", "")
+      .with_bytes("/project/fonts/dummy.ttf", Vec::new());
+
+    // Act
+    let (resolved, errors) = resolve_paths(&pre, &source, Path::new("/project"));
+
+    // Assert
+    assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
+    assert_eq!(resolved.style_path, Some(PathBuf::from("/project/style.toml")));
+    assert!(resolved.references_path.is_none());
+  }
 
   #[test]
   fn resolve_output_dir_path_keeps_absolute_path_as_is() {
