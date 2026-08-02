@@ -76,6 +76,12 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
     &laid_out,
   )?;
 
+  fs::create_dir_all(&snapshot.config.output.output_dir).map_err(|source| {
+    return BuildPdfError::CreateOutputDir {
+      path: snapshot.config.output.output_dir.display().to_string(),
+      source,
+    };
+  })?;
   let stage_start = Instant::now();
   fs::write(&output.pdf_path, pdf_bytes).map_err(|source| {
     return BuildPdfError::WritePdf {
@@ -98,7 +104,9 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 ///
 /// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
 fn load_project(config_path: &Path) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let config = config::read_config(config_path)?;
+  let source = config::FilesystemProjectSource::new();
+  let current_dir = std::env::current_dir().map_err(|source| return BuildPdfError::CurrentDir { source })?;
+  let config = config::read_config(&source, config_path, &current_dir)?;
   let style = config::read_style(config.style_path.as_deref())?;
   config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
   let references = Arc::new(read_references(config.references_path.as_deref())?);

@@ -1,9 +1,6 @@
 //! TOML 設定ファイルのパース・検証・変換モジュール
 
-use std::{
-  fs,
-  path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
@@ -11,7 +8,7 @@ use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::project_source::{ProjectPath, ProjectSource};
+use crate::project_source::{ProjectPath, ProjectSource, SourceReadError};
 
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
@@ -35,7 +32,8 @@ pub enum ReadConfigError {
   ReadFile {
     path: String,
     #[source]
-    source: std::io::Error,
+    #[diagnostic_source]
+    source: SourceReadError,
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]
@@ -47,13 +45,6 @@ pub enum ReadConfigError {
     span: SourceSpan,
     #[source]
     source: toml::de::Error,
-  },
-  /// カレントディレクトリの取得失敗
-  #[error("カレントディレクトリを取得できませんでした。")]
-  #[diagnostic(code(config::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
-  CurrentDir {
-    #[source]
-    source: std::io::Error,
   },
   /// 複合バリデーションエラー（複数のエラーをまとめて報告）
   #[error("複数のバリデーションエラーが発生しました。")]
@@ -99,28 +90,6 @@ pub enum ConfigValidationError {
     help("`sources` に列挙したファイルが存在し、読み取り権限があることを確認してください。")
   )]
   SourcePathResolution { path: String },
-  /// 出力ディレクトリの作成失敗
-  #[error("出力ディレクトリを作成できませんでした: {path}")]
-  #[diagnostic(
-    code(config::validation::create_output_dir),
-    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
-  )]
-  CreateOutputDir {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
-  /// 出力ディレクトリのパス正規化失敗
-  #[error("出力ディレクトリのパスを正規化できませんでした: {path}")]
-  #[diagnostic(
-    code(config::validation::canonicalize_output_dir),
-    help("指定したディレクトリが存在するか確認してください。")
-  )]
-  CanonicalizeOutputDir {
-    path: String,
-    #[source]
-    source: std::io::Error,
-  },
 }
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
@@ -160,26 +129,25 @@ struct FontValues {
 
 /// 指定パスから設定ファイルを読み込みます。
 ///
+/// `base_dir` は相対パス（`sources` / `style_path` / フォントパス等）の解決基準ディレクトリです。
+/// 呼び出し元がカレントディレクトリ等を決めて渡します（本関数は `std::env::current_dir` を呼びません）。
+///
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
 // `ReadConfigError::ParseToml` が `NamedSource<String>` を保持して Result サイズが拡大するため
 // allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
 #[allow(clippy::result_large_err)]
-pub fn read_config(config_path: &Path) -> Result<Config, ReadConfigError> {
+pub fn read_config(source: &dyn ProjectSource, config_path: &Path, base_dir: &Path) -> Result<Config, ReadConfigError> {
   debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
-  let config_content = fs::read_to_string(config_path).map_err(|source| {
+  let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
       path: config_path.display().to_string(),
       source,
     };
   })?;
   let pre_config = parse_config(&config_content, config_path)?;
-  let current_dir = std::env::current_dir().map_err(|source| return ReadConfigError::CurrentDir { source })?;
-  // TODO(#300 タスク 3): read_config 全体を ProjectSource 経由に切り替えたら、この一時的な
-  // FilesystemProjectSource ではなく呼び出し元から渡された source を使う。
-  let source = crate::project_source::FilesystemProjectSource::new();
-  let config = resolve(pre_config, &source, &current_dir)?;
+  let config = resolve(pre_config, source, base_dir)?;
 
   info!(
     config_path = %config_path.display(),
@@ -212,9 +180,10 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
   });
 }
 
-/// [`PreConfig`] からパス解決・出力ディレクトリ作成を行い [`Config`] を構築します。
+/// [`PreConfig`] からパス解決を行い [`Config`] を構築します。
 ///
-/// 値検証と読み取り I/O の違反を集約し、成功した場合だけ出力ディレクトリを作成します。
+/// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
+/// 組み立てるだけです（作成は driver 側の責務、#300）。
 #[allow(clippy::result_large_err)]
 fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Result<Config, ReadConfigError> {
   let validation = validate_and_convert(&pre);
@@ -232,14 +201,7 @@ fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Resul
     },
   };
 
-  let output_dir = match build_output_dir(base_dir, pre.output.output_dir.as_deref()) {
-    Ok(dir) => dir,
-    Err(error) => {
-      return Err(ReadConfigError::MultipleValidationErrors {
-        errors: vec![error],
-      });
-    },
-  };
+  let output_dir = resolve_output_dir_path(base_dir, pre.output.output_dir.as_deref());
 
   let PreConfig {
     document: pre_document,
@@ -548,30 +510,14 @@ fn build_language_string(language: Option<&str>, ot_language: Option<&str>) -> O
 }
 
 /// 出力ディレクトリの絶対パスを決定します（I/O なし・純粋）。
-fn resolve_output_dir_path(current_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
+///
+/// `output_dir` が相対パスまたは未指定の場合は `base_dir` を基準に解決します。
+fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBuf {
   match output_dir {
     Some(path) if path.is_absolute() => return path.to_path_buf(),
-    Some(path) => return current_dir.join(path),
-    None => return current_dir.to_path_buf(),
+    Some(path) => return base_dir.join(path),
+    None => return base_dir.to_path_buf(),
   }
-}
-
-/// 書き込み I/O フェーズ: 出力ディレクトリを作成・正規化し、絶対パスを返します。
-fn build_output_dir(current_dir: &Path, output_dir: Option<&Path>) -> Result<PathBuf, ConfigValidationError> {
-  let output_dir_path = resolve_output_dir_path(current_dir, output_dir);
-  fs::create_dir_all(&output_dir_path).map_err(|source| {
-    return ConfigValidationError::CreateOutputDir {
-      path: output_dir_path.display().to_string(),
-      source,
-    };
-  })?;
-  let canonical = output_dir_path.canonicalize().map_err(|source| {
-    return ConfigValidationError::CanonicalizeOutputDir {
-      path: output_dir_path.display().to_string(),
-      source,
-    };
-  })?;
-  return Ok(canonical);
 }
 
 #[cfg(test)]
@@ -579,7 +525,7 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    ConfigValidationError, ReadConfigError, build_language_string, parse_config, resolve_output_dir_path,
+    ConfigValidationError, ReadConfigError, build_language_string, parse_config, read_config, resolve_output_dir_path,
     resolve_paths, validate_values,
   };
   use crate::{
@@ -633,6 +579,34 @@ mod tests {
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
     assert_eq!(resolved.style_path, Some(PathBuf::from("/project/style.toml")));
     assert!(resolved.references_path.is_none());
+  }
+
+  #[test]
+  fn read_config_does_not_create_the_output_directory() {
+    // Arrange — 存在しない出力ディレクトリを指す config を MemoryProjectSource で読む。
+    // output_dir は実ディスク上の tempdir 配下の絶対パスにする（絶対パスは
+    // resolve_output_dir_path でそのまま使われるため MemoryProjectSource フィクスチャと
+    // 矛盾しない）。旧実装ならここで fs::create_dir_all が実際にディレクトリを作ってしまうため、
+    // 「存在しないパスを検証する」だけの空振りテストにならない。
+    let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
+    let output_dir = tempdir.path().join("does-not-exist-yet");
+    let toml = format!(
+      "sources = [\"a.sei\"]\n\n{}{}{}",
+      valid_output_section("test", output_dir.to_str().unwrap()),
+      valid_pdf_section(),
+      make_font_sections("fonts/dummy.ttf"),
+    );
+    let source = MemoryProjectSource::new()
+      .with_text("/project/config.toml", &toml)
+      .with_bytes("/project/a.sei", Vec::new())
+      .with_bytes("/project/fonts/dummy.ttf", Vec::new());
+
+    // Act
+    let result = read_config(&source, Path::new("/project/config.toml"), Path::new("/project"));
+
+    // Assert — 出力ディレクトリの作成は driver 側の責務になり、config は作らない
+    result.expect("fixture は妥当な最小 config のはず");
+    assert!(!output_dir.exists(), "config は出力ディレクトリを作成してはいけない");
   }
 
   #[test]

@@ -22,7 +22,9 @@ fn read_config_succeeds_with_valid_config() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   assert_eq!(config.output.name, "test_doc");
@@ -48,7 +50,9 @@ fn read_config_reads_image_overrides() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   assert_eq!(config.image.max_dpi, 150);
@@ -69,7 +73,9 @@ fn read_config_respects_show_bookmarks_false() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   assert!(!config.pdf.show_bookmarks);
@@ -88,7 +94,9 @@ fn read_config_fails_on_nonexistent_font_path() {
   });
 
   // Act
-  let result = read_config(&config_path);
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let result = read_config(&source, &config_path, &base_dir);
 
   // Assert
   let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
@@ -111,7 +119,9 @@ fn read_config_fails_on_nonexistent_source_path() {
   });
 
   // Act
-  let result = read_config(&config_path);
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let result = read_config(&source, &config_path, &base_dir);
 
   // Assert
   let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
@@ -121,7 +131,7 @@ fn read_config_fails_on_nonexistent_source_path() {
 }
 
 #[test]
-fn read_config_uses_current_dir_when_output_dir_omitted() {
+fn read_config_uses_base_dir_when_output_dir_omitted() {
   // Arrange
   let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
     return format!(
@@ -130,14 +140,15 @@ fn read_config_uses_current_dir_when_output_dir_omitted() {
       make_font_sections(font_path),
     );
   });
-  let expected_output_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
   // Act
-  let config = read_config(&config_path).unwrap();
+  let config = read_config(&source, &config_path, &base_dir).unwrap();
 
-  // Assert
-  assert_eq!(config.output.output_dir, expected_output_dir);
-  assert_eq!(config.output.pdf_path(), expected_output_dir.join("out.pdf"));
+  // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
+  assert_eq!(config.output.output_dir, base_dir);
+  assert_eq!(config.output.pdf_path(), base_dir.join("out.pdf"));
 }
 
 #[test]
@@ -153,7 +164,9 @@ fn read_config_preserves_user_script_tag_case() {
     );
   });
 
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   let serif = config.font_configs.get(FontType::Serif);
   assert_eq!(serif.script, Some(*b"Latn"));
@@ -173,7 +186,9 @@ fn read_config_builds_language_string_with_ot_language_suffix() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   let serif = config.font_configs.get(FontType::Serif);
@@ -196,7 +211,9 @@ fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   let serif = config.font_configs.get(FontType::Serif);
@@ -218,7 +235,9 @@ fn read_config_preserves_user_direction() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   let serif = config.font_configs.get(FontType::Serif);
@@ -238,7 +257,9 @@ fn read_config_preserves_document_language_and_keywords() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   assert_eq!(config.document.language.as_deref(), Some("ja"));
@@ -258,7 +279,9 @@ fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   assert_eq!(config.document.language, None);
@@ -278,7 +301,9 @@ fn read_config_keeps_direction_none_when_omitted() {
   });
 
   // Act
-  let config: Config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
 
   // Assert
   for font_type in FontType::ALL {
