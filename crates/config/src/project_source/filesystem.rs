@@ -11,9 +11,14 @@ use super::{ProjectPath, ProjectSource, SourceReadError};
 ///
 /// 同じパスへの `read_bytes` / `read_text` は 1 回だけ実ディスク I/O を行い、以降はキャッシュした
 /// `Arc` を複製して返す（同じフォント・画像を複数回読み込まない）。
+/// per-path locking により、異なるパスの読み込みは並列に実行でき、同じパスへの並行アクセスのみ
+/// 同期される（rayon による並列フォント読み込み時の高性能化を実現）。
 pub struct FilesystemProjectSource {
   /// 読み込んだバイト列のキャッシュ。
   cache: Mutex<HashMap<ProjectPath, Arc<[u8]>>>,
+  /// 各パスへの in-flight 読み込み用プライベートロック。パス単位の double-checked locking に使う。
+  /// 短い期間だけ保持され、I/O 中には保持されない（`in_flight` の lock は I/O 前に解放）。
+  in_flight: Mutex<HashMap<ProjectPath, Arc<Mutex<()>>>>,
   /// テスト用：各パスについて実ディスク読み込みを行った回数。
   #[cfg(test)]
   disk_reads: Mutex<HashMap<ProjectPath, usize>>,
@@ -25,21 +30,45 @@ impl FilesystemProjectSource {
   pub fn new() -> Self {
     return FilesystemProjectSource {
       cache: Mutex::new(HashMap::new()),
+      in_flight: Mutex::new(HashMap::new()),
       #[cfg(test)]
       disk_reads: Mutex::new(HashMap::new()),
     };
   }
 
   /// キャッシュ済みなら複製を返し、なければ実ディスクから読んでキャッシュする。
+  ///
+  /// per-path locking により、同じパスへの並行アクセスのみ同期され、異なるパスの読み込みは
+  /// 独立した `Arc<Mutex<()>>` でロックされるため並列実行される。
   fn read_cached(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
-    let mut cache = self.cache.lock().expect("cache mutex は poison しない");
-
-    // キャッシュに存在すれば複製を返す
-    if let Some(cached) = cache.get(path) {
+    // 1. Fast path: already cached — no per-path lock needed at all.
+    if let Some(cached) = self.cache.lock().expect("cache mutex は poison しない").get(path) {
       return Ok(Arc::clone(cached));
     }
 
-    // キャッシュに無い場合、ディスクから読む（ロック保持中に実施してTOCTOU回避）
+    // 2. Get-or-create this path's private lock. Short critical section on `in_flight` only —
+    //    never held during I/O.
+    let path_lock = {
+      let mut in_flight = self.in_flight.lock().expect("in_flight mutex は poison しない");
+      Arc::clone(in_flight.entry(path.clone()).or_insert_with(|| return Arc::new(Mutex::new(()))))
+    };
+
+    // 3. Take the per-path lock. Only threads contending for THIS path serialize here;
+    //    threads reading other paths are unaffected.
+    let _guard = path_lock.lock().expect("path_lock は poison しない");
+
+    // 4. Double-check: another thread may have populated the cache while we waited for the
+    //    per-path lock (it could have been racing us for the same path and won).
+    if let Some(cached) = self.cache.lock().expect("cache mutex は poison しない").get(path) {
+      return Ok(Arc::clone(cached));
+    }
+
+    // 5. We hold this path's private lock and the cache still has no entry — we are the
+    //    only thread that will do this path's real disk read.
+    #[cfg(test)]
+    {
+      *self.disk_reads.lock().expect("disk_reads mutex は poison しない").entry(path.clone()).or_insert(0) += 1;
+    }
     let bytes: Arc<[u8]> = std::fs::read(path.as_path())
       .map_err(|source| {
         return SourceReadError::Io {
@@ -48,15 +77,7 @@ impl FilesystemProjectSource {
         };
       })?
       .into();
-
-    // テスト用：ディスク読み込み回数を記録
-    #[cfg(test)]
-    {
-      *self.disk_reads.lock().expect("disk_reads mutex は poison しない").entry(path.clone()).or_insert(0) += 1;
-    }
-
-    // キャッシュに挿入
-    cache.insert(path.clone(), Arc::clone(&bytes));
+    self.cache.lock().expect("cache mutex は poison しない").insert(path.clone(), Arc::clone(&bytes));
     return Ok(bytes);
   }
 
