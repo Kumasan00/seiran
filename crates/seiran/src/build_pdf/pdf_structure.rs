@@ -30,7 +30,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 
 /// style の一時的な差分を適用して PDF を生成する。
 ///
-/// `build_pdf` 本体と同じ手順（`parse_project` → `resolve::resolve_project` →
+/// `build_pdf` 本体と同じ手順（`parse_project` → `semantics::resolve_semantics` →
 /// `load_image_resources` → `compile_project` → `ResourceBundle` 構築 → `build_publication` →
 /// `pdf_gen::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
 /// ショートカットを作らない。
@@ -45,9 +45,9 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
-  let (parsed_project, image_manifest) = super::parse_project(&source, &snapshot).expect("parse_project の実行");
-  let resolved =
-    resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style).expect("resolve_project の実行");
+  let (parsed, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let resolved = super::semantics::resolve_semantics(&source, parsed, &snapshot.references, &snapshot.style)
+    .expect("resolve_semantics の実行");
   let image_resources =
     super::image_resources::load_image_resources(&source, &image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");

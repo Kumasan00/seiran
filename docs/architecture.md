@@ -327,14 +327,18 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 ### `process_citations` の契約
 
 frontend の後・lowering の前に走るステージ。
-`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して
-`InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature の内蔵ロケール + `citationberg`
-で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。
+`process_citations(docs: Vec<Vec<DocNode>>, ...) -> Result<(Vec<Vec<DocNode>>, Vec<DocNode>), CitationError>` が
+`docs` の所有権を受け取り、全ドキュメントを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`
+（`archive` feature の内蔵ロケール + `citationberg` で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して、
+各 `Cite` の `label` を埋めた新しいドキュメント群を返す（`&mut` によるその場書き換えは行わない。内部は
+「キー収集（読み取り専用走査）→ CSL 整形 → ラベル埋め込み（所有権を消費する再構築走査）」の 3 段。
+issue #303）。
 
-**書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元（`seiran`）が
-`resolve::SemanticDocument::bibliography` として実ソースの `groups` とは別に渡す（#283 以降、
-「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで citation がグループ構造に
-依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
+**書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
+（`seiran::build_pdf::semantics::resolve_semantics`、#303 以降 `citation::process_citations` の唯一の
+非テスト呼び出し元）が `resolve::SemanticDocument::bibliography` として実ソースの `groups` とは別に渡す
+（#283 以降、「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで citation がグループ
+構造に依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
 
 CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath`
 エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの
@@ -660,7 +664,7 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 ### build driver（`build_pdf.rs` 直下）
 
 `build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `render_pdf` /
-`build_font_resource_configs` / `parse_all_sources` / `wrap_resolve_error`）だけを置く。`build_pdf` が
+`build_font_resource_configs` / `parse_all_sources` / `wrap_resolve_error` / `wrap_semantics_error`）だけを置く。`build_pdf` が
 `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`render_pdf` 用、`FontRefs` /
 `FontMetrics` へのアクセサを持つ）と `FontSystem`（`compile_project` 用、シェイプ・メトリクス取得の窓口）の
 両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` / `ShaperInstances` /
@@ -670,6 +674,11 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 - `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
   `parse_project` が返す `ImageManifest` に従って driver が別途読み込む
+- `semantics`: `citation::process_citations`（`\cite` の CSL 整形）→ `resolve::resolve_project`（ラベル・
+  `\ref`・カウンタ解決）の呼び出し順序を 1 関数 `resolve_semantics` の背後に隠す（issue #303）。
+  `citation::process_citations` は所有権で受け取ったドキュメント群を書き換えて返す非破壊 API になっており、
+  `resolve_semantics` はその結果を `resolve::SemanticDocument` へ組み立て直して `resolve_project` に渡す。
+  driver は citation → resolve の順序も、書誌を `SemanticDocument::bibliography` へ別枠で渡す組み立ても知らない
 - `image_manifest`: `parse_project` が本文 `DocNode` 列から集める画像パス一覧 `ImageManifest`（重複なし・
   `AssetId` の昇順）
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧

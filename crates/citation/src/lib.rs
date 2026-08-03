@@ -11,7 +11,7 @@ use hayagriva::{
   citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
-use model::{DocNode, InlineNode};
+use model::{DocNode, InlineNode, ListItem, TableCell, TableRow};
 use thiserror::Error;
 use tracing::debug;
 
@@ -108,36 +108,30 @@ pub enum CitationError {
   },
 }
 
-/// `\cite` を CSL 整形し、生成した書誌ブロックを返す。
+/// `\cite` を CSL 整形し、CSL 整形後のドキュメント群と生成した書誌ブロックを返す。
 ///
-/// `docs` を順に走査して各 `InlineNode::Cite` のラベルを書き換える。書誌は本文へ追加せず返し、
+/// `docs` の所有権を受け取り、各 `InlineNode::Cite` のラベルを埋めた新しいドキュメント群を返す。
+/// 内部の走査は「キー収集（読み取り専用）」→「CSL 整形」→「ラベル埋め込み（所有権を消費する
+/// 再構築）」の順で、`&mut` によるその場書き換えを一切行わない。書誌は本文へ追加せず別に返し、
 /// 引用が無ければ空の `Vec` を返す。
 ///
 /// # Errors
 ///
 /// 引用があるのに `style.reference.csl_path` が未設定の場合、または CSL スタイル / ロケール
 /// ファイルの読み込み・解析に失敗した場合に [`CitationError`] を返す。
-pub fn process_citations<'a>(
-  docs: impl IntoIterator<Item = &'a mut Vec<DocNode>>,
+pub fn process_citations(
+  docs: Vec<Vec<DocNode>>,
   references: &References,
   style: &Style,
   source: &dyn config::ProjectSource,
-) -> Result<Vec<DocNode>, CitationError> {
-  let mut cite_nodes: Vec<&mut InlineNode> = Vec::new();
-  for nodes in docs {
-    collect_cite_nodes(nodes, &mut cite_nodes);
+) -> Result<(Vec<Vec<DocNode>>, Vec<DocNode>), CitationError> {
+  let mut cite_sites: Vec<Vec<String>> = Vec::new();
+  for nodes in &docs {
+    collect_cite_keys(nodes, &mut cite_sites);
   }
-  if cite_nodes.is_empty() {
-    return Ok(Vec::new());
+  if cite_sites.is_empty() {
+    return Ok((docs, Vec::new()));
   }
-
-  let cite_sites: Vec<Vec<String>> = cite_nodes
-    .iter()
-    .map(|node| match node {
-      InlineNode::Cite { keys, .. } => return keys.clone(),
-      _ => return Vec::new(),
-    })
-    .collect();
 
   // 未引用文献の変換エラーでビルドを失敗させないよう、引用された文献だけを変換する。
   let mut entries: HashMap<String, Item> = HashMap::new();
@@ -175,21 +169,17 @@ pub fn process_citations<'a>(
 
   let rendered = render::render(&entries, &cite_sites, &csl_style, &locales, locale_override, &style.reference.title);
 
-  let citation_count = cite_nodes.len();
-  for (node, label) in cite_nodes.iter_mut().zip(rendered.labels) {
-    if let InlineNode::Cite { label: slot, .. } = node {
-      *slot = Some(label);
-    }
-  }
-  drop(cite_nodes);
-
+  let citation_count = cite_sites.len();
   let bibliography_count = rendered.bibliography.len();
+  let mut labels = rendered.labels.into_iter();
+  let docs: Vec<Vec<DocNode>> = docs.into_iter().map(|nodes| return rewrite_cite_labels(nodes, &mut labels)).collect();
+
   debug!(citation_count, bibliography_count, "文献引用の整形が完了しました");
-  return Ok(rendered.bibliography);
+  return Ok((docs, rendered.bibliography));
 }
 
-/// `Vec<DocNode>` を再帰的に走査し、`InlineNode::Cite` への可変参照をドキュメント順に集める。
-fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut InlineNode>) {
+/// `Vec<DocNode>` を読み取り専用で再帰走査し、`InlineNode::Cite` のキー集合をドキュメント順に集める。
+fn collect_cite_keys(nodes: &[DocNode], out: &mut Vec<Vec<String>>) {
   for node in nodes {
     match node {
       DocNode::Heading { title: inlines, .. }
@@ -197,26 +187,26 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
       | DocNode::Figure {
         caption: Some(inlines),
         ..
-      } => collect_cite_inlines(inlines, out),
+      } => collect_cite_key_inlines(inlines, out),
       DocNode::List { items, .. } => {
         for item in items {
-          collect_cite_nodes(&mut item.content, out);
+          collect_cite_keys(&item.content, out);
         }
       },
-      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_cite_nodes(body, out),
+      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_cite_keys(body, out),
       DocNode::Table {
         head,
         rows,
         caption,
         ..
       } => {
-        for row in head.iter_mut().chain(rows.iter_mut()) {
-          for cell in &mut row.cells {
-            collect_cite_inlines(&mut cell.content, out);
+        for row in head.iter().chain(rows.iter()) {
+          for cell in &row.cells {
+            collect_cite_key_inlines(&cell.content, out);
           }
         }
         if let Some(inlines) = caption {
-          collect_cite_inlines(inlines, out);
+          collect_cite_key_inlines(inlines, out);
         }
       },
       DocNode::MathBlock { .. }
@@ -229,16 +219,16 @@ fn collect_cite_nodes<'a>(nodes: &'a mut [DocNode], out: &mut Vec<&'a mut Inline
   }
 }
 
-/// インラインノード列を走査し、`InlineNode::Cite` への可変参照を集める。
-fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut InlineNode>) {
+/// インラインノード列を読み取り専用で走査し、`InlineNode::Cite` のキー集合を集める。
+fn collect_cite_key_inlines(inlines: &[InlineNode], out: &mut Vec<Vec<String>>) {
   for inline in inlines {
     match inline {
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
       | InlineNode::InternalLink { children, .. }
-      | InlineNode::Footnote { body: children, .. } => collect_cite_inlines(children, out),
-      InlineNode::Cite { .. } => out.push(inline),
+      | InlineNode::Footnote { body: children, .. } => collect_cite_key_inlines(children, out),
+      InlineNode::Cite { keys, .. } => out.push(keys.clone()),
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
       | InlineNode::Symbol(_)
@@ -248,6 +238,210 @@ fn collect_cite_inlines<'a>(inlines: &'a mut [InlineNode], out: &mut Vec<&'a mut
       | InlineNode::Index { .. } => {},
     }
   }
+}
+
+/// `Vec<DocNode>` の所有権を消費し、`InlineNode::Cite` のラベルを `labels` から順に埋めた
+/// 新しいドキュメント列を返す。`collect_cite_keys` と同じ順序で辿る。
+fn rewrite_cite_labels(nodes: Vec<DocNode>, labels: &mut std::vec::IntoIter<Vec<InlineNode>>) -> Vec<DocNode> {
+  return nodes.into_iter().map(|node| return rewrite_cite_labels_in_node(node, &mut *labels)).collect();
+}
+
+/// 1 つの `DocNode` の所有権を消費し、内側の `InlineNode::Cite` のラベルを埋めて組み直す。
+fn rewrite_cite_labels_in_node(node: DocNode, labels: &mut std::vec::IntoIter<Vec<InlineNode>>) -> DocNode {
+  match node {
+    DocNode::Heading {
+      level,
+      numbered,
+      title,
+      label,
+      span,
+    } => {
+      return DocNode::Heading {
+        level,
+        numbered,
+        title: rewrite_cite_label_inlines(title, labels),
+        label,
+        span,
+      };
+    },
+    DocNode::Paragraph(inlines) => return DocNode::Paragraph(rewrite_cite_label_inlines(inlines, labels)),
+    DocNode::Figure {
+      image_path,
+      width,
+      height,
+      dpi,
+      downsample,
+      caption: Some(inlines),
+      caption_position,
+      label,
+      span,
+    } => {
+      return DocNode::Figure {
+        image_path,
+        width,
+        height,
+        dpi,
+        downsample,
+        caption: Some(rewrite_cite_label_inlines(inlines, labels)),
+        caption_position,
+        label,
+        span,
+      };
+    },
+    DocNode::List {
+      ordered,
+      items,
+      start,
+      item_gap,
+    } => {
+      let items = items
+        .into_iter()
+        .map(|item| {
+          return ListItem {
+            content: rewrite_cite_labels(item.content, &mut *labels),
+            marker: item.marker,
+            item_gap: item.item_gap,
+          };
+        })
+        .collect();
+      return DocNode::List {
+        ordered,
+        items,
+        start,
+        item_gap,
+      };
+    },
+    DocNode::Theorem {
+      class,
+      title,
+      body,
+      of,
+      label,
+      span,
+    } => {
+      return DocNode::Theorem {
+        class,
+        title,
+        body: rewrite_cite_labels(body, labels),
+        of,
+        label,
+        span,
+      };
+    },
+    DocNode::Quote { kind, body } => {
+      return DocNode::Quote {
+        kind,
+        body: rewrite_cite_labels(body, labels),
+      };
+    },
+    DocNode::Table {
+      columns,
+      widths,
+      head,
+      rows,
+      caption,
+      caption_position,
+      label,
+      span,
+      breakable,
+    } => {
+      let head = head.into_iter().map(|row| return rewrite_cite_labels_in_row(row, &mut *labels)).collect();
+      let rows = rows.into_iter().map(|row| return rewrite_cite_labels_in_row(row, &mut *labels)).collect();
+      let caption = caption.map(|inlines| return rewrite_cite_label_inlines(inlines, &mut *labels));
+      return DocNode::Table {
+        columns,
+        widths,
+        head,
+        rows,
+        caption,
+        caption_position,
+        label,
+        span,
+        breakable,
+      };
+    },
+    other @ (DocNode::MathBlock { .. }
+    | DocNode::Figure { caption: None, .. }
+    | DocNode::Rule { .. }
+    | DocNode::PageBreak
+    | DocNode::Space(_)
+    | DocNode::Anchor(_)) => return other,
+  }
+}
+
+/// 表 1 行の所有権を消費し、各セルの `InlineNode::Cite` のラベルを埋めて組み直す。
+fn rewrite_cite_labels_in_row(row: TableRow, labels: &mut std::vec::IntoIter<Vec<InlineNode>>) -> TableRow {
+  let cells = row
+    .cells
+    .into_iter()
+    .map(|cell| {
+      return TableCell {
+        content: rewrite_cite_label_inlines(cell.content, &mut *labels),
+        span: cell.span,
+      };
+    })
+    .collect();
+  return TableRow {
+    cells,
+    rule_above: row.rule_above,
+  };
+}
+
+/// インラインノード列の所有権を消費し、`InlineNode::Cite` のラベルを `labels` から順に埋める。
+fn rewrite_cite_label_inlines(
+  inlines: Vec<InlineNode>,
+  labels: &mut std::vec::IntoIter<Vec<InlineNode>>,
+) -> Vec<InlineNode> {
+  return inlines
+    .into_iter()
+    .map(|inline| match inline {
+      InlineNode::Styled { kind, children } => {
+        return InlineNode::Styled {
+          kind,
+          children: rewrite_cite_label_inlines(children, &mut *labels),
+        };
+      },
+      InlineNode::Colored { color, children } => {
+        return InlineNode::Colored {
+          color,
+          children: rewrite_cite_label_inlines(children, &mut *labels),
+        };
+      },
+      InlineNode::Link { url, children } => {
+        return InlineNode::Link {
+          url,
+          children: rewrite_cite_label_inlines(children, &mut *labels),
+        };
+      },
+      InlineNode::InternalLink { target, children } => {
+        return InlineNode::InternalLink {
+          target,
+          children: rewrite_cite_label_inlines(children, &mut *labels),
+        };
+      },
+      InlineNode::Footnote { body, span } => {
+        return InlineNode::Footnote {
+          body: rewrite_cite_label_inlines(body, &mut *labels),
+          span,
+        };
+      },
+      InlineNode::Cite { keys, span, .. } => {
+        let label = labels.next().expect("cite_sites と render のラベル数は一致するはず");
+        return InlineNode::Cite {
+          keys,
+          label: Some(label),
+          span,
+        };
+      },
+      other @ (InlineNode::Text(_)
+      | InlineNode::InlineMath(_)
+      | InlineNode::Symbol(_)
+      | InlineNode::LineBreak
+      | InlineNode::NoIndent
+      | InlineNode::Ref { .. }
+      | InlineNode::Index { .. }) => return other,
+    })
+    .collect();
 }
 
 /// 引用整形に用いるロケールプールと、出力言語（active locale）の override を組み立てる。
@@ -366,7 +560,8 @@ mod tests {
     style: &Style,
     source: &dyn config::ProjectSource,
   ) -> Result<(), CitationError> {
-    let bibliography = process_citations(std::iter::once(&mut *nodes), references, style, source)?;
+    let (mut docs, bibliography) = process_citations(vec![std::mem::take(nodes)], references, style, source)?;
+    *nodes = docs.pop().expect("1 ドキュメントを渡したので 1 件返るはず");
     nodes.extend(bibliography);
     return Ok(());
   }
@@ -530,14 +725,14 @@ mod tests {
     let mut style = Style::default();
     style.reference.csl_path = Some(PathBuf::from("/project/ieee.csl"));
     let references = sample_references();
-    let mut docs = vec![DocNode::Paragraph(vec![InlineNode::Cite {
+    let docs = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["kwan2014".to_string()],
       label: None,
       span: Span::DUMMY,
     }])];
 
     // Act
-    let result = process_citations(std::iter::once(&mut docs), &references, &style, &source);
+    let result = process_citations(vec![docs], &references, &style, &source);
 
     // Assert
     assert!(result.is_ok(), "MemoryProjectSource からの CSL 読み込みで成功するはず: {result:?}");
