@@ -65,6 +65,26 @@ pub enum SourceReadError {
   },
 }
 
+impl SourceReadError {
+  /// ラッパー診断へ埋め込むための `std::io::Error` へ変換する。
+  ///
+  /// 呼び出し元（`config` / `citation` / `font` / `seiran` の読込エラー）は自分のメッセージに
+  /// パスを含んでおり、その `#[source]` としては素の I/O エラーだけを連鎖させる
+  /// （seam 導入前と同じ診断表示を保つ。issue #300 受け入れ条件「診断内容が同一」）。
+  #[must_use]
+  pub fn into_io(self) -> std::io::Error {
+    return match self {
+      SourceReadError::Io { source, .. } => source,
+      SourceReadError::InvalidUtf8 { .. } => {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "stream did not contain valid UTF-8")
+      },
+      SourceReadError::NotFound { path } => {
+        std::io::Error::new(std::io::ErrorKind::NotFound, format!("プロジェクトに登録されていないパスです: {path}"))
+      },
+    };
+  }
+}
+
 /// 外部資源（設定・スタイル・文献・ソース・フォント・画像）の取得 seam。
 ///
 /// 実 adapter は [`FilesystemProjectSource`]（CLI・実ビルド用）と [`MemoryProjectSource`]
@@ -91,7 +111,7 @@ pub trait ProjectSource: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-  use super::ProjectPath;
+  use super::{ProjectPath, SourceReadError};
 
   #[test]
   fn new_collapses_redundant_current_dir_components() {
@@ -110,5 +130,35 @@ mod tests {
 
     // Assert
     assert_eq!(path.to_string(), "/a/b.ttf");
+  }
+
+  #[test]
+  fn into_io_preserves_the_original_io_error() {
+    // Arrange
+    let error = SourceReadError::Io {
+      path: "a.toml".to_string(),
+      source: std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory (os error 2)"),
+    };
+
+    // Act
+    let io_error = error.into_io();
+
+    // Assert
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(io_error.to_string(), "No such file or directory (os error 2)", "元の I/O エラーの文言を保つはず");
+  }
+
+  #[test]
+  fn into_io_maps_not_found_to_io_not_found() {
+    // Arrange
+    let error = SourceReadError::NotFound {
+      path: "missing.ttf".to_string(),
+    };
+
+    // Act
+    let io_error = error.into_io();
+
+    // Assert
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
   }
 }

@@ -1,6 +1,5 @@
 //! 参照定義ファイル読み込み時のエラー型。
 
-use config::SourceReadError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -15,8 +14,7 @@ pub enum ReadReferencesError {
     path: String,
     /// 元の読み込みエラー
     #[source]
-    #[diagnostic_source]
-    source: SourceReadError,
+    source: std::io::Error,
   },
   /// TOML 解析に失敗した場合
   #[error("参照定義ファイルの TOML 解析に失敗しました: {path}")]

@@ -195,7 +195,7 @@ pub fn read_style(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Pa
   let content = source.read_text(&ProjectPath::new(&joined)).map_err(|source| {
     return ReadStyleError::ReadFile {
       path: path_str.clone(),
-      source,
+      source: source.into_io(),
     };
   })?;
 

@@ -110,7 +110,7 @@ impl SourceDb {
       let content = source.read_text(&config::ProjectPath::new(source_path)).map_err(|source| {
         return BuildPdfError::ReadTextFile {
           path: source_path.display().to_string(),
-          source,
+          source: source.into_io(),
         };
       })?;
       db.register(source_path.display().to_string(), content.to_string());
@@ -163,16 +163,10 @@ mod tests {
     let result = SourceDb::read(&source, &sources);
 
     // Assert
-    assert!(
-      matches!(
-        result,
-        Err(BuildPdfError::ReadTextFile {
-          source: config::SourceReadError::Io { .. },
-          ..
-        })
-      ),
-      "存在しないファイルは ReadTextFile(SourceReadError::Io) で早期失敗するはず"
-    );
+    let Err(BuildPdfError::ReadTextFile { source, .. }) = result else {
+      panic!("ReadTextFile を期待");
+    };
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "存在しないファイルは ReadTextFile で早期失敗するはず");
   }
 
   #[test]

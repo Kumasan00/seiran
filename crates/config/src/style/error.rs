@@ -3,8 +3,6 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::project_source::SourceReadError;
-
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub enum ReadStyleError {
@@ -16,8 +14,7 @@ pub enum ReadStyleError {
     path: String,
     /// 元の読み込みエラー
     #[source]
-    #[diagnostic_source]
-    source: SourceReadError,
+    source: std::io::Error,
   },
   /// TOML の構文・型・未知キー等のパース失敗
   #[error("スタイル設定の TOML 解析に失敗しました")]

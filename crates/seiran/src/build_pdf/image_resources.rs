@@ -48,7 +48,7 @@ pub(super) fn load_image_resources(
     let file_bytes = source.read_bytes(&config::ProjectPath::new(path.as_str())).map_err(|source| {
       return BuildPdfError::ReadImage {
         path: path.as_str().to_string(),
-        source,
+        source: source.into_io(),
       };
     })?;
     let natural_size = pdf_gen::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
@@ -204,16 +204,10 @@ mod tests {
     let result = load_image_resources(&source, &paths);
 
     // Assert
-    assert!(
-      matches!(
-        result,
-        Err(BuildPdfError::ReadImage {
-          source: config::SourceReadError::NotFound { .. },
-          ..
-        })
-      ),
-      "未登録パスは ReadImage(SourceReadError::NotFound) になるはず"
-    );
+    let Err(BuildPdfError::ReadImage { source, .. }) = result else {
+      panic!("ReadImage を期待");
+    };
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
   }
 
   #[test]

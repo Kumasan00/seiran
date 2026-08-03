@@ -96,8 +96,7 @@ pub(super) enum BuildPdfError {
     path: String,
     /// 元の読込エラー
     #[source]
-    #[diagnostic_source]
-    source: config::SourceReadError,
+    source: std::io::Error,
   },
 
   /// 複数ソースのパース・評価エラー
@@ -213,8 +212,7 @@ pub(super) enum BuildPdfError {
     path: String,
     /// 元の読込エラー。
     #[source]
-    #[diagnostic_source]
-    source: config::SourceReadError,
+    source: std::io::Error,
   },
 
   /// 画像ファイルのデコードに失敗しました。

@@ -34,8 +34,7 @@ pub enum FontLoadError {
     path: String,
     /// 元の読み込みエラー
     #[source]
-    #[diagnostic_source]
-    source: config::SourceReadError,
+    source: std::io::Error,
   },
   /// フォントを解析できない。
   #[error("{font_type:?} のフォント解析に失敗しました (index: {index})")]
@@ -103,7 +102,7 @@ impl FontDataExt for FontData {
           return FontLoadError::ReadFont {
             font_type,
             path: path.display().to_string(),
-            source,
+            source: source.into_io(),
           };
         })?;
         return Ok((path.clone(), bytes.to_vec()));

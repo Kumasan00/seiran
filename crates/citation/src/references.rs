@@ -60,7 +60,7 @@ pub fn read_references<P: AsRef<Path>>(
   let content = source.read_text(&config::ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
-      source,
+      source: source.into_io(),
     };
   })?;
   let references = parse_references(&content, path_ref)?;
@@ -104,7 +104,7 @@ fn parse_references(text: &str, source_path: &Path) -> Result<References, ReadRe
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use config::{FilesystemProjectSource, MemoryProjectSource, SourceReadError};
+  use config::{FilesystemProjectSource, MemoryProjectSource};
 
   use super::{
     DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, parse_references, read_references,
@@ -339,7 +339,7 @@ mod tests {
     let Err(ReadReferencesError::ReadFile { source, .. }) = result else {
       panic!("ReadFile を期待, got {result:?}");
     };
-    assert!(matches!(source, SourceReadError::NotFound { .. }));
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
   }
 
   #[test]

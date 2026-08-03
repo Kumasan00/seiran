@@ -8,7 +8,7 @@ use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::project_source::{ProjectPath, ProjectSource, SourceReadError};
+use crate::project_source::{ProjectPath, ProjectSource};
 
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
@@ -32,8 +32,7 @@ pub enum ReadConfigError {
   ReadFile {
     path: String,
     #[source]
-    #[diagnostic_source]
-    source: SourceReadError,
+    source: std::io::Error,
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]
@@ -143,7 +142,7 @@ pub fn read_config(source: &dyn ProjectSource, config_path: &Path, base_dir: &Pa
   let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
       path: config_path.display().to_string(),
-      source,
+      source: source.into_io(),
     };
   })?;
   let pre_config = parse_config(&config_content, config_path)?;
