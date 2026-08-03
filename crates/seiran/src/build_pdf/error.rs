@@ -94,9 +94,10 @@ pub(super) enum BuildPdfError {
   ReadTextFile {
     /// ファイルパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読込エラー
     #[source]
-    source: std::io::Error,
+    #[diagnostic_source]
+    source: config::SourceReadError,
   },
 
   /// 複数ソースのパース・評価エラー
