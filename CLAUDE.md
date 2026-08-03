@@ -218,6 +218,23 @@ seiran （エントリーポイント。全クレート（`resolve` を含む）
 - テストコードでは `unwrap` / `expect` を許容する。テストモジュールには `#[allow(clippy::unwrap_used)]` を付け、`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）
 - **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran/src/build_pdf/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
 
+## コード検索
+
+rust-analyzer の LSP が設定済み。シンボルを辿る用途では grep ではなく `LSP` ツールを使う（deferred tool なので `ToolSearch("select:LSP")` でスキーマを読み込んでから呼ぶ）。
+
+| 用途                                                                              | 操作                             |
+| --------------------------------------------------------------------------------- | -------------------------------- |
+| 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                 |
+| 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）    | `findReferences`                 |
+| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数クレートに散る）             | `goToImplementation`             |
+| 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                         | `hover`                          |
+| ファイル内の型・関数一覧                                                          | `documentSymbol`                 |
+| 呼び出し関係（パイプラインのどの段から呼ばれるか）                                | `incomingCalls` / `outgoingCalls` |
+
+grep が正しいのは、文字列・パターン・命名規則の洗い出し、TODO や特定リテラルの検索、`.sei` / `.toml` などシンボルを持たないファイルの検索。
+
+`LSP` は position 指定（`filePath` + `line` + `character`）が必須でシンボル名だけでは引けないため、**grep / Glob で位置を特定 → LSP で辿る** の順で使う。
+
 ## 設定ファイル
 
 3 ファイルの役割分担原則 — **「同じ本文 + 同じ用紙で style.toml だけ差し替えて見た目を変えられる」** を新フィールド追加時の判断基準にする。
