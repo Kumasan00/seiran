@@ -56,10 +56,13 @@ cargo test -p <crate_name>                                 # 特定クレート�
 ```text
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
   → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → Document IR（model::DocNode））
-  → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を本文末尾に追加）
+  → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を生成物として返す。
+    本文グループへは連結せず、resolve::SemanticDocument::bibliography として別枠で渡す）
   → 解決（resolve: SemanticDocument（ラベル名・\ref 参照名・引用キーが未解決の DocNode 群）
     を ResolvedDocument（typed ID 解決済み）へ変換。カウンタの値＝構造も CounterValue として
-    ここで確定する。\ref の存在検証・重複ラベル検出もここで完了する）
+    ここで確定する。\ref の存在検証・重複ラベル検出もここで完了する。citation → resolve の
+    呼び出し順序と書誌の組み立ては seiran::build_pdf::semantics の 1 関数（resolve_semantics）
+    に閉じており、driver 本体はこの順序を知らない（#303））
   → ローワリング（typeset::lowering: ResolvedDocument → LayoutNode。resolve が確定した構造値を
     style の表示側フィールドで表示文字列にするだけで、採番・\ref 解決はここでは行わない）
   → フォント読込・検証
