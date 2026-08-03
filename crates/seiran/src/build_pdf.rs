@@ -60,11 +60,12 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
   let build_start = Instant::now();
   info!(config_path = %config_path.display(), "PDF のビルドを開始します");
 
-  let (snapshot, output) = load_project(config_path)?;
-  let (parsed_project, image_manifest) = parse_project(&snapshot)?;
+  let source = config::FilesystemProjectSource::new();
+  let (snapshot, output) = load_project(&source, config_path)?;
+  let (parsed_project, image_manifest) = parse_project(&source, &snapshot)?;
   let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
     .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
+  let image_resources = image_resources::load_image_resources(&source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
   let laid_out = compile_project(&snapshot, &resolved, &image_resources, &font_system)?;
@@ -100,25 +101,29 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
 /// 設定・スタイル・文献・フォントを読み込み、プロジェクトを組み立てる。
 ///
+/// `source` は呼び出し元が 1 回だけ構築したものを受け取り、ここでは構築しない。
+///
 /// # Errors
 ///
 /// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
-fn load_project(config_path: &Path) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let source = config::FilesystemProjectSource::new();
+fn load_project(
+  source: &dyn config::ProjectSource,
+  config_path: &Path,
+) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
   let current_dir = std::env::current_dir().map_err(|source| return BuildPdfError::CurrentDir { source })?;
-  let config = config::read_config(&source, config_path, &current_dir)?;
-  let style = config::read_style(config.style_path.as_deref())?;
+  let config = config::read_config(source, config_path, &current_dir)?;
+  let style = config::read_style(source, config.style_path.as_deref(), &current_dir)?;
   config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
-  let references = Arc::new(read_references(config.references_path.as_deref())?);
+  let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();
-  let font_data = FontData::new(&config.font_configs)?;
+  let font_data = FontData::new(source, &config.font_configs)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
 
   let output = OutputPlan {
     pdf_path: config.output.pdf_path(),
   };
-  let snapshot = ProjectSnapshot::assemble(config, style, references, font_data)?;
+  let snapshot = ProjectSnapshot::assemble(source, config, style, references, font_data)?;
 
   return Ok((snapshot, output));
 }
@@ -167,12 +172,16 @@ impl ParsedProject {
 
 /// 全ソースをパースし、書誌と画像パス一覧を作る。
 ///
-/// `snapshot` の読込済みデータだけを使い、ファイル I/O は行わない。
+/// `snapshot` の読込済みデータを主に使うが、`\cite` の CSL 整形（`citation::process_citations`）が
+/// CSL スタイルファイル（`style.reference.csl_path`）を読むため `source` を受け取り、そのまま渡す。
 ///
 /// # Errors
 ///
 /// パース・評価エラーまたは CSL 整形に失敗した場合にエラーを返す。
-fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, ImageManifest)> {
+fn parse_project(
+  source: &dyn config::ProjectSource,
+  snapshot: &ProjectSnapshot,
+) -> miette::Result<(ParsedProject, ImageManifest)> {
   let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
 
   let stage_start = Instant::now();
@@ -185,14 +194,11 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(ParsedProject, I
   );
 
   let stage_start = Instant::now();
-  // TODO(#300 Task 10): parse_project の呼び出し元が持つ共有 ProjectSource を受け取り、
-  // このローカル構築を置き換える。
-  let source = config::FilesystemProjectSource::new();
   let bibliography = citation::process_citations(
     parsed.iter_mut().map(|p| return &mut p.nodes),
     &snapshot.references,
     &snapshot.style,
-    &source,
+    source,
   )
   .map_err(|source| return BuildPdfError::Citation { source })?;
   info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
@@ -266,11 +272,13 @@ fn build_pages(
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
-  let snapshot = ProjectSnapshot::assemble(config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (parsed_project, image_manifest) = parse_project(&snapshot)?;
+  let source = config::FilesystemProjectSource::new();
+  let snapshot =
+    ProjectSnapshot::assemble(&source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
+  let (parsed_project, image_manifest) = parse_project(&source, &snapshot)?;
   let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
     .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(&image_manifest.paths)?;
+  let image_resources = image_resources::load_image_resources(&source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
   return compile_project(&snapshot, &resolved, &image_resources, &font_system);

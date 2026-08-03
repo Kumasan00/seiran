@@ -41,14 +41,15 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
   adjust_style(&mut style);
-  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
-  let snapshot = ProjectSnapshot::assemble(config.clone(), style, Arc::clone(&references), font_data.clone())
+  let source = config::FilesystemProjectSource::new();
+  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+  let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
-  let (parsed_project, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let (parsed_project, image_manifest) = super::parse_project(&source, &snapshot).expect("parse_project の実行");
   let resolved =
     resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style).expect("resolve_project の実行");
   let image_resources =
-    super::image_resources::load_image_resources(&image_manifest.paths).expect("画像の自然寸法解決");
+    super::image_resources::load_image_resources(&source, &image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
   let laid_out = super::compile::compile_project(&snapshot, &resolved, &image_resources, &font_system)

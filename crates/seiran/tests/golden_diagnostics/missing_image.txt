@@ -1,5 +1,10 @@
 build::image::read_image
 
   × 画像ファイルを読み込めませんでした: ./tests/image/does-not-exist.jpg
+  ├─▶ config::source::read
+  │   
+  │     × ファイルを読み込めませんでした: ./tests/image/does-not-exist.jpg
+  │     help: パスと読み取り権限を確認してください。
+  │   
   ╰─▶ No such file or directory (os error 2)
   help: 画像ファイルのパスと読み取り権限を確認してください。
