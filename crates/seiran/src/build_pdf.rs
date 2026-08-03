@@ -14,6 +14,7 @@ mod phase_context;
 mod project;
 mod publication;
 mod running;
+mod semantics;
 
 #[cfg(test)]
 mod diagnostics;
@@ -43,6 +44,7 @@ use font::{FontData, FontDataExt, FontResources};
 use image_manifest::ImageManifest;
 use model::DocNode;
 use project::{OutputPlan, ProjectSnapshot, SourceDb};
+use semantics::SemanticsError;
 use tracing::info;
 
 /// ビルド成功時に表示するサマリ。
@@ -64,9 +66,9 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 
   let source = config::FilesystemProjectSource::new();
   let (snapshot, output) = load_project(&source, config_path)?;
-  let (parsed_project, image_manifest) = parse_project(&source, &snapshot)?;
-  let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
-    .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
+  let (parsed, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(&source, parsed, &snapshot.references, &snapshot.style)
+    .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(&source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
@@ -130,64 +132,19 @@ fn load_project(
   return Ok((snapshot, output));
 }
 
-/// ソースごとのパース結果と CSL で整形した書誌。
-struct ParsedProject {
-  /// ファイルごとのパース結果（ソース帰属を保持したまま、平坦化しない）
-  parsed: Vec<ParsedSource>,
-  /// `\cite` の CSL 整形で生成した書誌（`resolve::SemanticDocument::bibliography` へ渡す。
-  /// 実ソースの `groups` とは別に保持し、連結しない）
-  bibliography: Vec<DocNode>,
-}
-
-impl ParsedProject {
-  /// 各ソースと末尾の書誌を `DocNode` のグループ列として返す。
-  fn groups(&self) -> Vec<&[DocNode]> {
-    return self
-      .parsed
-      .iter()
-      .map(|p| return p.nodes.as_slice())
-      .chain(std::iter::once(self.bibliography.as_slice()))
-      .collect();
-  }
-
-  /// resolve に渡すソース ID 付きの `SemanticDocument` を組み立てる。
-  ///
-  /// 書誌は `groups` へ連結せず、`SemanticDocument::bibliography` として別に渡す
-  /// （resolve 側で `Origin::Generated` を割り当てて解決する）。
-  fn semantic_document(&self) -> resolve::SemanticDocument<'_> {
-    let groups = self
-      .parsed
-      .iter()
-      .map(|p| {
-        return resolve::SemanticGroup {
-          nodes: p.nodes.as_slice(),
-          source_id: p.source_id,
-        };
-      })
-      .collect();
-    return resolve::SemanticDocument {
-      groups,
-      bibliography: self.bibliography.as_slice(),
-    };
-  }
-}
-
-/// 全ソースをパースし、書誌と画像パス一覧を作る。
+/// 全ソースをパースし、画像パス一覧を作る。
 ///
-/// `snapshot` の読込済みデータを主に使うが、`\cite` の CSL 整形（`citation::process_citations`）が
-/// CSL スタイルファイル（`style.reference.csl_path`）を読むため `source` を受け取り、そのまま渡す。
+/// `\cite` の CSL 整形・ラベル/`\ref`/カウンタの解決は `semantics::resolve_semantics` が担う
+/// （この関数はパースと画像パス収集のみを行う）。
 ///
 /// # Errors
 ///
-/// パース・評価エラーまたは CSL 整形に失敗した場合にエラーを返す。
-fn parse_project(
-  source: &dyn config::ProjectSource,
-  snapshot: &ProjectSnapshot,
-) -> miette::Result<(ParsedProject, ImageManifest)> {
+/// パース・評価エラーが集約して返る場合にエラーを返す。
+fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource>, ImageManifest)> {
   let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let mut parsed = parse_all_sources(&snapshot.source_db, &citation_keys)?;
+  let parsed = parse_all_sources(&snapshot.source_db, &citation_keys)?;
   info!(
     source_count = parsed.len(),
     node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
@@ -195,23 +152,10 @@ fn parse_project(
     "全ソースのパースが完了しました"
   );
 
-  let stage_start = Instant::now();
-  let bibliography = citation::process_citations(
-    parsed.iter_mut().map(|p| return &mut p.nodes),
-    &snapshot.references,
-    &snapshot.style,
-    source,
-  )
-  .map_err(|source| return BuildPdfError::Citation { source })?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "文献引用の CSL 整形が完了しました");
+  let groups: Vec<&[DocNode]> = parsed.iter().map(|p| return p.nodes.as_slice()).collect();
+  let image_manifest = image_manifest::collect_image_paths(&groups);
 
-  let parsed_project = ParsedProject {
-    parsed,
-    bibliography,
-  };
-  let image_manifest = image_manifest::collect_image_paths(&parsed_project.groups());
-
-  return Ok((parsed_project, image_manifest));
+  return Ok((parsed, image_manifest));
 }
 
 /// 構築済みフォント資源と画像バイト列から `Publication` を組み立て、PDF バイト列へ描画する。
@@ -292,9 +236,9 @@ fn build_pages_with_source(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (parsed_project, image_manifest) = parse_project(source, &snapshot)?;
-  let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
-    .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
+  let (parsed, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(source, parsed, &snapshot.references, &snapshot.style)
+    .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
@@ -357,6 +301,17 @@ fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> Bui
       }
     },
     model::Origin::Generated(_) => BuildPdfError::ResolveInternal { source: error },
+  };
+}
+
+/// `semantics::resolve_semantics` のエラーを `BuildPdfError` へ変換する。
+///
+/// citation 由来はそのまま `Citation` へ、resolve 由来は `wrap_resolve_error` に委譲し、
+/// 帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける（従来の挙動を維持する）。
+fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> BuildPdfError {
+  return match error {
+    SemanticsError::Citation(source) => BuildPdfError::Citation { source },
+    SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
   };
 }
 

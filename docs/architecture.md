@@ -327,14 +327,18 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 ### `process_citations` の契約
 
 frontend の後・lowering の前に走るステージ。
-`process_citations(docs: impl IntoIterator<Item = &mut Vec<DocNode>>, ...)` が全ソースグループを横断して
-`InlineNode::Cite` をドキュメント順に走査し、`hayagriva`（`archive` feature の内蔵ロケール + `citationberg`
-で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して各 `Cite` の `label` を確定する。
+`process_citations(docs: Vec<Vec<DocNode>>, ...) -> Result<(Vec<Vec<DocNode>>, Vec<DocNode>), CitationError>` が
+`docs` の所有権を受け取り、全ドキュメントを横断して `InlineNode::Cite` をドキュメント順に走査し、`hayagriva`
+（`archive` feature の内蔵ロケール + `citationberg` で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して、
+各 `Cite` の `label` を埋めた新しいドキュメント群を返す（`&mut` によるその場書き換えは行わない。内部は
+「キー収集（読み取り専用走査）→ CSL 整形 → ラベル埋め込み（所有権を消費する再構築走査）」の 3 段。
+issue #303）。
 
-**書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元（`seiran`）が
-`resolve::SemanticDocument::bibliography` として実ソースの `groups` とは別に渡す（#283 以降、
-「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで citation がグループ構造に
-依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
+**書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
+（`seiran::build_pdf::semantics::resolve_semantics`、#303 以降 `citation::process_citations` の唯一の
+非テスト呼び出し元）が `resolve::SemanticDocument::bibliography` として実ソースの `groups` とは別に渡す
+（#283 以降、「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで citation がグループ
+構造に依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを起こさない。
 
 CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用があるのに未設定なら `MissingCslPath`
 エラー）。ロケールは `load_locales` が `style.reference.locale_path` の CSL ロケール XML を内蔵ロケールの
