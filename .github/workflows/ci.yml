@@ -43,4 +43,5 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --all-features
       - name: Build release
+        if: github.event_name == 'push'
         run: cargo build --release
