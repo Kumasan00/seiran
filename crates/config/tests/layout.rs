@@ -18,7 +18,9 @@ fn read_test_config() -> (tempfile::TempDir, Config) {
       make_font_sections(font_path),
     );
   });
-  let config = read_config(&config_path).unwrap();
+  let source = config::FilesystemProjectSource::new();
+  let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+  let config = read_config(&source, &config_path, &base_dir).unwrap();
   return (tempdir, config);
 }
 

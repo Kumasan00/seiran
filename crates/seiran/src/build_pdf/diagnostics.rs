@@ -48,7 +48,8 @@ fn build_pages_err(sources: &[&str]) -> miette::Report {
   enter_workspace_root();
   let (mut config, style, references) = load_base();
   config.sources = sources.iter().map(|source| return PathBuf::from(*source)).collect();
-  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+  let source = config::FilesystemProjectSource::new();
+  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   return match build_pages(&config, &style, &references, &font_data) {
     Ok(_) => panic!("このケースは失敗するはず"),
     Err(report) => report,
@@ -133,7 +134,7 @@ fn diagnostic_unknown_cite_key() {
 
 #[test]
 fn diagnostic_missing_image() {
-  // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `fs::read` が検出）
+  // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
   let report = build_pages_err(&["tests/text/diagnostics/missing_image.sei"]);
 
   // Assert
@@ -159,7 +160,8 @@ fn diagnostic_font_validation_error() {
     name: *b"zzzz",
     value: 0.0,
   }]);
-  let font_data = FontData::new(&config.font_configs).expect("フォントの読み込み");
+  let source = config::FilesystemProjectSource::new();
+  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
     Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
     Err(error) => error.into(),

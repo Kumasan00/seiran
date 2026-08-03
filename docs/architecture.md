@@ -83,13 +83,46 @@
 
 ### 責務
 
-`config.toml` / `style.toml` のデータモデルと読込・検証。`config` / `style` / `layout` の 3 子モジュール
-はすべて非公開で、公開 API はクレート root の `pub use` で 1 本のパスに揃える（`config::Config` /
-`config::Style`。テスト用ヘルパは `config::test_support` として再エクスポート）。
+`config.toml` / `style.toml` のデータモデルと読込・検証、および外部資源取得の seam（`project_source`）。
+`config` / `style` / `layout` / `project_source` の 4 子モジュールはすべて非公開で、公開 API はクレート
+root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style` / `config::ProjectSource`。
+テスト用ヘルパは `config::test_support` として再エクスポート）。
 
 エラー型は `ConfigValidationError` / `StyleValidationError` と接頭辞で区別する。かつて双方が
 `ValidationError` を名乗り、名前衝突を避けるために module を `pub mod` 公開していた（`config::read_config::Config`
 形式）が、改名して root facade に揃えた。同名エラー型を再導入しない。
+
+### `project_source`（外部資源取得の seam、#300）
+
+compiler が `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
+1 つの seam 経由で取得する。`config` に置くのは、I/O を行う全クレート（`citation` / `font` / `seiran`）が
+既に `config` へ依存しているため（epic #298 の `project.rs` の置き場所とも一致する）。
+
+```rust
+pub trait ProjectSource: Send + Sync {
+  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError>;
+  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError>;
+  fn exists(&self, path: &ProjectPath) -> bool;
+}
+```
+
+- 実装は 2 つ。`FilesystemProjectSource`（CLI・実ビルド用）と `MemoryProjectSource`（決定的テスト用）。
+  実装が 1 つしかない箇所には trait を作らない方針なので、この 2 実装があることが seam の存在理由になる。
+- `exists` は issue のスケッチには無いが必要。パス存在確認を `Path::canonicalize` で行っていた実装を
+  置き換えるためで、これが無いと `resolve_paths` の集約報告（`MultipleValidationErrors` に全パス不正を
+  1 度に載せる）が逐次 `?` の早期 return に退化し、memory adapter でもパス検証ができなくなる。
+- `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
+  2 度ディスクから読まない。呼び出し側（`FontDataExt::new`）も共有パスを 1 回だけ要求する。
+- `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去）で、
+  シンボリックリンクは解決しない。設定値そのものの正規化は #301 の担当。
+- ラッパー側のエラー（`ReadConfigError::ReadFile` / `BuildPdfError::ReadImage` など）は
+  `SourceReadError::into_io()` で `std::io::Error` へ平坦化してから `#[source]` に載せる。
+  `#[diagnostic_source]` で `SourceReadError` をそのまま連鎖させると miette が入れ子の診断ブロックを
+  足し、seam 導入前と診断内容が変わってしまうため（#300 の「振る舞いを変えない」条件）。
+- 書き込みメソッドは持たない。出力ディレクトリの作成と PDF の書き出しは資源取得ではなく出力側の
+  関心事なので、`seiran` の build driver（`build_pdf`）が `std::fs` で直接行う。
+- 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
+  `crates/seiran/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
 
 ### `config`（config.toml）
 

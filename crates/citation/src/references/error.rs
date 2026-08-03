@@ -12,7 +12,7 @@ pub enum ReadReferencesError {
   ReadFile {
     /// ファイルパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読み込みエラー
     #[source]
     source: std::io::Error,
   },

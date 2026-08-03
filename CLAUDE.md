@@ -71,6 +71,11 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → ファイル出力
 ```
 
+外部資源の取得（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `config::ProjectSource`
+経由で、compiler 側のコードは `std::fs` を直接呼ばない（#300）。実装は `FilesystemProjectSource`（実ビルド）と
+`MemoryProjectSource`（決定的テスト）の 2 つ。書き込みメソッドは持たず、出力ディレクトリ作成と PDF 書き出しは
+build driver（`seiran::build_pdf`）の責務。詳細は `docs/architecture.md` の config → project_source 節。
+
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::breaking::break_lines`。貪欲法 first-fit も
 `GreedyBreaker` として併存）で、既定は両端揃え（`[text]` の `alignment`。glue の伸縮で行幅を調整）。
@@ -99,8 +104,11 @@ model （依存なし（serde / garde のみ）— 全段共有のデータモ�
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
   ↑ config, citation, frontend, font, resolve, typeset, pdf_gen, seiran
 
-config （model を使用。非公開の `config` / `style` 子 module を内包し、config.toml / style.toml の
-        データモデル + 読込・検証を 1 クレートにまとめる。公開 API は root の `pub use` に揃える）
+config （model を使用。非公開の `config` / `style` / `project_source` 子 module を内包し、
+        config.toml / style.toml のデータモデル + 読込・検証と、外部資源取得の seam
+        （`ProjectSource` / `ProjectPath` / `SourceReadError` + filesystem / memory の 2 実装、#300）を
+        1 クレートにまとめる。seam をここに置くのは I/O を行う全クレート（citation / font / seiran）が
+        既に config へ依存しているため。公開 API は root の `pub use` に揃える）
   ↑ citation, font, resolve, typeset, pdf_gen, seiran
 
 resolve （model, config に依存。citation には依存しない。SemanticDocument（未解決のラベル名・
@@ -161,7 +169,7 @@ seiran （エントリーポイント。全クレート（`resolve` を含む）
 | クレート   | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
-| `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション（非公開の `config` / `style` 子 module + root facade）                                                                                                                                                                                                                                                                   |
+| `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）。非公開の `config` / `style` / `project_source` 子 module + root facade                                                                                                                                                                     |
 | `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence.rs` の property test で保証） |
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |

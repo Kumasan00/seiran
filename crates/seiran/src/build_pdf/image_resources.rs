@@ -1,6 +1,6 @@
 //! 画像の自然寸法解決とブロック列への表示寸法確定（旧 `pdf_gen::image`、epic #276 / #279 で移設）
 
-use std::{collections::HashMap, fs};
+use std::collections::HashMap;
 
 use model::{AssetId, Length};
 use tracing::debug;
@@ -30,21 +30,25 @@ impl ImageResources {
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// 画像ファイルを読む唯一の箇所。ここで保持した生バイト列は
+/// 画像ファイルを読む唯一の箇所。`source`（[`config::ProjectSource`]）経由で読み込むため、
+/// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
 /// # Errors
 ///
 /// 画像の読み込み・デコードに失敗した場合に [`BuildPdfError`] を返す。
 #[allow(clippy::result_large_err)]
-pub(super) fn load_image_resources(paths: &[AssetId]) -> Result<ImageResources, BuildPdfError> {
+pub(super) fn load_image_resources(
+  source: &dyn config::ProjectSource,
+  paths: &[AssetId],
+) -> Result<ImageResources, BuildPdfError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
-    let file_bytes = fs::read(path.as_str()).map_err(|source| {
+    let file_bytes = source.read_bytes(&config::ProjectPath::new(path.as_str())).map_err(|source| {
       return BuildPdfError::ReadImage {
         path: path.as_str().to_string(),
-        source,
+        source: source.into_io(),
       };
     })?;
     let natural_size = pdf_gen::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
@@ -54,7 +58,7 @@ pub(super) fn load_image_resources(paths: &[AssetId]) -> Result<ImageResources, 
       };
     })?;
     natural_sizes.insert(path.clone(), natural_size);
-    bytes_map.insert(path.clone(), file_bytes);
+    bytes_map.insert(path.clone(), file_bytes.to_vec());
   }
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
   return Ok(ImageResources {
@@ -149,7 +153,62 @@ fn resolve_image_size(
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
+  use config::MemoryProjectSource;
+
   use super::*;
+
+  /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
+  ///
+  /// `crates/seiran` から見て 2 階層上がワークスペースルート（`golden.rs::workspace_root` と同じ関係）。
+  fn read_image_fixture(name: &str) -> Vec<u8> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image").join(name);
+    return std::fs::read(&path).unwrap_or_else(|error| panic!("画像 fixture を読めるはず: {path:?}: {error}"));
+  }
+
+  #[test]
+  fn load_image_resources_reads_through_project_source() {
+    // Arrange — 実 fixture（tests/image/testimage5.png、3024x4032 の PNG）のバイト列を
+    // MemoryProjectSource に登録する。`with_bytes` に渡す前に長さを控え、後で
+    // 「登録したバイト列がそのまま保持されているか」を検証できるようにする
+    let png_bytes = read_image_fixture("testimage5.png");
+    let expected_len = png_bytes.len();
+    let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
+    let paths = vec![AssetId::new("/project/testimage5.png")];
+
+    // Act
+    let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
+
+    // Assert — 自然寸法（fixture 実寸の 3024x4032）とバイト列がそのまま届いているはず
+    let (width, height) =
+      resources.natural_size(&AssetId::new("/project/testimage5.png")).expect("自然寸法が確定するはず");
+    assert!((width - 3024.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
+    assert!((height - 4032.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
+    let bytes = resources.into_image_bytes();
+    assert_eq!(bytes.len(), 1);
+    assert_eq!(
+      bytes[&AssetId::new("/project/testimage5.png")].len(),
+      expected_len,
+      "読み込んだバイト数は登録した fixture のバイト数と一致するはず"
+    );
+  }
+
+  #[test]
+  fn load_image_resources_wraps_missing_path_as_read_image_error() {
+    // Arrange — 何も登録していない MemoryProjectSource に存在しないパスを要求する
+    let source = MemoryProjectSource::new();
+    let paths = vec![AssetId::new("/project/does-not-exist.png")];
+
+    // Act
+    let result = load_image_resources(&source, &paths);
+
+    // Assert
+    let Err(BuildPdfError::ReadImage { source, .. }) = result else {
+      panic!("ReadImage を期待");
+    };
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
+  }
 
   #[test]
   fn resolve_image_size_uses_specified_values_when_both_given() {

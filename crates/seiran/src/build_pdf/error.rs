@@ -94,7 +94,7 @@ pub(super) enum BuildPdfError {
   ReadTextFile {
     /// ファイルパス
     path: String,
-    /// 元の I/O エラー
+    /// 元の読込エラー
     #[source]
     source: std::io::Error,
   },
@@ -156,6 +156,29 @@ pub(super) enum BuildPdfError {
     source: std::io::Error,
   },
 
+  /// 出力ディレクトリの作成エラー
+  #[error("出力ディレクトリを作成できませんでした: {path}")]
+  #[diagnostic(
+    code(build::create_output_dir),
+    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
+  )]
+  CreateOutputDir {
+    /// 出力ディレクトリのパス
+    path: String,
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+
+  /// カレントディレクトリの取得失敗
+  #[error("カレントディレクトリを取得できませんでした。")]
+  #[diagnostic(code(build::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
+  CurrentDir {
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+
   /// config と style の横断バリデーションエラー
   #[error("ページレイアウトの検証に失敗しました。")]
   #[diagnostic(code(build::layout))]
@@ -187,7 +210,7 @@ pub(super) enum BuildPdfError {
   ReadImage {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の I/O エラー。
+    /// 元の読込エラー。
     #[source]
     source: std::io::Error,
   },

@@ -1,6 +1,6 @@
 //! `load_project` が組み立てる不変な入力（`ProjectSnapshot`）と出力先情報（`OutputPlan`）
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use citation::References;
 
@@ -32,12 +32,13 @@ impl ProjectSnapshot {
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
   pub(super) fn assemble(
+    source: &dyn config::ProjectSource,
     config: config::Config,
     style: config::Style,
     references: Arc<References>,
     font_data: font::FontData,
   ) -> Result<Self, BuildPdfError> {
-    let source_db = SourceDb::read(&config.sources)?;
+    let source_db = SourceDb::read(source, &config.sources)?;
     return Ok(ProjectSnapshot {
       config,
       style,
@@ -103,16 +104,16 @@ impl SourceDb {
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
-  fn read(sources: &[PathBuf]) -> Result<SourceDb, BuildPdfError> {
+  fn read(source: &dyn config::ProjectSource, sources: &[PathBuf]) -> Result<SourceDb, BuildPdfError> {
     let mut db = SourceDb::new();
     for source_path in sources {
-      let content = fs::read_to_string(source_path).map_err(|source| {
+      let content = source.read_text(&config::ProjectPath::new(source_path)).map_err(|source| {
         return BuildPdfError::ReadTextFile {
           path: source_path.display().to_string(),
-          source,
+          source: source.into_io(),
         };
       })?;
-      db.register(source_path.display().to_string(), content);
+      db.register(source_path.display().to_string(), content.to_string());
     }
     return Ok(db);
   }
@@ -135,10 +136,11 @@ mod tests {
   fn read_loads_each_source_file_content_and_display_path() {
     // Arrange
     enter_workspace_root();
+    let source = config::FilesystemProjectSource::new();
     let sources = vec![PathBuf::from("tests/text/text.sei")];
 
     // Act
-    let source_db = SourceDb::read(&sources).expect("既存 fixture の読込に成功するはず");
+    let source_db = SourceDb::read(&source, &sources).expect("既存 fixture の読込に成功するはず");
 
     // Assert
     let entries: Vec<_> = source_db.iter().collect();
@@ -151,19 +153,45 @@ mod tests {
   fn read_fails_fast_on_missing_file_without_aggregating() {
     // Arrange — 存在しないパスを混ぜる。I/O 失敗はパースエラーと違い集約しない
     enter_workspace_root();
+    let source = config::FilesystemProjectSource::new();
     let sources = vec![
       PathBuf::from("tests/text/text.sei"),
       PathBuf::from("tests/text/__does_not_exist__.sei"),
     ];
 
     // Act
-    let result = SourceDb::read(&sources);
+    let result = SourceDb::read(&source, &sources);
 
     // Assert
-    assert!(
-      matches!(result, Err(BuildPdfError::ReadTextFile { .. })),
-      "存在しないファイルは ReadTextFile で早期失敗するはず"
-    );
+    let Err(BuildPdfError::ReadTextFile { source, .. }) = result else {
+      panic!("ReadTextFile を期待");
+    };
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "存在しないファイルは ReadTextFile で早期失敗するはず");
+  }
+
+  #[test]
+  fn read_reads_through_project_source_without_touching_disk() {
+    // Arrange — MemoryProjectSource で 2 ファイル分の fixture を用意する
+    let source = config::MemoryProjectSource::new()
+      .with_text("/project/a.sei", "content-a")
+      .with_text("/project/b.sei", "content-b");
+    let sources = vec![
+      PathBuf::from("/project/a.sei"),
+      PathBuf::from("/project/b.sei"),
+    ];
+
+    // Act
+    let source_db = SourceDb::read(&source, &sources).expect("メモリ上の fixture を読めるはず");
+
+    // Assert — 実ディスクに触れず、登録順（＝ sources の並び順）が SourceId のインデックスに一致する
+    let entries: Vec<_> = source_db.iter().collect();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].0.index(), 0);
+    assert_eq!(entries[0].1.name, PathBuf::from("/project/a.sei").display().to_string());
+    assert_eq!(entries[0].1.content, "content-a");
+    assert_eq!(entries[1].0.index(), 1);
+    assert_eq!(entries[1].1.name, PathBuf::from("/project/b.sei").display().to_string());
+    assert_eq!(entries[1].1.content, "content-b");
   }
 
   #[test]

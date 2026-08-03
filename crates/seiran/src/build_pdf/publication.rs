@@ -445,7 +445,8 @@ mod tests {
       "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
     );
     let config = test_config();
-    let font_data = font::FontData::new(&config.font_configs).expect("テストフォントの読み込み");
+    let source = config::FilesystemProjectSource::new();
+    let font_data = font::FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
     let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
     let font_metrics = font::FontMetrics::new(&font_refs).expect("FontMetrics の構築");
     let font_resource_configs: FontResourceConfigs = model::FontMap::from_all(FontType::ALL.iter().map(|_| {
