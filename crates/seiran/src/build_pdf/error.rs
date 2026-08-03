@@ -211,9 +211,10 @@ pub(super) enum BuildPdfError {
   ReadImage {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の I/O エラー。
+    /// 元の読込エラー。
     #[source]
-    source: std::io::Error,
+    #[diagnostic_source]
+    source: config::SourceReadError,
   },
 
   /// 画像ファイルのデコードに失敗しました。
