@@ -23,6 +23,8 @@ mod dump;
 mod golden;
 #[cfg(test)]
 mod pdf_structure;
+#[cfg(test)]
+mod project_source_equivalence;
 
 use std::{
   collections::{HashMap, HashSet},
@@ -264,7 +266,7 @@ fn build_font_resource_configs(font_configs: &config::FontConfigs) -> pdf_gen::F
   }));
 }
 
-/// パースからページ確定までを実行するテストヘルパ。
+/// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
   config: &config::Config,
@@ -273,12 +275,27 @@ fn build_pages(
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
   let source = config::FilesystemProjectSource::new();
+  return build_pages_with_source(&source, config, style, references, font_data);
+}
+
+/// パースからページ確定までを、指定した [`config::ProjectSource`] 経由で実行するテストヘルパ。
+///
+/// `MemoryProjectSource` を渡すと実ファイルシステムに触れずに組版できる
+/// （2 実装が同じ結果を返すことの検証用。issue #300）。
+#[cfg(test)]
+fn build_pages_with_source(
+  source: &dyn config::ProjectSource,
+  config: &config::Config,
+  style: &config::Style,
+  references: &Arc<References>,
+  font_data: &FontData,
+) -> miette::Result<LaidOutDocument> {
   let snapshot =
-    ProjectSnapshot::assemble(&source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (parsed_project, image_manifest) = parse_project(&source, &snapshot)?;
+    ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
+  let (parsed_project, image_manifest) = parse_project(source, &snapshot)?;
   let resolved = resolve::resolve_project(&parsed_project.semantic_document(), &snapshot.style)
     .map_err(|source| return wrap_resolve_error(source, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(&source, &image_manifest.paths)?;
+  let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
   return compile_project(&snapshot, &resolved, &image_resources, &font_system);
