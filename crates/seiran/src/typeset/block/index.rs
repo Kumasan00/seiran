@@ -9,7 +9,7 @@ use icu::{
 use model::{AnchorId, FontKind, Length, LinkTarget};
 
 use super::Measurer;
-use crate::{
+use crate::typeset::{
   layout::{Block, HBox, Line, LineLink, PositionedBox},
   lowering::TextStyle,
 };

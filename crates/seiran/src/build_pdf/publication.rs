@@ -1,8 +1,8 @@
-//! 確定ページ列（`Vec<typeset::Page>`）から `pdf_gen::Publication` への変換
+//! 確定ページ列（`Vec<crate::typeset::Page>`）から `pdf_gen::Publication` への変換
 //!
 //! epic #276 の一環で `pdf_gen` から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
-//! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値を
-//! `typeset::Page` / `typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
+//! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`crate::typeset::breaking`）が解決済みの値を
+//! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
 //! `pdf_gen` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`pdf_gen::Point` /
 //! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `model::Length::to_pt()` /
@@ -15,9 +15,9 @@ use pdf_gen::{
   Destination, Glyph as PdfGlyph, GlyphRun as PdfGlyphRun, PaintOp, Point, Publication, PublicationLink,
   PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
-use typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
 use super::layout::LaidOutDocument;
+use crate::typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
@@ -330,14 +330,14 @@ fn push_table_row_ops(
   let max_font = row
     .cells
     .iter()
-    .filter_map(|cell| return typeset::max_font_size_in_items(&cell.items))
+    .filter_map(|cell| return crate::typeset::max_font_size_in_items(&cell.items))
     .reduce(model::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
   let baseline = band_top + max_font;
 
   let padding = model::Length::pt(table_style.cell_padding.to_pt());
-  for placement in typeset::layout_row_cells(row, columns, col_widths, padding) {
+  for placement in crate::typeset::layout_row_cells(row, columns, col_widths, padding) {
     push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
   }
 }
@@ -398,13 +398,15 @@ mod tests {
   use font::{FontData, FontDataExt, FontResources, GlyphRun};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
-  use typeset::{
-    HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
-    PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
-  };
 
   use super::build_publication;
-  use crate::build_pdf::{layout::LaidOutDocument, outline::OutlineEntry};
+  use crate::{
+    build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
+    typeset::{
+      HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
+      PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
+    },
+  };
 
   /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
   /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
@@ -813,7 +815,7 @@ mod tests {
     };
     let row = TableRowBox {
       cells: vec![TableCellBox {
-        items: vec![typeset::HItem::Box(HBox {
+        items: vec![crate::typeset::HItem::Box(HBox {
           content: HBoxContent::Glyphs(cell_run),
           width: Length::pt(30.0),
           height: Length::pt(10.0),

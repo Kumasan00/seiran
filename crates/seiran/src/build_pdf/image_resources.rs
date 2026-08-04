@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use model::{AssetId, Length};
 use tracing::debug;
-use typeset::Block;
 
 use super::error::{CompileError, CompilerBug};
+use crate::typeset::Block;
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]

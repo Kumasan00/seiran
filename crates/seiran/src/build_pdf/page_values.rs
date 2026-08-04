@@ -62,7 +62,7 @@ pub(super) struct BodyPageValues {
 
 impl BodyPageValues {
   /// 本文ページ列とページ番号スタイルから構築する。
-  pub(super) fn from_body_pages(body_pages: &[typeset::Page], numbering: &PageNumbering) -> Self {
+  pub(super) fn from_body_pages(body_pages: &[crate::typeset::Page], numbering: &PageNumbering) -> Self {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
@@ -82,7 +82,7 @@ impl BodyPageValues {
   pub(super) fn heading_pages(&self) -> &[PageIndex] { return &self.heading_pages; }
 
   /// 索引ページを本文領域の通し番号へ加算する。
-  pub(super) fn with_back_matter(mut self, back_pages: &[typeset::Page]) -> Self {
+  pub(super) fn with_back_matter(mut self, back_pages: &[crate::typeset::Page]) -> Self {
     self.body_page_count += back_pages.len();
     return self;
   }
@@ -95,7 +95,7 @@ impl BodyPageValues {
   /// 物理ページ順の `({page}, {pages})` ラベル列を確定する。
   ///
   /// 前付けと本文はそれぞれ 1 から番号を振り直す。
-  pub(super) fn finalize(self, front_pages: &[typeset::Page]) -> PageLabels {
+  pub(super) fn finalize(self, front_pages: &[crate::typeset::Page]) -> PageLabels {
     let front_count = front_pages.len();
     let body_count = self.body_page_count;
     let total = front_count + body_count;
@@ -135,9 +135,9 @@ impl PageLabels {
 mod tests {
   use config::PageNumbering;
   use model::{AnchorMark, HeadingKey, LabelId};
-  use typeset::{Page, PlacedAnchor};
 
   use super::{BodyPageValues, PageIndex};
+  use crate::typeset::{Page, PlacedAnchor};
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ
   fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {

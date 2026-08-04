@@ -17,7 +17,7 @@ pub use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
 use tracing::debug;
 
-use crate::{
+use crate::typeset::{
   breaking::{self, BreakKind, BreakPoint, Lang},
   layout::{
     Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
@@ -293,7 +293,7 @@ impl Measurer<'_> {
       // 脚注本体を独立に計測し、幅 0 の運搬マーカーとして積む（本文中の上付きマーカーは
       // `lower_inline` が本 variant の手前に別ノードとして発行済みで、通常の Box として
       // 既にこの直前で積まれている）。実際のページ下部配置・区切り罫線の描画は
-      // `crate::breaking`（`Line::footnotes` 経由）が行う。
+      // `crate::typeset::breaking`（`Line::footnotes` 経由）が行う。
       LayoutNode::Footnote {
         number,
         index,
@@ -312,7 +312,7 @@ impl Measurer<'_> {
         });
       },
       // 索引マーカーは幅 0 の運搬マーカーとしてそのまま積む。ページ確定座標化・重複除去は
-      // `crate::breaking`（`Line::index_marks` 経由）が行う
+      // `crate::typeset::breaking`（`Line::index_marks` 経由）が行う
       LayoutNode::IndexMark { word, reading } => {
         out.push(HItem::IndexMark { word, reading });
       },
@@ -842,7 +842,7 @@ mod boundary_glue_tests {
     CJK_STRETCH_RATIO, boundary_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
-  use crate::layout::HItem;
+  use crate::typeset::layout::HItem;
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -915,7 +915,7 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::layout::HItem;
+  use crate::typeset::layout::HItem;
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]

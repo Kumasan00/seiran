@@ -3,7 +3,7 @@
 use model::{Length, TextAlignment};
 
 use super::{LineBreaker, OpenLink, build_line};
-use crate::layout::{HItem, Line};
+use crate::typeset::layout::{HItem, Line};
 
 /// 貪欲法（first-fit）による行分割
 #[derive(Debug, Clone, Copy, Default)]
@@ -115,7 +115,7 @@ mod tests {
     },
     GreedyBreaker, LineBreaker,
   };
-  use crate::layout::{HBox, HBoxContent, HItem};
+  use crate::typeset::layout::{HBox, HBoxContent, HItem};
 
   /// pt 値から `Length` を作る短縮子
   fn pt(value: f32) -> Length { return Length::pt(value); }

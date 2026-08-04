@@ -17,11 +17,11 @@ pub(super) struct CompileContext<'a> {
   /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
   pub(super) body_col_width: model::Length,
   /// 本文のページジオメトリ（N 段）
-  pub(super) body_geometry: typeset::PageGeometry,
+  pub(super) body_geometry: crate::typeset::PageGeometry,
   /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
-  pub(super) front_geometry: typeset::PageGeometry,
+  pub(super) front_geometry: crate::typeset::PageGeometry,
   /// 後付け（索引）のページジオメトリ（`style.index.column_count` 段・下端揃えなし）
-  pub(super) back_geometry: typeset::PageGeometry,
+  pub(super) back_geometry: crate::typeset::PageGeometry,
 }
 
 impl<'a> CompileContext<'a> {
@@ -52,14 +52,14 @@ pub(super) struct BodyPageFacts {
   /// 見出しページ・本文ページラベル・本文ページ数
   pub(super) page_values: BodyPageValues,
   /// 目次・PDF しおり用の見出し情報（文書順）
-  pub(super) headings: Vec<typeset::HeadingRecord>,
+  pub(super) headings: Vec<crate::typeset::HeadingRecord>,
 }
 
 impl BodyPageFacts {
   /// 確定した本文ページ列と見出し記録から組み立てる。
   pub(super) fn new(
-    body_pages: &[typeset::Page],
-    headings: Vec<typeset::HeadingRecord>,
+    body_pages: &[crate::typeset::Page],
+    headings: Vec<crate::typeset::HeadingRecord>,
     numbering: &config::PageNumbering,
   ) -> Self {
     return Self {
@@ -77,8 +77,8 @@ fn build_page_geometries(
   style: &config::Style,
   body_columns: usize,
   column_gap: model::Length,
-) -> (typeset::PageGeometry, typeset::PageGeometry, typeset::PageGeometry) {
-  let body_geometry = typeset::PageGeometry {
+) -> (crate::typeset::PageGeometry, crate::typeset::PageGeometry, crate::typeset::PageGeometry) {
+  let body_geometry = crate::typeset::PageGeometry {
     margin_top: config.pdf.margin.top,
     page_limit: config.pdf.height - config.pdf.margin.bottom,
     default_font_size: style.text.font_size,
@@ -96,13 +96,13 @@ fn build_page_geometries(
     table_rule_color: style.table.rule_color.map(model::Color::rgb),
     background_color: style.background_color.map(model::Color::rgb),
   };
-  let front_geometry = typeset::PageGeometry {
+  let front_geometry = crate::typeset::PageGeometry {
     num_columns: 1,
     column_gap: model::Length::ZERO,
     flush_bottom: false,
     ..body_geometry
   };
-  let back_geometry = typeset::PageGeometry {
+  let back_geometry = crate::typeset::PageGeometry {
     num_columns: usize::from(style.index.column_count),
     flush_bottom: false,
     ..body_geometry

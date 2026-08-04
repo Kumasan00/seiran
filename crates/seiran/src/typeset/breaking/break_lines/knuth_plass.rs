@@ -3,7 +3,7 @@
 use model::{Length, TextAlignment};
 
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
-use crate::layout::{HItem, Line};
+use crate::typeset::layout::{HItem, Line};
 
 /// 1 行ぶんの demerits に加える基礎ペナルティ（TeX の `\linepenalty` 相当）
 const LINE_PENALTY: f64 = 10.0;
@@ -262,7 +262,7 @@ mod tests {
     super::test_support::{box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box},
     GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph,
   };
-  use crate::layout::{HItem, Line};
+  use crate::typeset::layout::{HItem, Line};
 
   /// 行の右端（box 群の最大右端）
   fn right_edge(line: &Line) -> Length {

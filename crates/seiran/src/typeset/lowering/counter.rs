@@ -6,13 +6,13 @@
 //! 別関心事（`resolve` クレートが持つべき責務ではない）なのでこのファイルに残す。
 //!
 //! 脚注の出現 index 発番（旧 `CounterRegistry::next_footnote_index`）は `CounterRegistry` の
-//! 消滅にともない `crate::lowering::LoweringState` へ移した（走査中の可変状態はそちらに一本化した）。
+//! 消滅にともない `crate::typeset::lowering::LoweringState` へ移した（走査中の可変状態はそちらに一本化した）。
 
 mod format;
 
 pub(crate) use format::{format_counter_value, format_ref_display};
 
-use crate::layout::Page;
+use crate::typeset::layout::Page;
 
 /// 確定したページ列から、脚注のページ単位表示番号を割り当てる（`FootnoteNumbering::PerPage`）
 ///
@@ -43,7 +43,7 @@ pub fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::layout::PlacedFootnote;
+  use crate::typeset::layout::PlacedFootnote;
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
   fn page_with_footnotes(indices: &[u32]) -> Page {

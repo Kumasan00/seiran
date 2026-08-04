@@ -5,7 +5,7 @@ use font::FontSystem;
 use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
 
 use super::Measurer;
-use crate::{
+use crate::typeset::{
   layout::{Block, HBox, Line, LineLink, PositionedBox},
   lowering::TextStyle,
 };

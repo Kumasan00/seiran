@@ -5,7 +5,7 @@ use model::{FontKind, Length};
 use tracing::debug;
 
 use super::Measurer;
-use crate::{
+use crate::typeset::{
   layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
   lowering::TextStyle,
 };
@@ -204,7 +204,7 @@ mod tests {
   use model::Length;
 
   use super::{RunningMetadata, append_slot, slot_width, substitute};
-  use crate::layout::{HBox, HBoxContent, PositionedBox};
+  use crate::typeset::layout::{HBox, HBoxContent, PositionedBox};
 
   /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
   fn box_of_width(w: Length) -> HBox {

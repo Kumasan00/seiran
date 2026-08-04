@@ -9,7 +9,6 @@ members = [
   "crates/pdf_gen",
   "crates/resolve",
   "crates/seiran",
-  "crates/typeset",
 ]
 
 [workspace.package]
@@ -82,7 +81,6 @@ tracing-subscriber = {
   version = "0.3.23",
   features = ["env-filter", "local-time"]
 }
-typeset = { path = "crates/typeset" }
 unic-langid = "0.9.6"
 usvg = "0.47.0"
 

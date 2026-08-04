@@ -6,7 +6,8 @@ use std::fmt::Write;
 
 use model::{AnchorId, AnchorMark, Length, LinkTarget};
 use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
-use typeset::{
+
+use crate::typeset::{
   HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
 
@@ -432,9 +433,9 @@ mod tests {
     Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, Rect,
   };
-  use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
+  use crate::typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {

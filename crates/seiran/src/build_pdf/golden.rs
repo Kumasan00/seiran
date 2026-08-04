@@ -13,9 +13,9 @@ use citation::{References, read_references};
 use config::{Config, MemoryProjectSource, ProjectPath, Style};
 use font::{FontData, FontDataExt};
 use model::{AnchorMark, Length};
-use typeset::{Page, PlacedBlock};
 
 use super::{build_pages, dump::dump_pages};
+use crate::typeset::{Page, PlacedBlock};
 
 /// golden 比較対象の入力名。
 const GOLDEN_INPUTS: &[&str] = &[
@@ -269,7 +269,7 @@ fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, Project
 /// `compile()` を入口として fixture を組版し、`Publication` のダンプを返す（golden 移行版）。
 ///
 /// `layout_dumps_match_golden` 専用。他の golden.rs テストは引き続き `dump_input`
-/// （`build_pages` 経由）を使う——`typeset::Page` レベルの anchor/index 行に依存する
+/// （`build_pages` 経由）を使う——`crate::typeset::Page` レベルの anchor/index 行に依存する
 /// `index_marks_are_invisible_to_layout` 等は、`Publication` には対応する表現が無いため
 /// 今回は移行しない（issue の「順次移行」方針どおり）。
 fn dump_input_via_compile(name: &str) -> String {

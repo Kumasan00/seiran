@@ -2,7 +2,7 @@
 
 use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
-/// レイアウトエンジン（`crate::block::build_blocks`）が処理する最小単位
+/// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
 pub enum LayoutNode {
   /// スタイル付きテキスト

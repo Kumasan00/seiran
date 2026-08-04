@@ -8,7 +8,7 @@ use model::Length;
 use thiserror::Error;
 use tracing::{debug_span, info};
 
-use crate::{
+use crate::typeset::{
   block::build_blocks,
   breaking::{LineBreaker, PageGeometry, break_pages},
   layout::{Block, Page},

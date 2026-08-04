@@ -2,7 +2,6 @@
 
 use font::FontSystem;
 use tracing::info;
-use typeset::BodyLayout;
 
 use super::{
   back_matter, body, front_matter,
@@ -11,11 +10,12 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
   running,
 };
+use crate::typeset::BodyLayout;
 
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {
   /// 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
-  pub(super) pages: Vec<typeset::Page>,
+  pub(super) pages: Vec<crate::typeset::Page>,
   /// PDF しおり用の見出し情報（文書順）
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
@@ -90,10 +90,10 @@ impl<'a> DocumentLayouter<'a> {
 
 /// 前付け、本文、後付けの順にページ列を連結する。
 fn concat_pages(
-  front_pages: Vec<typeset::Page>,
-  body_pages: Vec<typeset::Page>,
-  back_pages: Vec<typeset::Page>,
-) -> Vec<typeset::Page> {
+  front_pages: Vec<crate::typeset::Page>,
+  body_pages: Vec<crate::typeset::Page>,
+  back_pages: Vec<crate::typeset::Page>,
+) -> Vec<crate::typeset::Page> {
   let (front_matter_count, body_page_count, back_matter_count) =
     (front_pages.len(), body_pages.len(), back_pages.len());
   let mut pages = front_pages;

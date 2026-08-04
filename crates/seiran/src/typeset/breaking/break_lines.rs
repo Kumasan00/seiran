@@ -2,7 +2,7 @@
 
 use model::{Length, LinkTarget, TextAlignment};
 
-use crate::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
+use crate::typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
 
 mod greedy;
 mod knuth_plass;
@@ -245,7 +245,7 @@ pub(super) fn build_line(
 pub(super) mod test_support {
   use model::Length;
 
-  use crate::layout::{HBox, HBoxContent, HItem};
+  use crate::typeset::layout::{HBox, HBoxContent, HItem};
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
   fn pt(value: f32) -> Length { return Length::pt(value); }

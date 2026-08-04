@@ -3,7 +3,7 @@
 use model::{Align, FontType, Length, MathDelimiter, MathEnvKind};
 
 use super::Measurer;
-use crate::{
+use crate::typeset::{
   layout::{Block, HBox, MathRowNumber, PlacedHItem},
   lowering::{LayoutNode, MathBlockRow},
 };

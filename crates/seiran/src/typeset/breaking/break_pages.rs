@@ -4,7 +4,7 @@ use model::{AnchorMark, FootnoteId, Length, LinkTarget, TextAlignment, column_wi
 use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
-use crate::layout::{
+use crate::typeset::layout::{
   Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock,
   PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox,
   collect_row_links, resolve_column_widths, table_row_height,
@@ -1334,7 +1334,7 @@ mod tests {
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, LinePlacement, PageGeometry, break_pages,
     is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
   };
-  use crate::layout::{
+  use crate::typeset::layout::{
     Block, HBox, HBoxContent, HItem, Line, LineLink, PENALTY_FORBID_BREAK, Page, PlacedBlock, PositionedBox, TableBox,
     TableCellBox, TableRowBox,
   };

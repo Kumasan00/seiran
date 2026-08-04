@@ -1,6 +1,6 @@
 //! PDF しおり（アウトライン）エントリの組み立て
 
-use typeset::HeadingRecord;
+use crate::typeset::HeadingRecord;
 
 /// PDF のしおりに使う見出し。
 #[derive(Debug, Clone)]

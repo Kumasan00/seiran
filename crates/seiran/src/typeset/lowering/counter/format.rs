@@ -8,7 +8,7 @@ use config::{CounterName, Counters, Style, TheoremReset};
 use model::TheoremClass;
 use resolve::{CounterKind, CounterValue};
 
-use crate::lowering::placeholder;
+use crate::typeset::lowering::placeholder;
 
 /// 定理の `\ref` 表示に使う固定書式
 ///
