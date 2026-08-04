@@ -81,6 +81,7 @@ mod tests {
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationError, read_references},
+    frontend::parse_source,
   };
 
   #[test]
@@ -92,8 +93,7 @@ mod tests {
     let content = fs::read_to_string("tests/text/cite.sei").expect("fixture cite.sei を読めるはず");
     let source_id = SourceId::new(0);
     let citation_keys: HashSet<String> = references.keys().cloned().collect();
-    let nodes =
-      frontend::parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
+    let nodes = parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
     let parsed = vec![ParsedSource { source_id, nodes }];
 
     // Act

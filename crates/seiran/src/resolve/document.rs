@@ -17,7 +17,7 @@ pub struct SemanticGroup<'a> {
 
 /// プロジェクト全体の未解決ドキュメント
 ///
-/// `frontend::parse_source` と `citation::process_citations` を経た直後の状態に相当する。
+/// `crate::frontend::parse_source` と `citation::process_citations` を経た直後の状態に相当する。
 /// ラベル名・`\ref` 参照名・引用キー・索引語は未解決のまま保持できる（型として禁止しない）。
 pub struct SemanticDocument<'a> {
   /// 実ソースのグループ列（citation が合成した書誌は含まない）

@@ -349,7 +349,7 @@ fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> R
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {
-    match frontend::parse_source(&entry.content, source_id, citation_keys) {
+    match crate::frontend::parse_source(&entry.content, source_id, citation_keys) {
       Ok(nodes) => parsed.push(ParsedSource { source_id, nodes }),
       Err(error) => {
         parse_errors

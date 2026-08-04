@@ -48,8 +48,8 @@ pub use pipeline::{
 /// 通し、パニックしないことを確認する統合テスト（旧 `typeset` crate の `tests/smoke.rs`、
 /// #307 で本 module 直下の inline テストへ移設）
 ///
-/// `frontend::parse_source` は `typeset` 吸収時点ではまだ外部 crate（Task 6 で吸収予定）の
-/// ため、`frontend::` 参照はそのまま維持する。`resolve::resolve_project` は #307 Task 5 で
+/// `frontend::parse_source` は #307 Task 6 で `crate::frontend` へ吸収済みのため
+/// `crate::frontend::` 参照に更新済み。`resolve::resolve_project` は #307 Task 5 で
 /// `crate::resolve` へ吸収済みのため `crate::resolve::` 参照に更新済み。
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
@@ -57,11 +57,13 @@ mod tests {
   use std::{collections::HashSet, path::PathBuf};
 
   use config::Style;
-  use frontend::parse_source;
   use model::SourceId;
 
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
-  use crate::resolve::{SemanticDocument, SemanticGroup};
+  use crate::{
+    frontend::parse_source,
+    resolve::{SemanticDocument, SemanticGroup},
+  };
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
   fn fixture_path(name: &str) -> PathBuf {

@@ -704,20 +704,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "frontend"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "memchr",
- "miette",
- "model",
- "phf",
- "proptest",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2208,19 +2194,21 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "seiran"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
  "ciborium",
  "clap",
  "config",
  "font",
- "frontend",
  "hayagriva",
  "hypher",
  "icu",
  "lazy-regex",
  "lopdf",
+ "memchr",
  "miette",
  "model",
  "pdf_gen",
+ "phf",
  "proptest",
  "read-fonts 0.41.0",
  "serde",
