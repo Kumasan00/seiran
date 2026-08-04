@@ -152,14 +152,10 @@ given = "Taro"
 
 ```text
 crates/
-├── citation/         # 参照定義ファイルの読込・\cite の CSL 整形（引用の採番・書誌生成、references 子 module）
-├── config/           # TOML メイン設定・スタイル設定ファイルの読み込みと検証（read_config / read_style 子 module）
-├── font/             # フォント処理（読込・シェーピング・検証）
-├── frontend/         # 字句解析・構文解析・評価（Lexer → Parser → CST → Document IR。CST は非公開）
-├── model/            # 全段共有のデータモデル（共通型・Document IR・組版コア型）
-├── pdf_gen/          # PDF 生成エンジン（確定座標の描画）
-├── seiran/           # メインアプリケーション（エントリーポイント。CLI 引数解析・サブコマンドを内包）
-└── typeset/          # Document IR → LayoutNode 変換・シェーピング・計測・行分割・縦組版（lowering / block / breaking 子 module）
+├── seiran/           # ライブラリ（言語処理・意味解決・組版）。公開 API は compile とその入出力型・診断型のみ
+│                     #   内部は非公開 module: model / config / resolve / frontend / citation / font / typeset / build_pdf
+├── seiran-pdf/       # PDF backend（確定座標の Publication → PDF バイト列。krilla / krilla-svg）
+└── seiran-cli/       # CLI（引数解析・ログ・compile → render → ファイル保存・フォント調査サブコマンド）
 ```
 
 ## License

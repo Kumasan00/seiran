@@ -12,12 +12,13 @@ model: sonnet
 
 - Cargo workspace 構成。クレート責務とパイプラインは `CLAUDE.md` の
   アーキテクチャ節、詳細は `docs/architecture.md` を必要に応じて参照する。
-- 探索の起点に迷ったら、データフロー（frontend → document → citation →
-  lowering → layout → hlist → pdf_gen → seiran）のどの段の話かをまず特定する。
+- 探索の起点に迷ったら、データフロー（frontend → citation → resolve →
+  typeset（lowering → block → breaking）→ build_pdf → seiran-pdf）のどの段の話かを
+  まず特定する。段はすべて `seiran` crate 内の非公開 module（描画のみ `seiran-pdf`）。
 
 ## 手順
 
-1. 質問を「どのクレート・どの段の話か」に落とし、Grep / Glob で候補を絞る。
+1. 質問を「どの module・どの段の話か」に落とし、Grep / Glob で候補を絞る。
 2. 候補ファイルは全文を読まず、必要な箇所だけ Read する。
 3. 見つけた事実だけを報告する。推測で補完しない。見つからなければ
    「見つからなかった」と、試した検索条件を添えて返す。

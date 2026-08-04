@@ -1,31 +1,44 @@
-# アーキテクチャ詳細 — クレート別の構造と不変条件
+# アーキテクチャ詳細 — クレート / module 別の構造と不変条件
 
 ## この文書の役割
 
-**いま実装されている構造**を記録する。特定のクレートを触る作業に入る前に、該当クレートの節を読む。
+**いま実装されている構造**を記録する。特定の crate / module を触る作業に入る前に、該当する節を読む。
 
 | 文書                       | 持つもの                                                                       |
 | -------------------------- | ------------------------------------------------------------------------------ |
 | `CLAUDE.md`                | データフロー図・依存グラフ・責務 1 行要約・コーディング規約（ナビゲーション用） |
 | `docs/language-design.md`  | 言語設計の目的 G1〜G3 と原則 P1〜P10 の全文・判断事例集                        |
-| **`docs/architecture.md`** | **クレート別の実装構造（本書）と style.toml 詳細スキーマ**                     |
+| **`docs/architecture.md`** | **crate / module 別の実装構造（本書）と style.toml 詳細スキーマ**                     |
 | `README.md`                | ユーザ向け（インストール・コマンド・設定例）                                   |
 
-各クレート節は **責務 / モジュール構成 / 不変条件・注意点** の順で揃える。過去の統合・分割の経緯は、
-知らないと今日の判断を誤るもの（型の形を戻してしまう、削除済みの規約を復活させる等）だけを残し、
+各クレート節・module 節は **責務 / モジュール構成 / 不変条件・注意点** の順で揃える。過去の統合・分割の
+経緯は、知らないと今日の判断を誤るもの（型の形を戻してしまう、削除済みの規約を復活させる等）だけを残し、
 それ以外は git 履歴に委ねる。
 
-目次: [`model`](#model) / [`config`](#config) / [`frontend`](#frontend) / [`citation`](#citation) /
-[`font`](#font) / [`typeset`](#typeset) / [`pdf_gen`](#pdf_gen) / [`seiran`](#seiran)
+目次: [`seiran`](#seiran)（[`model`](#model) / [`config`](#config) / [`resolve`](#resolve) /
+[`frontend`](#frontend) / [`citation`](#citation) / [`font`](#font) / [`typeset`](#typeset) /
+[`build_pdf`](#build_pdf)） / [`seiran-pdf`](#seiran-pdf) / [`seiran-cli`](#seiran-cli)
 
-## `model`
+## `seiran`
 
-### 責務
+言語処理・意味解決・組版を所有するライブラリ crate（lib target のみ）。外部入口は `compile` 1 つで、
+段の呼び出し順序と中間型は非公開 module の内側に閉じる（#307 でパイプラインの段ごとに分かれていた
+7 crate — model / config / resolve / frontend / citation / font / typeset — を非公開 module として吸収した。
+crate はデプロイ・外部依存・独立再利用の単位に限定し、コンパイル段階を crate 境界にしない）。
 
-パイプライン全段が共有するデータモデルの leaf クレート。外部依存は serde / garde のみで、診断
+以下の 8 つの子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
+crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
+した項目だけである。
+
+### `model`
+
+#### 責務
+
+パイプライン全段が共有するデータモデルの leaf module。外部依存は serde / garde のみで、診断
 ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
 
-### モジュール構成
+#### モジュール構成
 
 3 層に分かれる（すべて非公開 module。`length` だけは garde のカスタムバリデータを名前空間付きで
 参照するため `pub mod`）。組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）と
@@ -48,7 +61,7 @@
   `typeset::lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみを持ち、物理レイアウト
   情報は持たない。
 
-### 不変条件・注意点
+#### 不変条件・注意点
 
 - **miette に依存しない**。ソース位置は軽量な `Span { start, end }` で持ち、`miette::SourceSpan` への
   変換は診断を構築する側が行う。`Span` と `SourceSpan` はどちらも consumer にとって外部型のため
@@ -58,7 +71,7 @@
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
-  ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`pdf_gen::Publication` 用、golden
+  ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
   主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
   `seiran::build_pdf::dump` に置く。
 - **アンカーは型で namespace を分ける**。`AnchorMark` / `LinkTarget::Internal` は見出し・ラベル・引用・
@@ -75,18 +88,18 @@
   lowering → block の複数段が共有するので `model` にあるのが正しい — ファイル名だけを見て移さない。
 - **組版中間型は model に置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と
   その表計測ヘルパは `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果
-  `GlyphRun` / `Glyph` は `font` crate の公開型（`font` 節参照）。いずれも消費者が model のように
-  複数クレートへ広がっているわけではなく、`typeset` 内の複数 module（`block` / `breaking`）や
-  `typeset` と `pdf_gen` の 2 crate にとどまるため、「複数 consumer の型でも consumer が同一 crate
-  内 / 同一依存関係内にとどまるなら crate 外（model）ではなくその内部へ置く」という判断で model の
-  外へ移した（#280）。
+  `GlyphRun` / `Glyph` は `font` module の型（`font` 節参照）。いずれも消費者が model のように
+  全段へ広がっているわけではなく、`typeset` 内の複数 module（`block` / `breaking`）や
+  `typeset` → `build_pdf` の範囲にとどまるため、「複数 consumer の型でも consumer が同一 crate
+  内 / 同一依存関係内にとどまるなら共有置き場（model）ではなくその内部へ置く」という判断で model の
+  外へ移した（#280。当時は model / typeset / font がそれぞれ独立した crate だった）。
 
-## `config`
+### `config`
 
-### 責務
+#### 責務
 
 `config.toml` / `style.toml` のデータモデルと読込・検証、および外部資源取得の seam（`project_source`）。
-`config` / `style` / `layout` / `project_source` の 4 子モジュールはすべて非公開で、公開 API はクレート
+`config` / `style` / `layout` / `project_source` の 4 子モジュールはすべて非公開で、公開 API は module
 root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style` / `config::ProjectSource`。
 テスト用ヘルパは `config::test_support` として再エクスポート）。
 
@@ -94,10 +107,10 @@ root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::
 `ValidationError` を名乗り、名前衝突を避けるために module を `pub mod` 公開していた（`config::read_config::Config`
 形式）が、改名して root facade に揃えた。同名エラー型を再導入しない。
 
-### `project_source`（外部資源取得の seam、#300）
+#### `project_source`（外部資源取得の seam、#300）
 
 compiler が `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
-1 つの seam 経由で取得する。`config` に置くのは、I/O を行う全クレート（`citation` / `font` / `seiran`）が
+1 つの seam 経由で取得する。`config` に置くのは、I/O を行う全 module（`citation` / `font` / `build_pdf`）が
 既に `config` へ依存しているため（epic #298 の `project.rs` の置き場所とも一致する）。
 
 ```rust
@@ -126,7 +139,7 @@ pub trait ProjectSource: Send + Sync {
 - 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
   `crates/seiran/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
 
-### `config`（config.toml）
+#### `config`（config.toml）
 
 **生 → 検証 → 処理済みの 2 型構成**を取る。
 
@@ -140,7 +153,7 @@ pub trait ProjectSource: Send + Sync {
 - `tag`: OpenType タグ文字列（script / language / feature）の検証・構築の単一情報源（`TagError`）。
 - `test_support`: テスト用の設定生成ヘルパ（`#[doc(hidden)]` で再エクスポート）。
 
-### `style`（style.toml）
+#### `style`（style.toml）
 
 `serde(default)` でデフォルト値をマージし（部分指定された TOML キーだけが上書きされる）、garde で
 バリデーションする。単層の `Style` 構造体が後段の読むフィールドをトップレベルに保持する:
@@ -150,7 +163,7 @@ pub trait ProjectSource: Send + Sync {
 
 各サブスタイル型は `style` 直下の module（`caption` / `columns` / `counter` / `figure` / `footnote` /
 `heading` / `hyperref` / `index` / `list` / `math` / `number_style` / `page` / `page_numbering` / `quote` /
-`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置き、クレート root
+`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置き、module root
 （`config::FigureStyle` 等）で再エクスポートする。`placeholder` は書式テンプレート中の `{name}`
 プレースホルダを検証する共通ロジック（見出しは `{number}` / `{title}`、キャプションも同様、といった
 許可リストを持つ）。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML
@@ -198,16 +211,16 @@ pub trait ProjectSource: Send + Sync {
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン
   `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
-### `layout`（横断検証）
+#### `layout`（横断検証）
 
 `config` と `style` のどちらか片方だけでは判定できない制約（用紙・余白 × `[columns]` の段幅など）を
 `validate_layout(&Config, &Style) -> Result<(), LayoutValidationError>` に集約する。段幅の算出式
 （`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体は `config` と
 `typeset::breaking::break_pages` の双方が使うため `model::column_width` にある。
 
-## `resolve`
+### `resolve`
 
-### 責務
+#### 責務
 
 `SemanticDocument`（`frontend::parse_source` と `citation::process_citations` を経た直後の、ラベル名・
 `\ref` 参照名・引用キー・索引語が未解決のまま保持できる生 `DocNode` 群）を `ResolvedDocument`（`LabelId` /
@@ -217,16 +230,17 @@ pub trait ProjectSource: Send + Sync {
 `ref_format` / `display_name` / `number_style`）は一切読まない — 値と表示の分離は G3（内容は見た目から
 独立）の実現だが、型で強制されているわけではない（`resolve_project` は `&config::Style` 全体を受け取り、
 表示フィールドを読むこと自体は型上可能）。実際の保証は「`resolve` の関数はこれらのフィールドを参照しない」
-という規約と、`crates/resolve/tests/style_independence.rs` の手書きテスト + property test（表示側
+という規約と、`resolve` module 直下の `style_independence_tests`
+（旧 `crates/resolve/tests/style_independence.rs`）の手書きテスト + property test（表示側
 フィールドのみ異なる style を差し替えても `ResolvedDocument` が変わらないことを検証。property test
 （`resolved_document_is_identical_for_any_display_only_variant_combination`、issue #306）は
 `number_format` / `ref_format` / `display_name` / `number_style` の 0〜4 個をランダムに組み合わせて
 上書きする形に一般化してある）による。`typeset::lowering` 側が
 `&config::Style` と `CounterValue` を合わせて表示文字列を作る。
 
-### モジュール構成
+#### モジュール構成
 
-いずれも非公開で、公開 API は crate root の `pub use` に揃える。
+いずれも非公開で、公開 API は module root（`resolve.rs`）の `pub use` に揃える。
 
 - `document`: `SemanticDocument`（`groups: Vec<SemanticGroup>` + `bibliography: &[DocNode]`。`&[DocNode]` を
   借用するだけで複製しない）/ `SemanticGroup`（`nodes` + 起源 `source_id: SourceId`）と
@@ -245,7 +259,7 @@ pub trait ProjectSource: Send + Sync {
 公開関数は `resolve_project(semantic: &SemanticDocument, style: &config::Style) -> Result<ResolvedDocument,
 ResolveError>` の 1 つに絞る。
 
-### 2 パス構成
+#### 2 パス構成
 
 `resolve_project` は全ソースグループを 1 個の `CounterRegistry` で通しで解決してから（pass1）、全体に
 対して `\ref` の存在検証を行う（pass2）。カウンタ・ラベルの登録はソース間で共有されるため、`\ref` は
@@ -264,7 +278,7 @@ ResolveError>` の 1 つに絞る。
 解決順序は「groups の pass1 → bibliography の pass1 → groups の pass2 → bibliography の pass2」
 （書誌が実ソースより後に解決される旧実装の順序と同一）を維持する。
 
-### `CounterValue` の祖先チェーン算出規則
+#### `CounterValue` の祖先チェーン算出規則
 
 `CounterRegistry::counter_value` / `theorem_counter_value` が組み立てる `parts` は、`resets` / `reset_by`
 （値に影響する構造データ）だけから求め、表示側フィールドは一切参照しない。祖先は「自分を `resets` に含み、
@@ -273,21 +287,21 @@ ResolveError>` の 1 つに絞る。
 ため、探索範囲を「自身より手前」に限定しないと祖先を飛び越えて誤認する）。定理クラスは `reset_by`
 （見出しレベル）が指す見出しカウンタを唯一の祖先とする。
 
-## `frontend`
+### `frontend`
 
-### 責務
+#### 責務
 
 テキストソースから Document IR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
 `EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
 
-### `syntax`（非公開）
+#### `syntax`（非公開）
 
 `lexer` → `parser` の字句・構文解析と、`bumpalo::Bump` アリーナ上のロスレスな CST。
 `token`（トークンの型定義。テキスト内容は複製せず `Span` 経由で元ソースから取得する）/ `lexer` /
 `parser`（+ `parser::error` の `ParserError`）/ `cst`（`green::GreenNode`
 ＝ロスレスなツリー、`kind` ＝ノード種別、`ast` ＝型付きビュー `CommandView` / `EnvironmentView`）。
 
-### `evaluator`
+#### `evaluator`
 
 CST を走査して Document IR（`model::DocNode` 等）へ評価変換する。
 
@@ -303,12 +317,12 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
 ディスパッチする。
 
-### 不変条件・注意点
+#### 不変条件・注意点
 
 - **評価器は状態を持たない**（`Evaluator` のような構造体は存在せず、module 内の関数群で構成する）。
   採番も行わない。
 - **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置
-  だけを構造化し、実際の発番・`\ref` 解決は `resolve` クレートが、書式化（表示文字列の生成）は
+  だけを構造化し、実際の発番・`\ref` 解決は `resolve` module が、書式化（表示文字列の生成）は
   `typeset::lowering` が担う。書式は「種類の既定」＝ style.toml 管轄という P10 の分離原則に沿わせるため。
 - **未知引数・引数個数の不一致で panic しない**: `command.rs` の `#[cfg(test)] mod tests` に
   `proptest!`（`any_command_with_any_arg_count_never_panics_and_only_returns_known_errors`、
@@ -319,23 +333,23 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 - **`config` に依存しない**。style / config の値を見ずに評価できる形を保つ。
 - 診断は `model::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
-## `citation`
+### `citation`
 
-### 責務
+#### 責務
 
-参照定義ファイルの読込から `\cite` の CSL 整形・書誌生成までを 1 クレートに閉じる。
+参照定義ファイルの読込から `\cite` の CSL 整形・書誌生成までを 1 module に閉じる。
 
-### モジュール構成
+#### モジュール構成
 
 - `references`（非公開）: `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式
   判別）。`reference` / `name` / `date` / `error` の子 module を持つ。公開型（`Reference` / `References` /
-  `Name` / `Date` 等）と `read_references` は crate root で再エクスポートし、`citation::Reference` の形で
+  `Name` / `Date` 等）と `read_references` は module root（`citation.rs`）で再エクスポートし、`citation::Reference` の形で
   参照する（`citation::references::Reference` は使わない）。
 - `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
 - `render`: `BibliographyDriver` の駆動と `ElemChildren` → `InlineNode` 変換
 - `test_fixtures`（`#[cfg(test)]`）: 文献引用テスト用フィクスチャ
 
-### `process_citations` の契約
+#### `process_citations` の契約
 
 frontend の後・lowering の前に走るステージ。
 `process_citations(docs: Vec<Vec<DocNode>>, ...) -> Result<(Vec<Vec<DocNode>>, Vec<DocNode>), CitationError>` が
@@ -357,24 +371,25 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
 `style.reference.locale` → ロケールファイルの `xml:lang` → `.csl` の `default-locale` の順で決めて override
 する。初版は引用・書誌ともプレーン文字列（斜体等は段階対応）。
 
-## `font`
+### `font`
 
-### 責務
+#### 責務
 
 全 19 フォント種別の読み込み・OpenType 解析・メトリクス取得・シェーピング・設定検証。`read-fonts` /
 `harfrust` / `rayon` を使用する。
 
-### モジュール構成
+#### モジュール構成
 
-- crate root: 型エイリアス `FontData`（= `FontMap<Vec<u8>>`）/ `FontRefs` / `FontMetrics` と、その構築を
+- module root（`font.rs`）: 型エイリアス `FontData`（= `FontMap<Vec<u8>>`）/ `FontRefs` / `FontMetrics` と、その構築を
   与える拡張トレイト `FontDataExt` / `FontRefsExt` / `FontMetricsExt`、1 フォントぶんのメトリクス
   `FontMetric`（upem / ascender / descender の一元化）、エラー `FontLoadError`。読み込みは `rayon` で
   種別ごとに並列化する。
 - `glyph_run`（非公開、root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング結果 1 個の
   グリフ列とその配置情報。値は `Color` / `FontType` / `Length` という model の共通値型にしか依存しない
-  leaf 型だが、`typeset::block`（生成）と `pdf_gen`（最終描画）の双方が同じ型を必要とし、どちらも既に
-  `font` crate に依存済みだったため、新規 Cargo 依存を増やさずに置ける唯一の場所として `model` から
-  ここへ移した（#280）。
+  leaf 型で、`typeset::block` が生成し `build_pdf::publication` が消費する（#280 で `model` から移設。
+  当時は `pdf_gen` crate も同じ型を直接消費していたが、#305 / #307 で `seiran-pdf` が自己完結型
+  `seiran_pdf::GlyphRun` を持つようになったため、変換は `build_pdf::publication::to_pdf_glyph_run` の
+  1 箇所に閉じている）。
 - `shaper`（`pub mod`）: `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・
   バリエーション軸を反映して文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
 - `validate_font`（非公開、root facade で `FontValidationError` / `FontValidationErrors` /
@@ -390,7 +405,7 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
   まとめると自己参照構造体になる — これを避けて `FontResources`（所有）と `FontSystem`（借用ビュー）の
   2 段に分けている。呼び出し側（`seiran`）は個々の型の構築順序を一切知らない。
 
-### 不変条件・注意点
+#### 不変条件・注意点
 
 - フォントのサブセット化は行わない（`krilla` が PDF 生成時に内部で実施する）。
 - フォントに触れてよいのは (a) `build_blocks` の計測・シェーピングと (e) 描画だけ。box は (a) で
@@ -399,15 +414,15 @@ CSL スタイルは `style.reference.csl_path` の `.csl` を読む（引用が�
   `FontResources::system` の 2 段呼び出しだけを知り、`ShaperDatas` / `ShaperInstances` /
   `HarfRustShapers` / `validate_fonts` を直接構築しない。
 
-## `typeset`
+### `typeset`
 
-### 責務
+#### 責務
 
 解決済みドキュメント（`resolve::ResolvedDocument`）から、配置済み直前のブロック列・ページ列までの組版
-パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` クレートが上流で済ませて
+パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` module が上流で済ませて
 いるため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
 （`### lowering` 節を参照）。`lowering` /
-`block` / `breaking` / `layout` / `pipeline` の 5 module はすべて非公開で、公開 API はクレート root の
+`block` / `breaking` / `layout` / `pipeline` の 5 module はすべて非公開で、公開 API は module root の
 `pub use` に揃える。段順序（lowering → `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline`
 module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶのは次の入口関数だけである（issue #281）。
 
@@ -425,8 +440,9 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 `build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` / `resolve_hyphenation` /
 `break_opportunities` はこれらの入口関数からのみ呼ばれる非公開実装になり、個別には公開しない
 （acceptance criteria）。`lower_sources_with_headings` / `LoweringContext` / `LayoutNode` /
-`HeadingRecord` は例外的に公開のまま残す — `crates/typeset/tests/smoke.rs`（crate 外統合テスト）が
-直接呼ぶため（旧 `lower_document` / `lower_nodes` / `SourceGroup` / `LoweringError` は issue #282 で
+`HeadingRecord` は例外的に module 外へ公開したまま残す — `typeset` module 直下の smoke テスト
+（旧 `crates/typeset/tests/smoke.rs`）が直接呼ぶため（旧 `lower_document` / `lower_nodes` /
+`SourceGroup` / `LoweringError` は issue #282 で
 `lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
 `ResolvedDocument` 1 本になり、複数ソースの束ね方も `resolve::SemanticGroup` / `ResolvedGroup` 側の
 関心事になったため（書誌は `SemanticDocument`/`ResolvedDocument` の `bibliography` フィールドとして groups とは別に保持する）、単一ソース用の薄いラッパーも不要になった）。`LineBreaker` トレイトと
@@ -438,11 +454,11 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 移設）。`Page` / `Block` は入口関数の入出力境界型として引き続き公開する一方、`HItem` / `HBoxContent` /
 `PlacedTableRow` 等の内部ツリー型は `crates/seiran/src/build_pdf/publication.rs` / `dump.rs` が直接
 走査するために公開のまま残っている（組版中間型の所有者移動は #281 のスコープ外・別 issue）。
-シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` crate にある（`font` 節参照）。
+シェーピング結果 `GlyphRun` / `Glyph` は `layout` にはなく `font` module にある（`font` 節参照）。
 `typeset` root からの `Glyph` / `GlyphRun` 再エクスポートは廃止した（消費者は `font::Glyph` /
 `font::GlyphRun` を直接 import する）。
 
-### `layout`
+#### `layout`
 
 組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する（旧 `model` から #280 で移設）。
@@ -459,10 +475,10 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。5 ファイルの
 相互参照は `super::` で解決し、`crate::layout::{...}` のパスを通じて `block` / `breaking` 側から使う。
 
-### `lowering`
+#### `lowering`
 
 解決済みドキュメント（`resolve::ResolvedDocument`）→ `LayoutNode` への変換。フォント・シェーピング
-非依存。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` クレートが上流で済ませているため、
+非依存。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` module が上流で済ませているため、
 この module は「解決済みの構造値（`resolve::CounterValue`）を style の表示側フィールドで文字列にして
 箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す公開関数が無い、`## resolve` 節
 参照）。
@@ -473,7 +489,7 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
   `theorem` / `title_page`
 - `counter`（+ `counter::format`）: `resolve::CounterValue` から `number_format` / `number_style` /
   `ref_format` / cleveref 相当の書式（定理は固定 `"{display_name} {number}"`）で表示文字列を作る純粋関数群。
-  値の算出（発番・リセットカスケード）は持たない — それは `resolve::CounterRegistry`（`resolve` クレート
+  値の算出（発番・リセットカスケード）は持たない — それは `resolve::CounterRegistry`（`resolve` module
   非公開）の責務
 - `placeholder`: `{name}` 形式プレースホルダの共通トークナイザ
 
@@ -512,7 +528,7 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 （`SourceId` は `seiran::build_pdf::project::SourceDb::register` が唯一の発行元であり、`resolve` はここで
 発行された ID を受け取って運ぶだけで自ら発行しない。#299）
 
-### `block`
+#### `block`
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
@@ -553,7 +569,7 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
   追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる
 - `yakumono`: 和文約物の分類と JIS X 4051 の前後アキ規則
 
-### `breaking`
+#### `breaking`
 
 フォント非依存の純粋組版パス（コア型は `typeset::layout` にあり、本 module には純粋パス本体だけが残る）。
 `break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
@@ -586,7 +602,7 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 なくページになる。`PlacedFootnote` は表示番号（`number`）と出現 index（`index`）の両方を運ぶ — 前者は既に
 マーカーのグリフとして焼き込み済みの値、後者は採番方式に依らない同一性。
 
-### 長い脚注のページ間分割（繰越、#227）
+#### 長い脚注のページ間分割（繰越、#227）
 
 脚注 1 個がその行のページの脚注エリアに収まらないときは、**組版済みの行単位で分割**して残りを次リージョンの
 脚注エリアの**先頭**へ繰り越す（LaTeX の split footnotes 相当）。設計上の要点は 4 つ。
@@ -616,75 +632,25 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 採番（`per_page_footnote_numbers`）は `continued` の断片を数えない — 数えると繰越先ページで番号を振り直して
 しまう。
 
-## `pdf_gen`
+### `build_pdf`
 
-### 責務
+#### 責務
 
-(e) 描画。確定座標の `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。`krilla` /
-`krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。`typeset::breaking` に依存しない
-ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
-`PdfGenError`、および `Publication` を組み立てるための入力型・画像デコードヘルパのみ（下記）。`Vec<Page>` →
-`Publication` への変換（旧 `PublicationBuilder`）は compiler 側（`seiran::build_pdf::publication`）に
-移設済み（epic #276 / #277）— pdf_gen は `config::Config` / `typeset::Page` のどちらにも依存しない。
-画像の自然寸法解決（旧 `resolve_images` prepass）と `ImageSet` も compiler 側
-（`seiran::build_pdf::image_resources`）に移設済み（epic #276 / #279）。
+`seiran` の外部入口 `compile` を持つ module（issue #304 で導入した lib target の実体）。言語処理・意味解決・
+組版を 1 回の呼び出しに畳み、段の呼び出し順序・中間型（`ParsedSource` / `LaidOutDocument` / `FontResources` /
+画像資源等）は一切公開しない（`lib.rs` が crate 外へ出すのは `Compilation`・その構成要素
+（`DependencyManifest` / `DiagnosticSet` / `BuildStatistics` / `OutputPlan`）・`seiran_pdf::Publication` の
+再エクスポート・`ProjectSource` 系のみ）。PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない —
+`Compilation.output`（`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran-cli`）の責務。
 
-### モジュール構成
-
-- `publication`: `Publication`（座標・描画順が確定した中間表現）の型定義のみ（構築ロジックは持たない）。
-  公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
-  `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
-- `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
-  バイト列）と、それを組み立てる `ResourceBundle::new`。フォント設定は `font::FontFaceConfigs`
-  （`font` クレートが `config::FontConfig` から `font_index` / `variation_axes` だけを取り出して構築する
-  config 非依存の複製）を受け取る。pdf_gen 自前のミラー型は持たない（#305）
-- `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
-  の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
-- `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
-  薄い公開関数 `natural_image_size` を持つ（デコードの実装は pdf_gen に 1 本化されたまま）。`ImageSet`
-  相当の自然寸法解決・width / height 確定ロジック（旧 `resolve_images` prepass）は compiler 側
-  （`seiran::build_pdf::image_resources`）へ移設済み（epic #276 / #279）
-- `font` / `metadata` / `error`: グリフ（`font::Glyph`）の krilla 型変換 / PDF メタデータ構築 /
-  `PdfGenError`
-
-### 不変条件・注意点
-
-- **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
-  集合）。ここを増やすときは「前段で決められない描画か」を確認する。
-- **`Style` / `Config` に依存しない**。表のセル余白 / 罫線太さ / 罫線色・ページ背景色は前段
-  （`typeset::breaking`）が `Style` から解決済みの値として `typeset::Page.background_color` /
-  `typeset::PlacedBlock::Table` の `cell_padding` / `rule_thickness` / `rule_color` に載せており、左マージン・
-  ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`seiran::build_pdf::publication`）が
-  `config::Config` から読んで `Publication` に前倒し解決してから渡す。
-- `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
-  `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
-  行わない。`typeset::Page` / `Config` / `Style` を直接読む旧描画経路は削除済みで、復活させない。
-- 既知の制限: 表セル内の脚注はページ列に配置されない。
-
-## `seiran`
-
-### 責務
-
-`crates/seiran` は `src/lib.rs`（lib target）と `src/main.rs`（bin target）の両方を持つ（issue #304）。
-lib target は言語処理・意味解決・組版を 1 回の呼び出しに畳んだ `compile` を唯一の外部入口として公開し、
-段の呼び出し順序・中間型（`ParsedSource` / `LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない
-（公開されるのは `Compilation`・その構成要素（`DependencyManifest` / `DiagnosticSet` / `BuildStatistics` /
-`OutputPlan`）・`pdf_gen::Publication` の再エクスポートのみ）。bin target（`main.rs`）は `mod cli; mod
-subcommand; mod write_error;` だけを持ち、`compile` → `pdf_gen::render` → atomic write（`tempfile` 経由の
-一時ファイル + rename）→ 結果表示の 4 手順に限定される。`cli` 子 module が clap derive による CLI 引数定義
-（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` /
-`ttc-names` / `script-langs` の実装（`read-fonts` を直接使用し、`font` クレートには依存しない）を持つ。
-`write_error` は PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError` を持つ、bin 専用の
-関心事（`compile` の失敗とは型を分ける — `compile` は保存を行わないため）。
-
-`build_pdf`（lib target 配下）は **compile facade**（`compile` とその周辺の公開型）と **compiler core**
+`build_pdf` は **compile facade**（`compile` とその周辺の公開型）と **compiler core**
 （不変な入力から組版成果物を返す phase graph）に分かれる。分離の意図は 2 つ — compiler core から
 filesystem access を除いて組版を決定的にテストできるようにすることと、「ページ情報を使う」という共通点
 だけで目次・索引・走り文・脚注を 1 つの巨大な solver に集めず、処理順を明示的な DAG として持つこと。
 汎用の「安定するまで全工程を反復」は使わない（循環が残るのはページ単位の脚注採番だけで、それは専用
 solver に閉じ込める）。
 
-### compile facade（`build_pdf.rs` 直下）
+#### compile facade（`build_pdf.rs` 直下）
 
 `build_pdf.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
 `parse_project` / `build_publication` / `parse_all_sources` /
@@ -715,7 +681,7 @@ facade はこれを知らない（issue #278）。子 module:
 - `image_manifest`: `parse_project` が本文 `DocNode` 列から集める画像パス一覧 `ImageManifest`（重複なし・
   `AssetId` の昇順）
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
-  `pdf_gen::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
+  `seiran_pdf::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
   `resolve_images`（旧 `pdf_gen::resolve_images`）。driver が読込を 1 回だけ呼び、`resolve_images` は
   phase 1（`body`）から呼ばれる
 - `page_values`: ページ分割後に確定する値の解決機構。本文ページ列からしか構築できない `BodyPageValues`
@@ -724,8 +690,8 @@ facade はこれを知らない（issue #278）。子 module:
 - `outline`: 見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる `collect_outline_entries`。
   `OutlineEntry` はここで定義する（旧 `pdf_gen::OutlineEntry` を移設。生産者・消費者とも compiler 側だけ
   になったため）
-- `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
-  `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
+- `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `seiran_pdf::ResourceBundle` から
+  `seiran_pdf::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
   epic #276 / #277）
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
@@ -733,7 +699,7 @@ facade はこれを知らない（issue #278）。子 module:
 - `diagnostic_set`: `compile` の外部境界を横切る診断の集合 `DiagnosticSet`（`Compilation.warnings` と
   `compile` の `Err` 型を兼ねる）。中身は型消去済みの `miette::Report` の列で、1 件なら `into_report` が
   元の `Report` をそのまま返す（`compile` に包む前後で診断のレンダリング結果が完全に一致することを保証する）
-- `error`: `CompileError`（各クレートのエラーを束ねる。ラベル・カウンタの解決は `resolve` クレートが行うため、
+- `error`: `CompileError`（各 module のエラーを束ねる。ラベル・カウンタの解決は `resolve` module が行うため、
   `typeset::lowering` 由来の診断エラーはもう無い。`resolve::ResolveError` は `Origin::Source(SourceId)` /
   `Origin::Generated` を発生時点から運んでおり、`wrap_resolve_error` は `project::SourceDb`（`SourceId` の
   唯一の発行元。`config.sources` の読込時に `register` する）から `NamedSource` を引き当てて `Resolve` /
@@ -747,10 +713,10 @@ facade はこれを知らない（issue #278）。子 module:
   とは型を分けて扱う。PDF の保存（`WritePdf` / `CreateOutputDir` 相当）は `compile` の関心事ではなくなった
   ため `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ（issue #304））
 
-### compiler core（phase graph）
+#### compiler core（phase graph）
 
 `layout` 子 module の `DocumentLayouter::layout` が phase graph 全体をオーケストレーションする、外から見える
-唯一の組版操作（旧 `compile::compile_project` を型でラップしたもの。issue #304 — typeset クレートの
+唯一の組版操作（旧 `compile::compile_project` を型でラップしたもの。issue #304 — `typeset`（当時は独立 crate）の
 公開面は #281 で 4 関数 + `LineBreaker` seam に閉じているため、ここへ全体オーケストレーションを持ち込まず
 seiran 側に閉じたまま維持する）。フォント資源（`font::FontSystem`）は `DocumentLayouter::new` が受け取って
 `CompileContext` に束ねるだけで、`ShaperDatas` / `ShaperInstances` / `HarfRustShapers` / `FontRefs` の構築は
@@ -773,7 +739,7 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
 - `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
   `PageValue`（1 始まり）を型で分離する（issue #304。両方とも `usize`/`u32` のままだと引数の取り違えが
   型検査を素通りしてしまうため）。`compile` の公開境界は越えない（`Compilation` が公開する組版済み型は
-  座標確定済みの `pdf_gen::Publication` のみで、ページ index/value はそこへ変換済みのため）
+  座標確定済みの `seiran_pdf::Publication` のみで、ページ index/value はそこへ変換済みのため）
 - `body`: phase 1 の本文パス。段順序（lowering → `build_blocks` → `resolve_images` → `break_pages`）は
   `typeset::layout_body` 1 呼び出しに畳んである（issue #281）。`resolve_images`（実装は
   `image_resources`、epic #276 / #279）は typeset が画像デコードに依存しないよう、`layout_body` に
@@ -781,7 +747,7 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
   （パスの中身自体は変わらない）
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
-### 脚注のページ単位採番（`build_pdf::footnote_numbering`、#226 / #267）
+#### 脚注のページ単位採番（`build_pdf::footnote_numbering`、#226 / #267）
 
 `style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
 決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
@@ -802,14 +768,14 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
 始まらない不整合な結果を成功として出さず、`CompileError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す。
 
 通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。表セル内の脚注は
-ページ列に配置されない（`pdf_gen` の既知の制限）ためマップに載らず、`per_page` でも通し番号のまま表示される。
+ページ列に配置されない（`seiran-pdf` の既知の制限）ためマップに載らず、`per_page` でも通し番号のまま表示される。
 
-### テスト用子 module（`#[cfg(test)]` 限定）
+#### テスト用子 module（`#[cfg(test)]` 限定）
 
-唯一の消費者がテストであるため、`model` ではなく本クレートに置く。
+唯一の消費者がテストであるため、`model` ではなく `build_pdf` に置く。
 
 - `dump`: `dump_pages`（確定ページ列 `typeset::Page` の決定的テキストダンプ）と `dump_publication`
-  （`pdf_gen::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
+  （`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
   → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク → しおりの順に、内部の
   `dump_metadata` 補助関数を介してダンプする）
 - `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
@@ -848,7 +814,86 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
   `Publication`（`PartialEq`）が完全に一致することを `proptest!` で検証する（`prop_assert_eq!`。
   テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通す代表的な 3 種の埋め込み `.sei`
   文字列に対して実行し、網羅目的の fixture 追加はしない）
-- `tests/render_immutability.rs`: `pdf_gen::render` は `&Publication`（共有参照）しか取らないため
+- `tests/render_immutability.rs`: `seiran_pdf::render` は `&Publication`（共有参照）しか取らないため
   型システム上「render は Publication を変更できない」ことは既に保証されているが、将来のシグネチャ
   変更（`&mut Publication` への変更等）でこの契約が壊れたときに検知できるよう、呼び出し前後の値
   比較で回帰ガードを固定する。
+
+## `seiran-pdf`
+
+### 責務
+
+(e) 描画。確定座標の `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。`krilla` /
+`krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。`typeset::breaking` に依存しない
+ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
+`PdfGenError`、および `Publication` を組み立てるための入力型・画像デコードヘルパのみ（下記）。`Vec<Page>` →
+`Publication` への変換（旧 `PublicationBuilder`）は compiler 側（`seiran::build_pdf::publication`）に
+移設済み（epic #276 / #277）— `seiran-pdf` は `seiran` に依存せず、compiler 内部型（`config::Config` /
+`typeset::Page` 等）を一切知らない自己完結 crate である（#307。境界型はすべて `types` module の leaf 型）。
+画像の自然寸法解決（旧 `resolve_images` prepass）と `ImageSet` も compiler 側
+（`seiran::build_pdf::image_resources`）に移設済み（epic #276 / #279）。
+
+### モジュール構成
+
+- `publication`: `Publication`（座標・描画順が確定した中間表現）の型定義のみ（構築ロジックは持たない）。
+  公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
+  `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
+- `types`: 境界専用の自己完結 leaf 型（`FontType` / `FontFaceInput` / `VariationAxisInput` / `FontMetric` /
+  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `model` / `font`
+  の型を参照しない（#307。compiler 側からの変換は `seiran::build_pdf::publication` に閉じている）
+- `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
+  バイト列）と、それを組み立てる
+  `ResourceBundle::new(fonts: HashMap<FontType, FontFaceInput>, font_metrics: HashMap<FontType, FontMetric>,
+  image_bytes: HashMap<String, Vec<u8>>)`。フォント設定は `types::FontFaceInput`（フォントの生バイト列 +
+  `font_index` + `variation_axes`）として受け取り、`config` のミラー型は持たない（#305 / #307）
+- `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
+  の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
+- `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
+  薄い公開関数 `natural_image_size` を持つ（デコードの実装は `seiran-pdf` に 1 本化されたまま）。`ImageSet`
+  相当の自然寸法解決・width / height 確定ロジック（旧 `resolve_images` prepass）は compiler 側
+  （`seiran::build_pdf::image_resources`）へ移設済み（epic #276 / #279）
+- `font` / `metadata` / `error`: グリフ（`types::Glyph`）の krilla 型変換 / PDF メタデータ構築 /
+  `PdfGenError`（診断コードの prefix は crate 名に揃えた `seiran_pdf::<name>`、#307）
+
+### 不変条件・注意点
+
+- **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
+  集合）。ここを増やすときは「前段で決められない描画か」を確認する。
+- **`Style` / `Config` に依存しない**（そもそも `seiran` に依存しないので参照できない）。表のセル余白 /
+  罫線太さ / 罫線色・ページ背景色は前段（`seiran` の `typeset::breaking`）が `Style` から解決済みの値として
+  `typeset::Page.background_color` / `typeset::PlacedBlock::Table` の `cell_padding` / `rule_thickness` /
+  `rule_color` に載せており、左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側
+  （`seiran::build_pdf::publication`）が `config::Config` から読んで `Publication` に前倒し解決してから渡す。
+- `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
+  `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
+  行わない。`typeset::Page` / `Config` / `Style` を直接読む旧描画経路は削除済みで、復活させない。
+- 既知の制限: 表セル内の脚注はページ列に配置されない。
+
+## `seiran-cli`
+
+### 責務
+
+CLI エントリーポイント（package 名は `seiran-cli`、binary 名は `seiran`）。`seiran` と `seiran-pdf` の
+両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
+結果表示の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない（#304 / #307）。
+filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
+閉じており、`seiran` は `ProjectSource` seam 越しにしか外部資源へ触らない（#300）。
+
+### モジュール構成
+
+- `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
+  `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config` を省略すると `./config/config.toml`
+- `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
+  `seiran` の `font` module には依存しない（フォントファイルを調べるだけで組版を伴わないため）
+- `write_error`: PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError`。`compile` の失敗とは
+  型を分ける — `compile` は保存を行わないため
+
+### 不変条件・注意点
+
+- **段順序の知識を持たない**。`main` が呼ぶのは `seiran::compile` と `seiran_pdf::render` の 2 つだけで、
+  parse / resolve / typeset の各段を個別に呼ぶ経路は復活させない（#304）。
+- **保存は CLI 側の責務**。`compile` は `Compilation.output`（`OutputPlan { pdf_path }`）を返すだけで
+  書き出さない。atomic write は保存先と同じディレクトリに一時ファイルを作ってから rename する
+  （cross-filesystem の rename は atomic にならないため）。
+- `[[bin]] name = "seiran"` で binary 名を package 名から切り離している。`cargo run -- build` が
+  そのまま動く必要があるため、この指定を外さない。
