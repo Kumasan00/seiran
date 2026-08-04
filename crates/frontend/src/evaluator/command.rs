@@ -192,6 +192,7 @@ pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, Eval
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
+  use proptest::prelude::*;
 
   use super::*;
   use crate::evaluator::lookup_env_parse_mode;
@@ -216,5 +217,55 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+  }
+
+  /// `COMMAND_MAP` の全コマンド名を返す（proptest 戦略の入力用）
+  fn all_command_names() -> Vec<&'static str> { return COMMAND_MAP.entries().map(|(name, _)| return *name).collect(); }
+
+  proptest! {
+    #![proptest_config(ProptestConfig::with_cases(1500))]
+
+    /// コマンド名（28 種）× `{}` 引数個数（0〜4 個）の全 140 通りを 1500 ケースで
+    /// 反復抽出しても panic せず、かつ「成功」または引数・オプション規則（P2/P3/P6）に
+    /// 関する既知のエラー種別のいずれかを返す（#306 property: 全コマンドがカタログの
+    /// 引数・option 規則に従う）。組み合わせ数が 140 と小さいため、ケース数は
+    /// proptest 既定の 256 では取りこぼしうる（サンプリング1回あたり約 16% の確率で
+    /// ある組み合わせが未試行になる）ことを踏まえ明示的に増やしている。
+    ///
+    /// 環境・数式・表専用のエラー種別（`TableRowCellCountMismatch` 等）が返った場合は、
+    /// トップレベルの単一コマンド呼び出しでは本来発生しえない経路に迷い込んだことを意味し、
+    /// 許可リストに追加せず不具合として扱う。
+    #[test]
+    fn any_command_with_any_arg_count_never_panics_and_only_returns_known_errors(
+      name in prop::sample::select(all_command_names()),
+      arg_count in 0usize..=4,
+    ) {
+      // Arrange
+      let arena = Bump::new();
+      let args = "{a}".repeat(arg_count);
+      let source = format!("\\{name}{args}");
+
+      // Act
+      let cst = parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
+      let result = crate::evaluator::evaluate_children(&source, cst);
+
+      // Assert
+      let is_known_outcome = matches!(
+        result,
+        Ok(_)
+          | Err(
+            EvalError::MissingCommandArgument { .. }
+              | EvalError::ExtraCommandArgument { .. }
+              | EvalError::InvalidCommandArgument { .. }
+              | EvalError::UnknownOptArgKey { .. }
+              | EvalError::IndexNotAllowedHere { .. }
+              | EvalError::ParagraphBreakInArgument { .. }
+              | EvalError::NoindentNotAtParagraphStart { .. }
+              | EvalError::BlockInInline { .. }
+              | EvalError::UnknownCitationKeys { .. }
+          )
+      );
+      prop_assert!(is_known_outcome, "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}");
+    }
   }
 }

@@ -58,7 +58,9 @@
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
-  ダンプ `dump_pages` も唯一の消費者が golden テストのため `seiran::build_pdf::dump` に置く。
+  ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`pdf_gen::Publication` 用、golden
+  主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
+  `seiran::build_pdf::dump` に置く。
 - **アンカーは型で namespace を分ける**。`AnchorMark` / `LinkTarget::Internal` は見出し・ラベル・引用・
   脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID（`HeadingKey` / `LabelId` /
   `CitationId` / `FootnoteId`）で区別する。旧来は `"prefix:"` という文字列命名規約だけで区別しており
@@ -215,8 +217,11 @@ pub trait ProjectSource: Send + Sync {
 `ref_format` / `display_name` / `number_style`）は一切読まない — 値と表示の分離は G3（内容は見た目から
 独立）の実現だが、型で強制されているわけではない（`resolve_project` は `&config::Style` 全体を受け取り、
 表示フィールドを読むこと自体は型上可能）。実際の保証は「`resolve` の関数はこれらのフィールドを参照しない」
-という規約と、`crates/resolve/tests/style_independence.rs` の property test（表示のみ異なる style を
-差し替えても `ResolvedDocument` が変わらないことを検証）による。`typeset::lowering` 側が
+という規約と、`crates/resolve/tests/style_independence.rs` の手書きテスト + property test（表示側
+フィールドのみ異なる style を差し替えても `ResolvedDocument` が変わらないことを検証。property test
+（`resolved_document_is_identical_for_any_display_only_variant_combination`、issue #306）は
+`number_format` / `ref_format` / `display_name` / `number_style` の 0〜4 個をランダムに組み合わせて
+上書きする形に一般化してある）による。`typeset::lowering` 側が
 `&config::Style` と `CounterValue` を合わせて表示文字列を作る。
 
 ### モジュール構成
@@ -305,6 +310,12 @@ CST を走査して Document IR（`model::DocNode` 等）へ評価変換する�
 - **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置
   だけを構造化し、実際の発番・`\ref` 解決は `resolve` クレートが、書式化（表示文字列の生成）は
   `typeset::lowering` が担う。書式は「種類の既定」＝ style.toml 管轄という P10 の分離原則に沿わせるため。
+- **未知引数・引数個数の不一致で panic しない**: `command.rs` の `#[cfg(test)] mod tests` に
+  `proptest!`（`any_command_with_any_arg_count_never_panics_and_only_returns_known_errors`、
+  issue #306）があり、`COMMAND_MAP` の全コマンド名 × 0〜4 個の位置引数を任意に組み合わせても panic
+  せず、トップレベル呼び出しで妥当な `EvalError` の閉じた許可リスト（引数個数・オプションキー等
+  9 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
+  ことを意味し、許可リストへ足さず不具合として扱う。
 - **`config` に依存しない**。style / config の値を見ずに評価できる形を保つ。
 - 診断は `model::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
@@ -545,6 +556,9 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 ### `breaking`
 
 フォント非依存の純粋組版パス（コア型は `typeset::layout` にあり、本 module には純粋パス本体だけが残る）。
+`break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
+（issue #306）が、Rule ベースのボックスのみでページを組んで `font::FontSystem` を一切構築しないこと
+を回帰テストとして固定している。
 
 - (b) `break_opportunities`: ICU の `LineSegmenter`（UAX #14）に `hyphenation`（`hypher`）の欧文語中分割点
   （`BreakKind::Hyphen`）を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決する
@@ -794,8 +808,24 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
 
 唯一の消費者がテストであるため、`model` ではなく本クレートに置く。
 
-- `dump`: `dump_pages`（確定ページ列の決定的テキストダンプ）
-- `golden`: レイアウトダンプ golden の比較テスト
+- `dump`: `dump_pages`（確定ページ列 `typeset::Page` の決定的テキストダンプ）と `dump_publication`
+  （`pdf_gen::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
+  → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク → しおりの順に、内部の
+  `dump_metadata` 補助関数を介してダンプする）
+- `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
+  （`crates/seiran/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
+  （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、`dump_input_via_compile` を介して `super::compile()`
+  → `dump_publication` を通る（issue #306）。残り 8 テストは golden ファイルを介さず 2 通りに分かれる
+  ——`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する
+  （`index_marks_are_invisible_to_layout`、style 差分 3 種 `layout_dump_is_deterministic_across_builds`
+  / `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`）か、
+  `build_pages` を直接呼んで返り値の `Page` / `PlacedBlock` へ直接アサートしダンプ関数を一切通らない
+  （`keep_with_next_prevents_heading_orphan_end_to_end`、脚注ページ単位採番 2 種
+  `per_page_footnote_numbering_restarts_on_each_page` /
+  `continuous_footnote_numbering_runs_through_pages`、
+  `long_footnote_splits_across_pages_without_overlapping_body`）。`Publication` / `dump_publication`
+  は `typeset::Page` レベルの anchor・索引語の表現を持たないため、この 8 テストは現時点では移行して
+  いない——対応する golden 移行は今後のフェーズ判断次第
 - `diagnostics`: miette 診断メッセージの golden テスト
 - `pdf_structure`: `lopdf` による独立 reader での PDF 構造 golden テスト
 
@@ -807,3 +837,18 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
 （issue #304）。`compile` が `pub(crate)` のままでも crate 内部テストは通ってしまうため、この
 受け入れ条件は crate 境界をまたぐ独立テストでしか機械的に検証できない。すべてのパスを絶対パス
 （`/project/...`）にして `MemoryProjectSource` へ登録し、`std::env::current_dir` に依存しない。
+
+`tests/common/mod.rs`（Rust の慣例で `tests/common.rs` ではなく `tests/common/mod.rs` に置くことで
+独立テストバイナリとして扱われないようにした共有ヘルパ。`read_test_font` / `minimal_config_toml` を
+持ち、`tests/compile_facade.rs` / `tests/determinism.rs` / `tests/render_immutability.rs` それぞれが
+`mod common;` で個別に取り込む）を土台に、issue #306 のステージ境界不変条件を検証する property test /
+回帰テストが 2 本ある:
+
+- `tests/determinism.rs`: 同じ `MemoryProjectSource` を `seiran::compile()` で 2 回呼んでも
+  `Publication`（`PartialEq`）が完全に一致することを `proptest!` で検証する（`prop_assert_eq!`。
+  テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通す代表的な 3 種の埋め込み `.sei`
+  文字列に対して実行し、網羅目的の fixture 追加はしない）
+- `tests/render_immutability.rs`: `pdf_gen::render` は `&Publication`（共有参照）しか取らないため
+  型システム上「render は Publication を変更できない」ことは既に保証されているが、将来のシグネチャ
+  変更（`&mut Publication` への変更等）でこの契約が壊れたときに検知できるよう、呼び出し前後の値
+  比較で回帰ガードを固定する。

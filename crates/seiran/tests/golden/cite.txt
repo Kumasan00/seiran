@@ -1,117 +1,111 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=23.02 depth=5.72 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
-    box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="引"
-    box x=40.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="用"
-    box x=60.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="の"
-    box x=80.12 dy=0.00 w=19.00 glyphs font=JapaneseSerifBold size=20.00 text="サ"
-    box x=99.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="ン"
-    box x=119.12 dy=0.00 w=19.20 glyphs font=JapaneseSerifBold size=20.00 text="プ"
-    box x=138.32 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="ル"
-  line baseline_y=311.63 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="最"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="初"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
-    box x=36.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="単"
-    box x=48.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="一"
-    box x=60.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=72.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="文"
-    box x=84.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="献"
-    box x=96.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=108.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="引"
-    box x=120.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="用"
-    box x=132.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="し"
-    box x=144.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ま"
-    box x=156.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=170.82 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="["
-    box x=174.98 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
-    box x=180.92 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="]"
-    box x=185.09 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=193.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="続"
-    box x=205.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="い"
-    box x=217.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="て"
-    box x=229.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="複"
-    box x=241.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="数"
-    box x=253.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=265.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="文"
-    box x=277.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="献"
-    box x=289.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=301.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ま"
-    box x=313.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="と"
-    box x=325.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="め"
-    box x=337.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="て"
-    box x=349.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="引"
-    box x=361.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="用"
-    box x=373.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="し"
-    box x=385.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ま"
-    box x=397.91 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=412.73 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="["
-    box x=416.89 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
-    box x=422.83 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="]"
-    box x=427.00 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=432.76 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="["
-    box x=436.92 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="2"
-    box x=442.86 dy=0.00 w=4.16 glyphs font=Serif size=12.00 text="]"
-    box x=447.02 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    linkspan target=Internal("cite:kwan2014") x0=170.82 x1=185.09
-    linkspan target=Internal("cite:kwan2014") x0=412.73 x1=427.00
-    linkspan target=Internal("cite:doe2020") x0=432.76 x1=447.02
-  line baseline_y=336.23 height=15.24 depth=4.76 last=true
-    box x=0.00 dy=0.00 w=103.12 glyphs font=SerifBold size=20.00 text="References"
-  line baseline_y=367.23 height=9.14 depth=2.86 last=true
-    box x=0.00 dy=0.00 w=14.27 glyphs font=Serif size=12.00 text="[1]"
-    box x=17.09 dy=0.00 w=11.36 glyphs font=Serif size=12.00 text="K."
-    box x=31.27 dy=0.00 w=29.48 glyphs font=Serif size=12.00 text="Kwan"
-    box x=60.76 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=66.52 dy=0.00 w=29.21 glyphs font=SerifItalic size=12.00 text="Crazy"
-    box x=98.42 dy=0.00 w=22.27 glyphs font=SerifItalic size=12.00 text="Rich"
-    box x=123.40 dy=0.00 w=33.50 glyphs font=SerifItalic size=12.00 text="Asians"
-    box x=156.90 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text="."
-    box x=162.66 dy=0.00 w=23.34 glyphs font=Serif size=12.00 text="New"
-    box x=188.58 dy=0.00 w=26.98 glyphs font=Serif size=12.00 text="York,"
-    box x=218.38 dy=0.00 w=18.59 glyphs font=Serif size=12.00 text="NY,"
-    box x=239.78 dy=0.00 w=15.07 glyphs font=Serif size=12.00 text="US"
-    box x=254.86 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=":"
-    box x=260.62 dy=0.00 w=38.53 glyphs font=Serif size=12.00 text="Anchor"
-    box x=301.97 dy=0.00 w=31.00 glyphs font=Serif size=12.00 text="Books"
-    box x=332.96 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=338.72 dy=0.00 w=23.76 glyphs font=Serif size=12.00 text="2014"
-    box x=362.48 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text="."
-  line baseline_y=391.83 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=14.27 glyphs font=Serif size=12.00 text="[2]"
-    box x=17.09 dy=0.00 w=7.21 glyphs font=Serif size=12.00 text="J."
-    box x=27.12 dy=0.00 w=20.50 glyphs font=Serif size=12.00 text="Doe"
-    box x=47.62 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=53.38 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="「"
-    box x=59.38 dy=0.00 w=15.76 glyphs font=Serif size=12.00 text="On"
-    box x=77.95 dy=0.00 w=54.85 glyphs font=Serif size=12.00 text="Something"
-    box x=135.62 dy=0.00 w=55.15 glyphs font=Serif size=12.00 text="Interesting"
-    box x=190.78 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="」"
-    box x=196.78 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=202.54 dy=0.00 w=38.21 glyphs font=SerifItalic size=12.00 text="Journal"
-    box x=243.44 dy=0.00 w=9.92 glyphs font=SerifItalic size=12.00 text="of"
-    box x=255.83 dy=0.00 w=33.84 glyphs font=SerifItalic size=12.00 text="Things"
-    box x=289.67 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=295.43 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="巻"
-    box x=310.25 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="3"
-    box x=316.19 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=321.95 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="号"
-    box x=336.77 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="1"
-    box x=342.71 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=348.47 dy=0.00 w=23.76 glyphs font=JapaneseSerif size=12.00 text="ペー"
-    box x=372.23 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ジ"
-    box x=387.05 dy=0.00 w=17.88 glyphs font=Serif size=12.00 text="10–"
-    box x=404.93 dy=0.00 w=11.88 glyphs font=Serif size=12.00 text="20"
-    box x=416.81 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=","
-    box x=422.57 dy=0.00 w=5.94 glyphs font=Serif size=12.00 text="5"
-    box x=431.51 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="月"
-    box x=446.33 dy=0.00 w=23.76 glyphs font=Serif size=12.00 text="2020"
-    box x=470.09 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text="."
-anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
-anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=320.99
-anchor mark=Label("cite:kwan2014") x=0.00 y=358.09
-anchor mark=Label("cite:doe2020") x=0.00 y=378.02
-link target=Internal("cite:kwan2014") x=170.82 y=297.82 w=14.27 h=17.24
-link target=Internal("cite:kwan2014") x=412.73 y=297.82 w=14.27 h=17.24
-link target=Internal("cite:doe2020") x=432.76 y=297.82 w=14.27 h=17.24
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
+  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="引" glyph_count=1
+  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="用" glyph_count=1
+  glyphs x=301.06 y=280.63 font=JapaneseSerifBold size=20.00 text="の" glyph_count=1
+  glyphs x=321.06 y=280.63 font=JapaneseSerifBold size=20.00 text="サ" glyph_count=1
+  glyphs x=340.06 y=280.63 font=JapaneseSerifBold size=20.00 text="ン" glyph_count=1
+  glyphs x=360.06 y=280.63 font=JapaneseSerifBold size=20.00 text="プ" glyph_count=1
+  glyphs x=379.26 y=280.63 font=JapaneseSerifBold size=20.00 text="ル" glyph_count=1
+  glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="最" glyph_count=1
+  glyphs x=252.94 y=311.63 font=JapaneseSerif size=12.00 text="初" glyph_count=1
+  glyphs x=264.94 y=311.63 font=JapaneseSerif size=12.00 text="に" glyph_count=1
+  glyphs x=276.94 y=311.63 font=JapaneseSerif size=12.00 text="単" glyph_count=1
+  glyphs x=288.94 y=311.63 font=JapaneseSerif size=12.00 text="一" glyph_count=1
+  glyphs x=300.94 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=312.94 y=311.63 font=JapaneseSerif size=12.00 text="文" glyph_count=1
+  glyphs x=324.94 y=311.63 font=JapaneseSerif size=12.00 text="献" glyph_count=1
+  glyphs x=336.94 y=311.63 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=348.94 y=311.63 font=JapaneseSerif size=12.00 text="引" glyph_count=1
+  glyphs x=360.94 y=311.63 font=JapaneseSerif size=12.00 text="用" glyph_count=1
+  glyphs x=372.94 y=311.63 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=384.94 y=311.63 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=396.94 y=311.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=411.76 y=311.63 font=Serif size=12.00 text="[" glyph_count=1
+  glyphs x=415.93 y=311.63 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=421.87 y=311.63 font=Serif size=12.00 text="]" glyph_count=1
+  glyphs x=426.03 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=434.85 y=311.63 font=JapaneseSerif size=12.00 text="続" glyph_count=1
+  glyphs x=446.85 y=311.63 font=JapaneseSerif size=12.00 text="い" glyph_count=1
+  glyphs x=458.85 y=311.63 font=JapaneseSerif size=12.00 text="て" glyph_count=1
+  glyphs x=470.85 y=311.63 font=JapaneseSerif size=12.00 text="複" glyph_count=1
+  glyphs x=482.85 y=311.63 font=JapaneseSerif size=12.00 text="数" glyph_count=1
+  glyphs x=494.85 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=506.85 y=311.63 font=JapaneseSerif size=12.00 text="文" glyph_count=1
+  glyphs x=518.85 y=311.63 font=JapaneseSerif size=12.00 text="献" glyph_count=1
+  glyphs x=530.85 y=311.63 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=542.85 y=311.63 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=554.85 y=311.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=566.85 y=311.63 font=JapaneseSerif size=12.00 text="め" glyph_count=1
+  glyphs x=578.85 y=311.63 font=JapaneseSerif size=12.00 text="て" glyph_count=1
+  glyphs x=590.85 y=311.63 font=JapaneseSerif size=12.00 text="引" glyph_count=1
+  glyphs x=602.85 y=311.63 font=JapaneseSerif size=12.00 text="用" glyph_count=1
+  glyphs x=614.85 y=311.63 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=626.85 y=311.63 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=638.85 y=311.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=653.67 y=311.63 font=Serif size=12.00 text="[" glyph_count=1
+  glyphs x=657.84 y=311.63 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=663.78 y=311.63 font=Serif size=12.00 text="]" glyph_count=1
+  glyphs x=667.94 y=311.63 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=673.70 y=311.63 font=Serif size=12.00 text="[" glyph_count=1
+  glyphs x=677.86 y=311.63 font=Serif size=12.00 text="2" glyph_count=1
+  glyphs x=683.80 y=311.63 font=Serif size=12.00 text="]" glyph_count=1
+  glyphs x=687.97 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=240.94 y=336.23 font=SerifBold size=20.00 text="References" glyph_count=10
+  glyphs x=240.94 y=367.23 font=Serif size=12.00 text="[1]" glyph_count=3
+  glyphs x=258.03 y=367.23 font=Serif size=12.00 text="K." glyph_count=2
+  glyphs x=272.22 y=367.23 font=Serif size=12.00 text="Kwan" glyph_count=4
+  glyphs x=301.70 y=367.23 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=307.46 y=367.23 font=SerifItalic size=12.00 text="Crazy" glyph_count=5
+  glyphs x=339.37 y=367.23 font=SerifItalic size=12.00 text="Rich" glyph_count=4
+  glyphs x=364.34 y=367.23 font=SerifItalic size=12.00 text="Asians" glyph_count=6
+  glyphs x=397.84 y=367.23 font=Serif size=12.00 text="." glyph_count=1
+  glyphs x=403.60 y=367.23 font=Serif size=12.00 text="New" glyph_count=3
+  glyphs x=429.52 y=367.23 font=Serif size=12.00 text="York," glyph_count=5
+  glyphs x=459.32 y=367.23 font=Serif size=12.00 text="NY," glyph_count=3
+  glyphs x=480.73 y=367.23 font=Serif size=12.00 text="US" glyph_count=2
+  glyphs x=495.80 y=367.23 font=Serif size=12.00 text=":" glyph_count=1
+  glyphs x=501.56 y=367.23 font=Serif size=12.00 text="Anchor" glyph_count=6
+  glyphs x=542.91 y=367.23 font=Serif size=12.00 text="Books" glyph_count=5
+  glyphs x=573.91 y=367.23 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=579.67 y=367.23 font=Serif size=12.00 text="2014" glyph_count=4
+  glyphs x=603.43 y=367.23 font=Serif size=12.00 text="." glyph_count=1
+  glyphs x=240.94 y=391.83 font=Serif size=12.00 text="[2]" glyph_count=3
+  glyphs x=258.03 y=391.83 font=Serif size=12.00 text="J." glyph_count=2
+  glyphs x=268.06 y=391.83 font=Serif size=12.00 text="Doe" glyph_count=3
+  glyphs x=288.56 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=294.32 y=391.83 font=JapaneseSerif size=12.00 text="「" glyph_count=1
+  glyphs x=300.32 y=391.83 font=Serif size=12.00 text="On" glyph_count=2
+  glyphs x=318.90 y=391.83 font=Serif size=12.00 text="Something" glyph_count=9
+  glyphs x=376.57 y=391.83 font=Serif size=12.00 text="Interesting" glyph_count=11
+  glyphs x=431.72 y=391.83 font=JapaneseSerif size=12.00 text="」" glyph_count=1
+  glyphs x=437.72 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=443.48 y=391.83 font=SerifItalic size=12.00 text="Journal" glyph_count=7
+  glyphs x=484.39 y=391.83 font=SerifItalic size=12.00 text="of" glyph_count=2
+  glyphs x=496.77 y=391.83 font=SerifItalic size=12.00 text="Things" glyph_count=6
+  glyphs x=530.61 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=536.37 y=391.83 font=JapaneseSerif size=12.00 text="巻" glyph_count=1
+  glyphs x=551.19 y=391.83 font=Serif size=12.00 text="3" glyph_count=1
+  glyphs x=557.13 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=562.89 y=391.83 font=JapaneseSerif size=12.00 text="号" glyph_count=1
+  glyphs x=577.71 y=391.83 font=Serif size=12.00 text="1" glyph_count=1
+  glyphs x=583.65 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=589.41 y=391.83 font=JapaneseSerif size=12.00 text="ペー" glyph_count=2
+  glyphs x=613.17 y=391.83 font=JapaneseSerif size=12.00 text="ジ" glyph_count=1
+  glyphs x=627.99 y=391.83 font=Serif size=12.00 text="10–" glyph_count=3
+  glyphs x=645.87 y=391.83 font=Serif size=12.00 text="20" glyph_count=2
+  glyphs x=657.75 y=391.83 font=Serif size=12.00 text="," glyph_count=1
+  glyphs x=663.51 y=391.83 font=Serif size=12.00 text="5" glyph_count=1
+  glyphs x=672.45 y=391.83 font=JapaneseSerif size=12.00 text="月" glyph_count=1
+  glyphs x=687.27 y=391.83 font=Serif size=12.00 text="2020" glyph_count=4
+  glyphs x=711.03 y=391.83 font=Serif size=12.00 text="." glyph_count=1
+  link target=Internal(page=0, x=240.94, y=358.09) x=411.76 y=297.82 w=14.27 h=17.24
+  link target=Internal(page=0, x=240.94, y=358.09) x=653.67 y=297.82 w=14.27 h=17.24
+  link target=Internal(page=0, x=240.94, y=378.02) x=673.70 y=297.82 w=14.27 h=17.24
+outline:
+  depth=2 text=".1 引用のサンプル" page=0 x=240.94 y=257.61
+  depth=2 text="References" page=0 x=240.94 y=320.99

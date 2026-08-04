@@ -1,169 +1,149 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=23.02 depth=5.72 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
-    box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="行"
-    box x=40.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="列"
-    box x=64.82 dy=0.00 w=79.46 glyphs font=SerifBold size=20.00 text="(matrix)"
-  line baseline_y=311.63 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=33.49 glyphs font=Serif size=12.00 text="matrix"
-    box x=36.31 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="環"
-    box x=48.31 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="境"
-    box x=60.31 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=75.13 dy=0.00 w=8.83 glyphs font=Serif size=12.00 text="&"
-    box x=86.78 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=98.78 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="列"
-    box x=113.78 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="・"
-  line baseline_y=328.87 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="行"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=36.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="グ"
-    box x=48.00 dy=0.00 w=23.52 glyphs font=JapaneseSerif size=12.00 text="リッ"
-    box x=71.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ド"
-    box x=83.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=95.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="中"
-    box x=107.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="央"
-    box x=119.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="揃"
-    box x=131.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="え"
-    box x=143.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
-    box x=155.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="組"
-    box x=167.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="む"
-    box x=179.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="動"
-    box x=191.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="作"
-    box x=203.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="確"
-    box x=215.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="認"
-    box x=227.52 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="用"
-    box x=239.52 dy=0.00 w=23.04 glyphs font=JapaneseSerif size=12.00 text="フィ"
-    box x=262.56 dy=0.00 w=11.88 glyphs font=JapaneseSerif size=12.00 text="ク"
-    box x=274.44 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="ス"
-    box x=286.20 dy=0.00 w=23.64 glyphs font=JapaneseSerif size=12.00 text="チャ"
-    box x=309.84 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=318.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="区"
-    box x=330.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="切"
-    box x=342.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="り"
-    box x=354.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="括"
-    box x=366.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="弧"
-    box x=378.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=390.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="任"
-    box x=402.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="意"
-    box x=414.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="引"
-    box x=426.66 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="数"
-    box x=441.48 dy=0.00 w=46.34 glyphs font=Serif size=12.00 text="delimiter"
-    box x=490.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=502.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="選"
-    box x=514.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ぶ"
-    box x=532.64 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="（"
-    box x=538.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="既"
-    box x=550.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="定"
-    box x=562.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=574.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="括"
-    box x=586.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="弧"
-    box x=598.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="な"
-    box x=610.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="し"
-    box x=622.64 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="）"
-    box x=628.64 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=640.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="番"
-    box x=652.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="号"
-    box x=664.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=676.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="付"
-    box x=688.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="か"
-    box x=700.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="な"
-    box x=712.64 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="い"
-    box x=724.64 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-  mathblock x=587.90 baseline_y=370.62 w=28.92 h=9.14 d=17.86
-    child dx=0.56 dy=0.00 w=9.48 h=9.14 d=2.86 atom children=2
-      child dx=0.00 dy=0.00 w=6.66 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑎"
-      child dx=6.66 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-    child dx=16.84 dy=0.00 w=11.86 h=9.14 d=2.86 atom children=3
-      child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=2.82 dy=0.00 w=6.22 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑏"
-      child dx=9.04 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-    child dx=0.00 dy=-15.00 w=10.61 h=9.14 d=2.86 atom children=3
-      child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=2.82 dy=0.00 w=4.97 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑐"
-      child dx=7.79 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-    child dx=16.61 dy=-15.00 w=12.31 h=9.14 d=2.86 atom children=3
-      child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=2.82 dy=0.00 w=6.67 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑑"
-      child dx=9.49 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-  line baseline_y=419.49 height=23.02 depth=5.72 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".2"
-    box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="角"
-    box x=40.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="括"
-    box x=60.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="弧"
-    box x=80.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="つ"
-    box x=100.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="き"
-    box x=120.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="行"
-    box x=140.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="列"
-  line baseline_y=450.49 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=46.34 glyphs font=Serif size=12.00 text="delimiter"
-    box x=46.34 dy=0.00 w=8.64 glyphs font=Serif size=12.00 text="="
-    box x=54.98 dy=0.00 w=37.31 glyphs font=Serif size=12.00 text="bracket"
-    box x=95.11 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=107.11 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="角"
-    box x=119.11 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="括"
-    box x=131.11 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="弧"
-    box x=143.11 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="、"
-    box x=149.11 dy=0.00 w=46.34 glyphs font=Serif size=12.00 text="delimiter"
-    box x=195.46 dy=0.00 w=8.64 glyphs font=Serif size=12.00 text="="
-    box x=204.10 dy=0.00 w=29.12 glyphs font=Serif size=12.00 text="paren"
-    box x=236.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=248.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="丸"
-    box x=260.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="括"
-    box x=272.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="弧"
-    box x=284.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=296.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="付"
-    box x=308.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="け"
-    box x=320.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ら"
-    box x=332.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="れ"
-    box x=344.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
-    box x=356.04 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-  mathblock x=575.72 baseline_y=493.44 w=53.28 h=10.34 d=19.06
-    child dx=0.00 dy=-12.06 w=10.26 h=22.40 d=7.00 glyphs font=Math size=29.40 text="["
-    child dx=12.06 dy=0.00 w=29.16 h=9.14 d=17.86 atom children=4
-      child dx=1.41 dy=0.00 w=8.76 h=9.14 d=2.86 atom children=2
-        child dx=0.00 dy=0.00 w=5.94 h=9.14 d=2.86 glyphs font=Math size=12.00 text="1"
-        child dx=5.94 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=17.58 dy=0.00 w=11.58 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=5.94 h=9.14 d=2.86 glyphs font=Math size=12.00 text="0"
-        child dx=8.76 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=0.00 dy=-15.00 w=11.58 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=5.94 h=9.14 d=2.86 glyphs font=Math size=12.00 text="0"
-        child dx=8.76 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=17.58 dy=-15.00 w=11.58 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=5.94 h=9.14 d=2.86 glyphs font=Math size=12.00 text="1"
-        child dx=8.76 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-    child dx=43.02 dy=-12.06 w=10.26 h=22.40 d=7.00 glyphs font=Math size=29.40 text="]"
-  mathblock x=564.79 baseline_y=538.84 w=75.14 h=10.34 d=19.06
-    child dx=0.00 dy=-12.06 w=10.50 h=22.40 d=7.00 glyphs font=Math size=29.40 text="("
-    child dx=12.30 dy=0.00 w=50.54 h=9.14 d=17.86 atom children=6
-      child dx=1.45 dy=0.00 w=9.53 h=9.14 d=2.86 atom children=2
-        child dx=0.00 dy=0.00 w=6.71 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑥"
-        child dx=6.71 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=18.42 dy=0.00 w=11.76 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=6.12 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑦"
-        child dx=8.94 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=37.58 dy=0.00 w=11.56 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=5.92 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑧"
-        child dx=8.74 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=0.00 dy=-15.00 w=12.42 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=6.78 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑢"
-        child dx=9.60 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=18.46 dy=-15.00 w=11.69 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=6.05 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑣"
-        child dx=8.87 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-      child dx=36.18 dy=-15.00 w=14.36 h=9.14 d=2.86 atom children=3
-        child dx=0.00 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-        child dx=2.82 dy=0.00 w=8.72 h=9.14 d=2.86 glyphs font=Math size=12.00 text="𝑤"
-        child dx=11.54 dy=0.00 w=2.82 h=9.14 d=2.86 glyphs font=Math size=12.00 text=" "
-    child dx=64.64 dy=-12.06 w=10.50 h=22.40 d=7.00 glyphs font=Math size=29.40 text=")"
-anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=257.61
-anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=396.47
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
+  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="行" glyph_count=1
+  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="列" glyph_count=1
+  glyphs x=305.76 y=280.63 font=SerifBold size=20.00 text="(matrix)" glyph_count=8
+  glyphs x=240.94 y=311.63 font=Serif size=12.00 text="matrix" glyph_count=6
+  glyphs x=277.26 y=311.63 font=JapaneseSerif size=12.00 text="環" glyph_count=1
+  glyphs x=289.26 y=311.63 font=JapaneseSerif size=12.00 text="境" glyph_count=1
+  glyphs x=301.26 y=311.63 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=316.08 y=311.63 font=Serif size=12.00 text="&" glyph_count=1
+  glyphs x=327.73 y=311.63 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=339.73 y=311.63 font=JapaneseSerif size=12.00 text="列" glyph_count=1
+  glyphs x=354.73 y=311.63 font=JapaneseSerif size=12.00 text="・" glyph_count=1
+  glyphs x=240.94 y=328.87 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=252.94 y=328.87 font=JapaneseSerif size=12.00 text="行" glyph_count=1
+  glyphs x=264.94 y=328.87 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=276.94 y=328.87 font=JapaneseSerif size=12.00 text="グ" glyph_count=1
+  glyphs x=288.94 y=328.87 font=JapaneseSerif size=12.00 text="リッ" glyph_count=2
+  glyphs x=312.46 y=328.87 font=JapaneseSerif size=12.00 text="ド" glyph_count=1
+  glyphs x=324.46 y=328.87 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=336.46 y=328.87 font=JapaneseSerif size=12.00 text="中" glyph_count=1
+  glyphs x=348.46 y=328.87 font=JapaneseSerif size=12.00 text="央" glyph_count=1
+  glyphs x=360.46 y=328.87 font=JapaneseSerif size=12.00 text="揃" glyph_count=1
+  glyphs x=372.46 y=328.87 font=JapaneseSerif size=12.00 text="え" glyph_count=1
+  glyphs x=384.46 y=328.87 font=JapaneseSerif size=12.00 text="に" glyph_count=1
+  glyphs x=396.46 y=328.87 font=JapaneseSerif size=12.00 text="組" glyph_count=1
+  glyphs x=408.46 y=328.87 font=JapaneseSerif size=12.00 text="む" glyph_count=1
+  glyphs x=420.46 y=328.87 font=JapaneseSerif size=12.00 text="動" glyph_count=1
+  glyphs x=432.46 y=328.87 font=JapaneseSerif size=12.00 text="作" glyph_count=1
+  glyphs x=444.46 y=328.87 font=JapaneseSerif size=12.00 text="確" glyph_count=1
+  glyphs x=456.46 y=328.87 font=JapaneseSerif size=12.00 text="認" glyph_count=1
+  glyphs x=468.46 y=328.87 font=JapaneseSerif size=12.00 text="用" glyph_count=1
+  glyphs x=480.46 y=328.87 font=JapaneseSerif size=12.00 text="フィ" glyph_count=2
+  glyphs x=503.50 y=328.87 font=JapaneseSerif size=12.00 text="ク" glyph_count=1
+  glyphs x=515.38 y=328.87 font=JapaneseSerif size=12.00 text="ス" glyph_count=1
+  glyphs x=527.14 y=328.87 font=JapaneseSerif size=12.00 text="チャ" glyph_count=2
+  glyphs x=550.78 y=328.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=559.60 y=328.87 font=JapaneseSerif size=12.00 text="区" glyph_count=1
+  glyphs x=571.60 y=328.87 font=JapaneseSerif size=12.00 text="切" glyph_count=1
+  glyphs x=583.60 y=328.87 font=JapaneseSerif size=12.00 text="り" glyph_count=1
+  glyphs x=595.60 y=328.87 font=JapaneseSerif size=12.00 text="括" glyph_count=1
+  glyphs x=607.60 y=328.87 font=JapaneseSerif size=12.00 text="弧" glyph_count=1
+  glyphs x=619.60 y=328.87 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=631.60 y=328.87 font=JapaneseSerif size=12.00 text="任" glyph_count=1
+  glyphs x=643.60 y=328.87 font=JapaneseSerif size=12.00 text="意" glyph_count=1
+  glyphs x=655.60 y=328.87 font=JapaneseSerif size=12.00 text="引" glyph_count=1
+  glyphs x=667.60 y=328.87 font=JapaneseSerif size=12.00 text="数" glyph_count=1
+  glyphs x=682.42 y=328.87 font=Serif size=12.00 text="delimiter" glyph_count=9
+  glyphs x=731.59 y=328.87 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=743.59 y=328.87 font=JapaneseSerif size=12.00 text="選" glyph_count=1
+  glyphs x=755.59 y=328.87 font=JapaneseSerif size=12.00 text="ぶ" glyph_count=1
+  glyphs x=773.59 y=328.87 font=JapaneseSerif size=12.00 text="（" glyph_count=1
+  glyphs x=779.59 y=328.87 font=JapaneseSerif size=12.00 text="既" glyph_count=1
+  glyphs x=791.59 y=328.87 font=JapaneseSerif size=12.00 text="定" glyph_count=1
+  glyphs x=803.59 y=328.87 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=815.59 y=328.87 font=JapaneseSerif size=12.00 text="括" glyph_count=1
+  glyphs x=827.59 y=328.87 font=JapaneseSerif size=12.00 text="弧" glyph_count=1
+  glyphs x=839.59 y=328.87 font=JapaneseSerif size=12.00 text="な" glyph_count=1
+  glyphs x=851.59 y=328.87 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=863.59 y=328.87 font=JapaneseSerif size=12.00 text="）" glyph_count=1
+  glyphs x=869.59 y=328.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=881.59 y=328.87 font=JapaneseSerif size=12.00 text="番" glyph_count=1
+  glyphs x=893.59 y=328.87 font=JapaneseSerif size=12.00 text="号" glyph_count=1
+  glyphs x=905.59 y=328.87 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=917.59 y=328.87 font=JapaneseSerif size=12.00 text="付" glyph_count=1
+  glyphs x=929.59 y=328.87 font=JapaneseSerif size=12.00 text="か" glyph_count=1
+  glyphs x=941.59 y=328.87 font=JapaneseSerif size=12.00 text="な" glyph_count=1
+  glyphs x=953.59 y=328.87 font=JapaneseSerif size=12.00 text="い" glyph_count=1
+  glyphs x=965.59 y=328.87 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=829.41 y=370.62 font=Math size=12.00 text="𝑎" glyph_count=1
+  glyphs x=836.07 y=370.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=845.68 y=370.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=848.50 y=370.62 font=Math size=12.00 text="𝑏" glyph_count=1
+  glyphs x=854.72 y=370.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=828.85 y=385.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=831.67 y=385.62 font=Math size=12.00 text="𝑐" glyph_count=1
+  glyphs x=836.64 y=385.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=845.46 y=385.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=848.28 y=385.62 font=Math size=12.00 text="𝑑" glyph_count=1
+  glyphs x=854.95 y=385.62 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=240.94 y=419.49 font=SerifBold size=20.00 text=".2" glyph_count=2
+  glyphs x=261.06 y=419.49 font=JapaneseSerifBold size=20.00 text="角" glyph_count=1
+  glyphs x=281.06 y=419.49 font=JapaneseSerifBold size=20.00 text="括" glyph_count=1
+  glyphs x=301.06 y=419.49 font=JapaneseSerifBold size=20.00 text="弧" glyph_count=1
+  glyphs x=321.06 y=419.49 font=JapaneseSerifBold size=20.00 text="つ" glyph_count=1
+  glyphs x=341.06 y=419.49 font=JapaneseSerifBold size=20.00 text="き" glyph_count=1
+  glyphs x=361.06 y=419.49 font=JapaneseSerifBold size=20.00 text="行" glyph_count=1
+  glyphs x=381.06 y=419.49 font=JapaneseSerifBold size=20.00 text="列" glyph_count=1
+  glyphs x=240.94 y=450.49 font=Serif size=12.00 text="delimiter" glyph_count=9
+  glyphs x=287.29 y=450.49 font=Serif size=12.00 text="=" glyph_count=1
+  glyphs x=295.93 y=450.49 font=Serif size=12.00 text="bracket" glyph_count=7
+  glyphs x=336.06 y=450.49 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=348.06 y=450.49 font=JapaneseSerif size=12.00 text="角" glyph_count=1
+  glyphs x=360.06 y=450.49 font=JapaneseSerif size=12.00 text="括" glyph_count=1
+  glyphs x=372.06 y=450.49 font=JapaneseSerif size=12.00 text="弧" glyph_count=1
+  glyphs x=384.06 y=450.49 font=JapaneseSerif size=12.00 text="、" glyph_count=1
+  glyphs x=390.06 y=450.49 font=Serif size=12.00 text="delimiter" glyph_count=9
+  glyphs x=436.40 y=450.49 font=Serif size=12.00 text="=" glyph_count=1
+  glyphs x=445.04 y=450.49 font=Serif size=12.00 text="paren" glyph_count=5
+  glyphs x=476.98 y=450.49 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=488.98 y=450.49 font=JapaneseSerif size=12.00 text="丸" glyph_count=1
+  glyphs x=500.98 y=450.49 font=JapaneseSerif size=12.00 text="括" glyph_count=1
+  glyphs x=512.98 y=450.49 font=JapaneseSerif size=12.00 text="弧" glyph_count=1
+  glyphs x=524.98 y=450.49 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=536.98 y=450.49 font=JapaneseSerif size=12.00 text="付" glyph_count=1
+  glyphs x=548.98 y=450.49 font=JapaneseSerif size=12.00 text="け" glyph_count=1
+  glyphs x=560.98 y=450.49 font=JapaneseSerif size=12.00 text="ら" glyph_count=1
+  glyphs x=572.98 y=450.49 font=JapaneseSerif size=12.00 text="れ" glyph_count=1
+  glyphs x=584.98 y=450.49 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=596.98 y=450.49 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=816.67 y=505.50 font=Math size=29.40 text="[" glyph_count=1
+  glyphs x=830.14 y=493.44 font=Math size=12.00 text="1" glyph_count=1
+  glyphs x=836.08 y=493.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=846.31 y=493.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=849.13 y=493.44 font=Math size=12.00 text="0" glyph_count=1
+  glyphs x=855.07 y=493.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=828.73 y=508.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=831.55 y=508.44 font=Math size=12.00 text="0" glyph_count=1
+  glyphs x=837.49 y=508.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=846.31 y=508.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=849.13 y=508.44 font=Math size=12.00 text="1" glyph_count=1
+  glyphs x=855.07 y=508.44 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=859.69 y=505.50 font=Math size=29.40 text="]" glyph_count=1
+  glyphs x=805.74 y=550.90 font=Math size=29.40 text="(" glyph_count=1
+  glyphs x=819.48 y=538.84 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=826.19 y=538.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=836.46 y=538.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=839.28 y=538.84 font=Math size=12.00 text="𝑦" glyph_count=1
+  glyphs x=845.40 y=538.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=855.62 y=538.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=858.44 y=538.84 font=Math size=12.00 text="𝑧" glyph_count=1
+  glyphs x=864.36 y=538.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=818.04 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=820.86 y=553.84 font=Math size=12.00 text="𝑢" glyph_count=1
+  glyphs x=827.64 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=836.49 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=839.31 y=553.84 font=Math size=12.00 text="𝑣" glyph_count=1
+  glyphs x=845.36 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=854.22 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=857.04 y=553.84 font=Math size=12.00 text="𝑤" glyph_count=1
+  glyphs x=865.76 y=553.84 font=Math size=12.00 text=" " glyph_count=1
+  glyphs x=870.38 y=550.90 font=Math size=29.40 text=")" glyph_count=1
+outline:
+  depth=2 text=".1 行列 (matrix)" page=0 x=240.94 y=257.61
+  depth=2 text=".2 角括弧つき行列" page=0 x=240.94 y=396.47

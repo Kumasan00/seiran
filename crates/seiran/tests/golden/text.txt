@@ -1,12 +1,13 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=9.14 depth=2.86 last=true
-    box x=0.00 dy=0.00 w=23.04 glyphs font=Serif size=12.00 text="aaaa"
-=== page 1 ===
-body:
-  line baseline_y=280.63 height=28.77 depth=7.15 last=true
-    box x=0.00 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="第"
-    box x=31.25 dy=0.00 w=12.38 glyphs font=SerifBold size=25.00 text="1"
-    box x=49.88 dy=0.00 w=25.00 glyphs font=JapaneseSerifBold size=25.00 text="章"
-    box x=80.75 dy=0.00 w=39.60 glyphs font=SerifBold size=25.00 text="aaa"
-anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=251.85
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=Serif size=12.00 text="aaaa" glyph_count=4
+=== page 1 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=JapaneseSerifBold size=25.00 text="第" glyph_count=1
+  glyphs x=272.19 y=280.63 font=SerifBold size=25.00 text="1" glyph_count=1
+  glyphs x=290.82 y=280.63 font=JapaneseSerifBold size=25.00 text="章" glyph_count=1
+  glyphs x=321.69 y=280.63 font=SerifBold size=25.00 text="aaa" glyph_count=3
+outline:
+  depth=1 text="1 aaa" page=1 x=240.94 y=251.85

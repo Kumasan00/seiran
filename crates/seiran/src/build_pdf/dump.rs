@@ -5,6 +5,7 @@
 use std::fmt::Write;
 
 use model::{AnchorId, AnchorMark, Length, LinkTarget};
+use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 use typeset::{
   HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
@@ -49,6 +50,125 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     }
   }
   return out;
+}
+
+/// [`Publication`] を決定的なテキスト形式へダンプする（golden 比較用）。
+///
+/// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `pdf_gen` クレート内
+/// `pub(crate)` でこの crate からは読めないため対象外とする。
+#[must_use]
+pub(super) fn dump_publication(publication: &Publication) -> String {
+  let mut out = String::new();
+  dump_metadata(&mut out, &publication.metadata);
+  for (index, page) in publication.pages.iter().enumerate() {
+    let _ = writeln!(
+      out,
+      "=== page {index} === box x={} y={} w={} h={}",
+      f2(page.page_box.x),
+      f2(page.page_box.y),
+      f2(page.page_box.width),
+      f2(page.page_box.height)
+    );
+    for op in &page.ops {
+      dump_paint_op(&mut out, op);
+    }
+    for link in &page.links {
+      dump_publication_link(&mut out, link);
+    }
+  }
+  if let Some(outline) = &publication.outline {
+    let _ = writeln!(out, "outline:");
+    for entry in outline {
+      let _ = writeln!(
+        out,
+        "  depth={} text={:?} page={} x={} y={}",
+        entry.depth,
+        entry.text,
+        entry.dest.page_index,
+        f2(entry.dest.point.x),
+        f2(entry.dest.point.y)
+      );
+    }
+  }
+  return out;
+}
+
+/// メタデータを書き出す（`title` は必須、他は `Some` のときだけ 1 行ずつ追加する）。
+fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
+  let _ = writeln!(out, "title={:?}", metadata.title);
+  if let Some(author) = &metadata.author {
+    let _ = writeln!(out, "author={author:?}");
+  }
+  if let Some(subject) = &metadata.subject {
+    let _ = writeln!(out, "subject={subject:?}");
+  }
+  if let Some(language) = &metadata.language {
+    let _ = writeln!(out, "language={language:?}");
+  }
+  if let Some(keywords) = &metadata.keywords {
+    let _ = writeln!(out, "keywords={keywords:?}");
+  }
+}
+
+/// 1 描画命令を書き出す（インデント 2）。
+fn dump_paint_op(out: &mut String, op: &PaintOp) {
+  match op {
+    PaintOp::DrawGlyphRun { origin, run } => {
+      let color = run.color.map_or_else(String::new, |c| format!(" color={c:?}"));
+      let _ = writeln!(
+        out,
+        "  glyphs x={} y={} font={:?} size={} text={:?} glyph_count={}{color}",
+        f2(origin.x),
+        f2(origin.y),
+        run.font_type,
+        f2(run.font_size),
+        run.text,
+        run.glyphs.len()
+      );
+    },
+    PaintOp::DrawImage {
+      path,
+      rect,
+      target_dpi,
+    } => {
+      let _ = writeln!(
+        out,
+        "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
+        f2(rect.x),
+        f2(rect.y),
+        f2(rect.width),
+        f2(rect.height)
+      );
+    },
+    PaintOp::FillRect { rect, color } => {
+      let _ = writeln!(
+        out,
+        "  fillrect x={} y={} w={} h={} color={color:?}",
+        f2(rect.x),
+        f2(rect.y),
+        f2(rect.width),
+        f2(rect.height)
+      );
+    },
+  }
+}
+
+/// リンク領域を書き出す（インデント 2）。
+fn dump_publication_link(out: &mut String, link: &PublicationLink) {
+  let target = match &link.target {
+    PublicationLinkTarget::Internal(dest) => {
+      format!("Internal(page={}, x={}, y={})", dest.page_index, f2(dest.point.x), f2(dest.point.y))
+    },
+    PublicationLinkTarget::External(uri) => format!("External({uri:?})"),
+  };
+  let _ = writeln!(
+    out,
+    "  link target={target} x={} y={} w={} h={}",
+    f2(link.rect.x),
+    f2(link.rect.y),
+    f2(link.rect.width),
+    f2(link.rect.height)
+  );
 }
 
 /// 名前付きセクション（body / header / footer）のブロック列を書き出す。
@@ -292,9 +412,10 @@ fn f2(value: Length) -> String {
 mod tests {
   use font::GlyphRun;
   use model::{FontType, Length};
+  use pdf_gen::{Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect};
   use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
-  use super::dump_pages;
+  use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {
@@ -401,5 +522,128 @@ mod tests {
 
     // Assert
     assert!(!dump.contains("index word="));
+  }
+
+  /// 最小のメタデータ（`title` のみ）を返す。
+  fn minimal_metadata() -> PublicationMetadata {
+    return PublicationMetadata {
+      title: "Test".to_string(),
+      author: None,
+      subject: None,
+      language: None,
+      keywords: None,
+    };
+  }
+
+  #[test]
+  fn dump_metadata_includes_all_present_optional_fields() {
+    // Arrange — title 以外の全フィールドを Some にする
+    let metadata = PublicationMetadata {
+      title: "Test".to_string(),
+      author: Some("Author".to_string()),
+      subject: Some("Subject".to_string()),
+      language: Some("ja".to_string()),
+      keywords: Some(vec!["keyword1".to_string(), "keyword2".to_string()]),
+    };
+    let mut out = String::new();
+
+    // Act
+    dump_metadata(&mut out, &metadata);
+
+    // Assert
+    assert!(out.contains("title=\"Test\""));
+    assert!(out.contains("author=\"Author\""));
+    assert!(out.contains("subject=\"Subject\""));
+    assert!(out.contains("language=\"ja\""));
+    assert!(out.contains(r#"keywords=["keyword1", "keyword2"]"#));
+  }
+
+  #[test]
+  fn dump_metadata_omits_optional_fields_when_absent() {
+    // Arrange — title だけを持つ最小メタデータ
+    let metadata = minimal_metadata();
+    let mut out = String::new();
+
+    // Act
+    dump_metadata(&mut out, &metadata);
+
+    // Assert
+    assert_eq!(out, "title=\"Test\"\n");
+  }
+
+  #[test]
+  fn dump_paint_op_writes_glyph_run_text_and_size() {
+    // Arrange
+    let run = GlyphRun {
+      font_size: Length::pt(10.0),
+      text: "Test".to_string(),
+      glyphs: Vec::new(),
+      font_type: FontType::Serif,
+      color: None,
+    };
+    let op = PaintOp::DrawGlyphRun {
+      origin: Point {
+        x: Length::pt(10.0),
+        y: Length::pt(20.0),
+      },
+      run,
+    };
+    let mut out = String::new();
+
+    // Act
+    dump_paint_op(&mut out, &op);
+
+    // Assert
+    assert!(out.contains("x=10.00 y=20.00"));
+    assert!(out.contains("text=\"Test\""));
+  }
+
+  #[test]
+  fn dump_publication_link_writes_internal_target_with_destination() {
+    // Arrange
+    let link = PublicationLink {
+      target: PublicationLinkTarget::Internal(Destination {
+        page_index: 0,
+        point: Point {
+          x: Length::ZERO,
+          y: Length::ZERO,
+        },
+      }),
+      rect: Rect {
+        x: Length::pt(10.0),
+        y: Length::pt(20.0),
+        width: Length::pt(30.0),
+        height: Length::pt(12.0),
+      },
+    };
+    let mut out = String::new();
+
+    // Act
+    dump_publication_link(&mut out, &link);
+
+    // Assert
+    assert!(out.contains("link target=Internal(page=0, x=0.00, y=0.00)"));
+    assert!(out.contains("x=10.00 y=20.00 w=30.00 h=12.00"));
+  }
+
+  #[test]
+  fn dump_publication_link_writes_external_target() {
+    // Arrange
+    let link = PublicationLink {
+      target: PublicationLinkTarget::External("https://example.com".to_string()),
+      rect: Rect {
+        x: Length::ZERO,
+        y: Length::ZERO,
+        width: Length::pt(30.0),
+        height: Length::pt(12.0),
+      },
+    };
+    let mut out = String::new();
+
+    // Act
+    dump_publication_link(&mut out, &link);
+
+    // Assert
+    assert!(out.contains(r#"link target=External("https://example.com")"#));
   }
 }

@@ -8,35 +8,12 @@
 //! すべてのパスを絶対パス（`/project/...`）にして `MemoryProjectSource` に事前登録し、
 //! `std::env::current_dir` に依存しない（`compile` の `base_dir` 解決は絶対パスをバイパスする）。
 
-use std::path::{Path, PathBuf};
+mod common;
 
-use config::{MemoryProjectSource, ProjectPath, test_support};
+use std::path::PathBuf;
 
-/// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
-/// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。
-fn read_test_font() -> Vec<u8> {
-  let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-    .ancestors()
-    .nth(2)
-    .expect("crates/seiran の 2 階層上がワークスペースルート");
-  let path = workspace_root.join("vendor/fonts/STIXTwoMath-Regular.ttf");
-  return std::fs::read(&path).unwrap_or_else(|error| {
-    panic!(
-      "テストフォントを読めるはず: {}: {error}（tools/fetch-test-assets.sh の実行が必要な場合があります）",
-      path.display()
-    )
-  });
-}
-
-/// 19 フォント種別すべてが同じフォントファイルを指す、最小の妥当な `config.toml` を組む。
-fn minimal_config_toml() -> String {
-  return format!(
-    "sources = [\"/project/text.sei\"]\n\n{}{}{}",
-    test_support::valid_pdf_section(),
-    test_support::valid_output_section("out", "/project/out"),
-    test_support::make_font_sections("/project/font.ttf"),
-  );
-}
+use common::{minimal_config_toml, read_test_font};
+use config::{MemoryProjectSource, ProjectPath};
 
 #[test]
 #[allow(clippy::unwrap_used)]
@@ -45,7 +22,7 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   // だけはテストコード自身が std::fs で行う。本体コードは ProjectSource 経由のみ）。
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
-    .with_text("/project/config.toml", minimal_config_toml())
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
     .with_text("/project/text.sei", "Hello, Seiran!")
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
