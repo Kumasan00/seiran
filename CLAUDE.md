@@ -77,7 +77,9 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
 外部資源の取得（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `config::ProjectSource`
 経由で、compiler 側のコードは `std::fs` を直接呼ばない（#300）。実装は `FilesystemProjectSource`（実ビルド）と
 `MemoryProjectSource`（決定的テスト）の 2 つ。書き込みメソッドは持たず、出力ディレクトリ作成と PDF 書き出しは
-build driver（`seiran::build_pdf`）の責務。詳細は `docs/architecture.md` の config → project_source 節。
+`seiran::build_pdf::compile`（lib target の公開 facade）の責務ではなく、CLI（bin target の `main.rs`）が
+`compile` → `pdf_gen::render` の後に atomic write（`tempfile` 経由の一時ファイル + rename）として行う（#304）。
+詳細は `docs/architecture.md` の config → project_source 節、および seiran 節。
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::breaking::break_lines`。貪欲法 first-fit も
@@ -94,7 +96,7 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 lowering →(a)→(c+d) をページ割り当てが安定するまで反復する（番号がマーカー幅を変え、それが
 ページ割り当てを変えうる循環のため。既定の通し採番は 1 回で確定＝上図のまま）。
 この反復は `seiran::build_pdf::footnote_numbering` の専用 solver に閉じており、上限回数まで
-収束しない場合は最後の結果を採用せず、回避策付きの診断エラー（`BuildPdfError::PerPageFootnoteNotConverged`）を返す。
+収束しない場合は最後の結果を採用せず、回避策付きの診断エラー（`CompileError::PerPageFootnoteNotConverged`）を返す。
 
 ### クレート依存関係
 
@@ -158,8 +160,11 @@ pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行�
          フォント・画像資源は呼び出し元が組み立てた ResourceBundle 経由で受け取る）
   ↑ seiran
 
-seiran （エントリーポイント。全クレート（`resolve` を含む）を統合してパイプラインを実行。
-         clap / miette / read-fonts / thiserror / tracing にも直接依存し、CLI 引数定義と
+seiran （lib target + bin target の両方を持つ（#304）。lib target は全クレート（`resolve` を含む）を
+         統合し、言語処理・意味解決・組版を 1 回の呼び出しに畳んだ compile を唯一の外部入口として
+         公開する（中間型は Publication を除き非公開）。bin target（エントリーポイント）は
+         compile → render → 保存（atomic write）→ 結果表示のみを担当し、段順序の知識を持たない。
+         clap / miette / read-fonts / tempfile / thiserror / tracing にも直接依存し、CLI 引数定義と
          variation-axes / ttc-names / script-langs サブコマンド実装を cli / subcommand
          子 module として内包）
 ```
@@ -179,7 +184,7 @@ seiran （エントリーポイント。全クレート（`resolve` を含む）
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
 | `typeset`  | 解決済みドキュメント（`resolve::ResolvedDocument`）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が解決済みドキュメント（`resolve::ResolvedDocument`）から表示文字列を生成しレイアウトノードを組み立てる、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
 | `pdf_gen`  | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成（画像の自然寸法解決 resolve_images prepass は compiler 側 seiran::build_pdf::image_resources へ移設済み） |
-| `seiran`   | main エントリ。全クレート統合・パイプライン実行。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
+| `seiran`   | lib target（`compile` facade。全クレート統合、段順序・中間型は非公開）+ bin target（CLI エントリ。`compile` → `render` → 保存 → 表示のみ）。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
 
 ## コーディング規約
 

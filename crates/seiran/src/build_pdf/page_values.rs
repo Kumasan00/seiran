@@ -8,17 +8,52 @@
 use config::PageNumbering;
 use model::AnchorMark;
 
-/// ページ index/count（`usize`）を番号レンダリング用の `u32` に変換する。
+/// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
+/// 連結する前のリージョン内）における位置を表す。
 ///
-/// ページ数が `u32::MAX` に達することはない前提。
-fn page_num(n: usize) -> u32 { return u32::try_from(n).expect("ページ数は u32 に収まる前提"); }
+/// 表示用の論理ページ値（[`PageValue`]）とは別の型にして、「何番目のページか」と
+/// 「何ページと表示されるか」を取り違えないようにする（両方とも `usize`/`u32` のままだと、
+/// 引数を取り違えても型検査を素通りしてしまう）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct PageIndex(usize);
+
+impl PageIndex {
+  /// 0 始まりの物理 index から構築する。
+  pub(super) fn new(index: usize) -> Self { return PageIndex(index); }
+
+  /// 内側の `usize` を返す。
+  pub(super) fn get(self) -> usize { return self.0; }
+}
+
+/// 領域ごとに 1 から振り直す、文字列化前の論理ページ値。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct PageValue(u32);
+
+impl PageValue {
+  /// 0 始まりの物理 index から 1 始まりの論理値を作る。
+  ///
+  /// ページ数が `u32::MAX` に達することはない前提。
+  fn from_index(index: PageIndex) -> Self {
+    return PageValue(u32::try_from(index.get()).expect("ページ数は u32 に収まる前提") + 1);
+  }
+
+  /// 0 始まりの物理カウント（総ページ数）から 1 始まりの論理値を作る。
+  ///
+  /// ページ数が `u32::MAX` に達することはない前提。
+  fn from_count(count: usize) -> Self {
+    return PageValue(u32::try_from(count).expect("ページ数は u32 に収まる前提"));
+  }
+
+  /// 内側の `u32` を返す。
+  fn get(self) -> u32 { return self.0; }
+}
 
 /// 本文ページ分割後に確定する、目次生成用の値。
 ///
 /// 見出しの本文内ページ index とページ番号スタイルを保持する。
 pub(super) struct BodyPageValues {
   /// 見出し → 本文内ページ index（文書順）
-  heading_pages: Vec<usize>,
+  heading_pages: Vec<PageIndex>,
   /// 本文ページの総数
   body_page_count: usize,
   /// ページ番号のスタイル設定（クローン所有。借用にするとライフタイムが波及するため）
@@ -32,7 +67,7 @@ impl BodyPageValues {
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
         if matches!(anchor.mark, AnchorMark::Heading { .. }) {
-          heading_pages.push(page_index);
+          heading_pages.push(PageIndex::new(page_index));
         }
       }
     }
@@ -44,7 +79,7 @@ impl BodyPageValues {
   }
 
   /// 見出し → 本文内ページ index の列（文書順）を返す。
-  pub(super) fn heading_pages(&self) -> &[usize] { return &self.heading_pages; }
+  pub(super) fn heading_pages(&self) -> &[PageIndex] { return &self.heading_pages; }
 
   /// 索引ページを本文領域の通し番号へ加算する。
   pub(super) fn with_back_matter(mut self, back_pages: &[typeset::Page]) -> Self {
@@ -53,8 +88,8 @@ impl BodyPageValues {
   }
 
   /// 本文内ページ index を本文の番号スタイルでレンダリングする。
-  pub(super) fn body_page_label(&self, body_page_index: usize) -> String {
-    return self.numbering.body.render(page_num(body_page_index) + 1);
+  pub(super) fn body_page_label(&self, body_page_index: PageIndex) -> String {
+    return self.numbering.body.render(PageValue::from_index(body_page_index).get());
   }
 
   /// 物理ページ順の `({page}, {pages})` ラベル列を確定する。
@@ -65,15 +100,16 @@ impl BodyPageValues {
     let body_count = self.body_page_count;
     let total = front_count + body_count;
     let mut labels = Vec::with_capacity(total);
-    for index in 0..total {
-      if index < front_count {
-        let page = self.numbering.front_matter.render(page_num(index) + 1);
-        let pages = self.numbering.front_matter.render(page_num(front_count));
+    for raw_index in 0..total {
+      let index = PageIndex::new(raw_index);
+      if raw_index < front_count {
+        let page = self.numbering.front_matter.render(PageValue::from_index(index).get());
+        let pages = self.numbering.front_matter.render(PageValue::from_count(front_count).get());
         labels.push((page, pages));
       } else {
-        let body_index = index - front_count;
-        let page = self.numbering.body.render(page_num(body_index) + 1);
-        let pages = self.numbering.body.render(page_num(body_count));
+        let body_index = PageIndex::new(raw_index - front_count);
+        let page = self.numbering.body.render(PageValue::from_index(body_index).get());
+        let pages = self.numbering.body.render(PageValue::from_count(body_count).get());
         labels.push((page, pages));
       }
     }
@@ -101,7 +137,7 @@ mod tests {
   use model::{AnchorMark, HeadingKey, LabelId};
   use typeset::{Page, PlacedAnchor};
 
-  use super::BodyPageValues;
+  use super::{BodyPageValues, PageIndex};
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ
   fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {
@@ -147,7 +183,7 @@ mod tests {
     let page_values = BodyPageValues::from_body_pages(&pages, &PageNumbering::default());
 
     // Assert — 見出しアンカーのページ index だけを文書順に拾う（Label は無視）
-    assert_eq!(page_values.heading_pages(), &[0, 1]);
+    assert_eq!(page_values.heading_pages(), &[PageIndex::new(0), PageIndex::new(1)]);
   }
 
   #[test]
@@ -156,7 +192,7 @@ mod tests {
     let page_values = BodyPageValues::from_body_pages(&[], &PageNumbering::default());
 
     // Act
-    let label = page_values.body_page_label(0);
+    let label = page_values.body_page_label(PageIndex::new(0));
 
     // Assert — 本文スタイル（算用数字）でレンダリングされ、前付けのローマ数字にはならない
     assert_eq!(label, "1");

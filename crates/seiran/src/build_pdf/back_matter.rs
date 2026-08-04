@@ -15,7 +15,7 @@ use typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor
 
 use super::{
   elapsed_ms,
-  page_values::BodyPageValues,
+  page_values::{BodyPageValues, PageIndex},
   phase_context::{BodyPageFacts, CompileContext},
 };
 
@@ -86,7 +86,7 @@ pub(super) fn collect_index_entries(
           .into_iter()
           .map(|page_index| {
             return IndexPageRef {
-              label: body_page_values.body_page_label(page_index),
+              label: body_page_values.body_page_label(PageIndex::new(page_index)),
               link_key: page_index,
             };
           })

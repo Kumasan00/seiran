@@ -5,7 +5,7 @@
 use tracing::debug;
 use typeset::BodyLayout;
 
-use super::error::BuildPdfError;
+use super::error::CompileError;
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -36,7 +36,7 @@ pub(super) fn solve_per_page_numbering(
     }
     if pass == MAX_FOOTNOTE_NUMBERING_PASSES {
       return Err(
-        BuildPdfError::PerPageFootnoteNotConverged {
+        CompileError::PerPageFootnoteNotConverged {
           passes: MAX_FOOTNOTE_NUMBERING_PASSES,
         }
         .into(),

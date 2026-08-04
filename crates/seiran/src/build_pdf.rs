@@ -2,12 +2,14 @@
 
 mod back_matter;
 mod body;
-mod compile;
+mod dependency_manifest;
+mod diagnostic_set;
 mod error;
 mod footnote_numbering;
 mod front_matter;
 mod image_manifest;
 mod image_resources;
+mod layout;
 mod outline;
 mod page_values;
 mod phase_context;
@@ -29,8 +31,7 @@ mod project_source_equivalence;
 
 use std::{
   collections::{HashMap, HashSet},
-  fs,
-  path::{Path, PathBuf},
+  path::Path,
   sync::Arc,
   time::Instant,
 };
@@ -38,68 +39,105 @@ use std::{
 #[cfg(test)]
 use citation::References;
 use citation::read_references;
-use compile::{LaidOutDocument, compile_project};
-use error::{AttributedParseError, BuildPdfError};
+pub use dependency_manifest::DependencyManifest;
+pub use diagnostic_set::DiagnosticSet;
+use error::{AttributedParseError, CompileError};
 use font::{FontData, FontDataExt, FontResources};
 use image_manifest::ImageManifest;
+use layout::{DocumentLayouter, LaidOutDocument};
 use model::DocNode;
-use project::{OutputPlan, ProjectSnapshot, SourceDb};
+pub use project::OutputPlan;
+use project::{ProjectSnapshot, SourceDb};
 use semantics::SemanticsError;
 use tracing::info;
 
-/// ビルド成功時に表示するサマリ。
-pub(super) struct BuildSummary {
-  /// 出力した PDF のパス
-  pub(super) output_path: PathBuf,
-  /// 総ページ数
-  pub(super) page_count: usize,
-  /// ビルド全体の所要ミリ秒
-  pub(super) total_elapsed_ms: u64,
+/// コンパイル結果の統計情報。
+#[derive(Debug, Clone, Copy)]
+pub struct BuildStatistics {
+  /// 確定ページ総数（前付け + 本文 + 後付け）
+  pub page_count: usize,
+  /// コンパイル全体の所要ミリ秒
+  pub total_elapsed_ms: u64,
 }
 
-/// 設定ファイルの `sources` から PDF を生成する。
+/// `compile` の結果。
 ///
-/// 読み込み、パース、組版、描画、保存の各段を順に実行する。
-pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
-  let build_start = Instant::now();
-  info!(config_path = %config_path.display(), "PDF のビルドを開始します");
+/// 描画直前の `Publication` と、それに付随する情報（依存パス・警告・統計・出力先）を束ねる。
+/// `Publication` 以外に組版の中間型は含まない。
+#[derive(Debug)]
+pub struct Compilation {
+  /// 描画直前の確定済み出版物
+  pub publication: pdf_gen::Publication,
+  /// `compile` が読み取った外部資源のパス一覧
+  pub dependencies: DependencyManifest,
+  /// 致命的ではない診断（現状は常に空 — パイプラインに非致命的診断は存在しない）
+  pub warnings: DiagnosticSet,
+  /// コンパイル結果の統計情報
+  pub statistics: BuildStatistics,
+  /// 保存先など、書き込みを行う呼び出し側だけが使う出力情報
+  pub output: OutputPlan,
+}
 
-  let source = config::FilesystemProjectSource::new();
-  let (snapshot, output) = load_project(&source, config_path)?;
+/// `source` と `root`（設定ファイルパス）から PDF 直前の `Publication` までを 1 回で作る。
+///
+/// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
+/// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.output` が指す先へ書き出すのは
+/// 呼び出し元の責務とする。
+///
+/// # Errors
+///
+/// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
+/// 診断の集合を返す。
+pub fn compile<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> Result<Compilation, DiagnosticSet> {
+  return compile_inner(source, root).map_err(DiagnosticSet::from);
+}
+
+/// カレントディレクトリを解決してから [`compile_with_base_dir`] へ委譲する。
+fn compile_inner<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> miette::Result<Compilation> {
+  let base_dir = std::env::current_dir().map_err(|source| return CompileError::CurrentDir { source })?;
+  return compile_with_base_dir(source, root, &base_dir);
+}
+
+/// `base_dir` を注入できる `compile` の本体。
+///
+/// `MemoryProjectSource` + 固定 `base_dir` でのテストが `std::env::set_current_dir` 無しに
+/// 書けるよう、テストと `compile` の双方から呼ばれる実処理をここに閉じる。
+fn compile_with_base_dir<S: config::ProjectSource>(
+  source: &S,
+  root: &config::ProjectPath,
+  base_dir: &Path,
+) -> miette::Result<Compilation> {
+  let build_start = Instant::now();
+  info!(config_path = %root, "PDF のコンパイルを開始します");
+
+  let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
   let (parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(&source, parsed, &snapshot.references, &snapshot.style)
+  let resolved = semantics::resolve_semantics(source, parsed, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(&source, &image_manifest.paths)?;
+  let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
-  let laid_out = compile_project(&snapshot, &resolved, &image_resources, &font_system)?;
-  let pdf_bytes = render_pdf(
+  let laid_out =
+    DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(&resolved, &image_resources)?;
+  let publication = build_publication(
     &snapshot.config,
     &snapshot.font_data,
     &font_resources,
     image_resources.into_image_bytes(),
     &laid_out,
   )?;
-
-  fs::create_dir_all(&snapshot.config.output.output_dir).map_err(|source| {
-    return BuildPdfError::CreateOutputDir {
-      path: snapshot.config.output.output_dir.display().to_string(),
-      source,
-    };
-  })?;
-  let stage_start = Instant::now();
-  fs::write(&output.pdf_path, pdf_bytes).map_err(|source| {
-    return BuildPdfError::WritePdf {
-      path: output.pdf_path.display().to_string(),
-      source,
-    };
-  })?;
-  info!(output_path = %output.pdf_path.display(), elapsed_ms = elapsed_ms(stage_start), "PDF の保存が完了しました");
-
-  return Ok(BuildSummary {
-    output_path: output.pdf_path,
+  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &image_manifest);
+  let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
     total_elapsed_ms: elapsed_ms(build_start),
+  };
+
+  return Ok(Compilation {
+    publication,
+    dependencies,
+    warnings: DiagnosticSet::empty(),
+    statistics,
+    output,
   });
 }
 
@@ -113,11 +151,11 @@ pub(super) fn build_pdf(config_path: &Path) -> miette::Result<BuildSummary> {
 fn load_project(
   source: &dyn config::ProjectSource,
   config_path: &Path,
+  base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let current_dir = std::env::current_dir().map_err(|source| return BuildPdfError::CurrentDir { source })?;
-  let config = config::read_config(source, config_path, &current_dir)?;
-  let style = config::read_style(source, config.style_path.as_deref(), &current_dir)?;
-  config::validate_layout(&config, &style).map_err(|source| return BuildPdfError::Layout { source })?;
+  let config = config::read_config(source, config_path, base_dir)?;
+  let style = config::read_style(source, config.style_path.as_deref(), base_dir)?;
+  config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();
@@ -158,20 +196,20 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
   return Ok((parsed, image_manifest));
 }
 
-/// 構築済みフォント資源と画像バイト列から `Publication` を組み立て、PDF バイト列へ描画する。
+/// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
 ///
 /// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
 ///
 /// # Errors
 ///
-/// `pdf_gen::ResourceBundle` の構築、または `pdf_gen::render` の描画に失敗した場合にエラーを返す。
-fn render_pdf(
+/// `pdf_gen::ResourceBundle` の構築に失敗した場合にエラーを返す。
+fn build_publication(
   config: &config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
-) -> miette::Result<Vec<u8>> {
+) -> miette::Result<pdf_gen::Publication> {
   let font_resource_configs = build_font_resource_configs(&config.font_configs);
   let resources = pdf_gen::ResourceBundle::new(
     &font_resource_configs,
@@ -180,13 +218,7 @@ fn render_pdf(
     font_resources.metrics().clone(),
     image_bytes,
   )?;
-  let publication = publication::build_publication(config, resources, laid_out);
-
-  let stage_start = Instant::now();
-  let pdf_bytes = pdf_gen::render(&publication)?;
-  info!(page_count = laid_out.pages.len(), elapsed_ms = elapsed_ms(stage_start), "PDF の描画が完了しました");
-
-  return Ok(pdf_bytes);
+  return Ok(publication::build_publication(config, resources, laid_out));
 }
 
 /// `config::FontConfigs` から `pdf_gen::FontResourceConfigs`（config 非依存の複製）を組む。
@@ -242,7 +274,7 @@ fn build_pages_with_source(
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return compile_project(&snapshot, &resolved, &image_resources, &font_system);
+  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(&resolved, &image_resources);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
@@ -262,10 +294,7 @@ struct ParsedSource {
 /// 全ソースをパースし、パース・評価エラーを集約する。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn parse_all_sources(
-  source_db: &SourceDb,
-  citation_keys: &HashSet<String>,
-) -> Result<Vec<ParsedSource>, BuildPdfError> {
+fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> Result<Vec<ParsedSource>, CompileError> {
   let mut parsed: Vec<ParsedSource> = Vec::new();
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
@@ -280,7 +309,7 @@ fn parse_all_sources(
   }
 
   if !parse_errors.is_empty() {
-    return Err(BuildPdfError::MultipleSourceErrors {
+    return Err(CompileError::MultipleSourceErrors {
       errors: parse_errors,
     });
   }
@@ -291,26 +320,26 @@ fn parse_all_sources(
 ///
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
-fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> BuildPdfError {
+fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> CompileError {
   return match error.origin() {
     model::Origin::Source(source_id) => {
       let entry = source_db.get(source_id);
-      BuildPdfError::Resolve {
+      CompileError::Resolve {
         src: miette::NamedSource::new(&entry.name, entry.content.clone()),
         source: error,
       }
     },
-    model::Origin::Generated(_) => BuildPdfError::ResolveInternal { source: error },
+    model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
   };
 }
 
-/// `semantics::resolve_semantics` のエラーを `BuildPdfError` へ変換する。
+/// `semantics::resolve_semantics` のエラーを `CompileError` へ変換する。
 ///
 /// citation 由来はそのまま `Citation` へ、resolve 由来は `wrap_resolve_error` に委譲し、
 /// 帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける（従来の挙動を維持する）。
-fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> BuildPdfError {
+fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileError {
   return match error {
-    SemanticsError::Citation(source) => BuildPdfError::Citation { source },
+    SemanticsError::Citation(source) => CompileError::Citation { source },
     SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
   };
 }

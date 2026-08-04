@@ -61,7 +61,7 @@ impl Diagnostic for AttributedParseError {
 
 /// compiler の不変条件違反（ユーザー入力に起因しない内部バグ）。
 ///
-/// `BuildPdfError` の他バリアントが表す「設定・入力の誤り」とは型を分け、
+/// `CompileError` の他バリアントが表す「設定・入力の誤り」とは型を分け、
 /// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
 #[derive(Debug, Error, Diagnostic)]
 #[error("内部エラー: {message}")]
@@ -80,9 +80,12 @@ impl CompilerBug {
   }
 }
 
-/// PDF ビルド時のエラー型
+/// `compile` の内部段（読込・パース・意味解決・組版・画像解決）で起きるエラー型。
+///
+/// PDF の保存（`WritePdf` 相当）は `compile` の責務ではなくなったため、ここには含まない
+/// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
 #[derive(Debug, Error, Diagnostic)]
-pub(super) enum BuildPdfError {
+pub(super) enum CompileError {
   /// テキストファイルの読み込みエラー
   #[error("テキストファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
@@ -143,31 +146,6 @@ pub(super) enum BuildPdfError {
     #[source]
     #[diagnostic_source]
     source: ResolveError,
-  },
-
-  /// PDF ファイルの書き込みエラー
-  #[error("PDF ファイルの保存に失敗しました: {path}")]
-  #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
-  WritePdf {
-    /// 出力パス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// 出力ディレクトリの作成エラー
-  #[error("出力ディレクトリを作成できませんでした: {path}")]
-  #[diagnostic(
-    code(build::create_output_dir),
-    help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
-  )]
-  CreateOutputDir {
-    /// 出力ディレクトリのパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
   },
 
   /// カレントディレクトリの取得失敗

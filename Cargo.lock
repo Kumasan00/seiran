@@ -2124,6 +2124,7 @@ dependencies = [
  "pdf_gen",
  "read-fonts 0.41.0",
  "resolve",
+ "tempfile",
  "thiserror",
  "tracing",
  "tracing-subscriber",
