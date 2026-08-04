@@ -18,7 +18,7 @@ pub use crate::{
     Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
     PublicationOutlineEntry, PublicationPage, Rect,
   },
-  resources::{FontResourceConfig, FontResourceConfigs, ResourceBundle, VariationAxisConfig},
+  resources::ResourceBundle,
 };
 use crate::{metadata::build_metadata, render::render_pages};
 

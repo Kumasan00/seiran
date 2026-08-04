@@ -14,6 +14,7 @@ use tracing::{debug, info};
 
 use crate::{
   FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
+  face_config::{FontFaceConfigs, build_face_configs},
   shaper::{
     HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances, ShaperInstancesExt,
     UnicodeBuffer,
@@ -98,6 +99,10 @@ impl<'a> FontResources<'a> {
   /// `pdf_gen::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。
   #[must_use]
   pub fn metrics(&self) -> &FontMetrics { return &self.metrics; }
+
+  /// `pdf_gen::ResourceBundle::new` に渡すための [`FontFaceConfigs`] アクセサ。
+  #[must_use]
+  pub fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
 
   /// シェーパー一式を構築し、シェイプ操作だけを公開する [`FontSystem`] を返す。
   ///

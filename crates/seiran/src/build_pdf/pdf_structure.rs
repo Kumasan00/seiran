@@ -55,9 +55,8 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
     .layout(&resolved, &image_resources)
     .expect("layout の実行");
-  let font_resource_configs = super::build_font_resource_configs(&config.font_configs);
   let resources = pdf_gen::ResourceBundle::new(
-    &font_resource_configs,
+    &font_resources.face_configs(),
     &font_data,
     font_resources.font_refs(),
     font_resources.metrics().clone(),

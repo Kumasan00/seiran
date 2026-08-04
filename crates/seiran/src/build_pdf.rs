@@ -210,36 +210,14 @@ fn build_publication(
   image_bytes: HashMap<model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
 ) -> miette::Result<pdf_gen::Publication> {
-  let font_resource_configs = build_font_resource_configs(&config.font_configs);
   let resources = pdf_gen::ResourceBundle::new(
-    &font_resource_configs,
+    &font_resources.face_configs(),
     font_data,
     font_resources.font_refs(),
     font_resources.metrics().clone(),
     image_bytes,
   )?;
   return Ok(publication::build_publication(config, resources, laid_out));
-}
-
-/// `config::FontConfigs` から `pdf_gen::FontResourceConfigs`（config 非依存の複製）を組む。
-fn build_font_resource_configs(font_configs: &config::FontConfigs) -> pdf_gen::FontResourceConfigs {
-  return model::FontMap::from_all(model::FontType::ALL.iter().map(|font_type| {
-    let font_config = font_configs.get(*font_type);
-    return pdf_gen::FontResourceConfig {
-      font_index: font_config.font_index,
-      variation_axes: font_config.variation_axes.as_ref().map(|axes| {
-        return axes
-          .iter()
-          .map(|axis| {
-            return pdf_gen::VariationAxisConfig {
-              name: axis.name,
-              value: axis.value,
-            };
-          })
-          .collect();
-      }),
-    };
-  }));
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。

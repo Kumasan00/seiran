@@ -2,33 +2,12 @@
 
 use std::collections::HashMap;
 
-use font::{FontData, FontRefs};
+use font::{FontData, FontFaceConfigs, FontRefs};
 use krilla::text::{Font, Tag};
 use model::{AssetId, FontMap, FontType};
 use read_fonts::{ReadError, TableProvider};
 
 use crate::error::PdfGenError;
-
-/// Krilla フォント構築に必要な設定（`config` クレートに依存しない最小表現）。
-#[derive(Debug, Clone)]
-pub struct FontResourceConfig {
-  /// TTC（TrueType Collection）ファイル内のインデックス
-  pub font_index: u32,
-  /// バリアブルフォント軸の設定値
-  pub variation_axes: Option<Vec<VariationAxisConfig>>,
-}
-
-/// バリアブルフォント軸の設定値（`config::VariationAxis` の複製）。
-#[derive(Debug, Clone, Copy)]
-pub struct VariationAxisConfig {
-  /// 軸名（4 バイトの OpenType 軸タグ）
-  pub name: [u8; 4],
-  /// 目標値（実数）
-  pub value: f64,
-}
-
-/// 19 フォント種別すべての [`FontResourceConfig`]。
-pub type FontResourceConfigs = FontMap<FontResourceConfig>;
 
 /// render に必要なフォント・画像資源一式。
 ///
@@ -51,7 +30,7 @@ impl ResourceBundle {
   /// バリアブルフォントに必要な軸設定が不足している、またはフォントの生成に失敗した場合に
   /// [`PdfGenError`] を返す。
   pub fn new(
-    configs: &FontResourceConfigs,
+    configs: &FontFaceConfigs,
     font_bytes: &FontData,
     font_refs: &FontRefs,
     font_metrics: font::FontMetrics,
@@ -68,7 +47,7 @@ impl ResourceBundle {
 
 /// フォント設定に基づいて Krilla 用フォント集合を構築する。
 fn build_krilla_fonts(
-  configs: &FontResourceConfigs,
+  configs: &FontFaceConfigs,
   font_bytes: &FontData,
   font_refs: &FontRefs,
 ) -> Result<FontMap<Font>, PdfGenError> {
