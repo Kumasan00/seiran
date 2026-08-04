@@ -1,60 +1,62 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="通"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="常"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=36.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="テ"
-    box x=48.00 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="キ"
-    box x=59.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ス"
-    box x=71.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ト"
-    box x=83.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="と"
-    box x=98.58 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="赤" color=Color([204, 0, 0])
-    box x=110.58 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="い" color=Color([204, 0, 0])
-    box x=122.58 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="テ" color=Color([204, 0, 0])
-    box x=134.58 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="キ" color=Color([204, 0, 0])
-    box x=146.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ス" color=Color([204, 0, 0])
-    box x=158.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ト" color=Color([204, 0, 0])
-    box x=170.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=182.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="並"
-    box x=194.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="べ"
-    box x=206.34 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
-    box x=218.34 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=227.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="青" color=Color([0, 0, 255])
-    box x=239.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="い" color=Color([0, 0, 255])
-    box x=251.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="文" color=Color([0, 0, 255])
-    box x=263.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="章" color=Color([0, 0, 255])
-    box x=275.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の" color=Color([0, 0, 255])
-    box x=287.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="中" color=Color([0, 0, 255])
-    box x=299.16 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に" color=Color([0, 0, 255])
-    box x=313.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="太" color=Color([0, 0, 255])
-    box x=325.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="字" color=Color([0, 0, 255])
-    box x=337.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を" color=Color([0, 0, 255])
-    box x=349.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="入" color=Color([0, 0, 255])
-    box x=361.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="れ" color=Color([0, 0, 255])
-    box x=373.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="て" color=Color([0, 0, 255])
-    box x=385.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="も" color=Color([0, 0, 255])
-    box x=397.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="色" color=Color([0, 0, 255])
-    box x=409.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は" color=Color([0, 0, 255])
-    box x=421.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="保" color=Color([0, 0, 255])
-    box x=433.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="た" color=Color([0, 0, 255])
-    box x=445.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="れ" color=Color([0, 0, 255])
-    box x=457.98 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る" color=Color([0, 0, 255])
-    box x=469.98 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。" color=Color([0, 0, 255])
-    box x=475.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="太"
-    box x=487.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="字"
-    box x=499.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="の"
-    box x=511.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="中"
-    box x=523.98 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="に"
-    box x=538.80 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="緑" color=Color([0, 128, 0])
-    box x=550.80 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="を"
-    box x=562.80 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="入"
-    box x=574.80 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="れ"
-    box x=586.80 dy=0.00 w=12.00 glyphs font=JapaneseSerifBold size=12.00 text="る"
-    box x=598.80 dy=0.00 w=6.00 glyphs font=JapaneseSerifBold size=12.00 text="。"
-    box x=604.80 dy=0.00 w=38.71 glyphs font=Serif size=12.00 text="English"
-    box x=646.33 dy=0.00 w=18.70 glyphs font=Serif size=12.00 text="text"
-    box x=667.85 dy=0.00 w=23.11 glyphs font=Serif size=12.00 text="with"
-    box x=693.78 dy=0.00 w=34.66 glyphs font=Serif size=12.00 text="orange" color=Color([255, 136, 0])
-    box x=731.26 dy=0.00 w=30.74 glyphs font=Serif size=12.00 text="words" color=Color([255, 136, 0])
-    box x=762.00 dy=0.00 w=32.57 glyphs font=Serif size=12.00 text="inline."
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=JapaneseSerif size=12.00 text="通" glyph_count=1
+  glyphs x=252.94 y=280.63 font=JapaneseSerif size=12.00 text="常" glyph_count=1
+  glyphs x=264.94 y=280.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=276.94 y=280.63 font=JapaneseSerif size=12.00 text="テ" glyph_count=1
+  glyphs x=288.94 y=280.63 font=JapaneseSerif size=12.00 text="キ" glyph_count=1
+  glyphs x=300.70 y=280.63 font=JapaneseSerif size=12.00 text="ス" glyph_count=1
+  glyphs x=312.70 y=280.63 font=JapaneseSerif size=12.00 text="ト" glyph_count=1
+  glyphs x=324.70 y=280.63 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=339.52 y=280.63 font=JapaneseSerif size=12.00 text="赤" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=351.52 y=280.63 font=JapaneseSerif size=12.00 text="い" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=363.52 y=280.63 font=JapaneseSerif size=12.00 text="テ" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=375.52 y=280.63 font=JapaneseSerif size=12.00 text="キ" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=387.28 y=280.63 font=JapaneseSerif size=12.00 text="ス" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=399.28 y=280.63 font=JapaneseSerif size=12.00 text="ト" glyph_count=1 color=Color([204, 0, 0])
+  glyphs x=411.28 y=280.63 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=423.28 y=280.63 font=JapaneseSerif size=12.00 text="並" glyph_count=1
+  glyphs x=435.28 y=280.63 font=JapaneseSerif size=12.00 text="べ" glyph_count=1
+  glyphs x=447.28 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=459.28 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=468.10 y=280.63 font=JapaneseSerif size=12.00 text="青" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=480.10 y=280.63 font=JapaneseSerif size=12.00 text="い" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=492.10 y=280.63 font=JapaneseSerif size=12.00 text="文" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=504.10 y=280.63 font=JapaneseSerif size=12.00 text="章" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=516.10 y=280.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=528.10 y=280.63 font=JapaneseSerif size=12.00 text="中" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=540.10 y=280.63 font=JapaneseSerif size=12.00 text="に" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=554.92 y=280.63 font=JapaneseSerifBold size=12.00 text="太" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=566.92 y=280.63 font=JapaneseSerifBold size=12.00 text="字" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=578.92 y=280.63 font=JapaneseSerif size=12.00 text="を" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=590.92 y=280.63 font=JapaneseSerif size=12.00 text="入" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=602.92 y=280.63 font=JapaneseSerif size=12.00 text="れ" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=614.92 y=280.63 font=JapaneseSerif size=12.00 text="て" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=626.92 y=280.63 font=JapaneseSerif size=12.00 text="も" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=638.92 y=280.63 font=JapaneseSerif size=12.00 text="色" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=650.92 y=280.63 font=JapaneseSerif size=12.00 text="は" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=662.92 y=280.63 font=JapaneseSerif size=12.00 text="保" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=674.92 y=280.63 font=JapaneseSerif size=12.00 text="た" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=686.92 y=280.63 font=JapaneseSerif size=12.00 text="れ" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=698.92 y=280.63 font=JapaneseSerif size=12.00 text="る" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=710.92 y=280.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=716.92 y=280.63 font=JapaneseSerifBold size=12.00 text="太" glyph_count=1
+  glyphs x=728.92 y=280.63 font=JapaneseSerifBold size=12.00 text="字" glyph_count=1
+  glyphs x=740.92 y=280.63 font=JapaneseSerifBold size=12.00 text="の" glyph_count=1
+  glyphs x=752.92 y=280.63 font=JapaneseSerifBold size=12.00 text="中" glyph_count=1
+  glyphs x=764.92 y=280.63 font=JapaneseSerifBold size=12.00 text="に" glyph_count=1
+  glyphs x=779.74 y=280.63 font=JapaneseSerifBold size=12.00 text="緑" glyph_count=1 color=Color([0, 128, 0])
+  glyphs x=791.74 y=280.63 font=JapaneseSerifBold size=12.00 text="を" glyph_count=1
+  glyphs x=803.74 y=280.63 font=JapaneseSerifBold size=12.00 text="入" glyph_count=1
+  glyphs x=815.74 y=280.63 font=JapaneseSerifBold size=12.00 text="れ" glyph_count=1
+  glyphs x=827.74 y=280.63 font=JapaneseSerifBold size=12.00 text="る" glyph_count=1
+  glyphs x=839.74 y=280.63 font=JapaneseSerifBold size=12.00 text="。" glyph_count=1
+  glyphs x=845.74 y=280.63 font=Serif size=12.00 text="English" glyph_count=7
+  glyphs x=887.28 y=280.63 font=Serif size=12.00 text="text" glyph_count=4
+  glyphs x=908.79 y=280.63 font=Serif size=12.00 text="with" glyph_count=4
+  glyphs x=934.72 y=280.63 font=Serif size=12.00 text="orange" glyph_count=6 color=Color([255, 136, 0])
+  glyphs x=972.20 y=280.63 font=Serif size=12.00 text="words" glyph_count=5 color=Color([255, 136, 0])
+  glyphs x=1002.94 y=280.63 font=Serif size=12.00 text="inline." glyph_count=7

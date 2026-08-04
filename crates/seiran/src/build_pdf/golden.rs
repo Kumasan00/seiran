@@ -259,12 +259,6 @@ fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, Project
 /// （`build_pages` 経由）を使う——`typeset::Page` レベルの anchor/index 行に依存する
 /// `index_marks_are_invisible_to_layout` 等は、`Publication` には対応する表現が無いため
 /// 今回は移行しない（issue の「順次移行」方針どおり）。
-// この関数は `layout_dumps_match_golden` を compile 経由へ移行する後続タスクまで未使用
-// （dead_code）。疎通確認用の一時テストは役目を終えて削除済みで、本採用のテストは次のタスクで
-// `layout_dumps_match_golden` から呼ぶ形で追加する（このモジュールの `memory_source_for_golden_fixture`
-// / `register_fonts` / `apply_input_config_overrides_toml` / `super::dump::dump_publication` は
-// すべてこの関数からのみ呼ばれるため、ここに allow を置けば芋づる式に到達可能と判定される）。
-#[allow(dead_code)]
 fn dump_input_via_compile(name: &str) -> String {
   let (source, root) = memory_source_for_golden_fixture(name);
   let compilation = super::compile(&source, &root).unwrap_or_else(|diagnostics| {
@@ -290,16 +284,15 @@ fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>,
 fn layout_dumps_match_golden() {
   // Arrange
   enter_workspace_root();
-  let (base_config, style, references) = load_base();
   let update = std::env::var_os("UPDATE_GOLDEN").is_some();
   if update {
     fs::create_dir_all(golden_dir()).expect("golden ディレクトリの作成");
   }
 
-  // Act / Assert — 各入力のダンプを golden と比較（UPDATE_GOLDEN=1 で再生成）
+  // Act / Assert — 各入力を compile() 経由で組版し、Publication のダンプを golden と比較
   let mut mismatches = Vec::new();
   for name in GOLDEN_INPUTS {
-    let dump = dump_input(&base_config, &style, &references, name);
+    let dump = dump_input_via_compile(name);
     let golden_path = golden_dir().join(format!("{name}.txt"));
     if update {
       fs::write(&golden_path, &dump).expect("golden の書き出し");

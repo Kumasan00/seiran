@@ -1,61 +1,53 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=15.24 depth=4.76 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
-    box x=20.12 dy=0.00 w=53.58 glyphs font=SerifBold size=20.00 text="Index"
-    box x=78.40 dy=0.00 w=68.66 glyphs font=SerifBold size=20.00 text="Sample"
-  line baseline_y=311.63 height=9.14 depth=2.86 last=true
-    box x=0.00 dy=0.00 w=32.09 glyphs font=Serif size=12.00 text="Seiran"
-    box x=34.91 dy=0.00 w=40.42 glyphs font=Serif size=12.00 text="typesets"
-    box x=78.14 dy=0.00 w=25.93 glyphs font=Serif size=12.00 text="plain"
-    box x=106.90 dy=0.00 w=18.70 glyphs font=Serif size=12.00 text="text"
-    box x=128.41 dy=0.00 w=20.22 glyphs font=Serif size=12.00 text="into"
-    box x=151.45 dy=0.00 w=24.86 glyphs font=Serif size=12.00 text="PDF."
-    box x=179.14 dy=0.00 w=19.73 glyphs font=Serif size=12.00 text="The"
-    box x=201.68 dy=0.00 w=26.00 glyphs font=Serif size=12.00 text="word"
-    box x=230.51 dy=0.00 w=55.42 glyphs font=Serif size=12.00 text="typesetting"
-    box x=288.74 dy=0.00 w=39.28 glyphs font=Serif size=12.00 text="appears"
-    box x=330.84 dy=0.00 w=27.54 glyphs font=Serif size=12.00 text="again"
-    box x=361.20 dy=0.00 w=22.50 glyphs font=Serif size=12.00 text="here"
-    box x=386.52 dy=0.00 w=9.89 glyphs font=Serif size=12.00 text="to"
-    box x=399.23 dy=0.00 w=17.81 glyphs font=Serif size=12.00 text="test"
-    box x=419.86 dy=0.00 w=70.00 glyphs font=Serif size=12.00 text="deduplication"
-    box x=492.67 dy=0.00 w=33.44 glyphs font=Serif size=12.00 text="within"
-    box x=528.94 dy=0.00 w=5.76 glyphs font=Serif size=12.00 text="a"
-    box x=537.52 dy=0.00 w=29.84 glyphs font=Serif size=12.00 text="single"
-    box x=570.18 dy=0.00 w=26.58 glyphs font=Serif size=12.00 text="page."
-  line baseline_y=336.23 height=9.14 depth=2.86 last=true
-    box x=0.00 dy=0.00 w=8.62 glyphs font=Serif size=12.00 text="A"
-    box x=11.44 dy=0.00 w=51.13 glyphs font=Serif size=12.00 text="separately"
-    box x=65.39 dy=0.00 w=39.91 glyphs font=Serif size=12.00 text="indexed"
-    box x=108.12 dy=0.00 w=24.07 glyphs font=Serif size=12.00 text="term"
-    box x=135.01 dy=0.00 w=23.11 glyphs font=Serif size=12.00 text="with"
-    box x=160.94 dy=0.00 w=12.67 glyphs font=Serif size=12.00 text="an"
-    box x=176.44 dy=0.00 w=37.01 glyphs font=Serif size=12.00 text="explicit"
-    box x=216.26 dy=0.00 w=38.38 glyphs font=Serif size=12.00 text="reading"
-    box x=257.46 dy=0.00 w=32.89 glyphs font=Serif size=12.00 text="option"
-    box x=293.17 dy=0.00 w=16.68 glyphs font=Serif size=12.00 text="sits"
-    box x=312.67 dy=0.00 w=9.54 glyphs font=Serif size=12.00 text="at"
-    box x=325.03 dy=0.00 w=16.27 glyphs font=Serif size=12.00 text="the"
-    box x=344.12 dy=0.00 w=18.95 glyphs font=Serif size=12.00 text="end"
-    box x=365.89 dy=0.00 w=9.85 glyphs font=Serif size=12.00 text="of"
-    box x=378.56 dy=0.00 w=18.86 glyphs font=Serif size=12.00 text="this"
-    box x=400.25 dy=0.00 w=47.28 glyphs font=Serif size=12.00 text="sentence."
-anchor mark=Heading { key: "heading:0", label: None } x=0.00 y=265.39
-anchor mark=Label("index-page:0") x=0.00 y=0.00
-index word="typesetting" reading=None
-index word="example" reading=Some("example-reading")
-=== page 1 ===
-body:
-  line baseline_y=280.63 height=13.72 depth=4.28 last=true
-    box x=0.00 dy=0.00 w=43.29 glyphs font=Serif size=18.00 text="Index"
-  line baseline_y=311.53 height=7.62 depth=2.38 last=true
-    box x=0.00 dy=0.00 w=35.49 glyphs font=Serif size=10.00 text="example"
-    box x=41.49 dy=0.00 w=4.95 glyphs font=Serif size=10.00 text="1"
-    linkspan target=Internal("index-page:0") x0=41.49 x1=46.44
-  line baseline_y=322.03 height=7.62 depth=2.38 last=true
-    box x=0.00 dy=0.00 w=46.18 glyphs font=Serif size=10.00 text="typesetting"
-    box x=52.18 dy=0.00 w=4.95 glyphs font=Serif size=10.00 text="1"
-    linkspan target=Internal("index-page:0") x0=52.18 x1=57.13
-link target=Internal("index-page:0") x=41.49 y=303.91 w=4.95 h=10.00
-link target=Internal("index-page:0") x=52.18 y=314.41 w=4.95 h=10.00
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
+  glyphs x=261.06 y=280.63 font=SerifBold size=20.00 text="Index" glyph_count=5
+  glyphs x=319.34 y=280.63 font=SerifBold size=20.00 text="Sample" glyph_count=6
+  glyphs x=240.94 y=311.63 font=Serif size=12.00 text="Seiran" glyph_count=6
+  glyphs x=275.85 y=311.63 font=Serif size=12.00 text="typesets" glyph_count=8
+  glyphs x=319.09 y=311.63 font=Serif size=12.00 text="plain" glyph_count=5
+  glyphs x=347.84 y=311.63 font=Serif size=12.00 text="text" glyph_count=4
+  glyphs x=369.36 y=311.63 font=Serif size=12.00 text="into" glyph_count=4
+  glyphs x=392.40 y=311.63 font=Serif size=12.00 text="PDF." glyph_count=4
+  glyphs x=420.08 y=311.63 font=Serif size=12.00 text="The" glyph_count=3
+  glyphs x=442.63 y=311.63 font=Serif size=12.00 text="word" glyph_count=4
+  glyphs x=471.45 y=311.63 font=Serif size=12.00 text="typesetting" glyph_count=11
+  glyphs x=529.69 y=311.63 font=Serif size=12.00 text="appears" glyph_count=7
+  glyphs x=571.78 y=311.63 font=Serif size=12.00 text="again" glyph_count=5
+  glyphs x=602.14 y=311.63 font=Serif size=12.00 text="here" glyph_count=4
+  glyphs x=627.46 y=311.63 font=Serif size=12.00 text="to" glyph_count=2
+  glyphs x=640.17 y=311.63 font=Serif size=12.00 text="test" glyph_count=4
+  glyphs x=660.80 y=311.63 font=Serif size=12.00 text="deduplication" glyph_count=13
+  glyphs x=733.62 y=311.63 font=Serif size=12.00 text="within" glyph_count=6
+  glyphs x=769.88 y=311.63 font=Serif size=12.00 text="a" glyph_count=1
+  glyphs x=778.46 y=311.63 font=Serif size=12.00 text="single" glyph_count=6
+  glyphs x=811.12 y=311.63 font=Serif size=12.00 text="page." glyph_count=5
+  glyphs x=240.94 y=336.23 font=Serif size=12.00 text="A" glyph_count=1
+  glyphs x=252.38 y=336.23 font=Serif size=12.00 text="separately" glyph_count=10
+  glyphs x=306.33 y=336.23 font=Serif size=12.00 text="indexed" glyph_count=7
+  glyphs x=349.06 y=336.23 font=Serif size=12.00 text="term" glyph_count=4
+  glyphs x=375.96 y=336.23 font=Serif size=12.00 text="with" glyph_count=4
+  glyphs x=401.89 y=336.23 font=Serif size=12.00 text="an" glyph_count=2
+  glyphs x=417.38 y=336.23 font=Serif size=12.00 text="explicit" glyph_count=8
+  glyphs x=457.21 y=336.23 font=Serif size=12.00 text="reading" glyph_count=7
+  glyphs x=498.40 y=336.23 font=Serif size=12.00 text="option" glyph_count=6
+  glyphs x=534.12 y=336.23 font=Serif size=12.00 text="sits" glyph_count=4
+  glyphs x=553.62 y=336.23 font=Serif size=12.00 text="at" glyph_count=2
+  glyphs x=565.98 y=336.23 font=Serif size=12.00 text="the" glyph_count=3
+  glyphs x=585.07 y=336.23 font=Serif size=12.00 text="end" glyph_count=3
+  glyphs x=606.84 y=336.23 font=Serif size=12.00 text="of" glyph_count=2
+  glyphs x=619.51 y=336.23 font=Serif size=12.00 text="this" glyph_count=4
+  glyphs x=641.19 y=336.23 font=Serif size=12.00 text="sentence." glyph_count=9
+=== page 1 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=Serif size=18.00 text="Index" glyph_count=5
+  glyphs x=240.94 y=311.53 font=Serif size=10.00 text="example" glyph_count=7
+  glyphs x=282.43 y=311.53 font=Serif size=10.00 text="1" glyph_count=1
+  glyphs x=240.94 y=322.03 font=Serif size=10.00 text="typesetting" glyph_count=11
+  glyphs x=293.12 y=322.03 font=Serif size=10.00 text="1" glyph_count=1
+  link target=Internal(page=0, x=240.94, y=0.00) x=282.43 y=303.91 w=4.95 h=10.00
+  link target=Internal(page=0, x=240.94, y=0.00) x=293.12 y=314.41 w=4.95 h=10.00
+outline:
+  depth=2 text=".1 Index Sample" page=0 x=240.94 y=265.39

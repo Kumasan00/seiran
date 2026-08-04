@@ -1,115 +1,107 @@
-=== page 0 ===
-body:
-  line baseline_y=280.63 height=23.02 depth=5.72 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".1"
-    box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="は"
-    box x=40.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="じ"
-    box x=60.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="め"
-    box x=80.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="に"
-  line baseline_y=311.63 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="こ"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="れ"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=36.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="導"
-    box x=48.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="入"
-    box x=60.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=72.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="節"
-    box x=84.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=96.00 dy=0.00 w=11.04 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=107.04 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=119.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="詳"
-    box x=131.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="し"
-    box x=143.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="く"
-    box x=155.04 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="は"
-    box x=169.86 dy=0.00 w=75.67 glyphs font=Serif size=12.00 text="Subsection .2.1"
-    box x=245.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=257.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="参"
-    box x=269.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="照"
-    box x=281.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="し"
-    box x=293.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="て"
-    box x=305.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="く"
-    box x=317.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="だ"
-    box x=329.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="さ"
-    box x=341.53 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="い"
-    box x=353.53 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    linkspan target=Internal("sec:detail") x0=169.86 x1=245.53
-  line baseline_y=336.23 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="外"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="部"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="リ"
-    box x=36.00 dy=0.00 w=11.76 glyphs font=JapaneseSerif size=12.00 text="ン"
-    box x=47.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ク"
-    box x=59.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=71.76 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="例"
-    box x=83.76 dy=0.00 w=2.94 glyphs font=Serif size=12.00 text=":"
-    box x=89.52 dy=0.00 w=37.72 glyphs font=Serif size=12.00 text="https://"
-    box x=127.24 dy=0.00 w=67.27 glyphs font=Serif size=12.00 text="example.com"
-    box x=194.51 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="と"
-    box x=209.33 dy=0.00 w=23.09 glyphs font=Serif size=12.00 text="Rust"
-    box x=235.24 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=247.24 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="公"
-    box x=259.24 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="式"
-    box x=271.24 dy=0.00 w=11.16 glyphs font=JapaneseSerif size=12.00 text="サ"
-    box x=282.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="イ"
-    box x=294.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ト"
-    box x=306.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="を"
-    box x=318.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="参"
-    box x=330.40 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="照"
-    box x=342.40 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    linkspan target=External("https://example.com") x0=89.52 x1=194.51
-    linkspan target=External("https://www.rust-lang.org") x0=209.33 x1=306.40
-  line baseline_y=360.83 height=23.02 depth=5.72 last=true
-    box x=0.00 dy=0.00 w=15.42 glyphs font=SerifBold size=20.00 text=".2"
-    box x=20.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="背"
-    box x=40.12 dy=0.00 w=20.00 glyphs font=JapaneseSerifBold size=20.00 text="景"
-  line baseline_y=391.83 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="背"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="景"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=36.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="説"
-    box x=48.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="明"
-    box x=60.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=72.00 dy=0.00 w=11.04 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=83.04 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    box x=89.04 dy=0.00 w=48.95 glyphs font=Serif size=12.00 text="Section .1"
-    box x=137.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="に"
-    box x=149.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="戻"
-    box x=161.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="る"
-    box x=173.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="こ"
-    box x=185.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="と"
-    box x=197.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="も"
-    box x=209.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=221.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="き"
-    box x=233.99 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="ま"
-    box x=245.99 dy=0.00 w=11.04 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=257.03 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    linkspan target=Internal("sec:intro") x0=89.04 x1=137.99
-  line baseline_y=416.43 height=18.42 depth=4.58 last=true
-    box x=0.00 dy=0.00 w=24.67 glyphs font=SerifBold size=16.00 text=".2.1"
-    box x=28.43 dy=0.00 w=16.00 glyphs font=JapaneseSerifBold size=16.00 text="詳"
-    box x=44.43 dy=0.00 w=16.00 glyphs font=JapaneseSerifBold size=16.00 text="細"
-  line baseline_y=443.23 height=13.81 depth=3.43 last=true
-    box x=0.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="こ"
-    box x=12.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="こ"
-    box x=24.00 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="が"
-    box x=38.82 dy=0.00 w=75.67 glyphs font=Serif size=12.00 text="Subsection .2.1"
-    box x=114.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=126.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="指"
-    box x=138.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=150.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="詳"
-    box x=162.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="細"
-    box x=174.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="の"
-    box x=186.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="小"
-    box x=198.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="節"
-    box x=210.49 dy=0.00 w=12.00 glyphs font=JapaneseSerif size=12.00 text="で"
-    box x=222.49 dy=0.00 w=11.04 glyphs font=JapaneseSerif size=12.00 text="す"
-    box x=233.53 dy=0.00 w=6.00 glyphs font=JapaneseSerif size=12.00 text="。"
-    linkspan target=Internal("sec:detail") x0=38.82 x1=114.49
-anchor mark=Heading { key: "heading:0", label: Some("sec:intro") } x=0.00 y=257.61
-anchor mark=Heading { key: "heading:1", label: None } x=0.00 y=337.81
-anchor mark=Heading { key: "heading:2", label: Some("sec:detail") } x=0.00 y=398.01
-link target=Internal("sec:detail") x=169.86 y=297.82 w=75.67 h=17.24
-link target=External("https://example.com") x=89.52 y=322.42 w=104.99 h=17.24
-link target=External("https://www.rust-lang.org") x=209.33 y=322.42 w=97.07 h=17.24
-link target=Internal("sec:intro") x=89.04 y=378.02 w=48.95 h=17.24
-link target=Internal("sec:detail") x=38.82 y=429.42 w=75.67 h=17.24
+title="test_document"
+author="テスト著者"
+language="ja"
+keywords=["test", "seiran"]
+=== page 0 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text=".1" glyph_count=2
+  glyphs x=261.06 y=280.63 font=JapaneseSerifBold size=20.00 text="は" glyph_count=1
+  glyphs x=281.06 y=280.63 font=JapaneseSerifBold size=20.00 text="じ" glyph_count=1
+  glyphs x=301.06 y=280.63 font=JapaneseSerifBold size=20.00 text="め" glyph_count=1
+  glyphs x=321.06 y=280.63 font=JapaneseSerifBold size=20.00 text="に" glyph_count=1
+  glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=252.94 y=311.63 font=JapaneseSerif size=12.00 text="れ" glyph_count=1
+  glyphs x=264.94 y=311.63 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=276.94 y=311.63 font=JapaneseSerif size=12.00 text="導" glyph_count=1
+  glyphs x=288.94 y=311.63 font=JapaneseSerif size=12.00 text="入" glyph_count=1
+  glyphs x=300.94 y=311.63 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=312.94 y=311.63 font=JapaneseSerif size=12.00 text="節" glyph_count=1
+  glyphs x=324.94 y=311.63 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=336.94 y=311.63 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=347.98 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=359.98 y=311.63 font=JapaneseSerif size=12.00 text="詳" glyph_count=1
+  glyphs x=371.98 y=311.63 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=383.98 y=311.63 font=JapaneseSerif size=12.00 text="く" glyph_count=1
+  glyphs x=395.98 y=311.63 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=410.80 y=311.63 font=Serif size=12.00 text="Subsection .2.1" glyph_count=15
+  glyphs x=486.48 y=311.63 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=498.48 y=311.63 font=JapaneseSerif size=12.00 text="参" glyph_count=1
+  glyphs x=510.48 y=311.63 font=JapaneseSerif size=12.00 text="照" glyph_count=1
+  glyphs x=522.48 y=311.63 font=JapaneseSerif size=12.00 text="し" glyph_count=1
+  glyphs x=534.48 y=311.63 font=JapaneseSerif size=12.00 text="て" glyph_count=1
+  glyphs x=546.48 y=311.63 font=JapaneseSerif size=12.00 text="く" glyph_count=1
+  glyphs x=558.48 y=311.63 font=JapaneseSerif size=12.00 text="だ" glyph_count=1
+  glyphs x=570.48 y=311.63 font=JapaneseSerif size=12.00 text="さ" glyph_count=1
+  glyphs x=582.48 y=311.63 font=JapaneseSerif size=12.00 text="い" glyph_count=1
+  glyphs x=594.48 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=240.94 y=336.23 font=JapaneseSerif size=12.00 text="外" glyph_count=1
+  glyphs x=252.94 y=336.23 font=JapaneseSerif size=12.00 text="部" glyph_count=1
+  glyphs x=264.94 y=336.23 font=JapaneseSerif size=12.00 text="リ" glyph_count=1
+  glyphs x=276.94 y=336.23 font=JapaneseSerif size=12.00 text="ン" glyph_count=1
+  glyphs x=288.70 y=336.23 font=JapaneseSerif size=12.00 text="ク" glyph_count=1
+  glyphs x=300.70 y=336.23 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=312.70 y=336.23 font=JapaneseSerif size=12.00 text="例" glyph_count=1
+  glyphs x=324.70 y=336.23 font=Serif size=12.00 text=":" glyph_count=1
+  glyphs x=330.46 y=336.23 font=Serif size=12.00 text="https://" glyph_count=8
+  glyphs x=368.18 y=336.23 font=Serif size=12.00 text="example.com" glyph_count=11
+  glyphs x=435.45 y=336.23 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=450.27 y=336.23 font=Serif size=12.00 text="Rust" glyph_count=4
+  glyphs x=476.18 y=336.23 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=488.18 y=336.23 font=JapaneseSerif size=12.00 text="公" glyph_count=1
+  glyphs x=500.18 y=336.23 font=JapaneseSerif size=12.00 text="式" glyph_count=1
+  glyphs x=512.18 y=336.23 font=JapaneseSerif size=12.00 text="サ" glyph_count=1
+  glyphs x=523.34 y=336.23 font=JapaneseSerif size=12.00 text="イ" glyph_count=1
+  glyphs x=535.34 y=336.23 font=JapaneseSerif size=12.00 text="ト" glyph_count=1
+  glyphs x=547.34 y=336.23 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=559.34 y=336.23 font=JapaneseSerif size=12.00 text="参" glyph_count=1
+  glyphs x=571.34 y=336.23 font=JapaneseSerif size=12.00 text="照" glyph_count=1
+  glyphs x=583.34 y=336.23 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=240.94 y=360.83 font=SerifBold size=20.00 text=".2" glyph_count=2
+  glyphs x=261.06 y=360.83 font=JapaneseSerifBold size=20.00 text="背" glyph_count=1
+  glyphs x=281.06 y=360.83 font=JapaneseSerifBold size=20.00 text="景" glyph_count=1
+  glyphs x=240.94 y=391.83 font=JapaneseSerif size=12.00 text="背" glyph_count=1
+  glyphs x=252.94 y=391.83 font=JapaneseSerif size=12.00 text="景" glyph_count=1
+  glyphs x=264.94 y=391.83 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=276.94 y=391.83 font=JapaneseSerif size=12.00 text="説" glyph_count=1
+  glyphs x=288.94 y=391.83 font=JapaneseSerif size=12.00 text="明" glyph_count=1
+  glyphs x=300.94 y=391.83 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=312.94 y=391.83 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=323.98 y=391.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=329.98 y=391.83 font=Serif size=12.00 text="Section .1" glyph_count=10
+  glyphs x=378.93 y=391.83 font=JapaneseSerif size=12.00 text="に" glyph_count=1
+  glyphs x=390.93 y=391.83 font=JapaneseSerif size=12.00 text="戻" glyph_count=1
+  glyphs x=402.93 y=391.83 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=414.93 y=391.83 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=426.93 y=391.83 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=438.93 y=391.83 font=JapaneseSerif size=12.00 text="も" glyph_count=1
+  glyphs x=450.93 y=391.83 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=462.93 y=391.83 font=JapaneseSerif size=12.00 text="き" glyph_count=1
+  glyphs x=474.93 y=391.83 font=JapaneseSerif size=12.00 text="ま" glyph_count=1
+  glyphs x=486.93 y=391.83 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=497.97 y=391.83 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=240.94 y=416.43 font=SerifBold size=16.00 text=".2.1" glyph_count=4
+  glyphs x=269.38 y=416.43 font=JapaneseSerifBold size=16.00 text="詳" glyph_count=1
+  glyphs x=285.38 y=416.43 font=JapaneseSerifBold size=16.00 text="細" glyph_count=1
+  glyphs x=240.94 y=443.23 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=252.94 y=443.23 font=JapaneseSerif size=12.00 text="こ" glyph_count=1
+  glyphs x=264.94 y=443.23 font=JapaneseSerif size=12.00 text="が" glyph_count=1
+  glyphs x=279.76 y=443.23 font=Serif size=12.00 text="Subsection .2.1" glyph_count=15
+  glyphs x=355.44 y=443.23 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=367.44 y=443.23 font=JapaneseSerif size=12.00 text="指" glyph_count=1
+  glyphs x=379.44 y=443.23 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=391.44 y=443.23 font=JapaneseSerif size=12.00 text="詳" glyph_count=1
+  glyphs x=403.44 y=443.23 font=JapaneseSerif size=12.00 text="細" glyph_count=1
+  glyphs x=415.44 y=443.23 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=427.44 y=443.23 font=JapaneseSerif size=12.00 text="小" glyph_count=1
+  glyphs x=439.44 y=443.23 font=JapaneseSerif size=12.00 text="節" glyph_count=1
+  glyphs x=451.44 y=443.23 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=463.44 y=443.23 font=JapaneseSerif size=12.00 text="す" glyph_count=1
+  glyphs x=474.48 y=443.23 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  link target=Internal(page=0, x=240.94, y=398.01) x=410.80 y=297.82 w=75.67 h=17.24
+  link target=External("https://example.com") x=330.46 y=322.42 w=104.99 h=17.24
+  link target=External("https://www.rust-lang.org") x=450.27 y=322.42 w=97.07 h=17.24
+  link target=Internal(page=0, x=240.94, y=257.61) x=329.98 y=378.02 w=48.95 h=17.24
+  link target=Internal(page=0, x=240.94, y=398.01) x=279.76 y=429.42 w=75.67 h=17.24
+outline:
+  depth=2 text=".1 はじめに" page=0 x=240.94 y=257.61
+  depth=2 text=".2 背景" page=0 x=240.94 y=337.81
+  depth=3 text=".2.1 詳細" page=0 x=240.94 y=398.01
