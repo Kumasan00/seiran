@@ -9,7 +9,9 @@ pub enum LayoutNode {
   Text(String, TextStyle),
   /// 垂直方向のコンテナ (段落、セクションなど)
   VBox {
+    /// 内包する子ノード列
     children: Vec<LayoutNode>,
+    /// 直後の兄弟ノードとの間に空ける下マージン
     margin_bottom: Length,
     /// この `VBox` 配下の縦リストに加える左インデント（pt 換算で累積）
     indent: Length,
@@ -20,12 +22,16 @@ pub enum LayoutNode {
   },
   /// 水平方向のコンテナ (行、インライン数式など)
   HBox {
+    /// 内包する子ノード列
     children: Vec<LayoutNode>,
+    /// 明示幅（`None` なら子要素の自然幅に従う）
     width: Option<Length>,
   },
   /// 画像や描画線など
   Rule {
+    /// 罫線の幅
     width: Length,
+    /// 罫線の高さ
     height: Length,
   },
   /// 画像（PNG / JPEG / SVG）
@@ -39,22 +45,30 @@ pub enum LayoutNode {
     /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
     target_dpi: Option<u32>,
   },
+  /// 伸縮スペース（水平方向の glue）
   Glue {
+    /// 自然幅
     natural: Length,
+    /// 伸長能力
     stretch: Length,
+    /// 収縮能力
     shrink: Length,
   },
   /// 水平カーン（固定幅の空白）
   Kern {
+    /// カーンの幅
     length: Length,
   },
   /// 垂直カーン（固定高さの空白）
   Vkern {
+    /// カーンの高さ
     length: Length,
   },
   /// ベースラインから子要素を垂直方向にずらすコンテナ
   Raise {
+    /// ベースラインからの垂直オフセット（正で上方向）
     offset: Length,
+    /// ずらす対象の子ノード列
     children: Vec<LayoutNode>,
   },
   /// 表（`table` 環境）
@@ -86,7 +100,9 @@ pub enum LayoutNode {
     /// リンク対象の子要素
     children: Vec<LayoutNode>,
   },
+  /// 強制改行（`\\` 由来）
   LineBreak,
+  /// 強制改ページ
   PageBreak,
   /// keep-with-next マーカー（ゼロサイズ）
   KeepWithNext,
@@ -153,7 +169,9 @@ pub struct MathBlockRow {
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextStyle {
+  /// フォントサイズ
   pub font_size: Length,
+  /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）
   pub font_kind: FontKind,
   /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
   /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。

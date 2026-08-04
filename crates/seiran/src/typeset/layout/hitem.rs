@@ -20,9 +20,13 @@ pub enum HItem {
   /// 適用されず、自然幅のまま並ぶ。
   /// `breakable` が `true` のとき行分割の候補点になり、行末では破棄される。
   Glue {
+    /// 自然幅（pt）
     natural: Length,
+    /// 伸長能力（pt。両端揃えの行末処理でのみ使う）
     stretch: Length,
+    /// 収縮能力（pt。両端揃えの行末処理でのみ使う）
     shrink: Length,
+    /// 行分割の候補点になるか（`true` のとき行末では破棄される）
     breakable: bool,
   },
   /// 固定カーン（破棄されない・分割不可）
@@ -39,13 +43,19 @@ pub enum HItem {
   /// 幅 0 の自由分割点は `value = 0`（欧文のスペースなし分割点＝ハイフン後等や
   /// QED マーカー前。和文字間は伸長を持つ幅 0 の `Glue` を使う）、分割禁止は `i32::MAX`。
   /// `value <= 0` のとき行分割の候補点になる。幅は持たない。
-  Penalty { value: i32 },
+  Penalty {
+    /// 分割コスト（`value <= 0` のとき候補点、`i32::MAX` は分割禁止）
+    value: i32,
+  },
   /// 欧文語中のハイフネーション分割点（discretionary）
   ///
   /// ここで折り返した場合**のみ**行末に `hyphen` 箱を出す。折り返さなければ幅 0
   /// （前後の単語断片 `Box` が語の幅を持つ）。`hyphen` は生成時（`typeset::block`）に計測済みで、
   /// 行分割はその `width` を収まり判定・両端揃えに使う。空白での分割より優先度が低い候補。
-  Discretionary { hyphen: HBox },
+  Discretionary {
+    /// 折り返した場合のみ行末に出すハイフン箱（計測済み）
+    hyphen: HBox,
+  },
   /// 強制改行（`\\` 由来）
   ForcedBreak,
   /// リンク領域（機構 B）の開始マーカー（幅 0・分割不可）
@@ -155,7 +165,12 @@ pub enum HBoxContent {
   /// シェーピング済みグリフ列
   Glyphs(GlyphRun),
   /// 罫線（幅と高さを持つ塗りつぶし矩形）
-  Rule { width: Length, height: Length },
+  Rule {
+    /// 罫線の幅
+    width: Length,
+    /// 罫線の高さ
+    height: Length,
+  },
   /// 内部に breakable glue を持たない閉じた箱
   ///
   /// インライン数式の上付き・下付き・分数・平方根など、行分割をまたがない
