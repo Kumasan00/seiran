@@ -258,7 +258,6 @@ mod tests {
               | EvalError::ExtraCommandArgument { .. }
               | EvalError::InvalidCommandArgument { .. }
               | EvalError::UnknownOptArgKey { .. }
-              | EvalError::LabelRequiresNumbering { .. }
               | EvalError::IndexNotAllowedHere { .. }
               | EvalError::ParagraphBreakInArgument { .. }
               | EvalError::NoindentNotAtParagraphStart { .. }
