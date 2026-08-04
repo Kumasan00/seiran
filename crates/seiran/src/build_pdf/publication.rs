@@ -374,7 +374,7 @@ mod tests {
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
   use font::{FontDataExt, FontMetricsExt, FontRefsExt, GlyphRun};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
-  use pdf_gen::{FontResourceConfigs, PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
+  use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
   use typeset::{
     HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
     PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
@@ -449,20 +449,9 @@ mod tests {
     let font_data = font::FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
     let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
     let font_metrics = font::FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-    let font_resource_configs: FontResourceConfigs = model::FontMap::from_all(FontType::ALL.iter().map(|_| {
-      return pdf_gen::FontResourceConfig {
-        font_index: 0,
-        variation_axes: None,
-      };
-    }));
-    return ResourceBundle::new(
-      &font_resource_configs,
-      &font_data,
-      &font_refs,
-      font_metrics,
-      std::collections::HashMap::new(),
-    )
-    .expect("ResourceBundle の構築");
+    let face_configs = font::build_face_configs(&config.font_configs);
+    return ResourceBundle::new(&face_configs, &font_data, &font_refs, font_metrics, std::collections::HashMap::new())
+      .expect("ResourceBundle の構築");
   }
 
   fn empty_page() -> Page {
