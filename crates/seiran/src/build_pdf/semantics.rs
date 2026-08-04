@@ -41,10 +41,10 @@ pub(super) enum SemanticsError {
 ///
 /// CSL 整形または意味解決に失敗した場合にエラーを返す。
 pub(super) fn resolve_semantics(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   parsed: Vec<ParsedSource>,
   references: &References,
-  style: &config::Style,
+  style: &crate::config::Style,
 ) -> Result<ResolvedDocument, SemanticsError> {
   let source_ids: Vec<SourceId> = parsed.iter().map(|p| return p.source_id).collect();
   let docs: Vec<Vec<DocNode>> = parsed.into_iter().map(|p| return p.nodes).collect();
@@ -74,13 +74,13 @@ pub(super) fn resolve_semantics(
 mod tests {
   use std::{collections::HashSet, fs};
 
-  use config::{FilesystemProjectSource, MemoryProjectSource, Style};
   use model::{DocNode, InlineNode, SourceId, Span};
 
   use super::{ParsedSource, SemanticsError, resolve_semantics};
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationError, read_references},
+    config::{FilesystemProjectSource, MemoryProjectSource, Style},
     frontend::parse_source,
   };
 

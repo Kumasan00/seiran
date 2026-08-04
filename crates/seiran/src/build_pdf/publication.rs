@@ -21,7 +21,7 @@ use crate::typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
-  config: &config::Config,
+  config: &crate::config::Config,
   resources: ResourceBundle,
   laid_out: &LaidOutDocument,
 ) -> Publication {
@@ -73,7 +73,7 @@ pub(super) fn build_publication(
 
 /// 1 ページぶんの `PublicationPage` を構築する
 fn build_page(
-  config: &config::Config,
+  config: &crate::config::Config,
   page: &Page,
   margin_left: model::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
@@ -394,13 +394,13 @@ fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
 mod tests {
   use std::path::PathBuf;
 
-  use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
 
   use super::build_publication;
   use crate::{
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
+    config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig},
     font::{FontData, FontDataExt, FontResources, GlyphRun},
     typeset::{
       HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
@@ -470,7 +470,7 @@ mod tests {
       "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
     );
     let config = test_config();
-    let source = config::FilesystemProjectSource::new();
+    let source = crate::config::FilesystemProjectSource::new();
     let font_data = FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
     let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
     let fonts = super::super::build_pdf_fonts(&font_data, &font_resources);

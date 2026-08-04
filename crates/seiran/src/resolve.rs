@@ -41,7 +41,7 @@ pub use node::{
 /// `Theorem::of` の存在検証で失敗した場合にエラーを返す。
 pub fn resolve_project(
   semantic: &SemanticDocument<'_>,
-  style: &config::Style,
+  style: &crate::config::Style,
 ) -> Result<ResolvedDocument, ResolveError> {
   let mut registry = counter::CounterRegistry::from_style(style);
   let mut pending_headings = Vec::new();
@@ -127,7 +127,7 @@ mod tests {
     };
 
     // Act
-    let resolved = resolve_project(&semantic, &config::Style::default()).expect("跨りラベルは解決されるはず");
+    let resolved = resolve_project(&semantic, &crate::config::Style::default()).expect("跨りラベルは解決されるはず");
 
     // Assert
     assert_eq!(resolved.headings.len(), 1);
@@ -151,7 +151,7 @@ mod tests {
     };
 
     // Act
-    let err = resolve_project(&semantic, &config::Style::default()).unwrap_err();
+    let err = resolve_project(&semantic, &crate::config::Style::default()).unwrap_err();
 
     // Assert
     assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
@@ -164,11 +164,11 @@ mod tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod style_independence_tests {
-  use config::Style;
   use model::{DocNode, HeadingLevel, InlineNode, SourceId, Span};
   use proptest::prelude::*;
 
   use super::{ResolvedDocument, SemanticDocument, SemanticGroup, resolve_project};
+  use crate::config::Style;
 
   /// 見出し・本文・`\ref` を含む代表的なドキュメントを組み立てる
   fn sample_nodes() -> Vec<DocNode> {
@@ -233,7 +233,7 @@ mod style_independence_tests {
     different_display_name.counters.chapter.display_name = "章".to_string();
 
     let mut different_number_style = Style::default();
-    different_number_style.counters.chapter.number_style = config::NumberStyle::RomanUpper;
+    different_number_style.counters.chapter.number_style = crate::config::NumberStyle::RomanUpper;
 
     // Act
     let base_resolved = resolve_sample(&nodes, &base);
@@ -321,7 +321,7 @@ mod style_independence_tests {
     NumberFormat(String),
     RefFormat(String),
     DisplayName(String),
-    NumberStyle(config::NumberStyle),
+    NumberStyle(crate::config::NumberStyle),
   }
 
   /// `DisplayOnlyVariant` 1 件を `style.counters.{chapter,section}` の指定先に適用する。
@@ -343,15 +343,15 @@ mod style_independence_tests {
     return prop_oneof![Just(CounterTarget::Chapter), Just(CounterTarget::Section)];
   }
 
-  /// `config::NumberStyle` の全 variant を等確率で選ぶ戦略
-  fn number_style_strategy() -> impl Strategy<Value = config::NumberStyle> {
+  /// `crate::config::NumberStyle` の全 variant を等確率で選ぶ戦略
+  fn number_style_strategy() -> impl Strategy<Value = crate::config::NumberStyle> {
     return prop_oneof![
-      Just(config::NumberStyle::Arabic),
-      Just(config::NumberStyle::RomanUpper),
-      Just(config::NumberStyle::RomanLower),
-      Just(config::NumberStyle::AlphaUpper),
-      Just(config::NumberStyle::AlphaLower),
-      Just(config::NumberStyle::Kanji),
+      Just(crate::config::NumberStyle::Arabic),
+      Just(crate::config::NumberStyle::RomanUpper),
+      Just(crate::config::NumberStyle::RomanLower),
+      Just(crate::config::NumberStyle::AlphaUpper),
+      Just(crate::config::NumberStyle::AlphaLower),
+      Just(crate::config::NumberStyle::Kanji),
     ];
   }
 

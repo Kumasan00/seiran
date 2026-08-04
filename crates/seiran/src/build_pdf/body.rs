@@ -20,8 +20,8 @@ pub(super) fn typeset_body(
     return run_body_pass(ctx, document, image_resources, footnote_numbers);
   };
   return match ctx.style.footnote.numbering {
-    config::FootnoteNumbering::Continuous => run_pass(None),
-    config::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
+    crate::config::FootnoteNumbering::Continuous => run_pass(None),
+    crate::config::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
 

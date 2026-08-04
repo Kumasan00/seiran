@@ -3,7 +3,6 @@
 //! バリエーション軸設定の存在・範囲・完全性を検証する。GSUB/GPOS の
 //! スクリプト・言語サポート不足は処理を止めず、警告として報告する。
 
-use config::{FontConfig, FontConfigs, VariationAxis};
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use model::FontType;
@@ -11,7 +10,10 @@ use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{debug, warn};
 
-use crate::font::FontRefs;
+use crate::{
+  config::{FontConfig, FontConfigs, VariationAxis},
+  font::FontRefs,
+};
 
 /// 複数のフォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]

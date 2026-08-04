@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use config::test_support;
+use seiran::test_support;
 
 /// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
 /// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。

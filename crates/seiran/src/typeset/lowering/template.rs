@@ -63,11 +63,13 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::{CounterName, Style as ReadStyle};
   use model::{FontKind, Length};
 
   use super::{super::test_support, *};
-  use crate::resolve::{CounterKind, CounterValue};
+  use crate::{
+    config::{CounterName, Style as ReadStyle},
+    resolve::{CounterKind, CounterValue},
+  };
 
   fn base_style() -> TextStyle {
     return TextStyle {

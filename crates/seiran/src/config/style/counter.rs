@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::style::number_style::NumberStyle;
+use crate::config::style::number_style::NumberStyle;
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -56,6 +56,11 @@ impl Counters {
   }
 
   /// `(CounterName, &CounterStyle)` の組を 9 個まとめて返すイテレータ
+  ///
+  /// 現状はこのファイル自身の `#[cfg(test)]` からのみ呼ばれる。`config` crate が standalone
+  /// だった間は外部消費を仮定でき `dead_code` を検出されなかったが、`seiran` への吸収で
+  /// 可視性が変わり検出されるようになった（削除は API 変更のため本 move task の範囲外）。
+  #[allow(dead_code)]
   pub fn iter(&self) -> impl Iterator<Item = (CounterName, &CounterStyle)> {
     return [
       (CounterName::Part, &self.part),
@@ -153,7 +158,7 @@ pub struct CounterStyle {
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
+  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::counter_format))]
   pub number_format: String,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
@@ -161,7 +166,7 @@ pub struct CounterStyle {
   /// 種別名を埋め込む
   ///
   /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ref_format))]
+  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::ref_format))]
   pub ref_format: String,
   /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
   pub resets: Vec<CounterName>,

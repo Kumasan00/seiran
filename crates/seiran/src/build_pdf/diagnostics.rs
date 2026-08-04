@@ -7,7 +7,6 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use config::parse_style;
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use model::FontType;
 
@@ -15,7 +14,10 @@ use super::{
   build_pages,
   golden::{enter_workspace_root, load_base},
 };
-use crate::font::{FontData, FontDataExt, FontResources};
+use crate::{
+  config::parse_style,
+  font::{FontData, FontDataExt, FontResources},
+};
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。
 fn diagnostic_golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_diagnostics"); }
@@ -48,7 +50,7 @@ fn build_pages_err(sources: &[&str]) -> miette::Report {
   enter_workspace_root();
   let (mut config, style, references) = load_base();
   config.sources = sources.iter().map(|source| return PathBuf::from(*source)).collect();
-  let source = config::FilesystemProjectSource::new();
+  let source = crate::config::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   return match build_pages(&config, &style, &references, &font_data) {
     Ok(_) => panic!("このケースは失敗するはず"),
@@ -114,7 +116,7 @@ fn diagnostic_undefined_ref() {
 #[test]
 fn diagnostic_resolve_internal_for_generated_origin() {
   // Arrange — 合成書誌からは起こせないエラーを直接構築する
-  let style = config::Style::default();
+  let style = crate::config::Style::default();
   let error = super::tests::resolve_error_attributed_to_bibliography(&style);
   let build_error = super::wrap_resolve_error(error, &super::project::SourceDb::new());
   let report: miette::Report = build_error.into();
@@ -156,11 +158,11 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![config::VariationAxis {
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::config::VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);
-  let source = config::FilesystemProjectSource::new();
+  let source = crate::config::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
     Ok(_) => panic!("不明な軸を指定したので失敗するはず"),

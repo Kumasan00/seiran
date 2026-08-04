@@ -42,11 +42,10 @@ pub(super) fn lower_quote(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
   use model::QuoteKind;
 
   use super::{super::test_support, *};
-  use crate::resolve::ResolvedInline;
+  use crate::{config::Style as ReadStyle, resolve::ResolvedInline};
 
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> ResolvedNode {

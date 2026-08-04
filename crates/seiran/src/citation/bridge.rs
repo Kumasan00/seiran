@@ -55,11 +55,13 @@ fn sanitize_value(value: Value) -> Value {
 mod tests {
   use std::io::Write;
 
-  use config::FilesystemProjectSource;
   use hayagriva::citationberg::json::Value;
 
   use super::to_item;
-  use crate::citation::{References, read_references, test_fixtures::sample_references};
+  use crate::{
+    citation::{References, read_references, test_fixtures::sample_references},
+    config::FilesystemProjectSource,
+  };
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {

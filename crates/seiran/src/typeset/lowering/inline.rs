@@ -1,6 +1,5 @@
 //! インライン要素（`resolve::ResolvedInline`）の lowering
 
-use config::FootnoteStyle;
 use model::{AnchorId, FontKind, FootnoteId, Length, LinkTarget};
 
 use super::{
@@ -8,7 +7,7 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   math::lower_inline_math,
 };
-use crate::resolve::ResolvedInline;
+use crate::{config::FootnoteStyle, resolve::ResolvedInline};
 
 /// インライン要素をレイアウトノードに変換する
 pub(super) fn lower_inline(
@@ -187,11 +186,13 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) ->
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::CounterName;
   use model::{LabelId, Length, Span};
 
   use super::{super::test_support, *};
-  use crate::resolve::{self, CounterKind, CounterValue, ResolvedDocument};
+  use crate::{
+    config::CounterName,
+    resolve::{self, CounterKind, CounterValue, ResolvedDocument},
+  };
 
   /// `sec:intro`（既定スタイルで section = 1.1）だけを登録した解決済みドキュメントを作る
   fn document_with_section() -> ResolvedDocument {
@@ -223,7 +224,7 @@ mod tests {
   #[test]
   fn lower_inline_styled_overrides_parent_kind() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Styled {
       kind: model::FontKind::SerifItalic,
@@ -251,7 +252,7 @@ mod tests {
   #[test]
   fn lower_inline_colored_overrides_color_keeps_font() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Colored {
       color: model::Color::new(0xff, 0x00, 0x00),
@@ -279,7 +280,7 @@ mod tests {
   #[test]
   fn lower_bold_inside_color_keeps_color() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Colored {
       color: model::Color::new(0x00, 0x80, 0x00),
@@ -305,7 +306,7 @@ mod tests {
   #[test]
   fn lower_ref_resolves_to_internal_link_with_display_number() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let document = document_with_section();
     let parent = TextStyle::new(Length::pt(10.0));
@@ -324,7 +325,7 @@ mod tests {
   #[test]
   fn lower_external_link_maps_to_external_target() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Link {
       url: "https://example.com".to_string(),
@@ -359,7 +360,7 @@ mod tests {
   fn lower_ref_applies_link_color() {
     // Arrange
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let document = document_with_section();
@@ -375,7 +376,7 @@ mod tests {
   fn lower_external_link_applies_url_color() {
     // Arrange
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Link {
@@ -400,7 +401,7 @@ mod tests {
   #[test]
   fn lower_ref_inherits_black_when_link_color_none() {
     // Arrange
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.hyperref.link_color = None;
     let ctx = LoweringContext::new(&style);
     let document = document_with_section();
@@ -415,7 +416,7 @@ mod tests {
   #[test]
   fn lower_explicit_color_overrides_link_color() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let red = model::Color::new(0xff, 0x00, 0x00);
     let inline = ResolvedInline::Colored {
@@ -434,7 +435,7 @@ mod tests {
   #[test]
   fn lower_internal_link_maps_to_internal_target() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::InternalLink {
       target: model::CitationId::new("foo"),
@@ -457,7 +458,7 @@ mod tests {
   fn lower_cite_label_applies_cite_color_and_links() {
     // Arrange
     let blue = model::Color::new(0x00, 0x00, 0xff);
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Cite {
@@ -487,7 +488,7 @@ mod tests {
   #[test]
   fn lower_footnote_assigns_sequential_number_and_lowers_body() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let document = test_support::document(&[]);
 
@@ -538,7 +539,7 @@ mod tests {
   #[test]
   fn lower_footnote_applies_number_override_to_both_markers() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let numbers = [1, 1];
     let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
     let document = test_support::document(&[]);
@@ -566,7 +567,7 @@ mod tests {
   #[test]
   fn lower_footnote_falls_back_to_continuous_number_outside_override_map() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let numbers = [1];
     let ctx = LoweringContext::new(&style).with_footnote_numbers(&numbers);
     let document = test_support::document(&[]);
@@ -593,7 +594,7 @@ mod tests {
   #[test]
   fn lower_footnote_body_preserves_nested_styling() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Footnote {
       body: vec![ResolvedInline::Styled {
@@ -621,7 +622,7 @@ mod tests {
   #[test]
   fn lower_footnote_increments_state_across_calls() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let document = test_support::document(&[]);
     let mut state = LoweringState::new(&document);
@@ -638,7 +639,7 @@ mod tests {
   #[test]
   fn lower_footnote_reflects_non_default_footnote_style() {
     // Arrange
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.footnote.font_size = Length::pt(20.0);
     style.footnote.marker_size_factor = 0.5;
     style.footnote.marker_format = "[{number}]".to_string();
@@ -686,8 +687,8 @@ mod tests {
   #[test]
   fn lower_footnote_applies_number_style_to_both_markers() {
     // Arrange
-    let mut style = config::Style::default();
-    style.footnote.number_style = config::NumberStyle::RomanUpper;
+    let mut style = crate::config::Style::default();
+    style.footnote.number_style = crate::config::NumberStyle::RomanUpper;
     let ctx = LoweringContext::new(&style);
     let document = test_support::document(&[]);
     let mut state = LoweringState::new(&document);
@@ -720,7 +721,7 @@ mod tests {
   #[test]
   fn lower_inline_index_produces_index_mark_layout_node() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Index {
       key: resolve::IndexKey {
@@ -745,7 +746,7 @@ mod tests {
   #[test]
   fn lower_inline_index_with_reading_preserves_reading() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Index {
       key: resolve::IndexKey {
@@ -769,7 +770,7 @@ mod tests {
   #[test]
   fn lower_inline_index_does_not_consume_footnote_counter() {
     // Arrange
-    let style = config::Style::default();
+    let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Index {
       key: resolve::IndexKey {

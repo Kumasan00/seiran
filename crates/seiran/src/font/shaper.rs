@@ -5,7 +5,6 @@
 
 use std::str::FromStr;
 
-use config::{FontConfig, FontConfigs, TextDirection};
 pub use harfrust::UnicodeBuffer;
 use harfrust::{
   Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapeOptions, ShapePlan, Shaper, ShaperData,
@@ -16,7 +15,10 @@ use model::FontMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
-use crate::font::{FontRefs, FontType};
+use crate::{
+  config::{FontConfig, FontConfigs, TextDirection},
+  font::{FontRefs, FontType},
+};
 
 /// テキストシェイピングの初期化エラー。
 #[derive(Debug, Error, Diagnostic)]

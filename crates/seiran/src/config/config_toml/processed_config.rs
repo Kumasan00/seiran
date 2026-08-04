@@ -104,7 +104,15 @@ pub type FontConfigs = FontMap<FontConfig>;
 /// 単一フォント種別の検証済み・処理済み設定
 #[derive(Debug, Clone)]
 pub struct FontConfig {
-  /// `PDF FontDescriptor` で使用されるフォント名
+  /// `PDF FontDescriptor` で使用する想定のフォント名（現状未使用）。
+  ///
+  /// `pdf_gen::types::FontFaceInput`（#307 で self-contained 化、旧 #276/#279 由来）が
+  /// この値を受け取るフィールドを持たないため、書き込まれるだけで読まれていない。
+  /// `config` crate が standalone だった間は `pub` フィールドとして外部消費を仮定でき
+  /// `dead_code` を検出されなかったが、`seiran` の非公開 module へ吸収され可視性が変わった
+  /// ことで検出されるようになった（削除はデータモデル変更のため本 move task の範囲外、
+  /// 削除するかどうかは要 controller 判断のクリーンアップ候補）。
+  #[allow(dead_code)]
   pub font_name: String,
   /// フォントファイルへの絶対パス（正規化済み）
   pub font_path: PathBuf,

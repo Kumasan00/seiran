@@ -1,6 +1,5 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
-use config::CaptionStyle;
 use model::{CaptionPosition, FontKind, Length};
 
 use super::{
@@ -8,7 +7,7 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
-use crate::resolve::ResolvedInline;
+use crate::{config::CaptionStyle, resolve::ResolvedInline};
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
 pub(super) fn build_caption(
@@ -82,11 +81,13 @@ pub(super) fn wrap_float(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::{CaptionStyle, CounterName, Style as ReadStyle};
   use model::{CaptionPosition, FontKind, Length};
 
   use super::{super::test_support, *};
-  use crate::resolve::{CounterKind, CounterValue};
+  use crate::{
+    config::{CaptionStyle, CounterName, Style as ReadStyle},
+    resolve::{CounterKind, CounterValue},
+  };
 
   /// テスト用のキャプション本体（識別しやすい固定文字列の Text）を作る
   fn caption_node(text: &str) -> LayoutNode {

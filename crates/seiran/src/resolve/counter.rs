@@ -12,23 +12,25 @@
 
 use std::collections::HashMap;
 
-use config::{CounterName, Counters, Style, TheoremReset, Theorems};
 use model::{HeadingLevel, LabelId, Origin, Span, TheoremClass};
 
-use crate::resolve::{ResolveError, error::span_to_source_span};
+use crate::{
+  config::{CounterName, Counters, Style, TheoremReset, Theorems},
+  resolve::{ResolveError, error::span_to_source_span},
+};
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
 /// 2 系統をひとつの型で表す
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CounterKind {
-  /// `config::Counters` が定義する固定 9 種のいずれか
+  /// `crate::config::Counters` が定義する固定 9 種のいずれか
   Counter(CounterName),
   /// 定理クラス（共有カウンタは `TheoremStyle.counter` で複数クラスが 1 つを共有しうる）
   Theorem(TheoremClass),
 }
 
 /// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
-/// このクレートの対象外（typeset 側が `&config::Style` と併せて表示文字列を作る）
+/// このクレートの対象外（typeset 側が `&crate::config::Style` と併せて表示文字列を作る）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CounterValue {
   /// このカウンタの種別
@@ -47,11 +49,11 @@ struct ResolvedLabel {
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
-  /// カウンタ定義（`config::Counters` の複製）
+  /// カウンタ定義（`crate::config::Counters` の複製）
   defs: Counters,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
-  /// 定理クラス定義（`config::Theorems` の複製）。共有カウンタ名・リセット先を引く
+  /// 定理クラス定義（`crate::config::Theorems` の複製）。共有カウンタ名・リセット先を引く
   theorems: Theorems,
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
@@ -60,7 +62,7 @@ pub(crate) struct CounterRegistry {
 }
 
 impl CounterRegistry {
-  /// `config::Style` からレジストリを構築する
+  /// `crate::config::Style` からレジストリを構築する
   #[must_use]
   pub(crate) fn from_style(style: &Style) -> Self {
     return Self {
@@ -263,7 +265,7 @@ impl CounterRegistry {
   #[must_use]
   pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
 
-  /// `config::Counters` から直接レジストリを構築する（テスト・カスタム用）
+  /// `crate::config::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
   pub(crate) fn from_counters(counters: &Counters) -> Self {
     return Self {
@@ -300,9 +302,8 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 
 #[cfg(test)]
 mod tests {
-  use config::{CounterStyle, NumberStyle, TheoremReset};
-
   use super::*;
+  use crate::config::{CounterStyle, NumberStyle, TheoremReset};
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 

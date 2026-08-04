@@ -10,9 +10,9 @@ use crate::citation::References;
 /// 画像はパース後にパスが分かるため含めない。
 pub(super) struct ProjectSnapshot {
   /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
-  pub(super) config: config::Config,
+  pub(super) config: crate::config::Config,
   /// 検証済みのスタイル
-  pub(super) style: config::Style,
+  pub(super) style: crate::config::Style,
   /// `\cite` の CSL 整形に使う文献データ。複数の入力（golden テスト等）で使い回せるよう
   /// `Arc` で共有する
   pub(super) references: Arc<References>,
@@ -31,9 +31,9 @@ impl ProjectSnapshot {
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
   pub(super) fn assemble(
-    source: &dyn config::ProjectSource,
-    config: config::Config,
-    style: config::Style,
+    source: &dyn crate::config::ProjectSource,
+    config: crate::config::Config,
+    style: crate::config::Style,
     references: Arc<References>,
     font_data: crate::font::FontData,
   ) -> Result<Self, CompileError> {
@@ -103,10 +103,10 @@ impl SourceDb {
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
-  fn read(source: &dyn config::ProjectSource, sources: &[PathBuf]) -> Result<SourceDb, CompileError> {
+  fn read(source: &dyn crate::config::ProjectSource, sources: &[PathBuf]) -> Result<SourceDb, CompileError> {
     let mut db = SourceDb::new();
     for source_path in sources {
-      let content = source.read_text(&config::ProjectPath::new(source_path)).map_err(|source| {
+      let content = source.read_text(&crate::config::ProjectPath::new(source_path)).map_err(|source| {
         return CompileError::ReadTextFile {
           path: source_path.display().to_string(),
           source: source.into_io(),
@@ -136,7 +136,7 @@ mod tests {
   fn read_loads_each_source_file_content_and_display_path() {
     // Arrange
     enter_workspace_root();
-    let source = config::FilesystemProjectSource::new();
+    let source = crate::config::FilesystemProjectSource::new();
     let sources = vec![PathBuf::from("tests/text/text.sei")];
 
     // Act
@@ -153,7 +153,7 @@ mod tests {
   fn read_fails_fast_on_missing_file_without_aggregating() {
     // Arrange — 存在しないパスを混ぜる。I/O 失敗はパースエラーと違い集約しない
     enter_workspace_root();
-    let source = config::FilesystemProjectSource::new();
+    let source = crate::config::FilesystemProjectSource::new();
     let sources = vec![
       PathBuf::from("tests/text/text.sei"),
       PathBuf::from("tests/text/__does_not_exist__.sei"),
@@ -172,7 +172,7 @@ mod tests {
   #[test]
   fn read_reads_through_project_source_without_touching_disk() {
     // Arrange — MemoryProjectSource で 2 ファイル分の fixture を用意する
-    let source = config::MemoryProjectSource::new()
+    let source = crate::config::MemoryProjectSource::new()
       .with_text("/project/a.sei", "content-a")
       .with_text("/project/b.sei", "content-b");
     let sources = vec![

@@ -7,7 +7,7 @@ use model::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::style::caption::CaptionStyle;
+use crate::config::style::caption::CaptionStyle;
 
 /// 表のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

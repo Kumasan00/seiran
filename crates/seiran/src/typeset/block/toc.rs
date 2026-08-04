@@ -1,10 +1,10 @@
 //! 目次（table of contents）ブロックの生成パス
 
-use config::Style;
 use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
 
 use super::Measurer;
 use crate::{
+  config::Style,
   font::FontSystem,
   typeset::{
     layout::{Block, HBox, Line, LineLink, PositionedBox},

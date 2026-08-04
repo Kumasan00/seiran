@@ -64,10 +64,11 @@ pub(super) fn lower_heading(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::{CounterName, Style as ReadStyle};
-
   use super::{super::test_support, *};
-  use crate::resolve::{CounterKind, CounterValue};
+  use crate::{
+    config::{CounterName, Style as ReadStyle},
+    resolve::{CounterKind, CounterValue},
+  };
 
   /// テスト用に `LoweringState` を構築して `lower_heading` を呼ぶヘルパ
   fn lower_heading_default(

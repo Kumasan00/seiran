@@ -1,4 +1,4 @@
-//! 脚注のページ単位採番（`config::FootnoteNumbering::PerPage`）の不動点 solver
+//! 脚注のページ単位採番（`crate::config::FootnoteNumbering::PerPage`）の不動点 solver
 //!
 //! 番号とページ割り当ての循環をこのモジュールに閉じ込める。
 

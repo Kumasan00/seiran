@@ -20,9 +20,9 @@ use crate::{
 /// `layout_body` に渡す、脚注ページ単位採番の反復を跨いで変わらない入力。
 pub struct BodyLayoutInput<'a> {
   /// 画像既定値（最大 DPI・ダウンサンプル）の出所となる文書設定
-  pub config: &'a config::Config,
+  pub config: &'a crate::config::Config,
   /// 本文の書式を決めるスタイル設定
-  pub style: &'a config::Style,
+  pub style: &'a crate::config::Style,
   /// シェイプ・メトリクス取得の窓口
   pub resources: &'a FontSystem<'a>,
   /// 本文の版面幅（pt）

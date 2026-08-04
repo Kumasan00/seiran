@@ -20,13 +20,13 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields, default)]
 pub struct RunningContentStyle {
   /// 左スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
+  #[garde(custom(crate::config::style::placeholder::running_slot))]
   pub left: String,
   /// 中央スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
+  #[garde(custom(crate::config::style::placeholder::running_slot))]
   pub center: String,
   /// 右スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
+  #[garde(custom(crate::config::style::placeholder::running_slot))]
   pub right: String,
   /// フォント種別
   #[garde(skip)]

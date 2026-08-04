@@ -6,20 +6,22 @@
 
 use std::time::Instant;
 
-use config::FontConfigs;
 use miette::Diagnostic;
 use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info};
 
-use crate::font::{
-  FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
-  face_config::{FontFaceConfigs, build_face_configs},
-  shaper::{
-    HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances, ShaperInstancesExt,
-    UnicodeBuffer,
+use crate::{
+  config::FontConfigs,
+  font::{
+    FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
+    face_config::{FontFaceConfigs, build_face_configs},
+    shaper::{
+      HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
+      ShaperInstancesExt, UnicodeBuffer,
+    },
+    validate_font::{self, MultipleFontValidationErrors},
   },
-  validate_font::{self, MultipleFontValidationErrors},
 };
 
 /// [`FontResources::load`] / [`FontResources::system`] のエラー。

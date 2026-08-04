@@ -1,4 +1,4 @@
-//! [`crate::style::read_style`] が返すエラー型の定義。
+//! [`crate::config::style::read_style`] が返すエラー型の定義。
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;

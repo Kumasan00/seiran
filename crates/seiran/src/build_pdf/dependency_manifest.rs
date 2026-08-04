@@ -72,7 +72,7 @@ mod tests {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
     crate::build_pdf::golden::enter_workspace_root();
     let (config, style, references) = load_base();
-    let source = config::FilesystemProjectSource::new();
+    let source = crate::config::FilesystemProjectSource::new();
     let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
     let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, references, font_data).expect("assemble");
     let image_manifest = ImageManifest {

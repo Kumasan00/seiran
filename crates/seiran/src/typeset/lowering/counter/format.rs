@@ -4,10 +4,10 @@
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 
-use config::{CounterName, Counters, Style, TheoremReset};
 use model::TheoremClass;
 
 use crate::{
+  config::{CounterName, Counters, Style, TheoremReset},
   resolve::{CounterKind, CounterValue},
   typeset::lowering::placeholder,
 };
@@ -166,9 +166,8 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::NumberStyle;
-
   use super::*;
+  use crate::config::NumberStyle;
 
   /// `CounterKind::Counter` の構造値を組み立てるテストヘルパ
   fn counter_value(name: CounterName, parts: &[u32]) -> CounterValue {

@@ -1,6 +1,5 @@
 //! 巻末索引ブロックの生成パス
 
-use config::Style;
 use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
@@ -9,6 +8,7 @@ use model::{AnchorId, FontKind, Length, LinkTarget};
 
 use super::Measurer;
 use crate::{
+  config::Style,
   font::FontSystem,
   typeset::{
     layout::{Block, HBox, Line, LineLink, PositionedBox},

@@ -106,10 +106,8 @@ pub(super) fn lower_table(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
-
   use super::{super::test_support, *};
-  use crate::resolve::ResolvedTableCell;
+  use crate::{config::Style as ReadStyle, resolve::ResolvedTableCell};
 
   /// 1 セルの `ResolvedTableRow` を作るテスト用ヘルパ
   fn row_of(texts: &[&str]) -> ResolvedTableRow {

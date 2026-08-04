@@ -169,7 +169,7 @@ fn resolve_node(
           let row_value = if row.numbered {
             let row_span = row.label_span.unwrap_or(*span);
             Some(registry.increment_with_label(
-              config::CounterName::Equation,
+              crate::config::CounterName::Equation,
               row.label.as_deref(),
               row_span,
               source,
@@ -187,7 +187,7 @@ fn resolve_node(
         })
         .collect::<Result<Vec<_>, ResolveError>>()?;
       let env_value = if *numbered {
-        Some(registry.increment_with_label(config::CounterName::Equation, label.as_deref(), *span, source)?)
+        Some(registry.increment_with_label(crate::config::CounterName::Equation, label.as_deref(), *span, source)?)
       } else {
         None
       };
@@ -212,7 +212,7 @@ fn resolve_node(
       span,
     } => {
       let counter_value =
-        registry.increment_with_label(config::CounterName::Figure, label.as_deref(), *span, source)?;
+        registry.increment_with_label(crate::config::CounterName::Figure, label.as_deref(), *span, source)?;
       return Ok(ResolvedNode::Figure {
         image_path: image_path.clone(),
         width: *width,
@@ -237,7 +237,8 @@ fn resolve_node(
       label,
       span,
     } => {
-      let counter_value = registry.increment_with_label(config::CounterName::Table, label.as_deref(), *span, source)?;
+      let counter_value =
+        registry.increment_with_label(crate::config::CounterName::Table, label.as_deref(), *span, source)?;
       let resolve_rows = |table_rows: &[model::TableRow]| {
         return table_rows
           .iter()
@@ -357,7 +358,7 @@ mod tests {
       label: Some("ch:intro".to_string()),
       span: Span::DUMMY,
     }];
-    let mut registry = CounterRegistry::from_style(&config::Style::default());
+    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
     let mut headings = Vec::new();
 
     // Act
@@ -385,7 +386,7 @@ mod tests {
       };
     };
     let nodes = vec![heading("dup"), heading("dup")];
-    let mut registry = CounterRegistry::from_style(&config::Style::default());
+    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
     let mut headings = Vec::new();
 
     // Act

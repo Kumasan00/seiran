@@ -134,7 +134,7 @@ mod tests {
   #[test]
   fn validate_refs_errors_on_missing_label() {
     // Arrange
-    let registry = CounterRegistry::from_style(&config::Style::default());
+    let registry = CounterRegistry::from_style(&crate::config::Style::default());
     let nodes = vec![ResolvedNode::Paragraph(vec![ResolvedInline::Ref {
       target: LabelId::new("missing"),
       span: Span::DUMMY,
@@ -151,10 +151,10 @@ mod tests {
   #[test]
   fn validate_refs_passes_when_label_registered() {
     // Arrange
-    let mut registry = CounterRegistry::from_style(&config::Style::default());
+    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
     registry
       .increment_with_label(
-        config::CounterName::Chapter,
+        crate::config::CounterName::Chapter,
         Some("ch:intro"),
         Span::DUMMY,
         Origin::Source(SourceId::new(0)),
@@ -174,14 +174,14 @@ mod tests {
   fn validate_refs_allows_forward_reference_when_run_after_full_pass1() {
     // Arrange: \ref が指すラベルが文書上その後に定義される場合でも、pass1 が全体を
     // 終えた後に pass2 を走らせれば解決できることを確かめる
-    let mut registry = CounterRegistry::from_style(&config::Style::default());
+    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
     let nodes = vec![ResolvedNode::Paragraph(vec![ResolvedInline::Ref {
       target: LabelId::new("ch:later"),
       span: Span::DUMMY,
     }])];
     registry
       .increment_with_label(
-        config::CounterName::Chapter,
+        crate::config::CounterName::Chapter,
         Some("ch:later"),
         Span::DUMMY,
         Origin::Source(SourceId::new(0)),
@@ -197,7 +197,7 @@ mod tests {
   #[test]
   fn validate_refs_errors_on_missing_theorem_of_target() {
     // Arrange
-    let registry = CounterRegistry::from_style(&config::Style::default());
+    let registry = CounterRegistry::from_style(&crate::config::Style::default());
     let nodes = vec![ResolvedNode::Theorem {
       class: model::TheoremClass::Proof,
       title: None,
@@ -223,7 +223,7 @@ mod tests {
   fn validate_refs_reports_of_targets_own_span_not_theorem_span() {
     // Arrange: `[of=...]` 引数のソース位置（span）と定理環境自体のソース位置を
     // 意図的に異なる値にし、未解決診断がどちらの span を報告するかを区別できるようにする
-    let registry = CounterRegistry::from_style(&config::Style::default());
+    let registry = CounterRegistry::from_style(&crate::config::Style::default());
     let of_span = Span::new(10, 20);
     let theorem_span = Span::new(100, 200);
     let nodes = vec![ResolvedNode::Theorem {
@@ -254,7 +254,7 @@ mod tests {
   #[test]
   fn validate_refs_recurses_into_list_items_and_table_cells() {
     // Arrange
-    let registry = CounterRegistry::from_style(&config::Style::default());
+    let registry = CounterRegistry::from_style(&crate::config::Style::default());
     let list_nodes = vec![ResolvedNode::List {
       ordered: false,
       items: vec![ResolvedListItem {
@@ -294,7 +294,7 @@ mod tests {
       caption_position: model::CaptionPosition::Bottom,
       label: None,
       counter_value: crate::resolve::counter::CounterValue {
-        kind: crate::resolve::counter::CounterKind::Counter(config::CounterName::Table),
+        kind: crate::resolve::counter::CounterKind::Counter(crate::config::CounterName::Table),
         parts: vec![1],
       },
       span: Span::DUMMY,

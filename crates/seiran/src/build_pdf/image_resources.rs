@@ -30,7 +30,7 @@ impl ImageResources {
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// 画像ファイルを読む唯一の箇所。`source`（[`config::ProjectSource`]）経由で読み込むため、
+/// 画像ファイルを読む唯一の箇所。`source`（[`crate::config::ProjectSource`]）経由で読み込むため、
 /// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
@@ -39,13 +39,13 @@ impl ImageResources {
 /// 画像の読み込み・デコードに失敗した場合に [`CompileError`] を返す。
 #[allow(clippy::result_large_err)]
 pub(super) fn load_image_resources(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   paths: &[AssetId],
 ) -> Result<ImageResources, CompileError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
-    let file_bytes = source.read_bytes(&config::ProjectPath::new(path.as_str())).map_err(|source| {
+    let file_bytes = source.read_bytes(&crate::config::ProjectPath::new(path.as_str())).map_err(|source| {
       return CompileError::ReadImage {
         path: path.as_str().to_string(),
         source: source.into_io(),
@@ -155,9 +155,8 @@ fn resolve_image_size(
 mod tests {
   use std::path::Path;
 
-  use config::MemoryProjectSource;
-
   use super::*;
+  use crate::config::MemoryProjectSource;
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///

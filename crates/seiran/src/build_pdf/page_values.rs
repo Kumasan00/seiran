@@ -5,8 +5,9 @@
 //! - Stage 1 [`BodyPageValues`]: 本文ページ列からしか構築できない（目次構築の引数型）
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
 
-use config::PageNumbering;
 use model::AnchorMark;
+
+use crate::config::PageNumbering;
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
 /// 連結する前のリージョン内）における位置を表す。
@@ -133,11 +134,13 @@ impl PageLabels {
 
 #[cfg(test)]
 mod tests {
-  use config::PageNumbering;
   use model::{AnchorMark, HeadingKey, LabelId};
 
   use super::{BodyPageValues, PageIndex};
-  use crate::typeset::{Page, PlacedAnchor};
+  use crate::{
+    config::PageNumbering,
+    typeset::{Page, PlacedAnchor},
+  };
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ
   fn page_with_anchors(marks: Vec<AnchorMark>) -> Page {

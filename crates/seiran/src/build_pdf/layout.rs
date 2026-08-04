@@ -29,7 +29,11 @@ pub(super) struct DocumentLayouter<'a> {
 
 impl<'a> DocumentLayouter<'a> {
   /// 設定とフォント資源から `DocumentLayouter` を組み立てる。
-  pub(super) fn new(config: &'a config::Config, style: &'a config::Style, font_system: &'a FontSystem<'a>) -> Self {
+  pub(super) fn new(
+    config: &'a crate::config::Config,
+    style: &'a crate::config::Style,
+    font_system: &'a FontSystem<'a>,
+  ) -> Self {
     return DocumentLayouter {
       ctx: CompileContext::new(config, style, font_system),
     };

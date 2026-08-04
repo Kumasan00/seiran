@@ -24,8 +24,8 @@ fn main() -> miette::Result<()> {
 
   match cli_args.command {
     cli::Command::Build { config_path } => {
-      let source = config::FilesystemProjectSource::new();
-      let root = config::ProjectPath::new(&config_path);
+      let source = seiran::FilesystemProjectSource::new();
+      let root = seiran::ProjectPath::new(&config_path);
       let compilation = seiran::compile(&source, &root).map_err(seiran::DiagnosticSet::into_report)?;
       let pdf_bytes = pdf_gen::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;

@@ -50,10 +50,11 @@ pub(super) fn lower_paragraph(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::{CounterName, Style as ReadStyle};
-
   use super::{super::test_support, *};
-  use crate::resolve::{CounterKind, CounterValue};
+  use crate::{
+    config::{CounterName, Style as ReadStyle},
+    resolve::{CounterKind, CounterValue},
+  };
 
   /// テキスト 1 つだけの段落を lower するテストヘルパ
   fn lower_plain(ctx: &LoweringContext, inlines: &[ResolvedInline]) -> Vec<LayoutNode> {

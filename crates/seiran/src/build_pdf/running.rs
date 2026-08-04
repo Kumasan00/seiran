@@ -2,12 +2,14 @@
 
 use std::time::Instant;
 
-use config::{DocumentConfig, RunningContentStyle, Style};
 use model::Color;
 use tracing::info;
 
 use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
-use crate::typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
+use crate::{
+  config::{DocumentConfig, RunningContentStyle, Style},
+  typeset::{RunningContentSpec, RunningMetadata, RunningSlots},
+};
 
 /// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///

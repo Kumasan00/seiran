@@ -7,7 +7,7 @@
 mod common;
 
 use common::{minimal_config_toml, read_test_font};
-use config::{MemoryProjectSource, ProjectPath};
+use seiran::{MemoryProjectSource, ProjectPath};
 
 #[test]
 fn render_does_not_mutate_the_publication() {

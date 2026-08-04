@@ -4,11 +4,13 @@
 //! この層は「解決済みの構造値を style の表示側フィールドで文字列にして箱に積む」だけを行う。
 //! 意味解析を行わないので、この層に失敗はない（`Result` を返さない）。
 
-use config::Style as ReadStyle;
 use model::{LabelId, Length};
 use tracing::debug;
 
-use crate::resolve::{ResolvedDocument, ResolvedInline, ResolvedNode};
+use crate::{
+  config::Style as ReadStyle,
+  resolve::{ResolvedDocument, ResolvedInline, ResolvedNode},
+};
 
 mod counter;
 mod figure;
@@ -872,7 +874,7 @@ mod tests {
   #[test]
   fn default_font_size_reflects_core_font_size() {
     // Arrange
-    let mut style = config::Style::default();
+    let mut style = crate::config::Style::default();
     style.text.font_size = Length::pt(18.0);
     let ctx = LoweringContext::new(&style);
     let nodes = [DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])];

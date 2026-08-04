@@ -39,7 +39,7 @@ impl Format {
 
 /// 参照定義ファイルを読み込む。
 ///
-/// `path` が `None` の場合は空の参照定義を返す。`path` は呼び出し元（`config::read_config`）が
+/// `path` が `None` の場合は空の参照定義を返す。`path` は呼び出し元（`crate::config::read_config`）が
 /// 既に絶対化済みのものを渡す想定で、このクレート自身は相対パスの解決を行わない。
 ///
 /// # Errors
@@ -48,7 +48,7 @@ impl Format {
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
 pub fn read_references<P: AsRef<Path>>(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
@@ -57,7 +57,7 @@ pub fn read_references<P: AsRef<Path>>(
   };
   let path_ref = path.as_ref();
   debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
-  let content = source.read_text(&config::ProjectPath::new(path_ref)).map_err(|source| {
+  let content = source.read_text(&crate::config::ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
       source: source.into_io(),
@@ -104,11 +104,10 @@ fn parse_references(text: &str, source_path: &Path) -> Result<References, ReadRe
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use config::{FilesystemProjectSource, MemoryProjectSource};
-
   use super::{
     DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, parse_references, read_references,
   };
+  use crate::config::{FilesystemProjectSource, MemoryProjectSource};
 
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }

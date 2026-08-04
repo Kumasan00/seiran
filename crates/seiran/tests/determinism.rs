@@ -6,7 +6,7 @@
 mod common;
 
 use common::{minimal_config_toml, read_test_font};
-use config::{MemoryProjectSource, ProjectPath};
+use seiran::{MemoryProjectSource, ProjectPath};
 
 /// 代表的な入力の一覧（filesystem を使わず埋め込む。網羅目的の fixture 追加ではなく、
 /// テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通すための最小集合）。

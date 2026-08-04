@@ -91,12 +91,18 @@ pub struct Compilation {
 ///
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
 /// 診断の集合を返す。
-pub fn compile<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> Result<Compilation, DiagnosticSet> {
+pub fn compile<S: crate::config::ProjectSource>(
+  source: &S,
+  root: &crate::config::ProjectPath,
+) -> Result<Compilation, DiagnosticSet> {
   return compile_inner(source, root).map_err(DiagnosticSet::from);
 }
 
 /// カレントディレクトリを解決してから [`compile_with_base_dir`] へ委譲する。
-fn compile_inner<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> miette::Result<Compilation> {
+fn compile_inner<S: crate::config::ProjectSource>(
+  source: &S,
+  root: &crate::config::ProjectPath,
+) -> miette::Result<Compilation> {
   let base_dir = std::env::current_dir().map_err(|source| return CompileError::CurrentDir { source })?;
   return compile_with_base_dir(source, root, &base_dir);
 }
@@ -105,9 +111,9 @@ fn compile_inner<S: config::ProjectSource>(source: &S, root: &config::ProjectPat
 ///
 /// `MemoryProjectSource` + 固定 `base_dir` でのテストが `std::env::set_current_dir` 無しに
 /// 書けるよう、テストと `compile` の双方から呼ばれる実処理をここに閉じる。
-fn compile_with_base_dir<S: config::ProjectSource>(
+fn compile_with_base_dir<S: crate::config::ProjectSource>(
   source: &S,
-  root: &config::ProjectPath,
+  root: &crate::config::ProjectPath,
   base_dir: &Path,
 ) -> miette::Result<Compilation> {
   let build_start = Instant::now();
@@ -152,13 +158,13 @@ fn compile_with_base_dir<S: config::ProjectSource>(
 ///
 /// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
 fn load_project(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   config_path: &Path,
   base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let config = config::read_config(source, config_path, base_dir)?;
-  let style = config::read_style(source, config.style_path.as_deref(), base_dir)?;
-  config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
+  let config = crate::config::read_config(source, config_path, base_dir)?;
+  let style = crate::config::read_style(source, config.style_path.as_deref(), base_dir)?;
+  crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();
@@ -207,7 +213,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
 ///
 /// `pdf_gen::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
-  config: &config::Config,
+  config: &crate::config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<model::AssetId, Vec<u8>>,
@@ -297,24 +303,24 @@ fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<pdf_gen
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
-  config: &config::Config,
-  style: &config::Style,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
-  let source = config::FilesystemProjectSource::new();
+  let source = crate::config::FilesystemProjectSource::new();
   return build_pages_with_source(&source, config, style, references, font_data);
 }
 
-/// パースからページ確定までを、指定した [`config::ProjectSource`] 経由で実行するテストヘルパ。
+/// パースからページ確定までを、指定した [`crate::config::ProjectSource`] 経由で実行するテストヘルパ。
 ///
 /// `MemoryProjectSource` を渡すと実ファイルシステムに触れずに組版できる
 /// （2 実装が同じ結果を返すことの検証用。issue #300）。
 #[cfg(test)]
 fn build_pages_with_source(
-  source: &dyn config::ProjectSource,
-  config: &config::Config,
-  style: &config::Style,
+  source: &dyn crate::config::ProjectSource,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -399,7 +405,7 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 #[cfg(test)]
 mod tests {
   /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> crate::resolve::ResolveError {
+  pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
     use model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),

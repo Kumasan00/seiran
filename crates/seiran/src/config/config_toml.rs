@@ -8,7 +8,7 @@ use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::project_source::{ProjectPath, ProjectSource};
+use crate::config::project_source::{ProjectPath, ProjectSource};
 
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
@@ -30,8 +30,10 @@ pub enum ReadConfigError {
   #[error("設定ファイルを読み込めませんでした: {path}")]
   #[diagnostic(code(config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
   ReadFile {
+    /// 読み込みに失敗した設定ファイルのパス
     path: String,
     #[source]
+    /// 元の I/O エラー
     source: std::io::Error,
   },
   /// TOML 解析失敗
@@ -39,10 +41,13 @@ pub enum ReadConfigError {
   #[diagnostic(code(config::parse_toml), help("TOML の構文を確認してください。"))]
   ParseToml {
     #[source_code]
+    /// エラー位置を示すためのソース全文
     src: NamedSource<String>,
     #[label("ここ")]
+    /// エラー箇所のソース内スパン
     span: SourceSpan,
     #[source]
+    /// 元の TOML パースエラー
     source: toml::de::Error,
   },
   /// 複合バリデーションエラー（複数のエラーをまとめて報告）
@@ -50,6 +55,7 @@ pub enum ReadConfigError {
   #[diagnostic(code(config::multiple_validation_errors))]
   MultipleValidationErrors {
     #[related]
+    /// 集約された個々のバリデーションエラー
     errors: Vec<ConfigValidationError>,
   },
 }
@@ -60,35 +66,54 @@ pub enum ConfigValidationError {
   /// garde が検出した設定値の不正
   #[error("'{path}': {message}")]
   #[diagnostic(code(config::validation::field), help("config.toml の該当フィールドの値を確認してください。"))]
-  Field { path: String, message: String },
+  Field {
+    /// 不正な値を持つフィールドの TOML パス（例: `pdf.margin_top`）
+    path: String,
+    /// garde が生成したエラーメッセージ
+    message: String,
+  },
   /// フォントパスが見つからない
   #[error("フォントファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::font_path),
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  FontPathResolution { font_type: FontType, path: String },
+  FontPathResolution {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// 見つからなかったフォントファイルのパス
+    path: String,
+  },
   /// スタイル設定ファイルが見つからない
   #[error("スタイル設定ファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::style_path),
     help("スタイル設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  StylePathResolution { path: String },
+  StylePathResolution {
+    /// 見つからなかったスタイル設定ファイルのパス
+    path: String,
+  },
   /// 参照設定ファイルが見つからない
   #[error("参照設定ファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::references_path),
     help("参照設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  ReferencesPathResolution { path: String },
+  ReferencesPathResolution {
+    /// 見つからなかった参照設定ファイルのパス
+    path: String,
+  },
   /// ソースファイルが見つからない
   #[error("ソースファイルが見つかりません: {path}")]
   #[diagnostic(
     code(config::validation::source_path),
     help("`sources` に列挙したファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  SourcePathResolution { path: String },
+  SourcePathResolution {
+    /// 見つからなかったソースファイルのパス
+    path: String,
+  },
 }
 
 /// 読み取り I/O フェーズで集約する解決済みパス群。
@@ -523,17 +548,38 @@ fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBu
 mod tests {
   use std::path::{Path, PathBuf};
 
+  use model::FontType;
+
   use super::{
-    ConfigValidationError, ReadConfigError, build_language_string, parse_config, read_config, resolve_output_dir_path,
-    resolve_paths, validate_values,
+    Config, ConfigValidationError, ReadConfigError, TextDirection, build_language_string, parse_config, read_config,
+    resolve_output_dir_path, resolve_paths, validate_values,
   };
-  use crate::{
-    config::test_support::{make_font_sections, valid_output_section, valid_pdf_section},
-    project_source::MemoryProjectSource,
+  use crate::config::{
+    config_toml::test_support::{
+      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
+    },
+    project_source::{FilesystemProjectSource, MemoryProjectSource},
   };
 
   /// `parse_config` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
+
+  /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
+  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ。実ファイルシステム経由の
+  /// `read_config`/`FilesystemProjectSource` の振る舞いを検証するテストでのみ使う）。
+  fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
+    let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
+    let font_path = tempdir.path().join("dummy.ttf");
+    std::fs::write(&font_path, b"").expect("ダミーフォントを書き込めるはず");
+    let source_path = tempdir.path().join("source.sei");
+    std::fs::write(&source_path, b"").expect("ダミーソースを書き込めるはず");
+    let output_dir = tempdir.path().join("output");
+    let config_path = tempdir.path().join("config.toml");
+    let toml_text =
+      build_toml(font_path.to_str().unwrap(), output_dir.to_str().unwrap(), source_path.to_str().unwrap());
+    std::fs::write(&config_path, toml_text).expect("config.toml を書き込めるはず");
+    return (tempdir, config_path);
+  }
 
   #[test]
   fn resolve_paths_reports_missing_paths_without_touching_disk() {
@@ -844,7 +890,7 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      crate::config::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
+      crate::config::config_toml::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
     let pre = parse_config(&toml, dummy_source()).unwrap();
     return validate_values(&pre);
@@ -1060,5 +1106,312 @@ mod tests {
       error,
       ConfigValidationError::Field { path, message } if path.contains("keywords") && message.contains("空")
     )));
+  }
+
+  // 以下は旧 `crates/config/tests/config.rs`（`read_config` の公開 API を実ファイルシステム経由で
+  // 検証する統合テスト）を移設したもの。上のテスト群が `MemoryProjectSource` で内部関数を
+  // 直接検証するのに対し、こちらは `FilesystemProjectSource` + tempfile で `read_config` を
+  // end-to-end に検証する。
+
+  #[test]
+  fn read_config_succeeds_with_valid_config() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n[document]\ntitle = \"Test Doc\"\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    assert_eq!(config.output.name, "test_doc");
+    assert_eq!(config.document.title.as_deref(), Some("Test Doc"));
+    assert_eq!(config.sources.len(), 1);
+    assert_eq!(config.font_configs.iter().count(), 19);
+    assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
+    assert!(config.pdf.show_bookmarks);
+    assert_eq!(config.image.max_dpi, 300);
+    assert!(config.image.downsample);
+  }
+
+  #[test]
+  fn read_config_reads_image_overrides() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}[image]\nmax_dpi = 150\ndownsample = false\n\n{}",
+        valid_output_section("test", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    assert_eq!(config.image.max_dpi, 150);
+    assert!(!config.image.downsample);
+  }
+
+  #[test]
+  fn read_config_respects_show_bookmarks_false() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
+         margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\
+         show_bookmarks = false\n\n{}",
+        valid_output_section("test", output_dir),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    assert!(!config.pdf.show_bookmarks);
+  }
+
+  #[test]
+  fn read_config_fails_on_nonexistent_font_path() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|_font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test", output_dir),
+        valid_pdf_section(),
+        make_font_sections("/nonexistent/path/to/font.ttf"),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let result = read_config(&source, &config_path, &base_dir);
+
+    // Assert
+    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
+      panic!("expected MultipleValidationErrors, got {result:?}");
+    };
+    assert!(errors.iter().all(|error| matches!(error, ConfigValidationError::FontPathResolution { .. })));
+    assert_eq!(errors.len(), 19);
+  }
+
+  #[test]
+  fn read_config_fails_on_nonexistent_source_path() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, _source_path| {
+      return format!(
+        "sources = [\"/nonexistent/source.sei\"]\n\n{}{}{}",
+        valid_output_section("test", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let result = read_config(&source, &config_path, &base_dir);
+
+    // Assert
+    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
+      panic!("expected MultipleValidationErrors, got {result:?}");
+    };
+    assert!(errors.iter().any(|error| matches!(error, ConfigValidationError::SourcePathResolution { .. })));
+  }
+
+  #[test]
+  fn read_config_uses_base_dir_when_output_dir_omitted() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, _output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n[output]\nname = \"out\"\n\n{}{}",
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+
+    // Act
+    let config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
+    assert_eq!(config.output.output_dir, base_dir);
+    assert_eq!(config.output.pdf_path(), base_dir.join("out.pdf"));
+  }
+
+  #[test]
+  fn read_config_preserves_user_script_tag_case() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "script = \"Latn\"";
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      );
+    });
+
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.script, Some(*b"Latn"));
+  }
+
+  #[test]
+  fn read_config_builds_language_string_with_ot_language_suffix() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "language = \"ja\"\nscript = \"kana\"\not_language = \"JAN\"";
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
+    assert_eq!(serif.script, Some(*b"kana"));
+    assert_eq!(serif.ot_language_tag, Some(*b"JAN "));
+  }
+
+  #[test]
+  fn read_config_builds_language_string_with_und_base_when_only_ot_language() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "script = \"latn\"\not_language = \"ENG\"";
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.language.as_deref(), Some("und-x-hbotENG"));
+    assert_eq!(serif.ot_language_tag, Some(*b"ENG "));
+  }
+
+  #[test]
+  fn read_config_preserves_user_direction() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let extra = "direction = \"right-to-left\"";
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        font_sections_with_serif_extra(font_path, extra),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    let serif = config.font_configs.get(FontType::Serif);
+    assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
+  }
+
+  #[test]
+  fn read_config_preserves_document_language_and_keywords() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n[document]\nlanguage = \"ja\"\nkeywords = [\"組版\", \"PDF\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    assert_eq!(config.document.language.as_deref(), Some("ja"));
+    assert_eq!(config.document.keywords.as_deref(), Some(&["組版".to_string(), "PDF".to_string()][..]));
+  }
+
+  #[test]
+  fn read_config_keeps_document_language_and_keywords_none_when_omitted() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    assert_eq!(config.document.language, None);
+    assert_eq!(config.document.keywords, None);
+  }
+
+  #[test]
+  fn read_config_keeps_direction_none_when_omitted() {
+    // Arrange
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      return format!(
+        "sources = [\"{source_path}\"]\n\n{}{}{}",
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+
+    // Assert
+    for font_type in FontType::ALL {
+      assert_eq!(config.font_configs.get(font_type).direction, None, "{font_type:?}");
+    }
   }
 }

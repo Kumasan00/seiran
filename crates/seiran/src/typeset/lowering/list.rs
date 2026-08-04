@@ -80,11 +80,13 @@ pub(super) fn lower_list(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
   use model::FontKind;
 
   use super::{super::test_support, *};
-  use crate::resolve::{ResolvedInline, ResolvedNode};
+  use crate::{
+    config::Style as ReadStyle,
+    resolve::{ResolvedInline, ResolvedNode},
+  };
 
   /// テキスト 1 段落だけを内容に持つ `ResolvedListItem` を作るヘルパ
   fn item_with_text(text: &str) -> ResolvedListItem {
@@ -595,12 +597,12 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_ordered_formats = vec![
-      config::NestedOrderedFormat {
-        number_style: config::NumberStyle::RomanUpper,
+      crate::config::NestedOrderedFormat {
+        number_style: crate::config::NumberStyle::RomanUpper,
         format: "[{number}]".to_string(),
       },
-      config::NestedOrderedFormat {
-        number_style: config::NumberStyle::Kanji,
+      crate::config::NestedOrderedFormat {
+        number_style: crate::config::NumberStyle::Kanji,
         format: "{number}、".to_string(),
       },
     ];

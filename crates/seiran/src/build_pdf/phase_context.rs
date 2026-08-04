@@ -6,9 +6,9 @@ use crate::font::FontSystem;
 /// 全 phase が共有する組版資源と寸法。
 pub(super) struct CompileContext<'a> {
   /// 実体・物理・メタデータ設定
-  pub(super) config: &'a config::Config,
+  pub(super) config: &'a crate::config::Config,
   /// 見た目の設定
-  pub(super) style: &'a config::Style,
+  pub(super) style: &'a crate::config::Style,
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
   pub(super) resources: &'a FontSystem<'a>,
   /// 版面幅（段組み前）
@@ -25,7 +25,11 @@ pub(super) struct CompileContext<'a> {
 
 impl<'a> CompileContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
-  pub(super) fn new(config: &'a config::Config, style: &'a config::Style, resources: &'a FontSystem<'a>) -> Self {
+  pub(super) fn new(
+    config: &'a crate::config::Config,
+    style: &'a crate::config::Style,
+    resources: &'a FontSystem<'a>,
+  ) -> Self {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
@@ -59,7 +63,7 @@ impl BodyPageFacts {
   pub(super) fn new(
     body_pages: &[crate::typeset::Page],
     headings: Vec<crate::typeset::HeadingRecord>,
-    numbering: &config::PageNumbering,
+    numbering: &crate::config::PageNumbering,
   ) -> Self {
     return Self {
       page_values: BodyPageValues::from_body_pages(body_pages, numbering),
@@ -72,8 +76,8 @@ impl BodyPageFacts {
 ///
 /// 段数・段間以外は本文の値を共有する。
 fn build_page_geometries(
-  config: &config::Config,
-  style: &config::Style,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
   body_columns: usize,
   column_gap: model::Length,
 ) -> (crate::typeset::PageGeometry, crate::typeset::PageGeometry, crate::typeset::PageGeometry) {

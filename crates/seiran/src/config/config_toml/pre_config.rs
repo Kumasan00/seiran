@@ -9,7 +9,7 @@ use model::{
 };
 use serde::Deserialize;
 
-use crate::config::ConfigValidationError;
+use crate::config::config_toml::ConfigValidationError;
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]

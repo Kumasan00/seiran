@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 
-use config::Style;
 use hayagriva::{
   archive,
   citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
@@ -14,6 +13,8 @@ use miette::Diagnostic;
 use model::{DocNode, InlineNode, ListItem, TableCell, TableRow};
 use thiserror::Error;
 use tracing::debug;
+
+use crate::config::Style;
 
 mod bridge;
 mod references;
@@ -127,7 +128,7 @@ pub fn process_citations(
   docs: Vec<Vec<DocNode>>,
   references: &References,
   style: &Style,
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
 ) -> Result<(Vec<Vec<DocNode>>, Vec<DocNode>), CitationError> {
   let mut cite_sites: Vec<Vec<String>> = Vec::new();
   for nodes in &docs {
@@ -157,7 +158,7 @@ pub fn process_citations(
 
   let csl_path = style.reference.csl_path.as_ref().ok_or(CitationError::MissingCslPath)?;
   let csl_path_str = csl_path.display().to_string();
-  let style_xml = source.read_text(&config::ProjectPath::new(csl_path)).map_err(|source| {
+  let style_xml = source.read_text(&crate::config::ProjectPath::new(csl_path)).map_err(|source| {
     return CitationError::ReadStyleFile {
       path: csl_path_str.clone(),
       source: source.into_io(),
@@ -459,11 +460,11 @@ fn rewrite_cite_label_inlines(
 fn load_locales(
   style: &Style,
   csl_default_locale: Option<&LocaleCode>,
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
 ) -> Result<(Vec<Locale>, Option<LocaleCode>), CitationError> {
   let (custom, file_lang): (Option<Locale>, Option<LocaleCode>) = if let Some(path) = &style.reference.locale_path {
     let path_str = path.display().to_string();
-    let xml = source.read_text(&config::ProjectPath::new(path)).map_err(|source| {
+    let xml = source.read_text(&crate::config::ProjectPath::new(path)).map_err(|source| {
       return CitationError::ReadLocaleFile {
         path: path_str.clone(),
         source: source.into_io(),
@@ -544,14 +545,16 @@ mod tests {
     path::{Path, PathBuf},
   };
 
-  use config::{FilesystemProjectSource, MemoryProjectSource, Style};
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
   use model::{DocNode, FontKind, InlineNode, Span};
 
   use super::{CitationError, load_locales, process_citations};
-  use crate::citation::{
-    References, read_references,
-    test_fixtures::{ieee_csl_path, sample_references},
+  use crate::{
+    citation::{
+      References, read_references,
+      test_fixtures::{ieee_csl_path, sample_references},
+    },
+    config::{FilesystemProjectSource, MemoryProjectSource, Style},
   };
 
   /// 単一ドキュメントを処理し、返った書誌を末尾へ連結する。
@@ -562,7 +565,7 @@ mod tests {
     nodes: &mut Vec<DocNode>,
     references: &References,
     style: &Style,
-    source: &dyn config::ProjectSource,
+    source: &dyn crate::config::ProjectSource,
   ) -> Result<(), CitationError> {
     let (mut docs, bibliography) = process_citations(vec![std::mem::take(nodes)], references, style, source)?;
     *nodes = docs.pop().expect("1 ドキュメントを渡したので 1 件返るはず");

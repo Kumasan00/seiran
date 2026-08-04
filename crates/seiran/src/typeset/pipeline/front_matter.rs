@@ -16,9 +16,9 @@ use crate::{
 /// `layout_front_matter` に渡す入力。
 pub struct FrontMatterInput<'a> {
   /// タイトルページのメタデータ（title/author/date）の出所となる文書設定
-  pub config: &'a config::Config,
+  pub config: &'a crate::config::Config,
   /// 前付けの書式を決めるスタイル設定
-  pub style: &'a config::Style,
+  pub style: &'a crate::config::Style,
   /// シェイプ・メトリクス取得の窓口
   pub resources: &'a FontSystem<'a>,
   /// 前付けの版面幅（pt）

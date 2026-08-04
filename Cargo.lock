@@ -399,21 +399,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "config"
-version = "0.1.0"
-dependencies = [
- "garde",
- "miette",
- "model",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
- "unic-langid",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2182,8 +2167,8 @@ dependencies = [
  "bumpalo",
  "ciborium",
  "clap",
- "config",
  "font-types 0.12.2",
+ "garde",
  "harfrust",
  "hayagriva",
  "hypher",
@@ -2205,6 +2190,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "unic-langid",
 ]
 
 [[package]]

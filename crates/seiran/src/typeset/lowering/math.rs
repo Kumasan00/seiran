@@ -1,6 +1,5 @@
 //! 数式（インライン / ディスプレイ）の lowering
 
-use config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
 use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle};
 
 use self::alphanumeric::push_math_char;
@@ -9,7 +8,10 @@ use super::{
   counter::format_counter_value,
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
-use crate::resolve::{CounterValue, ResolvedMathRow};
+use crate::{
+  config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
+  resolve::{CounterValue, ResolvedMathRow},
+};
 
 mod alphanumeric;
 
@@ -75,7 +77,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `config::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
+/// `crate::config::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,
@@ -205,10 +207,10 @@ fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> V
 
 #[cfg(test)]
 mod tests {
-  use config::Style as ReadStyle;
   use model::Length;
 
   use super::*;
+  use crate::config::Style as ReadStyle;
 
   /// テストで共通使用する `MathStyleConfig` のデフォルトインスタンス
   fn default_math_style() -> MathStyleConfig { return MathStyleConfig::default(); }
@@ -400,7 +402,7 @@ mod tests {
       label: None,
       label_span: None,
       counter_value: Some(CounterValue {
-        kind: crate::resolve::CounterKind::Counter(config::CounterName::Equation),
+        kind: crate::resolve::CounterKind::Counter(crate::config::CounterName::Equation),
         parts: vec![0, 0, 1],
       }),
     };

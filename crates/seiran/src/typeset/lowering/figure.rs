@@ -61,9 +61,8 @@ pub(super) fn lower_figure(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use config::Style as ReadStyle;
-
   use super::{super::test_support, *};
+  use crate::config::Style as ReadStyle;
 
   #[test]
   fn lower_figure_emits_image_and_caption_in_bottom_order() {

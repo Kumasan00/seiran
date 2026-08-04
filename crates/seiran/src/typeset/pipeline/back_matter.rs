@@ -15,7 +15,7 @@ use crate::{
 /// `layout_back_matter` に渡す入力。
 pub struct BackMatterInput<'a> {
   /// 後付けの書式を決めるスタイル設定
-  pub style: &'a config::Style,
+  pub style: &'a crate::config::Style,
   /// シェイプ・メトリクス取得の窓口
   pub resources: &'a FontSystem<'a>,
   /// 後付けの版面幅（pt）
