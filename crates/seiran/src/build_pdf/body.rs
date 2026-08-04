@@ -2,7 +2,7 @@
 
 use typeset::{BodyLayout, BodyLayoutError, BodyLayoutInput};
 
-use super::{error::BuildPdfError, footnote_numbering, image_resources::ImageResources, phase_context::CompileContext};
+use super::{error::CompileError, footnote_numbering, image_resources::ImageResources, phase_context::CompileContext};
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。
 ///
@@ -58,6 +58,6 @@ fn resolve_body_images(
   blocks: Vec<typeset::Block>,
   ctx: &CompileContext<'_>,
   image_resources: &ImageResources,
-) -> Result<Vec<typeset::Block>, BuildPdfError> {
+) -> Result<Vec<typeset::Block>, CompileError> {
   return super::image_resources::resolve_images(blocks, ctx.body_col_width.to_pt(), image_resources);
 }

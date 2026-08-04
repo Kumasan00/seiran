@@ -115,7 +115,7 @@ pub trait ProjectSource: Send + Sync {
   2 度ディスクから読まない。呼び出し側（`FontDataExt::new`）も共有パスを 1 回だけ要求する。
 - `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去）で、
   シンボリックリンクは解決しない。設定値そのものの正規化は #301 の担当。
-- ラッパー側のエラー（`ReadConfigError::ReadFile` / `BuildPdfError::ReadImage` など）は
+- ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
   `SourceReadError::into_io()` で `std::io::Error` へ平坦化してから `#[source]` に載せる。
   `#[diagnostic_source]` で `SourceReadError` をそのまま連鎖させると miette が入れ子の診断ブロックを
   足し、seam 導入前と診断内容が変わってしまうため（#300 の「振る舞いを変えない」条件）。
@@ -650,26 +650,44 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 
 ### 責務
 
-`main` エントリーポイント、全クレートのオーケストレーション、`tracing-subscriber` の初期化。
-`cli` 子 module が clap derive による CLI 引数定義（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、
-`subcommand` 子 module が `variation-axes` / `ttc-names` / `script-langs` の実装（`read-fonts` を直接使用し、
-`font` クレートには依存しない）を持つ。
+`crates/seiran` は `src/lib.rs`（lib target）と `src/main.rs`（bin target）の両方を持つ（issue #304）。
+lib target は言語処理・意味解決・組版を 1 回の呼び出しに畳んだ `compile` を唯一の外部入口として公開し、
+段の呼び出し順序・中間型（`ParsedSource` / `LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない
+（公開されるのは `Compilation`・その構成要素（`DependencyManifest` / `DiagnosticSet` / `BuildStatistics` /
+`OutputPlan`）・`pdf_gen::Publication` の再エクスポートのみ）。bin target（`main.rs`）は `mod cli; mod
+subcommand; mod write_error;` だけを持ち、`compile` → `pdf_gen::render` → atomic write（`tempfile` 経由の
+一時ファイル + rename）→ 結果表示の 4 手順に限定される。`cli` 子 module が clap derive による CLI 引数定義
+（`Build` / `VariationAxes` / `TtcNames` / `ScriptLangs`）を、`subcommand` 子 module が `variation-axes` /
+`ttc-names` / `script-langs` の実装（`read-fonts` を直接使用し、`font` クレートには依存しない）を持つ。
+`write_error` は PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError` を持つ、bin 専用の
+関心事（`compile` の失敗とは型を分ける — `compile` は保存を行わないため）。
 
-`build_pdf` は **build driver**（filesystem とユーザー報告）と **compiler core**（不変な入力から組版成果物を
-返す phase graph）に分かれる。分離の意図は 2 つ — compiler core から filesystem access を除いて組版を
-決定的にテストできるようにすることと、「ページ情報を使う」という共通点だけで目次・索引・走り文・脚注を
-1 つの巨大な solver に集めず、処理順を明示的な DAG として持つこと。汎用の「安定するまで全工程を反復」は
-使わない（循環が残るのはページ単位の脚注採番だけで、それは専用 solver に閉じ込める）。
+`build_pdf`（lib target 配下）は **compile facade**（`compile` とその周辺の公開型）と **compiler core**
+（不変な入力から組版成果物を返す phase graph）に分かれる。分離の意図は 2 つ — compiler core から
+filesystem access を除いて組版を決定的にテストできるようにすることと、「ページ情報を使う」という共通点
+だけで目次・索引・走り文・脚注を 1 つの巨大な solver に集めず、処理順を明示的な DAG として持つこと。
+汎用の「安定するまで全工程を反復」は使わない（循環が残るのはページ単位の脚注採番だけで、それは専用
+solver に閉じ込める）。
 
-### build driver（`build_pdf.rs` 直下）
+### compile facade（`build_pdf.rs` 直下）
 
-`build_pdf.rs` 本体には driver 関数（`build_pdf` / `load_project` / `parse_project` / `render_pdf` /
-`build_font_resource_configs` / `parse_all_sources` / `wrap_resolve_error` / `wrap_semantics_error`）だけを置く。`build_pdf` が
-`font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`render_pdf` 用、`FontRefs` /
-`FontMetrics` へのアクセサを持つ）と `FontSystem`（`compile_project` 用、シェイプ・メトリクス取得の窓口）の
-両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` / `ShaperInstances` /
-`HarfRustShapers` / `FontMetrics`）の構築順序・寿命関係は `font::system` に閉じており、driver はこれを
-知らない（issue #278）。子 module:
+`build_pdf.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
+`parse_project` / `build_publication` / `build_font_resource_configs` / `parse_all_sources` /
+`wrap_resolve_error` / `wrap_semantics_error`）と、`compile` が返す公開型（`Compilation` / `BuildStatistics`。
+`DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、`OutputPlan` は
+`project` 子 module から再エクスポート）を置く。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
+-> Result<Compilation, DiagnosticSet>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
+（`--config` が指す値と同じ）。`base_dir`（相対パス解決の基準ディレクトリ）は `compile` が
+`std::env::current_dir()` から解決して非公開の `compile_with_base_dir` へ注入する — この関数を挟むことで
+`MemoryProjectSource` + 固定 `base_dir` を使うテスト（`tests/compile_facade.rs`）が `chdir` 無しに書ける。
+`compile` は保存（`fs::write`）を一切行わない — `Compilation.output`（`OutputPlan { pdf_path }`）が指す先へ
+書き出すのは呼び出し元（CLI）の責務。
+
+`compile` が `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`build_publication`
+用、`FontRefs` / `FontMetrics` へのアクセサを持つ）と `FontSystem`（`DocumentLayouter::layout` 用、シェイプ・
+メトリクス取得の窓口）の両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` /
+`ShaperInstances` / `HarfRustShapers` / `FontMetrics`）の構築順序・寿命関係は `font::system` に閉じており、
+facade はこれを知らない（issue #278）。子 module:
 
 - `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
@@ -694,7 +712,13 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 - `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `pdf_gen::ResourceBundle` から
   `pdf_gen::Publication` を組み立てる `build_publication`（旧 `pdf_gen::PublicationBuilder` を移設。
   epic #276 / #277）
-- `error`: `BuildPdfError`（各クレートのエラーを束ねる。ラベル・カウンタの解決は `resolve` クレートが行うため、
+- `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
+  文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
+  `ProjectSnapshot` / `ImageManifest` が既に持つデータの再整形で、新しい I/O は発生させない
+- `diagnostic_set`: `compile` の外部境界を横切る診断の集合 `DiagnosticSet`（`Compilation.warnings` と
+  `compile` の `Err` 型を兼ねる）。中身は型消去済みの `miette::Report` の列で、1 件なら `into_report` が
+  元の `Report` をそのまま返す（`compile` に包む前後で診断のレンダリング結果が完全に一致することを保証する）
+- `error`: `CompileError`（各クレートのエラーを束ねる。ラベル・カウンタの解決は `resolve` クレートが行うため、
   `typeset::lowering` 由来の診断エラーはもう無い。`resolve::ResolveError` は `Origin::Source(SourceId)` /
   `Origin::Generated` を発生時点から運んでおり、`wrap_resolve_error` は `project::SourceDb`（`SourceId` の
   唯一の発行元。`config.sources` の読込時に `register` する）から `NamedSource` を引き当てて `Resolve` /
@@ -704,15 +728,18 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
   code/message/help/label/related は内側の `ParseSourceError` へ委譲）として集約する。`config.toml` /
   `style.toml` の `ParseToml` は `read_config` / `read_style` 自身が `fs::read_to_string` を行うため未移行
   （filesystem 呼び出しを driver 側へ追い出す #300 の後に揃える）。compiler 側の不変条件違反
-  （`ImageManifest` の収集ロジック不具合等）は `BuildPdfError::Bug(CompilerBug)` として、ユーザー向け診断
-  とは型を分けて扱う）
+  （`ImageManifest` の収集ロジック不具合等）は `CompileError::Bug(CompilerBug)` として、ユーザー向け診断
+  とは型を分けて扱う。PDF の保存（`WritePdf` / `CreateOutputDir` 相当）は `compile` の関心事ではなくなった
+  ため `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ（issue #304））
 
 ### compiler core（phase graph）
 
-`compile` の `compile_project` が phase graph 全体をオーケストレーションする。フォント資源
-（`font::FontSystem`）は driver が構築済みのものを受け取って `CompileContext` に束ねるだけで、
-`ShaperDatas` / `ShaperInstances` / `HarfRustShapers` / `FontRefs` の構築は行わない（旧 phase 0 は
-`font::system` へ移設済み）。phase 順序:
+`layout` 子 module の `DocumentLayouter::layout` が phase graph 全体をオーケストレーションする、外から見える
+唯一の組版操作（旧 `compile::compile_project` を型でラップしたもの。issue #304 — typeset クレートの
+公開面は #281 で 4 関数 + `LineBreaker` seam に閉じているため、ここへ全体オーケストレーションを持ち込まず
+seiran 側に閉じたまま維持する）。フォント資源（`font::FontSystem`）は `DocumentLayouter::new` が受け取って
+`CompileContext` に束ねるだけで、`ShaperDatas` / `ShaperInstances` / `HarfRustShapers` / `FontRefs` の構築は
+行わない（旧 phase 0 は `font::system` へ移設済み）。phase 順序:
 
 | phase | 内容                       | 実装                                  |
 | ----- | -------------------------- | ------------------------------------- |
@@ -720,14 +747,18 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 | 2     | `BodyPageFacts` 確定       | `phase_context`                       |
 | 3     | 前付け生成・pagination     | `front_matter::typeset_front_matter`  |
 | 4     | 後付け（索引）生成・pagination | `back_matter::typeset_back_matter` |
-| 5     | 全ページラベル確定 + ページ連結 | `compile::concat_pages`          |
+| 5     | 全ページラベル確定 + ページ連結 | `layout::concat_pages`           |
 | 6     | 走り文配置                 | `running::place_running_content`      |
 | 7     | PDF しおり用見出し収集     | `outline` → `LaidOutDocument`         |
 
 - `phase_context`: 全 phase 共有の資源・寸法を持つ `CompileContext`（フォント資源への参照・版面幅・
   本文 / 前付け / 後付けの `PageGeometry`）と、本文 pagination 確定後の事実 `BodyPageFacts`
-  （`BodyPageValues` + 見出し記録）、`build_page_geometries`。`compile` ↔ 各 phase module の相互依存を
-  解消するためにここへ切り出してある
+  （`BodyPageValues` + 見出し記録）、`build_page_geometries`。`DocumentLayouter` ↔ 各 phase module の
+  相互依存を解消するためにここへ切り出してある
+- `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
+  `PageValue`（1 始まり）を型で分離する（issue #304。両方とも `usize`/`u32` のままだと引数の取り違えが
+  型検査を素通りしてしまうため）。`compile` の公開境界は越えない（`Compilation` が公開する組版済み型は
+  座標確定済みの `pdf_gen::Publication` のみで、ページ index/value はそこへ変換済みのため）
 - `body`: phase 1 の本文パス。段順序（lowering → `build_blocks` → `resolve_images` → `break_pages`）は
   `typeset::layout_body` 1 呼び出しに畳んである（issue #281）。`resolve_images`（実装は
   `image_resources`、epic #276 / #279）は typeset が画像デコードに依存しないよう、`layout_body` に
@@ -753,7 +784,7 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。加えてページ内番号は通し番号以下（部分集合を
 数えるため）なので、`per_page` でマーカーは縮むか同じで、行があふれる方向には動かない。実質 2 回目で収束する。
 上限まで収束しなかった場合（脚注が 9 → 10 の桁境界でページ境界に乗り続ける等）は、一部のページで番号が 1 から
-始まらない不整合な結果を成功として出さず、`BuildPdfError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す。
+始まらない不整合な結果を成功として出さず、`CompileError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す。
 
 通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。表セル内の脚注は
 ページ列に配置されない（`pdf_gen` の既知の制限）ためマップに載らず、`per_page` でも通し番号のまま表示される。
@@ -769,3 +800,9 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
 
 検証手段の使い分け（レイアウトダンプ golden か PDF バイト比較か）・golden の再生成手順は
 `verify-typesetting` skill を参照する。
+
+`tests/compile_facade.rs`（crate 内部の `#[cfg(test)]` ではなく `crates/seiran/tests/` 配下の独立
+統合テスト）は `compile` が lib target の公開 API として crate 外部から呼べることを検証する
+（issue #304）。`compile` が `pub(crate)` のままでも crate 内部テストは通ってしまうため、この
+受け入れ条件は crate 境界をまたぐ独立テストでしか機械的に検証できない。すべてのパスを絶対パス
+（`/project/...`）にして `MemoryProjectSource` へ登録し、`std::env::current_dir` に依存しない。

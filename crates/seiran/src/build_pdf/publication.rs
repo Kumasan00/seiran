@@ -13,7 +13,7 @@ use pdf_gen::{
 };
 use typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
-use super::compile::LaidOutDocument;
+use super::layout::LaidOutDocument;
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
@@ -381,7 +381,7 @@ mod tests {
   };
 
   use super::build_publication;
-  use crate::build_pdf::{compile::LaidOutDocument, outline::OutlineEntry};
+  use crate::build_pdf::{layout::LaidOutDocument, outline::OutlineEntry};
 
   /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
   /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。

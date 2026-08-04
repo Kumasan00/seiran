@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use citation::References;
 
-use super::error::BuildPdfError;
+use super::error::CompileError;
 
 /// 読込済みの設定・ソース・文献・フォントを束ねた不変な入力。
 ///
@@ -37,7 +37,7 @@ impl ProjectSnapshot {
     style: config::Style,
     references: Arc<References>,
     font_data: font::FontData,
-  ) -> Result<Self, BuildPdfError> {
+  ) -> Result<Self, CompileError> {
     let source_db = SourceDb::read(source, &config.sources)?;
     return Ok(ProjectSnapshot {
       config,
@@ -104,11 +104,11 @@ impl SourceDb {
   /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
   // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
   #[allow(clippy::result_large_err)]
-  fn read(source: &dyn config::ProjectSource, sources: &[PathBuf]) -> Result<SourceDb, BuildPdfError> {
+  fn read(source: &dyn config::ProjectSource, sources: &[PathBuf]) -> Result<SourceDb, CompileError> {
     let mut db = SourceDb::new();
     for source_path in sources {
       let content = source.read_text(&config::ProjectPath::new(source_path)).map_err(|source| {
-        return BuildPdfError::ReadTextFile {
+        return CompileError::ReadTextFile {
           path: source_path.display().to_string(),
           source: source.into_io(),
         };
@@ -119,17 +119,18 @@ impl SourceDb {
   }
 }
 
-/// 保存先など、build driver だけが使う出力情報。
-pub(super) struct OutputPlan {
+/// 保存先など、書き込みを行う呼び出し側だけが使う出力情報。
+#[derive(Debug, Clone)]
+pub struct OutputPlan {
   /// 出力 PDF のパス
-  pub(super) pdf_path: PathBuf,
+  pub pdf_path: PathBuf,
 }
 
 #[cfg(test)]
 mod tests {
   use std::path::PathBuf;
 
-  use super::{BuildPdfError, SourceDb};
+  use super::{CompileError, SourceDb};
   use crate::build_pdf::golden::enter_workspace_root;
 
   #[test]
@@ -163,7 +164,7 @@ mod tests {
     let result = SourceDb::read(&source, &sources);
 
     // Assert
-    let Err(BuildPdfError::ReadTextFile { source, .. }) = result else {
+    let Err(CompileError::ReadTextFile { source, .. }) = result else {
       panic!("ReadTextFile を期待");
     };
     assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "存在しないファイルは ReadTextFile で早期失敗するはず");

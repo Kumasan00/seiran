@@ -6,7 +6,7 @@ use model::{AssetId, Length};
 use tracing::debug;
 use typeset::Block;
 
-use super::error::{BuildPdfError, CompilerBug};
+use super::error::{CompileError, CompilerBug};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
@@ -36,23 +36,23 @@ impl ImageResources {
 ///
 /// # Errors
 ///
-/// 画像の読み込み・デコードに失敗した場合に [`BuildPdfError`] を返す。
+/// 画像の読み込み・デコードに失敗した場合に [`CompileError`] を返す。
 #[allow(clippy::result_large_err)]
 pub(super) fn load_image_resources(
   source: &dyn config::ProjectSource,
   paths: &[AssetId],
-) -> Result<ImageResources, BuildPdfError> {
+) -> Result<ImageResources, CompileError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
     let file_bytes = source.read_bytes(&config::ProjectPath::new(path.as_str())).map_err(|source| {
-      return BuildPdfError::ReadImage {
+      return CompileError::ReadImage {
         path: path.as_str().to_string(),
         source: source.into_io(),
       };
     })?;
     let natural_size = pdf_gen::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
-      return BuildPdfError::LoadImage {
+      return CompileError::LoadImage {
         path: path.as_str().to_string(),
         source,
       };
@@ -71,13 +71,13 @@ pub(super) fn load_image_resources(
 ///
 /// # Errors
 ///
-/// 自然寸法が不正な場合、または画像が `images` にない場合に [`BuildPdfError`] を返す。
+/// 自然寸法が不正な場合、または画像が `images` にない場合に [`CompileError`] を返す。
 #[allow(clippy::result_large_err)]
 pub(super) fn resolve_images(
   blocks: Vec<Block>,
   text_width: f32,
   images: &ImageResources,
-) -> Result<Vec<Block>, BuildPdfError> {
+) -> Result<Vec<Block>, CompileError> {
   let resolved = blocks
     .into_iter()
     .map(|block| match block {
@@ -89,14 +89,14 @@ pub(super) fn resolve_images(
         align,
       } => {
         let (nat_width, nat_height) = images.natural_size(&path).ok_or_else(|| {
-          return BuildPdfError::Bug(CompilerBug::new(format!(
+          return CompileError::Bug(CompilerBug::new(format!(
             "ImageResources に存在しない画像パスです: {path}（ImageManifest の収集ロジックに不具合があります）"
           )));
         })?;
         let (final_width, final_height) =
           resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), nat_width, nat_height, text_width)
             .ok_or_else(|| {
-              return BuildPdfError::InvalidImageNaturalSize {
+              return CompileError::InvalidImageNaturalSize {
                 path: path.clone(),
                 width: nat_width,
                 height: nat_height,
@@ -112,7 +112,7 @@ pub(super) fn resolve_images(
       },
       other => return Ok(other),
     })
-    .collect::<Result<Vec<Block>, BuildPdfError>>()?;
+    .collect::<Result<Vec<Block>, CompileError>>()?;
   let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(image_count, "画像サイズを確定しました");
   return Ok(resolved);
@@ -204,7 +204,7 @@ mod tests {
     let result = load_image_resources(&source, &paths);
 
     // Assert
-    let Err(BuildPdfError::ReadImage { source, .. }) = result else {
+    let Err(CompileError::ReadImage { source, .. }) = result else {
       panic!("ReadImage を期待");
     };
     assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
