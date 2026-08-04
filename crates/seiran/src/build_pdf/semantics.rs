@@ -7,11 +7,13 @@
 
 use miette::Diagnostic;
 use model::{DocNode, SourceId};
-use resolve::{ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup};
 use thiserror::Error;
 
 use super::ParsedSource;
-use crate::citation::{self, CitationError, References};
+use crate::{
+  citation::{self, CitationError, References},
+  resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup},
+};
 
 /// `resolve_semantics` のエラー。
 ///

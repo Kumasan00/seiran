@@ -46,7 +46,7 @@ impl<'a> DocumentLayouter<'a> {
   /// 引用の解決は呼び出し元で `resolve::resolve_project` が既に完了している）。
   pub(super) fn layout(
     &self,
-    document: &resolve::ResolvedDocument,
+    document: &crate::resolve::ResolvedDocument,
     image_resources: &ImageResources,
   ) -> miette::Result<LaidOutDocument> {
     let ctx = &self.ctx;

@@ -2091,17 +2091,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "resolve"
-version = "0.1.0"
-dependencies = [
- "config",
- "miette",
- "model",
- "proptest",
- "thiserror",
-]
-
-[[package]]
 name = "resvg"
 version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2232,8 +2221,8 @@ dependencies = [
  "miette",
  "model",
  "pdf_gen",
+ "proptest",
  "read-fonts 0.41.0",
- "resolve",
  "serde",
  "serde_json",
  "tempfile",

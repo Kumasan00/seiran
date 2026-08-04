@@ -1,12 +1,11 @@
 //! 段落（`resolve::ResolvedNode::Paragraph`）の lowering
 
-use resolve::ResolvedInline;
-
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle},
 };
+use crate::resolve::ResolvedInline;
 
 /// 段落をレイアウトノードに変換する
 pub(super) fn lower_paragraph(
@@ -52,9 +51,9 @@ pub(super) fn lower_paragraph(
 #[allow(clippy::unwrap_used)]
 mod tests {
   use config::{CounterName, Style as ReadStyle};
-  use resolve::{CounterKind, CounterValue};
 
   use super::{super::test_support, *};
+  use crate::resolve::{CounterKind, CounterValue};
 
   /// テキスト 1 つだけの段落を lower するテストヘルパ
   fn lower_plain(ctx: &LoweringContext, inlines: &[ResolvedInline]) -> Vec<LayoutNode> {

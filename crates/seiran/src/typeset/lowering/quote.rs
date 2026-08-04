@@ -1,9 +1,9 @@
 //! 引用ブロック（`resolve::ResolvedNode::Quote`）の lowering
 
 use model::{Align, Length, QuoteKind};
-use resolve::ResolvedNode;
 
 use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
+use crate::resolve::ResolvedNode;
 
 /// 引用ブロックをレイアウトノードに変換する
 pub(super) fn lower_quote(
@@ -44,9 +44,9 @@ pub(super) fn lower_quote(
 mod tests {
   use config::Style as ReadStyle;
   use model::QuoteKind;
-  use resolve::ResolvedInline;
 
   use super::{super::test_support, *};
+  use crate::resolve::ResolvedInline;
 
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> ResolvedNode {

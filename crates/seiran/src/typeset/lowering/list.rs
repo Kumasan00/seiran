@@ -1,13 +1,13 @@
 //! リスト（`resolve::ResolvedNode::List`）の lowering
 
 use model::Length;
-use resolve::ResolvedListItem;
 
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
+use crate::resolve::ResolvedListItem;
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
@@ -82,9 +82,9 @@ pub(super) fn lower_list(
 mod tests {
   use config::Style as ReadStyle;
   use model::FontKind;
-  use resolve::{ResolvedInline, ResolvedNode};
 
   use super::{super::test_support, *};
+  use crate::resolve::{ResolvedInline, ResolvedNode};
 
   /// テキスト 1 段落だけを内容に持つ `ResolvedListItem` を作るヘルパ
   fn item_with_text(text: &str) -> ResolvedListItem {

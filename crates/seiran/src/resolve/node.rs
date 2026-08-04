@@ -5,7 +5,7 @@ use model::{
   QuoteKind, Span, TheoremClass,
 };
 
-use crate::{counter::CounterValue, inline::ResolvedInline};
+use crate::resolve::{counter::CounterValue, inline::ResolvedInline};
 
 /// 解決済みブロックレベル要素
 ///

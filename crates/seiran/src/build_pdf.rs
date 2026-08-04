@@ -370,7 +370,7 @@ fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> R
 ///
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
-fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb) -> CompileError {
   return match error.origin() {
     model::Origin::Source(source_id) => {
       let entry = source_db.get(source_id);
@@ -397,7 +397,7 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 #[cfg(test)]
 mod tests {
   /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> resolve::ResolveError {
+  pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> crate::resolve::ResolveError {
     use model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
@@ -406,14 +406,14 @@ mod tests {
       label: "missing".to_string(),
       span: model::Span::DUMMY,
     }])];
-    let semantic = resolve::SemanticDocument {
-      groups: vec![resolve::SemanticGroup {
+    let semantic = crate::resolve::SemanticDocument {
+      groups: vec![crate::resolve::SemanticGroup {
         nodes: &g0,
         source_id: model::SourceId::new(0),
       }],
       bibliography: &bibliography,
     };
-    let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
+    let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(error.origin(), model::Origin::Generated(model::GeneratedOrigin::Bibliography), "書誌が帰属源のはず");
     return error;
   }

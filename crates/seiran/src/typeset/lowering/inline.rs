@@ -2,13 +2,13 @@
 
 use config::FootnoteStyle;
 use model::{AnchorId, FontKind, FootnoteId, Length, LinkTarget};
-use resolve::ResolvedInline;
 
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   math::lower_inline_math,
 };
+use crate::resolve::ResolvedInline;
 
 /// インライン要素をレイアウトノードに変換する
 pub(super) fn lower_inline(
@@ -189,9 +189,9 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) ->
 mod tests {
   use config::CounterName;
   use model::{LabelId, Length, Span};
-  use resolve::{CounterKind, CounterValue, ResolvedDocument};
 
   use super::{super::test_support, *};
+  use crate::resolve::{self, CounterKind, CounterValue, ResolvedDocument};
 
   /// `sec:intro`（既定スタイルで section = 1.1）だけを登録した解決済みドキュメントを作る
   fn document_with_section() -> ResolvedDocument {

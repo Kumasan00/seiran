@@ -2,7 +2,7 @@
 
 use model::{DocNode, InlineNode, LabelId, Origin};
 
-use crate::{
+use crate::resolve::{
   ResolveError,
   counter::CounterRegistry,
   error::span_to_source_span,
@@ -19,7 +19,7 @@ pub(crate) struct PendingHeading {
   /// 見出しレベル
   pub(crate) level: model::HeadingLevel,
   /// カウンタ値（無採番の見出しは `None`）
-  pub(crate) counter_value: Option<crate::counter::CounterValue>,
+  pub(crate) counter_value: Option<crate::resolve::counter::CounterValue>,
   /// 見出しタイトル（`\ref` 解決済み）
   pub(crate) title: Vec<ResolvedInline>,
   /// この見出しが属する起源
@@ -344,7 +344,7 @@ mod tests {
   use model::{HeadingLevel, InlineNode, Origin, SourceId, Span};
 
   use super::*;
-  use crate::counter::CounterRegistry;
+  use crate::resolve::counter::CounterRegistry;
 
   #[allow(clippy::unwrap_used)]
   #[test]
@@ -392,6 +392,6 @@ mod tests {
     let err = resolve_group(&nodes, &mut registry, &mut headings, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(err, crate::ResolveError::DuplicateLabel { ref label, .. } if label == "dup"));
+    assert!(matches!(err, crate::resolve::ResolveError::DuplicateLabel { ref label, .. } if label == "dup"));
   }
 }

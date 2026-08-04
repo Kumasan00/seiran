@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use config::{CounterName, Counters, Style, TheoremReset, Theorems};
 use model::{HeadingLevel, LabelId, Origin, Span, TheoremClass};
 
-use crate::{ResolveError, error::span_to_source_span};
+use crate::resolve::{ResolveError, error::span_to_source_span};
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
 /// 2 系統をひとつの型で表す
@@ -236,7 +236,8 @@ impl CounterRegistry {
 
   /// 登録済み全ラベルのカウンタ構造値を `HashMap<LabelId, CounterValue>` として取り出す
   ///
-  /// `resolve_project` が最終的な [`crate::ResolvedDocument::counter_values`] を組み立てる際に使う。
+  /// `resolve_project` が最終的な
+  /// [`crate::resolve::ResolvedDocument::counter_values`] を組み立てる際に使う。
   #[must_use]
   pub(crate) fn into_counter_values(self) -> HashMap<LabelId, CounterValue> {
     return self.labels.into_iter().map(|(label, resolved)| return (label, resolved.value)).collect();

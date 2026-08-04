@@ -1,7 +1,6 @@
 //! 表環境（`resolve::ResolvedNode::Table`）の lowering
 
 use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, TableColumn};
-use resolve::{ResolvedInline, ResolvedTableRow};
 
 use super::{
   LoweringContext, LoweringState,
@@ -9,6 +8,7 @@ use super::{
   inline::lower_inline,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
+use crate::resolve::{ResolvedInline, ResolvedTableRow};
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {
@@ -107,9 +107,9 @@ pub(super) fn lower_table(
 #[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use resolve::ResolvedTableCell;
 
   use super::{super::test_support, *};
+  use crate::resolve::ResolvedTableCell;
 
   /// 1 セルの `ResolvedTableRow` を作るテスト用ヘルパ
   fn row_of(texts: &[&str]) -> ResolvedTableRow {

@@ -2,7 +2,6 @@
 
 use config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide};
 use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle};
-use resolve::{CounterValue, ResolvedMathRow};
 
 use self::alphanumeric::push_math_char;
 use super::{
@@ -10,6 +9,7 @@ use super::{
   counter::format_counter_value,
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
+use crate::resolve::{CounterValue, ResolvedMathRow};
 
 mod alphanumeric;
 
@@ -400,7 +400,7 @@ mod tests {
       label: None,
       label_span: None,
       counter_value: Some(CounterValue {
-        kind: resolve::CounterKind::Counter(config::CounterName::Equation),
+        kind: crate::resolve::CounterKind::Counter(config::CounterName::Equation),
         parts: vec![0, 0, 1],
       }),
     };

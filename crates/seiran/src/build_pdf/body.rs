@@ -13,7 +13,7 @@ use crate::typeset::{BodyLayout, BodyLayoutError, BodyLayoutInput};
 /// `resolve::resolve_project` が呼び出し元で既に完了しているため、ここでは失敗しない）。
 pub(super) fn typeset_body(
   ctx: &CompileContext<'_>,
-  document: &resolve::ResolvedDocument,
+  document: &crate::resolve::ResolvedDocument,
   image_resources: &ImageResources,
 ) -> miette::Result<BodyLayout> {
   let run_pass = |footnote_numbers: Option<&[u32]>| {
@@ -30,7 +30,7 @@ pub(super) fn typeset_body(
 /// `footnote_numbers` は出現順で引く脚注番号の上書き列。
 fn run_body_pass(
   ctx: &CompileContext<'_>,
-  document: &resolve::ResolvedDocument,
+  document: &crate::resolve::ResolvedDocument,
   image_resources: &ImageResources,
   footnote_numbers: Option<&[u32]>,
 ) -> miette::Result<BodyLayout> {

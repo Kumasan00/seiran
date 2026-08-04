@@ -1,13 +1,13 @@
 //! 見出し（`resolve::ResolvedNode::Heading`）の lowering
 
 use model::{AnchorMark, HeadingKey, HeadingLevel, LabelId};
-use resolve::ResolvedInline;
 
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
+use crate::resolve::ResolvedInline;
 
 /// 見出しをレイアウトノードに変換する
 pub(super) fn lower_heading(
@@ -65,9 +65,9 @@ pub(super) fn lower_heading(
 #[allow(clippy::unwrap_used)]
 mod tests {
   use config::{CounterName, Style as ReadStyle};
-  use resolve::{CounterKind, CounterValue};
 
   use super::{super::test_support, *};
+  use crate::resolve::{CounterKind, CounterValue};
 
   /// テスト用に `LoweringState` を構築して `lower_heading` を呼ぶヘルパ
   fn lower_heading_default(

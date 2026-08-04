@@ -1,13 +1,13 @@
 //! `"{number} {title}"` 形式テンプレートの `LayoutNode` 展開
 
 use model::LabelId;
-use resolve::ResolvedInline;
 
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
+use crate::resolve::ResolvedInline;
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
 pub(super) fn expand_template(
@@ -65,9 +65,9 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 mod tests {
   use config::{CounterName, Style as ReadStyle};
   use model::{FontKind, Length};
-  use resolve::{CounterKind, CounterValue};
 
   use super::{super::test_support, *};
+  use crate::resolve::{CounterKind, CounterValue};
 
   fn base_style() -> TextStyle {
     return TextStyle {

@@ -21,7 +21,6 @@ miette.workspace = true
 model.workspace = true
 pdf_gen.workspace = true
 read-fonts.workspace = true
-resolve.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
@@ -32,6 +31,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 lopdf.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

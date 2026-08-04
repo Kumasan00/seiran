@@ -6,8 +6,9 @@
 
 use config::Style as ReadStyle;
 use model::{LabelId, Length};
-use resolve::{ResolvedDocument, ResolvedInline, ResolvedNode};
 use tracing::debug;
+
+use crate::resolve::{ResolvedDocument, ResolvedInline, ResolvedNode};
 
 mod counter;
 mod figure;
@@ -143,7 +144,8 @@ pub(super) mod test_support {
   use std::collections::HashMap;
 
   use model::LabelId;
-  use resolve::{CounterValue, ResolvedDocument};
+
+  use crate::resolve::{CounterValue, ResolvedDocument};
 
   /// ラベル → カウンタ値の対応だけを持つ最小の解決済みドキュメントを作る
   ///
@@ -477,9 +479,9 @@ mod tests {
   use model::{
     DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId,
   };
-  use resolve::{SemanticDocument, SemanticGroup};
 
   use super::*;
+  use crate::resolve::{self, SemanticDocument, SemanticGroup};
 
   /// `DocNode` 列を `resolve::resolve_project` に通して解決済みドキュメントにするテストヘルパ
   ///

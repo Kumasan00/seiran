@@ -76,7 +76,7 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 画像解決に失敗した場合にエラーを返す（lowering は解決済みツリーを描くだけなので失敗しない）。
 pub fn layout_body<E: std::error::Error + Diagnostic + 'static>(
   input: &BodyLayoutInput<'_>,
-  document: &resolve::ResolvedDocument,
+  document: &crate::resolve::ResolvedDocument,
   footnote_numbers: Option<&[u32]>,
   resolve_images: impl FnOnce(Vec<Block>) -> Result<Vec<Block>, E>,
 ) -> Result<BodyLayout, BodyLayoutError<E>> {

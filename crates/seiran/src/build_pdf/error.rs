@@ -5,10 +5,9 @@ use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
 use model::AssetId;
 use pdf_gen::PdfGenError;
-use resolve::ResolveError;
 use thiserror::Error;
 
-use crate::citation::CitationError;
+use crate::{citation::CitationError, resolve::ResolveError};
 
 /// [`frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///

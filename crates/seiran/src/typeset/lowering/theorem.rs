@@ -2,7 +2,6 @@
 
 use config::TheoremStyle;
 use model::{Align, FontKind, LabelId, Length, TheoremClass};
-use resolve::{ResolvedInline, ResolvedNode};
 
 use super::{
   LoweringContext, LoweringState,
@@ -11,6 +10,7 @@ use super::{
   template::expand_template,
   with_label_anchor,
 };
+use crate::resolve::{ResolvedInline, ResolvedNode};
 
 /// 定理ブロックをレイアウトノードに変換する
 #[allow(clippy::too_many_arguments)]
@@ -107,9 +107,9 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use config::Style as ReadStyle;
-  use resolve::{CounterKind, CounterValue, ResolvedDocument};
 
   use super::{super::test_support, *};
+  use crate::resolve::{self, CounterKind, CounterValue, ResolvedDocument};
 
   /// テキスト 1 段落の本体を作るヘルパ
   fn paragraph(text: &str) -> ResolvedNode {

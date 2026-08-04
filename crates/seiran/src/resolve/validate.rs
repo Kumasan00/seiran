@@ -7,7 +7,7 @@
 
 use model::Origin;
 
-use crate::{
+use crate::resolve::{
   ResolveError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
 };
 
@@ -125,7 +125,7 @@ mod tests {
   use model::{LabelId, Origin, SourceId, Span};
 
   use super::*;
-  use crate::{
+  use crate::resolve::{
     counter::CounterRegistry,
     node::{ResolvedListItem, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
   };
@@ -293,8 +293,8 @@ mod tests {
       caption: None,
       caption_position: model::CaptionPosition::Bottom,
       label: None,
-      counter_value: crate::counter::CounterValue {
-        kind: crate::counter::CounterKind::Counter(config::CounterName::Table),
+      counter_value: crate::resolve::counter::CounterValue {
+        kind: crate::resolve::counter::CounterKind::Counter(config::CounterName::Table),
         parts: vec![1],
       },
       span: Span::DUMMY,

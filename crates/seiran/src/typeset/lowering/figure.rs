@@ -1,13 +1,13 @@
 //! 図環境（`resolve::ResolvedNode::Figure`）の lowering
 
 use model::{AssetId, CaptionPosition, Length};
-use resolve::ResolvedInline;
 
 use super::{
   LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
   layout_node::LayoutNode,
 };
+use crate::resolve::ResolvedInline;
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]
