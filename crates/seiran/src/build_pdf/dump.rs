@@ -56,11 +56,6 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
 ///
 /// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `pdf_gen` クレート内
 /// `pub(crate)` でこの crate からは読めないため対象外とする。
-// この関数自体は golden.rs から呼ぶ後続タスクまで未使用（dead_code）。`Publication.resources` は
-// `pdf_gen::ResourceBundle::new` 経由でしか構築できず実フォント読込が必須なため、この関数を直接
-// 呼ぶ単体テストはここでは追加せず、内部の dump_metadata / dump_paint_op / dump_publication_link を
-// 個別にテストして検証する（テストモジュールを vendor/fonts 非依存に保つため）。
-#[allow(dead_code)]
 #[must_use]
 pub(super) fn dump_publication(publication: &Publication) -> String {
   let mut out = String::new();

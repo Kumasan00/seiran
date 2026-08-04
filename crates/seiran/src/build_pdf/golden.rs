@@ -10,7 +10,7 @@ use std::{
 };
 
 use citation::{References, read_references};
-use config::{Config, Style};
+use config::{Config, MemoryProjectSource, ProjectPath, Style};
 use font::{FontData, FontDataExt};
 use model::{AnchorMark, Length};
 use typeset::{Page, PlacedBlock};
@@ -121,6 +121,156 @@ fn apply_input_config_overrides(name: &str, config: &mut Config) {
     config.pdf.margin.top = Length::mm(12.0);
     config.pdf.margin.bottom = Length::mm(12.0);
   }
+}
+
+/// `config.toml` に列挙されたフォントを実ファイルシステムから読み、`source` へ登録する。
+///
+/// `config.toml` のパスは実際の fixture ファイルと同じ相対パス（`vendor/fonts/...`）のままにし、
+/// `compile` の `base_dir`（ワークスペースルート、`enter_workspace_root` が固定する）解決後の
+/// 絶対パスと一致する位置へ実バイト列を登録する。パスを golden 用の仮想パスへ書き換えないのは、
+/// `sources` / `style_path` 等の他フィールドとの対応関係を崩さないため（同じフォントファイルを
+/// 複数 `font_type` が共有する場合の重複登録を避けるため `registered` で去重する）。
+fn register_fonts(
+  mut source: MemoryProjectSource,
+  workspace_root: &Path,
+  font_configs: &toml::value::Table,
+) -> MemoryProjectSource {
+  let mut registered: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+  for entry in font_configs.values() {
+    let Some(table) = entry.as_table() else {
+      continue;
+    };
+    let Some(real_path) = table.get("font_path").and_then(|v| return v.as_str()) else {
+      continue;
+    };
+    let absolute_path = workspace_root.join(real_path);
+    if registered.insert(absolute_path.clone()) {
+      let bytes = fs::read(&absolute_path)
+        .unwrap_or_else(|error| panic!("フォントを読めるはず: {}: {error}", absolute_path.display()));
+      source = source.with_bytes(absolute_path, bytes);
+    }
+  }
+  return source;
+}
+
+/// `apply_input_config_overrides`（型付き `Config` 版）の `toml::Table` 版。
+///
+/// `Config`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
+/// テーブルを直接書き換える。上書き内容は型付き版と同じにする（golden の座標は同一のはず）。
+fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table) {
+  fn set_pdf_field(table: &mut toml::value::Table, key: &str, value: &str) {
+    let pdf = table.entry("pdf").or_insert_with(|| return toml::Value::Table(toml::value::Table::new()));
+    pdf
+      .as_table_mut()
+      .expect("[pdf] はテーブルのはず")
+      .insert(key.to_string(), toml::Value::String(value.to_string()));
+  }
+  if name == "hyphenation" {
+    let document = table.entry("document").or_insert_with(|| return toml::Value::Table(toml::value::Table::new()));
+    document
+      .as_table_mut()
+      .expect("[document] はテーブルのはず")
+      .insert("language".to_string(), toml::Value::String("en".to_string()));
+    set_pdf_field(table, "margin_left", "275mm");
+    set_pdf_field(table, "margin_right", "275mm");
+  }
+  if name == "footnote_per_page" {
+    set_pdf_field(table, "width", "150mm");
+    set_pdf_field(table, "height", "130mm");
+    set_pdf_field(table, "margin_left", "20mm");
+    set_pdf_field(table, "margin_right", "20mm");
+    set_pdf_field(table, "margin_top", "15mm");
+    set_pdf_field(table, "margin_bottom", "15mm");
+  }
+  if name == "footnote_split" {
+    set_pdf_field(table, "width", "120mm");
+    set_pdf_field(table, "height", "85mm");
+    set_pdf_field(table, "margin_left", "15mm");
+    set_pdf_field(table, "margin_right", "15mm");
+    set_pdf_field(table, "margin_top", "12mm");
+    set_pdf_field(table, "margin_bottom", "12mm");
+  }
+}
+
+/// 指定 fixture 用の `MemoryProjectSource` と `ProjectPath`（config.toml の入口）を組み立てる。
+///
+/// 実ファイルシステムからの読込は `fs::read` / `fs::read_to_string` のみ（fixture の config.toml /
+/// style.toml / references.toml / `.sei` / フォント / CSL 資産）で、それ以外は一切実ディスクに
+/// 触れない。`compile` はカレントディレクトリ（`enter_workspace_root` がワークスペースルートへ
+/// 固定済み）を `base_dir` として相対パスを解決するため、`MemoryProjectSource` へは
+/// **`base_dir` 解決後と同じ絶対パス**で登録する（golden 用の仮想パスは使わない。
+/// `style.reference.csl_path` / `locale_path` は `load_base` の時点で既に絶対パスへ解決済みなので
+/// そのまま同じ絶対パスに実バイト列を重ねればよい）。
+fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, ProjectPath) {
+  let workspace_root = workspace_root();
+  let config_path = workspace_root.join("crates/seiran/tests/config/config.toml");
+  let references_path = workspace_root.join("crates/seiran/tests/config/references.toml");
+  let style_path = workspace_root.join("crates/seiran/tests/config/style.toml");
+  let sei_path = workspace_root.join(format!("tests/text/{name}.sei"));
+
+  let base_config_text = fs::read_to_string(&config_path).expect("fixture config.toml を読めるはず");
+  // `toml::Value::from_str` は単一の値式しかパースできず、複数行のドキュメントは
+  // `toml::Table::from_str`（内部で `toml::from_str` を呼ぶ）でパースする必要がある。
+  let mut table: toml::Table = base_config_text.parse().expect("fixture config.toml をパースできるはず");
+  table.insert(
+    "sources".to_string(),
+    toml::Value::Array(vec![toml::Value::String(format!("tests/text/{name}.sei"))]),
+  );
+  apply_input_config_overrides_toml(name, &mut table);
+  let config_text = toml::to_string(&table).expect("config.toml を再直列化できるはず");
+
+  let font_configs = table
+    .get("font_configs")
+    .and_then(|v| return v.as_table())
+    .expect("config.toml に [font_configs.*] があるはず")
+    .clone();
+
+  let (_, base_style, _) = load_base();
+  let mut style = base_style.clone();
+  apply_input_style_overrides(name, &mut style);
+  let style_text = toml::to_string(&style).expect("Style を TOML へ再直列化できるはず");
+
+  let references_text = fs::read_to_string(&references_path).expect("fixture references.toml を読めるはず");
+  let sei_text = fs::read_to_string(&sei_path).expect("fixture .sei を読めるはず");
+
+  let mut source = MemoryProjectSource::new()
+    .with_text(&config_path, config_text)
+    .with_text(&style_path, style_text)
+    .with_text(&references_path, references_text)
+    .with_text(&sei_path, sei_text);
+
+  source = register_fonts(source, &workspace_root, &font_configs);
+  if let Some(csl_path) = &style.reference.csl_path {
+    let bytes = fs::read(csl_path).unwrap_or_else(|error| panic!("CSL を読めるはず: {}: {error}", csl_path.display()));
+    source = source.with_bytes(csl_path, bytes);
+  }
+  if let Some(locale_path) = &style.reference.locale_path {
+    let bytes = fs::read(locale_path)
+      .unwrap_or_else(|error| panic!("CSL ロケールを読めるはず: {}: {error}", locale_path.display()));
+    source = source.with_bytes(locale_path, bytes);
+  }
+
+  return (source, ProjectPath::new(&config_path));
+}
+
+/// `compile()` を入口として fixture を組版し、`Publication` のダンプを返す（golden 移行版）。
+///
+/// `layout_dumps_match_golden` 専用。他の golden.rs テストは引き続き `dump_input`
+/// （`build_pages` 経由）を使う——`typeset::Page` レベルの anchor/index 行に依存する
+/// `index_marks_are_invisible_to_layout` 等は、`Publication` には対応する表現が無いため
+/// 今回は移行しない（issue の「順次移行」方針どおり）。
+// この関数は `layout_dumps_match_golden` を compile 経由へ移行する後続タスクまで未使用
+// （dead_code）。疎通確認用の一時テストは役目を終えて削除済みで、本採用のテストは次のタスクで
+// `layout_dumps_match_golden` から呼ぶ形で追加する（このモジュールの `memory_source_for_golden_fixture`
+// / `register_fonts` / `apply_input_config_overrides_toml` / `super::dump::dump_publication` は
+// すべてこの関数からのみ呼ばれるため、ここに allow を置けば芋づる式に到達可能と判定される）。
+#[allow(dead_code)]
+fn dump_input_via_compile(name: &str) -> String {
+  let (source, root) = memory_source_for_golden_fixture(name);
+  let compilation = super::compile(&source, &root).unwrap_or_else(|diagnostics| {
+    panic!("fixture {name} の compile は成功するはず: {:?}", diagnostics.reports().collect::<Vec<_>>())
+  });
+  return super::dump::dump_publication(&compilation.publication);
 }
 
 /// 指定入力を組版し、確定ページ列のダンプを返す。
