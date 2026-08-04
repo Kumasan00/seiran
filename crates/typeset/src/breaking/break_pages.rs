@@ -3956,7 +3956,8 @@ mod tests {
     // Act
     let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
-    // Assert
-    assert!(!pages.is_empty(), "font::FontSystem を構築せずにページが組めるはず");
+    // Assert — 複数ページに分かれていること自体を検証する（1 ページでも真になる is_empty 判定では
+    // 「複数ページ」という doc comment の主張を検証できていなかった）
+    assert!(pages.len() >= 2, "font::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
   }
 }
