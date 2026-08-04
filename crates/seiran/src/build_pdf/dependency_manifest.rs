@@ -2,9 +2,8 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use model::FontType;
-
 use super::{image_manifest::ImageManifest, project::ProjectSnapshot};
+use crate::model::FontType;
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///
@@ -59,19 +58,20 @@ impl DependencyManifest {
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use font::FontDataExt;
-  use model::AssetId;
-
   use super::DependencyManifest;
-  use crate::build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot};
+  use crate::{
+    build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot},
+    font::FontDataExt,
+    model::AssetId,
+  };
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
     crate::build_pdf::golden::enter_workspace_root();
     let (config, style, references) = load_base();
-    let source = config::FilesystemProjectSource::new();
-    let font_data = font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+    let source = crate::config::FilesystemProjectSource::new();
+    let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
     let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, references, font_data).expect("assemble");
     let image_manifest = ImageManifest {
       paths: vec![AssetId::new("tests/image/testimage5.png")],

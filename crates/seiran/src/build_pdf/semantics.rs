@@ -5,13 +5,15 @@
 //! として実ソースの `groups` とは別枠で渡す組み立ては、この module の外からは見えない
 //! （issue #303）。
 
-use citation::{CitationError, References};
 use miette::Diagnostic;
-use model::{DocNode, SourceId};
-use resolve::{ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup};
 use thiserror::Error;
 
 use super::ParsedSource;
+use crate::{
+  citation::{self, CitationError, References},
+  model::{DocNode, SourceId},
+  resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup},
+};
 
 /// `resolve_semantics` のエラー。
 ///
@@ -39,10 +41,10 @@ pub(super) enum SemanticsError {
 ///
 /// CSL 整形または意味解決に失敗した場合にエラーを返す。
 pub(super) fn resolve_semantics(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   parsed: Vec<ParsedSource>,
   references: &References,
-  style: &config::Style,
+  style: &crate::config::Style,
 ) -> Result<ResolvedDocument, SemanticsError> {
   let source_ids: Vec<SourceId> = parsed.iter().map(|p| return p.source_id).collect();
   let docs: Vec<Vec<DocNode>> = parsed.into_iter().map(|p| return p.nodes).collect();
@@ -72,12 +74,14 @@ pub(super) fn resolve_semantics(
 mod tests {
   use std::{collections::HashSet, fs};
 
-  use citation::{CitationError, read_references};
-  use config::{FilesystemProjectSource, MemoryProjectSource, Style};
-  use model::{DocNode, InlineNode, SourceId, Span};
-
   use super::{ParsedSource, SemanticsError, resolve_semantics};
-  use crate::build_pdf::golden::{enter_workspace_root, load_base};
+  use crate::{
+    build_pdf::golden::{enter_workspace_root, load_base},
+    citation::{CitationError, read_references},
+    config::{FilesystemProjectSource, MemoryProjectSource, Style},
+    frontend::parse_source,
+    model::{DocNode, InlineNode, SourceId, Span},
+  };
 
   #[test]
   fn resolve_semantics_composes_citation_then_resolve() {
@@ -88,8 +92,7 @@ mod tests {
     let content = fs::read_to_string("tests/text/cite.sei").expect("fixture cite.sei を読めるはず");
     let source_id = SourceId::new(0);
     let citation_keys: HashSet<String> = references.keys().cloned().collect();
-    let nodes =
-      frontend::parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
+    let nodes = parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
     let parsed = vec![ParsedSource { source_id, nodes }];
 
     // Act

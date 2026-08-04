@@ -321,23 +321,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "citation"
-version = "0.1.0"
-dependencies = [
- "ciborium",
- "config",
- "hayagriva",
- "miette",
- "model",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
-]
-
-[[package]]
 name = "citationberg"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,21 +396,6 @@ dependencies = [
  "rustversion",
  "ryu",
  "static_assertions",
-]
-
-[[package]]
-name = "config"
-version = "0.1.0"
-dependencies = [
- "garde",
- "miette",
- "model",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
- "unic-langid",
 ]
 
 [[package]]
@@ -656,21 +624,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "font"
-version = "0.1.0"
-dependencies = [
- "config",
- "font-types 0.12.2",
- "harfrust",
- "miette",
- "model",
- "rayon",
- "read-fonts 0.41.0",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "font-types"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -718,20 +671,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "frontend"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "memchr",
- "miette",
- "model",
- "phf",
- "proptest",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -1640,15 +1579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "model"
-version = "0.1.0"
-dependencies = [
- "garde",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1773,23 +1703,6 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
-]
-
-[[package]]
-name = "pdf_gen"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "font",
- "image",
- "krilla",
- "krilla-svg",
- "miette",
- "model",
- "read-fonts 0.41.0",
- "thiserror",
- "tracing",
- "usvg",
 ]
 
 [[package]]
@@ -2110,17 +2023,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "resolve"
-version = "0.1.0"
-dependencies = [
- "config",
- "miette",
- "model",
- "proptest",
- "thiserror",
-]
-
-[[package]]
 name = "resvg"
 version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2238,23 +2140,60 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "seiran"
 version = "0.1.0"
 dependencies = [
- "citation",
- "clap",
- "config",
- "font",
- "frontend",
+ "bumpalo",
+ "ciborium",
+ "font-types 0.12.2",
+ "garde",
+ "harfrust",
+ "hayagriva",
+ "hypher",
+ "icu",
+ "lazy-regex",
  "lopdf",
+ "memchr",
  "miette",
- "model",
- "pdf_gen",
+ "phf",
+ "proptest",
+ "rayon",
  "read-fonts 0.41.0",
- "resolve",
+ "seiran-pdf",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",
  "tracing",
+ "unic-langid",
+]
+
+[[package]]
+name = "seiran-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "miette",
+ "read-fonts 0.41.0",
+ "seiran",
+ "seiran-pdf",
+ "tempfile",
+ "thiserror",
+ "tracing",
  "tracing-subscriber",
- "typeset",
+]
+
+[[package]]
+name = "seiran-pdf"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "image",
+ "krilla",
+ "krilla-svg",
+ "miette",
+ "read-fonts 0.41.0",
+ "thiserror",
+ "tracing",
+ "usvg",
 ]
 
 [[package]]
@@ -2786,23 +2725,6 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
-
-[[package]]
-name = "typeset"
-version = "0.1.0"
-dependencies = [
- "config",
- "font",
- "frontend",
- "hypher",
- "icu",
- "lazy-regex",
- "miette",
- "model",
- "resolve",
- "thiserror",
- "tracing",
-]
 
 [[package]]
 name = "unarray"

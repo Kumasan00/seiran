@@ -2,11 +2,13 @@
 
 use std::collections::HashMap;
 
-use model::{AssetId, Length};
 use tracing::debug;
-use typeset::Block;
 
 use super::error::{CompileError, CompilerBug};
+use crate::{
+  model::{AssetId, Length},
+  typeset::Block,
+};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
@@ -23,14 +25,14 @@ impl ImageResources {
 
   /// 保持していた画像の生バイト列を消費して返す。
   ///
-  /// render 用 `pdf_gen::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
+  /// render 用 `seiran_pdf::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
   pub(super) fn into_image_bytes(self) -> HashMap<AssetId, Vec<u8>> { return self.bytes; }
 }
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// 画像ファイルを読む唯一の箇所。`source`（[`config::ProjectSource`]）経由で読み込むため、
+/// 画像ファイルを読む唯一の箇所。`source`（[`crate::config::ProjectSource`]）経由で読み込むため、
 /// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
@@ -39,19 +41,19 @@ impl ImageResources {
 /// 画像の読み込み・デコードに失敗した場合に [`CompileError`] を返す。
 #[allow(clippy::result_large_err)]
 pub(super) fn load_image_resources(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   paths: &[AssetId],
 ) -> Result<ImageResources, CompileError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
-    let file_bytes = source.read_bytes(&config::ProjectPath::new(path.as_str())).map_err(|source| {
+    let file_bytes = source.read_bytes(&crate::config::ProjectPath::new(path.as_str())).map_err(|source| {
       return CompileError::ReadImage {
         path: path.as_str().to_string(),
         source: source.into_io(),
       };
     })?;
-    let natural_size = pdf_gen::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
+    let natural_size = seiran_pdf::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
       return CompileError::LoadImage {
         path: path.as_str().to_string(),
         source,
@@ -155,9 +157,8 @@ fn resolve_image_size(
 mod tests {
   use std::path::Path;
 
-  use config::MemoryProjectSource;
-
   use super::*;
+  use crate::config::MemoryProjectSource;
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///

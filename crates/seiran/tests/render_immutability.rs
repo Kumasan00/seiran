@@ -1,13 +1,13 @@
 //! render 前にページ構造が完全に確定していることの property test（#306）。
 //!
-//! `pdf_gen::render` は `&Publication`（共有参照）しか取らないため、型システム上すでに
+//! `seiran_pdf::render` は `&Publication`（共有参照）しか取らないため、型システム上すでに
 //! 「render は Publication を変更できない」ことが保証されている。このテストはその契約が
 //! 将来のシグネチャ変更（例えば `&mut Publication` への変更）で壊れたときに検知する回帰ガード。
 
 mod common;
 
 use common::{minimal_config_toml, read_test_font};
-use config::{MemoryProjectSource, ProjectPath};
+use seiran::{MemoryProjectSource, ProjectPath};
 
 #[test]
 fn render_does_not_mutate_the_publication() {
@@ -22,7 +22,7 @@ fn render_does_not_mutate_the_publication() {
   let publication_before = compilation.publication.clone();
 
   // Act
-  let _pdf_bytes = pdf_gen::render(&compilation.publication).expect("render は成功するはず");
+  let _pdf_bytes = seiran_pdf::render(&compilation.publication).expect("render は成功するはず");
 
   // Assert — render 呼び出し前後で Publication は完全に同一
   assert_eq!(

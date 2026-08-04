@@ -8,25 +8,32 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-citation.workspace = true
-clap.workspace = true
-config.workspace = true
-font.workspace = true
-frontend.workspace = true
+bumpalo.workspace = true
+ciborium.workspace = true
+font-types.workspace = true
+garde.workspace = true
+harfrust.workspace = true
+hayagriva.workspace = true
+hypher.workspace = true
+icu.workspace = true
+lazy-regex.workspace = true
+memchr.workspace = true
 miette.workspace = true
-model.workspace = true
-pdf_gen.workspace = true
+phf.workspace = true
+rayon.workspace = true
 read-fonts.workspace = true
-resolve.workspace = true
-tempfile.workspace = true
+seiran-pdf.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-typeset.workspace = true
+unic-langid.workspace = true
 
 [dev-dependencies]
 lopdf.workspace = true
-toml.workspace = true
+proptest.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

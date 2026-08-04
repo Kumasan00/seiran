@@ -1,15 +1,15 @@
 //! PDF ビルドエラー型の定義
 
-use citation::CitationError;
-use config::LayoutValidationError;
-use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
-use model::AssetId;
-use pdf_gen::PdfGenError;
-use resolve::ResolveError;
+use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
-/// [`frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
+use crate::{
+  citation::CitationError, config::LayoutValidationError, frontend::ParseSourceError, model::AssetId,
+  resolve::ResolveError,
+};
+
+/// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
 /// `ParseSourceError` は `SourceId` だけを持ち、ソース本文を持たない（本文は
 /// `project::SourceDb` が一元管理する）。code / message / help / label / related は
@@ -202,7 +202,7 @@ pub(super) enum CompileError {
   LoadImage {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の `pdf_gen` デコードエラー。
+    /// 元の `seiran_pdf` デコードエラー。
     #[source]
     #[diagnostic_source]
     source: PdfGenError,

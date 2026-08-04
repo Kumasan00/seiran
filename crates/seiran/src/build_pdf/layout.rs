@@ -1,8 +1,6 @@
 //! 不変な入力から確定レイアウトを作る組版オーケストレーション
 
-use font::FontSystem;
 use tracing::info;
-use typeset::BodyLayout;
 
 use super::{
   back_matter, body, front_matter,
@@ -11,11 +9,12 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
   running,
 };
+use crate::{font::FontSystem, typeset::BodyLayout};
 
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {
   /// 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
-  pub(super) pages: Vec<typeset::Page>,
+  pub(super) pages: Vec<crate::typeset::Page>,
   /// PDF しおり用の見出し情報（文書順）
   pub(super) outline_entries: Vec<OutlineEntry>,
 }
@@ -30,7 +29,11 @@ pub(super) struct DocumentLayouter<'a> {
 
 impl<'a> DocumentLayouter<'a> {
   /// 設定とフォント資源から `DocumentLayouter` を組み立てる。
-  pub(super) fn new(config: &'a config::Config, style: &'a config::Style, font_system: &'a FontSystem<'a>) -> Self {
+  pub(super) fn new(
+    config: &'a crate::config::Config,
+    style: &'a crate::config::Style,
+    font_system: &'a FontSystem<'a>,
+  ) -> Self {
     return DocumentLayouter {
       ctx: CompileContext::new(config, style, font_system),
     };
@@ -46,7 +49,7 @@ impl<'a> DocumentLayouter<'a> {
   /// 引用の解決は呼び出し元で `resolve::resolve_project` が既に完了している）。
   pub(super) fn layout(
     &self,
-    document: &resolve::ResolvedDocument,
+    document: &crate::resolve::ResolvedDocument,
     image_resources: &ImageResources,
   ) -> miette::Result<LaidOutDocument> {
     let ctx = &self.ctx;
@@ -90,10 +93,10 @@ impl<'a> DocumentLayouter<'a> {
 
 /// 前付け、本文、後付けの順にページ列を連結する。
 fn concat_pages(
-  front_pages: Vec<typeset::Page>,
-  body_pages: Vec<typeset::Page>,
-  back_pages: Vec<typeset::Page>,
-) -> Vec<typeset::Page> {
+  front_pages: Vec<crate::typeset::Page>,
+  body_pages: Vec<crate::typeset::Page>,
+  back_pages: Vec<crate::typeset::Page>,
+) -> Vec<crate::typeset::Page> {
   let (front_matter_count, body_page_count, back_matter_count) =
     (front_pages.len(), body_pages.len(), back_pages.len());
   let mut pages = front_pages;

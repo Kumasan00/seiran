@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use model::{AssetId, DocNode};
+use crate::model::{AssetId, DocNode};
 
 /// 画像パスの一覧（重複なし・パス文字列の昇順）。
 pub(super) struct ImageManifest {
@@ -52,9 +52,8 @@ fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<AssetId>) {
 
 #[cfg(test)]
 mod tests {
-  use model::{AssetId, CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
-
   use super::collect_image_paths;
+  use crate::model::{AssetId, CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
 
   /// `image_path` だけを差し替えた最小の `Figure` ノードを作るテストヘルパ
   fn figure(path: &str) -> DocNode {

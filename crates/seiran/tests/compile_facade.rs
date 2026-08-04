@@ -13,7 +13,7 @@ mod common;
 use std::path::PathBuf;
 
 use common::{minimal_config_toml, read_test_font};
-use config::{MemoryProjectSource, ProjectPath};
+use seiran::{MemoryProjectSource, ProjectPath};
 
 #[test]
 #[allow(clippy::unwrap_used)]

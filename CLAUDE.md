@@ -70,16 +70,16 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → (prepass) resolve_images（seiran::build_pdf::image_resources: 画像の自然寸法から width/height を
     確定。旧 pdf_gen::resolve_images、epic #276 / #279 で compiler 側へ移設）
   → (c+d) break_pages（typeset::breaking: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
-  → (e) render_pages（pdf_gen: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
+  → (e) render_pages（seiran-pdf: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
   → ファイル出力
 ```
 
 外部資源の取得（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `config::ProjectSource`
 経由で、compiler 側のコードは `std::fs` を直接呼ばない（#300）。実装は `FilesystemProjectSource`（実ビルド）と
 `MemoryProjectSource`（決定的テスト）の 2 つ。書き込みメソッドは持たず、出力ディレクトリ作成と PDF 書き出しは
-`seiran::build_pdf::compile`（lib target の公開 facade）の責務ではなく、CLI（bin target の `main.rs`）が
-`compile` → `pdf_gen::render` の後に atomic write（`tempfile` 経由の一時ファイル + rename）として行う（#304）。
-詳細は `docs/architecture.md` の config → project_source 節、および seiran 節。
+`seiran::compile`（ライブラリの公開 facade）の責務ではなく、CLI crate（`seiran-cli` の `main.rs`）が
+`compile` → `seiran_pdf::render` の後に atomic write（`tempfile` 経由の一時ファイル + rename）として
+行う（#304 / #307）。詳細は `docs/architecture.md` の config → project_source 節、および seiran-cli 節。
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::breaking::break_lines`。貪欲法 first-fit も
@@ -100,91 +100,116 @@ lowering →(a)→(c+d) をページ割り当てが安定するまで反復す�
 
 ### クレート依存関係
 
+crate はデプロイ・外部依存・独立再利用の単位に限る（コンパイル段階を crate 境界にしない、#307）。
+
+```text
+seiran-pdf （workspace 内には依存なし（krilla / krilla-svg / image / read-fonts 等の外部 crate のみ）。
+            (e) 描画。確定座標の Publication を PDF バイト列へ encode する。境界型は自前の leaf 型
+            （types module の FontType / FontFaceInput / FontMetric / GlyphRun / Glyph）だけで完結し、
+            compiler 内部型（config::Config / typeset::Page / font::GlyphRun）を一切知らない）
+  ↑ seiran, seiran-cli
+
+seiran （seiran-pdf に依存。言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。
+        compile を唯一の外部入口として公開し、段の呼び出し順序と中間型は非公開 module に閉じる。
+        crate 外へ出るのは compile / Compilation / BuildStatistics / DependencyManifest /
+        DiagnosticSet / OutputPlan / ProjectSource 系 / seiran_pdf::Publication の再エクスポートのみ）
+  ↑ seiran-cli
+
+seiran-cli （seiran, seiran-pdf に依存。CLI エントリーポイント（package 名 seiran-cli / binary 名
+            seiran）。compile → seiran_pdf::render → atomic write → 結果表示の 4 手順のみを担当し、
+            段順序の知識を持たない。clap / tracing-subscriber / tempfile / read-fonts にも直接依存し、
+            CLI 引数定義（cli）・variation-axes / ttc-names / script-langs 実装（subcommand）・
+            保存エラー型（write_error）を子 module として内包）
+```
+
+### `seiran` の module 構成
+
+いずれも `crates/seiran/src/` 直下の非公開 module（公開 API は `lib.rs` の `pub use` に一本化）。
+`↑` は利用側の module を示す。
+
 ```text
 model （依存なし（serde / garde のみ）— 全段共有のデータモデル。旧 types / document / hlist の
-        コア型 3 クレートを統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
+        コア型 3 crate を統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
         ColumnWidth 等の共通型 + Document IR（DocNode / InlineNode / MathNode）のみを持つ。
         組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
-        （GlyphRun / Glyph）は font クレートへ移設済み（#280、model は意味モデルと共通値型に縮小）。
+        （GlyphRun / Glyph）は font module へ移設済み（#280、model は意味モデルと共通値型に縮小）。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
-  ↑ config, citation, frontend, font, resolve, typeset, pdf_gen, seiran
+  ↑ config, citation, frontend, font, resolve, typeset, build_pdf
 
 config （model を使用。非公開の `config` / `style` / `project_source` 子 module を内包し、
         config.toml / style.toml のデータモデル + 読込・検証と、外部資源取得の seam
         （`ProjectSource` / `ProjectPath` / `SourceReadError` + filesystem / memory の 2 実装、#300）を
-        1 クレートにまとめる。seam をここに置くのは I/O を行う全クレート（citation / font / seiran）が
-        既に config へ依存しているため。公開 API は root の `pub use` に揃える）
-  ↑ citation, font, resolve, typeset, pdf_gen, seiran
+        1 module にまとめる。seam をここに置くのは I/O を行う全 module（citation / font / build_pdf）が
+        既に config へ依存しているため。公開 API は module root の `pub use` に揃える）
+  ↑ citation, font, resolve, typeset, build_pdf
 
 resolve （model, config に依存。citation には依存しない。SemanticDocument（未解決のラベル名・
         \ref 参照名・引用キー・索引語を保持できる）と ResolvedDocument（typed ID へ解決済み）
         を分離する。resolve_project がラベル登録・\ref 存在検証・カウンタ構造値（CounterValue）
         の算出まで行う。表示文字列（number_format 等）は一切読まない（`resolve` の関数がこれらの
-        フィールドを参照しない設計で、`style_independence.rs` の property test が回帰を検出する）
-  ↑ typeset, seiran
+        フィールドを参照しない設計で、`style_independence_tests` の property test が回帰を検出する）
+  ↑ typeset, build_pdf
 
 frontend （model に依存。bumpalo アリーナ上に CST を構築し、Document IR（model）に
           評価変換。CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）。
           採番・\ref 解決は resolve、書式化は typeset::lowering に委ねる）
-  ↑ seiran
+  ↑ build_pdf
 
 citation （model, config に依存。参照定義ファイル（references.toml / .json）の読込を
           非公開の内部実装（`references` 子 module）として内包し、hayagriva / citationberg で
           CSL 整形・書誌生成まで行う）
-  ↑ seiran
+  ↑ build_pdf
 
 font （model, config に依存。read-fonts / harfrust / rayon を使用。シェーピング結果型 GlyphRun / Glyph
-      を持つ（#280 で model から移設。typeset・pdf_gen 双方が既に font に依存済みだったため新規
-      Cargo 依存を増やさずに済む置き場所として選んだ））
-  ↑ typeset, pdf_gen, seiran
+      を持つ（#280 で model から移設。当時 typeset・pdf_gen の 2 crate が消費者だった。seiran-pdf は
+      #305 / #307 で自前の leaf 型を持つようになり、変換は build_pdf::publication の 1 箇所に閉じている））
+  ↑ typeset, build_pdf
 
 typeset （font, config, model, resolve, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
-          3 クレートを module として統合（#204）し、責務基準で lowering / block / breaking に
+          3 crate を module として統合（#204）し、責務基準で lowering / block / breaking に
           改名（#206）。解決済みドキュメント（resolve::ResolvedDocument）→ LayoutNode 変換
           （lowering、解決済み構造値を表示文字列に変換するだけで、採番・`\ref` 解決は resolve が
           済ませている）→ (a) build_blocks（block、シェーピング + 計測 +
           break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
-          （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 クレートにまとめる。
+          （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 module にまとめる。
           組版中間型（Block / HItem / Line / Page / TableBox 系）は非公開 module layout に集約し
           （#280、旧 model から移設。block/breaking 双方から対称参照されるためどちらの所有物にも
           しない）。段の呼び出し順序（lowering → build_blocks → 画像サイズ確定 → break_pages 等）は
           非公開 module pipeline の layout_body / layout_front_matter / layout_back_matter /
           layout_running_content に閉じ、build_blocks / break_pages / build_toc_blocks /
-          build_index_blocks / resolve_hyphenation は個別には公開しない（#281）。公開 API はクレート
+          build_index_blocks / resolve_hyphenation は個別には公開しない（#281）。公開 API は module
           root の `pub use` に揃える。lowering / block / breaking / layout / pipeline の 5 module
           とも非公開）
-  ↑ seiran
+  ↑ build_pdf
 
-pdf_gen （font, model に依存。krilla / krilla-svg で PDF を生成。行分割パス（typeset::breaking）
-         には依存しない — 確定座標を描くだけであることが依存グラフで強制される。config には依存せず、
-         フォント・画像資源は呼び出し元が組み立てた ResourceBundle 経由で受け取る）
-  ↑ seiran
-
-seiran （lib target + bin target の両方を持つ（#304）。lib target は全クレート（`resolve` を含む）を
-         統合し、言語処理・意味解決・組版を 1 回の呼び出しに畳んだ compile を唯一の外部入口として
-         公開する（中間型は Publication を除き非公開）。bin target（エントリーポイント）は
-         compile → render → 保存（atomic write）→ 結果表示のみを担当し、段順序の知識を持たない。
-         clap / miette / read-fonts / tempfile / thiserror / tracing にも直接依存し、CLI 引数定義と
-         variation-axes / ttc-names / script-langs サブコマンド実装を cli / subcommand
-         子 module として内包）
+build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile とその公開型）と compiler core
+           （不変な入力から組版成果物を返す phase graph）を持つ。段の呼び出し順序・中間型
+           （ParsedSource / LaidOutDocument / FontResources / 画像資源等）はここに閉じ、crate 外へ
+           出さない。PDF バイト列の生成（seiran_pdf::render）と保存は行わない — 書き出すのは
+           呼び出し元（seiran-cli）の責務）
 ```
 
-### 各クレートの責務
+### 各クレート・module の責務
 
 ナビゲーション用の 1 行要約。サブモジュール構成・内部設計・データ構造などの詳細は
-`docs/architecture.md` に集約しているので、特定クレートを触る前にそちらを参照する。
+`docs/architecture.md` に集約しているので、特定の crate / module を触る前にそちらを参照する。
 
-| クレート   | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
+| クレート     | 責務（要約）                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seiran`     | 言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。公開 API は `compile` とその入出力型・診断型 + `Publication` の再エクスポートだけ。内部は下表の 8 module（すべて非公開）                                |
+| `seiran-pdf` | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成。境界型は自前の leaf 型（`types`）で完結し、compiler 内部型に依存しない（#305 / #307）                                                                          |
+| `seiran-cli` | CLI エントリ（package `seiran-cli` / binary `seiran`）。`compile` → `seiran_pdf::render` → atomic write → 表示のみ。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs`（`subcommand`）を内包        |
+
+| `seiran` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）。非公開の `config` / `style` / `project_source` 子 module + root facade                                                                                                                                                                     |
-| `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence.rs` の property test で保証） |
+| `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence_tests` の property test で保証） |
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
 | `typeset`  | 解決済みドキュメント（`resolve::ResolvedDocument`）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が解決済みドキュメント（`resolve::ResolvedDocument`）から表示文字列を生成しレイアウトノードを組み立てる、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
-| `pdf_gen`  | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成（画像の自然寸法解決 resolve_images prepass は compiler 側 seiran::build_pdf::image_resources へ移設済み） |
-| `seiran`   | lib target（`compile` facade。全クレート統合、段順序・中間型は非公開）+ bin target（CLI エントリ。`compile` → `render` → 保存 → 表示のみ）。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs` 実装（`subcommand`）を子 module として内包                                                                                                                                                                                                                   |
+| `build_pdf` | compile facade（`compile` とその公開型）+ compiler core（phase graph）。段の呼び出し順序・中間型はここに閉じ、crate 外へ出さない。PDF バイト列の生成と保存は行わない |
 
 ## コーディング規約
 

@@ -2,20 +2,26 @@
 
 use std::time::Instant;
 
-use config::{DocumentConfig, RunningContentStyle, Style};
-use model::Color;
 use tracing::info;
-use typeset::{RunningContentSpec, RunningMetadata, RunningSlots};
 
 use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
+use crate::{
+  config::{DocumentConfig, RunningContentStyle, Style},
+  model::Color,
+  typeset::{RunningContentSpec, RunningMetadata, RunningSlots},
+};
 
 /// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///
 /// [`PageLabels`] を引数に要求して呼び出し順を制約する。
-pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [typeset::Page], page_labels: PageLabels) {
+pub(super) fn place_running_content(
+  ctx: &CompileContext<'_>,
+  pages: &mut [crate::typeset::Page],
+  page_labels: PageLabels,
+) {
   let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
-  typeset::layout_running_content(pages, ctx.resources, &spec);
+  crate::typeset::layout_running_content(pages, ctx.resources, &spec);
   info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
@@ -23,8 +29,8 @@ pub(super) fn place_running_content(ctx: &CompileContext<'_>, pages: &mut [types
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
-  text_width: model::Length,
-  page_height: model::Length,
+  text_width: crate::model::Length,
+  page_height: crate::model::Length,
   page_labels: PageLabels,
 ) -> RunningContentSpec {
   return RunningContentSpec {
@@ -41,10 +47,14 @@ fn build_running_spec(
   };
 }
 
-/// `RunningContentStyle` を配置用の [`typeset::RunningSlots`] に変換する。
+/// `RunningContentStyle` を配置用の [`crate::typeset::RunningSlots`] に変換する。
 ///
 /// 全スロットが空なら描画を省略するため `None` を返す。
-fn running_slots(style: &RunningContentStyle, baseline_y: model::Length, rule_below: bool) -> Option<RunningSlots> {
+fn running_slots(
+  style: &RunningContentStyle,
+  baseline_y: crate::model::Length,
+  rule_below: bool,
+) -> Option<RunningSlots> {
   if style.is_empty() {
     return None;
   }

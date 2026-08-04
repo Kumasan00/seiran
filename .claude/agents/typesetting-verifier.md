@@ -1,6 +1,6 @@
 ---
 name: typesetting-verifier
-description: 組版・レイアウト・数式・pdf_gen・パーサ以降の変更後の振る舞い検証を隔離実行する。golden テスト・cargo test を実行し、大量の出力はこのエージェント内に閉じて、判定と差分要約だけを返す。組版変更の検証・リファクタの振る舞い不変の証明・golden テスト失敗の切り分けを頼まれたら使う。
+description: 組版・レイアウト・数式・seiran-pdf・パーサ以降の変更後の振る舞い検証を隔離実行する。golden テスト・cargo test を実行し、大量の出力はこのエージェント内に閉じて、判定と差分要約だけを返す。組版変更の検証・リファクタの振る舞い不変の証明・golden テスト失敗の切り分けを頼まれたら使う。
 tools: Bash, Read, Grep, Glob
 model: sonnet
 ---

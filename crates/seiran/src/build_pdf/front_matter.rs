@@ -1,19 +1,21 @@
 //! 前付け（タイトルページ・目次）のページ分割オーケストレーション
 //!
-//! ブロックの組み立て順序自体は `typeset::layout_front_matter` に閉じている。ここでは
+//! ブロックの組み立て順序自体は `crate::typeset::layout_front_matter` に閉じている。ここでは
 //! `BodyPageValues`（seiran 限定の段階型）から目次エントリを組み立てる（phase レベルの計装ごと）
 //! だけを担う。
 
 use std::time::Instant;
 
-use model::HeadingKey;
 use tracing::info;
-use typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput};
 
 use super::{
   elapsed_ms,
   page_values::BodyPageValues,
   phase_context::{BodyPageFacts, CompileContext},
+};
+use crate::{
+  model::HeadingKey,
+  typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput},
 };
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。
@@ -32,9 +34,9 @@ pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFac
     resources: ctx.resources,
     text_width: ctx.text_width,
     geometry: &ctx.front_geometry,
-    breaker: &typeset::KnuthPlassBreaker,
+    breaker: &crate::typeset::KnuthPlassBreaker,
   };
-  let pages = typeset::layout_front_matter(&input, &toc_entries);
+  let pages = crate::typeset::layout_front_matter(&input, &toc_entries);
   info!(
     front_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -49,7 +51,7 @@ pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFac
 fn collect_toc_entries(
   headings: &[HeadingRecord],
   page_values: &BodyPageValues,
-  toc: &config::TocStyle,
+  toc: &crate::config::TocStyle,
 ) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
@@ -71,11 +73,12 @@ fn collect_toc_entries(
 
 #[cfg(test)]
 mod tests {
-  use config::{PageNumbering, TocStyle};
-  use model::{AnchorMark, HeadingKey, HeadingLevel};
-  use typeset::{HeadingRecord, PlacedAnchor};
-
   use super::{BodyPageValues, Page, collect_toc_entries};
+  use crate::{
+    config::{PageNumbering, TocStyle},
+    model::{AnchorMark, HeadingKey, HeadingLevel},
+    typeset::{HeadingRecord, PlacedAnchor},
+  };
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {
     return HeadingRecord {
@@ -100,8 +103,8 @@ mod tests {
               key: HeadingKey::new(index),
               label: None,
             },
-            x: model::Length::ZERO,
-            y: model::Length::ZERO,
+            x: crate::model::Length::ZERO,
+            y: crate::model::Length::ZERO,
           }],
           links: Vec::new(),
           index_entries: Vec::new(),

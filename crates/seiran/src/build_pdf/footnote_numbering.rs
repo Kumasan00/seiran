@@ -1,11 +1,11 @@
-//! 脚注のページ単位採番（`config::FootnoteNumbering::PerPage`）の不動点 solver
+//! 脚注のページ単位採番（`crate::config::FootnoteNumbering::PerPage`）の不動点 solver
 //!
 //! 番号とページ割り当ての循環をこのモジュールに閉じ込める。
 
 use tracing::debug;
-use typeset::BodyLayout;
 
 use super::error::CompileError;
+use crate::typeset::BodyLayout;
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -29,7 +29,7 @@ pub(super) fn solve_per_page_numbering(
   let mut pass: u32 = 1;
   loop {
     let layout = body_pass(Some(&numbers))?;
-    let next = typeset::per_page_footnote_numbers(&layout.pages);
+    let next = crate::typeset::per_page_footnote_numbers(&layout.pages);
     if next == numbers {
       debug!(pass, "脚注のページ単位採番が収束しました");
       return Ok(layout);
@@ -55,15 +55,15 @@ mod tests {
   use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, solve_per_page_numbering};
 
   /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
-  fn page_with_footnotes(indices: &[u32]) -> typeset::Page {
-    return typeset::Page {
+  fn page_with_footnotes(indices: &[u32]) -> crate::typeset::Page {
+    return crate::typeset::Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
       footnotes: indices
         .iter()
         .map(|index| {
-          return typeset::PlacedFootnote {
+          return crate::typeset::PlacedFootnote {
             number: index + 1,
             index: *index,
             continued: false,

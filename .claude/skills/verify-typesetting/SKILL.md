@@ -1,7 +1,7 @@
 ---
 name: verify-typesetting
 description: >-
-  Seiran の組版変更の振る舞い検証手順。組版・レイアウト・数式・pdf_gen・パーサ以降の
+  Seiran の組版変更の振る舞い検証手順。組版・レイアウト・数式・seiran-pdf・パーサ以降の
   どこかを変更した後の確認、リファクタの「振る舞い不変」の証明、golden テストの失敗対応、
   golden の再生成、新機能へのテスト追加、「PDF 出力が変わっていないか」を確かめたい時に
   必ず参照する。検証手段の第一選択と PDF バイト比較の使い分けを規定する。
@@ -36,7 +36,7 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 （`crates/seiran/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
 （`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
 `super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
-（`pdf_gen::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
+（`seiran_pdf::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
 確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
 メタデータ・リンク・しおりまでダンプするため `dump_pages` よりカバー範囲が広い）。
 
@@ -93,7 +93,7 @@ config では無効。golden.rs の `apply_input_style_overrides`（型付き `S
 
 ## PDF バイト比較（render 層のみ）
 
-PDF には `crates/pdf_gen/src/metadata.rs` の `Utc::now()` 由来の `CreationDate` /
+PDF には `crates/seiran-pdf/src/metadata.rs` の `Utc::now()` 由来の `CreationDate` /
 `ModDate` が埋め込まれ、krilla はその日時を含むハッシュから trailer の `/ID` と XMP の
 DocumentID を導出する。**同じコードでもビルド時刻が違えば PDF バイトは変わる**ため、
 生の `cmp` はそのままでは使えない。
@@ -106,7 +106,7 @@ DocumentID を導出する。**同じコードでもビルド時刻が違えば 
 3. `git stash push -- <変更ファイル>` で対象ファイルだけ退避し、変更前コードを
    ビルドして PDF を生成（日時固定は退避対象に含めない）
 4. 両 PDF を `cmp`。一致すれば振る舞い不変
-5. `git stash pop` で変更を戻し、`git checkout -- crates/pdf_gen/src/metadata.rs`
+5. `git stash pop` で変更を戻し、`git checkout -- crates/seiran-pdf/src/metadata.rs`
    で日時固定を戻す
 
 検証対象の機能が既定で無効な場合は、`[title_page]` / `[toc]` / `[header]` / `[footer]`

@@ -36,20 +36,23 @@ use std::{
   time::Instant,
 };
 
-#[cfg(test)]
-use citation::References;
-use citation::read_references;
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedParseError, CompileError};
-use font::{FontData, FontDataExt, FontResources};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
-use model::DocNode;
 pub use project::OutputPlan;
 use project::{ProjectSnapshot, SourceDb};
 use semantics::SemanticsError;
 use tracing::info;
+
+#[cfg(test)]
+use crate::citation::References;
+use crate::{
+  citation::read_references,
+  font::{FontData, FontDataExt, FontResources},
+  model::DocNode,
+};
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
@@ -67,7 +70,7 @@ pub struct BuildStatistics {
 #[derive(Debug)]
 pub struct Compilation {
   /// 描画直前の確定済み出版物
-  pub publication: pdf_gen::Publication,
+  pub publication: seiran_pdf::Publication,
   /// `compile` が読み取った外部資源のパス一覧
   pub dependencies: DependencyManifest,
   /// 致命的ではない診断（現状は常に空 — パイプラインに非致命的診断は存在しない）
@@ -88,12 +91,18 @@ pub struct Compilation {
 ///
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
 /// 診断の集合を返す。
-pub fn compile<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> Result<Compilation, DiagnosticSet> {
+pub fn compile<S: crate::config::ProjectSource>(
+  source: &S,
+  root: &crate::config::ProjectPath,
+) -> Result<Compilation, DiagnosticSet> {
   return compile_inner(source, root).map_err(DiagnosticSet::from);
 }
 
 /// カレントディレクトリを解決してから [`compile_with_base_dir`] へ委譲する。
-fn compile_inner<S: config::ProjectSource>(source: &S, root: &config::ProjectPath) -> miette::Result<Compilation> {
+fn compile_inner<S: crate::config::ProjectSource>(
+  source: &S,
+  root: &crate::config::ProjectPath,
+) -> miette::Result<Compilation> {
   let base_dir = std::env::current_dir().map_err(|source| return CompileError::CurrentDir { source })?;
   return compile_with_base_dir(source, root, &base_dir);
 }
@@ -102,9 +111,9 @@ fn compile_inner<S: config::ProjectSource>(source: &S, root: &config::ProjectPat
 ///
 /// `MemoryProjectSource` + 固定 `base_dir` でのテストが `std::env::set_current_dir` 無しに
 /// 書けるよう、テストと `compile` の双方から呼ばれる実処理をここに閉じる。
-fn compile_with_base_dir<S: config::ProjectSource>(
+fn compile_with_base_dir<S: crate::config::ProjectSource>(
   source: &S,
-  root: &config::ProjectPath,
+  root: &crate::config::ProjectPath,
   base_dir: &Path,
 ) -> miette::Result<Compilation> {
   let build_start = Instant::now();
@@ -149,13 +158,13 @@ fn compile_with_base_dir<S: config::ProjectSource>(
 ///
 /// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
 fn load_project(
-  source: &dyn config::ProjectSource,
+  source: &dyn crate::config::ProjectSource,
   config_path: &Path,
   base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let config = config::read_config(source, config_path, base_dir)?;
-  let style = config::read_style(source, config.style_path.as_deref(), base_dir)?;
-  config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
+  let config = crate::config::read_config(source, config_path, base_dir)?;
+  let style = crate::config::read_style(source, config.style_path.as_deref(), base_dir)?;
+  crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();
@@ -202,45 +211,116 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
 ///
 /// # Errors
 ///
-/// `pdf_gen::ResourceBundle` の構築に失敗した場合にエラーを返す。
+/// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
-  config: &config::Config,
+  config: &crate::config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-  image_bytes: HashMap<model::AssetId, Vec<u8>>,
+  image_bytes: HashMap<crate::model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
-) -> miette::Result<pdf_gen::Publication> {
-  let resources = pdf_gen::ResourceBundle::new(
-    &font_resources.face_configs(),
-    font_data,
-    font_resources.font_refs(),
-    font_resources.metrics().clone(),
-    image_bytes,
-  )?;
+) -> miette::Result<seiran_pdf::Publication> {
+  let fonts = build_pdf_fonts(font_data, font_resources);
+  let font_metrics = build_pdf_font_metrics(font_resources);
+  let image_bytes: HashMap<String, Vec<u8>> =
+    image_bytes.into_iter().map(|(path, bytes)| return (path.to_string(), bytes)).collect();
+  let resources = seiran_pdf::ResourceBundle::new(fonts, font_metrics, image_bytes)?;
   return Ok(publication::build_publication(config, resources, laid_out));
+}
+
+/// `crate::model::FontType` を `seiran_pdf::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
+fn to_pdf_font_type(font_type: crate::model::FontType) -> seiran_pdf::FontType {
+  return match font_type {
+    crate::model::FontType::Serif => seiran_pdf::FontType::Serif,
+    crate::model::FontType::SerifBold => seiran_pdf::FontType::SerifBold,
+    crate::model::FontType::SerifItalic => seiran_pdf::FontType::SerifItalic,
+    crate::model::FontType::SerifBoldItalic => seiran_pdf::FontType::SerifBoldItalic,
+    crate::model::FontType::SansSerif => seiran_pdf::FontType::SansSerif,
+    crate::model::FontType::SansSerifBold => seiran_pdf::FontType::SansSerifBold,
+    crate::model::FontType::SansSerifItalic => seiran_pdf::FontType::SansSerifItalic,
+    crate::model::FontType::SansSerifBoldItalic => seiran_pdf::FontType::SansSerifBoldItalic,
+    crate::model::FontType::Monospace => seiran_pdf::FontType::Monospace,
+    crate::model::FontType::MonospaceBold => seiran_pdf::FontType::MonospaceBold,
+    crate::model::FontType::MonospaceItalic => seiran_pdf::FontType::MonospaceItalic,
+    crate::model::FontType::MonospaceBoldItalic => seiran_pdf::FontType::MonospaceBoldItalic,
+    crate::model::FontType::Math => seiran_pdf::FontType::Math,
+    crate::model::FontType::JapaneseSerif => seiran_pdf::FontType::JapaneseSerif,
+    crate::model::FontType::JapaneseSerifBold => seiran_pdf::FontType::JapaneseSerifBold,
+    crate::model::FontType::JapaneseSansSerif => seiran_pdf::FontType::JapaneseSansSerif,
+    crate::model::FontType::JapaneseSansSerifBold => seiran_pdf::FontType::JapaneseSansSerifBold,
+    crate::model::FontType::JapaneseMonospace => seiran_pdf::FontType::JapaneseMonospace,
+    crate::model::FontType::JapaneseMonospaceBold => seiran_pdf::FontType::JapaneseMonospaceBold,
+  };
+}
+
+/// `crate::font::FontData` + `crate::font::FontResources` から `seiran_pdf::ResourceBundle::new` に渡す
+/// フォント構築設定一式を組み立てる（`crate::model::FontType` → `seiran_pdf::FontType` への変換込み）。
+fn build_pdf_fonts(
+  font_data: &FontData,
+  font_resources: &FontResources<'_>,
+) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontFaceInput> {
+  let face_configs = font_resources.face_configs();
+  return crate::model::FontType::ALL
+    .iter()
+    .map(|&font_type| {
+      let face_config = face_configs.get(font_type);
+      let input = seiran_pdf::FontFaceInput {
+        bytes: font_data.get(font_type).clone(),
+        font_index: face_config.font_index,
+        variation_axes: face_config.variation_axes.as_ref().map(|axes| {
+          return axes
+            .iter()
+            .map(|axis| {
+              return seiran_pdf::VariationAxisInput {
+                name: axis.name,
+                value: axis.value,
+              };
+            })
+            .collect();
+        }),
+      };
+      return (to_pdf_font_type(font_type), input);
+    })
+    .collect();
+}
+
+/// `crate::font::FontResources` から `seiran_pdf::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
+fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontMetric> {
+  let metrics = font_resources.metrics();
+  return crate::model::FontType::ALL
+    .iter()
+    .map(|&font_type| {
+      let metric = metrics.get(font_type);
+      let converted = seiran_pdf::FontMetric {
+        upem: metric.upem,
+        ascender: metric.ascender,
+        descender: metric.descender,
+      };
+      return (to_pdf_font_type(font_type), converted);
+    })
+    .collect();
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
-  config: &config::Config,
-  style: &config::Style,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
-  let source = config::FilesystemProjectSource::new();
+  let source = crate::config::FilesystemProjectSource::new();
   return build_pages_with_source(&source, config, style, references, font_data);
 }
 
-/// パースからページ確定までを、指定した [`config::ProjectSource`] 経由で実行するテストヘルパ。
+/// パースからページ確定までを、指定した [`crate::config::ProjectSource`] 経由で実行するテストヘルパ。
 ///
 /// `MemoryProjectSource` を渡すと実ファイルシステムに触れずに組版できる
 /// （2 実装が同じ結果を返すことの検証用。issue #300）。
 #[cfg(test)]
 fn build_pages_with_source(
-  source: &dyn config::ProjectSource,
-  config: &config::Config,
-  style: &config::Style,
+  source: &dyn crate::config::ProjectSource,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -264,7 +344,7 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 1 ソースのパース結果。本文の表示名・内容は `SourceDb` が持つため、ここでは持たない。
 struct ParsedSource {
   /// パース元ソースの識別子
-  source_id: model::SourceId,
+  source_id: crate::model::SourceId,
   /// パース・評価済みの Document IR ノード列
   nodes: Vec<DocNode>,
 }
@@ -277,7 +357,7 @@ fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> R
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {
-    match frontend::parse_source(&entry.content, source_id, citation_keys) {
+    match crate::frontend::parse_source(&entry.content, source_id, citation_keys) {
       Ok(nodes) => parsed.push(ParsedSource { source_id, nodes }),
       Err(error) => {
         parse_errors
@@ -298,16 +378,16 @@ fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> R
 ///
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
-fn wrap_resolve_error(error: resolve::ResolveError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb) -> CompileError {
   return match error.origin() {
-    model::Origin::Source(source_id) => {
+    crate::model::Origin::Source(source_id) => {
       let entry = source_db.get(source_id);
       CompileError::Resolve {
         src: miette::NamedSource::new(&entry.name, entry.content.clone()),
         source: error,
       }
     },
-    model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
+    crate::model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
   };
 }
 
@@ -325,24 +405,28 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 #[cfg(test)]
 mod tests {
   /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_bibliography(style: &config::Style) -> resolve::ResolveError {
-    use model::{DocNode, InlineNode};
+  pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
+    use crate::model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
     )])];
     let bibliography = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "missing".to_string(),
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     }])];
-    let semantic = resolve::SemanticDocument {
-      groups: vec![resolve::SemanticGroup {
+    let semantic = crate::resolve::SemanticDocument {
+      groups: vec![crate::resolve::SemanticGroup {
         nodes: &g0,
-        source_id: model::SourceId::new(0),
+        source_id: crate::model::SourceId::new(0),
       }],
       bibliography: &bibliography,
     };
-    let error = resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(error.origin(), model::Origin::Generated(model::GeneratedOrigin::Bibliography), "書誌が帰属源のはず");
+    let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
+    assert_eq!(
+      error.origin(),
+      crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography),
+      "書誌が帰属源のはず"
+    );
     return error;
   }
 }

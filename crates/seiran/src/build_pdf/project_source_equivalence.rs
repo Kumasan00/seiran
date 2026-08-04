@@ -8,14 +8,15 @@
 
 use std::path::{Path, PathBuf};
 
-use config::MemoryProjectSource;
-use font::{FontData, FontDataExt};
-use model::FontType;
-
 use super::{
   build_pages_with_source,
   dump::dump_pages,
   golden::{enter_workspace_root, load_base},
+};
+use crate::{
+  config::MemoryProjectSource,
+  font::{FontData, FontDataExt},
+  model::FontType,
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。
@@ -30,7 +31,7 @@ fn register(memory: MemoryProjectSource, path: &Path) -> MemoryProjectSource {
 }
 
 /// 実ビルドが `ProjectSource` から読む資源すべてを `MemoryProjectSource` へ複製する。
-fn memory_source_for(config: &config::Config, style: &config::Style) -> MemoryProjectSource {
+fn memory_source_for(config: &crate::config::Config, style: &crate::config::Style) -> MemoryProjectSource {
   let mut memory = MemoryProjectSource::new();
   for font_type in FontType::ALL {
     memory = register(memory, &config.font_configs.get(font_type).font_path);
@@ -53,7 +54,7 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
   let (base_config, style, references) = load_base();
   let mut config = base_config;
   config.sources = vec![PathBuf::from(SOURCE_REL)];
-  let fs_source = config::FilesystemProjectSource::new();
+  let fs_source = crate::config::FilesystemProjectSource::new();
   let fs_font_data = FontData::new(&fs_source, &config.font_configs).expect("フォントの読み込み");
 
   // Arrange — memory 経由（同じ内容を事前登録し、実ディスクには触れない）

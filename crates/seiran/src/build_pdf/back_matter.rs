@@ -1,6 +1,6 @@
 //! 後付け（巻末索引）のページ分割オーケストレーション
 //!
-//! ブロックの組み立て順序自体は `typeset::layout_back_matter` に閉じている。ここでは本文全
+//! ブロックの組み立て順序自体は `crate::typeset::layout_back_matter` に閉じている。ここでは本文全
 //! ページから索引語を集約する（`BodyPageValues` 依存のため typeset に移せない、phase レベルの
 //! 計装ごと）だけを担う。
 
@@ -9,14 +9,16 @@ use std::{
   time::Instant,
 };
 
-use model::{AnchorMark, Length};
 use tracing::info;
-use typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries};
 
 use super::{
   elapsed_ms,
   page_values::{BodyPageValues, PageIndex},
   phase_context::{BodyPageFacts, CompileContext},
+};
+use crate::{
+  model::{AnchorMark, Length},
+  typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
 };
 
 /// 巻末索引を生成してページ分割する。
@@ -35,9 +37,9 @@ pub(super) fn typeset_back_matter(
     resources: ctx.resources,
     text_width: ctx.text_width,
     geometry: &ctx.back_geometry,
-    breaker: &typeset::KnuthPlassBreaker,
+    breaker: &crate::typeset::KnuthPlassBreaker,
   };
-  let pages = typeset::layout_back_matter(&input, &entries);
+  let pages = crate::typeset::layout_back_matter(&input, &entries);
   info!(
     back_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -100,11 +102,12 @@ pub(super) fn collect_index_entries(
 
 #[cfg(test)]
 mod tests {
-  use config::PageNumbering;
-  use model::AnchorMark;
-  use typeset::{Page, PlacedIndexEntry};
-
   use super::{BodyPageValues, collect_index_entries};
+  use crate::{
+    config::PageNumbering,
+    model::AnchorMark,
+    typeset::{Page, PlacedIndexEntry},
+  };
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ
   fn page_with_index_entries(entries: Vec<(&str, Option<&str>)>) -> Page {

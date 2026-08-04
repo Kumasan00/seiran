@@ -1,0 +1,148 @@
+//! 数式環境 — `cases`
+//!
+//! 各行を最大 2 セルに分割する非採番の数式環境。
+
+use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_environment_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
+  },
+  model::{DocNode, MathEnvKind},
+};
+
+/// `cases` 環境を評価する
+///
+/// # Errors
+///
+/// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
+pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+  collect_environment_opt_args(view, &[])?;
+  if !view.args().is_empty() {
+    return Err(EvalError::ExtraEnvironmentArgument {
+      name: "cases".to_string(),
+      span: view.span().to_source_span(),
+    });
+  }
+
+  let source = view.source();
+  let grid = match view.body() {
+    Some(body_node) => evaluate_grid(
+      source,
+      body_node,
+      &GridSpec {
+        allow_row_breaks: true,
+        allow_column_breaks: true,
+      },
+      false,
+    )?,
+    None => Vec::new(),
+  };
+  let rows = into_unnumbered_rows(grid);
+  if let Some(row) = rows.iter().find(|row| return row.cells.len() > 2) {
+    return Err(EvalError::CasesColumnOverflow {
+      found: row.cells.len(),
+      span: view.span().to_source_span(),
+    });
+  }
+
+  return Ok(vec![DocNode::MathBlock {
+    kind: MathEnvKind::Cases,
+    rows,
+    numbered: false,
+    label: None,
+    span: view.span(),
+  }]);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use bumpalo::Bump;
+
+  use super::*;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
+
+  fn parse<'a>(
+    source: &'a str,
+    arena: &'a Bump,
+  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
+    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
+  }
+
+  fn rows_of(result: &[DocNode]) -> &[crate::model::MathRow] {
+    let DocNode::MathBlock {
+      kind,
+      rows,
+      numbered,
+      ..
+    } = &result[0]
+    else {
+      panic!("MathBlock が期待されます: {:?}", result[0]);
+    };
+    assert_eq!(*kind, MathEnvKind::Cases, "cases は MathEnvKind::Cases");
+    assert!(!numbered, "cases は非採番（環境番号なし）");
+    return rows;
+  }
+
+  #[test]
+  fn cases_splits_rows_and_two_columns_unnumbered() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    let rows = rows_of(&result);
+    assert_eq!(rows.len(), 2, "2 行に分割される: {rows:?}");
+    assert!(rows.iter().all(|r| return r.cells.len() == 2), "各行 2 列: {rows:?}");
+    assert!(rows.iter().all(|r| return !r.numbered), "非採番のはず: {rows:?}");
+  }
+
+  #[test]
+  fn cases_rejects_three_columns() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{cases}a & b & c\end{cases}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::CasesColumnOverflow { found: 3, .. })));
+  }
+
+  #[test]
+  fn cases_rejects_unknown_opt_key() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{cases}[foo=1]a & b\end{cases}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
+  }
+
+  #[test]
+  fn cases_rejects_notag() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{cases}a & b \notag\end{cases}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
+  }
+}
