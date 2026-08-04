@@ -32,17 +32,31 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 ## layout dump golden
 
-`crates/seiran/src/build_pdf/golden.rs` の主入口テスト `layout_dumps_match_golden`（`GOLDEN_INPUTS`
-全 fixture の回帰）は `super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
-（`pdf_gen::Publication` の決定的テキストダンプ）を通す。同ファイルの他のテスト
-（`index_marks_are_invisible_to_layout` / keep-with-next の見出し孤立防止 / 脚注ページ単位採番
-2 種 / style 差分 3 種）は引き続き `dump_input` → `build_pages` → `build_pdf::dump::dump_pages`
-（`typeset::Page` の決定的テキストダンプ、crate 内部の非公開パス）を使う。`Publication` /
-`dump_publication` は `typeset::Page` レベルの anchor・索引語行の表現を持たないため、この分離は
-意図的で恒久（順次移行の TODO ではない）。いずれのパスも `crates/seiran/tests/golden/<name>.txt`
-と比較する。**PDF バイト比較ではない**（ダンプは確定座標のテキスト表現。krilla の描画は含まない。
-ただし `dump_publication` は `Publication` のメタデータ・リンク・しおりまでダンプするため
-`dump_pages` よりカバー範囲が広い）。
+`crates/seiran/src/build_pdf/golden.rs` には 9 個のテストがあり、golden ファイル
+（`crates/seiran/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
+（`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
+`super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
+（`pdf_gen::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
+確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
+メタデータ・リンク・しおりまでダンプするため `dump_pages` よりカバー範囲が広い）。
+
+残り 8 個のテストは golden ファイルを一切読み書きせず、次の 2 通りに分かれる。
+
+- **`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する**
+  （`assert_eq!` / `assert_ne!`。golden ファイルは介さない）: `index_marks_are_invisible_to_layout`
+  （`\index` の有無で本文レイアウトが変わらないことを確認）・style 差分 3 種
+  `layout_dump_is_deterministic_across_builds` / `layout_dump_changes_with_line_height` /
+  `layout_dump_changes_with_punctuation_spacing`
+- **`build_pages` を直接呼び、返り値の `Page` / `PlacedBlock` へ直接アサートする**（ダンプ関数は
+  一切通らない）: `keep_with_next_prevents_heading_orphan_end_to_end`（見出し孤立防止）・
+  脚注ページ単位採番 2 種 `per_page_footnote_numbering_restarts_on_each_page` /
+  `continuous_footnote_numbering_runs_through_pages`（共通ヘルパ `footnote_numbers_per_page`
+  経由）・`long_footnote_splits_across_pages_without_overlapping_body`（長い脚注の繰越）
+
+golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication` / `dump_publication` は
+`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記 8 個は現時点では移行して
+いない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
+が言う「順次移行」方針どおり）。
 
 - **確認**: `cargo test -p seiran`
 - **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran` で再生成し、`git diff` で
@@ -54,11 +68,13 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定
 config では無効。golden.rs の `apply_input_style_overrides`（型付き `Style`。`dump_input` /
-`dump_input_via_compile` 両方が共有する）と、`apply_input_config_overrides`（型付き `Config`、
-`dump_input` 専用）/ `apply_input_config_overrides_toml`（`toml::Value` 版、`dump_input_via_compile`
-専用 — 処理済みの `Config` は `Serialize` を持たないため、`compile` に渡す前の生 TOML テーブルを
-直接書き換える）が入力名ごとに有効化している（例: `toc` / `title_page`）。これらの経路を触ったら、
-該当 fixture がその機能を実際に通していることを確認する。
+`dump_input_via_compile` 両方が共有する）と、`apply_input_config_overrides`（型付き `Config`。
+`dump_input` に加え、`build_pages` を直接呼ぶ `footnote_numbers_per_page`——脚注ページ単位採番の
+2 テストが使う共通ヘルパ——と `long_footnote_splits_across_pages_without_overlapping_body` でも
+使う。`dump_input` 専用ではない）/ `apply_input_config_overrides_toml`（`toml::Value` 版、
+`dump_input_via_compile` 専用 — 処理済みの `Config` は `Serialize` を持たないため、`compile` に
+渡す前の生 TOML テーブルを直接書き換える）が入力名ごとに有効化している（例: `toc` / `title_page`）。
+これらの経路を触ったら、該当 fixture がその機能を実際に通していることを確認する。
 
 ### 新機能にテストを足す
 
@@ -68,8 +84,8 @@ config では無効。golden.rs の `apply_input_style_overrides`（型付き `S
    追記する** — `GOLDEN_INPUTS` の全 fixture は `layout_dumps_match_golden` 経由で
    `dump_input_via_compile`（`compile()` 経由）を通るため、型付き `Config` を直接書き換える
    `apply_input_config_overrides` だけでは golden の入力へ反映されない。同じ fixture 名を
-   golden 以外の個別テスト（脚注採番テスト等）で `dump_input` 経由でも使う場合は、挙動を
-   揃えるため両方に追記する）
+   golden 以外の個別テスト（脚注採番テスト等、`dump_input` を経由せず `build_pages` を直接呼ぶ）
+   でも `apply_input_config_overrides` 経由で使う場合は、挙動を揃えるため両方に追記する）
 3. `UPDATE_GOLDEN=1 cargo test -p seiran` で golden を生成し、内容を確認してコミット
 
 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが

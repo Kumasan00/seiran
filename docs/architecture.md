@@ -812,12 +812,20 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
   （`pdf_gen::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
   → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク → しおりの順に、内部の
   `dump_metadata` 補助関数を介してダンプする）
-- `golden`: レイアウトダンプ golden の比較テスト。主入口 `layout_dumps_match_golden`（26 fixture の
-  回帰）だけが `super::compile()` → `dump_publication` を通る（issue #306）。同ファイルの他のテスト
-  （`index_marks_are_invisible_to_layout` / keep-with-next の見出し孤立防止 / 脚注ページ単位採番
-  2 種 / style 差分 3 種）は引き続き `dump_input` → `build_pages` → `dump_pages`（crate 内部の
-  非公開パス）を使う——`Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語
-  の表現を持たないため、この分離は意図的で恒久（順次移行の TODO ではない）
+- `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
+  （`crates/seiran/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
+  （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、`dump_input_via_compile` を介して `super::compile()`
+  → `dump_publication` を通る（issue #306）。残り 8 テストは golden ファイルを介さず 2 通りに分かれる
+  ——`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する
+  （`index_marks_are_invisible_to_layout`、style 差分 3 種 `layout_dump_is_deterministic_across_builds`
+  / `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`）か、
+  `build_pages` を直接呼んで返り値の `Page` / `PlacedBlock` へ直接アサートしダンプ関数を一切通らない
+  （`keep_with_next_prevents_heading_orphan_end_to_end`、脚注ページ単位採番 2 種
+  `per_page_footnote_numbering_restarts_on_each_page` /
+  `continuous_footnote_numbering_runs_through_pages`、
+  `long_footnote_splits_across_pages_without_overlapping_body`）。`Publication` / `dump_publication`
+  は `typeset::Page` レベルの anchor・索引語の表現を持たないため、この 8 テストは現時点では移行して
+  いない——対応する golden 移行は今後のフェーズ判断次第
 - `diagnostics`: miette 診断メッセージの golden テスト
 - `pdf_structure`: `lopdf` による独立 reader での PDF 構造 golden テスト
 
