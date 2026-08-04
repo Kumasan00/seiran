@@ -2247,7 +2247,6 @@ dependencies = [
  "miette",
  "model",
  "pdf_gen",
- "proptest",
  "read-fonts 0.41.0",
  "resolve",
  "tempfile",
