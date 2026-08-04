@@ -12,11 +12,20 @@ use std::path::{Path, PathBuf};
 
 use config::{MemoryProjectSource, ProjectPath, test_support};
 
-/// リポジトリ直下 `fonts/` にある実フォント（`tools/fetch-test-assets.sh` 不要、常に checked-in）。
+/// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
+/// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。
 fn read_test_font() -> Vec<u8> {
-  let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts/STIXTwoMath-Regular.ttf");
-  return std::fs::read(&path)
-    .unwrap_or_else(|error| panic!("テストフォントを読めるはず: {}: {error}", path.display()));
+  let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    .ancestors()
+    .nth(2)
+    .expect("crates/seiran の 2 階層上がワークスペースルート");
+  let path = workspace_root.join("vendor/fonts/STIXTwoMath-Regular.ttf");
+  return std::fs::read(&path).unwrap_or_else(|error| {
+    panic!(
+      "テストフォントを読めるはず: {}: {error}（tools/fetch-test-assets.sh の実行が必要な場合があります）",
+      path.display()
+    )
+  });
 }
 
 /// 19 フォント種別すべてが同じフォントファイルを指す、最小の妥当な `config.toml` を組む。
