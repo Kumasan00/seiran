@@ -27,14 +27,22 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 | 変更した層 | 手段 |
 | --- | --- |
 | レイアウト（座標・寸法）に効く変更 — breaking / block / lowering / frontend / config の style 等 | layout dump golden（下記） |
-| ダンプに映らない層 — pdf_gen の render・PDF メタデータ・リンク・しおり | PDF バイト比較（下記、日時固定が必須） |
+| `Publication` に載る値に効く変更 — 文書メタデータ・リンク矩形・しおり項目（`dump_publication` がダンプする範囲） | layout dump golden（下記） |
+| ダンプに映らない層 — krilla の描画そのもの（PDF オブジェクト構造・フォント埋め込み・XMP・trailer `/ID`） | PDF バイト比較（下記、日時固定が必須） |
 
 ## layout dump golden
 
-`crates/seiran/src/build_pdf/golden.rs` が `build_pdf::dump::dump_pages`（seiran クレート内、
-golden テスト専用）の決定的テキストを
-`crates/seiran/tests/golden/<name>.txt` と比較する。**PDF バイト比較ではない**
-（ダンプは確定座標のテキスト表現。krilla の描画・メタデータは含まない）。
+`crates/seiran/src/build_pdf/golden.rs` の主入口テスト `layout_dumps_match_golden`（`GOLDEN_INPUTS`
+全 fixture の回帰）は `super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
+（`pdf_gen::Publication` の決定的テキストダンプ）を通す。同ファイルの他のテスト
+（`index_marks_are_invisible_to_layout` / keep-with-next の見出し孤立防止 / 脚注ページ単位採番
+2 種 / style 差分 3 種）は引き続き `dump_input` → `build_pages` → `build_pdf::dump::dump_pages`
+（`typeset::Page` の決定的テキストダンプ、crate 内部の非公開パス）を使う。`Publication` /
+`dump_publication` は `typeset::Page` レベルの anchor・索引語行の表現を持たないため、この分離は
+意図的で恒久（順次移行の TODO ではない）。いずれのパスも `crates/seiran/tests/golden/<name>.txt`
+と比較する。**PDF バイト比較ではない**（ダンプは確定座標のテキスト表現。krilla の描画は含まない。
+ただし `dump_publication` は `Publication` のメタデータ・リンク・しおりまでダンプするため
+`dump_pages` よりカバー範囲が広い）。
 
 - **確認**: `cargo test -p seiran`
 - **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran` で再生成し、`git diff` で
@@ -45,15 +53,23 @@ golden テスト専用）の決定的テキストを
 ### カバレッジの注意
 
 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定
-config では無効。golden.rs の `apply_input_style_overrides` / `apply_input_config_overrides`
-が入力名ごとに有効化している（例: `toc` / `title_page`）。これらの経路を触ったら、
+config では無効。golden.rs の `apply_input_style_overrides`（型付き `Style`。`dump_input` /
+`dump_input_via_compile` 両方が共有する）と、`apply_input_config_overrides`（型付き `Config`、
+`dump_input` 専用）/ `apply_input_config_overrides_toml`（`toml::Value` 版、`dump_input_via_compile`
+専用 — 処理済みの `Config` は `Serialize` を持たないため、`compile` に渡す前の生 TOML テーブルを
+直接書き換える）が入力名ごとに有効化している（例: `toc` / `title_page`）。これらの経路を触ったら、
 該当 fixture がその機能を実際に通していることを確認する。
 
 ### 新機能にテストを足す
 
 1. `tests/text/<name>.sei` に機能を exercise する入力を追加
-2. `golden.rs` の `GOLDEN_INPUTS` に名前を登録（機能が既定で無効なら
-   `apply_input_style_overrides` / `apply_input_config_overrides` に有効化を追記）
+2. `golden.rs` の `GOLDEN_INPUTS` に名前を登録（機能が既定で無効なら `apply_input_style_overrides`
+   に有効化を追記。**config レベルの上書きが必要な場合は `apply_input_config_overrides_toml` にも
+   追記する** — `GOLDEN_INPUTS` の全 fixture は `layout_dumps_match_golden` 経由で
+   `dump_input_via_compile`（`compile()` 経由）を通るため、型付き `Config` を直接書き換える
+   `apply_input_config_overrides` だけでは golden の入力へ反映されない。同じ fixture 名を
+   golden 以外の個別テスト（脚注採番テスト等）で `dump_input` 経由でも使う場合は、挙動を
+   揃えるため両方に追記する）
 3. `UPDATE_GOLDEN=1 cargo test -p seiran` で golden を生成し、内容を確認してコミット
 
 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが
