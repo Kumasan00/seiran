@@ -59,11 +59,13 @@ impl DependencyManifest {
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use font::FontDataExt;
   use model::AssetId;
 
   use super::DependencyManifest;
-  use crate::build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot};
+  use crate::{
+    build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot},
+    font::FontDataExt,
+  };
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
@@ -71,7 +73,7 @@ mod tests {
     crate::build_pdf::golden::enter_workspace_root();
     let (config, style, references) = load_base();
     let source = config::FilesystemProjectSource::new();
-    let font_data = font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+    let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
     let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, references, font_data).expect("assemble");
     let image_manifest = ImageManifest {
       paths: vec![AssetId::new("tests/image/testimage5.png")],

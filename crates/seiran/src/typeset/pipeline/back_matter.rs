@@ -1,13 +1,15 @@
 //! 後付け（巻末索引）パス（計測 → 改行・改ページ）
 
-use font::FontSystem;
 use model::Length;
 use tracing::debug_span;
 
-use crate::typeset::{
-  block::{IndexEntryInput, build_index_blocks, build_index_spec},
-  breaking::{LineBreaker, PageGeometry, break_pages},
-  layout::Page,
+use crate::{
+  font::FontSystem,
+  typeset::{
+    block::{IndexEntryInput, build_index_blocks, build_index_spec},
+    breaking::{LineBreaker, PageGeometry, break_pages},
+    layout::Page,
+  },
 };
 
 /// `layout_back_matter` に渡す入力。

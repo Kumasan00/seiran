@@ -17,7 +17,7 @@ pub(super) struct ProjectSnapshot {
   /// `Arc` で共有する
   pub(super) references: Arc<References>,
   /// 読込済みの全フォントバイナリ
-  pub(super) font_data: font::FontData,
+  pub(super) font_data: crate::font::FontData,
   /// ソースファイルごとの読込済みテキスト（`SourceId` で引ける）
   pub(super) source_db: SourceDb,
 }
@@ -35,7 +35,7 @@ impl ProjectSnapshot {
     config: config::Config,
     style: config::Style,
     references: Arc<References>,
-    font_data: font::FontData,
+    font_data: crate::font::FontData,
   ) -> Result<Self, CompileError> {
     let source_db = SourceDb::read(source, &config.sources)?;
     return Ok(ProjectSnapshot {

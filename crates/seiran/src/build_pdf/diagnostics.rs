@@ -8,7 +8,6 @@ use std::{
 };
 
 use config::parse_style;
-use font::{FontData, FontDataExt, FontResources};
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use model::FontType;
 
@@ -16,6 +15,7 @@ use super::{
   build_pages,
   golden::{enter_workspace_root, load_base},
 };
+use crate::font::{FontData, FontDataExt, FontResources};
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。
 fn diagnostic_golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_diagnostics"); }

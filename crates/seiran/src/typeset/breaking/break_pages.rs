@@ -1327,16 +1327,18 @@ fn place_table(
 
 #[cfg(test)]
 mod tests {
-  use font::GlyphRun;
   use model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn, TextAlignment};
 
   use super::{
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, LinePlacement, PageGeometry, break_pages,
     is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
   };
-  use crate::typeset::layout::{
-    Block, HBox, HBoxContent, HItem, Line, LineLink, PENALTY_FORBID_BREAK, Page, PlacedBlock, PositionedBox, TableBox,
-    TableCellBox, TableRowBox,
+  use crate::{
+    font::GlyphRun,
+    typeset::layout::{
+      Block, HBox, HBoxContent, HItem, Line, LineLink, PENALTY_FORBID_BREAK, Page, PlacedBlock, PositionedBox,
+      TableBox, TableCellBox, TableRowBox,
+    },
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -3941,10 +3943,10 @@ mod tests {
     assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
   }
 
-  /// パジネーションが `font::FontSystem` を一切必要としないこと（#306 property: font 非依存）。
+  /// パジネーションが `crate::font::FontSystem` を一切必要としないこと（#306 property: font 非依存）。
   ///
   /// `break_pages` のシグネチャ自体が font/shaper 引数を持たない（型で保証済み）。このテストは
-  /// 実際に `font::FontSystem` を一度も構築せずに複数段落を複数ページへ組めることを示す
+  /// 実際に `crate::font::FontSystem` を一度も構築せずに複数段落を複数ページへ組めることを示す
   /// （本テストのグリフ内容は `test_box()`/`paragraph_of_lines()` の Rule ベースのボックスのみで、
   /// 実グリフ・実フォントを一切使わない）。
   #[test]
@@ -3958,6 +3960,6 @@ mod tests {
 
     // Assert — 複数ページに分かれていること自体を検証する（1 ページでも真になる is_empty 判定では
     // 「複数ページ」という doc comment の主張を検証できていなかった）
-    assert!(pages.len() >= 2, "font::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
+    assert!(pages.len() >= 2, "crate::font::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
   }
 }

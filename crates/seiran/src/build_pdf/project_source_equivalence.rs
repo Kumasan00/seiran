@@ -9,7 +9,6 @@
 use std::path::{Path, PathBuf};
 
 use config::MemoryProjectSource;
-use font::{FontData, FontDataExt};
 use model::FontType;
 
 use super::{
@@ -17,6 +16,7 @@ use super::{
   dump::dump_pages,
   golden::{enter_workspace_root, load_base},
 };
+use crate::font::{FontData, FontDataExt};
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。
 const SOURCE_REL: &str = "tests/text/cite.sei";

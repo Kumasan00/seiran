@@ -7,7 +7,6 @@ mod script;
 mod toc;
 mod yakumono;
 
-use font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer};
 pub use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
 pub(crate) use index::{build_index_blocks, build_index_spec};
 use lazy_regex::regex_replace_all;
@@ -17,13 +16,16 @@ pub use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
 use tracing::debug;
 
-use crate::typeset::{
-  breaking::{self, BreakKind, BreakPoint, Lang},
-  layout::{
-    Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
-    max_font_size_in_items,
+use crate::{
+  font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer},
+  typeset::{
+    breaking::{self, BreakKind, BreakPoint, Lang},
+    layout::{
+      Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
+      max_font_size_in_items,
+    },
+    lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
-  lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
 };
 
 /// 欧文単語間スペースの伸長能力（自然幅に対する倍率）

@@ -258,7 +258,6 @@ pub fn collect_row_links(
 
 #[cfg(test)]
 mod tests {
-  use font::GlyphRun;
   use model::{AnchorId, ColumnAlign, ColumnWidth, FontType, LabelId, Length, LinkTarget, TableColumn};
 
   use super::{
@@ -266,6 +265,7 @@ mod tests {
     TableBox, TableCellBox, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
     resolve_column_widths, table_row_height,
   };
+  use crate::font::GlyphRun;
 
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }

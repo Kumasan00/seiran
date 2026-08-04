@@ -14,13 +14,31 @@ use thiserror::Error;
 
 mod face_config;
 mod glyph_run;
-pub mod shaper;
+// `crate::typeset::block` 等が `shaper::UnicodeBuffer` を直接参照するため、`font` module 内に
+// 閉じない可視性が必要。`seiran` の公開 API（lib.rs の `pub use`）には出さないため `pub` ではなく
+// `pub(crate)` に留める（CLAUDE.md の「モジュール名が名前空間として意味を持つ場合のみ pub mod」の
+// 例外に該当するが、吸収後は crate 外への公開経路を持たせない、#307 Task 7）。
+pub(crate) mod shaper;
 mod system;
 mod validate_font;
 
+// 旧 font crate の公開 API 保持のための再エクスポート。`crate::font` root 経由の利用者が現状なく
+// （`FontFaceConfigs` は `FontResources::face_configs()` の戻り値型として型推論経由でのみ使われ、
+// 呼び出し側がこの名前を明示参照することがない）、通常ビルドでは未使用に見えるため、この
+// `pub use` にだけ抑制を付ける（#307 Task 7、API 面の維持のため再エクスポート自体は残す）。
+#[allow(unused_imports)]
 pub use face_config::{FontFaceConfig, FontFaceConfigs, VariationAxisConfig, build_face_configs};
 pub use glyph_run::{Glyph, GlyphRun};
+// `FontResources` / `FontSystem` は `crate::build_pdf` 等が `crate::font::` 経由で参照するが、
+// `FontSystemError` は crate::font root 経由の利用者が現状ない（`?` で miette::Report に変換される
+// 経路のみで、呼び出し側が型名を明示することがない）ため、この `pub use` にだけ抑制を付ける
+// （#307 Task 7）。
+#[allow(unused_imports)]
 pub use system::{FontResources, FontSystem, FontSystemError};
+// `crate::font` root 経由の利用者が現状ない（検証エラーは `FontSystemError::Validation` の
+// `transparent` 委譲を介して miette::Report 化されるのみ）ため、通常ビルドでは未使用に見える。
+// この `pub use` にだけ抑制を付ける（#307 Task 7、API 面の維持のため再エクスポート自体は残す）。
+#[allow(unused_imports)]
 pub use validate_font::{FontValidationError, FontValidationErrors, MultipleFontValidationErrors};
 
 /// フォントの読み込み・解析エラー。

@@ -12,7 +12,7 @@ use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info};
 
-use crate::{
+use crate::font::{
   FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
   face_config::{FontFaceConfigs, build_face_configs},
   shaper::{
@@ -92,8 +92,16 @@ impl<'a> FontResources<'a> {
     });
   }
 
-  /// `pdf_gen::ResourceBundle::new` に渡すための `FontRefs` アクセサ。
+  /// 解析済み OpenType フォント参照（`FontRefs`）へのアクセサ。
+  ///
+  /// `pdf_gen::ResourceBundle::new` は `FontRefs` を直接受け取らなくなったため（#279 で
+  /// `face_configs()` / `metrics()` 経由の変換値へ切り替え済み）、現在このメソッドの呼び出し元は
+  /// crate 内に存在しない（#307 Task 2 で発見、Task 7 の font 吸収時にドキュメントのみ訂正）。
+  /// `font` が非公開 module になったことで `dead_code` が新たに発火するため、メソッド自体の削除は
+  /// API/データモデル変更にあたり本タスクのスコープ外として抑制する（cleanup candidate、全体レビューで
+  /// 削除可否を判断）。
   #[must_use]
+  #[allow(dead_code)]
   pub fn font_refs(&self) -> &FontRefs<'a> { return &self.font_refs; }
 
   /// `pdf_gen::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。

@@ -3,8 +3,9 @@
 //! box の width / height / depth は生成時（`typeset::block::build_blocks`）に 1 回だけ計測して
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
-use font::GlyphRun;
 use model::{Length, LinkTarget};
+
+use crate::font::GlyphRun;
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]

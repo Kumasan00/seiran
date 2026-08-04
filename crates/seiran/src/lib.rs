@@ -6,6 +6,7 @@
 
 mod build_pdf;
 mod citation;
+mod font;
 mod frontend;
 mod resolve;
 // 旧 typeset crate の公開 API をそのまま維持して非公開 module として吸収した（#307）。

@@ -39,7 +39,6 @@ use std::{
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedParseError, CompileError};
-use font::{FontData, FontDataExt, FontResources};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
 use model::DocNode;
@@ -50,7 +49,10 @@ use tracing::info;
 
 #[cfg(test)]
 use crate::citation::References;
-use crate::citation::read_references;
+use crate::{
+  citation::read_references,
+  font::{FontData, FontDataExt, FontResources},
+};
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
@@ -244,7 +246,7 @@ fn to_pdf_font_type(font_type: model::FontType) -> pdf_gen::FontType {
   };
 }
 
-/// `font::FontData` + `font::FontResources` から `pdf_gen::ResourceBundle::new` に渡す
+/// `crate::font::FontData` + `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡す
 /// フォント構築設定一式を組み立てる（`model::FontType` → `pdf_gen::FontType` への変換込み）。
 fn build_pdf_fonts(
   font_data: &FontData,
@@ -275,7 +277,7 @@ fn build_pdf_fonts(
     .collect();
 }
 
-/// `font::FontResources` から `pdf_gen::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
+/// `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
 fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<pdf_gen::FontType, pdf_gen::FontMetric> {
   let metrics = font_resources.metrics();
   return model::FontType::ALL

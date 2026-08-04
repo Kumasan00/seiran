@@ -8,13 +8,13 @@ use std::{
   sync::Arc,
 };
 
-use font::{FontData, FontDataExt, FontResources};
 use lopdf::{Document, Object, content::Content};
 
 use super::{
   golden::{enter_workspace_root, load_base},
   project::ProjectSnapshot,
 };
+use crate::font::{FontData, FontDataExt, FontResources};
 
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];

@@ -1,8 +1,7 @@
 //! `compile_project` の各 phase が共有する値
 
-use font::FontSystem;
-
 use super::page_values::BodyPageValues;
+use crate::font::FontSystem;
 
 /// 全 phase が共有する組版資源と寸法。
 pub(super) struct CompileContext<'a> {

@@ -1,13 +1,15 @@
 //! ヘッダー・フッター（running header/footer）の配置パス
 
-use font::FontSystem;
 use model::{FontKind, Length};
 use tracing::debug;
 
 use super::Measurer;
-use crate::typeset::{
-  layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
-  lowering::TextStyle,
+use crate::{
+  font::FontSystem,
+  typeset::{
+    layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
+    lowering::TextStyle,
+  },
 };
 
 /// ヘッダー・フッター配置に必要なプリミティブ設定

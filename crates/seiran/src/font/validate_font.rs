@@ -11,7 +11,7 @@ use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{debug, warn};
 
-use crate::FontRefs;
+use crate::font::FontRefs;
 
 /// 複数のフォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]

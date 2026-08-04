@@ -365,9 +365,9 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
   }
 }
 
-/// `font::GlyphRun`（シェーピング直後の中間表現。座標は `model::Length`、色は `model::Color`）を
+/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `model::Length`、色は `model::Color`）を
 /// `pdf_gen::GlyphRun`（`pdf_gen` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
-fn to_pdf_glyph_run(run: &font::GlyphRun) -> PdfGlyphRun {
+fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   return PdfGlyphRun {
     font_size: run.font_size.to_pt(),
     text: run.text.clone(),
@@ -377,8 +377,8 @@ fn to_pdf_glyph_run(run: &font::GlyphRun) -> PdfGlyphRun {
   };
 }
 
-/// `font::Glyph` を `pdf_gen::Glyph`（同一構造の複製）へ変換する。
-fn to_pdf_glyph(glyph: &font::Glyph) -> PdfGlyph {
+/// `crate::font::Glyph` を `pdf_gen::Glyph`（同一構造の複製）へ変換する。
+fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
   return PdfGlyph {
     gid: glyph.gid,
     range: glyph.range.clone(),
@@ -395,13 +395,13 @@ mod tests {
   use std::path::PathBuf;
 
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
-  use font::{FontData, FontDataExt, FontResources, GlyphRun};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
 
   use super::build_publication;
   use crate::{
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
+    font::{FontData, FontDataExt, FontResources, GlyphRun},
     typeset::{
       HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
       PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,

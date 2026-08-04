@@ -2,17 +2,19 @@
 
 use std::time::Instant;
 
-use font::FontSystem;
 use miette::Diagnostic;
 use model::Length;
 use thiserror::Error;
 use tracing::{debug_span, info};
 
-use crate::typeset::{
-  block::build_blocks,
-  breaking::{LineBreaker, PageGeometry, break_pages},
-  layout::{Block, Page},
-  lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
+use crate::{
+  font::FontSystem,
+  typeset::{
+    block::build_blocks,
+    breaking::{LineBreaker, PageGeometry, break_pages},
+    layout::{Block, Page},
+    lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
+  },
 };
 
 /// `layout_body` に渡す、脚注ページ単位採番の反復を跨いで変わらない入力。

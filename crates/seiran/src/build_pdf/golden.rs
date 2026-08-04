@@ -10,12 +10,12 @@ use std::{
 };
 
 use config::{Config, MemoryProjectSource, ProjectPath, Style};
-use font::{FontData, FontDataExt};
 use model::{AnchorMark, Length};
 
 use super::{build_pages, dump::dump_pages};
 use crate::{
   citation::{References, read_references},
+  font::{FontData, FontDataExt},
   typeset::{Page, PlacedBlock},
 };
 

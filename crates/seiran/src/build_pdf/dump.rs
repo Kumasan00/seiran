@@ -427,7 +427,6 @@ fn f2_pt(value: f32) -> String {
 
 #[cfg(test)]
 mod tests {
-  use font::GlyphRun;
   use model::{FontType, Length};
   use pdf_gen::{
     Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
@@ -435,7 +434,10 @@ mod tests {
   };
 
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
-  use crate::typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
+  use crate::{
+    font::GlyphRun,
+    typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox},
+  };
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {

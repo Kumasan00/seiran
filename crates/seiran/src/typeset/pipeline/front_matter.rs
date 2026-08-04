@@ -1,14 +1,16 @@
 //! 前付け（タイトルページ・目次）パス（lowering → 計測 → 改行・改ページ）
 
-use font::FontSystem;
 use model::Length;
 use tracing::{debug, debug_span};
 
-use crate::typeset::{
-  block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
-  breaking::{LineBreaker, PageGeometry, break_pages},
-  layout::{Block, Page},
-  lowering::{TitlePageMetadata, lower_title_page},
+use crate::{
+  font::FontSystem,
+  typeset::{
+    block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
+    breaking::{LineBreaker, PageGeometry, break_pages},
+    layout::{Block, Page},
+    lowering::{TitlePageMetadata, lower_title_page},
+  },
 };
 
 /// `layout_front_matter` に渡す入力。

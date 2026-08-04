@@ -1,6 +1,5 @@
 //! 不変な入力から確定レイアウトを作る組版オーケストレーション
 
-use font::FontSystem;
 use tracing::info;
 
 use super::{
@@ -10,7 +9,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
   running,
 };
-use crate::typeset::BodyLayout;
+use crate::{font::FontSystem, typeset::BodyLayout};
 
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {

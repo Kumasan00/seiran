@@ -639,21 +639,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "font"
-version = "0.1.0"
-dependencies = [
- "config",
- "font-types 0.12.2",
- "harfrust",
- "miette",
- "model",
- "rayon",
- "read-fonts 0.41.0",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "font-types"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2198,7 +2183,8 @@ dependencies = [
  "ciborium",
  "clap",
  "config",
- "font",
+ "font-types 0.12.2",
+ "harfrust",
  "hayagriva",
  "hypher",
  "icu",
@@ -2210,6 +2196,7 @@ dependencies = [
  "pdf_gen",
  "phf",
  "proptest",
+ "rayon",
  "read-fonts 0.41.0",
  "serde",
  "serde_json",

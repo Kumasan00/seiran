@@ -16,7 +16,7 @@ use model::FontMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
-use crate::{FontRefs, FontType};
+use crate::font::{FontRefs, FontType};
 
 /// テキストシェイピングの初期化エラー。
 #[derive(Debug, Error, Diagnostic)]
