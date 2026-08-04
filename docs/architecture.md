@@ -621,8 +621,9 @@ SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocu
   公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
   `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
 - `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
-  バイト列）と、それを組み立てる `ResourceBundle::new`。フォント設定は `config::FontConfigs` ではなく
-  pdf_gen 自前の `FontResourceConfig` / `FontResourceConfigs`（config 非依存の複製）を受け取る
+  バイト列）と、それを組み立てる `ResourceBundle::new`。フォント設定は `font::FontFaceConfigs`
+  （`font` クレートが `config::FontConfig` から `font_index` / `variation_axes` だけを取り出して構築する
+  config 非依存の複製）を受け取る。pdf_gen 自前のミラー型は持たない（#305）
 - `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
   の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
 - `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
@@ -672,7 +673,7 @@ solver に閉じ込める）。
 ### compile facade（`build_pdf.rs` 直下）
 
 `build_pdf.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
-`parse_project` / `build_publication` / `build_font_resource_configs` / `parse_all_sources` /
+`parse_project` / `build_publication` / `parse_all_sources` /
 `wrap_resolve_error` / `wrap_semantics_error`）と、`compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、`OutputPlan` は
 `project` 子 module から再エクスポート）を置く。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
@@ -684,7 +685,7 @@ solver に閉じ込める）。
 書き出すのは呼び出し元（CLI）の責務。
 
 `compile` が `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`build_publication`
-用、`FontRefs` / `FontMetrics` へのアクセサを持つ）と `FontSystem`（`DocumentLayouter::layout` 用、シェイプ・
+用、`FontRefs` / `FontMetrics` / `FontFaceConfigs` へのアクセサを持つ）と `FontSystem`（`DocumentLayouter::layout` 用、シェイプ・
 メトリクス取得の窓口）の両方を得る（描画段での再構築はしない）。個々の型（`FontRefs` / `ShaperDatas` /
 `ShaperInstances` / `HarfRustShapers` / `FontMetrics`）の構築順序・寿命関係は `font::system` に閉じており、
 facade はこれを知らない（issue #278）。子 module:
