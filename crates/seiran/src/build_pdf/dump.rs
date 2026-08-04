@@ -5,6 +5,7 @@
 use std::fmt::Write;
 
 use model::{AnchorId, AnchorMark, Length, LinkTarget};
+use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget};
 use typeset::{
   HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
@@ -49,6 +50,114 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
     }
   }
   return out;
+}
+
+/// [`Publication`] を決定的なテキスト形式へダンプする（golden 比較用）。
+///
+/// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `pdf_gen` クレート内
+/// `pub(crate)` でこの crate からは読めないため対象外とする。
+#[must_use]
+pub(super) fn dump_publication(publication: &Publication) -> String {
+  let mut out = String::new();
+  let _ = writeln!(out, "title={:?}", publication.metadata.title);
+  if let Some(author) = &publication.metadata.author {
+    let _ = writeln!(out, "author={author:?}");
+  }
+  if let Some(language) = &publication.metadata.language {
+    let _ = writeln!(out, "language={language:?}");
+  }
+  for (index, page) in publication.pages.iter().enumerate() {
+    let _ = writeln!(
+      out,
+      "=== page {index} === box x={} y={} w={} h={}",
+      f2(page.page_box.x),
+      f2(page.page_box.y),
+      f2(page.page_box.width),
+      f2(page.page_box.height)
+    );
+    for op in &page.ops {
+      dump_paint_op(&mut out, op);
+    }
+    for link in &page.links {
+      dump_publication_link(&mut out, link);
+    }
+  }
+  if let Some(outline) = &publication.outline {
+    let _ = writeln!(out, "outline:");
+    for entry in outline {
+      let _ = writeln!(
+        out,
+        "  depth={} text={:?} page={} x={} y={}",
+        entry.depth,
+        entry.text,
+        entry.dest.page_index,
+        f2(entry.dest.point.x),
+        f2(entry.dest.point.y)
+      );
+    }
+  }
+  return out;
+}
+
+/// 1 描画命令を書き出す（インデント 2）。
+fn dump_paint_op(out: &mut String, op: &PaintOp) {
+  match op {
+    PaintOp::DrawGlyphRun { origin, run } => {
+      let color = run.color.map_or_else(String::new, |c| format!(" color={c:?}"));
+      let _ = writeln!(
+        out,
+        "  glyphs x={} y={} font={:?} size={} text={:?} glyph_count={}{color}",
+        f2(origin.x),
+        f2(origin.y),
+        run.font_type,
+        f2(run.font_size),
+        run.text,
+        run.glyphs.len()
+      );
+    },
+    PaintOp::DrawImage {
+      path,
+      rect,
+      target_dpi,
+    } => {
+      let _ = writeln!(
+        out,
+        "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
+        f2(rect.x),
+        f2(rect.y),
+        f2(rect.width),
+        f2(rect.height)
+      );
+    },
+    PaintOp::FillRect { rect, color } => {
+      let _ = writeln!(
+        out,
+        "  fillrect x={} y={} w={} h={} color={color:?}",
+        f2(rect.x),
+        f2(rect.y),
+        f2(rect.width),
+        f2(rect.height)
+      );
+    },
+  }
+}
+
+/// リンク領域を書き出す（インデント 2）。
+fn dump_publication_link(out: &mut String, link: &PublicationLink) {
+  let target = match &link.target {
+    PublicationLinkTarget::Internal(dest) => {
+      format!("Internal(page={}, x={}, y={})", dest.page_index, f2(dest.point.x), f2(dest.point.y))
+    },
+    PublicationLinkTarget::External(uri) => format!("External({uri:?})"),
+  };
+  let _ = writeln!(
+    out,
+    "  link target={target} x={} y={} w={} h={}",
+    f2(link.rect.x),
+    f2(link.rect.y),
+    f2(link.rect.width),
+    f2(link.rect.height)
+  );
 }
 
 /// 名前付きセクション（body / header / footer）のブロック列を書き出す。
@@ -290,11 +399,18 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use font::GlyphRun;
+  use std::path::PathBuf;
+
+  use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
+  use font::{FontDataExt, FontMetricsExt, FontRefsExt, GlyphRun};
   use model::{FontType, Length};
+  use pdf_gen::{
+    Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
+    PublicationPage, Rect, ResourceBundle,
+  };
   use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
-  use super::dump_pages;
+  use super::{dump_pages, dump_publication};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {
@@ -401,5 +517,145 @@ mod tests {
 
     // Assert
     assert!(!dump.contains("index word="));
+  }
+
+  /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
+  /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
+  fn test_font_config() -> FontConfig {
+    return FontConfig {
+      font_name: "test".to_string(),
+      font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
+      font_index: 0,
+      variation_axes: None,
+      script: None,
+      language: None,
+      ot_language_tag: None,
+      direction: None,
+      features: None,
+    };
+  }
+
+  /// テスト用の最小設定を返す。
+  fn test_config() -> Config {
+    return Config {
+      document: DocumentConfig {
+        title: None,
+        author: None,
+        date: None,
+        subject: None,
+        language: None,
+        keywords: None,
+      },
+      output: OutputConfig {
+        name: "out".to_string(),
+        output_dir: PathBuf::from("."),
+      },
+      pdf: PdfConfig {
+        height: Length::pt(842.0),
+        width: Length::pt(595.0),
+        margin: Margin {
+          top: Length::pt(50.0),
+          bottom: Length::pt(50.0),
+          left: Length::pt(50.0),
+          right: Length::pt(50.0),
+        },
+        show_bookmarks: false,
+      },
+      image: ImageConfig {
+        max_dpi: 300,
+        downsample: false,
+      },
+      font_configs: FontConfigs::from_all(FontType::ALL.iter().map(|_| return test_font_config())),
+      sources: Vec::new(),
+      style_path: None,
+      references_path: None,
+    };
+  }
+
+  /// テスト用の `ResourceBundle` を返す（画像なし。`dump_publication` は resources の中身を読まないため、
+  /// 実フォントを 1 個読み込んで `ResourceBundle::new` を通せれば足りる。`build_pdf::publication` の
+  /// 同名ヘルパと同じ構築手順 — フォント読込は crate 内 tests で共有されておらず個別に用意する）。
+  fn test_resources() -> ResourceBundle {
+    super::super::golden::enter_workspace_root();
+    assert!(
+      std::path::Path::new("vendor/fonts").is_dir(),
+      "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
+    );
+    let config = test_config();
+    let source = config::FilesystemProjectSource::new();
+    let font_data = font::FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
+    let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
+    let font_metrics = font::FontMetrics::new(&font_refs).expect("FontMetrics の構築");
+    let face_configs = font::build_face_configs(&config.font_configs);
+    return ResourceBundle::new(&face_configs, &font_data, &font_refs, font_metrics, std::collections::HashMap::new())
+      .expect("ResourceBundle の構築");
+  }
+
+  /// グリフ描画 1 個 + 内部リンク 1 個を持つ最小 `Publication` を組む。
+  fn publication_with_glyph_and_link() -> Publication {
+    let run = GlyphRun {
+      font_size: Length::pt(10.0),
+      text: "Test".to_string(),
+      glyphs: Vec::new(),
+      font_type: FontType::Serif,
+      color: None,
+    };
+    return Publication {
+      pages: vec![PublicationPage {
+        page_box: Rect {
+          x: Length::ZERO,
+          y: Length::ZERO,
+          width: Length::pt(400.0),
+          height: Length::pt(600.0),
+        },
+        ops: vec![PaintOp::DrawGlyphRun {
+          origin: Point {
+            x: Length::pt(10.0),
+            y: Length::pt(20.0),
+          },
+          run,
+        }],
+        links: vec![PublicationLink {
+          target: PublicationLinkTarget::Internal(Destination {
+            page_index: 0,
+            point: Point {
+              x: Length::ZERO,
+              y: Length::ZERO,
+            },
+          }),
+          rect: Rect {
+            x: Length::pt(10.0),
+            y: Length::pt(20.0),
+            width: Length::pt(30.0),
+            height: Length::pt(12.0),
+          },
+        }],
+      }],
+      outline: None,
+      metadata: PublicationMetadata {
+        title: "Test".to_string(),
+        author: None,
+        subject: None,
+        language: None,
+        keywords: None,
+      },
+      resources: test_resources(),
+    };
+  }
+
+  #[test]
+  fn dump_publication_is_deterministic_and_includes_glyphs_and_links() {
+    // Arrange
+    let publication = publication_with_glyph_and_link();
+
+    // Act
+    let first = dump_publication(&publication);
+    let second = dump_publication(&publication);
+
+    // Assert
+    assert_eq!(first, second);
+    assert!(first.contains("title=\"Test\""));
+    assert!(first.contains("text=\"Test\""));
+    assert!(first.contains("link target=Internal"));
   }
 }
