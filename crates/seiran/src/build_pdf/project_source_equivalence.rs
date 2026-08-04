@@ -8,8 +8,6 @@
 
 use std::path::{Path, PathBuf};
 
-use model::FontType;
-
 use super::{
   build_pages_with_source,
   dump::dump_pages,
@@ -18,6 +16,7 @@ use super::{
 use crate::{
   config::MemoryProjectSource,
   font::{FontData, FontDataExt},
+  model::FontType,
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。

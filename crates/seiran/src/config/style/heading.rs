@@ -5,11 +5,12 @@
 use std::ops::{Index, IndexMut};
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   FontKind, HeadingLevel,
   length::{Length, non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -237,9 +238,9 @@ pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, HeadingLevel, length::Length};
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
+  use crate::model::{FontKind, HeadingLevel, length::Length};
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {

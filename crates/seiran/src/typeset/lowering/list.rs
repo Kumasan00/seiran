@@ -1,13 +1,11 @@
 //! リスト（`resolve::ResolvedNode::List`）の lowering
 
-use model::Length;
-
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::resolve::ResolvedListItem;
+use crate::{model::Length, resolve::ResolvedListItem};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
@@ -24,7 +22,7 @@ pub(super) fn lower_list(
 
   // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
   // 同時にネスト深さを +1 して渡し、item 内容中のネストしたリストが深さ +1 で lower されるようにする。
-  let item_ctx = ctx.with_first_line_indent(model::Length::pt(0.0)).with_list_depth(depth + 1);
+  let item_ctx = ctx.with_first_line_indent(crate::model::Length::pt(0.0)).with_list_depth(depth + 1);
 
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
@@ -69,8 +67,8 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: item.item_gap.or(item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
-      right_indent: model::Length::pt(0.0),
-      align: model::Align::Left,
+      right_indent: crate::model::Length::pt(0.0),
+      align: crate::model::Align::Left,
     });
   }
 
@@ -80,11 +78,10 @@ pub(super) fn lower_list(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use model::FontKind;
-
   use super::{super::test_support, *};
   use crate::{
     config::Style as ReadStyle,
+    model::FontKind,
     resolve::{ResolvedInline, ResolvedNode},
   };
 
@@ -124,7 +121,7 @@ mod tests {
     ordered: bool,
     items: &[ResolvedListItem],
     start: Option<u32>,
-    item_gap: Option<model::Length>,
+    item_gap: Option<crate::model::Length>,
   ) -> Vec<LayoutNode> {
     let document = test_support::document(&[]);
     return lower_list(ctx, ordered, items, start, item_gap, &mut LoweringState::new(&document));
@@ -470,14 +467,14 @@ mod tests {
     let items = [item_with_text("a"), item_with_text("b")];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0)));
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(3.0)));
 
     // Assert
     for node in &nodes {
       let LayoutNode::VBox { margin_bottom, .. } = node else {
         panic!("item は VBox であるべき: {node:?}");
       };
-      assert!((margin_bottom.to_pt() - model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+      assert!((margin_bottom.to_pt() - crate::model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
     }
   }
 
@@ -487,10 +484,10 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let mut items = [item_with_text("a"), item_with_text("b")];
-    items[0].item_gap = Some(model::Length::mm(1.0));
+    items[0].item_gap = Some(crate::model::Length::mm(1.0));
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(3.0)));
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(3.0)));
 
     // Assert
     let LayoutNode::VBox {
@@ -507,8 +504,8 @@ mod tests {
     else {
       panic!("item は VBox であるべき");
     };
-    assert!((gap0.to_pt() - model::Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
-    assert!((gap1.to_pt() - model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+    assert!((gap0.to_pt() - crate::model::Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
+    assert!((gap1.to_pt() - crate::model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
   }
 
   #[test]
@@ -545,7 +542,7 @@ mod tests {
     ])];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(model::Length::mm(5.0)));
+    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(5.0)));
 
     // Assert
     let LayoutNode::VBox { children, .. } = &nodes[0] else {

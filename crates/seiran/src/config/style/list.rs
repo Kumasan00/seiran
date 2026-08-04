@@ -1,13 +1,15 @@
 //! リスト要素（順序付き / 順序なし）のスタイル設定型。
 
 use garde::Validate;
-use model::{
-  FontKind,
-  length::{Length, non_negative},
-};
 use serde::{Deserialize, Serialize};
 
-use crate::config::style::number_style::NumberStyle;
+use crate::{
+  config::style::number_style::NumberStyle,
+  model::{
+    FontKind,
+    length::{Length, non_negative},
+  },
+};
 
 /// リスト要素のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -90,10 +92,12 @@ impl Default for NestedOrderedFormat {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, length::Length};
 
   use super::{ListStyle, NestedOrderedFormat};
-  use crate::config::style::number_style::NumberStyle;
+  use crate::{
+    config::style::number_style::NumberStyle,
+    model::{FontKind, length::Length},
+  };
 
   #[test]
   fn validate_accepts_default() {

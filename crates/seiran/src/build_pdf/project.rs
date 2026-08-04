@@ -48,7 +48,7 @@ impl ProjectSnapshot {
   }
 }
 
-/// 全ソースの表示名・本文を [`model::SourceId`] で引けるデータベース。
+/// 全ソースの表示名・本文を [`crate::model::SourceId`] で引けるデータベース。
 ///
 /// [`SourceDb::register`] が唯一の `SourceId` 発行元。呼び出し元は発行された ID をそのまま
 /// 運ぶだけで、別の場所で ID を作り直したり、配列の並び順から ID を推測したりしない
@@ -76,8 +76,8 @@ impl SourceDb {
   }
 
   /// ソースを登録し、新しい `SourceId` を発行する。
-  fn register(&mut self, name: String, content: String) -> model::SourceId {
-    let id = model::SourceId::new(self.entries.len());
+  fn register(&mut self, name: String, content: String) -> crate::model::SourceId {
+    let id = crate::model::SourceId::new(self.entries.len());
     self.entries.push(SourceEntry { name, content });
     return id;
   }
@@ -86,13 +86,13 @@ impl SourceDb {
   ///
   /// `id` はこの `SourceDb` の `register` が発行した値だけが渡される前提
   /// （driver が発行元と参照元を分けないため、範囲外は構造的に起こらない）。
-  pub(super) fn get(&self, id: model::SourceId) -> &SourceEntry {
+  pub(super) fn get(&self, id: crate::model::SourceId) -> &SourceEntry {
     return self.entries.get(id.index()).expect("SourceId は SourceDb.register が発行した範囲内のはず");
   }
 
   /// 登録順に `(SourceId, &SourceEntry)` を返す。
-  pub(super) fn iter(&self) -> impl Iterator<Item = (model::SourceId, &SourceEntry)> {
-    return self.entries.iter().enumerate().map(|(i, entry)| return (model::SourceId::new(i), entry));
+  pub(super) fn iter(&self) -> impl Iterator<Item = (crate::model::SourceId, &SourceEntry)> {
+    return self.entries.iter().enumerate().map(|(i, entry)| return (crate::model::SourceId::new(i), entry));
   }
 
   /// `sources` を順に読み込んで登録する。

@@ -2,13 +2,14 @@
 //!
 //! 各行を最大 2 セルに分割する非採番の数式環境。
 
-use model::{DocNode, MathEnvKind};
-
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
-use crate::frontend::{
-  evaluator::{EvalError, opt_args::collect_environment_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_environment_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
+  },
+  model::{DocNode, MathEnvKind},
 };
 
 /// `cases` 環境を評価する
@@ -59,10 +60,9 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::MathEnvKind;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
 
   fn parse<'a>(
     source: &'a str,
@@ -71,7 +71,7 @@ mod tests {
     return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  fn rows_of(result: &[DocNode]) -> &[model::MathRow] {
+  fn rows_of(result: &[DocNode]) -> &[crate::model::MathRow] {
     let DocNode::MathBlock {
       kind,
       rows,

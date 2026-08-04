@@ -1,10 +1,12 @@
 //! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーション
 
 use miette::Diagnostic;
-use model::column_width;
 use thiserror::Error;
 
-use crate::config::{Config, Style};
+use crate::{
+  config::{Config, Style},
+  model::column_width,
+};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]

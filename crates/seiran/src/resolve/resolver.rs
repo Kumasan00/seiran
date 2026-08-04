@@ -1,13 +1,14 @@
 //! pass1: `SemanticDocument` → `ResolvedDocument` の変換 + ラベル・カウンタ登録
 
-use model::{DocNode, InlineNode, LabelId, Origin};
-
-use crate::resolve::{
-  ResolveError,
-  counter::CounterRegistry,
-  error::span_to_source_span,
-  inline::{IndexKey, ResolvedInline},
-  node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
+use crate::{
+  model::{DocNode, InlineNode, LabelId, Origin},
+  resolve::{
+    ResolveError,
+    counter::CounterRegistry,
+    error::span_to_source_span,
+    inline::{IndexKey, ResolvedInline},
+    node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
+  },
 };
 
 /// pass1 走査中に集める見出しの生データ（表示文字列化は typeset 側の責務）
@@ -17,7 +18,7 @@ pub(crate) struct PendingHeading {
   /// 見出しの文書順インデックス
   pub(crate) index: usize,
   /// 見出しレベル
-  pub(crate) level: model::HeadingLevel,
+  pub(crate) level: crate::model::HeadingLevel,
   /// カウンタ値（無採番の見出しは `None`）
   pub(crate) counter_value: Option<crate::resolve::counter::CounterValue>,
   /// 見出しタイトル（`\ref` 解決済み）
@@ -239,7 +240,7 @@ fn resolve_node(
     } => {
       let counter_value =
         registry.increment_with_label(crate::config::CounterName::Table, label.as_deref(), *span, source)?;
-      let resolve_rows = |table_rows: &[model::TableRow]| {
+      let resolve_rows = |table_rows: &[crate::model::TableRow]| {
         return table_rows
           .iter()
           .map(|row| {
@@ -317,7 +318,7 @@ fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline,
         });
       };
       ResolvedInline::Cite {
-        targets: keys.iter().map(|k| return model::CitationId::new(k.clone())).collect(),
+        targets: keys.iter().map(|k| return crate::model::CitationId::new(k.clone())).collect(),
         label: resolve_inlines(label, source)?,
         span: *span,
       }
@@ -342,16 +343,17 @@ fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline,
 
 #[cfg(test)]
 mod tests {
-  use model::{HeadingLevel, InlineNode, Origin, SourceId, Span};
-
   use super::*;
-  use crate::resolve::counter::CounterRegistry;
+  use crate::{
+    model::{HeadingLevel, InlineNode, Origin, SourceId, Span},
+    resolve::counter::CounterRegistry,
+  };
 
   #[allow(clippy::unwrap_used)]
   #[test]
   fn resolve_group_assigns_counter_value_to_labeled_heading() {
     // Arrange
-    let nodes = vec![model::DocNode::Heading {
+    let nodes = vec![crate::model::DocNode::Heading {
       level: HeadingLevel::Chapter,
       numbered: true,
       title: vec![InlineNode::text("Intro")],
@@ -368,7 +370,7 @@ mod tests {
     let ResolvedNode::Heading { label, .. } = &resolved[0] else {
       panic!("Heading が期待されます: {resolved:?}");
     };
-    assert_eq!(label.as_ref().map(model::LabelId::as_str), Some("ch:intro"));
+    assert_eq!(label.as_ref().map(crate::model::LabelId::as_str), Some("ch:intro"));
     assert!(registry.resolve_label("ch:intro").is_some(), "ラベルは登録済みのはず");
   }
 
@@ -377,7 +379,7 @@ mod tests {
   fn resolve_group_reports_duplicate_label() {
     // Arrange
     let heading = |label: &str| {
-      return model::DocNode::Heading {
+      return crate::model::DocNode::Heading {
         level: HeadingLevel::Chapter,
         numbered: true,
         title: vec![InlineNode::text("T")],

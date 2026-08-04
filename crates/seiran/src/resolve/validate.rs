@@ -5,10 +5,11 @@
 //! 存在確認は pass1（`resolve_group`）が全ラベルの登録を終えた後にしか行えない。
 //! これが pass1 とは別の走査（本モジュール）として独立している理由
 
-use model::Origin;
-
-use crate::resolve::{
-  ResolveError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
+use crate::{
+  model::Origin,
+  resolve::{
+    ResolveError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
+  },
 };
 
 /// `nodes`（1 ソースグループぶん）を走査し、すべての `Ref` / `Theorem::of` の参照先が
@@ -122,12 +123,13 @@ fn validate_inline(inline: &ResolvedInline, registry: &CounterRegistry, origin: 
 
 #[cfg(test)]
 mod tests {
-  use model::{LabelId, Origin, SourceId, Span};
-
   use super::*;
-  use crate::resolve::{
-    counter::CounterRegistry,
-    node::{ResolvedListItem, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
+  use crate::{
+    model::{LabelId, Origin, SourceId, Span},
+    resolve::{
+      counter::CounterRegistry,
+      node::{ResolvedListItem, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
+    },
   };
 
   #[allow(clippy::unwrap_used)]
@@ -199,7 +201,7 @@ mod tests {
     // Arrange
     let registry = CounterRegistry::from_style(&crate::config::Style::default());
     let nodes = vec![ResolvedNode::Theorem {
-      class: model::TheoremClass::Proof,
+      class: crate::model::TheoremClass::Proof,
       title: None,
       body: Vec::new(),
       of: Some(ResolvedProofTarget {
@@ -227,7 +229,7 @@ mod tests {
     let of_span = Span::new(10, 20);
     let theorem_span = Span::new(100, 200);
     let nodes = vec![ResolvedNode::Theorem {
-      class: model::TheoremClass::Proof,
+      class: crate::model::TheoremClass::Proof,
       title: None,
       body: Vec::new(),
       of: Some(ResolvedProofTarget {
@@ -291,7 +293,7 @@ mod tests {
         rule_above: false,
       }],
       caption: None,
-      caption_position: model::CaptionPosition::Bottom,
+      caption_position: crate::model::CaptionPosition::Bottom,
       label: None,
       counter_value: crate::resolve::counter::CounterValue {
         kind: crate::resolve::counter::CounterKind::Counter(crate::config::CounterName::Table),

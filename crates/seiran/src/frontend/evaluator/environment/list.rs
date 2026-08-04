@@ -1,15 +1,16 @@
 //! リスト環境 — 箇条書き・番号付きリスト
 
-use model::{DocNode, ListItem};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    environment::body_scan,
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      environment::body_scan,
+      opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::{DocNode, ListItem},
 };
 
 /// `itemize` 環境を評価する（順序なしリスト）
@@ -281,7 +282,7 @@ mod tests {
     let DocNode::List { item_gap, .. } = &nodes[0] else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*item_gap, Some(model::Length::mm(0.0)));
+    assert_eq!(*item_gap, Some(crate::model::Length::mm(0.0)));
   }
 
   #[test]
@@ -302,7 +303,7 @@ mod tests {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(*start, Some(2));
-    assert_eq!(*item_gap, Some(model::Length::mm(8.0)));
+    assert_eq!(*item_gap, Some(crate::model::Length::mm(8.0)));
   }
 
   #[test]
@@ -319,6 +320,6 @@ mod tests {
     let DocNode::List { items, .. } = &nodes[0] else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].item_gap, Some(model::Length::mm(-1.0)));
+    assert_eq!(items[0].item_gap, Some(crate::model::Length::mm(-1.0)));
   }
 }

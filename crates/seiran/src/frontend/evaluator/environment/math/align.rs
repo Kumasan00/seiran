@@ -2,10 +2,11 @@
 //!
 //! 行と列に分割し、行単位で採番する。
 
-use model::{DocNode, MathEnvKind};
-
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::frontend::{evaluator::EvalError, syntax::ast::EnvironmentView};
+use crate::{
+  frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
+  model::{DocNode, MathEnvKind},
+};
 
 /// `align` 環境を評価する
 ///
@@ -28,10 +29,12 @@ pub(crate) fn align(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::{MathEnvKind, MathNode};
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{MathEnvKind, MathNode},
+  };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(
@@ -42,7 +45,7 @@ mod tests {
   }
 
   /// 結果の最初の `DocNode::MathBlock`（`Align`）の行スライスを取り出すヘルパ
-  fn rows_of(result: &[DocNode]) -> &[model::MathRow] {
+  fn rows_of(result: &[DocNode]) -> &[crate::model::MathRow] {
     let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };

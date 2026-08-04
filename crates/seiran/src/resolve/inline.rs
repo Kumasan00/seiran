@@ -1,7 +1,7 @@
-//! 解決済みインライン要素。`model::InlineNode` と 1:1 だが、`\ref` / `\cite` / `\index` の
+//! 解決済みインライン要素。`crate::model::InlineNode` と 1:1 だが、`\ref` / `\cite` / `\index` の
 //! 使用箇所だけが生の名前ではなく typed ID を持つ
 
-use model::{CitationId, Color, FontKind, LabelId, MathNode, Span};
+use crate::model::{CitationId, Color, FontKind, LabelId, MathNode, Span};
 
 /// 索引語の同一性キー（正規化した語 + reading）
 ///

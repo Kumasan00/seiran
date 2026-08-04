@@ -4,10 +4,9 @@
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 
-use model::TheoremClass;
-
 use crate::{
   config::{CounterName, Counters, Style, TheoremReset},
+  model::TheoremClass,
   resolve::{CounterKind, CounterValue},
   typeset::lowering::placeholder,
 };

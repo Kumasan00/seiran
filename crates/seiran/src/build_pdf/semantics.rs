@@ -6,12 +6,12 @@
 //! （issue #303）。
 
 use miette::Diagnostic;
-use model::{DocNode, SourceId};
 use thiserror::Error;
 
 use super::ParsedSource;
 use crate::{
   citation::{self, CitationError, References},
+  model::{DocNode, SourceId},
   resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup},
 };
 
@@ -74,14 +74,13 @@ pub(super) fn resolve_semantics(
 mod tests {
   use std::{collections::HashSet, fs};
 
-  use model::{DocNode, InlineNode, SourceId, Span};
-
   use super::{ParsedSource, SemanticsError, resolve_semantics};
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationError, read_references},
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
     frontend::parse_source,
+    model::{DocNode, InlineNode, SourceId, Span},
   };
 
   #[test]

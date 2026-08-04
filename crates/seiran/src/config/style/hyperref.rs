@@ -1,8 +1,9 @@
 //! ハイパーリンク（hyperref 相当）のスタイル設定型。
 
 use garde::Validate;
-use model::Color;
 use serde::{Deserialize, Serialize};
+
+use crate::model::Color;
 
 /// ハイパーリンクの文字色に関するスタイル設定
 ///

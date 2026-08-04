@@ -5,7 +5,8 @@ use icu::properties::{
   props::{EastAsianWidth, Script},
   script::ScriptWithExtensions,
 };
-use model::{FontKind, FontType};
+
+use crate::model::{FontKind, FontType};
 
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]

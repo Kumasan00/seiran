@@ -2,11 +2,12 @@
 //!
 //! コメント・空白を含む全トークンを保持する。
 
-use model::Span;
-
-use crate::frontend::syntax::{
-  cst::kind::SyntaxKind,
-  token::{Token, TokenKind},
+use crate::{
+  frontend::syntax::{
+    cst::kind::SyntaxKind,
+    token::{Token, TokenKind},
+  },
+  model::Span,
 };
 
 /// アリーナ確保された CST ノード

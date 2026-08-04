@@ -2,11 +2,13 @@
 
 use std::collections::HashMap;
 
-use model::{AssetId, Length};
 use tracing::debug;
 
 use super::error::{CompileError, CompilerBug};
-use crate::typeset::Block;
+use crate::{
+  model::{AssetId, Length},
+  typeset::Block,
+};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]

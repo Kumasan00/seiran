@@ -1,29 +1,30 @@
 //! インライン要素抽出のヘルパー
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    command::{
-      COMMAND_MAP, CommandKind,
-      cite::cite_command,
-      footnote::footnote_command,
-      inline::{colored_text, styled_text},
-      link::{href_command, url_command},
-      ref_::ref_command,
-      single_char,
-      symbol::SYMBOL_MAP,
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      command::{
+        COMMAND_MAP, CommandKind,
+        cite::cite_command,
+        footnote::footnote_command,
+        inline::{colored_text, styled_text},
+        link::{href_command, url_command},
+        ref_::ref_command,
+        single_char,
+        symbol::SYMBOL_MAP,
+      },
+      math,
     },
-    math,
+    span_ext::ToSourceSpan,
+    syntax::{
+      ast::{CommandView, EnvironmentView},
+      green::{GreenElement, GreenNode},
+      kind::SyntaxKind,
+      token::TokenKind,
+    },
   },
-  span_ext::ToSourceSpan,
-  syntax::{
-    ast::{CommandView, EnvironmentView},
-    green::{GreenElement, GreenNode},
-    kind::SyntaxKind,
-    token::TokenKind,
-  },
+  model::InlineNode,
 };
 
 /// `GreenNode` の子要素から `InlineNode` のリストを構築する
@@ -184,7 +185,7 @@ mod tests {
     assert!(matches!(
       &inlines[0],
       InlineNode::Styled {
-        kind: model::FontKind::SerifBold,
+        kind: crate::model::FontKind::SerifBold,
         ..
       }
     ));
@@ -300,7 +301,7 @@ mod tests {
     assert!(matches!(
       &inlines[2],
       InlineNode::Styled {
-        kind: model::FontKind::SerifBold,
+        kind: crate::model::FontKind::SerifBold,
         ..
       }
     ));

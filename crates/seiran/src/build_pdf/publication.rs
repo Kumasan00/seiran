@@ -5,19 +5,21 @@
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
 //! `pdf_gen` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`pdf_gen::Point` /
-//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `model::Length::to_pt()` /
-//! `model::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
+//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `crate::model::Length::to_pt()` /
+//! `crate::model::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
 
 use std::collections::HashMap;
 
-use model::{AnchorId, AnchorMark, LinkTarget as ModelLinkTarget};
 use pdf_gen::{
   Destination, Glyph as PdfGlyph, GlyphRun as PdfGlyphRun, PaintOp, Point, Publication, PublicationLink,
   PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
 
 use super::layout::LaidOutDocument;
-use crate::typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
+use crate::{
+  model::{AnchorId, AnchorMark, LinkTarget as ModelLinkTarget},
+  typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow},
+};
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
@@ -75,7 +77,7 @@ pub(super) fn build_publication(
 fn build_page(
   config: &crate::config::Config,
   page: &Page,
-  margin_left: model::Length,
+  margin_left: crate::model::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
 ) -> PublicationPage {
   let page_box = Rect {
@@ -137,7 +139,7 @@ fn build_page(
 /// 内部リンクの前方参照に対応するため、描画命令より先に全ページを走査する。
 fn build_destination_index(
   pages: &[Page],
-  margin_left: model::Length,
+  margin_left: crate::model::Length,
 ) -> (HashMap<AnchorId, Destination>, Vec<Destination>) {
   let mut dest_by_id: HashMap<AnchorId, Destination> = HashMap::new();
   let mut heading_dests: Vec<Destination> = Vec::new();
@@ -179,14 +181,16 @@ fn build_destination_index(
 /// Krilla と同じ `f32` の演算順序で左マージンを加える（pt 単位）。
 ///
 /// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
-fn add_margin_left(margin_left: model::Length, x: model::Length) -> f32 { return margin_left.to_pt() + x.to_pt(); }
+fn add_margin_left(margin_left: crate::model::Length, x: crate::model::Length) -> f32 {
+  return margin_left.to_pt() + x.to_pt();
+}
 
 /// 描画に必要な解決済みの表スタイル。
 struct ResolvedTableStyle {
   /// セル内容の左右内側余白
-  cell_padding: model::Length,
+  cell_padding: crate::model::Length,
   /// 罫線の太さ（0 のとき描画しない）
-  rule_thickness: model::Length,
+  rule_thickness: crate::model::Length,
   /// 罫線色（RGB）。`None` は黒
   rule_color: Option<[u8; 3]>,
 }
@@ -306,15 +310,15 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 /// 位置確定済みの表の 1 行から描画命令を追加する。
 fn push_table_row_ops(
   ops: &mut Vec<PaintOp>,
-  columns: &[model::TableColumn],
-  col_widths: &[model::Length],
+  columns: &[crate::model::TableColumn],
+  col_widths: &[crate::model::Length],
   placed_row: &PlacedTableRow,
   x0: f32,
   table_style: &ResolvedTableStyle,
 ) {
   let row = &placed_row.row;
   let band_top = placed_row.top_y.to_pt();
-  let table_width: model::Length = col_widths.iter().copied().sum();
+  let table_width: crate::model::Length = col_widths.iter().copied().sum();
   if row.rule_above {
     ops.push(PaintOp::FillRect {
       rect: Rect {
@@ -331,12 +335,12 @@ fn push_table_row_ops(
     .cells
     .iter()
     .filter_map(|cell| return crate::typeset::max_font_size_in_items(&cell.items))
-    .reduce(model::Length::max)
+    .reduce(crate::model::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
   let baseline = band_top + max_font;
 
-  let padding = model::Length::pt(table_style.cell_padding.to_pt());
+  let padding = crate::model::Length::pt(table_style.cell_padding.to_pt());
   for placement in crate::typeset::layout_row_cells(row, columns, col_widths, padding) {
     push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
   }
@@ -365,7 +369,7 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
   }
 }
 
-/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `model::Length`、色は `model::Color`）を
+/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `crate::model::Length`、色は `crate::model::Color`）を
 /// `pdf_gen::GlyphRun`（`pdf_gen` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
 fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   return PdfGlyphRun {
@@ -373,7 +377,7 @@ fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
     text: run.text.clone(),
     glyphs: run.glyphs.iter().map(to_pdf_glyph).collect(),
     font_type: super::to_pdf_font_type(run.font_type),
-    color: run.color.map(model::Color::rgb),
+    color: run.color.map(crate::model::Color::rgb),
   };
 }
 
@@ -394,7 +398,6 @@ fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
 mod tests {
   use std::path::PathBuf;
 
-  use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
 
   use super::build_publication;
@@ -402,6 +405,7 @@ mod tests {
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
     config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig},
     font::{FontData, FontDataExt, FontResources, GlyphRun},
+    model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn},
     typeset::{
       HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
       PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
@@ -719,7 +723,7 @@ mod tests {
     let config = test_config();
     let mut page = empty_page();
     page.blocks = vec![PlacedBlock::Image {
-      path: model::AssetId::new("figures/a.png"),
+      path: crate::model::AssetId::new("figures/a.png"),
       x: Length::pt(10.0),
       y: Length::pt(20.0),
       width: Length::pt(100.0),
@@ -810,8 +814,8 @@ mod tests {
     let config = test_config();
     let cell_run = glyph_run("cell");
     let column = TableColumn {
-      align: model::ColumnAlign::Left,
-      width: model::ColumnWidth::Auto,
+      align: crate::model::ColumnAlign::Left,
+      width: crate::model::ColumnWidth::Auto,
     };
     let row = TableRowBox {
       cells: vec![TableCellBox {

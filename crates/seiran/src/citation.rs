@@ -10,11 +10,13 @@ use hayagriva::{
   citationberg::{self, IndependentStyle, Locale, LocaleCode, LocaleFile, json::Item},
 };
 use miette::Diagnostic;
-use model::{DocNode, InlineNode, ListItem, TableCell, TableRow};
 use thiserror::Error;
 use tracing::debug;
 
-use crate::config::Style;
+use crate::{
+  config::Style,
+  model::{DocNode, InlineNode, ListItem, TableCell, TableRow},
+};
 
 mod bridge;
 mod references;
@@ -546,7 +548,6 @@ mod tests {
   };
 
   use hayagriva::citationberg::{Locale, LocaleCode, LocaleFile};
-  use model::{DocNode, FontKind, InlineNode, Span};
 
   use super::{CitationError, load_locales, process_citations};
   use crate::{
@@ -555,6 +556,7 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
+    model::{DocNode, FontKind, InlineNode, Span},
   };
 
   /// 単一ドキュメントを処理し、返った書誌を末尾へ連結する。

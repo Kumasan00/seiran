@@ -7,10 +7,12 @@ mod cell;
 mod opts;
 
 use body::{resolve_column_count, scan_table_body};
-use model::{ColumnAlign, ColumnWidth, DocNode};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
-use crate::frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView};
+use crate::{
+  frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView},
+  model::{ColumnAlign, ColumnWidth, DocNode},
+};
 
 /// `table` 環境を評価する
 ///
@@ -66,10 +68,12 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::{CaptionPosition, InlineNode, TableRow, inline_nodes_to_plain_text};
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{CaptionPosition, InlineNode, TableRow, inline_nodes_to_plain_text},
+  };
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -414,7 +418,7 @@ mod tests {
     assert!(matches!(
       &rows[0].cells[0].content[0],
       InlineNode::Styled {
-        kind: model::FontKind::SerifBold,
+        kind: crate::model::FontKind::SerifBold,
         ..
       }
     ));

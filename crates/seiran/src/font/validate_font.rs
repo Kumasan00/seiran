@@ -5,7 +5,6 @@
 
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
-use model::FontType;
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{debug, warn};
@@ -13,6 +12,7 @@ use tracing::{debug, warn};
 use crate::{
   config::{FontConfig, FontConfigs, VariationAxis},
   font::FontRefs,
+  model::FontType,
 };
 
 /// 複数のフォント種別で発生した検証エラー。

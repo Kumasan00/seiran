@@ -1,13 +1,11 @@
 //! `"{number} {title}"` 形式テンプレートの `LayoutNode` 展開
 
-use model::LabelId;
-
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
-use crate::resolve::ResolvedInline;
+use crate::{model::LabelId, resolve::ResolvedInline};
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
 pub(super) fn expand_template(
@@ -63,11 +61,10 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use model::{FontKind, Length};
-
   use super::{super::test_support, *};
   use crate::{
     config::{CounterName, Style as ReadStyle},
+    model::{FontKind, Length},
     resolve::{CounterKind, CounterValue},
   };
 
@@ -134,7 +131,7 @@ mod tests {
 
   #[test]
   fn inline_math_in_title_is_lowered() {
-    use model::MathNode;
+    use crate::model::MathNode;
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [ResolvedInline::InlineMath(vec![MathNode::Text(
@@ -156,8 +153,8 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let title = [ResolvedInline::Ref {
-      target: model::LabelId::new("tab:one"),
-      span: model::Span::DUMMY,
+      target: crate::model::LabelId::new("tab:one"),
+      span: crate::model::Span::DUMMY,
     }];
     let document = test_support::document(&[(
       "tab:one",
@@ -179,7 +176,10 @@ mod tests {
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
-    assert_eq!(*link.0, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("tab:one"))));
+    assert_eq!(
+      *link.0,
+      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("tab:one")))
+    );
     assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Table 1.1"), "{:?}", link.1);
   }
 
@@ -191,15 +191,22 @@ mod tests {
     let document = test_support::document(&[(
       "thm:x",
       CounterValue {
-        kind: CounterKind::Theorem(model::TheoremClass::Theorem),
+        kind: CounterKind::Theorem(crate::model::TheoremClass::Theorem),
         parts: vec![1],
       },
     )]);
     let mut state = LoweringState::new(&document);
 
     // Act
-    let nodes =
-      expand_template(&ctx, "Proof of {of}", "1", &[], Some(&model::LabelId::new("thm:x")), base_style(), &mut state);
+    let nodes = expand_template(
+      &ctx,
+      "Proof of {of}",
+      "1",
+      &[],
+      Some(&crate::model::LabelId::new("thm:x")),
+      base_style(),
+      &mut state,
+    );
 
     // Assert
     assert_eq!(nodes.len(), 1, "リンクにはせず前後のリテラルと 1 つの Text に繋がる: {nodes:?}");

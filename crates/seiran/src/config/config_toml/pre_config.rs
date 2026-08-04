@@ -3,13 +3,15 @@
 use std::path::PathBuf;
 
 use garde::Validate;
-use model::{
-  FontType,
-  length::{Length, non_negative, positive},
-};
 use serde::Deserialize;
 
-use crate::config::config_toml::ConfigValidationError;
+use crate::{
+  config::config_toml::ConfigValidationError,
+  model::{
+    FontType,
+    length::{Length, non_negative, positive},
+  },
+};
 
 /// TOML ファイル全体をデシリアライズした設定
 #[derive(Deserialize, Debug, Validate)]

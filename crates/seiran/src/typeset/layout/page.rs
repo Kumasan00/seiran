@@ -6,9 +6,8 @@
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
-use model::{AnchorMark, AssetId, Length, LinkTarget, TableColumn};
-
 use super::{hitem::HBox, line::Line, table_box::TableRowBox};
+use crate::model::{AnchorMark, AssetId, Length, LinkTarget, TableColumn};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]

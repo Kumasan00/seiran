@@ -1,11 +1,12 @@
 //! スペースや改ページなどの制御コマンド群
 
-use model::{DocNode, Length};
-
-use crate::frontend::{
-  evaluator::{EvalError, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::{CommandView, extract_text_content},
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::{CommandView, extract_text_content},
+  },
+  model::{DocNode, Length},
 };
 
 /// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド

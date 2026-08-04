@@ -3,16 +3,18 @@
 //! トップレベルの `\\` と `&` で本体を行とセルに分割する。
 
 use miette::SourceSpan;
-use model::{DocNode, MathEnvKind, MathNode, MathRow};
 
-use crate::frontend::{
-  evaluator::{EvalError, math::evaluate_math_elements},
-  span_ext::ToSourceSpan,
-  syntax::{
-    ast::EnvironmentView,
-    green::{GreenElement, GreenNode},
-    token::TokenKind,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, math::evaluate_math_elements},
+    span_ext::ToSourceSpan,
+    syntax::{
+      ast::EnvironmentView,
+      green::{GreenElement, GreenNode},
+      token::TokenKind,
+    },
   },
+  model::{DocNode, MathEnvKind, MathNode, MathRow},
 };
 
 mod markers;
@@ -211,12 +213,14 @@ fn is_trivia_element(child: &GreenElement) -> bool {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::MathNode;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::lookup_env_parse_mode,
+      syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
+    },
+    model::MathNode,
   };
 
   /// 緑ツリーを再帰的に走査して最初の `Environment` ノードを返す

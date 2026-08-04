@@ -1,15 +1,16 @@
 //! `\row` の `&` 区切り区画からセル（[`TableCell`]）を構築する
 
-use model::{InlineNode, TableCell};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
-    opt_args::{OptType, OptValue, collect_command_opt_args},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      inline::{extract_inline_nodes, extract_inline_nodes_from_elements},
+      opt_args::{OptType, OptValue, collect_command_opt_args},
+    },
+    span_ext::ToSourceSpan,
+    syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
   },
-  span_ext::ToSourceSpan,
-  syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
+  model::{InlineNode, TableCell},
 };
 
 /// `&` 分割後の 1 区画を [`TableCell`] に変換する

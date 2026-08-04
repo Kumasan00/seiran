@@ -1,15 +1,16 @@
 //! `\index{語}` コマンド
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, collect_command_opt_args, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      inline::extract_inline_nodes,
+      opt_args::{OptType, collect_command_opt_args, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+  model::InlineNode,
 };
 
 /// `\index{語}` / `\index[reading=よみ]{語}` を `InlineNode::Index` に変換する

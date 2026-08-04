@@ -8,11 +8,12 @@
 //! - `{title}` / `{author}` / `{date}` — `config.toml` の `[document]` メタデータ
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   Color, FontKind,
   length::{Length, non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -75,9 +76,9 @@ impl Default for RunningContentStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, length::Length};
 
   use super::RunningContentStyle;
+  use crate::model::{FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::Length;
+use crate::model::Length;
 
 /// 段落・行の水平方向の揃え。
 ///
@@ -40,7 +40,7 @@ impl Align {
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::Length;
+  use crate::model::Length;
 
   #[test]
   fn default_is_left() {

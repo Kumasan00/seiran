@@ -1,15 +1,16 @@
 //! 書体指定コマンド群
 
-use model::{FontKind, InlineNode};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, collect_command_opt_args, find_color},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      inline::extract_inline_nodes,
+      opt_args::{OptType, collect_command_opt_args, find_color},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+  model::{FontKind, InlineNode},
 };
 
 /// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
@@ -208,7 +209,7 @@ mod tests {
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, model::Color::new(0xff, 0x00, 0x00));
+    assert_eq!(*color, crate::model::Color::new(0xff, 0x00, 0x00));
     assert_eq!(children.len(), 1);
     assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
   }
@@ -264,7 +265,7 @@ mod tests {
     let InlineNode::Colored { color, children } = &result[0] else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, model::Color::new(0x00, 0x00, 0xff));
+    assert_eq!(*color, crate::model::Color::new(0x00, 0x00, 0xff));
     let InlineNode::Styled { kind, .. } = &children[0] else {
       panic!("内側は Styled が期待されます: {children:?}");
     };

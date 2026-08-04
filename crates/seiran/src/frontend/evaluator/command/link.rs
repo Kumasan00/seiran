@@ -4,16 +4,17 @@
 //!
 //! `//` はコメント開始として解釈されるため、URL 内では `\/` と書く。
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, collect_command_opt_args, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      inline::extract_inline_nodes,
+      opt_args::{OptType, collect_command_opt_args, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::{CommandView, extract_text_content},
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::{CommandView, extract_text_content},
+  model::InlineNode,
 };
 
 /// `\url{uri}` を `InlineNode::Link` に変換する（URI 自身を表示テキストにする）

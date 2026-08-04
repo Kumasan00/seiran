@@ -1,15 +1,16 @@
 //! 評価器 — CST から Document IR（`DocNode`）を生成する
 
-use model::{DocNode, InlineNode};
-
-use crate::frontend::{
-  evaluator::command::CommandResult,
-  syntax::{
-    SyntaxKind,
-    ast::CommandView,
-    green::{GreenElement, GreenNode},
-    token::TokenKind,
+use crate::{
+  frontend::{
+    evaluator::command::CommandResult,
+    syntax::{
+      SyntaxKind,
+      ast::CommandView,
+      green::{GreenElement, GreenNode},
+      token::TokenKind,
+    },
   },
+  model::{DocNode, InlineNode},
 };
 
 pub(crate) mod cite;

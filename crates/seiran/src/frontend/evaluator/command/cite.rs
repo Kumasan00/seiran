@@ -2,12 +2,13 @@
 //!
 //! 引用キーの存在検証と表示ラベルの整形は後段に委ねる。
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{EvalError, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::{CommandView, extract_text_content},
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::{CommandView, extract_text_content},
+  },
+  model::InlineNode,
 };
 
 /// `\cite{a,b}` を `InlineNode::Cite` に変換する

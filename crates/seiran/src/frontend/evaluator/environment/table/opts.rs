@@ -1,14 +1,15 @@
 //! `table` 環境の任意引数（`columns` / `widths` / `label` / `breakable`）解析
 
-use model::{ColumnAlign, ColumnWidth, Length};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    opt_args::{OptType, OptValue, collect_environment_opt_args},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      opt_args::{OptType, OptValue, collect_environment_opt_args},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::{ColumnAlign, ColumnWidth, Length},
 };
 
 /// `table` 環境の任意引数を集約した構造体

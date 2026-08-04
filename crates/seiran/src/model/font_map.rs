@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::FontType;
+use crate::model::FontType;
 
 /// 全フォント種別 ([`FontType`]) に対応する値を保持する汎用コンテナ
 ///
@@ -10,8 +10,12 @@ use crate::FontType;
 ///
 /// # Examples
 ///
-/// ```
-/// use model::{FontMap, FontType};
+/// ```ignore
+/// // `model` は非公開 module のため、この例は擬似コードとして提示するのみ（コンパイル・実行は
+/// // しない）。実際の検証は本ファイル末尾の `#[cfg(test)] mod tests` を参照（#307、model crate
+/// // 吸収により FontMap/FontType が crate 外から到達不能になったため rustdoc テストとしては
+/// // 成立しなくなった）。
+/// use crate::model::{FontMap, FontType};
 ///
 /// let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
 /// assert_eq!(map.get(FontType::Serif), "Serif");
@@ -149,4 +153,23 @@ impl<'a, T> IntoIterator for &'a mut FontMap<T> {
   type Item = (FontType, &'a mut T);
 
   fn into_iter(self) -> Self::IntoIter { return self.iter_mut(); }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::FontMap;
+  use crate::model::FontType;
+
+  #[test]
+  fn from_all_and_get_round_trip_by_font_type() {
+    // Arrange
+    let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
+
+    // Act
+    let serif_value = map.get(FontType::Serif);
+
+    // Assert
+    assert_eq!(serif_value, "Serif", "FontType::Serif の Debug 表記のはず");
+    assert_eq!(map.iter().count(), 19, "FontType は 19 種別のはず");
+  }
 }

@@ -1,8 +1,9 @@
 //! 字句解析 — ソーステキストを [`Token`] 列に分割する
 
-use model::Span;
-
-use crate::frontend::syntax::token::{Token, TokenKind};
+use crate::{
+  frontend::syntax::token::{Token, TokenKind},
+  model::Span,
+};
 
 /// テキスト入力をトークン列に分割するレキサー
 ///

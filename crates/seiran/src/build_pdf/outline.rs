@@ -6,7 +6,7 @@ use crate::typeset::HeadingRecord;
 #[derive(Debug, Clone)]
 pub(super) struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
-  pub(super) level: model::HeadingLevel,
+  pub(super) level: crate::model::HeadingLevel,
   /// しおりに表示するテキスト（`"{number} {plain title}"`）
   pub(super) text: String,
 }

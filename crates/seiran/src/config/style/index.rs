@@ -1,11 +1,12 @@
 //! 巻末索引のスタイル設定型。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   Length,
   length::{non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 巻末索引のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -51,9 +52,9 @@ impl Default for IndexStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::Length;
 
   use super::IndexStyle;
+  use crate::model::Length;
 
   #[test]
   fn validate_accepts_default() {

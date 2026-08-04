@@ -1,11 +1,12 @@
 //! 引用環境 — `quote` / `quotation`
 
-use model::{DocNode, QuoteKind};
-
-use crate::frontend::{
-  evaluator::{EvalError, opt_args::collect_environment_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_environment_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
+  },
+  model::{DocNode, QuoteKind},
 };
 
 /// 引用環境（`quote` / `quotation`）を評価する
@@ -36,10 +37,9 @@ pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::QuoteKind;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::QuoteKind};
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(

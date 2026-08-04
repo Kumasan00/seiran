@@ -1,11 +1,12 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::MathBlock`）
 
-use model::{Align, FontType, Length, MathDelimiter, MathEnvKind};
-
 use super::Measurer;
-use crate::typeset::{
-  layout::{Block, HBox, MathRowNumber, PlacedHItem},
-  lowering::{LayoutNode, MathBlockRow},
+use crate::{
+  model::{Align, FontType, Length, MathDelimiter, MathEnvKind},
+  typeset::{
+    layout::{Block, HBox, MathRowNumber, PlacedHItem},
+    lowering::{LayoutNode, MathBlockRow},
+  },
 };
 
 /// セルの列内での水平揃え（環境種別ごとに決まる）
@@ -223,9 +224,8 @@ impl Measurer<'_> {
 
 #[cfg(test)]
 mod tests {
-  use model::{Length, MathDelimiter, MathEnvKind};
-
   use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
+  use crate::model::{Length, MathDelimiter, MathEnvKind};
 
   #[test]
   fn cell_align_align_and_split_alternate_right_left_by_column() {

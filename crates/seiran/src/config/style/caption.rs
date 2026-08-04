@@ -1,8 +1,9 @@
 //! 図・表のキャプションスタイル設定型。
 
 use garde::Validate;
-use model::{Length, length::positive};
 use serde::{Deserialize, Serialize};
+
+use crate::model::{Length, length::positive};
 
 /// キャプションの共通設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -29,9 +30,9 @@ impl Default for CaptionStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::Length;
 
   use super::CaptionStyle;
+  use crate::model::Length;
 
   #[test]
   fn validate_accepts_default() {

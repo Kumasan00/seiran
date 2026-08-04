@@ -1,11 +1,12 @@
 //! `\caption` コマンドの共通抽出処理
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
+  },
+  model::InlineNode,
 };
 
 /// `\caption{...}` の引数をインライン要素列に変換する

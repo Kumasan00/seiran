@@ -3,12 +3,12 @@
 use std::time::Instant;
 
 use miette::Diagnostic;
-use model::Length;
 use thiserror::Error;
 use tracing::{debug_span, info};
 
 use crate::{
   font::FontSystem,
+  model::Length,
   typeset::{
     block::build_blocks,
     breaking::{LineBreaker, PageGeometry, break_pages},

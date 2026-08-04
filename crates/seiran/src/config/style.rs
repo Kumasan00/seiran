@@ -28,11 +28,9 @@ use std::path::Path;
 
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
-use model::{Color, HeadingLevel};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-use crate::config::project_source::{ProjectPath, ProjectSource};
 pub use crate::config::style::{
   caption::CaptionStyle,
   columns::ColumnsStyle,
@@ -56,6 +54,10 @@ pub use crate::config::style::{
   theorem::{TheoremClass, TheoremPresentation, TheoremReset, TheoremStyle, Theorems, default_for_class},
   title_page::TitlePageStyle,
   toc::TocStyle,
+};
+use crate::{
+  config::project_source::{ProjectPath, ProjectSource},
+  model::{Color, HeadingLevel},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -330,15 +332,17 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use garde::Validate;
-  use model::{Color, HeadingLevel, length::Length};
   use tempfile::NamedTempFile;
 
-  use crate::config::{
-    project_source::{FilesystemProjectSource, MemoryProjectSource},
-    style::{
-      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
-      resolve_reference_paths,
+  use crate::{
+    config::{
+      project_source::{FilesystemProjectSource, MemoryProjectSource},
+      style::{
+        CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
+        resolve_reference_paths,
+      },
     },
+    model::{Color, HeadingLevel, length::Length},
   };
 
   #[test]
@@ -591,10 +595,8 @@ mod tests {
 /// 同名ヘルパを独立に定義していたため（`mod tests` へ素直に統合すると名前衝突する）。
 #[cfg(test)]
 mod parse_tests {
-  use model::HeadingLevel;
-
   use super::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
-  use crate::config::project_source::FilesystemProjectSource;
+  use crate::{config::project_source::FilesystemProjectSource, model::HeadingLevel};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
@@ -755,9 +757,9 @@ mod parse_tests {
     // Assert
     assert_eq!(style.header.right, "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-    assert_eq!(style.header.font_kind, model::FontKind::SansSerif);
+    assert_eq!(style.header.font_kind, crate::model::FontKind::SansSerif);
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-    assert_eq!(style.header.rule_color.map(model::Color::rgb), Some([0x33, 0x33, 0x33]));
+    assert_eq!(style.header.rule_color.map(crate::model::Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center, "{title}");
     assert!(style.footer.left.is_empty());
     assert!(!style.header.is_empty());

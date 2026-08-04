@@ -1,7 +1,5 @@
 //! 数式（インライン / ディスプレイ）の lowering
 
-use model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle};
-
 use self::alphanumeric::push_math_char;
 use super::{
   LoweringContext,
@@ -10,6 +8,7 @@ use super::{
 };
 use crate::{
   config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
+  model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle},
   resolve::{CounterValue, ResolvedMathRow},
 };
 
@@ -77,7 +76,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `crate::config::Alignment`（数式本体の揃え）を `model::Align` に対応付ける
+/// `crate::config::Alignment`（数式本体の揃え）を `crate::model::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,
@@ -207,10 +206,8 @@ fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> V
 
 #[cfg(test)]
 mod tests {
-  use model::Length;
-
   use super::*;
-  use crate::config::Style as ReadStyle;
+  use crate::{config::Style as ReadStyle, model::Length};
 
   /// テストで共通使用する `MathStyleConfig` のデフォルトインスタンス
   fn default_math_style() -> MathStyleConfig { return MathStyleConfig::default(); }

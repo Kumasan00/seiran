@@ -1,11 +1,12 @@
 //! 本文段落（`DocNode::Paragraph`）のスタイル設定型。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   FontKind, TextAlignment,
   length::{Length, non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 本文段落のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -49,9 +50,9 @@ impl Default for TextBlockStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, TextAlignment, length::Length};
 
   use super::TextBlockStyle;
+  use crate::model::{FontKind, TextAlignment, length::Length};
 
   #[test]
   fn validate_accepts_default() {

@@ -4,9 +4,8 @@
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
 //! `pdf_gen` 段で行う。
 
-use model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn};
-
 use super::hitem::{HBoxContent, HItem};
+use crate::model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn};
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
@@ -258,14 +257,15 @@ pub fn collect_row_links(
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorId, ColumnAlign, ColumnWidth, FontType, LabelId, Length, LinkTarget, TableColumn};
-
   use super::{
     super::hitem::{HBox, HBoxContent, HItem, PlacedHItem},
     TableBox, TableCellBox, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
     resolve_column_widths, table_row_height,
   };
-  use crate::font::GlyphRun;
+  use crate::{
+    font::GlyphRun,
+    model::{AnchorId, ColumnAlign, ColumnWidth, FontType, LabelId, Length, LinkTarget, TableColumn},
+  };
 
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }

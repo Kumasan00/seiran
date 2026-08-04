@@ -4,12 +4,12 @@ use icu::{
   collator::{Collator, options::CollatorOptions},
   locale::locale,
 };
-use model::{AnchorId, FontKind, Length, LinkTarget};
 
 use super::Measurer;
 use crate::{
   config::Style,
   font::FontSystem,
+  model::{AnchorId, FontKind, Length, LinkTarget},
   typeset::{
     layout::{Block, HBox, Line, LineLink, PositionedBox},
     lowering::TextStyle,
@@ -213,9 +213,8 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEn
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorId, LinkTarget};
-
   use super::{IndexEntryInput, IndexPageRef, sort_index_entries};
+  use crate::model::{AnchorId, LinkTarget};
 
   fn entry(word: &str, reading: Option<&str>) -> IndexEntryInput {
     return IndexEntryInput {

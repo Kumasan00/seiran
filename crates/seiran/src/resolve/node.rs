@@ -1,11 +1,12 @@
-//! 解決済みブロック要素。`model::DocNode` と 1:1 だが、ラベル宣言箇所が `LabelId` を持つ
+//! 解決済みブロック要素。`crate::model::DocNode` と 1:1 だが、ラベル宣言箇所が `LabelId` を持つ
 
-use model::{
-  AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingLevel, LabelId, Length, MathEnvKind, MathNode,
-  QuoteKind, Span, TheoremClass,
+use crate::{
+  model::{
+    AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingLevel, LabelId, Length, MathEnvKind,
+    MathNode, QuoteKind, Span, TheoremClass,
+  },
+  resolve::{counter::CounterValue, inline::ResolvedInline},
 };
-
-use crate::resolve::{counter::CounterValue, inline::ResolvedInline};
 
 /// 解決済みブロックレベル要素
 ///

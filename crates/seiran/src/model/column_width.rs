@@ -1,6 +1,6 @@
 //! 段組みの 1 段あたりの幅を求める計算。
 
-use crate::Length;
+use crate::model::Length;
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
 ///
@@ -20,7 +20,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
 #[cfg(test)]
 mod tests {
   use super::column_width;
-  use crate::Length;
+  use crate::model::Length;
 
   fn pt(value: f32) -> Length { return Length::pt(value); }
 

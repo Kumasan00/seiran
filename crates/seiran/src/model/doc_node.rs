@@ -1,6 +1,6 @@
 //! ブロックレベル要素とドキュメント全体の型定義
 
-use crate::{
+use crate::model::{
   AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingLevel, InlineNode, Length, ListItem,
   MathEnvKind, MathRow, QuoteKind, Span, TableRow, TheoremClass,
 };

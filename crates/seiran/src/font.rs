@@ -6,12 +6,14 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use miette::Diagnostic;
-use model::{FontMap, FontType};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
-use crate::config::FontConfigs;
+use crate::{
+  config::FontConfigs,
+  model::{FontMap, FontType},
+};
 
 mod face_config;
 mod glyph_run;
@@ -235,10 +237,11 @@ impl FontMetricsExt for FontMetrics {
 
 #[cfg(test)]
 mod tests {
-  use model::FontType;
-
   use super::*;
-  use crate::config::{FontConfig, FontConfigs, MemoryProjectSource};
+  use crate::{
+    config::{FontConfig, FontConfigs, MemoryProjectSource},
+    model::FontType,
+  };
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
   fn make_font_configs(shared_path: &str) -> FontConfigs {

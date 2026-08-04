@@ -4,11 +4,13 @@
 
 use std::fmt::Write;
 
-use model::{AnchorId, AnchorMark, Length, LinkTarget};
 use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 
-use crate::typeset::{
-  HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
+use crate::{
+  model::{AnchorId, AnchorMark, Length, LinkTarget},
+  typeset::{
+    HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
+  },
 };
 
 /// ページ列を決定的なテキスト形式へダンプする。
@@ -113,7 +115,7 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 
 /// 1 描画命令を書き出す（インデント 2）。
 ///
-/// `run.color`（`Option<[u8; 3]>`）は旧 `model::Color` の Debug 表記（`Color([r, g, b])`）と
+/// `run.color`（`Option<[u8; 3]>`）は旧 `crate::model::Color` の Debug 表記（`Color([r, g, b])`）と
 /// 同じ文字列になるよう手書きで揃える — golden の文字列比較を変えないため。
 fn dump_paint_op(out: &mut String, op: &PaintOp) {
   match op {
@@ -427,7 +429,6 @@ fn f2_pt(value: f32) -> String {
 
 #[cfg(test)]
 mod tests {
-  use model::{FontType, Length};
   use pdf_gen::{
     Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, Rect,
@@ -436,6 +437,7 @@ mod tests {
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
   use crate::{
     font::GlyphRun,
+    model::{FontType, Length},
     typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox},
   };
 

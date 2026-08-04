@@ -1,11 +1,12 @@
 //! 目次（table of contents）のスタイル設定型。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   Length,
   length::{non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 目次のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -19,7 +20,7 @@ pub struct TocStyle {
   pub title: String,
   /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
   ///
-  /// `model::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
+  /// `crate::model::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
   #[garde(range(min = 1, max = 6))]
   pub max_depth: u32,
   /// 目次エントリのフォントサイズ
@@ -57,7 +58,7 @@ impl Default for TocStyle {
 ///
 /// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
 /// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
-const _: () = assert!(model::HeadingLevel::COUNT == 6);
+const _: () = assert!(crate::model::HeadingLevel::COUNT == 6);
 
 #[cfg(test)]
 mod tests {

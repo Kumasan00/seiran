@@ -10,7 +10,6 @@ mod yakumono;
 pub use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
 pub(crate) use index::{build_index_blocks, build_index_spec};
 use lazy_regex::regex_replace_all;
-use model::{Align, Color, FontKind, FontType, Length};
 pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
 pub use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
@@ -18,6 +17,7 @@ use tracing::debug;
 
 use crate::{
   font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer},
+  model::{Align, Color, FontKind, FontType, Length},
   typeset::{
     breaking::{self, BreakKind, BreakPoint, Lang},
     layout::{
@@ -838,13 +838,11 @@ fn boundary_glue(
 
 #[cfg(test)]
 mod boundary_glue_tests {
-  use model::Length;
-
   use super::{
     CJK_STRETCH_RATIO, boundary_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
-  use crate::typeset::layout::HItem;
+  use crate::{model::Length, typeset::layout::HItem};
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -911,13 +909,11 @@ mod boundary_glue_tests {
 
 #[cfg(test)]
 mod ja_latin_aki_tests {
-  use model::Length;
-
   use super::{
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::typeset::layout::HItem;
+  use crate::{model::Length, typeset::layout::HItem};
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]

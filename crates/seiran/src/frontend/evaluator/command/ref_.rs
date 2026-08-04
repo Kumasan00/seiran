@@ -1,11 +1,12 @@
 //! `\ref{label}` コマンド
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{EvalError, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::{CommandView, extract_text_content},
+use crate::{
+  frontend::{
+    evaluator::{EvalError, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::{CommandView, extract_text_content},
+  },
+  model::InlineNode,
 };
 
 /// `\ref{label}` を `InlineNode::Ref` に変換する

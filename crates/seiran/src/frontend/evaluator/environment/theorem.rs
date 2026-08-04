@@ -1,14 +1,15 @@
 //! 定理環境 — `theorem` / `lemma` / … / `proof`（10 種）
 
-use model::{DocNode, ProofTarget, TheoremClass};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    opt_args::{OptType, OptValue, collect_environment_opt_args},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      opt_args::{OptType, OptValue, collect_environment_opt_args},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::{DocNode, ProofTarget, TheoremClass},
 };
 
 /// 定理環境（10 種共通）を評価する
@@ -75,10 +76,9 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::TheoremClass;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::TheoremClass};
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -171,7 +171,7 @@ mod tests {
     let DocNode::Paragraph(inlines) = result.last().unwrap() else {
       panic!("Paragraph が期待されます: {:?}", result.last());
     };
-    assert!(matches!(inlines.first(), Some(model::InlineNode::Ref { label, .. }) if label == "thm:p"));
+    assert!(matches!(inlines.first(), Some(crate::model::InlineNode::Ref { label, .. }) if label == "thm:p"));
   }
 
   #[test]

@@ -11,13 +11,13 @@ use harfrust::{
   ShaperInstance, Tag, Variation,
 };
 use miette::Diagnostic;
-use model::FontMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::{
   config::{FontConfig, FontConfigs, TextDirection},
   font::{FontRefs, FontType},
+  model::FontMap,
 };
 
 /// テキストシェイピングの初期化エラー。

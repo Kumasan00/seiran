@@ -1579,15 +1579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "model"
-version = "0.1.0"
-dependencies = [
- "garde",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2177,7 +2168,6 @@ dependencies = [
  "lopdf",
  "memchr",
  "miette",
- "model",
  "pdf_gen",
  "phf",
  "proptest",

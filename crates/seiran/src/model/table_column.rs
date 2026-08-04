@@ -1,6 +1,6 @@
 //! 表の列指定に関する共通型。
 
-use crate::Length;
+use crate::model::Length;
 
 /// 表の 1 列の定義（揃え + 幅指定）
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +61,7 @@ pub enum ColumnWidth {
 #[cfg(test)]
 mod tests {
   use super::{ColumnAlign, ColumnWidth, TableColumn};
-  use crate::Length;
+  use crate::model::Length;
 
   #[test]
   fn column_align_default_is_left() {

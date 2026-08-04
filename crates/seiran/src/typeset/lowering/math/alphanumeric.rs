@@ -1,6 +1,6 @@
 //! Mathematical Alphanumeric Symbols へのコードポイント変換
 
-use model::MathStyle;
+use crate::model::MathStyle;
 
 /// 1 文字を `style` に応じた Mathematical Alphanumeric コードポイントへ変換する
 pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {

@@ -4,15 +4,16 @@
 
 use std::fmt;
 
-use model::{Color, Length};
-
-use crate::frontend::{
-  evaluator::EvalError,
-  span_ext::ToSourceSpan,
-  syntax::{
-    ast::{CommandView, EnvironmentView, parse_key_value_options},
-    green::GreenNode,
+use crate::{
+  frontend::{
+    evaluator::EvalError,
+    span_ext::ToSourceSpan,
+    syntax::{
+      ast::{CommandView, EnvironmentView, parse_key_value_options},
+      green::GreenNode,
+    },
   },
+  model::{Color, Length},
 };
 
 /// 任意引数キーが期待する値の型タグ
@@ -24,9 +25,9 @@ pub(crate) enum OptType {
   Number,
   /// 任意の文字列
   String,
-  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`model::Length`] に正規化する
+  /// 長さ。`mm` / `cm` / 無印（mm 扱い）を [`crate::model::Length`] に正規化する
   Length,
-  /// 色。`#rrggbb` の 16 進文字列を [`model::Color`] に変換する（大文字小文字不問）
+  /// 色。`#rrggbb` の 16 進文字列を [`crate::model::Color`] に変換する（大文字小文字不問）
   Color,
 }
 
@@ -52,9 +53,9 @@ pub(crate) enum OptValue {
   Number(f64),
   /// 文字列
   String(String),
-  /// [`model::Length`] に正規化された長さ
+  /// [`crate::model::Length`] に正規化された長さ
   Length(Length),
-  /// [`model::Color`] に変換された色
+  /// [`crate::model::Color`] に変換された色
   Color(Color),
 }
 

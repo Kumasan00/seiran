@@ -1,6 +1,6 @@
 //! インラインレベル要素の型定義
 
-use crate::{CitationId, Color, FontKind, Span, math_node::MathNode};
+use crate::model::{CitationId, Color, FontKind, Span, math_node::MathNode};
 
 /// インラインレベルのドキュメント要素
 ///

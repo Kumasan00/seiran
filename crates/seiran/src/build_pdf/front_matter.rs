@@ -6,7 +6,6 @@
 
 use std::time::Instant;
 
-use model::HeadingKey;
 use tracing::info;
 
 use super::{
@@ -14,7 +13,10 @@ use super::{
   page_values::BodyPageValues,
   phase_context::{BodyPageFacts, CompileContext},
 };
-use crate::typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput};
+use crate::{
+  model::HeadingKey,
+  typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput},
+};
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。
 ///
@@ -71,11 +73,10 @@ fn collect_toc_entries(
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorMark, HeadingKey, HeadingLevel};
-
   use super::{BodyPageValues, Page, collect_toc_entries};
   use crate::{
     config::{PageNumbering, TocStyle},
+    model::{AnchorMark, HeadingKey, HeadingLevel},
     typeset::{HeadingRecord, PlacedAnchor},
   };
 
@@ -102,8 +103,8 @@ mod tests {
               key: HeadingKey::new(index),
               label: None,
             },
-            x: model::Length::ZERO,
-            y: model::Length::ZERO,
+            x: crate::model::Length::ZERO,
+            y: crate::model::Length::ZERO,
           }],
           links: Vec::new(),
           index_entries: Vec::new(),

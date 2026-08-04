@@ -2,13 +2,15 @@
 //!
 //! [`ENVIRONMENTS`] はハンドラとパースモードの対応を一元管理する。
 
-use model::DocNode;
 use phf::phf_map;
 
-use crate::frontend::{
-  evaluator::EvalError,
-  span_ext::ToSourceSpan,
-  syntax::{ParseMode, ast::EnvironmentView},
+use crate::{
+  frontend::{
+    evaluator::EvalError,
+    span_ext::ToSourceSpan,
+    syntax::{ParseMode, ast::EnvironmentView},
+  },
+  model::DocNode,
 };
 
 pub(crate) mod body_scan;

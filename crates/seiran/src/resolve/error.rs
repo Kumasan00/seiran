@@ -1,8 +1,9 @@
 //! 解決ステージで発生し得るエラー
 
 use miette::Diagnostic;
-use model::Origin;
 use thiserror::Error;
+
+use crate::model::Origin;
 
 /// 解決（ラベル・`\ref`・`\cite` の名前解決）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -63,10 +64,10 @@ impl ResolveError {
   }
 }
 
-/// `model::Span` を診断用の `miette::SourceSpan` へ変換する
+/// `crate::model::Span` を診断用の `miette::SourceSpan` へ変換する
 ///
 /// `ResolveError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
 /// カウンタ登録（`counter`）とツリー構築（`resolver`）の双方から共有する
-pub(crate) fn span_to_source_span(span: model::Span) -> miette::SourceSpan {
+pub(crate) fn span_to_source_span(span: crate::model::Span) -> miette::SourceSpan {
   return miette::SourceSpan::from((span.start as usize, span.len() as usize));
 }

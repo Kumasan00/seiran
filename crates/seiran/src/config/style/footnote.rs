@@ -1,13 +1,15 @@
 //! 脚注（`\footnote`）のスタイル設定型（`[footnote]` テーブル）。
 
 use garde::Validate;
-use model::{
-  Color,
-  length::{Length, non_negative, positive},
-};
 use serde::{Deserialize, Serialize};
 
-use crate::config::style::number_style::NumberStyle;
+use crate::{
+  config::style::number_style::NumberStyle,
+  model::{
+    Color,
+    length::{Length, non_negative, positive},
+  },
+};
 
 /// 脚注番号のリセット方式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
@@ -83,10 +85,9 @@ impl Default for FootnoteStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::Length;
 
   use super::{FootnoteNumbering, FootnoteStyle};
-  use crate::config::style::number_style::NumberStyle;
+  use crate::{config::style::number_style::NumberStyle, model::Length};
 
   #[test]
   fn validate_accepts_default() {

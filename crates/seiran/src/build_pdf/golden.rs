@@ -9,13 +9,12 @@ use std::{
   sync::Arc,
 };
 
-use model::{AnchorMark, Length};
-
 use super::{build_pages, dump::dump_pages};
 use crate::{
   citation::{References, read_references},
   config::{Config, MemoryProjectSource, ProjectPath, Style},
   font::{FontData, FontDataExt},
+  model::{AnchorMark, Length},
   typeset::{Page, PlacedBlock},
 };
 

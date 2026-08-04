@@ -1,13 +1,15 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
-use model::{CaptionPosition, FontKind, Length};
-
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
-use crate::{config::CaptionStyle, resolve::ResolvedInline};
+use crate::{
+  config::CaptionStyle,
+  model::{CaptionPosition, FontKind, Length},
+  resolve::ResolvedInline,
+};
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
 pub(super) fn build_caption(
@@ -73,7 +75,7 @@ pub(super) fn wrap_float(
       margin_bottom: spec.bottom_margin,
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: model::Align::Center,
+      align: crate::model::Align::Center,
     },
   ];
 }
@@ -81,11 +83,10 @@ pub(super) fn wrap_float(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use model::{CaptionPosition, FontKind, Length};
-
   use super::{super::test_support, *};
   use crate::{
     config::{CaptionStyle, CounterName, Style as ReadStyle},
+    model::{CaptionPosition, FontKind, Length},
     resolve::{CounterKind, CounterValue},
   };
 
@@ -142,7 +143,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
-    assert_eq!(*align, model::Align::Center, "図表は既定で中央寄せ");
+    assert_eq!(*align, crate::model::Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Rule { .. }));
@@ -241,8 +242,8 @@ mod tests {
     let ctx = LoweringContext::new(&read_style);
     let caption_style = CaptionStyle::default();
     let inlines = [ResolvedInline::Ref {
-      target: model::LabelId::new("fig:one"),
-      span: model::Span::DUMMY,
+      target: crate::model::LabelId::new("fig:one"),
+      span: crate::model::Span::DUMMY,
     }];
     let document = test_support::document(&[(
       "fig:one",
@@ -263,7 +264,10 @@ mod tests {
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
-    assert_eq!(*link.0, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("fig:one"))));
+    assert_eq!(
+      *link.0,
+      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("fig:one")))
+    );
     assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Figure 1.2"), "{:?}", link.1);
   }
 }

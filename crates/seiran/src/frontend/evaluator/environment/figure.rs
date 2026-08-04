@@ -2,16 +2,17 @@
 //!
 //! `\image` と `\caption` を [`DocNode::Figure`] に変換する。
 
-use model::{CaptionPosition, DocNode, InlineNode, Length};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    environment::{body_scan, caption::extract_caption},
-    opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      environment::{body_scan, caption::extract_caption},
+      opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::{CommandView, EnvironmentView, extract_text_content},
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::{CommandView, EnvironmentView, extract_text_content},
+  model::{CaptionPosition, DocNode, InlineNode, Length},
 };
 
 /// `figure` 環境を評価する
@@ -87,7 +88,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
   };
 
   return Ok(vec![DocNode::Figure {
-    image_path: model::AssetId::new(image_path),
+    image_path: crate::model::AssetId::new(image_path),
     width,
     height,
     dpi,

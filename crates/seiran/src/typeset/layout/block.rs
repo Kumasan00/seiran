@@ -3,13 +3,12 @@
 //! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
-use model::{Align, AnchorMark, AssetId, Length};
-
 use super::{
   hitem::{HBox, HItem},
   line::Line,
   table_box::TableBox,
 };
+use crate::model::{Align, AnchorMark, AssetId, Length};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///

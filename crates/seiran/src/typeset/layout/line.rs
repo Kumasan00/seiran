@@ -1,8 +1,7 @@
 //! 行分割の出力。
 
-use model::{Length, LinkTarget};
-
 use super::hitem::{HBoxContent, HItem};
+use crate::model::{Length, LinkTarget};
 
 /// 行分割で確定した 1 行
 ///

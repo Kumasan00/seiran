@@ -3,13 +3,15 @@
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
 use miette::SourceSpan;
-use model::{DocNode, FontKind, HeadingLevel, InlineNode};
 use phf::phf_map;
 
-use crate::frontend::{
-  evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
+  },
+  model::{DocNode, FontKind, HeadingLevel, InlineNode},
 };
 
 pub(crate) mod cite;

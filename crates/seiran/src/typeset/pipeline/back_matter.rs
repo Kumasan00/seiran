@@ -1,10 +1,10 @@
 //! 後付け（巻末索引）パス（計測 → 改行・改ページ）
 
-use model::Length;
 use tracing::debug_span;
 
 use crate::{
   font::FontSystem,
+  model::Length,
   typeset::{
     block::{IndexEntryInput, build_index_blocks, build_index_spec},
     breaking::{LineBreaker, PageGeometry, break_pages},

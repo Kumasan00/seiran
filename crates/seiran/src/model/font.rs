@@ -102,6 +102,11 @@ impl FontType {
   /// 表示する際の正規表記としても使用されます（`Debug` フォーマットは `PascalCase` で
   /// ユーザの書いた TOML キーと一致しないため、エラーパスにはこちらを使ってください）。
   #[must_use]
+  // `FontType` は fieldless Copy enum のため clippy::trivially_copy_pass_by_ref は `self` への
+  // 値渡しを提案する（呼び出し側 4 箇所すべてメソッド構文でどちらでも壊れない、#307 で
+  // `model` crate 吸収により pub API 扱いが外れて新規に顕在化）。移設のみを目的とする本 Task の
+  // 対象外として今は据え置き、シグネチャ変更は cleanup candidate としてログする。
+  #[allow(clippy::trivially_copy_pass_by_ref)]
   pub fn as_toml_key(&self) -> &'static str {
     return match self {
       FontType::Serif => "serif",

@@ -1,8 +1,9 @@
 //! (c) 行分割
 
-use model::{Length, LinkTarget, TextAlignment};
-
-use crate::typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox};
+use crate::{
+  model::{Length, LinkTarget, TextAlignment},
+  typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox},
+};
 
 mod greedy;
 mod knuth_plass;
@@ -243,9 +244,10 @@ pub(super) fn build_line(
 /// 行分割テストの共有フィクスチャ（[`greedy`] / [`knuth_plass`] 両モジュールのテストが使う）
 #[cfg(test)]
 pub(super) mod test_support {
-  use model::Length;
-
-  use crate::typeset::layout::{HBox, HBoxContent, HItem};
+  use crate::{
+    model::Length,
+    typeset::layout::{HBox, HBoxContent, HItem},
+  };
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
   fn pt(value: f32) -> Length { return Length::pt(value); }
@@ -345,8 +347,8 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> model::LinkTarget {
-    return model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("sec:x")));
+  pub(super) fn link_target() -> crate::model::LinkTarget {
+    return crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("sec:x")));
   }
 
   /// テスト用の索引マーカー（幅 0・分割不可）

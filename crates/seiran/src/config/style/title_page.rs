@@ -1,11 +1,12 @@
 //! タイトルページ（`\maketitle` 相当）のスタイル設定型。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   FontKind,
   length::{Length, non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// タイトルページのスタイル設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -63,9 +64,9 @@ impl Default for TitlePageStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, length::Length};
 
   use super::TitlePageStyle;
+  use crate::model::{FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

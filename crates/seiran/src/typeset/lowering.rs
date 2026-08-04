@@ -4,11 +4,11 @@
 //! この層は「解決済みの構造値を style の表示側フィールドで文字列にして箱に積む」だけを行う。
 //! 意味解析を行わないので、この層に失敗はない（`Result` を返さない）。
 
-use model::{LabelId, Length};
 use tracing::debug;
 
 use crate::{
   config::Style as ReadStyle,
+  model::{LabelId, Length},
   resolve::{ResolvedDocument, ResolvedInline, ResolvedNode},
 };
 
@@ -37,9 +37,9 @@ pub struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
-  pub body_font_kind: model::FontKind,
+  pub body_font_kind: crate::model::FontKind,
   /// 段落先頭行の字下げ量
-  pub first_line_indent: model::Length,
+  pub first_line_indent: crate::model::Length,
   /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
   pub image_max_dpi: u32,
   /// ラスタ画像のダウンサンプリング可否（config `[image].downsample` 由来）
@@ -82,7 +82,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_body_font_kind(&self, body_font_kind: model::FontKind) -> LoweringContext<'a> {
+  pub fn with_body_font_kind(&self, body_font_kind: crate::model::FontKind) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
@@ -96,7 +96,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_first_line_indent(&self, first_line_indent: model::Length) -> LoweringContext<'a> {
+  pub fn with_first_line_indent(&self, first_line_indent: crate::model::Length) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,
@@ -133,7 +133,7 @@ pub struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
-  pub level: model::HeadingLevel,
+  pub level: crate::model::HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
   /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
@@ -145,9 +145,10 @@ pub struct HeadingRecord {
 pub(super) mod test_support {
   use std::collections::HashMap;
 
-  use model::LabelId;
-
-  use crate::resolve::{CounterValue, ResolvedDocument};
+  use crate::{
+    model::LabelId,
+    resolve::{CounterValue, ResolvedDocument},
+  };
 
   /// ラベル → カウンタ値の対応だけを持つ最小の解決済みドキュメントを作る
   ///
@@ -337,7 +338,7 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &ResolvedNode, state: &mut Lo
       return vec![LayoutNode::Kern { length: *length }];
     },
     ResolvedNode::Anchor(target) => {
-      return vec![LayoutNode::Anchor(model::AnchorMark::Citation(
+      return vec![LayoutNode::Anchor(crate::model::AnchorMark::Citation(
         target.clone(),
       ))];
     },
@@ -430,7 +431,7 @@ fn with_label_anchor(label: Option<&LabelId>, nodes: Vec<LayoutNode>) -> Vec<Lay
     return nodes;
   };
   let mut result = Vec::with_capacity(nodes.len() + 1);
-  result.push(LayoutNode::Anchor(model::AnchorMark::Label(label.clone())));
+  result.push(LayoutNode::Anchor(crate::model::AnchorMark::Label(label.clone())));
   result.extend(nodes);
   return result;
 }
@@ -441,14 +442,18 @@ fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<Layout
     return nodes;
   }
   let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(labels.iter().map(|label| return LayoutNode::Anchor(model::AnchorMark::Label((*label).clone()))));
+  result.extend(
+    labels
+      .iter()
+      .map(|label| return LayoutNode::Anchor(crate::model::AnchorMark::Label((*label).clone()))),
+  );
   result.extend(nodes);
   return result;
 }
 
 /// 解決済みインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
 ///
-/// `model::InlineNode::try_to_plain_text` の解決済み版。バリアントごとの扱い（数式は
+/// `crate::model::InlineNode::try_to_plain_text` の解決済み版。バリアントごとの扱い（数式は
 /// `"[Math]"`、脚注・索引は空、`\cite` は整形済みラベルを辿る等）は同じに保つ。
 fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle, state: &LoweringState) -> String {
   let mut out = String::new();
@@ -478,12 +483,11 @@ fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle,
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use model::{
-    DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId,
-  };
-
   use super::*;
-  use crate::resolve::{self, SemanticDocument, SemanticGroup};
+  use crate::{
+    model::{DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId},
+    resolve::{self, SemanticDocument, SemanticGroup},
+  };
 
   /// `DocNode` 列を `resolve::resolve_project` に通して解決済みドキュメントにするテストヘルパ
   ///
@@ -524,7 +528,7 @@ mod tests {
       }],
       numbered: false,
       label: None,
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     };
   }
 
@@ -569,14 +573,14 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Anchor(model::CitationId::new("foo"))];
+    let nodes = [DocNode::Anchor(crate::model::CitationId::new("foo"))];
 
     // Act
     let result = lower_group(&ctx, &style, &nodes);
 
     // Assert
     assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], LayoutNode::Anchor(model::AnchorMark::Citation(k)) if k.as_str() == "foo"));
+    assert!(matches!(&result[0], LayoutNode::Anchor(crate::model::AnchorMark::Citation(k)) if k.as_str() == "foo"));
   }
 
   #[test]
@@ -745,7 +749,7 @@ mod tests {
     let mut keys = Vec::new();
     for node in nodes {
       match node {
-        LayoutNode::Anchor(model::AnchorMark::Heading { key, .. }) => keys.push(key.index()),
+        LayoutNode::Anchor(crate::model::AnchorMark::Heading { key, .. }) => keys.push(key.index()),
         LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
           keys.extend(collect_heading_anchor_keys(children));
         },
@@ -788,7 +792,7 @@ mod tests {
     let footnote = |text: &str| {
       return InlineNode::Footnote {
         body: vec![InlineNode::Text(text.to_string())],
-        span: model::Span::DUMMY,
+        span: crate::model::Span::DUMMY,
       };
     };
     let nodes = vec![
@@ -819,7 +823,7 @@ mod tests {
     let footnote = |text: &str| {
       return DocNode::Paragraph(vec![InlineNode::Footnote {
         body: vec![InlineNode::Text(text.to_string())],
-        span: model::Span::DUMMY,
+        span: crate::model::Span::DUMMY,
       }]);
     };
     let g0 = [footnote("a")];
@@ -852,7 +856,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(out.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l.as_str() == "eq:foo"),
+      matches!(out.first(), Some(LayoutNode::Anchor(crate::model::AnchorMark::Label(l))) if l.as_str() == "eq:foo"),
       "先頭は Label アンカー: {out:?}"
     );
   }
@@ -897,7 +901,7 @@ mod tests {
       numbered: true,
       title: vec![InlineNode::Text(title.to_string())],
       label: Some(label.to_string()),
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     };
   }
 
@@ -931,9 +935,9 @@ mod tests {
     fn contains_internal_link(nodes: &[LayoutNode], target: &str) -> bool {
       return nodes.iter().any(|n| match n {
         LayoutNode::Link {
-          target: model::LinkTarget::Internal(t),
+          target: crate::model::LinkTarget::Internal(t),
           ..
-        } => return *t == model::AnchorId::Label(LabelId::new(target)),
+        } => return *t == crate::model::AnchorId::Label(LabelId::new(target)),
         LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
           return contains_internal_link(children, target);
         },
@@ -946,7 +950,7 @@ mod tests {
     let g0 = [labeled_chapter("Intro", "ch:intro")];
     let g1 = [DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     }])];
     let document = resolved(&style, &[&g0, &g1]);
 
@@ -987,7 +991,7 @@ mod tests {
       numbered: false,
       title: vec![InlineNode::Text("Preface".to_string())],
       label: None,
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     }];
     let document = resolved(&style, &[&nodes]);
 
@@ -1011,7 +1015,7 @@ mod tests {
           InlineNode::Text("見出し ".to_string()),
           InlineNode::Ref {
             label: "ch:intro".to_string(),
-            span: model::Span::DUMMY,
+            span: crate::model::Span::DUMMY,
           },
         ],
       ),

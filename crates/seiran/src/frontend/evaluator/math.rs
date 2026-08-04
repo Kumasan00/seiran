@@ -2,17 +2,18 @@
 //!
 //! インライン数式と数式環境のセルを [`MathNode`] 列に変換する。
 
-use model::{MathNode, MathStyle};
-
-use crate::frontend::{
-  evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::{
-    SyntaxKind,
-    ast::{CommandView, EnvironmentView},
-    green::{GreenElement, GreenNode},
-    token::TokenKind,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::{
+      SyntaxKind,
+      ast::{CommandView, EnvironmentView},
+      green::{GreenElement, GreenNode},
+      token::TokenKind,
+    },
   },
+  model::{MathNode, MathStyle},
 };
 
 /// インライン数式ノード（`$...$` 由来の `InlineMath`）を `MathNode` のリストに変換する

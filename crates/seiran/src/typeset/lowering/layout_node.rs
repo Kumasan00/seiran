@@ -1,6 +1,6 @@
 //! レイアウトノードおよびスタイルの型定義
 
-use model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
+use crate::model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
 
 /// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ pub enum LayoutNode {
   /// 画像（PNG / JPEG / SVG）
   Image {
     /// 画像ファイルへのパス
-    path: model::AssetId,
+    path: crate::model::AssetId,
     /// 描画幅（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
     width: Option<Length>,
     /// 描画高さ（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
@@ -206,9 +206,8 @@ pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
 
 #[cfg(test)]
 mod tests {
-  use model::FontKind;
-
   use super::*;
+  use crate::model::FontKind;
 
   fn style(font_kind: FontKind) -> TextStyle {
     return TextStyle {

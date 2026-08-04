@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
-use model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin, SourceId};
-
-use crate::resolve::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode};
+use crate::{
+  model::{DocNode, HeadingKey, HeadingLevel, LabelId, Origin, SourceId},
+  resolve::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode},
+};
 
 /// 1 ソースグループぶんの未解決ノード列
 pub struct SemanticGroup<'a> {

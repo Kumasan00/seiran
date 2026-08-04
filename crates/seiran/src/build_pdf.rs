@@ -41,7 +41,6 @@ pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedParseError, CompileError};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
-use model::DocNode;
 pub use project::OutputPlan;
 use project::{ProjectSnapshot, SourceDb};
 use semantics::SemanticsError;
@@ -52,6 +51,7 @@ use crate::citation::References;
 use crate::{
   citation::read_references,
   font::{FontData, FontDataExt, FontResources},
+  model::DocNode,
 };
 
 /// コンパイル結果の統計情報。
@@ -216,7 +216,7 @@ fn build_publication(
   config: &crate::config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-  image_bytes: HashMap<model::AssetId, Vec<u8>>,
+  image_bytes: HashMap<crate::model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
 ) -> miette::Result<pdf_gen::Publication> {
   let fonts = build_pdf_fonts(font_data, font_resources);
@@ -227,39 +227,39 @@ fn build_publication(
   return Ok(publication::build_publication(config, resources, laid_out));
 }
 
-/// `model::FontType` を `pdf_gen::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
-fn to_pdf_font_type(font_type: model::FontType) -> pdf_gen::FontType {
+/// `crate::model::FontType` を `pdf_gen::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
+fn to_pdf_font_type(font_type: crate::model::FontType) -> pdf_gen::FontType {
   return match font_type {
-    model::FontType::Serif => pdf_gen::FontType::Serif,
-    model::FontType::SerifBold => pdf_gen::FontType::SerifBold,
-    model::FontType::SerifItalic => pdf_gen::FontType::SerifItalic,
-    model::FontType::SerifBoldItalic => pdf_gen::FontType::SerifBoldItalic,
-    model::FontType::SansSerif => pdf_gen::FontType::SansSerif,
-    model::FontType::SansSerifBold => pdf_gen::FontType::SansSerifBold,
-    model::FontType::SansSerifItalic => pdf_gen::FontType::SansSerifItalic,
-    model::FontType::SansSerifBoldItalic => pdf_gen::FontType::SansSerifBoldItalic,
-    model::FontType::Monospace => pdf_gen::FontType::Monospace,
-    model::FontType::MonospaceBold => pdf_gen::FontType::MonospaceBold,
-    model::FontType::MonospaceItalic => pdf_gen::FontType::MonospaceItalic,
-    model::FontType::MonospaceBoldItalic => pdf_gen::FontType::MonospaceBoldItalic,
-    model::FontType::Math => pdf_gen::FontType::Math,
-    model::FontType::JapaneseSerif => pdf_gen::FontType::JapaneseSerif,
-    model::FontType::JapaneseSerifBold => pdf_gen::FontType::JapaneseSerifBold,
-    model::FontType::JapaneseSansSerif => pdf_gen::FontType::JapaneseSansSerif,
-    model::FontType::JapaneseSansSerifBold => pdf_gen::FontType::JapaneseSansSerifBold,
-    model::FontType::JapaneseMonospace => pdf_gen::FontType::JapaneseMonospace,
-    model::FontType::JapaneseMonospaceBold => pdf_gen::FontType::JapaneseMonospaceBold,
+    crate::model::FontType::Serif => pdf_gen::FontType::Serif,
+    crate::model::FontType::SerifBold => pdf_gen::FontType::SerifBold,
+    crate::model::FontType::SerifItalic => pdf_gen::FontType::SerifItalic,
+    crate::model::FontType::SerifBoldItalic => pdf_gen::FontType::SerifBoldItalic,
+    crate::model::FontType::SansSerif => pdf_gen::FontType::SansSerif,
+    crate::model::FontType::SansSerifBold => pdf_gen::FontType::SansSerifBold,
+    crate::model::FontType::SansSerifItalic => pdf_gen::FontType::SansSerifItalic,
+    crate::model::FontType::SansSerifBoldItalic => pdf_gen::FontType::SansSerifBoldItalic,
+    crate::model::FontType::Monospace => pdf_gen::FontType::Monospace,
+    crate::model::FontType::MonospaceBold => pdf_gen::FontType::MonospaceBold,
+    crate::model::FontType::MonospaceItalic => pdf_gen::FontType::MonospaceItalic,
+    crate::model::FontType::MonospaceBoldItalic => pdf_gen::FontType::MonospaceBoldItalic,
+    crate::model::FontType::Math => pdf_gen::FontType::Math,
+    crate::model::FontType::JapaneseSerif => pdf_gen::FontType::JapaneseSerif,
+    crate::model::FontType::JapaneseSerifBold => pdf_gen::FontType::JapaneseSerifBold,
+    crate::model::FontType::JapaneseSansSerif => pdf_gen::FontType::JapaneseSansSerif,
+    crate::model::FontType::JapaneseSansSerifBold => pdf_gen::FontType::JapaneseSansSerifBold,
+    crate::model::FontType::JapaneseMonospace => pdf_gen::FontType::JapaneseMonospace,
+    crate::model::FontType::JapaneseMonospaceBold => pdf_gen::FontType::JapaneseMonospaceBold,
   };
 }
 
 /// `crate::font::FontData` + `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡す
-/// フォント構築設定一式を組み立てる（`model::FontType` → `pdf_gen::FontType` への変換込み）。
+/// フォント構築設定一式を組み立てる（`crate::model::FontType` → `pdf_gen::FontType` への変換込み）。
 fn build_pdf_fonts(
   font_data: &FontData,
   font_resources: &FontResources<'_>,
 ) -> HashMap<pdf_gen::FontType, pdf_gen::FontFaceInput> {
   let face_configs = font_resources.face_configs();
-  return model::FontType::ALL
+  return crate::model::FontType::ALL
     .iter()
     .map(|&font_type| {
       let face_config = face_configs.get(font_type);
@@ -286,7 +286,7 @@ fn build_pdf_fonts(
 /// `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
 fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<pdf_gen::FontType, pdf_gen::FontMetric> {
   let metrics = font_resources.metrics();
-  return model::FontType::ALL
+  return crate::model::FontType::ALL
     .iter()
     .map(|&font_type| {
       let metric = metrics.get(font_type);
@@ -344,7 +344,7 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 1 ソースのパース結果。本文の表示名・内容は `SourceDb` が持つため、ここでは持たない。
 struct ParsedSource {
   /// パース元ソースの識別子
-  source_id: model::SourceId,
+  source_id: crate::model::SourceId,
   /// パース・評価済みの Document IR ノード列
   nodes: Vec<DocNode>,
 }
@@ -380,14 +380,14 @@ fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> R
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
 fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb) -> CompileError {
   return match error.origin() {
-    model::Origin::Source(source_id) => {
+    crate::model::Origin::Source(source_id) => {
       let entry = source_db.get(source_id);
       CompileError::Resolve {
         src: miette::NamedSource::new(&entry.name, entry.content.clone()),
         source: error,
       }
     },
-    model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
+    crate::model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
   };
 }
 
@@ -406,23 +406,27 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 mod tests {
   /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
   pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
-    use model::{DocNode, InlineNode};
+    use crate::model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),
     )])];
     let bibliography = vec![DocNode::Paragraph(vec![InlineNode::Ref {
       label: "missing".to_string(),
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     }])];
     let semantic = crate::resolve::SemanticDocument {
       groups: vec![crate::resolve::SemanticGroup {
         nodes: &g0,
-        source_id: model::SourceId::new(0),
+        source_id: crate::model::SourceId::new(0),
       }],
       bibliography: &bibliography,
     };
     let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(error.origin(), model::Origin::Generated(model::GeneratedOrigin::Bibliography), "書誌が帰属源のはず");
+    assert_eq!(
+      error.origin(),
+      crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography),
+      "書誌が帰属源のはず"
+    );
     return error;
   }
 }

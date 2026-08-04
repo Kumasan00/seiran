@@ -3,11 +3,12 @@
 use std::path::PathBuf;
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   Length,
   length::{non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

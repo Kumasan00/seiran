@@ -48,19 +48,19 @@ pub fn resolve_project(
 
   let mut groups = Vec::with_capacity(semantic.groups.len());
   for group in &semantic.groups {
-    let origin = model::Origin::Source(group.source_id);
+    let origin = crate::model::Origin::Source(group.source_id);
     let nodes = resolver::resolve_group(group.nodes, &mut registry, &mut pending_headings, origin)?;
     groups.push(ResolvedGroup {
       nodes,
       source_id: group.source_id,
     });
   }
-  let bibliography_origin = model::Origin::Generated(model::GeneratedOrigin::Bibliography);
+  let bibliography_origin = crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography);
   let bibliography =
     resolver::resolve_group(semantic.bibliography, &mut registry, &mut pending_headings, bibliography_origin)?;
 
   for group in &groups {
-    validate::validate_refs(&group.nodes, &registry, model::Origin::Source(group.source_id))?;
+    validate::validate_refs(&group.nodes, &registry, crate::model::Origin::Source(group.source_id))?;
   }
   validate::validate_refs(&bibliography, &registry, bibliography_origin)?;
 
@@ -68,7 +68,7 @@ pub fn resolve_project(
     .into_iter()
     .map(|pending| {
       return ResolvedHeading {
-        key: model::HeadingKey::new(pending.index),
+        key: crate::model::HeadingKey::new(pending.index),
         level: pending.level,
         counter_value: pending.counter_value,
         title: pending.title,
@@ -89,12 +89,11 @@ pub fn resolve_project(
 
 #[cfg(test)]
 mod tests {
-  use model::{HeadingLevel, InlineNode, SourceId, Span};
-
   use super::*;
+  use crate::model::{HeadingLevel, InlineNode, SourceId, Span};
 
-  fn labeled_chapter(title: &str, label: &str) -> model::DocNode {
-    return model::DocNode::Heading {
+  fn labeled_chapter(title: &str, label: &str) -> crate::model::DocNode {
+    return crate::model::DocNode::Heading {
       level: HeadingLevel::Chapter,
       numbered: true,
       title: vec![InlineNode::text(title)],
@@ -108,7 +107,7 @@ mod tests {
   fn resolve_project_resolves_ref_across_groups() {
     // Arrange
     let g0 = vec![labeled_chapter("Intro", "ch:intro")];
-    let g1 = vec![model::DocNode::Paragraph(vec![InlineNode::Ref {
+    let g1 = vec![crate::model::DocNode::Paragraph(vec![InlineNode::Ref {
       label: "ch:intro".to_string(),
       span: Span::DUMMY,
     }])];
@@ -131,14 +130,14 @@ mod tests {
 
     // Assert
     assert_eq!(resolved.headings.len(), 1);
-    assert!(resolved.counter_values.contains_key(&model::LabelId::new("ch:intro")));
+    assert!(resolved.counter_values.contains_key(&crate::model::LabelId::new("ch:intro")));
   }
 
   #[allow(clippy::unwrap_used)]
   #[test]
   fn resolve_project_reports_unresolved_reference() {
     // Arrange
-    let g0 = vec![model::DocNode::Paragraph(vec![InlineNode::Ref {
+    let g0 = vec![crate::model::DocNode::Paragraph(vec![InlineNode::Ref {
       label: "missing".to_string(),
       span: Span::DUMMY,
     }])];
@@ -164,11 +163,13 @@ mod tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod style_independence_tests {
-  use model::{DocNode, HeadingLevel, InlineNode, SourceId, Span};
   use proptest::prelude::*;
 
   use super::{ResolvedDocument, SemanticDocument, SemanticGroup, resolve_project};
-  use crate::config::Style;
+  use crate::{
+    config::Style,
+    model::{DocNode, HeadingLevel, InlineNode, SourceId, Span},
+  };
 
   /// 見出し・本文・`\ref` を含む代表的なドキュメントを組み立てる
   fn sample_nodes() -> Vec<DocNode> {
@@ -297,8 +298,8 @@ mod style_independence_tests {
     let reset_resolved = resolve_sample(&nodes, &reset_variant);
 
     // Assert: 2 番目の section（sec:b1）の CounterValue が resets の有無で変わる
-    let base_value = base_resolved.counter_values.get(&model::LabelId::new("sec:b1")).expect("登録済みのはず");
-    let reset_value = reset_resolved.counter_values.get(&model::LabelId::new("sec:b1")).expect("登録済みのはず");
+    let base_value = base_resolved.counter_values.get(&crate::model::LabelId::new("sec:b1")).expect("登録済みのはず");
+    let reset_value = reset_resolved.counter_values.get(&crate::model::LabelId::new("sec:b1")).expect("登録済みのはず");
     assert_ne!(base_value, reset_value, "resets は値側フィールドなので CounterValue に影響するはず");
   }
 

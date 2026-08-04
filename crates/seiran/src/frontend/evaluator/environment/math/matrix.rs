@@ -2,16 +2,17 @@
 //!
 //! 行と列に分割する非採番の数式環境。
 
-use model::{DocNode, MathDelimiter, MathEnvKind};
-
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    opt_args::{OptType, collect_environment_opt_args, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      opt_args::{OptType, collect_environment_opt_args, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::{DocNode, MathDelimiter, MathEnvKind},
 };
 
 /// `matrix` 環境を評価する
@@ -67,10 +68,12 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::{MathDelimiter, MathEnvKind};
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{MathDelimiter, MathEnvKind},
+  };
 
   fn parse<'a>(
     source: &'a str,
@@ -80,7 +83,7 @@ mod tests {
   }
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
-  fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[model::MathRow]) {
+  fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[crate::model::MathRow]) {
     let DocNode::MathBlock {
       kind,
       rows,

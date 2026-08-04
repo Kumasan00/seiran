@@ -2,10 +2,11 @@
 //!
 //! 単一セルの行に分割し、行単位で採番する。
 
-use model::{DocNode, MathEnvKind};
-
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::frontend::{evaluator::EvalError, syntax::ast::EnvironmentView};
+use crate::{
+  frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
+  model::{DocNode, MathEnvKind},
+};
 
 /// `gather` 環境を評価する
 ///
@@ -28,10 +29,9 @@ pub(crate) fn gather(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::MathEnvKind;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
 
   fn parse<'a>(
     source: &'a str,
@@ -40,7 +40,7 @@ mod tests {
     return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  fn rows_of(result: &[DocNode]) -> &[model::MathRow] {
+  fn rows_of(result: &[DocNode]) -> &[crate::model::MathRow] {
     let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };

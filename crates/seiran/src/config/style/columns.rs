@@ -1,8 +1,9 @@
 //! 段組み（1 段 / 2 段切替）のスタイル設定型。
 
 use garde::Validate;
-use model::{Length, length::non_negative};
 use serde::{Deserialize, Serialize};
+
+use crate::model::{Length, length::non_negative};
 
 /// 段組みのスタイル設定
 ///
@@ -31,9 +32,9 @@ impl Default for ColumnsStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::Length;
 
   use super::ColumnsStyle;
+  use crate::model::Length;
 
   #[test]
   fn validate_accepts_default() {

@@ -1,6 +1,6 @@
 //! ハイパーリンクのアンカーと行き先。
 
-use crate::{CitationId, FootnoteId, HeadingKey, LabelId};
+use crate::model::{CitationId, FootnoteId, HeadingKey, LabelId};
 
 /// 到達先アンカーを一意に指すキー
 ///

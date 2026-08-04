@@ -12,10 +12,9 @@
 
 use std::collections::HashMap;
 
-use model::{HeadingLevel, LabelId, Origin, Span, TheoremClass};
-
 use crate::{
   config::{CounterName, Counters, Style, TheoremReset, Theorems},
+  model::{HeadingLevel, LabelId, Origin, Span, TheoremClass},
   resolve::{ResolveError, error::span_to_source_span},
 };
 
@@ -318,12 +317,17 @@ mod tests {
         TheoremClass::Theorem,
         None,
         theorem_span(),
-        Origin::Source(model::SourceId::new(0)),
+        Origin::Source(crate::model::SourceId::new(0)),
       )
       .unwrap()
       .unwrap();
     let lemma = r
-      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), Origin::Source(model::SourceId::new(0)))
+      .increment_theorem_with_label(
+        TheoremClass::Lemma,
+        None,
+        theorem_span(),
+        Origin::Source(crate::model::SourceId::new(0)),
+      )
       .unwrap()
       .unwrap();
 
@@ -339,7 +343,12 @@ mod tests {
 
     // Act
     let result = r
-      .increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), Origin::Source(model::SourceId::new(0)))
+      .increment_theorem_with_label(
+        TheoremClass::Proof,
+        None,
+        theorem_span(),
+        Origin::Source(crate::model::SourceId::new(0)),
+      )
       .unwrap();
 
     // Assert
@@ -354,7 +363,7 @@ mod tests {
       TheoremClass::Theorem,
       Some("dup"),
       theorem_span(),
-      Origin::Source(model::SourceId::new(0)),
+      Origin::Source(crate::model::SourceId::new(0)),
     )
     .unwrap();
 
@@ -363,7 +372,7 @@ mod tests {
       TheoremClass::Lemma,
       Some("dup"),
       theorem_span(),
-      Origin::Source(model::SourceId::new(0)),
+      Origin::Source(crate::model::SourceId::new(0)),
     );
 
     // Assert
@@ -448,7 +457,7 @@ mod tests {
         TheoremClass::Theorem,
         None,
         theorem_span(),
-        Origin::Source(model::SourceId::new(0)),
+        Origin::Source(crate::model::SourceId::new(0)),
       )
       .unwrap()
       .unwrap();
@@ -457,7 +466,7 @@ mod tests {
         TheoremClass::Theorem,
         None,
         theorem_span(),
-        Origin::Source(model::SourceId::new(0)),
+        Origin::Source(crate::model::SourceId::new(0)),
       )
       .unwrap()
       .unwrap();
@@ -467,7 +476,7 @@ mod tests {
         TheoremClass::Theorem,
         None,
         theorem_span(),
-        Origin::Source(model::SourceId::new(0)),
+        Origin::Source(crate::model::SourceId::new(0)),
       )
       .unwrap()
       .unwrap();

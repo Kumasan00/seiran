@@ -1,21 +1,22 @@
 //! `table` 本体の走査（`\head` / `\row` / `\caption`）と列数の解決・検証
 
-use model::{CaptionPosition, ColumnAlign, ColumnWidth, InlineNode, TableCell, TableRow};
-
 use super::cell::{build_cell, contains_line_break};
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    environment::{body_scan, caption::extract_caption},
-    opt_args::{OptType, OptValue, collect_command_opt_args},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      environment::{body_scan, caption::extract_caption},
+      opt_args::{OptType, OptValue, collect_command_opt_args},
+    },
+    span_ext::ToSourceSpan,
+    syntax::{
+      SyntaxKind,
+      ast::{CommandView, EnvironmentView},
+      green::GreenElement,
+      token::TokenKind,
+    },
   },
-  span_ext::ToSourceSpan,
-  syntax::{
-    SyntaxKind,
-    ast::{CommandView, EnvironmentView},
-    green::GreenElement,
-    token::TokenKind,
-  },
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, InlineNode, TableCell, TableRow},
 };
 
 /// 本体走査で収集した行・キャプション情報

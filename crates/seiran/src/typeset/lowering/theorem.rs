@@ -1,7 +1,5 @@
 //! 定理ブロック（`resolve::ResolvedNode::Theorem`）の lowering
 
-use model::{Align, FontKind, LabelId, Length, TheoremClass};
-
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
@@ -11,6 +9,7 @@ use super::{
 };
 use crate::{
   config::TheoremStyle,
+  model::{Align, FontKind, LabelId, Length, TheoremClass},
   resolve::{ResolvedInline, ResolvedNode},
 };
 
@@ -362,7 +361,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(model::AnchorMark::Label(l))) if l.as_str() == "thm:x"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(crate::model::AnchorMark::Label(l))) if l.as_str() == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }

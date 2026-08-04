@@ -4,9 +4,10 @@
 //! バリアブルフォント軸）だけを取り出す config 非依存の複製。この変換を `font` クレート内の
 //! ここ 1 箇所だけに閉じ、`pdf_gen` 側に同型の複製型を作らせない（issue #305）。
 
-use model::{FontMap, FontType};
-
-use crate::config::FontConfigs;
+use crate::{
+  config::FontConfigs,
+  model::{FontMap, FontType},
+};
 
 /// Krilla フォント構築に必要な設定（`config` クレートに依存しない最小表現）。
 #[derive(Debug, Clone)]
@@ -59,10 +60,11 @@ pub fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 mod tests {
   use std::path::PathBuf;
 
-  use model::FontType;
-
   use super::*;
-  use crate::config::{FontConfig, VariationAxis};
+  use crate::{
+    config::{FontConfig, VariationAxis},
+    model::FontType,
+  };
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {

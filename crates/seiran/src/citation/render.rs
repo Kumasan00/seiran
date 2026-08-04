@@ -9,7 +9,8 @@ use hayagriva::{
   Formatting, RenderedBibliography,
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
-use model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode, Span};
+
+use crate::model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode, Span};
 
 /// hayagriva による整形結果。
 pub(crate) struct Rendered {

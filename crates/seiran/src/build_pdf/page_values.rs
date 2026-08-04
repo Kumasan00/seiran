@@ -5,9 +5,7 @@
 //! - Stage 1 [`BodyPageValues`]: 本文ページ列からしか構築できない（目次構築の引数型）
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
 
-use model::AnchorMark;
-
-use crate::config::PageNumbering;
+use crate::{config::PageNumbering, model::AnchorMark};
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
 /// 連結する前のリージョン内）における位置を表す。
@@ -134,11 +132,10 @@ impl PageLabels {
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorMark, HeadingKey, LabelId};
-
   use super::{BodyPageValues, PageIndex};
   use crate::{
     config::PageNumbering,
+    model::{AnchorMark, HeadingKey, LabelId},
     typeset::{Page, PlacedAnchor},
   };
 
@@ -154,8 +151,8 @@ mod tests {
         .map(|mark| {
           return PlacedAnchor {
             mark,
-            x: model::Length::ZERO,
-            y: model::Length::ZERO,
+            x: crate::model::Length::ZERO,
+            y: crate::model::Length::ZERO,
           };
         })
         .collect(),

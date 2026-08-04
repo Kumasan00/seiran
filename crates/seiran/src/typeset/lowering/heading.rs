@@ -1,13 +1,14 @@
 //! 見出し（`resolve::ResolvedNode::Heading`）の lowering
 
-use model::{AnchorMark, HeadingKey, HeadingLevel, LabelId};
-
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
-use crate::resolve::ResolvedInline;
+use crate::{
+  model::{AnchorMark, HeadingKey, HeadingLevel, LabelId},
+  resolve::ResolvedInline,
+};
 
 /// 見出しをレイアウトノードに変換する
 pub(super) fn lower_heading(
@@ -44,9 +45,9 @@ pub(super) fn lower_heading(
   result.push(LayoutNode::VBox {
     children,
     margin_bottom: heading_style.bottom_margin,
-    indent: model::Length::pt(0.0),
-    right_indent: model::Length::pt(0.0),
-    align: model::Align::Left,
+    indent: crate::model::Length::pt(0.0),
+    right_indent: crate::model::Length::pt(0.0),
+    align: crate::model::Align::Left,
   });
 
   // 見出し直後の改ページ制御。強制改ページ（page_break_after）と keep-with-next は排他:
@@ -122,7 +123,7 @@ mod tests {
     let title = [
       ResolvedInline::Text("Intro ".to_string()),
       ResolvedInline::Styled {
-        kind: model::FontKind::SerifItalic,
+        kind: crate::model::FontKind::SerifItalic,
         children: vec![ResolvedInline::Text("Italic".to_string())],
       },
     ];
@@ -140,7 +141,7 @@ mod tests {
         _ => return None,
       })
       .expect("イタリック部分の Text があるはず");
-    assert_eq!(italic.font_kind, model::FontKind::SerifItalic);
+    assert_eq!(italic.font_kind, crate::model::FontKind::SerifItalic);
     assert_eq!(italic.font_size, heading_size, "フォントサイズは見出しスタイルを継承する");
   }
 
@@ -161,9 +162,9 @@ mod tests {
     });
     assert_eq!(
       anchor,
-      Some(model::AnchorMark::Heading {
-        key: model::HeadingKey::new(3),
-        label: Some(model::LabelId::new("sec:intro")),
+      Some(crate::model::AnchorMark::Heading {
+        key: crate::model::HeadingKey::new(3),
+        label: Some(crate::model::LabelId::new("sec:intro")),
       })
     );
     let anchor_idx = nodes.iter().position(|n| matches!(n, LayoutNode::Anchor(_))).unwrap();
@@ -211,7 +212,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let title = [ResolvedInline::Ref {
       target: LabelId::new("sec:other"),
-      span: model::Span::DUMMY,
+      span: crate::model::Span::DUMMY,
     }];
     let document = test_support::document(&[(
       "sec:other",
@@ -233,7 +234,10 @@ mod tests {
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
-    assert_eq!(*link.0, model::LinkTarget::Internal(model::AnchorId::Label(LabelId::new("sec:other"))));
+    assert_eq!(
+      *link.0,
+      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(LabelId::new("sec:other")))
+    );
     assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Section 2.3"), "{:?}", link.1);
   }
 }

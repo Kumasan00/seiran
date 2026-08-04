@@ -2,16 +2,17 @@
 //!
 //! 1 行 1 セルとして評価し、行単位で採番する。
 
-use model::{DocNode, MathEnvKind, MathRow};
-
 use super::math_grid::{GridSpec, evaluate_grid};
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::{DocNode, MathEnvKind, MathRow},
 };
 
 /// `equation` 環境を評価する
@@ -69,10 +70,12 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::{MathEnvKind, MathNode};
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{MathEnvKind, MathNode},
+  };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(
@@ -83,7 +86,7 @@ mod tests {
   }
 
   /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
-  fn first_row(result: &[DocNode]) -> &model::MathRow {
+  fn first_row(result: &[DocNode]) -> &crate::model::MathRow {
     let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };

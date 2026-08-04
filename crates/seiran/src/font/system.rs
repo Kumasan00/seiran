@@ -7,7 +7,6 @@
 use std::time::Instant;
 
 use miette::Diagnostic;
-use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info};
 
@@ -22,6 +21,7 @@ use crate::{
     },
     validate_font::{self, MultipleFontValidationErrors},
   },
+  model::FontType,
 };
 
 /// [`FontResources::load`] / [`FontResources::system`] のエラー。

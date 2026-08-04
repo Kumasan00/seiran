@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/model",
   "crates/pdf_gen",
   "crates/seiran",
 ]
@@ -54,7 +53,6 @@ lazy-regex = "3.6.0"
 lopdf = { version = "0.44.0", default-features = false }
 memchr = "2.8.2"
 miette = { version = "7.6.0", features = ["fancy"] }
-model = { path = "crates/model" }
 pdf_gen = { path = "crates/pdf_gen" }
 phf = { version = "0.14.0", features = ["macros"] }
 proptest = "1.11.0"

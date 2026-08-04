@@ -5,9 +5,11 @@
 use std::collections::HashSet;
 
 use miette::LabeledSpan;
-use model::{DocNode, InlineNode, ListItem};
 
-use crate::frontend::evaluator::EvalError;
+use crate::{
+  frontend::evaluator::EvalError,
+  model::{DocNode, InlineNode, ListItem},
+};
 
 /// `Vec<DocNode>` を再帰的に走査して `\cite` の引用キー存在を検証する
 ///
@@ -107,9 +109,8 @@ fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, la
 
 #[cfg(test)]
 mod tests {
-  use model::{DocNode, InlineNode, Span};
-
   use super::*;
+  use crate::model::{DocNode, InlineNode, Span};
 
   fn span() -> Span { return Span::new(0, 5); }
 

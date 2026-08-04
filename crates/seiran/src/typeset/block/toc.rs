@@ -1,11 +1,10 @@
 //! 目次（table of contents）ブロックの生成パス
 
-use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
-
 use super::Measurer;
 use crate::{
   config::Style,
   font::FontSystem,
+  model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget},
   typeset::{
     layout::{Block, HBox, Line, LineLink, PositionedBox},
     lowering::TextStyle,
@@ -54,7 +53,7 @@ pub struct TocEntryInput {
 
 /// スタイルから目次生成用の [`TocSpec`] を組み立てる。
 ///
-/// 目次見出しの書体は文書の節見出しスタイル（[`model::HeadingLevel::Section`]）に揃える。
+/// 目次見出しの書体は文書の節見出しスタイル（[`crate::model::HeadingLevel::Section`]）に揃える。
 pub(crate) fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = style.heading(HeadingLevel::Section);
@@ -232,9 +231,8 @@ fn fill_leader(
 
 #[cfg(test)]
 mod tests {
-  use model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
-
   use super::{TextStyle, TocEntryInput, TocSpec, entry_label};
+  use crate::model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
 
   fn spec() -> TocSpec {
     return TocSpec {

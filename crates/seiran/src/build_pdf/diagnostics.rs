@@ -8,7 +8,6 @@ use std::{
 };
 
 use miette::{GraphicalReportHandler, GraphicalTheme};
-use model::FontType;
 
 use super::{
   build_pages,
@@ -17,6 +16,7 @@ use super::{
 use crate::{
   config::parse_style,
   font::{FontData, FontDataExt, FontResources},
+  model::FontType,
 };
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。

@@ -56,12 +56,11 @@ pub use pipeline::{
 mod tests {
   use std::{collections::HashSet, path::PathBuf};
 
-  use model::SourceId;
-
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
     config::Style,
     frontend::parse_source,
+    model::SourceId,
     resolve::{SemanticDocument, SemanticGroup},
   };
 

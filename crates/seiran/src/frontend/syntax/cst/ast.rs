@@ -2,14 +2,15 @@
 //!
 //! 独立した AST は構築せず、[`GreenNode`] を直接参照する。
 
-use model::Span;
-
-use crate::frontend::syntax::{
-  cst::{
-    green::{GreenElement, GreenNode},
-    kind::SyntaxKind,
+use crate::{
+  frontend::syntax::{
+    cst::{
+      green::{GreenElement, GreenNode},
+      kind::SyntaxKind,
+    },
+    token::TokenKind,
   },
-  token::TokenKind,
+  model::Span,
 };
 
 /// コマンド呼び出しの型付きビュー

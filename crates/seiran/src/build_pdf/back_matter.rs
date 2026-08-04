@@ -9,7 +9,6 @@ use std::{
   time::Instant,
 };
 
-use model::{AnchorMark, Length};
 use tracing::info;
 
 use super::{
@@ -17,7 +16,10 @@ use super::{
   page_values::{BodyPageValues, PageIndex},
   phase_context::{BodyPageFacts, CompileContext},
 };
-use crate::typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries};
+use crate::{
+  model::{AnchorMark, Length},
+  typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
+};
 
 /// 巻末索引を生成してページ分割する。
 ///
@@ -100,11 +102,10 @@ pub(super) fn collect_index_entries(
 
 #[cfg(test)]
 mod tests {
-  use model::AnchorMark;
-
   use super::{BodyPageValues, collect_index_entries};
   use crate::{
     config::PageNumbering,
+    model::AnchorMark,
     typeset::{Page, PlacedIndexEntry},
   };
 

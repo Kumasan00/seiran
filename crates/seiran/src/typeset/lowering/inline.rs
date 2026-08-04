@@ -1,13 +1,15 @@
 //! インライン要素（`resolve::ResolvedInline`）の lowering
 
-use model::{AnchorId, FontKind, FootnoteId, Length, LinkTarget};
-
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   math::lower_inline_math,
 };
-use crate::{config::FootnoteStyle, resolve::ResolvedInline};
+use crate::{
+  config::FootnoteStyle,
+  model::{AnchorId, FontKind, FootnoteId, Length, LinkTarget},
+  resolve::ResolvedInline,
+};
 
 /// インライン要素をレイアウトノードに変換する
 pub(super) fn lower_inline(
@@ -176,7 +178,7 @@ fn footnote_marker_node(
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
-fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) -> TextStyle {
+fn with_link_color(parent_style: TextStyle, link_color: Option<crate::model::Color>) -> TextStyle {
   return TextStyle {
     color: parent_style.color.or(link_color),
     ..parent_style
@@ -186,11 +188,10 @@ fn with_link_color(parent_style: TextStyle, link_color: Option<model::Color>) ->
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use model::{LabelId, Length, Span};
-
   use super::{super::test_support, *};
   use crate::{
     config::CounterName,
+    model::{LabelId, Length, Span},
     resolve::{self, CounterKind, CounterValue, ResolvedDocument},
   };
 
@@ -227,12 +228,12 @@ mod tests {
     let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Styled {
-      kind: model::FontKind::SerifItalic,
+      kind: crate::model::FontKind::SerifItalic,
       children: vec![ResolvedInline::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
-      font_kind: model::FontKind::SerifBold,
+      font_kind: crate::model::FontKind::SerifBold,
       color: None,
     };
     let document = test_support::document(&[]);
@@ -245,7 +246,7 @@ mod tests {
       panic!("Text が期待されます: {nodes:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, model::FontKind::SerifItalic);
+    assert_eq!(text_style.font_kind, crate::model::FontKind::SerifItalic);
     assert_eq!(text_style.font_size, Length::pt(10.0));
   }
 
@@ -255,12 +256,12 @@ mod tests {
     let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Colored {
-      color: model::Color::new(0xff, 0x00, 0x00),
+      color: crate::model::Color::new(0xff, 0x00, 0x00),
       children: vec![ResolvedInline::Text("x".to_string())],
     };
     let parent = TextStyle {
       font_size: Length::pt(10.0),
-      font_kind: model::FontKind::SansSerif,
+      font_kind: crate::model::FontKind::SansSerif,
       color: None,
     };
     let document = test_support::document(&[]);
@@ -273,8 +274,8 @@ mod tests {
       panic!("Text が期待されます: {nodes:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, model::FontKind::SansSerif);
-    assert_eq!(text_style.color, Some(model::Color::new(0xff, 0x00, 0x00)));
+    assert_eq!(text_style.font_kind, crate::model::FontKind::SansSerif);
+    assert_eq!(text_style.color, Some(crate::model::Color::new(0xff, 0x00, 0x00)));
   }
 
   #[test]
@@ -283,9 +284,9 @@ mod tests {
     let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Colored {
-      color: model::Color::new(0x00, 0x80, 0x00),
+      color: crate::model::Color::new(0x00, 0x80, 0x00),
       children: vec![ResolvedInline::Styled {
-        kind: model::FontKind::SerifBold,
+        kind: crate::model::FontKind::SerifBold,
         children: vec![ResolvedInline::Text("x".to_string())],
       }],
     };
@@ -299,8 +300,8 @@ mod tests {
     let LayoutNode::Text(_, text_style) = &nodes[0] else {
       panic!("Text が期待されます: {nodes:?}");
     };
-    assert_eq!(text_style.font_kind, model::FontKind::SerifBold);
-    assert_eq!(text_style.color, Some(model::Color::new(0x00, 0x80, 0x00)));
+    assert_eq!(text_style.font_kind, crate::model::FontKind::SerifBold);
+    assert_eq!(text_style.color, Some(crate::model::Color::new(0x00, 0x80, 0x00)));
   }
 
   #[test]
@@ -359,7 +360,7 @@ mod tests {
   #[test]
   fn lower_ref_applies_link_color() {
     // Arrange
-    let blue = model::Color::new(0x00, 0x00, 0xff);
+    let blue = crate::model::Color::new(0x00, 0x00, 0xff);
     let mut style = crate::config::Style::default();
     style.hyperref.link_color = Some(blue);
     let ctx = LoweringContext::new(&style);
@@ -375,7 +376,7 @@ mod tests {
   #[test]
   fn lower_external_link_applies_url_color() {
     // Arrange
-    let blue = model::Color::new(0x00, 0x00, 0xff);
+    let blue = crate::model::Color::new(0x00, 0x00, 0xff);
     let mut style = crate::config::Style::default();
     style.hyperref.url_color = Some(blue);
     let ctx = LoweringContext::new(&style);
@@ -418,7 +419,7 @@ mod tests {
     // Arrange
     let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
-    let red = model::Color::new(0xff, 0x00, 0x00);
+    let red = crate::model::Color::new(0xff, 0x00, 0x00);
     let inline = ResolvedInline::Colored {
       color: red,
       children: vec![ref_inline()],
@@ -438,7 +439,7 @@ mod tests {
     let style = crate::config::Style::default();
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::InternalLink {
-      target: model::CitationId::new("foo"),
+      target: crate::model::CitationId::new("foo"),
       children: vec![ResolvedInline::Text("1".to_string())],
     };
     let document = test_support::document(&[]);
@@ -450,21 +451,21 @@ mod tests {
     let LayoutNode::Link { target, children } = &nodes[0] else {
       panic!("Link が期待されます: {nodes:?}");
     };
-    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(model::CitationId::new("foo"))));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(crate::model::CitationId::new("foo"))));
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "1"));
   }
 
   #[test]
   fn lower_cite_label_applies_cite_color_and_links() {
     // Arrange
-    let blue = model::Color::new(0x00, 0x00, 0xff);
+    let blue = crate::model::Color::new(0x00, 0x00, 0xff);
     let mut style = crate::config::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Cite {
-      targets: vec![model::CitationId::new("foo")],
+      targets: vec![crate::model::CitationId::new("foo")],
       label: vec![ResolvedInline::InternalLink {
-        target: model::CitationId::new("foo"),
+        target: crate::model::CitationId::new("foo"),
         children: vec![ResolvedInline::Text("1".to_string())],
       }],
       span: Span::DUMMY,
@@ -478,7 +479,7 @@ mod tests {
     let LayoutNode::Link { target, children } = &nodes[0] else {
       panic!("Link が期待されます: {nodes:?}");
     };
-    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(model::CitationId::new("foo"))));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(crate::model::CitationId::new("foo"))));
     let LayoutNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
@@ -515,7 +516,7 @@ mod tests {
     };
     assert_eq!(*number, 1);
     assert_eq!(*index, 0);
-    assert_eq!(*target, LinkTarget::Internal(AnchorId::Footnote(model::FootnoteId::new(*index))));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Footnote(crate::model::FootnoteId::new(*index))));
     assert!(matches!(&body[0], LayoutNode::Raise { .. }));
     assert!(matches!(&body[1], LayoutNode::Text(t, _) if t == "note"));
   }
@@ -598,7 +599,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let inline = ResolvedInline::Footnote {
       body: vec![ResolvedInline::Styled {
-        kind: model::FontKind::SerifBold,
+        kind: crate::model::FontKind::SerifBold,
         children: vec![ResolvedInline::Text("x".to_string())],
       }],
       span: Span::DUMMY,
@@ -616,7 +617,7 @@ mod tests {
       panic!("Text が期待されます: {body:?}");
     };
     assert_eq!(text, "x");
-    assert_eq!(text_style.font_kind, model::FontKind::SerifBold);
+    assert_eq!(text_style.font_kind, crate::model::FontKind::SerifBold);
   }
 
   #[test]

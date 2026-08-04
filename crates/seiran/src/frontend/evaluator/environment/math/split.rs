@@ -2,10 +2,11 @@
 //!
 //! 行と列を分割し、環境全体を 1 単位として採番する。
 
-use model::{DocNode, MathEnvKind};
-
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
-use crate::frontend::{evaluator::EvalError, syntax::ast::EnvironmentView};
+use crate::{
+  frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
+  model::{DocNode, MathEnvKind},
+};
 
 /// `split` 環境を評価する
 ///
@@ -28,10 +29,9 @@ pub(crate) fn split(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
-  use model::MathEnvKind;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
 
   fn parse<'a>(
     source: &'a str,
@@ -41,7 +41,7 @@ mod tests {
   }
 
   /// 最初の `DocNode::MathBlock`（`Split`）を分解して (`rows`, `numbered`) を返す
-  fn block_of(result: &[DocNode]) -> (&[model::MathRow], bool) {
+  fn block_of(result: &[DocNode]) -> (&[crate::model::MathRow], bool) {
     let DocNode::MathBlock {
       kind,
       rows,

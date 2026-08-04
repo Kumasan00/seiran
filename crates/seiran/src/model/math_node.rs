@@ -1,6 +1,6 @@
 //! 数式要素。
 
-use crate::Span;
+use crate::model::Span;
 
 /// 数式ノード
 ///

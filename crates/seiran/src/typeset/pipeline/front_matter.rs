@@ -1,10 +1,10 @@
 //! 前付け（タイトルページ・目次）パス（lowering → 計測 → 改行・改ページ）
 
-use model::Length;
 use tracing::{debug, debug_span};
 
 use crate::{
   font::FontSystem,
+  model::Length,
   typeset::{
     block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     breaking::{LineBreaker, PageGeometry, break_pages},

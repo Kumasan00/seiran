@@ -1,11 +1,12 @@
 //! 引用ブロック（`quote` / `quotation`）のスタイル設定型。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   FontKind,
   length::{Length, non_negative},
 };
-use serde::{Deserialize, Serialize};
 
 /// 引用ブロックのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -43,9 +44,9 @@ impl Default for QuoteStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::{FontKind, length::Length};
 
   use super::QuoteStyle;
+  use crate::model::{FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

@@ -1,6 +1,6 @@
 //! 表の行とセル。
 
-use crate::InlineNode;
+use crate::model::InlineNode;
 
 /// 表の 1 行（`\row{...}` に対応）
 ///

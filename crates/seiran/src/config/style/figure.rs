@@ -1,10 +1,12 @@
 //! 図（figure）環境のスタイル設定型。
 
 use garde::Validate;
-use model::{Length, length::non_negative};
 use serde::{Deserialize, Serialize};
 
-use crate::config::style::caption::CaptionStyle;
+use crate::{
+  config::style::caption::CaptionStyle,
+  model::{Length, length::non_negative},
+};
 
 /// 図環境のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -42,9 +44,9 @@ impl Default for FigureStyle {
 #[cfg(test)]
 mod tests {
   use garde::Validate;
-  use model::Length;
 
   use super::FigureStyle;
+  use crate::model::Length;
 
   #[test]
   fn validate_accepts_default() {

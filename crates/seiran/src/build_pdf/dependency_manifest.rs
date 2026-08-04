@@ -2,9 +2,8 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use model::FontType;
-
 use super::{image_manifest::ImageManifest, project::ProjectSnapshot};
+use crate::model::FontType;
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///
@@ -59,12 +58,11 @@ impl DependencyManifest {
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use model::AssetId;
-
   use super::DependencyManifest;
   use crate::{
     build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot},
     font::FontDataExt,
+    model::AssetId,
   };
 
   #[test]

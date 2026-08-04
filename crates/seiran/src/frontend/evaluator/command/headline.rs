@@ -1,15 +1,16 @@
 //! 見出しコマンド群
 
-use model::{DocNode, HeadingLevel};
-
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    inline::extract_inline_nodes,
-    opt_args::{OptType, collect_command_opt_args, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      inline::extract_inline_nodes,
+      opt_args::{OptType, collect_command_opt_args, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+  model::{DocNode, HeadingLevel},
 };
 
 /// 見出しコマンドの共通処理

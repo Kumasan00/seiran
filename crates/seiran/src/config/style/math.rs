@@ -1,11 +1,12 @@
 //! 数式のスタイル設定型（`[math]` テーブル）。
 
 use garde::Validate;
-use model::{
+use serde::{Deserialize, Serialize};
+
+use crate::model::{
   Length,
   length::{non_negative, positive},
 };
-use serde::{Deserialize, Serialize};
 
 /// 数式設定全体（`[math]` テーブル）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

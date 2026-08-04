@@ -3,19 +3,21 @@
 //! 空白・改行・コメントを含む全トークンを保持し、エラー回復による暗黙の補完は行わない。
 
 use bumpalo::Bump;
-use model::Span;
 use tracing::debug;
 
-use crate::frontend::{
-  span_ext::ToSourceSpan,
-  syntax::{
-    cst::{
-      green::{GreenElement, GreenNode},
-      kind::SyntaxKind,
+use crate::{
+  frontend::{
+    span_ext::ToSourceSpan,
+    syntax::{
+      cst::{
+        green::{GreenElement, GreenNode},
+        kind::SyntaxKind,
+      },
+      lexer::Lexer,
+      token::{Token, TokenKind},
     },
-    lexer::Lexer,
-    token::{Token, TokenKind},
   },
+  model::Span,
 };
 
 mod error;

@@ -1,14 +1,15 @@
 //! 表環境（`resolve::ResolvedNode::Table`）の lowering
 
-use model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, TableColumn};
-
 use super::{
   LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
   inline::lower_inline,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
-use crate::resolve::{ResolvedInline, ResolvedTableRow};
+use crate::{
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, TableColumn},
+  resolve::{ResolvedInline, ResolvedTableRow},
+};
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {
@@ -318,7 +319,7 @@ mod tests {
     let ctx = LoweringContext::new(&style);
     let rows = [row_of(&["a", "b", "c"])];
     let widths = [
-      ColumnWidth::Fixed(model::Length::pt(40.0)),
+      ColumnWidth::Fixed(crate::model::Length::pt(40.0)),
       ColumnWidth::Ratio(0.25),
       ColumnWidth::Flex,
     ];
@@ -438,7 +439,7 @@ mod tests {
       cells: vec![ResolvedTableCell {
         content: vec![ResolvedInline::Footnote {
           body: vec![ResolvedInline::Text("cell note".to_string())],
-          span: model::Span::DUMMY,
+          span: crate::model::Span::DUMMY,
         }],
         span: 1,
       }],

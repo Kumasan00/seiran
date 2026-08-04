@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use model::FontType;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::config::project_source::{ProjectPath, ProjectSource};
+use crate::{
+  config::project_source::{ProjectPath, ProjectSource},
+  model::FontType,
+};
 
 mod pre_config;
 use pre_config::{PreConfig, PreFontConfig};
@@ -548,17 +550,18 @@ fn resolve_output_dir_path(base_dir: &Path, output_dir: Option<&Path>) -> PathBu
 mod tests {
   use std::path::{Path, PathBuf};
 
-  use model::FontType;
-
   use super::{
     Config, ConfigValidationError, ReadConfigError, TextDirection, build_language_string, parse_config, read_config,
     resolve_output_dir_path, resolve_paths, validate_values,
   };
-  use crate::config::{
-    config_toml::test_support::{
-      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
+  use crate::{
+    config::{
+      config_toml::test_support::{
+        font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
+      },
+      project_source::{FilesystemProjectSource, MemoryProjectSource},
     },
-    project_source::{FilesystemProjectSource, MemoryProjectSource},
+    model::FontType,
   };
 
   /// `parse_config` 用のダミーパス。

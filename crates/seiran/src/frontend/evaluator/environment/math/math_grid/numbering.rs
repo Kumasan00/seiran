@@ -3,25 +3,27 @@
 //! 実際の発番は行わず、採番対象とラベルだけを構造化する。
 
 use miette::SourceSpan;
-use model::MathRow;
 
 use super::{GridRow, is_blank_row};
-use crate::frontend::{
-  evaluator::{
-    EvalError,
-    opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+use crate::{
+  frontend::{
+    evaluator::{
+      EvalError,
+      opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
+    },
+    span_ext::ToSourceSpan,
+    syntax::ast::EnvironmentView,
   },
-  span_ext::ToSourceSpan,
-  syntax::ast::EnvironmentView,
+  model::MathRow,
 };
 
-/// 行末マーカー `\label{...}` の診断用 `SourceSpan` を `MathRow::label_span`（`model::Span`）へ変換する
+/// 行末マーカー `\label{...}` の診断用 `SourceSpan` を `MathRow::label_span`（`crate::model::Span`）へ変換する
 ///
 /// Document IR は診断ライブラリに依存しないため、境界で変換する。
-fn to_model_span(span: SourceSpan) -> model::Span {
+fn to_model_span(span: SourceSpan) -> crate::model::Span {
   let start = u32::try_from(span.offset()).unwrap_or(u32::MAX);
   let end = u32::try_from(span.offset() + span.len()).unwrap_or(u32::MAX);
-  return model::Span::new(start, end);
+  return crate::model::Span::new(start, end);
 }
 
 /// 採番の粒度

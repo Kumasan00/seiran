@@ -20,7 +20,6 @@ icu.workspace = true
 lazy-regex.workspace = true
 memchr.workspace = true
 miette.workspace = true
-model.workspace = true
 pdf_gen.workspace = true
 phf.workspace = true
 rayon.workspace = true

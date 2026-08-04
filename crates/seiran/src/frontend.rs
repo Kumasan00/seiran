@@ -4,9 +4,10 @@ use std::collections::HashSet;
 
 use bumpalo::Bump;
 use miette::Diagnostic;
-use model::DocNode;
 use thiserror::Error;
 use tracing::debug;
+
+use crate::model::DocNode;
 
 mod evaluator;
 mod span_ext;
@@ -23,7 +24,7 @@ pub enum ParseSourceError {
   #[diagnostic(code(frontend::parse_source::syntax))]
   Syntax {
     /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
-    source_id: model::SourceId,
+    source_id: crate::model::SourceId,
     /// 元の構文エラー
     #[source]
     #[diagnostic_source]
@@ -35,7 +36,7 @@ pub enum ParseSourceError {
   #[diagnostic(code(frontend::parse_source::eval))]
   Eval {
     /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
-    source_id: model::SourceId,
+    source_id: crate::model::SourceId,
     /// 元の評価エラー
     #[source]
     #[diagnostic_source]
@@ -53,7 +54,7 @@ pub enum ParseSourceError {
 #[allow(clippy::implicit_hasher)]
 pub fn parse_source(
   source: &str,
-  source_id: model::SourceId,
+  source_id: crate::model::SourceId,
   citation_keys: &HashSet<String>,
 ) -> Result<Vec<DocNode>, ParseSourceError> {
   let arena = Bump::new();
@@ -80,9 +81,8 @@ pub fn parse_source(
 mod tests {
   use std::collections::HashSet;
 
-  use model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
-
   use super::{EvalError, ParseSourceError, parse_source};
+  use crate::model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
 
   /// 引用キーの集合を組み立てるテストヘルパ
   fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| return (*v).to_string()).collect(); }
@@ -92,12 +92,12 @@ mod tests {
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   /// 引用キーは空集合（`\cite` を含まないソース向け）。
   fn evaluate_source(source: &str) -> Vec<DocNode> {
-    return parse_source(source, model::SourceId::new(0), &HashSet::new()).unwrap();
+    return parse_source(source, crate::model::SourceId::new(0), &HashSet::new()).unwrap();
   }
 
   /// 引用キー集合を指定してソースを評価するテストヘルパ
   fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
-    return parse_source(source, model::SourceId::new(0), citation_keys).unwrap();
+    return parse_source(source, crate::model::SourceId::new(0), citation_keys).unwrap();
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
@@ -109,7 +109,7 @@ mod tests {
 
   /// 引用キー集合を指定してソースを評価し `EvalError` を取り出すテストヘルパ
   fn evaluate_error_with_keys(source: &str, citation_keys: &HashSet<String>) -> EvalError {
-    match parse_source(source, model::SourceId::new(0), citation_keys) {
+    match parse_source(source, crate::model::SourceId::new(0), citation_keys) {
       Err(ParseSourceError::Eval { error, .. }) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }

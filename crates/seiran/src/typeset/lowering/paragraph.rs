@@ -104,7 +104,7 @@ mod tests {
   fn paragraph_prepends_first_line_indent_kern_when_positive() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
+    let ctx = LoweringContext::new(&style).with_first_line_indent(crate::model::Length::pt(15.0));
     let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
@@ -122,7 +122,7 @@ mod tests {
   fn paragraph_noindent_marker_suppresses_indent_kern() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(model::Length::pt(15.0));
+    let ctx = LoweringContext::new(&style).with_first_line_indent(crate::model::Length::pt(15.0));
     let inlines = [
       ResolvedInline::NoIndent,
       ResolvedInline::Text("body".to_string()),
@@ -182,8 +182,8 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let inlines = [ResolvedInline::Ref {
-      target: model::LabelId::new("eq:one"),
-      span: model::Span::DUMMY,
+      target: crate::model::LabelId::new("eq:one"),
+      span: crate::model::Span::DUMMY,
     }];
     let document = test_support::document(&[(
       "eq:one",
@@ -200,7 +200,10 @@ mod tests {
     let LayoutNode::Link { target, children } = &nodes[0] else {
       panic!("解決済み \\ref は Link になるはず: {nodes:?}");
     };
-    assert_eq!(*target, model::LinkTarget::Internal(model::AnchorId::Label(model::LabelId::new("eq:one"))));
+    assert_eq!(
+      *target,
+      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("eq:one")))
+    );
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "(1.1)"), "{children:?}");
   }
 }

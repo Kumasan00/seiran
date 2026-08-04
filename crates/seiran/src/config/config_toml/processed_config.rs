@@ -2,8 +2,9 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use model::{FontMap, Length};
 use thiserror::Error;
+
+use crate::model::{FontMap, Length};
 
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]

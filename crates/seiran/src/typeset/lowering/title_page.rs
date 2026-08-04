@@ -1,9 +1,10 @@
 //! タイトルページ（`\maketitle` 相当）の lowering
 
-use model::{Align, FontKind, Length};
-
 use super::layout_node::{LayoutNode, TextStyle};
-use crate::config::TitlePageStyle;
+use crate::{
+  config::TitlePageStyle,
+  model::{Align, FontKind, Length},
+};
 
 /// タイトルページに載せる文書メタデータ。
 #[derive(Debug, Clone, Default)]
@@ -72,10 +73,11 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
 
 #[cfg(test)]
 mod tests {
-  use model::{Align, Length};
-
   use super::{super::layout_node::LayoutNode, TitlePageMetadata, lower_title_page};
-  use crate::config::TitlePageStyle;
+  use crate::{
+    config::TitlePageStyle,
+    model::{Align, Length},
+  };
 
   /// 中央寄せ `VBox` の子ノードを取り出すヘルパ
   fn title_vbox_children(nodes: &[LayoutNode]) -> &[LayoutNode] {

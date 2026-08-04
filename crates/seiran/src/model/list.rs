@@ -1,6 +1,6 @@
 //! 箇条書きリストのアイテム。
 
-use crate::{DocNode, Length};
+use crate::model::{DocNode, Length};
 
 /// リストの個別アイテム（`\item` に対応）
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +33,7 @@ impl ListItem {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::InlineNode;
+  use crate::model::InlineNode;
 
   #[test]
   fn list_item_new() {

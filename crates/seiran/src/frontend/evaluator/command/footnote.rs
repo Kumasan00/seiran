@@ -1,11 +1,12 @@
 //! `\footnote{...}` コマンド
 
-use model::InlineNode;
-
-use crate::frontend::{
-  evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
-  span_ext::ToSourceSpan,
-  syntax::ast::CommandView,
+use crate::{
+  frontend::{
+    evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
+    span_ext::ToSourceSpan,
+    syntax::ast::CommandView,
+  },
+  model::InlineNode,
 };
 
 /// `\footnote{...}` を `InlineNode::Footnote` に変換する
@@ -107,7 +108,7 @@ mod tests {
     let InlineNode::Styled { kind, children } = &body[0] else {
       panic!("Styled が期待されます: {body:?}");
     };
-    assert_eq!(*kind, model::FontKind::SerifBold);
+    assert_eq!(*kind, crate::model::FontKind::SerifBold);
     assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
   }
 
