@@ -5,7 +5,7 @@
 use std::fmt::Write;
 
 use model::{AnchorId, AnchorMark, Length, LinkTarget};
-use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget};
+use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 use typeset::{
   HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
 };
@@ -56,16 +56,15 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
 ///
 /// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `pdf_gen` クレート内
 /// `pub(crate)` でこの crate からは読めないため対象外とする。
+// この関数自体は golden.rs から呼ぶ後続タスクまで未使用（dead_code）。`Publication.resources` は
+// `pdf_gen::ResourceBundle::new` 経由でしか構築できず実フォント読込が必須なため、この関数を直接
+// 呼ぶ単体テストはここでは追加せず、内部の dump_metadata / dump_paint_op / dump_publication_link を
+// 個別にテストして検証する（テストモジュールを vendor/fonts 非依存に保つため）。
+#[allow(dead_code)]
 #[must_use]
 pub(super) fn dump_publication(publication: &Publication) -> String {
   let mut out = String::new();
-  let _ = writeln!(out, "title={:?}", publication.metadata.title);
-  if let Some(author) = &publication.metadata.author {
-    let _ = writeln!(out, "author={author:?}");
-  }
-  if let Some(language) = &publication.metadata.language {
-    let _ = writeln!(out, "language={language:?}");
-  }
+  dump_metadata(&mut out, &publication.metadata);
   for (index, page) in publication.pages.iter().enumerate() {
     let _ = writeln!(
       out,
@@ -97,6 +96,23 @@ pub(super) fn dump_publication(publication: &Publication) -> String {
     }
   }
   return out;
+}
+
+/// メタデータを書き出す（`title` は必須、他は `Some` のときだけ 1 行ずつ追加する）。
+fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
+  let _ = writeln!(out, "title={:?}", metadata.title);
+  if let Some(author) = &metadata.author {
+    let _ = writeln!(out, "author={author:?}");
+  }
+  if let Some(subject) = &metadata.subject {
+    let _ = writeln!(out, "subject={subject:?}");
+  }
+  if let Some(language) = &metadata.language {
+    let _ = writeln!(out, "language={language:?}");
+  }
+  if let Some(keywords) = &metadata.keywords {
+    let _ = writeln!(out, "keywords={keywords:?}");
+  }
 }
 
 /// 1 描画命令を書き出す（インデント 2）。
@@ -399,18 +415,12 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
-  use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
-  use font::{FontDataExt, FontMetricsExt, FontRefsExt, GlyphRun};
+  use font::GlyphRun;
   use model::{FontType, Length};
-  use pdf_gen::{
-    Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
-    PublicationPage, Rect, ResourceBundle,
-  };
+  use pdf_gen::{Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect};
   use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
-  use super::{dump_pages, dump_publication};
+  use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {
@@ -519,80 +529,56 @@ mod tests {
     assert!(!dump.contains("index word="));
   }
 
-  /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
-  /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
-  fn test_font_config() -> FontConfig {
-    return FontConfig {
-      font_name: "test".to_string(),
-      font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
-      font_index: 0,
-      variation_axes: None,
-      script: None,
+  /// 最小のメタデータ（`title` のみ）を返す。
+  fn minimal_metadata() -> PublicationMetadata {
+    return PublicationMetadata {
+      title: "Test".to_string(),
+      author: None,
+      subject: None,
       language: None,
-      ot_language_tag: None,
-      direction: None,
-      features: None,
+      keywords: None,
     };
   }
 
-  /// テスト用の最小設定を返す。
-  fn test_config() -> Config {
-    return Config {
-      document: DocumentConfig {
-        title: None,
-        author: None,
-        date: None,
-        subject: None,
-        language: None,
-        keywords: None,
-      },
-      output: OutputConfig {
-        name: "out".to_string(),
-        output_dir: PathBuf::from("."),
-      },
-      pdf: PdfConfig {
-        height: Length::pt(842.0),
-        width: Length::pt(595.0),
-        margin: Margin {
-          top: Length::pt(50.0),
-          bottom: Length::pt(50.0),
-          left: Length::pt(50.0),
-          right: Length::pt(50.0),
-        },
-        show_bookmarks: false,
-      },
-      image: ImageConfig {
-        max_dpi: 300,
-        downsample: false,
-      },
-      font_configs: FontConfigs::from_all(FontType::ALL.iter().map(|_| return test_font_config())),
-      sources: Vec::new(),
-      style_path: None,
-      references_path: None,
+  #[test]
+  fn dump_metadata_includes_all_present_optional_fields() {
+    // Arrange — title 以外の全フィールドを Some にする
+    let metadata = PublicationMetadata {
+      title: "Test".to_string(),
+      author: Some("Author".to_string()),
+      subject: Some("Subject".to_string()),
+      language: Some("ja".to_string()),
+      keywords: Some(vec!["keyword1".to_string(), "keyword2".to_string()]),
     };
+    let mut out = String::new();
+
+    // Act
+    dump_metadata(&mut out, &metadata);
+
+    // Assert
+    assert!(out.contains("title=\"Test\""));
+    assert!(out.contains("author=\"Author\""));
+    assert!(out.contains("subject=\"Subject\""));
+    assert!(out.contains("language=\"ja\""));
+    assert!(out.contains(r#"keywords=["keyword1", "keyword2"]"#));
   }
 
-  /// テスト用の `ResourceBundle` を返す（画像なし。`dump_publication` は resources の中身を読まないため、
-  /// 実フォントを 1 個読み込んで `ResourceBundle::new` を通せれば足りる。`build_pdf::publication` の
-  /// 同名ヘルパと同じ構築手順 — フォント読込は crate 内 tests で共有されておらず個別に用意する）。
-  fn test_resources() -> ResourceBundle {
-    super::super::golden::enter_workspace_root();
-    assert!(
-      std::path::Path::new("vendor/fonts").is_dir(),
-      "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
-    );
-    let config = test_config();
-    let source = config::FilesystemProjectSource::new();
-    let font_data = font::FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
-    let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
-    let font_metrics = font::FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-    let face_configs = font::build_face_configs(&config.font_configs);
-    return ResourceBundle::new(&face_configs, &font_data, &font_refs, font_metrics, std::collections::HashMap::new())
-      .expect("ResourceBundle の構築");
+  #[test]
+  fn dump_metadata_omits_optional_fields_when_absent() {
+    // Arrange — title だけを持つ最小メタデータ
+    let metadata = minimal_metadata();
+    let mut out = String::new();
+
+    // Act
+    dump_metadata(&mut out, &metadata);
+
+    // Assert
+    assert_eq!(out, "title=\"Test\"\n");
   }
 
-  /// グリフ描画 1 個 + 内部リンク 1 個を持つ最小 `Publication` を組む。
-  fn publication_with_glyph_and_link() -> Publication {
+  #[test]
+  fn dump_paint_op_writes_glyph_run_text_and_size() {
+    // Arrange
     let run = GlyphRun {
       font_size: Length::pt(10.0),
       text: "Test".to_string(),
@@ -600,62 +586,69 @@ mod tests {
       font_type: FontType::Serif,
       color: None,
     };
-    return Publication {
-      pages: vec![PublicationPage {
-        page_box: Rect {
-          x: Length::ZERO,
-          y: Length::ZERO,
-          width: Length::pt(400.0),
-          height: Length::pt(600.0),
-        },
-        ops: vec![PaintOp::DrawGlyphRun {
-          origin: Point {
-            x: Length::pt(10.0),
-            y: Length::pt(20.0),
-          },
-          run,
-        }],
-        links: vec![PublicationLink {
-          target: PublicationLinkTarget::Internal(Destination {
-            page_index: 0,
-            point: Point {
-              x: Length::ZERO,
-              y: Length::ZERO,
-            },
-          }),
-          rect: Rect {
-            x: Length::pt(10.0),
-            y: Length::pt(20.0),
-            width: Length::pt(30.0),
-            height: Length::pt(12.0),
-          },
-        }],
-      }],
-      outline: None,
-      metadata: PublicationMetadata {
-        title: "Test".to_string(),
-        author: None,
-        subject: None,
-        language: None,
-        keywords: None,
+    let op = PaintOp::DrawGlyphRun {
+      origin: Point {
+        x: Length::pt(10.0),
+        y: Length::pt(20.0),
       },
-      resources: test_resources(),
+      run,
     };
+    let mut out = String::new();
+
+    // Act
+    dump_paint_op(&mut out, &op);
+
+    // Assert
+    assert!(out.contains("x=10.00 y=20.00"));
+    assert!(out.contains("text=\"Test\""));
   }
 
   #[test]
-  fn dump_publication_is_deterministic_and_includes_glyphs_and_links() {
+  fn dump_publication_link_writes_internal_target_with_destination() {
     // Arrange
-    let publication = publication_with_glyph_and_link();
+    let link = PublicationLink {
+      target: PublicationLinkTarget::Internal(Destination {
+        page_index: 0,
+        point: Point {
+          x: Length::ZERO,
+          y: Length::ZERO,
+        },
+      }),
+      rect: Rect {
+        x: Length::pt(10.0),
+        y: Length::pt(20.0),
+        width: Length::pt(30.0),
+        height: Length::pt(12.0),
+      },
+    };
+    let mut out = String::new();
 
     // Act
-    let first = dump_publication(&publication);
-    let second = dump_publication(&publication);
+    dump_publication_link(&mut out, &link);
 
     // Assert
-    assert_eq!(first, second);
-    assert!(first.contains("title=\"Test\""));
-    assert!(first.contains("text=\"Test\""));
-    assert!(first.contains("link target=Internal"));
+    assert!(out.contains("link target=Internal(page=0, x=0.00, y=0.00)"));
+    assert!(out.contains("x=10.00 y=20.00 w=30.00 h=12.00"));
+  }
+
+  #[test]
+  fn dump_publication_link_writes_external_target() {
+    // Arrange
+    let link = PublicationLink {
+      target: PublicationLinkTarget::External("https://example.com".to_string()),
+      rect: Rect {
+        x: Length::ZERO,
+        y: Length::ZERO,
+        width: Length::pt(30.0),
+        height: Length::pt(12.0),
+      },
+    };
+    let mut out = String::new();
+
+    // Act
+    dump_publication_link(&mut out, &link);
+
+    // Assert
+    assert!(out.contains(r#"link target=External("https://example.com")"#));
   }
 }
