@@ -321,23 +321,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "citation"
-version = "0.1.0"
-dependencies = [
- "ciborium",
- "config",
- "hayagriva",
- "miette",
- "model",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
-]
-
-[[package]]
 name = "citationberg"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2236,11 +2219,12 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "seiran"
 version = "0.1.0"
 dependencies = [
- "citation",
+ "ciborium",
  "clap",
  "config",
  "font",
  "frontend",
+ "hayagriva",
  "hypher",
  "icu",
  "lazy-regex",
@@ -2250,6 +2234,8 @@ dependencies = [
  "pdf_gen",
  "read-fonts 0.41.0",
  "resolve",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",

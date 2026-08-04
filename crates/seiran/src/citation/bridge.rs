@@ -8,7 +8,7 @@
 use hayagriva::citationberg::json::Item;
 use serde_json::{Map, Value};
 
-use crate::Reference;
+use crate::citation::Reference;
 
 /// `Reference` を CSL-JSN 担体 `Item` に変換する。
 ///
@@ -59,7 +59,7 @@ mod tests {
   use hayagriva::citationberg::json::Value;
 
   use super::to_item;
-  use crate::{References, read_references, test_fixtures::sample_references};
+  use crate::citation::{References, read_references, test_fixtures::sample_references};
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {

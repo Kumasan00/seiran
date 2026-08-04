@@ -7,7 +7,7 @@ use serde::{
   de::{Error, MapAccess, Visitor},
 };
 
-use crate::references::{date::Date, name::Name};
+use crate::citation::references::{date::Date, name::Name};
 
 /// 参照定義ファイル全体を表す構造体
 ///
@@ -79,8 +79,13 @@ where
 /// CSL (Citation Style Language) に基づく文献情報を保持する。
 /// 参照 ID は keyed-table 形式のテーブルキーとして保持されるため、本構造体には持たない。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
+// `reference_type` は `#[serde(rename = "type")]` により CSL の `type` キーへ写像するため、
+// struct 名との重複は意図的。旧 citation crate では公開 API のため対象外だったが、seiran へ
+// 吸収され非公開 module 化されたことで `clippy::struct_field_names`（pedantic、実効可視性
+// ベース）が新たに発火する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_field_names)]
 pub struct Reference {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]
@@ -344,94 +349,139 @@ pub struct Reference {
 /// CSL (Citation Style Language) で定義されている文献タイプに対応する。
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ReferenceType {
+  /// 記事（学術誌以外の一般的な記事）
   #[serde(rename = "article")]
   Article,
+  /// 学術誌の記事
   #[serde(rename = "article-journal")]
   ArticleJournal,
+  /// 雑誌記事
   #[serde(rename = "article-magazine")]
   ArticleMagazine,
+  /// 新聞記事
   #[serde(rename = "article-newspaper")]
   ArticleNewspaper,
+  /// 法案
   #[serde(rename = "bill")]
   Bill,
+  /// 書籍
   #[serde(rename = "book")]
   Book,
+  /// 放送番組
   #[serde(rename = "broadcast")]
   Broadcast,
+  /// 書籍の章
   #[serde(rename = "chapter")]
   Chapter,
+  /// 古典（著者・出版年が定まらない古典作品）
   #[serde(rename = "classic")]
   Classic,
+  /// 論文集・作品集
   #[serde(rename = "collection")]
   Collection,
+  /// データセット
   #[serde(rename = "dataset")]
   Dataset,
+  /// 文書（他の種別に分類できない一般文書）
   #[serde(rename = "document")]
   Document,
+  /// 事典・辞書等の項目（種別不特定）
   #[serde(rename = "entry")]
   Entry,
+  /// 辞書項目
   #[serde(rename = "entry-dictionary")]
   EntryDictionary,
+  /// 百科事典項目
   #[serde(rename = "entry-encyclopedia")]
   EntryEncyclopedia,
+  /// イベント（展示会・式典等）
   #[serde(rename = "event")]
   Event,
+  /// 図表
   #[serde(rename = "figure")]
   Figure,
+  /// 図版・グラフィック作品
   #[serde(rename = "graphic")]
   Graphic,
+  /// 公聴会記録
   #[serde(rename = "hearing")]
   Hearing,
+  /// インタビュー
   #[serde(rename = "interview")]
   Interview,
+  /// 判例
   #[serde(rename = "legal_case")]
   LegalCase,
+  /// 法令
   #[serde(rename = "legislation")]
   Legislation,
+  /// 未刊行原稿
   #[serde(rename = "manuscript")]
   Manuscript,
+  /// 地図
   #[serde(rename = "map")]
   Map,
+  /// 映画
   #[serde(rename = "motion_picture")]
   MotionPicture,
+  /// 楽譜
   #[serde(rename = "musical_score")]
   MusicalScore,
+  /// パンフレット
   #[serde(rename = "pamphlet")]
   Pamphlet,
+  /// 学会発表論文
   #[serde(rename = "paper-conference")]
   PaperConference,
+  /// 特許
   #[serde(rename = "patent")]
   Patent,
+  /// 上演・公演
   #[serde(rename = "performance")]
   Performance,
+  /// 定期刊行物
   #[serde(rename = "periodical")]
   Periodical,
+  /// 私信
   #[serde(rename = "personal_communication")]
   PersonalCommunication,
+  /// （ウェブ上の）投稿
   #[serde(rename = "post")]
   Post,
+  /// ブログ記事
   #[serde(rename = "post-weblog")]
   PostWeblog,
+  /// 規則
   #[serde(rename = "regulation")]
   Regulation,
+  /// 報告書
   #[serde(rename = "report")]
   Report,
+  /// レビュー
   #[serde(rename = "review")]
   Review,
+  /// 書評
   #[serde(rename = "review-book")]
   ReviewBook,
+  /// ソフトウェア
   #[serde(rename = "software")]
   Software,
+  /// 楽曲
   #[serde(rename = "song")]
   Song,
+  /// 講演
   #[serde(rename = "speech")]
   Speech,
+  /// 規格
   #[serde(rename = "standard")]
   Standard,
+  /// 学位論文
   #[serde(rename = "thesis")]
   Thesis,
+  /// 条約
   #[serde(rename = "treaty")]
   Treaty,
+  /// ウェブページ
   #[serde(rename = "webpage")]
   Webpage,
 }

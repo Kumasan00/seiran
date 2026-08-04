@@ -36,9 +36,6 @@ use std::{
   time::Instant,
 };
 
-#[cfg(test)]
-use citation::References;
-use citation::read_references;
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedParseError, CompileError};
@@ -50,6 +47,10 @@ pub use project::OutputPlan;
 use project::{ProjectSnapshot, SourceDb};
 use semantics::SemanticsError;
 use tracing::info;
+
+#[cfg(test)]
+use crate::citation::References;
+use crate::citation::read_references;
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]

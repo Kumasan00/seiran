@@ -5,13 +5,13 @@
 //! として実ソースの `groups` とは別枠で渡す組み立ては、この module の外からは見えない
 //! （issue #303）。
 
-use citation::{CitationError, References};
 use miette::Diagnostic;
 use model::{DocNode, SourceId};
 use resolve::{ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup};
 use thiserror::Error;
 
 use super::ParsedSource;
+use crate::citation::{self, CitationError, References};
 
 /// `resolve_semantics` のエラー。
 ///
@@ -72,12 +72,14 @@ pub(super) fn resolve_semantics(
 mod tests {
   use std::{collections::HashSet, fs};
 
-  use citation::{CitationError, read_references};
   use config::{FilesystemProjectSource, MemoryProjectSource, Style};
   use model::{DocNode, InlineNode, SourceId, Span};
 
   use super::{ParsedSource, SemanticsError, resolve_semantics};
-  use crate::build_pdf::golden::{enter_workspace_root, load_base};
+  use crate::{
+    build_pdf::golden::{enter_workspace_root, load_base},
+    citation::{CitationError, read_references},
+  };
 
   #[test]
   fn resolve_semantics_composes_citation_then_resolve() {

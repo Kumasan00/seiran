@@ -1,6 +1,5 @@
 //! PDF ビルドエラー型の定義
 
-use citation::CitationError;
 use config::LayoutValidationError;
 use frontend::ParseSourceError;
 use miette::{Diagnostic, NamedSource};
@@ -8,6 +7,8 @@ use model::AssetId;
 use pdf_gen::PdfGenError;
 use resolve::ResolveError;
 use thiserror::Error;
+
+use crate::citation::CitationError;
 
 /// [`frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///

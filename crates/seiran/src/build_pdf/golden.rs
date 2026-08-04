@@ -9,13 +9,15 @@ use std::{
   sync::Arc,
 };
 
-use citation::{References, read_references};
 use config::{Config, MemoryProjectSource, ProjectPath, Style};
 use font::{FontData, FontDataExt};
 use model::{AnchorMark, Length};
 
 use super::{build_pages, dump::dump_pages};
-use crate::typeset::{Page, PlacedBlock};
+use crate::{
+  citation::{References, read_references},
+  typeset::{Page, PlacedBlock},
+};
 
 /// golden 比較対象の入力名。
 const GOLDEN_INPUTS: &[&str] = &[

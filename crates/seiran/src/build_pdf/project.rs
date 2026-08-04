@@ -2,9 +2,8 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use citation::References;
-
 use super::error::CompileError;
+use crate::citation::References;
 
 /// 読込済みの設定・ソース・文献・フォントを束ねた不変な入力。
 ///

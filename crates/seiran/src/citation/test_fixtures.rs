@@ -7,7 +7,7 @@ use std::{
 
 use config::FilesystemProjectSource;
 
-use crate::{References, read_references};
+use crate::citation::{References, read_references};
 
 /// クレート同梱のテスト用 CSL（`tests/data/ieee.csl`）への絶対パスを返す。
 pub(crate) fn ieee_csl_path() -> PathBuf {

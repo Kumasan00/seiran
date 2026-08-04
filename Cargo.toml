@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/citation",
   "crates/config",
   "crates/font",
   "crates/frontend",
@@ -23,7 +22,6 @@ license = "MIT OR Apache-2.0"
 bumpalo = { version = "3.20.3", features = ["collections"] }
 chrono = "0.4.45"
 ciborium = "0.2.2"
-citation = { path = "crates/citation" }
 clap = { version = "4.6.1", features = ["derive"] }
 config = { path = "crates/config" }
 figment2 = { version = "0.11.5", features = ["toml"] }

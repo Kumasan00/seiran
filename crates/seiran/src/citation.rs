@@ -21,6 +21,10 @@ mod render;
 #[cfg(test)]
 mod test_fixtures;
 
+// 旧 citation crate の公開 API 保持のための re-export。`Date`/`DateCirca`/`DatePart`/`DateSeason`/
+// `Name`/`NumberOrString`/`ReadReferencesError`/`ReferenceType` は crate::citation の外からまだ
+// 消費されていない（`Reference`/`References`/`read_references` のみ build_pdf 側から使われる）。
+#[allow(unused_imports)]
 pub use references::{
   Date, DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, Reference, ReferenceType,
   References, read_references,
@@ -545,7 +549,7 @@ mod tests {
   use model::{DocNode, FontKind, InlineNode, Span};
 
   use super::{CitationError, load_locales, process_citations};
-  use crate::{
+  use crate::citation::{
     References, read_references,
     test_fixtures::{ieee_csl_path, sample_references},
   };
