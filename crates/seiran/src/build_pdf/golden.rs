@@ -97,6 +97,13 @@ fn apply_input_style_overrides(name: &str, style: &mut config::Style) {
 }
 
 /// 検証対象の機能に必要な config 差分を入力ごとに適用する。
+///
+/// **注意**: [`apply_input_config_overrides_toml`] と対になっている（`dump_input`＝本関数、
+/// `dump_input_via_compile`＝toml 版という 2 つの golden 経路にそれぞれ渡すため）。ここへ
+/// ケースを追加したら toml 版にも同じ上書きを追加すること——片方だけに追加すると
+/// `layout_dumps_match_golden` が既定ジオメトリのまま golden を静かに再生成してしまい、
+/// テスト失敗を経由せず座標がずれる。`config_overrides_typed_and_toml_stay_in_sync` が
+/// この乖離を機械的に検査する。
 fn apply_input_config_overrides(name: &str, config: &mut Config) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
@@ -157,6 +164,12 @@ fn register_fonts(
 ///
 /// `Config`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
 /// テーブルを直接書き換える。上書き内容は型付き版と同じにする（golden の座標は同一のはず）。
+///
+/// **注意**: 型付き版 [`apply_input_config_overrides`] と対になっている。ここへケースを
+/// 追加したら型付き版にも同じ上書きを追加すること——片方だけに追加すると
+/// `layout_dumps_match_golden`（本関数を使う `dump_input_via_compile` 経由）が既定ジオメトリの
+/// まま golden を静かに再生成してしまい、テスト失敗を経由せず座標がずれる。
+/// `config_overrides_typed_and_toml_stay_in_sync` がこの乖離を機械的に検査する。
 fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table) {
   fn set_pdf_field(table: &mut toml::value::Table, key: &str, value: &str) {
     let pdf = table.entry("pdf").or_insert_with(|| return toml::Value::Table(toml::value::Table::new()));
@@ -310,6 +323,65 @@ fn layout_dumps_match_golden() {
     mismatches.is_empty(),
     "レイアウトダンプが golden と一致しません: {mismatches:?}（意図した変更なら UPDATE_GOLDEN=1 で再生成し git diff で確認）"
   );
+}
+
+/// [`apply_input_config_overrides`]（型付き版）と [`apply_input_config_overrides_toml`]（toml 版）が
+/// 両方とも扱う 3 fixture について、同じ座標へ収束することを確認する回帰テスト。
+///
+/// この 2 関数は golden の入口が 2 経路（`dump_input`＝`build_pages` 経由と
+/// `dump_input_via_compile`＝`compile()` 経由）に分かれているために存在する並行実装で、
+/// 将来どちらか片方だけにケースを追加すると `layout_dumps_match_golden` が既定ジオメトリの
+/// まま golden を静かに再生成してしまう（テスト失敗を経由しない完全に静かな回帰）。
+/// このテストは両関数が触れうるフィールド（`pdf.width` / `pdf.height` / `pdf.margin.*` /
+/// `document.language`）だけを比較する最小限のクロスチェックで、そのフィールドが片方だけ
+/// 変わればここが失敗する。
+#[test]
+fn config_overrides_typed_and_toml_stay_in_sync() {
+  // Arrange
+  enter_workspace_root();
+  let (base_config, _, _) = load_base();
+  let workspace_root = workspace_root();
+
+  for name in ["hyphenation", "footnote_per_page", "footnote_split"] {
+    // Act — 型付き版（`dump_input` と同じ適用順）
+    let mut typed_config = base_config.clone();
+    apply_input_config_overrides(name, &mut typed_config);
+
+    // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `read_config` を通す）
+    let (source, root) = memory_source_for_golden_fixture(name);
+    let toml_config = config::read_config(&source, root.as_path(), &workspace_root)
+      .unwrap_or_else(|error| panic!("fixture {name} の toml 版 config 読込は成功するはず: {error}"));
+
+    // Assert — 両関数が触れうるフィールドが一致する
+    assert_eq!(
+      typed_config.pdf.width, toml_config.pdf.width,
+      "{name}: pdf.width が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.pdf.height, toml_config.pdf.height,
+      "{name}: pdf.height が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.pdf.margin.left, toml_config.pdf.margin.left,
+      "{name}: pdf.margin.left が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.pdf.margin.right, toml_config.pdf.margin.right,
+      "{name}: pdf.margin.right が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.pdf.margin.top, toml_config.pdf.margin.top,
+      "{name}: pdf.margin.top が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.pdf.margin.bottom, toml_config.pdf.margin.bottom,
+      "{name}: pdf.margin.bottom が型付き版と toml 版で食い違っている"
+    );
+    assert_eq!(
+      typed_config.document.language, toml_config.document.language,
+      "{name}: document.language が型付き版と toml 版で食い違っている"
+    );
+  }
 }
 
 /// 索引マーカーを除けば本文レイアウトが変わらないことを確認する。
