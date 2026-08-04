@@ -3,13 +3,17 @@
 //! epic #276 の一環で `pdf_gen` から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
 //! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`typeset::breaking`）が解決済みの値を
 //! `typeset::Page` / `typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
+//!
+//! `pdf_gen` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`pdf_gen::Point` /
+//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `model::Length::to_pt()` /
+//! `model::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
 
 use std::collections::HashMap;
 
-use model::{AnchorId, AnchorMark, Color, LinkTarget as ModelLinkTarget};
+use model::{AnchorId, AnchorMark, LinkTarget as ModelLinkTarget};
 use pdf_gen::{
-  Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
-  PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
+  Destination, Glyph as PdfGlyph, GlyphRun as PdfGlyphRun, PaintOp, Point, Publication, PublicationLink,
+  PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
 use typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow};
 
@@ -75,17 +79,17 @@ fn build_page(
   dest_by_id: &HashMap<AnchorId, Destination>,
 ) -> PublicationPage {
   let page_box = Rect {
-    x: model::Length::pt(0.0),
-    y: model::Length::pt(0.0),
-    width: config.pdf.width,
-    height: config.pdf.height,
+    x: 0.0,
+    y: 0.0,
+    width: config.pdf.width.to_pt(),
+    height: config.pdf.height.to_pt(),
   };
 
   let mut ops = Vec::new();
   if let Some(color) = page.background_color {
     ops.push(PaintOp::FillRect {
       rect: page_box,
-      color: Some(Color::from(color)),
+      color: Some(color),
     });
   }
   let margin_left_pt = margin_left.to_pt();
@@ -114,9 +118,9 @@ fn build_page(
       target,
       rect: Rect {
         x: add_margin_left(margin_left, link.x),
-        y: link.y,
-        width: link.width,
-        height: link.height,
+        y: link.y.to_pt(),
+        width: link.width.to_pt(),
+        height: link.height.to_pt(),
       },
     });
   }
@@ -143,7 +147,7 @@ fn build_destination_index(
         page_index,
         point: Point {
           x: add_margin_left(margin_left, anchor.x),
-          y: anchor.y,
+          y: anchor.y.to_pt(),
         },
       };
       match &anchor.mark {
@@ -172,12 +176,10 @@ fn build_destination_index(
   return (dest_by_id, heading_dests);
 }
 
-/// Krilla と同じ `f32` の演算順序で左マージンを加える。
+/// Krilla と同じ `f32` の演算順序で左マージンを加える（pt 単位）。
 ///
 /// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
-fn add_margin_left(margin_left: model::Length, x: model::Length) -> model::Length {
-  return model::Length::pt(margin_left.to_pt() + x.to_pt());
-}
+fn add_margin_left(margin_left: model::Length, x: model::Length) -> f32 { return margin_left.to_pt() + x.to_pt(); }
 
 /// 描画に必要な解決済みの表スタイル。
 struct ResolvedTableStyle {
@@ -243,12 +245,12 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
       target_dpi,
     } => {
       ops.push(PaintOp::DrawImage {
-        path: path.clone(),
+        path: path.as_str().to_string(),
         rect: Rect {
-          x: model::Length::pt(margin_left + x.to_pt()),
-          y: *y,
-          width: *width,
-          height: *height,
+          x: margin_left + x.to_pt(),
+          y: y.to_pt(),
+          width: width.to_pt(),
+          height: height.to_pt(),
         },
         target_dpi: *target_dpi,
       });
@@ -262,12 +264,12 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
     } => {
       ops.push(PaintOp::FillRect {
         rect: Rect {
-          x: model::Length::pt(margin_left + x.to_pt()),
-          y: *y,
-          width: *width,
-          height: *height,
+          x: margin_left + x.to_pt(),
+          y: y.to_pt(),
+          width: width.to_pt(),
+          height: height.to_pt(),
         },
-        color: color.map(Color::from),
+        color: *color,
       });
     },
   }
@@ -278,20 +280,17 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
   match content {
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
-        origin: Point {
-          x: model::Length::pt(x),
-          y: model::Length::pt(baseline_y),
-        },
-        run: run.clone(),
+        origin: Point { x, y: baseline_y },
+        run: to_pdf_glyph_run(run),
       });
     },
     HBoxContent::Rule { width, height } => {
       ops.push(PaintOp::FillRect {
         rect: Rect {
-          x: model::Length::pt(x),
-          y: model::Length::pt(baseline_y - height.to_pt()),
-          width: *width,
-          height: *height,
+          x,
+          y: baseline_y - height.to_pt(),
+          width: width.to_pt(),
+          height: height.to_pt(),
         },
         color: None,
       });
@@ -319,12 +318,12 @@ fn push_table_row_ops(
   if row.rule_above {
     ops.push(PaintOp::FillRect {
       rect: Rect {
-        x: model::Length::pt(x0),
-        y: model::Length::pt(band_top),
-        width: table_width,
-        height: table_style.rule_thickness,
+        x: x0,
+        y: band_top,
+        width: table_width.to_pt(),
+        height: table_style.rule_thickness.to_pt(),
       },
-      color: table_style.rule_color.map(Color::from),
+      color: table_style.rule_color,
     });
   }
 
@@ -366,13 +365,37 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
   }
 }
 
+/// `font::GlyphRun`（シェーピング直後の中間表現。座標は `model::Length`、色は `model::Color`）を
+/// `pdf_gen::GlyphRun`（`pdf_gen` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
+fn to_pdf_glyph_run(run: &font::GlyphRun) -> PdfGlyphRun {
+  return PdfGlyphRun {
+    font_size: run.font_size.to_pt(),
+    text: run.text.clone(),
+    glyphs: run.glyphs.iter().map(to_pdf_glyph).collect(),
+    font_type: super::to_pdf_font_type(run.font_type),
+    color: run.color.map(model::Color::rgb),
+  };
+}
+
+/// `font::Glyph` を `pdf_gen::Glyph`（同一構造の複製）へ変換する。
+fn to_pdf_glyph(glyph: &font::Glyph) -> PdfGlyph {
+  return PdfGlyph {
+    gid: glyph.gid,
+    range: glyph.range.clone(),
+    x_advance: glyph.x_advance,
+    y_advance: glyph.y_advance,
+    x_offset: glyph.x_offset,
+    y_offset: glyph.y_offset,
+  };
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
   use std::path::PathBuf;
 
   use config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig};
-  use font::{FontDataExt, FontMetricsExt, FontRefsExt, GlyphRun};
+  use font::{FontData, FontDataExt, FontResources, GlyphRun};
   use model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn};
   use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
   use typeset::{
@@ -446,12 +469,11 @@ mod tests {
     );
     let config = test_config();
     let source = config::FilesystemProjectSource::new();
-    let font_data = font::FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
-    let font_refs = font::FontRefs::new(&config.font_configs, &font_data).expect("FontRefs の構築");
-    let font_metrics = font::FontMetrics::new(&font_refs).expect("FontMetrics の構築");
-    let face_configs = font::build_face_configs(&config.font_configs);
-    return ResourceBundle::new(&face_configs, &font_data, &font_refs, font_metrics, std::collections::HashMap::new())
-      .expect("ResourceBundle の構築");
+    let font_data = FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
+    let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
+    let fonts = super::super::build_pdf_fonts(&font_data, &font_resources);
+    let font_metrics = super::super::build_pdf_font_metrics(&font_resources);
+    return ResourceBundle::new(fonts, font_metrics, std::collections::HashMap::new()).expect("ResourceBundle の構築");
   }
 
   fn empty_page() -> Page {
@@ -525,7 +547,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left;
+    let margin_left = config.pdf.margin.left.to_pt();
     assert_eq!(publication.pages.len(), 1, "ページは 1 枚");
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 1, "背景なし・ブロック 1 個のみなので op は 1 個");
@@ -533,10 +555,10 @@ mod tests {
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + Length::pt(5.0),
-          y: Length::pt(100.0)
+          x: margin_left + 5.0,
+          y: 100.0
         },
-        run
+        run: super::to_pdf_glyph_run(&run)
       }
     );
   }
@@ -560,7 +582,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left;
+    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 1);
     assert_eq!(
@@ -568,9 +590,9 @@ mod tests {
       PaintOp::FillRect {
         rect: Rect {
           x: margin_left,
-          y: Length::pt(49.0),
-          width: Length::pt(30.0),
-          height: Length::pt(1.0)
+          y: 49.0,
+          width: 30.0,
+          height: 1.0
         },
         color: None,
       }
@@ -617,27 +639,27 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left;
+    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + Length::pt(10.0),
-          y: Length::pt(97.0)
+          x: margin_left + 10.0,
+          y: 97.0
         },
-        run: run_a
+        run: super::to_pdf_glyph_run(&run_a)
       }
     );
     assert_eq!(
       ops[1],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + Length::pt(15.0),
-          y: Length::pt(100.0)
+          x: margin_left + 15.0,
+          y: 100.0
         },
-        run: run_b
+        run: super::to_pdf_glyph_run(&run_b)
       }
     );
   }
@@ -666,12 +688,12 @@ mod tests {
       ops[0],
       PaintOp::FillRect {
         rect: Rect {
-          x: Length::pt(0.0),
-          y: Length::pt(0.0),
-          width: config.pdf.width,
-          height: config.pdf.height
+          x: 0.0,
+          y: 0.0,
+          width: config.pdf.width.to_pt(),
+          height: config.pdf.height.to_pt()
         },
-        color: Some(model::Color::new(200, 200, 200)),
+        color: Some([200, 200, 200]),
       }
     );
   }
@@ -707,16 +729,16 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left;
+    let margin_left = config.pdf.margin.left.to_pt();
     assert_eq!(
       publication.pages[0].ops[0],
       PaintOp::DrawImage {
-        path: model::AssetId::new("figures/a.png"),
+        path: "figures/a.png".to_string(),
         rect: Rect {
-          x: margin_left + Length::pt(10.0),
-          y: Length::pt(20.0),
-          width: Length::pt(100.0),
-          height: Length::pt(50.0)
+          x: margin_left + 10.0,
+          y: 20.0,
+          width: 100.0,
+          height: 50.0
         },
         target_dpi: Some(300),
       }
@@ -755,27 +777,27 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left;
+    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages[0].ops;
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + Length::pt(10.0),
-          y: Length::pt(200.0)
+          x: margin_left + 10.0,
+          y: 200.0
         },
-        run: body_run
+        run: super::to_pdf_glyph_run(&body_run)
       }
     );
     assert_eq!(
       ops[1],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + Length::pt(300.0),
-          y: Length::pt(200.0)
+          x: margin_left + 300.0,
+          y: 200.0
         },
-        run: number_run
+        run: super::to_pdf_glyph_run(&number_run)
       }
     );
   }
@@ -862,7 +884,7 @@ mod tests {
         let PaintOp::FillRect { rect, .. } = op else {
           panic!("Rule は FillRect になるはず")
         };
-        return rect.y.to_pt();
+        return rect.y;
       })
       .collect();
     assert_eq!(ys, vec![1.0, 2.0, 3.0, 4.0]);

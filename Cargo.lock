@@ -1780,12 +1780,10 @@ name = "pdf_gen"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "font",
  "image",
  "krilla",
  "krilla-svg",
  "miette",
- "model",
  "read-fonts 0.41.0",
  "thiserror",
  "tracing",

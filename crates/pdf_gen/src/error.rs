@@ -2,9 +2,10 @@
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
-use model::{AssetId, FontType};
 use read_fonts::ReadError;
 use thiserror::Error;
+
+use crate::types::FontType;
 
 /// PDF 生成中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -25,6 +26,19 @@ pub enum PdfGenError {
   FontCreation {
     /// フォント種別。
     font_type: FontType,
+  },
+  /// フォントバイト列の解析に失敗しました（呼び出し元がすでに検証済みのはずの内部エラー）。
+  #[error("フォントバイト列の解析に失敗しました: {font_type:?}")]
+  #[diagnostic(
+    code(pdf_gen::font_parse),
+    help("フォントファイルが破損していないか、font_index が正しいか確認してください。")
+  )]
+  FontParse {
+    /// フォント種別。
+    font_type: FontType,
+    /// 元の解析エラー。
+    #[source]
+    source: ReadError,
   },
   /// バリアブルフォントの補助テーブルを読み込めませんでした。
   #[error("バリアブルフォントの補助テーブルを読み込めませんでした: {font_type:?}")]
@@ -149,6 +163,6 @@ pub enum PdfGenError {
   )]
   ImageNotInManifest {
     /// 画像ファイルのパス。
-    path: AssetId,
+    path: String,
   },
 }

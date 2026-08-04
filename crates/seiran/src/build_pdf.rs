@@ -210,14 +210,85 @@ fn build_publication(
   image_bytes: HashMap<model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
 ) -> miette::Result<pdf_gen::Publication> {
-  let resources = pdf_gen::ResourceBundle::new(
-    &font_resources.face_configs(),
-    font_data,
-    font_resources.font_refs(),
-    font_resources.metrics().clone(),
-    image_bytes,
-  )?;
+  let fonts = build_pdf_fonts(font_data, font_resources);
+  let font_metrics = build_pdf_font_metrics(font_resources);
+  let image_bytes: HashMap<String, Vec<u8>> =
+    image_bytes.into_iter().map(|(path, bytes)| return (path.to_string(), bytes)).collect();
+  let resources = pdf_gen::ResourceBundle::new(fonts, font_metrics, image_bytes)?;
   return Ok(publication::build_publication(config, resources, laid_out));
+}
+
+/// `model::FontType` を `pdf_gen::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
+fn to_pdf_font_type(font_type: model::FontType) -> pdf_gen::FontType {
+  return match font_type {
+    model::FontType::Serif => pdf_gen::FontType::Serif,
+    model::FontType::SerifBold => pdf_gen::FontType::SerifBold,
+    model::FontType::SerifItalic => pdf_gen::FontType::SerifItalic,
+    model::FontType::SerifBoldItalic => pdf_gen::FontType::SerifBoldItalic,
+    model::FontType::SansSerif => pdf_gen::FontType::SansSerif,
+    model::FontType::SansSerifBold => pdf_gen::FontType::SansSerifBold,
+    model::FontType::SansSerifItalic => pdf_gen::FontType::SansSerifItalic,
+    model::FontType::SansSerifBoldItalic => pdf_gen::FontType::SansSerifBoldItalic,
+    model::FontType::Monospace => pdf_gen::FontType::Monospace,
+    model::FontType::MonospaceBold => pdf_gen::FontType::MonospaceBold,
+    model::FontType::MonospaceItalic => pdf_gen::FontType::MonospaceItalic,
+    model::FontType::MonospaceBoldItalic => pdf_gen::FontType::MonospaceBoldItalic,
+    model::FontType::Math => pdf_gen::FontType::Math,
+    model::FontType::JapaneseSerif => pdf_gen::FontType::JapaneseSerif,
+    model::FontType::JapaneseSerifBold => pdf_gen::FontType::JapaneseSerifBold,
+    model::FontType::JapaneseSansSerif => pdf_gen::FontType::JapaneseSansSerif,
+    model::FontType::JapaneseSansSerifBold => pdf_gen::FontType::JapaneseSansSerifBold,
+    model::FontType::JapaneseMonospace => pdf_gen::FontType::JapaneseMonospace,
+    model::FontType::JapaneseMonospaceBold => pdf_gen::FontType::JapaneseMonospaceBold,
+  };
+}
+
+/// `font::FontData` + `font::FontResources` から `pdf_gen::ResourceBundle::new` に渡す
+/// フォント構築設定一式を組み立てる（`model::FontType` → `pdf_gen::FontType` への変換込み）。
+fn build_pdf_fonts(
+  font_data: &FontData,
+  font_resources: &FontResources<'_>,
+) -> HashMap<pdf_gen::FontType, pdf_gen::FontFaceInput> {
+  let face_configs = font_resources.face_configs();
+  return model::FontType::ALL
+    .iter()
+    .map(|&font_type| {
+      let face_config = face_configs.get(font_type);
+      let input = pdf_gen::FontFaceInput {
+        bytes: font_data.get(font_type).clone(),
+        font_index: face_config.font_index,
+        variation_axes: face_config.variation_axes.as_ref().map(|axes| {
+          return axes
+            .iter()
+            .map(|axis| {
+              return pdf_gen::VariationAxisInput {
+                name: axis.name,
+                value: axis.value,
+              };
+            })
+            .collect();
+        }),
+      };
+      return (to_pdf_font_type(font_type), input);
+    })
+    .collect();
+}
+
+/// `font::FontResources` から `pdf_gen::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
+fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<pdf_gen::FontType, pdf_gen::FontMetric> {
+  let metrics = font_resources.metrics();
+  return model::FontType::ALL
+    .iter()
+    .map(|&font_type| {
+      let metric = metrics.get(font_type);
+      let converted = pdf_gen::FontMetric {
+        upem: metric.upem,
+        ascender: metric.ascender,
+        descender: metric.descender,
+      };
+      return (to_pdf_font_type(font_type), converted);
+    })
+    .collect();
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。

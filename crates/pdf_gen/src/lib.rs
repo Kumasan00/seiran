@@ -7,6 +7,7 @@ mod metadata;
 mod publication;
 mod render;
 mod resources;
+mod types;
 
 use krilla::Document;
 use tracing::debug;
@@ -19,6 +20,7 @@ pub use crate::{
     PublicationOutlineEntry, PublicationPage, Rect,
   },
   resources::ResourceBundle,
+  types::{FontFaceInput, FontMetric, FontType, Glyph, GlyphRun, VariationAxisInput},
 };
 use crate::{metadata::build_metadata, render::render_pages};
 

@@ -1,6 +1,5 @@
 //! 確定済みの描画命令を Krilla で PDF に描画する。
 
-use font::GlyphRun;
 use krilla::{
   Document,
   action::{Action, LinkAction},
@@ -14,7 +13,6 @@ use krilla::{
   surface::Surface,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
-use model::AssetId;
 
 use crate::{
   error::PdfGenError,
@@ -25,10 +23,11 @@ use crate::{
     Rect as PubRect,
   },
   resources::ResourceBundle,
+  types::GlyphRun,
 };
 
-/// Publication の点を Krilla の点へ単位変換する。
-fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x.to_pt(), point.y.to_pt()); }
+/// Publication の点を Krilla の点へ渡す（すでに pt 単位の `f32` なので変換不要）。
+fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x, point.y); }
 
 /// `Publication::Destination` を krilla の `XyzDestination` へ変換する
 fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
@@ -99,9 +98,8 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
       PublicationLinkTarget::Internal(dest) => Target::Destination(Destination::from(to_xyz_destination(*dest))),
       PublicationLinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
     };
-    let rect =
-      Rect::from_xywh(link.rect.x.to_pt(), link.rect.y.to_pt(), link.rect.width.to_pt(), link.rect.height.to_pt())
-        .ok_or(PdfGenError::InvalidLinkRect)?;
+    let rect = Rect::from_xywh(link.rect.x, link.rect.y, link.rect.width, link.rect.height)
+      .ok_or(PdfGenError::InvalidLinkRect)?;
     page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
   }
   return Ok(());
@@ -109,17 +107,17 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
 
 /// `PaintOp::DrawGlyphRun` を描画する
 fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin: PubPoint, run: &GlyphRun) {
-  let font = resources.fonts.get(run.font_type);
-  let upem = resources.font_metrics.get(run.font_type).upem;
+  let font = resources.font(run.font_type);
+  let upem = resources.font_metric(run.font_type).upem;
   let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
   if let Some(color) = run.color {
-    let [r, g, b] = color.rgb();
+    let [r, g, b] = color;
     surface.set_fill(Some(Fill {
       paint: rgb::Color::new(r, g, b).into(),
       ..Fill::default()
     }));
   }
-  surface.draw_glyphs(to_krilla_point(origin), &krilla_glyphs, font.clone(), &run.text, run.font_size.to_pt(), false);
+  surface.draw_glyphs(to_krilla_point(origin), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
   if run.color.is_some() {
     surface.set_fill(None);
   }
@@ -129,24 +127,21 @@ fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin:
 fn draw_publication_image(
   surface: &mut Surface<'_>,
   resources: &ResourceBundle,
-  path: &AssetId,
+  path: &str,
   rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfGenError> {
-  let bytes = resources
-    .image_bytes
-    .get(path)
-    .ok_or_else(|| return PdfGenError::ImageNotInManifest { path: path.clone() })?;
-  return draw_image(surface, path.as_str(), bytes, rect, target_dpi);
+  let bytes = resources.image_bytes.get(path).ok_or_else(|| {
+    return PdfGenError::ImageNotInManifest {
+      path: path.to_string(),
+    };
+  })?;
+  return draw_image(surface, path, bytes, rect, target_dpi);
 }
 
 /// `PaintOp::FillRect` を描画する
-fn draw_publication_fill(
-  surface: &mut Surface<'_>,
-  rect: PubRect,
-  color: Option<model::Color>,
-) -> Result<(), PdfGenError> {
-  return draw_filled_rect(surface, rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt(), color);
+fn draw_publication_fill(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) -> Result<(), PdfGenError> {
+  return draw_filled_rect(surface, rect.x, rect.y, rect.width, rect.height, color);
 }
 
 /// `PaintOp` 1 個を描画する
@@ -160,7 +155,7 @@ fn draw_paint_op(surface: &mut Surface<'_>, resources: &ResourceBundle, op: &Pai
       rect,
       target_dpi,
     } => {
-      draw_publication_image(surface, resources, path, *rect, *target_dpi)?;
+      draw_publication_image(surface, resources, path.as_str(), *rect, *target_dpi)?;
     },
     PaintOp::FillRect { rect, color } => {
       draw_publication_fill(surface, *rect, *color)?;
@@ -176,8 +171,8 @@ fn draw_paint_op(surface: &mut Surface<'_>, resources: &ResourceBundle, op: &Pai
 pub(crate) fn render_pages(document: &mut Document, publication: &Publication) -> Result<(), PdfGenError> {
   let resources = &publication.resources;
   for page in &publication.pages {
-    let width = page.page_box.width.to_pt();
-    let height = page.page_box.height.to_pt();
+    let width = page.page_box.width;
+    let height = page.page_box.height;
     let page_settings = PageSettings::from_wh(width, height).ok_or(PdfGenError::InvalidPageSize { width, height })?;
     let mut krilla_page = document.start_page_with(page_settings);
     let mut surface = krilla_page.surface();
@@ -206,7 +201,7 @@ fn draw_image(
   rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfGenError> {
-  let (x, y, width, height) = (rect.x.to_pt(), rect.y.to_pt(), rect.width.to_pt(), rect.height.to_pt());
+  let (x, y, width, height) = (rect.x, rect.y, rect.width, rect.height);
   let loaded = load_image(path, bytes, None)?;
   let (nat_width, nat_height) = loaded.natural_size();
   let loaded = if matches!(loaded, LoadedImage::Raster(_))
@@ -245,14 +240,14 @@ fn draw_filled_rect(
   top: f32,
   width: f32,
   height: f32,
-  color: Option<model::Color>,
+  color: Option<[u8; 3]>,
 ) -> Result<(), PdfGenError> {
   let rect = Rect::from_xywh(left, top, width, height).ok_or(PdfGenError::InvalidRuleRect)?;
   let mut path_builder = PathBuilder::new();
   path_builder.push_rect(rect);
   let path = path_builder.finish().ok_or(PdfGenError::InvalidRulePath)?;
   if let Some(color) = color {
-    let [r, g, b] = color.rgb();
+    let [r, g, b] = color;
     surface.set_fill(Some(Fill {
       paint: rgb::Color::new(r, g, b).into(),
       ..Fill::default()
@@ -274,12 +269,9 @@ mod tests {
 
   #[test]
   #[allow(clippy::float_cmp)]
-  fn to_krilla_point_converts_length_to_pt_without_adding_margin() {
+  fn to_krilla_point_passes_through_pt_coordinates_without_adding_margin() {
     // Arrange
-    let point = PubPoint {
-      x: model::Length::pt(123.0),
-      y: model::Length::pt(45.0),
-    };
+    let point = PubPoint { x: 123.0, y: 45.0 };
 
     // Act
     let converted = to_krilla_point(point);
@@ -294,10 +286,7 @@ mod tests {
     // Arrange
     let dest = PubDestination {
       page_index: 2,
-      point: PubPoint {
-        x: model::Length::pt(1.0),
-        y: model::Length::pt(2.0),
-      },
+      point: PubPoint { x: 1.0, y: 2.0 },
     };
 
     // Act

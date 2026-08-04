@@ -55,14 +55,14 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut config:
   let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
     .layout(&resolved, &image_resources)
     .expect("layout の実行");
-  let resources = pdf_gen::ResourceBundle::new(
-    &font_resources.face_configs(),
-    &font_data,
-    font_resources.font_refs(),
-    font_resources.metrics().clone(),
-    image_resources.into_image_bytes(),
-  )
-  .expect("ResourceBundle の構築");
+  let fonts = super::build_pdf_fonts(&font_data, &font_resources);
+  let font_metrics = super::build_pdf_font_metrics(&font_resources);
+  let image_bytes: std::collections::HashMap<String, Vec<u8>> = image_resources
+    .into_image_bytes()
+    .into_iter()
+    .map(|(path, bytes)| return (path.to_string(), bytes))
+    .collect();
+  let resources = pdf_gen::ResourceBundle::new(fonts, font_metrics, image_bytes).expect("ResourceBundle の構築");
   let publication = super::publication::build_publication(&config, resources, &laid_out);
   return pdf_gen::render(&publication).expect("PDF の描画");
 }

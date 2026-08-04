@@ -64,10 +64,10 @@ pub(super) fn dump_publication(publication: &Publication) -> String {
     let _ = writeln!(
       out,
       "=== page {index} === box x={} y={} w={} h={}",
-      f2(page.page_box.x),
-      f2(page.page_box.y),
-      f2(page.page_box.width),
-      f2(page.page_box.height)
+      f2_pt(page.page_box.x),
+      f2_pt(page.page_box.y),
+      f2_pt(page.page_box.width),
+      f2_pt(page.page_box.height)
     );
     for op in &page.ops {
       dump_paint_op(&mut out, op);
@@ -85,8 +85,8 @@ pub(super) fn dump_publication(publication: &Publication) -> String {
         entry.depth,
         entry.text,
         entry.dest.page_index,
-        f2(entry.dest.point.x),
-        f2(entry.dest.point.y)
+        f2_pt(entry.dest.point.x),
+        f2_pt(entry.dest.point.y)
       );
     }
   }
@@ -111,17 +111,20 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 }
 
 /// 1 描画命令を書き出す（インデント 2）。
+///
+/// `run.color`（`Option<[u8; 3]>`）は旧 `model::Color` の Debug 表記（`Color([r, g, b])`）と
+/// 同じ文字列になるよう手書きで揃える — golden の文字列比較を変えないため。
 fn dump_paint_op(out: &mut String, op: &PaintOp) {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
-      let color = run.color.map_or_else(String::new, |c| format!(" color={c:?}"));
+      let color = run.color.map_or_else(String::new, |c| format!(" color=Color({c:?})"));
       let _ = writeln!(
         out,
         "  glyphs x={} y={} font={:?} size={} text={:?} glyph_count={}{color}",
-        f2(origin.x),
-        f2(origin.y),
+        f2_pt(origin.x),
+        f2_pt(origin.y),
         run.font_type,
-        f2(run.font_size),
+        f2_pt(run.font_size),
         run.text,
         run.glyphs.len()
       );
@@ -134,20 +137,20 @@ fn dump_paint_op(out: &mut String, op: &PaintOp) {
       let _ = writeln!(
         out,
         "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
-        f2(rect.x),
-        f2(rect.y),
-        f2(rect.width),
-        f2(rect.height)
+        f2_pt(rect.x),
+        f2_pt(rect.y),
+        f2_pt(rect.width),
+        f2_pt(rect.height)
       );
     },
     PaintOp::FillRect { rect, color } => {
       let _ = writeln!(
         out,
         "  fillrect x={} y={} w={} h={} color={color:?}",
-        f2(rect.x),
-        f2(rect.y),
-        f2(rect.width),
-        f2(rect.height)
+        f2_pt(rect.x),
+        f2_pt(rect.y),
+        f2_pt(rect.width),
+        f2_pt(rect.height)
       );
     },
   }
@@ -157,17 +160,17 @@ fn dump_paint_op(out: &mut String, op: &PaintOp) {
 fn dump_publication_link(out: &mut String, link: &PublicationLink) {
   let target = match &link.target {
     PublicationLinkTarget::Internal(dest) => {
-      format!("Internal(page={}, x={}, y={})", dest.page_index, f2(dest.point.x), f2(dest.point.y))
+      format!("Internal(page={}, x={}, y={})", dest.page_index, f2_pt(dest.point.x), f2_pt(dest.point.y))
     },
     PublicationLinkTarget::External(uri) => format!("External({uri:?})"),
   };
   let _ = writeln!(
     out,
     "  link target={target} x={} y={} w={} h={}",
-    f2(link.rect.x),
-    f2(link.rect.y),
-    f2(link.rect.width),
-    f2(link.rect.height)
+    f2_pt(link.rect.x),
+    f2_pt(link.rect.y),
+    f2_pt(link.rect.width),
+    f2_pt(link.rect.height)
   );
 }
 
@@ -408,11 +411,27 @@ fn f2(value: Length) -> String {
   };
 }
 
+/// pt 単位の `f32`（`pdf_gen` 境界の値）を小数第 2 位へ丸め、負のゼロを正規化する。
+///
+/// [`f2`] と丸め桁数・負のゼロ正規化の仕様を揃える（`pdf_gen` 側はすでに pt の `f32` なので
+/// `Length` 経由の単位変換をしないだけの違い）。
+fn f2_pt(value: f32) -> String {
+  let text = format!("{value:.2}");
+  return if text == "-0.00" {
+    "0.00".to_string()
+  } else {
+    text
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use font::GlyphRun;
   use model::{FontType, Length};
-  use pdf_gen::{Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect};
+  use pdf_gen::{
+    Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
+    PublicationLinkTarget, PublicationMetadata, Rect,
+  };
   use typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox};
 
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
@@ -574,18 +593,15 @@ mod tests {
   #[test]
   fn dump_paint_op_writes_glyph_run_text_and_size() {
     // Arrange
-    let run = GlyphRun {
-      font_size: Length::pt(10.0),
+    let run = PdfGlyphRun {
+      font_size: 10.0,
       text: "Test".to_string(),
       glyphs: Vec::new(),
-      font_type: FontType::Serif,
+      font_type: PdfFontType::Serif,
       color: None,
     };
     let op = PaintOp::DrawGlyphRun {
-      origin: Point {
-        x: Length::pt(10.0),
-        y: Length::pt(20.0),
-      },
+      origin: Point { x: 10.0, y: 20.0 },
       run,
     };
     let mut out = String::new();
@@ -604,16 +620,13 @@ mod tests {
     let link = PublicationLink {
       target: PublicationLinkTarget::Internal(Destination {
         page_index: 0,
-        point: Point {
-          x: Length::ZERO,
-          y: Length::ZERO,
-        },
+        point: Point { x: 0.0, y: 0.0 },
       }),
       rect: Rect {
-        x: Length::pt(10.0),
-        y: Length::pt(20.0),
-        width: Length::pt(30.0),
-        height: Length::pt(12.0),
+        x: 10.0,
+        y: 20.0,
+        width: 30.0,
+        height: 12.0,
       },
     };
     let mut out = String::new();
@@ -632,10 +645,10 @@ mod tests {
     let link = PublicationLink {
       target: PublicationLinkTarget::External("https://example.com".to_string()),
       rect: Rect {
-        x: Length::ZERO,
-        y: Length::ZERO,
-        width: Length::pt(30.0),
-        height: Length::pt(12.0),
+        x: 0.0,
+        y: 0.0,
+        width: 30.0,
+        height: 12.0,
       },
     };
     let mut out = String::new();

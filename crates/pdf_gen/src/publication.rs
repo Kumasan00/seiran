@@ -1,9 +1,6 @@
 //! 描画直前の確定済み中間表現。
 
-use font::GlyphRun;
-use model::{AssetId, Color};
-
-use crate::ResourceBundle;
+use crate::{ResourceBundle, types::GlyphRun};
 
 /// 座標と描画順が確定した文書。
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +56,7 @@ pub enum PaintOp {
   /// 画像の描画
   DrawImage {
     /// 画像ファイルへのパス
-    path: AssetId,
+    path: String,
     /// 描画矩形
     rect: Rect,
     /// ラスタ画像のダウンサンプリング上限 DPI（`None` はリサイズなし）
@@ -69,31 +66,31 @@ pub enum PaintOp {
   FillRect {
     /// 矩形
     rect: Rect,
-    /// 塗り色。`None` は既定色（黒）
-    color: Option<Color>,
+    /// 塗り色（RGB）。`None` は既定色（黒）
+    color: Option<[u8; 3]>,
   },
 }
 
-/// ページ左上原点、右向き・下向きを正とする点
+/// ページ左上原点、右向き・下向きを正とする点（単位: pt）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
-  /// 水平座標
-  pub x: model::Length,
-  /// 垂直座標
-  pub y: model::Length,
+  /// 水平座標（pt）
+  pub x: f32,
+  /// 垂直座標（pt）
+  pub y: f32,
 }
 
-/// ページ左上原点の矩形（左上角 + 幅 + 高さ）
+/// ページ左上原点の矩形（左上角 + 幅 + 高さ、単位: pt）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
-  /// 左端の水平座標
-  pub x: model::Length,
-  /// 上端の垂直座標
-  pub y: model::Length,
-  /// 幅
-  pub width: model::Length,
-  /// 高さ
-  pub height: model::Length,
+  /// 左端の水平座標（pt）
+  pub x: f32,
+  /// 上端の垂直座標（pt）
+  pub y: f32,
+  /// 幅（pt）
+  pub width: f32,
+  /// 高さ（pt）
+  pub height: f32,
 }
 
 /// 解決済みのクリック可能なリンク領域
