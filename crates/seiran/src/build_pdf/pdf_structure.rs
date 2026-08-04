@@ -192,9 +192,12 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // Arrange — figure（本文段落 + 画像）に背景色を明示的に設定し、build_pdf::publication::build_page が
-  // 定める描画順（背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する
-  let bytes = build_pdf_bytes_with_style("figure", |style| {
+  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、build_pdf::publication::build_page が
+  // 定める描画順（背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
+  // 入力に figure を使わないのは、下の assert が見るのが「fill と body の初出順」だけで、画像の
+  // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の
+  // デコード + ダウンサンプルに数十秒かかり、この検証に対して費用だけが乗る。
+  let bytes = build_pdf_bytes_with_style("text", |style| {
     style.background_color = Some(crate::model::Color::new(220, 220, 220));
   });
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
