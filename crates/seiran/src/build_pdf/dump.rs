@@ -4,7 +4,7 @@
 
 use std::fmt::Write;
 
-use pdf_gen::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
+use seiran_pdf::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 
 use crate::{
   model::{AnchorId, AnchorMark, Length, LinkTarget},
@@ -57,7 +57,7 @@ pub(super) fn dump_pages(pages: &[Page]) -> String {
 
 /// [`Publication`] を決定的なテキスト形式へダンプする（golden 比較用）。
 ///
-/// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `pdf_gen` クレート内
+/// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `seiran_pdf` クレート内
 /// `pub(crate)` でこの crate からは読めないため対象外とする。
 #[must_use]
 pub(super) fn dump_publication(publication: &Publication) -> String {
@@ -414,9 +414,9 @@ fn f2(value: Length) -> String {
   };
 }
 
-/// pt 単位の `f32`（`pdf_gen` 境界の値）を小数第 2 位へ丸め、負のゼロを正規化する。
+/// pt 単位の `f32`（`seiran_pdf` 境界の値）を小数第 2 位へ丸め、負のゼロを正規化する。
 ///
-/// [`f2`] と丸め桁数・負のゼロ正規化の仕様を揃える（`pdf_gen` 側はすでに pt の `f32` なので
+/// [`f2`] と丸め桁数・負のゼロ正規化の仕様を揃える（`seiran_pdf` 側はすでに pt の `f32` なので
 /// `Length` 経由の単位変換をしないだけの違い）。
 fn f2_pt(value: f32) -> String {
   let text = format!("{value:.2}");
@@ -429,7 +429,7 @@ fn f2_pt(value: f32) -> String {
 
 #[cfg(test)]
 mod tests {
-  use pdf_gen::{
+  use seiran_pdf::{
     Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
     PublicationLinkTarget, PublicationMetadata, Rect,
   };

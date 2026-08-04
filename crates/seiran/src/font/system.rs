@@ -96,7 +96,7 @@ impl<'a> FontResources<'a> {
 
   /// 解析済み OpenType フォント参照（`FontRefs`）へのアクセサ。
   ///
-  /// `pdf_gen::ResourceBundle::new` は `FontRefs` を直接受け取らなくなったため（#279 で
+  /// `seiran_pdf::ResourceBundle::new` は `FontRefs` を直接受け取らなくなったため（#279 で
   /// `face_configs()` / `metrics()` 経由の変換値へ切り替え済み）、現在このメソッドの呼び出し元は
   /// crate 内に存在しない（#307 Task 2 で発見、Task 7 の font 吸収時にドキュメントのみ訂正）。
   /// `font` が非公開 module になったことで `dead_code` が新たに発火するため、メソッド自体の削除は
@@ -106,11 +106,11 @@ impl<'a> FontResources<'a> {
   #[allow(dead_code)]
   pub fn font_refs(&self) -> &FontRefs<'a> { return &self.font_refs; }
 
-  /// `pdf_gen::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。
+  /// `seiran_pdf::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。
   #[must_use]
   pub fn metrics(&self) -> &FontMetrics { return &self.metrics; }
 
-  /// `pdf_gen::ResourceBundle::new` に渡すための [`FontFaceConfigs`] アクセサ。
+  /// `seiran_pdf::ResourceBundle::new` に渡すための [`FontFaceConfigs`] アクセサ。
   #[must_use]
   pub fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
 

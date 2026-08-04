@@ -87,9 +87,9 @@ pub enum DocNode {
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
     image_path: AssetId,
-    /// 画像の幅（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
+    /// 画像の幅（未指定の場合は `seiran_pdf` 段で本文幅 / 縦横比から算出）
     width: Option<Length>,
-    /// 画像の高さ（未指定の場合は `pdf_gen` 段で本文幅 / 縦横比から算出）
+    /// 画像の高さ（未指定の場合は `seiran_pdf` 段で本文幅 / 縦横比から算出）
     height: Option<Length>,
     /// `\image[dpi=...]` の per-image 上書き。`None` なら config `[image].max_dpi` が使われる
     dpi: Option<u32>,

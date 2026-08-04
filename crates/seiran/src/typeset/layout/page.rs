@@ -1,7 +1,7 @@
 //! 縦組版の出力 [`Page`] と [`PlacedBlock`]。
 //!
 //! `typeset::breaking::break_pages` がすべてのレイアウト判断（行送り・改ページ・表の分割）を
-//! 終えた確定座標を保持する。`pdf_gen` はこれを描画するだけでよい。
+//! 終えた確定座標を保持する。`seiran_pdf` はこれを描画するだけでよい。
 //!
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
@@ -18,7 +18,7 @@ pub struct Page {
   ///
   /// `break_pages` は空で生成し、ページ数確定後にヘッダー・フッター配置パス
   /// （`layout::build_running_content`）が埋める。本文と同じ [`PlacedBlock`] を流用するため、
-  /// `pdf_gen` は本文と同一の描画ロジックで扱える。
+  /// `seiran_pdf` は本文と同一の描画ロジックで扱える。
   pub header: Vec<PlacedBlock>,
   /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
   pub footer: Vec<PlacedBlock>,
@@ -31,12 +31,12 @@ pub struct Page {
   pub footnotes: Vec<PlacedFootnote>,
   /// このページに解決されたリンク到達先アンカー（機構 A）
   ///
-  /// `pdf_gen` がページ index + 座標から `XyzDestination` を作り、PDF しおりや
+  /// `seiran_pdf` がページ index + 座標から `XyzDestination` を作り、PDF しおりや
   /// 内部リンクの行き先として登録する。
   pub anchors: Vec<PlacedAnchor>,
   /// このページに確定したクリック可能なリンク領域（機構 B）
   ///
-  /// `pdf_gen` が各ページにリンク注釈として付与する。
+  /// `seiran_pdf` が各ページにリンク注釈として付与する。
   pub links: Vec<PlacedLink>,
   /// このページに出現した索引語（重複除去済み、出現順）
   ///
@@ -85,7 +85,7 @@ pub struct PlacedFootnote {
 /// 確定座標に解決されたリンク到達先アンカー
 ///
 /// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端からのオフセット、`y` はページ上端から
-/// 下方向に正）。`pdf_gen` が左マージンを加算して `XyzDestination` 点にする。
+/// 下方向に正）。`seiran_pdf` が左マージンを加算して `XyzDestination` 点にする。
 #[derive(Debug, Clone)]
 pub struct PlacedAnchor {
   /// アンカー種別（見出し / ラベル付きブロック）
@@ -99,7 +99,7 @@ pub struct PlacedAnchor {
 /// 確定座標に解決されたクリック可能なリンク領域
 ///
 /// 座標系は [`PlacedBlock`] と同じ（`x` / `y` はそれぞれ本文左端・ページ上端からの距離）。
-/// `pdf_gen` が左マージンを加算して矩形のリンク注釈にする。
+/// `seiran_pdf` が左マージンを加算して矩形のリンク注釈にする。
 #[derive(Debug, Clone)]
 pub struct PlacedLink {
   /// リンクの行き先（内部アンカー / 外部 URI）

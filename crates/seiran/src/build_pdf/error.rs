@@ -1,7 +1,7 @@
 //! PDF ビルドエラー型の定義
 
 use miette::{Diagnostic, NamedSource};
-use pdf_gen::PdfGenError;
+use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::{
@@ -202,7 +202,7 @@ pub(super) enum CompileError {
   LoadImage {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の `pdf_gen` デコードエラー。
+    /// 元の `seiran_pdf` デコードエラー。
     #[source]
     #[diagnostic_source]
     source: PdfGenError,

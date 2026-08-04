@@ -25,7 +25,7 @@ impl ImageResources {
 
   /// 保持していた画像の生バイト列を消費して返す。
   ///
-  /// render 用 `pdf_gen::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
+  /// render 用 `seiran_pdf::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
   pub(super) fn into_image_bytes(self) -> HashMap<AssetId, Vec<u8>> { return self.bytes; }
 }
@@ -53,7 +53,7 @@ pub(super) fn load_image_resources(
         source: source.into_io(),
       };
     })?;
-    let natural_size = pdf_gen::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
+    let natural_size = seiran_pdf::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
       return CompileError::LoadImage {
         path: path.as_str().to_string(),
         source,

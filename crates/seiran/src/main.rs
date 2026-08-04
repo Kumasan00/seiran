@@ -27,7 +27,7 @@ fn main() -> miette::Result<()> {
       let source = seiran::FilesystemProjectSource::new();
       let root = seiran::ProjectPath::new(&config_path);
       let compilation = seiran::compile(&source, &root).map_err(seiran::DiagnosticSet::into_report)?;
-      let pdf_bytes = pdf_gen::render(&compilation.publication)?;
+      let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
       report_build(&compilation, cli_args.quiet);
     },

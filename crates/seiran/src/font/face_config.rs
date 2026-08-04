@@ -1,8 +1,8 @@
-//! `pdf_gen::ResourceBundle::new` に渡す、フォント種別ごとのフォント構築設定。
+//! `seiran_pdf::ResourceBundle::new` に渡す、フォント種別ごとのフォント構築設定。
 //!
-//! `crate::config::FontConfig` から renderer（`pdf_gen`）が必要とする値（TTC インデックス・
+//! `crate::config::FontConfig` から renderer（`seiran_pdf`）が必要とする値（TTC インデックス・
 //! バリアブルフォント軸）だけを取り出す config 非依存の複製。この変換を `font` クレート内の
-//! ここ 1 箇所だけに閉じ、`pdf_gen` 側に同型の複製型を作らせない（issue #305）。
+//! ここ 1 箇所だけに閉じ、`seiran_pdf` 側に同型の複製型を作らせない（issue #305）。
 
 use crate::{
   config::FontConfigs,

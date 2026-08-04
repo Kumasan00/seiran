@@ -1,5 +1,5 @@
 [package]
-name = "pdf_gen"
+name = "seiran-pdf"
 version.workspace = true
 edition.workspace = true
 description.workspace = true

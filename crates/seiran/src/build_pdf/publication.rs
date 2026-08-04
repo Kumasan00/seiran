@@ -1,16 +1,16 @@
-//! 確定ページ列（`Vec<crate::typeset::Page>`）から `pdf_gen::Publication` への変換
+//! 確定ページ列（`Vec<crate::typeset::Page>`）から `seiran_pdf::Publication` への変換
 //!
-//! epic #276 の一環で `pdf_gen` から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
+//! epic #276 の一環で `pdf_gen`（現 `seiran-pdf`）から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
 //! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`crate::typeset::breaking`）が解決済みの値を
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
-//! `pdf_gen` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`pdf_gen::Point` /
+//! `seiran_pdf` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`seiran_pdf::Point` /
 //! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `crate::model::Length::to_pt()` /
 //! `crate::model::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
 
 use std::collections::HashMap;
 
-use pdf_gen::{
+use seiran_pdf::{
   Destination, Glyph as PdfGlyph, GlyphRun as PdfGlyphRun, PaintOp, Point, Publication, PublicationLink,
   PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
@@ -370,7 +370,7 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
 }
 
 /// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `crate::model::Length`、色は `crate::model::Color`）を
-/// `pdf_gen::GlyphRun`（`pdf_gen` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
+/// `seiran_pdf::GlyphRun`（`seiran_pdf` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
 fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   return PdfGlyphRun {
     font_size: run.font_size.to_pt(),
@@ -381,7 +381,7 @@ fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   };
 }
 
-/// `crate::font::Glyph` を `pdf_gen::Glyph`（同一構造の複製）へ変換する。
+/// `crate::font::Glyph` を `seiran_pdf::Glyph`（同一構造の複製）へ変換する。
 fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
   return PdfGlyph {
     gid: glyph.gid,
@@ -398,7 +398,7 @@ fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
 mod tests {
   use std::path::PathBuf;
 
-  use pdf_gen::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
+  use seiran_pdf::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
 
   use super::build_publication;
   use crate::{

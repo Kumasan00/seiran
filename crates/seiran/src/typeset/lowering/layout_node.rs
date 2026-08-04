@@ -38,9 +38,9 @@ pub enum LayoutNode {
   Image {
     /// 画像ファイルへのパス
     path: crate::model::AssetId,
-    /// 描画幅（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
+    /// 描画幅（`None` の場合は `seiran_pdf` 段で本文幅 / 縦横比から決定）
     width: Option<Length>,
-    /// 描画高さ（`None` の場合は `pdf_gen` 段で本文幅 / 縦横比から決定）
+    /// 描画高さ（`None` の場合は `seiran_pdf` 段で本文幅 / 縦横比から決定）
     height: Option<Length>,
     /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
     target_dpi: Option<u32>,
@@ -173,7 +173,7 @@ pub struct TextStyle {
   pub font_size: Length,
   /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）
   pub font_kind: FontKind,
-  /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
+  /// テキスト色。`None` は既定色（黒）を意味し、`seiran_pdf` では塗り色を設定しない。
   /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。
   pub color: Option<Color>,
 }

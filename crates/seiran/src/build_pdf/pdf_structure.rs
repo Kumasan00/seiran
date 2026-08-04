@@ -32,7 +32,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 ///
 /// `compile` 本体と同じ手順（`parse_project` → `semantics::resolve_semantics` →
 /// `load_image_resources` → `DocumentLayouter::layout` → `ResourceBundle` 構築 → `build_publication` →
-/// `pdf_gen::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
+/// `seiran_pdf::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
 /// ショートカットを作らない。
 fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::config::Style)) -> Vec<u8> {
   enter_workspace_root();
@@ -62,9 +62,9 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
     .into_iter()
     .map(|(path, bytes)| return (path.to_string(), bytes))
     .collect();
-  let resources = pdf_gen::ResourceBundle::new(fonts, font_metrics, image_bytes).expect("ResourceBundle の構築");
+  let resources = seiran_pdf::ResourceBundle::new(fonts, font_metrics, image_bytes).expect("ResourceBundle の構築");
   let publication = super::publication::build_publication(&config, resources, &laid_out);
-  return pdf_gen::render(&publication).expect("PDF の描画");
+  return seiran_pdf::render(&publication).expect("PDF の描画");
 }
 
 /// 辞書オブジェクトの `/Type` または `/Subtype` を照合する。
@@ -179,7 +179,7 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
-/// `PublicationPage.ops`（`pdf_gen::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
+/// `PublicationPage.ops`（`seiran_pdf::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
 /// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`build_pdf::publication::build_page` 参照）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {

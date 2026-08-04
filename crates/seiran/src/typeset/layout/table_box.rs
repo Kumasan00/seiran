@@ -2,7 +2,7 @@
 //!
 //! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅の解決・行高の算出は
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
-//! `pdf_gen` 段で行う。
+//! `seiran_pdf` 段で行う。
 
 use super::hitem::{HBoxContent, HItem};
 use crate::model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn};
@@ -219,7 +219,7 @@ pub struct RowLink {
 ///
 /// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
 /// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
-/// [`HItem::natural_width`] を使い、`pdf_gen::render::draw_cell_items` の描画カーソルと
+/// [`HItem::natural_width`] を使い、`seiran_pdf::render::draw_cell_items` の描画カーソルと
 /// 同じ値になることを保証する。ただし `natural_width` は `FlushRight`/`Footnote` にも非ゼロ／
 /// 実質幅を返し得るのに対し、`draw_cell_items` は現状これらを表セル内では出現しないものとして
 /// 無視（no-op）している。両者のカーソルが一致するのはその前提（表セルに `FlushRight`/`Footnote`

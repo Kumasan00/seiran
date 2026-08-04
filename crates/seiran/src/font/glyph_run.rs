@@ -15,7 +15,7 @@ pub struct GlyphRun {
   pub glyphs: Vec<Glyph>,
   /// このグリフ列が使用するフォント種別
   pub font_type: FontType,
-  /// テキスト色。`None` は既定色（黒）を意味し、`pdf_gen` では塗り色を設定しない。
+  /// テキスト色。`None` は既定色（黒）を意味し、`seiran_pdf` では塗り色を設定しない。
   /// `\color[color=#rrggbb]{...}` 由来のテキストだけ `Some` になる。
   pub color: Option<Color>,
 }

@@ -43,4 +43,4 @@ pub use build_pdf::{BuildStatistics, Compilation, DependencyManifest, Diagnostic
 #[doc(hidden)]
 pub use config::test_support;
 pub use config::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
-pub use pdf_gen::Publication;
+pub use seiran_pdf::Publication;

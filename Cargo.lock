@@ -1706,21 +1706,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pdf_gen"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "image",
- "krilla",
- "krilla-svg",
- "miette",
- "read-fonts 0.41.0",
- "thiserror",
- "tracing",
- "usvg",
-]
-
-[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2168,11 +2153,11 @@ dependencies = [
  "lopdf",
  "memchr",
  "miette",
- "pdf_gen",
  "phf",
  "proptest",
  "rayon",
  "read-fonts 0.41.0",
+ "seiran-pdf",
  "serde",
  "serde_json",
  "tempfile",
@@ -2181,6 +2166,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unic-langid",
+]
+
+[[package]]
+name = "seiran-pdf"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "image",
+ "krilla",
+ "krilla-svg",
+ "miette",
+ "read-fonts 0.41.0",
+ "thiserror",
+ "tracing",
+ "usvg",
 ]
 
 [[package]]

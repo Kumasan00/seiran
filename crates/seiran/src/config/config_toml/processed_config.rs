@@ -107,7 +107,7 @@ pub type FontConfigs = FontMap<FontConfig>;
 pub struct FontConfig {
   /// `PDF FontDescriptor` で使用する想定のフォント名（現状未使用）。
   ///
-  /// `pdf_gen::types::FontFaceInput`（#307 で self-contained 化、旧 #276/#279 由来）が
+  /// `seiran_pdf::types::FontFaceInput`（#307 で self-contained 化、旧 #276/#279 由来）が
   /// この値を受け取るフィールドを持たないため、書き込まれるだけで読まれていない。
   /// `config` crate が standalone だった間は `pub` フィールドとして外部消費を仮定でき
   /// `dead_code` を検出されなかったが、`seiran` の非公開 module へ吸収され可視性が変わった

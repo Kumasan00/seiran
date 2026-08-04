@@ -70,7 +70,7 @@ pub struct BuildStatistics {
 #[derive(Debug)]
 pub struct Compilation {
   /// 描画直前の確定済み出版物
-  pub publication: pdf_gen::Publication,
+  pub publication: seiran_pdf::Publication,
   /// `compile` が読み取った外部資源のパス一覧
   pub dependencies: DependencyManifest,
   /// 致命的ではない診断（現状は常に空 — パイプラインに非致命的診断は存在しない）
@@ -211,66 +211,66 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
 ///
 /// # Errors
 ///
-/// `pdf_gen::ResourceBundle` の構築に失敗した場合にエラーを返す。
+/// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
   config: &crate::config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<crate::model::AssetId, Vec<u8>>,
   laid_out: &LaidOutDocument,
-) -> miette::Result<pdf_gen::Publication> {
+) -> miette::Result<seiran_pdf::Publication> {
   let fonts = build_pdf_fonts(font_data, font_resources);
   let font_metrics = build_pdf_font_metrics(font_resources);
   let image_bytes: HashMap<String, Vec<u8>> =
     image_bytes.into_iter().map(|(path, bytes)| return (path.to_string(), bytes)).collect();
-  let resources = pdf_gen::ResourceBundle::new(fonts, font_metrics, image_bytes)?;
+  let resources = seiran_pdf::ResourceBundle::new(fonts, font_metrics, image_bytes)?;
   return Ok(publication::build_publication(config, resources, laid_out));
 }
 
-/// `crate::model::FontType` を `pdf_gen::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
-fn to_pdf_font_type(font_type: crate::model::FontType) -> pdf_gen::FontType {
+/// `crate::model::FontType` を `seiran_pdf::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
+fn to_pdf_font_type(font_type: crate::model::FontType) -> seiran_pdf::FontType {
   return match font_type {
-    crate::model::FontType::Serif => pdf_gen::FontType::Serif,
-    crate::model::FontType::SerifBold => pdf_gen::FontType::SerifBold,
-    crate::model::FontType::SerifItalic => pdf_gen::FontType::SerifItalic,
-    crate::model::FontType::SerifBoldItalic => pdf_gen::FontType::SerifBoldItalic,
-    crate::model::FontType::SansSerif => pdf_gen::FontType::SansSerif,
-    crate::model::FontType::SansSerifBold => pdf_gen::FontType::SansSerifBold,
-    crate::model::FontType::SansSerifItalic => pdf_gen::FontType::SansSerifItalic,
-    crate::model::FontType::SansSerifBoldItalic => pdf_gen::FontType::SansSerifBoldItalic,
-    crate::model::FontType::Monospace => pdf_gen::FontType::Monospace,
-    crate::model::FontType::MonospaceBold => pdf_gen::FontType::MonospaceBold,
-    crate::model::FontType::MonospaceItalic => pdf_gen::FontType::MonospaceItalic,
-    crate::model::FontType::MonospaceBoldItalic => pdf_gen::FontType::MonospaceBoldItalic,
-    crate::model::FontType::Math => pdf_gen::FontType::Math,
-    crate::model::FontType::JapaneseSerif => pdf_gen::FontType::JapaneseSerif,
-    crate::model::FontType::JapaneseSerifBold => pdf_gen::FontType::JapaneseSerifBold,
-    crate::model::FontType::JapaneseSansSerif => pdf_gen::FontType::JapaneseSansSerif,
-    crate::model::FontType::JapaneseSansSerifBold => pdf_gen::FontType::JapaneseSansSerifBold,
-    crate::model::FontType::JapaneseMonospace => pdf_gen::FontType::JapaneseMonospace,
-    crate::model::FontType::JapaneseMonospaceBold => pdf_gen::FontType::JapaneseMonospaceBold,
+    crate::model::FontType::Serif => seiran_pdf::FontType::Serif,
+    crate::model::FontType::SerifBold => seiran_pdf::FontType::SerifBold,
+    crate::model::FontType::SerifItalic => seiran_pdf::FontType::SerifItalic,
+    crate::model::FontType::SerifBoldItalic => seiran_pdf::FontType::SerifBoldItalic,
+    crate::model::FontType::SansSerif => seiran_pdf::FontType::SansSerif,
+    crate::model::FontType::SansSerifBold => seiran_pdf::FontType::SansSerifBold,
+    crate::model::FontType::SansSerifItalic => seiran_pdf::FontType::SansSerifItalic,
+    crate::model::FontType::SansSerifBoldItalic => seiran_pdf::FontType::SansSerifBoldItalic,
+    crate::model::FontType::Monospace => seiran_pdf::FontType::Monospace,
+    crate::model::FontType::MonospaceBold => seiran_pdf::FontType::MonospaceBold,
+    crate::model::FontType::MonospaceItalic => seiran_pdf::FontType::MonospaceItalic,
+    crate::model::FontType::MonospaceBoldItalic => seiran_pdf::FontType::MonospaceBoldItalic,
+    crate::model::FontType::Math => seiran_pdf::FontType::Math,
+    crate::model::FontType::JapaneseSerif => seiran_pdf::FontType::JapaneseSerif,
+    crate::model::FontType::JapaneseSerifBold => seiran_pdf::FontType::JapaneseSerifBold,
+    crate::model::FontType::JapaneseSansSerif => seiran_pdf::FontType::JapaneseSansSerif,
+    crate::model::FontType::JapaneseSansSerifBold => seiran_pdf::FontType::JapaneseSansSerifBold,
+    crate::model::FontType::JapaneseMonospace => seiran_pdf::FontType::JapaneseMonospace,
+    crate::model::FontType::JapaneseMonospaceBold => seiran_pdf::FontType::JapaneseMonospaceBold,
   };
 }
 
-/// `crate::font::FontData` + `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡す
-/// フォント構築設定一式を組み立てる（`crate::model::FontType` → `pdf_gen::FontType` への変換込み）。
+/// `crate::font::FontData` + `crate::font::FontResources` から `seiran_pdf::ResourceBundle::new` に渡す
+/// フォント構築設定一式を組み立てる（`crate::model::FontType` → `seiran_pdf::FontType` への変換込み）。
 fn build_pdf_fonts(
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-) -> HashMap<pdf_gen::FontType, pdf_gen::FontFaceInput> {
+) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontFaceInput> {
   let face_configs = font_resources.face_configs();
   return crate::model::FontType::ALL
     .iter()
     .map(|&font_type| {
       let face_config = face_configs.get(font_type);
-      let input = pdf_gen::FontFaceInput {
+      let input = seiran_pdf::FontFaceInput {
         bytes: font_data.get(font_type).clone(),
         font_index: face_config.font_index,
         variation_axes: face_config.variation_axes.as_ref().map(|axes| {
           return axes
             .iter()
             .map(|axis| {
-              return pdf_gen::VariationAxisInput {
+              return seiran_pdf::VariationAxisInput {
                 name: axis.name,
                 value: axis.value,
               };
@@ -283,14 +283,14 @@ fn build_pdf_fonts(
     .collect();
 }
 
-/// `crate::font::FontResources` から `pdf_gen::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
-fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<pdf_gen::FontType, pdf_gen::FontMetric> {
+/// `crate::font::FontResources` から `seiran_pdf::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
+fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontMetric> {
   let metrics = font_resources.metrics();
   return crate::model::FontType::ALL
     .iter()
     .map(|&font_type| {
       let metric = metrics.get(font_type);
-      let converted = pdf_gen::FontMetric {
+      let converted = seiran_pdf::FontMetric {
         upem: metric.upem,
         ascender: metric.ascender,
         descender: metric.descender,
