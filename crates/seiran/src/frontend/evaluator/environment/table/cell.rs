@@ -1,4 +1,4 @@
-//! `\row` の `&` 区切り区画からセル（[`TableCell`]）を構築する
+//! `\row` の `&` 区切り区画からセル（[`HirTableCell`]）を構築する
 
 use crate::{
   frontend::{
@@ -10,11 +10,16 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
   },
-  model::{InlineNode, TableCell},
+  model::{HirBuilder, HirInline, HirInlineKind, HirTableCell, Span},
 };
 
-/// `&` 分割後の 1 区画を [`TableCell`] に変換する
-pub(super) fn build_cell(source: &str, elements: &[GreenElement]) -> Result<TableCell, EvalError> {
+/// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
+pub(super) fn build_cell(
+  source: &str,
+  builder: &HirBuilder,
+  elements: &[GreenElement],
+  empty_span: Span,
+) -> Result<HirTableCell, EvalError> {
   let mut cell_view: Option<CommandView> = None;
   let mut has_other_content = false;
   for element in elements {
@@ -50,15 +55,20 @@ pub(super) fn build_cell(source: &str, elements: &[GreenElement]) -> Result<Tabl
         span: cell_cmd.span().to_source_span(),
       });
     }
-    return extract_cell_command(&cell_cmd);
+    return extract_cell_command(&cell_cmd, builder);
   }
 
-  let content = extract_inline_nodes_from_elements(source, elements)?;
-  return Ok(TableCell::new(trim_cell_content(content)));
+  let id = builder.alloc(segment_span(elements, empty_span));
+  let content = extract_inline_nodes_from_elements(source, builder, elements)?;
+  return Ok(HirTableCell {
+    id,
+    content: trim_cell_content(content),
+    span: 1,
+  });
 }
 
 /// `\cell[span=N]{...}` を属性付きセルに変換する
-fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
+fn extract_cell_command(view: &CommandView, builder: &HirBuilder) -> Result<HirTableCell, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("span", OptType::Number)])?;
   let mut span: u32 = 1;
   for (key, value) in opt_args {
@@ -92,34 +102,54 @@ fn extract_cell_command(view: &CommandView) -> Result<TableCell, EvalError> {
     });
   }
 
-  let content = trim_cell_content(extract_inline_nodes(view.source(), arg)?);
-  return Ok(TableCell { content, span });
+  let id = builder.alloc(view.span());
+  let content = trim_cell_content(extract_inline_nodes(view.source(), builder, arg)?);
+  return Ok(HirTableCell { id, content, span });
 }
 
 /// セル内容の前後の空白由来 `Text` ノードをトリムする
 ///
 /// 境界にある空白だけのノードと、境界のテキスト端を削る。
-fn trim_cell_content(mut content: Vec<InlineNode>) -> Vec<InlineNode> {
-  while matches!(content.first(), Some(InlineNode::Text(t)) if t.trim().is_empty()) {
+fn trim_cell_content(mut content: Vec<HirInline>) -> Vec<HirInline> {
+  while matches!(content.first().map(|inline| return &inline.kind), Some(HirInlineKind::Text(t)) if t.trim().is_empty())
+  {
     content.remove(0);
   }
-  if let Some(InlineNode::Text(t)) = content.first_mut() {
+  if let Some(HirInlineKind::Text(t)) = content.first_mut().map(|inline| return &mut inline.kind) {
     *t = t.trim_start().to_string();
   }
-  while matches!(content.last(), Some(InlineNode::Text(t)) if t.trim().is_empty()) {
+  while matches!(content.last().map(|inline| return &inline.kind), Some(HirInlineKind::Text(t)) if t.trim().is_empty())
+  {
     content.pop();
   }
-  if let Some(InlineNode::Text(t)) = content.last_mut() {
+  if let Some(HirInlineKind::Text(t)) = content.last_mut().map(|inline| return &mut inline.kind) {
     *t = t.trim_end().to_string();
   }
   return content;
 }
 
+/// `&` 分割後の区画全体を覆うソース位置を返す
+///
+/// 区画が空（`a & & b` の中央など）なら、呼び出し元が渡した直前の区切り位置を使う。
+fn segment_span(elements: &[GreenElement], empty_span: Span) -> Span {
+  let mut span: Option<Span> = None;
+  for element in elements {
+    let element_span = match element {
+      GreenElement::Token(token) => token.span,
+      GreenElement::Node(node) => node.span,
+    };
+    span = Some(span.map_or(element_span, |current| return current.merge(element_span)));
+  }
+  return span.unwrap_or(empty_span);
+}
+
 /// セル内容に強制改行（`\\`）が含まれるかを再帰的に判定する
-pub(super) fn contains_line_break(nodes: &[InlineNode]) -> bool {
-  return nodes.iter().any(|node| match node {
-    InlineNode::LineBreak => return true,
-    InlineNode::Styled { children, .. } | InlineNode::Colored { children, .. } => return contains_line_break(children),
+pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
+  return nodes.iter().any(|node| match &node.kind {
+    HirInlineKind::LineBreak => return true,
+    HirInlineKind::Styled { children, .. } | HirInlineKind::Colored { children, .. } => {
+      return contains_line_break(children);
+    },
     _ => return false,
   });
 }

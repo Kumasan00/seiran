@@ -10,7 +10,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{ParseMode, ast::EnvironmentView},
   },
-  model::DocNode,
+  model::{HirBuilder, HirNode},
 };
 
 pub(crate) mod body_scan;
@@ -23,7 +23,7 @@ mod table;
 mod theorem;
 
 /// 環境ハンドラの関数ポインタ型
-type EnvHandler = fn(&EnvironmentView) -> Result<Vec<DocNode>, EvalError>;
+type EnvHandler = fn(&EnvironmentView, &HirBuilder) -> Result<Vec<HirNode>, EvalError>;
 
 /// 環境の定義
 pub(crate) struct EnvDef {
@@ -72,14 +72,14 @@ pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
   return ENVIRONMENTS.get(name).map_or(ParseMode::Text, |def| return def.parse_mode);
 }
 
-/// 環境を評価し、対応する `Vec<DocNode>` を生成する
+/// 環境を評価し、対応する `Vec<HirNode>` を生成する
 ///
 /// # Errors
 ///
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
-pub(crate) fn evaluate_environment(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn evaluate_environment(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   return match ENVIRONMENTS.get(view.name()).and_then(|def| return def.handler) {
-    Some(handler) => handler(view),
+    Some(handler) => handler(view, builder),
     None => Err(EvalError::UnknownEnvironment {
       name: view.name().to_string(),
       span: view.span().to_source_span(),

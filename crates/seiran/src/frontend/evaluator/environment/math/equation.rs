@@ -12,7 +12,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, MathEnvKind, MathRow},
+  model::{HirBuilder, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
 };
 
 /// `equation` 環境を評価する
@@ -21,7 +21,7 @@ use crate::{
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   let label = find_string(&opt_args, "label");
@@ -39,31 +39,40 @@ pub(crate) fn equation(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError
   }
 
   let source = view.source();
-  let cells = match view.body() {
+  let id = builder.alloc(view.span());
+  let (row_id, cells) = match view.body() {
     Some(body_node) => {
       let spec = GridSpec {
         allow_row_breaks: false,
         allow_column_breaks: false,
       };
-      let grid = evaluate_grid(source, body_node, &spec, false)?;
-      grid.into_iter().next().map_or_else(|| vec![Vec::new()], |row| return row.cells)
+      let grid = evaluate_grid(source, builder, body_node, &spec, false)?;
+      match grid.into_iter().next() {
+        Some(row) => (row.id, row.cells),
+        None => (builder.alloc(view.span()), vec![Vec::new()]),
+      }
     },
-    None => vec![Vec::new()],
+    None => (builder.alloc(view.span()), vec![Vec::new()]),
   };
 
-  let row = MathRow {
+  let row = HirMathRow {
+    id: row_id,
     cells,
     numbered,
     label,
-    label_span: None,
+    // `equation` の `[label=...]` は環境ヘッダにあり行固有の位置を持たないため、
+    // 旧 `MathRow::label_span` と同じく「環境 span へフォールバック」を意味する None にする
+    label_site: None,
   };
-  return Ok(vec![DocNode::MathBlock {
-    kind: MathEnvKind::Equation,
-    rows: vec![row],
-    numbered: false,
-    label: None,
-    span: view.span(),
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::MathBlock {
+      kind: MathEnvKind::Equation,
+      rows: vec![row],
+      numbered: false,
+      label: None,
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -74,7 +83,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::evaluator::lookup_env_parse_mode,
-    model::{MathEnvKind, MathNode},
+    model::{DocNode, MathEnvKind, MathNode},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -103,7 +112,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -126,7 +135,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -143,7 +152,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -157,7 +166,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -171,7 +180,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -185,7 +194,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -201,7 +210,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -217,7 +226,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
@@ -231,7 +240,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
@@ -245,7 +254,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

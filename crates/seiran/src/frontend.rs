@@ -7,13 +7,14 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use crate::model::DocNode;
+use crate::model::{HirBuilder, HirGroup, HirSource};
 
-mod eval_ctx;
+mod doc_node_adapter;
 mod evaluator;
 mod span_ext;
 mod syntax;
 
+pub(crate) use doc_node_adapter::hir_group_to_doc_nodes;
 pub use evaluator::EvalError;
 use evaluator::cite::resolve_cites;
 
@@ -45,7 +46,10 @@ pub enum ParseSourceError {
   },
 }
 
-/// ソーステキストをパースして Document IR（`Vec<DocNode>`）を生成する
+/// ソーステキストをパースして 1 ソース分の HIR（[`HirSource`]）を生成する
+///
+/// ノードの `NodeId` はこのソース内で閉じた連番なので、複数ソースをどの順序で
+/// パースしても結果は変わらない。
 ///
 /// # Errors
 ///
@@ -57,22 +61,27 @@ pub fn parse_source(
   source: &str,
   source_id: crate::model::SourceId,
   citation_keys: &HashSet<String>,
-) -> Result<Vec<DocNode>, ParseSourceError> {
+) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
   let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| {
     return ParseSourceError::Syntax { source_id, error };
   })?;
 
-  let doc_nodes = evaluator::evaluate_children(source, cst).map_err(|error| {
+  let builder = HirBuilder::new(source_id);
+  let nodes = evaluator::evaluate_children(source, &builder, cst).map_err(|error| {
+    return ParseSourceError::Eval { source_id, error };
+  })?;
+  let spans = builder.finish();
+
+  resolve_cites(&nodes, &spans, citation_keys).map_err(|error| {
     return ParseSourceError::Eval { source_id, error };
   })?;
 
-  resolve_cites(&doc_nodes, citation_keys).map_err(|error| {
-    return ParseSourceError::Eval { source_id, error };
-  })?;
-
-  debug!(source_id = source_id.index(), node_count = doc_nodes.len(), "ソースのパース・評価が完了しました");
-  return Ok(doc_nodes);
+  debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースのパース・評価が完了しました");
+  return Ok(HirSource {
+    group: HirGroup { source_id, nodes },
+    spans,
+  });
 }
 
 /// 評価器の統合テスト（旧 `frontend` crate の `tests/evaluate.rs`、#307 で本 module 直下の
@@ -92,13 +101,14 @@ mod tests {
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   /// 引用キーは空集合（`\cite` を含まないソース向け）。
-  fn evaluate_source(source: &str) -> Vec<DocNode> {
-    return parse_source(source, crate::model::SourceId::new(0), &HashSet::new()).unwrap();
-  }
+  fn evaluate_source(source: &str) -> Vec<DocNode> { return evaluate_source_with_keys(source, &HashSet::new()); }
 
   /// 引用キー集合を指定してソースを評価するテストヘルパ
   fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
-    return parse_source(source, crate::model::SourceId::new(0), citation_keys).unwrap();
+    let hir = parse_source(source, crate::model::SourceId::new(0), citation_keys).unwrap();
+    let document = crate::model::HirDocument::assemble(vec![hir]);
+    let group = document.groups().first().expect("1 ソース分のグループがあるはず");
+    return super::hir_group_to_doc_nodes(group, document.locations());
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ

@@ -2,34 +2,40 @@
 
 use miette::SourceSpan;
 
-use crate::frontend::{
-  evaluator::EvalError,
-  span_ext::ToSourceSpan,
-  syntax::{
-    SyntaxKind,
-    ast::{CommandView, extract_text_content},
-    green::GreenElement,
+use crate::{
+  frontend::{
+    evaluator::EvalError,
+    span_ext::ToSourceSpan,
+    syntax::{
+      SyntaxKind,
+      ast::{CommandView, extract_text_content},
+      green::GreenElement,
+    },
   },
+  model::{HirBuilder, NodeId},
 };
 
-/// 行末マーカー `\label{...}` の蓄積を行の `(label, label_span)` に取り出すヘルパ
-pub(super) fn take_row_label(current_label: &mut Option<(String, SourceSpan)>) -> (Option<String>, Option<SourceSpan>) {
-  return match current_label.take() {
-    Some((label, span)) => (Some(label), Some(span)),
-    None => (None, None),
-  };
+/// 行末マーカー `\label{...}` から取り込んだ行ラベル
+#[derive(Debug)]
+pub(crate) struct RowLabel {
+  /// 著者が書いたラベル名
+  pub(crate) name: String,
+  /// 診断に使うマーカーのソース位置
+  pub(crate) span: SourceSpan,
+  /// マーカー自身の HIR ノード ID（`HirMathRow::label_site` になる）
+  pub(crate) site: NodeId,
 }
 
 /// 立っている行末マーカーの後ろに意味のある要素が続いていないか検証する
 pub(super) fn ensure_markers_at_row_end(
   current_notag: Option<&SourceSpan>,
-  current_label: Option<&(String, SourceSpan)>,
+  current_label: Option<&RowLabel>,
 ) -> Result<(), EvalError> {
   if let Some(span) = current_notag {
     return Err(EvalError::NotagNotAtRowEnd { span: *span });
   }
-  if let Some((_, span)) = current_label {
-    return Err(EvalError::RowLabelNotAtRowEnd { span: *span });
+  if let Some(label) = current_label {
+    return Err(EvalError::RowLabelNotAtRowEnd { span: label.span });
   }
   return Ok(());
 }
@@ -38,9 +44,10 @@ pub(super) fn ensure_markers_at_row_end(
 pub(super) fn try_take_row_marker(
   child: &GreenElement,
   source: &str,
+  builder: &HirBuilder,
   row_markers_allowed: bool,
   current_notag: &mut Option<SourceSpan>,
-  current_label: &mut Option<(String, SourceSpan)>,
+  current_label: &mut Option<RowLabel>,
 ) -> Result<bool, EvalError> {
   let GreenElement::Node(node) = *child else {
     return Ok(false);
@@ -56,7 +63,7 @@ pub(super) fn try_take_row_marker(
       return Ok(true);
     },
     "label" => {
-      take_label_marker(&view, source, span, row_markers_allowed, current_label)?;
+      take_label_marker(&view, source, builder, span, row_markers_allowed, current_label)?;
       return Ok(true);
     },
     _ => return Ok(false),
@@ -87,9 +94,10 @@ fn take_notag_marker(
 fn take_label_marker(
   view: &CommandView,
   source: &str,
+  builder: &HirBuilder,
   span: SourceSpan,
   row_markers_allowed: bool,
-  current_label: &mut Option<(String, SourceSpan)>,
+  current_label: &mut Option<RowLabel>,
 ) -> Result<(), EvalError> {
   if !row_markers_allowed {
     return Err(EvalError::RowLabelNotSupported { span });
@@ -101,7 +109,11 @@ fn take_label_marker(
     return Err(EvalError::RowLabelNotAtRowEnd { span });
   }
   let first_arg = view.first_arg().ok_or(EvalError::RowLabelNotAtRowEnd { span })?;
-  let label = extract_text_content(source, first_arg).trim().to_string();
-  *current_label = Some((label, span));
+  let name = extract_text_content(source, first_arg).trim().to_string();
+  *current_label = Some(RowLabel {
+    name,
+    span,
+    site: builder.alloc(view.span()),
+  });
   return Ok(());
 }

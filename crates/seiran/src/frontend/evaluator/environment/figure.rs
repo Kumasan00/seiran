@@ -1,6 +1,6 @@
 //! 図環境 — `figure`
 //!
-//! `\image` と `\caption` を [`DocNode::Figure`] に変換する。
+//! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
   frontend::{
@@ -12,7 +12,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, EnvironmentView, extract_text_content},
   },
-  model::{CaptionPosition, DocNode, InlineNode, Length},
+  model::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind, Length},
 };
 
 /// `figure` 環境を評価する
@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(&opt_args, "label");
 
@@ -31,13 +31,14 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     });
   }
 
+  let id = builder.alloc(view.span());
   let source = view.source();
   let mut image_path: Option<String> = None;
   let mut width: Option<Length> = None;
   let mut height: Option<Length> = None;
   let mut dpi: Option<u32> = None;
   let mut downsample: Option<bool> = None;
-  let mut caption: Option<Vec<InlineNode>> = None;
+  let mut caption: Option<Vec<HirInline>> = None;
   // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
   let mut caption_position = CaptionPosition::Bottom;
 
@@ -72,7 +73,7 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view)?);
+          caption = Some(extract_caption(&cmd_view, builder)?);
         },
         _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
@@ -87,17 +88,19 @@ pub(super) fn figure(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
     });
   };
 
-  return Ok(vec![DocNode::Figure {
-    image_path: crate::model::AssetId::new(image_path),
-    width,
-    height,
-    dpi,
-    downsample,
-    caption,
-    caption_position,
-    label,
-    span: view.span(),
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::Figure {
+      image_path: crate::model::AssetId::new(image_path),
+      width,
+      height,
+      dpi,
+      downsample,
+      caption,
+      caption_position,
+      label,
+    },
+  )]);
 }
 
 /// `\image` から抽出される情報の集約構造体
@@ -198,7 +201,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{DocNode, InlineNode},
+  };
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -216,7 +222,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -254,7 +260,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -274,7 +280,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -294,7 +300,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure { label, caption, .. } = &result[0] else {
@@ -312,7 +318,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingEnvironmentArgument { ref name, .. }) if name == "figure"));
@@ -326,7 +332,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -352,7 +358,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure { width, height, .. } = &result[0] else {
@@ -370,7 +376,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -384,7 +390,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Figure {
@@ -405,7 +411,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
@@ -419,7 +425,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));

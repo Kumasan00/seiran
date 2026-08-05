@@ -6,7 +6,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::InlineNode,
+  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\ref{label}` を `InlineNode::Ref` に変換する
@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(crate) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn ref_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -31,10 +31,7 @@ pub(crate) fn ref_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
   }
 
   let label = extract_text_content(view.source(), first_arg).trim().to_string();
-  return Ok(vec![InlineNode::Ref {
-    label,
-    span: view.span(),
-  }]);
+  return Ok(vec![builder.leaf_inline(view.span(), HirInlineKind::Ref { label })]);
 }
 
 #[cfg(test)]
@@ -43,9 +40,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::InlineNode,
   };
 
   fn parse<'a>(
@@ -76,7 +76,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = ref_command(&view).unwrap();
+    let result = run_inline_handler(|builder| return ref_command(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -95,7 +95,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = ref_command(&view);
+    let result = run_inline_handler(|builder| return ref_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "ref"));
@@ -110,7 +110,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = ref_command(&view);
+    let result = run_inline_handler(|builder| return ref_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "ref"));
@@ -125,7 +125,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = ref_command(&view);
+    let result = run_inline_handler(|builder| return ref_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));

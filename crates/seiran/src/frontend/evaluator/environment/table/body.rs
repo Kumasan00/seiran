@@ -16,27 +16,27 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, InlineNode, TableCell, TableRow},
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow, Span},
 };
 
 /// 本体走査で収集した行・キャプション情報
 pub(super) struct TableBody {
   /// `\head` 行（列数確定後のセル数検証に使うソース位置つき）
-  pub(super) head: Vec<(TableRow, miette::SourceSpan)>,
+  pub(super) head: Vec<(HirTableRow, miette::SourceSpan)>,
   /// `\row` 行（列数確定後のセル数検証に使うソース位置つき）
-  pub(super) rows: Vec<(TableRow, miette::SourceSpan)>,
+  pub(super) rows: Vec<(HirTableRow, miette::SourceSpan)>,
   /// `\caption` の内容（未指定なら `None`）
-  pub(super) caption: Option<Vec<InlineNode>>,
+  pub(super) caption: Option<Vec<HirInline>>,
   /// キャプションを表の上下どちらに配置するか
   pub(super) caption_position: CaptionPosition,
 }
 
 /// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
-pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalError> {
+pub(super) fn scan_table_body(view: &EnvironmentView, builder: &HirBuilder) -> Result<TableBody, EvalError> {
   let source = view.source();
-  let mut head: Vec<(TableRow, miette::SourceSpan)> = Vec::new();
-  let mut rows: Vec<(TableRow, miette::SourceSpan)> = Vec::new();
-  let mut caption: Option<Vec<InlineNode>> = None;
+  let mut head: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
+  let mut rows: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
+  let mut caption: Option<Vec<HirInline>> = None;
   // `\caption` が最初の行（`\head` / `\row`）よりソース上で先に現れた場合のみ Top
   let mut caption_position = CaptionPosition::Bottom;
 
@@ -57,11 +57,11 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
               span: cmd_view.span().to_source_span(),
             });
           }
-          head = extract_head(&cmd_view)?;
+          head = extract_head(&cmd_view, builder)?;
         },
         "row" => {
           let span = cmd_view.span().to_source_span();
-          rows.push((extract_row(&cmd_view)?, span));
+          rows.push((extract_row(&cmd_view, builder)?, span));
         },
         "caption" => {
           if caption.is_some() {
@@ -74,7 +74,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
           if head.is_empty() && rows.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(extract_caption(&cmd_view)?);
+          caption = Some(extract_caption(&cmd_view, builder)?);
         },
         _ => unreachable!("許可リスト外は strict_command_calls がエラーにする"),
       }
@@ -90,7 +90,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView) -> Result<TableBody, EvalE
 }
 
 /// `\head{\row{...} ...}` からヘッダ行を抽出する
-fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)>, EvalError> {
+fn extract_head(view: &CommandView, builder: &HirBuilder) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -130,7 +130,7 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
           let row_view = CommandView::new(node, source);
           if row_view.name() == "row" {
             let span = row_view.span().to_source_span();
-            rows.push((extract_row(&row_view)?, span));
+            rows.push((extract_row(&row_view, builder)?, span));
           } else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: "table".to_string(),
@@ -160,7 +160,7 @@ fn extract_head(view: &CommandView) -> Result<Vec<(TableRow, miette::SourceSpan)
 }
 
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
-fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
+fn extract_row(view: &CommandView, builder: &HirBuilder) -> Result<HirTableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
   let rule_above = opt_args
     .iter()
@@ -181,19 +181,23 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
   }
 
   let source = view.source();
-  let mut cells: Vec<TableCell> = Vec::new();
+  let id = builder.alloc(view.span());
+  let mut cells: Vec<HirTableCell> = Vec::new();
   let mut segment: Vec<GreenElement> = Vec::new();
+  // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
+  let mut empty_cell_span = Span::new(arg.span.start, arg.span.start);
   for child in arg.children {
     if let GreenElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
-      cells.push(build_cell(source, &segment)?);
+      cells.push(build_cell(source, builder, &segment, empty_cell_span)?);
       segment.clear();
+      empty_cell_span = Span::new(token.span.end, token.span.end);
     } else {
       segment.push(*child);
     }
   }
-  cells.push(build_cell(source, &segment)?);
+  cells.push(build_cell(source, builder, &segment, empty_cell_span)?);
 
   for cell in &cells {
     if contains_line_break(&cell.content) {
@@ -203,15 +207,19 @@ fn extract_row(view: &CommandView) -> Result<TableRow, EvalError> {
     }
   }
 
-  return Ok(TableRow { cells, rule_above });
+  return Ok(HirTableRow {
+    id,
+    cells,
+    rule_above,
+  });
 }
 
 /// 列数を決定し、全行のセル数（`span` 合計）が一致するか検証する
 pub(super) fn resolve_column_count(
   columns_tokens: Option<&[ColumnAlign]>,
   widths_tokens: Option<&[ColumnWidth]>,
-  head: &[(TableRow, miette::SourceSpan)],
-  rows: &[(TableRow, miette::SourceSpan)],
+  head: &[(HirTableRow, miette::SourceSpan)],
+  rows: &[(HirTableRow, miette::SourceSpan)],
   view: &EnvironmentView,
 ) -> Result<usize, EvalError> {
   let column_count = match (columns_tokens, widths_tokens) {
@@ -245,4 +253,4 @@ pub(super) fn resolve_column_count(
 }
 
 /// 行のセル数（`span` 合計）を返す
-fn row_span_sum(row: &TableRow) -> usize { return row.cells.iter().map(|cell| return cell.span as usize).sum(); }
+fn row_span_sum(row: &HirTableRow) -> usize { return row.cells.iter().map(|cell| return cell.span as usize).sum(); }

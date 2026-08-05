@@ -92,8 +92,13 @@ mod tests {
     let content = fs::read_to_string("tests/text/cite.sei").expect("fixture cite.sei を読めるはず");
     let source_id = SourceId::new(0);
     let citation_keys: HashSet<String> = references.keys().cloned().collect();
-    let nodes = parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
-    let parsed = vec![ParsedSource { source_id, nodes }];
+    let hir = parse_source(&content, source_id, &citation_keys).expect("fixture cite.sei のパースに成功するはず");
+    let document = crate::model::HirDocument::assemble(vec![hir]);
+    let group = document.groups().first().expect("1 ソース分のグループがあるはず");
+    let parsed = vec![ParsedSource {
+      source_id,
+      nodes: crate::frontend::hir_group_to_doc_nodes(group, document.locations()),
+    }];
 
     // Act
     let resolved =

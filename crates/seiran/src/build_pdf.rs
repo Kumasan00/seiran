@@ -191,7 +191,19 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
   let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
 
   let stage_start = Instant::now();
-  let parsed = parse_all_sources(&snapshot.source_db, &citation_keys)?;
+  let document = crate::model::HirDocument::assemble(parse_all_sources(&snapshot.source_db, &citation_keys)?);
+  // 後段（citation / resolve / typeset）はまだ `DocNode` を入力に取るので、ここで変換する。
+  // この adapter は #325 で削除する。
+  let parsed: Vec<ParsedSource> = document
+    .groups()
+    .iter()
+    .map(|group| {
+      return ParsedSource {
+        source_id: group.source_id,
+        nodes: crate::frontend::hir_group_to_doc_nodes(group, document.locations()),
+      };
+    })
+    .collect();
   info!(
     source_count = parsed.len(),
     node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
@@ -350,15 +362,20 @@ struct ParsedSource {
 }
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
+///
+/// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn parse_all_sources(source_db: &SourceDb, citation_keys: &HashSet<String>) -> Result<Vec<ParsedSource>, CompileError> {
-  let mut parsed: Vec<ParsedSource> = Vec::new();
+fn parse_all_sources(
+  source_db: &SourceDb,
+  citation_keys: &HashSet<String>,
+) -> Result<Vec<crate::model::HirSource>, CompileError> {
+  let mut parsed: Vec<crate::model::HirSource> = Vec::new();
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {
     match crate::frontend::parse_source(&entry.content, source_id, citation_keys) {
-      Ok(nodes) => parsed.push(ParsedSource { source_id, nodes }),
+      Ok(hir) => parsed.push(hir),
       Err(error) => {
         parse_errors
           .push(AttributedParseError::new(miette::NamedSource::new(&entry.name, entry.content.clone()), error));

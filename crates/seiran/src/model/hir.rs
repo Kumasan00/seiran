@@ -7,10 +7,6 @@
 //! `NodeId` を発行できるのは `HirBuilder` だけで、発行と同時に位置が記録される。
 //! この module の外からは `NodeId` を構築できない（`NodeId::new` / `SourceSpans::alloc` を
 //! module 内に閉じている）。
-// 本番経路への接続は #322 の後半 task（`frontend` の HIR 化と `build_pdf` の配線）で行う。
-// それまでは未使用の型・メソッドが残るため、この module 単位で抑制する。
-#![allow(dead_code)]
-
 mod builder;
 mod document;
 mod id;
@@ -25,4 +21,4 @@ pub(crate) use id::NodeId;
 pub(crate) use inline::{HirInline, HirInlineKind};
 pub(crate) use math::{HirMath, HirMathKind, HirMathRow};
 pub(crate) use node::{HirListItem, HirNode, HirNodeKind, HirProofTarget, HirTableCell, HirTableRow};
-pub(crate) use source_map::{SourceLocation, SourceMap, SourceSpans};
+pub(crate) use source_map::{SourceMap, SourceSpans};

@@ -9,7 +9,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, ProofTarget, TheoremClass},
+  model::{HirBuilder, HirNode, HirNodeKind, HirProofTarget, TheoremClass},
 };
 
 /// 定理環境（10 種共通）を評価する
@@ -17,7 +17,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、余分な必須引数、ラベル重複などが発生した場合にエラーを返します。
-pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn theorem(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let class =
     TheoremClass::from_name(view.name()).expect("ENVIRONMENTS は 10 種の定理クラスのみを本ハンドラに登録する");
 
@@ -50,26 +50,29 @@ pub(super) fn theorem(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError>
     });
   }
 
+  let id = builder.alloc(view.span());
+  // `[of=...]` は環境ヘッダにあるので、本体より先に ID を確保する
+  let of = of_label.map(|label| {
+    return HirProofTarget {
+      id: builder.alloc(view.span()),
+      label,
+    };
+  });
   let body = match view.body() {
-    Some(body) => crate::frontend::evaluator::evaluate_children(view.source(), body)?,
+    Some(body) => crate::frontend::evaluator::evaluate_children(view.source(), builder, body)?,
     None => Vec::new(),
   };
 
-  let of = of_label.map(|label| {
-    return ProofTarget {
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::Theorem {
+      class,
+      title,
+      body,
+      of,
       label,
-      span: view.span(),
-    };
-  });
-
-  return Ok(vec![DocNode::Theorem {
-    class,
-    title,
-    body,
-    of,
-    label,
-    span: view.span(),
-  }]);
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -78,7 +81,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{frontend::evaluator::lookup_env_parse_mode, model::TheoremClass};
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{DocNode, TheoremClass},
+  };
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -96,7 +102,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -127,7 +133,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { class, .. } = &result[0] else {
@@ -144,7 +150,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { title, .. } = &result[0] else {
@@ -161,7 +167,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { label, .. } = &result[0] else {
@@ -182,7 +188,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Theorem { of, .. } = &result[1] else {
@@ -200,7 +206,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "of"));
@@ -214,7 +220,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
@@ -228,7 +234,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -242,7 +248,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 2);

@@ -8,7 +8,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::InlineNode,
+  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\cite{a,b}` を `InlineNode::Cite` に変換する
@@ -20,7 +20,7 @@ use crate::{
 ///
 /// 必須引数が欠落 / 過剰、任意引数が指定された場合、または空のキーが含まれる場合に
 /// エラーを返します。
-pub(crate) fn cite_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn cite_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -51,11 +51,7 @@ pub(crate) fn cite_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     keys.push(key.to_string());
   }
 
-  return Ok(vec![InlineNode::Cite {
-    keys,
-    label: None,
-    span: view.span(),
-  }]);
+  return Ok(vec![builder.leaf_inline(view.span(), HirInlineKind::Cite { keys })]);
 }
 
 #[cfg(test)]
@@ -64,9 +60,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::InlineNode,
   };
 
   fn parse<'a>(
@@ -97,7 +96,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = cite_command(&view).unwrap();
+    let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Cite { keys, label, .. } = &result[0] else {
@@ -116,7 +115,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = cite_command(&view).unwrap();
+    let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Cite { keys, .. } = &result[0] else {
@@ -134,7 +133,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act / Assert
-    assert!(matches!(cite_command(&view), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite"));
+    assert!(
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
+    );
   }
 
   #[test]
@@ -146,7 +147,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act / Assert
-    assert!(matches!(cite_command(&view), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite"));
+    assert!(
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
+    );
   }
 
   #[test]
@@ -158,7 +161,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act / Assert
-    assert!(matches!(cite_command(&view), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite"));
+    assert!(
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
+    );
   }
 
   #[test]
@@ -170,6 +175,8 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act / Assert
-    assert!(matches!(cite_command(&view), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+    assert!(
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
+    );
   }
 }

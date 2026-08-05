@@ -1,6 +1,10 @@
 //! 数式モードの評価
 //!
-//! インライン数式と数式環境のセルを [`MathNode`] 列に変換する。
+//! インライン数式と数式環境のセルを [`HirMath`] 列に変換する。
+//!
+//! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。単一ノードへ畳まれる
+//! グループのように、確保した ID が使われない場合は `NodeId` に穴が空くが、同じ入力なら
+//! 常に同じ穴になるので決定性は保たれる。
 
 use crate::{
   frontend::{
@@ -13,35 +17,43 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{MathNode, MathStyle},
+  model::{HirBuilder, HirMath, HirMathKind, MathStyle, NodeId},
 };
 
-/// インライン数式ノード（`$...$` 由来の `InlineMath`）を `MathNode` のリストに変換する
+/// インライン数式ノード（`$...$` 由来の `InlineMath`）を [`HirMath`] のリストに変換する
 ///
 /// # Errors
 ///
 /// 数式内のスタイルコマンドが不正な引数数を持つ場合などにエラーを返します。
-pub(crate) fn evaluate_inline_math(source: &str, math_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
-  return evaluate_math_children(source, math_node);
+pub(crate) fn evaluate_inline_math(
+  source: &str,
+  builder: &HirBuilder,
+  math_node: &GreenNode,
+) -> Result<Vec<HirMath>, EvalError> {
+  return evaluate_math_children(source, builder, math_node);
 }
 
-/// 数式モードで構造化された CST ノードの子要素を `MathNode` 列に変換する共通ヘルパ
-fn evaluate_math_children(source: &str, node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
-  return evaluate_math_elements(source, node.children);
+/// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する共通ヘルパ
+fn evaluate_math_children(source: &str, builder: &HirBuilder, node: &GreenNode) -> Result<Vec<HirMath>, EvalError> {
+  return evaluate_math_elements(source, builder, node.children);
 }
 
-/// 数式モードで構造化された要素列を `MathNode` 列に変換する共通ヘルパ
-pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) -> Result<Vec<MathNode>, EvalError> {
+/// 数式モードで構造化された要素列を [`HirMath`] 列に変換する共通ヘルパ
+pub(crate) fn evaluate_math_elements(
+  source: &str,
+  builder: &HirBuilder,
+  elements: &[GreenElement],
+) -> Result<Vec<HirMath>, EvalError> {
   let mut nodes = Vec::new();
   for child in elements {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
-          nodes.push(MathNode::Text(token.text(source).to_string()));
+          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(MathNode::Text(text.to_string()));
+          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(text.to_string())));
         },
         TokenKind::Ampersand => {
           return Err(EvalError::UnsupportedInMath {
@@ -59,32 +71,23 @@ pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) ->
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
-          let math_node = evaluate_math_command(source, child_node)?;
+          let math_node = evaluate_math_command(source, builder, child_node)?;
           nodes.push(math_node);
         },
         SyntaxKind::MathGroup => {
-          let inner = evaluate_math_children(source, child_node)?;
-          nodes.push(MathNode::Group(inner));
+          let id = builder.alloc(child_node.span);
+          let inner = evaluate_math_children(source, builder, child_node)?;
+          nodes.push(HirMath::new(id, HirMathKind::Group(inner)));
         },
         SyntaxKind::MathSubscript => {
-          let inner = evaluate_math_script_content(source, child_node)?;
-          let content = if inner.len() == 1 {
-            #[allow(clippy::unwrap_used)]
-            inner.into_iter().next().unwrap()
-          } else {
-            MathNode::Group(inner)
-          };
-          nodes.push(MathNode::Subscript(Box::new(content)));
+          let id = builder.alloc(child_node.span);
+          let content = evaluate_math_script_content(source, builder, child_node)?;
+          nodes.push(HirMath::new(id, HirMathKind::Subscript(Box::new(content))));
         },
         SyntaxKind::MathSuperscript => {
-          let inner = evaluate_math_script_content(source, child_node)?;
-          let content = if inner.len() == 1 {
-            #[allow(clippy::unwrap_used)]
-            inner.into_iter().next().unwrap()
-          } else {
-            MathNode::Group(inner)
-          };
-          nodes.push(MathNode::Superscript(Box::new(content)));
+          let id = builder.alloc(child_node.span);
+          let content = evaluate_math_script_content(source, builder, child_node)?;
+          nodes.push(HirMath::new(id, HirMathKind::Superscript(Box::new(content))));
         },
         SyntaxKind::Environment => {
           let view = EnvironmentView::new(child_node, source);
@@ -100,18 +103,26 @@ pub(crate) fn evaluate_math_elements(source: &str, elements: &[GreenElement]) ->
   return Ok(nodes);
 }
 
-/// 上付き・下付きスクリプトノードの中身を `MathNode` に変換する
-fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Result<Vec<MathNode>, EvalError> {
+/// 上付き・下付きスクリプトノードの中身を単一の [`HirMath`] に変換する
+///
+/// 中身が 1 ノードならそのまま、複数ならグループにまとめる。グループ用の ID は中身の
+/// 評価より前に確保する必要があるため、1 ノードに畳まれた場合は使われないまま穴になる。
+fn evaluate_math_script_content(
+  source: &str,
+  builder: &HirBuilder,
+  script_node: &GreenNode,
+) -> Result<HirMath, EvalError> {
+  let group_id = builder.alloc(script_node.span);
   let mut nodes = Vec::new();
   for child in script_node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Comma | TokenKind::Equals => {
-          nodes.push(MathNode::Text(token.text(source).to_string()));
+          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          nodes.push(MathNode::Text(text.to_string()));
+          nodes.push(builder.leaf_math(token.span, HirMathKind::Text(text.to_string())));
         },
         TokenKind::LineBreak => {
           return Err(EvalError::UnsupportedInMath {
@@ -123,22 +134,34 @@ fn evaluate_math_script_content(source: &str, script_node: &GreenNode) -> Result
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::MathGroup => {
-          let inner = evaluate_math_children(source, child_node)?;
-          nodes.push(MathNode::Group(inner));
+          let id = builder.alloc(child_node.span);
+          let inner = evaluate_math_children(source, builder, child_node)?;
+          nodes.push(HirMath::new(id, HirMathKind::Group(inner)));
         },
         SyntaxKind::CommandCall => {
-          let math_node = evaluate_math_command(source, child_node)?;
+          let math_node = evaluate_math_command(source, builder, child_node)?;
           nodes.push(math_node);
         },
         _ => {},
       },
     }
   }
-  return Ok(nodes);
+  return Ok(collapse_single(group_id, nodes));
 }
 
-/// 数式内コマンドを `MathNode` に変換する
-fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode, EvalError> {
+/// ノード列を単一ノードへ畳む（1 個ならそのまま、それ以外は予約済み ID のグループにする）
+fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
+  if nodes.len() == 1 {
+    let Some(single) = nodes.into_iter().next() else {
+      unreachable!("長さ 1 を確認した直後なので必ず要素がある")
+    };
+    return single;
+  }
+  return HirMath::new(group_id, HirMathKind::Group(nodes));
+}
+
+/// 数式内コマンドを [`HirMath`] に変換する
+fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNode) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);
   let name = view.name();
 
@@ -159,10 +182,12 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
         span: view.span().to_source_span(),
       });
     }
-    #[allow(clippy::unwrap_used)]
-    let first_arg = view.first_arg().unwrap();
-    let body = evaluate_inline_math(source, first_arg)?;
-    return Ok(MathNode::Styled { style, body });
+    let Some(first_arg) = view.first_arg() else {
+      unreachable!("引数が 1 個であることを直前に確認している")
+    };
+    let id = builder.alloc(view.span());
+    let body = evaluate_inline_math(source, builder, first_arg)?;
+    return Ok(HirMath::new(id, HirMathKind::Styled { style, body }));
   }
 
   match name {
@@ -182,10 +207,10 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
           span: view.span().to_source_span(),
         });
       };
-      return Ok(MathNode::Frac {
-        numer: Box::new(math_arg_to_node(source, numer_arg)?),
-        denom: Box::new(math_arg_to_node(source, denom_arg)?),
-      });
+      let id = builder.alloc(view.span());
+      let numer = Box::new(math_arg_to_node(source, builder, numer_arg)?);
+      let denom = Box::new(math_arg_to_node(source, builder, denom_arg)?);
+      return Ok(HirMath::new(id, HirMathKind::Frac { numer, denom }));
     },
     "sqrt" => {
       if view.opt_args_count() > 1 {
@@ -200,8 +225,9 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
           span: view.span().to_source_span(),
         });
       }
+      let id = builder.alloc(view.span());
       let index = match view.opt_args().next() {
-        Some(opt) => Some(Box::new(math_arg_to_node(source, opt)?)),
+        Some(opt) => Some(Box::new(math_arg_to_node(source, builder, opt)?)),
         None => None,
       };
       let Some(radicand_arg) = view.first_arg() else {
@@ -211,10 +237,8 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
           span: view.span().to_source_span(),
         });
       };
-      return Ok(MathNode::Sqrt {
-        index,
-        radicand: Box::new(math_arg_to_node(source, radicand_arg)?),
-      });
+      let radicand = Box::new(math_arg_to_node(source, builder, radicand_arg)?);
+      return Ok(HirMath::new(id, HirMathKind::Sqrt { index, radicand }));
     },
     _ => {
       if let Some(ch) = resolve_symbol_command(name) {
@@ -225,7 +249,7 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
             span: view.span().to_source_span(),
           });
         }
-        return Ok(MathNode::Symbol(ch));
+        return Ok(builder.leaf_math(view.span(), HirMathKind::Symbol(ch)));
       }
 
       return Err(EvalError::UnknownCommand {
@@ -236,12 +260,9 @@ fn evaluate_math_command(source: &str, cmd_node: &GreenNode) -> Result<MathNode,
   }
 }
 
-/// 数式引数ノードを単一の `MathNode` に変換するヘルパー
-fn math_arg_to_node(source: &str, arg_node: &GreenNode) -> Result<MathNode, EvalError> {
-  let nodes = evaluate_inline_math(source, arg_node)?;
-  if nodes.len() == 1 {
-    #[allow(clippy::unwrap_used)]
-    return Ok(nodes.into_iter().next().unwrap());
-  }
-  return Ok(MathNode::Group(nodes));
+/// 数式引数ノードを単一の [`HirMath`] に変換するヘルパー
+fn math_arg_to_node(source: &str, builder: &HirBuilder, arg_node: &GreenNode) -> Result<HirMath, EvalError> {
+  let group_id = builder.alloc(arg_node.span);
+  let nodes = evaluate_inline_math(source, builder, arg_node)?;
+  return Ok(collapse_single(group_id, nodes));
 }

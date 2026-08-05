@@ -10,7 +10,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{FontKind, InlineNode},
+  model::{FontKind, HirBuilder, HirInline, HirInlineKind},
 };
 
 /// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
@@ -18,7 +18,11 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰の場合にエラーを返します
-pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn styled_text(
+  view: &CommandView,
+  builder: &HirBuilder,
+  kind: FontKind,
+) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
@@ -35,8 +39,9 @@ pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<Inli
     });
   }
 
-  let children = extract_inline_nodes(view.source(), first_arg)?;
-  return Ok(vec![InlineNode::Styled { kind, children }]);
+  let id = builder.alloc(view.span());
+  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  return Ok(vec![HirInline::new(id, HirInlineKind::Styled { kind, children })]);
 }
 
 /// `\color[color=#rrggbb]{...}` を評価し、子要素を [`InlineNode::Colored`] でラップする
@@ -46,7 +51,7 @@ pub(crate) fn styled_text(view: &CommandView, kind: FontKind) -> Result<Vec<Inli
 /// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
 /// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn colored_text(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn colored_text(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
   let opt_args = collect_command_opt_args(view, &[("color", OptType::Color)])?;
   let Some(color) = find_color(&opt_args, "color") else {
@@ -70,8 +75,12 @@ pub(crate) fn colored_text(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     });
   }
 
-  let children = extract_inline_nodes(view.source(), first_arg)?;
-  return Ok(vec![InlineNode::Colored { color, children }]);
+  let id = builder.alloc(view.span());
+  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  return Ok(vec![HirInline::new(
+    id,
+    HirInlineKind::Colored { color, children },
+  )]);
 }
 
 #[cfg(test)]
@@ -80,9 +89,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::InlineNode,
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -115,7 +127,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = styled_text(&view, FontKind::SerifBold).unwrap();
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -138,7 +150,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = styled_text(&view, FontKind::SerifBold).unwrap();
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
     let InlineNode::Styled { kind, children } = &result[0] else {
@@ -163,7 +175,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(styled_text(&view, FontKind::SerifBold), Err(EvalError::MissingCommandArgument { .. })));
+    assert!(matches!(
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      Err(EvalError::MissingCommandArgument { .. })
+    ));
   }
 
   #[test]
@@ -175,7 +190,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(styled_text(&view, FontKind::SerifBold), Err(EvalError::ExtraCommandArgument { .. })));
+    assert!(matches!(
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      Err(EvalError::ExtraCommandArgument { .. })
+    ));
   }
 
   #[test]
@@ -187,7 +205,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = styled_text(&view, FontKind::SerifBold);
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
@@ -202,7 +220,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = colored_text(&view).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -223,7 +241,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(colored_text(&view), Err(EvalError::MissingCommandArgument { .. })));
+    assert!(matches!(
+      run_inline_handler(|builder| return colored_text(&view, builder)),
+      Err(EvalError::MissingCommandArgument { .. })
+    ));
   }
 
   #[test]
@@ -235,7 +256,9 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(colored_text(&view), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color"));
+    assert!(
+      matches!(run_inline_handler(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
+    );
   }
 
   #[test]
@@ -247,7 +270,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act & Assert
-    assert!(matches!(colored_text(&view), Err(EvalError::ExtraCommandArgument { .. })));
+    assert!(matches!(
+      run_inline_handler(|builder| return colored_text(&view, builder)),
+      Err(EvalError::ExtraCommandArgument { .. })
+    ));
   }
 
   #[test]
@@ -259,7 +285,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = colored_text(&view).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Colored { color, children } = &result[0] else {
