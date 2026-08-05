@@ -421,7 +421,8 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
 citation へ移設した。`build_pdf::semantics::resolve_semantics` は `analyze_citations` → `load_citation_style`
 → `generate_citations` の順で呼ぶ（引用が 1 つも無ければ CSL スタイルを読まない — `csl_path` 未設定でも
 エラーにしない）。`analyze_citations` は Style（CSL スタイル・ロケール）を一切受け取らない — 型として
-CSL 非依存が保証される（`analyze_does_not_depend_on_csl_style` が固定する性質）。
+CSL 非依存が保証される（`analyze_citations` が `Style` / CSL を引数に取らないこと）。決定性は
+`analyze_citations_is_deterministic` が検証する。
 
 #### `load_citation_style` の契約
 

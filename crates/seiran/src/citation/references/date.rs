@@ -23,7 +23,7 @@ use serde::{
 pub struct Date {
   /// 日付部分（年・月・日）。
   ///
-  /// 外側の配列は単一日付のみ（1 要素）を許容する。日付範囲（2 要素）は CSL-JSN 担体
+  /// 外側の配列は単一日付のみ（1 要素）を許容する。日付範囲（2 要素）は CSL-JSON 担体
   /// （`citationberg::json::DateValue` 経由の hayagriva）が未対応のため、デシリアライズ時に拒否する。
   /// 内側の配列は最大 3 要素（年・月・日）。
   pub date_parts: Option<Vec<Vec<DatePart>>>,
@@ -128,7 +128,7 @@ impl<'de> Deserialize<'de> for Date {
 }
 
 impl Serialize for Date {
-  /// CSL-JSN の date オブジェクトとして出力する。
+  /// CSL-JSON の date オブジェクトとして出力する。
   ///
   /// `date-parts` が無ければ `null`、あれば `season` / `circa` / `literal` とともに出力する。
   /// `raw` は `citationberg::json::DateValue` での再解析に失敗し得るため出力しない。
