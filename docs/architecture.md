@@ -65,7 +65,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `document`（`HirSource` / `HirGroup` /
   `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /
   `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
-  `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 Task 3 で
+  `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
   citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticGenerated`
   / `ResolvedGenerated` もこれを使う）。全ノードが `NodeId` を持ち、ソース位置は各 variant ではなく
   `SourceMap` に集約する。
@@ -75,8 +75,8 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `DocNode::Anchor` / `InlineNode::InternalLink`（いずれも CSL 整形段の生成物）と
   `Heading::numbered`（frontend では常に `true`）を持たないこと。引用箇所（`HirInlineKind::Cite`）は
   キー列のみを持ち、旧 `DocNode` 側の `InlineNode::Cite::label`（CSL 整形後の表示）に対応する
-  フィールドを最初から持たない（`DocNode` 側は #323 Task 3 で `label` を `node_id: NodeId` に置き換え
-  済みで、両者とも表示文字列は持たない）。
+  フィールドを最初から持たない（`DocNode` 側は #323 で `node_id: NodeId` を追加した後に `label` を
+  削除しており、両者とも表示文字列は持たない）。
 
 #### 不変条件・注意点
 
@@ -392,9 +392,12 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
   判別）。`reference` / `name` / `date` / `error` の子 module を持つ。公開型（`Reference` / `References` /
   `Name` / `Date` 等）と `read_references` は module root（`citation.rs`）で再エクスポートし、`citation::Reference` の形で
   参照する（`citation::references::Reference` は使わない）。
-- `analyze`（非公開）: `analyze_citations`（引用キーの意味解析。詳細は次項）。`CitationFacts` /
-  `CitationSiteFacts` / `UnknownCitationSite` は `citation.rs` 経由で再エクスポートし、
-  `build_pdf::semantics::resolve_semantics` と `generate` module の両方が消費する。
+- `analyze`（非公開）: `analyze_citations`（引用キーの意味解析。詳細は次項）。`citation.rs` が facade
+  として再エクスポートするのは `analyze_citations` と `CitationSemanticError` のみで、返り値の型
+  `CitationFacts` / `CitationSiteFacts` / `UnknownCitationSite` 自体は再エクスポートしない
+  （`build_pdf::semantics::resolve_semantics` は `let facts = citation::analyze_citations(...)?;` と
+  型推論で受けるだけで名指ししない。`generate` module だけが `super::analyze::CitationFacts` を
+  クレート内相対パスで直接 import して消費する）。
 - `style`（非公開）: `load_citation_style`（CSL スタイル・ロケールの読込。詳細は後項）。I/O を行うのは
   citation の中でこの module だけ。
 - `generate`（非公開）: `generate_citations`（facts + `CompiledCitationStyle` から表示・書誌を生成。詳細は
