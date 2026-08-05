@@ -203,10 +203,10 @@ impl Walker<'_> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{CitationSemanticError, analyze_citations};
+  use super::{CitationFacts, CitationSemanticError, analyze_citations};
   use crate::{
     citation::test_fixtures::sample_references,
-    model::{CitationId, HirDocument, SourceId},
+    model::{CitationId, HirDocument, NodeId, SourceId},
   };
 
   /// ソース 1 本をパースして `HirDocument` にする
@@ -290,5 +290,23 @@ mod tests {
 
     // Assert
     assert_eq!(facts.len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
+  }
+
+  #[test]
+  fn analyze_does_not_depend_on_csl_style() {
+    // Arrange — analyze は Style を受け取らない（型で保証される）。ここでは
+    // 同じ HIR + 同じ references から同じ facts が得られることを固定する
+    let hir = document(r"\cite{kwan2014} と \cite{doe2020}");
+    let references = sample_references();
+
+    // Act
+    let first = analyze_citations(&hir, &references).expect("成功するはず");
+    let second = analyze_citations(&hir, &references).expect("成功するはず");
+
+    // Assert
+    let sites = |facts: &CitationFacts| -> Vec<(NodeId, Vec<CitationId>)> {
+      return facts.sites().map(|(id, site)| return (id, site.targets.clone())).collect();
+    };
+    assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
   }
 }

@@ -367,6 +367,32 @@ Phase 1（issue #322）の実装で確定した、本書のスケッチとの差
 - `rewrite_cite_labels*` と `InlineNode::Cite::label` を削除する
 - citation 処理が HIR の所有権を受け取って再構築する経路を削除する
 
+Phase 2（issue #323）の実装で確定した、本書のスケッチとの差分:
+
+- `AnalyzedDocument` はまだ無い（Phase 4 まで導入しない）。`analyze_citations` は
+  `Result<NodeMap<CitationSiteFacts>, CitationSemanticError>` ではなく、`sites()` / `get()` / `is_empty()` /
+  `len()` の query だけを公開する非公開ラッパー型 `CitationFacts` を返す（内部は `NodeMap` そのもの）。
+  `generate_citations` も `document: &AnalyzedDocument` ではなく `facts: &CitationFacts` を直接受け取り、
+  加えてスケッチに無い `bibliography_title: &str` を引数に取る（書誌見出し文字列は `style.reference.title`
+  が持ち、`AnalyzedDocument` 導入までは呼び出し元が明示的に渡す）
+- module 分割はスケッチの `semantics` / `generated_content` という新設 top-level module ではなく、既存の
+  `citation` module 内の子 module 3 つ（`analyze` = 意味解析、`style` = CSL スタイル・ロケールの I/O、
+  `generate` = 表示・書誌の生成、I/O なし）に収めた。`resolve` が今の `semantics` 相当（ラベル・`\ref`・
+  カウンタ）を持ち続けており、引用キー検証だけが先行して `citation::analyze` へ移った状態
+- 生成物は汎用の `GeneratedContent` 型ではなく、`resolve::SemanticGenerated` / `ResolvedGenerated`
+  （`citation_displays: NodeMap<Vec<InlineNode>>` + `bibliography: Vec<DocNode>`、`resolve` が
+  `SemanticGenerated` → `ResolvedGenerated` へ解決する）として運ぶ。lowering は
+  `ResolvedDocument.generated.citation_displays` を `ResolvedInline::Cite { site, .. }` の `site`
+  （`NodeId`）で引く
+- `DocNode` 経路がまだ残っているため（`frontend::doc_node_adapter` が #325 まで存続）、`InlineNode::Cite`
+  （`model::DocNode` 側、HIR の `HirInlineKind::Cite` とは別型）は暫定の `node_id: NodeId` フィールドを
+  持つ。これは `resolve::ResolvedInline::Cite::site` へそのまま運ばれるブリッジで、#325 で `DocNode` ごと
+  消える予定（当初スケッチの「`InlineNode::Cite::label` を削除する」は完了済みだが、`node_id` という
+  過渡フィールドの存在はスケッチに無い）
+- `rewrite_cite_labels*` の削除に伴い、旧 `CitationError`（1 enum）も責務ごとに
+  `CitationSemanticError`（意味解析）/ `CitationStyleError`（CSL スタイル・ロケール I/O）/
+  `CitationFormatError`（CSL 整形）の 3 つへ分割した
+
 ### Phase 3: ラベル・参照・カウンタ・見出し
 
 - ラベル宣言を `label_definitions` / `declared_labels` へ移す

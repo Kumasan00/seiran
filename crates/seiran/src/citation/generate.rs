@@ -115,13 +115,13 @@ mod tests {
   use super::{GeneratedCitations, generate_citations};
   use crate::{
     citation::{
-      analyze::analyze_citations,
+      analyze::{CitationFacts, analyze_citations},
       read_references,
       style::load_citation_style,
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{FilesystemProjectSource, Style},
-    model::{DocNode, FontKind, HirDocument, InlineNode, SourceId},
+    model::{CitationId, DocNode, FontKind, HirDocument, InlineNode, SourceId},
   };
 
   /// ソース 1 本をパースして `HirDocument` にする
@@ -139,6 +139,14 @@ mod tests {
 
   /// IEEE の CSL を設定した `Style` を作る
   fn style_with_csl() -> Style { return style_with_csl_path(ieee_csl_path()); }
+
+  /// 書誌の体裁だけを変えた variant CSL への絶対パスを返す
+  fn variant_csl_path() -> PathBuf {
+    return std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("tests/data/ieee-variant.csl")
+      .canonicalize()
+      .expect("tests/data/ieee-variant.csl が存在するはず");
+  }
 
   #[test]
   fn generate_produces_display_per_site_and_bibliography() {
@@ -304,5 +312,35 @@ mod tests {
     };
     assert_eq!(plain(&first), plain(&second), "同じ facts と CSL からは同じ引用表示が得られるはず");
     assert_eq!(first.bibliography(), second.bibliography(), "書誌も同一のはず");
+  }
+
+  #[test]
+  fn changing_csl_does_not_change_authored_hir_or_facts() {
+    // Arrange
+    let source_text = r"本文 \cite{kwan2014}";
+    let hir = document(source_text);
+    let references = sample_references();
+    let facts = analyze_citations(&hir, &references).expect("成功するはず");
+    let base = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
+    let variant = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl_path(variant_csl_path()))
+      .expect("読めるはず");
+
+    // Act
+    let generated_base = generate_citations(&facts, &references, &base, "References").expect("整形は成功するはず");
+    let generated_variant =
+      generate_citations(&facts, &references, &variant, "References").expect("整形は成功するはず");
+    let facts_after = analyze_citations(&hir, &references).expect("成功するはず");
+
+    // Assert — 生成物は変わるが、authored HIR と引用 facts は変わらない
+    assert_ne!(
+      generated_base.bibliography(),
+      generated_variant.bibliography(),
+      "CSL を変えたら生成物は変わるはず（テストの前提）"
+    );
+    assert_eq!(hir, document(source_text), "authored HIR は生成で変化しないはず");
+    let targets = |facts: &CitationFacts| -> Vec<Vec<CitationId>> {
+      return facts.sites().map(|(_, site)| return site.targets.clone()).collect();
+    };
+    assert_eq!(targets(&facts), targets(&facts_after), "引用 facts は CSL に依存しないはず");
   }
 }
