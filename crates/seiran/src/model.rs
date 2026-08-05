@@ -1,4 +1,4 @@
-//! パイプライン全段で共有する語彙型と Document IR。
+//! パイプライン全段で共有する語彙型と文書木（HIR / Document IR）。
 //!
 //! 診断や I/O を持たない契約層として、`crate::model` 経由で crate 内の全 module から
 //! 参照できる語彙型 + Document IR を提供する非公開 module（#307 で `model` crate を吸収）。

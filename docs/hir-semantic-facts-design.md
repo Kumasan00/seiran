@@ -345,6 +345,20 @@ CSL・references・config のエラーは、それぞれの source database を�
 - 既存の `DocNode` と同じ内容を表現するが、解決済み fact や表示情報は追加しない
 - 移行用 adapter が必要な場合は private に限定し、削除先の issue を同時に作る
 
+Phase 1（issue #322）の実装で確定した、本書のスケッチとの差分:
+
+- `HirNodeKind` は `DocNode::Anchor` と `Heading::numbered` を持たない。前者は CSL 整形段の生成物で、
+  後者は frontend が常に `true` を作る（構造的に一意に決まる）ため
+- `HirInlineKind` は `InlineNode::InternalLink` と `Cite::label` を持たない（どちらも CSL 整形後の表示）
+- 付随構造（リスト項目・表の行 / セル・数式の行・`proof` の `[of=...]`）にも `NodeId` を付ける。
+  旧 `MathRow::label_span: Option<Span>` は `HirMathRow::label_site: Option<NodeId>` に対応し、
+  `None`（＝環境 span へフォールバックする）という既存の診断挙動を保つ
+- 型と `HirBuilder` は `model::hir` に置く。`NodeId` の構築子と `SourceSpans::alloc` を module 内に
+  閉じることで、「ID を発行できるのは `HirBuilder` だけ」を型で担保する
+- 移行用 adapter は HIR → 旧 `DocNode` の一方向のみ。逆方向は `NodeId` を捏造することになるため作らない
+- 段落 ID は子をディスパッチする前に予約するため、使われなかった予約で `local` に穴が空く。
+  ID の稠密性・連続性には依存しない（決定性とソース順非依存は保たれる）
+
 ### Phase 2: 引用の vertical slice
 
 - 引用箇所を `NodeId -> CitationSiteFacts` として解決する

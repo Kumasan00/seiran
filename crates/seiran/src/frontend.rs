@@ -1,4 +1,7 @@
-//! テキストソースから Document IR への変換 — 字句解析・構文解析・評価を 1 クレートに統合
+//! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
+//!
+//! `parse_source` は 1 ソース分の [`HirSource`] を返す。後段（citation / resolve / typeset）は
+//! まだ旧 `DocNode` を入力に取るので、その変換は `doc_node_adapter` に閉じている（#325 で削除）。
 
 use std::collections::HashSet;
 
