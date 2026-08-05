@@ -6,7 +6,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, QuoteKind},
+  model::{HirBuilder, HirNode, HirNodeKind, QuoteKind},
 };
 
 /// 引用環境（`quote` / `quotation`）を評価する
@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn quote(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let kind = QuoteKind::from_name(view.name()).expect("ENVIRONMENTS は quote / quotation のみを本ハンドラに登録する");
 
   let _opt_args = collect_environment_opt_args(view, &[])?;
@@ -25,12 +25,13 @@ pub(super) fn quote(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     });
   }
 
+  let id = builder.alloc(view.span());
   let body = match view.body() {
-    Some(body) => crate::frontend::evaluator::evaluate_children(view.source(), body)?,
+    Some(body) => crate::frontend::evaluator::evaluate_children(view.source(), builder, body)?,
     None => Vec::new(),
   };
 
-  return Ok(vec![DocNode::Quote { kind, body }]);
+  return Ok(vec![HirNode::new(id, HirNodeKind::Quote { kind, body })]);
 }
 
 #[cfg(test)]
@@ -39,7 +40,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{frontend::evaluator::lookup_env_parse_mode, model::QuoteKind};
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{DocNode, QuoteKind},
+  };
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -57,7 +61,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -77,7 +81,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Quote { kind, .. } = &result[0] else {
@@ -94,7 +98,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::Quote { body, .. } = &result[0] else {
@@ -112,7 +116,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraEnvironmentArgument { ref name, .. }) if name == "quote"));
@@ -126,7 +130,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));

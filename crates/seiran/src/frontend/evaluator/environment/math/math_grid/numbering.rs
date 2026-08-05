@@ -1,8 +1,6 @@
-//! 複数行数式環境の採番判定（任意引数の解釈と `MathRow` への割当）
+//! 複数行数式環境の採番判定（任意引数の解釈と `HirMathRow` への割当）
 //!
 //! 実際の発番は行わず、採番対象とラベルだけを構造化する。
-
-use miette::SourceSpan;
 
 use super::{GridRow, is_blank_row};
 use crate::{
@@ -14,17 +12,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::MathRow,
+  model::HirMathRow,
 };
-
-/// 行末マーカー `\label{...}` の診断用 `SourceSpan` を `MathRow::label_span`（`crate::model::Span`）へ変換する
-///
-/// Document IR は診断ライブラリに依存しないため、境界で変換する。
-fn to_model_span(span: SourceSpan) -> crate::model::Span {
-  let start = u32::try_from(span.offset()).unwrap_or(u32::MAX);
-  let end = u32::try_from(span.offset() + span.len()).unwrap_or(u32::MAX);
-  return crate::model::Span::new(start, end);
-}
 
 /// 採番の粒度
 pub(crate) enum NumberingMode {
@@ -87,15 +76,15 @@ pub(super) fn trim_trailing_blank_marker_rows(grid: &mut Vec<GridRow>) -> Result
     if let Some(span) = last.notag_span {
       return Err(EvalError::NotagNotAtRowEnd { span });
     }
-    if let Some(span) = last.label_span {
-      return Err(EvalError::RowLabelNotAtRowEnd { span });
+    if let Some(label) = &last.label {
+      return Err(EvalError::RowLabelNotAtRowEnd { span: label.span });
     }
     grid.pop();
   }
   return Ok(());
 }
 
-/// グリッドを採番粒度（`mode`）に応じて [`MathRow`] 列へ変換する
+/// グリッドを採番粒度（`mode`）に応じて [`HirMathRow`] 列へ変換する
 ///
 /// 実際の番号は付けず、行と環境の採番対象フラグだけを返す。
 ///
@@ -107,39 +96,45 @@ pub(super) fn assign_numbering(
   mode: &NumberingMode,
   numbered: bool,
   view: &EnvironmentView,
-) -> Result<(Vec<MathRow>, bool), EvalError> {
+) -> Result<(Vec<HirMathRow>, bool), EvalError> {
   let mut env_numbered = false;
-  let rows: Vec<MathRow> = match mode {
+  let rows: Vec<HirMathRow> = match mode {
     NumberingMode::PerRow => grid
       .into_iter()
-      .map(|row| -> Result<MathRow, EvalError> {
+      .map(|row| -> Result<HirMathRow, EvalError> {
         let numbered_row = numbered && row.notag_span.is_none();
-        if let Some(span) = row.label_span
+        if let Some(label) = &row.label
           && !numbered_row
         {
           return Err(EvalError::LabelRequiresNumbering {
             name: view.name().to_string(),
-            span,
+            span: label.span,
           });
         }
-        return Ok(MathRow {
+        let (label, label_site) = match row.label {
+          Some(label) => (Some(label.name), Some(label.site)),
+          None => (None, None),
+        };
+        return Ok(HirMathRow {
+          id: row.id,
           cells: row.cells,
           numbered: numbered_row,
-          label: row.label,
-          label_span: row.label_span.map(to_model_span),
+          label,
+          label_site,
         });
       })
-      .collect::<Result<Vec<MathRow>, EvalError>>()?,
+      .collect::<Result<Vec<HirMathRow>, EvalError>>()?,
     NumberingMode::SingleEnv => {
       env_numbered = numbered && !grid.is_empty();
       grid
         .into_iter()
         .map(|row| {
-          return MathRow {
+          return HirMathRow {
+            id: row.id,
             cells: row.cells,
             numbered: false,
             label: None,
-            label_span: None,
+            label_site: None,
           };
         })
         .collect()

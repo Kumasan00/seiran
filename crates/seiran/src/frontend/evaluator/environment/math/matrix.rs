@@ -12,7 +12,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, MathDelimiter, MathEnvKind},
+  model::{HirBuilder, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
 };
 
 /// `matrix` 環境を評価する
@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn matrix(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(&opt_args, "delimiter") {
     Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| {
@@ -41,9 +41,11 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
   }
 
   let source = view.source();
+  let id = builder.alloc(view.span());
   let grid = match view.body() {
     Some(body_node) => evaluate_grid(
       source,
+      builder,
       body_node,
       &GridSpec {
         allow_row_breaks: true,
@@ -55,13 +57,15 @@ pub(crate) fn matrix(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> 
   };
   let rows = into_unnumbered_rows(grid);
 
-  return Ok(vec![DocNode::MathBlock {
-    kind: MathEnvKind::Matrix { delimiter },
-    rows,
-    numbered: false,
-    label: None,
-    span: view.span(),
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::MathBlock {
+      kind: MathEnvKind::Matrix { delimiter },
+      rows,
+      numbered: false,
+      label: None,
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -72,7 +76,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::evaluator::lookup_env_parse_mode,
-    model::{MathDelimiter, MathEnvKind},
+    model::{DocNode, MathDelimiter, MathEnvKind},
   };
 
   fn parse<'a>(
@@ -108,7 +112,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -127,7 +131,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let (delimiter, _) = matrix_of(&result);
@@ -142,7 +146,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "delimiter"));
@@ -156,7 +160,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "numbered"));

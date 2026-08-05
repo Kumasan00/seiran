@@ -8,17 +8,21 @@ use miette::LabeledSpan;
 
 use crate::{
   frontend::evaluator::EvalError,
-  model::{DocNode, InlineNode, ListItem},
+  model::{HirInline, HirInlineKind, HirListItem, HirNode, HirNodeKind, SourceSpans},
 };
 
-/// `Vec<DocNode>` を再帰的に走査して `\cite` の引用キー存在を検証する
+/// HIR ノード列を再帰的に走査して `\cite` の引用キー存在を検証する
+///
+/// 診断位置は HIR ノードが持たないため `spans` から引く。
 ///
 /// # Errors
 ///
 /// 未定義の引用キーが 1 件以上見つかった場合に [`EvalError::UnknownCitationKeys`] を返します。
-pub(crate) fn resolve_cites(nodes: &[DocNode], keys: &HashSet<String>) -> Result<(), EvalError> {
+// 引用箇所を `NodeId` のまま返して frontend の境界で診断へ変換する形は #323（引用の
+// vertical slice）で導入する。ここでは既存の診断（`UnknownCitationKeys`）の形を変えない。
+pub(crate) fn resolve_cites(nodes: &[HirNode], spans: &SourceSpans, keys: &HashSet<String>) -> Result<(), EvalError> {
   let mut labels: Vec<LabeledSpan> = Vec::new();
-  collect_unknown_in_nodes(nodes, keys, &mut labels);
+  collect_unknown_in_nodes(nodes, spans, keys, &mut labels);
   if labels.is_empty() {
     return Ok(());
   }
@@ -26,22 +30,29 @@ pub(crate) fn resolve_cites(nodes: &[DocNode], keys: &HashSet<String>) -> Result
 }
 
 /// ブロックノード列を走査して未定義キーのラベルを `labels` に集める
-fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &mut Vec<LabeledSpan>) {
+fn collect_unknown_in_nodes(
+  nodes: &[HirNode],
+  spans: &SourceSpans,
+  keys: &HashSet<String>,
+  labels: &mut Vec<LabeledSpan>,
+) {
   for node in nodes {
-    match node {
-      DocNode::Heading { title: inlines, .. }
-      | DocNode::Paragraph(inlines)
-      | DocNode::Figure {
+    match &node.kind {
+      HirNodeKind::Heading { title: inlines, .. }
+      | HirNodeKind::Paragraph(inlines)
+      | HirNodeKind::Figure {
         caption: Some(inlines),
         ..
-      } => collect_unknown_in_inlines(inlines, keys, labels),
-      DocNode::List { items, .. } => {
+      } => collect_unknown_in_inlines(inlines, spans, keys, labels),
+      HirNodeKind::List { items, .. } => {
         for item in items {
-          collect_unknown_in_list_item(item, keys, labels);
+          collect_unknown_in_list_item(item, spans, keys, labels);
         }
       },
-      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => collect_unknown_in_nodes(body, keys, labels),
-      DocNode::Table {
+      HirNodeKind::Theorem { body, .. } | HirNodeKind::Quote { body, .. } => {
+        collect_unknown_in_nodes(body, spans, keys, labels);
+      },
+      HirNodeKind::Table {
         head,
         rows,
         caption,
@@ -49,128 +60,145 @@ fn collect_unknown_in_nodes(nodes: &[DocNode], keys: &HashSet<String>, labels: &
       } => {
         for row in head.iter().chain(rows.iter()) {
           for cell in &row.cells {
-            collect_unknown_in_inlines(&cell.content, keys, labels);
+            collect_unknown_in_inlines(&cell.content, spans, keys, labels);
           }
         }
         if let Some(inlines) = caption {
-          collect_unknown_in_inlines(inlines, keys, labels);
+          collect_unknown_in_inlines(inlines, spans, keys, labels);
         }
       },
-      // `Anchor` は CST 評価より後の段階で追加される。
-      DocNode::MathBlock { .. }
-      | DocNode::Figure { caption: None, .. }
-      | DocNode::Rule { .. }
-      | DocNode::PageBreak
-      | DocNode::Space(_)
-      | DocNode::Anchor(_) => {},
+      HirNodeKind::MathBlock { .. }
+      | HirNodeKind::Figure { caption: None, .. }
+      | HirNodeKind::Rule { .. }
+      | HirNodeKind::PageBreak
+      | HirNodeKind::Space(_) => {},
     }
   }
 }
 
 /// リストアイテムの内容を再帰的に走査する
-fn collect_unknown_in_list_item(item: &ListItem, keys: &HashSet<String>, labels: &mut Vec<LabeledSpan>) {
-  collect_unknown_in_nodes(&item.content, keys, labels);
+fn collect_unknown_in_list_item(
+  item: &HirListItem,
+  spans: &SourceSpans,
+  keys: &HashSet<String>,
+  labels: &mut Vec<LabeledSpan>,
+) {
+  collect_unknown_in_nodes(&item.content, spans, keys, labels);
 }
 
 /// インラインノード列を走査して未定義キーのラベルを `labels` に集める
-fn collect_unknown_in_inlines(inlines: &[InlineNode], keys: &HashSet<String>, labels: &mut Vec<LabeledSpan>) {
+fn collect_unknown_in_inlines(
+  inlines: &[HirInline],
+  spans: &SourceSpans,
+  keys: &HashSet<String>,
+  labels: &mut Vec<LabeledSpan>,
+) {
   for inline in inlines {
-    match inline {
-      InlineNode::Styled { children, .. }
-      | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. }
-      | InlineNode::InternalLink { children, .. }
-      | InlineNode::Footnote { body: children, .. } => {
-        collect_unknown_in_inlines(children, keys, labels);
+    match &inline.kind {
+      HirInlineKind::Styled { children, .. }
+      | HirInlineKind::Colored { children, .. }
+      | HirInlineKind::Link { children, .. }
+      | HirInlineKind::Footnote { body: children, .. } => {
+        collect_unknown_in_inlines(children, spans, keys, labels);
       },
-      InlineNode::Cite {
-        keys: cite_keys,
-        span,
-        ..
-      } => {
+      HirInlineKind::Cite { keys: cite_keys } => {
         let missing: Vec<&str> =
           cite_keys.iter().filter(|key| return !keys.contains(key.as_str())).map(String::as_str).collect();
         if !missing.is_empty() {
+          let span = spans.span_of(inline.id);
           let source_span = miette::SourceSpan::from((span.start as usize, span.len() as usize));
           labels
             .push(LabeledSpan::new_with_span(Some(format!("未定義の引用キー: {}", missing.join(", "))), source_span));
         }
       },
-      InlineNode::Text(_)
-      | InlineNode::InlineMath(_)
-      | InlineNode::Symbol(_)
-      | InlineNode::LineBreak
-      | InlineNode::NoIndent
-      | InlineNode::Ref { .. }
-      | InlineNode::Index { .. } => {},
+      HirInlineKind::Text(_)
+      | HirInlineKind::InlineMath(_)
+      | HirInlineKind::Symbol(_)
+      | HirInlineKind::LineBreak
+      | HirInlineKind::NoIndent
+      | HirInlineKind::Ref { .. }
+      | HirInlineKind::Index { .. } => {},
     }
   }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
-  use crate::model::{DocNode, InlineNode, Span};
+  use crate::{
+    frontend::{ParseSourceError, parse_source},
+    model::SourceId,
+  };
 
-  fn span() -> Span { return Span::new(0, 5); }
-
+  /// 引用キーの集合を組み立てるテストヘルパ
   fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| return (*v).to_string()).collect(); }
+
+  /// ソースをパースして `\cite` のキー検証まで通すテストヘルパ
+  ///
+  /// HIR の `NodeId` は `HirBuilder` だけが発行するので、手組みのノードではなく実際の
+  /// パース結果を検証面にする。
+  fn check_cites(source: &str, citation_keys: &HashSet<String>) -> Result<(), EvalError> {
+    return match parse_source(source, SourceId::new(0), citation_keys) {
+      Ok(_) => Ok(()),
+      Err(ParseSourceError::Eval { error, .. }) => Err(error),
+      Err(other) => panic!("構文エラーは期待していない: {other:?}"),
+    };
+  }
 
   #[test]
   fn resolve_cites_accepts_known_keys() {
     // Arrange
-    let nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
-      keys: vec!["a".to_string(), "b".to_string()],
-      label: None,
-      span: span(),
-    }])];
+    let source = r"本文 \cite{a,b} です。";
 
     // Act / Assert
-    assert!(resolve_cites(&nodes, &keys(&["a", "b", "c"])).is_ok());
+    assert!(check_cites(source, &keys(&["a", "b", "c"])).is_ok());
   }
 
   #[test]
   fn resolve_cites_reports_unknown_key() {
     // Arrange
-    let nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
-      keys: vec!["a".to_string(), "missing".to_string()],
-      label: None,
-      span: span(),
-    }])];
+    let source = r"本文 \cite{a,missing} です。";
 
     // Act
-    let result = resolve_cites(&nodes, &keys(&["a"]));
+    let result = check_cites(source, &keys(&["a"]));
 
     // Assert
     let Err(EvalError::UnknownCitationKeys { labels }) = result else {
       panic!("UnknownCitationKeys が期待されます");
     };
     assert_eq!(labels.len(), 1);
+    // 位置はハードコードせずソース文字列から導く
+    assert_eq!(labels[0].offset(), source.find(r"\cite").unwrap());
   }
 
   #[test]
   fn resolve_cites_aggregates_multiple_unknown_sites() {
     // Arrange
-    let nodes = vec![
-      DocNode::Paragraph(vec![InlineNode::Cite {
-        keys: vec!["x".to_string()],
-        label: None,
-        span: span(),
-      }]),
-      DocNode::Paragraph(vec![InlineNode::Cite {
-        keys: vec!["y".to_string()],
-        label: None,
-        span: span(),
-      }]),
-    ];
+    let source = "一つ目 \\cite{x}。\n\n二つ目 \\cite{y}。";
 
     // Act
-    let result = resolve_cites(&nodes, &keys(&["a"]));
+    let result = check_cites(source, &keys(&["a"]));
 
     // Assert
     let Err(EvalError::UnknownCitationKeys { labels }) = result else {
       panic!("UnknownCitationKeys が期待されます");
     };
     assert_eq!(labels.len(), 2);
+  }
+
+  #[test]
+  fn resolve_cites_walks_nested_structures() {
+    // Arrange — 定理環境・リスト・脚注の中の `\cite` も検証対象になる
+    let source = r"\begin{itemize}\item{脚注\footnote{\cite{deep}}}\end{itemize}";
+
+    // Act
+    let result = check_cites(source, &keys(&["other"]));
+
+    // Assert
+    let Err(EvalError::UnknownCitationKeys { labels }) = result else {
+      panic!("ネストした引用でも UnknownCitationKeys が期待されます");
+    };
+    assert_eq!(labels.len(), 1);
   }
 }

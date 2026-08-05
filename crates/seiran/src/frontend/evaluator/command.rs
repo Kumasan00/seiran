@@ -11,7 +11,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{DocNode, FontKind, HeadingLevel, InlineNode},
+  model::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
 };
 
 pub(crate) mod cite;
@@ -26,10 +26,10 @@ pub(crate) mod symbol;
 
 /// コマンドの実行結果
 pub(crate) enum CommandResult {
-  /// ブロックレベルのドキュメントノード（見出し、スペース等）
-  Block(Vec<DocNode>),
-  /// インラインレベルのドキュメントノード（記号文字等）
-  Inline(Vec<InlineNode>),
+  /// ブロックレベルの HIR ノード（見出し、スペース等）
+  Block(Vec<HirNode>),
+  /// インラインレベルの HIR ノード（記号文字等）
+  Inline(Vec<HirInline>),
   /// `\noindent` — 段落先頭行の字下げ抑止マーカー
   NoIndent {
     /// 位置検証エラー時の診断に使うソース位置
@@ -68,29 +68,29 @@ pub(crate) enum CommandKind {
 
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
-  fn execute(self, view: &CommandView) -> Result<CommandResult, EvalError> {
+  fn execute(self, view: &CommandView, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
     match self {
-      Self::Space => return control::space(view).map(CommandResult::Block),
+      Self::Space => return control::space(view, builder).map(CommandResult::Block),
 
-      Self::PageBreak => return control::pagebreak(view).map(CommandResult::Block),
+      Self::PageBreak => return control::pagebreak(view, builder).map(CommandResult::Block),
 
-      Self::Headline(level) => return headline::heading(view, level).map(CommandResult::Block),
+      Self::Headline(level) => return headline::heading(view, builder, level).map(CommandResult::Block),
 
-      Self::StyledText(kind) => return inline::styled_text(view, kind).map(CommandResult::Inline),
+      Self::StyledText(kind) => return inline::styled_text(view, builder, kind).map(CommandResult::Inline),
 
-      Self::ColoredText => return inline::colored_text(view).map(CommandResult::Inline),
+      Self::ColoredText => return inline::colored_text(view, builder).map(CommandResult::Inline),
 
-      Self::Ref => return ref_::ref_command(view).map(CommandResult::Inline),
+      Self::Ref => return ref_::ref_command(view, builder).map(CommandResult::Inline),
 
-      Self::Cite => return cite::cite_command(view).map(CommandResult::Inline),
+      Self::Cite => return cite::cite_command(view, builder).map(CommandResult::Inline),
 
-      Self::Footnote => return footnote::footnote_command(view).map(CommandResult::Inline),
+      Self::Footnote => return footnote::footnote_command(view, builder).map(CommandResult::Inline),
 
-      Self::Index => return index::index_command(view).map(CommandResult::Inline),
+      Self::Index => return index::index_command(view, builder).map(CommandResult::Inline),
 
-      Self::Url => return link::url_command(view).map(CommandResult::Inline),
+      Self::Url => return link::url_command(view, builder).map(CommandResult::Inline),
 
-      Self::Href => return link::href_command(view).map(CommandResult::Inline),
+      Self::Href => return link::href_command(view, builder).map(CommandResult::Inline),
 
       Self::NoIndent => {
         return control::noindent(view).map(|()| {
@@ -108,7 +108,7 @@ impl CommandKind {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn single_char(view: &CommandView, builder: &HirBuilder, ch: char) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -116,7 +116,7 @@ pub(crate) fn single_char(view: &CommandView, ch: char) -> Result<Vec<InlineNode
       span: view.span().to_source_span(),
     });
   }
-  return Ok(vec![InlineNode::Symbol(ch)]);
+  return Ok(vec![builder.leaf_inline(view.span(), HirInlineKind::Symbol(ch))]);
 }
 
 /// コマンド名から `CommandKind` を引く静的ディスパッチテーブル
@@ -177,12 +177,12 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 /// # Errors
 ///
 /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-pub(crate) fn evaluate_command(view: &CommandView) -> Result<CommandResult, EvalError> {
+pub(crate) fn evaluate_command(view: &CommandView, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
   if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
-    return command_kind.execute(view);
+    return command_kind.execute(view, builder);
   }
   if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-    return single_char(view, symbol.ch).map(CommandResult::Inline);
+    return single_char(view, builder, symbol.ch).map(CommandResult::Inline);
   }
   return Err(EvalError::UnknownCommand {
     name: view.name().to_string(),
@@ -215,7 +215,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
@@ -249,7 +249,7 @@ mod tests {
 
       // Act
       let cst = parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
-      let result = crate::frontend::evaluator::evaluate_children(&source, cst);
+      let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(&source, cst);
 
       // Assert
       let is_known_outcome = matches!(

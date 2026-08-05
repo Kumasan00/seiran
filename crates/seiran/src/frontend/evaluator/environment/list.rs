@@ -10,7 +10,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, ListItem},
+  model::{HirBuilder, HirListItem, HirNode, HirNodeKind},
 };
 
 /// `itemize` 環境を評価する（順序なしリスト）
@@ -18,21 +18,25 @@ use crate::{
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> { return list_common(view, false); }
+pub(super) fn itemize(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+  return list_common(view, builder, false);
+}
 
 /// `enumerate` 環境を評価する（順序付きリスト）
 ///
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> { return list_common(view, true); }
+pub(super) fn enumerate(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+  return list_common(view, builder, true);
+}
 
 /// リスト環境の共通処理
 ///
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, EvalError> {
+fn list_common(view: &EnvironmentView, builder: &HirBuilder, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
     &[("start", OptType::Number), ("item_gap", OptType::Length)]
   } else {
@@ -64,6 +68,7 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
     });
   }
 
+  let id = builder.alloc(view.span());
   let mut items = Vec::new();
   let source = view.source();
 
@@ -86,8 +91,10 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
           span: cmd_view.span().to_source_span(),
         });
       }
-      let content = crate::frontend::evaluator::evaluate_children(source, first_arg)?;
-      items.push(ListItem {
+      let item_id = builder.alloc(cmd_view.span());
+      let content = crate::frontend::evaluator::evaluate_children(source, builder, first_arg)?;
+      items.push(HirListItem {
+        id: item_id,
         content,
         marker,
         item_gap,
@@ -95,12 +102,15 @@ fn list_common(view: &EnvironmentView, ordered: bool) -> Result<Vec<DocNode>, Ev
     }
   }
 
-  return Ok(vec![DocNode::List {
-    ordered,
-    items,
-    start,
-    item_gap,
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::List {
+      ordered,
+      items,
+      start,
+      item_gap,
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -109,7 +119,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{frontend::evaluator::lookup_env_parse_mode, model::DocNode};
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(
@@ -127,7 +137,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
@@ -141,7 +151,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List { start, .. } = &nodes[0] else {
@@ -158,7 +168,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "start"));
@@ -172,7 +182,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -186,7 +196,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -200,7 +210,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -214,7 +224,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -228,7 +238,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List { items, .. } = &nodes[0] else {
@@ -245,7 +255,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List { items, .. } = &nodes[0] else {
@@ -262,7 +272,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -276,7 +286,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List { item_gap, .. } = &nodes[0] else {
@@ -293,7 +303,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List {
@@ -314,7 +324,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::List { items, .. } = &nodes[0] else {

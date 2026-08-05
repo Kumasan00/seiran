@@ -9,7 +9,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{DocNode, MathEnvKind},
+  model::{HirBuilder, HirNode, HirNodeKind, MathEnvKind},
 };
 
 /// `cases` 環境を評価する
@@ -17,7 +17,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {
@@ -27,9 +27,11 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   }
 
   let source = view.source();
+  let id = builder.alloc(view.span());
   let grid = match view.body() {
     Some(body_node) => evaluate_grid(
       source,
+      builder,
       body_node,
       &GridSpec {
         allow_row_breaks: true,
@@ -47,13 +49,15 @@ pub(crate) fn cases(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
     });
   }
 
-  return Ok(vec![DocNode::MathBlock {
-    kind: MathEnvKind::Cases,
-    rows,
-    numbered: false,
-    label: None,
-    span: view.span(),
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::MathBlock {
+      kind: MathEnvKind::Cases,
+      rows,
+      numbered: false,
+      label: None,
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -62,7 +66,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{DocNode, MathEnvKind},
+  };
 
   fn parse<'a>(
     source: &'a str,
@@ -94,7 +101,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -112,7 +119,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::CasesColumnOverflow { found: 3, .. })));
@@ -126,7 +133,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -140,7 +147,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));

@@ -1,4 +1,4 @@
-//! パイプライン全段で共有する語彙型と Document IR。
+//! パイプライン全段で共有する語彙型と文書木（HIR / Document IR）。
 //!
 //! 診断や I/O を持たない契約層として、`crate::model` 経由で crate 内の全 module から
 //! 参照できる語彙型 + Document IR を提供する非公開 module（#307 で `model` crate を吸収）。
@@ -11,6 +11,7 @@ mod doc_node;
 mod font;
 mod font_map;
 mod heading_level;
+mod hir;
 mod ids;
 mod inline;
 mod origin;
@@ -41,6 +42,11 @@ pub use doc_node::{DocNode, Document, ProofTarget};
 pub use font::{FontKind, FontType};
 pub use font_map::FontMap;
 pub use heading_level::HeadingLevel;
+// HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
+pub(crate) use hir::{
+  HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
+  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, SourceMap, SourceSpans,
+};
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 // `inline_nodes_to_plain_text`/`try_inline_nodes_to_plain_text` は旧 model crate の公開 API
 // 保持のための再エクスポートで、crate::model root 経由の利用者が現状ない（プレーンテキスト化は

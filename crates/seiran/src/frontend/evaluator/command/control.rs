@@ -6,7 +6,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::{DocNode, Length},
+  model::{HirBuilder, HirNode, HirNodeKind, Length},
 };
 
 /// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド
@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰・数値でない場合にエラーを返します
-pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn space(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -52,7 +52,7 @@ pub(super) fn space(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
     },
   };
 
-  return Ok(vec![DocNode::Space(Length::pt(space_value))]);
+  return Ok(vec![builder.leaf_node(view.span(), HirNodeKind::Space(Length::pt(space_value)))]);
 }
 
 /// `\noindent` — 段落先頭行の字下げを抑止するマーカーコマンド
@@ -78,7 +78,7 @@ pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn pagebreak(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn pagebreak(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -86,7 +86,7 @@ pub(super) fn pagebreak(view: &CommandView) -> Result<Vec<DocNode>, EvalError> {
       span: view.span().to_source_span(),
     });
   }
-  return Ok(vec![DocNode::PageBreak]);
+  return Ok(vec![builder.leaf_node(view.span(), HirNodeKind::PageBreak)]);
 }
 
 #[cfg(test)]
@@ -95,9 +95,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_block_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::DocNode,
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -129,7 +132,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = space(&view);
+    let result = run_block_handler(|builder| return space(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
@@ -189,7 +192,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = pagebreak(&view);
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result.as_deref(), Ok([DocNode::PageBreak])));
@@ -204,7 +207,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = pagebreak(&view);
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
@@ -219,7 +222,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = pagebreak(&view);
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));
@@ -233,7 +236,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     assert!(matches!(

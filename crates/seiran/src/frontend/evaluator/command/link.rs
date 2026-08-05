@@ -14,7 +14,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::InlineNode,
+  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\url{uri}` を `InlineNode::Link` に変換する（URI 自身を表示テキストにする）
@@ -22,7 +22,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(crate) fn url_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn url_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -39,10 +39,15 @@ pub(crate) fn url_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
   }
 
   let url = extract_text_content(view.source(), first_arg).trim().to_string();
-  return Ok(vec![InlineNode::Link {
-    url: url.clone(),
-    children: vec![InlineNode::Text(url)],
-  }]);
+  let id = builder.alloc(view.span());
+  let text = builder.leaf_inline(first_arg.span, HirInlineKind::Text(url.clone()));
+  return Ok(vec![HirInline::new(
+    id,
+    HirInlineKind::Link {
+      url,
+      children: vec![text],
+    },
+  )]);
 }
 
 /// `\href[url=uri]{表示}` を `InlineNode::Link` に変換する（本文を表示テキストにする）
@@ -50,7 +55,7 @@ pub(crate) fn url_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalErr
 /// # Errors
 ///
 /// 任意引数 `url` の欠落・型不正、必須引数（表示テキスト）の欠落 / 過剰でエラーを返します。
-pub(crate) fn href_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalError> {
+pub(crate) fn href_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("url", OptType::String)])?;
   let Some(url) = find_string(&opt_args, "url") else {
     return Err(EvalError::MissingCommandArgument {
@@ -73,8 +78,9 @@ pub(crate) fn href_command(view: &CommandView) -> Result<Vec<InlineNode>, EvalEr
     });
   }
 
-  let children = extract_inline_nodes(view.source(), first_arg)?;
-  return Ok(vec![InlineNode::Link { url, children }]);
+  let id = builder.alloc(view.span());
+  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  return Ok(vec![HirInline::new(id, HirInlineKind::Link { url, children })]);
 }
 
 #[cfg(test)]
@@ -83,9 +89,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::InlineNode,
   };
 
   fn parse<'a>(
@@ -115,7 +124,7 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     // Act
-    let result = url_command(&view).unwrap();
+    let result = run_inline_handler(|builder| return url_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Link { url, children } = &result[0] else {
@@ -132,7 +141,9 @@ mod tests {
     let source = r"\url";
     let view = CommandView::new(get_command_view(source, &arena), source);
 
-    assert!(matches!(url_command(&view), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url"));
+    assert!(
+      matches!(run_inline_handler(|builder| return url_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
+    );
   }
 
   #[test]
@@ -143,7 +154,7 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     // Act
-    let result = href_command(&view).unwrap();
+    let result = run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Link { url, children } = &result[0] else {
@@ -161,6 +172,8 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     // Act / Assert
-    assert!(matches!(href_command(&view), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "href"));
+    assert!(
+      matches!(run_inline_handler(|builder| return href_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "href")
+    );
   }
 }

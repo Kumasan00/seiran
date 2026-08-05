@@ -10,7 +10,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{DocNode, HeadingLevel},
+  model::{HeadingLevel, HirBuilder, HirNode, HirNodeKind},
 };
 
 /// 見出しコマンドの共通処理
@@ -20,7 +20,11 @@ use crate::{
 /// # Errors
 ///
 /// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
-pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn heading(
+  view: &CommandView,
+  builder: &HirBuilder,
+  level: HeadingLevel,
+) -> Result<Vec<HirNode>, EvalError> {
   let name = level.command_name();
 
   let opt_args = collect_command_opt_args(view, &[("label", OptType::String)])?;
@@ -40,15 +44,17 @@ pub(super) fn heading(view: &CommandView, level: HeadingLevel) -> Result<Vec<Doc
     });
   }
 
-  let title = extract_inline_nodes(view.source(), first_arg)?;
+  let id = builder.alloc(view.span());
+  let title = extract_inline_nodes(view.source(), builder, first_arg)?;
 
-  return Ok(vec![DocNode::Heading {
-    level,
-    numbered: true,
-    title,
-    label,
-    span: view.span(),
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::Heading {
+      level,
+      title,
+      label,
+    },
+  )]);
 }
 
 /// `HeadingLevel` のエラーメッセージ用引数説明を返すヘルパー
@@ -69,9 +75,12 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    frontend::{
+      evaluator::{lookup_env_parse_mode, run_block_handler},
+      syntax::{SyntaxKind, green::GreenElement},
+    },
+    model::DocNode,
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -103,7 +112,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = heading(&view, HeadingLevel::Section).unwrap();
+    let result = run_block_handler(|builder| return heading(&view, builder, HeadingLevel::Section)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -130,7 +139,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = heading(&view, HeadingLevel::Section);
+    let result = run_block_handler(|builder| return heading(&view, builder, HeadingLevel::Section));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));

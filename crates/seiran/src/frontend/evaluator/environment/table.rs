@@ -1,6 +1,6 @@
 //! 表環境 — `table`
 //!
-//! `\head`、`\row`、`\caption` を [`DocNode::Table`] に変換する。
+//! `\head`、`\row`、`\caption` を [`HirNodeKind::Table`] に変換する。
 
 mod body;
 mod cell;
@@ -11,7 +11,7 @@ use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
 use crate::{
   frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView},
-  model::{ColumnAlign, ColumnWidth, DocNode},
+  model::{ColumnAlign, ColumnWidth, HirBuilder, HirNode, HirNodeKind},
 };
 
 /// `table` 環境を評価する
@@ -22,7 +22,7 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opts = collect_table_opts(view)?;
 
   if !view.args().is_empty() {
@@ -35,7 +35,8 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let columns_tokens = opts.columns_spec.as_deref().map(|s| return parse_columns_spec(s, view)).transpose()?;
   let widths_tokens = opts.widths_spec.as_deref().map(|s| return parse_widths_spec(s, view)).transpose()?;
 
-  let body = scan_table_body(view)?;
+  let id = builder.alloc(view.span());
+  let body = scan_table_body(view, builder)?;
 
   if body.head.is_empty() && body.rows.is_empty() {
     return Err(EvalError::MissingEnvironmentArgument {
@@ -51,17 +52,19 @@ pub(super) fn table(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
   let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
   let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
 
-  return Ok(vec![DocNode::Table {
-    columns,
-    widths,
-    head: body.head.into_iter().map(|(row, _)| return row).collect(),
-    rows: body.rows.into_iter().map(|(row, _)| return row).collect(),
-    caption: body.caption,
-    caption_position: body.caption_position,
-    label: opts.label,
-    span: view.span(),
-    breakable: opts.breakable,
-  }]);
+  return Ok(vec![HirNode::new(
+    id,
+    HirNodeKind::Table {
+      columns,
+      widths,
+      head: body.head.into_iter().map(|(row, _)| return row).collect(),
+      rows: body.rows.into_iter().map(|(row, _)| return row).collect(),
+      caption: body.caption,
+      caption_position: body.caption_position,
+      label: opts.label,
+      breakable: opts.breakable,
+    },
+  )]);
 }
 
 #[cfg(test)]
@@ -72,7 +75,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::evaluator::lookup_env_parse_mode,
-    model::{CaptionPosition, InlineNode, TableRow, inline_nodes_to_plain_text},
+    model::{CaptionPosition, DocNode, InlineNode, TableRow, inline_nodes_to_plain_text},
   };
 
   /// テスト用 `parse` ラッパ
@@ -87,7 +90,7 @@ mod tests {
   fn eval_table(source: &str) -> Result<Vec<DocNode>, EvalError> {
     let arena = Bump::new();
     let cst = parse(source, &arena).unwrap();
-    return crate::frontend::evaluator::evaluate_children(source, cst);
+    return crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
   }
 
   /// セル内容のプレーンテキストを行ごとに並べるヘルパ

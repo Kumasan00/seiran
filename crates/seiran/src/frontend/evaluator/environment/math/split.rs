@@ -5,7 +5,7 @@
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{
   frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
-  model::{DocNode, MathEnvKind},
+  model::{HirBuilder, HirNode, MathEnvKind},
 };
 
 /// `split` 環境を評価する
@@ -13,9 +13,10 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn split(view: &EnvironmentView) -> Result<Vec<DocNode>, EvalError> {
+pub(crate) fn split(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   return evaluate_math_env(
     view,
+    builder,
     MathEnvKind::Split,
     &GridSpec {
       allow_row_breaks: true,
@@ -31,7 +32,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{frontend::evaluator::lookup_env_parse_mode, model::MathEnvKind};
+  use crate::{
+    frontend::evaluator::lookup_env_parse_mode,
+    model::{DocNode, MathEnvKind},
+  };
 
   fn parse<'a>(
     source: &'a str,
@@ -63,7 +67,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let (rows, numbered) = block_of(&result);
@@ -80,7 +84,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let (rows, numbered) = block_of(&result);
@@ -96,7 +100,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst).unwrap();
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
 
     // Assert
     let DocNode::MathBlock {
@@ -121,7 +125,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "split"));
@@ -135,7 +139,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

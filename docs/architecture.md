@@ -57,9 +57,20 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。
 - **Document IR**: `doc_node`（`Document` / `DocNode` / `ProofTarget`）/ `inline`（`InlineNode` +
   プレーンテキスト化ヘルパ）/ `math_node`（`MathNode` / `MathRow` / `MathStyle`）/ `list`
-  （`ListItem`）/ `quote`（`QuoteKind`）/ `table`（`TableRow` / `TableCell`）。`frontend`（生産者）と
-  `typeset::lowering`（消費者）双方が依存する共有契約で、セマンティック情報のみを持ち、物理レイアウト
-  情報は持たない。
+  （`ListItem`）/ `quote`（`QuoteKind`）/ `table`（`TableRow` / `TableCell`）。`typeset::lowering`
+  （消費者）が依存する共有契約で、セマンティック情報のみを持ち、物理レイアウト情報は持たない。
+  #322 以降の生産者は `frontend` ではなく `frontend::doc_node_adapter`（HIR からの変換）で、
+  この型群は #325 で削除する。
+- **HIR**（`hir`、#322）: 著者が書いた内容を表す文書木。`id`（`NodeId`）/ `source_map`（`SourceSpans` /
+  `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `document`（`HirSource` / `HirGroup` /
+  `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /
+  `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
+  `HirMathRow`）。全ノードが `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
+  `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
+  するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `CitationId`）・
+  カウンタ値・CSL 整形結果・Theme 由来の表示文字列は持たない。旧 `DocNode` との差分は
+  `DocNode::Anchor` / `InlineNode::InternalLink` / `Cite::label`（いずれも CSL 整形段の生成物）と
+  `Heading::numbered`（frontend では常に `true`）を持たないこと。
 
 #### 不変条件・注意点
 
@@ -222,7 +233,7 @@ pub trait ProjectSource: Send + Sync {
 
 #### 責務
 
-`SemanticDocument`（`frontend::parse_source` と `citation::process_citations` を経た直後の、ラベル名・
+`SemanticDocument`（`frontend::doc_node_adapter` の変換と `citation::process_citations` を経た直後の、ラベル名・
 `\ref` 参照名・引用キー・索引語が未解決のまま保持できる生 `DocNode` 群）を `ResolvedDocument`（`LabelId` /
 `CitationId` の typed ID へ解決済み。`ResolvedNode` / `ResolvedInline` が `DocNode` / `InlineNode` の解決
 済み対応物）へ変換する。citation の後・typeset の前で 1 回だけ走るステージ。カウンタの**値**（構造のみ。
@@ -291,8 +302,21 @@ ResolveError>` の 1 つに絞る。
 
 #### 責務
 
-テキストソースから Document IR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
+テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
 `EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
+
+`parse_source` は 1 ソース分の `model::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
+`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
+atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
+インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
+使われないまま閉じられた場合（直後にブロック要素が来た等）は `local` に穴が空くが、同じ入力なら
+常に同じ穴になる。したがって ID の稠密性・連続性には依存してよくない（`hir_invariants` の
+テストも稠密性は検証しない）。
+
+`doc_node_adapter`（非公開）が HIR を旧 `DocNode` 列へ落とし、`build_pdf::parse_project` がその境界で
+後段（citation / resolve / typeset）向けの `ParsedSource` を作る。変換は HIR → `DocNode` の一方向のみで、
+逆方向は提供しない（手組みの `DocNode` に `NodeId` を捏造すると「すべての `NodeId` は同梱された
+`HirDocument` が発行したもの」という不変条件を破るため）。この adapter は #325 で削除する。
 
 #### `syntax`（非公開）
 
@@ -303,7 +327,9 @@ ResolveError>` の 1 つに絞る。
 
 #### `evaluator`
 
-CST を走査して Document IR（`model::DocNode` 等）へ評価変換する。
+CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
+型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
+子より先に確保する（`syntax` 層は HIR を知らない）。
 
 - `command/`: `control` / `footnote` / `headline` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
   `cite` / `symbol`
@@ -678,8 +704,14 @@ facade はこれを知らない（issue #278）。子 module:
   `citation::process_citations` は所有権で受け取ったドキュメント群を書き換えて返す非破壊 API になっており、
   `resolve_semantics` はその結果を `resolve::SemanticDocument` へ組み立て直して `resolve_project` に渡す。
   driver は citation → resolve の順序も、書誌を `SemanticDocument::bibliography` へ別枠で渡す組み立ても知らない
-- `image_manifest`: `parse_project` が本文 `DocNode` 列から集める画像パス一覧 `ImageManifest`（重複なし・
-  `AssetId` の昇順）
+- `image_manifest`: `parse_project` が本文 `DocNode` 列（HIR から adapter で起こしたもの）から集める
+  画像パス一覧 `ImageManifest`（重複なし・`AssetId` の昇順）
+
+`parse_all_sources` は `SourceDb` の各ソースを `frontend::parse_source` に通して `Vec<HirSource>` を返し、
+`parse_project` が `HirDocument::assemble` でプロジェクト全体の文書木へ組み立てる。`assemble` は
+`SourceId::index()` の昇順へ正規化するので、パースの実行順が `groups` の順序にも `SourceMap` の内容にも
+影響しない。組み立てた直後に `frontend::hir_group_to_doc_nodes`（#325 で削除する adapter）を通し、
+後段が受け取る `ParsedSource { source_id, nodes: Vec<DocNode> }` を作る。
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
   `seiran_pdf::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
   `resolve_images`（旧 `pdf_gen::resolve_images`）。driver が読込を 1 回だけ呼び、`resolve_images` は

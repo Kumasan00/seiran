@@ -55,7 +55,10 @@ cargo test -p <crate_name>                                 # 特定クレート�
 
 ```text
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
-  → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → Document IR（model::DocNode））
+  → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → HIR（model::HirDocument）。
+    全ノード（block / inline / math）が決定的な NodeId を持ち、ソース位置は各 variant ではなく
+    SourceMap に集約する。#322 時点では build_pdf 境界の非公開 adapter で従来の DocNode へ戻して
+    後段へ渡している（#325 で削除））
   → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を生成物として返す。
     本文グループへは連結せず、resolve::SemanticDocument::bibliography として別枠で渡す）
   → 解決（resolve: SemanticDocument（ラベル名・\ref 参照名・引用キーが未解決の DocNode 群）
@@ -130,7 +133,9 @@ seiran-cli （seiran, seiran-pdf に依存。CLI エントリーポイント（p
 ```text
 model （依存なし（serde / garde のみ）— 全段共有のデータモデル。旧 types / document / hlist の
         コア型 3 crate を統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
-        ColumnWidth 等の共通型 + Document IR（DocNode / InlineNode / MathNode）のみを持つ。
+        ColumnWidth 等の共通型 + HIR（hir: HirDocument / HirNode / HirInline / HirMath / NodeId /
+        SourceMap / HirBuilder、#322）+ Document IR（DocNode / InlineNode / MathNode。#325 で削除）
+        のみを持つ。
         組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
         （GlyphRun / Glyph）は font module へ移設済み（#280、model は意味モデルと共通値型に縮小）。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
@@ -150,8 +155,10 @@ resolve （model, config に依存。citation には依存しない。SemanticDo
         フィールドを参照しない設計で、`style_independence_tests` の property test が回帰を検出する）
   ↑ typeset, build_pdf
 
-frontend （model に依存。bumpalo アリーナ上に CST を構築し、Document IR（model）に
-          評価変換。CST とその内部エラー型は非公開の内部実装（`syntax` 子 module）。
+frontend （model に依存。bumpalo アリーナ上に CST を構築し、HIR（model::hir）に評価変換。
+          parse_source は 1 ソース分の HirSource（HirGroup + SourceSpans）を返す。CST とその内部
+          エラー型は非公開の内部実装（`syntax` 子 module）。NodeId は各ソース内の preorder で
+          発行し、スレッド共有カウンタを使わない（並列パースでも実行順に依存しない）。
           採番・\ref 解決は resolve、書式化は typeset::lowering に委ねる）
   ↑ build_pdf
 
@@ -202,10 +209,10 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 
 | `seiran` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
+| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）。非公開の `config` / `style` / `project_source` 子 module + root facade                                                                                                                                                                     |
 | `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence_tests` の property test で保証） |
-| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ Document IR への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）                                                                                                                                                                                                                                             |
+| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。旧 `DocNode` への非公開 adapter を #325 まで持つ                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
 | `typeset`  | 解決済みドキュメント（`resolve::ResolvedDocument`）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が解決済みドキュメント（`resolve::ResolvedDocument`）から表示文字列を生成しレイアウトノードを組み立てる、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|

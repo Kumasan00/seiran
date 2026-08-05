@@ -24,19 +24,23 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::InlineNode,
+  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `GreenNode` の子要素から `InlineNode` のリストを構築する
+/// `GreenNode` の子要素から [`HirInline`] のリストを構築する
 ///
 /// # Errors
 ///
 /// 上記のほか、インラインコマンドの引数不足・過剰などでエラーを返します。
-pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec<InlineNode>, EvalError> {
-  return extract_inline_nodes_from_elements(source, node.children);
+pub(crate) fn extract_inline_nodes(
+  source: &str,
+  builder: &HirBuilder,
+  node: &GreenNode,
+) -> Result<Vec<HirInline>, EvalError> {
+  return extract_inline_nodes_from_elements(source, builder, node.children);
 }
 
-/// CST 要素のスライスから `InlineNode` のリストを構築する
+/// CST 要素のスライスから [`HirInline`] のリストを構築する
 ///
 /// 分割済みの要素列を新しい CST ノードなしで評価する。
 ///
@@ -45,30 +49,31 @@ pub(crate) fn extract_inline_nodes(source: &str, node: &GreenNode) -> Result<Vec
 /// [`extract_inline_nodes`] と同じ条件でエラーを返します。
 pub(crate) fn extract_inline_nodes_from_elements(
   source: &str,
+  builder: &HirBuilder,
   children: &[GreenElement],
-) -> Result<Vec<InlineNode>, EvalError> {
+) -> Result<Vec<HirInline>, EvalError> {
   let mut inlines = Vec::new();
   for child in children {
     match child {
       GreenElement::Token(token) => match token.kind {
         TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
-          inlines.push(InlineNode::Text(token.text(source).to_string()));
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
           let text = &source[token.span.start as usize + 1..token.span.end as usize];
-          inlines.push(InlineNode::Text(text.to_string()));
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text(text.to_string())));
         },
         TokenKind::LineBreak => {
-          inlines.push(InlineNode::LineBreak);
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::LineBreak));
         },
         TokenKind::Underscore => {
-          inlines.push(InlineNode::Text("_".to_string()));
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("_".to_string())));
         },
         TokenKind::Caret => {
-          inlines.push(InlineNode::Text("^".to_string()));
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("^".to_string())));
         },
         TokenKind::Ampersand => {
-          inlines.push(InlineNode::Text("&".to_string()));
+          inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
         },
         TokenKind::ParagraphBreak => {
           return Err(EvalError::ParagraphBreakInArgument {
@@ -82,25 +87,25 @@ pub(crate) fn extract_inline_nodes_from_elements(
           let view = CommandView::new(child_node, source);
           match COMMAND_MAP.get(view.name()).copied() {
             Some(CommandKind::StyledText(kind)) => {
-              inlines.extend(styled_text(&view, kind)?);
+              inlines.extend(styled_text(&view, builder, kind)?);
             },
             Some(CommandKind::ColoredText) => {
-              inlines.extend(colored_text(&view)?);
+              inlines.extend(colored_text(&view, builder)?);
             },
             Some(CommandKind::Ref) => {
-              inlines.extend(ref_command(&view)?);
+              inlines.extend(ref_command(&view, builder)?);
             },
             Some(CommandKind::Cite) => {
-              inlines.extend(cite_command(&view)?);
+              inlines.extend(cite_command(&view, builder)?);
             },
             Some(CommandKind::Footnote) => {
-              inlines.extend(footnote_command(&view)?);
+              inlines.extend(footnote_command(&view, builder)?);
             },
             Some(CommandKind::Url) => {
-              inlines.extend(url_command(&view)?);
+              inlines.extend(url_command(&view, builder)?);
             },
             Some(CommandKind::Href) => {
-              inlines.extend(href_command(&view)?);
+              inlines.extend(href_command(&view, builder)?);
             },
             Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
@@ -118,7 +123,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             },
             None => {
               if let Some(symbol) = SYMBOL_MAP.get(view.name()) {
-                inlines.extend(single_char(&view, symbol.ch)?);
+                inlines.extend(single_char(&view, builder, symbol.ch)?);
               } else {
                 return Err(EvalError::UnknownCommand {
                   name: view.name().to_string(),
@@ -129,8 +134,9 @@ pub(crate) fn extract_inline_nodes_from_elements(
           }
         },
         SyntaxKind::InlineMath => {
-          let math_nodes = math::evaluate_inline_math(source, child_node)?;
-          inlines.push(InlineNode::InlineMath(math_nodes));
+          let id = builder.alloc(child_node.span);
+          let math_nodes = math::evaluate_inline_math(source, builder, child_node)?;
+          inlines.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
         SyntaxKind::Environment => {
           let view = EnvironmentView::new(child_node, source);
@@ -140,7 +146,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
           });
         },
         SyntaxKind::Group => {
-          let children = extract_inline_nodes(source, child_node)?;
+          let children = extract_inline_nodes(source, builder, child_node)?;
           inlines.extend(children);
         },
         _ => {},
@@ -162,7 +168,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
+  use crate::{
+    frontend::evaluator::{extract_inline_nodes_to_inline_nodes, lookup_env_parse_mode},
+    model::InlineNode,
+  };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(
@@ -180,7 +189,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(
       &inlines[0],
@@ -199,7 +208,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0], InlineNode::Symbol('α')));
   }
@@ -215,7 +224,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let inlines = extract_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
 
     // Assert
     assert_eq!(inlines.len(), 1);
@@ -233,7 +242,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_inline_nodes(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
@@ -250,7 +259,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_inline_nodes(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
@@ -267,7 +276,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_inline_nodes(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
@@ -281,7 +290,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
     let has_math = inlines.iter().any(|n| matches!(n, InlineNode::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
   }
@@ -294,7 +303,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
     assert_eq!(inlines.len(), 3);
     assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "Hello"));
     assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
