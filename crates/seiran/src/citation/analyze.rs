@@ -293,9 +293,11 @@ mod tests {
   }
 
   #[test]
-  fn analyze_does_not_depend_on_csl_style() {
-    // Arrange — analyze は Style を受け取らない（型で保証される）。ここでは
-    // 同じ HIR + 同じ references から同じ facts が得られることを固定する
+  fn analyze_citations_is_deterministic() {
+    // Arrange — CSL 非依存（受け入れ条件）は `analyze_citations` が `Style` / CSL を一切引数に
+    // 取らないことで型として保証されており、この本体では再テストしない（比較対象を差し替える
+    // 経路が無いため）。ここで固定するのは、同じ HIR + 同じ references から同じ facts が得られる
+    // という決定性そのもの
     let hir = document(r"\cite{kwan2014} と \cite{doe2020}");
     let references = sample_references();
 
