@@ -5,7 +5,10 @@ use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::{
-  citation::CitationError, config::LayoutValidationError, frontend::ParseSourceError, model::AssetId,
+  citation::{CitationFormatError, CitationStyleError},
+  config::LayoutValidationError,
+  frontend::ParseSourceError,
+  model::AssetId,
   resolve::ResolveError,
 };
 
@@ -149,14 +152,24 @@ pub(super) enum CompileError {
     errors: Vec<AttributedParseError>,
   },
 
-  /// 文献引用の CSL 整形エラー
-  #[error("文献引用の整形に失敗しました。")]
-  #[diagnostic(code(build::citation))]
-  Citation {
-    /// 元の citation エラー
+  /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
+  #[error("文献引用の CSL スタイルを読み込めませんでした。")]
+  #[diagnostic(code(build::citation::style))]
+  CitationStyle {
+    /// 元の CSL スタイル読込エラー
     #[source]
     #[diagnostic_source]
-    source: CitationError,
+    source: CitationStyleError,
+  },
+
+  /// 文献引用の CSL 整形（表示の生成）エラー
+  #[error("文献引用の整形に失敗しました。")]
+  #[diagnostic(code(build::citation::format))]
+  CitationFormat {
+    /// 元の CSL 整形エラー
+    #[source]
+    #[diagnostic_source]
+    source: CitationFormatError,
   },
 
   /// `\cite{...}` の未定義引用キー（ソースごとに集約）

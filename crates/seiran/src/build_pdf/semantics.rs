@@ -1,18 +1,18 @@
 //! `\cite` の CSL 整形と意味解決（ラベル登録・`\ref` 検証・カウンタ構造値の確定・
 //! typed ID 割当）を 1 回の呼び出しの背後に隠す。
 //!
-//! citation → resolve という呼び出し順序と、書誌を `resolve::SemanticDocument::bibliography`
-//! として実ソースの `groups` とは別枠で渡す組み立ては、この module の外からは見えない
-//! （issue #303）。
+//! citation → resolve という呼び出し順序と、生成物（引用表示・書誌）を
+//! `resolve::SemanticDocument::generated` として実ソースの `groups` とは別枠で渡す組み立ては、
+//! この module の外からは見えない（issue #303）。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
 use super::ParsedSource;
 use crate::{
-  citation::{self, CitationError, CitationSemanticError, References},
+  citation::{self, CitationFormatError, CitationSemanticError, CitationStyleError, References},
   model::{DocNode, HirDocument, SourceId},
-  resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGroup},
+  resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGenerated, SemanticGroup},
 };
 
 /// `resolve_semantics` のエラー。
@@ -28,28 +28,31 @@ pub(super) enum SemanticsError {
   #[error(transparent)]
   #[diagnostic(transparent)]
   CitationSemantic(#[from] CitationSemanticError),
-  /// `\cite` の CSL 整形エラー
+  /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Citation(#[from] CitationError),
+  CitationStyle(#[from] CitationStyleError),
+  /// `\cite` の CSL 整形（表示の生成）エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  CitationFormat(#[from] CitationFormatError),
   /// ラベル・`\ref`・カウンタの解決エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
   Resolve(#[from] ResolveError),
 }
 
-/// 引用キーの存在検証・全ソースの `\cite` の CSL 整形を行い、その結果を意味解決へ渡して
+/// 引用箇所の意味解析・表示と書誌の生成を行い、その結果を意味解決へ渡して
 /// `ResolvedDocument` を返す。
 ///
-/// `document` は引用キーの存在検証（`citation::analyze_citations`）にのみ使う。表示の生成
-/// （CSL 整形）は従来どおり `parsed`（`DocNode` 経路）を `citation::process_citations` に渡す
-/// （facts からの整形への切り替えは Task 6）。`parsed` は所有権ごと受け取り、citation による
-/// 書き換えは内部で保持する値の上でのみ行う（呼び出し元が別に保持している AST を破壊的に
-/// 変更することはない）。
+/// `document`（HIR）から引用箇所の事実を取り、そこから表示インライン列と書誌を生成する。
+/// 生成物は `parsed`（`DocNode` 経路）へは一切書き戻さず、`SemanticDocument::generated` として
+/// 別枠で resolve に渡す。
 ///
 /// # Errors
 ///
-/// 引用キーの存在検証、CSL 整形、または意味解決に失敗した場合にエラーを返す。
+/// 引用キーの存在検証、CSL スタイルの読込、表示の生成、または意味解決に失敗した場合に
+/// エラーを返す。
 pub(super) fn resolve_semantics(
   source: &dyn crate::config::ProjectSource,
   document: &HirDocument,
@@ -58,14 +61,17 @@ pub(super) fn resolve_semantics(
   style: &crate::config::Style,
 ) -> Result<ResolvedDocument, SemanticsError> {
   // 引用キーの存在検証はここで完了する（以降 `\cite` のキーは必ず参照定義に存在する）。
-  // facts（`CitationFacts`）自体の消費は Task 6（表示の生成を facts 経由へ切り替える）まで無いため、
-  // 検証の成否だけを見て破棄する。
-  let _facts = citation::analyze_citations(document, references)?;
+  let facts = citation::analyze_citations(document, references)?;
+  // 引用が 1 つも無ければ CSL スタイルを読まない（`csl_path` 未設定でもエラーにしない）。
+  let generated = if facts.is_empty() {
+    citation::GeneratedCitations::default()
+  } else {
+    let compiled = citation::load_citation_style(source, style)?;
+    citation::generate_citations(&facts, references, &compiled, &style.reference.title)?
+  };
 
   let source_ids: Vec<SourceId> = parsed.iter().map(|p| return p.source_id).collect();
   let docs: Vec<Vec<DocNode>> = parsed.into_iter().map(|p| return p.nodes).collect();
-
-  let (docs, bibliography) = citation::process_citations(docs, references, style, source)?;
 
   let groups: Vec<SemanticGroup<'_>> = source_ids
     .into_iter()
@@ -79,7 +85,10 @@ pub(super) fn resolve_semantics(
     .collect();
   let semantic = SemanticDocument {
     groups,
-    bibliography: bibliography.as_slice(),
+    generated: SemanticGenerated {
+      citation_displays: generated.displays(),
+      bibliography: generated.bibliography(),
+    },
   };
 
   let resolved = resolve::resolve_project(&semantic, style)?;
@@ -93,7 +102,7 @@ mod tests {
   use super::{ParsedSource, SemanticsError, resolve_semantics};
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
-    citation::{CitationError, CitationStyleError, read_references},
+    citation::{CitationStyleError, read_references},
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
     frontend::parse_source,
     model::{HirDocument, SourceId},
@@ -133,15 +142,15 @@ mod tests {
       .expect("citation → resolve の連携は成功するはず");
 
     // Assert — 書誌が生成され resolve 済みドキュメントへ渡っている
-    assert!(!resolved.bibliography.is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
+    assert!(!resolved.generated.bibliography.is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
+    assert!(!resolved.generated.citation_displays.is_empty(), "cite.sei の引用箇所には表示が生成されるはず");
   }
 
   #[test]
   fn resolve_semantics_maps_citation_error() {
     // Arrange — 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
     // キーは既知にしておかないと analyze_citations の未知キー検証で先に弾かれてしまうため、
-    // ここで確認したい CitationError::Style(CitationStyleError::MissingCslPath)
-    // （process_citations 側）まで到達しない。
+    // ここで確認したい CitationStyleError::MissingCslPath（load_citation_style 側）まで到達しない。
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
       "[ref1]\n\
@@ -162,10 +171,7 @@ mod tests {
       .expect_err("csl_path 未設定はエラーになるはず");
 
     // Assert
-    assert!(
-      matches!(error, SemanticsError::Citation(CitationError::Style(CitationStyleError::MissingCslPath))),
-      "got: {error:?}"
-    );
+    assert!(matches!(error, SemanticsError::CitationStyle(CitationStyleError::MissingCslPath)), "got: {error:?}");
   }
 
   #[test]

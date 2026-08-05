@@ -438,12 +438,14 @@ fn wrap_citation_semantic_error(error: crate::citation::CitationSemanticError, s
 
 /// `semantics::resolve_semantics` のエラーを `CompileError` へ変換する。
 ///
-/// citation 由来はそのまま `Citation` へ、resolve 由来は `wrap_resolve_error` に委譲し、
-/// 帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける。未定義引用キーは
-/// `wrap_citation_semantic_error` でソースごとの位置付き診断へ変換する（従来の挙動を維持する）。
+/// citation 由来はそのまま `CitationStyle` / `CitationFormat` へ、resolve 由来は
+/// `wrap_resolve_error` に委譲し、帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける。
+/// 未定義引用キーは `wrap_citation_semantic_error` でソースごとの位置付き診断へ変換する
+/// （従来の挙動を維持する）。
 fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileError {
   return match error {
-    SemanticsError::Citation(source) => CompileError::Citation { source },
+    SemanticsError::CitationStyle(source) => CompileError::CitationStyle { source },
+    SemanticsError::CitationFormat(source) => CompileError::CitationFormat { source },
     SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
     SemanticsError::CitationSemantic(source) => wrap_citation_semantic_error(source, source_db),
   };
@@ -451,7 +453,7 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 
 #[cfg(test)]
 mod tests {
-  /// 書誌（`bibliography` フィールド）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
+  /// 書誌（`generated.bibliography`）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
   pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
     use crate::model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
@@ -461,12 +463,16 @@ mod tests {
       label: "missing".to_string(),
       span: crate::model::Span::DUMMY,
     }])];
+    let citation_displays = crate::model::NodeMap::default();
     let semantic = crate::resolve::SemanticDocument {
       groups: vec![crate::resolve::SemanticGroup {
         nodes: &g0,
         source_id: crate::model::SourceId::new(0),
       }],
-      bibliography: &bibliography,
+      generated: crate::resolve::SemanticGenerated {
+        citation_displays: &citation_displays,
+        bibliography: &bibliography,
+      },
     };
     let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(

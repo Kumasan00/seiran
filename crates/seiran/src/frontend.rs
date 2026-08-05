@@ -265,15 +265,14 @@ mod tests {
     let DocNode::Paragraph(inlines) = &result[0] else {
       panic!("Paragraph が期待されます");
     };
-    let cite = inlines
+    let cite_keys = inlines
       .iter()
       .find_map(|node| match node {
-        InlineNode::Cite { keys, label, .. } => return Some((keys.clone(), label.clone())),
+        InlineNode::Cite { keys, .. } => return Some(keys.clone()),
         _ => return None,
       })
       .expect("Cite ノードが含まれるべき");
-    assert_eq!(cite.0, vec!["rika".to_string()]);
-    assert!(cite.1.is_none());
+    assert_eq!(cite_keys, vec!["rika".to_string()]);
   }
 
   #[test]

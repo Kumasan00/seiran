@@ -2,12 +2,6 @@
 //!
 //! CSL 整形（表示の生成）は行わない（`crate::citation::generate` の責務）。
 //! 未知の引用キーはここで検出し、`NodeId` から引いたソース位置付きで報告する。
-//!
-//! #323 Task 4 で `build_pdf::semantics::resolve_semantics` からの呼び出しが入ったが、返り値の
-//! `CitationFacts`（`sites` / `get` / `is_empty` / `len`）はまだ検証の成否以外では消費していない
-//! （facts を表示の生成に使う経路は Task 6 で `citation::generate` / `resolve` へ接続する）。
-//! それまではこれらのアクセサをテスト以外から使わないため、module 全体を `dead_code` から外す。
-#![allow(dead_code)]
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -39,12 +33,18 @@ impl CitationFacts {
   pub(crate) fn sites(&self) -> impl Iterator<Item = (NodeId, &CitationSiteFacts)> { return self.sites.iter(); }
 
   /// 引用箇所の事実を引く
+  ///
+  /// 本体コードは `sites` を文書順に走査するだけで足りるため、単点引きの消費者は現状テストのみ。
+  #[allow(dead_code)]
   pub(crate) fn get(&self, site: NodeId) -> Option<&CitationSiteFacts> { return self.sites.get(site); }
 
   /// 引用箇所が 1 つも無いかを返す
   pub(crate) fn is_empty(&self) -> bool { return self.sites.is_empty(); }
 
   /// 引用箇所の個数を返す
+  ///
+  /// 本体コードは有無（`is_empty`）しか見ないため、個数の消費者は現状テストのみ。
+  #[allow(dead_code)]
   pub(crate) fn len(&self) -> usize { return self.sites.len(); }
 }
 

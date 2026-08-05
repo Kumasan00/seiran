@@ -213,11 +213,9 @@ fn to_inline_node(inline: &HirInline, locations: &SourceMap) -> InlineNode {
       url: url.clone(),
       children: to_inline_nodes(children, locations),
     },
-    // 表示用のラベルは CSL 整形ステージが `Some` に確定する（frontend は常に `None`）
     HirInlineKind::Cite { keys } => InlineNode::Cite {
       keys: keys.clone(),
       node_id: inline.id,
-      label: None,
       span,
     },
     HirInlineKind::Footnote { body } => InlineNode::Footnote {

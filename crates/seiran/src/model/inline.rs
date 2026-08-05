@@ -78,18 +78,14 @@ pub enum InlineNode {
 
   /// 文献引用（`\cite{key}` / 複数キーの `\cite{a,b}`）
   ///
-  /// `Ref` と同様の 2 段階で扱う。パーサ（pass1）では `keys` を確定し `label: None` の
-  /// スタブを生成、pass2 では参照定義（references）に対するキーの存在のみを検証する。
-  /// 最終的な引用ラベル（番号 / 著者年の整形済みインライン列）は CSL 整形ステージ
-  /// （`citation` クレート）が全引用集合から採番して `label: Some(...)` に確定する。
+  /// 著者が書いた引用「箇所」だけを表し、表示（番号 / 著者年の整形済みインライン列）は
+  /// 持たない。表示は `citation::generate_citations` が `node_id` をキーにする side table
+  /// として別に生成し、lowering がそこから引く（文書木へは書き戻さない）。
   Cite {
     /// 引用キーのリスト（`\cite{a,b}` は `["a", "b"]`）
     keys: Vec<String>,
     /// この引用箇所の HIR ノード ID（生成された表示インライン列を引くキー）
     node_id: crate::model::NodeId,
-    /// 解決済みの引用ラベル（CSL 整形済みインライン列）。パーサ段階では `None`、
-    /// CSL 整形ステージで `Some` に確定する。
-    label: Option<Vec<InlineNode>>,
     /// `\cite{...}` の `CommandCall` ノードのソース位置。キー存在検証時の診断に使う
     span: Span,
   },
@@ -152,12 +148,9 @@ impl InlineNode {
       // 脚注本体・索引マーカーは見出し・書誌等のプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
       InlineNode::NoIndent | InlineNode::Footnote { .. } | InlineNode::Index { .. } => return Ok(String::new()),
       InlineNode::Ref { label, span } => return resolve_ref(label, *span),
-      InlineNode::Cite { keys, label, .. } => {
-        return match label.as_deref() {
-          Some(inlines) => try_inline_nodes_to_plain_text(inlines, resolve_ref),
-          None => Ok(keys.join(", ")),
-        };
-      },
+      // 表示（CSL 整形済みインライン列）はここでは引けない（side table 側にある）。
+      // 表示を含むプレーンテキストが要るなら `typeset::lowering` の解決済み版を使う。
+      InlineNode::Cite { keys, .. } => return Ok(keys.join(", ")),
     }
   }
 

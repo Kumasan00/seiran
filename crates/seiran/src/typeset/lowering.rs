@@ -146,8 +146,8 @@ pub(super) mod test_support {
   use std::collections::HashMap;
 
   use crate::{
-    model::LabelId,
-    resolve::{CounterValue, ResolvedDocument},
+    model::{LabelId, NodeId, NodeMap},
+    resolve::{CounterValue, ResolvedDocument, ResolvedGenerated, ResolvedInline},
   };
 
   /// ラベル → カウンタ値の対応だけを持つ最小の解決済みドキュメントを作る
@@ -158,12 +158,30 @@ pub(super) mod test_support {
   pub(crate) fn document(counter_values: &[(&str, CounterValue)]) -> ResolvedDocument {
     return ResolvedDocument {
       groups: Vec::new(),
-      bibliography: Vec::new(),
+      generated: ResolvedGenerated {
+        citation_displays: NodeMap::default(),
+        bibliography: Vec::new(),
+      },
       headings: Vec::new(),
       counter_values: counter_values
         .iter()
         .map(|(label, value)| return (LabelId::new(*label), value.clone()))
         .collect::<HashMap<_, _>>(),
+    };
+  }
+
+  /// 引用箇所 1 件ぶんの表示だけを持つ最小の解決済みドキュメントを作る
+  pub(crate) fn document_with_citation_display(site: NodeId, display: Vec<ResolvedInline>) -> ResolvedDocument {
+    let mut citation_displays = NodeMap::default();
+    citation_displays.insert(site, display);
+    return ResolvedDocument {
+      groups: Vec::new(),
+      generated: ResolvedGenerated {
+        citation_displays,
+        bibliography: Vec::new(),
+      },
+      headings: Vec::new(),
+      counter_values: HashMap::new(),
     };
   }
 }
@@ -208,6 +226,18 @@ impl<'a> LoweringState<'a> {
     return index;
   }
 
+  /// 引用箇所の表示インライン列を引く
+  ///
+  /// # Panics
+  ///
+  /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは `generate_citations` が保証）。
+  pub(super) fn citation_display(&self, site: crate::model::NodeId) -> &[ResolvedInline] {
+    let Some(display) = self.document.generated.citation_displays.get(site) else {
+      unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
+    };
+    return display;
+  }
+
   /// `\ref` / `proof` の `[of=...]` の参照先表示文字列を作る
   ///
   /// # Panics
@@ -237,7 +267,7 @@ pub fn lower_sources_with_headings(
   }
   // 書誌は常に groups の後に lower する（`next_heading_index()` が `document.headings` の
   // 添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っていることに依存する）
-  result.extend(lower_nodes_inner(ctx, &document.bibliography, &mut state));
+  result.extend(lower_nodes_inner(ctx, &document.generated.bibliography, &mut state));
 
   let headings = document
     .headings
@@ -256,7 +286,7 @@ pub fn lower_sources_with_headings(
     .collect();
 
   let input_node_count: usize =
-    document.groups.iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography.len();
+    document.groups.iter().map(|group| return group.nodes.len()).sum::<usize>() + document.generated.bibliography.len();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return (result, headings);
 }
@@ -463,11 +493,12 @@ fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle,
       ResolvedInline::Styled { children, .. }
       | ResolvedInline::Colored { children, .. }
       | ResolvedInline::Link { children, .. }
-      | ResolvedInline::InternalLink { children, .. }
-      | ResolvedInline::Cite {
-        label: children, ..
-      } => {
+      | ResolvedInline::InternalLink { children, .. } => {
         out.push_str(&resolved_inlines_to_plain_text(children, style, state));
+      },
+      // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）
+      ResolvedInline::Cite { site, .. } => {
+        out.push_str(&resolved_inlines_to_plain_text(state.citation_display(*site), style, state));
       },
       ResolvedInline::InlineMath(_) => out.push_str("[Math]"),
       ResolvedInline::Symbol(ch) => out.push(*ch),
@@ -493,6 +524,7 @@ mod tests {
   ///
   /// lowering の入力は解決済みツリーなので、`DocNode` を組み立てるテストはこの 2 段構成になる。
   fn resolved(style: &ReadStyle, groups: &[&[DocNode]]) -> ResolvedDocument {
+    let citation_displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: groups
         .iter()
@@ -504,7 +536,10 @@ mod tests {
           };
         })
         .collect(),
-      bibliography: &[],
+      generated: resolve::SemanticGenerated {
+        citation_displays: &citation_displays,
+        bibliography: &[],
+      },
     };
     return resolve::resolve_project(&semantic, style).expect("解決できる入力のはず");
   }

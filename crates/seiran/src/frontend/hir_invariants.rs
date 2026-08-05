@@ -411,19 +411,18 @@ fn assert_unresolved_inlines(inlines: &[InlineNode], name: &str) {
       InlineNode::InternalLink { .. } => {
         panic!("{name}: InternalLink は CSL 整形段の生成物なので frontend からは出ないはず");
       },
-      InlineNode::Cite { label, .. } => {
-        assert!(label.is_none(), "{name}: frontend 段の引用ラベルは未解決（None）のはず");
-      },
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
       | InlineNode::Footnote { body: children, .. } => assert_unresolved_inlines(children, name),
+      // `Cite` は引用「箇所」だけを表し、表示は型として持てない（生成物は side table 側）
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
       | InlineNode::Symbol(_)
       | InlineNode::LineBreak
       | InlineNode::NoIndent
       | InlineNode::Ref { .. }
+      | InlineNode::Cite { .. }
       | InlineNode::Index { .. } => {},
     }
   }

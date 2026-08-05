@@ -13,7 +13,10 @@ mod resolver;
 mod validate;
 
 pub use counter::{CounterKind, CounterValue};
-pub use document::{ResolvedDocument, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGroup};
+pub use document::{
+  ResolvedDocument, ResolvedGenerated, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGenerated,
+  SemanticGroup,
+};
 pub use error::ResolveError;
 // `IndexKey` は旧 resolve crate の公開 API 保持のための再エクスポートで、crate::resolve root
 // 経由の利用者は `crate::typeset::lowering::inline` の `#[cfg(test)]` テストのみ。cfg(test) を
@@ -37,8 +40,8 @@ pub use node::{
 ///
 /// # Errors
 ///
-/// いずれかのグループの変換（重複ラベル・未整形の `\cite`）、または `\ref` /
-/// `Theorem::of` の存在検証で失敗した場合にエラーを返す。
+/// いずれかのグループの変換（重複ラベル）、または `\ref` / `Theorem::of` の存在検証で
+/// 失敗した場合にエラーを返す。
 pub fn resolve_project(
   semantic: &SemanticDocument<'_>,
   style: &crate::config::Style,
@@ -55,14 +58,22 @@ pub fn resolve_project(
       source_id: group.source_id,
     });
   }
-  let bibliography_origin = crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography);
+  // 生成物（引用表示・書誌）はどちらも citation の出力なので同じ起源に帰属させる。
+  // 書誌の解決は必ず groups の後に行う（`pending_headings` の並び = `ResolvedDocument::headings`
+  // の添字が typeset の走査順と一致する前提を保つため）。引用表示は見出しを含まないので
+  // この順序には影響しない。
+  let generated_origin = crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography);
   let bibliography =
-    resolver::resolve_group(semantic.bibliography, &mut registry, &mut pending_headings, bibliography_origin)?;
+    resolver::resolve_group(semantic.generated.bibliography, &mut registry, &mut pending_headings, generated_origin)?;
+  let mut citation_displays: crate::model::NodeMap<Vec<ResolvedInline>> = crate::model::NodeMap::default();
+  for (site, display) in semantic.generated.citation_displays.iter() {
+    citation_displays.insert(site, resolver::resolve_inlines(display));
+  }
 
   for group in &groups {
     validate::validate_refs(&group.nodes, &registry, crate::model::Origin::Source(group.source_id))?;
   }
-  validate::validate_refs(&bibliography, &registry, bibliography_origin)?;
+  validate::validate_refs(&bibliography, &registry, generated_origin)?;
 
   let headings = pending_headings
     .into_iter()
@@ -81,7 +92,10 @@ pub fn resolve_project(
 
   return Ok(ResolvedDocument {
     groups,
-    bibliography,
+    generated: ResolvedGenerated {
+      citation_displays,
+      bibliography,
+    },
     headings,
     counter_values,
   });
@@ -111,6 +125,7 @@ mod tests {
       label: "ch:intro".to_string(),
       span: Span::DUMMY,
     }])];
+    let displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: vec![
         SemanticGroup {
@@ -122,7 +137,10 @@ mod tests {
           source_id: SourceId::new(1),
         },
       ],
-      bibliography: &[],
+      generated: SemanticGenerated {
+        citation_displays: &displays,
+        bibliography: &[],
+      },
     };
 
     // Act
@@ -141,12 +159,16 @@ mod tests {
       label: "missing".to_string(),
       span: Span::DUMMY,
     }])];
+    let displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: vec![SemanticGroup {
         nodes: &g0,
         source_id: SourceId::new(0),
       }],
-      bibliography: &[],
+      generated: SemanticGenerated {
+        citation_displays: &displays,
+        bibliography: &[],
+      },
     };
 
     // Act
@@ -165,7 +187,7 @@ mod tests {
 mod style_independence_tests {
   use proptest::prelude::*;
 
-  use super::{ResolvedDocument, SemanticDocument, SemanticGroup, resolve_project};
+  use super::{ResolvedDocument, SemanticDocument, SemanticGenerated, SemanticGroup, resolve_project};
   use crate::{
     config::Style,
     model::{DocNode, HeadingLevel, InlineNode, SourceId, Span},
@@ -206,12 +228,16 @@ mod style_independence_tests {
 
   /// `nodes` を 1 ソースグループとして解決する
   fn resolve_sample(nodes: &[DocNode], style: &Style) -> ResolvedDocument {
+    let displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: vec![SemanticGroup {
         nodes,
         source_id: SourceId::new(0),
       }],
-      bibliography: &[],
+      generated: SemanticGenerated {
+        citation_displays: &displays,
+        bibliography: &[],
+      },
     };
     return resolve_project(&semantic, style).expect("サンプルは解決に成功するはず");
   }

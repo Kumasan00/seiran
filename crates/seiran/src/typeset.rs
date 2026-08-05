@@ -118,12 +118,16 @@ mod tests {
     let hir_document = crate::model::HirDocument::assemble(vec![hir]);
     let group = hir_document.groups().first().expect("1 ソース分のグループがあるはず");
     let doc_nodes = crate::frontend::hir_group_to_doc_nodes(group, hir_document.locations());
+    let citation_displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: vec![SemanticGroup {
         nodes: &doc_nodes,
         source_id: SourceId::new(0),
       }],
-      bibliography: &[],
+      generated: crate::resolve::SemanticGenerated {
+        citation_displays: &citation_displays,
+        bibliography: &[],
+      },
     };
     let document = crate::resolve::resolve_project(&semantic, &style)
       .unwrap_or_else(|e| panic!("resolve_project 失敗 ({name}): {e:?}"));

@@ -99,11 +99,10 @@ mod tests {
     let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Cite { keys, label, .. } = &result[0] else {
+    let InlineNode::Cite { keys, .. } = &result[0] else {
       panic!("Cite が期待されます");
     };
     assert_eq!(keys, &["rika".to_string()]);
-    assert!(label.is_none());
   }
 
   #[test]

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::model::Origin;
 
-/// 解決（ラベル・`\ref`・`\cite` の名前解決）で発生し得るエラー
+/// 解決（ラベル登録・`\ref` の名前解決）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ResolveError {
@@ -34,22 +34,6 @@ pub enum ResolveError {
     /// この重複定義が属する起源
     origin: Origin,
   },
-
-  /// 文献引用（`\cite{...}`）が CSL 整形ステージを経ずに解決ステージへ到達した場合
-  #[error("未整形の文献引用が解決ステージに到達しました: キー `{keys}`")]
-  #[diagnostic(
-    code(resolve::unresolved_citation),
-    help("resolve の前に citation::process_citations が実行されているか確認してください。")
-  )]
-  UnresolvedCitation {
-    /// 採番できなかった引用キー列
-    keys: String,
-    /// `\cite{...}` のソース位置
-    #[label("この引用が未整形です")]
-    span: miette::SourceSpan,
-    /// この引用が属する起源
-    origin: Origin,
-  },
 }
 
 impl ResolveError {
@@ -57,9 +41,7 @@ impl ResolveError {
   #[must_use]
   pub fn origin(&self) -> Origin {
     return match self {
-      ResolveError::UnresolvedReference { origin, .. }
-      | ResolveError::DuplicateLabel { origin, .. }
-      | ResolveError::UnresolvedCitation { origin, .. } => *origin,
+      ResolveError::UnresolvedReference { origin, .. } | ResolveError::DuplicateLabel { origin, .. } => *origin,
     };
   }
 }
