@@ -1,3 +1,20 @@
+// 画像 fixture（tests/image/）のピクセル寸法は、必要な検証を保ったまま最小になるよう選んである。
+// 大きすぎると debug ビルドの Lanczos3 縮小が CI 時間を支配し（縮小前は 5 枚で計 32MB・
+// pdf_structure golden 1 本で約 55 秒）、小さすぎると検証が空振りする。差し替え時の制約は 2 つ。
+//
+// 1. 縮小経路を通し続ける — seiran-pdf::render::draw_image は
+//    「幅 or 高さのどちらかが目標ピクセル数を超える」ときだけ縮小する。目標は
+//    表示寸法 × dpi（既定 max_dpi=300、testimage3 のみ per-image の dpi=600）。
+//    testimage1 1252x830（目標 945x709）/ testimage2 1000x1500（945x1417）/
+//    testimage3 2348x3128（1890x1418）/ testimage4 1200x800（1063x709）。
+//    testimage5 は downsample=false で縮小自体を行わないため、この制約はかからない
+//    （小さくしてあるのは埋め込み・再エンコードの費用を削るためだけ）。
+// 2. 縦横比を保つ — testimage2（width のみ → 高さ）・testimage4（height のみ → 幅）・
+//    testimage5（両省略 → 高さ）の 3 枚は縦横比から寸法を導くので、比が動くと layout が動く。
+//    testimage1 / testimage3 は両指定なので縦横比は layout に効かない。
+//    なお testimage4 だけは元の 4000x2667（≒1.49981）を 1200x800（1.5）へ丸めてある
+//    （導出される幅が 90.011mm → 90.000mm。整数分の 1 では比を保てないため意図的）。
+
 \section{図のサンプル}
 
 ここは figure 環境のフィクスチャです。図の前後にテキストを置き、画像とキャプションが

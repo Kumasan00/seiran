@@ -170,7 +170,7 @@ mod tests {
 
   #[test]
   fn load_image_resources_reads_through_project_source() {
-    // Arrange — 実 fixture（tests/image/testimage5.png、3024x4032 の PNG）のバイト列を
+    // Arrange — 実 fixture（tests/image/testimage5.png、756x1008 の PNG）のバイト列を
     // MemoryProjectSource に登録する。`with_bytes` に渡す前に長さを控え、後で
     // 「登録したバイト列がそのまま保持されているか」を検証できるようにする
     let png_bytes = read_image_fixture("testimage5.png");
@@ -181,11 +181,11 @@ mod tests {
     // Act
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
-    // Assert — 自然寸法（fixture 実寸の 3024x4032）とバイト列がそのまま届いているはず
+    // Assert — 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
     let (width, height) =
       resources.natural_size(&AssetId::new("/project/testimage5.png")).expect("自然寸法が確定するはず");
-    assert!((width - 3024.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
-    assert!((height - 4032.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
+    assert!((width - 756.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
+    assert!((height - 1008.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
     let bytes = resources.into_image_bytes();
     assert_eq!(bytes.len(), 1);
     assert_eq!(
