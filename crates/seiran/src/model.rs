@@ -43,9 +43,11 @@ pub use font::{FontKind, FontType};
 pub use font_map::FontMap;
 pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
+// 利用者は #323 Task 3（citation::analyze）と Task 6（citation::generate / resolve）で入る。
+#[allow(unused_imports)]
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
-  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, SourceMap, SourceSpans,
+  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap, SourceSpans,
 };
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 // `inline_nodes_to_plain_text`/`try_inline_nodes_to_plain_text` は旧 model crate の公開 API
