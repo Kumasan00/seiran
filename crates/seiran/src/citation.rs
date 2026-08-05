@@ -18,12 +18,19 @@ use crate::{
   model::{DocNode, InlineNode, ListItem, TableCell, TableRow},
 };
 
+mod analyze;
 mod bridge;
 mod references;
 mod render;
 #[cfg(test)]
 mod test_fixtures;
 
+// #323 Task 3 で新設した意味解析経路。本体コードからの呼び出しは Task 4（frontend からの移設）・
+// Task 6（生成物への切り替え）で入るため、現時点では facade 経由の消費者がまだいない。
+#[allow(unused_imports)]
+pub(crate) use analyze::{
+  CitationFacts, CitationSemanticError, CitationSiteFacts, UnknownCitationSite, analyze_citations,
+};
 // 旧 citation crate の公開 API 保持のための re-export。`Date`/`DateCirca`/`DatePart`/`DateSeason`/
 // `Name`/`NumberOrString`/`ReadReferencesError`/`ReferenceType` は crate::citation の外からまだ
 // 消費されていない（`Reference`/`References`/`read_references` のみ build_pdf 側から使われる）。

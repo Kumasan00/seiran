@@ -25,8 +25,6 @@ impl<T> Default for NodeMap<T> {
   }
 }
 
-// 利用者は #323 Task 3（citation::analyze）と Task 6（citation::generate / resolve）で入る。
-#[allow(dead_code)]
 impl<T> NodeMap<T> {
   /// `id` に値を対応づける（同じ `id` の再挿入は値を置き換え、順序は最初の位置のまま）
   pub(crate) fn insert(&mut self, id: NodeId, value: T) {
