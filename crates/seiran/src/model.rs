@@ -11,6 +11,7 @@ mod doc_node;
 mod font;
 mod font_map;
 mod heading_level;
+mod hir;
 mod ids;
 mod inline;
 mod origin;
@@ -41,6 +42,13 @@ pub use doc_node::{DocNode, Document, ProofTarget};
 pub use font::{FontKind, FontType};
 pub use font_map::FontMap;
 pub use heading_level::HeadingLevel;
+// HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。本番経路への
+// 接続は #322 の後半 task なので、それまでは未使用に見える（接続時にこの抑制を外す）。
+#[allow(unused_imports)]
+pub(crate) use hir::{
+  HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind,
+  HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, SourceLocation, SourceMap, SourceSpans,
+};
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 // `inline_nodes_to_plain_text`/`try_inline_nodes_to_plain_text` は旧 model crate の公開 API
 // 保持のための再エクスポートで、crate::model root 経由の利用者が現状ない（プレーンテキスト化は

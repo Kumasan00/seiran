@@ -4,7 +4,7 @@
 ///
 /// 名前・パスは持たない不透明な識別子。呼び出し元が渡した順序に対応するインデックスを
 /// そのまま運び、ファイル名・内容への逆引きは呼び出し元（`seiran::build_pdf`）の責務とする。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SourceId(usize);
 
 impl SourceId {
