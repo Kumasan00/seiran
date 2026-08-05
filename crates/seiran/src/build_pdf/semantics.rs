@@ -93,7 +93,7 @@ mod tests {
   use super::{ParsedSource, SemanticsError, resolve_semantics};
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
-    citation::{CitationError, read_references},
+    citation::{CitationError, CitationStyleError, read_references},
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
     frontend::parse_source,
     model::{HirDocument, SourceId},
@@ -140,7 +140,8 @@ mod tests {
   fn resolve_semantics_maps_citation_error() {
     // Arrange — 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
     // キーは既知にしておかないと analyze_citations の未知キー検証で先に弾かれてしまうため、
-    // ここで確認したい CitationError::MissingCslPath（process_citations 側）まで到達しない。
+    // ここで確認したい CitationError::Style(CitationStyleError::MissingCslPath)
+    // （process_citations 側）まで到達しない。
     let source = MemoryProjectSource::new().with_text(
       "/project/references.toml",
       "[ref1]\n\
@@ -161,7 +162,10 @@ mod tests {
       .expect_err("csl_path 未設定はエラーになるはず");
 
     // Assert
-    assert!(matches!(error, SemanticsError::Citation(CitationError::MissingCslPath)), "got: {error:?}");
+    assert!(
+      matches!(error, SemanticsError::Citation(CitationError::Style(CitationStyleError::MissingCslPath))),
+      "got: {error:?}"
+    );
   }
 
   #[test]
