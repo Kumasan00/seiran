@@ -9,6 +9,7 @@ use tracing::debug;
 
 use crate::model::DocNode;
 
+mod eval_ctx;
 mod evaluator;
 mod span_ext;
 mod syntax;

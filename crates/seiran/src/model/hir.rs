@@ -11,6 +11,7 @@
 // それまでは未使用の型・メソッドが残るため、この module 単位で抑制する。
 #![allow(dead_code)]
 
+mod builder;
 mod document;
 mod id;
 mod inline;
@@ -18,6 +19,7 @@ mod math;
 mod node;
 mod source_map;
 
+pub(crate) use builder::HirBuilder;
 pub(crate) use document::{HirDocument, HirGroup, HirSource};
 pub(crate) use id::NodeId;
 pub(crate) use inline::{HirInline, HirInlineKind};

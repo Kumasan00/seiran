@@ -46,8 +46,8 @@ pub use heading_level::HeadingLevel;
 // 接続は #322 の後半 task なので、それまでは未使用に見える（接続時にこの抑制を外す）。
 #[allow(unused_imports)]
 pub(crate) use hir::{
-  HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind,
-  HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, SourceLocation, SourceMap, SourceSpans,
+  HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
+  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, SourceLocation, SourceMap, SourceSpans,
 };
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 // `inline_nodes_to_plain_text`/`try_inline_nodes_to_plain_text` は旧 model crate の公開 API
