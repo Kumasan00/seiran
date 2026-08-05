@@ -337,7 +337,6 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
-- `cite`: `\cite` キーの存在検証 pass2（`command/cite` のスタブ生成とは別物）
 - `inline` / `math` / `opt_args` / `error`
 
 コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
@@ -354,16 +353,20 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
   `proptest!`（`any_command_with_any_arg_count_never_panics_and_only_returns_known_errors`、
   issue #306）があり、`COMMAND_MAP` の全コマンド名 × 0〜4 個の位置引数を任意に組み合わせても panic
   せず、トップレベル呼び出しで妥当な `EvalError` の閉じた許可リスト（引数個数・オプションキー等
-  9 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
+  8 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
   ことを意味し、許可リストへ足さず不具合として扱う。
 - **`config` に依存しない**。style / config の値を見ずに評価できる形を保つ。
+- **引用キーの存在検証は行わない**（#322 の責務分担、#323 Task 4 で `evaluator::cite` を削除して
+  `citation::analyze_citations` へ移設）。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
+  スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
+  検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結しない。
 - 診断は `model::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
 ### `citation`
 
 #### 責務
 
-参照定義ファイルの読込から `\cite` の CSL 整形・書誌生成までを 1 module に閉じる。
+参照定義ファイルの読込・引用キーの存在検証から `\cite` の CSL 整形・書誌生成までを 1 module に閉じる。
 
 #### モジュール構成
 
@@ -371,9 +374,28 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
   判別）。`reference` / `name` / `date` / `error` の子 module を持つ。公開型（`Reference` / `References` /
   `Name` / `Date` 等）と `read_references` は module root（`citation.rs`）で再エクスポートし、`citation::Reference` の形で
   参照する（`citation::references::Reference` は使わない）。
+- `analyze`（非公開）: `analyze_citations`（引用キーの存在検証。詳細は次項）。`CitationFacts` /
+  `CitationSiteFacts` / `UnknownCitationSite` はまだ facade（`citation.rs`）経由の非テスト消費者がいない
+  （facts を表示の生成に使う経路は Task 6 で `process_citations` 側へ接続する）ため、これらの型は
+  `#[allow(unused_imports)]` 付きで再エクスポートしている。
 - `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
 - `render`: `BibliographyDriver` の駆動と `ElemChildren` → `InlineNode` 変換
 - `test_fixtures`（`#[cfg(test)]`）: 文献引用テスト用フィクスチャ
+
+#### `analyze_citations` の契約（#323 Task 3 / Task 4）
+
+`analyze_citations(document: &HirDocument, references: &References) -> Result<CitationFacts, CitationSemanticError>`
+が HIR（`model::HirDocument`）を読み取り専用で走査し、`\cite{...}` の各キーが `references` に存在するかを
+検証する。未定義キーが 1 件以上あれば `CitationSemanticError::UnknownCitationKeys { sites }` を返す
+（`UnknownCitationSite` は `source_id` / `span`（`\cite{...}` 全体のソース位置）/ `keys`（未定義キー列）を
+持つ。`SourceId → 本文` の対応表は持たないため、位置付き診断への変換は呼び出し元
+（`build_pdf::error::wrap_citation_semantic_error`）が `SourceDb` から `NamedSource` を引いて行う）。
+
+キー存在検証は元々 frontend の `evaluator::cite`（pass2）にあったが、#322 で定めた責務分担
+（frontend は字句・構文・引数 schema のエラーだけを返し、存在検証はしない）に沿って #323 Task 4 で
+citation へ移設した。`build_pdf::semantics::resolve_semantics` が `process_citations` を呼ぶ**前**に
+`analyze_citations` を呼ぶ（#323 Task 4 時点では返り値の `CitationFacts` は検証の成否だけに使い、
+中身は破棄する。facts を CSL 整形の入力に使う接続は Task 6）。
 
 #### `process_citations` の契約
 
@@ -383,7 +405,8 @@ frontend の後・lowering の前に走るステージ。
 （`archive` feature の内蔵ロケール + `citationberg` で `.csl` を解析）で引用ラベルを採番（`[1][2]…`）して、
 各 `Cite` の `label` を埋めた新しいドキュメント群を返す（`&mut` によるその場書き換えは行わない。内部は
 「キー収集（読み取り専用走査）→ CSL 整形 → ラベル埋め込み（所有権を消費する再構築走査）」の 3 段。
-issue #303）。
+issue #303）。`analyze_citations` の後に呼ばれる前提のため、この段では `\cite` のキーは必ず存在する
+（未定義キーの扱いはここでは行わない）。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
 （`seiran::build_pdf::semantics::resolve_semantics`、#303 以降 `citation::process_citations` の唯一の
@@ -680,7 +703,8 @@ solver に閉じ込める）。
 
 `build_pdf.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
 `parse_project` / `build_publication` / `parse_all_sources` /
-`wrap_resolve_error` / `wrap_semantics_error`）と、`compile` が返す公開型（`Compilation` / `BuildStatistics`。
+`wrap_resolve_error` / `wrap_citation_semantic_error` / `wrap_semantics_error`）と、`compile` が返す公開型
+（`Compilation` / `BuildStatistics`。
 `DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、`OutputPlan` は
 `project` 子 module から再エクスポート）を置く。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
 -> Result<Compilation, DiagnosticSet>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
@@ -699,11 +723,13 @@ facade はこれを知らない（issue #278）。子 module:
 - `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
   `parse_project` が返す `ImageManifest` に従って driver が別途読み込む
-- `semantics`: `citation::process_citations`（`\cite` の CSL 整形）→ `resolve::resolve_project`（ラベル・
-  `\ref`・カウンタ解決）の呼び出し順序を 1 関数 `resolve_semantics` の背後に隠す（issue #303）。
+- `semantics`: `citation::analyze_citations`（引用キーの存在検証）→ `citation::process_citations`（`\cite`
+  の CSL 整形）→ `resolve::resolve_project`（ラベル・`\ref`・カウンタ解決）の呼び出し順序を 1 関数
+  `resolve_semantics` の背後に隠す（issue #303、引用キー存在検証の追加は #323 Task 4）。
   `citation::process_citations` は所有権で受け取ったドキュメント群を書き換えて返す非破壊 API になっており、
   `resolve_semantics` はその結果を `resolve::SemanticDocument` へ組み立て直して `resolve_project` に渡す。
-  driver は citation → resolve の順序も、書誌を `SemanticDocument::bibliography` へ別枠で渡す組み立ても知らない
+  driver は analyze → citation → resolve の順序も、書誌を `SemanticDocument::bibliography` へ別枠で渡す
+  組み立ても知らない
 - `image_manifest`: `parse_project` が本文 `DocNode` 列（HIR から adapter で起こしたもの）から集める
   画像パス一覧 `ImageManifest`（重複なし・`AssetId` の昇順）
 
@@ -711,7 +737,9 @@ facade はこれを知らない（issue #278）。子 module:
 `parse_project` が `HirDocument::assemble` でプロジェクト全体の文書木へ組み立てる。`assemble` は
 `SourceId::index()` の昇順へ正規化するので、パースの実行順が `groups` の順序にも `SourceMap` の内容にも
 影響しない。組み立てた直後に `frontend::hir_group_to_doc_nodes`（#325 で削除する adapter）を通し、
-後段が受け取る `ParsedSource { source_id, nodes: Vec<DocNode> }` を作る。
+後段が受け取る `ParsedSource { source_id, nodes: Vec<DocNode> }` を作る。`parse_project` はこの
+`HirDocument` 自体も呼び出し元へ返す（#323 Task 4）— `resolve_semantics` の `analyze_citations` 呼び出しが
+`ParsedSource`（`DocNode` 経路）ではなく HIR を直接読むため。
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
   `seiran_pdf::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
   `resolve_images`（旧 `pdf_gen::resolve_images`）。driver が読込を 1 回だけ呼び、`resolve_images` は

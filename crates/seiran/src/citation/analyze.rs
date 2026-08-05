@@ -3,9 +3,10 @@
 //! CSL 整形（表示の生成）は行わない（`crate::citation::generate` の責務）。
 //! 未知の引用キーはここで検出し、`NodeId` から引いたソース位置付きで報告する。
 //!
-//! #323 Task 3 時点では本体コードからの呼び出し元がまだ無い（テストだけがこの module を使う）。
-//! 呼び出し元は Task 4（`frontend` からの移設）・Task 6（`citation::generate` / `resolve` への
-//! 接続）で入るため、それまでは module 全体を `dead_code` から外す。
+//! #323 Task 4 で `build_pdf::semantics::resolve_semantics` からの呼び出しが入ったが、返り値の
+//! `CitationFacts`（`sites` / `get` / `is_empty` / `len`）はまだ検証の成否以外では消費していない
+//! （facts を表示の生成に使う経路は Task 6 で `citation::generate` / `resolve` へ接続する）。
+//! それまではこれらのアクセサをテスト以外から使わないため、module 全体を `dead_code` から外す。
 #![allow(dead_code)]
 
 use miette::Diagnostic;
@@ -202,42 +203,15 @@ impl Walker<'_> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use std::collections::HashSet;
-
   use super::{CitationSemanticError, analyze_citations};
   use crate::{
     citation::test_fixtures::sample_references,
     model::{CitationId, HirDocument, SourceId},
   };
 
-  /// ソース中に現れる `\cite{...}` のキーをすべて既知として扱う集合を作る
-  ///
-  /// Task 4 で `parse_source` から `citation_keys` 引数が落ちるまでの橋渡し。ここで検証したいのは
-  /// `analyze_citations` の走査であって frontend 側のキー検証ではないので、ソースが参照するキーは
-  /// すべて定義済みとみなす（未知キーのテストは `analyze_citations` に空の `References` を渡して作る）。
-  fn citation_keys_in(source: &str) -> HashSet<String> {
-    let mut keys = HashSet::new();
-    let mut rest = source;
-    while let Some(pos) = rest.find("\\cite{") {
-      rest = &rest[pos + "\\cite{".len()..];
-      let Some(end) = rest.find('}') else {
-        break;
-      };
-      for key in rest[..end].split(',') {
-        let key = key.trim();
-        if !key.is_empty() {
-          keys.insert(key.to_string());
-        }
-      }
-      rest = &rest[end..];
-    }
-    return keys;
-  }
-
-  /// ソース 1 本をパースして `HirDocument` にする（Task 4 で `parse_source` の第 3 引数は消える）
+  /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir =
-      crate::frontend::parse_source(source, SourceId::new(0), &citation_keys_in(source)).expect("パースに成功するはず");
+    let hir = crate::frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 

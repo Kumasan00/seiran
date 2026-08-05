@@ -29,16 +29,11 @@ mod pdf_structure;
 #[cfg(test)]
 mod project_source_equivalence;
 
-use std::{
-  collections::{HashMap, HashSet},
-  path::Path,
-  sync::Arc,
-  time::Instant,
-};
+use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
-use error::{AttributedParseError, CompileError};
+use error::{AttributedCitationError, AttributedParseError, CompileError};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
 pub use project::OutputPlan;
@@ -120,8 +115,8 @@ fn compile_with_base_dir<S: crate::config::ProjectSource>(
   info!(config_path = %root, "PDF のコンパイルを開始します");
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
-  let (parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, parsed, &snapshot.references, &snapshot.style)
+  let (document, parsed, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
@@ -181,17 +176,18 @@ fn load_project(
 
 /// 全ソースをパースし、画像パス一覧を作る。
 ///
-/// `\cite` の CSL 整形・ラベル/`\ref`/カウンタの解決は `semantics::resolve_semantics` が担う
-/// （この関数はパースと画像パス収集のみを行う）。
+/// `\cite` の存在検証・CSL 整形・ラベル/`\ref`/カウンタの解決は `semantics::resolve_semantics` が
+/// 担う（この関数はパースと画像パス収集のみを行う）。呼び出し元は `HirDocument` を
+/// `resolve_semantics` の引用キー存在検証（`citation::analyze_citations`）にそのまま渡す。
 ///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource>, ImageManifest)> {
-  let citation_keys: HashSet<String> = snapshot.references.keys().cloned().collect();
-
+fn parse_project(
+  snapshot: &ProjectSnapshot,
+) -> miette::Result<(crate::model::HirDocument, Vec<ParsedSource>, ImageManifest)> {
   let stage_start = Instant::now();
-  let document = crate::model::HirDocument::assemble(parse_all_sources(&snapshot.source_db, &citation_keys)?);
+  let document = crate::model::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
   // 後段（citation / resolve / typeset）はまだ `DocNode` を入力に取るので、ここで変換する。
   // この adapter は #325 で削除する。
   let parsed: Vec<ParsedSource> = document
@@ -214,7 +210,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(Vec<ParsedSource
   let groups: Vec<&[DocNode]> = parsed.iter().map(|p| return p.nodes.as_slice()).collect();
   let image_manifest = image_manifest::collect_image_paths(&groups);
 
-  return Ok((parsed, image_manifest));
+  return Ok((document, parsed, image_manifest));
 }
 
 /// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
@@ -338,8 +334,8 @@ fn build_pages_with_source(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, parsed, &snapshot.references, &snapshot.style)
+  let (document, parsed, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
@@ -366,15 +362,12 @@ struct ParsedSource {
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn parse_all_sources(
-  source_db: &SourceDb,
-  citation_keys: &HashSet<String>,
-) -> Result<Vec<crate::model::HirSource>, CompileError> {
+fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::model::HirSource>, CompileError> {
   let mut parsed: Vec<crate::model::HirSource> = Vec::new();
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {
-    match crate::frontend::parse_source(&entry.content, source_id, citation_keys) {
+    match crate::frontend::parse_source(&entry.content, source_id) {
       Ok(hir) => parsed.push(hir),
       Err(error) => {
         parse_errors
@@ -408,14 +401,51 @@ fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb)
   };
 }
 
+/// 未定義引用キーのエラーを、ソースごとの位置付き診断へ変換する。
+///
+/// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
+/// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
+fn wrap_citation_semantic_error(error: crate::citation::CitationSemanticError, source_db: &SourceDb) -> CompileError {
+  let crate::citation::CitationSemanticError::UnknownCitationKeys { sites } = error;
+  // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
+  // 出現順を保つため、初出順の Vec に積んでから組み立てる。
+  let mut order: Vec<crate::model::SourceId> = Vec::new();
+  let mut per_source: HashMap<crate::model::SourceId, Vec<miette::LabeledSpan>> = HashMap::new();
+  for site in sites {
+    let labels = per_source.entry(site.source_id).or_insert_with(|| {
+      order.push(site.source_id);
+      return Vec::new();
+    });
+    let span = miette::SourceSpan::from((site.span.start as usize, site.span.len() as usize));
+    labels.push(miette::LabeledSpan::new_with_span(
+      Some(format!("未定義の引用キー: {}", site.keys.join(", "))),
+      span,
+    ));
+  }
+
+  let errors = order
+    .into_iter()
+    .map(|source_id| {
+      let entry = source_db.get(source_id);
+      let Some(labels) = per_source.remove(&source_id) else {
+        unreachable!("order には per_source へ登録した SourceId しか入らない")
+      };
+      return AttributedCitationError::new(miette::NamedSource::new(&entry.name, entry.content.clone()), labels);
+    })
+    .collect();
+  return CompileError::MultipleCitationErrors { errors };
+}
+
 /// `semantics::resolve_semantics` のエラーを `CompileError` へ変換する。
 ///
 /// citation 由来はそのまま `Citation` へ、resolve 由来は `wrap_resolve_error` に委譲し、
-/// 帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける（従来の挙動を維持する）。
+/// 帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける。未定義引用キーは
+/// `wrap_citation_semantic_error` でソースごとの位置付き診断へ変換する（従来の挙動を維持する）。
 fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileError {
   return match error {
     SemanticsError::Citation(source) => CompileError::Citation { source },
     SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
+    SemanticsError::CitationSemantic(source) => wrap_citation_semantic_error(source, source_db),
   };
 }
 

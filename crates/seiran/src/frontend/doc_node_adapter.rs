@@ -296,12 +296,8 @@ mod tests {
   #[test]
   fn cite_carries_hir_node_id() {
     // Arrange — `\cite` を 1 つ含むソースをパースする
-    let hir = crate::frontend::parse_source(
-      r"本文 \cite{rika} です。",
-      crate::model::SourceId::new(0),
-      &std::collections::HashSet::from(["rika".to_string()]),
-    )
-    .expect("パースに成功するはず");
+    let hir = crate::frontend::parse_source(r"本文 \cite{rika} です。", crate::model::SourceId::new(0))
+      .expect("パースに成功するはず");
     let hir_cite_id = find_first_cite_id(&hir.group.nodes).expect("HIR に Cite があるはず");
     let document = crate::model::HirDocument::assemble(vec![hir]);
     let group = document.groups().first().expect("1 グループあるはず");

@@ -54,7 +54,7 @@ pub use pipeline::{
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use std::{collections::HashSet, path::PathBuf};
+  use std::path::PathBuf;
 
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
@@ -114,8 +114,7 @@ mod tests {
     let content = std::fs::read_to_string(&path)
       .unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
     let style = Style::default();
-    let hir = parse_source(&content, SourceId::new(0), &HashSet::new())
-      .unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
+    let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
     let hir_document = crate::model::HirDocument::assemble(vec![hir]);
     let group = hir_document.groups().first().expect("1 ソース分のグループがあるはず");
     let doc_nodes = crate::frontend::hir_group_to_doc_nodes(group, hir_document.locations());

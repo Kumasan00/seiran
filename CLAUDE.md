@@ -59,7 +59,9 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
     全ノード（block / inline / math）が決定的な NodeId を持ち、ソース位置は各 variant ではなく
     SourceMap に集約する。#322 時点では build_pdf 境界の非公開 adapter で従来の DocNode へ戻して
     後段へ渡している（#325 で削除））
-  → 文献引用整形（citation: \cite を CSL 整形＝hayagriva で採番し、書誌を生成物として返す。
+  → 文献引用の意味解析・整形（citation: まず analyze_citations が HIR を走査して引用キーの
+    存在を検証し（#323 Task 4 で frontend から移設。未定義キーはソース位置付きで報告）、
+    次に process_citations が \cite を CSL 整形＝hayagriva で採番し、書誌を生成物として返す。
     本文グループへは連結せず、resolve::SemanticDocument::bibliography として別枠で渡す）
   → 解決（resolve: SemanticDocument（ラベル名・\ref 参照名・引用キーが未解決の DocNode 群）
     を ResolvedDocument（typed ID 解決済み）へ変換。カウンタの値＝構造も CounterValue として
@@ -164,7 +166,11 @@ frontend （model に依存。bumpalo アリーナ上に CST を構築し、HIR�
 
 citation （model, config に依存。参照定義ファイル（references.toml / .json）の読込を
           非公開の内部実装（`references` 子 module）として内包し、hayagriva / citationberg で
-          CSL 整形・書誌生成まで行う）
+          CSL 整形・書誌生成まで行う。引用キーの存在検証（`analyze_citations`。HIR を読み取り専用で
+          走査し、未定義キーをソース位置付きで報告する）も 1 module に閉じる。#323 Task 4 時点では
+          `build_pdf::semantics::resolve_semantics` が analyze_citations → process_citations の順で
+          両方を呼ぶ。表示（CSL 整形）の生成元を analyze_citations の結果（facts）へ切り替える接続は
+          Task 6）
   ↑ build_pdf
 
 font （model, config に依存。read-fonts / harfrust / rayon を使用。シェーピング結果型 GlyphRun / Glyph
@@ -213,7 +219,7 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）。非公開の `config` / `style` / `project_source` 子 module + root facade                                                                                                                                                                     |
 | `resolve`  | `SemanticDocument` → `ResolvedDocument` の解決（ラベル登録・`\ref` 存在検証・重複ラベル検出・カウンタ構造値 `CounterValue` の算出）。表示文字列は生成しない（規約 + `style_independence_tests` の property test で保証） |
 | `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。旧 `DocNode` への非公開 adapter を #325 まで持つ                                                                                                                                                                                                                                             |
-| `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
+| `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ 引用キーの存在検証（`analyze_citations`。#323 Task 4 で frontend から移設）+ `\cite` の CSL 整形（採番 + 書誌生成、hayagriva / citationberg）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
 | `typeset`  | 解決済みドキュメント（`resolve::ResolvedDocument`）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が解決済みドキュメント（`resolve::ResolvedDocument`）から表示文字列を生成しレイアウトノードを組み立てる、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
 | `build_pdf` | compile facade（`compile` とその公開型）+ compiler core（phase graph）。段の呼び出し順序・中間型はここに閉じ、crate 外へ出さない。PDF バイト列の生成と保存は行わない |

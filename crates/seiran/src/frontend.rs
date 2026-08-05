@@ -3,8 +3,6 @@
 //! `parse_source` は 1 ソース分の [`HirSource`] を返す。後段（citation / resolve / typeset）は
 //! まだ旧 `DocNode` を入力に取るので、その変換は `doc_node_adapter` に閉じている（#325 で削除）。
 
-use std::collections::HashSet;
-
 use bumpalo::Bump;
 use miette::Diagnostic;
 use thiserror::Error;
@@ -21,7 +19,6 @@ mod syntax;
 
 pub(crate) use doc_node_adapter::hir_group_to_doc_nodes;
 pub use evaluator::EvalError;
-use evaluator::cite::resolve_cites;
 
 /// `parse_source` が返すエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -59,14 +56,7 @@ pub enum ParseSourceError {
 /// # Errors
 ///
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
-// `citation_keys` は呼び出し側が既定ハッシャで構築した集合をそのまま受けるため、
-// BuildHasher を総称化せず `HashSet<String>` で受ける（implicit_hasher を許可）。
-#[allow(clippy::implicit_hasher)]
-pub fn parse_source(
-  source: &str,
-  source_id: crate::model::SourceId,
-  citation_keys: &HashSet<String>,
-) -> Result<HirSource, ParseSourceError> {
+pub fn parse_source(source: &str, source_id: crate::model::SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
   let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| {
     return ParseSourceError::Syntax { source_id, error };
@@ -77,10 +67,6 @@ pub fn parse_source(
     return ParseSourceError::Eval { source_id, error };
   })?;
   let spans = builder.finish();
-
-  resolve_cites(&nodes, &spans, citation_keys).map_err(|error| {
-    return ParseSourceError::Eval { source_id, error };
-  })?;
 
   debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースのパース・評価が完了しました");
   return Ok(HirSource {
@@ -94,23 +80,14 @@ pub fn parse_source(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::too_many_lines)]
 mod tests {
-  use std::collections::HashSet;
-
   use super::{EvalError, ParseSourceError, parse_source};
   use crate::model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
-
-  /// 引用キーの集合を組み立てるテストヘルパ
-  fn keys(values: &[&str]) -> HashSet<String> { return values.iter().map(|v| return (*v).to_string()).collect(); }
 
   /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
-  /// 引用キーは空集合（`\cite` を含まないソース向け）。
-  fn evaluate_source(source: &str) -> Vec<DocNode> { return evaluate_source_with_keys(source, &HashSet::new()); }
-
-  /// 引用キー集合を指定してソースを評価するテストヘルパ
-  fn evaluate_source_with_keys(source: &str, citation_keys: &HashSet<String>) -> Vec<DocNode> {
-    let hir = parse_source(source, crate::model::SourceId::new(0), citation_keys).unwrap();
+  fn evaluate_source(source: &str) -> Vec<DocNode> {
+    let hir = parse_source(source, crate::model::SourceId::new(0)).unwrap();
     let document = crate::model::HirDocument::assemble(vec![hir]);
     let group = document.groups().first().expect("1 ソース分のグループがあるはず");
     return super::hir_group_to_doc_nodes(group, document.locations());
@@ -121,11 +98,8 @@ mod tests {
   /// `parse_source` は [`ParseSourceError`] でラップして返すため、
   /// `Eval` バリアントから内側のエラーを取り出して返す。
   /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
-  fn evaluate_error(source: &str) -> EvalError { return evaluate_error_with_keys(source, &HashSet::new()); }
-
-  /// 引用キー集合を指定してソースを評価し `EvalError` を取り出すテストヘルパ
-  fn evaluate_error_with_keys(source: &str, citation_keys: &HashSet<String>) -> EvalError {
-    match parse_source(source, crate::model::SourceId::new(0), citation_keys) {
+  fn evaluate_error(source: &str) -> EvalError {
+    match parse_source(source, crate::model::SourceId::new(0)) {
       Err(ParseSourceError::Eval { error, .. }) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
@@ -282,9 +256,10 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_cite_with_known_key_produces_cite_stub() {
-    // Arrange / Act
-    let result = evaluate_source_with_keys(r"See \cite{rika}.", &keys(&["rika"]));
+  fn evaluate_cite_produces_cite_stub() {
+    // Arrange / Act — キー存在検証は citation::analyze_citations の責務なので、frontend は
+    // 未知キーでもスタブノードを生成する（#323 Task 4）
+    let result = evaluate_source(r"See \cite{rika}.");
 
     // Assert
     let DocNode::Paragraph(inlines) = &result[0] else {
@@ -304,7 +279,7 @@ mod tests {
   #[test]
   fn evaluate_cite_with_multiple_keys_splits_on_comma() {
     // Arrange / Act
-    let result = evaluate_source_with_keys(r"\cite{a, b}", &keys(&["a", "b"]));
+    let result = evaluate_source(r"\cite{a, b}");
 
     // Assert
     let DocNode::Paragraph(inlines) = &result[0] else {
@@ -317,18 +292,6 @@ mod tests {
       panic!("Cite が期待されます");
     };
     assert_eq!(cite_keys, &["a".to_string(), "b".to_string()]);
-  }
-
-  #[test]
-  fn evaluate_cite_with_unknown_key_returns_aggregated_error() {
-    // Arrange / Act
-    let err = evaluate_error_with_keys(r"\cite{rika} and \cite{missing}", &keys(&["rika"]));
-
-    // Assert
-    let EvalError::UnknownCitationKeys { labels } = err else {
-      panic!("UnknownCitationKeys が期待されます: {err:?}");
-    };
-    assert_eq!(labels.len(), 1);
   }
 
   #[test]

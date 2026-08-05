@@ -264,7 +264,6 @@ mod tests {
               | EvalError::ParagraphBreakInArgument { .. }
               | EvalError::NoindentNotAtParagraphStart { .. }
               | EvalError::BlockInInline { .. }
-              | EvalError::UnknownCitationKeys { .. }
           )
       );
       prop_assert!(is_known_outcome, "コマンド {name}（引数 {arg_count} 個）が未知のエラー種別を返した: {result:?}");
