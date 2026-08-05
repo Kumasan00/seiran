@@ -309,7 +309,9 @@ fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline,
       target: target.clone(),
       children: resolve_inlines(children, source)?,
     },
-    InlineNode::Cite { keys, label, span } => {
+    InlineNode::Cite {
+      keys, label, span, ..
+    } => {
       let Some(label) = label else {
         return Err(ResolveError::UnresolvedCitation {
           keys: keys.join(", "),

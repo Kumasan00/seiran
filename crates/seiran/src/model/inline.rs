@@ -85,6 +85,8 @@ pub enum InlineNode {
   Cite {
     /// 引用キーのリスト（`\cite{a,b}` は `["a", "b"]`）
     keys: Vec<String>,
+    /// この引用箇所の HIR ノード ID（生成された表示インライン列を引くキー）
+    node_id: crate::model::NodeId,
     /// 解決済みの引用ラベル（CSL 整形済みインライン列）。パーサ段階では `None`、
     /// CSL 整形ステージで `Some` に確定する。
     label: Option<Vec<InlineNode>>,

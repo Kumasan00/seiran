@@ -432,10 +432,16 @@ fn rewrite_cite_label_inlines(
           span,
         };
       },
-      InlineNode::Cite { keys, span, .. } => {
+      InlineNode::Cite {
+        keys,
+        node_id,
+        span,
+        ..
+      } => {
         let label = labels.next().expect("cite_sites と render のラベル数は一致するはず");
         return InlineNode::Cite {
           keys,
+          node_id,
           label: Some(label),
           span,
         };
@@ -556,7 +562,7 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
-    model::{DocNode, FontKind, InlineNode, Span},
+    model::{DocNode, FontKind, InlineNode, NodeId, SourceId, Span},
   };
 
   /// 単一ドキュメントを処理し、返った書誌を末尾へ連結する。
@@ -736,6 +742,7 @@ mod tests {
     let references = sample_references();
     let docs = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["kwan2014".to_string()],
+      node_id: NodeId::for_test(SourceId::new(0), 0),
       label: None,
       span: Span::DUMMY,
     }])];
@@ -752,6 +759,7 @@ mod tests {
   fn cite(key: &str) -> InlineNode {
     return InlineNode::Cite {
       keys: vec![key.to_string()],
+      node_id: NodeId::for_test(SourceId::new(0), 0),
       label: None,
       span: Span::DUMMY,
     };
@@ -836,6 +844,7 @@ mod tests {
     let source = FilesystemProjectSource::new();
     let mut nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["kwan2014".to_string(), "doe2020".to_string()],
+      node_id: NodeId::for_test(SourceId::new(0), 0),
       label: None,
       span: Span::DUMMY,
     }])];

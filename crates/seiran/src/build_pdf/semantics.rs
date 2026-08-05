@@ -80,7 +80,7 @@ mod tests {
     citation::{CitationError, read_references},
     config::{FilesystemProjectSource, MemoryProjectSource, Style},
     frontend::parse_source,
-    model::{DocNode, InlineNode, SourceId, Span},
+    model::{DocNode, InlineNode, NodeId, SourceId, Span},
   };
 
   #[test]
@@ -117,6 +117,7 @@ mod tests {
     let source_id = SourceId::new(0);
     let nodes = vec![DocNode::Paragraph(vec![InlineNode::Cite {
       keys: vec!["missing-key".to_string()],
+      node_id: NodeId::for_test(SourceId::new(0), 0),
       label: None,
       span: Span::DUMMY,
     }])];
