@@ -11,6 +11,8 @@ use crate::model::{HirBuilder, HirGroup, HirSource};
 
 mod doc_node_adapter;
 mod evaluator;
+#[cfg(test)]
+mod hir_invariants;
 mod span_ext;
 mod syntax;
 
