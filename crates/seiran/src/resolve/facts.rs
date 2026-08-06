@@ -49,6 +49,8 @@ pub(crate) struct SemanticFacts {
   pub(super) citations: NodeMap<CitationSiteFacts>,
   /// 見出し（文書順）
   pub(super) headings: Vec<HeadingFacts>,
+  /// 見出しノード → 文書順キー（`headings` の線形探索を避けるための索引）
+  pub(super) heading_keys: NodeMap<HeadingKey>,
 }
 
 /// HIR と意味解析の事実を束ねた、意味解析の唯一の成果物
@@ -138,6 +140,19 @@ impl AnalyzedDocument {
   /// 見出しを文書順に返す
   #[must_use]
   pub fn headings(&self) -> &[HeadingFacts] { return &self.facts.headings; }
+
+  /// 見出しノードの文書順キーを引く
+  ///
+  /// # Panics
+  ///
+  /// 見出しでないノードを渡した場合にパニックします（見出しの網羅は `analyze` が保証している）。
+  #[must_use]
+  pub fn heading_key(&self, node: NodeId) -> HeadingKey {
+    let Some(key) = self.facts.heading_keys.get(node) else {
+      unreachable!("全見出しは analyze が heading_keys へ登録している: {node:?}")
+    };
+    return *key;
+  }
 
   /// ラベルを宣言したノードを文書順に走査する
   pub(crate) fn declared_labels(&self) -> impl Iterator<Item = (NodeId, &LabelId)> {
