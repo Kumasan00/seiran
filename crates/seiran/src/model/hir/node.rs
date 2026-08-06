@@ -21,9 +21,9 @@ impl HirNode {
   pub(crate) fn new(id: NodeId, kind: HirNodeKind) -> Self { return HirNode { id, kind }; }
 }
 
-/// ブロックノードの種別（旧 `model::DocNode` の内容を引き継ぐ）
+/// ブロックノードの種別
 ///
-/// 著者が書いた内容だけを持つ。旧 `DocNode::Anchor`（書誌エントリのアンカー）は
+/// 著者が書いた内容だけを持つ。`GeneratedBlock::Anchor`（書誌エントリのアンカー）は
 /// CSL 整形ステージの生成物なので HIR には無い。見出しの `numbered` も、frontend が
 /// 作る見出しは常に採番対象で構造的に一意に決まるため持たない。
 #[derive(Debug, PartialEq)]

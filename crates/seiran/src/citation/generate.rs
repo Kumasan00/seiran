@@ -13,7 +13,7 @@ use thiserror::Error;
 use tracing::debug;
 
 use super::{References, bridge, render, style::CompiledCitationStyle};
-use crate::model::{CitationSiteFacts, DocNode, InlineNode, NodeMap};
+use crate::model::{CitationSiteFacts, GeneratedBlock, GeneratedInline, NodeMap};
 
 /// CSL 整形（表示の生成）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -39,17 +39,17 @@ pub(crate) enum CitationFormatError {
 #[derive(Debug, Default)]
 pub(crate) struct GeneratedCitations {
   /// 引用箇所 → CSL 整形済みの表示インライン列（挿入順 = 文書順）
-  displays: NodeMap<Vec<InlineNode>>,
+  displays: NodeMap<Vec<GeneratedInline>>,
   /// 書誌のノード列（見出し + 文献ごとのアンカーと段落）。引用が書誌を生まない場合は空
-  bibliography: Vec<DocNode>,
+  bibliography: Vec<GeneratedBlock>,
 }
 
 impl GeneratedCitations {
   /// 引用箇所 → 表示インライン列の side table を返す
-  pub(crate) fn displays(&self) -> &NodeMap<Vec<InlineNode>> { return &self.displays; }
+  pub(crate) fn displays(&self) -> &NodeMap<Vec<GeneratedInline>> { return &self.displays; }
 
   /// 書誌のノード列を返す（引用がなければ空スライス）
-  pub(crate) fn bibliography(&self) -> &[DocNode] { return &self.bibliography; }
+  pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return &self.bibliography; }
 }
 
 /// 引用箇所の事実と CSL から、引用箇所ごとの表示インライン列と書誌を生成する
@@ -91,7 +91,7 @@ pub(crate) fn generate_citations(
   let (csl_style, locales, locale_override) = style.parts();
   let rendered = render::render(&entries, &cite_sites, csl_style, locales, locale_override, bibliography_title);
 
-  let mut displays: NodeMap<Vec<InlineNode>> = NodeMap::default();
+  let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
   for ((site, _), display) in sites.iter().zip(rendered.labels) {
     displays.insert(site, display);
   }
@@ -120,7 +120,7 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{DocumentPolicy, FilesystemProjectSource, Style},
-    model::{DocNode, FontKind, HirDocument, InlineNode, SourceId},
+    model::{FontKind, GeneratedBlock, GeneratedInline, HirDocument, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -168,20 +168,20 @@ mod tests {
     // Assert — 引用箇所ごとに表示が 1 つずつ付く
     for (site, _) in analyzed.citation_sites().iter() {
       let display = generated.displays().get(site).expect("全引用箇所に表示が付くはず");
-      let text: String = display.iter().map(InlineNode::to_plain_text).collect();
+      let text: String = display.iter().map(GeneratedInline::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
 
     // Assert — 書誌は本文と別枠で返る（見出し + アンカー + 段落）
-    let has_heading = generated.bibliography().iter().any(|node| matches!(node, DocNode::Heading { .. }));
+    let has_heading = generated.bibliography().iter().any(|node| matches!(node, GeneratedBlock::Heading { .. }));
     assert!(has_heading, "References 見出しが生成されるはず");
     let anchor_position = generated
       .bibliography()
       .iter()
-      .position(|node| matches!(node, DocNode::Anchor(key) if key.as_str() == "kwan2014"))
+      .position(|node| matches!(node, GeneratedBlock::Anchor(key) if key.as_str() == "kwan2014"))
       .expect("引用文献のアンカーが生成されるはず");
     assert!(
-      matches!(&generated.bibliography()[anchor_position + 1], DocNode::Paragraph(_)),
+      matches!(&generated.bibliography()[anchor_position + 1], GeneratedBlock::Paragraph(_)),
       "アンカー直後は書誌段落"
     );
   }
@@ -205,7 +205,7 @@ mod tests {
       .expect("表示があるはず")
       .iter()
       .filter_map(|node| match node {
-        InlineNode::InternalLink { target, .. } => return Some(target.as_str()),
+        GeneratedInline::InternalLink { target, .. } => return Some(target.as_str()),
         _ => return None,
       })
       .collect();
@@ -245,18 +245,18 @@ mod tests {
   }
 
   /// インライン列を再帰走査し、serif イタリック系の `Styled` 配下のプレーンテキストを集める。
-  fn collect_italic_texts(inlines: &[InlineNode], out: &mut Vec<String>) {
+  fn collect_italic_texts(inlines: &[GeneratedInline], out: &mut Vec<String>) {
     for inline in inlines {
       match inline {
-        InlineNode::Styled {
+        GeneratedInline::Styled {
           kind: FontKind::SerifItalic | FontKind::SerifBoldItalic,
           children,
-        } => out.push(children.iter().map(InlineNode::to_plain_text).collect()),
-        InlineNode::Styled { children, .. }
-        | InlineNode::Colored { children, .. }
-        | InlineNode::Link { children, .. }
-        | InlineNode::InternalLink { children, .. } => collect_italic_texts(children, out),
-        InlineNode::Text(_) | InlineNode::Symbol(_) | InlineNode::LineBreak => {},
+        } => out.push(children.iter().map(GeneratedInline::to_plain_text).collect()),
+        GeneratedInline::Styled { children, .. }
+        | GeneratedInline::Colored { children, .. }
+        | GeneratedInline::Link { children, .. }
+        | GeneratedInline::InternalLink { children, .. } => collect_italic_texts(children, out),
+        GeneratedInline::Text(_) | GeneratedInline::Symbol(_) | GeneratedInline::LineBreak => {},
       }
     }
   }
@@ -275,7 +275,7 @@ mod tests {
     // Assert
     let mut italic_texts: Vec<String> = Vec::new();
     for node in generated.bibliography() {
-      if let DocNode::Paragraph(inlines) = node {
+      if let GeneratedBlock::Paragraph(inlines) = node {
         collect_italic_texts(inlines, &mut italic_texts);
       }
     }
@@ -283,7 +283,7 @@ mod tests {
       italic_texts
         .iter()
         .any(|text| return text.contains("Crazy Rich Asians") || text.contains("Journal of Things")),
-      "書名/誌名が InlineNode::Styled（serif italic 系）で組まれるはず: {italic_texts:?}"
+      "書名/誌名が GeneratedInline::Styled（serif italic 系）で組まれるはず: {italic_texts:?}"
     );
   }
 
@@ -303,7 +303,7 @@ mod tests {
       return generated
         .displays()
         .iter()
-        .map(|(_, display)| return display.iter().map(InlineNode::to_plain_text).collect())
+        .map(|(_, display)| return display.iter().map(GeneratedInline::to_plain_text).collect())
         .collect();
     };
     assert_eq!(plain(&first), plain(&second), "同じ facts と CSL からは同じ引用表示が得られるはず");

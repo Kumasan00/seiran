@@ -8,13 +8,12 @@ mod caption;
 mod citation_facts;
 mod color;
 mod column_width;
-mod doc_node;
 mod font;
 mod font_map;
+mod generated;
 mod heading_level;
 mod hir;
 mod ids;
-mod inline;
 mod origin;
 // garde のカスタムバリデータを `crate::model::length::non_negative` 等の名前空間付きパスで
 // 参照するため、crate 内の他 module（`crate::config` 等、`crate::model` の子孫ではない）
@@ -34,9 +33,9 @@ pub use caption::CaptionPosition;
 pub(crate) use citation_facts::CitationSiteFacts;
 pub use color::Color;
 pub use column_width::column_width;
-pub use doc_node::DocNode;
 pub use font::{FontKind, FontType};
 pub use font_map::FontMap;
+pub use generated::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text};
 pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
@@ -44,7 +43,6 @@ pub(crate) use hir::{
   HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap, to_math_nodes,
 };
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
-pub use inline::{InlineNode, inline_nodes_to_plain_text};
 pub use length::Length;
 pub use link::{AnchorId, AnchorMark, LinkTarget};
 pub use math_class::{MathDelimiter, MathEnvKind};

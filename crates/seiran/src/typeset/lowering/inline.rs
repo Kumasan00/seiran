@@ -187,7 +187,7 @@ mod tests {
   };
   use crate::{
     config::Style as ReadStyle,
-    model::{Color, InlineNode, LabelId, NodeMap},
+    model::{Color, GeneratedInline, LabelId, NodeMap},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -411,12 +411,12 @@ mod tests {
     style.hyperref.cite_color = Some(blue);
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<InlineNode>> = NodeMap::default();
+    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
     displays.insert(
       site,
-      vec![InlineNode::InternalLink {
+      vec![GeneratedInline::InternalLink {
         target: crate::model::CitationId::new("kwan2014"),
-        children: vec![InlineNode::Text("1".to_string())],
+        children: vec![GeneratedInline::Text("1".to_string())],
       }],
     );
 

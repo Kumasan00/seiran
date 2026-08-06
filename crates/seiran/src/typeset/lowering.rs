@@ -13,8 +13,8 @@ use tracing::debug;
 use crate::{
   config::Style as ReadStyle,
   model::{
-    DocNode, HeadingKey, HirInline, HirInlineKind, HirNode, HirNodeKind, InlineNode, LabelId, Length, NodeId, NodeMap,
-    inline_nodes_to_plain_text,
+    GeneratedBlock, GeneratedInline, HeadingKey, HirInline, HirInlineKind, HirNode, HirNodeKind, LabelId, Length,
+    NodeId, NodeMap, generated_inlines_to_plain_text,
   },
   resolve::{AnalyzedDocument, CounterValue},
 };
@@ -156,7 +156,7 @@ pub(super) mod test_support {
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     frontend::parse_source,
-    model::{DocNode, HirDocument, InlineNode, NodeMap, SourceId},
+    model::{GeneratedBlock, GeneratedInline, HirDocument, NodeMap, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -175,8 +175,8 @@ pub(super) mod test_support {
   pub(crate) fn lower(
     style: &Style,
     analyzed: &AnalyzedDocument,
-    displays: &NodeMap<Vec<InlineNode>>,
-    bibliography: &[DocNode],
+    displays: &NodeMap<Vec<GeneratedInline>>,
+    bibliography: &[GeneratedBlock],
   ) -> Vec<LayoutNode> {
     let ctx = LoweringContext::new(style);
     let content = DocumentContent {
@@ -200,9 +200,9 @@ pub struct DocumentContent<'a> {
   /// 意味解析の成果物（HIR + 事実の side table）
   pub analyzed: &'a AnalyzedDocument,
   /// 引用箇所 → CSL 整形済みの表示インライン列
-  pub citation_displays: &'a NodeMap<Vec<InlineNode>>,
+  pub citation_displays: &'a NodeMap<Vec<GeneratedInline>>,
   /// CSL 整形が合成した書誌
-  pub bibliography: &'a [DocNode],
+  pub bibliography: &'a [GeneratedBlock],
 }
 
 /// 走査中に更新される可変状態と、事実を引く query の窓口
@@ -241,7 +241,7 @@ impl<'a> LoweringState<'a> {
   /// # Panics
   ///
   /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは `generate_citations` が保証）。
-  pub(super) fn citation_display(&self, site: NodeId) -> &'a [InlineNode] {
+  pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
     let Some(display) = self.content.citation_displays.get(site) else {
       unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
     };
@@ -527,7 +527,7 @@ fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<Layout
 
 /// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
 ///
-/// 旧 `InlineNode` 版のプレーンテキスト畳み込みと同じ規則を保つ。バリアントごとの扱い（数式は
+/// 旧 `GeneratedInline` 版のプレーンテキスト畳み込みと同じ規則を保つ。バリアントごとの扱い（数式は
 /// `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を辿る等）は同じに保つ。
 fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState) -> String {
   let mut out = String::new();
@@ -540,9 +540,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
         out.push_str(&hir_inlines_to_plain_text(children, style, state));
       },
       // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）。
-      // 生成物は `InlineNode` なので `model` 側の畳み込みをそのまま使う。
+      // 生成物は `GeneratedInline` なので `model` 側の畳み込みをそのまま使う。
       HirInlineKind::Cite { .. } => {
-        out.push_str(&inline_nodes_to_plain_text(state.citation_display(inline.id)));
+        out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
       },
       HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
       HirInlineKind::Symbol(ch) => out.push(*ch),
@@ -563,7 +563,7 @@ mod tests {
     citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     frontend::parse_source,
-    model::{AnchorMark, HirDocument, InlineNode, LinkTarget, SourceId},
+    model::{AnchorMark, GeneratedInline, HirDocument, LinkTarget, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -927,8 +927,8 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<InlineNode>> = NodeMap::default();
-    displays.insert(site, vec![InlineNode::Text("[1]".to_string())]);
+    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
+    displays.insert(site, vec![GeneratedInline::Text("[1]".to_string())]);
     let ctx = LoweringContext::new(&style);
 
     // Act

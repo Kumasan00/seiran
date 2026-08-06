@@ -2,7 +2,7 @@
 //!
 //! 生成物は HIR ではない（`NodeId` を持たない）ので、著者が書いた本文とは別経路で lower する。
 //! 箱組み（見出し・段落）そのものは本文と同じ関数を通し、この module が持つのは
-//! 「`InlineNode` 列 → `LayoutNode` 列」の変換と、書誌に現れる固定形の走査だけ。
+//! 「`GeneratedInline` 列 → `LayoutNode` 列」の変換と、書誌に現れる固定形の走査だけ。
 
 use super::{
   HeadingRecord, LoweringContext,
@@ -11,15 +11,17 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   paragraph::{assemble_paragraph, body_text_style},
 };
-use crate::model::{AnchorId, AnchorMark, DocNode, HeadingKey, InlineNode, LinkTarget, inline_nodes_to_plain_text};
+use crate::model::{
+  AnchorId, AnchorMark, GeneratedBlock, GeneratedInline, HeadingKey, LinkTarget, generated_inlines_to_plain_text,
+};
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
 /// 書誌の見出しは無採番で、本文の続きとなる `HeadingKey` を `next_heading_index` から振る。
-/// `DocNode` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
+/// `GeneratedBlock` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext,
-  nodes: &[DocNode],
+  nodes: &[GeneratedBlock],
   next_heading_index: usize,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut layout = Vec::with_capacity(nodes.len());
@@ -28,7 +30,7 @@ pub(super) fn lower_bibliography(
 
   for node in nodes {
     match node {
-      DocNode::Heading { level, title } => {
+      GeneratedBlock::Heading { level, title } => {
         let key = HeadingKey::new(heading_index);
         heading_index += 1;
         let style = title_style(ctx, *level);
@@ -46,14 +48,14 @@ pub(super) fn lower_bibliography(
           index: key.index(),
           level: *level,
           number: String::new(),
-          title_plain: inline_nodes_to_plain_text(title),
+          title_plain: generated_inlines_to_plain_text(title),
         });
       },
-      DocNode::Paragraph(inlines) => {
+      GeneratedBlock::Paragraph(inlines) => {
         let content = lower_generated_inlines(ctx, inlines, body_text_style(ctx));
         layout.extend(assemble_paragraph(ctx, content, false));
       },
-      DocNode::Anchor(target) => layout.push(LayoutNode::Anchor(AnchorMark::Citation(target.clone()))),
+      GeneratedBlock::Anchor(target) => layout.push(LayoutNode::Anchor(AnchorMark::Citation(target.clone()))),
     }
   }
 
@@ -62,11 +64,11 @@ pub(super) fn lower_bibliography(
 
 /// 生成物のインライン列（CSL 整形の出力）をレイアウトノードへ変換する
 ///
-/// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`InlineNode` はそもそもそれらの
+/// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`GeneratedInline` はそもそもそれらの
 /// variant を持たない、#325）ので、事実を引く必要がなく `LoweringState` を取らない。
 pub(super) fn lower_generated_inlines(
   ctx: &LoweringContext,
-  inlines: &[InlineNode],
+  inlines: &[GeneratedInline],
   parent_style: TextStyle,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
@@ -78,11 +80,11 @@ pub(super) fn lower_generated_inlines(
 
 /// 生成物のインライン 1 個をレイアウトノードへ変換する
 ///
-/// `InlineNode` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
-fn lower_generated_inline(ctx: &LoweringContext, inline: &InlineNode, parent_style: TextStyle) -> Vec<LayoutNode> {
+/// `GeneratedInline` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
+fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, parent_style: TextStyle) -> Vec<LayoutNode> {
   match inline {
-    InlineNode::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
-    InlineNode::Styled { kind, children } => {
+    GeneratedInline::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
+    GeneratedInline::Styled { kind, children } => {
       let styled = TextStyle {
         font_size: parent_style.font_size,
         font_kind: *kind,
@@ -90,7 +92,7 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &InlineNode, parent_sty
       };
       return lower_generated_inlines(ctx, children, styled);
     },
-    InlineNode::Colored { color, children } => {
+    GeneratedInline::Colored { color, children } => {
       let colored = TextStyle {
         font_size: parent_style.font_size,
         font_kind: parent_style.font_kind,
@@ -98,21 +100,21 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &InlineNode, parent_sty
       };
       return lower_generated_inlines(ctx, children, colored);
     },
-    InlineNode::InternalLink { target, children } => {
+    GeneratedInline::InternalLink { target, children } => {
       return vec![LayoutNode::Link {
         target: LinkTarget::Internal(AnchorId::Citation(target.clone())),
         children: lower_generated_inlines(ctx, children, parent_style),
       }];
     },
-    InlineNode::Link { url, children } => {
+    GeneratedInline::Link { url, children } => {
       let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
       return vec![LayoutNode::Link {
         target: LinkTarget::External(url.clone()),
         children: lower_generated_inlines(ctx, children, style),
       }];
     },
-    InlineNode::Symbol(ch) => return vec![LayoutNode::Text(ch.to_string(), parent_style)],
-    InlineNode::LineBreak => return vec![LayoutNode::LineBreak],
+    GeneratedInline::Symbol(ch) => return vec![LayoutNode::Text(ch.to_string(), parent_style)],
+    GeneratedInline::LineBreak => return vec![LayoutNode::LineBreak],
   }
 }
 
@@ -129,18 +131,18 @@ mod tests {
   };
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
-  fn bibliography() -> Vec<DocNode> {
+  fn bibliography() -> Vec<GeneratedBlock> {
     return vec![
-      DocNode::Heading {
+      GeneratedBlock::Heading {
         level: crate::model::HeadingLevel::Section,
-        title: vec![InlineNode::Text("References".to_string())],
+        title: vec![GeneratedInline::Text("References".to_string())],
       },
-      DocNode::Anchor(CitationId::new("kwan2014")),
-      DocNode::Paragraph(vec![
-        InlineNode::Text("K. Kwan, ".to_string()),
-        InlineNode::Styled {
+      GeneratedBlock::Anchor(CitationId::new("kwan2014")),
+      GeneratedBlock::Paragraph(vec![
+        GeneratedInline::Text("K. Kwan, ".to_string()),
+        GeneratedInline::Styled {
           kind: crate::model::FontKind::SerifItalic,
-          children: vec![InlineNode::Text("Crazy Rich Asians".to_string())],
+          children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
       ]),
     ];
@@ -217,12 +219,12 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<InlineNode>> = NodeMap::default();
+    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
     displays.insert(
       site,
-      vec![InlineNode::InternalLink {
+      vec![GeneratedInline::InternalLink {
         target: CitationId::new("kwan2014"),
-        children: vec![InlineNode::Text("[1]".to_string())],
+        children: vec![GeneratedInline::Text("[1]".to_string())],
       }],
     );
 
