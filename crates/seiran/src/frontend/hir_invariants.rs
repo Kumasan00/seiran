@@ -8,10 +8,10 @@
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use crate::{
-  frontend::{hir_group_to_doc_nodes, parse_source},
+  frontend::parse_source,
   model::{
-    DocNode, HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, InlineNode,
-    NodeId, SourceId, Span,
+    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId, SourceId,
+    Span,
   },
 };
 
@@ -190,13 +190,6 @@ fn visit_source(hir: &HirSource) -> Vec<Visited> {
   return visited;
 }
 
-/// HIR を旧 `DocNode` 列へ落とす（adapter 経由の検証用）
-fn to_doc_nodes(hir: HirSource) -> Vec<DocNode> {
-  let document = HirDocument::assemble(vec![hir]);
-  let group = document.groups().first().expect("1 ソース分のグループがあるはず");
-  return hir_group_to_doc_nodes(group, document.locations());
-}
-
 #[test]
 fn same_source_parsed_twice_yields_identical_hir() {
   for (name, content) in fixture_sources() {
@@ -322,21 +315,22 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
   for (source, expected) in cases {
     // Act
     let hir = parse_source(source, SourceId::new(0)).unwrap();
-    let nodes = to_doc_nodes(hir);
 
     // Assert
-    let kinds: Vec<&str> = nodes
+    let kinds: Vec<&str> = hir
+      .group
+      .nodes
       .iter()
       .map(|node| {
-        return match node {
-          DocNode::Paragraph(_) => "Paragraph",
-          DocNode::PageBreak => "PageBreak",
-          DocNode::Heading { .. } => "Heading",
+        return match &node.kind {
+          HirNodeKind::Paragraph(_) => "Paragraph",
+          HirNodeKind::PageBreak => "PageBreak",
+          HirNodeKind::Heading { .. } => "Heading",
           _ => "Other",
         };
       })
       .collect();
-    assert_eq!(kinds, expected, "{source:?}: ブロックの並びが変わらないはず（{nodes:?}）");
+    assert_eq!(kinds, expected, "{source:?}: ブロックの並びが変わらないはず（{:?}）", hir.group.nodes);
   }
 
   // 段落の位置は最初のインラインの開始から最後のインラインの終わりまでを覆う
@@ -358,27 +352,31 @@ fn hir_carries_no_resolved_facts() {
     // Arrange
     let hir = parse_fixture(&name, &content, SourceId::new(0));
 
-    // Act — 型で表せない分（生成物由来の variant が現れないこと）を adapter 出力で確認する
-    let nodes = to_doc_nodes(hir);
-
-    // Assert
-    assert_unresolved(&nodes, &name);
+    // Act / Assert — 網羅 match そのものが検証を兼ねる（assert_unresolved 参照）
+    assert_unresolved(&hir.group.nodes);
   }
 }
 
-/// 生成物由来の variant が現れず、引用ラベルが未解決であることを確認する
-fn assert_unresolved(nodes: &[DocNode], name: &str) {
+/// HIR が生成物由来の表示専用ノードを持たないことを、網羅 match で強制する
+///
+/// 旧 `DocNode::Anchor`（書誌エントリのアンカー）・`InlineNode::InternalLink`（CSL 整形後の
+/// 内部リンク）は生成物なので、`HirNodeKind` / `HirInlineKind` にそもそも variant として
+/// 存在しない。ここでの網羅 match（`_ =>` を書かない）が、その不変条件の実行時チェックに
+/// 代わる強制手段になっている。将来どちらかの enum に解決済み表示専用の variant が
+/// 追加されたら、この match が更新を要求してコンパイルが止まる。
+fn assert_unresolved(nodes: &[HirNode]) {
   for node in nodes {
-    match node {
-      DocNode::Anchor(_) => panic!("{name}: Anchor は CSL 整形段の生成物なので frontend からは出ないはず"),
-      DocNode::Heading { title: inlines, .. } | DocNode::Paragraph(inlines) => assert_unresolved_inlines(inlines, name),
-      DocNode::List { items, .. } => {
+    match &node.kind {
+      HirNodeKind::Heading { title: inlines, .. } | HirNodeKind::Paragraph(inlines) => {
+        assert_unresolved_inlines(inlines);
+      },
+      HirNodeKind::List { items, .. } => {
         for item in items {
-          assert_unresolved(&item.content, name);
+          assert_unresolved(&item.content);
         }
       },
-      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => assert_unresolved(body, name),
-      DocNode::Table {
+      HirNodeKind::Theorem { body, .. } | HirNodeKind::Quote { body, .. } => assert_unresolved(body),
+      HirNodeKind::Table {
         head,
         rows,
         caption,
@@ -386,44 +384,41 @@ fn assert_unresolved(nodes: &[DocNode], name: &str) {
       } => {
         for row in head.iter().chain(rows.iter()) {
           for cell in &row.cells {
-            assert_unresolved_inlines(&cell.content, name);
+            assert_unresolved_inlines(&cell.content);
           }
         }
         if let Some(caption) = caption {
-          assert_unresolved_inlines(caption, name);
+          assert_unresolved_inlines(caption);
         }
       },
-      DocNode::Figure { caption, .. } => {
+      HirNodeKind::Figure { caption, .. } => {
         if let Some(caption) = caption {
-          assert_unresolved_inlines(caption, name);
+          assert_unresolved_inlines(caption);
         }
       },
-      DocNode::MathBlock { .. } | DocNode::Rule { .. } | DocNode::PageBreak | DocNode::Space(_) => {},
+      HirNodeKind::MathBlock { .. } | HirNodeKind::Rule { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;
 }
 
-/// インライン列に解決済みの表示内容が含まれていないことを確認する
-fn assert_unresolved_inlines(inlines: &[InlineNode], name: &str) {
+/// [`assert_unresolved`] のインライン版
+fn assert_unresolved_inlines(inlines: &[HirInline]) {
   for inline in inlines {
-    match inline {
-      InlineNode::InternalLink { .. } => {
-        panic!("{name}: InternalLink は CSL 整形段の生成物なので frontend からは出ないはず");
-      },
-      InlineNode::Styled { children, .. }
-      | InlineNode::Colored { children, .. }
-      | InlineNode::Link { children, .. }
-      | InlineNode::Footnote { body: children, .. } => assert_unresolved_inlines(children, name),
+    match &inline.kind {
+      HirInlineKind::Styled { children, .. }
+      | HirInlineKind::Colored { children, .. }
+      | HirInlineKind::Link { children, .. }
+      | HirInlineKind::Footnote { body: children, .. } => assert_unresolved_inlines(children),
       // `Cite` は引用「箇所」だけを表し、表示は型として持てない（生成物は side table 側）
-      InlineNode::Text(_)
-      | InlineNode::InlineMath(_)
-      | InlineNode::Symbol(_)
-      | InlineNode::LineBreak
-      | InlineNode::NoIndent
-      | InlineNode::Ref { .. }
-      | InlineNode::Cite { .. }
-      | InlineNode::Index { .. } => {},
+      HirInlineKind::Text(_)
+      | HirInlineKind::InlineMath(_)
+      | HirInlineKind::Symbol(_)
+      | HirInlineKind::LineBreak
+      | HirInlineKind::NoIndent
+      | HirInlineKind::Ref { .. }
+      | HirInlineKind::Cite { .. }
+      | HirInlineKind::Index { .. } => {},
     }
   }
   return;
