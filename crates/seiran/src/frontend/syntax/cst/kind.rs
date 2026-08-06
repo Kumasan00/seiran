@@ -17,11 +17,6 @@ pub enum SyntaxKind {
   EnvironmentEnd,
   /// 環境の本体
   EnvironmentBody,
-  /// 中括弧グループ（`{...}`）
-  // 現時点でパーサは構築しない（P4: 裸の `{...}` は構文エラー）。#201 で dead_code 検出の対象に
-  // なったが、evaluator 側は防御的に分岐を持つため据え置く。
-  #[allow(dead_code)]
-  Group,
   /// 任意引数（`[...]`）
   OptArg,
   /// 必須引数（`{...}`）

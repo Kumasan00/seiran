@@ -225,12 +225,11 @@ impl CounterRegistry {
   /// 採番とラベル登録を一括で行う（HIR ノード版）
   ///
   /// 位置は `locations` から `node` を引いて求める。`(Span, Origin)` を直接受け取る
-  /// [`Self::increment_with_label`] は `resolver` 専用で、#325 で `resolver` ごと消える。
+  /// [`Self::increment_with_label`] との使い分けは、呼び出し元が `NodeId` を持っているかどうか。
   ///
   /// # Errors
   ///
   /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
-  #[allow(dead_code)]
   pub(crate) fn increment_with_label_at(
     &mut self,
     counter: CounterName,
@@ -247,7 +246,6 @@ impl CounterRegistry {
   /// # Errors
   ///
   /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
-  #[allow(dead_code)]
   pub(crate) fn increment_theorem_with_label_at(
     &mut self,
     class: TheoremClass,

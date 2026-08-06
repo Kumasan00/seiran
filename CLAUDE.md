@@ -73,8 +73,8 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → ローワリング（typeset::lowering: DocumentContent（AnalyzedDocument への参照 + 引用の生成物への
     参照。build_pdf.rs の document_content が Semantics から借用して組み立てるだけの薄いビュー）
     → LayoutNode。analyze が確定した構造値を style の表示側フィールドで表示文字列にするだけで、
-    採番・\ref 解決・見出しキーの採番はここでは行わない。CSL 整形の生成物（書誌 Vec<DocNode> /
-    引用表示 NodeMap<Vec<InlineNode>>）は HIR ではない（NodeId を持たない）ため
+    採番・\ref 解決・見出しキーの採番はここでは行わない。CSL 整形の生成物（書誌 Vec<GeneratedBlock> /
+    引用表示 NodeMap<Vec<GeneratedInline>>）は HIR ではない（NodeId を持たない）ため
     typeset::lowering::generated の専用経路で lower する）
   → フォント読込・検証
   → (a) build_blocks（typeset::block: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
@@ -143,17 +143,18 @@ model （依存なし（serde / garde のみ）— 全段共有のデータモ�
         コア型 3 crate を統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
         ColumnWidth 等の共通型 + HIR（hir: HirDocument / HirNode / HirInline / HirMath / NodeId /
         SourceMap / HirBuilder、#322）+ 意味解析と CSL 整形の共有型 CitationSiteFacts（#324）
-        + CSL 整形の生成物専用に縮小した DocNode（Heading / Paragraph / Anchor の 3 variant） /
-        InlineNode（Text / Styled / Colored / Symbol / LineBreak / Link / InternalLink の 7 variant）+
+        + CSL 整形の生成物専用の語彙 GeneratedBlock（Heading / Paragraph / Anchor の 3 variant） /
+        GeneratedInline（Text / Styled / InternalLink の 3 variant）+
         数式の共通型 MathNode（frontend の評価変換と typeset::lowering の数式経路が共有）のみを持つ。
-        著者が書いた内容は HIR のみが表現し、DocNode / InlineNode は書誌・引用表示という生成物専用の
-        語彙に縮小されている（#325）。
+        著者が書いた内容は HIR のみが表現し、Generated* は書誌・引用表示という生成物専用の語彙。
+        variant は citation::render が実際に構築するものだけに絞ってあり、それが消費側の
+        match を網羅的に保つ根拠になっている（#325 / #326）。
         組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
         （GlyphRun / Glyph）は font module へ移設済み（#280、model は意味モデルと共通値型に縮小）。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
   ↑ config, citation, frontend, font, resolve, typeset, build_pdf
 
-config （model を使用。非公開の `config` / `style` / `project_source` 子 module を内包し、
+config （model を使用。非公開の `config_toml` / `style` / `layout` / `policy` / `project_source` 子 module を内包し、
         config.toml / style.toml のデータモデル + 読込・検証と、外部資源取得の seam
         （`ProjectSource` / `ProjectPath` / `SourceReadError` + filesystem / memory の 2 実装、#300）を
         1 module にまとめる。seam をここに置くのは I/O を行う全 module（citation / font / build_pdf）が
@@ -229,13 +230,13 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 
 | `seiran` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ `CitationSiteFacts`（#324）+ 数式の共通型 `MathNode` + CSL 整形の生成物専用に縮小した `DocNode`（3 variant） / `InlineNode`（7 variant、#325）。著者が書いた内容は HIR のみが表現する。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
-| `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）+ 意味解析へ渡す投影 `DocumentPolicy`（値に影響する設定だけを写す、#324）。非公開の `config` / `style` / `policy` / `project_source` 子 module + root facade                                                                                                                                                                     |
+| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ `CitationSiteFacts`（#324）+ 数式の共通型 `MathNode` + CSL 整形の生成物専用の語彙 `GeneratedBlock` / `GeneratedInline`（各 3 variant、#325 / #326）。著者が書いた内容は HIR のみが表現する。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
+| `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）+ 意味解析へ渡す投影 `DocumentPolicy`（値に影響する設定だけを写す、#324）。非公開の `config_toml` / `style` / `layout` / `policy` / `project_source` 子 module + root facade（実際に名指しされる名前だけを載せる、#326）                                                                                                                                                                     |
 | `resolve`  | 意味解析 `analyze`（HIR 1 走査でラベル宣言・`\ref` / `Theorem::of` の解決・重複ラベル検出・カウンタ構造値 `CounterValue`・見出し `HeadingKey`・引用箇所を `SemanticFacts` へ確定し `AnalyzedDocument` を返す。fact の完全性を最後に検証する）。`AnalyzedDocument` は目的別 query（`counter_value` / `heading_key` 等）を公開し、typeset::lowering が直接読む。表示文字列は生成せず、そもそも表示設定を受け取れない（引数は `DocumentPolicy`、#324） |
-| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。生成物は HIR のみで、旧 `DocNode` への adapter は #325 で削除済み                                                                                                                                                                                                                                             |
+| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。生成物は HIR のみで、他の文書木表現へ落とす移行用 adapter は #325 で削除済み                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `style`（`load_citation_style`。CSL スタイル・ロケールの読込、I/O はここだけ）+ `generate`（`generate_citations`。`NodeMap<CitationSiteFacts>` と `CompiledCitationStyle` から表示 side table と書誌を生成、I/O なし、hayagriva / citationberg）。引用箇所の意味解析（未定義キー検証を含む）は `resolve::analyze` が担う（#324）                                                                                                                                                                                                                                                       |
-| `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
-| `typeset`  | `DocumentContent`（`resolve::AnalyzedDocument` + 引用の生成物への参照）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が `DocumentContent` から表示文字列を生成しレイアウトノードを組み立てる（CSL 整形の生成物は `lowering::generated` の専用経路で lower する、#325）、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
+| `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。子 module は `face_config`（フェース設定の組み立て）/ `glyph_run` / `shaper`（`pub(crate) mod`）/ `system` / `validate_font`。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
+| `typeset`  | `DocumentContent`（`resolve::AnalyzedDocument` + 引用の生成物への参照）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が `DocumentContent` から表示文字列を生成しレイアウトノードを組み立てる（CSL 整形の生成物は `lowering::generated` の専用経路で lower する、#325）、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型に絞る（#281）。`LineBreaker` seam は `typeset::breaking` の facade 止まりで `typeset` root へは lift しない（#326）|
 | `build_pdf` | compile facade（`compile` とその公開型）+ compiler core（phase graph）。段の呼び出し順序・中間型はここに閉じ、crate 外へ出さない。PDF バイト列の生成と保存は行わない |
 
 ## コーディング規約
@@ -259,7 +260,7 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 
   例外: 統合テスト（`tests/`）の共通ヘルパは慣例どおり `tests/common/mod.rs` に置く（`common.rs` だとテストファイルとして扱われるため）。
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` / `model::length` の garde バリデータ / `config::test_support`。かつて `config` は 2 つの `ValidationError` の衝突を理由に `pub mod` 公開だったが、`ConfigValidationError` / `StyleValidationError` へ改名して root facade に揃えた）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` と `model::length` の garde バリデータはどちらも `pub(crate) mod`、`config::test_support` は `#[doc(hidden)]` の再エクスポート。かつて `config` は 2 つの `ValidationError` の衝突を理由に `pub mod` 公開だったが、`ConfigValidationError` / `StyleValidationError` へ改名して衝突自体を無くした）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない（#326）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。

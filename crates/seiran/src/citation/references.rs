@@ -10,10 +10,10 @@ mod reference;
 
 use std::{collections::HashMap, path::Path};
 
-pub use date::{Date, DateCirca, DatePart, DateSeason};
+// `Date` / `Name` / `ReferenceType` / `NumberOrString` は [`Reference`] のフィールド型として
+// 生きているが、名前を再エクスポートする必要はない（外から名指しする消費者がいない）。
 pub use error::ReadReferencesError;
-pub use name::Name;
-pub use reference::{NumberOrString, Reference, ReferenceType, References};
+pub use reference::{Reference, References};
 use tracing::{debug, info};
 
 /// 参照定義ファイルの形式
@@ -105,7 +105,11 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, parse_references, read_references,
+    ReadReferencesError,
+    date::{DateCirca, DatePart, DateSeason},
+    name::Name,
+    parse_references, read_references,
+    reference::NumberOrString,
   };
   use crate::config::{FilesystemProjectSource, MemoryProjectSource};
 

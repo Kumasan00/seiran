@@ -636,7 +636,7 @@ pub fn break_pages(
         place_table(&mut composer, geom, &table, col_width, align);
         composer.cursor_at_edge = true;
       },
-      Block::MathBlock {
+      Block::Math {
         body,
         numbers,
         numbers_on_right,
@@ -842,7 +842,7 @@ fn is_content_block(block: &Block) -> bool {
       | Block::Image { .. }
       | Block::Rule { .. }
       | Block::ComposedLine { .. }
-      | Block::MathBlock { .. }
+      | Block::Math { .. }
   );
 }
 
@@ -885,7 +885,7 @@ fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) ->
       return (y + h > geom.page_limit, y + h);
     },
     Block::Rule { height, .. } => return (y + *height > geom.page_limit, y + *height),
-    Block::MathBlock { body, .. } => {
+    Block::Math { body, .. } => {
       let h = body.height + body.depth;
       return (y + h > geom.page_limit && geom.margin_top + h <= geom.page_limit, y + h);
     },

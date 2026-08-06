@@ -22,6 +22,7 @@ pub enum HeadingLevel {
 
 impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
+  #[allow(dead_code)]
   pub const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
     HeadingLevel::Chapter,
@@ -39,6 +40,7 @@ impl HeadingLevel {
 
   /// コマンド名からレベルを取得する
   #[must_use]
+  #[allow(dead_code)]
   pub fn from_command_name(name: &str) -> Option<Self> {
     return match name {
       "part" => Some(HeadingLevel::Part),
@@ -67,4 +69,56 @@ impl HeadingLevel {
 
 impl std::fmt::Display for HeadingLevel {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return write!(f, "{}", self.command_name()); }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use super::HeadingLevel;
+
+  #[test]
+  fn heading_level_depth_returns_correct_values() {
+    assert_eq!(HeadingLevel::Part.depth(), 0);
+    assert_eq!(HeadingLevel::Chapter.depth(), 1);
+    assert_eq!(HeadingLevel::Section.depth(), 2);
+    assert_eq!(HeadingLevel::Subsection.depth(), 3);
+    assert_eq!(HeadingLevel::Paragraph.depth(), 4);
+    assert_eq!(HeadingLevel::Subparagraph.depth(), 5);
+  }
+
+  #[test]
+  fn heading_level_ordering() {
+    assert!(HeadingLevel::Part < HeadingLevel::Chapter);
+    assert!(HeadingLevel::Chapter < HeadingLevel::Section);
+    assert!(HeadingLevel::Section < HeadingLevel::Subsection);
+    assert!(HeadingLevel::Subsection < HeadingLevel::Paragraph);
+    assert!(HeadingLevel::Paragraph < HeadingLevel::Subparagraph);
+  }
+
+  #[test]
+  fn heading_level_from_command_name() {
+    assert_eq!(HeadingLevel::from_command_name("part"), Some(HeadingLevel::Part));
+    assert_eq!(HeadingLevel::from_command_name("chapter"), Some(HeadingLevel::Chapter));
+    assert_eq!(HeadingLevel::from_command_name("section"), Some(HeadingLevel::Section));
+    assert_eq!(HeadingLevel::from_command_name("subsection"), Some(HeadingLevel::Subsection));
+    assert_eq!(HeadingLevel::from_command_name("paragraph"), Some(HeadingLevel::Paragraph));
+    assert_eq!(HeadingLevel::from_command_name("subparagraph"), Some(HeadingLevel::Subparagraph));
+    assert_eq!(HeadingLevel::from_command_name("unknown"), None);
+  }
+
+  #[test]
+  fn heading_level_command_name() {
+    assert_eq!(HeadingLevel::Part.command_name(), "part");
+    assert_eq!(HeadingLevel::Chapter.command_name(), "chapter");
+    assert_eq!(HeadingLevel::Section.command_name(), "section");
+    assert_eq!(HeadingLevel::Subsection.command_name(), "subsection");
+    assert_eq!(HeadingLevel::Paragraph.command_name(), "paragraph");
+    assert_eq!(HeadingLevel::Subparagraph.command_name(), "subparagraph");
+  }
+
+  #[test]
+  fn heading_level_display() {
+    assert_eq!(format!("{}", HeadingLevel::Section), "section");
+    assert_eq!(format!("{}", HeadingLevel::Part), "part");
+  }
 }

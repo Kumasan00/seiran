@@ -33,6 +33,8 @@ pub enum TheoremClass {
 
 impl TheoremClass {
   /// 全 10 クラスを宣言順に並べた配列。
+  // crate 内の `#[cfg(test)]` からのみ使う（全 10 クラス網羅の検証）。
+  #[allow(dead_code)]
   pub const ALL: [TheoremClass; 10] = [
     TheoremClass::Theorem,
     TheoremClass::Lemma,
@@ -46,6 +48,7 @@ impl TheoremClass {
     TheoremClass::Proof,
   ];
   /// [`TheoremClass::ALL`] の要素数
+  #[allow(dead_code)]
   pub const COUNT: usize = 10;
 
   /// `snake_case` の文字列表現を返す（TOML のキーおよび環境名と同じ）。

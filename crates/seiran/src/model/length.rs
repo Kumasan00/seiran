@@ -71,6 +71,8 @@ impl Length {
 
   /// 内部の sp 値を返す（比率計算などの生値取り出し用）。
   #[must_use]
+  // crate 内の `#[cfg(test)]` からのみ使う。
+  #[allow(dead_code)]
   pub const fn sp(self) -> i64 { return self.0; }
 
   /// pt 値を f32 で返す（PDF 座標などの出力境界用）。
@@ -80,11 +82,15 @@ impl Length {
 
   /// pt 値を f64 で返す（ダンプ整形など高精度が要る出力境界用）。
   #[must_use]
+  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump` / `build_pdf::golden`）からのみ使う。
+  #[allow(dead_code)]
   pub fn to_pt_f64(self) -> f64 { return self.0 as f64 / SP_PER_PT as f64; }
 
   /// mm 値を f32 で返す。
   #[must_use]
   #[allow(clippy::cast_possible_truncation)]
+  // crate 内の `#[cfg(test)]` からのみ使う。
+  #[allow(dead_code)]
   pub fn to_mm(self) -> f32 { return (self.to_pt_f64() / MM_TO_PT) as f32; }
 
   /// 厳密に正の値か。
@@ -107,6 +113,8 @@ impl Length {
 
   /// 絶対値。
   #[must_use]
+  // crate 内の `#[cfg(test)]` からのみ使う。
+  #[allow(dead_code)]
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
 }
 

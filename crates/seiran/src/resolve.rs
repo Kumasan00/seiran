@@ -16,7 +16,4 @@ mod facts;
 pub use analyze::analyze;
 pub use counter::{CounterKind, CounterValue};
 pub use error::{SemanticError, UnknownCitationSite};
-// `HeadingFacts` は `AnalyzedDocument::headings` の要素型としてのみ現れ、型名を名指しする
-// 消費者が現状ない。
-#[allow(unused_imports)]
-pub use facts::{AnalyzedDocument, HeadingFacts};
+pub use facts::AnalyzedDocument;

@@ -1,7 +1,7 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
 //!
-//! `parse_source` は 1 ソース分の [`HirSource`] を返す。本体経路もテストも HIR をそのまま扱う
-//! （#325 で旧 `DocNode` への変換 adapter を削除した）。
+//! `parse_source` は 1 ソース分の [`HirSource`] を返す。本体経路もテストも HIR をそのまま扱い、
+//! 他の文書木表現へ落とす adapter は持たない（#325）。
 
 use bumpalo::Bump;
 use miette::Diagnostic;

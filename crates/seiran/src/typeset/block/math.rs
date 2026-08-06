@@ -1,4 +1,4 @@
-//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::MathBlock`）
+//! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 
 use super::Measurer;
 use crate::{
@@ -78,7 +78,7 @@ struct MeasuredRow {
 }
 
 impl Measurer<'_> {
-  /// `LayoutNode::MathBlock` を measure して `Block::MathBlock` に合成する
+  /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
   #[allow(clippy::too_many_arguments)]
   pub(crate) fn build_math_block(
     &mut self,
@@ -158,7 +158,7 @@ impl Measurer<'_> {
       body = self.wrap_with_delimiters(body, left, right);
     }
 
-    return Block::MathBlock {
+    return Block::Math {
       body,
       numbers,
       numbers_on_right,

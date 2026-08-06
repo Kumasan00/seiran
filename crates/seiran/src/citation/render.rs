@@ -10,14 +10,14 @@ use hayagriva::{
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
 
-use crate::model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode};
+use crate::model::{CitationId, FontKind, GeneratedBlock, GeneratedInline, HeadingLevel};
 
 /// hayagriva による整形結果。
 pub(crate) struct Rendered {
   /// 各 cite サイトの整形済み引用ラベル（収集と同じドキュメント順）。
-  pub labels: Vec<Vec<InlineNode>>,
+  pub labels: Vec<Vec<GeneratedInline>>,
   /// 文末に追加する書誌ブロック（References 見出し + 段落群）。引用が書誌を生まない場合は空。
-  pub bibliography: Vec<DocNode>,
+  pub bibliography: Vec<GeneratedBlock>,
 }
 
 /// cite サイト群を CSL 整形し、引用ラベルと書誌ブロックを返す。
@@ -56,17 +56,17 @@ pub(crate) fn render(
   };
 }
 
-/// rendered citation の `ElemChildren` を `Vec<InlineNode>` に平坦化する（引用アイテムは内部リンク化）。
+/// rendered citation の `ElemChildren` を `Vec<GeneratedInline>` に平坦化する（引用アイテムは内部リンク化）。
 ///
 /// `ElemMeta::Entry` のインデックスを `site` の引用キーへ対応させる。
-fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<InlineNode> {
+fn citation_children_to_inlines(children: &ElemChildren, site: &[String]) -> Vec<GeneratedInline> {
   let mut out = Vec::new();
   collect_citation_inlines(children, site, &mut out);
   return out;
 }
 
 /// [`citation_children_to_inlines`] の再帰本体。`ElemChildren` を走査して `out` に積む。
-fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<InlineNode>) {
+fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut Vec<GeneratedInline>) {
   for child in &children.0 {
     match child {
       ElemChild::Elem(elem) => {
@@ -77,7 +77,7 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
             continue;
           }
           match site.get(idx) {
-            Some(key) => out.push(InlineNode::InternalLink {
+            Some(key) => out.push(GeneratedInline::InternalLink {
               target: CitationId::new(key.as_str()),
               children: item_inlines,
             }),
@@ -94,58 +94,58 @@ fn collect_citation_inlines(children: &ElemChildren, site: &[String], out: &mut 
   }
 }
 
-/// 整形済み書誌（`RenderedBibliography`）から書誌 `DocNode` 群を組み立てる。
+/// 整形済み書誌（`RenderedBibliography`）から書誌 `GeneratedBlock` 群を組み立てる。
 ///
 /// 番号なしの見出しに続けて、各文献のアンカーと段落を追加する。
-fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &str) -> Vec<DocNode> {
+fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &str) -> Vec<GeneratedBlock> {
   let Some(bibliography) = bibliography else {
     return Vec::new();
   };
 
   let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
-  nodes.push(DocNode::Heading {
+  nodes.push(GeneratedBlock::Heading {
     level: HeadingLevel::Section,
-    title: vec![InlineNode::Text(bib_title.to_string())],
+    title: vec![GeneratedInline::Text(bib_title.to_string())],
   });
 
   for item in &bibliography.items {
-    let mut inlines: Vec<InlineNode> = Vec::new();
+    let mut inlines: Vec<GeneratedInline> = Vec::new();
     if let Some(first_field) = &item.first_field {
       let before = inlines.len();
       push_elem_child(first_field, &mut inlines);
       if inlines.len() > before {
-        inlines.push(InlineNode::Text(" ".to_string()));
+        inlines.push(GeneratedInline::Text(" ".to_string()));
       }
     }
     inlines.extend(elem_children_to_inlines(&item.content));
-    nodes.push(DocNode::Anchor(CitationId::new(&item.key)));
-    nodes.push(DocNode::Paragraph(inlines));
+    nodes.push(GeneratedBlock::Anchor(CitationId::new(&item.key)));
+    nodes.push(GeneratedBlock::Paragraph(inlines));
   }
 
   return nodes;
 }
 
-/// hayagriva の整形ツリー `ElemChildren` を `Vec<InlineNode>` に変換する。
-fn elem_children_to_inlines(children: &ElemChildren) -> Vec<InlineNode> {
+/// hayagriva の整形ツリー `ElemChildren` を `Vec<GeneratedInline>` に変換する。
+fn elem_children_to_inlines(children: &ElemChildren) -> Vec<GeneratedInline> {
   let mut out = Vec::new();
   collect_inlines(children, &mut out);
   return out;
 }
 
 /// `ElemChildren` を走査し、各要素を [`push_elem_child`] で `out` に積む。
-fn collect_inlines(children: &ElemChildren, out: &mut Vec<InlineNode>) {
+fn collect_inlines(children: &ElemChildren, out: &mut Vec<GeneratedInline>) {
   for child in &children.0 {
     push_elem_child(child, out);
   }
 }
 
-/// 1 つの `ElemChild` を `InlineNode` 群へ変換して `out` に積む。
+/// 1 つの `ElemChild` を `GeneratedInline` 群へ変換して `out` に積む。
 ///
 /// `Text` / `Link` のアンカーテキストはリーフの実効 `Formatting` を反映し（[`formatted_to_inline`]）、
 /// `Elem` は子へ再帰する。`Markup`（Typst 向けの生マークアップ）はプレーンテキストとして積み、
 /// 置換前提の `Transparent` と空テキストは無視する。`Link` の URL は hyperref 対応まで当面捨て、
 /// アンカーテキストのみ残す（近似）。
-fn push_elem_child(child: &ElemChild, out: &mut Vec<InlineNode>) {
+fn push_elem_child(child: &ElemChild, out: &mut Vec<GeneratedInline>) {
   match child {
     ElemChild::Text(formatted)
     | ElemChild::Link {
@@ -156,22 +156,22 @@ fn push_elem_child(child: &ElemChild, out: &mut Vec<InlineNode>) {
       }
     },
     ElemChild::Elem(elem) => collect_inlines(&elem.children, out),
-    ElemChild::Markup(markup) if !markup.is_empty() => out.push(InlineNode::Text(markup.clone())),
+    ElemChild::Markup(markup) if !markup.is_empty() => out.push(GeneratedInline::Text(markup.clone())),
     ElemChild::Markup(_) | ElemChild::Transparent { .. } => {},
   }
 }
 
-/// 整形済みテキストラン `Formatted` を実効スタイル付き `InlineNode` にする。
-fn formatted_to_inline(formatted: &Formatted) -> Option<InlineNode> {
+/// 整形済みテキストラン `Formatted` を実効スタイル付き `GeneratedInline` にする。
+fn formatted_to_inline(formatted: &Formatted) -> Option<GeneratedInline> {
   if formatted.text.is_empty() {
     return None;
   }
-  let text = InlineNode::Text(formatted.text.clone());
+  let text = GeneratedInline::Text(formatted.text.clone());
   let kind = formatting_to_font_kind(formatted.formatting);
   if kind == FontKind::Serif {
     return Some(text);
   }
-  return Some(InlineNode::Styled {
+  return Some(GeneratedInline::Styled {
     kind,
     children: vec![text],
   });
@@ -181,7 +181,7 @@ fn formatted_to_inline(formatted: &Formatted) -> Option<InlineNode> {
 ///
 /// `font_weight == Bold` を太字、`font_style == Italic` を斜体とみなす（`FontWeight::Light` は
 /// 対応する書体が無いため normal 扱い）。スモールキャップス（`font_variant`）・下線（`text_decoration`）・
-/// 上付き下付き（`vertical_align`）は `InlineNode` に表現が無いため当面無視する（近似）。
+/// 上付き下付き（`vertical_align`）は `GeneratedInline` に表現が無いため当面無視する（近似）。
 fn formatting_to_font_kind(formatting: Formatting) -> FontKind {
   let bold = matches!(formatting.font_weight, FontWeight::Bold);
   let italic = matches!(formatting.font_style, FontStyle::Italic);

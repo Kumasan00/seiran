@@ -10,6 +10,8 @@ impl LabelId {
   pub fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
 
   /// 内部の文字列を返す
+  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump`）からのみ使う。
+  #[allow(dead_code)]
   #[must_use]
   pub fn as_str(&self) -> &str { return &self.0; }
 }
@@ -54,6 +56,8 @@ impl FootnoteId {
 
   /// 元の出現 index を返す
   #[must_use]
+  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump`）からのみ使う。
+  #[allow(dead_code)]
   pub fn index(self) -> u32 { return self.0; }
 }
 
