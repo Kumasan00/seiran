@@ -58,7 +58,7 @@ pub(super) enum SemanticsError {
 /// 意味解析（重複ラベル・未解決参照・未定義引用キー）、CSL スタイルの読込、または表示の生成に
 /// 失敗した場合にエラーを返す。
 pub(super) fn resolve_semantics(
-  source: &dyn crate::config::ProjectSource,
+  source: &dyn crate::project::ProjectSource,
   document: HirDocument,
   references: &References,
   style: &crate::config::Style,
@@ -90,9 +90,11 @@ mod tests {
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationStyleError, read_references},
-    config::{FilesystemProjectSource, MemoryProjectSource, Style},
+    config::Style,
     frontend::parse_source,
-    model::{HirDocument, SourceId},
+    model::HirDocument,
+    project::{FilesystemProjectSource, MemoryProjectSource},
+    source::SourceId,
   };
 
   #[test]

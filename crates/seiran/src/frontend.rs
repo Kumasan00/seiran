@@ -26,7 +26,7 @@ pub enum ParseSourceError {
   #[diagnostic(code(frontend::parse_source::syntax))]
   Syntax {
     /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
-    source_id: crate::model::SourceId,
+    source_id: crate::source::SourceId,
     /// 元の構文エラー
     #[source]
     #[diagnostic_source]
@@ -38,7 +38,7 @@ pub enum ParseSourceError {
   #[diagnostic(code(frontend::parse_source::eval))]
   Eval {
     /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
-    source_id: crate::model::SourceId,
+    source_id: crate::source::SourceId,
     /// 元の評価エラー
     #[source]
     #[diagnostic_source]
@@ -54,7 +54,7 @@ pub enum ParseSourceError {
 /// # Errors
 ///
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
-pub fn parse_source(source: &str, source_id: crate::model::SourceId) -> Result<HirSource, ParseSourceError> {
+pub fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
   let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| {
     return ParseSourceError::Syntax { source_id, error };
@@ -88,7 +88,7 @@ mod tests {
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   fn evaluate_source(source: &str) -> Vec<HirNode> {
-    let hir = parse_source(source, crate::model::SourceId::new(0)).unwrap();
+    let hir = parse_source(source, crate::source::SourceId::new(0)).unwrap();
     return hir.group.nodes;
   }
 
@@ -98,7 +98,7 @@ mod tests {
   /// `Eval` バリアントから内側のエラーを取り出して返す。
   /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
   fn evaluate_error(source: &str) -> EvalError {
-    match parse_source(source, crate::model::SourceId::new(0)) {
+    match parse_source(source, crate::source::SourceId::new(0)) {
       Err(ParseSourceError::Eval { error, .. }) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }

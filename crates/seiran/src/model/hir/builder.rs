@@ -2,9 +2,9 @@
 
 use std::cell::RefCell;
 
-use crate::model::{
-  SourceId, Span,
-  hir::{HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, SourceSpans},
+use crate::{
+  model::hir::{HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, SourceSpans},
+  source::{SourceId, Span},
 };
 
 /// HIR ノードの ID を発行し、同時にソース位置を記録する builder

@@ -14,8 +14,8 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  config::MemoryProjectSource,
   font::{FontData, FontDataExt, FontType},
+  project::MemoryProjectSource,
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。
@@ -53,7 +53,7 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
   let (base_config, style, references) = load_base();
   let mut config = base_config;
   config.sources = vec![PathBuf::from(SOURCE_REL)];
-  let fs_source = crate::config::FilesystemProjectSource::new();
+  let fs_source = crate::project::FilesystemProjectSource::new();
   let fs_font_data = FontData::new(&fs_source, &config.font_configs).expect("フォントの読み込み");
 
   // Arrange — memory 経由（同じ内容を事前登録し、実ディスクには触れない）

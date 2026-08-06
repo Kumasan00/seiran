@@ -13,10 +13,10 @@ mod layout;
 mod outline;
 mod page_values;
 mod phase_context;
-mod project;
 mod publication;
 mod running;
 mod semantics;
+mod snapshot;
 
 #[cfg(test)]
 mod diagnostics;
@@ -36,9 +36,9 @@ pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedCitationError, AttributedParseError, CompileError};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
-pub use project::OutputPlan;
-use project::{ProjectSnapshot, SourceDb};
 use semantics::SemanticsError;
+pub use snapshot::OutputPlan;
+use snapshot::{ProjectSnapshot, SourceDb};
 use tracing::info;
 
 #[cfg(test)]
@@ -85,17 +85,17 @@ pub struct Compilation {
 ///
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
 /// 診断の集合を返す。
-pub fn compile<S: crate::config::ProjectSource>(
+pub fn compile<S: crate::project::ProjectSource>(
   source: &S,
-  root: &crate::config::ProjectPath,
+  root: &crate::project::ProjectPath,
 ) -> Result<Compilation, DiagnosticSet> {
   return compile_inner(source, root).map_err(DiagnosticSet::from);
 }
 
 /// カレントディレクトリを解決してから [`compile_with_base_dir`] へ委譲する。
-fn compile_inner<S: crate::config::ProjectSource>(
+fn compile_inner<S: crate::project::ProjectSource>(
   source: &S,
-  root: &crate::config::ProjectPath,
+  root: &crate::project::ProjectPath,
 ) -> miette::Result<Compilation> {
   let base_dir = std::env::current_dir().map_err(|source| return CompileError::CurrentDir { source })?;
   return compile_with_base_dir(source, root, &base_dir);
@@ -105,9 +105,9 @@ fn compile_inner<S: crate::config::ProjectSource>(
 ///
 /// `MemoryProjectSource` + 固定 `base_dir` でのテストが `std::env::set_current_dir` 無しに
 /// 書けるよう、テストと `compile` の双方から呼ばれる実処理をここに閉じる。
-fn compile_with_base_dir<S: crate::config::ProjectSource>(
+fn compile_with_base_dir<S: crate::project::ProjectSource>(
   source: &S,
-  root: &crate::config::ProjectPath,
+  root: &crate::project::ProjectPath,
   base_dir: &Path,
 ) -> miette::Result<Compilation> {
   let build_start = Instant::now();
@@ -153,7 +153,7 @@ fn compile_with_base_dir<S: crate::config::ProjectSource>(
 ///
 /// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
 fn load_project(
-  source: &dyn crate::config::ProjectSource,
+  source: &dyn crate::project::ProjectSource,
   config_path: &Path,
   base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
@@ -208,7 +208,7 @@ fn build_publication(
   config: &crate::config::Config,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-  image_bytes: HashMap<crate::model::AssetId, Vec<u8>>,
+  image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
   laid_out: &LaidOutDocument,
 ) -> miette::Result<seiran_pdf::Publication> {
   let fonts = build_pdf_fonts(font_data, font_resources);
@@ -300,17 +300,17 @@ fn build_pages(
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   return build_pages_with_source(&source, config, style, references, font_data);
 }
 
-/// パースからページ確定までを、指定した [`crate::config::ProjectSource`] 経由で実行するテストヘルパ。
+/// パースからページ確定までを、指定した [`crate::project::ProjectSource`] 経由で実行するテストヘルパ。
 ///
 /// `MemoryProjectSource` を渡すと実ファイルシステムに触れずに組版できる
 /// （2 実装が同じ結果を返すことの検証用。issue #300）。
 #[cfg(test)]
 fn build_pages_with_source(
-  source: &dyn crate::config::ProjectSource,
+  source: &dyn crate::project::ProjectSource,
   config: &crate::config::Config,
   style: &crate::config::Style,
   references: &Arc<References>,
@@ -396,8 +396,8 @@ fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb
 fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
-  let mut order: Vec<crate::model::SourceId> = Vec::new();
-  let mut per_source: HashMap<crate::model::SourceId, Vec<miette::LabeledSpan>> = HashMap::new();
+  let mut order: Vec<crate::source::SourceId> = Vec::new();
+  let mut per_source: HashMap<crate::source::SourceId, Vec<miette::LabeledSpan>> = HashMap::new();
   for site in sites {
     let labels = per_source.entry(site.source_id).or_insert_with(|| {
       order.push(site.source_id);

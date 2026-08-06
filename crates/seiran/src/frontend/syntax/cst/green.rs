@@ -7,7 +7,7 @@ use crate::{
     cst::kind::SyntaxKind,
     token::{Token, TokenKind},
   },
-  model::Span,
+  source::Span,
 };
 
 /// アリーナ確保された CST ノード

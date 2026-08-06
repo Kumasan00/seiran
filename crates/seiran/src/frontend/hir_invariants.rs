@@ -9,10 +9,8 @@ use std::{collections::HashSet, fs, path::PathBuf};
 
 use crate::{
   frontend::parse_source,
-  model::{
-    HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId, SourceId,
-    Span,
-  },
+  model::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
+  source::{SourceId, Span},
 };
 
 /// 走査で集めたノード 1 個分の情報

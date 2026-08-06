@@ -1,6 +1,9 @@
 //! HIR ノードのソース位置表 [`SourceSpans`] / [`SourceMap`]。
 
-use crate::model::{SourceId, Span, hir::NodeId};
+use crate::{
+  model::hir::NodeId,
+  source::{SourceId, Span},
+};
 
 /// 1 ソース分の位置表（添字 = `NodeId::local`）
 ///

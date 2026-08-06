@@ -75,12 +75,12 @@ mod tests {
   use std::path::PathBuf;
 
   use super::{Config, LayoutValidationError, Length, Style, column_width, validate_layout};
-  use crate::config::{
-    config_toml::{
+  use crate::{
+    config::config_toml::{
       read_config,
       test_support::{make_font_sections, valid_output_section, valid_pdf_section},
     },
-    project_source::FilesystemProjectSource,
+    project::FilesystemProjectSource,
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します

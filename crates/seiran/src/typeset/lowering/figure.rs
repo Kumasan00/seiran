@@ -7,7 +7,8 @@ use super::{
 };
 use crate::{
   length::Length,
-  model::{AssetId, CaptionPosition, HirInline},
+  model::{CaptionPosition, HirInline},
+  project::ProjectPath,
 };
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
@@ -23,7 +24,7 @@ pub(crate) struct ImageOverrides {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
-  image_path: &AssetId,
+  image_path: &ProjectPath,
   width: Option<Length>,
   height: Option<Length>,
   overrides: ImageOverrides,
@@ -126,7 +127,7 @@ mod tests {
     else {
       panic!("先頭は Image であるべき: {children:?}");
     };
-    assert_eq!(path.as_str(), "./images/seiran.jpg");
+    assert_eq!(path.to_string(), "./images/seiran.jpg");
     assert!((width.expect("width 指定あり").to_pt() - Length::mm(80.0).to_pt()).abs() < 0.01);
     assert!((height.expect("height 指定あり").to_pt() - Length::mm(60.0).to_pt()).abs() < 0.01);
     assert_eq!(*target_dpi, Some(300));

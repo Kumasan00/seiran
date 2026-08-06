@@ -12,7 +12,7 @@ use lopdf::{Document, Object, content::Content};
 
 use super::{
   golden::{enter_workspace_root, load_base},
-  project::ProjectSnapshot,
+  snapshot::ProjectSnapshot,
 };
 use crate::font::{FontData, FontDataExt, FontResources};
 
@@ -41,7 +41,7 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
   adjust_style(&mut style);
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");

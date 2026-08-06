@@ -49,7 +49,7 @@ fn build_pages_err(sources: &[&str]) -> miette::Report {
   enter_workspace_root();
   let (mut config, style, references) = load_base();
   config.sources = sources.iter().map(|source| return PathBuf::from(*source)).collect();
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   return match build_pages(&config, &style, &references, &font_data) {
     Ok(_) => panic!("このケースは失敗するはず"),
@@ -149,7 +149,7 @@ fn diagnostic_font_validation_error() {
     name: *b"zzzz",
     value: 0.0,
   }]);
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
     Ok(_) => panic!("不明な軸を指定したので失敗するはず"),

@@ -1,8 +1,8 @@
 //! HIR の文書単位 [`HirSource`] / [`HirGroup`] / [`HirDocument`]。
 
-use crate::model::{
-  SourceId,
-  hir::{HirNode, SourceMap, SourceSpans},
+use crate::{
+  model::hir::{HirNode, SourceMap, SourceSpans},
+  source::SourceId,
 };
 
 /// 1 ソース分の frontend 出力

@@ -57,8 +57,8 @@ pub use crate::config::style::{
 };
 use crate::{
   color::Color,
-  config::project_source::{ProjectPath, ProjectSource},
   model::HeadingLevel,
+  project::{ProjectPath, ProjectSource},
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -337,15 +337,13 @@ mod tests {
 
   use crate::{
     color::Color,
-    config::{
-      project_source::{FilesystemProjectSource, MemoryProjectSource},
-      style::{
-        CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
-        resolve_reference_paths,
-      },
+    config::style::{
+      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
+      resolve_reference_paths,
     },
     length::Length,
     model::HeadingLevel,
+    project::{FilesystemProjectSource, MemoryProjectSource},
   };
 
   #[test]
@@ -599,7 +597,7 @@ mod tests {
 #[cfg(test)]
 mod parse_tests {
   use super::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
-  use crate::{config::project_source::FilesystemProjectSource, model::HeadingLevel};
+  use crate::{model::HeadingLevel, project::FilesystemProjectSource};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 

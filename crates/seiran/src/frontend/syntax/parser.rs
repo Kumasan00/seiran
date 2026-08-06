@@ -17,7 +17,7 @@ use crate::{
       token::{Token, TokenKind},
     },
   },
-  model::Span,
+  source::Span,
 };
 
 mod error;

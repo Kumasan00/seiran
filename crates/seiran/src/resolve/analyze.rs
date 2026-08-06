@@ -514,7 +514,8 @@ mod tests {
   use crate::{
     citation::{References, test_fixtures::sample_references},
     config::{DocumentPolicy, Style},
-    model::{HirDocument, SourceId},
+    model::HirDocument,
+    source::SourceId,
   };
 
   /// 引用を含まない入力向けの空の参照定義
@@ -790,7 +791,8 @@ mod completeness_tests {
   use crate::{
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
-    model::{HirDocument, SourceId},
+    model::HirDocument,
+    source::SourceId,
   };
 
   /// 採番・ラベル・参照・引用のいずれかを含む要素を 1 つ生成する戦略

@@ -16,7 +16,7 @@ description: >-
 - 外部エラーを巻き取る場合は `#[source] source: ExternalError` フィールドで chain を形成し、`?` 演算子で伝播する。`map_err` でメッセージのコンテキスト（ファイルパス等）を付与する
 - **中間の seam エラーを `#[diagnostic_source]` で連鎖させない。** `code` / `help` を持つ Diagnostic を
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、
-  利用者から見える出力が 1 段深くなる。資源取得の `config::SourceReadError` のように「呼び出し元が
+  利用者から見える出力が 1 段深くなる。資源取得の `project::SourceReadError` のように「呼び出し元が
   パスを含むメッセージを持ち、実質は下位の I/O 失敗」でしかない中間エラーは、`SourceReadError::into_io()`
   で `std::io::Error` へ平坦化してから `#[source]` に載せる（#300）。`#[diagnostic_source]` を使うのは、
   内側のエラー自身が独立した診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つ
@@ -30,7 +30,7 @@ description: >-
   enum を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの
   `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播してよい。
   一方、ソース本文を持たない下位クレート（呼び出し元が `SourceId → 本文` の対応表（`SourceDb` 等）を
-  一元管理している場合。例: `frontend::ParseSourceError` は `crates/seiran::build_pdf::project::SourceDb`
+  一元管理している場合。例: `frontend::ParseSourceError` は `crates/seiran::build_pdf::snapshot::SourceDb`
   に対して本文を持たない）は、`#[source_code]` を持たず `source_id`（発行元が単一の識別子。生の `usize`
   や array index を独自に採番しない）だけを運ぶ。この場合、`#[related]` 集約や最終 `Report` 化を行う
   呼び出し側が、`SourceId` から引いた `NamedSource` を添える薄いラッパー型を用意する。このラッパーは

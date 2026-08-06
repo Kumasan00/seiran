@@ -60,7 +60,7 @@ mod tests {
   use super::to_item;
   use crate::{
     citation::{References, read_references, test_fixtures::sample_references},
-    config::FilesystemProjectSource,
+    project::FilesystemProjectSource,
   };
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。

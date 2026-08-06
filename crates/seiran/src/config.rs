@@ -6,7 +6,6 @@
 mod config_toml;
 mod layout;
 mod policy;
-mod project_source;
 mod style;
 
 #[doc(hidden)]
@@ -20,12 +19,6 @@ pub use layout::{LayoutValidationError, column_width, validate_layout};
 // 意味解析（`crate::resolve`）へ渡す設定の投影。`CounterPolicy` / `TheoremPolicy` は
 // `DocumentPolicy` のアクセサ戻り値としてのみ現れ、名指しする消費者がいないので出さない。
 pub use policy::DocumentPolicy;
-// `FilesystemProjectSource`/`MemoryProjectSource`/`ProjectPath`/`ProjectSource`/`SourceReadError`
-// はすべて `crate::config::` 経由で使われる（`SourceReadError` は `crate::lib.rs` の root facade
-// 再エクスポートが唯一の消費者 — `ProjectSource::read_text`/`read_bytes` の戻り値型に現れるため、
-// trait を外部から実装可能にするには型そのものも公開しておく必要がある）。unused_imports の
-// allow は不要。
-pub use project_source::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 // `CounterStyle` / `NestedOrderedFormat` / `NumberStyle` / `parse_style` を facade に置いているのは、
 // `resolve::counter` / `typeset::lowering` 配下の `#[cfg(test)] mod tests` と `build_pdf` の
 // テスト用子 module が名指しするため。`style` は `config` 非公開の子 module なので、facade を

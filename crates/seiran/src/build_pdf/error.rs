@@ -8,14 +8,14 @@ use crate::{
   citation::{CitationFormatError, CitationStyleError},
   config::LayoutValidationError,
   frontend::ParseSourceError,
-  model::AssetId,
+  project::ProjectPath,
   resolve::SemanticError,
 };
 
 /// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
 /// `ParseSourceError` は `SourceId` だけを持ち、ソース本文を持たない（本文は
-/// `project::SourceDb` が一元管理する）。code / message / help / label / related は
+/// `snapshot::SourceDb` が一元管理する）。code / message / help / label / related は
 /// すべて内側の `ParseSourceError` へ委譲し、`source_code` だけをここで補う
 /// （`#[diagnostic(transparent)]` は `source_code` も内側へ委譲してしまうため使えず、手書きする）。
 #[derive(Debug)]
@@ -65,7 +65,7 @@ impl Diagnostic for AttributedParseError {
 /// 1 ソース内の未定義引用キーを、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
 /// [`crate::citation::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
-/// ソース本文を持たない（本文は `project::SourceDb` が一元管理する）。同じソース内に未定義キーが
+/// ソース本文を持たない（本文は `snapshot::SourceDb` が一元管理する）。同じソース内に未定義キーが
 /// 複数箇所あれば `labels` にまとめて積む（`labels` の要素ごとに独自のラベル文言を持つため、
 /// `#[label(collection)]` に静的な文言は付けない）。この型自身が診断メッセージ・code・help を
 /// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
@@ -267,7 +267,7 @@ pub(super) enum CompileError {
   )]
   InvalidImageNaturalSize {
     /// 画像ファイルのパス。
-    path: AssetId,
+    path: ProjectPath,
     /// 自然幅（ラスタはピクセル、SVG は pt）。
     width: f32,
     /// 自然高さ（ラスタはピクセル、SVG は pt）。

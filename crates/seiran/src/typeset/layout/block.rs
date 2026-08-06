@@ -10,7 +10,7 @@ use super::{
   link::AnchorMark,
   table_box::TableBox,
 };
-use crate::{length::Length, model::AssetId};
+use crate::{length::Length, project::ProjectPath};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///
@@ -67,7 +67,7 @@ pub enum Block {
   /// 縦組版（`break_pages`）は確定済みであることを前提とし、未解決は 0 として扱う。
   Image {
     /// 画像ファイルへのパス
-    path: AssetId,
+    path: ProjectPath,
     /// 描画幅。prepass 後は常に `Some`
     width: Option<Length>,
     /// 描画高さ。prepass 後は常に `Some`

@@ -3,9 +3,10 @@
 use crate::{
   length::Length,
   model::{
-    AssetId, CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathEnvKind, QuoteKind, TheoremClass,
+    CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathEnvKind, QuoteKind, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
+  project::ProjectPath,
 };
 
 /// ブロックレベルの HIR ノード
@@ -71,7 +72,7 @@ pub(crate) enum HirNodeKind {
   /// 図環境（`\begin{figure}...\end{figure}`）
   Figure {
     /// 画像ファイルへのパス（`\image{...}` の必須引数）
-    image_path: AssetId,
+    image_path: ProjectPath,
     /// 画像の幅（未指定なら描画段で本文幅 / 縦横比から算出）
     width: Option<Length>,
     /// 画像の高さ（未指定なら描画段で本文幅 / 縦横比から算出）

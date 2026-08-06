@@ -104,11 +104,11 @@ pub trait FontDataExt: Sized {
   /// # Errors
   ///
   /// いずれかのファイルを読み込めない場合に [`FontLoadError::ReadFont`] を返す。
-  fn new(source: &dyn crate::config::ProjectSource, font_configs: &FontConfigs) -> Result<Self, FontLoadError>;
+  fn new(source: &dyn crate::project::ProjectSource, font_configs: &FontConfigs) -> Result<Self, FontLoadError>;
 }
 
 impl FontDataExt for FontData {
-  fn new(source: &dyn crate::config::ProjectSource, font_configs: &FontConfigs) -> Result<Self, FontLoadError> {
+  fn new(source: &dyn crate::project::ProjectSource, font_configs: &FontConfigs) -> Result<Self, FontLoadError> {
     let mut unique_paths: Vec<PathBuf> =
       FontType::ALL.iter().map(|&ft| return font_configs.get(ft).font_path.clone()).collect();
     unique_paths.sort();
@@ -117,7 +117,7 @@ impl FontDataExt for FontData {
     let loaded: HashMap<PathBuf, Vec<u8>> = unique_paths
       .par_iter()
       .map(|path| {
-        let bytes = source.read_bytes(&crate::config::ProjectPath::new(path)).map_err(|source| {
+        let bytes = source.read_bytes(&crate::project::ProjectPath::new(path)).map_err(|source| {
           let font_type = FontType::ALL
             .iter()
             .find(|&&ft| return &font_configs.get(ft).font_path == path)
@@ -239,7 +239,7 @@ impl FontMetricsExt for FontMetrics {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config::MemoryProjectSource;
+  use crate::project::MemoryProjectSource;
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
   fn make_font_configs(shared_path: &str) -> FontConfigs {

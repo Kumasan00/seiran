@@ -12,9 +12,10 @@ use std::{
 use super::{build_pages, dump::dump_pages};
 use crate::{
   citation::{References, read_references},
-  config::{Config, MemoryProjectSource, ProjectPath, Style},
+  config::{Config, Style},
   font::{FontData, FontDataExt},
   length::Length,
+  project::{MemoryProjectSource, ProjectPath},
   typeset::{AnchorMark, Page, PlacedBlock},
 };
 
@@ -73,7 +74,7 @@ pub(super) fn load_base() -> (Config, Style, Arc<References>) {
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let config =
     crate::config::read_config(&source, Path::new("crates/seiran/tests/config/config.toml"), &workspace_root())
       .expect("fixture config.toml の読込");
@@ -289,7 +290,7 @@ fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>,
   let mut style = style.clone();
   apply_input_style_overrides(name, &mut style);
   apply_input_config_overrides(name, &mut config);
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, references, &font_data).expect("build_pages の実行");
   return dump_pages(&laid_out.pages);
@@ -440,7 +441,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   config.pdf.margin.top = Length::mm(10.0);
   config.pdf.margin.bottom = Length::mm(10.0);
   config.sources = vec![PathBuf::from("tests/text/keepwithnext.sei")];
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
 
   // Act
@@ -460,7 +461,7 @@ fn footnote_numbers_per_page(numbering: crate::config::FootnoteNumbering) -> Vec
   style.footnote.numbering = numbering;
   config.sources = vec![PathBuf::from("tests/text/footnote_per_page.sei")];
   apply_input_config_overrides("footnote_per_page", &mut config);
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
   return laid_out
@@ -493,7 +494,7 @@ fn long_footnote_splits_across_pages_without_overlapping_body() {
   let (mut config, style, references) = load_base();
   config.sources = vec![PathBuf::from("tests/text/footnote_split.sei")];
   apply_input_config_overrides("footnote_split", &mut config);
-  let source = crate::config::FilesystemProjectSource::new();
+  let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
 
   // Act

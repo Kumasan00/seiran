@@ -61,7 +61,7 @@ impl<T> NodeMap<T> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::NodeMap;
-  use crate::model::{SourceId, hir::NodeId};
+  use crate::{model::hir::NodeId, source::SourceId};
 
   /// テスト用の `NodeId` を作る
   fn id(source: usize, local: u32) -> NodeId { return NodeId::for_test(SourceId::new(source), local); }

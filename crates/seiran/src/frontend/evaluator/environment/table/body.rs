@@ -16,7 +16,8 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow, Span},
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow},
+  source::Span,
 };
 
 /// 本体走査で収集した行・キャプション情報

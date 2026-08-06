@@ -248,7 +248,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
       target_dpi,
     } => {
       ops.push(PaintOp::DrawImage {
-        path: path.as_str().to_string(),
+        path: path.to_string(),
         rect: Rect {
           x: margin_left + x.to_pt(),
           y: y.to_pt(),
@@ -475,7 +475,7 @@ mod tests {
       "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
     );
     let config = test_config();
-    let source = crate::config::FilesystemProjectSource::new();
+    let source = crate::project::FilesystemProjectSource::new();
     let font_data = FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
     let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
     let fonts = super::super::build_pdf_fonts(&font_data, &font_resources);
@@ -724,7 +724,7 @@ mod tests {
     let config = test_config();
     let mut page = empty_page();
     page.blocks = vec![PlacedBlock::Image {
-      path: crate::model::AssetId::new("figures/a.png"),
+      path: crate::project::ProjectPath::new("figures/a.png"),
       x: Length::pt(10.0),
       y: Length::pt(20.0),
       width: Length::pt(100.0),

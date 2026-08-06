@@ -1,5 +1,10 @@
 //! 外部資源取得の seam。compiler が `std::fs` を直接呼ばず、`ProjectSource` を通じて
 //! 設定・スタイル・文献・ソース・フォント・画像を取得できるようにする（issue #300）。
+//!
+//! seam は設定の入力だけの道具ではなく全外部資源の窓口なので、`config` の子ではなく
+//! crate root 直下の module が所有する（#337）。[`ProjectPath`] は外部資源を指す
+//! compiler 側の唯一のパス型で、画像も同じ型で識別する（画像パスの newtype だった
+//! `model::AssetId` は同じパスを表す重複だったため削除済み）。
 
 mod filesystem;
 mod memory;
@@ -16,7 +21,10 @@ use thiserror::Error;
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
 /// （シンボリックリンク解決はしない。存在確認は [`ProjectSource::exists`] が担う）。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// `Ord` は画像 manifest の重複除去・ソート（`BTreeSet<ProjectPath>`）が使う。
+/// 順序は `Path` の component 単位の比較で、正規化済みの値どうしを比べるため決定的。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProjectPath(PathBuf);
 
 impl ProjectPath {
@@ -38,7 +46,7 @@ impl std::fmt::Display for ProjectPath {
 pub enum SourceReadError {
   /// ファイルの読み込みに失敗した。
   #[error("ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(config::source::read), help("パスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(project::source::read), help("パスと読み取り権限を確認してください。"))]
   Io {
     /// 読み込みに失敗したパス
     path: String,
@@ -48,7 +56,7 @@ pub enum SourceReadError {
   },
   /// UTF-8 として解釈できない。
   #[error("ファイルを UTF-8 として読めません: {path}")]
-  #[diagnostic(code(config::source::invalid_utf8), help("ファイルの文字エンコーディングを確認してください。"))]
+  #[diagnostic(code(project::source::invalid_utf8), help("ファイルの文字エンコーディングを確認してください。"))]
   InvalidUtf8 {
     /// 対象パス
     path: String,
@@ -58,7 +66,7 @@ pub enum SourceReadError {
   },
   /// `MemoryProjectSource` に登録されていないパスを要求した。
   #[error("プロジェクトに登録されていないパスです: {path}")]
-  #[diagnostic(code(config::source::not_found), help("テスト fixture に該当パスを登録してください。"))]
+  #[diagnostic(code(project::source::not_found), help("テスト fixture に該当パスを登録してください。"))]
   NotFound {
     /// 見つからなかったパス
     path: String,
@@ -111,6 +119,8 @@ pub trait ProjectSource: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+  use std::collections::BTreeSet;
+
   use super::{ProjectPath, SourceReadError};
 
   #[test]
@@ -121,6 +131,21 @@ mod tests {
 
     // Assert
     assert_eq!(a, b, "`.` を含むパスは畳んだ形と等しいはず");
+  }
+
+  #[test]
+  fn ord_sorts_normalized_paths_deterministically() {
+    // Arrange — 画像 manifest は `BTreeSet<ProjectPath>` で重複除去とソートを行う
+    let mut set = BTreeSet::new();
+    set.insert(ProjectPath::new("fig/b.png"));
+    set.insert(ProjectPath::new("fig/a.png"));
+    set.insert(ProjectPath::new("fig/./a.png"));
+
+    // Act
+    let sorted: Vec<ProjectPath> = set.into_iter().collect();
+
+    // Assert — 正規化して等しいパスは 1 件に畳まれ、残りは昇順に並ぶ
+    assert_eq!(sorted, vec![ProjectPath::new("fig/a.png"), ProjectPath::new("fig/b.png")]);
   }
 
   #[test]

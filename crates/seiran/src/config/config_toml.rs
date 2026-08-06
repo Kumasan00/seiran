@@ -8,8 +8,8 @@ use thiserror::Error;
 use tracing::{debug, info, warn};
 
 use crate::{
-  config::project_source::{ProjectPath, ProjectSource},
   font::{Feature, FontConfig, FontConfigs, FontType, TextDirection, VariationAxis},
+  project::{ProjectPath, ProjectSource},
 };
 
 mod pre_config;
@@ -552,13 +552,11 @@ mod tests {
     resolve_output_dir_path, resolve_paths, validate_values,
   };
   use crate::{
-    config::{
-      config_toml::test_support::{
-        font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
-      },
-      project_source::{FilesystemProjectSource, MemoryProjectSource},
+    config::config_toml::test_support::{
+      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
     },
     font::FontType,
+    project::{FilesystemProjectSource, MemoryProjectSource},
   };
 
   /// `parse_config` 用のダミーパス。
