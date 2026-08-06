@@ -43,12 +43,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -79,15 +76,15 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return footnote_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return footnote_command(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Footnote { body, .. } = &result[0] else {
+    let HirInlineKind::Footnote { body } = &result[0].kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0], InlineNode::Text(t) if t == "hello"));
+    assert!(matches!(&body[0].kind, HirInlineKind::Text(t) if t == "hello"));
   }
 
   #[test]
@@ -99,18 +96,18 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return footnote_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return footnote_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Footnote { body, .. } = &result[0] else {
+    let HirInlineKind::Footnote { body } = &result[0].kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
-    let InlineNode::Styled { kind, children } = &body[0] else {
+    let HirInlineKind::Styled { kind, children } = &body[0].kind else {
       panic!("Styled が期待されます: {body:?}");
     };
     assert_eq!(*kind, crate::model::FontKind::SerifBold);
-    assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 
   #[test]
@@ -122,7 +119,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return footnote_command(&view, builder));
+    let result = run_inline_handler(|builder| return footnote_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
@@ -137,7 +134,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return footnote_command(&view, builder));
+    let result = run_inline_handler(|builder| return footnote_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
@@ -152,7 +149,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return footnote_command(&view, builder));
+    let result = run_inline_handler(|builder| return footnote_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
