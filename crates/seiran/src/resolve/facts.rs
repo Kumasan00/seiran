@@ -43,6 +43,8 @@ pub(crate) struct SemanticFacts {
   pub(super) declared_labels: NodeMap<LabelId>,
   /// 採番対象ノード → カウンタ構造値
   pub(super) counters: NodeMap<CounterValue>,
+  /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 解決済みの参照先
+  pub(super) references: NodeMap<LabelId>,
   /// 見出し（文書順）
   pub(super) headings: Vec<HeadingFacts>,
 }
@@ -84,6 +86,26 @@ impl AnalyzedDocument {
   /// ノードが宣言したラベルを引く（ラベルを持たないノードは `None`）
   #[must_use]
   pub fn declared_label(&self, node: NodeId) -> Option<&LabelId> { return self.facts.declared_labels.get(node); }
+
+  /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
+  ///
+  /// `Option` ではなく `LabelId` を直接返す。`analyze` が成功した時点で「すべての参照は実在する
+  /// ラベルへ解決済み」が不変条件として成立しており、参照先が無い状態は表現しない。
+  ///
+  /// # Panics
+  ///
+  /// `analyze` が返した `AnalyzedDocument` に無い `site` を渡した場合にパニックします
+  /// （参照箇所の網羅は `analyze` が保証している）。
+  #[must_use]
+  pub fn reference_target(&self, site: NodeId) -> &LabelId {
+    let Some(target) = self.facts.references.get(site) else {
+      unreachable!("全参照箇所は analyze が references へ登録している: {site:?}")
+    };
+    return target;
+  }
+
+  /// 参照箇所を文書順に走査する
+  pub fn reference_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.references.iter(); }
 
   /// 見出しを文書順に返す
   #[must_use]
