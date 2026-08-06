@@ -14,7 +14,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
-  model::HeadingKey,
+  resolve::HeadingKey,
   typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput},
 };
 
@@ -76,8 +76,9 @@ mod tests {
   use super::{BodyPageValues, Page, collect_toc_entries};
   use crate::{
     config::{PageNumbering, TocStyle},
-    model::{AnchorMark, HeadingKey, HeadingLevel},
-    typeset::{HeadingRecord, PlacedAnchor},
+    model::HeadingLevel,
+    resolve::HeadingKey,
+    typeset::{AnchorMark, HeadingRecord, PlacedAnchor},
   };
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {

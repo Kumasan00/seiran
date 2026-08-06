@@ -17,13 +17,15 @@ pub use block::{
 pub use breaking::{KnuthPlassBreaker, PageGeometry};
 // `HBox` / `Line` / `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` /
 // `measure_items_width` を facade に置いているのは、`build_pdf` 配下の `#[cfg(test)] mod tests`
-// が組版済みページを組み立てるのにこれらを名指しするため。`layout` は `typeset` 非公開の
-// 子 module なので、facade を通す以外に crate 内から届く経路がない。
+// が組版済みページを組み立てるのにこれらを名指しするため。`AnchorId` / `AnchorMark` /
+// `LinkTarget` / `TableColumn` は `build_pdf::publication` が本体コードから名指しする（#334）。
+// `layout` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
+// 逆に `Align` / `FootnoteId` は `typeset` の外に消費者がいないので facade へは出さない（#326）。
 #[allow(unused_imports)]
 pub use layout::{
-  Block, HBox, HBoxContent, HItem, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem,
-  PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
-  layout_row_cells, max_font_size_in_items, measure_items_width,
+  AnchorId, AnchorMark, Block, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
+  PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
+  TableCellBox, TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
 pub use lowering::{DocumentContent, HeadingRecord, per_page_footnote_numbers};
 pub use pipeline::{

@@ -1,15 +1,9 @@
-//! 表の列指定に関する共通型。
+//! 著者が `columns=` / `widths=` に書く表の列指定語彙。
+//!
+//! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `model` が持つ。
+//! 2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有（#334）。
 
 use crate::model::Length;
-
-/// 表の 1 列の定義（揃え + 幅指定）
-#[derive(Debug, Clone, Copy)]
-pub struct TableColumn {
-  /// セル内容の揃え方向
-  pub align: ColumnAlign,
-  /// 列幅の指定方法
-  pub width: ColumnWidth,
-}
 
 /// 列内のセル内容の揃え方向
 ///
@@ -60,7 +54,7 @@ pub enum ColumnWidth {
 
 #[cfg(test)]
 mod tests {
-  use super::{ColumnAlign, ColumnWidth, TableColumn};
+  use super::{ColumnAlign, ColumnWidth};
   use crate::model::Length;
 
   #[test]
@@ -82,19 +76,6 @@ mod tests {
     assert_ne!(ColumnWidth::Fixed(Length::pt(5.0)), ColumnWidth::Fixed(Length::pt(6.0)));
     assert_ne!(ColumnWidth::Ratio(0.3), ColumnWidth::Ratio(0.5));
     assert_ne!(ColumnWidth::Auto, ColumnWidth::Flex);
-  }
-
-  #[test]
-  fn table_column_holds_align_and_width() {
-    // Arrange
-    let col = TableColumn {
-      align: ColumnAlign::Right,
-      width: ColumnWidth::Ratio(0.25),
-    };
-
-    // Assert
-    assert_eq!(col.align, ColumnAlign::Right);
-    assert_eq!(col.width, ColumnWidth::Ratio(0.25));
   }
 
   #[test]

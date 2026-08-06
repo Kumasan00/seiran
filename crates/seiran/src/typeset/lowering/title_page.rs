@@ -3,7 +3,8 @@
 use super::layout_node::{LayoutNode, TextStyle};
 use crate::{
   config::TitlePageStyle,
-  model::{Align, FontKind, Length},
+  model::{FontKind, Length},
+  typeset::layout::Align,
 };
 
 /// タイトルページに載せる文書メタデータ。
@@ -74,10 +75,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
 #[cfg(test)]
 mod tests {
   use super::{super::layout_node::LayoutNode, TitlePageMetadata, lower_title_page};
-  use crate::{
-    config::TitlePageStyle,
-    model::{Align, Length},
-  };
+  use crate::{config::TitlePageStyle, model::Length, typeset::layout::Align};
 
   /// 中央寄せ `VBox` の子ノードを取り出すヘルパ
   fn title_vbox_children(nodes: &[LayoutNode]) -> &[LayoutNode] {

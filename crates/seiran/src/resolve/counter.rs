@@ -14,8 +14,8 @@ use std::collections::HashMap;
 
 use crate::{
   config::{CounterName, DocumentPolicy, TheoremReset},
-  model::{LabelId, NodeId, SourceId, SourceMap, Span, TheoremClass},
-  resolve::{SemanticError, error::span_to_source_span},
+  model::{NodeId, SourceId, SourceMap, Span, TheoremClass},
+  resolve::{LabelId, SemanticError, error::span_to_source_span},
 };
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の

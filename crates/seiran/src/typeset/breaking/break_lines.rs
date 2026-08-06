@@ -1,8 +1,9 @@
 //! (c) 行分割
 
 use crate::{
-  model::{Length, LinkTarget, TextAlignment},
-  typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, PositionedBox},
+  config::TextAlignment,
+  model::Length,
+  typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
 };
 
 mod greedy;
@@ -347,8 +348,10 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> crate::model::LinkTarget {
-    return crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("sec:x")));
+  pub(super) fn link_target() -> crate::typeset::layout::LinkTarget {
+    return crate::typeset::layout::LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(
+      crate::resolve::LabelId::new("sec:x"),
+    ));
   }
 
   /// テスト用の索引マーカー（幅 0・分割不可）

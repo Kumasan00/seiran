@@ -12,7 +12,8 @@ use super::{
 };
 use crate::{
   citation::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text},
-  model::{AnchorId, AnchorMark, HeadingKey, LinkTarget},
+  resolve::HeadingKey,
+  typeset::layout::{AnchorId, AnchorMark, LinkTarget},
 };
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する

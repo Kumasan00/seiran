@@ -11,12 +11,9 @@
 use crate::{
   citation::{CitationId, CitationSiteFacts, References},
   config::{CounterName, DocumentPolicy},
-  model::{
-    HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LabelId, NodeId,
-    SourceMap,
-  },
+  model::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   resolve::{
-    SemanticError,
+    HeadingKey, LabelId, SemanticError,
     counter::CounterRegistry,
     error::{UnknownCitationSite, span_to_source_span},
     facts::{AnalyzedDocument, HeadingFacts, SemanticFacts},
@@ -547,8 +544,8 @@ mod tests {
 
     // Assert — 宣言ノードからラベルが引け、ラベルからカウンタ値が引ける
     let heading = analyzed.headings().first().expect("見出しが 1 件あるはず");
-    assert_eq!(analyzed.declared_label(heading.node), Some(&crate::model::LabelId::new("ch:intro")));
-    assert!(analyzed.counter_value_of_label(&crate::model::LabelId::new("ch:intro")).is_some());
+    assert_eq!(analyzed.declared_label(heading.node), Some(&crate::resolve::LabelId::new("ch:intro")));
+    assert!(analyzed.counter_value_of_label(&crate::resolve::LabelId::new("ch:intro")).is_some());
   }
 
   #[test]
@@ -575,10 +572,10 @@ mod tests {
     // （`any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する）
     let sites: Vec<_> = analyzed.reference_sites().map(|(id, label)| return (id, label.clone())).collect();
     assert_eq!(sites.len(), 1, "参照箇所は [of=...] の 1 件だけのはず");
-    assert_eq!(sites[0].1, crate::model::LabelId::new("thm:a"));
+    assert_eq!(sites[0].1, crate::resolve::LabelId::new("thm:a"));
     assert_eq!(
       analyzed.reference_target(sites[0].0),
-      &crate::model::LabelId::new("thm:a"),
+      &crate::resolve::LabelId::new("thm:a"),
       "reference_target は site の NodeId から同じ LabelId を返すはず"
     );
   }
@@ -843,7 +840,7 @@ mod completeness_tests {
       let analyzed = analyze(document, &policy, &sample_references()).expect("解析に成功するはず");
 
       // Assert — 少なくとも基準の定理は fact に載っている（検証が空回りしていないことの確認）
-      prop_assert!(analyzed.counter_value_of_label(&crate::model::LabelId::new("l0")).is_some());
+      prop_assert!(analyzed.counter_value_of_label(&crate::resolve::LabelId::new("l0")).is_some());
     }
   }
 }

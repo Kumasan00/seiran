@@ -1,13 +1,32 @@
-//! ハイパーリンクのアンカーと行き先。
+//! 配置済み文書のアンカーと行き先 — [`FootnoteId`] / [`AnchorId`] / [`AnchorMark`] / [`LinkTarget`]。
 //!
-//! `CitationId` を `crate::citation` から取るため、この 1 ファイルだけが `model` →
-//! `citation` の向きを持つ。アンカー・リンクは配置済み文書の概念なので、epic #332 の後続段階で
-//! [`AnchorId`] / [`AnchorMark`] / [`LinkTarget`] ごと `typeset::layout` へ移り、この依存は消える。
+//! いずれも「どこに何が置かれたか」が決まって初めて成立する組版側の概念なので、layout が所有する
+//! （#334）。到達先の名前空間には意味解析が確定した識別子（`resolve` の `LabelId` / `HeadingKey`）と
+//! 引用キー（`citation::CitationId`）を借りるが、それらを発行するのは前段であってここではない。
 
 use crate::{
   citation::CitationId,
-  model::{FootnoteId, HeadingKey, LabelId},
+  resolve::{HeadingKey, LabelId},
 };
+
+/// 脚注の出現 index（0 起点）
+///
+/// [`crate::typeset::LineFootnote::index`] と同じ値。表示番号（採番方式で変わりうる）ではなく
+/// 出現順の同一性を表す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FootnoteId(u32);
+
+impl FootnoteId {
+  /// 新しい `FootnoteId` を生成する
+  #[must_use]
+  pub fn new(index: u32) -> Self { return FootnoteId(index); }
+
+  /// 元の出現 index を返す
+  #[must_use]
+  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump`）からのみ使う。
+  #[allow(dead_code)]
+  pub fn index(self) -> u32 { return self.0; }
+}
 
 /// 到達先アンカーを一意に指すキー
 ///
@@ -54,4 +73,14 @@ pub enum LinkTarget {
   Internal(AnchorId),
   /// 外部 URI（`\url{uri}` / `\href[url=uri]{...}` の `uri`）
   External(String),
+}
+
+#[cfg(test)]
+mod tests {
+  use super::FootnoteId;
+
+  #[test]
+  fn footnote_id_round_trips_index() {
+    assert_eq!(FootnoteId::new(3).index(), 3);
+  }
 }

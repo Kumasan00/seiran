@@ -7,9 +7,10 @@ use std::fmt::Write;
 use seiran_pdf::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 
 use crate::{
-  model::{AnchorId, AnchorMark, Length, LinkTarget},
+  model::Length,
   typeset::{
-    HBoxContent, Line, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow, PositionedBox, measure_items_width,
+    AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
+    PositionedBox, measure_items_width,
   },
 };
 

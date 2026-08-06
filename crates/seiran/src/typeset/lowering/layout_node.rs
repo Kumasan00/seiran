@@ -1,6 +1,9 @@
 //! レイアウトノードおよびスタイルの型定義
 
-use crate::model::{Align, AnchorMark, Color, FontKind, Length, LinkTarget, MathEnvKind, TableColumn};
+use crate::{
+  model::{Color, FontKind, Length, MathEnvKind},
+  typeset::layout::{Align, AnchorMark, LinkTarget, TableColumn},
+};
 
 /// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]

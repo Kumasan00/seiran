@@ -5,7 +5,11 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
-use crate::model::{AnchorMark, HeadingKey, HeadingLevel, LabelId};
+use crate::{
+  model::HeadingLevel,
+  resolve::{HeadingKey, LabelId},
+  typeset::layout::{Align, AnchorMark},
+};
 
 /// 見出しのタイトル・番号に使う基底テキストスタイルを返す
 ///
@@ -53,7 +57,7 @@ pub(super) fn lower_heading(
     margin_bottom: heading_style.bottom_margin,
     indent: crate::model::Length::pt(0.0),
     right_indent: crate::model::Length::pt(0.0),
-    align: crate::model::Align::Left,
+    align: Align::Left,
   });
 
   // 見出し直後の改ページ制御。強制改ページ（page_break_after）と keep-with-next は排他:
@@ -78,7 +82,8 @@ mod tests {
   use crate::{
     citation::GeneratedCitations,
     config::Style as ReadStyle,
-    model::{AnchorId, FontKind, LinkTarget},
+    model::FontKind,
+    typeset::layout::{AnchorId, LinkTarget},
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る

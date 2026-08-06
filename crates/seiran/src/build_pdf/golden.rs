@@ -14,8 +14,8 @@ use crate::{
   citation::{References, read_references},
   config::{Config, MemoryProjectSource, ProjectPath, Style},
   font::{FontData, FontDataExt},
-  model::{AnchorMark, Length},
-  typeset::{Page, PlacedBlock},
+  model::Length,
+  typeset::{AnchorMark, Page, PlacedBlock},
 };
 
 /// golden 比較対象の入力名。

@@ -9,9 +9,9 @@ use super::Measurer;
 use crate::{
   config::Style,
   font::FontSystem,
-  model::{AnchorId, FontKind, Length, LinkTarget},
+  model::{FontKind, Length},
   typeset::{
-    layout::{Block, HBox, Line, LineLink, PositionedBox},
+    layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
   },
 };
@@ -214,7 +214,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEn
 #[cfg(test)]
 mod tests {
   use super::{IndexEntryInput, IndexPageRef, sort_index_entries};
-  use crate::model::{AnchorId, LinkTarget};
+  use crate::typeset::layout::{AnchorId, LinkTarget};
 
   fn entry(word: &str, reading: Option<&str>) -> IndexEntryInput {
     return IndexEntryInput {

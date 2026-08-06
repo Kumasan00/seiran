@@ -1,7 +1,10 @@
 //! 引用ブロック（`model::HirNodeKind::Quote`）の lowering
 
 use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
-use crate::model::{Align, HirNode, Length, QuoteKind};
+use crate::{
+  model::{HirNode, Length, QuoteKind},
+  typeset::layout::Align,
+};
 
 /// 引用ブロックをレイアウトノードに変換する
 pub(super) fn lower_quote(

@@ -4,9 +4,10 @@ use super::Measurer;
 use crate::{
   config::Style,
   font::FontSystem,
-  model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget},
+  model::{FontKind, HeadingLevel, Length},
+  resolve::HeadingKey,
   typeset::{
-    layout::{Block, HBox, Line, LineLink, PositionedBox},
+    layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
   },
 };
@@ -232,7 +233,11 @@ fn fill_leader(
 #[cfg(test)]
 mod tests {
   use super::{TextStyle, TocEntryInput, TocSpec, entry_label};
-  use crate::model::{AnchorId, FontKind, HeadingKey, HeadingLevel, Length, LinkTarget};
+  use crate::{
+    model::{FontKind, HeadingLevel, Length},
+    resolve::HeadingKey,
+    typeset::layout::{AnchorId, LinkTarget},
+  };
 
   fn spec() -> TocSpec {
     return TocSpec {

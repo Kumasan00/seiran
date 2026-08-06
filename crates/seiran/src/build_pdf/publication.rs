@@ -16,9 +16,8 @@ use seiran_pdf::{
 };
 
 use super::layout::LaidOutDocument;
-use crate::{
-  model::{AnchorId, AnchorMark, LinkTarget as ModelLinkTarget},
-  typeset::{HBoxContent, HItem, Page, PlacedBlock, PlacedTableRow},
+use crate::typeset::{
+  AnchorId, AnchorMark, HBoxContent, HItem, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow,
 };
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
@@ -108,8 +107,8 @@ fn build_page(
   let mut links = Vec::new();
   for link in &page.links {
     let target = match &link.target {
-      ModelLinkTarget::External(uri) => PublicationLinkTarget::External(uri.clone()),
-      ModelLinkTarget::Internal(id) => {
+      TypesetLinkTarget::External(uri) => PublicationLinkTarget::External(uri.clone()),
+      TypesetLinkTarget::Internal(id) => {
         let Some(dest) = dest_by_id.get(id) else {
           continue;
         };
@@ -310,7 +309,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 /// 位置確定済みの表の 1 行から描画命令を追加する。
 fn push_table_row_ops(
   ops: &mut Vec<PaintOp>,
-  columns: &[crate::model::TableColumn],
+  columns: &[crate::typeset::TableColumn],
   col_widths: &[crate::model::Length],
   placed_row: &PlacedTableRow,
   x0: f32,
@@ -405,10 +404,11 @@ mod tests {
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
     config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig},
     font::{FontData, FontDataExt, FontResources, GlyphRun},
-    model::{AnchorId, AnchorMark, FontType, HeadingKey, HeadingLevel, LabelId, Length, LinkTarget, TableColumn},
+    model::{FontType, HeadingLevel, Length},
+    resolve::{HeadingKey, LabelId},
     typeset::{
-      HBox, HBoxContent, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink,
-      PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
+      AnchorId, AnchorMark, HBox, HBoxContent, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
+      PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,
     },
   };
 
