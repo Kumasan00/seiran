@@ -5,31 +5,31 @@ use std::collections::HashMap;
 use tracing::debug;
 
 use super::error::{CompileError, CompilerBug};
-use crate::{length::Length, model::AssetId, typeset::Block};
+use crate::{length::Length, project::ProjectPath, typeset::Block};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
 pub(super) struct ImageResources {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
-  natural_sizes: HashMap<AssetId, (f32, f32)>,
+  natural_sizes: HashMap<ProjectPath, (f32, f32)>,
   /// パス → ファイルから読み込んだ生バイト列（未デコード）。
-  bytes: HashMap<AssetId, Vec<u8>>,
+  bytes: HashMap<ProjectPath, Vec<u8>>,
 }
 
 impl ImageResources {
   /// `path` の自然寸法を返す。`load_image_resources` に渡さなかったパスは `None`。
-  fn natural_size(&self, path: &AssetId) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
+  fn natural_size(&self, path: &ProjectPath) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
 
   /// 保持していた画像の生バイト列を消費して返す。
   ///
   /// render 用 `seiran_pdf::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
-  pub(super) fn into_image_bytes(self) -> HashMap<AssetId, Vec<u8>> { return self.bytes; }
+  pub(super) fn into_image_bytes(self) -> HashMap<ProjectPath, Vec<u8>> { return self.bytes; }
 }
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
 ///
-/// 画像ファイルを読む唯一の箇所。`source`（[`crate::config::ProjectSource`]）経由で読み込むため、
+/// 画像ファイルを読む唯一の箇所。`source`（[`crate::project::ProjectSource`]）経由で読み込むため、
 /// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
 ///
@@ -38,21 +38,21 @@ impl ImageResources {
 /// 画像の読み込み・デコードに失敗した場合に [`CompileError`] を返す。
 #[allow(clippy::result_large_err)]
 pub(super) fn load_image_resources(
-  source: &dyn crate::config::ProjectSource,
-  paths: &[AssetId],
+  source: &dyn crate::project::ProjectSource,
+  paths: &[ProjectPath],
 ) -> Result<ImageResources, CompileError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
-    let file_bytes = source.read_bytes(&crate::config::ProjectPath::new(path.as_str())).map_err(|source| {
+    let file_bytes = source.read_bytes(path).map_err(|source| {
       return CompileError::ReadImage {
-        path: path.as_str().to_string(),
+        path: path.to_string(),
         source: source.into_io(),
       };
     })?;
-    let natural_size = seiran_pdf::natural_image_size(path.as_str(), &file_bytes).map_err(|source| {
+    let natural_size = seiran_pdf::natural_image_size(&path.to_string(), &file_bytes).map_err(|source| {
       return CompileError::LoadImage {
-        path: path.as_str().to_string(),
+        path: path.to_string(),
         source,
       };
     })?;
@@ -155,7 +155,7 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::config::MemoryProjectSource;
+  use crate::project::MemoryProjectSource;
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -173,20 +173,21 @@ mod tests {
     let png_bytes = read_image_fixture("testimage5.png");
     let expected_len = png_bytes.len();
     let source = MemoryProjectSource::new().with_bytes("/project/testimage5.png", png_bytes);
-    let paths = vec![AssetId::new("/project/testimage5.png")];
+    let paths = vec![ProjectPath::new("/project/testimage5.png")];
 
     // Act
     let resources = load_image_resources(&source, &paths).expect("メモリ上の fixture を読めるはず");
 
     // Assert — 自然寸法（fixture 実寸の 756x1008）とバイト列がそのまま届いているはず
-    let (width, height) =
-      resources.natural_size(&AssetId::new("/project/testimage5.png")).expect("自然寸法が確定するはず");
+    let (width, height) = resources
+      .natural_size(&ProjectPath::new("/project/testimage5.png"))
+      .expect("自然寸法が確定するはず");
     assert!((width - 756.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
     assert!((height - 1008.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
     let bytes = resources.into_image_bytes();
     assert_eq!(bytes.len(), 1);
     assert_eq!(
-      bytes[&AssetId::new("/project/testimage5.png")].len(),
+      bytes[&ProjectPath::new("/project/testimage5.png")].len(),
       expected_len,
       "読み込んだバイト数は登録した fixture のバイト数と一致するはず"
     );
@@ -196,7 +197,7 @@ mod tests {
   fn load_image_resources_wraps_missing_path_as_read_image_error() {
     // Arrange — 何も登録していない MemoryProjectSource に存在しないパスを要求する
     let source = MemoryProjectSource::new();
-    let paths = vec![AssetId::new("/project/does-not-exist.png")];
+    let paths = vec![ProjectPath::new("/project/does-not-exist.png")];
 
     // Act
     let result = load_image_resources(&source, &paths);

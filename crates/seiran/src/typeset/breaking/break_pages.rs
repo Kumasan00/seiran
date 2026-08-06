@@ -2417,7 +2417,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Image {
-        path: crate::model::AssetId::new("x.png"),
+        path: crate::project::ProjectPath::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(15.0)),
         target_dpi: None,
@@ -2445,7 +2445,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Image {
-        path: crate::model::AssetId::new("x.png"),
+        path: crate::project::ProjectPath::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(30.0)),
         target_dpi: None,
@@ -3234,7 +3234,7 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: crate::model::AssetId::new("x.png"),
+      path: crate::project::ProjectPath::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
@@ -3256,7 +3256,7 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: crate::model::AssetId::new("x.png"),
+      path: crate::project::ProjectPath::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,

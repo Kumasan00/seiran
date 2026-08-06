@@ -45,7 +45,7 @@ pub enum LayoutNode {
   /// 画像（PNG / JPEG / SVG）
   Image {
     /// 画像ファイルへのパス
-    path: crate::model::AssetId,
+    path: crate::project::ProjectPath,
     /// 描画幅（`None` の場合は `seiran_pdf` 段で本文幅 / 縦横比から決定）
     width: Option<Length>,
     /// 描画高さ（`None` の場合は `seiran_pdf` 段で本文幅 / 縦横比から決定）

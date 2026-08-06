@@ -1,6 +1,6 @@
 //! HIR ノードの識別子 [`NodeId`]。
 
-use crate::model::SourceId;
+use crate::source::SourceId;
 
 /// 1 回のコンパイル内で HIR ノードを一意に識別する ID
 ///

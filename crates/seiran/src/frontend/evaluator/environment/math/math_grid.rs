@@ -228,7 +228,8 @@ mod tests {
       evaluator::lookup_env_parse_mode,
       syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
     },
-    model::{HirBuilder, HirMathKind, SourceId},
+    model::{HirBuilder, HirMathKind},
+    source::SourceId,
   };
 
   /// 緑ツリーを再帰的に走査して最初の `Environment` ノードを返す

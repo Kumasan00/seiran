@@ -2,7 +2,7 @@
 
 use crate::{
   frontend::syntax::token::{Token, TokenKind},
-  model::Span,
+  source::Span,
 };
 
 /// テキスト入力をトークン列に分割するレキサー

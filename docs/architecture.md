@@ -15,7 +15,8 @@
 経緯は、知らないと今日の判断を誤るもの（型の形を戻してしまう、削除済みの規約を復活させる等）だけを残し、
 それ以外は git 履歴に委ねる。
 
-目次: [`seiran`](#seiran)（[`model`](#model) / [`config`](#config) / [`resolve`](#resolve) /
+目次: [`seiran`](#seiran)（[`length` / `color`](#length--color) / [`source`](#source) /
+[`project`](#project) / [`model`](#model) / [`config`](#config) / [`resolve`](#resolve) /
 [`frontend`](#frontend) / [`citation`](#citation) / [`font`](#font) / [`typeset`](#typeset) /
 [`build_pdf`](#build_pdf)） / [`seiran-pdf`](#seiran-pdf) / [`seiran-cli`](#seiran-cli)
 
@@ -26,7 +27,7 @@
 7 crate — model / config / resolve / frontend / citation / font / typeset — を非公開 module として吸収した。
 crate はデプロイ・外部依存・独立再利用の単位に限定し、コンパイル段階を crate 境界にしない）。
 
-以下の 9 つの子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の 11 個の子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
@@ -59,15 +60,80 @@ module で、crate 内の他 module への依存を持たない（外部依存�
 - crate root 直下の非公開 module なので、`crate::length::positive` は crate 全体から到達できる
   （`model` の子だった頃に必要だった `pub(crate) mod` は不要になった）。
 
+### `source`
+
+#### 責務
+
+ソースの同一性 `SourceId` と位置 `Span` を所有する leaf module（#337 で `model` から移設）。
+crate root 直下の非公開 module で、crate 内の他 module への依存を持たない。
+
+- `SourceId(usize)`: 実ソース 1 つ分の不透明な識別子。名前・パスは持たず、ファイル名・内容への
+  逆引きは `build_pdf::snapshot::SourceDb` の責務（`SourceId` の唯一の発行元でもある）。
+- `Span { start: u32, end: u32 }`: ソーステキスト上のバイト範囲。`DUMMY` / `merge` を持つ。
+
+#### 不変条件・注意点
+
+- どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。`model` に
+  置いていたのは「複数段が共有するから」という理由だったが、共有は所有の理由にならない（epic #332）。
+- miette には依存しない。`miette::SourceSpan` への変換は診断を構築する側（`frontend::span_ext` /
+  `resolve::error::span_to_source_span`）が行う（orphan rule で `From` を書けないため）。
+
+### `project`
+
+#### 責務
+
+外部資源取得の seam を所有する leaf module（#300 で導入、#337 で `config::project_source` から
+crate root 直下へ移設）。compiler が `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・
+フォント・画像のすべてを 1 つの seam 経由で取得する。crate 内の他 module への依存は持たない。
+
+`config` の子だったのは「I/O を行う全 module が既に `config` へ依存しているから」という理由だったが、
+seam は `config` の入力だけの道具ではなく全外部資源の窓口であり、その配置は `font` → `config` という
+役割に合わない依存を残していた。所有 module を分けたことで依存方向は `config` → `font` の一方向になる
+（#337）。
+
+```rust
+pub trait ProjectSource: Send + Sync {
+  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError>;
+  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError>;
+  fn exists(&self, path: &ProjectPath) -> bool;
+}
+```
+
+- 実装は 2 つ。`FilesystemProjectSource`（CLI・実ビルド用）と `MemoryProjectSource`（決定的テスト用）。
+  実装が 1 つしかない箇所には trait を作らない方針なので、この 2 実装があることが seam の存在理由になる。
+- `exists` は issue のスケッチには無いが必要。パス存在確認を `Path::canonicalize` で行っていた実装を
+  置き換えるためで、これが無いと `resolve_paths` の集約報告（`MultipleValidationErrors` に全パス不正を
+  1 度に載せる）が逐次 `?` の早期 return に退化し、memory adapter でもパス検証ができなくなる。
+- `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
+  2 度ディスクから読まない。呼び出し側（`FontDataExt::new`）も共有パスを 1 回だけ要求する。
+- `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去。先頭の `./` は
+  Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。設定値そのものの正規化は
+  #301 の担当。
+- `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**。画像も同じ型で識別する（#337 で
+  画像パスの newtype `model::AssetId` を削除した。同じパスを表す newtype を 2 つ持っても情報も
+  不変条件も増えず、読み込みのたびに `ProjectPath` へ変換し直していただけだったため）。
+  `Ord` を実装しており、`build_pdf::image_manifest` の `BTreeSet<ProjectPath>` による決定的な
+  重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と `fig/a.png`
+  は manifest 上 1 件に畳まれる（同じファイルを 2 度読まない）。
+- ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
+  `SourceReadError::into_io()` で `std::io::Error` へ平坦化してから `#[source]` に載せる。
+  `#[diagnostic_source]` で `SourceReadError` をそのまま連鎖させると miette が入れ子の診断ブロックを
+  足し、seam 導入前と診断内容が変わってしまうため（#300 の「振る舞いを変えない」条件）。
+- 書き込みメソッドは持たない。出力ディレクトリの作成と PDF の書き出しは資源取得ではなく出力側の
+  関心事なので、`seiran-cli` が `std::fs` で直接行う（#304 / #307）。
+- 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
+  `crates/seiran/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
+
 ### `model`
 
 #### 責務
 
-パイプライン全段が共有するデータモデルの leaf module。外部依存は serde / garde のみで、診断
-ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
-crate 内では `length` / `color` / `font` にのみ依存する（HIR や `table_column` が値として `Length` /
-`Color` / `FontKind` を持つため。#334 で `link` を `typeset::layout` へ移し `model` → `citation` の
-逆向き依存が消えた状態は保つ — 後段 module への依存は持たない）。
+パイプライン全段が共有するデータモデル。外部依存は serde / garde のみで、`model` が定義する型自体は
+診断ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
+crate 内では `length` / `color` / `font` / `source` / `project` に依存する（HIR や `table_column` が値として
+`Length` / `Color` / `FontKind` / `SourceId` / `Span` / `ProjectPath` を持つため。#334 で `link` を
+`typeset::layout` へ移し `model` → `citation` の逆向き依存が消えた状態は保つ — 後段 module への依存は
+持たない）。
 
 epic #332 はこの module 自体の解体を目標にしている（「共有されていること」は所有者の不在であって
 所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ、
@@ -85,16 +151,19 @@ crate root 直下の `length` / `color`、フォント分類の `FontKind` / `Fo
 - **語彙型**: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有、#334）/ `theorem`
-  （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
-  `span`（`Span`）。小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
+  （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）。
+  小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
   `Display`）のみを持つ。値概念そのものである `Length` / `Color` は `length` / `color`、フォント分類の
-  `FontType` / `FontKind` / `FontMap` は `font` の所有（#336）。
-- **起源識別子**: `origin` が `SourceId(usize)` を持ち（`Origin` / `GeneratedOrigin` は #324 で削除 —
-  意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
-  `ids` が `AssetId` の newtype を持つ。意味解析が確定する `LabelId` / `HeadingKey` は `resolve::ids`、
+  `FontType` / `FontKind` / `FontMap` は `font` の所有（#336）。ソースの同一性 `SourceId` と位置 `Span` は
+  `source` の所有（#337、後述の source 節）。
+- **識別子はここに持たない**: 起源識別子 `SourceId` は `source`（`Origin` / `GeneratedOrigin` は #324 で
+  削除 — 意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
+  意味解析が確定する `LabelId` / `HeadingKey` は `resolve::ids`、
   組版時に成立する `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` は `typeset::layout::link`
   へ移設済み（#334、後述の該当節）。引用キー `CitationId` と CSL 整形の生成物専用の語彙
   （`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、後述の citation 節）。
+  画像パスの newtype `AssetId` は `project::ProjectPath` と同じパスを表す重複だったため削除し、
+  HIR の `HirNodeKind::Figure` が `ProjectPath` を直接持つ（#337）。
 - `math_style`（`MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
   `MathStyle` は HIR の数式評価変換（`HirMathKind::Styled`）と `typeset::lowering` の数式経路が
   共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
@@ -118,11 +187,13 @@ crate root 直下の `length` / `color`、フォント分類の `FontKind` / `Fo
 
 #### 不変条件・注意点
 
-- **miette に依存しない**。ソース位置は軽量な `Span { start, end }` で持ち、`miette::SourceSpan` への
+- **model の型は miette に依存しない**（`project` は `SourceReadError` のために miette へ依存するが、
+  それは seam のエラー型の話で、HIR や語彙型が診断を持つわけではない）。ソース位置は
+  `source` の軽量な `Span { start, end }` で持ち、`miette::SourceSpan` への
   変換は診断を構築する側が行う。`Span` と `SourceSpan` はどちらも consumer にとって外部型のため
   orphan rule で `From` を書けず、`frontend` は非公開ヘルパー `span_ext::ToSourceSpan`、
   `typeset::lowering` はモジュール内 `fn` でそれぞれ変換する。`frontend` の lexer / parser / CST も
-  独自の Span 型を持たず `model::Span` を直接使う。
+  独自の Span 型を持たず `source::Span` を直接使う。
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
@@ -158,9 +229,9 @@ crate root 直下の `length` / `color`、フォント分類の `FontKind` / `Fo
 
 #### 責務
 
-`config.toml` / `style.toml` のデータモデルと読込・検証、および外部資源取得の seam（`project_source`）。
-`config_toml` / `style` / `layout` / `policy` / `project_source` の 5 子モジュールはすべて非公開で、公開 API は
-module root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style` / `config::ProjectSource`。
+`config.toml` / `style.toml` のデータモデルと読込・検証。外部資源取得の seam は `project` の所有で、
+`config` はその利用者（#337）。`config_toml` / `style` / `layout` / `policy` の 4 子モジュールはすべて非公開で、公開 API は
+module root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style`。
 テスト用ヘルパは `config::test_support` として再エクスポート）。子モジュール名が `config` ではなく
 `config_toml` なのは、`crate::config` 自身と同名の子モジュールが `clippy::module_inception` に
 抵触するため（#307）。`policy` は意味解析（`crate::resolve`）へ渡す設定の投影
@@ -172,38 +243,6 @@ root facade が再エクスポートするのは**実際に名指しされる名
 `ConfigValidationError` / `StyleValidationError` と接頭辞で区別する — かつて双方が `ValidationError` を
 名乗り、名前衝突を避けるために module を `pub mod` 公開していたが、改名して衝突自体を無くした。
 同名エラー型を再導入しない。
-
-#### `project_source`（外部資源取得の seam、#300）
-
-compiler が `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
-1 つの seam 経由で取得する。`config` に置くのは、I/O を行う全 module（`citation` / `font` / `build_pdf`）が
-既に `config` へ依存しているため（epic #298 の `project.rs` の置き場所とも一致する）。
-
-```rust
-pub trait ProjectSource: Send + Sync {
-  fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError>;
-  fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError>;
-  fn exists(&self, path: &ProjectPath) -> bool;
-}
-```
-
-- 実装は 2 つ。`FilesystemProjectSource`（CLI・実ビルド用）と `MemoryProjectSource`（決定的テスト用）。
-  実装が 1 つしかない箇所には trait を作らない方針なので、この 2 実装があることが seam の存在理由になる。
-- `exists` は issue のスケッチには無いが必要。パス存在確認を `Path::canonicalize` で行っていた実装を
-  置き換えるためで、これが無いと `resolve_paths` の集約報告（`MultipleValidationErrors` に全パス不正を
-  1 度に載せる）が逐次 `?` の早期 return に退化し、memory adapter でもパス検証ができなくなる。
-- `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
-  2 度ディスクから読まない。呼び出し側（`FontDataExt::new`）も共有パスを 1 回だけ要求する。
-- `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去）で、
-  シンボリックリンクは解決しない。設定値そのものの正規化は #301 の担当。
-- ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
-  `SourceReadError::into_io()` で `std::io::Error` へ平坦化してから `#[source]` に載せる。
-  `#[diagnostic_source]` で `SourceReadError` をそのまま連鎖させると miette が入れ子の診断ブロックを
-  足し、seam 導入前と診断内容が変わってしまうため（#300 の「振る舞いを変えない」条件）。
-- 書き込みメソッドは持たない。出力ディレクトリの作成と PDF の書き出しは資源取得ではなく出力側の
-  関心事なので、`seiran` の build driver（`build_pdf`）が `std::fs` で直接行う。
-- 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
-  `crates/seiran/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
 
 #### `config`（config.toml）
 
@@ -447,7 +486,7 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
   citation へ移設し、#324 で他の fact と同じ 1 走査にするため `resolve::analyze` へ再移設）。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
   スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
   検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結しない。
-- 診断は `model::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
+- 診断は `source::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
 ### `citation`
 
@@ -538,9 +577,9 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 処理済みフォント設定（`FontConfig` / `FontConfigs` / `VariationAxis` / `Feature` / `TextDirection`）の
 所有もここへ移した。前者は「言語・スタイルが確定した 19 種別」という分類とその全域性の不変条件、
 後者は font の入力契約であり、いずれもフォント処理が意味を決める型だから。
-crate 内では `length` / `color` に依存する。`config` への依存は外部資源取得の seam
-（`ProjectSource` / `ProjectPath`）のためだけに残っており、seam を `project` module へ切り出す #337 で
-解消される。
+crate 内では `length` / `color` / `project` に依存する。`config` には依存しない — 唯一残っていた
+外部資源取得の seam 経由の依存は、seam を `project` module へ切り出した #337 で解消され、
+依存方向は `config` → `font` の一方向になった。
 
 #### モジュール構成
 
@@ -748,7 +787,7 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 `AnalyzedDocument` 全体を通して行われるため、`\ref` は別ソース（別グループ）や書誌のラベルも指せる
 （複数ソースの束ね方自体は `resolve::analyze` 側の関心事になり、`lowering` は 1 個の `DocumentContent`
 を受け取るだけになった）。
-（`SourceId` は `seiran::build_pdf::project::SourceDb::register` が唯一の発行元であり、`resolve` はここで
+（`SourceId` は `seiran::build_pdf::snapshot::SourceDb::register` が唯一の発行元であり、`resolve` はここで
 発行された ID を受け取って運ぶだけで自ら発行しない。#299）
 
 #### `block`
@@ -880,7 +919,7 @@ solver に閉じ込める）。
 `wrap_resolve_error` / `wrap_citation_semantic_error` / `wrap_semantics_error`）と、`compile` が返す公開型
 （`Compilation` / `BuildStatistics`。
 `DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、`OutputPlan` は
-`project` 子 module から再エクスポート）を置く。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
+`snapshot` 子 module から再エクスポート）を置く。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
 -> Result<Compilation, DiagnosticSet>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
 （`--config` が指す値と同じ）。`base_dir`（相対パス解決の基準ディレクトリ）は `compile` が
 `std::env::current_dir()` から解決して非公開の `compile_with_base_dir` へ注入する — この関数を挟むことで
@@ -894,9 +933,11 @@ solver に閉じ込める）。
 `ShaperInstances` / `HarfRustShapers` / `FontMetrics`）の構築順序・寿命関係は `font::system` に閉じており、
 facade はこれを知らない（issue #278）。子 module:
 
-- `project`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
-  データ）と、出力先情報 `OutputPlan`。**画像は含めない** — `\image{...}` でしかパスが分からないため、
-  `parse_project` が返す `ImageManifest` に従って driver が別途読み込む
+- `snapshot`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
+  データ）と、出力先情報 `OutputPlan`、および `SourceId` の唯一の発行元 `SourceDb`。**画像は含めない** —
+  `\image{...}` でしかパスが分からないため、`parse_project` が返す `ImageManifest` に従って driver が
+  別途読み込む（module 名は #337 で `project` から改名 — crate root の `crate::project` と
+  名前が重ならないようにするため）
 - `semantics`: `resolve::analyze`（ラベル・`\ref`・カウンタ・見出し・引用箇所の意味解析）→
   `citation::load_citation_style`（CSL スタイル・ロケールの読込、引用が無ければ呼ばない）→
   `citation::generate_citations`（`\cite` の CSL 整形。表示 side table + 書誌を生成）の呼び出し順序を
@@ -908,7 +949,8 @@ facade はこれを知らない（issue #278）。子 module:
   `typeset::DocumentContent` へ束ねるだけの薄いビューになる。driver は analyze → style → generate の
   順序も、表示・書誌を本文とは別枠で渡す組み立ても知らない
 - `image_manifest`: `parse_project` が HIR から集める画像パス一覧 `ImageManifest`
-  （重複なし・`AssetId` の昇順）
+  （重複なし・`ProjectPath` の昇順。`BTreeSet<ProjectPath>` で集めるので、正規化して等しいパスは
+  1 件に畳まれる）
 
 `parse_all_sources` は `SourceDb` の各ソースを `frontend::parse_source` に通して `Vec<HirSource>` を返し、
 `parse_project` が `HirDocument::assemble` でプロジェクト全体の文書木へ組み立てる。`assemble` は
@@ -937,7 +979,7 @@ HIR を直接読む。
   元の `Report` をそのまま返す（`compile` に包む前後で診断のレンダリング結果が完全に一致することを保証する）
 - `error`: `CompileError`（各 module のエラーを束ねる。ラベル・カウンタの解決は `resolve` module が行うため、
   `typeset::lowering` 由来の診断エラーはもう無い。`resolve::SemanticError` は発生時点から `SourceId` を
-  運んでおり、`wrap_resolve_error` は `project::SourceDb`（`SourceId` の唯一の発行元。`config.sources` の
+  運んでおり、`wrap_resolve_error` は `snapshot::SourceDb`（`SourceId` の唯一の発行元。`config.sources` の
   読込時に `register` する）から `NamedSource` を引き当てて `Resolve` を組み立てる（#299。旧 `SourceMap` は
   独立採番に頼っていたが `SourceDb` へ統一した）。未定義引用キー（`UnknownCitationKeys`）だけは箇所ごとに
   `SourceId` を持つため、ソースごとの位置付き診断へ組み替える（`wrap_unknown_citation_keys`）。

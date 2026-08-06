@@ -42,7 +42,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::lowering::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
-  use crate::{config::Style, frontend::parse_source, model::SourceId};
+  use crate::{config::Style, frontend::parse_source, source::SourceId};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
   fn fixture_path(name: &str) -> PathBuf {

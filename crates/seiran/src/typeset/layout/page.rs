@@ -12,7 +12,7 @@ use super::{
   link::{AnchorMark, LinkTarget},
   table_box::{TableColumn, TableRowBox},
 };
-use crate::{length::Length, model::AssetId};
+use crate::{length::Length, project::ProjectPath};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]
@@ -163,7 +163,7 @@ pub enum PlacedBlock {
   /// 画像
   Image {
     /// 画像ファイルへのパス
-    path: AssetId,
+    path: ProjectPath,
     /// 本文左端からの水平オフセット（pt）
     x: Length,
     /// ページ上端からの距離（pt、画像上端）

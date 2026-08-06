@@ -3,7 +3,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::model::{SourceId, Span};
+use crate::source::{SourceId, Span};
 
 /// 未定義キーを含む引用箇所 1 件
 #[derive(Debug, Clone)]
@@ -74,10 +74,10 @@ impl SemanticError {
   }
 }
 
-/// `crate::model::Span` を診断用の `miette::SourceSpan` へ変換する
+/// `crate::source::Span` を診断用の `miette::SourceSpan` へ変換する
 ///
 /// `SemanticError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
 /// カウンタ登録（`counter`）とツリー構築（`resolver`）の双方から共有する
-pub(crate) fn span_to_source_span(span: crate::model::Span) -> miette::SourceSpan {
+pub(crate) fn span_to_source_span(span: crate::source::Span) -> miette::SourceSpan {
   return miette::SourceSpan::from((span.start as usize, span.len() as usize));
 }

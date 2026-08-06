@@ -14,8 +14,9 @@ use std::collections::HashMap;
 
 use crate::{
   config::{CounterName, DocumentPolicy, TheoremReset},
-  model::{NodeId, SourceId, SourceMap, Span, TheoremClass},
+  model::{NodeId, SourceMap, TheoremClass},
   resolve::{LabelId, SemanticError, error::span_to_source_span},
+  source::{SourceId, Span},
 };
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
@@ -319,11 +320,11 @@ mod tests {
 
     // Act
     let thm = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap()
       .unwrap();
     let lemma = r
-      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap()
       .unwrap();
 
@@ -339,7 +340,7 @@ mod tests {
 
     // Act
     let result = r
-      .increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap();
 
     // Assert
@@ -350,12 +351,12 @@ mod tests {
   fn increment_theorem_duplicate_label_errors() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::model::SourceId::new(0))
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::source::SourceId::new(0))
       .unwrap();
 
     // Act
     let result =
-      r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), crate::model::SourceId::new(0));
+      r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), crate::source::SourceId::new(0));
 
     // Assert
     assert!(matches!(result, Err(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
@@ -435,16 +436,16 @@ mod tests {
 
     // Act
     let a = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap()
       .unwrap();
     let b = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap()
       .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
       .unwrap()
       .unwrap();
 

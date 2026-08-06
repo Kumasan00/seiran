@@ -2,7 +2,7 @@
 //!
 //! テキスト内容はトークンに複製せず、[`Span`] 経由で元ソースから取得する。
 
-use crate::model::Span;
+use crate::source::Span;
 
 /// トークン
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -48,7 +48,7 @@ impl Format {
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
 pub fn read_references<P: AsRef<Path>>(
-  source: &dyn crate::config::ProjectSource,
+  source: &dyn crate::project::ProjectSource,
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
@@ -57,7 +57,7 @@ pub fn read_references<P: AsRef<Path>>(
   };
   let path_ref = path.as_ref();
   debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
-  let content = source.read_text(&crate::config::ProjectPath::new(path_ref)).map_err(|source| {
+  let content = source.read_text(&crate::project::ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
       source: source.into_io(),
@@ -111,7 +111,7 @@ mod tests {
     parse_references, read_references,
     reference::NumberOrString,
   };
-  use crate::config::{FilesystemProjectSource, MemoryProjectSource};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource};
 
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }

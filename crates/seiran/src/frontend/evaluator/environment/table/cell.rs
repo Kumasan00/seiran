@@ -10,7 +10,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
   },
-  model::{HirBuilder, HirInline, HirInlineKind, HirTableCell, Span},
+  model::{HirBuilder, HirInline, HirInlineKind, HirTableCell},
+  source::Span,
 };
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する

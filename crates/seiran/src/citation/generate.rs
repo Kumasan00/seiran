@@ -152,10 +152,12 @@ mod tests {
       style::load_citation_style,
       test_fixtures::{ieee_csl_path, sample_references},
     },
-    config::{DocumentPolicy, FilesystemProjectSource, Style},
+    config::{DocumentPolicy, Style},
     font::FontKind,
-    model::{HirDocument, SourceId},
+    model::HirDocument,
+    project::FilesystemProjectSource,
     resolve::{AnalyzedDocument, analyze},
+    source::SourceId,
   };
 
   /// ソース 1 本をパースして `HirDocument` にする

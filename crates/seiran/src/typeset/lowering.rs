@@ -156,8 +156,9 @@ pub(super) mod test_support {
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     frontend::parse_source,
-    model::{HirDocument, SourceId},
+    model::HirDocument,
     resolve::{AnalyzedDocument, analyze},
+    source::SourceId,
   };
 
   /// `.sei` スニペットを parse → analyze して解析済みドキュメントを作る
@@ -547,8 +548,9 @@ mod tests {
     citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     frontend::parse_source,
-    model::{HirDocument, SourceId},
+    model::HirDocument,
     resolve::{AnalyzedDocument, analyze},
+    source::SourceId,
     typeset::layout::{AnchorId, AnchorMark, LinkTarget},
   };
 

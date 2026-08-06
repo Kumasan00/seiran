@@ -17,16 +17,18 @@
 //! 値概念の型 `Length` / `Color` は crate root 直下の leaf module `crate::length` / `crate::color` へ、
 //! フォント分類の型 `FontKind` / `FontType` / `FontMap` は `crate::font` へ、段組みの 1 段幅を求める
 //! `column_width` は `crate::config` の layout へ移設済み（#336）。
+//!
+//! ソースの同一性と位置（`SourceId` / `Span`）は HIR より前から存在する概念なので
+//! crate root 直下の leaf module `crate::source` へ移設済み。画像パスの newtype `AssetId` は
+//! 実質的に `ProjectPath` の重複だったため削除し、HIR の `Figure` も `crate::project::ProjectPath`
+//! を直接持つようにした（#337。これで `model` は `source` / `project` に依存する）。
 
 mod caption;
 mod heading_level;
 mod hir;
-mod ids;
 mod math_class;
 mod math_style;
-mod origin;
 mod quote;
-mod span;
 mod table_column;
 mod theorem;
 
@@ -37,11 +39,8 @@ pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
   HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
 };
-pub use ids::AssetId;
 pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_style::MathStyle;
-pub use origin::SourceId;
 pub use quote::QuoteKind;
-pub use span::Span;
 pub use table_column::{ColumnAlign, ColumnWidth};
 pub use theorem::TheoremClass;

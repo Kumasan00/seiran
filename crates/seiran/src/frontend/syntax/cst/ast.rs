@@ -10,7 +10,7 @@ use crate::{
     },
     token::TokenKind,
   },
-  model::Span,
+  source::Span,
 };
 
 /// コマンド呼び出しの型付きビュー

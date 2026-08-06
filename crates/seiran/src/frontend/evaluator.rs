@@ -15,7 +15,8 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, Span},
+  model::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
+  source::Span,
 };
 
 mod command;
@@ -201,14 +202,14 @@ impl ParagraphBuffer {
 /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
 pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
+  let builder = HirBuilder::new(crate::source::SourceId::new(0));
   return evaluate_children(source, &builder, node);
 }
 
 /// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
 #[cfg(test)]
 pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
+  let builder = HirBuilder::new(crate::source::SourceId::new(0));
   return inline::extract_inline_nodes(source, &builder, node);
 }
 
@@ -219,7 +220,7 @@ pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Res
 pub(crate) fn run_inline_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirInline>, EvalError>,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
+  let builder = HirBuilder::new(crate::source::SourceId::new(0));
   return handler(&builder);
 }
 
@@ -228,7 +229,7 @@ pub(crate) fn run_inline_handler(
 pub(crate) fn run_block_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
+  let builder = HirBuilder::new(crate::source::SourceId::new(0));
   return handler(&builder);
 }
 

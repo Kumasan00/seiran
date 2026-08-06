@@ -2,19 +2,22 @@
 
 use std::collections::BTreeSet;
 
-use crate::model::{AssetId, HirDocument, HirNode, HirNodeKind};
+use crate::{
+  model::{HirDocument, HirNode, HirNodeKind},
+  project::ProjectPath,
+};
 
-/// 画像パスの一覧（重複なし・パス文字列の昇順）。
+/// 画像パスの一覧（重複なし・[`ProjectPath`] の昇順）。
 pub(super) struct ImageManifest {
   /// 画像ファイルへのパス（`\image{...}` の必須引数、重複なし・昇順）
-  pub(super) paths: Vec<AssetId>,
+  pub(super) paths: Vec<ProjectPath>,
 }
 
 /// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する。
 ///
 /// 定理、引用、リスト内の入れ子も探索する。
 pub(super) fn collect_image_paths(document: &HirDocument) -> ImageManifest {
-  let mut paths: BTreeSet<AssetId> = BTreeSet::new();
+  let mut paths: BTreeSet<ProjectPath> = BTreeSet::new();
   for group in document.groups() {
     walk_nodes(&group.nodes, &mut paths);
   }
@@ -24,7 +27,7 @@ pub(super) fn collect_image_paths(document: &HirDocument) -> ImageManifest {
 }
 
 /// `nodes` を再帰的に走査し、`Figure` の `image_path` を `paths` へ集める。
-fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<AssetId>) {
+fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
   for node in nodes {
     match &node.kind {
       HirNodeKind::Figure { image_path, .. } => {
@@ -53,7 +56,7 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<AssetId>) {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::collect_image_paths;
-  use crate::model::{AssetId, HirDocument, SourceId};
+  use crate::{model::HirDocument, project::ProjectPath, source::SourceId};
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
@@ -72,8 +75,21 @@ mod tests {
     // Act
     let manifest = collect_image_paths(&document(&source));
 
-    // Assert — 重複が除かれ、パス文字列の昇順で並ぶ
-    assert_eq!(manifest.paths, vec![AssetId::new("a.png"), AssetId::new("b.png")]);
+    // Assert — 重複が除かれ、昇順で並ぶ
+    assert_eq!(manifest.paths, vec![ProjectPath::new("a.png"), ProjectPath::new("b.png")]);
+  }
+
+  #[test]
+  fn collects_paths_that_normalize_to_the_same_file_only_once() {
+    // Arrange — 同じファイルを冗長な `.` 付きと素の形で 2 回参照する
+    let source = format!("{}{}", figure("fig/./a.png"), figure("fig/a.png"));
+
+    // Act
+    let manifest = collect_image_paths(&document(&source));
+
+    // Assert — `ProjectPath` の正規化は重複除去より前に効くので 1 件に畳まれる
+    // （画像パスの型が `ProjectPath` へ一本化された結果。同じファイルを 2 回読まない）
+    assert_eq!(manifest.paths, vec![ProjectPath::new("fig/a.png")]);
   }
 
   #[test]
@@ -86,7 +102,7 @@ mod tests {
     let manifest = collect_image_paths(&document(&source));
 
     // Assert
-    assert_eq!(manifest.paths, vec![AssetId::new("nested.png")]);
+    assert_eq!(manifest.paths, vec![ProjectPath::new("nested.png")]);
   }
 
   #[test]
@@ -98,7 +114,7 @@ mod tests {
     let manifest = collect_image_paths(&document(&source));
 
     // Assert
-    assert_eq!(manifest.paths, vec![AssetId::new("in-list.png")]);
+    assert_eq!(manifest.paths, vec![ProjectPath::new("in-list.png")]);
   }
 
   #[test]

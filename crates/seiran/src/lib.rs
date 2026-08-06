@@ -15,7 +15,9 @@ mod frontend;
 // カスタムバリデータ参照のために要った `pub(crate)` は不要になった。
 mod length;
 mod model;
+mod project;
 mod resolve;
+mod source;
 mod typeset;
 
 pub use build_pdf::{BuildStatistics, Compilation, DependencyManifest, DiagnosticSet, OutputPlan, compile};
@@ -30,5 +32,5 @@ pub use build_pdf::{BuildStatistics, Compilation, DependencyManifest, Diagnostic
 // 経由でファイルから読み込まれ内部で完結する）ため、ここには含めない。
 #[doc(hidden)]
 pub use config::test_support;
-pub use config::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
+pub use project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 pub use seiran_pdf::Publication;

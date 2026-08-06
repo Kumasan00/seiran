@@ -1,4 +1,25 @@
-//! ソーステキスト上のバイト範囲 [`Span`]。
+//! ソースの同一性 [`SourceId`] と位置 [`Span`]。
+//!
+//! どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。
+//! trait も診断も持たない leaf module として、`crate::source` から crate 全体が参照する
+//! （#337 で `model` から移設）。
+
+/// 複数ソースファイルをまとめて処理する際の、実ソース 1 つ分の位置識別子
+///
+/// 名前・パスは持たない不透明な識別子。呼び出し元が渡した順序に対応するインデックスを
+/// そのまま運び、ファイル名・内容への逆引きは呼び出し元（`seiran::build_pdf`）の責務とする。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SourceId(usize);
+
+impl SourceId {
+  /// 新しい `SourceId` を生成する
+  #[must_use]
+  pub fn new(index: usize) -> Self { return SourceId(index); }
+
+  /// 元のインデックスを返す
+  #[must_use]
+  pub fn index(self) -> usize { return self.0; }
+}
 
 /// ソーステキスト上のバイト範囲
 ///
@@ -41,40 +62,68 @@ impl Span {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use super::{SourceId, Span};
+
+  #[test]
+  fn source_id_round_trips_index() {
+    // Arrange / Act
+    let id = SourceId::new(3);
+
+    // Assert
+    assert_eq!(id.index(), 3);
+  }
 
   #[test]
   fn new_creates_span_with_given_offsets() {
+    // Arrange / Act
     let span = Span::new(10, 20);
+
+    // Assert
     assert_eq!(span.start, 10);
     assert_eq!(span.end, 20);
   }
 
   #[test]
   fn len_returns_byte_length() {
+    // Arrange
     let span = Span::new(5, 15);
+
+    // Act / Assert
     assert_eq!(span.len(), 10);
   }
 
   #[test]
   fn merge_combines_two_spans() {
+    // Arrange
     let a = Span::new(5, 10);
     let b = Span::new(8, 15);
+
+    // Act
     let merged = a.merge(b);
+
+    // Assert
     assert_eq!(merged, Span::new(5, 15));
   }
 
   #[test]
   fn merge_non_overlapping_spans() {
+    // Arrange
     let a = Span::new(0, 5);
     let b = Span::new(10, 20);
+
+    // Act
     let merged = a.merge(b);
+
+    // Assert — 間の範囲も含む最小の Span になる
     assert_eq!(merged, Span::new(0, 20));
   }
 
   #[test]
   fn default_is_zero_span() {
+    // Arrange / Act
     let span = Span::default();
+
+    // Assert
     assert_eq!(span, Span::new(0, 0));
   }
 }

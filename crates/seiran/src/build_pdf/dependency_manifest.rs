@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use super::{image_manifest::ImageManifest, project::ProjectSnapshot};
+use super::{image_manifest::ImageManifest, snapshot::ProjectSnapshot};
 use crate::font::FontType;
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
@@ -45,7 +45,7 @@ impl DependencyManifest {
       style_path: snapshot.config.style_path.clone(),
       references_path: snapshot.config.references_path.clone(),
       source_paths: snapshot.config.sources.clone(),
-      image_paths: image_manifest.paths.iter().map(|asset_id| return PathBuf::from(asset_id.as_str())).collect(),
+      image_paths: image_manifest.paths.iter().map(|path| return path.as_path().to_path_buf()).collect(),
       font_paths: font_paths.into_iter().collect(),
       csl_path: snapshot.style.reference.csl_path.clone(),
       locale_path: snapshot.style.reference.locale_path.clone(),
@@ -60,9 +60,9 @@ mod tests {
 
   use super::DependencyManifest;
   use crate::{
-    build_pdf::{golden::load_base, image_manifest::ImageManifest, project::ProjectSnapshot},
+    build_pdf::{golden::load_base, image_manifest::ImageManifest, snapshot::ProjectSnapshot},
     font::FontDataExt,
-    model::AssetId,
+    project::ProjectPath,
   };
 
   #[test]
@@ -70,11 +70,11 @@ mod tests {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
     crate::build_pdf::golden::enter_workspace_root();
     let (config, style, references) = load_base();
-    let source = crate::config::FilesystemProjectSource::new();
+    let source = crate::project::FilesystemProjectSource::new();
     let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
     let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, references, font_data).expect("assemble");
     let image_manifest = ImageManifest {
-      paths: vec![AssetId::new("tests/image/testimage5.png")],
+      paths: vec![ProjectPath::new("tests/image/testimage5.png")],
     };
 
     // Act
