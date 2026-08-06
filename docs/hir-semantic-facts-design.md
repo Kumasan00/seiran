@@ -401,6 +401,29 @@ Phase 2（issue #323）の実装で確定した、本書のスケッチとの差
 - 見出しの `HeadingKey` と構造値を `headings` へ移す
 - lowering の走査順依存による heading index 再発行を削除する
 
+Phase 3（issue #324）の実装で確定した、本書のスケッチとの差分:
+
+- `AnalyzedDocument` / `SemanticFacts` / `analyze` は新設 top-level module `semantics` ではなく、既存の
+  `resolve` module の子 module（`facts` / `analyze` / `bridge`）に収めた。module 名の整理は Phase 5 に送る
+- `analyze` は Phase 2 で citation へ置いた引用箇所の解析も吸収し、HIR の走査を 1 本にまとめた。
+  これに伴い `citation::analyze` module と `CitationFacts` / `CitationSemanticError` は消え、
+  `CitationSiteFacts` は `resolve` と `citation` の共有型として `model` へ移した（どちらに置いても
+  片方向の依存が循環するため）。`generate_citations` は `&NodeMap<CitationSiteFacts>` を受け取る
+- 未定義引用キーは `SemanticError::UnknownCitationKeys` として意味解析のエラーに統合した。報告の
+  優先順位（引用キー → 重複ラベル → 未解決参照）は移設前と同じ
+- `ResolvedDocument` は Phase 4 まで lowering の入力として残るので、`AnalyzedDocument` から組み立てる
+  `bridge`（`build_resolved_document`）を過渡的に置いた。意味を決めないので `Result` を返さない
+- 設定依存は `Style` から `DocumentPolicy` へ狭めた。表示側フィールドが型として存在しないので、
+  G3 は規約や property test ではなく型で保証される。property test は `ResolvedDocument` の
+  突き合わせから投影の突き合わせへ主張を移した
+- 意味解析が実ソースしか走査しなくなり `Origin::Generated` が到達不能になったため、`model::Origin` /
+  `GeneratedOrigin` と `CompileError::ResolveInternal`（および対応する golden）を削除した。
+  `SemanticError` は `SourceId` を直接持つ
+- fact の登録漏れ対策として `analyze` の最後に完全性検証（`assert_facts_complete`）を置き、
+  variant ごとの必須 fact を property test で固定した
+- 本体経路から `DocNode` が消えたので `ParsedSource` を廃止し、画像パス収集を HIR 走査へ移した。
+  `frontend::doc_node_adapter` は既存テストの足場としてのみ `#[cfg(test)]` で残る
+
 ### Phase 4: 解決済み文書木の削除
 
 - lowering の入力を `AnalyzedDocument` に一本化する
