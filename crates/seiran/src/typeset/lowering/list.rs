@@ -135,6 +135,18 @@ mod tests {
   }
 
   #[test]
+  fn empty_list_yields_no_layout_nodes() {
+    // Arrange — `\item` が 1 つも無いリスト環境はソースとして書ける（パースも通る）
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{itemize}\n\\end{itemize}\n");
+
+    // Assert
+    assert!(nodes.is_empty(), "{nodes:?}");
+  }
+
+  #[test]
   fn unordered_list_uses_marker_with_trailing_space() {
     // Arrange
     let style = ReadStyle::default();
