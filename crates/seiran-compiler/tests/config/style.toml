@@ -4,7 +4,7 @@
 # ここでは golden が前提とする有効値だけを列挙する（スキーマの解説・設定例は書かない —
 # それはユーザ向け設定ファイルの役目）。省略した項目はすべて `Style::default()` の既定値。
 #
-# ここを変更すると golden の座標が変わるので、変更時は `UPDATE_GOLDEN=1 cargo test -p seiran`
+# ここを変更すると golden の座標が変わるので、変更時は `UPDATE_GOLDEN=1 cargo test -p seiran-compiler`
 # で golden を再生成し、差分を確認してコミットすること。
 
 [text]

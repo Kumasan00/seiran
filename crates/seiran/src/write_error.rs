@@ -6,7 +6,7 @@ use thiserror::Error;
 /// PDF ファイルの保存時に起きるエラー型。
 ///
 /// `compile` は保存を行わないため、出力ディレクトリの作成・書き込みに関するエラーは
-/// `seiran::DiagnosticSet` ではなくこの型が持つ（CLI だけが必要とする関心事のため）。
+/// `seiran_compiler::DiagnosticSet` ではなくこの型が持つ（CLI だけが必要とする関心事のため）。
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum WriteError {
   /// 出力ディレクトリの作成エラー

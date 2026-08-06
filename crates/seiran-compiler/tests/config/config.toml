@@ -7,9 +7,9 @@
 #
 # `sources` はプレースホルダで、golden テストが入力ごとに差し替える。
 
-references_path = "crates/seiran/tests/config/references.toml"
+references_path = "crates/seiran-compiler/tests/config/references.toml"
 sources = ["tests/text/text.sei"]
-style_path = "crates/seiran/tests/config/style.toml"
+style_path = "crates/seiran-compiler/tests/config/style.toml"
 
 [document]
 title = "test_document"

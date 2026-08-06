@@ -67,7 +67,7 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
     CompiledCitationStyle（load_citation_style が I/O ありで読み込む CSL スタイル・ロケール）から
     引用箇所ごとの表示インライン列と書誌を生成する（generate_citations 自体は I/O なし）。
     表示・書誌は本文へは連結せず別枠で渡す。analyze → CSL 整形の呼び出し順序は
-    seiran::build_pdf::semantics の 1 関数（resolve_semantics）に閉じており、driver 本体は
+    seiran_compiler::build_pdf::semantics の 1 関数（resolve_semantics）に閉じており、driver 本体は
     この順序を知らない（#303）。resolve_semantics は AnalyzedDocument と生成物を
     Semantics { analyzed, generated } として返すだけで、中間の文書木は組み立てない（#325））
   → ローワリング（typeset::lowering: DocumentContent（AnalyzedDocument への参照 + 引用の生成物
@@ -80,7 +80,7 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
     GeneratedCitations が隠すので、typeset は NodeMap を直接操作しない（#333））
   → フォント読込・検証
   → (a) build_blocks（typeset::block: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
-  → (prepass) resolve_images（seiran::build_pdf::image_resources: 画像の自然寸法から width/height を
+  → (prepass) resolve_images（seiran_compiler::build_pdf::image_resources: 画像の自然寸法から width/height を
     確定。旧 pdf_gen::resolve_images、epic #276 / #279 で compiler 側へ移設）
   → (c+d) break_pages（typeset::breaking: 行分割 + 縦組版 → Vec<Page>。フォント非依存の純粋パス）
   → (e) render_pages（seiran-pdf: 確定座標の描画のみ。krilla がフォントサブセット化を内部実施）
@@ -91,9 +91,9 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
 経由で、compiler 側のコードは `std::fs` を直接呼ばない（#300）。実装は `FilesystemProjectSource`（実ビルド）と
 `MemoryProjectSource`（決定的テスト）の 2 つ。資源を指すパスは `ProjectPath` 1 種類で、画像も同じ型で
 識別する（#337）。書き込みメソッドは持たず、出力ディレクトリ作成と PDF 書き出しは
-`seiran::compile`（ライブラリの公開 facade）の責務ではなく、CLI crate（`seiran-cli` の `main.rs`）が
+`seiran_compiler::compile`（ライブラリの公開 facade）の責務ではなく、CLI crate（`seiran` の `main.rs`）が
 `compile` → `seiran_pdf::render` の後に atomic write（`tempfile` 経由の一時ファイル + rename）として
-行う（#304 / #307）。詳細は `docs/architecture.md` の project 節、および seiran-cli 節。
+行う（#304 / #307）。詳細は `docs/architecture.md` の project 節、および seiran 節。
 
 box は (a) で width/height/depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない。
 本文の自動行折り返しは Knuth–Plass（段落全体最適。`typeset::breaking::break_lines`。貪欲法 first-fit も
@@ -109,7 +109,7 @@ box は (a) で width/height/depth を 1 回だけ計測して保持し、以降
 脚注をページ単位で採番する設定（`[footnote]` の `numbering = "per_page"`）のときだけ、本文の
 lowering →(a)→(c+d) をページ割り当てが安定するまで反復する（番号がマーカー幅を変え、それが
 ページ割り当てを変えうる循環のため。既定の通し採番は 1 回で確定＝上図のまま）。
-この反復は `seiran::build_pdf::footnote_numbering` の専用 solver に閉じており、上限回数まで
+この反復は `seiran_compiler::build_pdf::footnote_numbering` の専用 solver に閉じており、上限回数まで
 収束しない場合は最後の結果を採用せず、回避策付きの診断エラー（`CompileError::PerPageFootnoteNotConverged`）を返す。
 
 ### クレート依存関係
@@ -121,24 +121,24 @@ seiran-pdf （workspace 内には依存なし（krilla / krilla-svg / image / re
             (e) 描画。確定座標の Publication を PDF バイト列へ encode する。境界型は自前の leaf 型
             （types module の FontType / FontFaceInput / FontMetric / GlyphRun / Glyph）だけで完結し、
             compiler 内部型（config::Config / typeset::Page / font::GlyphRun）を一切知らない）
-  ↑ seiran, seiran-cli
+  ↑ seiran-compiler, seiran
 
-seiran （seiran-pdf に依存。言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。
+seiran-compiler （seiran-pdf に依存。言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。
         compile を唯一の外部入口として公開し、段の呼び出し順序と中間型は非公開 module に閉じる。
         crate 外へ出るのは compile / Compilation / BuildStatistics / DependencyManifest /
         DiagnosticSet / OutputPlan / ProjectSource 系 / seiran_pdf::Publication の再エクスポートのみ）
-  ↑ seiran-cli
+  ↑ seiran
 
-seiran-cli （seiran, seiran-pdf に依存。CLI エントリーポイント（package 名 seiran-cli / binary 名
-            seiran）。compile → seiran_pdf::render → atomic write → 結果表示の 4 手順のみを担当し、
-            段順序の知識を持たない。clap / tracing-subscriber / tempfile / read-fonts にも直接依存し、
-            CLI 引数定義（cli）・variation-axes / ttc-names / script-langs 実装（subcommand）・
-            保存エラー型（write_error）を子 module として内包）
+seiran （seiran-compiler, seiran-pdf に依存。CLI エントリーポイント（package 名・binary 名とも
+        seiran）。compile → seiran_pdf::render → atomic write → 結果表示の 4 手順のみを担当し、
+        段順序の知識を持たない。clap / tracing-subscriber / tempfile / read-fonts にも直接依存し、
+        CLI 引数定義（cli）・variation-axes / ttc-names / script-langs 実装（subcommand）・
+        保存エラー型（write_error）を子 module として内包）
 ```
 
-### `seiran` の module 構成
+### `seiran-compiler` の module 構成
 
-いずれも `crates/seiran/src/` 直下の非公開 module（公開 API は `lib.rs` の `pub use` に一本化）。
+いずれも `crates/seiran-compiler/src/` 直下の非公開 module（公開 API は `lib.rs` の `pub use` に一本化）。
 `↑` は利用側の module を示す。
 
 ```text
@@ -284,7 +284,7 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
            （不変な入力から組版成果物を返す phase graph）を持つ。段の呼び出し順序・中間型
            （LaidOutDocument / FontResources / 画像資源等）はここに閉じ、crate 外へ
            出さない。PDF バイト列の生成（seiran_pdf::render）と保存は行わない — 書き出すのは
-           呼び出し元（seiran-cli）の責務）
+           呼び出し元（seiran）の責務）
 ```
 
 ### 各クレート・module の責務
@@ -294,11 +294,11 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 
 | クレート     | 責務（要約）                                                                                                                                                                                                              |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seiran`     | 言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。公開 API は `compile` とその入出力型・診断型 + `Publication` の再エクスポートだけ。内部は下表の 12 module（すべて非公開。表は `length` / `color` を 1 行にまとめている）                                |
+| `seiran-compiler` | 言語処理・意味解決・組版を所有するライブラリ（lib target のみ）。公開 API は `compile` とその入出力型・診断型 + `Publication` の再エクスポートだけ。内部は下表の 12 module（すべて非公開。表は `length` / `color` を 1 行にまとめている）                                |
 | `seiran-pdf` | (e) render_pages: 確定座標を描画のみ。krilla で PDF 生成。境界型は自前の leaf 型（`types`）で完結し、compiler 内部型に依存しない（#305 / #307）                                                                          |
-| `seiran-cli` | CLI エントリ（package `seiran-cli` / binary `seiran`）。`compile` → `seiran_pdf::render` → atomic write → 表示のみ。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs`（`subcommand`）を内包        |
+| `seiran`     | CLI エントリ（package 名・binary 名とも `seiran`）。`compile` → `seiran_pdf::render` → atomic write → 表示のみ。CLI 引数定義（`cli`）・`variation-axes` / `ttc-names` / `script-langs`（`subcommand`）を内包        |
 
-| `seiran` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
+| `seiran-compiler` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `length` / `color` | それぞれ 1 つの値概念を所有する leaf module（#336、旧 `model`）。`Length`（内部表現は sp = 1/65536pt の整数、正準形 `<pt値>pt`、garde カスタムバリデータ `positive` / `non_negative` を同居）と `Color`（8bit RGB、`"#rrggbb"` のみ受理）。内部表現・丸め規則・正準表現を consumer に複製しない |
 | `source`   | ソースの同一性 `SourceId` と位置 `Span` を所有する leaf module（#337、旧 `model`）。どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。miette には依存せず、`miette::SourceSpan` への変換は診断を構築する側が行う |
@@ -358,7 +358,7 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
 - AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る
 - テストコードでは `unwrap` / `expect` を許容する。テストモジュールには `#[allow(clippy::unwrap_used)]` を付け、`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）
-- **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran/src/build_pdf/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
+- **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/build_pdf/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
 
 ## コード検索
 

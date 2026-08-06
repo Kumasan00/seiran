@@ -18,7 +18,7 @@ use crate::{
   font::{FontData, FontDataExt, FontResources, FontType},
 };
 
-/// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。
+/// diagnostic golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_diagnostics`）を返す。
 fn diagnostic_golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_diagnostics"); }
 
 /// 診断を固定幅・色なしのテキストへレンダリングする。

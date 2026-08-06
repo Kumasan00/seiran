@@ -78,11 +78,14 @@ mod tests {
     };
 
     // Act
-    let manifest =
-      DependencyManifest::collect(Path::new("crates/seiran/tests/config/config.toml"), &snapshot, &image_manifest);
+    let manifest = DependencyManifest::collect(
+      Path::new("crates/seiran-compiler/tests/config/config.toml"),
+      &snapshot,
+      &image_manifest,
+    );
 
     // Assert
-    assert_eq!(manifest.config_path, PathBuf::from("crates/seiran/tests/config/config.toml"));
+    assert_eq!(manifest.config_path, PathBuf::from("crates/seiran-compiler/tests/config/config.toml"));
     assert_eq!(manifest.source_paths, config.sources);
     assert_eq!(manifest.image_paths, vec![PathBuf::from("tests/image/testimage5.png")]);
     let unique_font_paths: std::collections::BTreeSet<_> = manifest.font_paths.iter().collect();

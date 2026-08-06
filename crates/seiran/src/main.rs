@@ -24,9 +24,10 @@ fn main() -> miette::Result<()> {
 
   match cli_args.command {
     cli::Command::Build { config_path } => {
-      let source = seiran::FilesystemProjectSource::new();
-      let root = seiran::ProjectPath::new(&config_path);
-      let compilation = seiran::compile(&source, &root).map_err(seiran::DiagnosticSet::into_report)?;
+      let source = seiran_compiler::FilesystemProjectSource::new();
+      let root = seiran_compiler::ProjectPath::new(&config_path);
+      let compilation =
+        seiran_compiler::compile(&source, &root).map_err(seiran_compiler::DiagnosticSet::into_report)?;
       let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
       report_build(&compilation, cli_args.quiet);
@@ -88,7 +89,7 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
 /// ビルド成功時のサマリを stderr に表示する。
 ///
 /// `quiet` なら表示せず、端末に直接出す場合だけ完了記号を着色する。
-fn report_build(compilation: &seiran::Compilation, quiet: bool) {
+fn report_build(compilation: &seiran_compiler::Compilation, quiet: bool) {
   if quiet {
     return;
   }

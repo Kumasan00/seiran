@@ -30,13 +30,13 @@ description: >-
   enum を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの
   `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播してよい。
   一方、ソース本文を持たない下位クレート（呼び出し元が `SourceId → 本文` の対応表（`SourceDb` 等）を
-  一元管理している場合。例: `frontend::ParseSourceError` は `crates/seiran::build_pdf::snapshot::SourceDb`
+  一元管理している場合。例: `frontend::ParseSourceError` は `seiran_compiler::build_pdf::snapshot::SourceDb`
   に対して本文を持たない）は、`#[source_code]` を持たず `source_id`（発行元が単一の識別子。生の `usize`
   や array index を独自に採番しない）だけを運ぶ。この場合、`#[related]` 集約や最終 `Report` 化を行う
   呼び出し側が、`SourceId` から引いた `NamedSource` を添える薄いラッパー型を用意する。このラッパーは
   `#[diagnostic(transparent)]` を使わず（`source_code` も内側へ委譲されてしまうため）、`code` / `severity` /
   `help` / `url` / `labels` / `related` / `diagnostic_source` を内側へ委譲し `source_code` だけを差し替える
-  `miette::Diagnostic` を手書きする（例: `seiran::build_pdf::error::AttributedParseError`、issue #299）
+  `miette::Diagnostic` を手書きする（例: `seiran_compiler::build_pdf::error::AttributedParseError`、issue #299）
 - どちらの形でも、ソース ID・array index を独立した場所で 2 回採番しない。1 箇所（`SourceDb::register` 等）
   だけが ID を発行し、他はそれを運ぶだけにする（2 箇所で独立に採番すると、両者の順序が一致するかが
   規約でしか保証されなくなる。#299 以前の `wrap_resolve_error` はこの規約に依存していた —
@@ -49,7 +49,7 @@ description: >-
 ## compiler 内部バグ
 
 - ユーザー入力に起因しない内部不変条件違反が `Result` を返す経路（`.map_err` / `?` の途中）で発覚した場合、
-  `panic!` せず専用の小さな struct（例: `seiran::build_pdf::error::CompilerBug`）を作り、通常のユーザー向け
+  `panic!` せず専用の小さな struct（例: `seiran_compiler::build_pdf::error::CompilerBug`）を作り、通常のユーザー向け
   エラーバリアントには混ぜない
 - `#[diagnostic(code(...))]` は `internal_bug` 系のサフィックスにし、`help("...")` はトラブルシュート手順ではなく
   issue 報告を促す文言にする（ユーザー側に誤りがあるわけではないため）
