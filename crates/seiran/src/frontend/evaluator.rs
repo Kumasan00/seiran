@@ -210,34 +210,6 @@ impl ParagraphBuffer {
   }
 }
 
-/// 評価結果の HIR を旧 `DocNode` 列へ落とすテスト専用ヘルパ（移行期限定、#325 で削除）
-///
-/// 既存の評価器テストのうち、まだ HIR assert へ移植していないものだけがこの経路を使う。
-/// 本番経路・移植済みテストは `HirNode` を返す [`evaluate_children_to_hir`] を使う。
-#[cfg(test)]
-pub(crate) fn evaluate_children_to_doc_nodes(
-  source: &str,
-  node: &GreenNode,
-) -> Result<Vec<crate::model::DocNode>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let nodes = evaluate_children(source, &builder, node)?;
-  let document = test_document(nodes, builder);
-  let Some(group) = document.groups().first() else {
-    unreachable!("test_document は必ず 1 グループを作る")
-  };
-  return Ok(crate::frontend::hir_group_to_doc_nodes(group, document.locations()));
-}
-
-/// ハンドラを直接呼ぶ移行期テストが HIR を旧型へ落とすための足場を作る
-#[cfg(test)]
-pub(crate) fn test_document(nodes: Vec<HirNode>, builder: HirBuilder) -> crate::model::HirDocument {
-  let source_id = crate::model::SourceId::new(0);
-  return crate::model::HirDocument::assemble(vec![crate::model::HirSource {
-    group: crate::model::HirGroup { source_id, nodes },
-    spans: builder.finish(),
-  }]);
-}
-
 /// CST ノードの子要素を評価して `Vec<HirNode>` をそのまま返すテスト専用ヘルパ
 ///
 /// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
