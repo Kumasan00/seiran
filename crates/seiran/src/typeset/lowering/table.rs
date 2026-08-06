@@ -1,4 +1,4 @@
-//! 表環境（`model::HirNodeKind::Table`）の lowering
+//! 表環境（`document::HirNodeKind::Table`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
@@ -7,8 +7,8 @@ use super::{
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
 use crate::{
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   font::FontKind,
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   typeset::layout::TableColumn,
 };
 

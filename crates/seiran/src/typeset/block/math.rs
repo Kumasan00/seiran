@@ -2,9 +2,9 @@
 
 use super::Measurer;
 use crate::{
+  document::{MathDelimiter, MathEnvKind},
   font::FontType,
   length::Length,
-  model::{MathDelimiter, MathEnvKind},
   typeset::{
     layout::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{LayoutNode, MathBlockRow},
@@ -228,8 +228,8 @@ impl Measurer<'_> {
 mod tests {
   use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
   use crate::{
+    document::{MathDelimiter, MathEnvKind},
     length::Length,
-    model::{MathDelimiter, MathEnvKind},
   };
 
   #[test]

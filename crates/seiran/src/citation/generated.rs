@@ -1,6 +1,6 @@
 //! CSL 整形の生成物（書誌・引用表示）が使うブロック / インライン要素の型定義
 //!
-//! 著者が書いた内容は HIR（`model::hir`）だけが表現する。ここにあるのは
+//! 著者が書いた内容は HIR（`document::hir`）だけが表現する。ここにあるのは
 //! [`super::render`] が CSL 整形の結果として組み立てる**生成物**の語彙で、
 //! 著者が書いた行に対応しないため `NodeId` もソース位置も持たない。採番・`\ref` 解決・
 //! 見出しキーの確定は `resolve::analyze` が HIR に対してのみ行うので、採番フラグや
@@ -13,7 +13,7 @@
 //! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 
 use super::CitationId;
-use crate::{font::FontKind, model::HeadingLevel};
+use crate::{document::HeadingLevel, font::FontKind};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///

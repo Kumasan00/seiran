@@ -1,4 +1,4 @@
-//! `model` / `font` クレートに依存しない、render 境界専用の自己完結した leaf 型。
+//! compiler 側（`seiran`）の `document` / `font` に依存しない、render 境界専用の自己完結した leaf 型。
 //!
 //! `Publication` はここに定義する型だけで完結し、compiler 側（`seiran`）の内部型を
 //! 一切参照しない。座標は pt 単位の `f32` で表現する（PDF 出力自体が f32 精度のため、

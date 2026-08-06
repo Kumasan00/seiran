@@ -3,12 +3,12 @@
 //! 引用キーの存在検証と表示ラベルの整形は後段に委ねる。
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{EvalError, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\cite{a,b}` を `HirInlineKind::Cite` に変換する

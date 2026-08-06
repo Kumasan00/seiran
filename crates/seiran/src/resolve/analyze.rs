@@ -11,7 +11,7 @@
 use crate::{
   citation::{CitationId, CitationSiteFacts, References},
   config::{CounterName, DocumentPolicy},
-  model::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
+  document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   resolve::{
     HeadingKey, LabelId, SemanticError,
     counter::CounterRegistry,
@@ -514,7 +514,7 @@ mod tests {
   use crate::{
     citation::{References, test_fixtures::sample_references},
     config::{DocumentPolicy, Style},
-    model::HirDocument,
+    document::HirDocument,
     source::SourceId,
   };
 
@@ -757,7 +757,7 @@ mod tests {
 
     // Assert
     let sites =
-      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::model::NodeId, Vec<crate::citation::CitationId>)> {
+      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::document::NodeId, Vec<crate::citation::CitationId>)> {
         return analyzed.citation_sites().iter().map(|(id, site)| return (id, site.targets.clone())).collect();
       };
     assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
@@ -791,7 +791,7 @@ mod completeness_tests {
   use crate::{
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
-    model::HirDocument,
+    document::HirDocument,
     source::SourceId,
   };
 

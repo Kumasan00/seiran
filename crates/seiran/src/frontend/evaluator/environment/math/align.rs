@@ -4,8 +4,8 @@
 
 use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{
+  document::{HirBuilder, HirNode, MathEnvKind},
   frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
-  model::{HirBuilder, HirNode, MathEnvKind},
 };
 
 /// `align` 環境を評価する
@@ -33,8 +33,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{HirMathKind, HirMathRow, HirNodeKind, MathEnvKind},
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::{HirMathKind, HirMathRow, HirNodeKind, MathEnvKind},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する

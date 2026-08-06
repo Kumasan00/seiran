@@ -1,6 +1,7 @@
 //! 見出しコマンド群
 
 use crate::{
+  document::{HeadingLevel, HirBuilder, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{HeadingLevel, HirBuilder, HirNode, HirNodeKind},
 };
 
 /// 見出しコマンドの共通処理

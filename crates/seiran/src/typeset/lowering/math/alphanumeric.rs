@@ -1,9 +1,9 @@
 //! Mathematical Alphanumeric Symbols へのコードポイント変換
 
-use crate::model::MathStyle;
+use crate::document::MathVariant;
 
-/// 1 文字を `style` に応じた Mathematical Alphanumeric コードポイントへ変換する
-pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
+/// 1 文字を `variant` に応じた Mathematical Alphanumeric コードポイントへ変換する
+pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
   // `hole` は連続ブロックではなく Letterlike Symbols ブロックに散在する文字
   // （例: 黒板太字の ℝ=U+211D、italic の h=U+210E）を上書きするためのルックアップ。
   // 該当文字がなければ `None` を返し、通常の base + offset 変換を行う。
@@ -32,20 +32,20 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
     }
   };
 
-  match style {
+  match variant {
     None => {
       // デフォルト: ASCII 英字のみ Mathematical Italic、h 例外、Greek/digits は素通し
       return map_ascii(ch, 0x1d434, 0x1d44e, italic_hole);
     },
-    Some(MathStyle::Serif) => return ch,
-    Some(MathStyle::Italic) => {
+    Some(MathVariant::Serif) => return ch,
+    Some(MathVariant::Italic) => {
       let mapped = map_ascii(ch, 0x1d434, 0x1d44e, italic_hole);
       if mapped != ch {
         return mapped;
       }
       return map_greek(ch, 0x1d6e2);
     },
-    Some(MathStyle::Bold) => {
+    Some(MathVariant::Bold) => {
       let mapped = map_ascii(ch, 0x1d400, 0x1d41a, no_hole);
       if mapped != ch {
         return mapped;
@@ -56,24 +56,24 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       }
       return map_greek(ch, 0x1d6a8);
     },
-    Some(MathStyle::BoldItalic) => {
+    Some(MathVariant::BoldItalic) => {
       let mapped = map_ascii(ch, 0x1d468, 0x1d482, no_hole);
       if mapped != ch {
         return mapped;
       }
       return map_greek(ch, 0x1d71c);
     },
-    Some(MathStyle::Sans) => {
+    Some(MathVariant::Sans) => {
       let mapped = map_ascii(ch, 0x1d5a0, 0x1d5ba, no_hole);
       if mapped != ch {
         return mapped;
       }
       return map_digit(ch, 0x1d7e2);
     },
-    Some(MathStyle::SansItalic) => {
+    Some(MathVariant::SansItalic) => {
       return map_ascii(ch, 0x1d608, 0x1d622, no_hole);
     },
-    Some(MathStyle::SansBold) => {
+    Some(MathVariant::SansBold) => {
       let mapped = map_ascii(ch, 0x1d5d4, 0x1d5ee, no_hole);
       if mapped != ch {
         return mapped;
@@ -84,21 +84,21 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       }
       return map_greek(ch, 0x1d756);
     },
-    Some(MathStyle::SansBoldItalic) => {
+    Some(MathVariant::SansBoldItalic) => {
       let mapped = map_ascii(ch, 0x1d63c, 0x1d656, no_hole);
       if mapped != ch {
         return mapped;
       }
       return map_greek(ch, 0x1d790);
     },
-    Some(MathStyle::Mono) => {
+    Some(MathVariant::Mono) => {
       let mapped = map_ascii(ch, 0x1d670, 0x1d68a, no_hole);
       if mapped != ch {
         return mapped;
       }
       return map_digit(ch, 0x1d7f6);
     },
-    Some(MathStyle::DoubleStruck) => {
+    Some(MathVariant::DoubleStruck) => {
       // 黒板太字: 大文字に 7 個の穴（ℂ ℍ ℕ ℙ ℚ ℝ ℤ）。小文字・数字は連続。Greek は Unicode 未定義
       let mapped = map_ascii(ch, 0x1d538, 0x1d552, double_struck_hole);
       if mapped != ch {
@@ -106,32 +106,32 @@ pub(super) fn translate_math_char(ch: char, style: Option<MathStyle>) -> char {
       }
       return map_digit(ch, 0x1d7d8);
     },
-    Some(MathStyle::Script | MathStyle::Calligraphic) => {
+    Some(MathVariant::Script | MathVariant::Calligraphic) => {
       // スクリプト（roundhand）とカリグラフィー（chancery）は同一の基底コードポイントを共有する
       // （大文字に 8 個・小文字に 3 個の穴。数字・Greek は素通し）。両者の字形差はここでは付けず、
       // カリグラフィーのみ呼び出し側 `push_math_char` が異体字セレクタ VS1（U+FE00）を付与して
       // chancery 字形を選ぶ（VS1 はフォント依存。非対応フォントではスクリプト字形にフォールバック）。
       return map_ascii(ch, 0x1d49c, 0x1d4b6, script_hole);
     },
-    Some(MathStyle::Fraktur) => {
+    Some(MathVariant::Fraktur) => {
       // フラクトゥール: 大文字に 5 個の穴（ℭ ℌ ℑ ℜ ℨ）。小文字は連続。数字・Greek は素通し
       return map_ascii(ch, 0x1d504, 0x1d51e, fraktur_hole);
     },
-    Some(MathStyle::ScriptBold) => {
+    Some(MathVariant::ScriptBold) => {
       // 太字スクリプト: 大文字・小文字とも連続（穴なし）。数字・Greek は Unicode 未定義のため素通し
       return map_ascii(ch, 0x1d4d0, 0x1d4ea, no_hole);
     },
-    Some(MathStyle::FrakturBold) => {
+    Some(MathVariant::FrakturBold) => {
       // 太字フラクトゥール: 大文字・小文字とも連続（穴なし）。数字・Greek は素通し
       return map_ascii(ch, 0x1d56c, 0x1d586, no_hole);
     },
   }
 }
 
-/// 1 文字を `style` に応じて変換し、必要なら異体字セレクタを付けて `out` に書き込む
-pub(super) fn push_math_char(out: &mut String, ch: char, style: Option<MathStyle>) {
-  out.push(translate_math_char(ch, style));
-  if style == Some(MathStyle::Calligraphic) && ch.is_ascii_alphabetic() {
+/// 1 文字を `variant` に応じて変換し、必要なら異体字セレクタを付けて `out` に書き込む
+pub(super) fn push_math_char(out: &mut String, ch: char, variant: Option<MathVariant>) {
+  out.push(translate_math_char(ch, variant));
+  if variant == Some(MathVariant::Calligraphic) && ch.is_ascii_alphabetic() {
     out.push('\u{FE00}');
   }
 }
@@ -284,22 +284,22 @@ mod tests {
   #[test]
   fn translate_bold_covers_letters_digits_greek() {
     // Arrange & Act
-    let style = Some(MathStyle::Bold);
-    assert_eq!(translate_math_char('x', style), '\u{1D431}'); // mathematical bold x
-    assert_eq!(translate_math_char('A', style), '\u{1D400}'); // mathematical bold A
-    assert_eq!(translate_math_char('0', style), '\u{1D7CE}'); // mathematical bold digit 0
-    assert_eq!(translate_math_char('9', style), '\u{1D7D7}'); // mathematical bold digit 9
-    assert_eq!(translate_math_char('α', style), '\u{1D6C2}'); // mathematical bold alpha
-    assert_eq!(translate_math_char('Ω', style), '\u{1D6C0}'); // mathematical bold Omega
-    assert_eq!(translate_math_char('+', style), '+', "記号は素通し");
+    let variant = Some(MathVariant::Bold);
+    assert_eq!(translate_math_char('x', variant), '\u{1D431}'); // mathematical bold x
+    assert_eq!(translate_math_char('A', variant), '\u{1D400}'); // mathematical bold A
+    assert_eq!(translate_math_char('0', variant), '\u{1D7CE}'); // mathematical bold digit 0
+    assert_eq!(translate_math_char('9', variant), '\u{1D7D7}'); // mathematical bold digit 9
+    assert_eq!(translate_math_char('α', variant), '\u{1D6C2}'); // mathematical bold alpha
+    assert_eq!(translate_math_char('Ω', variant), '\u{1D6C0}'); // mathematical bold Omega
+    assert_eq!(translate_math_char('+', variant), '+', "記号は素通し");
   }
 
   #[test]
   fn translate_italic_h_uses_planck_constant_exception() {
     // Arrange & Act
-    assert_eq!(translate_math_char('h', Some(MathStyle::Italic)), '\u{210E}');
+    assert_eq!(translate_math_char('h', Some(MathVariant::Italic)), '\u{210E}');
     assert_eq!(
-      translate_math_char('h', Some(MathStyle::BoldItalic)),
+      translate_math_char('h', Some(MathVariant::BoldItalic)),
       '\u{1D489}',
       "BoldItalic h は通常コードポイント"
     );
@@ -308,95 +308,95 @@ mod tests {
   #[test]
   fn translate_mono_keeps_greek_passthrough() {
     // Arrange & Act
-    assert_eq!(translate_math_char('α', Some(MathStyle::Mono)), 'α');
-    assert_eq!(translate_math_char('a', Some(MathStyle::Mono)), '\u{1D68A}'); // mono a
-    assert_eq!(translate_math_char('5', Some(MathStyle::Mono)), '\u{1D7FB}'); // mono digit 5
+    assert_eq!(translate_math_char('α', Some(MathVariant::Mono)), 'α');
+    assert_eq!(translate_math_char('a', Some(MathVariant::Mono)), '\u{1D68A}'); // mono a
+    assert_eq!(translate_math_char('5', Some(MathVariant::Mono)), '\u{1D7FB}'); // mono digit 5
   }
 
   #[test]
   fn translate_serif_is_passthrough() {
     // Arrange & Act
-    let style = Some(MathStyle::Serif);
-    assert_eq!(translate_math_char('x', style), 'x');
-    assert_eq!(translate_math_char('1', style), '1');
-    assert_eq!(translate_math_char('α', style), 'α');
+    let variant = Some(MathVariant::Serif);
+    assert_eq!(translate_math_char('x', variant), 'x');
+    assert_eq!(translate_math_char('1', variant), '1');
+    assert_eq!(translate_math_char('α', variant), 'α');
   }
 
   #[test]
   fn translate_sans_skips_greek() {
     // Arrange & Act
-    let style = Some(MathStyle::Sans);
-    assert_eq!(translate_math_char('a', style), '\u{1D5BA}'); // sans a
-    assert_eq!(translate_math_char('1', style), '\u{1D7E3}'); // sans digit 1
-    assert_eq!(translate_math_char('α', style), 'α', "Sans Greek は Unicode 未定義のため素通し");
+    let variant = Some(MathVariant::Sans);
+    assert_eq!(translate_math_char('a', variant), '\u{1D5BA}'); // sans a
+    assert_eq!(translate_math_char('1', variant), '\u{1D7E3}'); // sans digit 1
+    assert_eq!(translate_math_char('α', variant), 'α', "Sans Greek は Unicode 未定義のため素通し");
   }
 
   #[test]
   fn translate_double_struck_handles_letterlike_holes() {
     // Arrange & Act
-    let style = Some(MathStyle::DoubleStruck);
-    assert_eq!(translate_math_char('A', style), '\u{1D538}'); // 連続 (穴なし)
-    assert_eq!(translate_math_char('D', style), '\u{1D53B}'); // 連続
-    assert_eq!(translate_math_char('C', style), '\u{2102}'); // ℂ (穴)
-    assert_eq!(translate_math_char('H', style), '\u{210D}'); // ℍ (穴)
-    assert_eq!(translate_math_char('N', style), '\u{2115}'); // ℕ (穴)
-    assert_eq!(translate_math_char('R', style), '\u{211D}'); // ℝ (穴)
-    assert_eq!(translate_math_char('Z', style), '\u{2124}'); // ℤ (穴)
-    assert_eq!(translate_math_char('a', style), '\u{1D552}'); // 小文字は連続
-    assert_eq!(translate_math_char('z', style), '\u{1D56B}');
-    assert_eq!(translate_math_char('0', style), '\u{1D7D8}'); // 数字
-    assert_eq!(translate_math_char('9', style), '\u{1D7E1}');
-    assert_eq!(translate_math_char('α', style), 'α', "黒板太字 Greek は Unicode 未定義のため素通し");
+    let variant = Some(MathVariant::DoubleStruck);
+    assert_eq!(translate_math_char('A', variant), '\u{1D538}'); // 連続 (穴なし)
+    assert_eq!(translate_math_char('D', variant), '\u{1D53B}'); // 連続
+    assert_eq!(translate_math_char('C', variant), '\u{2102}'); // ℂ (穴)
+    assert_eq!(translate_math_char('H', variant), '\u{210D}'); // ℍ (穴)
+    assert_eq!(translate_math_char('N', variant), '\u{2115}'); // ℕ (穴)
+    assert_eq!(translate_math_char('R', variant), '\u{211D}'); // ℝ (穴)
+    assert_eq!(translate_math_char('Z', variant), '\u{2124}'); // ℤ (穴)
+    assert_eq!(translate_math_char('a', variant), '\u{1D552}'); // 小文字は連続
+    assert_eq!(translate_math_char('z', variant), '\u{1D56B}');
+    assert_eq!(translate_math_char('0', variant), '\u{1D7D8}'); // 数字
+    assert_eq!(translate_math_char('9', variant), '\u{1D7E1}');
+    assert_eq!(translate_math_char('α', variant), 'α', "黒板太字 Greek は Unicode 未定義のため素通し");
   }
 
   #[test]
   fn translate_fraktur_handles_letterlike_holes() {
     // Arrange & Act
-    let style = Some(MathStyle::Fraktur);
-    assert_eq!(translate_math_char('A', style), '\u{1D504}'); // 連続
-    assert_eq!(translate_math_char('C', style), '\u{212D}'); // ℭ (穴)
-    assert_eq!(translate_math_char('H', style), '\u{210C}'); // ℌ (穴)
-    assert_eq!(translate_math_char('I', style), '\u{2111}'); // ℑ (穴)
-    assert_eq!(translate_math_char('R', style), '\u{211C}'); // ℜ (穴)
-    assert_eq!(translate_math_char('Z', style), '\u{2128}'); // ℨ (穴)
-    assert_eq!(translate_math_char('a', style), '\u{1D51E}'); // 小文字は連続
-    assert_eq!(translate_math_char('z', style), '\u{1D537}');
-    assert_eq!(translate_math_char('1', style), '1', "フラクトゥール数字は素通し");
+    let variant = Some(MathVariant::Fraktur);
+    assert_eq!(translate_math_char('A', variant), '\u{1D504}'); // 連続
+    assert_eq!(translate_math_char('C', variant), '\u{212D}'); // ℭ (穴)
+    assert_eq!(translate_math_char('H', variant), '\u{210C}'); // ℌ (穴)
+    assert_eq!(translate_math_char('I', variant), '\u{2111}'); // ℑ (穴)
+    assert_eq!(translate_math_char('R', variant), '\u{211C}'); // ℜ (穴)
+    assert_eq!(translate_math_char('Z', variant), '\u{2128}'); // ℨ (穴)
+    assert_eq!(translate_math_char('a', variant), '\u{1D51E}'); // 小文字は連続
+    assert_eq!(translate_math_char('z', variant), '\u{1D537}');
+    assert_eq!(translate_math_char('1', variant), '1', "フラクトゥール数字は素通し");
   }
 
   #[test]
   fn translate_script_handles_letterlike_holes() {
     // Arrange & Act
-    let style = Some(MathStyle::Script);
-    assert_eq!(translate_math_char('A', style), '\u{1D49C}'); // 連続
-    assert_eq!(translate_math_char('B', style), '\u{212C}'); // ℬ (穴)
-    assert_eq!(translate_math_char('H', style), '\u{210B}'); // ℋ (穴)
-    assert_eq!(translate_math_char('L', style), '\u{2112}'); // ℒ (穴)
-    assert_eq!(translate_math_char('R', style), '\u{211B}'); // ℛ (穴)
-    assert_eq!(translate_math_char('a', style), '\u{1D4B6}'); // 連続小文字
-    assert_eq!(translate_math_char('e', style), '\u{212F}'); // ℯ (穴)
-    assert_eq!(translate_math_char('g', style), '\u{210A}'); // ℊ (穴)
-    assert_eq!(translate_math_char('o', style), '\u{2134}'); // ℴ (穴)
-    assert_eq!(translate_math_char('1', style), '1', "スクリプト数字は素通し");
+    let variant = Some(MathVariant::Script);
+    assert_eq!(translate_math_char('A', variant), '\u{1D49C}'); // 連続
+    assert_eq!(translate_math_char('B', variant), '\u{212C}'); // ℬ (穴)
+    assert_eq!(translate_math_char('H', variant), '\u{210B}'); // ℋ (穴)
+    assert_eq!(translate_math_char('L', variant), '\u{2112}'); // ℒ (穴)
+    assert_eq!(translate_math_char('R', variant), '\u{211B}'); // ℛ (穴)
+    assert_eq!(translate_math_char('a', variant), '\u{1D4B6}'); // 連続小文字
+    assert_eq!(translate_math_char('e', variant), '\u{212F}'); // ℯ (穴)
+    assert_eq!(translate_math_char('g', variant), '\u{210A}'); // ℊ (穴)
+    assert_eq!(translate_math_char('o', variant), '\u{2134}'); // ℴ (穴)
+    assert_eq!(translate_math_char('1', variant), '1', "スクリプト数字は素通し");
   }
 
   #[test]
   fn translate_script_bold_maps_contiguous_block() {
     // Arrange & Act
-    let style = Some(MathStyle::ScriptBold);
-    assert_eq!(translate_math_char('A', style), '\u{1D4D0}'); // 大文字 base 先頭
-    assert_eq!(translate_math_char('Z', style), '\u{1D4E9}'); // 大文字 base 末尾
-    assert_eq!(translate_math_char('a', style), '\u{1D4EA}'); // 小文字 base 先頭
-    assert_eq!(translate_math_char('z', style), '\u{1D503}'); // 小文字 base 末尾
-    assert_eq!(translate_math_char('1', style), '1', "太字スクリプト数字は素通し");
-    assert_eq!(translate_math_char('α', style), 'α', "太字スクリプト Greek は Unicode 未定義のため素通し");
+    let variant = Some(MathVariant::ScriptBold);
+    assert_eq!(translate_math_char('A', variant), '\u{1D4D0}'); // 大文字 base 先頭
+    assert_eq!(translate_math_char('Z', variant), '\u{1D4E9}'); // 大文字 base 末尾
+    assert_eq!(translate_math_char('a', variant), '\u{1D4EA}'); // 小文字 base 先頭
+    assert_eq!(translate_math_char('z', variant), '\u{1D503}'); // 小文字 base 末尾
+    assert_eq!(translate_math_char('1', variant), '1', "太字スクリプト数字は素通し");
+    assert_eq!(translate_math_char('α', variant), 'α', "太字スクリプト Greek は Unicode 未定義のため素通し");
   }
 
   #[test]
   fn translate_calligraphic_reuses_script_codepoints() {
     // Arrange & Act
-    let cal = Some(MathStyle::Calligraphic);
-    let script = Some(MathStyle::Script);
+    let cal = Some(MathVariant::Calligraphic);
+    let script = Some(MathVariant::Script);
     assert_eq!(translate_math_char('A', cal), translate_math_char('A', script));
     assert_eq!(translate_math_char('A', cal), '\u{1D49C}'); // 連続
     assert_eq!(translate_math_char('B', cal), '\u{212C}'); // ℬ (穴)
@@ -409,7 +409,7 @@ mod tests {
   #[test]
   fn push_math_char_appends_vs1_only_for_calligraphic_letters() {
     // Arrange
-    let cal = Some(MathStyle::Calligraphic);
+    let cal = Some(MathVariant::Calligraphic);
 
     // Act & Assert
     let mut a = String::new();
@@ -429,7 +429,7 @@ mod tests {
   fn push_math_char_keeps_other_styles_unchanged() {
     // Arrange & Act
     let mut script = String::new();
-    push_math_char(&mut script, 'A', Some(MathStyle::Script));
+    push_math_char(&mut script, 'A', Some(MathVariant::Script));
     assert_eq!(script, "\u{1D49C}", "スクリプトは VS1 無し（既存挙動不変）");
 
     let mut default = String::new();
@@ -440,12 +440,12 @@ mod tests {
   #[test]
   fn translate_fraktur_bold_maps_contiguous_block() {
     // Arrange & Act
-    let style = Some(MathStyle::FrakturBold);
-    assert_eq!(translate_math_char('A', style), '\u{1D56C}'); // 大文字 base 先頭
-    assert_eq!(translate_math_char('Z', style), '\u{1D585}'); // 大文字 base 末尾
-    assert_eq!(translate_math_char('a', style), '\u{1D586}'); // 小文字 base 先頭
-    assert_eq!(translate_math_char('z', style), '\u{1D59F}'); // 小文字 base 末尾
-    assert_eq!(translate_math_char('1', style), '1', "太字フラクトゥール数字は素通し");
-    assert_eq!(translate_math_char('α', style), 'α', "太字フラクトゥール Greek は Unicode 未定義のため素通し");
+    let variant = Some(MathVariant::FrakturBold);
+    assert_eq!(translate_math_char('A', variant), '\u{1D56C}'); // 大文字 base 先頭
+    assert_eq!(translate_math_char('Z', variant), '\u{1D585}'); // 大文字 base 末尾
+    assert_eq!(translate_math_char('a', variant), '\u{1D586}'); // 小文字 base 先頭
+    assert_eq!(translate_math_char('z', variant), '\u{1D59F}'); // 小文字 base 末尾
+    assert_eq!(translate_math_char('1', variant), '1', "太字フラクトゥール数字は素通し");
+    assert_eq!(translate_math_char('α', variant), 'α', "太字フラクトゥール Greek は Unicode 未定義のため素通し");
   }
 }

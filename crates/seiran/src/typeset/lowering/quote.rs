@@ -1,9 +1,9 @@
-//! 引用ブロック（`model::HirNodeKind::Quote`）の lowering
+//! 引用ブロック（`document::HirNodeKind::Quote`）の lowering
 
 use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
 use crate::{
+  document::{HirNode, QuoteKind},
   length::Length,
-  model::{HirNode, QuoteKind},
   typeset::layout::Align,
 };
 

@@ -119,7 +119,7 @@ mod tests {
   fn bibliography() -> Vec<GeneratedBlock> {
     return vec![
       GeneratedBlock::Heading {
-        level: crate::model::HeadingLevel::Section,
+        level: crate::document::HeadingLevel::Section,
         title: vec![GeneratedInline::Text("References".to_string())],
       },
       GeneratedBlock::Anchor(CitationId::new("kwan2014")),

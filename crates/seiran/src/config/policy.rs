@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use crate::{
   config::{CounterName, Style, TheoremReset},
-  model::{HeadingLevel, TheoremClass},
+  document::{HeadingLevel, TheoremClass},
 };
 
 /// 1 カウンタぶんの値側設定
@@ -113,7 +113,7 @@ mod tests {
   use super::DocumentPolicy;
   use crate::{
     config::{CounterName, NumberStyle, Style},
-    model::HeadingLevel,
+    document::HeadingLevel,
   };
 
   #[test]

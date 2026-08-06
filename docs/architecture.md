@@ -16,7 +16,7 @@
 それ以外は git 履歴に委ねる。
 
 目次: [`seiran`](#seiran)（[`length` / `color`](#length--color) / [`source`](#source) /
-[`project`](#project) / [`model`](#model) / [`config`](#config) / [`resolve`](#resolve) /
+[`project`](#project) / [`document`](#document) / [`config`](#config) / [`resolve`](#resolve) /
 [`frontend`](#frontend) / [`citation`](#citation) / [`font`](#font) / [`typeset`](#typeset) /
 [`build_pdf`](#build_pdf)） / [`seiran-pdf`](#seiran-pdf) / [`seiran-cli`](#seiran-cli)
 
@@ -24,8 +24,9 @@
 
 言語処理・意味解決・組版を所有するライブラリ crate（lib target のみ）。外部入口は `compile` 1 つで、
 段の呼び出し順序と中間型は非公開 module の内側に閉じる（#307 でパイプラインの段ごとに分かれていた
-7 crate — model / config / resolve / frontend / citation / font / typeset — を非公開 module として吸収した。
-crate はデプロイ・外部依存・独立再利用の単位に限定し、コンパイル段階を crate 境界にしない）。
+7 crate — model（現 `document`）/ config / resolve / frontend / citation / font / typeset — を非公開
+module として吸収した。crate はデプロイ・外部依存・独立再利用の単位に限定し、コンパイル段階を
+crate 境界にしない）。
 
 以下の 11 個の子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
@@ -73,7 +74,7 @@ crate root 直下の非公開 module で、crate 内の他 module への依存�
 
 #### 不変条件・注意点
 
-- どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。`model` に
+- どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。かつて `model` に
   置いていたのは「複数段が共有するから」という理由だったが、共有は所有の理由にならない（epic #332）。
 - miette には依存しない。`miette::SourceSpan` への変換は診断を構築する側（`frontend::span_ext` /
   `resolve::error::span_to_source_span`）が行う（orphan rule で `From` を書けないため）。
@@ -110,7 +111,7 @@ pub trait ProjectSource: Send + Sync {
   Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。設定値そのものの正規化は
   #301 の担当。
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**。画像も同じ型で識別する（#337 で
-  画像パスの newtype `model::AssetId` を削除した。同じパスを表す newtype を 2 つ持っても情報も
+  画像パスの newtype `AssetId`（当時は `model` にあった）を削除した。同じパスを表す newtype を 2 つ持っても情報も
   不変条件も増えず、読み込みのたびに `ProjectPath` へ変換し直していただけだったため）。
   `Ord` を実装しており、`build_pdf::image_manifest` の `BTreeSet<ProjectPath>` による決定的な
   重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と `fig/a.png`
@@ -124,36 +125,62 @@ pub trait ProjectSource: Send + Sync {
 - 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
   `crates/seiran/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
 
-### `model`
+### `document`
 
 #### 責務
 
-パイプライン全段が共有するデータモデル。外部依存は serde / garde のみで、`model` が定義する型自体は
-診断ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
-crate 内では `length` / `color` / `font` / `source` / `project` に依存する（HIR や `table_column` が値として
-`Length` / `Color` / `FontKind` / `SourceId` / `Span` / `ProjectPath` を持つため。#334 で `link` を
-`typeset::layout` へ移し `model` → `citation` の逆向き依存が消えた状態は保つ — 後段 module への依存は
-持たない）。
+著者が書いた文書（authored HIR）の所有者（#338 で旧 `model` から改組。epic #332 の最終段階）。
+HIR は frontend の一時的な構文木ではなく、`resolve` と `typeset` が共有する authored 文書の正典で、
+producer は frontend 1 つだが HIR の意味と寿命は frontend の実装より広いため、ここが所有者になる。
+外部依存は serde / garde のみで、`document` が定義する型自体は診断ライブラリ（miette）にも I/O にも
+依存しない。crate 内では `length` / `color` / `font` / `source` / `project` に依存する（HIR や
+`table_column` が値として `Length` / `Color` / `FontKind` / `SourceId` / `Span` / `ProjectPath` を持つ
+ため）。`resolve` / `citation` / `typeset` / `build_pdf` は知らない — 後段 module への依存は持たない。
 
-epic #332 はこの module 自体の解体を目標にしている（「共有されていること」は所有者の不在であって
-所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ、
-第 2 段階の #334 で意味解析の識別子を `resolve`、配置・アンカーの型を `typeset::layout`、
-`TextAlignment` を `config::style::text` へ移し、第 4 段階の #336 で値概念の `Length` / `Color` を
-crate root 直下の `length` / `color`、フォント分類の `FontKind` / `FontType` / `FontMap` と処理済み
-フォント設定を `font`、`column_width` を `config::layout` へ移した。
-目標構成は `docs/model-target-architecture.md`。
+提供する interface は次の 4 つに限る。
+
+- frontend が HIR を構築するための `HirBuilder` と HIR ノード型
+- 複数ソースを決定順序で束ねる組み立て（`HirSource` → `HirGroup` → `HirDocument`）
+- `resolve` / `typeset` が authored 文書を網羅的に走査するための HIR enum。網羅的 match は意図した
+  interface で、新しい言語要素を足したときに resolve と lowering の更新漏れをコンパイラに検出させる
+- 診断側が `NodeId` からソース位置を引く query（`SourceMap`）
+
+interface に出さないのは、`NodeId` の発行・位置表の内部 collection（`SourceSpans`）・ソース順の正規化。
+side table の `NodeMap<T>` も crate 内 interface に留め、`AnalyzedDocument` や `GeneratedCitations` の
+外部表現としては公開しない。
 
 #### モジュール構成
 
-3 層に分かれる（すべて非公開 module）。組版中間型（`Block` / `HItem` / `Line` / `Page` /
+2 層に分かれる（すべて非公開 module）。組版中間型（`Block` / `HItem` / `Line` / `Page` /
 `TableBox` 系）とシェーピング結果型（`GlyphRun` / `Glyph`）はここには置かない（#280、後述）。
 
-- **語彙型**: `heading_level`（`HeadingLevel`）/ `table_column`
+- **HIR**（`hir`、#322）: 著者が書いた内容を表す文書木。`id`（`NodeId`）/ `source_map`（`SourceSpans` /
+  `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `tree`（`HirSource` / `HirGroup` /
+  `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /
+  `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
+  `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
+  citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticFacts`
+  と `citation::GeneratedCitations`（引用表示の side table。型自体は外へ出さない）もこれを使う）。全ノードが
+  `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
+  `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
+  するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `citation::CitationId`）・
+  カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない — それらは `resolve::analyze` が
+  `SemanticFacts` として、CSL 整形結果は `citation::generate_citations` が別枠で持つ。引用箇所
+  （`HirInlineKind::Cite`）はキー列のみを持ち、CSL 整形後の表示文字列に対応するフィールドは
+  最初から持たない。
+  文書単位のファイルが `hir/tree.rs` なのは、`hir/document.rs` だと
+  `crate::document::hir::document` になり親 module と名前が衝突するため（#337 が
+  `build_pdf/project.rs` → `snapshot.rs` で解消したのと同じ判断、#338）。
+- **語彙型**（module 直下）: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有、#334）/ `theorem`
-  （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）。
-  小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
-  `Display`）のみを持つ。値概念そのものである `Length` / `Color` は `length` / `color`、フォント分類の
+  （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
+  `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）。小さな `Copy` 値型・enum と、その正準変換
+  （`as_str` / `from_name` / serde / `Display`）のみを持つ。
+  **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
+  （語彙置き場を型の無制限な受け皿にしない）。全 9 型が `HirNodeKind` / `HirMathKind` の
+  フィールドとして現れる。
+  値概念そのものである `Length` / `Color` は `length` / `color`、フォント分類の
   `FontType` / `FontKind` / `FontMap` は `font` の所有（#336）。ソースの同一性 `SourceId` と位置 `Span` は
   `source` の所有（#337、後述の source 節）。
 - **識別子はここに持たない**: 起源識別子 `SourceId` は `source`（`Origin` / `GeneratedOrigin` は #324 で
@@ -164,36 +191,25 @@ crate root 直下の `length` / `color`、フォント分類の `FontKind` / `Fo
   （`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、後述の citation 節）。
   画像パスの newtype `AssetId` は `project::ProjectPath` と同じパスを表す重複だったため削除し、
   HIR の `HirNodeKind::Figure` が `ProjectPath` を直接持つ（#337）。
-- `math_style`（`MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
-  `MathStyle` は HIR の数式評価変換（`HirMathKind::Styled`）と `typeset::lowering` の数式経路が
-  共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
-  HIR の数式表現と同形の中間型 `MathNode` とその変換（`to_math_node` / `to_math_nodes`）は #335 で
-  削除済み — `typeset::lowering::math` が `HirMath` / `HirMathKind` を直接読む（同じ構造を段ごとに
-  複製しないという配置規則どおり、数式の言語要素追加で更新する enum は 1 つになった）。
-- **HIR**（`hir`、#322）: 著者が書いた内容を表す文書木。`id`（`NodeId`）/ `source_map`（`SourceSpans` /
-  `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `document`（`HirSource` / `HirGroup` /
-  `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /
-  `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
-  `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
-  citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticFacts`
-  と `citation::GeneratedCitations`（引用表示の side table。型自体は外へ出さない）もこれを使う）。全ノードが
-  `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
-  `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
-  するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `citation::CitationId`）・
-  カウンタ値・CSL 整形結果・Theme 由来の表示文字列は持たない — それらは `resolve::analyze` が
-  `SemanticFacts` として、CSL 整形結果は `citation::generate_citations` が別枠で持つ。引用箇所
-  （`HirInlineKind::Cite`）はキー列のみを持ち、CSL 整形後の表示文字列に対応するフィールドは
-  最初から持たない。
 
 #### 不変条件・注意点
 
-- **model の型は miette に依存しない**（`project` は `SourceReadError` のために miette へ依存するが、
+- **`document` の型は miette に依存しない**（`project` は `SourceReadError` のために miette へ依存するが、
   それは seam のエラー型の話で、HIR や語彙型が診断を持つわけではない）。ソース位置は
   `source` の軽量な `Span { start, end }` で持ち、`miette::SourceSpan` への
   変換は診断を構築する側が行う。`Span` と `SourceSpan` はどちらも consumer にとって外部型のため
   orphan rule で `From` を書けず、`frontend` は非公開ヘルパー `span_ext::ToSourceSpan`、
   `typeset::lowering` はモジュール内 `fn` でそれぞれ変換する。`frontend` の lexer / parser / CST も
   独自の Span 型を持たず `source::Span` を直接使う。
+- **HIR と同形の中間 IR を作らない**。数式の中間型 `MathNode` とその変換（`to_math_node` /
+  `to_math_nodes`）は #335 で削除済み — `typeset::lowering::math` が `HirMath` / `HirMathKind` を
+  直接読む（同じ構造を段ごとに複製しないという配置規則どおり、数式の言語要素追加で更新する enum は
+  1 つになった）。
+- **`MathVariant` は「スタイル設定」ではない**。`\mathbold` / `\mathitalic` 等が指定する Unicode
+  数学英数字（U+1D400–U+1D7FF）の字形 variant で、`HirMathKind::Styled { variant, body }` が持ち、
+  `typeset::lowering::math` の数式経路が消費する。旧名 `MathStyle` は style.toml の `[math]` 設定
+  `config::style::math::MathStyle` と衝突しており、lowering 側が別名 import で回避していたため
+  #338 で改名した。config 側の `MathStyle` は改名していない。
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
@@ -215,14 +231,15 @@ crate root 直下の `length` / `color`、フォント分類の `FontKind` / `Fo
   設定横断の配置計算なので、`config` の横断バリデーション（`validate_layout`）・`build_pdf` の
   段幅算出・`typeset::breaking::break_pages` の実配置が同じ式を参照する構造は変わらない。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
-  ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は frontend →
-  lowering → block の複数段が共有するので `model` にあるのが正しい — ファイル名だけを見て移さない。
-- **組版中間型は model に置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と
+  ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は
+  `HirNodeKind::MathBlock` / `HirMathKind` が値として持つ authored 語彙なので `document` にあるのが
+  正しい — ファイル名だけを見て移さない。
+- **組版中間型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と
   その表計測ヘルパは `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果
-  `GlyphRun` / `Glyph` は `font` module の型（`font` 節参照）。いずれも消費者が model のように
-  全段へ広がっているわけではなく、`typeset` 内の複数 module（`block` / `breaking`）や
+  `GlyphRun` / `Glyph` は `font` module の型（`font` 節参照）。いずれも著者が書いた内容ではなく
+  組版の途中結果で、消費者も `typeset` 内の複数 module（`block` / `breaking`）や
   `typeset` → `build_pdf` の範囲にとどまるため、「複数 consumer の型でも consumer が同一 crate
-  内 / 同一依存関係内にとどまるなら共有置き場（model）ではなくその内部へ置く」という判断で model の
+  内 / 同一依存関係内にとどまるなら共有置き場ではなくその内部へ置く」という判断で当時の `model` の
   外へ移した（#280。当時は model / typeset / font がそれぞれ独立した crate だった）。
 
 ### `config`
@@ -434,7 +451,7 @@ Result<AnalyzedDocument, SemanticError>` の 1 関数だけ。CSL 整形の生�
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
 `EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
 
-`parse_source` は 1 ソース分の `model::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
+`parse_source` は 1 ソース分の `document::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
 `NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
 atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
 インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
@@ -453,7 +470,7 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 
 #### `evaluator`
 
-CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
+CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
 型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
@@ -1052,7 +1069,7 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
-唯一の消費者がテストであるため、`model` ではなく `build_pdf` に置く。
+唯一の消費者がテストであるため、`document` のような共有 module ではなく `build_pdf` に置く。
 
 - `dump`: `dump_pages`（確定ページ列 `typeset::Page` の決定的テキストダンプ）と `dump_publication`
   （`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
@@ -1119,7 +1136,7 @@ seiran 側に閉じたまま維持する）。フォント資源（`font::FontSy
   公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
   `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
 - `types`: 境界専用の自己完結 leaf 型（`FontType` / `FontFaceInput` / `VariationAxisInput` / `FontMetric` /
-  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `model` / `font`
+  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `document` / `font`
   の型を参照しない（#307。compiler 側からの変換は `seiran::build_pdf::publication` に閉じている）
 - `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
   バイト列）と、それを組み立てる

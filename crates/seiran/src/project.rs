@@ -4,7 +4,7 @@
 //! seam は設定の入力だけの道具ではなく全外部資源の窓口なので、`config` の子ではなく
 //! crate root 直下の module が所有する（#337）。[`ProjectPath`] は外部資源を指す
 //! compiler 側の唯一のパス型で、画像も同じ型で識別する（画像パスの newtype だった
-//! `model::AssetId` は同じパスを表す重複だったため削除済み）。
+//! `document::AssetId` は同じパスを表す重複だったため削除済み）。
 
 mod filesystem;
 mod memory;

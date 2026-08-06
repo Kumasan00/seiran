@@ -4,7 +4,7 @@
 //! この層は「確定した構造値を style の表示側フィールドで文字列にして箱に積む」だけを行う。
 //! 意味解析を行わないので、この層に失敗はない（`Result` を返さない）。
 //!
-//! 著者が書いた本文は HIR（`model::hir`）を走査し、事実は `NodeId` をキーに [`LoweringState`] の
+//! 著者が書いた本文は HIR（`document::hir`）を走査し、事実は `NodeId` をキーに [`LoweringState`] の
 //! query で引く。CSL 整形の生成物（書誌・引用表示）は `NodeId` を持たないので、別経路
 //! （子 module `generated`）で lower する。
 
@@ -13,8 +13,8 @@ use tracing::debug;
 use crate::{
   citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
+  document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  model::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   resolve::{AnalyzedDocument, CounterValue, HeadingKey, LabelId},
   typeset::layout::AnchorMark,
 };
@@ -141,7 +141,7 @@ pub struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
-  pub level: crate::model::HeadingLevel,
+  pub level: crate::document::HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
   /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）
@@ -155,8 +155,8 @@ pub(super) mod test_support {
   use crate::{
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
+    document::HirDocument,
     frontend::parse_source,
-    model::HirDocument,
     resolve::{AnalyzedDocument, analyze},
     source::SourceId,
   };
@@ -525,7 +525,7 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
         out.push_str(&hir_inlines_to_plain_text(children, style, state));
       },
       // 引用の表示は生成物の side table にある（見出しの `\cite` も目次・しおりでは表示を辿る）。
-      // 生成物は `GeneratedInline` なので `model` 側の畳み込みをそのまま使う。
+      // 生成物は `GeneratedInline` なので生成物側の畳み込みをそのまま使う。
       HirInlineKind::Cite { .. } => {
         out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
       },
@@ -547,8 +547,8 @@ mod tests {
   use crate::{
     citation::test_fixtures::sample_references,
     config::DocumentPolicy,
+    document::HirDocument,
     frontend::parse_source,
-    model::HirDocument,
     resolve::{AnalyzedDocument, analyze},
     source::SourceId,
     typeset::layout::{AnchorId, AnchorMark, LinkTarget},

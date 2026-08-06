@@ -1,13 +1,13 @@
 //! スペースや改ページなどの制御コマンド群
 
 use crate::{
+  document::{HirBuilder, HirNode, HirNodeKind},
   frontend::{
     evaluator::{EvalError, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
   length::Length,
-  model::{HirBuilder, HirNode, HirNodeKind},
 };
 
 /// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド

@@ -8,9 +8,9 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+  document::HeadingLevel,
   font::FontKind,
   length::{Length, non_negative, positive},
-  model::HeadingLevel,
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
@@ -241,7 +241,7 @@ mod tests {
   use garde::Validate;
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
-  use crate::{font::FontKind, length::Length, model::HeadingLevel};
+  use crate::{document::HeadingLevel, font::FontKind, length::Length};
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {

@@ -1,6 +1,7 @@
 //! 書体指定コマンド群
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   font::FontKind,
   frontend::{
     evaluator::{
@@ -11,7 +12,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// 引数 1 つを取り、子要素を `HirInline` リストに変換して `HirInlineKind::Styled` でラップする共通処理

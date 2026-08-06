@@ -95,7 +95,7 @@ mod tests {
       .unwrap_or_else(|e| panic!("フィクスチャの読み込みに失敗: {}: {e}", path.display()));
     let style = Style::default();
     let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
-    let hir_document = crate::model::HirDocument::assemble(vec![hir]);
+    let hir_document = crate::document::HirDocument::assemble(vec![hir]);
     let references = crate::citation::References(std::collections::HashMap::new());
     let analyzed =
       crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)

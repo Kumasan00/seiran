@@ -4,6 +4,7 @@
 
 use super::{GridRow, is_blank_row};
 use crate::{
+  document::HirMathRow,
   frontend::{
     evaluator::{
       EvalError,
@@ -12,7 +13,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::HirMathRow,
 };
 
 /// 採番の粒度

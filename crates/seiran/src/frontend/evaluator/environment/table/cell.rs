@@ -1,6 +1,7 @@
 //! `\row` の `&` 区切り区画からセル（[`HirTableCell`]）を構築する
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind, HirTableCell},
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
   },
-  model::{HirBuilder, HirInline, HirInlineKind, HirTableCell},
   source::Span,
 };
 

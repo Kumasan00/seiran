@@ -1,4 +1,4 @@
-//! 見出し（`model::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
+//! 見出し（`document::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
 
 use super::{
   LoweringContext,
@@ -6,7 +6,7 @@ use super::{
   template::expand_template,
 };
 use crate::{
-  model::HeadingLevel,
+  document::HeadingLevel,
   resolve::{HeadingKey, LabelId},
   typeset::layout::{Align, AnchorMark},
 };

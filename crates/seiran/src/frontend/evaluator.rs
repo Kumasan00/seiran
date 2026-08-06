@@ -6,6 +6,7 @@
 use std::mem;
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
     evaluator::command::CommandResult,
     syntax::{
@@ -15,7 +16,6 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   source::Span,
 };
 

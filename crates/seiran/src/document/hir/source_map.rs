@@ -1,7 +1,7 @@
 //! HIR ノードのソース位置表 [`SourceSpans`] / [`SourceMap`]。
 
 use crate::{
-  model::hir::NodeId,
+  document::hir::NodeId,
   source::{SourceId, Span},
 };
 

@@ -4,6 +4,7 @@
 
 use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
+  document::{HirBuilder, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -12,7 +13,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{HirBuilder, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
 };
 
 /// `matrix` 環境を評価する
@@ -75,8 +75,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{HirMathRow, MathDelimiter, MathEnvKind},
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::{HirMathRow, MathDelimiter, MathEnvKind},
   };
 
   fn parse<'a>(

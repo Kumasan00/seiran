@@ -1,4 +1,4 @@
-//! 定理ブロック（`model::HirNodeKind::Theorem`）の lowering
+//! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
@@ -9,9 +9,9 @@ use super::{
 };
 use crate::{
   config::TheoremStyle,
+  document::{HirNode, HirNodeKind, TheoremClass},
   font::FontKind,
   length::Length,
-  model::{HirNode, HirNodeKind, TheoremClass},
   resolve::LabelId,
   typeset::layout::Align,
 };

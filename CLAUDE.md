@@ -55,7 +55,7 @@ cargo test -p <crate_name>                                 # 特定クレート�
 
 ```text
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
-  → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → HIR（model::HirDocument）。
+  → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → HIR（document::HirDocument）。
     全ノード（block / inline / math）が決定的な NodeId を持ち、ソース位置は各 variant ではなく
     SourceMap に集約する。本体経路は HIR のまま後段へ渡る）
   → 意味解析（resolve::analyze: HIR を 1 回走査して、ラベル宣言・カウンタ構造値（CounterValue）・
@@ -147,13 +147,13 @@ length / color （crate 内の他 module への依存なし（serde / garde の�
         serde・FromStr / Display の正準形・演算子実装・garde カスタムバリデータ
         （crate::length::positive / non_negative）を、Color（8bit RGB）は "#rrggbb" のみを
         受理する serde 実装を同居させる。内部表現・丸め規則・正準表現を consumer に複製しない）
-  ↑ config, font, frontend, model, typeset, build_pdf
+  ↑ config, document, font, frontend, typeset, build_pdf
 
 source （crate 内の他 module への依存なし — ソースの同一性 SourceId と位置 Span を所有する leaf
         module（#337、旧 model）。どちらも HIR より前（字句解析の時点）から存在する概念で、
         文書木の語彙ではない。診断ライブラリ（miette）には依存せず、miette::SourceSpan への変換は
         診断を構築する側（frontend の span_ext / resolve の error）が行う）
-  ↑ model, frontend, resolve, build_pdf
+  ↑ document, frontend, resolve, build_pdf
 
 project （crate 内の他 module への依存なし — 外部資源取得の seam を所有する leaf module
         （#337、旧 config::project_source）。ProjectPath / ProjectSource / SourceReadError と
@@ -161,32 +161,45 @@ project （crate 内の他 module への依存なし — 外部資源取得の s
         文献・CSL・ソース・フォント・画像すべての窓口なので config の子には置かない。
         ProjectPath は外部資源を指す compiler 側の唯一のパス型で、画像もこの型で識別する
         （旧 model::AssetId は削除。Ord は画像 manifest の BTreeSet が使う））
-  ↑ config, font, frontend, model, citation, typeset, build_pdf
+  ↑ config, document, font, frontend, citation, typeset, build_pdf
 
-model （length, color, font, source, project を使用（#337 以降。それ以外の crate 内 module には
-        依存しない）— 全段共有の
-        データモデル。旧 types / document / hlist のコア型 3 crate を統合（#203）。
-        HeadingLevel / ColumnAlign / ColumnWidth 等の共通型 +
-        HIR（hir: HirDocument / HirNode / HirInline / HirMath / NodeId / SourceMap / HirBuilder、#322）+
-        数式中のフォントスタイル指定 MathStyle（frontend の評価変換と typeset::lowering の数式経路が
-        共有）のみを持つ。著者が書いた内容は HIR のみが表現し、HIR と同形の中間 IR は持たない
+document （length, color, font, source, project を使用（それ以外の crate 内 module には依存しない）—
+        著者が書いた文書（authored HIR）の所有者（#338 で旧 model から改組。epic #332 の最終段階で
+        model.rs / model/ は削除済み）。HIR は frontend の一時的な構文木ではなく resolve と typeset が
+        共有する authored 文書の正典なので、producer（frontend）ではなくここが所有する。
+        持つのは HIR 一式（hir: HirDocument / HirNode / HirInline / HirMath / NodeId / SourceMap /
+        HirBuilder / NodeMap、#322。文書単位の型 HirSource / HirGroup / HirDocument のファイルは
+        hir/tree.rs — hir/document.rs だと親 module と名前が衝突するため、#338）と、HIR の variant が
+        値として直接持つ閉じた語彙型（HeadingLevel / CaptionPosition / QuoteKind / TheoremClass /
+        MathEnvKind / MathDelimiter / MathVariant / ColumnAlign / ColumnWidth）だけ。語彙置き場は
+        型の無制限な受け皿にせず、複数 consumer が使うことは置く理由にならない。
+        interface は 4 つに限る — frontend が構築するための HirBuilder と HIR node 型 / 複数ソースを
+        決定順序で束ねる組み立て / resolve と typeset が網羅的に走査するための HIR enum（網羅的 match は
+        意図した interface。新しい言語要素で resolve と lowering の更新漏れをコンパイラに検出させる）/
+        診断側が NodeId からソース位置を引く query。ID 発行・位置表の内部 collection（SourceSpans）・
+        ソース順の正規化は出さず、side table の NodeMap も crate 内に留めて AnalyzedDocument や
+        GeneratedCitations の外部表現にはしない。
+        MathVariant は「スタイル設定」ではなく Unicode 数学英数字の字形 variant で、
+        HirMathKind::Styled { variant, body } が持つ（旧名 MathStyle は config::style::math::MathStyle と
+        衝突していたため #338 で改名。config 側は改名していない）。
+        著者が書いた内容は HIR のみが表現し、HIR と同形の中間 IR は持たない
         （数式の中間型 MathNode とその変換 to_math_nodes は、typeset::lowering が HirMath /
         HirMathKind を直接読むようにして削除済み、#335）。引用まわりの型（CitationId / CitationSiteFacts /
-        GeneratedBlock / GeneratedInline）は citation へ移設済み（#333）。
+        GeneratedBlock / GeneratedInline）は citation（#333）、
         意味解析の識別子（LabelId / HeadingKey）は resolve、配置・アンカーの型（FootnoteId /
         AnchorId / AnchorMark / LinkTarget / Align / TableColumn）は typeset::layout、
-        検証済み設定値 TextAlignment は config::style::text へ移設済み（#334。これで model →
+        検証済み設定値 TextAlignment は config::style::text の所有（#334。これで model →
         citation という唯一の逆向き依存が消えた）。値概念の Length / Color は crate root 直下の
         leaf module length / color、フォント分類の FontKind / FontType / FontMap は font、
-        段組みの 1 段幅を求める column_width は config の layout へ移設済み（#336）。
-        ソースの同一性・位置（SourceId / Span）は source へ移設し、画像パスの newtype AssetId は
-        削除して HIR の Figure が project::ProjectPath を直接持つようにした（#337）。
+        段組みの 1 段幅を求める column_width は config の layout（#336）。
+        ソースの同一性・位置（SourceId / Span）は source で、画像パスの newtype AssetId は
+        削除して HIR の Figure が project::ProjectPath を直接持つ（#337）。
         組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
-        （GlyphRun / Glyph）は font module へ移設済み（#280、model は意味モデルと共通値型に縮小）。
-        model が持つ型自体は診断ライブラリ（miette）に依存せず、ソース位置は軽量な source::Span で持つ）
+        （GlyphRun / Glyph）は font module の所有（#280）。
+        document が持つ型自体は診断ライブラリ（miette）に依存せず、ソース位置は軽量な source::Span で持つ）
   ↑ config, citation, frontend, resolve, typeset, build_pdf
 
-config （length, color, font, model, project を使用。非公開の `config_toml` / `style` / `layout` /
+config （length, color, document, font, project を使用。非公開の `config_toml` / `style` / `layout` /
         `policy` 子 module を内包し、
         config.toml / style.toml のデータモデル + 読込・検証を持つ。外部資源取得の seam
         （`ProjectSource` / `ProjectPath` / `SourceReadError` + filesystem / memory の 2 実装、#300）は
@@ -197,7 +210,7 @@ config （length, color, font, model, project を使用。非公開の `config_t
         公開 API は module root の `pub use` に揃える）
   ↑ citation, resolve, typeset, build_pdf
 
-resolve （model, config, citation, source に依存（citation へは `References` と `CitationSiteFacts` のため。
+resolve （document, config, citation, source に依存（citation へは `References` と `CitationSiteFacts` のため。
         逆向きの依存は無い）。`analyze` が HIR を 1 回走査して SemanticFacts（NodeId をキーにした
         side table 群）を確定し、AnalyzedDocument として HIR と束ねる。analyze の後に成立する
         意味上の識別子 LabelId / HeadingKey も所有する（ids 子 module、#334）。表示文字列（number_format 等）は
@@ -207,15 +220,15 @@ resolve （model, config, citation, source に依存（citation へは `Referenc
         AnalyzedDocument を query 経由で直接読む（#325）
   ↑ typeset, build_pdf
 
-frontend （model, length, color, font, source, project に依存（project へは `\image{...}` の引数を
-          `ProjectPath` にするため）。bumpalo アリーナ上に CST を構築し、HIR（model::hir）に評価変換。
+frontend （document, length, color, font, source, project に依存（project へは `\image{...}` の引数を
+          `ProjectPath` にするため）。bumpalo アリーナ上に CST を構築し、HIR（document::hir）に評価変換。
           parse_source は 1 ソース分の HirSource（HirGroup + SourceSpans）を返す。CST とその内部
           エラー型は非公開の内部実装（`syntax` 子 module）。NodeId は各ソース内の preorder で
           発行し、スレッド共有カウンタを使わない（並列パースでも実行順に依存しない）。
           採番・\ref 解決は resolve、書式化は typeset::lowering に委ねる）
   ↑ build_pdf
 
-citation （model, config, font, project に依存（resolve は知らない）。引用まわりの型を所有する（#333）—
+citation （document, config, font, project に依存（resolve は知らない）。引用まわりの型を所有する（#333）—
           引用キー CitationId と generate_citations の入力契約 CitationSiteFacts（`site` 子 module。
           後段が要求する入力契約は後段が所有し、前段の resolve::analyze が構築する）、
           生成物専用の語彙 GeneratedBlock（Heading / Paragraph / Anchor の 3 variant） /
@@ -238,15 +251,15 @@ citation （model, config, font, project に依存（resolve は知らない）�
 font （length, color, project に依存（config には依存しない — 残っていた seam 経由の依存は #337 で
       project へ移り、依存方向は config → font の一方向になった）。read-fonts / harfrust /
       rayon を使用。シェーピング結果型 GlyphRun / Glyph
-      を持つ（#280 で model から移設。当時 typeset・pdf_gen の 2 crate が消費者だった。seiran-pdf は
+      を持つ（#280 で当時の model から移設。当時 typeset・pdf_gen の 2 crate が消費者だった。seiran-pdf は
       #305 / #307 で自前の leaf 型を持つようになり、変換は build_pdf::publication の 1 箇所に閉じている）。
       フォント分類 FontKind / FontType と「全 19 種別が揃っている」不変条件を表す FontMap（kind / map
-      子 module、#336 で model から移設）、および処理済みフォント設定 FontConfig / FontConfigs /
+      子 module、#336 で当時の model から移設）、および処理済みフォント設定 FontConfig / FontConfigs /
       VariationAxis / Feature / TextDirection（settings 子 module、#336 で config から移設。後段が
       要求する入力契約は後段が所有し、config が TOML の未検証型から構築する）も所有する）
-  ↑ config, citation, frontend, model, typeset, build_pdf
+  ↑ config, citation, document, frontend, typeset, build_pdf
 
-typeset （font, config, model, resolve, citation, length, color, project, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
+typeset （font, config, document, resolve, citation, length, color, project, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
           3 crate を module として統合（#204）し、責務基準で lowering / block / breaking に
           改名（#206）。DocumentContent（AnalyzedDocument への参照 + 引用の生成物への参照）→
           LayoutNode 変換（lowering、解決済み構造値を表示文字列に変換するだけで、採番・`\ref` 解決は
@@ -254,7 +267,7 @@ typeset （font, config, model, resolve, citation, length, color, project, icu, 
           break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
           （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 module にまとめる。
           組版中間型（Block / HItem / Line / Page / TableBox 系）は非公開 module layout に集約し
-          （#280、旧 model から移設。block/breaking 双方から対称参照されるためどちらの所有物にも
+          （#280、当時の model から移設。block/breaking 双方から対称参照されるためどちらの所有物にも
           しない）。組版時に成立する配置・アンカーの型（Align / FootnoteId / AnchorId / AnchorMark /
           LinkTarget）と、lowering が構築する表レイアウトの入力契約 TableColumn も layout の所有
           （#334。到達先の名前空間は resolve / citation の識別子を借りるだけで発行はしない）。段の呼び出し順序（lowering → build_blocks → 画像サイズ確定 → break_pages 等）は
@@ -290,10 +303,10 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 | `length` / `color` | それぞれ 1 つの値概念を所有する leaf module（#336、旧 `model`）。`Length`（内部表現は sp = 1/65536pt の整数、正準形 `<pt値>pt`、garde カスタムバリデータ `positive` / `non_negative` を同居）と `Color`（8bit RGB、`"#rrggbb"` のみ受理）。内部表現・丸め規則・正準表現を consumer に複製しない |
 | `source`   | ソースの同一性 `SourceId` と位置 `Span` を所有する leaf module（#337、旧 `model`）。どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。miette には依存せず、`miette::SourceSpan` への変換は診断を構築する側が行う |
 | `project`  | 外部資源取得の seam を所有する leaf module（#337、旧 `config::project_source`）。`ProjectPath` / `ProjectSource` / `SourceReadError` + `FilesystemProjectSource` / `MemoryProjectSource`（#300）。`ProjectPath` は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する（旧 `model::AssetId` は削除。`Ord` は画像 manifest の `BTreeSet` が使う） |
-| `model`    | 全段共有のデータモデル（共通型 `HeadingLevel` / `ColumnAlign` / `ColumnWidth` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ 数式中のフォントスタイル指定 `MathStyle`。著者が書いた内容は HIR のみが表現し、HIR と同形の中間 IR（旧 `MathNode` / `to_math_nodes`）は持たない（#335）。引用まわりの型は `citation`（#333）、意味解析の識別子（`LabelId` / `HeadingKey`）は `resolve`、配置・アンカーの型（`FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` / `Align` / `TableColumn`）は `typeset::layout`、`TextAlignment` は `config::style::text` へ移設済み（#334。逆向き依存 `model` → `citation` はここで消えた）。`Length` / `Color` は `length` / `color`、`FontKind` / `FontType` / `FontMap` は `font`、`column_width` は `config::layout` へ移設済み（#336。HIR が値として持つこれらの型を通じて `model` → `length` / `color` / `font` の依存が生まれた）。`SourceId` / `Span` は `source`、画像パスの `AssetId` は削除して `project::ProjectPath` へ一本化（#337。HIR の `Figure` が `ProjectPath` を直接持つ）。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
+| `document` | 著者が書いた文書（authored HIR）の所有者（#338、旧 `model`。epic #332 の最終段階で `model.rs` / `model/` は削除）。持つのは HIR 一式（`HirDocument` / `HirNode` / `HirInline` / `HirMath` / `NodeId` / `SourceMap` / `HirBuilder` / `NodeMap`、#322。文書単位の型は `hir/tree.rs` — `hir/document.rs` だと親 module と名前が衝突するため）と、HIR の variant が値として直接持つ閉じた語彙型（`HeadingLevel` / `CaptionPosition` / `QuoteKind` / `TheoremClass` / `MathEnvKind` / `MathDelimiter` / `MathVariant` / `ColumnAlign` / `ColumnWidth`）だけ — 複数 consumer が使うことは置く理由にならない。interface は「frontend が構築するための `HirBuilder` と node 型」「複数ソースを決定順序で束ねる組み立て」「resolve / typeset が網羅的に走査するための HIR enum（網羅的 match は意図した interface）」「診断側が `NodeId` から位置を引く query」の 4 つに限り、ID 発行・位置表の内部 collection・ソース順の正規化は出さない（`NodeMap` も crate 内に留める）。`MathVariant` は Unicode 数学英数字の字形 variant で、`config::style::math::MathStyle` との名前衝突を解くため #338 で `MathStyle` から改名（config 側は改名せず）。HIR と同形の中間 IR（旧 `MathNode` / `to_math_nodes`）は持たない（#335）。引用まわりの型は `citation`（#333）、意味解析の識別子（`LabelId` / `HeadingKey`）は `resolve`、配置・アンカーの型（`FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` / `Align` / `TableColumn`）は `typeset::layout`、`TextAlignment` は `config::style::text` の所有（#334。逆向き依存 `model` → `citation` はここで消えた）。`Length` / `Color` は `length` / `color`、`FontKind` / `FontType` / `FontMap` は `font`、`column_width` は `config::layout`（#336。HIR が値として持つこれらの型を通じて `document` → `length` / `color` / `font` の依存が生まれる）。`SourceId` / `Span` は `source`、画像パスの `AssetId` は削除して `project::ProjectPath` へ一本化（#337。HIR の `Figure` が `ProjectPath` を直接持つ）。組版中間型・シェーピング結果型は持たない（#280）。`resolve` / `citation` / `typeset` / `build_pdf` は知らない |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 意味解析へ渡す投影 `DocumentPolicy`（値に影響する設定だけを写す、#324）+ `[text].alignment` の検証済み設定値 `TextAlignment` の所有（`style::text`、#334）+ TOML の未検証型（`PreFontConfig` 等）から `font` 所有の検証済みフォント設定を構築する処理と、段組み設定から 1 段幅を導出する `column_width` の所有（`layout`、#336）。外部資源取得の seam は `project` へ移設済み（#337）。非公開の `config_toml` / `style` / `layout` / `policy` 子 module + root facade（実際に名指しされる名前だけを載せる、#326）                                                                                                                                                                     |
 | `resolve`  | 意味解析 `analyze`（HIR 1 走査でラベル宣言・`\ref` / `Theorem::of` の解決・重複ラベル検出・カウンタ構造値 `CounterValue`・見出し `HeadingKey`・引用箇所を `SemanticFacts` へ確定し `AnalyzedDocument` を返す。fact の完全性を最後に検証する）+ analyze 後に成立する識別子 `LabelId` / `HeadingKey` の所有（`ids`、#334）。`AnalyzedDocument` は目的別 query（`counter_value` / `heading_key` 等）を公開し、typeset::lowering が直接読む。表示文字列は生成せず、そもそも表示設定を受け取れない（引数は `DocumentPolicy`、#324） |
-| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。生成物は HIR のみで、他の文書木表現へ落とす移行用 adapter は #325 で削除済み                                                                                                                                                                                                                                             |
+| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`document::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。生成物は HIR のみで、他の文書木表現へ落とす移行用 adapter は #325 で削除済み                                                                                                                                                                                                                                             |
 | `citation` | 引用まわりの型の所有者（`site`: `CitationId` / `CitationSiteFacts`、`generated`: `GeneratedBlock` / `GeneratedInline`（各 3 variant、#325 / #326）、#333）+ `references.toml` / `.json` の読込（`references` 子 module）+ `style`（`load_citation_style`。CSL スタイル・ロケールの読込、I/O はここだけ）+ `generate`（`generate_citations`。`NodeMap<CitationSiteFacts>` と `CompiledCitationStyle` から `GeneratedCitations` を生成、I/O なし、hayagriva / citationberg）。生成物の collection と完全性は `GeneratedCitations` が隠し、`display_at` / `bibliography` / `is_empty` の query だけを公開する。引用箇所の意味解析（未定義キー検証を含む）は `resolve::analyze` が担う（#324）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。子 module は `face_config`（フェース設定の組み立て）/ `glyph_run` / `kind` / `map` / `settings` / `shaper`（`pub(crate) mod`）/ `system` / `validate_font`。シェーピング結果型 `GlyphRun` / `Glyph`（#280）に加え、フォント分類 `FontKind` / `FontType` と `FontMap`（`kind` / `map`、#336 で `model` から移設）、font の入力契約である処理済みフォント設定 `FontConfig` / `FontConfigs` / `VariationAxis` / `Feature` / `TextDirection`（`settings`、#336 で `config` から移設）を所有する。`config` には依存しない — フォントファイルの読込は `project::ProjectSource` seam 経由（#337）                                                                                                                                                                                                                                        |
 | `typeset`  | `DocumentContent`（`resolve::AnalyzedDocument` + `citation::GeneratedCitations` への参照 2 本だけ。side table の collection は現れない、#333）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が `DocumentContent` から表示文字列を生成しレイアウトノードを組み立てる（CSL 整形の生成物は `lowering::generated` の専用経路で lower する、#325）、配置・アンカーの型（`Align` / `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget`）と表レイアウトの入力契約 `TableColumn` は `layout` の所有（#334）、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型に絞る（#281）。`LineBreaker` seam は `typeset::breaking` の facade 止まりで `typeset` root へは lift しない（#326）|

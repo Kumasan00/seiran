@@ -5,6 +5,7 @@
 //! `//` はコメント開始として解釈されるため、URL 内では `\/` と書く。
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -14,7 +15,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\url{uri}` を `HirInlineKind::Link` に変換する（URI 自身を表示テキストにする）

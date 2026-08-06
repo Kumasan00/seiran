@@ -1,11 +1,11 @@
-//! リスト（`model::HirNodeKind::List`）の lowering
+//! リスト（`document::HirNodeKind::List`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::{length::Length, model::HirListItem, typeset::layout::Align};
+use crate::{document::HirListItem, length::Length, typeset::layout::Align};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(

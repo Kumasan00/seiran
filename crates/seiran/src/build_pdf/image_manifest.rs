@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::{
-  model::{HirDocument, HirNode, HirNodeKind},
+  document::{HirDocument, HirNode, HirNodeKind},
   project::ProjectPath,
 };
 
@@ -56,7 +56,7 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::collect_image_paths;
-  use crate::{model::HirDocument, project::ProjectPath, source::SourceId};
+  use crate::{document::HirDocument, project::ProjectPath, source::SourceId};
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {

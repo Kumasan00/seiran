@@ -1,6 +1,7 @@
 //! 定理環境 — `theorem` / `lemma` / … / `proof`（10 種）
 
 use crate::{
+  document::{HirBuilder, HirNode, HirNodeKind, HirProofTarget, TheoremClass},
   frontend::{
     evaluator::{
       EvalError,
@@ -9,7 +10,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{HirBuilder, HirNode, HirNodeKind, HirProofTarget, TheoremClass},
 };
 
 /// 定理環境（10 種共通）を評価する
@@ -82,8 +82,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{HirInlineKind, TheoremClass},
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::{HirInlineKind, TheoremClass},
   };
 
   /// テスト用 `parse` ラッパ

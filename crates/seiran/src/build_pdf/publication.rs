@@ -403,9 +403,9 @@ mod tests {
   use crate::{
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
     config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig},
+    document::HeadingLevel,
     font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
     length::Length,
-    model::HeadingLevel,
     resolve::{HeadingKey, LabelId},
     typeset::{
       AnchorId, AnchorMark, HBox, HBoxContent, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
@@ -815,8 +815,8 @@ mod tests {
     let config = test_config();
     let cell_run = glyph_run("cell");
     let column = TableColumn {
-      align: crate::model::ColumnAlign::Left,
-      width: crate::model::ColumnWidth::Auto,
+      align: crate::document::ColumnAlign::Left,
+      width: crate::document::ColumnWidth::Auto,
     };
     let row = TableRowBox {
       cells: vec![TableCellBox {

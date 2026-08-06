@@ -1,12 +1,12 @@
 //! 引用環境 — `quote` / `quotation`
 
 use crate::{
+  document::{HirBuilder, HirNode, HirNodeKind, QuoteKind},
   frontend::{
     evaluator::{EvalError, opt_args::collect_environment_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{HirBuilder, HirNode, HirNodeKind, QuoteKind},
 };
 
 /// 引用環境（`quote` / `quotation`）を評価する

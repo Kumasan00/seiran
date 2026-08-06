@@ -3,6 +3,7 @@
 //! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
+  document::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -13,7 +14,6 @@ use crate::{
     syntax::ast::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
-  model::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind},
 };
 
 /// `figure` 環境を評価する
@@ -203,8 +203,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::HirInlineKind,
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::HirInlineKind,
   };
 
   /// テスト用 `parse` ラッパ

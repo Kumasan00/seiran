@@ -7,6 +7,7 @@
 //! 常に同じ穴になるので決定性は保たれる。
 
 use crate::{
+  document::{HirBuilder, HirMath, HirMathKind, MathVariant, NodeId},
   frontend::{
     evaluator::{EvalError, inline::resolve_symbol_command, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
@@ -17,7 +18,6 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{HirBuilder, HirMath, HirMathKind, MathStyle, NodeId},
 };
 
 /// インライン数式ノード（`$...$` 由来の `InlineMath`）を [`HirMath`] のリストに変換する
@@ -165,8 +165,8 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
   let view = CommandView::new(cmd_node, source);
   let name = view.name();
 
-  // 数式スタイルコマンド（\mathbold, \mathitalic 等）
-  if let Some(style) = MathStyle::from_command_name(name) {
+  // 数式の字形コマンド（\mathbold, \mathitalic 等）
+  if let Some(variant) = MathVariant::from_command_name(name) {
     let _opt_args = collect_command_opt_args(&view, &[])?;
     let arg_count = view.args().count();
     if arg_count == 0 {
@@ -187,7 +187,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
     };
     let id = builder.alloc(view.span());
     let body = evaluate_inline_math(source, builder, first_arg)?;
-    return Ok(HirMath::new(id, HirMathKind::Styled { style, body }));
+    return Ok(HirMath::new(id, HirMathKind::Styled { variant, body }));
   }
 
   match name {

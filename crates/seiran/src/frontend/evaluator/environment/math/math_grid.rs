@@ -5,6 +5,7 @@
 use miette::SourceSpan;
 
 use crate::{
+  document::{HirBuilder, HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{EvalError, math::evaluate_math_elements},
     span_ext::ToSourceSpan,
@@ -14,7 +15,6 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{HirBuilder, HirMath, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
 };
 
 mod markers;
@@ -37,7 +37,7 @@ pub(crate) struct GridSpec {
 #[derive(Debug)]
 pub(crate) struct GridRow {
   /// この行の HIR ノード ID（セルより先に確保する）
-  pub id: crate::model::NodeId,
+  pub id: crate::document::NodeId,
   /// 列（`&` 区切り）。各列は数式ノード列
   pub cells: Vec<Vec<HirMath>>,
   /// 行末マーカー `\notag` の位置（`None` は採番する）
@@ -224,11 +224,11 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{HirBuilder, HirMathKind},
     frontend::{
       evaluator::lookup_env_parse_mode,
       syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
     },
-    model::{HirBuilder, HirMathKind},
     source::SourceId,
   };
 

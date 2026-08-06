@@ -2,6 +2,7 @@
 
 use super::cell::{build_cell, contains_line_break};
 use crate::{
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow},
   frontend::{
     evaluator::{
       EvalError,
@@ -16,7 +17,6 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow},
   source::Span,
 };
 

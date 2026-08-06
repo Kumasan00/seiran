@@ -1,12 +1,12 @@
 //! `\ref{label}` コマンド
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{EvalError, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\ref{label}` を `HirInlineKind::Ref` に変換する

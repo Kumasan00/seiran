@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use crate::{
   citation::CitationSiteFacts,
-  model::{HeadingLevel, HirDocument, NodeId, NodeMap},
+  document::{HeadingLevel, HirDocument, NodeId, NodeMap},
   resolve::{HeadingKey, LabelId, counter::CounterValue},
 };
 
