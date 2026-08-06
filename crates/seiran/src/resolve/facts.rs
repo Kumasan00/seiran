@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use crate::{
-  model::{HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
+  model::{CitationId, CitationSiteFacts, HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
   resolve::counter::CounterValue,
 };
 
@@ -45,6 +45,8 @@ pub(crate) struct SemanticFacts {
   pub(super) counters: NodeMap<CounterValue>,
   /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 解決済みの参照先
   pub(super) references: NodeMap<LabelId>,
+  /// 引用箇所（`\cite`）→ 引用先（挿入順 = 文書順。CSL の採番がこの順序に依存する）
+  pub(super) citations: NodeMap<CitationSiteFacts>,
   /// 見出し（文書順）
   pub(super) headings: Vec<HeadingFacts>,
 }
@@ -106,6 +108,28 @@ impl AnalyzedDocument {
 
   /// 参照箇所を文書順に走査する
   pub fn reference_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.references.iter(); }
+
+  /// 引用箇所の引用先を引く
+  ///
+  /// # Panics
+  ///
+  /// `analyze` が返した `AnalyzedDocument` に無い `site` を渡した場合にパニックします
+  /// （引用箇所の網羅は `analyze` が保証している）。
+  #[must_use]
+  pub fn citation_targets(&self, site: NodeId) -> &[CitationId] {
+    let Some(facts) = self.facts.citations.get(site) else {
+      unreachable!("全引用箇所は analyze が citations へ登録している: {site:?}")
+    };
+    return &facts.targets;
+  }
+
+  /// 引用箇所の side table を文書順のまま返す（CSL 整形が採番に使う）
+  #[must_use]
+  pub(crate) fn citation_sites(&self) -> &NodeMap<CitationSiteFacts> { return &self.facts.citations; }
+
+  /// 引用箇所が 1 つでもあるかを返す
+  #[must_use]
+  pub fn has_citations(&self) -> bool { return !self.facts.citations.is_empty(); }
 
   /// 見出しを文書順に返す
   #[must_use]

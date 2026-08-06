@@ -5,6 +5,7 @@
 
 mod align;
 mod caption;
+mod citation_facts;
 mod color;
 mod column_width;
 mod doc_node;
@@ -32,6 +33,7 @@ mod theorem;
 
 pub use align::Align;
 pub use caption::CaptionPosition;
+pub(crate) use citation_facts::CitationSiteFacts;
 pub use color::Color;
 pub use column_width::column_width;
 // `Document` は旧 model crate の公開 API 保持のための再エクスポートで、crate::model root

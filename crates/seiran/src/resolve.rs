@@ -25,7 +25,7 @@ pub use document::{
   ResolvedDocument, ResolvedGenerated, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGenerated,
   SemanticGroup,
 };
-pub use error::SemanticError;
+pub use error::{SemanticError, UnknownCitationSite};
 #[allow(unused_imports)]
 pub use facts::{AnalyzedDocument, HeadingFacts};
 // `IndexKey` は旧 resolve crate の公開 API 保持のための再エクスポートで、crate::resolve root

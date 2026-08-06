@@ -116,7 +116,7 @@ fn compile_with_base_dir<S: crate::config::ProjectSource>(
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
   let (document, parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
+  let resolved = semantics::resolve_semantics(source, document, parsed, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
@@ -335,7 +335,7 @@ fn build_pages_with_source(
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (document, parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
+  let resolved = semantics::resolve_semantics(source, document, parsed, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
@@ -389,15 +389,19 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::model::HirSource
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
 fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb) -> CompileError {
+  // 未定義引用キーは箇所ごとに `SourceId` を持ち、ソースごとの位置付き診断へ組み替える。
+  if let crate::resolve::SemanticError::UnknownCitationKeys { sites } = error {
+    return wrap_unknown_citation_keys(sites, source_db);
+  }
   return match error.origin() {
-    crate::model::Origin::Source(source_id) => {
+    Some(crate::model::Origin::Source(source_id)) => {
       let entry = source_db.get(source_id);
       CompileError::Resolve {
         src: miette::NamedSource::new(&entry.name, entry.content.clone()),
         source: error,
       }
     },
-    crate::model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
+    Some(crate::model::Origin::Generated(_)) | None => CompileError::ResolveInternal { source: error },
   };
 }
 
@@ -405,8 +409,7 @@ fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb
 ///
 /// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
 /// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
-fn wrap_citation_semantic_error(error: crate::citation::CitationSemanticError, source_db: &SourceDb) -> CompileError {
-  let crate::citation::CitationSemanticError::UnknownCitationKeys { sites } = error;
+fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<crate::model::SourceId> = Vec::new();
@@ -446,8 +449,7 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
   return match error {
     SemanticsError::CitationStyle(source) => CompileError::CitationStyle { source },
     SemanticsError::CitationFormat(source) => CompileError::CitationFormat { source },
-    SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
-    SemanticsError::CitationSemantic(source) => wrap_citation_semantic_error(source, source_db),
+    SemanticsError::Analyze(source) => wrap_resolve_error(source, source_db),
   };
 }
 
@@ -480,7 +482,7 @@ mod tests {
       .expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(
       error.origin(),
-      crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography),
+      Some(crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography)),
       "書誌が帰属源のはず"
     );
     return error;

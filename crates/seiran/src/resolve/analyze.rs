@@ -9,15 +9,16 @@
 //! 行採番の後に来る）。
 
 use crate::{
+  citation::References,
   config::{CounterName, DocumentPolicy},
   model::{
-    HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LabelId, NodeId,
-    Origin, SourceMap,
+    CitationId, CitationSiteFacts, HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode,
+    HirNodeKind, LabelId, NodeId, Origin, SourceMap,
   },
   resolve::{
     SemanticError,
     counter::CounterRegistry,
-    error::span_to_source_span,
+    error::{UnknownCitationSite, span_to_source_span},
     facts::{AnalyzedDocument, HeadingFacts, SemanticFacts},
   },
 };
@@ -32,18 +33,42 @@ use crate::{
 ///
 /// 同名ラベルが 2 回以上宣言された場合、または `\ref` / `[of=...]` の参照先が存在しない場合に
 /// [`SemanticError`] を返します。
-pub fn analyze(hir: HirDocument, policy: &DocumentPolicy) -> Result<AnalyzedDocument, SemanticError> {
+pub fn analyze(
+  hir: HirDocument,
+  policy: &DocumentPolicy,
+  references: &References,
+) -> Result<AnalyzedDocument, SemanticError> {
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
   let mut pending: Vec<PendingReference> = Vec::new();
+  let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
+  let mut duplicate_label: Option<SemanticError> = None;
   for group in hir.groups() {
     let mut walker = Walker {
       locations: hir.locations(),
+      references,
       registry: &mut registry,
       facts: &mut facts,
       pending: &mut pending,
+      unknown_citations: &mut unknown_citations,
     };
-    walker.nodes(&group.nodes)?;
+    // 重複ラベルで即座に打ち切らず、未定義引用キーを集め終えてから報告する。
+    // 引用キーの検証は移設前（`citation::analyze_citations`）が意味解決より先に走っていたため、
+    // その優先順位を保つ（#324 は振る舞いを変えない）。採番は登録の前に済んでいるので、
+    // 走査を続けても後続のカウンタ値はずれない。
+    if let Err(error) = walker.nodes(&group.nodes)
+      && duplicate_label.is_none()
+    {
+      duplicate_label = Some(error);
+    }
+  }
+  if !unknown_citations.is_empty() {
+    return Err(SemanticError::UnknownCitationKeys {
+      sites: unknown_citations,
+    });
+  }
+  if let Some(error) = duplicate_label {
+    return Err(error);
   }
   resolve_references(&mut facts, &registry, &pending, hir.locations())?;
   return Ok(AnalyzedDocument::new(hir, facts));
@@ -86,12 +111,16 @@ fn resolve_references(
 struct Walker<'a> {
   /// `NodeId` → ソース位置の対応表
   locations: &'a SourceMap,
+  /// 引用キーの既知性を判定する参照定義
+  references: &'a References,
   /// カウンタとラベルの登録状態
   registry: &'a mut CounterRegistry,
   /// 走査中に確定した事実の書き込み先
   facts: &'a mut SemanticFacts,
   /// 走査後にまとめて検証する参照箇所の書き込み先
   pending: &'a mut Vec<PendingReference>,
+  /// 走査中に見つかった未定義引用キーの書き込み先
+  unknown_citations: &'a mut Vec<UnknownCitationSite>,
 }
 
 impl Walker<'_> {
@@ -235,12 +264,12 @@ impl Walker<'_> {
           site: inline.id,
           label: label.clone(),
         }),
+        HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::InlineMath(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
-        | HirInlineKind::Cite { .. }
         | HirInlineKind::Index { .. } => {},
       }
     }
@@ -265,6 +294,30 @@ impl Walker<'_> {
     return Ok(());
   }
 
+  /// 引用箇所の事実を記録する（未定義キーを含む箇所は fact を作らず未知として集める）
+  ///
+  /// キーの順序はソース上の順序をそのまま保つ（`\cite{a,b}` は 2 件）。
+  fn cite(&mut self, site: NodeId, keys: &[String]) {
+    let missing: Vec<String> =
+      keys.iter().filter(|key| return self.references.get(key.as_str()).is_none()).cloned().collect();
+    if !missing.is_empty() {
+      let location = self.locations.location(site);
+      self.unknown_citations.push(UnknownCitationSite {
+        source_id: location.source_id,
+        span: location.span,
+        keys: missing,
+      });
+      return;
+    }
+    self.facts.citations.insert(
+      site,
+      CitationSiteFacts {
+        targets: keys.iter().map(|key| return CitationId::new(key.clone())).collect(),
+      },
+    );
+    return;
+  }
+
   /// ラベル宣言を双方向（ノード → ラベル / ラベル → ノード）で記録する
   fn record_label(&mut self, node: NodeId, label: Option<&str>) {
     let Some(name) = label else {
@@ -282,9 +335,13 @@ impl Walker<'_> {
 mod tests {
   use super::analyze;
   use crate::{
+    citation::{References, test_fixtures::sample_references},
     config::{DocumentPolicy, Style},
     model::{HirDocument, SourceId},
   };
+
+  /// 引用を含まない入力向けの空の参照定義
+  fn no_references() -> References { return References(std::collections::HashMap::new()); }
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
@@ -354,7 +411,9 @@ mod tests {
       // Act
       let old = crate::resolve::resolve_project(&semantic, &policy)
         .unwrap_or_else(|e| panic!("{name}: 旧実装での解決に成功するはず: {e:?}"));
-      let analyzed = analyze(document(&content), &policy).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+      // fixture には `\cite` を含むものがあるので、既知キーを持つ参照定義を渡す
+      let analyzed =
+        analyze(document(&content), &policy, &sample_references()).unwrap_or_else(|e| panic!("{name}: {e:?}"));
 
       // Assert — ラベル → カウンタ構造値が旧実装と完全一致する
       for (label, value) in &old.counter_values {
@@ -391,7 +450,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy).expect("解析に成功するはず");
+    let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
 
     // Assert — 宣言ノードからラベルが引け、ラベルからカウンタ値が引ける
     let heading = analyzed.headings().first().expect("見出しが 1 件あるはず");
@@ -407,7 +466,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy).expect("前方参照は解決できるはず");
+    let analyzed = analyze(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
 
     // Assert — 参照箇所がちょうど 1 件で、その site から thm:a が引ける
     // （`any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する）
@@ -429,7 +488,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy).expect_err("未定義ラベルはエラーになるはず");
+    let error = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
     // Assert — span が `\ref{...}` 全体を指す
     let crate::resolve::SemanticError::UnresolvedReference { label, span, .. } = &error else {
@@ -450,7 +509,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy).expect("ソース跨ぎの参照は解決できるはず");
+    let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
 
     // Assert
     assert_eq!(analyzed.reference_sites().count(), 1, "参照箇所が 1 件記録されるはず");
@@ -468,7 +527,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy).expect("解析に成功するはず");
+    let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
 
     // Assert
     assert_eq!(analyzed.reference_sites().count(), 4, "箇条書き・脚注・表セル・キャプションを全部拾うはず");
@@ -488,7 +547,7 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy).expect_err("未定義の of はエラーになるはず");
+    let error = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
     // Assert
     let crate::resolve::SemanticError::UnresolvedReference { label, span, .. } = &error else {
@@ -500,13 +559,123 @@ mod tests {
   }
 
   #[test]
+  fn analyze_collects_citation_sites_in_document_order() {
+    // Arrange
+    let hir = document(r"先 \cite{kwan2014} 中 \cite{doe2020} 後");
+    let policy = DocumentPolicy::from_style(&Style::default());
+
+    // Act
+    let analyzed = analyze(hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
+
+    // Assert
+    let targets: Vec<Vec<crate::model::CitationId>> =
+      analyzed.citation_sites().iter().map(|(_, site)| return site.targets.clone()).collect();
+    assert_eq!(
+      targets,
+      vec![
+        vec![crate::model::CitationId::new("kwan2014")],
+        vec![crate::model::CitationId::new("doe2020")]
+      ],
+      "引用箇所は文書順に並ぶはず"
+    );
+    let (first_id, first_site) = analyzed.citation_sites().iter().next().expect("1 箇所目があるはず");
+    assert_eq!(
+      analyzed.citation_targets(first_id),
+      first_site.targets.as_slice(),
+      "citation_targets は sites が返す NodeId で同じ事実を引けるはず"
+    );
+  }
+
+  #[test]
+  fn analyze_keeps_multi_key_citation_order() {
+    // Arrange
+    let hir = document(r"\cite{doe2020, kwan2014}");
+    let policy = DocumentPolicy::from_style(&Style::default());
+
+    // Act
+    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+
+    // Assert
+    let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    assert_eq!(
+      analyzed.citation_targets(site),
+      [
+        crate::model::CitationId::new("doe2020"),
+        crate::model::CitationId::new("kwan2014")
+      ],
+      "キー順を保つはず"
+    );
+  }
+
+  #[test]
+  fn analyze_reports_unknown_citation_key_with_span() {
+    // Arrange
+    let source = r"本文 \cite{missing-key} です。";
+    let hir = document(source);
+    let policy = DocumentPolicy::from_style(&Style::default());
+
+    // Act
+    let error = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+
+    // Assert
+    let crate::resolve::SemanticError::UnknownCitationKeys { sites } = &error else {
+      panic!("UnknownCitationKeys が期待されます: {error:?}");
+    };
+    assert_eq!(sites.len(), 1);
+    assert_eq!(sites[0].keys, vec!["missing-key".to_string()]);
+    assert_eq!(sites[0].source_id, SourceId::new(0));
+    let start = sites[0].span.start as usize;
+    let end = start + sites[0].span.len() as usize;
+    assert!(
+      source[start..end].contains(r"\cite{missing-key}"),
+      "span が `\\cite` 全体を指すはず: {}",
+      &source[start..end]
+    );
+  }
+
+  #[test]
+  fn analyze_finds_citation_sites_in_nested_containers() {
+    // Arrange — 表セル・箇条書き・脚注の中の引用も拾う
+    let hir = document(
+      "\\begin{itemize}\n\\item{\\cite{kwan2014}}\n\\end{itemize}\n\n本文\\footnote{\\cite{doe2020}}\n\n\
+       \\begin{table}\n\\row{\\cite{kwan2014}}\n\\end{table}\n",
+    );
+    let policy = DocumentPolicy::from_style(&Style::default());
+
+    // Act
+    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+
+    // Assert
+    assert_eq!(analyzed.citation_sites().len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
+  }
+
+  #[test]
+  fn analyze_is_deterministic() {
+    // Arrange — CSL 非依存は `analyze` が `Style` / CSL を一切引数に取らないことで型として
+    // 保証されており、ここでは同じ HIR + 同じ references から同じ facts が得られる決定性を固定する
+    let policy = DocumentPolicy::from_style(&Style::default());
+    let source = r"\cite{kwan2014} と \cite{doe2020}";
+
+    // Act
+    let first = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
+    let second = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
+
+    // Assert
+    let sites =
+      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::model::NodeId, Vec<crate::model::CitationId>)> {
+        return analyzed.citation_sites().iter().map(|(id, site)| return (id, site.targets.clone())).collect();
+      };
+    assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
+  }
+
+  #[test]
   fn analyze_reports_duplicate_label_with_span() {
     // Arrange
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy).expect_err("重複ラベルはエラーになるはず");
+    let error = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     // Assert
     assert!(
