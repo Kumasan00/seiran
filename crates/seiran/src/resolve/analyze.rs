@@ -77,7 +77,7 @@ pub fn analyze(
 
 /// variant ごとに必要な fact がすべて登録されているかを検証する
 ///
-/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、bridge / lowering の
+/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、lowering の
 /// 遠い `unreachable!` で壊れる前にここで落とす。入力由来のエラー（重複ラベル・未解決参照・
 /// 未定義引用キー）はすべてこの検証より手前で診断として返している。
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &DocumentPolicy) {
@@ -681,12 +681,6 @@ mod tests {
       ],
       "引用箇所は文書順に並ぶはず"
     );
-    let (first_id, first_site) = analyzed.citation_sites().iter().next().expect("1 箇所目があるはず");
-    assert_eq!(
-      analyzed.citation_targets(first_id),
-      first_site.targets.as_slice(),
-      "citation_targets は sites が返す NodeId で同じ事実を引けるはず"
-    );
   }
 
   #[test]
@@ -699,9 +693,9 @@ mod tests {
     let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    let (_, site) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
     assert_eq!(
-      analyzed.citation_targets(site),
+      site.targets,
       [
         crate::model::CitationId::new("doe2020"),
         crate::model::CitationId::new("kwan2014")

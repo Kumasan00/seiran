@@ -1,17 +1,17 @@
-//! リスト（`resolve::ResolvedNode::List`）の lowering
+//! リスト（`model::HirNodeKind::List`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::{model::Length, resolve::ResolvedListItem};
+use crate::model::{HirListItem, Length};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
   ctx: &LoweringContext,
   ordered: bool,
-  items: &[ResolvedListItem],
+  items: &[HirListItem],
   start: Option<u32>,
   item_gap: Option<Length>,
   state: &mut LoweringState,
@@ -78,53 +78,27 @@ pub(super) fn lower_list(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
+  };
   use crate::{
     config::Style as ReadStyle,
-    model::FontKind,
-    resolve::{ResolvedInline, ResolvedNode},
+    model::{FontKind, NodeMap},
   };
 
-  /// テキスト 1 段落だけを内容に持つ `ResolvedListItem` を作るヘルパ
-  fn item_with_text(text: &str) -> ResolvedListItem {
-    return ResolvedListItem {
-      content: vec![ResolvedNode::Paragraph(vec![ResolvedInline::Text(
-        text.to_string(),
-      )])],
-      marker: None,
-      item_gap: None,
+  /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+  }
+
+  /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストのソースを組み立てる
+  fn nested_source(kinds: &[bool]) -> String {
+    let Some((first, rest)) = kinds.split_first() else {
+      return String::new();
     };
-  }
-
-  /// 任意の内容ノード列を持つ `ResolvedListItem` を作るヘルパ
-  fn item_with_content(content: Vec<ResolvedNode>) -> ResolvedListItem {
-    return ResolvedListItem {
-      content,
-      marker: None,
-      item_gap: None,
-    };
-  }
-
-  /// テスト用に `LoweringState` を構築して `lower_list` を呼ぶヘルパ
-  fn lower_list_default(
-    ctx: &LoweringContext,
-    ordered: bool,
-    items: &[ResolvedListItem],
-    start: Option<u32>,
-  ) -> Vec<LayoutNode> {
-    return lower_list_with_gap(ctx, ordered, items, start, None);
-  }
-
-  /// `item_gap`（環境単位の縦アキ上書き）も指定できるテストヘルパ
-  fn lower_list_with_gap(
-    ctx: &LoweringContext,
-    ordered: bool,
-    items: &[ResolvedListItem],
-    start: Option<u32>,
-    item_gap: Option<crate::model::Length>,
-  ) -> Vec<LayoutNode> {
-    let document = test_support::document(&[]);
-    return lower_list(ctx, ordered, items, start, item_gap, &mut LoweringState::new(&document));
+    let name = if *first { "enumerate" } else { "itemize" };
+    return format!("\\begin{{{name}}}\n\\item{{x\n{}}}\n\\end{{{name}}}\n", nested_source(rest));
   }
 
   /// `lower_list` が返す各 item（`VBox`）から先頭のマーカー `Text` を取り出す
@@ -136,260 +110,6 @@ mod tests {
       panic!("先頭はマーカー Text であるべき: {children:?}");
     };
     return (marker, *style);
-  }
-
-  #[test]
-  fn unordered_list_uses_marker_with_trailing_space() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [item_with_text("apple")];
-
-    // Act
-    let nodes = lower_list_default(&ctx, false, &items, None);
-
-    // Assert
-    let (marker, _) = marker_of(&nodes[0]);
-    assert_eq!(marker, "• ");
-  }
-
-  #[test]
-  fn ordered_list_numbers_start_at_one_and_increment() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [
-      item_with_text("a"),
-      item_with_text("b"),
-      item_with_text("c"),
-    ];
-
-    // Act
-    let nodes = lower_list_default(&ctx, true, &items, None);
-
-    // Assert
-    assert_eq!(nodes.len(), 3);
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
-  }
-
-  #[test]
-  fn ordered_list_with_start_numbers_from_start() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [
-      item_with_text("a"),
-      item_with_text("b"),
-      item_with_text("c"),
-    ];
-
-    // Act
-    let nodes = lower_list_default(&ctx, true, &items, Some(5));
-
-    // Assert
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
-  }
-
-  #[test]
-  fn nested_start_does_not_affect_outer_numbering() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nested = ResolvedNode::List {
-      ordered: true,
-      items: vec![item_with_text("inner-a"), item_with_text("inner-b")],
-      start: Some(10),
-      item_gap: None,
-    };
-    let items = [
-      item_with_text("outer-a"),
-      item_with_content(vec![
-        ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer-b".to_string())]),
-        nested,
-      ]),
-    ];
-
-    // Act
-    let nodes = lower_list_default(&ctx, true, &items, None);
-
-    // Assert
-    let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(outer_markers, vec!["1. ", "2. "]);
-    let inner_vbox = first_nested_vbox(&nodes[1]);
-    assert_eq!(marker_of(inner_vbox).0, "(j) ");
-  }
-
-  #[test]
-  fn sibling_list_after_start_list_is_unaffected() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let doc_nodes = vec![
-      ResolvedNode::List {
-        ordered: true,
-        items: vec![item_with_text("a"), item_with_text("b")],
-        start: Some(5),
-        item_gap: None,
-      },
-      ResolvedNode::List {
-        ordered: true,
-        items: vec![item_with_text("x")],
-        start: None,
-        item_gap: None,
-      },
-    ];
-
-    // Act
-    let document = test_support::document(&[]);
-    let nodes = super::super::lower_nodes_inner(&ctx, &doc_nodes, &mut LoweringState::new(&document));
-
-    // Assert
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["5. ", "6. ", "1. "]);
-  }
-
-  #[test]
-  fn item_vbox_uses_indent_margin_and_marker_style() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [item_with_text("x")];
-
-    // Act
-    let nodes = lower_list_default(&ctx, false, &items, None);
-
-    // Assert
-    let list_style = &style.list;
-    let (_, marker_style) = marker_of(&nodes[0]);
-    let LayoutNode::VBox {
-      children,
-      margin_bottom,
-      indent,
-      ..
-    } = &nodes[0]
-    else {
-      panic!("item は VBox");
-    };
-    assert!(!matches!(children[0], LayoutNode::Kern { .. }), "先頭に Kern は出さない: {children:?}");
-    assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
-    assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
-    assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
-    assert_eq!(marker_style.font_kind, FontKind::Serif);
-    assert_eq!(marker_style.font_size, ctx.default_font_size());
-  }
-
-  #[test]
-  fn nested_list_item_also_carries_indent() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nested = ResolvedNode::List {
-      ordered: false,
-      items: vec![item_with_content(vec![ResolvedNode::Paragraph(vec![
-        ResolvedInline::Text("inner".to_string()),
-      ])])],
-      start: None,
-      item_gap: None,
-    };
-    let items = [item_with_content(vec![
-      ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer".to_string())]),
-      nested,
-    ])];
-
-    // Act
-    let nodes = lower_list_default(&ctx, false, &items, None);
-
-    // Assert
-    let indent = style.list.indent.to_pt();
-    let LayoutNode::VBox {
-      children,
-      indent: outer_indent,
-      ..
-    } = &nodes[0]
-    else {
-      panic!("外側 item は VBox");
-    };
-    assert!((outer_indent.to_pt() - indent).abs() < f32::EPSILON);
-    let nested_indent = children
-      .iter()
-      .find_map(|n| match n {
-        LayoutNode::VBox { indent, .. } => return Some(indent.to_pt()),
-        _ => return None,
-      })
-      .expect("ネストした item VBox があるはず");
-    assert!((nested_indent - indent).abs() < f32::EPSILON, "ネスト item にも indent が乗る");
-  }
-
-  #[test]
-  fn item_marker_override_replaces_auto_marker() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let mut items = [
-      item_with_text("a"),
-      item_with_text("b"),
-      item_with_text("c"),
-    ];
-    items[1].marker = Some("Q1.".to_string());
-
-    // Act
-    let nodes = lower_list_default(&ctx, true, &items, None);
-
-    // Assert
-    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
-    assert_eq!(markers, vec!["1. ", "Q1. ", "3. "]);
-  }
-
-  #[test]
-  fn item_marker_override_empty_string_omits_marker_text() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let mut items = [item_with_text("x")];
-    items[0].marker = Some(String::new());
-
-    // Act
-    let nodes = lower_list_default(&ctx, false, &items, None);
-
-    // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[0] else {
-      panic!("item は VBox であるべき: {:?}", nodes[0]);
-    };
-    let LayoutNode::Text(text, _) = &children[0] else {
-      panic!("先頭は内容の Text であるべき: {children:?}");
-    };
-    assert_eq!(text, "x", "マーカー Text を挟まず内容の Text から始まるべき");
-  }
-
-  #[test]
-  fn empty_items_yield_empty_vec() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-
-    // Act
-    let nodes = lower_list_default(&ctx, true, &[], None);
-
-    // Assert
-    assert!(nodes.is_empty());
-  }
-
-  /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストの items を構築する
-  fn build_nested_items(kinds: &[bool]) -> Vec<ResolvedListItem> {
-    let mut content = vec![ResolvedNode::Paragraph(vec![ResolvedInline::Text(
-      "x".to_string(),
-    )])];
-    if kinds.len() > 1 {
-      content.push(ResolvedNode::List {
-        ordered: kinds[1],
-        items: build_nested_items(&kinds[1..]),
-        start: None,
-        item_gap: None,
-      });
-    }
-    return vec![item_with_content(content)];
   }
 
   /// item `VBox` の子から、ネストしたリストの先頭項目 `VBox` を取り出す
@@ -415,15 +135,177 @@ mod tests {
   }
 
   #[test]
+  fn unordered_list_uses_marker_with_trailing_space() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{itemize}\n\\item{apple}\n\\end{itemize}\n");
+
+    // Assert
+    let (marker, _) = marker_of(&nodes[0]);
+    assert_eq!(marker, "• ");
+  }
+
+  #[test]
+  fn ordered_list_numbers_start_at_one_and_increment() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{enumerate}\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
+
+    // Assert
+    assert_eq!(nodes.len(), 3);
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["1. ", "2. ", "3. "]);
+  }
+
+  #[test]
+  fn ordered_list_with_start_numbers_from_start() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes =
+      lower_source(&style, "\\begin{enumerate}[start=5]\n\\item{a}\n\\item{b}\n\\item{c}\n\\end{enumerate}\n");
+
+    // Assert
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["5. ", "6. ", "7. "]);
+  }
+
+  #[test]
+  fn nested_start_does_not_affect_outer_numbering() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\begin{enumerate}\n\\item{outer-a}\n\\item{outer-b\n\
+       \\begin{enumerate}[start=10]\n\\item{inner-a}\n\\item{inner-b}\n\\end{enumerate}\n}\n\\end{enumerate}\n",
+    );
+
+    // Assert
+    let outer_markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(outer_markers, vec!["1. ", "2. "]);
+    let inner_vbox = first_nested_vbox(&nodes[1]);
+    assert_eq!(marker_of(inner_vbox).0, "(j) ");
+  }
+
+  #[test]
+  fn sibling_list_after_start_list_is_unaffected() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\begin{enumerate}[start=5]\n\\item{a}\n\\item{b}\n\\end{enumerate}\n\n\
+       \\begin{enumerate}\n\\item{x}\n\\end{enumerate}\n",
+    );
+
+    // Assert
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["5. ", "6. ", "1. "]);
+  }
+
+  #[test]
+  fn item_vbox_uses_indent_margin_and_marker_style() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{itemize}\n\\item{x}\n\\end{itemize}\n");
+
+    // Assert
+    let list_style = &style.list;
+    let (_, marker_style) = marker_of(&nodes[0]);
+    let LayoutNode::VBox {
+      children,
+      margin_bottom,
+      indent,
+      ..
+    } = &nodes[0]
+    else {
+      panic!("item は VBox");
+    };
+    assert!(!matches!(children[0], LayoutNode::Kern { .. }), "先頭に Kern は出さない: {children:?}");
+    assert!((indent.to_pt() - list_style.indent.to_pt()).abs() < f32::EPSILON);
+    assert!((margin_bottom.to_pt() - list_style.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
+    assert_eq!(marker_style.font_kind, list_style.marker_font_kind);
+    assert_eq!(marker_style.font_kind, FontKind::Serif);
+    assert_eq!(marker_style.font_size, style.text.font_size);
+  }
+
+  #[test]
+  fn nested_list_item_also_carries_indent() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, &nested_source(&[false, false]));
+
+    // Assert
+    let indent = style.list.indent.to_pt();
+    let LayoutNode::VBox {
+      indent: outer_indent,
+      ..
+    } = &nodes[0]
+    else {
+      panic!("外側 item は VBox");
+    };
+    assert!((outer_indent.to_pt() - indent).abs() < f32::EPSILON);
+    let LayoutNode::VBox {
+      indent: nested_indent,
+      ..
+    } = first_nested_vbox(&nodes[0])
+    else {
+      panic!("ネスト item は VBox");
+    };
+    assert!((nested_indent.to_pt() - indent).abs() < f32::EPSILON, "ネスト item にも indent が乗る");
+  }
+
+  #[test]
+  fn item_marker_override_replaces_auto_marker() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes =
+      lower_source(&style, "\\begin{enumerate}\n\\item{a}\n\\item[marker=Q1.]{b}\n\\item{c}\n\\end{enumerate}\n");
+
+    // Assert
+    let markers: Vec<&str> = nodes.iter().map(|n| return marker_of(n).0).collect();
+    assert_eq!(markers, vec!["1. ", "Q1. ", "3. "]);
+  }
+
+  #[test]
+  fn item_marker_override_empty_string_omits_marker_text() {
+    // Arrange
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{itemize}\n\\item[marker=]{x}\n\\end{itemize}\n");
+
+    // Assert
+    let LayoutNode::VBox { children, .. } = &nodes[0] else {
+      panic!("item は VBox であるべき: {:?}", nodes[0]);
+    };
+    let LayoutNode::Text(text, _) = &children[0] else {
+      panic!("先頭は内容の Text であるべき: {children:?}");
+    };
+    assert_eq!(text, "x", "マーカー Text を挟まず内容の Text から始まるべき");
+  }
+
+  #[test]
   fn nested_unordered_markers_vary_by_depth() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let kinds = [false, false, false];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[false, false, false]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "– ", "* "]);
@@ -433,12 +315,9 @@ mod tests {
   fn nested_ordered_markers_vary_by_depth() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let kinds = [true, true, true];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[true, true, true]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "(a) ", "i. "]);
@@ -448,12 +327,9 @@ mod tests {
   fn mixed_nesting_advances_each_kind_by_depth() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let kinds = [false, true, false];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[false, true, false]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "(a) ", "* "]);
@@ -463,18 +339,16 @@ mod tests {
   fn item_gap_env_override_applies_to_all_items() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [item_with_text("a"), item_with_text("b")];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(3.0)));
+    let nodes = lower_source(&style, "\\begin{itemize}[item_gap=3mm]\n\\item{a}\n\\item{b}\n\\end{itemize}\n");
 
     // Assert
     for node in &nodes {
       let LayoutNode::VBox { margin_bottom, .. } = node else {
         panic!("item は VBox であるべき: {node:?}");
       };
-      assert!((margin_bottom.to_pt() - crate::model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+      assert!((margin_bottom.to_pt() - Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
     }
   }
 
@@ -482,12 +356,10 @@ mod tests {
   fn item_gap_item_override_takes_priority_over_env() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let mut items = [item_with_text("a"), item_with_text("b")];
-    items[0].item_gap = Some(crate::model::Length::mm(1.0));
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(3.0)));
+    let nodes =
+      lower_source(&style, "\\begin{itemize}[item_gap=3mm]\n\\item[item_gap=1mm]{a}\n\\item{b}\n\\end{itemize}\n");
 
     // Assert
     let LayoutNode::VBox {
@@ -504,19 +376,17 @@ mod tests {
     else {
       panic!("item は VBox であるべき");
     };
-    assert!((gap0.to_pt() - crate::model::Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
-    assert!((gap1.to_pt() - crate::model::Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
+    assert!((gap0.to_pt() - Length::mm(1.0).to_pt()).abs() < f32::EPSILON);
+    assert!((gap1.to_pt() - Length::mm(3.0).to_pt()).abs() < f32::EPSILON);
   }
 
   #[test]
   fn item_gap_unspecified_falls_back_to_style_default() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let items = [item_with_text("a")];
 
     // Act
-    let nodes = lower_list_default(&ctx, false, &items, None);
+    let nodes = lower_source(&style, "\\begin{itemize}\n\\item{a}\n\\end{itemize}\n");
 
     // Assert
     let LayoutNode::VBox { margin_bottom, .. } = &nodes[0] else {
@@ -529,30 +399,16 @@ mod tests {
   fn item_gap_does_not_propagate_to_nested_list() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nested = ResolvedNode::List {
-      ordered: false,
-      items: vec![item_with_text("inner")],
-      start: None,
-      item_gap: None,
-    };
-    let items = [item_with_content(vec![
-      ResolvedNode::Paragraph(vec![ResolvedInline::Text("outer".to_string())]),
-      nested,
-    ])];
 
     // Act
-    let nodes = lower_list_with_gap(&ctx, false, &items, None, Some(crate::model::Length::mm(5.0)));
+    let nodes = lower_source(
+      &style,
+      "\\begin{itemize}[item_gap=5mm]\n\\item{outer\n\
+       \\begin{itemize}\n\\item{inner}\n\\end{itemize}\n}\n\\end{itemize}\n",
+    );
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[0] else {
-      panic!("外側 item は VBox であるべき");
-    };
-    let nested_vbox = children
-      .iter()
-      .find(|c| matches!(c, LayoutNode::VBox { .. }))
-      .expect("ネストしたリストの item VBox があるはず");
-    let LayoutNode::VBox { margin_bottom, .. } = nested_vbox else {
+    let LayoutNode::VBox { margin_bottom, .. } = first_nested_vbox(&nodes[0]) else {
       panic!("ネスト item は VBox であるべき");
     };
     assert!((margin_bottom.to_pt() - style.list.item_margin_bottom.to_pt()).abs() < f32::EPSILON);
@@ -562,12 +418,9 @@ mod tests {
   fn unordered_marker_sequence_cycles_after_fourth_level() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let kinds = [false; 5];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[false; 5]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 5), vec!["• ", "– ", "* ", "· ", "– "]);
@@ -578,12 +431,9 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_unordered_markers = vec!["§".to_string(), "†".to_string()];
-    let ctx = LoweringContext::new(&style);
-    let kinds = [false, false, false];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[false, false, false]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["• ", "§ ", "† "]);
@@ -603,12 +453,9 @@ mod tests {
         format: "{number}、".to_string(),
       },
     ];
-    let ctx = LoweringContext::new(&style);
-    let kinds = [true, true, true];
-    let items = build_nested_items(&kinds);
 
     // Act
-    let nodes = lower_list_default(&ctx, kinds[0], &items, None);
+    let nodes = lower_source(&style, &nested_source(&[true, true, true]));
 
     // Assert
     assert_eq!(markers_along_chain(&nodes, 3), vec!["1. ", "[I] ", "一、 "]);

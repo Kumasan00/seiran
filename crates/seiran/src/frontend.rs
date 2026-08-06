@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::model::{HirBuilder, HirGroup, HirSource};
 
-// 旧 `DocNode` への変換は本体経路からは使われなくなった（#324 で bridge が HIR を直接読む）。
+// 旧 `DocNode` への変換は本体経路からは使われなくなった（#325 で lowering が HIR を直接読む）。
 // frontend / evaluator / typeset の既存 `DocNode` ベーステストだけが依存しているので、
 // テストビルドにだけ残す（#325 で adapter ごと削除する）。
 #[cfg(test)]

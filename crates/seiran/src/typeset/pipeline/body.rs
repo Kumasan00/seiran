@@ -13,7 +13,7 @@ use crate::{
     block::build_blocks,
     breaking::{LineBreaker, PageGeometry, break_pages},
     layout::{Block, Page},
-    lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
+    lowering::{DocumentContent, HeadingRecord, LoweringContext, lower_sources_with_headings},
   },
 };
 
@@ -45,8 +45,8 @@ pub struct BodyLayout {
 /// `layout_body` の失敗理由。
 ///
 /// 画像解決の失敗型はジェネリクス `E` で受け取り、`typeset` が呼び出し元（`seiran`）の
-/// エラー型を名指しで知らない状態を保つ。lowering は解決済みツリーを描くだけになり
-/// （ラベル・カウンタ解決は `resolve` クレートが上流で済ませる）失敗しなくなったため、
+/// エラー型を名指しで知らない状態を保つ。lowering は確定済みの事実を読んで箱に積むだけになり
+/// （ラベル・カウンタ解決は `resolve` が上流で済ませる）失敗しなくなったため、
 /// この enum に残る失敗理由は画像解決だけになった。
 #[derive(Debug, Error, Diagnostic)]
 pub enum BodyLayoutError<E: std::error::Error + Diagnostic + 'static> {
@@ -75,10 +75,10 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 ///
 /// # Errors
 ///
-/// 画像解決に失敗した場合にエラーを返す（lowering は解決済みツリーを描くだけなので失敗しない）。
+/// 画像解決に失敗した場合にエラーを返す（lowering は確定済みの事実を読むだけなので失敗しない）。
 pub fn layout_body<E: std::error::Error + Diagnostic + 'static>(
   input: &BodyLayoutInput<'_>,
-  document: &crate::resolve::ResolvedDocument,
+  content: DocumentContent<'_>,
   footnote_numbers: Option<&[u32]>,
   resolve_images: impl FnOnce(Vec<Block>) -> Result<Vec<Block>, E>,
 ) -> Result<BodyLayout, BodyLayoutError<E>> {
@@ -88,8 +88,8 @@ pub fn layout_body<E: std::error::Error + Diagnostic + 'static>(
   if let Some(numbers) = footnote_numbers {
     lowering_ctx = lowering_ctx.with_footnote_numbers(numbers);
   }
-  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document);
-  info!(elapsed_ms = elapsed_ms(stage_start), "解決済みドキュメント → LayoutNode への変換が完了しました");
+  let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, content);
+  info!(elapsed_ms = elapsed_ms(stage_start), "意味解析の成果物 → LayoutNode への変換が完了しました");
 
   let stage_start = Instant::now();
   let body_blocks = {

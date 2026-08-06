@@ -2,20 +2,20 @@
 
 use super::{
   LoweringContext, LoweringState,
+  inline::lower_inlines,
   layout_node::{LayoutNode, TextStyle},
   template::expand_template,
 };
 use crate::{
   config::CaptionStyle,
-  model::{CaptionPosition, FontKind, Length},
-  resolve::ResolvedInline,
+  model::{CaptionPosition, FontKind, HirInline, Length},
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
 pub(super) fn build_caption(
   ctx: &LoweringContext,
   caption_style: &CaptionStyle,
-  inlines: &[ResolvedInline],
+  inlines: &[HirInline],
   number: &str,
   state: &mut LoweringState,
 ) -> Vec<LayoutNode> {
@@ -24,7 +24,8 @@ pub(super) fn build_caption(
     font_kind: FontKind::Serif,
     color: None,
   };
-  return expand_template(ctx, &caption_style.format, number, inlines, None, base_style, state);
+  let title = lower_inlines(ctx, inlines, base_style, state);
+  return expand_template(&caption_style.format, number, &title, None, base_style);
 }
 
 /// フロートの余白の指定
@@ -83,12 +84,32 @@ pub(super) fn wrap_float(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
-  use crate::{
-    config::{CaptionStyle, CounterName, Style as ReadStyle},
-    model::{CaptionPosition, FontKind, Length},
-    resolve::{CounterKind, CounterValue},
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
   };
+  use crate::{
+    config::{CaptionStyle, Style as ReadStyle},
+    model::{Align, AnchorId, LabelId, LinkTarget, NodeMap},
+  };
+
+  /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+  }
+
+  /// フロート本体の `VBox`（画像を含む `VBox`）の子要素列を取り出すヘルパ
+  fn float_body(nodes: &[LayoutNode]) -> &[LayoutNode] {
+    return nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. })) => {
+          return Some(children.as_slice());
+        },
+        _ => return None,
+      })
+      .expect("画像を含む VBox があるはず");
+  }
 
   /// テスト用のキャプション本体（識別しやすい固定文字列の Text）を作る
   fn caption_node(text: &str) -> LayoutNode {
@@ -143,7 +164,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!((margin_bottom.to_pt() - 7.0).abs() < f32::EPSILON);
-    assert_eq!(*align, crate::model::Align::Center, "図表は既定で中央寄せ");
+    assert_eq!(*align, Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Rule { .. }));
@@ -213,61 +234,54 @@ mod tests {
   #[test]
   fn build_caption_expands_template_with_serif_caption_style() {
     // Arrange
-    let read_style = ReadStyle::default();
-    let ctx = LoweringContext::new(&read_style);
-    let caption_style = CaptionStyle {
+    let mut style = ReadStyle::default();
+    style.figure.caption = CaptionStyle {
       format: "Fig {number}: {title}".to_string(),
       font_size: Length::pt(9.0),
     };
-    let inlines = [ResolvedInline::Text("Overview".to_string())];
-    let document = test_support::document(&[]);
 
     // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "3", &mut LoweringState::new(&document));
+    let nodes =
+      lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
 
     // Assert
-    assert_eq!(nodes.len(), 1, "プレーンタイトルは 1 つの Text に縮約される: {nodes:?}");
-    let LayoutNode::Text(text, style) = &nodes[0] else {
-      panic!("Text が期待されます: {nodes:?}");
-    };
-    assert_eq!(text, "Fig 3: Overview");
-    assert_eq!(style.font_size, Length::pt(9.0));
-    assert_eq!(style.font_kind, FontKind::Serif);
+    let caption = float_body(&nodes)
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
+        _ => return None,
+      })
+      .expect("キャプション Text があるはず");
+    assert_eq!(caption.0, "Fig 1.1: Overview");
+    assert_eq!(caption.1.font_size, Length::pt(9.0));
+    assert_eq!(caption.1.font_kind, FontKind::Serif);
   }
 
   #[test]
   fn build_caption_ref_is_resolved_to_internal_link() {
     // Arrange
-    let read_style = ReadStyle::default();
-    let ctx = LoweringContext::new(&read_style);
-    let caption_style = CaptionStyle::default();
-    let inlines = [ResolvedInline::Ref {
-      target: crate::model::LabelId::new("fig:one"),
-      span: crate::model::Span::DUMMY,
-    }];
-    let document = test_support::document(&[(
-      "fig:one",
-      CounterValue {
-        kind: CounterKind::Counter(CounterName::Figure),
-        parts: vec![0, 1, 2],
-      },
-    )]);
+    let style = ReadStyle::default();
 
-    // Act
-    let nodes = build_caption(&ctx, &caption_style, &inlines, "1", &mut LoweringState::new(&document));
+    // Act — 2 枚目のキャプションから 1 枚目を `\ref` する
+    let nodes = lower_source(
+      &style,
+      "\\chapter{C}\n\n\\begin{figure}[label=fig:one]\n\\image{a.png}\n\\caption{one}\n\\end{figure}\n\n\
+       \\begin{figure}\n\\image{b.png}\n\\caption{\\ref{fig:one}}\n\\end{figure}\n",
+    );
 
     // Assert
     let link = nodes
       .iter()
+      .flat_map(|n| match n {
+        LayoutNode::VBox { children, .. } => return children.as_slice(),
+        _ => return &[] as &[LayoutNode],
+      })
       .find_map(|n| match n {
         LayoutNode::Link { target, children } => return Some((target, children)),
         _ => return None,
       })
       .expect("解決済み \\ref は Link になるはず");
-    assert_eq!(
-      *link.0,
-      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("fig:one")))
-    );
-    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Figure 1.2"), "{:?}", link.1);
+    assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:one"))));
+    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Figure 1.1"), "{:?}", link.1);
   }
 }

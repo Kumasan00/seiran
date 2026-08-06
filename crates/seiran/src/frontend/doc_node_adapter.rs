@@ -1,16 +1,10 @@
 //! HIR → 旧 `DocNode` の移行用 adapter（epic #321 Phase 1 限定）
 //!
-//! frontend の正規出力は [`crate::model::HirSource`] だが、後段（citation / resolve / typeset）は
-//! まだ `DocNode` を入力に取る。その境界をこの module 1 つに閉じる。
-//!
-//! # 削除条件（issue #325）
-//!
-//! 次の 3 つがすべて満たされた時点で、この module と `evaluator` のテスト専用ヘルパ
-//! （`evaluate_children_to_doc_nodes` / `extract_inline_nodes_to_inline_nodes`）をまとめて削除する。
-//!
-//! 1. citation（CSL 整形）が HIR と意味 fact を入力に取る（#323）
-//! 2. ラベル・`\ref`・カウンタが `SemanticFacts` として構築される（#324）
-//! 3. lowering の入力が `AnalyzedDocument` へ一本化され、`ResolvedNode` が消える（#325）
+//! 本体経路（citation / resolve / typeset）はすべて HIR と意味 fact を入力に取るようになり
+//! （#323 / #324 / #325）、この adapter は `evaluator` の既存テストが `DocNode` で期待値を
+//! 書いているための足場としてだけ残っている。テスト側を HIR で書き直した時点で、この module と
+//! `evaluator` のテスト専用ヘルパ（`evaluate_children_to_doc_nodes` /
+//! `extract_inline_nodes_to_inline_nodes`）をまとめて削除する。
 //!
 //! 逆方向（`DocNode` → HIR）は提供しない。手組みの `DocNode` に `NodeId` を捏造すると
 //! 「すべての `NodeId` は同梱された `HirDocument` が発行したもの」という不変条件を破るため。

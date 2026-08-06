@@ -1,16 +1,13 @@
-//! 引用ブロック（`resolve::ResolvedNode::Quote`）の lowering
+//! 引用ブロック（`model::HirNodeKind::Quote`）の lowering
 
 use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
-use crate::{
-  model::{Align, Length, QuoteKind},
-  resolve::ResolvedNode,
-};
+use crate::model::{Align, HirNode, Length, QuoteKind};
 
 /// 引用ブロックをレイアウトノードに変換する
 pub(super) fn lower_quote(
   ctx: &LoweringContext,
   kind: QuoteKind,
-  body: &[ResolvedNode],
+  body: &[HirNode],
   state: &mut LoweringState,
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.quote;
@@ -43,18 +40,20 @@ pub(super) fn lower_quote(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
-  use crate::{config::Style as ReadStyle, model::QuoteKind, resolve::ResolvedInline};
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
+  };
+  use crate::{config::Style as ReadStyle, model::NodeMap};
 
-  /// テキスト 1 段落の本体を作るヘルパ
-  fn paragraph(text: &str) -> ResolvedNode {
-    return ResolvedNode::Paragraph(vec![ResolvedInline::Text(text.to_string())]);
-  }
-
-  /// テスト用に `LoweringState` を構築して `lower_quote` を呼ぶヘルパ
-  fn lower_quote_default(ctx: &LoweringContext, kind: QuoteKind, body: &[ResolvedNode]) -> Vec<LayoutNode> {
-    let document = test_support::document(&[]);
-    return lower_quote(ctx, kind, body, &mut LoweringState::new(&document));
+  /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
+  fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {
+    let name = match kind {
+      QuoteKind::Quote => "quote",
+      QuoteKind::Quotation => "quotation",
+    };
+    let source = format!("\\begin{{{name}}}\nbody\n\\end{{{name}}}\n");
+    return lower(style, &analyzed(&source), &NodeMap::default(), &[]);
   }
 
   /// `nodes` から本体 `VBox`（`indent` / `right_indent` / `children`）を取り出す
@@ -77,10 +76,9 @@ mod tests {
   fn quote_wraps_body_in_symmetric_indent_vbox_with_margins() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
+    let nodes = lower_quote_source(&style, QuoteKind::Quote);
 
     // Assert
     assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })), "先頭は top_margin Vkern: {nodes:?}");
@@ -94,10 +92,9 @@ mod tests {
   fn quote_body_paragraph_has_no_first_line_indent_kern() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
+    let nodes = lower_quote_source(&style, QuoteKind::Quote);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -112,10 +109,9 @@ mod tests {
   fn quotation_body_paragraph_has_first_line_indent_kern() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quotation, &[paragraph("body")]);
+    let nodes = lower_quote_source(&style, QuoteKind::Quotation);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);
@@ -129,10 +125,9 @@ mod tests {
   fn quote_body_uses_quote_style_font_kind() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_quote_default(&ctx, QuoteKind::Quote, &[paragraph("body")]);
+    let nodes = lower_quote_source(&style, QuoteKind::Quote);
 
     // Assert
     let (_, _, children) = body_vbox(&nodes);

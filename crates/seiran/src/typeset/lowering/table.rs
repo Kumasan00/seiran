@@ -1,15 +1,12 @@
-//! 表環境（`resolve::ResolvedNode::Table`）の lowering
+//! 表環境（`model::HirNodeKind::Table`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
-  inline::lower_inline,
+  inline::lower_inlines,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
-use crate::{
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, TableColumn},
-  resolve::{ResolvedInline, ResolvedTableRow},
-};
+use crate::model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow, TableColumn};
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {
@@ -24,10 +21,10 @@ fn bold_kind(kind: FontKind) -> FontKind {
   };
 }
 
-/// `ResolvedTableRow` の列を [`TableRowLayout`] の列に変換する
+/// `HirTableRow` の列を [`TableRowLayout`] の列に変換する
 fn lower_rows(
   ctx: &LoweringContext,
-  rows: &[ResolvedTableRow],
+  rows: &[HirTableRow],
   cell_style: TextStyle,
   state: &mut LoweringState,
 ) -> Vec<TableRowLayout> {
@@ -35,12 +32,8 @@ fn lower_rows(
   for row in rows {
     let mut cells = Vec::with_capacity(row.cells.len());
     for cell in &row.cells {
-      let mut content = Vec::new();
-      for inline in &cell.content {
-        content.extend(lower_inline(ctx, inline, cell_style, state));
-      }
       cells.push(TableCellLayout {
-        content,
+        content: lower_inlines(ctx, &cell.content, cell_style, state),
         span: cell.span,
       });
     }
@@ -58,9 +51,9 @@ pub(super) fn lower_table(
   ctx: &LoweringContext,
   columns: &[ColumnAlign],
   widths: &[ColumnWidth],
-  head: &[ResolvedTableRow],
-  rows: &[ResolvedTableRow],
-  caption: Option<(CaptionPosition, &[ResolvedInline])>,
+  head: &[HirTableRow],
+  rows: &[HirTableRow],
+  caption: Option<(CaptionPosition, &[HirInline])>,
   number: &str,
   breakable: bool,
   state: &mut LoweringState,
@@ -107,31 +100,36 @@ pub(super) fn lower_table(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
-  use crate::{config::Style as ReadStyle, resolve::ResolvedTableCell};
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
+  };
+  use crate::{
+    config::Style as ReadStyle,
+    model::{Length, NodeMap},
+  };
 
-  /// 1 セルの `ResolvedTableRow` を作るテスト用ヘルパ
-  fn row_of(texts: &[&str]) -> ResolvedTableRow {
-    return ResolvedTableRow {
-      cells: texts
-        .iter()
-        .map(|t| {
-          return ResolvedTableCell {
-            content: vec![ResolvedInline::Text((*t).to_string())],
-            span: 1,
-          };
-        })
-        .collect(),
-      rule_above: false,
-    };
+  /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+  }
+
+  /// 表の本体 `VBox` の子要素列を取り出すヘルパ
+  fn table_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
+    return nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Table(_))) => {
+          return Some(children.as_slice());
+        },
+        _ => return None,
+      })
+      .expect("表本体の VBox があるはず");
   }
 
   /// `lower_table` の結果から `TableLayout` を取り出すヘルパ
   fn find_table(nodes: &[LayoutNode]) -> &TableLayout {
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("2 番目は VBox であるべき: {nodes:?}");
-    };
-    return children
+    return table_children(nodes)
       .iter()
       .find_map(|n| match n {
         LayoutNode::Table(t) => return Some(t),
@@ -144,21 +142,12 @@ mod tests {
   fn lower_table_builds_columns_and_rows() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let head = [row_of(&["Name", "Score"])];
-    let rows = [row_of(&["Alice", "92"]), row_of(&["Bob", "88"])];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left, ColumnAlign::Right],
-      &[ColumnWidth::Auto, ColumnWidth::Auto],
-      &head,
-      &rows,
-      None,
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
+    let nodes = lower_source(
+      &style,
+      "\\begin{table}[columns=\"left right\"]\n\\head{\n\\row{Name & Score}\n}\n\
+       \\row{Alice & 92}\n\\row{Bob & 88}\n\\end{table}\n",
     );
 
     // Assert
@@ -176,22 +165,9 @@ mod tests {
   fn lower_table_head_cells_use_bold_font() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let head = [row_of(&["Name"])];
-    let rows = [row_of(&["Alice"])];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &head,
-      &rows,
-      None,
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
 
     // Assert
     let table = find_table(&nodes);
@@ -209,31 +185,16 @@ mod tests {
   fn lower_table_caption_bottom_places_caption_after_table() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["A"])];
-    let caption = [ResolvedInline::Text("得点表".to_string())];
 
-    // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      Some((CaptionPosition::Bottom, &caption)),
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    // Act — `\caption` を行より後ろに置くとキャプションは表の下になる
+    let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待されます");
-    };
+    let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
       .iter()
-      .position(|n| matches!(n, LayoutNode::Text(t, _) if t == "Table 1: 得点表"))
+      .position(|n| matches!(n, LayoutNode::Text(t, _) if t == "Table 1.1: 得点表"))
       .expect("キャプション Text あり");
     assert!(table_idx < caption_idx, "Bottom: table がキャプションの前");
   }
@@ -242,31 +203,16 @@ mod tests {
   fn lower_table_caption_top_places_caption_before_table() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["A"])];
-    let caption = [ResolvedInline::Text("得点表".to_string())];
 
-    // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      Some((CaptionPosition::Top, &caption)),
-      "2",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    // Act — `\caption` を行より前に置くとキャプションは表の上になる
+    let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\caption{得点表}\n\\row{A}\n\\end{table}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待されます");
-    };
+    let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let caption_idx = children
       .iter()
-      .position(|n| matches!(n, LayoutNode::Text(t, _) if t.starts_with("Table 2")))
+      .position(|n| matches!(n, LayoutNode::Text(t, _) if t.starts_with("Table 1.1")))
       .expect("キャプション Text あり");
     assert!(caption_idx < table_idx, "Top: キャプションが table の前");
   }
@@ -275,27 +221,12 @@ mod tests {
   fn lower_table_inserts_inner_margin_between_table_and_caption() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["A"])];
-    let caption = [ResolvedInline::Text("得点表".to_string())];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      Some((CaptionPosition::Bottom, &caption)),
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&style, "\\chapter{C}\n\n\\begin{table}\n\\row{A}\n\\caption{得点表}\n\\end{table}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待されます");
-    };
+    let children = table_children(&nodes);
     let table_idx = children.iter().position(|n| matches!(n, LayoutNode::Table(_))).expect("Table あり");
     let inner_kern = children.get(table_idx + 1);
     assert!(
@@ -316,31 +247,19 @@ mod tests {
   fn lower_table_preserves_column_widths() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["a", "b", "c"])];
-    let widths = [
-      ColumnWidth::Fixed(crate::model::Length::pt(40.0)),
-      ColumnWidth::Ratio(0.25),
-      ColumnWidth::Flex,
-    ];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left, ColumnAlign::Center, ColumnAlign::Right],
-      &widths,
-      &[],
-      &rows,
-      None,
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
+    let nodes = lower_source(
+      &style,
+      "\\begin{table}[columns=\"left center right\", widths=\"40mm 0.25 *\"]\n\\row{a & b & c}\n\\end{table}\n",
     );
 
     // Assert
     let table = find_table(&nodes);
     assert_eq!(table.columns.len(), 3);
-    assert!(matches!(table.columns[0].width, ColumnWidth::Fixed(l) if (l.to_pt() - 40.0).abs() < f32::EPSILON));
+    assert!(
+      matches!(table.columns[0].width, ColumnWidth::Fixed(l) if (l.to_pt() - Length::mm(40.0).to_pt()).abs() < f32::EPSILON)
+    );
     assert!(matches!(table.columns[1].width, ColumnWidth::Ratio(r) if (r - 0.25).abs() < f32::EPSILON));
     assert!(matches!(table.columns[2].width, ColumnWidth::Flex));
     assert_eq!(table.columns[1].align, ColumnAlign::Center);
@@ -350,21 +269,9 @@ mod tests {
   fn lower_table_breakable_false_is_preserved() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["A"])];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      None,
-      "1",
-      false,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&style, "\\begin{table}[breakable=false]\n\\row{A}\n\\end{table}\n");
 
     // Assert
     let table = find_table(&nodes);
@@ -375,27 +282,9 @@ mod tests {
   fn lower_table_preserves_rule_above_flag() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [ResolvedTableRow {
-      cells: vec![ResolvedTableCell {
-        content: vec![ResolvedInline::Text("A".to_string())],
-        span: 1,
-      }],
-      rule_above: true,
-    }];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      None,
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&style, "\\begin{table}\n\\row[rule_above]{A}\n\\end{table}\n");
 
     // Assert
     let table = find_table(&nodes);
@@ -406,51 +295,24 @@ mod tests {
   fn lower_table_without_caption_omits_caption_text() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [row_of(&["A"])];
 
     // Act
-    let nodes = lower_table(
-      &ctx,
-      &[ColumnAlign::Left],
-      &[ColumnWidth::Auto],
-      &[],
-      &rows,
-      None,
-      "1",
-      true,
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&style, "\\begin{table}\n\\row{A}\n\\end{table}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待されます");
-    };
+    let children = table_children(&nodes);
     let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
   }
 
   #[test]
   fn lower_table_cell_footnote_shares_document_wide_counter() {
-    // Arrange
+    // Arrange — 本文側で 1 個採番したあとに、表セルの脚注が 2 番になることを見る
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let rows = [ResolvedTableRow {
-      cells: vec![ResolvedTableCell {
-        content: vec![ResolvedInline::Footnote {
-          body: vec![ResolvedInline::Text("cell note".to_string())],
-          span: crate::model::Span::DUMMY,
-        }],
-        span: 1,
-      }],
-      rule_above: false,
-    }];
-    let document = test_support::document(&[]);
-    let mut state = LoweringState::new(&document);
-    state.next_footnote_index(); // 本文側で既に 1 個採番済みという想定
 
     // Act
-    let nodes = lower_table(&ctx, &[ColumnAlign::Left], &[ColumnWidth::Auto], &[], &rows, None, "1", true, &mut state);
+    let nodes =
+      lower_source(&style, "本文\\footnote{body note}\n\n\\begin{table}\n\\row{\\footnote{cell note}}\n\\end{table}\n");
 
     // Assert
     let table = find_table(&nodes);

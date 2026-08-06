@@ -1,29 +1,31 @@
-//! 段落（`resolve::ResolvedNode::Paragraph`）の lowering
+//! 段落（`model::HirNodeKind::Paragraph`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle},
 };
-use crate::resolve::ResolvedInline;
+use crate::model::{HirInline, HirInlineKind};
 
-/// 段落をレイアウトノードに変換する
-pub(super) fn lower_paragraph(
-  ctx: &LoweringContext,
-  inlines: &[ResolvedInline],
-  state: &mut LoweringState,
-) -> Vec<LayoutNode> {
-  let default_style = TextStyle {
+/// 本文段落の既定テキストスタイルを返す
+pub(super) fn body_text_style(ctx: &LoweringContext) -> TextStyle {
+  return TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.body_font_kind,
     color: None,
   };
+}
 
-  let mut result = Vec::new();
-
-  // `\noindent`（[`ResolvedInline::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
-  // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
-  let suppress_indent = inlines.iter().any(|inline| matches!(inline, ResolvedInline::NoIndent));
+/// 段落の箱組み（先頭行の字下げカーン + 内容 + 段落間アキ）
+///
+/// 内容の lowering 経路（著者が書いた HIR / CSL 整形の生成物）に依らず共通なので、
+/// 両方の呼び出し元がこの 1 つを使う。
+pub(super) fn assemble_paragraph(
+  ctx: &LoweringContext,
+  content: Vec<LayoutNode>,
+  suppress_indent: bool,
+) -> Vec<LayoutNode> {
+  let mut result = Vec::with_capacity(content.len() + 2);
 
   // 段落先頭行の字下げ。先頭に水平カーンを置くと、貪欲法ブレーカが先頭行だけ右へずらして
   // 折り返し幅を狭める（2 行目以降には残らない）。0pt のとき・`\noindent` 指定時は何も足さない。
@@ -33,12 +35,7 @@ pub(super) fn lower_paragraph(
     });
   }
 
-  for inline in inlines {
-    if matches!(inline, ResolvedInline::NoIndent) {
-      continue;
-    }
-    result.extend(lower_inline(ctx, inline, default_style, state));
-  }
+  result.extend(content);
 
   result.push(LayoutNode::Vkern {
     length: ctx.style.text.paragraph_spacing,
@@ -47,30 +44,53 @@ pub(super) fn lower_paragraph(
   return result;
 }
 
+/// 段落をレイアウトノードに変換する
+pub(super) fn lower_paragraph(
+  ctx: &LoweringContext,
+  inlines: &[HirInline],
+  state: &mut LoweringState,
+) -> Vec<LayoutNode> {
+  let default_style = body_text_style(ctx);
+
+  // `\noindent`（[`HirInlineKind::NoIndent`] マーカー）が段落にあれば字下げを抑止する。位置検証は
+  // パーサ（`evaluate_children`）が段落先頭に限定済みなので、ここでは存在の有無だけを見る。
+  let suppress_indent = inlines.iter().any(|inline| matches!(inline.kind, HirInlineKind::NoIndent));
+
+  let mut content = Vec::new();
+  for inline in inlines {
+    if matches!(inline.kind, HirInlineKind::NoIndent) {
+      continue;
+    }
+    content.extend(lower_inline(ctx, inline, default_style, state));
+  }
+
+  return assemble_paragraph(ctx, content, suppress_indent);
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
+  };
   use crate::{
-    config::{CounterName, Style as ReadStyle},
-    resolve::{CounterKind, CounterValue},
+    config::Style as ReadStyle,
+    model::{AnchorId, LabelId, Length, LinkTarget, NodeMap},
   };
 
-  /// テキスト 1 つだけの段落を lower するテストヘルパ
-  fn lower_plain(ctx: &LoweringContext, inlines: &[ResolvedInline]) -> Vec<LayoutNode> {
-    let document = test_support::document(&[]);
-    return lower_paragraph(ctx, inlines, &mut LoweringState::new(&document));
+  /// 段落 1 つの `.sei` ソースを lower するテストヘルパ
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
   }
 
   #[test]
   fn paragraph_appends_single_trailing_vkern_with_paragraph_spacing() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let inlines = [ResolvedInline::Text("hello".to_string())];
 
     // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    let nodes = lower_source(&style, "hello\n");
 
     // Assert
     let LayoutNode::Vkern { length } = nodes.last().expect("末尾要素") else {
@@ -85,11 +105,9 @@ mod tests {
   fn paragraph_text_uses_default_style_from_core_text() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    let nodes = lower_source(&style, "body\n");
 
     // Assert
     let LayoutNode::Text(text, text_style) = &nodes[0] else {
@@ -97,18 +115,17 @@ mod tests {
     };
     assert_eq!(text, "body");
     assert_eq!(text_style.font_kind, style.text.font_kind);
-    assert_eq!(text_style.font_size, ctx.default_font_size());
+    assert_eq!(text_style.font_size, style.text.font_size);
   }
 
   #[test]
   fn paragraph_prepends_first_line_indent_kern_when_positive() {
     // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(crate::model::Length::pt(15.0));
-    let inlines = [ResolvedInline::Text("body".to_string())];
+    let mut style = ReadStyle::default();
+    style.text.first_line_indent = Length::pt(15.0);
 
     // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    let nodes = lower_source(&style, "body\n");
 
     // Assert
     let LayoutNode::Kern { length } = &nodes[0] else {
@@ -121,15 +138,11 @@ mod tests {
   #[test]
   fn paragraph_noindent_marker_suppresses_indent_kern() {
     // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style).with_first_line_indent(crate::model::Length::pt(15.0));
-    let inlines = [
-      ResolvedInline::NoIndent,
-      ResolvedInline::Text("body".to_string()),
-    ];
+    let mut style = ReadStyle::default();
+    style.text.first_line_indent = Length::pt(15.0);
 
     // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    let nodes = lower_source(&style, "\\noindent body\n");
 
     // Assert
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::Kern { .. })), "字下げ Kern は抑止される: {nodes:?}");
@@ -140,11 +153,9 @@ mod tests {
   fn paragraph_omits_first_line_indent_kern_by_default() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let inlines = [ResolvedInline::Text("body".to_string())];
 
     // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    let nodes = lower_source(&style, "body\n");
 
     // Assert
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "body"), "先頭は本文 Text: {nodes:?}");
@@ -155,15 +166,9 @@ mod tests {
   fn paragraph_preserves_inline_order() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let inlines = [
-      ResolvedInline::Text("one".to_string()),
-      ResolvedInline::Text("two".to_string()),
-      ResolvedInline::Text("three".to_string()),
-    ];
 
-    // Act
-    let nodes = lower_plain(&ctx, &inlines);
+    // Act — 書体切り替えを挟んで、インラインが Text へ落ちる順序を見る
+    let nodes = lower_source(&style, "\\italic{one}\\bold{two}\\mono{three}\n");
 
     // Assert
     let texts: Vec<&str> = nodes
@@ -180,30 +185,19 @@ mod tests {
   fn paragraph_ref_is_resolved_to_internal_link() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let inlines = [ResolvedInline::Ref {
-      target: crate::model::LabelId::new("eq:one"),
-      span: crate::model::Span::DUMMY,
-    }];
-    let document = test_support::document(&[(
-      "eq:one",
-      CounterValue {
-        kind: CounterKind::Counter(CounterName::Equation),
-        parts: vec![0, 1, 1],
-      },
-    )]);
 
     // Act
-    let nodes = lower_paragraph(&ctx, &inlines, &mut LoweringState::new(&document));
+    let nodes = lower_source(&style, "\\chapter[label=ch:one]{Intro}\n\n\\ref{ch:one}\n");
 
-    // Assert
-    let LayoutNode::Link { target, children } = &nodes[0] else {
-      panic!("解決済み \\ref は Link になるはず: {nodes:?}");
-    };
-    assert_eq!(
-      *target,
-      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("eq:one")))
-    );
-    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "(1.1)"), "{children:?}");
+    // Assert — 段落は解決済み `\ref` をそのままリンクとして通す
+    let link = nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::Link { target, children } => return Some((target, children)),
+        _ => return None,
+      })
+      .expect("解決済み \\ref は Link になるはず");
+    assert_eq!(*link.0, LinkTarget::Internal(AnchorId::Label(LabelId::new("ch:one"))));
+    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Chapter 1"), "{:?}", link.1);
   }
 }

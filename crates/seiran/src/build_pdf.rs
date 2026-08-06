@@ -115,13 +115,14 @@ fn compile_with_base_dir<S: crate::config::ProjectSource>(
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
   let (document, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
+  let semantics = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
+  let content = document_content(&semantics);
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
   let laid_out =
-    DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(&resolved, &image_resources)?;
+    DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(content, &image_resources)?;
   let publication = build_publication(
     &snapshot.config,
     &snapshot.font_data,
@@ -318,12 +319,22 @@ fn build_pages_with_source(
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (document, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
+  let semantics = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
+  let content = document_content(&semantics);
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(&resolved, &image_resources);
+  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(content, &image_resources);
+}
+
+/// 意味解析と CSL 整形の成果物から、組版へ渡す入力ビューを組み立てる。
+fn document_content(semantics: &semantics::Semantics) -> crate::typeset::DocumentContent<'_> {
+  return crate::typeset::DocumentContent {
+    analyzed: &semantics.analyzed,
+    citation_displays: semantics.generated.displays(),
+    bibliography: semantics.generated.bibliography(),
+  };
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。

@@ -5,8 +5,9 @@ use crate::model::{MathNode, MathStyle, hir::NodeId};
 /// 数式ノード列を組版用の [`MathNode`] 列へ変換する
 ///
 /// 数式は名前（ラベル・参照・引用キー）を含まないので、意味解析の fact を参照しない純粋な
-/// 構造変換になる。旧 `DocNode` 経路（`frontend::doc_node_adapter`）と `resolve::bridge` の
-/// 双方が同じ変換を必要とするため、ここに 1 つだけ置く。
+/// 構造変換になる。組版（`typeset::lowering`）と旧 `DocNode` 経路
+/// （`frontend::doc_node_adapter`、テストの足場）の双方が同じ変換を必要とするため、
+/// ここに 1 つだけ置く。
 pub(crate) fn to_math_nodes(nodes: &[HirMath]) -> Vec<MathNode> { return nodes.iter().map(to_math_node).collect(); }
 
 /// 数式ノード 1 個を組版用の [`MathNode`] へ変換する
