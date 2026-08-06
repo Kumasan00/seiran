@@ -8,7 +8,7 @@
 use crate::{
   model::Origin,
   resolve::{
-    ResolveError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
+    SemanticError, counter::CounterRegistry, error::span_to_source_span, inline::ResolvedInline, node::ResolvedNode,
   },
 };
 
@@ -17,12 +17,12 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 未登録のラベルを参照している場合に [`ResolveError::UnresolvedReference`] を返します。
+/// 未登録のラベルを参照している場合に [`SemanticError::UnresolvedReference`] を返します。
 pub(crate) fn validate_refs(
   nodes: &[ResolvedNode],
   registry: &CounterRegistry,
   origin: Origin,
-) -> Result<(), ResolveError> {
+) -> Result<(), SemanticError> {
   for node in nodes {
     validate_node(node, registry, origin)?;
   }
@@ -30,7 +30,7 @@ pub(crate) fn validate_refs(
 }
 
 /// 単一の `ResolvedNode` を検証する
-fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: Origin) -> Result<(), ResolveError> {
+fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: Origin) -> Result<(), SemanticError> {
   match node {
     ResolvedNode::Heading { title, .. } => validate_inlines(title, registry, origin)?,
     ResolvedNode::Paragraph(inlines) => validate_inlines(inlines, registry, origin)?,
@@ -43,7 +43,7 @@ fn validate_node(node: &ResolvedNode, registry: &CounterRegistry, origin: Origin
       if let Some(of) = of
         && registry.resolve_label(of.target.as_str()).is_none()
       {
-        return Err(ResolveError::UnresolvedReference {
+        return Err(SemanticError::UnresolvedReference {
           label: of.target.as_str().to_string(),
           span: span_to_source_span(of.span),
           origin,
@@ -86,7 +86,7 @@ fn validate_inlines(
   inlines: &[ResolvedInline],
   registry: &CounterRegistry,
   origin: Origin,
-) -> Result<(), ResolveError> {
+) -> Result<(), SemanticError> {
   for inline in inlines {
     validate_inline(inline, registry, origin)?;
   }
@@ -94,11 +94,11 @@ fn validate_inlines(
 }
 
 /// 単一のインライン要素を検証する
-fn validate_inline(inline: &ResolvedInline, registry: &CounterRegistry, origin: Origin) -> Result<(), ResolveError> {
+fn validate_inline(inline: &ResolvedInline, registry: &CounterRegistry, origin: Origin) -> Result<(), SemanticError> {
   match inline {
     ResolvedInline::Ref { target, span } => {
       if registry.resolve_label(target.as_str()).is_none() {
-        return Err(ResolveError::UnresolvedReference {
+        return Err(SemanticError::UnresolvedReference {
           label: target.as_str().to_string(),
           span: span_to_source_span(*span),
           origin,
@@ -147,7 +147,7 @@ mod tests {
     let err = validate_refs(&nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
+    assert!(matches!(err, SemanticError::UnresolvedReference { ref label, .. } if label == "missing"));
   }
 
   #[allow(clippy::unwrap_used)]
@@ -218,7 +218,7 @@ mod tests {
     let err = validate_refs(&nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "thm:missing"));
+    assert!(matches!(err, SemanticError::UnresolvedReference { ref label, .. } if label == "thm:missing"));
   }
 
   #[allow(clippy::unwrap_used)]
@@ -246,7 +246,7 @@ mod tests {
     let err = validate_refs(&nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert: 報告される span は `of` 引数自身の span であり、定理環境の span ではない
-    let ResolveError::UnresolvedReference { span, .. } = err else {
+    let SemanticError::UnresolvedReference { span, .. } = err else {
       panic!("UnresolvedReference が返るはず: {err:?}");
     };
     assert_eq!(span, span_to_source_span(of_span), "報告される span は [of=...] 引数自身の位置のはず");
@@ -276,7 +276,7 @@ mod tests {
     let list_err = validate_refs(&list_nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(list_err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
+    assert!(matches!(list_err, SemanticError::UnresolvedReference { ref label, .. } if label == "missing"));
 
     // Arrange: テーブルセルの中の参照も検証対象
     let table_nodes = vec![ResolvedNode::Table {
@@ -308,6 +308,6 @@ mod tests {
     let table_err = validate_refs(&table_nodes, &registry, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(table_err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
+    assert!(matches!(table_err, SemanticError::UnresolvedReference { ref label, .. } if label == "missing"));
   }
 }

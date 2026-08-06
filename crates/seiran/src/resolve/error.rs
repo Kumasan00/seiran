@@ -8,7 +8,7 @@ use crate::model::Origin;
 /// 解決（ラベル登録・`\ref` の名前解決）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
-pub enum ResolveError {
+pub enum SemanticError {
   /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合
   #[error("未解決の参照です: ラベル `{label}`")]
   #[diagnostic(code(resolve::unresolved_reference), help("対応する label が定義されているか確認してください。"))]
@@ -36,19 +36,19 @@ pub enum ResolveError {
   },
 }
 
-impl ResolveError {
+impl SemanticError {
   /// このエラーが帰属する起源を返す
   #[must_use]
   pub fn origin(&self) -> Origin {
     return match self {
-      ResolveError::UnresolvedReference { origin, .. } | ResolveError::DuplicateLabel { origin, .. } => *origin,
+      SemanticError::UnresolvedReference { origin, .. } | SemanticError::DuplicateLabel { origin, .. } => *origin,
     };
   }
 }
 
 /// `crate::model::Span` を診断用の `miette::SourceSpan` へ変換する
 ///
-/// `ResolveError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
+/// `SemanticError` のバリアントはいずれも `#[label]` に `miette::SourceSpan` を要求するため、
 /// カウンタ登録（`counter`）とツリー構築（`resolver`）の双方から共有する
 pub(crate) fn span_to_source_span(span: crate::model::Span) -> miette::SourceSpan {
   return miette::SourceSpan::from((span.start as usize, span.len() as usize));

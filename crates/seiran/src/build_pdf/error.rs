@@ -9,7 +9,7 @@ use crate::{
   config::LayoutValidationError,
   frontend::ParseSourceError,
   model::AssetId,
-  resolve::ResolveError,
+  resolve::SemanticError,
 };
 
 /// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
@@ -196,7 +196,7 @@ pub(super) enum CompileError {
     /// 元の resolve エラー
     #[source]
     #[diagnostic_source]
-    source: ResolveError,
+    source: SemanticError,
   },
 
   /// 特定ソースに帰属できない resolve エラー
@@ -206,7 +206,7 @@ pub(super) enum CompileError {
     /// 元の resolve エラー
     #[source]
     #[diagnostic_source]
-    source: ResolveError,
+    source: SemanticError,
   },
 
   /// カレントディレクトリの取得失敗

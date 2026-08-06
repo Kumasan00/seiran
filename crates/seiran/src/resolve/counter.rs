@@ -14,8 +14,8 @@ use std::collections::HashMap;
 
 use crate::{
   config::{CounterName, DocumentPolicy, TheoremReset},
-  model::{HeadingLevel, LabelId, Origin, Span, TheoremClass},
-  resolve::{ResolveError, error::span_to_source_span},
+  model::{HeadingLevel, LabelId, NodeId, Origin, SourceMap, Span, TheoremClass},
+  resolve::{SemanticError, error::span_to_source_span},
 };
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
@@ -97,14 +97,14 @@ impl CounterRegistry {
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`ResolveError::DuplicateLabel`] を返します。
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_theorem_with_label(
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
     span: Span,
     source: Origin,
-  ) -> Result<Option<CounterValue>, ResolveError> {
+  ) -> Result<Option<CounterValue>, SemanticError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, unnumbered) = {
       let def = self.policy.theorem(class);
@@ -120,7 +120,7 @@ impl CounterRegistry {
     if let Some(l) = label
       && !self.register_label(l.to_string(), counter_value.clone())
     {
-      return Err(ResolveError::DuplicateLabel {
+      return Err(SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
         origin: source,
@@ -201,25 +201,62 @@ impl CounterRegistry {
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`ResolveError::DuplicateLabel`] を返します。
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_with_label(
     &mut self,
     counter: CounterName,
     label: Option<&str>,
     span: Span,
     source: Origin,
-  ) -> Result<CounterValue, ResolveError> {
+  ) -> Result<CounterValue, SemanticError> {
     let value = self.increment(counter);
     if let Some(l) = label
       && !self.register_label(l.to_string(), value.clone())
     {
-      return Err(ResolveError::DuplicateLabel {
+      return Err(SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
         origin: source,
       });
     }
     return Ok(value);
+  }
+
+  /// 採番とラベル登録を一括で行う（HIR ノード版）
+  ///
+  /// 位置は `locations` から `node` を引いて求める。`(Span, Origin)` を直接受け取る
+  /// [`Self::increment_with_label`] は `resolver` 専用で、#325 で `resolver` ごと消える。
+  ///
+  /// # Errors
+  ///
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  #[allow(dead_code)]
+  pub(crate) fn increment_with_label_at(
+    &mut self,
+    counter: CounterName,
+    label: Option<&str>,
+    node: NodeId,
+    locations: &SourceMap,
+  ) -> Result<CounterValue, SemanticError> {
+    let location = locations.location(node);
+    return self.increment_with_label(counter, label, location.span, Origin::Source(location.source_id));
+  }
+
+  /// 定理環境の採番とラベル登録を行う（HIR ノード版）
+  ///
+  /// # Errors
+  ///
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  #[allow(dead_code)]
+  pub(crate) fn increment_theorem_with_label_at(
+    &mut self,
+    class: TheoremClass,
+    label: Option<&str>,
+    node: NodeId,
+    locations: &SourceMap,
+  ) -> Result<Option<CounterValue>, SemanticError> {
+    let location = locations.location(node);
+    return self.increment_theorem_with_label(class, label, location.span, Origin::Source(location.source_id));
   }
 
   /// pass2 で `\ref{label}` を解決してカウンタの構造値（[`CounterValue`]）を返す
@@ -362,7 +399,7 @@ mod tests {
     );
 
     // Assert
-    assert!(matches!(result, Err(ResolveError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    assert!(matches!(result, Err(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
   }
 
   #[test]

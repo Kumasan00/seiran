@@ -388,7 +388,7 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::model::HirSource
 ///
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
-fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb) -> CompileError {
   return match error.origin() {
     crate::model::Origin::Source(source_id) => {
       let entry = source_db.get(source_id);
@@ -454,7 +454,9 @@ fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileE
 #[cfg(test)]
 mod tests {
   /// 書誌（`generated.bibliography`）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
+  pub(super) fn resolve_error_attributed_to_bibliography(
+    style: &crate::config::Style,
+  ) -> crate::resolve::SemanticError {
     use crate::model::{DocNode, InlineNode};
     let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
       "plain".to_string(),

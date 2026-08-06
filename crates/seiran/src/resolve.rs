@@ -4,20 +4,30 @@
 //! citation クレートの後・typeset クレートの前で実行する。カウンタの値（構造）算出もここに
 //! 閉じ、表示文字列の生成（`number_format` 等 style 依存）は typeset 側に残す。
 
+// `analyze` / `facts` は #324 の移行中で、本体経路の利用者は bridge（`resolve::bridge`）が
+// 入る段階で付く。それまで通常ビルドでは未使用に見えるため module 単位で抑制する。
+#[allow(dead_code)]
+mod analyze;
 mod counter;
 mod document;
 mod error;
+#[allow(dead_code)]
+mod facts;
 mod inline;
 mod node;
 mod resolver;
 mod validate;
 
+#[allow(unused_imports)]
+pub use analyze::analyze;
 pub use counter::{CounterKind, CounterValue};
 pub use document::{
   ResolvedDocument, ResolvedGenerated, ResolvedGroup, ResolvedHeading, SemanticDocument, SemanticGenerated,
   SemanticGroup,
 };
-pub use error::ResolveError;
+pub use error::SemanticError;
+#[allow(unused_imports)]
+pub use facts::{AnalyzedDocument, HeadingFacts};
 // `IndexKey` は旧 resolve crate の公開 API 保持のための再エクスポートで、crate::resolve root
 // 経由の利用者は `crate::typeset::lowering::inline` の `#[cfg(test)]` テストのみ。cfg(test) を
 // 有効化しない通常ビルドでは未使用に見えるため、この pub use にだけ抑制を付ける。
@@ -45,7 +55,7 @@ pub use node::{
 pub fn resolve_project(
   semantic: &SemanticDocument<'_>,
   policy: &crate::config::DocumentPolicy,
-) -> Result<ResolvedDocument, ResolveError> {
+) -> Result<ResolvedDocument, SemanticError> {
   let mut registry = counter::CounterRegistry::from_policy(policy);
   let mut pending_headings = Vec::new();
 
@@ -178,7 +188,7 @@ mod tests {
       .unwrap_err();
 
     // Assert
-    assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
+    assert!(matches!(err, SemanticError::UnresolvedReference { ref label, .. } if label == "missing"));
   }
 }
 

@@ -12,14 +12,14 @@ use super::ParsedSource;
 use crate::{
   citation::{self, CitationFormatError, CitationSemanticError, CitationStyleError, References},
   model::{DocNode, HirDocument, SourceId},
-  resolve::{self, ResolveError, ResolvedDocument, SemanticDocument, SemanticGenerated, SemanticGroup},
+  resolve::{self, ResolvedDocument, SemanticDocument, SemanticError, SemanticGenerated, SemanticGroup},
 };
 
 /// `resolve_semantics` のエラー。
 ///
 /// 内側の citation 意味解析 / CSL 整形 / resolve それぞれの診断（code・help・label）をそのまま運ぶ。
 /// 呼び出し元（`build_pdf.rs`）が `Resolve` について帰属ソースを組み立てられるよう、
-/// `resolve::ResolveError` はここでは変換せずそのまま保持する。`CitationSemantic`（未定義引用キー）
+/// `resolve::SemanticError` はここでは変換せずそのまま保持する。`CitationSemantic`（未定義引用キー）
 /// も同様に `SourceId` だけを運ぶ形のまま呼び出し元へ渡し、`SourceDb` から本文を引く変換は
 /// `build_pdf.rs::wrap_citation_semantic_error` に委ねる。
 #[derive(Debug, Error, Diagnostic)]
@@ -39,7 +39,7 @@ pub(super) enum SemanticsError {
   /// ラベル・`\ref`・カウンタの解決エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Resolve(#[from] ResolveError),
+  Resolve(#[from] SemanticError),
 }
 
 /// 引用箇所の意味解析・表示と書誌の生成を行い、その結果を意味解決へ渡して

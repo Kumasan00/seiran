@@ -3,7 +3,7 @@
 use crate::{
   model::{DocNode, InlineNode, LabelId, Origin},
   resolve::{
-    ResolveError,
+    SemanticError,
     counter::CounterRegistry,
     inline::{IndexKey, ResolvedInline},
     node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
@@ -32,13 +32,13 @@ pub(crate) struct PendingHeading {
 ///
 /// # Errors
 ///
-/// ラベルの重複登録に遭遇した場合に [`ResolveError`] を返します。
+/// ラベルの重複登録に遭遇した場合に [`SemanticError`] を返します。
 pub(crate) fn resolve_group(
   nodes: &[DocNode],
   registry: &mut CounterRegistry,
   headings: &mut Vec<PendingHeading>,
   source: Origin,
-) -> Result<Vec<ResolvedNode>, ResolveError> {
+) -> Result<Vec<ResolvedNode>, SemanticError> {
   let mut result = Vec::with_capacity(nodes.len());
   for node in nodes {
     result.push(resolve_node(node, registry, headings, source)?);
@@ -52,7 +52,7 @@ fn resolve_node(
   registry: &mut CounterRegistry,
   headings: &mut Vec<PendingHeading>,
   source: Origin,
-) -> Result<ResolvedNode, ResolveError> {
+) -> Result<ResolvedNode, SemanticError> {
   match node {
     DocNode::Heading {
       level,
@@ -104,7 +104,7 @@ fn resolve_node(
             item_gap: item.item_gap,
           });
         })
-        .collect::<Result<Vec<_>, ResolveError>>()?;
+        .collect::<Result<Vec<_>, SemanticError>>()?;
       return Ok(ResolvedNode::List {
         ordered: *ordered,
         items,
@@ -185,7 +185,7 @@ fn resolve_node(
             counter_value: row_value,
           });
         })
-        .collect::<Result<Vec<_>, ResolveError>>()?;
+        .collect::<Result<Vec<_>, SemanticError>>()?;
       let env_value = if *numbered {
         Some(registry.increment_with_label(crate::config::CounterName::Equation, label.as_deref(), *span, source)?)
       } else {
@@ -387,6 +387,6 @@ mod tests {
     let err = resolve_group(&nodes, &mut registry, &mut headings, Origin::Source(SourceId::new(0))).unwrap_err();
 
     // Assert
-    assert!(matches!(err, crate::resolve::ResolveError::DuplicateLabel { ref label, .. } if label == "dup"));
+    assert!(matches!(err, crate::resolve::SemanticError::DuplicateLabel { ref label, .. } if label == "dup"));
   }
 }
