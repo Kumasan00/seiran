@@ -1,4 +1,4 @@
-//! 複数ソースをまたぐ処理の起源識別子 [`SourceId`] と [`Origin`]。
+//! 複数ソースをまたぐ処理の起源識別子 [`SourceId`]。
 
 /// 複数ソースファイルをまとめて処理する際の、実ソース 1 つ分の位置識別子
 ///
@@ -17,22 +17,6 @@ impl SourceId {
   pub fn index(self) -> usize { return self.0; }
 }
 
-/// 実ソースに属さない合成ノードの生成理由
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GeneratedOrigin {
-  /// `\cite` を CSL 整形するステージ（`citation` クレート）が合成する書誌一覧
-  Bibliography,
-}
-
-/// 診断・エラーが帰属する起源
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Origin {
-  /// 実ソースファイル由来
-  Source(SourceId),
-  /// 実ソースに属さない合成ノード由来
-  Generated(GeneratedOrigin),
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -41,12 +25,5 @@ mod tests {
   fn source_id_round_trips_index() {
     let id = SourceId::new(3);
     assert_eq!(id.index(), 3);
-  }
-
-  #[test]
-  fn origin_distinguishes_source_and_generated_without_index() {
-    let real = Origin::Source(SourceId::new(0));
-    let synthetic = Origin::Generated(GeneratedOrigin::Bibliography);
-    assert_ne!(real, synthetic);
   }
 }

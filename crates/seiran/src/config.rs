@@ -5,6 +5,7 @@
 // `config_toml` に改名して吸収した（#307）。
 mod config_toml;
 mod layout;
+mod policy;
 mod project_source;
 mod style;
 
@@ -24,6 +25,10 @@ pub use config_toml::{
   PdfConfig, ReadConfigError, TextDirection, VariationAxis, read_config,
 };
 pub use layout::{LayoutValidationError, validate_layout};
+// 意味解析（`crate::resolve`）へ渡す設定の投影。`CounterPolicy`/`TheoremPolicy` は
+// `DocumentPolicy` のアクセサ戻り値としてのみ現れ、型名を名指しする消費者は現状ない。
+#[allow(unused_imports)]
+pub use policy::{CounterPolicy, DocumentPolicy, TheoremPolicy};
 // `FilesystemProjectSource`/`MemoryProjectSource`/`ProjectPath`/`ProjectSource`/`SourceReadError`
 // はすべて `crate::config::` 経由で使われる（`SourceReadError` は `crate::lib.rs` の root facade
 // 再エクスポートが唯一の消費者 — `ProjectSource::read_text`/`read_bytes` の戻り値型に現れるため、

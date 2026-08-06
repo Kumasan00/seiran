@@ -1,39 +1,13 @@
-//! プロジェクト全体（複数ソース）を表す、解決前後の 2 段階の文書型
+//! 組版（lowering）の入力となる解決済み文書型
+//!
+//! #325 で `AnalyzedDocument` を直接読む形に置き換わり、この module ごと消える。
 
 use std::collections::HashMap;
 
 use crate::{
-  model::{DocNode, HeadingKey, HeadingLevel, InlineNode, LabelId, NodeMap, Origin, SourceId},
+  model::{HeadingKey, HeadingLevel, LabelId, NodeMap, SourceId},
   resolve::{counter::CounterValue, inline::ResolvedInline, node::ResolvedNode},
 };
-
-/// 1 ソースグループぶんの未解決ノード列
-pub struct SemanticGroup<'a> {
-  /// このグループの `DocNode` 列（ラベル名・`\ref` 参照名・引用キーは未解決の生 `String`）
-  pub nodes: &'a [DocNode],
-  /// このグループの起源となる実ソース（グループ列は実ソースしか持てない — 生成物は
-  /// `SemanticDocument::generated` 側に分離済み）
-  pub source_id: SourceId,
-}
-
-/// 生成物（引用表示・書誌）の未解決入力
-pub struct SemanticGenerated<'a> {
-  /// 引用箇所 → CSL 整形済み表示インライン列
-  pub citation_displays: &'a NodeMap<Vec<InlineNode>>,
-  /// 書誌の未解決ノード列（引用がなければ空スライス）
-  pub bibliography: &'a [DocNode],
-}
-
-/// プロジェクト全体の未解決ドキュメント
-///
-/// `crate::frontend::parse_source` と `citation::generate_citations` を経た直後の状態に相当する。
-/// ラベル名・`\ref` 参照名・引用キー・索引語は未解決のまま保持できる（型として禁止しない）。
-pub struct SemanticDocument<'a> {
-  /// 実ソースのグループ列（citation が生成した表示・書誌は含まない）
-  pub groups: Vec<SemanticGroup<'a>>,
-  /// citation が生成した表示・書誌（実ソースとは別枠で渡す）
-  pub generated: SemanticGenerated<'a>,
-}
 
 /// 見出し 1 件の解決結果（PDF しおり・目次生成が消費する）
 #[derive(Debug, Clone, PartialEq)]
@@ -46,8 +20,6 @@ pub struct ResolvedHeading {
   pub counter_value: Option<CounterValue>,
   /// 見出しタイトル（`\ref` 解決済み。表示文字列化は typeset 側の責務）
   pub title: Vec<ResolvedInline>,
-  /// この見出しが属する起源
-  pub source: Origin,
 }
 
 /// 1 ソースグループぶんの解決済みノード列

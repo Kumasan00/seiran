@@ -46,7 +46,6 @@ use crate::citation::References;
 use crate::{
   citation::read_references,
   font::{FontData, FontDataExt, FontResources},
-  model::DocNode,
 };
 
 /// コンパイル結果の統計情報。
@@ -115,8 +114,8 @@ fn compile_with_base_dir<S: crate::config::ProjectSource>(
   info!(config_path = %root, "PDF のコンパイルを開始します");
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
-  let (document, parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
+  let (document, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
@@ -176,41 +175,25 @@ fn load_project(
 
 /// 全ソースをパースし、画像パス一覧を作る。
 ///
-/// `\cite` の存在検証・CSL 整形・ラベル/`\ref`/カウンタの解決は `semantics::resolve_semantics` が
-/// 担う（この関数はパースと画像パス収集のみを行う）。呼び出し元は `HirDocument` を
-/// `resolve_semantics` の引用キー存在検証（`citation::analyze_citations`）にそのまま渡す。
+/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::resolve_semantics` が
+/// 担う（この関数はパースと画像パス収集のみを行う）。
 ///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(
-  snapshot: &ProjectSnapshot,
-) -> miette::Result<(crate::model::HirDocument, Vec<ParsedSource>, ImageManifest)> {
+fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(crate::model::HirDocument, ImageManifest)> {
   let stage_start = Instant::now();
   let document = crate::model::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
-  // 後段（citation / resolve / typeset）はまだ `DocNode` を入力に取るので、ここで変換する。
-  // この adapter は #325 で削除する。
-  let parsed: Vec<ParsedSource> = document
-    .groups()
-    .iter()
-    .map(|group| {
-      return ParsedSource {
-        source_id: group.source_id,
-        nodes: crate::frontend::hir_group_to_doc_nodes(group, document.locations()),
-      };
-    })
-    .collect();
   info!(
-    source_count = parsed.len(),
-    node_count = parsed.iter().map(|p| return p.nodes.len()).sum::<usize>(),
+    source_count = document.groups().len(),
+    node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
     elapsed_ms = elapsed_ms(stage_start),
     "全ソースのパースが完了しました"
   );
 
-  let groups: Vec<&[DocNode]> = parsed.iter().map(|p| return p.nodes.as_slice()).collect();
-  let image_manifest = image_manifest::collect_image_paths(&groups);
+  let image_manifest = image_manifest::collect_image_paths(&document);
 
-  return Ok((document, parsed, image_manifest));
+  return Ok((document, image_manifest));
 }
 
 /// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
@@ -334,8 +317,8 @@ fn build_pages_with_source(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (document, parsed, image_manifest) = parse_project(&snapshot)?;
-  let resolved = semantics::resolve_semantics(source, &document, parsed, &snapshot.references, &snapshot.style)
+  let (document, image_manifest) = parse_project(&snapshot)?;
+  let resolved = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
@@ -348,14 +331,6 @@ fn build_pages_with_source(
 /// ビルド処理時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
 #[allow(clippy::cast_possible_truncation)]
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
-
-/// 1 ソースのパース結果。本文の表示名・内容は `SourceDb` が持つため、ここでは持たない。
-struct ParsedSource {
-  /// パース元ソースの識別子
-  source_id: crate::model::SourceId,
-  /// パース・評価済みの Document IR ノード列
-  nodes: Vec<DocNode>,
-}
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
 ///
@@ -384,20 +359,23 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::model::HirSource
   return Ok(parsed);
 }
 
-/// resolve エラーが帰属するソースを `SourceDb` から引き当てる。
+/// 意味解析エラーが帰属するソースを `SourceDb` から引き当てる。
 ///
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
-/// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。
-fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb) -> CompileError {
-  return match error.origin() {
-    crate::model::Origin::Source(source_id) => {
-      let entry = source_db.get(source_id);
-      CompileError::Resolve {
-        src: miette::NamedSource::new(&entry.name, entry.content.clone()),
-        source: error,
-      }
-    },
-    crate::model::Origin::Generated(_) => CompileError::ResolveInternal { source: error },
+/// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。`analyze` は実ソースしか
+/// 走査しないので、帰属先が実ソース以外になることはない。
+fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb) -> CompileError {
+  // 未定義引用キーは箇所ごとに `SourceId` を持ち、ソースごとの位置付き診断へ組み替える。
+  if let crate::resolve::SemanticError::UnknownCitationKeys { sites } = error {
+    return wrap_unknown_citation_keys(sites, source_db);
+  }
+  let Some(source_id) = error.source_id() else {
+    unreachable!("SourceId を持たないのは UnknownCitationKeys だけで、上で分岐済み: {error:?}")
+  };
+  let entry = source_db.get(source_id);
+  return CompileError::Resolve {
+    src: miette::NamedSource::new(&entry.name, entry.content.clone()),
+    source: error,
   };
 }
 
@@ -405,8 +383,7 @@ fn wrap_resolve_error(error: crate::resolve::ResolveError, source_db: &SourceDb)
 ///
 /// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
 /// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
-fn wrap_citation_semantic_error(error: crate::citation::CitationSemanticError, source_db: &SourceDb) -> CompileError {
-  let crate::citation::CitationSemanticError::UnknownCitationKeys { sites } = error;
+fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<crate::model::SourceId> = Vec::new();
@@ -438,48 +415,12 @@ fn wrap_citation_semantic_error(error: crate::citation::CitationSemanticError, s
 
 /// `semantics::resolve_semantics` のエラーを `CompileError` へ変換する。
 ///
-/// citation 由来はそのまま `CitationStyle` / `CitationFormat` へ、resolve 由来は
-/// `wrap_resolve_error` に委譲し、帰属ソースの有無で `Resolve` / `ResolveInternal` に振り分ける。
-/// 未定義引用キーは `wrap_citation_semantic_error` でソースごとの位置付き診断へ変換する
-/// （従来の挙動を維持する）。
+/// CSL 由来はそのまま `CitationStyle` / `CitationFormat` へ、意味解析由来は `wrap_resolve_error` に
+/// 委譲する（未定義引用キーはそこからさらにソースごとの位置付き診断へ組み替える）。
 fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileError {
   return match error {
     SemanticsError::CitationStyle(source) => CompileError::CitationStyle { source },
     SemanticsError::CitationFormat(source) => CompileError::CitationFormat { source },
-    SemanticsError::Resolve(source) => wrap_resolve_error(source, source_db),
-    SemanticsError::CitationSemantic(source) => wrap_citation_semantic_error(source, source_db),
+    SemanticsError::Analyze(source) => wrap_resolve_error(source, source_db),
   };
-}
-
-#[cfg(test)]
-mod tests {
-  /// 書誌（`generated.bibliography`）に未解決 `\ref` を仕込み、`Origin::Generated` に帰属する resolve エラーを作る。
-  pub(super) fn resolve_error_attributed_to_bibliography(style: &crate::config::Style) -> crate::resolve::ResolveError {
-    use crate::model::{DocNode, InlineNode};
-    let g0 = vec![DocNode::Paragraph(vec![InlineNode::Text(
-      "plain".to_string(),
-    )])];
-    let bibliography = vec![DocNode::Paragraph(vec![InlineNode::Ref {
-      label: "missing".to_string(),
-      span: crate::model::Span::DUMMY,
-    }])];
-    let citation_displays = crate::model::NodeMap::default();
-    let semantic = crate::resolve::SemanticDocument {
-      groups: vec![crate::resolve::SemanticGroup {
-        nodes: &g0,
-        source_id: crate::model::SourceId::new(0),
-      }],
-      generated: crate::resolve::SemanticGenerated {
-        citation_displays: &citation_displays,
-        bibliography: &bibliography,
-      },
-    };
-    let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
-    assert_eq!(
-      error.origin(),
-      crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography),
-      "書誌が帰属源のはず"
-    );
-    return error;
-  }
 }

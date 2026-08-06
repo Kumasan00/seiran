@@ -13,9 +13,9 @@
 use std::collections::HashMap;
 
 use crate::{
-  config::{CounterName, Counters, Style, TheoremReset, Theorems},
-  model::{HeadingLevel, LabelId, Origin, Span, TheoremClass},
-  resolve::{ResolveError, error::span_to_source_span},
+  config::{CounterName, DocumentPolicy, TheoremReset},
+  model::{LabelId, NodeId, SourceId, SourceMap, Span, TheoremClass},
+  resolve::{SemanticError, error::span_to_source_span},
 };
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
@@ -48,26 +48,23 @@ struct ResolvedLabel {
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
-  /// カウンタ定義（`crate::config::Counters` の複製）
-  defs: Counters,
+  /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）
+  policy: DocumentPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
-  /// 定理クラス定義（`crate::config::Theorems` の複製）。共有カウンタ名・リセット先を引く
-  theorems: Theorems,
-  /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
+  /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremPolicy.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   labels: HashMap<LabelId, ResolvedLabel>,
 }
 
 impl CounterRegistry {
-  /// `crate::config::Style` からレジストリを構築する
+  /// `crate::config::DocumentPolicy` からレジストリを構築する
   #[must_use]
-  pub(crate) fn from_style(style: &Style) -> Self {
+  pub(crate) fn from_policy(policy: &DocumentPolicy) -> Self {
     return Self {
-      defs: style.counters.clone(),
+      policy: policy.clone(),
       values: HashMap::new(),
-      theorems: style.theorems.clone(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
     };
@@ -76,8 +73,8 @@ impl CounterRegistry {
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、構造値を返す
   pub(crate) fn increment(&mut self, name: CounterName) -> CounterValue {
     *self.values.entry(name).or_insert(0) += 1;
-    for r in &self.defs.get(name).resets {
-      self.values.insert(*r, 0);
+    for r in self.policy.counter(name).resets.clone() {
+      self.values.insert(r, 0);
     }
     if let Some(level) = theorem_reset_level(name) {
       self.reset_theorems_for_level(level);
@@ -88,13 +85,9 @@ impl CounterRegistry {
 
   /// 指定した見出しレベルを `reset_by` に持つ定理カウンタをすべて 0 に戻す
   fn reset_theorems_for_level(&mut self, level: TheoremReset) {
-    // self.theorems への不変借用を先に解消してから theorem_values を変更するため、対象を収集する
-    let to_reset: Vec<String> = self
-      .theorems
-      .iter_with_class()
-      .filter(|(_, def)| return def.reset_by == level)
-      .map(|(_, def)| return def.counter.clone())
-      .collect();
+    // self.policy への不変借用を先に解消してから theorem_values を変更するため、対象を収集する
+    let to_reset: Vec<String> =
+      self.policy.theorems_reset_by(level).map(|counter| return counter.to_string()).collect();
     for counter in to_reset {
       self.theorem_values.insert(counter, 0);
     }
@@ -104,17 +97,17 @@ impl CounterRegistry {
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`ResolveError::DuplicateLabel`] を返します。
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_theorem_with_label(
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
     span: Span,
-    source: Origin,
-  ) -> Result<Option<CounterValue>, ResolveError> {
+    source_id: SourceId,
+  ) -> Result<Option<CounterValue>, SemanticError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, unnumbered) = {
-      let def = self.theorems.get(class);
+      let def = self.policy.theorem(class);
       (def.counter.clone(), def.unnumbered)
     };
     if unnumbered {
@@ -127,10 +120,10 @@ impl CounterRegistry {
     if let Some(l) = label
       && !self.register_label(l.to_string(), counter_value.clone())
     {
-      return Err(ResolveError::DuplicateLabel {
+      return Err(SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
-        origin: source,
+        source_id,
       });
     }
     return Ok(Some(counter_value));
@@ -167,7 +160,7 @@ impl CounterRegistry {
     let parent = CounterName::ALL[..own_index]
       .iter()
       .rev()
-      .find(|candidate| return self.defs.get(**candidate).resets.contains(&name))
+      .find(|candidate| return self.policy.counter(**candidate).resets.contains(&name))
       .copied();
     let Some(parent) = parent else {
       return Vec::new();
@@ -180,7 +173,7 @@ impl CounterRegistry {
   /// 定理クラスの現在値を、`reset_by` が指す見出しカウンタを祖先として [`CounterValue`] で返す
   #[must_use]
   pub(crate) fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
-    let def = self.theorems.get(class);
+    let def = self.policy.theorem(class);
     let own = *self.theorem_values.get(&def.counter).unwrap_or(&0);
     let mut parts = match theorem_reset_counter_name(def.reset_by) {
       Some(heading_counter) => vec![self.value(heading_counter)],
@@ -208,25 +201,62 @@ impl CounterRegistry {
   ///
   /// # Errors
   ///
-  /// `label` が既に登録済みの場合に [`ResolveError::DuplicateLabel`] を返します。
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_with_label(
     &mut self,
     counter: CounterName,
     label: Option<&str>,
     span: Span,
-    source: Origin,
-  ) -> Result<CounterValue, ResolveError> {
+    source_id: SourceId,
+  ) -> Result<CounterValue, SemanticError> {
     let value = self.increment(counter);
     if let Some(l) = label
       && !self.register_label(l.to_string(), value.clone())
     {
-      return Err(ResolveError::DuplicateLabel {
+      return Err(SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
-        origin: source,
+        source_id,
       });
     }
     return Ok(value);
+  }
+
+  /// 採番とラベル登録を一括で行う（HIR ノード版）
+  ///
+  /// 位置は `locations` から `node` を引いて求める。`(Span, Origin)` を直接受け取る
+  /// [`Self::increment_with_label`] は `resolver` 専用で、#325 で `resolver` ごと消える。
+  ///
+  /// # Errors
+  ///
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  #[allow(dead_code)]
+  pub(crate) fn increment_with_label_at(
+    &mut self,
+    counter: CounterName,
+    label: Option<&str>,
+    node: NodeId,
+    locations: &SourceMap,
+  ) -> Result<CounterValue, SemanticError> {
+    let location = locations.location(node);
+    return self.increment_with_label(counter, label, location.span, location.source_id);
+  }
+
+  /// 定理環境の採番とラベル登録を行う（HIR ノード版）
+  ///
+  /// # Errors
+  ///
+  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  #[allow(dead_code)]
+  pub(crate) fn increment_theorem_with_label_at(
+    &mut self,
+    class: TheoremClass,
+    label: Option<&str>,
+    node: NodeId,
+    locations: &SourceMap,
+  ) -> Result<Option<CounterValue>, SemanticError> {
+    let location = locations.location(node);
+    return self.increment_theorem_with_label(class, label, location.span, location.source_id);
   }
 
   /// pass2 で `\ref{label}` を解決してカウンタの構造値（[`CounterValue`]）を返す
@@ -234,46 +264,24 @@ impl CounterRegistry {
   pub(crate) fn resolve_label(&self, label: &str) -> Option<&CounterValue> {
     return self.labels.get(label).map(|r| return &r.value);
   }
-
-  /// 登録済み全ラベルのカウンタ構造値を `HashMap<LabelId, CounterValue>` として取り出す
-  ///
-  /// `resolve_project` が最終的な
-  /// [`crate::resolve::ResolvedDocument::counter_values`] を組み立てる際に使う。
-  #[must_use]
-  pub(crate) fn into_counter_values(self) -> HashMap<LabelId, CounterValue> {
-    return self.labels.into_iter().map(|(label, resolved)| return (label, resolved.value)).collect();
-  }
-
-  /// 見出しレベルから seiran 既定の [`CounterName`] を返す
-  #[must_use]
-  pub(crate) fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
-    return match level {
-      HeadingLevel::Part => CounterName::Part,
-      HeadingLevel::Chapter => CounterName::Chapter,
-      HeadingLevel::Section => CounterName::Section,
-      HeadingLevel::Subsection => CounterName::Subsection,
-      HeadingLevel::Paragraph => CounterName::Paragraph,
-      HeadingLevel::Subparagraph => CounterName::Subparagraph,
-    };
-  }
 }
 
 #[cfg(test)]
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   #[must_use]
-  pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
+  pub(crate) fn default_for_seiran() -> Self {
+    return Self::from_policy(&DocumentPolicy::from_style(&crate::config::Style::default()));
+  }
 
   /// `crate::config::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
-  pub(crate) fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      defs: counters.clone(),
-      values: HashMap::new(),
-      theorems: Theorems::default(),
-      theorem_values: HashMap::new(),
-      labels: HashMap::new(),
+  pub(crate) fn from_counters(counters: &crate::config::Counters) -> Self {
+    let style = crate::config::Style {
+      counters: counters.clone(),
+      ..crate::config::Style::default()
     };
+    return Self::from_policy(&DocumentPolicy::from_style(&style));
   }
 }
 
@@ -302,32 +310,22 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config::{CounterStyle, NumberStyle, TheoremReset};
+  use crate::config::{CounterStyle, Counters, NumberStyle, Style, TheoremReset};
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 
   #[test]
   fn increment_theorem_numbers_with_default_style() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
+    let mut r = CounterRegistry::default_for_seiran();
 
     // Act
     let thm = r
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap()
       .unwrap();
     let lemma = r
-      .increment_theorem_with_label(
-        TheoremClass::Lemma,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap()
       .unwrap();
 
@@ -339,16 +337,11 @@ mod tests {
   #[test]
   fn increment_theorem_proof_is_unnumbered() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
+    let mut r = CounterRegistry::default_for_seiran();
 
     // Act
     let result = r
-      .increment_theorem_with_label(
-        TheoremClass::Proof,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap();
 
     // Assert
@@ -358,25 +351,16 @@ mod tests {
   #[test]
   fn increment_theorem_duplicate_label_errors() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
-    r.increment_theorem_with_label(
-      TheoremClass::Theorem,
-      Some("dup"),
-      theorem_span(),
-      Origin::Source(crate::model::SourceId::new(0)),
-    )
-    .unwrap();
+    let mut r = CounterRegistry::default_for_seiran();
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::model::SourceId::new(0))
+      .unwrap();
 
     // Act
-    let result = r.increment_theorem_with_label(
-      TheoremClass::Lemma,
-      Some("dup"),
-      theorem_span(),
-      Origin::Source(crate::model::SourceId::new(0)),
-    );
+    let result =
+      r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), crate::model::SourceId::new(0));
 
     // Assert
-    assert!(matches!(result, Err(ResolveError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    assert!(matches!(result, Err(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
   }
 
   #[test]
@@ -447,37 +431,22 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    let mut r = CounterRegistry::from_style(&style);
+    let mut r = CounterRegistry::from_policy(&DocumentPolicy::from_style(&style));
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
 
     // Act
     let a = r
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap()
       .unwrap();
     let b = r
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap()
       .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r
-      .increment_theorem_with_label(
-        TheoremClass::Theorem,
-        None,
-        theorem_span(),
-        Origin::Source(crate::model::SourceId::new(0)),
-      )
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::model::SourceId::new(0))
       .unwrap()
       .unwrap();
 
@@ -523,13 +492,6 @@ mod tests {
 
     // Assert
     assert_eq!(value.parts, vec![2], "part を resets に含むカウンタは既定に無いので祖先なし");
-  }
-
-  #[test]
-  fn counter_name_for_heading_maps_each_level() {
-    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
-    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
-    assert_eq!(CounterRegistry::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 
   #[test]

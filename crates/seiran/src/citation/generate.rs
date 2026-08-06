@@ -12,8 +12,8 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use super::{References, analyze::CitationFacts, bridge, render, style::CompiledCitationStyle};
-use crate::model::{DocNode, InlineNode, NodeMap};
+use super::{References, bridge, render, style::CompiledCitationStyle};
+use crate::model::{CitationSiteFacts, DocNode, InlineNode, NodeMap};
 
 /// CSL 整形（表示の生成）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -54,19 +54,19 @@ impl GeneratedCitations {
 
 /// 引用箇所の事実と CSL から、引用箇所ごとの表示インライン列と書誌を生成する
 ///
-/// 採番は `facts.sites()` の順（= 文書順）に hayagriva へ引用要求を積むことで決まる。
+/// 採番は `sites` の挿入順（= 文書順）に hayagriva へ引用要求を積むことで決まる。
 ///
 /// # Errors
 ///
 /// 引用された参照定義を CSL-JSON 担体へ変換できなかった場合に [`CitationFormatError`] を返します。
 pub(crate) fn generate_citations(
-  facts: &CitationFacts,
+  sites: &NodeMap<CitationSiteFacts>,
   references: &References,
   style: &CompiledCitationStyle,
   bibliography_title: &str,
 ) -> Result<GeneratedCitations, CitationFormatError> {
-  let cite_sites: Vec<Vec<String>> = facts
-    .sites()
+  let cite_sites: Vec<Vec<String>> = sites
+    .iter()
     .map(|(_, site)| return site.targets.iter().map(|target| return target.as_str().to_string()).collect())
     .collect();
 
@@ -77,7 +77,7 @@ pub(crate) fn generate_citations(
       continue;
     }
     let Some(reference) = references.get(key) else {
-      unreachable!("キーの存在は analyze_citations が保証している: {key}")
+      unreachable!("キーの存在は resolve::analyze が保証している: {key}")
     };
     let item = bridge::to_item(key, reference).map_err(|source| {
       return CitationFormatError::BuildEntry {
@@ -92,7 +92,7 @@ pub(crate) fn generate_citations(
   let rendered = render::render(&entries, &cite_sites, csl_style, locales, locale_override, bibliography_title);
 
   let mut displays: NodeMap<Vec<InlineNode>> = NodeMap::default();
-  for ((site, _), display) in facts.sites().zip(rendered.labels) {
+  for ((site, _), display) in sites.iter().zip(rendered.labels) {
     displays.insert(site, display);
   }
 
@@ -115,19 +115,25 @@ mod tests {
   use super::{GeneratedCitations, generate_citations};
   use crate::{
     citation::{
-      analyze::analyze_citations,
       read_references,
       style::load_citation_style,
       test_fixtures::{ieee_csl_path, sample_references},
     },
-    config::{FilesystemProjectSource, Style},
+    config::{DocumentPolicy, FilesystemProjectSource, Style},
     model::{DocNode, FontKind, HirDocument, InlineNode, SourceId},
+    resolve::{AnalyzedDocument, analyze},
   };
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
     let hir = crate::frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
+  }
+
+  /// ソースを意味解析して引用箇所の事実を持つ `AnalyzedDocument` を返す
+  fn analyzed(source: &str, references: &crate::citation::References) -> AnalyzedDocument {
+    let policy = DocumentPolicy::from_style(&Style::default());
+    return analyze(document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }
 
   /// 指定した CSL を設定した `Style` を作る
@@ -151,16 +157,16 @@ mod tests {
   #[test]
   fn generate_produces_display_per_site_and_bibliography() {
     // Arrange
-    let hir = document(r"本文 \cite{kwan2014} と \cite{doe2020}");
     let references = sample_references();
-    let facts = analyze_citations(&hir, &references).expect("既知キーのみ");
+    let analyzed = analyzed(r"本文 \cite{kwan2014} と \cite{doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&facts, &references, &compiled, "References").expect("整形は成功するはず");
+    let generated =
+      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert — 引用箇所ごとに表示が 1 つずつ付く
-    for (site, _) in facts.sites() {
+    for (site, _) in analyzed.citation_sites().iter() {
       let display = generated.displays().get(site).expect("全引用箇所に表示が付くはず");
       let text: String = display.iter().map(InlineNode::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
@@ -183,16 +189,16 @@ mod tests {
   #[test]
   fn generate_links_each_key_of_multi_key_site() {
     // Arrange
-    let hir = document(r"\cite{kwan2014, doe2020}");
     let references = sample_references();
-    let facts = analyze_citations(&hir, &references).expect("既知キーのみ");
+    let analyzed = analyzed(r"\cite{kwan2014, doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&facts, &references, &compiled, "References").expect("整形は成功するはず");
+    let generated =
+      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert
-    let (site, _) = facts.sites().next().expect("1 箇所あるはず");
+    let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
     let targets: Vec<&str> = generated
       .displays()
       .get(site)
@@ -228,12 +234,11 @@ mod tests {
     let mut file = tempfile::Builder::new().suffix(".toml").tempfile().expect("一時ファイルを作成できるはず");
     file.write_all(toml.as_bytes()).expect("一時ファイルへ書き込めるはず");
     let references = read_references(&source, Some(file.path())).expect("references を読み込めるはず");
-    let hir = document(r"\cite{kwan2014}");
-    let facts = analyze_citations(&hir, &references).expect("既知キーのみ");
+    let analyzed = analyzed(r"\cite{kwan2014}", &references);
     let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let result = generate_citations(&facts, &references, &compiled, "References");
+    let result = generate_citations(analyzed.citation_sites(), &references, &compiled, "References");
 
     // Assert
     assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
@@ -267,13 +272,13 @@ mod tests {
   #[test]
   fn generate_bibliography_italicizes_titles() {
     // Arrange
-    let hir = document(r"\cite{kwan2014} \cite{doe2020}");
     let references = sample_references();
-    let facts = analyze_citations(&hir, &references).expect("既知キーのみ");
+    let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let generated = generate_citations(&facts, &references, &compiled, "References").expect("整形は成功するはず");
+    let generated =
+      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert
     let mut italic_texts: Vec<String> = Vec::new();
@@ -293,14 +298,13 @@ mod tests {
   #[test]
   fn generate_is_deterministic() {
     // Arrange
-    let hir = document(r"\cite{kwan2014} \cite{doe2020} \cite{kwan2014}");
     let references = sample_references();
-    let facts = analyze_citations(&hir, &references).expect("既知キーのみ");
+    let analyzed = analyzed(r"\cite{kwan2014} \cite{doe2020} \cite{kwan2014}", &references);
     let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
 
     // Act — 同じ facts + 同じ CSL で 2 回生成する
-    let first = generate_citations(&facts, &references, &compiled, "References").expect("1 回目");
-    let second = generate_citations(&facts, &references, &compiled, "References").expect("2 回目");
+    let first = generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("1 回目");
+    let second = generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("2 回目");
 
     // Assert
     let plain = |generated: &GeneratedCitations| -> Vec<String> {
@@ -316,24 +320,23 @@ mod tests {
 
   #[test]
   fn generating_with_different_csl_produces_different_bibliography() {
-    // Arrange — `generate_citations` は `facts: &CitationFacts` / `style: &CompiledCitationStyle` を
-    // 共有参照でしか受け取らない（`&mut` を取らない）ため、呼び出し元の authored HIR や `facts` を
+    // Arrange — `generate_citations` は引用箇所の side table と `&CompiledCitationStyle` を
+    // 共有参照でしか受け取らない（`&mut` を取らない）ため、呼び出し元の authored HIR や facts を
     // 書き換える経路はそもそも型として存在しない（「CSL を変えても authored HIR と引用 facts は
     // 変化しない」という受け入れ条件は、この型シグネチャ自体が保証する）。ここで固定するのは
     // 「CSL を変えれば書誌の表示内容が変わる」という一点だけ（受け入れ条件の対偶: 同じ facts と CSL
     // からは同じ表示・書誌が得られる一方、CSL が異なれば生成物も異なる）。
-    let source_text = r"本文 \cite{kwan2014}";
-    let hir = document(source_text);
     let references = sample_references();
-    let facts = analyze_citations(&hir, &references).expect("成功するはず");
+    let analyzed = analyzed(r"本文 \cite{kwan2014}", &references);
     let base = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
     let variant = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl_path(variant_csl_path()))
       .expect("読めるはず");
 
     // Act
-    let generated_base = generate_citations(&facts, &references, &base, "References").expect("整形は成功するはず");
+    let generated_base =
+      generate_citations(analyzed.citation_sites(), &references, &base, "References").expect("整形は成功するはず");
     let generated_variant =
-      generate_citations(&facts, &references, &variant, "References").expect("整形は成功するはず");
+      generate_citations(analyzed.citation_sites(), &references, &variant, "References").expect("整形は成功するはず");
 
     // Assert
     assert_ne!(generated_base.bibliography(), generated_variant.bibliography(), "CSL を変えたら生成物は変わるはず");

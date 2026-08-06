@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::model::{AssetId, DocNode};
+use crate::model::{AssetId, HirDocument, HirNode, HirNodeKind};
 
 /// 画像パスの一覧（重複なし・パス文字列の昇順）。
 pub(super) struct ImageManifest {
@@ -10,13 +10,13 @@ pub(super) struct ImageManifest {
   pub(super) paths: Vec<AssetId>,
 }
 
-/// 全 `DocNode` を再帰的に走査し、画像パスを重複なく収集する。
+/// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する。
 ///
 /// 定理、引用、リスト内の入れ子も探索する。
-pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
+pub(super) fn collect_image_paths(document: &HirDocument) -> ImageManifest {
   let mut paths: BTreeSet<AssetId> = BTreeSet::new();
-  for group in groups {
-    walk_nodes(group, &mut paths);
+  for group in document.groups() {
+    walk_nodes(&group.nodes, &mut paths);
   }
   return ImageManifest {
     paths: paths.into_iter().collect(),
@@ -24,59 +24,53 @@ pub(super) fn collect_image_paths(groups: &[&[DocNode]]) -> ImageManifest {
 }
 
 /// `nodes` を再帰的に走査し、`Figure` の `image_path` を `paths` へ集める。
-fn walk_nodes(nodes: &[DocNode], paths: &mut BTreeSet<AssetId>) {
+fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<AssetId>) {
   for node in nodes {
-    match node {
-      DocNode::Figure { image_path, .. } => {
+    match &node.kind {
+      HirNodeKind::Figure { image_path, .. } => {
         paths.insert(image_path.clone());
       },
-      DocNode::Theorem { body, .. } | DocNode::Quote { body, .. } => {
+      HirNodeKind::Theorem { body, .. } | HirNodeKind::Quote { body, .. } => {
         walk_nodes(body, paths);
       },
-      DocNode::List { items, .. } => {
+      HirNodeKind::List { items, .. } => {
         for item in items {
           walk_nodes(&item.content, paths);
         }
       },
-      DocNode::Heading { .. }
-      | DocNode::Paragraph(_)
-      | DocNode::MathBlock { .. }
-      | DocNode::Table { .. }
-      | DocNode::Rule { .. }
-      | DocNode::PageBreak
-      | DocNode::Space(_)
-      | DocNode::Anchor(_) => {},
+      HirNodeKind::Heading { .. }
+      | HirNodeKind::Paragraph(_)
+      | HirNodeKind::MathBlock { .. }
+      | HirNodeKind::Table { .. }
+      | HirNodeKind::Rule { .. }
+      | HirNodeKind::PageBreak
+      | HirNodeKind::Space(_) => {},
     }
   }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use super::collect_image_paths;
-  use crate::model::{AssetId, CaptionPosition, DocNode, ListItem, QuoteKind, Span, TheoremClass};
+  use crate::model::{AssetId, HirDocument, SourceId};
 
-  /// `image_path` だけを差し替えた最小の `Figure` ノードを作るテストヘルパ
-  fn figure(path: &str) -> DocNode {
-    return DocNode::Figure {
-      image_path: AssetId::new(path),
-      width: None,
-      height: None,
-      dpi: None,
-      downsample: None,
-      caption: None,
-      caption_position: CaptionPosition::Bottom,
-      label: None,
-      span: Span::DUMMY,
-    };
+  /// ソース 1 本をパースして `HirDocument` にする
+  fn document(source: &str) -> HirDocument {
+    let hir = crate::frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
+    return HirDocument::assemble(vec![hir]);
   }
+
+  /// `\image{...}` だけを持つ figure 環境のソースを組み立てる
+  fn figure(path: &str) -> String { return format!("\\begin{{figure}}\n\\image{{{path}}}\n\\end{{figure}}\n\n"); }
 
   #[test]
   fn collects_top_level_figure_paths_deduplicated_and_sorted() {
     // Arrange
-    let group = vec![figure("b.png"), figure("a.png"), figure("a.png")];
+    let source = format!("{}{}{}", figure("b.png"), figure("a.png"), figure("a.png"));
 
     // Act
-    let manifest = collect_image_paths(&[group.as_slice()]);
+    let manifest = collect_image_paths(&document(&source));
 
     // Assert — 重複が除かれ、パス文字列の昇順で並ぶ
     assert_eq!(manifest.paths, vec![AssetId::new("a.png"), AssetId::new("b.png")]);
@@ -85,21 +79,11 @@ mod tests {
   #[test]
   fn collects_figure_paths_nested_in_theorem_and_quote_bodies() {
     // Arrange — Quote の中に Figure、その Quote を Theorem の body に入れて 2 段ネストさせる
-    let quote = DocNode::Quote {
-      kind: QuoteKind::Quote,
-      body: vec![figure("nested.png")],
-    };
-    let theorem = DocNode::Theorem {
-      class: TheoremClass::Theorem,
-      title: None,
-      body: vec![quote],
-      of: None,
-      label: None,
-      span: Span::DUMMY,
-    };
+    let source =
+      format!("\\begin{{theorem}}\n\\begin{{quote}}\n{}\\end{{quote}}\n\\end{{theorem}}\n", figure("nested.png"));
 
     // Act
-    let manifest = collect_image_paths(&[&[theorem]]);
+    let manifest = collect_image_paths(&document(&source));
 
     // Assert
     assert_eq!(manifest.paths, vec![AssetId::new("nested.png")]);
@@ -108,16 +92,10 @@ mod tests {
   #[test]
   fn collects_figure_paths_nested_in_list_items() {
     // Arrange — \item{...} の中に figure 環境が入るケース
-    let item = ListItem::new(vec![figure("in-list.png")]);
-    let list = DocNode::List {
-      ordered: false,
-      items: vec![item],
-      start: None,
-      item_gap: None,
-    };
+    let source = format!("\\begin{{itemize}}\n\\item{{{}}}\n\\end{{itemize}}\n", figure("in-list.png").trim_end());
 
     // Act
-    let manifest = collect_image_paths(&[&[list]]);
+    let manifest = collect_image_paths(&document(&source));
 
     // Assert
     assert_eq!(manifest.paths, vec![AssetId::new("in-list.png")]);
@@ -126,10 +104,10 @@ mod tests {
   #[test]
   fn returns_empty_manifest_when_no_figures_present() {
     // Arrange
-    let group = vec![DocNode::PageBreak];
+    let source = "\\pagebreak\n";
 
     // Act
-    let manifest = collect_image_paths(&[group.as_slice()]);
+    let manifest = collect_image_paths(&document(source));
 
     // Assert
     assert!(manifest.paths.is_empty());

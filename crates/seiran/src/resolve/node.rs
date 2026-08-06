@@ -2,8 +2,8 @@
 
 use crate::{
   model::{
-    AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingLevel, LabelId, Length, MathEnvKind,
-    MathNode, QuoteKind, Span, TheoremClass,
+    AssetId, CaptionPosition, CitationId, ColumnAlign, ColumnWidth, HeadingKey, HeadingLevel, LabelId, Length,
+    MathEnvKind, MathNode, QuoteKind, Span, TheoremClass,
   },
   resolve::{counter::CounterValue, inline::ResolvedInline},
 };
@@ -25,6 +25,8 @@ pub enum ResolvedNode {
     title: Vec<ResolvedInline>,
     /// 宣言されたラベル（`\section[label=...]`）。登録済みなので重複は起こり得ない
     label: Option<LabelId>,
+    /// 文書順の見出しキー（`analyze` が振ったもの。lowering は再発行しない）
+    key: HeadingKey,
     /// 見出しコマンドのソース位置
     span: Span,
   },

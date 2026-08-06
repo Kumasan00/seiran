@@ -114,18 +114,6 @@ fn diagnostic_undefined_ref() {
 }
 
 #[test]
-fn diagnostic_resolve_internal_for_generated_origin() {
-  // Arrange — 合成書誌からは起こせないエラーを直接構築する
-  let style = crate::config::Style::default();
-  let error = super::tests::resolve_error_attributed_to_bibliography(&style);
-  let build_error = super::wrap_resolve_error(error, &super::project::SourceDb::new());
-  let report: miette::Report = build_error.into();
-
-  // Assert
-  assert_matches_golden("resolve_internal_generated_origin", &render_diagnostic(&report));
-}
-
-#[test]
 fn diagnostic_unknown_cite_key() {
   // Arrange / Act — `\cite` の未知キー
   let report = build_pages_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
