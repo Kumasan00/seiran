@@ -9,7 +9,7 @@ use phf::phf_map;
 /// `unicode-math-table.tex` 由来のキュレーション済み分類を [`SYMBOL_MAP`] に記録しておくためだけの型。
 // production に読み手がいないのは記号間スペーシングが未実装だから（epic #83）で、旧構成の名残では
 // ない。実装したときにこの分類がそのまま消費される。分類データを再取得するより保持するほうが安い。
-// 詳細は `docs/architecture.md` の `frontend` 節。
+// 詳細は `docs/architecture.md` の `model` 節（記号テーブルの `MathClass` 記録）。
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathClass {

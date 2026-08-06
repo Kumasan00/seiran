@@ -1,4 +1,4 @@
-//! 本文段落（`GeneratedBlock::Paragraph`）のスタイル設定型。
+//! 本文段落（`HirNodeKind::Paragraph`）のスタイル設定型。
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};

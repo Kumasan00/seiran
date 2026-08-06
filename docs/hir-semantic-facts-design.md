@@ -2,9 +2,15 @@
 
 ## ステータス
 
-提案中。
+**実装完了**（epic #321 / 実装 PR #327〜#330 + #326）。
 
-本書は、現在の `DocNode + ResolvedNode` という解決前後の二重の文書木を、単一の
+本書は設計時点の記述で、「現在の」と書かれているのはすべて移行**前**の構造を指す。
+現行の構造は `docs/architecture.md` を参照すること。設計判断の根拠を残すために保存している。
+
+移行後に名前が変わったもの: 生成物専用の語彙は `DocNode` / `InlineNode` ではなく
+`GeneratedBlock` / `GeneratedInline`（#326）。
+
+本書は、移行前の `DocNode + ResolvedNode` という解決前後の二重の文書木を、単一の
 `HirDocument` と意味解析結果の side table である `SemanticFacts` に置き換える設計を定める。
 公開 interface の `seiran::compile`、Seiran 言語の P1〜P10、PDF 出力の振る舞いは変更しない。
 

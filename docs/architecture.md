@@ -55,12 +55,16 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
   `ids` が `LabelId` / `CitationId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
   `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。
-- **CSL 整形の生成物専用の語彙**（旧 Document IR。著者が書いた内容は下記 HIR のみが表現し、この語彙は
-  もう `typeset::lowering` の本文経路には登場しない、#325）: `doc_node`（`DocNode`。`Heading` /
-  `Paragraph` / `Anchor` の 3 variant。書誌が使う）/ `inline`（`InlineNode`。`Text` / `Styled` /
-  `Colored` / `Symbol` / `LineBreak` / `Link` / `InternalLink` の 7 variant + プレーンテキスト化
-  ヘルパ）。唯一の生産者は `citation::render`（CSL 整形が書誌・引用表示を合成する経路）で、唯一の
-  消費者は `typeset::lowering::generated`。
+- **CSL 整形の生成物専用の語彙**（著者が書いた内容は下記 HIR のみが表現し、この語彙は
+  `typeset::lowering` の本文経路には登場しない、#325 / #326）: `generated`（`GeneratedBlock`。
+  `Heading` / `Paragraph` / `Anchor` の 3 variant。書誌が使う）と `GeneratedInline`（`Text` /
+  `Styled` / `InternalLink` の 3 variant + プレーンテキスト化ヘルパ
+  `generated_inlines_to_plain_text`）。唯一の生産者は `citation::render`（CSL 整形が書誌・引用表示を
+  合成する経路）で、唯一の消費者は `typeset::lowering::generated`。
+  variant は**生産者が実際に構築するものだけ**に絞ってあり（#326 で `Colored` / `Symbol` /
+  `LineBreak` / `Link` を削除した。外部 URL は hyperref 対応まで URL を捨ててテキストだけ残すため
+  `Link` は構築されない）、これが消費側の match を網羅的に保つ根拠になっている。
+  CSL 整形が新しい表現を出すようになったら、そのとき variant を足す。
 - `math_node`（`MathNode` / `MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
   `MathNode` は HIR の数式評価変換（`hir::to_math_nodes`）と `typeset::lowering` の数式経路が
   共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
@@ -70,7 +74,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
   `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
   citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticFacts`
-  と `citation::GeneratedCitations`（`displays: NodeMap<Vec<InlineNode>>`）もこれを使う）。全ノードが
+  と `citation::GeneratedCitations`（`displays: NodeMap<Vec<GeneratedInline>>`）もこれを使う）。全ノードが
   `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
   `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
   するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `CitationId`）・
@@ -99,7 +103,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `footnote_anchor_key` / `index_page_anchor_key`）ごと廃止した（#259）。文字列規約へ戻さない。
 - **起源を配列インデックスへ戻さない**。合成書誌グループを「実ソース配列の範囲外インデックス」で
   表す暗黙の sentinel 方式は廃止済み（#259）。書誌は `citation::GeneratedCitations` の別フィールド
-  （`bibliography: Vec<DocNode>`、#283 / #323）に分離されており、実ソースの `HirGroup` 列は起源として
+  （`bibliography: Vec<GeneratedBlock>`、#283 / #323）に分離されており、実ソースの `HirGroup` 列は起源として
   `SourceId` しか持てず、生成物が紛れ込むこと自体が型として起こらない。意味解析は HIR（実ソースのみ）を
   走査するので、そもそも生成物を見ない（#324）。typeset::lowering も本文（`AnalyzedDocument` の HIR）と
   生成物（書誌・引用表示）を別経路で lower し、両者を 1 つの木へ混ぜ直すことはしない（#325）。
@@ -121,13 +125,19 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 #### 責務
 
 `config.toml` / `style.toml` のデータモデルと読込・検証、および外部資源取得の seam（`project_source`）。
-`config` / `style` / `layout` / `project_source` の 4 子モジュールはすべて非公開で、公開 API は module
-root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style` / `config::ProjectSource`。
-テスト用ヘルパは `config::test_support` として再エクスポート）。
+`config_toml` / `style` / `layout` / `policy` / `project_source` の 5 子モジュールはすべて非公開で、公開 API は
+module root の `pub use` で 1 本のパスに揃える（`config::Config` / `config::Style` / `config::ProjectSource`。
+テスト用ヘルパは `config::test_support` として再エクスポート）。子モジュール名が `config` ではなく
+`config_toml` なのは、`crate::config` 自身と同名の子モジュールが `clippy::module_inception` に
+抵触するため（#307）。`policy` は意味解析（`crate::resolve`）へ渡す設定の投影
+（`DocumentPolicy` / `CounterPolicy` / `TheoremPolicy`）を持つ（#324）。
 
-エラー型は `ConfigValidationError` / `StyleValidationError` と接頭辞で区別する。かつて双方が
-`ValidationError` を名乗り、名前衝突を避けるために module を `pub mod` 公開していた（`config::read_config::Config`
-形式）が、改名して root facade に揃えた。同名エラー型を再導入しない。
+root facade が再エクスポートするのは**実際に名指しされる名前だけ**で、`Config` の内部フィールド型に
+しか現れない名前（`ConfigValidationError` / `Feature` / `ReadConfigError` / `CounterPolicy` /
+`TheoremPolicy` / 個別の `*Style` 群など）は出さない（#326）。エラー型は
+`ConfigValidationError` / `StyleValidationError` と接頭辞で区別する — かつて双方が `ValidationError` を
+名乗り、名前衝突を避けるために module を `pub mod` 公開していたが、改名して衝突自体を無くした。
+同名エラー型を再導入しない。
 
 #### `project_source`（外部資源取得の seam、#300）
 
@@ -185,8 +195,10 @@ pub trait ProjectSource: Send + Sync {
 
 各サブスタイル型は `style` 直下の module（`caption` / `columns` / `counter` / `figure` / `footnote` /
 `heading` / `hyperref` / `index` / `list` / `math` / `number_style` / `page` / `page_numbering` / `quote` /
-`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置き、module root
-（`config::FigureStyle` 等）で再エクスポートする。`placeholder` は書式テンプレート中の `{name}`
+`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置く。module root が
+再エクスポートするのは実際に名指しされる型だけ（`config::Style` / `config::Counters` /
+`config::TheoremStyle` 等）で、`Style` の内部フィールド型としてしか現れないサブスタイル型
+（`FigureStyle` / `HeadingStyle` / `TextBlockStyle` 等）は載せない（#326）。`placeholder` は書式テンプレート中の `{name}`
 プレースホルダを検証する共通ロジック（見出しは `{number}` / `{title}`、キャプションも同様、といった
 許可リストを持つ）。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML
 パース時に弾く。
@@ -313,7 +325,7 @@ Result<AnalyzedDocument, SemanticError>` の 1 関数だけ。CSL 整形の生�
    診断エラーではなく `assert!` で落とす（`analyze` の property test
    `analyze_facts_are_complete_for_any_element_combination` がこれを固定する）
 
-書誌（`citation::generate_citations` の生成物）は HIR ではなく `DocNode` で来るため、`resolve::analyze`
+書誌（`citation::generate_citations` の生成物）は HIR ではなく `GeneratedBlock` で来るため、`resolve::analyze`
 は書誌を走査しない（ラベルも `\ref` もカウンタ対象も持たないため fact を作る必要が無い）。書誌へ
 本文の続きとなる `HeadingKey` を 1 つ振る処理は `resolve` ではなく `typeset::lowering::generated`
 （`lower_bibliography` が `next_heading_index` を受け取って振る）が担う（`### typeset` 節参照）。
@@ -342,8 +354,7 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 常に同じ穴になる。したがって ID の稠密性・連続性には依存してよくない（`hir_invariants` の
 テストも稠密性は検証しない）。
 
-`frontend` の生成物は HIR のみで、旧 `DocNode` 列へ落とす `doc_node_adapter`（HIR → 旧テスト資産の
-橋渡し）は #325 で削除済み。frontend / evaluator 配下のテストはいずれも HIR を直接検査する。
+`frontend` の生成物は HIR のみで、他の文書木表現へ落とす移行用 adapter は #325 で削除済み。frontend / evaluator 配下のテストはいずれも HIR を直接検査する。
 
 #### `syntax`（非公開）
 
@@ -401,15 +412,17 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
 #### モジュール構成
 
 - `references`（非公開）: `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式
-  判別）。`reference` / `name` / `date` / `error` の子 module を持つ。公開型（`Reference` / `References` /
-  `Name` / `Date` 等）と `read_references` は module root（`citation.rs`）で再エクスポートし、`citation::Reference` の形で
-  参照する（`citation::references::Reference` は使わない）。
+  判別）。`reference` / `name` / `date` / `error` の子 module を持つ。module root（`citation.rs`）が
+  再エクスポートするのは外から名指しされる `Reference` / `References` / `read_references` /
+  `ReadReferencesError` だけで、`Reference` のフィールド型（`Name` / `Date` / `ReferenceType` /
+  `NumberOrString` 等）は載せない（#326）。参照は `citation::Reference` の形で行う
+  （`citation::references::Reference` は使わない）。
 - `style`（非公開）: `load_citation_style`（CSL スタイル・ロケールの読込。詳細は後項）。I/O を行うのは
   citation の中でこの module だけ。
 - `generate`（非公開）: `generate_citations`（引用箇所の side table + `CompiledCitationStyle` から
   表示・書誌を生成。詳細は後項）。I/O は行わない。
 - `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
-- `render`: `BibliographyDriver` の駆動と `ElemChildren` → `InlineNode` 変換
+- `render`: `BibliographyDriver` の駆動と `ElemChildren` → `GeneratedInline` 変換
 - `test_fixtures`（`#[cfg(test)]`）: 文献引用テスト用フィクスチャ
 
 #### `load_citation_style` の契約
@@ -433,8 +446,8 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 キーの存在は `analyze` が保証済みなので、ここでの未知キーは `unreachable!` で落とす。
 `&` 参照のみを取り、文書木の所有権は受け取らない（旧 `process_citations` の「所有権を受け取って書き換えて
 返す」経路は削除済み）。結果 `GeneratedCitations` は引用箇所 → 表示インライン列の side table
-（`displays: NodeMap<Vec<InlineNode>>`、`NodeId` をキーにする。文書木へは一切書き戻さない）と、
-書誌のノード列（`bibliography: Vec<DocNode>`）を持つ。
+（`displays: NodeMap<Vec<GeneratedInline>>`、`NodeId` をキーにする。文書木へは一切書き戻さない）と、
+書誌のノード列（`bibliography: Vec<GeneratedBlock>`）を持つ。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
 （`seiran::build_pdf::semantics::resolve_semantics`）が `Semantics { analyzed, generated }` として
@@ -443,7 +456,7 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 連結する」方式は廃止）— こうすることで citation がグループ構造に依存しない。書誌ノードはラベル・`\ref`
 を持たないため lowering エラーを起こさない。
 
-引用・書誌ともプレーン文字列に限らず、書名 / 誌名は `InlineNode::Styled`（serif italic 系）で斜体組みする
+引用・書誌ともプレーン文字列に限らず、書名 / 誌名は `GeneratedInline::Styled`（serif italic 系）で斜体組みする
 （`render` が hayagriva の `Formatting`（`font_style` / `font_weight`）を `FontKind` へ落とす）。
 
 ### `font`
@@ -465,12 +478,20 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
   当時は `pdf_gen` crate も同じ型を直接消費していたが、#305 / #307 で `seiran-pdf` が自己完結型
   `seiran_pdf::GlyphRun` を持つようになったため、変換は `build_pdf::publication::to_pdf_glyph_run` の
   1 箇所に閉じている）。
-- `shaper`（`pub mod`）: `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・
+- `face_config`（非公開、root facade へは出さない）: `FontConfig`（config.toml 由来）から
+  シェーピングに必要なフェース設定 `FontFaceConfig` / `FontFaceConfigs` / `VariationAxisConfig` を
+  組み立てる（`build_face_configs`）。名指しする消費者は `font::system` だけで、外からは
+  `FontResources::face_configs()` の戻り値型として型推論経由でしか触れないため、root facade には
+  載せない（#326）。
+- `shaper`（`pub(crate) mod`。`typeset::block` が `shaper::UnicodeBuffer` を直接参照するため font 内に
+  閉じない可視性が要るが、crate 外への公開経路は持たせない）: `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・
   バリエーション軸を反映して文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（非公開、root facade で `FontValidationError` / `FontValidationErrors` /
-  `MultipleFontValidationErrors` を再エクスポート）: バリエーション軸設定の存在・範囲・完全性を検証する。
-  GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。
-- `system`（非公開、root facade で `FontResources` / `FontSystem` / `FontSystemError` を再エクスポート）:
+- `validate_font`（非公開、root facade へは出さない）: バリエーション軸設定の存在・範囲・完全性を
+  検証する。GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。検証エラーは
+  `FontSystemError::Validation` の `transparent` 委譲を介して miette::Report 化されるだけで、
+  型名を名指しする消費者がいないため再エクスポートしない（#326）。
+- `system`（非公開、root facade で `FontResources` / `FontSystem` を再エクスポート。`FontSystemError` は
+  `?` で miette::Report へ変換される経路しかなく名指しされないので出さない、#326）:
   `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
   寿命関係をここに閉じ込める窓口（issue #278）。`FontResources::load(configs, &font_data)` が検証済みの
   所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）を構築し、
@@ -514,16 +535,19 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 
 `build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` / `resolve_hyphenation` /
 `break_opportunities` はこれらの入口関数からのみ呼ばれる非公開実装になり、個別には公開しない
-（acceptance criteria）。`lower_sources_with_headings` / `LoweringContext` / `LayoutNode` /
-`HeadingRecord` は例外的に module 外へ公開したまま残す — `typeset` module 直下の smoke テスト
-（旧 `crates/typeset/tests/smoke.rs`）が直接呼ぶため（旧 `lower_document` / `lower_nodes` /
+（acceptance criteria）。`DocumentContent` / `HeadingRecord` / `per_page_footnote_numbers` は入口関数の
+境界型・補助として module root へ公開したまま残す。`lower_sources_with_headings` / `LoweringContext` /
+`LayoutNode` は #326 で root facade から外し、`typeset` module 直下の smoke テストが
+`super::lowering::` から直接引く形にした（旧 `lower_document` / `lower_nodes` /
 `SourceGroup` / `LoweringError` は issue #282 で
 `lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
 `DocumentContent`（`AnalyzedDocument` への参照 + 引用の生成物への参照）1 個になり、複数ソースの束ね方も
 `resolve::analyze`（`HirDocument::groups()`）側の関心事になったため（書誌は
 `citation::GeneratedCitations` の `bibliography` フィールドとして本文とは別に保持する）、単一ソース用の
-薄いラッパーも不要になった）。`LineBreaker` トレイトと
-`KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam なので入口関数の引数として公開を維持する。
+薄いラッパーも不要になった）。`LineBreaker` トレイトは実在する差し替え seam なので
+`typeset::breaking` の facade で公開を維持するが、`typeset` root へは lift しない — 実装（`break_pages`
+内部・`breaking` 配下のテスト）はいずれも `breaking` 経由で引くため（#326）。`KnuthPlassBreaker` は
+入口関数の引数として `typeset` root からも見える。
 
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
@@ -560,8 +584,8 @@ module が上流で済ませているため、この module は「確定した�
 表示側フィールドで文字列にして箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す
 公開関数が無い、`## resolve` 節参照）。
 
-`DocumentContent<'a> { analyzed: &'a AnalyzedDocument, citation_displays: &'a NodeMap<Vec<InlineNode>>,
-bibliography: &'a [DocNode] }` が唯一の公開入口型。著者が書いた内容は `analyzed` の HIR 1 本、CSL 整形の
+`DocumentContent<'a> { analyzed: &'a AnalyzedDocument, citation_displays: &'a NodeMap<Vec<GeneratedInline>>,
+bibliography: &'a [GeneratedBlock] }` が唯一の公開入口型。著者が書いた内容は `analyzed` の HIR 1 本、CSL 整形の
 生成物（書誌・引用表示）は別枠の 2 フィールドという切り分けをそのまま型にしたもので、生成物には
 `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」という不変条件を保つ
 ため）。呼び出し元（`build_pdf.rs` の `document_content`）は `resolve_semantics` が返した
@@ -571,7 +595,7 @@ bibliography: &'a [DocNode] }` が唯一の公開入口型。著者が書いた�
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` / `template` /
   `theorem` / `title_page`
-- `generated`: CSL 整形の生成物（書誌 `Vec<DocNode>` / 引用表示 `NodeMap<Vec<InlineNode>>`）専用の
+- `generated`: CSL 整形の生成物（書誌 `Vec<GeneratedBlock>` / 引用表示 `NodeMap<Vec<GeneratedInline>>`）専用の
   lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
   （HIR）と別の関数群になる。書誌の箱組み（見出し・段落）自体は本文と同じ `heading::lower_heading` /
   `paragraph::assemble_paragraph` を通す
@@ -652,7 +676,7 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 
 サブモジュール:
 
-- `math`: ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::MathBlock`）
+- `math`: ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 - `script`: スクリプト判定・分割
 - `running`: `layout_running_content`（公開名、旧 `build_running_content`）が `break_pages` 後
   （ページ数確定後）にヘッダー・フッターをトークン展開・シェーピングして各 `Page::header` / `footer` に
@@ -787,7 +811,7 @@ facade はこれを知らない（issue #278）。子 module:
 `parse_all_sources` は `SourceDb` の各ソースを `frontend::parse_source` に通して `Vec<HirSource>` を返し、
 `parse_project` が `HirDocument::assemble` でプロジェクト全体の文書木へ組み立てる。`assemble` は
 `SourceId::index()` の昇順へ正規化するので、パースの実行順が `groups` の順序にも `SourceMap` の内容にも
-影響しない。`parse_project` が返すのは `HirDocument` と `ImageManifest` だけで、旧 `DocNode` 経路
+影響しない。`parse_project` が返すのは `HirDocument` と `ImageManifest` だけで、移行期の旧文書木経路
 （`ParsedSource`）は #324 で無くなった — 後段（`resolve::analyze`、続く `typeset::lowering`）が
 HIR を直接読む。
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
@@ -829,7 +853,7 @@ HIR を直接読む。
 
 `layout` 子 module の `DocumentLayouter::layout` が phase graph 全体をオーケストレーションする、外から見える
 唯一の組版操作（旧 `compile::compile_project` を型でラップしたもの。issue #304 — `typeset`（当時は独立 crate）の
-公開面は #281 で 4 関数 + `LineBreaker` seam に閉じているため、ここへ全体オーケストレーションを持ち込まず
+公開面は #281 の 4 関数と境界型に閉じているため、ここへ全体オーケストレーションを持ち込まず
 seiran 側に閉じたまま維持する）。フォント資源（`font::FontSystem`）は `DocumentLayouter::new` が受け取って
 `CompileContext` に束ねるだけで、`ShaperDatas` / `ShaperInstances` / `HarfRustShapers` / `FontRefs` の構築は
 行わない（旧 phase 0 は `font::system` へ移設済み）。phase 順序:
