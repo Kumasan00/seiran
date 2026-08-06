@@ -1,17 +1,19 @@
 //! CSL 整形の生成物（書誌・引用表示）が使うブロック / インライン要素の型定義
 //!
 //! 著者が書いた内容は HIR（`model::hir`）だけが表現する。ここにあるのは
-//! `citation::render` が CSL 整形の結果として組み立てる**生成物**の語彙で、
+//! [`super::render`] が CSL 整形の結果として組み立てる**生成物**の語彙で、
 //! 著者が書いた行に対応しないため `NodeId` もソース位置も持たない。採番・`\ref` 解決・
 //! 見出しキーの確定は `resolve::analyze` が HIR に対してのみ行うので、採番フラグや
-//! ラベルに相当するフィールドも持たない（#325 / #326）。
+//! ラベルに相当するフィールドも持たない（#325 / #326）。生成するのが `citation` だけなので
+//! `citation` が所有する（#333）。
 //!
-//! variant は `citation::render` が**実際に構築するものだけ**に絞ってある（ブロック 3 /
+//! variant は [`super::render`] が**実際に構築するものだけ**に絞ってある（ブロック 3 /
 //! インライン 3）。これは `typeset::lowering::generated` の変換が網羅的に match できることと、
 //! 「生成物が取りうる形」がこの enum を読むだけで分かることの両方を支えている。
 //! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 
-use crate::model::{CitationId, FontKind, HeadingLevel};
+use super::CitationId;
+use crate::model::{FontKind, HeadingLevel};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///
@@ -98,8 +100,8 @@ pub fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{GeneratedInline, generated_inlines_to_plain_text};
-  use crate::model::{CitationId, FontKind};
+  use super::{CitationId, GeneratedInline, generated_inlines_to_plain_text};
+  use crate::model::FontKind;
 
   #[test]
   fn generated_text_to_plain_text() {

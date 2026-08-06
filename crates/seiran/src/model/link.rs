@@ -1,6 +1,13 @@
 //! ハイパーリンクのアンカーと行き先。
+//!
+//! `CitationId` を `crate::citation` から取るため、この 1 ファイルだけが `model` →
+//! `citation` の向きを持つ。アンカー・リンクは配置済み文書の概念なので、epic #332 の後続段階で
+//! [`AnchorId`] / [`AnchorMark`] / [`LinkTarget`] ごと `typeset::layout` へ移り、この依存は消える。
 
-use crate::model::{CitationId, FootnoteId, HeadingKey, LabelId};
+use crate::{
+  citation::CitationId,
+  model::{FootnoteId, HeadingKey, LabelId},
+};
 
 /// 到達先アンカーを一意に指すキー
 ///

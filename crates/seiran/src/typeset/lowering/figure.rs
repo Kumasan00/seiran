@@ -63,7 +63,7 @@ mod tests {
     super::{DocumentContent, lower_sources_with_headings, test_support::analyzed},
     *,
   };
-  use crate::{config::Style as ReadStyle, model::NodeMap};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle};
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///
@@ -71,12 +71,12 @@ mod tests {
   /// 呼び出し側から渡せる形にしてある。
   fn lower_source(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
     let analyzed = analyzed(source);
+    let citations = GeneratedCitations::default();
     let (layout, _headings) = lower_sources_with_headings(
       ctx,
       DocumentContent {
         analyzed: &analyzed,
-        citation_displays: &NodeMap::default(),
-        bibliography: &[],
+        citations: &citations,
       },
     );
     return layout;

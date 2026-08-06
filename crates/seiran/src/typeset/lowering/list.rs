@@ -82,14 +82,11 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{
-    config::Style as ReadStyle,
-    model::{FontKind, NodeMap},
-  };
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::FontKind};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストのソースを組み立てる

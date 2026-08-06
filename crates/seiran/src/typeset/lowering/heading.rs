@@ -76,8 +76,9 @@ mod tests {
     *,
   };
   use crate::{
+    citation::GeneratedCitations,
     config::Style as ReadStyle,
-    model::{AnchorId, FontKind, LinkTarget, NodeMap},
+    model::{AnchorId, FontKind, LinkTarget},
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る
@@ -122,7 +123,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower(&style, &analyzed("\\section{Intro \\italic{Italic}}\n"), &NodeMap::default(), &[]);
+    let nodes = lower(&style, &analyzed("\\section{Intro \\italic{Italic}}\n"), &GeneratedCitations::default());
 
     // Assert
     let children = heading_children(&nodes);
@@ -226,8 +227,7 @@ mod tests {
     let nodes = lower(
       &style,
       &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"),
-      &NodeMap::default(),
-      &[],
+      &GeneratedCitations::default(),
     );
 
     // Assert — タイトルを lower しないので、本文の脚注が 1 番のままになる
@@ -241,7 +241,7 @@ mod tests {
     style.heading[HeadingLevel::Section].format = "{title} / {title}".to_string();
 
     // Act
-    let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"), &NodeMap::default(), &[]);
+    let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"), &GeneratedCitations::default());
 
     // Assert — 出現ごとに lower し直すので、マーカーと本体が対になった別々の脚注が 2 個出る
     assert_eq!(footnotes(heading_children(&nodes)), vec![(1, 0), (2, 1)], "{nodes:?}");
@@ -256,8 +256,7 @@ mod tests {
     let nodes = lower(
       &style,
       &analyzed("\\chapter[label=ch:other]{Other}\n\n\\section{\\ref{ch:other}}\n"),
-      &NodeMap::default(),
-      &[],
+      &GeneratedCitations::default(),
     );
 
     // Assert — 2 つ目の見出し（section）の VBox に解決済みリンクが入る

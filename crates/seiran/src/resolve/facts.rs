@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 
 use crate::{
-  model::{CitationSiteFacts, HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
+  citation::CitationSiteFacts,
+  model::{HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
   resolve::counter::CounterValue,
 };
 

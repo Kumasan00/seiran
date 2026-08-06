@@ -186,24 +186,25 @@ mod tests {
     *,
   };
   use crate::{
+    citation::{CitationId, GeneratedCitations, GeneratedInline},
     config::Style as ReadStyle,
-    model::{Color, GeneratedInline, LabelId, NodeMap},
+    model::{Color, LabelId},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// 与えた文脈で `.sei` ソースを lower するテストヘルパ（脚注番号の上書きを使うテスト用）
   fn lower_source_with(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
     let analyzed = analyzed(source);
+    let citations = GeneratedCitations::default();
     let (layout, _headings) = lower_sources_with_headings(
       ctx,
       DocumentContent {
         analyzed: &analyzed,
-        citation_displays: &NodeMap::default(),
-        bibliography: &[],
+        citations: &citations,
       },
     );
     return layout;
@@ -411,21 +412,23 @@ mod tests {
     style.hyperref.cite_color = Some(blue);
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
-    displays.insert(
-      site,
-      vec![GeneratedInline::InternalLink {
-        target: crate::model::CitationId::new("kwan2014"),
-        children: vec![GeneratedInline::Text("1".to_string())],
-      }],
+    let citations = GeneratedCitations::for_test(
+      vec![(
+        site,
+        vec![GeneratedInline::InternalLink {
+          target: CitationId::new("kwan2014"),
+          children: vec![GeneratedInline::Text("1".to_string())],
+        }],
+      )],
+      Vec::new(),
     );
 
     // Act
-    let nodes = lower(&style, &analyzed, &displays, &[]);
+    let nodes = lower(&style, &analyzed, &citations);
 
     // Assert
     let (target, children) = first_link(&nodes);
-    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(crate::model::CitationId::new("kwan2014"))));
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Citation(CitationId::new("kwan2014"))));
     let LayoutNode::Text(_, text_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };

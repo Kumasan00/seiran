@@ -44,7 +44,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, model::NodeMap};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle};
 
   /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
   fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {
@@ -53,7 +53,7 @@ mod tests {
       QuoteKind::Quotation => "quotation",
     };
     let source = format!("\\begin{{{name}}}\nbody\n\\end{{{name}}}\n");
-    return lower(style, &analyzed(&source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(&source), &GeneratedCitations::default());
   }
 
   /// `nodes` から本体 `VBox`（`indent` / `right_indent` / `children`）を取り出す

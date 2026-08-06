@@ -9,11 +9,11 @@
 //! 行採番の後に来る）。
 
 use crate::{
-  citation::References,
+  citation::{CitationId, CitationSiteFacts, References},
   config::{CounterName, DocumentPolicy},
   model::{
-    CitationId, CitationSiteFacts, HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode,
-    HirNodeKind, LabelId, NodeId, SourceMap,
+    HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LabelId, NodeId,
+    SourceMap,
   },
   resolve::{
     SemanticError,
@@ -671,13 +671,13 @@ mod tests {
     let analyzed = analyze(hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
 
     // Assert
-    let targets: Vec<Vec<crate::model::CitationId>> =
+    let targets: Vec<Vec<crate::citation::CitationId>> =
       analyzed.citation_sites().iter().map(|(_, site)| return site.targets.clone()).collect();
     assert_eq!(
       targets,
       vec![
-        vec![crate::model::CitationId::new("kwan2014")],
-        vec![crate::model::CitationId::new("doe2020")]
+        vec![crate::citation::CitationId::new("kwan2014")],
+        vec![crate::citation::CitationId::new("doe2020")]
       ],
       "引用箇所は文書順に並ぶはず"
     );
@@ -697,8 +697,8 @@ mod tests {
     assert_eq!(
       site.targets,
       [
-        crate::model::CitationId::new("doe2020"),
-        crate::model::CitationId::new("kwan2014")
+        crate::citation::CitationId::new("doe2020"),
+        crate::citation::CitationId::new("kwan2014")
       ],
       "キー順を保つはず"
     );
@@ -759,7 +759,7 @@ mod tests {
 
     // Assert
     let sites =
-      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::model::NodeId, Vec<crate::model::CitationId>)> {
+      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::model::NodeId, Vec<crate::citation::CitationId>)> {
         return analyzed.citation_sites().iter().map(|(id, site)| return (id, site.targets.clone())).collect();
       };
     assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
