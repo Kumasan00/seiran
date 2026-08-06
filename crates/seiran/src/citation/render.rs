@@ -10,7 +10,7 @@ use hayagriva::{
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
 
-use crate::model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode, Span};
+use crate::model::{CitationId, DocNode, FontKind, HeadingLevel, InlineNode};
 
 /// hayagriva による整形結果。
 pub(crate) struct Rendered {
@@ -105,10 +105,7 @@ fn build_bibliography(bibliography: Option<&RenderedBibliography>, bib_title: &s
   let mut nodes = Vec::with_capacity(bibliography.items.len() * 2 + 1);
   nodes.push(DocNode::Heading {
     level: HeadingLevel::Section,
-    numbered: false,
     title: vec![InlineNode::Text(bib_title.to_string())],
-    label: None,
-    span: Span::DUMMY,
   });
 
   for item in &bibliography.items {

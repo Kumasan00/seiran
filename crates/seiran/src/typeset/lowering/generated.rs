@@ -28,7 +28,7 @@ pub(super) fn lower_bibliography(
 
   for node in nodes {
     match node {
-      DocNode::Heading { level, title, .. } => {
+      DocNode::Heading { level, title } => {
         let key = HeadingKey::new(heading_index);
         heading_index += 1;
         let style = title_style(ctx, *level);
@@ -133,10 +133,7 @@ mod tests {
     return vec![
       DocNode::Heading {
         level: crate::model::HeadingLevel::Section,
-        numbered: false,
         title: vec![InlineNode::Text("References".to_string())],
-        label: None,
-        span: crate::model::Span::DUMMY,
       },
       DocNode::Anchor(CitationId::new("kwan2014")),
       DocNode::Paragraph(vec![

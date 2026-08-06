@@ -3,7 +3,7 @@
 //! 著者が書いた本文は HIR（`model::hir`）が持つため、ここに残る variant は
 //! `citation::render` が書誌として組み立てる生成物の語彙に絞られる（#325）。
 
-use crate::model::{CitationId, HeadingLevel, InlineNode, Span};
+use crate::model::{CitationId, HeadingLevel, InlineNode};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///
@@ -11,19 +11,15 @@ use crate::model::{CitationId, HeadingLevel, InlineNode, Span};
 #[derive(Debug, Clone, PartialEq)]
 pub enum DocNode {
   /// 見出し（CSL 整形が合成する「References」見出し）
+  ///
+  /// 生成物の見出しは常に無採番・ラベルなしで、ソース位置も持たない（著者が書いた行に
+  /// 対応しない）。採番は `resolve::analyze` が HIR に対してのみ行うので、採番フラグ・
+  /// ラベル・ソース位置に相当するフィールドは持たない（#325）。
   Heading {
     /// 見出しのレベル（Part〜Subparagraph）
     level: HeadingLevel,
-    /// 採番対象かどうか。`true` なら `lowering` 層が対応するカウンタを発番する。
-    ///
-    /// CSL 整形ステージ（`citation` クレート）が合成する「References」見出しは常に `false`。
-    numbered: bool,
     /// 見出しのタイトル（インライン要素として保持）
     title: Vec<InlineNode>,
-    /// 参照ラベル。生成物の見出しは常に `None`
-    label: Option<String>,
-    /// ソース位置。生成物の見出しは常に `Span::DUMMY`
-    span: Span,
   },
 
   /// 段落（インライン要素の集合。書誌の各エントリ本文）
