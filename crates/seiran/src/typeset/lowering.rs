@@ -519,7 +519,7 @@ fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<Layout
 
 /// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり・目次表示用）
 ///
-/// `crate::model::InlineNode::try_to_plain_text` の HIR 版。バリアントごとの扱い（数式は
+/// 旧 `InlineNode` 版のプレーンテキスト畳み込みと同じ規則を保つ。バリアントごとの扱い（数式は
 /// `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を辿る等）は同じに保つ。
 fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState) -> String {
   let mut out = String::new();

@@ -96,8 +96,7 @@ pub(crate) struct HirMathRow {
   pub(crate) label: Option<String>,
   /// 行末マーカー `\label{...}` 自身の ID
   ///
-  /// 旧 `MathRow::label_span: Option<Span>` に対応する。`None` は「行に固有の位置がなく、
-  /// 環境の位置をフォールバックとして使う」という既存の診断挙動を表すため、
-  /// 行の位置で埋めずに `None` のまま保つ。
+  /// `None` は「行に固有の位置がなく、環境の位置をフォールバックとして使う」という既存の
+  /// 診断挙動を表すため、行の位置で埋めずに `None` のまま保つ。
   pub(crate) label_site: Option<NodeId>,
 }
