@@ -16,10 +16,7 @@ use crate::model::{AnchorId, AnchorMark, DocNode, HeadingKey, InlineNode, LinkTa
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
 /// 書誌の見出しは無採番で、本文の続きとなる `HeadingKey` を `next_heading_index` から振る。
-///
-/// # Panics
-///
-/// `citation::render` が合成しない `DocNode` を含む書誌を渡した場合にパニックします。
+/// `DocNode` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext,
   nodes: &[DocNode],
@@ -50,7 +47,6 @@ pub(super) fn lower_bibliography(
         layout.extend(assemble_paragraph(ctx, content, false));
       },
       DocNode::Anchor(target) => layout.push(LayoutNode::Anchor(AnchorMark::Citation(target.clone()))),
-      other => unreachable!("書誌は citation::render が合成する固定形しか含まない: {other:?}"),
     }
   }
 
@@ -59,12 +55,8 @@ pub(super) fn lower_bibliography(
 
 /// 生成物のインライン列（CSL 整形の出力）をレイアウトノードへ変換する
 ///
-/// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`citation::render` が作るのはテキスト・
-/// 書体・色・リンクだけ）ので、事実を引く必要がなく `LoweringState` を取らない。
-///
-/// # Panics
-///
-/// `citation::render` が生成しない `InlineNode` を渡した場合にパニックします。
+/// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`InlineNode` はそもそもそれらの
+/// variant を持たない、#325）ので、事実を引く必要がなく `LoweringState` を取らない。
 pub(super) fn lower_generated_inlines(
   ctx: &LoweringContext,
   inlines: &[InlineNode],
@@ -78,6 +70,8 @@ pub(super) fn lower_generated_inlines(
 }
 
 /// 生成物のインライン 1 個をレイアウトノードへ変換する
+///
+/// `InlineNode` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
 fn lower_generated_inline(ctx: &LoweringContext, inline: &InlineNode, parent_style: TextStyle) -> Vec<LayoutNode> {
   match inline {
     InlineNode::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
@@ -112,7 +106,6 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &InlineNode, parent_sty
     },
     InlineNode::Symbol(ch) => return vec![LayoutNode::Text(ch.to_string(), parent_style)],
     InlineNode::LineBreak => return vec![LayoutNode::LineBreak],
-    other => unreachable!("citation::render は生成物にこの variant を作らない: {other:?}"),
   }
 }
 
