@@ -473,7 +473,9 @@ mod tests {
     };
     assert_eq!(*number, 1);
     assert_eq!(*index, 1);
-    assert_eq!(marker_text(&body[0]), "1");
+    assert_eq!(marker_text(&body[0]), "1", "脚注エリア側のマーカー");
+    // Assert — 本文側マーカーも同じ上書き番号になる（1 個目・2 個目とも 1 番）
+    assert_eq!(text_side_markers(&nodes), vec![(0, "1"), (1, "1")], "本文側のマーカー: {nodes:?}");
   }
 
   #[test]
@@ -499,6 +501,24 @@ mod tests {
       ),
       "{nodes:?}"
     );
+  }
+
+  /// 本文中の脚注マーカー（`AnchorId::Footnote` を指す `Link`）を、脚注 index と表示テキストの
+  /// 組で文書順に集めるテストヘルパ
+  ///
+  /// 本文側マーカーの幅はページ単位採番の不動点計算に効くので、脚注エリア側だけでなく
+  /// こちらも検証する。
+  fn text_side_markers(nodes: &[LayoutNode]) -> Vec<(u32, &str)> {
+    return nodes
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Link {
+          target: LinkTarget::Internal(AnchorId::Footnote(id)),
+          ..
+        } => return Some((id.index(), marker_text(n))),
+        _ => return None,
+      })
+      .collect();
   }
 
   #[test]
@@ -588,15 +608,18 @@ mod tests {
     // Act
     let nodes = lower_source(&style, "a\\footnote{a}\n\nb\\footnote{b}\n");
 
-    // Assert
-    let markers: Vec<&str> = nodes
+    // Assert — 脚注エリア側
+    let area_markers: Vec<&str> = nodes
       .iter()
       .filter_map(|n| match n {
         LayoutNode::Footnote { body, .. } => return Some(marker_text(&body[0])),
         _ => return None,
       })
       .collect();
-    assert_eq!(markers, vec!["I", "II"], "{nodes:?}");
+    assert_eq!(area_markers, vec!["I", "II"], "脚注エリア側のマーカー: {nodes:?}");
+
+    // Assert — 本文側
+    assert_eq!(text_side_markers(&nodes), vec![(0, "I"), (1, "II")], "本文側のマーカー: {nodes:?}");
   }
 
   #[test]
