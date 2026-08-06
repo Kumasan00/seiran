@@ -63,6 +63,10 @@ pub struct AnalyzedDocument {
   facts: SemanticFacts,
 }
 
+// `counter_value_of_label` / `reference_sites` / `citation_targets` は目的別 query として
+// 用意してあるが、本体経路の消費者は #325（lowering が `AnalyzedDocument` を直接読む）で付く。
+// それまではテストだけが呼ぶ。
+#[allow(dead_code)]
 impl AnalyzedDocument {
   /// `analyze` だけが呼べる構築子
   pub(super) fn new(hir: HirDocument, facts: SemanticFacts) -> Self { return AnalyzedDocument { hir, facts }; }
@@ -134,4 +138,9 @@ impl AnalyzedDocument {
   /// 見出しを文書順に返す
   #[must_use]
   pub fn headings(&self) -> &[HeadingFacts] { return &self.facts.headings; }
+
+  /// ラベルを宣言したノードを文書順に走査する
+  pub(crate) fn declared_labels(&self) -> impl Iterator<Item = (NodeId, &LabelId)> {
+    return self.facts.declared_labels.iter();
+  }
 }

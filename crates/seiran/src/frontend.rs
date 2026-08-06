@@ -1,7 +1,7 @@
 //! テキストソースから HIR への変換 — 字句解析・構文解析・評価を 1 module に統合
 //!
-//! `parse_source` は 1 ソース分の [`HirSource`] を返す。後段（citation / resolve / typeset）は
-//! まだ旧 `DocNode` を入力に取るので、その変換は `doc_node_adapter` に閉じている（#325 で削除）。
+//! `parse_source` は 1 ソース分の [`HirSource`] を返す。本体経路は HIR のまま後段（resolve /
+//! typeset）へ渡る。旧 `DocNode` への変換（`doc_node_adapter`）は既存テストの足場としてのみ残る。
 
 use bumpalo::Bump;
 use miette::Diagnostic;
@@ -10,6 +10,10 @@ use tracing::debug;
 
 use crate::model::{HirBuilder, HirGroup, HirSource};
 
+// 旧 `DocNode` への変換は本体経路からは使われなくなった（#324 で bridge が HIR を直接読む）。
+// frontend / evaluator / typeset の既存 `DocNode` ベーステストだけが依存しているので、
+// テストビルドにだけ残す（#325 で adapter ごと削除する）。
+#[cfg(test)]
 mod doc_node_adapter;
 mod evaluator;
 #[cfg(test)]
@@ -17,6 +21,7 @@ mod hir_invariants;
 mod span_ext;
 mod syntax;
 
+#[cfg(test)]
 pub(crate) use doc_node_adapter::hir_group_to_doc_nodes;
 pub use evaluator::EvalError;
 

@@ -1,18 +1,16 @@
 //! 意味解析（ラベル登録・`\ref` 検証・カウンタ構造値の確定・引用箇所の解析）と `\cite` の
 //! CSL 整形を 1 回の呼び出しの背後に隠す。
 //!
-//! analyze → CSL 整形 → 解決という呼び出し順序と、生成物（引用表示・書誌）を
-//! `resolve::SemanticDocument::generated` として実ソースの `groups` とは別枠で渡す組み立ては、
-//! この module の外からは見えない（issue #303）。
+//! analyze → CSL 整形 → `ResolvedDocument` の組み立てという呼び出し順序と、生成物（引用表示・書誌）を
+//! 実ソースの本文とは別枠で渡す組み立ては、この module の外からは見えない（issue #303）。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use super::ParsedSource;
 use crate::{
   citation::{self, CitationFormatError, CitationStyleError, References},
-  model::{DocNode, HirDocument, SourceId},
-  resolve::{self, ResolvedDocument, SemanticDocument, SemanticError, SemanticGenerated, SemanticGroup},
+  model::HirDocument,
+  resolve::{self, ResolvedDocument, SemanticError},
 };
 
 /// `resolve_semantics` のエラー。
@@ -41,8 +39,8 @@ pub(super) enum SemanticsError {
 /// `ResolvedDocument` を返す。
 ///
 /// `document`（HIR）からラベル・参照・カウンタ・見出し・引用箇所の事実を取り、引用箇所の事実から
-/// 表示インライン列と書誌を生成する。生成物は `parsed`（`DocNode` 経路）へは一切書き戻さず、
-/// `SemanticDocument::generated` として別枠で resolve に渡す。
+/// 表示インライン列と書誌を生成する。生成物は著者が書いた文書木へは一切書き戻さず、
+/// `ResolvedDocument::generated` として別枠で組み立てる。
 ///
 /// # Errors
 ///
@@ -51,7 +49,6 @@ pub(super) enum SemanticsError {
 pub(super) fn resolve_semantics(
   source: &dyn crate::config::ProjectSource,
   document: HirDocument,
-  parsed: Vec<ParsedSource>,
   references: &References,
   style: &crate::config::Style,
 ) -> Result<ResolvedDocument, SemanticsError> {
@@ -68,36 +65,14 @@ pub(super) fn resolve_semantics(
     citation::GeneratedCitations::default()
   };
 
-  let source_ids: Vec<SourceId> = parsed.iter().map(|p| return p.source_id).collect();
-  let docs: Vec<Vec<DocNode>> = parsed.into_iter().map(|p| return p.nodes).collect();
-
-  let groups: Vec<SemanticGroup<'_>> = source_ids
-    .into_iter()
-    .zip(docs.iter())
-    .map(|(source_id, nodes)| {
-      return SemanticGroup {
-        nodes: nodes.as_slice(),
-        source_id,
-      };
-    })
-    .collect();
-  let semantic = SemanticDocument {
-    groups,
-    generated: SemanticGenerated {
-      citation_displays: generated.displays(),
-      bibliography: generated.bibliography(),
-    },
-  };
-
-  let resolved = resolve::resolve_project(&semantic, &policy)?;
-  return Ok(resolved);
+  return Ok(resolve::build_resolved_document(&analyzed, generated.displays(), generated.bibliography()));
 }
 
 #[cfg(test)]
 mod tests {
   use std::fs;
 
-  use super::{ParsedSource, SemanticsError, resolve_semantics};
+  use super::{SemanticsError, resolve_semantics};
   use crate::{
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationStyleError, read_references},
@@ -105,23 +80,6 @@ mod tests {
     frontend::parse_source,
     model::{HirDocument, SourceId},
   };
-
-  /// `HirDocument` の全グループを adapter 経由で `ParsedSource` へ変換するテストヘルパ
-  ///
-  /// `parse_project` が本体コードで行っている変換と同じもので、テストが手で
-  /// `hir_group_to_doc_nodes` を呼ぶ重複を避ける。
-  fn parsed_sources(document: &HirDocument) -> Vec<ParsedSource> {
-    return document
-      .groups()
-      .iter()
-      .map(|group| {
-        return ParsedSource {
-          source_id: group.source_id,
-          nodes: crate::frontend::hir_group_to_doc_nodes(group, document.locations()),
-        };
-      })
-      .collect();
-  }
 
   #[test]
   fn resolve_semantics_composes_citation_then_resolve() {
@@ -133,11 +91,10 @@ mod tests {
     let source_id = SourceId::new(0);
     let hir = parse_source(&content, source_id).expect("fixture cite.sei のパースに成功するはず");
     let document = HirDocument::assemble(vec![hir]);
-    let parsed = parsed_sources(&document);
 
     // Act
-    let resolved = resolve_semantics(&source, document, parsed, &references, &style)
-      .expect("citation → resolve の連携は成功するはず");
+    let resolved =
+      resolve_semantics(&source, document, &references, &style).expect("citation → resolve の連携は成功するはず");
 
     // Assert — 書誌が生成され resolve 済みドキュメントへ渡っている
     assert!(!resolved.generated.bibliography.is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
@@ -162,11 +119,10 @@ mod tests {
     let source_id = SourceId::new(0);
     let hir = parse_source(r"\cite{ref1}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
-    let parsed = parsed_sources(&document);
 
     // Act
     let error =
-      resolve_semantics(&source, document, parsed, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
+      resolve_semantics(&source, document, &references, &style).expect_err("csl_path 未設定はエラーになるはず");
 
     // Assert
     assert!(matches!(error, SemanticsError::CitationStyle(CitationStyleError::MissingCslPath)), "got: {error:?}");
@@ -181,11 +137,10 @@ mod tests {
     let source_id = SourceId::new(0);
     let hir = parse_source(r"\ref{missing}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
-    let parsed = parsed_sources(&document);
 
     // Act
-    let error = resolve_semantics(&source, document, parsed, &references, &style)
-      .expect_err("未定義ラベル参照はエラーになるはず");
+    let error =
+      resolve_semantics(&source, document, &references, &style).expect_err("未定義ラベル参照はエラーになるはず");
 
     // Assert
     assert!(matches!(error, SemanticsError::Analyze(_)), "got: {error:?}");
@@ -200,10 +155,9 @@ mod tests {
     let source_id = SourceId::new(0);
     let hir = parse_source(r"\cite{missing-key}", source_id).expect("パースは成功するはず");
     let document = HirDocument::assemble(vec![hir]);
-    let parsed = parsed_sources(&document);
 
     // Act
-    let error = resolve_semantics(&source, document, parsed, &references, &style).expect_err("未知キーはエラー");
+    let error = resolve_semantics(&source, document, &references, &style).expect_err("未知キーはエラー");
 
     // Assert
     assert!(

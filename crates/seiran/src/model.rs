@@ -47,7 +47,7 @@ pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
-  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
+  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap, to_math_nodes,
 };
 pub use ids::{AssetId, CitationId, FootnoteId, HeadingKey, LabelId};
 // `inline_nodes_to_plain_text`/`try_inline_nodes_to_plain_text` は旧 model crate の公開 API
@@ -61,9 +61,11 @@ pub use link::{AnchorId, AnchorMark, LinkTarget};
 pub use list::ListItem;
 pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_node::{MathNode, MathRow, MathStyle};
-pub use origin::{GeneratedOrigin, Origin, SourceId};
+pub use origin::SourceId;
 pub use quote::QuoteKind;
 pub use span::Span;
+// `TableCell` は旧 `DocNode` 経路（テスト限定）でのみ名指しされる。
+#[allow(unused_imports)]
 pub use table::{TableCell, TableRow};
 pub use table_column::{ColumnAlign, ColumnWidth, TableColumn};
 pub use text_alignment::TextAlignment;

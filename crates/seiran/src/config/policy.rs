@@ -111,7 +111,10 @@ impl DocumentPolicy {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::DocumentPolicy;
-  use crate::config::{CounterName, NumberStyle, Style};
+  use crate::{
+    config::{CounterName, NumberStyle, Style},
+    model::HeadingLevel,
+  };
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
@@ -145,5 +148,12 @@ mod tests {
     // Assert
     assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので DocumentPolicy に写るはず");
     assert!(variant_policy.counter(CounterName::Chapter).resets.is_empty());
+  }
+
+  #[test]
+  fn counter_name_for_heading_maps_each_level() {
+    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
+    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
+    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 }

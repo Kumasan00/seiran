@@ -3,7 +3,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::model::{Origin, SourceId, Span};
+use crate::model::{SourceId, Span};
 
 /// 未定義キーを含む引用箇所 1 件
 #[derive(Debug, Clone)]
@@ -40,8 +40,8 @@ pub enum SemanticError {
     /// `\ref{...}` のソース位置
     #[label("この参照が未解決です")]
     span: miette::SourceSpan,
-    /// この参照が属する起源
-    origin: Origin,
+    /// この参照が属するソース
+    source_id: SourceId,
   },
 
   /// `label=...` で同名ラベルが重複登録された場合
@@ -53,17 +53,22 @@ pub enum SemanticError {
     /// 2 回目に定義したコマンド / 環境のソース位置
     #[label("このラベルは既に定義されています")]
     span: miette::SourceSpan,
-    /// この重複定義が属する起源
-    origin: Origin,
+    /// この重複定義が属するソース
+    source_id: SourceId,
   },
 }
 
 impl SemanticError {
-  /// このエラーが帰属する起源を返す（引用キーのエラーは箇所ごとに `SourceId` を持つので `None`）
+  /// このエラーが帰属するソースを返す
+  ///
+  /// 引用キーのエラーは箇所ごとに `SourceId` を持つ（1 診断が複数ソースに跨りうる）ため `None`。
+  /// `analyze` は実ソースしか走査しないので、生成物（書誌）由来のエラーはそもそも存在しない。
   #[must_use]
-  pub fn origin(&self) -> Option<Origin> {
+  pub fn source_id(&self) -> Option<SourceId> {
     return match self {
-      SemanticError::UnresolvedReference { origin, .. } | SemanticError::DuplicateLabel { origin, .. } => Some(*origin),
+      SemanticError::UnresolvedReference { source_id, .. } | SemanticError::DuplicateLabel { source_id, .. } => {
+        Some(*source_id)
+      },
       SemanticError::UnknownCitationKeys { .. } => None,
     };
   }

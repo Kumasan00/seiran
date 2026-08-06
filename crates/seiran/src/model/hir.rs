@@ -20,7 +20,7 @@ pub(crate) use builder::HirBuilder;
 pub(crate) use document::{HirDocument, HirGroup, HirSource};
 pub(crate) use id::NodeId;
 pub(crate) use inline::{HirInline, HirInlineKind};
-pub(crate) use math::{HirMath, HirMathKind, HirMathRow};
+pub(crate) use math::{HirMath, HirMathKind, HirMathRow, to_math_nodes};
 pub(crate) use node::{HirListItem, HirNode, HirNodeKind, HirProofTarget, HirTableCell, HirTableRow};
 pub(crate) use node_map::NodeMap;
 pub(crate) use source_map::{SourceMap, SourceSpans};

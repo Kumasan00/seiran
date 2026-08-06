@@ -199,16 +199,6 @@ pub(super) enum CompileError {
     source: SemanticError,
   },
 
-  /// 特定ソースに帰属できない resolve エラー
-  #[error("ラベル・参照・引用の解決に失敗しました（帰属元ソース不明）。")]
-  #[diagnostic(code(build::resolve_internal))]
-  ResolveInternal {
-    /// 元の resolve エラー
-    #[source]
-    #[diagnostic_source]
-    source: SemanticError,
-  },
-
   /// カレントディレクトリの取得失敗
   #[error("カレントディレクトリを取得できませんでした。")]
   #[diagnostic(code(build::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]

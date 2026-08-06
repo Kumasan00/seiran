@@ -13,7 +13,7 @@ use crate::{
   config::{CounterName, DocumentPolicy},
   model::{
     CitationId, CitationSiteFacts, HeadingKey, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode,
-    HirNodeKind, LabelId, NodeId, Origin, SourceMap,
+    HirNodeKind, LabelId, NodeId, SourceMap,
   },
   resolve::{
     SemanticError,
@@ -99,7 +99,7 @@ fn resolve_references(
       return Err(SemanticError::UnresolvedReference {
         label: reference.label.clone(),
         span: span_to_source_span(location.span),
-        origin: Origin::Source(location.source_id),
+        source_id: location.source_id,
       });
     }
     facts.references.insert(reference.site, LabelId::new(reference.label.clone()));
@@ -347,100 +347,6 @@ mod tests {
   fn document(source: &str) -> HirDocument {
     let hir = crate::frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
-  }
-
-  /// ワークスペースルートの `tests/text/*.sei` を名前順に列挙する
-  ///
-  /// golden の対象一覧（`build_pdf::golden::GOLDEN_INPUTS`）ではなく **fixture ディレクトリ全体**を
-  /// 走査する。golden の一覧には `figure.sei` などが含まれておらず、そのままでは図カウンタの
-  /// 差分を検出できないため（カレントディレクトリに依存しないよう絶対パスで引く）。
-  fn fixture_sources() -> Vec<(String, String)> {
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-      .ancestors()
-      .nth(2)
-      .expect("crates/seiran の 2 階層上がワークスペースルート");
-    let dir = workspace_root.join("tests/text");
-    let mut sources: Vec<(String, String)> = std::fs::read_dir(&dir)
-      .expect("tests/text を読めるはず")
-      .filter_map(|entry| {
-        let path = entry.expect("ディレクトリエントリを読めるはず").path();
-        if path.extension().is_none_or(|extension| return extension != "sei") {
-          return None;
-        }
-        let name = path.file_stem().expect("拡張子付きなら stem がある").to_string_lossy().into_owned();
-        let content = std::fs::read_to_string(&path).expect("fixture を読めるはず");
-        return Some((name, content));
-      })
-      .collect();
-    sources.sort_by(|a, b| return a.0.cmp(&b.0));
-    return sources;
-  }
-
-  /// `document` と同じ内容を旧 `DocNode` 経路へ落とす（差分テストの比較対象を作るため）
-  fn doc_nodes(hir: &HirDocument) -> Vec<crate::model::DocNode> {
-    let group = hir.groups().first().expect("1 ソース分のグループがあるはず");
-    return crate::frontend::hir_group_to_doc_nodes(group, hir.locations());
-  }
-
-  #[test]
-  fn analyze_facts_match_resolve_project_on_all_fixtures() {
-    // Arrange — `tests/text` の全 fixture で、旧実装（resolve_project）と新実装（analyze）の
-    // カウンタ値・見出しが一致することを確かめる。fixture 全体ぶんのリセット連鎖・祖先チェーンを
-    // 手書きの期待値で書き切るのは現実的でないため、旧実装を参照実装として使う。
-    let policy = DocumentPolicy::from_style(&Style::default());
-    // 比較が空回りしていないことを最後に確かめるための総数（fixture が全部無採番だと
-    // 各 assert が 0 件ループになり、テストが常に緑になってしまう）。
-    let mut compared_labels = 0usize;
-    let mut compared_headings = 0usize;
-
-    for (name, content) in fixture_sources() {
-      let hir = document(&content);
-      let nodes = doc_nodes(&hir);
-      let displays = crate::model::NodeMap::default();
-      let semantic = crate::resolve::SemanticDocument {
-        groups: vec![crate::resolve::SemanticGroup {
-          nodes: &nodes,
-          source_id: SourceId::new(0),
-        }],
-        generated: crate::resolve::SemanticGenerated {
-          citation_displays: &displays,
-          bibliography: &[],
-        },
-      };
-
-      // Act
-      let old = crate::resolve::resolve_project(&semantic, &policy)
-        .unwrap_or_else(|e| panic!("{name}: 旧実装での解決に成功するはず: {e:?}"));
-      // fixture には `\cite` を含むものがあるので、既知キーを持つ参照定義を渡す
-      let analyzed =
-        analyze(document(&content), &policy, &sample_references()).unwrap_or_else(|e| panic!("{name}: {e:?}"));
-
-      // Assert — ラベル → カウンタ構造値が旧実装と完全一致する
-      for (label, value) in &old.counter_values {
-        assert_eq!(
-          analyzed.counter_value_of_label(label),
-          Some(value),
-          "{name}: ラベル {label:?} のカウンタ値が旧実装と一致するはず"
-        );
-        compared_labels += 1;
-      }
-      // Assert — 見出しがキー・レベル・カウンタ値とも文書順で一致する
-      assert_eq!(analyzed.headings().len(), old.headings.len(), "{name}: 見出し数が旧実装と一致するはず");
-      for (new, old_heading) in analyzed.headings().iter().zip(old.headings.iter()) {
-        assert_eq!(new.key, old_heading.key, "{name}: HeadingKey が文書順で一致するはず");
-        assert_eq!(new.level, old_heading.level, "{name}: 見出しレベルが一致するはず");
-        assert_eq!(
-          new.counter_value.as_ref(),
-          old_heading.counter_value.as_ref(),
-          "{name}: 見出しのカウンタ値が一致するはず"
-        );
-        compared_headings += 1;
-      }
-    }
-
-    // Assert — 上のループが実際に fact を突き合わせたことを確かめる
-    assert!(compared_labels > 0, "ラベル付き fixture が 1 つも比較されていない（テストが空回りしている）");
-    assert!(compared_headings > 0, "見出しが 1 つも比較されていない（テストが空回りしている）");
   }
 
   #[test]

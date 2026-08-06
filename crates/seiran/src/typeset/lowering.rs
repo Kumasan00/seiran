@@ -514,56 +514,100 @@ fn resolved_inlines_to_plain_text(inlines: &[ResolvedInline], style: &ReadStyle,
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+  use std::collections::HashMap;
+
   use super::*;
   use crate::{
-    model::{DocNode, HeadingLevel, InlineNode, Length, ListItem, MathEnvKind, MathNode, MathRow, QuoteKind, SourceId},
-    resolve::{self, SemanticDocument, SemanticGroup},
+    citation::References,
+    config::DocumentPolicy,
+    model::{HeadingLevel, HirDocument, Length, MathEnvKind, MathNode, NodeMap, SourceId},
+    resolve::{ResolvedGenerated, ResolvedGroup, ResolvedListItem, ResolvedMathRow, analyze, build_resolved_document},
   };
 
-  /// `DocNode` 列を `resolve::resolve_project` に通して解決済みドキュメントにするテストヘルパ
+  /// `ResolvedNode` 列から lowering の入力を組み立てるテストヘルパ
   ///
-  /// lowering の入力は解決済みツリーなので、`DocNode` を組み立てるテストはこの 2 段構成になる。
-  fn resolved(style: &ReadStyle, groups: &[&[DocNode]]) -> ResolvedDocument {
-    let citation_displays = crate::model::NodeMap::default();
-    let semantic = SemanticDocument {
+  /// lowering の入力は解決済みツリーなので、テストは入力型（`ResolvedNode`）を直接組み立てる。
+  /// 見出しを含む入力は採番とキー付与が要るので、代わりに [`resolved_from_sources`] を使う。
+  fn resolved(groups: Vec<Vec<ResolvedNode>>) -> ResolvedDocument {
+    return ResolvedDocument {
       groups: groups
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(index, nodes)| {
-          return SemanticGroup {
+          return ResolvedGroup {
             nodes,
             source_id: SourceId::new(index),
           };
         })
         .collect(),
-      generated: resolve::SemanticGenerated {
-        citation_displays: &citation_displays,
-        bibliography: &[],
+      generated: ResolvedGenerated {
+        citation_displays: NodeMap::default(),
+        bibliography: Vec::new(),
       },
+      headings: Vec::new(),
+      counter_values: HashMap::new(),
     };
-    return resolve::resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(style))
-      .expect("解決できる入力のはず");
   }
 
-  /// 1 グループの `DocNode` 列を lower して `LayoutNode` 列だけを返すテストヘルパ
-  fn lower_group(ctx: &LoweringContext, style: &ReadStyle, nodes: &[DocNode]) -> Vec<LayoutNode> {
-    let document = resolved(style, &[nodes]);
+  /// `.sei` ソースから lowering の入力を組み立てるテストヘルパ（本番と同じ経路を通す）
+  ///
+  /// 見出しの採番・キー付与・`\ref` の解決は `analyze` が行い、`build_resolved_document` が
+  /// 解決済みツリーへ写す。見出し番号やアンカーキーを見るテストはこちらを使う。
+  fn resolved_from_sources(style: &ReadStyle, sources: &[&str]) -> ResolvedDocument {
+    let hir = HirDocument::assemble(
+      sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+          return crate::frontend::parse_source(source, SourceId::new(index)).expect("パースに成功するはず");
+        })
+        .collect(),
+    );
+    let analyzed =
+      analyze(hir, &DocumentPolicy::from_style(style), &References(HashMap::new())).expect("解決できる入力のはず");
+    return build_resolved_document(&analyzed, &NodeMap::default(), &[]);
+  }
+
+  /// マーカー・縦アキ指定なしのリスト項目を作るテストヘルパ
+  fn resolved_list_item(content: Vec<ResolvedNode>) -> ResolvedListItem {
+    return ResolvedListItem {
+      content,
+      marker: None,
+      item_gap: None,
+    };
+  }
+
+  /// 1 グループの `ResolvedNode` 列を lower して `LayoutNode` 列だけを返すテストヘルパ
+  fn lower_group(ctx: &LoweringContext, nodes: Vec<ResolvedNode>) -> Vec<LayoutNode> {
+    let document = resolved(vec![nodes]);
     let (layout, _headings) = lower_sources_with_headings(ctx, &document);
     return layout;
   }
 
-  /// 1 行 1 セルの `equation` 相当 `DocNode::MathBlock` を作るテストヘルパ
-  fn equation_block(numbered: bool, label: Option<&str>) -> DocNode {
-    return DocNode::MathBlock {
+  /// `.sei` ソース 1 本を lower して `LayoutNode` 列だけを返すテストヘルパ
+  fn lower_source(ctx: &LoweringContext, style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    let document = resolved_from_sources(style, &[source]);
+    let (layout, _headings) = lower_sources_with_headings(ctx, &document);
+    return layout;
+  }
+
+  /// 1 行 1 セルの `equation` 相当 `ResolvedNode::MathBlock` を作るテストヘルパ
+  fn equation_block(numbered: bool, label: Option<&str>) -> ResolvedNode {
+    // 採番済みの `CounterValue` は style の祖先チェーンに依存するので手では組み立てない。
+    // 番号を見るテストは `.sei` ソースから本番経路を通す（`lower_source`）。
+    assert!(!numbered, "採番済みの数式は lower_source で組み立てること");
+    return ResolvedNode::MathBlock {
       kind: MathEnvKind::Equation,
-      rows: vec![MathRow {
+      rows: vec![ResolvedMathRow {
         cells: vec![vec![MathNode::Text("a".to_string())]],
         numbered,
-        label: label.map(str::to_string),
+        label: label.map(crate::model::LabelId::new),
         label_span: None,
+        counter_value: None,
       }],
       numbered: false,
       label: None,
+      counter_value: None,
       span: crate::model::Span::DUMMY,
     };
   }
@@ -591,10 +635,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Space(Length::pt(5.0))];
+    let nodes = [ResolvedNode::Space(Length::pt(5.0))];
 
     // Act
-    let result = lower_group(&ctx, &style, &nodes);
+    let result = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -609,10 +653,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Anchor(crate::model::CitationId::new("foo"))];
+    let nodes = [ResolvedNode::Anchor(crate::model::CitationId::new("foo"))];
 
     // Act
-    let result = lower_group(&ctx, &style, &nodes);
+    let result = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -624,10 +668,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::PageBreak];
+    let nodes = [ResolvedNode::PageBreak];
 
     // Act
-    let result = lower_group(&ctx, &style, &nodes);
+    let result = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -639,13 +683,13 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Rule {
+    let nodes = [ResolvedNode::Rule {
       width: Length::pt(100.0),
       height: Length::pt(1.0),
     }];
 
     // Act
-    let result = lower_group(&ctx, &style, &nodes);
+    let result = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -663,13 +707,15 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Paragraph(vec![InlineNode::InlineMath(vec![
-      MathNode::Text("x".to_string()),
-      MathNode::Superscript(Box::new(MathNode::Text("2".to_string()))),
-    ])])];
+    let nodes = [ResolvedNode::Paragraph(vec![ResolvedInline::InlineMath(
+      vec![
+        MathNode::Text("x".to_string()),
+        MathNode::Superscript(Box::new(MathNode::Text("2".to_string()))),
+      ],
+    )])];
 
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     let placeholder = out.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t == "[Math]"));
@@ -686,7 +732,7 @@ mod tests {
     let nodes = [equation_block(false, None)];
 
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(out.len(), 3, "Vkern + MathBlock + Vkern の 3 要素: {out:?}");
@@ -702,10 +748,8 @@ mod tests {
     let mut style = ReadStyle::default();
     style.counters.equation.number_format = "{n}".to_string();
     let ctx = LoweringContext::new(&style);
-    let nodes = [equation_block(true, None)];
-
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_source(&ctx, &style, "\\begin{equation}\na\n\\end{equation}\n");
 
     // Assert
     let Some(LayoutNode::MathBlock { rows, .. }) = out.get(1) else {
@@ -724,22 +768,9 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = vec![
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("H".to_string())]),
-      DocNode::Paragraph(vec![InlineNode::Text("P".to_string())]),
-      DocNode::List {
-        ordered: false,
-        items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
-          InlineNode::Text("L".to_string()),
-        ])])],
-        start: None,
-        item_gap: None,
-      },
-      DocNode::PageBreak,
-    ];
-
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out =
+      lower_source(&ctx, &style, "\\section{H}\n\nP\n\n\\begin{itemize}\n\\item{L}\n\\end{itemize}\n\n\\pagebreak\n");
 
     // Assert
     let vbox_count = out.iter().filter(|n| matches!(n, LayoutNode::VBox { .. })).count();
@@ -753,18 +784,10 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = vec![
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Top1".to_string())]),
-      DocNode::Quote {
-        kind: QuoteKind::Quote,
-        body: vec![DocNode::heading(
-          HeadingLevel::Section,
-          vec![InlineNode::Text("Nested".to_string())],
-        )],
-      },
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Top2".to_string())]),
-    ];
-    let document = resolved(&style, &[&nodes]);
+    let document = resolved_from_sources(
+      &style,
+      &["\\section{Top1}\n\n\\begin{quote}\n\\section{Nested}\n\\end{quote}\n\n\\section{Top2}\n"],
+    );
 
     // Act
     let (layout, headings) = lower_sources_with_headings(&ctx, &document);
@@ -800,21 +823,9 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = vec![
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("Heading".to_string())]),
-      DocNode::Paragraph(vec![InlineNode::Text("Para".to_string())]),
-      DocNode::List {
-        ordered: true,
-        items: vec![ListItem::new(vec![DocNode::Paragraph(vec![
-          InlineNode::Text("Item".to_string()),
-        ])])],
-        start: None,
-        item_gap: None,
-      },
-    ];
-
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out =
+      lower_source(&ctx, &style, "\\section{Heading}\n\nPara\n\n\\begin{enumerate}\n\\item{Item}\n\\end{enumerate}\n");
 
     // Assert
     assert!(!contains_line_break(&out), "段落内 \\\\ 以外で LineBreak は出力されない: {out:?}");
@@ -826,19 +837,19 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let footnote = |text: &str| {
-      return InlineNode::Footnote {
-        body: vec![InlineNode::Text(text.to_string())],
+      return ResolvedInline::Footnote {
+        body: vec![ResolvedInline::Text(text.to_string())],
         span: crate::model::Span::DUMMY,
       };
     };
     let nodes = vec![
-      DocNode::Paragraph(vec![InlineNode::Text("one ".to_string()), footnote("a")]),
-      DocNode::Paragraph(vec![InlineNode::Text("two ".to_string()), footnote("b")]),
-      DocNode::Paragraph(vec![InlineNode::Text("three ".to_string()), footnote("c")]),
+      ResolvedNode::Paragraph(vec![ResolvedInline::Text("one ".to_string()), footnote("a")]),
+      ResolvedNode::Paragraph(vec![ResolvedInline::Text("two ".to_string()), footnote("b")]),
+      ResolvedNode::Paragraph(vec![ResolvedInline::Text("three ".to_string()), footnote("c")]),
     ];
 
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_group(&ctx, nodes);
 
     // Assert
     let numbers: Vec<u32> = out
@@ -857,14 +868,12 @@ mod tests {
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
     let footnote = |text: &str| {
-      return DocNode::Paragraph(vec![InlineNode::Footnote {
-        body: vec![InlineNode::Text(text.to_string())],
+      return ResolvedNode::Paragraph(vec![ResolvedInline::Footnote {
+        body: vec![ResolvedInline::Text(text.to_string())],
         span: crate::model::Span::DUMMY,
       }]);
     };
-    let g0 = [footnote("a")];
-    let g1 = [footnote("b")];
-    let document = resolved(&style, &[&g0, &g1]);
+    let document = resolved(vec![vec![footnote("a")], vec![footnote("b")]]);
 
     // Act
     let (layout, _headings) = lower_sources_with_headings(&ctx, &document);
@@ -885,10 +894,8 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [equation_block(true, Some("eq:foo"))];
-
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_source(&ctx, &style, "\\begin{equation}[label=eq:foo]\na\n\\end{equation}\n");
 
     // Assert
     assert!(
@@ -902,10 +909,8 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [equation_block(true, None)];
-
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_source(&ctx, &style, "\\begin{equation}\na\n\\end{equation}\n");
 
     // Assert
     assert!(!out.iter().any(|n| matches!(n, LayoutNode::Anchor(_))), "アンカーは出ない: {out:?}");
@@ -917,10 +922,12 @@ mod tests {
     let mut style = crate::config::Style::default();
     style.text.font_size = Length::pt(18.0);
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Paragraph(vec![InlineNode::Text("x".to_string())])];
+    let nodes = [ResolvedNode::Paragraph(vec![ResolvedInline::Text(
+      "x".to_string(),
+    )])];
 
     // Act
-    let out = lower_group(&ctx, &style, &nodes);
+    let out = lower_group(&ctx, nodes.to_vec());
 
     // Assert
     assert_eq!(ctx.default_font_size(), Length::pt(18.0));
@@ -930,31 +937,12 @@ mod tests {
     assert_eq!(text_style.font_size, Length::pt(18.0));
   }
 
-  /// ラベル付き Chapter 見出しを作るテストヘルパ
-  fn labeled_chapter(title: &str, label: &str) -> DocNode {
-    return DocNode::Heading {
-      level: HeadingLevel::Chapter,
-      numbered: true,
-      title: vec![InlineNode::Text(title.to_string())],
-      label: Some(label.to_string()),
-      span: crate::model::Span::DUMMY,
-    };
-  }
-
   #[test]
   fn numbering_continues_across_sources() {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let g0 = [DocNode::heading(
-      HeadingLevel::Chapter,
-      vec![InlineNode::Text("A".to_string())],
-    )];
-    let g1 = [DocNode::heading(
-      HeadingLevel::Chapter,
-      vec![InlineNode::Text("B".to_string())],
-    )];
-    let document = resolved(&style, &[&g0, &g1]);
+    let document = resolved_from_sources(&style, &["\\chapter{A}\n", "\\chapter{B}\n"]);
 
     // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
@@ -983,12 +971,7 @@ mod tests {
 
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let g0 = [labeled_chapter("Intro", "ch:intro")];
-    let g1 = [DocNode::Paragraph(vec![InlineNode::Ref {
-      label: "ch:intro".to_string(),
-      span: crate::model::Span::DUMMY,
-    }])];
-    let document = resolved(&style, &[&g0, &g1]);
+    let document = resolved_from_sources(&style, &["\\chapter[label=ch:intro]{Intro}\n", "\\ref{ch:intro}\n"]);
 
     // Act
     let (layout, _headings) = lower_sources_with_headings(&ctx, &document);
@@ -1002,12 +985,7 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = vec![
-      DocNode::heading(HeadingLevel::Chapter, vec![InlineNode::Text("C".to_string())]),
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("S".to_string())]),
-      DocNode::heading(HeadingLevel::Section, vec![InlineNode::Text("S2".to_string())]),
-    ];
-    let document = resolved(&style, &[&nodes]);
+    let document = resolved_from_sources(&style, &["\\chapter{C}\n\n\\section{S}\n\n\\section{S2}\n"]);
 
     // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
@@ -1022,14 +1000,24 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = [DocNode::Heading {
+    // 無採番の見出しは frontend からは作れない（HIR の見出しは常に採番対象）。書誌の合成見出しと
+    // 同じ形なので、ここでは解決済みツリーを直接組み立てる。
+    let key = crate::model::HeadingKey::new(0);
+    let title = vec![ResolvedInline::Text("Preface".to_string())];
+    let mut document = resolved(vec![vec![ResolvedNode::Heading {
       level: HeadingLevel::Chapter,
       numbered: false,
-      title: vec![InlineNode::Text("Preface".to_string())],
+      title: title.clone(),
       label: None,
+      key,
       span: crate::model::Span::DUMMY,
-    }];
-    let document = resolved(&style, &[&nodes]);
+    }]]);
+    document.headings.push(crate::resolve::ResolvedHeading {
+      key,
+      level: HeadingLevel::Chapter,
+      counter_value: None,
+      title,
+    });
 
     // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
@@ -1043,20 +1031,8 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let nodes = vec![
-      labeled_chapter("Intro", "ch:intro"),
-      DocNode::heading(
-        HeadingLevel::Section,
-        vec![
-          InlineNode::Text("見出し ".to_string()),
-          InlineNode::Ref {
-            label: "ch:intro".to_string(),
-            span: crate::model::Span::DUMMY,
-          },
-        ],
-      ),
-    ];
-    let document = resolved(&style, &[&nodes]);
+    let document =
+      resolved_from_sources(&style, &["\\chapter[label=ch:intro]{Intro}\n\n\\section{見出し \\ref{ch:intro}}\n"]);
 
     // Act
     let (_layout, headings) = lower_sources_with_headings(&ctx, &document);

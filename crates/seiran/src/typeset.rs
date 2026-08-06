@@ -57,12 +57,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
-  use crate::{
-    config::Style,
-    frontend::parse_source,
-    model::SourceId,
-    resolve::{SemanticDocument, SemanticGroup},
-  };
+  use crate::{config::Style, frontend::parse_source, model::SourceId};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
   fn fixture_path(name: &str) -> PathBuf {
@@ -108,7 +103,7 @@ mod tests {
   #[test]
   fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
 
-  /// `tests/text/<name>.sei` を parse → resolve → lower し、レイアウトノード列を返すヘルパ
+  /// `tests/text/<name>.sei` を parse → analyze → lower し、レイアウトノード列を返すヘルパ
   fn lower_fixture(name: &str) -> Vec<LayoutNode> {
     let path = fixture_path(name);
     let content = std::fs::read_to_string(&path)
@@ -116,21 +111,11 @@ mod tests {
     let style = Style::default();
     let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
     let hir_document = crate::model::HirDocument::assemble(vec![hir]);
-    let group = hir_document.groups().first().expect("1 ソース分のグループがあるはず");
-    let doc_nodes = crate::frontend::hir_group_to_doc_nodes(group, hir_document.locations());
-    let citation_displays = crate::model::NodeMap::default();
-    let semantic = SemanticDocument {
-      groups: vec![SemanticGroup {
-        nodes: &doc_nodes,
-        source_id: SourceId::new(0),
-      }],
-      generated: crate::resolve::SemanticGenerated {
-        citation_displays: &citation_displays,
-        bibliography: &[],
-      },
-    };
-    let document = crate::resolve::resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(&style))
-      .unwrap_or_else(|e| panic!("resolve_project 失敗 ({name}): {e:?}"));
+    let references = crate::citation::References(std::collections::HashMap::new());
+    let analyzed =
+      crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
+        .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
+    let document = crate::resolve::build_resolved_document(&analyzed, &crate::model::NodeMap::default(), &[]);
     let ctx = LoweringContext::new(&style);
     let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, &document);
     return layout_nodes;
