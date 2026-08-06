@@ -110,12 +110,13 @@ fn validate_inline(inline: &ResolvedInline, registry: &CounterRegistry, origin: 
     | ResolvedInline::Link { children, .. }
     | ResolvedInline::InternalLink { children, .. }
     | ResolvedInline::Footnote { body: children, .. } => validate_inlines(children, registry, origin)?,
-    ResolvedInline::Cite { label, .. } => validate_inlines(label, registry, origin)?,
+    // `Cite` は表示を持たない（生成物の side table 側にあり、そこに `\ref` は現れない）
     ResolvedInline::Text(_)
     | ResolvedInline::InlineMath(_)
     | ResolvedInline::Symbol(_)
     | ResolvedInline::LineBreak
     | ResolvedInline::NoIndent
+    | ResolvedInline::Cite { .. }
     | ResolvedInline::Index { .. } => {},
   }
   return Ok(());

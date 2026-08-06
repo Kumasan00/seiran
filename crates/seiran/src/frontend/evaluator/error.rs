@@ -1,6 +1,6 @@
 //! 評価器のエラー型
 
-use miette::{Diagnostic, LabeledSpan, SourceSpan};
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 /// 評価器のエラー型
@@ -138,18 +138,6 @@ pub enum EvalError {
     /// 任意引数ノードのソース位置
     #[label("この値は期待型に変換できません")]
     span: SourceSpan,
-  },
-
-  /// `\cite{...}` で参照された引用キーが参照定義（references）に未定義の場合（集約）
-  #[error("未定義の引用キーがあります")]
-  #[diagnostic(
-    code(frontend::eval::unknown_citation_key),
-    help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
-  )]
-  UnknownCitationKeys {
-    /// 未定義キーを含む各 `\cite` のラベル（ソース位置付き）
-    #[label(collection)]
-    labels: Vec<LabeledSpan>,
   },
 
   /// 無採番（`[numbered=false]`）の数式環境にラベル（`[label=...]`）を付与した場合

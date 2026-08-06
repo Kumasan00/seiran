@@ -1,11 +1,14 @@
 //! PDF ビルドエラー型の定義
 
-use miette::{Diagnostic, NamedSource};
+use miette::{Diagnostic, LabeledSpan, NamedSource};
 use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::{
-  citation::CitationError, config::LayoutValidationError, frontend::ParseSourceError, model::AssetId,
+  citation::{CitationFormatError, CitationStyleError},
+  config::LayoutValidationError,
+  frontend::ParseSourceError,
+  model::AssetId,
   resolve::ResolveError,
 };
 
@@ -57,6 +60,42 @@ impl Diagnostic for AttributedParseError {
   fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> { return self.inner.related(); }
 
   fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
+}
+
+/// 1 ソース内の未定義引用キーを、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
+///
+/// [`crate::citation::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
+/// ソース本文を持たない（本文は `project::SourceDb` が一元管理する）。同じソース内に未定義キーが
+/// 複数箇所あれば `labels` にまとめて積む（`labels` の要素ごとに独自のラベル文言を持つため、
+/// `#[label(collection)]` に静的な文言は付けない）。この型自身が診断メッセージ・code・help を
+/// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
+/// 通常の `thiserror::Error` + `#[derive(Diagnostic)]` で書ける。
+///
+/// `#[error(...)]` / `help(...)` の文言は [`crate::citation::CitationSemanticError::UnknownCitationKeys`]
+/// と意図的に同じ文面を**再掲**している（委譲ではない — `wrap_citation_semantic_error` が
+/// `UnknownCitationKeys` を分解してこの型を組み立てるため、実際に描画されるのはこちらのコピーだけで、
+/// 元の `CitationSemanticError` 側の code / help は生成物の Report には現れない）。文言を変えるときは
+/// 両方を揃えて更新すること。
+#[derive(Debug, Error, Diagnostic)]
+#[error("未定義の引用キーがあります")]
+#[diagnostic(
+  code(build::citation::unknown_citation_key),
+  help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
+)]
+pub(super) struct AttributedCitationError {
+  /// `SourceDb` から引いたソース名・本文（`source_code` の供給元）
+  #[source_code]
+  src: NamedSource<String>,
+  /// このソース内で見つかった未定義引用キーの箇所（`\cite{...}` ごとに 1 ラベル）
+  #[label(collection)]
+  labels: Vec<LabeledSpan>,
+}
+
+impl AttributedCitationError {
+  /// `SourceDb` から引いた `NamedSource` と、そのソース内の未定義キーラベル列を束ねる
+  pub(super) fn new(src: NamedSource<String>, labels: Vec<LabeledSpan>) -> Self {
+    return AttributedCitationError { src, labels };
+  }
 }
 
 /// compiler の不変条件違反（ユーザー入力に起因しない内部バグ）。
@@ -113,14 +152,36 @@ pub(super) enum CompileError {
     errors: Vec<AttributedParseError>,
   },
 
-  /// 文献引用の CSL 整形エラー
-  #[error("文献引用の整形に失敗しました。")]
-  #[diagnostic(code(build::citation))]
-  Citation {
-    /// 元の citation エラー
+  /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
+  #[error("文献引用の CSL スタイルを読み込めませんでした。")]
+  #[diagnostic(code(build::citation::style))]
+  CitationStyle {
+    /// 元の CSL スタイル読込エラー
     #[source]
     #[diagnostic_source]
-    source: CitationError,
+    source: CitationStyleError,
+  },
+
+  /// 文献引用の CSL 整形（表示の生成）エラー
+  #[error("文献引用の整形に失敗しました。")]
+  #[diagnostic(code(build::citation::format))]
+  CitationFormat {
+    /// 元の CSL 整形エラー
+    #[source]
+    #[diagnostic_source]
+    source: CitationFormatError,
+  },
+
+  /// `\cite{...}` の未定義引用キー（ソースごとに集約）
+  ///
+  /// `#[related]` で全ソースの診断をまとめて表示する（`MultipleSourceErrors` と同じ
+  /// 「1 ソース内は 1 件のラベル付き診断へまとめ、複数ソースは `#[related]` で束ねる」構成）。
+  #[error("複数の引用箇所で未定義の引用キーがあります。")]
+  #[diagnostic(code(build::multiple_citation_errors))]
+  MultipleCitationErrors {
+    /// ソースごとの未定義引用キー診断（`SourceDb` から引いた本文を添えたもの）
+    #[related]
+    errors: Vec<AttributedCitationError>,
   },
 
   /// 帰属ソースを特定できる resolve エラー

@@ -213,10 +213,9 @@ fn to_inline_node(inline: &HirInline, locations: &SourceMap) -> InlineNode {
       url: url.clone(),
       children: to_inline_nodes(children, locations),
     },
-    // 表示用のラベルは CSL 整形ステージが `Some` に確定する（frontend は常に `None`）
     HirInlineKind::Cite { keys } => InlineNode::Cite {
       keys: keys.clone(),
-      label: None,
+      node_id: inline.id,
       span,
     },
     HirInlineKind::Footnote { body } => InlineNode::Footnote {
@@ -257,4 +256,58 @@ fn to_math_node(node: &HirMath, locations: &SourceMap) -> MathNode {
       body: to_math_nodes(body, locations),
     },
   };
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use crate::model::{DocNode, HirInlineKind, HirNode, HirNodeKind, InlineNode, NodeId};
+
+  /// ブロックノード列（段落 1 つ想定）から最初の `\cite` の HIR `NodeId` を探す
+  fn find_first_cite_id(nodes: &[HirNode]) -> Option<NodeId> {
+    for node in nodes {
+      if let HirNodeKind::Paragraph(inlines) = &node.kind {
+        for inline in inlines {
+          if let HirInlineKind::Cite { .. } = &inline.kind {
+            return Some(inline.id);
+          }
+        }
+      }
+    }
+    return None;
+  }
+
+  /// `DocNode` 列（段落 1 つ想定）から最初の `Cite` を探す
+  fn find_first_doc_cite(nodes: &[DocNode]) -> Option<&InlineNode> {
+    for node in nodes {
+      if let DocNode::Paragraph(inlines) = node {
+        for inline in inlines {
+          if let InlineNode::Cite { .. } = inline {
+            return Some(inline);
+          }
+        }
+      }
+    }
+    return None;
+  }
+
+  #[test]
+  fn cite_carries_hir_node_id() {
+    // Arrange — `\cite` を 1 つ含むソースをパースする
+    let hir = crate::frontend::parse_source(r"本文 \cite{rika} です。", crate::model::SourceId::new(0))
+      .expect("パースに成功するはず");
+    let hir_cite_id = find_first_cite_id(&hir.group.nodes).expect("HIR に Cite があるはず");
+    let document = crate::model::HirDocument::assemble(vec![hir]);
+    let group = document.groups().first().expect("1 グループあるはず");
+
+    // Act
+    let nodes = super::hir_group_to_doc_nodes(group, document.locations());
+
+    // Assert
+    let InlineNode::Cite { node_id, .. } = find_first_doc_cite(&nodes).expect("DocNode に Cite があるはず")
+    else {
+      unreachable!("find_first_doc_cite は Cite だけを返す")
+    };
+    assert_eq!(*node_id, hir_cite_id, "adapter は HIR の NodeId をそのまま運ぶはず");
+  }
 }

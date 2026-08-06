@@ -26,4 +26,8 @@ impl NodeId {
 
   /// ソース内の連番を返す
   pub(crate) fn local(self) -> u32 { return self.local; }
+
+  /// テスト専用の構築子（本体コードは `HirBuilder` 経由でしか ID を得られない）
+  #[cfg(test)]
+  pub(crate) fn for_test(source: SourceId, local: u32) -> Self { return NodeId { source, local }; }
 }

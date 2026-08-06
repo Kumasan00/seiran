@@ -5,7 +5,6 @@ use crate::{
   resolve::{
     ResolveError,
     counter::CounterRegistry,
-    error::span_to_source_span,
     inline::{IndexKey, ResolvedInline},
     node::{ResolvedListItem, ResolvedMathRow, ResolvedNode, ResolvedProofTarget, ResolvedTableCell, ResolvedTableRow},
   },
@@ -33,7 +32,7 @@ pub(crate) struct PendingHeading {
 ///
 /// # Errors
 ///
-/// ラベルの重複登録・未整形の `\cite` に遭遇した場合に [`ResolveError`] を返します。
+/// ラベルの重複登録に遭遇した場合に [`ResolveError`] を返します。
 pub(crate) fn resolve_group(
   nodes: &[DocNode],
   registry: &mut CounterRegistry,
@@ -73,7 +72,7 @@ fn resolve_node(
         None
       };
       let resolved_label = label.as_ref().map(|l| return LabelId::new(l.clone()));
-      let resolved_title = resolve_inlines(title, source)?;
+      let resolved_title = resolve_inlines(title);
       headings.push(PendingHeading {
         index: headings.len(),
         level: *level,
@@ -89,7 +88,7 @@ fn resolve_node(
         span: *span,
       });
     },
-    DocNode::Paragraph(inlines) => return Ok(ResolvedNode::Paragraph(resolve_inlines(inlines, source)?)),
+    DocNode::Paragraph(inlines) => return Ok(ResolvedNode::Paragraph(resolve_inlines(inlines))),
     DocNode::List {
       ordered,
       items,
@@ -220,7 +219,7 @@ fn resolve_node(
         height: *height,
         dpi: *dpi,
         downsample: *downsample,
-        caption: caption.as_ref().map(|c| return resolve_inlines(c, source)).transpose()?,
+        caption: caption.as_ref().map(|c| return resolve_inlines(c)),
         caption_position: *caption_position,
         label: label.as_ref().map(|l| return LabelId::new(l.clone())),
         counter_value,
@@ -244,28 +243,28 @@ fn resolve_node(
         return table_rows
           .iter()
           .map(|row| {
-            return Ok(ResolvedTableRow {
+            return ResolvedTableRow {
               cells: row
                 .cells
                 .iter()
                 .map(|cell| {
-                  return Ok(ResolvedTableCell {
-                    content: resolve_inlines(&cell.content, source)?,
+                  return ResolvedTableCell {
+                    content: resolve_inlines(&cell.content),
                     span: cell.span,
-                  });
+                  };
                 })
-                .collect::<Result<Vec<_>, ResolveError>>()?,
+                .collect(),
               rule_above: row.rule_above,
-            });
+            };
           })
-          .collect::<Result<Vec<_>, ResolveError>>();
+          .collect();
       };
       return Ok(ResolvedNode::Table {
         columns: columns.clone(),
         widths: widths.clone(),
-        head: resolve_rows(head)?,
-        rows: resolve_rows(rows)?,
-        caption: caption.as_ref().map(|c| return resolve_inlines(c, source)).transpose()?,
+        head: resolve_rows(head),
+        rows: resolve_rows(rows),
+        caption: caption.as_ref().map(|c| return resolve_inlines(c)),
         caption_position: *caption_position,
         label: label.as_ref().map(|l| return LabelId::new(l.clone())),
         counter_value,
@@ -277,21 +276,24 @@ fn resolve_node(
 }
 
 /// インラインノード列を解決する
-fn resolve_inlines(inlines: &[InlineNode], source: Origin) -> Result<Vec<ResolvedInline>, ResolveError> {
-  return inlines.iter().map(|inline| return resolve_inline(inline, source)).collect();
+///
+/// インライン要素は名前の存在検証を伴わない（`\ref` の存在検証は pass2 の `validate_refs`）ため
+/// 失敗しない。生成物（引用表示）の解決にも `resolve.rs` から使う。
+pub(super) fn resolve_inlines(inlines: &[InlineNode]) -> Vec<ResolvedInline> {
+  return inlines.iter().map(resolve_inline).collect();
 }
 
 /// 単一のインラインノードを解決する
-fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline, ResolveError> {
-  return Ok(match inline {
+fn resolve_inline(inline: &InlineNode) -> ResolvedInline {
+  return match inline {
     InlineNode::Text(s) => ResolvedInline::Text(s.clone()),
     InlineNode::Styled { kind, children } => ResolvedInline::Styled {
       kind: *kind,
-      children: resolve_inlines(children, source)?,
+      children: resolve_inlines(children),
     },
     InlineNode::Colored { color, children } => ResolvedInline::Colored {
       color: *color,
-      children: resolve_inlines(children, source)?,
+      children: resolve_inlines(children),
     },
     InlineNode::InlineMath(nodes) => ResolvedInline::InlineMath(nodes.clone()),
     InlineNode::Symbol(ch) => ResolvedInline::Symbol(*ch),
@@ -303,28 +305,18 @@ fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline,
     },
     InlineNode::Link { url, children } => ResolvedInline::Link {
       url: url.clone(),
-      children: resolve_inlines(children, source)?,
+      children: resolve_inlines(children),
     },
     InlineNode::InternalLink { target, children } => ResolvedInline::InternalLink {
       target: target.clone(),
-      children: resolve_inlines(children, source)?,
+      children: resolve_inlines(children),
     },
-    InlineNode::Cite { keys, label, span } => {
-      let Some(label) = label else {
-        return Err(ResolveError::UnresolvedCitation {
-          keys: keys.join(", "),
-          span: span_to_source_span(*span),
-          origin: source,
-        });
-      };
-      ResolvedInline::Cite {
-        targets: keys.iter().map(|k| return crate::model::CitationId::new(k.clone())).collect(),
-        label: resolve_inlines(label, source)?,
-        span: *span,
-      }
+    InlineNode::Cite { node_id, span, .. } => ResolvedInline::Cite {
+      site: *node_id,
+      span: *span,
     },
     InlineNode::Footnote { body, span } => ResolvedInline::Footnote {
-      body: resolve_inlines(body, source)?,
+      body: resolve_inlines(body),
       span: *span,
     },
     InlineNode::Index {
@@ -338,7 +330,7 @@ fn resolve_inline(inline: &InlineNode, source: Origin) -> Result<ResolvedInline,
       },
       span: *span,
     },
-  });
+  };
 }
 
 #[cfg(test)]

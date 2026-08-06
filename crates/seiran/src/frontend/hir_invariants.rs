@@ -42,33 +42,9 @@ fn fixture_sources() -> Vec<(String, String)> {
   return sources;
 }
 
-/// ソース中に現れる `\cite{...}` のキーをすべて既知として扱う集合を作る
-///
-/// ここで検証したいのは HIR の構造であって引用キーの検証ではないので、
-/// フィクスチャが参照するキーはすべて定義済みとみなす。
-fn citation_keys_in(source: &str) -> HashSet<String> {
-  let mut keys = HashSet::new();
-  let mut rest = source;
-  while let Some(pos) = rest.find("\\cite{") {
-    rest = &rest[pos + "\\cite{".len()..];
-    let Some(end) = rest.find('}') else {
-      break;
-    };
-    for key in rest[..end].split(',') {
-      let key = key.trim();
-      if !key.is_empty() {
-        keys.insert(key.to_string());
-      }
-    }
-    rest = &rest[end..];
-  }
-  return keys;
-}
-
-/// フィクスチャをパースする（引用キーはソースから収集したものを使う）
+/// フィクスチャをパースする
 fn parse_fixture(name: &str, content: &str, source_id: SourceId) -> HirSource {
-  return parse_source(content, source_id, &citation_keys_in(content))
-    .unwrap_or_else(|e| panic!("{name} のパースに成功するはず: {e:?}"));
+  return parse_source(content, source_id).unwrap_or_else(|e| panic!("{name} のパースに成功するはず: {e:?}"));
 }
 
 /// HIR を親子関係つきで走査する（親は必ず子より先に訪れる）
@@ -238,18 +214,17 @@ fn source_order_does_not_affect_ids_or_spans() {
   // Arrange — 2 つのソースを用意し、B を 3 通りの文脈でパースする
   let source_a = "\\section{最初}\n\n本文 A です。";
   let source_b = "\\section{次}\n\n本文 B の $x^2$ です。";
-  let keys = HashSet::new();
 
   // Act
-  let alone = parse_source(source_b, SourceId::new(1), &keys).unwrap();
+  let alone = parse_source(source_b, SourceId::new(1)).unwrap();
   let a_then_b = {
-    let a = parse_source(source_a, SourceId::new(0), &keys).unwrap();
-    let b = parse_source(source_b, SourceId::new(1), &keys).unwrap();
+    let a = parse_source(source_a, SourceId::new(0)).unwrap();
+    let b = parse_source(source_b, SourceId::new(1)).unwrap();
     HirDocument::assemble(vec![a, b])
   };
   let b_then_a = {
-    let b = parse_source(source_b, SourceId::new(1), &keys).unwrap();
-    let a = parse_source(source_a, SourceId::new(0), &keys).unwrap();
+    let b = parse_source(source_b, SourceId::new(1)).unwrap();
+    let a = parse_source(source_a, SourceId::new(0)).unwrap();
     HirDocument::assemble(vec![b, a])
   };
 
@@ -336,7 +311,6 @@ fn child_node_ids_come_after_their_parent() {
 fn paragraph_boundaries_are_unchanged_by_id_reservation() {
   // Arrange — 段落 ID は「インラインを返すか、ブロックを返すか」が確定する前に予約する。
   // 予約が段落の切れ目を動かしていないことを、ブロック / インラインが混ざるソースで固定する。
-  let keys = HashSet::new();
   let cases: [(&str, &[&str]); 5] = [
     ("本文です。", &["Paragraph"]),
     ("前\n\n後", &["Paragraph", "Paragraph"]),
@@ -347,7 +321,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
 
   for (source, expected) in cases {
     // Act
-    let hir = parse_source(source, SourceId::new(0), &keys).unwrap();
+    let hir = parse_source(source, SourceId::new(0)).unwrap();
     let nodes = to_doc_nodes(hir);
 
     // Assert
@@ -367,7 +341,7 @@ fn paragraph_boundaries_are_unchanged_by_id_reservation() {
 
   // 段落の位置は最初のインラインの開始から最後のインラインの終わりまでを覆う
   let source = "  本文です。  ";
-  let hir = parse_source(source, SourceId::new(0), &keys).unwrap();
+  let hir = parse_source(source, SourceId::new(0)).unwrap();
   let visited = visit_source(&hir);
   let paragraph = visited.first().expect("段落ノードがあるはず");
   let span = hir.spans.span_of(paragraph.id);
@@ -437,19 +411,18 @@ fn assert_unresolved_inlines(inlines: &[InlineNode], name: &str) {
       InlineNode::InternalLink { .. } => {
         panic!("{name}: InternalLink は CSL 整形段の生成物なので frontend からは出ないはず");
       },
-      InlineNode::Cite { label, .. } => {
-        assert!(label.is_none(), "{name}: frontend 段の引用ラベルは未解決（None）のはず");
-      },
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
       | InlineNode::Footnote { body: children, .. } => assert_unresolved_inlines(children, name),
+      // `Cite` は引用「箇所」だけを表し、表示は型として持てない（生成物は side table 側）
       InlineNode::Text(_)
       | InlineNode::InlineMath(_)
       | InlineNode::Symbol(_)
       | InlineNode::LineBreak
       | InlineNode::NoIndent
       | InlineNode::Ref { .. }
+      | InlineNode::Cite { .. }
       | InlineNode::Index { .. } => {},
     }
   }

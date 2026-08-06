@@ -1,18 +1,18 @@
-build::multiple_source_errors
+build::multiple_citation_errors
 
-  × 複数のソースファイルでエラーが発生しました。
+  × 複数の引用箇所で未定義の引用キーがあります。
 
-Error: frontend::parse_source::eval
+Error: build::citation::unknown_citation_key
 
-  × 評価に失敗しました
-  ╰─▶ frontend::eval::unknown_citation_key
-      
-        × 未定義の引用キーがあります
-         ╭─[tests/text/diagnostics/unknown_cite_key.sei:3:47]
-       2 │
-       3 │ 存在しない文献キーを引用します \cite{totally-unknown-key}。
-         ·                                ─────────────┬────────────
-         ·                                             ╰── 未定義の引用キー: totally-unknown-key
-         ╰────
-        help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください
-      
+  × 未定義の引用キーがあります
+   ╭─[tests/text/diagnostics/unknown_cite_key.sei:3:47]
+ 2 │ 
+ 3 │ 存在しない文献キーを引用します \cite{totally-unknown-key}。
+   ·                                ─────────────┬────────────
+   ·                                             ╰── 未定義の引用キー: totally-unknown-key
+ 4 │ 
+ 5 │ こちらも存在しない文献キーです \cite{another-unknown-key}。
+   ·                                ─────────────┬────────────
+   ·                                             ╰── 未定義の引用キー: another-unknown-key
+   ╰────
+  help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください

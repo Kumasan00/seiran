@@ -97,11 +97,13 @@ pub(super) fn lower_inline(
         children: inner,
       }];
     },
-    ResolvedInline::Cite { label, .. } => {
-      // `label`（CSL 整形済みインライン列）は `resolve` の時点で必ず埋まっている。
+    ResolvedInline::Cite { site, .. } => {
+      // 表示（CSL 整形済みインライン列）は文書木ではなく生成物の side table から引く。
+      // 子の lowering が `state` を可変で借りるため、引いた表示はここで複製してから渡す。
       let style = with_link_color(parent_style, ctx.style.hyperref.cite_color);
+      let display: Vec<ResolvedInline> = state.citation_display(*site).to_vec();
       let mut result = Vec::new();
-      for child in label {
+      for child in &display {
         result.extend(lower_inline(ctx, child, style, state));
       }
       return result;
@@ -462,15 +464,18 @@ mod tests {
     let mut style = crate::config::Style::default();
     style.hyperref.cite_color = Some(blue);
     let ctx = LoweringContext::new(&style);
+    let site = crate::model::NodeId::for_test(crate::model::SourceId::new(0), 0);
     let inline = ResolvedInline::Cite {
-      targets: vec![crate::model::CitationId::new("foo")],
-      label: vec![ResolvedInline::InternalLink {
+      site,
+      span: Span::DUMMY,
+    };
+    let document = test_support::document_with_citation_display(
+      site,
+      vec![ResolvedInline::InternalLink {
         target: crate::model::CitationId::new("foo"),
         children: vec![ResolvedInline::Text("1".to_string())],
       }],
-      span: Span::DUMMY,
-    };
-    let document = test_support::document(&[]);
+    );
 
     // Act
     let nodes = lower_inline(&ctx, &inline, TextStyle::new(Length::pt(10.0)), &mut LoweringState::new(&document));

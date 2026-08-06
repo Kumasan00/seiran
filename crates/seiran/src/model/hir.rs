@@ -13,6 +13,7 @@ mod id;
 mod inline;
 mod math;
 mod node;
+mod node_map;
 mod source_map;
 
 pub(crate) use builder::HirBuilder;
@@ -21,4 +22,5 @@ pub(crate) use id::NodeId;
 pub(crate) use inline::{HirInline, HirInlineKind};
 pub(crate) use math::{HirMath, HirMathKind, HirMathRow};
 pub(crate) use node::{HirListItem, HirNode, HirNodeKind, HirProofTarget, HirTableCell, HirTableRow};
+pub(crate) use node_map::NodeMap;
 pub(crate) use source_map::{SourceMap, SourceSpans};

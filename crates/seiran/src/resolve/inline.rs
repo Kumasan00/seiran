@@ -1,7 +1,8 @@
-//! 解決済みインライン要素。`crate::model::InlineNode` と 1:1 だが、`\ref` / `\cite` / `\index` の
-//! 使用箇所だけが生の名前ではなく typed ID を持つ
+//! 解決済みインライン要素。`crate::model::InlineNode` と 1:1 だが、`\ref` / `\index` の使用箇所は
+//! 生の名前ではなく typed ID を持ち、`\cite` の使用箇所は表示ではなく引用箇所の `NodeId` だけを持つ
+//! （表示は `ResolvedGenerated::citation_displays` 側にある）
 
-use crate::model::{CitationId, Color, FontKind, LabelId, MathNode, Span};
+use crate::model::{CitationId, Color, FontKind, LabelId, MathNode, NodeId, Span};
 
 /// 索引語の同一性キー（正規化した語 + reading）
 ///
@@ -62,12 +63,10 @@ pub enum ResolvedInline {
     /// 表示テキスト
     children: Vec<ResolvedInline>,
   },
-  /// 文献引用（解決済み — ラベルは必ず `Some` だったものを展開している）
+  /// 文献引用の箇所（表示は持たない — `ResolvedGenerated::citation_displays` から `site` で引く）
   Cite {
-    /// 引用キーの解決先（`\cite{a,b}` は複数要素）
-    targets: Vec<CitationId>,
-    /// 整形済みの引用ラベル（CSL 整形済みインライン列）
-    label: Vec<ResolvedInline>,
+    /// この引用箇所の HIR ノード ID（表示インライン列を引くキー）
+    site: NodeId,
     /// 元のソース位置（診断用に保持するが、解決後は使われない想定）
     span: Span,
   },

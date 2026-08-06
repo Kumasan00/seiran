@@ -18,7 +18,6 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, Span},
 };
 
-pub(crate) mod cite;
 mod command;
 mod environment;
 mod error;

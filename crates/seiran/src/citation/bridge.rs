@@ -1,4 +1,4 @@
-//! [`Reference`] から hayagriva の CSL-JSN 担体への変換アダプタ。
+//! [`Reference`] から hayagriva の CSL-JSON 担体への変換アダプタ。
 //!
 //! serde だけでは `Item` 化できない 3 点を吸収する:
 //! - `Option::None` 由来の `null` は `Item` の `Value` に変種が無いので除去する。
@@ -10,13 +10,13 @@ use serde_json::{Map, Value};
 
 use crate::citation::Reference;
 
-/// `Reference` を CSL-JSN 担体 `Item` に変換する。
+/// `Reference` を CSL-JSON 担体 `Item` に変換する。
 ///
 /// `id` は参照定義のキー（`references` マップのキー）で、hayagriva の cite key となる。
 ///
 /// # Errors
 ///
-/// `Reference` の CSL-JSN 表現が `Item`（`citationberg::json::Value` のマップ）にデシリアライズ
+/// `Reference` の CSL-JSON 表現が `Item`（`citationberg::json::Value` のマップ）にデシリアライズ
 /// できない場合（例: `date-parts` に文字列の年や i16 を超える年が含まれる場合）に
 /// [`serde_json::Error`] を返す。
 pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_json::Error> {
@@ -29,7 +29,7 @@ pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_jso
   return serde_json::from_value(Value::Object(object));
 }
 
-/// CSL-JSN オブジェクトを `Item` 化できる形に整える（再帰）。
+/// CSL-JSON オブジェクトを `Item` 化できる形に整える（再帰）。
 fn sanitize_object(map: Map<String, Value>) -> Map<String, Value> {
   let mut out = Map::new();
   for (key, value) in map {
@@ -41,7 +41,7 @@ fn sanitize_object(map: Map<String, Value>) -> Map<String, Value> {
   return out;
 }
 
-/// CSL-JSN 値を `Item` の `Value`（String / Number(i64) / Names / Date）に嵌る形へ正規化する（再帰）。
+/// CSL-JSON 値を `Item` の `Value`（String / Number(i64) / Names / Date）に嵌る形へ正規化する（再帰）。
 fn sanitize_value(value: Value) -> Value {
   return match value {
     Value::Object(map) => Value::Object(sanitize_object(map)),
