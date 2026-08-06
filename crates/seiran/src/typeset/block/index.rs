@@ -8,8 +8,8 @@ use icu::{
 use super::Measurer;
 use crate::{
   config::Style,
-  font::FontSystem,
-  model::{FontKind, Length},
+  font::{FontKind, FontSystem},
+  length::Length,
   typeset::{
     layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,

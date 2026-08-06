@@ -4,8 +4,8 @@ use tracing::debug;
 
 use super::Measurer;
 use crate::{
-  font::FontSystem,
-  model::{FontKind, Length},
+  font::{FontKind, FontSystem},
+  length::Length,
   typeset::{
     layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
     lowering::TextStyle,
@@ -205,7 +205,7 @@ fn append_slot(
 mod tests {
   use super::{RunningMetadata, append_slot, slot_width, substitute};
   use crate::{
-    model::Length,
+    length::Length,
     typeset::layout::{HBox, HBoxContent, PositionedBox},
   };
 

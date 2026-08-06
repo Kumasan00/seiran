@@ -3,10 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-  Length,
-  length::{non_negative, positive},
-};
+use crate::length::{Length, non_negative, positive};
 
 /// 巻末索引のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -54,7 +51,7 @@ mod tests {
   use garde::Validate;
 
   use super::IndexStyle;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn validate_accepts_default() {

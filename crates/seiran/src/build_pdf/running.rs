@@ -6,8 +6,8 @@ use tracing::info;
 
 use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
 use crate::{
+  color::Color,
   config::{DocumentConfig, RunningContentStyle, Style},
-  model::Color,
   typeset::{RunningContentSpec, RunningMetadata, RunningSlots},
 };
 
@@ -29,8 +29,8 @@ pub(super) fn place_running_content(
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
-  text_width: crate::model::Length,
-  page_height: crate::model::Length,
+  text_width: crate::length::Length,
+  page_height: crate::length::Length,
   page_labels: PageLabels,
 ) -> RunningContentSpec {
   return RunningContentSpec {
@@ -52,7 +52,7 @@ fn build_running_spec(
 /// 全スロットが空なら描画を省略するため `None` を返す。
 fn running_slots(
   style: &RunningContentStyle,
-  baseline_y: crate::model::Length,
+  baseline_y: crate::length::Length,
   rule_below: bool,
 ) -> Option<RunningSlots> {
   if style.is_empty() {

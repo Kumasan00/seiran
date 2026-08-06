@@ -17,7 +17,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
-  model::Length,
+  length::Length,
   typeset::{AnchorMark, BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
 };
 

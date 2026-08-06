@@ -15,8 +15,7 @@ use super::{
 };
 use crate::{
   config::parse_style,
-  font::{FontData, FontDataExt, FontResources},
-  model::FontType,
+  font::{FontData, FontDataExt, FontResources, FontType},
 };
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_diagnostics`）を返す。
@@ -146,7 +145,7 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::config::VariationAxis {
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::font::VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);

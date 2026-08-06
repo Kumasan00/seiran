@@ -198,7 +198,7 @@ fn pdf_structure_background_paints_before_body_content() {
   // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の
   // デコード + ダウンサンプルに数十秒かかり、この検証に対して費用だけが乗る。
   let bytes = build_pdf_bytes_with_style("text", |style| {
-    style.background_color = Some(crate::model::Color::new(220, 220, 220));
+    style.background_color = Some(crate::color::Color::new(220, 220, 220));
   });
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
   let (_, &page_id) = document.get_pages().iter().next().expect("少なくとも 1 ページあるはず");

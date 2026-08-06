@@ -12,7 +12,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, EnvironmentView, extract_text_content},
   },
-  model::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind, Length},
+  length::Length,
+  model::{CaptionPosition, HirBuilder, HirInline, HirNode, HirNodeKind},
 };
 
 /// `figure` 環境を評価する

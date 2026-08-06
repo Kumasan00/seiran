@@ -26,10 +26,38 @@
 7 crate — model / config / resolve / frontend / citation / font / typeset — を非公開 module として吸収した。
 crate はデプロイ・外部依存・独立再利用の単位に限定し、コンパイル段階を crate 境界にしない）。
 
-以下の 8 つの子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の 9 つの子節はいずれも `crates/seiran/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
+
+### `length` / `color`
+
+#### 責務
+
+それぞれ 1 つの値概念を所有する leaf module（#336 で `model` から移設）。crate root 直下の非公開
+module で、crate 内の他 module への依存を持たない（外部依存は serde / garde のみ）。
+
+- `length`: 単位付き長さ値 `Length`。内部表現は **sp（scaled point）= 1/65536 pt** の整数（i64）で、
+  整数加算が結合的かつ正確なため伸縮配分の多段加算でも誤差が蓄積せず、並列 reduce でも順序非依存で
+  ビット同一の結果になる。丸め規約は `round_sp`（round-half-to-even）1 箇所に集約する。
+  TOML の `"12pt"` / `"5mm"` / `"1.5cm"` を受理する `FromStr` / serde、正準形 `<pt値>pt` の `Display`、
+  演算子実装（`Add` / `Sub` / `Mul<f64|f32|i32>` / `Div` / `Sum` 等）、garde のカスタムバリデータ
+  `positive` / `non_negative` をすべて同じ module に置く。
+- `color`: 8bit RGB 値 `Color([u8; 3])`。serde は `"#rrggbb"` の 16 進文字列のみを受理し（`[r, g, b]`
+  配列は不可）、出力は小文字 16 進の正準表現。
+
+#### 不変条件・注意点
+
+- **内部表現・丸め規則・正準表現を consumer に複製しない**。f64 / f32 への変換は入出力境界（TOML
+  パース・PDF 座標出力・ダンプ整形）だけに閉じる。`Deref` / `From<f32>` は意図的に実装しない
+  （変換漏れを型検査で検出するため）。
+- garde のカスタムバリデータは `#[garde(custom(positive))]` のように**属性内の文字列的なパス**で
+  参照されるため、module を動かしても型検査では検出されない。`config/style/*` と
+  `config/config_toml/pre_config.rs` の計 17 ファイルが `crate::length::{positive, non_negative}` を
+  import している。
+- crate root 直下の非公開 module なので、`crate::length::positive` は crate 全体から到達できる
+  （`model` の子だった頃に必要だった `pub(crate) mod` は不要になった）。
 
 ### `model`
 
@@ -37,27 +65,30 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 パイプライン全段が共有するデータモデルの leaf module。外部依存は serde / garde のみで、診断
 ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
-crate 内 module への依存も持たない（#334 で `link` を `typeset::layout` へ移し、`model` → `citation`
-という唯一の逆向き依存が消えた）。
+crate 内では `length` / `color` / `font` にのみ依存する（HIR や `table_column` が値として `Length` /
+`Color` / `FontKind` を持つため。#334 で `link` を `typeset::layout` へ移し `model` → `citation` の
+逆向き依存が消えた状態は保つ — 後段 module への依存は持たない）。
 
 epic #332 はこの module 自体の解体を目標にしている（「共有されていること」は所有者の不在であって
 所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ、
 第 2 段階の #334 で意味解析の識別子を `resolve`、配置・アンカーの型を `typeset::layout`、
-`TextAlignment` を `config::style::text` へ移した。目標構成は `docs/model-target-architecture.md`。
+`TextAlignment` を `config::style::text` へ移し、第 4 段階の #336 で値概念の `Length` / `Color` を
+crate root 直下の `length` / `color`、フォント分類の `FontKind` / `FontType` / `FontMap` と処理済み
+フォント設定を `font`、`column_width` を `config::layout` へ移した。
+目標構成は `docs/model-target-architecture.md`。
 
 #### モジュール構成
 
-3 層に分かれる（すべて非公開 module。`length` だけは garde のカスタムバリデータを名前空間付きで
-参照するため `pub mod`）。組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）と
-シェーピング結果型（`GlyphRun` / `Glyph`）はここには置かない（#280、後述）。
+3 層に分かれる（すべて非公開 module）。組版中間型（`Block` / `HItem` / `Line` / `Page` /
+`TableBox` 系）とシェーピング結果型（`GlyphRun` / `Glyph`）はここには置かない（#280、後述）。
 
-- **語彙型**: `color`（`Color`）/ `font`（`FontType` / `FontKind`）/ `font_map`
-  （`FontMap`）/ `heading_level`（`HeadingLevel`）/ `length`（`Length`）/ `table_column`
+- **語彙型**: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有、#334）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
-  `span`（`Span`）/ `column_width`（段組みの 1 段あたりの幅を求める純粋計算）。小さな `Copy` 値型・enum
-  と、その正準変換（`as_str` / `from_name` / serde / `Display`）・純粋演算（`Length` の算術）のみを持つ。
+  `span`（`Span`）。小さな `Copy` 値型・enum と、その正準変換（`as_str` / `from_name` / serde /
+  `Display`）のみを持つ。値概念そのものである `Length` / `Color` は `length` / `color`、フォント分類の
+  `FontType` / `FontKind` / `FontMap` は `font` の所有（#336）。
 - **起源識別子**: `origin` が `SourceId(usize)` を持ち（`Origin` / `GeneratedOrigin` は #324 で削除 —
   意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
   `ids` が `AssetId` の newtype を持つ。意味解析が確定する `LabelId` / `HeadingKey` は `resolve::ids`、
@@ -109,8 +140,9 @@ epic #332 はこの module 自体の解体を目標にしている（「共有�
   `SourceId` しか持てず、生成物が紛れ込むこと自体が型として起こらない。意味解析は HIR（実ソースのみ）を
   走査するので、そもそも生成物を見ない（#324）。typeset::lowering も本文（`AnalyzedDocument` の HIR）と
   生成物（書誌・引用表示）を別経路で lower し、両者を 1 つの木へ混ぜ直すことはしない（#325）。
-- 段組みの 1 段あたりの幅を求める純粋計算 `column_width` をここに置き、`config` の横断バリデーションと
-  `typeset::breaking::break_pages` の実配置が同じ式を参照する。
+- 段組みの 1 段あたりの幅を求める純粋計算 `column_width` は `config::layout` の所有（#336）。
+  設定横断の配置計算なので、`config` の横断バリデーション（`validate_layout`）・`build_pdf` の
+  段幅算出・`typeset::breaking::break_pages` の実配置が同じ式を参照する構造は変わらない。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
   ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は frontend →
   lowering → block の複数段が共有するので `model` にあるのが正しい — ファイル名だけを見て移さない。
@@ -135,7 +167,7 @@ module root の `pub use` で 1 本のパスに揃える（`config::Config` / `c
 （`DocumentPolicy` / `CounterPolicy` / `TheoremPolicy`）を持つ（#324）。
 
 root facade が再エクスポートするのは**実際に名指しされる名前だけ**で、`Config` の内部フィールド型に
-しか現れない名前（`ConfigValidationError` / `Feature` / `ReadConfigError` / `CounterPolicy` /
+しか現れない名前（`ConfigValidationError` / `ReadConfigError` / `CounterPolicy` /
 `TheoremPolicy` / 個別の `*Style` 群など）は出さない（#326）。エラー型は
 `ConfigValidationError` / `StyleValidationError` と接頭辞で区別する — かつて双方が `ValidationError` を
 名乗り、名前衝突を避けるために module を `pub mod` 公開していたが、改名して衝突自体を無くした。
@@ -182,8 +214,12 @@ pub trait ProjectSource: Send + Sync {
 - 検証: `read_config` が `PreConfig` を検証し、違反は `ReadConfigError::MultipleValidationErrors`
   （`#[related]` 集約）で 1 度にまとめて報告する。TOML 構文エラーは `NamedSource` + `#[label]` 付き。
 - `processed_config`: 検証済み・パス解決済みの公開型 `Config` / `DocumentConfig` / `OutputConfig` /
-  `PdfConfig` / `ImageConfig` / `FontConfig` / `FontConfigs` / `Margin` / `Feature` / `VariationAxis` /
-  `TextDirection`。後段はこちらだけを見る。
+  `PdfConfig` / `ImageConfig` / `Margin`。後段はこちらだけを見る。**処理済みフォント設定**
+  （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は #336 で
+  `font::settings` へ移した — 後段が要求する入力契約は後段が所有し、`config` はそれを構築する側に
+  なる（`Config.font_configs: font::FontConfigs`）。TOML に対応する未検証型 `PreFontConfig` /
+  `PreVariationAxis` / `PreFontFeature` と、そこから検証済み値を組み立てる `parse_font_values` /
+  `validate_and_convert` / `resolve` は `config` に残る。
 - `tag`: OpenType タグ文字列（script / language / feature）の検証・構築の単一情報源（`TagError`）。
 - `test_support`: テスト用の設定生成ヘルパ（`#[doc(hidden)]` で再エクスポート）。
 
@@ -254,8 +290,10 @@ pub trait ProjectSource: Send + Sync {
 
 `config` と `style` のどちらか片方だけでは判定できない制約（用紙・余白 × `[columns]` の段幅など）を
 `validate_layout(&Config, &Style) -> Result<(), LayoutValidationError>` に集約する。段幅の算出式
-（`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体は `config` と
-`typeset::breaking::break_pages` の双方が使うため `model::column_width` にある。
+（`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体も同じ module の
+`column_width` が持つ（#336 で `model` から移設）。段組み設定から導出する設定横断の配置計算なので、
+横断検証と同じ場所に置き、`build_pdf::phase_context` と `typeset::breaking::break_pages` が
+`config::column_width` として参照する。
 
 ### `resolve`
 
@@ -496,7 +534,13 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 #### 責務
 
 全 19 フォント種別の読み込み・OpenType 解析・メトリクス取得・シェーピング・設定検証。`read-fonts` /
-`harfrust` / `rayon` を使用する。
+`harfrust` / `rayon` を使用する。#336 でフォント分類の型（`FontKind` / `FontType` / `FontMap`）と
+処理済みフォント設定（`FontConfig` / `FontConfigs` / `VariationAxis` / `Feature` / `TextDirection`）の
+所有もここへ移した。前者は「言語・スタイルが確定した 19 種別」という分類とその全域性の不変条件、
+後者は font の入力契約であり、いずれもフォント処理が意味を決める型だから。
+crate 内では `length` / `color` に依存する。`config` への依存は外部資源取得の seam
+（`ProjectSource` / `ProjectPath`）のためだけに残っており、seam を `project` module へ切り出す #337 で
+解消される。
 
 #### モジュール構成
 
@@ -504,13 +548,26 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
   与える拡張トレイト `FontDataExt` / `FontRefsExt` / `FontMetricsExt`、1 フォントぶんのメトリクス
   `FontMetric`（upem / ascender / descender の一元化）、エラー `FontLoadError`。読み込みは `rayon` で
   種別ごとに並列化する。
+- `kind`（非公開、root facade で `FontKind` / `FontType` を再エクスポート）: 言語判定前の分類
+  `FontKind`（13 variant）と、言語・スタイルが確定した最終種別 `FontType`（19 variant）。
+  `FontType::ALL`（宣言順の配列）と `as_toml_key`（`[font_configs.<key>]` の snake_case キー）を持つ。
+- `map`（非公開、root facade で `FontMap` を再エクスポート）: 全 19 種別に対応する値を保持する
+  `FontMap<T>`。`from_all` が `FontType::ALL` と要素数の一致を要求し、「全種別が揃っている」ことを
+  型の側で保証する。イテレーションは常に `FontType::ALL` の順序。
+- `settings`（非公開、root facade で `FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` /
+  `TextDirection` を再エクスポート）: font の入力契約となる検証済み・処理済みフォント設定（#336 で
+  `config::config_toml::processed_config` から移設）。TOML に対応する未検証型と、そこから
+  検証済み値を構築する処理は `config` に残るので、**`config` がこれらを構築し `font` は設定ファイルの
+  形を知らない**。`TextDirection::from_str` の `Err` 型 `TextDirectionParseError` は名指しする
+  消費者がいないため root facade へは出さない（#326）。
 - `glyph_run`（非公開、root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング結果 1 個の
-  グリフ列とその配置情報。値は `Color` / `FontType` / `Length` という model の共通値型にしか依存しない
-  leaf 型で、`typeset::block` が生成し `build_pdf::publication` が消費する（#280 で `model` から移設。
+  グリフ列とその配置情報。値は `color::Color` / `FontType` / `length::Length` という leaf 値型にしか
+  依存しない leaf 型で、`typeset::block` が生成し `build_pdf::publication` が消費する（#280 で `model` から移設。
   当時は `pdf_gen` crate も同じ型を直接消費していたが、#305 / #307 で `seiran-pdf` が自己完結型
   `seiran_pdf::GlyphRun` を持つようになったため、変換は `build_pdf::publication::to_pdf_glyph_run` の
   1 箇所に閉じている）。
-- `face_config`（非公開、root facade へは出さない）: `FontConfig`（config.toml 由来）から
+- `face_config`（非公開、root facade へは出さない）: `FontConfig`（`settings` の検証済み設定。
+  値の出どころは config.toml）から
   シェーピングに必要なフェース設定 `FontFaceConfig` / `FontFaceConfigs` / `VariationAxisConfig` を
   組み立てる（`build_face_configs`）。名指しする消費者は `font::system` だけで、外からは
   `FontResources::face_configs()` の戻り値型として型推論経由でしか触れないため、root facade には

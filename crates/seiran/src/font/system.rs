@@ -10,18 +10,14 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::{debug, info};
 
-use crate::{
-  config::FontConfigs,
-  font::{
-    FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt,
-    face_config::{FontFaceConfigs, build_face_configs},
-    shaper::{
-      HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
-      ShaperInstancesExt, UnicodeBuffer,
-    },
-    validate_font::{self, MultipleFontValidationErrors},
+use crate::font::{
+  FontConfigs, FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt, FontType,
+  face_config::{FontFaceConfigs, build_face_configs},
+  shaper::{
+    HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances, ShaperInstancesExt,
+    UnicodeBuffer,
   },
-  model::FontType,
+  validate_font::{self, MultipleFontValidationErrors},
 };
 
 /// [`FontResources::load`] / [`FontResources::system`] のエラー。

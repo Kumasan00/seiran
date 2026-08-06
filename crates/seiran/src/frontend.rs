@@ -79,7 +79,10 @@ pub fn parse_source(source: &str, source_id: crate::model::SourceId) -> Result<H
 #[allow(clippy::unwrap_used, clippy::too_many_lines)]
 mod tests {
   use super::{EvalError, ParseSourceError, parse_source};
-  use crate::model::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathStyle};
+  use crate::{
+    font::FontKind,
+    model::{HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathStyle},
+  };
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
   ///

@@ -66,7 +66,7 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
-  use crate::model::{FontKind, Length};
+  use crate::{font::FontKind, length::Length};
 
   /// テンプレート展開の基底スタイル
   fn base_style() -> TextStyle {

@@ -13,32 +13,24 @@
 //!
 //! HIR と同形の中間 IR は持たない — 数式の中間型 `MathNode` とその変換（`to_math_nodes`）は、
 //! `typeset::lowering` が `HirMath` / `HirMathKind` を直接読むようにして削除済み（#335）。
+//!
+//! 値概念の型 `Length` / `Color` は crate root 直下の leaf module `crate::length` / `crate::color` へ、
+//! フォント分類の型 `FontKind` / `FontType` / `FontMap` は `crate::font` へ、段組みの 1 段幅を求める
+//! `column_width` は `crate::config` の layout へ移設済み（#336）。
 
 mod caption;
-mod color;
-mod column_width;
-mod font;
-mod font_map;
 mod heading_level;
 mod hir;
 mod ids;
-mod origin;
-// garde のカスタムバリデータを `crate::model::length::non_negative` 等の名前空間付きパスで
-// 参照するため、crate 内の他 module（`crate::config` 等、`crate::model` の子孫ではない）
-// からも見えるよう `pub(crate)` にする（#307、font crate 吸収時の `font::shaper` と同型）。
-pub(crate) mod length;
 mod math_class;
 mod math_style;
+mod origin;
 mod quote;
 mod span;
 mod table_column;
 mod theorem;
 
 pub use caption::CaptionPosition;
-pub use color::Color;
-pub use column_width::column_width;
-pub use font::{FontKind, FontType};
-pub use font_map::FontMap;
 pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
@@ -46,7 +38,6 @@ pub(crate) use hir::{
   HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
 };
 pub use ids::AssetId;
-pub use length::Length;
 pub use math_class::{MathDelimiter, MathEnvKind};
 pub use math_style::MathStyle;
 pub use origin::SourceId;

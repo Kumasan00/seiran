@@ -3,7 +3,7 @@
 //! lowering が style の設定値（`config::Alignment` 等）から決めた結果であって設定値そのものでは
 //! ないので、TOML から直接デシリアライズされることはない（serde は導出しない、#334）。
 
-use crate::model::Length;
+use crate::length::Length;
 
 /// 段落・行の水平方向の揃え。
 ///
@@ -40,7 +40,7 @@ impl Align {
 #[cfg(test)]
 mod tests {
   use super::Align;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn default_is_left() {

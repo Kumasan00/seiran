@@ -13,7 +13,8 @@ use tracing::debug;
 use crate::{
   citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
-  model::{HirInline, HirInlineKind, HirNode, HirNodeKind, Length, NodeId, NodeMap},
+  length::Length,
+  model::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   resolve::{AnalyzedDocument, CounterValue, HeadingKey, LabelId},
   typeset::layout::AnchorMark,
 };
@@ -44,9 +45,9 @@ pub struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
-  pub body_font_kind: crate::model::FontKind,
+  pub body_font_kind: crate::font::FontKind,
   /// 段落先頭行の字下げ量
-  pub first_line_indent: crate::model::Length,
+  pub first_line_indent: crate::length::Length,
   /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
   pub image_max_dpi: u32,
   /// ラスタ画像のダウンサンプリング可否（config `[image].downsample` 由来）
@@ -89,7 +90,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_body_font_kind(&self, body_font_kind: crate::model::FontKind) -> LoweringContext<'a> {
+  pub fn with_body_font_kind(&self, body_font_kind: crate::font::FontKind) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
@@ -103,7 +104,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_first_line_indent(&self, first_line_indent: crate::model::Length) -> LoweringContext<'a> {
+  pub fn with_first_line_indent(&self, first_line_indent: crate::length::Length) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,

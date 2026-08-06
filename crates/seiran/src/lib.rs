@@ -6,9 +6,14 @@
 
 mod build_pdf;
 mod citation;
+mod color;
 mod config;
 mod font;
 mod frontend;
+// `length` / `color` は crate root 直下の leaf module（#336）。crate root の非公開 module は
+// crate 全体から `crate::length::...` で到達できるため、`model` の子だったときに garde の
+// カスタムバリデータ参照のために要った `pub(crate)` は不要になった。
+mod length;
 mod model;
 mod resolve;
 mod typeset;

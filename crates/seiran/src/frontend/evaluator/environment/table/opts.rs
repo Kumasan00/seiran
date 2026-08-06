@@ -9,7 +9,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{ColumnAlign, ColumnWidth, Length},
+  length::Length,
+  model::{ColumnAlign, ColumnWidth},
 };
 
 /// `table` 環境の任意引数を集約した構造体

@@ -7,7 +7,8 @@ use super::{
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
 use crate::{
-  model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow},
+  font::FontKind,
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   typeset::layout::TableColumn,
 };
 
@@ -107,7 +108,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::Length};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, length::Length};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {

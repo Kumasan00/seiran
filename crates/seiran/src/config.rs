@@ -15,11 +15,8 @@ pub use config_toml::test_support;
 // `build_pdf::publication` の `#[cfg(test)] mod tests` が `Config` を組み立てるのに名指しするため。
 // `config_toml` は `config` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
 #[allow(unused_imports)]
-pub use config_toml::{
-  Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig, TextDirection,
-  VariationAxis, read_config,
-};
-pub use layout::{LayoutValidationError, validate_layout};
+pub use config_toml::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, read_config};
+pub use layout::{LayoutValidationError, column_width, validate_layout};
 // 意味解析（`crate::resolve`）へ渡す設定の投影。`CounterPolicy` / `TheoremPolicy` は
 // `DocumentPolicy` のアクセサ戻り値としてのみ現れ、名指しする消費者がいないので出さない。
 pub use policy::DocumentPolicy;

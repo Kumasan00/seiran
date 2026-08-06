@@ -153,7 +153,8 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{DocumentPolicy, FilesystemProjectSource, Style},
-    model::{FontKind, HirDocument, SourceId},
+    font::FontKind,
+    model::{HirDocument, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 

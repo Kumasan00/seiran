@@ -4,7 +4,7 @@ use tracing::debug_span;
 
 use crate::{
   font::FontSystem,
-  model::Length,
+  length::Length,
   typeset::{
     block::{IndexEntryInput, build_index_blocks, build_index_spec},
     breaking::{LineBreaker, PageGeometry, break_pages},

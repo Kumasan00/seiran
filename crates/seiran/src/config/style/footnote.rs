@@ -4,11 +4,9 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+  color::Color,
   config::style::number_style::NumberStyle,
-  model::{
-    Color,
-    length::{Length, non_negative, positive},
-  },
+  length::{Length, non_negative, positive},
 };
 
 /// 脚注番号のリセット方式
@@ -87,7 +85,7 @@ mod tests {
   use garde::Validate;
 
   use super::{FootnoteNumbering, FootnoteStyle};
-  use crate::{config::style::number_style::NumberStyle, model::Length};
+  use crate::{config::style::number_style::NumberStyle, length::Length};
 
   #[test]
   fn validate_accepts_default() {

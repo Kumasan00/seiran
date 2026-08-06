@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use crate::model::FontType;
+use crate::font::FontType;
 
 /// 19 フォント種別すべての `[font_configs.<key>]` セクションを生成します。
 #[must_use]

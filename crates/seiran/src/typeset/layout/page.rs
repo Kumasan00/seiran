@@ -12,7 +12,7 @@ use super::{
   link::{AnchorMark, LinkTarget},
   table_box::{TableColumn, TableRowBox},
 };
-use crate::model::{AssetId, Length};
+use crate::{length::Length, model::AssetId};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]

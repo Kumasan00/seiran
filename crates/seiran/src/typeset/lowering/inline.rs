@@ -7,7 +7,9 @@ use super::{
 };
 use crate::{
   config::FootnoteStyle,
-  model::{FontKind, HirInline, HirInlineKind, Length},
+  font::FontKind,
+  length::Length,
+  model::{HirInline, HirInlineKind},
   typeset::layout::{AnchorId, FootnoteId, LinkTarget},
 };
 
@@ -169,7 +171,7 @@ fn footnote_marker_node(
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
-pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<crate::model::Color>) -> TextStyle {
+pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<crate::color::Color>) -> TextStyle {
   return TextStyle {
     color: parent_style.color.or(link_color),
     ..parent_style
@@ -188,8 +190,8 @@ mod tests {
   };
   use crate::{
     citation::{CitationId, GeneratedCitations, GeneratedInline},
+    color::Color,
     config::Style as ReadStyle,
-    model::Color,
     resolve::LabelId,
   };
 

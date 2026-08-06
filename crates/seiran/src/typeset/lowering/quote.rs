@@ -2,7 +2,8 @@
 
 use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
 use crate::{
-  model::{HirNode, Length, QuoteKind},
+  length::Length,
+  model::{HirNode, QuoteKind},
   typeset::layout::Align,
 };
 

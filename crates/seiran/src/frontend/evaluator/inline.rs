@@ -190,7 +190,7 @@ mod tests {
     assert!(matches!(
       &inlines[0].kind,
       HirInlineKind::Styled {
-        kind: crate::model::FontKind::SerifBold,
+        kind: crate::font::FontKind::SerifBold,
         ..
       }
     ));
@@ -306,7 +306,7 @@ mod tests {
     assert!(matches!(
       &inlines[2].kind,
       HirInlineKind::Styled {
-        kind: crate::model::FontKind::SerifBold,
+        kind: crate::font::FontKind::SerifBold,
         ..
       }
     ));

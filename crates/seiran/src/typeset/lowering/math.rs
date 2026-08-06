@@ -8,7 +8,9 @@ use super::{
 };
 use crate::{
   config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
-  model::{FontKind, HirMath, HirMathKind, HirMathRow, Length, MathEnvKind, MathStyle},
+  font::FontKind,
+  length::Length,
+  model::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathStyle},
   resolve::CounterValue,
   typeset::layout::Align,
 };
@@ -214,7 +216,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::Length};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, length::Length};
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   ///

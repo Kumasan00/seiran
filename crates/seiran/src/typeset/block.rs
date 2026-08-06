@@ -16,8 +16,9 @@ pub(crate) use toc::{build_toc_blocks, build_toc_spec};
 use tracing::debug;
 
 use crate::{
-  font::{FontSystem, Glyph, GlyphRun, shaper::UnicodeBuffer},
-  model::{Color, FontKind, FontType, Length},
+  color::Color,
+  font::{FontKind, FontSystem, FontType, Glyph, GlyphRun, shaper::UnicodeBuffer},
+  length::Length,
   typeset::{
     breaking::{self, BreakKind, BreakPoint, Lang},
     layout::{
@@ -842,7 +843,7 @@ mod boundary_glue_tests {
     CJK_STRETCH_RATIO, boundary_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
-  use crate::{model::Length, typeset::layout::HItem};
+  use crate::{length::Length, typeset::layout::HItem};
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -913,7 +914,7 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::{model::Length, typeset::layout::HItem};
+  use crate::{length::Length, typeset::layout::HItem};
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]

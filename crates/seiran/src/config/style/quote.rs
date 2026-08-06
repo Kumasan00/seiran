@@ -3,8 +3,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-  FontKind,
+use crate::{
+  font::FontKind,
   length::{Length, non_negative},
 };
 
@@ -46,7 +46,7 @@ mod tests {
   use garde::Validate;
 
   use super::QuoteStyle;
-  use crate::model::{FontKind, length::Length};
+  use crate::{font::FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

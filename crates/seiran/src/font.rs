@@ -2,6 +2,12 @@
 //!
 //! 全フォント種別の読み込み・OpenType 解析・メトリクス取得を担い、シェイピングと
 //! 設定検証を各サブモジュールで提供する。フォントのサブセット化は `krilla` に委ねる。
+//!
+//! フォント分類の型（`FontKind` / `FontType` と、全 19 種別が揃っていることを保証する `FontMap`）と、
+//! フォント処理の入力契約となる処理済みフォント設定（`FontConfig` / `FontConfigs` / `VariationAxis` /
+//! `Feature` / `TextDirection`）もこの module が所有する（#336）。前者は分類とその全域性の不変条件、
+//! 後者は「後段が要求する入力契約は後段が所有する」という配置規則による。TOML に対応する未検証型と
+//! そこから検証済み値を構築する処理は `crate::config` に残り、`font` は設定ファイルの形を知らない。
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -10,13 +16,13 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use read_fonts::{FontRef, TableProvider};
 use thiserror::Error;
 
-use crate::{
-  config::FontConfigs,
-  model::{FontMap, FontType},
-};
+use crate::font::map::FontMap;
 
 mod face_config;
 mod glyph_run;
+mod kind;
+mod map;
+mod settings;
 // `crate::typeset::block` 等が `shaper::UnicodeBuffer` を直接参照するため、`font` module 内に
 // 閉じない可視性が必要。`seiran` の公開 API（lib.rs の `pub use`）には出さないため `pub` ではなく
 // `pub(crate)` に留める（CLAUDE.md の「モジュール名が名前空間として意味を持つ場合のみ pub mod」の
@@ -25,10 +31,18 @@ pub(crate) mod shaper;
 mod system;
 mod validate_font;
 
-// `face_config` / `validate_font` の型は `FontResources` のフィールド型・`FontSystemError` の
-// 内部型として生きているが、`crate::font` root から名指しする消費者はいないので再エクスポート
-// しない（必要になったらここに足す）。
+// `face_config` / `map` / `validate_font` の型は `FontResources` のフィールド型・`FontSystemError` の
+// 内部型・`FontData` 等の型エイリアスの実体として生きているが、`font` の外から名指しする消費者は
+// いないので再エクスポートしない（`font` 内からは `map::FontMap` のように子 module のパスで参照する。
+// 必要になったらここに足す）。
 pub use glyph_run::{Glyph, GlyphRun};
+// フォント分類（`FontKind` / `FontType`）は `font` が所有する（#336、旧 `model`）。
+pub use kind::{FontKind, FontType};
+// 処理済みフォント設定は font の入力契約なので font が所有する（#336、旧 `config`）。
+// `config` が TOML の未検証型からこれらを構築するため、構築に名指しされる型はすべて facade に出す。
+// `TextDirectionParseError` は `TextDirection::from_str` の `Err` 型としてしか現れず、名指しする
+// 消費者がいないので facade へは出さない（#326）。
+pub use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
 pub use system::{FontResources, FontSystem};
 
 /// フォントの読み込み・解析エラー。
@@ -225,10 +239,7 @@ impl FontMetricsExt for FontMetrics {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    config::{FontConfig, FontConfigs, MemoryProjectSource},
-    model::FontType,
-  };
+  use crate::config::MemoryProjectSource;
 
   /// 全 19 種別が同じ `shared_path` を指す `FontConfigs` fixture を作る。
   fn make_font_configs(shared_path: &str) -> FontConfigs {

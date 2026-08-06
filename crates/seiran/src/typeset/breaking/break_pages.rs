@@ -4,8 +4,8 @@ use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
 use crate::{
-  config::TextAlignment,
-  model::{Length, column_width},
+  config::{TextAlignment, column_width},
+  length::Length,
   typeset::layout::{
     Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
     PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
@@ -1332,7 +1332,8 @@ mod tests {
   use crate::{
     config::TextAlignment,
     font::GlyphRun,
-    model::{ColumnAlign, ColumnWidth, Length},
+    length::Length,
+    model::{ColumnAlign, ColumnWidth},
     typeset::layout::{
       Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
       PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
@@ -2470,7 +2471,7 @@ mod tests {
             font_size: pt(10.0),
             text: text.to_string(),
             glyphs: Vec::new(),
-            font_type: crate::model::FontType::Serif,
+            font_type: crate::font::FontType::Serif,
             color: None,
           }),
           width: Length::pt(20.0),
@@ -2628,7 +2629,7 @@ mod tests {
                 font_size: pt(10.0),
                 text: "リンク".to_string(),
                 glyphs: Vec::new(),
-                font_type: crate::model::FontType::Serif,
+                font_type: crate::font::FontType::Serif,
                 color: None,
               }),
               width: Length::pt(20.0),

@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::Color;
+use crate::color::Color;
 
 /// ハイパーリンクの文字色に関するスタイル設定
 ///

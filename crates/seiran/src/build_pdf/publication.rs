@@ -5,8 +5,8 @@
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
 //! `seiran_pdf` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`seiran_pdf::Point` /
-//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `crate::model::Length::to_pt()` /
-//! `crate::model::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
+//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `crate::length::Length::to_pt()` /
+//! `crate::color::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
 
 use std::collections::HashMap;
 
@@ -76,7 +76,7 @@ pub(super) fn build_publication(
 fn build_page(
   config: &crate::config::Config,
   page: &Page,
-  margin_left: crate::model::Length,
+  margin_left: crate::length::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
 ) -> PublicationPage {
   let page_box = Rect {
@@ -138,7 +138,7 @@ fn build_page(
 /// 内部リンクの前方参照に対応するため、描画命令より先に全ページを走査する。
 fn build_destination_index(
   pages: &[Page],
-  margin_left: crate::model::Length,
+  margin_left: crate::length::Length,
 ) -> (HashMap<AnchorId, Destination>, Vec<Destination>) {
   let mut dest_by_id: HashMap<AnchorId, Destination> = HashMap::new();
   let mut heading_dests: Vec<Destination> = Vec::new();
@@ -180,16 +180,16 @@ fn build_destination_index(
 /// Krilla と同じ `f32` の演算順序で左マージンを加える（pt 単位）。
 ///
 /// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
-fn add_margin_left(margin_left: crate::model::Length, x: crate::model::Length) -> f32 {
+fn add_margin_left(margin_left: crate::length::Length, x: crate::length::Length) -> f32 {
   return margin_left.to_pt() + x.to_pt();
 }
 
 /// 描画に必要な解決済みの表スタイル。
 struct ResolvedTableStyle {
   /// セル内容の左右内側余白
-  cell_padding: crate::model::Length,
+  cell_padding: crate::length::Length,
   /// 罫線の太さ（0 のとき描画しない）
-  rule_thickness: crate::model::Length,
+  rule_thickness: crate::length::Length,
   /// 罫線色（RGB）。`None` は黒
   rule_color: Option<[u8; 3]>,
 }
@@ -310,14 +310,14 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 fn push_table_row_ops(
   ops: &mut Vec<PaintOp>,
   columns: &[crate::typeset::TableColumn],
-  col_widths: &[crate::model::Length],
+  col_widths: &[crate::length::Length],
   placed_row: &PlacedTableRow,
   x0: f32,
   table_style: &ResolvedTableStyle,
 ) {
   let row = &placed_row.row;
   let band_top = placed_row.top_y.to_pt();
-  let table_width: crate::model::Length = col_widths.iter().copied().sum();
+  let table_width: crate::length::Length = col_widths.iter().copied().sum();
   if row.rule_above {
     ops.push(PaintOp::FillRect {
       rect: Rect {
@@ -334,12 +334,12 @@ fn push_table_row_ops(
     .cells
     .iter()
     .filter_map(|cell| return crate::typeset::max_font_size_in_items(&cell.items))
-    .reduce(crate::model::Length::max)
+    .reduce(crate::length::Length::max)
     .unwrap_or(placed_row.height)
     .to_pt();
   let baseline = band_top + max_font;
 
-  let padding = crate::model::Length::pt(table_style.cell_padding.to_pt());
+  let padding = crate::length::Length::pt(table_style.cell_padding.to_pt());
   for placement in crate::typeset::layout_row_cells(row, columns, col_widths, padding) {
     push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
   }
@@ -368,7 +368,7 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
   }
 }
 
-/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `crate::model::Length`、色は `crate::model::Color`）を
+/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `crate::length::Length`、色は `crate::color::Color`）を
 /// `seiran_pdf::GlyphRun`（`seiran_pdf` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
 fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   return PdfGlyphRun {
@@ -376,7 +376,7 @@ fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
     text: run.text.clone(),
     glyphs: run.glyphs.iter().map(to_pdf_glyph).collect(),
     font_type: super::to_pdf_font_type(run.font_type),
-    color: run.color.map(crate::model::Color::rgb),
+    color: run.color.map(crate::color::Color::rgb),
   };
 }
 
@@ -402,9 +402,10 @@ mod tests {
   use super::build_publication;
   use crate::{
     build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
-    config::{Config, DocumentConfig, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig},
-    font::{FontData, FontDataExt, FontResources, GlyphRun},
-    model::{FontType, HeadingLevel, Length},
+    config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig},
+    font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
+    length::Length,
+    model::HeadingLevel,
     resolve::{HeadingKey, LabelId},
     typeset::{
       AnchorId, AnchorMark, HBox, HBoxContent, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,

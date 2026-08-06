@@ -3,7 +3,7 @@
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
 use crate::{
   config::TextAlignment,
-  model::Length,
+  length::Length,
   typeset::layout::{HItem, Line},
 };
 
@@ -264,7 +264,7 @@ mod tests {
   };
   use crate::{
     config::TextAlignment,
-    model::Length,
+    length::Length,
     typeset::layout::{HItem, Line},
   };
 

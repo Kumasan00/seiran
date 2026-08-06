@@ -2,7 +2,9 @@
 
 use super::Measurer;
 use crate::{
-  model::{FontType, Length, MathDelimiter, MathEnvKind},
+  font::FontType,
+  length::Length,
+  model::{MathDelimiter, MathEnvKind},
   typeset::{
     layout::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{LayoutNode, MathBlockRow},
@@ -225,7 +227,10 @@ impl Measurer<'_> {
 #[cfg(test)]
 mod tests {
   use super::{CellAlign, cell_align, column_offset, delimiter_glyphs};
-  use crate::model::{Length, MathDelimiter, MathEnvKind};
+  use crate::{
+    length::Length,
+    model::{MathDelimiter, MathEnvKind},
+  };
 
   #[test]
   fn cell_align_align_and_split_alternate_right_left_by_column() {

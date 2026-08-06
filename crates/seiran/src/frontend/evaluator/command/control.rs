@@ -6,7 +6,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
-  model::{HirBuilder, HirNode, HirNodeKind, Length},
+  length::Length,
+  model::{HirBuilder, HirNode, HirNodeKind},
 };
 
 /// `\space{N}` — 固定幅スペース（pt 単位）を挿入するコマンド

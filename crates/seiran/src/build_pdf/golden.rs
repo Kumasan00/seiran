@@ -14,7 +14,7 @@ use crate::{
   citation::{References, read_references},
   config::{Config, MemoryProjectSource, ProjectPath, Style},
   font::{FontData, FontDataExt},
-  model::Length,
+  length::Length,
   typeset::{AnchorMark, Page, PlacedBlock},
 };
 

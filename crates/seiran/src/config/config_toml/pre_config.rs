@@ -7,10 +7,8 @@ use serde::Deserialize;
 
 use crate::{
   config::config_toml::ConfigValidationError,
-  model::{
-    FontType,
-    length::{Length, non_negative, positive},
-  },
+  font::FontType,
+  length::{Length, non_negative, positive},
 };
 
 /// TOML ファイル全体をデシリアライズした設定
