@@ -7,13 +7,18 @@
 //!
 //! 利用側（`citation` の CSL 整形と `typeset` の lowering）は collection 構造を知らず、
 //! [`AnalyzedDocument`] の目的別 query 経由でのみ fact を参照する。
+//!
+//! [`analyze`] の後に初めて成立する意味上の識別子（[`LabelId`] / [`HeadingKey`]）も本 module が
+//! 所有する（`ids` 子 module、#334）。組版側はこれを到達先の名前空間として使うだけで発行しない。
 
 mod analyze;
 mod counter;
 mod error;
 mod facts;
+mod ids;
 
 pub use analyze::analyze;
 pub use counter::{CounterKind, CounterValue};
 pub use error::{SemanticError, UnknownCitationSite};
 pub use facts::AnalyzedDocument;
+pub use ids::{HeadingKey, LabelId};

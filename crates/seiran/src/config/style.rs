@@ -50,7 +50,7 @@ pub use crate::config::style::{
   reference::ReferenceStyle,
   running::RunningContentStyle,
   table::TableStyle,
-  text::TextBlockStyle,
+  text::{TextAlignment, TextBlockStyle},
   theorem::{TheoremClass, TheoremReset, TheoremStyle, Theorems},
   title_page::TitlePageStyle,
   toc::TocStyle,

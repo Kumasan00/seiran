@@ -17,8 +17,8 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
-  model::{AnchorMark, Length},
-  typeset::{BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
+  model::Length,
+  typeset::{AnchorMark, BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
 };
 
 /// 巻末索引を生成してページ分割する。
@@ -105,8 +105,7 @@ mod tests {
   use super::{BodyPageValues, collect_index_entries};
   use crate::{
     config::PageNumbering,
-    model::AnchorMark,
-    typeset::{Page, PlacedIndexEntry},
+    typeset::{AnchorMark, Page, PlacedIndexEntry},
   };
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ

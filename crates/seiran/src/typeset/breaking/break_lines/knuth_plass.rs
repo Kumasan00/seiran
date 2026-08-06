@@ -2,7 +2,8 @@
 
 use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
 use crate::{
-  model::{Length, TextAlignment},
+  config::TextAlignment,
+  model::Length,
   typeset::layout::{HItem, Line},
 };
 
@@ -262,7 +263,8 @@ mod tests {
     GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph,
   };
   use crate::{
-    model::{Length, TextAlignment},
+    config::TextAlignment,
+    model::Length,
     typeset::layout::{HItem, Line},
   };
 

@@ -77,7 +77,9 @@ mod tests {
   use crate::{
     citation::GeneratedCitations,
     config::Style as ReadStyle,
-    model::{AnchorId, LabelId, Length, LinkTarget},
+    model::Length,
+    resolve::LabelId,
+    typeset::layout::{AnchorId, LinkTarget},
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ

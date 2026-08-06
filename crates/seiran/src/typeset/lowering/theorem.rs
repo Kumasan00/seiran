@@ -9,7 +9,9 @@ use super::{
 };
 use crate::{
   config::TheoremStyle,
-  model::{Align, FontKind, HirNode, HirNodeKind, LabelId, Length, TheoremClass},
+  model::{FontKind, HirNode, HirNodeKind, Length, TheoremClass},
+  resolve::LabelId,
+  typeset::layout::Align,
 };
 
 /// 定理ブロックをレイアウトノードに変換する
@@ -115,7 +117,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::AnchorMark};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, typeset::layout::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {

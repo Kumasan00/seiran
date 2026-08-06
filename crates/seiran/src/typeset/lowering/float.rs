@@ -9,6 +9,7 @@ use super::{
 use crate::{
   config::CaptionStyle,
   model::{CaptionPosition, FontKind, HirInline, Length},
+  typeset::layout::Align,
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
@@ -85,7 +86,7 @@ pub(super) fn wrap_float(
       margin_bottom: spec.bottom_margin,
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     },
   ];
 }
@@ -100,7 +101,8 @@ mod tests {
   use crate::{
     citation::GeneratedCitations,
     config::{CaptionStyle, Style as ReadStyle},
-    model::{Align, AnchorId, LabelId, LinkTarget},
+    resolve::LabelId,
+    typeset::layout::{Align, AnchorId, LinkTarget},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

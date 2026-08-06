@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use crate::{
   citation::CitationSiteFacts,
-  model::{HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
-  resolve::counter::CounterValue,
+  model::{HeadingLevel, HirDocument, NodeId, NodeMap},
+  resolve::{HeadingKey, LabelId, counter::CounterValue},
 };
 
 /// 見出し 1 件について判明した事実

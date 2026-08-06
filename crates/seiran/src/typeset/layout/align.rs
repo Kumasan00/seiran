@@ -1,6 +1,7 @@
 //! 水平方向の揃え [`Align`]。
-
-use serde::{Deserialize, Serialize};
+//!
+//! lowering が style の設定値（`config::Alignment` 等）から決めた結果であって設定値そのものでは
+//! ないので、TOML から直接デシリアライズされることはない（serde は導出しない、#334）。
 
 use crate::model::Length;
 
@@ -9,8 +10,7 @@ use crate::model::Length;
 /// 揃えは行折り返しには影響せず（折り返しは常に利用可能幅で行う）、確定した各行を
 /// 利用可能幅の中で水平にシフトするだけ。行が利用可能幅を超える場合のシフト量は
 /// 0 にクランプされる（行頭が本文左端より左へはみ出さない）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Align {
   /// 左揃え（ragged-right、既定）
   #[default]
@@ -71,20 +71,5 @@ mod tests {
     // Arrange / Act / Assert
     assert_eq!(Align::Center.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
     assert_eq!(Align::Right.offset(Length::pt(30.0), Length::pt(50.0)), Length::ZERO);
-  }
-
-  #[test]
-  fn deserializes_snake_case() {
-    // Arrange
-    #[derive(serde::Deserialize)]
-    struct Wrapper {
-      align: Align,
-    }
-
-    // Act
-    let w: Wrapper = toml::from_str("align = \"center\"").unwrap();
-
-    // Assert
-    assert_eq!(w.align, Align::Center);
   }
 }

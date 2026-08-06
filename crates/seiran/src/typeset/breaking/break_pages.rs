@@ -4,11 +4,13 @@ use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
 use crate::{
-  model::{AnchorMark, FootnoteId, Length, LinkTarget, TextAlignment, column_width},
+  config::TextAlignment,
+  model::{Length, column_width},
   typeset::layout::{
-    Block, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, Page, PlacedAnchor,
-    PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox,
-    collect_row_links, resolve_column_widths, table_row_height,
+    Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
+    PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
+    PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, collect_row_links, resolve_column_widths,
+    table_row_height,
   },
 };
 
@@ -937,7 +939,7 @@ fn keep_group_orphaned(
         align,
       } => {
         let available = (column_width - *indent - *right_indent).max(Length::ZERO);
-        let effective = if *align == crate::model::Align::Left {
+        let effective = if *align == Align::Left {
           alignment
         } else {
           TextAlignment::RaggedRight
@@ -993,12 +995,12 @@ fn place_paragraph(
   column_width: Length,
   indent: Length,
   right_indent: Length,
-  align: crate::model::Align,
+  align: Align,
 ) {
   let available = (column_width - indent - right_indent).max(Length::ZERO);
   // 両端揃えは左揃え段落にのみ適用する。中央・右寄せ段落は行を自然幅のまま組み、
   // 確定後に揃えオフセットでシフトする（伸縮すると余り幅が消えて揃え自体が無意味になる）
-  let effective_alignment = if align == crate::model::Align::Left {
+  let effective_alignment = if align == Align::Left {
     alignment
   } else {
     TextAlignment::RaggedRight
@@ -1161,7 +1163,7 @@ fn place_math_block(
   body: HBox,
   numbers: Vec<MathRowNumber>,
   numbers_on_right: bool,
-  align: crate::model::Align,
+  align: Align,
   column_width: Length,
 ) {
   let total_height = body.height + body.depth;
@@ -1215,13 +1217,7 @@ struct PendingCellLink {
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
-fn place_table(
-  composer: &mut PageComposer,
-  geom: &PageGeometry,
-  table: &TableBox,
-  column_width: Length,
-  align: crate::model::Align,
-) {
+fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBox, column_width: Length, align: Align) {
   let col_widths = resolve_column_widths(table, column_width, geom.table_cell_padding);
   // 表全体の自然幅は確定済み列幅の総和。段幅の中で揃えオフセット（段内）を 1 回だけ算出する
   // （全幅の表ではオフセットが 0 になり段左端のまま）。段オフセットは flush 時に断片ごとに足す。
@@ -1334,11 +1330,12 @@ mod tests {
     is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
   };
   use crate::{
+    config::TextAlignment,
     font::GlyphRun,
-    model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn, TextAlignment},
+    model::{ColumnAlign, ColumnWidth, Length},
     typeset::layout::{
-      Block, HBox, HBoxContent, HItem, Line, LineLink, PENALTY_FORBID_BREAK, Page, PlacedBlock, PositionedBox,
-      TableBox, TableCellBox, TableRowBox,
+      Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
+      PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
     },
   };
 
@@ -1422,7 +1419,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     };
   }
 
@@ -1444,7 +1441,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     };
   }
 
@@ -1708,7 +1705,7 @@ mod tests {
   #[test]
   fn footnote_anchor_is_placed_only_on_non_continued_fragment() {
     // Arrange
-    use crate::model::AnchorMark;
+    use crate::typeset::layout::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines(1, 4)]),
@@ -1723,7 +1720,9 @@ mod tests {
       return page
         .anchors
         .iter()
-        .filter(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::model::FootnoteId::new(0)))
+        .filter(
+          |a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::layout::FootnoteId::new(0)),
+        )
         .count();
     };
     assert_eq!(anchors_on(&pages[0]), 1, "{:?}", pages[0].anchors);
@@ -1731,7 +1730,7 @@ mod tests {
     let anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::model::FootnoteId::new(0)))
+      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::layout::FootnoteId::new(0)))
       .expect("先頭断片のアンカーがあるはず");
     assert!(close(anchor.y, 16.0), "アンカーは脚注先頭行の上端のはず: {anchor:?}");
     assert!(close(anchor.x, 0.0));
@@ -1826,7 +1825,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     };
   }
 
@@ -2421,7 +2420,7 @@ mod tests {
         width: Some(pt(20.0)),
         height: Some(pt(15.0)),
         target_dpi: None,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       },
       paragraph_of_lines(1),
     ];
@@ -2449,7 +2448,7 @@ mod tests {
         width: Some(pt(20.0)),
         height: Some(pt(30.0)),
         target_dpi: None,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       },
     ];
 
@@ -2598,7 +2597,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -2657,7 +2656,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -2704,7 +2703,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -2731,14 +2730,14 @@ mod tests {
   fn table_link_shifts_with_its_row_under_flush_bottom() {
     // Arrange
     let geom = flush_geometry();
-    let target = LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("fig:1")));
+    let target = LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(crate::resolve::LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
       rule(8.0),                                  // idx0, bottom=18（シフト対象外）
       Block::stretchable_space(pt(4.0), pt(4.0)), // stretch アキ
       Block::Table {
         table,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       }, // idx1, 行高10。glue 後の y=22、bottom=32
       rule(40.0),                                 // 溢れて改ページ（不足 50-32=18 を配分）
     ];
@@ -2764,11 +2763,11 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_to_next_paragraph_top() {
     // Arrange
-    use crate::model::AnchorMark;
+    use crate::typeset::layout::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
-        key: crate::model::HeadingKey::new(0),
+        key: crate::resolve::HeadingKey::new(0),
         label: None,
       }),
       paragraph_of_lines(1),
@@ -2788,11 +2787,11 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_on_page_after_break() {
     // Arrange
-    use crate::model::AnchorMark;
+    use crate::typeset::layout::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
-      Block::Anchor(AnchorMark::Label(crate::model::LabelId::new("tab:x"))),
+      Block::Anchor(AnchorMark::Label(crate::resolve::LabelId::new("tab:x"))),
       paragraph_of_lines(1),
     ];
 
@@ -2809,7 +2808,7 @@ mod tests {
   #[test]
   fn paragraph_link_becomes_placed_link() {
     // Arrange
-    use crate::model::LinkTarget;
+    use crate::typeset::layout::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -2822,7 +2821,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     }];
 
     // Act
@@ -2859,7 +2858,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(20.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     }];
 
     // Act
@@ -2909,7 +2908,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(10.0),
       right_indent: Length::pt(10.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     }];
 
     // Act
@@ -2941,7 +2940,7 @@ mod tests {
   #[test]
   fn paragraph_indent_shifts_links() {
     // Arrange
-    use crate::model::LinkTarget;
+    use crate::typeset::layout::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -2954,7 +2953,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(15.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     }];
 
     // Act
@@ -2976,7 +2975,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3003,7 +3002,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Right,
+      align: Align::Right,
     }];
 
     // Act
@@ -3032,7 +3031,7 @@ mod tests {
   }
 
   /// 伸縮能力付き glue で折り返す 2 行の段落（1 行目自然幅 25）を作る
-  fn stretchable_paragraph(align: crate::model::Align) -> Block {
+  fn stretchable_paragraph(align: Align) -> Block {
     return Block::Paragraph {
       items: vec![
         test_box(),
@@ -3052,7 +3051,7 @@ mod tests {
   fn justify_stretches_left_aligned_paragraph() {
     // Arrange
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(crate::model::Align::Left)];
+    let blocks = vec![stretchable_paragraph(Align::Left)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -3073,7 +3072,7 @@ mod tests {
   fn justify_does_not_stretch_centered_paragraph() {
     // Arrange
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(crate::model::Align::Center)];
+    let blocks = vec![stretchable_paragraph(Align::Center)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -3095,7 +3094,7 @@ mod tests {
   fn justify_does_not_stretch_right_aligned_paragraph() {
     // Arrange
     let geom = test_geometry();
-    let blocks = vec![stretchable_paragraph(crate::model::Align::Right)];
+    let blocks = vec![stretchable_paragraph(Align::Right)];
 
     // Act
     let pages = break_pages(blocks, Length::pt(27.0), &geom, &GreedyBreaker, TextAlignment::Justify);
@@ -3131,7 +3130,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3175,7 +3174,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3198,7 +3197,7 @@ mod tests {
   #[test]
   fn centered_paragraph_shifts_links() {
     // Arrange
-    use crate::model::LinkTarget;
+    use crate::typeset::layout::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -3211,7 +3210,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3238,7 +3237,7 @@ mod tests {
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3260,7 +3259,7 @@ mod tests {
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
-      align: crate::model::Align::Right,
+      align: Align::Right,
     }];
 
     // Act
@@ -3280,7 +3279,7 @@ mod tests {
     let blocks = vec![Block::Rule {
       width: Length::pt(30.0),
       height: Length::pt(2.0),
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3310,7 +3309,7 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3340,7 +3339,7 @@ mod tests {
     };
     let blocks = vec![Block::Table {
       table,
-      align: crate::model::Align::Center,
+      align: Align::Center,
     }];
 
     // Act
@@ -3379,7 +3378,7 @@ mod tests {
   }
 
   /// 合成済み単一行（[`Block::ComposedLine`]）のテスト用ヘルパ。幅・高さ・深さと任意のリンクを持つ
-  fn composed_line(width: f32, height: f32, depth: f32, link: Option<crate::model::LinkTarget>) -> Block {
+  fn composed_line(width: f32, height: f32, depth: f32, link: Option<crate::typeset::layout::LinkTarget>) -> Block {
     let width = pt(width);
     let height = pt(height);
     let depth = pt(depth);
@@ -3436,7 +3435,10 @@ mod tests {
   #[test]
   fn composed_line_resolves_anchor_and_collects_link() {
     // Arrange
-    use crate::model::{AnchorId, AnchorMark, HeadingKey, LinkTarget};
+    use crate::{
+      resolve::HeadingKey,
+      typeset::layout::{AnchorId, AnchorMark, LinkTarget},
+    };
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
@@ -3514,7 +3516,7 @@ mod tests {
   #[test]
   fn two_column_paragraph_link_rect_uses_column_offset() {
     // Arrange
-    use crate::model::LinkTarget;
+    use crate::typeset::layout::LinkTarget;
     let geom = two_column_geometry();
     let link_para = Block::Paragraph {
       items: vec![
@@ -3526,7 +3528,7 @@ mod tests {
       leading: Length::pt(12.0),
       indent: Length::pt(0.0),
       right_indent: Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     };
     let blocks = vec![paragraph_of_lines(5), link_para];
 
@@ -3562,7 +3564,7 @@ mod tests {
     let pages = break_pages(
       vec![Block::Table {
         table,
-        align: crate::model::Align::Left,
+        align: Align::Left,
       }],
       Length::pt(100.0),
       &geom,
@@ -3592,7 +3594,7 @@ mod tests {
     assert!(is_content_block(&Block::Rule {
       width: Length::pt(1.0),
       height: Length::pt(1.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     }));
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
     assert!(!is_content_block(&forbid_break()));
@@ -3787,7 +3789,7 @@ mod tests {
     return Block::Rule {
       width: Length::pt(10.0),
       height: pt(height),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     };
   }
 

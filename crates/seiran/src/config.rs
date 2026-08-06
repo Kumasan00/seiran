@@ -36,6 +36,6 @@ pub use project_source::{FilesystemProjectSource, MemoryProjectSource, ProjectPa
 #[allow(unused_imports)]
 pub use style::{
   Alignment, CaptionStyle, CounterName, CounterStyle, Counters, FootnoteNumbering, FootnoteStyle, MathScriptStyle,
-  NestedOrderedFormat, NumberSide, NumberStyle, PageNumbering, RunningContentStyle, Style, TheoremReset, TheoremStyle,
-  TitlePageStyle, TocStyle, parse_style, read_style,
+  NestedOrderedFormat, NumberSide, NumberStyle, PageNumbering, RunningContentStyle, Style, TextAlignment, TheoremReset,
+  TheoremStyle, TitlePageStyle, TocStyle, parse_style, read_style,
 };

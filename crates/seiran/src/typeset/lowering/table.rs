@@ -6,7 +6,10 @@ use super::{
   inline::lower_inlines,
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
-use crate::model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow, TableColumn};
+use crate::{
+  model::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow},
+  typeset::layout::TableColumn,
+};
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
 fn bold_kind(kind: FontKind) -> FontKind {

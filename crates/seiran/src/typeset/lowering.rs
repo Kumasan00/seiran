@@ -13,8 +13,9 @@ use tracing::debug;
 use crate::{
   citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
-  model::{HeadingKey, HirInline, HirInlineKind, HirNode, HirNodeKind, LabelId, Length, NodeId, NodeMap},
-  resolve::{AnalyzedDocument, CounterValue},
+  model::{HirInline, HirInlineKind, HirNode, HirNodeKind, Length, NodeId, NodeMap},
+  resolve::{AnalyzedDocument, CounterValue, HeadingKey, LabelId},
+  typeset::layout::AnchorMark,
 };
 
 mod counter;
@@ -491,7 +492,7 @@ fn with_label_anchor(label: Option<&LabelId>, nodes: Vec<LayoutNode>) -> Vec<Lay
     return nodes;
   };
   let mut result = Vec::with_capacity(nodes.len() + 1);
-  result.push(LayoutNode::Anchor(crate::model::AnchorMark::Label(label.clone())));
+  result.push(LayoutNode::Anchor(AnchorMark::Label(label.clone())));
   result.extend(nodes);
   return result;
 }
@@ -502,11 +503,7 @@ fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<Layout
     return nodes;
   }
   let mut result = Vec::with_capacity(nodes.len() + labels.len());
-  result.extend(
-    labels
-      .iter()
-      .map(|label| return LayoutNode::Anchor(crate::model::AnchorMark::Label((*label).clone()))),
-  );
+  result.extend(labels.iter().map(|label| return LayoutNode::Anchor(AnchorMark::Label((*label).clone()))));
   result.extend(nodes);
   return result;
 }
@@ -549,8 +546,9 @@ mod tests {
     citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     frontend::parse_source,
-    model::{AnchorMark, HirDocument, LinkTarget, SourceId},
+    model::{HirDocument, SourceId},
     resolve::{AnalyzedDocument, analyze},
+    typeset::layout::{AnchorId, AnchorMark, LinkTarget},
   };
 
   /// 複数の `.sei` ソースを 1 つの文書として parse → analyze するテストヘルパ
@@ -862,7 +860,7 @@ mod tests {
         LayoutNode::Link {
           target: LinkTarget::Internal(t),
           ..
-        } => return *t == crate::model::AnchorId::Label(LabelId::new(target)),
+        } => return *t == AnchorId::Label(LabelId::new(target)),
         LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
           return contains_internal_link(children, target);
         },

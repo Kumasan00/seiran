@@ -7,7 +7,8 @@ use super::{
 };
 use crate::{
   config::FootnoteStyle,
-  model::{AnchorId, FontKind, FootnoteId, HirInline, HirInlineKind, Length, LinkTarget, to_math_nodes},
+  model::{FontKind, HirInline, HirInlineKind, Length, to_math_nodes},
+  typeset::layout::{AnchorId, FootnoteId, LinkTarget},
 };
 
 /// インライン列をまとめてレイアウトノードに変換する
@@ -188,7 +189,8 @@ mod tests {
   use crate::{
     citation::{CitationId, GeneratedCitations, GeneratedInline},
     config::Style as ReadStyle,
-    model::{Color, LabelId},
+    model::Color,
+    resolve::LabelId,
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

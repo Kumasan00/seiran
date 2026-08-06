@@ -5,7 +5,10 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::model::{HirListItem, Length};
+use crate::{
+  model::{HirListItem, Length},
+  typeset::layout::Align,
+};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
@@ -68,7 +71,7 @@ pub(super) fn lower_list(
       margin_bottom: item.item_gap.or(item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
       right_indent: crate::model::Length::pt(0.0),
-      align: crate::model::Align::Left,
+      align: Align::Left,
     });
   }
 

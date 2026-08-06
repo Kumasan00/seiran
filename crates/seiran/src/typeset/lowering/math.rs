@@ -8,8 +8,9 @@ use super::{
 };
 use crate::{
   config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
-  model::{Align, FontKind, HirMathRow, Length, MathEnvKind, MathNode, MathStyle, to_math_nodes},
+  model::{FontKind, HirMathRow, Length, MathEnvKind, MathNode, MathStyle, to_math_nodes},
   resolve::CounterValue,
+  typeset::layout::Align,
 };
 
 mod alphanumeric;
@@ -78,7 +79,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `crate::config::Alignment`（数式本体の揃え）を `crate::model::Align` に対応付ける
+/// `crate::config::Alignment`（数式本体の揃え）を `crate::typeset::layout::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,

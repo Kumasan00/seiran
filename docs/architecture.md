@@ -37,13 +37,13 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 パイプライン全段が共有するデータモデルの leaf module。外部依存は serde / garde のみで、診断
 ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
-crate 内 module への依存も持たない — 唯一の例外が `link`（`AnchorId` / `AnchorMark` / `LinkTarget`）で、
-引用アンカーの `citation::CitationId` を参照する（#333。epic #332 の後続段階で `link` 型を
-`typeset::layout` へ移すと解消する移行中の向き）。
+crate 内 module への依存も持たない（#334 で `link` を `typeset::layout` へ移し、`model` → `citation`
+という唯一の逆向き依存が消えた）。
 
 epic #332 はこの module 自体の解体を目標にしている（「共有されていること」は所有者の不在であって
-所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ移した。
-目標構成は `docs/model-target-architecture.md`。
+所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ、
+第 2 段階の #334 で意味解析の識別子を `resolve`、配置・アンカーの型を `typeset::layout`、
+`TextAlignment` を `config::style::text` へ移した。目標構成は `docs/model-target-architecture.md`。
 
 #### モジュール構成
 
@@ -51,21 +51,19 @@ epic #332 はこの module 自体の解体を目標にしている（「共有�
 参照するため `pub mod`）。組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）と
 シェーピング結果型（`GlyphRun` / `Glyph`）はここには置かない（#280、後述）。
 
-- **語彙型**: `align`（`Align`）/ `color`（`Color`）/ `font`（`FontType` / `FontKind`）/ `font_map`
+- **語彙型**: `color`（`Color`）/ `font`（`FontType` / `FontKind`）/ `font_map`
   （`FontMap`）/ `heading_level`（`HeadingLevel`）/ `length`（`Length`）/ `table_column`
-  （`TableColumn` / `ColumnAlign` / `ColumnWidth`）/ `text_alignment`（`TextAlignment`）/ `theorem`
+  （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
+  2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有、#334）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
   `span`（`Span`）/ `column_width`（段組みの 1 段あたりの幅を求める純粋計算）。小さな `Copy` 値型・enum
-  と、その正準変換（`as_str` / `from_name` / serde / `Display`）・純粋演算（`Length` の算術、
-  `Align::offset`）のみを持つ。
+  と、その正準変換（`as_str` / `from_name` / serde / `Display`）・純粋演算（`Length` の算術）のみを持つ。
 - **起源識別子**: `origin` が `SourceId(usize)` を持ち（`Origin` / `GeneratedOrigin` は #324 で削除 —
   意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
-  `ids` が `LabelId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
-  `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。引用キー `CitationId` と
-  CSL 整形の生成物専用の語彙（`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、
-  後述の citation 節）。`link` はアンカーの引用 variant のために `citation::CitationId` を使うので、
-  `model` の中で唯一 `citation` を参照する子 module になっている（epic #332 の後続段階で
-  `AnchorId` / `AnchorMark` / `LinkTarget` を `typeset::layout` へ移すとこの向きは消える）。
+  `ids` が `AssetId` の newtype を持つ。意味解析が確定する `LabelId` / `HeadingKey` は `resolve::ids`、
+  組版時に成立する `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` は `typeset::layout::link`
+  へ移設済み（#334、後述の該当節）。引用キー `CitationId` と CSL 整形の生成物専用の語彙
+  （`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、後述の citation 節）。
 - `math_node`（`MathNode` / `MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
   `MathNode` は HIR の数式評価変換（`hir::to_math_nodes`）と `typeset::lowering` の数式経路が
   共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
@@ -97,9 +95,9 @@ epic #332 はこの module 自体の解体を目標にしている（「共有�
   ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
   主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
   `seiran::build_pdf::dump` に置く。
-- **アンカーは型で namespace を分ける**。`AnchorMark` / `LinkTarget::Internal` は見出し・ラベル・引用・
-  脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID（`HeadingKey` / `LabelId` /
-  `CitationId` / `FootnoteId`）で区別する。旧来は `"prefix:"` という文字列命名規約だけで区別しており
+- **アンカーは型で namespace を分ける**。`typeset::layout` の `AnchorMark` / `LinkTarget::Internal` は
+  見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
+  （`resolve::HeadingKey` / `resolve::LabelId` / `citation::CitationId` / `FootnoteId`）で区別する。旧来は `"prefix:"` という文字列命名規約だけで区別しており
   コンパイラが何も保証していなかったため、free function 群（`heading_anchor_key` /
   `footnote_anchor_key` / `index_page_anchor_key`）ごと廃止した（#259）。文字列規約へ戻さない。
 - **起源を配列インデックスへ戻さない**。合成書誌グループを「実ソース配列の範囲外インデックス」で
@@ -207,7 +205,10 @@ pub trait ProjectSource: Send + Sync {
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 
 - **本文（`TextBlockStyle`）**: `[text]` が本文の `font_size` / `line_height_factor` / `paragraph_spacing` /
-  `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約する
+  `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約する。
+  `alignment` の値型 `TextAlignment` は、それを読み込む `config::style::text` が所有する（#334。
+  設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::layout::Align` とは
+  変更理由が違う）
 - **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに
   持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、
   スタイル側では指定しない。表示数式の番号体裁は `[math.block].tag_format` / `number_side`（番号 3 系統の
@@ -275,11 +276,14 @@ query を公開する側自身が「lowering の入力」であり、`typeset::l
 （`document_policy_is_identical_for_any_display_only_variant_combination`、issue #306 / #324）。
 表示文字列は `typeset::lowering` 側が `&config::Style` と `CounterValue` を合わせて作る。
 
+`analyze` の後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module が所有する
+（#334。組版側のアンカーはこれを到達先の名前空間として使うだけで、発行はしない）。
+
 #### モジュール構成
 
 いずれも非公開で、公開 API は module root（`resolve.rs`）の `pub use` に揃える。
 
-`resolve/` は 4 ファイルだけ（旧 `bridge` / `document` / `node` / `inline` は #325 で組版入力の
+`resolve/` は 5 ファイルだけ（旧 `bridge` / `document` / `node` / `inline` は #325 で組版入力の
 中間木ごと削除した）。
 
 - `facts`: `SemanticFacts`（`label_definitions: HashMap<LabelId, NodeId>` / `declared_labels: NodeMap<LabelId>` /
@@ -300,6 +304,9 @@ query を公開する側自身が「lowering の入力」であり、`typeset::l
 - `error`: `SemanticError`（`UnknownCitationKeys` / `DuplicateLabel` / `UnresolvedReference`）+
   `UnknownCitationSite`。帰属先は `SourceId` で持つ — `analyze` は実ソースしか走査しないので、
   生成物（書誌）由来のエラーは型として存在しない
+- `ids`: `LabelId`（`\ref` の参照ラベル。`Borrow<str>` を実装して `HashMap` 引きを文字列で行える）と
+  `HeadingKey`（見出しの文書順インデックスから決まる暗黙の destination キー。`\ref` ラベルの有無に
+  かかわらず全見出しに付く）。旧 `model::ids` から #334 で移設
 
 公開 API は `analyze(hir: HirDocument, policy: &DocumentPolicy, references: &References) ->
 Result<AnalyzedDocument, SemanticError>` の 1 関数だけ。CSL 整形の生成物（書誌・引用表示）を
@@ -584,19 +591,30 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 #### `layout`
 
 組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
-所有物にもせず本 module に集約する（旧 `model` から #280 で移設）。
+所有物にもせず本 module に集約する（旧 `model` から #280 で移設）。組版時に初めて成立する配置・
+アンカーの型と、lowering が構築する表レイアウトの入力契約も #334 でここへ移した。
 
+- `align`: `Align`（段落・行の水平方向の揃え）と `Align::offset`（利用可能幅の中での水平オフセット
+  算出。行・画像・罫線・表がこの 1 関数を共有する）。style の設定値そのものではなく lowering が
+  それらから決めた結果なので serde は導出しない（#334）
 - `block`: `Block`（縦リスト要素 enum）/ `MathRowNumber` / `PENALTY_FORCE_BREAK` / `PENALTY_FORBID_BREAK`
 - `hitem`: `HItem`（水平リストの最小単位）/ `HBox`（計測済みボックス）/ `HBoxContent` / `PlacedHItem`
 - `line`: `Line`（行分割の出力）/ `LineFootnote` / `LineIndexEntry` / `LineLink` / `PositionedBox`
+- `link`: `FootnoteId`（脚注の出現 index）/ `AnchorId`（到達先アンカーの 5 namespace）/ `AnchorMark`
+  （ブロック先頭に置くゼロサイズのアンカー）/ `LinkTarget`。到達先の名前空間には前段が確定した
+  `resolve::LabelId` / `resolve::HeadingKey` / `citation::CitationId` を借りるだけで、発行はしない
 - `page`: `Page`（縦組版の出力）/ `PlacedAnchor` / `PlacedBlock` / `PlacedFootnote` / `PlacedIndexEntry` /
   `PlacedLink` / `PlacedMathNumber` / `PlacedTableRow`
-- `table_box`: `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
+- `table_box`: `TableColumn`（列の揃え + 幅指定。`lowering` が HIR の `ColumnAlign` / `ColumnWidth` を
+  列ごとに束ねて作る入力契約）/ `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
   （`measure_items_width` / `max_font_size_in_items` / `resolve_column_widths` / `table_row_height` /
   `layout_row_cells` / `collect_row_links` / `CellPlacement` / `RowLink`）。フォント非依存
 
-いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。5 ファイルの
-相互参照は `super::` で解決し、`crate::layout::{...}` のパスを通じて `block` / `breaking` 側から使う。
+いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
+相互参照は `super::` で解決し、`crate::typeset::layout::{...}` のパスを通じて `block` / `breaking` /
+`lowering` 側から使う。`build_pdf` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
+`TableColumn` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に消費者がいない
+`Align` / `FootnoteId` は出さない（#326 / #334）。
 
 #### `lowering`
 

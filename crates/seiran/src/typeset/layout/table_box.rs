@@ -4,8 +4,24 @@
 //! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
 //! `seiran_pdf` 段で行う。
 
-use super::hitem::{HBoxContent, HItem};
-use crate::model::{ColumnAlign, ColumnWidth, Length, LinkTarget, TableColumn};
+use super::{
+  hitem::{HBoxContent, HItem},
+  link::LinkTarget,
+};
+use crate::model::{ColumnAlign, ColumnWidth, Length};
+
+/// 表の 1 列の定義（揃え + 幅指定）
+///
+/// 著者が書いた `columns=` / `widths=` は HIR では別々の列（[`ColumnAlign`] / [`ColumnWidth`]）で、
+/// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。表レイアウトの入力契約なので後段の
+/// layout が所有する（#334）。
+#[derive(Debug, Clone, Copy)]
+pub struct TableColumn {
+  /// セル内容の揃え方向
+  pub align: ColumnAlign,
+  /// 列幅の指定方法
+  pub width: ColumnWidth,
+}
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
@@ -261,17 +277,34 @@ pub fn collect_row_links(
 #[cfg(test)]
 mod tests {
   use super::{
-    super::hitem::{HBox, HBoxContent, HItem, PlacedHItem},
-    TableBox, TableCellBox, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
+    super::{
+      hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+      link::{AnchorId, LinkTarget},
+    },
+    TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
     resolve_column_widths, table_row_height,
   };
   use crate::{
     font::GlyphRun,
-    model::{AnchorId, ColumnAlign, ColumnWidth, FontType, LabelId, Length, LinkTarget, TableColumn},
+    model::{ColumnAlign, ColumnWidth, FontType, Length},
+    resolve::LabelId,
   };
 
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
+
+  #[test]
+  fn table_column_holds_align_and_width() {
+    // Arrange
+    let col = TableColumn {
+      align: ColumnAlign::Right,
+      width: ColumnWidth::Ratio(0.25),
+    };
+
+    // Assert
+    assert_eq!(col.align, ColumnAlign::Right);
+    assert_eq!(col.width, ColumnWidth::Ratio(0.25));
+  }
 
   /// `Length` が pt 値 `expected` に一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }

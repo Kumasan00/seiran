@@ -4,11 +4,13 @@
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
 use super::{
+  align::Align,
   hitem::{HBox, HItem},
   line::Line,
+  link::AnchorMark,
   table_box::TableBox,
 };
-use crate::model::{Align, AnchorMark, AssetId, Length};
+use crate::model::{AssetId, Length};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///

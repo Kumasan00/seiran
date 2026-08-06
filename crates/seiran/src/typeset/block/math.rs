@@ -2,9 +2,9 @@
 
 use super::Measurer;
 use crate::{
-  model::{Align, FontType, Length, MathDelimiter, MathEnvKind},
+  model::{FontType, Length, MathDelimiter, MathEnvKind},
   typeset::{
-    layout::{Block, HBox, MathRowNumber, PlacedHItem},
+    layout::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{LayoutNode, MathBlockRow},
   },
 };
