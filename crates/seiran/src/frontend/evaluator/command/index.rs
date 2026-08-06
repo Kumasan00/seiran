@@ -75,7 +75,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
       syntax::{SyntaxKind, green::GreenElement},
     },
     model::InlineNode,
@@ -109,7 +109,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -129,7 +129,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Index { reading, .. } = &result[0] else {
@@ -147,7 +147,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -162,7 +162,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "index"));
@@ -177,7 +177,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "index"));
@@ -192,7 +192,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -207,7 +207,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -222,7 +222,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -237,7 +237,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -252,7 +252,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder));
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "index"));
@@ -267,7 +267,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return index_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Index { word, reading, .. } = &result[0] else {

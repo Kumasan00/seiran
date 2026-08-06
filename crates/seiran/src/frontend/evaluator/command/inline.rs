@@ -91,7 +91,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
       syntax::{SyntaxKind, green::GreenElement},
     },
     model::InlineNode,
@@ -127,7 +127,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -150,7 +150,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
     let InlineNode::Styled { kind, children } = &result[0] else {
@@ -176,7 +176,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -191,7 +191,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -205,7 +205,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold));
+    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
@@ -220,7 +220,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -242,7 +242,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler(|builder| return colored_text(&view, builder)),
+      run_inline_handler_legacy(|builder| return colored_text(&view, builder)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -257,7 +257,7 @@ mod tests {
 
     // Act & Assert
     assert!(
-      matches!(run_inline_handler(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
+      matches!(run_inline_handler_legacy(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
     );
   }
 
@@ -271,7 +271,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler(|builder| return colored_text(&view, builder)),
+      run_inline_handler_legacy(|builder| return colored_text(&view, builder)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -285,7 +285,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Colored { color, children } = &result[0] else {

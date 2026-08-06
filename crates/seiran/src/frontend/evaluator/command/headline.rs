@@ -75,12 +75,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_block_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::DocNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_block_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -116,17 +113,12 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Heading {
-      level,
-      numbered,
-      label,
-      ..
-    } = &result[0]
-    else {
+    let HirNodeKind::Heading { level, label, .. } = &result[0].kind else {
       panic!("Heading が期待されます");
     };
     assert_eq!(*level, HeadingLevel::Section);
-    assert!(*numbered);
+    // 見出しの numbered は HIR には存在しない（frontend が作る見出しは常に採番対象で
+    // 構造的に一意に決まるため、HirNodeKind::Heading はそもそもフィールドを持たない）
     assert_eq!(label.as_deref(), Some("sec:foo"));
   }
 

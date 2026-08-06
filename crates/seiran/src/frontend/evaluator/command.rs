@@ -215,7 +215,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = crate::frontend::evaluator::evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
@@ -249,7 +249,7 @@ mod tests {
 
       // Act
       let cst = parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
-      let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(&source, cst);
+      let result = crate::frontend::evaluator::evaluate_children_to_hir(&source, cst);
 
       // Assert
       let is_known_outcome = matches!(

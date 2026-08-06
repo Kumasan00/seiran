@@ -97,7 +97,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::{
-      evaluator::{lookup_env_parse_mode, run_block_handler},
+      evaluator::{lookup_env_parse_mode, run_block_handler_legacy},
       syntax::{SyntaxKind, green::GreenElement},
     },
     model::DocNode,
@@ -132,7 +132,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return space(&view, builder));
+    let result = run_block_handler_legacy(|builder| return space(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
@@ -192,7 +192,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result.as_deref(), Ok([DocNode::PageBreak])));
@@ -207,7 +207,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
@@ -222,7 +222,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));

@@ -91,7 +91,7 @@ mod tests {
   use super::*;
   use crate::{
     frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
+      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
       syntax::{SyntaxKind, green::GreenElement},
     },
     model::InlineNode,
@@ -124,7 +124,7 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     // Act
-    let result = run_inline_handler(|builder| return url_command(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return url_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Link { url, children } = &result[0] else {
@@ -142,7 +142,7 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     assert!(
-      matches!(run_inline_handler(|builder| return url_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
+      matches!(run_inline_handler_legacy(|builder| return url_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
     );
   }
 
@@ -154,7 +154,7 @@ mod tests {
     let view = CommandView::new(get_command_view(source, &arena), source);
 
     // Act
-    let result = run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
+    let result = run_inline_handler_legacy(|builder| return href_command(&view, builder)).unwrap();
 
     // Assert
     let InlineNode::Link { url, children } = &result[0] else {
@@ -173,7 +173,7 @@ mod tests {
 
     // Act / Assert
     assert!(
-      matches!(run_inline_handler(|builder| return href_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "href")
+      matches!(run_inline_handler_legacy(|builder| return href_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "href")
     );
   }
 }
