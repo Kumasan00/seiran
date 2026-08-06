@@ -119,7 +119,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{frontend::evaluator::lookup_env_parse_mode, model::DocNode};
+  use crate::frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode};
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
   fn parse<'a>(
@@ -137,7 +137,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "noitemsep"));
@@ -151,10 +151,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List { start, .. } = &nodes[0] else {
+    let HirNodeKind::List { start, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(*start, Some(5));
@@ -168,7 +168,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "start"));
@@ -182,7 +182,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -196,7 +196,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -210,7 +210,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -224,7 +224,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "start"));
@@ -238,10 +238,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List { items, .. } = &nodes[0] else {
+    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(items[0].marker, Some("☆".to_string()));
@@ -255,10 +255,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List { items, .. } = &nodes[0] else {
+    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(items[0].marker, Some(String::new()));
@@ -272,7 +272,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -286,10 +286,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List { item_gap, .. } = &nodes[0] else {
+    let HirNodeKind::List { item_gap, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(*item_gap, Some(crate::model::Length::mm(0.0)));
@@ -303,12 +303,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List {
+    let HirNodeKind::List {
       start, item_gap, ..
-    } = &nodes[0]
+    } = &nodes[0].kind
     else {
       panic!("List ノードであるべき: {nodes:?}");
     };
@@ -324,10 +324,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let nodes = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let nodes = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::List { items, .. } = &nodes[0] else {
+    let HirNodeKind::List { items, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(items[0].item_gap, Some(crate::model::Length::mm(-1.0)));
