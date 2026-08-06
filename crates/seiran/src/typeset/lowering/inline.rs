@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
   config::FootnoteStyle,
-  model::{FontKind, HirInline, HirInlineKind, Length, to_math_nodes},
+  model::{FontKind, HirInline, HirInlineKind, Length},
   typeset::layout::{AnchorId, FootnoteId, LinkTarget},
 };
 
@@ -53,7 +53,7 @@ pub(super) fn lower_inline(
       return lower_inlines(ctx, children, colored, state);
     },
     HirInlineKind::InlineMath(math_nodes) => {
-      return lower_inline_math(&to_math_nodes(math_nodes), parent_style.font_size, &ctx.style.math.script);
+      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
     },
     HirInlineKind::Symbol(ch) => {
       return vec![LayoutNode::Text(ch.to_string(), parent_style)];
