@@ -6,7 +6,7 @@ use icu::properties::{
   script::ScriptWithExtensions,
 };
 
-use crate::model::{FontKind, FontType};
+use crate::font::{FontKind, FontType};
 
 /// テキストをスクリプトに基づいて分割したセグメント
 #[derive(Debug)]

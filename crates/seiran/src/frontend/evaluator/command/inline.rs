@@ -1,6 +1,7 @@
 //! 書体指定コマンド群
 
 use crate::{
+  font::FontKind,
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,7 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{FontKind, HirBuilder, HirInline, HirInlineKind},
+  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// 引数 1 つを取り、子要素を `HirInline` リストに変換して `HirInlineKind::Styled` でラップする共通処理
@@ -224,7 +225,7 @@ mod tests {
     let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, crate::model::Color::new(0xff, 0x00, 0x00));
+    assert_eq!(*color, crate::color::Color::new(0xff, 0x00, 0x00));
     assert_eq!(children.len(), 1);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
@@ -288,7 +289,7 @@ mod tests {
     let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, crate::model::Color::new(0x00, 0x00, 0xff));
+    assert_eq!(*color, crate::color::Color::new(0x00, 0x00, 0xff));
     let HirInlineKind::Styled { kind, .. } = &children[0].kind else {
       panic!("内側は Styled が期待されます: {children:?}");
     };

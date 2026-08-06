@@ -8,7 +8,7 @@ use tracing::{debug_span, info};
 
 use crate::{
   font::FontSystem,
-  model::Length,
+  length::Length,
   typeset::{
     block::build_blocks,
     breaking::{LineBreaker, PageGeometry, break_pages},

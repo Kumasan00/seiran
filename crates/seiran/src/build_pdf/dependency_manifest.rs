@@ -3,7 +3,7 @@
 use std::{collections::BTreeSet, path::PathBuf};
 
 use super::{image_manifest::ImageManifest, project::ProjectSnapshot};
-use crate::model::FontType;
+use crate::font::FontType;
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///

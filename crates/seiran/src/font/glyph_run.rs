@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::model::{Color, FontType, Length};
+use crate::{color::Color, font::FontType, length::Length};
 
 /// 1 つのフォント種別でシェーピングしたグリフ列
 #[derive(Debug, Clone, PartialEq)]

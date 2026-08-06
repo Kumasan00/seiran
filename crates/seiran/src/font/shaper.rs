@@ -14,11 +14,7 @@ use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
-use crate::{
-  config::{FontConfig, FontConfigs, TextDirection},
-  font::{FontRefs, FontType},
-  model::FontMap,
-};
+use crate::font::{FontConfig, FontConfigs, FontRefs, FontType, TextDirection, map::FontMap};
 
 /// テキストシェイピングの初期化エラー。
 #[derive(Debug, Error, Diagnostic)]

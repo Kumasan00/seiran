@@ -1,11 +1,12 @@
-//! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーション
+//! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーションと、段組み設定から
+//! 導出する 1 段あたりの幅の計算。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
   config::{Config, Style},
-  model::column_width,
+  length::Length,
 };
 
 /// config × style 横断バリデーションのエラー詳細。
@@ -29,6 +30,21 @@ pub enum LayoutValidationError {
     /// 段間（pt）
     column_gap: f32,
   },
+}
+
+/// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
+///
+/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`config::validate_layout`・
+/// `build_pdf`・`typeset::breaking` が共通して使用する。
+#[must_use]
+pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
+  let count = num_columns.max(1);
+  // 段数は実用上 1〜2。桁あふれ・精度低下・切り捨てが起きる桁数にはならない
+  #[allow(clippy::cast_precision_loss)]
+  let n = count as f32;
+  #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+  let gaps = (count - 1) as i32;
+  return (text_width - column_gap * gaps) / n;
 }
 
 /// [`Config`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
@@ -58,7 +74,7 @@ pub fn validate_layout(config: &Config, style: &Style) -> Result<(), LayoutValid
 mod tests {
   use std::path::PathBuf;
 
-  use super::{Config, LayoutValidationError, Style, validate_layout};
+  use super::{Config, LayoutValidationError, Length, Style, column_width, validate_layout};
   use crate::config::{
     config_toml::{
       read_config,
@@ -98,6 +114,17 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let config = read_config(&source, &config_path, &base_dir).unwrap();
     return (tempdir, config);
+  }
+
+  fn pt(value: f32) -> Length { return Length::pt(value); }
+
+  fn close(a: Length, b: f32) -> bool { return (a.to_pt() - b).abs() < 0.01; }
+
+  #[test]
+  fn column_width_helper_divides_text_width() {
+    // Arrange / Act / Assert — 本文幅 100pt を 2 段（段間 10pt）と 1 段に割ったときの 1 段幅
+    assert!(close(column_width(pt(100.0), 2, pt(10.0)), 45.0));
+    assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
 
   #[test]

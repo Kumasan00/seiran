@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-/// 19 フォント種別（`model::FontType` の複製）。
+/// 19 フォント種別（`seiran` crate の `font::FontType` の複製）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FontType {
   /// Serif 標準
@@ -50,7 +50,7 @@ pub enum FontType {
 }
 
 impl FontType {
-  /// 全フォント種別を宣言順に並べた配列（`model::FontType::ALL` と同じ並び）。
+  /// 全フォント種別を宣言順に並べた配列（`seiran` crate の `font::FontType::ALL` と同じ並び）。
   ///
   /// `HashMap` はイテレーション順を保証しないため、`ResourceBundle::new` はこの配列の順序で
   /// フォントを構築する（フォント検証エラーの選択順序を決定的にし、`FontFaceInput` が全種別分

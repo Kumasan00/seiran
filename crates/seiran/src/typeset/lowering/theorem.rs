@@ -9,7 +9,9 @@ use super::{
 };
 use crate::{
   config::TheoremStyle,
-  model::{FontKind, HirNode, HirNodeKind, Length, TheoremClass},
+  font::FontKind,
+  length::Length,
+  model::{HirNode, HirNodeKind, TheoremClass},
   resolve::LabelId,
   typeset::layout::Align,
 };

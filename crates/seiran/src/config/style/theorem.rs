@@ -4,8 +4,8 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 pub use crate::model::TheoremClass;
-use crate::model::{
-  FontKind,
+use crate::{
+  font::FontKind,
   length::{Length, non_negative},
 };
 
@@ -380,7 +380,7 @@ mod tests {
   use garde::Validate;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
-  use crate::model::FontKind;
+  use crate::font::FontKind;
 
   /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
   /// 本番では `Style.theorems` が同形でこの型を保持する。
@@ -465,7 +465,7 @@ mod tests {
   fn validate_rejects_negative_top_margin() {
     // Arrange
     let mut style = TheoremStyle::default();
-    style.style.top_margin = crate::model::Length::pt(-0.1);
+    style.style.top_margin = crate::length::Length::pt(-0.1);
 
     // Act / Assert
     assert!(style.validate().is_err());

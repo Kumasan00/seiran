@@ -3,7 +3,7 @@
 //! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `model` が持つ。
 //! 2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有（#334）。
 
-use crate::model::Length;
+use crate::length::Length;
 
 /// 列内のセル内容の揃え方向
 ///
@@ -55,7 +55,7 @@ pub enum ColumnWidth {
 #[cfg(test)]
 mod tests {
   use super::{ColumnAlign, ColumnWidth};
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn column_align_default_is_left() {

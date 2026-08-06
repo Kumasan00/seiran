@@ -7,7 +7,7 @@ use std::fmt::Write;
 use seiran_pdf::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 
 use crate::{
-  model::Length,
+  length::Length,
   typeset::{
     AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
     PositionedBox, measure_items_width,
@@ -116,7 +116,7 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 
 /// 1 描画命令を書き出す（インデント 2）。
 ///
-/// `run.color`（`Option<[u8; 3]>`）は旧 `crate::model::Color` の Debug 表記（`Color([r, g, b])`）と
+/// `run.color`（`Option<[u8; 3]>`）は旧 `crate::color::Color` の Debug 表記（`Color([r, g, b])`）と
 /// 同じ文字列になるよう手書きで揃える — golden の文字列比較を変えないため。
 fn dump_paint_op(out: &mut String, op: &PaintOp) {
   match op {
@@ -437,8 +437,8 @@ mod tests {
 
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
   use crate::{
-    font::GlyphRun,
-    model::{FontType, Length},
+    font::{FontType, GlyphRun},
+    length::Length,
     typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox},
   };
 

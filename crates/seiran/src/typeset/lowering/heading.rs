@@ -55,8 +55,8 @@ pub(super) fn lower_heading(
   result.push(LayoutNode::VBox {
     children,
     margin_bottom: heading_style.bottom_margin,
-    indent: crate::model::Length::pt(0.0),
-    right_indent: crate::model::Length::pt(0.0),
+    indent: crate::length::Length::pt(0.0),
+    right_indent: crate::length::Length::pt(0.0),
     align: Align::Left,
   });
 
@@ -82,7 +82,7 @@ mod tests {
   use crate::{
     citation::GeneratedCitations,
     config::Style as ReadStyle,
-    model::FontKind,
+    font::FontKind,
     typeset::layout::{AnchorId, LinkTarget},
   };
 

@@ -2,7 +2,7 @@
 
 use crate::{
   config::TextAlignment,
-  model::Length,
+  length::Length,
   typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
 };
 
@@ -246,7 +246,7 @@ pub(super) fn build_line(
 #[cfg(test)]
 pub(super) mod test_support {
   use crate::{
-    model::Length,
+    length::Length,
     typeset::layout::{HBox, HBoxContent, HItem},
   };
 

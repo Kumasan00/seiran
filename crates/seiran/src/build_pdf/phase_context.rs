@@ -12,9 +12,9 @@ pub(super) struct CompileContext<'a> {
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
   pub(super) resources: &'a FontSystem<'a>,
   /// 版面幅（段組み前）
-  pub(super) text_width: crate::model::Length,
+  pub(super) text_width: crate::length::Length,
   /// 本文の 1 段あたりの幅（画像サイズ解決に使う）
-  pub(super) body_col_width: crate::model::Length,
+  pub(super) body_col_width: crate::length::Length,
   /// 本文のページジオメトリ（N 段）
   pub(super) body_geometry: crate::typeset::PageGeometry,
   /// 前付けのページジオメトリ（常に 1 段・下端揃えなし）
@@ -33,7 +33,7 @@ impl<'a> CompileContext<'a> {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
-    let body_col_width = crate::model::column_width(text_width, body_columns, column_gap);
+    let body_col_width = crate::config::column_width(text_width, body_columns, column_gap);
     let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, body_columns, column_gap);
     return Self {
       config,
@@ -79,7 +79,7 @@ fn build_page_geometries(
   config: &crate::config::Config,
   style: &crate::config::Style,
   body_columns: usize,
-  column_gap: crate::model::Length,
+  column_gap: crate::length::Length,
 ) -> (crate::typeset::PageGeometry, crate::typeset::PageGeometry, crate::typeset::PageGeometry) {
   let body_geometry = crate::typeset::PageGeometry {
     margin_top: config.pdf.margin.top,
@@ -93,15 +93,15 @@ fn build_page_geometries(
     footnote_top_margin: style.footnote.top_margin,
     footnote_rule_length: style.footnote.rule_length,
     footnote_rule_thickness: style.footnote.rule_thickness,
-    footnote_rule_color: style.footnote.rule_color.map(crate::model::Color::rgb),
+    footnote_rule_color: style.footnote.rule_color.map(crate::color::Color::rgb),
     footnote_rule_gap: style.footnote.rule_gap,
     table_rule_thickness: style.table.rule_thickness,
-    table_rule_color: style.table.rule_color.map(crate::model::Color::rgb),
-    background_color: style.background_color.map(crate::model::Color::rgb),
+    table_rule_color: style.table.rule_color.map(crate::color::Color::rgb),
+    background_color: style.background_color.map(crate::color::Color::rgb),
   };
   let front_geometry = crate::typeset::PageGeometry {
     num_columns: 1,
-    column_gap: crate::model::Length::ZERO,
+    column_gap: crate::length::Length::ZERO,
     flush_bottom: false,
     ..body_geometry
   };

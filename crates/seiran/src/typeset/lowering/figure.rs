@@ -5,7 +5,10 @@ use super::{
   float::{FloatSpec, build_caption, wrap_float},
   layout_node::LayoutNode,
 };
-use crate::model::{AssetId, CaptionPosition, HirInline, Length};
+use crate::{
+  length::Length,
+  model::{AssetId, CaptionPosition, HirInline},
+};
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]

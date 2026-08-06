@@ -5,10 +5,7 @@ use std::path::PathBuf;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-  Length,
-  length::{non_negative, positive},
-};
+use crate::length::{Length, non_negative, positive};
 
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]

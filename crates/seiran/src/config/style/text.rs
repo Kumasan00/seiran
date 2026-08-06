@@ -6,8 +6,8 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-  FontKind,
+use crate::{
+  font::FontKind,
   length::{Length, non_negative, positive},
 };
 
@@ -70,7 +70,7 @@ mod tests {
   use garde::Validate;
 
   use super::{TextAlignment, TextBlockStyle};
-  use crate::model::{FontKind, length::Length};
+  use crate::{font::FontKind, length::Length};
 
   #[test]
   fn text_alignment_default_is_justify() {

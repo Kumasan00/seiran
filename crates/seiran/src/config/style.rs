@@ -56,8 +56,9 @@ pub use crate::config::style::{
   toc::TocStyle,
 };
 use crate::{
+  color::Color,
   config::project_source::{ProjectPath, ProjectSource},
-  model::{Color, HeadingLevel},
+  model::HeadingLevel,
 };
 
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
@@ -335,6 +336,7 @@ mod tests {
   use tempfile::NamedTempFile;
 
   use crate::{
+    color::Color,
     config::{
       project_source::{FilesystemProjectSource, MemoryProjectSource},
       style::{
@@ -342,7 +344,8 @@ mod tests {
         resolve_reference_paths,
       },
     },
-    model::{Color, HeadingLevel, length::Length},
+    length::Length,
+    model::HeadingLevel,
   };
 
   #[test]
@@ -757,9 +760,9 @@ mod parse_tests {
     // Assert
     assert_eq!(style.header.right, "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-    assert_eq!(style.header.font_kind, crate::model::FontKind::SansSerif);
+    assert_eq!(style.header.font_kind, crate::font::FontKind::SansSerif);
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-    assert_eq!(style.header.rule_color.map(crate::model::Color::rgb), Some([0x33, 0x33, 0x33]));
+    assert_eq!(style.header.rule_color.map(crate::color::Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center, "{title}");
     assert!(style.footer.left.is_empty());
     assert!(!style.header.is_empty());

@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
   config::project_source::{ProjectPath, ProjectSource},
-  model::FontType,
+  font::{Feature, FontConfig, FontConfigs, FontType, TextDirection, VariationAxis},
 };
 
 mod pre_config;
@@ -20,10 +20,7 @@ mod tag;
 #[doc(hidden)]
 pub mod test_support;
 
-pub use processed_config::{
-  Config, DocumentConfig, Feature, FontConfig, FontConfigs, ImageConfig, Margin, OutputConfig, PdfConfig,
-  TextDirection, VariationAxis,
-};
+pub use processed_config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -561,7 +558,7 @@ mod tests {
       },
       project_source::{FilesystemProjectSource, MemoryProjectSource},
     },
-    model::FontType,
+    font::FontType,
   };
 
   /// `parse_config` 用のダミーパス。

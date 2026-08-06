@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   config::style::caption::CaptionStyle,
-  model::{Length, length::non_negative},
+  length::{Length, non_negative},
 };
 
 /// 図環境のスタイル設定
@@ -46,7 +46,7 @@ mod tests {
   use garde::Validate;
 
   use super::FigureStyle;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn validate_accepts_default() {

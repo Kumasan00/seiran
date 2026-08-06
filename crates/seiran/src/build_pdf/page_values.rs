@@ -151,8 +151,8 @@ mod tests {
         .map(|mark| {
           return PlacedAnchor {
             mark,
-            x: crate::model::Length::ZERO,
-            y: crate::model::Length::ZERO,
+            x: crate::length::Length::ZERO,
+            y: crate::length::Length::ZERO,
           };
         })
         .collect(),

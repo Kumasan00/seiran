@@ -15,8 +15,7 @@ use super::{
 };
 use crate::{
   config::MemoryProjectSource,
-  font::{FontData, FontDataExt},
-  model::FontType,
+  font::{FontData, FontDataExt, FontType},
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。

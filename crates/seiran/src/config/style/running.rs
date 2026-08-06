@@ -10,8 +10,9 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
-  Color, FontKind,
+use crate::{
+  color::Color,
+  font::FontKind,
   length::{Length, non_negative, positive},
 };
 
@@ -78,7 +79,7 @@ mod tests {
   use garde::Validate;
 
   use super::RunningContentStyle;
-  use crate::model::{FontKind, length::Length};
+  use crate::{font::FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

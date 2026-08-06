@@ -1,7 +1,10 @@
 //! レイアウトノードおよびスタイルの型定義
 
 use crate::{
-  model::{Color, FontKind, Length, MathEnvKind},
+  color::Color,
+  font::FontKind,
+  length::Length,
+  model::MathEnvKind,
   typeset::layout::{Align, AnchorMark, LinkTarget, TableColumn},
 };
 
@@ -217,7 +220,7 @@ pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::FontKind;
+  use crate::font::FontKind;
 
   fn style(font_kind: FontKind) -> TextStyle {
     return TextStyle {

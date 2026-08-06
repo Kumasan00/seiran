@@ -8,7 +8,10 @@ use super::{
   hitem::{HBoxContent, HItem},
   link::LinkTarget,
 };
-use crate::model::{ColumnAlign, ColumnWidth, Length};
+use crate::{
+  length::Length,
+  model::{ColumnAlign, ColumnWidth},
+};
 
 /// 表の 1 列の定義（揃え + 幅指定）
 ///
@@ -285,8 +288,9 @@ mod tests {
     resolve_column_widths, table_row_height,
   };
   use crate::{
-    font::GlyphRun,
-    model::{ColumnAlign, ColumnWidth, FontType, Length},
+    font::{FontType, GlyphRun},
+    length::Length,
+    model::{ColumnAlign, ColumnWidth},
     resolve::LabelId,
   };
 

@@ -5,10 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   config::style::number_style::NumberStyle,
-  model::{
-    FontKind,
-    length::{Length, non_negative},
-  },
+  font::FontKind,
+  length::{Length, non_negative},
 };
 
 /// リスト要素のスタイル設定
@@ -94,10 +92,7 @@ mod tests {
   use garde::Validate;
 
   use super::{ListStyle, NestedOrderedFormat};
-  use crate::{
-    config::style::number_style::NumberStyle,
-    model::{FontKind, length::Length},
-  };
+  use crate::{config::style::number_style::NumberStyle, font::FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

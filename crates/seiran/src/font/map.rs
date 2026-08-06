@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::model::FontType;
+use crate::font::FontType;
 
 /// 全フォント種別 ([`FontType`]) に対応する値を保持する汎用コンテナ
 ///
@@ -11,11 +11,11 @@ use crate::model::FontType;
 /// # Examples
 ///
 /// ```ignore
-/// // `model` は非公開 module のため、この例は擬似コードとして提示するのみ（コンパイル・実行は
-/// // しない）。実際の検証は本ファイル末尾の `#[cfg(test)] mod tests` を参照（#307、model crate
-/// // 吸収により FontMap/FontType が crate 外から到達不能になったため rustdoc テストとしては
-/// // 成立しなくなった）。
-/// use crate::model::{FontMap, FontType};
+/// // `font` は非公開 module のため、この例は擬似コードとして提示するのみ（コンパイル・実行は
+/// // しない）。実際の検証は本ファイル末尾の `#[cfg(test)] mod tests` を参照（#307 の model crate
+/// // 吸収で `FontMap` / `FontType` が crate 外から到達不能になり、rustdoc テストとしては成立
+/// // しなくなった。#336 で所有者が `font` に移った後も同じ）。
+/// use crate::font::{FontType, map::FontMap};
 ///
 /// let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
 /// assert_eq!(map.get(FontType::Serif), "Serif");
@@ -158,7 +158,7 @@ impl<'a, T> IntoIterator for &'a mut FontMap<T> {
 #[cfg(test)]
 mod tests {
   use super::FontMap;
-  use crate::model::FontType;
+  use crate::font::FontType;
 
   #[test]
   fn from_all_and_get_round_trip_by_font_type() {

@@ -8,7 +8,9 @@ use super::{
 };
 use crate::{
   config::CaptionStyle,
-  model::{CaptionPosition, FontKind, HirInline, Length},
+  font::FontKind,
+  length::Length,
+  model::{CaptionPosition, HirInline},
   typeset::layout::Align,
 };
 

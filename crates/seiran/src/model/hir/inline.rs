@@ -1,8 +1,9 @@
 //! HIR のインラインノード [`HirInline`]。
 
-use crate::model::{
-  Color, FontKind,
-  hir::{HirMath, NodeId},
+use crate::{
+  color::Color,
+  font::FontKind,
+  model::hir::{HirMath, NodeId},
 };
 
 /// インラインレベルの HIR ノード

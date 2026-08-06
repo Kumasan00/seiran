@@ -6,12 +6,13 @@ use miette::SourceSpan;
 use phf::phf_map;
 
 use crate::{
+  font::FontKind,
   frontend::{
     evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
+  model::{HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
 };
 
 pub(crate) mod cite;

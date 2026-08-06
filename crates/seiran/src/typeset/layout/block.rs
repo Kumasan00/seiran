@@ -10,7 +10,7 @@ use super::{
   link::AnchorMark,
   table_box::TableBox,
 };
-use crate::model::{AssetId, Length};
+use crate::{length::Length, model::AssetId};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///

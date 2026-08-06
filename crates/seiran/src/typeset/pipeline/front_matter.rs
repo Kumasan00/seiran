@@ -4,7 +4,7 @@ use tracing::{debug, debug_span};
 
 use crate::{
   font::FontSystem,
-  model::Length,
+  length::Length,
   typeset::{
     block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     breaking::{LineBreaker, PageGeometry, break_pages},

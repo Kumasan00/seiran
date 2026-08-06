@@ -3,7 +3,7 @@
 use super::{LineBreaker, OpenLink, build_line};
 use crate::{
   config::TextAlignment,
-  model::Length,
+  length::Length,
   typeset::layout::{HItem, Line},
 };
 
@@ -117,7 +117,7 @@ mod tests {
   };
   use crate::{
     config::TextAlignment,
-    model::Length,
+    length::Length,
     typeset::layout::{HBox, HBoxContent, HItem},
   };
 

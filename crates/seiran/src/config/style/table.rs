@@ -4,11 +4,9 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+  color::Color,
   config::style::caption::CaptionStyle,
-  model::{
-    Color,
-    length::{Length, non_negative},
-  },
+  length::{Length, non_negative},
 };
 
 /// 表のスタイル設定
@@ -60,7 +58,7 @@ mod tests {
   use garde::Validate;
 
   use super::TableStyle;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn validate_accepts_default() {

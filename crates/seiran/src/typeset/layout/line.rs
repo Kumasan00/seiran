@@ -4,7 +4,7 @@ use super::{
   hitem::{HBoxContent, HItem},
   link::LinkTarget,
 };
-use crate::model::Length;
+use crate::length::Length;
 
 /// 行分割で確定した 1 行
 ///

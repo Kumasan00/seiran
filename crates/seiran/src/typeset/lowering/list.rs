@@ -5,10 +5,7 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::{
-  model::{HirListItem, Length},
-  typeset::layout::Align,
-};
+use crate::{length::Length, model::HirListItem, typeset::layout::Align};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
@@ -25,7 +22,7 @@ pub(super) fn lower_list(
 
   // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
   // 同時にネスト深さを +1 して渡し、item 内容中のネストしたリストが深さ +1 で lower されるようにする。
-  let item_ctx = ctx.with_first_line_indent(crate::model::Length::pt(0.0)).with_list_depth(depth + 1);
+  let item_ctx = ctx.with_first_line_indent(crate::length::Length::pt(0.0)).with_list_depth(depth + 1);
 
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
@@ -70,7 +67,7 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: item.item_gap.or(item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
-      right_indent: crate::model::Length::pt(0.0),
+      right_indent: crate::length::Length::pt(0.0),
       align: Align::Left,
     });
   }
@@ -85,7 +82,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::FontKind};
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, font::FontKind};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {

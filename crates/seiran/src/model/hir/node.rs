@@ -1,8 +1,11 @@
 //! HIR のブロックノード [`HirNode`] と付随構造。
 
-use crate::model::{
-  AssetId, CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, Length, MathEnvKind, QuoteKind, TheoremClass,
-  hir::{HirInline, HirMathRow, NodeId},
+use crate::{
+  length::Length,
+  model::{
+    AssetId, CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathEnvKind, QuoteKind, TheoremClass,
+    hir::{HirInline, HirMathRow, NodeId},
+  },
 };
 
 /// ブロックレベルの HIR ノード

@@ -11,7 +11,7 @@ use hayagriva::{
 };
 
 use super::{CitationId, GeneratedBlock, GeneratedInline};
-use crate::model::{FontKind, HeadingLevel};
+use crate::{font::FontKind, model::HeadingLevel};
 
 /// hayagriva による整形結果。
 pub(crate) struct Rendered {

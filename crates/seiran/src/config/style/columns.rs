@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Length, length::non_negative};
+use crate::length::{Length, non_negative};
 
 /// 段組みのスタイル設定
 ///
@@ -34,7 +34,7 @@ mod tests {
   use garde::Validate;
 
   use super::ColumnsStyle;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn validate_accepts_default() {

@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Length, length::positive};
+use crate::length::{Length, positive};
 
 /// キャプションの共通設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -32,7 +32,7 @@ mod tests {
   use garde::Validate;
 
   use super::CaptionStyle;
-  use crate::model::Length;
+  use crate::length::Length;
 
   #[test]
   fn validate_accepts_default() {

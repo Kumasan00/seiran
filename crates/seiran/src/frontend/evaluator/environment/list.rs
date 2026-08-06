@@ -292,7 +292,7 @@ mod tests {
     let HirNodeKind::List { item_gap, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*item_gap, Some(crate::model::Length::mm(0.0)));
+    assert_eq!(*item_gap, Some(crate::length::Length::mm(0.0)));
   }
 
   #[test]
@@ -313,7 +313,7 @@ mod tests {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(*start, Some(2));
-    assert_eq!(*item_gap, Some(crate::model::Length::mm(8.0)));
+    assert_eq!(*item_gap, Some(crate::length::Length::mm(8.0)));
   }
 
   #[test]
@@ -330,6 +330,6 @@ mod tests {
     let HirNodeKind::List { items, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].item_gap, Some(crate::model::Length::mm(-1.0)));
+    assert_eq!(items[0].item_gap, Some(crate::length::Length::mm(-1.0)));
   }
 }
