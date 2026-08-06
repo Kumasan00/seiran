@@ -82,8 +82,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, TheoremClass},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::{HirInlineKind, TheoremClass},
   };
 
   /// テスト用 `parse` ラッパ
@@ -102,18 +102,18 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Theorem {
+    let HirNodeKind::Theorem {
       class,
       title,
       body,
       of,
       label,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
@@ -122,7 +122,7 @@ mod tests {
     assert!(of.is_none());
     assert!(label.is_none());
     assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0], DocNode::Paragraph(_)));
+    assert!(matches!(&body[0].kind, HirNodeKind::Paragraph(_)));
   }
 
   #[test]
@@ -133,10 +133,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Theorem { class, .. } = &result[0] else {
+    let HirNodeKind::Theorem { class, .. } = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
     assert_eq!(*class, TheoremClass::Proof);
@@ -150,10 +150,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Theorem { title, .. } = &result[0] else {
+    let HirNodeKind::Theorem { title, .. } = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
     assert_eq!(title.as_deref(), Some("ピタゴラスの定理"));
@@ -167,17 +167,19 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Theorem { label, .. } = &result[0] else {
+    let HirNodeKind::Theorem { label, .. } = &result[0].kind else {
       panic!("Theorem が期待されます: {:?}", result[0]);
     };
     assert_eq!(label.as_deref(), Some("thm:p"));
-    let DocNode::Paragraph(inlines) = result.last().unwrap() else {
+    let HirNodeKind::Paragraph(inlines) = &result.last().unwrap().kind else {
       panic!("Paragraph が期待されます: {:?}", result.last());
     };
-    assert!(matches!(inlines.first(), Some(crate::model::InlineNode::Ref { label, .. }) if label == "thm:p"));
+    assert!(
+      matches!(inlines.first().map(|inline| return &inline.kind), Some(HirInlineKind::Ref { label }) if label == "thm:p")
+    );
   }
 
   #[test]
@@ -188,10 +190,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Theorem { of, .. } = &result[1] else {
+    let HirNodeKind::Theorem { of, .. } = &result[1].kind else {
       panic!("proof の Theorem が期待されます: {:?}", result[1]);
     };
     let of = of.as_ref().expect("of 参照あり");
@@ -206,7 +208,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "of"));
@@ -220,7 +222,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "label"));
@@ -234,7 +236,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -248,14 +250,14 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 2);
-    let DocNode::Theorem { label: a, .. } = &result[0] else {
+    let HirNodeKind::Theorem { label: a, .. } = &result[0].kind else {
       panic!("Theorem が期待されます");
     };
-    let DocNode::Theorem { label: b, .. } = &result[1] else {
+    let HirNodeKind::Theorem { label: b, .. } = &result[1].kind else {
       panic!("Theorem が期待されます");
     };
     assert_eq!(a.as_deref(), Some("dup"));
