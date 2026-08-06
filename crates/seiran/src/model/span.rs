@@ -25,6 +25,8 @@ impl Span {
 
   /// バイト長が 0 かどうかを返す
   #[must_use]
+  // crate 内の `#[cfg(test)]` からのみ使う。
+  #[allow(dead_code)]
   pub fn is_empty(self) -> bool { return self.end == self.start; }
 
   /// 2 つの Span を含む最小の Span を返す

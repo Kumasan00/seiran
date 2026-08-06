@@ -162,8 +162,11 @@ pub struct CellPlacement<'a> {
   /// 対象のセル
   pub cell: &'a TableCellBox,
   /// セル帯（結合列込み）の表左端からの開始オフセット
+  // 配置計算の中間値。描画は `content_x` だけを使うが、crate 内の `#[cfg(test)]` が帯の算術を検証する。
+  #[allow(dead_code)]
   pub band_x: Length,
   /// セル帯の幅
+  #[allow(dead_code)]
   pub band_width: Length,
   /// 内容の開始位置（表左端からの相対 x。揃え + padding 適用済み）
   pub content_x: Length,

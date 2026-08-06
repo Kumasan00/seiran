@@ -7,7 +7,6 @@
 use super::{
   HeadingRecord, LoweringContext,
   heading::{self, title_style},
-  inline::with_link_color,
   layout_node::{LayoutNode, TextStyle},
   paragraph::{assemble_paragraph, body_text_style},
 };
@@ -80,7 +79,8 @@ pub(super) fn lower_generated_inlines(
 
 /// 生成物のインライン 1 個をレイアウトノードへ変換する
 ///
-/// `GeneratedInline` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
+/// `GeneratedInline` は `citation::render` が実際に構築する 3 variant に絞られている
+/// （#325 / #326）ので、この match は網羅的で済む。
 fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, parent_style: TextStyle) -> Vec<LayoutNode> {
   match inline {
     GeneratedInline::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
@@ -92,29 +92,12 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, paren
       };
       return lower_generated_inlines(ctx, children, styled);
     },
-    GeneratedInline::Colored { color, children } => {
-      let colored = TextStyle {
-        font_size: parent_style.font_size,
-        font_kind: parent_style.font_kind,
-        color: Some(*color),
-      };
-      return lower_generated_inlines(ctx, children, colored);
-    },
     GeneratedInline::InternalLink { target, children } => {
       return vec![LayoutNode::Link {
         target: LinkTarget::Internal(AnchorId::Citation(target.clone())),
         children: lower_generated_inlines(ctx, children, parent_style),
       }];
     },
-    GeneratedInline::Link { url, children } => {
-      let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
-      return vec![LayoutNode::Link {
-        target: LinkTarget::External(url.clone()),
-        children: lower_generated_inlines(ctx, children, style),
-      }];
-    },
-    GeneratedInline::Symbol(ch) => return vec![LayoutNode::Text(ch.to_string(), parent_style)],
-    GeneratedInline::LineBreak => return vec![LayoutNode::LineBreak],
   }
 }
 

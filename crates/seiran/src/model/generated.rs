@@ -6,10 +6,12 @@
 //! 見出しキーの確定は `resolve::analyze` が HIR に対してのみ行うので、採番フラグや
 //! ラベルに相当するフィールドも持たない（#325 / #326）。
 //!
-//! variant が絞られている（ブロック 3 / インライン 7）のは意図的で、
-//! `typeset::lowering::generated` の変換がこれらを網羅的に match できることを支えている。
+//! variant は `citation::render` が**実際に構築するものだけ**に絞ってある（ブロック 3 /
+//! インライン 3）。これは `typeset::lowering::generated` の変換が網羅的に match できることと、
+//! 「生成物が取りうる形」がこの enum を読むだけで分かることの両方を支えている。
+//! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 
-use crate::model::{CitationId, Color, FontKind, HeadingLevel};
+use crate::model::{CitationId, FontKind, HeadingLevel};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///
@@ -53,33 +55,11 @@ pub enum GeneratedInline {
     children: Vec<GeneratedInline>,
   },
 
-  /// テキスト色指定
-  ///
-  /// 色は書体（`FontKind`）と直交する属性なので [`GeneratedInline::Styled`] とは別経路にする。
-  /// Lowering 層では親の `font_size` / `font_kind` を継承したまま `TextStyle.color` だけを
-  /// 上書きする。ネスト時は内側の `color` が外側の色を上書きする（`Styled` の上書き規則と整合）。
-  Colored {
-    /// 適用する色（Lowering 層でそのまま `TextStyle.color` になる）
-    color: Color,
-    /// 着色対象のインライン要素
-    children: Vec<GeneratedInline>,
-  },
-
-  /// 特殊文字・記号
-  Symbol(char),
-
-  /// 強制改行
-  LineBreak,
-
-  /// 外部リンク（CSL 整形が DOI 等の URL 付きエントリを表現する際に使う）
-  Link {
-    /// リンク先の外部 URI
-    url: String,
-    /// 表示テキスト（インライン要素）
-    children: Vec<GeneratedInline>,
-  },
-
   /// 整形済みの内部リンク（文書内アンカーへのジャンプ）
+  ///
+  /// 引用表示から書誌エントリの [`GeneratedBlock::Anchor`] へ飛ぶための唯一のリンク種別。
+  /// 外部 URL（DOI 等）へのリンクは `citation::render` が現状生成しない（hyperref 対応まで
+  /// URL を捨ててテキストだけを残す）ため、外部リンクの variant は持たない。
   InternalLink {
     /// ジャンプ先の引用キー（`AnchorMark::Citation(target)` と一致させる）
     target: CitationId,
@@ -89,10 +69,6 @@ pub enum GeneratedInline {
 }
 
 impl GeneratedInline {
-  /// テキストノードを生成する
-  #[must_use]
-  pub fn text(s: impl Into<String>) -> Self { return GeneratedInline::Text(s.into()); }
-
   /// このノードをプレーンテキストに変換する
   ///
   /// スタイル情報を無視して、含まれる文字列を連結して返す。生成物（`citation::render` が
@@ -102,12 +78,9 @@ impl GeneratedInline {
   pub fn to_plain_text(&self) -> String {
     match self {
       GeneratedInline::Text(s) => return s.clone(),
-      GeneratedInline::Styled { children, .. }
-      | GeneratedInline::Colored { children, .. }
-      | GeneratedInline::Link { children, .. }
-      | GeneratedInline::InternalLink { children, .. } => return generated_inlines_to_plain_text(children),
-      GeneratedInline::Symbol(ch) => return ch.to_string(),
-      GeneratedInline::LineBreak => return "\n".to_string(),
+      GeneratedInline::Styled { children, .. } | GeneratedInline::InternalLink { children, .. } => {
+        return generated_inlines_to_plain_text(children);
+      },
     }
   }
 }
@@ -125,12 +98,13 @@ pub fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::*;
+  use super::{GeneratedInline, generated_inlines_to_plain_text};
+  use crate::model::{CitationId, FontKind};
 
   #[test]
   fn generated_text_to_plain_text() {
     // Arrange
-    let node = GeneratedInline::text("hello");
+    let node = GeneratedInline::Text("hello".to_string());
 
     // Act
     let plain = node.to_plain_text();
@@ -140,23 +114,11 @@ mod tests {
   }
 
   #[test]
-  fn generated_symbol_to_plain_text() {
-    // Arrange
-    let node = GeneratedInline::Symbol('α');
-
-    // Act
-    let plain = node.to_plain_text();
-
-    // Assert
-    assert_eq!(plain, "α");
-  }
-
-  #[test]
   fn generated_styled_to_plain_text() {
     // Arrange
     let node = GeneratedInline::Styled {
       kind: FontKind::SerifItalic,
-      children: vec![GeneratedInline::text("important")],
+      children: vec![GeneratedInline::Text("important".to_string())],
     };
 
     // Act
@@ -167,15 +129,30 @@ mod tests {
   }
 
   #[test]
+  fn generated_internal_link_to_plain_text() {
+    // Arrange
+    let node = GeneratedInline::InternalLink {
+      target: CitationId::new("kwan2014"),
+      children: vec![GeneratedInline::Text("[1]".to_string())],
+    };
+
+    // Act
+    let plain = node.to_plain_text();
+
+    // Assert
+    assert_eq!(plain, "[1]");
+  }
+
+  #[test]
   fn generated_nested_to_plain_text() {
     // Arrange
     let node = GeneratedInline::Styled {
       kind: FontKind::SerifBold,
       children: vec![
-        GeneratedInline::text("bold "),
+        GeneratedInline::Text("bold ".to_string()),
         GeneratedInline::Styled {
           kind: FontKind::SerifItalic,
-          children: vec![GeneratedInline::text("and italic")],
+          children: vec![GeneratedInline::Text("and italic".to_string())],
         },
       ],
     };
@@ -188,27 +165,15 @@ mod tests {
   }
 
   #[test]
-  fn generated_line_break_to_plain_text() {
-    // Arrange
-    let node = GeneratedInline::LineBreak;
-
-    // Act
-    let plain = node.to_plain_text();
-
-    // Assert
-    assert_eq!(plain, "\n");
-  }
-
-  #[test]
   fn generated_inlines_to_plain_text_mixed() {
     // Arrange
     let inlines = vec![
-      GeneratedInline::text("Hello "),
+      GeneratedInline::Text("Hello ".to_string()),
       GeneratedInline::Styled {
         kind: FontKind::SerifBold,
-        children: vec![GeneratedInline::text("world")],
+        children: vec![GeneratedInline::Text("world".to_string())],
       },
-      GeneratedInline::text("!"),
+      GeneratedInline::Text("!".to_string()),
     ];
 
     // Act

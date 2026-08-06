@@ -252,11 +252,10 @@ mod tests {
           kind: FontKind::SerifItalic | FontKind::SerifBoldItalic,
           children,
         } => out.push(children.iter().map(GeneratedInline::to_plain_text).collect()),
-        GeneratedInline::Styled { children, .. }
-        | GeneratedInline::Colored { children, .. }
-        | GeneratedInline::Link { children, .. }
-        | GeneratedInline::InternalLink { children, .. } => collect_italic_texts(children, out),
-        GeneratedInline::Text(_) | GeneratedInline::Symbol(_) | GeneratedInline::LineBreak => {},
+        GeneratedInline::Styled { children, .. } | GeneratedInline::InternalLink { children, .. } => {
+          collect_italic_texts(children, out);
+        },
+        GeneratedInline::Text(_) => {},
       }
     }
   }

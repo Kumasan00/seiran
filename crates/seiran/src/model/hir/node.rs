@@ -128,6 +128,8 @@ pub(crate) enum HirNodeKind {
   },
 
   /// 罫線（描画線）
+  // `\rule` は未実装で frontend が構築しない。IR と lowering の受け口だけ先にある。
+  #[allow(dead_code)]
   Rule {
     /// 幅
     width: Length,

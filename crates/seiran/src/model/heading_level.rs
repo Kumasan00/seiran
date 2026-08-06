@@ -22,6 +22,7 @@ pub enum HeadingLevel {
 
 impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
+  #[allow(dead_code)]
   pub const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
     HeadingLevel::Chapter,
@@ -39,6 +40,7 @@ impl HeadingLevel {
 
   /// コマンド名からレベルを取得する
   #[must_use]
+  #[allow(dead_code)]
   pub fn from_command_name(name: &str) -> Option<Self> {
     return match name {
       "part" => Some(HeadingLevel::Part),

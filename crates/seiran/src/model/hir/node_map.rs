@@ -49,6 +49,8 @@ impl<T> NodeMap<T> {
   }
 
   /// エントリ数を返す
+  // crate 内の `#[cfg(test)]` からのみ使う。
+  #[allow(dead_code)]
   pub(crate) fn len(&self) -> usize { return self.entries.len(); }
 
   /// エントリが 1 つも無いかを返す
