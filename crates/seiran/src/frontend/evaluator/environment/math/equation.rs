@@ -82,8 +82,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, MathEnvKind, MathNode},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::{HirMathKind, HirMathRow, MathEnvKind},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -94,9 +94,9 @@ mod tests {
     return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  /// 結果の最初の `DocNode::MathBlock` から唯一の行を取り出すヘルパ
-  fn first_row(result: &[DocNode]) -> &crate::model::MathRow {
-    let DocNode::MathBlock { kind, rows, .. } = &result[0] else {
+  /// 結果の最初の `HirNodeKind::MathBlock` から唯一の行を取り出すヘルパ
+  fn first_row(result: &[HirNode]) -> &HirMathRow {
+    let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, MathEnvKind::Equation, "equation は MathEnvKind::Equation");
@@ -112,7 +112,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -121,7 +121,7 @@ mod tests {
     assert!(row.numbered);
     assert_eq!(row.cells.len(), 1, "equation は 1 セル");
     assert!(
-      row.cells[0].iter().any(|n| matches!(n, MathNode::Superscript(_))),
+      row.cells[0].iter().any(|n| matches!(n.kind, HirMathKind::Superscript(_))),
       "Superscript ノードが含まれるべき: {:?}",
       row.cells[0]
     );
@@ -135,7 +135,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -152,7 +152,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -166,7 +166,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -180,7 +180,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -194,7 +194,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -210,7 +210,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -226,7 +226,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::LabelRequiresNumbering { ref name, .. }) if name == "equation"));
@@ -240,7 +240,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::NotagNotSupported { .. })));
@@ -254,7 +254,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));
