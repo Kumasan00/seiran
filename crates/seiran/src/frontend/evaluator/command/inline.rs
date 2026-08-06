@@ -13,7 +13,7 @@ use crate::{
   model::{FontKind, HirBuilder, HirInline, HirInlineKind},
 };
 
-/// 引数 1 つを取り、子要素を `InlineNode` リストに変換して [`InlineNode::Styled`] でラップする共通処理
+/// 引数 1 つを取り、子要素を `HirInline` リストに変換して `HirInlineKind::Styled` でラップする共通処理
 ///
 /// # Errors
 ///
@@ -44,7 +44,7 @@ pub(crate) fn styled_text(
   return Ok(vec![HirInline::new(id, HirInlineKind::Styled { kind, children })]);
 }
 
-/// `\color[color=#rrggbb]{...}` を評価し、子要素を [`InlineNode::Colored`] でラップする
+/// `\color[color=#rrggbb]{...}` を評価し、子要素を `HirInlineKind::Colored` でラップする
 ///
 /// # Errors
 ///
@@ -89,12 +89,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -127,15 +124,15 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      InlineNode::Styled { kind, children } => {
+    match &result[0].kind {
+      HirInlineKind::Styled { kind, children } => {
         assert_eq!(*kind, FontKind::SerifBold);
         assert_eq!(children.len(), 1);
-        assert!(matches!(&children[0], InlineNode::Text(t) if t == "hello"));
+        assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "hello"));
       },
       _ => panic!("Styled が期待されます"),
     }
@@ -150,16 +147,16 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)).unwrap();
 
     // Assert
-    let InlineNode::Styled { kind, children } = &result[0] else {
+    let HirInlineKind::Styled { kind, children } = &result[0].kind else {
       panic!("Styled が期待されます");
     };
     assert_eq!(*kind, FontKind::SerifBold);
-    let InlineNode::Styled {
+    let HirInlineKind::Styled {
       kind: inner_kind, ..
-    } = &children[0]
+    } = &children[0].kind
     else {
       panic!("内側も Styled が期待されます: {children:?}");
     };
@@ -176,7 +173,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -191,7 +188,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
+      run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -205,7 +202,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return styled_text(&view, builder, FontKind::SerifBold));
+    let result = run_inline_handler(|builder| return styled_text(&view, builder, FontKind::SerifBold));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
@@ -220,16 +217,16 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Colored { color, children } = &result[0] else {
+    let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
     assert_eq!(*color, crate::model::Color::new(0xff, 0x00, 0x00));
     assert_eq!(children.len(), 1);
-    assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 
   #[test]
@@ -242,7 +239,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler_legacy(|builder| return colored_text(&view, builder)),
+      run_inline_handler(|builder| return colored_text(&view, builder)),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -257,7 +254,7 @@ mod tests {
 
     // Act & Assert
     assert!(
-      matches!(run_inline_handler_legacy(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
+      matches!(run_inline_handler(|builder| return colored_text(&view, builder)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
     );
   }
 
@@ -271,7 +268,7 @@ mod tests {
 
     // Act & Assert
     assert!(matches!(
-      run_inline_handler_legacy(|builder| return colored_text(&view, builder)),
+      run_inline_handler(|builder| return colored_text(&view, builder)),
       Err(EvalError::ExtraCommandArgument { .. })
     ));
   }
@@ -285,14 +282,14 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return colored_text(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return colored_text(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Colored { color, children } = &result[0] else {
+    let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
     assert_eq!(*color, crate::model::Color::new(0x00, 0x00, 0xff));
-    let InlineNode::Styled { kind, .. } = &children[0] else {
+    let HirInlineKind::Styled { kind, .. } = &children[0].kind else {
       panic!("内側は Styled が期待されます: {children:?}");
     };
     assert_eq!(*kind, FontKind::SerifBold);
