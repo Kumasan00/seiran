@@ -7,7 +7,7 @@
 mod common;
 
 use common::{minimal_config_toml, read_test_font};
-use seiran::{MemoryProjectSource, ProjectPath};
+use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
 #[test]
 fn render_does_not_mutate_the_publication() {
@@ -18,7 +18,7 @@ fn render_does_not_mutate_the_publication() {
     .with_text("/project/text.sei", r"\section{見出し}本文がここに入る。")
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
-  let compilation = seiran::compile(&source, &root).expect("compile は成功するはず");
+  let compilation = seiran_compiler::compile(&source, &root).expect("compile は成功するはず");
   let publication_before = compilation.publication.clone();
 
   // Act

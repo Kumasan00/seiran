@@ -1,7 +1,7 @@
 //! 確定レイアウトの golden スナップショット回帰テスト
 //!
 //! fixture を組版した決定的テキストを `tests/golden/` と比較する。再生成は
-//! `UPDATE_GOLDEN=1 cargo test -p seiran` で行う。
+//! `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で行う。
 
 use std::{
   fs,
@@ -54,11 +54,11 @@ pub(super) fn workspace_root() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
     .nth(2)
-    .expect("crates/seiran の 2 階層上がワークスペースルート")
+    .expect("crates/seiran-compiler の 2 階層上がワークスペースルート")
     .to_path_buf();
 }
 
-/// golden ファイルを置くディレクトリ（`crates/seiran/tests/golden`）を返す。
+/// golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden`）を返す。
 fn golden_dir() -> PathBuf { return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"); }
 
 /// カレントディレクトリをワークスペースルートへ固定する（相対パス解決を実ビルドに合わせる）。
@@ -75,9 +75,12 @@ pub(super) fn load_base() -> (Config, Style, Arc<References>) {
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
   let source = crate::project::FilesystemProjectSource::new();
-  let config =
-    crate::config::read_config(&source, Path::new("crates/seiran/tests/config/config.toml"), &workspace_root())
-      .expect("fixture config.toml の読込");
+  let config = crate::config::read_config(
+    &source,
+    Path::new("crates/seiran-compiler/tests/config/config.toml"),
+    &workspace_root(),
+  )
+  .expect("fixture config.toml の読込");
   let style = crate::config::read_style(&source, config.style_path.as_deref(), &workspace_root())
     .expect("fixture style.toml の読込");
   let references = read_references(&source, config.references_path.as_deref()).expect("fixture references の読込");
@@ -219,9 +222,9 @@ fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table)
 /// そのまま同じ絶対パスに実バイト列を重ねればよい）。
 fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, ProjectPath) {
   let workspace_root = workspace_root();
-  let config_path = workspace_root.join("crates/seiran/tests/config/config.toml");
-  let references_path = workspace_root.join("crates/seiran/tests/config/references.toml");
-  let style_path = workspace_root.join("crates/seiran/tests/config/style.toml");
+  let config_path = workspace_root.join("crates/seiran-compiler/tests/config/config.toml");
+  let references_path = workspace_root.join("crates/seiran-compiler/tests/config/references.toml");
+  let style_path = workspace_root.join("crates/seiran-compiler/tests/config/style.toml");
   let sei_path = workspace_root.join(format!("tests/text/{name}.sei"));
 
   let base_config_text = fs::read_to_string(&config_path).expect("fixture config.toml を読めるはず");

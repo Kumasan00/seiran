@@ -2140,6 +2140,21 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "seiran"
 version = "0.1.0"
 dependencies = [
+ "clap",
+ "miette",
+ "read-fonts 0.41.0",
+ "seiran-compiler",
+ "seiran-pdf",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "seiran-compiler"
+version = "0.1.0"
+dependencies = [
  "bumpalo",
  "ciborium",
  "font-types 0.12.2",
@@ -2164,21 +2179,6 @@ dependencies = [
  "toml",
  "tracing",
  "unic-langid",
-]
-
-[[package]]
-name = "seiran-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "miette",
- "read-fonts 0.41.0",
- "seiran",
- "seiran-pdf",
- "tempfile",
- "thiserror",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

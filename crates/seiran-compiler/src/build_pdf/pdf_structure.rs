@@ -19,7 +19,7 @@ use crate::font::{FontData, FontDataExt, FontResources};
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
 
-/// PDF 構造 golden ファイルを置くディレクトリ（`crates/seiran/tests/golden_pdf_structure`）を返す。
+/// PDF 構造 golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_pdf_structure`）を返す。
 fn pdf_structure_golden_dir() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }

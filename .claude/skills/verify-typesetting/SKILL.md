@@ -16,7 +16,7 @@ description: >-
 
 ## 前提（初回のみ）
 
-golden テストの入力はコミット済み fixture（`crates/seiran/tests/config/`）と、
+golden テストの入力はコミット済み fixture（`crates/seiran-compiler/tests/config/`）と、
 `tools/fetch-test-assets.sh` が SHA-256 検証付きで `vendor/` へ取得するピン留め資産
 （フォント・CSL。gitignore 対象・コミットしない）。`vendor/fonts` が無い状態で
 テストを走らせると assert で案内が出る。ユーザローカルの `config/` / `fonts/` は
@@ -32,8 +32,8 @@ golden テストの入力はコミット済み fixture（`crates/seiran/tests/co
 
 ## layout dump golden
 
-`crates/seiran/src/build_pdf/golden.rs` には 9 個のテストがあり、golden ファイル
-（`crates/seiran/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
+`crates/seiran-compiler/src/build_pdf/golden.rs` には 9 個のテストがあり、golden ファイル
+（`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
 （`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
 `super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
 （`seiran_pdf::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
@@ -58,8 +58,8 @@ golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication
 いない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
 が言う「順次移行」方針どおり）。
 
-- **確認**: `cargo test -p seiran`
-- **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran` で再生成し、`git diff` で
+- **確認**: `cargo test -p seiran-compiler`
+- **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で再生成し、`git diff` で
   golden の差分をレビューする。意図した箇所**だけ**が動いたかを確認する — 無関係な
   fixture の差分は副作用のシグナル。golden の差分は PR に含めてレビュー対象にする
 - **リファクタの振る舞い不変**: golden 差分ゼロがそのまま証拠。`UPDATE_GOLDEN` は使わない
@@ -86,7 +86,7 @@ config では無効。golden.rs の `apply_input_style_overrides`（型付き `S
    `apply_input_config_overrides` だけでは golden の入力へ反映されない。同じ fixture 名を
    golden 以外の個別テスト（脚注採番テスト等、`dump_input` を経由せず `build_pages` を直接呼ぶ）
    でも `apply_input_config_overrides` 経由で使う場合は、挙動を揃えるため両方に追記する）
-3. `UPDATE_GOLDEN=1 cargo test -p seiran` で golden を生成し、内容を確認してコミット
+3. `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で golden を生成し、内容を確認してコミット
 
 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが
 依存するため除外）。

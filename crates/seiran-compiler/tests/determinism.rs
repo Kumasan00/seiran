@@ -6,7 +6,7 @@
 mod common;
 
 use common::{minimal_config_toml, read_test_font};
-use seiran::{MemoryProjectSource, ProjectPath};
+use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
 /// 代表的な入力の一覧（filesystem を使わず埋め込む。網羅目的の fixture 追加ではなく、
 /// テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通すための最小集合）。
@@ -34,8 +34,8 @@ fn compile_is_deterministic_for_the_same_source() {
     let root = ProjectPath::new("/project/config.toml");
 
     // Act — 同じ source から 2 回 compile する
-    let first = seiran::compile(&source, &root).expect("1 回目の compile は成功するはず");
-    let second = seiran::compile(&source, &root).expect("2 回目の compile は成功するはず");
+    let first = seiran_compiler::compile(&source, &root).expect("1 回目の compile は成功するはず");
+    let second = seiran_compiler::compile(&source, &root).expect("2 回目の compile は成功するはず");
 
     // Assert — Publication は完全に同一（PartialEq 比較）
     assert_eq!(first.publication, second.publication, "text={text:?} で決定性が崩れているはず");

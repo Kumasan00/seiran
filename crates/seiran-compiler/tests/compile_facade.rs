@@ -1,6 +1,6 @@
-//! `seiran::compile` が lib target の公開 API として呼べることを検証する統合テスト
+//! `seiran_compiler::compile` が lib target の公開 API として呼べることを検証する統合テスト
 //!
-//! crate 内部の `#[cfg(test)]` ではなく、この crate の外部から `cargo test -p seiran` で
+//! crate 内部の `#[cfg(test)]` ではなく、この crate の外部から `cargo test -p seiran-compiler` で
 //! 実行される独立バイナリとして置く。`compile` が `pub(crate)` のままでも内部テストは
 //! 通ってしまうため、「lib target から compile が呼べる」という受け入れ条件を機械的に
 //! 検証するには外部からのコンパイルが必要（issue #304）。
@@ -13,7 +13,7 @@ mod common;
 use std::path::PathBuf;
 
 use common::{minimal_config_toml, read_test_font};
-use seiran::{MemoryProjectSource, ProjectPath};
+use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
 #[test]
 #[allow(clippy::unwrap_used)]
@@ -28,7 +28,7 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran::compile(&source, &root).expect("最小構成の compile は成功するはず");
+  let compilation = seiran_compiler::compile(&source, &root).expect("最小構成の compile は成功するはず");
 
   // Assert — Publication と統計が確定し、warnings は現状常に空
   assert!(compilation.statistics.page_count >= 1, "本文が 1 ページ以上生成されるはず");
@@ -46,7 +46,7 @@ fn compile_reports_a_diagnostic_set_on_failure() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let diagnostics = seiran::compile(&source, &root).expect_err("未登録の設定ファイルは失敗するはず");
+  let diagnostics = seiran_compiler::compile(&source, &root).expect_err("未登録の設定ファイルは失敗するはず");
 
   // Assert
   assert!(!diagnostics.is_empty());

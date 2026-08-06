@@ -71,7 +71,7 @@ pub struct PlacedFootnote {
   pub number: u32,
   /// 出現順の識別子（0 起点。[`super::line::LineFootnote`] から素通し）
   ///
-  /// ページ単位採番の反復（`seiran::build_pdf`）が、確定したページ列から
+  /// ページ単位採番の反復（`seiran_compiler::build_pdf`）が、確定したページ列から
   /// 「どの脚注に何番を振り直すか」を決めるためのキー。
   pub index: u32,
   /// 前ページからの繰越（長い脚注の続き）か

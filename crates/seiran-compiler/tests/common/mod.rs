@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use seiran::test_support;
+use seiran_compiler::test_support;
 
 /// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
 /// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。
@@ -11,7 +11,7 @@ pub fn read_test_font() -> Vec<u8> {
   let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
     .nth(2)
-    .expect("crates/seiran の 2 階層上がワークスペースルート");
+    .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
   let path = workspace_root.join("vendor/fonts/STIXTwoMath-Regular.ttf");
   return std::fs::read(&path).unwrap_or_else(|error| {
     panic!(
