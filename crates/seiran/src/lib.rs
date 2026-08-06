@@ -11,7 +11,6 @@ mod font;
 mod frontend;
 mod model;
 mod resolve;
-#[allow(clippy::enum_variant_names)]
 mod typeset;
 
 pub use build_pdf::{BuildStatistics, Compilation, DependencyManifest, DiagnosticSet, OutputPlan, compile};
