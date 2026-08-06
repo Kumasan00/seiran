@@ -11,7 +11,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\cite{a,b}` を `InlineNode::Cite` に変換する
+/// `\cite{a,b}` を `HirInlineKind::Cite` に変換する
 ///
 /// 引数のテキストをカンマで分割し、各キーを trim する。空のキー（`\cite{}` や
 /// `\cite{a,}` のような末尾カンマ・連続カンマ）は曖昧さを排除するためエラーとする。

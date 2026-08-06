@@ -9,7 +9,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\footnote{...}` を `InlineNode::Footnote` に変換する
+/// `\footnote{...}` を `HirInlineKind::Footnote` に変換する
 ///
 /// 本体は太字・数式等を含む任意のインライン内容として再帰評価される。
 ///

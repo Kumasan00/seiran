@@ -103,7 +103,7 @@ impl CommandKind {
   }
 }
 
-/// 単一文字コマンド（`\alpha` 等）を検証して `InlineNode::Symbol` を生成する共通処理
+/// 単一文字コマンド（`\alpha` 等）を検証して `HirInlineKind::Symbol` を生成する共通処理
 ///
 /// # Errors
 ///

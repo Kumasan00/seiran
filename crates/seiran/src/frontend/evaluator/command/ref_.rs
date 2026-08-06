@@ -9,7 +9,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\ref{label}` を `InlineNode::Ref` に変換する
+/// `\ref{label}` を `HirInlineKind::Ref` に変換する
 ///
 /// # Errors
 ///

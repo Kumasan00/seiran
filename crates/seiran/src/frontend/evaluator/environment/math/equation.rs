@@ -61,7 +61,7 @@ pub(crate) fn equation(view: &EnvironmentView, builder: &HirBuilder) -> Result<V
     numbered,
     label,
     // `equation` の `[label=...]` は環境ヘッダにあり行固有の位置を持たないため、
-    // 旧 `MathRow::label_span` と同じく「環境 span へフォールバック」を意味する None にする
+    // 旧 `MathRow::label_span`（HIR 版は `HirMathRow::label_site`）と同じく「環境 span へフォールバック」を意味する None にする
     label_site: None,
   };
   return Ok(vec![HirNode::new(
