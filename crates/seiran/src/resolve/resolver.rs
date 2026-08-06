@@ -352,7 +352,7 @@ mod tests {
       label: Some("ch:intro".to_string()),
       span: Span::DUMMY,
     }];
-    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
+    let mut registry = CounterRegistry::default_for_seiran();
     let mut headings = Vec::new();
 
     // Act
@@ -380,7 +380,7 @@ mod tests {
       };
     };
     let nodes = vec![heading("dup"), heading("dup")];
-    let mut registry = CounterRegistry::from_style(&crate::config::Style::default());
+    let mut registry = CounterRegistry::default_for_seiran();
     let mut headings = Vec::new();
 
     // Act

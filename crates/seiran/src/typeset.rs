@@ -129,7 +129,7 @@ mod tests {
         bibliography: &[],
       },
     };
-    let document = crate::resolve::resolve_project(&semantic, &style)
+    let document = crate::resolve::resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(&style))
       .unwrap_or_else(|e| panic!("resolve_project 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
     let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, &document);

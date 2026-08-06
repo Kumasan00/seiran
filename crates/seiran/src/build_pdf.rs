@@ -474,7 +474,8 @@ mod tests {
         bibliography: &bibliography,
       },
     };
-    let error = crate::resolve::resolve_project(&semantic, style).expect_err("未定義ラベルはエラーになるはず");
+    let error = crate::resolve::resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(style))
+      .expect_err("未定義ラベルはエラーになるはず");
     assert_eq!(
       error.origin(),
       crate::model::Origin::Generated(crate::model::GeneratedOrigin::Bibliography),

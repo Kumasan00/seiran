@@ -91,7 +91,9 @@ pub(super) fn resolve_semantics(
     },
   };
 
-  let resolved = resolve::resolve_project(&semantic, style)?;
+  // 意味解決には表示設定を渡さない（`DocumentPolicy` は値に影響する設定だけの投影）。
+  let policy = crate::config::DocumentPolicy::from_style(style);
+  let resolved = resolve::resolve_project(&semantic, &policy)?;
   return Ok(resolved);
 }
 

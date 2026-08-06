@@ -541,7 +541,8 @@ mod tests {
         bibliography: &[],
       },
     };
-    return resolve::resolve_project(&semantic, style).expect("解決できる入力のはず");
+    return resolve::resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(style))
+      .expect("解決できる入力のはず");
   }
 
   /// 1 グループの `DocNode` 列を lower して `LayoutNode` 列だけを返すテストヘルパ

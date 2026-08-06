@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use crate::{
-  config::{CounterName, Counters, Style, TheoremReset, Theorems},
+  config::{CounterName, DocumentPolicy, TheoremReset},
   model::{HeadingLevel, LabelId, Origin, Span, TheoremClass},
   resolve::{ResolveError, error::span_to_source_span},
 };
@@ -48,26 +48,23 @@ struct ResolvedLabel {
 /// カウンタ群の状態と labels の登録状態を保持するレジストリ
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
-  /// カウンタ定義（`crate::config::Counters` の複製）
-  defs: Counters,
+  /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）
+  policy: DocumentPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
-  /// 定理クラス定義（`crate::config::Theorems` の複製）。共有カウンタ名・リセット先を引く
-  theorems: Theorems,
-  /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremStyle.counter`）。未登場は 0
+  /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremPolicy.counter`）。未登場は 0
   theorem_values: HashMap<String, u32>,
   /// `\ref` 解決用テーブル。pass1 で登録、pass2 で参照する
   labels: HashMap<LabelId, ResolvedLabel>,
 }
 
 impl CounterRegistry {
-  /// `crate::config::Style` からレジストリを構築する
+  /// `crate::config::DocumentPolicy` からレジストリを構築する
   #[must_use]
-  pub(crate) fn from_style(style: &Style) -> Self {
+  pub(crate) fn from_policy(policy: &DocumentPolicy) -> Self {
     return Self {
-      defs: style.counters.clone(),
+      policy: policy.clone(),
       values: HashMap::new(),
-      theorems: style.theorems.clone(),
       theorem_values: HashMap::new(),
       labels: HashMap::new(),
     };
@@ -76,8 +73,8 @@ impl CounterRegistry {
   /// 指定カウンタを 1 増やし、リセット連鎖を実行し、構造値を返す
   pub(crate) fn increment(&mut self, name: CounterName) -> CounterValue {
     *self.values.entry(name).or_insert(0) += 1;
-    for r in &self.defs.get(name).resets {
-      self.values.insert(*r, 0);
+    for r in self.policy.counter(name).resets.clone() {
+      self.values.insert(r, 0);
     }
     if let Some(level) = theorem_reset_level(name) {
       self.reset_theorems_for_level(level);
@@ -88,13 +85,9 @@ impl CounterRegistry {
 
   /// 指定した見出しレベルを `reset_by` に持つ定理カウンタをすべて 0 に戻す
   fn reset_theorems_for_level(&mut self, level: TheoremReset) {
-    // self.theorems への不変借用を先に解消してから theorem_values を変更するため、対象を収集する
-    let to_reset: Vec<String> = self
-      .theorems
-      .iter_with_class()
-      .filter(|(_, def)| return def.reset_by == level)
-      .map(|(_, def)| return def.counter.clone())
-      .collect();
+    // self.policy への不変借用を先に解消してから theorem_values を変更するため、対象を収集する
+    let to_reset: Vec<String> =
+      self.policy.theorems_reset_by(level).map(|counter| return counter.to_string()).collect();
     for counter in to_reset {
       self.theorem_values.insert(counter, 0);
     }
@@ -114,7 +107,7 @@ impl CounterRegistry {
   ) -> Result<Option<CounterValue>, ResolveError> {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, unnumbered) = {
-      let def = self.theorems.get(class);
+      let def = self.policy.theorem(class);
       (def.counter.clone(), def.unnumbered)
     };
     if unnumbered {
@@ -167,7 +160,7 @@ impl CounterRegistry {
     let parent = CounterName::ALL[..own_index]
       .iter()
       .rev()
-      .find(|candidate| return self.defs.get(**candidate).resets.contains(&name))
+      .find(|candidate| return self.policy.counter(**candidate).resets.contains(&name))
       .copied();
     let Some(parent) = parent else {
       return Vec::new();
@@ -180,7 +173,7 @@ impl CounterRegistry {
   /// 定理クラスの現在値を、`reset_by` が指す見出しカウンタを祖先として [`CounterValue`] で返す
   #[must_use]
   pub(crate) fn theorem_counter_value(&self, class: TheoremClass) -> CounterValue {
-    let def = self.theorems.get(class);
+    let def = self.policy.theorem(class);
     let own = *self.theorem_values.get(&def.counter).unwrap_or(&0);
     let mut parts = match theorem_reset_counter_name(def.reset_by) {
       Some(heading_counter) => vec![self.value(heading_counter)],
@@ -247,14 +240,7 @@ impl CounterRegistry {
   /// 見出しレベルから seiran 既定の [`CounterName`] を返す
   #[must_use]
   pub(crate) fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
-    return match level {
-      HeadingLevel::Part => CounterName::Part,
-      HeadingLevel::Chapter => CounterName::Chapter,
-      HeadingLevel::Section => CounterName::Section,
-      HeadingLevel::Subsection => CounterName::Subsection,
-      HeadingLevel::Paragraph => CounterName::Paragraph,
-      HeadingLevel::Subparagraph => CounterName::Subparagraph,
-    };
+    return DocumentPolicy::counter_name_for_heading(level);
   }
 }
 
@@ -262,18 +248,18 @@ impl CounterRegistry {
 impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   #[must_use]
-  pub(crate) fn default_for_seiran() -> Self { return Self::from_style(&Style::default()); }
+  pub(crate) fn default_for_seiran() -> Self {
+    return Self::from_policy(&DocumentPolicy::from_style(&crate::config::Style::default()));
+  }
 
   /// `crate::config::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
-  pub(crate) fn from_counters(counters: &Counters) -> Self {
-    return Self {
-      defs: counters.clone(),
-      values: HashMap::new(),
-      theorems: Theorems::default(),
-      theorem_values: HashMap::new(),
-      labels: HashMap::new(),
+  pub(crate) fn from_counters(counters: &crate::config::Counters) -> Self {
+    let style = crate::config::Style {
+      counters: counters.clone(),
+      ..crate::config::Style::default()
     };
+    return Self::from_policy(&DocumentPolicy::from_style(&style));
   }
 }
 
@@ -302,14 +288,14 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config::{CounterStyle, NumberStyle, TheoremReset};
+  use crate::config::{CounterStyle, Counters, NumberStyle, Style, TheoremReset};
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 
   #[test]
   fn increment_theorem_numbers_with_default_style() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
+    let mut r = CounterRegistry::default_for_seiran();
 
     // Act
     let thm = r
@@ -339,7 +325,7 @@ mod tests {
   #[test]
   fn increment_theorem_proof_is_unnumbered() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
+    let mut r = CounterRegistry::default_for_seiran();
 
     // Act
     let result = r
@@ -358,7 +344,7 @@ mod tests {
   #[test]
   fn increment_theorem_duplicate_label_errors() {
     // Arrange
-    let mut r = CounterRegistry::from_style(&Style::default());
+    let mut r = CounterRegistry::default_for_seiran();
     r.increment_theorem_with_label(
       TheoremClass::Theorem,
       Some("dup"),
@@ -447,7 +433,7 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    let mut r = CounterRegistry::from_style(&style);
+    let mut r = CounterRegistry::from_policy(&DocumentPolicy::from_style(&style));
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
 

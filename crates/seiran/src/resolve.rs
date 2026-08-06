@@ -44,9 +44,9 @@ pub use node::{
 /// 失敗した場合にエラーを返す。
 pub fn resolve_project(
   semantic: &SemanticDocument<'_>,
-  style: &crate::config::Style,
+  policy: &crate::config::DocumentPolicy,
 ) -> Result<ResolvedDocument, ResolveError> {
-  let mut registry = counter::CounterRegistry::from_style(style);
+  let mut registry = counter::CounterRegistry::from_policy(policy);
   let mut pending_headings = Vec::new();
 
   let mut groups = Vec::with_capacity(semantic.groups.len());
@@ -144,7 +144,9 @@ mod tests {
     };
 
     // Act
-    let resolved = resolve_project(&semantic, &crate::config::Style::default()).expect("跨りラベルは解決されるはず");
+    let resolved =
+      resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(&crate::config::Style::default()))
+        .expect("跨りラベルは解決されるはず");
 
     // Assert
     assert_eq!(resolved.headings.len(), 1);
@@ -172,16 +174,19 @@ mod tests {
     };
 
     // Act
-    let err = resolve_project(&semantic, &crate::config::Style::default()).unwrap_err();
+    let err = resolve_project(&semantic, &crate::config::DocumentPolicy::from_style(&crate::config::Style::default()))
+      .unwrap_err();
 
     // Assert
     assert!(matches!(err, ResolveError::UnresolvedReference { ref label, .. } if label == "missing"));
   }
 }
 
-/// G3（内容は見た目から独立）の直接検証: 表示だけが異なる style を差し替えても
-/// `ResolvedDocument` は同一になるはずのプロパティテスト（旧 `resolve` crate の
-/// `tests/style_independence.rs`、#307 で本 module 直下の inline テストへ移設）
+/// G3（内容は見た目から独立）の直接検証: 表示だけが異なる style を差し替えても、意味解析へ渡る
+/// 投影（`crate::config::DocumentPolicy`）は同一になるはずのプロパティテスト（旧 `resolve` crate の
+/// `tests/style_independence.rs`、#307 で本 module 直下の inline テストへ移設。#324 で
+/// `ResolvedDocument` の突き合わせから投影の突き合わせへ主張を移した — `resolve_project` が
+/// `Style` を受け取れなくなり、表示設定が結果へ漏れる経路が型として無くなったため）
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod style_independence_tests {
@@ -189,45 +194,12 @@ mod style_independence_tests {
 
   use super::{ResolvedDocument, SemanticDocument, SemanticGenerated, SemanticGroup, resolve_project};
   use crate::{
-    config::Style,
+    config::{DocumentPolicy, Style},
     model::{DocNode, HeadingLevel, InlineNode, SourceId, Span},
   };
 
-  /// 見出し・本文・`\ref` を含む代表的なドキュメントを組み立てる
-  fn sample_nodes() -> Vec<DocNode> {
-    return vec![
-      DocNode::Heading {
-        level: HeadingLevel::Chapter,
-        numbered: true,
-        title: vec![InlineNode::text("Intro")],
-        label: Some("ch:intro".to_string()),
-        span: Span::DUMMY,
-      },
-      DocNode::Heading {
-        level: HeadingLevel::Section,
-        numbered: true,
-        title: vec![InlineNode::text("Details")],
-        label: Some("sec:details".to_string()),
-        span: Span::DUMMY,
-      },
-      DocNode::Paragraph(vec![
-        InlineNode::Text("See ".to_string()),
-        InlineNode::Ref {
-          label: "ch:intro".to_string(),
-          span: Span::DUMMY,
-        },
-        InlineNode::Text(" and ".to_string()),
-        InlineNode::Ref {
-          label: "sec:details".to_string(),
-          span: Span::DUMMY,
-        },
-        InlineNode::Text(".".to_string()),
-      ]),
-    ];
-  }
-
   /// `nodes` を 1 ソースグループとして解決する
-  fn resolve_sample(nodes: &[DocNode], style: &Style) -> ResolvedDocument {
+  fn resolve_sample(nodes: &[DocNode], policy: &DocumentPolicy) -> ResolvedDocument {
     let displays = crate::model::NodeMap::default();
     let semantic = SemanticDocument {
       groups: vec![SemanticGroup {
@@ -239,14 +211,13 @@ mod style_independence_tests {
         bibliography: &[],
       },
     };
-    return resolve_project(&semantic, style).expect("サンプルは解決に成功するはず");
+    return resolve_project(&semantic, policy).expect("サンプルは解決に成功するはず");
   }
 
   #[test]
-  fn resolved_document_is_identical_across_display_only_style_variants() {
+  fn document_policy_is_identical_across_display_only_style_variants() {
     // Arrange: 表示側フィールド（number_format / ref_format / display_name / number_style）だけが
     // 異なる 4 通りの style を用意する。resets（値側フィールド）はいずれも既定のまま変えない。
-    let nodes = sample_nodes();
     let base = Style::default();
 
     let mut different_number_format = Style::default();
@@ -263,21 +234,23 @@ mod style_independence_tests {
     different_number_style.counters.chapter.number_style = crate::config::NumberStyle::RomanUpper;
 
     // Act
-    let base_resolved = resolve_sample(&nodes, &base);
+    let base_policy = DocumentPolicy::from_style(&base);
     let variants = [
-      ("number_format", resolve_sample(&nodes, &different_number_format)),
-      ("ref_format", resolve_sample(&nodes, &different_ref_format)),
-      ("display_name", resolve_sample(&nodes, &different_display_name)),
-      ("number_style", resolve_sample(&nodes, &different_number_style)),
+      ("number_format", DocumentPolicy::from_style(&different_number_format)),
+      ("ref_format", DocumentPolicy::from_style(&different_ref_format)),
+      ("display_name", DocumentPolicy::from_style(&different_display_name)),
+      ("number_style", DocumentPolicy::from_style(&different_number_style)),
     ];
 
-    // Assert: ResolvedDocument（構造値・LabelId・headings すべて）は表示側 style を
-    // 変えても完全に同一になる（G3 の直接検証）。失敗時にどの variant が壊れたか
-    // 分かるようラベル付きでメッセージに含める。
+    // Assert: 表示側 style は `DocumentPolicy` に写らない（G3 の直接検証）。
+    // `resolve_project` は `Style` ではなく投影しか受け取らないので、投影が同じであれば
+    // 解決結果が同じであることは型として保証される（旧テストが `ResolvedDocument` を
+    // 突き合わせていた箇所は、この投影の同一性へ主張を移した）。失敗時にどの variant が
+    // 壊れたか分かるようラベル付きでメッセージに含める。
     for (label, variant) in &variants {
       assert_eq!(
-        &base_resolved, variant,
-        "表示のみ異なる style（variant: {label}）で ResolvedDocument が変わってはいけない"
+        &base_policy, variant,
+        "表示のみ異なる style（variant: {label}）で DocumentPolicy が変わってはいけない"
       );
     }
   }
@@ -320,8 +293,8 @@ mod style_independence_tests {
     reset_variant.counters.chapter.resets = vec![]; // section が chapter で 0 リセットされなくなる
 
     // Act
-    let base_resolved = resolve_sample(&nodes, &base);
-    let reset_resolved = resolve_sample(&nodes, &reset_variant);
+    let base_resolved = resolve_sample(&nodes, &DocumentPolicy::from_style(&base));
+    let reset_resolved = resolve_sample(&nodes, &DocumentPolicy::from_style(&reset_variant));
 
     // Assert: 2 番目の section（sec:b1）の CounterValue が resets の有無で変わる
     let base_value = base_resolved.counter_values.get(&crate::model::LabelId::new("sec:b1")).expect("登録済みのはず");
@@ -393,17 +366,18 @@ mod style_independence_tests {
   }
 
   proptest! {
-    /// #306: 表示専用フィールド（`number_format` / `ref_format` / `display_name` / `number_style`）を
-    /// `chapter` / `section` いずれかのカウンタへ 0〜4 個ランダムに組み合わせて上書きしても、
-    /// `resolve_project` の結果（ラベル・typed ID・`CounterValue` を含む `ResolvedDocument`）は
-    /// base と一致する（G3 の property test 版。上の手書き 4 ケーステストを任意の組み合わせ・
-    /// 対象カウンタへ一般化する）。
+    /// #306 / #324: 表示専用フィールド（`number_format` / `ref_format` / `display_name` /
+    /// `number_style`）を `chapter` / `section` いずれかのカウンタへ 0〜4 個ランダムに組み合わせて
+    /// 上書きしても、意味解析へ渡る投影（`DocumentPolicy`）は base と一致する（G3 の property
+    /// test 版。上の手書き 4 ケーステストを任意の組み合わせ・対象カウンタへ一般化する）。
+    ///
+    /// 投影が同一なら `resolve_project` の結果も同一になる（`resolve_project` は `Style` を
+    /// 受け取れないため、表示設定が結果へ漏れる経路が型として存在しない）。
     #[test]
-    fn resolved_document_is_identical_for_any_display_only_variant_combination(
+    fn document_policy_is_identical_for_any_display_only_variant_combination(
       variants in prop::collection::vec((counter_target_strategy(), display_only_variant_strategy()), 0..=4),
     ) {
       // Arrange
-      let nodes = sample_nodes();
       let base_style = Style::default();
       let mut varied_style = base_style.clone();
       for (target, variant) in variants {
@@ -411,8 +385,8 @@ mod style_independence_tests {
       }
 
       // Act
-      let base = resolve_sample(&nodes, &base_style);
-      let varied = resolve_sample(&nodes, &varied_style);
+      let base = DocumentPolicy::from_style(&base_style);
+      let varied = DocumentPolicy::from_style(&varied_style);
 
       // Assert
       prop_assert_eq!(base, varied);
