@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::{
   config::Style as ReadStyle,
-  model::{LabelId, Length},
+  model::{HeadingKey, LabelId, Length},
   resolve::{ResolvedDocument, ResolvedInline, ResolvedNode},
 };
 
@@ -189,14 +189,13 @@ pub(super) mod test_support {
 /// 走査中に更新される可変状態（旧 `CounterRegistry` の可変部分の置き換え）
 ///
 /// 採番そのものは `resolve` が済ませているため、ここに残るのは「解決済みドキュメントへの
-/// 参照」と「文書順に払い出す 2 種類の通し index」だけになる。
+/// 参照」と、脚注の出現順に払い出す通し index だけになる。見出しキーは `analyze` が振った
+/// ものを読むだけで、lowering は振り直さない（issue #324）。
 pub(super) struct LoweringState<'a> {
   /// 解決済みドキュメント（`\ref` の表示文字列化と見出しカウンタ値の参照に使う）
   document: &'a ResolvedDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
-  /// これまでに払い出した見出しの個数（次の見出しの文書順インデックスになる）
-  heading_count: usize,
 }
 
 impl<'a> LoweringState<'a> {
@@ -205,7 +204,6 @@ impl<'a> LoweringState<'a> {
     return LoweringState {
       document,
       footnote_count: 0,
-      heading_count: 0,
     };
   }
 
@@ -213,16 +211,6 @@ impl<'a> LoweringState<'a> {
   pub(super) fn next_footnote_index(&mut self) -> u32 {
     let index = self.footnote_count;
     self.footnote_count += 1;
-    return index;
-  }
-
-  /// 見出しを 1 つ数え、その文書順インデックス（0 起点）を返す
-  ///
-  /// `resolve::resolve_group` と走査順が一致しているため、この値は
-  /// [`ResolvedDocument::headings`] の添字（= `ResolvedHeading::key`）と一致する。
-  fn next_heading_index(&mut self) -> usize {
-    let index = self.heading_count;
-    self.heading_count += 1;
     return index;
   }
 
@@ -265,8 +253,8 @@ pub fn lower_sources_with_headings(
   for group in &document.groups {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
   }
-  // 書誌は常に groups の後に lower する（`next_heading_index()` が `document.headings` の
-  // 添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っていることに依存する）
+  // 書誌は本文の後ろに置く（見出しキーは `analyze` / bridge が振ったものを読むだけなので、
+  // この順序に採番上の依存はない）
   result.extend(lower_nodes_inner(ctx, &document.generated.bibliography, &mut state));
 
   let headings = document
@@ -311,14 +299,13 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &ResolvedNode, state: &mut Lo
       level,
       title,
       label,
+      key,
       ..
     } => {
-      // 見出しの文書順インデックス。`resolve` 側の走査順と一致するので、再帰
-      // （quote / theorem / list item 本体）を挟んでも `document.headings` の添字と揃う
-      // （`heading_anchor_key` の暗黙 destination キー採番に使う）。
-      let heading_index = state.next_heading_index();
-      let number = heading_number(ctx, state.document, heading_index);
-      return heading::lower_heading(ctx, *level, &number, title, label.clone(), heading_index, state);
+      // 見出しキーは `resolve::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
+      // 再帰（quote / theorem / list item 本体）を挟んでも `document.headings` の添字と必ず揃う。
+      let number = heading_number(ctx, state.document, *key);
+      return heading::lower_heading(ctx, *level, &number, title, label.clone(), *key, state);
     },
     ResolvedNode::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines, state);
@@ -444,10 +431,10 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &ResolvedNode, state: &mut Lo
   }
 }
 
-/// `document.headings[index]` の見出し番号を表示文字列にする（無採番の見出しは空文字列）
-fn heading_number(ctx: &LoweringContext, document: &ResolvedDocument, index: usize) -> String {
-  let Some(heading) = document.headings.get(index) else {
-    unreachable!("見出しの走査順は resolve::resolve_group と一致するので添字は必ず存在する: {index}")
+/// 見出しキーが指す見出しの番号を表示文字列にする（無採番の見出しは空文字列）
+fn heading_number(ctx: &LoweringContext, document: &ResolvedDocument, key: HeadingKey) -> String {
+  let Some(heading) = document.headings.get(key.index()) else {
+    unreachable!("見出しキーは analyze が headings の添字として振っているので必ず存在する: {key:?}")
   };
   return heading
     .counter_value
@@ -796,9 +783,13 @@ mod tests {
     assert_eq!(headings.len(), 3, "見出しは 3 件記録されるはず: {headings:?}");
     let indices: Vec<usize> = headings.iter().map(|h| return h.index).collect();
     assert_eq!(indices, vec![0, 1, 2], "見出し index は文書順に連番のはず: {headings:?}");
-    // `AnchorMark::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる
-    // （`resolve` 側の走査順とこちらの走査順が食い違うと目次の内部リンクが静かに壊れる。集合一致では
-    // key が入れ替わっていても検出できないため、ソートせず順序も含めて比較する）。
+    // `AnchorMark::Heading` の key が `HeadingRecord::index` と 1:1 かつ同順で対応することを確かめる。
+    //
+    // 左辺（アンカー）は「レイアウト木を文書順に辿って現れた順」、右辺（見出し記録）は
+    // 「`analyze` が facts に積んだ順」で、出所が独立している。両者がずれると
+    // `build_pdf::front_matter` が見出しとページ番号を zip するときに目次のページ番号が
+    // 静かにずれる（長さ違いは debug_assert しか見ておらず release では素通りする）。
+    // 集合一致では key の入れ替わりを検出できないため、ソートせず順序も含めて比較する。
     let anchor_keys = collect_heading_anchor_keys(&layout);
     assert_eq!(anchor_keys, indices, "アンカーの key は見出し記録の index と順序込みで一致するはず: {layout:?}");
   }

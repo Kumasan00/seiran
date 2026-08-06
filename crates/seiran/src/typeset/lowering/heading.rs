@@ -17,7 +17,7 @@ pub(super) fn lower_heading(
   number: &str,
   title: &[ResolvedInline],
   label: Option<LabelId>,
-  heading_index: usize,
+  key: HeadingKey,
   state: &mut LoweringState,
 ) -> Vec<LayoutNode> {
   let heading_style = ctx.style.heading(level);
@@ -36,11 +36,8 @@ pub(super) fn lower_heading(
   }
 
   // しおり・目次リンク・`\ref` の到達先アンカー。改ページ後に置くことで正しいページに解決される。
-  // `key` は文書順インデックスから決まる暗黙キー（目次エントリの内部リンクと一致させる）。
-  result.push(LayoutNode::Anchor(AnchorMark::Heading {
-    key: HeadingKey::new(heading_index),
-    label,
-  }));
+  // `key` は `analyze` が文書順に振ったもの（目次エントリの内部リンクと一致する）。
+  result.push(LayoutNode::Anchor(AnchorMark::Heading { key, label }));
 
   result.push(LayoutNode::VBox {
     children,
@@ -68,6 +65,7 @@ mod tests {
   use super::{super::test_support, *};
   use crate::{
     config::{CounterName, Style as ReadStyle},
+    model::HeadingKey,
     resolve::{CounterKind, CounterValue},
   };
 
@@ -78,10 +76,10 @@ mod tests {
     number: &str,
     title: &[ResolvedInline],
     label: Option<LabelId>,
-    heading_index: usize,
+    key: HeadingKey,
   ) -> Vec<LayoutNode> {
     let document = test_support::document(&[]);
-    return lower_heading(ctx, level, number, title, label, heading_index, &mut LoweringState::new(&document));
+    return lower_heading(ctx, level, number, title, label, key, &mut LoweringState::new(&document));
   }
 
   /// `nodes` から見出し `VBox` の子要素列を取り出す
@@ -104,7 +102,7 @@ mod tests {
     let title = [ResolvedInline::Text("Custom Title".to_string())];
 
     // Act
-    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "4.7", &title, None, 0);
+    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "4.7", &title, None, HeadingKey::new(0));
 
     // Assert
     let children = heading_children(&nodes);
@@ -129,7 +127,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1.1", &title, None, 0);
+    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1.1", &title, None, HeadingKey::new(0));
 
     // Assert
     let children = heading_children(&nodes);
@@ -153,7 +151,14 @@ mod tests {
     let title = [ResolvedInline::Text("Intro".to_string())];
 
     // Act
-    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1", &title, Some(LabelId::new("sec:intro")), 3);
+    let nodes = lower_heading_default(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      &title,
+      Some(LabelId::new("sec:intro")),
+      HeadingKey::new(3),
+    );
 
     // Assert
     let anchor = nodes.iter().find_map(|n| match n {
@@ -180,7 +185,7 @@ mod tests {
     let title = [ResolvedInline::Text("Intro".to_string())];
 
     // Act
-    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1", &title, None, 0);
+    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1", &title, None, HeadingKey::new(0));
 
     // Assert
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
@@ -198,7 +203,7 @@ mod tests {
     let title = [ResolvedInline::Text("Intro".to_string())];
 
     // Act
-    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1", &title, None, 0);
+    let nodes = lower_heading_default(&ctx, HeadingLevel::Section, "1", &title, None, HeadingKey::new(0));
 
     // Assert
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
@@ -223,7 +228,15 @@ mod tests {
     )]);
 
     // Act
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &title, None, 0, &mut LoweringState::new(&document));
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      &title,
+      None,
+      HeadingKey::new(0),
+      &mut LoweringState::new(&document),
+    );
 
     // Assert
     let children = heading_children(&nodes);
