@@ -241,20 +241,6 @@ pub(crate) fn run_inline_handler_legacy(
   return Ok(crate::frontend::doc_node_adapter::to_inline_nodes(&inlines, document.locations()));
 }
 
-/// ハンドラを直接呼ぶテスト向けに、HIR ブロックを旧 `DocNode` 列へ落とす（移行期限定）
-#[cfg(test)]
-pub(crate) fn run_block_handler_legacy(
-  handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
-) -> Result<Vec<crate::model::DocNode>, EvalError> {
-  let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let nodes = handler(&builder)?;
-  let document = test_document(nodes, builder);
-  let Some(group) = document.groups().first() else {
-    unreachable!("test_document は必ず 1 グループを作る")
-  };
-  return Ok(crate::frontend::hir_group_to_doc_nodes(group, document.locations()));
-}
-
 /// ハンドラを直接呼ぶ移行期テストが HIR を旧型へ落とすための足場を作る
 #[cfg(test)]
 pub(crate) fn test_document(nodes: Vec<HirNode>, builder: HirBuilder) -> crate::model::HirDocument {

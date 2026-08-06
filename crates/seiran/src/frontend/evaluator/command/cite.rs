@@ -60,12 +60,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler_legacy},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -96,10 +93,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return cite_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Cite { keys, .. } = &result[0] else {
+    let HirInlineKind::Cite { keys } = &result[0].kind else {
       panic!("Cite が期待されます");
     };
     assert_eq!(keys, &["rika".to_string()]);
@@ -114,10 +111,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_inline_handler_legacy(|builder| return cite_command(&view, builder)).unwrap();
+    let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Cite { keys, .. } = &result[0] else {
+    let HirInlineKind::Cite { keys } = &result[0].kind else {
       panic!("Cite が期待されます");
     };
     assert_eq!(keys, &["a".to_string(), "b".to_string(), "c".to_string()]);
@@ -133,7 +130,7 @@ mod tests {
 
     // Act / Assert
     assert!(
-      matches!(run_inline_handler_legacy(|builder| return cite_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -147,7 +144,7 @@ mod tests {
 
     // Act / Assert
     assert!(
-      matches!(run_inline_handler_legacy(|builder| return cite_command(&view, builder)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -161,7 +158,7 @@ mod tests {
 
     // Act / Assert
     assert!(
-      matches!(run_inline_handler_legacy(|builder| return cite_command(&view, builder)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::InvalidCommandArgument { ref name, .. }) if name == "cite")
     );
   }
 
@@ -175,7 +172,7 @@ mod tests {
 
     // Act / Assert
     assert!(
-      matches!(run_inline_handler_legacy(|builder| return cite_command(&view, builder)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
+      matches!(run_inline_handler(|builder| return cite_command(&view, builder)), Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k")
     );
   }
 }

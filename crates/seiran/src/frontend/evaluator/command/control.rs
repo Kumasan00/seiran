@@ -95,12 +95,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_block_handler_legacy},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::DocNode,
+  use crate::frontend::{
+    evaluator::{evaluate_children_to_hir, lookup_env_parse_mode, run_block_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -132,7 +129,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler_legacy(|builder| return space(&view, builder));
+    let result = run_block_handler(|builder| return space(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
@@ -192,10 +189,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
-    assert!(matches!(result.as_deref(), Ok([DocNode::PageBreak])));
+    assert!(matches!(result.as_deref(), Ok([node]) if matches!(node.kind, HirNodeKind::PageBreak)));
   }
 
   #[test]
@@ -207,7 +204,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "pagebreak"));
@@ -222,7 +219,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     // Act
-    let result = run_block_handler_legacy(|builder| return pagebreak(&view, builder));
+    let result = run_block_handler(|builder| return pagebreak(&view, builder));
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "weight"));
@@ -236,16 +233,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    assert!(matches!(
-      result.as_slice(),
-      [
-        DocNode::Paragraph(_),
-        DocNode::PageBreak,
-        DocNode::Paragraph(_)
-      ]
-    ));
+    assert_eq!(result.len(), 3);
+    assert!(matches!(result[0].kind, HirNodeKind::Paragraph(_)));
+    assert!(matches!(result[1].kind, HirNodeKind::PageBreak));
+    assert!(matches!(result[2].kind, HirNodeKind::Paragraph(_)));
   }
 }
