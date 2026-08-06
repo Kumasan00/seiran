@@ -11,11 +11,9 @@
 use tracing::debug;
 
 use crate::{
+  citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
-  model::{
-    GeneratedBlock, GeneratedInline, HeadingKey, HirInline, HirInlineKind, HirNode, HirNodeKind, LabelId, Length,
-    NodeId, NodeMap, generated_inlines_to_plain_text,
-  },
+  model::{HeadingKey, HirInline, HirInlineKind, HirNode, HirNodeKind, LabelId, Length, NodeId, NodeMap},
   resolve::{AnalyzedDocument, CounterValue},
 };
 
@@ -151,12 +149,12 @@ pub struct HeadingRecord {
 /// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
-  use super::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::{DocumentContent, GeneratedCitations, LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
     citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     frontend::parse_source,
-    model::{GeneratedBlock, GeneratedInline, HirDocument, NodeMap, SourceId},
+    model::{HirDocument, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -171,18 +169,12 @@ pub(super) mod test_support {
       .expect("解析できる入力のはず");
   }
 
-  /// 解析済みドキュメント（+ 任意の引用表示・書誌）を lower してレイアウトノード列を返す
-  pub(crate) fn lower(
-    style: &Style,
-    analyzed: &AnalyzedDocument,
-    displays: &NodeMap<Vec<GeneratedInline>>,
-    bibliography: &[GeneratedBlock],
-  ) -> Vec<LayoutNode> {
+  /// 解析済みドキュメント（+ 任意の引用生成物）を lower してレイアウトノード列を返す
+  pub(crate) fn lower(style: &Style, analyzed: &AnalyzedDocument, citations: &GeneratedCitations) -> Vec<LayoutNode> {
     let ctx = LoweringContext::new(style);
     let content = DocumentContent {
       analyzed,
-      citation_displays: displays,
-      bibliography,
+      citations,
     };
     let (layout, _headings) = lower_sources_with_headings(&ctx, content);
     return layout;
@@ -192,17 +184,16 @@ pub(super) mod test_support {
 /// lowering の入力（意味解析の成果物と CSL 整形の生成物）
 ///
 /// 著者が書いた内容は `analyzed` の HIR 1 本、意味解析で判明した事実は同じ `analyzed` の
-/// side table、CSL 整形の生成物は別枠の 2 フィールド、という切り分けをそのまま型にしたもの。
+/// side table、CSL 整形の生成物は `citations` の 1 本、という切り分けをそのまま型にしたもの。
+/// どちらも段間 interface は前段の深い型で、side table の collection（`NodeMap`）はここに現れない。
 /// 生成物には `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」
 /// という不変条件を保つため）。
 #[derive(Clone, Copy)]
 pub struct DocumentContent<'a> {
   /// 意味解析の成果物（HIR + 事実の side table）
   pub analyzed: &'a AnalyzedDocument,
-  /// 引用箇所 → CSL 整形済みの表示インライン列
-  pub citation_displays: &'a NodeMap<Vec<GeneratedInline>>,
-  /// CSL 整形が合成した書誌
-  pub bibliography: &'a [GeneratedBlock],
+  /// CSL 整形の生成物（引用箇所ごとの表示 + 書誌）
+  pub citations: &'a GeneratedCitations,
 }
 
 /// 走査中に更新される可変状態と、事実を引く query の窓口
@@ -238,14 +229,9 @@ impl<'a> LoweringState<'a> {
 
   /// 引用箇所の表示インライン列を引く
   ///
-  /// # Panics
-  ///
-  /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは `generate_citations` が保証）。
+  /// 表示の欠落を検出するのは `GeneratedCitations` の責務（完全性の不変条件はそちらが持つ）。
   pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
-    let Some(display) = self.content.citation_displays.get(site) else {
-      unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
-    };
-    return display;
+    return self.content.citations.display_at(site);
   }
 
   /// `\ref` / `proof` の `[of=...]` の参照先表示文字列を作る
@@ -315,7 +301,7 @@ pub fn lower_sources_with_headings(
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
-    generated::lower_bibliography(ctx, content.bibliography, analyzed.headings().len());
+    generated::lower_bibliography(ctx, content.citations.bibliography(), analyzed.headings().len());
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
@@ -336,8 +322,8 @@ pub fn lower_sources_with_headings(
     .collect();
   headings.extend(bibliography_headings);
 
-  let input_node_count: usize =
-    analyzed.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>() + content.bibliography.len();
+  let input_node_count: usize = analyzed.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>()
+    + content.citations.bibliography().len();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return (result, headings);
 }
@@ -563,7 +549,7 @@ mod tests {
     citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     frontend::parse_source,
-    model::{AnchorMark, GeneratedInline, HirDocument, LinkTarget, SourceId},
+    model::{AnchorMark, HirDocument, LinkTarget, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -587,19 +573,19 @@ mod tests {
   /// 引用も書誌も無い入力を lower して、レイアウトノード列と見出し記録の両方を返すテストヘルパ
   fn lower_body(style: &ReadStyle, analyzed: &AnalyzedDocument) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
     let ctx = LoweringContext::new(style);
+    let citations = GeneratedCitations::default();
     return lower_sources_with_headings(
       &ctx,
       DocumentContent {
         analyzed,
-        citation_displays: &NodeMap::default(),
-        bibliography: &[],
+        citations: &citations,
       },
     );
   }
 
   /// `.sei` ソース 1 本を lower して `LayoutNode` 列だけを返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return test_support::lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return test_support::lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
@@ -927,8 +913,8 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
-    displays.insert(site, vec![GeneratedInline::Text("[1]".to_string())]);
+    let citations =
+      GeneratedCitations::for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], Vec::new());
     let ctx = LoweringContext::new(&style);
 
     // Act
@@ -936,8 +922,7 @@ mod tests {
       &ctx,
       DocumentContent {
         analyzed: &analyzed,
-        citation_displays: &displays,
-        bibliography: &[],
+        citations: &citations,
       },
     );
 

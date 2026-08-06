@@ -28,20 +28,6 @@ impl std::borrow::Borrow<str> for LabelId {
   fn borrow(&self) -> &str { return &self.0; }
 }
 
-/// `\cite{key}` の引用キー
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CitationId(String);
-
-impl CitationId {
-  /// 新しい `CitationId` を生成する
-  #[must_use]
-  pub fn new(key: impl Into<String>) -> Self { return CitationId(key.into()); }
-
-  /// 内部の文字列を返す
-  #[must_use]
-  pub fn as_str(&self) -> &str { return &self.0; }
-}
-
 /// 脚注の出現 index（0 起点）
 ///
 /// [`crate::LineFootnote::index`] と同じ値。表示番号（採番方式で変わりうる）ではなく

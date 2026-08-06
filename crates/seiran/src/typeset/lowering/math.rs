@@ -405,8 +405,7 @@ mod tests {
     let nodes = crate::typeset::lowering::test_support::lower(
       style,
       &crate::typeset::lowering::test_support::analyzed("\\begin{equation}\na\n\\end{equation}\n"),
-      &crate::model::NodeMap::default(),
-      &[],
+      &crate::citation::GeneratedCitations::default(),
     );
     return nodes
       .into_iter()

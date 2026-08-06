@@ -111,9 +111,12 @@ mod tests {
       resolve_semantics(&source, document, &references, &style).expect("citation → resolve の連携は成功するはず");
 
     // Assert — 書誌と表示が生成され、意味解析の成果物と並んで返る
+    assert!(!semantics.generated.is_empty(), "cite.sei は引用を含むので生成物は空でないはず");
     assert!(!semantics.generated.bibliography().is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
-    assert!(!semantics.generated.displays().is_empty(), "cite.sei の引用箇所には表示が生成されるはず");
     assert!(semantics.analyzed.has_citations(), "cite.sei の引用箇所は事実として記録されるはず");
+    for (site, _) in semantics.analyzed.citation_sites().iter() {
+      assert!(!semantics.generated.display_at(site).is_empty(), "全引用箇所に表示が付くはず: {site:?}");
+    }
   }
 
   #[test]

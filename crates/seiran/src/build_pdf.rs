@@ -332,8 +332,7 @@ fn build_pages_with_source(
 fn document_content(semantics: &semantics::Semantics) -> crate::typeset::DocumentContent<'_> {
   return crate::typeset::DocumentContent {
     analyzed: &semantics.analyzed,
-    citation_displays: semantics.generated.displays(),
-    bibliography: semantics.generated.bibliography(),
+    citations: &semantics.generated,
   };
 }
 

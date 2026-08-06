@@ -75,13 +75,14 @@ mod tests {
     *,
   };
   use crate::{
+    citation::GeneratedCitations,
     config::Style as ReadStyle,
-    model::{AnchorId, LabelId, Length, LinkTarget, NodeMap},
+    model::{AnchorId, LabelId, Length, LinkTarget},
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   #[test]

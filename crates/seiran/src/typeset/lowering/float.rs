@@ -98,13 +98,14 @@ mod tests {
     *,
   };
   use crate::{
+    citation::GeneratedCitations,
     config::{CaptionStyle, Style as ReadStyle},
-    model::{Align, AnchorId, LabelId, LinkTarget, NodeMap},
+    model::{Align, AnchorId, LabelId, LinkTarget},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// フロート本体の `VBox`（画像を含む `VBox`）の子要素列を取り出すヘルパ

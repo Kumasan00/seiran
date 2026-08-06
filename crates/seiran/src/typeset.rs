@@ -99,10 +99,10 @@ mod tests {
       crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
         .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
+    let citations = crate::citation::GeneratedCitations::default();
     let content = DocumentContent {
       analyzed: &analyzed,
-      citation_displays: &crate::model::NodeMap::default(),
-      bibliography: &[],
+      citations: &citations,
     };
     let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, content);
     return layout_nodes;

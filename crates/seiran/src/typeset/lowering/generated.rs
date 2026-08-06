@@ -10,8 +10,9 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   paragraph::{assemble_paragraph, body_text_style},
 };
-use crate::model::{
-  AnchorId, AnchorMark, GeneratedBlock, GeneratedInline, HeadingKey, LinkTarget, generated_inlines_to_plain_text,
+use crate::{
+  citation::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text},
+  model::{AnchorId, AnchorMark, HeadingKey, LinkTarget},
 };
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
@@ -109,8 +110,8 @@ mod tests {
     *,
   };
   use crate::{
+    citation::{CitationId, GeneratedCitations},
     config::Style as ReadStyle,
-    model::{CitationId, NodeMap},
   };
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
@@ -139,12 +140,12 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
+    let citations = GeneratedCitations::for_test(Vec::new(), bibliography());
     let (layout, headings) = super::super::lower_sources_with_headings(
       &ctx,
       super::super::DocumentContent {
         analyzed: &analyzed,
-        citation_displays: &NodeMap::default(),
-        bibliography: &bibliography(),
+        citations: &citations,
       },
     );
 
@@ -202,17 +203,19 @@ mod tests {
     let style = ReadStyle::default();
     let analyzed = analyzed("\\cite{kwan2014}\n");
     let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let mut displays: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
-    displays.insert(
-      site,
-      vec![GeneratedInline::InternalLink {
-        target: CitationId::new("kwan2014"),
-        children: vec![GeneratedInline::Text("[1]".to_string())],
-      }],
+    let citations = GeneratedCitations::for_test(
+      vec![(
+        site,
+        vec![GeneratedInline::InternalLink {
+          target: CitationId::new("kwan2014"),
+          children: vec![GeneratedInline::Text("[1]".to_string())],
+        }],
+      )],
+      Vec::new(),
     );
 
     // Act
-    let layout = lower(&style, &analyzed, &displays, &[]);
+    let layout = lower(&style, &analyzed, &citations);
 
     // Assert
     let LayoutNode::Link { target, children } = &layout[0] else {

@@ -104,14 +104,11 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{
-    config::Style as ReadStyle,
-    model::{Length, NodeMap},
-  };
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::Length};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// 表の本体 `VBox` の子要素列を取り出すヘルパ

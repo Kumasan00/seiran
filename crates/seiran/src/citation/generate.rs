@@ -2,8 +2,6 @@
 //!
 //! authored な文書木には一切書き戻さない（表示は `NodeId` をキーにする side table で返す）。
 //! I/O は行わない — CSL スタイル・ロケールは解析済みの [`CompiledCitationStyle`] を受け取る。
-//!
-//! [`CitationSiteFacts`]: super::analyze::CitationSiteFacts
 
 use std::collections::HashMap;
 
@@ -12,8 +10,10 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use super::{References, bridge, render, style::CompiledCitationStyle};
-use crate::model::{CitationSiteFacts, GeneratedBlock, GeneratedInline, NodeMap};
+use super::{
+  CitationSiteFacts, GeneratedBlock, GeneratedInline, References, bridge, render, style::CompiledCitationStyle,
+};
+use crate::model::{NodeId, NodeMap};
 
 /// CSL 整形（表示の生成）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -35,6 +35,8 @@ pub(crate) enum CitationFormatError {
 
 /// 引用の生成物（引用箇所ごとの表示インライン列 + 書誌）
 ///
+/// side table の collection 実装と「全引用箇所の表示が生成済み」という完全性はこの型が隠し、
+/// 利用側は下の query だけを見る（`NodeMap` は外へ出さない、#333）。
 /// `Default`（空）は「引用が 1 つも無いプロジェクト」を表す。
 #[derive(Debug, Default)]
 pub(crate) struct GeneratedCitations {
@@ -45,11 +47,42 @@ pub(crate) struct GeneratedCitations {
 }
 
 impl GeneratedCitations {
-  /// 引用箇所 → 表示インライン列の side table を返す
-  pub(crate) fn displays(&self) -> &NodeMap<Vec<GeneratedInline>> { return &self.displays; }
+  /// 引用箇所の表示インライン列を引く
+  ///
+  /// # Panics
+  ///
+  /// 表示が無い場合にパニックします（全引用箇所に表示が付くことは [`generate_citations`] が
+  /// 保証しており、欠落は不変条件の破れなので黙って空を返さない）。
+  pub(crate) fn display_at(&self, site: NodeId) -> &[GeneratedInline] {
+    let Some(display) = self.displays.get(site) else {
+      unreachable!("全引用箇所の表示は generate_citations が生成している: {site:?}")
+    };
+    return display;
+  }
 
   /// 書誌のノード列を返す（引用がなければ空スライス）
   pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return &self.bibliography; }
+
+  /// 表示も書誌も 1 つも無い（＝引用ゼロのプロジェクト）かを返す
+  // crate 内の `#[cfg(test)]`（`build_pdf::semantics` のテスト）からのみ使う。
+  #[allow(dead_code)]
+  pub(crate) fn is_empty(&self) -> bool { return self.displays.is_empty() && self.bibliography.is_empty(); }
+
+  /// テスト専用の直接構築（`NodeId::for_test` と同じ位置づけ）
+  ///
+  /// 本番経路では [`generate_citations`] だけが構築する。lowering のテストが「表示・書誌がある
+  /// 状態」を CSL 抜きで作れるようにするための抜け道で、完全性の不変条件は保証しない。
+  #[cfg(test)]
+  pub(crate) fn for_test(displays: Vec<(NodeId, Vec<GeneratedInline>)>, bibliography: Vec<GeneratedBlock>) -> Self {
+    let mut table: NodeMap<Vec<GeneratedInline>> = NodeMap::default();
+    for (site, display) in displays {
+      table.insert(site, display);
+    }
+    return GeneratedCitations {
+      displays: table,
+      bibliography,
+    };
+  }
 }
 
 /// 引用箇所の事実と CSL から、引用箇所ごとの表示インライン列と書誌を生成する
@@ -112,7 +145,7 @@ pub(crate) fn generate_citations(
 mod tests {
   use std::{io::Write, path::PathBuf};
 
-  use super::{GeneratedCitations, generate_citations};
+  use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     citation::{
       read_references,
@@ -120,7 +153,7 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{DocumentPolicy, FilesystemProjectSource, Style},
-    model::{FontKind, GeneratedBlock, GeneratedInline, HirDocument, SourceId},
+    model::{FontKind, HirDocument, SourceId},
     resolve::{AnalyzedDocument, analyze},
   };
 
@@ -167,8 +200,7 @@ mod tests {
 
     // Assert — 引用箇所ごとに表示が 1 つずつ付く
     for (site, _) in analyzed.citation_sites().iter() {
-      let display = generated.displays().get(site).expect("全引用箇所に表示が付くはず");
-      let text: String = display.iter().map(GeneratedInline::to_plain_text).collect();
+      let text: String = generated.display_at(site).iter().map(GeneratedInline::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
 
@@ -200,9 +232,7 @@ mod tests {
     // Assert
     let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
     let targets: Vec<&str> = generated
-      .displays()
-      .get(site)
-      .expect("表示があるはず")
+      .display_at(site)
       .iter()
       .filter_map(|node| match node {
         GeneratedInline::InternalLink { target, .. } => return Some(target.as_str()),
@@ -298,9 +328,10 @@ mod tests {
     let second = generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("2 回目");
 
     // Assert
+    // 全表示の走査が要るのはこのテストだけなので、query ではなく private フィールドを直接読む。
     let plain = |generated: &GeneratedCitations| -> Vec<String> {
       return generated
-        .displays()
+        .displays
         .iter()
         .map(|(_, display)| return display.iter().map(GeneratedInline::to_plain_text).collect())
         .collect();

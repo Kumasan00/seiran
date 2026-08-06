@@ -115,14 +115,11 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{
-    config::Style as ReadStyle,
-    model::{AnchorMark, NodeMap},
-  };
+  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, model::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
+    return lower(style, &analyzed(source), &GeneratedCitations::default());
   }
 
   /// `nodes` の最初の `VBox`（= 定理見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す

@@ -37,6 +37,13 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 パイプライン全段が共有するデータモデルの leaf module。外部依存は serde / garde のみで、診断
 ライブラリ（miette）にも I/O にも依存しない。公開 API は `lib.rs` の `pub use` に一本化する。
+crate 内 module への依存も持たない — 唯一の例外が `link`（`AnchorId` / `AnchorMark` / `LinkTarget`）で、
+引用アンカーの `citation::CitationId` を参照する（#333。epic #332 の後続段階で `link` 型を
+`typeset::layout` へ移すと解消する移行中の向き）。
+
+epic #332 はこの module 自体の解体を目標にしている（「共有されていること」は所有者の不在であって
+所有の理由ではない、という判断）。第 1 段階の #333 で引用まわりの型を `citation` へ移した。
+目標構成は `docs/model-target-architecture.md`。
 
 #### モジュール構成
 
@@ -53,18 +60,12 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `Align::offset`）のみを持つ。
 - **起源識別子**: `origin` が `SourceId(usize)` を持ち（`Origin` / `GeneratedOrigin` は #324 で削除 —
   意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
-  `ids` が `LabelId` / `CitationId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
-  `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。
-- **CSL 整形の生成物専用の語彙**（著者が書いた内容は下記 HIR のみが表現し、この語彙は
-  `typeset::lowering` の本文経路には登場しない、#325 / #326）: `generated`（`GeneratedBlock`。
-  `Heading` / `Paragraph` / `Anchor` の 3 variant。書誌が使う）と `GeneratedInline`（`Text` /
-  `Styled` / `InternalLink` の 3 variant + プレーンテキスト化ヘルパ
-  `generated_inlines_to_plain_text`）。唯一の生産者は `citation::render`（CSL 整形が書誌・引用表示を
-  合成する経路）で、唯一の消費者は `typeset::lowering::generated`。
-  variant は**生産者が実際に構築するものだけ**に絞ってあり（#326 で `Colored` / `Symbol` /
-  `LineBreak` / `Link` を削除した。外部 URL は hyperref 対応まで URL を捨ててテキストだけ残すため
-  `Link` は構築されない）、これが消費側の match を網羅的に保つ根拠になっている。
-  CSL 整形が新しい表現を出すようになったら、そのとき variant を足す。
+  `ids` が `LabelId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
+  `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。引用キー `CitationId` と
+  CSL 整形の生成物専用の語彙（`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、
+  後述の citation 節）。`link` はアンカーの引用 variant のために `citation::CitationId` を使うので、
+  `model` の中で唯一 `citation` を参照する子 module になっている（epic #332 の後続段階で
+  `AnchorId` / `AnchorMark` / `LinkTarget` を `typeset::layout` へ移すとこの向きは消える）。
 - `math_node`（`MathNode` / `MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
   `MathNode` は HIR の数式評価変換（`hir::to_math_nodes`）と `typeset::lowering` の数式経路が
   共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
@@ -74,10 +75,10 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
   `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
   citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticFacts`
-  と `citation::GeneratedCitations`（`displays: NodeMap<Vec<GeneratedInline>>`）もこれを使う）。全ノードが
+  と `citation::GeneratedCitations`（引用表示の side table。型自体は外へ出さない）もこれを使う）。全ノードが
   `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
   `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
-  するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `CitationId`）・
+  するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `citation::CitationId`）・
   カウンタ値・CSL 整形結果・Theme 由来の表示文字列は持たない — それらは `resolve::analyze` が
   `SemanticFacts` として、CSL 整形結果は `citation::generate_citations` が別枠で持つ。引用箇所
   （`HirInlineKind::Cite`）はキー列のみを持ち、CSL 整形後の表示文字列に対応するフィールドは
@@ -405,12 +406,26 @@ CST を走査して HIR（`model::HirNode` / `HirInline` / `HirMath`）へ評価
 #### 責務
 
 参照定義ファイルの読込・CSL スタイル / ロケールの読込から `\cite` の CSL 整形・書誌生成までを
-1 module に閉じる。引用箇所の意味解析（どの `\cite` がどのキーを指すか、未定義キーの検証）は
-`resolve::analyze` が他の fact と同じ 1 走査で行うのでここには無い（#324）。citation は
-`resolve` を知らない — 共有型 `CitationSiteFacts` は `model` に置いてある。
+1 module に閉じ、引用まわりの型（`CitationId` / `CitationSiteFacts` / `GeneratedBlock` /
+`GeneratedInline`）を所有する（#333）。引用箇所の意味解析（どの `\cite` がどのキーを指すか、
+未定義キーの検証）は `resolve::analyze` が他の fact と同じ 1 走査で行うのでここには無い（#324）。
+citation は `resolve` を知らない — `CitationSiteFacts` は「後段が要求する入力契約は後段が所有し、
+前段が構築する」の適用で citation 側にあり、依存は `resolve` → `citation` の一方向だけ。
 
 #### モジュール構成
 
+- `site`（非公開）: 引用キー `CitationId` と、`generate_citations` の入力契約
+  `CitationSiteFacts`（`targets: Vec<CitationId>`。`\cite{a,b}` はソース上の順序で 2 件）。
+  構築するのは `resolve::analyze`、消費するのは `generate_citations`。
+- `generated`（非公開）: CSL 整形の生成物専用の語彙。`GeneratedBlock`（`Heading` / `Paragraph` /
+  `Anchor` の 3 variant。書誌が使う）と `GeneratedInline`（`Text` / `Styled` / `InternalLink` の
+  3 variant + プレーンテキスト化ヘルパ `generated_inlines_to_plain_text`）。著者が書いた内容は HIR
+  のみが表現し、この語彙は `typeset::lowering` の本文経路には登場しない（#325 / #326）。
+  唯一の生産者は `render`（CSL 整形が書誌・引用表示を合成する経路）で、唯一の消費者は
+  `typeset::lowering::generated`。variant は**生産者が実際に構築するものだけ**に絞ってあり
+  （#326 で `Colored` / `Symbol` / `LineBreak` / `Link` を削除した。外部 URL は hyperref 対応まで
+  URL を捨ててテキストだけ残すため `Link` は構築されない）、これが消費側の match を網羅的に保つ
+  根拠になっている。CSL 整形が新しい表現を出すようになったら、そのとき variant を足す。
 - `references`（非公開）: `config/references.toml` または `.json` の読み込み（CSL 文献情報、拡張子で形式
   判別）。`reference` / `name` / `date` / `error` の子 module を持つ。module root（`citation.rs`）が
   再エクスポートするのは外から名指しされる `Reference` / `References` / `read_references` /
@@ -446,8 +461,15 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 キーの存在は `analyze` が保証済みなので、ここでの未知キーは `unreachable!` で落とす。
 `&` 参照のみを取り、文書木の所有権は受け取らない（旧 `process_citations` の「所有権を受け取って書き換えて
 返す」経路は削除済み）。結果 `GeneratedCitations` は引用箇所 → 表示インライン列の side table
-（`displays: NodeMap<Vec<GeneratedInline>>`、`NodeId` をキーにする。文書木へは一切書き戻さない）と、
-書誌のノード列（`bibliography: Vec<GeneratedBlock>`）を持つ。
+（`NodeId` をキーにする。文書木へは一切書き戻さない）と書誌のノード列を持つが、**どちらのフィールドも
+公開しない**（#333）。利用側が見るのは次の query だけで、side table の collection（`NodeMap`）は
+段間 interface に出ない。
+
+- `display_at(site: NodeId) -> &[GeneratedInline]` — 引用箇所の表示。「全引用箇所の表示が生成済み」は
+  `generate_citations` が確立する不変条件なので、欠落は `Option` で返さず `unreachable!` で落とす
+  （この検証の所在が `GeneratedCitations` に局所化されている点が #333 の眼目）。
+- `bibliography() -> &[GeneratedBlock]` — 書誌のノード列（引用が書誌を生まなければ空スライス）。
+- `is_empty() -> bool` — 表示も書誌も無い（＝引用ゼロのプロジェクト）か。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
 （`seiran::build_pdf::semantics::resolve_semantics`）が `Semantics { analyzed, generated }` として
@@ -543,7 +565,7 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 `lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
 `DocumentContent`（`AnalyzedDocument` への参照 + 引用の生成物への参照）1 個になり、複数ソースの束ね方も
 `resolve::analyze`（`HirDocument::groups()`）側の関心事になったため（書誌は
-`citation::GeneratedCitations` の `bibliography` フィールドとして本文とは別に保持する）、単一ソース用の
+`citation::GeneratedCitations` が本文とは別に保持し、`bibliography()` で引く）、単一ソース用の
 薄いラッパーも不要になった）。`LineBreaker` トレイトは実在する差し替え seam なので
 `typeset::breaking` の facade で公開を維持するが、`typeset` root へは lift しない — 実装（`break_pages`
 内部・`breaking` 配下のテスト）はいずれも `breaking` 経由で引くため（#326）。`KnuthPlassBreaker` は
@@ -584,9 +606,11 @@ module が上流で済ませているため、この module は「確定した�
 表示側フィールドで文字列にして箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す
 公開関数が無い、`## resolve` 節参照）。
 
-`DocumentContent<'a> { analyzed: &'a AnalyzedDocument, citation_displays: &'a NodeMap<Vec<GeneratedInline>>,
-bibliography: &'a [GeneratedBlock] }` が唯一の公開入口型。著者が書いた内容は `analyzed` の HIR 1 本、CSL 整形の
-生成物（書誌・引用表示）は別枠の 2 フィールドという切り分けをそのまま型にしたもので、生成物には
+`DocumentContent<'a> { analyzed: &'a AnalyzedDocument, citations: &'a citation::GeneratedCitations }` が
+唯一の公開入口型。著者が書いた内容は `analyzed` の HIR 1 本、CSL 整形の生成物（書誌・引用表示）は
+`citations` の 1 本という切り分けをそのまま型にしたもので、どちらのフィールドも前段が公開する深い型
+（#333。以前は `citation_displays: &NodeMap<Vec<GeneratedInline>>` / `bibliography: &[GeneratedBlock]`
+という raw な 2 フィールドで、side table の collection と完全性検証が消費側へ漏れていた）。生成物には
 `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」という不変条件を保つ
 ため）。呼び出し元（`build_pdf.rs` の `document_content`）は `resolve_semantics` が返した
 `Semantics { analyzed, generated }` から借用して組み立てるだけで、中間の木は作らない。
@@ -595,7 +619,7 @@ bibliography: &'a [GeneratedBlock] }` が唯一の公開入口型。著者が書
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` / `template` /
   `theorem` / `title_page`
-- `generated`: CSL 整形の生成物（書誌 `Vec<GeneratedBlock>` / 引用表示 `NodeMap<Vec<GeneratedInline>>`）専用の
+- `generated`: CSL 整形の生成物（`citation::GeneratedBlock` / `citation::GeneratedInline`）専用の
   lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
   （HIR）と別の関数群になる。書誌の箱組み（見出し・段落）自体は本文と同じ `heading::lower_heading` /
   `paragraph::assemble_paragraph` を通す
@@ -622,9 +646,9 @@ DocumentContent` への参照 + `footnote_count` + `heading_titles` の 3 フィ
 `lower_sources_with_headings` が組み立てる。
 
 **`\cite` も表示をプレースホルダ経由で持たない**: `HirInlineKind::Cite` は表示を持たず、
-`LoweringState::citation_display(site)` が `DocumentContent::citation_displays` を `site`（`NodeId`）で
-引いて `LayoutNode` へ変換する（`citation::generate_citations` が生成した表示は全引用箇所ぶん揃っている
-前提のため、見つからなければ `unreachable!`）。文書木（HIR）へ表示を書き戻す経路は無い。
+`LoweringState::citation_display(site)` が `DocumentContent::citations` の `display_at(site)` を呼んで
+`LayoutNode` へ変換する（表示が全引用箇所ぶん揃っているという不変条件の検証は `GeneratedCitations`
+側にあり、欠落時に `unreachable!` で落ちるのもそちら、#333）。文書木（HIR）へ表示を書き戻す経路は無い。
 
 **脚注のカウンタは特殊**: 定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ
 （`footnote_count`）を持つが、これは表示番号ではなく**出現 index**（0 起点の同一性）の発番であり、ラベルに
