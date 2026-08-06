@@ -55,28 +55,29 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   意味解析が実ソースしか走査しなくなり、生成物由来の診断が到達不能になったため）、
   `ids` が `LabelId` / `CitationId` / `FootnoteId` / `HeadingKey` / `AssetId` の newtype を、
   `link` が `AnchorId` / `AnchorMark` / `LinkTarget` を持つ。
-- **Document IR**: `doc_node`（`Document` / `DocNode` / `ProofTarget`）/ `inline`（`InlineNode` +
-  プレーンテキスト化ヘルパ）/ `math_node`（`MathNode` / `MathRow` / `MathStyle`）/ `list`
-  （`ListItem`）/ `quote`（`QuoteKind`）/ `table`（`TableRow` / `TableCell`）。`typeset::lowering`
-  （消費者）が依存する共有契約で、セマンティック情報のみを持ち、物理レイアウト情報は持たない。
-  #322 以降の生産者は `frontend` ではなく `frontend::doc_node_adapter`（HIR からの変換）で、
-  この型群は #325 で削除する。
+- **CSL 整形の生成物専用の語彙**（旧 Document IR。著者が書いた内容は下記 HIR のみが表現し、この語彙は
+  もう `typeset::lowering` の本文経路には登場しない、#325）: `doc_node`（`DocNode`。`Heading` /
+  `Paragraph` / `Anchor` の 3 variant。書誌が使う）/ `inline`（`InlineNode`。`Text` / `Styled` /
+  `Colored` / `Symbol` / `LineBreak` / `Link` / `InternalLink` の 7 variant + プレーンテキスト化
+  ヘルパ）。唯一の生産者は `citation::render`（CSL 整形が書誌・引用表示を合成する経路）で、唯一の
+  消費者は `typeset::lowering::generated`。
+- `math_node`（`MathNode` / `MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
+  `MathNode` は HIR の数式評価変換（`hir::to_math_nodes`）と `typeset::lowering` の数式経路が
+  共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
 - **HIR**（`hir`、#322）: 著者が書いた内容を表す文書木。`id`（`NodeId`）/ `source_map`（`SourceSpans` /
   `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `document`（`HirSource` / `HirGroup` /
   `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /
   `HirProofTarget`）/ `inline`（`HirInline` / `HirInlineKind`）/ `math`（`HirMath` / `HirMathKind` /
   `HirMathRow`）/ `node_map`（`NodeMap<T>` ＝ `NodeId` をキーにする挿入順 side table。#323 で
-  citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticGenerated`
-  / `ResolvedGenerated` もこれを使う）。全ノードが `NodeId` を持ち、ソース位置は各 variant ではなく
-  `SourceMap` に集約する。
+  citation の生成物（引用表示）を文書木へ書き戻さず別枠で持ち運ぶために追加し、`resolve::SemanticFacts`
+  と `citation::GeneratedCitations`（`displays: NodeMap<Vec<InlineNode>>`）もこれを使う）。全ノードが
+  `NodeId` を持ち、ソース位置は各 variant ではなく `SourceMap` に集約する。
   `NodeId` は `{ SourceId, ソース内 local }` で、`HirBuilder` だけが発行する（発行と同時に位置を記録
   するので「位置を持たない `NodeId`」は構築できない）。解決済み ID（`LabelId` / `CitationId`）・
-  カウンタ値・CSL 整形結果・Theme 由来の表示文字列は持たない。旧 `DocNode` との差分は
-  `DocNode::Anchor` / `InlineNode::InternalLink`（いずれも CSL 整形段の生成物）と
-  `Heading::numbered`（frontend では常に `true`）を持たないこと。引用箇所（`HirInlineKind::Cite`）は
-  キー列のみを持ち、旧 `DocNode` 側の `InlineNode::Cite::label`（CSL 整形後の表示）に対応する
-  フィールドを最初から持たない（`DocNode` 側は #323 で `node_id: NodeId` を追加した後に `label` を
-  削除しており、両者とも表示文字列は持たない）。
+  カウンタ値・CSL 整形結果・Theme 由来の表示文字列は持たない — それらは `resolve::analyze` が
+  `SemanticFacts` として、CSL 整形結果は `citation::generate_citations` が別枠で持つ。引用箇所
+  （`HirInlineKind::Cite`）はキー列のみを持ち、CSL 整形後の表示文字列に対応するフィールドは
+  最初から持たない。
 
 #### 不変条件・注意点
 
@@ -97,10 +98,11 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   コンパイラが何も保証していなかったため、free function 群（`heading_anchor_key` /
   `footnote_anchor_key` / `index_page_anchor_key`）ごと廃止した（#259）。文字列規約へ戻さない。
 - **起源を配列インデックスへ戻さない**。合成書誌グループを「実ソース配列の範囲外インデックス」で
-  表す暗黙の sentinel 方式は廃止済み（#259）。書誌は `ResolvedDocument` の別フィールド
-  （`generated.bibliography`、#283 / #323）に分離されており、実ソースのグループ列は起源として
+  表す暗黙の sentinel 方式は廃止済み（#259）。書誌は `citation::GeneratedCitations` の別フィールド
+  （`bibliography: Vec<DocNode>`、#283 / #323）に分離されており、実ソースの `HirGroup` 列は起源として
   `SourceId` しか持てず、生成物が紛れ込むこと自体が型として起こらない。意味解析は HIR（実ソースのみ）を
-  走査するので、そもそも生成物を見ない（#324）。
+  走査するので、そもそも生成物を見ない（#324）。typeset::lowering も本文（`AnalyzedDocument` の HIR）と
+  生成物（書誌・引用表示）を別経路で lower し、両者を 1 つの木へ混ぜ直すことはしない（#325）。
 - 段組みの 1 段あたりの幅を求める純粋計算 `column_width` をここに置き、`config` の横断バリデーションと
   `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
@@ -242,10 +244,12 @@ pub trait ProjectSource: Send + Sync {
 
 #### 責務
 
-意味解析（`analyze`）と、その成果物から組版入力を組み立てる橋渡し（`build_resolved_document`）の 2 つを持つ。
-`analyze` は `HirDocument` を 1 回走査して、ラベル宣言・`\ref` と `Theorem::of` の解決・カウンタ構造値・
-見出し・引用箇所を `NodeId` をキーにした side table（`SemanticFacts`）へ確定し、HIR と束ねた
-`AnalyzedDocument` を返す。**文書木は読み取り専用で、書き戻しは一切行わない**（issue #324）。
+意味解析 `analyze` のみを持つ。`HirDocument` を 1 回走査して、ラベル宣言・`\ref` と `Theorem::of` の解決・
+カウンタ構造値・見出し・引用箇所を `NodeId` をキーにした side table（`SemanticFacts`）へ確定し、HIR と
+束ねた `AnalyzedDocument` を返す。**文書木は読み取り専用で、書き戻しは一切行わない**（issue #324）。
+組版入力を組み立てる橋渡し（旧 `build_resolved_document`）は持たない — `AnalyzedDocument` は目的別
+query を公開する側自身が「lowering の入力」であり、`typeset::lowering` が `AnalyzedDocument` を直接
+読む（issue #325）。
 
 カウンタの**値**（構造のみ。例: 節 1.2 → `parts: [1, 2]`）もここで確定する。**表示**に関わる style
 フィールド（`number_format` / `ref_format` / `display_name` / `number_style`）は読まないのではなく
@@ -262,24 +266,20 @@ pub trait ProjectSource: Send + Sync {
 
 いずれも非公開で、公開 API は module root（`resolve.rs`）の `pub use` に揃える。
 
+`resolve/` は 4 ファイルだけ（旧 `bridge` / `document` / `node` / `inline` は #325 で組版入力の
+中間木ごと削除した）。
+
 - `facts`: `SemanticFacts`（`label_definitions: HashMap<LabelId, NodeId>` / `declared_labels: NodeMap<LabelId>` /
   `counters: NodeMap<CounterValue>` / `references: NodeMap<LabelId>` / `citations: NodeMap<CitationSiteFacts>` /
-  `headings: Vec<HeadingFacts>`）と `AnalyzedDocument`（`hir` + `facts`）。フィールドはすべて非公開で、
-  `AnalyzedDocument` の構築子は `resolve` の内側からしか呼べない（`analyze` が唯一の構築経路）。
-  利用側は collection 構造を知らず、目的別 query（`counter_value` / `counter_value_of_label` /
-  `declared_label` / `reference_target` / `citation_targets` / `headings` 等）経由でのみ fact を参照する。
-  `reference_target` は `Option` ではなく `LabelId` を直接返す — `analyze` 成功後は「すべての参照は
-  実在するラベルへ解決済み」が不変条件として成立しており、参照先が無い状態を型として表現しない
+  `headings: Vec<HeadingFacts>` / `heading_keys: NodeMap<HeadingKey>`）と `AnalyzedDocument`（`hir` + `facts`）。
+  フィールドはすべて非公開で、`AnalyzedDocument` の構築子は `resolve` の内側からしか呼べない（`analyze` が
+  唯一の構築経路）。利用側は collection 構造を知らず、目的別 query（`hir` / `counter_value` /
+  `counter_value_of_label` / `declared_label` / `reference_target` / `reference_sites` / `citation_sites` /
+  `has_citations` / `headings` / `heading_key` 等）経由でのみ fact を参照する。`reference_target` は
+  `Option` ではなく `LabelId` を直接返す — `analyze` 成功後は「すべての参照は実在するラベルへ解決済み」が
+  不変条件として成立しており、参照先が無い状態を型として表現しない
 - `analyze`: `analyze` 本体と走査 `Walker`、参照の存在検証 `resolve_references`、fact の完全性検証
   `assert_facts_complete`
-- `bridge`: `build_resolved_document`。`AnalyzedDocument` と引用の生成物から `ResolvedDocument` を
-  組み立てる。**#325 で消える一時的な足場**なので一般化しない
-- `document`: `ResolvedDocument`（`groups: Vec<ResolvedGroup>` + `generated: ResolvedGenerated` +
-  `headings` + `counter_values`）/ `ResolvedGroup` / `ResolvedHeading`（いずれも組版入力。#325 で削除）
-- `node` / `inline`: `ResolvedNode` / `ResolvedInline`。ラベル宣言箇所・`\ref` 参照・索引語（`IndexKey`）は
-  生の `String` ではなく typed ID（`LabelId`）を持ち、見出しは `analyze` が振った `HeadingKey` を持つ。
-  `\cite`（`ResolvedInline::Cite`）は typed ID を持たず引用箇所の `NodeId`（`site`）だけを持ち、
-  `CitationId` は書誌内リンク（`InternalLink::target`）と引用箇所の事実（`CitationSiteFacts::targets`）が持つ
 - `counter`: `CounterValue` / `CounterKind` と、それを組み立てる `CounterRegistry`。`typeset::lowering` 側
   にあった旧 `CounterRegistry`（issue #282 以前）から移設したもので、`increment` 系メソッドの戻り値を
   書式化済み `String` から構造値 `CounterValue` のみに変更し、`ref_format` / `number_format` 展開などの
@@ -289,9 +289,9 @@ pub trait ProjectSource: Send + Sync {
   生成物（書誌）由来のエラーは型として存在しない
 
 公開 API は `analyze(hir: HirDocument, policy: &DocumentPolicy, references: &References) ->
-Result<AnalyzedDocument, SemanticError>` と `build_resolved_document(analyzed: &AnalyzedDocument,
-citation_displays: &NodeMap<Vec<InlineNode>>, bibliography: &[DocNode]) -> ResolvedDocument`。
-後者は意味を決めないので `Result` を返さない。
+Result<AnalyzedDocument, SemanticError>` の 1 関数だけ。CSL 整形の生成物（書誌・引用表示）を
+組版入力へ組み立てる中間の木は存在せず、`typeset::lowering::DocumentContent` が `AnalyzedDocument` への
+参照と生成物への参照をそのまま束ねて lowering へ渡す（`### typeset` 節の `lowering` 節を参照）。
 
 #### 走査と検証の順序
 
@@ -313,9 +313,10 @@ citation_displays: &NodeMap<Vec<InlineNode>>, bibliography: &[DocNode]) -> Resol
    診断エラーではなく `assert!` で落とす（`analyze` の property test
    `analyze_facts_are_complete_for_any_element_combination` がこれを固定する）
 
-書誌（`citation::generate_citations` の生成物）は HIR ではなく `DocNode` で来るため、`bridge` が
-専用の小さな変換を持つ。書誌は無採番の見出しと段落・アンカーしか含まず、ラベルも `\ref` も持たないので、
-`bridge` がすることは本文の続きとなる `HeadingKey` を 1 つ振ることだけ。
+書誌（`citation::generate_citations` の生成物）は HIR ではなく `DocNode` で来るため、`resolve::analyze`
+は書誌を走査しない（ラベルも `\ref` もカウンタ対象も持たないため fact を作る必要が無い）。書誌へ
+本文の続きとなる `HeadingKey` を 1 つ振る処理は `resolve` ではなく `typeset::lowering::generated`
+（`lower_bibliography` が `next_heading_index` を受け取って振る）が担う（`### typeset` 節参照）。
 
 #### `CounterValue` の祖先チェーン算出規則
 
@@ -341,12 +342,8 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 常に同じ穴になる。したがって ID の稠密性・連続性には依存してよくない（`hir_invariants` の
 テストも稠密性は検証しない）。
 
-`doc_node_adapter`（非公開・`#[cfg(test)]`）が HIR を旧 `DocNode` 列へ落とす。本体経路は #324 で
-HIR のまま `resolve::analyze` / `resolve::bridge` へ渡るようになったため、この adapter は
-frontend / evaluator / typeset の既存 `DocNode` ベーステストの足場としてのみ残る。変換は
-HIR → `DocNode` の一方向のみで、逆方向は提供しない（手組みの `DocNode` に `NodeId` を捏造すると
-「すべての `NodeId` は同梱された `HirDocument` が発行したもの」という不変条件を破るため）。
-adapter そのものは #325 で削除する。
+`frontend` の生成物は HIR のみで、旧 `DocNode` 列へ落とす `doc_node_adapter`（HIR → 旧テスト資産の
+橋渡し）は #325 で削除済み。frontend / evaluator 配下のテストはいずれも HIR を直接検査する。
 
 #### `syntax`（非公開）
 
@@ -440,10 +437,11 @@ style: &CompiledCitationStyle, bibliography_title: &str) -> Result<GeneratedCita
 書誌のノード列（`bibliography: Vec<DocNode>`）を持つ。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
-（`seiran::build_pdf::semantics::resolve_semantics`）が `resolve::build_resolved_document` へ実ソースの
-本文とは別に渡す（#283 以降、「合成グループとして groups の末尾に連結する」方式は廃止）— こうすることで
-citation がグループ構造に依存しない。書誌ノードはラベル・`\ref` を持たないため lowering エラーを
-起こさない。
+（`seiran::build_pdf::semantics::resolve_semantics`）が `Semantics { analyzed, generated }` として
+実ソースの本文（`analyzed`）とは別枠のまま返し、`build_pdf.rs` の `document_content` が
+`typeset::lowering::DocumentContent` へ束ねて渡す（#283 以降、「合成グループとして groups の末尾に
+連結する」方式は廃止）— こうすることで citation がグループ構造に依存しない。書誌ノードはラベル・`\ref`
+を持たないため lowering エラーを起こさない。
 
 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は `InlineNode::Styled`（serif italic 系）で斜体組みする
 （`render` が hayagriva の `Formatting`（`font_style` / `font_weight`）を `FontKind` へ落とす）。
@@ -495,10 +493,10 @@ citation がグループ構造に依存しない。書誌ノードはラベル�
 
 #### 責務
 
-解決済みドキュメント（`resolve::ResolvedDocument`）から、配置済み直前のブロック列・ページ列までの組版
-パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` module が上流で済ませて
-いるため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
-（`### lowering` 節を参照）。`lowering` /
+意味解析の成果物（`resolve::AnalyzedDocument`）と CSL 整形の生成物（`typeset::DocumentContent`）から、
+配置済み直前のブロック列・ページ列までの組版パスを統合する。ラベル・カウンタの解決（採番・`\ref` の
+存在検証）は `resolve` module が上流で済ませているため、`lowering` module はその結果を style の
+表示側フィールドで表示文字列に変換するだけになる（`### lowering` 節を参照）。`lowering` /
 `block` / `breaking` / `layout` / `pipeline` の 5 module はすべて非公開で、公開 API は module root の
 `pub use` に揃える。段順序（lowering → `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline`
 module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶのは次の入口関数だけである（issue #281）。
@@ -521,8 +519,10 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 （旧 `crates/typeset/tests/smoke.rs`）が直接呼ぶため（旧 `lower_document` / `lower_nodes` /
 `SourceGroup` / `LoweringError` は issue #282 で
 `lowering` が失敗しなくなった＝`Result` を返す公開関数が無くなったのに伴い消滅した。入力は
-`ResolvedDocument` 1 本になり、複数ソースの束ね方も `resolve::SemanticGroup` / `ResolvedGroup` 側の
-関心事になったため（書誌は `ResolvedDocument` の `generated.bibliography` フィールドとして本文とは別に保持する）、単一ソース用の薄いラッパーも不要になった）。`LineBreaker` トレイトと
+`DocumentContent`（`AnalyzedDocument` への参照 + 引用の生成物への参照）1 個になり、複数ソースの束ね方も
+`resolve::analyze`（`HirDocument::groups()`）側の関心事になったため（書誌は
+`citation::GeneratedCitations` の `bibliography` フィールドとして本文とは別に保持する）、単一ソース用の
+薄いラッパーも不要になった）。`LineBreaker` トレイトと
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam なので入口関数の引数として公開を維持する。
 
 `layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
@@ -554,16 +554,27 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 
 #### `lowering`
 
-解決済みドキュメント（`resolve::ResolvedDocument`）→ `LayoutNode` への変換。フォント・シェーピング
-非依存。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` module が上流で済ませているため、
-この module は「解決済みの構造値（`resolve::CounterValue`）を style の表示側フィールドで文字列にして
-箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す公開関数が無い、`## resolve` 節
-参照）。
+`DocumentContent`（意味解析の成果物 `resolve::AnalyzedDocument` + CSL 整形の生成物）→ `LayoutNode` への
+変換。フォント・シェーピング非依存。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve`
+module が上流で済ませているため、この module は「確定した構造値（`resolve::CounterValue`）を style の
+表示側フィールドで文字列にして箱に積む」だけを行う。意味解析を行わないため失敗しない（`Result` を返す
+公開関数が無い、`## resolve` 節参照）。
+
+`DocumentContent<'a> { analyzed: &'a AnalyzedDocument, citation_displays: &'a NodeMap<Vec<InlineNode>>,
+bibliography: &'a [DocNode] }` が唯一の公開入口型。著者が書いた内容は `analyzed` の HIR 1 本、CSL 整形の
+生成物（書誌・引用表示）は別枠の 2 フィールドという切り分けをそのまま型にしたもので、生成物には
+`NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」という不変条件を保つ
+ため）。呼び出し元（`build_pdf.rs` の `document_content`）は `resolve_semantics` が返した
+`Semantics { analyzed, generated }` から借用して組み立てるだけで、中間の木は作らない。
 
 - `layout_node`: `LayoutNode` / `TextStyle` / `TableLayout` 等の型定義
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` / `template` /
   `theorem` / `title_page`
+- `generated`: CSL 整形の生成物（書誌 `Vec<DocNode>` / 引用表示 `NodeMap<Vec<InlineNode>>`）専用の
+  lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
+  （HIR）と別の関数群になる。書誌の箱組み（見出し・段落）自体は本文と同じ `heading::lower_heading` /
+  `paragraph::assemble_paragraph` を通す
 - `counter`（+ `counter::format`）: `resolve::CounterValue` から `number_format` / `number_style` /
   `ref_format` / cleveref 相当の書式（定理は固定 `"{display_name} {number}"`）で表示文字列を作る純粋関数群。
   値の算出（発番・リセットカスケード）は持たない — それは `resolve::CounterRegistry`（`resolve` module
@@ -573,21 +584,23 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
 段落内 `\\` 由来のみ）。
 
-**`\ref` はもう 2 段階プレースホルダを使わない**: `resolve` が pass1（登録 + ツリー構築）→ pass2（存在
-検証）を終えた時点で `ResolvedInline::Ref { target: LabelId, .. }` は参照先が存在することが型で保証されて
-いる。`lowering` は走査中の可変状態 `LoweringState`（旧 `CounterRegistry` の可変部分の置き換え。持つのは
-`ResolvedDocument` への参照と、脚注・見出しの通し index 発行だけ）の `ref_display` で
-`ResolvedDocument::counter_values` を引いて表示文字列を作り、その場でノードへ変換する — 旧来のように
-`LayoutNode::Ref` プレースホルダを発行して pass2 で `Link` / `Text` へ書き換える走査は行わない（参照先が
-見つからない場合は `resolve::validate_refs` の不変条件違反として `unreachable!` で落ちる）。TOC・PDF
-しおり用の見出し記録（`HeadingRecord`）は `ResolvedDocument::headings`（`resolve` が pass1 で集めた
-見出し一覧）から `lower_sources_with_headings` が組み立てる。
+**`\ref` はもう 2 段階プレースホルダを使わない**: `resolve::analyze` が走査（登録 + fact 構築）→
+検証（参照の存在確認）を終えた時点で、`AnalyzedDocument::reference_target` は参照先が実在するラベルへ
+解決済みであることが不変条件として保証されている。走査中の可変状態 `LoweringState`（`content:
+DocumentContent` への参照 + `footnote_count` + `heading_titles` の 3 フィールドだけを持つ。採番・`\ref`
+解決・見出しキーの付与はいずれも `resolve::analyze` が済ませているため、ここに残る可変状態は「脚注の
+出現順に払い出す通し index」と「見出しタイトルのプレーンテキスト（`HeadingRecord` 組み立て用、走査中に
+しか作れない）」だけ）の `ref_display` が `AnalyzedDocument::counter_value_of_label` を引いて表示文字列を
+作り、その場でノードへ変換する — 旧来のように `LayoutNode::Ref` プレースホルダを発行して 2 パス目で
+`Link` / `Text` へ書き換える走査は行わない（参照先の値が事実に無い場合は `resolve::analyze` の不変条件
+違反として `unreachable!` で落ちる）。TOC・PDF しおり用の見出し記録（`HeadingRecord`）は
+`AnalyzedDocument::headings()`（`resolve::analyze` が確定した文書順の見出し一覧）から
+`lower_sources_with_headings` が組み立てる。
 
-**`\cite` も表示をプレースホルダ経由で持たない**: `ResolvedInline::Cite { site: NodeId, .. }` は表示を
-持たず、`LoweringState::citation_display(site)` が `ResolvedDocument::generated.citation_displays` を
-`site`（`NodeId`）で引いて `LayoutNode` へ変換する（`citation::generate_citations` が生成した表示は
-全引用箇所ぶん揃っている前提のため、見つからなければ `unreachable!`）。文書木（`ResolvedNode` /
-`ResolvedInline`）へ表示を書き戻す経路は無い。
+**`\cite` も表示をプレースホルダ経由で持たない**: `HirInlineKind::Cite` は表示を持たず、
+`LoweringState::citation_display(site)` が `DocumentContent::citation_displays` を `site`（`NodeId`）で
+引いて `LayoutNode` へ変換する（`citation::generate_citations` が生成した表示は全引用箇所ぶん揃っている
+前提のため、見つからなければ `unreachable!`）。文書木（HIR）へ表示を書き戻す経路は無い。
 
 **脚注のカウンタは特殊**: 定理カウンタと同じく 9 種固定の `CounterName` とは独立した専用カウンタ
 （`footnote_count`）を持つが、これは表示番号ではなく**出現 index**（0 起点の同一性）の発番であり、ラベルに
@@ -598,16 +611,17 @@ module に閉じており、外部（`seiran::build_pdf`）が個別に呼ぶの
 `LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位
 リセットはこのマップ経由で実現する（`seiran` の該当節を参照）。
 
-**複数ソース**: `lower_sources_with_headings(ctx, document: &ResolvedDocument) -> (Vec<LayoutNode>,
-Vec<HeadingRecord>)` が `ResolvedDocument::groups`（`ResolvedGroup { nodes: Vec<ResolvedNode>, source_id:
-SourceId }`）を 1 回でまとめて lower し、その直後に `ResolvedDocument::generated.bibliography`（書誌の
-解決済みノード列）を lower する（#283。書誌は常に groups の後に lower する — `next_heading_index()` が
-`ResolvedDocument::headings` の添字と一致する前提は、resolve が書誌を最後に解決する順序と揃っている
-ことに依存する）。グループの起源（`SourceId`）は `resolve` が診断のソース位置付けに使うためのもので、
-`resolve` が検証を終えた後の `lowering` にはエラーを出す先が無いため読まない（`ResolvedGroup::source_id`
-は素通りする）。見出し収集・カウンタ値の参照は `ResolvedDocument` 全体を通して行われるため、`\ref` は
-別ソース（別グループ）や書誌のラベルも指せる（複数ソースの束ね方自体は `resolve` 側の関心事になり、
-`lowering` は 1 個の `ResolvedDocument` を受け取るだけになった）。
+**複数ソース**: `lower_sources_with_headings(ctx, content: DocumentContent<'_>) -> (Vec<LayoutNode>,
+Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, source_id }` 列）を 1 回で
+まとめて lower し、その直後に `content.bibliography`（CSL 整形が合成した書誌）を
+`generated::lower_bibliography` で lower する（#283。書誌は常に groups の後に lower する —
+`lower_bibliography` へ渡す `next_heading_index` が `analyzed.headings().len()` である前提は、
+`resolve::analyze` が本文の見出しをすべて確定してから書誌を扱う順序と揃っていることに依存する）。
+グループの起源（`HirGroup::source_id`）は `resolve::analyze` が診断のソース位置付けに使うためのもので、
+検証を終えた後の `lowering` にはエラーを出す先が無いため読まない。見出し収集・カウンタ値の参照は
+`AnalyzedDocument` 全体を通して行われるため、`\ref` は別ソース（別グループ）や書誌のラベルも指せる
+（複数ソースの束ね方自体は `resolve::analyze` 側の関心事になり、`lowering` は 1 個の `DocumentContent`
+を受け取るだけになった）。
 （`SourceId` は `seiran::build_pdf::project::SourceDb::register` が唯一の発行元であり、`resolve` はここで
 発行された ID を受け取って運ぶだけで自ら発行しない。#299）
 
@@ -759,12 +773,14 @@ facade はこれを知らない（issue #278）。子 module:
   `parse_project` が返す `ImageManifest` に従って driver が別途読み込む
 - `semantics`: `resolve::analyze`（ラベル・`\ref`・カウンタ・見出し・引用箇所の意味解析）→
   `citation::load_citation_style`（CSL スタイル・ロケールの読込、引用が無ければ呼ばない）→
-  `citation::generate_citations`（`\cite` の CSL 整形。表示 side table + 書誌を生成）→
-  `resolve::build_resolved_document`（組版入力の組み立て）の呼び出し順序を 1 関数 `resolve_semantics`
-  の背後に隠す（issue #303、意味解析の 1 走査統合は #324）。`generate_citations` /
-  `build_resolved_document` はいずれも `&` 参照のみを取り、文書木の所有権を受け取って書き換える経路は無い
-  （`analyze` だけが `HirDocument` を所有で受け取り、`AnalyzedDocument` として抱え直す）。
-  driver は analyze → style → generate → 組み立ての順序も、表示・書誌を本文とは別枠で渡す組み立ても知らない
+  `citation::generate_citations`（`\cite` の CSL 整形。表示 side table + 書誌を生成）の呼び出し順序を
+  1 関数 `resolve_semantics` の背後に隠す（issue #303、意味解析の 1 走査統合は #324）。`generate_citations`
+  は `&` 参照のみを取り、文書木の所有権を受け取って書き換える経路は無い（`analyze` だけが `HirDocument`
+  を所有で受け取り、`AnalyzedDocument` として抱え直す）。`resolve_semantics` は
+  `Semantics { analyzed: AnalyzedDocument, generated: GeneratedCitations }` を返すだけで、組版入力へ
+  組み立てる中間の木は作らない（#325）— `build_pdf.rs` の `document_content` が両者への参照を
+  `typeset::DocumentContent` へ束ねるだけの薄いビューになる。driver は analyze → style → generate の
+  順序も、表示・書誌を本文とは別枠で渡す組み立ても知らない
 - `image_manifest`: `parse_project` が HIR から集める画像パス一覧 `ImageManifest`
   （重複なし・`AssetId` の昇順）
 
@@ -772,7 +788,8 @@ facade はこれを知らない（issue #278）。子 module:
 `parse_project` が `HirDocument::assemble` でプロジェクト全体の文書木へ組み立てる。`assemble` は
 `SourceId::index()` の昇順へ正規化するので、パースの実行順が `groups` の順序にも `SourceMap` の内容にも
 影響しない。`parse_project` が返すのは `HirDocument` と `ImageManifest` だけで、旧 `DocNode` 経路
-（`ParsedSource`）は #324 で無くなった — 後段（`resolve::analyze` / `resolve::bridge`）が HIR を直接読む。
+（`ParsedSource`）は #324 で無くなった — 後段（`resolve::analyze`、続く `typeset::lowering`）が
+HIR を直接読む。
 - `image_resources`: 画像ファイルの読込（`fs::read`）と自然寸法解決 `load_image_resources`（旧
   `seiran_pdf::load_image_set`）、および `Block::Image` の width / height を自然寸法と本文幅から確定する
   `resolve_images`（旧 `pdf_gen::resolve_images`）。driver が読込を 1 回だけ呼び、`resolve_images` は
