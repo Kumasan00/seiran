@@ -268,8 +268,10 @@ impl Builder<'_> {
 
   /// ラベル宣言を facts から引く（ソース上のラベル名が無いノードは `None`）
   ///
-  /// `label` が付いていても採番されない要素（無採番の定理クラス `proof`）はラベルを登録しないので、
-  /// facts 側にも無い。その場合は `None` を返す（旧実装も登録していなかった）。
+  /// `analyze` は採番した要素のラベルしか登録しないが、「ラベルが付いているのに無採番」という入力は
+  /// frontend が弾く（`proof` はそもそも `[label=...]` を受け付けず、数式の
+  /// `[numbered=false]` + ラベルは `LabelRequiresNumbering` / `RowLabelNotSupported`）。
+  /// よってラベル名があるのに facts に無い、という組み合わせは到達しない。
   fn declared_label(&self, node: NodeId, label: Option<&String>) -> Option<LabelId> {
     label?;
     return self.analyzed.declared_label(node).cloned();
