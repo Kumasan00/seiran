@@ -5,8 +5,7 @@ use crate::model::{MathNode, MathStyle, hir::NodeId};
 /// 数式ノード列を組版用の [`MathNode`] 列へ変換する
 ///
 /// 数式は名前（ラベル・参照・引用キー）を含まないので、意味解析の fact を参照しない純粋な
-/// 構造変換になる。旧 `DocNode` 経路（`frontend::doc_node_adapter`）と `resolve::bridge` の
-/// 双方が同じ変換を必要とするため、ここに 1 つだけ置く。
+/// 構造変換になる。`typeset::lowering` が表示文字列へ組み立てる直前にこの変換を使う。
 pub(crate) fn to_math_nodes(nodes: &[HirMath]) -> Vec<MathNode> { return nodes.iter().map(to_math_node).collect(); }
 
 /// 数式ノード 1 個を組版用の [`MathNode`] へ変換する
@@ -97,8 +96,7 @@ pub(crate) struct HirMathRow {
   pub(crate) label: Option<String>,
   /// 行末マーカー `\label{...}` 自身の ID
   ///
-  /// 旧 `MathRow::label_span: Option<Span>` に対応する。`None` は「行に固有の位置がなく、
-  /// 環境の位置をフォールバックとして使う」という既存の診断挙動を表すため、
-  /// 行の位置で埋めずに `None` のまま保つ。
+  /// `None` は「行に固有の位置がなく、環境の位置をフォールバックとして使う」という既存の
+  /// 診断挙動を表すため、行の位置で埋めずに `None` のまま保つ。
   pub(crate) label_site: Option<NodeId>,
 }

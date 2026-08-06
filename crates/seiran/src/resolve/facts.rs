@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use crate::{
-  model::{CitationId, CitationSiteFacts, HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
+  model::{CitationSiteFacts, HeadingKey, HeadingLevel, HirDocument, LabelId, NodeId, NodeMap},
   resolve::counter::CounterValue,
 };
 
@@ -49,6 +49,8 @@ pub(crate) struct SemanticFacts {
   pub(super) citations: NodeMap<CitationSiteFacts>,
   /// 見出し（文書順）
   pub(super) headings: Vec<HeadingFacts>,
+  /// 見出しノード → 文書順キー（`headings` の線形探索を避けるための索引）
+  pub(super) heading_keys: NodeMap<HeadingKey>,
 }
 
 /// HIR と意味解析の事実を束ねた、意味解析の唯一の成果物
@@ -63,10 +65,6 @@ pub struct AnalyzedDocument {
   facts: SemanticFacts,
 }
 
-// `counter_value_of_label` / `reference_sites` / `citation_targets` は目的別 query として
-// 用意してあるが、本体経路の消費者は #325（lowering が `AnalyzedDocument` を直接読む）で付く。
-// それまではテストだけが呼ぶ。
-#[allow(dead_code)]
 impl AnalyzedDocument {
   /// `analyze` だけが呼べる構築子
   pub(super) fn new(hir: HirDocument, facts: SemanticFacts) -> Self { return AnalyzedDocument { hir, facts }; }
@@ -111,21 +109,11 @@ impl AnalyzedDocument {
   }
 
   /// 参照箇所を文書順に走査する
+  ///
+  /// 本体経路は参照箇所を `NodeId` で点引きする（[`Self::reference_target`]）ので、走査が要るのは
+  /// 「どこに `\ref` があるか」を網羅した `analyze` 自身のテストだけ。
+  #[cfg(test)]
   pub fn reference_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.references.iter(); }
-
-  /// 引用箇所の引用先を引く
-  ///
-  /// # Panics
-  ///
-  /// `analyze` が返した `AnalyzedDocument` に無い `site` を渡した場合にパニックします
-  /// （引用箇所の網羅は `analyze` が保証している）。
-  #[must_use]
-  pub fn citation_targets(&self, site: NodeId) -> &[CitationId] {
-    let Some(facts) = self.facts.citations.get(site) else {
-      unreachable!("全引用箇所は analyze が citations へ登録している: {site:?}")
-    };
-    return &facts.targets;
-  }
 
   /// 引用箇所の side table を文書順のまま返す（CSL 整形が採番に使う）
   #[must_use]
@@ -139,8 +127,16 @@ impl AnalyzedDocument {
   #[must_use]
   pub fn headings(&self) -> &[HeadingFacts] { return &self.facts.headings; }
 
-  /// ラベルを宣言したノードを文書順に走査する
-  pub(crate) fn declared_labels(&self) -> impl Iterator<Item = (NodeId, &LabelId)> {
-    return self.facts.declared_labels.iter();
+  /// 見出しノードの文書順キーを引く
+  ///
+  /// # Panics
+  ///
+  /// 見出しでないノードを渡した場合にパニックします（見出しの網羅は `analyze` が保証している）。
+  #[must_use]
+  pub fn heading_key(&self, node: NodeId) -> HeadingKey {
+    let Some(key) = self.facts.heading_keys.get(node) else {
+      unreachable!("全見出しは analyze が heading_keys へ登録している: {node:?}")
+    };
+    return *key;
   }
 }

@@ -1,21 +1,27 @@
 //! `"{number} {title}"` 形式テンプレートの `LayoutNode` 展開
 
-use super::{
-  LoweringContext, LoweringState,
-  inline::lower_inline,
-  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
-};
-use crate::{model::LabelId, resolve::ResolvedInline};
+use super::layout_node::{LayoutNode, TextStyle, merge_adjacent_text};
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
+///
+/// `of` は表示文字列化済みで受け取り、`title` は「呼び出したときに lowering 済みタイトルを返す
+/// クロージャ」で受け取る（テンプレート展開自体は事実も可変状態も必要としないので、
+/// `LoweringContext` / `LoweringState` は取らずクロージャの中に閉じ込める）。
+///
+/// `title` を値ではなくクロージャにしているのは、タイトルの lowering に副作用（`\footnote` の
+/// 通し index の払い出し）があるためで、`{title}` プレースホルダの出現回数ぶんだけ、出現した
+/// ときにだけ呼ぶ。すなわち:
+///
+/// - `{title}` を含まないテンプレート（例 `"図 {number}"`）ではタイトルを一度も lower しない。
+///   捨てるだけのノードを作って脚注 index だけ消費し、以降の脚注番号をずらす事故を防ぐ。
+/// - `{title}` を 2 回含むテンプレートでは 2 回 lower する。タイトル中の `\footnote` は
+///   マーカーと本体が対になった別々の脚注として 2 個出る（clone して同じ index を共有させない）。
 pub(super) fn expand_template(
-  ctx: &LoweringContext,
   template: &str,
   number: &str,
-  title: &[ResolvedInline],
-  of: Option<&LabelId>,
+  mut title: impl FnMut() -> Vec<LayoutNode>,
+  of: Option<&str>,
   base_style: TextStyle,
-  state: &mut LoweringState,
 ) -> Vec<LayoutNode> {
   let mut nodes: Vec<LayoutNode> = Vec::new();
   let mut literal = String::new();
@@ -26,15 +32,13 @@ pub(super) fn expand_template(
         "number" => literal.push_str(number),
         "title" => {
           flush_literal(&mut nodes, &mut literal, base_style);
-          for inline in title {
-            nodes.extend(lower_inline(ctx, inline, base_style, state));
-          }
+          nodes.extend(title());
         },
         "of" => {
-          if let Some(target) = of {
+          if let Some(display) = of {
             // `{of}` は proof の証明対象参照。従来どおりクリック不可のプレーンテキストとして
             // 埋め込む（`\ref` と違いリンク領域にはしない）ので、リテラル文字列として繋ぐ
-            literal.push_str(&state.ref_display(ctx.style, target));
+            literal.push_str(display);
           }
         },
         _ => {
@@ -61,13 +65,10 @@ fn flush_literal(nodes: &mut Vec<LayoutNode>, literal: &mut String, style: TextS
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
-  use crate::{
-    config::{CounterName, Style as ReadStyle},
-    model::{FontKind, Length},
-    resolve::{CounterKind, CounterValue},
-  };
+  use super::*;
+  use crate::model::{FontKind, Length};
 
+  /// テンプレート展開の基底スタイル
   fn base_style() -> TextStyle {
     return TextStyle {
       font_size: Length::pt(10.0),
@@ -76,14 +77,12 @@ mod tests {
     };
   }
 
-  /// プレーンタイトルでテンプレ展開し、単一 Text の文字列を取り出すヘルパ
+  /// 基底スタイルのプレーンなタイトルノード 1 個を作る
+  fn plain_title(text: &str) -> Vec<LayoutNode> { return vec![LayoutNode::Text(text.to_string(), base_style())]; }
+
+  /// プレーンタイトルでテンプレ展開するヘルパ
   fn expand_plain(template: &str, number: &str, title_text: &str) -> Vec<LayoutNode> {
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let title = [ResolvedInline::Text(title_text.to_string())];
-    let document = test_support::document(&[]);
-    let mut state = LoweringState::new(&document);
-    return expand_template(&ctx, template, number, &title, None, base_style(), &mut state);
+    return expand_template(template, number, || return plain_title(title_text), None, base_style());
   }
 
   #[test]
@@ -110,103 +109,45 @@ mod tests {
 
   #[test]
   fn styled_title_keeps_font_kind() {
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let title = [
-      ResolvedInline::Text("A ".to_string()),
-      ResolvedInline::Styled {
-        kind: FontKind::SerifBold,
-        children: vec![ResolvedInline::Text("B".to_string())],
-      },
+    // Arrange — 呼び出し元が lower 済みのタイトル（書体切り替えを含む）を渡す
+    let bold = TextStyle {
+      font_kind: FontKind::SerifBold,
+      ..base_style()
+    };
+    let title = vec![
+      LayoutNode::Text("A ".to_string(), base_style()),
+      LayoutNode::Text("B".to_string(), bold),
     ];
-    let document = test_support::document(&[]);
-    let mut state = LoweringState::new(&document);
 
-    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style(), &mut state);
+    // Act
+    let nodes = expand_template("{number} {title}", "1", || return title.clone(), None, base_style());
 
+    // Assert
     assert_eq!(nodes.len(), 2, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, s) if t == "1 A " && s.font_kind == FontKind::Serif));
     assert!(matches!(&nodes[1], LayoutNode::Text(t, s) if t == "B" && s.font_kind == FontKind::SerifBold));
   }
 
   #[test]
-  fn inline_math_in_title_is_lowered() {
-    use crate::model::MathNode;
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let title = [ResolvedInline::InlineMath(vec![MathNode::Text(
-      "x".to_string(),
-    )])];
-    let document = test_support::document(&[]);
-    let mut state = LoweringState::new(&document);
-
-    let nodes = expand_template(&ctx, "{title}", "1", &title, None, base_style(), &mut state);
-
-    let has_placeholder = nodes.iter().any(|n| matches!(n, LayoutNode::Text(t, _) if t.contains("[Math]")));
-    assert!(!has_placeholder, "[Math] プレースホルダは出力されない: {nodes:?}");
-    assert!(!nodes.is_empty());
-  }
-
-  #[test]
-  fn ref_in_title_is_resolved_to_internal_link() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let title = [ResolvedInline::Ref {
-      target: crate::model::LabelId::new("tab:one"),
-      span: crate::model::Span::DUMMY,
+  fn non_text_title_nodes_are_passed_through() {
+    // Arrange — インライン数式のように Text 以外へ落ちるタイトルもそのまま挿し込む
+    let title = vec![LayoutNode::Raise {
+      offset: Length::pt(1.0),
+      children: vec![LayoutNode::Text("x".to_string(), base_style())],
     }];
-    let document = test_support::document(&[(
-      "tab:one",
-      CounterValue {
-        kind: CounterKind::Counter(CounterName::Table),
-        parts: vec![0, 1, 1],
-      },
-    )]);
-    let mut state = LoweringState::new(&document);
 
     // Act
-    let nodes = expand_template(&ctx, "{number} {title}", "1", &title, None, base_style(), &mut state);
+    let nodes = expand_template("{title}", "1", || return title.clone(), None, base_style());
 
     // Assert
-    let link = nodes
-      .iter()
-      .find_map(|n| match n {
-        LayoutNode::Link { target, children } => return Some((target, children)),
-        _ => return None,
-      })
-      .expect("解決済み \\ref は Link になるはず");
-    assert_eq!(
-      *link.0,
-      crate::model::LinkTarget::Internal(crate::model::AnchorId::Label(crate::model::LabelId::new("tab:one")))
-    );
-    assert!(matches!(&link.1[0], LayoutNode::Text(t, _) if t == "Table 1.1"), "{:?}", link.1);
+    assert_eq!(nodes.len(), 1, "{nodes:?}");
+    assert!(matches!(&nodes[0], LayoutNode::Raise { .. }), "{nodes:?}");
   }
 
   #[test]
   fn of_placeholder_is_resolved_into_surrounding_literal() {
-    // Arrange
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let document = test_support::document(&[(
-      "thm:x",
-      CounterValue {
-        kind: CounterKind::Theorem(crate::model::TheoremClass::Theorem),
-        parts: vec![1],
-      },
-    )]);
-    let mut state = LoweringState::new(&document);
-
-    // Act
-    let nodes = expand_template(
-      &ctx,
-      "Proof of {of}",
-      "1",
-      &[],
-      Some(&crate::model::LabelId::new("thm:x")),
-      base_style(),
-      &mut state,
-    );
+    // Act — `{of}` は表示文字列化済みで渡ってくる
+    let nodes = expand_template("Proof of {of}", "1", Vec::new, Some("Theorem 1"), base_style());
 
     // Assert
     assert_eq!(nodes.len(), 1, "リンクにはせず前後のリテラルと 1 つの Text に繋がる: {nodes:?}");
@@ -215,19 +156,10 @@ mod tests {
 
   #[test]
   fn of_placeholder_omitted_when_none() {
-    let nodes = expand_plain_with_of("Proof{of}", "1", None);
+    let nodes = expand_template("Proof{of}", "1", Vec::new, None, base_style());
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "Proof"), "{nodes:?}");
-  }
-
-  /// `of` パラメータを明示できる `expand_plain` の派生ヘルパ
-  fn expand_plain_with_of(template: &str, number: &str, of: Option<&LabelId>) -> Vec<LayoutNode> {
-    let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let document = test_support::document(&[]);
-    let mut state = LoweringState::new(&document);
-    return expand_template(&ctx, template, number, &[], of, base_style(), &mut state);
   }
 
   #[test]
@@ -236,5 +168,48 @@ mod tests {
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "No.7"));
+  }
+
+  #[test]
+  fn title_closure_is_not_called_without_title_placeholder() {
+    // Arrange — タイトルの lowering には副作用があるので、出現しないなら呼んではならない
+    let mut calls = 0_u32;
+
+    // Act
+    let nodes = expand_template(
+      "No.{number}",
+      "7",
+      || {
+        calls += 1;
+        return plain_title("Ignored");
+      },
+      None,
+      base_style(),
+    );
+
+    // Assert
+    assert_eq!(calls, 0, "{nodes:?}");
+  }
+
+  #[test]
+  fn title_closure_is_called_once_per_placeholder_occurrence() {
+    // Arrange
+    let mut calls = 0_u32;
+
+    // Act
+    let nodes = expand_template(
+      "{title} / {title}",
+      "7",
+      || {
+        calls += 1;
+        return plain_title(&format!("T{calls}"));
+      },
+      None,
+      base_style(),
+    );
+
+    // Assert — 2 回とも別々に lower される（clone で同じノードを 2 つ置くのではない）
+    assert_eq!(calls, 2);
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "T1 / T2"), "{nodes:?}");
   }
 }

@@ -57,8 +57,7 @@ cargo test -p <crate_name>                                 # 特定クレート�
 CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参照定義）
   → 字句解析・構文解析・評価（frontend: Lexer → Parser → CST → HIR（model::HirDocument）。
     全ノード（block / inline / math）が決定的な NodeId を持ち、ソース位置は各 variant ではなく
-    SourceMap に集約する。本体経路は HIR のまま後段へ渡る（旧 DocNode への adapter は
-    既存テストの足場としてのみ #[cfg(test)] で残り、#325 で削除））
+    SourceMap に集約する。本体経路は HIR のまま後段へ渡る）
   → 意味解析（resolve::analyze: HIR を 1 回走査して、ラベル宣言・カウンタ構造値（CounterValue）・
     見出し（HeadingKey つき）・\ref と Theorem::of の解決・引用箇所（CitationSiteFacts）を
     NodeId をキーにした side table SemanticFacts へ確定する。文書木は読み取り専用で書き戻さない。
@@ -67,15 +66,16 @@ CLI 引数パース → TOML 設定読込（メイン設定 / スタイル / 参
   → 文献引用の生成（citation::generate_citations: analyze が確定した引用箇所の side table と
     CompiledCitationStyle（load_citation_style が I/O ありで読み込む CSL スタイル・ロケール）から
     引用箇所ごとの表示インライン列と書誌を生成する（generate_citations 自体は I/O なし）。
-    表示・書誌は本文へは連結せず別枠で渡す）
-  → 組版入力の組み立て（resolve::build_resolved_document: AnalyzedDocument と引用の生成物から
-    lowering の入力 ResolvedDocument を組み立てる。fact を読んで木へ写すだけで意味は決めないので
-    失敗しない。#325 で lowering が AnalyzedDocument を直接読むようになれば消える足場。
-    analyze → CSL 整形 → 組み立ての呼び出し順序は seiran::build_pdf::semantics の 1 関数
-    （resolve_semantics）に閉じており、driver 本体はこの順序を知らない（#303））
-  → ローワリング（typeset::lowering: ResolvedDocument → LayoutNode。analyze が確定した構造値を
-    style の表示側フィールドで表示文字列にするだけで、採番・\ref 解決・見出しキーの採番は
-    ここでは行わない）
+    表示・書誌は本文へは連結せず別枠で渡す。analyze → CSL 整形の呼び出し順序は
+    seiran::build_pdf::semantics の 1 関数（resolve_semantics）に閉じており、driver 本体は
+    この順序を知らない（#303）。resolve_semantics は AnalyzedDocument と生成物を
+    Semantics { analyzed, generated } として返すだけで、中間の文書木は組み立てない（#325））
+  → ローワリング（typeset::lowering: DocumentContent（AnalyzedDocument への参照 + 引用の生成物への
+    参照。build_pdf.rs の document_content が Semantics から借用して組み立てるだけの薄いビュー）
+    → LayoutNode。analyze が確定した構造値を style の表示側フィールドで表示文字列にするだけで、
+    採番・\ref 解決・見出しキーの採番はここでは行わない。CSL 整形の生成物（書誌 Vec<DocNode> /
+    引用表示 NodeMap<Vec<InlineNode>>）は HIR ではない（NodeId を持たない）ため
+    typeset::lowering::generated の専用経路で lower する）
   → フォント読込・検証
   → (a) build_blocks（typeset::block: LayoutNode → Vec<Block>。シェーピング + 計測 + break 注入）
   → (prepass) resolve_images（seiran::build_pdf::image_resources: 画像の自然寸法から width/height を
@@ -143,7 +143,11 @@ model （依存なし（serde / garde のみ）— 全段共有のデータモ�
         コア型 3 crate を統合（#203）。Length / HeadingLevel / TableColumn / ColumnAlign /
         ColumnWidth 等の共通型 + HIR（hir: HirDocument / HirNode / HirInline / HirMath / NodeId /
         SourceMap / HirBuilder、#322）+ 意味解析と CSL 整形の共有型 CitationSiteFacts（#324）
-        + Document IR（DocNode / InlineNode / MathNode。#325 で削除）のみを持つ。
+        + CSL 整形の生成物専用に縮小した DocNode（Heading / Paragraph / Anchor の 3 variant） /
+        InlineNode（Text / Styled / Colored / Symbol / LineBreak / Link / InternalLink の 7 variant）+
+        数式の共通型 MathNode（frontend の評価変換と typeset::lowering の数式経路が共有）のみを持つ。
+        著者が書いた内容は HIR のみが表現し、DocNode / InlineNode は書誌・引用表示という生成物専用の
+        語彙に縮小されている（#325）。
         組版中間型（Block / Page / HItem / TableBox 系）は typeset::layout、シェーピング結果
         （GlyphRun / Glyph）は font module へ移設済み（#280、model は意味モデルと共通値型に縮小）。
         診断ライブラリ（miette）には依存せず、ソース位置は軽量な model::Span で持つ）
@@ -161,8 +165,8 @@ resolve （model, config, citation に依存（citation へは `References` と 
         side table 群）を確定し、AnalyzedDocument として HIR と束ねる。表示文字列（number_format 等）は
         受け取れない — 引数は `config::DocumentPolicy`（値に影響する設定だけの投影）で、表示側
         フィールドが型として存在しない（#324。規約や property test ではなく型で保証する）。
-        `build_resolved_document` は facts を読んで組版入力 ResolvedDocument へ写すだけの足場で、
-        #325 で Resolved* の木ごと消える）
+        AnalyzedDocument を組版入力へ写す中間の文書木は持たない — typeset::lowering が
+        AnalyzedDocument を query 経由で直接読む（#325）
   ↑ typeset, build_pdf
 
 frontend （model に依存。bumpalo アリーナ上に CST を構築し、HIR（model::hir）に評価変換。
@@ -180,7 +184,7 @@ citation （model, config に依存（resolve は知らない）。参照定義�
           書誌を作る、I/O なし）の 2 本立て。引用箇所の意味解析（未定義キーの検証を含む）は
           `resolve::analyze` が他の fact と同じ 1 走査で行う（#324）。
           `build_pdf::semantics::resolve_semantics` が analyze → load_citation_style →
-          generate_citations → build_resolved_document の順で呼ぶ）
+          generate_citations の順で呼び、Semantics { analyzed, generated } として返す）
   ↑ resolve, build_pdf
 
 font （model, config に依存。read-fonts / harfrust / rayon を使用。シェーピング結果型 GlyphRun / Glyph
@@ -190,9 +194,9 @@ font （model, config に依存。read-fonts / harfrust / rayon を使用。シ�
 
 typeset （font, config, model, resolve, icu, hypher, lazy-regex に依存。旧 lowering / layout / hlist の
           3 crate を module として統合（#204）し、責務基準で lowering / block / breaking に
-          改名（#206）。解決済みドキュメント（resolve::ResolvedDocument）→ LayoutNode 変換
-          （lowering、解決済み構造値を表示文字列に変換するだけで、採番・`\ref` 解決は resolve が
-          済ませている）→ (a) build_blocks（block、シェーピング + 計測 +
+          改名（#206）。DocumentContent（AnalyzedDocument への参照 + 引用の生成物への参照）→
+          LayoutNode 変換（lowering、解決済み構造値を表示文字列に変換するだけで、採番・`\ref` 解決は
+          resolve が済ませている）→ (a) build_blocks（block、シェーピング + 計測 +
           break 注入）→ (b)(c)(d) break_opportunities / break_lines / break_pages / hyphenation
           （breaking、フォント・krilla 非依存の純粋組版パス）までを 1 module にまとめる。
           組版中間型（Block / HItem / Line / Page / TableBox 系）は非公開 module layout に集約し
@@ -225,13 +229,13 @@ build_pdf （上記すべてと seiran-pdf に依存。compile facade（compile 
 
 | `seiran` の module | 責務（要約）                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ `CitationSiteFacts`（#324）+ Document IR `DocNode` / `InlineNode` / `MathNode`。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
+| `model`    | 全段共有のデータモデル（共通型 `FontType` / `FontKind` / `FontMap` / `Length` / `HeadingLevel` / `TableColumn` 等 + HIR `HirDocument` / `HirNode` / `HirInline` / `HirMath`（`NodeId` / `SourceMap` / `HirBuilder`、#322）+ `CitationSiteFacts`（#324）+ 数式の共通型 `MathNode` + CSL 整形の生成物専用に縮小した `DocNode`（3 variant） / `InlineNode`（7 variant、#325）。著者が書いた内容は HIR のみが表現する。組版中間型・シェーピング結果型は持たない、#280）                                                                                                                                                              |
 | `config`   | `config.toml` / `style.toml` の読込・`garde` バリデーション + 外部資源取得の seam `ProjectSource`（filesystem / memory の 2 実装、#300）+ 意味解析へ渡す投影 `DocumentPolicy`（値に影響する設定だけを写す、#324）。非公開の `config` / `style` / `policy` / `project_source` 子 module + root facade                                                                                                                                                                     |
-| `resolve`  | 意味解析 `analyze`（HIR 1 走査でラベル宣言・`\ref` / `Theorem::of` の解決・重複ラベル検出・カウンタ構造値 `CounterValue`・見出し `HeadingKey`・引用箇所を `SemanticFacts` へ確定し `AnalyzedDocument` を返す。fact の完全性を最後に検証する）+ 組版入力の組み立て `build_resolved_document`（fact を読んで `ResolvedDocument` へ写すだけの足場、#325 で削除）。表示文字列は生成せず、そもそも表示設定を受け取れない（引数は `DocumentPolicy`、#324） |
-| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。旧 `DocNode` への adapter は既存テストの足場として `#[cfg(test)]` でのみ残る（#325 で削除）                                                                                                                                                                                                                                             |
+| `resolve`  | 意味解析 `analyze`（HIR 1 走査でラベル宣言・`\ref` / `Theorem::of` の解決・重複ラベル検出・カウンタ構造値 `CounterValue`・見出し `HeadingKey`・引用箇所を `SemanticFacts` へ確定し `AnalyzedDocument` を返す。fact の完全性を最後に検証する）。`AnalyzedDocument` は目的別 query（`counter_value` / `heading_key` 等）を公開し、typeset::lowering が直接読む。表示文字列は生成せず、そもそも表示設定を受け取れない（引数は `DocumentPolicy`、#324） |
+| `frontend` | 字句・構文解析（`lexer` → `parser`、CST は非公開）→ HIR（`model::hir`）への評価変換。コマンド / 環境を phf レジストリでディスパッチ（採番なし）。生成物は HIR のみで、旧 `DocNode` への adapter は #325 で削除済み                                                                                                                                                                                                                                             |
 | `citation` | `references.toml` / `.json` の読込（`references` 子 module）+ `style`（`load_citation_style`。CSL スタイル・ロケールの読込、I/O はここだけ）+ `generate`（`generate_citations`。`NodeMap<CitationSiteFacts>` と `CompiledCitationStyle` から表示 side table と書誌を生成、I/O なし、hayagriva / citationberg）。引用箇所の意味解析（未定義キー検証を含む）は `resolve::analyze` が担う（#324）                                                                                                                                                                                                                                                       |
 | `font`     | フォント読込・シェーピング・検証・バリアブルフォント（read-fonts / harfrust / rayon）。シェーピング結果型 `GlyphRun` / `Glyph` を持つ（#280）                                                                                                                                                                                                                                        |
-| `typeset`  | 解決済みドキュメント（`resolve::ResolvedDocument`）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が解決済みドキュメント（`resolve::ResolvedDocument`）から表示文字列を生成しレイアウトノードを組み立てる、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
+| `typeset`  | `DocumentContent`（`resolve::AnalyzedDocument` + 引用の生成物への参照）→ 配置済み直前のブロック列までの組版パス統合（旧 lowering / layout / hlist、#204）。`lowering` module が `DocumentContent` から表示文字列を生成しレイアウトノードを組み立てる（CSL 整形の生成物は `lowering::generated` の専用経路で lower する、#325）、`block` module が (a) build_blocks（シェーピング + 計測 + break 注入、running でヘッダ / フッタ配置）、`breaking` module が (b)(c)(d) break_opportunities / break_lines / break_pages（コア型は非公開 module `layout` にある、#280）。段の呼び出し順序は非公開 module `pipeline` の `layout_body` / `layout_front_matter` / `layout_back_matter` / `layout_running_content` に閉じ、公開 API はこの 4 関数・境界型・`LineBreaker` seam に絞る（#281）|
 | `build_pdf` | compile facade（`compile` とその公開型）+ compiler core（phase graph）。段の呼び出し順序・中間型はここに閉じ、crate 外へ出さない。PDF バイト列の生成と保存は行わない |
 
 ## コーディング規約

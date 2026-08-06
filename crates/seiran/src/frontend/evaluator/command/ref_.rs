@@ -9,7 +9,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\ref{label}` を `InlineNode::Ref` に変換する
+/// `\ref{label}` を `HirInlineKind::Ref` に変換する
 ///
 /// # Errors
 ///
@@ -40,12 +40,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -80,7 +77,7 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Ref { label, .. } = &result[0] else {
+    let HirInlineKind::Ref { label } = &result[0].kind else {
       panic!("Ref が期待されます");
     };
     assert_eq!(label, "sec:intro");

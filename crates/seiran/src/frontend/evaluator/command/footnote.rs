@@ -9,7 +9,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\footnote{...}` を `InlineNode::Footnote` に変換する
+/// `\footnote{...}` を `HirInlineKind::Footnote` に変換する
 ///
 /// 本体は太字・数式等を含む任意のインライン内容として再帰評価される。
 ///
@@ -43,12 +43,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -83,11 +80,11 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Footnote { body, .. } = &result[0] else {
+    let HirInlineKind::Footnote { body } = &result[0].kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0], InlineNode::Text(t) if t == "hello"));
+    assert!(matches!(&body[0].kind, HirInlineKind::Text(t) if t == "hello"));
   }
 
   #[test]
@@ -102,15 +99,15 @@ mod tests {
     let result = run_inline_handler(|builder| return footnote_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Footnote { body, .. } = &result[0] else {
+    let HirInlineKind::Footnote { body } = &result[0].kind else {
       panic!("Footnote が期待されます");
     };
     assert_eq!(body.len(), 1);
-    let InlineNode::Styled { kind, children } = &body[0] else {
+    let HirInlineKind::Styled { kind, children } = &body[0].kind else {
       panic!("Styled が期待されます: {body:?}");
     };
     assert_eq!(*kind, crate::model::FontKind::SerifBold);
-    assert!(matches!(&children[0], InlineNode::Text(t) if t == "x"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 
   #[test]

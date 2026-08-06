@@ -40,10 +40,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, QuoteKind},
-  };
+  use crate::frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode};
 
   /// テスト用 `parse` ラッパ
   fn parse<'a>(
@@ -61,16 +58,16 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Quote { kind, body } = &result[0] else {
+    let HirNodeKind::Quote { kind, body } = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, QuoteKind::Quote);
     assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0], DocNode::Paragraph(_)));
+    assert!(matches!(&body[0].kind, HirNodeKind::Paragraph(_)));
   }
 
   #[test]
@@ -81,10 +78,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Quote { kind, .. } = &result[0] else {
+    let HirNodeKind::Quote { kind, .. } = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
     assert_eq!(*kind, QuoteKind::Quotation);
@@ -98,13 +95,13 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Quote { body, .. } = &result[0] else {
+    let HirNodeKind::Quote { body, .. } = &result[0].kind else {
       panic!("Quote が期待されます: {:?}", result[0]);
     };
-    let paragraphs = body.iter().filter(|n| matches!(n, DocNode::Paragraph(_))).count();
+    let paragraphs = body.iter().filter(|n| matches!(n.kind, HirNodeKind::Paragraph(_))).count();
     assert_eq!(paragraphs, 2, "本体は 2 段落: {body:?}");
   }
 
@@ -116,7 +113,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::ExtraEnvironmentArgument { ref name, .. }) if name == "quote"));
@@ -130,7 +127,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));

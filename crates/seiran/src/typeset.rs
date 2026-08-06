@@ -1,5 +1,5 @@
-//! 組版パス統合 module — 解決済みドキュメント（`resolve::ResolvedDocument`）から計測済み・
-//! 配置済みページ直前までを担う（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
+//! 組版パス統合 module — 意味解析の成果物（`resolve::AnalyzedDocument`）と CSL 整形の生成物から
+//! 計測済み・配置済みページ直前までを担う（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
 //! 子 module `layout` が所有する（#280）。
@@ -36,27 +36,23 @@ pub use layout::{
 // 有効化しない通常ビルドでは未使用に見える。API 面の維持のため再エクスポート自体は残す。
 #[allow(unused_imports)]
 pub use lowering::{
-  HeadingRecord, LayoutNode, LoweringContext, MathBlockRow, TableCellLayout, TableLayout, TableRowLayout, TextStyle,
-  lower_sources_with_headings, per_page_footnote_numbers,
+  DocumentContent, HeadingRecord, LayoutNode, LoweringContext, MathBlockRow, TableCellLayout, TableLayout,
+  TableRowLayout, TextStyle, lower_sources_with_headings, per_page_footnote_numbers,
 };
 pub use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
   layout_front_matter,
 };
 
-/// 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → resolve_project → lowering` を
+/// 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → analyze → lowering` を
 /// 通し、パニックしないことを確認する統合テスト（旧 `typeset` crate の `tests/smoke.rs`、
 /// #307 で本 module 直下の inline テストへ移設）
-///
-/// `frontend::parse_source` は #307 Task 6 で `crate::frontend` へ吸収済みのため
-/// `crate::frontend::` 参照に更新済み。`resolve::resolve_project` は #307 Task 5 で
-/// `crate::resolve` へ吸収済みのため `crate::resolve::` 参照に更新済み。
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
   use std::path::PathBuf;
 
-  use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{config::Style, frontend::parse_source, model::SourceId};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
@@ -115,9 +111,13 @@ mod tests {
     let analyzed =
       crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
         .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
-    let document = crate::resolve::build_resolved_document(&analyzed, &crate::model::NodeMap::default(), &[]);
     let ctx = LoweringContext::new(&style);
-    let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, &document);
+    let content = DocumentContent {
+      analyzed: &analyzed,
+      citation_displays: &crate::model::NodeMap::default(),
+      bibliography: &[],
+    };
+    let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, content);
     return layout_nodes;
   }
 

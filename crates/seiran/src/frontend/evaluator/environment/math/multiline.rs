@@ -33,8 +33,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, MathEnvKind},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::{HirMathRow, HirNodeKind, MathEnvKind},
   };
 
   fn parse<'a>(
@@ -44,13 +44,13 @@ mod tests {
     return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  fn block_of(result: &[DocNode]) -> (&[crate::model::MathRow], bool) {
-    let DocNode::MathBlock {
+  fn block_of(result: &[HirNode]) -> (&[HirMathRow], bool) {
+    let HirNodeKind::MathBlock {
       kind,
       rows,
       numbered,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
@@ -66,7 +66,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     let (rows, numbered) = block_of(&result);
@@ -84,7 +84,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnsupportedInMath { .. })));
@@ -98,7 +98,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     let (_, numbered) = block_of(&result);
@@ -113,12 +113,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::MathBlock {
+    let HirNodeKind::MathBlock {
       numbered, label, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
@@ -134,7 +134,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::RowLabelNotSupported { .. })));

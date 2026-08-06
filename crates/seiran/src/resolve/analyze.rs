@@ -77,7 +77,7 @@ pub fn analyze(
 
 /// variant ごとに必要な fact がすべて登録されているかを検証する
 ///
-/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、bridge / lowering の
+/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、lowering の
 /// 遠い `unreachable!` で壊れる前にここで落とす。入力由来のエラー（重複ラベル・未解決参照・
 /// 未定義引用キー）はすべてこの検証より手前で診断として返している。
 fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &DocumentPolicy) {
@@ -113,6 +113,11 @@ impl Checker<'_> {
         assert!(
           self.facts.headings.iter().any(|heading| return heading.node == node.id),
           "Walker が Heading の HeadingFacts を登録し損ねている: {:?}",
+          node.id
+        );
+        assert!(
+          self.facts.heading_keys.get(node.id).is_some(),
+          "Walker が Heading の heading_keys を登録し損ねている: {:?}",
           node.id
         );
         self.require_declared_label(node.id, label.as_deref(), "Heading");
@@ -323,12 +328,14 @@ impl Walker<'_> {
         )?;
         self.record_label(node.id, label.as_deref());
         self.facts.counters.insert(node.id, counter_value.clone());
+        let key = HeadingKey::new(self.facts.headings.len());
         self.facts.headings.push(HeadingFacts {
-          key: HeadingKey::new(self.facts.headings.len()),
+          key,
           node: node.id,
           level: *level,
           counter_value: Some(counter_value),
         });
+        self.facts.heading_keys.insert(node.id, key);
         self.inlines(title);
       },
       HirNodeKind::List { items, .. } => {
@@ -522,6 +529,13 @@ mod tests {
     return HirDocument::assemble(vec![hir]);
   }
 
+  /// ソース 1 本をパースし、既定の policy で解析まで済ませる
+  fn analyze_source(source: &str) -> super::AnalyzedDocument {
+    let hir = document(source);
+    let policy = DocumentPolicy::from_style(&Style::default());
+    return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
+  }
+
   #[test]
   fn analyze_registers_declared_label_in_both_directions() {
     // Arrange
@@ -535,6 +549,16 @@ mod tests {
     let heading = analyzed.headings().first().expect("見出しが 1 件あるはず");
     assert_eq!(analyzed.declared_label(heading.node), Some(&crate::model::LabelId::new("ch:intro")));
     assert!(analyzed.counter_value_of_label(&crate::model::LabelId::new("ch:intro")).is_some());
+  }
+
+  #[test]
+  fn heading_key_is_queryable_for_nested_headings() {
+    // Arrange: quote 環境の中に入れ子の見出しがある入力
+    let analyzed = analyze_source("\\section{A}\n\\begin{quote}\n\\subsection{B}\n\\end{quote}\n");
+    // Act
+    let keys: Vec<usize> = analyzed.headings().iter().map(|f| return analyzed.heading_key(f.node).index()).collect();
+    // Assert: facts の順（文書順）と一致する
+    assert_eq!(keys, vec![0, 1]);
   }
 
   #[test]
@@ -657,12 +681,6 @@ mod tests {
       ],
       "引用箇所は文書順に並ぶはず"
     );
-    let (first_id, first_site) = analyzed.citation_sites().iter().next().expect("1 箇所目があるはず");
-    assert_eq!(
-      analyzed.citation_targets(first_id),
-      first_site.targets.as_slice(),
-      "citation_targets は sites が返す NodeId で同じ事実を引けるはず"
-    );
   }
 
   #[test]
@@ -675,9 +693,9 @@ mod tests {
     let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    let (_, site) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
     assert_eq!(
-      analyzed.citation_targets(site),
+      site.targets,
       [
         crate::model::CitationId::new("doe2020"),
         crate::model::CitationId::new("kwan2014")

@@ -1,17 +1,30 @@
 //! 意味解析（ラベル登録・`\ref` 検証・カウンタ構造値の確定・引用箇所の解析）と `\cite` の
 //! CSL 整形を 1 回の呼び出しの背後に隠す。
 //!
-//! analyze → CSL 整形 → `ResolvedDocument` の組み立てという呼び出し順序と、生成物（引用表示・書誌）を
-//! 実ソースの本文とは別枠で渡す組み立ては、この module の外からは見えない（issue #303）。
+//! analyze → CSL 整形という呼び出し順序は、この module の外からは見えない（issue #303）。
+//! 生成物（引用表示・書誌）は著者が書いた文書木へは一切書き戻さず、[`Semantics`] の別フィールドに
+//! 置いたまま組版へ渡る。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  citation::{self, CitationFormatError, CitationStyleError, References},
+  citation::{self, CitationFormatError, CitationStyleError, GeneratedCitations, References},
   model::HirDocument,
-  resolve::{self, ResolvedDocument, SemanticError},
+  resolve::{self, AnalyzedDocument, SemanticError},
 };
+
+/// 意味解析と CSL 整形の成果物
+///
+/// 著者が書いた内容と判明した事実（`analyzed`）と、そこから生成した表示・書誌（`generated`）を
+/// 混ぜずに束ねる。
+#[derive(Debug)]
+pub(super) struct Semantics {
+  /// HIR と意味解析の事実
+  pub(super) analyzed: AnalyzedDocument,
+  /// CSL 整形が生成した引用表示と書誌
+  pub(super) generated: GeneratedCitations,
+}
 
 /// `resolve_semantics` のエラー。
 ///
@@ -35,23 +48,21 @@ pub(super) enum SemanticsError {
   Analyze(#[from] SemanticError),
 }
 
-/// HIR を意味解析し、引用の表示と書誌を生成して、その結果を意味解決へ渡して
-/// `ResolvedDocument` を返す。
+/// HIR を意味解析し、引用の表示と書誌を生成して [`Semantics`] にまとめて返す。
 ///
 /// `document`（HIR）からラベル・参照・カウンタ・見出し・引用箇所の事実を取り、引用箇所の事実から
-/// 表示インライン列と書誌を生成する。生成物は著者が書いた文書木へは一切書き戻さず、
-/// `ResolvedDocument::generated` として別枠で組み立てる。
+/// 表示インライン列と書誌を生成する。生成物は著者が書いた文書木へは一切書き戻さない。
 ///
 /// # Errors
 ///
-/// 意味解析（重複ラベル・未解決参照・未定義引用キー）、CSL スタイルの読込、表示の生成、
-/// または意味解決に失敗した場合にエラーを返す。
+/// 意味解析（重複ラベル・未解決参照・未定義引用キー）、CSL スタイルの読込、または表示の生成に
+/// 失敗した場合にエラーを返す。
 pub(super) fn resolve_semantics(
   source: &dyn crate::config::ProjectSource,
   document: HirDocument,
   references: &References,
   style: &crate::config::Style,
-) -> Result<ResolvedDocument, SemanticsError> {
+) -> Result<Semantics, SemanticsError> {
   // ラベル・参照・カウンタ・見出し・引用箇所の意味解析はここで完了する
   // （以降 `\cite` のキーは必ず参照定義に存在する）。意味解決には表示設定を渡さない
   // （`DocumentPolicy` は値に影響する設定だけの投影）。
@@ -62,10 +73,13 @@ pub(super) fn resolve_semantics(
     let compiled = citation::load_citation_style(source, style)?;
     citation::generate_citations(analyzed.citation_sites(), references, &compiled, &style.reference.title)?
   } else {
-    citation::GeneratedCitations::default()
+    GeneratedCitations::default()
   };
 
-  return Ok(resolve::build_resolved_document(&analyzed, generated.displays(), generated.bibliography()));
+  return Ok(Semantics {
+    analyzed,
+    generated,
+  });
 }
 
 #[cfg(test)]
@@ -93,12 +107,13 @@ mod tests {
     let document = HirDocument::assemble(vec![hir]);
 
     // Act
-    let resolved =
+    let semantics =
       resolve_semantics(&source, document, &references, &style).expect("citation → resolve の連携は成功するはず");
 
-    // Assert — 書誌が生成され resolve 済みドキュメントへ渡っている
-    assert!(!resolved.generated.bibliography.is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
-    assert!(!resolved.generated.citation_displays.is_empty(), "cite.sei の引用箇所には表示が生成されるはず");
+    // Assert — 書誌と表示が生成され、意味解析の成果物と並んで返る
+    assert!(!semantics.generated.bibliography().is_empty(), "cite.sei は引用を含むので書誌が生成されるはず");
+    assert!(!semantics.generated.displays().is_empty(), "cite.sei の引用箇所には表示が生成されるはず");
+    assert!(semantics.analyzed.has_citations(), "cite.sei の引用箇所は事実として記録されるはず");
   }
 
   #[test]

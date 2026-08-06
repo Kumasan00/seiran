@@ -255,16 +255,8 @@ mod tests {
         InlineNode::Styled { children, .. }
         | InlineNode::Colored { children, .. }
         | InlineNode::Link { children, .. }
-        | InlineNode::InternalLink { children, .. }
-        | InlineNode::Footnote { body: children, .. } => collect_italic_texts(children, out),
-        InlineNode::Text(_)
-        | InlineNode::InlineMath(_)
-        | InlineNode::Symbol(_)
-        | InlineNode::LineBreak
-        | InlineNode::NoIndent
-        | InlineNode::Ref { .. }
-        | InlineNode::Cite { .. }
-        | InlineNode::Index { .. } => {},
+        | InlineNode::InternalLink { children, .. } => collect_italic_texts(children, out),
+        InlineNode::Text(_) | InlineNode::Symbol(_) | InlineNode::LineBreak => {},
       }
     }
   }

@@ -13,7 +13,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\index{語}` / `\index[reading=よみ]{語}` を `InlineNode::Index` に変換する
+/// `\index{語}` / `\index[reading=よみ]{語}` を `HirInlineKind::Index` に変換する
 ///
 /// # Errors
 ///
@@ -73,12 +73,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -113,7 +110,7 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let InlineNode::Index { word, reading, .. } = &result[0] else {
+    let HirInlineKind::Index { word, reading } = &result[0].kind else {
       panic!("Index が期待されます");
     };
     assert_eq!(word, "語");
@@ -132,7 +129,7 @@ mod tests {
     let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Index { reading, .. } = &result[0] else {
+    let HirInlineKind::Index { reading, .. } = &result[0].kind else {
       panic!("Index が期待されます");
     };
     assert_eq!(reading.as_deref(), Some("よみ"));
@@ -270,7 +267,7 @@ mod tests {
     let result = run_inline_handler(|builder| return index_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Index { word, reading, .. } = &result[0] else {
+    let HirInlineKind::Index { word, reading } = &result[0].kind else {
       panic!("Index が期待されます");
     };
     assert_eq!(word, "語");

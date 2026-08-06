@@ -9,7 +9,10 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
   running,
 };
-use crate::{font::FontSystem, typeset::BodyLayout};
+use crate::{
+  font::FontSystem,
+  typeset::{BodyLayout, DocumentContent},
+};
 
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {
@@ -46,10 +49,10 @@ impl<'a> DocumentLayouter<'a> {
   /// # Errors
   ///
   /// フォント処理、画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref`・
-  /// 引用の解決は呼び出し元で `resolve::resolve_project` が既に完了している）。
+  /// 引用の解決は呼び出し元で `resolve::analyze` と CSL 整形が既に完了している）。
   pub(super) fn layout(
     &self,
-    document: &crate::resolve::ResolvedDocument,
+    content: DocumentContent<'_>,
     image_resources: &ImageResources,
   ) -> miette::Result<LaidOutDocument> {
     let ctx = &self.ctx;
@@ -58,7 +61,7 @@ impl<'a> DocumentLayouter<'a> {
     let BodyLayout {
       pages: mut body_pages,
       headings,
-    } = body::typeset_body(ctx, document, image_resources)?;
+    } = body::typeset_body(ctx, content, image_resources)?;
 
     // phase 2: 本文のページ事実を確定する
     let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);

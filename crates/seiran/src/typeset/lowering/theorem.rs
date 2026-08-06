@@ -1,4 +1,4 @@
-//! 定理ブロック（`resolve::ResolvedNode::Theorem`）の lowering
+//! 定理ブロック（`model::HirNodeKind::Theorem`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
@@ -9,8 +9,7 @@ use super::{
 };
 use crate::{
   config::TheoremStyle,
-  model::{Align, FontKind, LabelId, Length, TheoremClass},
-  resolve::{ResolvedInline, ResolvedNode},
+  model::{Align, FontKind, HirNode, HirNodeKind, LabelId, Length, TheoremClass},
 };
 
 /// 定理ブロックをレイアウトノードに変換する
@@ -20,7 +19,7 @@ pub(super) fn lower_theorem(
   class: TheoremClass,
   number: Option<&str>,
   title: Option<&str>,
-  body: &[ResolvedNode],
+  body: &[HirNode],
   of: Option<&LabelId>,
   label: Option<&LabelId>,
   state: &mut LoweringState,
@@ -41,7 +40,7 @@ pub(super) fn lower_theorem(
 
   if let Some(qed_mark) = theorem_style.qed_mark.as_deref() {
     let qed_node = make_qed_node(qed_mark, ctx.default_font_size());
-    if matches!(body.last(), Some(ResolvedNode::Paragraph(_))) {
+    if matches!(body.last(), Some(node) if matches!(node.kind, HirNodeKind::Paragraph(_))) {
       let insert_at = body_nodes.len().saturating_sub(1);
       body_nodes.insert(insert_at, qed_node);
     } else {
@@ -64,7 +63,7 @@ fn build_heading(
   number: Option<&str>,
   title: Option<&str>,
   of: Option<&LabelId>,
-  state: &mut LoweringState,
+  state: &LoweringState,
 ) -> LayoutNode {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
@@ -81,9 +80,14 @@ fn build_heading(
   };
   let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
-  let title_inlines: Vec<ResolvedInline> = title.map(|t| vec![ResolvedInline::Text(t.to_string())]).unwrap_or_default();
+  // サブタイトルはプレーンテキスト（`[title="..."]`）なので、テンプレート展開へ渡す前に
+  // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
+  let make_title = || {
+    return title.map(|t| return vec![LayoutNode::Text(t.to_string(), base_style)]).unwrap_or_default();
+  };
+  let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 
-  let children = expand_template(ctx, &template, number.unwrap_or(""), &title_inlines, of, base_style, state);
+  let children = expand_template(&template, number.unwrap_or(""), make_title, of_display.as_deref(), base_style);
 
   return LayoutNode::VBox {
     children,
@@ -107,42 +111,21 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
+  use super::{
+    super::test_support::{analyzed, lower},
+    *,
+  };
   use crate::{
     config::Style as ReadStyle,
-    resolve::{self, CounterKind, CounterValue, ResolvedDocument},
+    model::{AnchorMark, NodeMap},
   };
 
-  /// テキスト 1 段落の本体を作るヘルパ
-  fn paragraph(text: &str) -> ResolvedNode {
-    return ResolvedNode::Paragraph(vec![ResolvedInline::Text(text.to_string())]);
+  /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
+    return lower(style, &analyzed(source), &NodeMap::default(), &[]);
   }
 
-  /// `thm:p`（Theorem 1）を登録した解決済みドキュメントを作るヘルパ
-  fn document_with_theorem() -> ResolvedDocument {
-    return test_support::document(&[(
-      "thm:p",
-      CounterValue {
-        kind: CounterKind::Theorem(TheoremClass::Theorem),
-        parts: vec![1],
-      },
-    )]);
-  }
-
-  /// テスト用に `LoweringState` を構築して `lower_theorem` を呼ぶヘルパ
-  fn lower_theorem_default(
-    ctx: &LoweringContext,
-    class: TheoremClass,
-    number: Option<&str>,
-    title: Option<&str>,
-    body: &[ResolvedNode],
-    label: Option<&LabelId>,
-  ) -> Vec<LayoutNode> {
-    let document = test_support::document(&[]);
-    return lower_theorem(ctx, class, number, title, body, None, label, &mut LoweringState::new(&document));
-  }
-
-  /// `nodes` の最初の `VBox`（= 見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す
+  /// `nodes` の最初の `VBox`（= 定理見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す
   fn first_heading_text(nodes: &[LayoutNode]) -> (String, TextStyle) {
     let children = nodes
       .iter()
@@ -157,14 +140,38 @@ mod tests {
     };
   }
 
+  /// 最後の見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `\ref` も含む）を連結する
+  ///
+  /// `proof` の `[of=...]` を見るテストは「定理 → proof」の 2 ブロックを lower するので、
+  /// 後ろ側（proof）の見出しを取る。
+  fn last_heading_plain_text(nodes: &[LayoutNode]) -> String {
+    let children = nodes
+      .iter()
+      .rev()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } => return Some(children),
+        _ => return None,
+      })
+      .expect("見出し VBox があるはず");
+    return children.iter().map(flatten_text).collect();
+  }
+
+  /// レイアウトノードから表示テキストだけを取り出す
+  fn flatten_text(node: &LayoutNode) -> String {
+    return match node {
+      LayoutNode::Text(t, _) => t.clone(),
+      LayoutNode::Link { children, .. } => children.iter().map(flatten_text).collect(),
+      _ => String::new(),
+    };
+  }
+
   #[test]
   fn theorem_renders_block_heading_and_italic_body() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("body")], None);
+    let nodes = lower_source(&style, "\\begin{theorem}\nbody\n\\end{theorem}\n");
 
     // Assert
     let (heading, heading_style) = first_heading_text(&nodes);
@@ -185,25 +192,24 @@ mod tests {
 
   #[test]
   fn theorem_with_title_uses_heading_with_title_template() {
-    // Arrange / Act
+    // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nodes =
-      lower_theorem_default(&ctx, TheoremClass::Theorem, Some("2"), Some("Pythagoras"), &[paragraph("x")], None);
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{theorem}[title=\"Pythagoras\"]\nx\n\\end{theorem}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
-    assert_eq!(heading, "Theorem 2 (Pythagoras)");
+    assert_eq!(heading, "Theorem 1 (Pythagoras)");
   }
 
   #[test]
   fn proof_has_unnumbered_heading_roman_body_and_qed() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("qed")], None);
+    let nodes = lower_source(&style, "\\begin{proof}\nqed\n\\end{proof}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -224,10 +230,9 @@ mod tests {
   fn proof_qed_sits_in_last_paragraph_before_trailing_vkern() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("last")], None);
+    let nodes = lower_source(&style, "\\begin{proof}\nlast\n\\end{proof}\n");
 
     // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -240,20 +245,9 @@ mod tests {
   fn proof_qed_on_own_line_when_body_ends_with_non_paragraph() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let list = ResolvedNode::List {
-      ordered: false,
-      items: vec![resolve::ResolvedListItem {
-        content: vec![paragraph("item")],
-        marker: None,
-        item_gap: None,
-      }],
-      start: None,
-      item_gap: None,
-    };
 
     // Act
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[list], None);
+    let nodes = lower_source(&style, "\\begin{proof}\n\\begin{itemize}\n\\item{item}\n\\end{itemize}\n\\end{proof}\n");
 
     // Assert
     let qed_idx = nodes.iter().position(|n| matches!(n, LayoutNode::FlushRight(_))).expect("QED があるはず");
@@ -261,55 +255,28 @@ mod tests {
     assert!(matches!(nodes.last(), Some(LayoutNode::Vkern { .. })));
   }
 
-  /// 見出し `VBox` 内の全 `Text`（`Link` に包まれた解決済み `\ref` も含む）を連結する
-  fn heading_plain_text(nodes: &[LayoutNode]) -> String {
-    let children = nodes
-      .iter()
-      .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } => return Some(children),
-        _ => return None,
-      })
-      .expect("見出し VBox があるはず");
-    return children.iter().map(flatten_text).collect();
-  }
-
-  fn flatten_text(node: &LayoutNode) -> String {
-    return match node {
-      LayoutNode::Text(t, _) => t.clone(),
-      LayoutNode::Link { children, .. } => children.iter().map(flatten_text).collect(),
-      _ => String::new(),
-    };
-  }
-
   #[test]
   fn proof_with_of_renders_proof_of_target_heading() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let document = document_with_theorem();
 
     // Act
-    let nodes = lower_theorem(
-      &ctx,
-      TheoremClass::Proof,
-      None,
-      None,
-      &[paragraph("x")],
-      Some(&LabelId::new("thm:p")),
-      None,
-      &mut LoweringState::new(&document),
+    let nodes = lower_source(
+      &style,
+      "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\\begin{proof}[of=thm:p]\nx\n\\end{proof}\n",
     );
 
-    // Assert
-    assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1");
+    // Assert — 後ろ側（proof）の見出しを見る
+    assert_eq!(last_heading_plain_text(&nodes), "Proof of Theorem 1");
   }
 
   #[test]
   fn proof_without_of_keeps_plain_proof_heading() {
-    // Arrange / Act
+    // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, None, &[paragraph("x")], None);
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{proof}\nx\n\\end{proof}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -320,31 +287,25 @@ mod tests {
   fn proof_with_of_and_title_combines_both() {
     // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let document = document_with_theorem();
 
     // Act
-    let nodes = lower_theorem(
-      &ctx,
-      TheoremClass::Proof,
-      None,
-      Some("sketch"),
-      &[paragraph("x")],
-      Some(&LabelId::new("thm:p")),
-      None,
-      &mut LoweringState::new(&document),
+    let nodes = lower_source(
+      &style,
+      "\\begin{theorem}[label=thm:p]\np\n\\end{theorem}\n\n\
+       \\begin{proof}[of=thm:p][title=\"sketch\"]\nx\n\\end{proof}\n",
     );
 
     // Assert
-    assert_eq!(heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
+    assert_eq!(last_heading_plain_text(&nodes), "Proof of Theorem 1 (sketch)");
   }
 
   #[test]
   fn proof_with_title_only_ignores_of_templates() {
-    // Arrange / Act
+    // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Proof, None, Some("sketch"), &[paragraph("x")], None);
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{proof}[title=\"sketch\"]\nx\n\\end{proof}\n");
 
     // Assert
     let (heading, _) = first_heading_text(&nodes);
@@ -353,15 +314,15 @@ mod tests {
 
   #[test]
   fn theorem_with_label_prepends_anchor() {
-    // Arrange / Act
+    // Arrange
     let style = ReadStyle::default();
-    let ctx = LoweringContext::new(&style);
-    let label = LabelId::new("thm:x");
-    let nodes = lower_theorem_default(&ctx, TheoremClass::Theorem, Some("1"), None, &[paragraph("b")], Some(&label));
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{theorem}[label=thm:x]\nb\n\\end{theorem}\n");
 
     // Assert
     assert!(
-      matches!(nodes.first(), Some(LayoutNode::Anchor(crate::model::AnchorMark::Label(l))) if l.as_str() == "thm:x"),
+      matches!(nodes.first(), Some(LayoutNode::Anchor(AnchorMark::Label(l))) if l.as_str() == "thm:x"),
       "先頭は Label アンカー: {nodes:?}"
     );
   }

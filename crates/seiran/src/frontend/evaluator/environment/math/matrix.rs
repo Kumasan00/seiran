@@ -75,8 +75,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, MathDelimiter, MathEnvKind},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::{HirMathRow, MathDelimiter, MathEnvKind},
   };
 
   fn parse<'a>(
@@ -87,13 +87,13 @@ mod tests {
   }
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
-  fn matrix_of(result: &[DocNode]) -> (MathDelimiter, &[crate::model::MathRow]) {
-    let DocNode::MathBlock {
+  fn matrix_of(result: &[HirNode]) -> (MathDelimiter, &[HirMathRow]) {
+    let HirNodeKind::MathBlock {
       kind,
       rows,
       numbered,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
@@ -112,7 +112,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
@@ -131,7 +131,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     let (delimiter, _) = matrix_of(&result);
@@ -146,7 +146,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "delimiter"));
@@ -160,7 +160,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "numbered"));

@@ -2,14 +2,14 @@
 
 use self::alphanumeric::push_math_char;
 use super::{
-  LoweringContext,
+  LoweringContext, LoweringState,
   counter::format_counter_value,
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
 use crate::{
   config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
-  model::{Align, FontKind, Length, MathEnvKind, MathNode, MathStyle},
-  resolve::{CounterValue, ResolvedMathRow},
+  model::{Align, FontKind, HirMathRow, Length, MathEnvKind, MathNode, MathStyle, to_math_nodes},
+  resolve::CounterValue,
 };
 
 mod alphanumeric;
@@ -19,16 +19,18 @@ fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
 }
 
-/// `resolve::ResolvedNode::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
+/// `model::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
 /// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
 ///
-/// 行ごと・環境ごとの採番値は `resolve` が確定させたものを受け取り、ここでは
-/// `number_format` / `tag_format` による表示文字列化だけを行う。
+/// 行ごと・環境ごとの採番値は `resolve::analyze` が確定させたものを引くだけで、ここでは
+/// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
+/// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
   ctx: &LoweringContext,
   kind: MathEnvKind,
-  rows: &[ResolvedMathRow],
+  rows: &[HirMathRow],
   env_counter_value: Option<&CounterValue>,
+  state: &LoweringState,
 ) -> LayoutNode {
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;
@@ -38,9 +40,9 @@ pub(super) fn lower_math_block(
     let cells = row
       .cells
       .iter()
-      .map(|cell| return lower_inline_math(cell, font_size, &ctx.style.math.script))
+      .map(|cell| return lower_inline_math(&to_math_nodes(cell), font_size, &ctx.style.math.script))
       .collect();
-    let number = row.counter_value.as_ref().map(|value| {
+    let number = state.counter_value(row.id).map(|value| {
       return number_box(&block.tag_format, &format_counter_value(ctx.style, value), font_size);
     });
     layout_rows.push(MathBlockRow { cells, number });
@@ -391,20 +393,6 @@ mod tests {
     assert_eq!(texts, "\u{1D49C}\u{FE00}\u{1D4B7}\u{FE00}1");
   }
 
-  /// 番号付き 1 行 1 セルの `ResolvedMathRow`（equation 1 個目相当）を作るヘルパ
-  fn numbered_row() -> ResolvedMathRow {
-    return ResolvedMathRow {
-      cells: vec![vec![MathNode::Text("a".to_string())]],
-      numbered: true,
-      label: None,
-      label_span: None,
-      counter_value: Some(CounterValue {
-        kind: crate::resolve::CounterKind::Counter(crate::config::CounterName::Equation),
-        parts: vec![0, 0, 1],
-      }),
-    };
-  }
-
   /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
   fn style_with_plain_equation_format() -> ReadStyle {
     let mut style = ReadStyle::default();
@@ -412,15 +400,27 @@ mod tests {
     return style;
   }
 
+  /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` を取り出すヘルパ
+  fn lower_numbered_equation(style: &ReadStyle) -> LayoutNode {
+    let nodes = crate::typeset::lowering::test_support::lower(
+      style,
+      &crate::typeset::lowering::test_support::analyzed("\\begin{equation}\na\n\\end{equation}\n"),
+      &crate::model::NodeMap::default(),
+      &[],
+    );
+    return nodes
+      .into_iter()
+      .find(|n| matches!(n, LayoutNode::MathBlock { .. }))
+      .expect("MathBlock が出力されるはず");
+  }
+
   #[test]
   fn lower_math_block_formats_number_with_template_and_serif_font() {
     // Arrange
     let style = style_with_plain_equation_format();
-    let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_numbered_equation(&style);
 
     // Assert
     let LayoutNode::MathBlock {
@@ -440,11 +440,9 @@ mod tests {
   fn lower_math_block_uses_right_numbers_and_center_align_by_default() {
     // Arrange
     let style = style_with_plain_equation_format();
-    let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_numbered_equation(&style);
 
     // Assert
     let LayoutNode::MathBlock {
@@ -464,11 +462,9 @@ mod tests {
     // Arrange
     let mut style = style_with_plain_equation_format();
     style.math.block.number_side = NumberSide::Left;
-    let ctx = LoweringContext::new(&style);
-    let rows = vec![numbered_row()];
 
     // Act
-    let node = lower_math_block(&ctx, MathEnvKind::Equation, &rows, None);
+    let node = lower_numbered_equation(&style);
 
     // Assert
     let LayoutNode::MathBlock {

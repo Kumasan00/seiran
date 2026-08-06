@@ -74,8 +74,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{CaptionPosition, DocNode, InlineNode, TableRow, inline_nodes_to_plain_text},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::{CaptionPosition, HirInline, HirInlineKind, HirTableRow},
   };
 
   /// テスト用 `parse` ラッパ
@@ -86,18 +86,42 @@ mod tests {
     return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
   }
 
-  /// ソースを評価して最初の `DocNode::Table` を取り出すヘルパ
-  fn eval_table(source: &str) -> Result<Vec<DocNode>, EvalError> {
+  /// ソースを評価して最初の `HirNodeKind::Table` を取り出すヘルパ
+  fn eval_table(source: &str) -> Result<Vec<HirNode>, EvalError> {
     let arena = Bump::new();
     let cst = parse(source, &arena).unwrap();
-    return crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    return evaluate_children_to_hir(source, cst);
+  }
+
+  /// HIR インラインをプレーンテキストへ変換するテスト専用ヘルパ（`inline_nodes_to_plain_text` の HIR 版）
+  ///
+  /// スタイル情報を無視して文字列を連結する。`\ref` は本テストでは解決しないため空文字列扱い。
+  fn hir_inlines_to_plain_text(inlines: &[HirInline]) -> String {
+    let mut out = String::new();
+    for inline in inlines {
+      match &inline.kind {
+        HirInlineKind::Text(s) => out.push_str(s),
+        HirInlineKind::Styled { children, .. }
+        | HirInlineKind::Colored { children, .. }
+        | HirInlineKind::Link { children, .. } => out.push_str(&hir_inlines_to_plain_text(children)),
+        HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
+        HirInlineKind::Symbol(ch) => out.push(*ch),
+        HirInlineKind::LineBreak => out.push('\n'),
+        HirInlineKind::NoIndent
+        | HirInlineKind::Footnote { .. }
+        | HirInlineKind::Index { .. }
+        | HirInlineKind::Ref { .. } => {},
+        HirInlineKind::Cite { keys } => out.push_str(&keys.join(", ")),
+      }
+    }
+    return out;
   }
 
   /// セル内容のプレーンテキストを行ごとに並べるヘルパ
-  fn row_texts(rows: &[TableRow]) -> Vec<Vec<String>> {
+  fn row_texts(rows: &[HirTableRow]) -> Vec<Vec<String>> {
     return rows
       .iter()
-      .map(|row| return row.cells.iter().map(|cell| return inline_nodes_to_plain_text(&cell.content)).collect())
+      .map(|row| return row.cells.iter().map(|cell| return hir_inlines_to_plain_text(&cell.content)).collect())
       .collect();
   }
 
@@ -118,7 +142,7 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Table {
+    let HirNodeKind::Table {
       columns,
       widths,
       head,
@@ -128,7 +152,7 @@ mod tests {
       label,
       breakable,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Table が期待されます: {:?}", result[0]);
     };
@@ -140,7 +164,7 @@ mod tests {
     assert_eq!(row_texts(head), vec![vec!["Name", "Score", "Rank"]]);
     assert_eq!(row_texts(rows), vec![vec!["Alice", "92", "1"], vec!["Bob", "88", "2"]]);
     let caption = caption.as_ref().expect("caption あり");
-    assert_eq!(inline_nodes_to_plain_text(caption), "得点表");
+    assert_eq!(hir_inlines_to_plain_text(caption), "得点表");
     assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
     assert!(*breakable);
@@ -155,9 +179,9 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table {
+    let HirNodeKind::Table {
       caption_position, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Table が期待されます");
     };
@@ -173,9 +197,9 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table {
+    let HirNodeKind::Table {
       columns, widths, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Table が期待されます");
     };
@@ -192,7 +216,7 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { rows, .. } = &result[0] else {
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert_eq!(rows.len(), 2);
@@ -200,9 +224,9 @@ mod tests {
     assert!(rows[1].rule_above);
     assert_eq!(rows[1].cells.len(), 2);
     assert_eq!(rows[1].cells[0].span, 2);
-    assert_eq!(inline_nodes_to_plain_text(&rows[1].cells[0].content), "合計");
+    assert_eq!(hir_inlines_to_plain_text(&rows[1].cells[0].content), "合計");
     assert_eq!(rows[1].cells[1].span, 1);
-    assert_eq!(inline_nodes_to_plain_text(&rows[1].cells[1].content), "180");
+    assert_eq!(hir_inlines_to_plain_text(&rows[1].cells[1].content), "180");
   }
 
   #[test]
@@ -264,7 +288,7 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { widths, .. } = &result[0] else {
+    let HirNodeKind::Table { widths, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert!(matches!(widths[0], ColumnWidth::Ratio(r) if (r - 0.3).abs() < 1e-6));
@@ -366,11 +390,11 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 2);
-    let DocNode::Table { label, .. } = &result[0] else {
+    let HirNodeKind::Table { label, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert_eq!(label.as_deref(), Some("tab:a"));
-    let DocNode::Table { label, .. } = &result[1] else {
+    let HirNodeKind::Table { label, .. } = &result[1].kind else {
       panic!("Table が期待されます");
     };
     assert!(label.is_none());
@@ -385,7 +409,7 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { breakable, .. } = &result[0] else {
+    let HirNodeKind::Table { breakable, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert!(!breakable);
@@ -400,7 +424,7 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { rows, .. } = &result[0] else {
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert_eq!(row_texts(rows), vec![vec!["Alice", "92"]]);
@@ -415,17 +439,17 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { rows, .. } = &result[0] else {
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert!(matches!(
-      &rows[0].cells[0].content[0],
-      InlineNode::Styled {
+      &rows[0].cells[0].content[0].kind,
+      HirInlineKind::Styled {
         kind: crate::model::FontKind::SerifBold,
         ..
       }
     ));
-    assert!(matches!(&rows[0].cells[1].content[0], InlineNode::InlineMath(_)));
+    assert!(matches!(&rows[0].cells[1].content[0].kind, HirInlineKind::InlineMath(_)));
   }
 
   #[test]
@@ -437,7 +461,7 @@ mod tests {
     let result = eval_table(source).unwrap();
 
     // Assert
-    let DocNode::Table { rows, .. } = &result[0] else {
+    let HirNodeKind::Table { rows, .. } = &result[0].kind else {
       panic!("Table が期待されます");
     };
     assert_eq!(rows[0].cells.len(), 3);

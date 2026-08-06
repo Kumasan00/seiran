@@ -169,8 +169,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::{extract_inline_nodes_to_inline_nodes, lookup_env_parse_mode},
-    model::InlineNode,
+    frontend::evaluator::{extract_inline_nodes_to_hir, lookup_env_parse_mode},
+    model::HirInlineKind,
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
@@ -189,11 +189,11 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(
-      &inlines[0],
-      InlineNode::Styled {
+      &inlines[0].kind,
+      HirInlineKind::Styled {
         kind: crate::model::FontKind::SerifBold,
         ..
       }
@@ -208,9 +208,9 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
     assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], InlineNode::Symbol('α')));
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('α')));
   }
 
   #[test]
@@ -224,11 +224,11 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
 
     // Assert
     assert_eq!(inlines.len(), 1);
-    assert!(matches!(&inlines[0], InlineNode::Symbol('≤')));
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('≤')));
   }
 
   #[test]
@@ -242,7 +242,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
@@ -259,7 +259,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::BlockInInline { ref what, .. }) if what == r"\pagebreak"));
@@ -276,7 +276,7 @@ mod tests {
     let arg = view.first_arg().unwrap();
 
     // Act
-    let result = extract_inline_nodes_to_inline_nodes(source, arg);
+    let result = extract_inline_nodes_to_hir(source, arg);
 
     // Assert
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
@@ -290,8 +290,8 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
-    let has_math = inlines.iter().any(|n| matches!(n, InlineNode::InlineMath(_)));
+    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
+    let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::InlineMath(_)));
     assert!(has_math, "InlineMath ノードが含まれるべき: {inlines:?}");
   }
 
@@ -303,13 +303,13 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = extract_inline_nodes_to_inline_nodes(source, arg).unwrap();
+    let inlines = extract_inline_nodes_to_hir(source, arg).unwrap();
     assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "Hello"));
-    assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "Hello"));
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));
     assert!(matches!(
-      &inlines[2],
-      InlineNode::Styled {
+      &inlines[2].kind,
+      HirInlineKind::Styled {
         kind: crate::model::FontKind::SerifBold,
         ..
       }

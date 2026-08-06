@@ -210,71 +210,41 @@ impl ParagraphBuffer {
   }
 }
 
-/// 評価結果の HIR を旧 `DocNode` 列へ落とすテスト専用ヘルパ
+/// CST ノードの子要素を評価して `Vec<HirNode>` をそのまま返すテスト専用ヘルパ
 ///
-/// 既存の評価器テストが `DocNode` に対する assert を保ったまま HIR 化へ追随するための足場。
-/// 本番経路は `HirNode` を返す [`evaluate_children`] を使う。#325 で adapter ごと削除する。
+/// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
+/// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
-pub(crate) fn evaluate_children_to_doc_nodes(
-  source: &str,
-  node: &GreenNode,
-) -> Result<Vec<crate::model::DocNode>, EvalError> {
+pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirNode>, EvalError> {
   let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let nodes = evaluate_children(source, &builder, node)?;
-  let document = test_document(nodes, builder);
-  let Some(group) = document.groups().first() else {
-    unreachable!("test_document は必ず 1 グループを作る")
-  };
-  return Ok(crate::frontend::hir_group_to_doc_nodes(group, document.locations()));
+  return evaluate_children(source, &builder, node);
 }
 
-/// インライン抽出結果を旧 `InlineNode` 列へ落とすテスト専用ヘルパ（[`evaluate_children_to_doc_nodes`] と同じ足場）
+/// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
 #[cfg(test)]
-pub(crate) fn extract_inline_nodes_to_inline_nodes(
-  source: &str,
-  node: &GreenNode,
-) -> Result<Vec<crate::model::InlineNode>, EvalError> {
+pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirInline>, EvalError> {
   let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let inlines = inline::extract_inline_nodes(source, &builder, node)?;
-  let document = test_document(Vec::new(), builder);
-  return Ok(crate::frontend::doc_node_adapter::to_inline_nodes(&inlines, document.locations()));
+  return inline::extract_inline_nodes(source, &builder, node);
 }
 
-/// ハンドラを直接呼ぶテスト向けに、HIR インラインを旧 `InlineNode` 列へ落とす
+/// ハンドラを直接呼ぶテスト向けに、HIR インラインをそのまま返す
 ///
 /// 使い方: `run_inline_handler(|builder| return styled_text(&view, builder, kind))`
 #[cfg(test)]
 pub(crate) fn run_inline_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirInline>, EvalError>,
-) -> Result<Vec<crate::model::InlineNode>, EvalError> {
+) -> Result<Vec<HirInline>, EvalError> {
   let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let inlines = handler(&builder)?;
-  let document = test_document(Vec::new(), builder);
-  return Ok(crate::frontend::doc_node_adapter::to_inline_nodes(&inlines, document.locations()));
+  return handler(&builder);
 }
 
-/// ハンドラを直接呼ぶテスト向けに、HIR ブロックを旧 `DocNode` 列へ落とす
+/// ハンドラを直接呼ぶテスト向けに、HIR ブロックをそのまま返す
 #[cfg(test)]
 pub(crate) fn run_block_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
-) -> Result<Vec<crate::model::DocNode>, EvalError> {
+) -> Result<Vec<HirNode>, EvalError> {
   let builder = HirBuilder::new(crate::model::SourceId::new(0));
-  let nodes = handler(&builder)?;
-  let document = test_document(nodes, builder);
-  let Some(group) = document.groups().first() else {
-    unreachable!("test_document は必ず 1 グループを作る")
-  };
-  return Ok(crate::frontend::hir_group_to_doc_nodes(group, document.locations()));
-}
-
-/// ハンドラを直接呼ぶテストが HIR を旧型へ落とすための足場を作る
-#[cfg(test)]
-pub(crate) fn test_document(nodes: Vec<HirNode>, builder: HirBuilder) -> crate::model::HirDocument {
-  let source_id = crate::model::SourceId::new(0);
-  return crate::model::HirDocument::assemble(vec![crate::model::HirSource {
-    group: crate::model::HirGroup { source_id, nodes },
-    spans: builder.finish(),
-  }]);
+  return handler(&builder);
 }
 
 /// 段落の先頭判定用に、インライン要素が「実体のある内容」かどうかを返す

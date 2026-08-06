@@ -11,7 +11,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\cite{a,b}` を `InlineNode::Cite` に変換する
+/// `\cite{a,b}` を `HirInlineKind::Cite` に変換する
 ///
 /// 引数のテキストをカンマで分割し、各キーを trim する。空のキー（`\cite{}` や
 /// `\cite{a,}` のような末尾カンマ・連続カンマ）は曖昧さを排除するためエラーとする。
@@ -60,12 +60,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -99,7 +96,7 @@ mod tests {
     let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Cite { keys, .. } = &result[0] else {
+    let HirInlineKind::Cite { keys } = &result[0].kind else {
       panic!("Cite が期待されます");
     };
     assert_eq!(keys, &["rika".to_string()]);
@@ -117,7 +114,7 @@ mod tests {
     let result = run_inline_handler(|builder| return cite_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Cite { keys, .. } = &result[0] else {
+    let HirInlineKind::Cite { keys } = &result[0].kind else {
       panic!("Cite が期待されます");
     };
     assert_eq!(keys, &["a".to_string(), "b".to_string(), "c".to_string()]);

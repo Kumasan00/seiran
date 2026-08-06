@@ -1,8 +1,11 @@
 //! インラインレベル要素の型定義
+//!
+//! 著者が書いた本文は HIR（`model::hir`）が持つため、ここに残る variant は
+//! `citation::render` が書誌・引用表示として組み立てる生成物の語彙に絞られる（#325）。
 
-use crate::model::{CitationId, Color, FontKind, Span, math_node::MathNode};
+use crate::model::{CitationId, Color, FontKind};
 
-/// インラインレベルのドキュメント要素
+/// 引用の生成物（書誌・引用表示）が使うインライン要素
 ///
 /// セマンティックな意図を保持し、物理スタイルは lowering 層で付与される。
 #[derive(Debug, Clone, PartialEq)]
@@ -10,14 +13,11 @@ pub enum InlineNode {
   /// プレーンテキスト
   Text(String),
 
-  /// 書体指定テキスト（`\bold{...}`, `\sansitalic{...}`, `\mono{...}` 等の 12 コマンド）
+  /// 書体指定テキスト（CSL 整形が太字・斜体を表現する際に使う）
   ///
   /// 3 ファミリ（serif / sans / mono）× 4 スタイル（normal / bold / italic / bolditalic）の
-  /// 組み合わせを 1 コマンド = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
-  /// 完全に上書きする（[`MathNode::Styled`] と同じ規則で、親スタイルとの合成はしない）。
-  ///
-  /// コマンド表（`COMMAND_MAP`）にはテキスト装飾 12 種のみを登録するため、
-  /// `FontKind::Math` がここに入ることはない。
+  /// 組み合わせを 1 variant = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
+  /// 完全に上書きする（`MathNode::Styled` と同じ規則で、親スタイルとの合成はしない）。
   Styled {
     /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
     kind: FontKind,
@@ -25,12 +25,11 @@ pub enum InlineNode {
     children: Vec<InlineNode>,
   },
 
-  /// テキスト色指定（`\color[color=#rrggbb]{...}`）
+  /// テキスト色指定
   ///
   /// 色は書体（`FontKind`）と直交する属性なので [`InlineNode::Styled`] とは別経路にする。
   /// Lowering 層では親の `font_size` / `font_kind` を継承したまま `TextStyle.color` だけを
-  /// 上書きするため、`\bold{\color[...]{x}}` / `\color[...]{\bold{x}}` のいずれも合成される。
-  /// ネスト時は内側の `color` が外側の色を上書きする（`Styled` の上書き規則と整合）。
+  /// 上書きする。ネスト時は内側の `color` が外側の色を上書きする（`Styled` の上書き規則と整合）。
   Colored {
     /// 適用する色（Lowering 層でそのまま `TextStyle.color` になる）
     color: Color,
@@ -38,33 +37,17 @@ pub enum InlineNode {
     children: Vec<InlineNode>,
   },
 
-  /// インライン数式（`$...$`）
-  InlineMath(Vec<MathNode>),
-
-  /// 特殊文字・記号（`\alpha`, `\sum`, `\infty` 等）
+  /// 特殊文字・記号
   Symbol(char),
 
-  /// 強制改行（`\\`）
+  /// 強制改行
   LineBreak,
 
-  /// 段落先頭行の字下げ抑止マーカー（`\noindent`）
-  ///
-  /// 描画されない制御マーカーで、パーサが段落先頭にのみ許可する。
-  NoIndent,
-
-  /// 相互参照（`\ref{label}`）
-  Ref {
-    /// 参照先のラベル名（`\ref{ch:intro}` の `ch:intro`）
-    label: String,
-    /// `\ref{...}` の `CommandCall` ノードのソース位置。未解決時の診断に使う
-    span: Span,
-  },
-
-  /// 外部リンク（`\url{uri}` / `\href[url=uri]{表示}`）
+  /// 外部リンク（CSL 整形が DOI 等の URL 付きエントリを表現する際に使う）
   Link {
-    /// リンク先の外部 URI（`\url{...}` / `\href[url=...]{...}` の URI）
+    /// リンク先の外部 URI
     url: String,
-    /// 表示テキスト（インライン要素）。`\url` では URI 自身の `Text` 1 個
+    /// 表示テキスト（インライン要素）
     children: Vec<InlineNode>,
   },
 
@@ -74,41 +57,6 @@ pub enum InlineNode {
     target: CitationId,
     /// 表示テキスト（インライン要素）
     children: Vec<InlineNode>,
-  },
-
-  /// 文献引用（`\cite{key}` / 複数キーの `\cite{a,b}`）
-  ///
-  /// 著者が書いた引用「箇所」だけを表し、表示（番号 / 著者年の整形済みインライン列）は
-  /// 持たない。表示は `citation::generate_citations` が `node_id` をキーにする side table
-  /// として別に生成し、lowering がそこから引く（文書木へは書き戻さない）。
-  Cite {
-    /// 引用キーのリスト（`\cite{a,b}` は `["a", "b"]`）
-    keys: Vec<String>,
-    /// この引用箇所の HIR ノード ID（生成された表示インライン列を引くキー）
-    node_id: crate::model::NodeId,
-    /// `\cite{...}` の `CommandCall` ノードのソース位置。キー存在検証時の診断に使う
-    span: Span,
-  },
-
-  /// 脚注（`\footnote{...}`）
-  Footnote {
-    /// 脚注本体（テキストモードで再帰評価済みのインライン列。太字・数式等を許容）
-    body: Vec<InlineNode>,
-    /// `\footnote{...}` の `CommandCall` ノードのソース位置
-    span: Span,
-  },
-
-  /// 索引マーカー（`\index{語}` / `\index[reading=...]{語}`）
-  ///
-  /// 本文に出力を持たない（組版結果に影響しないゼロサイズマーカー）。語・reading・出現ページを
-  /// 索引生成のために収集し、`typeset::breaking::break_pages` が出現ページを確定する。
-  Index {
-    /// 索引語（プレーンテキストのみ、空文字列不可。パーサ段で検証済み）
-    word: String,
-    /// 読みソートキー（`[reading=...]`）。`None` なら `word` 自身でソートする
-    reading: Option<String>,
-    /// `\index{...}` の `CommandCall` ノードのソース位置
-    span: Span,
   },
 }
 
@@ -121,82 +69,33 @@ impl InlineNode {
   #[must_use]
   pub fn symbol(ch: char) -> Self { return InlineNode::Symbol(ch); }
 
-  /// このノードをプレーンテキストに変換する（`\ref` は `resolve_ref` で解決する）
+  /// このノードをプレーンテキストに変換する
   ///
-  /// スタイル情報を無視して、含まれる文字列を連結して返す。`InlineNode::Ref` に遭遇するたびに
-  /// `resolve_ref(label, span)` を呼び、その戻り値を埋め込む。エラー型 `E` は呼び出し側のエラー型を
-  /// そのまま伝播できるよう総称化してある（[`to_plain_text`] は `Infallible` で薄くラップしたもの）。
-  ///
-  /// # Errors
-  ///
-  /// `resolve_ref` がエラーを返した場合にそのまま伝播します。
-  pub fn try_to_plain_text<E>(
-    &self,
-    resolve_ref: &mut impl FnMut(&str, Span) -> Result<String, E>,
-  ) -> Result<String, E> {
+  /// スタイル情報を無視して、含まれる文字列を連結して返す。生成物（`citation::render` が
+  /// 作るインライン列）は `\ref` 等の未解決参照を持たないため、解決コールバックは不要。
+  /// 見出しタイトルのプレーンテキスト取得などに使用します。
+  #[must_use]
+  pub fn to_plain_text(&self) -> String {
     match self {
-      InlineNode::Text(s) => return Ok(s.clone()),
+      InlineNode::Text(s) => return s.clone(),
       InlineNode::Styled { children, .. }
       | InlineNode::Colored { children, .. }
       | InlineNode::Link { children, .. }
-      | InlineNode::InternalLink { children, .. } => {
-        return try_inline_nodes_to_plain_text(children, resolve_ref);
-      },
-      InlineNode::InlineMath(_) => return Ok("[Math]".to_string()),
-      InlineNode::Symbol(ch) => return Ok(ch.to_string()),
-      InlineNode::LineBreak => return Ok("\n".to_string()),
-      // 脚注本体・索引マーカーは見出し・書誌等のプレーンテキスト抽出には含めない（NoIndent と同じ空扱い）
-      InlineNode::NoIndent | InlineNode::Footnote { .. } | InlineNode::Index { .. } => return Ok(String::new()),
-      InlineNode::Ref { label, span } => return resolve_ref(label, *span),
-      // 表示（CSL 整形済みインライン列）はここでは引けない（side table 側にある）。
-      // 表示を含むプレーンテキストが要るなら `typeset::lowering` の解決済み版を使う。
-      InlineNode::Cite { keys, .. } => return Ok(keys.join(", ")),
+      | InlineNode::InternalLink { children, .. } => return inline_nodes_to_plain_text(children),
+      InlineNode::Symbol(ch) => return ch.to_string(),
+      InlineNode::LineBreak => return "\n".to_string(),
     }
   }
-
-  /// このノードをプレーンテキストに変換する
-  ///
-  /// スタイル情報を無視して、含まれる文字列を連結して返す。`\ref` は解決できないため空文字列扱い
-  /// （解決済みテキストが必要な呼び出し側は [`try_to_plain_text`] を使う）。見出しタイトルの
-  /// プレーンテキスト取得などに使用します。
-  #[must_use]
-  pub fn to_plain_text(&self) -> String {
-    let mut resolve_ref = |_label: &str, _span: Span| -> Result<String, std::convert::Infallible> {
-      return Ok(String::new());
-    };
-    return match self.try_to_plain_text(&mut resolve_ref) {
-      Ok(text) => text,
-      Err(err) => match err {},
-    };
-  }
-}
-
-/// インラインノードのスライスをプレーンテキストに一括変換する（`\ref` は `resolve_ref` で解決する）
-///
-/// # Errors
-///
-/// `resolve_ref` がエラーを返した場合にそのまま伝播します。
-pub fn try_inline_nodes_to_plain_text<E>(
-  inlines: &[InlineNode],
-  resolve_ref: &mut impl FnMut(&str, Span) -> Result<String, E>,
-) -> Result<String, E> {
-  let mut out = String::new();
-  for inline in inlines {
-    out.push_str(&inline.try_to_plain_text(resolve_ref)?);
-  }
-  return Ok(out);
 }
 
 /// インラインノードのスライスをプレーンテキストに一括変換する
 #[must_use]
 pub fn inline_nodes_to_plain_text(inlines: &[InlineNode]) -> String {
-  let mut resolve_ref = |_label: &str, _span: Span| -> Result<String, std::convert::Infallible> {
-    return Ok(String::new());
-  };
-  return match try_inline_nodes_to_plain_text(inlines, &mut resolve_ref) {
-    Ok(text) => text,
-    Err(err) => match err {},
-  };
+  let mut out = String::new();
+  for inline in inlines {
+    out.push_str(&inline.to_plain_text());
+  }
+  return out;
 }
 
 #[cfg(test)]
@@ -240,12 +139,6 @@ mod tests {
   }
 
   #[test]
-  fn inline_math_to_plain_text() {
-    let node = InlineNode::InlineMath(vec![MathNode::Text("x+1".to_string())]);
-    assert_eq!(node.to_plain_text(), "[Math]");
-  }
-
-  #[test]
   fn inline_line_break_to_plain_text() {
     let node = InlineNode::LineBreak;
     assert_eq!(node.to_plain_text(), "\n");
@@ -262,44 +155,5 @@ mod tests {
       InlineNode::text("!"),
     ];
     assert_eq!(inline_nodes_to_plain_text(&inlines), "Hello world!");
-  }
-
-  #[test]
-  fn try_plain_text_resolves_ref_via_callback() {
-    let span = Span::DUMMY;
-    let inlines = vec![
-      InlineNode::text("See "),
-      InlineNode::Ref {
-        label: "sec:x".to_string(),
-        span,
-      },
-      InlineNode::text("."),
-    ];
-    let mut call_count = 0;
-    let mut resolve_ref = |label: &str, _span: Span| -> Result<String, String> {
-      call_count += 1;
-      assert_eq!(label, "sec:x");
-      return Ok("Section 1".to_string());
-    };
-    let result = try_inline_nodes_to_plain_text(&inlines, &mut resolve_ref);
-    assert_eq!(result, Ok("See Section 1.".to_string()));
-    assert_eq!(call_count, 1);
-  }
-
-  #[test]
-  fn try_plain_text_propagates_resolver_error() {
-    let span = Span::DUMMY;
-    let inlines = vec![
-      InlineNode::text("See "),
-      InlineNode::Ref {
-        label: "sec:missing".to_string(),
-        span,
-      },
-      InlineNode::text("."),
-    ];
-    let mut resolve_ref =
-      |_label: &str, _span: Span| -> Result<String, String> { return Err("unresolved reference".to_string()) };
-    let result = try_inline_nodes_to_plain_text(&inlines, &mut resolve_ref);
-    assert_eq!(result, Err("unresolved reference".to_string()));
   }
 }

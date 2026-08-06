@@ -17,7 +17,7 @@ use crate::{
   model::{HirBuilder, HirInline, HirInlineKind},
 };
 
-/// `\url{uri}` を `InlineNode::Link` に変換する（URI 自身を表示テキストにする）
+/// `\url{uri}` を `HirInlineKind::Link` に変換する（URI 自身を表示テキストにする）
 ///
 /// # Errors
 ///
@@ -50,7 +50,7 @@ pub(crate) fn url_command(view: &CommandView, builder: &HirBuilder) -> Result<Ve
   )]);
 }
 
-/// `\href[url=uri]{表示}` を `InlineNode::Link` に変換する（本文を表示テキストにする）
+/// `\href[url=uri]{表示}` を `HirInlineKind::Link` に変換する（本文を表示テキストにする）
 ///
 /// # Errors
 ///
@@ -89,12 +89,9 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    frontend::{
-      evaluator::{lookup_env_parse_mode, run_inline_handler},
-      syntax::{SyntaxKind, green::GreenElement},
-    },
-    model::InlineNode,
+  use crate::frontend::{
+    evaluator::{lookup_env_parse_mode, run_inline_handler},
+    syntax::{SyntaxKind, green::GreenElement},
   };
 
   fn parse<'a>(
@@ -127,12 +124,12 @@ mod tests {
     let result = run_inline_handler(|builder| return url_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Link { url, children } = &result[0] else {
+    let HirInlineKind::Link { url, children } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
     assert_eq!(url, "https://example.com");
     assert_eq!(children.len(), 1);
-    assert!(matches!(&children[0], InlineNode::Text(t) if t == "https://example.com"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "https://example.com"));
   }
 
   #[test]
@@ -157,11 +154,11 @@ mod tests {
     let result = run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
 
     // Assert
-    let InlineNode::Link { url, children } = &result[0] else {
+    let HirInlineKind::Link { url, children } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
     assert_eq!(url, "https://example.com");
-    assert!(matches!(&children[0], InlineNode::Text(t) if t == "ここ"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "ここ"));
   }
 
   #[test]

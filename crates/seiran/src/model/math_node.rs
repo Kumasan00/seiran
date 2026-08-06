@@ -1,7 +1,5 @@
 //! 数式要素。
 
-use crate::model::Span;
-
 /// 数式ノード
 ///
 /// インライン数式（`$...$`）およびディスプレイ数式内の構造を表現します。
@@ -89,25 +87,6 @@ pub enum MathStyle {
   ScriptBold,
   /// `\mathfrakturbold` — 太字フラクトゥール（bold ドイツ文字）
   FrakturBold,
-}
-
-/// ディスプレイ数式環境の 1 行
-///
-/// `cells` は `&` で分割された列（`equation` / `gather` は 1 列、`cases` は 2 列、
-/// `align` / `matrix` は複数列）。各列は数式ノード列。`numbered` はこの行が採番対象かどうか
-/// （実際の発番・書式化は `lowering` 層が担う）。`label` は `\ref` 解決用の
-/// 行ラベル（`equation` の `[label=...]`、`align` / `gather` の行末マーカー `\label{...}`）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct MathRow {
-  /// 列（`&` 区切り）。各列は数式ノード列
-  pub cells: Vec<Vec<MathNode>>,
-  /// 採番対象かどうか（`false` は非採番）
-  pub numbered: bool,
-  /// `\ref` 解決用ラベル（`None` は参照対象外）
-  pub label: Option<String>,
-  /// 行末マーカー `\label{...}` のソース位置。`None` の場合は環境（`DocNode::MathBlock`）の
-  /// `span` をフォールバックとして使う（`equation` の `[label=...]` など、行に固有の位置がない場合）
-  pub label_span: Option<Span>,
 }
 
 impl MathStyle {

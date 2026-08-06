@@ -202,8 +202,8 @@ mod tests {
 
   use super::*;
   use crate::{
-    frontend::evaluator::lookup_env_parse_mode,
-    model::{DocNode, InlineNode},
+    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    model::HirInlineKind,
   };
 
   /// テスト用 `parse` ラッパ
@@ -222,11 +222,11 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Figure {
+    let HirNodeKind::Figure {
       image_path,
       width,
       height,
@@ -236,7 +236,7 @@ mod tests {
       caption_position,
       label,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -247,7 +247,7 @@ mod tests {
     assert!(downsample.is_none());
     let caption = caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
-    assert!(matches!(&caption[0], InlineNode::Text(t) if t == "タイトル"));
+    assert!(matches!(&caption[0].kind, HirInlineKind::Text(t) if t == "タイトル"));
     assert_eq!(*caption_position, CaptionPosition::Bottom);
     assert!(label.is_none());
   }
@@ -260,12 +260,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Figure {
+    let HirNodeKind::Figure {
       caption_position, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -280,12 +280,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Figure {
+    let HirNodeKind::Figure {
       caption_position, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -300,10 +300,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Figure { label, caption, .. } = &result[0] else {
+    let HirNodeKind::Figure { label, caption, .. } = &result[0].kind else {
       panic!("Figure が期待されます");
     };
     assert_eq!(label.as_deref(), Some("fig:foo"));
@@ -318,7 +318,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::MissingEnvironmentArgument { ref name, .. }) if name == "figure"));
@@ -332,16 +332,16 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Figure {
+    let HirNodeKind::Figure {
       image_path,
       width,
       height,
       ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -358,10 +358,10 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Figure { width, height, .. } = &result[0] else {
+    let HirNodeKind::Figure { width, height, .. } = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
     assert!((width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
@@ -376,7 +376,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "foo"));
@@ -390,12 +390,12 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst).unwrap();
+    let result = evaluate_children_to_hir(source, cst).unwrap();
 
     // Assert
-    let DocNode::Figure {
+    let HirNodeKind::Figure {
       dpi, downsample, ..
-    } = &result[0]
+    } = &result[0].kind
     else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
@@ -411,7 +411,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
@@ -425,7 +425,7 @@ mod tests {
     let cst = parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_doc_nodes(source, cst);
+    let result = evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));

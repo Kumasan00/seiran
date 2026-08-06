@@ -1,14 +1,11 @@
-//! 図環境（`resolve::ResolvedNode::Figure`）の lowering
+//! 図環境（`model::HirNodeKind::Figure`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   float::{FloatSpec, build_caption, wrap_float},
   layout_node::LayoutNode,
 };
-use crate::{
-  model::{AssetId, CaptionPosition, Length},
-  resolve::ResolvedInline,
-};
+use crate::model::{AssetId, CaptionPosition, HirInline, Length};
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
 #[derive(Debug, Clone, Copy, Default)]
@@ -27,7 +24,7 @@ pub(super) fn lower_figure(
   width: Option<Length>,
   height: Option<Length>,
   overrides: ImageOverrides,
-  caption: Option<(CaptionPosition, &[ResolvedInline])>,
+  caption: Option<(CaptionPosition, &[HirInline])>,
   number: &str,
   state: &mut LoweringState,
 ) -> Vec<LayoutNode> {
@@ -62,33 +59,61 @@ pub(super) fn lower_figure(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::{super::test_support, *};
-  use crate::config::Style as ReadStyle;
+  use super::{
+    super::{DocumentContent, lower_sources_with_headings, test_support::analyzed},
+    *,
+  };
+  use crate::{config::Style as ReadStyle, model::NodeMap};
+
+  /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
+  ///
+  /// 画像の既定値（`with_image_defaults`）を差し替えるテストがあるため、`LoweringContext` を
+  /// 呼び出し側から渡せる形にしてある。
+  fn lower_source(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
+    let analyzed = analyzed(source);
+    let (layout, _headings) = lower_sources_with_headings(
+      ctx,
+      DocumentContent {
+        analyzed: &analyzed,
+        citation_displays: &NodeMap::default(),
+        bibliography: &[],
+      },
+    );
+    return layout;
+  }
+
+  /// 図の本体 `VBox`（画像を含む `VBox`）の子要素列を取り出す
+  fn figure_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
+    return nodes
+      .iter()
+      .find_map(|n| match n {
+        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. })) => {
+          return Some(children.as_slice());
+        },
+        _ => return None,
+      })
+      .expect("画像を含む VBox があるはず");
+  }
 
   #[test]
   fn lower_figure_emits_image_and_caption_in_bottom_order() {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let caption = [ResolvedInline::Text("せいらん".to_string())];
 
     // Act
-    let nodes = lower_figure(
+    let nodes = lower_source(
       &ctx,
-      &AssetId::new("./images/seiran.jpg"),
-      Some(Length::pt(80.0)),
-      Some(Length::pt(60.0)),
-      ImageOverrides::default(),
-      Some((CaptionPosition::Bottom, &caption)),
-      "1",
-      &mut LoweringState::new(&test_support::document(&[])),
+      "\\chapter{C}\n\n\\begin{figure}\n\\image[width=80mm, height=60mm]{./images/seiran.jpg}\n\\caption{せいらん}\n\\end{figure}\n",
     );
 
-    // Assert
-    assert!(matches!(nodes.first(), Some(LayoutNode::Vkern { .. })));
-    let LayoutNode::VBox { children, .. } = nodes.get(1).expect("VBox があるはず") else {
-      panic!("2 番目は VBox であるべき: {nodes:?}");
-    };
+    // Assert — フロート本体の直前には top_margin の Vkern が入る
+    let body_idx = nodes
+      .iter()
+      .position(|n| matches!(n, LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. }))))
+      .expect("画像を含む VBox があるはず");
+    assert!(matches!(nodes.get(body_idx - 1), Some(LayoutNode::Vkern { .. })), "{nodes:?}");
+    let children = figure_children(&nodes);
     let LayoutNode::Image {
       path,
       width,
@@ -99,15 +124,15 @@ mod tests {
       panic!("先頭は Image であるべき: {children:?}");
     };
     assert_eq!(path.as_str(), "./images/seiran.jpg");
-    assert!((width.expect("width 指定あり").to_pt() - 80.0).abs() < 0.01);
-    assert!((height.expect("height 指定あり").to_pt() - 60.0).abs() < 0.01);
+    assert!((width.expect("width 指定あり").to_pt() - Length::mm(80.0).to_pt()).abs() < 0.01);
+    assert!((height.expect("height 指定あり").to_pt() - Length::mm(60.0).to_pt()).abs() < 0.01);
     assert_eq!(*target_dpi, Some(300));
 
     let caption_text = children.iter().find_map(|n| match n {
       LayoutNode::Text(text, _) => return Some(text.as_str()),
       _ => return None,
     });
-    assert_eq!(caption_text, Some("Figure 1: せいらん"));
+    assert_eq!(caption_text, Some("Figure 1.1: せいらん"));
   }
 
   #[test]
@@ -115,24 +140,15 @@ mod tests {
     // Arrange
     let style = ReadStyle::default();
     let ctx = LoweringContext::new(&style);
-    let caption = [ResolvedInline::Text("せいらん".to_string())];
 
-    // Act
-    let nodes = lower_figure(
+    // Act — `\caption` を `\image` より前に置くとキャプションは図の上になる
+    let nodes = lower_source(
       &ctx,
-      &AssetId::new("a.png"),
-      Some(Length::pt(10.0)),
-      Some(Length::pt(10.0)),
-      ImageOverrides::default(),
-      Some((CaptionPosition::Top, &caption)),
-      "2",
-      &mut LoweringState::new(&test_support::document(&[])),
+      "\\begin{figure}\n\\caption{せいらん}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n",
     );
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待");
-    };
+    let children = figure_children(&nodes);
     let first_text_idx = children.iter().position(|n| matches!(n, LayoutNode::Text(_, _))).expect("Text あり");
     let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image { .. })).expect("Image あり");
     assert!(first_text_idx < first_image_idx, "Top: caption が image の前");
@@ -145,21 +161,10 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let nodes = lower_figure(
-      &ctx,
-      &AssetId::new("a.png"),
-      Some(Length::pt(10.0)),
-      Some(Length::pt(10.0)),
-      ImageOverrides::default(),
-      None,
-      "3",
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[width=10mm, height=10mm]{a.png}\n\\end{figure}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待");
-    };
+    let children = figure_children(&nodes);
     let has_text = children.iter().any(|n| matches!(n, LayoutNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
     let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
@@ -173,27 +178,11 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let overrides = ImageOverrides {
-      downsample: Some(false),
-      ..ImageOverrides::default()
-    };
-    let nodes = lower_figure(
-      &ctx,
-      &AssetId::new("a.png"),
-      None,
-      None,
-      overrides,
-      None,
-      "1",
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[downsample=false]{a.png}\n\\end{figure}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待");
-    };
-    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
-      panic!("Image が期待: {children:?}");
+    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+      panic!("Image が期待: {nodes:?}");
     };
     assert!(target_dpi.is_none());
   }
@@ -205,27 +194,11 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let overrides = ImageOverrides {
-      dpi: Some(600),
-      ..ImageOverrides::default()
-    };
-    let nodes = lower_figure(
-      &ctx,
-      &AssetId::new("a.png"),
-      None,
-      None,
-      overrides,
-      None,
-      "1",
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[dpi=600]{a.png}\n\\end{figure}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待");
-    };
-    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
-      panic!("Image が期待: {children:?}");
+    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+      panic!("Image が期待: {nodes:?}");
     };
     assert_eq!(*target_dpi, Some(600));
   }
@@ -237,23 +210,11 @@ mod tests {
     let ctx = LoweringContext::new(&style).with_image_defaults(300, false);
 
     // Act
-    let nodes = lower_figure(
-      &ctx,
-      &AssetId::new("a.png"),
-      None,
-      None,
-      ImageOverrides::default(),
-      None,
-      "1",
-      &mut LoweringState::new(&test_support::document(&[])),
-    );
+    let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");
 
     // Assert
-    let LayoutNode::VBox { children, .. } = &nodes[1] else {
-      panic!("VBox が期待");
-    };
-    let LayoutNode::Image { target_dpi, .. } = children.first().expect("画像") else {
-      panic!("Image が期待: {children:?}");
+    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+      panic!("Image が期待: {nodes:?}");
     };
     assert!(target_dpi.is_none());
   }
