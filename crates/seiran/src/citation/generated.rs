@@ -49,7 +49,7 @@ pub enum GeneratedInline {
   ///
   /// 3 ファミリ（serif / sans / mono）× 4 スタイル（normal / bold / italic / bolditalic）の
   /// 組み合わせを 1 variant = 1 `FontKind` で明示する。ネスト時は内側の `kind` が
-  /// 完全に上書きする（`MathNode::Styled` と同じ規則で、親スタイルとの合成はしない）。
+  /// 完全に上書きする（`HirMathKind::Styled` と同じ規則で、親スタイルとの合成はしない）。
   Styled {
     /// 適用する書体（Lowering 層でそのまま `TextStyle.font_kind` になる）
     kind: FontKind,

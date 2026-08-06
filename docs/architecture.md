@@ -64,9 +64,12 @@ epic #332 はこの module 自体の解体を目標にしている（「共有�
   組版時に成立する `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` は `typeset::layout::link`
   へ移設済み（#334、後述の該当節）。引用キー `CitationId` と CSL 整形の生成物専用の語彙
   （`GeneratedBlock` / `GeneratedInline`）は `citation` へ移設済み（#333、後述の citation 節）。
-- `math_node`（`MathNode` / `MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
-  `MathNode` は HIR の数式評価変換（`hir::to_math_nodes`）と `typeset::lowering` の数式経路が
+- `math_style`（`MathStyle`）と `quote`（`QuoteKind`）は上記とは別系統の共有語彙型。
+  `MathStyle` は HIR の数式評価変換（`HirMathKind::Styled`）と `typeset::lowering` の数式経路が
   共有し、`QuoteKind` は HIR（`HirNodeKind::Quote`）が使う。
+  HIR の数式表現と同形の中間型 `MathNode` とその変換（`to_math_node` / `to_math_nodes`）は #335 で
+  削除済み — `typeset::lowering::math` が `HirMath` / `HirMathKind` を直接読む（同じ構造を段ごとに
+  複製しないという配置規則どおり、数式の言語要素追加で更新する enum は 1 つになった）。
 - **HIR**（`hir`、#322）: 著者が書いた内容を表す文書木。`id`（`NodeId`）/ `source_map`（`SourceSpans` /
   `SourceMap` / `SourceLocation`）/ `builder`（`HirBuilder`）/ `document`（`HirSource` / `HirGroup` /
   `HirDocument`）/ `node`（`HirNode` / `HirNodeKind` + `HirListItem` / `HirTableRow` / `HirTableCell` /

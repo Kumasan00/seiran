@@ -1,46 +1,4 @@
-//! 数式要素。
-
-/// 数式ノード
-///
-/// インライン数式（`$...$`）およびディスプレイ数式内の構造を表現します。
-#[derive(Debug, Clone, PartialEq)]
-pub enum MathNode {
-  /// テキスト / 記号（変数名、数字、演算子等）
-  Text(String),
-  /// 数式記号（`\alpha`, `+`, `=` 等）
-  Symbol(char),
-  /// 中括弧グループ（`{...}`）
-  Group(Vec<MathNode>),
-  /// 上付き（`x^2`）
-  Superscript(Box<MathNode>),
-  /// 下付き（`x_i`）
-  Subscript(Box<MathNode>),
-  /// 分数（`\frac{numer}{denom}`）
-  Frac {
-    /// 分子
-    numer: Box<MathNode>,
-    /// 分母
-    denom: Box<MathNode>,
-  },
-  /// 平方根（`\sqrt[n]{x}`）
-  Sqrt {
-    /// 根のインデックス（`\sqrt[3]{x}` の `3`、省略時 `None`）
-    index: Option<Box<MathNode>>,
-    /// 被根号
-    radicand: Box<MathNode>,
-  },
-  /// 数式スタイル指定（`\mathbold` `\mathitalic` 等）
-  ///
-  /// body 内の ASCII 英字・数字・Greek を、ローワリング層で
-  /// Unicode Mathematical Alphanumeric Symbols のコードポイントに変換する。
-  /// ネスト時は内側の `style` が完全に上書きする。
-  Styled {
-    /// 適用するスタイル
-    style: MathStyle,
-    /// 本体
-    body: Vec<MathNode>,
-  },
-}
+//! 数式中のフォントスタイル指定 [`MathStyle`]。
 
 /// 数式中のフォントスタイル指定
 ///
@@ -122,66 +80,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn math_node_equality() {
-    assert_eq!(MathNode::Text("x".to_string()), MathNode::Text("x".to_string()));
-    assert_eq!(MathNode::Symbol('+'), MathNode::Symbol('+'));
-    assert_ne!(MathNode::Text("x".to_string()), MathNode::Symbol('x'));
-  }
-
-  #[test]
-  fn math_node_frac() {
-    let node = MathNode::Frac {
-      numer: Box::new(MathNode::Text("a".to_string())),
-      denom: Box::new(MathNode::Text("b".to_string())),
-    };
-    match &node {
-      MathNode::Frac { numer, denom } => {
-        assert_eq!(**numer, MathNode::Text("a".to_string()));
-        assert_eq!(**denom, MathNode::Text("b".to_string()));
-      },
-      _ => panic!("Frac が期待されます"),
-    }
-  }
-
-  #[test]
-  fn math_node_sqrt() {
-    let node = MathNode::Sqrt {
-      index: Some(Box::new(MathNode::Text("3".to_string()))),
-      radicand: Box::new(MathNode::Text("x".to_string())),
-    };
-    match &node {
-      MathNode::Sqrt { index, radicand } => {
-        assert!(index.is_some());
-        assert_eq!(**radicand, MathNode::Text("x".to_string()));
-      },
-      _ => panic!("Sqrt が期待されます"),
-    }
-  }
-
-  #[test]
-  fn math_node_superscript_subscript() {
-    let sup = MathNode::Superscript(Box::new(MathNode::Text("2".to_string())));
-    let sub = MathNode::Subscript(Box::new(MathNode::Text("i".to_string())));
-    assert_eq!(sup, MathNode::Superscript(Box::new(MathNode::Text("2".to_string()))));
-    assert_eq!(sub, MathNode::Subscript(Box::new(MathNode::Text("i".to_string()))));
-  }
-
-  #[test]
-  fn math_node_group() {
-    let node = MathNode::Group(vec![
-      MathNode::Text("x".to_string()),
-      MathNode::Symbol('+'),
-      MathNode::Text("1".to_string()),
-    ]);
-    match &node {
-      MathNode::Group(children) => {
-        assert_eq!(children.len(), 3);
-      },
-      _ => panic!("Group が期待されます"),
-    }
-  }
-
-  #[test]
   fn math_style_from_command_name_resolves_all_styles() {
     // Arrange & Act & Assert — 15 個のスタイルコマンドが正しく解決される
     assert_eq!(MathStyle::from_command_name("mathserif"), Some(MathStyle::Serif));
@@ -208,23 +106,5 @@ mod tests {
     assert_eq!(MathStyle::from_command_name("mathbf"), None);
     assert_eq!(MathStyle::from_command_name("foo"), None);
     assert_eq!(MathStyle::from_command_name(""), None);
-  }
-
-  #[test]
-  fn math_node_styled() {
-    // Arrange — Styled バリアントの構築と分解
-    let node = MathNode::Styled {
-      style: MathStyle::Bold,
-      body: vec![MathNode::Text("x".to_string())],
-    };
-
-    // Act & Assert
-    match &node {
-      MathNode::Styled { style, body } => {
-        assert_eq!(*style, MathStyle::Bold);
-        assert_eq!(body.len(), 1);
-      },
-      _ => panic!("Styled が期待されます"),
-    }
   }
 }

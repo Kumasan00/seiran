@@ -1,35 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::model::{MathNode, MathStyle, hir::NodeId};
-
-/// 数式ノード列を組版用の [`MathNode`] 列へ変換する
-///
-/// 数式は名前（ラベル・参照・引用キー）を含まないので、意味解析の fact を参照しない純粋な
-/// 構造変換になる。`typeset::lowering` が表示文字列へ組み立てる直前にこの変換を使う。
-pub(crate) fn to_math_nodes(nodes: &[HirMath]) -> Vec<MathNode> { return nodes.iter().map(to_math_node).collect(); }
-
-/// 数式ノード 1 個を組版用の [`MathNode`] へ変換する
-pub(crate) fn to_math_node(node: &HirMath) -> MathNode {
-  return match &node.kind {
-    HirMathKind::Text(text) => MathNode::Text(text.clone()),
-    HirMathKind::Symbol(ch) => MathNode::Symbol(*ch),
-    HirMathKind::Group(children) => MathNode::Group(to_math_nodes(children)),
-    HirMathKind::Superscript(child) => MathNode::Superscript(Box::new(to_math_node(child))),
-    HirMathKind::Subscript(child) => MathNode::Subscript(Box::new(to_math_node(child))),
-    HirMathKind::Frac { numer, denom } => MathNode::Frac {
-      numer: Box::new(to_math_node(numer)),
-      denom: Box::new(to_math_node(denom)),
-    },
-    HirMathKind::Sqrt { index, radicand } => MathNode::Sqrt {
-      index: index.as_ref().map(|node| return Box::new(to_math_node(node))),
-      radicand: Box::new(to_math_node(radicand)),
-    },
-    HirMathKind::Styled { style, body } => MathNode::Styled {
-      style: *style,
-      body: to_math_nodes(body),
-    },
-  };
-}
+use crate::model::{MathStyle, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 ///
@@ -47,7 +18,9 @@ impl HirMath {
   pub(crate) fn new(id: NodeId, kind: HirMathKind) -> Self { return HirMath { id, kind }; }
 }
 
-/// 数式ノードの種別（旧 `model::MathNode` の内容を引き継ぐ）
+/// 数式ノードの種別
+///
+/// 組版側はこの種別を直接読む（同形の中間型 `MathNode` は #335 で削除した）。
 #[derive(Debug, PartialEq)]
 pub(crate) enum HirMathKind {
   /// テキスト / 記号（変数名、数字、演算子等）

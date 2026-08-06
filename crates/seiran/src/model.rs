@@ -10,6 +10,9 @@
 //! `AnchorId` / `AnchorMark` / `LinkTarget` / `Align` / `TableColumn`）は `crate::typeset` の
 //! layout へ、検証済み設定値 `TextAlignment` は `crate::config` の style へ移設済み（#334）。
 //! これにより `model` から crate 内の他 module への依存は無くなった。
+//!
+//! HIR と同形の中間 IR は持たない — 数式の中間型 `MathNode` とその変換（`to_math_nodes`）は、
+//! `typeset::lowering` が `HirMath` / `HirMathKind` を直接読むようにして削除済み（#335）。
 
 mod caption;
 mod color;
@@ -25,7 +28,7 @@ mod origin;
 // からも見えるよう `pub(crate)` にする（#307、font crate 吸収時の `font::shaper` と同型）。
 pub(crate) mod length;
 mod math_class;
-mod math_node;
+mod math_style;
 mod quote;
 mod span;
 mod table_column;
@@ -40,12 +43,12 @@ pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
-  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap, to_math_nodes,
+  HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
 };
 pub use ids::AssetId;
 pub use length::Length;
 pub use math_class::{MathDelimiter, MathEnvKind};
-pub use math_node::{MathNode, MathStyle};
+pub use math_style::MathStyle;
 pub use origin::SourceId;
 pub use quote::QuoteKind;
 pub use span::Span;
