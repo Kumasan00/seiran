@@ -17,7 +17,7 @@ pub struct TocStyle {
   pub title: String,
   /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
   ///
-  /// `crate::model::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
+  /// `crate::document::HeadingLevel` の数と整合させるため、上限を 6 で固定する。
   #[garde(range(min = 1, max = 6))]
   pub max_depth: u32,
   /// 目次エントリのフォントサイズ
@@ -55,7 +55,7 @@ impl Default for TocStyle {
 ///
 /// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
 /// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
-const _: () = assert!(crate::model::HeadingLevel::COUNT == 6);
+const _: () = assert!(crate::document::HeadingLevel::COUNT == 6);
 
 #[cfg(test)]
 mod tests {

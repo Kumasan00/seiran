@@ -10,8 +10,8 @@ use body::{resolve_column_count, scan_table_body};
 use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
 use crate::{
+  document::{ColumnAlign, ColumnWidth, HirBuilder, HirNode, HirNodeKind},
   frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView},
-  model::{ColumnAlign, ColumnWidth, HirBuilder, HirNode, HirNodeKind},
 };
 
 /// `table` 環境を評価する
@@ -74,8 +74,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{CaptionPosition, HirInline, HirInlineKind, HirTableRow},
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::{CaptionPosition, HirInline, HirInlineKind, HirTableRow},
   };
 
   /// テスト用 `parse` ラッパ
@@ -94,7 +94,7 @@ mod tests {
   }
 
   /// HIR インラインをプレーンテキストへ変換するテスト専用ヘルパ
-  /// （生成物側の `model::generated_inlines_to_plain_text` の HIR 版）
+  /// （生成物側の `document::generated_inlines_to_plain_text` の HIR 版）
   ///
   /// スタイル情報を無視して文字列を連結する。`\ref` は本テストでは解決しないため空文字列扱い。
   fn hir_inlines_to_plain_text(inlines: &[HirInline]) -> String {

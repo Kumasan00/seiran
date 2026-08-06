@@ -13,7 +13,7 @@ use tracing::debug;
 use super::{
   CitationSiteFacts, GeneratedBlock, GeneratedInline, References, bridge, render, style::CompiledCitationStyle,
 };
-use crate::model::{NodeId, NodeMap};
+use crate::document::{NodeId, NodeMap};
 
 /// CSL 整形（表示の生成）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -153,8 +153,8 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     config::{DocumentPolicy, Style},
+    document::HirDocument,
     font::FontKind,
-    model::HirDocument,
     project::FilesystemProjectSource,
     resolve::{AnalyzedDocument, analyze},
     source::SourceId,

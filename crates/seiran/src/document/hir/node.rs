@@ -1,11 +1,11 @@
 //! HIR のブロックノード [`HirNode`] と付随構造。
 
 use crate::{
-  length::Length,
-  model::{
+  document::{
     CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, MathEnvKind, QuoteKind, TheoremClass,
     hir::{HirInline, HirMathRow, NodeId},
   },
+  length::Length,
   project::ProjectPath,
 };
 

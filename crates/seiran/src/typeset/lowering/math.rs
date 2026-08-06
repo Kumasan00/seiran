@@ -7,10 +7,10 @@ use super::{
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
 use crate::{
-  config::{Alignment, MathScriptStyle as MathStyleConfig, NumberSide},
+  config::{Alignment, MathScriptStyle, NumberSide},
+  document::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   font::FontKind,
   length::Length,
-  model::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathStyle},
   resolve::CounterValue,
   typeset::layout::Align,
 };
@@ -18,11 +18,11 @@ use crate::{
 mod alphanumeric;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
-fn script_font_size(font_size: Length, math_style: &MathStyleConfig) -> Length {
+fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
   return (font_size * math_style.script_size_factor).max(math_style.min_script_font_size);
 }
 
-/// `model::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
+/// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
 /// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
 ///
 /// 行ごと・環境ごとの採番値は `resolve::analyze` が確定させたものを引くだけで、ここでは
@@ -94,7 +94,7 @@ fn alignment_to_align(alignment: Alignment) -> Align {
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
-  math_style: &MathStyleConfig,
+  math_style: &MathScriptStyle,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for node in math_nodes {
@@ -107,16 +107,16 @@ pub(super) fn lower_inline_math(
 fn lower_math_node(
   node: &HirMath,
   font_size: Length,
-  style: Option<MathStyle>,
-  math_style: &MathStyleConfig,
+  variant: Option<MathVariant>,
+  math_style: &MathScriptStyle,
 ) -> Vec<LayoutNode> {
   match &node.kind {
     HirMathKind::Text(s) => {
-      return lower_math_text(s, font_size, style);
+      return lower_math_text(s, font_size, variant);
     },
     HirMathKind::Symbol(ch) => {
       let mut translated = String::new();
-      push_math_char(&mut translated, *ch, style);
+      push_math_char(&mut translated, *ch, variant);
       let layout_style = TextStyle {
         font_size,
         font_kind: FontKind::Math,
@@ -127,13 +127,13 @@ fn lower_math_node(
     HirMathKind::Group(children) => {
       let mut result = Vec::new();
       for child in children {
-        result.extend(lower_math_node(child, font_size, style, math_style));
+        result.extend(lower_math_node(child, font_size, variant, math_style));
       }
       return result;
     },
     HirMathKind::Superscript(inner) => {
       let script_size = script_font_size(font_size, math_style);
-      let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
+      let children = lower_math_node(inner.as_ref(), script_size, variant, math_style);
       return vec![LayoutNode::Raise {
         offset: font_size * math_style.superscript_raise_factor,
         children,
@@ -141,7 +141,7 @@ fn lower_math_node(
     },
     HirMathKind::Subscript(inner) => {
       let script_size = script_font_size(font_size, math_style);
-      let children = lower_math_node(inner.as_ref(), script_size, style, math_style);
+      let children = lower_math_node(inner.as_ref(), script_size, variant, math_style);
       return vec![LayoutNode::Raise {
         offset: -font_size * math_style.subscript_drop_factor,
         children,
@@ -155,9 +155,9 @@ fn lower_math_node(
         color: None,
       };
       let mut result = Vec::new();
-      result.extend(lower_math_node(numer.as_ref(), font_size, style, math_style));
+      result.extend(lower_math_node(numer.as_ref(), font_size, variant, math_style));
       result.push(LayoutNode::Text("/".to_string(), slash_style));
-      result.extend(lower_math_node(denom.as_ref(), font_size, style, math_style));
+      result.extend(lower_math_node(denom.as_ref(), font_size, variant, math_style));
       return result;
     },
     HirMathKind::Sqrt { index, radicand } => {
@@ -169,23 +169,23 @@ fn lower_math_node(
       let mut result = Vec::new();
       if let Some(idx) = index {
         let script_size = script_font_size(font_size, math_style);
-        let idx_children = lower_math_node(idx.as_ref(), script_size, style, math_style);
+        let idx_children = lower_math_node(idx.as_ref(), script_size, variant, math_style);
         result.push(LayoutNode::Raise {
           offset: font_size * math_style.superscript_raise_factor,
           children: idx_children,
         });
       }
       result.push(LayoutNode::Text("√".to_string(), upright_style));
-      result.extend(lower_math_node(radicand.as_ref(), font_size, style, math_style));
+      result.extend(lower_math_node(radicand.as_ref(), font_size, variant, math_style));
       return result;
     },
     HirMathKind::Styled {
-      style: inner_style,
+      variant: inner_variant,
       body,
     } => {
       let mut result = Vec::new();
       for child in body {
-        result.extend(lower_math_node(child, font_size, Some(*inner_style), math_style));
+        result.extend(lower_math_node(child, font_size, Some(*inner_variant), math_style));
       }
       return result;
     },
@@ -193,13 +193,13 @@ fn lower_math_node(
 }
 
 /// 数式中のテキスト文字列を `LayoutNode` 列に変換する
-fn lower_math_text(text: &str, font_size: Length, style: Option<MathStyle>) -> Vec<LayoutNode> {
+fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) -> Vec<LayoutNode> {
   if text.is_empty() {
     return Vec::new();
   }
   let mut translated = String::with_capacity(text.len());
   for c in text.chars() {
-    push_math_char(&mut translated, c, style);
+    push_math_char(&mut translated, c, variant);
   }
   let layout_style = TextStyle {
     font_size,

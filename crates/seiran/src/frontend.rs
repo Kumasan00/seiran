@@ -8,7 +8,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use crate::model::{HirBuilder, HirGroup, HirSource};
+use crate::document::{HirBuilder, HirGroup, HirSource};
 
 mod evaluator;
 #[cfg(test)]
@@ -80,8 +80,8 @@ pub fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<
 mod tests {
   use super::{EvalError, ParseSourceError, parse_source};
   use crate::{
+    document::{HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathVariant},
     font::FontKind,
-    model::{HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathStyle},
   };
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
@@ -512,10 +512,10 @@ mod tests {
       panic!("InlineMath が期待されます");
     };
     assert_eq!(math.len(), 1);
-    let HirMathKind::Styled { style, body } = &math[0].kind else {
+    let HirMathKind::Styled { variant, body } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
-    assert_eq!(*style, MathStyle::Bold);
+    assert_eq!(*variant, MathVariant::Bold);
     assert_eq!(body.len(), 1);
     assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "x"));
   }
@@ -534,23 +534,23 @@ mod tests {
     let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
-    let HirMathKind::Styled { style, body } = &math[0].kind else {
+    let HirMathKind::Styled { variant, body } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
-    assert_eq!(*style, MathStyle::SansBoldItalic);
+    assert_eq!(*variant, MathVariant::SansBoldItalic);
     assert!(matches!(&body[0].kind, HirMathKind::Symbol('α')));
   }
 
   #[test]
   fn evaluate_inline_math_styled_math_alphabets_resolve() {
     // Arrange
-    let cases: [(&str, MathStyle); 6] = [
-      ("mathdoublestruck", MathStyle::DoubleStruck),
-      ("mathscript", MathStyle::Script),
-      ("mathcalligraphic", MathStyle::Calligraphic),
-      ("mathfraktur", MathStyle::Fraktur),
-      ("mathscriptbold", MathStyle::ScriptBold),
-      ("mathfrakturbold", MathStyle::FrakturBold),
+    let cases: [(&str, MathVariant); 6] = [
+      ("mathdoublestruck", MathVariant::DoubleStruck),
+      ("mathscript", MathVariant::Script),
+      ("mathcalligraphic", MathVariant::Calligraphic),
+      ("mathfraktur", MathVariant::Fraktur),
+      ("mathscriptbold", MathVariant::ScriptBold),
+      ("mathfrakturbold", MathVariant::FrakturBold),
     ];
 
     for (name, expected) in cases {
@@ -564,10 +564,10 @@ mod tests {
       let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
         panic!("InlineMath が期待されます: {name}");
       };
-      let HirMathKind::Styled { style, body } = &math[0].kind else {
+      let HirMathKind::Styled { variant, body } = &math[0].kind else {
         panic!("Styled が期待されます ({name}): {:?}", math[0]);
       };
-      assert_eq!(*style, expected, "{name} は {expected:?} に解決されるべき");
+      assert_eq!(*variant, expected, "{name} は {expected:?} に解決されるべき");
       assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "R"), "body は Text(\"R\"): {name}");
     }
   }
@@ -605,21 +605,21 @@ mod tests {
       panic!("InlineMath が期待されます");
     };
     let HirMathKind::Styled {
-      style: outer,
+      variant: outer,
       body: outer_body,
     } = &math[0].kind
     else {
       panic!("外側 Styled が期待されます");
     };
-    assert_eq!(*outer, MathStyle::Bold);
+    assert_eq!(*outer, MathVariant::Bold);
     let HirMathKind::Styled {
-      style: inner,
+      variant: inner,
       body: inner_body,
     } = &outer_body[0].kind
     else {
       panic!("内側 Styled が期待されます: {:?}", outer_body[0]);
     };
-    assert_eq!(*inner, MathStyle::Italic);
+    assert_eq!(*inner, MathVariant::Italic);
     assert!(matches!(&inner_body[0].kind, HirMathKind::Text(t) if t == "x"));
   }
 

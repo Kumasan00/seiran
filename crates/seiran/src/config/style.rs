@@ -57,7 +57,7 @@ pub use crate::config::style::{
 };
 use crate::{
   color::Color,
-  model::HeadingLevel,
+  document::HeadingLevel,
   project::{ProjectPath, ProjectSource},
 };
 
@@ -341,8 +341,8 @@ mod tests {
       CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
       resolve_reference_paths,
     },
+    document::HeadingLevel,
     length::Length,
-    model::HeadingLevel,
     project::{FilesystemProjectSource, MemoryProjectSource},
   };
 
@@ -597,7 +597,7 @@ mod tests {
 #[cfg(test)]
 mod parse_tests {
   use super::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
-  use crate::{model::HeadingLevel, project::FilesystemProjectSource};
+  use crate::{document::HeadingLevel, project::FilesystemProjectSource};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 

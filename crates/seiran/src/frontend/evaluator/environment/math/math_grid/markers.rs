@@ -3,6 +3,7 @@
 use miette::SourceSpan;
 
 use crate::{
+  document::{HirBuilder, NodeId},
   frontend::{
     evaluator::EvalError,
     span_ext::ToSourceSpan,
@@ -12,7 +13,6 @@ use crate::{
       green::GreenElement,
     },
   },
-  model::{HirBuilder, NodeId},
 };
 
 /// 行末マーカー `\label{...}` から取り込んだ行ラベル

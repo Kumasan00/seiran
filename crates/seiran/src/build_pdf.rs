@@ -182,9 +182,9 @@ fn load_project(
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(crate::model::HirDocument, ImageManifest)> {
+fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(crate::document::HirDocument, ImageManifest)> {
   let stage_start = Instant::now();
-  let document = crate::model::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
+  let document = crate::document::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
   info!(
     source_count = document.groups().len(),
     node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
@@ -347,8 +347,8 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::model::HirSource>, CompileError> {
-  let mut parsed: Vec<crate::model::HirSource> = Vec::new();
+fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::document::HirSource>, CompileError> {
+  let mut parsed: Vec<crate::document::HirSource> = Vec::new();
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
   for (source_id, entry) in source_db.iter() {

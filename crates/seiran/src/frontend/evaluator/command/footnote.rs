@@ -1,12 +1,12 @@
 //! `\footnote{...}` コマンド
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\footnote{...}` を `HirInlineKind::Footnote` に変換する

@@ -1,4 +1,4 @@
-//! 図環境（`model::HirNodeKind::Figure`）の lowering
+//! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
@@ -6,8 +6,8 @@ use super::{
   layout_node::LayoutNode,
 };
 use crate::{
+  document::{CaptionPosition, HirInline},
   length::Length,
-  model::{CaptionPosition, HirInline},
   project::ProjectPath,
 };
 

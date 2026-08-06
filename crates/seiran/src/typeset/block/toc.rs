@@ -3,9 +3,9 @@
 use super::Measurer;
 use crate::{
   config::Style,
+  document::HeadingLevel,
   font::{FontKind, FontSystem},
   length::Length,
-  model::HeadingLevel,
   resolve::HeadingKey,
   typeset::{
     layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
@@ -55,7 +55,7 @@ pub struct TocEntryInput {
 
 /// スタイルから目次生成用の [`TocSpec`] を組み立てる。
 ///
-/// 目次見出しの書体は文書の節見出しスタイル（[`crate::model::HeadingLevel::Section`]）に揃える。
+/// 目次見出しの書体は文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
 pub(crate) fn build_toc_spec(style: &Style, text_width: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = style.heading(HeadingLevel::Section);
@@ -235,9 +235,9 @@ fn fill_leader(
 mod tests {
   use super::{TextStyle, TocEntryInput, TocSpec, entry_label};
   use crate::{
+    document::HeadingLevel,
     font::FontKind,
     length::Length,
-    model::HeadingLevel,
     resolve::HeadingKey,
     typeset::layout::{AnchorId, LinkTarget},
   };

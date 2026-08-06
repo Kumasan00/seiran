@@ -1,6 +1,7 @@
 //! リスト環境 — 箇条書き・番号付きリスト
 
 use crate::{
+  document::{HirBuilder, HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{HirBuilder, HirListItem, HirNode, HirNodeKind},
 };
 
 /// `itemize` 環境を評価する（順序なしリスト）

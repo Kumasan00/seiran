@@ -4,6 +4,7 @@
 
 use super::math_grid::{GridSpec, evaluate_grid};
 use crate::{
+  document::{HirBuilder, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -12,7 +13,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
-  model::{HirBuilder, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
 };
 
 /// `equation` 環境を評価する
@@ -82,8 +82,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::{HirMathKind, HirMathRow, MathEnvKind},
     frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
-    model::{HirMathKind, HirMathRow, MathEnvKind},
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する

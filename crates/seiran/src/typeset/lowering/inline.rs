@@ -1,4 +1,4 @@
-//! インライン要素（`model::HirInline`）の lowering
+//! インライン要素（`document::HirInline`）の lowering
 
 use super::{
   LoweringContext, LoweringState, generated,
@@ -7,9 +7,9 @@ use super::{
 };
 use crate::{
   config::FootnoteStyle,
+  document::{HirInline, HirInlineKind},
   font::FontKind,
   length::Length,
-  model::{HirInline, HirInlineKind},
   typeset::layout::{AnchorId, FootnoteId, LinkTarget},
 };
 

@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 
 use crate::{
-  model::hir::{HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, SourceSpans},
+  document::hir::{HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, NodeId, SourceSpans},
   source::{SourceId, Span},
 };
 

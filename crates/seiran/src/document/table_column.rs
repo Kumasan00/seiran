@@ -1,6 +1,6 @@
 //! 著者が `columns=` / `widths=` に書く表の列指定語彙。
 //!
-//! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `model` が持つ。
+//! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `document` が持つ。
 //! 2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有（#334）。
 
 use crate::length::Length;

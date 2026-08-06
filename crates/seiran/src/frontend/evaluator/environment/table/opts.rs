@@ -1,6 +1,7 @@
 //! `table` 環境の任意引数（`columns` / `widths` / `label` / `breakable`）解析
 
 use crate::{
+  document::{ColumnAlign, ColumnWidth},
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,6 @@ use crate::{
     syntax::ast::EnvironmentView,
   },
   length::Length,
-  model::{ColumnAlign, ColumnWidth},
 };
 
 /// `table` 環境の任意引数を集約した構造体

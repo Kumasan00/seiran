@@ -1,6 +1,7 @@
 //! `\index{語}` コマンド
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -10,7 +11,6 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::ast::CommandView,
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `\index{語}` / `\index[reading=よみ]{語}` を `HirInlineKind::Index` に変換する

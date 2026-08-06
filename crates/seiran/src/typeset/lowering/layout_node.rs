@@ -2,9 +2,9 @@
 
 use crate::{
   color::Color,
+  document::MathEnvKind,
   font::FontKind,
   length::Length,
-  model::MathEnvKind,
   typeset::layout::{Align, AnchorMark, LinkTarget, TableColumn},
 };
 

@@ -9,8 +9,8 @@ use super::{
   link::LinkTarget,
 };
 use crate::{
+  document::{ColumnAlign, ColumnWidth},
   length::Length,
-  model::{ColumnAlign, ColumnWidth},
 };
 
 /// 表の 1 列の定義（揃え + 幅指定）
@@ -288,9 +288,9 @@ mod tests {
     resolve_column_widths, table_row_height,
   };
   use crate::{
+    document::{ColumnAlign, ColumnWidth},
     font::{FontType, GlyphRun},
     length::Length,
-    model::{ColumnAlign, ColumnWidth},
     resolve::LabelId,
   };
 

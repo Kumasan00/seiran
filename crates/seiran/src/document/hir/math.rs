@@ -1,6 +1,6 @@
 //! HIR の数式ノード [`HirMath`] と 1 行分の構造 [`HirMathRow`]。
 
-use crate::model::{MathStyle, hir::NodeId};
+use crate::document::{MathVariant, hir::NodeId};
 
 /// 数式レベルの HIR ノード
 ///
@@ -47,10 +47,10 @@ pub(crate) enum HirMathKind {
     /// 被根号
     radicand: Box<HirMath>,
   },
-  /// 数式スタイル指定（`\mathbold` / `\mathitalic` 等）
+  /// 数式の字形指定（`\mathbold` / `\mathitalic` 等）
   Styled {
-    /// 適用するスタイル
-    style: MathStyle,
+    /// 適用する字形 variant
+    variant: MathVariant,
     /// 本体
     body: Vec<HirMath>,
   },

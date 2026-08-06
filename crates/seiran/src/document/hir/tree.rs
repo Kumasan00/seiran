@@ -1,7 +1,7 @@
 //! HIR の文書単位 [`HirSource`] / [`HirGroup`] / [`HirDocument`]。
 
 use crate::{
-  model::hir::{HirNode, SourceMap, SourceSpans},
+  document::hir::{HirNode, SourceMap, SourceSpans},
   source::SourceId,
 };
 

@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use crate::model::TheoremClass;
+pub use crate::document::TheoremClass;
 use crate::{
   font::FontKind,
   length::{Length, non_negative},

@@ -1331,9 +1331,9 @@ mod tests {
   };
   use crate::{
     config::TextAlignment,
+    document::{ColumnAlign, ColumnWidth},
     font::GlyphRun,
     length::Length,
-    model::{ColumnAlign, ColumnWidth},
     typeset::layout::{
       Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
       PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,

@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::{
   citation::{self, CitationFormatError, CitationStyleError, GeneratedCitations, References},
-  model::HirDocument,
+  document::HirDocument,
   resolve::{self, AnalyzedDocument, SemanticError},
 };
 
@@ -91,8 +91,8 @@ mod tests {
     build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationStyleError, read_references},
     config::Style,
+    document::HirDocument,
     frontend::parse_source,
-    model::HirDocument,
     project::{FilesystemProjectSource, MemoryProjectSource},
     source::SourceId,
   };

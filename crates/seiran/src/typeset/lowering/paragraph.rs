@@ -1,11 +1,11 @@
-//! 段落（`model::HirNodeKind::Paragraph`）の lowering
+//! 段落（`document::HirNodeKind::Paragraph`）の lowering
 
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inline,
   layout_node::{LayoutNode, TextStyle},
 };
-use crate::model::{HirInline, HirInlineKind};
+use crate::document::{HirInline, HirInlineKind};
 
 /// 本文段落の既定テキストスタイルを返す
 pub(super) fn body_text_style(ctx: &LoweringContext) -> TextStyle {

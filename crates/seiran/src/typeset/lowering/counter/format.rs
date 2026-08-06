@@ -6,7 +6,7 @@
 
 use crate::{
   config::{CounterName, Counters, Style, TheoremReset},
-  model::TheoremClass,
+  document::TheoremClass,
   resolve::{CounterKind, CounterValue},
   typeset::lowering::placeholder,
 };

@@ -76,7 +76,7 @@ mod tests {
   use super::{BodyPageValues, Page, collect_toc_entries};
   use crate::{
     config::{PageNumbering, TocStyle},
-    model::HeadingLevel,
+    document::HeadingLevel,
     resolve::HeadingKey,
     typeset::{AnchorMark, HeadingRecord, PlacedAnchor},
   };

@@ -1,6 +1,7 @@
 //! インライン要素抽出のヘルパー
 
 use crate::{
+  document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
       EvalError,
@@ -24,7 +25,6 @@ use crate::{
       token::TokenKind,
     },
   },
-  model::{HirBuilder, HirInline, HirInlineKind},
 };
 
 /// `GreenNode` の子要素から [`HirInline`] のリストを構築する
@@ -165,8 +165,8 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::HirInlineKind,
     frontend::evaluator::{extract_inline_nodes_to_hir, lookup_env_parse_mode},
-    model::HirInlineKind,
   };
 
   /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する

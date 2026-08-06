@@ -8,8 +8,8 @@
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use crate::{
+  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   frontend::parse_source,
-  model::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   source::{SourceId, Span},
 };
 

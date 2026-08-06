@@ -5,12 +5,12 @@
 use phf::phf_map;
 
 use crate::{
+  document::{HirBuilder, HirNode},
   frontend::{
     evaluator::EvalError,
     span_ext::ToSourceSpan,
     syntax::{ParseMode, ast::EnvironmentView},
   },
-  model::{HirBuilder, HirNode},
 };
 
 pub(crate) mod body_scan;
