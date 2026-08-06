@@ -25,24 +25,11 @@ pub(crate) mod shaper;
 mod system;
 mod validate_font;
 
-// 旧 font crate の公開 API 保持のための再エクスポート。`crate::font` root 経由の利用者が現状なく
-// （`FontFaceConfigs` は `FontResources::face_configs()` の戻り値型として型推論経由でのみ使われ、
-// 呼び出し側がこの名前を明示参照することがない）、通常ビルドでは未使用に見えるため、この
-// `pub use` にだけ抑制を付ける（#307 Task 7、API 面の維持のため再エクスポート自体は残す）。
-#[allow(unused_imports)]
-pub use face_config::{FontFaceConfig, FontFaceConfigs, VariationAxisConfig, build_face_configs};
+// `face_config` / `validate_font` の型は `FontResources` のフィールド型・`FontSystemError` の
+// 内部型として生きているが、`crate::font` root から名指しする消費者はいないので再エクスポート
+// しない（必要になったらここに足す）。
 pub use glyph_run::{Glyph, GlyphRun};
-// `FontResources` / `FontSystem` は `crate::build_pdf` 等が `crate::font::` 経由で参照するが、
-// `FontSystemError` は crate::font root 経由の利用者が現状ない（`?` で miette::Report に変換される
-// 経路のみで、呼び出し側が型名を明示することがない）ため、この `pub use` にだけ抑制を付ける
-// （#307 Task 7）。
-#[allow(unused_imports)]
-pub use system::{FontResources, FontSystem, FontSystemError};
-// `crate::font` root 経由の利用者が現状ない（検証エラーは `FontSystemError::Validation` の
-// `transparent` 委譲を介して miette::Report 化されるのみ）ため、通常ビルドでは未使用に見える。
-// この `pub use` にだけ抑制を付ける（#307 Task 7、API 面の維持のため再エクスポート自体は残す）。
-#[allow(unused_imports)]
-pub use validate_font::{FontValidationError, FontValidationErrors, MultipleFontValidationErrors};
+pub use system::{FontResources, FontSystem};
 
 /// フォントの読み込み・解析エラー。
 #[derive(Debug, Error, Diagnostic)]

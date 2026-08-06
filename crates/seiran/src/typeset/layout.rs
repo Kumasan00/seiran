@@ -16,6 +16,6 @@ pub use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
 };
 pub use table_box::{
-  CellPlacement, TableBox, TableCellBox, TableRowBox, collect_row_links, layout_row_cells, max_font_size_in_items,
+  TableBox, TableCellBox, TableRowBox, collect_row_links, layout_row_cells, max_font_size_in_items,
   measure_items_width, resolve_column_widths, table_row_height,
 };

@@ -16,12 +16,5 @@ mod style;
 pub(crate) mod test_fixtures;
 
 pub(crate) use generate::{CitationFormatError, GeneratedCitations, generate_citations};
-// 旧 citation crate の公開 API 保持のための re-export。`Date`/`DateCirca`/`DatePart`/`DateSeason`/
-// `Name`/`NumberOrString`/`ReadReferencesError`/`ReferenceType` は crate::citation の外からまだ
-// 消費されていない（`Reference`/`References`/`read_references` のみ build_pdf 側から使われる）。
-#[allow(unused_imports)]
-pub use references::{
-  Date, DateCirca, DatePart, DateSeason, Name, NumberOrString, ReadReferencesError, Reference, ReferenceType,
-  References, read_references,
-};
+pub use references::{Reference, References, read_references};
 pub(crate) use style::{CitationStyleError, load_citation_style};

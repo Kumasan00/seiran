@@ -14,31 +14,18 @@ pub use block::{
   IndexEntryInput, IndexPageRef, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput,
   layout_running_content, sort_index_entries,
 };
-// `GreedyBreaker` / `LineBreaker` は旧 typeset crate の公開 API 保持のための再エクスポートで、
-// 現状 seiran 内には crate::typeset root 経由の利用者がいない（LineBreaker は break_pages 内部が
-// `super::break_lines::LineBreaker` で直接参照、GreedyBreaker は breaking 配下のテストが個別 import
-// する）。API 面は維持しつつ、この再エクスポート自体の unused_imports のみ抑制する。
-#[allow(unused_imports)]
-pub use breaking::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, PageGeometry};
-// `CellPlacement` / `LineFootnote` / `LineIndexEntry` / `LineLink` / `MathRowNumber` / `TableBox` は
-// 同様に旧 typeset crate の公開 API 保持のための再エクスポートで、crate::typeset root 経由の
-// 利用者は現状なし（内部の他 module からは個別 import されている）。
+pub use breaking::{KnuthPlassBreaker, PageGeometry};
+// `HBox` / `Line` / `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` /
+// `measure_items_width` を facade に置いているのは、`build_pdf` 配下の `#[cfg(test)] mod tests`
+// が組版済みページを組み立てるのにこれらを名指しするため。`layout` は `typeset` 非公開の
+// 子 module なので、facade を通す以外に crate 内から届く経路がない。
 #[allow(unused_imports)]
 pub use layout::{
-  Block, CellPlacement, HBox, HBoxContent, HItem, Line, LineFootnote, LineIndexEntry, LineLink, MathRowNumber, Page,
-  PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber,
-  PlacedTableRow, PositionedBox, TableBox, TableCellBox, TableRowBox, layout_row_cells, max_font_size_in_items,
-  measure_items_width,
+  Block, HBox, HBoxContent, HItem, Line, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem,
+  PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableRowBox,
+  layout_row_cells, max_font_size_in_items, measure_items_width,
 };
-// `LayoutNode` / `LoweringContext` / `MathBlockRow` / `TableCellLayout` / `TableLayout` /
-// `TableRowLayout` / `TextStyle` / `lower_sources_with_headings` は本 module 直下の
-// `#[cfg(test)] mod tests`（旧 typeset crate の統合スモークテスト）でのみ使われ、`cfg(test)` を
-// 有効化しない通常ビルドでは未使用に見える。API 面の維持のため再エクスポート自体は残す。
-#[allow(unused_imports)]
-pub use lowering::{
-  DocumentContent, HeadingRecord, LayoutNode, LoweringContext, MathBlockRow, TableCellLayout, TableLayout,
-  TableRowLayout, TextStyle, lower_sources_with_headings, per_page_footnote_numbers,
-};
+pub use lowering::{DocumentContent, HeadingRecord, per_page_footnote_numbers};
 pub use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
   layout_front_matter,
@@ -52,7 +39,7 @@ pub use pipeline::{
 mod tests {
   use std::path::PathBuf;
 
-  use super::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::lowering::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{config::Style, frontend::parse_source, model::SourceId};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
