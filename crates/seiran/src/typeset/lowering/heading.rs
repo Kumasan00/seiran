@@ -20,12 +20,16 @@ pub(super) fn title_style(ctx: &LoweringContext, level: HeadingLevel) -> TextSty
   };
 }
 
-/// 見出しをレイアウトノードに変換する（`title` は lowering 済みのタイトル）
+/// 見出しをレイアウトノードに変換する
+///
+/// `title` は「呼ぶとタイトルを lower して返すクロージャ」。`format` に `{title}` が現れた
+/// ときだけ、現れた回数ぶん呼ばれる（タイトル中の `\footnote` が採番だけ消費する事故を防ぐ。
+/// 詳細は [`expand_template`] の doc コメント）。
 pub(super) fn lower_heading(
   ctx: &LoweringContext,
   level: HeadingLevel,
   number: &str,
-  title: &[LayoutNode],
+  title: impl FnMut() -> Vec<LayoutNode>,
   label: Option<LabelId>,
   key: HeadingKey,
 ) -> Vec<LayoutNode> {
@@ -101,7 +105,7 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
     // Act
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", &title, None, HeadingKey::new(0));
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "4.7", || return title.clone(), None, HeadingKey::new(0));
 
     // Assert
     let children = heading_children(&nodes);
@@ -142,8 +146,14 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
-    let nodes =
-      lower_heading(&ctx, HeadingLevel::Section, "1", &title, Some(LabelId::new("sec:intro")), HeadingKey::new(3));
+    let nodes = lower_heading(
+      &ctx,
+      HeadingLevel::Section,
+      "1",
+      || return title.clone(),
+      Some(LabelId::new("sec:intro")),
+      HeadingKey::new(3),
+    );
 
     // Assert
     let anchor = nodes.iter().find_map(|n| match n {
@@ -170,7 +180,7 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &title, None, HeadingKey::new(0));
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
 
     // Assert
     let vbox_idx = nodes.iter().position(|n| matches!(n, LayoutNode::VBox { .. })).unwrap();
@@ -188,11 +198,53 @@ mod tests {
     let title = plain_title(&ctx, HeadingLevel::Section, "Intro");
 
     // Act
-    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", &title, None, HeadingKey::new(0));
+    let nodes = lower_heading(&ctx, HeadingLevel::Section, "1", || return title.clone(), None, HeadingKey::new(0));
 
     // Assert
     assert!(nodes.iter().any(|n| matches!(n, LayoutNode::PageBreak)), "強制改ページが出るはず: {nodes:?}");
     assert!(!nodes.iter().any(|n| matches!(n, LayoutNode::KeepWithNext)), "KeepWithNext は出ない: {nodes:?}");
+  }
+
+  /// レイアウトノード列の最上位から脚注の (表示番号, 通し index) を文書順に集める
+  fn footnotes(nodes: &[LayoutNode]) -> Vec<(u32, u32)> {
+    return nodes
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Footnote { number, index, .. } => return Some((*number, *index)),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn heading_format_without_title_placeholder_does_not_consume_footnote_number() {
+    // Arrange — `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
+    let mut style = ReadStyle::default();
+    style.heading[HeadingLevel::Section].format = "{number}".to_string();
+
+    // Act
+    let nodes = lower(
+      &style,
+      &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"),
+      &NodeMap::default(),
+      &[],
+    );
+
+    // Assert — タイトルを lower しないので、本文の脚注が 1 番のままになる
+    assert_eq!(footnotes(&nodes), vec![(1, 0)], "{nodes:?}");
+  }
+
+  #[test]
+  fn heading_format_with_two_title_placeholders_lowers_title_twice() {
+    // Arrange — `{title}` を 2 回含むフォーマット
+    let mut style = ReadStyle::default();
+    style.heading[HeadingLevel::Section].format = "{title} / {title}".to_string();
+
+    // Act
+    let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"), &NodeMap::default(), &[]);
+
+    // Assert — 出現ごとに lower し直すので、マーカーと本体が対になった別々の脚注が 2 個出る
+    assert_eq!(footnotes(heading_children(&nodes)), vec![(1, 0), (2, 1)], "{nodes:?}");
   }
 
   #[test]

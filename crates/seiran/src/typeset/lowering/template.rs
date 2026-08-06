@@ -4,12 +4,22 @@ use super::layout_node::{LayoutNode, TextStyle, merge_adjacent_text};
 
 /// `{number}` / `{title}` / `{of}` プレースホルダを持つテンプレートを `LayoutNode` 列に展開する
 ///
-/// `title` は lowering 済み、`of` は表示文字列化済みで受け取る（テンプレート展開自体は事実も
-/// 可変状態も必要としない純粋な合成なので、`LoweringState` を取らない）。
+/// `of` は表示文字列化済みで受け取り、`title` は「呼び出したときに lowering 済みタイトルを返す
+/// クロージャ」で受け取る（テンプレート展開自体は事実も可変状態も必要としないので、
+/// `LoweringContext` / `LoweringState` は取らずクロージャの中に閉じ込める）。
+///
+/// `title` を値ではなくクロージャにしているのは、タイトルの lowering に副作用（`\footnote` の
+/// 通し index の払い出し）があるためで、`{title}` プレースホルダの出現回数ぶんだけ、出現した
+/// ときにだけ呼ぶ。すなわち:
+///
+/// - `{title}` を含まないテンプレート（例 `"図 {number}"`）ではタイトルを一度も lower しない。
+///   捨てるだけのノードを作って脚注 index だけ消費し、以降の脚注番号をずらす事故を防ぐ。
+/// - `{title}` を 2 回含むテンプレートでは 2 回 lower する。タイトル中の `\footnote` は
+///   マーカーと本体が対になった別々の脚注として 2 個出る（clone して同じ index を共有させない）。
 pub(super) fn expand_template(
   template: &str,
   number: &str,
-  title: &[LayoutNode],
+  mut title: impl FnMut() -> Vec<LayoutNode>,
   of: Option<&str>,
   base_style: TextStyle,
 ) -> Vec<LayoutNode> {
@@ -22,7 +32,7 @@ pub(super) fn expand_template(
         "number" => literal.push_str(number),
         "title" => {
           flush_literal(&mut nodes, &mut literal, base_style);
-          nodes.extend(title.iter().cloned());
+          nodes.extend(title());
         },
         "of" => {
           if let Some(display) = of {
@@ -72,7 +82,7 @@ mod tests {
 
   /// プレーンタイトルでテンプレ展開するヘルパ
   fn expand_plain(template: &str, number: &str, title_text: &str) -> Vec<LayoutNode> {
-    return expand_template(template, number, &plain_title(title_text), None, base_style());
+    return expand_template(template, number, || return plain_title(title_text), None, base_style());
   }
 
   #[test]
@@ -110,7 +120,7 @@ mod tests {
     ];
 
     // Act
-    let nodes = expand_template("{number} {title}", "1", &title, None, base_style());
+    let nodes = expand_template("{number} {title}", "1", || return title.clone(), None, base_style());
 
     // Assert
     assert_eq!(nodes.len(), 2, "{nodes:?}");
@@ -127,7 +137,7 @@ mod tests {
     }];
 
     // Act
-    let nodes = expand_template("{title}", "1", &title, None, base_style());
+    let nodes = expand_template("{title}", "1", || return title.clone(), None, base_style());
 
     // Assert
     assert_eq!(nodes.len(), 1, "{nodes:?}");
@@ -137,7 +147,7 @@ mod tests {
   #[test]
   fn of_placeholder_is_resolved_into_surrounding_literal() {
     // Act — `{of}` は表示文字列化済みで渡ってくる
-    let nodes = expand_template("Proof of {of}", "1", &[], Some("Theorem 1"), base_style());
+    let nodes = expand_template("Proof of {of}", "1", Vec::new, Some("Theorem 1"), base_style());
 
     // Assert
     assert_eq!(nodes.len(), 1, "リンクにはせず前後のリテラルと 1 つの Text に繋がる: {nodes:?}");
@@ -146,7 +156,7 @@ mod tests {
 
   #[test]
   fn of_placeholder_omitted_when_none() {
-    let nodes = expand_template("Proof{of}", "1", &[], None, base_style());
+    let nodes = expand_template("Proof{of}", "1", Vec::new, None, base_style());
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "Proof"), "{nodes:?}");
@@ -158,5 +168,48 @@ mod tests {
 
     assert_eq!(nodes.len(), 1, "{nodes:?}");
     assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "No.7"));
+  }
+
+  #[test]
+  fn title_closure_is_not_called_without_title_placeholder() {
+    // Arrange — タイトルの lowering には副作用があるので、出現しないなら呼んではならない
+    let mut calls = 0_u32;
+
+    // Act
+    let nodes = expand_template(
+      "No.{number}",
+      "7",
+      || {
+        calls += 1;
+        return plain_title("Ignored");
+      },
+      None,
+      base_style(),
+    );
+
+    // Assert
+    assert_eq!(calls, 0, "{nodes:?}");
+  }
+
+  #[test]
+  fn title_closure_is_called_once_per_placeholder_occurrence() {
+    // Arrange
+    let mut calls = 0_u32;
+
+    // Act
+    let nodes = expand_template(
+      "{title} / {title}",
+      "7",
+      || {
+        calls += 1;
+        return plain_title(&format!("T{calls}"));
+      },
+      None,
+      base_style(),
+    );
+
+    // Assert — 2 回とも別々に lower される（clone で同じノードを 2 つ置くのではない）
+    assert_eq!(calls, 2);
+    assert!(matches!(&nodes[0], LayoutNode::Text(t, _) if t == "T1 / T2"), "{nodes:?}");
   }
 }

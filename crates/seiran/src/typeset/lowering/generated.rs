@@ -32,9 +32,16 @@ pub(super) fn lower_bibliography(
         let key = HeadingKey::new(heading_index);
         heading_index += 1;
         let style = title_style(ctx, *level);
-        let title_nodes = lower_generated_inlines(ctx, title, style);
-        // 書誌の見出しは無採番（`citation::render` が `numbered: false` で合成する）なので番号は空。
-        layout.extend(heading::lower_heading(ctx, *level, "", &title_nodes, None, key));
+        // 生成物の lowering には副作用がないので、遅延させても結果は変わらない。
+        // 書誌の見出しは無採番（`citation::render` が合成する見出しに番号は無い）なので番号は空。
+        layout.extend(heading::lower_heading(
+          ctx,
+          *level,
+          "",
+          || return lower_generated_inlines(ctx, title, style),
+          None,
+          key,
+        ));
         headings.push(HeadingRecord {
           index: key.index(),
           level: *level,

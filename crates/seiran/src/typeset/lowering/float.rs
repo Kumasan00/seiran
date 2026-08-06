@@ -12,6 +12,10 @@ use crate::{
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
+///
+/// キャプション本文の lowering はクロージャで遅延させ、`format` が `{title}` を含むときだけ
+/// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
+/// 防ぐため。詳細は [`expand_template`] の doc コメント）。
 pub(super) fn build_caption(
   ctx: &LoweringContext,
   caption_style: &CaptionStyle,
@@ -24,8 +28,13 @@ pub(super) fn build_caption(
     font_kind: FontKind::Serif,
     color: None,
   };
-  let title = lower_inlines(ctx, inlines, base_style, state);
-  return expand_template(&caption_style.format, number, &title, None, base_style);
+  return expand_template(
+    &caption_style.format,
+    number,
+    || return lower_inlines(ctx, inlines, base_style, state),
+    None,
+    base_style,
+  );
 }
 
 /// フロートの余白の指定
@@ -255,6 +264,33 @@ mod tests {
     assert_eq!(caption.0, "Fig 1.1: Overview");
     assert_eq!(caption.1.font_size, Length::pt(9.0));
     assert_eq!(caption.1.font_kind, FontKind::Serif);
+  }
+
+  #[test]
+  fn caption_format_without_title_placeholder_does_not_consume_footnote_number() {
+    // Arrange — `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
+    let mut style = ReadStyle::default();
+    style.figure.caption = CaptionStyle {
+      format: "図 {number}".to_string(),
+      font_size: Length::pt(9.0),
+    };
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview\\footnote{in caption}}\n\\end{figure}\n\n\
+       body\\footnote{in body}\n",
+    );
+
+    // Assert — キャプション本文を lower しないので、本文の脚注が 1 番のままになる
+    let numbers: Vec<u32> = nodes
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Footnote { number, .. } => return Some(*number),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(numbers, vec![1], "{nodes:?}");
   }
 
   #[test]

@@ -81,12 +81,13 @@ fn build_heading(
   let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
   // サブタイトルはプレーンテキスト（`[title="..."]`）なので、テンプレート展開へ渡す前に
-  // 基底スタイルの `Text` 1 個へ落とす。
-  let title_nodes: Vec<LayoutNode> =
-    title.map(|t| return vec![LayoutNode::Text(t.to_string(), base_style)]).unwrap_or_default();
+  // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
+  let make_title = || {
+    return title.map(|t| return vec![LayoutNode::Text(t.to_string(), base_style)]).unwrap_or_default();
+  };
   let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 
-  let children = expand_template(&template, number.unwrap_or(""), &title_nodes, of_display.as_deref(), base_style);
+  let children = expand_template(&template, number.unwrap_or(""), make_title, of_display.as_deref(), base_style);
 
   return LayoutNode::VBox {
     children,

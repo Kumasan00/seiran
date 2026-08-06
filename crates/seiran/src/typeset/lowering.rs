@@ -375,8 +375,16 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &HirNode, state: &mut Lowerin
       let plain = hir_inlines_to_plain_text(title, ctx.style, &*state);
       state.record_heading_title(node.id, plain);
       let title_style = heading::title_style(ctx, *level);
-      let title_nodes = inline::lower_inlines(ctx, title, title_style, state);
-      return heading::lower_heading(ctx, *level, &number, &title_nodes, label, key);
+      // タイトルの lowering はクロージャで遅延させる。`heading.format` が `{title}` を含まない
+      // なら一度も呼ばれず、タイトル中の `\footnote` が通し index だけ消費して消える事故を防ぐ。
+      return heading::lower_heading(
+        ctx,
+        *level,
+        &number,
+        || return inline::lower_inlines(ctx, title, title_style, state),
+        label,
+        key,
+      );
     },
     HirNodeKind::Paragraph(inlines) => {
       return paragraph::lower_paragraph(ctx, inlines, state);
