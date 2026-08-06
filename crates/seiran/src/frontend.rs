@@ -86,16 +86,14 @@ pub fn parse_source(source: &str, source_id: crate::model::SourceId) -> Result<H
 #[allow(clippy::unwrap_used, clippy::too_many_lines)]
 mod tests {
   use super::{EvalError, ParseSourceError, parse_source};
-  use crate::model::{DocNode, FontKind, HeadingLevel, InlineNode, MathNode, MathStyle};
+  use crate::model::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathStyle};
 
-  /// ソースを評価して `Vec<DocNode>` を返すテストヘルパ
+  /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
-  fn evaluate_source(source: &str) -> Vec<DocNode> {
+  fn evaluate_source(source: &str) -> Vec<HirNode> {
     let hir = parse_source(source, crate::model::SourceId::new(0)).unwrap();
-    let document = crate::model::HirDocument::assemble(vec![hir]);
-    let group = document.groups().first().expect("1 ソース分のグループがあるはず");
-    return super::hir_group_to_doc_nodes(group, document.locations());
+    return hir.group.nodes;
   }
 
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
@@ -110,23 +108,80 @@ mod tests {
     }
   }
 
+  /// `NodeId` を無視して 2 つの HIR ブロック列が同じ構造かどうかを判定する
+  ///
+  /// インデント整形の有無で `NodeId` 割り当てが変わっても内容が一致することを確認するための
+  /// テスト専用ヘルパ（`HirNode` は `id` を含む `PartialEq` を持つため `assert_eq!` は使えない）。
+  /// 呼び出し元テストが実際に使う範囲（`List` / `Paragraph` / プレーンテキストの `Text`）だけに
+  /// 対応する。想定外の variant が現れたら、比較を諦めて `false` を返すのではなく
+  /// 「対応範囲外の入力が来た」ことが分かるよう panic する。
+  fn same_shape(a: &[HirNode], b: &[HirNode]) -> bool {
+    if a.len() != b.len() {
+      return false;
+    }
+    return a.iter().zip(b).all(|(x, y)| return same_node_shape(&x.kind, &y.kind));
+  }
+
+  /// [`same_shape`] のブロックノード 1 個分の比較
+  fn same_node_shape(a: &HirNodeKind, b: &HirNodeKind) -> bool {
+    return match (a, b) {
+      (
+        HirNodeKind::List {
+          ordered: o1,
+          items: i1,
+          start: s1,
+          item_gap: g1,
+        },
+        HirNodeKind::List {
+          ordered: o2,
+          items: i2,
+          start: s2,
+          item_gap: g2,
+        },
+      ) => {
+        o1 == o2
+          && s1 == s2
+          && g1 == g2
+          && i1.len() == i2.len()
+          && i1.iter().zip(i2).all(|(x, y)| {
+            return x.marker == y.marker && x.item_gap == y.item_gap && same_shape(&x.content, &y.content);
+          })
+      },
+      (HirNodeKind::Paragraph(p1), HirNodeKind::Paragraph(p2)) => same_inlines_shape(p1, p2),
+      _ => panic!("same_node_shape は List / Paragraph 以外に未対応: {a:?} / {b:?}"),
+    };
+  }
+
+  /// [`same_shape`] のインライン列比較（プレーンテキストのみ対応）
+  fn same_inlines_shape(a: &[HirInline], b: &[HirInline]) -> bool {
+    if a.len() != b.len() {
+      return false;
+    }
+    return a.iter().zip(b).all(|(x, y)| {
+      return match (&x.kind, &y.kind) {
+        (HirInlineKind::Text(s1), HirInlineKind::Text(s2)) => s1 == s2,
+        _ => panic!("same_inlines_shape はプレーンテキスト以外に未対応: {x:?} / {y:?}"),
+      };
+    });
+  }
+
   #[test]
   fn evaluate_plain_text_creates_paragraph() {
     let result = evaluate_source("Hello World");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Paragraph(inlines) => {
+    match &result[0].kind {
+      HirNodeKind::Paragraph(inlines) => {
         assert_eq!(inlines.len(), 3);
-        match &inlines[0] {
-          InlineNode::Text(text) => assert_eq!(text, "Hello"),
+        match &inlines[0].kind {
+          HirInlineKind::Text(text) => assert_eq!(text, "Hello"),
           _ => panic!("Text が期待されます"),
         }
-        match &inlines[1] {
-          InlineNode::Text(text) => assert_eq!(text, " "),
+        match &inlines[1].kind {
+          HirInlineKind::Text(text) => assert_eq!(text, " "),
           _ => panic!("Text が期待されます"),
         }
-        match &inlines[2] {
-          InlineNode::Text(text) => assert_eq!(text, "World"),
+        match &inlines[2].kind {
+          HirInlineKind::Text(text) => assert_eq!(text, "World"),
           _ => panic!("Text が期待されます"),
         }
       },
@@ -141,12 +196,12 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Paragraph(inlines) => {
+    match &result[0].kind {
+      HirNodeKind::Paragraph(inlines) => {
         let joined: String = inlines
           .iter()
           .filter_map(|n| {
-            if let InlineNode::Text(t) = n {
+            if let HirInlineKind::Text(t) = &n.kind {
               return Some(t.as_str());
             }
             return None;
@@ -165,11 +220,11 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
     let math = inlines.iter().find_map(|n| {
-      if let InlineNode::InlineMath(m) = n {
+      if let HirInlineKind::InlineMath(m) = &n.kind {
         return Some(m);
       }
       return None;
@@ -178,7 +233,7 @@ mod tests {
     let joined: String = math
       .iter()
       .filter_map(|n| {
-        if let MathNode::Text(t) = n {
+        if let HirMathKind::Text(t) = &n.kind {
           return Some(t.as_str());
         }
         return None;
@@ -191,26 +246,20 @@ mod tests {
   fn evaluate_paragraph_break_creates_two_paragraphs() {
     let result = evaluate_source("First\n\nSecond");
     assert_eq!(result.len(), 2);
-    assert!(matches!(&result[0], DocNode::Paragraph(_)));
-    assert!(matches!(&result[1], DocNode::Paragraph(_)));
+    assert!(matches!(&result[0].kind, HirNodeKind::Paragraph(_)));
+    assert!(matches!(&result[1].kind, HirNodeKind::Paragraph(_)));
   }
 
   #[test]
   fn evaluate_section_command_creates_heading() {
     let result = evaluate_source("\\section{Introduction}");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Heading {
-        level,
-        numbered,
-        title,
-        ..
-      } => {
+    match &result[0].kind {
+      HirNodeKind::Heading { level, title, .. } => {
         assert_eq!(*level, HeadingLevel::Section);
-        assert!(*numbered);
         assert_eq!(title.len(), 1);
-        match &title[0] {
-          InlineNode::Text(text) => assert_eq!(text, "Introduction"),
+        match &title[0].kind {
+          HirInlineKind::Text(text) => assert_eq!(text, "Introduction"),
           _ => panic!("Text が期待されます"),
         }
       },
@@ -222,15 +271,15 @@ mod tests {
   fn evaluate_section_with_label_then_ref_is_structured_without_resolving() {
     let result = evaluate_source(r"\chapter{X}\section[label=sec:intro]{T}See \ref{sec:intro}.");
     assert_eq!(result.len(), 3);
-    let DocNode::Heading { label, .. } = &result[1] else {
+    let HirNodeKind::Heading { label, .. } = &result[1].kind else {
       panic!("Heading が期待されます: {:?}", result[1]);
     };
     assert_eq!(label.as_deref(), Some("sec:intro"));
-    let DocNode::Paragraph(inlines) = &result[2] else {
+    let HirNodeKind::Paragraph(inlines) = &result[2].kind else {
       panic!("Paragraph が期待されます: {:?}", result[2]);
     };
     assert!(
-      inlines.iter().any(|n| matches!(n, InlineNode::Ref { label, .. } if label == "sec:intro")),
+      inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Ref { label } if label == "sec:intro")),
       "Ref ノードが含まれるべき: {inlines:?}"
     );
   }
@@ -239,7 +288,8 @@ mod tests {
   fn evaluate_equation_with_label_is_structured_without_resolving() {
     let source = r"\chapter{C}\begin{equation}[label=eq:p]a\end{equation}See \ref{eq:p}.";
     let result = evaluate_source(source);
-    let DocNode::MathBlock { rows, .. } = result.iter().find(|n| matches!(n, DocNode::MathBlock { .. })).unwrap()
+    let HirNodeKind::MathBlock { rows, .. } =
+      &result.iter().find(|n| matches!(&n.kind, HirNodeKind::MathBlock { .. })).unwrap().kind
     else {
       unreachable!();
     };
@@ -248,14 +298,14 @@ mod tests {
     let para = result
       .iter()
       .find_map(|n| {
-        if let DocNode::Paragraph(i) = n {
+        if let HirNodeKind::Paragraph(i) = &n.kind {
           return Some(i);
         }
         return None;
       })
       .expect("Paragraph が含まれるべき");
     assert!(
-      para.iter().any(|n| matches!(n, InlineNode::Ref { label, .. } if label == "eq:p")),
+      para.iter().any(|n| matches!(&n.kind, HirInlineKind::Ref { label } if label == "eq:p")),
       "Ref ノードが含まれるべき: {para:?}"
     );
   }
@@ -267,13 +317,13 @@ mod tests {
     let result = evaluate_source(r"See \cite{rika}.");
 
     // Assert
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
     let cite_keys = inlines
       .iter()
-      .find_map(|node| match node {
-        InlineNode::Cite { keys, .. } => return Some(keys.clone()),
+      .find_map(|node| match &node.kind {
+        HirInlineKind::Cite { keys } => return Some(keys.clone()),
         _ => return None,
       })
       .expect("Cite ノードが含まれるべき");
@@ -286,13 +336,10 @@ mod tests {
     let result = evaluate_source(r"\cite{a, b}");
 
     // Assert
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::Cite {
-      keys: cite_keys, ..
-    } = &inlines[0]
-    else {
+    let HirInlineKind::Cite { keys: cite_keys } = &inlines[0].kind else {
       panic!("Cite が期待されます");
     };
     assert_eq!(cite_keys, &["a".to_string(), "b".to_string()]);
@@ -302,22 +349,22 @@ mod tests {
   fn evaluate_text_then_heading_flushes_paragraph() {
     let result = evaluate_source("Some text\\section{Title}");
     assert_eq!(result.len(), 2);
-    assert!(matches!(&result[0], DocNode::Paragraph(_)));
-    assert!(matches!(&result[1], DocNode::Heading { .. }));
+    assert!(matches!(&result[0].kind, HirNodeKind::Paragraph(_)));
+    assert!(matches!(&result[1].kind, HirNodeKind::Heading { .. }));
   }
 
   #[test]
   fn evaluate_inline_command_stays_in_paragraph() {
     let result = evaluate_source("f(x) = \\alpha");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Paragraph(inlines) => {
+    match &result[0].kind {
+      HirNodeKind::Paragraph(inlines) => {
         assert_eq!(inlines.len(), 5);
-        assert!(matches!(&inlines[0], InlineNode::Text(_)));
-        assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
-        assert!(matches!(&inlines[2], InlineNode::Text(_)));
-        assert!(matches!(&inlines[3], InlineNode::Text(t) if t == " "));
-        assert!(matches!(&inlines[4], InlineNode::Symbol('α')));
+        assert!(matches!(&inlines[0].kind, HirInlineKind::Text(_)));
+        assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));
+        assert!(matches!(&inlines[2].kind, HirInlineKind::Text(_)));
+        assert!(matches!(&inlines[3].kind, HirInlineKind::Text(t) if t == " "));
+        assert!(matches!(&inlines[4].kind, HirInlineKind::Symbol('α')));
       },
       _ => panic!("Paragraph が期待されます"),
     }
@@ -330,10 +377,10 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Paragraph(inlines) => {
+    match &result[0].kind {
+      HirNodeKind::Paragraph(inlines) => {
         assert!(
-          inlines.iter().any(|n| matches!(n, InlineNode::Symbol('≥'))),
+          inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Symbol('≥'))),
           "≥ の Symbol ノードが含まれるはず: {inlines:?}"
         );
       },
@@ -348,15 +395,15 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::InlineMath(math) = &inlines[0] else {
+    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
     assert!(
-      math.iter().any(|n| matches!(n, MathNode::Symbol('≤'))),
-      "≤ の MathNode::Symbol が含まれるはず: {math:?}"
+      math.iter().any(|n| matches!(&n.kind, HirMathKind::Symbol('≤'))),
+      "≤ の HirMathKind::Symbol が含まれるはず: {math:?}"
     );
   }
 
@@ -370,12 +417,12 @@ mod tests {
   fn evaluate_line_break_in_paragraph() {
     let result = evaluate_source("line1\\\\line2");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::Paragraph(inlines) => {
+    match &result[0].kind {
+      HirNodeKind::Paragraph(inlines) => {
         assert_eq!(inlines.len(), 3);
-        assert!(matches!(&inlines[0], InlineNode::Text(_)));
-        assert!(matches!(&inlines[1], InlineNode::LineBreak));
-        assert!(matches!(&inlines[2], InlineNode::Text(_)));
+        assert!(matches!(&inlines[0].kind, HirInlineKind::Text(_)));
+        assert!(matches!(&inlines[1].kind, HirInlineKind::LineBreak));
+        assert!(matches!(&inlines[2].kind, HirInlineKind::Text(_)));
       },
       _ => panic!("Paragraph が期待されます"),
     }
@@ -385,13 +432,13 @@ mod tests {
   fn evaluate_inline_math_subscript() {
     let result = evaluate_source("$x_i$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
-        assert!(matches!(&math[0], MathNode::Text(t) if t == "x"));
-        assert!(matches!(&math[1], MathNode::Subscript(_)));
-        if let MathNode::Subscript(inner) = &math[1] {
-          assert!(matches!(inner.as_ref(), MathNode::Text(t) if t == "i"));
+        assert!(matches!(&math[0].kind, HirMathKind::Text(t) if t == "x"));
+        assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
+        if let HirMathKind::Subscript(inner) = &math[1].kind {
+          assert!(matches!(&inner.kind, HirMathKind::Text(t) if t == "i"));
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -405,12 +452,12 @@ mod tests {
   fn evaluate_inline_math_superscript() {
     let result = evaluate_source("$x^2$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 2);
-        assert!(matches!(&math[1], MathNode::Superscript(_)));
-        if let MathNode::Superscript(inner) = &math[1] {
-          assert!(matches!(inner.as_ref(), MathNode::Text(t) if t == "2"));
+        assert!(matches!(&math[1].kind, HirMathKind::Superscript(_)));
+        if let HirMathKind::Superscript(inner) = &math[1].kind {
+          assert!(matches!(&inner.kind, HirMathKind::Text(t) if t == "2"));
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -424,9 +471,9 @@ mod tests {
   fn evaluate_inline_math_subscript_with_group() {
     let result = evaluate_source("$x_{ij}$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
-        assert!(matches!(&math[1], MathNode::Subscript(inner) if matches!(inner.as_ref(), MathNode::Group(_))));
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
+        assert!(matches!(&math[1].kind, HirMathKind::Subscript(inner) if matches!(&inner.kind, HirMathKind::Group(_))));
       } else {
         panic!("InlineMath が期待されます");
       }
@@ -439,12 +486,12 @@ mod tests {
   fn evaluate_inline_math_subscript_and_superscript_combined() {
     let result = evaluate_source("$a_i^2$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 3);
-        assert!(matches!(&math[0], MathNode::Text(_)));
-        assert!(matches!(&math[1], MathNode::Subscript(_)));
-        assert!(matches!(&math[2], MathNode::Superscript(_)));
+        assert!(matches!(&math[0].kind, HirMathKind::Text(_)));
+        assert!(matches!(&math[1].kind, HirMathKind::Subscript(_)));
+        assert!(matches!(&math[2].kind, HirMathKind::Superscript(_)));
       } else {
         panic!("InlineMath が期待されます");
       }
@@ -462,19 +509,19 @@ mod tests {
 
     // Assert
     assert_eq!(result.len(), 1);
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::InlineMath(math) = &inlines[0] else {
+    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
     assert_eq!(math.len(), 1);
-    let MathNode::Styled { style, body } = &math[0] else {
+    let HirMathKind::Styled { style, body } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*style, MathStyle::Bold);
     assert_eq!(body.len(), 1);
-    assert!(matches!(&body[0], MathNode::Text(t) if t == "x"));
+    assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "x"));
   }
 
   #[test]
@@ -485,17 +532,17 @@ mod tests {
     let result = evaluate_source(r"$\mathsansbolditalic{\alpha}$");
 
     // Assert
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::InlineMath(math) = &inlines[0] else {
+    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
-    let MathNode::Styled { style, body } = &math[0] else {
+    let HirMathKind::Styled { style, body } = &math[0].kind else {
       panic!("Styled が期待されます: {:?}", math[0]);
     };
     assert_eq!(*style, MathStyle::SansBoldItalic);
-    assert!(matches!(&body[0], MathNode::Symbol('α')));
+    assert!(matches!(&body[0].kind, HirMathKind::Symbol('α')));
   }
 
   #[test]
@@ -515,17 +562,17 @@ mod tests {
       let result = evaluate_source(&format!(r"$\{name}{{R}}$"));
 
       // Assert
-      let DocNode::Paragraph(inlines) = &result[0] else {
+      let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
         panic!("Paragraph が期待されます: {name}");
       };
-      let InlineNode::InlineMath(math) = &inlines[0] else {
+      let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
         panic!("InlineMath が期待されます: {name}");
       };
-      let MathNode::Styled { style, body } = &math[0] else {
+      let HirMathKind::Styled { style, body } = &math[0].kind else {
         panic!("Styled が期待されます ({name}): {:?}", math[0]);
       };
       assert_eq!(*style, expected, "{name} は {expected:?} に解決されるべき");
-      assert!(matches!(&body[0], MathNode::Text(t) if t == "R"), "body は Text(\"R\"): {name}");
+      assert!(matches!(&body[0].kind, HirMathKind::Text(t) if t == "R"), "body は Text(\"R\"): {name}");
     }
   }
 
@@ -555,40 +602,40 @@ mod tests {
     let result = evaluate_source(r"$\mathbold{\mathitalic{x}}$");
 
     // Assert
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::InlineMath(math) = &inlines[0] else {
+    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
-    let MathNode::Styled {
+    let HirMathKind::Styled {
       style: outer,
       body: outer_body,
-    } = &math[0]
+    } = &math[0].kind
     else {
       panic!("外側 Styled が期待されます");
     };
     assert_eq!(*outer, MathStyle::Bold);
-    let MathNode::Styled {
+    let HirMathKind::Styled {
       style: inner,
       body: inner_body,
-    } = &outer_body[0]
+    } = &outer_body[0].kind
     else {
       panic!("内側 Styled が期待されます: {:?}", outer_body[0]);
     };
     assert_eq!(*inner, MathStyle::Italic);
-    assert!(matches!(&inner_body[0], MathNode::Text(t) if t == "x"));
+    assert!(matches!(&inner_body[0].kind, HirMathKind::Text(t) if t == "x"));
   }
 
   #[test]
   fn evaluate_bold_creates_styled_in_paragraph() {
     let result = evaluate_source("Hello \\bold{World}");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       assert_eq!(inlines.len(), 3);
       assert!(matches!(
-        &inlines[2],
-        InlineNode::Styled {
+        &inlines[2].kind,
+        HirInlineKind::Styled {
           kind: FontKind::SerifBold,
           ..
         }
@@ -602,11 +649,11 @@ mod tests {
   fn evaluate_italic_creates_styled_in_paragraph() {
     let result = evaluate_source("\\italic{italic}");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
       assert_eq!(inlines.len(), 1);
       assert!(matches!(
-        &inlines[0],
-        InlineNode::Styled {
+        &inlines[0].kind,
+        HirInlineKind::Styled {
           kind: FontKind::SerifItalic,
           ..
         }
@@ -634,10 +681,10 @@ mod tests {
     ];
     for (name, expected) in cases {
       let result = evaluate_source(&format!("\\{name}{{x}}"));
-      let DocNode::Paragraph(inlines) = &result[0] else {
+      let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
         panic!("Paragraph が期待されます: \\{name}");
       };
-      let InlineNode::Styled { kind, .. } = &inlines[0] else {
+      let HirInlineKind::Styled { kind, .. } = &inlines[0].kind else {
         panic!("Styled が期待されます: \\{name} → {:?}", inlines[0]);
       };
       assert_eq!(*kind, expected, "\\{name} の FontKind");
@@ -647,19 +694,19 @@ mod tests {
   #[test]
   fn evaluate_nested_styled_keeps_inner_kind() {
     let result = evaluate_source(r"\bold{a\italic{x}}");
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::Styled {
+    let HirInlineKind::Styled {
       kind: FontKind::SerifBold,
       children,
-    } = &inlines[0]
+    } = &inlines[0].kind
     else {
       panic!("外側 Styled(SerifBold) が期待されます: {:?}", inlines[0]);
     };
     assert!(matches!(
-      &children[1],
-      InlineNode::Styled {
+      &children[1].kind,
+      HirInlineKind::Styled {
         kind: FontKind::SerifItalic,
         ..
       }
@@ -681,8 +728,8 @@ mod tests {
   fn evaluate_enumerate_creates_ordered_list() {
     let result = evaluate_source("\\begin{enumerate}\\item{First}\\item{Second}\\end{enumerate}");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::List { ordered, items, .. } => {
+    match &result[0].kind {
+      HirNodeKind::List { ordered, items, .. } => {
         assert!(ordered);
         assert_eq!(items.len(), 2);
       },
@@ -694,13 +741,13 @@ mod tests {
   fn evaluate_math_frac() {
     let result = evaluate_source("$\\frac{a}{b}$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        assert!(matches!(&math[0], MathNode::Frac { .. }));
-        if let MathNode::Frac { numer, denom } = &math[0] {
-          assert!(matches!(numer.as_ref(), MathNode::Text(t) if t == "a"));
-          assert!(matches!(denom.as_ref(), MathNode::Text(t) if t == "b"));
+        assert!(matches!(&math[0].kind, HirMathKind::Frac { .. }));
+        if let HirMathKind::Frac { numer, denom } = &math[0].kind {
+          assert!(matches!(&numer.kind, HirMathKind::Text(t) if t == "a"));
+          assert!(matches!(&denom.kind, HirMathKind::Text(t) if t == "b"));
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -714,12 +761,12 @@ mod tests {
   fn evaluate_math_sqrt() {
     let result = evaluate_source("$\\sqrt{x}$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        assert!(matches!(&math[0], MathNode::Sqrt { index: None, .. }));
-        if let MathNode::Sqrt { radicand, .. } = &math[0] {
-          assert!(matches!(radicand.as_ref(), MathNode::Text(t) if t == "x"));
+        assert!(matches!(&math[0].kind, HirMathKind::Sqrt { index: None, .. }));
+        if let HirMathKind::Sqrt { radicand, .. } = &math[0].kind {
+          assert!(matches!(&radicand.kind, HirMathKind::Text(t) if t == "x"));
         }
       } else {
         panic!("InlineMath が期待されます");
@@ -733,13 +780,13 @@ mod tests {
   fn evaluate_math_sqrt_with_index() {
     let result = evaluate_source("$\\sqrt[3]{x}$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        if let MathNode::Sqrt { index, radicand } = &math[0] {
+        if let HirMathKind::Sqrt { index, radicand } = &math[0].kind {
           assert!(index.is_some());
-          assert!(matches!(index.as_ref().unwrap().as_ref(), MathNode::Text(t) if t == "3"));
-          assert!(matches!(radicand.as_ref(), MathNode::Text(t) if t == "x"));
+          assert!(matches!(&index.as_ref().unwrap().kind, HirMathKind::Text(t) if t == "3"));
+          assert!(matches!(&radicand.kind, HirMathKind::Text(t) if t == "x"));
         } else {
           panic!("Sqrt が期待されます");
         }
@@ -755,10 +802,10 @@ mod tests {
   fn evaluate_math_symbol_command() {
     let result = evaluate_source("$\\alpha$");
     assert_eq!(result.len(), 1);
-    if let DocNode::Paragraph(inlines) = &result[0] {
-      if let InlineNode::InlineMath(math) = &inlines[0] {
+    if let HirNodeKind::Paragraph(inlines) = &result[0].kind {
+      if let HirInlineKind::InlineMath(math) = &inlines[0].kind {
         assert_eq!(math.len(), 1);
-        assert!(matches!(&math[0], MathNode::Symbol('α')));
+        assert!(matches!(&math[0].kind, HirMathKind::Symbol('α')));
       } else {
         panic!("InlineMath が期待されます");
       }
@@ -772,23 +819,23 @@ mod tests {
     let result = evaluate_source(r"\begin{equation}x^2\end{equation}");
 
     assert_eq!(result.len(), 1);
-    let DocNode::MathBlock { rows, .. } = &result[0] else {
+    let HirNodeKind::MathBlock { rows, .. } = &result[0].kind else {
       panic!("MathBlock が期待されます: {:?}", result[0]);
     };
     let body = &rows[0].cells[0];
 
-    let has_superscript = body.iter().any(|n| matches!(n, MathNode::Superscript(_)));
-    let has_text_x = body.iter().any(|n| matches!(n, MathNode::Text(t) if t == "x"));
+    let has_superscript = body.iter().any(|n| matches!(&n.kind, HirMathKind::Superscript(_)));
+    let has_text_x = body.iter().any(|n| matches!(&n.kind, HirMathKind::Text(t) if t == "x"));
     assert!(has_text_x, "Text(\"x\") が含まれるはず: {body:?}");
-    assert!(has_superscript, "MathSuperscript が含まれるはず: {body:?}");
+    assert!(has_superscript, "Superscript が含まれるはず: {body:?}");
   }
 
   #[test]
   fn evaluate_itemize_creates_unordered_list() {
     let result = evaluate_source("\\begin{itemize}\\item{A}\\item{B}\\end{itemize}");
     assert_eq!(result.len(), 1);
-    match &result[0] {
-      DocNode::List { ordered, items, .. } => {
+    match &result[0].kind {
+      HirNodeKind::List { ordered, items, .. } => {
         assert!(!ordered);
         assert_eq!(items.len(), 2);
       },
@@ -836,12 +883,12 @@ mod tests {
   fn evaluate_noindent_at_paragraph_start_prepends_marker() {
     let result = evaluate_source(r"\noindent Body");
     assert_eq!(result.len(), 1);
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
-    assert!(matches!(&inlines[0], InlineNode::NoIndent), "先頭は NoIndent マーカー: {inlines:?}");
+    assert!(matches!(&inlines[0].kind, HirInlineKind::NoIndent), "先頭は NoIndent マーカー: {inlines:?}");
     assert!(
-      inlines.iter().any(|n| matches!(n, InlineNode::Text(t) if t == "Body")),
+      inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::Text(t) if t == "Body")),
       "本文 Text は保持される: {inlines:?}"
     );
   }
@@ -850,20 +897,23 @@ mod tests {
   fn evaluate_noindent_after_paragraph_break_is_at_start() {
     let result = evaluate_source("First.\n\n\\noindent Second.");
     assert_eq!(result.len(), 2);
-    let DocNode::Paragraph(second) = &result[1] else {
+    let HirNodeKind::Paragraph(second) = &result[1].kind else {
       panic!("2 段落目は Paragraph: {result:?}");
     };
-    assert!(matches!(&second[0], InlineNode::NoIndent), "2 段落目の先頭は NoIndent: {second:?}");
+    assert!(matches!(&second[0].kind, HirInlineKind::NoIndent), "2 段落目の先頭は NoIndent: {second:?}");
   }
 
   #[test]
   fn evaluate_noindent_allows_leading_whitespace() {
     let result = evaluate_source("  \\noindent x");
     assert_eq!(result.len(), 1);
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
-    assert!(inlines.iter().any(|n| matches!(n, InlineNode::NoIndent)), "NoIndent マーカーを含む: {inlines:?}");
+    assert!(
+      inlines.iter().any(|n| matches!(&n.kind, HirInlineKind::NoIndent)),
+      "NoIndent マーカーを含む: {inlines:?}"
+    );
   }
 
   #[test]
@@ -899,13 +949,13 @@ mod tests {
   #[test]
   fn evaluate_underscore_in_heading_title_is_text() {
     let result = evaluate_source(r"\section{a_b}");
-    let DocNode::Heading { title, .. } = &result[0] else {
+    let HirNodeKind::Heading { title, .. } = &result[0].kind else {
       panic!("Heading が期待されます");
     };
     let joined: String = title
       .iter()
       .filter_map(|n| {
-        if let InlineNode::Text(t) = n {
+        if let HirInlineKind::Text(t) = &n.kind {
           return Some(t.as_str());
         }
         return None;
@@ -965,20 +1015,20 @@ mod tests {
   #[test]
   fn evaluate_math_frac_arg_structures_superscript() {
     let result = evaluate_source(r"$\frac{x^2}{y}$");
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
     };
-    let InlineNode::InlineMath(math) = &inlines[0] else {
+    let HirInlineKind::InlineMath(math) = &inlines[0].kind else {
       panic!("InlineMath が期待されます");
     };
-    let MathNode::Frac { numer, .. } = &math[0] else {
+    let HirMathKind::Frac { numer, .. } = &math[0].kind else {
       panic!("Frac が期待されます: {:?}", math[0]);
     };
-    let MathNode::Group(children) = numer.as_ref() else {
+    let HirMathKind::Group(children) = &numer.kind else {
       panic!("Group が期待されます: {numer:?}");
     };
     assert!(
-      children.iter().any(|n| matches!(n, MathNode::Superscript(_))),
+      children.iter().any(|n| matches!(&n.kind, HirMathKind::Superscript(_))),
       "分子に Superscript が含まれるべき: {children:?}"
     );
   }
@@ -1023,10 +1073,10 @@ mod tests {
   fn evaluate_duplicate_label_is_structured_without_error() {
     let result = evaluate_source(r"\section[label=sec:a]{One}\section[label=sec:a]{Two}");
     assert_eq!(result.len(), 2);
-    let DocNode::Heading { label: a, .. } = &result[0] else {
+    let HirNodeKind::Heading { label: a, .. } = &result[0].kind else {
       panic!("Heading が期待されます");
     };
-    let DocNode::Heading { label: b, .. } = &result[1] else {
+    let HirNodeKind::Heading { label: b, .. } = &result[1].kind else {
       panic!("Heading が期待されます");
     };
     assert_eq!(a.as_deref(), Some("sec:a"));
@@ -1036,7 +1086,8 @@ mod tests {
   #[test]
   fn evaluate_item_indented_nested_list_matches_packed_equivalent() {
     // issue #160 — \item{...} の内容を改行・インデントして書いても、詰めて 1 行で書いた場合と
-    // 完全に同じ Document IR になるべき（余分な空白・空段落が出ない）
+    // 完全に同じ Document IR になるべき（余分な空白・空段落が出ない）。ID 予約の穴の位置は
+    // 空白トークンの量に応じて変わるため、比較は NodeId を無視した構造比較（same_shape）で行う。
     let indented = evaluate_source(
       "\\begin{itemize}\n  \\item{1 段目の項目。マーカーは黒丸。\n    \\begin{itemize}\n      \
        \\item{2 段目の項目。}\n    \\end{itemize}\n  }\n\\end{itemize}",
@@ -1045,7 +1096,7 @@ mod tests {
       r"\begin{itemize}\item{1 段目の項目。マーカーは黒丸。\begin{itemize}\item{2 段目の項目。}\end{itemize}}\end{itemize}",
     );
 
-    assert_eq!(indented, packed, "インデント整形の有無で Document IR が一致するべき");
+    assert!(same_shape(&indented, &packed), "インデント整形の有無で HIR の構造が一致するべき");
   }
 
   #[test]
@@ -1053,36 +1104,36 @@ mod tests {
     // issue #160 — ネストした環境の直後、閉じ括弧までの空白のみの区間が空段落を生んではいけない
     let result = evaluate_source("\\begin{quote}\\begin{itemize}\\item{x}\\end{itemize}\n  \n\\end{quote}");
     assert_eq!(result.len(), 1);
-    let DocNode::Quote { body, .. } = &result[0] else {
+    let HirNodeKind::Quote { body, .. } = &result[0].kind else {
       panic!("Quote が期待されます: {result:?}");
     };
     assert_eq!(body.len(), 1, "空白のみの段落が生成されてはいけない: {body:?}");
-    assert!(matches!(&body[0], DocNode::List { .. }));
+    assert!(matches!(&body[0].kind, HirNodeKind::List { .. }));
   }
 
   #[test]
   fn evaluate_inter_word_space_is_preserved_after_paragraph_trim_fix() {
     // issue #160 の修正（段落先頭・末尾の空白トリム）が語間の意味のある空白まで壊さないことの回帰テスト
     let result = evaluate_source("a b");
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
     assert_eq!(inlines.len(), 3);
-    assert!(matches!(&inlines[0], InlineNode::Text(t) if t == "a"));
-    assert!(matches!(&inlines[1], InlineNode::Text(t) if t == " "));
-    assert!(matches!(&inlines[2], InlineNode::Text(t) if t == "b"));
+    assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"));
+    assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "));
+    assert!(matches!(&inlines[2].kind, HirInlineKind::Text(t) if t == "b"));
   }
 
   #[test]
   fn evaluate_index_in_paragraph_produces_index_node() {
     let result = evaluate_source("本文\\index{語}続き");
     assert_eq!(result.len(), 1, "段落が分割されてはいけない: {result:?}");
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
     let index_count = inlines
       .iter()
-      .filter(|n| matches!(n, InlineNode::Index { word, reading, .. } if word == "語" && reading.is_none()))
+      .filter(|n| matches!(&n.kind, HirInlineKind::Index { word, reading } if word == "語" && reading.is_none()))
       .count();
     assert_eq!(index_count, 1, "{inlines:?}");
   }
@@ -1090,11 +1141,11 @@ mod tests {
   #[test]
   fn evaluate_index_with_reading_in_paragraph() {
     let result = evaluate_source("本文\\index[reading=よみ]{語}続き");
-    let DocNode::Paragraph(inlines) = &result[0] else {
+    let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます: {result:?}");
     };
     assert!(inlines.iter().any(
-      |n| matches!(n, InlineNode::Index { word, reading, .. } if word == "語" && reading.as_deref() == Some("よみ"))
+      |n| matches!(&n.kind, HirInlineKind::Index { word, reading } if word == "語" && reading.as_deref() == Some("よみ"))
     ));
   }
 
@@ -1102,7 +1153,7 @@ mod tests {
   fn evaluate_index_in_list_item() {
     let result = evaluate_source("\\begin{itemize}\\item{項目\\index{語}}\\end{itemize}");
     assert_eq!(result.len(), 1);
-    assert!(matches!(&result[0], DocNode::List { .. }));
+    assert!(matches!(&result[0].kind, HirNodeKind::List { .. }));
   }
 
   #[test]
