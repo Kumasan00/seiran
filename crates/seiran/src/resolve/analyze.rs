@@ -71,7 +71,180 @@ pub fn analyze(
     return Err(error);
   }
   resolve_references(&mut facts, &registry, &pending, hir.locations())?;
+  assert_facts_complete(&hir, &facts, policy);
   return Ok(AnalyzedDocument::new(hir, facts));
+}
+
+/// variant ごとに必要な fact がすべて登録されているかを検証する
+///
+/// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、bridge / lowering の
+/// 遠い `unreachable!` で壊れる前にここで落とす。入力由来のエラー（重複ラベル・未解決参照・
+/// 未定義引用キー）はすべてこの検証より手前で診断として返している。
+fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &DocumentPolicy) {
+  let checker = Checker { facts, policy };
+  for group in hir.groups() {
+    checker.nodes(&group.nodes);
+  }
+  return;
+}
+
+/// 必須 fact の登録漏れを探す読み取り専用の検証走査
+struct Checker<'a> {
+  /// 検証対象の fact
+  facts: &'a SemanticFacts,
+  /// 定理クラスが無採番かを判定する投影
+  policy: &'a DocumentPolicy,
+}
+
+impl Checker<'_> {
+  /// ブロックノード列を検証する
+  fn nodes(&self, nodes: &[HirNode]) {
+    for node in nodes {
+      self.node(node);
+    }
+    return;
+  }
+
+  /// 単一のブロックノードを検証する
+  fn node(&self, node: &HirNode) {
+    match &node.kind {
+      HirNodeKind::Heading { title, label, .. } => {
+        self.require_counter(node.id, "Heading");
+        assert!(
+          self.facts.headings.iter().any(|heading| return heading.node == node.id),
+          "Walker が Heading の HeadingFacts を登録し損ねている: {:?}",
+          node.id
+        );
+        self.require_declared_label(node.id, label.as_deref(), "Heading");
+        self.inlines(title);
+      },
+      HirNodeKind::Figure { caption, label, .. } => {
+        self.require_counter(node.id, "Figure");
+        self.require_declared_label(node.id, label.as_deref(), "Figure");
+        if let Some(inlines) = caption {
+          self.inlines(inlines);
+        }
+      },
+      HirNodeKind::Table {
+        head,
+        rows,
+        caption,
+        label,
+        ..
+      } => {
+        self.require_counter(node.id, "Table");
+        self.require_declared_label(node.id, label.as_deref(), "Table");
+        for row in head.iter().chain(rows.iter()) {
+          for cell in &row.cells {
+            self.inlines(&cell.content);
+          }
+        }
+        if let Some(inlines) = caption {
+          self.inlines(inlines);
+        }
+      },
+      HirNodeKind::Theorem {
+        class,
+        body,
+        of,
+        label,
+        ..
+      } => {
+        // 無採番クラス（`proof`）は採番もラベル登録もしないので、必須 fact も無い。
+        if !self.policy.theorem(*class).unnumbered {
+          self.require_counter(node.id, "Theorem");
+          self.require_declared_label(node.id, label.as_deref(), "Theorem");
+        }
+        if let Some(target) = of {
+          assert!(
+            self.facts.references.get(target.id).is_some(),
+            "Walker が Theorem::of の参照先を登録し損ねている: {:?}",
+            target.id
+          );
+        }
+        self.nodes(body);
+      },
+      HirNodeKind::MathBlock {
+        rows,
+        numbered,
+        label,
+        ..
+      } => {
+        // 環境単位（`split` / `multiline`）と行単位（`align` / `gather` 等）は互いに排他だが、
+        // それぞれの `numbered` を独立に見る（「どちらか一方は必ず採番済み」と書くと、
+        // 環境側が無採番の `align` 等で誤検出する）。
+        if *numbered {
+          self.require_counter(node.id, "MathBlock");
+          self.require_declared_label(node.id, label.as_deref(), "MathBlock");
+        }
+        for row in rows {
+          if row.numbered {
+            self.require_counter(row.id, "HirMathRow");
+            self.require_declared_label(row.id, row.label.as_deref(), "HirMathRow");
+          }
+        }
+      },
+      HirNodeKind::List { items, .. } => {
+        for item in items {
+          self.nodes(&item.content);
+        }
+      },
+      HirNodeKind::Quote { body, .. } => self.nodes(body),
+      HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
+      // 必須 fact を持たない variant。
+      HirNodeKind::Rule { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+    }
+    return;
+  }
+
+  /// インラインノード列を検証する
+  fn inlines(&self, inlines: &[HirInline]) {
+    for inline in inlines {
+      match &inline.kind {
+        HirInlineKind::Styled { children, .. }
+        | HirInlineKind::Colored { children, .. }
+        | HirInlineKind::Link { children, .. }
+        | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
+        HirInlineKind::Ref { .. } => assert!(
+          self.facts.references.get(inline.id).is_some(),
+          "Walker が Ref の参照先を登録し損ねている: {:?}",
+          inline.id
+        ),
+        HirInlineKind::Cite { .. } => assert!(
+          self.facts.citations.get(inline.id).is_some(),
+          "Walker が Cite の引用先を登録し損ねている: {:?}",
+          inline.id
+        ),
+        // 必須 fact を持たない variant。
+        HirInlineKind::Text(_)
+        | HirInlineKind::InlineMath(_)
+        | HirInlineKind::Symbol(_)
+        | HirInlineKind::LineBreak
+        | HirInlineKind::NoIndent
+        | HirInlineKind::Index { .. } => {},
+      }
+    }
+    return;
+  }
+
+  /// 採番対象ノードにカウンタ値が登録されていることを確かめる
+  fn require_counter(&self, id: NodeId, variant: &str) {
+    assert!(self.facts.counters.get(id).is_some(), "Walker が {variant} のカウンタ値を登録し損ねている: {id:?}");
+    return;
+  }
+
+  /// ラベル付きノードの宣言 fact が双方向に登録されていることを確かめる
+  fn require_declared_label(&self, id: NodeId, label: Option<&str>, variant: &str) {
+    let Some(name) = label else {
+      return;
+    };
+    let label_id = LabelId::new(name.to_string());
+    assert!(
+      self.facts.declared_labels.get(id).is_some() && self.facts.label_definitions.get(&label_id) == Some(&id),
+      "Walker が {variant} のラベル宣言を登録し損ねている: {id:?} / {name}"
+    );
+    return;
+  }
 }
 
 /// 走査中に見つかった、まだ存在検証していない参照箇所
@@ -588,5 +761,71 @@ mod tests {
       matches!(error, crate::resolve::SemanticError::DuplicateLabel { ref label, .. } if label == "dup"),
       "got: {error:?}"
     );
+  }
+}
+
+/// `analyze` が確定する fact の完全性（variant ごとの必須 fact が欠けないこと）を固定する
+/// property test（issue #324）
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod completeness_tests {
+  use proptest::prelude::*;
+
+  use super::analyze;
+  use crate::{
+    citation::test_fixtures::sample_references,
+    config::{DocumentPolicy, Style},
+    model::{HirDocument, SourceId},
+  };
+
+  /// 採番・ラベル・参照・引用のいずれかを含む要素を 1 つ生成する戦略
+  ///
+  /// `\ref` と `[of=...]` は必ず先頭で宣言する `l0` を指し、宣言側のラベルは `%I%` を出現位置で
+  /// 置き換えて一意にするので、生成されたソースは常に意味解析に成功する
+  /// （ここで見たいのは失敗ではなく fact の網羅性）。
+  fn element_strategy() -> impl Strategy<Value = &'static str> {
+    return prop_oneof![
+      Just("\\chapter{A}\n"),
+      Just("\\section{B}\n"),
+      Just("\\subsection[label=sub:%I%]{C}\n"),
+      Just("\\begin{figure}\n\\image{a.png}\n\\caption{図 \\ref{l0}}\n\\end{figure}\n"),
+      Just("\\begin{table}[label=tab:%I%]\n\\row{\\ref{l0}}\n\\caption{表}\n\\end{table}\n"),
+      Just("\\begin{theorem}\n主張\n\\end{theorem}\n"),
+      Just("\\begin{proof}[of=l0]\n証明\n\\end{proof}\n"),
+      Just("\\begin{equation}\nx = 1\n\\end{equation}\n"),
+      Just("\\begin{align}\ny &= 2\n\\end{align}\n"),
+      Just("段落 \\ref{l0} と \\cite{kwan2014}。\n"),
+      Just("\\begin{itemize}\n\\item{\\ref{l0}}\n\\end{itemize}\n"),
+      Just("\\begin{quote}\n\\section{引用中の見出し}\n\\end{quote}\n"),
+      Just("本文\\footnote{脚注中の \\ref{l0}}\n"),
+    ];
+  }
+
+  proptest! {
+    /// どの要素をどう並べても、`analyze` の完全性検証（`assert_facts_complete`）を通る
+    ///
+    /// 必須 fact が 1 つでも欠けると `analyze` 内の `assert!` でパニックするため、
+    /// このテストは「fact の登録漏れが無い」ことをそのまま固定する。
+    #[test]
+    fn analyze_facts_are_complete_for_any_element_combination(
+      elements in prop::collection::vec(element_strategy(), 0..=8),
+    ) {
+      // Arrange — 先頭に `\ref` / `[of=...]` の参照先になるラベル付き定理を置く
+      let mut source = "\\begin{theorem}[label=l0]\n基準\n\\end{theorem}\n\n".to_string();
+      for (index, element) in elements.iter().enumerate() {
+        // 宣言側のラベルは出現位置で一意にする（同じ要素が 2 回選ばれても重複しないように）
+        source.push_str(&element.replace("%I%", &index.to_string()));
+        source.push('\n');
+      }
+      let hir = crate::frontend::parse_source(&source, SourceId::new(0)).expect("パースに成功するはず");
+      let document = HirDocument::assemble(vec![hir]);
+      let policy = DocumentPolicy::from_style(&Style::default());
+
+      // Act — 完全性検証は analyze の内側で走る
+      let analyzed = analyze(document, &policy, &sample_references()).expect("解析に成功するはず");
+
+      // Assert — 少なくとも基準の定理は fact に載っている（検証が空回りしていないことの確認）
+      prop_assert!(analyzed.counter_value_of_label(&crate::model::LabelId::new("l0")).is_some());
+    }
   }
 }
