@@ -112,21 +112,6 @@ pub(crate) fn evaluate_children(
           let math_nodes = math::evaluate_inline_math(source, builder, child_node)?;
           paragraph.push(HirInline::new(id, HirInlineKind::InlineMath(math_nodes)));
         },
-        SyntaxKind::Group => {
-          // グループの中身が段落なら現在の段落へ合流するので、先に段落 ID を予約する
-          paragraph.reserve(builder, child_node.span);
-          let inner_nodes = evaluate_children(source, builder, child_node)?;
-          for inner in inner_nodes {
-            match inner.kind {
-              // 内側の段落は現在の段落へ合流させる（内側の段落 ID は使わない）
-              HirNodeKind::Paragraph(inlines) => paragraph.extend(inlines),
-              other => {
-                paragraph.flush(builder, &mut hir_nodes);
-                hir_nodes.push(HirNode::new(inner.id, other));
-              },
-            }
-          }
-        },
         // これらはルート直下に現れない内部ノードである。
         SyntaxKind::Root
         | SyntaxKind::EnvironmentBegin

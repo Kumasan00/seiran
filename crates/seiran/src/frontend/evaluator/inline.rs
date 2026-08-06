@@ -145,10 +145,6 @@ pub(crate) fn extract_inline_nodes_from_elements(
             span: child_node.span.to_source_span(),
           });
         },
-        SyntaxKind::Group => {
-          let children = extract_inline_nodes(source, builder, child_node)?;
-          inlines.extend(children);
-        },
         _ => {},
       },
     }
