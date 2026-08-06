@@ -1,7 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc f0769ed9231b78331736ce15ea873a072825ec90aff1989f5a6f19fe42389452 # shrinks to elements = ["\\begin{table}[label=tab:x]\n\\row{\\ref{l0}}\n\\caption{表}\n\\end{table}\n", "\\begin{table}[label=tab:x]\n\\row{\\ref{l0}}\n\\caption{表}\n\\end{table}\n"]
