@@ -98,7 +98,7 @@ mod tests {
     let hir_document = crate::document::HirDocument::assemble(vec![hir]);
     let references = crate::semantics::References(std::collections::HashMap::new());
     let analyzed =
-      crate::semantics::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
+      crate::semantics::analyze_for_test(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
         .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
     let citations = crate::semantics::GeneratedCitations::default();

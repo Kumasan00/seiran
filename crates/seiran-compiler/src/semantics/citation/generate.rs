@@ -152,7 +152,7 @@ mod tests {
     font::FontKind,
     project::FilesystemProjectSource,
     semantics::{
-      AnalyzedDocument, analyze, load_citation_style, read_references,
+      AnalyzedDocument, analyze_for_test, load_citation_style, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -167,7 +167,7 @@ mod tests {
   /// ソースを意味解析して引用箇所の事実を持つ `AnalyzedDocument` を返す
   fn analyzed(source: &str, references: &crate::semantics::References) -> AnalyzedDocument {
     let policy = DocumentPolicy::from_style(&Style::default());
-    return analyze(document(source), &policy, references).expect("既知キーのみなので成功するはず");
+    return analyze_for_test(document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }
 
   /// 指定した CSL を設定した `Style` を作る

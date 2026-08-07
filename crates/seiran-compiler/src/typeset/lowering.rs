@@ -158,7 +158,7 @@ pub(super) mod test_support {
     config::{DocumentPolicy, Style},
     document::HirDocument,
     frontend::parse_source,
-    semantics::{AnalyzedDocument, analyze, test_fixtures::sample_references},
+    semantics::{AnalyzedDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
   };
 
@@ -169,7 +169,7 @@ pub(super) mod test_support {
   /// （`kwan2014` / `doe2020`）を渡しておく。
   pub(crate) fn analyzed(source: &str) -> AnalyzedDocument {
     let hir = HirDocument::assemble(vec![parse_source(source, SourceId::new(0)).expect("パースに成功するはず")]);
-    return analyze(hir, &DocumentPolicy::from_style(&Style::default()), &sample_references())
+    return analyze_for_test(hir, &DocumentPolicy::from_style(&Style::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 
@@ -549,7 +549,7 @@ mod tests {
     config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
-    semantics::{AnalyzedDocument, analyze, test_fixtures::sample_references},
+    semantics::{AnalyzedDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     typeset::layout::{AnchorId, AnchorMark, LinkTarget},
   };
@@ -567,7 +567,7 @@ mod tests {
         })
         .collect(),
     );
-    return analyze(hir, &DocumentPolicy::from_style(&ReadStyle::default()), &sample_references())
+    return analyze_for_test(hir, &DocumentPolicy::from_style(&ReadStyle::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 
