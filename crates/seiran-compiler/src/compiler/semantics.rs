@@ -29,9 +29,9 @@ pub(super) struct Semantics {
 /// `resolve_semantics` のエラー。
 ///
 /// 内側の意味解析 / CSL スタイル読込 / CSL 整形それぞれの診断（code・help・label）をそのまま運ぶ。
-/// 呼び出し元（`build_pdf.rs`）が帰属ソースを組み立てられるよう、`resolve::SemanticError` は
+/// 呼び出し元（`compiler.rs`）が帰属ソースを組み立てられるよう、`resolve::SemanticError` は
 /// ここでは変換せず `SourceId` だけを運ぶ形のまま渡し、`SourceDb` から本文を引く変換は
-/// `build_pdf.rs::wrap_resolve_error` に委ねる。
+/// `compiler.rs::wrap_resolve_error` に委ねる。
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum SemanticsError {
   /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
@@ -88,8 +88,8 @@ mod tests {
 
   use super::{SemanticsError, resolve_semantics};
   use crate::{
-    build_pdf::golden::{enter_workspace_root, load_base},
     citation::{CitationStyleError, read_references},
+    compiler::golden::{enter_workspace_root, load_base},
     config::Style,
     document::HirDocument,
     frontend::parse_source,

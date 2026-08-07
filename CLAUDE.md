@@ -64,7 +64,7 @@ CLI 引数パース → TOML 設定読込（config.toml / style.toml / reference
   → typeset::lowering  DocumentContent（AnalyzedDocument + GeneratedCitations への参照）→ LayoutNode（表示文字列化のみ）
   → font               フォント読込・検証
   → typeset::block     (a) build_blocks: シェーピング + 計測 + break 注入
-  → build_pdf::image_resources  (prepass) 画像の自然寸法から width / height を確定
+  → compiler::image_resources  (prepass) 画像の自然寸法から width / height を確定
   → typeset::breaking  (c+d) break_pages: 行分割 + 縦組版（フォント非依存の純粋パス）
   → seiran-pdf         (e) render: 確定座標の描画のみ（krilla がフォントサブセット化を内部実施）
   → seiran (CLI)       atomic write でファイル出力
@@ -83,7 +83,7 @@ CLI 引数パース → TOML 設定読込（config.toml / style.toml / reference
 - 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない
 - 脚注はページ下部の脚注エリアぶん本文の実効下限を縮めて配置し、収まらなければ組版済みの行単位で
   次ページへ繰り越す。ページ単位採番（`[footnote]` の `numbering = "per_page"`）のときだけ本文パスを
-  不動点まで反復する（`build_pdf::footnote_numbering` の専用 solver に閉じる。既定の通し採番は 1 回で確定）
+  不動点まで反復する（`compiler::footnote_numbering` の専用 solver に閉じる。既定の通し採番は 1 回で確定）
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務
 
 ### クレート構成
@@ -110,7 +110,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | `citation` | 引用型の所有・references.toml 読込・CSL 整形と書誌生成（`GeneratedCitations`） | document config font project |
 | `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
 | `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `layout`、段順序は `pipeline` に閉じる | font config document resolve citation length color project |
-| `build_pdf` | compile facade + phase graph。段順序・中間型を crate 外へ出さない | 上記すべて + seiran-pdf |
+| `compiler` | compile facade + phase graph。段順序・中間型を crate 外へ出さない | 上記すべて + seiran-pdf |
 
 ## コーディング規約
 
@@ -158,7 +158,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
 - AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る
 - テストコードでは `unwrap` / `expect` を許容する。テストモジュールには `#[allow(clippy::unwrap_used)]` を付け、`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）
-- **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/build_pdf/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
+- **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/compiler/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
 
 ## コード検索
 

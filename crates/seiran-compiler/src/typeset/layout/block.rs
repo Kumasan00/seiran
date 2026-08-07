@@ -62,7 +62,7 @@ pub enum Block {
   /// 画像（PNG / JPEG / SVG）
   ///
   /// `width` / `height` はソース指定値（pt）。未指定（`None`）の場合は
-  /// `seiran_compiler::build_pdf::image_resources::resolve_images` prepass が自然寸法と本文幅から確定する
+  /// `seiran_compiler::compiler::image_resources::resolve_images` prepass が自然寸法と本文幅から確定する
   /// （旧 `pdf_gen::resolve_images`、epic #276 / #279 で compiler 側へ移設）。
   /// 縦組版（`break_pages`）は確定済みであることを前提とし、未解決は 0 として扱う。
   Image {

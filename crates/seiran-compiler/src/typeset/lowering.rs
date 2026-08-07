@@ -723,7 +723,7 @@ mod tests {
     //
     // 左辺（アンカー）は「レイアウト木を文書順に辿って現れた順」、右辺（見出し記録）は
     // 「`analyze` が facts に積んだ順」で、出所が独立している。両者がずれると
-    // `build_pdf::front_matter` が見出しとページ番号を zip するときに目次のページ番号が
+    // `compiler::front_matter` が見出しとページ番号を zip するときに目次のページ番号が
     // 静かにずれる（長さ違いは debug_assert しか見ておらず release では素通りする）。
     // 集合一致では key の入れ替わりを検出できないため、ソートせず順序も含めて比較する。
     let anchor_keys = collect_heading_anchor_keys(&layout);

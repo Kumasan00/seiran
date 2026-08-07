@@ -401,7 +401,7 @@ mod tests {
 
   use super::build_publication;
   use crate::{
-    build_pdf::{layout::LaidOutDocument, outline::OutlineEntry},
+    compiler::{layout::LaidOutDocument, outline::OutlineEntry},
     config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig},
     document::HeadingLevel,
     font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},

@@ -56,7 +56,7 @@ impl ProjectSnapshot {
 /// [`SourceDb::register`] が唯一の `SourceId` 発行元。呼び出し元は発行された ID をそのまま
 /// 運ぶだけで、別の場所で ID を作り直したり、配列の並び順から ID を推測したりしない
 /// （旧 `SourceMap` は「並び順が `SourceId` のインデックスに一致する」という規約だけで
-/// `build_pdf.rs` 側の別の採番と結び付いていた。この struct はその規約を型に落とす）。
+/// `compiler.rs` 側の別の採番と結び付いていた。この struct はその規約を型に落とす）。
 pub(super) struct SourceDb {
   /// ソースエントリの配列（`register` によって逐次追加される）
   entries: Vec<SourceEntry>,
@@ -133,7 +133,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::{CompileError, SourceDb};
-  use crate::build_pdf::golden::enter_workspace_root;
+  use crate::compiler::golden::enter_workspace_root;
 
   #[test]
   fn read_loads_each_source_file_content_and_display_path() {

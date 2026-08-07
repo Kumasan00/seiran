@@ -32,10 +32,10 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 ## layout dump golden
 
-`crates/seiran-compiler/src/build_pdf/golden.rs` には 9 個のテストがあり、golden ファイル
+`crates/seiran-compiler/src/compiler/golden.rs` には 9 個のテストがあり、golden ファイル
 （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
 （`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
-`super::compile()`（lib target の公開 facade）→ `build_pdf::dump::dump_publication`
+`super::compile()`（lib target の公開 facade）→ `compiler::dump::dump_publication`
 （`seiran_pdf::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
 確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
 メタデータ・リンク・しおりまでダンプするため `dump_pages` よりカバー範囲が広い）。

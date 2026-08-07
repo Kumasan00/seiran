@@ -14,7 +14,7 @@ impl LabelId {
   pub fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
 
   /// 内部の文字列を返す
-  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump`）からのみ使う。
+  // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う。
   #[allow(dead_code)]
   #[must_use]
   pub fn as_str(&self) -> &str { return &self.0; }

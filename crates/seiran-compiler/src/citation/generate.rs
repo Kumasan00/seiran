@@ -64,7 +64,7 @@ impl GeneratedCitations {
   pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return &self.bibliography; }
 
   /// 表示も書誌も 1 つも無い（＝引用ゼロのプロジェクト）かを返す
-  // crate 内の `#[cfg(test)]`（`build_pdf::semantics` のテスト）からのみ使う。
+  // crate 内の `#[cfg(test)]`（`compiler::semantics` のテスト）からのみ使う。
   #[allow(dead_code)]
   pub(crate) fn is_empty(&self) -> bool { return self.displays.is_empty() && self.bibliography.is_empty(); }
 
