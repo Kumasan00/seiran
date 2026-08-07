@@ -59,13 +59,12 @@ cargo test -p <crate_name>                                 # 特定クレート�
 ```text
 CLI 引数パース → TOML 設定読込（config.toml / style.toml / references）
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
-  → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込（I/O はここだけ）
+  → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
-  → typeset::lowering  SemanticDocument → LayoutNode（表示文字列化のみ）
-  → font               フォント読込・検証
-  → typeset::block     (a) build_blocks: シェーピング + 計測 + break 注入
-  → compiler::image_resources  (prepass) 画像の自然寸法から width / height を確定
-  → typeset::breaking  (c+d) break_pages: 行分割 + 縦組版（フォント非依存の純粋パス）
+  → font               フォント読込・検証（FontResources / FontSystem）
+  → typeset::layout    組版: SemanticDocument + 設定 + FontSystem → LaidOutDocument
+                       内部順序（画像読込・寸法確定 → lowering → (a) block → (c+d) breaking
+                       → 前付け・後付け → ページラベル → 走り文 → outline）は typeset に閉じる
   → seiran-pdf         (e) render: 確定座標の描画のみ（krilla がフォントサブセット化を内部実施）
   → seiran (CLI)       atomic write でファイル出力
 ```
@@ -83,7 +82,8 @@ CLI 引数パース → TOML 設定読込（config.toml / style.toml / reference
 - 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない
 - 脚注はページ下部の脚注エリアぶん本文の実効下限を縮めて配置し、収まらなければ組版済みの行単位で
   次ページへ繰り越す。ページ単位採番（`[footnote]` の `numbering = "per_page"`）のときだけ本文パスを
-  不動点まで反復する（`compiler::footnote_numbering` の専用 solver に閉じる。既定の通し採番は 1 回で確定）
+  不動点まで反復する（`typeset::pagination::footnote_numbering` の専用 solver に閉じる。既定の通し採番は
+  1 回で確定）
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務
 
 ### クレート構成
@@ -108,8 +108,8 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |
 | `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation` | document config font source project |
 | `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
-| `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `boxes`、段順序は `pipeline` に閉じる | font config document semantics length color project |
-| `compiler` | compile facade + phase graph。段順序・中間型を crate 外へ出さない | 上記すべて + seiran-pdf |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination` に閉じる | font config document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
+| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない | 上記すべて + seiran-pdf |
 
 ## コーディング規約
 

@@ -49,12 +49,12 @@ description: >-
 ## compiler 内部バグ
 
 - ユーザー入力に起因しない内部不変条件違反が `Result` を返す経路（`.map_err` / `?` の途中）で発覚した場合、
-  `panic!` せず専用の小さな struct（例: `seiran_compiler::compiler::error::CompilerBug`）を作り、通常のユーザー向け
+  `panic!` せず専用の小さな struct（例: `seiran_compiler::typeset::error::TypesetBug`）を作り、通常のユーザー向け
   エラーバリアントには混ぜない
 - `#[diagnostic(code(...))]` は `internal_bug` 系のサフィックスにし、`help("...")` はトラブルシュート手順ではなく
   issue 報告を促す文言にする（ユーザー側に誤りがあるわけではないため）
 - `unreachable!` との使い分け: 手元に `Result` / `Option` があり、それを使ってエラーを返すほうが panic より
-  安全・安価なら `CompilerBug`。手元に `Result` がなく、その状態が構造的に到達不能なら CLAUDE.md 規約 5 の
+  安全・安価なら `TypesetBug` 相当の内部バグ型。手元に `Result` がなく、その状態が構造的に到達不能なら CLAUDE.md 規約 5 の
   `unreachable!` を使う
 
 ## シグネチャの原則
