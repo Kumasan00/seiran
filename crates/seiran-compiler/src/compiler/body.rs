@@ -1,9 +1,9 @@
 //! 本文のページ分割オーケストレーション（段順序自体は `crate::typeset::layout_body` に閉じている）
 
-use super::{error::CompileError, footnote_numbering, image_resources::ImageResources, phase_context::CompileContext};
+use super::{footnote_numbering, phase_context::CompileContext};
 use crate::{
   semantics::SemanticDocument,
-  typeset::{BodyLayout, BodyLayoutError, BodyLayoutInput},
+  typeset::{BodyLayout, BodyLayoutError, BodyLayoutInput, ImageResources, TypesetError},
 };
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。
@@ -60,6 +60,6 @@ fn resolve_body_images(
   blocks: Vec<crate::typeset::Block>,
   ctx: &CompileContext<'_>,
   image_resources: &ImageResources,
-) -> Result<Vec<crate::typeset::Block>, CompileError> {
-  return super::image_resources::resolve_images(blocks, ctx.body_col_width.to_pt(), image_resources);
+) -> Result<Vec<crate::typeset::Block>, TypesetError> {
+  return crate::typeset::resolve_images(blocks, ctx.body_col_width.to_pt(), image_resources);
 }

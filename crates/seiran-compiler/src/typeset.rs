@@ -7,10 +7,12 @@
 mod block;
 mod boxes;
 mod breaking;
+mod error;
+mod image;
 mod lowering;
 mod pipeline;
 
-pub use block::{
+pub(crate) use block::{
   IndexEntryInput, IndexPageRef, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput,
   layout_running_content, sort_index_entries,
 };
@@ -21,14 +23,18 @@ pub use block::{
 // `boxes` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
 // 逆に `Align` / `FootnoteId` は `typeset` の外に消費者がいないので facade へは出さない（#326）。
 #[allow(unused_imports)]
-pub use boxes::{
+pub(crate) use boxes::{
   AnchorId, AnchorMark, Block, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
   PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
   TableCellBox, TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
-pub use breaking::{KnuthPlassBreaker, PageGeometry};
-pub use lowering::{HeadingRecord, per_page_footnote_numbers};
-pub use pipeline::{
+pub(crate) use breaking::{KnuthPlassBreaker, PageGeometry};
+pub(crate) use error::TypesetError;
+// 画像資源は `typeset` の内部で解決するが、生バイト列は render の `ResourceBundle` へ渡すため
+// 型と取り出し操作だけ facade に出す（#350 の移行途中。入口が `layout` 1 操作になったら整理する）。
+pub(crate) use image::{ImageResources, collect_image_paths, load_image_resources, resolve_images};
+pub(crate) use lowering::{HeadingRecord, per_page_footnote_numbers};
+pub(crate) use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
   layout_front_matter,
 };

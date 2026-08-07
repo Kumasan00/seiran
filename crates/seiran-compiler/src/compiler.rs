@@ -7,8 +7,6 @@ mod diagnostic_set;
 mod error;
 mod footnote_numbering;
 mod front_matter;
-mod image_manifest;
-mod image_resources;
 mod layout;
 mod outline;
 mod page_values;
@@ -33,7 +31,6 @@ use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedCitationError, AttributedParseError, CompileError};
-use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
 pub use snapshot::OutputPlan;
 use snapshot::{ProjectSnapshot, SourceDb};
@@ -112,10 +109,10 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   info!(config_path = %root, "PDF のコンパイルを開始します");
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
-  let (document, image_manifest) = parse_project(&snapshot)?;
+  let (document, image_paths) = parse_project(&snapshot)?;
   let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
+  let image_resources = crate::typeset::load_image_resources(source, &image_paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
   let laid_out = DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
@@ -127,7 +124,7 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
     image_resources.into_image_bytes(),
     &laid_out,
   )?;
-  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &image_manifest);
+  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &image_paths);
   let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
     total_elapsed_ms: elapsed_ms(build_start),
@@ -179,7 +176,9 @@ fn load_project(
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(crate::document::HirDocument, ImageManifest)> {
+fn parse_project(
+  snapshot: &ProjectSnapshot,
+) -> miette::Result<(crate::document::HirDocument, Vec<crate::project::ProjectPath>)> {
   let stage_start = Instant::now();
   let document = crate::document::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
   info!(
@@ -189,9 +188,9 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<(crate::document:
     "全ソースのパースが完了しました"
   );
 
-  let image_manifest = image_manifest::collect_image_paths(&document);
+  let image_paths = crate::typeset::collect_image_paths(&document);
 
-  return Ok((document, image_manifest));
+  return Ok((document, image_paths));
 }
 
 /// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
@@ -315,10 +314,10 @@ fn build_pages_with_source(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (document, image_manifest) = parse_project(&snapshot)?;
+  let (document, image_paths) = parse_project(&snapshot)?;
   let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
-  let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
+  let image_resources = crate::typeset::load_image_resources(source, &image_paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
   return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)

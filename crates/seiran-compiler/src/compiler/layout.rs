@@ -4,12 +4,15 @@ use tracing::info;
 
 use super::{
   back_matter, body, front_matter,
-  image_resources::ImageResources,
   outline::{OutlineEntry, collect_outline_entries},
   phase_context::{BodyPageFacts, CompileContext},
   running,
 };
-use crate::{font::FontSystem, semantics::SemanticDocument, typeset::BodyLayout};
+use crate::{
+  font::FontSystem,
+  semantics::SemanticDocument,
+  typeset::{BodyLayout, ImageResources},
+};
 
 /// 描画パスへ渡すフォント非依存の確定レイアウト。
 pub(super) struct LaidOutDocument {

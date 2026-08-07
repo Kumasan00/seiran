@@ -2,7 +2,7 @@
 //!
 //! 自然寸法だけを返す薄い公開関数 `natural_image_size` を持つ。`ImageSet` 相当の
 //! 自然寸法解決・width / height 確定ロジックは compiler 側
-//! `seiran_compiler::compiler::image_resources` へ移設済み（epic #276 / #279）。
+//! `seiran_compiler::typeset::image` へ移設済み（epic #276 / #279、#350）。
 
 use std::path::Path;
 
@@ -41,7 +41,7 @@ impl LoadedImage {
 /// 画像バイト列をデコードし、自然寸法（ラスタは px、SVG は usvg が報告した width / height）を返す。
 ///
 /// デコードのみを行い、width / height の確定（縦横比・本文幅からの推論）は行わない
-/// （compiler 側 `seiran_compiler::compiler::image_resources::resolve_images` の責務）。
+/// （組版側 `seiran_compiler::typeset::image::resolve_images` の責務）。
 ///
 /// # Errors
 ///

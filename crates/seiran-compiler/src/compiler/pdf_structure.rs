@@ -45,11 +45,10 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
-  let (document, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let (document, image_paths) = super::parse_project(&snapshot).expect("parse_project の実行");
   let semantics =
     crate::semantics::analyze(&source, document, &snapshot.references, &snapshot.style).expect("analyze の実行");
-  let image_resources =
-    super::image_resources::load_image_resources(&source, &image_manifest.paths).expect("画像の自然寸法解決");
+  let image_resources = crate::typeset::load_image_resources(&source, &image_paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
   let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
