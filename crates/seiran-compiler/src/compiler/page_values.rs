@@ -135,7 +135,7 @@ mod tests {
   use super::{BodyPageValues, PageIndex};
   use crate::{
     config::PageNumbering,
-    resolve::{HeadingKey, LabelId},
+    semantics::{HeadingKey, LabelId},
     typeset::{AnchorMark, Page, PlacedAnchor},
   };
 

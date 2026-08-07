@@ -67,7 +67,7 @@ mod tests {
     super::{DocumentContent, lower_sources_with_headings, test_support::analyzed},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle};
+  use crate::{config::Style as ReadStyle, semantics::GeneratedCitations};
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///

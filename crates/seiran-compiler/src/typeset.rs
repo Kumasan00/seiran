@@ -96,12 +96,12 @@ mod tests {
     let style = Style::default();
     let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
     let hir_document = crate::document::HirDocument::assemble(vec![hir]);
-    let references = crate::citation::References(std::collections::HashMap::new());
+    let references = crate::semantics::References(std::collections::HashMap::new());
     let analyzed =
-      crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
+      crate::semantics::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
         .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
-    let citations = crate::citation::GeneratedCitations::default();
+    let citations = crate::semantics::GeneratedCitations::default();
     let content = DocumentContent {
       analyzed: &analyzed,
       citations: &citations,

@@ -12,12 +12,20 @@
 //! 所有する（`ids` 子 module、#334）。組版側はこれを到達先の名前空間として使うだけで発行しない。
 
 mod analyze;
+mod citation;
 mod counter;
 mod error;
 mod facts;
 mod ids;
 
 pub use analyze::analyze;
+#[cfg(test)]
+pub(crate) use citation::test_fixtures;
+pub(crate) use citation::{
+  CitationFormatError, CitationId, CitationSiteFacts, CitationStyleError, GeneratedBlock, GeneratedCitations,
+  GeneratedInline, References, generate_citations, generated_inlines_to_plain_text, load_citation_style,
+  read_references,
+};
 pub use counter::{CounterKind, CounterValue};
 pub use error::{SemanticError, UnknownCitationSite};
 pub use facts::AnalyzedDocument;

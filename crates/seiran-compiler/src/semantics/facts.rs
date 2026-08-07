@@ -5,16 +5,15 @@
 //! CSL による引用ラベルと書誌、font・色・長さ・座標、脚注のページ単位表示番号はいずれも
 //! 後段の生成物なので持たない（issue #324）。
 //!
-//! [`SemanticFacts`] のフィールドは `crate::resolve` の外から見えず、[`AnalyzedDocument`] は
-//! [`crate::resolve::analyze`] だけが構築できる。利用側は collection 構造を知らず、
+//! [`SemanticFacts`] のフィールドは `crate::semantics` の外から見えず、[`AnalyzedDocument`] は
+//! [`crate::semantics::analyze`] だけが構築できる。利用側は collection 構造を知らず、
 //! 目的別の query 経由でのみ fact を参照する。
 
 use std::collections::HashMap;
 
 use crate::{
-  citation::CitationSiteFacts,
   document::{HeadingLevel, HirDocument, NodeId, NodeMap},
-  resolve::{HeadingKey, LabelId, counter::CounterValue},
+  semantics::{CitationSiteFacts, HeadingKey, LabelId, counter::CounterValue},
 };
 
 /// 見出し 1 件について判明した事実
@@ -56,8 +55,8 @@ pub(crate) struct SemanticFacts {
 
 /// HIR と意味解析の事実を束ねた、意味解析の唯一の成果物
 ///
-/// 構築経路は [`crate::resolve::analyze`] だけ（フィールドは非公開で、構築子も
-/// `crate::resolve` の内側からしか呼べない）。
+/// 構築経路は [`crate::semantics::analyze`] だけ（フィールドは非公開で、構築子も
+/// `crate::semantics` の内側からしか呼べない）。
 #[derive(Debug)]
 pub struct AnalyzedDocument {
   /// 著者が書いた内容（`analyze` は書き換えない）

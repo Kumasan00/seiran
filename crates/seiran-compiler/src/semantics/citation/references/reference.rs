@@ -7,7 +7,7 @@ use serde::{
   de::{Error, MapAccess, Visitor},
 };
 
-use crate::citation::references::{date::Date, name::Name};
+use super::{date::Date, name::Name};
 
 /// 参照定義ファイル全体を表す構造体
 ///

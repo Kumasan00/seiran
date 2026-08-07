@@ -75,10 +75,9 @@ mod tests {
     *,
   };
   use crate::{
-    citation::GeneratedCitations,
     config::Style as ReadStyle,
     length::Length,
-    resolve::LabelId,
+    semantics::{GeneratedCitations, LabelId},
     typeset::layout::{AnchorId, LinkTarget},
   };
 

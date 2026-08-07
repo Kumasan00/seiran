@@ -4,10 +4,7 @@
 //! （#334）。到達先の名前空間には意味解析が確定した識別子（`resolve` の `LabelId` / `HeadingKey`）と
 //! 引用キー（`citation::CitationId`）を借りるが、それらを発行するのは前段であってここではない。
 
-use crate::{
-  citation::CitationId,
-  resolve::{HeadingKey, LabelId},
-};
+use crate::semantics::{CitationId, HeadingKey, LabelId};
 
 /// 脚注の出現 index（0 起点）
 ///

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
   document::HeadingLevel,
-  resolve::{HeadingKey, LabelId},
+  semantics::{HeadingKey, LabelId},
   typeset::layout::{Align, AnchorMark},
 };
 
@@ -80,9 +80,9 @@ mod tests {
     *,
   };
   use crate::{
-    citation::GeneratedCitations,
     config::Style as ReadStyle,
     font::FontKind,
+    semantics::GeneratedCitations,
     typeset::layout::{AnchorId, LinkTarget},
   };
 

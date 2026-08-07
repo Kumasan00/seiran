@@ -101,9 +101,8 @@ mod tests {
     *,
   };
   use crate::{
-    citation::GeneratedCitations,
     config::{CaptionStyle, Style as ReadStyle},
-    resolve::LabelId,
+    semantics::{GeneratedCitations, LabelId},
     typeset::layout::{Align, AnchorId, LinkTarget},
   };
 

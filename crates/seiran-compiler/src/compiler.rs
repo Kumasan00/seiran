@@ -42,10 +42,10 @@ use snapshot::{ProjectSnapshot, SourceDb};
 use tracing::info;
 
 #[cfg(test)]
-use crate::citation::References;
+use crate::semantics::References;
 use crate::{
-  citation::read_references,
   font::{FontData, FontDataExt, FontResources},
+  semantics::read_references,
 };
 
 /// コンパイル結果の統計情報。
@@ -374,9 +374,9 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::document::HirSou
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。`analyze` は実ソースしか
 /// 走査しないので、帰属先が実ソース以外になることはない。
-fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::semantics::SemanticError, source_db: &SourceDb) -> CompileError {
   // 未定義引用キーは箇所ごとに `SourceId` を持ち、ソースごとの位置付き診断へ組み替える。
-  if let crate::resolve::SemanticError::UnknownCitationKeys { sites } = error {
+  if let crate::semantics::SemanticError::UnknownCitationKeys { sites } = error {
     return wrap_unknown_citation_keys(sites, source_db);
   }
   let Some(source_id) = error.source_id() else {
@@ -393,7 +393,7 @@ fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb
 ///
 /// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
 /// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
-fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
+fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<crate::source::SourceId> = Vec::new();

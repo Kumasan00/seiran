@@ -6,7 +6,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use super::error::CompileError;
-use crate::citation::References;
+use crate::semantics::References;
 
 /// 読込済みの設定・ソース・文献・フォントを束ねた不変な入力。
 ///

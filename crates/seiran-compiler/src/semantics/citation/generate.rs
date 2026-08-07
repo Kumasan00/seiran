@@ -147,16 +147,14 @@ mod tests {
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
-    citation::{
-      read_references,
-      style::load_citation_style,
-      test_fixtures::{ieee_csl_path, sample_references},
-    },
     config::{DocumentPolicy, Style},
     document::HirDocument,
     font::FontKind,
     project::FilesystemProjectSource,
-    resolve::{AnalyzedDocument, analyze},
+    semantics::{
+      AnalyzedDocument, analyze, load_citation_style, read_references,
+      test_fixtures::{ieee_csl_path, sample_references},
+    },
     source::SourceId,
   };
 
@@ -167,7 +165,7 @@ mod tests {
   }
 
   /// ソースを意味解析して引用箇所の事実を持つ `AnalyzedDocument` を返す
-  fn analyzed(source: &str, references: &crate::citation::References) -> AnalyzedDocument {
+  fn analyzed(source: &str, references: &crate::semantics::References) -> AnalyzedDocument {
     let policy = DocumentPolicy::from_style(&Style::default());
     return analyze(document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }

@@ -9,9 +9,10 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  citation::{self, CitationFormatError, CitationStyleError, GeneratedCitations, References},
   document::HirDocument,
-  resolve::{self, AnalyzedDocument, SemanticError},
+  semantics::{
+    self, AnalyzedDocument, CitationFormatError, CitationStyleError, GeneratedCitations, References, SemanticError,
+  },
 };
 
 /// 意味解析と CSL 整形の成果物
@@ -67,11 +68,11 @@ pub(super) fn resolve_semantics(
   // （以降 `\cite` のキーは必ず参照定義に存在する）。意味解決には表示設定を渡さない
   // （`DocumentPolicy` は値に影響する設定だけの投影）。
   let policy = crate::config::DocumentPolicy::from_style(style);
-  let analyzed = resolve::analyze(document, &policy, references)?;
+  let analyzed = semantics::analyze(document, &policy, references)?;
   // 引用が 1 つも無ければ CSL スタイルを読まない（`csl_path` 未設定でもエラーにしない）。
   let generated = if analyzed.has_citations() {
-    let compiled = citation::load_citation_style(source, style)?;
-    citation::generate_citations(analyzed.citation_sites(), references, &compiled, &style.reference.title)?
+    let compiled = semantics::load_citation_style(source, style)?;
+    semantics::generate_citations(analyzed.citation_sites(), references, &compiled, &style.reference.title)?
   } else {
     GeneratedCitations::default()
   };
@@ -88,12 +89,12 @@ mod tests {
 
   use super::{SemanticsError, resolve_semantics};
   use crate::{
-    citation::{CitationStyleError, read_references},
     compiler::golden::{enter_workspace_root, load_base},
     config::Style,
     document::HirDocument,
     frontend::parse_source,
     project::{FilesystemProjectSource, MemoryProjectSource},
+    semantics::{CitationStyleError, read_references},
     source::SourceId,
   };
 
@@ -181,7 +182,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(error, SemanticsError::Analyze(crate::resolve::SemanticError::UnknownCitationKeys { .. })),
+      matches!(error, SemanticsError::Analyze(crate::semantics::SemanticError::UnknownCitationKeys { .. })),
       "got: {error:?}"
     );
   }

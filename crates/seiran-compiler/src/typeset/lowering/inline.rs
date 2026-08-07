@@ -189,10 +189,9 @@ mod tests {
     *,
   };
   use crate::{
-    citation::{CitationId, GeneratedCitations, GeneratedInline},
     color::Color,
     config::Style as ReadStyle,
-    resolve::LabelId,
+    semantics::{CitationId, GeneratedCitations, GeneratedInline, LabelId},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

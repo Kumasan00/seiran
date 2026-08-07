@@ -4,7 +4,6 @@
 //! 内部の段（parse / resolve / typeset / publication 化）は `compiler` module に閉じ、
 //! 外へ公開しない（[`Publication`] を除く）。
 
-mod citation;
 mod color;
 mod compiler;
 mod config;
@@ -16,7 +15,7 @@ mod frontend;
 // カスタムバリデータ参照のために要った `pub(crate)` は不要になった。
 mod length;
 mod project;
-mod resolve;
+mod semantics;
 mod source;
 mod typeset;
 

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use crate::{
   config::{CounterName, DocumentPolicy, TheoremReset},
   document::{NodeId, SourceMap, TheoremClass},
-  resolve::{LabelId, SemanticError, error::span_to_source_span},
+  semantics::{LabelId, SemanticError, error::span_to_source_span},
   source::{SourceId, Span},
 };
 

@@ -11,11 +11,13 @@
 use tracing::debug;
 
 use crate::{
-  citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  resolve::{AnalyzedDocument, CounterValue, HeadingKey, LabelId},
+  semantics::{
+    AnalyzedDocument, CounterValue, GeneratedCitations, GeneratedInline, HeadingKey, LabelId,
+    generated_inlines_to_plain_text,
+  },
   typeset::layout::AnchorMark,
 };
 
@@ -153,11 +155,10 @@ pub struct HeadingRecord {
 pub(super) mod test_support {
   use super::{DocumentContent, GeneratedCitations, LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
-    citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     document::HirDocument,
     frontend::parse_source,
-    resolve::{AnalyzedDocument, analyze},
+    semantics::{AnalyzedDocument, analyze, test_fixtures::sample_references},
     source::SourceId,
   };
 
@@ -545,11 +546,10 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 mod tests {
   use super::{test_support::analyzed, *};
   use crate::{
-    citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
-    resolve::{AnalyzedDocument, analyze},
+    semantics::{AnalyzedDocument, analyze, test_fixtures::sample_references},
     source::SourceId,
     typeset::layout::{AnchorId, AnchorMark, LinkTarget},
   };

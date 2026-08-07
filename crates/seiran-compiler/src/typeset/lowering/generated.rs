@@ -11,8 +11,7 @@ use super::{
   paragraph::{assemble_paragraph, body_text_style},
 };
 use crate::{
-  citation::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text},
-  resolve::HeadingKey,
+  semantics::{GeneratedBlock, GeneratedInline, HeadingKey, generated_inlines_to_plain_text},
   typeset::layout::{AnchorId, AnchorMark, LinkTarget},
 };
 
@@ -111,8 +110,8 @@ mod tests {
     *,
   };
   use crate::{
-    citation::{CitationId, GeneratedCitations},
     config::Style as ReadStyle,
+    semantics::{CitationId, GeneratedCitations},
   };
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る

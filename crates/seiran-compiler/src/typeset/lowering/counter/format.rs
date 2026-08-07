@@ -7,7 +7,7 @@
 use crate::{
   config::{CounterName, Counters, Style, TheoremReset},
   document::TheoremClass,
-  resolve::{CounterKind, CounterValue},
+  semantics::{CounterKind, CounterValue},
   typeset::lowering::placeholder,
 };
 

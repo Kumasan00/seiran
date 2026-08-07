@@ -11,7 +11,7 @@ use crate::{
   document::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   font::FontKind,
   length::Length,
-  resolve::CounterValue,
+  semantics::CounterValue,
   typeset::layout::Align,
 };
 
@@ -216,7 +216,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, length::Length};
+  use crate::{config::Style as ReadStyle, length::Length, semantics::GeneratedCitations};
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   ///

@@ -350,7 +350,7 @@ pub(super) mod test_support {
   /// テスト用の内部リンク行き先
   pub(super) fn link_target() -> crate::typeset::layout::LinkTarget {
     return crate::typeset::layout::LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(
-      crate::resolve::LabelId::new("sec:x"),
+      crate::semantics::LabelId::new("sec:x"),
     ));
   }
 

@@ -8,7 +8,7 @@
 use hayagriva::citationberg::json::Item;
 use serde_json::{Map, Value};
 
-use crate::citation::Reference;
+use super::Reference;
 
 /// `Reference` を CSL-JSON 担体 `Item` に変換する。
 ///
@@ -59,8 +59,8 @@ mod tests {
 
   use super::to_item;
   use crate::{
-    citation::{References, read_references, test_fixtures::sample_references},
     project::FilesystemProjectSource,
+    semantics::{References, read_references, test_fixtures::sample_references},
   };
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
