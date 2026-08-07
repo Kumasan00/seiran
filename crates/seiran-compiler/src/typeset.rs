@@ -1,8 +1,13 @@
-//! 組版パス統合 module — 意味解析の成果物（`semantics::SemanticDocument`）から
-//! 計測済み・配置済みページ直前までを担う（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
+//! 組版 module — 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の確定レイアウト
+//! （[`LaidOutDocument`]）へ変換する（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
+//!
+//! 外向きの入口は [`layout`] の 1 操作だけで、段順序（lowering → 計測 → 画像寸法確定 → 行分割・
+//! 改ページ → 前付け・後付け → ページラベル → 走り文 → outline）と、その間に成立する不変条件
+//! （box 計測は 1 回だけ・`breaking` はフォントに触れない）はすべて実装側に閉じる（#350）。
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
-//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。
+//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`compiler::publication` が
+//! `Publication` へ写すために読むぶんだけを facade へ出す。
 
 mod block;
 mod boxes;
@@ -10,34 +15,52 @@ mod breaking;
 mod error;
 mod image;
 mod lowering;
-mod pipeline;
+mod pagination;
 
-pub(crate) use block::{
-  IndexEntryInput, IndexPageRef, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput,
-  layout_running_content, sort_index_entries,
-};
-// `HBox` / `Line` / `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` /
-// `measure_items_width` を facade に置いているのは、`compiler` 配下の `#[cfg(test)] mod tests`
-// が組版済みページを組み立てるのにこれらを名指しするため。`AnchorId` / `AnchorMark` /
-// `LinkTarget` / `TableColumn` は `compiler::publication` が本体コードから名指しする（#334）。
-// `boxes` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
-// 逆に `Align` / `FootnoteId` は `typeset` の外に消費者がいないので facade へは出さない（#326）。
+// 確定レイアウトを `Publication` へ写す `compiler::publication` が、ページの中身（配置済みブロック・
+// 表の行・箱の内容）を走査するために名指しする型と、表セルの配置・計測ヘルパ。`HBox` / `Line` /
+// `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` / `measure_items_width` は
+// `compiler` 配下の `#[cfg(test)] mod tests`（`dump` / `publication` のテスト）が組版済みページを
+// 組み立て・走査するために要る。組版の段を呼ぶための型（`PageGeometry` / `KnuthPlassBreaker` /
+// 各段の入力）は入口が `layout` 1 操作になったので facade から外した（#350）。同様に
+// `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
 #[allow(unused_imports)]
 pub(crate) use boxes::{
-  AnchorId, AnchorMark, Block, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
-  PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
-  TableCellBox, TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
+  AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
+  PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox,
+  TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
-pub(crate) use breaking::{KnuthPlassBreaker, PageGeometry};
 pub(crate) use error::TypesetError;
-// 画像資源は `typeset` の内部で解決するが、生バイト列は render の `ResourceBundle` へ渡すため
-// 型と取り出し操作だけ facade に出す（#350 の移行途中。入口が `layout` 1 操作になったら整理する）。
-pub(crate) use image::{ImageResources, collect_image_paths, load_image_resources, resolve_images};
-pub(crate) use lowering::{HeadingRecord, per_page_footnote_numbers};
-pub(crate) use pipeline::{
-  BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
-  layout_front_matter,
-};
+pub(crate) use pagination::LaidOutDocument;
+// `OutlineEntry` を本体コードから名指しする消費者はいない（`compiler::publication` は
+// `laid_out.outline_entries` をフィールドとして走査するだけ）。`publication` の
+// `#[cfg(test)] mod tests` が確定レイアウトを組み立てるために必要なので facade へ出す。
+#[allow(unused_imports)]
+pub(crate) use pagination::OutlineEntry;
+
+use crate::{font::FontSystem, semantics::SemanticDocument};
+
+/// 意味解析の成果物を、描画直前の確定レイアウトへ組版する。
+///
+/// 画像は `document` が参照しているぶんだけを `source` 経由で読み込み、自然寸法から表示寸法を
+/// 確定して結果へ同梱する（生バイト列は描画の資源束が要求する）。フォント資源は呼び出し元が
+/// 構築したものを借りる（`font` module の移設は別 issue）。
+///
+/// # Errors
+///
+/// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合にエラーを返す。
+pub(crate) fn layout(
+  source: &dyn crate::project::ProjectSource,
+  config: &crate::config::Config,
+  style: &crate::config::Style,
+  font_system: &FontSystem<'_>,
+  document: &SemanticDocument,
+) -> Result<LaidOutDocument, TypesetError> {
+  let image_paths = image::collect_image_paths(document.hir());
+  let images = image::load_image_resources(source, &image_paths)?;
+  let ctx = pagination::TypesetContext::new(config, style, font_system);
+  return pagination::paginate(&ctx, document, images, image_paths);
+}
 
 /// 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → analyze → lowering` を
 /// 通し、パニックしないことを確認する統合テスト（旧 `typeset` crate の `tests/smoke.rs`、

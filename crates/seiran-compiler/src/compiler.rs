@@ -1,18 +1,9 @@
 //! 設定ファイルの `sources` から PDF を生成するパイプライン
 
-mod back_matter;
-mod body;
 mod dependency_manifest;
 mod diagnostic_set;
 mod error;
-mod footnote_numbering;
-mod front_matter;
-mod layout;
-mod outline;
-mod page_values;
-mod phase_context;
 mod publication;
-mod running;
 mod snapshot;
 
 #[cfg(test)]
@@ -31,7 +22,6 @@ use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedCitationError, AttributedParseError, CompileError};
-use layout::{DocumentLayouter, LaidOutDocument};
 pub use snapshot::OutputPlan;
 use snapshot::{ProjectSnapshot, SourceDb};
 use tracing::info;
@@ -41,6 +31,7 @@ use crate::semantics::References;
 use crate::{
   font::{FontData, FontDataExt, FontResources},
   semantics::{AnalyzeError, read_references},
+  typeset::LaidOutDocument,
 };
 
 /// コンパイル結果の統計情報。
@@ -109,22 +100,16 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   info!(config_path = %root, "PDF のコンパイルを開始します");
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
-  let (document, image_paths) = parse_project(&snapshot)?;
+  let document = parse_project(&snapshot)?;
   let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
-  let image_resources = crate::typeset::load_image_resources(source, &image_paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
-  let laid_out = DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
-    .layout(&semantic_document, &image_resources)?;
-  let publication = build_publication(
-    &snapshot.config,
-    &snapshot.font_data,
-    &font_resources,
-    image_resources.into_image_bytes(),
-    &laid_out,
-  )?;
-  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &image_paths);
+  let mut laid_out =
+    crate::typeset::layout(source, &snapshot.config, &snapshot.style, &font_system, &semantic_document)?;
+  let image_bytes = std::mem::take(&mut laid_out.image_bytes);
+  let publication = build_publication(&snapshot.config, &snapshot.font_data, &font_resources, image_bytes, &laid_out)?;
+  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &laid_out.image_paths);
   let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
     total_elapsed_ms: elapsed_ms(build_start),
@@ -168,17 +153,15 @@ fn load_project(
   return Ok((snapshot, output));
 }
 
-/// 全ソースをパースし、画像パス一覧を作る。
+/// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
 ///
-/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::analyze` が
-/// 担う（この関数はパースと画像パス収集のみを行う）。
+/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::analyze` が、
+/// 画像パスの収集は `typeset::layout` が担う。
 ///
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(
-  snapshot: &ProjectSnapshot,
-) -> miette::Result<(crate::document::HirDocument, Vec<crate::project::ProjectPath>)> {
+fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<crate::document::HirDocument> {
   let stage_start = Instant::now();
   let document = crate::document::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
   info!(
@@ -188,9 +171,7 @@ fn parse_project(
     "全ソースのパースが完了しました"
   );
 
-  let image_paths = crate::typeset::collect_image_paths(&document);
-
-  return Ok((document, image_paths));
+  return Ok(document);
 }
 
 /// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
@@ -314,14 +295,12 @@ fn build_pages_with_source(
 ) -> miette::Result<LaidOutDocument> {
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let (document, image_paths) = parse_project(&snapshot)?;
+  let document = parse_project(&snapshot)?;
   let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
     .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
-  let image_resources = crate::typeset::load_image_resources(source, &image_paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
-    .layout(&semantic_document, &image_resources);
+  return Ok(crate::typeset::layout(source, &snapshot.config, &snapshot.style, &font_system, &semantic_document)?);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。

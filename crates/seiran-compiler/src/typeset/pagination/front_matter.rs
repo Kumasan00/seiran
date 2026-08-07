@@ -1,42 +1,78 @@
-//! 前付け（タイトルページ・目次）のページ分割オーケストレーション
-//!
-//! ブロックの組み立て順序自体は `crate::typeset::layout_front_matter` に閉じている。ここでは
-//! `BodyPageValues`（seiran 限定の段階型）から目次エントリを組み立てる（phase レベルの計装ごと）
-//! だけを担う。
+//! 前付け（タイトルページ・目次）パス（目次エントリの組み立て → 計測 → 改行・改ページ）
 
 use std::time::Instant;
 
-use tracing::info;
+use tracing::{debug, debug_span, info};
 
 use super::{
+  context::{BodyPageFacts, TypesetContext},
   elapsed_ms,
   page_values::BodyPageValues,
-  phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
   semantics::HeadingKey,
-  typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput},
+  typeset::{
+    block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
+    boxes::{Block, Page},
+    breaking::break_pages,
+    lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
+  },
 };
 
 /// 前付け（タイトルページ・目次）を生成してページ分割する。
 ///
 /// 前付けは常に 1 段組み（`front_geometry`）で、本文（N 段）とは別に分割する。
-pub(super) fn typeset_front_matter(ctx: &CompileContext<'_>, facts: &BodyPageFacts) -> Vec<Page> {
+/// タイトルページ→目次の順にブロックを組み立て、末尾の強制改ページ（本文との境界用）は
+/// 空ページを作らないよう分割前に取り除く。`title_page` / `toc` がともに無効・目次エントリが
+/// 空なら空ページ列を返す。
+pub(super) fn typeset_front_matter(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Page> {
   let stage_start = Instant::now();
-  let toc_entries = if ctx.style.toc.enabled {
-    collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc)
-  } else {
-    Vec::new()
+  let mut front_blocks: Vec<Block> = Vec::new();
+
+  if ctx.style.title_page.enabled {
+    let title_metadata = TitlePageMetadata {
+      title: ctx.config.document.title.clone(),
+      author: ctx.config.document.author.clone(),
+      date: ctx.config.document.date.clone(),
+    };
+    let title_nodes = lower_title_page(&title_metadata, &ctx.style.title_page);
+    {
+      let _span = debug_span!("build_blocks", region = "title").entered();
+      // タイトルページはハイフネーションしない
+      front_blocks.extend(build_blocks(
+        title_nodes,
+        ctx.resources,
+        ctx.style.text.font_size,
+        ctx.style.text.line_height_factor,
+        None,
+        ctx.style.text.punctuation_spacing,
+      ));
+    }
+    debug!("タイトルページを生成しました");
+  }
+
+  if ctx.style.toc.enabled {
+    let toc_entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
+    let spec = build_toc_spec(ctx.style, ctx.text_width);
+    let toc_blocks = build_toc_blocks(&spec, &toc_entries, ctx.resources);
+    if !toc_blocks.is_empty() {
+      front_blocks.extend(toc_blocks);
+      front_blocks.push(Block::force_break());
+      debug!(toc_entry_count = toc_entries.len(), "目次を生成しました");
+    }
+  }
+
+  if front_blocks.last().is_some_and(Block::is_force_break) {
+    front_blocks.pop();
+  }
+  if front_blocks.is_empty() {
+    return Vec::new();
+  }
+
+  let pages = {
+    let _span = debug_span!("break_pages", region = "front").entered();
+    break_pages(front_blocks, ctx.text_width, &ctx.front_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  let input = FrontMatterInput {
-    config: ctx.config,
-    style: ctx.style,
-    resources: ctx.resources,
-    text_width: ctx.text_width,
-    geometry: &ctx.front_geometry,
-    breaker: &crate::typeset::KnuthPlassBreaker,
-  };
-  let pages = crate::typeset::layout_front_matter(&input, &toc_entries);
   info!(
     front_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -73,12 +109,12 @@ fn collect_toc_entries(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, Page, collect_toc_entries};
+  use super::{BodyPageValues, HeadingRecord, Page, collect_toc_entries};
   use crate::{
     config::{PageNumbering, TocStyle},
     document::HeadingLevel,
     semantics::HeadingKey,
-    typeset::{AnchorMark, HeadingRecord, PlacedAnchor},
+    typeset::boxes::{AnchorMark, PlacedAnchor},
   };
 
   fn heading_record(index: usize, level: HeadingLevel, number: &str, title_plain: &str) -> HeadingRecord {

@@ -194,21 +194,6 @@ pub(super) enum CompileError {
     source: LayoutValidationError,
   },
 
-  /// 脚注のページ単位採番が上限回数で収束しないエラー
-  ///
-  /// 不整合なページ列は採用せず、回避策付きの診断を返す。
-  #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
-  #[diagnostic(
-    code(build::footnote::per_page_not_converged),
-    help(
-      "style.toml の [footnote] を numbering = \"continuous\"（文書通しの採番）に切り替えるか、ページ境界に脚注が集中している箇所の本文量・脚注の長さを調整してください。"
-    )
-  )]
-  PerPageFootnoteNotConverged {
-    /// 打ち切った組版パスの回数
-    passes: u32,
-  },
-
   /// 組版パス（画像資源の解決を含む）のエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
