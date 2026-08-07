@@ -11,11 +11,11 @@ use std::{
 
 use super::{build_pages, dump::dump_pages};
 use crate::{
-  citation::{References, read_references},
   config::{Config, Style},
   font::{FontData, FontDataExt},
   length::Length,
   project::{MemoryProjectSource, ProjectPath},
+  semantics::{References, read_references},
   typeset::{AnchorMark, Page, PlacedBlock},
 };
 

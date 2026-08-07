@@ -1,4 +1,4 @@
-//! 組版パス統合 module — 意味解析の成果物（`resolve::AnalyzedDocument`）と CSL 整形の生成物から
+//! 組版パス統合 module — 意味解析の成果物（`semantics::SemanticDocument`）から
 //! 計測済み・配置済みページ直前までを担う（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
@@ -27,7 +27,7 @@ pub use layout::{
   PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
   TableCellBox, TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
-pub use lowering::{DocumentContent, HeadingRecord, per_page_footnote_numbers};
+pub use lowering::{HeadingRecord, per_page_footnote_numbers};
 pub use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,
   layout_front_matter,
@@ -41,7 +41,7 @@ pub use pipeline::{
 mod tests {
   use std::path::PathBuf;
 
-  use super::lowering::{DocumentContent, LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::lowering::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{config::Style, frontend::parse_source, source::SourceId};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
@@ -96,17 +96,12 @@ mod tests {
     let style = Style::default();
     let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
     let hir_document = crate::document::HirDocument::assemble(vec![hir]);
-    let references = crate::citation::References(std::collections::HashMap::new());
+    let references = crate::semantics::References(std::collections::HashMap::new());
     let analyzed =
-      crate::resolve::analyze(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
+      crate::semantics::analyze_for_test(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
         .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
-    let citations = crate::citation::GeneratedCitations::default();
-    let content = DocumentContent {
-      analyzed: &analyzed,
-      citations: &citations,
-    };
-    let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, content);
+    let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, &analyzed);
     return layout_nodes;
   }
 

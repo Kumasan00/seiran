@@ -59,9 +59,9 @@ cargo test -p <crate_name>                                 # 特定クレート�
 ```text
 CLI 引数パース → TOML 設定読込（config.toml / style.toml / references）
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
-  → resolve::analyze   意味解析: HIR 1 走査で SemanticFacts（NodeId キーの side table）を確定 → AnalyzedDocument
-  → citation           load_citation_style（I/O はここだけ）→ generate_citations（CSL 整形・書誌生成、I/O なし）
-  → typeset::lowering  DocumentContent（AnalyzedDocument + GeneratedCitations への参照）→ LayoutNode（表示文字列化のみ）
+  → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込（I/O はここだけ）
+                       → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
+  → typeset::lowering  SemanticDocument → LayoutNode（表示文字列化のみ）
   → font               フォント読込・検証
   → typeset::block     (a) build_blocks: シェーピング + 計測 + break 注入
   → compiler::image_resources  (prepass) 画像の自然寸法から width / height を確定
@@ -74,7 +74,7 @@ CLI 引数パース → TOML 設定読込（config.toml / style.toml / reference
 
 - 外部資源（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `project::ProjectSource` 経由。
   compiler 側のコードは `std::fs` を直接呼ばない。資源を指すパスは `ProjectPath` 1 種類
-- 採番・`\ref` 解決・引用キー検証は resolve が確定し、lowering は構造値を style の表示側フィールドで
+- 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は構造値を style の表示側フィールドで
   文字列にするだけ。文書木への書き戻しはどの段も行わない
 - box は (a) で width / height / depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない
 - 行分割は Knuth–Plass（段落全体最適、既定は両端揃え。貪欲法 `GreedyBreaker` も併存）。分割可能点は
@@ -106,10 +106,9 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型の所有者 | length color font source project |
 | `config` | config.toml / style.toml の読込・garde 検証、意味解析への投影 `DocumentPolicy`、横断検証と `column_width` | length color document font project |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |
-| `resolve` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用箇所 → `SemanticFacts`）+ `LabelId` / `HeadingKey` | document config citation source |
-| `citation` | 引用型の所有・references.toml 読込・CSL 整形と書誌生成（`GeneratedCitations`） | document config font project |
+| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation` | document config font source project |
 | `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
-| `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `layout`、段順序は `pipeline` に閉じる | font config document resolve citation length color project |
+| `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `layout`、段順序は `pipeline` に閉じる | font config document semantics length color project |
 | `compiler` | compile facade + phase graph。段順序・中間型を crate 外へ出さない | 上記すべて + seiran-pdf |
 
 ## コーディング規約

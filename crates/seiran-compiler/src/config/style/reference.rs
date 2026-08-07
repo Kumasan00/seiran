@@ -22,7 +22,7 @@ pub struct ReferenceStyle {
   pub bottom_margin: Length,
   /// 引用整形に用いる CSL スタイルファイル（`.csl`）のパス。
   ///
-  /// `None`（既定）で引用（`\cite`）が存在する場合は `citation` がエラーを報告する。
+  /// `None`（既定）で引用（`\cite`）が存在する場合は `semantics::citation` がエラーを報告する。
   /// [`read_style`](crate::config::style::read_style) が絶対パスへ正規化する。
   #[garde(skip)]
   pub csl_path: Option<PathBuf>,

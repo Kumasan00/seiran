@@ -82,12 +82,10 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, font::FontKind};
+  use crate::{config::Style as ReadStyle, font::FontKind};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
-  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   /// 種別（ordered フラグ）の列から、各段 1 項目のネストしたリストのソースを組み立てる
   fn nested_source(kinds: &[bool]) -> String {

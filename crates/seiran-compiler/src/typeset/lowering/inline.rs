@@ -74,7 +74,7 @@ pub(super) fn lower_inline(
       }];
     },
     HirInlineKind::Ref { .. } => {
-      // 参照先の存在と番号は `resolve::analyze` が確定させているので、ここで表示文字列まで作る。
+      // 参照先の存在と番号は `semantics::analyze` が確定させているので、ここで表示文字列まで作る。
       let target = state.reference_target(inline.id);
       let style = with_link_color(parent_style, ctx.style.hyperref.link_color);
       return vec![LayoutNode::Link {
@@ -183,34 +183,23 @@ pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<crate:
 mod tests {
   use super::{
     super::{
-      DocumentContent, lower_sources_with_headings,
+      lower_sources_with_headings,
       test_support::{analyzed, lower},
     },
     *,
   };
   use crate::{
-    citation::{CitationId, GeneratedCitations, GeneratedInline},
     color::Color,
     config::Style as ReadStyle,
-    resolve::LabelId,
+    semantics::{CitationId, GeneratedInline, LabelId},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
-  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   /// 与えた文脈で `.sei` ソースを lower するテストヘルパ（脚注番号の上書きを使うテスト用）
   fn lower_source_with(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
-    let analyzed = analyzed(source);
-    let citations = GeneratedCitations::default();
-    let (layout, _headings) = lower_sources_with_headings(
-      ctx,
-      DocumentContent {
-        analyzed: &analyzed,
-        citations: &citations,
-      },
-    );
+    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
   }
 
@@ -415,8 +404,8 @@ mod tests {
     let mut style = ReadStyle::default();
     style.hyperref.cite_color = Some(blue);
     let analyzed = analyzed("\\cite{kwan2014}\n");
-    let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let citations = GeneratedCitations::for_test(
+    let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
+    let document = analyzed.with_citations_for_test(
       vec![(
         site,
         vec![GeneratedInline::InternalLink {
@@ -428,7 +417,7 @@ mod tests {
     );
 
     // Act
-    let nodes = lower(&style, &analyzed, &citations);
+    let nodes = lower(&style, &document);
 
     // Assert
     let (target, children) = first_link(&nodes);

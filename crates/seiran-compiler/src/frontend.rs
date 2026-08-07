@@ -308,7 +308,7 @@ mod tests {
 
   #[test]
   fn evaluate_cite_produces_cite_stub() {
-    // Arrange / Act — キー存在検証は citation::analyze_citations の責務なので、frontend は
+    // Arrange / Act — キー存在検証は semantics::analyze の責務なので、frontend は
     // 未知キーでもスタブノードを生成する（#323 Task 4）
     let result = evaluate_source(r"See \cite{rika}.");
 

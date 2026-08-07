@@ -16,7 +16,7 @@ pub use config_toml::test_support;
 #[allow(unused_imports)]
 pub use config_toml::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, read_config};
 pub use layout::{LayoutValidationError, column_width, validate_layout};
-// 意味解析（`crate::resolve`）へ渡す設定の投影。`CounterPolicy` / `TheoremPolicy` は
+// 意味解析（`crate::semantics`）へ渡す設定の投影。`CounterPolicy` / `TheoremPolicy` は
 // `DocumentPolicy` のアクセサ戻り値としてのみ現れ、名指しする消費者がいないので出さない。
 pub use policy::DocumentPolicy;
 // `CounterStyle` / `NestedOrderedFormat` / `NumberStyle` / `parse_style` を facade に置いているのは、

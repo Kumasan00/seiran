@@ -12,7 +12,7 @@ use crate::{
   document::{HirNode, HirNodeKind, TheoremClass},
   font::FontKind,
   length::Length,
-  resolve::LabelId,
+  semantics::LabelId,
   typeset::layout::Align,
 };
 
@@ -119,12 +119,10 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle, typeset::layout::AnchorMark};
+  use crate::{config::Style as ReadStyle, typeset::layout::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
-  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   /// `nodes` の最初の `VBox`（= 定理見出し）の子から先頭 `Text`（文字列・スタイル）を取り出す
   fn first_heading_text(nodes: &[LayoutNode]) -> (String, TextStyle) {

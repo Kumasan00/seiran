@@ -6,7 +6,7 @@ use crate::{
   document::HeadingLevel,
   font::{FontKind, FontSystem},
   length::Length,
-  resolve::HeadingKey,
+  semantics::HeadingKey,
   typeset::{
     layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
@@ -238,7 +238,7 @@ mod tests {
     document::HeadingLevel,
     font::FontKind,
     length::Length,
-    resolve::HeadingKey,
+    semantics::HeadingKey,
     typeset::layout::{AnchorId, LinkTarget},
   };
 

@@ -2731,7 +2731,7 @@ mod tests {
   fn table_link_shifts_with_its_row_under_flush_bottom() {
     // Arrange
     let geom = flush_geometry();
-    let target = LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(crate::resolve::LabelId::new("fig:1")));
+    let target = LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(crate::semantics::LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
       rule(8.0),                                  // idx0, bottom=18（シフト対象外）
@@ -2768,7 +2768,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
-        key: crate::resolve::HeadingKey::new(0),
+        key: crate::semantics::HeadingKey::new(0),
         label: None,
       }),
       paragraph_of_lines(1),
@@ -2792,7 +2792,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
-      Block::Anchor(AnchorMark::Label(crate::resolve::LabelId::new("tab:x"))),
+      Block::Anchor(AnchorMark::Label(crate::semantics::LabelId::new("tab:x"))),
       paragraph_of_lines(1),
     ];
 
@@ -3437,7 +3437,7 @@ mod tests {
   fn composed_line_resolves_anchor_and_collects_link() {
     // Arrange
     use crate::{
-      resolve::HeadingKey,
+      semantics::HeadingKey,
       typeset::layout::{AnchorId, AnchorMark, LinkTarget},
     };
     let geom = test_geometry();

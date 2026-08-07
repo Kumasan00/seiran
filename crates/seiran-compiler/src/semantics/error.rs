@@ -1,9 +1,39 @@
-//! 解決ステージで発生し得るエラー
+//! 意味解析で発生し得るエラー
+//!
+//! 入口 [`analyze`](crate::semantics::analyze) が返す [`AnalyzeError`] と、HIR 走査が返す
+//! [`SemanticError`] の 2 層に分かれる。後者は必ずソース位置に帰属する（`source_id` を持つ）ため、
+//! 呼び出し元は本文を添えた診断へ組み替えられる。CSL の読込・整形エラーはソース位置を持たないので、
+//! この不変条件を壊さないよう [`SemanticError`] には混ぜず [`AnalyzeError`] の別バリアントに置く。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::source::{SourceId, Span};
+use crate::{
+  semantics::{CitationFormatError, CitationStyleError},
+  source::{SourceId, Span},
+};
+
+/// [`analyze`](crate::semantics::analyze) のエラー
+///
+/// 内側の意味解析 / CSL スタイル読込 / CSL 整形それぞれの診断（code・help・label）をそのまま運ぶ。
+/// 呼び出し元（`compiler`）が帰属ソースを組み立てられるよう、[`SemanticError`] はここでは変換せず
+/// `SourceId` だけを運ぶ形のまま渡し、`SourceDb` から本文を引く変換は
+/// `compiler.rs::wrap_resolve_error` に委ねる。
+#[derive(Debug, Error, Diagnostic)]
+pub(crate) enum AnalyzeError {
+  /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  CitationStyle(#[from] CitationStyleError),
+  /// `\cite` の CSL 整形（表示の生成）エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  CitationFormat(#[from] CitationFormatError),
+  /// ラベル・`\ref`・カウンタ・引用キーの意味解析エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Analyze(#[from] SemanticError),
+}
 
 /// 未定義キーを含む引用箇所 1 件
 #[derive(Debug, Clone)]

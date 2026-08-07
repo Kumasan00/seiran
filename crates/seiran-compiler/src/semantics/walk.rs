@@ -9,14 +9,13 @@
 //! 行採番の後に来る）。
 
 use crate::{
-  citation::{CitationId, CitationSiteFacts, References},
   config::{CounterName, DocumentPolicy},
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
-  resolve::{
-    HeadingKey, LabelId, SemanticError,
+  semantics::{
+    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError,
     counter::CounterRegistry,
     error::{UnknownCitationSite, span_to_source_span},
-    facts::{AnalyzedDocument, HeadingFacts, SemanticFacts},
+    facts::{HeadingFacts, SemanticFacts},
   },
 };
 
@@ -30,11 +29,11 @@ use crate::{
 ///
 /// 同名ラベルが 2 回以上宣言された場合、または `\ref` / `[of=...]` の参照先が存在しない場合に
 /// [`SemanticError`] を返します。
-pub fn analyze(
-  hir: HirDocument,
+pub(super) fn collect_facts(
+  hir: &HirDocument,
   policy: &DocumentPolicy,
   references: &References,
-) -> Result<AnalyzedDocument, SemanticError> {
+) -> Result<SemanticFacts, SemanticError> {
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
   let mut pending: Vec<PendingReference> = Vec::new();
@@ -68,8 +67,8 @@ pub fn analyze(
     return Err(error);
   }
   resolve_references(&mut facts, &registry, &pending, hir.locations())?;
-  assert_facts_complete(&hir, &facts, policy);
-  return Ok(AnalyzedDocument::new(hir, facts));
+  assert_facts_complete(hir, &facts, policy);
+  return Ok(facts);
 }
 
 /// variant ごとに必要な fact がすべて登録されているかを検証する
@@ -510,13 +509,26 @@ impl Walker<'_> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::analyze;
+  use super::collect_facts;
   use crate::{
-    citation::{References, test_fixtures::sample_references},
     config::{DocumentPolicy, Style},
     document::HirDocument,
+    semantics::{GeneratedCitations, References, SemanticDocument, SemanticError, test_fixtures::sample_references},
     source::SourceId,
   };
+
+  /// 走査結果を `SemanticDocument` に束ねるテスト用の入口
+  ///
+  /// 本体経路（`semantics::analyze`）は CSL 整形まで含むが、走査そのものの検証には要らないので、
+  /// ここでは `collect_facts` の結果だけを HIR と束ね、引用の生成物は空にする。
+  fn analyze(
+    hir: HirDocument,
+    policy: &DocumentPolicy,
+    references: &References,
+  ) -> Result<SemanticDocument, SemanticError> {
+    let facts = collect_facts(&hir, policy, references)?;
+    return Ok(SemanticDocument::new(hir, facts, GeneratedCitations::default()));
+  }
 
   /// 引用を含まない入力向けの空の参照定義
   fn no_references() -> References { return References(std::collections::HashMap::new()); }
@@ -528,7 +540,7 @@ mod tests {
   }
 
   /// ソース 1 本をパースし、既定の policy で解析まで済ませる
-  fn analyze_source(source: &str) -> super::AnalyzedDocument {
+  fn analyze_source(source: &str) -> SemanticDocument {
     let hir = document(source);
     let policy = DocumentPolicy::from_style(&Style::default());
     return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
@@ -545,8 +557,8 @@ mod tests {
 
     // Assert — 宣言ノードからラベルが引け、ラベルからカウンタ値が引ける
     let heading = analyzed.headings().first().expect("見出しが 1 件あるはず");
-    assert_eq!(analyzed.declared_label(heading.node), Some(&crate::resolve::LabelId::new("ch:intro")));
-    assert!(analyzed.counter_value_of_label(&crate::resolve::LabelId::new("ch:intro")).is_some());
+    assert_eq!(analyzed.declared_label(heading.node), Some(&crate::semantics::LabelId::new("ch:intro")));
+    assert!(analyzed.counter_value_of_label(&crate::semantics::LabelId::new("ch:intro")).is_some());
   }
 
   #[test]
@@ -573,10 +585,10 @@ mod tests {
     // （`any` で緩く見ると誤った NodeId に紐づいた fact を見逃すので site と target の対応を固定する）
     let sites: Vec<_> = analyzed.reference_sites().map(|(id, label)| return (id, label.clone())).collect();
     assert_eq!(sites.len(), 1, "参照箇所は [of=...] の 1 件だけのはず");
-    assert_eq!(sites[0].1, crate::resolve::LabelId::new("thm:a"));
+    assert_eq!(sites[0].1, crate::semantics::LabelId::new("thm:a"));
     assert_eq!(
       analyzed.reference_target(sites[0].0),
-      &crate::resolve::LabelId::new("thm:a"),
+      &crate::semantics::LabelId::new("thm:a"),
       "reference_target は site の NodeId から同じ LabelId を返すはず"
     );
   }
@@ -592,7 +604,7 @@ mod tests {
     let error = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
     // Assert — span が `\ref{...}` 全体を指す
-    let crate::resolve::SemanticError::UnresolvedReference { label, span, .. } = &error else {
+    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = &error else {
       panic!("UnresolvedReference が期待されます: {error:?}");
     };
     assert_eq!(label, "missing");
@@ -651,7 +663,7 @@ mod tests {
     let error = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
     // Assert
-    let crate::resolve::SemanticError::UnresolvedReference { label, span, .. } = &error else {
+    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = &error else {
       panic!("UnresolvedReference が期待されます: {error:?}");
     };
     assert_eq!(label, "missing");
@@ -666,16 +678,16 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
 
     // Assert
-    let targets: Vec<Vec<crate::citation::CitationId>> =
-      analyzed.citation_sites().iter().map(|(_, site)| return site.targets.clone()).collect();
+    let targets: Vec<Vec<crate::semantics::CitationId>> =
+      facts.citations.iter().map(|(_, site)| return site.targets.clone()).collect();
     assert_eq!(
       targets,
       vec![
-        vec![crate::citation::CitationId::new("kwan2014")],
-        vec![crate::citation::CitationId::new("doe2020")]
+        vec![crate::semantics::CitationId::new("kwan2014")],
+        vec![crate::semantics::CitationId::new("doe2020")]
       ],
       "引用箇所は文書順に並ぶはず"
     );
@@ -688,15 +700,15 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let (_, site) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    let (_, site) = facts.citations.iter().next().expect("1 箇所あるはず");
     assert_eq!(
       site.targets,
       [
-        crate::citation::CitationId::new("doe2020"),
-        crate::citation::CitationId::new("kwan2014")
+        crate::semantics::CitationId::new("doe2020"),
+        crate::semantics::CitationId::new("kwan2014")
       ],
       "キー順を保つはず"
     );
@@ -713,7 +725,7 @@ mod tests {
     let error = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
     // Assert
-    let crate::resolve::SemanticError::UnknownCitationKeys { sites } = &error else {
+    let crate::semantics::SemanticError::UnknownCitationKeys { sites } = &error else {
       panic!("UnknownCitationKeys が期待されます: {error:?}");
     };
     assert_eq!(sites.len(), 1);
@@ -738,10 +750,10 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    assert_eq!(analyzed.citation_sites().len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
+    assert_eq!(facts.citations.len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
   }
 
   #[test]
@@ -752,14 +764,13 @@ mod tests {
     let source = r"\cite{kwan2014} と \cite{doe2020}";
 
     // Act
-    let first = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
-    let second = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
+    let first = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
+    let second = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let sites =
-      |analyzed: &crate::resolve::AnalyzedDocument| -> Vec<(crate::document::NodeId, Vec<crate::citation::CitationId>)> {
-        return analyzed.citation_sites().iter().map(|(id, site)| return (id, site.targets.clone())).collect();
-      };
+    let sites = |facts: &super::SemanticFacts| -> Vec<(crate::document::NodeId, Vec<crate::semantics::CitationId>)> {
+      return facts.citations.iter().map(|(id, site)| return (id, site.targets.clone())).collect();
+    };
     assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
   }
 
@@ -774,7 +785,7 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(error, crate::resolve::SemanticError::DuplicateLabel { ref label, .. } if label == "dup"),
+      matches!(error, crate::semantics::SemanticError::DuplicateLabel { ref label, .. } if label == "dup"),
       "got: {error:?}"
     );
   }
@@ -787,11 +798,11 @@ mod tests {
 mod completeness_tests {
   use proptest::prelude::*;
 
-  use super::analyze;
+  use super::collect_facts;
   use crate::{
-    citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     document::HirDocument,
+    semantics::{GeneratedCitations, SemanticDocument, test_fixtures::sample_references},
     source::SourceId,
   };
 
@@ -838,11 +849,12 @@ mod completeness_tests {
       let document = HirDocument::assemble(vec![hir]);
       let policy = DocumentPolicy::from_style(&Style::default());
 
-      // Act — 完全性検証は analyze の内側で走る
-      let analyzed = analyze(document, &policy, &sample_references()).expect("解析に成功するはず");
+      // Act — 完全性検証は collect_facts の内側で走る
+      let facts = collect_facts(&document, &policy, &sample_references()).expect("解析に成功するはず");
+      let analyzed = SemanticDocument::new(document, facts, GeneratedCitations::default());
 
       // Assert — 少なくとも基準の定理は fact に載っている（検証が空回りしていないことの確認）
-      prop_assert!(analyzed.counter_value_of_label(&crate::resolve::LabelId::new("l0")).is_some());
+      prop_assert!(analyzed.counter_value_of_label(&crate::semantics::LabelId::new("l0")).is_some());
     }
   }
 }

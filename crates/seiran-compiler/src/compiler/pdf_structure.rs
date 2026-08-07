@@ -30,7 +30,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 
 /// style の一時的な差分を適用して PDF を生成する。
 ///
-/// `compile` 本体と同じ手順（`parse_project` → `semantics::resolve_semantics` →
+/// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` →
 /// `load_image_resources` → `DocumentLayouter::layout` → `ResourceBundle` 構築 → `build_publication` →
 /// `seiran_pdf::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
 /// ショートカットを作らない。
@@ -46,14 +46,14 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
   let (document, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
-  let semantics = super::semantics::resolve_semantics(&source, document, &snapshot.references, &snapshot.style)
-    .expect("resolve_semantics の実行");
+  let semantics =
+    crate::semantics::analyze(&source, document, &snapshot.references, &snapshot.style).expect("analyze の実行");
   let image_resources =
     super::image_resources::load_image_resources(&source, &image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
   let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
-    .layout(super::document_content(&semantics), &image_resources)
+    .layout(&semantics, &image_resources)
     .expect("layout の実行");
   let fonts = super::build_pdf_fonts(&font_data, &font_resources);
   let font_metrics = super::build_pdf_font_metrics(&font_resources);

@@ -1,7 +1,7 @@
 //! 参照定義ファイルの読込（`references.toml` / `.json`）から文献引用（`\cite`）の意味解析・
 //! CSL 整形・参考文献リスト（書誌）生成までを 1 module に閉じる。
 //!
-//! 「引用箇所について判明した事実」（`crate::resolve::analyze` が HIR 走査の一部として作る
+//! 「引用箇所について判明した事実」（`crate::semantics::analyze` が HIR 走査の一部として作る
 //! [`CitationSiteFacts`]）と「そこから作る生成物」（[`generate_citations`]）の 2 段構成で、
 //! 著者が書いた文書木（HIR）へは一切書き戻さない。引用の同一性（[`CitationId`]）・入力契約
 //! （[`CitationSiteFacts`]）・生成物の語彙（[`GeneratedBlock`] / [`GeneratedInline`]）はいずれも

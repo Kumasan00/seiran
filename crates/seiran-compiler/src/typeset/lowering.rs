@@ -1,6 +1,6 @@
-//! Lowering 層: 意味解析の成果物（`resolve::AnalyzedDocument`）+ CSL 整形の生成物 → `LayoutNode` 変換
+//! Lowering 層: 意味解析の成果物（`semantics::SemanticDocument`）→ `LayoutNode` 変換
 //!
-//! ラベル・カウンタの解決（採番・`\ref` の存在検証）は `resolve` が済ませているため、
+//! ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` が済ませているため、
 //! この層は「確定した構造値を style の表示側フィールドで文字列にして箱に積む」だけを行う。
 //! 意味解析を行わないので、この層に失敗はない（`Result` を返さない）。
 //!
@@ -11,11 +11,10 @@
 use tracing::debug;
 
 use crate::{
-  citation::{GeneratedCitations, GeneratedInline, generated_inlines_to_plain_text},
   config::Style as ReadStyle,
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
-  resolve::{AnalyzedDocument, CounterValue, HeadingKey, LabelId},
+  semantics::{CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument, generated_inlines_to_plain_text},
   typeset::layout::AnchorMark,
 };
 
@@ -151,62 +150,43 @@ pub struct HeadingRecord {
 /// 子 module のテストが lowering の入力を組み立てるための最小ヘルパ
 #[cfg(test)]
 pub(super) mod test_support {
-  use super::{DocumentContent, GeneratedCitations, LayoutNode, LoweringContext, lower_sources_with_headings};
+  use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
-    citation::test_fixtures::sample_references,
     config::{DocumentPolicy, Style},
     document::HirDocument,
     frontend::parse_source,
-    resolve::{AnalyzedDocument, analyze},
+    semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
   };
 
-  /// `.sei` スニペットを parse → analyze して解析済みドキュメントを作る
+  /// `.sei` スニペットを parse → analyze して意味解析済みドキュメントを作る
   ///
-  /// `AnalyzedDocument` は `analyze` からしか作れない（`NodeId` を捏造できない）ので、lowering の
+  /// `SemanticDocument` は `analyze` からしか作れない（`NodeId` を捏造できない）ので、lowering の
   /// テストは本番と同じ経路を通す。`\cite` を含むスニペットのために、参照定義には文献フィクスチャ
-  /// （`kwan2014` / `doe2020`）を渡しておく。
-  pub(crate) fn analyzed(source: &str) -> AnalyzedDocument {
+  /// （`kwan2014` / `doe2020`）を渡しておく。引用の表示・書誌を要るテストは
+  /// `SemanticDocument::with_citations_for_test` で差し込む。
+  pub(crate) fn analyzed(source: &str) -> SemanticDocument {
     let hir = HirDocument::assemble(vec![parse_source(source, SourceId::new(0)).expect("パースに成功するはず")]);
-    return analyze(hir, &DocumentPolicy::from_style(&Style::default()), &sample_references())
+    return analyze_for_test(hir, &DocumentPolicy::from_style(&Style::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 
-  /// 解析済みドキュメント（+ 任意の引用生成物）を lower してレイアウトノード列を返す
-  pub(crate) fn lower(style: &Style, analyzed: &AnalyzedDocument, citations: &GeneratedCitations) -> Vec<LayoutNode> {
+  /// 意味解析済みドキュメントを lower してレイアウトノード列を返す
+  pub(crate) fn lower(style: &Style, document: &SemanticDocument) -> Vec<LayoutNode> {
     let ctx = LoweringContext::new(style);
-    let content = DocumentContent {
-      analyzed,
-      citations,
-    };
-    let (layout, _headings) = lower_sources_with_headings(&ctx, content);
+    let (layout, _headings) = lower_sources_with_headings(&ctx, document);
     return layout;
   }
 }
 
-/// lowering の入力（意味解析の成果物と CSL 整形の生成物）
-///
-/// 著者が書いた内容は `analyzed` の HIR 1 本、意味解析で判明した事実は同じ `analyzed` の
-/// side table、CSL 整形の生成物は `citations` の 1 本、という切り分けをそのまま型にしたもの。
-/// どちらも段間 interface は前段の深い型で、side table の collection（`NodeMap`）はここに現れない。
-/// 生成物には `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」
-/// という不変条件を保つため）。
-#[derive(Clone, Copy)]
-pub struct DocumentContent<'a> {
-  /// 意味解析の成果物（HIR + 事実の side table）
-  pub analyzed: &'a AnalyzedDocument,
-  /// CSL 整形の生成物（引用箇所ごとの表示 + 書誌）
-  pub citations: &'a GeneratedCitations,
-}
-
 /// 走査中に更新される可変状態と、事実を引く query の窓口
 ///
-/// 採番・`\ref` の解決・見出しキーの付与はいずれも `resolve::analyze` が済ませているため、
+/// 採番・`\ref` の解決・見出しキーの付与はいずれも `semantics::analyze` が済ませているため、
 /// ここに残る可変状態は「脚注の出現順に払い出す通し index」と「見出しタイトルのプレーンテキスト」
 /// だけになる（後者は走査中にしか作れず、[`HeadingRecord`] の組み立てで使う）。
 pub(super) struct LoweringState<'a> {
-  /// 意味解析の成果物と引用の生成物
-  content: DocumentContent<'a>,
+  /// 意味解析の成果物（HIR + 事実 + CSL 生成物）
+  document: &'a SemanticDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
   /// 見出しノード → タイトルのプレーンテキスト（`HeadingRecord` の組み立てに使う）
@@ -215,9 +195,9 @@ pub(super) struct LoweringState<'a> {
 
 impl<'a> LoweringState<'a> {
   /// 入力に対する初期状態を作る
-  pub(super) fn new(content: DocumentContent<'a>) -> Self {
+  pub(super) fn new(document: &'a SemanticDocument) -> Self {
     return LoweringState {
-      content,
+      document,
       footnote_count: 0,
       heading_titles: NodeMap::default(),
     };
@@ -234,7 +214,7 @@ impl<'a> LoweringState<'a> {
   ///
   /// 表示の欠落を検出するのは `GeneratedCitations` の責務（完全性の不変条件はそちらが持つ）。
   pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
-    return self.content.citations.display_at(site);
+    return self.document.citation_display(site);
   }
 
   /// `\ref` / `proof` の `[of=...]` の参照先表示文字列を作る
@@ -244,29 +224,27 @@ impl<'a> LoweringState<'a> {
   /// 参照先のカウンタ値が事実に無い場合にパニックします（`analyze` の存在検証を通過した
   /// `LabelId` しか到達しないため、通常は起こりません）。
   pub(super) fn ref_display(&self, style: &ReadStyle, target: &LabelId) -> String {
-    let Some(value) = self.content.analyzed.counter_value_of_label(target) else {
-      unreachable!("参照先の存在は resolve::analyze が保証している: {target:?}")
+    let Some(value) = self.document.counter_value_of_label(target) else {
+      unreachable!("参照先の存在は semantics::analyze が保証している: {target:?}")
     };
     return counter::format_ref_display(style, value);
   }
 
   /// 採番対象ノードのカウンタ構造値を引く（採番対象でなければ `None`）
   pub(super) fn counter_value(&self, node: NodeId) -> Option<&'a CounterValue> {
-    return self.content.analyzed.counter_value(node);
+    return self.document.counter_value(node);
   }
 
   /// 見出しノードの文書順キーを引く
-  pub(super) fn heading_key(&self, node: NodeId) -> HeadingKey { return self.content.analyzed.heading_key(node); }
+  pub(super) fn heading_key(&self, node: NodeId) -> HeadingKey { return self.document.heading_key(node); }
 
   /// ノードが宣言したラベルを引く（ラベルを持たないノードは `None`）
   pub(super) fn declared_label(&self, node: NodeId) -> Option<&'a LabelId> {
-    return self.content.analyzed.declared_label(node);
+    return self.document.declared_label(node);
   }
 
   /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
-  pub(super) fn reference_target(&self, site: NodeId) -> &'a LabelId {
-    return self.content.analyzed.reference_target(site);
-  }
+  pub(super) fn reference_target(&self, site: NodeId) -> &'a LabelId { return self.document.reference_target(site); }
 
   /// 見出しタイトルのプレーンテキストを記録する
   pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String) {
@@ -287,28 +265,27 @@ impl<'a> LoweringState<'a> {
   }
 }
 
-/// 意味解析の成果物と生成物をレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
+/// 意味解析の成果物をレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
 #[must_use]
 pub fn lower_sources_with_headings(
   ctx: &LoweringContext,
-  content: DocumentContent<'_>,
+  document: &SemanticDocument,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
-  let analyzed = content.analyzed;
-  let mut state = LoweringState::new(content);
+  let mut state = LoweringState::new(document);
   let mut result = Vec::new();
   // グループの起源（`HirGroup::source_id`）はエラー帰属のための情報で、`analyze` が
   // 診断を出し終えた後の lowering では読む先が無い（診断を出さないので文脈に持たない）。
-  for group in analyzed.hir().groups() {
+  for group in document.hir().groups() {
     result.extend(lower_nodes_inner(ctx, &group.nodes, &mut state));
   }
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
-    generated::lower_bibliography(ctx, content.citations.bibliography(), analyzed.headings().len());
+    generated::lower_bibliography(ctx, document.bibliography(), document.headings().len());
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
-  let mut headings: Vec<HeadingRecord> = analyzed
+  let mut headings: Vec<HeadingRecord> = document
     .headings()
     .iter()
     .map(|facts| {
@@ -325,8 +302,8 @@ pub fn lower_sources_with_headings(
     .collect();
   headings.extend(bibliography_headings);
 
-  let input_node_count: usize = analyzed.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>()
-    + content.citations.bibliography().len();
+  let input_node_count: usize =
+    document.hir().groups().iter().map(|group| return group.nodes.len()).sum::<usize>() + document.bibliography().len();
   debug!(input_node_count, layout_node_count = result.len(), "lowering が完了しました");
   return (result, headings);
 }
@@ -352,7 +329,7 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &HirNode, state: &mut Lowerin
       title,
       label: _,
     } => {
-      // 見出しキーは `resolve::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
+      // 見出しキーは `semantics::analyze` が文書順に振ったもの。lowering は振り直さず読むだけなので、
       // 再帰（quote / theorem / list item 本体）を挟んでも `analyzed.headings()` の添字と必ず揃う。
       let key = state.heading_key(node.id);
       let label = state.declared_label(node.id).cloned();
@@ -545,11 +522,10 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 mod tests {
   use super::{test_support::analyzed, *};
   use crate::{
-    citation::test_fixtures::sample_references,
     config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
-    resolve::{AnalyzedDocument, analyze},
+    semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     typeset::layout::{AnchorId, AnchorMark, LinkTarget},
   };
@@ -557,7 +533,7 @@ mod tests {
   /// 複数の `.sei` ソースを 1 つの文書として parse → analyze するテストヘルパ
   ///
   /// 採番・`\ref` 解決がソース跨ぎで通ることを見るテストだけが使う。
-  fn analyzed_sources(sources: &[&str]) -> AnalyzedDocument {
+  fn analyzed_sources(sources: &[&str]) -> SemanticDocument {
     let hir = HirDocument::assemble(
       sources
         .iter()
@@ -567,26 +543,19 @@ mod tests {
         })
         .collect(),
     );
-    return analyze(hir, &DocumentPolicy::from_style(&ReadStyle::default()), &sample_references())
+    return analyze_for_test(hir, &DocumentPolicy::from_style(&ReadStyle::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 
-  /// 引用も書誌も無い入力を lower して、レイアウトノード列と見出し記録の両方を返すテストヘルパ
-  fn lower_body(style: &ReadStyle, analyzed: &AnalyzedDocument) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
+  /// 入力を lower して、レイアウトノード列と見出し記録の両方を返すテストヘルパ
+  fn lower_body(style: &ReadStyle, document: &SemanticDocument) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
     let ctx = LoweringContext::new(style);
-    let citations = GeneratedCitations::default();
-    return lower_sources_with_headings(
-      &ctx,
-      DocumentContent {
-        analyzed,
-        citations: &citations,
-      },
-    );
+    return lower_sources_with_headings(&ctx, document);
   }
 
   /// `.sei` ソース 1 本を lower して `LayoutNode` 列だけを返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return test_support::lower(style, &analyzed(source), &GeneratedCitations::default());
+    return test_support::lower(style, &analyzed(source));
   }
 
   /// レイアウトノード木を再帰的に走査し、`LineBreak` が含まれるか調べるヘルパ
@@ -913,19 +882,13 @@ mod tests {
     // Arrange — 見出しタイトルの `\cite` は、しおり・目次では CSL 整形済みの表示を辿る
     let style = ReadStyle::default();
     let analyzed = analyzed("\\section{結論 \\cite{kwan2014}}\n");
-    let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let citations =
-      GeneratedCitations::for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], Vec::new());
+    let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
+    let document =
+      analyzed.with_citations_for_test(vec![(site, vec![GeneratedInline::Text("[1]".to_string())])], Vec::new());
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let (_layout, headings) = lower_sources_with_headings(
-      &ctx,
-      DocumentContent {
-        analyzed: &analyzed,
-        citations: &citations,
-      },
-    );
+    let (_layout, headings) = lower_sources_with_headings(&ctx, &document);
 
     // Assert
     assert_eq!(headings[0].title_plain, "結論 [1]", "{headings:?}");

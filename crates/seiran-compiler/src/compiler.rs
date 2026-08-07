@@ -15,7 +15,6 @@ mod page_values;
 mod phase_context;
 mod publication;
 mod running;
-mod semantics;
 mod snapshot;
 
 #[cfg(test)]
@@ -36,16 +35,15 @@ pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedCitationError, AttributedParseError, CompileError};
 use image_manifest::ImageManifest;
 use layout::{DocumentLayouter, LaidOutDocument};
-use semantics::SemanticsError;
 pub use snapshot::OutputPlan;
 use snapshot::{ProjectSnapshot, SourceDb};
 use tracing::info;
 
 #[cfg(test)]
-use crate::citation::References;
+use crate::semantics::References;
 use crate::{
-  citation::read_references,
   font::{FontData, FontDataExt, FontResources},
+  semantics::{AnalyzeError, read_references},
 };
 
 /// コンパイル結果の統計情報。
@@ -115,14 +113,13 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
 
   let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
   let (document, image_manifest) = parse_project(&snapshot)?;
-  let semantics = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
-    .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
-  let content = document_content(&semantics);
+  let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
+    .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
   let font_system = font_resources.system()?;
-  let laid_out =
-    DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(content, &image_resources)?;
+  let laid_out = DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
+    .layout(&semantic_document, &image_resources)?;
   let publication = build_publication(
     &snapshot.config,
     &snapshot.font_data,
@@ -176,7 +173,7 @@ fn load_project(
 
 /// 全ソースをパースし、画像パス一覧を作る。
 ///
-/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::resolve_semantics` が
+/// 意味解析（ラベル・`\ref`・カウンタ・引用キー）と CSL 整形は `semantics::analyze` が
 /// 担う（この関数はパースと画像パス収集のみを行う）。
 ///
 /// # Errors
@@ -319,21 +316,13 @@ fn build_pages_with_source(
   let snapshot =
     ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let (document, image_manifest) = parse_project(&snapshot)?;
-  let semantics = semantics::resolve_semantics(source, document, &snapshot.references, &snapshot.style)
-    .map_err(|error| return wrap_semantics_error(error, &snapshot.source_db))?;
-  let content = document_content(&semantics);
+  let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
+    .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
   let image_resources = image_resources::load_image_resources(source, &image_manifest.paths)?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system).layout(content, &image_resources);
-}
-
-/// 意味解析と CSL 整形の成果物から、組版へ渡す入力ビューを組み立てる。
-fn document_content(semantics: &semantics::Semantics) -> crate::typeset::DocumentContent<'_> {
-  return crate::typeset::DocumentContent {
-    analyzed: &semantics.analyzed,
-    citations: &semantics.generated,
-  };
+  return DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
+    .layout(&semantic_document, &image_resources);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
@@ -374,9 +363,9 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::document::HirSou
 /// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。`analyze` は実ソースしか
 /// 走査しないので、帰属先が実ソース以外になることはない。
-fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::semantics::SemanticError, source_db: &SourceDb) -> CompileError {
   // 未定義引用キーは箇所ごとに `SourceId` を持ち、ソースごとの位置付き診断へ組み替える。
-  if let crate::resolve::SemanticError::UnknownCitationKeys { sites } = error {
+  if let crate::semantics::SemanticError::UnknownCitationKeys { sites } = error {
     return wrap_unknown_citation_keys(sites, source_db);
   }
   let Some(source_id) = error.source_id() else {
@@ -393,7 +382,7 @@ fn wrap_resolve_error(error: crate::resolve::SemanticError, source_db: &SourceDb
 ///
 /// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
 /// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
-fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
+fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<crate::source::SourceId> = Vec::new();
@@ -423,14 +412,14 @@ fn wrap_unknown_citation_keys(sites: Vec<crate::resolve::UnknownCitationSite>, s
   return CompileError::MultipleCitationErrors { errors };
 }
 
-/// `semantics::resolve_semantics` のエラーを `CompileError` へ変換する。
+/// `semantics::analyze` のエラーを `CompileError` へ変換する。
 ///
 /// CSL 由来はそのまま `CitationStyle` / `CitationFormat` へ、意味解析由来は `wrap_resolve_error` に
 /// 委譲する（未定義引用キーはそこからさらにソースごとの位置付き診断へ組み替える）。
-fn wrap_semantics_error(error: SemanticsError, source_db: &SourceDb) -> CompileError {
+fn wrap_analyze_error(error: AnalyzeError, source_db: &SourceDb) -> CompileError {
   return match error {
-    SemanticsError::CitationStyle(source) => CompileError::CitationStyle { source },
-    SemanticsError::CitationFormat(source) => CompileError::CitationFormat { source },
-    SemanticsError::Analyze(source) => wrap_resolve_error(source, source_db),
+    AnalyzeError::CitationStyle(source) => CompileError::CitationStyle { source },
+    AnalyzeError::CitationFormat(source) => CompileError::CitationFormat { source },
+    AnalyzeError::Analyze(source) => wrap_resolve_error(source, source_db),
   };
 }

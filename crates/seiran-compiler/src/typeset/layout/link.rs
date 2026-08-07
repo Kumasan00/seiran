@@ -1,13 +1,10 @@
 //! 配置済み文書のアンカーと行き先 — [`FootnoteId`] / [`AnchorId`] / [`AnchorMark`] / [`LinkTarget`]。
 //!
 //! いずれも「どこに何が置かれたか」が決まって初めて成立する組版側の概念なので、layout が所有する
-//! （#334）。到達先の名前空間には意味解析が確定した識別子（`resolve` の `LabelId` / `HeadingKey`）と
+//! （#334）。到達先の名前空間には意味解析が確定した識別子（`semantics` の `LabelId` / `HeadingKey`）と
 //! 引用キー（`citation::CitationId`）を借りるが、それらを発行するのは前段であってここではない。
 
-use crate::{
-  citation::CitationId,
-  resolve::{HeadingKey, LabelId},
-};
+use crate::semantics::{CitationId, HeadingKey, LabelId};
 
 /// 脚注の出現 index（0 起点）
 ///

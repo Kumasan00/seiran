@@ -90,7 +90,7 @@ fn diagnostic_multiple_source_errors() {
 #[test]
 fn diagnostic_multi_source_resolve_error_attributes_second_source() {
   // Arrange / Act — 2 ソースのうち 1 番目は成功、2 番目だけ `\ref` が未定義（resolve 段）。
-  // `resolve::analyze` はラベル名前空間を全ソースで共有するため
+  // `semantics::analyze` はラベル名前空間を全ソースで共有するため
   // （単一の `CounterRegistry` に対して逐次解決し、`\ref` の存在検証を全体へ 1 回だけ実行する）、
   // parse 段の集約（`diagnostic_multiple_source_errors`）とは別に、resolve 段の複数 source でも
   // `Origin::Source` が正しいファイルへ帰属することを確認する。

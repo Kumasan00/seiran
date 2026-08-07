@@ -1,6 +1,6 @@
 //! 著者が書いた文書（authored HIR）を所有する module。
 //!
-//! HIR は frontend の一時的な構文木ではなく、`resolve` と `typeset` が共有する authored 文書の
+//! HIR は frontend の一時的な構文木ではなく、`semantics` と `typeset` が共有する authored 文書の
 //! 正典である。producer は frontend 1 つだが、HIR の意味と寿命は frontend の実装より広いので、
 //! ここが所有者になる（epic #332）。診断ライブラリ（miette）も I/O も持たない。
 //!
@@ -8,7 +8,7 @@
 //!
 //! - frontend が HIR を構築するための [`HirBuilder`] と HIR ノード型
 //! - 複数ソースを決定順序で束ねる組み立て（[`HirSource`] → [`HirGroup`] → [`HirDocument`]）
-//! - `resolve` / `typeset` が authored 文書を網羅的に走査するための HIR enum。
+//! - `semantics` / `typeset` が authored 文書を網羅的に走査するための HIR enum。
 //!   網羅的 match は意図した interface で、新しい言語要素を足したときに resolve と lowering の
 //!   更新漏れをコンパイラに検出させる
 //! - 診断側が [`NodeId`] からソース位置を引く query（[`SourceMap`]）
@@ -16,7 +16,7 @@
 //! interface に出さないもの: `NodeId` の発行、位置表の内部 collection（`SourceSpans`）、
 //! ソース順の正規化。`NodeId` を発行できるのは [`HirBuilder`] だけで、発行と同時に位置が
 //! 記録される（`NodeId::new` / `SourceSpans::alloc` は `hir` module 内に閉じている）。
-//! side table の [`NodeMap`] も crate 内 interface に留め、`AnalyzedDocument` や
+//! side table の [`NodeMap`] も crate 内 interface に留め、`SemanticDocument` や
 //! `GeneratedCitations` の外部表現としては公開しない。
 //!
 //! # 置く型・置かない型
@@ -33,7 +33,7 @@
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
 //! 依存方向は `source` / `project` / `length` / `color` / `font` の 5 つだけで、
-//! `resolve` / `citation` / `typeset` / `compiler` は知らない。
+//! `semantics` / `typeset` / `compiler` は知らない。
 
 mod caption;
 mod heading_level;

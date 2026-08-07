@@ -1,13 +1,13 @@
 //! [`resolve::CounterValue`]（構造値）から表示文字列を作る純粋関数群
 //!
-//! issue #282 の「値と表示の分離」の表示側。`resolve` クレートは `resets` / `reset_by`
+//! issue #282 の「値と表示の分離」の表示側。`semantics` module は `resets` / `reset_by`
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 
 use crate::{
   config::{CounterName, Counters, Style, TheoremReset},
   document::TheoremClass,
-  resolve::{CounterKind, CounterValue},
+  semantics::{CounterKind, CounterValue},
   typeset::lowering::placeholder,
 };
 
@@ -80,7 +80,7 @@ fn expand_counter_template(style: &Style, name: CounterName, parts: &[u32]) -> S
 ///
 /// `{n}` は定理カウンタ自身の値で、カウンタと違い `number_style` を持たないため素の 10 進数で
 /// 描画する。`{<counter_name>}` は `reset_by` が指す見出しカウンタのみ解決できる
-/// （`resolve` が構造値に載せる祖先はその 1 段だけ — [`counter_chain`] の制限と同じ理由）。
+/// （`semantics` が構造値に載せる祖先はその 1 段だけ — [`counter_chain`] の制限と同じ理由）。
 fn expand_theorem_template(style: &Style, class: TheoremClass, parts: &[u32]) -> String {
   let def = style.theorems.get(class);
   let own = parts.last().copied().unwrap_or(0);
@@ -119,7 +119,7 @@ fn render_from_chain(style: &Style, chain: &[CounterName], parts: &[u32], target
 
 /// `name` の祖先カウンタ列に自身を足した列を返す（`CounterValue::parts` と 1:1 に対応する）
 ///
-/// 親の求め方は `resolve` 側の `CounterRegistry::ancestor_values` と同一に保つ必要がある
+/// 親の求め方は `semantics` 側の `CounterRegistry::ancestor_values` と同一に保つ必要がある
 /// （「自分を `resets` に含み、`CounterName::ALL` の宣言順で自身より手前にあるカウンタのうち
 /// 最も近いもの」）。`parts` は祖先を辿った順（末尾が自身）で積まれるため、この列と添字が揃う。
 ///

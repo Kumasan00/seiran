@@ -291,7 +291,7 @@ mod tests {
     document::{ColumnAlign, ColumnWidth},
     font::{FontType, GlyphRun},
     length::Length,
-    resolve::LabelId,
+    semantics::LabelId,
   };
 
   /// pt 値から `Length` を作る

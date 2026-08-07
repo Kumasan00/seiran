@@ -64,25 +64,17 @@ pub(super) fn lower_figure(
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
-    super::{DocumentContent, lower_sources_with_headings, test_support::analyzed},
+    super::{lower_sources_with_headings, test_support::analyzed},
     *,
   };
-  use crate::{citation::GeneratedCitations, config::Style as ReadStyle};
+  use crate::config::Style as ReadStyle;
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///
   /// 画像の既定値（`with_image_defaults`）を差し替えるテストがあるため、`LoweringContext` を
   /// 呼び出し側から渡せる形にしてある。
   fn lower_source(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
-    let analyzed = analyzed(source);
-    let citations = GeneratedCitations::default();
-    let (layout, _headings) = lower_sources_with_headings(
-      ctx,
-      DocumentContent {
-        analyzed: &analyzed,
-        citations: &citations,
-      },
-    );
+    let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
   }
 

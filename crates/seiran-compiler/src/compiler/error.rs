@@ -5,11 +5,10 @@ use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::{
-  citation::{CitationFormatError, CitationStyleError},
   config::LayoutValidationError,
   frontend::ParseSourceError,
   project::ProjectPath,
-  resolve::SemanticError,
+  semantics::{CitationFormatError, CitationStyleError, SemanticError},
 };
 
 /// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
@@ -64,14 +63,14 @@ impl Diagnostic for AttributedParseError {
 
 /// 1 ソース内の未定義引用キーを、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
-/// [`crate::citation::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
+/// [`crate::semantics::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
 /// ソース本文を持たない（本文は `snapshot::SourceDb` が一元管理する）。同じソース内に未定義キーが
 /// 複数箇所あれば `labels` にまとめて積む（`labels` の要素ごとに独自のラベル文言を持つため、
 /// `#[label(collection)]` に静的な文言は付けない）。この型自身が診断メッセージ・code・help を
 /// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
 /// 通常の `thiserror::Error` + `#[derive(Diagnostic)]` で書ける。
 ///
-/// `#[error(...)]` / `help(...)` の文言は [`crate::citation::CitationSemanticError::UnknownCitationKeys`]
+/// `#[error(...)]` / `help(...)` の文言は [`crate::semantics::CitationSemanticError::UnknownCitationKeys`]
 /// と意図的に同じ文面を**再掲**している（委譲ではない — `wrap_citation_semantic_error` が
 /// `UnknownCitationKeys` を分解してこの型を組み立てるため、実際に描画されるのはこちらのコピーだけで、
 /// 元の `CitationSemanticError` 側の code / help は生成物の Report には現れない）。文言を変えるときは

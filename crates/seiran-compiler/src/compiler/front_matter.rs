@@ -14,7 +14,7 @@ use super::{
   phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
-  resolve::HeadingKey,
+  semantics::HeadingKey,
   typeset::{FrontMatterInput, HeadingRecord, Page, TocEntryInput},
 };
 
@@ -77,7 +77,7 @@ mod tests {
   use crate::{
     config::{PageNumbering, TocStyle},
     document::HeadingLevel,
-    resolve::HeadingKey,
+    semantics::HeadingKey,
     typeset::{AnchorMark, HeadingRecord, PlacedAnchor},
   };
 

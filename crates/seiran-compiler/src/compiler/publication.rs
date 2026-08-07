@@ -406,7 +406,7 @@ mod tests {
     document::HeadingLevel,
     font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
     length::Length,
-    resolve::{HeadingKey, LabelId},
+    semantics::{HeadingKey, LabelId},
     typeset::{
       AnchorId, AnchorMark, HBox, HBoxContent, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
       PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,

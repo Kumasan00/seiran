@@ -1,10 +1,9 @@
 //! Seiran コンパイラのライブラリ facade。
 //!
 //! 言語処理・意味解決・組版を 1 回の呼び出しに畳んだ [`compile`] が唯一の外部入口。
-//! 内部の段（parse / resolve / typeset / publication 化）は `compiler` module に閉じ、
+//! 内部の段（parse / 意味解析 / typeset / publication 化）は `compiler` module に閉じ、
 //! 外へ公開しない（[`Publication`] を除く）。
 
-mod citation;
 mod color;
 mod compiler;
 mod config;
@@ -16,7 +15,7 @@ mod frontend;
 // カスタムバリデータ参照のために要った `pub(crate)` は不要になった。
 mod length;
 mod project;
-mod resolve;
+mod semantics;
 mod source;
 mod typeset;
 
