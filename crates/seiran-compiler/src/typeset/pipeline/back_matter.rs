@@ -7,8 +7,8 @@ use crate::{
   length::Length,
   typeset::{
     block::{IndexEntryInput, build_index_blocks, build_index_spec},
+    boxes::Page,
     breaking::{LineBreaker, PageGeometry, break_pages},
-    layout::Page,
   },
 };
 

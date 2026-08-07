@@ -108,7 +108,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |
 | `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation` | document config font source project |
 | `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
-| `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `layout`、段順序は `pipeline` に閉じる | font config document semantics length color project |
+| `typeset` | lowering → (a) block → (b)(c)(d) breaking の組版パス統合。中間型は `boxes`、段順序は `pipeline` に閉じる | font config document semantics length color project |
 | `compiler` | compile facade + phase graph。段順序・中間型を crate 外へ出さない | 上記すべて + seiran-pdf |
 
 ## コーディング規約

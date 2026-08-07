@@ -8,7 +8,7 @@ use super::{
 use crate::{
   document::HeadingLevel,
   semantics::{HeadingKey, LabelId},
-  typeset::layout::{Align, AnchorMark},
+  typeset::boxes::{Align, AnchorMark},
 };
 
 /// 見出しのタイトル・番号に使う基底テキストスタイルを返す
@@ -82,7 +82,7 @@ mod tests {
   use crate::{
     config::Style as ReadStyle,
     font::FontKind,
-    typeset::layout::{AnchorId, LinkTarget},
+    typeset::boxes::{AnchorId, LinkTarget},
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る

@@ -20,11 +20,11 @@ use crate::{
   font::{FontKind, FontSystem, FontType, Glyph, GlyphRun, shaper::UnicodeBuffer},
   length::Length,
   typeset::{
-    breaking::{self, BreakKind, BreakPoint, Lang},
-    layout::{
+    boxes::{
       Align, Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
+    breaking::{self, BreakKind, BreakPoint, Lang},
     lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
 };
@@ -843,7 +843,7 @@ mod boundary_glue_tests {
     CJK_STRETCH_RATIO, boundary_glue,
     yakumono::YakumonoClass::{Close, Comma, Normal, Open},
   };
-  use crate::{length::Length, typeset::layout::HItem};
+  use crate::{length::Length, typeset::boxes::HItem};
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -914,7 +914,7 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::{length::Length, typeset::layout::HItem};
+  use crate::{length::Length, typeset::boxes::HItem};
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]

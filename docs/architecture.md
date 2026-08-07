@@ -165,7 +165,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   親 module と名前が衝突するため、この名前へ変えない。
 - **語彙型**（module 直下）: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
-  2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有）/ `theorem`
+  2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
   `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）。小さな `Copy` 値型・enum と、その正準変換
   （`as_str` / `from_name` / serde / `Display`）のみを持つ。
@@ -178,7 +178,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **識別子はここに持たない**: 意味解析が確定する `LabelId` / `HeadingKey` は `semantics::ids`、
   引用キー `CitationId` と CSL 整形の生成物専用の語彙（`GeneratedBlock` / `GeneratedInline`）は
   `semantics::citation`、組版時に成立する `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` は
-  `typeset::layout::link`、検証済み設定値 `TextAlignment` は `config::style::text` の所有（それぞれ
+  `typeset::boxes::link`、検証済み設定値 `TextAlignment` は `config::style::text` の所有（それぞれ
   該当節を参照）。画像パスは HIR の `HirNodeKind::Figure` が `project::ProjectPath` を直接持つ
   （画像専用の newtype を再導入しない）。
 
@@ -201,7 +201,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
   主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
   `seiran_compiler::compiler::dump` に置く。
-- **アンカーは型で namespace を分ける**。`typeset::layout` の `AnchorMark` / `LinkTarget::Internal` は
+- **アンカーは型で namespace を分ける**。`typeset::boxes` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
   （`semantics` の `HeadingKey` / `LabelId` / `CitationId` / 組版側の `FootnoteId`）で区別する。
   `"prefix:"` のような文字列命名規約はコンパイラが何も保証しないため廃止済み（#259）— 文字列規約へ
@@ -220,7 +220,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `HirNodeKind::MathBlock` / `HirMathKind` が値として持つ authored 語彙なので `document` にあるのが
   正しい — ファイル名だけを見て移さない。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
-  `TableBox` 系は `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
+  `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `font` module の型（`font` 節参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
   消費者も `typeset` 内の複数 module や `typeset` → `compiler` の範囲にとどまる。判断基準:
   **複数 consumer の型でも、consumer が同一 crate 内 / 同一依存関係内にとどまるなら、共有置き場では
@@ -286,7 +286,7 @@ TOML パース時に弾く。
 - **本文（`TextBlockStyle`）**: `[text]` が本文の `font_size` / `line_height_factor` / `paragraph_spacing` /
   `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約する。
   `alignment` の値型 `TextAlignment` は、それを読み込む `config::style::text` が所有する
-  （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::layout::Align` とは
+  （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::boxes::Align` とは
   変更理由が違う）
 - **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに
   持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、
@@ -653,7 +653,7 @@ seam 経由で、依存方向は `config` → `font` の一方向。
 意味解析の成果物（`semantics::SemanticDocument`）から、配置済み直前のブロック列・
 ページ列までの組版パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module
 が上流で済ませているため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換する
-だけになる（`lowering` 節を参照）。`lowering` / `block` / `breaking` / `layout` / `pipeline` の
+だけになる（`lowering` 節を参照）。`lowering` / `block` / `breaking` / `boxes` / `pipeline` の
 5 module はすべて非公開で、公開 API は module root の `pub use` に揃える。段順序（lowering →
 `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline` module に閉じており、外部
 （`seiran_compiler::compiler`）が個別に呼ぶのは次の入口関数だけである。
@@ -679,16 +679,16 @@ module root へ公開する。`lower_sources_with_headings` / `LoweringContext` 
 **`typeset` root へは lift しない** — 実装（`break_pages` 内部・`breaking` 配下のテスト）はいずれも
 `breaking` 経由で引くため。`KnuthPlassBreaker` は入口関数の引数として `typeset` root からも見える。
 
-`layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
+`boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。`Page` / `Block` は
 入口関数の入出力境界型として公開する一方、`HItem` / `HBoxContent` / `PlacedTableRow` 等の内部ツリー型は
 `crates/seiran-compiler/src/compiler/publication.rs` / `dump.rs` が直接走査するために公開のまま残って
-いる（組版中間型の所有者移動は別 issue のスコープ）。シェーピング結果 `GlyphRun` / `Glyph` は `layout`
+いる（組版中間型の所有者移動は別 issue のスコープ）。シェーピング結果 `GlyphRun` / `Glyph` は `boxes`
 にはなく `font` module にある（`font` 節参照）。`typeset` root からの `Glyph` / `GlyphRun`
 再エクスポートは持たない（消費者は `font::Glyph` / `font::GlyphRun` を直接 import する）。
 
-#### `layout`
+#### `boxes`
 
 組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する。組版時に初めて成立する配置・アンカーの型と、lowering が構築する
@@ -711,7 +711,7 @@ module root へ公開する。`lower_sources_with_headings` / `LoweringContext` 
   `layout_row_cells` / `collect_row_links` / `CellPlacement` / `RowLink`）。フォント非依存
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
-相互参照は `super::` で解決し、`crate::typeset::layout::{...}` のパスを通じて `block` / `breaking` /
+相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `block` / `breaking` /
 `lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
 `TableColumn` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に消費者がいない
 `Align` / `FootnoteId` は出さない。
@@ -826,7 +826,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 #### `breaking`
 
-フォント非依存の純粋組版パス（コア型は `typeset::layout` にあり、本 module には純粋パス本体だけが残る）。
+フォント非依存の純粋組版パス（コア型は `typeset::boxes` にあり、本 module には純粋パス本体だけが残る）。
 `break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
 （issue #306）が、Rule ベースのボックスのみでページを組んで `font::FontSystem` を一切構築しないこと
 を回帰テストとして固定している。

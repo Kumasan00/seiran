@@ -5,7 +5,7 @@ use super::{
   layout_node::{LayoutNode, TextStyle},
   lower_nodes_inner,
 };
-use crate::{document::HirListItem, length::Length, typeset::layout::Align};
+use crate::{document::HirListItem, length::Length, typeset::boxes::Align};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(

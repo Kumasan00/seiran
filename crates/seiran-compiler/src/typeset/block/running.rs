@@ -7,7 +7,7 @@ use crate::{
   font::{FontKind, FontSystem},
   length::Length,
   typeset::{
-    layout::{HBox, Line, Page, PlacedBlock, PositionedBox},
+    boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
     lowering::TextStyle,
   },
 };
@@ -206,7 +206,7 @@ mod tests {
   use super::{RunningMetadata, append_slot, slot_width, substitute};
   use crate::{
     length::Length,
-    typeset::layout::{HBox, HBoxContent, PositionedBox},
+    typeset::boxes::{HBox, HBoxContent, PositionedBox},
   };
 
   /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ

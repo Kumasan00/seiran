@@ -10,7 +10,7 @@ use crate::{
   document::{HirInline, HirInlineKind},
   font::FontKind,
   length::Length,
-  typeset::layout::{AnchorId, FootnoteId, LinkTarget},
+  typeset::boxes::{AnchorId, FootnoteId, LinkTarget},
 };
 
 /// インライン列をまとめてレイアウトノードに変換する

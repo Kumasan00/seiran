@@ -11,7 +11,7 @@ use crate::{
   font::{FontKind, FontSystem},
   length::Length,
   typeset::{
-    layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
+    boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
   },
 };
@@ -214,7 +214,7 @@ fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEn
 #[cfg(test)]
 mod tests {
   use super::{IndexEntryInput, IndexPageRef, sort_index_entries};
-  use crate::typeset::layout::{AnchorId, LinkTarget};
+  use crate::typeset::boxes::{AnchorId, LinkTarget};
 
   fn entry(word: &str, reading: Option<&str>) -> IndexEntryInput {
     return IndexEntryInput {

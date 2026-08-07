@@ -2,11 +2,11 @@
 //! 計測済み・配置済みページ直前までを担う（旧 `typeset` crate、#307 で `seiran` の非公開 module として吸収）
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
-//! 子 module `layout` が所有する（#280）。
+//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。
 
 mod block;
+mod boxes;
 mod breaking;
-mod layout;
 mod lowering;
 mod pipeline;
 
@@ -14,19 +14,19 @@ pub use block::{
   IndexEntryInput, IndexPageRef, RunningContentSpec, RunningMetadata, RunningSlots, TocEntryInput,
   layout_running_content, sort_index_entries,
 };
-pub use breaking::{KnuthPlassBreaker, PageGeometry};
 // `HBox` / `Line` / `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` /
 // `measure_items_width` を facade に置いているのは、`compiler` 配下の `#[cfg(test)] mod tests`
 // が組版済みページを組み立てるのにこれらを名指しするため。`AnchorId` / `AnchorMark` /
 // `LinkTarget` / `TableColumn` は `compiler::publication` が本体コードから名指しする（#334）。
-// `layout` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
+// `boxes` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
 // 逆に `Align` / `FootnoteId` は `typeset` の外に消費者がいないので facade へは出さない（#326）。
 #[allow(unused_imports)]
-pub use layout::{
+pub use boxes::{
   AnchorId, AnchorMark, Block, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
   PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
   TableCellBox, TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
+pub use breaking::{KnuthPlassBreaker, PageGeometry};
 pub use lowering::{HeadingRecord, per_page_footnote_numbers};
 pub use pipeline::{
   BackMatterInput, BodyLayout, BodyLayoutError, BodyLayoutInput, FrontMatterInput, layout_back_matter, layout_body,

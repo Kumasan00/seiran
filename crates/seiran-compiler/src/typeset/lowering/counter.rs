@@ -12,7 +12,7 @@ mod format;
 
 pub(crate) use format::{format_counter_value, format_ref_display};
 
-use crate::typeset::layout::Page;
+use crate::typeset::boxes::Page;
 
 /// 確定したページ列から、脚注のページ単位表示番号を割り当てる（`FootnoteNumbering::PerPage`）
 ///
@@ -43,7 +43,7 @@ pub fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::typeset::layout::PlacedFootnote;
+  use crate::typeset::boxes::PlacedFootnote;
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
   fn page_with_footnotes(indices: &[u32]) -> Page {

@@ -12,7 +12,7 @@ use crate::{
   font::FontKind,
   length::Length,
   semantics::CounterValue,
-  typeset::layout::Align,
+  typeset::boxes::Align,
 };
 
 mod alphanumeric;
@@ -81,7 +81,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `crate::config::Alignment`（数式本体の揃え）を `crate::typeset::layout::Align` に対応付ける
+/// `crate::config::Alignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,

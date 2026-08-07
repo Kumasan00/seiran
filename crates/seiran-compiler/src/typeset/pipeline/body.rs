@@ -12,8 +12,8 @@ use crate::{
   semantics::SemanticDocument,
   typeset::{
     block::build_blocks,
+    boxes::{Block, Page},
     breaking::{LineBreaker, PageGeometry, break_pages},
-    layout::{Block, Page},
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
   },
 };

@@ -8,7 +8,7 @@ use crate::{
   length::Length,
   semantics::HeadingKey,
   typeset::{
-    layout::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
+    boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
   },
 };
@@ -239,7 +239,7 @@ mod tests {
     font::FontKind,
     length::Length,
     semantics::HeadingKey,
-    typeset::layout::{AnchorId, LinkTarget},
+    typeset::boxes::{AnchorId, LinkTarget},
   };
 
   fn spec() -> TocSpec {

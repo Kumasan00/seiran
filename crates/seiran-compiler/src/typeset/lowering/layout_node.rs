@@ -5,7 +5,7 @@ use crate::{
   document::MathEnvKind,
   font::FontKind,
   length::Length,
-  typeset::layout::{Align, AnchorMark, LinkTarget, TableColumn},
+  typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
 };
 
 /// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位

@@ -7,8 +7,8 @@ use crate::{
   length::Length,
   typeset::{
     block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
+    boxes::{Block, Page},
     breaking::{LineBreaker, PageGeometry, break_pages},
-    layout::{Block, Page},
     lowering::{TitlePageMetadata, lower_title_page},
   },
 };
