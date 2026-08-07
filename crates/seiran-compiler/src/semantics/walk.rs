@@ -513,21 +513,21 @@ mod tests {
   use crate::{
     config::{DocumentPolicy, Style},
     document::HirDocument,
-    semantics::{AnalyzedDocument, References, SemanticError, test_fixtures::sample_references},
+    semantics::{GeneratedCitations, References, SemanticDocument, SemanticError, test_fixtures::sample_references},
     source::SourceId,
   };
 
-  /// 走査結果を `AnalyzedDocument` に束ねるテスト用の入口
+  /// 走査結果を `SemanticDocument` に束ねるテスト用の入口
   ///
   /// 本体経路（`semantics::analyze`）は CSL 整形まで含むが、走査そのものの検証には要らないので、
-  /// ここでは `collect_facts` の結果だけを HIR と束ねる。
+  /// ここでは `collect_facts` の結果だけを HIR と束ね、引用の生成物は空にする。
   fn analyze(
     hir: HirDocument,
     policy: &DocumentPolicy,
     references: &References,
-  ) -> Result<AnalyzedDocument, SemanticError> {
+  ) -> Result<SemanticDocument, SemanticError> {
     let facts = collect_facts(&hir, policy, references)?;
-    return Ok(AnalyzedDocument::new(hir, facts));
+    return Ok(SemanticDocument::new(hir, facts, GeneratedCitations::default()));
   }
 
   /// 引用を含まない入力向けの空の参照定義
@@ -540,7 +540,7 @@ mod tests {
   }
 
   /// ソース 1 本をパースし、既定の policy で解析まで済ませる
-  fn analyze_source(source: &str) -> AnalyzedDocument {
+  fn analyze_source(source: &str) -> SemanticDocument {
     let hir = document(source);
     let policy = DocumentPolicy::from_style(&Style::default());
     return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
@@ -678,11 +678,11 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
 
     // Assert
     let targets: Vec<Vec<crate::semantics::CitationId>> =
-      analyzed.citation_sites().iter().map(|(_, site)| return site.targets.clone()).collect();
+      facts.citations.iter().map(|(_, site)| return site.targets.clone()).collect();
     assert_eq!(
       targets,
       vec![
@@ -700,10 +700,10 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let (_, site) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    let (_, site) = facts.citations.iter().next().expect("1 箇所あるはず");
     assert_eq!(
       site.targets,
       [
@@ -750,10 +750,10 @@ mod tests {
     let policy = DocumentPolicy::from_style(&Style::default());
 
     // Act
-    let analyzed = analyze(hir, &policy, &sample_references()).expect("成功するはず");
+    let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    assert_eq!(analyzed.citation_sites().len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
+    assert_eq!(facts.citations.len(), 3, "箇条書き・脚注・表セルの引用箇所をすべて拾うはず");
   }
 
   #[test]
@@ -764,14 +764,13 @@ mod tests {
     let source = r"\cite{kwan2014} と \cite{doe2020}";
 
     // Act
-    let first = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
-    let second = analyze(document(source), &policy, &sample_references()).expect("成功するはず");
+    let first = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
+    let second = collect_facts(&document(source), &policy, &sample_references()).expect("成功するはず");
 
     // Assert
-    let sites =
-      |analyzed: &crate::semantics::AnalyzedDocument| -> Vec<(crate::document::NodeId, Vec<crate::semantics::CitationId>)> {
-        return analyzed.citation_sites().iter().map(|(id, site)| return (id, site.targets.clone())).collect();
-      };
+    let sites = |facts: &super::SemanticFacts| -> Vec<(crate::document::NodeId, Vec<crate::semantics::CitationId>)> {
+      return facts.citations.iter().map(|(id, site)| return (id, site.targets.clone())).collect();
+    };
     assert_eq!(sites(&first), sites(&second), "同じ入力からは同じ引用 facts が得られるはず");
   }
 
@@ -803,7 +802,7 @@ mod completeness_tests {
   use crate::{
     config::{DocumentPolicy, Style},
     document::HirDocument,
-    semantics::{AnalyzedDocument, test_fixtures::sample_references},
+    semantics::{GeneratedCitations, SemanticDocument, test_fixtures::sample_references},
     source::SourceId,
   };
 
@@ -852,7 +851,7 @@ mod completeness_tests {
 
       // Act — 完全性検証は collect_facts の内側で走る
       let facts = collect_facts(&document, &policy, &sample_references()).expect("解析に成功するはず");
-      let analyzed = AnalyzedDocument::new(document, facts);
+      let analyzed = SemanticDocument::new(document, facts, GeneratedCitations::default());
 
       // Assert — 少なくとも基準の定理は fact に載っている（検証が空回りしていないことの確認）
       prop_assert!(analyzed.counter_value_of_label(&crate::semantics::LabelId::new("l0")).is_some());

@@ -2,30 +2,18 @@
 //! `\cite` の CSL 整形を 1 回の呼び出しの背後に隠す。
 //!
 //! 走査 → CSL 整形という呼び出し順序は、この module の外からは見えない（issue #303 / #349）。
-//! 生成物（引用表示・書誌）は著者が書いた文書木へは一切書き戻さず、[`Semantics`] の別フィールドに
-//! 置いたまま組版へ渡る。
+//! 生成物（引用表示・書誌）は著者が書いた文書木へは一切書き戻さず、[`SemanticDocument`] の別
+//! フィールドに置いたまま組版へ渡る。
 
 use crate::{
   document::HirDocument,
   semantics::{
-    AnalyzedDocument, GeneratedCitations, References, error::AnalyzeError, generate_citations, load_citation_style,
-    walk,
+    GeneratedCitations, References, SemanticDocument, error::AnalyzeError, facts::SemanticFacts, generate_citations,
+    load_citation_style, walk,
   },
 };
 
-/// 意味解析と CSL 整形の成果物
-///
-/// 著者が書いた内容と判明した事実（`analyzed`）と、そこから生成した表示・書誌（`generated`）を
-/// 混ぜずに束ねる。
-#[derive(Debug)]
-pub(crate) struct Semantics {
-  /// HIR と意味解析の事実
-  pub(crate) analyzed: AnalyzedDocument,
-  /// CSL 整形が生成した引用表示と書誌
-  pub(crate) generated: GeneratedCitations,
-}
-
-/// HIR を意味解析し、引用の表示と書誌を生成して [`Semantics`] にまとめて返す。
+/// HIR を意味解析し、引用の表示と書誌を生成して [`SemanticDocument`] にまとめて返す。
 ///
 /// `document`（HIR）からラベル・参照・カウンタ・見出し・引用箇所の事実を取り、引用箇所の事実から
 /// 表示インライン列と書誌を生成する。生成物は著者が書いた文書木へは一切書き戻さない。
@@ -39,19 +27,15 @@ pub(crate) fn analyze(
   document: HirDocument,
   references: &References,
   style: &crate::config::Style,
-) -> Result<Semantics, AnalyzeError> {
+) -> Result<SemanticDocument, AnalyzeError> {
   // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
   // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
   // （`DocumentPolicy` は値に影響する設定だけの投影）。
   let policy = crate::config::DocumentPolicy::from_style(style);
   let facts = walk::collect_facts(&document, &policy, references)?;
-  let analyzed = AnalyzedDocument::new(document, facts);
-  let generated = generate(source, &analyzed, references, style)?;
+  let citations = generate(source, &facts, references, style)?;
 
-  return Ok(Semantics {
-    analyzed,
-    generated,
-  });
+  return Ok(SemanticDocument::new(document, facts, citations));
 }
 
 /// CSL を読まずに走査だけを行うテスト専用の入口
@@ -67,9 +51,9 @@ pub(crate) fn analyze_for_test(
   document: HirDocument,
   policy: &crate::config::DocumentPolicy,
   references: &References,
-) -> Result<AnalyzedDocument, crate::semantics::SemanticError> {
+) -> Result<SemanticDocument, crate::semantics::SemanticError> {
   let facts = walk::collect_facts(&document, policy, references)?;
-  return Ok(AnalyzedDocument::new(document, facts));
+  return Ok(SemanticDocument::new(document, facts, GeneratedCitations::default()));
 }
 
 /// 引用箇所の事実から CSL 整形の生成物を作る。
@@ -77,15 +61,15 @@ pub(crate) fn analyze_for_test(
 /// 引用が 1 つも無ければ CSL スタイルを読まない（`csl_path` 未設定でもエラーにしない）。
 fn generate(
   source: &dyn crate::project::ProjectSource,
-  analyzed: &AnalyzedDocument,
+  facts: &SemanticFacts,
   references: &References,
   style: &crate::config::Style,
 ) -> Result<GeneratedCitations, AnalyzeError> {
-  if !analyzed.has_citations() {
+  if facts.citations.is_empty() {
     return Ok(GeneratedCitations::default());
   }
   let compiled = load_citation_style(source, style)?;
-  let generated = generate_citations(analyzed.citation_sites(), references, &compiled, &style.reference.title)?;
+  let generated = generate_citations(&facts.citations, references, &compiled, &style.reference.title)?;
   return Ok(generated);
 }
 
@@ -118,12 +102,12 @@ mod tests {
     // Act
     let semantics = analyze(&source, document, &references, &style).expect("走査 → CSL 整形の連携は成功するはず");
 
-    // Assert — 書誌と表示が生成され、意味解析の成果物と並んで返る
-    assert!(!semantics.generated.is_empty(), "引用を含む入力なので生成物は空でないはず");
-    assert!(!semantics.generated.bibliography().is_empty(), "引用を含む入力なので書誌が生成されるはず");
-    assert!(semantics.analyzed.has_citations(), "引用箇所は事実として記録されるはず");
-    for (site, _) in semantics.analyzed.citation_sites().iter() {
-      assert!(!semantics.generated.display_at(site).is_empty(), "全引用箇所に表示が付くはず: {site:?}");
+    // Assert — 書誌と表示が生成され、事実と並んで 1 つの成果物に載る
+    assert!(!semantics.bibliography().is_empty(), "引用を含む入力なので書誌が生成されるはず");
+    let sites: Vec<_> = semantics.citation_sites().collect();
+    assert_eq!(sites.len(), 2, "引用箇所は事実として記録されるはず");
+    for site in sites {
+      assert!(!semantics.citation_display(site).is_empty(), "全引用箇所に表示が付くはず: {site:?}");
     }
   }
 

@@ -108,12 +108,10 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, length::Length, semantics::GeneratedCitations};
+  use crate::{config::Style as ReadStyle, length::Length};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
-  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   /// 表の本体 `VBox` の子要素列を取り出すヘルパ
   fn table_children(nodes: &[LayoutNode]) -> &[LayoutNode] {

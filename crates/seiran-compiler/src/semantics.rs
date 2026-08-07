@@ -15,14 +15,15 @@
 mod analyze;
 mod citation;
 mod counter;
+mod document;
 mod error;
 mod facts;
 mod ids;
 mod walk;
 
+pub(crate) use analyze::analyze;
 #[cfg(test)]
 pub(crate) use analyze::analyze_for_test;
-pub(crate) use analyze::{Semantics, analyze};
 #[cfg(test)]
 pub(crate) use citation::test_fixtures;
 pub(crate) use citation::{
@@ -30,7 +31,7 @@ pub(crate) use citation::{
   GeneratedInline, References, generate_citations, generated_inlines_to_plain_text, load_citation_style,
   read_references,
 };
-pub use counter::{CounterKind, CounterValue};
+pub(crate) use counter::{CounterKind, CounterValue};
+pub(crate) use document::SemanticDocument;
 pub(crate) use error::{AnalyzeError, SemanticError, UnknownCitationSite};
-pub use facts::AnalyzedDocument;
-pub use ids::{HeadingKey, LabelId};
+pub(crate) use ids::{HeadingKey, LabelId};

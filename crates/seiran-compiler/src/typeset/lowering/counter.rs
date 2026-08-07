@@ -1,9 +1,9 @@
 //! カウンタ番号の表示文字列化（子 module `format`）と、脚注のページ単位表示番号割り当て
 //!
-//! ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は issue #282 で `resolve` クレートへ
+//! ラベル登録・カウンタ値算出（旧 `CounterRegistry`）は issue #282 で意味解析側へ
 //! 移設し、このクレートには「確定した構造値を style の表示側フィールドで文字列にする」側だけが
 //! 残った（子 module `format`）。ページ単位表示番号割り当ては、ラベル・カウンタ解決とは無関係の
-//! 別関心事（`resolve` クレートが持つべき責務ではない）なのでこのファイルに残す。
+//! 別関心事（`semantics` が持つべき責務ではない）なのでこのファイルに残す。
 //!
 //! 脚注の出現 index 発番（旧 `CounterRegistry::next_footnote_index`）は `CounterRegistry` の
 //! 消滅にともない `crate::typeset::lowering::LoweringState` へ移した（走査中の可変状態はそちらに一本化した）。

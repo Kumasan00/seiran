@@ -109,10 +109,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{
-    config::Style as ReadStyle,
-    semantics::{CitationId, GeneratedCitations},
-  };
+  use crate::{config::Style as ReadStyle, semantics::CitationId};
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
   fn bibliography() -> Vec<GeneratedBlock> {
@@ -140,14 +137,8 @@ mod tests {
     let ctx = LoweringContext::new(&style);
 
     // Act
-    let citations = GeneratedCitations::for_test(Vec::new(), bibliography());
-    let (layout, headings) = super::super::lower_sources_with_headings(
-      &ctx,
-      super::super::DocumentContent {
-        analyzed: &analyzed,
-        citations: &citations,
-      },
-    );
+    let document = analyzed.with_citations_for_test(Vec::new(), bibliography());
+    let (layout, headings) = super::super::lower_sources_with_headings(&ctx, &document);
 
     // Assert — 書誌の見出しは本文の見出しの続きの key を持ち、番号は空
     assert_eq!(headings.len(), 2, "{headings:?}");
@@ -202,8 +193,8 @@ mod tests {
     // Arrange — `\cite` の表示は生成物なので、この経路で lower される
     let style = ReadStyle::default();
     let analyzed = analyzed("\\cite{kwan2014}\n");
-    let (site, _) = analyzed.citation_sites().iter().next().expect("引用箇所が 1 件あるはず");
-    let citations = GeneratedCitations::for_test(
+    let site = analyzed.citation_sites().next().expect("引用箇所が 1 件あるはず");
+    let document = analyzed.with_citations_for_test(
       vec![(
         site,
         vec![GeneratedInline::InternalLink {
@@ -215,7 +206,7 @@ mod tests {
     );
 
     // Act
-    let layout = lower(&style, &analyzed, &citations);
+    let layout = lower(&style, &document);
 
     // Assert
     let LayoutNode::Link { target, children } = &layout[0] else {

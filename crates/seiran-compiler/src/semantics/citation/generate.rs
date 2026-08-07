@@ -110,7 +110,7 @@ pub(crate) fn generate_citations(
       continue;
     }
     let Some(reference) = references.get(key) else {
-      unreachable!("キーの存在は resolve::analyze が保証している: {key}")
+      unreachable!("キーの存在は semantics::analyze の走査が保証している: {key}")
     };
     let item = bridge::to_item(key, reference).map_err(|source| {
       return CitationFormatError::BuildEntry {
@@ -152,8 +152,10 @@ mod tests {
     font::FontKind,
     project::FilesystemProjectSource,
     semantics::{
-      AnalyzedDocument, analyze_for_test, load_citation_style, read_references,
+      facts::SemanticFacts,
+      load_citation_style, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
+      walk::collect_facts,
     },
     source::SourceId,
   };
@@ -164,10 +166,10 @@ mod tests {
     return HirDocument::assemble(vec![hir]);
   }
 
-  /// ソースを意味解析して引用箇所の事実を持つ `AnalyzedDocument` を返す
-  fn analyzed(source: &str, references: &crate::semantics::References) -> AnalyzedDocument {
+  /// ソースを走査して引用箇所の事実を持つ `SemanticFacts` を返す
+  fn analyzed(source: &str, references: &crate::semantics::References) -> SemanticFacts {
     let policy = DocumentPolicy::from_style(&Style::default());
-    return analyze_for_test(document(source), &policy, references).expect("既知キーのみなので成功するはず");
+    return collect_facts(&document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }
 
   /// 指定した CSL を設定した `Style` を作る
@@ -197,10 +199,10 @@ mod tests {
 
     // Act
     let generated =
-      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
+      generate_citations(&analyzed.citations, &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert — 引用箇所ごとに表示が 1 つずつ付く
-    for (site, _) in analyzed.citation_sites().iter() {
+    for (site, _) in analyzed.citations.iter() {
       let text: String = generated.display_at(site).iter().map(GeneratedInline::to_plain_text).collect();
       assert!(text.contains('['), "IEEE numeric は [n] 形式のはず: {text}");
     }
@@ -228,10 +230,10 @@ mod tests {
 
     // Act
     let generated =
-      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
+      generate_citations(&analyzed.citations, &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert
-    let (site, _) = analyzed.citation_sites().iter().next().expect("1 箇所あるはず");
+    let (site, _) = analyzed.citations.iter().next().expect("1 箇所あるはず");
     let targets: Vec<&str> = generated
       .display_at(site)
       .iter()
@@ -269,7 +271,7 @@ mod tests {
     let compiled = load_citation_style(&source, &style_with_csl()).expect("CSL を読めるはず");
 
     // Act
-    let result = generate_citations(analyzed.citation_sites(), &references, &compiled, "References");
+    let result = generate_citations(&analyzed.citations, &references, &compiled, "References");
 
     // Assert
     assert!(result.is_ok(), "未引用の不正文献は build を巻き込まないはず: {result:?}");
@@ -300,7 +302,7 @@ mod tests {
 
     // Act
     let generated =
-      generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("整形は成功するはず");
+      generate_citations(&analyzed.citations, &references, &compiled, "References").expect("整形は成功するはず");
 
     // Assert
     let mut italic_texts: Vec<String> = Vec::new();
@@ -325,8 +327,8 @@ mod tests {
     let compiled = load_citation_style(&FilesystemProjectSource::new(), &style_with_csl()).expect("CSL を読めるはず");
 
     // Act — 同じ facts + 同じ CSL で 2 回生成する
-    let first = generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("1 回目");
-    let second = generate_citations(analyzed.citation_sites(), &references, &compiled, "References").expect("2 回目");
+    let first = generate_citations(&analyzed.citations, &references, &compiled, "References").expect("1 回目");
+    let second = generate_citations(&analyzed.citations, &references, &compiled, "References").expect("2 回目");
 
     // Assert
     // 全表示の走査が要るのはこのテストだけなので、query ではなく private フィールドを直接読む。
@@ -357,9 +359,9 @@ mod tests {
 
     // Act
     let generated_base =
-      generate_citations(analyzed.citation_sites(), &references, &base, "References").expect("整形は成功するはず");
+      generate_citations(&analyzed.citations, &references, &base, "References").expect("整形は成功するはず");
     let generated_variant =
-      generate_citations(analyzed.citation_sites(), &references, &variant, "References").expect("整形は成功するはず");
+      generate_citations(&analyzed.citations, &references, &variant, "References").expect("整形は成功するはず");
 
     // Assert
     assert_ne!(generated_base.bibliography(), generated_variant.bibliography(), "CSL を変えたら生成物は変わるはず");

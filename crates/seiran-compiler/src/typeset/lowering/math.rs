@@ -25,7 +25,7 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 /// `document::HirNodeKind::MathBlock`（`equation` / `align` / `gather` / `split` / `multiline` /
 /// `cases` / `matrix`）を `LayoutNode::MathBlock` に変換する
 ///
-/// 行ごと・環境ごとの採番値は `resolve::analyze` が確定させたものを引くだけで、ここでは
+/// 行ごと・環境ごとの採番値は `semantics::analyze` が確定させたものを引くだけで、ここでは
 /// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
 /// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
@@ -216,15 +216,13 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, length::Length, semantics::GeneratedCitations};
+  use crate::{config::Style as ReadStyle, length::Length};
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   ///
   /// 本体の入力経路（parse → HIR → lowering）をそのまま通すため、テストが数式の木を
   /// 直接組み立てることはない。
-  fn lower_math_source(source: &str) -> Vec<LayoutNode> {
-    return lower(&ReadStyle::default(), &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_math_source(source: &str) -> Vec<LayoutNode> { return lower(&ReadStyle::default(), &analyzed(source)); }
 
   /// レイアウトノード列に含まれる `Text` を出現順に連結する
   ///
@@ -394,7 +392,7 @@ mod tests {
 
   /// 採番された 1 行の `equation` を lower し、`LayoutNode::MathBlock` を取り出すヘルパ
   fn lower_numbered_equation(style: &ReadStyle) -> LayoutNode {
-    let nodes = lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n"), &GeneratedCitations::default());
+    let nodes = lower(style, &analyzed("\\begin{equation}\na\n\\end{equation}\n"));
     return nodes
       .into_iter()
       .find(|n| matches!(n, LayoutNode::MathBlock { .. }))

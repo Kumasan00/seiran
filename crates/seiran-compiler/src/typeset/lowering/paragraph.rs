@@ -77,14 +77,12 @@ mod tests {
   use crate::{
     config::Style as ReadStyle,
     length::Length,
-    semantics::{GeneratedCitations, LabelId},
+    semantics::LabelId,
     typeset::layout::{AnchorId, LinkTarget},
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ
-  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> {
-    return lower(style, &analyzed(source), &GeneratedCitations::default());
-  }
+  fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   #[test]
   fn paragraph_appends_single_trailing_vkern_with_paragraph_spacing() {

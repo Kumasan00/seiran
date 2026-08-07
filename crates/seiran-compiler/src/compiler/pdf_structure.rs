@@ -53,7 +53,7 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
   let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
-    .layout(super::document_content(&semantics), &image_resources)
+    .layout(&semantics, &image_resources)
     .expect("layout の実行");
   let fonts = super::build_pdf_fonts(&font_data, &font_resources);
   let font_metrics = super::build_pdf_font_metrics(&font_resources);
