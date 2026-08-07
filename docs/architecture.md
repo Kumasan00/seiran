@@ -477,7 +477,7 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
   `#[cfg(test)] pub(crate) use` で再エクスポートし、`typeset` 側のテストも
   `semantics::test_fixtures::sample_references` の形で使う
 
-#### `load_citation_style` の契約
+##### `load_citation_style` の契約
 
 `load_citation_style(source: &dyn ProjectSource, style: &config::Style) -> Result<CompiledCitationStyle,
 CitationStyleError>` が `style.reference.csl_path` の `.csl` を `ProjectSource` 経由で読み（引用があるのに
@@ -489,7 +489,7 @@ override）を `CompiledCitationStyle` にまとめ、以降の `generate_citati
 呼ぶのは `semantics::analyze` の非公開 `generate` だけで、**引用箇所が 1 つも無ければ呼ばない**
 （CSL 遅延読込。`csl_path` 未設定の文書でも引用が無ければエラーにならない）。
 
-#### `generate_citations` の契約
+##### `generate_citations` の契約
 
 走査の後・lowering の前に走るステージ。
 `generate_citations(sites: &NodeMap<CitationSiteFacts>, references: &References,

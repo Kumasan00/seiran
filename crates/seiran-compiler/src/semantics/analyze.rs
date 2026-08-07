@@ -112,6 +112,24 @@ mod tests {
   }
 
   #[test]
+  fn analyze_skips_csl_when_document_has_no_citation() {
+    // Arrange — 引用を含まない本文を、csl_path 未設定の style で解析する（CSL 遅延読込）
+    let source = MemoryProjectSource::new();
+    let style = Style::default();
+    let references = read_references(&source, None::<std::path::PathBuf>).expect("空の参照定義を読めるはず");
+    let source_id = SourceId::new(0);
+    let hir = parse_source("本文だけの段落。\n", source_id).expect("パースは成功するはず");
+    let document = HirDocument::assemble(vec![hir]);
+
+    // Act
+    let semantics = analyze(&source, document, &references, &style).expect("引用が無ければ CSL を読まないはず");
+
+    // Assert — CSL を読んでいないので MissingCslPath にならず、生成物は空のまま
+    assert!(semantics.bibliography().is_empty(), "引用が無ければ書誌は生成されないはず");
+    assert_eq!(semantics.citation_sites().count(), 0, "引用箇所は 1 件も無いはず");
+  }
+
+  #[test]
   fn analyze_maps_citation_error() {
     // Arrange — 既知キーの \cite を含むソースを、csl_path 未設定のまま渡す。
     // キーは既知にしておかないと analyze の未知キー検証で先に弾かれてしまうため、

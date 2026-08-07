@@ -1,7 +1,7 @@
 //! 引用キー [`CitationId`] と、引用箇所について判明した事実 [`CitationSiteFacts`]。
 //!
 //! [`CitationSiteFacts`] は [`super::generate_citations`] の入力契約なので、後段である
-//! `citation` が所有し、前段の `crate::semantics::analyze` が構築する（後段が要求する入力契約は
+//! `citation` が所有し、前段の走査 `semantics::walk::collect_facts` が構築する（後段が要求する入力契約は
 //! 後段が所有する）。[`CitationId`] は引用キーの型付き表現で、事実・生成物・書誌アンカーの
 //! いずれもが同じ引用の同一性を指すため、同じ module に置く。
 
