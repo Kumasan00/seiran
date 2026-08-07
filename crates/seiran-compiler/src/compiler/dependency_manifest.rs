@@ -60,7 +60,7 @@ mod tests {
 
   use super::DependencyManifest;
   use crate::{
-    build_pdf::{golden::load_base, image_manifest::ImageManifest, snapshot::ProjectSnapshot},
+    compiler::{golden::load_base, image_manifest::ImageManifest, snapshot::ProjectSnapshot},
     font::FontDataExt,
     project::ProjectPath,
   };
@@ -68,7 +68,7 @@ mod tests {
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
-    crate::build_pdf::golden::enter_workspace_root();
+    crate::compiler::golden::enter_workspace_root();
     let (config, style, references) = load_base();
     let source = crate::project::FilesystemProjectSource::new();
     let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");

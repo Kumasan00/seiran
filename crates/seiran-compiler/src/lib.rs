@@ -1,12 +1,12 @@
 //! Seiran コンパイラのライブラリ facade。
 //!
 //! 言語処理・意味解決・組版を 1 回の呼び出しに畳んだ [`compile`] が唯一の外部入口。
-//! 内部の段（parse / resolve / typeset / publication 化）は `build_pdf` module に閉じ、
+//! 内部の段（parse / resolve / typeset / publication 化）は `compiler` module に閉じ、
 //! 外へ公開しない（[`Publication`] を除く）。
 
-mod build_pdf;
 mod citation;
 mod color;
+mod compiler;
 mod config;
 mod document;
 mod font;
@@ -20,7 +20,7 @@ mod resolve;
 mod source;
 mod typeset;
 
-pub use build_pdf::{BuildStatistics, Compilation, DependencyManifest, DiagnosticSet, OutputPlan, compile};
+pub use compiler::{BuildStatistics, Compilation, DependencyManifest, DiagnosticSet, OutputPlan, compile};
 // `compile` は `ProjectSource` を境界とするジェネリック関数（`compile<S: ProjectSource>(source: &S,
 // root: &ProjectPath) -> ...`）であり、`ProjectSource`/`ProjectPath` は入力型そのもの。
 // `FilesystemProjectSource`/`MemoryProjectSource` は呼び出し元（CLI bin target・統合テスト）が

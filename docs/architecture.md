@@ -19,7 +19,7 @@ anchor に限って添える。
 目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`source`](#source) /
 [`project`](#project) / [`document`](#document) / [`config`](#config) / [`resolve`](#resolve) /
 [`frontend`](#frontend) / [`citation`](#citation) / [`font`](#font) / [`typeset`](#typeset) /
-[`build_pdf`](#build_pdf)） / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
+[`compiler`](#compiler)） / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
 
 ## `seiran-compiler`
 
@@ -68,7 +68,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 への依存を持たない。
 
 - `SourceId(usize)`: 実ソース 1 つ分の不透明な識別子。名前・パスは持たず、ファイル名・内容への
-  逆引きは `build_pdf::snapshot::SourceDb` の責務（`SourceId` の唯一の発行元でもある）。
+  逆引きは `compiler::snapshot::SourceDb` の責務（`SourceId` の唯一の発行元でもある）。
 - `Span { start: u32, end: u32 }`: ソーステキスト上のバイト範囲。`DUMMY` / `merge` を持つ。
 
 #### 不変条件・注意点
@@ -109,7 +109,7 @@ pub trait ProjectSource: Send + Sync {
   Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを
   表す newtype（画像専用の `AssetId` 等）を並立させない — 情報も不変条件も増えず、変換の往復だけが
-  残るため。`Ord` を実装しており、`build_pdf::image_manifest` の `BTreeSet<ProjectPath>` による
+  残るため。`Ord` を実装しており、`compiler::image_manifest` の `BTreeSet<ProjectPath>` による
   決定的な重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と
   `fig/a.png` は manifest 上 1 件に畳まれる（同じファイルを 2 度読まない）。
 - ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
@@ -119,7 +119,7 @@ pub trait ProjectSource: Send + Sync {
 - 書き込みメソッドは持たない。出力ディレクトリの作成と PDF の書き出しは資源取得ではなく出力側の
   関心事なので、`seiran` が `std::fs` で直接行う。
 - 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
-  `crates/seiran-compiler/src/build_pdf/project_source_equivalence.rs` が回帰テストとして固定している。
+  `crates/seiran-compiler/src/compiler/project_source_equivalence.rs` が回帰テストとして固定している。
 
 ### `document`
 
@@ -131,7 +131,7 @@ pub trait ProjectSource: Send + Sync {
 定義する型自体は診断ライブラリ（miette）にも I/O にも依存しない。crate 内では `length` / `color` /
 `font` / `source` / `project` に依存する（HIR や `table_column` が値として `Length` / `Color` /
 `FontKind` / `SourceId` / `Span` / `ProjectPath` を持つため）。`resolve` / `citation` / `typeset` /
-`build_pdf` は知らない — 後段 module への依存は持たない。
+`compiler` は知らない — 後段 module への依存は持たない。
 
 提供する interface は次の 4 つに限る。
 
@@ -201,7 +201,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`AnalyzedDocumen
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
   ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
   主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
-  `seiran_compiler::build_pdf::dump` に置く。
+  `seiran_compiler::compiler::dump` に置く。
 - **アンカーは型で namespace を分ける**。`typeset::layout` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
   （`resolve::HeadingKey` / `resolve::LabelId` / `citation::CitationId` / `FootnoteId`）で区別する。
@@ -214,7 +214,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`AnalyzedDocumen
   走査するので、そもそも生成物を見ない。`typeset::lowering` も本文（`AnalyzedDocument` の HIR）と
   生成物（書誌・引用表示）を別経路で lower し、両者を 1 つの木へ混ぜ直すことはしない。
 - 段組みの 1 段あたりの幅を求める純粋計算 `column_width` は `config::layout` の所有。設定横断の
-  配置計算なので、`config` の横断バリデーション（`validate_layout`）・`build_pdf` の段幅算出・
+  配置計算なので、`config` の横断バリデーション（`validate_layout`）・`compiler` の段幅算出・
   `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
   ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は
@@ -223,7 +223,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`AnalyzedDocumen
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
   `TableBox` 系は `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `font` module の型（`font` 節参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
-  消費者も `typeset` 内の複数 module や `typeset` → `build_pdf` の範囲にとどまる。判断基準:
+  消費者も `typeset` 内の複数 module や `typeset` → `compiler` の範囲にとどまる。判断基準:
   **複数 consumer の型でも、consumer が同一 crate 内 / 同一依存関係内にとどまるなら、共有置き場では
   なくその内部へ置く**。
 
@@ -333,7 +333,7 @@ TOML パース時に弾く。
 `validate_layout(&Config, &Style) -> Result<(), LayoutValidationError>` に集約する。段幅の算出式
 （`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体も同じ module の
 `column_width` が持つ。段組み設定から導出する設定横断の配置計算なので、横断検証と同じ場所に置き、
-`build_pdf::phase_context` と `typeset::breaking::break_pages` が `config::column_width` として参照する。
+`compiler::phase_context` と `typeset::breaking::break_pages` が `config::column_width` として参照する。
 
 ### `resolve`
 
@@ -554,8 +554,8 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 - `is_empty() -> bool` — 表示も書誌も無い（＝引用ゼロのプロジェクト）か。
 
 **書誌（References 見出し + 段落群）は各グループへ追加せず、戻り値として返す**。呼び出し元
-（`seiran_compiler::build_pdf::semantics::resolve_semantics`）が `Semantics { analyzed, generated }` として
-実ソースの本文（`analyzed`）とは別枠のまま返し、`build_pdf.rs` の `document_content` が
+（`seiran_compiler::compiler::semantics::resolve_semantics`）が `Semantics { analyzed, generated }` として
+実ソースの本文（`analyzed`）とは別枠のまま返し、`compiler.rs` の `document_content` が
 `typeset::lowering::DocumentContent` へ束ねて渡す。**書誌を合成グループとして groups の末尾へ連結する
 方式へ戻さない** — 別枠で渡すことで citation がグループ構造に依存しない。書誌ノードはラベル・`\ref`
 を持たないため lowering エラーを起こさない。
@@ -594,8 +594,8 @@ seam 経由で、依存方向は `config` → `font` の一方向。
   `TextDirectionParseError` は名指しする消費者がいないため root facade へは出さない。
 - `glyph_run`（非公開、root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング結果 1 個の
   グリフ列とその配置情報。値は `color::Color` / `FontType` / `length::Length` という leaf 値型にしか
-  依存しない leaf 型で、`typeset::block` が生成し `build_pdf::publication` が消費する。`seiran-pdf` は
-  自己完結型 `seiran_pdf::GlyphRun` を別に持ち、変換は `build_pdf::publication::to_pdf_glyph_run` の
+  依存しない leaf 型で、`typeset::block` が生成し `compiler::publication` が消費する。`seiran-pdf` は
+  自己完結型 `seiran_pdf::GlyphRun` を別に持ち、変換は `compiler::publication::to_pdf_glyph_run` の
   1 箇所に閉じている。
 - `face_config`（非公開、root facade へは出さない）: `FontConfig`（`settings` の検証済み設定。
   値の出どころは config.toml）からシェーピングに必要なフェース設定 `FontFaceConfig` /
@@ -639,7 +639,7 @@ seam 経由で、依存方向は `config` → `font` の一方向。
 だけになる（`lowering` 節を参照）。`lowering` / `block` / `breaking` / `layout` / `pipeline` の
 5 module はすべて非公開で、公開 API は module root の `pub use` に揃える。段順序（lowering →
 `build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline` module に閉じており、外部
-（`seiran_compiler::build_pdf`）が個別に呼ぶのは次の入口関数だけである。
+（`seiran_compiler::compiler`）が個別に呼ぶのは次の入口関数だけである。
 
 - `layout_body`: 本文パス 1 回ぶん。lowering → `build_blocks` → 画像サイズ確定（`resolve_images`
   クロージャを注入で受け取る。typeset は画像デコードに依存しないため呼び出し元が実装する）→
@@ -666,7 +666,7 @@ module root へ公開する。`lower_sources_with_headings` / `LoweringContext` 
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。`Page` / `Block` は
 入口関数の入出力境界型として公開する一方、`HItem` / `HBoxContent` / `PlacedTableRow` 等の内部ツリー型は
-`crates/seiran-compiler/src/build_pdf/publication.rs` / `dump.rs` が直接走査するために公開のまま残って
+`crates/seiran-compiler/src/compiler/publication.rs` / `dump.rs` が直接走査するために公開のまま残って
 いる（組版中間型の所有者移動は別 issue のスコープ）。シェーピング結果 `GlyphRun` / `Glyph` は `layout`
 にはなく `font` module にある（`font` 節参照）。`typeset` root からの `Glyph` / `GlyphRun`
 再エクスポートは持たない（消費者は `font::Glyph` / `font::GlyphRun` を直接 import する）。
@@ -695,7 +695,7 @@ module root へ公開する。`lower_sources_with_headings` / `LoweringContext` 
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
 相互参照は `super::` で解決し、`crate::typeset::layout::{...}` のパスを通じて `block` / `breaking` /
-`lowering` 側から使う。`build_pdf` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
+`lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
 `TableColumn` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に消費者がいない
 `Align` / `FootnoteId` は出さない。
 
@@ -712,7 +712,7 @@ module が上流で済ませているため、この module は「確定した�
 `citations` の 1 本という切り分けをそのまま型にしたもので、どちらのフィールドも前段が公開する深い型 —
 side table の raw な collection（`NodeMap` / スライス）を直接フィールドにすると collection 構造と
 完全性検証が消費側へ漏れるため、その形へ戻さない。生成物には `NodeId` を振らない（「すべての `NodeId`
-は同梱の `HirDocument` が発行したもの」という不変条件を保つため）。呼び出し元（`build_pdf.rs` の
+は同梱の `HirDocument` が発行したもの」という不変条件を保つため）。呼び出し元（`compiler.rs` の
 `document_content`）は `resolve_semantics` が返した `Semantics { analyzed, generated }` から借用して
 組み立てるだけで、中間の木は作らない。
 
@@ -757,7 +757,7 @@ DocumentContent` への参照 + `footnote_count` + `heading_titles` の 3 フィ
 `LayoutNode::Footnote { number, index, body }` を生成する（ラベル解決を伴わないため `Ref` の 2 段階
 プレースホルダ構造は元々取らない）。表示番号の既定は `index + 1`（＝文書通しの連番）だが、
 `LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位
-リセットはこのマップ経由で実現する（`build_pdf` 節の脚注採番 solver を参照）。
+リセットはこのマップ経由で実現する（`compiler` 節の脚注採番 solver を参照）。
 
 **複数ソース**: `lower_sources_with_headings(ctx, content: DocumentContent<'_>) -> (Vec<LayoutNode>,
 Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, source_id }` 列）を 1 回で
@@ -767,7 +767,7 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 グループの起源（`HirGroup::source_id`）は `resolve::analyze` が診断のソース位置付けに使うためのもので、
 検証を終えた後の `lowering` にはエラーを出す先が無いため読まない。見出し収集・カウンタ値の参照は
 `AnalyzedDocument` 全体を通して行われるため、`\ref` は別ソース（別グループ）や書誌のラベルも指せる。
-`SourceId` は `seiran_compiler::build_pdf::snapshot::SourceDb::register` が唯一の発行元であり、`resolve`
+`SourceId` は `seiran_compiler::compiler::snapshot::SourceDb::register` が唯一の発行元であり、`resolve`
 はここで発行された ID を受け取って運ぶだけで自ら発行しない。
 
 #### `block`
@@ -805,7 +805,7 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 - `index`: 巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・
   リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート
   （`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で、`reading` があればそれ、
-  なければ `word` をキーにする。呼び出し元（`seiran_compiler::build_pdf::back_matter`）が全ページの
+  なければ `word` をキーにする。呼び出し元（`seiran_compiler::compiler::back_matter`）が全ページの
   `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後
   追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる
 - `yakumono`: 和文約物の分類と JIS X 4051 の前後アキ規則
@@ -873,7 +873,7 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 採番（`per_page_footnote_numbers`）は `continued` の断片を数えない — 数えると繰越先ページで番号を振り直して
 しまう。
 
-### `build_pdf`
+### `compiler`
 
 #### 責務
 
@@ -884,16 +884,16 @@ Vec<HeadingRecord>)` が `content.analyzed.hir().groups()`（`HirGroup { nodes, 
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
 （`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
-`build_pdf` は **compile facade**（`compile` とその周辺の公開型）と **compiler core**
-（不変な入力から組版成果物を返す phase graph）に分かれる。分離の意図は 2 つ — compiler core から
+`compiler` は **compile facade**（`compile` とその周辺の公開型）と **phase graph**
+（不変な入力から組版成果物を返す core）に分かれる。分離の意図は 2 つ — phase graph から
 filesystem access を除いて組版を決定的にテストできるようにすることと、「ページ情報を使う」という共通点
 だけで目次・索引・走り文・脚注を 1 つの巨大な solver に集めず、処理順を明示的な DAG として持つこと。
 **汎用の「安定するまで全工程を反復」を導入しない**（循環が残るのはページ単位の脚注採番だけで、それは
 専用 solver に閉じ込める）。
 
-#### compile facade（`build_pdf.rs` 直下）
+#### compile facade（`compiler.rs` 直下）
 
-`build_pdf.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
+`compiler.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` / `load_project` /
 `parse_project` / `build_publication` / `parse_all_sources` /
 `wrap_resolve_error` / `wrap_citation_semantic_error` / `wrap_semantics_error`）と、`compile` が返す公開型
 （`Compilation` / `BuildStatistics`。
@@ -921,7 +921,7 @@ filesystem access を除いて組版を決定的にテストできるように�
   1 関数 `resolve_semantics` の背後に隠す。`generate_citations` は `&` 参照のみを取り、文書木の所有権を
   受け取って書き換える経路は無い（`analyze` だけが `HirDocument` を所有で受け取り、`AnalyzedDocument`
   として抱え直す）。`resolve_semantics` は `Semantics { analyzed: AnalyzedDocument, generated:
-  GeneratedCitations }` を返すだけで、組版入力へ組み立てる中間の木は作らない — `build_pdf.rs` の
+  GeneratedCitations }` を返すだけで、組版入力へ組み立てる中間の木は作らない — `compiler.rs` の
   `document_content` が両者への参照を `typeset::DocumentContent` へ束ねるだけの薄いビューになる。
   driver は analyze → style → generate の順序も、表示・書誌を本文とは別枠で渡す組み立ても知らない
 - `image_manifest`: `parse_project` が HIR から集める画像パス一覧 `ImageManifest`
@@ -958,7 +958,7 @@ filesystem access を除いて組版を決定的にテストできるように�
   とは型を分けて扱う。PDF の保存は `compile` の関心事ではないため `CompileError` には含まれず、bin 側の
   `write_error::WriteError` が持つ
 
-#### compiler core（phase graph）
+#### phase graph（compiler core）
 
 `layout` 子 module の `DocumentLayouter::layout` が phase graph 全体をオーケストレーションする、外から見える
 唯一の組版操作。`typeset` の公開面は 4 入口関数と境界型に閉じているため、ここへ全体オーケストレーションを
@@ -990,7 +990,7 @@ filesystem access を除いて組版を決定的にテストできるように�
   採番のときだけ後述の solver から複数回呼ばれる（パスの中身自体は変わらない）
 - `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
 
-#### 脚注のページ単位採番（`build_pdf::footnote_numbering`）
+#### 脚注のページ単位採番（`compiler::footnote_numbering`）
 
 `style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
 決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
@@ -1015,7 +1015,7 @@ filesystem access を除いて組版を決定的にテストできるように�
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
-唯一の消費者がテストであるため、`document` のような共有 module ではなく `build_pdf` に置く。
+唯一の消費者がテストであるため、`document` のような共有 module ではなく `compiler` に置く。
 
 - `dump`: `dump_pages`（確定ページ列 `typeset::Page` の決定的テキストダンプ）と `dump_publication`
   （`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
@@ -1073,7 +1073,7 @@ filesystem access を除いて組版を決定的にテストできるように�
 `seiran-pdf` は `seiran-compiler` にも `seiran` にも依存せず、compiler 内部型（`config::Config` /
 `typeset::Page` 等）を一切知らない自己完結 crate である（境界型はすべて `types` module の leaf 型）。
 `Vec<Page>` → `Publication` への変換と画像の自然寸法解決（width / height 確定の prepass）は compiler 側
-（`seiran_compiler::build_pdf` の `publication` / `image_resources`）の責務で、こちらへ戻さない。
+（`seiran_compiler::compiler` の `publication` / `image_resources`）の責務で、こちらへ戻さない。
 
 ### モジュール構成
 
@@ -1082,7 +1082,7 @@ filesystem access を除いて組版を決定的にテストできるように�
   `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
 - `types`: 境界専用の自己完結 leaf 型（`FontType` / `FontFaceInput` / `VariationAxisInput` / `FontMetric` /
   `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `document` / `font`
-  の型を参照しない（compiler 側からの変換は `seiran_compiler::build_pdf::publication` に閉じている）
+  の型を参照しない（compiler 側からの変換は `seiran_compiler::compiler::publication` に閉じている）
 - `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
   バイト列）と、それを組み立てる
   `ResourceBundle::new(fonts: HashMap<FontType, FontFaceInput>, font_metrics: HashMap<FontType, FontMetric>,
@@ -1103,7 +1103,7 @@ filesystem access を除いて組版を決定的にテストできるように�
   罫線太さ / 罫線色・ページ背景色は前段（`seiran-compiler` の `typeset::breaking`）が `Style` から解決済みの値として
   `typeset::Page.background_color` / `typeset::PlacedBlock::Table` の `cell_padding` / `rule_thickness` /
   `rule_color` に載せており、左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側
-  （`seiran_compiler::build_pdf::publication`）が `config::Config` から読んで `Publication` に前倒し解決してから渡す。
+  （`seiran_compiler::compiler::publication`）が `config::Config` から読んで `Publication` に前倒し解決してから渡す。
 - `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
   `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
   行わない。`typeset::Page` / `Config` / `Style` を直接読む描画経路を復活させない。

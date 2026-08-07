@@ -35,7 +35,7 @@ pub enum LayoutValidationError {
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
 ///
 /// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`config::validate_layout`・
-/// `build_pdf`・`typeset::breaking` が共通して使用する。
+/// `compiler`・`typeset::breaking` が共通して使用する。
 #[must_use]
 pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);

@@ -33,7 +33,7 @@
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
 //! 依存方向は `source` / `project` / `length` / `color` / `font` の 5 つだけで、
-//! `resolve` / `citation` / `typeset` / `build_pdf` は知らない。
+//! `resolve` / `citation` / `typeset` / `compiler` は知らない。
 
 mod caption;
 mod heading_level;

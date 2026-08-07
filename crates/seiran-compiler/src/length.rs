@@ -82,7 +82,7 @@ impl Length {
 
   /// pt 値を f64 で返す（ダンプ整形など高精度が要る出力境界用）。
   #[must_use]
-  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump` / `build_pdf::golden`）からのみ使う。
+  // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump` / `compiler::golden`）からのみ使う。
   #[allow(dead_code)]
   pub fn to_pt_f64(self) -> f64 { return self.0 as f64 / SP_PER_PT as f64; }
 

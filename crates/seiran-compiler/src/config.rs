@@ -11,7 +11,7 @@ mod style;
 #[doc(hidden)]
 pub use config_toml::test_support;
 // `ImageConfig` / `Margin` / `OutputConfig` / `PdfConfig` を facade に置いているのは、
-// `build_pdf::publication` の `#[cfg(test)] mod tests` が `Config` を組み立てるのに名指しするため。
+// `compiler::publication` の `#[cfg(test)] mod tests` が `Config` を組み立てるのに名指しするため。
 // `config_toml` は `config` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
 #[allow(unused_imports)]
 pub use config_toml::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, read_config};
@@ -20,7 +20,7 @@ pub use layout::{LayoutValidationError, column_width, validate_layout};
 // `DocumentPolicy` のアクセサ戻り値としてのみ現れ、名指しする消費者がいないので出さない。
 pub use policy::DocumentPolicy;
 // `CounterStyle` / `NestedOrderedFormat` / `NumberStyle` / `parse_style` を facade に置いているのは、
-// `resolve::counter` / `typeset::lowering` 配下の `#[cfg(test)] mod tests` と `build_pdf` の
+// `resolve::counter` / `typeset::lowering` 配下の `#[cfg(test)] mod tests` と `compiler` の
 // テスト用子 module が名指しするため。`style` は `config` 非公開の子 module なので、facade を
 // 通す以外に crate 内から届く経路がない。
 #[allow(unused_imports)]

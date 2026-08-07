@@ -24,7 +24,7 @@ fn pdf_structure_golden_dir() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }
 
-/// 指定入力を `build_pdf` と同じ手順（パース〜描画）でフルビルドし、PDF バイト列を返す
+/// 指定入力を `compiler` と同じ手順（パース〜描画）でフルビルドし、PDF バイト列を返す
 /// （ファイル書き込みは行わない）。style は fixture のベースをそのまま使う。
 pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_style(name, |_| {}); }
 
@@ -180,7 +180,7 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
 /// `PublicationPage.ops`（`seiran_pdf::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
-/// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`build_pdf::publication::build_page` 参照）。
+/// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`compiler::publication::build_page` 参照）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),
@@ -192,7 +192,7 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、build_pdf::publication::build_page が
+  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、compiler::publication::build_page が
   // 定める描画順（背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
   // 入力に figure を使わないのは、下の assert が見るのが「fill と body の初出順」だけで、画像の
   // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の

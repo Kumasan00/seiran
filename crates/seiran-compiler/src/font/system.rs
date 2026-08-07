@@ -65,7 +65,7 @@ impl<'a> FontResources<'a> {
   /// 読み込み済み `FontData` から、検証済みのフォント資源一式を構築する。
   ///
   /// 構築順序は `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances`
-  /// （現行の `build_pdf.rs` / `compile.rs` の実行順序と同一。診断の出方を変えないため厳守する。
+  /// （現行の `compiler.rs` / `compile.rs` の実行順序と同一。診断の出方を変えないため厳守する。
   /// issue #278 タイトルの表記順序とは異なる点に注意）。
   ///
   /// # Errors

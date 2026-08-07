@@ -16,9 +16,9 @@ pub use block::{
 };
 pub use breaking::{KnuthPlassBreaker, PageGeometry};
 // `HBox` / `Line` / `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` /
-// `measure_items_width` を facade に置いているのは、`build_pdf` 配下の `#[cfg(test)] mod tests`
+// `measure_items_width` を facade に置いているのは、`compiler` 配下の `#[cfg(test)] mod tests`
 // が組版済みページを組み立てるのにこれらを名指しするため。`AnchorId` / `AnchorMark` /
-// `LinkTarget` / `TableColumn` は `build_pdf::publication` が本体コードから名指しする（#334）。
+// `LinkTarget` / `TableColumn` は `compiler::publication` が本体コードから名指しする（#334）。
 // `layout` は `typeset` 非公開の子 module なので、facade を通す以外に crate 内から届く経路がない。
 // 逆に `Align` / `FootnoteId` は `typeset` の外に消費者がいないので facade へは出さない（#326）。
 #[allow(unused_imports)]

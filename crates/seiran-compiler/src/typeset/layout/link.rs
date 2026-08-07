@@ -23,7 +23,7 @@ impl FootnoteId {
 
   /// 元の出現 index を返す
   #[must_use]
-  // crate 内の `#[cfg(test)]`（golden ダンプ `build_pdf::dump`）からのみ使う。
+  // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う。
   #[allow(dead_code)]
   pub fn index(self) -> u32 { return self.0; }
 }
