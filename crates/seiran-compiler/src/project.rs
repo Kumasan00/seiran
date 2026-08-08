@@ -5,14 +5,16 @@
 //! （#337）。[`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する
 //! （画像パスの newtype だった `document::AssetId` は同じパスを表す重複だったため削除済み）。
 //!
-//! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を持つ
-//! （#351）。見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
+//! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
+//! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ（#351）。
+//! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
 //! 区別がそのまま module 境界になっている。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory`）は crate 内の他 module に
-//! 依存しない。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `color` を
-//! 参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を値として持つため）。この向きを保つことで、
-//! `font` → `project`（seam）と `project::config` → `font` が同じ層で衝突しない。
+//! 依存しない。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `color` を、
+//! `source_set` が `source` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
+//! `SourceSet` が `source::SourceId` を値として持つため）。seam 側を依存ゼロに保つことで、
+//! `font` → `project`（seam）と `project::config` → `font` が循環にならない。
 
 // `config` だけは module 名が名前空間として意味を持つので `pub(crate)` で公開する。
 // 入口が `project::config::load` と読めることで、`style::load`（style.toml）と取り違えようがなくなる。
@@ -20,6 +22,7 @@
 pub(crate) mod config;
 mod filesystem;
 mod memory;
+mod source_set;
 
 use std::{
   path::{Path, PathBuf},
@@ -31,6 +34,7 @@ pub use config::test_support;
 pub use filesystem::FilesystemProjectSource;
 pub use memory::MemoryProjectSource;
 use miette::Diagnostic;
+pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ

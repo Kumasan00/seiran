@@ -25,7 +25,7 @@ pub enum ParseSourceError {
   #[error("構文解析に失敗しました")]
   #[diagnostic(code(frontend::parse_source::syntax))]
   Syntax {
-    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
+    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceSet` が保持する）
     source_id: crate::source::SourceId,
     /// 元の構文エラー
     #[source]
@@ -37,7 +37,7 @@ pub enum ParseSourceError {
   #[error("評価に失敗しました")]
   #[diagnostic(code(frontend::parse_source::eval))]
   Eval {
-    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceDb` が保持する）
+    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceSet` が保持する）
     source_id: crate::source::SourceId,
     /// 元の評価エラー
     #[source]

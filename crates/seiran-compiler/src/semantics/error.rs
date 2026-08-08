@@ -17,7 +17,7 @@ use crate::{
 ///
 /// 内側の意味解析 / CSL スタイル読込 / CSL 整形それぞれの診断（code・help・label）をそのまま運ぶ。
 /// 呼び出し元（`compiler`）が帰属ソースを組み立てられるよう、[`SemanticError`] はここでは変換せず
-/// `SourceId` だけを運ぶ形のまま渡し、`SourceDb` から本文を引く変換は
+/// `SourceId` だけを運ぶ形のまま渡し、`SourceSet` から本文を引く変換は
 /// `compiler.rs::wrap_resolve_error` に委ねる。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum AnalyzeError {
