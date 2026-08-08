@@ -1,8 +1,7 @@
 //! 書体指定コマンド群
 
 use crate::{
-  document::{HirBuilder, HirInline, HirInlineKind},
-  font::FontKind,
+  document::{FontKind, HirBuilder, HirInline, HirInlineKind},
   frontend::{
     evaluator::{
       EvalError,

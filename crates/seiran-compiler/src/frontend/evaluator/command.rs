@@ -6,8 +6,7 @@ use miette::SourceSpan;
 use phf::phf_map;
 
 use crate::{
-  document::{HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
-  font::FontKind,
+  document::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
   frontend::{
     evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,

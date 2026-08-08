@@ -4,10 +4,11 @@ use tracing::debug;
 
 use super::Measurer;
 use crate::{
-  font::{FontKind, FontSystem},
+  document::FontKind,
   length::Length,
   typeset::{
     boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
+    font::FontSystem,
     lowering::TextStyle,
   },
 };

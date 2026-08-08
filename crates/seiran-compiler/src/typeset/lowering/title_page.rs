@@ -1,7 +1,7 @@
 //! タイトルページ（`\maketitle` 相当）の lowering
 
 use super::layout_node::{LayoutNode, TextStyle};
-use crate::{font::FontKind, length::Length, style::TitlePageStyle, typeset::boxes::Align};
+use crate::{document::FontKind, length::Length, style::TitlePageStyle, typeset::boxes::Align};
 
 /// タイトルページに載せる文書メタデータ。
 #[derive(Debug, Clone, Default)]

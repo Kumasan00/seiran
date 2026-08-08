@@ -371,9 +371,9 @@ fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, ba
   }
 }
 
-/// `crate::font::GlyphRun`（シェーピング直後の中間表現。座標は `crate::length::Length`、色は `crate::color::Color`）を
+/// `crate::typeset::GlyphRun`（シェーピング直後の中間表現。座標は `crate::length::Length`、色は `crate::color::Color`）を
 /// `seiran_pdf::GlyphRun`（`seiran_pdf` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
-fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
+fn to_pdf_glyph_run(run: &crate::typeset::GlyphRun) -> PdfGlyphRun {
   return PdfGlyphRun {
     font_size: run.font_size.to_pt(),
     text: run.text.clone(),
@@ -383,8 +383,8 @@ fn to_pdf_glyph_run(run: &crate::font::GlyphRun) -> PdfGlyphRun {
   };
 }
 
-/// `crate::font::Glyph` を `seiran_pdf::Glyph`（同一構造の複製）へ変換する。
-fn to_pdf_glyph(glyph: &crate::font::Glyph) -> PdfGlyph {
+/// `crate::typeset::Glyph` を `seiran_pdf::Glyph`（同一構造の複製）へ変換する。
+fn to_pdf_glyph(glyph: &crate::typeset::Glyph) -> PdfGlyph {
   return PdfGlyph {
     gid: glyph.gid,
     range: glyph.range.clone(),
@@ -405,14 +405,16 @@ mod tests {
   use super::build_publication;
   use crate::{
     document::HeadingLevel,
-    font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
     length::Length,
-    project::config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
+    project::{
+      FontConfig, FontConfigs, FontData, FontType,
+      config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
+    },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, AnchorMark, HBox, HBoxContent, LaidOutDocument, Line, LinkTarget, OutlineEntry, Page, PlacedAnchor,
-      PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
-      TableCellBox, TableColumn, TableRowBox,
+      AnchorId, AnchorMark, FontResources, GlyphRun, HBox, HBoxContent, LaidOutDocument, Line, LinkTarget,
+      OutlineEntry, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber,
+      PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,
     },
   };
 
@@ -478,7 +480,7 @@ mod tests {
     );
     let config = test_config();
     let source = crate::project::FilesystemProjectSource::new();
-    let font_data = FontData::new(&source, &config.font_configs).expect("テストフォントの読み込み");
+    let font_data = FontData::load(&source, &config.font_configs).expect("テストフォントの読み込み");
     let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
     let fonts = super::super::build_pdf_fonts(&font_data, &font_resources);
     let font_metrics = super::super::build_pdf_font_metrics(&font_resources);

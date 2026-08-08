@@ -2,8 +2,10 @@
 
 use crate::{
   color::Color,
-  document::hir::{HirMath, NodeId},
-  font::FontKind,
+  document::{
+    FontKind,
+    hir::{HirMath, NodeId},
+  },
 };
 
 /// インラインレベルの HIR ノード

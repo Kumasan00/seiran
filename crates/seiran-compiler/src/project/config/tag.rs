@@ -20,7 +20,7 @@ pub(crate) enum TagError {
 ///
 /// case は正規化せずユーザ指定をそのまま保持します（例: `"latn"` / `"Latn"` / `"LATN"` は
 /// それぞれ異なるバイト列になります）。harfrust 側の case 正規化やフォント実態との突合せは
-/// `font` クレートが担当します。
+/// `typeset::font` が担当します。
 pub(crate) fn parse_script_tag(value: &str) -> Result<[u8; 4], TagError> {
   if value.len() == 4 && value.bytes().all(|b| return b.is_ascii_alphabetic()) {
     return Ok(to_array(value));

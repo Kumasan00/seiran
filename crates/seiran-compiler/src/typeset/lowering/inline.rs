@@ -6,8 +6,7 @@ use super::{
   math::lower_inline_math,
 };
 use crate::{
-  document::{HirInline, HirInlineKind},
-  font::FontKind,
+  document::{FontKind, HirInline, HirInlineKind},
   length::Length,
   style::FootnoteStyle,
   typeset::boxes::{AnchorId, FootnoteId, LinkTarget},

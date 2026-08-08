@@ -106,7 +106,7 @@ mod tests {
     let HirInlineKind::Styled { kind, children } = &body[0].kind else {
       panic!("Styled が期待されます: {body:?}");
     };
-    assert_eq!(*kind, crate::font::FontKind::SerifBold);
+    assert_eq!(*kind, crate::document::FontKind::SerifBold);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 

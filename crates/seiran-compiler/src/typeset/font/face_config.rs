@@ -1,10 +1,10 @@
 //! `seiran_pdf::ResourceBundle::new` に渡す、フォント種別ごとのフォント構築設定。
 //!
-//! `crate::font::FontConfig` から renderer（`seiran_pdf`）が必要とする値（TTC インデックス・
+//! `crate::project::FontConfig` から renderer（`seiran_pdf`）が必要とする値（TTC インデックス・
 //! バリアブルフォント軸）だけを取り出した最小表現。この変換を `font` module 内のここ 1 箇所だけに
 //! 閉じ、`seiran_pdf` 側に同型の複製型を作らせない（issue #305）。
 
-use crate::font::{FontConfigs, FontType, map::FontMap};
+use crate::project::{FontConfigs, FontMap, FontType};
 
 /// Krilla フォント構築に必要な設定（`FontConfig` から renderer が要る値だけを取り出した最小表現）。
 #[derive(Debug, Clone)]
@@ -15,7 +15,7 @@ pub struct FontFaceConfig {
   pub variation_axes: Option<Vec<VariationAxisConfig>>,
 }
 
-/// バリアブルフォント軸の設定値（`crate::font::VariationAxis` の複製）。
+/// バリアブルフォント軸の設定値（`crate::project::VariationAxis` の複製）。
 #[derive(Debug, Clone, Copy)]
 pub struct VariationAxisConfig {
   /// 軸名（4 バイトの OpenType 軸タグ）
@@ -27,9 +27,9 @@ pub struct VariationAxisConfig {
 /// 19 フォント種別すべての [`FontFaceConfig`]。
 pub type FontFaceConfigs = FontMap<FontFaceConfig>;
 
-/// `crate::font::FontConfigs` から renderer 用の [`FontFaceConfigs`] を構築する。
+/// `crate::project::FontConfigs` から renderer 用の [`FontFaceConfigs`] を構築する。
 ///
-/// `crate::font::FontConfig` → [`FontFaceConfig`] の変換をこの 1 箇所に閉じる
+/// `crate::project::FontConfig` → [`FontFaceConfig`] の変換をこの 1 箇所に閉じる
 /// （compiler 側で手書きの複製を書かせないため。issue #305）。
 #[must_use]
 pub fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
@@ -58,7 +58,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::*;
-  use crate::font::{FontConfig, FontType, VariationAxis};
+  use crate::project::{FontConfig, FontType, VariationAxis};
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {

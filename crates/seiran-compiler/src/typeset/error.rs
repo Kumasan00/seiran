@@ -33,6 +33,15 @@ impl TypesetBug {
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum TypesetError {
+  /// シェーパー構築の失敗（`font::FontResources::system` に由来）。
+  ///
+  /// `FontSystemError` は移設前も `?` でそのまま `miette::Report` になっていたので、
+  /// `transparent` でメッセージ・code・help・label・related をすべて内側へ委譲し、
+  /// 診断の出方を変えない（#352）。
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Font(#[from] super::font::FontSystemError),
+
   /// 脚注のページ単位採番が上限回数で収束しないエラー
   ///
   /// 不整合なページ列は採用せず、回避策付きの診断を返す。

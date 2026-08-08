@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  font::FontKind,
+  document::FontKind,
   length::{Length, non_negative},
   style::number_style::NumberStyle,
 };
@@ -92,7 +92,7 @@ mod tests {
   use garde::Validate;
 
   use super::{ListStyle, NestedOrderedFormat};
-  use crate::{font::FontKind, length::Length, style::number_style::NumberStyle};
+  use crate::{document::FontKind, length::Length, style::number_style::NumberStyle};
 
   #[test]
   fn validate_accepts_default() {

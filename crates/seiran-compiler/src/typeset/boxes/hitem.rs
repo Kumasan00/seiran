@@ -4,7 +4,7 @@
 //! 保持し、以降のパス（行分割・縦組版・描画）はフォントに触れない。
 
 use super::link::LinkTarget;
-use crate::{font::GlyphRun, length::Length};
+use crate::{length::Length, typeset::font::GlyphRun};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]

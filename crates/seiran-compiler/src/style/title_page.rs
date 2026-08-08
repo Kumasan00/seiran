@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  font::FontKind,
+  document::FontKind,
   length::{Length, non_negative, positive},
 };
 
@@ -66,7 +66,7 @@ mod tests {
   use garde::Validate;
 
   use super::TitlePageStyle;
-  use crate::{font::FontKind, length::Length};
+  use crate::{document::FontKind, length::Length};
 
   #[test]
   fn validate_accepts_default() {

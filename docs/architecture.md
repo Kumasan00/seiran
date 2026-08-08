@@ -18,7 +18,7 @@ anchor に限って添える。
 
 目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`source`](#source) /
 [`project`](#project) / [`document`](#document) / [`style`](#style) / [`semantics`](#semantics) /
-[`frontend`](#frontend) / [`font`](#font) / [`typeset`](#typeset) / [`compiler`](#compiler)） / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
+[`frontend`](#frontend) / [`typeset`](#typeset) / [`compiler`](#compiler)） / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
 
 ## `seiran-compiler`
 
@@ -81,12 +81,14 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 #### 責務
 
-プロジェクトの**物理的な入力**を所有する crate root 直下の module。3 つを持つ。
+プロジェクトの**物理的な入力**を所有する crate root 直下の module。4 つを持つ。
 
 1. 外部資源取得の seam（module 直下 + `filesystem` / `memory`）。compiler が `std::fs` を直接呼ばず、
    設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを 1 つの seam 経由で取得する
 2. `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証（子 module `config`）
 3. 読込済みソース集合 `SourceSet`（子 module `source_set`。`SourceId` の唯一の発行元）
+4. config.toml が宣言する**フォント資源**（子 module `font`。19 種別の分類・検証済み設定・
+   読込済みバイト列。#352）
 
 seam を `config` の子に置かないのは変わらない — 全外部資源の窓口であり、`config` の子に置くと
 `font` → `project::config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
@@ -95,8 +97,9 @@ seam を `config` の子に置かないのは変わらない — 全外部資源
 **依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
 `config` が `font` / `length` / `color` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
 持つため）、`source_set` が `source` を参照する（`SourceSet` が `source::SourceId` を発行するため）。
-seam 側を依存ゼロに保つことで、`font` → `project`（seam）と `project::config` → `font` が循環にならない
-（#351。「`project` 全体が crate 内依存を持たない」という旧不変条件はこの形へ改訂した）。
+`font` が依存するのは同 module の seam だけで、crate 内の他 module を知らない。seam 側を依存ゼロに
+保つことで `project::config` → `project::font` → seam が一方向に閉じる
+（#351、#352。「`project` 全体が crate 内依存を持たない」という旧不変条件はこの形へ改訂した）。
 
 見た目を決める `style.toml` は crate root の `style` module の所有で、言語設計原則 P10 が区別する
 2 概念（物理・実体・メタ / 種類ごとの見た目）がそのまま module 境界になっている。どちらか一方だけでは
@@ -116,7 +119,7 @@ pub trait ProjectSource: Send + Sync {
   （`MultipleValidationErrors` に全パス不正を 1 度に載せる）が逐次 `?` の早期 return に退化し、
   memory adapter でもパス検証ができなくなるため。
 - `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
-  2 度ディスクから読まない。呼び出し側（`FontDataExt::new`）も共有パスを 1 回だけ要求する。
+  2 度ディスクから読まない。呼び出し側（`FontData::load`）も共有パスを 1 回だけ要求する。
 - `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去。先頭の `./` は
   Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを
@@ -151,9 +154,9 @@ pub trait ProjectSource: Send + Sync {
   `style::load`、references は `semantics::read_references` がそれぞれ読む。
 - `processed_config`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
   `PdfConfig` / `ImageConfig` / `Margin`。後段はこちらだけを見る。**処理済みフォント設定**
-  （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は `font::settings` の
-  所有 — 後段が要求する入力契約は後段が所有し、`project::config` はそれを構築する側になる
-  （`ProjectConfig.font_configs: font::FontConfigs`）。TOML に対応する未検証型 `PreFontConfig` /
+  （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は兄弟 module
+  `project::font` の `settings` が所有し、`project::config` はそれを構築する側になる
+  （`ProjectConfig.font_configs: FontConfigs`）。TOML に対応する未検証型 `PreFontConfig` /
   `PreVariationAxis` / `PreFontFeature` と、そこから検証済み値を組み立てる `parse_font_values` /
   `validate_and_convert` / `resolve` は `project::config` が持つ。
 - `tag`: OpenType タグ文字列（script / language / feature）の検証・構築の単一情報源（`TagError`）。
@@ -163,6 +166,33 @@ pub trait ProjectSource: Send + Sync {
 エラー型は `ReadConfigError` / `ConfigValidationError`。`style` 側の `ReadStyleError` /
 `StyleValidationError` と接頭辞で区別する — 同名の `ValidationError` を 2 つ作ると module を公開して
 名前空間で区別する羽目になるため、**同名エラー型を再導入しない**。
+
+#### 子 module `font`（config.toml が宣言するフォント資源）
+
+「どのフォントファイルを、どのフェース・軸・フィーチャーで使うか」はプロジェクトの物理的な入力
+なので `project` が持つ。**フォントの解析・検証・シェイピングという処理は持たない** — そちらは
+`typeset::font`（`typeset` 節を参照）。この 2 つを別 module にしているのは、`project::config` /
+`style` が P10 の 2 概念を別々に所有しているのと同じ理由で、入力（実体）と処理を混ぜないため。
+
+- `kind`（非公開、`project` の facade で `FontType` を再エクスポート）: 言語・スタイルが確定した
+  最終種別 `FontType`（19 variant）。`FontType::ALL`（宣言順の配列）と `as_toml_key`
+  （`[font_configs.<key>]` の `snake_case` キー）を持つ。言語判定前の分類 `FontKind` は authored
+  文書と style.toml の語彙なので `document` の所有（#352）。
+- `map`（非公開、facade で `FontMap` を再エクスポート）: 全 19 種別に対応する値を保持する
+  `FontMap<T>`。`from_all` が `FontType::ALL` と要素数の一致を要求し、「全種別が揃っている」ことを
+  型の側で保証する。イテレーションは常に `FontType::ALL` の順序。`typeset::font` が `FontRefs` /
+  `FontMetrics` の実体に使うので facade へ出す。
+- `settings`（非公開、facade で `FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` /
+  `TextDirection` を再エクスポート）: フォント処理の入力契約となる検証済み・処理済み設定。TOML に
+  対応する未検証型とそこから検証済み値を構築する処理は兄弟 module `config` が持つので、
+  **`project::config` がこれらを構築し `typeset::font` は設定ファイルの形を知らない**。
+  `TextDirection::from_str` の `Err` 型 `TextDirectionParseError` は名指しする消費者がいないため
+  facade へは出さない。
+- module root（`project/font.rs`）: 読込済みバイト列の newtype `FontData` とその唯一の構築経路
+  `FontData::load(source, font_configs)`（`rayon` で並列化し、同じパスを指す種別は 1 回だけ読む）、
+  読込エラー `FontReadError`。`FontData` を型エイリアスではなく newtype にしているのは、構築を
+  inherent メソッドで表せて拡張トレイト（旧 `FontDataExt`）が要らなくなるため。`FontReadError` は
+  `?` で `miette::Report` になる経路しかなく名指しされないので facade へは出さない。
 
 #### 子 module `source_set`
 
@@ -183,8 +213,9 @@ I/O 失敗はパースエラーと違い**集約せず**最初の 1 件で早期
 `typeset` が共有する authored 文書の正典で、producer は frontend 1 つだが HIR の意味と寿命は frontend
 の実装より広いため、producer ではなくここが所有する。外部依存は serde / garde のみで、`document` が
 定義する型自体は診断ライブラリ（miette）にも I/O にも依存しない。crate 内では `length` / `color` /
-`font` / `source` / `project` に依存する（HIR や `table_column` が値として `Length` / `Color` /
-`FontKind` / `SourceId` / `Span` / `ProjectPath` を持つため）。`semantics` / `typeset` /
+`source` / `project` に依存する（HIR や `table_column` が値として `Length` / `Color` /
+`SourceId` / `Span` / `ProjectPath` を持つため）。`FontKind`（言語判定前のフォントスタイル分類）は
+HIR の `Styled` variant が値として持つ語彙なのでこの module の所有（#352）。`semantics` / `typeset` /
 `compiler` は知らない — 後段 module への依存は持たない。
 
 提供する interface は次の 4 つに限る。
@@ -227,8 +258,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
   （語彙置き場を型の無制限な受け皿にしない）。全 9 型が `HirNodeKind` / `HirMathKind` の
   フィールドとして現れる。
-  値概念そのものである `Length` / `Color` は `length` / `color`、フォント分類の
-  `FontType` / `FontKind` / `FontMap` は `font` の所有。ソースの同一性 `SourceId` と位置 `Span` は
+  値概念そのものである `Length` / `Color` は `length` / `color`、config.toml が宣言するフォント枠の
+  `FontType` / `FontMap` は `project::font` の所有（`FontKind` だけはここの語彙）。ソースの同一性 `SourceId` と位置 `Span` は
   `source` の所有。
 - **識別子はここに持たない**: 意味解析が確定する `LabelId` / `HeadingKey` は `semantics::ids`、
   引用キー `CitationId` と CSL 整形の生成物専用の語彙（`GeneratedBlock` / `GeneratedInline`）は
@@ -276,7 +307,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   正しい — ファイル名だけを見て移さない。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
   `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
-  `Glyph` は `font` module の型（`font` 節参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
+  `Glyph` は `typeset::font` の型（`typeset` 節の `font` 項参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
   消費者も `typeset` 内の複数 module や `typeset` → `compiler` の範囲にとどまる。判断基準:
   **複数 consumer の型でも、consumer が同一 crate 内 / 同一依存関係内にとどまるなら、共有置き場では
   なくその内部へ置く**。
@@ -613,72 +644,6 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   `semantics::analyze` が担う。
 - 診断は `source::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
-### `font`
-
-#### 責務
-
-全 19 フォント種別の読み込み・OpenType 解析・メトリクス取得・シェーピング・設定検証。`read-fonts` /
-`harfrust` / `rayon` を使用する。フォント分類の型（`FontKind` / `FontType` / `FontMap`）と
-処理済みフォント設定（`FontConfig` / `FontConfigs` / `VariationAxis` / `Feature` / `TextDirection`）も
-所有する — 前者は「言語・スタイルが確定した 19 種別」という分類とその全域性の不変条件、後者は font の
-入力契約であり、いずれもフォント処理が意味を決める型だから。crate 内では `length` / `color` /
-`project` の seam に依存する。設定側（`project::config` / `style`）には依存しない — フォントファイルの
-読込は `project::ProjectSource` seam 経由で、依存方向は `project::config` → `font` の一方向。
-
-#### モジュール構成
-
-- module root（`font.rs`）: 型エイリアス `FontData`（= `FontMap<Vec<u8>>`）/ `FontRefs` / `FontMetrics` と、その構築を
-  与える拡張トレイト `FontDataExt` / `FontRefsExt` / `FontMetricsExt`、1 フォントぶんのメトリクス
-  `FontMetric`（upem / ascender / descender の一元化）、エラー `FontLoadError`。読み込みは `rayon` で
-  種別ごとに並列化する。
-- `kind`（非公開、root facade で `FontKind` / `FontType` を再エクスポート）: 言語判定前の分類
-  `FontKind`（13 variant）と、言語・スタイルが確定した最終種別 `FontType`（19 variant）。
-  `FontType::ALL`（宣言順の配列）と `as_toml_key`（`[font_configs.<key>]` の snake_case キー）を持つ。
-- `map`（非公開、root facade で `FontMap` を再エクスポート）: 全 19 種別に対応する値を保持する
-  `FontMap<T>`。`from_all` が `FontType::ALL` と要素数の一致を要求し、「全種別が揃っている」ことを
-  型の側で保証する。イテレーションは常に `FontType::ALL` の順序。
-- `settings`（非公開、root facade で `FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` /
-  `TextDirection` を再エクスポート）: font の入力契約となる検証済み・処理済みフォント設定。TOML に
-  対応する未検証型と、そこから検証済み値を構築する処理は `project::config` が持つので、
-  **`project::config` がこれらを構築し `font` は設定ファイルの形を知らない**。`TextDirection::from_str` の `Err` 型
-  `TextDirectionParseError` は名指しする消費者がいないため root facade へは出さない。
-- `glyph_run`（非公開、root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング結果 1 個の
-  グリフ列とその配置情報。値は `color::Color` / `FontType` / `length::Length` という leaf 値型にしか
-  依存しない leaf 型で、`typeset::block` が生成し `compiler::publication` が消費する。`seiran-pdf` は
-  自己完結型 `seiran_pdf::GlyphRun` を別に持ち、変換は `compiler::publication::to_pdf_glyph_run` の
-  1 箇所に閉じている。
-- `face_config`（非公開、root facade へは出さない）: `FontConfig`（`settings` の検証済み設定。
-  値の出どころは config.toml）からシェーピングに必要なフェース設定 `FontFaceConfig` /
-  `FontFaceConfigs` / `VariationAxisConfig` を組み立てる（`build_face_configs`）。名指しする消費者は
-  `font::system` だけで、外からは `FontResources::face_configs()` の戻り値型として型推論経由でしか
-  触れないため、root facade には載せない。
-- `shaper`（`pub(crate) mod`。`typeset::block` が `shaper::UnicodeBuffer` を直接参照するため font 内に
-  閉じない可視性が要るが、crate 外への公開経路は持たせない）: `HarfRust` を使い、書字方向・スクリプト・
-  言語・OpenType フィーチャー・バリエーション軸を反映して文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（非公開、root facade へは出さない）: バリエーション軸設定の存在・範囲・完全性を
-  検証する。GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。検証エラーは
-  `FontSystemError::Validation` の `transparent` 委譲を介して miette::Report 化されるだけで、
-  型名を名指しする消費者がいないため再エクスポートしない。
-- `system`（非公開、root facade で `FontResources` / `FontSystem` を再エクスポート。`FontSystemError` は
-  `?` で miette::Report へ変換される経路しかなく名指しされないので出さない）:
-  `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
-  寿命関係をここに閉じ込める窓口。`FontResources::load(configs, &font_data)` が検証済みの
-  所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）を構築し、
-  `FontResources::system(configs)` がそれを借用してシェーパー一式を構築し、`shape` / `metric` の
-  2 操作だけを公開する `FontSystem` を返す。`HarfRustShapers` が `FontRefs` と
-  `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
-  まとめると自己参照構造体になる — これを避けて `FontResources`（所有）と `FontSystem`（借用ビュー）の
-  2 段に分けている。呼び出し側（`seiran-compiler`）は個々の型の構築順序を一切知らない。
-
-#### 不変条件・注意点
-
-- フォントのサブセット化は行わない（`krilla` が PDF 生成時に内部で実施する）。
-- フォントに触れてよいのは (a) `build_blocks` の計測・シェーピングと (e) 描画だけ。box は (a) で
-  width / height / depth を 1 回計測して保持し、`typeset::breaking` 以降はフォントに触れない。
-- フォント資源の構築順序は `font::system` に閉じる。呼び出し側は `FontResources::load` →
-  `FontResources::system` の 2 段呼び出しだけを知り、`ShaperDatas` / `ShaperInstances` /
-  `HarfRustShapers` / `validate_fonts` を直接構築しない。
-
 ### `typeset`
 
 #### 責務
@@ -686,16 +651,17 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の確定レイアウト `LaidOutDocument` へ
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
-（`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `geometry` / `image` / `lowering` /
-`pagination` の 8 module はすべて非公開で、外から見える入口は **module root の `layout` 1 操作**と、
-入力読込から呼ばれる横断検証 `validate_layout`（`geometry` 節を参照）だけである（#350、#351）。
+（`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `font` / `geometry` / `image` /
+`lowering` / `pagination` の 9 module はすべて非公開で、外から見える入口は **module root の `layout`
+1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`（`geometry` 節を参照）だけである
+（#350、#351、#352）。
 
 ```rust,ignore
 pub(crate) fn layout(
   source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
-  font_system: &FontSystem<'_>,
+  font_resources: &FontResources<'_>,
   document: &SemanticDocument,
 ) -> Result<LaidOutDocument, TypesetError>;
 ```
@@ -725,9 +691,10 @@ pub(crate) fn layout(
 `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` / `TableColumn` と表セルの
 配置・計測ヘルパ）と、`compiler` 配下の `#[cfg(test)] mod tests` が組版済みページを組み立て・走査する
 のに使う型だけで、`Align` / `FootnoteId` のように外に消費者がいないものは出さない（#326）。
-シェーピング結果 `GlyphRun` / `Glyph` は `boxes` にはなく `font` module にある（`font` 節参照）。
-`typeset` root からの `Glyph` / `GlyphRun` 再エクスポートは持たない（消費者は `font::Glyph` /
-`font::GlyphRun` を直接 import する）。
+シェーピング結果 `GlyphRun` / `Glyph` は `boxes` にはなく子 module `font` にある（下の `font` 項参照）。
+`typeset` root facade はこの 2 型と `FontResources` を `compiler` 向けに再エクスポートし、`typeset`
+内部の消費者は `typeset::font::Glyph` / `typeset::font::GlyphRun` を直接 import する（`boxes` と
+同じ二層の形）。
 
 #### `LaidOutDocument`
 
@@ -740,8 +707,58 @@ pub(crate) fn layout(
 
 `pages` / `outline_entries` はフィールド公開のまま置く — `compiler::publication` と golden テストが
 直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
-フォント資源は含めない（`layout` は `&FontSystem` を借りるだけで、`FontResources` の構築・保持は
-`compiler` の責務。`font` module の `typeset` 配下への移設は別 issue）。
+フォント資源は含めない（`layout` は `&FontResources` を借りるだけで、その構築・保持は `compiler` の
+責務。フォント資源は config / style / references と同じ**入力資源**であり、`layout` が決めた値では
+ないため成果物には載せない、#352）。
+
+#### `font`
+
+フォントの OpenType 解析・検証・メトリクス取得・シェイピング。`read-fonts` / `harfrust` / `rayon` を
+使う。入力（19 種別の分類・検証済み設定・読込済みバイト列）は `project::font` の所有で、この module は
+**処理だけ**を持つ（`project` 節の子 module `font` 項を参照）。フォントのサブセット化は行わない（`krilla` が PDF 生成時に
+内部で実施する）。
+
+- module root（`typeset/font.rs`）: 型エイリアス `FontRefs`（= `FontMap<FontRef>`）/ `FontMetrics` と、
+  その構築を与える非公開の自由関数 `build_font_refs` / `build_font_metrics`、1 フォントぶんの
+  メトリクス `FontMetric`（upem / ascender / descender の一元化）、解析エラー `FontLoadError`。
+  構築は `system` からしか呼ばれないので拡張トレイト（旧 `FontRefsExt` / `FontMetricsExt`）は持たない。
+- `glyph_run`（非公開、`typeset` root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング
+  結果 1 個のグリフ列とその配置情報。値は `color::Color` / `project::FontType` / `length::Length` と
+  いう leaf 値型にしか依存しない leaf 型で、`typeset::block` が生成し `compiler::publication` が
+  消費する。`seiran-pdf` は自己完結型 `seiran_pdf::GlyphRun` を別に持ち、変換は
+  `compiler::publication::to_pdf_glyph_run` の 1 箇所に閉じている。
+- `face_config`（非公開、facade へは出さない）: `project::FontConfig`（検証済み設定。値の出どころは
+  config.toml）からシェーピングに必要なフェース設定 `FontFaceConfig` / `FontFaceConfigs` /
+  `VariationAxisConfig` を組み立てる（`build_face_configs`）。名指しする消費者は `font::system` だけで、
+  外からは `FontResources::face_configs()` の戻り値型として型推論経由でしか触れない。
+- `shaper`（非公開。`typeset::block` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
+  `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
+  `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
+  文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
+- `validate_font`（非公開、facade へは出さない）: バリエーション軸設定の存在・範囲・完全性を検証する。
+  GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。検証エラーは
+  `FontSystemError::Validation` の `transparent` 委譲を介して miette::Report 化されるだけで、
+  型名を名指しする消費者がいない。
+- `system`（非公開、`typeset` root facade で `FontResources` を再エクスポート。`FontSystem` /
+  `FontSystemError` は `typeset` 内に留める）:
+  `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
+  寿命関係をここに閉じ込める窓口。`FontResources::load(configs, &font_data)` が検証済みの
+  所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）を構築し、
+  `FontResources::system()` がそれを借用してシェーパー一式を構築し、`shape` / `metric` の
+  2 操作だけを公開する `FontSystem` を返す。`HarfRustShapers` が `FontRefs` と
+  `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
+  まとめると自己参照構造体になる — これを避けて `FontResources`（所有）と `FontSystem`（借用ビュー）の
+  2 段に分けている。`.system()` を呼ぶのは `layout` の中だけで、`compiler` は `FontResources` を
+  1 度構築して `layout` と `build_publication` に貸すだけになる。
+
+不変条件:
+
+- フォントに触れてよいのは (a) `build_blocks` の計測・シェーピングと (e) 描画だけ。box は (a) で
+  width / height / depth を 1 回計測して保持し、`typeset::breaking` 以降はフォントに触れない。
+- フォント資源の構築順序は `font::system` に閉じる。`ShaperDatas` / `ShaperInstances` /
+  `HarfRustShapers` / `validate_fonts` を直接構築する呼び出し側は存在しない。
+- `layout` は `.system()` を**画像読込より前**に呼ぶ。両方が失敗する入力で報告されるエラーを、
+  フォント資源の構築を `compiler` が担っていた頃と同じ側（フォント）に保つため。
 
 #### `error`
 
@@ -943,7 +960,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
-`font::FontSystem`（シェイプ・メトリクス取得の窓口）を利用する。
+`font::FontSystem`（シェイプ・メトリクス取得の窓口。`typeset::font` 節参照）を利用する。
 
 **break 注入**は、シェーピング後の `GlyphRun` を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、
 和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は
@@ -983,7 +1000,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 フォント非依存の純粋組版パス（コア型は `typeset::boxes` にあり、本 module には純粋パス本体だけが残る）。
 `break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
-（issue #306）が、Rule ベースのボックスのみでページを組んで `font::FontSystem` を一切構築しないこと
+（issue #306）が、Rule ベースのボックスのみでページを組んで `typeset::font::FontSystem` を一切構築しないこと
 を回帰テストとして固定している。
 
 - (b) `break_opportunities`: ICU の `LineSegmenter`（UAX #14）に `hyphenation`（`hypher`）の欧文語中分割点
@@ -1056,7 +1073,7 @@ PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — 
 `compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順は知らない（#350）:
 
 ```text
-input::load → parse_project → semantics::analyze → font::FontResources::load / .system()
+input::load → parse_project → semantics::analyze → typeset::FontResources::load
   → typeset::layout → build_publication（Publication への写像）→ DependencyManifest::collect
 ```
 
@@ -1079,13 +1096,13 @@ input::load → parse_project → semantics::analyze → font::FontResources::lo
 `MemoryProjectSource` + 固定 `base_dir` を使うテスト（`tests/compile_facade.rs`）が `chdir` 無しに書ける。
 `compile` は保存（`fs::write`）を一切行わない。
 
-`compile` が `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`build_publication`
-用、`FontRefs` / `FontMetrics` / `FontFaceConfigs` へのアクセサを持つ）と `FontSystem`
-（`typeset::layout` 用、シェイプ・メトリクス取得の窓口）の両方を得る（描画段での再構築はしない）。
-個々の型の構築順序・寿命関係は `font::system` に閉じており、facade はこれを知らない。フォント読込が
-`typeset` の内側へ入らないのは、`FontResources` が組版後にも `ResourceBundle` 用の `metrics()` を
-要求され、`LaidOutDocument` の「フォント非依存」という設計意図と衝突するため（`font` module の
-`typeset` 配下への移設は別 issue）。子 module:
+`compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
+`build_publication`（`ResourceBundle` 用の `metrics()` / `face_configs()`）の両方へ貸す
+（描画段での再構築はしない）。シェーパーの構築（`.system()`）と個々の型の構築順序・寿命関係は
+`typeset::font` に閉じており、facade はこれを知らない。フォント資源の構築を `typeset` の内側へ
+畳まないのは、`FontResources` が組版後にも `ResourceBundle` 用の `metrics()` を要求され、
+「`LaidOutDocument` は `layout` が決めた値だけを持つ」という設計意図と衝突するため（#352）。
+子 module:
 
 - `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・文献・
   font・読込済みソース・出力先情報 `OutputPlan`）。**config.toml → style.toml → 横断検証
@@ -1193,7 +1210,7 @@ input::load → parse_project → semantics::analyze → font::FontResources::lo
   公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
   `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
 - `types`: 境界専用の自己完結 leaf 型（`FontType` / `FontFaceInput` / `VariationAxisInput` / `FontMetric` /
-  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `document` / `font`
+  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `document` / `typeset::font`
   の型を参照しない（compiler 側からの変換は `seiran_compiler::compiler::publication` に閉じている）
 - `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
   バイト列）と、それを組み立てる
@@ -1236,7 +1253,8 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
   `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config` を省略すると `./config/config.toml`
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
-  `seiran-compiler` の `font` module には依存しない（フォントファイルを調べるだけで組版を伴わないため）
+  `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
+  組版を伴わないため）
 - `write_error`: PDF 保存（出力ディレクトリ作成・書き込み）のエラー型 `WriteError`。`compile` の失敗とは
   型を分ける — `compile` は保存を行わないため
 

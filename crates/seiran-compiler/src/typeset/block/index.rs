@@ -7,11 +7,12 @@ use icu::{
 
 use super::Measurer;
 use crate::{
-  font::{FontKind, FontSystem},
+  document::FontKind,
   length::Length,
   style::Style,
   typeset::{
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
+    font::FontSystem,
     lowering::TextStyle,
   },
 };

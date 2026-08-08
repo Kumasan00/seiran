@@ -289,9 +289,10 @@ mod tests {
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
-    font::{FontType, GlyphRun},
     length::Length,
+    project::FontType,
     semantics::LabelId,
+    typeset::GlyphRun,
   };
 
   /// pt 値から `Length` を作る

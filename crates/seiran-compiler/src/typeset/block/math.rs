@@ -3,8 +3,8 @@
 use super::Measurer;
 use crate::{
   document::{MathDelimiter, MathEnvKind},
-  font::FontType,
   length::Length,
+  project::FontType,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{LayoutNode, MathBlockRow},

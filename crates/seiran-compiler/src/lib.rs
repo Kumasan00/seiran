@@ -7,7 +7,6 @@
 mod color;
 mod compiler;
 mod document;
-mod font;
 mod frontend;
 // `length` / `color` は crate root 直下の leaf module（#336）。crate root の非公開 module は
 // crate 全体から `crate::length::...` で到達できるため、かつて `model` の子だったときに garde の

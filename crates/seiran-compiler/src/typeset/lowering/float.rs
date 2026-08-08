@@ -7,8 +7,7 @@ use super::{
   template::expand_template,
 };
 use crate::{
-  document::{CaptionPosition, HirInline},
-  font::FontKind,
+  document::{CaptionPosition, FontKind, HirInline},
   length::Length,
   style::CaptionStyle,
   typeset::boxes::Align,

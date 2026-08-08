@@ -80,7 +80,7 @@ mod tests {
     *,
   };
   use crate::{
-    font::FontKind,
+    document::FontKind,
     style::Style as ReadStyle,
     typeset::boxes::{AnchorId, LinkTarget},
   };

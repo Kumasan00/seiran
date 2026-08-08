@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::{font::FontConfigs, length::Length};
+use crate::{length::Length, project::FontConfigs};
 
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]

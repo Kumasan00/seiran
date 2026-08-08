@@ -1334,12 +1334,14 @@ mod tests {
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
-    font::GlyphRun,
     length::Length,
     style::TextAlignment,
-    typeset::boxes::{
-      Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
-      PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+    typeset::{
+      boxes::{
+        Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
+        PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+      },
+      font::GlyphRun,
     },
   };
 
@@ -2474,7 +2476,7 @@ mod tests {
             font_size: pt(10.0),
             text: text.to_string(),
             glyphs: Vec::new(),
-            font_type: crate::font::FontType::Serif,
+            font_type: crate::project::FontType::Serif,
             color: None,
           }),
           width: Length::pt(20.0),
@@ -2632,7 +2634,7 @@ mod tests {
                 font_size: pt(10.0),
                 text: "リンク".to_string(),
                 glyphs: Vec::new(),
-                font_type: crate::font::FontType::Serif,
+                font_type: crate::project::FontType::Serif,
                 color: None,
               }),
               width: Length::pt(20.0),
@@ -3950,10 +3952,10 @@ mod tests {
     assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
   }
 
-  /// パジネーションが `crate::font::FontSystem` を一切必要としないこと（#306 property: font 非依存）。
+  /// パジネーションが `crate::typeset::FontSystem` を一切必要としないこと（#306 property: font 非依存）。
   ///
   /// `break_pages` のシグネチャ自体が font/shaper 引数を持たない（型で保証済み）。このテストは
-  /// 実際に `crate::font::FontSystem` を一度も構築せずに複数段落を複数ページへ組めることを示す
+  /// 実際に `crate::typeset::FontSystem` を一度も構築せずに複数段落を複数ページへ組めることを示す
   /// （本テストのグリフ内容は `test_box()`/`paragraph_of_lines()` の Rule ベースのボックスのみで、
   /// 実グリフ・実フォントを一切使わない）。
   #[test]
@@ -3967,6 +3969,6 @@ mod tests {
 
     // Assert — 複数ページに分かれていること自体を検証する（1 ページでも真になる is_empty 判定では
     // 「複数ページ」という doc comment の主張を検証できていなかった）
-    assert!(pages.len() >= 2, "crate::font::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
+    assert!(pages.len() >= 2, "crate::typeset::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
   }
 }

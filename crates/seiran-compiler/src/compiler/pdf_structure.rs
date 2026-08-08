@@ -14,10 +14,7 @@ use super::{
   golden::{enter_workspace_root, load_base},
   input::CompilationInputs,
 };
-use crate::{
-  font::{FontData, FontDataExt, FontResources},
-  style::Style,
-};
+use crate::{project::FontData, style::Style, typeset::FontResources};
 
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
@@ -44,7 +41,7 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut Style))
   let mut style = style.clone();
   adjust_style(&mut style);
   let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let inputs =
     CompilationInputs::from_parts(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
       .expect("CompilationInputs の構築");
@@ -52,9 +49,8 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut Style))
   let semantics =
     crate::semantics::analyze(&source, document, inputs.references(), inputs.style()).expect("analyze の実行");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
-  let font_system = font_resources.system().expect("FontSystem の構築");
-  let mut laid_out =
-    crate::typeset::layout(&source, inputs.config(), inputs.style(), &font_system, &semantics).expect("layout の実行");
+  let mut laid_out = crate::typeset::layout(&source, inputs.config(), inputs.style(), &font_resources, &semantics)
+    .expect("layout の実行");
   let fonts = super::build_pdf_fonts(&font_data, &font_resources);
   let font_metrics = super::build_pdf_font_metrics(&font_resources);
   let image_bytes: std::collections::HashMap<String, Vec<u8>> = std::mem::take(&mut laid_out.image_bytes)

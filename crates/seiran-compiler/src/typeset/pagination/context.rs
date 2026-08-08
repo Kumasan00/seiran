@@ -2,13 +2,13 @@
 
 use super::page_values::BodyPageValues;
 use crate::{
-  font::FontSystem,
   length::Length,
   project::config::ProjectConfig,
   style::Style,
   typeset::{
     boxes::Page,
     breaking::{KnuthPlassBreaker, PageGeometry},
+    font::FontSystem,
     geometry,
     lowering::HeadingRecord,
   },

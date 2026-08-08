@@ -82,7 +82,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{font::FontKind, style::Style as ReadStyle};
+  use crate::{document::FontKind, style::Style as ReadStyle};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

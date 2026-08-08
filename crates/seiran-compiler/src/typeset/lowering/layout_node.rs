@@ -2,8 +2,7 @@
 
 use crate::{
   color::Color,
-  document::MathEnvKind,
-  font::FontKind,
+  document::{FontKind, MathEnvKind},
   length::Length,
   typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
 };
@@ -220,7 +219,7 @@ pub(crate) fn merge_adjacent_text(nodes: Vec<LayoutNode>) -> Vec<LayoutNode> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::font::FontKind;
+  use crate::document::FontKind;
 
   fn style(font_kind: FontKind) -> TextStyle {
     return TextStyle {

@@ -12,9 +12,8 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::{
-  font::{Feature, FontConfig, FontConfigs, FontType, TextDirection, VariationAxis},
-  project::{ProjectPath, ProjectSource},
+use crate::project::{
+  Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, TextDirection, VariationAxis,
 };
 
 mod pre_config;
@@ -552,13 +551,10 @@ mod tests {
     ConfigValidationError, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load, parse_config,
     resolve_output_dir_path, resolve_paths, validate_values,
   };
-  use crate::{
-    font::FontType,
-    project::{
-      FilesystemProjectSource, MemoryProjectSource,
-      config::test_support::{
-        font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
-      },
+  use crate::project::{
+    FilesystemProjectSource, FontType, MemoryProjectSource,
+    config::test_support::{
+      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
     },
   };
 

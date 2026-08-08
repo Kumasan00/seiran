@@ -14,8 +14,9 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  font::{FontData, FontDataExt, FontResources, FontType},
+  project::{FontData, FontType},
   style,
+  typeset::FontResources,
 };
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_diagnostics`）を返す。
@@ -50,7 +51,7 @@ fn build_pages_err(sources: &[&str]) -> miette::Report {
   let (mut config, style, references) = load_base();
   config.sources = sources.iter().map(|source| return PathBuf::from(*source)).collect();
   let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   return match build_pages(&config, &style, &references, &font_data) {
     Ok(_) => panic!("このケースは失敗するはず"),
     Err(report) => report,
@@ -145,12 +146,12 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::font::VariationAxis {
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::project::VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);
   let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
     Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
     Err(error) => error.into(),

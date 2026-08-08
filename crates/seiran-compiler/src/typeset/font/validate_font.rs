@@ -9,7 +9,10 @@ use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
 use tracing::{debug, warn};
 
-use crate::font::{FontConfig, FontConfigs, FontRefs, FontType, VariationAxis};
+use crate::{
+  project::{FontConfig, FontConfigs, FontType, VariationAxis},
+  typeset::font::FontRefs,
+};
 
 /// 複数のフォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]
