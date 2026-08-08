@@ -280,7 +280,7 @@ fn build_pages_with_source(
 ///
 /// ビルド処理時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
 #[allow(clippy::cast_possible_truncation)]
-pub(super) fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
+fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }
 
 /// 全ソースをパースし、パース・評価エラーを集約する。
 ///

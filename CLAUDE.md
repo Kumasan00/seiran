@@ -106,7 +106,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` | seam 部はなし / 子 module のみ length color font source |
+| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` | seam 部はなし / 子 module のみ length color font source |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型の所有者 | length color font source project |
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document font project |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |

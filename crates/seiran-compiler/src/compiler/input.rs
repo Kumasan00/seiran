@@ -158,3 +158,40 @@ fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<Sourc
     };
   });
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use std::path::PathBuf;
+
+  use super::{CompileError, read_sources};
+  use crate::project::MemoryProjectSource;
+
+  /// `project::SourceSet` の素のエラーを、移設前と同じ位置付き診断へ組み替えることを固定する。
+  ///
+  /// `code` / メッセージ / `into_io()` による平坦化は `project` ではなくここの責務なので、
+  /// `SourceSet::read` 側のテストではこの層を通らない（#351）。
+  #[test]
+  fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
+    // Arrange — 存在するソースと存在しないソースを混ぜる
+    let source = MemoryProjectSource::new().with_text("/project/a.sei", "content-a");
+    let sources = vec![
+      PathBuf::from("/project/a.sei"),
+      PathBuf::from("/project/missing.sei"),
+    ];
+
+    // Act
+    let result = read_sources(&source, &sources);
+
+    // Assert
+    let Err(CompileError::ReadTextFile {
+      path,
+      source: io_error,
+    }) = result
+    else {
+      panic!("ReadTextFile を期待");
+    };
+    assert_eq!(path, "/project/missing.sei");
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound, "seam のエラーは io::Error へ平坦化されるはず");
+  }
+}

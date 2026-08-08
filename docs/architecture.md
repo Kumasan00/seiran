@@ -89,7 +89,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 3. 読込済みソース集合 `SourceSet`（子 module `source_set`。`SourceId` の唯一の発行元）
 
 seam を `config` の子に置かないのは変わらない — 全外部資源の窓口であり、`config` の子に置くと
-`font` → `config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
+`font` → `project::config` という役割に合わない依存が生まれる（依存方向は `project::config` → `font` の
 一方向を保つ）。
 
 **依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
