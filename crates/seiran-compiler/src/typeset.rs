@@ -43,7 +43,7 @@ pub(crate) use pagination::LaidOutDocument;
 #[allow(unused_imports)]
 pub(crate) use pagination::OutlineEntry;
 
-use crate::{font::FontSystem, semantics::SemanticDocument};
+use crate::{font::FontSystem, project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
 
 /// 意味解析の成果物を、描画直前の確定レイアウトへ組版する。
 ///
@@ -56,8 +56,8 @@ use crate::{font::FontSystem, semantics::SemanticDocument};
 /// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合にエラーを返す。
 pub(crate) fn layout(
   source: &dyn crate::project::ProjectSource,
-  config: &crate::project::config::ProjectConfig,
-  style: &crate::style::Style,
+  config: &ProjectConfig,
+  style: &Style,
   font_system: &FontSystem<'_>,
   document: &SemanticDocument,
 ) -> Result<LaidOutDocument, TypesetError> {

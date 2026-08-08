@@ -208,7 +208,7 @@ impl Style {
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
 // 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
 #[allow(clippy::result_large_err)]
-pub fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
+pub(crate) fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
   let Some(path) = path else {
     info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
     return Ok(Style::default());
@@ -249,7 +249,7 @@ pub fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) ->
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
 #[allow(clippy::result_large_err)]
-pub fn parse(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
+pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(

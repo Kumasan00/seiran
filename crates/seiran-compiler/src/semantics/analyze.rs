@@ -8,8 +8,8 @@
 use crate::{
   document::HirDocument,
   semantics::{
-    GeneratedCitations, References, SemanticDocument, error::AnalyzeError, facts::SemanticFacts, generate_citations,
-    load_citation_style, walk,
+    GeneratedCitations, References, SemanticDocument, SemanticPolicy, error::AnalyzeError, facts::SemanticFacts,
+    generate_citations, load_citation_style, walk,
   },
 };
 
@@ -31,7 +31,7 @@ pub(crate) fn analyze(
   // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
   // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
   // （`SemanticPolicy` は値に影響する設定だけの投影）。
-  let policy = crate::semantics::SemanticPolicy::from_style(style);
+  let policy = SemanticPolicy::from_style(style);
   let facts = walk::collect_facts(&document, &policy, references)?;
   let citations = generate(source, &facts, references, style)?;
 
@@ -49,7 +49,7 @@ pub(crate) fn analyze(
 #[cfg(test)]
 pub(crate) fn analyze_for_test(
   document: HirDocument,
-  policy: &crate::semantics::SemanticPolicy,
+  policy: &SemanticPolicy,
   references: &References,
 ) -> Result<SemanticDocument, crate::semantics::SemanticError> {
   let facts = walk::collect_facts(&document, policy, references)?;

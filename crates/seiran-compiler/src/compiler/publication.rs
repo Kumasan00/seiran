@@ -15,14 +15,17 @@ use seiran_pdf::{
   PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
 
-use crate::typeset::{
-  AnchorId, AnchorMark, HBoxContent, HItem, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
-  PlacedTableRow,
+use crate::{
+  project::config::ProjectConfig,
+  typeset::{
+    AnchorId, AnchorMark, HBoxContent, HItem, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
+    PlacedTableRow,
+  },
 };
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
-  config: &crate::project::config::ProjectConfig,
+  config: &ProjectConfig,
   resources: ResourceBundle,
   laid_out: &LaidOutDocument,
 ) -> Publication {
@@ -74,7 +77,7 @@ pub(super) fn build_publication(
 
 /// 1 ページぶんの `PublicationPage` を構築する
 fn build_page(
-  config: &crate::project::config::ProjectConfig,
+  config: &ProjectConfig,
   page: &Page,
   margin_left: crate::length::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,

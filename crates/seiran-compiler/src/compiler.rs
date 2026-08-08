@@ -28,14 +28,14 @@ use input::CompilationInputs;
 pub use input::OutputPlan;
 use tracing::info;
 
-#[cfg(test)]
-use crate::semantics::References;
 use crate::{
   font::{FontData, FontResources},
-  project::SourceSet,
+  project::{SourceSet, config::ProjectConfig},
   semantics::AnalyzeError,
   typeset::LaidOutDocument,
 };
+#[cfg(test)]
+use crate::{semantics::References, style::Style};
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
@@ -155,7 +155,7 @@ fn parse_project(inputs: &CompilationInputs) -> miette::Result<crate::document::
 ///
 /// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
-  config: &crate::project::config::ProjectConfig,
+  config: &ProjectConfig,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
@@ -245,8 +245,8 @@ fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
-  config: &crate::project::config::ProjectConfig,
-  style: &crate::style::Style,
+  config: &ProjectConfig,
+  style: &Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -261,8 +261,8 @@ fn build_pages(
 #[cfg(test)]
 fn build_pages_with_source(
   source: &dyn crate::project::ProjectSource,
-  config: &crate::project::config::ProjectConfig,
-  style: &crate::style::Style,
+  config: &ProjectConfig,
+  style: &Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {

@@ -88,7 +88,7 @@ pub(super) fn load_base() -> (ProjectConfig, Style, Arc<References>) {
 }
 
 /// 検証対象の機能に必要な style 差分を入力ごとに適用する。
-fn apply_input_style_overrides(name: &str, style: &mut crate::style::Style) {
+fn apply_input_style_overrides(name: &str, style: &mut Style) {
   match name {
     "title_page" => {
       style.title_page.enabled = true;

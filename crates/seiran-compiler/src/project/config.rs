@@ -891,7 +891,7 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      crate::project::config::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
+      font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
     let pre = parse_config(&toml, dummy_source()).unwrap();
     return validate_values(&pre);

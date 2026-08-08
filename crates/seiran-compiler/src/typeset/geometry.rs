@@ -79,14 +79,14 @@ mod tests {
   use crate::project::{
     FilesystemProjectSource,
     config::{
-      load,
+      self,
       test_support::{make_font_sections, valid_output_section, valid_pdf_section},
     },
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
   /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`project/config.rs` の
-  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `load` の実結果に対して
+  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `config::load` の実結果に対して
   /// 検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
@@ -113,7 +113,7 @@ mod tests {
     });
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config = load(&source, &config_path, &base_dir).unwrap();
+    let config = config::load(&source, &config_path, &base_dir).unwrap();
     return (tempdir, config);
   }
 

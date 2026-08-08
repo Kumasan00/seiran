@@ -39,8 +39,8 @@ pub(crate) struct SourceSetReadError {
 }
 
 impl SourceSet {
-  /// 空の `SourceSet` を作る（テスト・埋め込みなし診断構築に使う）。
-  pub(crate) fn new() -> Self {
+  /// 空の `SourceSet` を作る（`read` が登録前の初期値として使う）。
+  fn new() -> Self {
     return SourceSet {
       entries: Vec::new(),
     };
