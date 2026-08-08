@@ -62,7 +62,6 @@ mod tests {
 
   fn font_config_with(font_index: u32, variation_axes: Option<Vec<VariationAxis>>) -> FontConfig {
     return FontConfig {
-      font_name: "test".to_string(),
       font_path: PathBuf::from("dummy.ttf"),
       font_index,
       variation_axes,

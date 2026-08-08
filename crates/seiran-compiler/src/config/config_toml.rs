@@ -132,8 +132,6 @@ struct ResolvedPaths {
 
 /// フォント 1 種別ぶんの、パス解決を除いた検証済み・変換済みの値群。
 struct FontValues {
-  /// `PDF FontDescriptor` で使用されるフォント名
-  font_name: String,
   /// TTC ファイル内のフォントインデックス
   font_index: u32,
   /// バリアブルフォント軸の設定値（タグ変換済み）
@@ -237,7 +235,6 @@ fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Resul
   let font_configs =
     FontConfigs::from_all(font_values.into_iter().zip(resolved.font_paths).map(|(values, font_path)| {
       return FontConfig {
-        font_name: values.font_name,
         font_path,
         font_index: values.font_index,
         variation_axes: values.variation_axes,
@@ -500,7 +497,6 @@ fn parse_font_values(
     return Err(errors);
   }
   return Ok(FontValues {
-    font_name: pre_font_config.font_name.clone(),
     font_index: pre_font_config.font_index,
     variation_axes,
     script,
@@ -1133,7 +1129,6 @@ mod tests {
     assert_eq!(config.document.title.as_deref(), Some("Test Doc"));
     assert_eq!(config.sources.len(), 1);
     assert_eq!(config.font_configs.iter().count(), 19);
-    assert_eq!(config.font_configs.get(FontType::Serif).font_name, "font_serif");
     assert!(config.pdf.show_bookmarks);
     assert_eq!(config.image.max_dpi, 300);
     assert!(config.image.downsample);
