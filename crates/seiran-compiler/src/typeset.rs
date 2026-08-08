@@ -51,7 +51,7 @@ use crate::{font::FontSystem, semantics::SemanticDocument};
 /// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合にエラーを返す。
 pub(crate) fn layout(
   source: &dyn crate::project::ProjectSource,
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   style: &crate::style::Style,
   font_system: &FontSystem<'_>,
   document: &SemanticDocument,

@@ -6,9 +6,9 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  config::config_toml::ConfigValidationError,
   font::FontType,
   length::{Length, non_negative, positive},
+  project::config::ConfigValidationError,
 };
 
 /// TOML ファイル全体をデシリアライズした設定

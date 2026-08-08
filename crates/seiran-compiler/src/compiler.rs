@@ -136,7 +136,7 @@ fn load_project(
   config_path: &Path,
   base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let config = crate::config::read_config(source, config_path, base_dir)?;
+  let config = crate::project::config::load(source, config_path, base_dir)?;
   let style = crate::style::load(source, config.style_path.as_deref(), base_dir)?;
   crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
@@ -182,7 +182,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<crate::document::
 ///
 /// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
@@ -272,7 +272,7 @@ fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   style: &crate::style::Style,
   references: &Arc<References>,
   font_data: &FontData,
@@ -288,7 +288,7 @@ fn build_pages(
 #[cfg(test)]
 fn build_pages_with_source(
   source: &dyn crate::project::ProjectSource,
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   style: &crate::style::Style,
   references: &Arc<References>,
   font_data: &FontData,

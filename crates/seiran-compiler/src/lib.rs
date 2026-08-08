@@ -27,10 +27,10 @@ pub use compiler::{BuildStatistics, Compilation, DependencyManifest, DiagnosticS
 // 有効な入力を組み立てるための唯一の実装 2 種。`SourceReadError` は `ProjectSource::read_text`/
 // `read_bytes` の戻り値型（`Result<_, SourceReadError>`）に現れるため、`ProjectSource` を
 // 名指しして自前実装しようとする外部呼び出し元がシグネチャに書けなければならない
-// （再エクスポートしないと `ProjectSource` trait 自体が事実上実装不能になる）。`Config`/`Style`
+// （再エクスポートしないと `ProjectSource` trait 自体が事実上実装不能になる）。`ProjectConfig`/`Style`
 // 等の内部データモデルは `compile` の引数にも `Compilation` の出力にも現れない（`ProjectSource`
 // 経由でファイルから読み込まれ内部で完結する）ため、ここには含めない。
 #[doc(hidden)]
-pub use config::test_support;
+pub use project::test_support;
 pub use project::{FilesystemProjectSource, MemoryProjectSource, ProjectPath, ProjectSource, SourceReadError};
 pub use seiran_pdf::Publication;

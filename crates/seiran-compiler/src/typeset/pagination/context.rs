@@ -14,7 +14,7 @@ use crate::{
 /// 全段が共有する組版資源と寸法。
 pub(crate) struct TypesetContext<'a> {
   /// 実体・物理・メタデータ設定
-  pub(super) config: &'a crate::config::Config,
+  pub(super) config: &'a crate::project::config::ProjectConfig,
   /// 見た目の設定
   pub(super) style: &'a crate::style::Style,
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
@@ -36,7 +36,7 @@ pub(crate) struct TypesetContext<'a> {
 impl<'a> TypesetContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
   pub(crate) fn new(
-    config: &'a crate::config::Config,
+    config: &'a crate::project::config::ProjectConfig,
     style: &'a crate::style::Style,
     resources: &'a FontSystem<'a>,
   ) -> Self {
@@ -87,7 +87,7 @@ impl BodyPageFacts {
 ///
 /// 段数・段間以外は本文の値を共有する。
 fn build_page_geometries(
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   style: &crate::style::Style,
   body_columns: usize,
   column_gap: Length,

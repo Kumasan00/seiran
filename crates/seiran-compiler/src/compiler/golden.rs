@@ -11,10 +11,9 @@ use std::{
 
 use super::{build_pages, dump::dump_pages};
 use crate::{
-  config::Config,
   font::{FontData, FontDataExt},
   length::Length,
-  project::{MemoryProjectSource, ProjectPath},
+  project::{MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
   style::Style,
   typeset::{AnchorMark, Page, PlacedBlock},
@@ -70,13 +69,13 @@ pub(super) fn enter_workspace_root() {
 /// fixture の設定・スタイル・文献を読み込む。
 ///
 /// テスト資産が未取得なら取得手順を案内して失敗する。
-pub(super) fn load_base() -> (Config, Style, Arc<References>) {
+pub(super) fn load_base() -> (ProjectConfig, Style, Arc<References>) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
   let source = crate::project::FilesystemProjectSource::new();
-  let config = crate::config::read_config(
+  let config = crate::project::config::load(
     &source,
     Path::new("crates/seiran-compiler/tests/config/config.toml"),
     &workspace_root(),
@@ -111,7 +110,7 @@ fn apply_input_style_overrides(name: &str, style: &mut crate::style::Style) {
 /// `layout_dumps_match_golden` が既定ジオメトリのまま golden を静かに再生成してしまい、
 /// テスト失敗を経由せず座標がずれる。`config_overrides_typed_and_toml_stay_in_sync` が
 /// この乖離を機械的に検査する。
-fn apply_input_config_overrides(name: &str, config: &mut Config) {
+fn apply_input_config_overrides(name: &str, config: &mut ProjectConfig) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
     config.pdf.margin.left = Length::mm(275.0);
@@ -167,9 +166,9 @@ fn register_fonts(
   return source;
 }
 
-/// `apply_input_config_overrides`（型付き `Config` 版）の `toml::Table` 版。
+/// `apply_input_config_overrides`（型付き `ProjectConfig` 版）の `toml::Table` 版。
 ///
-/// `Config`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
+/// `ProjectConfig`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
 /// テーブルを直接書き換える。上書き内容は型付き版と同じにする（golden の座標は同一のはず）。
 ///
 /// **注意**: 型付き版 [`apply_input_config_overrides`] と対になっている。ここへケースを
@@ -288,7 +287,7 @@ fn dump_input_via_compile(name: &str) -> String {
 }
 
 /// 指定入力を組版し、確定ページ列のダンプを返す。
-fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>, name: &str) -> String {
+fn dump_input(base_config: &ProjectConfig, style: &Style, references: &Arc<References>, name: &str) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
@@ -354,9 +353,9 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
     let mut typed_config = base_config.clone();
     apply_input_config_overrides(name, &mut typed_config);
 
-    // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `read_config` を通す）
+    // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `load` を通す）
     let (source, root) = memory_source_for_golden_fixture(name);
-    let toml_config = crate::config::read_config(&source, root.as_path(), &workspace_root)
+    let toml_config = crate::project::config::load(&source, root.as_path(), &workspace_root)
       .unwrap_or_else(|error| panic!("fixture {name} の toml 版 config 読込は成功するはず: {error}"));
 
     // Assert — 両関数が触れうるフィールドが一致する

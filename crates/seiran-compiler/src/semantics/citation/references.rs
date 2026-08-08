@@ -39,7 +39,7 @@ impl Format {
 
 /// 参照定義ファイルを読み込む。
 ///
-/// `path` が `None` の場合は空の参照定義を返す。`path` は呼び出し元（`crate::config::read_config`）が
+/// `path` が `None` の場合は空の参照定義を返す。`path` は呼び出し元（`crate::project::config::load`）が
 /// 既に絶対化済みのものを渡す想定で、このクレート自身は相対パスの解決を行わない。
 ///
 /// # Errors

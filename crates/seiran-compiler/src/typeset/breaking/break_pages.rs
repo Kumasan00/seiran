@@ -47,18 +47,18 @@ pub struct PageGeometry {
   pub footnote_rule_length: Length,
   /// 脚注: 区切り罫線の太さ（0 のとき描画しない、`style.footnote.rule_thickness`）
   pub footnote_rule_thickness: Length,
-  /// 脚注: 区切り罫線の色（RGB）。`None` は黒。呼び出し側が `crate::config::Color::rgb()` で
+  /// 脚注: 区切り罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
   /// 変換済みの値を渡す（`RunningSlots.rule_color` と同じ規約）
   pub footnote_rule_color: Option<[u8; 3]>,
   /// 脚注: 区切り罫線〜最初の脚注、および脚注どうしの間隔（`style.footnote.rule_gap`）
   pub footnote_rule_gap: Length,
   /// 表: 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
   pub table_rule_thickness: Length,
-  /// 表: 罫線の色（RGB）。`None` は黒。呼び出し側が `crate::config::Color::rgb()` で
+  /// 表: 罫線の色（RGB）。`None` は黒。呼び出し側が `crate::color::Color::rgb()` で
   /// 変換済みの値を渡す（`footnote_rule_color` と同じ規約）
   pub table_rule_color: Option<[u8; 3]>,
   /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）。
-  /// 呼び出し側が `crate::config::Color::rgb()` で変換済みの値を渡す
+  /// 呼び出し側が `crate::color::Color::rgb()` で変換済みの値を渡す
   pub background_color: Option<[u8; 3]>,
 }
 

@@ -6,7 +6,7 @@ use crate::{font::FontConfigs, length::Length};
 
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct ProjectConfig {
   /// ドキュメントメタデータ（title / author / date / subject）
   pub document: DocumentConfig,
   /// 出力ファイル名・ディレクトリ

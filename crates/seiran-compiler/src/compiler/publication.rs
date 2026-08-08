@@ -22,7 +22,7 @@ use crate::typeset::{
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   resources: ResourceBundle,
   laid_out: &LaidOutDocument,
 ) -> Publication {
@@ -74,7 +74,7 @@ pub(super) fn build_publication(
 
 /// 1 ページぶんの `PublicationPage` を構築する
 fn build_page(
-  config: &crate::config::Config,
+  config: &crate::project::config::ProjectConfig,
   page: &Page,
   margin_left: crate::length::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
@@ -401,10 +401,10 @@ mod tests {
 
   use super::build_publication;
   use crate::{
-    config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig},
     document::HeadingLevel,
     font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
     length::Length,
+    project::config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
     semantics::{HeadingKey, LabelId},
     typeset::{
       AnchorId, AnchorMark, HBox, HBoxContent, LaidOutDocument, Line, LinkTarget, OutlineEntry, Page, PlacedAnchor,
@@ -429,8 +429,8 @@ mod tests {
   }
 
   /// テスト用の最小設定を返す。
-  fn test_config() -> Config {
-    return Config {
+  fn test_config() -> ProjectConfig {
+    return ProjectConfig {
       document: DocumentConfig {
         title: None,
         author: None,
@@ -534,7 +534,7 @@ mod tests {
     };
   }
 
-  fn build(config: &Config, pages: Vec<Page>, outline_entries: Vec<OutlineEntry>) -> Publication {
+  fn build(config: &ProjectConfig, pages: Vec<Page>, outline_entries: Vec<OutlineEntry>) -> Publication {
     return build_publication(config, test_resources(), &laid_out(pages, outline_entries));
   }
 

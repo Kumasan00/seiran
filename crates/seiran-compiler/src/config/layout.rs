@@ -4,7 +4,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{config::Config, length::Length, style::Style};
+use crate::{length::Length, project::config::ProjectConfig, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
@@ -44,7 +44,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
   return (text_width - column_gap * gaps) / n;
 }
 
-/// [`Config`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
+/// [`ProjectConfig`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
 ///
 /// 本文幅（`pdf.width - margin.left - margin.right`）を `style.columns` の段数・段間で割った
 /// 1 段あたりの幅が非正の場合にエラーを返します。
@@ -52,7 +52,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
 /// # Errors
 ///
 /// 1 段あたりの幅が 0 以下の場合 [`LayoutValidationError::InvalidColumnWidth`] を返します。
-pub fn validate_layout(config: &Config, style: &Style) -> Result<(), LayoutValidationError> {
+pub fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), LayoutValidationError> {
   let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
   let num_columns = style.columns.count as usize;
   let column_gap = style.columns.gap;
@@ -71,18 +71,18 @@ pub fn validate_layout(config: &Config, style: &Style) -> Result<(), LayoutValid
 mod tests {
   use std::path::PathBuf;
 
-  use super::{Config, LayoutValidationError, Length, Style, column_width, validate_layout};
-  use crate::{
-    config::config_toml::{
-      read_config,
+  use super::{LayoutValidationError, Length, ProjectConfig, Style, column_width, validate_layout};
+  use crate::project::{
+    FilesystemProjectSource,
+    config::{
+      load,
       test_support::{make_font_sections, valid_output_section, valid_pdf_section},
     },
-    project::FilesystemProjectSource,
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
-  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`config_toml.rs` の
-  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `read_config` の実結果に対して
+  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`project/config.rs` の
+  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `load` の実結果に対して
   /// 検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
@@ -98,7 +98,7 @@ mod tests {
     return (tempdir, config_path);
   }
 
-  fn read_test_config() -> (tempfile::TempDir, Config) {
+  fn read_test_config() -> (tempfile::TempDir, ProjectConfig) {
     let (tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -109,7 +109,7 @@ mod tests {
     });
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config = load(&source, &config_path, &base_dir).unwrap();
     return (tempdir, config);
   }
 
