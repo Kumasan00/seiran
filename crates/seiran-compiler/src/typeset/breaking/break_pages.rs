@@ -4,14 +4,16 @@ use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
 use crate::{
-  config::column_width,
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{
-    Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
-    PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
-    PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, collect_row_links, resolve_column_widths,
-    table_row_height,
+  typeset::{
+    boxes::{
+      Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
+      PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
+      PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, collect_row_links, resolve_column_widths,
+      table_row_height,
+    },
+    geometry::column_width,
   },
 };
 

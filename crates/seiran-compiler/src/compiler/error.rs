@@ -4,9 +4,9 @@ use miette::{Diagnostic, LabeledSpan, NamedSource};
 use thiserror::Error;
 
 use crate::{
-  config::LayoutValidationError,
   frontend::ParseSourceError,
   semantics::{CitationFormatError, CitationStyleError, SemanticError},
+  typeset::LayoutValidationError,
 };
 
 /// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。

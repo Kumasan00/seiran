@@ -138,7 +138,7 @@ fn load_project(
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
   let config = crate::project::config::load(source, config_path, base_dir)?;
   let style = crate::style::load(source, config.style_path.as_deref(), base_dir)?;
-  crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
+  crate::typeset::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();

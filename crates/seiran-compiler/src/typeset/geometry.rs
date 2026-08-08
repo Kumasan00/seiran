@@ -1,5 +1,9 @@
-//! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーションと、段組み設定から
-//! 導出する 1 段あたりの幅の計算。
+//! 版面の幾何 — `config.toml`（用紙・余白）× `style.toml`（`[columns]`）の横断バリデーションと、
+//! 段組み設定から導出する 1 段あたりの幅の計算。
+//!
+//! どちらの設定 module にも属さない（片方だけでは判定できない）ので、この制約を不変条件として
+//! 使う組版側が所有する（#351）。[`validate_layout`] を呼ぶのは入力読込（`compiler::input::load`）で、
+//! 組版に入る前に不正な組み合わせを弾く。
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -8,7 +12,7 @@ use crate::{length::Length, project::config::ProjectConfig, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum LayoutValidationError {
+pub(crate) enum LayoutValidationError {
   /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
   #[error(
     "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
@@ -31,10 +35,10 @@ pub enum LayoutValidationError {
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
 ///
-/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`config::validate_layout`・
-/// `compiler`・`typeset::breaking` が共通して使用する。
+/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。[`validate_layout`] と
+/// `typeset::pagination::context` / `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 #[must_use]
-pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
+pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);
   // 段数は実用上 1〜2。桁あふれ・精度低下・切り捨てが起きる桁数にはならない
   #[allow(clippy::cast_precision_loss)]
@@ -52,7 +56,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
 /// # Errors
 ///
 /// 1 段あたりの幅が 0 以下の場合 [`LayoutValidationError::InvalidColumnWidth`] を返します。
-pub fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), LayoutValidationError> {
+pub(crate) fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), LayoutValidationError> {
   let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
   let num_columns = style.columns.count as usize;
   let column_gap = style.columns.gap;

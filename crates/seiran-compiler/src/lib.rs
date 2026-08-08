@@ -6,7 +6,6 @@
 
 mod color;
 mod compiler;
-mod config;
 mod document;
 mod font;
 mod frontend;

@@ -13,6 +13,7 @@ mod block;
 mod boxes;
 mod breaking;
 mod error;
+mod geometry;
 mod image;
 mod lowering;
 mod pagination;
@@ -31,6 +32,10 @@ pub(crate) use boxes::{
   TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
 pub(crate) use error::TypesetError;
+// 入口は `layout` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
+// 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
+// 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
+pub(crate) use geometry::{LayoutValidationError, validate_layout};
 pub(crate) use pagination::LaidOutDocument;
 // `OutlineEntry` を本体コードから名指しする消費者はいない（`compiler::publication` は
 // `laid_out.outline_entries` をフィールドとして走査するだけ）。`publication` の
