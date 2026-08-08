@@ -94,7 +94,7 @@ pub enum SourceReadError {
 impl SourceReadError {
   /// ラッパー診断へ埋め込むための `std::io::Error` へ変換する。
   ///
-  /// 呼び出し元（`config` / `semantics` / `font` / `seiran` の読込エラー）は自分のメッセージに
+  /// 呼び出し元（`project::config` / `style` / `semantics` / `font` / `seiran` の読込エラー）は自分のメッセージに
   /// パスを含んでおり、その `#[source]` としては素の I/O エラーだけを連鎖させる
   /// （seam 導入前と同じ診断表示を保つ。issue #300 受け入れ条件「診断内容が同一」）。
   #[must_use]

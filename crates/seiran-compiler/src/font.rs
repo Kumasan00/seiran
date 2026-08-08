@@ -7,7 +7,7 @@
 //! フォント処理の入力契約となる処理済みフォント設定（`FontConfig` / `FontConfigs` / `VariationAxis` /
 //! `Feature` / `TextDirection`）もこの module が所有する（#336）。前者は分類とその全域性の不変条件、
 //! 後者は「後段が要求する入力契約は後段が所有する」という配置規則による。TOML に対応する未検証型と
-//! そこから検証済み値を構築する処理は `crate::config` に残り、`font` は設定ファイルの形を知らない。
+//! そこから検証済み値を構築する処理は `crate::project::config` に残り、`font` は設定ファイルの形を知らない。
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -39,7 +39,7 @@ pub use glyph_run::{Glyph, GlyphRun};
 // フォント分類（`FontKind` / `FontType`）は `font` が所有する（#336、旧 `model`）。
 pub use kind::{FontKind, FontType};
 // 処理済みフォント設定は font の入力契約なので font が所有する（#336、旧 `config`）。
-// `config` が TOML の未検証型からこれらを構築するため、構築に名指しされる型はすべて facade に出す。
+// `project::config` が TOML の未検証型からこれらを構築するため、構築に名指しされる型はすべて facade に出す。
 // `TextDirectionParseError` は `TextDirection::from_str` の `Err` 型としてしか現れず、名指しする
 // 消費者がいないので facade へは出さない（#326）。
 pub use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
