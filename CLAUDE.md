@@ -144,7 +144,8 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 
 ### エラーハンドリング・バリデーション
 
-- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語、`code` は `<crate>::<category>::<name>` で階層化）。`miette::Result<T>` は `main` / 上位パイプライン関数のみで使う
+- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は `main` / 上位パイプライン関数のみで使う
+- 診断 `code` の**第 1 階層は「段」を表す固定列挙**（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ。crate 名ではない）。**第 2 階層以降は規定しない** — module パスではなく著者が選ぶ意味的カテゴリ（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` はいずれも module 名ではない）。段を跨ぐ wrapper 型は自分の所有 module ではなく**エラーの出自の段**を名乗る（`compiler::error::AttributedCitationError` の `semantics::unknown_citation_key`）
 - 設定値検証は `garde` の `#[derive(Validate)]` で宣言的に書き、違反は `MultipleValidationErrors` に集約して 1 度に報告する
 - バリアント設計・`#[label]` / `NamedSource` によるソース位置付与・`#[related]` 集約の制約・garde パターンの詳細は `error-handling` skill を参照する。新しいエラー型の定義・バリアント追加・バリデーション追加の際は必ず参照すること
 

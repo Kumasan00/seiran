@@ -17,7 +17,7 @@ use crate::{
 /// 複数のフォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]
 #[error("複数のフォント設定にエラーがあります")]
-#[diagnostic(code(font::validation::multiple_errors))]
+#[diagnostic(code(typeset::font::validation::multiple_errors))]
 pub struct MultipleFontValidationErrors {
   /// フォント種別ごとに集約された検証エラー
   #[related]
@@ -27,7 +27,7 @@ pub struct MultipleFontValidationErrors {
 /// 1 フォント種別で発生した検証エラー。
 #[derive(Debug, Error, Diagnostic)]
 #[error("フォントの検証に失敗しました: {font_type:?}")]
-#[diagnostic(code(font::validation::error))]
+#[diagnostic(code(typeset::font::validation::error))]
 pub struct FontValidationErrors {
   /// 検証対象のフォント種別
   font_type: FontType,
@@ -42,21 +42,21 @@ pub enum FontValidationError {
   /// OpenType フォントを解析できない。
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
-    code(font::validation::parse),
+    code(typeset::font::validation::parse),
     help("フォントファイルが破損していないか、正しい形式であるか確認してください。")
   )]
   Parse(#[from] read_fonts::ReadError),
   /// 静的フォントにバリエーション軸が設定されている。
   #[error("このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。")]
   #[diagnostic(
-    code(font::validation::not_variable_font),
+    code(typeset::font::validation::not_variable_font),
     help("バリアブル対応ではないフォントの場合は、設定ファイルから 'variation_axes' を削除してください。")
   )]
   NotVariableFont,
   /// バリアブルフォントに軸設定がない。
   #[error("バリアブルフォントにはバリエーション軸の設定が必須です。")]
   #[diagnostic(
-    code(font::validation::missing_variation_axes),
+    code(typeset::font::validation::missing_variation_axes),
     help(
       "設定ファイルに 'variation_axes' セクションを追加してください。'variation-axes' コマンドで利用可能な軸を確認できます。"
     )
@@ -65,13 +65,16 @@ pub enum FontValidationError {
   /// フォントに存在しない軸が設定されている。
   #[error("不明なバリエーション軸: {0}")]
   #[diagnostic(
-    code(font::validation::unknown_axis),
+    code(typeset::font::validation::unknown_axis),
     help("'variation-axes' コマンドでフォントがサポートする軸を確認してください。")
   )]
   UnknownVariationAxis(String),
   /// 軸値が許容範囲外にある。
   #[error("軸 '{name}' の値が範囲外です: {value} (許容範囲: {min}..={max})")]
-  #[diagnostic(code(font::validation::value_out_of_range), help("値をフォントの許容範囲内に設定してください。"))]
+  #[diagnostic(
+    code(typeset::font::validation::value_out_of_range),
+    help("値をフォントの許容範囲内に設定してください。")
+  )]
   VariationValueOutOfRange {
     /// 軸名
     name: String,
@@ -85,7 +88,7 @@ pub enum FontValidationError {
   /// フォントが持つ軸の設定がない。
   #[error("フォントのバリエーション軸 '{axis}' が設定されていません (デフォルト: {default}, 最小: {min}, 最大: {max})")]
   #[diagnostic(
-    code(font::validation::unconfigured_axis),
+    code(typeset::font::validation::unconfigured_axis),
     help("設定ファイルの 'variation_axes' にこの軸を追加してください。")
   )]
   UnconfiguredVariationAxis {

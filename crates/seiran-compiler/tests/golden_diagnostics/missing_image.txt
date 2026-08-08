@@ -1,4 +1,4 @@
-build::image::read_image
+typeset::image::read_image
 
   × 画像ファイルを読み込めませんでした: ./tests/image/does-not-exist.jpg
   ╰─▶ No such file or directory (os error 2)

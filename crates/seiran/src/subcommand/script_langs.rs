@@ -16,13 +16,16 @@ use tracing::info;
 enum ScriptLangsError {
   /// フォントファイルの読み込みエラー
   #[error("フォントファイルの読み込みに失敗しました: {0}")]
-  #[diagnostic(code(script_langs::io_error), help("ファイルが存在し、読み取り権限があることを確認してください。"))]
+  #[diagnostic(
+    code(cli::script_langs::io_error),
+    help("ファイルが存在し、読み取り権限があることを確認してください。")
+  )]
   IoError(#[from] std::io::Error),
 
   /// 指定インデックスのフォント解析エラー
   #[error("インデックス {font_index} のフォント解析に失敗しました")]
   #[diagnostic(
-    code(script_langs::font_parse_error),
+    code(cli::script_langs::font_parse_error),
     help(
       "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は別のインデックスを試してください。"
     )
@@ -38,7 +41,7 @@ enum ScriptLangsError {
   /// GSUB テーブルの取得エラー
   #[error("GSUB テーブルが見つからないか、無効です")]
   #[diagnostic(
-    code(script_langs::gsub_error),
+    code(cli::script_langs::gsub_error),
     help("このフォントには GSUB（グリフ置換）テーブルが含まれていない可能性があります。")
   )]
   GsubError {
@@ -50,7 +53,7 @@ enum ScriptLangsError {
   /// GPOS テーブルの取得エラー
   #[error("GPOS テーブルが見つからないか、無効です")]
   #[diagnostic(
-    code(script_langs::gpos_error),
+    code(cli::script_langs::gpos_error),
     help("このフォントには GPOS（グリフ位置調整）テーブルが含まれていない可能性があります。")
   )]
   GposError {
@@ -62,7 +65,7 @@ enum ScriptLangsError {
   /// Feature リストの取得エラー
   #[error("{table_name} テーブルから Feature リストの取得に失敗しました")]
   #[diagnostic(
-    code(script_langs::feature_list_error),
+    code(cli::script_langs::feature_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   FeatureListError {
@@ -76,7 +79,7 @@ enum ScriptLangsError {
   /// Script リストの取得エラー
   #[error("{table_name} テーブルから Script リストの取得に失敗しました")]
   #[diagnostic(
-    code(script_langs::script_list_error),
+    code(cli::script_langs::script_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
   ScriptListError {
@@ -90,7 +93,7 @@ enum ScriptLangsError {
   /// Language System の取得エラー
   #[error("Script '{script_tag}' のインデックス {index} の Language System の取得に失敗しました")]
   #[diagnostic(
-    code(script_langs::lang_sys_error),
+    code(cli::script_langs::lang_sys_error),
     help("Language System エントリが無効であるか、Script リスト構造が破損している可能性があります。")
   )]
   LangSysError {
@@ -106,7 +109,7 @@ enum ScriptLangsError {
   /// Feature の取得エラー
   #[error("インデックス {index} の Feature の取得に失敗しました")]
   #[diagnostic(
-    code(script_langs::feature_error),
+    code(cli::script_langs::feature_error),
     help("Feature テーブルエントリが無効である可能性があります。Feature リストのインデックスが範囲外かもしれません。")
   )]
   FeatureError {
@@ -120,7 +123,7 @@ enum ScriptLangsError {
   /// Feature Parameters の取得エラー
   #[error("Feature '{feature_tag}' のパラメータの取得に失敗しました")]
   #[diagnostic(
-    code(script_langs::feature_params_error),
+    code(cli::script_langs::feature_params_error),
     help("Feature パラメータ構造が破損している可能性があります。")
   )]
   FeatureParamsError {

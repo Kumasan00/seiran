@@ -36,7 +36,7 @@ pub(crate) enum FontLoadError {
   /// フォントを解析できない。
   #[error("{font_type:?} のフォント解析に失敗しました (index: {index})")]
   #[diagnostic(
-    code(font::load::parse),
+    code(typeset::font::parse),
     help(
       "フォントファイルが有効な OpenType フォントであることを確認してください。TTC の場合、font_index が正しいか確認してください。"
     )
@@ -53,7 +53,7 @@ pub(crate) enum FontLoadError {
   /// メトリクス取得に必要な OpenType テーブルを読めない。
   #[error("{font_type:?} の {table} テーブルの読み込みに失敗しました")]
   #[diagnostic(
-    code(font::load::metrics_table),
+    code(typeset::font::metrics_table),
     help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
   )]
   ReadMetricsTable {

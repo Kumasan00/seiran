@@ -1,7 +1,7 @@
-build::image::load_image
+typeset::image::load_image
 
   × 画像ファイルのデコードに失敗しました: ./tests/image/unsupported.gif
-  ╰─▶ seiran_pdf::unsupported_image_format
+  ╰─▶ pdf::unsupported_image_format
       
         × 画像ファイルの拡張子が未対応です: ./tests/image/unsupported.gif
         help: 対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。

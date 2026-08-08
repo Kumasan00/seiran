@@ -22,7 +22,7 @@ pub(crate) enum CitationStyleError {
   /// 引用（`\cite`）があるのに CSL スタイルが設定されていない場合。
   #[error("引用がありますが CSL スタイルが設定されていません。")]
   #[diagnostic(
-    code(citation::style::missing_csl_path),
+    code(semantics::citation::style::missing_csl_path),
     help("style.toml の [reference].csl_path に CSL スタイル（.csl）ファイルのパスを設定してください。")
   )]
   MissingCslPath,
@@ -30,7 +30,7 @@ pub(crate) enum CitationStyleError {
   /// CSL スタイル（`.csl`）ファイルの読み込みに失敗した場合。
   #[error("CSL スタイルファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
-    code(citation::style::read_style_file),
+    code(semantics::citation::style::read_style_file),
     help("style.toml の [reference].csl_path が指す .csl ファイルのパスと読み取り権限を確認してください。")
   )]
   ReadStyleFile {
@@ -44,7 +44,7 @@ pub(crate) enum CitationStyleError {
   /// CSL スタイル（`.csl`）の解析に失敗した場合。
   #[error("CSL スタイルファイルの解析に失敗しました: {path}")]
   #[diagnostic(
-    code(citation::style::parse_style),
+    code(semantics::citation::style::parse_style),
     help(".csl が有効な独立 CSL スタイル（independent style）であることを確認してください。")
   )]
   ParseStyle {
@@ -58,7 +58,7 @@ pub(crate) enum CitationStyleError {
   /// CSL ロケール（`.xml`）ファイルの読み込みに失敗した場合。
   #[error("CSL ロケールファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
-    code(citation::style::read_locale_file),
+    code(semantics::citation::style::read_locale_file),
     help("style.toml の [reference].locale_path が指す CSL ロケール XML のパスと読み取り権限を確認してください。")
   )]
   ReadLocaleFile {
@@ -72,7 +72,7 @@ pub(crate) enum CitationStyleError {
   /// CSL ロケール（`.xml`）の解析に失敗した場合。
   #[error("CSL ロケールファイルの解析に失敗しました: {path}")]
   #[diagnostic(
-    code(citation::style::parse_locale),
+    code(semantics::citation::style::parse_locale),
     help("ファイルが有効な CSL ロケール（locales-xx-YY.xml 形式）であることを確認してください。")
   )]
   ParseLocale {

@@ -12,7 +12,7 @@ description: >-
 ## エラー型の定義
 
 - 各クレートの `lib.rs`（または該当モジュール）に `thiserror::Error` + `miette::Diagnostic` 派生のエラー列挙型を定義する。`#[derive(Debug, Error, Diagnostic)]` を常に併用する
-- バリアントごとに `#[error("...")]`（メッセージ、日本語）と `#[diagnostic(code(<crate>::<category>::<name>), help("..."))]` を付与する。`code` は `<crate>::<category>` を接頭辞にコロン区切りで階層化する（例: `config::validation::field`, `frontend::eval::unknown_command`）
+- バリアントごとに `#[error("...")]`（メッセージ、日本語）と `#[diagnostic(code(...), help("..."))]` を付与する。`code` の付け方は次節の規約に従う
 - 外部エラーを巻き取る場合は `#[source] source: ExternalError` フィールドで chain を形成し、`?` 演算子で伝播する。`map_err` でメッセージのコンテキスト（ファイルパス等）を付与する
 - **中間の seam エラーを `#[diagnostic_source]` で連鎖させない。** `code` / `help` を持つ Diagnostic を
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、
@@ -21,6 +21,37 @@ description: >-
   で `std::io::Error` へ平坦化してから `#[source]` に載せる（#300）。`#[diagnostic_source]` を使うのは、
   内側のエラー自身が独立した診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つ
   パース系エラー等）に限る
+
+## 診断 `code` の規約
+
+**第 1 階層は「段」を表す固定列挙で、これ以外の語を第 1 階層に置かない。**
+
+| 段 | 対象 |
+| --- | --- |
+| `project` | 外部資源取得・config.toml・フォント資源の宣言 |
+| `style` | style.toml |
+| `frontend` | 字句・構文解析・評価 |
+| `semantics` | 意味解析・引用・書誌 |
+| `typeset` | 組版（フォント解析・画像・版面の幾何を含む） |
+| `compiler` | compile facade（段の集約・横断） |
+| `pdf` | `seiran-pdf`（描画） |
+| `cli` | `seiran`（PDF 出力の書き込み・サブコマンド） |
+
+**第 2 階層以降は規定しない** — 著者が選ぶ意味的カテゴリで、module パスと一致していなくてよい
+（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation`、
+`frontend::parse_source::syntax` の `parse_source` はいずれも module 名ではない）。
+
+crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code の約 9 割に付いて情報量がゼロ
+（ユーザから見ればバイナリは 1 つ）であり、かつ第 2 階層以降が野放しになるので
+「存在しない module 名を名乗る code」（#349 の `resolve::` / #356）を構造的には防げないため。
+逆に第 1 階層を段に閉じれば、module を移設しても code が嘘をつくのは段を跨いだときだけになる。
+
+段を跨ぐ wrapper 型は、自分の所有 module ではなく**エラーの出自の段**を名乗る。
+`compiler::error::AttributedCitationError` は `compiler` が所有するが `semantics::unknown_citation_key`
+を名乗る（`AttributedParseError` が内側の `frontend::*` code を委譲しているのと読み方を揃えるため）。
+
+`code` の変更はユーザから見える診断出力の変更なので、`tests/golden_diagnostics/` の再生成
+（`UPDATE_GOLDEN=1 cargo test -p seiran-compiler`）と差分確認をセットで行う。
 
 ## ソース位置付きエラー
 
@@ -73,7 +104,7 @@ use thiserror::Error;
 pub enum MyError {
   /// I/O 失敗: 外部エラーを #[source] で連鎖
   #[error("ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(my_crate::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(project::config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
   ReadFile {
     path: String,
     #[source]
@@ -82,7 +113,7 @@ pub enum MyError {
 
   /// ソース位置付きエラー: #[label] + SourceSpan、NamedSource は呼び出し側で添付
   #[error("不明なコマンドです: \\{name}")]
-  #[diagnostic(code(my_crate::eval::unknown_command), help("コマンド名のスペルを確認してください。"))]
+  #[diagnostic(code(frontend::eval::unknown_command), help("コマンド名のスペルを確認してください。"))]
   UnknownCommand {
     name: String,
     #[label("このコマンドは定義されていません")]
@@ -91,7 +122,7 @@ pub enum MyError {
 
   /// 集約バリアント: 検出した違反を 1 度に報告
   #[error("複数のバリデーションエラーが発生しました。")]
-  #[diagnostic(code(my_crate::multiple_validation_errors))]
+  #[diagnostic(code(project::config::multiple_validation_errors))]
   MultipleValidationErrors {
     #[related]
     errors: Vec<ValidationError>,

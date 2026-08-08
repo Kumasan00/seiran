@@ -18,7 +18,7 @@ pub(crate) enum LayoutValidationError {
     "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
   )]
   #[diagnostic(
-    code(config::validation::invalid_columns),
+    code(typeset::geometry::invalid_columns),
     help(
       "style.toml の [columns].gap を小さくするか、count を減らしてください。または config.toml の用紙幅を広げる・左右余白を狭めて本文幅を確保してください。"
     )
