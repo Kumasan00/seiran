@@ -8,10 +8,10 @@ use crate::{
   style::TextAlignment,
   typeset::{
     boxes::{
-      Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
+      Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, MathRowNumber, PENALTY_FORBID_BREAK,
       PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
-      PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, collect_row_links, resolve_column_widths,
-      table_row_height,
+      PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableBox, TableRowBox, collect_row_links,
+      max_font_size_in_items, position_table_row_boxes, resolve_column_widths, table_row_height,
     },
     geometry::column_width,
   },
@@ -496,9 +496,13 @@ fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
       }
     },
     PlacedBlock::Image { y, .. } | PlacedBlock::Rule { y, .. } => *y += dy,
-    PlacedBlock::Table { rows, .. } => {
+    PlacedBlock::Table { rows } => {
       for row in rows {
         row.top_y += dy;
+        row.baseline_y += dy;
+        if let Some(rule) = &mut row.rule {
+          rule.y += dy;
+        }
       }
     },
   }
@@ -1205,18 +1209,14 @@ fn place_math_block(
   composer.y += total_height;
 }
 
-/// 表セル内のリンク領域（表左端からの相対座標）を保持する
-struct PendingCellLink {
-  /// リンクが属する行帯の上端
+/// ページ内の着地段が確定するまで保持する表の 1 行
+struct PendingTableRow {
+  /// シェーピング済みの行内容
+  row: TableRowBox,
+  /// 行帯のページ上端からの距離
   top_y: Length,
-  /// リンクが属する行帯の高さ
+  /// 行帯の高さ
   height: Length,
-  /// リンクの行き先
-  target: LinkTarget,
-  /// 表左端からの相対な左端オフセット
-  x0: Length,
-  /// 表左端からの相対な右端オフセット
-  x1: Length,
 }
 
 /// 表を行単位で配置する（改段・改ページ時は先頭にヘッダ行を再描画する）
@@ -1246,84 +1246,90 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
   // 表先頭の確定位置（改段・改ページ後）で未解決アンカー（`\ref{tab:...}` 到達先）を解決する
   composer.resolve_pending_anchors(composer.column_offset(), composer.y);
 
-  let mut placed_rows: Vec<PlacedTableRow> = Vec::new();
-  let mut pending_links: Vec<PendingCellLink> = Vec::new();
-  // 1 行を placed_rows へ積みつつ、その行のセル内リンクを pending_links へ集める
-  // （head 行・本体行・改ページ後のヘッダ再描画が同じ経路を通るため、ヘッダセル内の
-  // リンクも自動的に拾える）。
-  let push_row = |placed_rows: &mut Vec<PlacedTableRow>,
-                  pending_links: &mut Vec<PendingCellLink>,
-                  row: &TableRowBox,
-                  top_y: Length,
-                  height: Length| {
-    for link in collect_row_links(row, &table.columns, &col_widths, geom.table_cell_padding) {
-      if link.x1 <= link.x0 {
-        continue; // 退化矩形はスキップ（collect_line_links と同じ規則）
-      }
-      pending_links.push(PendingCellLink {
-        top_y,
-        height,
-        target: link.target,
-        x0: link.x0,
-        x1: link.x1,
-      });
-    }
-    placed_rows.push(PlacedTableRow {
+  let mut pending_rows: Vec<PendingTableRow> = Vec::new();
+  // head 行・本体行・改ページ後のヘッダ再描画を同じ経路へ積む。セルの絶対 x は
+  // 着地段が決まる flush 時に確定する。
+  let push_row = |pending_rows: &mut Vec<PendingTableRow>, row: &TableRowBox, top_y: Length, height: Length| {
+    pending_rows.push(PendingTableRow {
       row: row.clone(),
       top_y,
       height,
     });
   };
-  // 現在の placed_rows を PlacedBlock::Table として確定するヘルパ。断片の x は着地段の
-  // オフセット + 段内揃えオフセット（flush は advance_region の前に呼ばれるので col は正しい）。
-  // pending_links もこの時点で同じ x を使って絶対座標の PlacedLink に変換する。
-  let flush =
-    |composer: &mut PageComposer, placed_rows: &mut Vec<PlacedTableRow>, pending_links: &mut Vec<PendingCellLink>| {
-      if placed_rows.is_empty() {
-        return;
+  // 現在の pending_rows を、セル内容・リンク・罫線の絶対座標まで確定した表断片へ変換する。
+  // 断片の x は着地段のオフセット + 段内揃えオフセット（flush は advance_region の前に
+  // 呼ばれるので column は正しい）。
+  let flush = |composer: &mut PageComposer, pending_rows: &mut Vec<PendingTableRow>| {
+    if pending_rows.is_empty() {
+      return;
+    }
+    let table_x = composer.column_offset() + table_align_offset;
+    let table_width: Length = col_widths.iter().copied().sum();
+    let rows = std::mem::take(pending_rows).into_iter().map(|pending| {
+      let mut boxes = position_table_row_boxes(&pending.row, &table.columns, &col_widths, geom.table_cell_padding);
+      for positioned in &mut boxes {
+        positioned.x += table_x;
       }
-      let x = composer.column_offset() + table_align_offset;
-      for link in std::mem::take(pending_links) {
+      for link in collect_row_links(&pending.row, &table.columns, &col_widths, geom.table_cell_padding) {
+        if link.x1 <= link.x0 {
+          continue; // 退化矩形はスキップ（collect_line_links と同じ規則）
+        }
         composer.current_links.push(PlacedLink {
           target: link.target,
-          x: x + link.x0,
-          y: link.top_y,
+          x: table_x + link.x0,
+          y: pending.top_y,
           width: link.x1 - link.x0,
-          height: link.height,
+          height: pending.height,
         });
       }
-      composer.current.push(PlacedBlock::Table {
-        x,
-        columns: table.columns.clone(),
-        col_widths: col_widths.clone(),
-        rows: std::mem::take(placed_rows),
-        cell_padding: geom.table_cell_padding,
-        rule_thickness: geom.table_rule_thickness,
-        rule_color: geom.table_rule_color,
+      let baseline_offset = pending
+        .row
+        .cells
+        .iter()
+        .filter_map(|cell| return max_font_size_in_items(&cell.items))
+        .reduce(Length::max)
+        .unwrap_or(pending.height);
+      let rule = pending.row.rule_above.then_some(PlacedTableRule {
+        x: table_x,
+        y: pending.top_y,
+        width: table_width,
+        height: geom.table_rule_thickness,
+        color: geom.table_rule_color,
       });
-    };
+      return PlacedTableRow {
+        top_y: pending.top_y,
+        height: pending.height,
+        baseline_y: pending.top_y + baseline_offset,
+        boxes,
+        rule,
+      };
+    });
+    composer.current.push(PlacedBlock::Table {
+      rows: rows.collect(),
+    });
+  };
 
   for (row, height) in table.head.iter().zip(&head_heights) {
     if composer.y + *height > composer.region_limit(geom) {
-      flush(composer, &mut placed_rows, &mut pending_links);
+      flush(composer, &mut pending_rows);
       composer.advance_region(geom);
     }
-    push_row(&mut placed_rows, &mut pending_links, row, composer.y, *height);
+    push_row(&mut pending_rows, row, composer.y, *height);
     composer.y += *height;
   }
   for (row, height) in table.rows.iter().zip(&row_heights) {
     if composer.y + *height > composer.region_limit(geom) {
-      flush(composer, &mut placed_rows, &mut pending_links);
+      flush(composer, &mut pending_rows);
       composer.advance_region(geom);
       for (head_row, head_height) in table.head.iter().zip(&head_heights) {
-        push_row(&mut placed_rows, &mut pending_links, head_row, composer.y, *head_height);
+        push_row(&mut pending_rows, head_row, composer.y, *head_height);
         composer.y += *head_height;
       }
     }
-    push_row(&mut placed_rows, &mut pending_links, row, composer.y, *height);
+    push_row(&mut pending_rows, row, composer.y, *height);
     composer.y += *height;
   }
-  flush(composer, &mut placed_rows, &mut pending_links);
+  flush(composer, &mut pending_rows);
 }
 
 #[cfg(test)]
@@ -2494,8 +2500,8 @@ mod tests {
     for block in &page.blocks {
       if let PlacedBlock::Table { rows, .. } = block
         && let Some(first) = rows.first()
-        && let HItem::Box(hbox) = &first.row.cells[0].items[0]
-        && let HBoxContent::Glyphs(run) = &hbox.content
+        && let Some(positioned) = first.boxes.first()
+        && let HBoxContent::Glyphs(run) = &positioned.content
       {
         return Some(run.text.clone());
       }
@@ -2700,7 +2706,7 @@ mod tests {
           items: vec![test_box()],
           span: 1,
         }],
-        rule_above: false,
+        rule_above: true,
       }],
       breakable: false,
     };
@@ -2718,18 +2724,15 @@ mod tests {
     );
 
     // Assert
-    let PlacedBlock::Table {
-      cell_padding,
-      rule_thickness,
-      rule_color,
-      ..
-    } = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
+    let PlacedBlock::Table { rows } =
+      pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!("直前の matches! で確認済み");
     };
-    assert_eq!(*cell_padding, Length::pt(3.0));
-    assert_eq!(*rule_thickness, Length::pt(1.5));
-    assert_eq!(*rule_color, Some([9, 9, 9]));
+    assert_eq!(rows[0].boxes[0].x, Length::pt(3.0), "padding はセル内容の確定 x に反映されるはず");
+    let rule = rows[0].rule.expect("rule_above=true なので確定罫線を持つはず");
+    assert_eq!(rule.height, Length::pt(1.5));
+    assert_eq!(rule.color, Some([9, 9, 9]));
   }
 
   #[test]
@@ -3322,12 +3325,12 @@ mod tests {
     let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert
-    let PlacedBlock::Table { x, .. } =
+    let PlacedBlock::Table { rows } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!()
     };
-    assert!(close(*x, 38.0), "table.x={}", x.to_pt());
+    assert!(close(rows[0].boxes[0].x, 40.0), "cell.x={}", rows[0].boxes[0].x.to_pt());
   }
 
   #[test]
@@ -3352,12 +3355,12 @@ mod tests {
     let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert
-    let PlacedBlock::Table { x, .. } =
+    let PlacedBlock::Table { rows } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
       unreachable!()
     };
-    assert!(close(*x, 0.0), "table.x={}", x.to_pt());
+    assert!(close(rows[0].boxes[0].x, 2.0), "cell.x={}", rows[0].boxes[0].x.to_pt());
   }
 
   #[test]
@@ -3584,13 +3587,13 @@ mod tests {
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Table { x, .. } => return Some(*x),
+        PlacedBlock::Table { rows } => return rows.first()?.boxes.first().map(|positioned| return positioned.x),
         _ => return None,
       })
       .collect();
     assert_eq!(xs.len(), 2, "左段断片 + 右段断片の 2 つ: {xs:?}");
-    assert!(close(xs[0], 0.0), "1 つ目（左段）x={}", xs[0].to_pt());
-    assert!(close(xs[1], 55.0), "2 つ目（右段）x={}", xs[1].to_pt());
+    assert!(close(xs[0], 2.0), "1 つ目（左段）のセル x={}", xs[0].to_pt());
+    assert!(close(xs[1], 57.0), "2 つ目（右段）のセル x={}", xs[1].to_pt());
   }
 
   #[test]

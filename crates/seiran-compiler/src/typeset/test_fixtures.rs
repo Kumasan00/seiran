@@ -14,14 +14,14 @@ use std::collections::HashMap;
 use super::{
   boxes::{
     AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-    PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox,
-    TableColumn, TableRowBox,
+    PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox,
+    TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
   },
   font::GlyphRun,
   pagination::{LaidOutDocument, OutlineEntry},
 };
 use crate::{
-  document::HeadingLevel,
+  document::{ColumnAlign, ColumnWidth, HeadingLevel},
   length::Length,
   project::{FontType, ProjectPath},
   semantics::{HeadingKey, LabelId},
@@ -236,13 +236,21 @@ pub(crate) fn math_block(
 /// 表ブロックを作る
 pub(crate) fn table_block(
   x: Length,
-  columns: Vec<TableColumn>,
-  col_widths: Vec<Length>,
+  col_widths: &[Length],
   rows: Vec<TableRowSpec>,
   cell_padding: Length,
   rule_thickness: Length,
   rule_color: Option<[u8; 3]>,
 ) -> PlacedBlock {
+  let columns: Vec<TableColumn> = col_widths
+    .iter()
+    .map(|_| {
+      return TableColumn {
+        align: ColumnAlign::Left,
+        width: ColumnWidth::Auto,
+      };
+    })
+    .collect();
   let placed_rows: Vec<PlacedTableRow> = rows
     .into_iter()
     .map(|spec| {
@@ -256,25 +264,37 @@ pub(crate) fn table_block(
           };
         })
         .collect();
+      let row = TableRowBox {
+        cells,
+        rule_above: spec.rule_above,
+      };
+      let baseline_offset = row
+        .cells
+        .iter()
+        .filter_map(|cell| return max_font_size_in_items(&cell.items))
+        .reduce(Length::max)
+        .unwrap_or(spec.height);
+      let mut boxes = position_table_row_boxes(&row, &columns, col_widths, cell_padding);
+      for positioned in &mut boxes {
+        positioned.x += x;
+      }
+      let rule = row.rule_above.then_some(PlacedTableRule {
+        x,
+        y: spec.top_y,
+        width: col_widths.iter().copied().sum(),
+        height: rule_thickness,
+        color: rule_color,
+      });
       return PlacedTableRow {
-        row: TableRowBox {
-          cells,
-          rule_above: spec.rule_above,
-        },
         top_y: spec.top_y,
         height: spec.height,
+        baseline_y: spec.top_y + baseline_offset,
+        boxes,
+        rule,
       };
     })
     .collect();
-  return PlacedBlock::Table {
-    x,
-    columns,
-    col_widths,
-    rows: placed_rows,
-    cell_padding,
-    rule_thickness,
-    rule_color,
-  };
+  return PlacedBlock::Table { rows: placed_rows };
 }
 
 /// 確定ページ 1 枚を組み立てるビルダ

@@ -1,16 +1,15 @@
 //! 縦組版の出力 [`Page`] と [`PlacedBlock`]。
 //!
 //! `typeset::breaking::break_pages` がすべてのレイアウト判断（行送り・改ページ・表の分割）を
-//! 終えた確定座標を保持する。`seiran_pdf` はこれを描画するだけでよい。
+//! 終えた確定座標を保持する。`compiler::publication` は描画命令へ単純変換するだけでよい。
 //!
 //! 座標系: `x` は本文左端（左マージン）からのオフセット、`y` はページ上端からの
 //! 距離（下方向に正）。描画時に左マージンを加算する。
 
 use super::{
   hitem::HBox,
-  line::Line,
+  line::{Line, PositionedBox},
   link::{AnchorMark, LinkTarget},
-  table_box::{TableColumn, TableRowBox},
 };
 use crate::{length::Length, project::ProjectPath};
 
@@ -23,7 +22,7 @@ pub struct Page {
   ///
   /// `break_pages` は空で生成し、ページ数確定後にヘッダー・フッター配置パス
   /// （`layout::build_running_content`）が埋める。本文と同じ [`PlacedBlock`] を流用するため、
-  /// `seiran_pdf` は本文と同一の描画ロジックで扱える。
+  /// 描画 adapter は本文と同一の変換ロジックで扱える。
   pub header: Vec<PlacedBlock>,
   /// フッター（ページ下端の余白領域に描く走り文）の配置済みブロック
   pub footer: Vec<PlacedBlock>,
@@ -36,12 +35,12 @@ pub struct Page {
   pub footnotes: Vec<PlacedFootnote>,
   /// このページに解決されたリンク到達先アンカー（機構 A）
   ///
-  /// `seiran_pdf` がページ index + 座標から `XyzDestination` を作り、PDF しおりや
+  /// 描画 adapter がページ index + 座標から `XyzDestination` を作り、PDF しおりや
   /// 内部リンクの行き先として登録する。
   pub anchors: Vec<PlacedAnchor>,
   /// このページに確定したクリック可能なリンク領域（機構 B）
   ///
-  /// `seiran_pdf` が各ページにリンク注釈として付与する。
+  /// 描画 adapter が各ページにリンク注釈として付与する。
   pub links: Vec<PlacedLink>,
   /// このページに出現した索引語（重複除去済み、出現順）
   ///
@@ -92,7 +91,7 @@ pub struct PlacedFootnote {
 /// 確定座標に解決されたリンク到達先アンカー
 ///
 /// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端からのオフセット、`y` はページ上端から
-/// 下方向に正）。`seiran_pdf` が左マージンを加算して `XyzDestination` 点にする。
+/// 下方向に正）。描画 adapter が左マージンを加算して `XyzDestination` 点にする。
 #[derive(Debug, Clone)]
 pub struct PlacedAnchor {
   /// アンカー種別（見出し / ラベル付きブロック）
@@ -106,7 +105,7 @@ pub struct PlacedAnchor {
 /// 確定座標に解決されたクリック可能なリンク領域
 ///
 /// 座標系は [`PlacedBlock`] と同じ（`x` / `y` はそれぞれ本文左端・ページ上端からの距離）。
-/// `seiran_pdf` が左マージンを加算して矩形のリンク注釈にする。
+/// 描画 adapter が左マージンを加算して矩形のリンク注釈にする。
 #[derive(Debug, Clone)]
 pub struct PlacedLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
@@ -144,21 +143,8 @@ pub enum PlacedBlock {
   },
   /// 表の断片（このページに描く行の集まり。改ページ後のヘッダ再描画行も含む）
   Table {
-    /// 表全体の本文左端からの水平オフセット（pt）。揃え（中央 / 右）で算出済み
-    x: Length,
-    /// 列の定義（揃えの参照用）
-    columns: Vec<TableColumn>,
-    /// 解決済みの列幅（pt）。表全体から算出済み
-    col_widths: Vec<Length>,
-    /// このページに描く行（上から順、位置確定済み）
+    /// このページに描く行（上から順、セル内容・罫線とも位置確定済み）
     rows: Vec<PlacedTableRow>,
-    /// セル内容の左右内側余白（`style` 非依存の解決済み値、
-    /// `style.table.cell_padding`）
-    cell_padding: Length,
-    /// 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
-    rule_thickness: Length,
-    /// 罫線色（RGB）。`None` は黒。`PlacedBlock::Rule.color` と同じ規約
-    rule_color: Option<[u8; 3]>,
   },
   /// 画像
   Image {
@@ -215,12 +201,34 @@ pub struct PlacedMathNumber {
 }
 
 /// 位置確定済みの表の 1 行
+///
+/// セルの x（段オフセット + 表の揃え + 列の揃え + セル余白 + 行内カーソル）は `Length`（sp 整数）
+/// のまま足し込んであり、pt の `f32` へ変換するのは描画命令を作る 1 回だけである。
 #[derive(Debug, Clone)]
 pub struct PlacedTableRow {
-  /// 行の内容
-  pub row: TableRowBox,
   /// 行帯上端のページ上端からの距離（pt）
   pub top_y: Length,
   /// 行帯の高さ（pt）
   pub height: Length,
+  /// セル内容が共有するベースラインのページ上端からの距離（pt）
+  pub baseline_y: Length,
+  /// 本文左端からの絶対 x 座標へ配置済みのセル内容
+  pub boxes: Vec<PositionedBox>,
+  /// 行の上罫線。`None` は罫線なし
+  pub rule: Option<PlacedTableRule>,
+}
+
+/// 位置と見た目が確定した表の横罫線
+#[derive(Debug, Clone, Copy)]
+pub struct PlacedTableRule {
+  /// 本文左端からの水平オフセット（pt）
+  pub x: Length,
+  /// ページ上端からの距離（pt）
+  pub y: Length,
+  /// 罫線の幅（pt）
+  pub width: Length,
+  /// 罫線の高さ（pt）
+  pub height: Length,
+  /// 罫線色（RGB）。`None` は黒
+  pub color: Option<[u8; 3]>,
 }
