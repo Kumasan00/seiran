@@ -4,27 +4,27 @@ use miette::{Diagnostic, LabeledSpan, NamedSource};
 use thiserror::Error;
 
 use crate::{
-  config::LayoutValidationError,
   frontend::ParseSourceError,
   semantics::{CitationFormatError, CitationStyleError, SemanticError},
+  typeset::LayoutValidationError,
 };
 
-/// [`crate::frontend::ParseSourceError`] に、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
+/// [`crate::frontend::ParseSourceError`] に、`SourceSet` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
 /// `ParseSourceError` は `SourceId` だけを持ち、ソース本文を持たない（本文は
-/// `snapshot::SourceDb` が一元管理する）。code / message / help / label / related は
+/// `project::SourceSet` が一元管理する）。code / message / help / label / related は
 /// すべて内側の `ParseSourceError` へ委譲し、`source_code` だけをここで補う
 /// （`#[diagnostic(transparent)]` は `source_code` も内側へ委譲してしまうため使えず、手書きする）。
 #[derive(Debug)]
 pub(super) struct AttributedParseError {
-  /// `SourceDb` から引いたソース名・本文（`source_code` の供給元）
+  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）
   named_source: NamedSource<String>,
   /// 内側のパース・評価エラー（`SourceId` のみを持ち本文は持たない）
   inner: ParseSourceError,
 }
 
 impl AttributedParseError {
-  /// `SourceDb` から引いた `NamedSource` と内側の `ParseSourceError` を束ねる
+  /// `SourceSet` から引いた `NamedSource` と内側の `ParseSourceError` を束ねる
   pub(super) fn new(named_source: NamedSource<String>, inner: ParseSourceError) -> Self {
     return AttributedParseError {
       named_source,
@@ -59,10 +59,10 @@ impl Diagnostic for AttributedParseError {
   fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
 }
 
-/// 1 ソース内の未定義引用キーを、`SourceDb` から引いた [`NamedSource`] を添えて表示可能にする。
+/// 1 ソース内の未定義引用キーを、`SourceSet` から引いた [`NamedSource`] を添えて表示可能にする。
 ///
 /// [`crate::semantics::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
-/// ソース本文を持たない（本文は `snapshot::SourceDb` が一元管理する）。同じソース内に未定義キーが
+/// ソース本文を持たない（本文は `project::SourceSet` が一元管理する）。同じソース内に未定義キーが
 /// 複数箇所あれば `labels` にまとめて積む（`labels` の要素ごとに独自のラベル文言を持つため、
 /// `#[label(collection)]` に静的な文言は付けない）。この型自身が診断メッセージ・code・help を
 /// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
@@ -80,7 +80,7 @@ impl Diagnostic for AttributedParseError {
   help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
 )]
 pub(super) struct AttributedCitationError {
-  /// `SourceDb` から引いたソース名・本文（`source_code` の供給元）
+  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）
   #[source_code]
   src: NamedSource<String>,
   /// このソース内で見つかった未定義引用キーの箇所（`\cite{...}` ごとに 1 ラベル）
@@ -89,7 +89,7 @@ pub(super) struct AttributedCitationError {
 }
 
 impl AttributedCitationError {
-  /// `SourceDb` から引いた `NamedSource` と、そのソース内の未定義キーラベル列を束ねる
+  /// `SourceSet` から引いた `NamedSource` と、そのソース内の未定義キーラベル列を束ねる
   pub(super) fn new(src: NamedSource<String>, labels: Vec<LabeledSpan>) -> Self {
     return AttributedCitationError { src, labels };
   }
@@ -123,7 +123,7 @@ pub(super) enum CompileError {
   #[error("複数のソースファイルでエラーが発生しました。")]
   #[diagnostic(code(build::multiple_source_errors))]
   MultipleSourceErrors {
-    /// ソースファイルごとのパース・評価エラー（`SourceDb` から引いた本文を添えたもの）
+    /// ソースファイルごとのパース・評価エラー（`SourceSet` から引いた本文を添えたもの）
     #[related]
     errors: Vec<AttributedParseError>,
   },
@@ -155,7 +155,7 @@ pub(super) enum CompileError {
   #[error("複数の引用箇所で未定義の引用キーがあります。")]
   #[diagnostic(code(build::multiple_citation_errors))]
   MultipleCitationErrors {
-    /// ソースごとの未定義引用キー診断（`SourceDb` から引いた本文を添えたもの）
+    /// ソースごとの未定義引用キー診断（`SourceSet` から引いた本文を添えたもの）
     #[related]
     errors: Vec<AttributedCitationError>,
   },

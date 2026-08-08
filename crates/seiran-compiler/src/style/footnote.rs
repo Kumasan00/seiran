@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   color::Color,
-  config::style::number_style::NumberStyle,
   length::{Length, non_negative, positive},
+  style::number_style::NumberStyle,
 };
 
 /// 脚注番号のリセット方式
@@ -38,7 +38,7 @@ pub struct FootnoteStyle {
   #[garde(custom(positive))]
   pub font_size: Length,
   /// マーカー番号の書式テンプレート（`{number}` を置換。本文中・脚注本体先頭の両方に使う）
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::tag_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::tag_format))]
   pub marker_format: String,
   /// マーカーの縮小率（基準フォントサイズに対する比）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
@@ -85,7 +85,7 @@ mod tests {
   use garde::Validate;
 
   use super::{FootnoteNumbering, FootnoteStyle};
-  use crate::{config::style::number_style::NumberStyle, length::Length};
+  use crate::{length::Length, style::number_style::NumberStyle};
 
   #[test]
   fn validate_accepts_default() {

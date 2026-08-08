@@ -57,7 +57,8 @@ cargo test -p <crate_name>                                 # 特定クレート�
 ### データフロー
 
 ```text
-CLI 引数パース → TOML 設定読込（config.toml / style.toml / references）
+CLI 引数パース → compiler::input::load 入力読込: config.toml → style.toml → 横断検証
+                       → references → フォント → sources（順序とエラー集約は input に閉じる）
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
   → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
@@ -73,6 +74,9 @@ CLI 引数パース → TOML 設定読込（config.toml / style.toml / reference
 
 - 外部資源（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `project::ProjectSource` 経由。
   compiler 側のコードは `std::fs` を直接呼ばない。資源を指すパスは `ProjectPath` 1 種類
+- 入力読込の外向き入口は `compiler::input::load` 1 つ。config.toml は `project::config`、style.toml は
+  `style`（P10 の 2 概念を別 module が所有）、両者の横断検証 `validate_layout` は `typeset::geometry` の所有で、
+  呼ぶ順序とエラー集約を知るのは `input` だけ。成果物 `CompilationInputs` は検証を通った値しか持たない
 - 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は構造値を style の表示側フィールドで
   文字列にするだけ。文書木への書き戻しはどの段も行わない
 - box は (a) で width / height / depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない
@@ -102,14 +106,14 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | 外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装） | なし |
+| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` | seam 部はなし / 子 module のみ length color font source |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型の所有者 | length color font source project |
-| `config` | config.toml / style.toml の読込・garde 検証、意味解析への投影 `DocumentPolicy`、横断検証と `column_width` | length color document font project |
+| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document font project |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |
-| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation` | document config font source project |
+| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style font source project |
 | `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination` に閉じる | font config document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
-| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない | 上記すべて + seiran-pdf |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry` に閉じる | font style document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
+| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に閉じる | 上記すべて + seiran-pdf |
 
 ## コーディング規約
 
@@ -132,7 +136,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 
   例外: 統合テスト（`tests/`）の共通ヘルパは慣例どおり `tests/common/mod.rs` に置く（`common.rs` だとテストファイルとして扱われるため）。
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` は `typeset::block` が `UnicodeBuffer` を直接参照するため `pub(crate) mod`、`config::test_support` は `#[doc(hidden)]` の再エクスポート。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` は `typeset::block` が `UnicodeBuffer` を直接参照するため `pub(crate) mod`、`project::config` は入口を `project::config::load` と読ませて `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。
@@ -189,7 +193,7 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
 - フォントファミリ変更には config.toml の修正が必要（フォントファイルは実体）
 - **値の基本書式**: 長さ（`Length`）は単位付き文字列 `"12pt"` / `"5mm"`（素の数値は不可）、色（`Color`）は `"#rrggbb"` の 16 進文字列のみ（大文字小文字不問、`[r, g, b]` 配列は不可）
-- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の config（style）節を参照
+- **style.toml の詳細スキーマ**（キャプションと番号 3 系統・見出し 2 レイヤーマージ・カウンタ固定 9 種・`[math.script]` / `[math.block]`・`[page]` の `flush_bottom` 等）は `docs/architecture.md` の `style` 節を参照
 
 19 フォント種別: `serif`, `serif_bold`, `serif_italic`, `serif_bold_italic`, `sans_serif`, `sans_serif_bold`, `sans_serif_italic`, `sans_serif_bold_italic`, `monospace`, `monospace_bold`, `monospace_italic`, `monospace_bold_italic`, `math`, `japanese_serif`, `japanese_serif_bold`, `japanese_sans_serif`, `japanese_sans_serif_bold`, `japanese_monospace`, `japanese_monospace_bold`
 

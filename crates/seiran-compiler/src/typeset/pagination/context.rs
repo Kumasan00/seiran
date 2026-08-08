@@ -4,9 +4,12 @@ use super::page_values::BodyPageValues;
 use crate::{
   font::FontSystem,
   length::Length,
+  project::config::ProjectConfig,
+  style::Style,
   typeset::{
     boxes::Page,
     breaking::{KnuthPlassBreaker, PageGeometry},
+    geometry,
     lowering::HeadingRecord,
   },
 };
@@ -14,9 +17,9 @@ use crate::{
 /// 全段が共有する組版資源と寸法。
 pub(crate) struct TypesetContext<'a> {
   /// 実体・物理・メタデータ設定
-  pub(super) config: &'a crate::config::Config,
+  pub(super) config: &'a ProjectConfig,
   /// 見た目の設定
-  pub(super) style: &'a crate::config::Style,
+  pub(super) style: &'a Style,
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
   pub(super) resources: &'a FontSystem<'a>,
   /// 版面幅（段組み前）
@@ -35,15 +38,11 @@ pub(crate) struct TypesetContext<'a> {
 
 impl<'a> TypesetContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
-  pub(crate) fn new(
-    config: &'a crate::config::Config,
-    style: &'a crate::config::Style,
-    resources: &'a FontSystem<'a>,
-  ) -> Self {
+  pub(crate) fn new(config: &'a ProjectConfig, style: &'a Style, resources: &'a FontSystem<'a>) -> Self {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
-    let body_col_width = crate::config::column_width(text_width, body_columns, column_gap);
+    let body_col_width = geometry::column_width(text_width, body_columns, column_gap);
     let (body_geometry, front_geometry, back_geometry) = build_page_geometries(config, style, body_columns, column_gap);
     return Self {
       config,
@@ -74,7 +73,7 @@ impl BodyPageFacts {
   pub(super) fn new(
     body_pages: &[Page],
     headings: Vec<HeadingRecord>,
-    numbering: &crate::config::PageNumbering,
+    numbering: &crate::style::PageNumbering,
   ) -> Self {
     return Self {
       page_values: BodyPageValues::from_body_pages(body_pages, numbering),
@@ -87,8 +86,8 @@ impl BodyPageFacts {
 ///
 /// 段数・段間以外は本文の値を共有する。
 fn build_page_geometries(
-  config: &crate::config::Config,
-  style: &crate::config::Style,
+  config: &ProjectConfig,
+  style: &Style,
   body_columns: usize,
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {

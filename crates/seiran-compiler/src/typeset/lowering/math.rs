@@ -7,11 +7,11 @@ use super::{
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
 use crate::{
-  config::{Alignment, MathScriptStyle, NumberSide},
   document::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   font::FontKind,
   length::Length,
   semantics::CounterValue,
+  style::{Alignment, MathScriptStyle, NumberSide},
   typeset::boxes::Align,
 };
 
@@ -81,7 +81,7 @@ fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode
   )];
 }
 
-/// `crate::config::Alignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
+/// `crate::style::Alignment`（数式本体の揃え）を `crate::typeset::boxes::Align` に対応付ける
 fn alignment_to_align(alignment: Alignment) -> Align {
   return match alignment {
     Alignment::Center => Align::Center,
@@ -216,7 +216,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, length::Length};
+  use crate::{length::Length, style::Style as ReadStyle};
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   ///

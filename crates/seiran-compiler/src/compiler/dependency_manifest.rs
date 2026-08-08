@@ -2,12 +2,12 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use super::snapshot::ProjectSnapshot;
+use super::input::CompilationInputs;
 use crate::{font::FontType, project::ProjectPath};
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///
-/// すべて `ProjectSnapshot` と収集済み画像パスが既に持つデータの再整形であり、
+/// すべて `CompilationInputs` と収集済み画像パスが既に持つデータの再整形であり、
 /// この型の構築自体は新しい I/O を発生させない。
 #[derive(Debug, Clone)]
 pub struct DependencyManifest {
@@ -33,22 +33,22 @@ impl DependencyManifest {
   /// 設定ファイルパス・読込済みプロジェクト・画像パス一覧から組み立てる。
   pub(super) fn collect(
     config_path: &std::path::Path,
-    snapshot: &ProjectSnapshot,
+    inputs: &CompilationInputs,
     image_paths: &[ProjectPath],
   ) -> Self {
     let font_paths: BTreeSet<PathBuf> = FontType::ALL
       .iter()
-      .map(|font_type| return snapshot.config.font_configs.get(*font_type).font_path.clone())
+      .map(|font_type| return inputs.config().font_configs.get(*font_type).font_path.clone())
       .collect();
     return DependencyManifest {
       config_path: config_path.to_path_buf(),
-      style_path: snapshot.config.style_path.clone(),
-      references_path: snapshot.config.references_path.clone(),
-      source_paths: snapshot.config.sources.clone(),
+      style_path: inputs.config().style_path.clone(),
+      references_path: inputs.config().references_path.clone(),
+      source_paths: inputs.config().sources.clone(),
       image_paths: image_paths.iter().map(|path| return path.as_path().to_path_buf()).collect(),
       font_paths: font_paths.into_iter().collect(),
-      csl_path: snapshot.style.reference.csl_path.clone(),
-      locale_path: snapshot.style.reference.locale_path.clone(),
+      csl_path: inputs.style().reference.csl_path.clone(),
+      locale_path: inputs.style().reference.locale_path.clone(),
     };
   }
 }
@@ -60,7 +60,7 @@ mod tests {
 
   use super::DependencyManifest;
   use crate::{
-    compiler::{golden::load_base, snapshot::ProjectSnapshot},
+    compiler::{golden::load_base, input::CompilationInputs},
     font::FontDataExt,
     project::ProjectPath,
   };
@@ -72,15 +72,13 @@ mod tests {
     let (config, style, references) = load_base();
     let source = crate::project::FilesystemProjectSource::new();
     let font_data = crate::font::FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
-    let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, references, font_data).expect("assemble");
+    let inputs = CompilationInputs::from_parts(&source, config.clone(), style, references, font_data)
+      .expect("検証済み入力を組み立てられるはず");
     let image_paths = vec![ProjectPath::new("tests/image/testimage5.png")];
 
     // Act
-    let manifest = DependencyManifest::collect(
-      Path::new("crates/seiran-compiler/tests/config/config.toml"),
-      &snapshot,
-      &image_paths,
-    );
+    let manifest =
+      DependencyManifest::collect(Path::new("crates/seiran-compiler/tests/config/config.toml"), &inputs, &image_paths);
 
     // Assert
     assert_eq!(manifest.config_path, PathBuf::from("crates/seiran-compiler/tests/config/config.toml"));

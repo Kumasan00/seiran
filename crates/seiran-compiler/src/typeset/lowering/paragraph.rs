@@ -75,9 +75,9 @@ mod tests {
     *,
   };
   use crate::{
-    config::Style as ReadStyle,
     length::Length,
     semantics::LabelId,
+    style::Style as ReadStyle,
     typeset::boxes::{AnchorId, LinkTarget},
   };
 

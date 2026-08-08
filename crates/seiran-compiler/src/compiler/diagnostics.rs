@@ -14,8 +14,8 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  config::parse_style,
   font::{FontData, FontDataExt, FontResources, FontType},
+  style,
 };
 
 /// diagnostic golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_diagnostics`）を返す。
@@ -166,7 +166,7 @@ fn diagnostic_style_validation_aggregate() {
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
   // Act
-  let error = parse_style(toml, "diagnostics/style.toml").expect_err("このケースは失敗するはず");
+  let error = style::parse(toml, "diagnostics/style.toml").expect_err("このケースは失敗するはず");
   let report: miette::Report = error.into();
 
   // Assert

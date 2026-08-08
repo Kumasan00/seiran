@@ -82,7 +82,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, font::FontKind};
+  use crate::{font::FontKind, style::Style as ReadStyle};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
@@ -451,12 +451,12 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_ordered_formats = vec![
-      crate::config::NestedOrderedFormat {
-        number_style: crate::config::NumberStyle::RomanUpper,
+      crate::style::NestedOrderedFormat {
+        number_style: crate::style::NumberStyle::RomanUpper,
         format: "[{number}]".to_string(),
       },
-      crate::config::NestedOrderedFormat {
-        number_style: crate::config::NumberStyle::Kanji,
+      crate::style::NestedOrderedFormat {
+        number_style: crate::style::NumberStyle::Kanji,
         format: "{number}、".to_string(),
       },
     ];

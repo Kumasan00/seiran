@@ -15,7 +15,8 @@ use super::{
 };
 use crate::{
   font::{FontData, FontDataExt, FontType},
-  project::MemoryProjectSource,
+  project::{MemoryProjectSource, config::ProjectConfig},
+  style::Style,
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。
@@ -30,7 +31,7 @@ fn register(memory: MemoryProjectSource, path: &Path) -> MemoryProjectSource {
 }
 
 /// 実ビルドが `ProjectSource` から読む資源すべてを `MemoryProjectSource` へ複製する。
-fn memory_source_for(config: &crate::config::Config, style: &crate::config::Style) -> MemoryProjectSource {
+fn memory_source_for(config: &ProjectConfig, style: &Style) -> MemoryProjectSource {
   let mut memory = MemoryProjectSource::new();
   for font_type in FontType::ALL {
     memory = register(memory, &config.font_configs.get(font_type).font_path);

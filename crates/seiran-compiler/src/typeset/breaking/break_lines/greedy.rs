@@ -2,8 +2,8 @@
 
 use super::{LineBreaker, OpenLink, build_line};
 use crate::{
-  config::TextAlignment,
   length::Length,
+  style::TextAlignment,
   typeset::boxes::{HItem, Line},
 };
 
@@ -116,8 +116,8 @@ mod tests {
     GreedyBreaker, LineBreaker,
   };
   use crate::{
-    config::TextAlignment,
     length::Length,
+    style::TextAlignment,
     typeset::boxes::{HBox, HBoxContent, HItem},
   };
 

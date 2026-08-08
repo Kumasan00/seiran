@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::config::style::number_style::NumberStyle;
+use crate::style::number_style::NumberStyle;
 
 /// ページ番号のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -30,7 +30,7 @@ mod tests {
   use garde::Validate;
 
   use super::PageNumbering;
-  use crate::config::style::number_style::NumberStyle;
+  use crate::style::number_style::NumberStyle;
 
   #[test]
   fn default_uses_roman_front_and_arabic_body() {

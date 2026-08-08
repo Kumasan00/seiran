@@ -108,7 +108,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, length::Length};
+  use crate::{length::Length, style::Style as ReadStyle};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

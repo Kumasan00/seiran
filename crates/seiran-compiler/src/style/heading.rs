@@ -93,7 +93,7 @@ impl HeadingStyles {
 #[serde(deny_unknown_fields, default)]
 pub struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::heading_format))]
   pub format: String,
   /// 見出しテキストのフォントサイズ
   #[garde(custom(positive))]

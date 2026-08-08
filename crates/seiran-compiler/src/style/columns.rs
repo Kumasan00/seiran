@@ -7,7 +7,7 @@ use crate::length::{Length, non_negative};
 
 /// 段組みのスタイル設定
 ///
-/// `count` と `config.toml` の用紙・余白との横断制約は [`crate::config::validate_layout`] が検証する。
+/// `count` と `config.toml` の用紙・余白との横断制約は [`crate::typeset::validate_layout`] が検証する。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]

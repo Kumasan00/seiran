@@ -1,22 +1,40 @@
-//! 外部資源取得の seam。compiler が `std::fs` を直接呼ばず、`ProjectSource` を通じて
-//! 設定・スタイル・文献・ソース・フォント・画像を取得できるようにする（issue #300）。
+//! プロジェクトの物理的な入力の所有者。外部資源取得の seam と `config.toml` を持つ。
 //!
-//! seam は設定の入力だけの道具ではなく全外部資源の窓口なので、`config` の子ではなく
-//! crate root 直下の module が所有する（#337）。[`ProjectPath`] は外部資源を指す
-//! compiler 側の唯一のパス型で、画像も同じ型で識別する（画像パスの newtype だった
-//! `document::AssetId` は同じパスを表す重複だったため削除済み）。
+//! seam（[`ProjectPath`] / [`ProjectSource`] と filesystem / memory の 2 adapter）は設定の入力だけの
+//! 道具ではなく全外部資源の窓口なので、`config` の子ではなく crate root 直下の module が所有する
+//! （#337）。[`ProjectPath`] は外部資源を指す compiler 側の唯一のパス型で、画像も同じ型で識別する
+//! （画像パスの newtype だった `document::AssetId` は同じパスを表す重複だったため削除済み）。
+//!
+//! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
+//! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ（#351）。
+//! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
+//! 区別がそのまま module 境界になっている。
+//!
+//! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory`）は crate 内の他 module に
+//! 依存しない。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `color` を、
+//! `source_set` が `source` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
+//! `SourceSet` が `source::SourceId` を値として持つため）。seam 側を依存ゼロに保つことで、
+//! `font` → `project`（seam）と `project::config` → `font` が循環にならない。
 
+// `config` だけは module 名が名前空間として意味を持つので `pub(crate)` で公開する。
+// 入口が `project::config::load` と読めることで、`style::load`（style.toml）と取り違えようがなくなる。
+// このため `ProjectConfig` 等の型も facade へ再エクスポートしない（同じ型に 2 つの公開パスを作らない）。
+pub(crate) mod config;
 mod filesystem;
 mod memory;
+mod source_set;
 
 use std::{
   path::{Path, PathBuf},
   sync::Arc,
 };
 
+#[doc(hidden)]
+pub use config::test_support;
 pub use filesystem::FilesystemProjectSource;
 pub use memory::MemoryProjectSource;
 use miette::Diagnostic;
+pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 
 /// プロジェクト内パス。`Path::components()` で `.` と冗長な区切りを畳んだ正規化済み値を持つ
@@ -76,7 +94,7 @@ pub enum SourceReadError {
 impl SourceReadError {
   /// ラッパー診断へ埋め込むための `std::io::Error` へ変換する。
   ///
-  /// 呼び出し元（`config` / `semantics` / `font` / `seiran` の読込エラー）は自分のメッセージに
+  /// 呼び出し元（`project::config` / `style` / `semantics` / `font` / `seiran` の読込エラー）は自分のメッセージに
   /// パスを含んでおり、その `#[source]` としては素の I/O エラーだけを連鎖させる
   /// （seam 導入前と同じ診断表示を保つ。issue #300 受け入れ条件「診断内容が同一」）。
   #[must_use]

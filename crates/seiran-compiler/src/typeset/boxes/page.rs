@@ -49,7 +49,7 @@ pub struct Page {
   /// 重複は 1 出現に畳む。座標を持たない — 索引は場所ではなくページ番号だけを必要とするため
   /// （[`PlacedAnchor`] とは異なる）。
   pub index_entries: Vec<PlacedIndexEntry>,
-  /// ページ背景色（RGB）。`None` は塗りつぶさない。`config`（`read_style`）非依存のため
+  /// ページ背景色（RGB）。`None` は塗りつぶさない。`style` 非依存のため
   /// 生の `[u8; 3]` で保持する（`PlacedBlock::Rule.color` と同じ規約）
   pub background_color: Option<[u8; 3]>,
 }
@@ -152,7 +152,7 @@ pub enum PlacedBlock {
     col_widths: Vec<Length>,
     /// このページに描く行（上から順、位置確定済み）
     rows: Vec<PlacedTableRow>,
-    /// セル内容の左右内側余白（`config`（`read_style`）非依存の解決済み値、
+    /// セル内容の左右内側余白（`style` 非依存の解決済み値、
     /// `style.table.cell_padding`）
     cell_padding: Length,
     /// 罫線の太さ（0 のとき描画しない、`style.table.rule_thickness`）
@@ -185,7 +185,7 @@ pub enum PlacedBlock {
     width: Length,
     /// 高さ（pt）
     height: Length,
-    /// 塗り色（RGB）。`None` は黒。`config`（`read_style`）非依存のため生の `[u8; 3]` で保持する
+    /// 塗り色（RGB）。`None` は黒。`style` 非依存のため生の `[u8; 3]` で保持する
     color: Option<[u8; 3]>,
   },
   /// ディスプレイ数式ブロック（本体 Atom + 行番号、いずれも確定座標）

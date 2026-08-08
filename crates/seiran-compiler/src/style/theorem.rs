@@ -91,7 +91,7 @@ pub struct TheoremStyle {
   pub reset_by: TheoremReset,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::counter_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
   pub number_format: String,
   /// 採番しない（`proof` 等）。`true` のとき番号は付かない
   pub unnumbered: bool,
@@ -139,17 +139,17 @@ pub enum TheoremReset {
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_format: String,
   /// サブタイトルありの見出し書式。`{display_name}` / `{number}` / `{title}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_title: String,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
   /// `proof` の `[of=...]` 指定時に使う。
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of: String,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::theorem_heading_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
   pub heading_with_of_and_title: String,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
   pub font_kind: FontKind,

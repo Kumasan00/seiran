@@ -19,6 +19,7 @@ mod document;
 mod error;
 mod facts;
 mod ids;
+mod policy;
 mod walk;
 
 pub(crate) use analyze::analyze;
@@ -35,3 +36,4 @@ pub(crate) use counter::{CounterKind, CounterValue};
 pub(crate) use document::SemanticDocument;
 pub(crate) use error::{AnalyzeError, SemanticError, UnknownCitationSite};
 pub(crate) use ids::{HeadingKey, LabelId};
+pub(crate) use policy::SemanticPolicy;

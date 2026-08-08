@@ -5,9 +5,9 @@
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 
 use crate::{
-  config::{CounterName, Counters, Style, TheoremReset},
   document::TheoremClass,
   semantics::{CounterKind, CounterValue},
+  style::{CounterName, Counters, Style, TheoremReset},
   typeset::lowering::placeholder,
 };
 
@@ -166,7 +166,7 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
-  use crate::config::NumberStyle;
+  use crate::style::NumberStyle;
 
   /// `CounterKind::Counter` の構造値を組み立てるテストヘルパ
   fn counter_value(name: CounterName, parts: &[u32]) -> CounterValue {

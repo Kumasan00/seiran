@@ -1,17 +1,18 @@
-//! `config`（用紙・余白）× `style`（`[columns]`）の横断バリデーションと、段組み設定から
-//! 導出する 1 段あたりの幅の計算。
+//! 版面の幾何 — `config.toml`（用紙・余白）× `style.toml`（`[columns]`）の横断バリデーションと、
+//! 段組み設定から導出する 1 段あたりの幅の計算。
+//!
+//! どちらの設定 module にも属さない（片方だけでは判定できない）ので、この制約を不変条件として
+//! 使う組版側が所有する（#351）。[`validate_layout`] を呼ぶのは入力読込（`compiler::input::load`）で、
+//! 組版に入る前に不正な組み合わせを弾く。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{
-  config::{Config, Style},
-  length::Length,
-};
+use crate::{length::Length, project::config::ProjectConfig, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum LayoutValidationError {
+pub(crate) enum LayoutValidationError {
   /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
   #[error(
     "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
@@ -34,10 +35,10 @@ pub enum LayoutValidationError {
 
 /// 本文幅 `text_width` を `num_columns` 段に分けたときの 1 段あたりの幅（pt）を返す。
 ///
-/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。`config::validate_layout`・
-/// `compiler`・`typeset::breaking` が共通して使用する。
+/// `(text_width - (num_columns - 1) * column_gap) / num_columns`。[`validate_layout`] と
+/// `typeset::pagination::context` / `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 #[must_use]
-pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
+pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);
   // 段数は実用上 1〜2。桁あふれ・精度低下・切り捨てが起きる桁数にはならない
   #[allow(clippy::cast_precision_loss)]
@@ -47,7 +48,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
   return (text_width - column_gap * gaps) / n;
 }
 
-/// [`Config`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
+/// [`ProjectConfig`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
 ///
 /// 本文幅（`pdf.width - margin.left - margin.right`）を `style.columns` の段数・段間で割った
 /// 1 段あたりの幅が非正の場合にエラーを返します。
@@ -55,7 +56,7 @@ pub fn column_width(text_width: Length, num_columns: usize, column_gap: Length) 
 /// # Errors
 ///
 /// 1 段あたりの幅が 0 以下の場合 [`LayoutValidationError::InvalidColumnWidth`] を返します。
-pub fn validate_layout(config: &Config, style: &Style) -> Result<(), LayoutValidationError> {
+pub(crate) fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), LayoutValidationError> {
   let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
   let num_columns = style.columns.count as usize;
   let column_gap = style.columns.gap;
@@ -74,18 +75,18 @@ pub fn validate_layout(config: &Config, style: &Style) -> Result<(), LayoutValid
 mod tests {
   use std::path::PathBuf;
 
-  use super::{Config, LayoutValidationError, Length, Style, column_width, validate_layout};
-  use crate::{
-    config::config_toml::{
-      read_config,
+  use super::{LayoutValidationError, Length, ProjectConfig, Style, column_width, validate_layout};
+  use crate::project::{
+    FilesystemProjectSource,
+    config::{
+      self,
       test_support::{make_font_sections, valid_output_section, valid_pdf_section},
     },
-    project::FilesystemProjectSource,
   };
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
-  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`config_toml.rs` の
-  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `read_config` の実結果に対して
+  /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ、`project/config.rs` の
+  /// `mod tests` にある同名ヘルパの複製 — `validate_layout` は `config::load` の実結果に対して
   /// 検証するため、こちらでも同じ実ファイルシステム経由のフィクスチャ生成が要る）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
@@ -101,7 +102,7 @@ mod tests {
     return (tempdir, config_path);
   }
 
-  fn read_test_config() -> (tempfile::TempDir, Config) {
+  fn read_test_config() -> (tempfile::TempDir, ProjectConfig) {
     let (tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -112,7 +113,7 @@ mod tests {
     });
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config = config::load(&source, &config_path, &base_dir).unwrap();
     return (tempdir, config);
   }
 

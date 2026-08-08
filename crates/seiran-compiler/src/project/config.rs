@@ -1,4 +1,9 @@
-//! TOML 設定ファイルのパース・検証・変換モジュール
+//! `config.toml`（物理・実体・メタデータ）のデータモデルと読込・検証
+//!
+//! [`load`] は TOML 解析・未知キー拒否・必須フィールドと値域の検証・フォント 19 種の完全性検証・
+//! 各種パスの正規化までを終えた [`ProjectConfig`] を返す。`style.toml` や references の**内容は
+//! 解析しない** — 検証済みのパスを返すだけで、それぞれの読込は [`crate::style`] と
+//! `crate::semantics` が担う。
 
 use std::path::{Path, PathBuf};
 
@@ -20,7 +25,7 @@ mod tag;
 #[doc(hidden)]
 pub mod test_support;
 
-pub use processed_config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig};
+pub use processed_config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -159,7 +164,7 @@ struct FontValues {
 // `ReadConfigError::ParseToml` が `NamedSource<String>` を保持して Result サイズが拡大するため
 // allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
 #[allow(clippy::result_large_err)]
-pub fn read_config(source: &dyn ProjectSource, config_path: &Path, base_dir: &Path) -> Result<Config, ReadConfigError> {
+pub fn load(source: &dyn ProjectSource, config_path: &Path, base_dir: &Path) -> Result<ProjectConfig, ReadConfigError> {
   debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
@@ -201,12 +206,12 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
   });
 }
 
-/// [`PreConfig`] からパス解決を行い [`Config`] を構築します。
+/// [`PreConfig`] からパス解決を行い [`ProjectConfig`] を構築します。
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
 /// 組み立てるだけです（作成は driver 側の責務、#300）。
 #[allow(clippy::result_large_err)]
-fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Result<Config, ReadConfigError> {
+fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Result<ProjectConfig, ReadConfigError> {
   let validation = validate_and_convert(&pre);
   let (resolved, path_errors) = resolve_paths(&pre, source, base_dir);
 
@@ -246,7 +251,7 @@ fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Resul
       };
     }));
 
-  return Ok(Config {
+  return Ok(ProjectConfig {
     document: DocumentConfig {
       title: pre_document.title,
       author: pre_document.author,
@@ -544,15 +549,17 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    Config, ConfigValidationError, ReadConfigError, TextDirection, build_language_string, parse_config, read_config,
+    ConfigValidationError, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load, parse_config,
     resolve_output_dir_path, resolve_paths, validate_values,
   };
   use crate::{
-    config::config_toml::test_support::{
-      font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
-    },
     font::FontType,
-    project::{FilesystemProjectSource, MemoryProjectSource},
+    project::{
+      FilesystemProjectSource, MemoryProjectSource,
+      config::test_support::{
+        font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
+      },
+    },
   };
 
   /// `parse_config` 用のダミーパス。
@@ -560,7 +567,7 @@ mod tests {
 
   /// 一時ディレクトリにダミーのフォントファイル・ソースファイル・`config.toml` を作成します
   /// （旧 `crates/config/tests/common/mod.rs` の統合テスト用ヘルパ。実ファイルシステム経由の
-  /// `read_config`/`FilesystemProjectSource` の振る舞いを検証するテストでのみ使う）。
+  /// `load`/`FilesystemProjectSource` の振る舞いを検証するテストでのみ使う）。
   fn setup_config(build_toml: impl FnOnce(&str, &str, &str) -> String) -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
     let font_path = tempdir.path().join("dummy.ttf");
@@ -641,7 +648,7 @@ mod tests {
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
     // Act
-    let result = read_config(&source, Path::new("/project/config.toml"), Path::new("/project"));
+    let result = load(&source, Path::new("/project/config.toml"), Path::new("/project"));
 
     // Assert — 出力ディレクトリの作成は driver 側の責務になり、config は作らない
     result.expect("fixture は妥当な最小 config のはず");
@@ -884,7 +891,7 @@ mod tests {
       "sources = [\"dummy.sei\"]\n\n{}{}{}",
       valid_output_section("test", "out"),
       valid_pdf_section(),
-      crate::config::config_toml::test_support::font_sections_with_serif_extra("dummy.ttf", extra_lines),
+      font_sections_with_serif_extra("dummy.ttf", extra_lines),
     );
     let pre = parse_config(&toml, dummy_source()).unwrap();
     return validate_values(&pre);
@@ -1102,9 +1109,9 @@ mod tests {
     )));
   }
 
-  // 以下は旧 `crates/config/tests/config.rs`（`read_config` の公開 API を実ファイルシステム経由で
+  // 以下は旧 `crates/config/tests/config.rs`（`load` の公開 API を実ファイルシステム経由で
   // 検証する統合テスト）を移設したもの。上のテスト群が `MemoryProjectSource` で内部関数を
-  // 直接検証するのに対し、こちらは `FilesystemProjectSource` + tempfile で `read_config` を
+  // 直接検証するのに対し、こちらは `FilesystemProjectSource` + tempfile で `load` を
   // end-to-end に検証する。
 
   #[test]
@@ -1122,7 +1129,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.output.name, "test_doc");
@@ -1149,7 +1156,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.image.max_dpi, 150);
@@ -1172,7 +1179,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert!(!config.pdf.show_bookmarks);
@@ -1193,7 +1200,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let result = read_config(&source, &config_path, &base_dir);
+    let result = load(&source, &config_path, &base_dir);
 
     // Assert
     let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
@@ -1218,7 +1225,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let result = read_config(&source, &config_path, &base_dir);
+    let result = load(&source, &config_path, &base_dir);
 
     // Assert
     let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
@@ -1241,7 +1248,7 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
     // Act
-    let config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
     assert_eq!(config.output.output_dir, base_dir);
@@ -1263,7 +1270,7 @@ mod tests {
 
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     let serif = config.font_configs.get(FontType::Serif);
     assert_eq!(serif.script, Some(*b"Latn"));
@@ -1285,7 +1292,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1310,7 +1317,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1334,7 +1341,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1356,7 +1363,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.document.language.as_deref(), Some("ja"));
@@ -1378,7 +1385,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.document.language, None);
@@ -1400,7 +1407,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: Config = read_config(&source, &config_path, &base_dir).unwrap();
+    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     for font_type in FontType::ALL {

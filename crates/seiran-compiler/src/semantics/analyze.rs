@@ -8,8 +8,8 @@
 use crate::{
   document::HirDocument,
   semantics::{
-    GeneratedCitations, References, SemanticDocument, error::AnalyzeError, facts::SemanticFacts, generate_citations,
-    load_citation_style, walk,
+    GeneratedCitations, References, SemanticDocument, SemanticPolicy, error::AnalyzeError, facts::SemanticFacts,
+    generate_citations, load_citation_style, walk,
   },
 };
 
@@ -26,12 +26,12 @@ pub(crate) fn analyze(
   source: &dyn crate::project::ProjectSource,
   document: HirDocument,
   references: &References,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
 ) -> Result<SemanticDocument, AnalyzeError> {
   // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
   // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
-  // （`DocumentPolicy` は値に影響する設定だけの投影）。
-  let policy = crate::config::DocumentPolicy::from_style(style);
+  // （`SemanticPolicy` は値に影響する設定だけの投影）。
+  let policy = SemanticPolicy::from_style(style);
   let facts = walk::collect_facts(&document, &policy, references)?;
   let citations = generate(source, &facts, references, style)?;
 
@@ -49,7 +49,7 @@ pub(crate) fn analyze(
 #[cfg(test)]
 pub(crate) fn analyze_for_test(
   document: HirDocument,
-  policy: &crate::config::DocumentPolicy,
+  policy: &SemanticPolicy,
   references: &References,
 ) -> Result<SemanticDocument, crate::semantics::SemanticError> {
   let facts = walk::collect_facts(&document, policy, references)?;
@@ -63,7 +63,7 @@ fn generate(
   source: &dyn crate::project::ProjectSource,
   facts: &SemanticFacts,
   references: &References,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
 ) -> Result<GeneratedCitations, AnalyzeError> {
   if facts.citations.is_empty() {
     return Ok(GeneratedCitations::default());
@@ -77,7 +77,6 @@ fn generate(
 mod tests {
   use super::analyze;
   use crate::{
-    config::Style,
     document::HirDocument,
     frontend::parse_source,
     project::{FilesystemProjectSource, MemoryProjectSource},
@@ -86,6 +85,7 @@ mod tests {
       test_fixtures::{ieee_csl_path, sample_references},
     },
     source::SourceId,
+    style::Style,
   };
 
   #[test]

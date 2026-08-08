@@ -12,9 +12,12 @@ use lopdf::{Document, Object, content::Content};
 
 use super::{
   golden::{enter_workspace_root, load_base},
-  snapshot::ProjectSnapshot,
+  input::CompilationInputs,
 };
-use crate::font::{FontData, FontDataExt, FontResources};
+use crate::{
+  font::{FontData, FontDataExt, FontResources},
+  style::Style,
+};
 
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
@@ -33,7 +36,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 /// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` → `typeset::layout` →
 /// `ResourceBundle` 構築 → `build_publication` → `seiran_pdf::render`）を通す — golden が検証
 /// したいのは本番の描画経路そのものであり、ここでショートカットを作らない。
-fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::config::Style)) -> Vec<u8> {
+fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut Style)) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
   let mut config = base_config.clone();
@@ -42,15 +45,16 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   adjust_style(&mut style);
   let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
-  let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
-    .expect("ProjectSnapshot の構築");
-  let document = super::parse_project(&snapshot).expect("parse_project の実行");
+  let inputs =
+    CompilationInputs::from_parts(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
+      .expect("CompilationInputs の構築");
+  let document = super::parse_project(&inputs).expect("parse_project の実行");
   let semantics =
-    crate::semantics::analyze(&source, document, &snapshot.references, &snapshot.style).expect("analyze の実行");
+    crate::semantics::analyze(&source, document, inputs.references(), inputs.style()).expect("analyze の実行");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
-  let mut laid_out = crate::typeset::layout(&source, &snapshot.config, &snapshot.style, &font_system, &semantics)
-    .expect("layout の実行");
+  let mut laid_out =
+    crate::typeset::layout(&source, inputs.config(), inputs.style(), &font_system, &semantics).expect("layout の実行");
   let fonts = super::build_pdf_fonts(&font_data, &font_resources);
   let font_metrics = super::build_pdf_font_metrics(&font_resources);
   let image_bytes: std::collections::HashMap<String, Vec<u8>> = std::mem::take(&mut laid_out.image_bytes)

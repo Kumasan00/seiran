@@ -4,8 +4,8 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  config::style::caption::CaptionStyle,
   length::{Length, non_negative},
+  style::caption::CaptionStyle,
 };
 
 /// 図環境のスタイル設定

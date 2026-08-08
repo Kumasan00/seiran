@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   color::Color,
-  config::style::caption::CaptionStyle,
   length::{Length, non_negative},
+  style::caption::CaptionStyle,
 };
 
 /// 表のスタイル設定

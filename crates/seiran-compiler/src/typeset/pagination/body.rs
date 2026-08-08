@@ -41,8 +41,8 @@ pub(super) fn typeset_body(
 ) -> Result<BodyLayout, TypesetError> {
   let run_pass = |footnote_numbers: Option<&[u32]>| return run_body_pass(ctx, document, images, footnote_numbers);
   return match ctx.style.footnote.numbering {
-    crate::config::FootnoteNumbering::Continuous => run_pass(None),
-    crate::config::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
+    crate::style::FootnoteNumbering::Continuous => run_pass(None),
+    crate::style::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
 

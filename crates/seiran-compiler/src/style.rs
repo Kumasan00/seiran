@@ -1,4 +1,10 @@
-//! TOML スタイル設定ファイルのパース・検証モジュール
+//! `style.toml`（見た目）のデータモデル・既定値・読込・検証
+//!
+//! 言語設計原則 P10 が区別する 2 概念のうち「種類ごとの見た目」を所有する crate root の module。
+//! 物理・実体・メタデータ（`config.toml`）は [`crate::project::config`] の所有で、両者は互いを知らない
+//! （どちらか一方だけでは判定できない横断制約は [`crate::typeset::validate_layout`] が持つ）。
+//! CSL ファイル自体の読込は行わない — 引用箇所の存在が確定するまで遅延させるため、ここは
+//! `csl_path` / `locale_path` の正規化と存在確認までで止める。
 
 mod caption;
 mod columns;
@@ -31,29 +37,43 @@ use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-pub use crate::config::style::{
+// module root が再エクスポートするのは、`style` の外から実際に名指しされる名前だけ。
+// `Style` の内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` 等）は
+// 下の非公開 `use` に留め、`crate::style::FigureStyle` という到達経路を作らない。
+// `NestedOrderedFormat` / `NumberStyle` のように利用側が `#[cfg(test)] mod tests` だけの名前があるため
+// `unused_imports` を許可する（非公開 module からの再エクスポートは本体ビルドでは未使用に見える）。
+#[allow(unused_imports)]
+pub use crate::style::{
   caption::CaptionStyle,
-  columns::ColumnsStyle,
   counter::{CounterName, CounterStyle, Counters},
+  footnote::{FootnoteNumbering, FootnoteStyle},
+  list::NestedOrderedFormat,
+  math::{Alignment, MathScriptStyle, NumberSide},
+  number_style::NumberStyle,
+  page_numbering::PageNumbering,
+  running::RunningContentStyle,
+  text::TextAlignment,
+  theorem::{TheoremReset, TheoremStyle},
+  title_page::TitlePageStyle,
+  toc::TocStyle,
+};
+// `Style` のフィールド型と、この module 内でのみ名指しする型。`style` の子 module からは
+// `crate::style::<Type>` で参照できる（非公開 `use` の名前も子孫からは見える）。
+use crate::style::{
+  columns::ColumnsStyle,
   error::{ReadStyleError, StyleValidationError},
   figure::FigureStyle,
-  footnote::{FootnoteNumbering, FootnoteStyle},
   heading::{HeadingStyle, HeadingStyles},
   hyperref::HyperrefStyle,
   index::IndexStyle,
-  list::{ListStyle, NestedOrderedFormat},
-  math::{Alignment, MathScriptStyle, MathStyle, NumberSide},
-  number_style::NumberStyle,
+  list::ListStyle,
+  math::MathStyle,
   page::PageStyle,
-  page_numbering::PageNumbering,
   quote::QuoteStyle,
   reference::ReferenceStyle,
-  running::RunningContentStyle,
   table::TableStyle,
-  text::{TextAlignment, TextBlockStyle},
-  theorem::{TheoremClass, TheoremReset, TheoremStyle, Theorems},
-  title_page::TitlePageStyle,
-  toc::TocStyle,
+  text::TextBlockStyle,
+  theorem::{TheoremClass, Theorems},
 };
 use crate::{
   color::Color,
@@ -188,7 +208,7 @@ impl Style {
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
 // 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
 #[allow(clippy::result_large_err)]
-pub fn read_style(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
+pub(crate) fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
   let Some(path) = path else {
     info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
     return Ok(Style::default());
@@ -208,7 +228,7 @@ pub fn read_style(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Pa
     };
   })?;
 
-  let mut style = parse_style(&content, &path_str)?;
+  let mut style = parse(&content, &path_str)?;
 
   let errors = resolve_reference_paths(&mut style.reference, source, base_dir);
   if !errors.is_empty() {
@@ -229,7 +249,7 @@ pub fn read_style(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Pa
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
 #[allow(clippy::result_large_err)]
-pub fn parse_style(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
+pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(
@@ -337,13 +357,13 @@ mod tests {
 
   use crate::{
     color::Color,
-    config::style::{
-      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, read_style,
-      resolve_reference_paths,
-    },
     document::HeadingLevel,
     length::Length,
     project::{FilesystemProjectSource, MemoryProjectSource},
+    style::{
+      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, load,
+      resolve_reference_paths,
+    },
   };
 
   #[test]
@@ -397,34 +417,34 @@ mod tests {
   }
 
   #[test]
-  fn read_style_reads_through_project_source() {
+  fn load_reads_through_project_source() {
     // Arrange
     let source = MemoryProjectSource::new().with_text("/project/style.toml", "");
     let path = PathBuf::from("style.toml");
 
     // Act
-    let style = read_style(&source, Some(&path), Path::new("/project")).expect("空の TOML は既定値になるはず");
+    let style = load(&source, Some(&path), Path::new("/project")).expect("空の TOML は既定値になるはず");
 
     // Assert
     assert_eq!(style.text.font_size, Style::default().text.font_size);
   }
 
   #[test]
-  fn read_style_reports_missing_csl_path_without_touching_real_disk() {
+  fn load_reports_missing_csl_path_without_touching_real_disk() {
     // Arrange
     let toml = "[reference]\ncsl_path = \"missing.csl\"\n";
     let source = MemoryProjectSource::new().with_text("/project/style.toml", toml);
     let path = PathBuf::from("style.toml");
 
     // Act
-    let result = read_style(&source, Some(&path), Path::new("/project"));
+    let result = load(&source, Some(&path), Path::new("/project"));
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::MultipleValidationErrors { .. })));
   }
 
   #[test]
-  fn read_style_aggregates_both_missing_csl_and_locale_paths() {
+  fn load_aggregates_both_missing_csl_and_locale_paths() {
     // Arrange — csl_path / locale_path のどちらも欠落している場合、片方だけで
     // fail-fast せず、両方が同じ Vec に集約されることを検証する
     let toml = "[reference]\ncsl_path = \"missing.csl\"\nlocale_path = \"missing.xml\"\n";
@@ -432,7 +452,7 @@ mod tests {
     let path = PathBuf::from("style.toml");
 
     // Act
-    let result = read_style(&source, Some(&path), Path::new("/project"));
+    let result = load(&source, Some(&path), Path::new("/project"));
 
     // Assert
     let Err(ReadStyleError::MultipleValidationErrors { errors }) = result else {
@@ -596,18 +616,18 @@ mod tests {
 /// 同名ヘルパを独立に定義していたため（`mod tests` へ素直に統合すると名前衝突する）。
 #[cfg(test)]
 mod parse_tests {
-  use super::{ReadStyleError, Style, TheoremClass, parse_style, read_style};
+  use super::{ReadStyleError, Style, TheoremClass, load, parse};
   use crate::{document::HeadingLevel, project::FilesystemProjectSource};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
   #[test]
-  fn read_style_returns_default_when_path_is_none() {
+  fn load_returns_default_when_path_is_none() {
     // Arrange
     let source = FilesystemProjectSource::new();
 
     // Act
-    let style = read_style(&source, None, std::path::Path::new(".")).unwrap();
+    let style = load(&source, None, std::path::Path::new(".")).unwrap();
 
     // Assert
     let default = Style::default();
@@ -618,12 +638,12 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_overrides_heading_section_format() {
+  fn parse_overrides_heading_section_format() {
     // Arrange
     let toml = "[heading.section]\nformat = \"§ {number} {title}\"\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
@@ -632,12 +652,12 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_overrides_only_specified_fields() {
+  fn parse_overrides_only_specified_fields() {
     // Arrange
     let toml = "[text]\nfont_size = \"15pt\"\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert!((style.text.font_size.to_pt() - 15.0).abs() < f32::EPSILON);
@@ -646,12 +666,12 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_overrides_columns() {
+  fn parse_overrides_columns() {
     // Arrange
     let toml = "[columns]\ncount = 2\ngap = \"24pt\"\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert_eq!(style.columns.count, 2);
@@ -659,9 +679,9 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_columns_defaults_to_single_column() {
+  fn parse_columns_defaults_to_single_column() {
     // Arrange / Act
-    let style = parse_style("", dummy_source()).unwrap();
+    let style = parse("", dummy_source()).unwrap();
 
     // Assert
     assert_eq!(style.columns.count, 1);
@@ -669,69 +689,69 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_enables_flush_bottom() {
+  fn parse_enables_flush_bottom() {
     // Arrange
     let toml = "[page]\nflush_bottom = true\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert!(style.page.flush_bottom);
   }
 
   #[test]
-  fn parse_style_flush_bottom_defaults_to_disabled() {
+  fn parse_flush_bottom_defaults_to_disabled() {
     // Arrange / Act
-    let style = parse_style("", dummy_source()).unwrap();
+    let style = parse("", dummy_source()).unwrap();
 
     // Assert
     assert!(!style.page.flush_bottom);
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_page_key() {
+  fn parse_fails_on_unknown_page_key() {
     // Arrange
     let toml = "[page]\nflush_botom = true\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(result.is_err());
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_columns_key() {
+  fn parse_fails_on_unknown_columns_key() {
     // Arrange
     let toml = "[columns]\ncont = 2\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_rejects_color_array() {
+  fn parse_rejects_color_array() {
     // Arrange
     let toml = "background_color = [204, 179, 153]\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_accepts_color_hex_string() {
+  fn parse_accepts_color_hex_string() {
     // Arrange
     let toml = "background_color = \"#cc9966\"\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     let color = style.background_color.expect("background_color should be Some");
@@ -739,7 +759,7 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_overrides_header_and_footer() {
+  fn parse_overrides_header_and_footer() {
     // Arrange
     let toml = concat!(
       "[header]\n",
@@ -753,7 +773,7 @@ mod parse_tests {
     );
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert_eq!(style.header.right, "{page} / {pages}");
@@ -767,74 +787,74 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_header_key() {
+  fn parse_fails_on_unknown_header_key() {
     // Arrange
     let toml = "[header]\nrght = \"{page}\"\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_top_level_key() {
+  fn parse_fails_on_unknown_top_level_key() {
     // Arrange
     let toml = "font_sze = \"15pt\"\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_nested_key() {
+  fn parse_fails_on_unknown_nested_key() {
     // Arrange
     let toml = "[heading.chapter]\nfont_sze = \"30pt\"\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_fails_on_invalid_toml_syntax() {
+  fn parse_fails_on_invalid_toml_syntax() {
     // Arrange
     let toml = "font_size = \nthis is not valid toml";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn read_style_fails_on_nonexistent_path() {
+  fn load_fails_on_nonexistent_path() {
     // Arrange
     let path = std::path::PathBuf::from("/nonexistent/style.toml");
     let source = FilesystemProjectSource::new();
     let base_dir = path.parent().expect("フィクスチャパスは親ディレクトリを持つはず");
 
     // Act
-    let result = read_style(&source, Some(path.as_path()), base_dir);
+    let result = load(&source, Some(path.as_path()), base_dir);
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ReadFile { .. })));
   }
 
   #[test]
-  fn parse_style_reads_minimal_fixture() {
+  fn parse_reads_minimal_fixture() {
     // Arrange
-    let toml = include_str!("fixtures/minimal.toml");
+    let toml = include_str!("style/fixtures/minimal.toml");
 
     // Act
-    let style = parse_style(toml, "minimal.toml").unwrap();
+    let style = parse(toml, "minimal.toml").unwrap();
 
     // Assert
     assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
@@ -842,12 +862,12 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_overrides_theorem_class_partially() {
+  fn parse_overrides_theorem_class_partially() {
     // Arrange
     let toml = "[theorems.lemma]\ndisplay_name = \"補題\"\n";
 
     // Act
-    let style = parse_style(toml, dummy_source()).unwrap();
+    let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
     assert_eq!(style.theorem(TheoremClass::Lemma).display_name, "補題");
@@ -860,24 +880,24 @@ mod parse_tests {
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_theorem_class() {
+  fn parse_fails_on_unknown_theorem_class() {
     // Arrange
     let toml = "[theorems.conjecture]\ndisplay_name = \"Conjecture\"\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
   }
 
   #[test]
-  fn parse_style_fails_on_unknown_theorem_field() {
+  fn parse_fails_on_unknown_theorem_field() {
     // Arrange
     let toml = "[theorems.theorem]\ndispl_name = \"Theorem\"\n";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
@@ -889,7 +909,7 @@ mod parse_tests {
 /// `parse_tests` と同様、独立の `fn dummy_source()` を持つため別 module にしている。
 #[cfg(test)]
 mod validate_tests {
-  use super::{ReadStyleError, Style, StyleValidationError, parse_style};
+  use super::{ReadStyleError, Style, StyleValidationError, parse};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
@@ -912,12 +932,12 @@ mod validate_tests {
   }
 
   #[test]
-  fn parse_style_collects_multiple_validation_errors() {
+  fn parse_collects_multiple_validation_errors() {
     // Arrange
     let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let paths = paths(&errors);
@@ -931,7 +951,7 @@ mod validate_tests {
     let toml = "[columns]\ncount = 3\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     assert!(paths(&errors).contains(&"columns.count"));
@@ -943,7 +963,7 @@ mod validate_tests {
     let toml = "[columns]\ncount = 0\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     assert!(paths(&errors).contains(&"columns.count"));
@@ -955,7 +975,7 @@ mod validate_tests {
     let toml = "[columns]\ngap = \"-1pt\"\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     assert!(paths(&errors).contains(&"columns.gap"));
@@ -967,7 +987,7 @@ mod validate_tests {
     let toml = "[theorems.theorem.style]\ntop_margin = \"-1pt\"\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let paths = paths(&errors);
@@ -983,7 +1003,7 @@ mod validate_tests {
     let toml = "[theorems.lemma]\ndisplay_name = \"\"\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let paths = paths(&errors);
@@ -1003,7 +1023,7 @@ resets = []
 ";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(
@@ -1015,7 +1035,7 @@ resets = []
   #[test]
   fn empty_toml_defaults_pass_placeholder_validation() {
     // Arrange / Act
-    let result = parse_style("", dummy_source());
+    let result = parse("", dummy_source());
 
     // Assert
     assert!(result.is_ok(), "既定値はプレースホルダ検証を通るべき: {result:?}");
@@ -1033,7 +1053,7 @@ center = \"{pagee}\"
 ";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let paths = paths(&errors);
@@ -1047,7 +1067,7 @@ center = \"{pagee}\"
     let toml = "[math.block]\ntag_format = \"({num})\"\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let message = errors
@@ -1068,7 +1088,7 @@ center = \"{pagee}\"
     let toml = "[counters.section]\ndisplay_name = \"Section\"\nnumber_format = \"{chaptr}.{n}\"\nnumber_style = \"arabic\"\nref_format = \"{display_name} {number}\"\nresets = []\n";
 
     // Act
-    let errors = expect_validation_errors(parse_style(toml, dummy_source()));
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     // Assert
     let paths = paths(&errors);
@@ -1091,7 +1111,7 @@ resets = [\"nonexistent\"]
 ";
 
     // Act
-    let result = parse_style(toml, dummy_source());
+    let result = parse(toml, dummy_source());
 
     // Assert
     assert!(

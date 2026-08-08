@@ -4,9 +4,9 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  config::style::number_style::NumberStyle,
   font::FontKind,
   length::{Length, non_negative},
+  style::number_style::NumberStyle,
 };
 
 /// リスト要素のスタイル設定
@@ -25,7 +25,7 @@ pub struct ListStyle {
   pub unordered_marker: String,
   /// 順序付きリストのマーカー書式（例: `"{number}."`）。`{number}` は 1 始まりの項目番号で置換される。
   /// 後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::ordered_list_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ordered_list_format))]
   pub ordered_marker_format: String,
   /// マーカー描画に使用するフォント種別
   pub marker_font_kind: FontKind,
@@ -74,7 +74,7 @@ pub struct NestedOrderedFormat {
   /// この段の番号の数字表記スタイル
   pub number_style: NumberStyle,
   /// `{number}` を含む装飾テンプレート（例: `"({number})"`）。後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1), custom(crate::config::style::placeholder::ordered_list_format))]
+  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ordered_list_format))]
   pub format: String,
 }
 
@@ -92,7 +92,7 @@ mod tests {
   use garde::Validate;
 
   use super::{ListStyle, NestedOrderedFormat};
-  use crate::{config::style::number_style::NumberStyle, font::FontKind, length::Length};
+  use crate::{font::FontKind, length::Length, style::number_style::NumberStyle};
 
   #[test]
   fn validate_accepts_default() {

@@ -11,11 +11,11 @@ use std::{
 
 use super::{build_pages, dump::dump_pages};
 use crate::{
-  config::{Config, Style},
   font::{FontData, FontDataExt},
   length::Length,
-  project::{MemoryProjectSource, ProjectPath},
+  project::{MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
+  style::Style,
   typeset::{AnchorMark, Page, PlacedBlock},
 };
 
@@ -69,26 +69,26 @@ pub(super) fn enter_workspace_root() {
 /// fixture の設定・スタイル・文献を読み込む。
 ///
 /// テスト資産が未取得なら取得手順を案内して失敗する。
-pub(super) fn load_base() -> (Config, Style, Arc<References>) {
+pub(super) fn load_base() -> (ProjectConfig, Style, Arc<References>) {
   assert!(
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
   let source = crate::project::FilesystemProjectSource::new();
-  let config = crate::config::read_config(
+  let config = crate::project::config::load(
     &source,
     Path::new("crates/seiran-compiler/tests/config/config.toml"),
     &workspace_root(),
   )
   .expect("fixture config.toml の読込");
-  let style = crate::config::read_style(&source, config.style_path.as_deref(), &workspace_root())
-    .expect("fixture style.toml の読込");
+  let style =
+    crate::style::load(&source, config.style_path.as_deref(), &workspace_root()).expect("fixture style.toml の読込");
   let references = read_references(&source, config.references_path.as_deref()).expect("fixture references の読込");
   return (config, style, Arc::new(references));
 }
 
 /// 検証対象の機能に必要な style 差分を入力ごとに適用する。
-fn apply_input_style_overrides(name: &str, style: &mut crate::config::Style) {
+fn apply_input_style_overrides(name: &str, style: &mut Style) {
   match name {
     "title_page" => {
       style.title_page.enabled = true;
@@ -97,7 +97,7 @@ fn apply_input_style_overrides(name: &str, style: &mut crate::config::Style) {
       style.footer.center = "{page}".to_string();
     },
     "toc" => style.toc.enabled = true,
-    "footnote_per_page" => style.footnote.numbering = crate::config::FootnoteNumbering::PerPage,
+    "footnote_per_page" => style.footnote.numbering = crate::style::FootnoteNumbering::PerPage,
     _ => {},
   }
 }
@@ -110,7 +110,7 @@ fn apply_input_style_overrides(name: &str, style: &mut crate::config::Style) {
 /// `layout_dumps_match_golden` が既定ジオメトリのまま golden を静かに再生成してしまい、
 /// テスト失敗を経由せず座標がずれる。`config_overrides_typed_and_toml_stay_in_sync` が
 /// この乖離を機械的に検査する。
-fn apply_input_config_overrides(name: &str, config: &mut Config) {
+fn apply_input_config_overrides(name: &str, config: &mut ProjectConfig) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
     config.pdf.margin.left = Length::mm(275.0);
@@ -166,9 +166,9 @@ fn register_fonts(
   return source;
 }
 
-/// `apply_input_config_overrides`（型付き `Config` 版）の `toml::Table` 版。
+/// `apply_input_config_overrides`（型付き `ProjectConfig` 版）の `toml::Table` 版。
 ///
-/// `Config`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
+/// `ProjectConfig`（処理済み構造体）は `Serialize` を持たないため、`compile` に渡す前の生の TOML
 /// テーブルを直接書き換える。上書き内容は型付き版と同じにする（golden の座標は同一のはず）。
 ///
 /// **注意**: 型付き版 [`apply_input_config_overrides`] と対になっている。ここへケースを
@@ -287,7 +287,7 @@ fn dump_input_via_compile(name: &str) -> String {
 }
 
 /// 指定入力を組版し、確定ページ列のダンプを返す。
-fn dump_input(base_config: &Config, style: &Style, references: &Arc<References>, name: &str) -> String {
+fn dump_input(base_config: &ProjectConfig, style: &Style, references: &Arc<References>, name: &str) -> String {
   let mut config = base_config.clone();
   config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
   let mut style = style.clone();
@@ -353,9 +353,9 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
     let mut typed_config = base_config.clone();
     apply_input_config_overrides(name, &mut typed_config);
 
-    // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `read_config` を通す）
+    // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `load` を通す）
     let (source, root) = memory_source_for_golden_fixture(name);
-    let toml_config = crate::config::read_config(&source, root.as_path(), &workspace_root)
+    let toml_config = crate::project::config::load(&source, root.as_path(), &workspace_root)
       .unwrap_or_else(|error| panic!("fixture {name} の toml 版 config 読込は成功するはず: {error}"));
 
     // Assert — 両関数が触れうるフィールドが一致する
@@ -458,7 +458,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
-fn footnote_numbers_per_page(numbering: crate::config::FootnoteNumbering) -> Vec<Vec<u32>> {
+fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<Vec<u32>> {
   enter_workspace_root();
   let (mut config, mut style, references) = load_base();
   style.footnote.numbering = numbering;
@@ -477,7 +477,7 @@ fn footnote_numbers_per_page(numbering: crate::config::FootnoteNumbering) -> Vec
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
   // Act
-  let per_page = footnote_numbers_per_page(crate::config::FootnoteNumbering::PerPage);
+  let per_page = footnote_numbers_per_page(crate::style::FootnoteNumbering::PerPage);
 
   // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
@@ -559,7 +559,7 @@ fn block_bottom(block: &PlacedBlock) -> Option<Length> {
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
   // Act — 同じ入力を既定（通し）で組む
-  let continuous = footnote_numbers_per_page(crate::config::FootnoteNumbering::Continuous);
+  let continuous = footnote_numbers_per_page(crate::style::FootnoteNumbering::Continuous);
 
   // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();

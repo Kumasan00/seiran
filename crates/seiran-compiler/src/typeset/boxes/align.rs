@@ -1,6 +1,6 @@
 //! 水平方向の揃え [`Align`]。
 //!
-//! lowering が style の設定値（`config::Alignment` 等）から決めた結果であって設定値そのものでは
+//! lowering が style の設定値（`style::Alignment` 等）から決めた結果であって設定値そのものでは
 //! ないので、TOML から直接デシリアライズされることはない（serde は導出しない、#334）。
 
 use crate::length::Length;

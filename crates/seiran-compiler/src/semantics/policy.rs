@@ -1,4 +1,4 @@
-//! 意味解析（`crate::semantics`）が必要とする設定だけを抜き出した投影 [`DocumentPolicy`]。
+//! 意味解析（`crate::semantics`）が必要とする設定だけを抜き出した投影 [`SemanticPolicy`]。
 //!
 //! `style.toml` の表示側フィールド（`number_format` / `ref_format` / `display_name` /
 //! `number_style`）はここに写さない。意味解析が表示設定を読めないことを、規約や property test
@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use crate::{
-  config::{CounterName, Style, TheoremReset},
   document::{HeadingLevel, TheoremClass},
+  style::{CounterName, Style, TheoremReset},
 };
 
 /// 1 カウンタぶんの値側設定
@@ -32,14 +32,14 @@ pub struct TheoremPolicy {
 
 /// 意味解析が読む設定だけを持つ投影
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocumentPolicy {
+pub struct SemanticPolicy {
   /// カウンタ名 → 値側設定（固定 9 種すべてを `from_style` が埋める）
   counters: HashMap<CounterName, CounterPolicy>,
   /// 定理クラス → 値側設定（全クラスを `from_style` が埋める）
   theorems: HashMap<TheoremClass, TheoremPolicy>,
 }
 
-impl DocumentPolicy {
+impl SemanticPolicy {
   /// `Style` から値側設定だけを写し取る
   #[must_use]
   pub fn from_style(style: &Style) -> Self {
@@ -63,7 +63,7 @@ impl DocumentPolicy {
         },
       );
     }
-    return DocumentPolicy { counters, theorems };
+    return SemanticPolicy { counters, theorems };
   }
 
   /// カウンタの値側設定を引く
@@ -110,10 +110,10 @@ impl DocumentPolicy {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use super::DocumentPolicy;
+  use super::SemanticPolicy;
   use crate::{
-    config::{CounterName, NumberStyle, Style},
     document::HeadingLevel,
+    style::{CounterName, NumberStyle, Style},
   };
 
   #[test]
@@ -127,11 +127,11 @@ mod tests {
     display_variant.counters.chapter.number_style = NumberStyle::RomanUpper;
 
     // Act
-    let base_policy = DocumentPolicy::from_style(&base);
-    let variant_policy = DocumentPolicy::from_style(&display_variant);
+    let base_policy = SemanticPolicy::from_style(&base);
+    let variant_policy = SemanticPolicy::from_style(&display_variant);
 
     // Assert
-    assert_eq!(base_policy, variant_policy, "表示専用フィールドは DocumentPolicy に写らないはず");
+    assert_eq!(base_policy, variant_policy, "表示専用フィールドは SemanticPolicy に写らないはず");
   }
 
   #[test]
@@ -142,18 +142,18 @@ mod tests {
     reset_variant.counters.chapter.resets = vec![];
 
     // Act
-    let base_policy = DocumentPolicy::from_style(&base);
-    let variant_policy = DocumentPolicy::from_style(&reset_variant);
+    let base_policy = SemanticPolicy::from_style(&base);
+    let variant_policy = SemanticPolicy::from_style(&reset_variant);
 
     // Assert
-    assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので DocumentPolicy に写るはず");
+    assert_ne!(base_policy, variant_policy, "resets は値側フィールドなので SemanticPolicy に写るはず");
     assert!(variant_policy.counter(CounterName::Chapter).resets.is_empty());
   }
 
   #[test]
   fn counter_name_for_heading_maps_each_level() {
-    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
-    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
-    assert_eq!(DocumentPolicy::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
+    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Part), CounterName::Part);
+    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Chapter), CounterName::Chapter);
+    assert_eq!(SemanticPolicy::counter_name_for_heading(HeadingLevel::Subparagraph), CounterName::Subparagraph);
   }
 }

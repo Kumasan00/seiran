@@ -3,8 +3,8 @@
 mod dependency_manifest;
 mod diagnostic_set;
 mod error;
+mod input;
 mod publication;
-mod snapshot;
 
 #[cfg(test)]
 mod diagnostics;
@@ -17,22 +17,25 @@ mod pdf_structure;
 #[cfg(test)]
 mod project_source_equivalence;
 
-use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
+#[cfg(test)]
+use std::sync::Arc;
+use std::{collections::HashMap, path::Path, time::Instant};
 
 pub use dependency_manifest::DependencyManifest;
 pub use diagnostic_set::DiagnosticSet;
 use error::{AttributedCitationError, AttributedParseError, CompileError};
-pub use snapshot::OutputPlan;
-use snapshot::{ProjectSnapshot, SourceDb};
+use input::CompilationInputs;
+pub use input::OutputPlan;
 use tracing::info;
 
-#[cfg(test)]
-use crate::semantics::References;
 use crate::{
-  font::{FontData, FontDataExt, FontResources},
-  semantics::{AnalyzeError, read_references},
+  font::{FontData, FontResources},
+  project::{SourceSet, config::ProjectConfig},
+  semantics::AnalyzeError,
   typeset::LaidOutDocument,
 };
+#[cfg(test)]
+use crate::{semantics::References, style::Style};
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
@@ -99,17 +102,16 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   let build_start = Instant::now();
   info!(config_path = %root, "PDF のコンパイルを開始します");
 
-  let (snapshot, output) = load_project(source, root.as_path(), base_dir)?;
-  let document = parse_project(&snapshot)?;
-  let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
-    .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
-  let font_resources = FontResources::load(&snapshot.config.font_configs, &snapshot.font_data)?;
+  let inputs = input::load(source, root.as_path(), base_dir)?;
+  let document = parse_project(&inputs)?;
+  let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
+    .map_err(|error| return wrap_analyze_error(error, inputs.sources()))?;
+  let font_resources = FontResources::load(&inputs.config().font_configs, inputs.font_data())?;
   let font_system = font_resources.system()?;
-  let mut laid_out =
-    crate::typeset::layout(source, &snapshot.config, &snapshot.style, &font_system, &semantic_document)?;
+  let mut laid_out = crate::typeset::layout(source, inputs.config(), inputs.style(), &font_system, &semantic_document)?;
   let image_bytes = std::mem::take(&mut laid_out.image_bytes);
-  let publication = build_publication(&snapshot.config, &snapshot.font_data, &font_resources, image_bytes, &laid_out)?;
-  let dependencies = DependencyManifest::collect(root.as_path(), &snapshot, &laid_out.image_paths);
+  let publication = build_publication(inputs.config(), inputs.font_data(), &font_resources, image_bytes, &laid_out)?;
+  let dependencies = DependencyManifest::collect(root.as_path(), &inputs, &laid_out.image_paths);
   let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
     total_elapsed_ms: elapsed_ms(build_start),
@@ -120,37 +122,8 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
     dependencies,
     warnings: DiagnosticSet::empty(),
     statistics,
-    output,
+    output: inputs.output().clone(),
   });
-}
-
-/// 設定・スタイル・文献・フォントを読み込み、プロジェクトを組み立てる。
-///
-/// `source` は呼び出し元が 1 回だけ構築したものを受け取り、ここでは構築しない。
-///
-/// # Errors
-///
-/// 設定、文献、フォント、ソースの読み込みまたは検証に失敗した場合にエラーを返す。
-fn load_project(
-  source: &dyn crate::project::ProjectSource,
-  config_path: &Path,
-  base_dir: &Path,
-) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
-  let config = crate::config::read_config(source, config_path, base_dir)?;
-  let style = crate::config::read_style(source, config.style_path.as_deref(), base_dir)?;
-  crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
-  let references = Arc::new(read_references(source, config.references_path.as_deref())?);
-
-  let stage_start = Instant::now();
-  let font_data = FontData::new(source, &config.font_configs)?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
-
-  let output = OutputPlan {
-    pdf_path: config.output.pdf_path(),
-  };
-  let snapshot = ProjectSnapshot::assemble(source, config, style, references, font_data)?;
-
-  return Ok((snapshot, output));
 }
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
@@ -161,9 +134,9 @@ fn load_project(
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<crate::document::HirDocument> {
+fn parse_project(inputs: &CompilationInputs) -> miette::Result<crate::document::HirDocument> {
   let stage_start = Instant::now();
-  let document = crate::document::HirDocument::assemble(parse_all_sources(&snapshot.source_db)?);
+  let document = crate::document::HirDocument::assemble(parse_all_sources(inputs.sources())?);
   info!(
     source_count = document.groups().len(),
     node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
@@ -182,7 +155,7 @@ fn parse_project(snapshot: &ProjectSnapshot) -> miette::Result<crate::document::
 ///
 /// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
 fn build_publication(
-  config: &crate::config::Config,
+  config: &ProjectConfig,
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
@@ -272,8 +245,8 @@ fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
 #[cfg(test)]
 fn build_pages(
-  config: &crate::config::Config,
-  style: &crate::config::Style,
+  config: &ProjectConfig,
+  style: &Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -288,19 +261,19 @@ fn build_pages(
 #[cfg(test)]
 fn build_pages_with_source(
   source: &dyn crate::project::ProjectSource,
-  config: &crate::config::Config,
-  style: &crate::config::Style,
+  config: &ProjectConfig,
+  style: &Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
-  let snapshot =
-    ProjectSnapshot::assemble(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
-  let document = parse_project(&snapshot)?;
-  let semantic_document = crate::semantics::analyze(source, document, &snapshot.references, &snapshot.style)
-    .map_err(|error| return wrap_analyze_error(error, &snapshot.source_db))?;
+  let inputs =
+    CompilationInputs::from_parts(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
+  let document = parse_project(&inputs)?;
+  let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
+    .map_err(|error| return wrap_analyze_error(error, inputs.sources()))?;
   let font_resources = FontResources::load(&config.font_configs, font_data)?;
   let font_system = font_resources.system()?;
-  return Ok(crate::typeset::layout(source, &snapshot.config, &snapshot.style, &font_system, &semantic_document)?);
+  return Ok(crate::typeset::layout(source, inputs.config(), inputs.style(), &font_system, &semantic_document)?);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
@@ -314,11 +287,11 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::document::HirSource>, CompileError> {
+fn parse_all_sources(sources: &SourceSet) -> Result<Vec<crate::document::HirSource>, CompileError> {
   let mut parsed: Vec<crate::document::HirSource> = Vec::new();
   let mut parse_errors: Vec<AttributedParseError> = Vec::new();
 
-  for (source_id, entry) in source_db.iter() {
+  for (source_id, entry) in sources.iter() {
     match crate::frontend::parse_source(&entry.content, source_id) {
       Ok(hir) => parsed.push(hir),
       Err(error) => {
@@ -336,20 +309,20 @@ fn parse_all_sources(source_db: &SourceDb) -> Result<Vec<crate::document::HirSou
   return Ok(parsed);
 }
 
-/// 意味解析エラーが帰属するソースを `SourceDb` から引き当てる。
+/// 意味解析エラーが帰属するソースを `SourceSet` から引き当てる。
 ///
-/// `SourceId` は `SourceDb::register` が発行した値をそのまま運んでいるため、
+/// `SourceId` は `SourceSet::register` が発行した値をそのまま運んでいるため、
 /// ここでの参照は確定 ID による引き当てであり、帰属元の推定ではない。`analyze` は実ソースしか
 /// 走査しないので、帰属先が実ソース以外になることはない。
-fn wrap_resolve_error(error: crate::semantics::SemanticError, source_db: &SourceDb) -> CompileError {
+fn wrap_resolve_error(error: crate::semantics::SemanticError, sources: &SourceSet) -> CompileError {
   // 未定義引用キーは箇所ごとに `SourceId` を持ち、ソースごとの位置付き診断へ組み替える。
   if let crate::semantics::SemanticError::UnknownCitationKeys { sites } = error {
-    return wrap_unknown_citation_keys(sites, source_db);
+    return wrap_unknown_citation_keys(sites, sources);
   }
   let Some(source_id) = error.source_id() else {
     unreachable!("SourceId を持たないのは UnknownCitationKeys だけで、上で分岐済み: {error:?}")
   };
-  let entry = source_db.get(source_id);
+  let entry = sources.get(source_id);
   return CompileError::Resolve {
     src: miette::NamedSource::new(&entry.name, entry.content.clone()),
     source: error,
@@ -358,9 +331,9 @@ fn wrap_resolve_error(error: crate::semantics::SemanticError, source_db: &Source
 
 /// 未定義引用キーのエラーを、ソースごとの位置付き診断へ変換する。
 ///
-/// `UnknownCitationSite::source_id` は `SourceDb::register` が発行した ID をそのまま運んでいる
+/// `UnknownCitationSite::source_id` は `SourceSet::register` が発行した ID をそのまま運んでいる
 /// ため、ここでの参照は確定 ID による引き当てであり帰属元の推定ではない。
-fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>, source_db: &SourceDb) -> CompileError {
+fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>, sources: &SourceSet) -> CompileError {
   // ソースごとに 1 診断へまとめる（同じソース内の複数箇所はラベルを並べる）。
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<crate::source::SourceId> = Vec::new();
@@ -380,7 +353,7 @@ fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>,
   let errors = order
     .into_iter()
     .map(|source_id| {
-      let entry = source_db.get(source_id);
+      let entry = sources.get(source_id);
       let Some(labels) = per_source.remove(&source_id) else {
         unreachable!("order には per_source へ登録した SourceId しか入らない")
       };
@@ -394,10 +367,10 @@ fn wrap_unknown_citation_keys(sites: Vec<crate::semantics::UnknownCitationSite>,
 ///
 /// CSL 由来はそのまま `CitationStyle` / `CitationFormat` へ、意味解析由来は `wrap_resolve_error` に
 /// 委譲する（未定義引用キーはそこからさらにソースごとの位置付き診断へ組み替える）。
-fn wrap_analyze_error(error: AnalyzeError, source_db: &SourceDb) -> CompileError {
+fn wrap_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileError {
   return match error {
     AnalyzeError::CitationStyle(source) => CompileError::CitationStyle { source },
     AnalyzeError::CitationFormat(source) => CompileError::CitationFormat { source },
-    AnalyzeError::Analyze(source) => wrap_resolve_error(source, source_db),
+    AnalyzeError::Analyze(source) => wrap_resolve_error(source, sources),
   };
 }

@@ -6,10 +6,10 @@ use super::{
   math::lower_inline_math,
 };
 use crate::{
-  config::FootnoteStyle,
   document::{HirInline, HirInlineKind},
   font::FontKind,
   length::Length,
+  style::FootnoteStyle,
   typeset::boxes::{AnchorId, FootnoteId, LinkTarget},
 };
 
@@ -190,8 +190,8 @@ mod tests {
   };
   use crate::{
     color::Color,
-    config::Style as ReadStyle,
     semantics::{CitationId, GeneratedInline, LabelId},
+    style::Style as ReadStyle,
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -599,7 +599,7 @@ mod tests {
   fn lower_footnote_applies_number_style_to_both_markers() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.footnote.number_style = crate::config::NumberStyle::RomanUpper;
+    style.footnote.number_style = crate::style::NumberStyle::RomanUpper;
 
     // Act
     let nodes = lower_source(&style, "a\\footnote{a}\n\nb\\footnote{b}\n");

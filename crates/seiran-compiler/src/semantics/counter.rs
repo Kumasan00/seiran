@@ -13,24 +13,24 @@
 use std::collections::HashMap;
 
 use crate::{
-  config::{CounterName, DocumentPolicy, TheoremReset},
   document::{NodeId, SourceMap, TheoremClass},
-  semantics::{LabelId, SemanticError, error::span_to_source_span},
+  semantics::{LabelId, SemanticError, SemanticPolicy, error::span_to_source_span},
   source::{SourceId, Span},
+  style::{CounterName, TheoremReset},
 };
 
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
 /// 2 系統をひとつの型で表す
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CounterKind {
-  /// `crate::config::Counters` が定義する固定 9 種のいずれか
+  /// `crate::style::Counters` が定義する固定 9 種のいずれか
   Counter(CounterName),
   /// 定理クラス（共有カウンタは `TheoremStyle.counter` で複数クラスが 1 つを共有しうる）
   Theorem(TheoremClass),
 }
 
 /// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
-/// このクレートの対象外（typeset 側が `&crate::config::Style` と併せて表示文字列を作る）
+/// このクレートの対象外（typeset 側が `&crate::style::Style` と併せて表示文字列を作る）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CounterValue {
   /// このカウンタの種別
@@ -50,7 +50,7 @@ struct ResolvedLabel {
 #[derive(Debug, Clone)]
 pub(crate) struct CounterRegistry {
   /// 意味解析が読む設定の投影（表示側フィールドは型として持たない）
-  policy: DocumentPolicy,
+  policy: SemanticPolicy,
   /// 各カウンタの現在値。未登場のカウンタは 0 とみなす
   values: HashMap<CounterName, u32>,
   /// 定理カウンタの現在値。キーは共有カウンタ名（`TheoremPolicy.counter`）。未登場は 0
@@ -60,9 +60,9 @@ pub(crate) struct CounterRegistry {
 }
 
 impl CounterRegistry {
-  /// `crate::config::DocumentPolicy` からレジストリを構築する
+  /// `crate::semantics::SemanticPolicy` からレジストリを構築する
   #[must_use]
-  pub(crate) fn from_policy(policy: &DocumentPolicy) -> Self {
+  pub(crate) fn from_policy(policy: &SemanticPolicy) -> Self {
     return Self {
       policy: policy.clone(),
       values: HashMap::new(),
@@ -270,17 +270,17 @@ impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   #[must_use]
   pub(crate) fn default_for_seiran() -> Self {
-    return Self::from_policy(&DocumentPolicy::from_style(&crate::config::Style::default()));
+    return Self::from_policy(&SemanticPolicy::from_style(&crate::style::Style::default()));
   }
 
-  /// `crate::config::Counters` から直接レジストリを構築する（テスト・カスタム用）
+  /// `crate::style::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
-  pub(crate) fn from_counters(counters: &crate::config::Counters) -> Self {
-    let style = crate::config::Style {
+  pub(crate) fn from_counters(counters: &crate::style::Counters) -> Self {
+    let style = crate::style::Style {
       counters: counters.clone(),
-      ..crate::config::Style::default()
+      ..crate::style::Style::default()
     };
-    return Self::from_policy(&DocumentPolicy::from_style(&style));
+    return Self::from_policy(&SemanticPolicy::from_style(&style));
   }
 }
 
@@ -309,7 +309,7 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config::{CounterStyle, Counters, NumberStyle, Style, TheoremReset};
+  use crate::style::{CounterStyle, Counters, NumberStyle, Style, TheoremReset};
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 
@@ -430,7 +430,7 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    let mut r = CounterRegistry::from_policy(&DocumentPolicy::from_style(&style));
+    let mut r = CounterRegistry::from_policy(&SemanticPolicy::from_style(&style));
     r.increment(CounterName::Chapter);
     r.increment(CounterName::Section); // section = 1
 
