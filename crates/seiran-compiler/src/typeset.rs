@@ -29,18 +29,21 @@ mod pagination;
 mod dump;
 // 外側の module のテストが確定レイアウトを組み立てるための fixture builder（#353）。
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 pub(crate) mod test_fixtures;
 
 // 確定レイアウトを `Publication` へ写す `compiler::publication` が、ページの中身（配置済みブロック・
-// 表の行・箱の内容）を走査するために名指しする型と、表セルの配置・計測ヘルパ。ここに載るのは
-// **本体コードに消費者がある名前だけ**で、テストが確定レイアウトを組み立てる手段は
-// `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。組版の段を呼ぶための型
+// 表の行・箱の内容）を走査するために名指しする型と、表セルの配置・計測ヘルパ。この `boxes` からの
+// 再エクスポートに載るのは **本体コードに消費者がある名前だけ**で、テストが確定レイアウトを
+// 組み立てる手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。組版の段を呼ぶための型
 // （`PageGeometry` / `KnuthPlassBreaker` / 各段の入力）は入口が `layout` 1 操作になったので
 // facade から外した（#350）。同様に `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
 pub(crate) use boxes::{
   AnchorId, AnchorMark, HBoxContent, HItem, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
   layout_row_cells, max_font_size_in_items,
 };
+// テスト専用の例外 — `compiler::golden` / `compiler::project_source_equivalence` が確定ページ列を
+// ダンプ比較するための関数 1 つだけを出す（中間型そのものは出さない）。
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;

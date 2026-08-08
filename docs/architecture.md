@@ -283,10 +283,11 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `style::math::MathStyle` とは別概念 — 同名（`MathStyle`）へ戻すと衝突が再発する。
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
-  `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
-  ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
-  主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
-  `seiran_compiler::compiler::dump` に置く。
+  `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。決定的テキストダンプも同様に
+  唯一の消費者が golden テストなので共有 module へは置かず、**走査対象の型を所有する側**に分けて置く
+  —— `dump_pages`（`typeset::Page` 用）は `typeset::dump`、`dump_publication`
+  （`seiran_pdf::Publication` 用、golden 主入口 `layout_dumps_match_golden` が使う）は
+  `compiler::dump`（#353）。
 - **アンカーは型で namespace を分ける**。`typeset::boxes` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
   （`semantics` の `HeadingKey` / `LabelId` / `CitationId` / 組版側の `FootnoteId`）で区別する。

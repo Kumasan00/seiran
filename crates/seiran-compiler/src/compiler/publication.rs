@@ -407,7 +407,7 @@ mod tests {
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, FontData, FontType,
+      FontConfig, FontConfigs, FontData, FontType, ProjectPath,
       config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
     },
     semantics::{HeadingKey, LabelId},
@@ -646,7 +646,7 @@ mod tests {
     let config = test_config();
     let page = PageBuilder::new()
       .block(image_block(
-        crate::project::ProjectPath::new("figures/a.png"),
+        ProjectPath::new("figures/a.png"),
         Length::pt(10.0),
         Length::pt(20.0),
         Length::pt(100.0),

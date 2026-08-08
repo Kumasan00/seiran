@@ -325,10 +325,14 @@ mod tests {
   #[test]
   fn dump_reflects_baseline_change() {
     // Arrange — ベースライン位置（行送り相当）だけが異なる 2 ページ
-    let before = dump_pages(&[page_with_text_line(734.0, "Test")]);
-    let after = dump_pages(&[page_with_text_line(720.0, "Test")]);
+    let higher = vec![page_with_text_line(734.0, "Test")];
+    let lower = vec![page_with_text_line(720.0, "Test")];
 
-    // Act / Assert — レイアウトに影響する差はダンプに現れる
+    // Act
+    let before = dump_pages(&higher);
+    let after = dump_pages(&lower);
+
+    // Assert — レイアウトに影響する差はダンプに現れる
     assert_ne!(before, after);
     assert!(before.contains("baseline_y=734.00"));
     assert!(after.contains("baseline_y=720.00"));

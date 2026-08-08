@@ -134,8 +134,8 @@ fn dump_publication_link(out: &mut String, link: &PublicationLink) {
 
 /// pt 単位の `f32`（`seiran_pdf` 境界の値）を小数第 2 位へ丸め、負のゼロを正規化する。
 ///
-/// [`f2`] と丸め桁数・負のゼロ正規化の仕様を揃える（`seiran_pdf` 側はすでに pt の `f32` なので
-/// `Length` 経由の単位変換をしないだけの違い）。
+/// `typeset::dump` の `f2` と丸め桁数・負のゼロ正規化の仕様を揃える（`seiran_pdf` 側はすでに pt の
+/// `f32` なので `Length` 経由の単位変換をしないだけの違い）。
 fn f2_pt(value: f32) -> String {
   let text = format!("{value:.2}");
   return if text == "-0.00" {
