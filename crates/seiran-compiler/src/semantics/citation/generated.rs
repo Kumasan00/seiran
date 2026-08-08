@@ -13,7 +13,7 @@
 //! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 
 use super::CitationId;
-use crate::{document::HeadingLevel, font::FontKind};
+use crate::document::{FontKind, HeadingLevel};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///
@@ -101,7 +101,7 @@ pub fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> String {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::{CitationId, GeneratedInline, generated_inlines_to_plain_text};
-  use crate::font::FontKind;
+  use crate::document::FontKind;
 
   #[test]
   fn generated_text_to_plain_text() {

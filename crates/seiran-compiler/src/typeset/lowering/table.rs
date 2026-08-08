@@ -7,8 +7,7 @@ use super::{
   layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
 };
 use crate::{
-  document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
-  font::FontKind,
+  document::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow},
   typeset::boxes::TableColumn,
 };
 

@@ -10,14 +10,17 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::{debug, info};
 
-use crate::font::{
-  FontConfigs, FontData, FontLoadError, FontMetric, FontMetrics, FontMetricsExt, FontRefs, FontRefsExt, FontType,
-  face_config::{FontFaceConfigs, build_face_configs},
-  shaper::{
-    HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances, ShaperInstancesExt,
-    UnicodeBuffer,
+use crate::{
+  project::{FontConfigs, FontData, FontType},
+  typeset::font::{
+    FontLoadError, FontMetric, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
+    face_config::{FontFaceConfigs, build_face_configs},
+    shaper::{
+      HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
+      ShaperInstancesExt, UnicodeBuffer,
+    },
+    validate_font::{self, MultipleFontValidationErrors},
   },
-  validate_font::{self, MultipleFontValidationErrors},
 };
 
 /// [`FontResources::load`] / [`FontResources::system`] のエラー。
@@ -28,7 +31,7 @@ use crate::font::{
 /// すべて内側のエラーへ委譲し、診断内容を変えない。
 #[derive(Debug, Error, Diagnostic)]
 pub enum FontSystemError {
-  /// フォント解析・メトリクス取得の失敗（[`FontRefs::new`] / [`FontMetrics::new`] に由来）
+  /// フォント解析・メトリクス取得の失敗（`build_font_refs` / `build_font_metrics` に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
   Load(#[from] FontLoadError),
@@ -72,8 +75,8 @@ impl<'a> FontResources<'a> {
   ///
   /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に [`FontSystemError`] を返す。
   pub fn load(configs: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, FontSystemError> {
-    let font_refs = FontRefs::new(configs, font_data)?;
-    let metrics = FontMetrics::new(&font_refs)?;
+    let font_refs = build_font_refs(configs, font_data)?;
+    let metrics = build_font_metrics(&font_refs)?;
 
     let stage_start = Instant::now();
     validate_font::validate_fonts(configs, &font_refs)?;

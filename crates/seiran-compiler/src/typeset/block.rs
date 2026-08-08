@@ -17,14 +17,16 @@ use tracing::debug;
 
 use crate::{
   color::Color,
-  font::{FontKind, FontSystem, FontType, Glyph, GlyphRun, shaper::UnicodeBuffer},
+  document::FontKind,
   length::Length,
+  project::FontType,
   typeset::{
     boxes::{
       Align, Block, HBox, HBoxContent, HItem, PENALTY_FORBID_BREAK, PlacedHItem, TableBox, TableCellBox, TableRowBox,
       max_font_size_in_items,
     },
     breaking::{self, BreakKind, BreakPoint, Lang},
+    font::{FontSystem, Glyph, GlyphRun, UnicodeBuffer},
     lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
 };

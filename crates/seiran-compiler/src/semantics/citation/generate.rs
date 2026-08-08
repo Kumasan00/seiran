@@ -147,8 +147,7 @@ mod tests {
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
-    document::HirDocument,
-    font::FontKind,
+    document::{FontKind, HirDocument},
     project::FilesystemProjectSource,
     semantics::{
       SemanticPolicy,

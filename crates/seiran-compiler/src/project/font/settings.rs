@@ -1,14 +1,14 @@
 //! フォント処理の入力契約となる、検証済み・処理済みのフォント設定。
 //!
 //! TOML に対応する未検証型（`PreFontConfig` 等）と、そこから検証済み値を構築する処理は
-//! `crate::config` に残る（#336）。`font` はこの module の型だけを入力として受け取り、
-//! 設定ファイルの形を知らない。
+//! 兄弟 module `project::config` が持つ（#336、#352）。`crate::typeset::font` はこの module の
+//! 型だけを入力として受け取り、設定ファイルの形を知らない。
 
 use std::{path::PathBuf, str::FromStr};
 
 use thiserror::Error;
 
-use crate::font::map::FontMap;
+use crate::project::font::map::FontMap;
 
 /// 19 フォント種別すべての検証済み設定
 pub type FontConfigs = FontMap<FontConfig>;

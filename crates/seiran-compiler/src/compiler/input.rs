@@ -18,8 +18,7 @@ use tracing::info;
 
 use super::{elapsed_ms, error::CompileError};
 use crate::{
-  font::{FontData, FontDataExt},
-  project::{ProjectSource, SourceSet, config::ProjectConfig},
+  project::{FontData, ProjectSource, SourceSet, config::ProjectConfig},
   semantics::{References, read_references},
   style::Style,
 };
@@ -125,7 +124,7 @@ pub(super) fn load(
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();
-  let font_data = FontData::new(source, &config.font_configs)?;
+  let font_data = FontData::load(source, &config.font_configs)?;
   info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
 
   let sources = read_sources(source, &config.sources)?;

@@ -437,9 +437,9 @@ mod tests {
 
   use super::{dump_metadata, dump_pages, dump_paint_op, dump_publication_link};
   use crate::{
-    font::{FontType, GlyphRun},
     length::Length,
-    typeset::{HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox},
+    project::FontType,
+    typeset::{GlyphRun, HBoxContent, Line, Page, PlacedBlock, PlacedIndexEntry, PositionedBox},
   };
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::document::TheoremClass;
 use crate::{
-  font::FontKind,
+  document::FontKind,
   length::{Length, non_negative},
 };
 
@@ -380,7 +380,7 @@ mod tests {
   use garde::Validate;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
-  use crate::font::FontKind;
+  use crate::document::FontKind;
 
   /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
   /// 本番では `Style.theorems` が同形でこの型を保持する。

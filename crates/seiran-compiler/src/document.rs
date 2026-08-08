@@ -23,7 +23,8 @@
 //!
 //! HIR 木の型は子 module `hir`、HIR の variant が値として直接持つ閉じた語彙型
 //! （[`HeadingLevel`] / [`CaptionPosition`] / [`QuoteKind`] / [`TheoremClass`] / [`MathEnvKind`] /
-//! [`MathDelimiter`] / [`MathVariant`] / [`ColumnAlign`] / [`ColumnWidth`]）はこの module の直下。
+//! [`MathDelimiter`] / [`MathVariant`] / [`ColumnAlign`] / [`ColumnWidth`] / [`FontKind`]）は
+//! この module の直下。
 //! 語彙置き場は型の無制限な受け皿にはせず、HIR の variant と同じ理由で増減する語彙だけを置く
 //! （複数 consumer が使うことは、ここへ置く理由にならない）。
 //!
@@ -32,10 +33,11 @@
 //! HIR は未解決のラベル名・引用キーを持ち、解決済み ID（`LabelId` / `citation::CitationId`）・
 //! カウンタ値・CSL 整形結果・style 由来の表示文字列は持たない。
 //!
-//! 依存方向は `source` / `project` / `length` / `color` / `font` の 5 つだけで、
+//! 依存方向は `source` / `project` / `length` / `color` の 4 つだけで、
 //! `semantics` / `typeset` / `compiler` は知らない。
 
 mod caption;
+mod font_kind;
 mod heading_level;
 mod hir;
 mod math_class;
@@ -45,6 +47,7 @@ mod table_column;
 mod theorem;
 
 pub use caption::CaptionPosition;
+pub use font_kind::FontKind;
 pub use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{

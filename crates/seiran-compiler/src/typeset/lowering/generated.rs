@@ -122,7 +122,7 @@ mod tests {
       GeneratedBlock::Paragraph(vec![
         GeneratedInline::Text("K. Kwan, ".to_string()),
         GeneratedInline::Styled {
-          kind: crate::font::FontKind::SerifItalic,
+          kind: crate::document::FontKind::SerifItalic,
           children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
       ]),
@@ -185,7 +185,7 @@ mod tests {
       LayoutNode::Text(t, s) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
     });
-    assert_eq!(italic.map(|s| return s.font_kind), Some(crate::font::FontKind::SerifItalic), "{layout:?}");
+    assert_eq!(italic.map(|s| return s.font_kind), Some(crate::document::FontKind::SerifItalic), "{layout:?}");
   }
 
   #[test]

@@ -7,8 +7,7 @@ use super::{
   layout_node::{LayoutNode, MathBlockRow, TextStyle},
 };
 use crate::{
-  document::{HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
-  font::FontKind,
+  document::{FontKind, HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   length::Length,
   semantics::CounterValue,
   style::{Alignment, MathScriptStyle, NumberSide},

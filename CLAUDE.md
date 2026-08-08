@@ -58,14 +58,16 @@ cargo test -p <crate_name>                                 # 特定クレート�
 
 ```text
 CLI 引数パース → compiler::input::load 入力読込: config.toml → style.toml → 横断検証
-                       → references → フォント → sources（順序とエラー集約は input に閉じる）
+                       → references → フォントバイト列（project::FontData）→ sources
+                       （順序とエラー集約は input に閉じる）
   → frontend           字句・構文解析・評価: Lexer → Parser → CST → HIR（document::HirDocument）
   → semantics::analyze 意味解析: HIR 1 走査で SemanticFacts を確定し、引用があれば CSL 読込
                        → 整形・書誌生成 → SemanticDocument（HIR + 事実 + 生成物）
-  → font               フォント読込・検証（FontResources / FontSystem）
-  → typeset::layout    組版: SemanticDocument + 設定 + FontSystem → LaidOutDocument
-                       内部順序（画像読込・寸法確定 → lowering → (a) block → (c+d) breaking
-                       → 前付け・後付け → ページラベル → 走り文 → outline）は typeset に閉じる
+  → typeset::layout    組版: SemanticDocument + 設定 + FontResources → LaidOutDocument
+                       フォント資源の構築（typeset::font: 解析 → メトリクス → 検証 →
+                       シェーパー）と内部順序（画像読込・寸法確定 → lowering → (a) block
+                       → (c+d) breaking → 前付け・後付け → ページラベル → 走り文 → outline）
+                       は typeset に閉じる
   → seiran-pdf         (e) render: 確定座標の描画のみ（krilla がフォントサブセット化を内部実施）
   → seiran (CLI)       atomic write でファイル出力
 ```
@@ -106,13 +108,12 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` | seam 部はなし / 子 module のみ length color font source |
-| `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型の所有者 | length color font source project |
-| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document font project |
-| `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color font source project |
-| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style font source project |
-| `font` | フォント読込・シェーピング・検証。`FontKind` / `FontType` / `FontMap` / 処理済みフォント設定の所有 | length color project |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry` に閉じる | font style document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
+| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source |
+| `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |
+| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project |
+| `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
+| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
 | `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に閉じる | 上記すべて + seiran-pdf |
 
 ## コーディング規約
@@ -136,7 +137,7 @@ seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の 
 
   例外: 統合テスト（`tests/`）の共通ヘルパは慣例どおり `tests/common/mod.rs` に置く（`common.rs` だとテストファイルとして扱われるため）。
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `font::shaper` は `typeset::block` が `UnicodeBuffer` を直接参照するため `pub(crate) mod`、`project::config` は入口を `project::config::load` と読ませて `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `project::config` は入口を `project::config::load` と読ませて `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。

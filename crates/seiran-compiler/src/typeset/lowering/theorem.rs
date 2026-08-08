@@ -8,8 +8,7 @@ use super::{
   with_label_anchor,
 };
 use crate::{
-  document::{HirNode, HirNodeKind, TheoremClass},
-  font::FontKind,
+  document::{FontKind, HirNode, HirNodeKind, TheoremClass},
   length::Length,
   semantics::LabelId,
   style::TheoremStyle,

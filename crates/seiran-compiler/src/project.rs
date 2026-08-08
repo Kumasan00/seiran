@@ -7,20 +7,26 @@
 //!
 //! 子 module [`config`] は `config.toml`（物理・実体・メタデータ）のデータモデル・読込・検証を、
 //! `source_set` は読込済みソース集合 [`SourceSet`]（`SourceId` の唯一の発行元）を持つ（#351）。
+//! `font` は config.toml が宣言するフォント資源 — 19 種別の分類（[`FontType`] / [`FontMap`]）・
+//! 検証済み設定（[`FontConfigs`]）・読込済みバイト列（[`FontData`]）を持つ（#352）。
 //! 見た目を決める `style.toml` は crate root の [`crate::style`] の所有で、言語設計原則 P10 の
 //! 区別がそのまま module 境界になっている。
+//!
+//! フォントの解析・検証・シェーピングという**処理**は [`crate::typeset::font`] の側にあり、
+//! この module はその入力（どのファイルをどう使うか）までを持つ。
 //!
 //! **依存の不変条件**: seam 部（この module 直下と `filesystem` / `memory`）は crate 内の他 module に
 //! 依存しない。crate 内依存を持つのは子 module だけで、`config` が `font` / `length` / `color` を、
 //! `source_set` が `source` を参照する（`ProjectConfig.font_configs` が `font::FontConfigs` を、
-//! `SourceSet` が `source::SourceId` を値として持つため）。seam 側を依存ゼロに保つことで、
-//! `font` → `project`（seam）と `project::config` → `font` が循環にならない。
+//! `SourceSet` が `source::SourceId` を値として持つため）。`font` が依存するのは同 module の seam
+//! （[`ProjectSource`] / [`ProjectPath`]）だけで、`config` → `font` → seam は一方向に閉じる。
 
 // `config` だけは module 名が名前空間として意味を持つので `pub(crate)` で公開する。
 // 入口が `project::config::load` と読めることで、`style::load`（style.toml）と取り違えようがなくなる。
 // このため `ProjectConfig` 等の型も facade へ再エクスポートしない（同じ型に 2 つの公開パスを作らない）。
 pub(crate) mod config;
 mod filesystem;
+mod font;
 mod memory;
 mod source_set;
 
@@ -32,6 +38,11 @@ use std::{
 #[doc(hidden)]
 pub use config::test_support;
 pub use filesystem::FilesystemProjectSource;
+// フォント資源（19 種別の分類・検証済み設定・読込済みバイト列）は `font` の所有だが、
+// 利用側は常に `project::FontType` のように最浅のパスで参照する。`FontMap` は
+// `typeset::font` が `FontRefs` / `FontMetrics` の実体に使うので facade へ出す。
+// `FontReadError` は `?` で miette::Report へ変換される経路しかなく名指しされないので出さない。
+pub(crate) use font::{Feature, FontConfig, FontConfigs, FontData, FontMap, FontType, TextDirection, VariationAxis};
 pub use memory::MemoryProjectSource;
 use miette::Diagnostic;
 pub(crate) use source_set::SourceSet;

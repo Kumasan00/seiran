@@ -8,8 +8,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  document::HeadingLevel,
-  font::FontKind,
+  document::{FontKind, HeadingLevel},
   length::{Length, non_negative, positive},
 };
 
@@ -241,7 +240,10 @@ mod tests {
   use garde::Validate;
 
   use super::{HeadingStyle, HeadingStyles, default_for_level};
-  use crate::{document::HeadingLevel, font::FontKind, length::Length};
+  use crate::{
+    document::{FontKind, HeadingLevel},
+    length::Length,
+  };
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {

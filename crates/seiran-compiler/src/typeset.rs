@@ -8,11 +8,16 @@
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
 //! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`compiler::publication` が
 //! `Publication` へ写すために読むぶんだけを facade へ出す。
+//!
+//! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ
+//! （#352）。入力の 19 種別・設定・バイト列は `project::font` の所有で、この module はそこから
+//! フォント資源を組み立てて使う側になる。
 
 mod block;
 mod boxes;
 mod breaking;
 mod error;
+mod font;
 mod geometry;
 mod image;
 mod lowering;
@@ -32,6 +37,10 @@ pub(crate) use boxes::{
   TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
 };
 pub(crate) use error::TypesetError;
+// フォント資源のハンドル `FontResources` と、`compiler::publication` が `Publication` へ写す
+// シェイピング結果。フォントの解析・検証・シェーパー構築は `font` に閉じており、`FontSystem` /
+// `FontRefs` / `FontMetrics` / 拡張 trait は `typeset` の外から見えない（#352）。
+pub(crate) use font::{FontResources, Glyph, GlyphRun};
 // 入口は `layout` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
 // 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
 // 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
@@ -43,27 +52,31 @@ pub(crate) use pagination::LaidOutDocument;
 #[allow(unused_imports)]
 pub(crate) use pagination::OutlineEntry;
 
-use crate::{font::FontSystem, project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
+use crate::{project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
 
 /// 意味解析の成果物を、描画直前の確定レイアウトへ組版する。
 ///
 /// 画像は `document` が参照しているぶんだけを `source` 経由で読み込み、自然寸法から表示寸法を
 /// 確定して結果へ同梱する（生バイト列は描画の資源束が要求する）。フォント資源は呼び出し元が
-/// 構築したものを借りる（`font` module の移設は別 issue）。
+/// 構築したものを借り、そこからシェーパーを組むのはこの中（`font` module に閉じる、#352）。
 ///
 /// # Errors
 ///
-/// 画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に失敗した場合にエラーを返す。
+/// シェーパーの構築、画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に
+/// 失敗した場合にエラーを返す。
 pub(crate) fn layout(
   source: &dyn crate::project::ProjectSource,
   config: &ProjectConfig,
   style: &Style,
-  font_system: &FontSystem<'_>,
+  font_resources: &FontResources<'_>,
   document: &SemanticDocument,
 ) -> Result<LaidOutDocument, TypesetError> {
+  // シェーパー構築は画像読込より前に置く — 両方が失敗する入力で報告されるエラーを、
+  // フォント資源を呼び出し元が組んでいた頃と同じ側（フォント）に保つため。
+  let font_system = font_resources.system()?;
   let image_paths = image::collect_image_paths(document.hir());
   let images = image::load_image_resources(source, &image_paths)?;
-  let ctx = pagination::TypesetContext::new(config, style, font_system);
+  let ctx = pagination::TypesetContext::new(config, style, &font_system);
   return pagination::paginate(&ctx, document, images, image_paths);
 }
 

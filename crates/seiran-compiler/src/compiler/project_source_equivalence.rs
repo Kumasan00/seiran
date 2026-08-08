@@ -14,8 +14,7 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  font::{FontData, FontDataExt, FontType},
-  project::{MemoryProjectSource, config::ProjectConfig},
+  project::{FontData, FontType, MemoryProjectSource, config::ProjectConfig},
   style::Style,
 };
 
@@ -55,11 +54,11 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
   let mut config = base_config;
   config.sources = vec![PathBuf::from(SOURCE_REL)];
   let fs_source = crate::project::FilesystemProjectSource::new();
-  let fs_font_data = FontData::new(&fs_source, &config.font_configs).expect("フォントの読み込み");
+  let fs_font_data = FontData::load(&fs_source, &config.font_configs).expect("フォントの読み込み");
 
   // Arrange — memory 経由（同じ内容を事前登録し、実ディスクには触れない）
   let memory = memory_source_for(&config, &style);
-  let mem_font_data = FontData::new(&memory, &config.font_configs).expect("フォントの読み込み（メモリ）");
+  let mem_font_data = FontData::load(&memory, &config.font_configs).expect("フォントの読み込み（メモリ）");
 
   // Act
   let fs_laid_out =
@@ -92,7 +91,7 @@ fn shared_font_path_is_read_only_once() {
   );
 
   // Act
-  let _font_data = FontData::new(&memory, &config.font_configs).expect("フォントの読み込み（メモリ）");
+  let _font_data = FontData::load(&memory, &config.font_configs).expect("フォントの読み込み（メモリ）");
 
   // Assert — 19 種別ぶん要求しても、共有パスの読込は 1 回だけ
   assert_eq!(memory.read_count(&shared_path), 1, "共有フォントパスの読込は 1 回だけのはず");
