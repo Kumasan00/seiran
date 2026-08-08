@@ -9,13 +9,13 @@ use std::{
   sync::Arc,
 };
 
-use super::{build_pages, dump::dump_pages};
+use super::build_pages;
 use crate::{
   length::Length,
   project::{FontData, MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
   style::Style,
-  typeset::{AnchorMark, Page, PlacedBlock},
+  typeset::{AnchorMark, Page, PlacedBlock, dump_pages},
 };
 
 /// golden 比較対象の入力名。

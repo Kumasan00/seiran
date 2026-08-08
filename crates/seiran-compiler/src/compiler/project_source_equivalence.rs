@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 
 use super::{
   build_pages_with_source,
-  dump::dump_pages,
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
   project::{FontData, FontType, MemoryProjectSource, config::ProjectConfig},
   style::Style,
+  typeset::dump_pages,
 };
 
 /// 組版対象の fixture ソース（`\cite` を含み、CSL スタイル・ロケールの読込経路も通る）。

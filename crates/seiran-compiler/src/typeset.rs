@@ -23,19 +23,26 @@ mod image;
 mod lowering;
 mod pagination;
 
+// 確定ページ列の決定的テキストダンプ（golden 比較用）。走査対象が `boxes` の中間型なので所有は
+// こちら側で、`compiler::golden` は `dump_pages` の 1 関数だけを借りる（#353）。
+#[cfg(test)]
+mod dump;
+// 外側の module のテストが確定レイアウトを組み立てるための fixture builder（#353）。
+#[cfg(test)]
+pub(crate) mod test_fixtures;
+
 // 確定レイアウトを `Publication` へ写す `compiler::publication` が、ページの中身（配置済みブロック・
-// 表の行・箱の内容）を走査するために名指しする型と、表セルの配置・計測ヘルパ。`HBox` / `Line` /
-// `Placed*` / `PositionedBox` / `TableCellBox` / `TableRowBox` / `measure_items_width` は
-// `compiler` 配下の `#[cfg(test)] mod tests`（`dump` / `publication` のテスト）が組版済みページを
-// 組み立て・走査するために要る。組版の段を呼ぶための型（`PageGeometry` / `KnuthPlassBreaker` /
-// 各段の入力）は入口が `layout` 1 操作になったので facade から外した（#350）。同様に
-// `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
-#[allow(unused_imports)]
+// 表の行・箱の内容）を走査するために名指しする型と、表セルの配置・計測ヘルパ。ここに載るのは
+// **本体コードに消費者がある名前だけ**で、テストが確定レイアウトを組み立てる手段は
+// `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。組版の段を呼ぶための型
+// （`PageGeometry` / `KnuthPlassBreaker` / 各段の入力）は入口が `layout` 1 操作になったので
+// facade から外した（#350）。同様に `Align` / `FootnoteId` も `typeset` の外に消費者がいない（#326）。
 pub(crate) use boxes::{
-  AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-  PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox,
-  TableColumn, TableRowBox, layout_row_cells, max_font_size_in_items, measure_items_width,
+  AnchorId, AnchorMark, HBoxContent, HItem, LinkTarget, Page, PlacedBlock, PlacedTableRow, TableColumn,
+  layout_row_cells, max_font_size_in_items,
 };
+#[cfg(test)]
+pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;
 // フォント資源のハンドル `FontResources` と、`compiler::publication` が `Publication` へ写す
 // シェイピング結果。フォントの解析・検証・シェーパー構築は `font` に閉じており、`FontSystem` /
@@ -46,11 +53,6 @@ pub(crate) use font::{FontResources, Glyph, GlyphRun};
 // 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
 pub(crate) use geometry::{LayoutValidationError, validate_layout};
 pub(crate) use pagination::LaidOutDocument;
-// `OutlineEntry` を本体コードから名指しする消費者はいない（`compiler::publication` は
-// `laid_out.outline_entries` をフィールドとして走査するだけ）。`publication` の
-// `#[cfg(test)] mod tests` が確定レイアウトを組み立てるために必要なので facade へ出す。
-#[allow(unused_imports)]
-pub(crate) use pagination::OutlineEntry;
 
 use crate::{project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
 
@@ -80,9 +82,13 @@ pub(crate) fn layout(
   return pagination::paginate(&ctx, document, images, image_paths);
 }
 
-/// 各フィクスチャ（`tests/text/*.sei`）に対して `parse_source → analyze → lowering` を
-/// 通し、パニックしないことを確認する統合テスト（旧 `typeset` crate の `tests/smoke.rs`、
-/// #307 で本 module 直下の inline テストへ移設）
+/// lowering の単体テスト
+///
+/// かつてここには各フィクスチャを `parse_source → analyze → lowering` に通して
+/// パニックしないことだけを見る `smoke_*_fixture` が 14 件あったが、対象のフィクスチャは
+/// すべて上位のテスト面（`figure` は `compiler::pdf_structure` の `PDF_STRUCTURE_INPUTS`、
+/// 残る 13 件は `compiler::golden` の `GOLDEN_INPUTS`）が確定出力ごと assert しているため
+/// 削除した（#353）。ここに残すのは lowering の結果を実際に検証するものだけ。
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -98,42 +104,6 @@ mod tests {
     path.push(format!("{name}.sei"));
     return path;
   }
-
-  /// 1 ファイルに対して parse → resolve → lower までを実行し、パニックしないことを確認する
-  fn smoke_through_lowering(name: &str) { let _layout_nodes = lower_fixture(name); }
-
-  #[test]
-  fn smoke_text_fixture() { smoke_through_lowering("text"); }
-
-  #[test]
-  fn smoke_figure_fixture() { smoke_through_lowering("figure"); }
-
-  #[test]
-  fn smoke_equation_fixture() { smoke_through_lowering("equation"); }
-
-  #[test]
-  fn smoke_align_fixture() { smoke_through_lowering("align"); }
-
-  #[test]
-  fn smoke_gather_fixture() { smoke_through_lowering("gather"); }
-
-  #[test]
-  fn smoke_split_fixture() { smoke_through_lowering("split"); }
-
-  #[test]
-  fn smoke_multiline_fixture() { smoke_through_lowering("multiline"); }
-
-  #[test]
-  fn smoke_cases_fixture() { smoke_through_lowering("cases"); }
-
-  #[test]
-  fn smoke_matrix_fixture() { smoke_through_lowering("matrix"); }
-
-  #[test]
-  fn smoke_ref_fixture() { smoke_through_lowering("ref"); }
-
-  #[test]
-  fn smoke_itemize_fixture() { smoke_through_lowering("itemize"); }
 
   /// `tests/text/<name>.sei` を parse → analyze → lower し、レイアウトノード列を返すヘルパ
   fn lower_fixture(name: &str) -> Vec<LayoutNode> {
@@ -186,13 +156,4 @@ mod tests {
       assert!(markers.iter().any(|m| return m == expected), "マーカー {expected:?} が見つからない: {markers:?}");
     }
   }
-
-  #[test]
-  fn smoke_table_fixture() { smoke_through_lowering("table"); }
-
-  #[test]
-  fn smoke_toc_fixture() { smoke_through_lowering("toc"); }
-
-  #[test]
-  fn smoke_theorem_fixture() { smoke_through_lowering("theorem"); }
 }
