@@ -407,14 +407,16 @@ mod tests {
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, FontData, FontType,
+      FontConfig, FontConfigs, FontData, FontType, ProjectPath,
       config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, AnchorMark, FontResources, GlyphRun, HBox, HBoxContent, LaidOutDocument, Line, LinkTarget,
-      OutlineEntry, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber,
-      PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,
+      AnchorId, FontResources, Page, TableColumn,
+      test_fixtures::{
+        BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
+        rule_block, rule_line, table_block,
+      },
     },
   };
 
@@ -487,60 +489,12 @@ mod tests {
     return ResourceBundle::new(fonts, font_metrics, std::collections::HashMap::new()).expect("ResourceBundle の構築");
   }
 
-  fn empty_page() -> Page {
-    return Page {
-      blocks: Vec::new(),
-      header: Vec::new(),
-      footer: Vec::new(),
-      footnotes: Vec::new(),
-      anchors: Vec::new(),
-      links: Vec::new(),
-      index_entries: Vec::new(),
-      background_color: None,
-    };
-  }
+  /// 何も置かれていないページを返す。
+  fn empty_page() -> Page { return PageBuilder::new().build(); }
 
-  fn glyph_run(text: &str) -> GlyphRun {
-    return GlyphRun {
-      font_size: Length::pt(10.0),
-      text: text.to_string(),
-      glyphs: Vec::new(),
-      font_type: FontType::Serif,
-      color: None,
-    };
-  }
-
-  fn line_with_box(content: HBoxContent, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
-    return PlacedBlock::Line {
-      line: Line {
-        boxes: vec![PositionedBox {
-          content,
-          x,
-          dy,
-          width: Length::pt(0.0),
-        }],
-        height: Length::pt(10.0),
-        depth: Length::pt(2.0),
-        is_last: true,
-        links: Vec::new(),
-        footnotes: Vec::new(),
-        index_marks: Vec::new(),
-      },
-      baseline_y,
-    };
-  }
-
-  fn laid_out(pages: Vec<Page>, outline_entries: Vec<OutlineEntry>) -> LaidOutDocument {
-    return LaidOutDocument {
-      pages,
-      outline_entries,
-      image_paths: Vec::new(),
-      image_bytes: std::collections::HashMap::new(),
-    };
-  }
-
-  fn build(config: &ProjectConfig, pages: Vec<Page>, outline_entries: Vec<OutlineEntry>) -> Publication {
-    return build_publication(config, test_resources(), &laid_out(pages, outline_entries));
+  /// 確定レイアウトを `Publication` へ写す（`outline` は `(見出しレベル, 表示テキスト)` の並び）。
+  fn build(config: &ProjectConfig, pages: Vec<Page>, outline: Vec<(HeadingLevel, String)>) -> Publication {
+    return build_publication(config, test_resources(), &laid_out(pages, outline));
   }
 
   #[test]
@@ -548,13 +502,9 @@ mod tests {
     // Arrange
     let config = test_config();
     let run = glyph_run("hello");
-    let mut page = empty_page();
-    page.blocks = vec![line_with_box(
-      HBoxContent::Glyphs(run.clone()),
-      Length::pt(5.0),
-      Length::pt(0.0),
-      Length::pt(100.0),
-    )];
+    let page = PageBuilder::new()
+      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -580,16 +530,9 @@ mod tests {
   fn build_flattens_inline_rule_above_baseline() {
     // Arrange
     let config = test_config();
-    let mut page = empty_page();
-    page.blocks = vec![line_with_box(
-      HBoxContent::Rule {
-        width: Length::pt(30.0),
-        height: Length::pt(1.0),
-      },
-      Length::pt(0.0),
-      Length::pt(0.0),
-      Length::pt(50.0),
-    )];
+    let page = PageBuilder::new()
+      .block(rule_line(Length::pt(30.0), Length::pt(1.0), Length::pt(0.0), Length::pt(0.0), Length::pt(50.0)))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -618,35 +561,13 @@ mod tests {
     let config = test_config();
     let run_a = glyph_run("a");
     let run_b = glyph_run("b");
-    let atom = HBoxContent::Atom(vec![
-      PlacedHItem {
-        item: HBox {
-          content: HBoxContent::Glyphs(run_a.clone()),
-          width: Length::pt(5.0),
-          height: Length::pt(10.0),
-          depth: Length::pt(0.0),
-        },
-        dx: Length::pt(0.0),
-        dy: Length::pt(3.0),
-      },
-      PlacedHItem {
-        item: HBox {
-          content: HBoxContent::Glyphs(run_b.clone()),
-          width: Length::pt(5.0),
-          height: Length::pt(10.0),
-          depth: Length::pt(0.0),
-        },
-        dx: Length::pt(5.0),
-        dy: Length::pt(0.0),
-      },
-    ]);
-    let mut page = empty_page();
-    page.blocks = vec![line_with_box(
-      atom,
-      Length::pt(10.0),
-      Length::pt(0.0),
-      Length::pt(100.0),
-    )];
+    let children = vec![
+      (run_a.clone(), BoxSize::pt(5.0, 10.0, 0.0), Length::pt(0.0), Length::pt(3.0)),
+      (run_b.clone(), BoxSize::pt(5.0, 10.0, 0.0), Length::pt(5.0), Length::pt(0.0)),
+    ];
+    let page = PageBuilder::new()
+      .block(atom_line(children, Length::pt(10.0), Length::pt(0.0), Length::pt(100.0)))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -681,15 +602,10 @@ mod tests {
   fn build_places_background_fill_first_when_style_has_background_color() {
     // Arrange
     let config = test_config();
-    let mut page = empty_page();
-    page.background_color = Some([200, 200, 200]);
-    page.blocks = vec![PlacedBlock::Rule {
-      x: Length::pt(0.0),
-      y: Length::pt(0.0),
-      width: Length::pt(10.0),
-      height: Length::pt(1.0),
-      color: None,
-    }];
+    let page = PageBuilder::new()
+      .background_color([200, 200, 200])
+      .block(rule_block(Length::pt(0.0), Length::pt(0.0), Length::pt(10.0), Length::pt(1.0), None))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -728,15 +644,16 @@ mod tests {
   fn build_flattens_image_block() {
     // Arrange
     let config = test_config();
-    let mut page = empty_page();
-    page.blocks = vec![PlacedBlock::Image {
-      path: crate::project::ProjectPath::new("figures/a.png"),
-      x: Length::pt(10.0),
-      y: Length::pt(20.0),
-      width: Length::pt(100.0),
-      height: Length::pt(50.0),
-      target_dpi: Some(300),
-    }];
+    let page = PageBuilder::new()
+      .block(image_block(
+        ProjectPath::new("figures/a.png"),
+        Length::pt(10.0),
+        Length::pt(20.0),
+        Length::pt(100.0),
+        Length::pt(50.0),
+        Some(300),
+      ))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -764,27 +681,14 @@ mod tests {
     let config = test_config();
     let body_run = glyph_run("x=1");
     let number_run = glyph_run("(1)");
-    let mut page = empty_page();
-    page.blocks = vec![PlacedBlock::MathBlock {
-      body: HBox {
-        content: HBoxContent::Glyphs(body_run.clone()),
-        width: Length::pt(20.0),
-        height: Length::pt(10.0),
-        depth: Length::pt(0.0),
-      },
-      x: Length::pt(10.0),
-      baseline_y: Length::pt(200.0),
-      numbers: vec![PlacedMathNumber {
-        content: HBox {
-          content: HBoxContent::Glyphs(number_run.clone()),
-          width: Length::pt(15.0),
-          height: Length::pt(10.0),
-          depth: Length::pt(0.0),
-        },
-        x: Length::pt(300.0),
-        baseline_y: Length::pt(200.0),
-      }],
-    }];
+    let page = PageBuilder::new()
+      .block(math_block(
+        (body_run.clone(), BoxSize::pt(20.0, 10.0, 0.0)),
+        Length::pt(10.0),
+        Length::pt(200.0),
+        vec![(number_run.clone(), BoxSize::pt(15.0, 10.0, 0.0), Length::pt(300.0), Length::pt(200.0))],
+      ))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -824,33 +728,23 @@ mod tests {
       align: crate::document::ColumnAlign::Left,
       width: crate::document::ColumnWidth::Auto,
     };
-    let row = TableRowBox {
-      cells: vec![TableCellBox {
-        items: vec![crate::typeset::HItem::Box(HBox {
-          content: HBoxContent::Glyphs(cell_run),
-          width: Length::pt(30.0),
-          height: Length::pt(10.0),
-          depth: Length::pt(0.0),
-        })],
-        span: 1,
-      }],
-      rule_above: true,
-    };
-    let placed_row = PlacedTableRow {
-      row,
+    let row = TableRowSpec {
       top_y: Length::pt(40.0),
       height: Length::pt(15.0),
+      rule_above: true,
+      cells: vec![vec![(cell_run, BoxSize::pt(30.0, 10.0, 0.0))]],
     };
-    let mut page = empty_page();
-    page.blocks = vec![PlacedBlock::Table {
-      x: Length::pt(0.0),
-      columns: vec![column],
-      col_widths: vec![Length::pt(100.0)],
-      rows: vec![placed_row],
-      cell_padding: Length::pt(4.0),
-      rule_thickness: Length::pt(0.5),
-      rule_color: None,
-    }];
+    let page = PageBuilder::new()
+      .block(table_block(
+        Length::pt(0.0),
+        vec![column],
+        vec![Length::pt(100.0)],
+        vec![row],
+        Length::pt(4.0),
+        Length::pt(0.5),
+        None,
+      ))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -867,24 +761,14 @@ mod tests {
     // Arrange
     let config = test_config();
     let rule_at = |y: f32| {
-      return PlacedBlock::Rule {
-        x: Length::pt(0.0),
-        y: Length::pt(y),
-        width: Length::pt(1.0),
-        height: Length::pt(1.0),
-        color: None,
-      };
+      return rule_block(Length::pt(0.0), Length::pt(y), Length::pt(1.0), Length::pt(1.0), None);
     };
-    let mut page = empty_page();
-    page.blocks = vec![rule_at(1.0)];
-    page.header = vec![rule_at(2.0)];
-    page.footer = vec![rule_at(3.0)];
-    page.footnotes = vec![PlacedFootnote {
-      number: 1,
-      index: 0,
-      continued: false,
-      blocks: vec![rule_at(4.0)],
-    }];
+    let page = PageBuilder::new()
+      .block(rule_at(1.0))
+      .header_block(rule_at(2.0))
+      .footer_block(rule_at(3.0))
+      .footnote(1, vec![rule_at(4.0)])
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -907,14 +791,9 @@ mod tests {
   fn build_keeps_external_link() {
     // Arrange
     let config = test_config();
-    let mut page = empty_page();
-    page.links = vec![PlacedLink {
-      target: LinkTarget::External("https://example.com".to_string()),
-      x: Length::pt(1.0),
-      y: Length::pt(2.0),
-      width: Length::pt(3.0),
-      height: Length::pt(4.0),
-    }];
+    let page = PageBuilder::new()
+      .external_link("https://example.com", Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -931,19 +810,10 @@ mod tests {
     // Arrange
     let config = test_config();
     let label = LabelId::new("fig:1");
-    let mut page = empty_page();
-    page.anchors = vec![PlacedAnchor {
-      mark: AnchorMark::Label(label.clone()),
-      x: Length::pt(0.0),
-      y: Length::pt(50.0),
-    }];
-    page.links = vec![PlacedLink {
-      target: LinkTarget::Internal(AnchorId::Label(label)),
-      x: Length::pt(1.0),
-      y: Length::pt(2.0),
-      width: Length::pt(3.0),
-      height: Length::pt(4.0),
-    }];
+    let page = PageBuilder::new()
+      .label_anchor(label.clone(), Length::pt(0.0), Length::pt(50.0))
+      .internal_link(AnchorId::Label(label), Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -959,14 +829,15 @@ mod tests {
   fn build_drops_internal_link_with_no_matching_anchor() {
     // Arrange
     let config = test_config();
-    let mut page = empty_page();
-    page.links = vec![PlacedLink {
-      target: LinkTarget::Internal(AnchorId::Label(LabelId::new("missing"))),
-      x: Length::pt(1.0),
-      y: Length::pt(2.0),
-      width: Length::pt(3.0),
-      height: Length::pt(4.0),
-    }];
+    let page = PageBuilder::new()
+      .internal_link(
+        AnchorId::Label(LabelId::new("missing")),
+        Length::pt(1.0),
+        Length::pt(2.0),
+        Length::pt(3.0),
+        Length::pt(4.0),
+      )
+      .build();
 
     // Act
     let publication = build(&config, vec![page], vec![]);
@@ -981,16 +852,8 @@ mod tests {
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let key = HeadingKey::new(0);
-    let mut page = empty_page();
-    page.anchors = vec![PlacedAnchor {
-      mark: AnchorMark::Heading { key, label: None },
-      x: Length::pt(0.0),
-      y: Length::pt(10.0),
-    }];
-    let outline_entries = vec![OutlineEntry {
-      level: HeadingLevel::Chapter,
-      text: "第一章".to_string(),
-    }];
+    let page = PageBuilder::new().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
+    let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
     // Act
     let publication = build(&config, vec![page], outline_entries);
@@ -1007,16 +870,8 @@ mod tests {
     // Arrange
     let config = test_config();
     let key = HeadingKey::new(0);
-    let mut page = empty_page();
-    page.anchors = vec![PlacedAnchor {
-      mark: AnchorMark::Heading { key, label: None },
-      x: Length::pt(0.0),
-      y: Length::pt(10.0),
-    }];
-    let outline_entries = vec![OutlineEntry {
-      level: HeadingLevel::Chapter,
-      text: "第一章".to_string(),
-    }];
+    let page = PageBuilder::new().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
+    let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
     // Act
     let publication = build(&config, vec![page], outline_entries);
@@ -1031,10 +886,7 @@ mod tests {
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let page = empty_page();
-    let outline_entries = vec![OutlineEntry {
-      level: HeadingLevel::Chapter,
-      text: "第一章".to_string(),
-    }];
+    let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
     // Act
     let publication = build(&config, vec![page], outline_entries);

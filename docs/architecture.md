@@ -283,10 +283,11 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `style::math::MathStyle` とは別概念 — 同名（`MathStyle`）へ戻すと衝突が再発する。
 - **単一 consumer の型はここに置かない**。記号の数式クラス `MathClass`（`\mathord` / `\mathbin` 等。
   将来の数式スペーシング実装向けに記号テーブルへ記録するのみ）は唯一の消費者が `frontend` のため
-  `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。確定レイアウトの決定的テキスト
-  ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
-  主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
-  `seiran_compiler::compiler::dump` に置く。
+  `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。決定的テキストダンプも同様に
+  唯一の消費者が golden テストなので共有 module へは置かず、**走査対象の型を所有する側**に分けて置く
+  —— `dump_pages`（`typeset::Page` 用）は `typeset::dump`、`dump_publication`
+  （`seiran_pdf::Publication` 用、golden 主入口 `layout_dumps_match_golden` が使う）は
+  `compiler::dump`（#353）。
 - **アンカーは型で namespace を分ける**。`typeset::boxes` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
   （`semantics` の `HeadingKey` / `LabelId` / `CitationId` / 組版側の `FootnoteId`）で区別する。
@@ -675,7 +676,7 @@ pub(crate) fn layout(
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam だが `typeset::breaking` 止まりで、
 どの breaker を使うかは `pagination::TypesetContext` が持つ（段ごとに渡し分ける余地を外へ出さない）。
 `lower_sources_with_headings` / `LoweringContext` / `LayoutNode` は root facade には載せず、
-`typeset` module 直下の smoke テストが `super::lowering::` から直接引く。lowering は意味解析を
+`typeset` module 直下の lowering テストが `super::lowering::` から直接引く。lowering は意味解析を
 行わないため失敗しない（`Result` を返す公開関数が無い）— 単一ソース用の薄いラッパーも持たない
 （複数ソースの束ね方は `document::HirDocument::groups()` 側の関心事）。
 
@@ -687,10 +688,14 @@ pub(crate) fn layout(
 `boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
-`compiler::publication` が `Publication` へ写すために走査する型（`Page` / `PlacedBlock` / `HItem` /
-`HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` / `TableColumn` と表セルの
-配置・計測ヘルパ）と、`compiler` 配下の `#[cfg(test)] mod tests` が組版済みページを組み立て・走査する
-のに使う型だけで、`Align` / `FootnoteId` のように外に消費者がいないものは出さない（#326）。
+**本体コードに消費者がある型だけ** — `compiler::publication` が `Publication` へ写すために走査する
+`Page` / `PlacedBlock` / `HItem` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` /
+`LinkTarget` / `TableColumn` と表セルの配置・計測ヘルパで、`Align` / `FootnoteId` のように外に
+消費者がいないものは出さない（#326）。かつては `HBox` / `Line` / `PositionedBox` / `Placed*` /
+`TableCellBox` / `TableRowBox` / `OutlineEntry` / `measure_items_width` も「`compiler` 配下の
+`#[cfg(test)] mod tests` が組版済みページを組み立て・走査するため」に facade へ出していた
+（`#[allow(unused_imports)]` 付き）が、テストが中間型のフィールド構成へ結合して再編を妨げるため
+削除し、代わりに下の 2 つの `#[cfg(test)]` 子 module を置いた（#353）。
 シェーピング結果 `GlyphRun` / `Glyph` は `boxes` にはなく子 module `font` にある（下の `font` 項参照）。
 `typeset` root facade はこの 2 型と `FontResources` を `compiler` 向けに再エクスポートし、`typeset`
 内部の消費者は `typeset::font::Glyph` / `typeset::font::GlyphRun` を直接 import する（`boxes` と
@@ -1059,6 +1064,29 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 採番（`per_page_footnote_numbers`）は `continued` の断片を数えない — 数えると繰越先ページで番号を振り直して
 しまう。
 
+#### テスト用子 module（`#[cfg(test)]` 限定）
+
+組版中間型を production の facade へ出さずにテストを成立させるための 2 つ。どちらも `#[cfg(test)]` で、
+リリースビルドには存在しない（#353）。
+
+| module | 役割 | 外への出し方 |
+| --- | --- | --- |
+| `test_fixtures` | 確定レイアウトの fixture builder。`PageBuilder` と `glyph_line` / `rule_line` / `atom_line` / `rule_block` / `image_block` / `math_block` / `table_block` / `laid_out` ほか | `pub(crate) mod`（`compiler::publication` / `typeset::dump` のテストが使う） |
+| `dump` | 確定ページ列（`Vec<Page>`）の決定的テキストダンプ `dump_pages` | root facade から `pub(crate) use dump::dump_pages`（関数 1 つだけ） |
+
+`test_fixtures` の**不変条件**: 関数・メソッドの引数型にも返り値型にも `HBox` / `Line` /
+`PositionedBox` / `PlacedHItem` / `PlacedFootnote` / `PlacedLink` / `PlacedAnchor` /
+`PlacedMathNumber` / `PlacedIndexEntry` / `TableCellBox` / `TableRowBox` / `OutlineEntry` を現さない。
+受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、返すのは `Page` / `PlacedBlock` /
+`LaidOutDocument` / `GlyphRun` に限る。箱と行の寸法は専用の引数まとめ型 `BoxSize` / `LineMetrics`、
+表の行は `TableRowSpec` で渡す。この規約が破れると外側のテストが再び中間型のフィールド構成へ結合する。
+
+`dump` を `compiler` ではなく `typeset` が持つのは、走査対象が `boxes` の中間型だから。
+`Publication` のダンプ（`compiler::dump`）とは別の型の別の表現で、共有するのは丸め桁数（0.01pt）と
+負のゼロ正規化の規約だけ。golden 資産 `tests/golden/*.txt` は `Publication` 側のダンプが生成し、
+`dump_pages` の消費者（`compiler::golden` の 4 テストと `compiler::project_source_equivalence`）は
+いずれもダンプ同士の自己比較なので golden ファイルを読まない。
+
 ### `compiler`
 
 #### 責務
@@ -1146,14 +1174,15 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 唯一の消費者がテストであるため、`document` のような共有 module ではなく `compiler` に置く。
 
-- `dump`: `dump_pages`（確定ページ列 `typeset::Page` の決定的テキストダンプ）と `dump_publication`
-  （`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/言語/キーワードのメタデータ
-  → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク → しおりの順に、内部の
-  `dump_metadata` 補助関数を介してダンプする）
-- `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
+- `dump`: `dump_publication`（`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/
+  言語/キーワードのメタデータ → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク →
+  しおりの順に、内部の `dump_metadata` 補助関数を介してダンプする）。確定ページ列
+  （`typeset::Page`）のダンプ `dump_pages` は走査対象の型を所有する `typeset::dump` 側にあり
+  （#353）、ここからは `crate::typeset::dump_pages` として借りる
+- `golden`: レイアウトダンプ golden の比較テスト。10 テストのうち golden ファイル
   （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
   （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、`dump_input_via_compile` を介して `super::compile()`
-  → `dump_publication` を通る（issue #306）。残り 8 テストは golden ファイルを介さず 2 通りに分かれる
+  → `dump_publication` を通る（issue #306）。残り 9 テストは golden ファイルを介さず 3 通りに分かれる
   ——`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する
   （`index_marks_are_invisible_to_layout`、style 差分 3 種 `layout_dump_is_deterministic_across_builds`
   / `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`）か、
@@ -1161,11 +1190,14 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   （`keep_with_next_prevents_heading_orphan_end_to_end`、脚注ページ単位採番 2 種
   `per_page_footnote_numbering_restarts_on_each_page` /
   `continuous_footnote_numbering_runs_through_pages`、
-  `long_footnote_splits_across_pages_without_overlapping_body`）。`Publication` / `dump_publication`
-  は `typeset::Page` レベルの anchor・索引語の表現を持たないため、この 8 テストは現時点では移行して
-  いない——対応する golden 移行は今後のフェーズ判断次第
+  `long_footnote_splits_across_pages_without_overlapping_body`）か、設定オーバーライドの 2 実装
+  （型付き版と TOML 版）が同じ値へ収束することだけを見る `config_overrides_typed_and_toml_stay_in_sync`。
+  `Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語の表現を持たないため、
+  ダンプ比較の 4 テストは現時点では移行していない——対応する golden 移行は今後のフェーズ判断次第
 - `diagnostics`: miette 診断メッセージの golden テスト
 - `pdf_structure`: `lopdf` による独立 reader での PDF 構造 golden テスト
+- `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
+  同じ確定レイアウト（`dump_pages` の文字列）を返すこと、同じフォントを複数回読まないことの検証（#300）
 
 検証手段の使い分け（レイアウトダンプ golden か PDF バイト比較か）・golden の再生成手順は
 `verify-typesetting` skill を参照する。

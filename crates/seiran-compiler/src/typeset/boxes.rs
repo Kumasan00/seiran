@@ -23,7 +23,10 @@ pub use link::{AnchorId, AnchorMark, FootnoteId, LinkTarget};
 pub use page::{
   Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow,
 };
+// セル内容の自然幅は本体コードに消費者がおらず、golden ダンプ（`typeset::dump`）だけが読む。
+#[cfg(test)]
+pub use table_box::measure_items_width;
 pub use table_box::{
   TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, layout_row_cells, max_font_size_in_items,
-  measure_items_width, resolve_column_widths, table_row_height,
+  resolve_column_widths, table_row_height,
 };

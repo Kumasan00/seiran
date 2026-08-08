@@ -139,7 +139,7 @@ mod tests {
   use crate::{
     semantics::{HeadingKey, LabelId},
     style::PageNumbering,
-    typeset::{AnchorMark, Page, PlacedAnchor},
+    typeset::boxes::{AnchorMark, Page, PlacedAnchor},
   };
 
   /// 指定マークのアンカーだけを持つページを作るヘルパ

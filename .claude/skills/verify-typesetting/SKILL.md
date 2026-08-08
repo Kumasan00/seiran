@@ -32,15 +32,16 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 ## layout dump golden
 
-`crates/seiran-compiler/src/compiler/golden.rs` には 9 個のテストがあり、golden ファイル
+`crates/seiran-compiler/src/compiler/golden.rs` には 10 個のテストがあり、golden ファイル
 （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
 （`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
 `super::compile()`（lib target の公開 facade）→ `compiler::dump::dump_publication`
 （`seiran_pdf::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
 確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
-メタデータ・リンク・しおりまでダンプするため `dump_pages` よりカバー範囲が広い）。
+メタデータ・リンク・しおりまでダンプするため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が
+広い）。
 
-残り 8 個のテストは golden ファイルを一切読み書きせず、次の 2 通りに分かれる。
+残り 9 個のテストは golden ファイルを一切読み書きせず、次の 3 通りに分かれる。
 
 - **`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する**
   （`assert_eq!` / `assert_ne!`。golden ファイルは介さない）: `index_marks_are_invisible_to_layout`
@@ -52,10 +53,12 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
   脚注ページ単位採番 2 種 `per_page_footnote_numbering_restarts_on_each_page` /
   `continuous_footnote_numbering_runs_through_pages`（共通ヘルパ `footnote_numbers_per_page`
   経由）・`long_footnote_splits_across_pages_without_overlapping_body`（長い脚注の繰越）
+- **設定オーバーライドの 2 実装（型付き版と TOML 版）が同じ値へ収束することだけを見る**（組版は
+  一切通らない）: `config_overrides_typed_and_toml_stay_in_sync`
 
 golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication` / `dump_publication` は
-`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記 8 個は現時点では移行して
-いない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
+`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記のダンプ比較 4 個は現時点では
+移行していない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
 が言う「順次移行」方針どおり）。
 
 - **確認**: `cargo test -p seiran-compiler`
