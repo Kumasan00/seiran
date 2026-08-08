@@ -417,7 +417,6 @@ mod tests {
   /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
   fn test_font_config() -> FontConfig {
     return FontConfig {
-      font_name: "test".to_string(),
       font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
       font_index: 0,
       variation_axes: None,

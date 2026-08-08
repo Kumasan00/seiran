@@ -245,7 +245,6 @@ mod tests {
   fn make_font_configs(shared_path: &str) -> FontConfigs {
     return FontConfigs::from_all(FontType::ALL.iter().map(|_| {
       return FontConfig {
-        font_name: "test".to_string(),
         font_path: shared_path.into(),
         font_index: 0,
         variation_axes: None,

@@ -22,6 +22,7 @@ pub enum HeadingLevel {
 
 impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
+  // crate 内の `#[cfg(test)]`（`config::style::heading` のテスト）からのみ使う。
   #[allow(dead_code)]
   pub const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
@@ -37,21 +38,6 @@ impl HeadingLevel {
   /// 数値インデックスを返す（0=Part, 5=Subparagraph）
   #[must_use]
   pub fn depth(self) -> u8 { return self as u8; }
-
-  /// コマンド名からレベルを取得する
-  #[must_use]
-  #[allow(dead_code)]
-  pub fn from_command_name(name: &str) -> Option<Self> {
-    return match name {
-      "part" => Some(HeadingLevel::Part),
-      "chapter" => Some(HeadingLevel::Chapter),
-      "section" => Some(HeadingLevel::Section),
-      "subsection" => Some(HeadingLevel::Subsection),
-      "paragraph" => Some(HeadingLevel::Paragraph),
-      "subparagraph" => Some(HeadingLevel::Subparagraph),
-      _ => None,
-    };
-  }
 
   /// コマンド名を返す
   #[must_use]
@@ -93,17 +79,6 @@ mod tests {
     assert!(HeadingLevel::Section < HeadingLevel::Subsection);
     assert!(HeadingLevel::Subsection < HeadingLevel::Paragraph);
     assert!(HeadingLevel::Paragraph < HeadingLevel::Subparagraph);
-  }
-
-  #[test]
-  fn heading_level_from_command_name() {
-    assert_eq!(HeadingLevel::from_command_name("part"), Some(HeadingLevel::Part));
-    assert_eq!(HeadingLevel::from_command_name("chapter"), Some(HeadingLevel::Chapter));
-    assert_eq!(HeadingLevel::from_command_name("section"), Some(HeadingLevel::Section));
-    assert_eq!(HeadingLevel::from_command_name("subsection"), Some(HeadingLevel::Subsection));
-    assert_eq!(HeadingLevel::from_command_name("paragraph"), Some(HeadingLevel::Paragraph));
-    assert_eq!(HeadingLevel::from_command_name("subparagraph"), Some(HeadingLevel::Subparagraph));
-    assert_eq!(HeadingLevel::from_command_name("unknown"), None);
   }
 
   #[test]

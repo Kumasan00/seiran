@@ -54,27 +54,6 @@ impl Counters {
       CounterName::Equation => &self.equation,
     };
   }
-
-  /// `(CounterName, &CounterStyle)` の組を 9 個まとめて返すイテレータ
-  ///
-  /// 現状はこのファイル自身の `#[cfg(test)]` からのみ呼ばれる。`config` crate が standalone
-  /// だった間は外部消費を仮定でき `dead_code` を検出されなかったが、`seiran` への吸収で
-  /// 可視性が変わり検出されるようになった（削除は API 変更のため本 move task の範囲外）。
-  #[allow(dead_code)]
-  pub fn iter(&self) -> impl Iterator<Item = (CounterName, &CounterStyle)> {
-    return [
-      (CounterName::Part, &self.part),
-      (CounterName::Chapter, &self.chapter),
-      (CounterName::Section, &self.section),
-      (CounterName::Subsection, &self.subsection),
-      (CounterName::Paragraph, &self.paragraph),
-      (CounterName::Subparagraph, &self.subparagraph),
-      (CounterName::Table, &self.table),
-      (CounterName::Figure, &self.figure),
-      (CounterName::Equation, &self.equation),
-    ]
-    .into_iter();
-  }
 }
 
 impl Default for Counters {
@@ -279,25 +258,6 @@ mod tests {
   fn validate_rejects_empty_ref_format() {
     let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "", &[]);
     assert!(counter.validate().is_err());
-  }
-
-  #[test]
-  fn default_counters_contains_expected_names() {
-    let counters = Counters::default();
-    let names: Vec<CounterName> = counters.iter().map(|(n, _)| return n).collect();
-    for expected in [
-      CounterName::Part,
-      CounterName::Chapter,
-      CounterName::Section,
-      CounterName::Subsection,
-      CounterName::Paragraph,
-      CounterName::Subparagraph,
-      CounterName::Figure,
-      CounterName::Equation,
-      CounterName::Table,
-    ] {
-      assert!(names.contains(&expected), "missing counter: {}", expected.as_str());
-    }
   }
 
   #[test]

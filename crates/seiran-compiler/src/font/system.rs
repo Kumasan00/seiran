@@ -90,18 +90,6 @@ impl<'a> FontResources<'a> {
     });
   }
 
-  /// 解析済み OpenType フォント参照（`FontRefs`）へのアクセサ。
-  ///
-  /// `seiran_pdf::ResourceBundle::new` は `FontRefs` を直接受け取らなくなったため（#279 で
-  /// `face_configs()` / `metrics()` 経由の変換値へ切り替え済み）、現在このメソッドの呼び出し元は
-  /// crate 内に存在しない（#307 Task 2 で発見、Task 7 の font 吸収時にドキュメントのみ訂正）。
-  /// `font` が非公開 module になったことで `dead_code` が新たに発火するため、メソッド自体の削除は
-  /// API/データモデル変更にあたり本タスクのスコープ外として抑制する（cleanup candidate、全体レビューで
-  /// 削除可否を判断）。
-  #[must_use]
-  #[allow(dead_code)]
-  pub fn font_refs(&self) -> &FontRefs<'a> { return &self.font_refs; }
-
   /// `seiran_pdf::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。
   #[must_use]
   pub fn metrics(&self) -> &FontMetrics { return &self.metrics; }
