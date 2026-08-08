@@ -147,11 +147,11 @@ mod tests {
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
-    config::DocumentPolicy,
     document::HirDocument,
     font::FontKind,
     project::FilesystemProjectSource,
     semantics::{
+      SemanticPolicy,
       facts::SemanticFacts,
       load_citation_style, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
@@ -169,7 +169,7 @@ mod tests {
 
   /// ソースを走査して引用箇所の事実を持つ `SemanticFacts` を返す
   fn analyzed(source: &str, references: &crate::semantics::References) -> SemanticFacts {
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
     return collect_facts(&document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }
 

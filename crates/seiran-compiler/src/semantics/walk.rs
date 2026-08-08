@@ -9,10 +9,9 @@
 //! 行採番の後に来る）。
 
 use crate::{
-  config::DocumentPolicy,
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   semantics::{
-    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError,
+    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticPolicy,
     counter::CounterRegistry,
     error::{UnknownCitationSite, span_to_source_span},
     facts::{HeadingFacts, SemanticFacts},
@@ -32,7 +31,7 @@ use crate::{
 /// [`SemanticError`] を返します。
 pub(super) fn collect_facts(
   hir: &HirDocument,
-  policy: &DocumentPolicy,
+  policy: &SemanticPolicy,
   references: &References,
 ) -> Result<SemanticFacts, SemanticError> {
   let mut registry = CounterRegistry::from_policy(policy);
@@ -77,7 +76,7 @@ pub(super) fn collect_facts(
 /// fact の欠落は `analyze` 自身の不変条件違反（入力由来ではない）なので、lowering の
 /// 遠い `unreachable!` で壊れる前にここで落とす。入力由来のエラー（重複ラベル・未解決参照・
 /// 未定義引用キー）はすべてこの検証より手前で診断として返している。
-fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &DocumentPolicy) {
+fn assert_facts_complete(hir: &HirDocument, facts: &SemanticFacts, policy: &SemanticPolicy) {
   let checker = Checker { facts, policy };
   for group in hir.groups() {
     checker.nodes(&group.nodes);
@@ -90,7 +89,7 @@ struct Checker<'a> {
   /// 検証対象の fact
   facts: &'a SemanticFacts,
   /// 定理クラスが無採番かを判定する投影
-  policy: &'a DocumentPolicy,
+  policy: &'a SemanticPolicy,
 }
 
 impl Checker<'_> {
@@ -318,7 +317,7 @@ impl Walker<'_> {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
         let counter_value = self.registry.increment_with_label_at(
-          DocumentPolicy::counter_name_for_heading(*level),
+          SemanticPolicy::counter_name_for_heading(*level),
           label.as_deref(),
           node.id,
           self.locations,
@@ -512,9 +511,10 @@ impl Walker<'_> {
 mod tests {
   use super::collect_facts;
   use crate::{
-    config::DocumentPolicy,
     document::HirDocument,
-    semantics::{GeneratedCitations, References, SemanticDocument, SemanticError, test_fixtures::sample_references},
+    semantics::{
+      GeneratedCitations, References, SemanticDocument, SemanticError, SemanticPolicy, test_fixtures::sample_references,
+    },
     source::SourceId,
     style::Style,
   };
@@ -525,7 +525,7 @@ mod tests {
   /// ここでは `collect_facts` の結果だけを HIR と束ね、引用の生成物は空にする。
   fn analyze(
     hir: HirDocument,
-    policy: &DocumentPolicy,
+    policy: &SemanticPolicy,
     references: &References,
   ) -> Result<SemanticDocument, SemanticError> {
     let facts = collect_facts(&hir, policy, references)?;
@@ -544,7 +544,7 @@ mod tests {
   /// ソース 1 本をパースし、既定の policy で解析まで済ませる
   fn analyze_source(source: &str) -> SemanticDocument {
     let hir = document(source);
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
     return analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
   }
 
@@ -552,7 +552,7 @@ mod tests {
   fn analyze_registers_declared_label_in_both_directions() {
     // Arrange
     let hir = document("\\chapter[label=ch:intro]{Intro}\n");
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
@@ -578,7 +578,7 @@ mod tests {
     // Arrange — proof が後方で定義される定理を [of=...] で参照する（前方参照）
     let hir =
       document("\\begin{proof}[of=thm:a]\n証明\n\\end{proof}\n\n\\begin{theorem}[label=thm:a]\n主張\n\\end{theorem}\n");
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("前方参照は解決できるはず");
@@ -600,7 +600,7 @@ mod tests {
     // Arrange
     let source = r"本文 \ref{missing} です。";
     let hir = document(source);
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let error = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
@@ -621,7 +621,7 @@ mod tests {
       .expect("パースに成功するはず");
     let b = crate::frontend::parse_source(r"\ref{ch:intro}", SourceId::new(1)).expect("パースに成功するはず");
     let hir = HirDocument::assemble(vec![a, b]);
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("ソース跨ぎの参照は解決できるはず");
@@ -639,7 +639,7 @@ mod tests {
        本文\\footnote{\\ref{ch:a}}\n\n\
        \\begin{table}\n\\row{\\ref{ch:a}}\n\\caption{\\ref{ch:a}}\n\\end{table}\n",
     );
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let analyzed = analyze(hir, &policy, &no_references()).expect("解析に成功するはず");
@@ -659,7 +659,7 @@ mod tests {
     // #324 は振る舞いを変えないので、この粒度は旧実装と同じ。
     let source = "\\begin{proof}[of=missing]\n証明\n\\end{proof}\n";
     let hir = document(source);
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let error = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
@@ -677,7 +677,7 @@ mod tests {
   fn analyze_collects_citation_sites_in_document_order() {
     // Arrange
     let hir = document(r"先 \cite{kwan2014} 中 \cite{doe2020} 後");
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let facts = collect_facts(&hir, &policy, &sample_references()).expect("既知キーのみなので成功するはず");
@@ -699,7 +699,7 @@ mod tests {
   fn analyze_keeps_multi_key_citation_order() {
     // Arrange
     let hir = document(r"\cite{doe2020, kwan2014}");
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
@@ -721,7 +721,7 @@ mod tests {
     // Arrange
     let source = r"本文 \cite{missing-key} です。";
     let hir = document(source);
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let error = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
@@ -749,7 +749,7 @@ mod tests {
       "\\begin{itemize}\n\\item{\\cite{kwan2014}}\n\\end{itemize}\n\n本文\\footnote{\\cite{doe2020}}\n\n\
        \\begin{table}\n\\row{\\cite{kwan2014}}\n\\end{table}\n",
     );
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let facts = collect_facts(&hir, &policy, &sample_references()).expect("成功するはず");
@@ -762,7 +762,7 @@ mod tests {
   fn analyze_is_deterministic() {
     // Arrange — CSL 非依存は `analyze` が `Style` / CSL を一切引数に取らないことで型として
     // 保証されており、ここでは同じ HIR + 同じ references から同じ facts が得られる決定性を固定する
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
     let source = r"\cite{kwan2014} と \cite{doe2020}";
 
     // Act
@@ -780,7 +780,7 @@ mod tests {
   fn analyze_reports_duplicate_label_with_span() {
     // Arrange
     let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n");
-    let policy = DocumentPolicy::from_style(&Style::default());
+    let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
     let error = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
@@ -802,9 +802,8 @@ mod completeness_tests {
 
   use super::collect_facts;
   use crate::{
-    config::DocumentPolicy,
     document::HirDocument,
-    semantics::{GeneratedCitations, SemanticDocument, test_fixtures::sample_references},
+    semantics::{GeneratedCitations, SemanticDocument, SemanticPolicy, test_fixtures::sample_references},
     source::SourceId,
     style::Style,
   };
@@ -850,7 +849,7 @@ mod completeness_tests {
       }
       let hir = crate::frontend::parse_source(&source, SourceId::new(0)).expect("パースに成功するはず");
       let document = HirDocument::assemble(vec![hir]);
-      let policy = DocumentPolicy::from_style(&Style::default());
+      let policy = SemanticPolicy::from_style(&Style::default());
 
       // Act — 完全性検証は collect_facts の内側で走る
       let facts = collect_facts(&document, &policy, &sample_references()).expect("解析に成功するはず");

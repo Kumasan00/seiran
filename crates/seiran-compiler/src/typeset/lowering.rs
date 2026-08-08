@@ -152,10 +152,9 @@ pub struct HeadingRecord {
 pub(super) mod test_support {
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
-    config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
-    semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
+    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     style::Style,
   };
@@ -168,7 +167,7 @@ pub(super) mod test_support {
   /// `SemanticDocument::with_citations_for_test` で差し込む。
   pub(crate) fn analyzed(source: &str) -> SemanticDocument {
     let hir = HirDocument::assemble(vec![parse_source(source, SourceId::new(0)).expect("パースに成功するはず")]);
-    return analyze_for_test(hir, &DocumentPolicy::from_style(&Style::default()), &sample_references())
+    return analyze_for_test(hir, &SemanticPolicy::from_style(&Style::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 
@@ -523,10 +522,9 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
 mod tests {
   use super::{test_support::analyzed, *};
   use crate::{
-    config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
-    semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
+    semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
     typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
   };
@@ -544,7 +542,7 @@ mod tests {
         })
         .collect(),
     );
-    return analyze_for_test(hir, &DocumentPolicy::from_style(&ReadStyle::default()), &sample_references())
+    return analyze_for_test(hir, &SemanticPolicy::from_style(&ReadStyle::default()), &sample_references())
       .expect("解析できる入力のはず");
   }
 

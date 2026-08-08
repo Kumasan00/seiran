@@ -126,9 +126,12 @@ mod tests {
     let hir = parse_source(&content, SourceId::new(0)).unwrap_or_else(|e| panic!("parse_source 失敗 ({name}): {e:?}"));
     let hir_document = crate::document::HirDocument::assemble(vec![hir]);
     let references = crate::semantics::References(std::collections::HashMap::new());
-    let analyzed =
-      crate::semantics::analyze_for_test(hir_document, &crate::config::DocumentPolicy::from_style(&style), &references)
-        .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
+    let analyzed = crate::semantics::analyze_for_test(
+      hir_document,
+      &crate::semantics::SemanticPolicy::from_style(&style),
+      &references,
+    )
+    .unwrap_or_else(|e| panic!("analyze 失敗 ({name}): {e:?}"));
     let ctx = LoweringContext::new(&style);
     let (layout_nodes, _headings) = lower_sources_with_headings(&ctx, &analyzed);
     return layout_nodes;
