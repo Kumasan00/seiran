@@ -1,13 +1,11 @@
 //! PDF ビルドエラー型の定義
 
 use miette::{Diagnostic, LabeledSpan, NamedSource};
-use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::{
   config::LayoutValidationError,
   frontend::ParseSourceError,
-  project::ProjectPath,
   semantics::{CitationFormatError, CitationStyleError, SemanticError},
 };
 
@@ -97,28 +95,7 @@ impl AttributedCitationError {
   }
 }
 
-/// compiler の不変条件違反（ユーザー入力に起因しない内部バグ）。
-///
-/// `CompileError` の他バリアントが表す「設定・入力の誤り」とは型を分け、
-/// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
-#[derive(Debug, Error, Diagnostic)]
-#[error("内部エラー: {message}")]
-#[diagnostic(code(build::internal_bug), help("再現手順とともに issue を報告してください。"))]
-pub(super) struct CompilerBug {
-  /// エラーメッセージ
-  message: String,
-}
-
-impl CompilerBug {
-  /// 新しい `CompilerBug` を構築する
-  pub(super) fn new(message: impl Into<String>) -> Self {
-    return CompilerBug {
-      message: message.into(),
-    };
-  }
-}
-
-/// `compile` の内部段（読込・パース・意味解決・組版・画像解決）で起きるエラー型。
+/// `compile` の内部段（読込・パース・意味解決・組版）で起きるエラー型。
 ///
 /// PDF の保存（`WritePdf` 相当）は `compile` の責務ではなくなったため、ここには含まない
 /// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
@@ -217,64 +194,8 @@ pub(super) enum CompileError {
     source: LayoutValidationError,
   },
 
-  /// 脚注のページ単位採番が上限回数で収束しないエラー
-  ///
-  /// 不整合なページ列は採用せず、回避策付きの診断を返す。
-  #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
-  #[diagnostic(
-    code(build::footnote::per_page_not_converged),
-    help(
-      "style.toml の [footnote] を numbering = \"continuous\"（文書通しの採番）に切り替えるか、ページ境界に脚注が集中している箇所の本文量・脚注の長さを調整してください。"
-    )
-  )]
-  PerPageFootnoteNotConverged {
-    /// 打ち切った組版パスの回数
-    passes: u32,
-  },
-
-  /// 画像ファイルを読み込めませんでした。
-  #[error("画像ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(build::image::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
-  ReadImage {
-    /// 画像ファイルのパス。
-    path: String,
-    /// 元の読込エラー。
-    #[source]
-    source: std::io::Error,
-  },
-
-  /// 画像ファイルのデコードに失敗しました。
-  #[error("画像ファイルのデコードに失敗しました: {path}")]
-  #[diagnostic(
-    code(build::image::load_image),
-    help("画像ファイルが破損していないか、対応形式（PNG / JPEG / SVG）か確認してください。")
-  )]
-  LoadImage {
-    /// 画像ファイルのパス。
-    path: String,
-    /// 元の `seiran_pdf` デコードエラー。
-    #[source]
-    #[diagnostic_source]
-    source: PdfGenError,
-  },
-
-  /// 画像の自然寸法が不正です（縦横比を算出できません）。
-  #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
-  #[diagnostic(
-    code(build::image::invalid_natural_size),
-    help("画像ファイルが破損していないか、または width / height を明示指定してください。")
-  )]
-  InvalidImageNaturalSize {
-    /// 画像ファイルのパス。
-    path: ProjectPath,
-    /// 自然幅（ラスタはピクセル、SVG は pt）。
-    width: f32,
-    /// 自然高さ（ラスタはピクセル、SVG は pt）。
-    height: f32,
-  },
-
-  /// compiler の不変条件違反（ユーザー向け診断とは別の型・経路）
+  /// 組版パス（画像資源の解決を含む）のエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Bug(#[from] CompilerBug),
+  Typeset(#[from] crate::typeset::TypesetError),
 }

@@ -4,7 +4,7 @@ use super::{LineBreaker, OpenLink, build_line};
 use crate::{
   config::TextAlignment,
   length::Length,
-  typeset::layout::{HItem, Line},
+  typeset::boxes::{HItem, Line},
 };
 
 /// 貪欲法（first-fit）による行分割
@@ -118,7 +118,7 @@ mod tests {
   use crate::{
     config::TextAlignment,
     length::Length,
-    typeset::layout::{HBox, HBoxContent, HItem},
+    typeset::boxes::{HBox, HBoxContent, HItem},
   };
 
   /// pt 値から `Length` を作る短縮子

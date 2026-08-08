@@ -4,7 +4,7 @@ use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, stri
 use crate::{
   config::TextAlignment,
   length::Length,
-  typeset::layout::{HItem, Line},
+  typeset::boxes::{HItem, Line},
 };
 
 /// 1 行ぶんの demerits に加える基礎ペナルティ（TeX の `\linepenalty` 相当）
@@ -265,7 +265,7 @@ mod tests {
   use crate::{
     config::TextAlignment,
     length::Length,
-    typeset::layout::{HItem, Line},
+    typeset::boxes::{HItem, Line},
   };
 
   /// 行の右端（box 群の最大右端）

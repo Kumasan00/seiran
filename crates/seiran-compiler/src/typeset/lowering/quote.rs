@@ -4,7 +4,7 @@ use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes
 use crate::{
   document::{HirNode, QuoteKind},
   length::Length,
-  typeset::layout::Align,
+  typeset::boxes::Align,
 };
 
 /// 引用ブロックをレイアウトノードに変換する

@@ -1,4 +1,4 @@
-//! `parse_project` が返す画像パス一覧（`ImageManifest`）の収集
+//! 文書木（HIR）が参照する画像パス一覧の収集
 
 use std::collections::BTreeSet;
 
@@ -7,23 +7,15 @@ use crate::{
   project::ProjectPath,
 };
 
-/// 画像パスの一覧（重複なし・[`ProjectPath`] の昇順）。
-pub(super) struct ImageManifest {
-  /// 画像ファイルへのパス（`\image{...}` の必須引数、重複なし・昇順）
-  pub(super) paths: Vec<ProjectPath>,
-}
-
-/// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する。
+/// 文書木（HIR）を再帰的に走査し、画像パスを重複なく収集する（`ProjectPath` の昇順）。
 ///
 /// 定理、引用、リスト内の入れ子も探索する。
-pub(super) fn collect_image_paths(document: &HirDocument) -> ImageManifest {
+pub(crate) fn collect_image_paths(document: &HirDocument) -> Vec<ProjectPath> {
   let mut paths: BTreeSet<ProjectPath> = BTreeSet::new();
   for group in document.groups() {
     walk_nodes(&group.nodes, &mut paths);
   }
-  return ImageManifest {
-    paths: paths.into_iter().collect(),
-  };
+  return paths.into_iter().collect();
 }
 
 /// `nodes` を再帰的に走査し、`Figure` の `image_path` を `paths` へ集める。
@@ -73,10 +65,10 @@ mod tests {
     let source = format!("{}{}{}", figure("b.png"), figure("a.png"), figure("a.png"));
 
     // Act
-    let manifest = collect_image_paths(&document(&source));
+    let paths = collect_image_paths(&document(&source));
 
     // Assert — 重複が除かれ、昇順で並ぶ
-    assert_eq!(manifest.paths, vec![ProjectPath::new("a.png"), ProjectPath::new("b.png")]);
+    assert_eq!(paths, vec![ProjectPath::new("a.png"), ProjectPath::new("b.png")]);
   }
 
   #[test]
@@ -85,11 +77,11 @@ mod tests {
     let source = format!("{}{}", figure("fig/./a.png"), figure("fig/a.png"));
 
     // Act
-    let manifest = collect_image_paths(&document(&source));
+    let paths = collect_image_paths(&document(&source));
 
     // Assert — `ProjectPath` の正規化は重複除去より前に効くので 1 件に畳まれる
     // （画像パスの型が `ProjectPath` へ一本化された結果。同じファイルを 2 回読まない）
-    assert_eq!(manifest.paths, vec![ProjectPath::new("fig/a.png")]);
+    assert_eq!(paths, vec![ProjectPath::new("fig/a.png")]);
   }
 
   #[test]
@@ -99,10 +91,10 @@ mod tests {
       format!("\\begin{{theorem}}\n\\begin{{quote}}\n{}\\end{{quote}}\n\\end{{theorem}}\n", figure("nested.png"));
 
     // Act
-    let manifest = collect_image_paths(&document(&source));
+    let paths = collect_image_paths(&document(&source));
 
     // Assert
-    assert_eq!(manifest.paths, vec![ProjectPath::new("nested.png")]);
+    assert_eq!(paths, vec![ProjectPath::new("nested.png")]);
   }
 
   #[test]
@@ -111,10 +103,10 @@ mod tests {
     let source = format!("\\begin{{itemize}}\n\\item{{{}}}\n\\end{{itemize}}\n", figure("in-list.png").trim_end());
 
     // Act
-    let manifest = collect_image_paths(&document(&source));
+    let paths = collect_image_paths(&document(&source));
 
     // Assert
-    assert_eq!(manifest.paths, vec![ProjectPath::new("in-list.png")]);
+    assert_eq!(paths, vec![ProjectPath::new("in-list.png")]);
   }
 
   #[test]
@@ -123,9 +115,9 @@ mod tests {
     let source = "\\pagebreak\n";
 
     // Act
-    let manifest = collect_image_paths(&document(source));
+    let paths = collect_image_paths(&document(source));
 
     // Assert
-    assert!(manifest.paths.is_empty());
+    assert!(paths.is_empty());
   }
 }

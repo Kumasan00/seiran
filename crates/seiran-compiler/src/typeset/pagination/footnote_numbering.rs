@@ -4,8 +4,8 @@
 
 use tracing::debug;
 
-use super::error::CompileError;
-use crate::typeset::BodyLayout;
+use super::body::BodyLayout;
+use crate::typeset::{error::TypesetError, lowering::per_page_footnote_numbers};
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -22,25 +22,22 @@ const MAX_FOOTNOTE_NUMBERING_PASSES: u32 = 4;
 ///
 /// 本文パスが失敗した場合、または上限回数で収束しない場合にエラーを返す。
 pub(super) fn solve_per_page_numbering(
-  body_pass: &impl Fn(Option<&[u32]>) -> miette::Result<BodyLayout>,
-) -> miette::Result<BodyLayout> {
+  body_pass: &impl Fn(Option<&[u32]>) -> Result<BodyLayout, TypesetError>,
+) -> Result<BodyLayout, TypesetError> {
   // 1 回目は空マップ＝全脚注が通し番号へフォールバックする（＝ページ割り当てを知るための下見）。
   let mut numbers: Vec<u32> = Vec::new();
   let mut pass: u32 = 1;
   loop {
     let layout = body_pass(Some(&numbers))?;
-    let next = crate::typeset::per_page_footnote_numbers(&layout.pages);
+    let next = per_page_footnote_numbers(&layout.pages);
     if next == numbers {
       debug!(pass, "脚注のページ単位採番が収束しました");
       return Ok(layout);
     }
     if pass == MAX_FOOTNOTE_NUMBERING_PASSES {
-      return Err(
-        CompileError::PerPageFootnoteNotConverged {
-          passes: MAX_FOOTNOTE_NUMBERING_PASSES,
-        }
-        .into(),
-      );
+      return Err(TypesetError::PerPageFootnoteNotConverged {
+        passes: MAX_FOOTNOTE_NUMBERING_PASSES,
+      });
     }
     numbers = next;
     pass += 1;
@@ -52,18 +49,21 @@ pub(super) fn solve_per_page_numbering(
 mod tests {
   use std::cell::RefCell;
 
+  use miette::Diagnostic;
+
   use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, solve_per_page_numbering};
+  use crate::typeset::boxes::{Page, PlacedFootnote};
 
   /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
-  fn page_with_footnotes(indices: &[u32]) -> crate::typeset::Page {
-    return crate::typeset::Page {
+  fn page_with_footnotes(indices: &[u32]) -> Page {
+    return Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
       footnotes: indices
         .iter()
         .map(|index| {
-          return crate::typeset::PlacedFootnote {
+          return PlacedFootnote {
             number: index + 1,
             index: *index,
             continued: false,
@@ -120,12 +120,12 @@ mod tests {
     };
 
     // Act — 上限回数で打ち切り、最後の不整合なレイアウトを成功として返さない。
-    let report = solve_per_page_numbering(&body_pass).expect_err("収束しない場合は診断を返すはず");
+    let error = solve_per_page_numbering(&body_pass).expect_err("収束しない場合は診断を返すはず");
 
     // Assert
     assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");
     assert_eq!(
-      report.code().expect("診断コードを持つはず").to_string(),
+      error.code().expect("診断コードを持つはず").to_string(),
       "build::footnote::per_page_not_converged",
       "回避策付きの専用診断になるはず"
     );

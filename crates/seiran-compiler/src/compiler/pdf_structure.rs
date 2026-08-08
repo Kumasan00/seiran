@@ -30,10 +30,9 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 
 /// style の一時的な差分を適用して PDF を生成する。
 ///
-/// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` →
-/// `load_image_resources` → `DocumentLayouter::layout` → `ResourceBundle` 構築 → `build_publication` →
-/// `seiran_pdf::render`）を通す — golden が検証したいのは本番の描画経路そのものであり、ここで
-/// ショートカットを作らない。
+/// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` → `typeset::layout` →
+/// `ResourceBundle` 構築 → `build_publication` → `seiran_pdf::render`）を通す — golden が検証
+/// したいのは本番の描画経路そのものであり、ここでショートカットを作らない。
 fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::config::Style)) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
@@ -45,20 +44,16 @@ fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::
   let font_data = FontData::new(&source, &config.font_configs).expect("フォントの読み込み");
   let snapshot = ProjectSnapshot::assemble(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
     .expect("ProjectSnapshot の構築");
-  let (document, image_manifest) = super::parse_project(&snapshot).expect("parse_project の実行");
+  let document = super::parse_project(&snapshot).expect("parse_project の実行");
   let semantics =
     crate::semantics::analyze(&source, document, &snapshot.references, &snapshot.style).expect("analyze の実行");
-  let image_resources =
-    super::image_resources::load_image_resources(&source, &image_manifest.paths).expect("画像の自然寸法解決");
   let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
   let font_system = font_resources.system().expect("FontSystem の構築");
-  let laid_out = super::layout::DocumentLayouter::new(&snapshot.config, &snapshot.style, &font_system)
-    .layout(&semantics, &image_resources)
+  let mut laid_out = crate::typeset::layout(&source, &snapshot.config, &snapshot.style, &font_system, &semantics)
     .expect("layout の実行");
   let fonts = super::build_pdf_fonts(&font_data, &font_resources);
   let font_metrics = super::build_pdf_font_metrics(&font_resources);
-  let image_bytes: std::collections::HashMap<String, Vec<u8>> = image_resources
-    .into_image_bytes()
+  let image_bytes: std::collections::HashMap<String, Vec<u8>> = std::mem::take(&mut laid_out.image_bytes)
     .into_iter()
     .map(|(path, bytes)| return (path.to_string(), bytes))
     .collect();

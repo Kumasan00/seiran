@@ -11,7 +11,7 @@ use crate::{
   document::{CaptionPosition, HirInline},
   font::FontKind,
   length::Length,
-  typeset::layout::Align,
+  typeset::boxes::Align,
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
@@ -103,7 +103,7 @@ mod tests {
   use crate::{
     config::{CaptionStyle, Style as ReadStyle},
     semantics::LabelId,
-    typeset::layout::{Align, AnchorId, LinkTarget},
+    typeset::boxes::{Align, AnchorId, LinkTarget},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

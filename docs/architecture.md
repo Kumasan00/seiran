@@ -108,7 +108,7 @@ pub trait ProjectSource: Send + Sync {
   Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを
   表す newtype（画像専用の `AssetId` 等）を並立させない — 情報も不変条件も増えず、変換の往復だけが
-  残るため。`Ord` を実装しており、`compiler::image_manifest` の `BTreeSet<ProjectPath>` による
+  残るため。`Ord` を実装しており、`typeset::image::manifest` の `BTreeSet<ProjectPath>` による
   決定的な重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と
   `fig/a.png` は manifest 上 1 件に畳まれる（同じファイルを 2 度読まない）。
 - ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
@@ -165,7 +165,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   親 module と名前が衝突するため、この名前へ変えない。
 - **語彙型**（module 直下）: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
-  2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::layout` の所有）/ `theorem`
+  2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
   `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）。小さな `Copy` 値型・enum と、その正準変換
   （`as_str` / `from_name` / serde / `Display`）のみを持つ。
@@ -178,7 +178,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **識別子はここに持たない**: 意味解析が確定する `LabelId` / `HeadingKey` は `semantics::ids`、
   引用キー `CitationId` と CSL 整形の生成物専用の語彙（`GeneratedBlock` / `GeneratedInline`）は
   `semantics::citation`、組版時に成立する `FootnoteId` / `AnchorId` / `AnchorMark` / `LinkTarget` は
-  `typeset::layout::link`、検証済み設定値 `TextAlignment` は `config::style::text` の所有（それぞれ
+  `typeset::boxes::link`、検証済み設定値 `TextAlignment` は `config::style::text` の所有（それぞれ
   該当節を参照）。画像パスは HIR の `HirNodeKind::Figure` が `project::ProjectPath` を直接持つ
   （画像専用の newtype を再導入しない）。
 
@@ -201,7 +201,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   ダンプ `dump_pages`（`typeset::Page` 用）と `dump_publication`（`seiran_pdf::Publication` 用、golden
   主入口 `layout_dumps_match_golden` が使う）も唯一の消費者が golden テストのため
   `seiran_compiler::compiler::dump` に置く。
-- **アンカーは型で namespace を分ける**。`typeset::layout` の `AnchorMark` / `LinkTarget::Internal` は
+- **アンカーは型で namespace を分ける**。`typeset::boxes` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
   （`semantics` の `HeadingKey` / `LabelId` / `CitationId` / 組版側の `FootnoteId`）で区別する。
   `"prefix:"` のような文字列命名規約はコンパイラが何も保証しないため廃止済み（#259）— 文字列規約へ
@@ -220,7 +220,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `HirNodeKind::MathBlock` / `HirMathKind` が値として持つ authored 語彙なので `document` にあるのが
   正しい — ファイル名だけを見て移さない。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
-  `TableBox` 系は `typeset::layout` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
+  `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `font` module の型（`font` 節参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
   消費者も `typeset` 内の複数 module や `typeset` → `compiler` の範囲にとどまる。判断基準:
   **複数 consumer の型でも、consumer が同一 crate 内 / 同一依存関係内にとどまるなら、共有置き場では
@@ -286,7 +286,7 @@ TOML パース時に弾く。
 - **本文（`TextBlockStyle`）**: `[text]` が本文の `font_size` / `line_height_factor` / `paragraph_spacing` /
   `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約する。
   `alignment` の値型 `TextAlignment` は、それを読み込む `config::style::text` が所有する
-  （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::layout::Align` とは
+  （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::boxes::Align` とは
   変更理由が違う）
 - **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに
   持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、
@@ -332,7 +332,7 @@ TOML パース時に弾く。
 `validate_layout(&Config, &Style) -> Result<(), LayoutValidationError>` に集約する。段幅の算出式
 （`(text_width - (num_columns - 1) * column_gap) / num_columns`）自体も同じ module の
 `column_width` が持つ。段組み設定から導出する設定横断の配置計算なので、横断検証と同じ場所に置き、
-`compiler::phase_context` と `typeset::breaking::break_pages` が `config::column_width` として参照する。
+`typeset::pagination::context` と `typeset::breaking::break_pages` が `config::column_width` として参照する。
 
 ### `semantics`
 
@@ -650,45 +650,149 @@ seam 経由で、依存方向は `config` → `font` の一方向。
 
 #### 責務
 
-意味解析の成果物（`semantics::SemanticDocument`）から、配置済み直前のブロック列・
-ページ列までの組版パスを統合する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module
-が上流で済ませているため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換する
-だけになる（`lowering` 節を参照）。`lowering` / `block` / `breaking` / `layout` / `pipeline` の
-5 module はすべて非公開で、公開 API は module root の `pub use` に揃える。段順序（lowering →
-`build_blocks` → 画像サイズ確定 → `break_pages` 等）は `pipeline` module に閉じており、外部
-（`seiran_compiler::compiler`）が個別に呼ぶのは次の入口関数だけである。
+意味解析の成果物（`semantics::SemanticDocument`）を、描画直前の確定レイアウト `LaidOutDocument` へ
+変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
+ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
+（`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `image` / `lowering` / `pagination`
+の 7 module はすべて非公開で、外から見える入口は **module root の `layout` 1 操作だけ**である（#350）。
 
-- `layout_body`: 本文パス 1 回ぶん。lowering → `build_blocks` → 画像サイズ確定（`resolve_images`
-  クロージャを注入で受け取る。typeset は画像デコードに依存しないため呼び出し元が実装する）→
-  `break_pages` を 1 呼び出しに畳む。入力 `BodyLayoutInput` / 出力 `BodyLayout` / エラー
-  `BodyLayoutError<E>`（`E` は `resolve_images` クロージャのエラー型のジェネリクス）
-- `layout_front_matter`: タイトルページ・目次のブロック組み立て（`TocEntryInput` 列を受け取る）と
-  `break_pages` を畳む。入力 `FrontMatterInput`
-- `layout_back_matter`: 巻末索引のブロック組み立て（`IndexEntryInput` 列を受け取る）と `break_pages`
-  を畳む。入力 `BackMatterInput`
-- `layout_running_content`: 確定ページ列にヘッダー・フッターを配置する
+```rust,ignore
+pub(crate) fn layout(
+  source: &dyn ProjectSource,
+  config: &Config,
+  style: &Style,
+  font_system: &FontSystem<'_>,
+  document: &SemanticDocument,
+) -> Result<LaidOutDocument, TypesetError>;
+```
 
-`build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` / `resolve_hyphenation` /
-`break_opportunities` はこれらの入口関数からのみ呼ばれる非公開実装で、個別には公開しない。
-`HeadingRecord` / `per_page_footnote_numbers` は入口関数の境界型・補助として
-module root へ公開する。`lower_sources_with_headings` / `LoweringContext` / `LayoutNode` は root facade
-には載せず、`typeset` module 直下の smoke テストが `super::lowering::` から直接引く。lowering は
-意味解析を行わないため失敗しない（`Result` を返す公開関数が無い）— 単一ソース用の薄いラッパーも
-持たない（複数ソースの束ね方は `document::HirDocument::groups()` 側の関心事）。
-`LineBreaker` トレイトは実在する差し替え seam なので `typeset::breaking` の facade で公開を維持するが、
-**`typeset` root へは lift しない** — 実装（`break_pages` 内部・`breaking` 配下のテスト）はいずれも
-`breaking` 経由で引くため。`KnuthPlassBreaker` は入口関数の引数として `typeset` root からも見える。
+段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → `build_blocks` → 画像サイズ確定 →
+`break_pages` → 前付け・後付け → ページラベル → 走り文 → outline）と、その間に成立する不変条件
+（box 計測は 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）は
+すべて実装側に閉じる。`build_blocks` / `break_pages` / `build_toc_blocks` / `build_index_blocks` /
+`resolve_hyphenation` / `break_opportunities` / `layout_running_content` / 各段の入力型は
+`layout` からのみ到達する非公開実装で、個別には公開しない。`LineBreaker` トレイトと
+`KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam だが `typeset::breaking` 止まりで、
+どの breaker を使うかは `pagination::TypesetContext` が持つ（段ごとに渡し分ける余地を外へ出さない）。
+`lower_sources_with_headings` / `LoweringContext` / `LayoutNode` は root facade には載せず、
+`typeset` module 直下の smoke テストが `super::lowering::` から直接引く。lowering は意味解析を
+行わないため失敗しない（`Result` を返す公開関数が無い）— 単一ソース用の薄いラッパーも持たない
+（複数ソースの束ね方は `document::HirDocument::groups()` 側の関心事）。
 
-`layout` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
+`typeset` は `seiran-pdf` の**描画 API（`Publication` / `render`）を知らない**。唯一の例外が
+画像デコードの leaf 関数 `seiran_pdf::natural_image_size` で、これは `image` 子 module だけが呼ぶ
+（#350。デコード実装は krilla / usvg に依存するため描画側 crate が持つ。ここに port を挟んで抽象化
+するのは epic #347 の非目標「複数の PDF backend を仮定した port の追加」に当たるので採らない）。
+
+`boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
-縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。`Page` / `Block` は
-入口関数の入出力境界型として公開する一方、`HItem` / `HBoxContent` / `PlacedTableRow` 等の内部ツリー型は
-`crates/seiran-compiler/src/compiler/publication.rs` / `dump.rs` が直接走査するために公開のまま残って
-いる（組版中間型の所有者移動は別 issue のスコープ）。シェーピング結果 `GlyphRun` / `Glyph` は `layout`
-にはなく `font` module にある（`font` 節参照）。`typeset` root からの `Glyph` / `GlyphRun`
-再エクスポートは持たない（消費者は `font::Glyph` / `font::GlyphRun` を直接 import する）。
+縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
+`compiler::publication` が `Publication` へ写すために走査する型（`Page` / `PlacedBlock` / `HItem` /
+`HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` / `TableColumn` と表セルの
+配置・計測ヘルパ）と、`compiler` 配下の `#[cfg(test)] mod tests` が組版済みページを組み立て・走査する
+のに使う型だけで、`Align` / `FootnoteId` のように外に消費者がいないものは出さない（#326）。
+シェーピング結果 `GlyphRun` / `Glyph` は `boxes` にはなく `font` module にある（`font` 節参照）。
+`typeset` root からの `Glyph` / `GlyphRun` 再エクスポートは持たない（消費者は `font::Glyph` /
+`font::GlyphRun` を直接 import する）。
 
-#### `layout`
+#### `LaidOutDocument`
+
+`layout` の唯一の成果物。描画パスが要求するものだけを持つ。
+
+- `pages`: 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
+- `outline_entries`: PDF しおり用の見出し情報（文書順）
+- `image_paths`: 文書が参照した画像ファイルのパス一覧（重複なし・昇順。`DependencyManifest` 用）
+- `image_bytes`: 画像ファイルの生バイト列（`seiran_pdf::ResourceBundle` 用）
+
+`pages` / `outline_entries` はフィールド公開のまま置く — `compiler::publication` と golden テストが
+直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
+フォント資源は含めない（`layout` は `&FontSystem` を借りるだけで、`FontResources` の構築・保持は
+`compiler` の責務。`font` module の `typeset` 配下への移設は別 issue）。
+
+#### `error`
+
+`TypesetError`（画像ファイルの読込 `ReadImage` / デコード `LoadImage` / 自然寸法不正
+`InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged` / 組版の
+不変条件違反 `Bug(TypesetBug)`）。`compiler::error::CompileError` は
+`Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
+`compiler` から移設する前の値（`build::image::*` / `build::footnote::per_page_not_converged` /
+`build::internal_bug`）をそのまま保つ — 診断 golden が出力を丸ごと比較しているため。
+
+#### `image`
+
+画像資源の解決を閉じる子 module。
+
+- `manifest`: 文書木（HIR）を再帰的に走査し、`Figure` の `image_path` を重複なく集める
+  `collect_image_paths`（`BTreeSet<ProjectPath>` で集めるので、正規化して等しいパスは 1 件に畳まれる。
+  定理・引用・リスト内の入れ子も探索する）
+- `resources`: `ProjectSource` 経由の読込と `seiran_pdf::natural_image_size` による自然寸法取得
+  （`load_image_resources` → `ImageResources`）、および `Block::Image` の width / height を自然寸法と
+  段幅から確定する `resolve_images`。読込は `layout` が 1 回だけ呼び、`resolve_images` は本文パスから
+  呼ばれる。保持した生バイト列は `LaidOutDocument.image_bytes` として描画へ渡す
+
+#### `pagination`
+
+確定ページ列の組み立て。`paginate` が段順序を所有する、`typeset` 内部から見える唯一の操作。
+
+| 段 | 内容 | 実装 |
+| --- | --- | --- |
+| 1 | 本文パス（脚注がページ単位採番なら反復） | `body::typeset_body` / `BodyLayout` |
+| 2 | `BodyPageFacts` 確定 | `context` |
+| 3 | 前付け生成・ページ分割 | `front_matter::typeset_front_matter` |
+| 4 | 後付け（索引）生成・ページ分割 | `back_matter::typeset_back_matter` |
+| 5 | 全ページラベル確定 + ページ連結 | `page_values` / `concat_pages` |
+| 6 | 走り文配置 | `running::place_running_content` |
+| 7 | PDF しおり用見出し収集 | `outline::collect_outline_entries` |
+
+- `context`: 全段が共有する資源・寸法・行分割アルゴリズムを持つ `TypesetContext`（フォント資源への
+  参照・版面幅・本文 / 前付け / 後付けの `PageGeometry`・`KnuthPlassBreaker`）と、本文ページ分割
+  確定後の事実 `BodyPageFacts`（`BodyPageValues` + 見出し記録）、`build_page_geometries`。
+  `paginate` ↔ 各段 module の相互依存を解消するためにここへ切り出してある
+- `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
+  `PageValue`（1 始まり）を型で分離する（両方とも `usize`/`u32` のままだと引数の取り違えが型検査を
+  素通りしてしまうため）。本文ページ列からしか構築できない `BodyPageValues`（stage 1）と、前付け
+  ページ列確定後にしか得られない `PageLabels`（stage 2）に分け、目次と走り文が必要とする確定順序の
+  制約を型で表す。`compile` の公開境界は越えない
+- `body`: 段 1。lowering → `build_blocks` → `resolve_images` → `break_pages` を 1 パスに畳む。
+  脚注がページ単位採番のときだけ `footnote_numbering` の solver から複数回呼ばれる（パスの中身自体は
+  変わらない）
+- `front_matter`: 段 3。`BodyPageValues` から目次エントリ（`TocEntryInput`）を組み立て、タイトル
+  ページ → 目次の順にブロックを積んでページ分割する。常に 1 段組み
+- `back_matter`: 段 4。本文全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ
+  `AnchorMark::IndexPage(usize)` を事後追加（`body_pages` の破壊的更新）してから巻末索引を組む
+- `running`: 段 6。`PageLabels` を引数に要求して呼び出し順を型で制約し、`RunningContentSpec` を
+  組み立てて `block::layout_running_content` を呼ぶ
+- `outline`: 段 7。見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる
+- `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
+
+#### 脚注のページ単位採番（`typeset::pagination::footnote_numbering`）
+
+`style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
+決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
+`break_pages` はフォント非依存の純粋パスなので、ページ確定後にマーカーのグリフを作り直すことはできない
+（この不変条件が「後段で番号だけ差し替える」実装を封じている）。そこで**本文パスごと不動点まで反復する**
+専用 module がこの状態（番号 → マーカー寸法 → 行分割 → ページ分割 → ページごとの番号）を所有する:
+
+1. 1 回目は空の上書きマップ（＝全脚注が通し番号へフォールバック）で本文パスを通し、脚注のページ割り当てを知る
+2. 確定ページ列から `lowering::per_page_footnote_numbers` で表示番号を割り当て直す
+3. そのマップを `LoweringContext::with_footnote_numbers` で与えて組み直す
+4. 得られたページ列から番号を割り当て直しても同じマップになれば、表示とページ割り当てが一致した＝不動点なので
+   確定。違えば 2 へ戻る（上限 `MAX_FOOTNOTE_NUMBERING_PASSES` = 4 回）
+
+反復が成り立つのは、番号が**表示値しか変えない**から。どの脚注が存在するか・その文書順は番号に依存しないので、
+出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。加えてページ内番号は通し番号以下（部分集合を
+数えるため）なので、`per_page` でマーカーは縮むか同じで、行があふれる方向には動かない。実質 2 回目で収束する。
+上限まで収束しなかった場合（脚注が 9 → 10 の桁境界でページ境界に乗り続ける等）は、一部のページで番号が 1 から
+始まらない不整合な結果を成功として出さず、`TypesetError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す。
+
+通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。表セル内の脚注は
+ページ列に配置されない（`seiran-pdf` の既知の制限）ためマップに載らず、`per_page` でも通し番号のまま表示される。
+
+**汎用の「安定するまで全工程を反復」は導入しない** — 「ページ情報を使う」という共通点だけで目次・索引・
+走り文・脚注を 1 つの巨大な solver に集めず、処理順を明示的な DAG として持ち、循環が残るページ単位脚注
+採番だけをこの専用 solver に閉じ込める。
+
+#### `boxes`
 
 組版中間型の定義そのもの。`block` と `breaking` の双方から対称に参照される共有語彙のため、どちらの
 所有物にもせず本 module に集約する。組版時に初めて成立する配置・アンカーの型と、lowering が構築する
@@ -711,7 +815,7 @@ module root へ公開する。`lower_sources_with_headings` / `LoweringContext` 
   `layout_row_cells` / `collect_row_links` / `CellPlacement` / `RowLink`）。フォント非依存
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
-相互参照は `super::` で解決し、`crate::typeset::layout::{...}` のパスを通じて `block` / `breaking` /
+相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `block` / `breaking` /
 `lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
 `TableColumn` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に消費者がいない
 `Align` / `FootnoteId` は出さない。
@@ -819,14 +923,14 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 - `index`: 巻末索引ブロック生成。`toc` と同型だが本文の**後**に連結する。`build_index_blocks` は右寄せ・
   リーダーを使わず「語 … ページ番号列（カンマ区切り、番号ごとに個別リンク）」の単一行を組む。ソート
   （`sort_index_entries`）は `icu::collator::Collator`（ロケール固定 `ja`）で、`reading` があればそれ、
-  なければ `word` をキーにする。呼び出し元（`seiran_compiler::compiler::back_matter`）が全ページの
+  なければ `word` をキーにする。呼び出し元（`typeset::pagination::back_matter`）が全ページの
   `Page::index_entries` を `(word, reading)` で集約し、出現ページへ `AnchorMark::IndexPage(usize)` を事後
   追加してから内部リンクを張る。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭になる
 - `yakumono`: 和文約物の分類と JIS X 4051 の前後アキ規則
 
 #### `breaking`
 
-フォント非依存の純粋組版パス（コア型は `typeset::layout` にあり、本 module には純粋パス本体だけが残る）。
+フォント非依存の純粋組版パス（コア型は `typeset::boxes` にあり、本 module には純粋パス本体だけが残る）。
 `break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
 （issue #306）が、Rule ベースのボックスのみでページを組んで `font::FontSystem` を一切構築しないこと
 を回帰テストとして固定している。
@@ -898,12 +1002,16 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
 （`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
-`compiler` は **compile facade**（`compile` とその周辺の公開型）と **phase graph**
-（不変な入力から組版成果物を返す core）に分かれる。分離の意図は 2 つ — phase graph から
-filesystem access を除いて組版を決定的にテストできるようにすることと、「ページ情報を使う」という共通点
-だけで目次・索引・走り文・脚注を 1 つの巨大な solver に集めず、処理順を明示的な DAG として持つこと。
-**汎用の「安定するまで全工程を反復」を導入しない**（循環が残るのはページ単位の脚注採番だけで、それは
-専用 solver に閉じ込める）。
+`compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順は知らない（#350）:
+
+```text
+load_project → parse_project → semantics::analyze → font::FontResources::load / .system()
+  → typeset::layout → build_publication（Publication への写像）→ DependencyManifest::collect
+```
+
+組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
+`typeset::layout` の内側にあり、`compiler.rs` は `crate::typeset::` を `layout` の呼び出し以外で
+名指ししない。`Publication` への写像だけは `compiler` に残る（`typeset` は描画 API を知らないため）。
 
 #### compile facade（`compiler.rs` 直下）
 
@@ -921,30 +1029,23 @@ filesystem access を除いて組版を決定的にテストできるように�
 
 `compile` が `font::FontResources::load` → `.system()` を 1 回だけ呼び、`FontResources`（`build_publication`
 用、`FontRefs` / `FontMetrics` / `FontFaceConfigs` へのアクセサを持つ）と `FontSystem`
-（`DocumentLayouter::layout` 用、シェイプ・メトリクス取得の窓口）の両方を得る（描画段での再構築はしない）。
-個々の型の構築順序・寿命関係は `font::system` に閉じており、facade はこれを知らない。子 module:
+（`typeset::layout` 用、シェイプ・メトリクス取得の窓口）の両方を得る（描画段での再構築はしない）。
+個々の型の構築順序・寿命関係は `font::system` に閉じており、facade はこれを知らない。フォント読込が
+`typeset` の内側へ入らないのは、`FontResources` が組版後にも `ResourceBundle` 用の `metrics()` を
+要求され、`LaidOutDocument` の「フォント非依存」という設計意図と衝突するため（`font` module の
+`typeset` 配下への移設は別 issue）。子 module:
 
 - `snapshot`: `load_project` が組み立てる不変な入力 `ProjectSnapshot`（設定・source・文献・CSL・font の読込済み
   データ）と、出力先情報 `OutputPlan`、および `SourceId` の唯一の発行元 `SourceDb`。**画像は含めない** —
-  `\image{...}` でしかパスが分からないため、`parse_project` が返す `ImageManifest` に従って driver が
-  別途読み込む（module 名が `project.rs` でないのは、crate root の `crate::project` と名前が重なるため —
-  戻さない）
-- `image_manifest`: `parse_project` が HIR から集める画像パス一覧 `ImageManifest`
-  （重複なし・`ProjectPath` の昇順。`BTreeSet<ProjectPath>` で集めるので、正規化して等しいパスは
-  1 件に畳まれる）
-- `image_resources`: 画像ファイルの読込と自然寸法解決 `load_image_resources`、および `Block::Image` の
-  width / height を自然寸法と本文幅から確定する `resolve_images`。driver が読込を 1 回だけ呼び、
-  `resolve_images` は phase 1（`body`）から呼ばれる
-- `page_values`: ページ分割後に確定する値の解決機構。本文ページ列からしか構築できない `BodyPageValues`
-  （stage 1）と、前付けページ列確定後にしか得られない `PageLabels`（stage 2）に分け、目次と走り文が必要と
-  する確定順序の制約を型で表す
-- `outline`: 見出し記録から PDF しおり用 `OutlineEntry` を文書順に組み立てる `collect_outline_entries`。
-  `OutlineEntry` はここで定義する（生産者・消費者とも compiler 側だけのため）
-- `publication`: `LaidOutDocument`（`Vec<typeset::Page>` + `OutlineEntry` 列）と `seiran_pdf::ResourceBundle` から
-  `seiran_pdf::Publication` を組み立てる `build_publication`
+  `\image{...}` でしかパスが分からないため、`typeset::layout` が文書木から集めて内部で読み込む
+  （module 名が `project.rs` でないのは、crate root の `crate::project` と名前が重なるため — 戻さない）
+- `publication`: `typeset::LaidOutDocument` と `seiran_pdf::ResourceBundle` から
+  `seiran_pdf::Publication` を組み立てる `build_publication`。`typeset` は描画 API を知らないので、
+  この写像だけは `compiler` 側に残る。ここで `Style` に依存する判断は一切しない
+  （表のセル余白・罫線・背景色は `typeset::breaking` が解決済みの値をページに載せている）
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
-  `ProjectSnapshot` / `ImageManifest` が既に持つデータの再整形で、新しい I/O は発生させない
+  `ProjectSnapshot` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない
 - `diagnostic_set`: `compile` の外部境界を横切る診断の集合 `DiagnosticSet`（`Compilation.warnings` と
   `compile` の `Err` 型を兼ねる）。中身は型消去済みの `miette::Report` の列で、1 件なら `into_report` が
   元の `Report` をそのまま返す（`compile` に包む前後で診断のレンダリング結果が完全に一致することを保証する）
@@ -959,65 +1060,10 @@ filesystem access を除いて組版を決定的にテストできるように�
   `MultipleSourceErrors` の各要素は `AttributedParseError`（`SourceDb` から引いた `NamedSource` を添える
   手書き `Diagnostic` 実装、code/message/help/label/related は内側の `ParseSourceError` へ委譲）として
   集約する。`config.toml` / `style.toml` の `ParseToml` は `read_config` / `read_style` 自身が
-  `NamedSource` を組み立てる（読み込みは `ProjectSource` 経由）。compiler 側の不変条件違反
-  （`ImageManifest` の収集ロジック不具合等）は `CompileError::Bug(CompilerBug)` として、ユーザー向け診断
-  とは型を分けて扱う。PDF の保存は `compile` の関心事ではないため `CompileError` には含まれず、bin 側の
-  `write_error::WriteError` が持つ
-
-#### phase graph（compiler core）
-
-`layout` 子 module の `DocumentLayouter::layout` が phase graph 全体をオーケストレーションする、外から見える
-唯一の組版操作。`typeset` の公開面は 4 入口関数と境界型に閉じているため、ここへ全体オーケストレーションを
-持ち込まず seiran-compiler 側に閉じたまま維持する。フォント資源（`font::FontSystem`）は
-`DocumentLayouter::new` が受け取って `CompileContext` に束ねるだけで、シェーパー等の構築は行わない
-（構築は `font::system` の責務）。phase 順序:
-
-| phase | 内容                       | 実装                                  |
-| ----- | -------------------------- | ------------------------------------- |
-| 1     | 本文 pagination            | `body::typeset_body` / `BodyLayout`   |
-| 2     | `BodyPageFacts` 確定       | `phase_context`                       |
-| 3     | 前付け生成・pagination     | `front_matter::typeset_front_matter`  |
-| 4     | 後付け（索引）生成・pagination | `back_matter::typeset_back_matter` |
-| 5     | 全ページラベル確定 + ページ連結 | `layout::concat_pages`           |
-| 6     | 走り文配置                 | `running::place_running_content`      |
-| 7     | PDF しおり用見出し収集     | `outline` → `LaidOutDocument`         |
-
-- `phase_context`: 全 phase 共有の資源・寸法を持つ `CompileContext`（フォント資源への参照・版面幅・
-  本文 / 前付け / 後付けの `PageGeometry`）と、本文 pagination 確定後の事実 `BodyPageFacts`
-  （`BodyPageValues` + 見出し記録）、`build_page_geometries`。`DocumentLayouter` ↔ 各 phase module の
-  相互依存を解消するためにここへ切り出してある
-- `page_values`（内部専用の newtype）: 物理ページ index `PageIndex`（0 始まり）と表示用の論理ページ値
-  `PageValue`（1 始まり）を型で分離する（両方とも `usize`/`u32` のままだと引数の取り違えが型検査を
-  素通りしてしまうため）。`compile` の公開境界は越えない（`Compilation` が公開する組版済み型は
-  座標確定済みの `seiran_pdf::Publication` のみで、ページ index/value はそこへ変換済みのため）
-- `body`: phase 1 の本文パス。段順序（lowering → `build_blocks` → `resolve_images` → `break_pages`）は
-  `typeset::layout_body` 1 呼び出しに畳んである。`resolve_images`（実装は `image_resources`）は
-  typeset が画像デコードに依存しないよう、`layout_body` にクロージャとして注入する。脚注がページ単位
-  採番のときだけ後述の solver から複数回呼ばれる（パスの中身自体は変わらない）
-- `footnote_numbering`: ページ単位脚注採番の不動点 solver（下記）
-
-#### 脚注のページ単位採番（`compiler::footnote_numbering`）
-
-`style.footnote.numbering` が `per_page` のとき、脚注番号は循環した依存を持つ — 番号はページ割り当てで
-決まるが、番号の桁数がマーカー幅を変え、それが行分割・ページ分割を通じてページ割り当てを変えうる。
-`break_pages` はフォント非依存の純粋パスなので、ページ確定後にマーカーのグリフを作り直すことはできない
-（この不変条件が「後段で番号だけ差し替える」実装を封じている）。そこで**本文パスごと不動点まで反復する**
-専用 module がこの状態（番号 → マーカー寸法 → 行分割 → ページ分割 → ページごとの番号）を所有する:
-
-1. 1 回目は空の上書きマップ（＝全脚注が通し番号へフォールバック）で本文パスを通し、脚注のページ割り当てを知る
-2. 確定ページ列から `typeset::per_page_footnote_numbers` で表示番号を割り当て直す
-3. そのマップを `LoweringContext::with_footnote_numbers` で与えて組み直す
-4. 得られたページ列から番号を割り当て直しても同じマップになれば、表示とページ割り当てが一致した＝不動点なので
-   確定。違えば 2 へ戻る（上限 `MAX_FOOTNOTE_NUMBERING_PASSES` = 4 回）
-
-反復が成り立つのは、番号が**表示値しか変えない**から。どの脚注が存在するか・その文書順は番号に依存しないので、
-出現 index は全パスで同じ脚注を指し続け、マップがパス間で整合する。加えてページ内番号は通し番号以下（部分集合を
-数えるため）なので、`per_page` でマーカーは縮むか同じで、行があふれる方向には動かない。実質 2 回目で収束する。
-上限まで収束しなかった場合（脚注が 9 → 10 の桁境界でページ境界に乗り続ける等）は、一部のページで番号が 1 から
-始まらない不整合な結果を成功として出さず、`CompileError::PerPageFootnoteNotConverged`（回避策付きの診断）を返す。
-
-通し採番（既定）はこの反復を一切通らず、本文パスを 1 回だけ実行する（上書きマップも渡さない）。表セル内の脚注は
-ページ列に配置されない（`seiran-pdf` の既知の制限）ためマップに載らず、`per_page` でも通し番号のまま表示される。
+  `NamedSource` を組み立てる（読み込みは `ProjectSource` 経由）。組版（画像資源の解決・脚注採番の
+  収束・組版側の不変条件違反）は `typeset::TypesetError` が持ち、`CompileError::Typeset` が
+  `#[diagnostic(transparent)]` で透過委譲する。PDF の保存は `compile` の関心事ではないため
+  `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
@@ -1079,7 +1125,7 @@ filesystem access を除いて組版を決定的にテストできるように�
 `seiran-pdf` は `seiran-compiler` にも `seiran` にも依存せず、compiler 内部型（`config::Config` /
 `typeset::Page` 等）を一切知らない自己完結 crate である（境界型はすべて `types` module の leaf 型）。
 `Vec<Page>` → `Publication` への変換と画像の自然寸法解決（width / height 確定の prepass）は compiler 側
-（`seiran_compiler::compiler` の `publication` / `image_resources`）の責務で、こちらへ戻さない。
+（`seiran_compiler` の `compiler::publication` / `typeset::image`）の責務で、こちらへ戻さない。
 
 ### モジュール構成
 

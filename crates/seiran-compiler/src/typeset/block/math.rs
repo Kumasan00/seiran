@@ -6,7 +6,7 @@ use crate::{
   font::FontType,
   length::Length,
   typeset::{
-    layout::{Align, Block, HBox, MathRowNumber, PlacedHItem},
+    boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{LayoutNode, MathBlockRow},
   },
 };

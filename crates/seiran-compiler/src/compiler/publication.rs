@@ -15,9 +15,9 @@ use seiran_pdf::{
   PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
 };
 
-use super::layout::LaidOutDocument;
 use crate::typeset::{
-  AnchorId, AnchorMark, HBoxContent, HItem, LinkTarget as TypesetLinkTarget, Page, PlacedBlock, PlacedTableRow,
+  AnchorId, AnchorMark, HBoxContent, HItem, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
+  PlacedTableRow,
 };
 
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
@@ -401,15 +401,15 @@ mod tests {
 
   use super::build_publication;
   use crate::{
-    compiler::{layout::LaidOutDocument, outline::OutlineEntry},
     config::{Config, DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig},
     document::HeadingLevel,
     font::{FontConfig, FontConfigs, FontData, FontDataExt, FontResources, FontType, GlyphRun},
     length::Length,
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, AnchorMark, HBox, HBoxContent, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-      PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox, TableCellBox, TableColumn, TableRowBox,
+      AnchorId, AnchorMark, HBox, HBoxContent, LaidOutDocument, Line, LinkTarget, OutlineEntry, Page, PlacedAnchor,
+      PlacedBlock, PlacedFootnote, PlacedHItem, PlacedLink, PlacedMathNumber, PlacedTableRow, PositionedBox,
+      TableCellBox, TableColumn, TableRowBox,
     },
   };
 
@@ -530,6 +530,8 @@ mod tests {
     return LaidOutDocument {
       pages,
       outline_entries,
+      image_paths: Vec::new(),
+      image_bytes: std::collections::HashMap::new(),
     };
   }
 

@@ -9,7 +9,7 @@ use super::{
 use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirInline, HirTableRow},
   font::FontKind,
-  typeset::layout::TableColumn,
+  typeset::boxes::TableColumn,
 };
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）

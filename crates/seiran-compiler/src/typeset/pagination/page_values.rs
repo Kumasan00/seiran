@@ -5,7 +5,10 @@
 //! - Stage 1 [`BodyPageValues`]: 本文ページ列からしか構築できない（目次構築の引数型）
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
 
-use crate::{config::PageNumbering, typeset::AnchorMark};
+use crate::{
+  config::PageNumbering,
+  typeset::boxes::{AnchorMark, Page},
+};
 
 /// 物理ページ index（0 始まり）。あるページ列（本文単体、または前付け・本文・後付けを
 /// 連結する前のリージョン内）における位置を表す。
@@ -61,7 +64,7 @@ pub(super) struct BodyPageValues {
 
 impl BodyPageValues {
   /// 本文ページ列とページ番号スタイルから構築する。
-  pub(super) fn from_body_pages(body_pages: &[crate::typeset::Page], numbering: &PageNumbering) -> Self {
+  pub(super) fn from_body_pages(body_pages: &[Page], numbering: &PageNumbering) -> Self {
     let mut heading_pages = Vec::new();
     for (page_index, page) in body_pages.iter().enumerate() {
       for anchor in &page.anchors {
@@ -81,7 +84,7 @@ impl BodyPageValues {
   pub(super) fn heading_pages(&self) -> &[PageIndex] { return &self.heading_pages; }
 
   /// 索引ページを本文領域の通し番号へ加算する。
-  pub(super) fn with_back_matter(mut self, back_pages: &[crate::typeset::Page]) -> Self {
+  pub(super) fn with_back_matter(mut self, back_pages: &[Page]) -> Self {
     self.body_page_count += back_pages.len();
     return self;
   }
@@ -94,7 +97,7 @@ impl BodyPageValues {
   /// 物理ページ順の `({page}, {pages})` ラベル列を確定する。
   ///
   /// 前付けと本文はそれぞれ 1 から番号を振り直す。
-  pub(super) fn finalize(self, front_pages: &[crate::typeset::Page]) -> PageLabels {
+  pub(super) fn finalize(self, front_pages: &[Page]) -> PageLabels {
     let front_count = front_pages.len();
     let body_count = self.body_page_count;
     let total = front_count + body_count;

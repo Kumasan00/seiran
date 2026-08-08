@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
   semantics::{GeneratedBlock, GeneratedInline, HeadingKey, generated_inlines_to_plain_text},
-  typeset::layout::{AnchorId, AnchorMark, LinkTarget},
+  typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
 };
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する

@@ -1,15 +1,23 @@
-//! 画像の自然寸法解決とブロック列への表示寸法確定（旧 `pdf_gen::image`、epic #276 / #279 で移設）
+//! 画像の読込・自然寸法解決とブロック列への表示寸法確定
+//!
+//! （旧 `pdf_gen::image` → `compiler::image_resources`。epic #276 / #279 / #350 で移設）
 
 use std::collections::HashMap;
 
 use tracing::debug;
 
-use super::error::{CompileError, CompilerBug};
-use crate::{length::Length, project::ProjectPath, typeset::Block};
+use crate::{
+  length::Length,
+  project::ProjectPath,
+  typeset::{
+    boxes::Block,
+    error::{TypesetBug, TypesetError},
+  },
+};
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
-pub(super) struct ImageResources {
+pub(crate) struct ImageResources {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
   natural_sizes: HashMap<ProjectPath, (f32, f32)>,
   /// パス → ファイルから読み込んだ生バイト列（未デコード）。
@@ -24,7 +32,7 @@ impl ImageResources {
   ///
   /// render 用 `seiran_pdf::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
-  pub(super) fn into_image_bytes(self) -> HashMap<ProjectPath, Vec<u8>> { return self.bytes; }
+  pub(crate) fn into_image_bytes(self) -> HashMap<ProjectPath, Vec<u8>> { return self.bytes; }
 }
 
 /// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
@@ -35,23 +43,23 @@ impl ImageResources {
 ///
 /// # Errors
 ///
-/// 画像の読み込み・デコードに失敗した場合に [`CompileError`] を返す。
+/// 画像の読み込み・デコードに失敗した場合に [`TypesetError`] を返す。
 #[allow(clippy::result_large_err)]
-pub(super) fn load_image_resources(
+pub(crate) fn load_image_resources(
   source: &dyn crate::project::ProjectSource,
   paths: &[ProjectPath],
-) -> Result<ImageResources, CompileError> {
+) -> Result<ImageResources, TypesetError> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
   for path in paths {
     let file_bytes = source.read_bytes(path).map_err(|source| {
-      return CompileError::ReadImage {
+      return TypesetError::ReadImage {
         path: path.to_string(),
         source: source.into_io(),
       };
     })?;
     let natural_size = seiran_pdf::natural_image_size(&path.to_string(), &file_bytes).map_err(|source| {
-      return CompileError::LoadImage {
+      return TypesetError::LoadImage {
         path: path.to_string(),
         source,
       };
@@ -70,13 +78,13 @@ pub(super) fn load_image_resources(
 ///
 /// # Errors
 ///
-/// 自然寸法が不正な場合、または画像が `images` にない場合に [`CompileError`] を返す。
+/// 自然寸法が不正な場合、または画像が `images` にない場合に [`TypesetError`] を返す。
 #[allow(clippy::result_large_err)]
-pub(super) fn resolve_images(
+pub(crate) fn resolve_images(
   blocks: Vec<Block>,
   text_width: f32,
   images: &ImageResources,
-) -> Result<Vec<Block>, CompileError> {
+) -> Result<Vec<Block>, TypesetError> {
   let resolved = blocks
     .into_iter()
     .map(|block| match block {
@@ -88,14 +96,14 @@ pub(super) fn resolve_images(
         align,
       } => {
         let (nat_width, nat_height) = images.natural_size(&path).ok_or_else(|| {
-          return CompileError::Bug(CompilerBug::new(format!(
+          return TypesetError::Bug(TypesetBug::new(format!(
             "ImageResources に存在しない画像パスです: {path}（ImageManifest の収集ロジックに不具合があります）"
           )));
         })?;
         let (final_width, final_height) =
           resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), nat_width, nat_height, text_width)
             .ok_or_else(|| {
-              return CompileError::InvalidImageNaturalSize {
+              return TypesetError::InvalidImageNaturalSize {
                 path: path.clone(),
                 width: nat_width,
                 height: nat_height,
@@ -111,7 +119,7 @@ pub(super) fn resolve_images(
       },
       other => return Ok(other),
     })
-    .collect::<Result<Vec<Block>, CompileError>>()?;
+    .collect::<Result<Vec<Block>, TypesetError>>()?;
   let image_count = resolved.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(image_count, "画像サイズを確定しました");
   return Ok(resolved);
@@ -203,7 +211,7 @@ mod tests {
     let result = load_image_resources(&source, &paths);
 
     // Assert
-    let Err(CompileError::ReadImage { source, .. }) = result else {
+    let Err(TypesetError::ReadImage { source, .. }) = result else {
       panic!("ReadImage を期待");
     };
     assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");

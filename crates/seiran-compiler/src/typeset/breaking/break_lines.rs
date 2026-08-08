@@ -3,7 +3,7 @@
 use crate::{
   config::TextAlignment,
   length::Length,
-  typeset::layout::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
+  typeset::boxes::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
 };
 
 mod greedy;
@@ -247,7 +247,7 @@ pub(super) fn build_line(
 pub(super) mod test_support {
   use crate::{
     length::Length,
-    typeset::layout::{HBox, HBoxContent, HItem},
+    typeset::boxes::{HBox, HBoxContent, HItem},
   };
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
@@ -348,8 +348,8 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> crate::typeset::layout::LinkTarget {
-    return crate::typeset::layout::LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(
+  pub(super) fn link_target() -> crate::typeset::boxes::LinkTarget {
+    return crate::typeset::boxes::LinkTarget::Internal(crate::typeset::boxes::AnchorId::Label(
       crate::semantics::LabelId::new("sec:x"),
     ));
   }

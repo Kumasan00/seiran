@@ -6,7 +6,7 @@ use super::break_lines::LineBreaker;
 use crate::{
   config::{TextAlignment, column_width},
   length::Length,
-  typeset::layout::{
+  typeset::boxes::{
     Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
     PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
     PlacedMathNumber, PlacedTableRow, TableBox, TableRowBox, collect_row_links, resolve_column_widths,
@@ -1334,7 +1334,7 @@ mod tests {
     document::{ColumnAlign, ColumnWidth},
     font::GlyphRun,
     length::Length,
-    typeset::layout::{
+    typeset::boxes::{
       Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
       PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
     },
@@ -1706,7 +1706,7 @@ mod tests {
   #[test]
   fn footnote_anchor_is_placed_only_on_non_continued_fragment() {
     // Arrange
-    use crate::typeset::layout::AnchorMark;
+    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines(1, 4)]),
@@ -1722,7 +1722,7 @@ mod tests {
         .anchors
         .iter()
         .filter(
-          |a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::layout::FootnoteId::new(0)),
+          |a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::boxes::FootnoteId::new(0)),
         )
         .count();
     };
@@ -1731,7 +1731,7 @@ mod tests {
     let anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::layout::FootnoteId::new(0)))
+      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::boxes::FootnoteId::new(0)))
       .expect("先頭断片のアンカーがあるはず");
     assert!(close(anchor.y, 16.0), "アンカーは脚注先頭行の上端のはず: {anchor:?}");
     assert!(close(anchor.x, 0.0));
@@ -2731,7 +2731,7 @@ mod tests {
   fn table_link_shifts_with_its_row_under_flush_bottom() {
     // Arrange
     let geom = flush_geometry();
-    let target = LinkTarget::Internal(crate::typeset::layout::AnchorId::Label(crate::semantics::LabelId::new("fig:1")));
+    let target = LinkTarget::Internal(crate::typeset::boxes::AnchorId::Label(crate::semantics::LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
       rule(8.0),                                  // idx0, bottom=18（シフト対象外）
@@ -2764,7 +2764,7 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_to_next_paragraph_top() {
     // Arrange
-    use crate::typeset::layout::AnchorMark;
+    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
@@ -2788,7 +2788,7 @@ mod tests {
   #[test]
   fn pending_anchor_resolves_on_page_after_break() {
     // Arrange
-    use crate::typeset::layout::AnchorMark;
+    use crate::typeset::boxes::AnchorMark;
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
@@ -2809,7 +2809,7 @@ mod tests {
   #[test]
   fn paragraph_link_becomes_placed_link() {
     // Arrange
-    use crate::typeset::layout::LinkTarget;
+    use crate::typeset::boxes::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -2941,7 +2941,7 @@ mod tests {
   #[test]
   fn paragraph_indent_shifts_links() {
     // Arrange
-    use crate::typeset::layout::LinkTarget;
+    use crate::typeset::boxes::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -3198,7 +3198,7 @@ mod tests {
   #[test]
   fn centered_paragraph_shifts_links() {
     // Arrange
-    use crate::typeset::layout::LinkTarget;
+    use crate::typeset::boxes::LinkTarget;
     let geom = test_geometry();
     let items = vec![
       HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
@@ -3379,7 +3379,7 @@ mod tests {
   }
 
   /// 合成済み単一行（[`Block::ComposedLine`]）のテスト用ヘルパ。幅・高さ・深さと任意のリンクを持つ
-  fn composed_line(width: f32, height: f32, depth: f32, link: Option<crate::typeset::layout::LinkTarget>) -> Block {
+  fn composed_line(width: f32, height: f32, depth: f32, link: Option<crate::typeset::boxes::LinkTarget>) -> Block {
     let width = pt(width);
     let height = pt(height);
     let depth = pt(depth);
@@ -3438,7 +3438,7 @@ mod tests {
     // Arrange
     use crate::{
       semantics::HeadingKey,
-      typeset::layout::{AnchorId, AnchorMark, LinkTarget},
+      typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
     };
     let geom = test_geometry();
     let blocks = vec![
@@ -3517,7 +3517,7 @@ mod tests {
   #[test]
   fn two_column_paragraph_link_rect_uses_column_offset() {
     // Arrange
-    use crate::typeset::layout::LinkTarget;
+    use crate::typeset::boxes::LinkTarget;
     let geom = two_column_geometry();
     let link_para = Block::Paragraph {
       items: vec![

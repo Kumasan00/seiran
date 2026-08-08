@@ -1,24 +1,24 @@
-//! 後付け（巻末索引）のページ分割オーケストレーション
-//!
-//! ブロックの組み立て順序自体は `crate::typeset::layout_back_matter` に閉じている。ここでは本文全
-//! ページから索引語を集約する（`BodyPageValues` 依存のため typeset に移せない、phase レベルの
-//! 計装ごと）だけを担う。
+//! 後付け（巻末索引）パス（索引語の集約 → 計測 → 改行・改ページ）
 
 use std::{
   collections::{BTreeMap, BTreeSet},
   time::Instant,
 };
 
-use tracing::info;
+use tracing::{debug_span, info};
 
 use super::{
+  context::{BodyPageFacts, TypesetContext},
   elapsed_ms,
   page_values::{BodyPageValues, PageIndex},
-  phase_context::{BodyPageFacts, CompileContext},
 };
 use crate::{
   length::Length,
-  typeset::{AnchorMark, BackMatterInput, IndexEntryInput, IndexPageRef, Page, PlacedAnchor, sort_index_entries},
+  typeset::{
+    block::{IndexEntryInput, IndexPageRef, build_index_blocks, build_index_spec, sort_index_entries},
+    boxes::{AnchorMark, Page, PlacedAnchor},
+    breaking::break_pages,
+  },
 };
 
 /// 巻末索引を生成してページ分割する。
@@ -26,20 +26,21 @@ use crate::{
 /// 本文全ページの索引語を集約し、出現ページへ内部リンクの到達先アンカーを事後追加する
 /// （`body_pages` の破壊的更新）。`\index` が 1 個もなければ空ページ列を返す。
 pub(super) fn typeset_back_matter(
-  ctx: &CompileContext<'_>,
+  ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
 ) -> Vec<Page> {
   let stage_start = Instant::now();
   let entries = collect_index_entries(body_pages, &facts.page_values);
-  let input = BackMatterInput {
-    style: ctx.style,
-    resources: ctx.resources,
-    text_width: ctx.text_width,
-    geometry: &ctx.back_geometry,
-    breaker: &crate::typeset::KnuthPlassBreaker,
+  if entries.is_empty() {
+    return Vec::new();
+  }
+  let spec = build_index_spec(ctx.style);
+  let back_blocks = build_index_blocks(&spec, &entries, ctx.resources);
+  let pages = {
+    let _span = debug_span!("break_pages", region = "back").entered();
+    break_pages(back_blocks, ctx.text_width, &ctx.back_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  let pages = crate::typeset::layout_back_matter(&input, &entries);
   info!(
     back_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
@@ -55,10 +56,7 @@ type IndexEntryKey = (String, Option<String>);
 /// 本文の索引語を集約し、ソート済みの索引エントリを返す。
 ///
 /// 索引語があるページには内部リンク用アンカーも追加する。
-pub(super) fn collect_index_entries(
-  body_pages: &mut [Page],
-  body_page_values: &BodyPageValues,
-) -> Vec<IndexEntryInput> {
+fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageValues) -> Vec<IndexEntryInput> {
   let mut occurrences: BTreeMap<IndexEntryKey, BTreeSet<usize>> = BTreeMap::new();
   for (page_index, page) in body_pages.iter().enumerate() {
     for placed in &page.index_entries {
@@ -102,11 +100,8 @@ pub(super) fn collect_index_entries(
 
 #[cfg(test)]
 mod tests {
-  use super::{BodyPageValues, collect_index_entries};
-  use crate::{
-    config::PageNumbering,
-    typeset::{AnchorMark, Page, PlacedIndexEntry},
-  };
+  use super::{AnchorMark, BodyPageValues, Page, collect_index_entries};
+  use crate::{config::PageNumbering, typeset::boxes::PlacedIndexEntry};
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ
   fn page_with_index_entries(entries: Vec<(&str, Option<&str>)>) -> Page {

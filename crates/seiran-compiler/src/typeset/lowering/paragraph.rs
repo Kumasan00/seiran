@@ -78,7 +78,7 @@ mod tests {
     config::Style as ReadStyle,
     length::Length,
     semantics::LabelId,
-    typeset::layout::{AnchorId, LinkTarget},
+    typeset::boxes::{AnchorId, LinkTarget},
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ

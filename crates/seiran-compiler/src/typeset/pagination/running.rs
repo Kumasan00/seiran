@@ -4,24 +4,23 @@ use std::time::Instant;
 
 use tracing::info;
 
-use super::{elapsed_ms, page_values::PageLabels, phase_context::CompileContext};
+use super::{context::TypesetContext, elapsed_ms, page_values::PageLabels};
 use crate::{
   color::Color,
   config::{DocumentConfig, RunningContentStyle, Style},
-  typeset::{RunningContentSpec, RunningMetadata, RunningSlots},
+  typeset::{
+    block::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
+    boxes::Page,
+  },
 };
 
 /// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///
 /// [`PageLabels`] を引数に要求して呼び出し順を制約する。
-pub(super) fn place_running_content(
-  ctx: &CompileContext<'_>,
-  pages: &mut [crate::typeset::Page],
-  page_labels: PageLabels,
-) {
+pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page], page_labels: PageLabels) {
   let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
-  crate::typeset::layout_running_content(pages, ctx.resources, &spec);
+  layout_running_content(pages, ctx.resources, &spec);
   info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
@@ -47,7 +46,7 @@ fn build_running_spec(
   };
 }
 
-/// `RunningContentStyle` を配置用の [`crate::typeset::RunningSlots`] に変換する。
+/// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。
 ///
 /// 全スロットが空なら描画を省略するため `None` を返す。
 fn running_slots(

@@ -13,7 +13,7 @@ use crate::{
   font::FontKind,
   length::Length,
   semantics::LabelId,
-  typeset::layout::Align,
+  typeset::boxes::Align,
 };
 
 /// 定理ブロックをレイアウトノードに変換する
@@ -119,7 +119,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, typeset::layout::AnchorMark};
+  use crate::{config::Style as ReadStyle, typeset::boxes::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

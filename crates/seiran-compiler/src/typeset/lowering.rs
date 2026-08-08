@@ -15,7 +15,7 @@ use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
   semantics::{CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument, generated_inlines_to_plain_text},
-  typeset::layout::AnchorMark,
+  typeset::boxes::AnchorMark,
 };
 
 mod counter;
@@ -527,7 +527,7 @@ mod tests {
     frontend::parse_source,
     semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
-    typeset::layout::{AnchorId, AnchorMark, LinkTarget},
+    typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
   };
 
   /// 複数の `.sei` ソースを 1 つの文書として parse → analyze するテストヘルパ
