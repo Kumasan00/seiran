@@ -12,7 +12,7 @@ pub(super) enum WriteError {
   /// 出力ディレクトリの作成エラー
   #[error("出力ディレクトリを作成できませんでした: {path}")]
   #[diagnostic(
-    code(build::create_output_dir),
+    code(cli::create_output_dir),
     help("親ディレクトリが存在し、書き込み権限があることを確認してください。")
   )]
   CreateOutputDir {
@@ -25,7 +25,7 @@ pub(super) enum WriteError {
 
   /// PDF ファイルの書き込みエラー
   #[error("PDF ファイルの保存に失敗しました: {path}")]
-  #[diagnostic(code(build::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
+  #[diagnostic(code(cli::write_pdf), help("出力ディレクトリが存在し、書き込み権限があることを確認してください。"))]
   WritePdf {
     /// 出力パス
     path: String,

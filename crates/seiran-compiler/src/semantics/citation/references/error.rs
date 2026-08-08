@@ -8,7 +8,10 @@ use thiserror::Error;
 pub enum ReadReferencesError {
   /// 参照定義ファイルの読み込みに失敗した場合
   #[error("参照定義ファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(references::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(
+    code(semantics::citation::references::read_file),
+    help("ファイルのパスと読み取り権限を確認してください。")
+  )]
   ReadFile {
     /// ファイルパス
     path: String,
@@ -18,7 +21,7 @@ pub enum ReadReferencesError {
   },
   /// TOML 解析に失敗した場合
   #[error("参照定義ファイルの TOML 解析に失敗しました: {path}")]
-  #[diagnostic(code(references::parse_toml), help("TOML の構文を確認してください。"))]
+  #[diagnostic(code(semantics::citation::references::parse_toml), help("TOML の構文を確認してください。"))]
   ParseToml {
     /// ファイルパス
     path: String,
@@ -28,7 +31,7 @@ pub enum ReadReferencesError {
   },
   /// JSON 解析に失敗した場合
   #[error("参照定義ファイルの JSON 解析に失敗しました: {path}")]
-  #[diagnostic(code(references::parse_json), help("JSON の構文を確認してください。"))]
+  #[diagnostic(code(semantics::citation::references::parse_json), help("JSON の構文を確認してください。"))]
   ParseJson {
     /// ファイルパス
     path: String,
@@ -39,7 +42,7 @@ pub enum ReadReferencesError {
   /// サポートされていない拡張子
   #[error("参照定義ファイルの拡張子がサポートされていません: {path}")]
   #[diagnostic(
-    code(references::unsupported_extension),
+    code(semantics::citation::references::unsupported_extension),
     help("拡張子を `.toml` または `.json` のいずれかに変更してください。")
   )]
   UnsupportedExtension {

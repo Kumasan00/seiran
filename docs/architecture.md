@@ -201,7 +201,7 @@ pub trait ProjectSource: Send + Sync {
 別の場所で ID を作り直したり配列の並び順から推測したりしない。
 
 読込失敗は `miette::Diagnostic` を実装しない素の `SourceSetReadError { path, source }` で返す。
-診断（`code(build::read_text_file)` とメッセージ、`SourceReadError::into_io()` による平坦化）を
+診断（`code(compiler::read_text_file)` とメッセージ、`SourceReadError::into_io()` による平坦化）を
 組み立てるのは入力読込側の `compiler::input` で、`project` はどのパスがどう失敗したかだけを伝える。
 I/O 失敗はパースエラーと違い**集約せず**最初の 1 件で早期 return する。
 
@@ -455,9 +455,8 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
   `UnresolvedReference`）+ `UnknownCitationSite`。**2 層を 1 本に統合しない** — `SemanticError` は必ず
   ソース位置に帰属する（`source_id()` を持つ）ことを不変条件とし、`compiler` はそれに乗って
   `CompileError::Resolve` へ本文付き診断を組み立てる。ソース位置を持たない CSL 由来のエラーを同じ enum に
-  混ぜるとこの不変条件が壊れる。診断 `code` は `resolve::unresolved_reference` /
-  `resolve::duplicate_label` / `citation::semantic::unknown_citation_key` のまま据え置いてある
-  （`tests/golden_diagnostics/*.txt` が code 文字列を本文に含むため。code 体系の整理は別 issue）
+  混ぜるとこの不変条件が壊れる。診断 `code` は `semantics::unresolved_reference` /
+  `semantics::duplicate_label` / `semantics::unknown_citation_key`（#356 で第 1 階層を段名へ再編）
 - `ids`: `LabelId`（`\ref` の参照ラベル。`Borrow<str>` を実装して `HashMap` 引きを文字列で行える）と
   `HeadingKey`（見出しの文書順インデックスから決まる暗黙の destination キー。`\ref` ラベルの有無に
   かかわらず全見出しに付く）
@@ -771,8 +770,9 @@ pub(crate) fn layout(
 `InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged` / 組版の
 不変条件違反 `Bug(TypesetBug)`）。`compiler::error::CompileError` は
 `Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
-`compiler` から移設する前の値（`build::image::*` / `build::footnote::per_page_not_converged` /
-`build::internal_bug`）をそのまま保つ — 診断 golden が出力を丸ごと比較しているため。
+所有する段に合わせた `typeset::image::*` / `typeset::footnote::per_page_not_converged` /
+`typeset::internal_bug`（#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
+`build::*` を保っていた）。
 
 #### `geometry`
 
@@ -788,8 +788,9 @@ pub(crate) fn layout(
 `column_width` は `pub(super)` に留め `typeset::pagination::context` と
 `typeset::breaking::break_pages` だけが参照する。
 
-診断 code は移設後も `config::validation::invalid_columns` のまま。module 名ではなく「設定ファイルの
-検証」という領域名で、振る舞い不変（診断が同一）が受け入れ条件だったため変えていない。
+診断 code は所有 module に合わせた `typeset::geometry::invalid_columns`（#356。移設直後は
+`config::validation::invalid_columns` のままだった）。ユーザが直すのは style.toml / config.toml だが、
+その案内は `help` が名指ししている。
 
 #### `image`
 
@@ -1254,7 +1255,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 - `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
   薄い公開関数 `natural_image_size` を持つ（デコードの実装は `seiran-pdf` に 1 本化されたまま）
 - `font` / `metadata` / `error`: グリフ（`types::Glyph`）の krilla 型変換 / PDF メタデータ構築 /
-  `PdfGenError`（診断コードの prefix は crate 名に揃えた `seiran_pdf::<name>`）
+  `PdfGenError`（診断コードの prefix は描画段を表す `pdf::<name>`）
 
 ### 不変条件・注意点
 

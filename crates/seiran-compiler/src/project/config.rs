@@ -31,7 +31,7 @@ pub use processed_config::{DocumentConfig, ImageConfig, Margin, OutputConfig, Pd
 pub enum ReadConfigError {
   /// 設定ファイルの読み込み失敗
   #[error("設定ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(project::config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
   ReadFile {
     /// 読み込みに失敗した設定ファイルのパス
     path: String,
@@ -41,7 +41,7 @@ pub enum ReadConfigError {
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]
-  #[diagnostic(code(config::parse_toml), help("TOML の構文を確認してください。"))]
+  #[diagnostic(code(project::config::parse_toml), help("TOML の構文を確認してください。"))]
   ParseToml {
     #[source_code]
     /// エラー位置を示すためのソース全文
@@ -55,7 +55,7 @@ pub enum ReadConfigError {
   },
   /// 複合バリデーションエラー（複数のエラーをまとめて報告）
   #[error("複数のバリデーションエラーが発生しました。")]
-  #[diagnostic(code(config::multiple_validation_errors))]
+  #[diagnostic(code(project::config::multiple_validation_errors))]
   MultipleValidationErrors {
     #[related]
     /// 集約された個々のバリデーションエラー
@@ -68,7 +68,10 @@ pub enum ReadConfigError {
 pub enum ConfigValidationError {
   /// garde が検出した設定値の不正
   #[error("'{path}': {message}")]
-  #[diagnostic(code(config::validation::field), help("config.toml の該当フィールドの値を確認してください。"))]
+  #[diagnostic(
+    code(project::config::validation::field),
+    help("config.toml の該当フィールドの値を確認してください。")
+  )]
   Field {
     /// 不正な値を持つフィールドの TOML パス（例: `pdf.margin_top`）
     path: String,
@@ -78,7 +81,7 @@ pub enum ConfigValidationError {
   /// フォントパスが見つからない
   #[error("フォントファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(config::validation::font_path),
+    code(project::config::validation::font_path),
     help("フォントファイルが存在し、読み取り権限があることを確認してください。")
   )]
   FontPathResolution {
@@ -90,7 +93,7 @@ pub enum ConfigValidationError {
   /// スタイル設定ファイルが見つからない
   #[error("スタイル設定ファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(config::validation::style_path),
+    code(project::config::validation::style_path),
     help("スタイル設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
   StylePathResolution {
@@ -100,7 +103,7 @@ pub enum ConfigValidationError {
   /// 参照設定ファイルが見つからない
   #[error("参照設定ファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(config::validation::references_path),
+    code(project::config::validation::references_path),
     help("参照設定ファイルが存在し、読み取り権限があることを確認してください。")
   )]
   ReferencesPathResolution {
@@ -110,7 +113,7 @@ pub enum ConfigValidationError {
   /// ソースファイルが見つからない
   #[error("ソースファイルが見つかりません: {path}")]
   #[diagnostic(
-    code(config::validation::source_path),
+    code(project::config::validation::source_path),
     help("`sources` に列挙したファイルが存在し、読み取り権限があることを確認してください。")
   )]
   SourcePathResolution {

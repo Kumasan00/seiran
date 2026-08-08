@@ -68,15 +68,16 @@ impl Diagnostic for AttributedParseError {
 /// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
 /// 通常の `thiserror::Error` + `#[derive(Diagnostic)]` で書ける。
 ///
-/// `#[error(...)]` / `help(...)` の文言は [`crate::semantics::CitationSemanticError::UnknownCitationKeys`]
-/// と意図的に同じ文面を**再掲**している（委譲ではない — `wrap_citation_semantic_error` が
+/// `code` / `#[error(...)]` / `help(...)` は [`crate::semantics::CitationSemanticError::UnknownCitationKeys`]
+/// と意図的に同じ値を**再掲**している（委譲ではない — `wrap_citation_semantic_error` が
 /// `UnknownCitationKeys` を分解してこの型を組み立てるため、実際に描画されるのはこちらのコピーだけで、
-/// 元の `CitationSemanticError` 側の code / help は生成物の Report には現れない）。文言を変えるときは
-/// 両方を揃えて更新すること。
+/// 元の `CitationSemanticError` 側の code / help は生成物の Report には現れない）。`code` が
+/// `semantics::unknown_citation_key`（この型の所有 module である `compiler` ではなく出自の段）なのも
+/// 同じ理由による。文言・code を変えるときは両方を揃えて更新すること。
 #[derive(Debug, Error, Diagnostic)]
 #[error("未定義の引用キーがあります")]
 #[diagnostic(
-  code(build::citation::unknown_citation_key),
+  code(semantics::unknown_citation_key),
   help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
 )]
 pub(super) struct AttributedCitationError {
@@ -104,7 +105,7 @@ pub(super) enum CompileError {
   /// テキストファイルの読み込みエラー
   #[error("テキストファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
-    code(build::read_text_file),
+    code(compiler::read_text_file),
     help(
       "ファイルのパスと読み取り権限を確認してください。ファイルが UTF-8 でエンコードされていることも確認してください。"
     )
@@ -121,7 +122,7 @@ pub(super) enum CompileError {
   ///
   /// `#[related]` で全エラーをまとめて表示する。
   #[error("複数のソースファイルでエラーが発生しました。")]
-  #[diagnostic(code(build::multiple_source_errors))]
+  #[diagnostic(code(compiler::multiple_source_errors))]
   MultipleSourceErrors {
     /// ソースファイルごとのパース・評価エラー（`SourceSet` から引いた本文を添えたもの）
     #[related]
@@ -130,7 +131,7 @@ pub(super) enum CompileError {
 
   /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
   #[error("文献引用の CSL スタイルを読み込めませんでした。")]
-  #[diagnostic(code(build::citation::style))]
+  #[diagnostic(code(compiler::citation::style))]
   CitationStyle {
     /// 元の CSL スタイル読込エラー
     #[source]
@@ -140,7 +141,7 @@ pub(super) enum CompileError {
 
   /// 文献引用の CSL 整形（表示の生成）エラー
   #[error("文献引用の整形に失敗しました。")]
-  #[diagnostic(code(build::citation::format))]
+  #[diagnostic(code(compiler::citation::format))]
   CitationFormat {
     /// 元の CSL 整形エラー
     #[source]
@@ -153,18 +154,19 @@ pub(super) enum CompileError {
   /// `#[related]` で全ソースの診断をまとめて表示する（`MultipleSourceErrors` と同じ
   /// 「1 ソース内は 1 件のラベル付き診断へまとめ、複数ソースは `#[related]` で束ねる」構成）。
   #[error("複数の引用箇所で未定義の引用キーがあります。")]
-  #[diagnostic(code(build::multiple_citation_errors))]
+  #[diagnostic(code(compiler::multiple_citation_errors))]
   MultipleCitationErrors {
     /// ソースごとの未定義引用キー診断（`SourceSet` から引いた本文を添えたもの）
     #[related]
     errors: Vec<AttributedCitationError>,
   },
 
-  /// 帰属ソースを特定できる resolve エラー
+  /// 帰属ソースを特定できる意味解析（`semantics`）のエラー
   ///
-  /// `NamedSource` を同梱し、該当箇所を診断へ表示する。
+  /// `NamedSource` を同梱し、該当箇所を診断へ表示する。`code` は `compiler::semantics` —
+  /// この診断を組み立てるのは `compiler` だが、包んでいるのは semantics 段のエラーである。
   #[error("ラベル・参照・引用の解決に失敗しました。")]
-  #[diagnostic(code(build::resolve))]
+  #[diagnostic(code(compiler::semantics))]
   Resolve {
     /// エラーが帰属するソースファイルの名前と内容（診断スニペット用）
     #[source_code]
@@ -177,7 +179,7 @@ pub(super) enum CompileError {
 
   /// カレントディレクトリの取得失敗
   #[error("カレントディレクトリを取得できませんでした。")]
-  #[diagnostic(code(build::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
+  #[diagnostic(code(compiler::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
   CurrentDir {
     /// 元の I/O エラー
     #[source]
@@ -186,7 +188,7 @@ pub(super) enum CompileError {
 
   /// config と style の横断バリデーションエラー
   #[error("ページレイアウトの検証に失敗しました。")]
-  #[diagnostic(code(build::layout))]
+  #[diagnostic(code(compiler::layout))]
   Layout {
     /// 元の横断バリデーションエラー
     #[source]

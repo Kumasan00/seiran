@@ -1,17 +1,17 @@
-font::validation::multiple_errors
+typeset::font::validation::multiple_errors
 
   × 複数のフォント設定にエラーがあります
 
-Error: font::validation::error
+Error: typeset::font::validation::error
 
   × フォントの検証に失敗しました: Serif
 
-Error: font::validation::unknown_axis
+Error: typeset::font::validation::unknown_axis
 
   × 不明なバリエーション軸: zzzz
   help: 'variation-axes' コマンドでフォントがサポートする軸を確認してください。
 
-Error: font::validation::unconfigured_axis
+Error: typeset::font::validation::unconfigured_axis
 
   × フォントのバリエーション軸 'wght' が設定されていません (デフォルト: 400, 最小: 400, 最大: 700)
   help: 設定ファイルの 'variation_axes' にこの軸を追加してください。

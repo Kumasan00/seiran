@@ -25,7 +25,7 @@ pub enum ShaperError {
   /// 言語タグを解析できない。
   #[error("言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
-    code(shaper::language_parse),
+    code(typeset::font::shaper::language_parse),
     help("言語タグは BCP 47 形式（例: 'ja', 'en-US', 'zh-Hant'）である必要があります。")
   )]
   LanguageParse {

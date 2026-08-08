@@ -53,7 +53,7 @@ pub enum SemanticError {
   /// `\cite{...}` のキーが参照定義に存在しない場合（全箇所を集約して 1 度に報告する）
   #[error("未定義の引用キーがあります")]
   #[diagnostic(
-    code(citation::semantic::unknown_citation_key),
+    code(semantics::unknown_citation_key),
     help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
   )]
   UnknownCitationKeys {
@@ -63,7 +63,7 @@ pub enum SemanticError {
 
   /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合
   #[error("未解決の参照です: ラベル `{label}`")]
-  #[diagnostic(code(resolve::unresolved_reference), help("対応する label が定義されているか確認してください。"))]
+  #[diagnostic(code(semantics::unresolved_reference), help("対応する label が定義されているか確認してください。"))]
   UnresolvedReference {
     /// 解決できなかったラベル名
     label: String,
@@ -76,7 +76,7 @@ pub enum SemanticError {
 
   /// `label=...` で同名ラベルが重複登録された場合
   #[error("ラベルが重複しています: {label}")]
-  #[diagnostic(code(resolve::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
+  #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
   DuplicateLabel {
     /// 重複したラベル名
     label: String,

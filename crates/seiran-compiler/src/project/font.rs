@@ -28,7 +28,7 @@ use crate::project::{ProjectPath, ProjectSource};
 pub enum FontReadError {
   /// フォントファイルを読み込めない。
   #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(font::load::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(project::font::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
   ReadFont {
     /// フォント種別
     font_type: FontType,

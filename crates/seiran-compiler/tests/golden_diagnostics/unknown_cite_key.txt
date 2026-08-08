@@ -1,8 +1,8 @@
-build::multiple_citation_errors
+compiler::multiple_citation_errors
 
   × 複数の引用箇所で未定義の引用キーがあります。
 
-Error: build::citation::unknown_citation_key
+Error: semantics::unknown_citation_key
 
   × 未定義の引用キーがあります
    ╭─[tests/text/diagnostics/unknown_cite_key.sei:3:47]

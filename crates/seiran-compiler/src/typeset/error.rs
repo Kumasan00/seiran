@@ -15,7 +15,7 @@ use crate::project::ProjectPath;
 /// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
 #[derive(Debug, Error, Diagnostic)]
 #[error("内部エラー: {message}")]
-#[diagnostic(code(build::internal_bug), help("再現手順とともに issue を報告してください。"))]
+#[diagnostic(code(typeset::internal_bug), help("再現手順とともに issue を報告してください。"))]
 pub(crate) struct TypesetBug {
   /// エラーメッセージ
   message: String,
@@ -47,7 +47,7 @@ pub(crate) enum TypesetError {
   /// 不整合なページ列は採用せず、回避策付きの診断を返す。
   #[error("脚注のページ単位採番が {passes} 回の組版で収束しませんでした。")]
   #[diagnostic(
-    code(build::footnote::per_page_not_converged),
+    code(typeset::footnote::per_page_not_converged),
     help(
       "style.toml の [footnote] を numbering = \"continuous\"（文書通しの採番）に切り替えるか、ページ境界に脚注が集中している箇所の本文量・脚注の長さを調整してください。"
     )
@@ -59,7 +59,7 @@ pub(crate) enum TypesetError {
 
   /// 画像ファイルを読み込めませんでした。
   #[error("画像ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(build::image::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(typeset::image::read_image), help("画像ファイルのパスと読み取り権限を確認してください。"))]
   ReadImage {
     /// 画像ファイルのパス。
     path: String,
@@ -71,7 +71,7 @@ pub(crate) enum TypesetError {
   /// 画像ファイルのデコードに失敗しました。
   #[error("画像ファイルのデコードに失敗しました: {path}")]
   #[diagnostic(
-    code(build::image::load_image),
+    code(typeset::image::load_image),
     help("画像ファイルが破損していないか、対応形式（PNG / JPEG / SVG）か確認してください。")
   )]
   LoadImage {
@@ -86,7 +86,7 @@ pub(crate) enum TypesetError {
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
   #[error("画像の自然寸法が不正です: {path} (width={width}, height={height})")]
   #[diagnostic(
-    code(build::image::invalid_natural_size),
+    code(typeset::image::invalid_natural_size),
     help("画像ファイルが破損していないか、または width / height を明示指定してください。")
   )]
   InvalidImageNaturalSize {

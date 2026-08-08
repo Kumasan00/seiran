@@ -1,4 +1,4 @@
-build::multiple_source_errors
+compiler::multiple_source_errors
 
   × 複数のソースファイルでエラーが発生しました。
 

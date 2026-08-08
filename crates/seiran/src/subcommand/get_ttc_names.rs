@@ -12,7 +12,7 @@ use tracing::info;
 enum TtcNamesError {
   /// TTC ファイルの読み込みに失敗した場合
   #[error("TTC ファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(ttc_names::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(code(cli::ttc_names::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
   ReadFile {
     /// ファイルパス
     path: String,

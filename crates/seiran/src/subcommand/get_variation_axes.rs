@@ -12,7 +12,10 @@ use tracing::info;
 enum VariationAxesError {
   /// フォントファイルの読み込みに失敗した場合
   #[error("フォントファイルの読み込みに失敗しました: {path}")]
-  #[diagnostic(code(variation_axes::read_file), help("フォントファイルのパスと読み取り権限を確認してください。"))]
+  #[diagnostic(
+    code(cli::variation_axes::read_file),
+    help("フォントファイルのパスと読み取り権限を確認してください。")
+  )]
   ReadFile {
     /// ファイルパス
     path: String,
@@ -23,7 +26,7 @@ enum VariationAxesError {
   /// フォント解析に失敗した場合
   #[error("インデックス {font_index} のフォント解析に失敗しました")]
   #[diagnostic(
-    code(variation_axes::font_parse),
+    code(cli::variation_axes::font_parse),
     help(
       "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は --font-index を確認してください。"
     )

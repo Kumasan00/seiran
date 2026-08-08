@@ -126,7 +126,7 @@ mod tests {
     assert_eq!(*calls.borrow(), MAX_FOOTNOTE_NUMBERING_PASSES, "上限回数で打ち切るはず");
     assert_eq!(
       error.code().expect("診断コードを持つはず").to_string(),
-      "build::footnote::per_page_not_converged",
+      "typeset::footnote::per_page_not_converged",
       "回避策付きの専用診断になるはず"
     );
   }

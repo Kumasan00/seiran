@@ -21,7 +21,7 @@ pub(crate) enum CitationFormatError {
   /// 参照定義を CSL-JSON 担体（`Item`）に変換できなかった場合。
   #[error("参照定義を CSL-JSON に変換できませんでした: {id}")]
   #[diagnostic(
-    code(citation::format::build_entry),
+    code(semantics::citation::build_entry),
     help("`date-parts` は整数の単一日付で指定してください（日付範囲・文字列の年・i16 を超える年は不可）。")
   )]
   BuildEntry {
