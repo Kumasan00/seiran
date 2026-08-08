@@ -688,9 +688,9 @@ pub(crate) fn layout(
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
 **本体コードに消費者がある型だけ** — `compiler::publication` が `Publication` へ写すために走査する
-`Page` / `PlacedBlock` / `HItem` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` /
-`LinkTarget` / `TableColumn` と表セルの配置・計測ヘルパで、`Align` / `FootnoteId` のように外に
-消費者がいないものは出さない（#326）。かつては `HBox` / `Line` / `PositionedBox` / `Placed*` /
+`Page` / `PlacedBlock` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` で、
+`HItem` / `TableColumn` / 表セルの配置・計測ヘルパのように `typeset` の外に消費者がいないものは
+出さない（#326）。かつては `HBox` / `Line` / `PositionedBox` / `Placed*` /
 `TableCellBox` / `TableRowBox` / `OutlineEntry` / `measure_items_width` も「`compiler` 配下の
 `#[cfg(test)] mod tests` が組版済みページを組み立て・走査するため」に facade へ出していた
 （`#[allow(unused_imports)]` 付き）が、テストが中間型のフィールド構成へ結合して再編を妨げるため
@@ -882,17 +882,27 @@ pub(crate) fn layout(
   （ブロック先頭に置くゼロサイズのアンカー）/ `LinkTarget`。到達先の名前空間には前段が確定した
   `semantics::LabelId` / `semantics::HeadingKey` / `semantics::CitationId` を借りるだけで、発行はしない
 - `page`: `Page`（縦組版の出力）/ `PlacedAnchor` / `PlacedBlock` / `PlacedFootnote` / `PlacedIndexEntry` /
-  `PlacedLink` / `PlacedMathNumber` / `PlacedTableRow`
+  `PlacedLink` / `PlacedMathNumber` / `PlacedTableRow` / `PlacedTableRule`。`PlacedBlock::Table` は表という
+  行のまとまりだけを残し、各行は本文左端基準の確定 x 座標を持つ `PositionedBox` 列、ページ上端基準の
+  baseline、位置・寸法・色を確定した罫線を持つ。列定義・列幅・セル余白・未配置の `HItem` は保持しない
 - `table_box`: `TableColumn`（列の揃え + 幅指定。`lowering` が HIR の `ColumnAlign` / `ColumnWidth` を
   列ごとに束ねて作る入力契約）/ `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
-  （`measure_items_width` / `max_font_size_in_items` / `resolve_column_widths` / `table_row_height` /
-  `layout_row_cells` / `collect_row_links` / `CellPlacement` / `RowLink`）。フォント非依存
+  （`max_font_size_in_items` / `resolve_column_widths` / `table_row_height` / `position_table_row_boxes` /
+  `collect_row_links` / `RowLink`）。フォント非依存。`measure_items_width` / `layout_row_cells` は
+  この module 内だけの共通実装で、未配置のセル表現を外へ出さない
+
+表は `breaking::place_table` が改段・改ページとヘッダ再描画を決めた時点で、段オフセット・揃え・セル余白・
+baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整数）のまま行い、pt の `f32` へ変換するのは
+描画命令を作る 1 回だけである。以降の `compiler::publication` は表固有の配置判断・幅計算を持たず、
+他の `PlacedBlock` と同じく左マージンの加算と pt 変換だけを行う。表セル内脚注・索引 marker をページ列へ
+配置しない現行制限は維持し、`position_table_row_boxes` で明示的に読み飛ばす。完全対応は表の配置済み
+表現とは別課題とする。
 
 いずれもフォントに触れない（box は (a) `build_blocks` で計測済みの値を保持するだけ）。7 ファイルの
 相互参照は `super::` で解決し、`crate::typeset::boxes::{...}` のパスを通じて `block` / `breaking` /
 `lowering` 側から使う。`compiler` から名指しされる型（`AnchorId` / `AnchorMark` / `LinkTarget` /
-`TableColumn` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に消費者がいない
-`Align` / `FootnoteId` は出さない。
+`HBoxContent` / `PlacedTableRow` ほか）だけを `typeset` root facade へ再エクスポートし、`typeset` の外に
+消費者がいない `Align` / `FootnoteId` / `TableColumn` は出さない。
 
 #### `lowering`
 
@@ -1147,8 +1157,8 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   `input` が行う
 - `publication`: `typeset::LaidOutDocument` と `seiran_pdf::ResourceBundle` から
   `seiran_pdf::Publication` を組み立てる `build_publication`。`typeset` は描画 API を知らないので、
-  この写像だけは `compiler` 側に残る。ここで `Style` に依存する判断は一切しない
-  （表のセル余白・罫線・背景色は `typeset::breaking` が解決済みの値をページに載せている）
+  この写像だけは `compiler` 側に残る。ここで `Style` に依存する判断や配置計算は一切しない。
+  表もセル内容の確定座標列と確定罫線を `PaintOp` へ写すだけで、列定義・列幅・セル余白を知らない
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
   `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない
@@ -1263,8 +1273,8 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   集合）。ここを増やすときは「前段で決められない描画か」を確認する。
 - **`Style` / `ProjectConfig` に依存しない**（そもそも `seiran-compiler` に依存しないので参照できない）。表のセル余白 /
   罫線太さ / 罫線色・ページ背景色は前段（`seiran-compiler` の `typeset::breaking`）が `Style` から解決済みの値として
-  `typeset::Page.background_color` / `typeset::PlacedBlock::Table` の `cell_padding` / `rule_thickness` /
-  `rule_color` に載せており、左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側
+  `typeset::Page.background_color` と `PlacedTableRow` の配置済みセル内容列・`PlacedTableRule` に載せており、
+  左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側
   （`seiran_compiler::compiler::publication`）が `project::ProjectConfig` から読んで `Publication` に前倒し解決してから渡す。
 - `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
   `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は

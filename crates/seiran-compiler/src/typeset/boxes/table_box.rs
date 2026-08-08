@@ -1,11 +1,12 @@
 //! シェーピング済みの表ボックスと計測関数。
 //!
-//! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅の解決・行高の算出は
-//! フォントに触れない純粋関数として本モジュールで提供する。罫線・行の描画は
-//! `seiran_pdf` 段で行う。
+//! セル内容は計測済みの [`HItem`] 列として保持されるため、列幅・行高・セル内 x 座標の算出は
+//! フォントに触れない純粋関数として本モジュールで提供する。`breaking::break_pages` がページ上の
+//! 絶対座標へ確定し、描画 adapter は確定値を型変換するだけになる。
 
 use super::{
   hitem::{HBoxContent, HItem},
+  line::PositionedBox,
   link::LinkTarget,
 };
 use crate::{
@@ -62,7 +63,7 @@ pub struct TableCellBox {
 ///
 /// box は計測済みの幅を持つため、フォントに触れずに合計できる。
 #[must_use]
-pub fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
+fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HItem::natural_width).sum(); }
 
 /// アイテム列に含まれるテキストの最大フォントサイズを返す（テキストがなければ `None`）
 ///
@@ -176,26 +177,19 @@ pub fn resolve_column_widths(table: &TableBox, available: Length, padding: Lengt
   return widths;
 }
 
-/// 1 行の各セルの帯位置・内容開始位置（表左端からの相対 x）
-pub struct CellPlacement<'a> {
+/// 1 行の各セルと内容開始位置（表左端からの相対 x）
+struct CellPlacement<'a> {
   /// 対象のセル
-  pub cell: &'a TableCellBox,
-  /// セル帯（結合列込み）の表左端からの開始オフセット
-  // 配置計算の中間値。描画は `content_x` だけを使うが、crate 内の `#[cfg(test)]` が帯の算術を検証する。
-  #[allow(dead_code)]
-  pub band_x: Length,
-  /// セル帯の幅
-  #[allow(dead_code)]
-  pub band_width: Length,
+  cell: &'a TableCellBox,
   /// 内容の開始位置（表左端からの相対 x。揃え + padding 適用済み）
-  pub content_x: Length,
+  content_x: Length,
 }
 
 /// 1 行の各セルの帯位置・内容開始位置を順に計算する
 ///
 /// 列揃え（[`ColumnAlign`]）と内側余白から `content_x` を求める。
 #[must_use]
-pub fn layout_row_cells<'a>(
+fn layout_row_cells<'a>(
   row: &'a TableRowBox,
   columns: &[TableColumn],
   col_widths: &[Length],
@@ -214,16 +208,54 @@ pub fn layout_row_cells<'a>(
       ColumnAlign::Center => cell_x + (band_width - content_width) / 2.0,
       ColumnAlign::Right => cell_x + band_width - padding - content_width,
     };
-    placements.push(CellPlacement {
-      cell,
-      band_x: cell_x,
-      band_width,
-      content_x,
-    });
+    placements.push(CellPlacement { cell, content_x });
     cell_x += band_width;
     column_index += span;
   }
   return placements;
+}
+
+/// 表の 1 行に含まれる描画対象の箱を、表左端からの相対 x 座標へ配置する
+///
+/// 列揃え・padding・`Kern` / `Glue` のカーソル前進はこの時点ですべて解決する。
+/// リンク marker は [`collect_row_links`] が別に確定矩形へ変換するため描画箱には含めない。
+/// セル内脚注・索引 marker は入力から到達可能だが、表セル内では本体を配置しないという
+/// 現行制限を維持して描画箱を生成しない。
+#[must_use]
+pub fn position_table_row_boxes(
+  row: &TableRowBox,
+  columns: &[TableColumn],
+  col_widths: &[Length],
+  padding: Length,
+) -> Vec<PositionedBox> {
+  let mut boxes = Vec::new();
+  for placement in layout_row_cells(row, columns, col_widths, padding) {
+    let mut cursor = placement.content_x;
+    for item in &placement.cell.items {
+      match item {
+        HItem::Box(hbox) => {
+          boxes.push(PositionedBox {
+            content: hbox.content.clone(),
+            x: cursor,
+            dy: Length::ZERO,
+            width: hbox.width,
+          });
+          cursor += hbox.width;
+        },
+        HItem::Kern(value) => cursor += *value,
+        HItem::Glue { natural, .. } => cursor += *natural,
+        HItem::Penalty { .. }
+        | HItem::Discretionary { .. }
+        | HItem::ForcedBreak
+        | HItem::LinkStart(_)
+        | HItem::LinkEnd
+        | HItem::FlushRight(_)
+        | HItem::Footnote { .. }
+        | HItem::IndexMark { .. } => {},
+      }
+    }
+  }
+  return boxes;
 }
 
 /// 表セル内のリンク領域（表左端からの相対座標）
@@ -241,12 +273,8 @@ pub struct RowLink {
 ///
 /// セルは折り返さない（`TableCellBox.items` はフラットな未分割の水平アイテム列）ため、
 /// `LinkStart`/`LinkEnd` は常に同一セル内で対応が閉じる。カーソル前進は
-/// [`HItem::natural_width`] を使い、`seiran_pdf::render::draw_cell_items` の描画カーソルと
-/// 同じ値になることを保証する。ただし `natural_width` は `FlushRight`/`Footnote` にも非ゼロ／
-/// 実質幅を返し得るのに対し、`draw_cell_items` は現状これらを表セル内では出現しないものとして
-/// 無視（no-op）している。両者のカーソルが一致するのはその前提（表セルに `FlushRight`/`Footnote`
-/// が現れない）が成り立つ間だけであり、将来これらがセル内に許可される変更をする際は本関数も
-/// 合わせて見直すこと。
+/// [`HItem::natural_width`] を使う。セル内脚注・索引 marker は幅 0 で、現行制限どおり
+/// ページ上の脚注・索引としては配置しない。
 #[must_use]
 pub fn collect_row_links(
   row: &TableRowBox,
@@ -285,7 +313,7 @@ mod tests {
       link::{AnchorId, LinkTarget},
     },
     TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
-    resolve_column_widths, table_row_height,
+    position_table_row_boxes, resolve_column_widths, table_row_height,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
@@ -570,6 +598,34 @@ mod tests {
     assert_eq!(links[0].target, target);
     assert!(close(links[0].x0, 2.0));
     assert!(close(links[0].x1, 22.0));
+  }
+
+  #[test]
+  fn position_table_row_boxes_resolves_alignment_and_spacing() {
+    // Arrange
+    let row = row(vec![cell(vec![
+      rule_box(5.0),
+      HItem::Kern(pt(3.0)),
+      HItem::Glue {
+        natural: pt(2.0),
+        stretch: Length::ZERO,
+        shrink: Length::ZERO,
+        breakable: false,
+      },
+      rule_box(4.0),
+    ])]);
+    let columns = vec![TableColumn {
+      align: ColumnAlign::Right,
+      width: ColumnWidth::Auto,
+    }];
+
+    // Act
+    let boxes = position_table_row_boxes(&row, &columns, &[pt(30.0)], pt(2.0));
+
+    // Assert
+    assert_eq!(boxes.len(), 2);
+    assert!(close(boxes[0].x, 14.0), "右揃えの先頭 x: {boxes:?}");
+    assert!(close(boxes[1].x, 24.0), "box + kern + glue 後の x: {boxes:?}");
   }
 
   #[test]

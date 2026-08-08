@@ -10,7 +10,7 @@ use std::fmt::Write;
 
 use super::boxes::{
   AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
-  PositionedBox, measure_items_width,
+  PositionedBox,
 };
 use crate::length::Length;
 
@@ -122,15 +122,8 @@ fn dump_block(out: &mut String, block: &PlacedBlock) {
         dump_math_number(out, number);
       }
     },
-    PlacedBlock::Table {
-      x,
-      columns,
-      col_widths,
-      rows,
-      ..
-    } => {
-      let widths: Vec<String> = col_widths.iter().map(|w| return f2(*w)).collect();
-      let _ = writeln!(out, "  table x={} cols={} col_widths=[{}]", f2(*x), columns.len(), widths.join(", "));
+    PlacedBlock::Table { rows } => {
+      let _ = writeln!(out, "  table rows={}", rows.len());
       for row in rows {
         dump_table_row(out, row);
       }
@@ -183,24 +176,29 @@ fn dump_math_number(out: &mut String, number: &PlacedMathNumber) {
   dump_content_children(out, &number.content.content, 6);
 }
 
-/// 表の 1 行を書き出す（行帯位置・高さ + セルの結合数・幅、インデント 4/6）。
+/// 表の 1 行を書き出す（行帯・baseline・確定罫線・配置済みセル内容）。
 fn dump_table_row(out: &mut String, row: &PlacedTableRow) {
   let _ = writeln!(
     out,
-    "    row top_y={} height={} rule_above={} cells={}",
+    "    row top_y={} height={} baseline_y={} boxes={}",
     f2(row.top_y),
     f2(row.height),
-    row.row.rule_above,
-    row.row.cells.len()
+    f2(row.baseline_y),
+    row.boxes.len()
   );
-  for cell in &row.row.cells {
+  if let Some(rule) = row.rule {
     let _ = writeln!(
       out,
-      "      cell span={} items={} width={}",
-      cell.span,
-      cell.items.len(),
-      f2(measure_items_width(&cell.items))
+      "      rule x={} y={} w={} h={} color={}",
+      f2(rule.x),
+      f2(rule.y),
+      f2(rule.width),
+      f2(rule.height),
+      color_desc(rule.color)
     );
+  }
+  for positioned in &row.boxes {
+    dump_positioned_box(out, positioned);
   }
 }
 

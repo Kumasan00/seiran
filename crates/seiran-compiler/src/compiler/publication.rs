@@ -18,7 +18,7 @@ use seiran_pdf::{
 use crate::{
   project::config::ProjectConfig,
   typeset::{
-    AnchorId, AnchorMark, HBoxContent, HItem, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
+    AnchorId, AnchorMark, HBoxContent, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
     PlacedTableRow,
   },
 };
@@ -187,16 +187,6 @@ fn add_margin_left(margin_left: crate::length::Length, x: crate::length::Length)
   return margin_left.to_pt() + x.to_pt();
 }
 
-/// 描画に必要な解決済みの表スタイル。
-struct ResolvedTableStyle {
-  /// セル内容の左右内側余白
-  cell_padding: crate::length::Length,
-  /// 罫線の太さ（0 のとき描画しない）
-  rule_thickness: crate::length::Length,
-  /// 罫線色（RGB）。`None` は黒
-  rule_color: Option<[u8; 3]>,
-}
-
 /// 配置済みブロックの描画命令を追加する。
 ///
 /// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
@@ -212,23 +202,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
         );
       }
     },
-    PlacedBlock::Table {
-      x,
-      columns,
-      col_widths,
-      rows,
-      cell_padding,
-      rule_thickness,
-      rule_color,
-    } => {
-      let table_style = ResolvedTableStyle {
-        cell_padding: *cell_padding,
-        rule_thickness: *rule_thickness,
-        rule_color: *rule_color,
-      };
-      let x0 = margin_left + x.to_pt();
+    PlacedBlock::Table { rows } => {
       for placed_row in rows {
-        push_table_row_ops(ops, columns, col_widths, placed_row, x0, &table_style);
+        push_table_row_ops(ops, placed_row, margin_left);
       }
     },
     PlacedBlock::MathBlock {
@@ -310,64 +286,25 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 }
 
 /// 位置確定済みの表の 1 行から描画命令を追加する。
-fn push_table_row_ops(
-  ops: &mut Vec<PaintOp>,
-  columns: &[crate::typeset::TableColumn],
-  col_widths: &[crate::length::Length],
-  placed_row: &PlacedTableRow,
-  x0: f32,
-  table_style: &ResolvedTableStyle,
-) {
-  let row = &placed_row.row;
-  let band_top = placed_row.top_y.to_pt();
-  let table_width: crate::length::Length = col_widths.iter().copied().sum();
-  if row.rule_above {
+fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, margin_left: f32) {
+  if let Some(rule) = placed_row.rule {
     ops.push(PaintOp::FillRect {
       rect: Rect {
-        x: x0,
-        y: band_top,
-        width: table_width.to_pt(),
-        height: table_style.rule_thickness.to_pt(),
+        x: margin_left + rule.x.to_pt(),
+        y: rule.y.to_pt(),
+        width: rule.width.to_pt(),
+        height: rule.height.to_pt(),
       },
-      color: table_style.rule_color,
+      color: rule.color,
     });
   }
-
-  let max_font = row
-    .cells
-    .iter()
-    .filter_map(|cell| return crate::typeset::max_font_size_in_items(&cell.items))
-    .reduce(crate::length::Length::max)
-    .unwrap_or(placed_row.height)
-    .to_pt();
-  let baseline = band_top + max_font;
-
-  let padding = crate::length::Length::pt(table_style.cell_padding.to_pt());
-  for placement in crate::typeset::layout_row_cells(row, columns, col_widths, padding) {
-    push_cell_items_ops(ops, &placement.cell.items, x0 + placement.content_x.to_pt(), baseline);
-  }
-}
-
-/// セル内容のアイテム列から描画命令を追加する。
-fn push_cell_items_ops(ops: &mut Vec<PaintOp>, items: &[HItem], start_x: f32, baseline: f32) {
-  let mut cursor_x = start_x;
-  for item in items {
-    match item {
-      HItem::Box(hbox) => {
-        push_box_content_ops(ops, cursor_x, baseline, &hbox.content);
-        cursor_x += hbox.width.to_pt();
-      },
-      HItem::Kern(value) => cursor_x += value.to_pt(),
-      HItem::Glue { natural, .. } => cursor_x += natural.to_pt(),
-      HItem::Penalty { .. }
-      | HItem::Discretionary { .. }
-      | HItem::ForcedBreak
-      | HItem::LinkStart(_)
-      | HItem::LinkEnd
-      | HItem::FlushRight(_)
-      | HItem::Footnote { .. }
-      | HItem::IndexMark { .. } => {},
-    }
+  for positioned in &placed_row.boxes {
+    push_box_content_ops(
+      ops,
+      margin_left + positioned.x.to_pt(),
+      (placed_row.baseline_y - positioned.dy).to_pt(),
+      &positioned.content,
+    );
   }
 }
 
@@ -412,7 +349,7 @@ mod tests {
     },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, FontResources, Page, TableColumn,
+      AnchorId, FontResources, Page,
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, rule_line, table_block,
@@ -724,10 +661,6 @@ mod tests {
     // Arrange
     let config = test_config();
     let cell_run = glyph_run("cell");
-    let column = TableColumn {
-      align: crate::document::ColumnAlign::Left,
-      width: crate::document::ColumnWidth::Auto,
-    };
     let row = TableRowSpec {
       top_y: Length::pt(40.0),
       height: Length::pt(15.0),
@@ -737,8 +670,7 @@ mod tests {
     let page = PageBuilder::new()
       .block(table_block(
         Length::pt(0.0),
-        vec![column],
-        vec![Length::pt(100.0)],
+        &[Length::pt(100.0)],
         vec![row],
         Length::pt(4.0),
         Length::pt(0.5),
