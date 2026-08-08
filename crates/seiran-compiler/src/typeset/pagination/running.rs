@@ -7,7 +7,8 @@ use tracing::info;
 use super::{context::TypesetContext, elapsed_ms, page_values::PageLabels};
 use crate::{
   color::Color,
-  config::{DocumentConfig, RunningContentStyle, Style},
+  config::DocumentConfig,
+  style::{RunningContentStyle, Style},
   typeset::{
     block::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
     boxes::Page,

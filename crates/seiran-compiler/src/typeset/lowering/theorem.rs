@@ -8,11 +8,11 @@ use super::{
   with_label_anchor,
 };
 use crate::{
-  config::TheoremStyle,
   document::{HirNode, HirNodeKind, TheoremClass},
   font::FontKind,
   length::Length,
   semantics::LabelId,
+  style::TheoremStyle,
   typeset::boxes::Align,
 };
 
@@ -119,7 +119,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, typeset::boxes::AnchorMark};
+  use crate::{style::Style as ReadStyle, typeset::boxes::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

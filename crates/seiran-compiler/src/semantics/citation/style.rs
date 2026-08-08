@@ -12,8 +12,8 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  config::Style,
   project::{ProjectPath, ProjectSource},
+  style::Style,
 };
 
 /// CSL スタイル・ロケールの読込・解析エラー。
@@ -240,9 +240,9 @@ mod tests {
 
   use super::{CitationStyleError, load_citation_style, load_locales};
   use crate::{
-    config::Style,
     project::{FilesystemProjectSource, MemoryProjectSource},
     semantics::test_fixtures::ieee_csl_path,
+    style::Style,
   };
 
   /// テスト用カスタムロケールへの絶対パスを返す。

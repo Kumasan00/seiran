@@ -87,7 +87,7 @@ pub(super) fn typeset_front_matter(ctx: &TypesetContext<'_>, facts: &BodyPageFac
 fn collect_toc_entries(
   headings: &[HeadingRecord],
   page_values: &BodyPageValues,
-  toc: &crate::config::TocStyle,
+  toc: &crate::style::TocStyle,
 ) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
@@ -111,9 +111,9 @@ fn collect_toc_entries(
 mod tests {
   use super::{BodyPageValues, HeadingRecord, Page, collect_toc_entries};
   use crate::{
-    config::{PageNumbering, TocStyle},
     document::HeadingLevel,
     semantics::HeadingKey,
+    style::{PageNumbering, TocStyle},
     typeset::boxes::{AnchorMark, PlacedAnchor},
   };
 

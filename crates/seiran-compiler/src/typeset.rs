@@ -52,7 +52,7 @@ use crate::{font::FontSystem, semantics::SemanticDocument};
 pub(crate) fn layout(
   source: &dyn crate::project::ProjectSource,
   config: &crate::config::Config,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
   font_system: &FontSystem<'_>,
   document: &SemanticDocument,
 ) -> Result<LaidOutDocument, TypesetError> {
@@ -71,7 +71,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::lowering::{LayoutNode, LoweringContext, lower_sources_with_headings};
-  use crate::{config::Style, frontend::parse_source, source::SourceId};
+  use crate::{frontend::parse_source, source::SourceId, style::Style};
 
   /// ワークスペースの `tests/text/<name>.sei` を絶対パスで返す
   fn fixture_path(name: &str) -> PathBuf {

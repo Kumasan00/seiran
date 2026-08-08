@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use crate::{
-  config::{CounterName, Style, TheoremReset},
   document::{HeadingLevel, TheoremClass},
+  style::{CounterName, Style, TheoremReset},
 };
 
 /// 1 カウンタぶんの値側設定
@@ -112,8 +112,8 @@ impl DocumentPolicy {
 mod tests {
   use super::DocumentPolicy;
   use crate::{
-    config::{CounterName, NumberStyle, Style},
     document::HeadingLevel,
+    style::{CounterName, NumberStyle, Style},
   };
 
   #[test]

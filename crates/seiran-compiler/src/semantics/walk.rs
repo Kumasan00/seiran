@@ -9,7 +9,7 @@
 //! 行採番の後に来る）。
 
 use crate::{
-  config::{CounterName, DocumentPolicy},
+  config::DocumentPolicy,
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   semantics::{
     CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError,
@@ -17,6 +17,7 @@ use crate::{
     error::{UnknownCitationSite, span_to_source_span},
     facts::{HeadingFacts, SemanticFacts},
   },
+  style::CounterName,
 };
 
 /// HIR 全体を文書順に走査し、意味の事実を確定する
@@ -511,10 +512,11 @@ impl Walker<'_> {
 mod tests {
   use super::collect_facts;
   use crate::{
-    config::{DocumentPolicy, Style},
+    config::DocumentPolicy,
     document::HirDocument,
     semantics::{GeneratedCitations, References, SemanticDocument, SemanticError, test_fixtures::sample_references},
     source::SourceId,
+    style::Style,
   };
 
   /// 走査結果を `SemanticDocument` に束ねるテスト用の入口
@@ -800,10 +802,11 @@ mod completeness_tests {
 
   use super::collect_facts;
   use crate::{
-    config::{DocumentPolicy, Style},
+    config::DocumentPolicy,
     document::HirDocument,
     semantics::{GeneratedCitations, SemanticDocument, test_fixtures::sample_references},
     source::SourceId,
+    style::Style,
   };
 
   /// 採番・ラベル・参照・引用のいずれかを含む要素を 1 つ生成する戦略

@@ -30,7 +30,7 @@ fn register(memory: MemoryProjectSource, path: &Path) -> MemoryProjectSource {
 }
 
 /// 実ビルドが `ProjectSource` から読む資源すべてを `MemoryProjectSource` へ複製する。
-fn memory_source_for(config: &crate::config::Config, style: &crate::config::Style) -> MemoryProjectSource {
+fn memory_source_for(config: &crate::config::Config, style: &crate::style::Style) -> MemoryProjectSource {
   let mut memory = MemoryProjectSource::new();
   for font_type in FontType::ALL {
     memory = register(memory, &config.font_configs.get(font_type).font_path);

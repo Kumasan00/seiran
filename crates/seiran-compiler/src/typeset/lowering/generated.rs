@@ -109,7 +109,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{config::Style as ReadStyle, semantics::CitationId};
+  use crate::{semantics::CitationId, style::Style as ReadStyle};
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
   fn bibliography() -> Vec<GeneratedBlock> {

@@ -2,7 +2,7 @@
 //!
 //! 波括弧はプレースホルダ専用で、リテラルやエスケープ（`{{`）は扱わない。
 
-use crate::config::style::counter::CounterName;
+use crate::style::counter::CounterName;
 
 /// 見出し書式で許可するプレースホルダ。
 const HEADING: &[&str] = &["number", "title"];

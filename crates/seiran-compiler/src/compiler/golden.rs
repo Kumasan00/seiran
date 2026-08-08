@@ -11,11 +11,12 @@ use std::{
 
 use super::{build_pages, dump::dump_pages};
 use crate::{
-  config::{Config, Style},
+  config::Config,
   font::{FontData, FontDataExt},
   length::Length,
   project::{MemoryProjectSource, ProjectPath},
   semantics::{References, read_references},
+  style::Style,
   typeset::{AnchorMark, Page, PlacedBlock},
 };
 
@@ -81,14 +82,14 @@ pub(super) fn load_base() -> (Config, Style, Arc<References>) {
     &workspace_root(),
   )
   .expect("fixture config.toml の読込");
-  let style = crate::config::read_style(&source, config.style_path.as_deref(), &workspace_root())
-    .expect("fixture style.toml の読込");
+  let style =
+    crate::style::load(&source, config.style_path.as_deref(), &workspace_root()).expect("fixture style.toml の読込");
   let references = read_references(&source, config.references_path.as_deref()).expect("fixture references の読込");
   return (config, style, Arc::new(references));
 }
 
 /// 検証対象の機能に必要な style 差分を入力ごとに適用する。
-fn apply_input_style_overrides(name: &str, style: &mut crate::config::Style) {
+fn apply_input_style_overrides(name: &str, style: &mut crate::style::Style) {
   match name {
     "title_page" => {
       style.title_page.enabled = true;
@@ -97,7 +98,7 @@ fn apply_input_style_overrides(name: &str, style: &mut crate::config::Style) {
       style.footer.center = "{page}".to_string();
     },
     "toc" => style.toc.enabled = true,
-    "footnote_per_page" => style.footnote.numbering = crate::config::FootnoteNumbering::PerPage,
+    "footnote_per_page" => style.footnote.numbering = crate::style::FootnoteNumbering::PerPage,
     _ => {},
   }
 }
@@ -458,7 +459,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
-fn footnote_numbers_per_page(numbering: crate::config::FootnoteNumbering) -> Vec<Vec<u32>> {
+fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<Vec<u32>> {
   enter_workspace_root();
   let (mut config, mut style, references) = load_base();
   style.footnote.numbering = numbering;
@@ -477,7 +478,7 @@ fn footnote_numbers_per_page(numbering: crate::config::FootnoteNumbering) -> Vec
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
   // Act
-  let per_page = footnote_numbers_per_page(crate::config::FootnoteNumbering::PerPage);
+  let per_page = footnote_numbers_per_page(crate::style::FootnoteNumbering::PerPage);
 
   // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
@@ -559,7 +560,7 @@ fn block_bottom(block: &PlacedBlock) -> Option<Length> {
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
   // Act — 同じ入力を既定（通し）で組む
-  let continuous = footnote_numbers_per_page(crate::config::FootnoteNumbering::Continuous);
+  let continuous = footnote_numbers_per_page(crate::style::FootnoteNumbering::Continuous);
 
   // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();

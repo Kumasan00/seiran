@@ -147,7 +147,7 @@ mod tests {
 
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
-    config::{DocumentPolicy, Style},
+    config::DocumentPolicy,
     document::HirDocument,
     font::FontKind,
     project::FilesystemProjectSource,
@@ -158,6 +158,7 @@ mod tests {
       walk::collect_facts,
     },
     source::SourceId,
+    style::Style,
   };
 
   /// ソース 1 本をパースして `HirDocument` にする

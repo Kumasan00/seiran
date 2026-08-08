@@ -23,7 +23,7 @@ pub struct ReferenceStyle {
   /// 引用整形に用いる CSL スタイルファイル（`.csl`）のパス。
   ///
   /// `None`（既定）で引用（`\cite`）が存在する場合は `semantics::citation` がエラーを報告する。
-  /// [`read_style`](crate::config::style::read_style) が絶対パスへ正規化する。
+  /// [`load`](crate::style::load) が絶対パスへ正規化する。
   #[garde(skip)]
   pub csl_path: Option<PathBuf>,
   /// 引用整形に用いる CSL ロケールファイル（`.xml`）のパス。
@@ -35,7 +35,7 @@ pub struct ReferenceStyle {
   ///
   /// active locale は次の優先順位で決まる: 本フィールド → [`locale_path`](Self::locale_path) の
   /// ファイルの `xml:lang` → `.csl` の `default-locale`（最終的に en-US）。
-  /// [`read_style`](crate::config::style::read_style) が BCP 47 の標準形へ正規化する。
+  /// [`load`](crate::style::load) が BCP 47 の標準形へ正規化する。
   #[garde(custom(validate_locale))]
   pub locale: Option<String>,
 }
@@ -83,7 +83,7 @@ mod tests {
   use garde::Validate;
 
   use super::ReferenceStyle;
-  use crate::config::style::parse_style;
+  use crate::style::parse;
 
   #[test]
   fn validate_accepts_default() {
@@ -110,7 +110,7 @@ mod tests {
   }
 
   #[test]
-  fn parse_style_accepts_top_level_reference_table() {
+  fn parse_accepts_top_level_reference_table() {
     // Arrange
     let toml = "[reference]\n\
                 title = \"参考文献\"\n\
@@ -119,7 +119,7 @@ mod tests {
                 locale = \"ja-JP\"\n";
 
     // Act
-    let style = parse_style(toml, "style.toml").expect("[reference] を含む style.toml はパースできるはず");
+    let style = parse(toml, "style.toml").expect("[reference] を含む style.toml はパースできるはず");
 
     // Assert
     assert_eq!(style.reference.title, "参考文献");

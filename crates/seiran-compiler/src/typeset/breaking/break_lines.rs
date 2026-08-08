@@ -1,8 +1,8 @@
 //! (c) 行分割
 
 use crate::{
-  config::TextAlignment,
   length::Length,
+  style::TextAlignment,
   typeset::boxes::{HBox, HItem, Line, LineFootnote, LineIndexEntry, LineLink, LinkTarget, PositionedBox},
 };
 

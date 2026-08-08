@@ -11,10 +11,10 @@
 use tracing::debug;
 
 use crate::{
-  config::Style as ReadStyle,
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId, NodeMap},
   length::Length,
   semantics::{CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument, generated_inlines_to_plain_text},
+  style::Style as ReadStyle,
   typeset::boxes::AnchorMark,
 };
 
@@ -152,11 +152,12 @@ pub struct HeadingRecord {
 pub(super) mod test_support {
   use super::{LayoutNode, LoweringContext, lower_sources_with_headings};
   use crate::{
-    config::{DocumentPolicy, Style},
+    config::DocumentPolicy,
     document::HirDocument,
     frontend::parse_source,
     semantics::{SemanticDocument, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
+    style::Style,
   };
 
   /// `.sei` スニペットを parse → analyze して意味解析済みドキュメントを作る

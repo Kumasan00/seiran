@@ -67,7 +67,7 @@ mod tests {
     super::{lower_sources_with_headings, test_support::analyzed},
     *,
   };
-  use crate::config::Style as ReadStyle;
+  use crate::style::Style as ReadStyle;
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///

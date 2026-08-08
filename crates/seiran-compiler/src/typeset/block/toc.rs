@@ -2,11 +2,11 @@
 
 use super::Measurer;
 use crate::{
-  config::Style,
   document::HeadingLevel,
   font::{FontKind, FontSystem},
   length::Length,
   semantics::HeadingKey,
+  style::Style,
   typeset::{
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,

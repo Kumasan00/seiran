@@ -137,7 +137,7 @@ fn load_project(
   base_dir: &Path,
 ) -> miette::Result<(ProjectSnapshot, OutputPlan)> {
   let config = crate::config::read_config(source, config_path, base_dir)?;
-  let style = crate::config::read_style(source, config.style_path.as_deref(), base_dir)?;
+  let style = crate::style::load(source, config.style_path.as_deref(), base_dir)?;
   crate::config::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
@@ -273,7 +273,7 @@ fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_
 #[cfg(test)]
 fn build_pages(
   config: &crate::config::Config,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {
@@ -289,7 +289,7 @@ fn build_pages(
 fn build_pages_with_source(
   source: &dyn crate::project::ProjectSource,
   config: &crate::config::Config,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
   references: &Arc<References>,
   font_data: &FontData,
 ) -> miette::Result<LaidOutDocument> {

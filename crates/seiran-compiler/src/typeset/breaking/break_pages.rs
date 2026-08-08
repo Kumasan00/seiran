@@ -4,8 +4,9 @@ use tracing::{debug, warn};
 
 use super::break_lines::LineBreaker;
 use crate::{
-  config::{TextAlignment, column_width},
+  config::column_width,
   length::Length,
+  style::TextAlignment,
   typeset::boxes::{
     Align, AnchorMark, Block, FootnoteId, HBox, HItem, Line, LinkTarget, MathRowNumber, PENALTY_FORBID_BREAK,
     PENALTY_FORCE_BREAK, Page, PlacedAnchor, PlacedBlock, PlacedFootnote, PlacedIndexEntry, PlacedLink,
@@ -1330,10 +1331,10 @@ mod tests {
     is_content_block, keep_group_end, pack_footnotes, placed_block_bottom, plan_paragraph_lines,
   };
   use crate::{
-    config::TextAlignment,
     document::{ColumnAlign, ColumnWidth},
     font::GlyphRun,
     length::Length,
+    style::TextAlignment,
     typeset::boxes::{
       Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
       PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,

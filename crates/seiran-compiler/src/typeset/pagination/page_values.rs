@@ -6,7 +6,7 @@
 //! - Stage 2 [`PageLabels`]: `finalize`（前付けページ列確定）後にしか得られない（running の引数型）
 
 use crate::{
-  config::PageNumbering,
+  style::PageNumbering,
   typeset::boxes::{AnchorMark, Page},
 };
 
@@ -137,8 +137,8 @@ impl PageLabels {
 mod tests {
   use super::{BodyPageValues, PageIndex};
   use crate::{
-    config::PageNumbering,
     semantics::{HeadingKey, LabelId},
+    style::PageNumbering,
     typeset::{AnchorMark, Page, PlacedAnchor},
   };
 

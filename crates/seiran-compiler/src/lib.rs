@@ -17,6 +17,7 @@ mod length;
 mod project;
 mod semantics;
 mod source;
+mod style;
 mod typeset;
 
 pub use compiler::{BuildStatistics, Compilation, DependencyManifest, DiagnosticSet, OutputPlan, compile};

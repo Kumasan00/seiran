@@ -33,7 +33,7 @@ pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_wi
 /// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` → `typeset::layout` →
 /// `ResourceBundle` 構築 → `build_publication` → `seiran_pdf::render`）を通す — golden が検証
 /// したいのは本番の描画経路そのものであり、ここでショートカットを作らない。
-fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::config::Style)) -> Vec<u8> {
+fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut crate::style::Style)) -> Vec<u8> {
   enter_workspace_root();
   let (base_config, style, references) = load_base();
   let mut config = base_config.clone();

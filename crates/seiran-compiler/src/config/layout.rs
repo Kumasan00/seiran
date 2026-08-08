@@ -4,10 +4,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{
-  config::{Config, Style},
-  length::Length,
-};
+use crate::{config::Config, length::Length, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]

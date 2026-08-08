@@ -16,7 +16,7 @@ pub(crate) struct TypesetContext<'a> {
   /// 実体・物理・メタデータ設定
   pub(super) config: &'a crate::config::Config,
   /// 見た目の設定
-  pub(super) style: &'a crate::config::Style,
+  pub(super) style: &'a crate::style::Style,
   /// シェイプ・メトリクス取得の窓口（構築順序は呼び出し側から隠蔽されている）
   pub(super) resources: &'a FontSystem<'a>,
   /// 版面幅（段組み前）
@@ -37,7 +37,7 @@ impl<'a> TypesetContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
   pub(crate) fn new(
     config: &'a crate::config::Config,
-    style: &'a crate::config::Style,
+    style: &'a crate::style::Style,
     resources: &'a FontSystem<'a>,
   ) -> Self {
     let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
@@ -74,7 +74,7 @@ impl BodyPageFacts {
   pub(super) fn new(
     body_pages: &[Page],
     headings: Vec<HeadingRecord>,
-    numbering: &crate::config::PageNumbering,
+    numbering: &crate::style::PageNumbering,
   ) -> Self {
     return Self {
       page_values: BodyPageValues::from_body_pages(body_pages, numbering),
@@ -88,7 +88,7 @@ impl BodyPageFacts {
 /// 段数・段間以外は本文の値を共有する。
 fn build_page_geometries(
   config: &crate::config::Config,
-  style: &crate::config::Style,
+  style: &crate::style::Style,
   body_columns: usize,
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {

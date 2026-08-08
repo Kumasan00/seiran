@@ -48,7 +48,7 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::config::Style as ReadStyle;
+  use crate::style::Style as ReadStyle;
 
   /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
   fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {

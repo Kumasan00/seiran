@@ -101,7 +101,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
 #[cfg(test)]
 mod tests {
   use super::{AnchorMark, BodyPageValues, Page, collect_index_entries};
-  use crate::{config::PageNumbering, typeset::boxes::PlacedIndexEntry};
+  use crate::{style::PageNumbering, typeset::boxes::PlacedIndexEntry};
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ
   fn page_with_index_entries(entries: Vec<(&str, Option<&str>)>) -> Page {

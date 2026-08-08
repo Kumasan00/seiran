@@ -7,10 +7,10 @@ use super::{
   template::expand_template,
 };
 use crate::{
-  config::CaptionStyle,
   document::{CaptionPosition, HirInline},
   font::FontKind,
   length::Length,
+  style::CaptionStyle,
   typeset::boxes::Align,
 };
 
@@ -101,8 +101,8 @@ mod tests {
     *,
   };
   use crate::{
-    config::{CaptionStyle, Style as ReadStyle},
     semantics::LabelId,
+    style::{CaptionStyle, Style as ReadStyle},
     typeset::boxes::{Align, AnchorId, LinkTarget},
   };
 

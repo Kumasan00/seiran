@@ -15,7 +15,7 @@ pub(super) struct ProjectSnapshot {
   /// 検証済みの設定（用紙・余白・`sources`・`font_configs` 等）
   pub(super) config: crate::config::Config,
   /// 検証済みのスタイル
-  pub(super) style: crate::config::Style,
+  pub(super) style: crate::style::Style,
   /// `\cite` の CSL 整形に使う文献データ。複数の入力（golden テスト等）で使い回せるよう
   /// `Arc` で共有する
   pub(super) references: Arc<References>,
@@ -36,7 +36,7 @@ impl ProjectSnapshot {
   pub(super) fn assemble(
     source: &dyn crate::project::ProjectSource,
     config: crate::config::Config,
-    style: crate::config::Style,
+    style: crate::style::Style,
     references: Arc<References>,
     font_data: crate::font::FontData,
   ) -> Result<Self, CompileError> {

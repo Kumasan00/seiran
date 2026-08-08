@@ -7,9 +7,9 @@ use icu::{
 
 use super::Measurer;
 use crate::{
-  config::Style,
   font::{FontKind, FontSystem},
   length::Length,
+  style::Style,
   typeset::{
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     lowering::TextStyle,
