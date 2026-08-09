@@ -1,65 +1,104 @@
 //! PDF 構造の golden スナップショット回帰テスト
 //!
-//! 独立した reader で PDF を読み返し、決定的な構造情報だけを比較する。
+//! 独立した reader（`lopdf`）で PDF を読み返し、決定的な構造情報だけを比較する。
+//!
+//! 入力は `crates/seiran-compiler/tests/config/` の fixture（layout dump golden と共有）で、
+//! `seiran_compiler::compile` → [`seiran_pdf::render`] という本番の経路をそのまま通す。
+//! `seiran-compiler` 側の in-src テストではなくこちらに置くのは、依存が
+//! `seiran-pdf → seiran-compiler` の一方向で、in-src（`#[cfg(test)]`）だと unit test ビルドの
+//! compiler と `seiran-pdf` がリンクする compiler が別コンパイルになり型が一致しないため（#372）。
 
 use std::{
   fs,
   path::{Path, PathBuf},
-  sync::Arc,
 };
 
 use lopdf::{Document, Object, content::Content};
-
-use super::{
-  golden::{enter_workspace_root, load_base},
-  input::CompilationInputs,
-};
-use crate::{project::FontData, style::Style, typeset::FontResources};
+use seiran_compiler::{FilesystemProjectSource, ProjectPath};
+use tempfile::TempDir;
 
 /// PDF 構造 golden の対象入力。
 const PDF_STRUCTURE_INPUTS: &[&str] = &["text", "hyperref", "figure"];
 
-/// PDF 構造 golden ファイルを置くディレクトリ（`crates/seiran-compiler/tests/golden_pdf_structure`）を返す。
+/// ワークスペースルートを返す。
+fn workspace_root() -> PathBuf {
+  return Path::new(env!("CARGO_MANIFEST_DIR"))
+    .ancestors()
+    .nth(2)
+    .expect("crates/seiran-pdf の 2 階層上がワークスペースルート")
+    .to_path_buf();
+}
+
+/// カレントディレクトリをワークスペースルートへ固定する。
+///
+/// fixture の config / style / `.sei` / フォントのパスはすべてワークスペースルート基準で、
+/// `compile` はカレントディレクトリを基準に相対パスを解決する（画像パスは `.sei` に書かれた
+/// 値がそのまま `ProjectSource` へ渡るため、ここを固定しないと解決できない）。
+fn enter_workspace_root() {
+  std::env::set_current_dir(workspace_root()).expect("カレントディレクトリをワークスペースルートへ固定");
+}
+
+/// PDF 構造 golden ファイルを置くディレクトリ（`crates/seiran-pdf/tests/golden_pdf_structure`）を返す。
 fn pdf_structure_golden_dir() -> PathBuf {
   return Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden_pdf_structure");
 }
 
-/// 指定入力を `compiler` と同じ手順（パース〜描画）でフルビルドし、PDF バイト列を返す
-/// （ファイル書き込みは行わない）。style は fixture のベースをそのまま使う。
-pub(super) fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_style(name, |_| {}); }
+/// 指定キーで始まる行を差し替える（fixture の TOML を再直列化せずに 1 行だけ上書きする）。
+fn replace_line(text: &str, key: &str, replacement: &str) -> String {
+  let mut out = String::with_capacity(text.len() + replacement.len());
+  let mut replaced = false;
+  for line in text.lines() {
+    if line.starts_with(key) {
+      out.push_str(replacement);
+      replaced = true;
+    } else {
+      out.push_str(line);
+    }
+    out.push('\n');
+  }
+  assert!(replaced, "fixture に {key} で始まる行があるはず");
+  return out;
+}
 
-/// style の一時的な差分を適用して PDF を生成する。
+/// fixture の config / style を一時ディレクトリへ写し、入力ソースと背景色だけ差し替える。
 ///
-/// `compile` 本体と同じ手順（`parse_project` → `semantics::analyze` → `typeset::layout` →
-/// `ResourceBundle` 構築 → `build_publication` → `seiran_pdf::render`）を通す — golden が検証
-/// したいのは本番の描画経路そのものであり、ここでショートカットを作らない。
-fn build_pdf_bytes_with_style(name: &str, adjust_style: impl FnOnce(&mut Style)) -> Vec<u8> {
+/// 差し替えは行単位で行い、TOML の再直列化はしない（他のキーの表記・並びを一切動かさないため）。
+/// 戻り値は `compile` に渡す config.toml のパス（`TempDir` は呼び出し側が生存させる）。
+fn write_fixture_project(dir: &TempDir, name: &str, background: Option<&str>) -> ProjectPath {
+  let fixture_dir = workspace_root().join("crates/seiran-compiler/tests/config");
+  let style_text = fs::read_to_string(fixture_dir.join("style.toml")).expect("fixture style.toml を読めるはず");
+  let style_text = match background {
+    Some(color) => format!("background_color = \"{color}\"\n{style_text}"),
+    None => style_text,
+  };
+  let style_path = dir.path().join("style.toml");
+  fs::write(&style_path, style_text).expect("style.toml の書き出し");
+
+  let config_text = fs::read_to_string(fixture_dir.join("config.toml")).expect("fixture config.toml を読めるはず");
+  let config_text = replace_line(&config_text, "sources = ", &format!("sources = [\"tests/text/{name}.sei\"]"));
+  let config_text = replace_line(&config_text, "style_path = ", &format!("style_path = \"{}\"", style_path.display()));
+  let config_path = dir.path().join("config.toml");
+  fs::write(&config_path, config_text).expect("config.toml の書き出し");
+
+  return ProjectPath::new(&config_path);
+}
+
+/// 指定入力を本番の経路（`compile` → `render`）でフルビルドし、PDF バイト列を返す。
+fn build_pdf_bytes(name: &str) -> Vec<u8> { return build_pdf_bytes_with_background(name, None); }
+
+/// 背景色の差分を style へ適用して PDF を生成する。
+fn build_pdf_bytes_with_background(name: &str, background: Option<&str>) -> Vec<u8> {
   enter_workspace_root();
-  let (base_config, style, references) = load_base();
-  let mut config = base_config.clone();
-  config.sources = vec![PathBuf::from(format!("tests/text/{name}.sei"))];
-  let mut style = style.clone();
-  adjust_style(&mut style);
-  let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
-  let inputs =
-    CompilationInputs::from_parts(&source, config.clone(), style, Arc::clone(&references), font_data.clone())
-      .expect("CompilationInputs の構築");
-  let document = super::parse_project(&inputs).expect("parse_project の実行");
-  let semantics =
-    crate::semantics::analyze(&source, document, inputs.references(), inputs.style()).expect("analyze の実行");
-  let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
-  let mut laid_out = crate::typeset::layout(&source, inputs.config(), inputs.style(), &font_resources, &semantics)
-    .expect("layout の実行");
-  let fonts = super::build_pdf_fonts(&font_data, &font_resources);
-  let font_metrics = super::build_pdf_font_metrics(&font_resources);
-  let image_bytes: std::collections::HashMap<String, Vec<u8>> = std::mem::take(&mut laid_out.image_bytes)
-    .into_iter()
-    .map(|(path, bytes)| return (path.to_string(), bytes))
-    .collect();
-  let resources = seiran_pdf::ResourceBundle::new(fonts, font_metrics, image_bytes).expect("ResourceBundle の構築");
-  let publication = super::publication::build_publication(&config, resources, &laid_out);
-  return seiran_pdf::render(&publication).expect("PDF の描画");
+  assert!(
+    Path::new("vendor/fonts").is_dir(),
+    "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
+  );
+  let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
+  let root = write_fixture_project(&dir, name, background);
+  let compilation = seiran_compiler::compile(&FilesystemProjectSource::new(), &root).unwrap_or_else(|diagnostics| {
+    panic!("fixture {name} の compile は成功するはず: {:?}", diagnostics.reports().collect::<Vec<_>>())
+  });
+  return seiran_pdf::render(&compilation.publication).expect("PDF の描画");
 }
 
 /// 辞書オブジェクトの `/Type` または `/Subtype` を照合する。
@@ -74,22 +113,22 @@ fn dict_name_is(object: &Object, key: &[u8], expected: &[u8]) -> bool {
 }
 
 /// PDF バイト列から独立 reader（`lopdf`）で読み取れる構造的事実
-pub(super) struct PdfStructureFacts {
+struct PdfStructureFacts {
   /// ページ数
-  pub(super) page_count: usize,
+  page_count: usize,
   /// 埋め込みフォント数
-  pub(super) embedded_font_count: usize,
+  embedded_font_count: usize,
   /// リンク注釈数
-  pub(super) link_annotation_count: usize,
+  link_annotation_count: usize,
   /// しおり（アウトライン）の有無
-  pub(super) has_outline: bool,
+  has_outline: bool,
   /// 画像 `XObject` 数（`/Subtype /Image`）。SVG はラスタ画像と異なりベクタパスとして展開され
   /// `XObject` にならない場合があるため、期待値は決め打ちせず golden で確定させる。
-  pub(super) image_xobject_count: usize,
+  image_xobject_count: usize,
 }
 
 /// PDF バイト列から構造的事実を読み取る
-pub(super) fn compute_pdf_structure_facts(bytes: &[u8]) -> PdfStructureFacts {
+fn compute_pdf_structure_facts(bytes: &[u8]) -> PdfStructureFacts {
   let document = Document::load_mem(bytes).expect("lopdf での PDF 読込");
   let page_count = document.get_pages().len();
   let embedded_font_count =
@@ -174,8 +213,8 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
-/// `PublicationPage.ops`（`seiran_pdf::PaintOp`）は「背景の矩形塗り（パス構築 + `f`）→
-/// 本文（テキスト `Tj`/`TJ`・画像 `Do`）」の順で並ぶ（`compiler::publication::build_page` 参照）。
+/// `PublicationPage.ops` は「背景の矩形塗り（パス構築 + `f`）→ 本文（テキスト `Tj`/`TJ`・画像 `Do`）」
+/// の順で並ぶ（`seiran_compiler` の `compiler::publication` が定める描画順）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),
@@ -187,14 +226,12 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 
 #[test]
 fn pdf_structure_background_paints_before_body_content() {
-  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、compiler::publication::build_page が
-  // 定める描画順（背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
+  // Arrange — text（本文段落のみ）に背景色を明示的に設定し、compiler が定める描画順
+  // （背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
   // 入力に figure を使わないのは、下の assert が見るのが「fill と body の初出順」だけで、画像の
   // 有無が結論に一切効かないため（初出 body は本文テキスト）。figure は巨大なラスタ画像 5 枚の
   // デコード + ダウンサンプルに数十秒かかり、この検証に対して費用だけが乗る。
-  let bytes = build_pdf_bytes_with_style("text", |style| {
-    style.background_color = Some(crate::color::Color::new(220, 220, 220));
-  });
+  let bytes = build_pdf_bytes_with_background("text", Some("#dcdcdc"));
   let document = Document::load_mem(&bytes).expect("lopdf での PDF 読込");
   let (_, &page_id) = document.get_pages().iter().next().expect("少なくとも 1 ページあるはず");
   let content_bytes = document.get_page_content(page_id);

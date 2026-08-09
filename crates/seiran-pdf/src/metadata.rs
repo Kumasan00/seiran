@@ -2,8 +2,7 @@
 
 use chrono::{Datelike, Timelike, Utc};
 use krilla::metadata::{DateTime, Metadata};
-
-use crate::publication::PublicationMetadata;
+use seiran_compiler::PublicationMetadata;
 
 /// [`PublicationMetadata`] から Krilla のメタデータを構築する。
 pub(crate) fn build_metadata(metadata: &PublicationMetadata) -> Metadata {

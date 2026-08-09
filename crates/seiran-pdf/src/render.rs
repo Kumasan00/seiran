@@ -13,24 +13,22 @@ use krilla::{
   surface::Surface,
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
+use seiran_compiler::{
+  Color, Destination as PubDestination, GlyphRun, PaintOp, Point as PubPoint, Publication, PublicationLink,
+  PublicationLinkTarget, PublicationOutlineEntry, PublicationResources, Rect as PubRect,
+};
 
 use crate::{
   error::PdfGenError,
-  font::convert_to_krilla_glyphs,
+  font::{KrillaFonts, convert_to_krilla_glyphs},
   image::{LoadedImage, load_image, required_pixels},
-  publication::{
-    PaintOp, Point as PubPoint, Publication, PublicationLink, PublicationLinkTarget, PublicationOutlineEntry,
-    Rect as PubRect,
-  },
-  resources::ResourceBundle,
-  types::GlyphRun,
 };
 
 /// Publication の点を Krilla の点へ渡す（すでに pt 単位の `f32` なので変換不要）。
 fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x, point.y); }
 
-/// `Publication::Destination` を krilla の `XyzDestination` へ変換する
-fn to_xyz_destination(dest: crate::publication::Destination) -> XyzDestination {
+/// `Publication` の到達先を krilla の `XyzDestination` へ変換する
+fn to_xyz_destination(dest: PubDestination) -> XyzDestination {
   return XyzDestination::new(dest.page_index, to_krilla_point(dest.point));
 }
 
@@ -106,19 +104,28 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Resul
 }
 
 /// `PaintOp::DrawGlyphRun` を描画する
-fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin: PubPoint, run: &GlyphRun) {
-  let font = resources.font(run.font_type);
-  let upem = resources.font_metric(run.font_type).upem;
+///
+/// グリフ列はシェイピング結果（`seiran_compiler::GlyphRun`）そのままなので、フォントサイズ（`Length`）と
+/// 色（`Color`）の単位変換はここで行う。
+fn draw_glyph_run(
+  surface: &mut Surface<'_>,
+  resources: &PublicationResources,
+  fonts: &KrillaFonts,
+  origin: PubPoint,
+  run: &GlyphRun,
+) {
+  let font = fonts.font(run.font_type);
+  let upem = resources.font(run.font_type).metric.upem;
   let krilla_glyphs = convert_to_krilla_glyphs(&run.glyphs, upem);
-  if let Some(color) = run.color {
-    let [r, g, b] = color;
+  let color = run.color.map(Color::rgb);
+  if let Some([r, g, b]) = color {
     surface.set_fill(Some(Fill {
       paint: rgb::Color::new(r, g, b).into(),
       ..Fill::default()
     }));
   }
-  surface.draw_glyphs(to_krilla_point(origin), &krilla_glyphs, font.clone(), &run.text, run.font_size, false);
-  if run.color.is_some() {
+  surface.draw_glyphs(to_krilla_point(origin), &krilla_glyphs, font.clone(), &run.text, run.font_size.to_pt(), false);
+  if color.is_some() {
     surface.set_fill(None);
   }
 }
@@ -126,12 +133,12 @@ fn draw_glyph_run(surface: &mut Surface<'_>, resources: &ResourceBundle, origin:
 /// `PaintOp::DrawImage` を描画する。
 fn draw_publication_image(
   surface: &mut Surface<'_>,
-  resources: &ResourceBundle,
+  resources: &PublicationResources,
   path: &str,
   rect: PubRect,
   target_dpi: Option<u32>,
 ) -> Result<(), PdfGenError> {
-  let bytes = resources.image_bytes.get(path).ok_or_else(|| {
+  let bytes = resources.image_bytes(path).ok_or_else(|| {
     return PdfGenError::ImageNotInManifest {
       path: path.to_string(),
     };
@@ -145,10 +152,15 @@ fn draw_publication_fill(surface: &mut Surface<'_>, rect: PubRect, color: Option
 }
 
 /// `PaintOp` 1 個を描画する
-fn draw_paint_op(surface: &mut Surface<'_>, resources: &ResourceBundle, op: &PaintOp) -> Result<(), PdfGenError> {
+fn draw_paint_op(
+  surface: &mut Surface<'_>,
+  resources: &PublicationResources,
+  fonts: &KrillaFonts,
+  op: &PaintOp,
+) -> Result<(), PdfGenError> {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
-      draw_glyph_run(surface, resources, *origin, run);
+      draw_glyph_run(surface, resources, fonts, *origin, run);
     },
     PaintOp::DrawImage {
       path,
@@ -166,9 +178,13 @@ fn draw_paint_op(surface: &mut Surface<'_>, resources: &ResourceBundle, op: &Pai
 
 /// [`Publication`] を Krilla の文書へ描画する。
 ///
-/// 描画命令に加えてリンク注釈としおりを出力する。フォント・画像資源は `publication.resources` から
-/// 取るだけで、ここではファイル I/O もフォント資源の構築も行わない。
-pub(crate) fn render_pages(document: &mut Document, publication: &Publication) -> Result<(), PdfGenError> {
+/// 描画命令に加えてリンク注釈としおりを出力する。画像資源は `publication.resources` から、krilla
+/// フォントは構築済みの `fonts` から取るだけで、ここではファイル I/O を行わない。
+pub(crate) fn render_pages(
+  document: &mut Document,
+  publication: &Publication,
+  fonts: &KrillaFonts,
+) -> Result<(), PdfGenError> {
   let resources = &publication.resources;
   for page in &publication.pages {
     let width = page.page_box.width;
@@ -177,7 +193,7 @@ pub(crate) fn render_pages(document: &mut Document, publication: &Publication) -
     let mut krilla_page = document.start_page_with(page_settings);
     let mut surface = krilla_page.surface();
     for op in &page.ops {
-      draw_paint_op(&mut surface, resources, op)?;
+      draw_paint_op(&mut surface, resources, fonts, op)?;
     }
     surface.finish();
     add_page_links(&mut krilla_page, &page.links)?;
@@ -263,9 +279,9 @@ fn draw_filled_rect(
 #[cfg(test)]
 mod tests {
   use krilla::{destination::XyzDestination, geom::Point};
+  use seiran_compiler::{Destination as PubDestination, Point as PubPoint};
 
   use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_xyz_destination};
-  use crate::publication::{Destination as PubDestination, Point as PubPoint};
 
   #[test]
   #[allow(clippy::float_cmp)]

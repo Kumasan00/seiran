@@ -23,7 +23,6 @@ miette.workspace = true
 phf.workspace = true
 rayon.workspace = true
 read-fonts.workspace = true
-seiran-pdf.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -33,7 +32,6 @@ unic-langid.workspace = true
 usvg.workspace = true
 
 [dev-dependencies]
-lopdf.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
 

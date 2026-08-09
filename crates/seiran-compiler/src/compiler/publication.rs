@@ -1,22 +1,21 @@
-//! 確定ページ列（`Vec<crate::typeset::Page>`）から `seiran_pdf::Publication` への変換
+//! 確定ページ列（`Vec<crate::typeset::Page>`）から [`Publication`] への変換
 //!
 //! epic #276 の一環で `pdf_gen`（現 `seiran-pdf`）から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
 //! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`crate::typeset::breaking`）が解決済みの値を
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
-//! `seiran_pdf` は座標を pt 単位の `f32`、色を `[u8; 3]` で受け取る自己完結 leaf 型（`seiran_pdf::Point` /
-//! `Rect` / `GlyphRun` 等）を持つ（issue #307）。ここでの `crate::length::Length::to_pt()` /
-//! `crate::color::Color::rgb()` 呼び出しは、その境界へ渡す直前の単位変換であって、Style 依存の判断ではない。
+//! `crate::publication` の座標は pt 単位の `f32` なので、ここでの `crate::length::Length::to_pt()` 呼び出しは
+//! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列（`crate::typeset::GlyphRun`）は
+//! シェイピング結果をそのまま載せ、フォントサイズ・色の単位変換は render が行う（#372）。
 
 use std::collections::HashMap;
 
-use seiran_pdf::{
-  Destination, Glyph as PdfGlyph, GlyphRun as PdfGlyphRun, PaintOp, Point, Publication, PublicationLink,
-  PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, Rect, ResourceBundle,
-};
-
 use crate::{
   project::config::ProjectConfig,
+  publication::{
+    Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
+    PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
+  },
   typeset::{
     AnchorId, AnchorMark, HBoxContent, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
     PlacedTableRow,
@@ -26,7 +25,7 @@ use crate::{
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
 pub(super) fn build_publication(
   config: &ProjectConfig,
-  resources: ResourceBundle,
+  resources: PublicationResources,
   laid_out: &LaidOutDocument,
 ) -> Publication {
   let margin_left = config.pdf.margin.left;
@@ -263,7 +262,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
         origin: Point { x, y: baseline_y },
-        run: to_pdf_glyph_run(run),
+        run: run.clone(),
       });
     },
     HBoxContent::Rule { width, height } => {
@@ -308,48 +307,23 @@ fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, margi
   }
 }
 
-/// `crate::typeset::GlyphRun`（シェーピング直後の中間表現。座標は `crate::length::Length`、色は `crate::color::Color`）を
-/// `seiran_pdf::GlyphRun`（`seiran_pdf` の自己完結 leaf 型。座標は pt の `f32`、色は `[u8; 3]`）へ変換する。
-fn to_pdf_glyph_run(run: &crate::typeset::GlyphRun) -> PdfGlyphRun {
-  return PdfGlyphRun {
-    font_size: run.font_size.to_pt(),
-    text: run.text.clone(),
-    glyphs: run.glyphs.iter().map(to_pdf_glyph).collect(),
-    font_type: super::to_pdf_font_type(run.font_type),
-    color: run.color.map(crate::color::Color::rgb),
-  };
-}
-
-/// `crate::typeset::Glyph` を `seiran_pdf::Glyph`（同一構造の複製）へ変換する。
-fn to_pdf_glyph(glyph: &crate::typeset::Glyph) -> PdfGlyph {
-  return PdfGlyph {
-    gid: glyph.gid,
-    range: glyph.range.clone(),
-    x_advance: glyph.x_advance,
-    y_advance: glyph.y_advance,
-    x_offset: glyph.x_offset,
-    y_offset: glyph.y_offset,
-  };
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use std::path::PathBuf;
-
-  use seiran_pdf::{PaintOp, Point, Publication, PublicationLinkTarget, Rect, ResourceBundle};
+  use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
   use super::build_publication;
   use crate::{
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, FontData, FontType, ProjectPath,
+      FontConfig, FontConfigs, FontMap, FontType, ProjectPath,
       config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
     },
+    publication::{PaintOp, Point, Publication, PublicationFont, PublicationLinkTarget, PublicationResources, Rect},
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, FontResources, Page,
+      AnchorId, FontFaceConfig, FontMetric, Page,
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, rule_line, table_block,
@@ -357,8 +331,7 @@ mod tests {
     },
   };
 
-  /// テスト用の最小フォント設定を返す（`vendor/fonts/` 直下の静的フォント。`variation_axes` 不要。
-  /// `tools/fetch-test-assets.sh` 取得済みが前提 — 他の golden テストと同じ資産を使う）。
+  /// テスト用の最小フォント設定を返す（`ProjectConfig` の組み立てにだけ使い、実ファイルは読まない）。
   fn test_font_config() -> FontConfig {
     return FontConfig {
       font_path: PathBuf::from("vendor/fonts/STIXTwoMath-Regular.ttf"),
@@ -409,21 +382,24 @@ mod tests {
     };
   }
 
-  /// テスト用の `ResourceBundle` を返す（画像なし。`build_publication` は resources の中身を読まないため、
-  /// 実フォントを 1 個読み込んで `ResourceBundle::new` を通せれば足りる）。
-  fn test_resources() -> ResourceBundle {
-    super::super::golden::enter_workspace_root();
-    assert!(
-      std::path::Path::new("vendor/fonts").is_dir(),
-      "テスト資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
-    );
-    let config = test_config();
-    let source = crate::project::FilesystemProjectSource::new();
-    let font_data = FontData::load(&source, &config.font_configs).expect("テストフォントの読み込み");
-    let font_resources = FontResources::load(&config.font_configs, &font_data).expect("FontResources の構築");
-    let fonts = super::super::build_pdf_fonts(&font_data, &font_resources);
-    let font_metrics = super::super::build_pdf_font_metrics(&font_resources);
-    return ResourceBundle::new(fonts, font_metrics, std::collections::HashMap::new()).expect("ResourceBundle の構築");
+  /// テスト用の描画資源を返す（画像なし・バイト列は空）。
+  ///
+  /// `build_publication` は resources を素通しするだけで中身を読まないため、実フォントは要らない。
+  fn test_resources() -> PublicationResources {
+    let font = PublicationFont {
+      bytes: Arc::new(Vec::new()),
+      face: FontFaceConfig {
+        font_index: 0,
+        variation_axes: None,
+      },
+      metric: FontMetric {
+        upem: 1000.0,
+        ascender: 800.0,
+        descender: -200.0,
+      },
+    };
+    let fonts = FontMap::from_all(FontType::ALL.iter().map(|_| return font.clone()));
+    return PublicationResources::new(fonts, HashMap::new());
   }
 
   /// 何も置かれていないページを返す。
@@ -458,7 +434,7 @@ mod tests {
           x: margin_left + 5.0,
           y: 100.0
         },
-        run: super::to_pdf_glyph_run(&run)
+        run: run.clone()
       }
     );
   }
@@ -520,7 +496,7 @@ mod tests {
           x: margin_left + 10.0,
           y: 97.0
         },
-        run: super::to_pdf_glyph_run(&run_a)
+        run: run_a.clone()
       }
     );
     assert_eq!(
@@ -530,7 +506,7 @@ mod tests {
           x: margin_left + 15.0,
           y: 100.0
         },
-        run: super::to_pdf_glyph_run(&run_b)
+        run: run_b.clone()
       }
     );
   }
@@ -641,7 +617,7 @@ mod tests {
           x: margin_left + 10.0,
           y: 200.0
         },
-        run: super::to_pdf_glyph_run(&body_run)
+        run: body_run.clone()
       }
     );
     assert_eq!(
@@ -651,7 +627,7 @@ mod tests {
           x: margin_left + 300.0,
           y: 200.0
         },
-        run: super::to_pdf_glyph_run(&number_run)
+        run: number_run.clone()
       }
     );
   }

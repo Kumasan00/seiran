@@ -3,9 +3,8 @@
 use krilla::error::KrillaError;
 use miette::Diagnostic;
 use read_fonts::ReadError;
+use seiran_compiler::FontType;
 use thiserror::Error;
-
-use crate::types::FontType;
 
 /// PDF 生成中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]

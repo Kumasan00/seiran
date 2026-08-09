@@ -93,6 +93,12 @@ impl FontData {
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
   pub fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type).as_slice(); }
+
+  /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
+  ///
+  /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
+  #[must_use]
+  pub fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(self.0.get(font_type)); }
 }
 
 #[cfg(test)]
