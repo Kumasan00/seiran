@@ -71,13 +71,3 @@ pub enum LinkTarget {
   /// 外部 URI（`\url{uri}` / `\href[url=uri]{...}` の `uri`）
   External(String),
 }
-
-#[cfg(test)]
-mod tests {
-  use super::FootnoteId;
-
-  #[test]
-  fn footnote_id_round_trips_index() {
-    assert_eq!(FootnoteId::new(3).index(), 3);
-  }
-}

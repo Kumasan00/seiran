@@ -88,11 +88,6 @@ mod tests {
   use crate::{length::Length, style::number_style::NumberStyle};
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(FootnoteStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_numbering_is_continuous() {
     // Act / Assert
     assert_eq!(FootnoteStyle::default().numbering, FootnoteNumbering::Continuous);

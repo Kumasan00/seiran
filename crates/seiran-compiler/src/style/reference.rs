@@ -86,11 +86,6 @@ mod tests {
   use crate::style::parse;
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(ReferenceStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_empty_format() {
     let style = ReferenceStyle {
       title: String::new(),

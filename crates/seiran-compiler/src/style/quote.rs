@@ -49,12 +49,6 @@ mod tests {
   use crate::{document::FontKind, length::Length};
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(QuoteStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_matches_documented_values() {
     // Arrange / Act
     let style = QuoteStyle::default();

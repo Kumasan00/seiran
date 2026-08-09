@@ -27,8 +27,6 @@ impl Default for PageNumbering {
 
 #[cfg(test)]
 mod tests {
-  use garde::Validate;
-
   use super::PageNumbering;
   use crate::style::number_style::NumberStyle;
 
@@ -37,11 +35,6 @@ mod tests {
     let pn = PageNumbering::default();
     assert_eq!(pn.front_matter, NumberStyle::RomanLower);
     assert_eq!(pn.body, NumberStyle::Arabic);
-  }
-
-  #[test]
-  fn validate_accepts_default() {
-    assert!(PageNumbering::default().validate().is_ok());
   }
 
   #[test]

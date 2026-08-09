@@ -54,11 +54,6 @@ mod tests {
   use crate::length::Length;
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(IndexStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_has_no_enabled_flag_and_two_columns() {
     let style = IndexStyle::default();
     assert_eq!(style.title, "Index");

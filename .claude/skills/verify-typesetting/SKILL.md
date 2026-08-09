@@ -41,13 +41,12 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 メタデータ・リンク・しおりまでダンプするため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が
 広い）。
 
-残り 9 個のテストは golden ファイルを一切読み書きせず、次の 3 通りに分かれる。
+残り 8 個のテストは golden ファイルを一切読み書きせず、次の 3 通りに分かれる。
 
 - **`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する**
   （`assert_eq!` / `assert_ne!`。golden ファイルは介さない）: `index_marks_are_invisible_to_layout`
-  （`\index` の有無で本文レイアウトが変わらないことを確認）・style 差分 3 種
-  `layout_dump_is_deterministic_across_builds` / `layout_dump_changes_with_line_height` /
-  `layout_dump_changes_with_punctuation_spacing`
+  （`\index` の有無で本文レイアウトが変わらないことを確認）・style 差分 2 種
+  `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`
 - **`build_pages` を直接呼び、返り値の `Page` / `PlacedBlock` へ直接アサートする**（ダンプ関数は
   一切通らない）: `keep_with_next_prevents_heading_orphan_end_to_end`（見出し孤立防止）・
   脚注ページ単位採番 2 種 `per_page_footnote_numbering_restarts_on_each_page` /
@@ -57,7 +56,7 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
   一切通らない）: `config_overrides_typed_and_toml_stay_in_sync`
 
 golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication` / `dump_publication` は
-`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記のダンプ比較 4 個は現時点では
+`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記のダンプ比較 3 個は現時点では
 移行していない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
 が言う「順次移行」方針どおり）。
 

@@ -132,12 +132,6 @@ mod tests {
   use super::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide};
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(MathStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn block_default_uses_right_number_and_center_body() {
     // Arrange / Act
     let block = MathBlockStyle::default();

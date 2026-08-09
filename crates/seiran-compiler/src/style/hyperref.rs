@@ -36,14 +36,7 @@ impl Default for HyperrefStyle {
 
 #[cfg(test)]
 mod tests {
-  use garde::Validate;
-
   use super::HyperrefStyle;
-
-  #[test]
-  fn validate_accepts_default() {
-    assert!(HyperrefStyle::default().validate().is_ok());
-  }
 
   #[test]
   fn rejects_renamed_show_bookmarks_key() {

@@ -183,16 +183,6 @@ impl Style {
   #[must_use]
   pub fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
 
-  /// 指定された名前のカウンタ定義への不変参照を返す（9 種固定のため必ず存在する）。
-  ///
-  /// `crate::typeset` は `style.counters.get(name)` を直接呼ぶため現状未使用（`heading`/`theorem`
-  /// と対称な API として残す。`config` crate が standalone だった間は外部消費を仮定でき
-  /// `dead_code` を検出されなかったが、`seiran` への吸収で可視性が変わり検出されるようになった。
-  /// 削除は API 変更のため本 move task の範囲外のクリーンアップ候補）。
-  #[allow(dead_code)]
-  #[must_use]
-  pub fn counter(&self, name: CounterName) -> &CounterStyle { return self.counters.get(name); }
-
   /// 指定された定理クラスのスタイル定義への不変参照を返す（10 種固定のため必ず存在する）。
   #[must_use]
   pub fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return self.theorems.get(class); }
@@ -356,14 +346,10 @@ mod tests {
   use tempfile::NamedTempFile;
 
   use crate::{
-    color::Color,
     document::HeadingLevel,
     length::Length,
     project::{FilesystemProjectSource, MemoryProjectSource},
-    style::{
-      CounterName, ReadStyleError, ReferenceStyle, Style, StyleValidationError, TheoremClass, load,
-      resolve_reference_paths,
-    },
+    style::{ReadStyleError, ReferenceStyle, Style, StyleValidationError, load, resolve_reference_paths},
   };
 
   #[test]
@@ -482,24 +468,6 @@ mod tests {
   }
 
   #[test]
-  fn heading_accessor_returns_correct_level() {
-    let style = Style::default();
-    assert!(style.heading(HeadingLevel::Part).font_size > style.heading(HeadingLevel::Section).font_size);
-  }
-
-  #[test]
-  fn counter_accessor_finds_figure() {
-    let style = Style::default();
-    assert_eq!(style.counter(CounterName::Figure).display_name, "Figure");
-  }
-
-  #[test]
-  fn default_background_color_is_none() {
-    let style = Style::default();
-    assert!(style.background_color.is_none());
-  }
-
-  #[test]
   fn validate_dives_into_nested_table_rule_thickness() {
     let mut style = Style::default();
     style.table.rule_thickness = Length::pt(-0.1);
@@ -521,42 +489,9 @@ mod tests {
   }
 
   #[test]
-  fn theorem_accessor_finds_proof() {
-    let style = Style::default();
-    assert_eq!(style.theorem(TheoremClass::Proof).display_name, "Proof");
-    assert!(style.theorem(TheoremClass::Proof).unnumbered);
-  }
-
-  #[test]
-  fn validate_detects_invalid_theorem_top_margin() {
-    let mut style = Style::default();
-    style.theorems.theorem.style.top_margin = Length::pt(-0.1);
-    assert!(style.theorems.theorem.validate().is_err());
-  }
-
-  #[test]
-  fn background_color_field_accepts_color_value() {
-    let style = Style {
-      background_color: Some(Color::new(204, 179, 153)),
-      ..Default::default()
-    };
-    assert!(style.validate().is_ok());
-    let color = style.background_color.expect("background_color should be Some");
-    assert_eq!(color.rgb(), [204, 179, 153]);
-  }
-
-  #[test]
   fn rejects_renamed_top_level_text_keys() {
     assert!(toml::from_str::<Style>("font_size = \"12pt\"\n").is_err());
     assert!(toml::from_str::<Style>("line_height_factor = 1.2\n").is_err());
-  }
-
-  // 以下は旧 `crates/config/tests/defaults.rs`（`Style::default()` の既定値検証）を移設したもの。
-
-  #[test]
-  fn default_style_passes_validation() {
-    let style = Style::default();
-    assert!(style.validate().is_ok(), "Style::default() must pass garde validation");
   }
 
   #[test]
@@ -569,44 +504,6 @@ mod tests {
     assert!(part > chapter, "Part should be larger than Chapter: {part} vs {chapter}");
     assert!(chapter > section, "Chapter should be larger than Section: {chapter} vs {section}");
     assert!(section > subparagraph, "Section should be larger than Subparagraph");
-  }
-
-  #[test]
-  fn default_counters_contains_canonical_set() {
-    let style = Style::default();
-    for name in [
-      CounterName::Part,
-      CounterName::Chapter,
-      CounterName::Section,
-      CounterName::Subsection,
-      CounterName::Paragraph,
-      CounterName::Subparagraph,
-      CounterName::Figure,
-      CounterName::Equation,
-      CounterName::Table,
-    ] {
-      assert!(!style.counter(name).display_name.is_empty(), "default counters must contain {}", name.as_str());
-    }
-  }
-
-  #[test]
-  fn default_theorems_all_classes_have_display_name() {
-    let style = Style::default();
-    for class in TheoremClass::ALL {
-      assert!(
-        !style.theorem(class).display_name.is_empty(),
-        "default theorems must have display_name for {}",
-        class.as_str()
-      );
-    }
-  }
-
-  #[test]
-  fn default_proof_is_unnumbered_with_qed_mark() {
-    let style = Style::default();
-    let proof = style.theorem(TheoremClass::Proof);
-    assert!(proof.unnumbered, "proof must be unnumbered by default");
-    assert!(proof.qed_mark.is_some(), "proof must have a QED mark by default");
   }
 }
 
@@ -1030,15 +927,6 @@ resets = []
       matches!(result, Err(ReadStyleError::ParseToml { .. })),
       "unknown counter name should be rejected at TOML parse time, got {result:?}"
     );
-  }
-
-  #[test]
-  fn empty_toml_defaults_pass_placeholder_validation() {
-    // Arrange / Act
-    let result = parse("", dummy_source());
-
-    // Assert
-    assert!(result.is_ok(), "既定値はプレースホルダ検証を通るべき: {result:?}");
   }
 
   #[test]

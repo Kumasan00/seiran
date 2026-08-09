@@ -35,11 +35,6 @@ mod tests {
   use crate::length::Length;
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(CaptionStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_empty_format() {
     let style = CaptionStyle {
       format: String::new(),

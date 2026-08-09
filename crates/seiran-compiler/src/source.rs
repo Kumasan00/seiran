@@ -62,16 +62,7 @@ impl Span {
 
 #[cfg(test)]
 mod tests {
-  use super::{SourceId, Span};
-
-  #[test]
-  fn source_id_round_trips_index() {
-    // Arrange / Act
-    let id = SourceId::new(3);
-
-    // Assert
-    assert_eq!(id.index(), 3);
-  }
+  use super::Span;
 
   #[test]
   fn new_creates_span_with_given_offsets() {

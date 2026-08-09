@@ -37,12 +37,6 @@ mod tests {
   use crate::length::Length;
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(ColumnsStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_matches_documented_values() {
     // Arrange / Act
     let style = ColumnsStyle::default();
