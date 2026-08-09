@@ -7,7 +7,7 @@
 use crate::project::{FontConfigs, FontMap, FontType};
 
 /// Krilla フォント構築に必要な設定（`FontConfig` から renderer が要る値だけを取り出した最小表現）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FontFaceConfig {
   /// TTC（TrueType Collection）ファイル内のインデックス
   pub font_index: u32,
@@ -16,7 +16,7 @@ pub struct FontFaceConfig {
 }
 
 /// バリアブルフォント軸の設定値（`crate::project::VariationAxis` の複製）。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VariationAxisConfig {
   /// 軸名（4 バイトの OpenType 軸タグ）
   pub name: [u8; 4],
