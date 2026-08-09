@@ -1,9 +1,4 @@
-typeset::image::load_image
+typeset::image::unsupported_format
 
-  × 画像ファイルのデコードに失敗しました: ./tests/image/unsupported.gif
-  ╰─▶ pdf::unsupported_image_format
-      
-        × 画像ファイルの拡張子が未対応です: ./tests/image/unsupported.gif
-        help: 対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。
-      
-  help: 画像ファイルが破損していないか、対応形式（PNG / JPEG / SVG）か確認してください。
+  × 画像ファイルの拡張子が未対応です: ./tests/image/unsupported.gif
+  help: 対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。

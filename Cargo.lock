@@ -2163,6 +2163,7 @@ dependencies = [
  "hayagriva",
  "hypher",
  "icu",
+ "image",
  "lazy-regex",
  "lopdf",
  "memchr",
@@ -2179,6 +2180,7 @@ dependencies = [
  "toml",
  "tracing",
  "unic-langid",
+ "usvg",
 ]
 
 [[package]]

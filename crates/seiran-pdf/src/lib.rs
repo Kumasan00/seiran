@@ -14,7 +14,6 @@ use tracing::debug;
 
 pub use crate::{
   error::PdfGenError,
-  image::natural_image_size,
   publication::{
     Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
     PublicationOutlineEntry, PublicationPage, Rect,

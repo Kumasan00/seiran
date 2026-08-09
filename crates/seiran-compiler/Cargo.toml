@@ -16,6 +16,7 @@ harfrust.workspace = true
 hayagriva.workspace = true
 hypher.workspace = true
 icu.workspace = true
+image.workspace = true
 lazy-regex.workspace = true
 memchr.workspace = true
 miette.workspace = true
@@ -29,6 +30,7 @@ thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
 unic-langid.workspace = true
+usvg.workspace = true
 
 [dev-dependencies]
 lopdf.workspace = true
