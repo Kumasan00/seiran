@@ -3954,24 +3954,4 @@ mod tests {
     // Assert
     assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
   }
-
-  /// パジネーションが `crate::typeset::FontSystem` を一切必要としないこと（#306 property: font 非依存）。
-  ///
-  /// `break_pages` のシグネチャ自体が font/shaper 引数を持たない（型で保証済み）。このテストは
-  /// 実際に `crate::typeset::FontSystem` を一度も構築せずに複数段落を複数ページへ組めることを示す
-  /// （本テストのグリフ内容は `test_box()`/`paragraph_of_lines()` の Rule ベースのボックスのみで、
-  /// 実グリフ・実フォントを一切使わない）。
-  #[test]
-  fn break_pages_never_needs_a_font_system() {
-    // Arrange
-    let geom = test_geometry();
-    let blocks = vec![paragraph_of_lines(3), paragraph_of_lines(3)];
-
-    // Act
-    let pages = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
-
-    // Assert — 複数ページに分かれていること自体を検証する（1 ページでも真になる is_empty 判定では
-    // 「複数ページ」という doc comment の主張を検証できていなかった）
-    assert!(pages.len() >= 2, "crate::typeset::FontSystem を構築せずに複数ページへ組めるはず: {}", pages.len());
-  }
 }

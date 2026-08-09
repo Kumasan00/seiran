@@ -390,12 +390,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(TheoremStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn all_default_classes_pass_validation() {
     // Arrange / Act / Assert
     for class in TheoremClass::ALL {

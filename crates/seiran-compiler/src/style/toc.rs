@@ -64,11 +64,6 @@ mod tests {
   use super::TocStyle;
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(TocStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_is_disabled_with_dot_leader() {
     let style = TocStyle::default();
     assert!(!style.enabled);

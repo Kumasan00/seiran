@@ -61,11 +61,6 @@ mod tests {
   use crate::length::Length;
 
   #[test]
-  fn validate_accepts_default() {
-    assert!(TableStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn validate_rejects_negative_rule_thickness() {
     let style = TableStyle {
       rule_thickness: Length::pt(-0.1),

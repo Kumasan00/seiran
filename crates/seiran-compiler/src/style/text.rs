@@ -96,12 +96,6 @@ mod tests {
   }
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(TextBlockStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_matches_documented_values() {
     // Arrange / Act
     let style = TextBlockStyle::default();

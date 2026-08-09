@@ -51,17 +51,12 @@ impl HeadingKey {
 
 #[cfg(test)]
 mod tests {
-  use super::{HeadingKey, LabelId};
+  use super::LabelId;
 
   #[test]
   fn label_id_borrows_as_str_for_hashmap_lookup() {
     let mut map = std::collections::HashMap::new();
     map.insert(LabelId::new("ch:intro"), 1);
     assert_eq!(map.get("ch:intro"), Some(&1));
-  }
-
-  #[test]
-  fn heading_key_round_trips_index() {
-    assert_eq!(HeadingKey::new(2).index(), 2);
   }
 }

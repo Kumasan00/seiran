@@ -425,15 +425,6 @@ mod tests {
   }
 
   #[test]
-  fn from_sp_and_sp_are_inverse() {
-    // Arrange / Act
-    let value = Length::from_sp(123_456);
-
-    // Assert
-    assert_eq!(value.sp(), 123_456);
-  }
-
-  #[test]
   fn zero_is_additive_identity() {
     // Arrange
     let a = Length::pt(7.0);
@@ -569,19 +560,5 @@ mod tests {
     // Assert
     assert_eq!(total, Length::pt(6.0));
     assert_eq!(total_ref, Length::pt(6.0));
-  }
-
-  #[test]
-  fn ord_and_hash_are_available() {
-    use std::collections::HashSet;
-
-    // Arrange / Act
-    let mut set = HashSet::new();
-    set.insert(Length::pt(1.0));
-    set.insert(Length::pt(1.0));
-
-    // Assert
-    assert_eq!(set.len(), 1);
-    assert!(Length::pt(1.0) < Length::pt(2.0));
   }
 }

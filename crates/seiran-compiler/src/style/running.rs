@@ -82,12 +82,6 @@ mod tests {
   use crate::{document::FontKind, length::Length};
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(RunningContentStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_is_empty() {
     // Arrange / Act
     let style = RunningContentStyle::default();

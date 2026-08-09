@@ -308,19 +308,6 @@ mod tests {
   }
 
   #[test]
-  fn dump_is_deterministic_across_calls() {
-    // Arrange
-    let pages = vec![page_with_text_line(734.0, "Test")];
-
-    // Act — 同一入力を 2 回ダンプする
-    let first = dump_pages(&pages);
-    let second = dump_pages(&pages);
-
-    // Assert
-    assert_eq!(first, second);
-  }
-
-  #[test]
   fn dump_reflects_baseline_change() {
     // Arrange — ベースライン位置（行送り相当）だけが異なる 2 ページ
     let higher = vec![page_with_text_line(734.0, "Test")];

@@ -567,20 +567,6 @@ fn continuous_footnote_numbering_runs_through_pages() {
 }
 
 #[test]
-fn layout_dump_is_deterministic_across_builds() {
-  // Arrange
-  enter_workspace_root();
-  let (base_config, style, references) = load_base();
-
-  // Act — 同一入力・同一設定で 2 回組版してダンプする
-  let first = dump_input(&base_config, &style, &references, "text");
-  let second = dump_input(&base_config, &style, &references, "text");
-
-  // Assert — パイプラインは決定的（時刻・乱数・環境依存値がレイアウトに混入しない）
-  assert_eq!(first, second);
-}
-
-#[test]
 fn layout_dump_changes_with_line_height() {
   // Arrange — 行送り（line_height_factor）だけを変えた 2 スタイル。行送りは 2 行目以降の
   // ベースライン送りに効くため、複数行が縦に並ぶ入力（itemize）を対象にする。

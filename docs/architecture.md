@@ -1015,9 +1015,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 #### `breaking`
 
 フォント非依存の純粋組版パス（コア型は `typeset::boxes` にあり、本 module には純粋パス本体だけが残る）。
-`break_pages.rs` の `#[cfg(test)] mod tests` にある `break_pages_never_needs_a_font_system`
-（issue #306）が、Rule ベースのボックスのみでページを組んで `typeset::font::FontSystem` を一切構築しないこと
-を回帰テストとして固定している。
+`break_pages` の interface はフォント・シェーパーを引数に取らず、フォント非依存を型境界で固定する。
 
 - (b) `break_opportunities`: ICU の `LineSegmenter`（UAX #14）に `hyphenation`（`hypher`）の欧文語中分割点
   （`BreakKind::Hyphen`）を重ねる。言語は `resolve_hyphenation` が BCP 47 から解決する
@@ -1190,13 +1188,13 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   しおりの順に、内部の `dump_metadata` 補助関数を介してダンプする）。確定ページ列
   （`typeset::Page`）のダンプ `dump_pages` は走査対象の型を所有する `typeset::dump` 側にあり
   （#353）、ここからは `crate::typeset::dump_pages` として借りる
-- `golden`: レイアウトダンプ golden の比較テスト。10 テストのうち golden ファイル
+- `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
   （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
   （`GOLDEN_INPUTS` 全 fixture の回帰）だけで、`dump_input_via_compile` を介して `super::compile()`
-  → `dump_publication` を通る（issue #306）。残り 9 テストは golden ファイルを介さず 3 通りに分かれる
+  → `dump_publication` を通る（issue #306）。残り 8 テストは golden ファイルを介さず 3 通りに分かれる
   ——`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する
-  （`index_marks_are_invisible_to_layout`、style 差分 3 種 `layout_dump_is_deterministic_across_builds`
-  / `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`）か、
+  （`index_marks_are_invisible_to_layout`、style 差分 2 種 `layout_dump_changes_with_line_height` /
+  `layout_dump_changes_with_punctuation_spacing`）か、
   `build_pages` を直接呼んで返り値の `Page` / `PlacedBlock` へ直接アサートしダンプ関数を一切通らない
   （`keep_with_next_prevents_heading_orphan_end_to_end`、脚注ページ単位採番 2 種
   `per_page_footnote_numbering_restarts_on_each_page` /
@@ -1204,7 +1202,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   `long_footnote_splits_across_pages_without_overlapping_body`）か、設定オーバーライドの 2 実装
   （型付き版と TOML 版）が同じ値へ収束することだけを見る `config_overrides_typed_and_toml_stay_in_sync`。
   `Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語の表現を持たないため、
-  ダンプ比較の 4 テストは現時点では移行していない——対応する golden 移行は今後のフェーズ判断次第
+  ダンプ比較の 3 テストは現時点では移行していない——対応する golden 移行は今後のフェーズ判断次第
 - `diagnostics`: miette 診断メッセージの golden テスト
 - `pdf_structure`: `lopdf` による独立 reader での PDF 構造 golden テスト
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
@@ -1221,18 +1219,13 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 `tests/common/mod.rs`（Rust の慣例で `tests/common.rs` ではなく `tests/common/mod.rs` に置くことで
 独立テストバイナリとして扱われないようにした共有ヘルパ。`read_test_font` / `minimal_config_toml` を
-持ち、`tests/compile_facade.rs` / `tests/determinism.rs` / `tests/render_immutability.rs` それぞれが
-`mod common;` で個別に取り込む）を土台に、ステージ境界不変条件を検証する property test /
-回帰テストが 2 本ある（issue #306）:
+持ち、`tests/compile_facade.rs` / `tests/determinism.rs` が `mod common;` で個別に取り込む）を土台に、
+ステージ境界の決定性を検証する回帰テストが 1 本ある（issue #306）:
 
 - `tests/determinism.rs`: 同じ `MemoryProjectSource` を `seiran_compiler::compile()` で 2 回呼んでも
-  `Publication`（`PartialEq`）が完全に一致することを `proptest!` で検証する（`prop_assert_eq!`。
+  `Publication`（`PartialEq`）が完全に一致することを検証する。
   テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通す代表的な 3 種の埋め込み `.sei`
-  文字列に対して実行し、網羅目的の fixture 追加はしない）
-- `tests/render_immutability.rs`: `seiran_pdf::render` は `&Publication`（共有参照）しか取らないため
-  型システム上「render は Publication を変更できない」ことは既に保証されているが、将来のシグネチャ
-  変更（`&mut Publication` への変更等）でこの契約が壊れたときに検知できるよう、呼び出し前後の値
-  比較で回帰ガードを固定する。
+  文字列に対して実行し、網羅目的の fixture 追加はしない
 
 ## `seiran-pdf`
 

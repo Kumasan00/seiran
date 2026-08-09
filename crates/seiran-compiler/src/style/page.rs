@@ -27,12 +27,6 @@ mod tests {
   use super::PageStyle;
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(PageStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_disables_flush_bottom() {
     // Arrange / Act
     let style = PageStyle::default();

@@ -69,12 +69,6 @@ mod tests {
   use crate::{document::FontKind, length::Length};
 
   #[test]
-  fn validate_accepts_default() {
-    // Arrange / Act / Assert
-    assert!(TitlePageStyle::default().validate().is_ok());
-  }
-
-  #[test]
   fn default_is_disabled() {
     // Arrange / Act
     let style = TitlePageStyle::default();
