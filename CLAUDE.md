@@ -68,7 +68,8 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
                        シェーパー）と内部順序（画像読込・寸法確定 → lowering → (a) block
                        → (c+d) breaking → 前付け・後付け → ページラベル → 走り文 → outline）
                        は typeset に閉じる
-  → seiran-pdf         (e) render: 確定座標の描画のみ（krilla がフォントサブセット化を内部実施）
+  → seiran-pdf         (e) render: compiler が確定させた Publication（純データ）を描画するのみ
+                       （krilla フォントの構築・画像デコード・フォントサブセット化はここに閉じる）
   → seiran (CLI)       atomic write でファイル出力
 ```
 
@@ -95,26 +96,34 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
 ### クレート構成
 
 crate はデプロイ・外部依存・独立再利用の単位に限る（コンパイル段階を crate 境界にしない）。
+描画バックエンドが 1 つである間は `Renderer` trait も共有型だけの第三 crate も作らない（#372）。
 
 ```text
-seiran-pdf       (e) 描画。workspace 内依存なし。境界型は自前の leaf 型のみで compiler 内部型を知らない
-  ↑ seiran-compiler  言語処理・意味解決・組版のライブラリ（lib target のみ）。公開 API は compile 一本
-      ↑ seiran       CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
+seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
+                   （`Publication` 系 leaf 型）の型所有者。公開 API は compile + Publication
+  ↑ seiran-pdf     (e) 描画。compiler facade の Publication を消費して PDF バイト列を作る backend
+                   （krilla / krilla-svg / 画像デコードはここに閉じる）
+  ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
 ```
+
+`seiran-pdf` が読めるのは compiler の facade に載る `Publication` 系 leaf 型だけで、`ProjectConfig` /
+`Style` / `typeset::Page` は facade に出ていない — 「renderer は確定座標の描画のみ・レイアウト判断ゼロ」
+という防火壁は、この公開範囲の狭さが担っている。
 
 ### `seiran-compiler` の module（すべて非公開、公開 API は `lib.rs` の `pub use` に一本化）
 
 | module | 責務 1 行 | 依存先（crate 内） |
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | length color project typeset |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
 | `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
 | `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project seiran-pdf（画像デコードの leaf 関数のみ） |
-| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に閉じる | 上記すべて + seiran-pdf |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project |
+| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に閉じる | 上記すべて |
 
 ## コーディング規約
 

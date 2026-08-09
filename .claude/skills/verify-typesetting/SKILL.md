@@ -36,7 +36,7 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 （`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
 （`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
 `super::compile()`（lib target の公開 facade）→ `compiler::dump::dump_publication`
-（`seiran_pdf::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
+（`publication::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
 確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
 メタデータ・リンク・しおりまでダンプするため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が
 広い）。
@@ -92,6 +92,15 @@ config では無効。golden.rs の `apply_input_style_overrides`（型付き `S
 
 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが
 依存するため除外）。
+
+## PDF 構造 golden（render 層の構造だけ）
+
+`crates/seiran-pdf/tests/pdf_structure.rs`（golden は同 crate の `tests/golden_pdf_structure/`）が
+`seiran_compiler::compile` → `seiran_pdf::render` を通し、独立 reader（`lopdf`）で読み返した
+ページ数・埋め込みフォント数・リンク注釈数・しおりの有無・画像 XObject 数を比較する。
+render 層を触ったら **`cargo test -p seiran-pdf`** も確認する（レイアウトダンプ golden は
+`cargo test -p seiran-compiler` 側なので、片方だけでは render の差分を検出できない）。
+再生成は `UPDATE_GOLDEN=1 cargo test -p seiran-pdf`。
 
 ## PDF バイト比較（render 層のみ）
 

@@ -18,7 +18,8 @@ anchor に限って添える。
 
 目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`source`](#source) /
 [`project`](#project) / [`document`](#document) / [`style`](#style) / [`semantics`](#semantics) /
-[`frontend`](#frontend) / [`typeset`](#typeset) / [`compiler`](#compiler)） / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
+[`frontend`](#frontend) / [`typeset`](#typeset) / [`publication`](#publication) / [`compiler`](#compiler)）
+/ [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
 
 ## `seiran-compiler`
 
@@ -26,7 +27,7 @@ anchor に限って添える。
 段の呼び出し順序と中間型は非公開 module の内側に閉じる。crate はデプロイ・外部依存・独立再利用の単位に
 限り、**コンパイル段階を crate 境界にしない**（段ごとの crate 分割へ戻さない）。
 
-以下の 10 個の子節はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の 11 個の子節はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
@@ -286,7 +287,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `frontend::evaluator::command::symbol` の `pub(crate)` 型として置く。決定的テキストダンプも同様に
   唯一の消費者が golden テストなので共有 module へは置かず、**走査対象の型を所有する側**に分けて置く
   —— `dump_pages`（`typeset::Page` 用）は `typeset::dump`、`dump_publication`
-  （`seiran_pdf::Publication` 用、golden 主入口 `layout_dumps_match_golden` が使う）は
+  （`publication::Publication` 用、golden 主入口 `layout_dumps_match_golden` が使う）は
   `compiler::dump`（#353）。
 - **アンカーは型で namespace を分ける**。`typeset::boxes` の `AnchorMark` / `LinkTarget::Internal` は
   見出し・ラベル・引用・脚注・索引ページの 5 namespace を `AnchorId` enum + typed ID
@@ -679,10 +680,12 @@ pub(crate) fn layout(
 行わないため失敗しない（`Result` を返す公開関数が無い）— 単一ソース用の薄いラッパーも持たない
 （複数ソースの束ね方は `document::HirDocument::groups()` 側の関心事）。
 
-`typeset` は `seiran-pdf` の**描画 API（`Publication` / `render`）を知らない**。唯一の例外が
-画像デコードの leaf 関数 `seiran_pdf::natural_image_size` で、これは `image` 子 module だけが呼ぶ
-（#350。デコード実装は krilla / usvg に依存するため描画側 crate が持つ。ここに port を挟んで抽象化
-するのは epic #347 の非目標「複数の PDF backend を仮定した port の追加」に当たるので採らない）。
+`typeset` は `seiran-pdf` に**依存しない**（依存の向きは `seiran-pdf → seiran-compiler`、#372）。
+組版に必要な画像の自然寸法は子 module `image::natural_size` が `image`（ラスタの寸法ヘッダ）と
+`usvg`（SVG の width / height）で自前に求め、描画に使う画像本体のデコード・ダウンサンプリングは
+render 側に残る（同じバイト列を 2 度読むが、krilla を compiler へ持ち込まないための線引き）。
+組版時の自然寸法と描画時の解釈が一致することは、workspace で `image` / `usvg` の版を 1 つに
+pin することで担保する（`usvg` を上げるときは `krilla-svg` が要求する版と揃える）。
 
 `boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
@@ -707,7 +710,7 @@ pub(crate) fn layout(
 - `pages`: 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
 - `outline_entries`: PDF しおり用の見出し情報（文書順）
 - `image_paths`: 文書が参照した画像ファイルのパス一覧（重複なし・昇順。`DependencyManifest` 用）
-- `image_bytes`: 画像ファイルの生バイト列（`seiran_pdf::ResourceBundle` 用）
+- `image_bytes`: 画像ファイルの生バイト列（`publication::PublicationResources` 用）
 
 `pages` / `outline_entries` はフィールド公開のまま置く — `compiler::publication` と golden テストが
 直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
@@ -726,15 +729,18 @@ pub(crate) fn layout(
   その構築を与える非公開の自由関数 `build_font_refs` / `build_font_metrics`、1 フォントぶんの
   メトリクス `FontMetric`（upem / ascender / descender の一元化）、解析エラー `FontLoadError`。
   構築は `system` からしか呼ばれないので拡張トレイト（旧 `FontRefsExt` / `FontMetricsExt`）は持たない。
-- `glyph_run`（非公開、`typeset` root facade で `GlyphRun` / `Glyph` を再エクスポート）: シェーピング
-  結果 1 個のグリフ列とその配置情報。値は `color::Color` / `project::FontType` / `length::Length` と
-  いう leaf 値型にしか依存しない leaf 型で、`typeset::block` が生成し `compiler::publication` が
-  消費する。`seiran-pdf` は自己完結型 `seiran_pdf::GlyphRun` を別に持ち、変換は
-  `compiler::publication::to_pdf_glyph_run` の 1 箇所に閉じている。
-- `face_config`（非公開、facade へは出さない）: `project::FontConfig`（検証済み設定。値の出どころは
-  config.toml）からシェーピングに必要なフェース設定 `FontFaceConfig` / `FontFaceConfigs` /
-  `VariationAxisConfig` を組み立てる（`build_face_configs`）。名指しする消費者は `font::system` だけで、
-  外からは `FontResources::face_configs()` の戻り値型として型推論経由でしか触れない。
+- `glyph_run`（非公開、`GlyphRun` / `Glyph` は `typeset` root facade 経由で crate root の facade まで
+  再エクスポートされる）: シェーピング結果 1 個のグリフ列とその配置情報。値は `color::Color` /
+  `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::block` が
+  生成し `compiler::publication` が `PaintOp::DrawGlyphRun` へそのまま載せる（#372 で `seiran-pdf` 側の
+  同型の複製と変換関数を削除した。`font_size: Length` → pt と `color: Color` → `[u8; 3]` の変換は
+  render が行う）。
+- `face_config`（非公開、`FontFaceConfig` / `VariationAxisConfig` は crate root の facade まで
+  再エクスポートされる）: `project::FontConfig`（検証済み設定。値の出どころは config.toml）から
+  krilla フォント構築に必要なフェース設定 `FontFaceConfig` / `FontFaceConfigs` /
+  `VariationAxisConfig` を組み立てる（`build_face_configs`）。組版そのものは使わず、
+  `FontResources::face_configs()` → `Publication` の描画資源 → render という 1 経路のためだけに
+  存在する（`FontFaceConfigs` は facade へ出さない — 描画資源の非公開フィールドの型でしかない）。
 - `shaper`（非公開。`typeset::block` が要求する `UnicodeBuffer` だけを module root が `pub(super)` で
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
@@ -766,7 +772,8 @@ pub(crate) fn layout(
 
 #### `error`
 
-`TypesetError`（画像ファイルの読込 `ReadImage` / デコード `LoadImage` / 自然寸法不正
+`TypesetError`（画像ファイルの読込 `ReadImage` / 未対応拡張子 `UnsupportedImageFormat` / ラスタの
+デコード `DecodeImage` / SVG のパース `ParseSvg` / 自然寸法不正
 `InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged` / 組版の
 不変条件違反 `Bug(TypesetBug)`）。`compiler::error::CompileError` は
 `Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
@@ -799,7 +806,11 @@ pub(crate) fn layout(
 - `manifest`: 文書木（HIR）を再帰的に走査し、`Figure` の `image_path` を重複なく集める
   `collect_image_paths`（`BTreeSet<ProjectPath>` で集めるので、正規化して等しいパスは 1 件に畳まれる。
   定理・引用・リスト内の入れ子も探索する）
-- `resources`: `ProjectSource` 経由の読込と `seiran_pdf::natural_image_size` による自然寸法取得
+- `natural_size`: 画像バイト列から自然寸法だけを求める leaf 関数 `natural_image_size`（ラスタは
+  `image::ImageReader::into_dimensions` で寸法ヘッダを読み、SVG は `usvg::Tree::from_data` →
+  `size()`）。EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値を使うため、
+  適用すると組版時の自然寸法と描画時の解釈がずれる（#372 で `seiran-pdf` から移設）
+- `resources`: `ProjectSource` 経由の読込と `natural_size` による自然寸法取得
   （`load_image_resources` → `ImageResources`）、および `Block::Image` の width / height を自然寸法と
   段幅から確定する `resolve_images`。読込は `layout` が 1 回だけ呼び、`resolve_images` は本文パスから
   呼ばれる。保持した生バイト列は `LaidOutDocument.image_bytes` として描画へ渡す
@@ -1096,6 +1107,35 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `dump_pages` の消費者（`compiler::golden` の 4 テストと `compiler::project_source_equivalence`）は
 いずれもダンプ同士の自己比較なので golden ファイルを読まない。
 
+### `publication`
+
+#### 責務
+
+組版成果物の確定表現 `Publication` の所有者（#372 で `seiran-pdf` から移設）。持つのは型定義だけで、
+構築ロジックは `compiler::publication`（写像）と `compiler::build_resources`（描画資源）が持つ。
+
+公開型: `Publication` / `PublicationPage` / `PaintOp` / `Point` / `Rect` / `Destination` /
+`PublicationLink` / `PublicationLinkTarget` / `PublicationOutlineEntry` / `PublicationMetadata` /
+`PublicationResources` / `PublicationFont`。いずれも crate root の facade が再エクスポートし、
+描画バックエンド（`seiran-pdf`）が読む唯一の窓口になる。
+
+#### 不変条件・注意点
+
+- **純データであること** — krilla / `seiran-pdf` の型は 1 つも含まない。座標は pt 単位の `f32`、
+  フォントは生バイト列（`Arc<Vec<u8>>`）+ `typeset::FontFaceConfig` + `typeset::FontMetric`、
+  画像はパス文字列 → 生バイト列。krilla フォントの構築は render の責務で、`compile` の戻り値に
+  backend の内部資源が漏れない（この線引きが破れていたのが #372 以前）。
+- `PaintOp::DrawGlyphRun` は `typeset::GlyphRun` を**そのまま**載せる（同型の複製を作らない）。
+  したがって `Length` / `Color` / `FontType` / `GlyphRun` / `Glyph` も facade に載る。
+- `PublicationResources` のフィールド（`FontMap<PublicationFont>` と画像の `HashMap`）は非公開で、
+  アクセサ `font()` / `image_bytes()` 経由でしか読めない。`FontMap` を facade へ出さないためと、
+  `FontMap` が構築時に 19 種別すべての存在を保証するので renderer 側に「全種別揃っているか」の
+  実行時チェックが要らなくなるため。
+- `PublicationResources::new` は `pub(crate)` — crate 外から `Publication` を捏造できない
+  （生産者は `compile` だけという性質を型で保つ）。
+- `PublicationResources` / `PublicationFont` の `Debug` は手書きで、バイト列の中身ではなく長さを出す
+  （`tests/determinism.rs` の `assert_eq!` が失敗したときに数百 MB を吐かないため）。
+
 ### `compiler`
 
 #### 責務
@@ -1103,7 +1143,8 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `seiran-compiler` の外部入口 `compile` を持つ module。言語処理・意味解決・組版を 1 回の呼び出しに畳み、
 段の呼び出し順序・中間型（`LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない（`lib.rs`
 が crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `DiagnosticSet` /
-`BuildStatistics` / `OutputPlan`）・`seiran_pdf::Publication` の再エクスポート・`ProjectSource` 系のみ）。
+`BuildStatistics` / `OutputPlan`）・`publication::Publication` とそこから到達できる leaf 値型・
+`ProjectSource` 系のみ）。
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
 （`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
@@ -1134,11 +1175,13 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 `compile` は保存（`fs::write`）を一切行わない。
 
 `compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
-`build_publication`（`ResourceBundle` 用の `metrics()` / `face_configs()`）の両方へ貸す
+`build_resources`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
 （描画段での再構築はしない）。シェーパーの構築（`.system()`）と個々の型の構築順序・寿命関係は
 `typeset::font` に閉じており、facade はこれを知らない。フォント資源の構築を `typeset` の内側へ
-畳まないのは、`FontResources` が組版後にも `ResourceBundle` 用の `metrics()` を要求され、
+畳まないのは、`FontResources` が組版後にも描画資源用の `metrics()` を要求され、
 「`LaidOutDocument` は `layout` が決めた値だけを持つ」という設計意図と衝突するため（#352）。
+`build_resources`（`compiler.rs` 直下）は `FontData` の `Arc` 共有バイト列・`FontFaceConfig`・
+`FontMetric` を 19 種別ぶん束ねるだけで、krilla には触れない（#372）。
 子 module:
 
 - `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・文献・
@@ -1153,9 +1196,10 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   内部で読み込む。ソース本文の保持と `SourceId` の発行は `project::SourceSet` の責務で、
   `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`into_io()` による平坦化を含む）を
   `input` が行う
-- `publication`: `typeset::LaidOutDocument` と `seiran_pdf::ResourceBundle` から
-  `seiran_pdf::Publication` を組み立てる `build_publication`。`typeset` は描画 API を知らないので、
-  この写像だけは `compiler` 側に残る。ここで `Style` に依存する判断や配置計算は一切しない。
+- `publication`: `typeset::LaidOutDocument` と `publication::PublicationResources` から
+  `publication::Publication` を組み立てる `build_publication`（`Publication` 系の型そのものは crate root
+  の `publication` module が所有する。#372）。`typeset` は描画命令の表現を知らないので、この写像だけは
+  `compiler` 側に残る。ここで `Style` に依存する判断や配置計算は一切しない。
   表もセル内容の確定座標列と確定罫線を `PaintOp` へ写すだけで、列定義・列幅・セル余白を知らない
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
@@ -1183,7 +1227,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 唯一の消費者がテストであるため、`document` のような共有 module ではなく `compiler` に置く。
 
-- `dump`: `dump_publication`（`seiran_pdf::Publication` の決定的テキストダンプ。タイトル/著者/主題/
+- `dump`: `dump_publication`（`publication::Publication` の決定的テキストダンプ。タイトル/著者/主題/
   言語/キーワードのメタデータ → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク →
   しおりの順に、内部の `dump_metadata` 補助関数を介してダンプする）。確定ページ列
   （`typeset::Page`）のダンプ `dump_pages` は走査対象の型を所有する `typeset::dump` 側にあり
@@ -1204,7 +1248,6 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   `Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語の表現を持たないため、
   ダンプ比較の 3 テストは現時点では移行していない——対応する golden 移行は今後のフェーズ判断次第
 - `diagnostics`: miette 診断メッセージの golden テスト
-- `pdf_structure`: `lopdf` による独立 reader での PDF 構造 golden テスト
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
   同じ確定レイアウト（`dump_pages` の文字列）を返すこと、同じフォントを複数回読まないことの検証（#300）
 
@@ -1231,47 +1274,52 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 ### 責務
 
-(e) 描画。確定座標の `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。`krilla` /
-`krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。`typeset::breaking` に依存しない
-ことが依存グラフで強制されている。公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と
-`PdfGenError`、および `Publication` を組み立てるための入力型・画像デコードヘルパのみ（下記）。
-`seiran-pdf` は `seiran-compiler` にも `seiran` にも依存せず、compiler 内部型（`project::ProjectConfig` /
-`typeset::Page` 等）を一切知らない自己完結 crate である（境界型はすべて `types` module の leaf 型）。
+(e) 描画。`seiran-compiler` が確定させた `Publication` を PDF バイナリへ encode する
+（レイアウト判断ゼロ）。`krilla` / `krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。
+公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と `PdfGenError` の 2 つだけ。
+
+依存の向きは **`seiran-pdf → seiran-compiler`**（#372）。組版成果物の型（`Publication` / `PaintOp` /
+`GlyphRun` / `FontMetric` / `FontFaceConfig` / `FontType` / `Length` / `Color`）は compiler が所有し、
+こちらは compiler の root facade に載っている leaf 値型だけを読む。「renderer は確定座標の描画のみ」
+という防火壁は、compiler の内部 module が非公開であること — facade に `ProjectConfig` / `Style` /
+`typeset::Page` が出ていないこと — が担っている（型の複製で作った独立性ではない）。
 `Vec<Page>` → `Publication` への変換と画像の自然寸法解決（width / height 確定の prepass）は compiler 側
-（`seiran_compiler` の `compiler::publication` / `typeset::image`）の責務で、こちらへ戻さない。
+（`compiler::publication` / `typeset::image`）の責務で、こちらへ戻さない。
 
 ### モジュール構成
 
-- `publication`: `Publication`（座標・描画順が確定した中間表現）の型定義のみ（構築ロジックは持たない）。
-  公開型は `Publication` / `PublicationPage` / `PaintOp` / `PublicationLink` / `PublicationLinkTarget` /
-  `PublicationOutlineEntry` / `PublicationMetadata` / `Point` / `Rect` / `Destination`
-- `types`: 境界専用の自己完結 leaf 型（`FontType` / `FontFaceInput` / `VariationAxisInput` / `FontMetric` /
-  `GlyphRun` / `Glyph`）。座標は pt 単位の `f32`、色は `[u8; 3]` で持ち、compiler 側の `document` / `typeset::font`
-  の型を参照しない（compiler 側からの変換は `seiran_compiler::compiler::publication` に閉じている）
-- `resources`: render の入力資源 `ResourceBundle`（構築済み krilla フォント・フォント計測値・画像の生
-  バイト列）と、それを組み立てる
-  `ResourceBundle::new(fonts: HashMap<FontType, FontFaceInput>, font_metrics: HashMap<FontType, FontMetric>,
-  image_bytes: HashMap<String, Vec<u8>>)`。フォント設定は `types::FontFaceInput`（フォントの生バイト列 +
-  `font_index` + `variation_axes`）として受け取り、`project::config` のミラー型は持たない
-- `render`: `render_pages` が `Publication`（`resources` フィールド経由でフォント・画像を取る）を krilla
-  の描画呼び出しへ落とす。ここでのファイル I/O・フォント資源の構築は発生しない
-- `image`: 画像デコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみを持つ。自然寸法だけを返す
-  薄い公開関数 `natural_image_size` を持つ（デコードの実装は `seiran-pdf` に 1 本化されたまま）
-- `font` / `metadata` / `error`: グリフ（`types::Glyph`）の krilla 型変換 / PDF メタデータ構築 /
-  `PdfGenError`（診断コードの prefix は描画段を表す `pdf::<name>`）
+- `font`: krilla フォントの構築（`build_krilla_fonts` → 非公開 `KrillaFonts`。`fvar` の有無判定と
+  バリアブル軸の適用を含む）と、`seiran_compiler::Glyph` → krilla グリフの変換
+  （`convert_to_krilla_glyphs`）。フォントバイト列は `Arc` を clone して `krilla::Data` へ渡すので
+  実バイト列は複製されない。構築は `FontType::ALL` の宣言順で行う — `HashMap` の反復順に任せると、
+  複数フォントが同時に不正なときに返る `PdfGenError` が実行のたびに変わってしまう
+- `render`: `render_pages` が `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の
+  `font_size`（`Length`）→ pt と `color`（`Color`）→ RGB の変換もここで行う（compiler 側の写像は
+  シェイピング結果をそのまま載せる）。ファイル I/O は発生しない
+- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみ。組版時の
+  自然寸法取得は compiler 側 `typeset::image::natural_size` の責務（#372 で移設）
+- `metadata` / `error`: PDF メタデータ構築 / `PdfGenError`（診断コードの prefix は描画段を表す
+  `pdf::<name>`）
 
 ### 不変条件・注意点
 
 - **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
-  集合）。ここを増やすときは「前段で決められない描画か」を確認する。
-- **`Style` / `ProjectConfig` に依存しない**（そもそも `seiran-compiler` に依存しないので参照できない）。表のセル余白 /
-  罫線太さ / 罫線色・ページ背景色は前段（`seiran-compiler` の `typeset::breaking`）が `Style` から解決済みの値として
+  集合）。ここを増やすときは「前段で決められない描画か」を確認する（型の所有は compiler 側なので
+  追加も compiler の `publication` module で行う）。
+- **`Style` / `ProjectConfig` を読まない**（compiler の facade に出ていないので参照できない）。表のセル余白 /
+  罫線太さ / 罫線色・ページ背景色は前段（`typeset::breaking`）が `Style` から解決済みの値として
   `typeset::Page.background_color` と `PlacedTableRow` の配置済みセル内容列・`PlacedTableRule` に載せており、
-  左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側
-  （`seiran_compiler::compiler::publication`）が `project::ProjectConfig` から読んで `Publication` に前倒し解決してから渡す。
-- `render`（crate root）は `Publication` 1 個だけを消費する。フォント・画像資源は
-  `publication.resources`（`ResourceBundle`）から取り、これ以外のファイル I/O・フォント資源の構築は
-  行わない。`typeset::Page` / `ProjectConfig` / `Style` を直接読む描画経路を復活させない。
+  左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`compiler::publication`）が
+  `project::ProjectConfig` から読んで `Publication` に前倒し解決してから渡す。
+- `render` は `Publication` 1 個だけを消費する。krilla フォントの構築は `render` の冒頭 1 回で、
+  フォント・画像の生資源は `publication.resources` のアクセサ（`font()` / `image_bytes()`）から取る。
+  `typeset::Page` / `ProjectConfig` / `Style` を直接読む描画経路を復活させない。
+- 第 2 の描画バックエンド（HTML 等）が現れるまで `Renderer` trait も共有型だけの第三 crate も作らない
+  — backend が 1 つの間は浅い seam にしかならない（#372）。
+- `tests/pdf_structure.rs`: `lopdf` による独立 reader での PDF 構造 golden テスト（golden は
+  `crates/seiran-pdf/tests/golden_pdf_structure/`）。`seiran_compiler::compile` → `render` という公開 API
+  だけを通す。compiler 側の in-src テストに置けないのは、`#[cfg(test)]` のユニットテストビルドの
+  compiler と `seiran-pdf` がリンクする compiler が別コンパイルになり型が一致しないため
 - 既知の制限: 表セル内の脚注はページ列に配置されない。
 
 ## `seiran`
