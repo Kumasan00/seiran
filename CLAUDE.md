@@ -115,7 +115,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | module | 責務 1 行 | 依存先（crate 内） |
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | length color project typeset |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | project typeset |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
 | `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |

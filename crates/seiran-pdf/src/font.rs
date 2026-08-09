@@ -3,7 +3,7 @@
 //! `Publication` が持つのはフォントのバイト列と構築設定だけなので、krilla の `Font` をここで組む
 //! （#372 以前は compiler 側が構築済みの `Font` を渡していた）。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use krilla::text::{Font, GlyphId, KrillaGlyph, Tag};
 use read_fonts::{FontRef, ReadError, TableProvider};
@@ -22,10 +22,13 @@ impl KrillaFonts {
   ///
   /// # Panics
   ///
-  /// [`build_krilla_fonts`] は常に全フォント種別ぶんを構築するため、見つからないのは内部バグ。
-  #[allow(clippy::expect_used)]
+  /// 構築経路は [`build_krilla_fonts`] 1 つで、そこが `FontType::ALL` を全件構築するため
+  /// 欠落は起こらない（起きたら不変条件の破れなのでここで落とす）。
   pub(crate) fn font(&self, font_type: FontType) -> &Font {
-    return self.fonts.get(&font_type).expect("KrillaFonts は全フォント種別を保持しているはず");
+    let Some(font) = self.fonts.get(&font_type) else {
+      unreachable!("build_krilla_fonts が FontType::ALL を全件構築する: {font_type:?} が欠落している");
+    };
+    return font;
   }
 }
 
@@ -64,7 +67,7 @@ fn font_has_fvar(font: &PublicationFont, font_type: FontType) -> Result<bool, Pd
 ///
 /// バイト列は `Arc` を clone して krilla へ渡す（実バイト列は複製しない）。
 fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool) -> Result<Font, PdfGenError> {
-  let data = std::sync::Arc::clone(&font.bytes);
+  let data = Arc::clone(&font.bytes);
   if has_fvar {
     let Some(axes_config) = font.face.variation_axes.as_ref() else {
       return Err(PdfGenError::MissingVariationAxes { font_type });

@@ -2195,7 +2195,6 @@ dependencies = [
  "seiran-compiler",
  "tempfile",
  "thiserror",
- "toml",
  "tracing",
  "usvg",
 ]

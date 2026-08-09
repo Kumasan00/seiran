@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
+use super::natural_size;
 use crate::{
   length::Length,
   project::ProjectPath,
@@ -58,7 +59,7 @@ pub(crate) fn load_image_resources(
         source: source.into_io(),
       };
     })?;
-    let natural_size = super::natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
+    let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
     natural_sizes.insert(path.clone(), natural_size);
     bytes_map.insert(path.clone(), file_bytes.to_vec());
   }

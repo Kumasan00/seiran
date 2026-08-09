@@ -91,6 +91,9 @@ pub enum PdfGenError {
     source: KrillaError,
   },
   /// 画像ファイルの形式が未対応です。
+  ///
+  /// 通常は組版段（`seiran_compiler` の `typeset::image`）が同じ判定を先に通すため、ここまで
+  /// 到達するのは両者の判定が食い違ったときだけ（`Publication` は `compile` しか作れない）。
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(
     code(pdf::unsupported_image_format),
@@ -101,6 +104,9 @@ pub enum PdfGenError {
     path: String,
   },
   /// SVG のパースに失敗しました。
+  ///
+  /// [`PdfGenError::UnsupportedImageFormat`] と同様、組版段が同じ `usvg` の同じ版で先にパースを
+  /// 通しているため、ここまで到達するのは両者が食い違ったときだけ。
   #[error("SVG のパースに失敗しました: {path}")]
   #[diagnostic(code(pdf::parse_svg), help("SVG ファイルが妥当な XML / SVG であることを確認してください。"))]
   ParseSvg {
@@ -151,7 +157,7 @@ pub enum PdfGenError {
     #[source]
     source: image::ImageError,
   },
-  /// `draw_publication_image` が `ResourceBundle.image_bytes` にない画像を参照しました。
+  /// `draw_publication_image` が `PublicationResources` の画像に無いパスを参照しました。
   #[error("リソースに存在しない画像パスです（内部エラー）: {path}")]
   #[diagnostic(
     code(pdf::image_not_in_manifest),

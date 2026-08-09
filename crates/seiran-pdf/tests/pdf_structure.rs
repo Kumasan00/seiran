@@ -164,6 +164,7 @@ fn dump_pdf_structure(bytes: &[u8]) -> String {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 fn pdf_structure_matches_golden() {
   // Arrange
   let update = std::env::var_os("UPDATE_GOLDEN").is_some();
@@ -195,6 +196,7 @@ fn pdf_structure_matches_golden() {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 fn pdf_structure_tounicode_extracts_hyperref_text() {
   // Arrange — CJK を含む hyperref を対象にする（ASCII だけだと ToUnicode CMap が壊れていても
   // 標準エンコーディングで拾えてしまい、CMap 経由の復元を検証したことにならない）
@@ -225,6 +227,7 @@ fn classify_paint_operator(operator: &str) -> Option<&'static str> {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 fn pdf_structure_background_paints_before_body_content() {
   // Arrange — text（本文段落のみ）に背景色を明示的に設定し、compiler が定める描画順
   // （背景 → 本文）のうち「背景が本文より先」の部分を独立 reader で確認する。
