@@ -11,6 +11,7 @@ use thiserror::Error;
 use tracing::{debug, info};
 
 use crate::{
+  failures::Failures,
   project::{FontConfigs, FontData, FontType},
   typeset::font::{
     FontLoadError, FontMetric, FontMetrics, FontRefs, build_font_metrics, build_font_refs,
@@ -19,16 +20,17 @@ use crate::{
       HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
       ShaperInstancesExt, UnicodeBuffer,
     },
-    validate_font::{self, MultipleFontValidationErrors},
+    validate_font::{self, FontValidationFailure},
   },
 };
 
-/// [`FontResources::load`] / [`FontResources::system`] のエラー。
+/// [`FontResources::load`] / [`FontResources::system`] のエラー 1 件。
 ///
-/// 既存の [`FontLoadError`] / [`MultipleFontValidationErrors`] / [`ShaperError`] を集約する薄い
-/// ラッパー。現行コードではこれら 3 つが `BuildPdfError` を経由せず `?` でそのまま
-/// `miette::Report` になっているため、`transparent` でメッセージ・code・help・label・related を
-/// すべて内側のエラーへ委譲し、診断内容を変えない。
+/// 既存の [`FontLoadError`] / [`FontValidationFailure`] / [`ShaperError`] を運ぶ薄いラッパーで、
+/// `transparent` でメッセージ・code・help・label・related をすべて内側の leaf へ委譲する。
+/// **1 フォントぶんの違反 1 件**を表し、複数フォントの違反は `Failures<FontSystemError>` の
+/// 別要素になる（related 付きの 1 診断へ束ねると、`FontType::ALL` 順のフラットな leaf 列に
+/// ならない）。
 #[derive(Debug, Error, Diagnostic)]
 pub enum FontSystemError {
   /// フォント解析・メトリクス取得の失敗（`build_font_refs` / `build_font_metrics` に由来）
@@ -38,7 +40,7 @@ pub enum FontSystemError {
   /// フォント設定検証の失敗（[`validate_font::validate_fonts`] に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Validation(#[from] MultipleFontValidationErrors),
+  Validation(#[from] FontValidationFailure),
   /// シェーパー初期化の失敗（[`HarfRustShapers::new`] に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
@@ -71,15 +73,20 @@ impl<'a> FontResources<'a> {
   /// （現行の `compiler.rs` / `compile.rs` の実行順序と同一。診断の出方を変えないため厳守する。
   /// issue #278 タイトルの表記順序とは異なる点に注意）。
   ///
+  /// 各段の中ではフォントを独立に検査して違反を `FontType::ALL` 順に全件集めるが、**段の間**は
+  /// 早期 return する — 解析できなかったフォントのメトリクスは取得できず、メトリクスの無い
+  /// フォントは検証できないという依存があるため（#376 の「後続の入力を構築できないなら集約しない」）。
+  ///
   /// # Errors
   ///
-  /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に [`FontSystemError`] を返す。
-  pub fn load(configs: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, FontSystemError> {
-    let font_refs = build_font_refs(configs, font_data)?;
-    let metrics = build_font_metrics(&font_refs)?;
+  /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、その段で見つかった
+  /// 違反を [`FontSystemError`] の非空集合として返す。
+  pub fn load(configs: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, Failures<FontSystemError>> {
+    let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
+    let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
 
     let stage_start = Instant::now();
-    validate_font::validate_fonts(configs, &font_refs)?;
+    validate_font::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
     info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
@@ -112,9 +119,10 @@ impl<'a> FontResources<'a> {
   ///
   /// # Errors
   ///
-  /// 言語タグの解析に失敗した場合に [`FontSystemError`] を返す。
-  pub fn system(&self) -> Result<FontSystem<'_>, FontSystemError> {
-    let shapers = HarfRustShapers::new(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)?;
+  /// 言語タグの解析に失敗した場合に [`FontSystemError`] の非空集合を返す。
+  pub fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
+    let shapers = HarfRustShapers::new(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
+      .map_err(|failures| return failures.map(Into::into))?;
     debug!("シェーパーの初期化が完了しました");
     return Ok(FontSystem {
       shapers,

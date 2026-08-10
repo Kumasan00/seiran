@@ -8,6 +8,7 @@ use tracing::debug;
 
 use super::natural_size;
 use crate::{
+  failures::Failures,
   length::Length,
   project::ProjectPath,
   typeset::{
@@ -42,32 +43,53 @@ impl ImageResources {
 /// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
 /// [`ImageResources::into_image_bytes`] で取り出し、`Publication` の描画資源へ渡す。
 ///
+/// 画像は互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を全件返す。`paths` は
+/// [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順なので、
+/// 報告順もそのまま昇順で決定的になる。
+///
 /// # Errors
 ///
-/// 画像の読み込み・デコードに失敗した場合に [`TypesetError`] を返す。
-#[allow(clippy::result_large_err)]
+/// 画像の読み込み・デコードに失敗した場合に [`TypesetError`] をパス昇順で返す。
 pub(crate) fn load_image_resources(
   source: &dyn crate::project::ProjectSource,
   paths: &[ProjectPath],
-) -> Result<ImageResources, TypesetError> {
+) -> Result<ImageResources, Failures<TypesetError>> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
   let mut bytes_map = HashMap::with_capacity(paths.len());
+  let mut errors = Vec::new();
   for path in paths {
-    let file_bytes = source.read_bytes(path).map_err(|source| {
-      return TypesetError::ReadImage {
-        path: path.to_string(),
-        source: source.into_io(),
-      };
-    })?;
-    let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
-    natural_sizes.insert(path.clone(), natural_size);
-    bytes_map.insert(path.clone(), file_bytes.to_vec());
+    match read_image(source, path) {
+      Ok((natural_size, file_bytes)) => {
+        natural_sizes.insert(path.clone(), natural_size);
+        bytes_map.insert(path.clone(), file_bytes);
+      },
+      Err(error) => errors.push(error),
+    }
+  }
+  if let Some(failures) = Failures::from_vec(errors) {
+    return Err(failures);
   }
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
   return Ok(ImageResources {
     natural_sizes,
     bytes: bytes_map,
   });
+}
+
+/// 画像 1 件を読み込み、自然寸法と生バイト列を返す。
+#[allow(clippy::result_large_err)]
+fn read_image(
+  source: &dyn crate::project::ProjectSource,
+  path: &ProjectPath,
+) -> Result<((f32, f32), Vec<u8>), TypesetError> {
+  let file_bytes = source.read_bytes(path).map_err(|source| {
+    return TypesetError::ReadImage {
+      path: path.to_string(),
+      source: source.into_io(),
+    };
+  })?;
+  let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
+  return Ok((natural_size, file_bytes.to_vec()));
 }
 
 /// ブロック列中の画像サイズを自然寸法と本文幅から確定する。
@@ -207,7 +229,10 @@ mod tests {
     let result = load_image_resources(&source, &paths);
 
     // Assert
-    let Err(TypesetError::ReadImage { source, .. }) = result else {
+    let Err(failures) = result else {
+      panic!("読込エラーを期待");
+    };
+    let TypesetError::ReadImage { source, .. } = failures.first() else {
       panic!("ReadImage を期待");
     };
     assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");

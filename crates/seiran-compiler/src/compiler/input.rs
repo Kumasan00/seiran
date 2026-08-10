@@ -18,6 +18,7 @@ use tracing::info;
 
 use super::{elapsed_ms, error::CompileError};
 use crate::{
+  failures::Failures,
   project::{FontData, ProjectSource, SourceSet, config::ProjectConfig},
   semantics::{References, read_references},
   style::Style,
@@ -82,7 +83,7 @@ impl CompilationInputs {
     style: Style,
     references: Arc<References>,
     font_data: FontData,
-  ) -> Result<Self, CompileError> {
+  ) -> Result<Self, Failures<CompileError>> {
     let sources = read_sources(source, &config.sources)?;
     let output = OutputPlan {
       pdf_path: config.output.pdf_path(),
@@ -113,20 +114,25 @@ pub struct OutputPlan {
 ///
 /// 設定・スタイルの読込または検証、両者の横断検証、文献・フォント・ソースの読込のいずれかに
 /// 失敗した場合にエラーを返す。
+///
+/// **段の間は早期 return する** — config が読めなければ style path が決まらず、style が無ければ
+/// 横断検証ができない、というように後段の入力を構築できないため（#376 の集約規則）。段の中で
+/// 独立に検査できるもの（複数フォントパス・複数ソース）は全件を集約する。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
   base_dir: &Path,
-) -> Result<CompilationInputs, CompileError> {
-  let config = crate::project::config::load(source, config_path, base_dir)?;
-  let style = crate::style::load(source, config.style_path.as_deref(), base_dir)?;
-  crate::typeset::validate_layout(&config, &style)?;
-  let references = Arc::new(read_references(source, config.references_path.as_deref())?);
+) -> Result<CompilationInputs, Failures<CompileError>> {
+  let config = crate::project::config::load(source, config_path, base_dir).map_err(single)?;
+  let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(single)?;
+  crate::typeset::validate_layout(&config, &style).map_err(single)?;
+  let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
 
   let stage_start = Instant::now();
-  let font_data = FontData::load(source, &config.font_configs)?;
+  let font_data =
+    FontData::load(source, &config.font_configs).map_err(|failures| return failures.map(CompileError::from))?;
   info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
 
   let sources = read_sources(source, &config.sources)?;
@@ -144,6 +150,11 @@ pub(super) fn load(
   });
 }
 
+/// 段まるごとの失敗（後続の入力を構築できないもの）を 1 件の非空集合へ包む。
+// CompileError は NamedSource を同梱するため大きい
+#[allow(clippy::result_large_err)]
+fn single<E: Into<CompileError>>(error: E) -> Failures<CompileError> { return Failures::single(error.into()); }
+
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。
 ///
 /// `project::SourceSet` はどのパスがどう失敗したかだけを返し、診断の `code` と
@@ -151,12 +162,14 @@ pub(super) fn load(
 /// miette が入れ子の診断ブロックを足し、表示が変わってしまうため）。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
-fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, CompileError> {
-  return SourceSet::read(source, sources).map_err(|error| {
-    return CompileError::ReadTextFile {
-      path: error.path,
-      source: error.source.into_io(),
-    };
+fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, Failures<CompileError>> {
+  return SourceSet::read(source, sources).map_err(|failures| {
+    return failures.map(|error| {
+      return CompileError::ReadTextFile {
+        path: error.path,
+        source: error.source.into_io(),
+      };
+    });
   });
 }
 
@@ -185,14 +198,44 @@ mod tests {
     let result = read_sources(&source, &sources);
 
     // Assert
-    let Err(CompileError::ReadTextFile {
+    let Err(failures) = result else {
+      panic!("ReadTextFile を期待");
+    };
+    let CompileError::ReadTextFile {
       path,
       source: io_error,
-    }) = result
+    } = failures.first()
     else {
       panic!("ReadTextFile を期待");
     };
     assert_eq!(path, "/project/missing.sei");
     assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound, "seam のエラーは io::Error へ平坦化されるはず");
+  }
+
+  #[test]
+  fn read_sources_reports_every_missing_file_in_declaration_order() {
+    // Arrange — 2 つの欠落を宣言順とは逆のパス名で並べる（宣言順で報告されることを見る）
+    let source = MemoryProjectSource::new();
+    let sources = vec![
+      PathBuf::from("/project/z-missing.sei"),
+      PathBuf::from("/project/a-missing.sei"),
+    ];
+
+    // Act
+    let Err(failures) = read_sources(&source, &sources) else {
+      panic!("2 件とも失敗するはず");
+    };
+
+    // Assert — パス名の辞書順ではなく config.sources の宣言順
+    let paths: Vec<&str> = failures
+      .iter()
+      .map(|error| {
+        let CompileError::ReadTextFile { path, .. } = error else {
+          panic!("ReadTextFile を期待");
+        };
+        return path.as_str();
+      })
+      .collect();
+    assert_eq!(paths, vec!["/project/z-missing.sei", "/project/a-missing.sei"]);
   }
 }

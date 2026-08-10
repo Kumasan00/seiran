@@ -51,6 +51,18 @@ impl<E> Failures<E> {
   /// 主と残りへ分解する。
   pub(crate) fn into_parts(self) -> (E, Vec<E>) { return (self.first, self.rest); }
 
+  /// 各要素を変換する（順序は保つ）。
+  ///
+  /// 段の error 型を上位の error 型へ持ち上げるのに使う。`impl<E, F: From<E>> From<Failures<E>>
+  /// for Failures<F>` は標準の反射的な `impl From<T> for T` とコヒーレンスが衝突して書けないため、
+  /// 呼び出し側が明示的にこのメソッドを呼ぶ。
+  pub(crate) fn map<F>(self, mut convert: impl FnMut(E) -> F) -> Failures<F> {
+    return Failures {
+      first: convert(self.first),
+      rest: self.rest.into_iter().map(convert).collect(),
+    };
+  }
+
   /// 主の失敗を借用で返す。
   #[cfg(test)]
   pub(crate) fn first(&self) -> &E { return &self.first; }
@@ -58,6 +70,27 @@ impl<E> Failures<E> {
   /// 主から順にすべての失敗を借用で返す。
   #[cfg(test)]
   pub(crate) fn iter(&self) -> impl Iterator<Item = &E> { return std::iter::once(&self.first).chain(self.rest.iter()); }
+}
+
+/// 入力順に並んだ検査結果を、成功なら値の列・失敗なら**入力順**の失敗集合へまとめる
+///
+/// 並列処理（rayon）の結果を集約するときは必ずこれを通す。`collect::<Result<Vec<_>, E>>()` は
+/// 複数エラーのうちどれを返すかが非決定的（rayon 自身がそう文書化している）だが、
+/// `IndexedParallelIterator` の `collect::<Vec<_>>()` は入力順を保つので、**入力順の slot に
+/// 戻してから**集約すればどの error が先に完了したかは表示順に漏れない（#376）。
+pub(crate) fn collect_in_input_order<T, E>(results: Vec<Result<T, E>>) -> Result<Vec<T>, Failures<E>> {
+  let mut values = Vec::with_capacity(results.len());
+  let mut errors = Vec::new();
+  for result in results {
+    match result {
+      Ok(value) => values.push(value),
+      Err(error) => errors.push(error),
+    }
+  }
+  return match Failures::from_vec(errors) {
+    Some(failures) => Err(failures),
+    None => Ok(values),
+  };
 }
 
 impl<E> IntoIterator for Failures<E> {

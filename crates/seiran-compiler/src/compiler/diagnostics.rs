@@ -162,15 +162,42 @@ fn diagnostic_font_validation_error() {
     name: *b"zzzz",
     value: 0.0,
   }]);
-  let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
-  let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
-    Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
-    Err(error) => error.into(),
-  };
+
+  // Act
+  let failure = font_validation_failure(&config);
 
   // Assert
-  assert_matches_golden("font_validation_error", &render_diagnostic(&report));
+  assert_matches_golden("font_validation_error", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_font_validation_errors_follow_font_type_order() {
+  // Arrange — 2 種別に不明な軸を設定する。宣言は Japanese Serif → Serif の順だが、
+  // 報告は `FontType::ALL` の順（Serif が先）になるはず
+  enter_workspace_root();
+  let (mut config, _style, _references) = load_base();
+  for font_type in [FontType::JapaneseSerif, FontType::Serif] {
+    config.font_configs.get_mut(font_type).variation_axes = Some(vec![crate::project::VariationAxis {
+      name: *b"zzzz",
+      value: 0.0,
+    }]);
+  }
+
+  // Act
+  let failure = font_validation_failure(&config);
+
+  // Assert
+  assert_matches_golden("font_validation_multiple_fonts", &render_failure(failure));
+}
+
+/// フォント検証を失敗させ、`compile` と同じ経路（`CompileFailure`）で診断を組み立てる
+fn font_validation_failure(config: &crate::project::config::ProjectConfig) -> CompileFailure {
+  let source = crate::project::FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+  return match FontResources::load(&config.font_configs, &font_data) {
+    Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
+    Err(failures) => CompileFailure::from(failures),
+  };
 }
 
 #[test]

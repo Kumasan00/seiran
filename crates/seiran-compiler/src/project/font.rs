@@ -21,7 +21,10 @@ pub use kind::FontType;
 pub use map::FontMap;
 pub use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
 
-use crate::project::{ProjectPath, ProjectSource};
+use crate::{
+  failures::{self, Failures},
+  project::{ProjectPath, ProjectSource},
+};
 
 /// フォントファイルを読み込めないときのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -52,16 +55,20 @@ pub struct FontData(FontMap<Arc<Vec<u8>>>);
 impl FontData {
   /// 設定された全フォントファイルを読み込む。同じパスを指す種別は 1 回だけ読む。
   ///
+  /// パスは互いに独立に読めるので、1 件目で打ち切らず全パスを読んで失敗を全件返す。報告順は
+  /// パスの昇順（`unique_paths` は `sort` 済み）で、`par_iter` は `IndexedParallelIterator` なので
+  /// `collect::<Vec<_>>()` が入力順を保証する — どのファイルの読込が先に完了したかは報告順に漏れない。
+  ///
   /// # Errors
   ///
-  /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] を返す。
-  pub fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, FontReadError> {
+  /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] をパス昇順で返す。
+  pub fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
     let mut unique_paths: Vec<PathBuf> =
       FontType::ALL.iter().map(|&ft| return font_configs.get(ft).font_path.clone()).collect();
     unique_paths.sort();
     unique_paths.dedup();
 
-    let loaded: HashMap<PathBuf, Arc<Vec<u8>>> = unique_paths
+    let results = unique_paths
       .par_iter()
       .map(|path| {
         let bytes = source.read_bytes(&ProjectPath::new(path)).map_err(|source| {
@@ -78,7 +85,8 @@ impl FontData {
         })?;
         return Ok((path.clone(), Arc::new(bytes.to_vec())));
       })
-      .collect::<Result<HashMap<_, _>, FontReadError>>()?;
+      .collect::<Vec<Result<(PathBuf, Arc<Vec<u8>>), FontReadError>>>();
+    let loaded: HashMap<PathBuf, Arc<Vec<u8>>> = failures::collect_in_input_order(results)?.into_iter().collect();
 
     let font_datas = FontType::ALL
       .iter()
@@ -149,10 +157,10 @@ mod tests {
     let result = FontData::load(&source, &font_configs);
 
     // Assert
-    assert!(matches!(result, Err(FontReadError::ReadFont { .. })));
-    let Err(FontReadError::ReadFont { font_type, .. }) = result else {
-      panic!("ReadFont を期待, got {result:?}");
+    let Err(failures) = result else {
+      panic!("ReadFont を期待");
     };
-    assert_eq!(font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
+    let FontReadError::ReadFont { font_type, .. } = failures.first();
+    assert_eq!(*font_type, FontType::ALL[0], "唯一のフォント種別が報告されるはず");
   }
 }

@@ -58,7 +58,7 @@ pub use font::{FontFaceConfig, FontMetric, Glyph, GlyphRun, VariationAxisConfig}
 pub(crate) use geometry::{LayoutValidationError, validate_layout};
 pub(crate) use pagination::LaidOutDocument;
 
-use crate::{project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
+use crate::{failures::Failures, project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
 
 /// 意味解析の成果物を、描画直前の確定レイアウトへ組版する。
 ///
@@ -69,19 +69,20 @@ use crate::{project::config::ProjectConfig, semantics::SemanticDocument, style::
 /// # Errors
 ///
 /// シェーパーの構築、画像の読込・デコード・寸法確定、または脚注のページ単位採番の収束に
-/// 失敗した場合にエラーを返す。
+/// 失敗した場合に、その段で見つかった失敗を非空集合で返す（フォント・画像はそれぞれ独立に
+/// 検査できるので段の中では全件、段の間は早期 return する）。
 pub(crate) fn layout(
   source: &dyn crate::project::ProjectSource,
   config: &ProjectConfig,
   style: &Style,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
-) -> Result<LaidOutDocument, TypesetError> {
+) -> Result<LaidOutDocument, Failures<TypesetError>> {
   // シェーパー構築は画像読込より前に置く — 両方が失敗する入力で報告されるエラーを、
   // フォント資源を呼び出し元が組んでいた頃と同じ側（フォント）に保つため。
-  let font_system = font_resources.system()?;
+  let font_system = font_resources.system().map_err(|failures| return failures.map(TypesetError::from))?;
   let image_paths = image::collect_image_paths(document.hir());
   let images = image::load_image_resources(source, &image_paths)?;
   let ctx = pagination::TypesetContext::new(config, style, &font_system);
-  return pagination::paginate(&ctx, document, images, image_paths);
+  return pagination::paginate(&ctx, document, images, image_paths).map_err(Failures::single);
 }
