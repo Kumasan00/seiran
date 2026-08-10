@@ -2,11 +2,11 @@
 
 mod compile_failure;
 mod dependency_manifest;
-mod diagnostic_set;
 mod error;
 mod input;
 mod publication;
 mod source_diagnostic;
+mod warnings;
 
 #[cfg(test)]
 mod diagnostics;
@@ -23,12 +23,12 @@ use std::{collections::HashMap, path::Path, time::Instant};
 
 pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
-pub use diagnostic_set::DiagnosticSet;
 use error::CompileError;
 use input::CompilationInputs;
 pub use input::OutputPlan;
 use source_diagnostic::SourceDiagnostic;
 use tracing::info;
+pub use warnings::Warnings;
 
 #[cfg(test)]
 use crate::{project::config::ProjectConfig, semantics::References, style::Style, typeset::LaidOutDocument};
@@ -36,7 +36,7 @@ use crate::{
   project::{FontData, FontMap, SourceSet},
   publication::{Publication, PublicationFont, PublicationResources},
   semantics::AnalyzeError,
-  typeset::FontResources,
+  typeset::{FontResources, FontWarning},
 };
 
 /// コンパイル結果の統計情報。
@@ -58,8 +58,8 @@ pub struct Compilation {
   pub publication: Publication,
   /// `compile` が読み取った外部資源のパス一覧
   pub dependencies: DependencyManifest,
-  /// 致命的ではない診断（現状は常に空 — パイプラインに非致命的診断は存在しない）
-  pub warnings: DiagnosticSet,
+  /// 致命的ではない warning 診断（フォント・設定のうちユーザーが直せる非致命的な問題）
+  pub warnings: Warnings,
   /// コンパイル結果の統計情報
   pub statistics: BuildStatistics,
   /// 保存先など、書き込みを行う呼び出し側だけが使う出力情報
@@ -108,7 +108,7 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   let document = parse_project(&inputs)?;
   let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-  let font_resources =
+  let (font_resources, font_warnings) =
     FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
   let mut laid_out =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
@@ -125,10 +125,26 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   return Ok(Compilation {
     publication,
     dependencies,
-    warnings: DiagnosticSet::empty(),
+    warnings: collect_warnings(&inputs, font_warnings),
     statistics,
     output: inputs.output().clone(),
   });
+}
+
+/// 成功した `Compilation` と一緒に返す warning を、**入力の論理順**で 1 つに束ねる。
+///
+/// 段の実行順（設定 → フォント）をそのまま表示順にする。段の中は各段が既に決定的な順序で
+/// 集めている（設定は `sources` の宣言順、フォントは `FontType::ALL` 順）ので、ここでの
+/// 並べ替えは行わない。
+fn collect_warnings(inputs: &CompilationInputs, font_warnings: Vec<FontWarning>) -> Warnings {
+  let mut warnings = Warnings::empty();
+  for warning in inputs.config_warnings() {
+    warnings.push(warning.clone());
+  }
+  for warning in font_warnings {
+    warnings.push(warning);
+  }
+  return warnings;
 }
 
 /// 全ソースをパースし、1 つの文書木（HIR）へまとめる。
@@ -204,7 +220,7 @@ fn build_pages_with_source(
   let document = parse_project(&inputs)?;
   let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-  let font_resources = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
+  let (font_resources, _) = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
   return crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
     .map_err(CompileFailure::from);
 }

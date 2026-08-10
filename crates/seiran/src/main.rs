@@ -30,6 +30,7 @@ fn main() -> miette::Result<()> {
         seiran_compiler::compile(&source, &root).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
+      report_warnings(&compilation.warnings, cli_args.quiet);
       report_build(&compilation, cli_args.quiet);
     },
     cli::Command::VariationAxes {
@@ -84,6 +85,20 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
     };
   })?;
   return Ok(());
+}
+
+/// コンパイルが返した警告診断を stderr に表示する。
+///
+/// `Report` の `Debug` 表示が `miette` の fancy handler を通るので、エラー診断と同じ体裁で出る。
+/// `quiet` なら表示しない（成功サマリと同じ扱い）。ログ（tracing）へは出さない — 同じ問題を
+/// 診断と tracing の両方で二重に見せないため（#377）。
+fn report_warnings(warnings: &seiran_compiler::Warnings, quiet: bool) {
+  if quiet {
+    return;
+  }
+  for report in warnings.reports() {
+    eprintln!("{report:?}");
+  }
 }
 
 /// ビルド成功時のサマリを stderr に表示する。

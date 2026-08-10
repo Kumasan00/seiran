@@ -30,3 +30,17 @@ pub fn minimal_config_toml(source_path: &str) -> String {
     test_support::make_font_sections("/project/font.ttf"),
   );
 }
+
+/// [`minimal_config_toml`] の `[font_configs.serif]` に任意の行を足した `config.toml` を組む。
+///
+/// `tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされるので、片方でしか
+/// 使わないヘルパは `dead_code` になる（慣例どおり `allow` で許容する）。
+#[allow(dead_code)]
+pub fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
+  return format!(
+    "sources = [\"{source_path}\"]\n\n{}{}{}",
+    test_support::valid_pdf_section(),
+    test_support::valid_output_section("out", "/project/out"),
+    test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
+  );
+}

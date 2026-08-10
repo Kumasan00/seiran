@@ -20,7 +20,7 @@ use crate::{
       HarfRustShapers, HarfRustShapersExt, ShaperDatas, ShaperDatasExt, ShaperError, ShaperInstances,
       ShaperInstancesExt, UnicodeBuffer,
     },
-    validate_font::{self, FontValidationFailure},
+    validate_font::{self, FontValidationFailure, FontWarning},
   },
 };
 
@@ -77,27 +77,37 @@ impl<'a> FontResources<'a> {
   /// 早期 return する — 解析できなかったフォントのメトリクスは取得できず、メトリクスの無い
   /// フォントは検証できないという依存があるため（#376 の「後続の入力を構築できないなら集約しない」）。
   ///
+  /// 検証で見つかった警告（[`FontWarning`]）は資源ではなくコンパイルの副産物なので、
+  /// この構造体には持たせず戻り値の第 2 要素として外へ出す。
+  ///
   /// # Errors
   ///
   /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、その段で見つかった
   /// 違反を [`FontSystemError`] の非空集合として返す。
-  pub fn load(configs: &'a FontConfigs, font_data: &'a FontData) -> Result<Self, Failures<FontSystemError>> {
+  pub fn load(
+    configs: &'a FontConfigs,
+    font_data: &'a FontData,
+  ) -> Result<(Self, Vec<FontWarning>), Failures<FontSystemError>> {
     let font_refs = build_font_refs(configs, font_data).map_err(|failures| return failures.map(Into::into))?;
     let metrics = build_font_metrics(&font_refs).map_err(|failures| return failures.map(Into::into))?;
 
     let stage_start = Instant::now();
-    validate_font::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
-    info!(elapsed_ms = elapsed_ms(stage_start), "フォントの検証が完了しました");
+    let warnings =
+      validate_font::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
+    info!(elapsed_ms = elapsed_ms(stage_start), warning_count = warnings.len(), "フォントの検証が完了しました");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
     let shaper_instances = ShaperInstances::new(configs, &font_refs);
-    return Ok(Self {
-      configs,
-      font_refs,
-      shaper_datas,
-      shaper_instances,
-      metrics,
-    });
+    return Ok((
+      Self {
+        configs,
+        font_refs,
+        shaper_datas,
+        shaper_instances,
+        metrics,
+      },
+      warnings,
+    ));
   }
 
   /// `Publication` の描画資源を組み立てるための `FontMetrics` アクセサ。

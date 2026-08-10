@@ -72,21 +72,12 @@ impl Default for MemoryProjectSource {
 impl ProjectSource for MemoryProjectSource {
   fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
     self.record_read(path);
-    return self.files.get(path).cloned().ok_or_else(|| {
-      return SourceReadError::NotFound {
-        path: path.to_string(),
-      };
-    });
+    return self.files.get(path).cloned().ok_or(SourceReadError::NotFound);
   }
 
   fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError> {
     let bytes = self.read_bytes(path)?;
-    let text = std::str::from_utf8(&bytes).map_err(|source| {
-      return SourceReadError::InvalidUtf8 {
-        path: path.to_string(),
-        source,
-      };
-    })?;
+    let text = std::str::from_utf8(&bytes).map_err(SourceReadError::InvalidUtf8)?;
     return Ok(Arc::from(text));
   }
 
@@ -118,7 +109,7 @@ mod tests {
     let result = source.read_bytes(&ProjectPath::new("missing.ttf"));
 
     // Assert
-    assert!(matches!(result, Err(SourceReadError::NotFound { .. })));
+    assert!(matches!(result, Err(SourceReadError::NotFound)));
   }
 
   #[test]

@@ -19,7 +19,10 @@ use tracing::info;
 use super::{elapsed_ms, error::CompileError};
 use crate::{
   failures::Failures,
-  project::{FontData, ProjectSource, SourceSet, config::ProjectConfig},
+  project::{
+    FontData, ProjectSource, SourceSet,
+    config::{ConfigWarning, ProjectConfig},
+  },
   semantics::{References, read_references},
   style::Style,
 };
@@ -43,6 +46,8 @@ pub(super) struct CompilationInputs {
   sources: SourceSet,
   /// 保存先など、書き込みを行う呼び出し側だけが使う出力情報
   output: OutputPlan,
+  /// 設定の読込で見つかった警告（`sources` の宣言順）
+  config_warnings: Vec<ConfigWarning>,
 }
 
 impl CompilationInputs {
@@ -63,6 +68,9 @@ impl CompilationInputs {
 
   /// 出力先情報を返す。
   pub(super) fn output(&self) -> &OutputPlan { return &self.output; }
+
+  /// 設定の読込で見つかった警告を宣言順に返す。
+  pub(super) fn config_warnings(&self) -> &[ConfigWarning] { return &self.config_warnings; }
 
   /// 型付きの設定・スタイルから入力を組み立てるテスト専用のコンストラクタ。
   ///
@@ -95,6 +103,7 @@ impl CompilationInputs {
       font_data,
       sources,
       output,
+      config_warnings: Vec::new(),
     });
   }
 }
@@ -125,7 +134,7 @@ pub(super) fn load(
   config_path: &Path,
   base_dir: &Path,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
-  let config = crate::project::config::load(source, config_path, base_dir).map_err(lift)?;
+  let (config, config_warnings) = crate::project::config::load(source, config_path, base_dir).map_err(lift)?;
   let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
   crate::typeset::validate_layout(&config, &style).map_err(single)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
@@ -147,6 +156,7 @@ pub(super) fn load(
     font_data,
     sources,
     output,
+    config_warnings,
   });
 }
 
@@ -158,9 +168,10 @@ fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> 
 
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。
 ///
-/// `project::SourceSet` はどのパスがどう失敗したかだけを返し、診断の `code` と
-/// `into_io()` による平坦化はここが担う（seam のエラーをそのまま `#[source]` に載せると
-/// miette が入れ子の診断ブロックを足し、表示が変わってしまうため）。
+/// `project::SourceSet` はどのパスがどう失敗したかだけを返し、役割（テキストファイル）と
+/// パスを含む leaf diagnostic を組み立てるのはここ。seam の `SourceReadError` は
+/// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
+/// 入れ子の診断ブロックにはならない（#377）。
 // NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
 #[allow(clippy::result_large_err)]
 fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, Failures<CompileError>> {
@@ -168,7 +179,7 @@ fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<Sourc
     return failures.map(|error| {
       return CompileError::ReadTextFile {
         path: error.path,
-        source: error.source.into_io(),
+        source: error.source,
       };
     });
   });
@@ -180,11 +191,11 @@ mod tests {
   use std::path::PathBuf;
 
   use super::{CompileError, read_sources};
-  use crate::project::MemoryProjectSource;
+  use crate::project::{MemoryProjectSource, SourceReadError};
 
   /// `project::SourceSet` の素のエラーを、移設前と同じ位置付き診断へ組み替えることを固定する。
   ///
-  /// `code` / メッセージ / `into_io()` による平坦化は `project` ではなくここの責務なので、
+  /// `code` と役割・パスを含むメッセージの組み立ては `project` ではなくここの責務なので、
   /// `SourceSet::read` 側のテストではこの層を通らない（#351）。
   #[test]
   fn read_sources_maps_missing_file_to_read_text_file_diagnostic() {
@@ -204,13 +215,16 @@ mod tests {
     };
     let CompileError::ReadTextFile {
       path,
-      source: io_error,
+      source: read_error,
     } = failures.first()
     else {
       panic!("ReadTextFile を期待");
     };
     assert_eq!(path, "/project/missing.sei");
-    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound, "seam のエラーは io::Error へ平坦化されるはず");
+    assert!(
+      matches!(read_error, SourceReadError::NotFound),
+      "seam のエラーは cause として保たれるはず: {read_error:?}"
+    );
   }
 
   #[test]

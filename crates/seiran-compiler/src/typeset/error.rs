@@ -7,7 +7,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::project::ProjectPath;
+use crate::project::{ProjectPath, SourceReadError};
 
 /// 組版の不変条件違反（ユーザー入力に起因しない内部バグ）。
 ///
@@ -63,9 +63,9 @@ pub(crate) enum TypesetError {
   ReadImage {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の読込エラー。
+    /// 元の読込エラー（低水準 cause）。
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
 
   /// 画像ファイルの拡張子が未対応です。
