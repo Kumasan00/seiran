@@ -80,6 +80,7 @@ use crate::style::{
 use crate::{
   color::Color,
   document::HeadingLevel,
+  failures::Failures,
   project::{ProjectPath, ProjectSource},
 };
 
@@ -200,7 +201,11 @@ impl Style {
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
 // 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
 #[allow(clippy::result_large_err)]
-pub(crate) fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &Path) -> Result<Style, ReadStyleError> {
+pub(crate) fn load(
+  source: &dyn ProjectSource,
+  path: Option<&Path>,
+  base_dir: &Path,
+) -> Result<Style, Failures<ReadStyleError>> {
   let Some(path) = path else {
     info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
     return Ok(Style::default());
@@ -214,17 +219,16 @@ pub(crate) fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &P
     base_dir.join(path)
   };
   let content = source.read_text(&ProjectPath::new(&joined)).map_err(|source| {
-    return ReadStyleError::ReadFile {
+    return Failures::single(ReadStyleError::ReadFile {
       path: path_str.clone(),
       source: source.into_io(),
-    };
+    });
   })?;
 
   let mut style = parse(&content, &path_str)?;
 
-  let errors = resolve_reference_paths(&mut style.reference, source, base_dir);
-  if !errors.is_empty() {
-    return Err(ReadStyleError::MultipleValidationErrors { errors });
+  if let Some(failures) = validation_failures(resolve_reference_paths(&mut style.reference, source, base_dir)) {
+    return Err(failures);
   }
 
   info!(
@@ -241,20 +245,28 @@ pub(crate) fn load(source: &dyn ProjectSource, path: Option<&Path>, base_dir: &P
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
 #[allow(clippy::result_large_err)]
-pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, ReadStyleError> {
+pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<ReadStyleError>> {
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
     let span = source.span().map_or_else(
       || return SourceSpan::new(0.into(), 0),
       |range| return SourceSpan::new(range.start.into(), range.end.saturating_sub(range.start)),
     );
-    return ReadStyleError::ParseToml { src, span, source };
+    return Failures::single(ReadStyleError::ParseToml { src, span, source });
   })?;
-  if let Err(errors) = validate_values(&style) {
-    return Err(ReadStyleError::MultipleValidationErrors { errors });
+  if let Err(errors) = validate_values(&style)
+    && let Some(failures) = validation_failures(errors)
+  {
+    return Err(failures);
   }
   style.reference.normalize();
   return Ok(style);
+}
+
+/// 値検証の違反列を、1 件ずつ独立した leaf 診断として運ぶ非空集合へ変換する（空なら `None`）。
+#[allow(clippy::result_large_err)]
+fn validation_failures(errors: Vec<StyleValidationError>) -> Option<Failures<ReadStyleError>> {
+  return Failures::from_vec(errors.into_iter().map(ReadStyleError::from).collect());
 }
 
 /// [`Style`] の値検証を実行します（I/O なし）。
@@ -428,7 +440,10 @@ mod tests {
     let result = load(&source, Some(&path), Path::new("/project"));
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::MultipleValidationErrors { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::Validation(StyleValidationError::CslPathResolution { .. }))
+    ));
   }
 
   #[test]
@@ -443,11 +458,20 @@ mod tests {
     let result = load(&source, Some(&path), Path::new("/project"));
 
     // Assert
-    let Err(ReadStyleError::MultipleValidationErrors { errors }) = result else {
-      panic!("MultipleValidationErrors を期待したが実際は {result:?}");
+    let Err(failures) = result else {
+      panic!("2 件の検証エラーを期待");
     };
-    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::CslPathResolution { .. })));
-    assert!(errors.iter().any(|e| matches!(e, StyleValidationError::LocalePathResolution { .. })));
+    let errors: Vec<&ReadStyleError> = failures.iter().collect();
+    assert!(
+      errors
+        .iter()
+        .any(|e| matches!(e, ReadStyleError::Validation(StyleValidationError::CslPathResolution { .. })))
+    );
+    assert!(
+      errors
+        .iter()
+        .any(|e| matches!(e, ReadStyleError::Validation(StyleValidationError::LocalePathResolution { .. })))
+    );
   }
 
   #[test]
@@ -629,7 +653,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -641,7 +668,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -694,7 +724,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -706,7 +739,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -718,7 +754,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -730,7 +769,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -744,7 +786,10 @@ mod parse_tests {
     let result = load(&source, Some(path.as_path()), base_dir);
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ReadFile { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ReadFile { .. })
+    ));
   }
 
   #[test]
@@ -787,7 +832,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -799,7 +847,10 @@ mod parse_tests {
     let result = parse(toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadStyleError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadStyleError::ParseToml { .. })
+    ));
   }
 }
 
@@ -808,15 +859,23 @@ mod parse_tests {
 /// `parse_tests` と同様、独立の `fn dummy_source()` を持つため別 module にしている。
 #[cfg(test)]
 mod validate_tests {
-  use super::{ReadStyleError, Style, StyleValidationError, parse};
+  use super::{Failures, ReadStyleError, Style, StyleValidationError, parse};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
-  fn expect_validation_errors(result: Result<Style, ReadStyleError>) -> Vec<StyleValidationError> {
-    match result {
-      Err(ReadStyleError::MultipleValidationErrors { errors }) => return errors,
-      other => panic!("expected MultipleValidationErrors, got {other:?}"),
-    }
+  fn expect_validation_errors(result: Result<Style, Failures<ReadStyleError>>) -> Vec<StyleValidationError> {
+    let Err(failures) = result else {
+      panic!("検証エラーを期待");
+    };
+    return failures
+      .into_iter()
+      .map(|error| {
+        let ReadStyleError::Validation(validation) = error else {
+          panic!("Validation を期待: {error:?}");
+        };
+        return validation;
+      })
+      .collect();
   }
 
   fn paths(errors: &[StyleValidationError]) -> Vec<&str> {
@@ -926,7 +985,7 @@ resets = []
 
     // Assert
     assert!(
-      matches!(result, Err(ReadStyleError::ParseToml { .. })),
+      matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
       "unknown counter name should be rejected at TOML parse time, got {result:?}"
     );
   }
@@ -1005,7 +1064,7 @@ resets = [\"nonexistent\"]
 
     // Assert
     assert!(
-      matches!(result, Err(ReadStyleError::ParseToml { .. })),
+      matches!(result.as_ref().map_err(|failures| return failures.first()), Err(ReadStyleError::ParseToml { .. })),
       "unknown reset target should be rejected at TOML parse time, got {result:?}"
     );
   }

@@ -30,14 +30,14 @@ pub enum ReadStyleError {
     #[source]
     source: toml::de::Error,
   },
-  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
-  #[error("スタイル設定のバリデーションに失敗しました。")]
-  #[diagnostic(code(style::multiple_validation_errors))]
-  MultipleValidationErrors {
-    /// 検証で検出されたすべてのエラー
-    #[related]
-    errors: Vec<StyleValidationError>,
-  },
+  /// 値検証の違反 1 件
+  ///
+  /// 複数の違反は `Failures<ReadStyleError>` の別要素として並ぶ。段名だけを表す集約
+  /// バリアント（旧 `MultipleValidationErrors`）は持たない — ユーザーが最初に読むのは
+  /// 「どのフィールドをどう直すか」であるべきで、「バリデーションに失敗しました」ではない（#376）。
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Validation(#[from] StyleValidationError),
 }
 
 /// スタイル設定値バリデーションのエラー詳細。

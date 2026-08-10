@@ -1,8 +1,4 @@
-style::multiple_validation_errors
-
-  × スタイル設定のバリデーションに失敗しました。
-
-Error: style::validation::field
+style::validation::field
 
   × 'text.font_size': 正値である必要があります（受け取った値: 0pt）
   help: style.toml の該当フィールドの値を確認してください。

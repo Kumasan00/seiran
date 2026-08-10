@@ -268,7 +268,7 @@ fn multiple_source_errors_keep_declaration_order() {
 #[test]
 fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
   // Arrange — 「複数」「phase に失敗」だけを表す診断が表示へ現れないことを golden 全件で固定する。
-  // 診断 code 全体の規約を機械検査するものではなく、この issue（#375）で削除した wrapper が
+  // 診断 code 全体の規約を機械検査するものではなく、#375 / #376 で削除した wrapper が
   // 復活していないことだけを見る狭いガード。
   let forbidden_codes = [
     "compiler::multiple_source_errors",
@@ -279,6 +279,11 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "compiler::layout",
     "frontend::parse_source::eval",
     "frontend::parse_source::syntax",
+    // #376 で削除した集約 wrapper。集約自身は表示単位ではないので code を持たない
+    "project::config::multiple_validation_errors",
+    "style::multiple_validation_errors",
+    "typeset::font::validation::multiple_errors",
+    "typeset::font::validation::error",
   ];
   let forbidden_messages = [
     "複数のソースファイルでエラーが発生しました",
@@ -287,6 +292,10 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "構文解析に失敗しました",
     "評価に失敗しました",
     "ページレイアウトの検証に失敗しました",
+    "複数のバリデーションエラーが発生しました",
+    "スタイル設定のバリデーションに失敗しました",
+    "複数のフォント設定にエラーがあります",
+    "フォントの検証に失敗しました",
   ];
 
   // Act / Assert
@@ -319,9 +328,10 @@ fn diagnostic_style_validation_aggregate() {
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
   // Act
-  let error = style::parse(toml, "diagnostics/style.toml").expect_err("このケースは失敗するはず");
-  let report: miette::Report = error.into();
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
 
-  // Assert
-  assert_matches_golden("style_validation_aggregate", &render_diagnostic(&report));
+  // Assert — compile 経路と同じく CompileFailure へ平坦化して描画する
+  assert_matches_golden("style_validation_aggregate", &render_failure(CompileFailure::from(failures)));
 }

@@ -125,8 +125,8 @@ pub(super) fn load(
   config_path: &Path,
   base_dir: &Path,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
-  let config = crate::project::config::load(source, config_path, base_dir).map_err(single)?;
-  let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(single)?;
+  let config = crate::project::config::load(source, config_path, base_dir).map_err(lift)?;
+  let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
   crate::typeset::validate_layout(&config, &style).map_err(single)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
 
@@ -154,6 +154,11 @@ pub(super) fn load(
 // CompileError は NamedSource を同梱するため大きい
 #[allow(clippy::result_large_err)]
 fn single<E: Into<CompileError>>(error: E) -> Failures<CompileError> { return Failures::single(error.into()); }
+
+/// 段が集めた非空集合を、そのまま `CompileError` の非空集合へ持ち上げる。
+// CompileError は NamedSource を同梱するため大きい
+#[allow(clippy::result_large_err)]
+fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> { return failures.map(Into::into); }
 
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。
 ///
