@@ -27,8 +27,8 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 同名ラベルが 2 回以上宣言された場合、または `\ref` / `[of=...]` の参照先が存在しない場合に
-/// [`SemanticError`] を返します。
+/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `[of=...]`）を
+/// **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
 pub(super) fn collect_facts(
   hir: &HirDocument,
   policy: &SemanticPolicy,

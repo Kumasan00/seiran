@@ -45,15 +45,44 @@ fn compile_is_deterministic_for_the_same_source() {
   }
 }
 
-/// エラー経路の入力（意味解析の 3 種混在・複数ソースの読込失敗）。
+/// エラー経路の入力（意味解析の 3 種混在・重複ラベルの複数件・複数画像の読込失敗）。
 ///
-/// フォント・画像の失敗は `MemoryProjectSource` では 19 種すべてが同じファイルを指すため
-/// 種別ごとの差を作れず、ここではなく `compiler::diagnostics` の golden が
-/// `FontType::ALL` 順・パス昇順を固定している。
+/// フォントの失敗は `MemoryProjectSource` では 19 種すべてが同じファイルを指すため種別ごとの差を
+/// 作れず、`FontType::ALL` 順は `compiler::diagnostics` の golden が固定している。
 const ERROR_CASES: &[&str] = &[
   "\\section[label=dup]{A}\n\n\\section[label=dup]{B}\n\n\\cite{missing-key} と \\ref{missing-label}\n",
   "\\section[label=dup]{A}\n\n\\section[label=dup]{B}\n\n\\section[label=dup]{C}\n",
+  MISSING_IMAGES,
 ];
+
+/// 未登録の画像を 2 枚参照する入力（画像は `ProjectPath` をキーにするので、
+/// `MemoryProjectSource` でも 2 件の別々の失敗を作れる）。
+const MISSING_IMAGES: &str = concat!(
+  "\\begin{figure}\n\\image[width=80mm]{/project/z-missing.png}\n\\caption{1 枚目}\n\\end{figure}\n\n",
+  "\\begin{figure}\n\\image[width=80mm]{/project/a-missing.png}\n\\caption{2 枚目}\n\\end{figure}\n",
+);
+
+/// 複数の画像が欠落しているとき、正規化済みパスの昇順で全件が報告される。
+#[test]
+#[allow(clippy::unwrap_used)]
+fn missing_images_are_reported_in_path_order() {
+  // Arrange
+  let font_bytes = read_test_font();
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
+    .with_text("/project/text.sei", MISSING_IMAGES)
+    .with_bytes("/project/font.ttf", font_bytes);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let failure = seiran_compiler::compile(&source, &root).expect_err("2 枚とも欠落しているので失敗するはず");
+
+  // Assert — 1 枚目で打ち切らず、文書順ではなくパス昇順（a → z）で並ぶ
+  let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
+  assert_eq!(messages.len(), 2, "欠落した 2 枚が両方報告されるはず: {messages:?}");
+  assert!(messages[0].contains("/project/a-missing.png"), "パス昇順の 1 件目が先のはず: {messages:?}");
+  assert!(messages[1].contains("/project/z-missing.png"), "パス昇順の 2 件目が後のはず: {messages:?}");
+}
 
 /// 同じ入力から `compile` を繰り返し呼んでも、報告される診断の code 列と件数が一致する。
 ///
