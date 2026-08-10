@@ -174,6 +174,26 @@ fn diagnostic_font_validation_error() {
 }
 
 #[test]
+fn diagnostic_missing_csl_path() {
+  // Arrange — 引用があるのに CSL スタイル未設定（CSL 由来のエラーが leaf のまま出ることの回帰。
+  // 旧実装ではここに `compiler::citation::style`「文献引用の CSL スタイルを読み込めませんでした。」
+  // という段名だけの診断が 1 段挟まっていた）
+  enter_workspace_root();
+  let (mut config, mut style, references) = load_base();
+  config.sources = vec![PathBuf::from("tests/text/cite.sei")];
+  style.reference.csl_path = None;
+  let source = crate::project::FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+  let Err(failure) = build_pages(&config, &style, &references, &font_data) else {
+    panic!("CSL スタイル未設定なので失敗するはず")
+  };
+
+  // Assert
+  assert_eq!(codes(&failure), vec!["semantics::citation::style::missing_csl_path".to_string()]);
+  assert_matches_golden("missing_csl_path", &render_failure(failure));
+}
+
+#[test]
 fn primary_diagnostic_is_the_leaf_for_unknown_command() {
   // Arrange / Act
   let failure = build_pages_err(&["tests/text/diagnostics/unknown_command.sei"]);

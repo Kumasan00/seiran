@@ -1,0 +1,5 @@
+semantics::citation::style::missing_csl_path
+
+  × 引用がありますが CSL スタイルが設定されていません。
+  help: style.toml の [reference].csl_path に CSL スタイル（.csl）ファイルのパスを設定してくださ
+        い。
