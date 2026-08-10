@@ -101,6 +101,7 @@ crate はデプロイ・外部依存・独立再利用の単位に限る（コ�
 ```text
 seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + Publication
+                   + 失敗型 CompileFailure
   ↑ seiran-pdf     (e) 描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
@@ -153,8 +154,9 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### エラーハンドリング・バリデーション
 
-- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は `main` / 上位パイプライン関数のみで使う
-- 診断 `code` の**第 1 階層は「段」を表す固定列挙**（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ。crate 名ではない）。**第 2 階層以降は規定しない** — module パスではなく著者が選ぶ意味的カテゴリ（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` はいずれも module 名ではない）。段を跨ぐ wrapper 型は自分の所有 module ではなく**エラーの出自の段**を名乗る（`compiler::error::AttributedCitationError` の `semantics::unknown_citation_key`）
+- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口（`main` / サブコマンド）だけで使い、compiler の内部パイプラインでは使わない（`miette::Report` への型消去は `CompileFailure::into_report` の 1 回に閉じる）
+- `compile` の失敗型は 1 件以上の error diagnostic を持つ不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic にする
+- 診断 `code` の**第 1 階層は「段」を表す固定列挙**（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ。crate 名ではない）。**第 2 階層以降は規定しない** — module パスではなく著者が選ぶ意味的カテゴリ（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` はいずれも module 名ではない）。段を跨ぐ wrapper 型は自分の所有 module ではなく**エラーの出自の段**を名乗る（`typeset::TypesetError` を運ぶ経路が `typeset::*` を名乗り続けるのと同じ読み方）。段名や集約の都合だけを表す wrapper に `code` を与えてユーザー表示へ出さない（#375）
 - 設定値検証は `garde` の `#[derive(Validate)]` で宣言的に書き、違反は `MultipleValidationErrors` に集約して 1 度に報告する
 - バリアント設計・`#[label]` / `NamedSource` によるソース位置付与・`#[related]` 集約の制約・garde パターンの詳細は `error-handling` skill を参照する。新しいエラー型の定義・バリアント追加・バリデーション追加の際は必ず参照すること
 

@@ -44,8 +44,10 @@ pub use font::FontType;
 // フォント資源（19 種別の分類・検証済み設定・読込済みバイト列）は `font` の所有だが、
 // 利用側は常に `project::FontType` のように最浅のパスで参照する。`FontMap` は
 // `typeset::font` が `FontRefs` / `FontMetrics` の実体に使うので facade へ出す。
-// `FontReadError` は `?` で miette::Report へ変換される経路しかなく名指しされないので出さない。
-pub(crate) use font::{Feature, FontConfig, FontConfigs, FontData, FontMap, TextDirection, VariationAxis};
+// `FontReadError` は `compiler::error::CompileError` が `#[from]` で運ぶために名指しする。
+pub(crate) use font::{
+  Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
+};
 pub use memory::MemoryProjectSource;
 use miette::Diagnostic;
 pub(crate) use source_set::SourceSet;

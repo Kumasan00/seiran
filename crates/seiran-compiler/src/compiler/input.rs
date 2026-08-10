@@ -113,14 +113,16 @@ pub struct OutputPlan {
 ///
 /// 設定・スタイルの読込または検証、両者の横断検証、文献・フォント・ソースの読込のいずれかに
 /// 失敗した場合にエラーを返す。
+// NamedSource を同梱して位置付き診断を出すため、大きな Err を許可する
+#[allow(clippy::result_large_err)]
 pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
   base_dir: &Path,
-) -> miette::Result<CompilationInputs> {
+) -> Result<CompilationInputs, CompileError> {
   let config = crate::project::config::load(source, config_path, base_dir)?;
   let style = crate::style::load(source, config.style_path.as_deref(), base_dir)?;
-  crate::typeset::validate_layout(&config, &style).map_err(|source| return CompileError::Layout { source })?;
+  crate::typeset::validate_layout(&config, &style)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref())?);
 
   let stage_start = Instant::now();

@@ -452,12 +452,18 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
   メソッドの戻り値は構造値 `CounterValue` のみで、`ref_format` / `number_format` 展開などの表示生成
   コードは一切持たない
 - `error`: 入口のエラー `AnalyzeError`（`CitationStyle` / `CitationFormat` / `Analyze` の 3 つを
-  transparent に運ぶ）と、走査のエラー `SemanticError`（`UnknownCitationKeys` / `DuplicateLabel` /
-  `UnresolvedReference`）+ `UnknownCitationSite`。**2 層を 1 本に統合しない** — `SemanticError` は必ず
-  ソース位置に帰属する（`source_id()` を持つ）ことを不変条件とし、`compiler` はそれに乗って
-  `CompileError::Resolve` へ本文付き診断を組み立てる。ソース位置を持たない CSL 由来のエラーを同じ enum に
-  混ぜるとこの不変条件が壊れる。診断 `code` は `semantics::unresolved_reference` /
-  `semantics::duplicate_label` / `semantics::unknown_citation_key`（#356 で第 1 階層を段名へ再編）
+  transparent に運ぶ。**`Diagnostic` は実装しない** — `?` で処理順を書くための制御フロー型であって
+  表示単位ではなく、compiler seam が必ず全バリアントを分解する。#375）と、走査のエラー
+  `SemanticError`（`UnknownCitationKeys` / `DuplicateLabel` / `UnresolvedReference`）+ その非空集合
+  `SemanticFailures` + 走査中の中間表現 `UnknownCitationSite`（module 内部限定）。
+  **2 層を 1 本に統合しない** — `SemanticError` は必ず 1 つのソース位置に帰属する
+  （`source_id()` が `Option` ではなく `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って
+  `SourceDiagnostic<SemanticError>` へ本文付き診断を組み立てる。ソース位置を持たない CSL 由来のエラーを
+  同じ enum に混ぜるとこの不変条件が壊れる。診断 `code` は `semantics::unresolved_reference` /
+  `semantics::duplicate_label` / `semantics::unknown_citation_key`（#356 で第 1 階層を段名へ再編）。
+  未定義引用キーは 1 回の走査で複数ソースに跨りうるが、miette は 1 診断に `source_code` を 1 つしか
+  持てないため、**ソースごとの分割を semantics 側が行う**（`SemanticFailures::from_unknown_citations`。
+  分割を compiler 側に置くと診断文・`code`・help の複製がそちらへ生まれる。#375）
 - `ids`: `LabelId`（`\ref` の参照ラベル。`Borrow<str>` を実装して `HashMap` 引きを文字列で行える）と
   `HeadingKey`（見出しの文書順インデックスから決まる暗黙の destination キー。`\ref` ラベルの有無に
   かかわらず全見出しに付く）
@@ -590,6 +596,9 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
 `EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
+`ParseSourceError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、
+自分の message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため。#375）。
+`SourceId` も本文も持たず、帰属は呼び出し元（`compiler::parse_all_sources`）が添える。
 生成物は HIR のみで、他の文書木表現へ落とす adapter は持たない。frontend / evaluator 配下のテストは
 いずれも HIR を直接検査する。
 
@@ -1143,8 +1152,8 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `seiran-compiler` の外部入口 `compile` を持つ module。言語処理・意味解決・組版を 1 回の呼び出しに畳み、
 段の呼び出し順序・中間型（`LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない（`lib.rs`
 が crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `DiagnosticSet` /
-`BuildStatistics` / `OutputPlan`）・`publication::Publication` とそこから到達できる leaf 値型・
-`ProjectSource` 系のみ）。
+`BuildStatistics` / `OutputPlan`）・失敗型 `CompileFailure`・`publication::Publication` と
+そこから到達できる leaf 値型・`ProjectSource` 系のみ）。
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
 （`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
@@ -1162,17 +1171,21 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 #### compile facade（`compiler.rs` 直下）
 
 `compiler.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` /
-`parse_project` / `build_publication` / `parse_all_sources` /
-`wrap_resolve_error` / `wrap_unknown_citation_keys` / `wrap_analyze_error`）と、`compile` が返す公開型
-（`Compilation` / `BuildStatistics`。
-`DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、`OutputPlan` は
-`input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、`input::load` の
-1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
--> Result<Compilation, DiagnosticSet>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
+`parse_project` / `build_publication` / `parse_all_sources` / `attribute_analyze_error`）と、
+`compile` が返す公開型（`Compilation` / `BuildStatistics`。
+`CompileFailure` / `DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、
+`OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
+`input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
+-> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
 （`--config` が指す値と同じ）。`base_dir`（相対パス解決の基準ディレクトリ）は `compile` が
 `std::env::current_dir()` から解決して非公開の `compile_with_base_dir` へ注入する — この関数を挟むことで
 `MemoryProjectSource` + 固定 `base_dir` を使うテスト（`tests/compile_facade.rs`）が `chdir` 無しに書ける。
 `compile` は保存（`fs::write`）を一切行わない。
+
+**内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
+`miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う。
+`compile_inner` / `compile_with_base_dir` / `parse_project` / `parse_all_sources` は
+`Result<_, CompileFailure>`、`input::load` は `Result<_, CompileError>` を返す。
 
 `compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
 `build_resources`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
@@ -1204,24 +1217,38 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
   `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない
-- `diagnostic_set`: `compile` の外部境界を横切る診断の集合 `DiagnosticSet`（`Compilation.warnings` と
-  `compile` の `Err` 型を兼ねる）。中身は型消去済みの `miette::Report` の列で、1 件なら `into_report` が
-  元の `Report` をそのまま返す（`compile` に包む前後で診断のレンダリング結果が完全に一致することを保証する）
-- `error`: `CompileError`（各 module のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
-  行うため、`typeset::lowering` 由来の診断エラーは無い）。`semantics::analyze` が返す `AnalyzeError` は
-  `wrap_analyze_error` が CSL 由来（`CitationStyle` / `CitationFormat`）と意味解析由来に振り分ける。
-  `semantics::SemanticError` は発生時点から `SourceId` を運んでおり、`wrap_resolve_error` は `project::SourceSet`（`SourceId` の唯一の発行元。`config.sources` の
-  読込時に `register` する）から `NamedSource` を引き当てて `Resolve` を組み立てる。未定義引用キー
-  （`UnknownCitationKeys`）だけは箇所ごとに `SourceId` を持つため、ソースごとの位置付き診断へ組み替える
-  （`wrap_unknown_citation_keys`）。意味解析は実ソースしか走査しないので、帰属先不明の診断は型として
-  存在しない。`frontend::ParseSourceError` も `NamedSource` を自前で持たず `SourceId` のみを運び、
-  `MultipleSourceErrors` の各要素は `AttributedParseError`（`SourceSet` から引いた `NamedSource` を添える
-  手書き `Diagnostic` 実装、code/message/help/label/related は内側の `ParseSourceError` へ委譲）として
-  集約する。`config.toml` / `style.toml` の `ParseToml` は `project::config::load` / `style::load` 自身が
+- `compile_failure`: `compile` の失敗型 `CompileFailure`（1 件以上の error diagnostic。先頭が主診断、
+  残りは検出順の関連診断）。中身は型消去済みの `Box<dyn Diagnostic + Send + Sync>` で、`miette::Report`
+  の列にはしない — `Report` は `Diagnostic` を実装しないので 2 件目以降を `related` へ載せられないため。
+  **空では構築できない**（構築経路は `single` / `push` / `from_diagnostics`（空なら `None`）だけで、
+  すべて `pub(crate)`。`Default` も実装しない）。1 件のときは `into_report` が
+  `Report::new_boxed(primary)` を返すので、`CompileFailure` に包む前後で表示が完全に一致する。
+  段別の内部エラー型は公開せず、呼び出し側の分類手段は安定した診断 `code`（#375）
+- `source_diagnostic`: 汎用の source attribution adapter `SourceDiagnostic<E>`。`SourceId` と span だけを
+  持つ leaf 診断（`frontend::ParseSourceError` / `semantics::SemanticError`）へ `SourceSet` から引いた
+  `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
+  `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
+  `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）
+- `diagnostic_set`: `compile` が成功成果物と一緒に返す警告診断の集合 `DiagnosticSet`
+  （`Compilation.warnings` 専用。中身は型消去済みの `miette::Report` の列）。致命的エラーとは公開型を
+  共用しない（error は `CompileFailure`）
+- `error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
+  行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
+  内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /
+  `ReadReferencesError` / `FontReadError`）は `#[diagnostic(transparent)]` でそのまま委譲し、自前の
+  バリアントを持つのは内側が `std::io::Error` で診断を持たない `ReadTextFile` / `CurrentDir` の 2 つだけ
+  （#375）。`semantics::analyze` が返す `AnalyzeError` は `attribute_analyze_error` が CSL 由来
+  （`CitationStyle` / `CitationFormat` — それ自身が leaf 診断）と意味解析由来（ソースごとに分割済みの
+  `SemanticFailures`）に振り分け、後者だけ `project::SourceSet`（`SourceId` の唯一の発行元。
+  `config.sources` の読込時に `register` する）から引いた `NamedSource` を `SourceDiagnostic` で添える。
+  意味解析は実ソースしか走査しないので、帰属先不明の診断は型として存在しない。
+  `frontend::ParseSourceError` も `NamedSource` を自前で持たず、`parse_all_sources` が宣言順に
+  `SourceDiagnostic<ParseSourceError>` を並べて `CompileFailure` にする（集約診断を先頭へ足さない）。
+  `config.toml` / `style.toml` の `ParseToml` は `project::config::load` / `style::load` 自身が
   `NamedSource` を組み立てる（読み込みは `ProjectSource` 経由）。組版（画像資源の解決・脚注採番の
-  収束・組版側の不変条件違反）は `typeset::TypesetError` が持ち、`CompileError::Typeset` が
-  `#[diagnostic(transparent)]` で透過委譲する。PDF の保存は `compile` の関心事ではないため
-  `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ
+  収束・組版側の不変条件違反）の `typeset::TypesetError` とフォント資源の `FontSystemError` は
+  `CompileError` を経由せず `CompileFailure::single` で直接包む。PDF の保存は `compile` の関心事では
+  ないため `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
@@ -1247,7 +1274,10 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   （型付き版と TOML 版）が同じ値へ収束することだけを見る `config_overrides_typed_and_toml_stay_in_sync`。
   `Publication` / `dump_publication` は `typeset::Page` レベルの anchor・索引語の表現を持たないため、
   ダンプ比較の 3 テストは現時点では移行していない——対応する golden 移行は今後のフェーズ判断次第
-- `diagnostics`: miette 診断メッセージの golden テスト
+- `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。
+  `build_pages_err` が返す `CompileFailure` を `into_report` してレンダリングするので、golden は
+  ユーザーが実際に見る表示そのもの。集約・段 wrapper の `code` とメッセージが golden 全件に現れない
+  ことを検査する `golden_diagnostics_show_no_aggregate_or_phase_wrapper` を併設する（#375）
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
   同じ確定レイアウト（`dump_pages` の文字列）を返すこと、同じフォントを複数回読まないことの検証（#300）
 

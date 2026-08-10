@@ -46,9 +46,16 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 「存在しない module 名を名乗る code」（#349 の `resolve::` / #356）を構造的には防げないため。
 逆に第 1 階層を段に閉じれば、module を移設しても code が嘘をつくのは段を跨いだときだけになる。
 
-段を跨ぐ wrapper 型は、自分の所有 module ではなく**エラーの出自の段**を名乗る。
-`compiler::error::AttributedCitationError` は `compiler` が所有するが `semantics::unknown_citation_key`
-を名乗る（`AttributedParseError` が内側の `frontend::*` code を委譲しているのと読み方を揃えるため）。
+段を跨ぐ wrapper 型は、自分の所有 module ではなく**エラーの出自の段**を名乗る
+（`compiler` が所有する `SourceDiagnostic<SemanticError>` が内側の `semantics::*` code を委譲するのが
+その形）。
+
+**`code` は leaf diagnostic にだけ付ける**（#375）。段名や集約の都合しか表さない wrapper に
+独自の message / `code` / help を与えてユーザー表示へ出さない — ユーザーが最初に読むメッセージは常に
+「修正できる leaf」であるべきで、「複数のエラーが発生しました」「◯◯段に失敗しました」を先頭に置かない。
+`?` で運ぶための union（例: `frontend::ParseSourceError`）は `#[error(transparent)]` +
+`#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError`）は
+`Diagnostic` を実装しない、が既定形。
 
 `code` の変更はユーザから見える診断出力の変更なので、`tests/golden_diagnostics/` の再生成
 （`UPDATE_GOLDEN=1 cargo test -p seiran-compiler`）と差分確認をセットで行う。
@@ -60,22 +67,33 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   エラーを構築する場合（例: TOML パーサ呼び出し直後）は、その場で `miette::NamedSource` を保持するラッパー
   enum を返し、変種に `#[source_code] src: NamedSource<String>` と内側のエラーへの
   `#[source] #[diagnostic_source] error: InnerError` を持たせて Diagnostic を伝播してよい。
-  一方、ソース本文を持たない下位クレート（呼び出し元が `SourceId → 本文` の対応表（`SourceDb` 等）を
-  一元管理している場合。例: `frontend::ParseSourceError` は `seiran_compiler::compiler::snapshot::SourceDb`
-  に対して本文を持たない）は、`#[source_code]` を持たず `source_id`（発行元が単一の識別子。生の `usize`
-  や array index を独自に採番しない）だけを運ぶ。この場合、`#[related]` 集約や最終 `Report` 化を行う
-  呼び出し側が、`SourceId` から引いた `NamedSource` を添える薄いラッパー型を用意する。このラッパーは
-  `#[diagnostic(transparent)]` を使わず（`source_code` も内側へ委譲されてしまうため）、`code` / `severity` /
-  `help` / `url` / `labels` / `related` / `diagnostic_source` を内側へ委譲し `source_code` だけを差し替える
-  `miette::Diagnostic` を手書きする（例: `seiran_compiler::compiler::error::AttributedParseError`、issue #299）
-- どちらの形でも、ソース ID・array index を独立した場所で 2 回採番しない。1 箇所（`SourceDb::register` 等）
-  だけが ID を発行し、他はそれを運ぶだけにする（2 箇所で独立に採番すると、両者の順序が一致するかが
-  規約でしか保証されなくなる。#299 以前の `wrap_resolve_error` はこの規約に依存していた —
-  実際に誤動作していたわけではないが、`SourceDb` へ統一して依存を除いた）
+  一方、ソース本文を持たない下位 module（本文は `project::SourceSet` が一元管理する。例:
+  `frontend::ParseSourceError` の内側の `ParserError` / `EvalError`、`semantics::SemanticError`）は、
+  `#[source_code]` を持たず span と `SourceId`（発行元が単一の識別子。生の `usize` や array index を
+  独自に採番しない）だけを運ぶ。本文の添付は **compiler seam の汎用 adapter
+  `compiler::source_diagnostic::SourceDiagnostic<E>` 1 つ**が行う（段ごとの attribution wrapper を
+  新しく作らない。#299 / #375）。この adapter は `#[diagnostic(transparent)]` を使わず
+  （`source_code` も内側へ委譲されてしまうため）、`code` / `severity` / `help` / `url` / `labels` /
+  `related` / `diagnostic_source` を内側へ委譲し `source_code` だけを補う `miette::Diagnostic` を
+  手書きしている
+- どちらの形でも、ソース ID・array index を独立した場所で 2 回採番しない。1 箇所
+  （`project::SourceSet::register`）だけが ID を発行し、他はそれを運ぶだけにする（2 箇所で独立に
+  採番すると、両者の順序が一致するかが規約でしか保証されなくなる。#299）
+- **1 診断が持てる `source_code` は 1 つ**。複数ソースに跨って見つかる問題（例: 未定義引用キー）は、
+  検出した段自身がソースごとの leaf 診断へ分割する（`semantics::SemanticFailures`）。分割を
+  compiler 側に置くと、診断文・`code`・help の複製がそちらに生まれる（#375）
 
 ## 複数エラーの集約
 
-- 複数エラーを 1 度にまとめて報告する場合は `#[related] errors: Vec<...>` を持つ集約バリアント（例: `MultipleValidationErrors`）を作る。`#[related]` の要素は **`Diagnostic` 実装が必須**であり、`miette::Report` は実装しないため、`Report` を直接ベクタに詰めることはできない。クレート固有のエラー型（例: `ParseSourceError`）を返すことでこの問題を回避する
+- 段の内部で複数の違反を 1 度に報告する場合は `#[related] errors: Vec<...>` を持つ集約バリアント
+  （例: `MultipleValidationErrors`）を作る。`#[related]` の要素は **`Diagnostic` 実装が必須**であり、
+  `miette::Report` は実装しないため、`Report` を直接ベクタに詰めることはできない。クレート固有の
+  エラー型を返すことでこの問題を回避する
+- **段を跨いで `compile` の外へ出す集合は `compiler::CompileFailure`**（#375）。先頭が主診断・残りが
+  関連診断で、集約そのものを表す診断（「複数のエラーが発生しました」）を先頭へ足さない。中身は
+  `Box<dyn Diagnostic + Send + Sync>` の列で `Vec<miette::Report>` にはしない（`Report` は `Diagnostic`
+  を実装しないので `related` へ載せられない）。1 件のときは `into_report` が
+  `miette::Report::new_boxed` で leaf をそのまま返し、包む前後で表示が完全に一致する
 
 ## compiler 内部バグ
 
@@ -90,7 +108,11 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 ## シグネチャの原則
 
-- 関数のシグネチャは原則 **クレート固有のエラー型を返す**（例: `Result<Config, ReadConfigError>`, `Result<HirSource, ParseSourceError>`）。`miette::Result<T>` は `main` や上位パイプライン関数（`compiler`, `layout_engine` 等）でのみ使い、ライブラリ的な公開 API では避ける。`Report` は `Diagnostic` を実装しないので、`#[related]` で集約される可能性のあるエラーは具体型で返すこと
+- 関数のシグネチャは **常に具体的なエラー型を返す**（例: `Result<Config, ReadConfigError>`,
+  `Result<HirSource, ParseSourceError>`, `Result<Compilation, CompileFailure>`）。**production の内部
+  pipeline で `miette::Result<T>` を使わない**（#375）— `miette::Report` への型消去は CLI 入口
+  （`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は `Diagnostic` を
+  実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも載せられなくなる
 - 外部クレートの `Result<T, E>` を `miette::Result<T>` に持ち上げる際は `miette::IntoDiagnostic` の `.into_diagnostic()?` を使用する
 - `main` は `miette::Result<()>` を返す（`Box<dyn std::error::Error>` は使わない）。`miette` の `fancy` feature により色付き診断が出力される
 

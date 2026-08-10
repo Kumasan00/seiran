@@ -37,6 +37,8 @@ use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
+// `compiler::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
+pub(crate) use crate::style::error::ReadStyleError;
 // module root が再エクスポートするのは、`style` の外から実際に名指しされる名前だけ。
 // `Style` の内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` 等）は
 // 下の非公開 `use` に留め、`crate::style::FigureStyle` という到達経路を作らない。
@@ -61,7 +63,7 @@ pub use crate::style::{
 // `crate::style::<Type>` で参照できる（非公開 `use` の名前も子孫からは見える）。
 use crate::style::{
   columns::ColumnsStyle,
-  error::{ReadStyleError, StyleValidationError},
+  error::StyleValidationError,
   figure::FigureStyle,
   heading::{HeadingStyle, HeadingStyles},
   hyperref::HyperrefStyle,
