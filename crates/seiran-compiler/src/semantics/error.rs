@@ -10,6 +10,7 @@ use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
 use crate::{
+  document::NodeId,
   failures::Failures,
   semantics::{CitationFormatError, CitationStyleError},
   source::{SourceId, Span},
@@ -44,14 +45,17 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 ///
 /// 同じソース内の複数箇所は 1 診断のラベルとして並べる（箇所ごとに独立した修正ではなく
 /// 「このソースの `\cite` キーが参照定義と合っていない」という 1 問題として読めるため）。
-/// 1 箇所も無ければ空を返す。
-pub(crate) fn group_unknown_citations(sites: Vec<UnknownCitationSite>) -> Vec<SemanticError> {
+/// miette は 1 診断につき `source_code` を 1 つしか持てないので、ソースを跨いで束ねることはできない。
+///
+/// 各診断には、他の種別の診断と文書順にマージするための位置としてそのソースの**最初の**引用箇所を
+/// 添えて返す。1 箇所も無ければ空を返す。
+pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
-  let mut order: Vec<SourceId> = Vec::new();
+  let mut order: Vec<(SourceId, NodeId)> = Vec::new();
   let mut per_source: std::collections::HashMap<SourceId, Vec<LabeledSpan>> = std::collections::HashMap::new();
   for site in sites {
     let labels = per_source.entry(site.source_id).or_insert_with(|| {
-      order.push(site.source_id);
+      order.push((site.source_id, site.site));
       return Vec::new();
     });
     labels.push(LabeledSpan::new_with_span(
@@ -61,11 +65,11 @@ pub(crate) fn group_unknown_citations(sites: Vec<UnknownCitationSite>) -> Vec<Se
   }
   return order
     .into_iter()
-    .map(|source_id| {
+    .map(|(source_id, first_site)| {
       let Some(labels) = per_source.remove(&source_id) else {
         unreachable!("order には per_source へ登録した SourceId しか入らない")
       };
-      return SemanticError::UnknownCitationKeys { source_id, labels };
+      return (first_site, SemanticError::UnknownCitationKeys { source_id, labels });
     })
     .collect();
 }
@@ -73,6 +77,8 @@ pub(crate) fn group_unknown_citations(sites: Vec<UnknownCitationSite>) -> Vec<Se
 /// 未定義キーを含む引用箇所 1 件
 #[derive(Debug, Clone)]
 pub struct UnknownCitationSite {
+  /// `\cite{...}` のノード（他種別の診断と文書順にマージするための位置）
+  pub site: NodeId,
   /// この引用箇所が属するソース
   pub source_id: SourceId,
   /// `\cite{...}` のソース位置
