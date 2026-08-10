@@ -264,7 +264,6 @@ pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<
 }
 
 /// 値検証の違反列を、1 件ずつ独立した leaf 診断として運ぶ非空集合へ変換する（空なら `None`）。
-#[allow(clippy::result_large_err)]
 fn validation_failures(errors: Vec<StyleValidationError>) -> Option<Failures<ReadStyleError>> {
   return Failures::from_vec(errors.into_iter().map(ReadStyleError::from).collect());
 }

@@ -128,6 +128,8 @@ seam を `config` の子に置かないのは変わらない — 全外部資源
 **依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
 `config` が `font` / `length` / `color` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
 持つため）、`source_set` が `source` を参照する（`SourceSet` が `source::SourceId` を発行するため）。
+`config` / `source_set` / `font` は加えて leaf module `failures` に依存する（検証違反・読込失敗を
+`Failures<E>` で全件返すため）。
 `font` が依存するのは同 module の seam だけで、crate 内の他 module を知らない。seam 側を依存ゼロに
 保つことで `project::config` → `project::font` → seam が一方向に閉じる
 （#351、#352。「`project` 全体が crate 内依存を持たない」という旧不変条件はこの形へ改訂した）。
@@ -237,7 +239,9 @@ pub trait ProjectSource: Send + Sync {
 読込失敗は `miette::Diagnostic` を実装しない素の `SourceSetReadError { path, source }` で返す。
 診断（`code(compiler::read_text_file)` とメッセージ、`SourceReadError::into_io()` による平坦化）を
 組み立てるのは入力読込側の `compiler::input` で、`project` はどのパスがどう失敗したかだけを伝える。
-I/O 失敗はパースエラーと違い**集約せず**最初の 1 件で早期 return する。
+ソースは互いに独立に読めるので、I/O 失敗も**宣言順に全件集約**する（#376）。ただし `register` は
+全件成功したときだけ回す — 途中の失敗を飛ばして登録すると「`SourceId::index()` == `config.sources` の
+宣言順」という crate 全体の不変条件が崩れる。
 
 ### `document`
 
@@ -355,9 +359,9 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 物理・実体・メタデータ（`config.toml`）は `project::config` の所有で、言語設計原則 P10 の区別が
 そのまま module 境界になっている。外部資源取得の seam は `project` の所有で、`style` はその利用者。
 
-入口は 2 つ。`load(source, path, base_dir) -> Result<Style, ReadStyleError>`（パス未指定なら
+入口は 2 つ。`load(source, path, base_dir) -> Result<Style, Failures<ReadStyleError>>`（パス未指定なら
 `Style::default()` を返し、指定されていれば読込 → `parse` → `csl_path` / `locale_path` の正規化・
-存在確認）と、I/O を伴わない `parse(content, source_path)`。**CSL ファイル自体は読まない** — 引用箇所の
+存在確認）と、I/O を伴わない `parse(content, source_path) -> Result<Style, Failures<ReadStyleError>>`。**CSL ファイル自体は読まない** — 引用箇所の
 存在が確定するまで遅延させるため、`.csl` / ロケール XML の読込は `semantics::analyze` の内側にある。
 `config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の不変条件として
 `typeset::geometry` が所有する。
@@ -466,7 +470,8 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
 
 - `analyze`: 入口 `analyze` と、CSL 遅延読込の分岐を持つ非公開 `generate`。走査（`walk`）と CSL 整形
   （`citation`）を 1 回の呼び出しの背後に隠す唯一の場所
-- `walk`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `resolve_references`、fact の完全性検証
+- `walk`: 走査 `collect_facts` 本体と `Walker`、参照の存在検証 `unresolved_references`（解決できない
+  参照を全件集める）と解決済み参照の記録 `record_references`、fact の完全性検証
   `assert_facts_complete`。`&HirDocument` を借用して `SemanticFacts` だけを返し、HIR の所有権は
   `analyze` が持ったまま `SemanticDocument` へ移す
 - `facts`: `SemanticFacts`（`label_definitions: HashMap<LabelId, NodeId>` / `declared_labels: NodeMap<LabelId>` /
@@ -714,7 +719,7 @@ pub(crate) fn layout(
   style: &Style,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
-) -> Result<LaidOutDocument, TypesetError>;
+) -> Result<LaidOutDocument, Failures<TypesetError>>;
 ```
 
 段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → `build_blocks` → 画像サイズ確定 →
@@ -1238,7 +1243,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
 `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う。
 `compile_inner` / `compile_with_base_dir` / `parse_project` / `parse_all_sources` は
-`Result<_, CompileFailure>`、`input::load` は `Result<_, CompileError>` を返す。
+`Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
 
 `compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
 `build_resources`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
@@ -1300,7 +1305,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   `config.toml` / `style.toml` の `ParseToml` は `project::config::load` / `style::load` 自身が
   `NamedSource` を組み立てる（読み込みは `ProjectSource` 経由）。組版（画像資源の解決・脚注採番の
   収束・組版側の不変条件違反）の `typeset::TypesetError` とフォント資源の `FontSystemError` は
-  `CompileError` を経由せず `CompileFailure::single` で直接包む。PDF の保存は `compile` の関心事では
+  `CompileError` を経由せず、`Failures<E>` の汎用 `From`（`CompileFailure::from`）で直接平坦化する。PDF の保存は `compile` の関心事では
   ないため `CompileError` には含まれず、bin 側の `write_error::WriteError` が持つ
 
 #### テスト用子 module（`#[cfg(test)]` 限定）

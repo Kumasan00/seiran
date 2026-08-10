@@ -6,6 +6,8 @@
 //! エラーはソース位置を持たないので、この不変条件を壊さないよう [`SemanticError`] には混ぜず
 //! [`AnalyzeError`] の別バリアントに置く。
 
+use std::collections::HashMap;
+
 use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
@@ -52,7 +54,7 @@ pub(crate) type SemanticFailures = Failures<SemanticError>;
 pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(NodeId, SemanticError)> {
   // 出現順を保つため、初出順の Vec に積んでから組み立てる。
   let mut order: Vec<(SourceId, NodeId)> = Vec::new();
-  let mut per_source: std::collections::HashMap<SourceId, Vec<LabeledSpan>> = std::collections::HashMap::new();
+  let mut per_source: HashMap<SourceId, Vec<LabeledSpan>> = HashMap::new();
   for site in sites {
     let labels = per_source.entry(site.source_id).or_insert_with(|| {
       order.push((site.source_id, site.site));

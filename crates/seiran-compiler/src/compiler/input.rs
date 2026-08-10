@@ -151,13 +151,9 @@ pub(super) fn load(
 }
 
 /// 段まるごとの失敗（後続の入力を構築できないもの）を 1 件の非空集合へ包む。
-// CompileError は NamedSource を同梱するため大きい
-#[allow(clippy::result_large_err)]
 fn single<E: Into<CompileError>>(error: E) -> Failures<CompileError> { return Failures::single(error.into()); }
 
 /// 段が集めた非空集合を、そのまま `CompileError` の非空集合へ持ち上げる。
-// CompileError は NamedSource を同梱するため大きい
-#[allow(clippy::result_large_err)]
 fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> { return failures.map(Into::into); }
 
 /// `config.sources` を読み込み、失敗を位置付き診断へ組み替える。

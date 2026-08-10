@@ -14,7 +14,7 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  project::{FontData, FontType},
+  project::{FontData, FontType, VariationAxis, config::ProjectConfig},
   style,
   typeset::FontResources,
 };
@@ -197,7 +197,7 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::project::VariationAxis {
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);
@@ -216,7 +216,7 @@ fn diagnostic_font_validation_errors_follow_font_type_order() {
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
   for font_type in [FontType::JapaneseSerif, FontType::Serif] {
-    config.font_configs.get_mut(font_type).variation_axes = Some(vec![crate::project::VariationAxis {
+    config.font_configs.get_mut(font_type).variation_axes = Some(vec![VariationAxis {
       name: *b"zzzz",
       value: 0.0,
     }]);
@@ -230,7 +230,7 @@ fn diagnostic_font_validation_errors_follow_font_type_order() {
 }
 
 /// フォント検証を失敗させ、`compile` と同じ経路（`CompileFailure`）で診断を組み立てる
-fn font_validation_failure(config: &crate::project::config::ProjectConfig) -> CompileFailure {
+fn font_validation_failure(config: &ProjectConfig) -> CompileFailure {
   let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   return match FontResources::load(&config.font_configs, &font_data) {
