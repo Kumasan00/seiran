@@ -44,10 +44,14 @@ pub(crate) use boxes::{AnchorId, AnchorMark, HBoxContent, LinkTarget, Page, Plac
 #[cfg(test)]
 pub(crate) use dump::dump_pages;
 pub(crate) use error::TypesetError;
-// フォント資源のハンドル `FontResources` と、`compiler::publication` が `Publication` へ写す
-// シェイピング結果。フォントの解析・検証・シェーパー構築は `font` に閉じており、`FontSystem` /
-// `FontRefs` / `FontMetrics` / 拡張 trait は `typeset` の外から見えない（#352）。
-pub(crate) use font::{FontResources, Glyph, GlyphRun};
+// フォント資源のハンドル `FontResources`。フォントの解析・検証・シェーパー構築は `font` に
+// 閉じており、`FontSystem` / `FontRefs` / `FontMetrics` / 拡張 trait は `typeset` の外から
+// 見えない（#352）。
+pub(crate) use font::FontResources;
+// `Publication` に載って crate 外（描画バックエンド）まで届く leaf 値型 — シェイピング結果
+// （`GlyphRun` / `Glyph`）・フォント計測値（`FontMetric`）・krilla フォント構築設定
+// （`FontFaceConfig` / `VariationAxisConfig`）。crate root の facade が再エクスポートする（#372）。
+pub use font::{FontFaceConfig, FontMetric, Glyph, GlyphRun, VariationAxisConfig};
 // 入口は `layout` 1 操作という原則の意図した例外（#351）。用紙・余白 × 段組みの横断制約は
 // 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
 // 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。

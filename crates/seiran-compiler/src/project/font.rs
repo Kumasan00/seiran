@@ -7,7 +7,7 @@
 //! TOML に対応する未検証型（`PreFontConfig` 等）とそこから検証済み値を構築する処理は
 //! 兄弟 module `project::config` が持つ。
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use miette::Diagnostic;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -43,8 +43,11 @@ pub enum FontReadError {
 /// 全フォント種別のバイナリデータ。
 ///
 /// 構築経路は [`FontData::load`] だけで、`ProjectSource` seam を必ず経由する。
+///
+/// バイト列は `Arc` で共有する — 同じフォントファイルを指す種別は同一の `Arc` を持ち、
+/// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。
 #[derive(Debug, Clone, PartialEq)]
-pub struct FontData(FontMap<Vec<u8>>);
+pub struct FontData(FontMap<Arc<Vec<u8>>>);
 
 impl FontData {
   /// 設定された全フォントファイルを読み込む。同じパスを指す種別は 1 回だけ読む。
@@ -58,7 +61,7 @@ impl FontData {
     unique_paths.sort();
     unique_paths.dedup();
 
-    let loaded: HashMap<PathBuf, Vec<u8>> = unique_paths
+    let loaded: HashMap<PathBuf, Arc<Vec<u8>>> = unique_paths
       .par_iter()
       .map(|path| {
         let bytes = source.read_bytes(&ProjectPath::new(path)).map_err(|source| {
@@ -73,7 +76,7 @@ impl FontData {
             source: source.into_io(),
           };
         })?;
-        return Ok((path.clone(), bytes.to_vec()));
+        return Ok((path.clone(), Arc::new(bytes.to_vec())));
       })
       .collect::<Result<HashMap<_, _>, FontReadError>>()?;
 
@@ -81,15 +84,21 @@ impl FontData {
       .iter()
       .map(|&font_type| {
         let path = &font_configs.get(font_type).font_path;
-        return loaded.get(path).expect("上のループで全パスを読み込み済みのはず").clone();
+        return Arc::clone(loaded.get(path).expect("上のループで全パスを読み込み済みのはず"));
       })
-      .collect::<Vec<Vec<u8>>>();
+      .collect::<Vec<Arc<Vec<u8>>>>();
     return Ok(FontData(FontMap::from_all(font_datas)));
   }
 
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
-  pub fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type); }
+  pub fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type).as_slice(); }
+
+  /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
+  ///
+  /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
+  #[must_use]
+  pub fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(self.0.get(font_type)); }
 }
 
 #[cfg(test)]

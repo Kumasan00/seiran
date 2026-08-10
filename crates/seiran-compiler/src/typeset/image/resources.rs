@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
+use super::natural_size;
 use crate::{
   length::Length,
   project::ProjectPath,
@@ -30,7 +31,7 @@ impl ImageResources {
 
   /// 保持していた画像の生バイト列を消費して返す。
   ///
-  /// render 用 `seiran_pdf::ResourceBundle` の構築に使う。これを呼んだ後は自然寸法の参照はできない。
+  /// `Publication` の描画資源の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
   pub(crate) fn into_image_bytes(self) -> HashMap<ProjectPath, Vec<u8>> { return self.bytes; }
 }
@@ -39,7 +40,7 @@ impl ImageResources {
 ///
 /// 画像ファイルを読む唯一の箇所。`source`（[`crate::project::ProjectSource`]）経由で読み込むため、
 /// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
-/// [`ImageResources::into_image_bytes`] で取り出し、render の入力（`ResourceBundle`）へ渡す。
+/// [`ImageResources::into_image_bytes`] で取り出し、`Publication` の描画資源へ渡す。
 ///
 /// # Errors
 ///
@@ -58,12 +59,7 @@ pub(crate) fn load_image_resources(
         source: source.into_io(),
       };
     })?;
-    let natural_size = seiran_pdf::natural_image_size(&path.to_string(), &file_bytes).map_err(|source| {
-      return TypesetError::LoadImage {
-        path: path.to_string(),
-        source,
-      };
-    })?;
+    let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
     natural_sizes.insert(path.clone(), natural_size);
     bytes_map.insert(path.clone(), file_bytes.to_vec());
   }

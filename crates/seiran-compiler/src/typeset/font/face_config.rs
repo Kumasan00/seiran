@@ -1,13 +1,13 @@
-//! `seiran_pdf::ResourceBundle::new` に渡す、フォント種別ごとのフォント構築設定。
+//! `Publication` の描画資源に載る、フォント種別ごとのフォント構築設定。
 //!
-//! `crate::project::FontConfig` から renderer（`seiran_pdf`）が必要とする値（TTC インデックス・
-//! バリアブルフォント軸）だけを取り出した最小表現。この変換を `font` module 内のここ 1 箇所だけに
-//! 閉じ、`seiran_pdf` 側に同型の複製型を作らせない（issue #305）。
+//! `crate::project::FontConfig` から renderer が必要とする値（TTC インデックス・バリアブル
+//! フォント軸）だけを取り出した最小表現。この変換を `font` module 内のここ 1 箇所だけに閉じ、
+//! renderer 側に同型の複製型を作らせない（issue #305 / #372）。
 
 use crate::project::{FontConfigs, FontMap, FontType};
 
 /// Krilla フォント構築に必要な設定（`FontConfig` から renderer が要る値だけを取り出した最小表現）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FontFaceConfig {
   /// TTC（TrueType Collection）ファイル内のインデックス
   pub font_index: u32,
@@ -16,7 +16,7 @@ pub struct FontFaceConfig {
 }
 
 /// バリアブルフォント軸の設定値（`crate::project::VariationAxis` の複製）。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VariationAxisConfig {
   /// 軸名（4 バイトの OpenType 軸タグ）
   pub name: [u8; 4],

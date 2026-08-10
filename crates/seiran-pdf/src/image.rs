@@ -1,8 +1,7 @@
 //! 画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプリングを行う。
 //!
-//! 自然寸法だけを返す薄い公開関数 `natural_image_size` を持つ。`ImageSet` 相当の
-//! 自然寸法解決・width / height 確定ロジックは compiler 側
-//! `seiran_compiler::typeset::image` へ移設済み（epic #276 / #279、#350）。
+//! 描画に使う画像本体のデコードだけを担う。自然寸法の解決・width / height の確定は
+//! compiler 側 `seiran_compiler` の `typeset::image` に閉じている（epic #276 / #279、#350、#372）。
 
 use std::path::Path;
 
@@ -36,18 +35,6 @@ impl LoadedImage {
       },
     };
   }
-}
-
-/// 画像バイト列をデコードし、自然寸法（ラスタは px、SVG は usvg が報告した width / height）を返す。
-///
-/// デコードのみを行い、width / height の確定（縦横比・本文幅からの推論）は行わない
-/// （組版側 `seiran_compiler::typeset::image::resolve_images` の責務）。
-///
-/// # Errors
-///
-/// 画像のデコードに失敗した場合に [`PdfGenError`] を返す。
-pub fn natural_image_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), PdfGenError> {
-  return load_image(path, bytes, None).map(|loaded| return loaded.natural_size());
 }
 
 /// PNG、JPEG、SVG のバイト列をデコードし、必要ならラスタ画像を指定サイズ以下に縮小する。
@@ -145,25 +132,26 @@ mod tests {
   use super::*;
 
   #[test]
-  fn natural_image_size_returns_svg_dimensions_from_bytes() {
+  fn load_image_decodes_svg_to_its_declared_size() {
     // Arrange
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
 
     // Act
-    let size = natural_image_size("icon.svg", svg).expect("有効な SVG はデコードできるはず");
+    let loaded = load_image("icon.svg", svg, None).expect("有効な SVG はデコードできるはず");
 
     // Assert
-    assert!((size.0 - 80.0).abs() < 1e-4);
-    assert!((size.1 - 60.0).abs() < 1e-4);
+    let (width, height) = loaded.natural_size();
+    assert!((width - 80.0).abs() < 1e-4);
+    assert!((height - 60.0).abs() < 1e-4);
   }
 
   #[test]
-  fn natural_image_size_propagates_unsupported_format_error() {
+  fn load_image_rejects_unsupported_extension() {
     // Arrange
     let bytes = b"not an image";
 
     // Act
-    let result = natural_image_size("icon.gif", bytes);
+    let result = load_image("icon.gif", bytes, None);
 
     // Assert
     assert!(matches!(result, Err(PdfGenError::UnsupportedImageFormat { path }) if path == "icon.gif"));

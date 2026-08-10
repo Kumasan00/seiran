@@ -93,11 +93,11 @@ impl<'a> FontResources<'a> {
     });
   }
 
-  /// `seiran_pdf::ResourceBundle::new` に渡すための `FontMetrics` アクセサ。
+  /// `Publication` の描画資源を組み立てるための `FontMetrics` アクセサ。
   #[must_use]
   pub fn metrics(&self) -> &FontMetrics { return &self.metrics; }
 
-  /// `seiran_pdf::ResourceBundle::new` に渡すための [`FontFaceConfigs`] アクセサ。
+  /// `Publication` の描画資源を組み立てるための [`FontFaceConfigs`] アクセサ。
   #[must_use]
   pub fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
 

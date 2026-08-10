@@ -18,7 +18,8 @@ mod shaper;
 mod system;
 mod validate_font;
 
-pub(crate) use glyph_run::{Glyph, GlyphRun};
+pub use face_config::{FontFaceConfig, VariationAxisConfig};
+pub use glyph_run::{Glyph, GlyphRun};
 // `shaper` module のパス自体は `typeset::font` に閉じ、`typeset::block` が shape 呼び出しに要る
 // `UnicodeBuffer` だけを `typeset` 内へ出す。
 pub(super) use shaper::UnicodeBuffer;
@@ -99,7 +100,7 @@ fn build_font_refs<'a>(config: &'a FontConfigs, font_data: &'a FontData) -> Resu
 ///
 /// 値はフォントユニット系で、`descender` は OpenType の慣例どおり通常は負値。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct FontMetric {
+pub struct FontMetric {
   /// units-per-em（`head` テーブル由来）
   pub upem: f32,
   /// アセンダ（`hhea` テーブル由来、フォントユニット）

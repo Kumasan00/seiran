@@ -13,8 +13,6 @@ mod dump;
 #[cfg(test)]
 mod golden;
 #[cfg(test)]
-mod pdf_structure;
-#[cfg(test)]
 mod project_source_equivalence;
 
 #[cfg(test)]
@@ -28,13 +26,14 @@ use input::CompilationInputs;
 pub use input::OutputPlan;
 use tracing::info;
 
-use crate::{
-  project::{FontData, SourceSet, config::ProjectConfig},
-  semantics::AnalyzeError,
-  typeset::{FontResources, LaidOutDocument},
-};
 #[cfg(test)]
-use crate::{semantics::References, style::Style};
+use crate::{project::config::ProjectConfig, semantics::References, style::Style, typeset::LaidOutDocument};
+use crate::{
+  project::{FontData, FontMap, SourceSet},
+  publication::{Publication, PublicationFont, PublicationResources},
+  semantics::AnalyzeError,
+  typeset::FontResources,
+};
 
 /// コンパイル結果の統計情報。
 #[derive(Debug, Clone, Copy)]
@@ -52,7 +51,7 @@ pub struct BuildStatistics {
 #[derive(Debug)]
 pub struct Compilation {
   /// 描画直前の確定済み出版物
-  pub publication: seiran_pdf::Publication,
+  pub publication: Publication,
   /// `compile` が読み取った外部資源のパス一覧
   pub dependencies: DependencyManifest,
   /// 致命的ではない診断（現状は常に空 — パイプラインに非致命的診断は存在しない）
@@ -109,7 +108,8 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   let mut laid_out =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)?;
   let image_bytes = std::mem::take(&mut laid_out.image_bytes);
-  let publication = build_publication(inputs.config(), inputs.font_data(), &font_resources, image_bytes, &laid_out)?;
+  let resources = build_resources(inputs.font_data(), &font_resources, image_bytes);
+  let publication = publication::build_publication(inputs.config(), resources, &laid_out);
   let dependencies = DependencyManifest::collect(root.as_path(), &inputs, &laid_out.image_paths);
   let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
@@ -146,99 +146,27 @@ fn parse_project(inputs: &CompilationInputs) -> miette::Result<crate::document::
   return Ok(document);
 }
 
-/// 構築済みフォント資源と画像バイト列から `Publication` を組み立てる（描画・保存はしない）。
+/// 読み込み済みフォント資源と画像バイト列から `Publication` の描画資源を組み立てる。
 ///
 /// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
-///
-/// # Errors
-///
-/// `seiran_pdf::ResourceBundle` の構築に失敗した場合にエラーを返す。
-fn build_publication(
-  config: &ProjectConfig,
+/// バイト列は `Arc` 共有なので複製しない。krilla フォントの構築は render（`seiran-pdf`）の責務。
+fn build_resources(
   font_data: &FontData,
   font_resources: &FontResources<'_>,
   image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
-  laid_out: &LaidOutDocument,
-) -> miette::Result<seiran_pdf::Publication> {
-  let fonts = build_pdf_fonts(font_data, font_resources);
-  let font_metrics = build_pdf_font_metrics(font_resources);
+) -> PublicationResources {
+  let face_configs = font_resources.face_configs();
+  let metrics = font_resources.metrics();
+  let fonts = FontMap::from_all(crate::project::FontType::ALL.iter().map(|&font_type| {
+    return PublicationFont {
+      bytes: font_data.shared_bytes(font_type),
+      face: face_configs.get(font_type).clone(),
+      metric: *metrics.get(font_type),
+    };
+  }));
   let image_bytes: HashMap<String, Vec<u8>> =
     image_bytes.into_iter().map(|(path, bytes)| return (path.to_string(), bytes)).collect();
-  let resources = seiran_pdf::ResourceBundle::new(fonts, font_metrics, image_bytes)?;
-  return Ok(publication::build_publication(config, resources, laid_out));
-}
-
-/// `crate::project::FontType` を `seiran_pdf::FontType` へ変換する（19 種別、宣言順で 1:1 対応）。
-fn to_pdf_font_type(font_type: crate::project::FontType) -> seiran_pdf::FontType {
-  return match font_type {
-    crate::project::FontType::Serif => seiran_pdf::FontType::Serif,
-    crate::project::FontType::SerifBold => seiran_pdf::FontType::SerifBold,
-    crate::project::FontType::SerifItalic => seiran_pdf::FontType::SerifItalic,
-    crate::project::FontType::SerifBoldItalic => seiran_pdf::FontType::SerifBoldItalic,
-    crate::project::FontType::SansSerif => seiran_pdf::FontType::SansSerif,
-    crate::project::FontType::SansSerifBold => seiran_pdf::FontType::SansSerifBold,
-    crate::project::FontType::SansSerifItalic => seiran_pdf::FontType::SansSerifItalic,
-    crate::project::FontType::SansSerifBoldItalic => seiran_pdf::FontType::SansSerifBoldItalic,
-    crate::project::FontType::Monospace => seiran_pdf::FontType::Monospace,
-    crate::project::FontType::MonospaceBold => seiran_pdf::FontType::MonospaceBold,
-    crate::project::FontType::MonospaceItalic => seiran_pdf::FontType::MonospaceItalic,
-    crate::project::FontType::MonospaceBoldItalic => seiran_pdf::FontType::MonospaceBoldItalic,
-    crate::project::FontType::Math => seiran_pdf::FontType::Math,
-    crate::project::FontType::JapaneseSerif => seiran_pdf::FontType::JapaneseSerif,
-    crate::project::FontType::JapaneseSerifBold => seiran_pdf::FontType::JapaneseSerifBold,
-    crate::project::FontType::JapaneseSansSerif => seiran_pdf::FontType::JapaneseSansSerif,
-    crate::project::FontType::JapaneseSansSerifBold => seiran_pdf::FontType::JapaneseSansSerifBold,
-    crate::project::FontType::JapaneseMonospace => seiran_pdf::FontType::JapaneseMonospace,
-    crate::project::FontType::JapaneseMonospaceBold => seiran_pdf::FontType::JapaneseMonospaceBold,
-  };
-}
-
-/// `crate::project::FontData` + `crate::typeset::FontResources` から `seiran_pdf::ResourceBundle::new` に渡す
-/// フォント構築設定一式を組み立てる（`crate::project::FontType` → `seiran_pdf::FontType` への変換込み）。
-fn build_pdf_fonts(
-  font_data: &FontData,
-  font_resources: &FontResources<'_>,
-) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontFaceInput> {
-  let face_configs = font_resources.face_configs();
-  return crate::project::FontType::ALL
-    .iter()
-    .map(|&font_type| {
-      let face_config = face_configs.get(font_type);
-      let input = seiran_pdf::FontFaceInput {
-        bytes: font_data.get(font_type).to_vec(),
-        font_index: face_config.font_index,
-        variation_axes: face_config.variation_axes.as_ref().map(|axes| {
-          return axes
-            .iter()
-            .map(|axis| {
-              return seiran_pdf::VariationAxisInput {
-                name: axis.name,
-                value: axis.value,
-              };
-            })
-            .collect();
-        }),
-      };
-      return (to_pdf_font_type(font_type), input);
-    })
-    .collect();
-}
-
-/// `crate::typeset::FontResources` から `seiran_pdf::ResourceBundle::new` に渡すフォントメトリクス一式を組み立てる。
-fn build_pdf_font_metrics(font_resources: &FontResources<'_>) -> HashMap<seiran_pdf::FontType, seiran_pdf::FontMetric> {
-  let metrics = font_resources.metrics();
-  return crate::project::FontType::ALL
-    .iter()
-    .map(|&font_type| {
-      let metric = metrics.get(font_type);
-      let converted = seiran_pdf::FontMetric {
-        upem: metric.upem,
-        ascender: metric.ascender,
-        descender: metric.descender,
-      };
-      return (to_pdf_font_type(font_type), converted);
-    })
-    .collect();
+  return PublicationResources::new(fonts, image_bytes);
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。

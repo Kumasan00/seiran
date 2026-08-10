@@ -4,11 +4,12 @@
 //! 自然寸法を確定し、ブロック列の `width` / `height` を埋める（`resources`）までをここに閉じる
 //! （#350 で `compiler::{image_manifest, image_resources}` から移設）。
 //!
-//! 自然寸法の取得だけは描画側 crate の `seiran_pdf::natural_image_size`（krilla / usvg による
-//! デコード）を呼ぶ。`typeset` が知ってよい `seiran_pdf` はこの画像デコードの leaf 関数までで、
-//! 描画 API（`Publication` / `render`）には触れない。
+//! 自然寸法の取得（`image` による寸法ヘッダの読み取りと `usvg` による SVG のパース）は
+//! 子 module `natural_size` に閉じる（#372 で `seiran_pdf::natural_image_size` から移設）。
+//! 描画に使う画像本体のデコード・ダウンサンプリングは render（`seiran-pdf`）の責務。
 
 mod manifest;
+mod natural_size;
 mod resources;
 
 pub(crate) use manifest::collect_image_paths;

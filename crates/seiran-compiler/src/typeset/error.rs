@@ -1,10 +1,10 @@
 //! 組版パスのエラー型 [`TypesetError`]
 //!
-//! 画像資源の読込・デコード・寸法確定で起きる失敗を持つ（#350 で `compiler::error` から移設。
-//! `code` は移設前の値をそのまま保つ — 診断の出方を変えないため）。
+//! 画像資源の読込・デコード・寸法確定で起きる失敗を持つ（#350 で `compiler::error` から移設）。
+//! 画像デコードの失敗は #372 で `seiran_pdf::PdfGenError` の入れ子から自前のバリアントへ移した
+//! （デコードが typeset 段で起きるため、`code` の段も `typeset` に揃う）。
 
 use miette::Diagnostic;
-use seiran_pdf::PdfGenError;
 use thiserror::Error;
 
 use crate::project::ProjectPath;
@@ -68,19 +68,40 @@ pub(crate) enum TypesetError {
     source: std::io::Error,
   },
 
-  /// 画像ファイルのデコードに失敗しました。
-  #[error("画像ファイルのデコードに失敗しました: {path}")]
+  /// 画像ファイルの拡張子が未対応です。
+  #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(
-    code(typeset::image::load_image),
-    help("画像ファイルが破損していないか、対応形式（PNG / JPEG / SVG）か確認してください。")
+    code(typeset::image::unsupported_format),
+    help("対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。")
   )]
-  LoadImage {
+  UnsupportedImageFormat {
     /// 画像ファイルのパス。
     path: String,
-    /// 元の `seiran_pdf` デコードエラー。
+  },
+
+  /// ラスタ画像のデコードに失敗しました。
+  #[error("画像ファイルのデコードに失敗しました: {path}")]
+  #[diagnostic(code(typeset::image::decode_image), help("画像ファイルが破損していないか確認してください。"))]
+  DecodeImage {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の image クレートのエラー。
     #[source]
-    #[diagnostic_source]
-    source: PdfGenError,
+    source: image::ImageError,
+  },
+
+  /// SVG のパースに失敗しました。
+  #[error("SVG のパースに失敗しました: {path}")]
+  #[diagnostic(
+    code(typeset::image::parse_svg),
+    help("SVG ファイルが妥当な XML / SVG であることを確認してください。")
+  )]
+  ParseSvg {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 元の usvg エラー。
+    #[source]
+    source: usvg::Error,
   },
 
   /// 画像の自然寸法が不正です（縦横比を算出できません）。

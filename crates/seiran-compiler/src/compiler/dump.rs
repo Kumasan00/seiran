@@ -8,12 +8,11 @@
 
 use std::fmt::Write;
 
-use seiran_pdf::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
+use crate::publication::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
 
 /// [`Publication`] を決定的なテキスト形式へダンプする（golden 比較用）。
 ///
-/// `resources`（フォント・画像の実バイト列）は座標・寸法に影響せず、かつ `seiran_pdf` クレート内
-/// `pub(crate)` でこの crate からは読めないため対象外とする。
+/// `resources`（フォント・画像の実バイト列と構築設定）は座標・寸法に影響しないため対象外とする。
 #[must_use]
 pub(super) fn dump_publication(publication: &Publication) -> String {
   let mut out = String::new();
@@ -70,19 +69,19 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 
 /// 1 描画命令を書き出す（インデント 2）。
 ///
-/// `run.color`（`Option<[u8; 3]>`）は旧 `crate::color::Color` の Debug 表記（`Color([r, g, b])`）と
-/// 同じ文字列になるよう手書きで揃える — golden の文字列比較を変えないため。
+/// `run.color` は `crate::color::Color` の RGB 成分から書き出す（型の Debug 表記に依存しない形で
+/// `Color([r, g, b])` を作る）— golden の文字列比較を変えないため。
 fn dump_paint_op(out: &mut String, op: &PaintOp) {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
-      let color = run.color.map_or_else(String::new, |c| format!(" color=Color({c:?})"));
+      let color = run.color.map_or_else(String::new, |c| format!(" color=Color({:?})", c.rgb()));
       let _ = writeln!(
         out,
         "  glyphs x={} y={} font={:?} size={} text={:?} glyph_count={}{color}",
         f2_pt(origin.x),
         f2_pt(origin.y),
         run.font_type,
-        f2_pt(run.font_size),
+        f2_pt(run.font_size.to_pt()),
         run.text,
         run.glyphs.len()
       );
@@ -132,10 +131,10 @@ fn dump_publication_link(out: &mut String, link: &PublicationLink) {
   );
 }
 
-/// pt 単位の `f32`（`seiran_pdf` 境界の値）を小数第 2 位へ丸め、負のゼロを正規化する。
+/// pt 単位の `f32`（描画命令に載っている値）を小数第 2 位へ丸め、負のゼロを正規化する。
 ///
-/// `typeset::dump` の `f2` と丸め桁数・負のゼロ正規化の仕様を揃える（`seiran_pdf` 側はすでに pt の
-/// `f32` なので `Length` 経由の単位変換をしないだけの違い）。
+/// `typeset::dump` の `f2` と丸め桁数・負のゼロ正規化の仕様を揃える（`Publication` の座標はすでに
+/// pt の `f32` なので `Length` 経由の単位変換をしないだけの違い）。
 fn f2_pt(value: f32) -> String {
   let text = format!("{value:.2}");
   return if text == "-0.00" {
@@ -148,12 +147,13 @@ fn f2_pt(value: f32) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use seiran_pdf::{
-    Destination, FontType as PdfFontType, GlyphRun as PdfGlyphRun, PaintOp, Point, PublicationLink,
-    PublicationLinkTarget, PublicationMetadata, Rect,
-  };
-
   use super::{dump_metadata, dump_paint_op, dump_publication_link};
+  use crate::{
+    length::Length,
+    project::FontType,
+    publication::{Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect},
+    typeset::GlyphRun,
+  };
 
   /// 最小のメタデータ（`title` のみ）を返す。
   fn minimal_metadata() -> PublicationMetadata {
@@ -205,11 +205,11 @@ mod tests {
   #[test]
   fn dump_paint_op_writes_glyph_run_text_and_size() {
     // Arrange
-    let run = PdfGlyphRun {
-      font_size: 10.0,
+    let run = GlyphRun {
+      font_size: Length::pt(10.0),
       text: "Test".to_string(),
       glyphs: Vec::new(),
-      font_type: PdfFontType::Serif,
+      font_type: FontType::Serif,
       color: None,
     };
     let op = PaintOp::DrawGlyphRun {
