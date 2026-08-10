@@ -2,6 +2,8 @@
 
 use miette::Diagnostic;
 
+use crate::failures::Failures;
+
 /// 型消去済みの error diagnostic 1 件。
 ///
 /// [`miette::Report`] ではなく `Box<dyn Diagnostic>` にするのは、`Report` が `Diagnostic` を
@@ -74,6 +76,21 @@ impl CompileFailure {
       return miette::Report::new_boxed(self.primary);
     }
     return miette::Report::new(self);
+  }
+}
+
+/// 段が集めた非空の失敗集合を、そのまま公開の失敗へ平坦化する。
+///
+/// [`Failures`] は `Diagnostic` を実装しない（集約は表示単位ではない）ので、ユーザー表示になるのは
+/// 個々の leaf diagnostic だけ。集約そのものを表す診断は先頭にも途中にも現れない。
+impl<E: Diagnostic + Send + Sync + 'static> From<Failures<E>> for CompileFailure {
+  fn from(failures: Failures<E>) -> Self {
+    let (first, rest) = failures.into_parts();
+    let mut failure = CompileFailure::single(first);
+    for diagnostic in rest {
+      failure.push(diagnostic);
+    }
+    return failure;
   }
 }
 

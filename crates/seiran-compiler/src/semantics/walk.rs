@@ -13,7 +13,7 @@ use crate::{
   semantics::{
     CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
-    error::{UnknownCitationSite, span_to_source_span},
+    error::{self, UnknownCitationSite, span_to_source_span},
     facts::{HeadingFacts, SemanticFacts},
   },
   style::CounterName,
@@ -58,7 +58,7 @@ pub(super) fn collect_facts(
       duplicate_label = Some(error);
     }
   }
-  if let Some(failures) = SemanticFailures::from_unknown_citations(unknown_citations) {
+  if let Some(failures) = SemanticFailures::from_vec(error::group_unknown_citations(unknown_citations)) {
     return Err(failures);
   }
   if let Some(error) = duplicate_label {
