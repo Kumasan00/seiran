@@ -1,0 +1,7 @@
+\section[label=dup]{最初の見出し}
+
+\section[label=dup]{同じラベルを付けた 2 つ目の見出し}
+
+存在しない文献キーを引用します \cite{totally-unknown-key}。
+
+定義されていないラベルを \ref{undefined-label} で参照します。

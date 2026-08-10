@@ -13,7 +13,7 @@ use crate::{
   semantics::{
     CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
-    error::{UnknownCitationSite, span_to_source_span},
+    error::{self, UnknownCitationSite, span_to_source_span},
     facts::{HeadingFacts, SemanticFacts},
   },
   style::CounterName,
@@ -27,8 +27,8 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 同名ラベルが 2 回以上宣言された場合、または `\ref` / `[of=...]` の参照先が存在しない場合に
-/// [`SemanticError`] を返します。
+/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `[of=...]`）を
+/// **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
 pub(super) fn collect_facts(
   hir: &HirDocument,
   policy: &SemanticPolicy,
@@ -38,7 +38,9 @@ pub(super) fn collect_facts(
   let mut facts = SemanticFacts::default();
   let mut pending: Vec<PendingReference> = Vec::new();
   let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
-  let mut duplicate_label: Option<SemanticError> = None;
+  // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
+  // 続けても後続のカウンタ値はずれない（#376）。
+  let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
   for group in hir.groups() {
     let mut walker = Walker {
       locations: hir.locations(),
@@ -47,27 +49,38 @@ pub(super) fn collect_facts(
       facts: &mut facts,
       pending: &mut pending,
       unknown_citations: &mut unknown_citations,
+      duplicate_labels: &mut duplicate_labels,
     };
-    // 重複ラベルで即座に打ち切らず、未定義引用キーを集め終えてから報告する。
-    // 引用キーの検証は移設前（`citation::analyze_citations`）が意味解決より先に走っていたため、
-    // その優先順位を保つ（#324 は振る舞いを変えない）。採番は登録の前に済んでいるので、
-    // 走査を続けても後続のカウンタ値はずれない。
-    if let Err(error) = walker.nodes(&group.nodes)
-      && duplicate_label.is_none()
-    {
-      duplicate_label = Some(error);
-    }
+    walker.nodes(&group.nodes);
   }
-  if let Some(failures) = SemanticFailures::from_unknown_citations(unknown_citations) {
+
+  // 独立に検査できる 3 種（重複ラベル・未定義引用キー・未解決参照）を全件集め、文書順にマージする。
+  // カテゴリごとに早いもの勝ちで 1 件だけ返すと、1 回の実行で確認できる修正箇所が減るため（#376）。
+  let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
+    .into_iter()
+    .chain(error::group_unknown_citations(&unknown_citations))
+    .map(|(node, error)| return (order_key(node), error))
+    .chain(unresolved_references(&registry, &pending, hir.locations()))
+    .collect();
+  // 3 種はそれぞれ文書順に積まれているので、安定ソートで種別を跨いだ文書順になる。
+  errors.sort_by_key(|(key, _)| return *key);
+  if let Some(failures) = SemanticFailures::from_vec(errors.into_iter().map(|(_, error)| return error).collect()) {
     return Err(failures);
   }
-  if let Some(error) = duplicate_label {
-    return Err(SemanticFailures::single(error));
-  }
-  resolve_references(&mut facts, &registry, &pending, hir.locations())?;
+
+  record_references(&mut facts, &pending);
   assert_facts_complete(hir, &facts, policy);
   return Ok(facts);
 }
+
+/// 文書順の全順序を与えるソート鍵（ソースの宣言順 → ソース内の preorder 連番）
+///
+/// `NodeId::local` はソース内の preorder 連番、`HirDocument::assemble` はグループを
+/// `SourceId::index()` 昇順へ正規化するので、この鍵はパースの実行順に依存しない。
+type OrderKey = (usize, u32);
+
+/// 文書順の全順序を与えるソート鍵を求める
+fn order_key(node: NodeId) -> OrderKey { return (node.source().index(), node.local()); }
 
 /// variant ごとに必要な fact がすべて登録されているかを検証する
 ///
@@ -254,29 +267,39 @@ struct PendingReference {
   label: String,
 }
 
-/// 収集済みの参照箇所を文書順に検証し、`references` fact を確定する
+/// 収集済みの参照箇所のうち、解決できないものを文書順に**全件**集める
 ///
-/// # Errors
-///
-/// 参照先が登録されていない場合に [`SemanticError::UnresolvedReference`] を返します。
-fn resolve_references(
-  facts: &mut SemanticFacts,
+/// 参照先は先勝ちで登録された最初の定義（[`CounterRegistry::register_label`]）なので、
+/// 同名ラベルが重複していても解決先は一意に決まる。
+fn unresolved_references(
   registry: &CounterRegistry,
   pending: &[PendingReference],
   locations: &SourceMap,
-) -> Result<(), SemanticError> {
-  for reference in pending {
-    if registry.resolve_label(&reference.label).is_none() {
+) -> Vec<(OrderKey, SemanticError)> {
+  return pending
+    .iter()
+    .filter(|reference| return registry.resolve_label(&reference.label).is_none())
+    .map(|reference| {
       let location = locations.location(reference.site);
-      return Err(SemanticError::UnresolvedReference {
+      let error = SemanticError::UnresolvedReference {
         label: reference.label.clone(),
         span: span_to_source_span(location.span),
         source_id: location.source_id,
-      });
-    }
+      };
+      return (order_key(reference.site), error);
+    })
+    .collect();
+}
+
+/// 解決済みの参照箇所を `references` fact へ記録する
+///
+/// 呼ばれるのは [`unresolved_references`] が空だったときだけなので、すべての参照は実在する
+/// ラベルを指している（`analyze` 成功後の不変条件）。
+fn record_references(facts: &mut SemanticFacts, pending: &[PendingReference]) {
+  for reference in pending {
     facts.references.insert(reference.site, LabelId::new(reference.label.clone()));
   }
-  return Ok(());
+  return;
 }
 
 /// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の収集を 1 回の走査で行う
@@ -293,19 +316,39 @@ struct Walker<'a> {
   pending: &'a mut Vec<PendingReference>,
   /// 走査中に見つかった未定義引用キーの書き込み先
   unknown_citations: &'a mut Vec<UnknownCitationSite>,
+  /// 走査中に見つかった重複ラベルの書き込み先（診断と、文書順マージ用のノード）
+  duplicate_labels: &'a mut Vec<(NodeId, SemanticError)>,
 }
 
 impl Walker<'_> {
   /// ブロックノード列を文書順に走査する
-  fn nodes(&mut self, nodes: &[HirNode]) -> Result<(), SemanticError> {
+  ///
+  /// 走査は失敗しない — 重複ラベルを見つけても打ち切らず、最初の定義を有効なまま残して
+  /// 診断を積み、後続の独立した問題（他の重複・未解決参照・未定義引用キー）も同じ 1 回の
+  /// 走査で見つける（#376）。
+  fn nodes(&mut self, nodes: &[HirNode]) {
     for node in nodes {
-      self.node(node)?;
+      self.node(node);
     }
-    return Ok(());
+    return;
+  }
+
+  /// 重複ラベルの診断を、文書順マージ用の位置とともに記録する
+  ///
+  /// 記録した場合は `true` を返す。呼び出し元はこのとき [`Walker::record_label`] を**呼ばない** —
+  /// `record_label` は後勝ちで `label_definitions` を差し替えるのに対し、`CounterRegistry` の
+  /// ラベル登録は先勝ちなので、両者が食い違って「参照は最初の定義へ解決されるのに fact は
+  /// 2 つ目を指す」状態になる。
+  fn record_duplicate(&mut self, site: NodeId, duplicate: Option<SemanticError>) -> bool {
+    let Some(error) = duplicate else {
+      return false;
+    };
+    self.duplicate_labels.push((site, error));
+    return true;
   }
 
   /// 単一のブロックノードを走査する
-  fn node(&mut self, node: &HirNode) -> Result<(), SemanticError> {
+  fn node(&mut self, node: &HirNode) {
     match &node.kind {
       HirNodeKind::Heading {
         level,
@@ -314,13 +357,15 @@ impl Walker<'_> {
       } => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
-        let counter_value = self.registry.increment_with_label_at(
+        let (counter_value, duplicate) = self.registry.increment_with_label_at(
           SemanticPolicy::counter_name_for_heading(*level),
           label.as_deref(),
           node.id,
           self.locations,
-        )?;
-        self.record_label(node.id, label.as_deref());
+        );
+        if !self.record_duplicate(node.id, duplicate) {
+          self.record_label(node.id, label.as_deref());
+        }
         self.facts.counters.insert(node.id, counter_value.clone());
         let key = HeadingKey::new(self.facts.headings.len());
         self.facts.headings.push(HeadingFacts {
@@ -334,7 +379,7 @@ impl Walker<'_> {
       },
       HirNodeKind::List { items, .. } => {
         for item in items {
-          self.list_item(item)?;
+          self.list_item(item);
         }
       },
       HirNodeKind::MathBlock {
@@ -345,23 +390,27 @@ impl Walker<'_> {
       } => {
         // 行 → 環境の順に採番する（旧 `resolver::resolve_node` と同じ順序）。
         for row in rows {
-          self.math_row(row, node.id)?;
+          self.math_row(row, node.id);
         }
         if *numbered {
-          let value =
+          let (value, duplicate) =
             self
               .registry
-              .increment_with_label_at(CounterName::Equation, label.as_deref(), node.id, self.locations)?;
-          self.record_label(node.id, label.as_deref());
+              .increment_with_label_at(CounterName::Equation, label.as_deref(), node.id, self.locations);
+          if !self.record_duplicate(node.id, duplicate) {
+            self.record_label(node.id, label.as_deref());
+          }
           self.facts.counters.insert(node.id, value);
         }
       },
       HirNodeKind::Figure { caption, label, .. } => {
-        let value =
+        let (value, duplicate) =
           self
             .registry
-            .increment_with_label_at(CounterName::Figure, label.as_deref(), node.id, self.locations)?;
-        self.record_label(node.id, label.as_deref());
+            .increment_with_label_at(CounterName::Figure, label.as_deref(), node.id, self.locations);
+        if !self.record_duplicate(node.id, duplicate) {
+          self.record_label(node.id, label.as_deref());
+        }
         self.facts.counters.insert(node.id, value);
         if let Some(inlines) = caption {
           self.inlines(inlines);
@@ -374,11 +423,11 @@ impl Walker<'_> {
         label,
         ..
       } => {
-        let value =
-          self
-            .registry
-            .increment_with_label_at(CounterName::Table, label.as_deref(), node.id, self.locations)?;
-        self.record_label(node.id, label.as_deref());
+        let (value, duplicate) =
+          self.registry.increment_with_label_at(CounterName::Table, label.as_deref(), node.id, self.locations);
+        if !self.record_duplicate(node.id, duplicate) {
+          self.record_label(node.id, label.as_deref());
+        }
         self.facts.counters.insert(node.id, value);
         for row in head.iter().chain(rows.iter()) {
           for cell in &row.cells {
@@ -397,9 +446,13 @@ impl Walker<'_> {
         ..
       } => {
         // 無採番クラス（`proof`）は採番もラベル登録もしない（旧実装と同じ）。
-        let value = self.registry.increment_theorem_with_label_at(*class, label.as_deref(), node.id, self.locations)?;
+        let (value, duplicate) =
+          self.registry.increment_theorem_with_label_at(*class, label.as_deref(), node.id, self.locations);
+        let duplicated = self.record_duplicate(node.id, duplicate);
         if let Some(value) = value {
-          self.record_label(node.id, label.as_deref());
+          if !duplicated {
+            self.record_label(node.id, label.as_deref());
+          }
           self.facts.counters.insert(node.id, value);
         }
         // 診断位置は定理ノードではなく `HirProofTarget::id` から引く（引数専用の NodeId）。
@@ -411,18 +464,18 @@ impl Walker<'_> {
             label: target.label.clone(),
           });
         }
-        self.nodes(body)?;
+        self.nodes(body);
       },
-      HirNodeKind::Quote { body, .. } => self.nodes(body)?,
+      HirNodeKind::Quote { body, .. } => self.nodes(body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 採番対象も参照箇所も含まない variant。
       HirNodeKind::Rule { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
-    return Ok(());
+    return;
   }
 
   /// リストアイテムの内容（ネストしたブロックノード列）を走査する
-  fn list_item(&mut self, item: &HirListItem) -> Result<(), SemanticError> { return self.nodes(&item.content); }
+  fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.content); }
 
   /// インラインノード列を走査し、参照箇所（`\ref`）を集める
   ///
@@ -454,18 +507,20 @@ impl Walker<'_> {
   ///
   /// 未採番の行は何もしない。ラベルの診断位置は `[label=...]` 引数自身（`label_site`）を使い、
   /// 無ければ環境ノードの位置へフォールバックする。
-  fn math_row(&mut self, row: &HirMathRow, environment: NodeId) -> Result<(), SemanticError> {
+  fn math_row(&mut self, row: &HirMathRow, environment: NodeId) {
     if !row.numbered {
-      return Ok(());
+      return;
     }
     let site = row.label_site.unwrap_or(environment);
-    let value =
+    let (value, duplicate) =
       self
         .registry
-        .increment_with_label_at(CounterName::Equation, row.label.as_deref(), site, self.locations)?;
-    self.record_label(row.id, row.label.as_deref());
+        .increment_with_label_at(CounterName::Equation, row.label.as_deref(), site, self.locations);
+    if !self.record_duplicate(site, duplicate) {
+      self.record_label(row.id, row.label.as_deref());
+    }
     self.facts.counters.insert(row.id, value);
-    return Ok(());
+    return;
   }
 
   /// 引用箇所の事実を記録する（未定義キーを含む箇所は fact を作らず未知として集める）
@@ -477,6 +532,7 @@ impl Walker<'_> {
     if !missing.is_empty() {
       let location = self.locations.location(site);
       self.unknown_citations.push(UnknownCitationSite {
+        site,
         source_id: location.source_id,
         span: location.span,
         keys: missing,
@@ -790,6 +846,85 @@ mod tests {
       matches!(failures.first(), crate::semantics::SemanticError::DuplicateLabel { label, .. } if label == "dup"),
       "got: {failures:?}"
     );
+  }
+
+  /// 診断列を `code` の列として読む（順序の検証用）
+  fn codes(failures: &SemanticFailures) -> Vec<String> {
+    return failures
+      .iter()
+      .map(|error| {
+        return miette::Diagnostic::code(error).expect("意味解析の診断は code を持つはず").to_string();
+      })
+      .collect();
+  }
+
+  #[test]
+  fn analyze_reports_duplicate_label_unresolved_ref_and_unknown_cite_in_document_order() {
+    // Arrange — 3 種を意図的に散らす（重複ラベル → 未知引用キー → 未解決参照 の文書順）
+    let hir = document(
+      "\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\cite{missing-key} です。\n\n本文 \\ref{missing} です。\n",
+    );
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &sample_references()).expect_err("3 種とも報告されるはず");
+
+    // Assert — カテゴリ順ではなく文書順で全件並ぶ
+    assert_eq!(
+      codes(&failures),
+      vec![
+        "semantics::duplicate_label".to_string(),
+        "semantics::unknown_citation_key".to_string(),
+        "semantics::unresolved_reference".to_string()
+      ]
+    );
+  }
+
+  #[test]
+  fn analyze_reports_every_duplicate_label() {
+    // Arrange — 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
+    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n\\chapter[label=dup]{C}\n");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+
+    // Assert — 束ねず 2 件返す
+    assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string(); 2]);
+  }
+
+  #[test]
+  fn analyze_continues_the_walk_after_a_duplicate_label() {
+    // Arrange — 重複ラベルの「後ろ」に未解決参照を置く
+    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{missing} です。\n");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &no_references()).expect_err("2 種とも報告されるはず");
+
+    // Assert — 重複で走査を打ち切らないので後続の未解決参照も見つかる
+    assert_eq!(
+      codes(&failures),
+      vec![
+        "semantics::duplicate_label".to_string(),
+        "semantics::unresolved_reference".to_string()
+      ]
+    );
+  }
+
+  #[test]
+  fn duplicate_label_keeps_the_first_definition() {
+    // Arrange — 重複ラベルと、そのラベルへの参照を同居させる
+    let hir = document("\\chapter[label=dup]{A}\n\n\\chapter[label=dup]{B}\n\n本文 \\ref{dup} です。\n");
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    // Act
+    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+
+    // Assert — 参照は解決済み（最初の定義に対して解決される）なので、未解決参照は報告されない。
+    // registry は先勝ち・`record_label` は後勝ちなので、重複側で `record_label` を呼ぶと
+    // 両者が食い違う（この assert がその回帰を止める）。
+    assert_eq!(codes(&failures), vec!["semantics::duplicate_label".to_string()]);
   }
 }
 

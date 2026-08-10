@@ -109,10 +109,10 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
   let font_resources =
-    FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::single)?;
+    FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
   let mut laid_out =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
-      .map_err(CompileFailure::single)?;
+      .map_err(CompileFailure::from)?;
   let image_bytes = std::mem::take(&mut laid_out.image_bytes);
   let resources = build_resources(inputs.font_data(), &font_resources, image_bytes);
   let publication = publication::build_publication(inputs.config(), resources, &laid_out);
@@ -204,9 +204,9 @@ fn build_pages_with_source(
   let document = parse_project(&inputs)?;
   let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-  let font_resources = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::single)?;
+  let font_resources = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
   return crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
-    .map_err(CompileFailure::single);
+    .map_err(CompileFailure::from);
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。

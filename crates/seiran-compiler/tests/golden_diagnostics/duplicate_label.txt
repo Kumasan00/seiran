@@ -1,0 +1,22 @@
+semantics::duplicate_label
+
+  × ラベルが重複しています: dup
+   ╭─[tests/text/diagnostics/duplicate_label.sei:3:1]
+ 2 │ 
+ 3 │ \section[label=dup]{2 つ目の重複}
+   · ────────────────┬────────────────
+   ·                 ╰── このラベルは既に定義されています
+ 4 │ 
+   ╰────
+  help: label=... の値はドキュメント全体で一意にしてください
+
+Error: semantics::duplicate_label
+
+  × ラベルが重複しています: dup
+   ╭─[tests/text/diagnostics/duplicate_label.sei:5:1]
+ 4 │ 
+ 5 │ \section[label=dup]{3 つ目の重複}
+   · ────────────────┬────────────────
+   ·                 ╰── このラベルは既に定義されています
+   ╰────
+  help: label=... の値はドキュメント全体で一意にしてください

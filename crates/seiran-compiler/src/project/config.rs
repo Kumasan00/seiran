@@ -12,8 +12,9 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use crate::project::{
-  Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, TextDirection, VariationAxis,
+use crate::{
+  failures::Failures,
+  project::{Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, TextDirection, VariationAxis},
 };
 
 mod pre_config;
@@ -53,14 +54,14 @@ pub enum ReadConfigError {
     /// 元の TOML パースエラー
     source: toml::de::Error,
   },
-  /// 複合バリデーションエラー（複数のエラーをまとめて報告）
-  #[error("複数のバリデーションエラーが発生しました。")]
-  #[diagnostic(code(project::config::multiple_validation_errors))]
-  MultipleValidationErrors {
-    #[related]
-    /// 集約された個々のバリデーションエラー
-    errors: Vec<ConfigValidationError>,
-  },
+  /// 値検証の違反 1 件
+  ///
+  /// 複数の違反は `Failures<ReadConfigError>` の別要素として並ぶ。段名だけを表す集約
+  /// バリアント（旧 `MultipleValidationErrors`）は持たない — ユーザーが最初に読むのは
+  /// 「どのフィールドをどう直すか」であるべきで、「複数のバリデーションエラー」ではない（#376）。
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Validation(#[from] ConfigValidationError),
 }
 
 /// 設定値バリデーションのエラー詳細。
@@ -166,7 +167,11 @@ struct FontValues {
 // `ReadConfigError::ParseToml` が `NamedSource<String>` を保持して Result サイズが拡大するため
 // allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
 #[allow(clippy::result_large_err)]
-pub fn load(source: &dyn ProjectSource, config_path: &Path, base_dir: &Path) -> Result<ProjectConfig, ReadConfigError> {
+pub fn load(
+  source: &dyn ProjectSource,
+  config_path: &Path,
+  base_dir: &Path,
+) -> Result<ProjectConfig, Failures<ReadConfigError>> {
   debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
@@ -191,7 +196,7 @@ pub fn load(source: &dyn ProjectSource, config_path: &Path, base_dir: &Path) -> 
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
 #[allow(clippy::result_large_err)]
-fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConfigError> {
+fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, Failures<ReadConfigError>> {
   return toml::from_str(content).map_err(|mut source| {
     let span = source.span().map_or_else(
       || return SourceSpan::new(0.into(), 0),
@@ -200,11 +205,11 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
     // toml::de::Error::Display は input が設定されていると line/column の自前スニペットを描画する。
     // miette の #[label] と二重に位置情報が出るため、ここで input をクリアして抑止する。
     source.set_input(None);
-    return ReadConfigError::ParseToml {
+    return Failures::single(ReadConfigError::ParseToml {
       src: NamedSource::new(source_path.display().to_string(), content.to_string()),
       span,
       source,
-    };
+    });
   });
 }
 
@@ -213,7 +218,11 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, ReadConf
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
 /// 組み立てるだけです（作成は driver 側の責務、#300）。
 #[allow(clippy::result_large_err)]
-fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Result<ProjectConfig, ReadConfigError> {
+fn resolve(
+  pre: PreConfig,
+  source: &dyn ProjectSource,
+  base_dir: &Path,
+) -> Result<ProjectConfig, Failures<ReadConfigError>> {
   let validation = validate_and_convert(&pre);
   let (resolved, path_errors) = resolve_paths(&pre, source, base_dir);
 
@@ -225,7 +234,10 @@ fn resolve(pre: PreConfig, source: &dyn ProjectSource, base_dir: &Path) -> Resul
         Err(value_errors) => value_errors,
       };
       errors.extend(path_errors);
-      return Err(ReadConfigError::MultipleValidationErrors { errors });
+      let Some(failures) = Failures::from_vec(errors.into_iter().map(ReadConfigError::from).collect()) else {
+        unreachable!("この分岐は検証エラーかパスエラーが 1 件以上あるときにだけ入る")
+      };
+      return Err(failures);
     },
   };
 
@@ -698,7 +710,10 @@ mod tests {
     let result = parse_config("name = \nthis is not valid toml", dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadConfigError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -707,14 +722,14 @@ mod tests {
     let invalid_toml = "name = bad\n";
 
     // Act
-    let err = parse_config(invalid_toml, dummy_source()).unwrap_err();
+    let failures = parse_config(invalid_toml, dummy_source()).unwrap_err();
 
     // Assert
     let ReadConfigError::ParseToml {
       src: _,
       span,
       source,
-    } = err
+    } = failures.into_iter().next().expect("非空集合なので 1 件目があるはず")
     else {
       panic!("expected ParseToml variant");
     };
@@ -805,7 +820,10 @@ mod tests {
     let result = parse_config(&toml, dummy_source());
 
     // Assert
-    assert!(matches!(result, Err(ReadConfigError::ParseToml { .. })));
+    assert!(matches!(
+      result.as_ref().map_err(|failures| return failures.first()),
+      Err(ReadConfigError::ParseToml { .. })
+    ));
   }
 
   #[test]
@@ -1202,10 +1220,15 @@ mod tests {
     let result = load(&source, &config_path, &base_dir);
 
     // Assert
-    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
-      panic!("expected MultipleValidationErrors, got {result:?}");
+    let Err(failures) = result else {
+      panic!("19 件のフォントパスエラーを期待");
     };
-    assert!(errors.iter().all(|error| matches!(error, ConfigValidationError::FontPathResolution { .. })));
+    let errors: Vec<&ReadConfigError> = failures.iter().collect();
+    assert!(
+      errors
+        .iter()
+        .all(|error| matches!(error, ReadConfigError::Validation(ConfigValidationError::FontPathResolution { .. })))
+    );
     assert_eq!(errors.len(), 19);
   }
 
@@ -1227,10 +1250,14 @@ mod tests {
     let result = load(&source, &config_path, &base_dir);
 
     // Assert
-    let Err(ReadConfigError::MultipleValidationErrors { errors }) = result else {
-      panic!("expected MultipleValidationErrors, got {result:?}");
+    let Err(failures) = result else {
+      panic!("ソースパスエラーを期待");
     };
-    assert!(errors.iter().any(|error| matches!(error, ConfigValidationError::SourcePathResolution { .. })));
+    assert!(
+      failures
+        .iter()
+        .any(|error| matches!(error, ReadConfigError::Validation(ConfigValidationError::SourcePathResolution { .. })))
+    );
   }
 
   #[test]

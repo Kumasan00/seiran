@@ -8,6 +8,9 @@
 mod color;
 mod compiler;
 mod document;
+// `failures` は段をまたいで使う非空集合 `Failures<E>` を持つ leaf module（#376）。誰にも依存せず、
+// `Diagnostic` も実装しない（集約は表示単位ではない）ため `pub use` にも載せない。
+mod failures;
 mod frontend;
 // `length` / `color` は crate root 直下の leaf module（#336）。crate root の非公開 module は
 // crate 全体から `crate::length::...` で到達できるため、かつて `model` の子だったときに garde の

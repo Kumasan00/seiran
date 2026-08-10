@@ -96,23 +96,23 @@ impl CounterRegistry {
 
   /// 定理環境を採番し、`label` があれば構造値を登録する
   ///
-  /// # Errors
-  ///
-  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  /// ラベルが既に登録済みなら [`SemanticError::DuplicateLabel`] を第 2 要素で返すが、**採番は
+  /// 済んでいる**（重複は致命ではない）。最初の定義が有効なまま残り、呼び出し元は診断を
+  /// 積んで走査を続けられる（#376）。
   pub(crate) fn increment_theorem_with_label(
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
     span: Span,
     source_id: SourceId,
-  ) -> Result<Option<CounterValue>, SemanticError> {
+  ) -> (Option<CounterValue>, Option<SemanticError>) {
     // def への借用を必要なクローンに落としてから theorem_values を変更する
     let (counter, unnumbered) = {
       let def = self.policy.theorem(class);
       (def.counter.clone(), def.unnumbered)
     };
     if unnumbered {
-      return Ok(None);
+      return (None, None);
     }
 
     *self.theorem_values.entry(counter).or_insert(0) += 1;
@@ -121,13 +121,14 @@ impl CounterRegistry {
     if let Some(l) = label
       && !self.register_label(l.to_string(), counter_value.clone())
     {
-      return Err(SemanticError::DuplicateLabel {
+      let duplicate = SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
         source_id,
-      });
+      };
+      return (Some(counter_value), Some(duplicate));
     }
-    return Ok(Some(counter_value));
+    return (Some(counter_value), None);
   }
 
   /// カウンタの現在値を返す（未登場のカウンタは 0）
@@ -200,60 +201,53 @@ impl CounterRegistry {
 
   /// 採番とラベル登録を一括で行う共通処理
   ///
-  /// # Errors
-  ///
-  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
+  /// ラベルが既に登録済みなら [`SemanticError::DuplicateLabel`] を第 2 要素で返すが、**採番は
+  /// 済んでいる**（重複は致命ではない）。最初の定義が有効なまま残り、呼び出し元は診断を
+  /// 積んで走査を続けられる（#376）。
   pub(crate) fn increment_with_label(
     &mut self,
     counter: CounterName,
     label: Option<&str>,
     span: Span,
     source_id: SourceId,
-  ) -> Result<CounterValue, SemanticError> {
+  ) -> (CounterValue, Option<SemanticError>) {
     let value = self.increment(counter);
     if let Some(l) = label
       && !self.register_label(l.to_string(), value.clone())
     {
-      return Err(SemanticError::DuplicateLabel {
+      let duplicate = SemanticError::DuplicateLabel {
         label: l.to_string(),
         span: span_to_source_span(span),
         source_id,
-      });
+      };
+      return (value, Some(duplicate));
     }
-    return Ok(value);
+    return (value, None);
   }
 
   /// 採番とラベル登録を一括で行う（HIR ノード版）
   ///
   /// 位置は `locations` から `node` を引いて求める。`(Span, Origin)` を直接受け取る
   /// [`Self::increment_with_label`] との使い分けは、呼び出し元が `NodeId` を持っているかどうか。
-  ///
-  /// # Errors
-  ///
-  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_with_label_at(
     &mut self,
     counter: CounterName,
     label: Option<&str>,
     node: NodeId,
     locations: &SourceMap,
-  ) -> Result<CounterValue, SemanticError> {
+  ) -> (CounterValue, Option<SemanticError>) {
     let location = locations.location(node);
     return self.increment_with_label(counter, label, location.span, location.source_id);
   }
 
   /// 定理環境の採番とラベル登録を行う（HIR ノード版）
-  ///
-  /// # Errors
-  ///
-  /// `label` が既に登録済みの場合に [`SemanticError::DuplicateLabel`] を返します。
   pub(crate) fn increment_theorem_with_label_at(
     &mut self,
     class: TheoremClass,
     label: Option<&str>,
     node: NodeId,
     locations: &SourceMap,
-  ) -> Result<Option<CounterValue>, SemanticError> {
+  ) -> (Option<CounterValue>, Option<SemanticError>) {
     let location = locations.location(node);
     return self.increment_theorem_with_label(class, label, location.span, location.source_id);
   }
@@ -321,11 +315,11 @@ mod tests {
     // Act
     let thm = r
       .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap()
+      .0
       .unwrap();
     let lemma = r
       .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap()
+      .0
       .unwrap();
 
     // Assert
@@ -339,27 +333,27 @@ mod tests {
     let mut r = CounterRegistry::default_for_seiran();
 
     // Act
-    let result = r
-      .increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap();
+    let (value, duplicate) =
+      r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::source::SourceId::new(0));
 
     // Assert
-    assert!(result.is_none());
+    assert!(value.is_none());
+    assert!(duplicate.is_none());
   }
 
   #[test]
-  fn increment_theorem_duplicate_label_errors() {
+  fn increment_theorem_duplicate_label_reports_but_keeps_numbering() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::source::SourceId::new(0))
-      .unwrap();
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::source::SourceId::new(0));
 
     // Act
-    let result =
+    let (value, duplicate) =
       r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), crate::source::SourceId::new(0));
 
-    // Assert
-    assert!(matches!(result, Err(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
+    // Assert — 重複は致命ではない（採番は済み、最初の定義が有効なまま残る）
+    assert!(value.is_some(), "重複ラベルでも採番は行われるはず");
+    assert!(matches!(duplicate, Some(SemanticError::DuplicateLabel { ref label, .. }) if label == "dup"));
   }
 
   #[test]
@@ -437,16 +431,16 @@ mod tests {
     // Act
     let a = r
       .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap()
+      .0
       .unwrap();
     let b = r
       .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap()
+      .0
       .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r
       .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
-      .unwrap()
+      .0
       .unwrap();
 
     // Assert

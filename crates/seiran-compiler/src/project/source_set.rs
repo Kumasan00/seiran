@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::{
+  failures::{self, Failures},
   project::{ProjectPath, ProjectSource, SourceReadError},
   source::SourceId,
 };
@@ -66,22 +67,35 @@ impl SourceSet {
     return self.entries.iter().enumerate().map(|(i, entry)| return (SourceId::new(i), entry));
   }
 
-  /// `sources` を順に読み込んで登録する。
+  /// `sources` を宣言順に読み込んで登録する。
+  ///
+  /// パスは互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を宣言順に全件返す（#376）。
+  /// **登録（`register`）は全件成功したときだけ**行う — 途中で失敗したぶんを飛ばして登録すると
+  /// 「`SourceId::index()` == `config.sources` の宣言順」という crate 全体の不変条件が崩れる。
   ///
   /// # Errors
   ///
-  /// いずれかのファイルの読込に失敗した場合、その時点で早期にエラーを返す
-  /// （パースエラーとは異なり I/O 失敗は集約しない。現行の挙動を維持する）。
-  pub(crate) fn read(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, SourceSetReadError> {
+  /// いずれかのファイルの読込に失敗した場合、失敗した全件を宣言順に返す。
+  pub(crate) fn read(
+    source: &dyn ProjectSource,
+    sources: &[PathBuf],
+  ) -> Result<SourceSet, Failures<SourceSetReadError>> {
+    let results: Vec<Result<(String, String), SourceSetReadError>> = sources
+      .iter()
+      .map(|source_path| {
+        let content = source.read_text(&ProjectPath::new(source_path)).map_err(|error| {
+          return SourceSetReadError {
+            path: source_path.display().to_string(),
+            source: error,
+          };
+        })?;
+        return Ok((source_path.display().to_string(), content.to_string()));
+      })
+      .collect();
+
     let mut set = SourceSet::new();
-    for source_path in sources {
-      let content = source.read_text(&ProjectPath::new(source_path)).map_err(|error| {
-        return SourceSetReadError {
-          path: source_path.display().to_string(),
-          source: error,
-        };
-      })?;
-      set.register(source_path.display().to_string(), content.to_string());
+    for (name, content) in failures::collect_in_input_order(results)? {
+      set.register(name, content);
     }
     return Ok(set);
   }
@@ -135,10 +149,11 @@ mod tests {
     let result = SourceSet::read(&source, &[existing, missing.clone()]);
 
     // Assert
-    let Err(error) = result else {
+    let Err(failures) = result else {
       panic!("読込エラーを期待");
     };
-    assert_eq!(error.path, missing.display().to_string(), "最初に失敗したパスを持つはず");
+    let error = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    assert_eq!(error.path, missing.display().to_string(), "失敗したパスを持つはず");
     assert_eq!(error.source.into_io().kind(), std::io::ErrorKind::NotFound);
   }
 

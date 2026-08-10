@@ -10,35 +10,64 @@ use thiserror::Error;
 use tracing::{debug, warn};
 
 use crate::{
+  failures::Failures,
   project::{FontConfig, FontConfigs, FontType, VariationAxis},
   typeset::font::FontRefs,
 };
 
-/// 複数のフォント種別で発生した検証エラー。
-#[derive(Debug, Error, Diagnostic)]
-#[error("複数のフォント設定にエラーがあります")]
-#[diagnostic(code(typeset::font::validation::multiple_errors))]
-pub struct MultipleFontValidationErrors {
-  /// フォント種別ごとに集約された検証エラー
-  #[related]
-  errors: Vec<FontValidationErrors>,
+/// 1 件のフォント検証違反を、どのフォント種別のものかを添えて表す leaf diagnostic。
+///
+/// `code` / `severity` / `help` / `url` / `labels` / `related` / `diagnostic_source` は内側の
+/// [`FontValidationErrorKind`] へ委譲し、メッセージにだけ config.toml のフォント種別キーを
+/// 前置する。`compiler::source_diagnostic::SourceDiagnostic` がソース本文だけを補うのと同じ
+/// **帰属 adapter** であって集約 wrapper ではない — 描画は leaf 1 件ぶんで、入れ子の診断ブロックを
+/// 作らない。
+///
+/// 種別を落とすと、`FontType::ALL` 順に並んだ違反のどれがどのフォントのものか読めなくなる。
+/// 種別名は Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を使い、
+/// `[fonts.serif]` を直せばよいと分かるようにする。
+#[derive(Debug)]
+pub struct FontValidationFailure {
+  /// 違反が見つかったフォント種別
+  font_type: FontType,
+  /// 違反の内容
+  kind: FontValidationErrorKind,
 }
 
-/// 1 フォント種別で発生した検証エラー。
-#[derive(Debug, Error, Diagnostic)]
-#[error("フォントの検証に失敗しました: {font_type:?}")]
-#[diagnostic(code(typeset::font::validation::error))]
-pub struct FontValidationErrors {
-  /// 検証対象のフォント種別
-  font_type: FontType,
-  /// この種別で発生した個別の検証エラー
-  #[related]
-  errors: Vec<FontValidationError>,
+impl std::fmt::Display for FontValidationFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    return write!(f, "{}: {}", self.font_type.as_toml_key(), self.kind);
+  }
+}
+
+/// `kind` は cause ではなくこの診断自身の内容なので `#[source]` には載せない
+/// （載せると miette が `╰─▶` で同じ文言をもう一度描画する）。cause chain は `kind` が持つ
+/// 外部エラー（`ReadError` 等）へそのまま素通しする。
+impl std::error::Error for FontValidationFailure {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.kind); }
+}
+
+impl Diagnostic for FontValidationFailure {
+  fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.kind.code(); }
+
+  fn severity(&self) -> Option<miette::Severity> { return self.kind.severity(); }
+
+  fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.kind.help(); }
+
+  fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.kind.url(); }
+
+  fn source_code(&self) -> Option<&dyn miette::SourceCode> { return self.kind.source_code(); }
+
+  fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.kind.labels(); }
+
+  fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> { return self.kind.related(); }
+
+  fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.kind.diagnostic_source(); }
 }
 
 /// フォント設定の検証エラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum FontValidationError {
+pub enum FontValidationErrorKind {
   /// OpenType フォントを解析できない。
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
@@ -103,36 +132,40 @@ pub enum FontValidationError {
   },
 }
 
-/// 全フォント種別を検証し、違反を種別ごとに集約する。
+/// 全フォント種別を検証し、違反を `FontType::ALL` 順に**全件**集める。
+///
+/// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。順序は
+/// `FontType::ALL` の宣言順で固定であり、`FontMap` の内部 `HashMap` の反復順には依存しない。
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反がある場合に [`MultipleFontValidationErrors`] を返す。
-pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), MultipleFontValidationErrors> {
+/// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す。
+pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), Failures<FontValidationFailure>> {
   let mut all_errors = Vec::new();
   for font_type in FontType::ALL {
     let config = font_configs.get(font_type);
     let font_ref = font_refs.get(font_type);
-    let errors = validate_font(config, font_ref);
-    if !errors.is_empty() {
-      all_errors.push(FontValidationErrors { font_type, errors });
-    }
+    all_errors.extend(
+      validate_font(config, font_ref)
+        .into_iter()
+        .map(|kind| return FontValidationFailure { font_type, kind }),
+    );
     debug!(font_type = ?font_type, font_path = %config.font_path.display(), "フォントを検証しました");
   }
-  if !all_errors.is_empty() {
-    return Err(MultipleFontValidationErrors { errors: all_errors });
-  }
-  return Ok(());
+  return match Failures::from_vec(all_errors) {
+    Some(failures) => Err(failures),
+    None => Ok(()),
+  };
 }
 
 /// 1 フォント分を検証し、検出した違反をすべて返す。
 #[must_use]
-pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationError> {
+pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationErrorKind> {
   let mut errors = Vec::new();
   if let Some(variation_axes) = &config.variation_axes {
     validate_variation_axes(font_ref, variation_axes, &mut errors);
   } else if font_ref.fvar().is_ok() {
-    errors.push(FontValidationError::MissingVariationAxes);
+    errors.push(FontValidationErrorKind::MissingVariationAxes);
   }
 
   check_script_language_support(font_ref, config);
@@ -143,16 +176,16 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidat
 fn validate_variation_axes(
   font_ref: &FontRef,
   config_variation_axes: &[VariationAxis],
-  errors: &mut Vec<FontValidationError>,
+  errors: &mut Vec<FontValidationErrorKind>,
 ) {
   let Ok(fvar) = font_ref.fvar() else {
-    errors.push(FontValidationError::NotVariableFont);
+    errors.push(FontValidationErrorKind::NotVariableFont);
     return;
   };
   let font_axes = match fvar.axes() {
     Ok(axes) => axes,
     Err(e) => {
-      errors.push(FontValidationError::Parse(e));
+      errors.push(FontValidationErrorKind::Parse(e));
       return;
     },
   };
@@ -160,14 +193,14 @@ fn validate_variation_axes(
   for cfg_axis in config_variation_axes {
     let cfg_tag = Tag::new(&cfg_axis.name);
     let Some(axis) = font_axes.iter().find(|axis| return axis.axis_tag() == cfg_tag) else {
-      errors.push(FontValidationError::UnknownVariationAxis(cfg_tag.to_string()));
+      errors.push(FontValidationErrorKind::UnknownVariationAxis(cfg_tag.to_string()));
       continue;
     };
 
     let min_value = axis.min_value();
     let max_value = axis.max_value();
     if !(min_value..=max_value).contains(&Fixed::from_f64(cfg_axis.value)) {
-      errors.push(FontValidationError::VariationValueOutOfRange {
+      errors.push(FontValidationErrorKind::VariationValueOutOfRange {
         name: cfg_tag.to_string(),
         min: min_value,
         max: max_value,
@@ -181,7 +214,7 @@ fn validate_variation_axes(
       config_variation_axes.iter().any(|cfg_axis| return Tag::new(&cfg_axis.name) == font_axis.axis_tag());
 
     if !is_configured {
-      errors.push(FontValidationError::UnconfiguredVariationAxis {
+      errors.push(FontValidationErrorKind::UnconfiguredVariationAxis {
         axis: font_axis.axis_tag().to_string(),
         default: font_axis.default_value(),
         min: font_axis.min_value(),

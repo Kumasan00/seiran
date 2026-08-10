@@ -116,14 +116,15 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | module | 責務 1 行 | 依存先（crate 内） |
 | --- | --- | --- |
 | `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
+| `failures` | 段が 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能）と、並列処理の結果を入力順の slot へ戻す `collect_in_input_order`。**`Diagnostic` を実装しない** — 集約は表示単位ではなく、compiler seam で `CompileFailure` へ平坦化されて初めてユーザー表示になる | なし |
 | `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | project typeset |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source |
+| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `ProjectConfig`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source failures |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |
-| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project |
+| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project failures |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
-| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project |
+| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project failures |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project failures |
 | `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に閉じる | 上記すべて |
 
 ## コーディング規約
@@ -157,7 +158,9 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 - エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口（`main` / サブコマンド）だけで使い、compiler の内部パイプラインでは使わない（`miette::Report` への型消去は `CompileFailure::into_report` の 1 回に閉じる）
 - `compile` の失敗型は 1 件以上の error diagnostic を持つ不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic にする
 - 診断 `code` の**第 1 階層は「段」を表す固定列挙**（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ。crate 名ではない）。**第 2 階層以降は規定しない** — module パスではなく著者が選ぶ意味的カテゴリ（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` はいずれも module 名ではない）。段を跨ぐ wrapper 型は自分の所有 module ではなく**エラーの出自の段**を名乗る（`typeset::TypesetError` を運ぶ経路が `typeset::*` を名乗り続けるのと同じ読み方）。段名や集約の都合だけを表す wrapper に `code` を与えてユーザー表示へ出さない（#375）
-- 設定値検証は `garde` の `#[derive(Validate)]` で宣言的に書き、違反は `MultipleValidationErrors` に集約して 1 度に報告する
+- 設定値検証は `garde` の `#[derive(Validate)]` で宣言的に書き、違反は `Failures<E>` に集めて 1 度に報告する
+- **集約するかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**（#376）。段の中で独立に検査できるもの（複数フィールド・複数パス・source ごとの parse・`FontType::ALL` の各フォント・各画像・文書全体の重複ラベル / 未解決参照 / 未知引用キー）は全件を集め、後段の入力を構築できない段の間は早期 return する。表示順は入力の論理順（source は宣言順・フォントは `FontType::ALL` 順・画像はパス昇順・意味解析は文書順）で、`HashMap` の反復順や rayon の完了順に依存させない
+- **集約自身に診断 `code` を付けない**。「複数の◯◯が発生しました」という表示単位を作らず、`Failures<E>` は `Diagnostic` を実装しないことでこれを型で保証する（`#[related]` を使ってよいのは、同じ 1 つの問題を複数箇所で示す場合だけ）
 - バリアント設計・`#[label]` / `NamedSource` によるソース位置付与・`#[related]` 集約の制約・garde パターンの詳細は `error-handling` skill を参照する。新しいエラー型の定義・バリアント追加・バリデーション追加の際は必ず参照すること
 
 ### Clippy

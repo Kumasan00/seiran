@@ -14,7 +14,7 @@ use super::{
   golden::{enter_workspace_root, load_base},
 };
 use crate::{
-  project::{FontData, FontType},
+  project::{FontData, FontType, VariationAxis, config::ProjectConfig},
   style,
   typeset::FontResources,
 };
@@ -135,6 +135,45 @@ fn diagnostic_unknown_cite_key() {
 }
 
 #[test]
+fn diagnostic_duplicate_label() {
+  // Arrange / Act — 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
+  let failure = build_pages_err(&["tests/text/diagnostics/duplicate_label.sei"]);
+
+  // Assert — 束ねず 2 件並ぶ
+  assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string(); 2]);
+  assert_matches_golden("duplicate_label", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_mixed_semantics_errors_follow_document_order() {
+  // Arrange / Act — 重複ラベル・未知引用キー・未解決参照が混在する入力
+  let failure = build_pages_err(&["tests/text/diagnostics/mixed_semantics.sei"]);
+
+  // Assert — カテゴリ順ではなく文書順に全件並ぶ
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "semantics::duplicate_label".to_string(),
+      "semantics::unknown_citation_key".to_string(),
+      "semantics::unresolved_reference".to_string()
+    ]
+  );
+  assert_matches_golden("mixed_semantics", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_multiple_missing_sources_follow_declaration_order() {
+  // Arrange / Act — 存在しないソースを 2 つ、パス名の辞書順とは逆に宣言する
+  let failure = build_pages_err(&[
+    "tests/text/diagnostics/z-does-not-exist.sei",
+    "tests/text/diagnostics/a-does-not-exist.sei",
+  ]);
+
+  // Assert — 宣言順に全件（1 件目で打ち切らない）
+  assert_eq!(codes(&failure), vec!["compiler::read_text_file".to_string(); 2]);
+}
+
+#[test]
 fn diagnostic_missing_image() {
   // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
   let failure = build_pages_err(&["tests/text/diagnostics/missing_image.sei"]);
@@ -158,19 +197,46 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![crate::project::VariationAxis {
+  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);
-  let source = crate::project::FilesystemProjectSource::new();
-  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
-  let report: miette::Report = match FontResources::load(&config.font_configs, &font_data) {
-    Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
-    Err(error) => error.into(),
-  };
+
+  // Act
+  let failure = font_validation_failure(&config);
 
   // Assert
-  assert_matches_golden("font_validation_error", &render_diagnostic(&report));
+  assert_matches_golden("font_validation_error", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_font_validation_errors_follow_font_type_order() {
+  // Arrange — 2 種別に不明な軸を設定する。宣言は Japanese Serif → Serif の順だが、
+  // 報告は `FontType::ALL` の順（Serif が先）になるはず
+  enter_workspace_root();
+  let (mut config, _style, _references) = load_base();
+  for font_type in [FontType::JapaneseSerif, FontType::Serif] {
+    config.font_configs.get_mut(font_type).variation_axes = Some(vec![VariationAxis {
+      name: *b"zzzz",
+      value: 0.0,
+    }]);
+  }
+
+  // Act
+  let failure = font_validation_failure(&config);
+
+  // Assert
+  assert_matches_golden("font_validation_multiple_fonts", &render_failure(failure));
+}
+
+/// フォント検証を失敗させ、`compile` と同じ経路（`CompileFailure`）で診断を組み立てる
+fn font_validation_failure(config: &ProjectConfig) -> CompileFailure {
+  let source = crate::project::FilesystemProjectSource::new();
+  let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+  return match FontResources::load(&config.font_configs, &font_data) {
+    Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
+    Err(failures) => CompileFailure::from(failures),
+  };
 }
 
 #[test]
@@ -241,7 +307,7 @@ fn multiple_source_errors_keep_declaration_order() {
 #[test]
 fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
   // Arrange — 「複数」「phase に失敗」だけを表す診断が表示へ現れないことを golden 全件で固定する。
-  // 診断 code 全体の規約を機械検査するものではなく、この issue（#375）で削除した wrapper が
+  // 診断 code 全体の規約を機械検査するものではなく、#375 / #376 で削除した wrapper が
   // 復活していないことだけを見る狭いガード。
   let forbidden_codes = [
     "compiler::multiple_source_errors",
@@ -252,6 +318,11 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "compiler::layout",
     "frontend::parse_source::eval",
     "frontend::parse_source::syntax",
+    // #376 で削除した集約 wrapper。集約自身は表示単位ではないので code を持たない
+    "project::config::multiple_validation_errors",
+    "style::multiple_validation_errors",
+    "typeset::font::validation::multiple_errors",
+    "typeset::font::validation::error",
   ];
   let forbidden_messages = [
     "複数のソースファイルでエラーが発生しました",
@@ -260,6 +331,10 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
     "構文解析に失敗しました",
     "評価に失敗しました",
     "ページレイアウトの検証に失敗しました",
+    "複数のバリデーションエラーが発生しました",
+    "スタイル設定のバリデーションに失敗しました",
+    "複数のフォント設定にエラーがあります",
+    "フォントの検証に失敗しました",
   ];
 
   // Act / Assert
@@ -292,9 +367,10 @@ fn diagnostic_style_validation_aggregate() {
   let toml = "[text]\nfont_size = \"0pt\"\n\n[heading.chapter]\nfont_size = \"-1pt\"\n";
 
   // Act
-  let error = style::parse(toml, "diagnostics/style.toml").expect_err("このケースは失敗するはず");
-  let report: miette::Report = error.into();
+  let Err(failures) = style::parse(toml, "diagnostics/style.toml") else {
+    panic!("このケースは失敗するはず");
+  };
 
-  // Assert
-  assert_matches_golden("style_validation_aggregate", &render_diagnostic(&report));
+  // Assert — compile 経路と同じく CompileFailure へ平坦化して描画する
+  assert_matches_golden("style_validation_aggregate", &render_failure(CompileFailure::from(failures)));
 }
