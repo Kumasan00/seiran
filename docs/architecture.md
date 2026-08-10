@@ -16,7 +16,7 @@
 「〜しない」のガードとして残し、それ以外は git 履歴と issue に委ねる。issue 番号はガードとテストの
 anchor に限って添える。
 
-目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`source`](#source) /
+目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`failures`](#failures) / [`source`](#source) /
 [`project`](#project) / [`document`](#document) / [`style`](#style) / [`semantics`](#semantics) /
 [`frontend`](#frontend) / [`typeset`](#typeset) / [`publication`](#publication) / [`compiler`](#compiler)）
 / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
@@ -27,7 +27,7 @@ anchor に限って添える。
 段の呼び出し順序と中間型は非公開 module の内側に閉じる。crate はデプロイ・外部依存・独立再利用の単位に
 限り、**コンパイル段階を crate 境界にしない**（段ごとの crate 分割へ戻さない）。
 
-以下の 11 個の子節はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の 12 個の子節はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
@@ -59,6 +59,36 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   import している。
 - crate root 直下の非公開 module は crate 全体から到達できるため、`pub(crate)` 指定は不要。
 - leaf の値概念は 1 module 1 概念で持つ。**包括的な `model` / `common` 置き場を再導入しない**。
+
+### `failures`
+
+#### 責務
+
+段が「1 回の検査で見つけた複数の失敗」を運ぶ非空集合 `Failures<E>` を持つ crate root 直下の leaf module
+（#376）。crate 内の他 module にも miette にも依存しない。
+
+- `Failures<E> { first: E, rest: Vec<E> }` — **空では構築できない**（構築経路は `single` と
+  `from_vec`（空なら `None`）だけで、`Default` は実装しない）。`into_parts` / `map` / `iter` /
+  `IntoIterator` を持つ
+- `collect_in_input_order(Vec<Result<T, E>>) -> Result<Vec<T>, Failures<E>>` — 並列処理の結果を
+  入力順の slot に戻してから集約するヘルパ
+
+#### 不変条件・注意点
+
+- **`miette::Diagnostic` を実装しない。** これが「aggregate 自身に新しい診断 `code` を付けない」の
+  型による実装で、集約はそれ自体では描画されず、`compiler` seam の
+  `CompileFailure::from(failures)`（`impl<E: Diagnostic> From<Failures<E>> for CompileFailure`）で
+  平坦化されて初めてユーザー表示になる。`Diagnostic` を実装すると「複数のエラーがあります」相当の
+  表示単位が生まれ、ユーザーが最初に読むメッセージが修正可能な leaf でなくなる
+- `Display` と `Error::source` は `first` へ委譲する（`thiserror` の `#[error(transparent)]` で運ぶ
+  経路（`semantics::AnalyzeError::Analyze`）が要求するため）
+- **並び順は入力の論理順**で、`HashMap` の反復順や rayon の完了順に依存させない。rayon の
+  `collect::<Result<Vec<_>, E>>()` は複数エラー時にどれが返るか非決定（rayon 自身がそう文書化している）
+  なので使わず、`IndexedParallelIterator` の `collect::<Vec<Result<_, E>>>()` +
+  `collect_in_input_order` を通す
+- **集約するかどうかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める。**
+  段の中で独立に検査できるものは全件集め、後段の入力を構築できない段の間は早期 return する
+  （config → style → 横断検証、フォントの parse → metrics → validate がその境界）
 
 ### `source`
 
@@ -117,7 +147,7 @@ pub trait ProjectSource: Send + Sync {
 - 実装は 2 つ。`FilesystemProjectSource`（CLI・実ビルド用）と `MemoryProjectSource`（決定的テスト用）。
   実装が 1 つしかない箇所には trait を作らない方針なので、この 2 実装があることが seam の存在理由になる。
 - `exists` が必要なのは、パス存在確認まで seam 経由にしないと `resolve_paths` の集約報告
-  （`MultipleValidationErrors` に全パス不正を 1 度に載せる）が逐次 `?` の早期 return に退化し、
+  （全パス不正を 1 度に載せる）が逐次 `?` の早期 return に退化し、
   memory adapter でもパス検証ができなくなるため。
 - `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
   2 度ディスクから読まない。呼び出し側（`FontData::load`）も共有パスを 1 回だけ要求する。
@@ -149,7 +179,10 @@ pub trait ProjectSource: Send + Sync {
 - `pre_config`: TOML からそのままデシリアライズする `PreConfig` / `PreFontConfig`（非公開）。garde の
   `#[derive(Validate)]` をここに付ける。
 - 検証: `load` が `ProjectSource` 経由で読み込んだ `PreConfig` を検証し、違反は
-  `ReadConfigError::MultipleValidationErrors`（`#[related]` 集約）で 1 度にまとめて報告する。TOML
+  `Failures<ReadConfigError>`（各違反は `ReadConfigError::Validation` で `ConfigValidationError` を
+  透過）で 1 度にまとめて報告する。集約自身の診断（旧 `MultipleValidationErrors`）は #376 で削除した —
+  ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきで「複数のバリデーションエラーが
+  発生しました」ではない。style.toml 側（`ReadStyleError::Validation`）も同じ形。TOML
   構文エラーは `NamedSource` + `#[label]` 付き（`NamedSource` は `load` 自身が組み立てる）。
   `style_path` / `references_path` は**存在確認と正規化までで、内容は解析しない** — style.toml は
   `style::load`、references は `semantics::read_references` がそれぞれ読む。
@@ -455,14 +488,15 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
   transparent に運ぶ。**`Diagnostic` は実装しない** — `?` で処理順を書くための制御フロー型であって
   表示単位ではなく、compiler seam が必ず全バリアントを分解する。#375）と、走査のエラー
   `SemanticError`（`UnknownCitationKeys` / `DuplicateLabel` / `UnresolvedReference`）+ その非空集合
-  `SemanticFailures` + 走査中の中間表現 `UnknownCitationSite`（module 内部限定）。
+  `SemanticFailures`（= `crate::failures::Failures<SemanticError>` の型エイリアス）+ 走査中の中間表現
+  `UnknownCitationSite`（module 内部限定）。
   **2 層を 1 本に統合しない** — `SemanticError` は必ず 1 つのソース位置に帰属する
   （`source_id()` が `Option` ではなく `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って
   `SourceDiagnostic<SemanticError>` へ本文付き診断を組み立てる。ソース位置を持たない CSL 由来のエラーを
   同じ enum に混ぜるとこの不変条件が壊れる。診断 `code` は `semantics::unresolved_reference` /
   `semantics::duplicate_label` / `semantics::unknown_citation_key`（#356 で第 1 階層を段名へ再編）。
   未定義引用キーは 1 回の走査で複数ソースに跨りうるが、miette は 1 診断に `source_code` を 1 つしか
-  持てないため、**ソースごとの分割を semantics 側が行う**（`SemanticFailures::from_unknown_citations`。
+  持てないため、**ソースごとの分割を semantics 側が行う**（`error::group_unknown_citations`。
   分割を compiler 側に置くと診断文・`code`・help の複製がそちらへ生まれる。#375）
 - `ids`: `LabelId`（`\ref` の参照ラベル。`Borrow<str>` を実装して `HashMap` 引きを文字列で行える）と
   `HeadingKey`（見出しの文書順インデックスから決まる暗黙の destination キー。`\ref` ラベルの有無に
@@ -485,10 +519,17 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
    参照箇所（`\ref` / `[of=...]`）は `PendingReference` として積むだけで、この時点では検証しない。
    引用箇所は既知キーなら fact を作り、未知キーがあれば集約する。
    数式は「行 → 環境」の順に採番する（`\split` / `\multiline` の環境単位採番が行採番の後に来る）
-2. **検証**: 未定義引用キー → 重複ラベル → 未解決参照 の順で報告する。参照の存在検証を走査後に置くのは、
-   前方参照（`\ref` が指すラベルが文書上その後に定義されうる、`proof` が後方の定理を `[of=...]` で指す）を
-   許すため。重複ラベルで走査を打ち切らない（採番はラベル登録の前に済んでいるので、走査を続けても
-   カウンタ値はずれない）
+2. **検証**: 重複ラベル・未定義引用キー・未解決参照の 3 種を**全件**集め、**文書順**にマージして
+   報告する（#376。カテゴリごとに早いもの勝ちで 1 件だけ返すと、1 回の実行で確認できる修正箇所が減る）。
+   参照の存在検証を走査後に置くのは、前方参照（`\ref` が指すラベルが文書上その後に定義されうる、
+   `proof` が後方の定理を `[of=...]` で指す）を許すため。
+   ソート鍵は span ではなく `NodeId` 由来の `(source.index(), local)` — `local` はソース内 preorder
+   連番で、`HirDocument::assemble` がグループを `SourceId::index()` 昇順へ正規化するので、この鍵は
+   パースの実行順に依存しない。3 種はそれぞれ文書順に積まれるため安定ソートで種別を跨いだ文書順になる。
+   **重複ラベルで走査を打ち切らない** — 採番はラベル登録の前に済んでいるので走査を続けてもカウンタ値は
+   ずれず、最初の定義が有効なまま残る（`CounterRegistry::register_label` は先勝ち）。重複を検出した
+   ノードでは `Walker::record_label` を**呼ばない** — `record_label` は後勝ちで `label_definitions` を
+   差し替えるため、呼ぶと「参照は最初の定義へ解決されるのに fact は 2 つ目を指す」状態になる
 3. **完全性検証（`assert_facts_complete`）**: HIR をもう一度走査し、variant ごとに必要な fact
    （採番対象のカウンタ値、見出しの `HeadingFacts`、ラベル宣言の双方向登録、参照先、引用先）が
    すべて登録されているかを確かめる。fact の欠落は入力由来ではなく走査自身の不変条件違反なので、
@@ -776,6 +817,17 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   width / height / depth を 1 回計測して保持し、`typeset::breaking` 以降はフォントに触れない。
 - フォント資源の構築順序は `font::system` に閉じる。`ShaperDatas` / `ShaperInstances` /
   `HarfRustShapers` / `validate_fonts` を直接構築する呼び出し側は存在しない。
+- フォント解析・メトリクス取得・設定検証・シェーパー構築は、**段の中では 19 種すべてを検査して違反を
+  `FontType::ALL` 順に全件返す**（`Failures<FontSystemError>`）。段の間（parse → metrics → validate）は
+  後段の入力を構築できないので早期 return する（#376）。rayon を使う 3 箇所（`build_font_refs` /
+  `HarfRustShapers::new` / `project::FontData::load`）は `collect::<Vec<Result<_, _>>>()` +
+  `failures::collect_in_input_order` を通し、完了順が報告順へ漏れないようにする。
+- 検証違反の leaf は `FontValidationFailure { font_type, kind }` で、`code` / `help` / `labels` は
+  内側の `FontValidationErrorKind` へ委譲し、メッセージにだけ config.toml のキー（`serif`）を前置する
+  **帰属 adapter**（`compiler::source_diagnostic::SourceDiagnostic` と同じ形）。集約 wrapper
+  （旧 `MultipleFontValidationErrors` / 種別ごとの `FontValidationErrors`）は #376 で削除した — 描画は
+  leaf 1 件ぶんで、入れ子の診断ブロックを作らない。`kind` は cause ではないので `#[source]` にも
+  載せない（載せると miette が同じ文言を `╰─▶` で再描画する）。
 - `layout` は `.system()` を**画像読込より前**に呼ぶ。両方が失敗する入力で報告されるエラーを、
   フォント資源の構築を `compiler` が担っていた頃と同じ側（フォント）に保つため。
 
@@ -784,7 +836,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 `TypesetError`（画像ファイルの読込 `ReadImage` / 未対応拡張子 `UnsupportedImageFormat` / ラスタの
 デコード `DecodeImage` / SVG のパース `ParseSvg` / 自然寸法不正
 `InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged` / 組版の
-不変条件違反 `Bug(TypesetBug)`）。`compiler::error::CompileError` は
+不変条件違反 `Bug(TypesetBug)`）。`layout` の失敗型は `Failures<TypesetError>` で、画像は
+`collect_image_paths` が `BTreeSet<ProjectPath>` で作る正規化済みパスの昇順に**全件**検査する（#376）。`compiler::error::CompileError` は
 `Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
 所有する段に合わせた `typeset::image::*` / `typeset::footnote::per_page_not_converged` /
 `typeset::internal_bug`（#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
@@ -1277,7 +1330,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 - `diagnostics`: miette 診断メッセージの golden テスト（`crates/seiran-compiler/tests/golden_diagnostics/`）。
   `build_pages_err` が返す `CompileFailure` を `into_report` してレンダリングするので、golden は
   ユーザーが実際に見る表示そのもの。集約・段 wrapper の `code` とメッセージが golden 全件に現れない
-  ことを検査する `golden_diagnostics_show_no_aggregate_or_phase_wrapper` を併設する（#375）
+  ことを検査する `golden_diagnostics_show_no_aggregate_or_phase_wrapper` を併設する（#375 / #376）
 - `project_source_equivalence`: `FilesystemProjectSource` と `MemoryProjectSource` が同じ入力から
   同じ確定レイアウト（`dump_pages` の文字列）を返すこと、同じフォントを複数回読まないことの検証（#300）
 

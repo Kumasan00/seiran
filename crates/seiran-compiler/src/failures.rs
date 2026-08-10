@@ -162,6 +162,37 @@ mod tests {
   }
 
   #[test]
+  fn collect_in_input_order_returns_the_values_when_everything_succeeds() {
+    // Arrange
+    let results: Vec<Result<u32, TestError>> = vec![Ok(1), Ok(2), Ok(3)];
+
+    // Act
+    let values = super::collect_in_input_order(results).expect("すべて成功なら値が返るはず");
+
+    // Assert
+    assert_eq!(values, vec![1, 2, 3]);
+  }
+
+  #[test]
+  fn collect_in_input_order_reports_errors_in_input_order() {
+    // Arrange — 「完了順」ではなく「入力順の slot」で並ぶことを見る。並列処理の完了順に
+    // 依存していれば、この並び（3 → 1 → 2 ではなく 1 → 2 → 3 の slot 順）は再現できない
+    let results: Vec<Result<u32, TestError>> = vec![
+      Err(TestError(1)),
+      Ok(10),
+      Err(TestError(2)),
+      Ok(20),
+      Err(TestError(3)),
+    ];
+
+    // Act
+    let failures = super::collect_in_input_order(results).expect_err("3 件失敗しているはず");
+
+    // Assert
+    assert_eq!(failures.into_iter().collect::<Vec<_>>(), vec![TestError(1), TestError(2), TestError(3)]);
+  }
+
+  #[test]
   fn display_and_source_delegate_to_the_first_failure() {
     // Arrange
     let failures = Failures::from_vec(vec![TestError(1), TestError(2)]).expect("2 件あるので構築できるはず");

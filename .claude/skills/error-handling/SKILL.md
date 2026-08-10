@@ -85,15 +85,41 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 ## 複数エラーの集約
 
-- 段の内部で複数の違反を 1 度に報告する場合は `#[related] errors: Vec<...>` を持つ集約バリアント
-  （例: `MultipleValidationErrors`）を作る。`#[related]` の要素は **`Diagnostic` 実装が必須**であり、
-  `miette::Report` は実装しないため、`Report` を直接ベクタに詰めることはできない。クレート固有の
-  エラー型を返すことでこの問題を回避する
+**集約するかどうかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**（#376）。
+
+- **集約する**: config.toml / style.toml の独立フィールド違反、設定に列挙された複数パスの読込失敗、
+  source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
+  `FontType::ALL` の各フォント検証、各画像の読込・デコード失敗
+- **早期 return する**: config.toml 自体を読めない、TOML を parse できない、style path を確定できない、
+  HIR を作れない、`SemanticDocument` を作れない、backend が継続不能な失敗を返した。
+  **段の間**（config → style → 横断検証、parse → metrics → validate）は後段の入力を構築できないので
+  跨いで集約しない — 集約するのは段の中だけ
+
+段の内部で集めた複数の違反は **`crate::failures::Failures<E>`**（crate root の非公開 leaf module）で運ぶ。
+
+- `Failures<E>` は **`miette::Diagnostic` を実装しない**。これが「aggregate 自身に新しい診断 `code` を
+  付けない」の型による実装で、集約はそれ自体では描画されず `compiler` seam の
+  `CompileFailure::from(failures)` で平坦化されて初めてユーザー表示になる
+- 空では構築できない（`single` / `from_vec`（空なら `None`）だけが構築経路で、`Default` は無い）
+- **`#[related] errors: Vec<...>` を持つ集約バリアントを新しく作らない。** `MultipleValidationErrors` /
+  `MultipleFontValidationErrors` のような「複数のエラーがあります」「◯◯の検証に失敗しました」は
+  #376 ですべて削除した。`#[related]` を使ってよいのは、**同じ 1 つの問題を複数箇所で示す**場合
+  （`SemanticError::UnknownCitationKeys` が 1 ソース内の複数 `\cite` を `#[label(collection)]` で並べる形）
+  に限る。異なる修正を要求する違反は集合の別要素にする
+- **表示順は入力の論理順**であり、`HashMap` の反復順や並列処理の完了順に依存させない
+  （source は `config.sources` の宣言順、フォントは `FontType::ALL` 順、画像は正規化済み `ProjectPath` の
+  昇順、意味解析は `NodeId` 由来の文書順）。rayon を使う箇所は `collect::<Result<Vec<_>, E>>()`
+  （複数エラー時にどれが返るか非決定）ではなく `collect::<Vec<Result<_, E>>>()` +
+  `failures::collect_in_input_order` を通し、入力順の slot に戻してから集約する
 - **段を跨いで `compile` の外へ出す集合は `compiler::CompileFailure`**（#375）。先頭が主診断・残りが
   関連診断で、集約そのものを表す診断（「複数のエラーが発生しました」）を先頭へ足さない。中身は
   `Box<dyn Diagnostic + Send + Sync>` の列で `Vec<miette::Report>` にはしない（`Report` は `Diagnostic`
   を実装しないので `related` へ載せられない）。1 件のときは `into_report` が
   `miette::Report::new_boxed` で leaf をそのまま返し、包む前後で表示が完全に一致する
+- leaf に「どの資源の違反か」を添える必要があるときは、集約 wrapper ではなく
+  **帰属 adapter** を作る（`typeset::font::validate_font::FontValidationFailure` が
+  `code` / `help` / `labels` を内側の kind へ委譲し、メッセージにだけ config.toml のキーを前置する形。
+  `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）
 
 ## compiler 内部バグ
 
@@ -142,18 +168,16 @@ pub enum MyError {
     span: SourceSpan,
   },
 
-  /// 集約バリアント: 検出した違反を 1 度に報告
-  #[error("複数のバリデーションエラーが発生しました。")]
-  #[diagnostic(code(project::config::multiple_validation_errors))]
-  MultipleValidationErrors {
-    #[related]
-    errors: Vec<ValidationError>,
-  },
+  /// 値検証の違反 1 件: 集約バリアントを作らず、内側の leaf をそのまま透過させる
+  /// （複数の違反は `Failures<MyError>` の別要素として並ぶ）
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Validation(#[from] ValidationError),
 }
 ```
 
 ## バリデーション（garde）
 
-設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換して `MultipleValidationErrors { #[related] errors: Vec<...> }` に集約し、すべての違反を 1 度に報告する（config クレートの `ConfigValidationError` / `StyleValidationError` で同パターン）。
+設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` で透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
 
 例外: `read_references` は集約せず deserialize 時に fail-fast（著者名 / ID 検証）。集約方式に戻さない。

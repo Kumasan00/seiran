@@ -135,6 +135,45 @@ fn diagnostic_unknown_cite_key() {
 }
 
 #[test]
+fn diagnostic_duplicate_label() {
+  // Arrange / Act — 同名ラベルを 3 回定義する（2 回目・3 回目がそれぞれ独立した修正箇所）
+  let failure = build_pages_err(&["tests/text/diagnostics/duplicate_label.sei"]);
+
+  // Assert — 束ねず 2 件並ぶ
+  assert_eq!(codes(&failure), vec!["semantics::duplicate_label".to_string(); 2]);
+  assert_matches_golden("duplicate_label", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_mixed_semantics_errors_follow_document_order() {
+  // Arrange / Act — 重複ラベル・未知引用キー・未解決参照が混在する入力
+  let failure = build_pages_err(&["tests/text/diagnostics/mixed_semantics.sei"]);
+
+  // Assert — カテゴリ順ではなく文書順に全件並ぶ
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "semantics::duplicate_label".to_string(),
+      "semantics::unknown_citation_key".to_string(),
+      "semantics::unresolved_reference".to_string()
+    ]
+  );
+  assert_matches_golden("mixed_semantics", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_multiple_missing_sources_follow_declaration_order() {
+  // Arrange / Act — 存在しないソースを 2 つ、パス名の辞書順とは逆に宣言する
+  let failure = build_pages_err(&[
+    "tests/text/diagnostics/z-does-not-exist.sei",
+    "tests/text/diagnostics/a-does-not-exist.sei",
+  ]);
+
+  // Assert — 宣言順に全件（1 件目で打ち切らない）
+  assert_eq!(codes(&failure), vec!["compiler::read_text_file".to_string(); 2]);
+}
+
+#[test]
 fn diagnostic_missing_image() {
   // Arrange / Act — 画像アセット欠落（`image_resources::load_image_resources` の `ProjectSource::read_bytes` が検出）
   let failure = build_pages_err(&["tests/text/diagnostics/missing_image.sei"]);

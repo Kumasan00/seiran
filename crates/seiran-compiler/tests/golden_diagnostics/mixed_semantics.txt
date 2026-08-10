@@ -1,0 +1,34 @@
+semantics::duplicate_label
+
+  × ラベルが重複しています: dup
+   ╭─[tests/text/diagnostics/mixed_semantics.sei:3:1]
+ 2 │ 
+ 3 │ \section[label=dup]{同じラベルを付けた 2 つ目の見出し}
+   · ───────────────────────────┬──────────────────────────
+   ·                            ╰── このラベルは既に定義されています
+ 4 │ 
+   ╰────
+  help: label=... の値はドキュメント全体で一意にしてください
+
+Error: semantics::unknown_citation_key
+
+  × 未定義の引用キーがあります
+   ╭─[tests/text/diagnostics/mixed_semantics.sei:5:47]
+ 4 │ 
+ 5 │ 存在しない文献キーを引用します \cite{totally-unknown-key}。
+   ·                                ─────────────┬────────────
+   ·                                             ╰── 未定義の引用キー: totally-unknown-key
+ 6 │ 
+   ╰────
+  help: \cite のキーが references.toml / .json の参照 ID と一致しているか確認してください
+
+Error: semantics::unresolved_reference
+
+  × 未解決の参照です: ラベル `undefined-label`
+   ╭─[tests/text/diagnostics/mixed_semantics.sei:7:38]
+ 6 │ 
+ 7 │ 定義されていないラベルを \ref{undefined-label} で参照します。
+   ·                          ───────────┬──────────
+   ·                                     ╰── この参照が未解決です
+   ╰────
+  help: 対応する label が定義されているか確認してください。
