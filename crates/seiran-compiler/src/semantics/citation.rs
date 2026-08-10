@@ -20,6 +20,6 @@ pub(crate) mod test_fixtures;
 
 pub(crate) use generate::{CitationFormatError, GeneratedCitations, generate_citations};
 pub(crate) use generated::{GeneratedBlock, GeneratedInline, generated_inlines_to_plain_text};
-pub use references::{Reference, References, read_references};
+pub use references::{ReadReferencesError, Reference, References, read_references};
 pub(crate) use site::{CitationId, CitationSiteFacts};
 pub(crate) use style::{CitationStyleError, load_citation_style};

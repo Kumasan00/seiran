@@ -11,7 +11,7 @@
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
   semantics::{
-    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticPolicy,
+    CitationId, CitationSiteFacts, HeadingKey, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
     error::{UnknownCitationSite, span_to_source_span},
     facts::{HeadingFacts, SemanticFacts},
@@ -33,7 +33,7 @@ pub(super) fn collect_facts(
   hir: &HirDocument,
   policy: &SemanticPolicy,
   references: &References,
-) -> Result<SemanticFacts, SemanticError> {
+) -> Result<SemanticFacts, SemanticFailures> {
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
   let mut pending: Vec<PendingReference> = Vec::new();
@@ -58,13 +58,11 @@ pub(super) fn collect_facts(
       duplicate_label = Some(error);
     }
   }
-  if !unknown_citations.is_empty() {
-    return Err(SemanticError::UnknownCitationKeys {
-      sites: unknown_citations,
-    });
+  if let Some(failures) = SemanticFailures::from_unknown_citations(unknown_citations) {
+    return Err(failures);
   }
   if let Some(error) = duplicate_label {
-    return Err(error);
+    return Err(SemanticFailures::single(error));
   }
   resolve_references(&mut facts, &registry, &pending, hir.locations())?;
   assert_facts_complete(hir, &facts, policy);
@@ -513,7 +511,8 @@ mod tests {
   use crate::{
     document::HirDocument,
     semantics::{
-      GeneratedCitations, References, SemanticDocument, SemanticError, SemanticPolicy, test_fixtures::sample_references,
+      GeneratedCitations, References, SemanticDocument, SemanticFailures, SemanticPolicy,
+      test_fixtures::sample_references,
     },
     source::SourceId,
     style::Style,
@@ -527,7 +526,7 @@ mod tests {
     hir: HirDocument,
     policy: &SemanticPolicy,
     references: &References,
-  ) -> Result<SemanticDocument, SemanticError> {
+  ) -> Result<SemanticDocument, SemanticFailures> {
     let facts = collect_facts(&hir, policy, references)?;
     return Ok(SemanticDocument::new(hir, facts, GeneratedCitations::default()));
   }
@@ -603,11 +602,11 @@ mod tests {
     let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
+    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
 
     // Assert — span が `\ref{...}` 全体を指す
-    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = &error else {
-      panic!("UnresolvedReference が期待されます: {error:?}");
+    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
+      panic!("UnresolvedReference が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let start = span.offset();
@@ -662,11 +661,11 @@ mod tests {
     let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
+    let failures = analyze(hir, &policy, &no_references()).expect_err("未定義の of はエラーになるはず");
 
     // Assert
-    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = &error else {
-      panic!("UnresolvedReference が期待されます: {error:?}");
+    let crate::semantics::SemanticError::UnresolvedReference { label, span, .. } = failures.first() else {
+      panic!("UnresolvedReference が期待されます: {failures:?}");
     };
     assert_eq!(label, "missing");
     let reported = &source[span.offset()..span.offset() + span.len()];
@@ -724,17 +723,18 @@ mod tests {
     let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
+    let failures = analyze(hir, &policy, &sample_references()).expect_err("未知キーはエラーになるはず");
 
     // Assert
-    let crate::semantics::SemanticError::UnknownCitationKeys { sites } = &error else {
-      panic!("UnknownCitationKeys が期待されます: {error:?}");
+    assert_eq!(failures.iter().count(), 1, "1 ソースぶんの診断にまとまるはず");
+    let crate::semantics::SemanticError::UnknownCitationKeys { source_id, labels } = failures.first() else {
+      panic!("UnknownCitationKeys が期待されます: {failures:?}");
     };
-    assert_eq!(sites.len(), 1);
-    assert_eq!(sites[0].keys, vec!["missing-key".to_string()]);
-    assert_eq!(sites[0].source_id, SourceId::new(0));
-    let start = sites[0].span.start as usize;
-    let end = start + sites[0].span.len() as usize;
+    assert_eq!(*source_id, SourceId::new(0));
+    assert_eq!(labels.len(), 1);
+    assert_eq!(labels[0].label(), Some("未定義の引用キー: missing-key"));
+    let start = labels[0].offset();
+    let end = start + labels[0].len();
     assert!(
       source[start..end].contains(r"\cite{missing-key}"),
       "span が `\\cite` 全体を指すはず: {}",
@@ -783,12 +783,12 @@ mod tests {
     let policy = SemanticPolicy::from_style(&Style::default());
 
     // Act
-    let error = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
+    let failures = analyze(hir, &policy, &no_references()).expect_err("重複ラベルはエラーになるはず");
 
     // Assert
     assert!(
-      matches!(error, crate::semantics::SemanticError::DuplicateLabel { ref label, .. } if label == "dup"),
-      "got: {error:?}"
+      matches!(failures.first(), crate::semantics::SemanticError::DuplicateLabel { label, .. } if label == "dup"),
+      "got: {failures:?}"
     );
   }
 }

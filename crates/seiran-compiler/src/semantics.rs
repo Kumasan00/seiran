@@ -29,11 +29,11 @@ pub(crate) use analyze::analyze_for_test;
 pub(crate) use citation::test_fixtures;
 pub(crate) use citation::{
   CitationFormatError, CitationId, CitationSiteFacts, CitationStyleError, GeneratedBlock, GeneratedCitations,
-  GeneratedInline, References, generate_citations, generated_inlines_to_plain_text, load_citation_style,
-  read_references,
+  GeneratedInline, ReadReferencesError, References, generate_citations, generated_inlines_to_plain_text,
+  load_citation_style, read_references,
 };
 pub(crate) use counter::{CounterKind, CounterValue};
 pub(crate) use document::SemanticDocument;
-pub(crate) use error::{AnalyzeError, SemanticError, UnknownCitationSite};
+pub(crate) use error::{AnalyzeError, SemanticError, SemanticFailures};
 pub(crate) use ids::{HeadingKey, LabelId};
 pub(crate) use policy::SemanticPolicy;

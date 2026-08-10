@@ -1,104 +1,23 @@
-//! PDF ビルドエラー型の定義
+//! 入力読込で発生するエラー型の定義
 
-use miette::{Diagnostic, LabeledSpan, NamedSource};
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  frontend::ParseSourceError,
-  semantics::{CitationFormatError, CitationStyleError, SemanticError},
+  project::{FontReadError, config::ReadConfigError},
+  semantics::ReadReferencesError,
+  style::ReadStyleError,
   typeset::LayoutValidationError,
 };
 
-/// [`crate::frontend::ParseSourceError`] に、`SourceSet` から引いた [`NamedSource`] を添えて表示可能にする。
+/// `compile` の入力読込（設定・スタイル・横断検証・文献・フォント・ソース）で起きるエラー型。
 ///
-/// `ParseSourceError` は `SourceId` だけを持ち、ソース本文を持たない（本文は
-/// `project::SourceSet` が一元管理する）。code / message / help / label / related は
-/// すべて内側の `ParseSourceError` へ委譲し、`source_code` だけをここで補う
-/// （`#[diagnostic(transparent)]` は `source_code` も内側へ委譲してしまうため使えず、手書きする）。
-#[derive(Debug)]
-pub(super) struct AttributedParseError {
-  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）
-  named_source: NamedSource<String>,
-  /// 内側のパース・評価エラー（`SourceId` のみを持ち本文は持たない）
-  inner: ParseSourceError,
-}
-
-impl AttributedParseError {
-  /// `SourceSet` から引いた `NamedSource` と内側の `ParseSourceError` を束ねる
-  pub(super) fn new(named_source: NamedSource<String>, inner: ParseSourceError) -> Self {
-    return AttributedParseError {
-      named_source,
-      inner,
-    };
-  }
-}
-
-impl std::fmt::Display for AttributedParseError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.inner.fmt(f); }
-}
-
-impl std::error::Error for AttributedParseError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { return std::error::Error::source(&self.inner); }
-}
-
-impl Diagnostic for AttributedParseError {
-  fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.code(); }
-
-  fn severity(&self) -> Option<miette::Severity> { return self.inner.severity(); }
-
-  fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.help(); }
-
-  fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> { return self.inner.url(); }
-
-  fn source_code(&self) -> Option<&dyn miette::SourceCode> { return Some(&self.named_source); }
-
-  fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.inner.labels(); }
-
-  fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> { return self.inner.related(); }
-
-  fn diagnostic_source(&self) -> Option<&dyn Diagnostic> { return self.inner.diagnostic_source(); }
-}
-
-/// 1 ソース内の未定義引用キーを、`SourceSet` から引いた [`NamedSource`] を添えて表示可能にする。
+/// **段の名前を足す wrapper にはしない** — 内側が独立した診断（`Diagnostic`）を持つものは
+/// `transparent` でそのまま委譲し、ユーザーが最初に読むメッセージが常に修正可能な leaf に
+/// なるようにする。自前のバリアントを持つのは、内側が `std::io::Error` で診断を持たず、
+/// パス入りのメッセージと help をこの型自身が与える 2 つだけ。
 ///
-/// [`crate::semantics::CitationSemanticError::UnknownCitationKeys`] は `SourceId` だけを持ち、
-/// ソース本文を持たない（本文は `project::SourceSet` が一元管理する）。同じソース内に未定義キーが
-/// 複数箇所あれば `labels` にまとめて積む（`labels` の要素ごとに独自のラベル文言を持つため、
-/// `#[label(collection)]` に静的な文言は付けない）。この型自身が診断メッセージ・code・help を
-/// 持つ独立した診断であり、`AttributedParseError` のように内側のエラー型へ委譲する必要が無いため、
-/// 通常の `thiserror::Error` + `#[derive(Diagnostic)]` で書ける。
-///
-/// `code` / `#[error(...)]` / `help(...)` は [`crate::semantics::CitationSemanticError::UnknownCitationKeys`]
-/// と意図的に同じ値を**再掲**している（委譲ではない — `wrap_citation_semantic_error` が
-/// `UnknownCitationKeys` を分解してこの型を組み立てるため、実際に描画されるのはこちらのコピーだけで、
-/// 元の `CitationSemanticError` 側の code / help は生成物の Report には現れない）。`code` が
-/// `semantics::unknown_citation_key`（この型の所有 module である `compiler` ではなく出自の段）なのも
-/// 同じ理由による。文言・code を変えるときは両方を揃えて更新すること。
-#[derive(Debug, Error, Diagnostic)]
-#[error("未定義の引用キーがあります")]
-#[diagnostic(
-  code(semantics::unknown_citation_key),
-  help("\\cite のキーが references.toml / .json の参照 ID と一致しているか確認してください")
-)]
-pub(super) struct AttributedCitationError {
-  /// `SourceSet` から引いたソース名・本文（`source_code` の供給元）
-  #[source_code]
-  src: NamedSource<String>,
-  /// このソース内で見つかった未定義引用キーの箇所（`\cite{...}` ごとに 1 ラベル）
-  #[label(collection)]
-  labels: Vec<LabeledSpan>,
-}
-
-impl AttributedCitationError {
-  /// `SourceSet` から引いた `NamedSource` と、そのソース内の未定義キーラベル列を束ねる
-  pub(super) fn new(src: NamedSource<String>, labels: Vec<LabeledSpan>) -> Self {
-    return AttributedCitationError { src, labels };
-  }
-}
-
-/// `compile` の内部段（読込・パース・意味解決・組版）で起きるエラー型。
-///
-/// PDF の保存（`WritePdf` 相当）は `compile` の責務ではなくなったため、ここには含まない
+/// PDF の保存は `compile` の責務ではないため、ここには含まない
 /// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum CompileError {
@@ -118,65 +37,6 @@ pub(super) enum CompileError {
     source: std::io::Error,
   },
 
-  /// 複数ソースのパース・評価エラー
-  ///
-  /// `#[related]` で全エラーをまとめて表示する。
-  #[error("複数のソースファイルでエラーが発生しました。")]
-  #[diagnostic(code(compiler::multiple_source_errors))]
-  MultipleSourceErrors {
-    /// ソースファイルごとのパース・評価エラー（`SourceSet` から引いた本文を添えたもの）
-    #[related]
-    errors: Vec<AttributedParseError>,
-  },
-
-  /// CSL スタイル（`.csl`）・ロケールの読込・解析エラー
-  #[error("文献引用の CSL スタイルを読み込めませんでした。")]
-  #[diagnostic(code(compiler::citation::style))]
-  CitationStyle {
-    /// 元の CSL スタイル読込エラー
-    #[source]
-    #[diagnostic_source]
-    source: CitationStyleError,
-  },
-
-  /// 文献引用の CSL 整形（表示の生成）エラー
-  #[error("文献引用の整形に失敗しました。")]
-  #[diagnostic(code(compiler::citation::format))]
-  CitationFormat {
-    /// 元の CSL 整形エラー
-    #[source]
-    #[diagnostic_source]
-    source: CitationFormatError,
-  },
-
-  /// `\cite{...}` の未定義引用キー（ソースごとに集約）
-  ///
-  /// `#[related]` で全ソースの診断をまとめて表示する（`MultipleSourceErrors` と同じ
-  /// 「1 ソース内は 1 件のラベル付き診断へまとめ、複数ソースは `#[related]` で束ねる」構成）。
-  #[error("複数の引用箇所で未定義の引用キーがあります。")]
-  #[diagnostic(code(compiler::multiple_citation_errors))]
-  MultipleCitationErrors {
-    /// ソースごとの未定義引用キー診断（`SourceSet` から引いた本文を添えたもの）
-    #[related]
-    errors: Vec<AttributedCitationError>,
-  },
-
-  /// 帰属ソースを特定できる意味解析（`semantics`）のエラー
-  ///
-  /// `NamedSource` を同梱し、該当箇所を診断へ表示する。`code` は `compiler::semantics` —
-  /// この診断を組み立てるのは `compiler` だが、包んでいるのは semantics 段のエラーである。
-  #[error("ラベル・参照・引用の解決に失敗しました。")]
-  #[diagnostic(code(compiler::semantics))]
-  Resolve {
-    /// エラーが帰属するソースファイルの名前と内容（診断スニペット用）
-    #[source_code]
-    src: NamedSource<String>,
-    /// 元の resolve エラー
-    #[source]
-    #[diagnostic_source]
-    source: SemanticError,
-  },
-
   /// カレントディレクトリの取得失敗
   #[error("カレントディレクトリを取得できませんでした。")]
   #[diagnostic(code(compiler::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
@@ -186,18 +46,62 @@ pub(super) enum CompileError {
     source: std::io::Error,
   },
 
-  /// config と style の横断バリデーションエラー
-  #[error("ページレイアウトの検証に失敗しました。")]
-  #[diagnostic(code(compiler::layout))]
-  Layout {
-    /// 元の横断バリデーションエラー
-    #[source]
-    #[diagnostic_source]
-    source: LayoutValidationError,
-  },
-
-  /// 組版パス（画像資源の解決を含む）のエラー
+  /// config.toml の読込・検証エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Typeset(#[from] crate::typeset::TypesetError),
+  Config(#[from] ReadConfigError),
+
+  /// style.toml の読込・検証エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Style(#[from] ReadStyleError),
+
+  /// config と style の横断バリデーションエラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Layout(#[from] LayoutValidationError),
+
+  /// 文献データ（references.toml / .json）の読込エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  References(#[from] ReadReferencesError),
+
+  /// フォントファイルの読込エラー
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Font(#[from] FontReadError),
+}
+
+impl From<CompileError> for super::CompileFailure {
+  /// 入力読込の失敗は必ず 1 件の診断（`?` で `CompileFailure` を返す関数へ持ち上げるための変換）。
+  fn from(error: CompileError) -> Self { return super::CompileFailure::single(error); }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use miette::Diagnostic;
+
+  use super::CompileError;
+  use crate::{compiler::CompileFailure, typeset::LayoutValidationError};
+
+  #[test]
+  fn layout_error_keeps_the_inner_leaf_code() {
+    // Arrange — 横断検証の leaf エラー（段名だけの wrapper を挟まないことの回帰）
+    let error = LayoutValidationError::InvalidColumnWidth {
+      text_width: 100.0,
+      num_columns: 2,
+      column_gap: 200.0,
+    };
+
+    // Act
+    let failure = CompileFailure::from(CompileError::from(error));
+
+    // Assert — `compiler::layout` ではなく内側の leaf の code が出るはず
+    assert_eq!(
+      failure.code().expect("code を持つはず").to_string(),
+      "typeset::geometry::invalid_columns",
+      "段名だけの wrapper が主診断になってはいけない"
+    );
+  }
 }

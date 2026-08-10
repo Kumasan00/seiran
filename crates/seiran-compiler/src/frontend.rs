@@ -19,31 +19,26 @@ mod syntax;
 pub use evaluator::EvalError;
 
 /// `parse_source` が返すエラー型
+///
+/// この型自身は message / `code` / help を持たない — 修正情報を持つのは内側の
+/// `ParserError` / `EvalError` であり、この enum は 2 種類の leaf を `?` で運ぶための union に
+/// すぎない（phase 名だけの wrapper 診断をユーザー表示へ挟まないため、両バリアントとも
+/// `transparent` で内側へ委譲する）。
+///
+/// ソース本文も `SourceId` も持たない。どのソースをパースしていたかは呼び出し元
+/// （`compiler` の `parse_all_sources`）が `SourceSet` の走査から分かっており、
+/// 本文の添付は compiler seam の source attribution adapter が行う。
 #[derive(Debug, Error, Diagnostic)]
 pub enum ParseSourceError {
   /// 構文解析（`crate::frontend::syntax::parse`）で発生したエラー
-  #[error("構文解析に失敗しました")]
-  #[diagnostic(code(frontend::parse_source::syntax))]
-  Syntax {
-    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceSet` が保持する）
-    source_id: crate::source::SourceId,
-    /// 元の構文エラー
-    #[source]
-    #[diagnostic_source]
-    error: crate::frontend::syntax::ParserError,
-  },
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Syntax(#[from] crate::frontend::syntax::ParserError),
 
   /// 評価（CST → Document IR 変換）で発生したエラー
-  #[error("評価に失敗しました")]
-  #[diagnostic(code(frontend::parse_source::eval))]
-  Eval {
-    /// このエラーが属するソースの識別子（本文は呼び出し元の `SourceSet` が保持する）
-    source_id: crate::source::SourceId,
-    /// 元の評価エラー
-    #[source]
-    #[diagnostic_source]
-    error: EvalError,
-  },
+  #[error(transparent)]
+  #[diagnostic(transparent)]
+  Eval(#[from] EvalError),
 }
 
 /// ソーステキストをパースして 1 ソース分の HIR（[`HirSource`]）を生成する
@@ -56,14 +51,10 @@ pub enum ParseSourceError {
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
 pub fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
-  let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode).map_err(|error| {
-    return ParseSourceError::Syntax { source_id, error };
-  })?;
+  let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode)?;
 
   let builder = HirBuilder::new(source_id);
-  let nodes = evaluator::evaluate_children(source, &builder, cst).map_err(|error| {
-    return ParseSourceError::Eval { source_id, error };
-  })?;
+  let nodes = evaluator::evaluate_children(source, &builder, cst)?;
   let spans = builder.finish();
 
   debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースのパース・評価が完了しました");
@@ -98,7 +89,7 @@ mod tests {
   /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
   fn evaluate_error(source: &str) -> EvalError {
     match parse_source(source, crate::source::SourceId::new(0)) {
-      Err(ParseSourceError::Eval { error, .. }) => return error,
+      Err(ParseSourceError::Eval(error)) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
   }

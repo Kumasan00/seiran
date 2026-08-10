@@ -51,7 +51,7 @@ pub(crate) fn analyze_for_test(
   document: HirDocument,
   policy: &SemanticPolicy,
   references: &References,
-) -> Result<SemanticDocument, crate::semantics::SemanticError> {
+) -> Result<SemanticDocument, crate::semantics::SemanticFailures> {
   let facts = walk::collect_facts(&document, policy, references)?;
   return Ok(SemanticDocument::new(document, facts, GeneratedCitations::default()));
 }
@@ -187,7 +187,11 @@ mod tests {
 
     // Assert
     assert!(
-      matches!(error, AnalyzeError::Analyze(crate::semantics::SemanticError::UnknownCitationKeys { .. })),
+      matches!(
+        &error,
+        AnalyzeError::Analyze(failures)
+          if matches!(failures.first(), crate::semantics::SemanticError::UnknownCitationKeys { .. })
+      ),
       "got: {error:?}"
     );
   }

@@ -1,14 +1,10 @@
-compiler::semantics
+semantics::unresolved_reference
 
-  × ラベル・参照・引用の解決に失敗しました。
-  ╰─▶ semantics::unresolved_reference
-      
-        × 未解決の参照です: ラベル `missing-label`
-         ╭─[tests/text/diagnostics/undefined_ref.sei:3:14]
-       2 │
-       3 │ 本文中に \ref{missing-label} を参照します。
-         ·          ──────────┬─────────
-         ·                    ╰── この参照が未解決です
-         ╰────
-        help: 対応する label が定義されているか確認してください。
-      
+  × 未解決の参照です: ラベル `missing-label`
+   ╭─[tests/text/diagnostics/undefined_ref.sei:3:14]
+ 2 │ 
+ 3 │ 本文中に \ref{missing-label} を参照します。
+   ·          ──────────┬─────────
+   ·                    ╰── この参照が未解決です
+   ╰────
+  help: 対応する label が定義されているか確認してください。

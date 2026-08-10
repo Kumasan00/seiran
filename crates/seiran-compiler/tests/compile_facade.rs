@@ -13,6 +13,7 @@ mod common;
 use std::path::PathBuf;
 
 use common::{minimal_config_toml, read_test_font};
+use miette::Diagnostic;
 use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
 #[test]
@@ -40,15 +41,19 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
 }
 
 #[test]
-fn compile_reports_a_diagnostic_set_on_failure() {
+fn compile_reports_a_leaf_diagnostic_on_failure() {
   // Arrange — config.toml 自体を未登録にして読込エラーを起こす
   let source = MemoryProjectSource::new();
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let diagnostics = seiran_compiler::compile(&source, &root).expect_err("未登録の設定ファイルは失敗するはず");
+  let failure = seiran_compiler::compile(&source, &root).expect_err("未登録の設定ファイルは失敗するはず");
 
-  // Assert
-  assert!(!diagnostics.is_empty());
-  assert_eq!(diagnostics.reports().count(), 1);
+  // Assert — 主診断は段名の wrapper ではなく、修正できる leaf そのものであるはず
+  assert_eq!(failure.diagnostics().count(), 1);
+  assert_eq!(
+    failure.code().expect("leaf の診断コードを持つはず").to_string(),
+    "project::config::read_file",
+    "先頭は phase wrapper ではなく leaf の code"
+  );
 }
