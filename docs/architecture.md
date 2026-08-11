@@ -716,9 +716,9 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 変換する。ラベル・カウンタの解決（採番・`\ref` の存在検証）は `semantics` module が上流で済ませている
 ため、`lowering` module はその結果を style の表示側フィールドで表示文字列に変換するだけになる
 （`lowering` 節を参照）。`boxes` / `block` / `breaking` / `error` / `font` / `geometry` / `image` /
-`lowering` / `pagination` の 9 module はすべて非公開で、外から見える入口は **module root の `layout`
-1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`（`geometry` 節を参照）だけである
-（#350、#351、#352）。
+`lowering` / `pagination` / `warning` の 10 module はすべて非公開で、外から見える入口は
+**module root の `layout` 1 操作**と、入力読込から呼ばれる横断検証 `validate_layout`
+（`geometry` 節を参照）だけである（#350、#351、#352）。
 
 ```rust,ignore
 pub(crate) fn layout(
@@ -727,8 +727,13 @@ pub(crate) fn layout(
   style: &Style,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
-) -> Result<LaidOutDocument, Failures<TypesetError>>;
+) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>>;
 ```
+
+組版を止めないがユーザーが直せる問題（脚注のはみ出し）は `TypesetWarning` として確定レイアウトと
+**タプルで**返す（#382）。`LaidOutDocument` のフィールドにしないのは、そこが「描画パスへ渡す確定
+レイアウトと画像資源」の器で、警告はそのどちらでもないため — `FontResources::load` が
+`(FontResources, Vec<FontWarning>)` を返すのと同じ線引き。
 
 段順序（画像パス収集 → 画像読込・自然寸法取得 → lowering → `build_blocks` → 画像サイズ確定 →
 `break_pages` → 前付け・後付け → ページラベル → 走り文 → outline）と、その間に成立する不変条件
@@ -779,7 +784,18 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
 フォント資源は含めない（`layout` は `&FontResources` を借りるだけで、その構築・保持は `compiler` の
 責務。フォント資源は config / style / references と同じ**入力資源**であり、`layout` が決めた値では
-ないため成果物には載せない、#352）。
+ないため成果物には載せない、#352）。警告も含めない（上記のとおり `layout` の戻り値タプルの第 2 要素。
+`build_publication` が描画と無関係なデータを見ずに済む、#382）。
+
+#### `warning`
+
+組版が見つけた、ユーザーが直せる非致命的問題 `TypesetWarning`（severity(Warning) の leaf diagnostic）。
+現在の変種は脚注のはみ出し 2 種で、`code` は `typeset::footnote::overflow`（行に付いた脚注群が空の
+ページにも収まらない）と `typeset::footnote::line_overflow`（繰越脚注の 1 行がページ全高を超える）。
+どちらも組版アルゴリズムは「はみ出しを許容してそのまま置く」動作を変えず、`style.toml` の
+`[footnote]` や `config.toml` の用紙・余白を直せば解消することだけを伝える（#382。以前は
+`tracing::warn!` だけで通知していたので `-q` で握り潰されていた）。ページの指し方は**印字ページ
+ラベル**で、物理 index からの解決は `pagination` が行う（下記）。
 
 #### `font`
 
@@ -914,9 +930,16 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 | 2 | `BodyPageFacts` 確定 | `context` |
 | 3 | 前付け生成・ページ分割 | `front_matter::typeset_front_matter` |
 | 4 | 後付け（索引）生成・ページ分割 | `back_matter::typeset_back_matter` |
-| 5 | 全ページラベル確定 + ページ連結 | `page_values` / `concat_pages` |
+| 5 | 全ページラベル確定 + ページ連結 + 組版警告の確定 | `page_values` / `concat_pages` / `footnote_overflow_warnings` |
 | 6 | 走り文配置 | `running::place_running_content` |
 | 7 | PDF しおり用見出し収集 | `outline::collect_outline_entries` |
+
+`break_pages` は本文・前付け・後付けで**別々に 3 回**呼ばれ、それぞれ自分が組んだページ列しか
+知らないので、脚注のはみ出し（#382）は「そのセクション内の page index」を持つ純データ
+`breaking::FootnoteOverflow` として返る。物理ページ index への写像（前付け → 本文 → 後付けの
+オフセット加算）と印字ラベルの解決、`TypesetWarning` への変換は、`PageLabels` が確定する**段 5**が
+まとめて行う。前付け・後付けは生成ブロックだけで組むので実際には常に空だが、「空のはずだ」という
+非局所な不変条件を assert で主張せず素通しする。表示順は物理ページの昇順で決定的。
 
 - `context`: 全段が共有する資源・寸法・行分割アルゴリズムを持つ `TypesetContext`（フォント資源への
   参照・版面幅・本文 / 前付け / 後付けの `PageGeometry`・`KnuthPlassBreaker`）と、本文ページ分割
@@ -929,7 +952,8 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   制約を型で表す。`compile` の公開境界は越えない
 - `body`: 段 1。lowering → `build_blocks` → `resolve_images` → `break_pages` を 1 パスに畳む。
   脚注がページ単位採番のときだけ `footnote_numbering` の solver から複数回呼ばれる（パスの中身自体は
-  変わらない）
+  変わらない）。`break_pages` が返したはみ出しは `BodyLayout` のフィールドとして運ばれるので、
+  solver が収束したパスの `BodyLayout` だけを返すことがそのまま重複警告の抑止になる（#382）
 - `front_matter`: 段 3。`BodyPageValues` から目次エントリ（`TocEntryInput`）を組み立て、タイトル
   ページ → 目次の順にブロックを積んでページ分割する。常に 1 段組み
 - `back_matter`: 段 4。本文全ページの `Page::index_entries` を `(word, reading)` で集約し、出現ページへ
@@ -1122,7 +1146,12 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 - (c) `break_lines`: `LineBreaker` トレイトの 2 実装 `KnuthPlassBreaker`（段落全体最適、既定）と
   `GreedyBreaker`（first-fit）。語中折り返しは `HItem::Discretionary` で表し、折り返した行末だけ
   ハイフンを出す
-- (d) `break_pages`: ベースライン送り・改ページ・表分割・`PageGeometry`
+- (d) `break_pages`: ベースライン送り・改ページ・表分割・`PageGeometry`。戻り値は確定ページ列と、
+  脚注のはみ出し記録 `FootnoteOverflow`（純データ。`page_index` はこの呼び出しが返すページ列の中での
+  index）のタプル。**純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
+  `bool` で返すだけ**で、ページ番号・脚注番号を添えて記録するのは `PageComposer` の責務 —
+  計画は widow / orphan 補正で何度も立て直されるので、確定した配置ループからしか記録しないことで
+  重複を構造的に防ぐ（#382）
 
 **改ページ制御は glue（伸縮アキ）/ penalty（分割コスト）モデル**で、widow / orphan・keep-with-next・下端
 揃え（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に不足
@@ -1339,9 +1368,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 - `warnings`: `compile` が成功成果物と一緒に返す warning severity の診断集合 `Warnings`
   （`Compilation.warnings` 専用。中身は型消去済みの `miette::Report` の列）。致命的エラーとは公開型を
   共用しない（error は `CompileFailure`）。`CompileFailure` と違って空は正当な状態なので空で構築できる。
-  中身は `compile` が**入力の論理順**（config の警告 → フォントの警告）で組み立て、段の中の順序は
-  各段が保証する（`sources` の宣言順 / `FontType::ALL` 順）。コンパイルが失敗したときは warning を
-  返さない（#377）
+  中身は `compile` が**入力の論理順**（config の警告 → フォントの警告 → 組版の警告）で組み立て、
+  段の中の順序は各段が保証する（`sources` の宣言順 / `FontType::ALL` 順 / 物理ページの昇順）。
+  コンパイルが失敗したときは warning を返さない（#377、#382）
 - `error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
   行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
   内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /

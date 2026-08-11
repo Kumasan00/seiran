@@ -1,6 +1,7 @@
 //! 脚注エリアへの詰め込み計算（#227）— 純粋関数・データのみ。`PageComposer` には依存しない。
-
-use tracing::warn;
+//!
+//! 収まらなかった事実は `FootnotePacking::overflowed` としてデータで返すだけで、ここでは診断を
+//! 作らない（警告を組み立てるのは、どのページのどの脚注かを知っている `PageComposer` 側。#382）。
 
 use crate::{length::Length, typeset::boxes::Line};
 
@@ -131,6 +132,9 @@ pub(super) struct FootnotePacking {
   pub(super) splits: Vec<usize>,
   /// この詰め込みで脚注エリアに追加される高さ（pt、固定費込み）
   pub(super) height: Length,
+  /// 先頭の脚注の 1 行がリージョン全体を超えたまま置いたか（`require_first_line = false` の
+  /// 繰越詰め込みでのみ起こる病的ケース）。`true` のとき呼び出し側が警告を組み立てる
+  pub(super) overflowed: bool,
 }
 
 /// 脚注エリアの「予算に対して何行入るか」を決める唯一の純粋関数（#227）
@@ -143,6 +147,7 @@ pub(super) fn pack_footnotes(
 ) -> Option<FootnotePacking> {
   let mut splits = Vec::with_capacity(demands.len());
   let mut height = Length::ZERO;
+  let mut overflowed = false;
   for (j, demand) in demands.iter().enumerate() {
     let overhead = charges.entry_overhead(base_reserved + height);
     // 後続の脚注に最低 1 行ずつ残す（`require_first_line` のときのみ）。この脚注を置いた後なので
@@ -161,11 +166,15 @@ pub(super) fn pack_footnotes(
       if j > 0 {
         // 繰越: 手前の脚注で予算が尽きた。以降はこのリージョンに置かない（出現順を保つ）
         splits.extend(std::iter::repeat_n(0, demands.len() - j));
-        return Some(FootnotePacking { splits, height });
+        return Some(FootnotePacking {
+          splits,
+          height,
+          overflowed,
+        });
       }
       // 繰越の先頭が 1 行も入らない病的ケース。次リージョンへ送っても改善しないので、
       // オーバーフローを許容して 1 行進める（[`super::PageComposer::seed_carry`] のループの停止条件）
-      warn!("脚注 1 行の高さがページ全体を超えるため、オーバーフローしたまま配置します");
+      overflowed = true;
       placed = 1;
     }
     height += overhead + demand.prefix[placed];
@@ -174,10 +183,18 @@ pub(super) fn pack_footnotes(
     // ときは後続の最低 1 行を予約済みなので、そのまま詰め続けてよい
     if placed < demand.line_count() && !require_first_line {
       splits.extend(std::iter::repeat_n(0, demands.len() - j - 1));
-      return Some(FootnotePacking { splits, height });
+      return Some(FootnotePacking {
+        splits,
+        height,
+        overflowed,
+      });
     }
   }
-  return Some(FootnotePacking { splits, height });
+  return Some(FootnotePacking {
+    splits,
+    height,
+    overflowed,
+  });
 }
 
 /// 脚注を「先頭 `placed` 行」と「残り」に分ける

@@ -10,7 +10,7 @@ use crate::{
   typeset::{
     block::build_blocks,
     boxes::Page,
-    breaking::break_pages,
+    breaking::{FootnoteOverflow, break_pages},
     error::TypesetError,
     image::{ImageResources, resolve_images},
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
@@ -24,6 +24,10 @@ pub(super) struct BodyLayout {
   pub(super) pages: Vec<Page>,
   /// 目次・しおり用の見出し情報（文書順）
   pub(super) headings: Vec<HeadingRecord>,
+  /// このパスで収まらなかった脚注の記録（#382、`pages` の中での page index 基準）。
+  /// ページ単位採番の不動点反復では収束したパスの `BodyLayout` だけが返るので、
+  /// 途中のパスで検出したぶんはここで自然に捨てられる（同じ警告が重複しない）
+  pub(super) overflows: Vec<FootnoteOverflow>,
 }
 
 /// 本文を組版し、確定ページ列と見出し記録を返す。
@@ -93,7 +97,7 @@ fn run_body_pass(
   info!(elapsed_ms = elapsed_ms(stage_start), "画像サイズの確定が完了しました");
 
   let stage_start = Instant::now();
-  let pages = {
+  let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "body").entered();
     break_pages(body_blocks, ctx.text_width, &ctx.body_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
@@ -102,5 +106,9 @@ fn run_body_pass(
     elapsed_ms = elapsed_ms(stage_start),
     "本文のページ分割が完了しました"
   );
-  return Ok(BodyLayout { pages, headings });
+  return Ok(BodyLayout {
+    pages,
+    headings,
+    overflows,
+  });
 }

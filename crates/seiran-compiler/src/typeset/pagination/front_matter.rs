@@ -14,7 +14,7 @@ use crate::{
   typeset::{
     block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     boxes::{Block, Page},
-    breaking::break_pages,
+    breaking::{FootnoteOverflow, break_pages},
     lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
   },
 };
@@ -25,7 +25,13 @@ use crate::{
 /// タイトルページ→目次の順にブロックを組み立て、末尾の強制改ページ（本文との境界用）は
 /// 空ページを作らないよう分割前に取り除く。`title_page` / `toc` がともに無効・目次エントリが
 /// 空なら空ページ列を返す。
-pub(super) fn typeset_front_matter(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Vec<Page> {
+///
+/// 脚注のはみ出し記録（#382）はページ列と一緒に返す。前付けは生成ブロックだけで組むので実際には
+/// 常に空だが、「空のはずだ」という非局所な不変条件を主張せず素通しする。
+pub(super) fn typeset_front_matter(
+  ctx: &TypesetContext<'_>,
+  facts: &BodyPageFacts,
+) -> (Vec<Page>, Vec<FootnoteOverflow>) {
   let stage_start = Instant::now();
   let mut front_blocks: Vec<Block> = Vec::new();
 
@@ -66,10 +72,10 @@ pub(super) fn typeset_front_matter(ctx: &TypesetContext<'_>, facts: &BodyPageFac
     front_blocks.pop();
   }
   if front_blocks.is_empty() {
-    return Vec::new();
+    return (Vec::new(), Vec::new());
   }
 
-  let pages = {
+  let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "front").entered();
     break_pages(front_blocks, ctx.text_width, &ctx.front_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
@@ -78,7 +84,7 @@ pub(super) fn typeset_front_matter(ctx: &TypesetContext<'_>, facts: &BodyPageFac
     elapsed_ms = elapsed_ms(stage_start),
     "前付けのページ分割が完了しました"
   );
-  return pages;
+  return (pages, overflows);
 }
 
 /// 見出しと本文内ページ index から目次エントリを組み立てる。

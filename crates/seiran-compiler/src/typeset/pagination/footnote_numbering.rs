@@ -87,6 +87,7 @@ mod tests {
       return Ok(BodyLayout {
         pages: vec![page_with_footnotes(&[0, 1]), page_with_footnotes(&[2])],
         headings: Vec::new(),
+        overflows: Vec::new(),
       });
     };
 
@@ -116,6 +117,7 @@ mod tests {
       return Ok(BodyLayout {
         pages,
         headings: Vec::new(),
+        overflows: Vec::new(),
       });
     };
 

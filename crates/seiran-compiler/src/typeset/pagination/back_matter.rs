@@ -17,7 +17,7 @@ use crate::{
   typeset::{
     block::{IndexEntryInput, IndexPageRef, build_index_blocks, build_index_spec, sort_index_entries},
     boxes::{AnchorMark, Page, PlacedAnchor},
-    breaking::break_pages,
+    breaking::{FootnoteOverflow, break_pages},
   },
 };
 
@@ -25,19 +25,22 @@ use crate::{
 ///
 /// 本文全ページの索引語を集約し、出現ページへ内部リンクの到達先アンカーを事後追加する
 /// （`body_pages` の破壊的更新）。`\index` が 1 個もなければ空ページ列を返す。
+///
+/// 脚注のはみ出し記録（#382）はページ列と一緒に返す。後付けは生成ブロックだけで組むので実際には
+/// 常に空だが、「空のはずだ」という非局所な不変条件を主張せず素通しする。
 pub(super) fn typeset_back_matter(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
-) -> Vec<Page> {
+) -> (Vec<Page>, Vec<FootnoteOverflow>) {
   let stage_start = Instant::now();
   let entries = collect_index_entries(body_pages, &facts.page_values);
   if entries.is_empty() {
-    return Vec::new();
+    return (Vec::new(), Vec::new());
   }
   let spec = build_index_spec(ctx.style);
   let back_blocks = build_index_blocks(&spec, &entries, ctx.resources);
-  let pages = {
+  let (pages, overflows) = {
     let _span = debug_span!("break_pages", region = "back").entered();
     break_pages(back_blocks, ctx.text_width, &ctx.back_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
@@ -46,7 +49,7 @@ pub(super) fn typeset_back_matter(
     elapsed_ms = elapsed_ms(stage_start),
     "後付けのページ分割が完了しました"
   );
-  return pages;
+  return (pages, overflows);
 }
 
 /// 索引語の同一性キー。`PlacedIndexEntry` のページ内重複除去キーと一致させる

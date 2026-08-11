@@ -36,7 +36,7 @@ use crate::{
   project::{FontData, FontMap, SourceSet},
   publication::{Publication, PublicationFont, PublicationImage, PublicationResources},
   semantics::AnalyzeError,
-  typeset::{FontResources, FontWarning, ImageAsset},
+  typeset::{FontResources, FontWarning, ImageAsset, TypesetWarning},
 };
 
 /// コンパイル結果の統計情報。
@@ -110,7 +110,7 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
   let (font_resources, font_warnings) =
     FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
-  let mut laid_out =
+  let (mut laid_out, typeset_warnings) =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
       .map_err(CompileFailure::from)?;
   let images = std::mem::take(&mut laid_out.images);
@@ -125,7 +125,7 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   return Ok(Compilation {
     publication,
     dependencies,
-    warnings: collect_warnings(&inputs, font_warnings),
+    warnings: collect_warnings(&inputs, font_warnings, typeset_warnings),
     statistics,
     output: inputs.output().clone(),
   });
@@ -133,15 +133,22 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
 
 /// 成功した `Compilation` と一緒に返す warning を、**入力の論理順**で 1 つに束ねる。
 ///
-/// 段の実行順（設定 → フォント）をそのまま表示順にする。段の中は各段が既に決定的な順序で
-/// 集めている（設定は `sources` の宣言順、フォントは `FontType::ALL` 順）ので、ここでの
-/// 並べ替えは行わない。
-fn collect_warnings(inputs: &CompilationInputs, font_warnings: Vec<FontWarning>) -> Warnings {
+/// 段の実行順（設定 → フォント → 組版）をそのまま表示順にする。段の中は各段が既に決定的な順序で
+/// 集めている（設定は `sources` の宣言順、フォントは `FontType::ALL` 順、組版は物理ページの昇順）ので、
+/// ここでの並べ替えは行わない。
+fn collect_warnings(
+  inputs: &CompilationInputs,
+  font_warnings: Vec<FontWarning>,
+  typeset_warnings: Vec<TypesetWarning>,
+) -> Warnings {
   let mut warnings = Warnings::empty();
   for warning in inputs.config_warnings() {
     warnings.push(warning.clone());
   }
   for warning in font_warnings {
+    warnings.push(warning);
+  }
+  for warning in typeset_warnings {
     warnings.push(warning);
   }
   return warnings;
@@ -235,6 +242,7 @@ fn build_pages_with_source(
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
   let (font_resources, _) = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
   return crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
+    .map(|(laid_out, _)| return laid_out)
     .map_err(CompileFailure::from);
 }
 
