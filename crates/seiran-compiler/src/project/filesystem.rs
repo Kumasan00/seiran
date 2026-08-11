@@ -69,14 +69,7 @@ impl FilesystemProjectSource {
     {
       *self.disk_reads.lock().expect("disk_reads mutex は poison しない").entry(path.clone()).or_insert(0) += 1;
     }
-    let bytes: Arc<[u8]> = std::fs::read(path.as_path())
-      .map_err(|source| {
-        return SourceReadError::Io {
-          path: path.to_string(),
-          source,
-        };
-      })?
-      .into();
+    let bytes: Arc<[u8]> = std::fs::read(path.as_path()).map_err(SourceReadError::Io)?.into();
     self.cache.lock().expect("cache mutex は poison しない").insert(path.clone(), Arc::clone(&bytes));
     return Ok(bytes);
   }
@@ -97,12 +90,7 @@ impl ProjectSource for FilesystemProjectSource {
 
   fn read_text(&self, path: &ProjectPath) -> Result<Arc<str>, SourceReadError> {
     let bytes = self.read_cached(path)?;
-    let text = std::str::from_utf8(&bytes).map_err(|source| {
-      return SourceReadError::InvalidUtf8 {
-        path: path.to_string(),
-        source,
-      };
-    })?;
+    let text = std::str::from_utf8(&bytes).map_err(SourceReadError::InvalidUtf8)?;
     return Ok(Arc::from(text));
   }
 

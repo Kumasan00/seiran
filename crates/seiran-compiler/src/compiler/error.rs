@@ -4,7 +4,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{FontReadError, config::ReadConfigError},
+  project::{FontReadError, SourceReadError, config::ReadConfigError},
   semantics::ReadReferencesError,
   style::ReadStyleError,
   typeset::LayoutValidationError,
@@ -32,9 +32,9 @@ pub(super) enum CompileError {
   ReadTextFile {
     /// ファイルパス
     path: String,
-    /// 元の読込エラー
+    /// 元の読込エラー（低水準 cause）
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
 
   /// カレントディレクトリの取得失敗

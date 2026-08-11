@@ -23,7 +23,7 @@ pub use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxi
 
 use crate::{
   failures::{self, Failures},
-  project::{ProjectPath, ProjectSource},
+  project::{ProjectPath, ProjectSource, SourceReadError},
 };
 
 /// フォントファイルを読み込めないときのエラー。
@@ -37,9 +37,9 @@ pub enum FontReadError {
     font_type: FontType,
     /// ファイルパス
     path: String,
-    /// 元の読み込みエラー
+    /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
 }
 
@@ -80,7 +80,7 @@ impl FontData {
           return FontReadError::ReadFont {
             font_type,
             path: path.display().to_string(),
-            source: source.into_io(),
+            source,
           };
         })?;
         return Ok((path.clone(), Arc::new(bytes.to_vec())));

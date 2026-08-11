@@ -25,6 +25,8 @@ pub use glyph_run::{Glyph, GlyphRun};
 pub(super) use shaper::UnicodeBuffer;
 pub(super) use system::FontSystemError;
 pub(crate) use system::{FontResources, FontSystem};
+// フォント検証が集める warning。`compile` が `Warnings` へ載せるので `typeset` の外まで出す。
+pub(crate) use validate_font::FontWarning;
 
 use crate::{
   failures::{self, Failures},

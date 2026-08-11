@@ -29,8 +29,9 @@ pub(crate) struct SourceEntry {
 
 /// ソースファイルの読込に失敗したことを、パスと元エラーだけで伝える。
 ///
-/// `miette::Diagnostic` は実装しない — 診断（`code` / メッセージ / `into_io()` による平坦化）は
-/// 入力読込側（`compiler::input`）が組み立てる責務で、`project` はどのパスがどう失敗したかだけを返す。
+/// `miette::Diagnostic` は実装しない — 診断（`code` / 役割とパスを含むメッセージ）は入力読込側
+/// （`compiler::input`）が組み立てる責務で、`project` はどのパスがどう失敗したかだけを返す。
+/// `source` の `SourceReadError` はそのまま leaf 診断の `#[source]` へ載る低水準 cause（#377）。
 #[derive(Debug)]
 pub(crate) struct SourceSetReadError {
   /// 読込に失敗した表示用パス
@@ -107,7 +108,7 @@ mod tests {
   use std::path::PathBuf;
 
   use super::SourceSet;
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, SourceReadError};
 
   /// 一時ディレクトリに 1 つソースファイルを書き出し、そのパスを返す。
   ///
@@ -154,7 +155,10 @@ mod tests {
     };
     let error = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
     assert_eq!(error.path, missing.display().to_string(), "失敗したパスを持つはず");
-    assert_eq!(error.source.into_io().kind(), std::io::ErrorKind::NotFound);
+    let SourceReadError::Io(io_error) = &error.source else {
+      panic!("filesystem adapter は Io を返すはず: {:?}", error.source);
+    };
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
   }
 
   #[test]

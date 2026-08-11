@@ -221,7 +221,7 @@ pub(crate) fn load(
   let content = source.read_text(&ProjectPath::new(&joined)).map_err(|source| {
     return Failures::single(ReadStyleError::ReadFile {
       path: path_str.clone(),
-      source: source.into_io(),
+      source,
     });
   })?;
 

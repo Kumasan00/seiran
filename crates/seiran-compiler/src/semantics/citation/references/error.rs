@@ -3,6 +3,8 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::project::SourceReadError;
+
 /// 参照定義ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
 pub enum ReadReferencesError {
@@ -15,9 +17,9 @@ pub enum ReadReferencesError {
   ReadFile {
     /// ファイルパス
     path: String,
-    /// 元の読み込みエラー
+    /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
   /// TOML 解析に失敗した場合
   #[error("参照定義ファイルの TOML 解析に失敗しました: {path}")]

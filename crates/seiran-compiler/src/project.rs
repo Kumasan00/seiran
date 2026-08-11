@@ -49,7 +49,6 @@ pub(crate) use font::{
   Feature, FontConfig, FontConfigs, FontData, FontMap, FontReadError, TextDirection, VariationAxis,
 };
 pub use memory::MemoryProjectSource;
-use miette::Diagnostic;
 pub(crate) use source_set::SourceSet;
 use thiserror::Error;
 
@@ -75,56 +74,30 @@ impl std::fmt::Display for ProjectPath {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return write!(f, "{}", self.0.display()); }
 }
 
-/// 外部資源の取得エラー。
-#[derive(Debug, Error, Diagnostic)]
+/// 外部資源の取得エラー。**単独では描画しない低水準 cause**。
+///
+/// `miette::Diagnostic` を実装しないのは、この型が「どの資源を読もうとしたか」を知らないため。
+/// 役割（設定 / スタイル / 文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は
+/// 所有段（`project::config` / `style` / `semantics::citation` / `project::font` /
+/// `compiler::input` / `typeset::image`）が作り、この型はその `#[source]` に入って
+/// 「何が起きたか」だけを伝える（#377。旧 `into_io()` による平坦化は元の kind と cause chain を
+/// 捨てていたため廃止した）。
+///
+/// パスを持たないのも同じ理由で、パスは常に所有段の診断メッセージ側にある。
+#[derive(Debug, Error)]
 pub enum SourceReadError {
-  /// ファイルの読み込みに失敗した。
-  #[error("ファイルを読み込めませんでした: {path}")]
-  #[diagnostic(code(project::source::read), help("パスと読み取り権限を確認してください。"))]
-  Io {
-    /// 読み込みに失敗したパス
-    path: String,
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-  /// UTF-8 として解釈できない。
-  #[error("ファイルを UTF-8 として読めません: {path}")]
-  #[diagnostic(code(project::source::invalid_utf8), help("ファイルの文字エンコーディングを確認してください。"))]
-  InvalidUtf8 {
-    /// 対象パス
-    path: String,
-    /// 元の UTF-8 検証エラー
-    #[source]
-    source: std::str::Utf8Error,
-  },
-  /// `MemoryProjectSource` に登録されていないパスを要求した。
-  #[error("プロジェクトに登録されていないパスです: {path}")]
-  #[diagnostic(code(project::source::not_found), help("テスト fixture に該当パスを登録してください。"))]
-  NotFound {
-    /// 見つからなかったパス
-    path: String,
-  },
-}
-
-impl SourceReadError {
-  /// ラッパー診断へ埋め込むための `std::io::Error` へ変換する。
+  /// ファイルの読み込みに失敗した（`ErrorKind` で not found / permission denied を区別できる）。
   ///
-  /// 呼び出し元（`project::config` / `style` / `semantics` / `font` / `seiran` の読込エラー）は自分のメッセージに
-  /// パスを含んでおり、その `#[source]` としては素の I/O エラーだけを連鎖させる
-  /// （seam 導入前と同じ診断表示を保つ。issue #300 受け入れ条件「診断内容が同一」）。
-  #[must_use]
-  pub fn into_io(self) -> std::io::Error {
-    return match self {
-      SourceReadError::Io { source, .. } => source,
-      SourceReadError::InvalidUtf8 { .. } => {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, "stream did not contain valid UTF-8")
-      },
-      SourceReadError::NotFound { path } => {
-        std::io::Error::new(std::io::ErrorKind::NotFound, format!("プロジェクトに登録されていないパスです: {path}"))
-      },
-    };
-  }
+  /// `transparent` にしているのは、所有段のメッセージが既にパスと役割を持っており、
+  /// 間に「ファイルを読み込めません」という行をもう 1 段挟んでも情報が増えないため。
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  /// UTF-8 として解釈できない。
+  #[error("ファイルを UTF-8 として読めません")]
+  InvalidUtf8(#[source] std::str::Utf8Error),
+  /// `MemoryProjectSource` に登録されていないパスを要求した。
+  #[error("プロジェクトに登録されていないパスです")]
+  NotFound,
 }
 
 /// 外部資源（設定・スタイル・文献・ソース・フォント・画像）の取得 seam。
@@ -192,32 +165,32 @@ mod tests {
   }
 
   #[test]
-  fn into_io_preserves_the_original_io_error() {
+  fn io_variant_is_transparent_over_the_original_error() {
     // Arrange
-    let error = SourceReadError::Io {
-      path: "a.toml".to_string(),
-      source: std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory (os error 2)"),
-    };
+    let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied (os error 13)");
 
     // Act
-    let io_error = error.into_io();
+    let error = SourceReadError::from(io_error);
 
-    // Assert
-    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
-    assert_eq!(io_error.to_string(), "No such file or directory (os error 2)", "元の I/O エラーの文言を保つはず");
+    // Assert — 所有段の診断へ挟まる行が増えないよう、Display は元の I/O エラーそのもの
+    assert_eq!(error.to_string(), "Permission denied (os error 13)");
+    let SourceReadError::Io(inner) = &error else {
+      panic!("Io variant のはず");
+    };
+    assert_eq!(inner.kind(), std::io::ErrorKind::PermissionDenied, "元の kind を識別できるはず");
   }
 
   #[test]
-  fn into_io_maps_not_found_to_io_not_found() {
+  fn invalid_utf8_keeps_the_utf8_error_as_cause() {
     // Arrange
-    let error = SourceReadError::NotFound {
-      path: "missing.ttf".to_string(),
-    };
+    let invalid: Vec<u8> = vec![0xff];
+    let utf8_error = std::str::from_utf8(&invalid).expect_err("不正なバイト列は UTF-8 として読めないはず");
 
     // Act
-    let io_error = error.into_io();
+    let error = SourceReadError::InvalidUtf8(utf8_error);
 
-    // Assert
-    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
+    // Assert — パスは所有段のメッセージ側が持つので、この型のメッセージには含めない
+    assert_eq!(error.to_string(), "ファイルを UTF-8 として読めません");
+    assert!(std::error::Error::source(&error).is_some(), "元の UTF-8 検証エラーを cause として保つはず");
   }
 }

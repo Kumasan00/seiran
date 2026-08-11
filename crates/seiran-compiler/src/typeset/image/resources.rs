@@ -85,7 +85,7 @@ fn read_image(
   let file_bytes = source.read_bytes(path).map_err(|source| {
     return TypesetError::ReadImage {
       path: path.to_string(),
-      source: source.into_io(),
+      source,
     };
   })?;
   let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
@@ -181,7 +181,7 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::project::MemoryProjectSource;
+  use crate::project::{MemoryProjectSource, SourceReadError};
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -235,7 +235,7 @@ mod tests {
     let TypesetError::ReadImage { source, .. } = failures.first() else {
       panic!("ReadImage を期待");
     };
-    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
+    assert!(matches!(source, SourceReadError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
   }
 
   #[test]

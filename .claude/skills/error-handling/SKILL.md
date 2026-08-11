@@ -16,11 +16,16 @@ description: >-
 - 外部エラーを巻き取る場合は `#[source] source: ExternalError` フィールドで chain を形成し、`?` 演算子で伝播する。`map_err` でメッセージのコンテキスト（ファイルパス等）を付与する
 - **中間の seam エラーを `#[diagnostic_source]` で連鎖させない。** `code` / `help` を持つ Diagnostic を
   `#[diagnostic_source]` に載せると、miette がその変種ぶんの診断ブロックを入れ子で追加描画し、
-  利用者から見える出力が 1 段深くなる。資源取得の `project::SourceReadError` のように「呼び出し元が
-  パスを含むメッセージを持ち、実質は下位の I/O 失敗」でしかない中間エラーは、`SourceReadError::into_io()`
-  で `std::io::Error` へ平坦化してから `#[source]` に載せる（#300）。`#[diagnostic_source]` を使うのは、
-  内側のエラー自身が独立した診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つ
-  パース系エラー等）に限る
+  利用者から見える出力が 1 段深くなる。`#[diagnostic_source]` を使うのは、内側のエラー自身が独立した
+  診断として読ませる価値がある場合（`#[label]` / `#[source_code]` を持つパース系エラー等）に限る
+- **低水準 cause は `Diagnostic` を実装せず、そのまま `#[source]` で連鎖させる**（#377。旧 #300 の
+  `into_io()` 平坦化ルールはこれに置き換わった）。資源取得の `project::SourceReadError` は
+  `thiserror::Error` だけを実装し、「どの資源を読もうとしたか」を知らない。役割（設定 / スタイル /
+  文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic は所有段が作り、seam のエラーは
+  その `#[source]` に入って「何が起きたか」（not found / permission denied / 不正な UTF-8）だけを
+  伝える。`Diagnostic` を実装しないので入れ子の診断ブロックは生まれず、cause chain と元の
+  `io::ErrorKind` は変換後も残る。`SourceReadError::Io` は `#[error(transparent)]` なので、
+  最頻ケースの表示は所有段のメッセージ + 元の I/O エラー 1 行のまま変わらない
 
 ## 診断 `code` の規約
 
@@ -121,6 +126,34 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `code` / `help` / `labels` を内側の kind へ委譲し、メッセージにだけ config.toml のキーを前置する形。
   `SourceDiagnostic<E>` と同じ形で、描画は leaf 1 件ぶん・入れ子の診断ブロックを作らない）
 
+## warning と tracing
+
+**warning は error と公開型を共用しない**（#377）。`compile` が失敗したときの集合が
+`CompileFailure` であるのに対し、成功した `Compilation` と一緒に返る warning severity の集合は
+`compiler::Warnings`（`Vec<miette::Report>`）。`CompileFailure` と違って空は正当な状態なので
+空で構築できる。
+
+- warning diagnostic は他の leaf と同じ形（`thiserror::Error` + `miette::Diagnostic` +
+  `#[diagnostic(severity(Warning), code(...))]`）。`code` の第 1 階層は**検出した段**
+  （フォント検証の警告は `typeset::font::script::*`、config.toml の警告は `project::config::*`）
+- 表示順は入力の論理順。段の実行順（設定 → フォント）で束ね、段の中は各段が既に決定的な順序で
+  集めている（config は `sources` の宣言順、フォントは `FontType::ALL` 順）
+- コンパイルが失敗したときに warning は返さない（epic #374 の非目標）。段が error を返す経路では
+  その段で集めた warning を捨てる
+- **同じ問題を診断と tracing の両方で出さない**。ユーザーが直せる非致命的問題は warning diagnostic に
+  し、`tracing::warn!` は残さない（`-q` で握り潰される経路にユーザー向け情報を置かない）。
+  tracing の役割は開発者・運用者向けの観測に限る:
+
+  ```text
+  INFO  phase 完了、件数、処理時間
+  DEBUG 資源ごとの処理、内部選択
+  WARN  実行環境上の異常で、ユーザー診断として返せないもの
+  ```
+
+  既知の未適合: 脚注がページ全体を超えるときの `tracing::warn!`（`typeset::breaking` の 2 箇所）は
+  user-actionable だが、warning を組版の内側から運ぶ配管が要るため #382 で移す。新しい
+  user-actionable な `tracing::warn!` を増やさない。
+
 ## compiler 内部バグ
 
 - ユーザー入力に起因しない内部不変条件違反が `Result` を返す経路（`.map_err` / `?` の途中）で発覚した場合、
@@ -136,9 +169,11 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 
 - 関数のシグネチャは **常に具体的なエラー型を返す**（例: `Result<Config, ReadConfigError>`,
   `Result<HirSource, ParseSourceError>`, `Result<Compilation, CompileFailure>`）。**production の内部
-  pipeline で `miette::Result<T>` を使わない**（#375）— `miette::Report` への型消去は CLI 入口
-  （`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は `Diagnostic` を
-  実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも載せられなくなる
+  pipeline で `miette::Result<T>` を使わない**（#375）— error の `miette::Report` への型消去は
+  CLI 入口（`main` / サブコマンド）でだけ行い、そこまでは段の error 型を保つ。`Report` は
+  `Diagnostic` を実装しないので、早期に型消去すると `#[related]` にも `CompileFailure` にも
+  載せられなくなる。warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の
+  列として持つ（#377）
 - 外部クレートの `Result<T, E>` を `miette::Result<T>` に持ち上げる際は `miette::IntoDiagnostic` の `.into_diagnostic()?` を使用する
 - `main` は `miette::Result<()>` を返す（`Box<dyn std::error::Error>` は使わない）。`miette` の `fancy` feature により色付き診断が出力される
 

@@ -60,7 +60,7 @@ pub fn read_references<P: AsRef<Path>>(
   let content = source.read_text(&crate::project::ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
-      source: source.into_io(),
+      source,
     };
   })?;
   let references = parse_references(&content, path_ref)?;
@@ -111,7 +111,7 @@ mod tests {
     parse_references, read_references,
     reference::NumberOrString,
   };
-  use crate::project::{FilesystemProjectSource, MemoryProjectSource};
+  use crate::project::{FilesystemProjectSource, MemoryProjectSource, SourceReadError};
 
   /// `parse_references` 用のダミーパス。
   fn dummy_source() -> &'static Path { return Path::new("test.toml"); }
@@ -342,7 +342,7 @@ mod tests {
     let Err(ReadReferencesError::ReadFile { source, .. }) = result else {
       panic!("ReadFile を期待, got {result:?}");
     };
-    assert_eq!(source.kind(), std::io::ErrorKind::NotFound, "未登録パスは NotFound になるはず");
+    assert!(matches!(source, SourceReadError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
   }
 
   #[test]

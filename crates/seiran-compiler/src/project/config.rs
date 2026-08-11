@@ -10,11 +10,14 @@ use std::path::{Path, PathBuf};
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::{
   failures::Failures,
-  project::{Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, TextDirection, VariationAxis},
+  project::{
+    Feature, FontConfig, FontConfigs, FontType, ProjectPath, ProjectSource, SourceReadError, TextDirection,
+    VariationAxis,
+  },
 };
 
 mod pre_config;
@@ -37,8 +40,8 @@ pub enum ReadConfigError {
     /// 読み込みに失敗した設定ファイルのパス
     path: String,
     #[source]
-    /// 元の I/O エラー
-    source: std::io::Error,
+    /// 元の読み込みエラー（低水準 cause）
+    source: SourceReadError,
   },
   /// TOML 解析失敗
   #[error("設定ファイルの TOML 解析に失敗しました")]
@@ -123,6 +126,25 @@ pub enum ConfigValidationError {
   },
 }
 
+/// config.toml の警告（読み込みは成功するが、ユーザーが直したほうがよい問題）。
+///
+/// エラー（[`ConfigValidationError`]）と型を分けているのは、warning が成功した
+/// `Compilation` と一緒に返り `CompileFailure` には混ざらないため（#377）。
+#[derive(Debug, Clone, Error, Diagnostic)]
+pub enum ConfigWarning {
+  /// `sources` のファイル拡張子が `.sei` ではない。
+  #[error("ソースファイルの拡張子が `.sei` ではありません: {path}")]
+  #[diagnostic(
+    code(project::config::source_extension),
+    severity(Warning),
+    help("Seiran のソースファイルには拡張子 `.sei` を使ってください。")
+  )]
+  SourceExtension {
+    /// config.toml に書かれたままのソースパス
+    path: String,
+  },
+}
+
 /// 読み取り I/O フェーズで集約する解決済みパス群。
 ///
 /// `font_paths` は [`FontType::ALL`] の順序に対応する正規化済みフォントパスで、エラーが
@@ -161,6 +183,9 @@ struct FontValues {
 /// `base_dir` は相対パス（`sources` / `style_path` / フォントパス等）の解決基準ディレクトリです。
 /// 呼び出し元がカレントディレクトリ等を決めて渡します（本関数は `std::env::current_dir` を呼びません）。
 ///
+/// 成功時は検証済みの [`ProjectConfig`] と、読み込みを止めない警告 [`ConfigWarning`] の列を
+/// `sources` の宣言順で返します。
+///
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
@@ -171,24 +196,25 @@ pub fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
   base_dir: &Path,
-) -> Result<ProjectConfig, Failures<ReadConfigError>> {
+) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
   debug!(config_path = %config_path.display(), "設定ファイルの読み込みを開始します");
   let config_content = source.read_text(&ProjectPath::new(config_path)).map_err(|source| {
     return ReadConfigError::ReadFile {
       path: config_path.display().to_string(),
-      source: source.into_io(),
+      source,
     };
   })?;
   let pre_config = parse_config(&config_content, config_path)?;
-  let config = resolve(pre_config, source, base_dir)?;
+  let (config, warnings) = resolve(pre_config, source, base_dir)?;
 
   info!(
     config_path = %config_path.display(),
     output_name = %config.output.name,
     output_path = %config.output.pdf_path().display(),
+    warning_count = warnings.len(),
     "設定ファイルの読み込みが完了しました"
   );
-  return Ok(config);
+  return Ok((config, warnings));
 }
 
 /// TOML 文字列を [`PreConfig`] にパースします（I/O なし）。
@@ -222,9 +248,9 @@ fn resolve(
   pre: PreConfig,
   source: &dyn ProjectSource,
   base_dir: &Path,
-) -> Result<ProjectConfig, Failures<ReadConfigError>> {
+) -> Result<(ProjectConfig, Vec<ConfigWarning>), Failures<ReadConfigError>> {
   let validation = validate_and_convert(&pre);
-  let (resolved, path_errors) = resolve_paths(&pre, source, base_dir);
+  let (resolved, path_errors, warnings) = resolve_paths(&pre, source, base_dir);
 
   let font_values = match validation {
     Ok(font_values) if path_errors.is_empty() => font_values,
@@ -265,7 +291,7 @@ fn resolve(
       };
     }));
 
-  return Ok(ProjectConfig {
+  let config = ProjectConfig {
     document: DocumentConfig {
       title: pre_document.title,
       author: pre_document.author,
@@ -297,7 +323,8 @@ fn resolve(
     sources: resolved.sources,
     style_path: resolved.style_path,
     references_path: resolved.references_path,
-  });
+  };
+  return Ok((config, warnings));
 }
 
 /// [`PreConfig`] の純粋な値検証とタグ・書字方向の変換を一括で実行します（I/O なし）。
@@ -344,8 +371,9 @@ fn resolve_paths(
   pre: &PreConfig,
   source: &dyn ProjectSource,
   base_dir: &Path,
-) -> (ResolvedPaths, Vec<ConfigValidationError>) {
+) -> (ResolvedPaths, Vec<ConfigValidationError>, Vec<ConfigWarning>) {
   let mut errors: Vec<ConfigValidationError> = Vec::new();
+  let mut warnings: Vec<ConfigWarning> = Vec::new();
 
   let style_path = resolve_optional_path(pre.style_path.as_deref(), base_dir, source, &mut errors, |path| {
     return ConfigValidationError::StylePathResolution { path };
@@ -368,7 +396,7 @@ fn resolve_paths(
     }
   }
 
-  let sources = resolve_sources(&pre.sources, base_dir, source, &mut errors);
+  let sources = resolve_sources(&pre.sources, base_dir, source, &mut errors, &mut warnings);
 
   return (
     ResolvedPaths {
@@ -378,6 +406,7 @@ fn resolve_paths(
       references_path,
     },
     errors,
+    warnings,
   );
 }
 
@@ -407,19 +436,22 @@ fn resolve_optional_path(
 }
 
 /// 各 source パスを `base_dir` へ結合し、`source.exists` で存在確認します。
+///
+/// 拡張子が `.sei` でないものは読み込みを止めないので、`errors` ではなく `warnings` へ
+/// 宣言順に積みます。
 fn resolve_sources(
   sources: &[PathBuf],
   base_dir: &Path,
   project_source: &dyn ProjectSource,
   errors: &mut Vec<ConfigValidationError>,
+  warnings: &mut Vec<ConfigWarning>,
 ) -> Vec<PathBuf> {
   let mut resolved = Vec::with_capacity(sources.len());
   for source_path in sources {
     if source_path.extension().and_then(|ext| return ext.to_str()) != Some("sei") {
-      warn!(
-        source_path = %source_path.display(),
-        "ソースファイルの拡張子が `.sei` ではありません（`.sei` を推奨します）"
-      );
+      warnings.push(ConfigWarning::SourceExtension {
+        path: source_path.display().to_string(),
+      });
     }
     let joined = join_with_base(source_path, base_dir);
     if project_source.exists(&ProjectPath::new(&joined)) {
@@ -563,11 +595,11 @@ mod tests {
   use std::path::{Path, PathBuf};
 
   use super::{
-    ConfigValidationError, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load, parse_config,
-    resolve_output_dir_path, resolve_paths, validate_values,
+    ConfigValidationError, ConfigWarning, ProjectConfig, ReadConfigError, TextDirection, build_language_string, load,
+    parse_config, resolve_output_dir_path, resolve_paths, validate_values,
   };
   use crate::project::{
-    FilesystemProjectSource, FontType, MemoryProjectSource,
+    FilesystemProjectSource, FontType, MemoryProjectSource, SourceReadError,
     config::test_support::{
       font_sections_with_serif_extra, make_font_sections, valid_output_section, valid_pdf_section,
     },
@@ -606,7 +638,7 @@ mod tests {
     let source = MemoryProjectSource::new();
 
     // Act
-    let (_, errors) = resolve_paths(&pre, &source, Path::new("/project"));
+    let (_, errors, _) = resolve_paths(&pre, &source, Path::new("/project"));
 
     // Assert — スタイル・文献・ソース・フォント全種のパス不存在が集約されるはず
     assert!(errors.iter().any(|e| matches!(e, ConfigValidationError::StylePathResolution { .. })));
@@ -630,7 +662,7 @@ mod tests {
       .with_bytes("/project/fonts/dummy.ttf", Vec::new());
 
     // Act
-    let (resolved, errors) = resolve_paths(&pre, &source, Path::new("/project"));
+    let (resolved, errors, _) = resolve_paths(&pre, &source, Path::new("/project"));
 
     // Assert
     assert!(errors.is_empty(), "登録済みパスはエラーにならないはず: {errors:?}");
@@ -1146,7 +1178,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.output.name, "test_doc");
@@ -1173,7 +1205,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.image.max_dpi, 150);
@@ -1196,7 +1228,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert!(!config.pdf.show_bookmarks);
@@ -1274,7 +1306,7 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
 
     // Act
-    let config = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert — output_dir 省略時は base_dir がそのまま使われる（呼び出し元がその意味付けを担う）
     assert_eq!(config.output.output_dir, base_dir);
@@ -1296,7 +1328,7 @@ mod tests {
 
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     let serif = config.font_configs.get(FontType::Serif);
     assert_eq!(serif.script, Some(*b"Latn"));
@@ -1318,7 +1350,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1343,7 +1375,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1367,7 +1399,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     let serif = config.font_configs.get(FontType::Serif);
@@ -1389,7 +1421,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.document.language.as_deref(), Some("ja"));
@@ -1411,7 +1443,7 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     assert_eq!(config.document.language, None);
@@ -1433,11 +1465,84 @@ mod tests {
     // Act
     let source = FilesystemProjectSource::new();
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
-    let config: ProjectConfig = load(&source, &config_path, &base_dir).unwrap();
+    let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
     for font_type in FontType::ALL {
       assert_eq!(config.font_configs.get(font_type).direction, None, "{font_type:?}");
     }
+  }
+
+  #[test]
+  fn load_keeps_the_io_error_kind_as_cause_when_the_file_is_missing() {
+    // Arrange — 実ファイルシステム経由で存在しない config.toml を指す
+    let tempdir = tempfile::tempdir().expect("一時ディレクトリを作成できるはず");
+    let config_path = tempdir.path().join("does-not-exist.toml");
+    let source = FilesystemProjectSource::new();
+
+    // Act
+    let failures = load(&source, &config_path, tempdir.path()).expect_err("読み込みは失敗するはず");
+
+    // Assert — 役割つきの leaf 診断の下に、元の I/O エラー kind が cause として残る
+    let ReadConfigError::ReadFile { source, .. } = failures.first() else {
+      panic!("ReadFile を期待");
+    };
+    let SourceReadError::Io(io_error) = source else {
+      panic!("filesystem adapter は Io を返すはず: {source:?}");
+    };
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound, "not found を変換後も識別できるはず");
+  }
+
+  #[test]
+  fn load_keeps_invalid_utf8_as_cause() {
+    // Arrange — UTF-8 として読めないバイト列を config.toml として登録する
+    let source = MemoryProjectSource::new().with_bytes("/project/config.toml", vec![0xff, 0xfe]);
+
+    // Act
+    let failures =
+      load(&source, Path::new("/project/config.toml"), Path::new("/project")).expect_err("読み込みは失敗するはず");
+
+    // Assert
+    let ReadConfigError::ReadFile { source, .. } = failures.first() else {
+      panic!("ReadFile を期待");
+    };
+    assert!(matches!(source, SourceReadError::InvalidUtf8(_)), "UTF-8 エラーを識別できるはず: {source:?}");
+  }
+
+  #[test]
+  fn load_warns_once_per_non_sei_source_in_declaration_order() {
+    // Arrange — `.sei` でない拡張子を 2 つ、`.sei` を 1 つ宣言する
+    let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
+      let dir = Path::new(source_path).parent().expect("ソースは親ディレクトリを持つはず");
+      let txt = dir.join("b.txt");
+      let md = dir.join("a.md");
+      std::fs::write(&txt, "").expect("ダミーソースを書き込めるはず");
+      std::fs::write(&md, "").expect("ダミーソースを書き込めるはず");
+      return format!(
+        "sources = [\"{}\", \"{source_path}\", \"{}\"]\n\n{}{}{}",
+        txt.display(),
+        md.display(),
+        valid_output_section("test_doc", output_dir),
+        valid_pdf_section(),
+        make_font_sections(font_path),
+      );
+    });
+
+    // Act
+    let source = FilesystemProjectSource::new();
+    let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
+    let (_, warnings) = load(&source, &config_path, &base_dir).unwrap();
+
+    // Assert — 宣言順に 2 件（`.sei` の 1 件は警告にならない）
+    let paths: Vec<&str> = warnings
+      .iter()
+      .map(|warning| {
+        let ConfigWarning::SourceExtension { path } = warning;
+        return path.as_str();
+      })
+      .collect();
+    assert_eq!(paths.len(), 2, "`.sei` 以外の 2 件だけが警告になるはず: {paths:?}");
+    assert!(paths[0].ends_with("b.txt"), "宣言順に並ぶはず: {paths:?}");
+    assert!(paths[1].ends_with("a.md"), "宣言順に並ぶはず: {paths:?}");
   }
 }

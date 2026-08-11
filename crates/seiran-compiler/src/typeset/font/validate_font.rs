@@ -1,13 +1,17 @@
 //! フォント設定と OpenType テーブルの検証モジュール
 //!
-//! バリエーション軸設定の存在・範囲・完全性を検証する。GSUB/GPOS の
-//! スクリプト・言語サポート不足は処理を止めず、警告として報告する。
+//! バリエーション軸設定の存在・範囲・完全性を検証し、違反を error diagnostic として返す。
+//! GSUB/GPOS のスクリプト・言語サポート不足は組版を止めないので、error ではなく
+//! severity(Warning) の [`FontWarning`] として集め、成功した `Compilation` と一緒に返す
+//! （`tracing::warn!` だけで通知していた形は #377 で廃止した）。
+
+use std::path::{Path, PathBuf};
 
 use font_types::{Fixed, Tag};
 use miette::Diagnostic;
 use read_fonts::{FontRef, ReadError, TableProvider, tables::layout::ScriptList};
 use thiserror::Error;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
   failures::Failures,
@@ -132,21 +136,111 @@ pub enum FontValidationErrorKind {
   },
 }
 
+/// フォント設定の警告（組版は続行できるが、ユーザーが設定かフォントを直したほうがよい問題）。
+///
+/// 全バリアントが「どのフォント種別の、どのファイルの、どのタグか」を持つ — これが無いと
+/// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
+/// しているのは、warning が成功した `Compilation` と一緒に返り `CompileFailure` には混ざらないため。
+#[derive(Debug, Error, Diagnostic)]
+pub enum FontWarning {
+  /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
+  #[error("{}: フォントに {table} テーブルがありません: {}", .font_type.as_toml_key(), .path.display())]
+  #[diagnostic(
+    code(typeset::font::script::missing_layout_table),
+    severity(Warning),
+    help(
+      "config.toml の script / ot_language 指定を外すか、OpenType レイアウトテーブルを持つフォントを指定してください。"
+    )
+  )]
+  MissingLayoutTable {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// フォントファイルのパス
+    path: PathBuf,
+    /// 見つからなかったテーブル名（`GSUB` / `GPOS`）
+    table: &'static str,
+  },
+  /// GSUB / GPOS テーブル自体、またはその `ScriptList` を読めない。
+  #[error("{}: {table} テーブルを読み込めません: {}", .font_type.as_toml_key(), .path.display())]
+  #[diagnostic(
+    code(typeset::font::script::unreadable_layout_table),
+    severity(Warning),
+    help("フォントファイルが破損していないか確認してください。")
+  )]
+  UnreadableLayoutTable {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// フォントファイルのパス
+    path: PathBuf,
+    /// 読み込めなかったテーブル名（`GSUB` / `GPOS`）
+    table: &'static str,
+    /// 元の読み込みエラー
+    #[source]
+    source: ReadError,
+  },
+  /// 指定した script がテーブルでサポートされていない。
+  #[error("{}: {table} テーブルがスクリプト '{script}' をサポートしていません: {}", .font_type.as_toml_key(), .path.display())]
+  #[diagnostic(
+    code(typeset::font::script::unsupported_script),
+    severity(Warning),
+    help("'script-langs' コマンドでフォントがサポートするスクリプトを確認してください。")
+  )]
+  UnsupportedScript {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// フォントファイルのパス
+    path: PathBuf,
+    /// 対象テーブル名（`GSUB` / `GPOS`）
+    table: &'static str,
+    /// config.toml が指定した script タグ
+    script: Tag,
+  },
+  /// 指定した言語が script 配下でサポートされていない。
+  #[error(
+    "{}: {table} テーブルのスクリプト '{script}' が言語 '{language}' をサポートしていません: {}",
+    .font_type.as_toml_key(),
+    .path.display()
+  )]
+  #[diagnostic(
+    code(typeset::font::script::unsupported_language),
+    severity(Warning),
+    help("'script-langs' コマンドでスクリプト配下の言語を確認してください。")
+  )]
+  UnsupportedLanguage {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// フォントファイルのパス
+    path: PathBuf,
+    /// 対象テーブル名（`GSUB` / `GPOS`）
+    table: &'static str,
+    /// config.toml が指定した script タグ
+    script: Tag,
+    /// config.toml が指定した OpenType 言語システムタグ
+    language: Tag,
+  },
+}
+
 /// 全フォント種別を検証し、違反を `FontType::ALL` 順に**全件**集める。
 ///
 /// フォントは互いに独立に検査できるので、1 件目で打ち切らず全種別を見る。順序は
 /// `FontType::ALL` の宣言順で固定であり、`FontMap` の内部 `HashMap` の反復順には依存しない。
+/// 警告も同じ順序で返す。
 ///
 /// # Errors
 ///
-/// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す。
-pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Result<(), Failures<FontValidationFailure>> {
+/// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す
+/// （このとき警告は捨てる — 失敗したコンパイルでは warning を返さない）。
+pub fn validate_fonts(
+  font_configs: &FontConfigs,
+  font_refs: &FontRefs,
+) -> Result<Vec<FontWarning>, Failures<FontValidationFailure>> {
   let mut all_errors = Vec::new();
+  let mut all_warnings = Vec::new();
   for font_type in FontType::ALL {
     let config = font_configs.get(font_type);
     let font_ref = font_refs.get(font_type);
     all_errors.extend(
-      validate_font(config, font_ref)
+      validate_font(font_type, config, font_ref, &mut all_warnings)
         .into_iter()
         .map(|kind| return FontValidationFailure { font_type, kind }),
     );
@@ -154,13 +248,18 @@ pub fn validate_fonts(font_configs: &FontConfigs, font_refs: &FontRefs) -> Resul
   }
   return match Failures::from_vec(all_errors) {
     Some(failures) => Err(failures),
-    None => Ok(()),
+    None => Ok(all_warnings),
   };
 }
 
-/// 1 フォント分を検証し、検出した違反をすべて返す。
+/// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。
 #[must_use]
-pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidationErrorKind> {
+pub fn validate_font(
+  font_type: FontType,
+  config: &FontConfig,
+  font_ref: &FontRef,
+  warnings: &mut Vec<FontWarning>,
+) -> Vec<FontValidationErrorKind> {
   let mut errors = Vec::new();
   if let Some(variation_axes) = &config.variation_axes {
     validate_variation_axes(font_ref, variation_axes, &mut errors);
@@ -168,7 +267,7 @@ pub fn validate_font(config: &FontConfig, font_ref: &FontRef) -> Vec<FontValidat
     errors.push(FontValidationErrorKind::MissingVariationAxes);
   }
 
-  check_script_language_support(font_ref, config);
+  check_script_language_support(font_type, config, font_ref, warnings);
   return errors;
 }
 
@@ -224,27 +323,45 @@ fn validate_variation_axes(
   }
 }
 
-/// GSUB/GPOS で設定されたスクリプトと言語のサポートを確認する。
+/// GSUB/GPOS で設定されたスクリプトと言語のサポートを確認し、不足を警告として集める。
 ///
 /// 言語は `ot_language` が明示された場合だけ確認し、BCP 47 からの導出は `harfrust` に委ねる。
-fn check_script_language_support(font_ref: &FontRef, font_config: &FontConfig) {
+/// 警告は GSUB → GPOS の順に積むので、同じフォントに 2 件出るときの順序も決定的。
+fn check_script_language_support(
+  font_type: FontType,
+  font_config: &FontConfig,
+  font_ref: &FontRef,
+  warnings: &mut Vec<FontWarning>,
+) {
   let Some(script) = font_config.script else {
     return;
   };
 
   let script_tag = Tag::new(&script);
   let lang_tag = font_config.ot_language_tag.map(|lang| return Tag::new(&lang));
+  let path = &font_config.font_path;
 
-  if let Ok(gsub) = font_ref.gsub() {
-    check_script_in_table(gsub.script_list(), script_tag, lang_tag, "GSUB");
-  } else {
-    warn!(table_name = "GSUB", "テーブルが見つかりません");
-  }
-
-  if let Ok(gpos) = font_ref.gpos() {
-    check_script_in_table(gpos.script_list(), script_tag, lang_tag, "GPOS");
-  } else {
-    warn!(table_name = "GPOS", "テーブルが見つかりません");
+  let tables = [
+    ("GSUB", font_ref.gsub().map(|gsub| return gsub.script_list())),
+    ("GPOS", font_ref.gpos().map(|gpos| return gpos.script_list())),
+  ];
+  for (table, script_list) in tables {
+    match script_list {
+      Ok(script_list) => check_script_in_table(script_list, script_tag, lang_tag, table, font_type, path, warnings),
+      // テーブルが無いのか壊れているのかで直し方が違う（前者は設定かフォントの選択、
+      // 後者はフォントファイル自体）。`ReadError` を捨てて一方に丸めない
+      Err(ReadError::TableIsMissing(_)) => warnings.push(FontWarning::MissingLayoutTable {
+        font_type,
+        path: path.clone(),
+        table,
+      }),
+      Err(source) => warnings.push(FontWarning::UnreadableLayoutTable {
+        font_type,
+        path: path.clone(),
+        table,
+        source,
+      }),
+    }
   }
 }
 
@@ -253,18 +370,31 @@ fn check_script_in_table(
   script_list_result: Result<ScriptList<'_>, ReadError>,
   script_tag: Tag,
   lang_tag: Option<Tag>,
-  table_name: &str,
+  table: &'static str,
+  font_type: FontType,
+  path: &Path,
+  warnings: &mut Vec<FontWarning>,
 ) {
   let script_list = match script_list_result {
     Ok(list) => list,
-    Err(e) => {
-      warn!(table_name, error = %e, "ScriptList の読み込みに失敗しました");
+    Err(source) => {
+      warnings.push(FontWarning::UnreadableLayoutTable {
+        font_type,
+        path: path.to_path_buf(),
+        table,
+        source,
+      });
       return;
     },
   };
 
   let Some(index) = script_list.index_for_tag(script_tag) else {
-    warn!(script_tag = %script_tag, table_name, "スクリプトがテーブルでサポートされていません");
+    warnings.push(FontWarning::UnsupportedScript {
+      font_type,
+      path: path.to_path_buf(),
+      table,
+      script: script_tag,
+    });
     return;
   };
 
@@ -276,6 +406,12 @@ fn check_script_in_table(
   if let Some(lang_tag) = lang_tag
     && script.lang_sys_index_for_tag(lang_tag).is_none()
   {
-    warn!(lang_tag = %lang_tag, script_tag = %script_tag, table_name, "言語がスクリプト配下でテーブルにサポートされていません");
+    warnings.push(FontWarning::UnsupportedLanguage {
+      font_type,
+      path: path.to_path_buf(),
+      table,
+      script: script_tag,
+      language: lang_tag,
+    });
   }
 }

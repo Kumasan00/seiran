@@ -160,10 +160,14 @@ pub trait ProjectSource: Send + Sync {
   残るため。`Ord` を実装しており、`typeset::image::manifest` の `BTreeSet<ProjectPath>` による
   決定的な重複除去・昇順ソートがこれを使う。正規化は重複除去より前に効くので、`fig/./a.png` と
   `fig/a.png` は manifest 上 1 件に畳まれる（同じファイルを 2 度読まない）。
-- ラッパー側のエラー（`ReadConfigError::ReadFile` / `CompileError::ReadImage` など）は
-  `SourceReadError::into_io()` で `std::io::Error` へ平坦化してから `#[source]` に載せる。
-  `#[diagnostic_source]` で `SourceReadError` をそのまま連鎖させると miette が入れ子の診断ブロックを
-  足し、診断のレンダリング結果が変わってしまうため。
+- `SourceReadError` は **`miette::Diagnostic` を実装しない低水準 cause**（#377）。この型は「どの資源を
+  読もうとしたか」を知らないので単独では描画せず、役割（設定 / スタイル / 文献 / フォント / ソース /
+  画像）とパスを含む leaf diagnostic は所有段が作り、seam のエラーはその `#[source]` に入って
+  「何が起きたか」だけを伝える（`ReadConfigError::ReadFile` / `TypesetError::ReadImage` など）。
+  `Diagnostic` を実装しないことで入れ子の診断ブロックを避けつつ、元の `io::ErrorKind`（not found /
+  permission denied）と cause chain が変換後も残る。`Io` バリアントは `#[error(transparent)]` なので
+  最頻ケースの表示は変わらない。パスをどのバリアントにも持たせないのも同じ理由で、パスは常に
+  所有段のメッセージ側にある（旧 `into_io()` による平坦化は kind と chain を捨てていたため廃止した）。
 - 書き込みメソッドは持たない。出力ディレクトリの作成と PDF の書き出しは資源取得ではなく出力側の
   関心事なので、`seiran` が `std::fs` で直接行う。
 - 2 実装が同じ結果を返すことと、共有フォントを 1 回しか読まないことは
@@ -188,6 +192,10 @@ pub trait ProjectSource: Send + Sync {
   構文エラーは `NamedSource` + `#[label]` 付き（`NamedSource` は `load` 自身が組み立てる）。
   `style_path` / `references_path` は**存在確認と正規化までで、内容は解析しない** — style.toml は
   `style::load`、references は `semantics::read_references` がそれぞれ読む。
+- 警告: 読み込みは成功するがユーザーが直したほうがよい問題（`sources` の拡張子が `.sei` でない）は
+  error ではなく `ConfigWarning`（`severity(Warning)`、`code(project::config::source_extension)`）で
+  返す。`load` の Ok 側が `(ProjectConfig, Vec<ConfigWarning>)` になっており、順序は `sources` の
+  宣言順（#377）。
 - `processed_config`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
   `PdfConfig` / `ImageConfig` / `Margin`。後段はこちらだけを見る。**処理済みフォント設定**
   （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は兄弟 module
@@ -237,8 +245,8 @@ pub trait ProjectSource: Send + Sync {
 別の場所で ID を作り直したり配列の並び順から推測したりしない。
 
 読込失敗は `miette::Diagnostic` を実装しない素の `SourceSetReadError { path, source }` で返す。
-診断（`code(compiler::read_text_file)` とメッセージ、`SourceReadError::into_io()` による平坦化）を
-組み立てるのは入力読込側の `compiler::input` で、`project` はどのパスがどう失敗したかだけを伝える。
+診断（`code(compiler::read_text_file)` とメッセージ）を組み立てるのは入力読込側の `compiler::input` で、
+`project` はどのパスがどう失敗したかだけを伝える（`SourceReadError` はそのまま `#[source]` に載る）。
 ソースは互いに独立に読めるので、I/O 失敗も**宣言順に全件集約**する（#376）。ただし `register` は
 全件成功したときだけ回す — 途中の失敗を飛ばして登録すると「`SourceId::index()` == `config.sources` の
 宣言順」という crate 全体の不変条件が崩れる。
@@ -800,15 +808,18 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `typeset` 内へ出す — 移設前は `font::shaper` という module パス自体が crate 全体に見えていた）:
   `HarfRust` を使い、書字方向・スクリプト・言語・OpenType フィーチャー・バリエーション軸を反映して
   文字列をグリフ列へ変換する（`HarfRustShapers` 等）。
-- `validate_font`（非公開、facade へは出さない）: バリエーション軸設定の存在・範囲・完全性を検証する。
-  GSUB / GPOS のスクリプト・言語サポート不足は処理を止めず警告として報告する。検証エラーは
-  `FontSystemError::Validation` の `transparent` 委譲を介して miette::Report 化されるだけで、
-  型名を名指しする消費者がいない。
+- `validate_font`（非公開。`FontWarning` だけ `typeset` root facade へ出す）: バリエーション軸設定の
+  存在・範囲・完全性を検証する。検証エラーは `FontSystemError::Validation` の `transparent` 委譲を介して
+  miette::Report 化されるだけで、型名を名指しする消費者がいない。GSUB / GPOS のスクリプト・言語
+  サポート不足は組版を止めないので、error ではなく **severity(Warning) の `FontWarning`**（フォント種別・
+  パス・不足タグを持つ leaf 診断。`code(typeset::font::script::*)`）として集め、`compile` が
+  `Compilation.warnings` へ載せる（#377。`tracing::warn!` だけで通知する形は廃止した）。
 - `system`（非公開、`typeset` root facade で `FontResources` を再エクスポート。`FontSystem` /
   `FontSystemError` は `typeset` 内に留める）:
   `FontRefs → FontMetrics → 検証 → ShaperDatas → ShaperInstances → HarfRustShapers` という構築順序と
   寿命関係をここに閉じ込める窓口。`FontResources::load(configs, &font_data)` が検証済みの
-  所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）を構築し、
+  所有資源一式（`FontRefs` / `ShaperDatas` / `ShaperInstances` / `FontMetrics`）と検証で見つかった
+  `Vec<FontWarning>` を返し（警告は資源ではないので構造体に持たせない）、
   `FontResources::system()` がそれを借用してシェーパー一式を構築し、`shape` / `metric` の
   2 操作だけを公開する `FontSystem` を返す。`HarfRustShapers` が `FontRefs` と
   `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
@@ -1209,7 +1220,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 `seiran-compiler` の外部入口 `compile` を持つ module。言語処理・意味解決・組版を 1 回の呼び出しに畳み、
 段の呼び出し順序・中間型（`LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない（`lib.rs`
-が crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `DiagnosticSet` /
+が crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings` /
 `BuildStatistics` / `OutputPlan`）・失敗型 `CompileFailure`・`publication::Publication` と
 そこから到達できる leaf 値型・`ProjectSource` 系のみ）。
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
@@ -1229,9 +1240,10 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 #### compile facade（`compiler.rs` 直下）
 
 `compiler.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` /
-`parse_project` / `build_publication` / `parse_all_sources` / `attribute_analyze_error`）と、
+`parse_project` / `build_publication` / `parse_all_sources` / `attribute_analyze_error` /
+`collect_warnings`）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
-`CompileFailure` / `DependencyManifest` / `DiagnosticSet` は子 module から `pub use` で再エクスポート、
+`CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート、
 `OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
 `input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
 -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
@@ -1241,7 +1253,8 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 `compile` は保存（`fs::write`）を一切行わない。
 
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
-`miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う。
+error の `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う
+（warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の列として持つ）。
 `compile_inner` / `compile_with_base_dir` / `parse_project` / `parse_all_sources` は
 `Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
 
@@ -1265,8 +1278,9 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   メモリ上で書き換えて組み直す golden テストのためだけに `#[cfg(test)] from_parts` を併設する。
   **画像は含めない** — `\image{...}` でしかパスが分からないため、`typeset::layout` が文書木から集めて
   内部で読み込む。ソース本文の保持と `SourceId` の発行は `project::SourceSet` の責務で、
-  `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`into_io()` による平坦化を含む）を
-  `input` が行う
+  `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`SourceReadError` はそのまま
+  `#[source]` へ載せる）を `input` が行う。`project::config::load` が返す `ConfigWarning`（`sources` の
+  拡張子が `.sei` でない等）も `CompilationInputs` が宣言順に保持し、`compile` が `Warnings` へ移す
 - `publication`: `typeset::LaidOutDocument` と `publication::PublicationResources` から
   `publication::Publication` を組み立てる `build_publication`（`Publication` 系の型そのものは crate root
   の `publication` module が所有する。#372）。`typeset` は描画命令の表現を知らないので、この写像だけは
@@ -1287,9 +1301,12 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   `NamedSource` を添える。`source_code` **だけ**を補い、`code` / `severity` / `help` / `url` / `labels` /
   `related` / `diagnostic_source` は内側へ委譲する手書き `Diagnostic`（`#[diagnostic(transparent)]` は
   `source_code` も内側へ委譲してしまうため使えない）。段ごとの attribution wrapper を再び作らない（#375）
-- `diagnostic_set`: `compile` が成功成果物と一緒に返す警告診断の集合 `DiagnosticSet`
+- `warnings`: `compile` が成功成果物と一緒に返す warning severity の診断集合 `Warnings`
   （`Compilation.warnings` 専用。中身は型消去済みの `miette::Report` の列）。致命的エラーとは公開型を
-  共用しない（error は `CompileFailure`）
+  共用しない（error は `CompileFailure`）。`CompileFailure` と違って空は正当な状態なので空で構築できる。
+  中身は `compile` が**入力の論理順**（config の警告 → フォントの警告）で組み立て、段の中の順序は
+  各段が保証する（`sources` の宣言順 / `FontType::ALL` 順）。コンパイルが失敗したときは warning を
+  返さない（#377）
 - `error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
   行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
   内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /
@@ -1416,7 +1433,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の
 両方に依存し、`compile` → `seiran_pdf::render` → atomic write（`tempfile` 経由の一時ファイル + rename）→
-結果表示の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
+結果表示（`Compilation.warnings` の診断とビルドサマリ）の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
 filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
 
@@ -1434,6 +1451,9 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 
 - **段順序の知識を持たない**。`main` が呼ぶのは `seiran_compiler::compile` と `seiran_pdf::render` の 2 つだけで、
   parse / 意味解析 / typeset の各段を個別に呼ぶ経路は復活させない。
+- **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を `miette` の handler
+  （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では出さない。ログ（tracing）へは
+  出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。
 - **保存は CLI 側の責務**。`compile` は `Compilation.output`（`OutputPlan { pdf_path }`）を返すだけで
   書き出さない。atomic write は保存先と同じディレクトリに一時ファイルを作ってから rename する
   （cross-filesystem の rename は atomic にならないため）。

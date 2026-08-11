@@ -12,7 +12,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-  project::{ProjectPath, ProjectSource},
+  project::{ProjectPath, ProjectSource, SourceReadError},
   style::Style,
 };
 
@@ -36,9 +36,9 @@ pub(crate) enum CitationStyleError {
   ReadStyleFile {
     /// スタイルファイルのパス
     path: String,
-    /// 元の読み込みエラー
+    /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
 
   /// CSL スタイル（`.csl`）の解析に失敗した場合。
@@ -64,9 +64,9 @@ pub(crate) enum CitationStyleError {
   ReadLocaleFile {
     /// ロケールファイルのパス
     path: String,
-    /// 元の読み込みエラー
+    /// 元の読み込みエラー（低水準 cause）
     #[source]
-    source: std::io::Error,
+    source: SourceReadError,
   },
 
   /// CSL ロケール（`.xml`）の解析に失敗した場合。
@@ -121,7 +121,7 @@ pub(crate) fn load_citation_style(
   let style_xml = source.read_text(&ProjectPath::new(csl_path)).map_err(|source| {
     return CitationStyleError::ReadStyleFile {
       path: csl_path_str.clone(),
-      source: source.into_io(),
+      source,
     };
   })?;
   let csl_style = IndependentStyle::from_xml(&style_xml).map_err(|source| {
@@ -157,7 +157,7 @@ fn load_locales(
     let xml = source.read_text(&ProjectPath::new(path)).map_err(|source| {
       return CitationStyleError::ReadLocaleFile {
         path: path_str.clone(),
-        source: source.into_io(),
+        source,
       };
     })?;
     let locale_file = LocaleFile::from_xml(&xml).map_err(|source| {
