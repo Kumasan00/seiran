@@ -153,7 +153,7 @@ given = "Taro"
 ```text
 crates/
 ├── seiran-compiler/  # ライブラリ（言語処理・意味解決・組版）。公開 API は compile とその入出力型・診断型のみ
-│                     #   内部は非公開 module: length / color / source / project / document / style / frontend / semantics / typeset / publication / compiler
+│                     #   内部は非公開 module: length / color / failures / publication / source / project / document / style / frontend / semantics / typeset / compiler
 ├── seiran-pdf/       # PDF backend（seiran-compiler の Publication → PDF バイト列。krilla / krilla-svg）
 └── seiran/           # CLI（引数解析・ログ・compile → render → ファイル保存・フォント調査サブコマンド）
 ```
