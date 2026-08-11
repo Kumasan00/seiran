@@ -22,6 +22,7 @@ mod geometry;
 mod image;
 mod lowering;
 mod pagination;
+mod warning;
 
 // 確定ページ列の決定的テキストダンプ（golden 比較用）。走査対象が `boxes` の中間型なので所有は
 // こちら側で、`compiler::golden` は `dump_pages` の 1 関数だけを借りる（#353）。
@@ -62,6 +63,8 @@ pub(crate) use geometry::{LayoutValidationError, validate_layout};
 pub(crate) use image::ImageAsset;
 pub use image::ImageFormat;
 pub(crate) use pagination::LaidOutDocument;
+// 組版が見つけた、ユーザーが直せる非致命的問題（#382）。`compiler` が `Warnings` へ積む。
+pub(crate) use warning::TypesetWarning;
 
 use crate::{failures::Failures, project::config::ProjectConfig, semantics::SemanticDocument, style::Style};
 
@@ -70,6 +73,10 @@ use crate::{failures::Failures, project::config::ProjectConfig, semantics::Seman
 /// 画像は `document` が参照しているぶんだけを `source` 経由で読み込み、自然寸法から表示寸法を
 /// 確定して結果へ同梱する（生バイト列は描画の資源束が要求する）。フォント資源は呼び出し元が
 /// 構築したものを借り、そこからシェーパーを組むのはこの中（`font` module に閉じる、#352）。
+///
+/// 組版を止めないがユーザーが直せる問題（脚注のはみ出し）は [`TypesetWarning`] として確定レイアウトと
+/// 一緒に返す（#382）。警告は資源でも確定レイアウトの一部でもないので `LaidOutDocument` には持たせず、
+/// `FontResources::load` と同じくタプルの第 2 要素にする。
 ///
 /// # Errors
 ///
@@ -82,7 +89,7 @@ pub(crate) fn layout(
   style: &Style,
   font_resources: &FontResources<'_>,
   document: &SemanticDocument,
-) -> Result<LaidOutDocument, Failures<TypesetError>> {
+) -> Result<(LaidOutDocument, Vec<TypesetWarning>), Failures<TypesetError>> {
   // シェーパー構築は画像読込より前に置く — 両方が失敗する入力で報告されるエラーを、
   // フォント資源を呼び出し元が組んでいた頃と同じ側（フォント）に保つため。
   let font_system = font_resources.system().map_err(|failures| return failures.map(TypesetError::from))?;

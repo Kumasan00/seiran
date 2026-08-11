@@ -23,9 +23,11 @@ use crate::{
   semantics::SemanticDocument,
   typeset::{
     boxes::Page,
+    breaking::{FootnoteOverflow, FootnoteOverflowKind},
     error::TypesetError,
     image::{ImageAsset, ImageResources},
-    pagination::{body::BodyLayout, context::BodyPageFacts, outline::collect_outline_entries},
+    pagination::{body::BodyLayout, context::BodyPageFacts, outline::collect_outline_entries, page_values::PageLabels},
+    warning::TypesetWarning,
   },
 };
 
@@ -45,6 +47,10 @@ pub(crate) struct LaidOutDocument {
 ///
 /// 本文、前付け、後付け、ページラベル、走り文、outline の順序をこの操作 1 つに固定する。
 ///
+/// 組版を止めないがユーザーが直せる問題（脚注のはみ出し）は [`TypesetWarning`] として一緒に返す。
+/// 各段の [`break_pages`](crate::typeset::breaking::break_pages) はセクション内の page index しか
+/// 知らないので、物理ページ番号への写像と印字ラベルの解決はこの操作（phase 5）が行う。
+///
 /// # Errors
 ///
 /// 画像解決、脚注採番のいずれかに失敗した場合にエラーを返す（ラベル・`\ref`・引用の解決は
@@ -54,21 +60,22 @@ pub(super) fn paginate(
   document: &SemanticDocument,
   images: ImageResources,
   image_paths: Vec<ProjectPath>,
-) -> Result<LaidOutDocument, TypesetError> {
+) -> Result<(LaidOutDocument, Vec<TypesetWarning>), TypesetError> {
   // phase 1: 本文を組版する
   let BodyLayout {
     pages: mut body_pages,
     headings,
+    overflows: body_overflows,
   } = body::typeset_body(ctx, document, &images)?;
 
   // phase 2: 本文のページ事実を確定する
   let facts = BodyPageFacts::new(&body_pages, headings, &ctx.style.page_numbering);
 
   // phase 3: 前付けを組版する
-  let front_pages = front_matter::typeset_front_matter(ctx, &facts);
+  let (front_pages, front_overflows) = front_matter::typeset_front_matter(ctx, &facts);
 
   // phase 4: 後付けを組版する
-  let back_pages = back_matter::typeset_back_matter(ctx, &mut body_pages, &facts);
+  let (back_pages, back_overflows) = back_matter::typeset_back_matter(ctx, &mut body_pages, &facts);
 
   // phase 5: 全ページラベルを確定して連結する
   let BodyPageFacts {
@@ -76,8 +83,19 @@ pub(super) fn paginate(
     headings,
   } = facts;
   let page_labels = page_values.with_back_matter(&back_pages).finalize(&front_pages);
+  let (front_count, body_count) = (front_pages.len(), body_pages.len());
   let mut pages = concat_pages(front_pages, body_pages, back_pages);
   debug_assert_eq!(page_labels.len(), pages.len(), "ラベル数は物理ページ総数と一致するはず");
+  // セクション内 index を連結後の物理ページ index へ直してから診断にする。前付け → 本文 → 後付けの
+  // 順に並べるので、表示順は物理ページの昇順で決定的になる（#382）
+  let warnings = footnote_overflow_warnings(
+    &page_labels,
+    [
+      (front_overflows, 0),
+      (body_overflows, front_count),
+      (back_overflows, front_count + body_count),
+    ],
+  );
 
   // phase 6: 走り文を配置する
   running::place_running_content(ctx, &mut pages, page_labels);
@@ -85,12 +103,35 @@ pub(super) fn paginate(
   // phase 7: PDF しおりを組み立てる
   let outline_entries = collect_outline_entries(&headings);
 
-  return Ok(LaidOutDocument {
-    pages,
-    outline_entries,
-    image_paths,
-    images: images.into_assets(),
-  });
+  return Ok((
+    LaidOutDocument {
+      pages,
+      outline_entries,
+      image_paths,
+      images: images.into_assets(),
+    },
+    warnings,
+  ));
+}
+
+/// セクションごとのはみ出し記録を、物理ページの印字ラベル付きの警告診断へ写す。
+///
+/// `sections` は（そのセクションの記録, 連結後の先頭物理ページ index）の組を文書順に並べたもの。
+fn footnote_overflow_warnings(
+  page_labels: &PageLabels,
+  sections: [(Vec<FootnoteOverflow>, usize); 3],
+) -> Vec<TypesetWarning> {
+  let mut warnings = Vec::new();
+  for (overflows, offset) in sections {
+    for overflow in overflows {
+      let page = page_labels.page_label(offset + overflow.page_index).to_owned();
+      warnings.push(match overflow.kind {
+        FootnoteOverflowKind::Line { numbers } => TypesetWarning::FootnoteOverflow { page, numbers },
+        FootnoteOverflowKind::SingleLine { number } => TypesetWarning::FootnoteLineOverflow { page, number },
+      });
+    }
+  }
+  return warnings;
 }
 
 /// 前付け、本文、後付けの順にページ列を連結する。

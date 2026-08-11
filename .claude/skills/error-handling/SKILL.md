@@ -150,9 +150,9 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   WARN  実行環境上の異常で、ユーザー診断として返せないもの
   ```
 
-  既知の未適合: 脚注がページ全体を超えるときの `tracing::warn!`（`typeset::breaking` の 2 箇所）は
-  user-actionable だが、warning を組版の内側から運ぶ配管が要るため #382 で移す。新しい
-  user-actionable な `tracing::warn!` を増やさない。
+  user-actionable な `tracing::warn!` を新しく増やさない。組版の内側で見つかる警告も
+  （検出は `typeset::breaking` の純粋関数、ページ番号・脚注番号を添えるのは `PageComposer`、
+  印字ページラベルの解決は `typeset::pagination` の段 5、という配管で）診断として返す（#382）。
 
 ## 内部不変条件違反（#378）
 

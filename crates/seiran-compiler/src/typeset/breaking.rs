@@ -7,5 +7,5 @@ mod hyphenation;
 
 pub use break_lines::KnuthPlassBreaker;
 pub use break_opportunities::{BreakKind, BreakPoint, break_opportunities};
-pub use break_pages::{PageGeometry, break_pages};
+pub use break_pages::{FootnoteOverflow, FootnoteOverflowKind, PageGeometry, break_pages};
 pub use hyphenation::{Lang, resolve as resolve_hyphenation};

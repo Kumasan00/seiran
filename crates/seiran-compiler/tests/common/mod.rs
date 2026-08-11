@@ -44,3 +44,24 @@ pub fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str
     test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
   );
 }
+
+/// [`minimal_config_toml_with_serif_extra`] に `style_path` を足した `config.toml` を組む。
+///
+/// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
+#[allow(dead_code)]
+pub fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
+  return format!(
+    "sources = [\"{source_path}\"]\nstyle_path = \"{style_path}\"\n\n{}{}{}",
+    test_support::valid_pdf_section(),
+    test_support::valid_output_section("out", "/project/out"),
+    test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
+  );
+}
+
+/// 脚注 1 行がページの高さを超える `style.toml` を組む（組版警告の再現用）。
+///
+/// `numbering` は `"continuous"` / `"per_page"`（後者は本文パスが不動点まで反復される）。
+#[allow(dead_code)]
+pub fn overflowing_footnote_style_toml(numbering: &str) -> String {
+  return format!("[footnote]\nnumbering = \"{numbering}\"\nfont_size = \"900pt\"\n");
+}

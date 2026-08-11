@@ -129,6 +129,13 @@ impl PageLabels {
   /// ラベル総数を返す。
   pub(super) fn len(&self) -> usize { return self.labels.len(); }
 
+  /// 物理ページ index の `{page}` ラベル（紙面に印字される番号）を返す。
+  ///
+  /// # Panics
+  ///
+  /// `index` が物理ページ総数以上のときに panic する。
+  pub(super) fn page_label(&self, index: usize) -> &str { return &self.labels[index].0; }
+
   /// 所有権ごとラベル列へ変換する。
   pub(super) fn into_vec(self) -> Vec<(String, String)> { return self.labels; }
 }

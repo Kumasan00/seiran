@@ -12,7 +12,10 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::{minimal_config_toml, minimal_config_toml_with_serif_extra, read_test_font};
+use common::{
+  config_toml_with_style, minimal_config_toml, minimal_config_toml_with_serif_extra, overflowing_footnote_style_toml,
+  read_test_font,
+};
 use miette::Diagnostic;
 use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
@@ -95,30 +98,99 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
 
 #[test]
 #[allow(clippy::unwrap_used)]
-fn compile_orders_warnings_by_stage_config_before_font() {
-  // Arrange — config の警告（拡張子）とフォントの警告（script 不一致）を同時に起こす
+fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
+  // Arrange — config の警告（拡張子）・フォントの警告（script 不一致）・組版の警告
+  // （脚注 1 行がページの高さを超える）を同時に起こす
   let font_bytes = read_test_font();
-  let config = minimal_config_toml_with_serif_extra("/project/text.txt", "script = \"kana\"");
+  let config = config_toml_with_style("/project/text.txt", "/project/style.toml", "script = \"kana\"");
   let source = MemoryProjectSource::new()
     .with_text("/project/config.toml", config)
-    .with_text("/project/text.txt", "Hello, Seiran!")
+    .with_text("/project/style.toml", overflowing_footnote_style_toml("continuous"))
+    .with_text("/project/text.txt", "本文\\footnote{はみ出す脚注}。")
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("どちらも致命的ではないはず");
+  let compilation = seiran_compiler::compile(&source, &root).expect("いずれも致命的ではないはず");
 
-  // Assert — 表示順は段の実行順（設定 → フォント）で固定
+  // Assert — 表示順は段の実行順（設定 → フォント → 組版）で固定
   let codes: Vec<String> = compilation
     .warnings
     .reports()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
   assert_eq!(codes.first().map(String::as_str), Some("project::config::source_extension"), "{codes:?}");
+  let font_end = codes
+    .iter()
+    .position(|code| return code.starts_with("typeset::footnote::"))
+    .expect("組版の警告が最後のまとまりとして並ぶはず");
   assert!(
-    codes[1..].iter().all(|code| return code.starts_with("typeset::font::script::")),
-    "config の警告のあとにフォントの警告が並ぶはず: {codes:?}"
+    codes[1..font_end].iter().all(|code| return code.starts_with("typeset::font::script::")),
+    "config の警告とフォントの警告が組版の警告より前に並ぶはず: {codes:?}"
   );
+  assert!(
+    codes[font_end..].iter().all(|code| return code.starts_with("typeset::footnote::")),
+    "組版の警告は末尾にまとまるはず: {codes:?}"
+  );
+}
+
+#[test]
+#[allow(clippy::unwrap_used)]
+fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page() {
+  // Arrange — 脚注 1 行がページの高さを超える style.toml（本文自体は組版できる）
+  let font_bytes = read_test_font();
+  let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", overflowing_footnote_style_toml("continuous"))
+    .with_text("/project/text.sei", "本文\\footnote{はみ出す脚注}。")
+    .with_bytes("/project/font.ttf", font_bytes);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let compilation = seiran_compiler::compile(&source, &root).expect("はみ出しは致命的ではないはず");
+
+  // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
+  let reports: Vec<&miette::Report> = compilation.warnings.reports().collect();
+  let codes: Vec<String> = reports
+    .iter()
+    .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
+    .collect();
+  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
+  assert!(
+    reports.iter().all(|report| return report.severity() == Some(miette::Severity::Warning)),
+    "warning severity だけを持つはず"
+  );
+  assert!(
+    format!("{}", reports[0]).contains("脚注 1"),
+    "どの脚注がはみ出したかがメッセージから分かるはず: {}",
+    reports[0]
+  );
+}
+
+#[test]
+#[allow(clippy::unwrap_used)]
+fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
+  // Arrange — ページ単位採番は本文パスを不動点まで反復する（同じ問題を毎パス報告しない）
+  let font_bytes = read_test_font();
+  let config = config_toml_with_style("/project/text.sei", "/project/style.toml", "");
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", config)
+    .with_text("/project/style.toml", overflowing_footnote_style_toml("per_page"))
+    .with_text("/project/text.sei", "本文\\footnote{はみ出す脚注}。")
+    .with_bytes("/project/font.ttf", font_bytes);
+  let root = ProjectPath::new("/project/config.toml");
+
+  // Act
+  let compilation = seiran_compiler::compile(&source, &root).expect("はみ出しは致命的ではないはず");
+
+  // Assert — 収束したパスの警告だけが残る
+  let codes: Vec<String> = compilation
+    .warnings
+    .reports()
+    .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
+    .collect();
+  assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
 }
 
 #[test]
