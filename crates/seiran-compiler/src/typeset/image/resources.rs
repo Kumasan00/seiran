@@ -6,42 +6,48 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
-use super::natural_size;
+use super::{ImageFormat, natural_size};
 use crate::{
   failures::Failures,
   length::Length,
   project::ProjectPath,
-  typeset::{
-    boxes::Block,
-    error::{TypesetBug, TypesetError},
-  },
+  typeset::{boxes::Block, error::TypesetError},
 };
+
+/// 描画へ渡す画像 1 件（判定済みの形式 + 生バイト列）。
+#[derive(Debug)]
+pub(crate) struct ImageAsset {
+  /// 拡張子から判定した画像形式
+  pub(crate) format: ImageFormat,
+  /// ファイルから読み込んだ生バイト列（未デコード）
+  pub(crate) bytes: Vec<u8>,
+}
 
 /// 画像パスごとの自然寸法と生バイト列（旧 `pdf_gen::ImageSet`）。
 #[derive(Debug)]
 pub(crate) struct ImageResources {
   /// パス → 自然寸法（ラスタは px、SVG は usvg が報告した width / height）。
   natural_sizes: HashMap<ProjectPath, (f32, f32)>,
-  /// パス → ファイルから読み込んだ生バイト列（未デコード）。
-  bytes: HashMap<ProjectPath, Vec<u8>>,
+  /// パス → 判定済みの形式と生バイト列（未デコード）。
+  assets: HashMap<ProjectPath, ImageAsset>,
 }
 
 impl ImageResources {
   /// `path` の自然寸法を返す。`load_image_resources` に渡さなかったパスは `None`。
   fn natural_size(&self, path: &ProjectPath) -> Option<(f32, f32)> { return self.natural_sizes.get(path).copied(); }
 
-  /// 保持していた画像の生バイト列を消費して返す。
+  /// 保持していた画像資源を消費して返す。
   ///
   /// `Publication` の描画資源の構築に使う。これを呼んだ後は自然寸法の参照はできない。
   #[must_use]
-  pub(crate) fn into_image_bytes(self) -> HashMap<ProjectPath, Vec<u8>> { return self.bytes; }
+  pub(crate) fn into_assets(self) -> HashMap<ProjectPath, ImageAsset> { return self.assets; }
 }
 
-/// 画像ファイルを読み込み、自然寸法と生バイト列を格納した [`ImageResources`] を返す。
+/// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] を返す。
 ///
 /// 画像ファイルを読む唯一の箇所。`source`（[`crate::project::ProjectSource`]）経由で読み込むため、
-/// 本体コードはここでも `std::fs` に直接触れない。ここで保持した生バイト列は
-/// [`ImageResources::into_image_bytes`] で取り出し、`Publication` の描画資源へ渡す。
+/// 本体コードはここでも `std::fs` に直接触れない。ここで保持した資源は
+/// [`ImageResources::into_assets`] で取り出し、`Publication` の描画資源へ渡す。
 ///
 /// 画像は互いに独立に読めるので、1 件目で打ち切らず全件を試して失敗を全件返す。`paths` は
 /// [`super::collect_image_paths`] が `BTreeSet<ProjectPath>` で作った正規化済みパスの昇順なので、
@@ -55,13 +61,13 @@ pub(crate) fn load_image_resources(
   paths: &[ProjectPath],
 ) -> Result<ImageResources, Failures<TypesetError>> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
-  let mut bytes_map = HashMap::with_capacity(paths.len());
+  let mut assets = HashMap::with_capacity(paths.len());
   let mut errors = Vec::new();
   for path in paths {
     match read_image(source, path) {
-      Ok((natural_size, file_bytes)) => {
+      Ok((natural_size, asset)) => {
         natural_sizes.insert(path.clone(), natural_size);
-        bytes_map.insert(path.clone(), file_bytes);
+        assets.insert(path.clone(), asset);
       },
       Err(error) => errors.push(error),
     }
@@ -72,31 +78,46 @@ pub(crate) fn load_image_resources(
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定しました");
   return Ok(ImageResources {
     natural_sizes,
-    bytes: bytes_map,
+    assets,
   });
 }
 
-/// 画像 1 件を読み込み、自然寸法と生バイト列を返す。
+/// 画像 1 件を読み込み、自然寸法と描画へ渡す資源を返す。
 #[allow(clippy::result_large_err)]
 fn read_image(
   source: &dyn crate::project::ProjectSource,
   path: &ProjectPath,
-) -> Result<((f32, f32), Vec<u8>), TypesetError> {
+) -> Result<((f32, f32), ImageAsset), TypesetError> {
+  let path_string = path.to_string();
   let file_bytes = source.read_bytes(path).map_err(|source| {
     return TypesetError::ReadImage {
-      path: path.to_string(),
+      path: path_string.clone(),
       source,
     };
   })?;
-  let natural_size = natural_size::natural_image_size(&path.to_string(), &file_bytes)?;
-  return Ok((natural_size, file_bytes.to_vec()));
+  let Some(format) = ImageFormat::from_path(&path_string) else {
+    return Err(TypesetError::UnsupportedImageFormat { path: path_string });
+  };
+  let natural_size = natural_size::natural_image_size(&path_string, format, &file_bytes)?;
+  return Ok((
+    natural_size,
+    ImageAsset {
+      format,
+      bytes: file_bytes.to_vec(),
+    },
+  ));
 }
 
 /// ブロック列中の画像サイズを自然寸法と本文幅から確定する。
 ///
 /// # Errors
 ///
-/// 自然寸法が不正な場合、または画像が `images` にない場合に [`TypesetError`] を返す。
+/// 自然寸法が不正で縦横比を算出できない場合に [`TypesetError`] を返す。
+///
+/// # Panics
+///
+/// `blocks` の画像が `images` に無い場合に落ちる — 両者は同じ HIR の `Figure` から作られるので、
+/// 食い違うのは収集ロジックの不具合だけ（ユーザー入力では起こせない）。
 #[allow(clippy::result_large_err)]
 pub(crate) fn resolve_images(
   blocks: Vec<Block>,
@@ -113,11 +134,11 @@ pub(crate) fn resolve_images(
         target_dpi,
         align,
       } => {
-        let (nat_width, nat_height) = images.natural_size(&path).ok_or_else(|| {
-          return TypesetError::Bug(TypesetBug::new(format!(
-            "ImageResources に存在しない画像パスです: {path}（ImageManifest の収集ロジックに不具合があります）"
-          )));
-        })?;
+        let Some((nat_width, nat_height)) = images.natural_size(&path) else {
+          unreachable!(
+            "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め load_image_resources が読み込む: {path}"
+          );
+        };
         let (final_width, final_height) =
           resolve_image_size(width.map(Length::to_pt), height.map(Length::to_pt), nat_width, nat_height, text_width)
             .ok_or_else(|| {
@@ -181,7 +202,10 @@ mod tests {
   use std::path::Path;
 
   use super::*;
-  use crate::project::{MemoryProjectSource, SourceReadError};
+  use crate::{
+    project::{MemoryProjectSource, SourceReadError},
+    typeset::boxes::Align,
+  };
 
   /// リポジトリ直下の `tests/image/` にある実 fixture を `CARGO_MANIFEST_DIR` 基準で読む。
   ///
@@ -210,10 +234,11 @@ mod tests {
       .expect("自然寸法が確定するはず");
     assert!((width - 756.0).abs() < 1e-4, "幅は fixture 実寸と一致するはず: width={width}");
     assert!((height - 1008.0).abs() < 1e-4, "高さは fixture 実寸と一致するはず: height={height}");
-    let bytes = resources.into_image_bytes();
-    assert_eq!(bytes.len(), 1);
+    let assets = resources.into_assets();
+    assert_eq!(assets.len(), 1);
+    assert_eq!(assets[&ProjectPath::new("/project/testimage5.png")].format, ImageFormat::Png);
     assert_eq!(
-      bytes[&ProjectPath::new("/project/testimage5.png")].len(),
+      assets[&ProjectPath::new("/project/testimage5.png")].bytes.len(),
       expected_len,
       "読み込んだバイト数は登録した fixture のバイト数と一致するはず"
     );
@@ -236,6 +261,24 @@ mod tests {
       panic!("ReadImage を期待");
     };
     assert!(matches!(source, SourceReadError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
+  }
+
+  #[test]
+  #[should_panic(expected = "描画対象の画像は collect_image_paths が同じ HIR の Figure から全件集め")]
+  fn resolve_images_panics_when_block_path_is_absent_from_resources() {
+    // Arrange — `collect_image_paths` が `Figure` を取りこぼしたのと同じ状態を、内部 helper へ
+    // 直接渡して作る（本来は同じ HIR 走査で作られるので外部入力では起こせない）
+    let resources = load_image_resources(&MemoryProjectSource::new(), &[]).expect("画像 0 件なら成功するはず");
+    let blocks = vec![Block::Image {
+      path: ProjectPath::new("/project/never-loaded.png"),
+      width: None,
+      height: None,
+      target_dpi: None,
+      align: Align::Left,
+    }];
+
+    // Act — 不変条件の破れなので診断ではなく panic する
+    let _ = resolve_images(blocks, 400.0, &resources);
   }
 
   #[test]

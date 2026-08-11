@@ -421,6 +421,6 @@ pub(crate) fn laid_out(pages: Vec<Page>, outline: Vec<(HeadingLevel, String)>) -
     pages,
     outline_entries: outline.into_iter().map(|(level, text)| return OutlineEntry { level, text }).collect(),
     image_paths: Vec::new(),
-    image_bytes: HashMap::new(),
+    images: HashMap::new(),
   };
 }

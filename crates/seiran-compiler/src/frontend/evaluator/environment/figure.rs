@@ -136,8 +136,30 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
   let mut downsample: Option<bool> = None;
   for (key, value) in opt_args {
     match (key.as_str(), value) {
-      ("width", OptValue::Length(l)) => width = Some(l),
-      ("height", OptValue::Length(l)) => height = Some(l),
+      // 0 と負値をここで弾く — 描画寸法が正であることは `Publication` の不変条件で、破れると
+      // 描画段の低水準エラー（krilla の `Size::from_wh`）になり、ソース位置を示せなくなる（#378）
+      ("width", OptValue::Length(l)) => {
+        if !l.is_positive() {
+          return Err(EvalError::InvalidOptArgValue {
+            name: "image".to_string(),
+            key: "width".to_string(),
+            expected: "positive length".to_string(),
+            span: view.span().to_source_span(),
+          });
+        }
+        width = Some(l);
+      },
+      ("height", OptValue::Length(l)) => {
+        if !l.is_positive() {
+          return Err(EvalError::InvalidOptArgValue {
+            name: "image".to_string(),
+            key: "height".to_string(),
+            expected: "positive length".to_string(),
+            span: view.span().to_source_span(),
+          });
+        }
+        height = Some(l);
+      },
       ("dpi", OptValue::Number(n)) => {
         if !(n.is_finite() && n > 0.0 && n <= f64::from(u32::MAX)) {
           return Err(EvalError::InvalidOptArgValue {
@@ -430,5 +452,33 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "dpi"));
+  }
+
+  #[test]
+  fn image_rejects_zero_width() {
+    // Arrange — 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く（#378）
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[width=0mm]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
+  }
+
+  #[test]
+  fn image_rejects_negative_height() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\begin{figure}\image[height=-5mm]{a.png}\end{figure}";
+    let cst = parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst);
+
+    // Assert
+    assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "height"));
   }
 }

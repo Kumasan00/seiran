@@ -14,18 +14,31 @@ use krilla::{
 };
 use krilla_svg::{SurfaceExt, SvgSettings};
 use seiran_compiler::{
-  Color, Destination as PubDestination, GlyphRun, PaintOp, Point as PubPoint, Publication, PublicationLink,
-  PublicationLinkTarget, PublicationOutlineEntry, PublicationResources, Rect as PubRect,
+  Color, Destination as PubDestination, GlyphRun, ImageFormat, ImageRef, PaintOp, Point as PubPoint, Publication,
+  PublicationLink, PublicationLinkTarget, PublicationOutlineEntry, PublicationResources, Rect as PubRect,
 };
 
 use crate::{
-  error::PdfGenError,
+  error::PdfRenderError,
   font::{KrillaFonts, convert_to_krilla_glyphs},
   image::{LoadedImage, load_image, required_pixels},
 };
 
 /// Publication の点を Krilla の点へ渡す（すでに pt 単位の `f32` なので変換不要）。
 fn to_krilla_point(point: PubPoint) -> Point { return Point::from_xy(point.x, point.y); }
+
+/// `Publication` の矩形を krilla の矩形へ渡す。
+///
+/// # Panics
+///
+/// `seiran_compiler::Rect` は幅・高さが非負の有限値であることを構築時に保証しており、これは
+/// krilla の `Rect::from_xywh`（`left <= right` / `top <= bottom` / 有限）の受け入れ条件そのもの。
+fn to_krilla_rect(rect: PubRect) -> Rect {
+  let Some(converted) = Rect::from_xywh(rect.x(), rect.y(), rect.width(), rect.height()) else {
+    unreachable!("Publication の矩形は幅・高さが非負の有限値であることを Rect::new が保証する: {rect:?}");
+  };
+  return converted;
+}
 
 /// `Publication` の到達先を krilla の `XyzDestination` へ変換する
 fn to_xyz_destination(dest: PubDestination) -> XyzDestination {
@@ -90,17 +103,14 @@ fn insert_outline_node(siblings: &mut Vec<OutlineTreeNode>, depth: u8, text: Str
 }
 
 /// ページにリンク注釈を付与する。
-fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) -> Result<(), PdfGenError> {
+fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) {
   for link in links {
     let target = match &link.target {
       PublicationLinkTarget::Internal(dest) => Target::Destination(Destination::from(to_xyz_destination(*dest))),
       PublicationLinkTarget::External(uri) => Target::Action(Action::Link(LinkAction::new(uri.clone()))),
     };
-    let rect = Rect::from_xywh(link.rect.x, link.rect.y, link.rect.width, link.rect.height)
-      .ok_or(PdfGenError::InvalidLinkRect)?;
-    page.add_annotation(Annotation::new_link(LinkAnnotation::new(rect, target), None));
+    page.add_annotation(Annotation::new_link(LinkAnnotation::new(to_krilla_rect(link.rect), target), None));
   }
-  return Ok(());
 }
 
 /// `PaintOp::DrawGlyphRun` を描画する
@@ -134,21 +144,17 @@ fn draw_glyph_run(
 fn draw_publication_image(
   surface: &mut Surface<'_>,
   resources: &PublicationResources,
-  path: &str,
+  image: ImageRef,
   rect: PubRect,
   target_dpi: Option<u32>,
-) -> Result<(), PdfGenError> {
-  let bytes = resources.image_bytes(path).ok_or_else(|| {
-    return PdfGenError::ImageNotInManifest {
-      path: path.to_string(),
-    };
-  })?;
-  return draw_image(surface, path, bytes, rect, target_dpi);
+) -> Result<(), PdfRenderError> {
+  let image = resources.image(image);
+  return draw_image(surface, &image.path, image.format, &image.bytes, rect, target_dpi);
 }
 
 /// `PaintOp::FillRect` を描画する
-fn draw_publication_fill(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) -> Result<(), PdfGenError> {
-  return draw_filled_rect(surface, rect.x, rect.y, rect.width, rect.height, color);
+fn draw_publication_fill(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) {
+  draw_filled_rect(surface, rect, color);
 }
 
 /// `PaintOp` 1 個を描画する
@@ -157,20 +163,20 @@ fn draw_paint_op(
   resources: &PublicationResources,
   fonts: &KrillaFonts,
   op: &PaintOp,
-) -> Result<(), PdfGenError> {
+) -> Result<(), PdfRenderError> {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
       draw_glyph_run(surface, resources, fonts, *origin, run);
     },
     PaintOp::DrawImage {
-      path,
+      image,
       rect,
       target_dpi,
     } => {
-      draw_publication_image(surface, resources, path.as_str(), *rect, *target_dpi)?;
+      draw_publication_image(surface, resources, *image, *rect, *target_dpi)?;
     },
     PaintOp::FillRect { rect, color } => {
-      draw_publication_fill(surface, *rect, *color)?;
+      draw_publication_fill(surface, *rect, *color);
     },
   }
   return Ok(());
@@ -184,22 +190,23 @@ pub(crate) fn render_pages(
   document: &mut Document,
   publication: &Publication,
   fonts: &KrillaFonts,
-) -> Result<(), PdfGenError> {
-  let resources = &publication.resources;
-  for page in &publication.pages {
-    let width = page.page_box.width;
-    let height = page.page_box.height;
-    let page_settings = PageSettings::from_wh(width, height).ok_or(PdfGenError::InvalidPageSize { width, height })?;
+) -> Result<(), PdfRenderError> {
+  let resources = publication.resources();
+  for page in publication.pages() {
+    let (width, height) = (page.page_box().width(), page.page_box().height());
+    let Some(page_settings) = PageSettings::from_wh(width, height) else {
+      unreachable!("ページ矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");
+    };
     let mut krilla_page = document.start_page_with(page_settings);
     let mut surface = krilla_page.surface();
-    for op in &page.ops {
+    for op in page.ops() {
       draw_paint_op(&mut surface, resources, fonts, op)?;
     }
     surface.finish();
-    add_page_links(&mut krilla_page, &page.links)?;
+    add_page_links(&mut krilla_page, page.links());
     krilla_page.finish();
   }
-  if let Some(entries) = &publication.outline
+  if let Some(entries) = publication.outline()
     && let Some(outline) = build_outline_from_entries(entries)
   {
     document.set_outline(outline);
@@ -213,12 +220,13 @@ pub(crate) fn render_pages(
 fn draw_image(
   surface: &mut Surface<'_>,
   path: &str,
+  format: ImageFormat,
   bytes: &[u8],
   rect: PubRect,
   target_dpi: Option<u32>,
-) -> Result<(), PdfGenError> {
-  let (x, y, width, height) = (rect.x, rect.y, rect.width, rect.height);
-  let loaded = load_image(path, bytes, None)?;
+) -> Result<(), PdfRenderError> {
+  let (x, y, width, height) = (rect.x(), rect.y(), rect.width(), rect.height());
+  let loaded = load_image(path, format, bytes, None)?;
   let (nat_width, nat_height) = loaded.natural_size();
   let loaded = if matches!(loaded, LoadedImage::Raster(_))
     && let Some(dpi) = target_dpi
@@ -227,11 +235,13 @@ fn draw_image(
   {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
-    load_image(path, bytes, Some(target_u))?
+    load_image(path, format, bytes, Some(target_u))?
   } else {
     loaded
   };
-  let size = Size::from_wh(width, height).ok_or(PdfGenError::InvalidImageSize { width, height })?;
+  let Some(size) = Size::from_wh(width, height) else {
+    unreachable!("画像の描画矩形の幅・高さが正であることは PublicationPage::new が保証する: {width} x {height}");
+  };
   surface.push_transform(&Transform::from_translate(x, y));
   match loaded {
     LoadedImage::Raster(image) => {
@@ -239,7 +249,7 @@ fn draw_image(
     },
     LoadedImage::Svg(tree) => {
       surface.draw_svg(tree.as_ref(), size, SvgSettings::default()).ok_or_else(|| {
-        return PdfGenError::DrawSvg {
+        return PdfRenderError::DrawSvg {
           path: path.to_string(),
         };
       })?;
@@ -250,18 +260,18 @@ fn draw_image(
 }
 
 /// 塗りつぶし矩形を描画する。
-fn draw_filled_rect(
-  surface: &mut Surface<'_>,
-  left: f32,
-  top: f32,
-  width: f32,
-  height: f32,
-  color: Option<[u8; 3]>,
-) -> Result<(), PdfGenError> {
-  let rect = Rect::from_xywh(left, top, width, height).ok_or(PdfGenError::InvalidRuleRect)?;
+///
+/// # Panics
+///
+/// 矩形が krilla の受け入れ条件（幅・高さが非負の有限値）を満たすことは
+/// `seiran_compiler::Rect` のコンストラクタが保証しており、その矩形 1 個から作るパスも
+/// 必ず構築できる（空でも move だけでもなく、点はすべて有限）。
+fn draw_filled_rect(surface: &mut Surface<'_>, rect: PubRect, color: Option<[u8; 3]>) {
   let mut path_builder = PathBuilder::new();
-  path_builder.push_rect(rect);
-  let path = path_builder.finish().ok_or(PdfGenError::InvalidRulePath)?;
+  path_builder.push_rect(to_krilla_rect(rect));
+  let Some(path) = path_builder.finish() else {
+    unreachable!("有効な矩形 1 個を push_rect した PathBuilder は必ずパスを返す: {rect:?}");
+  };
   if let Some(color) = color {
     let [r, g, b] = color;
     surface.set_fill(Some(Fill {
@@ -273,7 +283,6 @@ fn draw_filled_rect(
   } else {
     surface.draw_path(&path);
   }
-  return Ok(());
 }
 
 #[cfg(test)]

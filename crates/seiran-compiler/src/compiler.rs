@@ -34,9 +34,9 @@ pub use warnings::Warnings;
 use crate::{project::config::ProjectConfig, semantics::References, style::Style, typeset::LaidOutDocument};
 use crate::{
   project::{FontData, FontMap, SourceSet},
-  publication::{Publication, PublicationFont, PublicationResources},
+  publication::{Publication, PublicationFont, PublicationImage, PublicationResources},
   semantics::AnalyzeError,
-  typeset::{FontResources, FontWarning},
+  typeset::{FontResources, FontWarning, ImageAsset},
 };
 
 /// コンパイル結果の統計情報。
@@ -113,8 +113,8 @@ fn compile_with_base_dir<S: crate::project::ProjectSource>(
   let mut laid_out =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
       .map_err(CompileFailure::from)?;
-  let image_bytes = std::mem::take(&mut laid_out.image_bytes);
-  let resources = build_resources(inputs.font_data(), &font_resources, image_bytes);
+  let images = std::mem::take(&mut laid_out.images);
+  let resources = build_resources(inputs.font_data(), &font_resources, images);
   let publication = publication::build_publication(inputs.config(), resources, &laid_out);
   let dependencies = DependencyManifest::collect(root.as_path(), &inputs, &laid_out.image_paths);
   let statistics = BuildStatistics {
@@ -168,14 +168,17 @@ fn parse_project(inputs: &CompilationInputs) -> Result<crate::document::HirDocum
   return Ok(document);
 }
 
-/// 読み込み済みフォント資源と画像バイト列から `Publication` の描画資源を組み立てる。
+/// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
 ///
 /// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
 /// バイト列は `Arc` 共有なので複製しない。krilla フォントの構築は render（`seiran-pdf`）の責務。
+///
+/// 画像はパス昇順に並べてから渡す — `ImageRef` は配列添字なので、`HashMap` の反復順のままだと
+/// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
 fn build_resources(
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-  image_bytes: HashMap<crate::project::ProjectPath, Vec<u8>>,
+  images: HashMap<crate::project::ProjectPath, ImageAsset>,
 ) -> PublicationResources {
   let face_configs = font_resources.face_configs();
   let metrics = font_resources.metrics();
@@ -186,9 +189,19 @@ fn build_resources(
       metric: *metrics.get(font_type),
     };
   }));
-  let image_bytes: HashMap<String, Vec<u8>> =
-    image_bytes.into_iter().map(|(path, bytes)| return (path.to_string(), bytes)).collect();
-  return PublicationResources::new(fonts, image_bytes);
+  let mut sorted: Vec<(crate::project::ProjectPath, ImageAsset)> = images.into_iter().collect();
+  sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
+  let images = sorted
+    .into_iter()
+    .map(|(path, asset)| {
+      return PublicationImage {
+        path: path.to_string(),
+        format: asset.format,
+        bytes: asset.bytes,
+      };
+    })
+    .collect();
+  return PublicationResources::new(fonts, images);
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。

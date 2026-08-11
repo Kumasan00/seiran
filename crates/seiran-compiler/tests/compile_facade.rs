@@ -33,7 +33,7 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
 
   // Assert — Publication と統計が確定し、警告の出る設定ではないので warnings は空
   assert!(compilation.statistics.page_count >= 1, "本文が 1 ページ以上生成されるはず");
-  assert_eq!(compilation.publication.pages.len(), compilation.statistics.page_count);
+  assert_eq!(compilation.publication.pages().len(), compilation.statistics.page_count);
   assert!(compilation.warnings.is_empty(), "警告の出る設定ではないので空のはず");
   assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
   assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));

@@ -1,4 +1,15 @@
-//! PDF 生成時のエラーを定義する。
+//! PDF 描画時のエラーを定義する。
+//!
+//! ここにあるのは「有効な [`Publication`](seiran_compiler::Publication) を渡されたうえで、なお
+//! backend が失敗しうるもの」だけ（#378）。3 系統に限る:
+//!
+//! 1. 有効な `Publication` を backend の表現へ変換できない（krilla フォントの構築）
+//! 2. 画像デコーダ / SVG renderer が入力を処理できない
+//! 3. krilla が文書を最終化できない
+//!
+//! 描画命令の値そのものが壊れている（ページサイズが 0、矩形の幅が負、資源に無い画像を指す等）
+//! ケースは含まない — `Publication` のコンストラクタが構築時に弾いており、renderer 側では
+//! `unreachable!` で顕在化させる。
 
 use krilla::error::KrillaError;
 use miette::Diagnostic;
@@ -6,31 +17,14 @@ use read_fonts::ReadError;
 use seiran_compiler::FontType;
 use thiserror::Error;
 
-/// PDF 生成中に発生するエラー。
+/// PDF 描画中に発生するエラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum PdfGenError {
-  /// バリアブルフォントに必要な軸設定が不足しています。
-  #[error("バリアブルフォント {font_type:?} に variation_axes が指定されていません")]
-  #[diagnostic(code(pdf::missing_variation_axes), help("設定ファイルに variation_axes を追加してください。"))]
-  MissingVariationAxes {
-    /// フォント種別。
-    font_type: FontType,
-  },
-  /// フォントの生成に失敗しました。
-  #[error("Krilla 用フォントの生成に失敗しました: {font_type:?}")]
-  #[diagnostic(
-    code(pdf::font_creation),
-    help("font_index や variation_axes の設定、または入力フォントの妥当性を確認してください。")
-  )]
-  FontCreation {
-    /// フォント種別。
-    font_type: FontType,
-  },
-  /// フォントバイト列の解析に失敗しました（呼び出し元がすでに検証済みのはずの内部エラー）。
+pub enum PdfRenderError {
+  /// フォントバイト列を krilla へ渡す前の解析に失敗しました。
   #[error("フォントバイト列の解析に失敗しました: {font_type:?}")]
   #[diagnostic(
     code(pdf::font_parse),
-    help("フォントファイルが破損していないか、font_index が正しいか確認してください。")
+    help("描画バックエンドがフォントを解釈できませんでした。別のフォントファイルで出力できるか確認してください。")
   )]
   FontParse {
     /// フォント種別。
@@ -43,7 +37,7 @@ pub enum PdfGenError {
   #[error("バリアブルフォントの補助テーブルを読み込めませんでした: {font_type:?}")]
   #[diagnostic(
     code(pdf::variation_table_read),
-    help("入力フォントが壊れていないか、font_index が正しいかを確認してください。")
+    help("描画バックエンドが 'fvar' テーブルを読めませんでした。別のフォントファイルで出力できるか確認してください。")
   )]
   VariationTableRead {
     /// フォント種別。
@@ -52,61 +46,22 @@ pub enum PdfGenError {
     #[source]
     source: ReadError,
   },
-  /// ページ設定を生成できませんでした。
-  #[error("ページ設定を生成できませんでした: width={width}, height={height}")]
-  #[diagnostic(code(pdf::invalid_page_size), help("width と height が正の有限値であることを確認してください。"))]
-  InvalidPageSize {
-    /// ページ幅。
-    width: f32,
-    /// ページ高さ。
-    height: f32,
-  },
-  /// 罫線用の矩形を生成できませんでした。
-  #[error("罫線の矩形を生成できませんでした")]
+  /// krilla フォントの生成に失敗しました。
+  #[error("Krilla 用フォントの生成に失敗しました: {font_type:?}")]
   #[diagnostic(
-    code(pdf::invalid_rule_rect),
-    help("レイアウトから渡された width と height が正の値であることを確認してください。")
+    code(pdf::font_creation),
+    help(
+      "描画バックエンドがこのフォントを PDF へ埋め込めませんでした。別のフォントファイルで出力できるか確認してください。"
+    )
   )]
-  InvalidRuleRect,
-  /// 罫線用のパスを生成できませんでした。
-  #[error("罫線のパスを生成できませんでした")]
-  #[diagnostic(code(pdf::invalid_rule_path), help("罫線の矩形が正しく構築されているか確認してください。"))]
-  InvalidRulePath,
-  /// リンク注釈用の矩形を生成できませんでした。
-  #[error("リンク注釈の矩形を生成できませんでした")]
-  #[diagnostic(
-    code(pdf::invalid_link_rect),
-    help("リンク領域の x / y / width / height が正の有限値であることを確認してください。")
-  )]
-  InvalidLinkRect,
-  /// PDF の最終化に失敗しました。
-  #[error("PDF の最終化に失敗しました: {source}")]
-  #[diagnostic(
-    code(pdf::finalize_document),
-    help("Krilla 側の内部エラーが発生しています。入力データを見直してください。")
-  )]
-  FinalizeDocument {
-    /// 元の生成エラー。
-    #[source]
-    source: KrillaError,
-  },
-  /// 画像ファイルの形式が未対応です。
-  ///
-  /// 通常は組版段（`seiran_compiler` の `typeset::image`）が同じ判定を先に通すため、ここまで
-  /// 到達するのは両者の判定が食い違ったときだけ（`Publication` は `compile` しか作れない）。
-  #[error("画像ファイルの拡張子が未対応です: {path}")]
-  #[diagnostic(
-    code(pdf::unsupported_image_format),
-    help("対応形式は PNG (.png), JPEG (.jpg / .jpeg), SVG (.svg) です。")
-  )]
-  UnsupportedImageFormat {
-    /// 画像ファイルのパス。
-    path: String,
+  FontCreation {
+    /// フォント種別。
+    font_type: FontType,
   },
   /// SVG のパースに失敗しました。
   ///
-  /// [`PdfGenError::UnsupportedImageFormat`] と同様、組版段が同じ `usvg` の同じ版で先にパースを
-  /// 通しているため、ここまで到達するのは両者が食い違ったときだけ。
+  /// 組版段（`seiran_compiler` の `typeset::image`）は同じ `usvg` で自然寸法を取るだけなので、
+  /// 描画用のパースがここで別に失敗しうる。
   #[error("SVG のパースに失敗しました: {path}")]
   #[diagnostic(code(pdf::parse_svg), help("SVG ファイルが妥当な XML / SVG であることを確認してください。"))]
   ParseSvg {
@@ -127,6 +82,8 @@ pub enum PdfGenError {
     path: String,
   },
   /// 画像のデコードに失敗しました。
+  ///
+  /// 組版段は寸法ヘッダしか読まないため、ヘッダは妥当でも本体が壊れた画像はここで初めて分かる。
   #[error("画像のデコードに失敗しました: {path} ({reason})")]
   #[diagnostic(code(pdf::decode_image), help("画像ファイルが破損していないか確認してください。"))]
   DecodeImage {
@@ -134,15 +91,6 @@ pub enum PdfGenError {
     path: String,
     /// krilla が返したメッセージ。
     reason: String,
-  },
-  /// 画像の描画サイズが不正です。
-  #[error("画像の描画サイズが不正です: width={width}, height={height}")]
-  #[diagnostic(code(pdf::invalid_image_size), help("width と height が正の有限値であることを確認してください。"))]
-  InvalidImageSize {
-    /// 描画幅。
-    width: f32,
-    /// 描画高さ。
-    height: f32,
   },
   /// ラスタ画像のダウンサンプリング時の処理（デコード / リサイズ / 再エンコード）に失敗しました。
   #[error("画像のリサイズに失敗しました: {path}")]
@@ -157,14 +105,12 @@ pub enum PdfGenError {
     #[source]
     source: image::ImageError,
   },
-  /// `draw_publication_image` が `PublicationResources` の画像に無いパスを参照しました。
-  #[error("リソースに存在しない画像パスです（内部エラー）: {path}")]
-  #[diagnostic(
-    code(pdf::image_not_in_manifest),
-    help("seiran 側の ImageManifest 収集ロジックに不具合があります。issue を報告してください。")
-  )]
-  ImageNotInManifest {
-    /// 画像ファイルのパス。
-    path: String,
+  /// PDF の最終化に失敗しました。
+  #[error("PDF の最終化に失敗しました: {source}")]
+  #[diagnostic(code(pdf::finalize_document), help("Krilla が PDF を書き出せませんでした。"))]
+  FinalizeDocument {
+    /// 元の生成エラー。
+    #[source]
+    source: KrillaError,
   },
 }

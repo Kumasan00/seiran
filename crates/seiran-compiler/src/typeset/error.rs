@@ -1,34 +1,13 @@
 //! 組版パスのエラー型 [`TypesetError`]
 //!
 //! 画像資源の読込・デコード・寸法確定で起きる失敗を持つ（#350 で `compiler::error` から移設）。
-//! 画像デコードの失敗は #372 で `seiran_pdf::PdfGenError` の入れ子から自前のバリアントへ移した
+//! 画像デコードの失敗は #372 で描画段のエラー（現 `seiran_pdf::PdfRenderError`）の入れ子から自前のバリアントへ移した
 //! （デコードが typeset 段で起きるため、`code` の段も `typeset` に揃う）。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::project::{ProjectPath, SourceReadError};
-
-/// 組版の不変条件違反（ユーザー入力に起因しない内部バグ）。
-///
-/// [`TypesetError`] の他バリアントが表す「設定・入力の誤り」とは型を分け、
-/// 呼び出し元が両者を混同して同じ助言文で案内しないようにする。
-#[derive(Debug, Error, Diagnostic)]
-#[error("内部エラー: {message}")]
-#[diagnostic(code(typeset::internal_bug), help("再現手順とともに issue を報告してください。"))]
-pub(crate) struct TypesetBug {
-  /// エラーメッセージ
-  message: String,
-}
-
-impl TypesetBug {
-  /// 新しい `TypesetBug` を構築する
-  pub(super) fn new(message: impl Into<String>) -> Self {
-    return TypesetBug {
-      message: message.into(),
-    };
-  }
-}
 
 /// 組版パス（画像資源の解決を含む）で起きるエラー型。
 #[derive(Debug, Error, Diagnostic)]
@@ -118,9 +97,4 @@ pub(crate) enum TypesetError {
     /// 自然高さ（ラスタはピクセル、SVG は pt）。
     height: f32,
   },
-
-  /// 組版の不変条件違反（ユーザー向け診断とは別の型・経路）
-  #[error(transparent)]
-  #[diagnostic(transparent)]
-  Bug(#[from] TypesetBug),
 }

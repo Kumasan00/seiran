@@ -48,7 +48,7 @@ pub use project::{
 // `Publication` の非公開フィールドの型としてしか現れないので載せない
 // （renderer が「確定座標の描画のみ」でいられる防火壁は、この公開範囲の狭さが担っている）。
 pub use publication::{
-  Destination, PaintOp, Point, Publication, PublicationFont, PublicationLink, PublicationLinkTarget,
-  PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
+  Destination, ImageRef, PaintOp, Point, Publication, PublicationFont, PublicationImage, PublicationLink,
+  PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
 };
-pub use typeset::{FontFaceConfig, FontMetric, Glyph, GlyphRun, VariationAxisConfig};
+pub use typeset::{FontFaceConfig, FontMetric, Glyph, GlyphRun, ImageFormat, VariationAxisConfig};
