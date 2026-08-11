@@ -33,7 +33,7 @@ pub(super) fn build_publication(
 
   let mut publication_pages = Vec::with_capacity(laid_out.pages.len());
   for page in &laid_out.pages {
-    publication_pages.push(build_page(config, page, margin_left, &dest_by_id));
+    publication_pages.push(build_page(config, page, margin_left, &dest_by_id, &resources));
   }
 
   let outline = if config.pdf.show_bookmarks {
@@ -66,12 +66,10 @@ pub(super) fn build_publication(
     keywords: config.document.keywords.clone(),
   };
 
-  return Publication {
-    pages: publication_pages,
-    outline,
-    metadata,
-    resources,
+  let Some(publication) = Publication::new(publication_pages, outline, metadata, resources) else {
+    unreachable!("内部リンクとしおりの到達先は build_destination_index が実ページの anchor から作る");
   };
+  return publication;
 }
 
 /// 1 ページぶんの `PublicationPage` を構築する
@@ -80,13 +78,9 @@ fn build_page(
   page: &Page,
   margin_left: crate::length::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
+  resources: &PublicationResources,
 ) -> PublicationPage {
-  let page_box = Rect {
-    x: 0.0,
-    y: 0.0,
-    width: config.pdf.width.to_pt(),
-    height: config.pdf.height.to_pt(),
-  };
+  let page_box = rect(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt());
 
   let mut ops = Vec::new();
   if let Some(color) = page.background_color {
@@ -103,7 +97,7 @@ fn build_page(
     .chain(&page.footer)
     .chain(page.footnotes.iter().flat_map(|f| return &f.blocks))
   {
-    push_placed_block_ops(&mut ops, margin_left_pt, block);
+    push_placed_block_ops(&mut ops, margin_left_pt, block, resources);
   }
 
   let mut links = Vec::new();
@@ -119,20 +113,33 @@ fn build_page(
     };
     links.push(PublicationLink {
       target,
-      rect: Rect {
-        x: add_margin_left(margin_left, link.x),
-        y: link.y.to_pt(),
-        width: link.width.to_pt(),
-        height: link.height.to_pt(),
-      },
+      rect: rect(add_margin_left(margin_left, link.x), link.y.to_pt(), link.width.to_pt(), link.height.to_pt()),
     });
   }
 
-  return PublicationPage {
-    page_box,
-    ops,
-    links,
+  let Some(publication_page) = PublicationPage::new(page_box, ops, links) else {
+    unreachable!(
+      "ページ矩形は config.pdf.width / height（garde の positive）、画像の描画矩形は \\image の \
+       width / height（frontend の正値検査）と自然寸法からの推論が正を保証する"
+    );
   };
+  return publication_page;
+}
+
+/// 検証済みの [`Rect`] を作る。
+///
+/// [`Rect::new`] が `None` を返すのは幅・高さが負か座標が非有限のときだけで、`Publication` へ載る
+/// 値ではどちらも起こらない — `Length` は sp の `i64` なので非有限を表現できず、幅・高さは
+/// style.toml 側の garde（`non_negative`）・`typeset::geometry::validate_layout`（段幅は正）・
+/// 罫線生成時の `is_positive()` ゲート・リンク収集時の `x1 <= x0` スキップが非負を保証している。
+fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
+  let Some(rect) = Rect::new(x, y, width, height) else {
+    unreachable!(
+      "描画矩形の幅・高さは style の garde（non_negative）・validate_layout・罫線の is_positive ゲート・\
+       リンクの x1 <= x0 スキップが非負を保証する: x={x} y={y} width={width} height={height}"
+    );
+  };
+  return rect;
 }
 
 /// 全ページのアンカーからリンク索引と文書順の見出し到達先を構築する。
@@ -189,7 +196,12 @@ fn add_margin_left(margin_left: crate::length::Length, x: crate::length::Length)
 /// 配置済みブロックの描画命令を追加する。
 ///
 /// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
-fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &PlacedBlock) {
+fn push_placed_block_ops(
+  ops: &mut Vec<PaintOp>,
+  margin_left: f32,
+  block: &PlacedBlock,
+  resources: &PublicationResources,
+) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
       for positioned in &line.boxes {
@@ -225,14 +237,15 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
       height,
       target_dpi,
     } => {
+      let path = path.to_string();
+      let Some(image) = resources.image_ref(&path) else {
+        unreachable!(
+          "描画対象の画像は typeset::image::collect_image_paths が全件集め PublicationResources へ載せる: {path}"
+        );
+      };
       ops.push(PaintOp::DrawImage {
-        path: path.to_string(),
-        rect: Rect {
-          x: margin_left + x.to_pt(),
-          y: y.to_pt(),
-          width: width.to_pt(),
-          height: height.to_pt(),
-        },
+        image,
+        rect: rect(margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
         target_dpi: *target_dpi,
       });
     },
@@ -244,12 +257,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, margin_left: f32, block: &Place
       color,
     } => {
       ops.push(PaintOp::FillRect {
-        rect: Rect {
-          x: margin_left + x.to_pt(),
-          y: y.to_pt(),
-          width: width.to_pt(),
-          height: height.to_pt(),
-        },
+        rect: rect(margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
         color: *color,
       });
     },
@@ -267,12 +275,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
     },
     HBoxContent::Rule { width, height } => {
       ops.push(PaintOp::FillRect {
-        rect: Rect {
-          x,
-          y: baseline_y - height.to_pt(),
-          width: width.to_pt(),
-          height: height.to_pt(),
-        },
+        rect: rect(x, baseline_y - height.to_pt(), width.to_pt(), height.to_pt()),
         color: None,
       });
     },
@@ -288,12 +291,7 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, margin_left: f32) {
   if let Some(rule) = placed_row.rule {
     ops.push(PaintOp::FillRect {
-      rect: Rect {
-        x: margin_left + rule.x.to_pt(),
-        y: rule.y.to_pt(),
-        width: rule.width.to_pt(),
-        height: rule.height.to_pt(),
-      },
+      rect: rect(margin_left + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
       color: rule.color,
     });
   }
@@ -310,20 +308,23 @@ fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, margi
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-  use std::{collections::HashMap, path::PathBuf, sync::Arc};
+  use std::path::PathBuf;
 
   use super::build_publication;
   use crate::{
     document::HeadingLevel,
     length::Length,
     project::{
-      FontConfig, FontConfigs, FontMap, FontType, ProjectPath,
+      FontConfig, FontConfigs, FontType, ProjectPath,
       config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
     },
-    publication::{PaintOp, Point, Publication, PublicationFont, PublicationLinkTarget, PublicationResources, Rect},
+    publication::{
+      PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
+      test_fixtures::resources,
+    },
     semantics::{HeadingKey, LabelId},
     typeset::{
-      AnchorId, FontFaceConfig, FontMetric, Page,
+      AnchorId, ImageFormat, Page,
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
         rule_block, rule_line, table_block,
@@ -382,24 +383,22 @@ mod tests {
     };
   }
 
-  /// テスト用の描画資源を返す（画像なし・バイト列は空）。
+  /// テスト用の描画資源を返す（指定パスの画像だけを 1 バイトずつ持つ）。
   ///
-  /// `build_publication` は resources を素通しするだけで中身を読まないため、実フォントは要らない。
-  fn test_resources() -> PublicationResources {
-    let font = PublicationFont {
-      bytes: Arc::new(Vec::new()),
-      face: FontFaceConfig {
-        font_index: 0,
-        variation_axes: None,
-      },
-      metric: FontMetric {
-        upem: 1000.0,
-        ascender: 800.0,
-        descender: -200.0,
-      },
-    };
-    let fonts = FontMap::from_all(FontType::ALL.iter().map(|_| return font.clone()));
-    return PublicationResources::new(fonts, HashMap::new());
+  /// `build_publication` はフォントを素通しするだけで中身を読まないため、実フォントは要らない。
+  /// 画像だけは `ImageRef` の発行元になるので、描画命令が参照するパスを登録しておく。
+  fn test_resources(image_paths: &[&str]) -> PublicationResources {
+    let images = image_paths
+      .iter()
+      .map(|path| {
+        return PublicationImage {
+          path: (*path).to_string(),
+          format: ImageFormat::Png,
+          bytes: vec![0],
+        };
+      })
+      .collect();
+    return resources(images);
   }
 
   /// 何も置かれていないページを返す。
@@ -407,7 +406,17 @@ mod tests {
 
   /// 確定レイアウトを `Publication` へ写す（`outline` は `(見出しレベル, 表示テキスト)` の並び）。
   fn build(config: &ProjectConfig, pages: Vec<Page>, outline: Vec<(HeadingLevel, String)>) -> Publication {
-    return build_publication(config, test_resources(), &laid_out(pages, outline));
+    return build_with_images(config, pages, outline, &[]);
+  }
+
+  /// 画像資源を指定して確定レイアウトを `Publication` へ写す。
+  fn build_with_images(
+    config: &ProjectConfig,
+    pages: Vec<Page>,
+    outline: Vec<(HeadingLevel, String)>,
+    image_paths: &[&str],
+  ) -> Publication {
+    return build_publication(config, test_resources(image_paths), &laid_out(pages, outline));
   }
 
   #[test]
@@ -424,8 +433,8 @@ mod tests {
 
     // Assert
     let margin_left = config.pdf.margin.left.to_pt();
-    assert_eq!(publication.pages.len(), 1, "ページは 1 枚");
-    let ops = &publication.pages[0].ops;
+    assert_eq!(publication.pages().len(), 1, "ページは 1 枚");
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 1, "背景なし・ブロック 1 個のみなので op は 1 個");
     assert_eq!(
       ops[0],
@@ -452,17 +461,12 @@ mod tests {
 
     // Assert
     let margin_left = config.pdf.margin.left.to_pt();
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 1);
     assert_eq!(
       ops[0],
       PaintOp::FillRect {
-        rect: Rect {
-          x: margin_left,
-          y: 49.0,
-          width: 30.0,
-          height: 1.0
-        },
+        rect: Rect::new(margin_left, 49.0, 30.0, 1.0).unwrap(),
         color: None,
       }
     );
@@ -487,7 +491,7 @@ mod tests {
 
     // Assert
     let margin_left = config.pdf.margin.left.to_pt();
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
@@ -524,17 +528,12 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2, "背景 1 個 + 本文 Rule 1 個");
     assert_eq!(
       ops[0],
       PaintOp::FillRect {
-        rect: Rect {
-          x: 0.0,
-          y: 0.0,
-          width: config.pdf.width.to_pt(),
-          height: config.pdf.height.to_pt()
-        },
+        rect: Rect::new(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt()).unwrap(),
         color: Some([200, 200, 200]),
       }
     );
@@ -550,7 +549,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert!(publication.pages[0].ops.is_empty(), "背景なし・本文なしなら op は 0 個");
+    assert!(publication.pages()[0].ops().is_empty(), "背景なし・本文なしなら op は 0 個");
   }
 
   #[test]
@@ -569,20 +568,16 @@ mod tests {
       .build();
 
     // Act
-    let publication = build(&config, vec![page], vec![]);
+    let publication = build_with_images(&config, vec![page], vec![], &["figures/a.png"]);
 
     // Assert
     let margin_left = config.pdf.margin.left.to_pt();
+    let image = publication.resources().image_ref("figures/a.png").expect("登録した画像は参照を得られるはず");
     assert_eq!(
-      publication.pages[0].ops[0],
+      publication.pages()[0].ops()[0],
       PaintOp::DrawImage {
-        path: "figures/a.png".to_string(),
-        rect: Rect {
-          x: margin_left + 10.0,
-          y: 20.0,
-          width: 100.0,
-          height: 50.0
-        },
+        image,
+        rect: Rect::new(margin_left + 10.0, 20.0, 100.0, 50.0).unwrap(),
         target_dpi: Some(300),
       }
     );
@@ -608,7 +603,7 @@ mod tests {
 
     // Assert
     let margin_left = config.pdf.margin.left.to_pt();
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
@@ -658,7 +653,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2, "罫線 1 個 + セル内容 1 個");
     assert!(matches!(ops[0], PaintOp::FillRect { .. }), "先頭は rule_above の罫線");
     assert!(matches!(ops[1], PaintOp::DrawGlyphRun { .. }), "2 番目はセル内容");
@@ -682,14 +677,14 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let ops = &publication.pages[0].ops;
+    let ops = &publication.pages()[0].ops();
     let ys: Vec<f32> = ops
       .iter()
       .map(|op| {
         let PaintOp::FillRect { rect, .. } = op else {
           panic!("Rule は FillRect になるはず")
         };
-        return rect.y;
+        return rect.y();
       })
       .collect();
     assert_eq!(ys, vec![1.0, 2.0, 3.0, 4.0]);
@@ -707,9 +702,9 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert_eq!(publication.pages[0].links.len(), 1);
+    assert_eq!(publication.pages()[0].links().len(), 1);
     assert!(
-      matches!(&publication.pages[0].links[0].target, PublicationLinkTarget::External(uri) if uri == "https://example.com")
+      matches!(&publication.pages()[0].links()[0].target, PublicationLinkTarget::External(uri) if uri == "https://example.com")
     );
   }
 
@@ -727,9 +722,9 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert_eq!(publication.pages[0].links.len(), 1);
+    assert_eq!(publication.pages()[0].links().len(), 1);
     assert!(
-      matches!(publication.pages[0].links[0].target, PublicationLinkTarget::Internal(dest) if dest.page_index == 0)
+      matches!(publication.pages()[0].links()[0].target, PublicationLinkTarget::Internal(dest) if dest.page_index == 0)
     );
   }
 
@@ -751,7 +746,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert!(publication.pages[0].links.is_empty());
+    assert!(publication.pages()[0].links().is_empty());
   }
 
   #[test]
@@ -767,7 +762,7 @@ mod tests {
     let publication = build(&config, vec![page], outline_entries);
 
     // Assert
-    let outline = publication.outline.expect("エントリがあるので Some のはず");
+    let outline = publication.outline().expect("エントリがあるので Some のはず");
     assert_eq!(outline.len(), 1);
     assert_eq!(outline[0].text, "第一章");
     assert_eq!(outline[0].depth, HeadingLevel::Chapter.depth());
@@ -785,7 +780,7 @@ mod tests {
     let publication = build(&config, vec![page], outline_entries);
 
     // Assert
-    assert!(publication.outline.is_none());
+    assert!(publication.outline().is_none());
   }
 
   #[test]
@@ -800,7 +795,7 @@ mod tests {
     let publication = build(&config, vec![page], outline_entries);
 
     // Assert
-    assert!(publication.outline.is_none());
+    assert!(publication.outline().is_none());
   }
 
   #[test]
@@ -814,7 +809,7 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert_eq!(publication.metadata.title, "本のタイトル");
+    assert_eq!(publication.metadata().title, "本のタイトル");
   }
 
   #[test]
@@ -827,7 +822,11 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert_eq!(publication.metadata.title, "out", "document.title 未設定時は output.name にフォールバックするはず");
+    assert_eq!(
+      publication.metadata().title,
+      "out",
+      "document.title 未設定時は output.name にフォールバックするはず"
+    );
   }
 
   #[test]
@@ -844,9 +843,9 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    assert_eq!(publication.metadata.author, Some("著者".to_string()));
-    assert_eq!(publication.metadata.subject, Some("主題".to_string()));
-    assert_eq!(publication.metadata.language, Some("ja".to_string()));
-    assert_eq!(publication.metadata.keywords, Some(vec!["a".to_string(), "b".to_string()]));
+    assert_eq!(publication.metadata().author, Some("著者".to_string()));
+    assert_eq!(publication.metadata().subject, Some("主題".to_string()));
+    assert_eq!(publication.metadata().language, Some("ja".to_string()));
+    assert_eq!(publication.metadata().keywords, Some(vec!["a".to_string(), "b".to_string()]));
   }
 }

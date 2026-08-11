@@ -8,9 +8,11 @@
 //! 子 module `natural_size` に閉じる（#372 で `seiran_pdf::natural_image_size` から移設）。
 //! 描画に使う画像本体のデコード・ダウンサンプリングは render（`seiran-pdf`）の責務。
 
+mod format;
 mod manifest;
 mod natural_size;
 mod resources;
 
+pub use format::ImageFormat;
 pub(crate) use manifest::collect_image_paths;
-pub(crate) use resources::{ImageResources, load_image_resources, resolve_images};
+pub(crate) use resources::{ImageAsset, ImageResources, load_image_resources, resolve_images};

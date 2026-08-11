@@ -14,22 +14,24 @@ use krilla::Document;
 use seiran_compiler::Publication;
 use tracing::debug;
 
-pub use crate::error::PdfGenError;
+pub use crate::error::PdfRenderError;
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
 
 /// [`Publication`] から PDF バイト列を生成する。
 ///
-/// フォント・画像資源は `publication.resources` から取り、ファイル I/O は一切行わない。
+/// フォント・画像資源は `publication.resources()` から取り、ファイル I/O は一切行わない。
+/// 描画命令の値（ページサイズ・矩形・画像参照・到達先ページ）は `Publication` の構築時に
+/// 検証済みなので、ここで検査し直さない（#378）。
 ///
 /// # Errors
 ///
-/// krilla フォントの構築、描画要素の生成、PDF の最終化に失敗した場合は [`PdfGenError`] を返す。
-pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfGenError> {
-  let fonts = build_krilla_fonts(&publication.resources)?;
+/// krilla フォントの構築、画像のデコード、PDF の最終化に失敗した場合は [`PdfRenderError`] を返す。
+pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
+  let fonts = build_krilla_fonts(publication.resources())?;
   let mut document = Document::new();
-  document.set_metadata(build_metadata(&publication.metadata));
+  document.set_metadata(build_metadata(publication.metadata()));
   render_pages(&mut document, publication, &fonts)?;
-  let pdf_bytes = document.finish().map_err(|source| return PdfGenError::FinalizeDocument { source })?;
-  debug!(page_count = publication.pages.len(), "PDF 描画が完了しました");
+  let pdf_bytes = document.finish().map_err(|source| return PdfRenderError::FinalizeDocument { source })?;
+  debug!(page_count = publication.pages().len(), "PDF 描画が完了しました");
   return Ok(pdf_bytes);
 }

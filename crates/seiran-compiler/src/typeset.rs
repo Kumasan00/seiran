@@ -56,6 +56,11 @@ pub(crate) use font::{FontResources, FontWarning};
 // 組版の不変条件なのでここが所有するが、**呼び出しは入力読込（`compiler::input::load`）の中**で
 // 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
 pub(crate) use geometry::{LayoutValidationError, validate_layout};
+// 画像資源 — 判定済みの形式 `ImageFormat` は `Publication` に載って描画バックエンドまで届く
+// leaf 値型（crate root の facade が再エクスポートする）。`ImageAsset` は `compiler` が
+// 描画資源へ写すためだけに読む中間表現（#378）。
+pub(crate) use image::ImageAsset;
+pub use image::ImageFormat;
 pub(crate) use pagination::LaidOutDocument;
 
 use crate::{failures::Failures, project::config::ProjectConfig, semantics::SemanticDocument, style::Style};

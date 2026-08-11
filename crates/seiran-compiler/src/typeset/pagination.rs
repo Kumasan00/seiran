@@ -24,7 +24,7 @@ use crate::{
   typeset::{
     boxes::Page,
     error::TypesetError,
-    image::ImageResources,
+    image::{ImageAsset, ImageResources},
     pagination::{body::BodyLayout, context::BodyPageFacts, outline::collect_outline_entries},
   },
 };
@@ -37,8 +37,8 @@ pub(crate) struct LaidOutDocument {
   pub(crate) outline_entries: Vec<OutlineEntry>,
   /// 文書が参照した画像ファイルのパス一覧（重複なし・昇順）
   pub(crate) image_paths: Vec<ProjectPath>,
-  /// 画像ファイルの生バイト列（描画の資源束へ渡す）
-  pub(crate) image_bytes: HashMap<ProjectPath, Vec<u8>>,
+  /// 画像ファイルの形式と生バイト列（描画の資源束へ渡す）
+  pub(crate) images: HashMap<ProjectPath, ImageAsset>,
 }
 
 /// 不変な入力から描画直前の確定レイアウトを構築する。
@@ -89,7 +89,7 @@ pub(super) fn paginate(
     pages,
     outline_entries,
     image_paths,
-    image_bytes: images.into_image_bytes(),
+    images: images.into_assets(),
   });
 }
 

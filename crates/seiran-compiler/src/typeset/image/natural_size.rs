@@ -4,34 +4,27 @@
 //! （兄弟 module `resources` の `resolve_images` の責務）。ラスタは寸法ヘッダだけを読み、
 //! 描画に使う画像本体のデコードは render（`seiran-pdf`）が別に行う。
 
-use std::{io::Cursor, path::Path};
+use std::io::Cursor;
 
-use image::{ImageFormat, ImageReader};
+use image::ImageReader;
 
-use crate::typeset::error::TypesetError;
+use crate::typeset::{error::TypesetError, image::ImageFormat};
 
-/// 画像バイト列をデコードし、自然寸法を返す。
+/// 判定済みの画像形式に従ってバイト列をデコードし、自然寸法を返す。
 ///
-/// `path` は拡張子判定とエラーメッセージにのみ使い、ファイルシステムは読まない
-/// （読み込み済みの `bytes` をそのままデコードする）。
+/// `path` はエラーメッセージにのみ使い、ファイルシステムは読まない
+/// （読み込み済みの `bytes` をそのままデコードする）。形式の判定は
+/// [`ImageFormat::from_path`](crate::typeset::ImageFormat) が済ませている。
 ///
 /// # Errors
 ///
-/// 拡張子が未対応の場合、またはデコードに失敗した場合に [`TypesetError`] を返す。
+/// デコードに失敗した場合に [`TypesetError`] を返す。
 #[allow(clippy::result_large_err)]
-pub(super) fn natural_image_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
-  let extension = Path::new(path)
-    .extension()
-    .and_then(|e| return e.to_str())
-    .map(str::to_ascii_lowercase)
-    .unwrap_or_default();
-  return match extension.as_str() {
-    "png" => raster_size(path, bytes, ImageFormat::Png),
-    "jpg" | "jpeg" => raster_size(path, bytes, ImageFormat::Jpeg),
-    "svg" => svg_size(path, bytes),
-    _ => Err(TypesetError::UnsupportedImageFormat {
-      path: path.to_string(),
-    }),
+pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
+  return match format {
+    ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
+    ImageFormat::Jpeg => raster_size(path, bytes, image::ImageFormat::Jpeg),
+    ImageFormat::Svg => svg_size(path, bytes),
   };
 }
 
@@ -40,7 +33,7 @@ pub(super) fn natural_image_size(path: &str, bytes: &[u8]) -> Result<(f32, f32),
 /// EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値をそのまま使うため、
 /// 適用すると組版時の自然寸法と描画時の解釈がずれる。
 #[allow(clippy::result_large_err, clippy::cast_precision_loss)]
-fn raster_size(path: &str, bytes: &[u8], format: ImageFormat) -> Result<(f32, f32), TypesetError> {
+fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(f32, f32), TypesetError> {
   let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().map_err(|source| {
     return TypesetError::DecodeImage {
       path: path.to_string(),
@@ -67,7 +60,7 @@ fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::natural_image_size;
-  use crate::typeset::error::TypesetError;
+  use crate::typeset::{error::TypesetError, image::ImageFormat};
 
   #[test]
   fn natural_image_size_returns_svg_dimensions_from_bytes() {
@@ -75,7 +68,7 @@ mod tests {
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"></svg>"#;
 
     // Act
-    let size = natural_image_size("icon.svg", svg).expect("有効な SVG はデコードできるはず");
+    let size = natural_image_size("icon.svg", ImageFormat::Svg, svg).expect("有効な SVG はデコードできるはず");
 
     // Assert
     assert!((size.0 - 80.0).abs() < 1e-4);
@@ -83,24 +76,12 @@ mod tests {
   }
 
   #[test]
-  fn natural_image_size_reports_unsupported_extension() {
-    // Arrange
-    let bytes = b"not an image";
-
-    // Act
-    let result = natural_image_size("icon.gif", bytes);
-
-    // Assert
-    assert!(matches!(result, Err(TypesetError::UnsupportedImageFormat { path }) if path == "icon.gif"));
-  }
-
-  #[test]
   fn natural_image_size_reports_broken_raster_as_decode_error() {
-    // Arrange — 拡張子は png だが中身が PNG ではない
+    // Arrange — 形式は PNG と判定済みだが中身が PNG ではない
     let bytes = b"not a png";
 
     // Act
-    let result = natural_image_size("broken.png", bytes);
+    let result = natural_image_size("broken.png", ImageFormat::Png, bytes);
 
     // Assert
     assert!(matches!(result, Err(TypesetError::DecodeImage { path, .. }) if path == "broken.png"));

@@ -8,32 +8,36 @@
 
 use std::fmt::Write;
 
-use crate::publication::{PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata};
+use crate::publication::{
+  PaintOp, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata, PublicationResources,
+};
 
 /// [`Publication`] を決定的なテキスト形式へダンプする（golden 比較用）。
 ///
-/// `resources`（フォント・画像の実バイト列と構築設定）は座標・寸法に影響しないため対象外とする。
+/// `resources`（フォント・画像の実バイト列と構築設定）は座標・寸法に影響しないため対象外だが、
+/// 画像の描画命令が持つ [`crate::publication::ImageRef`] をパスへ戻すためだけに参照する。
 #[must_use]
 pub(super) fn dump_publication(publication: &Publication) -> String {
   let mut out = String::new();
-  dump_metadata(&mut out, &publication.metadata);
-  for (index, page) in publication.pages.iter().enumerate() {
+  dump_metadata(&mut out, publication.metadata());
+  for (index, page) in publication.pages().iter().enumerate() {
+    let page_box = page.page_box();
     let _ = writeln!(
       out,
       "=== page {index} === box x={} y={} w={} h={}",
-      f2_pt(page.page_box.x),
-      f2_pt(page.page_box.y),
-      f2_pt(page.page_box.width),
-      f2_pt(page.page_box.height)
+      f2_pt(page_box.x()),
+      f2_pt(page_box.y()),
+      f2_pt(page_box.width()),
+      f2_pt(page_box.height())
     );
-    for op in &page.ops {
-      dump_paint_op(&mut out, op);
+    for op in page.ops() {
+      dump_paint_op(&mut out, op, publication.resources());
     }
-    for link in &page.links {
+    for link in page.links() {
       dump_publication_link(&mut out, link);
     }
   }
-  if let Some(outline) = &publication.outline {
+  if let Some(outline) = publication.outline() {
     let _ = writeln!(out, "outline:");
     for entry in outline {
       let _ = writeln!(
@@ -71,7 +75,7 @@ fn dump_metadata(out: &mut String, metadata: &PublicationMetadata) {
 ///
 /// `run.color` は `crate::color::Color` の RGB 成分から書き出す（型の Debug 表記に依存しない形で
 /// `Color([r, g, b])` を作る）— golden の文字列比較を変えないため。
-fn dump_paint_op(out: &mut String, op: &PaintOp) {
+fn dump_paint_op(out: &mut String, op: &PaintOp, resources: &PublicationResources) {
   match op {
     PaintOp::DrawGlyphRun { origin, run } => {
       let color = run.color.map_or_else(String::new, |c| format!(" color=Color({:?})", c.rgb()));
@@ -87,27 +91,28 @@ fn dump_paint_op(out: &mut String, op: &PaintOp) {
       );
     },
     PaintOp::DrawImage {
-      path,
+      image,
       rect,
       target_dpi,
     } => {
+      let path = &resources.image(*image).path;
       let _ = writeln!(
         out,
         "  image x={} y={} w={} h={} dpi={target_dpi:?} path={path:?}",
-        f2_pt(rect.x),
-        f2_pt(rect.y),
-        f2_pt(rect.width),
-        f2_pt(rect.height)
+        f2_pt(rect.x()),
+        f2_pt(rect.y()),
+        f2_pt(rect.width()),
+        f2_pt(rect.height())
       );
     },
     PaintOp::FillRect { rect, color } => {
       let _ = writeln!(
         out,
         "  fillrect x={} y={} w={} h={} color={color:?}",
-        f2_pt(rect.x),
-        f2_pt(rect.y),
-        f2_pt(rect.width),
-        f2_pt(rect.height)
+        f2_pt(rect.x()),
+        f2_pt(rect.y()),
+        f2_pt(rect.width()),
+        f2_pt(rect.height())
       );
     },
   }
@@ -124,10 +129,10 @@ fn dump_publication_link(out: &mut String, link: &PublicationLink) {
   let _ = writeln!(
     out,
     "  link target={target} x={} y={} w={} h={}",
-    f2_pt(link.rect.x),
-    f2_pt(link.rect.y),
-    f2_pt(link.rect.width),
-    f2_pt(link.rect.height)
+    f2_pt(link.rect.x()),
+    f2_pt(link.rect.y()),
+    f2_pt(link.rect.width()),
+    f2_pt(link.rect.height())
   );
 }
 
@@ -151,7 +156,10 @@ mod tests {
   use crate::{
     length::Length,
     project::FontType,
-    publication::{Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect},
+    publication::{
+      Destination, PaintOp, Point, PublicationLink, PublicationLinkTarget, PublicationMetadata, Rect,
+      test_fixtures::resources,
+    },
     typeset::GlyphRun,
   };
 
@@ -219,7 +227,7 @@ mod tests {
     let mut out = String::new();
 
     // Act
-    dump_paint_op(&mut out, &op);
+    dump_paint_op(&mut out, &op, &resources(Vec::new()));
 
     // Assert
     assert!(out.contains("x=10.00 y=20.00"));
@@ -234,12 +242,7 @@ mod tests {
         page_index: 0,
         point: Point { x: 0.0, y: 0.0 },
       }),
-      rect: Rect {
-        x: 10.0,
-        y: 20.0,
-        width: 30.0,
-        height: 12.0,
-      },
+      rect: Rect::new(10.0, 20.0, 30.0, 12.0).unwrap(),
     };
     let mut out = String::new();
 
@@ -256,12 +259,7 @@ mod tests {
     // Arrange
     let link = PublicationLink {
       target: PublicationLinkTarget::External("https://example.com".to_string()),
-      rect: Rect {
-        x: 0.0,
-        y: 0.0,
-        width: 30.0,
-        height: 12.0,
-      },
+      rect: Rect::new(0.0, 0.0, 30.0, 12.0).unwrap(),
     };
     let mut out = String::new();
 
