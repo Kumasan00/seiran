@@ -773,7 +773,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `pages`: 前付け + 本文 + 後付けを連結した確定ページ列（走り文配置済み）
 - `outline_entries`: PDF しおり用の見出し情報（文書順）
 - `image_paths`: 文書が参照した画像ファイルのパス一覧（重複なし・昇順。`DependencyManifest` 用）
-- `image_bytes`: 画像ファイルの生バイト列（`publication::PublicationResources` 用）
+- `images`: 画像ファイルの形式と生バイト列（`ImageAsset`。`publication::PublicationResources` 用）
 
 `pages` / `outline_entries` はフィールド公開のまま置く — `compiler::publication` と golden テストが
 直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
@@ -851,13 +851,19 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 `TypesetError`（画像ファイルの読込 `ReadImage` / 未対応拡張子 `UnsupportedImageFormat` / ラスタの
 デコード `DecodeImage` / SVG のパース `ParseSvg` / 自然寸法不正
-`InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged` / 組版の
-不変条件違反 `Bug(TypesetBug)`）。`layout` の失敗型は `Failures<TypesetError>` で、画像は
+`InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged`）。
+`layout` の失敗型は `Failures<TypesetError>` で、画像は
 `collect_image_paths` が `BTreeSet<ProjectPath>` で作る正規化済みパスの昇順に**全件**検査する（#376）。`compiler::error::CompileError` は
 `Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
-所有する段に合わせた `typeset::image::*` / `typeset::footnote::per_page_not_converged` /
-`typeset::internal_bug`（#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
+所有する段に合わせた `typeset::image::*` / `typeset::footnote::per_page_not_converged`
+（#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
 `build::*` を保っていた）。
+
+**バリアントは入力・環境由来の回復可能な失敗だけ**（すべて画像ファイルとページ単位脚注採番）。
+組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた
+`unreachable!` で顕在化する（#378 で内部バグ用の `Bug(TypesetBug)` バリアントと
+`typeset::internal_bug` code を削除した）。採番・参照解決は `semantics::analyze` が保証済みなので、
+`lowering` の `\ref` 先・見出しタイトル・図表番号の取り出しはいずれも `unreachable!` で落とす。
 
 #### `geometry`
 
@@ -884,6 +890,11 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `manifest`: 文書木（HIR）を再帰的に走査し、`Figure` の `image_path` を重複なく集める
   `collect_image_paths`（`BTreeSet<ProjectPath>` で集めるので、正規化して等しいパスは 1 件に畳まれる。
   定理・引用・リスト内の入れ子も探索する）
+- `format`: 拡張子（大文字小文字を無視）から `ImageFormat`（PNG / JPEG / SVG）を決める
+  `ImageFormat::from_path` — **判定はここ 1 箇所だけ**。判定結果は自然寸法の取得と
+  `publication::PublicationImage.format` の双方が使い、描画側（`seiran-pdf`）は拡張子を読み直さず
+  形式で分岐する。同じ判定を 2 回書くと両者が食い違いうるため（#378 で renderer 側の
+  `pdf::unsupported_image_format` を削除できた根拠）
 - `natural_size`: 画像バイト列から自然寸法だけを求める leaf 関数 `natural_image_size`（ラスタは
   `image::ImageReader::into_dimensions` で寸法ヘッダを読み、SVG は `usvg::Tree::from_data` →
   `size()`）。EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値を使うため、
@@ -891,7 +902,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `resources`: `ProjectSource` 経由の読込と `natural_size` による自然寸法取得
   （`load_image_resources` → `ImageResources`）、および `Block::Image` の width / height を自然寸法と
   段幅から確定する `resolve_images`。読込は `layout` が 1 回だけ呼び、`resolve_images` は本文パスから
-  呼ばれる。保持した生バイト列は `LaidOutDocument.image_bytes` として描画へ渡す
+  呼ばれる。保持した形式 + 生バイト列（`ImageAsset`）は `LaidOutDocument.images` として描画へ渡す
 
 #### `pagination`
 
@@ -1194,23 +1205,45 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 公開型: `Publication` / `PublicationPage` / `PaintOp` / `Point` / `Rect` / `Destination` /
 `PublicationLink` / `PublicationLinkTarget` / `PublicationOutlineEntry` / `PublicationMetadata` /
-`PublicationResources` / `PublicationFont`。いずれも crate root の facade が再エクスポートし、
-描画バックエンド（`seiran-pdf`）が読む唯一の窓口になる。
+`PublicationResources` / `PublicationFont` / `PublicationImage` / `ImageRef`。いずれも crate root の
+facade が再エクスポートし、描画バックエンド（`seiran-pdf`）が読む唯一の窓口になる
+（画像形式の `typeset::ImageFormat` も同じ理由で facade に載る）。
+
+#### 外部から不正状態を作れないこと（#378）
+
+文書を組み立てる型（`Publication` / `PublicationPage` / `PublicationResources`）と、不変条件を持つ値
+（`Rect` / `ImageRef`）は**フィールドが非公開**で、構築経路は検証を通った値だけを返す `pub(crate)` の
+コンストラクタに限られる。読み取りはアクセサ（`pages()` / `outline()` / `metadata()` / `resources()` /
+`page_box()` / `ops()` / `links()` / `font()` / `image()`）経由だけ。
+
+| 型 | コンストラクタが保証すること |
+| --- | --- |
+| `Rect` | 幅・高さが非負の有限値（krilla `Rect::from_xywh` が受け付ける範囲そのもの） |
+| `PublicationPage` | ページ矩形と画像の描画矩形の幅・高さが正（krilla `Size::from_wh` の要求。太さ 0 の罫線を描く塗りつぶし矩形は 0 サイズを許す） |
+| `Publication` | 内部リンク（`PublicationLinkTarget::Internal`）としおりの到達先ページが実在する |
+| `PublicationResources` | `ImageRef` の発行経路は `image_ref()`（crate 内非公開）だけなので、資源に無い画像を指す `PaintOp::DrawImage` を型として作れない |
+| `FontMap<PublicationFont>` | 19 種別すべてが揃う（`FontMap` の構築時保証） |
+
+これが「renderer は確定座標の描画のみ」を**型で**担保している部分で、`seiran-pdf` 側の防衛的な
+error variant（invalid page size / rule rect / link rect / image not in manifest）を削除できた根拠。
+`Point` は不変条件を持たないのでフィールド公開のまま。
+
+`PublicationResources` のフィールドを隠す理由は不変条件だけではない — `FontMap` を facade へ
+出さずに済ませるためでもある（`FontMap` が構築時に 19 種別すべての存在を保証するので、renderer 側に
+「全種別揃っているか」の実行時チェックが要らない）。
 
 #### 不変条件・注意点
 
 - **純データであること** — krilla / `seiran-pdf` の型は 1 つも含まない。座標は pt 単位の `f32`、
   フォントは生バイト列（`Arc<Vec<u8>>`）+ `typeset::FontFaceConfig` + `typeset::FontMetric`、
-  画像はパス文字列 → 生バイト列。krilla フォントの構築は render の責務で、`compile` の戻り値に
+  画像は `Vec<PublicationImage>`（パス・判定済みの `typeset::ImageFormat`・生バイト列）。
+  krilla フォントの構築は render の責務で、`compile` の戻り値に
   backend の内部資源が漏れない（この線引きが破れていたのが #372 以前）。
 - `PaintOp::DrawGlyphRun` は `typeset::GlyphRun` を**そのまま**載せる（同型の複製を作らない）。
   したがって `Length` / `Color` / `FontType` / `GlyphRun` / `Glyph` も facade に載る。
-- `PublicationResources` のフィールド（`FontMap<PublicationFont>` と画像の `HashMap`）は非公開で、
-  アクセサ `font()` / `image_bytes()` 経由でしか読めない。`FontMap` を facade へ出さないためと、
-  `FontMap` が構築時に 19 種別すべての存在を保証するので renderer 側に「全種別揃っているか」の
-  実行時チェックが要らなくなるため。
-- `PublicationResources::new` は `pub(crate)` — crate 外から `Publication` を捏造できない
-  （生産者は `compile` だけという性質を型で保つ）。
+- `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（`PublicationResources.images`
+  の添字）。添字である以上、資源の並びは決定的でなければならないので `compiler::build_resources` は
+  `HashMap` の反復順ではなく**パス昇順**に並べてから配列を組む。
 - `PublicationResources` / `PublicationFont` の `Debug` は手書きで、バイト列の中身ではなく長さを出す
   （`tests/determinism.rs` の `assert_eq!` が失敗したときに数百 MB を吐かないため）。
 
@@ -1265,7 +1298,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 畳まないのは、`FontResources` が組版後にも描画資源用の `metrics()` を要求され、
 「`LaidOutDocument` は `layout` が決めた値だけを持つ」という設計意図と衝突するため（#352）。
 `build_resources`（`compiler.rs` 直下）は `FontData` の `Arc` 共有バイト列・`FontFaceConfig`・
-`FontMetric` を 19 種別ぶん束ねるだけで、krilla には触れない（#372）。
+`FontMetric` を 19 種別ぶん束ねるだけで、krilla には触れない（#372）。画像側は
+`LaidOutDocument.images` を**パス昇順**に並べて `Vec<PublicationImage>` にする — `ImageRef` が
+この配列の添字なので、`HashMap` の反復順に任せると同じ入力から違う `Publication` ができてしまう。
 子 module:
 
 - `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・文献・
@@ -1331,7 +1366,8 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 
 - `dump`: `dump_publication`（`publication::Publication` の決定的テキストダンプ。タイトル/著者/主題/
   言語/キーワードのメタデータ → ページごとの paint-ops（グリフラン / 画像 / 塗り矩形）とリンク →
-  しおりの順に、内部の `dump_metadata` 補助関数を介してダンプする）。確定ページ列
+  しおりの順に、内部の `dump_metadata` 補助関数を介してダンプする。`ImageRef` は `resources` で
+  パスへ戻して出力するので、画像参照を不透明ハンドルへ変えた #378 の前後で golden は不変）。確定ページ列
   （`typeset::Page`）のダンプ `dump_pages` は走査対象の型を所有する `typeset::dump` 側にあり
   （#353）、ここからは `crate::typeset::dump_pages` として借りる
 - `golden`: レイアウトダンプ golden の比較テスト。9 テストのうち golden ファイル
@@ -1381,7 +1417,7 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 
 (e) 描画。`seiran-compiler` が確定させた `Publication` を PDF バイナリへ encode する
 （レイアウト判断ゼロ）。`krilla` / `krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。
-公開 API は `render(&Publication) -> Result<Vec<u8>, PdfGenError>` と `PdfGenError` の 2 つだけ。
+公開 API は `render(&Publication) -> Result<Vec<u8>, PdfRenderError>` と `PdfRenderError` の 2 つだけ。
 
 依存の向きは **`seiran-pdf → seiran-compiler`**（#372）。組版成果物の型（`Publication` / `PaintOp` /
 `GlyphRun` / `FontMetric` / `FontFaceConfig` / `FontType` / `Length` / `Color`）は compiler が所有し、
@@ -1397,14 +1433,30 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   バリアブル軸の適用を含む）と、`seiran_compiler::Glyph` → krilla グリフの変換
   （`convert_to_krilla_glyphs`）。フォントバイト列は `Arc` を clone して `krilla::Data` へ渡すので
   実バイト列は複製されない。構築は `FontType::ALL` の宣言順で行う — `HashMap` の反復順に任せると、
-  複数フォントが同時に不正なときに返る `PdfGenError` が実行のたびに変わってしまう
+  複数フォントが同時に不正なときに返る `PdfRenderError` が実行のたびに変わってしまう
 - `render`: `render_pages` が `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の
   `font_size`（`Length`）→ pt と `color`（`Color`）→ RGB の変換もここで行う（compiler 側の写像は
   シェイピング結果をそのまま載せる）。ファイル I/O は発生しない
-- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみ。組版時の
-  自然寸法取得は compiler 側 `typeset::image::natural_size` の責務（#372 で移設）
-- `metadata` / `error`: PDF メタデータ構築 / `PdfGenError`（診断コードの prefix は描画段を表す
+- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）とラスタ画像のダウンサンプルのみ。分岐は
+  拡張子ではなく `PublicationImage.format`（compiler 側 `typeset::image::format` が判定済み）で行う。
+  組版時の自然寸法取得は compiler 側 `typeset::image::natural_size` の責務（#372 で移設）
+- `metadata` / `error`: PDF メタデータ構築 / `PdfRenderError`（診断コードの prefix は描画段を表す
   `pdf::<name>`）
+
+### `PdfRenderError` の範囲（#378）
+
+**「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ。バリアントは 3 系統:
+
+1. `Publication` を backend 表現へ変換できない — `pdf::font_parse` / `pdf::variation_table_read` /
+   `pdf::font_creation`
+2. 画像デコーダ / SVG renderer が有効な入力を処理できない — `pdf::parse_svg` / `pdf::draw_svg` /
+   `pdf::decode_image` / `pdf::resize_image`
+3. krilla が文書を最終化できない — `pdf::finalize_document`
+
+compiler が構築時に検証済みの不変条件を再検査する variant（invalid page size / rule rect / link rect /
+image not in manifest / 未対応の画像拡張子）は削除した — 同じ検査を 2 箇所に持つと、どちらが真の
+保証点か読めなくなるため（保証点は `publication` 節の表）。第三者 library が有効な値に対して失敗
+しうる処理は引き続き `Result` で扱い、内部不変条件と混同しない。
 
 ### 不変条件・注意点
 
@@ -1417,8 +1469,11 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`compiler::publication`）が
   `project::ProjectConfig` から読んで `Publication` に前倒し解決してから渡す。
 - `render` は `Publication` 1 個だけを消費する。krilla フォントの構築は `render` の冒頭 1 回で、
-  フォント・画像の生資源は `publication.resources` のアクセサ（`font()` / `image_bytes()`）から取る。
+  フォント・画像の生資源は `publication.resources()` のアクセサ（`font()` / `image()`）から取る。
   `typeset::Page` / `ProjectConfig` / `Style` を直接読む描画経路を復活させない。
+- **描画命令の値を検査し直さない**（#378）。ページサイズ・矩形・画像参照（`ImageRef`）・内部リンクと
+  しおりの到達先ページは `Publication` の構築時に検証済みで、破れていれば compiler 側のバグなので
+  renderer が診断を出す筋合いがない（保証点の一覧は compiler の `publication` 節）。
 - 第 2 の描画バックエンド（HTML 等）が現れるまで `Renderer` trait も共有型だけの第三 crate も作らない
   — backend が 1 つの間は浅い seam にしかならない（#372）。
 - `tests/pdf_structure.rs`: `lopdf` による独立 reader での PDF 構造 golden テスト（golden は

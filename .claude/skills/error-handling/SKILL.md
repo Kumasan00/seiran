@@ -154,16 +154,29 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   user-actionable だが、warning を組版の内側から運ぶ配管が要るため #382 で移す。新しい
   user-actionable な `tracing::warn!` を増やさない。
 
-## compiler 内部バグ
+## 内部不変条件違反（#378）
 
-- ユーザー入力に起因しない内部不変条件違反が `Result` を返す経路（`.map_err` / `?` の途中）で発覚した場合、
-  `panic!` せず専用の小さな struct（例: `seiran_compiler::typeset::error::TypesetBug`）を作り、通常のユーザー向け
-  エラーバリアントには混ぜない
-- `#[diagnostic(code(...))]` は `internal_bug` 系のサフィックスにし、`help("...")` はトラブルシュート手順ではなく
-  issue 報告を促す文言にする（ユーザー側に誤りがあるわけではないため）
-- `unreachable!` との使い分け: 手元に `Result` / `Option` があり、それを使ってエラーを返すほうが panic より
-  安全・安価なら `TypesetBug` 相当の内部バグ型。手元に `Result` がなく、その状態が構造的に到達不能なら CLAUDE.md 規約 5 の
-  `unreachable!` を使う
+ユーザーが直せない問題をユーザー向け診断にしない。**内部バグ用の Diagnostic 型・`internal_bug` 系の
+`code` は作らない**（旧規約が例に挙げていた `typeset::error::TypesetBug` と `typeset::internal_bug` は
+#378 で削除した）。順に次を試す。
+
+1. **型で不正状態を表現不能にする**（第一手）。公開する型はフィールドを非公開にし、構築経路を
+   不変条件を検証する `pub(crate) fn new`（違反時は `None`）だけに限る。他所への参照は生の文字列や
+   添字ではなく不透明ハンドルにして、発行経路を 1 箇所に閉じる。実例は `publication` module —
+   `Rect::new` が非負・有限の幅高さだけを通し、`Publication::new` がリンク・しおりの到達先ページの
+   実在を確かめ、`ImageRef` は `PublicationResources::image_ref` からしか得られない。この閉鎖によって
+   consumer 側（`seiran-pdf`）の防衛的な error variant を丸ごと削除できる
+2. **残った到達不能分岐は保証元付き `unreachable!`**。「上流のどの検証・構築が保証するか」を
+   メッセージに書く（例: `unreachable!("参照先の存在は semantics::analyze が保証している: {target:?}")`）。
+   手元に `Result` があっても、その失敗をユーザーへ返す意味がないなら `Result` へ載せない —
+   直せない問題に修正手順の `help` が付くほうが有害
+3. **backend のエラーは backend 固有の失敗だけ**。第三者 library が有効な入力に対して失敗しうる処理
+   （フォント解析・画像デコード・PDF 最終化）は `Result` のまま。上流が検証済みの不変条件を
+   consumer 側で再検査する variant は作らない（保証点が 2 箇所になり、どちらが真か読めなくなる）
+
+テストでの固定: 不正状態を構築できないことをコンストラクタのテストで押さえ、内部 helper から直接
+不変条件を破れる場合だけ `#[should_panic(expected = ...)]` で保証メッセージを確認する
+（実例は `typeset::image::resources` の `resolve_images`）。
 
 ## シグネチャの原則
 

@@ -124,7 +124,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project failures |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
 | `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project failures |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project failures |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（形式判定は子 module `format`、自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project failures |
 | `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に、成功時に返す警告集合は子 module `warnings`（`Warnings`）に閉じる | 上記すべて |
 
 ## コーディング規約
