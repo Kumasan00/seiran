@@ -13,6 +13,19 @@ use std::{
 use tracing_subscriber::{EnvFilter, fmt};
 use write_error::WriteError;
 
+/// カレントディレクトリ取得時のエラー。
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+enum CurrentDirError {
+  /// プロセスのカレントディレクトリを取得できない。
+  #[error("カレントディレクトリを取得できませんでした。")]
+  #[diagnostic(code(cli::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
+  Get {
+    /// 元の I/O エラー
+    #[source]
+    source: std::io::Error,
+  },
+}
+
 /// CLI を初期化し、指定されたサブコマンドを実行する。
 ///
 /// # Errors
@@ -24,10 +37,11 @@ fn main() -> miette::Result<()> {
 
   match cli_args.command {
     cli::Command::Build { config_path } => {
+      let base_dir = std::env::current_dir().map_err(|source| return CurrentDirError::Get { source })?;
       let source = seiran_compiler::FilesystemProjectSource::new();
       let root = seiran_compiler::ProjectPath::new(&config_path);
       let compilation =
-        seiran_compiler::compile(&source, &root).map_err(seiran_compiler::CompileFailure::into_report)?;
+        seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
       report_warnings(&compilation.warnings, cli_args.quiet);

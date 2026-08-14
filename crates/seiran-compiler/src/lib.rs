@@ -24,7 +24,7 @@ mod style;
 mod typeset;
 
 // `compile` は `ProjectSource` を境界とするジェネリック関数（`compile<S: ProjectSource>(source: &S,
-// root: &ProjectPath) -> ...`）であり、`ProjectSource`/`ProjectPath` は入力型そのもの。
+// root: &ProjectPath, base_dir: &Path) -> ...`）であり、`ProjectSource`/`ProjectPath` は入力型そのもの。
 // `FilesystemProjectSource`/`MemoryProjectSource` は呼び出し元（CLI bin target・統合テスト）が
 // 有効な入力を組み立てるための唯一の実装 2 種。`SourceReadError` は `ProjectSource::read_text`/
 // `read_bytes` の戻り値型（`Result<_, SourceReadError>`）に現れるため、`ProjectSource` を

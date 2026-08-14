@@ -37,15 +37,6 @@ pub(super) enum CompileError {
     source: SourceReadError,
   },
 
-  /// カレントディレクトリの取得失敗
-  #[error("カレントディレクトリを取得できませんでした。")]
-  #[diagnostic(code(compiler::current_dir), help("プロセスの作業ディレクトリが有効か確認してください。"))]
-  CurrentDir {
-    /// 元の I/O エラー
-    #[source]
-    source: std::io::Error,
-  },
-
   /// config.toml の読込・検証エラー
   #[error(transparent)]
   #[diagnostic(transparent)]
