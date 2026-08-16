@@ -23,7 +23,6 @@ use std::{collections::HashMap, path::Path, time::Instant};
 
 pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
-use error::CompileError;
 use input::CompilationInputs;
 pub use input::OutputPlan;
 use source_diagnostic::SourceDiagnostic;
@@ -66,9 +65,11 @@ pub struct Compilation {
   pub output: OutputPlan,
 }
 
-/// `source` と `root`（設定ファイルパス）から PDF 直前の `Publication` までを 1 回で作る。
+/// `source`、`root`（設定ファイルパス）、`base_dir`（相対パスの解決基準）から
+/// PDF 直前の `Publication` までを 1 回で作る。
 ///
 /// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
+/// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
 /// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.output` が指す先へ書き出すのは
 /// 呼び出し元の責務とする。
 ///
@@ -77,26 +78,6 @@ pub struct Compilation {
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
 /// 1 件以上の error diagnostic を持つ [`CompileFailure`] を返す。
 pub fn compile<S: crate::project::ProjectSource>(
-  source: &S,
-  root: &crate::project::ProjectPath,
-) -> Result<Compilation, CompileFailure> {
-  return compile_inner(source, root);
-}
-
-/// カレントディレクトリを解決してから [`compile_with_base_dir`] へ委譲する。
-fn compile_inner<S: crate::project::ProjectSource>(
-  source: &S,
-  root: &crate::project::ProjectPath,
-) -> Result<Compilation, CompileFailure> {
-  let base_dir = std::env::current_dir().map_err(|source| return CompileError::CurrentDir { source })?;
-  return compile_with_base_dir(source, root, &base_dir);
-}
-
-/// `base_dir` を注入できる `compile` の本体。
-///
-/// `MemoryProjectSource` + 固定 `base_dir` でのテストが `std::env::set_current_dir` 無しに
-/// 書けるよう、テストと `compile` の双方から呼ばれる実処理をここに閉じる。
-fn compile_with_base_dir<S: crate::project::ProjectSource>(
   source: &S,
   root: &crate::project::ProjectPath,
   base_dir: &Path,

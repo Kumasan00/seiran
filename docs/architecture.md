@@ -1301,23 +1301,23 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 #### compile facade（`compiler.rs` 直下）
 
-`compiler.rs` 本体には facade 関数（`compile` / `compile_inner` / `compile_with_base_dir` /
-`parse_project` / `build_publication` / `parse_all_sources` / `attribute_analyze_error` /
+`compiler.rs` 本体には facade 関数（`compile` / `parse_project` / `build_publication` /
+`parse_all_sources` / `attribute_analyze_error` /
 `collect_warnings`）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート、
 `OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
-`input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath)
--> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は設定ファイルパスそのもの
-（`--config` が指す値と同じ）。`base_dir`（相対パス解決の基準ディレクトリ）は `compile` が
-`std::env::current_dir()` から解決して非公開の `compile_with_base_dir` へ注入する — この関数を挟むことで
-`MemoryProjectSource` + 固定 `base_dir` を使うテスト（`tests/compile_facade.rs`）が `chdir` 無しに書ける。
-`compile` は保存（`fs::write`）を一切行わない。
+`input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath,
+base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は
+設定ファイルパスそのもの（`--config` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
+呼び出し元が実行環境に応じて明示する。compiler は `std::env::current_dir()` を呼ばないため、
+`MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。`compile` は保存（`fs::write`）を
+一切行わない。
 
 **内部 pipeline は `miette::Result` を使わない**（#375）。各段は具体的な `Result` を返し、
 error の `miette::Report` への型消去は `CompileFailure::into_report`（CLI seam）で 1 回だけ行う
 （warning は `related` へ載せず表示しかしないので、`Warnings` が `Report` の列として持つ）。
-`compile_inner` / `compile_with_base_dir` / `parse_project` / `parse_all_sources` は
+`compile` / `parse_project` / `parse_all_sources` は
 `Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
 
 `compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
@@ -1375,8 +1375,8 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
   内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /
   `ReadReferencesError` / `FontReadError`）は `#[diagnostic(transparent)]` でそのまま委譲し、自前の
-  バリアントを持つのは内側が `std::io::Error` で診断を持たない `ReadTextFile` / `CurrentDir` の 2 つだけ
-  （#375）。`semantics::analyze` が返す `AnalyzeError` は `attribute_analyze_error` が CSL 由来
+  バリアントを持つのは内側が診断を持たない `ReadTextFile` 1 つだけ（#375。カレントディレクトリの取得は
+  CLI の責務になり、`CurrentDir` は `seiran` 側の `cli::current_dir` 診断へ移った）。`semantics::analyze` が返す `AnalyzeError` は `attribute_analyze_error` が CSL 由来
   （`CitationStyle` / `CitationFormat` — それ自身が leaf 診断）と意味解析由来（ソースごとに分割済みの
   `SemanticFailures`）に振り分け、後者だけ `project::SourceSet`（`SourceId` の唯一の発行元。
   `config.sources` の読込時に `register` する）から引いた `NamedSource` を `SourceDiagnostic` で添える。
@@ -1427,8 +1427,9 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 `tests/compile_facade.rs`（crate 内部の `#[cfg(test)]` ではなく `crates/seiran-compiler/tests/` 配下の独立
 統合テスト）は `compile` が lib target の公開 API として crate 外部から呼べることを検証する。
 `compile` が `pub(crate)` のままでも crate 内部テストは通ってしまうため、この受け入れ条件は crate 境界を
-またぐ独立テストでしか機械的に検証できない。すべてのパスを絶対パス（`/project/...`）にして
-`MemoryProjectSource` へ登録し、`std::env::current_dir` に依存しない。
+またぐ独立テストでしか機械的に検証できない。`MemoryProjectSource` へ `/project/...` の資源を登録し、
+`base_dir = /project` を明示して `std::env::current_dir` に依存しない。相対 source パスがこの基準で
+解決されることも同じテストで固定する。
 
 `tests/common/mod.rs`（Rust の慣例で `tests/common.rs` ではなく `tests/common/mod.rs` に置くことで
 独立テストバイナリとして扱われないようにした共有ヘルパ。`read_test_font` / `minimal_config_toml` を
@@ -1520,6 +1521,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 結果表示（`Compilation.warnings` の診断とビルドサマリ）の 4 手順に限定される。段の呼び出し順序・組版の中間型は一切知らない。
 filesystem・ログ初期化（`tracing-subscriber`）・端末出力といった実行環境の関心事はすべてこの crate に
 閉じており、`seiran-compiler` は `ProjectSource` seam 越しにしか外部資源へ触らない。
+カレントディレクトリも `build` 実行時にこの crate が取得し、相対パスの解決基準として `compile` へ明示する。
 
 ### モジュール構成
 

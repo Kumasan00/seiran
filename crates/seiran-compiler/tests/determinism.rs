@@ -8,8 +8,13 @@
 
 mod common;
 
+use std::path::Path;
+
 use common::{minimal_config_toml, read_test_font};
 use seiran_compiler::{MemoryProjectSource, ProjectPath};
+
+/// メモリ上のテストプロジェクトで相対パスを解決する基準ディレクトリを返す。
+fn project_base_dir() -> &'static Path { return Path::new("/project"); }
 
 /// 代表的な入力の一覧（filesystem を使わず埋め込む。網羅目的の fixture 追加ではなく、
 /// テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通すための最小集合）。
@@ -37,8 +42,8 @@ fn compile_is_deterministic_for_the_same_source() {
     let root = ProjectPath::new("/project/config.toml");
 
     // Act — 同じ source から 2 回 compile する
-    let first = seiran_compiler::compile(&source, &root).expect("1 回目の compile は成功するはず");
-    let second = seiran_compiler::compile(&source, &root).expect("2 回目の compile は成功するはず");
+    let first = seiran_compiler::compile(&source, &root, project_base_dir()).expect("1 回目の compile は成功するはず");
+    let second = seiran_compiler::compile(&source, &root, project_base_dir()).expect("2 回目の compile は成功するはず");
 
     // Assert — Publication は完全に同一（PartialEq 比較）
     assert_eq!(first.publication, second.publication, "text={text:?} で決定性が崩れているはず");
@@ -75,7 +80,8 @@ fn missing_images_are_reported_in_path_order() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let failure = seiran_compiler::compile(&source, &root).expect_err("2 枚とも欠落しているので失敗するはず");
+  let failure =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("2 枚とも欠落しているので失敗するはず");
 
   // Assert — 1 枚目で打ち切らず、文書順ではなくパス昇順（a → z）で並ぶ
   let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
@@ -103,7 +109,7 @@ fn error_path_is_deterministic_across_repeated_runs() {
     // Act — 同じ入力を繰り返しコンパイルし、診断の code 列を集める
     let runs: Vec<Vec<String>> = (0..32)
       .map(|_| {
-        let failure = seiran_compiler::compile(&source, &root).expect_err("この入力は失敗するはず");
+        let failure = seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("この入力は失敗するはず");
         return failure
           .diagnostics()
           .map(|diagnostic| {
@@ -141,7 +147,8 @@ fn missing_sources_are_reported_in_declaration_order_on_every_run() {
 
   // Act / Assert
   for _ in 0..32 {
-    let failure = seiran_compiler::compile(&source, &root).expect_err("2 ソースとも欠落しているので失敗するはず");
+    let failure = seiran_compiler::compile(&source, &root, project_base_dir())
+      .expect_err("2 ソースとも欠落しているので失敗するはず");
     let messages: Vec<String> = failure.diagnostics().map(|diagnostic| return diagnostic.to_string()).collect();
     assert_eq!(messages.len(), 2, "欠落した 2 件が両方報告されるはず");
     assert!(messages[0].contains("/project/z.sei"), "宣言順の 1 件目が先のはず: {messages:?}");

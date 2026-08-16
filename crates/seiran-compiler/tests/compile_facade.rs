@@ -5,12 +5,12 @@
 //! 通ってしまうため、「lib target から compile が呼べる」という受け入れ条件を機械的に
 //! 検証するには外部からのコンパイルが必要（issue #304）。
 //!
-//! すべてのパスを絶対パス（`/project/...`）にして `MemoryProjectSource` に事前登録し、
-//! `std::env::current_dir` に依存しない（`compile` の `base_dir` 解決は絶対パスをバイパスする）。
+//! `MemoryProjectSource` に `/project/...` の資源を事前登録し、`compile` へ `/project` を明示して
+//! `std::env::current_dir` に依存しない。最初のテストは相対 source パスがこの基準で解決されることも固定する。
 
 mod common;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use common::{
   config_toml_with_style, minimal_config_toml, minimal_config_toml_with_serif_extra, overflowing_footnote_style_toml,
@@ -19,6 +19,9 @@ use common::{
 use miette::Diagnostic;
 use seiran_compiler::{MemoryProjectSource, ProjectPath};
 
+/// メモリ上のテストプロジェクトで相対パスを解決する基準ディレクトリを返す。
+fn project_base_dir() -> &'static Path { return Path::new("/project"); }
+
 #[test]
 #[allow(clippy::unwrap_used)]
 fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
@@ -26,13 +29,14 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   // だけはテストコード自身が std::fs で行う。本体コードは ProjectSource 経由のみ）。
   let font_bytes = read_test_font();
   let source = MemoryProjectSource::new()
-    .with_text("/project/config.toml", minimal_config_toml("/project/text.sei"))
+    .with_text("/project/config.toml", minimal_config_toml("text.sei"))
     .with_text("/project/text.sei", "Hello, Seiran!")
     .with_bytes("/project/font.ttf", font_bytes);
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("最小構成の compile は成功するはず");
+  let compilation =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect("最小構成の compile は成功するはず");
 
   // Assert — Publication と統計が確定し、警告の出る設定ではないので warnings は空
   assert!(compilation.statistics.page_count >= 1, "本文が 1 ページ以上生成されるはず");
@@ -50,7 +54,8 @@ fn compile_reports_a_leaf_diagnostic_on_failure() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let failure = seiran_compiler::compile(&source, &root).expect_err("未登録の設定ファイルは失敗するはず");
+  let failure =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect_err("未登録の設定ファイルは失敗するはず");
 
   // Assert — 主診断は段名の wrapper ではなく、修正できる leaf そのものであるはず
   assert_eq!(failure.diagnostics().count(), 1);
@@ -74,7 +79,8 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("script 不一致は致命的ではないはず");
+  let compilation =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect("script 不一致は致命的ではないはず");
 
   // Assert — 警告は成功成果物と一緒に返り、severity は Warning、code は leaf のもの
   let codes: Vec<String> = compilation
@@ -111,7 +117,7 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("いずれも致命的ではないはず");
+  let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("いずれも致命的ではないはず");
 
   // Assert — 表示順は段の実行順（設定 → フォント → 組版）で固定
   let codes: Vec<String> = compilation
@@ -148,7 +154,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("はみ出しは致命的ではないはず");
+  let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
   // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
   let reports: Vec<&miette::Report> = compilation.warnings.reports().collect();
@@ -182,7 +188,7 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("はみ出しは致命的ではないはず");
+  let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
   // Assert — 収束したパスの警告だけが残る
   let codes: Vec<String> = compilation
@@ -205,7 +211,8 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
   let root = ProjectPath::new("/project/config.toml");
 
   // Act
-  let compilation = seiran_compiler::compile(&source, &root).expect("拡張子違いは致命的ではないはず");
+  let compilation =
+    seiran_compiler::compile(&source, &root, project_base_dir()).expect("拡張子違いは致命的ではないはず");
 
   // Assert
   let codes: Vec<String> = compilation

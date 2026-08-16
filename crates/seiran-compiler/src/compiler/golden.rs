@@ -279,7 +279,7 @@ fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, Project
 /// 今回は移行しない（issue の「順次移行」方針どおり）。
 fn dump_input_via_compile(name: &str) -> String {
   let (source, root) = memory_source_for_golden_fixture(name);
-  let compilation = super::compile(&source, &root)
+  let compilation = super::compile(&source, &root, &workspace_root())
     .unwrap_or_else(|failure| panic!("fixture {name} の compile は成功するはず: {:?}", failure.into_report()));
   return super::dump::dump_publication(&compilation.publication);
 }
