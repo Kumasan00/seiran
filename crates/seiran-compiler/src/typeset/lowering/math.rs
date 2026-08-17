@@ -10,7 +10,7 @@ use crate::{
   document::{FontKind, HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   length::Length,
   semantics::CounterValue,
-  style::{Alignment, MathScriptStyle, NumberSide},
+  style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
   typeset::boxes::Align,
 };
 
@@ -65,11 +65,8 @@ pub(super) fn lower_math_block(
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
-fn number_box(number_format: &str, n: &str, font_size: Length) -> Vec<LayoutNode> {
-  let text = super::placeholder::expand(number_format, |name| match name {
-    "number" => return n.to_string(),
-    _ => return format!("{{{name}}}"),
-  });
+fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<LayoutNode> {
+  let text = tag_format.expand(n);
   return vec![LayoutNode::Text(
     text,
     TextStyle {
@@ -215,7 +212,10 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{length::Length, style::Style as ReadStyle};
+  use crate::{
+    length::Length,
+    style::{CounterTemplate, Style as ReadStyle},
+  };
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ
   ///
@@ -385,7 +385,7 @@ mod tests {
   /// equation カウンタの `format` を `"{n}"` に縮約した Style（番号値を読みやすくするため）
   fn style_with_plain_equation_format() -> ReadStyle {
     let mut style = ReadStyle::default();
-    style.counters.equation.number_format = "{n}".to_string();
+    style.counters.equation.number_format = CounterTemplate::parse("{n}");
     return style;
   }
 

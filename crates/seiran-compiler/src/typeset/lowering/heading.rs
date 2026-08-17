@@ -2,8 +2,7 @@
 
 use super::{
   LoweringContext,
-  layout_node::{LayoutNode, TextStyle},
-  template::expand_template,
+  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
 use crate::{
   document::HeadingLevel,
@@ -28,7 +27,7 @@ pub(super) fn title_style(ctx: &LoweringContext, level: HeadingLevel) -> TextSty
 ///
 /// `title` は「呼ぶとタイトルを lower して返すクロージャ」。`format` に `{title}` が現れた
 /// ときだけ、現れた回数ぶん呼ばれる（タイトル中の `\footnote` が採番だけ消費する事故を防ぐ。
-/// 詳細は [`expand_template`] の doc コメント）。
+/// 詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
 pub(super) fn lower_heading(
   ctx: &LoweringContext,
   level: HeadingLevel,
@@ -40,7 +39,10 @@ pub(super) fn lower_heading(
   let heading_style = ctx.style.heading(level);
   let style = title_style(ctx, level);
 
-  let children = expand_template(&heading_style.format, number, title, None, style);
+  let children = heading_style.format.expand(number, title, |literal| {
+    return LayoutNode::Text(literal.to_string(), style);
+  });
+  let children = merge_adjacent_text(children);
 
   let mut result = Vec::new();
 
@@ -81,7 +83,7 @@ mod tests {
   };
   use crate::{
     document::FontKind,
-    style::Style as ReadStyle,
+    style::{NumberTitleTemplate, Style as ReadStyle},
     typeset::boxes::{AnchorId, LinkTarget},
   };
 
@@ -105,7 +107,7 @@ mod tests {
   fn lower_heading_uses_style_template() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = "[{number}] {title}".to_string();
+    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("[{number}] {title}");
     let ctx = LoweringContext::new(&style);
     let title = plain_title(&ctx, HeadingLevel::Section, "Custom Title");
 
@@ -225,7 +227,7 @@ mod tests {
   fn heading_format_without_title_placeholder_does_not_consume_footnote_number() {
     // Arrange — `{title}` を含まない独自フォーマット（タイトルは一切表示されない）
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = "{number}".to_string();
+    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("{number}");
 
     // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{in title}}\n\nbody\\footnote{in body}\n"));
@@ -238,7 +240,7 @@ mod tests {
   fn heading_format_with_two_title_placeholders_lowers_title_twice() {
     // Arrange — `{title}` を 2 回含むフォーマット
     let mut style = ReadStyle::default();
-    style.heading[HeadingLevel::Section].format = "{title} / {title}".to_string();
+    style.heading[HeadingLevel::Section].format = NumberTitleTemplate::parse("{title} / {title}");
 
     // Act
     let nodes = lower(&style, &analyzed("\\section{Intro\\footnote{n}}\n"));

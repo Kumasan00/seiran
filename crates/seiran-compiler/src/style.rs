@@ -20,11 +20,11 @@ mod math;
 mod number_style;
 mod page;
 mod page_numbering;
-mod placeholder;
 mod quote;
 mod reference;
 mod running;
 mod table;
+mod template;
 mod text;
 mod theorem;
 mod title_page;
@@ -54,6 +54,10 @@ pub use crate::style::{
   number_style::NumberStyle,
   page_numbering::PageNumbering,
   running::RunningContentStyle,
+  template::{
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, ReferenceTemplate, RunningTemplate,
+    RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
+  },
   text::TextAlignment,
   theorem::{TheoremReset, TheoremStyle},
   title_page::TitlePageStyle,
@@ -568,7 +572,7 @@ mod parse_tests {
     let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
-    assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
+    assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
     let default = Style::default();
     assert_eq!(style.heading(HeadingLevel::Chapter).format, default.heading(HeadingLevel::Chapter).format);
   }
@@ -747,13 +751,13 @@ mod parse_tests {
     let style = parse(toml, dummy_source()).unwrap();
 
     // Assert
-    assert_eq!(style.header.right, "{page} / {pages}");
+    assert_eq!(style.header.right.as_str(), "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
     assert_eq!(style.header.font_kind, crate::document::FontKind::SansSerif);
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
     assert_eq!(style.header.rule_color.map(crate::color::Color::rgb), Some([0x33, 0x33, 0x33]));
-    assert_eq!(style.footer.center, "{title}");
-    assert!(style.footer.left.is_empty());
+    assert_eq!(style.footer.center.as_str(), "{title}");
+    assert!(style.footer.left.as_str().is_empty());
     assert!(!style.header.is_empty());
   }
 
@@ -844,7 +848,7 @@ mod parse_tests {
 
     // Assert
     assert!((style.text.font_size.to_pt() - 14.0).abs() < f32::EPSILON);
-    assert_eq!(style.heading(HeadingLevel::Section).format, "§ {number} {title}");
+    assert_eq!(style.heading(HeadingLevel::Section).format.as_str(), "§ {number} {title}");
   }
 
   #[test]

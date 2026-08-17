@@ -3,7 +3,10 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::length::{Length, positive};
+use crate::{
+  length::{Length, positive},
+  style::NumberTitleTemplate,
+};
 
 /// キャプションの共通設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -11,8 +14,8 @@ use crate::length::{Length, positive};
 #[serde(deny_unknown_fields, default)]
 pub struct CaptionStyle {
   /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::caption_format))]
-  pub format: String,
+  #[garde(dive)]
+  pub format: NumberTitleTemplate,
   /// キャプションのフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -21,7 +24,7 @@ pub struct CaptionStyle {
 impl Default for CaptionStyle {
   fn default() -> Self {
     return Self {
-      format: "{number}: {title}".to_string(),
+      format: NumberTitleTemplate::parse("{number}: {title}"),
       font_size: Length::pt(11.0),
     };
   }
@@ -32,12 +35,12 @@ mod tests {
   use garde::Validate;
 
   use super::CaptionStyle;
-  use crate::length::Length;
+  use crate::{length::Length, style::NumberTitleTemplate};
 
   #[test]
   fn validate_rejects_empty_format() {
     let style = CaptionStyle {
-      format: String::new(),
+      format: NumberTitleTemplate::parse(""),
       ..CaptionStyle::default()
     };
     assert!(style.validate().is_err());
@@ -61,7 +64,7 @@ mod tests {
     let style: CaptionStyle = toml::from_str(toml).unwrap();
 
     // Assert
-    assert_eq!(style.format, "Figure {number}: {title}");
+    assert_eq!(style.format.as_str(), "Figure {number}: {title}");
     assert!((style.font_size.to_pt() - 11.0).abs() < f32::EPSILON);
   }
 }

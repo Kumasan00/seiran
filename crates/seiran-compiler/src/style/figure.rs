@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
   length::{Length, non_negative},
-  style::caption::CaptionStyle,
+  style::{NumberTitleTemplate, caption::CaptionStyle},
 };
 
 /// 図環境のスタイル設定
@@ -31,7 +31,7 @@ impl Default for FigureStyle {
   fn default() -> Self {
     return Self {
       caption: CaptionStyle {
-        format: "Figure {number}: {title}".to_string(),
+        format: NumberTitleTemplate::parse("Figure {number}: {title}"),
         font_size: Length::pt(11.0),
       },
       top_margin: Length::pt(12.0),
@@ -46,12 +46,12 @@ mod tests {
   use garde::Validate;
 
   use super::FigureStyle;
-  use crate::length::Length;
+  use crate::{length::Length, style::NumberTitleTemplate};
 
   #[test]
   fn validate_rejects_empty_caption_format() {
     let mut style = FigureStyle::default();
-    style.caption.format = String::new();
+    style.caption.format = NumberTitleTemplate::parse("");
     assert!(style.validate().is_err());
   }
 

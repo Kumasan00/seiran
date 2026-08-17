@@ -28,10 +28,8 @@ mod layout_node;
 mod list;
 mod math;
 mod paragraph;
-mod placeholder;
 mod quote;
 mod table;
-mod template;
 mod theorem;
 mod title_page;
 
@@ -526,6 +524,7 @@ mod tests {
     frontend::parse_source,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_fixtures::sample_references},
     source::SourceId,
+    style::CounterTemplate,
     typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
   };
 
@@ -642,7 +641,7 @@ mod tests {
   fn lower_math_block_carries_numbered_row() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.counters.equation.number_format = "{n}".to_string();
+    style.counters.equation.number_format = CounterTemplate::parse("{n}");
 
     // Act
     let out = lower_source(&style, "\\begin{equation}\na\n\\end{equation}\n");

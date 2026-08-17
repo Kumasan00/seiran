@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
   color::Color,
   length::{Length, non_negative, positive},
-  style::number_style::NumberStyle,
+  style::{NumberTemplate, number_style::NumberStyle},
 };
 
 /// 脚注番号のリセット方式
@@ -38,8 +38,8 @@ pub struct FootnoteStyle {
   #[garde(custom(positive))]
   pub font_size: Length,
   /// マーカー番号の書式テンプレート（`{number}` を置換。本文中・脚注本体先頭の両方に使う）
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::tag_format))]
-  pub marker_format: String,
+  #[garde(dive)]
+  pub marker_format: NumberTemplate,
   /// マーカーの縮小率（基準フォントサイズに対する比）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub marker_size_factor: f32,
@@ -68,7 +68,7 @@ impl Default for FootnoteStyle {
       numbering: FootnoteNumbering::default(),
       number_style: NumberStyle::default(),
       font_size: Length::pt(9.0),
-      marker_format: "{number}".to_string(),
+      marker_format: NumberTemplate::parse("{number}"),
       marker_size_factor: 0.7,
       marker_raise_factor: 0.4,
       top_margin: Length::pt(6.0),
@@ -85,7 +85,10 @@ mod tests {
   use garde::Validate;
 
   use super::{FootnoteNumbering, FootnoteStyle};
-  use crate::{length::Length, style::number_style::NumberStyle};
+  use crate::{
+    length::Length,
+    style::{NumberTemplate, number_style::NumberStyle},
+  };
 
   #[test]
   fn default_numbering_is_continuous() {
@@ -178,7 +181,7 @@ mod tests {
   #[test]
   fn validate_rejects_unknown_marker_format_token() {
     let style = FootnoteStyle {
-      marker_format: "{title}".to_string(),
+      marker_format: NumberTemplate::parse("{title}"),
       ..FootnoteStyle::default()
     };
     assert!(style.validate().is_err());
@@ -187,7 +190,7 @@ mod tests {
   #[test]
   fn validate_accepts_decorated_marker_format() {
     let style = FootnoteStyle {
-      marker_format: "[{number}]".to_string(),
+      marker_format: NumberTemplate::parse("[{number}]"),
       ..FootnoteStyle::default()
     };
     assert!(style.validate().is_ok());

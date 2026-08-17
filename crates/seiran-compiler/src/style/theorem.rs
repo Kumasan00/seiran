@@ -7,6 +7,7 @@ pub use crate::document::TheoremClass;
 use crate::{
   document::FontKind,
   length::{Length, non_negative},
+  style::{CounterTemplate, TheoremHeadingTemplate},
 };
 
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
@@ -91,8 +92,8 @@ pub struct TheoremStyle {
   pub reset_by: TheoremReset,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   /// （counter の `number_format` と同形。例: `"{n}"`、`"{chapter}.{n}"`）
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
-  pub number_format: String,
+  #[garde(dive)]
+  pub number_format: CounterTemplate,
   /// 採番しない（`proof` 等）。`true` のとき番号は付かない
   pub unnumbered: bool,
   /// QED マーク（`proof` 末尾に配置する記号）。`None` のときマークなし
@@ -109,7 +110,7 @@ impl Default for TheoremStyle {
       display_name: "Theorem".to_string(),
       counter: "theorem".to_string(),
       reset_by: TheoremReset::None,
-      number_format: "{n}".to_string(),
+      number_format: CounterTemplate::parse("{n}"),
       unnumbered: false,
       qed_mark: None,
       style: TheoremPresentation::default(),
@@ -139,18 +140,18 @@ pub enum TheoremReset {
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
-  pub heading_format: String,
+  #[garde(dive)]
+  pub heading_format: TheoremHeadingTemplate,
   /// サブタイトルありの見出し書式。`{display_name}` / `{number}` / `{title}` を含められる
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
-  pub heading_with_title: String,
+  #[garde(dive)]
+  pub heading_with_title: TheoremHeadingTemplate,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式。`{display_name}` / `{of}` を含められる。
   /// `proof` の `[of=...]` 指定時に使う。
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
-  pub heading_with_of: String,
+  #[garde(dive)]
+  pub heading_with_of: TheoremHeadingTemplate,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式。`{display_name}` / `{of}` / `{title}` を含められる。
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::theorem_heading_format))]
-  pub heading_with_of_and_title: String,
+  #[garde(dive)]
+  pub heading_with_of_and_title: TheoremHeadingTemplate,
   /// 本文のフォント種別（定理は斜体、証明・定義系はローマン）
   pub font_kind: FontKind,
   /// 見出しのフォント種別（既定は太字セリフ）
@@ -166,10 +167,10 @@ pub struct TheoremPresentation {
 impl Default for TheoremPresentation {
   fn default() -> Self {
     return Self {
-      heading_format: "{display_name} {number}".to_string(),
-      heading_with_title: "{display_name} {number} ({title})".to_string(),
-      heading_with_of: "{display_name} of {of}".to_string(),
-      heading_with_of_and_title: "{display_name} of {of} ({title})".to_string(),
+      heading_format: TheoremHeadingTemplate::parse("{display_name} {number}"),
+      heading_with_title: TheoremHeadingTemplate::parse("{display_name} {number} ({title})"),
+      heading_with_of: TheoremHeadingTemplate::parse("{display_name} of {of}"),
+      heading_with_of_and_title: TheoremHeadingTemplate::parse("{display_name} of {of} ({title})"),
       font_kind: FontKind::SerifItalic,
       heading_font_kind: FontKind::SerifBold,
       top_margin: Length::pt(12.0),
@@ -223,8 +224,8 @@ pub fn default_for_class(class: TheoremClass) -> TheoremStyle {
       style.unnumbered = true;
       style.qed_mark = Some("□".to_string());
       style.style.font_kind = FontKind::Serif;
-      style.style.heading_format = "{display_name}".to_string();
-      style.style.heading_with_title = "{display_name} ({title})".to_string();
+      style.style.heading_format = TheoremHeadingTemplate::parse("{display_name}");
+      style.style.heading_with_title = TheoremHeadingTemplate::parse("{display_name} ({title})");
     },
   }
   return style;
@@ -289,7 +290,7 @@ pub struct TheoremStyleOverride {
   /// カウンタのリセット先
   pub reset_by: Option<TheoremReset>,
   /// 番号構築テンプレート
-  pub number_format: Option<String>,
+  pub number_format: Option<CounterTemplate>,
   /// 採番しないか
   pub unnumbered: Option<bool>,
   /// QED マーク（TOML からは設定のみ可。`None` への解除は非対応）
@@ -328,13 +329,13 @@ impl TheoremStyleOverride {
 #[serde(deny_unknown_fields, default)]
 pub struct TheoremPresentationOverride {
   /// サブタイトルなしの見出し書式
-  pub heading_format: Option<String>,
+  pub heading_format: Option<TheoremHeadingTemplate>,
   /// サブタイトルありの見出し書式
-  pub heading_with_title: Option<String>,
+  pub heading_with_title: Option<TheoremHeadingTemplate>,
   /// 証明対象（`of`）ありサブタイトルなしの見出し書式
-  pub heading_with_of: Option<String>,
+  pub heading_with_of: Option<TheoremHeadingTemplate>,
   /// 証明対象（`of`）ありサブタイトルありの見出し書式
-  pub heading_with_of_and_title: Option<String>,
+  pub heading_with_of_and_title: Option<TheoremHeadingTemplate>,
   /// 本文のフォント種別
   pub font_kind: Option<FontKind>,
   /// 見出しのフォント種別
@@ -380,7 +381,10 @@ mod tests {
   use garde::Validate;
 
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
-  use crate::document::FontKind;
+  use crate::{
+    document::FontKind,
+    style::{CounterTemplate, TheoremHeadingTemplate},
+  };
 
   /// `Theorems` を TOML から `[theorems.<class>]` 配下に書く形でテストするための薄いラッパ。
   /// 本番では `Style.theorems` が同形でこの型を保持する。
@@ -413,7 +417,7 @@ mod tests {
   fn validate_rejects_empty_number_format() {
     // Arrange
     let style = TheoremStyle {
-      number_format: String::new(),
+      number_format: CounterTemplate::parse(""),
       ..TheoremStyle::default()
     };
 
@@ -437,7 +441,7 @@ mod tests {
   fn validate_rejects_unknown_heading_placeholder() {
     // Arrange
     let mut style = TheoremStyle::default();
-    style.style.heading_format = "{page}".to_string();
+    style.style.heading_format = TheoremHeadingTemplate::parse("{page}");
 
     // Act / Assert
     assert!(style.validate().is_err());
@@ -447,7 +451,7 @@ mod tests {
   fn validate_rejects_unknown_counter_reference_in_number_format() {
     // Arrange
     let style = TheoremStyle {
-      number_format: "{chaptr}.{n}".to_string(),
+      number_format: CounterTemplate::parse("{chaptr}.{n}"),
       ..TheoremStyle::default()
     };
 
@@ -474,7 +478,7 @@ mod tests {
     assert!(proof.unnumbered);
     assert_eq!(proof.qed_mark.as_deref(), Some("□"));
     assert_eq!(proof.style.font_kind, FontKind::Serif);
-    assert_eq!(proof.style.heading_format, "{display_name}");
+    assert_eq!(proof.style.heading_format.as_str(), "{display_name}");
   }
 
   #[test]
@@ -560,7 +564,7 @@ font_kind = \"sans_serif_bold\"
 
     // Assert
     assert_eq!(theorem.style.font_kind, FontKind::SansSerifBold);
-    assert_eq!(theorem.style.heading_format, "{display_name} {number}");
+    assert_eq!(theorem.style.heading_format.as_str(), "{display_name} {number}");
     assert!((theorem.style.top_margin.to_pt() - 12.0).abs() < f32::EPSILON);
   }
 
@@ -570,8 +574,8 @@ font_kind = \"sans_serif_bold\"
     let proof = default_for_class(TheoremClass::Proof);
 
     // Assert
-    assert_eq!(proof.style.heading_with_of, "{display_name} of {of}");
-    assert_eq!(proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
+    assert_eq!(proof.style.heading_with_of.as_str(), "{display_name} of {of}");
+    assert_eq!(proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
   }
 
   #[test]
@@ -586,8 +590,8 @@ heading_with_of = \"{display_name}（{of} の証明）\"
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
     // Assert
-    assert_eq!(wrapper.theorems.proof.style.heading_with_of, "{display_name}（{of} の証明）");
-    assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title, "{display_name} of {of} ({title})");
+    assert_eq!(wrapper.theorems.proof.style.heading_with_of.as_str(), "{display_name}（{of} の証明）");
+    assert_eq!(wrapper.theorems.proof.style.heading_with_of_and_title.as_str(), "{display_name} of {of} ({title})");
   }
 
   #[test]
@@ -647,7 +651,7 @@ number_format = \"{section}.{n}\"
     let wrapper: TheoremsWrapper = toml::from_str(toml).unwrap();
 
     // Assert
-    assert_eq!(wrapper.theorems.theorem.number_format, "{section}.{n}");
+    assert_eq!(wrapper.theorems.theorem.number_format.as_str(), "{section}.{n}");
   }
 
   #[test]

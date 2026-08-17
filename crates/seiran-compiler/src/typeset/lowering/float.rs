@@ -3,8 +3,7 @@
 use super::{
   LoweringContext, LoweringState,
   inline::lower_inlines,
-  layout_node::{LayoutNode, TextStyle},
-  template::expand_template,
+  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
 };
 use crate::{
   document::{CaptionPosition, FontKind, HirInline},
@@ -17,7 +16,7 @@ use crate::{
 ///
 /// キャプション本文の lowering はクロージャで遅延させ、`format` が `{title}` を含むときだけ
 /// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
-/// 防ぐため。詳細は [`expand_template`] の doc コメント）。
+/// 防ぐため。詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
 pub(super) fn build_caption(
   ctx: &LoweringContext,
   caption_style: &CaptionStyle,
@@ -30,13 +29,12 @@ pub(super) fn build_caption(
     font_kind: FontKind::Serif,
     color: None,
   };
-  return expand_template(
-    &caption_style.format,
+  let nodes = caption_style.format.expand(
     number,
     || return lower_inlines(ctx, inlines, base_style, state),
-    None,
-    base_style,
+    |literal| return LayoutNode::Text(literal.to_string(), base_style),
   );
+  return merge_adjacent_text(nodes);
 }
 
 /// フロートの余白の指定
@@ -101,7 +99,7 @@ mod tests {
   };
   use crate::{
     semantics::LabelId,
-    style::{CaptionStyle, Style as ReadStyle},
+    style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
     typeset::boxes::{Align, AnchorId, LinkTarget},
   };
 
@@ -246,7 +244,7 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
-      format: "Fig {number}: {title}".to_string(),
+      format: NumberTitleTemplate::parse("Fig {number}: {title}"),
       font_size: Length::pt(9.0),
     };
 
@@ -272,7 +270,7 @@ mod tests {
     // Arrange — `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
-      format: "図 {number}".to_string(),
+      format: NumberTitleTemplate::parse("図 {number}"),
       font_size: Length::pt(9.0),
     };
 

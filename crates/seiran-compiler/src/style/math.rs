@@ -3,7 +3,10 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::length::{Length, non_negative, positive};
+use crate::{
+  length::{Length, non_negative, positive},
+  style::NumberTemplate,
+};
 
 /// 数式設定全体（`[math]` テーブル）。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -67,8 +70,8 @@ pub struct MathBlockStyle {
   /// `counters.equation`（**number**）や `\ref{eq:x}` の表示を決める
   /// [`crate::style::CounterStyle::ref_format`]（**ref**）とは別物。既定値が一致するのは LaTeX 慣習で
   /// 「式の横」も「素の相互参照」も括弧付き番号だからで、両者は独立に変更できる。
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::tag_format))]
-  pub tag_format: String,
+  #[garde(dive)]
+  pub tag_format: NumberTemplate,
   /// 数式番号の配置側
   pub number_side: NumberSide,
   /// 数式本体の揃え
@@ -90,7 +93,7 @@ pub struct MathBlockStyle {
 impl Default for MathBlockStyle {
   fn default() -> Self {
     return Self {
-      tag_format: "({number})".to_string(),
+      tag_format: NumberTemplate::parse("({number})"),
       number_side: NumberSide::Right,
       alignment: Alignment::Center,
       row_gap: Length::pt(3.0),
@@ -130,6 +133,7 @@ mod tests {
   use garde::Validate;
 
   use super::{Alignment, MathBlockStyle, MathScriptStyle, MathStyle, NumberSide};
+  use crate::style::NumberTemplate;
 
   #[test]
   fn block_default_uses_right_number_and_center_body() {
@@ -139,14 +143,14 @@ mod tests {
     // Assert
     assert_eq!(block.number_side, NumberSide::Right);
     assert_eq!(block.alignment, Alignment::Center);
-    assert_eq!(block.tag_format, "({number})");
+    assert_eq!(block.tag_format.as_str(), "({number})");
   }
 
   #[test]
   fn validate_rejects_empty_tag_format() {
     // Arrange
     let mut style = MathStyle::default();
-    style.block.tag_format = String::new();
+    style.block.tag_format = NumberTemplate::parse("");
 
     // Act / Assert
     assert!(style.validate().is_err());

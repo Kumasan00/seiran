@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
   document::{FontKind, HeadingLevel},
   length::{Length, non_negative, positive},
+  style::NumberTitleTemplate,
 };
 
 /// 見出しレベル全 6 つに対応するスタイル設定。
@@ -92,8 +93,8 @@ impl HeadingStyles {
 #[serde(deny_unknown_fields, default)]
 pub struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::heading_format))]
-  pub format: String,
+  #[garde(dive)]
+  pub format: NumberTitleTemplate,
   /// 見出しテキストのフォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,
@@ -111,7 +112,7 @@ pub struct HeadingStyle {
 impl Default for HeadingStyle {
   fn default() -> Self {
     return Self {
-      format: "{number} {title}".to_string(),
+      format: NumberTitleTemplate::parse("{number} {title}"),
       font_size: Length::pt(20.0),
       bottom_margin: Length::pt(10.0),
       page_break_before: false,
@@ -162,7 +163,7 @@ impl From<HeadingStylesTable> for HeadingStyles {
 #[serde(deny_unknown_fields, default)]
 pub struct HeadingStyleOverride {
   /// 見出しの書式テンプレート
-  pub format: Option<String>,
+  pub format: Option<NumberTitleTemplate>,
   /// 見出しテキストのフォントサイズ
   pub font_size: Option<Length>,
   /// 見出しブロックの下余白
@@ -205,14 +206,14 @@ pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
   let mut style = HeadingStyle::default();
   match level {
     HeadingLevel::Part => {
-      style.format = "Part {number}: {title}".to_string();
+      style.format = NumberTitleTemplate::parse("Part {number}: {title}");
       style.font_size = Length::pt(40.0);
       style.bottom_margin = Length::pt(20.0);
       style.page_break_before = true;
       style.page_break_after = true;
     },
     HeadingLevel::Chapter => {
-      style.format = "Chapter {number}: {title}".to_string();
+      style.format = NumberTitleTemplate::parse("Chapter {number}: {title}");
       style.font_size = Length::pt(25.0);
       style.bottom_margin = Length::pt(15.0);
       style.page_break_before = true;
@@ -243,13 +244,14 @@ mod tests {
   use crate::{
     document::{FontKind, HeadingLevel},
     length::Length,
+    style::NumberTitleTemplate,
   };
 
   #[test]
   fn validate_rejects_unknown_placeholder_in_format() {
     // Arrange
     let style = HeadingStyle {
-      format: "{nubmer} {title}".to_string(),
+      format: NumberTitleTemplate::parse("{nubmer} {title}"),
       ..HeadingStyle::default()
     };
 
@@ -274,7 +276,7 @@ mod tests {
   fn validate_rejects_empty_format() {
     // Arrange
     let heading = HeadingStyle {
-      format: String::new(),
+      format: NumberTitleTemplate::parse(""),
       ..HeadingStyle::default()
     };
 
@@ -346,8 +348,8 @@ mod tests {
     let styles = HeadingStyles::default();
 
     // Assert
-    assert_eq!(styles[HeadingLevel::Section].format, "{number} {title}");
-    assert!(styles[HeadingLevel::Chapter].format.starts_with("Chapter"));
+    assert_eq!(styles[HeadingLevel::Section].format.as_str(), "{number} {title}");
+    assert!(styles[HeadingLevel::Chapter].format.as_str().starts_with("Chapter"));
   }
 
   #[test]
@@ -393,7 +395,7 @@ format = \"§ {number} {title}\"
     let styles = wrapper.heading;
 
     // Assert
-    assert_eq!(styles[HeadingLevel::Section].format, "§ {number} {title}");
+    assert_eq!(styles[HeadingLevel::Section].format.as_str(), "§ {number} {title}");
     assert!((styles[HeadingLevel::Section].font_size.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!(styles[HeadingLevel::Part].page_break_after);
     assert_eq!(styles[HeadingLevel::Part].font_kind, FontKind::SerifBold);

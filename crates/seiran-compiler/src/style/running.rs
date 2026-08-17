@@ -14,6 +14,7 @@ use crate::{
   color::Color,
   document::FontKind,
   length::{Length, non_negative, positive},
+  style::RunningTemplate,
 };
 
 /// ヘッダーまたはフッター 1 つ分のスタイル設定
@@ -22,14 +23,14 @@ use crate::{
 #[serde(deny_unknown_fields, default)]
 pub struct RunningContentStyle {
   /// 左スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
-  pub left: String,
+  #[garde(dive)]
+  pub left: RunningTemplate,
   /// 中央スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
-  pub center: String,
+  #[garde(dive)]
+  pub center: RunningTemplate,
   /// 右スロットのテンプレート（既定は空 = 描画なし）
-  #[garde(custom(crate::style::placeholder::running_slot))]
-  pub right: String,
+  #[garde(dive)]
+  pub right: RunningTemplate,
   /// フォント種別
   #[garde(skip)]
   pub font_kind: FontKind,
@@ -54,16 +55,18 @@ impl RunningContentStyle {
   /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
   #[must_use]
   pub fn is_empty(&self) -> bool {
-    return self.left.trim().is_empty() && self.center.trim().is_empty() && self.right.trim().is_empty();
+    return self.left.as_str().trim().is_empty()
+      && self.center.as_str().trim().is_empty()
+      && self.right.as_str().trim().is_empty();
   }
 }
 
 impl Default for RunningContentStyle {
   fn default() -> Self {
     return Self {
-      left: String::new(),
-      center: String::new(),
-      right: String::new(),
+      left: RunningTemplate::parse(""),
+      center: RunningTemplate::parse(""),
+      right: RunningTemplate::parse(""),
       font_kind: FontKind::Serif,
       font_size: Length::pt(10.0),
       baseline_offset: Length::pt(28.0),
@@ -79,7 +82,7 @@ mod tests {
   use garde::Validate;
 
   use super::RunningContentStyle;
-  use crate::{document::FontKind, length::Length};
+  use crate::{document::FontKind, length::Length, style::RunningTemplate};
 
   #[test]
   fn default_is_empty() {
@@ -96,7 +99,7 @@ mod tests {
   fn is_empty_false_when_any_slot_filled() {
     // Arrange
     let style = RunningContentStyle {
-      right: "{page}".to_string(),
+      right: RunningTemplate::parse("{page}"),
       ..RunningContentStyle::default()
     };
 
@@ -132,7 +135,7 @@ mod tests {
   fn validate_rejects_unknown_slot_token() {
     // Arrange
     let style = RunningContentStyle {
-      center: "{pagee}".to_string(),
+      center: RunningTemplate::parse("{pagee}"),
       ..RunningContentStyle::default()
     };
 
@@ -144,9 +147,9 @@ mod tests {
   fn validate_accepts_valid_slot_tokens() {
     // Arrange
     let style = RunningContentStyle {
-      left: "{title}".to_string(),
-      center: "{author}".to_string(),
-      right: "{page} / {pages} — {date}".to_string(),
+      left: RunningTemplate::parse("{title}"),
+      center: RunningTemplate::parse("{author}"),
+      right: RunningTemplate::parse("{page} / {pages} — {date}"),
       ..RunningContentStyle::default()
     };
 
