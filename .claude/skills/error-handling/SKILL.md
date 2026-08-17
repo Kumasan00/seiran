@@ -228,4 +228,4 @@ pub enum MyError {
 
 設定ファイルの値検証は `garde` の `#[derive(Validate)]` + フィールド属性（`range` / `length` / `ascii` / `dive` / `custom`）で宣言的に記述する。複雑な相互制約は `custom` バリデーターで補い、検出した不正は `*ValidationError::Field { path, message }` に変換し、`Failures<Read*Error>`（各違反は `Read*Error::Validation` で透過）としてすべての違反を 1 度に報告する（`project::config` の `ConfigValidationError` / `style` の `StyleValidationError` で同パターン）。集約自身の診断（旧 `MultipleValidationErrors`）は作らない — ユーザーが最初に読むのは「どのフィールドをどう直すか」であるべきだから（#376）。
 
-例外: `read_references` は集約せず deserialize 時に fail-fast（著者名 / ID 検証）。集約方式に戻さない。
+例外: references 読込（`semantics::citation::references`、旧 `read_references`）は集約せず deserialize 時に fail-fast（著者名の family/literal 排他・空 / 空白 / 重複 ID）。理由: (1) 名前・ID 不正は稀な編集ミスで集約の価値が薄く、旧実装の集約は全構造体ジェネリック + 2 相変換（約 100 行）を要していた、(2) この module の他のエラー（`deny_unknown_fields`・未知日付キー・拡張子）は元々すべて fail-fast で一貫する、(3) fail-fast なら TOML / JSON パーサの行・列位置が診断に付き、手編集する references ファイルにはむしろ良い。検証は確定型側の手書き `Deserialize`（`name.rs` / `date.rs` の方式）に置き、`RawName` 相当の生表現・全構造体ジェネリックは作らない。将来クロスフィールド検証（season 範囲・date-parts arity 等）を足す場合も後段 `resolve` 集約で足りる。#376 の基準に対する意図的例外として維持し、集約方式に戻さない。
