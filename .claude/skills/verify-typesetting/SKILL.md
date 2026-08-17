@@ -32,33 +32,17 @@ golden テストの入力はコミット済み fixture（`crates/seiran-compiler
 
 ## layout dump golden
 
-`crates/seiran-compiler/src/compiler/golden.rs` には 10 個のテストがあり、golden ファイル
-（`crates/seiran-compiler/tests/golden/<name>.txt`）と実際に比較するのは主入口 `layout_dumps_match_golden`
-（`GOLDEN_INPUTS` 全 fixture の回帰）だけである。これは `dump_input_via_compile` を介して
-`super::compile()`（lib target の公開 facade）→ `compiler::dump::dump_publication`
-（`publication::Publication` の決定的テキストダンプ）を通す。**PDF バイト比較ではない**（ダンプは
-確定座標のテキスト表現。krilla の描画は含まない。ただし `dump_publication` は `Publication` の
-メタデータ・リンク・しおりまでダンプするため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が
-広い）。
+主入口は `crates/seiran-compiler/src/compiler/golden.rs` の `layout_dumps_match_golden`
+（`GOLDEN_INPUTS` 全 fixture の回帰）。`compile()` → `compiler::dump::dump_publication` を通した
+決定的テキストダンプ（`crates/seiran-compiler/tests/golden/<name>.txt`）との比較で、
+**PDF バイト比較ではない**（krilla の描画は含まない。ただしメタデータ・リンク・しおりまで
+ダンプするため `dump_pages` よりカバー範囲が広い）。
 
-残り 8 個のテストは golden ファイルを一切読み書きせず、次の 3 通りに分かれる。
-
-- **`dump_input` → `build_pages` → `dump_pages` の 2 つのダンプをテスト内で直接比較する**
-  （`assert_eq!` / `assert_ne!`。golden ファイルは介さない）: `index_marks_are_invisible_to_layout`
-  （`\index` の有無で本文レイアウトが変わらないことを確認）・style 差分 2 種
-  `layout_dump_changes_with_line_height` / `layout_dump_changes_with_punctuation_spacing`
-- **`build_pages` を直接呼び、返り値の `Page` / `PlacedBlock` へ直接アサートする**（ダンプ関数は
-  一切通らない）: `keep_with_next_prevents_heading_orphan_end_to_end`（見出し孤立防止）・
-  脚注ページ単位採番 2 種 `per_page_footnote_numbering_restarts_on_each_page` /
-  `continuous_footnote_numbering_runs_through_pages`（共通ヘルパ `footnote_numbers_per_page`
-  経由）・`long_footnote_splits_across_pages_without_overlapping_body`（長い脚注の繰越）
-- **設定オーバーライドの 2 実装（型付き版と TOML 版）が同じ値へ収束することだけを見る**（組版は
-  一切通らない）: `config_overrides_typed_and_toml_stay_in_sync`
-
-golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication` / `dump_publication` は
-`typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記のダンプ比較 3 個は現時点では
-移行していない — 対応する golden 移行は今後のフェーズ判断次第（`dump_input_via_compile` の doc comment
-が言う「順次移行」方針どおり）。
+テストの内部分類（golden ファイルを読まないダンプ直接比較・`build_pages` 直接アサート・
+設定オーバーライド同期検査）と、オーバーライドヘルパ 3 種の使い分け・同期規則は
+**golden.rs の module doc が正典** — この skill には再掲しない。前付け・running content・段組みは
+既定 config で無効で、ヘルパが入力名ごとに有効化している（該当経路を触ったら fixture が機能を
+実際に通しているか確認する）。
 
 - **確認**: `cargo test -p seiran-compiler`
 - **意図した変更**: `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で再生成し、`git diff` で
@@ -66,32 +50,12 @@ golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication
   fixture の差分は副作用のシグナル。golden の差分は PR に含めてレビュー対象にする
 - **リファクタの振る舞い不変**: golden 差分ゼロがそのまま証拠。`UPDATE_GOLDEN` は使わない
 
-### カバレッジの注意
-
-前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定
-config では無効。golden.rs の `apply_input_style_overrides`（型付き `Style`。`dump_input` /
-`dump_input_via_compile` 両方が共有する）と、`apply_input_config_overrides`（型付き `Config`。
-`dump_input` に加え、`build_pages` を直接呼ぶ `footnote_numbers_per_page`——脚注ページ単位採番の
-2 テストが使う共通ヘルパ——と `long_footnote_splits_across_pages_without_overlapping_body` でも
-使う。`dump_input` 専用ではない）/ `apply_input_config_overrides_toml`（`toml::Value` 版、
-`dump_input_via_compile` 専用 — 処理済みの `Config` は `Serialize` を持たないため、`compile` に
-渡す前の生 TOML テーブルを直接書き換える）が入力名ごとに有効化している（例: `toc` / `title_page`）。
-これらの経路を触ったら、該当 fixture がその機能を実際に通していることを確認する。
-
 ### 新機能にテストを足す
 
-1. `tests/text/<name>.sei` に機能を exercise する入力を追加
-2. `golden.rs` の `GOLDEN_INPUTS` に名前を登録（機能が既定で無効なら `apply_input_style_overrides`
-   に有効化を追記。**config レベルの上書きが必要な場合は `apply_input_config_overrides_toml` にも
-   追記する** — `GOLDEN_INPUTS` の全 fixture は `layout_dumps_match_golden` 経由で
-   `dump_input_via_compile`（`compile()` 経由）を通るため、型付き `Config` を直接書き換える
-   `apply_input_config_overrides` だけでは golden の入力へ反映されない。同じ fixture 名を
-   golden 以外の個別テスト（脚注採番テスト等、`dump_input` を経由せず `build_pages` を直接呼ぶ）
-   でも `apply_input_config_overrides` 経由で使う場合は、挙動を揃えるため両方に追記する）
-3. `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で golden を生成し、内容を確認してコミット
-
-外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが
-依存するため除外）。
+`tests/text/<name>.sei` を追加 → `GOLDEN_INPUTS` へ登録（既定で無効な機能はオーバーライドヘルパへ
+追記）→ `UPDATE_GOLDEN=1` で生成・内容確認・コミット。登録手順の詳細（型付き版と TOML 版の
+両方へ追記が必要になる条件を含む）は golden.rs module doc の「新機能に golden テストを足す」節に
+従う。外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存）。
 
 ## PDF 構造 golden（render 層の構造だけ）
 

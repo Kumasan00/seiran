@@ -1,7 +1,66 @@
 //! 確定レイアウトの golden スナップショット回帰テスト
 //!
 //! fixture を組版した決定的テキストを `tests/golden/` と比較する。再生成は
-//! `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で行う。
+//! `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で行う。検証手段の選択（layout dump golden と
+//! PDF バイト比較の使い分け）は `.claude/skills/verify-typesetting/SKILL.md` が規定し、
+//! 本モジュール内部のテスト分類・ヘルパの使い分けはこの doc が正典。
+//!
+//! # テストの分類
+//!
+//! golden ファイル（`tests/golden/<name>.txt`）と実際に比較するのは主入口
+//! [`layout_dumps_match_golden`]（[`GOLDEN_INPUTS`] 全 fixture の回帰）だけである。これは
+//! [`dump_input_via_compile`] を介して `super::compile()`（lib target の公開 facade）→
+//! `compiler::dump::dump_publication`（`publication::Publication` の決定的テキストダンプ）を通す。
+//! ダンプは確定座標のテキスト表現であり krilla の描画は含まないが、`Publication` の
+//! メタデータ・リンク・しおりまで含むため `dump_pages`（`typeset::dump` が所有）よりカバー範囲が広い。
+//!
+//! 残りのテストは golden ファイルを一切読み書きせず、次の 3 通りに分かれる。
+//!
+//! - **2 つのダンプをテスト内で直接比較**（[`dump_input`] → `build_pages` → `dump_pages`。
+//!   `assert_eq!` / `assert_ne!` で golden ファイルは介さない）:
+//!   [`index_marks_are_invisible_to_layout`]・style 差分 2 種
+//!   [`layout_dump_changes_with_line_height`] / [`layout_dump_changes_with_punctuation_spacing`]
+//! - **`build_pages` を直接呼び、返り値の `Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は
+//!   一切通らない）: [`keep_with_next_prevents_heading_orphan_end_to_end`]・
+//!   脚注ページ単位採番 2 種 [`per_page_footnote_numbering_restarts_on_each_page`] /
+//!   [`continuous_footnote_numbering_runs_through_pages`]（共通ヘルパ [`footnote_numbers_per_page`]
+//!   経由）・[`long_footnote_splits_across_pages_without_overlapping_body`]
+//! - **設定オーバーライドの 2 実装（型付き版と TOML 版）の収束だけを見る**（組版は一切通らない）:
+//!   [`config_overrides_typed_and_toml_stay_in_sync`]
+//!
+//! golden 移行は `layout_dumps_match_golden` 1 本にとどまる。`Publication` / `dump_publication` は
+//! `typeset::Page` レベルの anchor・索引語行の表現を持たないため、上記のダンプ比較テストは
+//! 移行していない（[`dump_input_via_compile`] の doc が言う「順次移行」方針どおり）。
+//!
+//! # カバレッジの注意
+//!
+//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
+//! 無効で、入力名ごとのオーバーライドヘルパが有効化する（例: `toc` / `title_page`）。
+//!
+//! - [`apply_input_style_overrides`]（型付き `Style`）: `dump_input` / `dump_input_via_compile` の両方が共有
+//! - [`apply_input_config_overrides`]（型付き `ProjectConfig`）: `dump_input` に加え、`build_pages` を
+//!   直接呼ぶ [`footnote_numbers_per_page`] と
+//!   [`long_footnote_splits_across_pages_without_overlapping_body`] も使う（`dump_input` 専用ではない）
+//! - [`apply_input_config_overrides_toml`]（`toml::Value` 版）: `dump_input_via_compile` 専用 —
+//!   処理済みの `ProjectConfig` は `Serialize` を持たないため、`compile` に渡す前の生 TOML テーブルを
+//!   直接書き換える
+//!
+//! 型付き版と TOML 版の同期規則は各ヘルパの doc を参照。これらの経路を触ったら、該当 fixture が
+//! その機能を実際に通していることを確認する。
+//!
+//! # 新機能に golden テストを足す
+//!
+//! 1. `tests/text/<name>.sei` に機能を exercise する入力を追加する
+//! 2. [`GOLDEN_INPUTS`] に名前を登録する。機能が既定で無効なら [`apply_input_style_overrides`] に
+//!    有効化を追記する。config レベルの上書きが必要な場合は [`apply_input_config_overrides_toml`] にも
+//!    追記する — `GOLDEN_INPUTS` の全 fixture は `layout_dumps_match_golden` 経由で
+//!    `dump_input_via_compile`（`compile()` 経由）を通るため、型付き `ProjectConfig` を直接書き換える
+//!    [`apply_input_config_overrides`] だけでは golden の入力へ反映されない。同じ fixture 名を
+//!    golden 以外の個別テスト（脚注採番テスト等、`dump_input` を経由せず `build_pages` を直接呼ぶ）でも
+//!    型付き版経由で使う場合は、挙動を揃えるため両方に追記する
+//! 3. `UPDATE_GOLDEN=1 cargo test -p seiran-compiler` で golden を生成し、内容を確認してコミットする
+//!
+//! 外部ファイルに依存する入力は対象外（前例: `figure.sei` は画像実体にレイアウトが依存するため除外）。
 
 use std::{
   fs,
