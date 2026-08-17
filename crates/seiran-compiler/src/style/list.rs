@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
   document::FontKind,
   length::{Length, non_negative},
-  style::number_style::NumberStyle,
+  style::{NumberTemplate, number_style::NumberStyle},
 };
 
 /// リスト要素のスタイル設定
@@ -25,8 +25,8 @@ pub struct ListStyle {
   pub unordered_marker: String,
   /// 順序付きリストのマーカー書式（例: `"{number}."`）。`{number}` は 1 始まりの項目番号で置換される。
   /// 後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ordered_list_format))]
-  pub ordered_marker_format: String,
+  #[garde(dive)]
+  pub ordered_marker_format: NumberTemplate,
   /// マーカー描画に使用するフォント種別
   pub marker_font_kind: FontKind,
   /// ネスト段（深さ 1 以上）の unordered マーカー系列。深さ `d`（≥1）は `(d - 1) % N` で循環的に引く
@@ -45,21 +45,21 @@ impl Default for ListStyle {
       indent: Length::pt(20.0),
       item_margin_bottom: Length::pt(4.0),
       unordered_marker: "•".to_string(),
-      ordered_marker_format: "{number}.".to_string(),
+      ordered_marker_format: NumberTemplate::parse("{number}."),
       marker_font_kind: FontKind::Serif,
       nested_unordered_markers: vec!["–".to_string(), "*".to_string(), "·".to_string()],
       nested_ordered_formats: vec![
         NestedOrderedFormat {
           number_style: NumberStyle::AlphaLower,
-          format: "({number})".to_string(),
+          format: NumberTemplate::parse("({number})"),
         },
         NestedOrderedFormat {
           number_style: NumberStyle::RomanLower,
-          format: "{number}.".to_string(),
+          format: NumberTemplate::parse("{number}."),
         },
         NestedOrderedFormat {
           number_style: NumberStyle::AlphaUpper,
-          format: "{number}.".to_string(),
+          format: NumberTemplate::parse("{number}."),
         },
       ],
     };
@@ -74,15 +74,15 @@ pub struct NestedOrderedFormat {
   /// この段の番号の数字表記スタイル
   pub number_style: NumberStyle,
   /// `{number}` を含む装飾テンプレート（例: `"({number})"`）。後ろに自動で半角スペースが付与される。
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ordered_list_format))]
-  pub format: String,
+  #[garde(dive)]
+  pub format: NumberTemplate,
 }
 
 impl Default for NestedOrderedFormat {
   fn default() -> Self {
     return Self {
       number_style: NumberStyle::default(),
-      format: "{number}.".to_string(),
+      format: NumberTemplate::parse("{number}."),
     };
   }
 }
@@ -92,7 +92,11 @@ mod tests {
   use garde::Validate;
 
   use super::{ListStyle, NestedOrderedFormat};
-  use crate::{document::FontKind, length::Length, style::number_style::NumberStyle};
+  use crate::{
+    document::FontKind,
+    length::Length,
+    style::{NumberTemplate, number_style::NumberStyle},
+  };
 
   #[test]
   fn default_matches_documented_values() {
@@ -103,7 +107,7 @@ mod tests {
     assert!((style.indent.to_pt() - 20.0).abs() < f32::EPSILON);
     assert!((style.item_margin_bottom.to_pt() - 4.0).abs() < f32::EPSILON);
     assert_eq!(style.unordered_marker, "•");
-    assert_eq!(style.ordered_marker_format, "{number}.");
+    assert_eq!(style.ordered_marker_format.as_str(), "{number}.");
     assert_eq!(style.marker_font_kind, FontKind::Serif);
     assert_eq!(style.nested_unordered_markers, vec!["–", "*", "·"]);
     let formats: Vec<(NumberStyle, &str)> =
@@ -202,7 +206,7 @@ marker_font_kind = \"serif\"
     let style = ListStyle {
       nested_ordered_formats: vec![NestedOrderedFormat {
         number_style: NumberStyle::AlphaLower,
-        format: "{title}".to_string(),
+        format: NumberTemplate::parse("{title}"),
       }],
       ..ListStyle::default()
     };

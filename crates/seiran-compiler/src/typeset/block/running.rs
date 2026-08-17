@@ -6,6 +6,7 @@ use super::Measurer;
 use crate::{
   document::FontKind,
   length::Length,
+  style::{RunningTemplate, RunningValues},
   typeset::{
     boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
     font::FontSystem,
@@ -34,11 +35,11 @@ pub struct RunningContentSpec {
 #[derive(Debug, Clone)]
 pub struct RunningSlots {
   /// 左スロットのテンプレート
-  pub left: String,
+  pub left: RunningTemplate,
   /// 中央スロットのテンプレート
-  pub center: String,
+  pub center: RunningTemplate,
   /// 右スロットのテンプレート
-  pub right: String,
+  pub right: RunningTemplate,
   /// フォント種別
   pub font_kind: FontKind,
   /// フォントサイズ（pt）
@@ -154,7 +155,7 @@ fn build_region(
 /// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
 fn shape_slot(
   measurer: &mut Measurer,
-  template: &str,
+  template: &RunningTemplate,
   page_label: &str,
   pages_label: &str,
   metadata: &RunningMetadata,
@@ -168,13 +169,14 @@ fn shape_slot(
 }
 
 /// テンプレート中のトークンを実値へ置換する
-fn substitute(template: &str, page_label: &str, pages_label: &str, metadata: &RunningMetadata) -> String {
-  return template
-    .replace("{page}", page_label)
-    .replace("{pages}", pages_label)
-    .replace("{title}", &metadata.title)
-    .replace("{author}", &metadata.author)
-    .replace("{date}", &metadata.date);
+fn substitute(template: &RunningTemplate, page_label: &str, pages_label: &str, metadata: &RunningMetadata) -> String {
+  return template.expand(RunningValues {
+    page: page_label,
+    pages: pages_label,
+    title: &metadata.title,
+    author: &metadata.author,
+    date: &metadata.date,
+  });
 }
 
 /// `HBox` 列の合計幅（pt）を返す
@@ -207,6 +209,7 @@ mod tests {
   use super::{RunningMetadata, append_slot, slot_width, substitute};
   use crate::{
     length::Length,
+    style::RunningTemplate,
     typeset::boxes::{HBox, HBoxContent, PositionedBox},
   };
 
@@ -272,7 +275,7 @@ mod tests {
   #[test]
   fn substitute_replaces_page_and_pages_independently() {
     // Arrange / Act
-    let result = substitute("{page} / {pages}", "3", "12", &metadata());
+    let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "3", "12", &metadata());
 
     // Assert
     assert_eq!(result, "3 / 12");
@@ -281,7 +284,7 @@ mod tests {
   #[test]
   fn substitute_supports_roman_front_matter_labels() {
     // Arrange / Act
-    let result = substitute("{page} / {pages}", "ii", "iv", &metadata());
+    let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "ii", "iv", &metadata());
 
     // Assert
     assert_eq!(result, "ii / iv");
@@ -290,7 +293,7 @@ mod tests {
   #[test]
   fn substitute_replaces_metadata_tokens() {
     // Arrange / Act
-    let result = substitute("{title} — {author} ({date})", "1", "1", &metadata());
+    let result = substitute(&RunningTemplate::parse("{title} — {author} ({date})"), "1", "1", &metadata());
 
     // Assert
     assert_eq!(result, "My Title — Me (2026-06-14)");
@@ -299,7 +302,7 @@ mod tests {
   #[test]
   fn substitute_unset_metadata_becomes_empty() {
     // Arrange
-    let result = substitute("[{title}]", "1", "1", &RunningMetadata::default());
+    let result = substitute(&RunningTemplate::parse("[{title}]"), "1", "1", &RunningMetadata::default());
 
     // Assert
     assert_eq!(result, "[]");
@@ -308,7 +311,7 @@ mod tests {
   #[test]
   fn substitute_leaves_static_text_untouched() {
     // Arrange / Act
-    let result = substitute("Confidential", "5", "9", &metadata());
+    let result = substitute(&RunningTemplate::parse("Confidential"), "5", "9", &metadata());
 
     // Assert
     assert_eq!(result, "Confidential");

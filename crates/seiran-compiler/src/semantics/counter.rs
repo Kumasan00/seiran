@@ -303,7 +303,7 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::style::{CounterStyle, Counters, NumberStyle, Style, TheoremReset};
+  use crate::style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset};
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 
@@ -394,16 +394,16 @@ mod tests {
     let counters = Counters {
       part: CounterStyle {
         display_name: "Part".to_string(),
-        number_format: "{n}".to_string(),
+        number_format: CounterTemplate::parse("{n}"),
         number_style: NumberStyle::RomanUpper,
-        ref_format: "{number}".to_string(),
+        ref_format: ReferenceTemplate::parse("{number}"),
         resets: vec![CounterName::Chapter],
       },
       chapter: CounterStyle {
         display_name: "Chapter".to_string(),
-        number_format: "{part}-{n}".to_string(),
+        number_format: CounterTemplate::parse("{part}-{n}"),
         number_style: NumberStyle::Arabic,
-        ref_format: "{number}".to_string(),
+        ref_format: ReferenceTemplate::parse("{number}"),
         resets: vec![],
       },
       ..Counters::default()

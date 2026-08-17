@@ -113,7 +113,7 @@ mod tests {
   use super::SemanticPolicy;
   use crate::{
     document::HeadingLevel,
-    style::{CounterName, NumberStyle, Style},
+    style::{CounterName, CounterTemplate, NumberStyle, ReferenceTemplate, Style},
   };
 
   #[test]
@@ -121,8 +121,8 @@ mod tests {
     // Arrange — 表示専用フィールドだけが異なる 2 つの Style
     let base = Style::default();
     let mut display_variant = Style::default();
-    display_variant.counters.chapter.number_format = "第{n}章".to_string();
-    display_variant.counters.chapter.ref_format = "{display_name}（{number}）".to_string();
+    display_variant.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
+    display_variant.counters.chapter.ref_format = ReferenceTemplate::parse("{display_name}（{number}）");
     display_variant.counters.chapter.display_name = "章".to_string();
     display_variant.counters.chapter.number_style = NumberStyle::RomanUpper;
 

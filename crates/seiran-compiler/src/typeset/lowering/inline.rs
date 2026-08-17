@@ -102,10 +102,7 @@ pub(super) fn lower_inline(
       let index = state.next_footnote_index();
       let number = footnote_number(ctx, index);
       let footnote_style = &ctx.style.footnote;
-      let marker_text = super::placeholder::expand(&footnote_style.marker_format, |name| match name {
-        "number" => return footnote_style.number_style.render(number),
-        _ => return format!("{{{name}}}"),
-      });
+      let marker_text = footnote_style.marker_format.expand(&footnote_style.number_style.render(number));
 
       // 本文中のマーカーから脚注本体へリンクする。
       let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
@@ -190,7 +187,7 @@ mod tests {
   use crate::{
     color::Color,
     semantics::{CitationId, GeneratedInline, LabelId},
-    style::Style as ReadStyle,
+    style::{NumberTemplate, Style as ReadStyle},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -558,7 +555,7 @@ mod tests {
     let mut style = ReadStyle::default();
     style.footnote.font_size = Length::pt(20.0);
     style.footnote.marker_size_factor = 0.5;
-    style.footnote.marker_format = "[{number}]".to_string();
+    style.footnote.marker_format = NumberTemplate::parse("[{number}]");
 
     // Act
     let nodes = lower_source(&style, "\\footnote{note}\n");

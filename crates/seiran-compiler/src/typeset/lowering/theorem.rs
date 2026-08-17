@@ -2,16 +2,14 @@
 
 use super::{
   LoweringContext, LoweringState,
-  layout_node::{LayoutNode, TextStyle},
-  lower_nodes_inner,
-  template::expand_template,
-  with_label_anchor,
+  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+  lower_nodes_inner, with_label_anchor,
 };
 use crate::{
   document::{FontKind, HirNode, HirNodeKind, TheoremClass},
   length::Length,
   semantics::LabelId,
-  style::TheoremStyle,
+  style::{TheoremHeadingValues, TheoremStyle},
   typeset::boxes::Align,
 };
 
@@ -75,13 +73,12 @@ fn build_heading(
     color: None,
   };
 
-  let raw_template = match (of.is_some(), title.is_some()) {
+  let template = match (of.is_some(), title.is_some()) {
     (true, true) => &pres.heading_with_of_and_title,
     (true, false) => &pres.heading_with_of,
     (false, true) => &pres.heading_with_title,
     (false, false) => &pres.heading_format,
   };
-  let template = raw_template.replace("{display_name}", &theorem_style.display_name);
 
   // サブタイトルはプレーンテキスト（`[title="..."]`）なので、テンプレート展開へ渡す前に
   // 基底スタイルの `Text` 1 個へ落とす。副作用のない生成なので、遅延させても結果は変わらない。
@@ -90,7 +87,15 @@ fn build_heading(
   };
   let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 
-  let children = expand_template(&template, number.unwrap_or(""), make_title, of_display.as_deref(), base_style);
+  let values = TheoremHeadingValues {
+    display_name: &theorem_style.display_name,
+    number: number.unwrap_or(""),
+    of: of_display.as_deref(),
+  };
+  let children = template.expand(values, make_title, |literal| {
+    return LayoutNode::Text(literal.to_string(), base_style);
+  });
+  let children = merge_adjacent_text(children);
 
   return LayoutNode::VBox {
     children,

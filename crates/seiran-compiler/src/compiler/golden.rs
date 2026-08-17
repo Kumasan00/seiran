@@ -14,7 +14,7 @@ use crate::{
   length::Length,
   project::{FontData, MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
-  style::Style,
+  style::{RunningTemplate, Style},
   typeset::{AnchorMark, Page, PlacedBlock, dump_pages},
 };
 
@@ -94,9 +94,9 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
   match name {
     "title_page" => {
       style.title_page.enabled = true;
-      style.header.left = "{title}".to_string();
-      style.header.right = "{page} / {pages}".to_string();
-      style.footer.center = "{page}".to_string();
+      style.header.left = RunningTemplate::parse("{title}");
+      style.header.right = RunningTemplate::parse("{page} / {pages}");
+      style.footer.center = RunningTemplate::parse("{page}");
     },
     "toc" => style.toc.enabled = true,
     "hyphenation" => {

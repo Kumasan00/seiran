@@ -4,18 +4,21 @@
 //! （値に影響する style フィールド）だけを読んでカウンタの構造値を確定させ、
 //! `number_format` / `number_style` / `ref_format`（表示側フィールド）はこのモジュールだけが読む。
 
+use std::sync::LazyLock;
+
 use crate::{
   document::TheoremClass,
   semantics::{CounterKind, CounterValue},
-  style::{CounterName, Counters, Style, TheoremReset},
-  typeset::lowering::placeholder,
+  style::{CounterName, CounterPlaceholder, Counters, ReferenceTemplate, Style, TheoremReset},
 };
 
 /// 定理の `\ref` 表示に使う固定書式
 ///
 /// カウンタの `ref_format` と違い style に対応するフィールドが無く、cleveref 相当の
 /// 「表示名 + 番号」に固定されている（issue #282 以前の `CounterRegistry` から引き継いだ挙動）。
-const THEOREM_REF_FORMAT: &str = "{display_name} {number}";
+/// style 由来のテンプレートと同じく、解析は 1 回だけ行う。
+static THEOREM_REF_FORMAT: LazyLock<ReferenceTemplate> =
+  LazyLock::new(|| return ReferenceTemplate::parse("{display_name} {number}"));
 
 /// [`CounterValue`] を、その種別の `number_format` / `number_style` で表示番号にする
 ///
@@ -38,22 +41,10 @@ pub(crate) fn format_ref_display(style: &Style, value: &CounterValue) -> String 
   return match value.kind {
     CounterKind::Counter(name) => {
       let def = style.counters.get(name);
-      expand_ref_format(&def.ref_format, &number, &def.display_name)
+      def.ref_format.expand(&number, &def.display_name)
     },
-    CounterKind::Theorem(class) => {
-      expand_ref_format(THEOREM_REF_FORMAT, &number, &style.theorems.get(class).display_name)
-    },
+    CounterKind::Theorem(class) => THEOREM_REF_FORMAT.expand(&number, &style.theorems.get(class).display_name),
   };
-}
-
-/// `ref_format` テンプレート（`{number}` / `{display_name}`）を展開する
-fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String {
-  return placeholder::expand(template, |name| match name {
-    "number" => return number.to_string(),
-    "display_name" => return display_name.to_string(),
-    // 未知のプレースホルダはリテラルとして残す（デバッグしやすさのため）
-    _ => return format!("{{{name}}}"),
-  });
 }
 
 /// カウンタの `number_format`（`"{chapter}.{n}"` 等）を、構造値 `parts` を使って展開する
@@ -62,15 +53,10 @@ fn expand_ref_format(template: &str, number: &str, display_name: &str) -> String
 /// **参照先カウンタ自身の** `number_style` で描画する（`{part}` は既定でローマ数字）。
 fn expand_counter_template(style: &Style, name: CounterName, parts: &[u32]) -> String {
   let chain = counter_chain(&style.counters, name);
-  return placeholder::expand(&style.counters.get(name).number_format, |placeholder_name| {
-    let target = if placeholder_name == "n" {
-      Some(name)
-    } else {
-      CounterName::from_name(placeholder_name)
-    };
-    let Some(target) = target else {
-      // カウンタ名でないプレースホルダ（`{display_name}` 等）は空文字列にする
-      return String::new();
+  return style.counters.get(name).number_format.expand(|placeholder| {
+    let target = match placeholder {
+      CounterPlaceholder::Own => name,
+      CounterPlaceholder::Counter(target) => target,
     };
     return render_from_chain(style, &chain, parts, target);
   });
@@ -85,12 +71,9 @@ fn expand_theorem_template(style: &Style, class: TheoremClass, parts: &[u32]) ->
   let def = style.theorems.get(class);
   let own = parts.last().copied().unwrap_or(0);
   let reset_counter = theorem_reset_counter_name(def.reset_by);
-  return placeholder::expand(&def.number_format, |placeholder_name| {
-    if placeholder_name == "n" {
+  return def.number_format.expand(|placeholder| {
+    let CounterPlaceholder::Counter(target) = placeholder else {
       return own.to_string();
-    }
-    let Some(target) = CounterName::from_name(placeholder_name) else {
-      return String::new();
     };
     if reset_counter != Some(target) {
       return String::new();
@@ -166,7 +149,7 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
-  use crate::style::NumberStyle;
+  use crate::style::{CounterTemplate, NumberStyle};
 
   /// `CounterKind::Counter` の構造値を組み立てるテストヘルパ
   fn counter_value(name: CounterName, parts: &[u32]) -> CounterValue {
@@ -236,7 +219,7 @@ mod tests {
   fn literal_decoration_in_number_format_is_kept() {
     // Arrange
     let mut style = Style::default();
-    style.counters.chapter.number_format = "第{n}章".to_string();
+    style.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
 
     // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Chapter, &[0, 3]));
@@ -249,7 +232,7 @@ mod tests {
   fn cross_counter_reference_uses_target_number_style() {
     // Arrange — part は RomanUpper、chapter は Arabic
     let mut style = Style::default();
-    style.counters.chapter.number_format = "{part}-{n}".to_string();
+    style.counters.chapter.number_format = CounterTemplate::parse("{part}-{n}");
     style.counters.chapter.number_style = NumberStyle::Arabic;
 
     // Act
@@ -300,7 +283,7 @@ mod tests {
     // Arrange
     let mut style = Style::default();
     style.theorems.theorem.reset_by = TheoremReset::Section;
-    style.theorems.theorem.number_format = "{section}.{n}".to_string();
+    style.theorems.theorem.number_format = CounterTemplate::parse("{section}.{n}");
 
     // Act
     let text = format_counter_value(&style, &theorem_value(TheoremClass::Theorem, &[3, 1]));
@@ -325,7 +308,7 @@ mod tests {
   fn counter_not_on_ancestor_chain_renders_empty_placeholder() {
     // Arrange — 図の既定の祖先は chapter なので、section の値は構造値に含まれない
     let mut style = Style::default();
-    style.counters.figure.number_format = "{section}.{n}".to_string();
+    style.counters.figure.number_format = CounterTemplate::parse("{section}.{n}");
 
     // Act
     let text = format_counter_value(&style, &counter_value(CounterName::Figure, &[0, 1, 5]));

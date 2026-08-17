@@ -41,10 +41,10 @@ pub(super) fn lower_list(
       marker.clone()
     } else if ordered {
       if depth == 0 {
-        list_style.ordered_marker_format.replace("{number}", &n.to_string())
+        list_style.ordered_marker_format.expand(&n.to_string())
       } else {
         let format = &list_style.nested_ordered_formats[(depth - 1) % list_style.nested_ordered_formats.len()];
-        format.format.replace("{number}", &format.number_style.render(n))
+        format.format.expand(&format.number_style.render(n))
       }
     } else if depth == 0 {
       list_style.unordered_marker.clone()
@@ -82,7 +82,10 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{document::FontKind, style::Style as ReadStyle};
+  use crate::{
+    document::FontKind,
+    style::{NumberTemplate, Style as ReadStyle},
+  };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
@@ -453,11 +456,11 @@ mod tests {
     style.list.nested_ordered_formats = vec![
       crate::style::NestedOrderedFormat {
         number_style: crate::style::NumberStyle::RomanUpper,
-        format: "[{number}]".to_string(),
+        format: NumberTemplate::parse("[{number}]"),
       },
       crate::style::NestedOrderedFormat {
         number_style: crate::style::NumberStyle::Kanji,
-        format: "{number}、".to_string(),
+        format: NumberTemplate::parse("{number}、"),
       },
     ];
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
   color::Color,
   length::{Length, non_negative},
-  style::caption::CaptionStyle,
+  style::{NumberTitleTemplate, caption::CaptionStyle},
 };
 
 /// 表のスタイル設定
@@ -40,7 +40,7 @@ impl Default for TableStyle {
   fn default() -> Self {
     return Self {
       caption: CaptionStyle {
-        format: "Table {number}: {title}".to_string(),
+        format: NumberTitleTemplate::parse("Table {number}: {title}"),
         font_size: Length::pt(11.0),
       },
       top_margin: Length::pt(12.0),

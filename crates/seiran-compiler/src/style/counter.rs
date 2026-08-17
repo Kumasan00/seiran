@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::style::number_style::NumberStyle;
+use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -137,16 +137,16 @@ pub struct CounterStyle {
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で他カウンタの値を埋め込む
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::counter_format))]
-  pub number_format: String,
+  #[garde(dive)]
+  pub number_format: CounterTemplate,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
   /// `\ref{label}` の表示テンプレート。`{number}` で `format` の出力、`{display_name}` で
   /// 種別名を埋め込む
   ///
   /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
-  #[garde(length(chars, min = 1), custom(crate::style::placeholder::ref_format))]
-  pub ref_format: String,
+  #[garde(dive)]
+  pub ref_format: ReferenceTemplate,
   /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
   pub resets: Vec<CounterName>,
 }
@@ -163,9 +163,9 @@ impl CounterStyle {
   ) -> Self {
     return Self {
       display_name: display_name.to_string(),
-      number_format: number_format.to_string(),
+      number_format: CounterTemplate::parse(number_format),
       number_style,
-      ref_format: ref_format.to_string(),
+      ref_format: ReferenceTemplate::parse(ref_format),
       resets: resets.to_vec(),
     };
   }
@@ -263,15 +263,15 @@ mod tests {
   #[test]
   fn default_counters_section_references_chapter() {
     let counters = Counters::default();
-    assert_eq!(counters.section.number_format, "{chapter}.{n}");
+    assert_eq!(counters.section.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(counters.section.number_style, NumberStyle::Arabic);
-    assert_eq!(counters.section.ref_format, "{display_name} {number}");
+    assert_eq!(counters.section.ref_format.as_str(), "{display_name} {number}");
   }
 
   #[test]
   fn default_counters_equation_uses_parens_ref_format() {
     let counters = Counters::default();
-    assert_eq!(counters.equation.ref_format, "({number})");
+    assert_eq!(counters.equation.ref_format.as_str(), "({number})");
   }
 
   #[test]
@@ -296,9 +296,9 @@ resets = []
 
     // Assert
     assert_eq!(entry.display_name, "Figure");
-    assert_eq!(entry.number_format, "{chapter}.{n}");
+    assert_eq!(entry.number_format.as_str(), "{chapter}.{n}");
     assert_eq!(entry.number_style, NumberStyle::Arabic);
-    assert_eq!(entry.ref_format, "{display_name} {number}");
+    assert_eq!(entry.ref_format.as_str(), "{display_name} {number}");
   }
 
   #[test]

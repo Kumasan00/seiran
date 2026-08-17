@@ -396,10 +396,22 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 
 各サブスタイル型は `style` 直下の module（`caption` / `columns` / `counter` / `figure` / `footnote` /
 `heading` / `hyperref` / `index` / `list` / `math` / `number_style` / `page` / `page_numbering` / `quote` /
-`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置く。`placeholder` は書式テンプレート中の
-`{name}` プレースホルダを検証する共通ロジック（見出しは `{number}` / `{title}`、キャプションも同様、
-といった許可リストを持つ）。`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは
-TOML パース時に弾く。
+`reference` / `running` / `table` / `text` / `theorem` / `title_page` / `toc`）に置く。`template` は書式テンプレート
+（`{name}` プレースホルダを含む文字列）の解析・検証・展開をまとめて所有する deep module で、
+用途別の型（`NumberTitleTemplate` = 見出し・キャプション / `NumberTemplate` = 数式タグ・脚注マーカー・
+順序付きリスト / `CounterTemplate` = `number_format` / `ReferenceTemplate` = `ref_format` /
+`TheoremHeadingTemplate` = 定理見出し 4 形式 / `RunningTemplate` = 走り文スロット）が
+「どのフィールドでどのプレースホルダを書けるか」を持つ。テンプレートを表す style フィールドは
+生の `String` ではなくこれらの型で、**読込時に 1 回だけ解析**され、以降は解析済みのまま持ち回る
+（`Serialize` は元文字列だけを書き出すので TOML の形は変わらない）。
+
+テンプレート型の `Deserialize` は構文エラーで**失敗しない** — 解析時の問題は値の中に溜め、
+`garde` の `dive` でフィールド違反として報告する。deserialize を失敗させると
+`ReadStyleError::ParseToml` へ早期変換され、`validate_values` による複数フィールドの一括報告が
+そこで打ち切られてしまうため。展開（`expand`）は検証を通った値にだけ許され、問題を持つ
+テンプレートが届いたら上流保証の破れとして `unreachable!` で落ちる（typeset に新しい失敗経路は無い）。
+
+`Style` は `#[serde(deny_unknown_fields)]` を持ち、未知のトップレベルキーは TOML パース時に弾く。
 
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 
@@ -1062,7 +1074,7 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
 
 - `layout_node`: `LayoutNode` / `TextStyle` / `TableLayout` 等の型定義
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
-  Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` / `template` /
+  Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
   `theorem` / `title_page`
 - `generated`: CSL 整形の生成物（`semantics::GeneratedBlock` / `semantics::GeneratedInline`）専用の
   lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
@@ -1072,7 +1084,12 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
   `ref_format` / cleveref 相当の書式（定理は固定 `"{display_name} {number}"`）で表示文字列を作る純粋関数群。
   値の算出（発番・リセットカスケード）は持たない — それは `CounterRegistry`（`semantics` module 非公開）の
   責務
-- `placeholder`: `{name}` 形式プレースホルダの共通トークナイザ
+
+書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — lowering は `style::template` が
+公開する解析済みテンプレートの `expand` を呼ぶだけで、`{name}` の綴りも未知プレースホルダの扱いも
+知らない。見出し・キャプション・定理見出しの構造展開は、リテラルを `LayoutNode::Text` へ変換する
+クロージャと、タイトルを遅延生成するクロージャを渡す形で呼ぶ（`{title}` が無ければタイトルを
+lower せず、2 回あれば 2 回 lower する ＝ 脚注 index の払い出しを出現回数と一致させる）。
 
 **縦アキは必ず `Vkern` / `VBox.margin_bottom` で出し、ブロック境界を構造で表す**（残る `LineBreak` は
 段落内 `\\` 由来のみ）。
