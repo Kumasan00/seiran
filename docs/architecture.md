@@ -27,7 +27,7 @@ anchor に限って添える。
 段の呼び出し順序と中間型は非公開 module の内側に閉じる。crate はデプロイ・外部依存・独立再利用の単位に
 限り、**コンパイル段階を crate 境界にしない**（段ごとの crate 分割へ戻さない）。
 
-以下の 12 個の子節はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
+以下の 11 個の子節が扱う 12 個の module はいずれも `crates/seiran-compiler/src/` 直下の**非公開 module**（`mod <name>;`）であり、
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
@@ -55,7 +55,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   （変換漏れを型検査で検出するため）。
 - garde のカスタムバリデータは `#[garde(custom(positive))]` のように**属性内の文字列的なパス**で
   参照されるため、module を動かしても型検査では検出されない。`style/*` と
-  `project/config/pre_config.rs` の計 17 ファイルが `crate::length::{positive, non_negative}` を
+  `project/config/pre_config.rs` の計 18 ファイルが `crate::length::{positive, non_negative}` を
   import している。
 - crate root 直下の非公開 module は crate 全体から到達できるため、`pub(crate)` 指定は不要。
 - leaf の値概念は 1 module 1 概念で持つ。**包括的な `model` / `common` 置き場を再導入しない**。
@@ -376,13 +376,14 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 `config.toml` × `style.toml` の横断制約（段幅が正であること）もここには持たず、組版の不変条件として
 `typeset::geometry` が所有する。
 
-22 個のサブスタイル子モジュールはすべて非公開で、module root が再エクスポートするのは**`style` の外から
-実際に名指しされる名前だけ**（`Style` / `CounterName` / `CounterStyle` / `Counters` / `CaptionStyle` /
-`FootnoteNumbering` / `FootnoteStyle` / `NestedOrderedFormat` / `Alignment` / `MathScriptStyle` /
-`NumberSide` / `NumberStyle` / `PageNumbering` / `RunningContentStyle` / `TextAlignment` /
-`TheoremReset` / `TheoremStyle` / `TitlePageStyle` / `TocStyle`）。`Style` の内部フィールド型としてしか
-現れないサブスタイル型（`FigureStyle` / `HeadingStyle` / `TextBlockStyle` 等）とエラー型
-（`ReadStyleError` / `StyleValidationError`）は非公開 `use` に留め、`crate::style::FigureStyle` という
+23 個の子モジュール（サブスタイル 21 + `template` + `error`）はすべて非公開で、module root が
+再エクスポートするのは**`style` の外から実際に名指しされる名前だけ**（`Style` / `CounterName` /
+`CounterStyle` / `Counters` / `CaptionStyle` / `FootnoteNumbering` / `FootnoteStyle` /
+`NestedOrderedFormat` / `Alignment` / `MathScriptStyle` / `NumberSide` / `NumberStyle` /
+`PageNumbering` / `RunningContentStyle` / `TextAlignment` / `TheoremReset` / `TheoremStyle` /
+`TitlePageStyle` / `TocStyle`、および下記 `template` の用途別テンプレート型とその値型）。`Style` の
+内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` / `TextBlockStyle` 等）と
+エラー型（`ReadStyleError` / `StyleValidationError`、子 module `error` の所有）は非公開 `use` に留め、`crate::style::FigureStyle` という
 到達経路を作らない。エラー型を `ConfigValidationError` / `StyleValidationError` と接頭辞で区別するのは
 `project::config` 節に書いたとおり。
 
@@ -531,6 +532,8 @@ CSL 整形（`style.reference` の csl_path / locale / 書誌タイトル）に�
 - `ids`: `LabelId`（`\ref` の参照ラベル。`Borrow<str>` を実装して `HashMap` 引きを文字列で行える）と
   `HeadingKey`（見出しの文書順インデックスから決まる暗黙の destination キー。`\ref` ラベルの有無に
   かかわらず全見出しに付く）
+- `policy`: 走査 `collect_facts` の入力契約 `SemanticPolicy`（責務節に書いた、表示側フィールドを
+  型として持たない style からの投影）
 - `citation`: 引用まわり（下の子節）
 
 公開 API は `analyze(source: &dyn ProjectSource, document: HirDocument, references: &References,
@@ -882,9 +885,10 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 #### `error`
 
-`TypesetError`（画像ファイルの読込 `ReadImage` / 未対応拡張子 `UnsupportedImageFormat` / ラスタの
-デコード `DecodeImage` / SVG のパース `ParseSvg` / 自然寸法不正
-`InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged`）。
+`TypesetError`（シェーパー構築の失敗を transparent に運ぶ `Font`（`layout` が内部で呼ぶ
+`FontResources::system` 由来の `FontSystemError` の委譲。#352）/ 画像ファイルの読込 `ReadImage` /
+未対応拡張子 `UnsupportedImageFormat` / ラスタのデコード `DecodeImage` / SVG のパース `ParseSvg` /
+自然寸法不正 `InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged`）。
 `layout` の失敗型は `Failures<TypesetError>` で、画像は
 `collect_image_paths` が `BTreeSet<ProjectPath>` で作る正規化済みパスの昇順に**全件**検査する（#376）。`compiler::error::CompileError` は
 `Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
@@ -892,7 +896,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 （#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
 `build::*` を保っていた）。
 
-**バリアントは入力・環境由来の回復可能な失敗だけ**（すべて画像ファイルとページ単位脚注採番）。
+**バリアントは入力・環境由来の回復可能な失敗だけ**（画像ファイル・シェーパー構築・ページ単位脚注採番）。
 組版の内部不変条件違反はユーザー向け診断にせず、上流のどの検証・構築が保証するかを書いた
 `unreachable!` で顕在化する（#378 で内部バグ用の `Bug(TypesetBug)` バリアントと
 `typeset::internal_bug` code を削除した）。採番・参照解決は `semantics::analyze` が保証済みなので、
@@ -1118,7 +1122,7 @@ TOC・PDF しおり用の見出し記録（`HeadingRecord`）は `SemanticDocume
 `LayoutNode::Footnote { number, index, body }` を生成する（ラベル解決を伴わないため `Ref` の 2 段階
 プレースホルダ構造は元々取らない）。表示番号の既定は `index + 1`（＝文書通しの連番）だが、
 `LoweringContext::footnote_numbers`（出現 index 引きの上書きマップ）があればそれを引く。ページ単位
-リセットはこのマップ経由で実現する（`compiler` 節の脚注採番 solver を参照）。
+リセットはこのマップ経由で実現する（`typeset::pagination::footnote_numbering` の solver を参照）。
 
 **複数ソース**: `lower_sources_with_headings(ctx, document: &SemanticDocument) -> (Vec<LayoutNode>,
 Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_id }` 列）を 1 回で
@@ -1336,9 +1340,8 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 #### compile facade（`compiler.rs` 直下）
 
-`compiler.rs` 本体には facade 関数（`compile` / `parse_project` / `build_publication` /
-`parse_all_sources` / `attribute_analyze_error` /
-`collect_warnings`）と、
+`compiler.rs` 本体には facade 関数（`compile` / `parse_project` / `build_resources` /
+`parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート、
 `OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
