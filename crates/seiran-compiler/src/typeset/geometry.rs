@@ -1,18 +1,59 @@
-//! 版面の幾何 — `config.toml`（用紙・余白）× `style.toml`（`[columns]`）の横断バリデーションと、
-//! 段組み設定から導出する 1 段あたりの幅の計算。
+//! 版面の幾何 — `config.toml`（用紙寸法）× `style.toml`（`[page]` の余白・`[columns]`）の
+//! 横断バリデーションと、段組み設定から導出する 1 段あたりの幅の計算。
 //!
 //! どちらの設定 module にも属さない（片方だけでは判定できない）ので、この制約を不変条件として
-//! 使う組版側が所有する（#351）。[`validate_layout`] を呼ぶのは入力読込（`compiler::input::load`）で、
-//! 組版に入る前に不正な組み合わせを弾く。
+//! 使う組版側が所有する（#351）。余白単体の不正（負値）は style の値検証が持ち、ここが持つのは
+//! 「用紙寸法と突き合わせないと判定できない制約」だけ（#389）。[`validate_layout`] を呼ぶのは
+//! 入力読込（`compiler::input::load`）で、組版に入る前に不正な組み合わせを弾く。
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{length::Length, project::config::ProjectConfig, style::Style};
+use crate::{failures::Failures, length::Length, project::config::ProjectConfig, style::Style};
 
 /// config × style 横断バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum LayoutValidationError {
+  /// 上下余白の合計が用紙高以上で、本文の高さが残らない場合
+  #[error(
+    "上下余白の合計 {total:.1}pt が用紙高 {page_height:.1}pt 以上で、本文の高さが残りません（上 {margin_top:.1}pt / 下 {margin_bottom:.1}pt）。"
+  )]
+  #[diagnostic(
+    code(typeset::geometry::vertical_margins),
+    help(
+      "style.toml の [page].margin_top / margin_bottom を小さくするか、config.toml の [pdf].height を大きくしてください。"
+    )
+  )]
+  VerticalMarginsExceedPageHeight {
+    /// 上余白（pt）
+    margin_top: f32,
+    /// 下余白（pt）
+    margin_bottom: f32,
+    /// 上下余白の合計（pt）
+    total: f32,
+    /// 用紙高（pt）
+    page_height: f32,
+  },
+  /// 左右余白の合計が用紙幅以上で、本文の幅が残らない場合
+  #[error(
+    "左右余白の合計 {total:.1}pt が用紙幅 {page_width:.1}pt 以上で、本文の幅が残りません（左 {margin_left:.1}pt / 右 {margin_right:.1}pt）。"
+  )]
+  #[diagnostic(
+    code(typeset::geometry::horizontal_margins),
+    help(
+      "style.toml の [page].margin_left / margin_right を小さくするか、config.toml の [pdf].width を大きくしてください。"
+    )
+  )]
+  HorizontalMarginsExceedPageWidth {
+    /// 左余白（pt）
+    margin_left: f32,
+    /// 右余白（pt）
+    margin_right: f32,
+    /// 左右余白の合計（pt）
+    total: f32,
+    /// 用紙幅（pt）
+    page_width: f32,
+  },
   /// 段組み設定により 1 段あたりの幅が 0 以下になった場合
   #[error(
     "段組みの 1 段あたりの幅が 0 以下になりました（本文幅 {text_width:.1}pt / 段数 {num_columns} / 段間 {column_gap:.1}pt）。"
@@ -20,7 +61,7 @@ pub(crate) enum LayoutValidationError {
   #[diagnostic(
     code(typeset::geometry::invalid_columns),
     help(
-      "style.toml の [columns].gap を小さくするか、count を減らしてください。または config.toml の用紙幅を広げる・左右余白を狭めて本文幅を確保してください。"
+      "style.toml の [columns].gap を小さくするか、count を減らしてください。または style.toml の [page].margin_left / margin_right を狭める・config.toml の [pdf].width を広げて本文幅を確保してください。"
     )
   )]
   InvalidColumnWidth {
@@ -48,25 +89,57 @@ pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: L
   return (text_width - column_gap * gaps) / n;
 }
 
-/// [`ProjectConfig`]（用紙・余白）と [`Style`]（`[columns]`）の横断制約を検証します。
+/// [`ProjectConfig`]（用紙寸法）と [`Style`]（`[page]` の余白・`[columns]`）の横断制約を検証します。
 ///
-/// 本文幅（`pdf.width - margin.left - margin.right`）を `style.columns` の段数・段間で割った
-/// 1 段あたりの幅が非正の場合にエラーを返します。
+/// 次の 3 つを独立に検査し、違反を**入力の論理順（縦 → 横 → 段幅）** で集約します。
+///
+/// 1. 上下余白の合計が用紙高未満であること
+/// 2. 左右余白の合計が用紙幅未満であること
+/// 3. 本文幅（`pdf.width - page.margin_left - page.margin_right`）を `style.columns` の段数・段間で
+///    割った 1 段あたりの幅が正であること
+///
+/// 3 は 2 が通っているときだけ検査します（左右余白だけで本文幅が尽きているときに、そこから
+/// 派生するだけの段幅エラーを重ねてもユーザーの修正先が増えないため）。
 ///
 /// # Errors
 ///
-/// 1 段あたりの幅が 0 以下の場合 [`LayoutValidationError::InvalidColumnWidth`] を返します。
-pub(crate) fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), LayoutValidationError> {
-  let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
-  let num_columns = style.columns.count as usize;
-  let column_gap = style.columns.gap;
+/// 上記のいずれかに違反した場合、違反ぶんの [`LayoutValidationError`] を持つ非空集合を返します。
+pub(crate) fn validate_layout(config: &ProjectConfig, style: &Style) -> Result<(), Failures<LayoutValidationError>> {
+  let mut errors: Vec<LayoutValidationError> = Vec::new();
 
-  if !column_width(text_width, num_columns, column_gap).is_positive() {
-    return Err(LayoutValidationError::InvalidColumnWidth {
-      text_width: text_width.to_pt(),
-      num_columns,
-      column_gap: column_gap.to_pt(),
+  let vertical = style.page.margin_top + style.page.margin_bottom;
+  if vertical >= config.pdf.height {
+    errors.push(LayoutValidationError::VerticalMarginsExceedPageHeight {
+      margin_top: style.page.margin_top.to_pt(),
+      margin_bottom: style.page.margin_bottom.to_pt(),
+      total: vertical.to_pt(),
+      page_height: config.pdf.height.to_pt(),
     });
+  }
+
+  let horizontal = style.page.margin_left + style.page.margin_right;
+  if horizontal >= config.pdf.width {
+    errors.push(LayoutValidationError::HorizontalMarginsExceedPageWidth {
+      margin_left: style.page.margin_left.to_pt(),
+      margin_right: style.page.margin_right.to_pt(),
+      total: horizontal.to_pt(),
+      page_width: config.pdf.width.to_pt(),
+    });
+  } else {
+    let text_width = config.pdf.width - horizontal;
+    let num_columns = style.columns.count as usize;
+    let column_gap = style.columns.gap;
+    if !column_width(text_width, num_columns, column_gap).is_positive() {
+      errors.push(LayoutValidationError::InvalidColumnWidth {
+        text_width: text_width.to_pt(),
+        num_columns,
+        column_gap: column_gap.to_pt(),
+      });
+    }
+  }
+
+  if let Some(failures) = Failures::from_vec(errors) {
+    return Err(failures);
   }
   return Ok(());
 }
@@ -128,11 +201,24 @@ mod tests {
     assert!(close(column_width(pt(100.0), 1, pt(18.0)), 100.0));
   }
 
+  /// 用紙（`valid_pdf_section` の A4 = 595×842pt）に収まる余白を明示した style を作る。
+  ///
+  /// 余白は style が所有するため、横断検証のテストは config 側ではなくここを動かして
+  /// 版面の組み合わせを作る（#389）。
+  fn test_style(margin_top: f32, margin_bottom: f32, margin_left: f32, margin_right: f32) -> Style {
+    let mut style = Style::default();
+    style.page.margin_top = pt(margin_top);
+    style.page.margin_bottom = pt(margin_bottom);
+    style.page.margin_left = pt(margin_left);
+    style.page.margin_right = pt(margin_right);
+    return style;
+  }
+
   #[test]
   fn validate_layout_accepts_default_config_and_style() {
     // Arrange
     let (_tempdir, config) = read_test_config();
-    let style = Style::default();
+    let style = test_style(50.0, 50.0, 50.0, 50.0);
 
     // Act / Assert
     assert!(validate_layout(&config, &style).is_ok());
@@ -142,14 +228,62 @@ mod tests {
   fn validate_layout_rejects_column_gap_wider_than_text_width() {
     // Arrange
     let (_tempdir, config) = read_test_config();
-    let mut style = Style::default();
+    let mut style = test_style(50.0, 50.0, 50.0, 50.0);
     style.columns.count = 2;
     style.columns.gap = config.pdf.width;
 
     // Act
-    let error = validate_layout(&config, &style).unwrap_err();
+    let failures = validate_layout(&config, &style).unwrap_err();
 
     // Assert
-    assert!(matches!(error, LayoutValidationError::InvalidColumnWidth { num_columns: 2, .. }));
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    assert!(matches!(first, LayoutValidationError::InvalidColumnWidth { num_columns: 2, .. }));
+  }
+
+  #[test]
+  fn validate_layout_rejects_vertical_margins_exceeding_page_height() {
+    // Arrange — 用紙高 842pt に対し上下合計 900pt
+    let (_tempdir, config) = read_test_config();
+    let style = test_style(450.0, 450.0, 50.0, 50.0);
+
+    // Act
+    let failures = validate_layout(&config, &style).unwrap_err();
+
+    // Assert
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
+  }
+
+  #[test]
+  fn validate_layout_rejects_horizontal_margins_exceeding_page_width() {
+    // Arrange — 用紙幅 595pt に対し左右合計 600pt
+    let (_tempdir, config) = read_test_config();
+    let style = test_style(50.0, 50.0, 300.0, 300.0);
+
+    // Act
+    let failures = validate_layout(&config, &style).unwrap_err();
+
+    // Assert — 左右余白だけで本文幅が尽きているので、派生する段幅エラーは重ねない
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty(), "段幅エラーを重ねないはず: {rest:?}");
+    assert!(matches!(first, LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
+  }
+
+  #[test]
+  fn validate_layout_reports_vertical_and_horizontal_violations_in_input_order() {
+    // Arrange — 上下・左右がともに不正
+    let (_tempdir, config) = read_test_config();
+    let style = test_style(450.0, 450.0, 300.0, 300.0);
+
+    // Act
+    let failures = validate_layout(&config, &style).unwrap_err();
+
+    // Assert — 縦 → 横の論理順で 2 件
+    let (first, rest) = failures.into_parts();
+    assert!(matches!(first, LayoutValidationError::VerticalMarginsExceedPageHeight { .. }));
+    assert_eq!(rest.len(), 1);
+    assert!(matches!(rest[0], LayoutValidationError::HorizontalMarginsExceedPageWidth { .. }));
   }
 }

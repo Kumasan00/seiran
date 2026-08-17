@@ -538,8 +538,8 @@ mod tests {
 /// 同名ヘルパを独立に定義していたため（`mod tests` へ素直に統合すると名前衝突する）。
 #[cfg(test)]
 mod parse_tests {
-  use super::{ReadStyleError, Style, TheoremClass, load, parse};
-  use crate::{document::HeadingLevel, project::FilesystemProjectSource};
+  use super::{ReadStyleError, Style, StyleValidationError, TheoremClass, load, parse};
+  use crate::{document::HeadingLevel, length::Length, project::FilesystemProjectSource};
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
@@ -629,6 +629,49 @@ mod parse_tests {
 
     // Assert
     assert!(!style.page.flush_bottom);
+  }
+
+  #[test]
+  fn parse_page_margins_default_to_documented_values() {
+    // Arrange / Act
+    let style = parse("", dummy_source()).unwrap();
+
+    // Assert
+    assert!((style.page.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
+    assert!((style.page.margin_bottom.to_pt() - 99.0).abs() < f32::EPSILON);
+    assert!((style.page.margin_left.to_pt() - 85.0).abs() < f32::EPSILON);
+    assert!((style.page.margin_right.to_pt() - 85.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn parse_overrides_page_margins_individually() {
+    // Arrange — 左余白だけを上書きし、他の 3 方向は既定値のまま残ることを確かめる
+    let toml = "[page]\nmargin_left = \"30mm\"\n";
+
+    // Act
+    let style = parse(toml, dummy_source()).unwrap();
+
+    // Assert
+    assert!((style.page.margin_left.to_pt() - Length::mm(30.0).to_pt()).abs() < f32::EPSILON);
+    assert!((style.page.margin_right.to_pt() - 85.0).abs() < f32::EPSILON);
+    assert!((style.page.margin_top.to_pt() - 99.0).abs() < f32::EPSILON);
+    assert!((style.page.margin_bottom.to_pt() - 99.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn parse_fails_on_negative_page_margin() {
+    // Arrange
+    let toml = "[page]\nmargin_top = \"-1pt\"\n";
+
+    // Act
+    let failures = parse(toml, dummy_source()).unwrap_err();
+
+    // Assert — 余白単体の不正は style の値検証（`style::validation::field`）が報告する
+    let (first, rest) = failures.into_parts();
+    assert!(rest.is_empty());
+    assert!(
+      matches!(first, ReadStyleError::Validation(StyleValidationError::Field { ref path, .. }) if path == "page.margin_top")
+    );
   }
 
   #[test]

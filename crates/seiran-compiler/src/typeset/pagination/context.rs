@@ -39,7 +39,7 @@ pub(crate) struct TypesetContext<'a> {
 impl<'a> TypesetContext<'a> {
   /// 設定とフォント資源から幅・ジオメトリを解決する。
   pub(crate) fn new(config: &'a ProjectConfig, style: &'a Style, resources: &'a FontSystem<'a>) -> Self {
-    let text_width = config.pdf.width - config.pdf.margin.left - config.pdf.margin.right;
+    let text_width = config.pdf.width - style.page.margin_left - style.page.margin_right;
     let body_columns = style.columns.count as usize;
     let column_gap = style.columns.gap;
     let body_col_width = geometry::column_width(text_width, body_columns, column_gap);
@@ -92,8 +92,9 @@ fn build_page_geometries(
   column_gap: Length,
 ) -> (PageGeometry, PageGeometry, PageGeometry) {
   let body_geometry = PageGeometry {
-    margin_top: config.pdf.margin.top,
-    page_limit: config.pdf.height - config.pdf.margin.bottom,
+    content_origin_x: style.page.margin_left,
+    margin_top: style.page.margin_top,
+    page_limit: config.pdf.height - style.page.margin_bottom,
     default_font_size: style.text.font_size,
     line_height_factor: style.text.line_height_factor,
     table_cell_padding: style.table.cell_padding,

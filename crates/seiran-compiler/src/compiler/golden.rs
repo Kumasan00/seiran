@@ -87,6 +87,9 @@ pub(super) fn load_base() -> (ProjectConfig, Style, Arc<References>) {
 }
 
 /// 検証対象の機能に必要な style 差分を入力ごとに適用する。
+///
+/// ページ余白は style が所有する（#389）ので版面を変える上書きもここに置く。config 側の上書き
+/// （[`apply_input_config_overrides`] とその toml 版）は用紙寸法だけを扱う。
 fn apply_input_style_overrides(name: &str, style: &mut Style) {
   match name {
     "title_page" => {
@@ -96,7 +99,25 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
       style.footer.center = "{page}".to_string();
     },
     "toc" => style.toc.enabled = true,
-    "footnote_per_page" => style.footnote.numbering = crate::style::FootnoteNumbering::PerPage,
+    "hyphenation" => {
+      style.page.margin_left = Length::mm(275.0);
+      style.page.margin_right = Length::mm(275.0);
+    },
+    // ページ単位採番が複数ページにまたがる版面にする（用紙寸法の縮小は config 側が持つ）
+    "footnote_per_page" => {
+      style.footnote.numbering = crate::style::FootnoteNumbering::PerPage;
+      style.page.margin_left = Length::mm(20.0);
+      style.page.margin_right = Length::mm(20.0);
+      style.page.margin_top = Length::mm(15.0);
+      style.page.margin_bottom = Length::mm(15.0);
+    },
+    // 1 個の脚注が収まらず、繰越が連鎖する版面にする
+    "footnote_split" => {
+      style.page.margin_left = Length::mm(15.0);
+      style.page.margin_right = Length::mm(15.0);
+      style.page.margin_top = Length::mm(12.0);
+      style.page.margin_bottom = Length::mm(12.0);
+    },
     _ => {},
   }
 }
@@ -112,26 +133,16 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
 fn apply_input_config_overrides(name: &str, config: &mut ProjectConfig) {
   if name == "hyphenation" {
     config.document.language = Some("en".to_string());
-    config.pdf.margin.left = Length::mm(275.0);
-    config.pdf.margin.right = Length::mm(275.0);
   }
-  // ページ単位採番が複数ページにまたがる版面にする
+  // ページ単位採番が複数ページにまたがる版面にする（余白側は style の上書きが担う）
   if name == "footnote_per_page" {
     config.pdf.width = Length::mm(150.0);
     config.pdf.height = Length::mm(130.0);
-    config.pdf.margin.left = Length::mm(20.0);
-    config.pdf.margin.right = Length::mm(20.0);
-    config.pdf.margin.top = Length::mm(15.0);
-    config.pdf.margin.bottom = Length::mm(15.0);
   }
   // 1 個の脚注が収まらず、繰越が連鎖する版面にする
   if name == "footnote_split" {
     config.pdf.width = Length::mm(120.0);
     config.pdf.height = Length::mm(85.0);
-    config.pdf.margin.left = Length::mm(15.0);
-    config.pdf.margin.right = Length::mm(15.0);
-    config.pdf.margin.top = Length::mm(12.0);
-    config.pdf.margin.bottom = Length::mm(12.0);
   }
 }
 
@@ -189,24 +200,14 @@ fn apply_input_config_overrides_toml(name: &str, table: &mut toml::value::Table)
       .as_table_mut()
       .expect("[document] はテーブルのはず")
       .insert("language".to_string(), toml::Value::String("en".to_string()));
-    set_pdf_field(table, "margin_left", "275mm");
-    set_pdf_field(table, "margin_right", "275mm");
   }
   if name == "footnote_per_page" {
     set_pdf_field(table, "width", "150mm");
     set_pdf_field(table, "height", "130mm");
-    set_pdf_field(table, "margin_left", "20mm");
-    set_pdf_field(table, "margin_right", "20mm");
-    set_pdf_field(table, "margin_top", "15mm");
-    set_pdf_field(table, "margin_bottom", "15mm");
   }
   if name == "footnote_split" {
     set_pdf_field(table, "width", "120mm");
     set_pdf_field(table, "height", "85mm");
-    set_pdf_field(table, "margin_left", "15mm");
-    set_pdf_field(table, "margin_right", "15mm");
-    set_pdf_field(table, "margin_top", "12mm");
-    set_pdf_field(table, "margin_bottom", "12mm");
   }
 }
 
@@ -336,9 +337,12 @@ fn layout_dumps_match_golden() {
 /// `dump_input_via_compile`＝`compile()` 経由）に分かれているために存在する並行実装で、
 /// 将来どちらか片方だけにケースを追加すると `layout_dumps_match_golden` が既定ジオメトリの
 /// まま golden を静かに再生成してしまう（テスト失敗を経由しない完全に静かな回帰）。
-/// このテストは両関数が触れうるフィールド（`pdf.width` / `pdf.height` / `pdf.margin.*` /
-/// `document.language`）だけを比較する最小限のクロスチェックで、そのフィールドが片方だけ
-/// 変わればここが失敗する。
+/// このテストは両関数が触れうるフィールド（`pdf.width` / `pdf.height` / `document.language`）
+/// だけを比較する最小限のクロスチェックで、そのフィールドが片方だけ変わればここが失敗する。
+///
+/// ページ余白は style が所有するようになったので（#389）並行実装が無く、代わりに
+/// 「型付き `Style` への上書き」と「TOML へ再直列化して読み直した `Style`」の
+/// `page.margin_*` が一致すること（`Length` の serde 往復）を同じループで押さえる。
 #[test]
 fn config_overrides_typed_and_toml_stay_in_sync() {
   // Arrange
@@ -366,24 +370,32 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
       "{name}: pdf.height が型付き版と toml 版で食い違っている"
     );
     assert_eq!(
-      typed_config.pdf.margin.left, toml_config.pdf.margin.left,
-      "{name}: pdf.margin.left が型付き版と toml 版で食い違っている"
-    );
-    assert_eq!(
-      typed_config.pdf.margin.right, toml_config.pdf.margin.right,
-      "{name}: pdf.margin.right が型付き版と toml 版で食い違っている"
-    );
-    assert_eq!(
-      typed_config.pdf.margin.top, toml_config.pdf.margin.top,
-      "{name}: pdf.margin.top が型付き版と toml 版で食い違っている"
-    );
-    assert_eq!(
-      typed_config.pdf.margin.bottom, toml_config.pdf.margin.bottom,
-      "{name}: pdf.margin.bottom が型付き版と toml 版で食い違っている"
-    );
-    assert_eq!(
       typed_config.document.language, toml_config.document.language,
       "{name}: document.language が型付き版と toml 版で食い違っている"
+    );
+
+    // Assert — 余白は style が所有する。型付き上書きと TOML 往復後の値が一致する
+    let (_, base_style, _) = load_base();
+    let mut typed_style = base_style.clone();
+    apply_input_style_overrides(name, &mut typed_style);
+    let style_text = toml::to_string(&typed_style).expect("Style を TOML へ再直列化できるはず");
+    let toml_style = crate::style::parse(&style_text, "style.toml")
+      .unwrap_or_else(|failures| panic!("fixture {name} の style 読み直しは成功するはず: {failures}"));
+    assert_eq!(
+      typed_style.page.margin_left, toml_style.page.margin_left,
+      "{name}: page.margin_left が TOML 往復で変わっている"
+    );
+    assert_eq!(
+      typed_style.page.margin_right, toml_style.page.margin_right,
+      "{name}: page.margin_right が TOML 往復で変わっている"
+    );
+    assert_eq!(
+      typed_style.page.margin_top, toml_style.page.margin_top,
+      "{name}: page.margin_top が TOML 往復で変わっている"
+    );
+    assert_eq!(
+      typed_style.page.margin_bottom, toml_style.page.margin_bottom,
+      "{name}: page.margin_bottom が TOML 往復で変わっている"
     );
   }
 }
@@ -437,10 +449,10 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   // Arrange — 版面を小さくして見出しがページ境界に当たりやすくする（見出し + 本文数行は空ページに
   // 収まる大きさ）。keepwithnext.sei は見出し直前を filler で埋め、見出しがページ末尾に来る配置。
   enter_workspace_root();
-  let (mut config, style, references) = load_base();
+  let (mut config, mut style, references) = load_base();
   config.pdf.height = Length::mm(45.0);
-  config.pdf.margin.top = Length::mm(10.0);
-  config.pdf.margin.bottom = Length::mm(10.0);
+  style.page.margin_top = Length::mm(10.0);
+  style.page.margin_bottom = Length::mm(10.0);
   config.sources = vec![PathBuf::from("tests/text/keepwithnext.sei")];
   let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
@@ -459,9 +471,11 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
 fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<Vec<u32>> {
   enter_workspace_root();
   let (mut config, mut style, references) = load_base();
-  style.footnote.numbering = numbering;
   config.sources = vec![PathBuf::from("tests/text/footnote_per_page.sei")];
   apply_input_config_overrides("footnote_per_page", &mut config);
+  apply_input_style_overrides("footnote_per_page", &mut style);
+  // 採番方式はこのヘルパの引数が決める（style 上書きの既定値を上書きする）
+  style.footnote.numbering = numbering;
   let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
@@ -492,9 +506,10 @@ fn per_page_footnote_numbering_restarts_on_each_page() {
 fn long_footnote_splits_across_pages_without_overlapping_body() {
   // Arrange
   enter_workspace_root();
-  let (mut config, style, references) = load_base();
+  let (mut config, mut style, references) = load_base();
   config.sources = vec![PathBuf::from("tests/text/footnote_split.sei")];
   apply_input_config_overrides("footnote_split", &mut config);
+  apply_input_style_overrides("footnote_split", &mut style);
   let source = crate::project::FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
 

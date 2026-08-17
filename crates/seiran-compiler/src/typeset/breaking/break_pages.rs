@@ -27,6 +27,11 @@ use footnote_packing::{
 /// ページの物理ジオメトリと既定の行送りパラメータ
 #[derive(Debug, Clone, Copy)]
 pub struct PageGeometry {
+  /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
+  ///
+  /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
+  /// [`crate::typeset::Page::content_origin_x`] へそのまま載せて描画側の加算に使わせる。
+  pub content_origin_x: Length,
   /// 上マージン（pt）。ページ先頭のベースライン位置
   pub margin_top: Length,
   /// 本文下限（pt）= ページ高さ − 下マージン。超えると改ページ（または改段）
@@ -315,6 +320,7 @@ impl PageComposer {
       links: std::mem::take(&mut self.current_links),
       index_entries: std::mem::take(&mut self.current_index_entries),
       background_color: geom.background_color,
+      content_origin_x: geom.content_origin_x,
     });
     self.y = geom.margin_top;
     self.cursor_at_edge = false;
@@ -395,6 +401,7 @@ impl PageComposer {
       links: self.current_links,
       index_entries: self.current_index_entries,
       background_color: geom.background_color,
+      content_origin_x: geom.content_origin_x,
     });
     return (self.pages, self.overflows);
   }
@@ -1436,6 +1443,7 @@ mod tests {
   /// テスト用ジオメトリ（`margin_top=10`, `page_limit=50`、単段）
   fn test_geometry() -> PageGeometry {
     return PageGeometry {
+      content_origin_x: Length::ZERO,
       margin_top: Length::pt(10.0),
       page_limit: Length::pt(50.0),
       default_font_size: Length::pt(10.0),

@@ -28,12 +28,11 @@ pub(super) fn build_publication(
   resources: PublicationResources,
   laid_out: &LaidOutDocument,
 ) -> Publication {
-  let margin_left = config.pdf.margin.left;
-  let (dest_by_id, heading_dests) = build_destination_index(&laid_out.pages, margin_left);
+  let (dest_by_id, heading_dests) = build_destination_index(&laid_out.pages);
 
   let mut publication_pages = Vec::with_capacity(laid_out.pages.len());
   for page in &laid_out.pages {
-    publication_pages.push(build_page(config, page, margin_left, &dest_by_id, &resources));
+    publication_pages.push(build_page(config, page, &dest_by_id, &resources));
   }
 
   let outline = if config.pdf.show_bookmarks {
@@ -76,10 +75,10 @@ pub(super) fn build_publication(
 fn build_page(
   config: &ProjectConfig,
   page: &Page,
-  margin_left: crate::length::Length,
   dest_by_id: &HashMap<AnchorId, Destination>,
   resources: &PublicationResources,
 ) -> PublicationPage {
+  let origin_x = page.content_origin_x;
   let page_box = rect(0.0, 0.0, config.pdf.width.to_pt(), config.pdf.height.to_pt());
 
   let mut ops = Vec::new();
@@ -89,7 +88,7 @@ fn build_page(
       color: Some(color),
     });
   }
-  let margin_left_pt = margin_left.to_pt();
+  let origin_x_pt = origin_x.to_pt();
   for block in page
     .blocks
     .iter()
@@ -97,7 +96,7 @@ fn build_page(
     .chain(&page.footer)
     .chain(page.footnotes.iter().flat_map(|f| return &f.blocks))
   {
-    push_placed_block_ops(&mut ops, margin_left_pt, block, resources);
+    push_placed_block_ops(&mut ops, origin_x_pt, block, resources);
   }
 
   let mut links = Vec::new();
@@ -113,7 +112,7 @@ fn build_page(
     };
     links.push(PublicationLink {
       target,
-      rect: rect(add_margin_left(margin_left, link.x), link.y.to_pt(), link.width.to_pt(), link.height.to_pt()),
+      rect: rect(add_origin_x(origin_x, link.x), link.y.to_pt(), link.width.to_pt(), link.height.to_pt()),
     });
   }
 
@@ -145,10 +144,7 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
 /// 全ページのアンカーからリンク索引と文書順の見出し到達先を構築する。
 ///
 /// 内部リンクの前方参照に対応するため、描画命令より先に全ページを走査する。
-fn build_destination_index(
-  pages: &[Page],
-  margin_left: crate::length::Length,
-) -> (HashMap<AnchorId, Destination>, Vec<Destination>) {
+fn build_destination_index(pages: &[Page]) -> (HashMap<AnchorId, Destination>, Vec<Destination>) {
   let mut dest_by_id: HashMap<AnchorId, Destination> = HashMap::new();
   let mut heading_dests: Vec<Destination> = Vec::new();
   for (page_index, page) in pages.iter().enumerate() {
@@ -156,7 +152,7 @@ fn build_destination_index(
       let dest = Destination {
         page_index,
         point: Point {
-          x: add_margin_left(margin_left, anchor.x),
+          x: add_origin_x(page.content_origin_x, anchor.x),
           y: anchor.y.to_pt(),
         },
       };
@@ -186,28 +182,23 @@ fn build_destination_index(
   return (dest_by_id, heading_dests);
 }
 
-/// Krilla と同じ `f32` の演算順序で左マージンを加える（pt 単位）。
+/// Krilla と同じ `f32` の演算順序でページの本文原点を加える（pt 単位）。
 ///
 /// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
-fn add_margin_left(margin_left: crate::length::Length, x: crate::length::Length) -> f32 {
-  return margin_left.to_pt() + x.to_pt();
+fn add_origin_x(origin_x: crate::length::Length, x: crate::length::Length) -> f32 {
+  return origin_x.to_pt() + x.to_pt();
 }
 
 /// 配置済みブロックの描画命令を追加する。
 ///
 /// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
-fn push_placed_block_ops(
-  ops: &mut Vec<PaintOp>,
-  margin_left: f32,
-  block: &PlacedBlock,
-  resources: &PublicationResources,
-) {
+fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: &PlacedBlock, resources: &PublicationResources) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
       for positioned in &line.boxes {
         push_box_content_ops(
           ops,
-          margin_left + positioned.x.to_pt(),
+          origin_x + positioned.x.to_pt(),
           (*baseline_y - positioned.dy).to_pt(),
           &positioned.content,
         );
@@ -215,7 +206,7 @@ fn push_placed_block_ops(
     },
     PlacedBlock::Table { rows } => {
       for placed_row in rows {
-        push_table_row_ops(ops, placed_row, margin_left);
+        push_table_row_ops(ops, placed_row, origin_x);
       }
     },
     PlacedBlock::MathBlock {
@@ -224,9 +215,9 @@ fn push_placed_block_ops(
       baseline_y,
       numbers,
     } => {
-      push_box_content_ops(ops, margin_left + x.to_pt(), baseline_y.to_pt(), &body.content);
+      push_box_content_ops(ops, origin_x + x.to_pt(), baseline_y.to_pt(), &body.content);
       for number in numbers {
-        push_box_content_ops(ops, margin_left + number.x.to_pt(), number.baseline_y.to_pt(), &number.content.content);
+        push_box_content_ops(ops, origin_x + number.x.to_pt(), number.baseline_y.to_pt(), &number.content.content);
       }
     },
     PlacedBlock::Image {
@@ -245,7 +236,7 @@ fn push_placed_block_ops(
       };
       ops.push(PaintOp::DrawImage {
         image,
-        rect: rect(margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
+        rect: rect(origin_x + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
         target_dpi: *target_dpi,
       });
     },
@@ -257,7 +248,7 @@ fn push_placed_block_ops(
       color,
     } => {
       ops.push(PaintOp::FillRect {
-        rect: rect(margin_left + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
+        rect: rect(origin_x + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
         color: *color,
       });
     },
@@ -288,17 +279,17 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
 }
 
 /// 位置確定済みの表の 1 行から描画命令を追加する。
-fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, margin_left: f32) {
+fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, origin_x: f32) {
   if let Some(rule) = placed_row.rule {
     ops.push(PaintOp::FillRect {
-      rect: rect(margin_left + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
+      rect: rect(origin_x + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
       color: rule.color,
     });
   }
   for positioned in &placed_row.boxes {
     push_box_content_ops(
       ops,
-      margin_left + positioned.x.to_pt(),
+      origin_x + positioned.x.to_pt(),
       (placed_row.baseline_y - positioned.dy).to_pt(),
       &positioned.content,
     );
@@ -316,7 +307,7 @@ mod tests {
     length::Length,
     project::{
       FontConfig, FontConfigs, FontType, ProjectPath,
-      config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig},
+      config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig},
     },
     publication::{
       PaintOp, Point, Publication, PublicationImage, PublicationLinkTarget, PublicationResources, Rect,
@@ -364,12 +355,6 @@ mod tests {
       pdf: PdfConfig {
         height: Length::pt(842.0),
         width: Length::pt(595.0),
-        margin: Margin {
-          top: Length::pt(50.0),
-          bottom: Length::pt(50.0),
-          left: Length::pt(50.0),
-          right: Length::pt(50.0),
-        },
         show_bookmarks: false,
       },
       image: ImageConfig {
@@ -401,8 +386,18 @@ mod tests {
     return resources(images);
   }
 
+  /// テスト用ページの本文水平原点（用紙左端から本文左端まで、pt）。
+  ///
+  /// 余白は `style.toml` の `[page]` が持ち、`typeset` が解決した値をページが運ぶ（#389）。
+  /// ここでは `build_publication` が `config` ではなくページの値を使うことを固定するため、
+  /// config には無い原点を明示的に載せる。
+  const ORIGIN_X_PT: f32 = 50.0;
+
+  /// 本文原点を [`ORIGIN_X_PT`] に設定したページビルダを返す。
+  fn page_builder() -> PageBuilder { return PageBuilder::new().content_origin_x(Length::pt(ORIGIN_X_PT)); }
+
   /// 何も置かれていないページを返す。
-  fn empty_page() -> Page { return PageBuilder::new().build(); }
+  fn empty_page() -> Page { return page_builder().build(); }
 
   /// 確定レイアウトを `Publication` へ写す（`outline` は `(見出しレベル, 表示テキスト)` の並び）。
   fn build(config: &ProjectConfig, pages: Vec<Page>, outline: Vec<(HeadingLevel, String)>) -> Publication {
@@ -424,7 +419,7 @@ mod tests {
     // Arrange
     let config = test_config();
     let run = glyph_run("hello");
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
@@ -432,7 +427,6 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left.to_pt();
     assert_eq!(publication.pages().len(), 1, "ページは 1 枚");
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 1, "背景なし・ブロック 1 個のみなので op は 1 個");
@@ -440,7 +434,7 @@ mod tests {
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + 5.0,
+          x: ORIGIN_X_PT + 5.0,
           y: 100.0
         },
         run: run.clone()
@@ -452,7 +446,7 @@ mod tests {
   fn build_flattens_inline_rule_above_baseline() {
     // Arrange
     let config = test_config();
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(rule_line(Length::pt(30.0), Length::pt(1.0), Length::pt(0.0), Length::pt(0.0), Length::pt(50.0)))
       .build();
 
@@ -460,13 +454,12 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 1);
     assert_eq!(
       ops[0],
       PaintOp::FillRect {
-        rect: Rect::new(margin_left, 49.0, 30.0, 1.0).unwrap(),
+        rect: Rect::new(ORIGIN_X_PT, 49.0, 30.0, 1.0).unwrap(),
         color: None,
       }
     );
@@ -482,7 +475,7 @@ mod tests {
       (run_a.clone(), BoxSize::pt(5.0, 10.0, 0.0), Length::pt(0.0), Length::pt(3.0)),
       (run_b.clone(), BoxSize::pt(5.0, 10.0, 0.0), Length::pt(5.0), Length::pt(0.0)),
     ];
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(atom_line(children, Length::pt(10.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
@@ -490,14 +483,13 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + 10.0,
+          x: ORIGIN_X_PT + 10.0,
           y: 97.0
         },
         run: run_a.clone()
@@ -507,7 +499,7 @@ mod tests {
       ops[1],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + 15.0,
+          x: ORIGIN_X_PT + 15.0,
           y: 100.0
         },
         run: run_b.clone()
@@ -519,7 +511,7 @@ mod tests {
   fn build_places_background_fill_first_when_style_has_background_color() {
     // Arrange
     let config = test_config();
-    let page = PageBuilder::new()
+    let page = page_builder()
       .background_color([200, 200, 200])
       .block(rule_block(Length::pt(0.0), Length::pt(0.0), Length::pt(10.0), Length::pt(1.0), None))
       .build();
@@ -556,7 +548,7 @@ mod tests {
   fn build_flattens_image_block() {
     // Arrange
     let config = test_config();
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(image_block(
         ProjectPath::new("figures/a.png"),
         Length::pt(10.0),
@@ -571,13 +563,12 @@ mod tests {
     let publication = build_with_images(&config, vec![page], vec![], &["figures/a.png"]);
 
     // Assert
-    let margin_left = config.pdf.margin.left.to_pt();
     let image = publication.resources().image_ref("figures/a.png").expect("登録した画像は参照を得られるはず");
     assert_eq!(
       publication.pages()[0].ops()[0],
       PaintOp::DrawImage {
         image,
-        rect: Rect::new(margin_left + 10.0, 20.0, 100.0, 50.0).unwrap(),
+        rect: Rect::new(ORIGIN_X_PT + 10.0, 20.0, 100.0, 50.0).unwrap(),
         target_dpi: Some(300),
       }
     );
@@ -589,7 +580,7 @@ mod tests {
     let config = test_config();
     let body_run = glyph_run("x=1");
     let number_run = glyph_run("(1)");
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(math_block(
         (body_run.clone(), BoxSize::pt(20.0, 10.0, 0.0)),
         Length::pt(10.0),
@@ -602,14 +593,13 @@ mod tests {
     let publication = build(&config, vec![page], vec![]);
 
     // Assert
-    let margin_left = config.pdf.margin.left.to_pt();
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2);
     assert_eq!(
       ops[0],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + 10.0,
+          x: ORIGIN_X_PT + 10.0,
           y: 200.0
         },
         run: body_run.clone()
@@ -619,7 +609,7 @@ mod tests {
       ops[1],
       PaintOp::DrawGlyphRun {
         origin: Point {
-          x: margin_left + 300.0,
+          x: ORIGIN_X_PT + 300.0,
           y: 200.0
         },
         run: number_run.clone()
@@ -638,7 +628,7 @@ mod tests {
       rule_above: true,
       cells: vec![vec![(cell_run, BoxSize::pt(30.0, 10.0, 0.0))]],
     };
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(table_block(
         Length::pt(0.0),
         &[Length::pt(100.0)],
@@ -655,8 +645,20 @@ mod tests {
     // Assert
     let ops = &publication.pages()[0].ops();
     assert_eq!(ops.len(), 2, "罫線 1 個 + セル内容 1 個");
-    assert!(matches!(ops[0], PaintOp::FillRect { .. }), "先頭は rule_above の罫線");
-    assert!(matches!(ops[1], PaintOp::DrawGlyphRun { .. }), "2 番目はセル内容");
+    // 表は本文左端（x = 0pt）に置いたので、罫線には原点がそのまま、セル内容には原点 + セル余白
+    // （4pt）が乗る。どちらも原点はちょうど 1 回
+    let PaintOp::FillRect { rect, .. } = ops[0] else {
+      panic!("先頭は rule_above の罫線（FillRect）のはず")
+    };
+    assert!((rect.x() - ORIGIN_X_PT).abs() < f32::EPSILON, "罫線に原点が 1 回だけ乗るはず: {}", rect.x());
+    let PaintOp::DrawGlyphRun { origin, .. } = ops[1] else {
+      panic!("2 番目はセル内容（DrawGlyphRun）のはず")
+    };
+    assert!(
+      (origin.x - (ORIGIN_X_PT + 4.0)).abs() < f32::EPSILON,
+      "セル内容に原点が 1 回だけ乗るはず（+ セル余白 4pt）: {}",
+      origin.x
+    );
   }
 
   #[test]
@@ -666,7 +668,7 @@ mod tests {
     let rule_at = |y: f32| {
       return rule_block(Length::pt(0.0), Length::pt(y), Length::pt(1.0), Length::pt(1.0), None);
     };
-    let page = PageBuilder::new()
+    let page = page_builder()
       .block(rule_at(1.0))
       .header_block(rule_at(2.0))
       .footer_block(rule_at(3.0))
@@ -694,7 +696,7 @@ mod tests {
   fn build_keeps_external_link() {
     // Arrange
     let config = test_config();
-    let page = PageBuilder::new()
+    let page = page_builder()
       .external_link("https://example.com", Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
       .build();
 
@@ -713,7 +715,7 @@ mod tests {
     // Arrange
     let config = test_config();
     let label = LabelId::new("fig:1");
-    let page = PageBuilder::new()
+    let page = page_builder()
       .label_anchor(label.clone(), Length::pt(0.0), Length::pt(50.0))
       .internal_link(AnchorId::Label(label), Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
       .build();
@@ -732,7 +734,7 @@ mod tests {
   fn build_drops_internal_link_with_no_matching_anchor() {
     // Arrange
     let config = test_config();
-    let page = PageBuilder::new()
+    let page = page_builder()
       .internal_link(
         AnchorId::Label(LabelId::new("missing")),
         Length::pt(1.0),
@@ -755,7 +757,7 @@ mod tests {
     let mut config = test_config();
     config.pdf.show_bookmarks = true;
     let key = HeadingKey::new(0);
-    let page = PageBuilder::new().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
+    let page = page_builder().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
     // Act
@@ -773,7 +775,7 @@ mod tests {
     // Arrange
     let config = test_config();
     let key = HeadingKey::new(0);
-    let page = PageBuilder::new().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
+    let page = page_builder().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
     let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
 
     // Act
@@ -827,6 +829,61 @@ mod tests {
       "out",
       "document.title 未設定時は output.name にフォールバックするはず"
     );
+  }
+
+  #[test]
+  fn build_applies_each_page_own_origin_to_content_links_and_anchors() {
+    // Arrange — 2 ページに別々の本文原点を与える（見開きで左右余白を変える将来の形。全ページ共通の
+    // 左余白へ退行すると 2 ページ目の座標がずれて落ちる）
+    let mut config = test_config();
+    config.pdf.show_bookmarks = true;
+    let run = glyph_run("x");
+    let key = HeadingKey::new(0);
+    let first = page_builder()
+      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .build();
+    let second = PageBuilder::new()
+      .content_origin_x(Length::pt(120.0))
+      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .heading_anchor(key, Length::pt(7.0), Length::pt(10.0))
+      .external_link("https://example.com", Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
+      .build();
+    let outline_entries = vec![(HeadingLevel::Chapter, "第一章".to_string())];
+
+    // Act
+    let publication = build(&config, vec![first, second], outline_entries);
+
+    // Assert — 本文・リンク・しおり到達先のすべてに、そのページ自身の原点が 1 回だけ乗る
+    let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
+      panic!("グリフ行は DrawGlyphRun になるはず")
+    };
+    assert!((origin.x - (ORIGIN_X_PT + 5.0)).abs() < f32::EPSILON);
+    let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[1].ops()[0] else {
+      panic!("グリフ行は DrawGlyphRun になるはず")
+    };
+    assert!((origin.x - 125.0).abs() < f32::EPSILON);
+    assert!((publication.pages()[1].links()[0].rect.x() - 121.0).abs() < f32::EPSILON);
+    let outline = publication.outline().expect("見出しがあるので Some のはず");
+    assert!((outline[0].dest.point.x - 127.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn build_leaves_content_untouched_when_page_origin_is_zero() {
+    // Arrange — 原点 0 のページでは本文相対座標がそのまま用紙座標になる（原点の二重加算検出）
+    let config = test_config();
+    let run = glyph_run("x");
+    let page = PageBuilder::new()
+      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .build();
+
+    // Act
+    let publication = build(&config, vec![page], vec![]);
+
+    // Assert
+    let PaintOp::DrawGlyphRun { origin, .. } = publication.pages()[0].ops()[0] else {
+      panic!("グリフ行は DrawGlyphRun になるはず")
+    };
+    assert!((origin.x - 5.0).abs() < f32::EPSILON);
   }
 
   #[test]
