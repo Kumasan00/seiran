@@ -12,15 +12,13 @@
 - OpenType フィーチャー（カーニング、リガチャなど）のサポート
 - フォントサブセット化による PDF サイズの最小化
 - TOML 設定ファイルによる柔軟なカスタマイズ（メイン設定 / スタイル設定 / 参照定義）
-- スタイル設定ファイルによる見出しフォントサイズ・余白のカスタマイズ
 - CSL ベースの参照定義ファイルによる文献管理
-- 詳細なエラー診断メッセージ（miette による fancy 表示）
+- 詳細なエラー診断メッセージ
 
 ## 必要環境
 
-- Rust (Edition 2024)
-- macOS（M4 MacBook Pro / Tahoe 26.3 で動作確認済み）
-- Xcode Command Line Tools (Xcode 26)
+- Rust（Edition 2024 対応ツールチェーン）
+- macOS
 
 ## インストール
 
@@ -39,24 +37,6 @@ cargo run -- build [-c <config_path>]
 ```
 
 設定ファイル（既定 `./config/config.toml`）の `sources` 配列に列挙されたテキストファイルを順次パース・結合して PDF を生成します。`sources = ["chapter1.sei", "chapter2.sei"]` のように複数ファイルを指定できます。
-
-### バリアブルフォント軸情報の表示
-
-```sh
-cargo run -- variation-axes <font_path> [--font-index <index>]
-```
-
-### TTC ファイル内のフォント名一覧
-
-```sh
-cargo run -- ttc-names <ttc_file_path>
-```
-
-### フォントのスクリプト / 言語情報
-
-```sh
-cargo run -- script-langs <font_path> [--font-index <index>]
-```
 
 ## 設定
 
@@ -138,37 +118,6 @@ font_size = "20pt"
 bottom_margin = "10pt"
 ```
 
-#### ページ余白の移行（`config.toml [pdf]` → `style.toml [page]`）
-
-ページ余白の所有は `config.toml` から `style.toml` へ移りました。旧 `[pdf]` の `margin_*` は
-未知キーとしてエラーになります（黙って既定余白へ切り替わり、レイアウトが静かに変わるのを防ぐため）。
-4 つの値をそのまま `style.toml` の `[page]` へ移せば、出力レイアウトは変わりません。
-
-```toml
-# 旧: config.toml
-[pdf]
-height = "842pt"
-width = "595pt"
-margin_top = "99pt"
-margin_bottom = "99pt"
-margin_left = "85pt"
-margin_right = "85pt"
-```
-
-```toml
-# 新: config.toml（用紙寸法だけ）
-[pdf]
-height = "842pt"
-width = "595pt"
-
-# 新: style.toml（同じ値をそのまま移す）
-[page]
-margin_top = "99pt"
-margin_bottom = "99pt"
-margin_left = "85pt"
-margin_right = "85pt"
-```
-
 ### 参照定義（`config/references.toml`）
 
 CSL ベースの文献情報を定義します。トップレベルのテーブルキーがそのまま参照 ID になります
@@ -182,16 +131,6 @@ type = "book"                  # CSL 文献タイプ（book, article 等）
 [[example.author]]
 family = "Yamamoto"
 given = "Taro"
-```
-
-## プロジェクト構成
-
-```text
-crates/
-├── seiran-compiler/  # ライブラリ（言語処理・意味解決・組版）。公開 API は compile とその入出力型・診断型のみ
-│                     #   内部は非公開 module: length / color / failures / publication / source / project / document / style / frontend / semantics / typeset / compiler
-├── seiran-pdf/       # PDF backend（seiran-compiler の Publication → PDF バイト列。krilla / krilla-svg）
-└── seiran/           # CLI（引数解析・ログ・compile → render → ファイル保存・フォント調査サブコマンド）
 ```
 
 ## License
