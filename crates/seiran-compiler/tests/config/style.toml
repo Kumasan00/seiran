@@ -7,6 +7,13 @@
 # ここを変更すると golden の座標が変わるので、変更時は `UPDATE_GOLDEN=1 cargo test -p seiran-compiler`
 # で golden を再生成し、差分を確認してコミットすること。
 
+# 本文領域の余白（旧 config.toml `[pdf]` の margin_*、#389）。用紙は 595mm × 842mm。
+[page]
+margin_top = "99mm"
+margin_bottom = "99mm"
+margin_left = "85mm"
+margin_right = "85mm"
+
 [text]
 line_height_factor = 1.05
 

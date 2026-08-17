@@ -24,10 +24,6 @@ output_dir = "target/"
 
 [pdf]
 height = "842mm"
-margin_bottom = "99mm"
-margin_left = "85mm"
-margin_right = "85mm"
-margin_top = "99mm"
 width = "595mm"
 
 [font_configs.serif]

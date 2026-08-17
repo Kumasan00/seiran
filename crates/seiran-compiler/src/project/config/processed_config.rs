@@ -62,15 +62,16 @@ impl OutputConfig {
   }
 }
 
-/// PDF ページレイアウトの検証済み・処理済み設定
+/// PDF ページの物理設定（用紙寸法と PDF 出力）の検証済み・処理済み設定
+///
+/// 用紙上のどこを本文領域にするか（4 方向の余白）は見た目なので `style.toml` の `[page]`
+/// （[`crate::style::PageStyle`]）が所有する（#389）。
 #[derive(Debug, Clone)]
 pub struct PdfConfig {
   /// ページの高さ（[`Length`]）
   pub height: Length,
   /// ページの幅（[`Length`]）
   pub width: Length,
-  /// ページ余白（上下左右）
-  pub margin: Margin,
   /// PDF のしおり（ブックマーク）を出力するか（既定 true）
   pub show_bookmarks: bool,
 }
@@ -82,17 +83,4 @@ pub struct ImageConfig {
   pub max_dpi: u32,
   /// ラスタ画像のダウンサンプリングを行うか
   pub downsample: bool,
-}
-
-/// ページ余白（上下左右）
-#[derive(Debug, Clone, Copy)]
-pub struct Margin {
-  /// 上余白
-  pub top: Length,
-  /// 下余白
-  pub bottom: Length,
-  /// 左余白
-  pub left: Length,
-  /// 右余白
-  pub right: Length,
 }

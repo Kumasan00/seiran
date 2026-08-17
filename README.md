@@ -63,6 +63,8 @@ cargo run -- script-langs <font_path> [--font-index <index>]
 ### メイン設定（`config/config.toml`）
 
 PDF 生成の基本設定を行います。長さの値はすべて単位付き文字列（`"12pt"` / `"5mm"`）で指定します。
+用紙そのものの寸法はここ（物理設定）、用紙のどこを本文領域にするか＝ページ余白は見た目なので
+`style.toml` の `[page]` が持ちます。
 
 ```toml
 sources = ["chapter1.sei", "chapter2.sei"]  # 入力テキストファイル
@@ -82,10 +84,6 @@ output_dir = "target/"         # 出力ディレクトリ
 [pdf]
 height = "842pt"               # ページ高さ（A4 = 842pt）
 width = "595pt"                # ページ幅（A4 = 595pt）
-margin_top = "99pt"            # 上余白
-margin_bottom = "99pt"         # 下余白
-margin_left = "85pt"           # 左余白
-margin_right = "85pt"          # 右余白
 # show_bookmarks = true        # しおり出力（既定 true）
 
 # [image]                      # ラスタ画像の埋め込み解像度（既定 max_dpi=300 / downsample=true）
@@ -113,6 +111,13 @@ features = [                   # OpenType フィーチャー（オプション�
 ```toml
 # background_color = "#ccb599"  # 背景色（"#rrggbb" 16 進文字列、オプション）
 
+[page]                         # 用紙上の本文領域（余白）
+margin_top = "99pt"            # 上余白（既定 99pt）
+margin_bottom = "99pt"         # 下余白（既定 99pt）
+margin_left = "85pt"           # 左余白（既定 85pt）
+margin_right = "85pt"          # 右余白（既定 85pt）
+# flush_bottom = false         # 下端揃え（既定 false）
+
 [text]
 font_size = "12pt"             # 本文フォントサイズ
 line_height_factor = 1.05      # 行間係数（> 0）
@@ -131,6 +136,37 @@ bottom_margin = "15pt"
 format = "{number} {title}"
 font_size = "20pt"
 bottom_margin = "10pt"
+```
+
+#### ページ余白の移行（`config.toml [pdf]` → `style.toml [page]`）
+
+ページ余白の所有は `config.toml` から `style.toml` へ移りました。旧 `[pdf]` の `margin_*` は
+未知キーとしてエラーになります（黙って既定余白へ切り替わり、レイアウトが静かに変わるのを防ぐため）。
+4 つの値をそのまま `style.toml` の `[page]` へ移せば、出力レイアウトは変わりません。
+
+```toml
+# 旧: config.toml
+[pdf]
+height = "842pt"
+width = "595pt"
+margin_top = "99pt"
+margin_bottom = "99pt"
+margin_left = "85pt"
+margin_right = "85pt"
+```
+
+```toml
+# 新: config.toml（用紙寸法だけ）
+[pdf]
+height = "842pt"
+width = "595pt"
+
+# 新: style.toml（同じ値をそのまま移す）
+[page]
+margin_top = "99pt"
+margin_bottom = "99pt"
+margin_left = "85pt"
+margin_right = "85pt"
 ```
 
 ### 参照定義（`config/references.toml`）

@@ -197,7 +197,9 @@ pub trait ProjectSource: Send + Sync {
   返す。`load` の Ok 側が `(ProjectConfig, Vec<ConfigWarning>)` になっており、順序は `sources` の
   宣言順（#377）。
 - `processed_config`: 検証済み・パス解決済みの公開型 `ProjectConfig` / `DocumentConfig` / `OutputConfig` /
-  `PdfConfig` / `ImageConfig` / `Margin`。後段はこちらだけを見る。**処理済みフォント設定**
+  `PdfConfig` / `ImageConfig`。後段はこちらだけを見る。`PdfConfig` が持つのは用紙寸法（width /
+  height）と `show_bookmarks` だけで、**本文領域の 4 方向の余白は `style` の `PageStyle` が所有する**
+  （#389。用紙という実体の物理量ではなく「用紙をどう使うか」＝見た目なので P10 が style 側に置く）。**処理済みフォント設定**
   （`FontConfig` / `FontConfigs` / `Feature` / `VariationAxis` / `TextDirection`）は兄弟 module
   `project::font` の `settings` が所有し、`project::config` はそれを構築する側になる
   （`ProjectConfig.font_configs: FontConfigs`）。TOML に対応する未検証型 `PreFontConfig` /
@@ -423,7 +425,10 @@ TOML パース時に弾く。
   `alignment` / `row_gap` / `column_gap` / `top_margin` / `bottom_margin`。全表示数式環境 equation / align /
   gather / split / multiline / cases / matrix が共有）の 2 副テーブルを束ねる。旧 `[equation]` テーブルは
   `[math.block]` に統合済みで、**復活させない**
-- **ページ組版（`PageStyle`）**: `[page]` に組版挙動フラグを集約（段組みは別テーブル `[columns]`）。
+- **ページ組版（`PageStyle`）**: `[page]` に**本文領域の余白**と組版挙動フラグを集約（段組みは別テーブル
+  `[columns]`）。`margin_top` / `margin_bottom`（既定 `99pt`）・`margin_left` / `margin_right`（既定 `85pt`）は
+  用紙上のどこを本文領域にするかで、単体の不正（負値）は garde の `non_negative` がここで弾き、
+  用紙寸法（`config.toml` の `[pdf]`）と突き合わせないと判定できない制約は `typeset::geometry` が持つ（#389）。
   `flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の
   出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズムは `typeset` の `breaking` 節を参照
 - **文献（`ReferenceStyle`）**: `style.reference` は `semantics::citation` が参照（`title` は書誌見出し文字列、
@@ -793,7 +798,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 現在の変種は脚注のはみ出し 2 種で、`code` は `typeset::footnote::overflow`（行に付いた脚注群が空の
 ページにも収まらない）と `typeset::footnote::line_overflow`（繰越脚注の 1 行がページ全高を超える）。
 どちらも組版アルゴリズムは「はみ出しを許容してそのまま置く」動作を変えず、`style.toml` の
-`[footnote]` や `config.toml` の用紙・余白を直せば解消することだけを伝える（#382。以前は
+`[footnote]`・`style.toml` の `[page]` の余白・`config.toml` の用紙サイズを直せば解消することだけを伝える（#382。以前は
 `tracing::warn!` だけで通知していたので `-q` で握り潰されていた）。ページの指し方は**印字ページ
 ラベル**で、物理 index からの解決は `pagination` が行う（下記）。
 
@@ -883,10 +888,19 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 #### `geometry`
 
-版面の幾何を持つ子 module。`config.toml`（用紙・余白）と `style.toml`（`[columns]`）のどちらか片方だけでは
-判定できない制約（段幅が正であること）を
-`validate_layout(&ProjectConfig, &Style) -> Result<(), LayoutValidationError>` に集約し、段幅の算出式
+版面の幾何を持つ子 module。`config.toml`（用紙寸法）と `style.toml`（`[page]` の余白・`[columns]`）の
+どちらか片方だけでは判定できない制約を
+`validate_layout(&ProjectConfig, &Style) -> Result<(), Failures<LayoutValidationError>>` に集約し、段幅の算出式
 （`(text_width - (num_columns - 1) * column_gap) / num_columns`）も同じ module の `column_width` が持つ。
+検査は 3 件で、独立に検査できるので**入力の論理順（縦 → 横 → 段幅）** で全件を集約する:
+
+1. 上下余白の合計 < 用紙高（`typeset::geometry::vertical_margins`）
+2. 左右余白の合計 < 用紙幅（`typeset::geometry::horizontal_margins`）
+3. 本文幅から求めた 1 段あたりの幅が正（`typeset::geometry::invalid_columns`）
+
+3 を検査するのは 2 が通っているときだけ — 左右余白だけで本文幅が尽きているときに、そこから派生する
+だけの段幅エラーを重ねてもユーザーの修正先は増えないため。各 help は余白の修正先を `style.toml` の
+`[page]`、用紙寸法の修正先を `config.toml` の `[pdf]` と書き分ける。
 
 どちらの設定 module にも属さないので、この制約を不変条件として使う組版側が所有する（#351）。ただし
 **`validate_layout` を呼ぶのは入力読込（`compiler::input::load`）**で、組版に入る前に不正な組み合わせを
@@ -895,7 +909,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 `column_width` は `pub(super)` に留め `typeset::pagination::context` と
 `typeset::breaking::break_pages` だけが参照する。
 
-診断 code は所有 module に合わせた `typeset::geometry::invalid_columns`（#356。移設直後は
+診断 code は所有 module に合わせた `typeset::geometry::*`（#356。移設直後は
 `config::validation::invalid_columns` のままだった）。ユーザが直すのは style.toml / config.toml だが、
 その案内は `help` が名指ししている。
 
@@ -1008,7 +1022,11 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `page`: `Page`（縦組版の出力）/ `PlacedAnchor` / `PlacedBlock` / `PlacedFootnote` / `PlacedIndexEntry` /
   `PlacedLink` / `PlacedMathNumber` / `PlacedTableRow` / `PlacedTableRule`。`PlacedBlock::Table` は表という
   行のまとまりだけを残し、各行は本文左端基準の確定 x 座標を持つ `PositionedBox` 列、ページ上端基準の
-  baseline、位置・寸法・色を確定した罫線を持つ。列定義・列幅・セル余白・未配置の `HItem` は保持しない
+  baseline、位置・寸法・色を確定した罫線を持つ。列定義・列幅・セル余白・未配置の `HItem` は保持しない。
+  `Page` は自分の**本文水平原点** `content_origin_x`（用紙左端から本文左端まで＝解決済みの
+  `style.page.margin_left`）を持ち、ページ内の x はすべてこの原点からの相対値。用紙座標へ直すのは
+  `compiler::publication` が原点を 1 回加算する時だけで、原点をページごとに持たせているのは
+  見開きで左右余白を変える将来の拡張でも描画側の interface を変えずに済ませるため（#389）
 - `table_box`: `TableColumn`（列の揃え + 幅指定。`lowering` が HIR の `ColumnAlign` / `ColumnWidth` を
   列ごとに束ねて作る入力契約）/ `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
   （`max_font_size_in_items` / `resolve_column_widths` / `table_row_height` / `position_table_row_boxes` /
@@ -1496,8 +1514,10 @@ image not in manifest / 未対応の画像拡張子）は削除した — 同じ
 - **`Style` / `ProjectConfig` を読まない**（compiler の facade に出ていないので参照できない）。表のセル余白 /
   罫線太さ / 罫線色・ページ背景色は前段（`typeset::breaking`）が `Style` から解決済みの値として
   `typeset::Page.background_color` と `PlacedTableRow` の配置済みセル内容列・`PlacedTableRule` に載せており、
-  左マージン・ページサイズ・`show_bookmarks`・文書メタデータは compiler 側（`compiler::publication`）が
-  `project::ProjectConfig` から読んで `Publication` に前倒し解決してから渡す。
+  本文の水平原点は各ページの `typeset::Page.content_origin_x`（`style.page.margin_left` を `typeset` が
+  解決した値）に載っていて `compiler::publication` がそれを 1 回だけ加算する。ページサイズ・
+  `show_bookmarks`・文書メタデータは compiler 側（`compiler::publication`）が `project::ProjectConfig`
+  から読んで `Publication` に前倒し解決してから渡す。
 - `render` は `Publication` 1 個だけを消費する。krilla フォントの構築は `render` の冒頭 1 回で、
   フォント・画像の生資源は `publication.resources()` のアクセサ（`font()` / `image()`）から取る。
   `typeset::Page` / `ProjectConfig` / `Style` を直接読む描画経路を復活させない。

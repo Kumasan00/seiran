@@ -6,7 +6,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 use crate::{
-  length::{Length, non_negative, positive},
+  length::{Length, positive},
   project::{FontType, config::ConfigValidationError},
 };
 
@@ -293,8 +293,13 @@ pub(crate) struct PreFontFeature {
   pub value: u32,
 }
 
-/// PDF ページレイアウトのプリセット設定
+/// PDF ページの物理設定（用紙寸法と PDF 出力）のプリセット設定
+///
+/// 本文領域の余白は見た目なので style.toml の `[page]` が持つ（#389）。旧 `margin_*` を静かに
+/// 無視すると既定余白へ切り替わってレイアウトが黙って変わるため、`deny_unknown_fields` で
+/// 未知キーとして拒否する。
 #[derive(Deserialize, Debug, Validate)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PrePdfConfig {
   /// ページの高さ（単位付き文字列、> 0）
   #[garde(custom(positive))]
@@ -302,18 +307,6 @@ pub(crate) struct PrePdfConfig {
   /// ページの幅（単位付き文字列、> 0）
   #[garde(custom(positive))]
   pub width: Length,
-  /// 上余白（単位付き文字列、>= 0）
-  #[garde(custom(non_negative))]
-  pub margin_top: Length,
-  /// 下余白（単位付き文字列、>= 0）
-  #[garde(custom(non_negative))]
-  pub margin_bottom: Length,
-  /// 左余白（単位付き文字列、>= 0）
-  #[garde(custom(non_negative))]
-  pub margin_left: Length,
-  /// 右余白（単位付き文字列、>= 0）
-  #[garde(custom(non_negative))]
-  pub margin_right: Length,
   /// PDF のしおり（ブックマーク）を出力するか（省略時 true）
   #[garde(skip)]
   #[serde(default = "default_show_bookmarks")]
@@ -342,30 +335,6 @@ impl Default for PreImageConfig {
       max_dpi: 300,
       downsample: true,
     };
-  }
-}
-
-/// 上下／左右の余白合計が寸法未満であることを検証し、違反を `errors` に追加します。
-pub(crate) fn validate_margin_sums(value: &PrePdfConfig, errors: &mut Vec<ConfigValidationError>) {
-  let vertical = value.margin_top.to_pt() + value.margin_bottom.to_pt();
-  if vertical >= value.height.to_pt() {
-    errors.push(ConfigValidationError::Field {
-      path: "pdf".to_string(),
-      message: format!(
-        "方向 vertical の余白合計 ({vertical}pt) が寸法 {}pt 未満である必要があります",
-        value.height.to_pt()
-      ),
-    });
-  }
-  let horizontal = value.margin_left.to_pt() + value.margin_right.to_pt();
-  if horizontal >= value.width.to_pt() {
-    errors.push(ConfigValidationError::Field {
-      path: "pdf".to_string(),
-      message: format!(
-        "方向 horizontal の余白合計 ({horizontal}pt) が寸法 {}pt 未満である必要があります",
-        value.width.to_pt()
-      ),
-    });
   }
 }
 

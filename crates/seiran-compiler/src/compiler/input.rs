@@ -136,7 +136,7 @@ pub(super) fn load(
 ) -> Result<CompilationInputs, Failures<CompileError>> {
   let (config, config_warnings) = crate::project::config::load(source, config_path, base_dir).map_err(lift)?;
   let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
-  crate::typeset::validate_layout(&config, &style).map_err(single)?;
+  crate::typeset::validate_layout(&config, &style).map_err(lift)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
 
   let stage_start = Instant::now();

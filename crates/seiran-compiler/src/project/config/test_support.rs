@@ -21,13 +21,11 @@ pub fn valid_output_section(name: &str, output_dir: &str) -> String {
   return format!("[output]\nname = \"{name}\"\noutput_dir = \"{output_dir}\"\n\n");
 }
 
-/// 妥当な `[pdf]` セクションを生成します（A4 縦・50pt 余白）。
+/// 妥当な `[pdf]` セクションを生成します（A4 縦）。
+///
+/// 本文領域の余白は style.toml の `[page]` が持つので、ここには含めない（#389）。
 #[must_use]
-pub fn valid_pdf_section() -> String {
-  return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-          margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n"
-    .to_string();
-}
+pub fn valid_pdf_section() -> String { return "[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n".to_string(); }
 
 /// `[font_configs.serif]` セクションに任意のフィールド追加行を差し込んだ TOML を生成します。
 #[must_use]

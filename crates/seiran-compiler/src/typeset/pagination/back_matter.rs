@@ -125,6 +125,7 @@ mod tests {
         })
         .collect(),
       background_color: None,
+      content_origin_x: crate::length::Length::ZERO,
     };
   }
 

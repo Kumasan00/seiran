@@ -316,6 +316,7 @@ impl PageBuilder {
         links: Vec::new(),
         index_entries: Vec::new(),
         background_color: None,
+        content_origin_x: Length::ZERO,
       },
     };
   }
@@ -323,6 +324,15 @@ impl PageBuilder {
   /// ページ背景色を設定する
   pub(crate) fn background_color(mut self, color: [u8; 3]) -> Self {
     self.page.background_color = Some(color);
+    return self;
+  }
+
+  /// 本文の水平原点（用紙左端から本文左端まで）を設定する
+  ///
+  /// 既定は [`Length::ZERO`]（本文相対座標がそのまま用紙座標になる）で、原点の加算を検証する
+  /// テストだけが明示的に動かす。
+  pub(crate) fn content_origin_x(mut self, origin: Length) -> Self {
+    self.page.content_origin_x = origin;
     return self;
   }
 

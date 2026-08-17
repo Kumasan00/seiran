@@ -71,6 +71,7 @@ mod tests {
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,
+      content_origin_x: crate::length::Length::ZERO,
     };
   }
 

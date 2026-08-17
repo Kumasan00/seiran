@@ -19,7 +19,7 @@ pub(crate) enum TypesetWarning {
     code(typeset::footnote::overflow),
     severity(Warning),
     help(
-      "style.toml の [footnote] の font_size / top_margin / rule_gap を小さくするか、config.toml の [pdf] の用紙サイズ・余白を見直してください。"
+      "style.toml の [footnote] の font_size / top_margin / rule_gap か [page] の余白を小さくするか、config.toml の [pdf] の用紙サイズを見直してください。"
     )
   )]
   FootnoteOverflow {
@@ -35,7 +35,7 @@ pub(crate) enum TypesetWarning {
     code(typeset::footnote::line_overflow),
     severity(Warning),
     help(
-      "style.toml の [footnote] の font_size を小さくするか、config.toml の [pdf] の用紙サイズ・余白を見直してください。"
+      "style.toml の [footnote] の font_size か [page] の余白を小さくするか、config.toml の [pdf] の用紙サイズを見直してください。"
     )
   )]
   FootnoteLineOverflow {

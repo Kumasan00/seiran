@@ -28,7 +28,7 @@ mod tag;
 #[doc(hidden)]
 pub mod test_support;
 
-pub use processed_config::{DocumentConfig, ImageConfig, Margin, OutputConfig, PdfConfig, ProjectConfig};
+pub use processed_config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -77,7 +77,7 @@ pub enum ConfigValidationError {
     help("config.toml の該当フィールドの値を確認してください。")
   )]
   Field {
-    /// 不正な値を持つフィールドの TOML パス（例: `pdf.margin_top`）
+    /// 不正な値を持つフィールドの TOML パス（例: `pdf.width`）
     path: String,
     /// garde が生成したエラーメッセージ
     message: String,
@@ -307,12 +307,6 @@ fn resolve(
     pdf: PdfConfig {
       height: pre_pdf_config.height,
       width: pre_pdf_config.width,
-      margin: Margin {
-        top: pre_pdf_config.margin_top,
-        bottom: pre_pdf_config.margin_bottom,
-        left: pre_pdf_config.margin_left,
-        right: pre_pdf_config.margin_right,
-      },
       show_bookmarks: pre_pdf_config.show_bookmarks,
     },
     image: ImageConfig {
@@ -338,7 +332,6 @@ fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigVa
       };
     }));
   }
-  pre_config::validate_margin_sums(&pre.pdf, &mut errors);
   pre_config::validate_unique_font_names(&pre.font_configs, &mut errors);
   pre_config::validate_font_language_constraints(&pre.font_configs, &mut errors);
 
@@ -774,45 +767,39 @@ mod tests {
   }
 
   #[test]
-  fn validate_values_fails_on_negative_margin() {
-    // Arrange
-    let toml = format!(
-      "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-       margin_top = \"-10pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
-      valid_output_section("test", "out"),
-      make_font_sections("dummy.ttf"),
-    );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
+  fn parse_config_reads_pdf_section_without_margins() {
+    // Arrange — `[pdf]` は用紙寸法としおり出力だけを持つ（余白は style.toml の `[page]`、#389）
+    let toml =
+      format!("{}{}{}", valid_output_section("test", "out"), valid_pdf_section(), make_font_sections("dummy.ttf"));
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ConfigValidationError::Field { path, .. } if path.contains("margin_top")
-    )));
+    assert!((pre.pdf.height.to_pt() - 842.0).abs() < f32::EPSILON);
+    assert!((pre.pdf.width.to_pt() - 595.0).abs() < f32::EPSILON);
+    assert!(pre.pdf.show_bookmarks);
   }
 
   #[test]
-  fn validate_values_fails_on_margin_sum_exceeding_dimension() {
-    // Arrange
+  fn parse_config_fails_on_legacy_pdf_margin_keys() {
+    // Arrange — 旧 `pdf.margin_*` を静かに無視すると既定余白へ切り替わってレイアウトが黙って
+    // 変わるため、TOML 解析時に未知キーとして拒否する（#389 の意図的な破壊的変更）
     let toml = format!(
-      "{}[pdf]\nheight = \"100pt\"\nwidth = \"595pt\"\n\
-       margin_top = \"60pt\"\nmargin_bottom = \"60pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
+      "{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\nmargin_top = \"50pt\"\n\n{}",
       valid_output_section("test", "out"),
       make_font_sections("dummy.ttf"),
     );
-    let pre = parse_config(&toml, dummy_source()).unwrap();
 
     // Act
-    let errors = validate_values(&pre).unwrap_err();
+    let failures = parse_config(&toml, dummy_source()).unwrap_err();
 
-    // Assert
-    assert!(errors.iter().any(|error| matches!(
-      error,
-      ConfigValidationError::Field { path, message } if path == "pdf" && message.contains("vertical")
-    )));
+    // Assert — 値検証（Validation）ではなく TOML 解析（ParseToml）の段で落ちる
+    let first = failures.into_iter().next().expect("非空集合なので 1 件目があるはず");
+    assert!(
+      matches!(first, ReadConfigError::ParseToml { .. }),
+      "旧 margin キーは deny_unknown_fields で ParseToml になるはず: {first:?}"
+    );
   }
 
   #[test]
@@ -843,8 +830,7 @@ mod tests {
   fn parse_config_fails_on_legacy_top_level_name() {
     // Arrange
     let toml = format!(
-      "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-       margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\n{}",
+      "name = \"test\"\n\n[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\n{}",
       make_font_sections("dummy.ttf"),
     );
 
@@ -1218,7 +1204,6 @@ mod tests {
     let (_tempdir, config_path) = setup_config(|font_path, output_dir, source_path| {
       return format!(
         "sources = [\"{source_path}\"]\n\n{}[pdf]\nheight = \"842pt\"\nwidth = \"595pt\"\n\
-         margin_top = \"50pt\"\nmargin_bottom = \"50pt\"\nmargin_left = \"50pt\"\nmargin_right = \"50pt\"\n\
          show_bookmarks = false\n\n{}",
         valid_output_section("test", output_dir),
         make_font_sections(font_path),
