@@ -76,24 +76,19 @@ CLI 引数パース → compiler::input::load 入力読込: config.toml → styl
   → seiran (CLI)       atomic write でファイル出力
 ```
 
-段横断の要点（詳細・根拠は `docs/architecture.md`）:
+段横断の要点（骨格のみ。詳細・根拠は `docs/architecture.md` の該当節）:
 
-- 外部資源（設定・スタイル・文献・CSL・ソース・フォント・画像）は例外なく `project::ProjectSource` 経由。
-  compiler 側のコードは `std::fs` を直接呼ばない。資源を指すパスは `ProjectPath` 1 種類
-- 入力読込の外向き入口は `compiler::input::load` 1 つ。config.toml は `project::config`、style.toml は
-  `style`（P10 の 2 概念を別 module が所有）、両者の横断検証 `validate_layout` は `typeset::geometry` の所有で、
-  呼ぶ順序とエラー集約を知るのは `input` だけ。成果物 `CompilationInputs` は検証を通った値しか持たない
-- 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は構造値を style の表示側フィールドで
-  文字列にするだけ。文書木への書き戻しはどの段も行わない
-- box は (a) で width / height / depth を 1 回だけ計測して保持し、以降のパスはフォントに触れない
-- 行分割は Knuth–Plass（段落全体最適、既定は両端揃え。貪欲法 `GreedyBreaker` も併存）。分割可能点は
-  ICU `LineSegmenter`（UAX #14）+ 欧文語中の discretionary ハイフネーション。縦組版（`break_pages`）も
-  glue / penalty モデルで widow / orphan・keep-with-next・下端揃え（flush_bottom）を制御
+- 外部資源は例外なく `project::ProjectSource` 経由（compiler 側は `std::fs` を直接呼ばない）。
+  資源を指すパスは `ProjectPath` 1 種類
+- 入力読込の外向き入口は `compiler::input::load` 1 つ。読込順序とエラー集約を知るのは `input` だけで、
+  成果物 `CompilationInputs` は検証を通った値しか持たない
+- 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は表示文字列化だけ。
+  文書木への書き戻しはどの段も行わない
+- box は (a) で寸法を 1 回だけ計測して保持し、以降のパスはフォントに触れない
+- 行分割・縦組版とも glue / penalty モデル（行分割は Knuth–Plass が既定）
 - 数式は閉じた箱（`HBoxContent::Atom`）として行分割をまたがない
-- 脚注はページ下部の脚注エリアぶん本文の実効下限を縮めて配置し、収まらなければ組版済みの行単位で
-  次ページへ繰り越す。ページ単位採番（`[footnote]` の `numbering = "per_page"`）のときだけ本文パスを
-  不動点まで反復する（`typeset::pagination::footnote_numbering` の専用 solver に閉じる。既定の通し採番は
-  1 回で確定）
+- 脚注は本文の実効下限を縮めて配置し、行単位でページ間繰越。ページ単位採番のときだけ本文パスを
+  不動点まで反復する（`typeset::pagination::footnote_numbering`）
 - `compile` は PDF バイト列の生成・保存を行わない。`seiran_pdf::render` と atomic write は CLI（`seiran`）の責務
 
 ### クレート構成
@@ -117,19 +112,22 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### `seiran-compiler` の module（すべて非公開、公開 API は `lib.rs` の `pub use` に一本化）
 
-| module | 責務 1 行 | 依存先（crate 内） |
-| --- | --- | --- |
-| `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 | なし |
-| `failures` | 段が 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能）と、並列処理の結果を入力順の slot へ戻す `collect_in_input_order`。**`Diagnostic` を実装しない** — 集約は表示単位ではなく、compiler seam で `CompileFailure` へ平坦化されて初めてユーザー表示になる | なし |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | project typeset |
-| `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `(ProjectConfig, Vec<ConfigWarning>)`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length source failures |
-| `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |
-| `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project failures |
-| `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
-| `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project failures |
-| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（形式判定は子 module `format`、自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project failures |
-| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に、成功時に返す警告集合は子 module `warnings`（`Warnings`）に閉じる | 上記すべて（`color` のみ間接） |
+並び順は `docs/architecture.md` の節順と同一（leaf 値型 → 入力 → 文書と設定 → パイプライン段 →
+成果物 → facade）。依存関係・子 module 構成・不変条件は `docs/architecture.md` の各節が正典。
+
+| module | 責務 1 行 |
+| --- | --- |
+| `length` / `color` | `Length`（sp = 1/65536pt の整数）/ `Color`（`#rrggbb`）の leaf 値型 |
+| `failures` | 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能・`Diagnostic` 非実装） |
+| `source` | ソースの同一性 `SourceId` と位置 `Span` |
+| `project` | プロジェクトの物理的な入力 — 外部資源取得 seam（`ProjectPath` / `ProjectSource`）+ config.toml の読込・検証 + `SourceSet` + フォント資源（子 module `font`） |
+| `document` | authored HIR（`HirDocument` / `HirBuilder` / `SourceMap`）と HIR が値として持つ語彙型の所有者 |
+| `style` | style.toml（見た目）のデータモデル・既定値・読込・検証。CSL 本体は読まない |
+| `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
+| `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
+| `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`） |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。krilla を知らない純データ |
+| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない |
 
 ## コーディング規約
 
@@ -159,15 +157,17 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### エラーハンドリング・バリデーション
 
-- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口（`main` / サブコマンド）だけで使い、compiler の内部パイプラインでは使わない（error の `miette::Report` への型消去は `CompileFailure::into_report` の 1 回に閉じる。warning は表示しかしないので `Warnings` が `Report` の列として持つ）
-- `compile` の失敗型は 1 件以上の error diagnostic を持つ不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic にする
-- 診断 `code` の**第 1 階層は「段」を表す固定列挙**（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ。crate 名ではない）。**第 2 階層以降は規定しない** — module パスではなく著者が選ぶ意味的カテゴリ（`frontend::eval::unknown_command` の `eval`、`project::config::validation::field` の `validation` はいずれも module 名ではない）。段を跨ぐ wrapper 型は自分の所有 module ではなく**エラーの出自の段**を名乗る（`typeset::TypesetError` を運ぶ経路が `typeset::*` を名乗り続けるのと同じ読み方）。段名や集約の都合だけを表す wrapper に `code` を与えてユーザー表示へ出さない（#375）
-- 設定値検証は `garde` の `#[derive(Validate)]` で宣言的に書き、違反は `Failures<E>` に集めて 1 度に報告する
-- **集約するかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**（#376）。段の中で独立に検査できるもの（複数フィールド・複数パス・source ごとの parse・`FontType::ALL` の各フォント・各画像・文書全体の重複ラベル / 未解決参照 / 未知引用キー）は全件を集め、後段の入力を構築できない段の間は早期 return する。表示順は入力の論理順（source は宣言順・フォントは `FontType::ALL` 順・画像はパス昇順・意味解析は文書順）で、`HashMap` の反復順や rayon の完了順に依存させない
-- **集約自身に診断 `code` を付けない**。「複数の◯◯が発生しました」という表示単位を作らず、`Failures<E>` は `Diagnostic` を実装しないことでこれを型で保証する（`#[related]` を使ってよいのは、同じ 1 つの問題を複数箇所で示す場合だけ）
-- **外部資源の read error は低水準 cause**（#377）。`project::SourceReadError` は `Diagnostic` を実装せず、役割（設定 / スタイル / 文献 / フォント / ソース / 画像）とパスを含む leaf diagnostic を作る所有段の `#[source]` に入る。元の `io::ErrorKind` と cause chain を変換で捨てない（旧 `into_io()` による平坦化は廃止）
-- **warning は error と公開型を共用しない**（#377）。ユーザーが直せる非致命的問題は severity(Warning) の leaf diagnostic にして、成功した `Compilation` と一緒に `Warnings` で返す（表示順は入力の論理順）。`tracing` は開発者向け観測に限定し（INFO: phase 完了・件数・時間 / DEBUG: 資源ごとの処理・内部選択 / WARN: ユーザー診断にできない実行環境の異常）、同じ問題を診断と tracing の両方で出さない
-- バリアント設計・`#[label]` / `NamedSource` によるソース位置付与・`#[related]` 集約の制約・garde パターンの詳細は `error-handling` skill を参照する。新しいエラー型の定義・バリアント追加・バリデーション追加の際は必ず参照すること
+正典は `error-handling` skill — 新しいエラー型の定義・バリアント追加・診断（code / help / label /
+related）の設計・ソース位置付与・garde バリデーション追加の際は必ず参照する。常時効く原則は以下。
+
+- エラー型は `thiserror::Error` + `miette::Diagnostic` 派生のクレート固有 enum（メッセージは日本語）。`miette::Result<T>` は CLI 入口だけで使い、内部パイプラインは具体的なエラー型を保つ
+- `compile` の失敗型は不透明型 `CompileFailure`（先頭が主診断・空で構築不能）。ユーザーが最初に読むメッセージは常に修正可能な leaf diagnostic にする
+- 診断 `code` の第 1 階層は「段」の固定列挙（`project` / `style` / `frontend` / `semantics` / `typeset` / `compiler` / `pdf` / `cli` の 8 つ）、第 2 階層以降は著者が選ぶ意味的カテゴリ（module パスではない）
+- 設定値検証は `garde` で宣言的に書き、違反は `Failures<E>` に集めて 1 度に報告する
+- 集約するかは「失敗後も独立な検査を安全かつ決定的に続けられるか」で決め（#376）、表示順は入力の論理順（`HashMap` の反復順や rayon の完了順に依存させない）
+- 集約自身に診断 `code` を付けない（`Failures<E>` は `Diagnostic` を実装しないことで型保証）
+- 外部資源の read error は低水準 cause として、所有段が作る leaf diagnostic の `#[source]` に入れる（#377）
+- warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない（#377）
 
 ### Clippy
 

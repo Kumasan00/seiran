@@ -17,8 +17,8 @@
 anchor に限って添える。
 
 目次: [`seiran-compiler`](#seiran-compiler)（[`length` / `color`](#length--color) / [`failures`](#failures) / [`source`](#source) /
-[`project`](#project) / [`document`](#document) / [`style`](#style) / [`semantics`](#semantics) /
-[`frontend`](#frontend) / [`typeset`](#typeset) / [`publication`](#publication) / [`compiler`](#compiler)）
+[`project`](#project) / [`document`](#document) / [`style`](#style) / [`frontend`](#frontend) /
+[`semantics`](#semantics) / [`typeset`](#typeset) / [`publication`](#publication) / [`compiler`](#compiler)）
 / [`seiran-pdf`](#seiran-pdf) / [`seiran`](#seiran)
 
 ## `seiran-compiler`
@@ -31,6 +31,10 @@ anchor に限って添える。
 公開 API はクレート root（`lib.rs`）の `pub use` に一本化する。各 module の「公開 API」という記述は
 crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外へ出るのは `lib.rs` が再エクスポート
 した項目だけである。
+
+節順は **leaf 値型 → 入力 → 文書と設定 → パイプライン段 → 成果物 → facade**
+（`length` / `color` → `failures` → `source` → `project` → `document` → `style` → `frontend` →
+`semantics` → `typeset` → `publication` → `compiler`）で固定し、CLAUDE.md の module 表もこの順に揃える。
 
 ### `length` / `color`
 
@@ -466,6 +470,70 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **ヘッダ / フッタ**: `header` / `footer` は共通の `RunningContentStyle`（左中右スロット・トークン
   `{page}` `{pages}` `{title}` `{author}` `{date}`）
 
+### `frontend`
+
+#### 責務
+
+テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
+`EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
+`ParseSourceError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、
+自分の message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため。#375）。
+`SourceId` も本文も持たず、帰属は呼び出し元（`compiler::parse_all_sources`）が添える。
+生成物は HIR のみで、他の文書木表現へ落とす adapter は持たない。frontend / evaluator 配下のテストは
+いずれも HIR を直接検査する。
+
+`parse_source` は 1 ソース分の `document::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
+`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
+atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
+インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
+使われないまま閉じられた場合（直後にブロック要素が来た等）は `local` に穴が空くが、同じ入力なら
+常に同じ穴になる。したがって ID の稠密性・連続性には依存してよくない（`hir_invariants` の
+テストも稠密性は検証しない）。
+
+#### `syntax`（非公開）
+
+`lexer` → `parser` の字句・構文解析と、`bumpalo::Bump` アリーナ上のロスレスな CST。
+`token`（トークンの型定義。テキスト内容は複製せず `Span` 経由で元ソースから取得する）/ `lexer` /
+`parser`（+ `parser::error` の `ParserError`）/ `cst`（`green::GreenNode`
+＝ロスレスなツリー、`kind` ＝ノード種別、`ast` ＝型付きビュー `CommandView` / `EnvironmentView`）。
+
+#### `evaluator`
+
+CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
+型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
+子より先に確保する（`syntax` 層は HIR を知らない）。
+
+- `command/`: `control` / `footnote` / `headline` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
+  `cite` / `symbol`
+- `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `table`（+ `table::body` /
+  `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
+  `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
+  `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
+- `inline` / `math` / `opt_args` / `error`
+
+コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
+ディスパッチする。
+
+#### 不変条件・注意点
+
+- **評価器は状態を持たない**（`Evaluator` のような構造体は存在せず、module 内の関数群で構成する）。
+  採番も行わない。
+- **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置
+  だけを構造化し、実際の発番・`\ref` 解決は `semantics` module が、書式化（表示文字列の生成）は
+  `typeset::lowering` が担う。書式は「種類の既定」＝ style.toml 管轄という P10 の分離原則に沿わせるため。
+- **未知引数・引数個数の不一致で panic しない**: `command.rs` の `#[cfg(test)] mod tests` に
+  `proptest!`（`any_command_with_any_arg_count_never_panics_and_only_returns_known_errors`、
+  issue #306）があり、`COMMAND_MAP` の全コマンド名 × 0〜4 個の位置引数を任意に組み合わせても panic
+  せず、トップレベル呼び出しで妥当な `EvalError` の閉じた許可リスト（引数個数・オプションキー等
+  8 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
+  ことを意味し、許可リストへ足さず不具合として扱う。
+- **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。
+- **引用キーの存在検証は行わない**。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
+  スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
+  検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結せず、
+  `semantics::analyze` が担う。
+- 診断は `source::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
+
 ### `semantics`
 
 #### 責務
@@ -667,70 +735,6 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
 
 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は `GeneratedInline::Styled`（serif italic 系）で斜体組みする
 （`render` が hayagriva の `Formatting`（`font_style` / `font_weight`）を `FontKind` へ落とす）。
-
-### `frontend`
-
-#### 責務
-
-テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse_source` と
-`EvalError` / `ParseSourceError` のみで、CST とその内部エラー型は非公開の内部実装に閉じる。
-`ParseSourceError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、
-自分の message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため。#375）。
-`SourceId` も本文も持たず、帰属は呼び出し元（`compiler::parse_all_sources`）が添える。
-生成物は HIR のみで、他の文書木表現へ落とす adapter は持たない。frontend / evaluator 配下のテストは
-いずれも HIR を直接検査する。
-
-`parse_source` は 1 ソース分の `document::HirSource`（`HirGroup` + そのソースの `SourceSpans`）を返す。
-`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
-atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落は
-インラインを蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が
-使われないまま閉じられた場合（直後にブロック要素が来た等）は `local` に穴が空くが、同じ入力なら
-常に同じ穴になる。したがって ID の稠密性・連続性には依存してよくない（`hir_invariants` の
-テストも稠密性は検証しない）。
-
-#### `syntax`（非公開）
-
-`lexer` → `parser` の字句・構文解析と、`bumpalo::Bump` アリーナ上のロスレスな CST。
-`token`（トークンの型定義。テキスト内容は複製せず `Span` 経由で元ソースから取得する）/ `lexer` /
-`parser`（+ `parser::error` の `ParserError`）/ `cst`（`green::GreenNode`
-＝ロスレスなツリー、`kind` ＝ノード種別、`ast` ＝型付きビュー `CommandView` / `EnvironmentView`）。
-
-#### `evaluator`
-
-CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
-型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
-子より先に確保する（`syntax` 層は HIR を知らない）。
-
-- `command/`: `control` / `footnote` / `headline` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
-  `cite` / `symbol`
-- `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `table`（+ `table::body` /
-  `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
-  `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
-  `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
-- `inline` / `math` / `opt_args` / `error`
-
-コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
-ディスパッチする。
-
-#### 不変条件・注意点
-
-- **評価器は状態を持たない**（`Evaluator` のような構造体は存在せず、module 内の関数群で構成する）。
-  採番も行わない。
-- **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうか（`numbered`）とラベル・ソース位置
-  だけを構造化し、実際の発番・`\ref` 解決は `semantics` module が、書式化（表示文字列の生成）は
-  `typeset::lowering` が担う。書式は「種類の既定」＝ style.toml 管轄という P10 の分離原則に沿わせるため。
-- **未知引数・引数個数の不一致で panic しない**: `command.rs` の `#[cfg(test)] mod tests` に
-  `proptest!`（`any_command_with_any_arg_count_never_panics_and_only_returns_known_errors`、
-  issue #306）があり、`COMMAND_MAP` の全コマンド名 × 0〜4 個の位置引数を任意に組み合わせても panic
-  せず、トップレベル呼び出しで妥当な `EvalError` の閉じた許可リスト（引数個数・オプションキー等
-  8 種）だけを返すことを検証する。環境・数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだ
-  ことを意味し、許可リストへ足さず不具合として扱う。
-- **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。
-- **引用キーの存在検証は行わない**。`\cite{...}` は未知のキーでもそのまま `HirInlineKind::Cite`
-  スタブを生成する（`command/cite`）。存在検証は HIR 全体が揃ってからでないと「ソース横断でキー集合を
-  検証する」意味解析ができないため、frontend の 1 ソース単位の評価では原理的に完結せず、
-  `semantics::analyze` が担う。
-- 診断は `source::Span` を `span_ext::ToSourceSpan` で `miette::SourceSpan` へ変換して構築する。
 
 ### `typeset`
 
