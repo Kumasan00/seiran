@@ -22,7 +22,7 @@ use crate::{
 /// カウンタの種別。`Counters`（見出し・図表・数式）と `Theorems`（定理クラス）の
 /// 2 系統をひとつの型で表す
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CounterKind {
+pub(crate) enum CounterKind {
   /// `crate::style::Counters` が定義する固定 9 種のいずれか
   Counter(CounterName),
   /// 定理クラス（共有カウンタは `TheoremStyle.counter` で複数クラスが 1 つを共有しうる）
@@ -32,7 +32,7 @@ pub enum CounterKind {
 /// カウンタの値（構造のみ）。表示書式（`number_format` / `ref_format` / `number_style`）は
 /// このクレートの対象外（typeset 側が `&crate::style::Style` と併せて表示文字列を作る）
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CounterValue {
+pub(crate) struct CounterValue {
   /// このカウンタの種別
   pub kind: CounterKind,
   /// 祖先カウンタから自身までの値列（祖先を辿った順。末尾が自身の値）

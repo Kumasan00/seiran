@@ -11,7 +11,7 @@ use crate::{
 /// タイトルページのスタイル設定。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
-pub struct TitlePageStyle {
+pub(crate) struct TitlePageStyle {
   /// タイトルページを生成するか（既定 `false` = 無効）
   #[garde(skip)]
   pub enabled: bool,

@@ -2,12 +2,12 @@
 
 use std::ops::Range;
 
-pub use hypher::Lang;
+pub(crate) use hypher::Lang;
 use hypher::hyphenate;
 
 /// BCP 47 言語タグをハイフネーション言語へ解決する
 #[must_use]
-pub fn resolve(language: Option<&str>) -> Option<Lang> {
+pub(crate) fn resolve(language: Option<&str>) -> Option<Lang> {
   let primary = language?.split(['-', '_']).next()?;
   let bytes = primary.as_bytes();
   if bytes.len() != 2 {

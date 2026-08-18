@@ -16,7 +16,7 @@ use crate::{
 /// 見出しレベル全 6 つに対応するスタイル設定。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(from = "HeadingStylesTable")]
-pub struct HeadingStyles {
+pub(crate) struct HeadingStyles {
   /// `[heading.part]`
   pub part: HeadingStyle,
   /// `[heading.chapter]`
@@ -74,7 +74,7 @@ impl IndexMut<HeadingLevel> for HeadingStyles {
 
 impl HeadingStyles {
   /// 各レベルにレベル名を添えて走査するイテレータ。
-  pub fn iter_with_level(&self) -> impl Iterator<Item = (HeadingLevel, &HeadingStyle)> {
+  pub(super) fn iter_with_level(&self) -> impl Iterator<Item = (HeadingLevel, &HeadingStyle)> {
     return [
       (HeadingLevel::Part, &self.part),
       (HeadingLevel::Chapter, &self.chapter),
@@ -91,7 +91,7 @@ impl HeadingStyles {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct HeadingStyle {
+pub(crate) struct HeadingStyle {
   /// 見出しの書式テンプレート。`{number}` と `{title}` を含めることができる
   #[garde(dive)]
   pub format: NumberTitleTemplate,
@@ -161,7 +161,7 @@ impl From<HeadingStylesTable> for HeadingStyles {
 /// [`HeadingStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub struct HeadingStyleOverride {
+pub(super) struct HeadingStyleOverride {
   /// 見出しの書式テンプレート
   pub format: Option<NumberTitleTemplate>,
   /// 見出しテキストのフォントサイズ
@@ -202,7 +202,7 @@ impl HeadingStyleOverride {
 
 /// 指定レベルの [`HeadingStyle`] デフォルトを返す。
 #[must_use]
-pub fn default_for_level(level: HeadingLevel) -> HeadingStyle {
+pub(super) fn default_for_level(level: HeadingLevel) -> HeadingStyle {
   let mut style = HeadingStyle::default();
   match level {
     HeadingLevel::Part => {

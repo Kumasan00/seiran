@@ -28,11 +28,11 @@ mod tag;
 #[doc(hidden)]
 pub mod test_support;
 
-pub use processed_config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
+pub(crate) use processed_config::{DocumentConfig, ImageConfig, OutputConfig, PdfConfig, ProjectConfig};
 
 /// 設定ファイル読み込みで発生するすべてのエラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ReadConfigError {
+pub(crate) enum ReadConfigError {
   /// 設定ファイルの読み込み失敗
   #[error("設定ファイルを読み込めませんでした: {path}")]
   #[diagnostic(code(project::config::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
@@ -69,7 +69,7 @@ pub enum ReadConfigError {
 
 /// 設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ConfigValidationError {
+pub(crate) enum ConfigValidationError {
   /// garde が検出した設定値の不正
   #[error("'{path}': {message}")]
   #[diagnostic(
@@ -131,7 +131,7 @@ pub enum ConfigValidationError {
 /// エラー（[`ConfigValidationError`]）と型を分けているのは、warning が成功した
 /// `Compilation` と一緒に返り `CompileFailure` には混ざらないため（#377）。
 #[derive(Debug, Clone, Error, Diagnostic)]
-pub enum ConfigWarning {
+pub(crate) enum ConfigWarning {
   /// `sources` のファイル拡張子が `.sei` ではない。
   #[error("ソースファイルの拡張子が `.sei` ではありません: {path}")]
   #[diagnostic(
@@ -192,7 +192,7 @@ struct FontValues {
 // `ReadConfigError::ParseToml` が `NamedSource<String>` を保持して Result サイズが拡大するため
 // allow する。`config.toml` は 1 回しか読まないので最適化対象ではない。
 #[allow(clippy::result_large_err)]
-pub fn load(
+pub(crate) fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
   base_dir: &Path,

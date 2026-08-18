@@ -16,7 +16,7 @@ use crate::{length::Length, project::ProjectPath};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]
-pub struct Page {
+pub(crate) struct Page {
   /// ページ内の配置済みブロック（上から順）
   pub blocks: Vec<PlacedBlock>,
   /// ヘッダー（ページ上端の余白領域に描く走り文）の配置済みブロック
@@ -70,7 +70,7 @@ pub struct Page {
 /// 脚注 1 個がページ下部に収まらないときは行単位で分割され、同じ `number` / `index` を持つ
 /// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
-pub struct PlacedFootnote {
+pub(crate) struct PlacedFootnote {
   /// 発番済みの表示番号（[`super::line::LineFootnote`] から素通し）
   // 描画はマーカー側の番号を使うため読まない（crate 内の `#[cfg(test)]` が採番を検証する）。
   #[allow(dead_code)]
@@ -100,7 +100,7 @@ pub struct PlacedFootnote {
 /// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端からのオフセット、`y` はページ上端から
 /// 下方向に正）。描画 adapter が左マージンを加算して `XyzDestination` 点にする。
 #[derive(Debug, Clone)]
-pub struct PlacedAnchor {
+pub(crate) struct PlacedAnchor {
   /// アンカー種別（見出し / ラベル付きブロック）
   pub mark: AnchorMark,
   /// 本文左端からの水平オフセット（pt、通常 0）
@@ -114,7 +114,7 @@ pub struct PlacedAnchor {
 /// 座標系は [`PlacedBlock`] と同じ（`x` / `y` はそれぞれ本文左端・ページ上端からの距離）。
 /// 描画 adapter が左マージンを加算して矩形のリンク注釈にする。
 #[derive(Debug, Clone)]
-pub struct PlacedLink {
+pub(crate) struct PlacedLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
   /// 矩形左端の本文左端からの水平オフセット（pt）
@@ -131,7 +131,7 @@ pub struct PlacedLink {
 ///
 /// `HItem::IndexMark` → `Line::index_marks` を経て `break_pages` がページ単位に集約する。
 #[derive(Debug, Clone)]
-pub struct PlacedIndexEntry {
+pub(crate) struct PlacedIndexEntry {
   /// 索引語
   pub word: String,
   /// 読みソートキー（`[reading=...]`）
@@ -140,7 +140,7 @@ pub struct PlacedIndexEntry {
 
 /// ページ内に配置されたブロック
 #[derive(Debug, Clone)]
-pub enum PlacedBlock {
+pub(crate) enum PlacedBlock {
   /// テキスト行
   Line {
     /// 行の内容
@@ -198,7 +198,7 @@ pub enum PlacedBlock {
 ///
 /// 座標系は [`PlacedBlock`] と同じ（`x` は本文左端から、`baseline_y` はページ上端から下方向）。
 #[derive(Debug, Clone)]
-pub struct PlacedMathNumber {
+pub(crate) struct PlacedMathNumber {
   /// 番号ボックス（シェーピング済み）
   pub content: HBox,
   /// 本文左端からの水平オフセット（pt）
@@ -212,7 +212,7 @@ pub struct PlacedMathNumber {
 /// セルの x（段オフセット + 表の揃え + 列の揃え + セル余白 + 行内カーソル）は `Length`（sp 整数）
 /// のまま足し込んであり、pt の `f32` へ変換するのは描画命令を作る 1 回だけである。
 #[derive(Debug, Clone)]
-pub struct PlacedTableRow {
+pub(crate) struct PlacedTableRow {
   /// 行帯上端のページ上端からの距離（pt）
   pub top_y: Length,
   /// 行帯の高さ（pt）
@@ -227,7 +227,7 @@ pub struct PlacedTableRow {
 
 /// 位置と見た目が確定した表の横罫線
 #[derive(Debug, Clone, Copy)]
-pub struct PlacedTableRule {
+pub(crate) struct PlacedTableRule {
   /// 本文左端からの水平オフセット（pt）
   pub x: Length,
   /// ページ上端からの距離（pt）

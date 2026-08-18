@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct MathStyle {
+pub(crate) struct MathStyle {
   /// 上付き / 下付きスクリプトのスタイル（`[math.script]`）。インライン数式にも効く。
   #[garde(dive)]
   pub script: MathScriptStyle,
@@ -34,7 +34,7 @@ impl Default for MathStyle {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct MathScriptStyle {
+pub(crate) struct MathScriptStyle {
   /// 上付き / 下付きスクリプトのフォントサイズ倍率（親フォントサイズに対する比）
   #[garde(range(min = f32::MIN_POSITIVE, max = f32::MAX))]
   pub script_size_factor: f32,
@@ -64,7 +64,7 @@ impl Default for MathScriptStyle {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct MathBlockStyle {
+pub(crate) struct MathBlockStyle {
   /// 式の横に出る数式番号（タグ）の書式テンプレート。`{number}` を発番番号で置換する（既定
   /// `"({number})"` → `"(1.1)"`）。これは番号 3 系統のうち **tag**（式の横に出す）で、番号を構築する
   /// `counters.equation`（**number**）や `\ref{eq:x}` の表示を決める
@@ -108,7 +108,7 @@ impl Default for MathBlockStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
-pub enum NumberSide {
+pub(crate) enum NumberSide {
   /// 数式の右側に番号を配置
   Right,
   /// 数式の左側に番号を配置
@@ -119,7 +119,7 @@ pub enum NumberSide {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
-pub enum Alignment {
+pub(crate) enum Alignment {
   /// 中央揃え
   Center,
   /// 左揃え

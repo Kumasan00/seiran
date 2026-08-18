@@ -18,7 +18,7 @@ use crate::{
 /// 両端揃えでも伸縮しない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TextAlignment {
+pub(crate) enum TextAlignment {
   /// 両端揃え（既定）。行の余り幅を伸縮点へ比例配分して行末を版面右端に揃える
   #[default]
   Justify,
@@ -30,7 +30,7 @@ pub enum TextAlignment {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct TextBlockStyle {
+pub(crate) struct TextBlockStyle {
   /// 本文の既定フォントサイズ
   #[garde(custom(positive))]
   pub font_size: Length,

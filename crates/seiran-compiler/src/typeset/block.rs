@@ -7,11 +7,11 @@ mod script;
 mod toc;
 mod yakumono;
 
-pub use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
+pub(super) use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
 pub(crate) use index::{build_index_blocks, build_index_spec};
 use lazy_regex::regex_replace_all;
-pub use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
-pub use toc::TocEntryInput;
+pub(super) use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
+pub(super) use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
 use tracing::debug;
 
@@ -57,7 +57,7 @@ fn units_to_length(units: i64, font_size: Length, upem: f32) -> Length {
 
 /// レイアウトノードを計測済みのブロック列に変換する
 #[must_use]
-pub fn build_blocks(
+pub(super) fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
   resources: &FontSystem<'_>,
   default_font_size: Length,

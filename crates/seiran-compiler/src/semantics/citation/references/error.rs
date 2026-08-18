@@ -7,7 +7,7 @@ use crate::project::SourceReadError;
 
 /// 参照定義ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
-pub enum ReadReferencesError {
+pub(crate) enum ReadReferencesError {
   /// 参照定義ファイルの読み込みに失敗した場合
   #[error("参照定義ファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(

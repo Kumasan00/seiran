@@ -16,7 +16,7 @@ use crate::{
 
 /// ヘッダー・フッター配置に必要なプリミティブ設定
 #[derive(Debug, Clone)]
-pub struct RunningContentSpec {
+pub(crate) struct RunningContentSpec {
   /// ヘッダー（ページ上端側）のスロット。`None` なら描画しない
   pub header: Option<RunningSlots>,
   /// フッター（ページ下端側）のスロット。`None` なら描画しない
@@ -33,7 +33,7 @@ pub struct RunningContentSpec {
 
 /// 1 リージョン（ヘッダーまたはフッター）のスロットと見た目
 #[derive(Debug, Clone)]
-pub struct RunningSlots {
+pub(crate) struct RunningSlots {
   /// 左スロットのテンプレート
   pub left: RunningTemplate,
   /// 中央スロットのテンプレート
@@ -58,7 +58,7 @@ pub struct RunningSlots {
 
 /// トークン置換に使う文書メタデータ（未設定は空文字列）
 #[derive(Debug, Clone, Default)]
-pub struct RunningMetadata {
+pub(crate) struct RunningMetadata {
   /// `{title}`
   pub title: String,
   /// `{author}`
@@ -68,7 +68,7 @@ pub struct RunningMetadata {
 }
 
 /// 各ページにヘッダー・フッターを配置する
-pub fn layout_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
+pub(crate) fn layout_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
   if spec.header.is_none() && spec.footer.is_none() {
     return;
   }

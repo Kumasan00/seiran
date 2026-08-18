@@ -6,7 +6,7 @@ use crate::{length::Length, project::FontConfigs};
 
 /// PDF 生成に必要な完全な設定情報
 #[derive(Debug, Clone)]
-pub struct ProjectConfig {
+pub(crate) struct ProjectConfig {
   /// ドキュメントメタデータ（title / author / date / subject）
   pub document: DocumentConfig,
   /// 出力ファイル名・ディレクトリ
@@ -27,7 +27,7 @@ pub struct ProjectConfig {
 
 /// PDF メタデータ
 #[derive(Debug, Clone)]
-pub struct DocumentConfig {
+pub(crate) struct DocumentConfig {
   /// ドキュメントタイトル（PDF メタデータの /Title）
   pub title: Option<String>,
   /// 著者名（PDF メタデータの /Author）
@@ -44,7 +44,7 @@ pub struct DocumentConfig {
 
 /// 出力ファイル名・ディレクトリ
 #[derive(Debug, Clone)]
-pub struct OutputConfig {
+pub(crate) struct OutputConfig {
   /// 出力ファイル名の基盤（拡張子なし。実際の PDF パスは `{output_dir}/{name}.pdf`）
   pub name: String,
   /// 出力ディレクトリの絶対パス（正規化済み）
@@ -54,7 +54,7 @@ pub struct OutputConfig {
 impl OutputConfig {
   /// `{output_dir}/{name}.pdf` の絶対パスを返す
   #[must_use]
-  pub fn pdf_path(&self) -> PathBuf {
+  pub(crate) fn pdf_path(&self) -> PathBuf {
     let mut path = self.output_dir.clone();
     path.push(&self.name);
     path.set_extension("pdf");
@@ -67,7 +67,7 @@ impl OutputConfig {
 /// 用紙上のどこを本文領域にするか（4 方向の余白）は見た目なので `style.toml` の `[page]`
 /// （[`crate::style::PageStyle`]）が所有する（#389）。
 #[derive(Debug, Clone)]
-pub struct PdfConfig {
+pub(crate) struct PdfConfig {
   /// ページの高さ（[`Length`]）
   pub height: Length,
   /// ページの幅（[`Length`]）
@@ -78,7 +78,7 @@ pub struct PdfConfig {
 
 /// ラスタ画像のダウンサンプリング設定（検証済み）
 #[derive(Debug, Clone, Copy)]
-pub struct ImageConfig {
+pub(crate) struct ImageConfig {
   /// ラスタ画像埋め込み時の最大 DPI（バリデーション済み、1〜2400）
   pub max_dpi: u32,
   /// ラスタ画像のダウンサンプリングを行うか

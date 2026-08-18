@@ -7,7 +7,7 @@ use crate::project::SourceReadError;
 
 /// スタイル設定ファイル読み込み時のエラー型
 #[derive(Debug, Error, Diagnostic)]
-pub enum ReadStyleError {
+pub(crate) enum ReadStyleError {
   /// スタイル設定ファイルの読み込み失敗（I/O エラー）
   #[error("スタイル設定ファイルを読み込めませんでした: {path}")]
   #[diagnostic(code(style::read_file), help("ファイルのパスと読み取り権限を確認してください。"))]
@@ -44,7 +44,7 @@ pub enum ReadStyleError {
 
 /// スタイル設定値バリデーションのエラー詳細。
 #[derive(Debug, Error, Diagnostic)]
-pub enum StyleValidationError {
+pub(crate) enum StyleValidationError {
   /// garde が検出したスタイル設定値の不正
   #[error("'{path}': {message}")]
   #[diagnostic(code(style::validation::field), help("style.toml の該当フィールドの値を確認してください。"))]

@@ -212,7 +212,7 @@ impl Serialize for Length {
 // `&()` の形で生成するため、シグネチャを値渡しへ変えると呼び出し側と型が合わずビルドが
 // 壊れる（実験的に value を Length へ変更し E0308 が 15 件発生することを確認して復元済み、#307）。
 #[allow(clippy::trivially_copy_pass_by_ref)]
-pub fn positive(value: &Length, _ctx: &()) -> garde::Result {
+pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
   if value.is_positive() {
     return Ok(());
   }
@@ -229,7 +229,7 @@ pub fn positive(value: &Length, _ctx: &()) -> garde::Result {
 // 上の `positive` と同じ理由（garde の derive マクロが生成する呼び出しコードが
 // `&self.field` / `&()` を渡す固定シグネチャのため）で許容する。
 #[allow(clippy::trivially_copy_pass_by_ref)]
-pub fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
+pub(crate) fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
   if value.is_non_negative() {
     return Ok(());
   }

@@ -13,7 +13,7 @@ use super::{date::Date, name::Name};
 ///
 /// トップレベルのテーブルキーを参照 ID として保持し、空・空白のみ・重複する ID を拒否する。
 #[derive(Debug)]
-pub struct References(pub HashMap<String, Reference>);
+pub(crate) struct References(pub HashMap<String, Reference>);
 
 impl std::ops::Deref for References {
   type Target = HashMap<String, Reference>;
@@ -86,7 +86,7 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_field_names)]
-pub struct Reference {
+pub(crate) struct Reference {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]
   pub reference_type: ReferenceType,
@@ -348,7 +348,7 @@ pub struct Reference {
 ///
 /// CSL (Citation Style Language) で定義されている文献タイプに対応する。
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ReferenceType {
+pub(crate) enum ReferenceType {
   /// 記事（学術誌以外の一般的な記事）
   #[serde(rename = "article")]
   Article,
@@ -493,7 +493,7 @@ pub enum ReferenceType {
 /// <https://docs.citationstyles.org/en/stable/specification.html#number-variables>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum NumberOrString {
+pub(crate) enum NumberOrString {
   /// 整数値
   Integer(i64),
   /// 小数値

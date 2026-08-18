@@ -7,7 +7,7 @@ use seiran_compiler::test_support;
 
 /// `vendor/fonts/` にある golden テスト用の実フォント（他の golden テストと共有する資産。
 /// 初回は `tools/fetch-test-assets.sh` の実行が必要 — CI はキャッシュ済みかここで取得する）。
-pub fn read_test_font() -> Vec<u8> {
+pub(crate) fn read_test_font() -> Vec<u8> {
   let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
     .ancestors()
     .nth(2)
@@ -22,7 +22,7 @@ pub fn read_test_font() -> Vec<u8> {
 }
 
 /// 19 フォント種別すべてが同じフォントファイルを指す、最小の妥当な `config.toml` を組む。
-pub fn minimal_config_toml(source_path: &str) -> String {
+pub(crate) fn minimal_config_toml(source_path: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\n\n{}{}{}",
     test_support::valid_pdf_section(),
@@ -36,7 +36,7 @@ pub fn minimal_config_toml(source_path: &str) -> String {
 /// `tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされるので、片方でしか
 /// 使わないヘルパは `dead_code` になる（慣例どおり `allow` で許容する）。
 #[allow(dead_code)]
-pub fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
+pub(crate) fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\n\n{}{}{}",
     test_support::valid_pdf_section(),
@@ -49,7 +49,7 @@ pub fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str
 ///
 /// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
 #[allow(dead_code)]
-pub fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
+pub(crate) fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\nstyle_path = \"{style_path}\"\n\n{}{}{}",
     test_support::valid_pdf_section(),
@@ -62,6 +62,6 @@ pub fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: 
 ///
 /// `numbering` は `"continuous"` / `"per_page"`（後者は本文パスが不動点まで反復される）。
 #[allow(dead_code)]
-pub fn overflowing_footnote_style_toml(numbering: &str) -> String {
+pub(crate) fn overflowing_footnote_style_toml(numbering: &str) -> String {
   return format!("[footnote]\nnumbering = \"{numbering}\"\nfont_size = \"900pt\"\n");
 }

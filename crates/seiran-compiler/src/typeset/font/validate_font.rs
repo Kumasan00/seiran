@@ -31,7 +31,7 @@ use crate::{
 /// 種別名は Debug 表現（`Serif`）ではなく config.toml のキー（`serif`）を使い、
 /// `[fonts.serif]` を直せばよいと分かるようにする。
 #[derive(Debug)]
-pub struct FontValidationFailure {
+pub(crate) struct FontValidationFailure {
   /// 違反が見つかったフォント種別
   font_type: FontType,
   /// 違反の内容
@@ -71,7 +71,7 @@ impl Diagnostic for FontValidationFailure {
 
 /// フォント設定の検証エラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum FontValidationErrorKind {
+pub(super) enum FontValidationErrorKind {
   /// OpenType フォントを解析できない。
   #[error("フォントフェースの解析に失敗しました: {0}")]
   #[diagnostic(
@@ -142,7 +142,7 @@ pub enum FontValidationErrorKind {
 /// 19 種別のどれを直せばよいか分からない。エラー（[`FontValidationErrorKind`]）とは別の型に
 /// しているのは、warning が成功した `Compilation` と一緒に返り `CompileFailure` には混ざらないため。
 #[derive(Debug, Error, Diagnostic)]
-pub enum FontWarning {
+pub(crate) enum FontWarning {
   /// script を指定しているのに、フォントに GSUB / GPOS テーブルが無い。
   #[error("{}: フォントに {table} テーブルがありません: {}", .font_type.as_toml_key(), .path.display())]
   #[diagnostic(
@@ -230,7 +230,7 @@ pub enum FontWarning {
 ///
 /// 1 つ以上の違反がある場合に、その全件を [`FontValidationFailure`] の非空集合として返す
 /// （このとき警告は捨てる — 失敗したコンパイルでは warning を返さない）。
-pub fn validate_fonts(
+pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
   font_refs: &FontRefs,
 ) -> Result<Vec<FontWarning>, Failures<FontValidationFailure>> {
@@ -254,7 +254,7 @@ pub fn validate_fonts(
 
 /// 1 フォント分を検証し、検出した違反をすべて返す（警告は `warnings` へ追記する）。
 #[must_use]
-pub fn validate_font(
+pub(super) fn validate_font(
   font_type: FontType,
   config: &FontConfig,
   font_ref: &FontRef,

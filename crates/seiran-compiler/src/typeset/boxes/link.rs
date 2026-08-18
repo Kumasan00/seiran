@@ -11,25 +11,25 @@ use crate::semantics::{CitationId, HeadingKey, LabelId};
 /// [`crate::typeset::LineFootnote::index`] と同じ値。表示番号（採番方式で変わりうる）ではなく
 /// 出現順の同一性を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FootnoteId(u32);
+pub(crate) struct FootnoteId(u32);
 
 impl FootnoteId {
   /// 新しい `FootnoteId` を生成する
   #[must_use]
-  pub fn new(index: u32) -> Self { return FootnoteId(index); }
+  pub(crate) fn new(index: u32) -> Self { return FootnoteId(index); }
 
   /// 元の出現 index を返す
   #[must_use]
   // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う。
   #[allow(dead_code)]
-  pub fn index(self) -> u32 { return self.0; }
+  pub(crate) fn index(self) -> u32 { return self.0; }
 }
 
 /// 到達先アンカーを一意に指すキー
 ///
 /// 各バリアントで名前空間を分離し、同じ文字列や数値による衝突を防ぐ。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum AnchorId {
+pub(crate) enum AnchorId {
   /// 見出しの暗黙 destination キー（目次エントリの内部リンク到達先）
   Heading(HeadingKey),
   /// `\ref{label}` で参照する、図・表・式・見出しのラベル
@@ -44,7 +44,7 @@ pub enum AnchorId {
 
 /// ブロック先頭に置くゼロサイズのアンカー
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AnchorMark {
+pub(crate) enum AnchorMark {
   /// 見出しのアンカー（アウトライン用 + 目次リンク到達先 + 任意で `\ref` 到達先）
   Heading {
     /// 文書順から決まる暗黙の destination キー（目次エントリの内部リンク到達先）。
@@ -65,7 +65,7 @@ pub enum AnchorMark {
 
 /// ハイパーリンクの行き先
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LinkTarget {
+pub(crate) enum LinkTarget {
   /// 文書内アンカー（[`AnchorId`]）へのジャンプ
   Internal(AnchorId),
   /// 外部 URI（`\url{uri}` / `\href[url=uri]{...}` の `uri`）

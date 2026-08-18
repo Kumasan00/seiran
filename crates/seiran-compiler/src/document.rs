@@ -46,16 +46,16 @@ mod quote;
 mod table_column;
 mod theorem;
 
-pub use caption::CaptionPosition;
-pub use font_kind::FontKind;
-pub use heading_level::HeadingLevel;
+pub(crate) use caption::CaptionPosition;
+pub(crate) use font_kind::FontKind;
+pub(crate) use heading_level::HeadingLevel;
 // HIR（#322）は crate 内部だけで使う型なので `pub(crate)` で再エクスポートする。
 pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
   HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
 };
-pub use math_class::{MathDelimiter, MathEnvKind};
-pub use math_variant::MathVariant;
-pub use quote::QuoteKind;
-pub use table_column::{ColumnAlign, ColumnWidth};
-pub use theorem::TheoremClass;
+pub(crate) use math_class::{MathDelimiter, MathEnvKind};
+pub(crate) use math_variant::MathVariant;
+pub(crate) use quote::QuoteKind;
+pub(crate) use table_column::{ColumnAlign, ColumnWidth};
+pub(crate) use theorem::TheoremClass;

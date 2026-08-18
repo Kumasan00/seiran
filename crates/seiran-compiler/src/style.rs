@@ -45,7 +45,7 @@ pub(crate) use crate::style::error::ReadStyleError;
 // `NestedOrderedFormat` / `NumberStyle` のように利用側が `#[cfg(test)] mod tests` だけの名前があるため
 // `unused_imports` を許可する（非公開 module からの再エクスポートは本体ビルドでは未使用に見える）。
 #[allow(unused_imports)]
-pub use crate::style::{
+pub(crate) use crate::style::{
   caption::CaptionStyle,
   counter::{CounterName, CounterStyle, Counters},
   footnote::{FootnoteNumbering, FootnoteStyle},
@@ -91,7 +91,7 @@ use crate::{
 /// スタイル設定全体。`style.toml` をパースして得られるトップレベルの構造体。
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
-pub struct Style {
+pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし
   #[garde(skip)]
   pub background_color: Option<Color>,
@@ -188,11 +188,11 @@ impl Default for Style {
 impl Style {
   /// 指定された見出しレベルの [`HeadingStyle`] への不変参照を返す
   #[must_use]
-  pub fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
+  pub(crate) fn heading(&self, level: HeadingLevel) -> &HeadingStyle { return &self.heading[level]; }
 
   /// 指定された定理クラスのスタイル定義への不変参照を返す（10 種固定のため必ず存在する）。
   #[must_use]
-  pub fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return self.theorems.get(class); }
+  pub(crate) fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return self.theorems.get(class); }
 }
 
 /// スタイル設定ファイルを読み込みます。

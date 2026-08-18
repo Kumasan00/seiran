@@ -202,7 +202,7 @@ pub(crate) struct PreFontConfigs {
 
 impl PreFontConfigs {
   /// フォント種別に対応する `PreFontConfig` を取得します。
-  pub fn get(&self, font_type: FontType) -> &PreFontConfig {
+  pub(super) fn get(&self, font_type: FontType) -> &PreFontConfig {
     match font_type {
       FontType::Serif => return &self.serif,
       FontType::SerifBold => return &self.serif_bold,

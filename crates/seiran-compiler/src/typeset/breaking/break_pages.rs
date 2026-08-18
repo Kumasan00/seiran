@@ -25,7 +25,7 @@ use paragraph_plan::plan_paragraph_lines;
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
 #[derive(Debug, Clone, Copy)]
-pub struct PageGeometry {
+pub(crate) struct PageGeometry {
   /// 本文の水平原点（pt）= 用紙左端から本文左端まで（`style.page.margin_left`）。
   ///
   /// ページ内の確定座標は本文左端からの相対値なので、この値は組版では使わず
@@ -74,7 +74,7 @@ pub struct PageGeometry {
 /// 中での index**。前付け・本文・後付けを連結した物理ページ番号や印字ラベルは
 /// `typeset::pagination` が確定させる（この段は自分が組んだページ列しか知らないため）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FootnoteOverflow {
+pub(crate) struct FootnoteOverflow {
   /// はみ出しが起きたページの 0 起点 index（返されるページ列の中での位置）
   pub page_index: usize,
   /// はみ出し方
@@ -83,7 +83,7 @@ pub struct FootnoteOverflow {
 
 /// [`FootnoteOverflow`] のはみ出し方
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FootnoteOverflowKind {
+pub(crate) enum FootnoteOverflowKind {
   /// 1 行に付いた脚注群が、空のリージョンでもページ全高に収まらなかった（表示番号は出現順）
   Line {
     /// はみ出した脚注群の表示番号
@@ -562,7 +562,7 @@ fn shift_placed_block(block: &mut PlacedBlock, dy: Length) {
 ///
 /// はみ出し記録は検出順＝ページ順で、`page_index` は返すページ列の中での 0 起点 index。
 #[must_use]
-pub fn break_pages(
+pub(crate) fn break_pages(
   blocks: Vec<Block>,
   text_width: Length,
   geom: &PageGeometry,

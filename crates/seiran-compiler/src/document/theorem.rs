@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// `<name>` は `snake_case` の [`TheoremClass::as_str`] と一致する。未知の名前は登録されない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TheoremClass {
+pub(crate) enum TheoremClass {
   /// 定理
   Theorem,
   /// 補題
@@ -35,7 +35,7 @@ impl TheoremClass {
   /// 全 10 クラスを宣言順に並べた配列。
   // crate 内の `#[cfg(test)]` からのみ使う（全 10 クラス網羅の検証）。
   #[allow(dead_code)]
-  pub const ALL: [TheoremClass; 10] = [
+  pub(crate) const ALL: [TheoremClass; 10] = [
     TheoremClass::Theorem,
     TheoremClass::Lemma,
     TheoremClass::Proposition,
@@ -49,11 +49,11 @@ impl TheoremClass {
   ];
   /// [`TheoremClass::ALL`] の要素数
   #[allow(dead_code)]
-  pub const COUNT: usize = 10;
+  pub(super) const COUNT: usize = 10;
 
   /// `snake_case` の文字列表現を返す（TOML のキーおよび環境名と同じ）。
   #[must_use]
-  pub fn as_str(self) -> &'static str {
+  pub(crate) fn as_str(self) -> &'static str {
     return match self {
       Self::Theorem => "theorem",
       Self::Lemma => "lemma",
@@ -73,7 +73,7 @@ impl TheoremClass {
   /// 10 種以外の名前は `None` を返す。`frontend` が `\begin{<name>}` の環境名を
   /// クラスに解決するために使う。
   #[must_use]
-  pub fn from_name(name: &str) -> Option<Self> {
+  pub(crate) fn from_name(name: &str) -> Option<Self> {
     return match name {
       "theorem" => Some(Self::Theorem),
       "lemma" => Some(Self::Lemma),

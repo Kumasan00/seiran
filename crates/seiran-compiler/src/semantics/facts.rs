@@ -19,7 +19,7 @@ use crate::{
 ///
 /// タイトルは「内容」であって「事実」ではないので持たない（表示は HIR から作る）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeadingFacts {
+pub(crate) struct HeadingFacts {
   /// 文書順の見出しキー（PDF しおり・目次のリンク先）
   pub key: HeadingKey,
   /// この見出しの HIR ノード

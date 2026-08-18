@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-pub use harfrust::UnicodeBuffer;
+pub(crate) use harfrust::UnicodeBuffer;
 use harfrust::{
   Direction, Feature, FontRef, GlyphBuffer, Language, Script, ShapeOptions, ShapePlan, Shaper, ShaperData,
   ShaperInstance, Tag, Variation,
@@ -22,7 +22,7 @@ use crate::{
 
 /// テキストシェイピングの初期化エラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ShaperError {
+pub(crate) enum ShaperError {
   /// 言語タグを解析できない。
   #[error("言語タグの解析に失敗しました: '{tag}'")]
   #[diagnostic(
@@ -38,10 +38,10 @@ pub enum ShaperError {
 }
 
 /// 全フォント種別の `HarfRust` 解析データ。
-pub type ShaperDatas = FontMap<ShaperData>;
+pub(super) type ShaperDatas = FontMap<ShaperData>;
 
 /// [`ShaperDatas`] の構築機能。
-pub trait ShaperDatasExt {
+pub(super) trait ShaperDatasExt {
   /// 全フォント参照からシェイピング用の解析データを生成する。
   fn new(font_refs: &FontRefs) -> Self;
 }
@@ -55,10 +55,10 @@ impl ShaperDatasExt for ShaperDatas {
 }
 
 /// 全フォント種別のバリエーション軸インスタンス。
-pub type ShaperInstances = FontMap<Option<ShaperInstance>>;
+pub(super) type ShaperInstances = FontMap<Option<ShaperInstance>>;
 
 /// [`ShaperInstances`] の構築機能。
-pub trait ShaperInstancesExt {
+pub(super) trait ShaperInstancesExt {
   /// 設定にバリエーション軸があるフォントのインスタンスを並列に生成する。
   fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self;
 }
@@ -99,10 +99,10 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
 }
 
 /// 全フォント種別の [`HarfRustShaper`]。
-pub type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
+pub(super) type HarfRustShapers<'a> = FontMap<HarfRustShaper<'a>>;
 
 /// [`HarfRustShapers`] の構築機能。
-pub trait HarfRustShapersExt<'a>: Sized {
+pub(super) trait HarfRustShapersExt<'a>: Sized {
   /// 全フォント種別のシェイパーを並列に生成する。
   ///
   /// フォントは互いに独立にシェーパーを組めるので、1 件目で打ち切らず全種別を試して失敗を
@@ -142,7 +142,7 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
 }
 
 /// 単一フォントの `HarfRust` シェイパー。
-pub struct HarfRustShaper<'a> {
+pub(super) struct HarfRustShaper<'a> {
   /// `harfrust` のシェイパー本体
   shaper: Shaper<'a>,
   /// 書字方向とスクリプトを明示した場合だけ再利用できるシェイピングプラン。
@@ -227,7 +227,7 @@ impl<'a> HarfRustShaper<'a> {
   /// `buffer` は返り値に `clear()` を呼ぶことで再利用できる。`point_size` は AAT `trak`
   /// テーブルのサイズ依存トラッキングに使われ、0 以下なら `harfrust` の既定値 12pt になる。
   #[must_use]
-  pub fn shape(&self, mut buffer: UnicodeBuffer, text: &str, point_size: f32) -> GlyphBuffer {
+  pub(super) fn shape(&self, mut buffer: UnicodeBuffer, text: &str, point_size: f32) -> GlyphBuffer {
     if let Some(direction) = self.direction {
       buffer.set_direction(direction);
     }

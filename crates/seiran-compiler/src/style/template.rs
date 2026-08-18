@@ -201,16 +201,16 @@ macro_rules! define_template {
   ($(#[$meta:meta])* $name:ident($placeholder:ty)) => {
     $(#[$meta])*
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct $name(Analyzed<$placeholder>);
+    pub(crate) struct $name(Analyzed<$placeholder>);
 
     impl $name {
       /// テンプレート文字列を解析する（解析は失敗せず、問題は検証で報告される）
       #[must_use]
-      pub fn parse(source: &str) -> Self { return Self(Analyzed::parse(source)); }
+      pub(crate) fn parse(source: &str) -> Self { return Self(Analyzed::parse(source)); }
 
       /// TOML に書かれた元の文字列
       #[must_use]
-      pub fn as_str(&self) -> &str { return self.0.as_str(); }
+      pub(super) fn as_str(&self) -> &str { return self.0.as_str(); }
     }
 
     impl<'de> Deserialize<'de> for $name {
@@ -276,7 +276,7 @@ impl Placeholder for NumberPlaceholder {
 
 /// カウンタ番号書式（`number_format`）で使えるプレースホルダ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CounterPlaceholder {
+pub(crate) enum CounterPlaceholder {
   /// `{n}` — このテンプレートを持つカウンタ自身の値
   Own,
   /// `{<counter_name>}` — 他カウンタ（祖先チェーン上）の値
@@ -409,7 +409,7 @@ impl NumberTitleTemplate {
   /// タイトルを生成するクロージャ。`title` はテンプレート中の `{title}` の出現回数ぶんだけ、
   /// 出現したときにだけ呼ぶ（タイトルの生成には `\footnote` の通し index を払い出す副作用が
   /// あるため、出現しないテンプレートで呼ぶと以降の脚注番号がずれる）。
-  pub fn expand<T>(
+  pub(crate) fn expand<T>(
     &self,
     number: &str,
     mut title: impl FnMut() -> Vec<T>,
@@ -436,7 +436,7 @@ impl NumberTitleTemplate {
 impl NumberTemplate {
   /// `{number}` に表示番号を埋めた文字列を返す
   #[must_use]
-  pub fn expand(&self, number: &str) -> String {
+  pub(crate) fn expand(&self, number: &str) -> String {
     return self.0.expand_to_string(|placeholder| {
       return match placeholder {
         NumberPlaceholder::Number => number.to_string(),
@@ -451,7 +451,7 @@ impl CounterTemplate {
   /// カウンタ値の復元（祖先チェーンの探索・`number_style` の適用）は caller の責務で、
   /// このテンプレートは「どの位置にどのカウンタを置くか」だけを知っている。
   #[must_use]
-  pub fn expand(&self, mut resolve: impl FnMut(CounterPlaceholder) -> String) -> String {
+  pub(crate) fn expand(&self, mut resolve: impl FnMut(CounterPlaceholder) -> String) -> String {
     return self.0.expand_to_string(|placeholder| return resolve(*placeholder));
   }
 }
@@ -459,7 +459,7 @@ impl CounterTemplate {
 impl ReferenceTemplate {
   /// `{number}` / `{display_name}` を埋めた文字列を返す
   #[must_use]
-  pub fn expand(&self, number: &str, display_name: &str) -> String {
+  pub(crate) fn expand(&self, number: &str, display_name: &str) -> String {
     return self.0.expand_to_string(|placeholder| {
       return match placeholder {
         ReferencePlaceholder::Number => number.to_string(),
@@ -471,7 +471,7 @@ impl ReferenceTemplate {
 
 /// 定理見出しテンプレートへ渡す文字列値
 #[derive(Debug, Clone, Copy)]
-pub struct TheoremHeadingValues<'a> {
+pub(crate) struct TheoremHeadingValues<'a> {
   /// `{display_name}` — 定理クラスの表示名
   pub display_name: &'a str,
   /// `{number}` — 表示番号
@@ -485,7 +485,7 @@ impl TheoremHeadingTemplate {
   ///
   /// `{title}` の扱いは [`NumberTitleTemplate::expand`] と同じ（出現回数ぶんだけ遅延生成する）。
   /// `{of}` は `\ref` と違いリンクにしないので、前後のリテラルと 1 続きの値として繋ぐ。
-  pub fn expand<T>(
+  pub(crate) fn expand<T>(
     &self,
     values: TheoremHeadingValues<'_>,
     mut title: impl FnMut() -> Vec<T>,
@@ -513,7 +513,7 @@ impl TheoremHeadingTemplate {
 
 /// 走り文テンプレートへ渡す文字列値
 #[derive(Debug, Clone, Copy)]
-pub struct RunningValues<'a> {
+pub(crate) struct RunningValues<'a> {
   /// `{page}` — 印字ページ番号
   pub page: &'a str,
   /// `{pages}` — 総ページ数
@@ -531,7 +531,7 @@ impl RunningTemplate {
   ///
   /// 置換は単一パスなので、埋めた値（タイトル等）に `{page}` が含まれていても再解釈しない。
   #[must_use]
-  pub fn expand(&self, values: RunningValues<'_>) -> String {
+  pub(crate) fn expand(&self, values: RunningValues<'_>) -> String {
     return self.0.expand_to_string(|placeholder| {
       return match placeholder {
         RunningPlaceholder::Page => values.page.to_string(),

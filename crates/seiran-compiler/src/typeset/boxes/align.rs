@@ -11,7 +11,7 @@ use crate::length::Length;
 /// 利用可能幅の中で水平にシフトするだけ。行が利用可能幅を超える場合のシフト量は
 /// 0 にクランプされる（行頭が本文左端より左へはみ出さない）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Align {
+pub(crate) enum Align {
   /// 左揃え（ragged-right、既定）
   #[default]
   Left,
@@ -28,7 +28,7 @@ impl Align {
   /// 内容が利用可能幅を超える場合は 0 にクランプし、左端より左へはみ出さない。
   /// 段落行・画像・罫線・表のいずれもこの 1 関数で揃えオフセットを算出する。
   #[must_use]
-  pub fn offset(self, available: Length, content_width: Length) -> Length {
+  pub(crate) fn offset(self, available: Length, content_width: Length) -> Length {
     return match self {
       Align::Left => Length::ZERO,
       Align::Center => ((available - content_width) / 2.0f32).max(Length::ZERO),

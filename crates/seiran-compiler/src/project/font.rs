@@ -18,8 +18,8 @@ mod map;
 mod settings;
 
 pub use kind::FontType;
-pub use map::FontMap;
-pub use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
+pub(crate) use map::FontMap;
+pub(crate) use settings::{Feature, FontConfig, FontConfigs, TextDirection, VariationAxis};
 
 use crate::{
   failures::{self, Failures},
@@ -28,7 +28,7 @@ use crate::{
 
 /// フォントファイルを読み込めないときのエラー。
 #[derive(Debug, Error, Diagnostic)]
-pub enum FontReadError {
+pub(crate) enum FontReadError {
   /// フォントファイルを読み込めない。
   #[error("{font_type:?} のフォントファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(code(project::font::read), help("フォントファイルのパスと読み取り権限を確認してください。"))]
@@ -50,7 +50,7 @@ pub enum FontReadError {
 /// バイト列は `Arc` で共有する — 同じフォントファイルを指す種別は同一の `Arc` を持ち、
 /// 描画資源（`crate::publication`）へ渡すときもバイト列を複製しない。
 #[derive(Debug, Clone, PartialEq)]
-pub struct FontData(FontMap<Arc<Vec<u8>>>);
+pub(crate) struct FontData(FontMap<Arc<Vec<u8>>>);
 
 impl FontData {
   /// 設定された全フォントファイルを読み込む。同じパスを指す種別は 1 回だけ読む。
@@ -62,7 +62,7 @@ impl FontData {
   /// # Errors
   ///
   /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] をパス昇順で返す。
-  pub fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
+  pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
     let mut unique_paths: Vec<PathBuf> =
       FontType::ALL.iter().map(|&ft| return font_configs.get(ft).font_path.clone()).collect();
     unique_paths.sort();
@@ -100,13 +100,13 @@ impl FontData {
 
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
-  pub fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type).as_slice(); }
+  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type).as_slice(); }
 
   /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
   ///
   /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
   #[must_use]
-  pub fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(self.0.get(font_type)); }
+  pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(self.0.get(font_type)); }
 }
 
 #[cfg(test)]

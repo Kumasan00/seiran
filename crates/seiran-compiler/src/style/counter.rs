@@ -8,7 +8,7 @@ use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
-pub struct Counters {
+pub(crate) struct Counters {
   /// 部
   #[garde(dive)]
   pub part: CounterStyle,
@@ -41,7 +41,7 @@ pub struct Counters {
 impl Counters {
   /// 指定したカウンタ名の定義への不変参照を返す（9 種固定のため必ず存在する）
   #[must_use]
-  pub fn get(&self, name: CounterName) -> &CounterStyle {
+  pub(crate) fn get(&self, name: CounterName) -> &CounterStyle {
     return match name {
       CounterName::Part => &self.part,
       CounterName::Chapter => &self.chapter,
@@ -130,7 +130,7 @@ impl Default for Counters {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
-pub struct CounterStyle {
+pub(crate) struct CounterStyle {
   /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
   #[garde(length(chars, min = 1))]
   pub display_name: String,
@@ -174,7 +174,7 @@ impl CounterStyle {
 /// カウンタ名（固定 9 種）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum CounterName {
+pub(crate) enum CounterName {
   /// 部
   Part,
   /// 章
@@ -197,7 +197,7 @@ pub enum CounterName {
 
 impl CounterName {
   /// 固定 9 種のカウンタ名を宣言順（部 → 章 → … → 数式）で並べた配列。
-  pub const ALL: [CounterName; 9] = [
+  pub(crate) const ALL: [CounterName; 9] = [
     Self::Part,
     Self::Chapter,
     Self::Section,
@@ -211,7 +211,7 @@ impl CounterName {
 
   /// `snake_case` の文字列表現を返す（TOML のキーと同じ）
   #[must_use]
-  pub fn as_str(self) -> &'static str {
+  pub(super) fn as_str(self) -> &'static str {
     return match self {
       Self::Part => "part",
       Self::Chapter => "chapter",
@@ -227,7 +227,9 @@ impl CounterName {
 
   /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
   #[must_use]
-  pub fn from_name(name: &str) -> Option<Self> { return Self::ALL.into_iter().find(|c| return c.as_str() == name); }
+  pub(super) fn from_name(name: &str) -> Option<Self> {
+    return Self::ALL.into_iter().find(|c| return c.as_str() == name);
+  }
 }
 
 #[cfg(test)]

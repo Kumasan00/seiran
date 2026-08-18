@@ -78,7 +78,7 @@ pub(crate) fn group_unknown_citations(sites: &[UnknownCitationSite]) -> Vec<(Nod
 
 /// 未定義キーを含む引用箇所 1 件
 #[derive(Debug, Clone)]
-pub struct UnknownCitationSite {
+pub(super) struct UnknownCitationSite {
   /// `\cite{...}` のノード（他種別の診断と文書順にマージするための位置）
   pub site: NodeId,
   /// この引用箇所が属するソース
@@ -92,7 +92,7 @@ pub struct UnknownCitationSite {
 /// 解決（ラベル登録・`\ref` の名前解決・引用キーの存在検証）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
-pub enum SemanticError {
+pub(crate) enum SemanticError {
   /// `\cite{...}` のキーが参照定義に存在しない場合（1 ソース分をまとめて 1 度に報告する）
   ///
   /// 同じソース内の複数箇所はラベルを並べる（箇所ごとに未定義キーが違うため、
@@ -144,7 +144,7 @@ impl SemanticError {
   /// 全バリアントが必ず 1 つのソースに帰属する（引用キーのエラーもソースごとに分割済み）。
   /// `analyze` は実ソースしか走査しないので、帰属先が実ソース以外になることはない。
   #[must_use]
-  pub fn source_id(&self) -> SourceId {
+  pub(crate) fn source_id(&self) -> SourceId {
     return match self {
       SemanticError::UnknownCitationKeys { source_id, .. }
       | SemanticError::UnresolvedReference { source_id, .. }

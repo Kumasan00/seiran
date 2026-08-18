@@ -16,16 +16,16 @@ use crate::{length::Length, project::ProjectPath};
 ///
 /// 水平リストの禁止規約（[`super::hitem::HItem::Penalty`] は `i32::MAX` が禁止）と対称に、
 /// 縦方向では最小値を強制（必ず切る）、最大値を禁止（決して切らない）とする。
-pub const PENALTY_FORCE_BREAK: i32 = i32::MIN;
+pub(crate) const PENALTY_FORCE_BREAK: i32 = i32::MIN;
 
 /// 分割禁止の分割コスト（+∞）
 ///
 /// keep-with-next など、隣接ブロックを同じリージョンに置く制御に使用する。
-pub const PENALTY_FORBID_BREAK: i32 = i32::MAX;
+pub(crate) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
 
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
-pub enum Block {
+pub(crate) enum Block {
   /// 段落（連続するインライン要素の極大列）
   Paragraph {
     /// 段落内の水平リスト
@@ -150,7 +150,7 @@ pub enum Block {
 impl Block {
   /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = shrink = 0`。
   #[must_use]
-  pub fn fixed_space(pt: Length) -> Block {
+  pub(crate) fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch: Length::ZERO,
@@ -164,7 +164,7 @@ impl Block {
   /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
   /// オーバーフロー前に分割するため不足高さは常に 0 以上で、詰める必要がない）。
   #[must_use]
-  pub fn stretchable_space(pt: Length, stretch: Length) -> Block {
+  pub(crate) fn stretchable_space(pt: Length, stretch: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch,
@@ -174,7 +174,7 @@ impl Block {
 
   /// 強制改ページ（`Penalty { value: PENALTY_FORCE_BREAK }`）を作る。
   #[must_use]
-  pub fn force_break() -> Block {
+  pub(crate) fn force_break() -> Block {
     return Block::Penalty {
       value: PENALTY_FORCE_BREAK,
     };
@@ -182,7 +182,7 @@ impl Block {
 
   /// 強制改ページの penalty かどうかを返す。
   #[must_use]
-  pub fn is_force_break(&self) -> bool {
+  pub(crate) fn is_force_break(&self) -> bool {
     return matches!(
       self,
       Block::Penalty {
@@ -197,7 +197,7 @@ impl Block {
 /// `break_pages` が `dy`（本体ベースラインからのオフセット）と本文幅から本文端に寄せて
 /// 確定座標を与え、[`super::page::PlacedMathNumber`] にする。
 #[derive(Debug, Clone)]
-pub struct MathRowNumber {
+pub(crate) struct MathRowNumber {
   /// 番号ボックス（`"(1)"` 等、シェーピング済み）
   pub content: HBox,
   /// 本体 Atom のベースラインからの縦オフセット（正で上方向）＝その行のベースライン

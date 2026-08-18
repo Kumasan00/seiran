@@ -9,11 +9,11 @@ use crate::{
 mod greedy;
 mod knuth_plass;
 
-pub use greedy::GreedyBreaker;
-pub use knuth_plass::KnuthPlassBreaker;
+pub(super) use greedy::GreedyBreaker;
+pub(crate) use knuth_plass::KnuthPlassBreaker;
 
 /// 行分割アルゴリズムの抽象
-pub trait LineBreaker {
+pub(crate) trait LineBreaker {
   /// 水平リストを本文幅で行に分割する
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line>;
 }

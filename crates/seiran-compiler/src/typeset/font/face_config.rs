@@ -25,14 +25,14 @@ pub struct VariationAxisConfig {
 }
 
 /// 19 フォント種別すべての [`FontFaceConfig`]。
-pub type FontFaceConfigs = FontMap<FontFaceConfig>;
+pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;
 
 /// `crate::project::FontConfigs` から renderer 用の [`FontFaceConfigs`] を構築する。
 ///
 /// `crate::project::FontConfig` → [`FontFaceConfig`] の変換をこの 1 箇所に閉じる
 /// （compiler 側で手書きの複製を書かせないため。issue #305）。
 #[must_use]
-pub fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
+pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
   return FontMap::from_all(FontType::ALL.iter().map(|font_type| {
     let font_config = configs.get(*font_type);
     return FontFaceConfig {

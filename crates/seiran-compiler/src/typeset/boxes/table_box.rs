@@ -20,7 +20,7 @@ use crate::{
 /// `typeset::lowering` が列ごとに 1 つへ束ねたものが本型。表レイアウトの入力契約なので後段の
 /// layout が所有する（#334）。
 #[derive(Debug, Clone, Copy)]
-pub struct TableColumn {
+pub(crate) struct TableColumn {
   /// セル内容の揃え方向
   pub align: ColumnAlign,
   /// 列幅の指定方法
@@ -29,7 +29,7 @@ pub struct TableColumn {
 
 /// 表ボックス（シェーピング済みの表全体）
 #[derive(Debug, Clone)]
-pub struct TableBox {
+pub(crate) struct TableBox {
   /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
   pub columns: Vec<TableColumn>,
   /// ヘッダ行。改ページ時にページ先頭へ再描画される
@@ -42,7 +42,7 @@ pub struct TableBox {
 
 /// 表の 1 行（シェーピング済み）
 #[derive(Debug, Clone)]
-pub struct TableRowBox {
+pub(crate) struct TableRowBox {
   /// 行内のセル
   pub cells: Vec<TableCellBox>,
   /// この行の上に横罫線を引くか
@@ -51,7 +51,7 @@ pub struct TableRowBox {
 
 /// 表の 1 セル（シェーピング済み）
 #[derive(Debug, Clone)]
-pub struct TableCellBox {
+pub(crate) struct TableCellBox {
   /// セル内容のアイテム列（`Box` / `Kern` / `Glue` が主だが、`\ref`/`\url`/`\href` を
   /// 含む場合は `LinkStart`/`LinkEnd` も現れる。行分割・ページ分割はセル内では無効）
   pub items: Vec<HItem>,
@@ -69,7 +69,7 @@ fn measure_items_width(items: &[HItem]) -> Length { return items.iter().map(HIte
 ///
 /// Atom（数式）の子要素も再帰的に走査する。
 #[must_use]
-pub fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
+pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
     .iter()
     .filter_map(|item| match item {
@@ -93,7 +93,7 @@ fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
 
 /// 行の高さ = 行内の最大フォントサイズ × 行高係数
 #[must_use]
-pub fn table_row_height(row: &TableRowBox, default_font_size: Length, line_height_factor: f32) -> Length {
+pub(crate) fn table_row_height(row: &TableRowBox, default_font_size: Length, line_height_factor: f32) -> Length {
   let max_font = row
     .cells
     .iter()
@@ -112,7 +112,7 @@ pub fn table_row_height(row: &TableRowBox, default_font_size: Length, line_heigh
 ///
 /// 合計が本文幅を超える場合の縮小は行わない（セル折り返し未対応のため、はみ出しを許容する）。
 #[must_use]
-pub fn resolve_column_widths(table: &TableBox, available: Length, padding: Length) -> Vec<Length> {
+pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding: Length) -> Vec<Length> {
   let column_count = table.columns.len();
   let mut naturals = vec![Length::ZERO; column_count];
 
@@ -222,7 +222,7 @@ fn layout_row_cells<'a>(
 /// セル内脚注・索引 marker は入力から到達可能だが、表セル内では本体を配置しないという
 /// 現行制限を維持して描画箱を生成しない。
 #[must_use]
-pub fn position_table_row_boxes(
+pub(crate) fn position_table_row_boxes(
   row: &TableRowBox,
   columns: &[TableColumn],
   col_widths: &[Length],
@@ -260,7 +260,7 @@ pub fn position_table_row_boxes(
 
 /// 表セル内のリンク領域（表左端からの相対座標）
 #[derive(Debug)]
-pub struct RowLink {
+pub(crate) struct RowLink {
   /// リンクの行き先
   pub target: LinkTarget,
   /// 表左端からの相対な左端オフセット
@@ -276,7 +276,7 @@ pub struct RowLink {
 /// [`HItem::natural_width`] を使う。セル内脚注・索引 marker は幅 0 で、現行制限どおり
 /// ページ上の脚注・索引としては配置しない。
 #[must_use]
-pub fn collect_row_links(
+pub(crate) fn collect_row_links(
   row: &TableRowBox,
   columns: &[TableColumn],
   col_widths: &[Length],

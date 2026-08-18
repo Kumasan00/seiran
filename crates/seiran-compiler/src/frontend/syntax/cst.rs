@@ -1,5 +1,5 @@
 //! CST（具象構文木）の表現
 
-pub mod ast;
-pub mod green;
-pub mod kind;
+pub(crate) mod ast;
+pub(crate) mod green;
+pub(crate) mod kind;

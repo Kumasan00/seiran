@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct RunningContentStyle {
+pub(crate) struct RunningContentStyle {
   /// 左スロットのテンプレート（既定は空 = 描画なし）
   #[garde(dive)]
   pub left: RunningTemplate,
@@ -54,7 +54,7 @@ pub struct RunningContentStyle {
 impl RunningContentStyle {
   /// 3 スロットすべてが空（空白のみを含む）かどうかを返す。
   #[must_use]
-  pub fn is_empty(&self) -> bool {
+  pub(crate) fn is_empty(&self) -> bool {
     return self.left.as_str().trim().is_empty()
       && self.center.as_str().trim().is_empty()
       && self.right.as_str().trim().is_empty();

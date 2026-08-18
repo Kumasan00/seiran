@@ -10,7 +10,7 @@ use crate::length::{Length, non_negative, positive};
 /// 参考文献セクションのスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields, default)]
-pub struct ReferenceStyle {
+pub(crate) struct ReferenceStyle {
   /// 参考文献セクションのタイトル文字列
   #[garde(length(chars, min = 1))]
   pub title: String,
@@ -55,7 +55,7 @@ impl Default for ReferenceStyle {
 
 impl ReferenceStyle {
   /// 値を正規化する（現状はロケールコードを BCP 47 の標準形へ揃える）。
-  pub fn normalize(&mut self) {
+  pub(super) fn normalize(&mut self) {
     if let Some(code) = &self.locale
       && let Ok(langid) = unic_langid::LanguageIdentifier::from_bytes(code.as_bytes())
     {

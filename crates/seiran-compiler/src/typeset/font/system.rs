@@ -32,7 +32,7 @@ use crate::{
 /// 別要素になる（related 付きの 1 診断へ束ねると、`FontType::ALL` 順のフラットな leaf 列に
 /// ならない）。
 #[derive(Debug, Error, Diagnostic)]
-pub enum FontSystemError {
+pub(crate) enum FontSystemError {
   /// フォント解析・メトリクス取得の失敗（`build_font_refs` / `build_font_metrics` に由来）
   #[error(transparent)]
   #[diagnostic(transparent)]
@@ -53,7 +53,7 @@ pub enum FontSystemError {
 /// `HarfRustShapers` は `FontRefs` と `ShaperDatas`/`ShaperInstances`（本来なら兄弟フィールド）を
 /// 両方借用し続ける実装のため、1 つの構造体が両方を所有すると自己参照構造体になってしまう。
 /// これを避けるため、シェーパー本体は [`FontSystem`] という別の薄いビューへ分離している。
-pub struct FontResources<'a> {
+pub(crate) struct FontResources<'a> {
   /// `load` に渡された設定（`system` が同じ設定でシェーパーを構築するために保持する）
   configs: &'a FontConfigs,
   /// 解析済み OpenType フォント参照（`FontData` を借用）
@@ -84,7 +84,7 @@ impl<'a> FontResources<'a> {
   ///
   /// フォント解析・メトリクス取得・設定検証のいずれかに失敗した場合に、その段で見つかった
   /// 違反を [`FontSystemError`] の非空集合として返す。
-  pub fn load(
+  pub(crate) fn load(
     configs: &'a FontConfigs,
     font_data: &'a FontData,
   ) -> Result<(Self, Vec<FontWarning>), Failures<FontSystemError>> {
@@ -112,11 +112,11 @@ impl<'a> FontResources<'a> {
 
   /// `Publication` の描画資源を組み立てるための `FontMetrics` アクセサ。
   #[must_use]
-  pub fn metrics(&self) -> &FontMetrics { return &self.metrics; }
+  pub(crate) fn metrics(&self) -> &FontMetrics { return &self.metrics; }
 
   /// `Publication` の描画資源を組み立てるための [`FontFaceConfigs`] アクセサ。
   #[must_use]
-  pub fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
+  pub(crate) fn face_configs(&self) -> FontFaceConfigs { return build_face_configs(self.configs); }
 
   /// シェーパー一式を構築し、シェイプ操作だけを公開する [`FontSystem`] を返す。
   ///
@@ -130,7 +130,7 @@ impl<'a> FontResources<'a> {
   /// # Errors
   ///
   /// 言語タグの解析に失敗した場合に [`FontSystemError`] の非空集合を返す。
-  pub fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
+  pub(crate) fn system(&self) -> Result<FontSystem<'_>, Failures<FontSystemError>> {
     let shapers = HarfRustShapers::new(self.configs, &self.font_refs, &self.shaper_datas, &self.shaper_instances)
       .map_err(|failures| return failures.map(Into::into))?;
     debug!("シェーパーの初期化が完了しました");
@@ -145,7 +145,7 @@ impl<'a> FontResources<'a> {
 ///
 /// 呼び出し側は `FontRefs`/`ShaperDatas`/`ShaperInstances`/`HarfRustShapers` の構築順序・寿命関係を
 /// 一切知らない。
-pub struct FontSystem<'a> {
+pub(crate) struct FontSystem<'a> {
   /// 19 種別ぶんのシェーパー
   shapers: HarfRustShapers<'a>,
   /// フォントメトリクス（[`FontResources`] を借用）
@@ -157,7 +157,7 @@ impl FontSystem<'_> {
   ///
   /// `buffer` は返り値に `clear()` を呼ぶことで再利用できる。
   #[must_use]
-  pub fn shape(
+  pub(crate) fn shape(
     &self,
     font_type: FontType,
     buffer: UnicodeBuffer,
@@ -169,7 +169,7 @@ impl FontSystem<'_> {
 
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
-  pub fn metric(&self, font_type: FontType) -> FontMetric { return *self.metrics.get(font_type); }
+  pub(crate) fn metric(&self, font_type: FontType) -> FontMetric { return *self.metrics.get(font_type); }
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。

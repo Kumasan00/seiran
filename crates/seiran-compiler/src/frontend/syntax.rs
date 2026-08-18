@@ -3,7 +3,7 @@
 mod cst;
 mod lexer;
 mod parser;
-pub mod token;
+pub(super) mod token;
 
-pub use cst::{ast, green, kind, kind::SyntaxKind};
-pub use parser::{ParseMode, ParserError, parse};
+pub(super) use cst::{ast, green, kind, kind::SyntaxKind};
+pub(super) use parser::{ParseMode, ParserError, parse};

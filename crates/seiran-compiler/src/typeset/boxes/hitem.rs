@@ -8,7 +8,7 @@ use crate::{length::Length, typeset::font::GlyphRun};
 
 /// 水平リストの最小単位（段落内）
 #[derive(Debug, Clone)]
-pub enum HItem {
+pub(crate) enum HItem {
   /// 計測済みボックス
   Box(HBox),
   /// 伸縮スペース 兼 分割可能点
@@ -105,7 +105,7 @@ impl HItem {
   /// `Penalty` / `ForcedBreak` / リンクマーカー / `Footnote` / `IndexMark` は 0。`Discretionary` も自然幅 0
   /// （折り返したときだけ行末にハイフン幅が乗るため、行の自然幅には含めない）。
   #[must_use]
-  pub fn natural_width(&self) -> Length {
+  pub(crate) fn natural_width(&self) -> Length {
     return match self {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
@@ -126,7 +126,7 @@ impl HItem {
 /// `width` / `height` / `depth` は生成時に確定し、以降不変。
 /// `height` はベースラインから上、`depth` はベースラインから下の寸法（いずれも正値、pt）。
 #[derive(Debug, Clone)]
-pub struct HBox {
+pub(crate) struct HBox {
   /// ボックスの内容
   pub content: HBoxContent,
   /// 幅
@@ -146,7 +146,7 @@ impl HBox {
   ///
   /// 上付き・下付きを含む行の行高はこの寸法から自然に決まる。
   #[must_use]
-  pub fn atom(children: Vec<PlacedHItem>) -> Self {
+  pub(crate) fn atom(children: Vec<PlacedHItem>) -> Self {
     let width = children.iter().map(|c| return c.dx + c.item.width).fold(Length::ZERO, Length::max);
     let height = children.iter().map(|c| return c.dy + c.item.height).fold(Length::ZERO, Length::max);
     let depth = children.iter().map(|c| return c.item.depth - c.dy).fold(Length::ZERO, Length::max);
@@ -161,7 +161,7 @@ impl HBox {
 
 /// ボックスの内容
 #[derive(Debug, Clone)]
-pub enum HBoxContent {
+pub(crate) enum HBoxContent {
   /// シェーピング済みグリフ列
   Glyphs(GlyphRun),
   /// 罫線（幅と高さを持つ塗りつぶし矩形）
@@ -185,7 +185,7 @@ pub enum HBoxContent {
 /// `dy` はベースラインからの縦オフセット（正で上方向）、`dx` は親 Atom 内の
 /// 水平オフセット。
 #[derive(Debug, Clone)]
-pub struct PlacedHItem {
+pub(crate) struct PlacedHItem {
   /// 配置するボックス
   pub item: HBox,
   /// ベースラインからの縦オフセット（正で上方向）

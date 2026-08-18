@@ -7,7 +7,7 @@ use crate::frontend::syntax::token::TokenKind;
 
 /// パーサーのエラー型
 #[derive(Debug, Error, Diagnostic)]
-pub enum ParserError {
+pub(crate) enum ParserError {
   /// 入力が途中で終了した場合（閉じ括弧の不足など）
   #[error("入力が予期せず終了しました")]
   #[diagnostic(

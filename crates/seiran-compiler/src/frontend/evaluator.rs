@@ -27,7 +27,7 @@ mod math;
 mod opt_args;
 
 pub(crate) use environment::lookup_parse_mode as lookup_env_parse_mode;
-pub use error::EvalError;
+pub(crate) use error::EvalError;
 
 /// CST ノードの子要素を評価して HIR（`Vec<HirNode>`）に変換する
 ///

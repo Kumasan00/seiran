@@ -7,16 +7,16 @@
 
 /// `\cite{key}` の引用キー
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CitationId(String);
+pub(crate) struct CitationId(String);
 
 impl CitationId {
   /// 新しい `CitationId` を生成する
   #[must_use]
-  pub fn new(key: impl Into<String>) -> Self { return CitationId(key.into()); }
+  pub(crate) fn new(key: impl Into<String>) -> Self { return CitationId(key.into()); }
 
   /// 内部の文字列を返す
   #[must_use]
-  pub fn as_str(&self) -> &str { return &self.0; }
+  pub(crate) fn as_str(&self) -> &str { return &self.0; }
 }
 
 /// 1 つの引用箇所（`\cite{...}`）について判明した事実

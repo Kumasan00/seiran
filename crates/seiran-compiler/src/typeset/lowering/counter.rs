@@ -20,7 +20,7 @@ use crate::typeset::boxes::Page;
 ///
 /// 文書中の脚注数、または 1 ページの脚注数が `u32` に収まらない場合にパニックします。
 #[must_use]
-pub fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
+pub(crate) fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
   let mut numbers: Vec<u32> = Vec::new();
   for page in pages {
     // 繰越（前ページからの続き、#227）はこのページで「始まった」脚注ではないので数えない。

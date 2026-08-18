@@ -6,18 +6,18 @@
 
 /// `\ref{label}` で参照する、図・表・式・見出しのラベル
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LabelId(String);
+pub(crate) struct LabelId(String);
 
 impl LabelId {
   /// 新しい `LabelId` を生成する
   #[must_use]
-  pub fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
+  pub(crate) fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
 
   /// 内部の文字列を返す
   // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う。
   #[allow(dead_code)]
   #[must_use]
-  pub fn as_str(&self) -> &str { return &self.0; }
+  pub(crate) fn as_str(&self) -> &str { return &self.0; }
 }
 
 impl From<&str> for LabelId {
@@ -37,16 +37,16 @@ impl std::borrow::Borrow<str> for LabelId {
 /// `\ref` ラベルの有無にかかわらず全見出しに付与される、目次エントリの内部リンク到達先。
 /// ユーザーが選ぶ [`LabelId`] とは別の名前空間。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HeadingKey(usize);
+pub(crate) struct HeadingKey(usize);
 
 impl HeadingKey {
   /// 新しい `HeadingKey` を生成する
   #[must_use]
-  pub fn new(index: usize) -> Self { return HeadingKey(index); }
+  pub(crate) fn new(index: usize) -> Self { return HeadingKey(index); }
 
   /// 元の文書順インデックスを返す
   #[must_use]
-  pub fn index(self) -> usize { return self.0; }
+  pub(crate) fn index(self) -> usize { return self.0; }
 }
 
 #[cfg(test)]

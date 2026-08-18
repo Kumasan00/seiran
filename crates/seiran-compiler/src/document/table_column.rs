@@ -10,7 +10,7 @@ use crate::length::Length;
 /// 環境任意引数 `columns="left center right"` の各トークンに対応する。
 /// LaTeX の `l/c/r` 略記は採用せずフルスペルのみを受理する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColumnAlign {
+pub(crate) enum ColumnAlign {
   /// 左揃え（既定）
   #[default]
   Left,
@@ -25,7 +25,7 @@ impl ColumnAlign {
   ///
   /// 未知のトークンは `None` を返す（`l` / `c` / `r` 略記も不可）。
   #[must_use]
-  pub fn from_keyword(keyword: &str) -> Option<Self> {
+  pub(crate) fn from_keyword(keyword: &str) -> Option<Self> {
     return match keyword {
       "left" => Some(ColumnAlign::Left),
       "center" => Some(ColumnAlign::Center),
@@ -40,7 +40,7 @@ impl ColumnAlign {
 /// 環境任意引数 `widths="auto 5cm 0.3 *"` の各トークンに対応する。
 /// 実際の幅解決（自然幅の実測・残余分配）は本クレートの [`resolve_column_widths`] で行われる（`typeset::breaking` が呼ぶ）。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum ColumnWidth {
+pub(crate) enum ColumnWidth {
   /// 内容の自然幅に合わせる（既定）
   #[default]
   Auto,

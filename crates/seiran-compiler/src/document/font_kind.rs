@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// 言語判定前のフォントスタイル分類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum FontKind {
+pub(crate) enum FontKind {
   /// Serif 標準フォント
   Serif,
   /// Serif 太字フォント

@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct QuoteStyle {
+pub(crate) struct QuoteStyle {
   /// 本文左右端からのブロック字下げ量（左右に同量適用）
   #[garde(custom(non_negative))]
   pub indent: Length,

@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use crate::document::TheoremClass;
+pub(super) use crate::document::TheoremClass;
 use crate::{
   document::FontKind,
   length::{Length, non_negative},
@@ -13,7 +13,7 @@ use crate::{
 /// 固定 10 種の定理クラス定義テーブル（`[theorems.<class>]`）。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(from = "TheoremsTable")]
-pub struct Theorems {
+pub(crate) struct Theorems {
   /// `[theorems.theorem]`
   pub theorem: TheoremStyle,
   /// `[theorems.lemma]`
@@ -39,7 +39,7 @@ pub struct Theorems {
 impl Theorems {
   /// 指定したクラスの定義への不変参照を返す（10 種固定のため必ず存在する）。
   #[must_use]
-  pub fn get(&self, class: TheoremClass) -> &TheoremStyle {
+  pub(crate) fn get(&self, class: TheoremClass) -> &TheoremStyle {
     return match class {
       TheoremClass::Theorem => &self.theorem,
       TheoremClass::Lemma => &self.lemma,
@@ -55,7 +55,7 @@ impl Theorems {
   }
 
   /// 各クラスにクラス名を添えて走査するイテレータ。
-  pub fn iter_with_class(&self) -> impl Iterator<Item = (TheoremClass, &TheoremStyle)> {
+  pub(crate) fn iter_with_class(&self) -> impl Iterator<Item = (TheoremClass, &TheoremStyle)> {
     return [
       (TheoremClass::Theorem, &self.theorem),
       (TheoremClass::Lemma, &self.lemma),
@@ -80,7 +80,7 @@ impl Default for Theorems {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct TheoremStyle {
+pub(crate) struct TheoremStyle {
   /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` から参照される
   #[garde(length(chars, min = 1))]
   pub display_name: String,
@@ -121,7 +121,7 @@ impl Default for TheoremStyle {
 /// 定理カウンタのリセット先。`reset_by` フィールドで指定する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TheoremReset {
+pub(crate) enum TheoremReset {
   /// 部が進むたびにリセット
   Part,
   /// 章が進むたびにリセット
@@ -138,7 +138,7 @@ pub enum TheoremReset {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct TheoremPresentation {
+pub(crate) struct TheoremPresentation {
   /// サブタイトルなしの見出し書式。`{display_name}` と `{number}` を含められる
   #[garde(dive)]
   pub heading_format: TheoremHeadingTemplate,
@@ -181,7 +181,7 @@ impl Default for TheoremPresentation {
 
 /// 指定クラスの [`TheoremStyle`] デフォルトを返す。
 #[must_use]
-pub fn default_for_class(class: TheoremClass) -> TheoremStyle {
+pub(super) fn default_for_class(class: TheoremClass) -> TheoremStyle {
   let mut style = TheoremStyle::default();
   match class {
     TheoremClass::Theorem => {
@@ -282,7 +282,7 @@ impl From<TheoremsTable> for Theorems {
 /// [`TheoremStyle`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub struct TheoremStyleOverride {
+pub(super) struct TheoremStyleOverride {
   /// 表示名
   pub display_name: Option<String>,
   /// 共有カウンタ名
@@ -327,7 +327,7 @@ impl TheoremStyleOverride {
 /// [`TheoremPresentation`] の各フィールドを `Option<_>` で覆った差分指定型。
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub struct TheoremPresentationOverride {
+pub(super) struct TheoremPresentationOverride {
   /// サブタイトルなしの見出し書式
   pub heading_format: Option<TheoremHeadingTemplate>,
   /// サブタイトルありの見出し書式

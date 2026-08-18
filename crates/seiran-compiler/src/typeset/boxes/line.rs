@@ -12,7 +12,7 @@ use crate::length::Length;
 /// `is_last` は段落最終行または強制改行（`\\`）による行で、両端揃え時に
 /// 伸縮を適用しない（ragged のまま残す）ためのフラグ。
 #[derive(Debug, Clone)]
-pub struct Line {
+pub(crate) struct Line {
   /// 行内の配置済みボックス（左から順）
   pub boxes: Vec<PositionedBox>,
   /// ベースラインから上の高さ
@@ -41,7 +41,7 @@ pub struct Line {
 
 /// 行内の脚注（`\footnote{...}`）本体
 #[derive(Debug, Clone)]
-pub struct LineFootnote {
+pub(crate) struct LineFootnote {
   /// 発番済みの表示番号（[`HItem::Footnote`] から素通し）
   pub number: u32,
   /// 出現順の識別子（0 起点。[`HItem::Footnote`] から素通し）
@@ -54,7 +54,7 @@ pub struct LineFootnote {
 
 /// 行内の索引語（`\index{語}`）1 件
 #[derive(Debug, Clone)]
-pub struct LineIndexEntry {
+pub(crate) struct LineIndexEntry {
   /// 索引語
   pub word: String,
   /// 読みソートキー（`[reading=...]`）
@@ -66,7 +66,7 @@ pub struct LineIndexEntry {
 /// `x0` / `x1` は行頭（本文左端）からの水平オフセット（pt）。縦範囲は所属する
 /// [`Line`] の `height` / `depth` から `break_pages` が確定する。
 #[derive(Debug, Clone)]
-pub struct LineLink {
+pub(crate) struct LineLink {
   /// リンクの行き先（内部アンカー / 外部 URI）
   pub target: LinkTarget,
   /// 領域左端の行頭からの水平オフセット
@@ -80,7 +80,7 @@ pub struct LineLink {
 /// `x` は行頭（本文左端）からの水平オフセット、`dy` はベースラインからの
 /// 縦オフセット（正で上方向）。
 #[derive(Debug, Clone)]
-pub struct PositionedBox {
+pub(crate) struct PositionedBox {
   /// ボックスの内容
   pub content: HBoxContent,
   /// 行頭からの水平オフセット

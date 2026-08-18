@@ -9,23 +9,23 @@
 /// 名前・パスは持たない不透明な識別子。呼び出し元が渡した順序に対応するインデックスを
 /// そのまま運び、ファイル名・内容への逆引きは呼び出し元（`seiran_compiler::compiler`）の責務とする。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SourceId(usize);
+pub(crate) struct SourceId(usize);
 
 impl SourceId {
   /// 新しい `SourceId` を生成する
   #[must_use]
-  pub fn new(index: usize) -> Self { return SourceId(index); }
+  pub(crate) fn new(index: usize) -> Self { return SourceId(index); }
 
   /// 元のインデックスを返す
   #[must_use]
-  pub fn index(self) -> usize { return self.0; }
+  pub(crate) fn index(self) -> usize { return self.0; }
 }
 
 /// ソーステキスト上のバイト範囲
 ///
 /// 開始位置と終了位置のバイトオフセットを保持する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Span {
+pub(crate) struct Span {
   /// 開始バイトオフセット（0-indexed, inclusive）
   pub start: u32,
   /// 終了バイトオフセット（exclusive）
@@ -34,25 +34,25 @@ pub struct Span {
 
 impl Span {
   /// 空の Span（位置情報がない場合のプレースホルダー）
-  pub const DUMMY: Span = Span { start: 0, end: 0 };
+  pub(crate) const DUMMY: Span = Span { start: 0, end: 0 };
 
   /// 開始・終了バイトオフセットから生成する
   #[must_use]
-  pub fn new(start: u32, end: u32) -> Self { return Span { start, end }; }
+  pub(crate) fn new(start: u32, end: u32) -> Self { return Span { start, end }; }
 
   /// バイト長を返す
   #[must_use]
-  pub fn len(self) -> u32 { return self.end - self.start; }
+  pub(crate) fn len(self) -> u32 { return self.end - self.start; }
 
   /// バイト長が 0 かどうかを返す
   #[must_use]
   // crate 内の `#[cfg(test)]` からのみ使う。
   #[allow(dead_code)]
-  pub fn is_empty(self) -> bool { return self.end == self.start; }
+  pub(crate) fn is_empty(self) -> bool { return self.end == self.start; }
 
   /// 2 つの Span を含む最小の Span を返す
   #[must_use]
-  pub fn merge(self, other: Span) -> Span {
+  pub(crate) fn merge(self, other: Span) -> Span {
     return Span {
       start: self.start.min(other.start),
       end: self.end.max(other.end),

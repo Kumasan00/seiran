@@ -9,7 +9,7 @@ use crate::{
 
 /// レイアウトエンジン（`crate::typeset::block::build_blocks`）が処理する最小単位
 #[derive(Debug, Clone)]
-pub enum LayoutNode {
+pub(crate) enum LayoutNode {
   /// スタイル付きテキスト
   Text(String, TextStyle),
   /// 垂直方向のコンテナ (段落、セクションなど)
@@ -138,7 +138,7 @@ pub enum LayoutNode {
 
 /// 表全体の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub struct TableLayout {
+pub(crate) struct TableLayout {
   /// 列の定義（揃え + 幅指定）。列数はこの長さで確定する
   pub columns: Vec<TableColumn>,
   /// ヘッダ行。改ページ時にページ先頭へ再描画される
@@ -151,7 +151,7 @@ pub struct TableLayout {
 
 /// 表の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub struct TableRowLayout {
+pub(crate) struct TableRowLayout {
   /// 行内のセル
   pub cells: Vec<TableCellLayout>,
   /// この行の上に横罫線を引くか
@@ -160,7 +160,7 @@ pub struct TableRowLayout {
 
 /// 表の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
-pub struct TableCellLayout {
+pub(crate) struct TableCellLayout {
   /// セル内容（スタイル付与済みのレイアウトノード列）
   pub content: Vec<LayoutNode>,
   /// 列方向の結合数（colspan、1 以上）
@@ -169,7 +169,7 @@ pub struct TableCellLayout {
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現
 #[derive(Debug, Clone)]
-pub struct MathBlockRow {
+pub(crate) struct MathBlockRow {
   /// 列（lower 済みインライン数式）
   pub cells: Vec<Vec<LayoutNode>>,
   /// 行番号ボックス（lower 済み、`None` は非採番）
@@ -178,7 +178,7 @@ pub struct MathBlockRow {
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TextStyle {
+pub(crate) struct TextStyle {
   /// フォントサイズ
   pub font_size: Length,
   /// フォント種別（書体 + 太字 / イタリック等の組み合わせ）
@@ -193,7 +193,7 @@ impl TextStyle {
   // crate 内の `#[cfg(test)]` からのみ使う。
   #[allow(dead_code)]
   #[must_use]
-  pub fn new(font_size: Length) -> Self {
+  pub(super) fn new(font_size: Length) -> Self {
     return TextStyle {
       font_size,
       font_kind: FontKind::Serif,

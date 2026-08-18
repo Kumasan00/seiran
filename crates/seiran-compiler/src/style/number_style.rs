@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
-pub enum NumberStyle {
+pub(crate) enum NumberStyle {
   /// アラビア数字。例: `1, 2, 3`
   #[default]
   Arabic,
@@ -28,7 +28,7 @@ impl NumberStyle {
   ///
   /// `n == 0` のときは空文字列を返す(ローマ数字・アルファベットに 0 が存在しないため)。
   #[must_use]
-  pub fn render(self, n: u32) -> String {
+  pub(crate) fn render(self, n: u32) -> String {
     if n == 0 {
       return String::new();
     }

@@ -19,7 +19,7 @@ use crate::document::{FontKind, HeadingLevel};
 ///
 /// セマンティック情報のみを保持し、フォントサイズや座標などの物理レイアウトは含まない。
 #[derive(Debug, Clone, PartialEq)]
-pub enum GeneratedBlock {
+pub(crate) enum GeneratedBlock {
   /// 見出し（CSL 整形が合成する「References」見出し）
   ///
   /// 生成物の見出しは常に無採番・ラベルなしで、ソース位置も持たない。
@@ -41,7 +41,7 @@ pub enum GeneratedBlock {
 ///
 /// セマンティックな意図を保持し、物理スタイルは lowering 層で付与される。
 #[derive(Debug, Clone, PartialEq)]
-pub enum GeneratedInline {
+pub(crate) enum GeneratedInline {
   /// プレーンテキスト
   Text(String),
 
@@ -77,7 +77,7 @@ impl GeneratedInline {
   /// 作るインライン列）は `\ref` 等の未解決参照を持たないため、解決コールバックは不要。
   /// 見出しタイトルのプレーンテキスト取得などに使用します。
   #[must_use]
-  pub fn to_plain_text(&self) -> String {
+  pub(super) fn to_plain_text(&self) -> String {
     match self {
       GeneratedInline::Text(s) => return s.clone(),
       GeneratedInline::Styled { children, .. } | GeneratedInline::InternalLink { children, .. } => {
@@ -89,7 +89,7 @@ impl GeneratedInline {
 
 /// 生成物のインラインノードのスライスをプレーンテキストに一括変換する
 #[must_use]
-pub fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> String {
+pub(crate) fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> String {
   let mut out = String::new();
   for inline in inlines {
     out.push_str(&inline.to_plain_text());

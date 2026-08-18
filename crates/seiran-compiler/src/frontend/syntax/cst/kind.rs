@@ -4,7 +4,7 @@
 ///
 /// トークンレベル（リーフ）と合成ノード（内部ノード）の両方を表現します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SyntaxKind {
+pub(crate) enum SyntaxKind {
   /// ドキュメント全体のルートノード
   Root,
   /// コマンド呼び出し（`\name[opt]{arg}`）

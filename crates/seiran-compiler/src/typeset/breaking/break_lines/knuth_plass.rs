@@ -18,7 +18,7 @@ const INFINITE_BADNESS: f64 = 10_000.0;
 
 /// Knuth–Plass 方式（段落全体最適）による行分割
 #[derive(Debug, Clone, Copy, Default)]
-pub struct KnuthPlassBreaker;
+pub(crate) struct KnuthPlassBreaker;
 
 impl LineBreaker for KnuthPlassBreaker {
   fn break_lines(&self, items: &[HItem], text_width: Length, alignment: TextAlignment) -> Vec<Line> {

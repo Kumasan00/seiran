@@ -5,7 +5,7 @@
 /// `frontend` が `\begin{...}` の環境名から決定する。`block` 段がこの種別に応じて
 /// 列の揃え（`align` は `&` 位置で交互、`matrix` は中央）・区切り括弧・行採番を決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MathEnvKind {
+pub(crate) enum MathEnvKind {
   /// `equation` — 単一行・単一セル・採番あり
   Equation,
   /// `align` — 複数行・`&` 整列・行ごと採番
@@ -29,7 +29,7 @@ pub enum MathEnvKind {
 ///
 /// `matrix` 環境の `[delimiter=...]` オプション引数で選ぶ。`cases` は常に左波括弧。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MathDelimiter {
+pub(crate) enum MathDelimiter {
   /// 括弧なし（既定）
   #[default]
   None,
@@ -51,7 +51,7 @@ impl MathDelimiter {
   /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`（大小無視）。
   /// 未知の値には `None` を返す（呼び出し側がエラーにする）。
   #[must_use]
-  pub fn from_opt_str(value: &str) -> Option<Self> {
+  pub(crate) fn from_opt_str(value: &str) -> Option<Self> {
     return match value.trim().to_ascii_lowercase().as_str() {
       "none" => Some(MathDelimiter::None),
       "paren" => Some(MathDelimiter::Paren),

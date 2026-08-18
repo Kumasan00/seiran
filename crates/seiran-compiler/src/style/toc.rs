@@ -9,7 +9,7 @@ use crate::length::{Length, non_negative, positive};
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct TocStyle {
+pub(crate) struct TocStyle {
   /// 目次を生成するか（既定 `false`。既存設定の出力を変えないようオプトイン）
   pub enabled: bool,
   /// 目次のタイトル文字列

@@ -6,7 +6,7 @@ use crate::source::Span;
 
 /// トークン
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Token {
+pub(crate) struct Token {
   /// トークンの種類
   pub kind: TokenKind,
   /// ソース上のバイト範囲
@@ -16,11 +16,11 @@ pub struct Token {
 impl Token {
   /// 新しいトークンを生成する
   #[must_use]
-  pub fn new(kind: TokenKind, span: Span) -> Self { return Token { kind, span }; }
+  pub(super) fn new(kind: TokenKind, span: Span) -> Self { return Token { kind, span }; }
 
   /// トークンが対応するソーステキストの部分文字列を返す
   #[must_use]
-  pub fn text<'s>(&self, source: &'s str) -> &'s str {
+  pub(crate) fn text<'s>(&self, source: &'s str) -> &'s str {
     return &source[self.span.start as usize..self.span.end as usize];
   }
 
@@ -30,7 +30,7 @@ impl Token {
   ///
   /// `kind` が `TokenKind::Command` でない場合パニックします。
   #[must_use]
-  pub fn command_name<'s>(&self, source: &'s str) -> &'s str {
+  pub(super) fn command_name<'s>(&self, source: &'s str) -> &'s str {
     debug_assert!(self.kind == TokenKind::Command, "command_name は Command トークンに対してのみ呼び出せます");
     let text = self.text(source);
     return &text[1..];
@@ -39,7 +39,7 @@ impl Token {
 
 /// トークンの種類
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub enum TokenKind {
+pub(crate) enum TokenKind {
   /// コマンド（`\name`）
   Command,
   /// 左中括弧 `{`

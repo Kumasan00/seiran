@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// `\part` から `\subparagraph` までの見出しレベル
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum HeadingLevel {
+pub(crate) enum HeadingLevel {
   /// `\part` — 部（最上位の区分）
   Part = 0,
   /// `\chapter` — 章
@@ -24,7 +24,7 @@ impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
   // crate 内の `#[cfg(test)]`（`config::style::heading` のテスト）からのみ使う。
   #[allow(dead_code)]
-  pub const ALL: [HeadingLevel; 6] = [
+  pub(crate) const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
     HeadingLevel::Chapter,
     HeadingLevel::Section,
@@ -33,15 +33,15 @@ impl HeadingLevel {
     HeadingLevel::Subparagraph,
   ];
   /// `HeadingLevel::ALL` の要素数
-  pub const COUNT: usize = 6;
+  pub(crate) const COUNT: usize = 6;
 
   /// 数値インデックスを返す（0=Part, 5=Subparagraph）
   #[must_use]
-  pub fn depth(self) -> u8 { return self as u8; }
+  pub(crate) fn depth(self) -> u8 { return self as u8; }
 
   /// コマンド名を返す
   #[must_use]
-  pub fn command_name(self) -> &'static str {
+  pub(crate) fn command_name(self) -> &'static str {
     return match self {
       HeadingLevel::Part => "part",
       HeadingLevel::Chapter => "chapter",

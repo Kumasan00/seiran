@@ -20,7 +20,7 @@ use serde::{
 // `clippy::struct_field_names`（pedantic、実効可視性ベース）が新たに発火する。
 #[derive(Debug, Default)]
 #[allow(clippy::struct_field_names)]
-pub struct Date {
+pub(crate) struct Date {
   /// 日付部分（年・月・日）。
   ///
   /// 外側の配列は単一日付のみ（1 要素）を許容する。日付範囲（2 要素）は CSL-JSON 担体
@@ -42,7 +42,7 @@ pub struct Date {
 /// CSL では数値表現が一般的だが、紀元前の年など特殊な表記のため文字列も許容される。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum DatePart {
+pub(crate) enum DatePart {
   /// 数値での日付要素
   Number(i64),
   /// 文字列での日付要素
@@ -55,7 +55,7 @@ pub enum DatePart {
 /// または 1〜4 の整数のいずれも許容する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum DateSeason {
+pub(crate) enum DateSeason {
   /// 整数での季節指定（1: spring, 2: summer, 3: fall, 4: winter）
   Number(i64),
   /// 文字列での季節指定
@@ -67,7 +67,7 @@ pub enum DateSeason {
 /// CSL では真偽値・整数（0/1）・文字列のいずれも許容する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum DateCirca {
+pub(crate) enum DateCirca {
   /// 真偽値での指定
   Bool(bool),
   /// 整数での指定

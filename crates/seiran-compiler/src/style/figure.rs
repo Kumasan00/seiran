@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct FigureStyle {
+pub(crate) struct FigureStyle {
   /// キャプション本体（書式テンプレートとフォントサイズ）
   #[garde(dive)]
   pub caption: CaptionStyle,

@@ -12,7 +12,7 @@ use crate::{
 
 /// アリーナ確保された CST ノード
 #[derive(Debug, PartialEq, Eq)]
-pub struct GreenNode<'a> {
+pub(crate) struct GreenNode<'a> {
   /// ノードの種別
   pub kind: SyntaxKind,
   /// ソース上のバイト範囲
@@ -23,7 +23,7 @@ pub struct GreenNode<'a> {
 
 impl<'a> GreenNode<'a> {
   /// 子ノード（`GreenNode` のみ）をイテレートする
-  pub fn child_nodes(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+  pub(crate) fn child_nodes(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
     return self.children.iter().filter_map(|e| match e {
       GreenElement::Node(n) => return Some(*n),
       GreenElement::Token(_) => return None,
@@ -31,7 +31,7 @@ impl<'a> GreenNode<'a> {
   }
 
   /// 子トークン（`Token` のみ）をイテレートする
-  pub fn child_tokens(&self) -> impl Iterator<Item = &Token> + '_ {
+  pub(super) fn child_tokens(&self) -> impl Iterator<Item = &Token> + '_ {
     return self.children.iter().filter_map(|e| match e {
       GreenElement::Token(t) => return Some(t),
       GreenElement::Node(_) => return None,
@@ -40,25 +40,25 @@ impl<'a> GreenNode<'a> {
 
   /// 指定された種別の最初の子ノードを返す
   #[must_use]
-  pub fn first_child_of_kind(&self, kind: SyntaxKind) -> Option<&'a GreenNode<'a>> {
+  pub(crate) fn first_child_of_kind(&self, kind: SyntaxKind) -> Option<&'a GreenNode<'a>> {
     return self.child_nodes().find(|n| return n.kind == kind);
   }
 
   /// 指定された種別のすべての子ノードをイテレートする
-  pub fn children_of_kind(&self, kind: SyntaxKind) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+  pub(crate) fn children_of_kind(&self, kind: SyntaxKind) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
     return self.child_nodes().filter(move |n| return n.kind == kind);
   }
 
   /// 指定された種別の最初の子トークンを返す
   #[must_use]
-  pub fn first_token_of_kind(&self, kind: TokenKind) -> Option<&Token> {
+  pub(super) fn first_token_of_kind(&self, kind: TokenKind) -> Option<&Token> {
     return self.child_tokens().find(|t| return t.kind == kind);
   }
 }
 
 /// CST の要素（ノードまたはトークン）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GreenElement<'a> {
+pub(crate) enum GreenElement<'a> {
   /// 内部ノード
   Node(&'a GreenNode<'a>),
   /// リーフノード（トークン）
@@ -71,7 +71,7 @@ impl GreenElement<'_> {
   // 未使用な pub API が dead_code 検出の対象になった）。CST アクセサとして温存する。
   #[allow(dead_code)]
   #[must_use]
-  pub fn span(&self) -> Span {
+  pub(super) fn span(&self) -> Span {
     match self {
       GreenElement::Node(n) => return n.span,
       GreenElement::Token(t) => return t.span,

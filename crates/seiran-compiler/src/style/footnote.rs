@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "snake_case")]
 #[garde(allow_unvalidated)]
-pub enum FootnoteNumbering {
+pub(crate) enum FootnoteNumbering {
   /// 文書全体を通した連番。例: `1, 2, 3, ...`（章・ページをまたいでも増え続ける）
   #[default]
   Continuous,
@@ -29,7 +29,7 @@ pub enum FootnoteNumbering {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct FootnoteStyle {
+pub(crate) struct FootnoteStyle {
   /// 脚注番号のリセット方式（文書通し / ページ単位）
   pub numbering: FootnoteNumbering,
   /// マーカー番号・脚注本体先頭番号の数字表記スタイル。既定はアラビア数字

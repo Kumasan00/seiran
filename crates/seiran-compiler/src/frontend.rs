@@ -16,7 +16,7 @@ mod hir_invariants;
 mod span_ext;
 mod syntax;
 
-pub use evaluator::EvalError;
+pub(crate) use evaluator::EvalError;
 
 /// `parse_source` が返すエラー型
 ///
@@ -29,7 +29,7 @@ pub use evaluator::EvalError;
 /// （`compiler` の `parse_all_sources`）が `SourceSet` の走査から分かっており、
 /// 本文の添付は compiler seam の source attribution adapter が行う。
 #[derive(Debug, Error, Diagnostic)]
-pub enum ParseSourceError {
+pub(crate) enum ParseSourceError {
   /// 構文解析（`crate::frontend::syntax::parse`）で発生したエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
@@ -49,7 +49,7 @@ pub enum ParseSourceError {
 /// # Errors
 ///
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
-pub fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<HirSource, ParseSourceError> {
+pub(crate) fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
   let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode)?;
 

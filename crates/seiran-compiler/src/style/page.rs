@@ -14,7 +14,7 @@ use crate::length::{Length, non_negative};
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct PageStyle {
+pub(crate) struct PageStyle {
   /// 本文領域の上余白（ページ上端から本文上端まで）
   #[garde(custom(non_negative))]
   pub margin_top: Length,

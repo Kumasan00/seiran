@@ -9,7 +9,7 @@
 /// `FontKind::Math` のままで字形を切り替える設計のため、
 /// 数式フォントが対応するグリフを持っている前提で動作する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MathVariant {
+pub(crate) enum MathVariant {
   /// `\mathserif` — セリフ立体（素通し）
   Serif,
   /// `\mathitalic` — セリフイタリック
@@ -53,7 +53,7 @@ impl MathVariant {
   /// 数式モード内で `evaluate_math_command` から呼び出される。
   /// 未対応の名前は `None` を返す。
   #[must_use]
-  pub fn from_command_name(name: &str) -> Option<Self> {
+  pub(crate) fn from_command_name(name: &str) -> Option<Self> {
     return match name {
       "mathserif" => Some(MathVariant::Serif),
       "mathitalic" => Some(MathVariant::Italic),

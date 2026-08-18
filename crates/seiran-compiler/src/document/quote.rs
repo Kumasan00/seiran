@@ -5,7 +5,7 @@
 /// 環境名 `\begin{<name>}` として使われ、`<name>` は `snake_case` の [`QuoteKind::as_str`]
 /// と一致する。`quote` は段落先頭字下げなし、`quotation` は段落先頭字下げあり。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum QuoteKind {
+pub(crate) enum QuoteKind {
   /// 引用（段落先頭字下げなし）
   Quote,
   /// 引用（段落先頭字下げあり）
@@ -15,7 +15,7 @@ pub enum QuoteKind {
 impl QuoteKind {
   /// `snake_case` の文字列表現を返す（環境名と同じ）。
   #[must_use]
-  pub fn as_str(self) -> &'static str {
+  pub(super) fn as_str(self) -> &'static str {
     return match self {
       Self::Quote => "quote",
       Self::Quotation => "quotation",
@@ -27,7 +27,7 @@ impl QuoteKind {
   /// 2 種以外の名前は `None` を返す。`frontend` が `\begin{<name>}` の環境名を
   /// 種別に解決するために使う。
   #[must_use]
-  pub fn from_name(name: &str) -> Option<Self> {
+  pub(crate) fn from_name(name: &str) -> Option<Self> {
     return match name {
       "quote" => Some(Self::Quote),
       "quotation" => Some(Self::Quotation),
@@ -37,7 +37,7 @@ impl QuoteKind {
 
   /// 段落先頭字下げを行うかどうか（`quotation` のみ `true`）。
   #[must_use]
-  pub fn indents_first_line(self) -> bool { return matches!(self, Self::Quotation); }
+  pub(crate) fn indents_first_line(self) -> bool { return matches!(self, Self::Quotation); }
 }
 
 impl std::fmt::Display for QuoteKind {

@@ -11,11 +11,11 @@ use thiserror::Error;
 use crate::project::font::map::FontMap;
 
 /// 19 フォント種別すべての検証済み設定
-pub type FontConfigs = FontMap<FontConfig>;
+pub(crate) type FontConfigs = FontMap<FontConfig>;
 
 /// 単一フォント種別の検証済み・処理済み設定
 #[derive(Debug, Clone)]
-pub struct FontConfig {
+pub(crate) struct FontConfig {
   /// フォントファイルへの絶対パス（正規化済み）
   pub font_path: PathBuf,
   /// TTC（TrueType Collection）ファイル内のインデックス
@@ -44,7 +44,7 @@ pub struct FontConfig {
 
 /// 書字方向（`harfrust::Direction` の Invalid 以外にマップ）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextDirection {
+pub(crate) enum TextDirection {
   /// 左から右（horizontal、ラテン文字・日本語横書き等）
   LeftToRight,
   /// 右から左（horizontal、アラビア文字・ヘブライ文字等）
@@ -60,7 +60,7 @@ pub enum TextDirection {
 #[error(
   "direction は 'left-to-right' / 'right-to-left' / 'top-to-bottom' / 'bottom-to-top' のいずれかである必要があります"
 )]
-pub struct TextDirectionParseError;
+pub(crate) struct TextDirectionParseError;
 
 impl FromStr for TextDirection {
   type Err = TextDirectionParseError;
@@ -79,7 +79,7 @@ impl FromStr for TextDirection {
 
 /// OpenType フィーチャーの設定（タグと値のペア）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Feature {
+pub(crate) struct Feature {
   /// OpenType フィーチャータグ（4 バイト）
   pub tag: [u8; 4],
   /// フィーチャーの値（通常は 0=無効、1=有効）
@@ -88,7 +88,7 @@ pub struct Feature {
 
 /// バリアブルフォント軸の設定値
 #[derive(Debug, Clone, Copy)]
-pub struct VariationAxis {
+pub(crate) struct VariationAxis {
   /// 軸名（4 バイトの OpenType 軸タグ）
   pub name: [u8; 4],
   /// 目標値（実数）

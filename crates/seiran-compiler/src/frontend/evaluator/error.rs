@@ -5,7 +5,7 @@ use thiserror::Error;
 
 /// 評価器のエラー型
 #[derive(Debug, Error, Diagnostic)]
-pub enum EvalError {
+pub(crate) enum EvalError {
   /// コマンドの必須引数が不足している場合
   #[error("コマンド \\{name} の引数が不足しています（必要: {expected}）")]
   #[diagnostic(

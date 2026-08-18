@@ -40,7 +40,7 @@ pub(crate) struct TocSpec {
 
 /// 1 目次エントリの入力
 #[derive(Debug, Clone)]
-pub struct TocEntryInput {
+pub(crate) struct TocEntryInput {
   /// 見出しレベル（インデントの深さに使う）
   pub level: HeadingLevel,
   /// 書式化済みの見出し番号（空なら番号なし）

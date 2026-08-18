@@ -14,14 +14,14 @@ use crate::{
 
 /// 1 カウンタぶんの値側設定
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CounterPolicy {
+pub(super) struct CounterPolicy {
   /// このカウンタが増えたときに 0 へ戻す下位カウンタ
   pub resets: Vec<CounterName>,
 }
 
 /// 1 定理クラスぶんの値側設定
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TheoremPolicy {
+pub(super) struct TheoremPolicy {
   /// 共有カウンタ名（複数クラスが 1 つのカウンタを共有しうる）
   pub counter: String,
   /// どの見出しレベルでリセットするか
@@ -32,7 +32,7 @@ pub struct TheoremPolicy {
 
 /// 意味解析が読む設定だけを持つ投影
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SemanticPolicy {
+pub(crate) struct SemanticPolicy {
   /// カウンタ名 → 値側設定（固定 9 種すべてを `from_style` が埋める）
   counters: HashMap<CounterName, CounterPolicy>,
   /// 定理クラス → 値側設定（全クラスを `from_style` が埋める）
@@ -42,7 +42,7 @@ pub struct SemanticPolicy {
 impl SemanticPolicy {
   /// `Style` から値側設定だけを写し取る
   #[must_use]
-  pub fn from_style(style: &Style) -> Self {
+  pub(crate) fn from_style(style: &Style) -> Self {
     let mut counters = HashMap::new();
     for name in CounterName::ALL {
       counters.insert(
@@ -68,7 +68,7 @@ impl SemanticPolicy {
 
   /// カウンタの値側設定を引く
   #[must_use]
-  pub fn counter(&self, name: CounterName) -> &CounterPolicy {
+  pub(super) fn counter(&self, name: CounterName) -> &CounterPolicy {
     let Some(policy) = self.counters.get(&name) else {
       unreachable!("from_style が CounterName::ALL をすべて埋めている: {name:?}")
     };
@@ -77,7 +77,7 @@ impl SemanticPolicy {
 
   /// 定理クラスの値側設定を引く
   #[must_use]
-  pub fn theorem(&self, class: TheoremClass) -> &TheoremPolicy {
+  pub(super) fn theorem(&self, class: TheoremClass) -> &TheoremPolicy {
     let Some(policy) = self.theorems.get(&class) else {
       unreachable!("from_style が全定理クラスを埋めている: {class:?}")
     };
@@ -85,7 +85,7 @@ impl SemanticPolicy {
   }
 
   /// 指定した見出しレベルでリセットされる定理カウンタ名を列挙する
-  pub fn theorems_reset_by(&self, level: TheoremReset) -> impl Iterator<Item = &str> {
+  pub(super) fn theorems_reset_by(&self, level: TheoremReset) -> impl Iterator<Item = &str> {
     return self
       .theorems
       .values()
@@ -95,7 +95,7 @@ impl SemanticPolicy {
 
   /// 見出しレベルに対応するカウンタ名を返す
   #[must_use]
-  pub fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
+  pub(super) fn counter_name_for_heading(level: HeadingLevel) -> CounterName {
     return match level {
       HeadingLevel::Part => CounterName::Part,
       HeadingLevel::Chapter => CounterName::Chapter,

@@ -11,7 +11,7 @@ use crate::length::{Length, non_negative};
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct ColumnsStyle {
+pub(crate) struct ColumnsStyle {
   /// 段数（1 = 単段、2 = 2 段組）
   #[garde(range(min = 1, max = 2))]
   pub count: u8,

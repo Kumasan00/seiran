@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct CaptionStyle {
+pub(crate) struct CaptionStyle {
   /// キャプションの書式テンプレート。`{number}` と `{title}` を含めることができる
   #[garde(dive)]
   pub format: NumberTitleTemplate,

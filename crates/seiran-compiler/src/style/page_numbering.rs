@@ -9,7 +9,7 @@ use crate::style::number_style::NumberStyle;
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct PageNumbering {
+pub(crate) struct PageNumbering {
   /// 前付け（タイトルページ・目次）ページの番号表記。既定は小文字ローマ数字（i, ii, …）
   pub front_matter: NumberStyle,
   /// 本文ページの番号表記。既定は算用数字（1, 2, …）。本文は常に 1 から振り直す

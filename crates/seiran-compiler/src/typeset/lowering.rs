@@ -33,12 +33,12 @@ mod table;
 mod theorem;
 mod title_page;
 
-pub use counter::per_page_footnote_numbers;
-pub use layout_node::{LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
+pub(super) use counter::per_page_footnote_numbers;
+pub(super) use layout_node::{LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 /// Lowering のコンテキスト
-pub struct LoweringContext<'a> {
+pub(super) struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
@@ -58,7 +58,7 @@ pub struct LoweringContext<'a> {
 impl<'a> LoweringContext<'a> {
   /// 新しい `LoweringContext` を生成する
   #[must_use]
-  pub fn new(style: &'a ReadStyle) -> Self {
+  pub(super) fn new(style: &'a ReadStyle) -> Self {
     return LoweringContext {
       style,
       body_font_kind: style.text.font_kind,
@@ -72,7 +72,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 画像出力の既定値（config `[image]` 由来）を差し替えた文脈を返す
   #[must_use]
-  pub fn with_image_defaults(mut self, image_max_dpi: u32, image_downsample: bool) -> Self {
+  pub(super) fn with_image_defaults(mut self, image_max_dpi: u32, image_downsample: bool) -> Self {
     self.image_max_dpi = image_max_dpi;
     self.image_downsample = image_downsample;
     return self;
@@ -80,14 +80,14 @@ impl<'a> LoweringContext<'a> {
 
   /// 脚注の表示番号の上書きマップを与えた文脈を返す
   #[must_use]
-  pub fn with_footnote_numbers(mut self, numbers: &'a [u32]) -> Self {
+  pub(super) fn with_footnote_numbers(mut self, numbers: &'a [u32]) -> Self {
     self.footnote_numbers = Some(numbers);
     return self;
   }
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_body_font_kind(&self, body_font_kind: crate::document::FontKind) -> LoweringContext<'a> {
+  pub(super) fn with_body_font_kind(&self, body_font_kind: crate::document::FontKind) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
@@ -101,7 +101,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_first_line_indent(&self, first_line_indent: crate::length::Length) -> LoweringContext<'a> {
+  pub(super) fn with_first_line_indent(&self, first_line_indent: crate::length::Length) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,
@@ -115,7 +115,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 箇条書きのネスト深さだけを差し替えた派生文脈を返す
   #[must_use]
-  pub fn with_list_depth(&self, list_depth: usize) -> LoweringContext<'a> {
+  pub(super) fn with_list_depth(&self, list_depth: usize) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,
@@ -129,12 +129,12 @@ impl<'a> LoweringContext<'a> {
 
   /// 既定フォントサイズ（段落本文用、`style.text.font_size` に等しい）を pt 値で返すヘルパー
   #[must_use]
-  pub fn default_font_size(&self) -> Length { return self.style.text.font_size; }
+  pub(super) fn default_font_size(&self) -> Length { return self.style.text.font_size; }
 }
 
 /// 見出し 1 件の記録（PDF しおり・目次生成が消費する）
 #[derive(Debug, Clone, PartialEq)]
-pub struct HeadingRecord {
+pub(super) struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
@@ -265,7 +265,7 @@ impl<'a> LoweringState<'a> {
 
 /// 意味解析の成果物をレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
 #[must_use]
-pub fn lower_sources_with_headings(
+pub(super) fn lower_sources_with_headings(
   ctx: &LoweringContext,
   document: &SemanticDocument,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {

@@ -40,7 +40,7 @@ pub(crate) struct IndexSpec {
 
 /// 索引エントリが指す 1 出現ページ
 #[derive(Debug, Clone)]
-pub struct IndexPageRef {
+pub(crate) struct IndexPageRef {
   /// 表示するページ番号ラベル
   pub label: String,
   /// 出現ページの内部リンク到達先（本文内ページ index、0 起点）
@@ -49,7 +49,7 @@ pub struct IndexPageRef {
 
 /// 1 索引エントリの入力
 #[derive(Debug, Clone)]
-pub struct IndexEntryInput {
+pub(crate) struct IndexEntryInput {
   /// 索引語（表示テキスト）
   pub word: String,
   /// 読みソートキー（`[reading=...]`）。ソートにのみ使い、表示はしない
@@ -64,7 +64,7 @@ pub struct IndexEntryInput {
 ///
 /// `ja` ロケールの照合データはワークスペースの `icu`（`compiled_data`）に常に同梱されているため、
 /// 実運用では発生しない。
-pub fn sort_index_entries(entries: &mut [IndexEntryInput]) {
+pub(crate) fn sort_index_entries(entries: &mut [IndexEntryInput]) {
   let collator = Collator::try_new(locale!("ja").into(), CollatorOptions::default())
     .expect("ja ロケールの照合データは compiled_data で常に利用可能なはず");
   entries.sort_by(|a, b| {

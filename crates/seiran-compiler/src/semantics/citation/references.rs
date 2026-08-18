@@ -12,8 +12,8 @@ use std::{collections::HashMap, path::Path};
 
 // `Date` / `Name` / `ReferenceType` / `NumberOrString` は [`Reference`] のフィールド型として
 // 生きているが、名前を再エクスポートする必要はない（外から名指しする消費者がいない）。
-pub use error::ReadReferencesError;
-pub use reference::{Reference, References};
+pub(crate) use error::ReadReferencesError;
+pub(crate) use reference::{Reference, References};
 use tracing::debug;
 
 /// 参照定義ファイルの形式
@@ -47,7 +47,7 @@ impl Format {
 /// - ファイルの読み込みに失敗した場合
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
-pub fn read_references<P: AsRef<Path>>(
+pub(crate) fn read_references<P: AsRef<Path>>(
   source: &dyn crate::project::ProjectSource,
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {

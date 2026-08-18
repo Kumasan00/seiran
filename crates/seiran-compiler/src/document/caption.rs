@@ -5,7 +5,7 @@
 /// 図・表ともにソース上の `\caption` の出現位置から決定される
 /// （本体より前なら [`CaptionPosition::Top`]、後なら [`CaptionPosition::Bottom`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaptionPosition {
+pub(crate) enum CaptionPosition {
   /// キャプションを本体の上に配置
   Top,
   /// キャプションを本体の下に配置

@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// コマンド呼び出しの型付きビュー
-pub struct CommandView<'a> {
+pub(crate) struct CommandView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
@@ -24,61 +24,61 @@ pub struct CommandView<'a> {
 impl<'a> CommandView<'a> {
   /// コマンドビューを生成する
   #[must_use]
-  pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+  pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(node.kind, SyntaxKind::CommandCall);
     return Self { node, source };
   }
 
   /// 元のソーステキストへの参照を返す
   #[must_use]
-  pub fn source(&self) -> &'a str { return self.source; }
+  pub(crate) fn source(&self) -> &'a str { return self.source; }
 
   /// コマンド名を返す（先頭の `\` を除いた名前）
   #[must_use]
-  pub fn name(&self) -> &'a str {
+  pub(crate) fn name(&self) -> &'a str {
     return self.node.first_token_of_kind(TokenKind::Command).map_or("", |t| return t.command_name(self.source));
   }
 
   /// ソース上のバイト範囲を返す
   #[must_use]
-  pub fn span(&self) -> Span { return self.node.span; }
+  pub(crate) fn span(&self) -> Span { return self.node.span; }
 
   /// 必須引数 `{...}` ノードをイテレートする
-  pub fn args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+  pub(crate) fn args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
     return self.node.children_of_kind(SyntaxKind::MandatoryArg);
   }
 
   /// 任意引数 `[...]` ノードをイテレートする
-  pub fn opt_args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
+  pub(crate) fn opt_args(&self) -> impl Iterator<Item = &'a GreenNode<'a>> + '_ {
     return self.node.children_of_kind(SyntaxKind::OptArg);
   }
 
   /// 必須引数の数を返す
   #[must_use]
-  pub fn args_count(&self) -> usize { return self.args().count(); }
+  pub(crate) fn args_count(&self) -> usize { return self.args().count(); }
 
   /// 任意引数の数を返す
   #[must_use]
-  pub fn opt_args_count(&self) -> usize { return self.opt_args().count(); }
+  pub(crate) fn opt_args_count(&self) -> usize { return self.opt_args().count(); }
 
   /// 最初の必須引数ノードを返す
   #[must_use]
-  pub fn first_arg(&self) -> Option<&'a GreenNode<'a>> {
+  pub(crate) fn first_arg(&self) -> Option<&'a GreenNode<'a>> {
     return self.node.first_child_of_kind(SyntaxKind::MandatoryArg);
   }
 
   /// 必須引数が空かどうかを返す
   #[must_use]
-  pub fn args_is_empty(&self) -> bool { return self.args_count() == 0; }
+  pub(crate) fn args_is_empty(&self) -> bool { return self.args_count() == 0; }
 
   /// 任意引数が空かどうかを返す
   #[cfg(test)]
   #[must_use]
-  pub fn opt_args_is_empty(&self) -> bool { return self.opt_args_count() == 0; }
+  pub(super) fn opt_args_is_empty(&self) -> bool { return self.opt_args_count() == 0; }
 }
 
 /// 環境の型付きビュー
-pub struct EnvironmentView<'a> {
+pub(crate) struct EnvironmentView<'a> {
   /// 内部の CST ノード
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
@@ -88,18 +88,18 @@ pub struct EnvironmentView<'a> {
 impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
   #[must_use]
-  pub fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
+  pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(node.kind, SyntaxKind::Environment);
     return Self { node, source };
   }
 
   /// 元のソーステキストへの参照を返す
   #[must_use]
-  pub fn source(&self) -> &'a str { return self.source; }
+  pub(crate) fn source(&self) -> &'a str { return self.source; }
 
   /// 環境名を返す
   #[must_use]
-  pub fn name(&self) -> &'a str {
+  pub(crate) fn name(&self) -> &'a str {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
       return "";
     };
@@ -111,15 +111,17 @@ impl<'a> EnvironmentView<'a> {
 
   /// ソース上のバイト範囲を返す
   #[must_use]
-  pub fn span(&self) -> Span { return self.node.span; }
+  pub(crate) fn span(&self) -> Span { return self.node.span; }
 
   /// 環境の本体ノードを返す
   #[must_use]
-  pub fn body(&self) -> Option<&'a GreenNode<'a>> { return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody); }
+  pub(crate) fn body(&self) -> Option<&'a GreenNode<'a>> {
+    return self.node.first_child_of_kind(SyntaxKind::EnvironmentBody);
+  }
 
   /// 環境の必須引数ノードを返す（環境名の arg は除外）
   #[must_use]
-  pub fn args(&self) -> Vec<&'a GreenNode<'a>> {
+  pub(crate) fn args(&self) -> Vec<&'a GreenNode<'a>> {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
       return vec![];
     };
@@ -128,7 +130,7 @@ impl<'a> EnvironmentView<'a> {
 
   /// 環境の任意引数ノードを返す
   #[must_use]
-  pub fn opt_args(&self) -> Vec<&'a GreenNode<'a>> {
+  pub(crate) fn opt_args(&self) -> Vec<&'a GreenNode<'a>> {
     let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
       return vec![];
     };
@@ -140,7 +142,7 @@ impl<'a> EnvironmentView<'a> {
 ///
 /// 構造トークンとコメントを除いて連結する。
 #[must_use]
-pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
+pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
   let mut text = String::new();
   for child in node.children {
     match child {
@@ -174,7 +176,7 @@ pub fn extract_text_content(source: &str, node: &GreenNode) -> String {
 /// `=` を含まないエントリは boolean フラグとして扱い `("key", "true")` を生成する
 /// （例: `[draft]`）。
 #[must_use]
-pub fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
+pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
   debug_assert_eq!(opt_arg.kind, SyntaxKind::OptArg);
   let text = extract_text_content(source, opt_arg);
   let mut pairs = Vec::new();

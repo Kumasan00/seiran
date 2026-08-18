@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct ListStyle {
+pub(crate) struct ListStyle {
   /// 各リスト項目の左インデント量
   #[garde(custom(non_negative))]
   pub indent: Length,
@@ -70,7 +70,7 @@ impl Default for ListStyle {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
-pub struct NestedOrderedFormat {
+pub(crate) struct NestedOrderedFormat {
   /// この段の番号の数字表記スタイル
   pub number_style: NumberStyle,
   /// `{number}` を含む装飾テンプレート（例: `"({number})"`）。後ろに自動で半角スペースが付与される。

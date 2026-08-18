@@ -22,13 +22,13 @@ use crate::{
 
 mod error;
 
-pub use error::ParserError;
+pub(crate) use error::ParserError;
 
 /// 環境本体および入れ子要素のパース時に、どの語彙的解釈を適用するかを示すモード
 ///
 /// 環境本体のモードは [`parse`] に渡すコールバックで決める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParseMode {
+pub(crate) enum ParseMode {
   /// 通常のテキストモード（`$` でインライン数式に入る）
   Text,
   /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
@@ -620,7 +620,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 /// # Errors
 ///
 /// 構文エラーが発生した場合
-pub fn parse<'a>(
+pub(crate) fn parse<'a>(
   source: &'a str,
   arena: &'a Bump,
   env_mode: impl Fn(&str) -> ParseMode,
