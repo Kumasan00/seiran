@@ -18,11 +18,10 @@ use crate::{
 };
 
 mod footnote_packing;
+mod paragraph_plan;
 
-use footnote_packing::{
-  FootnoteCharges, FootnoteDemand, LineFootnoteFit, fit_line_footnotes, footnote_area_full, pack_footnotes,
-  split_pending,
-};
+use footnote_packing::{FootnoteCharges, FootnoteDemand, pack_footnotes, split_pending};
+use paragraph_plan::plan_paragraph_lines;
 
 /// ページの物理ジオメトリと既定の行送りパラメータ
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +146,7 @@ struct PageComposer {
   /// 次リージョンへ繰り越す脚注の残り（#227、出現順）。
   carry: Vec<PendingFootnote>,
   /// 収まらないまま配置した脚注の記録（#382、検出順＝ページ順）。
-  /// 純粋関数（[`place_lines`] / [`pack_footnotes`]）が返した「はみ出した」という事実に、
+  /// 純粋関数（`paragraph_plan::place_lines` / [`pack_footnotes`]）が返した「はみ出した」という事実に、
   /// ページ index と脚注番号を添えるのはページを組んでいるこの型の責務。
   overflows: Vec<FootnoteOverflow>,
 }
@@ -723,182 +722,6 @@ pub fn break_pages(
 /// widow/orphan 制御でまとめて送る最小行数。
 const MIN_LINES_AT_BREAK: usize = 2;
 
-/// 段落 1 行の配置計画（純粋な幾何判定の結果）
-#[derive(Debug, Clone, PartialEq)]
-struct LinePlacement {
-  /// 行のベースライン（ページ上端からの距離、pt）
-  baseline: Length,
-  /// この行から新しいリージョン（次段 / 次ページ）が始まるか
-  starts_region: bool,
-  /// この行を確定した時点でのリージョンの脚注予約高さ（pt）。新リージョンが始まった行は
-  /// そのリージョンで最初の予約（＝この行自身の脚注ぶんのみ）になる。
-  /// [`place_paragraph`] が確定ループで `composer.region_footnote_height` へそのまま反映する。
-  reserved_after: Length,
-  /// この行の脚注ごとに、この行が乗るリージョンへ置く行数（行の脚注と同順・同長。脚注が無ければ空）
-  own_splits: Vec<usize>,
-  /// この行の脚注群が空のリージョンにも収まらず、はみ出したまま置かれるか（#382）。
-  /// 計画は widow / orphan 補正で何度も立て直されるので、ここでは事実を載せるだけにして、
-  /// 警告は確定した計画を配置する [`place_paragraph`] だけが組み立てる
-  overflowed: bool,
-}
-
-/// 強制改リージョン点（`forced`）を尊重しつつ、貪欲にベースラインを送って各行を配置する（純粋関数）
-#[allow(clippy::too_many_arguments)]
-fn place_lines(
-  lines: &[Line],
-  y0: Length,
-  cursor_at_edge: bool,
-  leading: Length,
-  margin_top: Length,
-  page_limit: Length,
-  forced: &[bool],
-  demands: &[Vec<FootnoteDemand>],
-  initial_reserved: Length,
-  charges: FootnoteCharges,
-  carry_pending: bool,
-) -> (Vec<LinePlacement>, bool) {
-  let mut plan = Vec::with_capacity(lines.len());
-  let mut baseline = y0;
-  let mut prev_depth: Option<Length> = None;
-  let mut reserved = initial_reserved;
-  for (i, line) in lines.iter().enumerate() {
-    match prev_depth {
-      // 段落先頭行: 直前が底辺基準ブロックならアセント分下げる
-      None => {
-        if cursor_at_edge {
-          baseline += line.height;
-        }
-      },
-      // 2 行目以降: leading か「前の行の深さ + この行の高さ」の大きい方だけ送る
-      Some(depth) => {
-        baseline += leading.max(depth + line.height);
-      },
-    }
-    let mut fit = if forced[i] {
-      LineFootnoteFit::Rejected
-    } else {
-      fit_line_footnotes(&demands[i], reserved, baseline + line.depth, page_limit, charges)
-    };
-    let starts_region = matches!(fit, LineFootnoteFit::Rejected);
-    if starts_region {
-      if carry_pending {
-        // 次リージョンの脚注エリアは繰越で埋まる。どれだけ埋まるかを詰めるまでこの行の
-        // ベースラインは決められないので、ここで計画を打ち切る（呼び出し元が seed して計画し直す）
-        return (plan, true);
-      }
-      baseline = margin_top;
-      fit = fit_line_footnotes(&demands[i], Length::ZERO, baseline + line.depth, page_limit, charges);
-    }
-    let split_here = matches!(fit, LineFootnoteFit::Split(..));
-    let mut overflowed = false;
-    let (reserved_after, own_splits) = match fit {
-      LineFootnoteFit::Full(area) => (area, demands[i].iter().map(FootnoteDemand::line_count).collect()),
-      LineFootnoteFit::Split(area, splits) => (area, splits),
-      // 空のリージョンでも収まらない病的ケース（脚注の先頭 1 行がページ全高を超える等）。
-      // 次リージョンへ送っても改善しないので、オーバーフローを許容してそのまま置く
-      LineFootnoteFit::Rejected => {
-        overflowed = !demands[i].is_empty();
-        (
-          footnote_area_full(&demands[i], Length::ZERO, charges),
-          demands[i].iter().map(FootnoteDemand::line_count).collect(),
-        )
-      },
-    };
-    reserved = reserved_after;
-    plan.push(LinePlacement {
-      baseline,
-      starts_region,
-      reserved_after,
-      own_splits,
-      overflowed,
-    });
-    prev_depth = Some(line.depth);
-    if split_here {
-      return (plan, true);
-    }
-  }
-  return (plan, false);
-}
-
-/// 配置計画から widow/orphan 違反を 1 つ検出し、追加すべき強制改リージョン点を返す（純粋関数）
-fn pick_correction(
-  plan: &[LinePlacement],
-  min_lines: usize,
-  is_paragraph_start: bool,
-  is_paragraph_end: bool,
-) -> Option<usize> {
-  let n = plan.len();
-  if n < 2 {
-    return None;
-  }
-  // orphan: 先頭リージョン（index 0 から最初の改リージョンまで）の行数が最小行数未満
-  // （先頭行が既にリージョン先頭なら回避不能なので補正しない）
-  if is_paragraph_start
-    && let Some(first_break) = (1..n).find(|&i| return plan[i].starts_region)
-    && first_break < min_lines
-    && !plan[0].starts_region
-  {
-    return Some(0);
-  }
-  if !is_paragraph_end {
-    return None;
-  }
-  // widow: 末尾リージョン（最後の改リージョンから末尾まで）の行数が最小行数未満
-  if let Some(last_break) = (1..n).rev().find(|&i| return plan[i].starts_region)
-    && n - last_break < min_lines
-  {
-    // 前側に最小行数を残せるなら末尾 min_lines 行だけを送る。残せない短い段落は全体を送る
-    let target = if n >= 2 * min_lines { n - min_lines } else { 0 };
-    // 全体を送っても先頭が既にリージョン先頭なら回避不能
-    if target == 0 && plan[0].starts_region {
-      return None;
-    }
-    return Some(target);
-  }
-  return None;
-}
-
-/// 段落の行列を現在のカーソルから前から順に配置する計画を立てる（純粋関数・widow/orphan 制御込み）
-#[allow(clippy::too_many_arguments)]
-fn plan_paragraph_lines(
-  lines: &[Line],
-  y0: Length,
-  cursor_at_edge: bool,
-  leading: Length,
-  margin_top: Length,
-  page_limit: Length,
-  demands: &[Vec<FootnoteDemand>],
-  initial_reserved: Length,
-  charges: FootnoteCharges,
-  is_paragraph_start: bool,
-  carry_pending: bool,
-) -> (Vec<LinePlacement>, bool) {
-  let mut forced = vec![false; lines.len()];
-  loop {
-    let (plan, truncated) = place_lines(
-      lines,
-      y0,
-      cursor_at_edge,
-      leading,
-      margin_top,
-      page_limit,
-      &forced,
-      demands,
-      initial_reserved,
-      charges,
-      carry_pending,
-    );
-    // 打ち切られた計画の末尾は段落の末尾ではない（続きは繰越を詰めてから計画し直す）
-    let is_paragraph_end = !truncated;
-    match pick_correction(&plan, MIN_LINES_AT_BREAK, is_paragraph_start, is_paragraph_end) {
-      // 新しい補正点なら強制して再フロー
-      Some(idx) if !forced[idx] => forced[idx] = true,
-      // 補正不要、または前進しない（回避不能）なら確定
-      _ => return (plan, truncated),
-    }
-  }
-}
-
 /// 内容ブロック（実際の高さを占め、リージョン配置の対象になるブロック）か。
 fn is_content_block(block: &Block) -> bool {
   return matches!(
@@ -1403,8 +1226,7 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 mod tests {
   use super::{
     super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind,
-    LinePlacement, PageGeometry, break_pages, is_content_block, keep_group_end, pack_footnotes, placed_block_bottom,
-    plan_paragraph_lines,
+    PageGeometry, break_pages, is_content_block, keep_group_end, pack_footnotes, placed_block_bottom,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
@@ -2415,9 +2237,6 @@ mod tests {
     };
   }
 
-  /// 脚注を持たない `count` 行ぶんの需要（[`place_lines`] / [`plan_paragraph_lines`] のテスト用）
-  fn no_footnotes(count: usize) -> Vec<Vec<FootnoteDemand>> { return (0..count).map(|_| return Vec::new()).collect(); }
-
   /// 課金ゼロの脚注パラメータ（脚注を使わない計画テスト用）
   fn no_charges() -> FootnoteCharges {
     return FootnoteCharges {
@@ -2485,176 +2304,6 @@ mod tests {
     let total: usize = pages.iter().map(|p| return page_baselines(p).len()).sum();
     assert_eq!(total, 20, "行が欠落しない: {pages:?}");
     assert!(pages.len() >= 5, "4 行/ページなので 5 ページ以上に分かれる: {}", pages.len());
-  }
-
-  #[test]
-  fn plan_leaves_fitting_paragraph_untouched() {
-    // Arrange
-    let lines = vec![test_line(), test_line(), test_line()];
-
-    // Act
-    let (plan, truncated) = plan_paragraph_lines(
-      &lines,
-      pt(10.0),
-      false,
-      pt(12.0),
-      pt(10.0),
-      pt(50.0),
-      &no_footnotes(3),
-      Length::ZERO,
-      no_charges(),
-      true,
-      false,
-    );
-
-    // Assert
-    assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
-    assert_eq!(
-      plan,
-      vec![
-        LinePlacement {
-          baseline: pt(10.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(22.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(34.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-      ]
-    );
-  }
-
-  #[test]
-  fn plan_defers_orphan_first_line() {
-    // Arrange
-    let lines = vec![test_line(), test_line(), test_line()];
-
-    // Act
-    let (plan, truncated) = plan_paragraph_lines(
-      &lines,
-      pt(46.0),
-      false,
-      pt(12.0),
-      pt(10.0),
-      pt(50.0),
-      &no_footnotes(3),
-      Length::ZERO,
-      no_charges(),
-      true,
-      false,
-    );
-
-    // Assert
-    assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
-    assert_eq!(
-      plan,
-      vec![
-        LinePlacement {
-          baseline: pt(10.0),
-          starts_region: true,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(22.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(34.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-      ]
-    );
-  }
-
-  #[test]
-  fn plan_pulls_widow_last_line_back() {
-    // Arrange
-    let lines = vec![
-      test_line(),
-      test_line(),
-      test_line(),
-      test_line(),
-      test_line(),
-    ];
-
-    // Act
-    let (plan, truncated) = plan_paragraph_lines(
-      &lines,
-      pt(10.0),
-      false,
-      pt(12.0),
-      pt(10.0),
-      pt(50.0),
-      &no_footnotes(5),
-      Length::ZERO,
-      no_charges(),
-      true,
-      false,
-    );
-
-    // Assert
-    assert!(!truncated, "繰越も分割も無いので計画は打ち切られない");
-    assert_eq!(
-      plan,
-      vec![
-        LinePlacement {
-          baseline: pt(10.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(22.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(34.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(10.0),
-          starts_region: true,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-        LinePlacement {
-          baseline: pt(22.0),
-          starts_region: false,
-          reserved_after: Length::ZERO,
-          own_splits: Vec::new(),
-          overflowed: false
-        },
-      ]
-    );
   }
 
   #[test]

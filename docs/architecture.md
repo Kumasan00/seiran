@@ -1202,7 +1202,13 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
   index）のタプル。**純粋関数（`place_lines` / `pack_footnotes`）は「はみ出した」という事実を
   `bool` で返すだけ**で、ページ番号・脚注番号を添えて記録するのは `PageComposer` の責務 —
   計画は widow / orphan 補正で何度も立て直されるので、確定した配置ループからしか記録しないことで
-  重複を構造的に防ぐ（#382）
+  重複を構造的に防ぐ（#382）。可変状態を持たない純粋な計算は 2 つの非公開 child module に閉じる
+  - `paragraph_plan`（非公開。親へ出すのは `plan_paragraph_lines` と `LinePlacement` だけ）:
+    段落の行列に対する配置計画（ベースライン送り・脚注予約・widow / orphan 補正）。`PageComposer` を
+    引数に取らず、カーソル位置・予約高さは呼び出し側が値に落として渡す。消費者は `place_paragraph` のみ
+  - `footnote_packing`（非公開。`pub(super)`）: 脚注エリアへの詰め込み計算（`pack_footnotes` /
+    `fit_line_footnotes`）と、その入出力の値型（`FootnoteCharges` / `FootnoteDemand`）。
+    値を作るのは `place_paragraph`、消費するのは `paragraph_plan` と `PageComposer` の両方
 
 **改ページ制御は glue（伸縮アキ）/ penalty（分割コスト）モデル**で、widow / orphan・keep-with-next・下端
 揃え（`PageGeometry.flush_bottom`）を扱う。下端揃えは満杯リージョン（段）確定時（`advance_region`）に不足
