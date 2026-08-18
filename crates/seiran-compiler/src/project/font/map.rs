@@ -127,8 +127,10 @@ impl<'a, T> Iterator for FontMapIterMut<'a, T> {
     }
     let font_type = FontType::ALL[self.index];
     self.index += 1;
-    // SAFETY: 各 FontType は一意なので、同じキーに2回アクセスすることはない
     let value = self.inner.get_mut(&font_type)?;
+    // SAFETY: 借用の寿命を `&mut self` から `'a` へ延長する。`index` は単調増加し
+    // `FontType::ALL` の要素は一意なので、同じキーを 2 回返すことはなく、
+    // 返した `&mut T` どうしがエイリアスすることもない。
     let value = unsafe { &mut *std::ptr::from_mut(value) };
     return Some((font_type, value));
   }

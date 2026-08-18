@@ -171,10 +171,12 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 ### Clippy
 
-正典は root `Cargo.toml` の `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で継承）。
+正典は root `Cargo.toml` の `[workspace.lints.rust]` / `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で両テーブルを継承）。
 
 - `clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` は allow
-- restriction lint の `implicit_return` / `missing_docs_in_private_items` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
+- restriction lint の `implicit_return` / `missing_docs_in_private_items` / `undocumented_unsafe_blocks` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
+- rustc 側は `unsafe_op_in_unsafe_fn` を warn で明示有効化している（Edition 2024 の既定と同じ水準を設定として固定するもの。`unsafe fn` の本体でも `unsafe {}` を書かせる）
+- `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
 - CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する
 - `unwrap_used` / `expect_used` は**有効化していない**（restriction lint で `all` にも `pedantic` にも含まれない）。テストモジュールに付けている `#[allow(clippy::unwrap_used)]` は現状 lint を抑制しておらず、意図表明にとどまる
 

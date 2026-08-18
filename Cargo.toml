@@ -49,6 +49,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "local-time
 unic-langid = "0.9.6"
 usvg = "0.47.0"
 
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = 0 }
@@ -59,6 +62,7 @@ too_many_lines = { level = "allow", priority = 1 }
 
 implicit_return = { level = "warn", priority = 2 }
 missing_docs_in_private_items = { level = "warn", priority = 2 }
+undocumented_unsafe_blocks = { level = "warn", priority = 2 }
 
 [profile.release]
 opt-level = 3
