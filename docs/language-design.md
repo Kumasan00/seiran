@@ -115,8 +115,8 @@ theorem 環境の `[title=...]`。
   抽象的な種類（`[float=top]`）も具体的な数値（`\image[width=5cm]`）も可。
   オプション引数（P3）がその受け皿
 - **両方要るものは「style.toml / config.toml に既定 + ソースで個別上書き」** の型にする。
-  実例: フロート挙動（style.toml の既定 + `[float=...]`）、
-  画像 DPI（config.toml `[image].max_dpi` + `\image[dpi=...]`）
+  実例: 画像 DPI（config.toml `[image].max_dpi` + `\image[dpi=...]`）。
+  フロート挙動（style.toml の既定 + `[float=...]`、#111）も同型だが実装は未着手
 
 **判定テスト**: 「これは 1 要素の設定か、種類の既定か？」
 個 → ソースのオプション。種類 → style.toml（見た目）/ config.toml（物理・実体）。
@@ -133,8 +133,8 @@ theorem 環境の `[title=...]`。
 | --- | --- | --- |
 | 12 装飾コマンド・`\color` | ソース可 | 個別要素（引数に閉じる）。書体の実体は config.toml の 19 種別が決める |
 | `\caption` の出現位置で Top / Bottom | ソース可 | 「ソースの順序＝内容の順序」の帰結。スタイル側に位置指定は持たない |
-| `[float=top]`（#111） | ソース可 | 個別要素の配置指定。既定挙動は style.toml のフロートデフォルト |
-| `\cell[span=N]` / rowspan（#112）/ 開始番号 `[start=N]`（#156） | ソース可 | 表の構造・列挙の番号は内容そのもの |
+| `[float=top]`（#111、未実装） | ソース可 | 個別要素の配置指定。既定挙動は style.toml のフロートデフォルト（実装も #111） |
+| `\cell[span=N]` / rowspan（#112、rowspan は未実装）/ 開始番号 `[start=N]`（#156） | ソース可 | 表の構造・列挙の番号は内容そのもの |
 | `\item` の個別マーカー上書き（#155） | ソース可 | 個別要素の設定。段別マーカーの既定は style.toml（#159） |
 | リスト項目間隔の上書き `[item_gap=N]` / `\item[item_gap=N]`（#157） | ソース可 | 個別要素・環境単位の設定。項目間隔の既定は style.toml（`list.item_margin_bottom`） |
 | ソースで本文フォント・全見出し書式を変える類 | 不可 | 種類・文書全体の既定。style.toml へ |

@@ -126,7 +126,7 @@ seam を `config` の子に置かないのは変わらない — 全外部資源
 一方向を保つ）。
 
 **依存の不変条件**: seam 部は crate 内の他 module に依存しない。crate 内依存を持つのは子 module だけで、
-`config` が `font` / `length` / `color` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
+`config` が `font` / `length` を（`ProjectConfig.font_configs` が `font::FontConfigs` を値として
 持つため）、`source_set` が `source` を参照する（`SourceSet` が `source::SourceId` を発行するため）。
 `config` / `source_set` / `font` は加えて leaf module `failures` に依存する（検証違反・読込失敗を
 `Failures<E>` で全件返すため）。
@@ -238,7 +238,8 @@ pub trait ProjectSource: Send + Sync {
   `FontData::load(source, font_configs)`（`rayon` で並列化し、同じパスを指す種別は 1 回だけ読む）、
   読込エラー `FontReadError`。`FontData` を型エイリアスではなく newtype にしているのは、構築を
   inherent メソッドで表せて拡張トレイト（旧 `FontDataExt`）が要らなくなるため。`FontReadError` は
-  `?` で `miette::Report` になる経路しかなく名指しされないので facade へは出さない。
+  `compiler::error::CompileError` が `#[from]` で運ぶために名指しするので `project` の facade に載せる
+  （crate root の facade へは出さない）。
 
 #### 子 module `source_set`
 
@@ -301,11 +302,12 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
-  `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）。小さな `Copy` 値型・enum と、その正準変換
+  `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）/ `font_kind`（`FontKind`）。小さな `Copy` 値型・enum と、その正準変換
   （`as_str` / `from_name` / serde / `Display`）のみを持つ。
   **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
-  （語彙置き場を型の無制限な受け皿にしない）。全 9 型が `HirNodeKind` / `HirMathKind` の
-  フィールドとして現れる。
+  （語彙置き場を型の無制限な受け皿にしない）。全 10 型が HIR の enum に現れる — 8 型は
+  `HirNodeKind` / `HirMathKind` の、`FontKind` は `HirInlineKind::Styled` の直接のフィールドで、
+  `MathDelimiter` だけは `MathEnvKind::Matrix`（`HirNodeKind::MathBlock` の 1 段内側）が持つ。
   値概念そのものである `Length` / `Color` は `length` / `color`、config.toml が宣言するフォント枠の
   `FontType` / `FontMap` は `project::font` の所有（`FontKind` だけはここの語彙）。ソースの同一性 `SourceId` と位置 `Span` は
   `source` の所有。
@@ -351,9 +353,9 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   横断バリデーション `validate_layout`・`typeset::pagination::context` の段幅算出・
   `typeset::breaking::break_pages` の実配置が同じ式を参照する。
 - ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
-  ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` / `MathDelimiter` は
-  `HirNodeKind::MathBlock` / `HirMathKind` が値として持つ authored 語彙なので `document` にあるのが
-  正しい — ファイル名だけを見て移さない。
+  ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` は `HirNodeKind::MathBlock` が
+  値として持ち、`MathDelimiter` はその `MathEnvKind::Matrix` のフィールドに現れる authored 語彙なので
+  `document` にあるのが正しい — ファイル名だけを見て移さない。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
   `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `typeset::font` の型（`typeset` 節の `font` 項参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
@@ -383,8 +385,9 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 `PageNumbering` / `RunningContentStyle` / `TextAlignment` / `TheoremReset` / `TheoremStyle` /
 `TitlePageStyle` / `TocStyle`、および下記 `template` の用途別テンプレート型とその値型）。`Style` の
 内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` / `TextBlockStyle` 等）と
-エラー型（`ReadStyleError` / `StyleValidationError`、子 module `error` の所有）は非公開 `use` に留め、`crate::style::FigureStyle` という
-到達経路を作らない。エラー型を `ConfigValidationError` / `StyleValidationError` と接頭辞で区別するのは
+エラー型 `StyleValidationError`（子 module `error` の所有）は非公開 `use` に留め、`crate::style::FigureStyle` という
+到達経路を作らない。`ReadStyleError` だけは `compiler::error::CompileError` が `#[from]` で運ぶために
+名指しするので `pub(crate) use` で crate 内へ公開する。エラー型を `ConfigValidationError` / `StyleValidationError` と接頭辞で区別するのは
 `project::config` 節に書いたとおり。
 
 #### スキーマ
@@ -417,7 +420,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 主要スキーマの詳細（値の基本書式 `Length` / `Color` は CLAUDE.md「設定ファイル」節を参照）:
 
 - **本文（`TextBlockStyle`）**: `[text]` が本文の `font_size` / `line_height_factor` / `paragraph_spacing` /
-  `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）を集約する。
+  `first_line_indent` / `font_kind` / `alignment`（両端揃え / 左揃え、既定は両端揃え）/
+  `punctuation_spacing`（和文約物のアキ調整の有効・無効、既定 `true`）を集約する。
   `alignment` の値型 `TextAlignment` は、それを読み込む `style::text` が所有する
   （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::boxes::Align` とは
   変更理由が違う）
@@ -444,8 +448,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   用紙寸法（`config.toml` の `[pdf]`）と突き合わせないと判定できない制約は `typeset::geometry` が持つ（#389）。
   `flush_bottom`（既定 `false`）は下端揃え＝満杯ページ / 段の最終ベースラインを版面下端へ揃える。無効時の
   出力は従来と同一（`break_pages` は stretch を無視する）。配分アルゴリズムは `typeset` の `breaking` 節を参照
-- **文献（`ReferenceStyle`）**: `style.reference` は `semantics::citation` が参照（`title` は書誌見出し文字列、
-  `csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで
+- **文献（`ReferenceStyle`）**: `style.reference` は `semantics::citation` が参照（`title` は書誌見出し文字列、`font_size` /
+  `bottom_margin` は書誌セクションの体裁、`csl_path` は CSL スタイル `.csl` のパス＝採番方式・書誌体裁、`locale_path` は CSL ロケール XML のパスで
   内蔵ロケールに overlay（同一言語コードはカスタム優先）、`locale` は書誌の出力言語＝ active locale を選ぶ
   ロケールコード）
 - **巻末索引（`IndexStyle`）**: `style.index` は `enabled` を持たない（`\index` マーカーが 1 個以上あるときだけ
@@ -455,7 +459,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `style.hyperref.link_color` を継承する
 - **脚注（`FootnoteStyle`）**: `[footnote]` に本体のフォントサイズ・マーカー体裁（`marker_format` の
   `{number}` 置換・`marker_size_factor` / `marker_raise_factor`）・区切り罫線（`top_margin` →
-  `rule_length` × `rule_thickness` → `rule_gap` の順に積む）を持つ。`numbering`（`continuous` ＝文書通しの
+  `rule_length` × `rule_thickness`（色は `rule_color`、既定は黒）→ `rule_gap` の順に積む）を持つ。`numbering`（`continuous` ＝文書通しの
   連番 / `per_page` ＝ページごとに 1 から振り直す、既定 `continuous`）は番号の振り方＝「脚注という種類の
   既定」なので P10 によりソースのオプションではなく style が持つ。`number_style`（`NumberStyle`。既定
   `arabic`）はマーカー・脚注本体先頭番号の数字表記スタイルで、ページ番号・カウンタと同じ `NumberStyle` を流用する
@@ -890,8 +894,9 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 未対応拡張子 `UnsupportedImageFormat` / ラスタのデコード `DecodeImage` / SVG のパース `ParseSvg` /
 自然寸法不正 `InvalidImageNaturalSize` / ページ単位脚注採番の非収束 `PerPageFootnoteNotConverged`）。
 `layout` の失敗型は `Failures<TypesetError>` で、画像は
-`collect_image_paths` が `BTreeSet<ProjectPath>` で作る正規化済みパスの昇順に**全件**検査する（#376）。`compiler::error::CompileError` は
-`Typeset(#[from] TypesetError)` を `#[diagnostic(transparent)]` で透過委譲する。`code` は
+`collect_image_paths` が `BTreeSet<ProjectPath>` で作る正規化済みパスの昇順に**全件**検査する（#376）。`Failures<TypesetError>` は `CompileError` を
+経由せず、`Failures<E>` の汎用 `From`（`CompileFailure::from`）で直接 `CompileFailure` へ平坦化される
+（`compiler` 節参照）。`code` は
 所有する段に合わせた `typeset::image::*` / `typeset::footnote::per_page_not_converged`
 （#356 で第 1 階層を段名へ再編。それ以前は `compiler` から移設する前の
 `build::*` を保っていた）。
@@ -1282,7 +1287,7 @@ facade が再エクスポートし、描画バックエンド（`seiran-pdf`）�
 文書を組み立てる型（`Publication` / `PublicationPage` / `PublicationResources`）と、不変条件を持つ値
 （`Rect` / `ImageRef`）は**フィールドが非公開**で、構築経路は検証を通った値だけを返す `pub(crate)` の
 コンストラクタに限られる。読み取りはアクセサ（`pages()` / `outline()` / `metadata()` / `resources()` /
-`page_box()` / `ops()` / `links()` / `font()` / `image()`）経由だけ。
+`page_box()` / `ops()` / `links()` / `font()` / `image()`、`Rect` は `x()` / `y()` / `width()` / `height()`）経由だけ。
 
 | 型 | コンストラクタが保証すること |
 | --- | --- |
@@ -1312,7 +1317,7 @@ error variant（invalid page size / rule rect / link rect / image not in manifes
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（`PublicationResources.images`
   の添字）。添字である以上、資源の並びは決定的でなければならないので `compiler::build_resources` は
   `HashMap` の反復順ではなく**パス昇順**に並べてから配列を組む。
-- `PublicationResources` / `PublicationFont` の `Debug` は手書きで、バイト列の中身ではなく長さを出す
+- `PublicationResources` / `PublicationFont` / `PublicationImage` の `Debug` は手書きで、バイト列の中身ではなく長さを出す
   （`tests/determinism.rs` の `assert_eq!` が失敗したときに数百 MB を吐かないため）。
 
 ### `compiler`
@@ -1335,8 +1340,9 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 ```
 
 組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
-`typeset::layout` の内側にあり、`compiler.rs` は `crate::typeset::` を `layout` の呼び出し以外で
-名指ししない。`Publication` への写像だけは `compiler` に残る（`typeset` は描画 API を知らないため）。
+`typeset::layout` の内側にある。`compiler.rs` が `typeset` から名指しするのは facade に載る資源・
+警告型（`FontResources` / `FontWarning` / `ImageAsset` / `TypesetWarning`）と `layout` /
+`FontResources::load` の呼び出しだけで、組版中間型・内部 module には触れない。`Publication` への写像だけは `compiler` に残る（`typeset` は描画 API を知らないため）。
 
 #### compile facade（`compiler.rs` 直下）
 
@@ -1347,7 +1353,7 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 `OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
 `input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath,
 base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は
-設定ファイルパスそのもの（`--config` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
+設定ファイルパスそのもの（`--config-path` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
 呼び出し元が実行環境に応じて明示する。compiler は `std::env::current_dir()` を呼ばないため、
 `MemoryProjectSource` + 固定 `base_dir` のテストを `chdir` 無しに書ける。`compile` は保存（`fs::write`）を
 一切行わない。
@@ -1472,12 +1478,13 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 `tests/common/mod.rs`（Rust の慣例で `tests/common.rs` ではなく `tests/common/mod.rs` に置くことで
 独立テストバイナリとして扱われないようにした共有ヘルパ。`read_test_font` / `minimal_config_toml` を
 持ち、`tests/compile_facade.rs` / `tests/determinism.rs` が `mod common;` で個別に取り込む）を土台に、
-ステージ境界の決定性を検証する回帰テストが 1 本ある（issue #306）:
+ステージ境界の決定性を検証する回帰テストがある（issue #306）:
 
-- `tests/determinism.rs`: 同じ `MemoryProjectSource` を `seiran_compiler::compile()` で 2 回呼んでも
-  `Publication`（`PartialEq`）が完全に一致することを検証する。
-  テキスト・装飾・見出し+ラベル+相互参照という異なるコード経路を通す代表的な 3 種の埋め込み `.sei`
-  文字列に対して実行し、網羅目的の fixture 追加はしない
+- `tests/determinism.rs`（4 テスト）: 成功経路は、同じ `MemoryProjectSource` を `seiran_compiler::compile()`
+  で 2 回呼んでも `Publication`（`PartialEq`）が完全に一致することを、テキスト・装飾・見出し+ラベル+
+  相互参照という異なるコード経路を通す代表的な 3 種の埋め込み `.sei` 文字列に対して検証する
+  （網羅目的の fixture 追加はしない）。エラー経路は 3 テストで、画像欠落の報告がパス昇順であること・
+  繰り返し実行しても診断 `code` 列が一致すること・ソース欠落の報告が宣言順であることを固定する
 
 ## `seiran-pdf`
 
@@ -1566,7 +1573,7 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 ### モジュール構成
 
 - `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
-  `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config` を省略すると `./config/config.toml`
+  `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config-path` を省略すると `./config/config.toml`
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）

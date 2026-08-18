@@ -50,7 +50,7 @@ cargo test                                                 # テスト実行
 cargo test -p <crate_name>                                 # 特定クレートのテスト実行
 ```
 
-`cargo fmt` は **nightly toolchain が必須**です。`rustfmt.toml` で `unstable_features = true`（`group_imports = "StdExternalCrate"` / `imports_granularity = "Crate"` / `format_macro_bodies` 等）を有効化しているためです。`build` サブコマンドの `-c` / `--config` を省略した場合は `./config/config.toml` が使用されます。
+`cargo fmt` は **nightly toolchain が必須**です。`rustfmt.toml` で `unstable_features = true`（`group_imports = "StdExternalCrate"` / `imports_granularity = "Crate"` / `format_macro_bodies` 等）を有効化しているためです。`build` サブコマンドの `-c` / `--config-path` を省略した場合は `./config/config.toml` が使用されます。
 
 ## アーキテクチャ
 
@@ -103,8 +103,9 @@ crate はデプロイ・外部依存・独立再利用の単位に限る（コ�
 
 ```text
 seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
-                   （`Publication` 系 leaf 型）の型所有者。公開 API は compile + Publication
-                   + 失敗型 CompileFailure + 警告集合 Warnings
+                   （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
+                   （Publication / DependencyManifest / Warnings / BuildStatistics / OutputPlan）
+                   + 失敗型 CompileFailure + 入力 seam（ProjectSource / ProjectPath）
   ↑ seiran-pdf     (e) 描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran）。compile → render → atomic write → 表示の 4 手順のみ
@@ -122,13 +123,13 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `failures` | 段が 1 回の検査で見つけた複数の失敗を運ぶ非空集合 `Failures<E>`（空で構築不能）と、並列処理の結果を入力順の slot へ戻す `collect_in_input_order`。**`Diagnostic` を実装しない** — 集約は表示単位ではなく、compiler seam で `CompileFailure` へ平坦化されて初めてユーザー表示になる | なし |
 | `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。座標は pt の `f32`、フォント・画像は生バイト列で、krilla を知らない純データ | project typeset |
 | `source` | ソースの同一性 `SourceId` と位置 `Span`（字句解析時点から存在する概念） | なし |
-| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `(ProjectConfig, Vec<ConfigWarning>)`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length color source failures |
+| `project` | プロジェクトの物理的な入力。外部資源取得 seam（`ProjectPath` / `ProjectSource`、filesystem / memory の 2 実装）+ config.toml の読込・garde 検証（`project::config::load` → `(ProjectConfig, Vec<ConfigWarning>)`）+ 読込済みソース集合 `SourceSet` + config.toml が宣言するフォント資源（子 module `font`: `FontType` / `FontMap` / `FontConfigs` / `FontData`） | seam 部はなし / 子 module のみ length source failures |
 | `document` | authored HIR（`HirDocument` / `NodeId` / `SourceMap` / `HirBuilder`）と HIR が値として持つ語彙型（`FontKind` を含む）の所有者 | length color source project |
 | `style` | style.toml（見た目）のデータモデル・既定値・読込・garde 検証（`style::load` → `Style`）。CSL 本体は読まない | length color document project failures |
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし | document length color source project |
 | `semantics` | 意味解析 `analyze`（ラベル・`\ref`・カウンタ・見出し・引用キー検証）+ CSL 読込・引用表示 / 書誌生成 → `SemanticDocument`。引用まわりは子 module `citation`、style からの値側投影は `SemanticPolicy` | document style source project failures |
 | `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`）。中間型は `boxes`、画像は `image`（形式判定は子 module `format`、自然寸法の取得は子 module `natural_size` が `image` / `usvg` で行う）、段順序は `pagination`、版面の幾何（`column_width` / `validate_layout`）は `geometry`、フォント解析・検証・シェイピングは `font` に閉じる | style document semantics length color project failures |
-| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に、成功時に返す警告集合は子 module `warnings`（`Warnings`）に閉じる | 上記すべて |
+| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない。入力読込は子 module `input`（`load` → `CompilationInputs`）に、成功時に返す警告集合は子 module `warnings`（`Warnings`）に閉じる | 上記すべて（`color` のみ間接） |
 
 ## コーディング規約
 
@@ -210,7 +211,7 @@ grep が正しいのは、文字列・パターン・命名規則の洗い出し
 | ファイル                            | 役割                       | 主な内容                                                                                                                                                                                                           |
 | ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `config.toml`                       | **実体・物理・メタデータ** | title/author/date、用紙サイズ（`[pdf]` の width / height）、`[pdf].show_bookmarks`（しおり出力）、`[image]`（画像 DPI / downsample）、フォントファイル指定（19 種別）、`sources` / `style_path` / `references_path`、ハイフネーション言語 |
-| `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色、フロート挙動デフォルト                                         |
+| `style.toml`                        | **見た目**                 | 本文領域のページ内側余白（`[page]` の margin_top / bottom / left / right）、見出しフォーマット・フォントサイズ・余白・行高・背景色、カウンタ表示形式（「図」「式」等）、番号書式、脚注の体裁と採番方式、段組み数、参照リンク色                                         |
 | `references.toml`（または `.json`） | **文献データ**             | CSL ベース文献情報                                                                                                                                                                                                 |
 
 - `style.toml` は `serde(default)` でデフォルト値マージ（部分指定された TOML キーだけが上書きされる）
