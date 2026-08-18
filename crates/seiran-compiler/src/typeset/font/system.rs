@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use miette::Diagnostic;
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::{
   failures::Failures,
@@ -94,7 +94,7 @@ impl<'a> FontResources<'a> {
     let stage_start = Instant::now();
     let warnings =
       validate_font::validate_fonts(configs, &font_refs).map_err(|failures| return failures.map(Into::into))?;
-    info!(elapsed_ms = elapsed_ms(stage_start), warning_count = warnings.len(), "フォントの検証が完了しました");
+    debug!(elapsed_ms = elapsed_ms(stage_start), warning_count = warnings.len(), "フォントの検証が完了しました");
 
     let shaper_datas = ShaperDatas::new(&font_refs);
     let shaper_instances = ShaperInstances::new(configs, &font_refs);
@@ -172,7 +172,7 @@ impl FontSystem<'_> {
   pub fn metric(&self, font_type: FontType) -> FontMetric { return *self.metrics.get(font_type); }
 }
 
-/// ステージ開始時刻からの経過ミリ秒を返す（INFO ログの `elapsed_ms` 用）。
+/// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。
 ///
 /// フォント検証の所要時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
 #[allow(clippy::cast_possible_truncation)]

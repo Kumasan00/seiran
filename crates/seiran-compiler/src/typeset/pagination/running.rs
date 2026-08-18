@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use tracing::info;
+use tracing::debug;
 
 use super::{context::TypesetContext, elapsed_ms, page_values::PageLabels};
 use crate::{
@@ -22,7 +22,7 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
   let stage_start = Instant::now();
   let spec = build_running_spec(ctx.style, &ctx.config.document, ctx.text_width, ctx.config.pdf.height, page_labels);
   layout_running_content(pages, ctx.resources, &spec);
-  info!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
+  debug!(elapsed_ms = elapsed_ms(stage_start), "走り文の配置が完了しました");
 }
 
 /// ページ数確定後のヘッダー・フッター配置仕様を組み立てる。

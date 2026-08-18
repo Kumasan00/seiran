@@ -14,7 +14,7 @@ use std::{collections::HashMap, path::Path};
 // 生きているが、名前を再エクスポートする必要はない（外から名指しする消費者がいない）。
 pub use error::ReadReferencesError;
 pub use reference::{Reference, References};
-use tracing::{debug, info};
+use tracing::debug;
 
 /// 参照定義ファイルの形式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +52,7 @@ pub fn read_references<P: AsRef<Path>>(
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
-    info!("参照定義ファイルが指定されていないため、空の参照定義を返します");
+    debug!("参照定義ファイルが指定されていないため、空の参照定義を返します");
     return Ok(References(HashMap::new()));
   };
   let path_ref = path.as_ref();
@@ -65,7 +65,7 @@ pub fn read_references<P: AsRef<Path>>(
   })?;
   let references = parse_references(&content, path_ref)?;
   let reference_count = references.len();
-  info!(reference_count, "参照定義ファイルの読み込みが完了しました");
+  debug!(reference_count, "参照定義ファイルの読み込みが完了しました");
   return Ok(references);
 }
 

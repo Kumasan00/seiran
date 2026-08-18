@@ -14,7 +14,7 @@ use std::{
   time::Instant,
 };
 
-use tracing::info;
+use tracing::debug;
 
 use super::{elapsed_ms, error::CompileError};
 use crate::{
@@ -142,7 +142,7 @@ pub(super) fn load(
   let stage_start = Instant::now();
   let font_data =
     FontData::load(source, &config.font_configs).map_err(|failures| return failures.map(CompileError::from))?;
-  info!(elapsed_ms = elapsed_ms(stage_start), "フォントの読み込みが完了しました");
+  debug!(elapsed_ms = elapsed_ms(stage_start), "フォントファイルの読み込みが完了しました");
 
   let sources = read_sources(source, &config.sources)?;
   let output = OutputPlan {

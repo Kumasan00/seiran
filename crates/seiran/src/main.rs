@@ -1,16 +1,12 @@
 //! Seiran の CLI エントリーポイント
 
 mod cli;
+mod reporting;
 mod subcommand;
 mod write_error;
 
-use std::{
-  fs,
-  io::{IsTerminal, Write},
-  path::Path,
-};
+use std::{fs, io::Write, path::Path, time::Instant};
 
-use tracing_subscriber::{EnvFilter, fmt};
 use write_error::WriteError;
 
 /// カレントディレクトリ取得時のエラー。
@@ -33,10 +29,11 @@ enum CurrentDirError {
 /// 設定読み込みから PDF 生成までのエラーを `miette` 診断として返す。
 fn main() -> miette::Result<()> {
   let cli_args = cli::parse_arg();
-  init_logging(cli_args.verbose, cli_args.quiet);
+  let reporter = reporting::Reporter::init(cli_args.verbose, cli_args.quiet);
 
   match cli_args.command {
     cli::Command::Build { config_path } => {
+      let build_start = Instant::now();
       let base_dir = std::env::current_dir().map_err(|source| return CurrentDirError::Get { source })?;
       let source = seiran_compiler::FilesystemProjectSource::new();
       let root = seiran_compiler::ProjectPath::new(&config_path);
@@ -44,8 +41,8 @@ fn main() -> miette::Result<()> {
         seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
       write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
-      report_warnings(&compilation.warnings, cli_args.quiet);
-      report_build(&compilation, cli_args.quiet);
+      reporter.warnings(&compilation.warnings);
+      reporter.build(&compilation, build_start.elapsed());
     },
     cli::Command::VariationAxes {
       font_path,
@@ -72,6 +69,7 @@ fn main() -> miette::Result<()> {
 /// 保存先と同じディレクトリに一時ファイルを作ってから rename する（cross-filesystem の
 /// rename は atomic にならないため、保存先ディレクトリ内に一時ファイルを作ることが必須）。
 fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
+  let stage_start = Instant::now();
   let output_dir = pdf_path.parent().unwrap_or_else(|| return Path::new("."));
   fs::create_dir_all(output_dir).map_err(|source| {
     return WriteError::CreateOutputDir {
@@ -98,90 +96,18 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
       source: error.error,
     };
   })?;
+  tracing::info!(
+    phase = "write",
+    output_path = %pdf_path.display(),
+    byte_count = bytes.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "PDF の保存が完了しました"
+  );
   return Ok(());
 }
 
-/// コンパイルが返した警告診断を stderr に表示する。
+/// ステージ開始時刻からの経過ミリ秒を返す。
 ///
-/// `Report` の `Debug` 表示が `miette` の fancy handler を通るので、エラー診断と同じ体裁で出る。
-/// `quiet` なら表示しない（成功サマリと同じ扱い）。ログ（tracing）へは出さない — 同じ問題を
-/// 診断と tracing の両方で二重に見せないため（#377）。
-fn report_warnings(warnings: &seiran_compiler::Warnings, quiet: bool) {
-  if quiet {
-    return;
-  }
-  for report in warnings.reports() {
-    eprintln!("{report:?}");
-  }
-}
-
-/// ビルド成功時のサマリを stderr に表示する。
-///
-/// `quiet` なら表示せず、端末に直接出す場合だけ完了記号を着色する。
-fn report_build(compilation: &seiran_compiler::Compilation, quiet: bool) {
-  if quiet {
-    return;
-  }
-  let mark = if std::io::stderr().is_terminal() {
-    "\u{1b}[32m\u{2713}\u{1b}[0m"
-  } else {
-    "\u{2713}"
-  };
-  eprintln!(
-    "{mark} {} · {} ページ · {} ms",
-    compilation.output.pdf_path.display(),
-    compilation.statistics.page_count,
-    compilation.statistics.total_elapsed_ms
-  );
-}
-
-/// 診断ログを初期化する。
-///
-/// `RUST_LOG` が不正な場合の警告は subscriber 初期化後に出す。
-fn init_logging(verbose: u8, quiet: bool) {
-  let (filter, warn_msg) = build_env_filter(verbose, quiet);
-  fmt::fmt()
-    .compact()
-    .with_env_filter(filter)
-    .with_target(false)
-    .with_file(false)
-    .with_line_number(false)
-    .without_time()
-    .init();
-  if let Some(msg) = warn_msg {
-    tracing::warn!("{msg}");
-  }
-}
-
-/// `RUST_LOG`、CLI フラグ、既定値の順でログフィルタを構築する。
-///
-/// `RUST_LOG` が不正なら CLI フラグへフォールバックし、警告文も返す。
-fn build_env_filter(verbose: u8, quiet: bool) -> (EnvFilter, Option<String>) {
-  if let Ok(raw) = std::env::var("RUST_LOG")
-    && !raw.trim().is_empty()
-  {
-    match EnvFilter::builder().parse(&raw) {
-      Ok(filter) => return (filter, None),
-      Err(error) => {
-        let msg = format!("環境変数 RUST_LOG のパースに失敗したため、フラグ/既定の設定にフォールバックします: {error}");
-        return (flag_filter(verbose, quiet), Some(msg));
-      },
-    }
-  }
-  return (flag_filter(verbose, quiet), None);
-}
-
-/// `-v` / `-q` からグローバルログフィルタを作る。
-fn flag_filter(verbose: u8, quiet: bool) -> EnvFilter {
-  let level = if quiet {
-    "error"
-  } else {
-    match verbose {
-      0 => "warn",
-      1 => "info",
-      2 => "debug",
-      _ => "trace",
-    }
-  };
-  return EnvFilter::new(level);
-}
+/// 保存時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
+#[allow(clippy::cast_possible_truncation)]
+fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

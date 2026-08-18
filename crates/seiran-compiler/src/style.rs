@@ -35,7 +35,7 @@ use std::path::Path;
 use garde::Validate;
 use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::debug;
 
 // `compiler::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
 pub(crate) use crate::style::error::ReadStyleError;
@@ -211,7 +211,7 @@ pub(crate) fn load(
   base_dir: &Path,
 ) -> Result<Style, Failures<ReadStyleError>> {
   let Some(path) = path else {
-    info!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
+    debug!("スタイル設定ファイルが指定されていないため、デフォルト値を使用します");
     return Ok(Style::default());
   };
   let path_str = path.display().to_string();
@@ -235,7 +235,7 @@ pub(crate) fn load(
     return Err(failures);
   }
 
-  info!(
+  debug!(
     font_size_pt = style.text.font_size.to_pt(),
     line_height_factor = style.text.line_height_factor,
     "スタイル設定ファイルの読み込みが完了しました"

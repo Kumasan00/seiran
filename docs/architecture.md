@@ -1346,6 +1346,11 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
   → typeset::layout → build_publication（Publication への写像）→ DependencyManifest::collect
 ```
 
+`tracing` の INFO イベントもこの facade が上記の安定した phase 境界で出す。各 module が知る内部手順
+（設定・style・文献の個別読込、lowering、block 構築、前付け・本文・後付けの改ページ等）は DEBUG とし、
+内部構成を変えても `-v` の工程一覧が不用意に変わらないようにする。描画と保存の INFO は、それぞれの
+外向き入口を持つ `seiran-pdf::render` と CLI の atomic write が所有する。
+
 組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
 `typeset::layout` の内側にある。`compiler.rs` が `typeset` から名指しするのは facade に載る資源・
 警告型（`FontResources` / `FontWarning` / `ImageAsset` / `TypesetWarning`）と `layout` /
@@ -1581,6 +1586,9 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 
 - `cli`: clap derive による CLI 引数定義（サブコマンド `Build` / `VariationAxes` / `TtcNames` /
   `ScriptLangs`、`--verbose` / `--quiet`）。`build` の `-c` / `--config-path` を省略すると `./config/config.toml`
+- `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の
+  初期化。フィルタ優先順位、Seiran 自身の target だけを詳細化する directive、端末装飾をこの module に
+  閉じ、`main` は `Reporter::init` / `warnings` / `build` だけを呼ぶ
 - `subcommand`: `variation-axes` / `ttc-names` / `script-langs` の実装。`read-fonts` を直接使い、
   `seiran-compiler` のフォント処理（`typeset::font`）には依存しない（フォントファイルを調べるだけで
   組版を伴わないため）
@@ -1594,6 +1602,14 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
 - **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を `miette` の handler
   （`Report` の `Debug` 表示）で stderr へ 1 件ずつ出す。`--quiet` では出さない。ログ（tracing）へは
   出さない — 同じ問題を診断と tracing の両方で見せないため（#377）。
+- **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを stderr に出し、
+  tracing は WARN 以上。`-v` は compile / render / write の安定した工程（INFO）、`-vv` は内部詳細
+  （DEBUG）、`-vvv` 以上は TRACE を有効にする。CLI フラグで詳細化する target は `seiran` /
+  `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は target 単位指定の
+  escape hatch として `--verbose` より優先するが、`--quiet` はさらに優先し、tracing・warning 診断・
+  成功サマリをすべて抑止する。
+- **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
+  所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する。
 - **保存は CLI 側の責務**。`compile` は `Compilation.output`（`OutputPlan { pdf_path }`）を返すだけで
   書き出さない。atomic write は保存先と同じディレクトリに一時ファイルを作ってから rename する
   （cross-filesystem の rename は atomic にならないため）。

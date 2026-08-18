@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use tracing::{debug, debug_span, info};
+use tracing::{debug, debug_span};
 
 use super::{
   context::{BodyPageFacts, TypesetContext},
@@ -79,7 +79,7 @@ pub(super) fn typeset_front_matter(
     let _span = debug_span!("break_pages", region = "front").entered();
     break_pages(front_blocks, ctx.text_width, &ctx.front_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  info!(
+  debug!(
     front_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
     "前付けのページ分割が完了しました"

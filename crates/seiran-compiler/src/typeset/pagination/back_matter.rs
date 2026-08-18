@@ -5,7 +5,7 @@ use std::{
   time::Instant,
 };
 
-use tracing::{debug_span, info};
+use tracing::{debug, debug_span};
 
 use super::{
   context::{BodyPageFacts, TypesetContext},
@@ -44,7 +44,7 @@ pub(super) fn typeset_back_matter(
     let _span = debug_span!("break_pages", region = "back").entered();
     break_pages(back_blocks, ctx.text_width, &ctx.back_geometry, &ctx.breaker, ctx.style.text.alignment)
   };
-  info!(
+  debug!(
     back_page_count = pages.len(),
     elapsed_ms = elapsed_ms(stage_start),
     "後付けのページ分割が完了しました"

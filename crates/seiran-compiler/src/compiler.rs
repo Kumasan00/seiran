@@ -83,30 +83,75 @@ pub fn compile<S: crate::project::ProjectSource>(
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
   let build_start = Instant::now();
-  info!(config_path = %root, "PDF のコンパイルを開始します");
+  info!(phase = "compile", config_path = %root, "PDF のコンパイルを開始します");
 
+  let stage_start = Instant::now();
   let inputs = input::load(source, root.as_path(), base_dir)?;
+  info!(phase = "input", elapsed_ms = elapsed_ms(stage_start), "入力の読み込みが完了しました");
+
+  let stage_start = Instant::now();
   let document = parse_project(&inputs)?;
+  info!(
+    phase = "frontend",
+    source_count = document.groups().len(),
+    node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "構文解析が完了しました"
+  );
+
+  let stage_start = Instant::now();
   let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
+  info!(
+    phase = "semantics",
+    heading_count = semantic_document.headings().len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "意味解析が完了しました"
+  );
+
+  let stage_start = Instant::now();
   let (font_resources, font_warnings) =
     FontResources::load(&inputs.config().font_configs, inputs.font_data()).map_err(CompileFailure::from)?;
+  info!(
+    phase = "font",
+    warning_count = font_warnings.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "フォント資源の構築が完了しました"
+  );
+
+  let stage_start = Instant::now();
   let (mut laid_out, typeset_warnings) =
     crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
       .map_err(CompileFailure::from)?;
+  info!(
+    phase = "typeset",
+    page_count = laid_out.pages.len(),
+    warning_count = typeset_warnings.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "組版が完了しました"
+  );
   let images = std::mem::take(&mut laid_out.images);
   let resources = build_resources(inputs.font_data(), &font_resources, images);
   let publication = publication::build_publication(inputs.config(), resources, &laid_out);
   let dependencies = DependencyManifest::collect(root.as_path(), &inputs, &laid_out.image_paths);
+  let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
+  let total_elapsed_ms = elapsed_ms(build_start);
   let statistics = BuildStatistics {
     page_count: laid_out.pages.len(),
-    total_elapsed_ms: elapsed_ms(build_start),
+    total_elapsed_ms,
   };
+  info!(
+    phase = "compile",
+    page_count = statistics.page_count,
+    warning_count = warnings.reports().count(),
+    elapsed_ms = total_elapsed_ms,
+    "PDF のコンパイルが完了しました"
+  );
 
   return Ok(Compilation {
     publication,
     dependencies,
-    warnings: collect_warnings(&inputs, font_warnings, typeset_warnings),
+    warnings,
     statistics,
     output: inputs.output().clone(),
   });
@@ -144,15 +189,7 @@ fn collect_warnings(
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
 fn parse_project(inputs: &CompilationInputs) -> Result<crate::document::HirDocument, CompileFailure> {
-  let stage_start = Instant::now();
   let document = crate::document::HirDocument::assemble(parse_all_sources(inputs.sources())?);
-  info!(
-    source_count = document.groups().len(),
-    node_count = document.groups().iter().map(|group| return group.nodes.len()).sum::<usize>(),
-    elapsed_ms = elapsed_ms(stage_start),
-    "全ソースのパースが完了しました"
-  );
-
   return Ok(document);
 }
 

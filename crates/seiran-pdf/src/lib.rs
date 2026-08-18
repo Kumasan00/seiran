@@ -10,9 +10,11 @@ mod image;
 mod metadata;
 mod render;
 
+use std::time::Instant;
+
 use krilla::Document;
 use seiran_compiler::Publication;
-use tracing::debug;
+use tracing::info;
 
 pub use crate::error::PdfRenderError;
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
@@ -27,11 +29,24 @@ use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_p
 ///
 /// krilla フォントの構築、画像のデコード、PDF の最終化に失敗した場合は [`PdfRenderError`] を返す。
 pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
+  let stage_start = Instant::now();
   let fonts = build_krilla_fonts(publication.resources())?;
   let mut document = Document::new();
   document.set_metadata(build_metadata(publication.metadata()));
   render_pages(&mut document, publication, &fonts)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfRenderError::FinalizeDocument { source })?;
-  debug!(page_count = publication.pages().len(), "PDF 描画が完了しました");
+  info!(
+    phase = "render",
+    page_count = publication.pages().len(),
+    byte_count = pdf_bytes.len(),
+    elapsed_ms = elapsed_ms(stage_start),
+    "PDF の描画が完了しました"
+  );
   return Ok(pdf_bytes);
 }
+
+/// 描画開始時刻からの経過ミリ秒を返す。
+///
+/// 描画時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
+#[allow(clippy::cast_possible_truncation)]
+fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

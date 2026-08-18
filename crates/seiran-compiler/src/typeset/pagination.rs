@@ -16,7 +16,7 @@ use std::{collections::HashMap, time::Instant};
 
 pub(super) use context::TypesetContext;
 pub(crate) use outline::OutlineEntry;
-use tracing::info;
+use tracing::debug;
 
 use crate::{
   project::ProjectPath,
@@ -141,14 +141,14 @@ fn concat_pages(front_pages: Vec<Page>, body_pages: Vec<Page>, back_pages: Vec<P
   let mut pages = front_pages;
   pages.extend(body_pages);
   pages.extend(back_pages);
-  info!(
+  debug!(
     page_count = pages.len(),
     front_matter_count, body_page_count, back_matter_count, "ページ分割が完了しました"
   );
   return pages;
 }
 
-/// ステージ開始時刻からの経過ミリ秒を返す（INFO サマリの `elapsed_ms` 用）。
+/// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。
 ///
 /// 組版処理時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
 #[allow(clippy::cast_possible_truncation)]

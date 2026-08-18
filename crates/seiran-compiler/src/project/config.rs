@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use garde::Validate;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::{
   failures::Failures,
@@ -207,7 +207,7 @@ pub fn load(
   let pre_config = parse_config(&config_content, config_path)?;
   let (config, warnings) = resolve(pre_config, source, base_dir)?;
 
-  info!(
+  debug!(
     config_path = %config_path.display(),
     output_name = %config.output.name,
     output_path = %config.output.pdf_path().display(),
