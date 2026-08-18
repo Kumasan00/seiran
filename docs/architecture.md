@@ -72,8 +72,8 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 （#376）。crate 内の他 module にも miette にも依存しない。
 
 - `Failures<E> { first: E, rest: Vec<E> }` — **空では構築できない**（構築経路は `single` と
-  `from_vec`（空なら `None`）だけで、`Default` は実装しない）。`into_parts` / `map` / `iter` /
-  `IntoIterator` を持つ
+  `from_vec`（空なら `None`）だけで、`Default` は実装しない）。`into_parts` / `map` /
+  `IntoIterator` を持つ（`iter` は `#[cfg(test)]` 限定）
 - `collect_in_input_order(Vec<Result<T, E>>) -> Result<Vec<T>, Failures<E>>` — 並列処理の結果を
   入力順の slot に戻してから集約するヘルパ
 
@@ -81,7 +81,7 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
 
 - **`miette::Diagnostic` を実装しない。** これが「aggregate 自身に新しい診断 `code` を付けない」の
   型による実装で、集約はそれ自体では描画されず、`compiler` seam の
-  `CompileFailure::from(failures)`（`impl<E: Diagnostic> From<Failures<E>> for CompileFailure`）で
+  `CompileFailure::from(failures)`（`impl<E: Diagnostic + Send + Sync + 'static> From<Failures<E>> for CompileFailure`）で
   平坦化されて初めてユーザー表示になる。`Diagnostic` を実装すると「複数のエラーがあります」相当の
   表示単位が生まれ、ユーザーが最初に読むメッセージが修正可能な leaf でなくなる
 - `Display` と `Error::source` は `first` へ委譲する（`thiserror` の `#[error(transparent)]` で運ぶ
@@ -399,7 +399,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 `serde(default)` でデフォルト値をマージし（部分指定された TOML キーだけが上書きされる）、garde で
 バリデーションする。単層の `Style` 構造体が後段の読むフィールドをトップレベルに保持する:
 `background_color` / `heading` / `text` / `columns` / `page` / `list` / `quote` / `table` / `figure` /
-`math` / `counters` / `theorems` / `footnote` / `page_numbering` / `header` / `footer` / `reference` /
+`footnote` / `math` / `counters` / `theorems` / `page_numbering` / `header` / `footer` / `reference` /
 `hyperref` / `title_page` / `toc` / `index`。
 
 各サブスタイル型は `style` 直下の module（`caption` / `columns` / `counter` / `figure` / `footnote` /
@@ -552,7 +552,8 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 カウンタの**値**（構造のみ。例: 節 1.2 → `parts: [1, 2]`）もここで確定する。**表示**に関わる style
 フィールド（`number_format` / `ref_format` / `display_name` / `number_style`）は走査が読まないのではなく
 **受け取れない** — 走査 `collect_facts` の引数は `semantics::SemanticPolicy`（各カウンタの `resets`、各定理
-クラスの `counter` / `reset_by` / `unnumbered`、および見出しレベル → カウンタ名の写像だけを写した投影）で、
+クラスの `counter` / `reset_by` / `unnumbered` だけを写した投影。見出しレベル → カウンタ名の対応は
+style を読まない固定の関連関数 `counter_name_for_heading` が持つ）で、
 表示側フィールドが型として存在しない。G3（内容は見た目から独立）はこれで型として保証される
 （規約や property test ではなく型で保証する）。投影の consumer は意味解析だけなので、型の所有も
 `semantics::policy`（旧 `config::policy`、#351）。`analyze` 自身は `&style::Style` を取るが、それは
@@ -684,8 +685,9 @@ style: &Style) -> Result<SemanticDocument, AnalyzeError>` の 1 関数だけ。C
   `References` / `read_references` はさらに `semantics.rs` が再エクスポートし、`semantics` の外からは
   `semantics::References` の形で参照する（`Reference` は citation 部分木の外から名指しされないので
   root facade には載せない）。
-- `style`（非公開）: `load_citation_style`（CSL スタイル・ロケールの読込。詳細は後項）。I/O を行うのは
-  citation の中でこの module だけ。
+- `style`（非公開）: `load_citation_style`（CSL スタイル・ロケールの読込。詳細は後項）。`analyze` の
+  内側で I/O を行うのは citation の中でこの module だけ（`references` の読込 I/O は入力読込段
+  `compiler::input::load` から呼ばれる）。
 - `generate`（非公開）: `generate_citations`（引用箇所の side table + `CompiledCitationStyle` から
   表示・書誌を生成。詳細は後項）。I/O は行わない。
 - `bridge`: `Reference` → CSL-JSON 担体 `citationberg::json::Item` 変換
@@ -772,7 +774,8 @@ pub(crate) fn layout(
 `KnuthPlassBreaker` / `GreedyBreaker` は実在する差し替え seam だが `typeset::breaking` 止まりで、
 どの breaker を使うかは `pagination::TypesetContext` が持つ（段ごとに渡し分ける余地を外へ出さない）。
 `lower_sources_with_headings` / `LoweringContext` / `LayoutNode` は root facade には載せず、
-`typeset` module 直下の lowering テストが `super::lowering::` から直接引く。lowering は意味解析を
+テスト側も `lowering` 自身の `#[cfg(test)] pub(super) mod test_support` が `use super::{...}` で
+引く（`typeset` 直下にテスト module は無い）。lowering は意味解析を
 行わないため失敗しない（`Result` を返す公開関数が無い）— 単一ソース用の薄いラッパーも持たない
 （複数ソースの束ね方は `document::HirDocument::groups()` 側の関心事）。
 
@@ -1270,7 +1273,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 `dump` を `compiler` ではなく `typeset` が持つのは、走査対象が `boxes` の中間型だから。
 `Publication` のダンプ（`compiler::dump`）とは別の型の別の表現で、共有するのは丸め桁数（0.01pt）と
 負のゼロ正規化の規約だけ。golden 資産 `tests/golden/*.txt` は `Publication` 側のダンプが生成し、
-`dump_pages` の消費者（`compiler::golden` の 4 テストと `compiler::project_source_equivalence`）は
+`dump_pages` の消費者（`compiler::golden` の 3 テストと `compiler::project_source_equivalence`）は
 いずれもダンプ同士の自己比較なので golden ファイルを読まない。
 
 ### `publication`

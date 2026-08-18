@@ -219,7 +219,7 @@ P10 の事例表（§3）は判定の索引で、相互の参照は行番号で�
   明示リンクは `[of=...]` のみ（G1: 関係が字面から一意）。カウンタ共有は `counter` フィールドへの
   同名指定（LaTeX `\newtheorem{lemma}[theorem]` の第 2 引数の明示化）、リセットは見出しカウンタの
   増加時のみ（上位リセットでは戻さない。LaTeX 準拠）。番号書式は "1" / "i" 等の番号スタイルでは
-  なくテンプレート文字列（`format = "{n}"` / `"{chapter}.{n}"`、counter の format と同形）。
+  なくテンプレート文字列（`number_format = "{n}"` / `"{chapter}.{n}"`、counter の `number_format` と同形）。
   `\ref` の表示は `"{display_name} {number}"` 固定で、定理クラスは ref_format フィールドを
   持たない。ユーザ独自クラスは Tier 2
 - **表構文の再設計（LaTeX tabular の暗号性排除）** — 行は `\row{...}`・セル区切りは `&`・特殊な
