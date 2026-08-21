@@ -172,7 +172,9 @@ fn parse_value(
       return Err(invalid(name, key, expected, span));
     },
     OptType::Number => {
-      let v: f64 = raw.trim().parse().map_err(|_| return invalid(name, key, expected, span))?;
+      let Ok(v) = raw.trim().parse::<f64>() else {
+        return Err(invalid(name, key, expected, span));
+      };
       return Ok(OptValue::Number(v));
     },
     OptType::String => {

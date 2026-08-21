@@ -174,10 +174,11 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 正典は root `Cargo.toml` の `[workspace.lints.rust]` / `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で両テーブルを継承）。
 
 - `clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` は allow
-- restriction lint の `implicit_return` / `missing_assert_message` / `missing_docs_in_private_items` / `multiple_unsafe_ops_per_block` / `undocumented_unsafe_blocks` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
+- restriction lint の `implicit_return` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `multiple_unsafe_ops_per_block` / `undocumented_unsafe_blocks` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
 - rustc 側は `unreachable_pub` / `unsafe_op_in_unsafe_fn` を warn で明示有効化している。前者は「モジュールは既定で非公開 + root ファサード」を機械的に強制するもので、外から到達しない `pub` は `pub(crate)` / `pub(super)` に狭める（crate 外へ本当に公開する項目だけが `pub` として残る）。後者は Edition 2024 の既定と同じ水準を設定として固定するもので、`unsafe fn` の本体でも `unsafe {}` を書かせる
 - `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
 - `unsafe {}` 1 つに unsafe 操作は 1 つだけ（`multiple_unsafe_ops_per_block`）。複数の操作をまとめず、操作ごとにブロックを分けて各々に `// SAFETY:` を書く（どの操作のどの前提が根拠かを 1 対 1 で対応させる）
+- `map_err(|_| ...)` で元のエラーを黙って捨てない（`map_err_ignore`）。低水準の cause は leaf diagnostic の `#[source]` に入れて包み、`ParseFloatError` のように値を持たず本当に捨ててよい場合は `let ... else` / `ok_or_else` で書く（捨てていることが字面に出る形にする）
 - 本体コードの `assert!` / `debug_assert!` 系にはメッセージが必須（`missing_assert_message`）。条件の言い換えではなく「なぜ成り立つはずか」＝上流のどの保証が破れたのかを日本語で書く（`unreachable!` と同じ書き方）。テストコード（`#[test]` / `#[cfg(test)]`）では発火しないので、テストの素の `assert_eq!` はそのままでよい
 - CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する
 - `unwrap_used` / `expect_used` は**有効化していない**（restriction lint で `all` にも `pedantic` にも含まれない）。テストモジュールに付けている `#[allow(clippy::unwrap_used)]` は現状 lint を抑制しておらず、意図表明にとどまる
