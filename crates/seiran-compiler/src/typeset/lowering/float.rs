@@ -96,14 +96,14 @@ pub(super) fn wrap_float(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     semantics::LabelId,
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
-    typeset::boxes::{Align, AnchorId, LinkTarget},
+    typeset::{
+      boxes::{Align, AnchorId, LinkTarget},
+      lowering::test_support::{analyzed, lower},
+    },
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

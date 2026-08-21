@@ -262,14 +262,16 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box},
-    GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph,
-  };
+  use super::{GreedyBreaker, KnuthPlassBreaker, LineBreaker, break_subparagraph};
   use crate::{
     length::Length,
     style::TextAlignment,
-    typeset::boxes::{HItem, Line},
+    typeset::{
+      boxes::{HItem, Line},
+      breaking::break_lines::test_support::{
+        box_width, discretionary, flush_right_box, link_target, stretch_glue, test_box,
+      },
+    },
   };
 
   /// 行の右端（box 群の最大右端）

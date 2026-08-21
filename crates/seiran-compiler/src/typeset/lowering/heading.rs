@@ -79,14 +79,14 @@ pub(super) fn lower_heading(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     document::FontKind,
     style::{NumberTitleTemplate, Style as ReadStyle},
-    typeset::boxes::{AnchorId, LinkTarget},
+    typeset::{
+      boxes::{AnchorId, LinkTarget},
+      lowering::test_support::{analyzed, lower},
+    },
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る

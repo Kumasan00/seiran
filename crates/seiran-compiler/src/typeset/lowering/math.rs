@@ -210,13 +210,11 @@ fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) 
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     length::Length,
     style::{CounterTemplate, Style as ReadStyle},
+    typeset::lowering::test_support::{analyzed, lower},
   };
 
   /// 数式スニペットを parse → analyze → lower して、既定 Style のレイアウトノード列を返すヘルパ

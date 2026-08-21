@@ -183,17 +183,15 @@ pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<Color>
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::{
-      lower_sources_with_headings,
-      test_support::{analyzed, lower},
-    },
-    *,
-  };
+  use super::*;
   use crate::{
     color::Color,
     semantics::{CitationId, GeneratedInline, LabelId},
     style::{NumberStyle, NumberTemplate, Style as ReadStyle},
+    typeset::lowering::{
+      lower_sources_with_headings,
+      test_support::{analyzed, lower},
+    },
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

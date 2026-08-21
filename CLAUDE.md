@@ -136,7 +136,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 1. **`return` キーワード必須**: 関数の返り値には必ず `return` を使用する（末尾式による暗黙の返却は使わない。Clippy の `needless_return` を allow にしているのはこの規約の裏返し）
 2. **フォーマット**: 正典は `rustfmt.toml`（インデント 2 スペース・最大行幅 120 文字ほか）。手書き時もこれに合わせ、適用は `cargo +nightly fmt`（nightly 必須の理由は「コマンド」節を参照）
 3. **use 文**: import は「名前を持ち込む」行為であり、**持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う**（G1「字面だけで構造が一意」の import への適用）。以下はすべてこの原則から導かれる
-   - **起点は `crate::` に統一**: 本体コードの `use` は `crate::` 起点で書き、`super::` / `self::` 起点は使わない（同じ型に 2 本のパスを作らないため。root ファサードと同じ理由）。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言している子 module から取り込む相対 use（`use input::CompilationInputs;`。`mod input;` が同じ画面にあるので出自が字面で見え、隣の `pub use input::OutputPlan;` と同じ形になる）、(b) `#[cfg(test)]` の module（`mod tests` / `mod test_support`）が親の被テスト項目を取り込む `use super::*` / `use super::Item`
+   - **起点は `crate::` に統一**: `use` は `crate::` 起点で書き、`super::` / `self::` 起点は使わない（同じ型に 2 本のパスを作らないため。root ファサードと同じ理由）。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言している子 module から取り込む相対 use（`use input::CompilationInputs;`。`mod input;` が同じ画面にあるので出自が字面で見え、隣の `pub use input::OutputPlan;` と同じ形になる）、(b) `#[cfg(test)]` の module（`mod tests` / `mod test_support`）が**直近の親**の被テスト項目を取り込む `use super::*` / `use super::Item`。(b) は親 1 段までで、`super::super::` で祖父母以上へ遡る形は使わない（何段上かを数えないと出自が分からず、原則に反する）
    - **`crate::` を本体コードへ直書きしない**: 型・トレイトは import して裸の名前で書き、関数は import した module 経由で `module::fn(...)` と呼ぶ。`clippy::absolute_paths` は 4 セグメント以上しか検出しない（末尾の enum variant / 関連関数を数えないので `crate::source::SourceId::new` は素通りする）ので、規約のほうが lint より厳しい。doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外
    - `*` を避け明示的にインポート、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`
    - 型・トレイト・モジュールは直接 import する。関数は既定でモジュール経由で呼ぶ（`mem::swap` 方式）が、呼び出し元で `fn_name(...)` だけ見ても出自・曖昧さがない場合（private な単一関数サブモジュールからの re-export、`tracing::debug!` 等の広く知られた慣用）は直接 import してよい
@@ -196,7 +196,7 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
 - AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る
-- **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]` で閉じた `test_support` module に切り出して 1 箇所に集める（`frontend::evaluator::test_support` / `typeset::lowering::test_support` / `project::config::test_support`）。切り出し先は「そのヘルパが注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)` のように module 経由で呼ぶ
+- **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]` で閉じた `test_support` module に切り出して 1 箇所に集める（`frontend::evaluator::test_support` / `typeset::lowering::test_support`）。切り出し先は「そのヘルパが注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)` のように module 経由で呼ぶ。crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` → `seiran_compiler::test_support`）
 - test module も本体と同じ use 規約に従う（「必須ルール」3）。親の被テスト項目を `use super::*` / `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する
 - テストコードでは `unwrap` / `expect` を許容する（`unwrap_used` / `expect_used` は無効なので属性は付けない）。`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）
 - **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/compiler/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する

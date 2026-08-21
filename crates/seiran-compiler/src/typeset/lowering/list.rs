@@ -83,13 +83,11 @@ pub(super) fn lower_list(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     document::FontKind,
     style::{NestedOrderedFormat, NumberStyle, NumberTemplate, Style as ReadStyle},
+    typeset::lowering::test_support::{analyzed, lower},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

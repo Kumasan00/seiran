@@ -106,14 +106,15 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, paren
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     document::{FontKind, HeadingLevel},
     semantics::CitationId,
     style::Style as ReadStyle,
+    typeset::lowering::{
+      lower_sources_with_headings,
+      test_support::{analyzed, lower},
+    },
   };
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
@@ -143,7 +144,7 @@ mod tests {
 
     // Act
     let document = analyzed.with_citations_for_test(Vec::new(), bibliography());
-    let (layout, headings) = super::super::lower_sources_with_headings(&ctx, &document);
+    let (layout, headings) = lower_sources_with_headings(&ctx, &document);
 
     // Assert — 書誌の見出しは本文の見出しの続きの key を持ち、番号は空
     assert_eq!(headings.len(), 2, "{headings:?}");

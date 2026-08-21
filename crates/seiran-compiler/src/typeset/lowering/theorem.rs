@@ -123,11 +123,14 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::{
+      boxes::AnchorMark,
+      lowering::test_support::{analyzed, lower},
+    },
   };
-  use crate::{style::Style as ReadStyle, typeset::boxes::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

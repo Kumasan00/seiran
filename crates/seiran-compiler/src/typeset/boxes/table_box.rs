@@ -307,10 +307,6 @@ pub(crate) fn collect_row_links(
 #[cfg(test)]
 mod tests {
   use super::{
-    super::{
-      hitem::{HBox, HBoxContent, HItem, PlacedHItem},
-      link::{AnchorId, LinkTarget},
-    },
     TableBox, TableCellBox, TableColumn, TableRowBox, collect_row_links, max_font_size_in_items, measure_items_width,
     position_table_row_boxes, resolve_column_widths, table_row_height,
   };
@@ -319,7 +315,13 @@ mod tests {
     length::Length,
     project::FontType,
     semantics::LabelId,
-    typeset::GlyphRun,
+    typeset::{
+      GlyphRun,
+      boxes::{
+        hitem::{HBox, HBoxContent, HItem, PlacedHItem},
+        link::{AnchorId, LinkTarget},
+      },
+    },
   };
 
   /// pt 値から `Length` を作る

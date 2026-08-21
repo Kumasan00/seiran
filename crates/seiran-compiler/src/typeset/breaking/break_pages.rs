@@ -1211,8 +1211,8 @@ fn place_table(composer: &mut PageComposer, geom: &PageGeometry, table: &TableBo
 #[cfg(test)]
 mod tests {
   use super::{
-    super::break_lines::GreedyBreaker, FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind,
-    PageGeometry, break_pages, is_content_block, keep_group_end, pack_footnotes, placed_block_bottom,
+    FootnoteCharges, FootnoteDemand, FootnoteOverflow, FootnoteOverflowKind, PageGeometry, break_pages,
+    is_content_block, keep_group_end, pack_footnotes, placed_block_bottom,
   };
   use crate::{
     document::{ColumnAlign, ColumnWidth},
@@ -1225,6 +1225,7 @@ mod tests {
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
         Page, PlacedBlock, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
+      breaking::break_lines::GreedyBreaker,
       font::GlyphRun,
     },
   };

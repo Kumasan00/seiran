@@ -65,11 +65,11 @@ pub(super) fn lower_figure(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::{lower_sources_with_headings, test_support::analyzed},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::lowering::{lower_sources_with_headings, test_support::analyzed},
   };
-  use crate::style::Style as ReadStyle;
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///

@@ -45,11 +45,11 @@ pub(super) fn lower_quote(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::lowering::test_support::{analyzed, lower},
   };
-  use crate::style::Style as ReadStyle;
 
   /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
   fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {

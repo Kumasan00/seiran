@@ -107,11 +107,12 @@ pub(super) fn lower_table(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    length::Length,
+    style::Style as ReadStyle,
+    typeset::lowering::test_support::{analyzed, lower},
   };
-  use crate::{length::Length, style::Style as ReadStyle};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

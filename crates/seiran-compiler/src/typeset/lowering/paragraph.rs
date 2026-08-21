@@ -71,15 +71,15 @@ pub(super) fn lower_paragraph(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     length::Length,
     semantics::LabelId,
     style::Style as ReadStyle,
-    typeset::boxes::{AnchorId, LinkTarget},
+    typeset::{
+      boxes::{AnchorId, LinkTarget},
+      lowering::test_support::{analyzed, lower},
+    },
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ
