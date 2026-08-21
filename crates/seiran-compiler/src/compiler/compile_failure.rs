@@ -132,7 +132,6 @@ impl Diagnostic for CompileFailure {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use miette::Diagnostic;
   use thiserror::Error;

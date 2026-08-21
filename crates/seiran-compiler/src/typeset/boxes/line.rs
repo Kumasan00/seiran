@@ -20,8 +20,10 @@ pub(crate) struct Line {
   /// ベースラインから下の深さ（正値）
   pub depth: Length,
   /// 段落最終行・強制改行による行か
-  // 書き込むだけで組版は読まない（crate 内の `#[cfg(test)]` が行分割の結果を検証する）。
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "書き込むだけで組版は読まない（crate 内の `#[cfg(test)]` が行分割の結果を検証する）"
+  )]
   pub is_last: bool,
   /// この行に含まれるクリック可能なリンク領域（機構 B・行頭からの水平範囲）
   ///

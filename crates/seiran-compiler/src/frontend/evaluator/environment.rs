@@ -33,9 +33,10 @@ pub(crate) struct EnvDef {
   /// 評価器は [`EvalError::UnknownEnvironment`] を返す。
   pub handler: Option<EnvHandler>,
   /// エラーメッセージ・診断用の人間可読名
-  // 読み手が付くのは [`EvalError::UnknownEnvironment`] を環境名だけでなく人間可読名でも出すとき。
-  // 値は `"itemize"` → 「箇条書きリスト」のようにキーから復元できないので、消さずに持っておく。
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "[`EvalError::UnknownEnvironment`] を人間可読名でも出すときに読み手が付く。値はキーから復元できないので消さずに持つ"
+  )]
   pub display_name: &'static str,
 }
 

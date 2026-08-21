@@ -83,8 +83,10 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool
       .iter()
       .map(|cfg_axis| {
         let tag = Tag::new(&cfg_axis.name);
-        // krilla variable font 軸値は f32 のみ受け付ける（API 境界での精度低下は許容）
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(
+          clippy::cast_possible_truncation,
+          reason = "krilla の variable font 軸値が f32 しか受け付けず、API 境界での精度低下は避けられない"
+        )]
         let value = cfg_axis.value as f32;
         let axis = (tag, value);
         return axis;
@@ -97,7 +99,10 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool
 }
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。
-#[allow(clippy::cast_precision_loss)]
+#[allow(
+  clippy::cast_precision_loss,
+  reason = "グリフ座標は font design unit の整数で、f32 の仮数部に収まる桁数しか持たない"
+)]
 pub(crate) fn convert_to_krilla_glyphs(glyphs: &[Glyph], upem: f32) -> Vec<KrillaGlyph> {
   let krilla_glyphs = glyphs
     .iter()

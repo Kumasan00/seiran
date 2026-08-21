@@ -240,7 +240,6 @@ fn format_expected(schema: &[(&str, OptType)]) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 
@@ -472,7 +471,7 @@ mod tests {
   }
 
   #[test]
-  #[allow(clippy::approx_constant)]
+  #[allow(clippy::approx_constant, reason = "`3.14` は円周率の近似ではなく f64 パースを確認するための入力値")]
   fn collect_returns_number_parses_f64() {
     // Arrange
     let arena = Bump::new();

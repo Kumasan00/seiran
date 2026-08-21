@@ -76,7 +76,6 @@ pub(crate) fn equation(view: &EnvironmentView, builder: &HirBuilder) -> Result<V
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

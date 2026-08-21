@@ -45,7 +45,6 @@ fn walk_nodes(nodes: &[HirNode], paths: &mut BTreeSet<ProjectPath>) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::collect_image_paths;
   use crate::{document::HirDocument, project::ProjectPath, source::SourceId};

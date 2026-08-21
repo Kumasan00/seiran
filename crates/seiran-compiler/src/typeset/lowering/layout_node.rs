@@ -26,8 +26,10 @@ pub(crate) enum LayoutNode {
     align: Align,
   },
   /// 水平方向のコンテナ (行、インライン数式など)
-  // lowering は現状構築しない（`VBox` 経由で組む）。crate 内の `#[cfg(test)]` が block 側の扱いを検証する。
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "lowering は構築しない（`VBox` 経由で組む）。block 側の扱いを crate 内の `#[cfg(test)]` が検証する"
+  )]
   HBox {
     /// 内包する子ノード列
     children: Vec<LayoutNode>,
@@ -53,9 +55,10 @@ pub(crate) enum LayoutNode {
     target_dpi: Option<u32>,
   },
   /// 伸縮スペース（水平方向の glue）
-  // lowering は現状構築しない（行内のアキは block 段が挿入する）。crate 内の `#[cfg(test)]` が
-  // block 側の扱いを検証する。
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "lowering は構築しない（行内のアキは block 段が挿入する）。block 側の扱いを crate 内の `#[cfg(test)]` が検証する"
+  )]
   Glue {
     /// 自然幅
     natural: Length,
@@ -190,8 +193,7 @@ pub(crate) struct TextStyle {
 
 impl TextStyle {
   /// 指定されたフォントサイズで新しい `TextStyle` を生成する（既定色 = 黒）
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   #[must_use]
   pub(super) fn new(font_size: Length) -> Self {
     return TextStyle {

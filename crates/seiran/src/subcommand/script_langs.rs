@@ -12,7 +12,6 @@ use tracing::info;
 
 /// フォントの Script/Language System 解析エラー。
 #[derive(Error, Debug, Diagnostic)]
-#[allow(clippy::enum_variant_names)]
 enum ScriptLangsError {
   /// フォントファイルの読み込みエラー
   #[error("フォントファイルの読み込みに失敗しました: {0}")]
@@ -20,7 +19,7 @@ enum ScriptLangsError {
     code(cli::script_langs::io_error),
     help("ファイルが存在し、読み取り権限があることを確認してください。")
   )]
-  IoError(#[from] std::io::Error),
+  Io(#[from] std::io::Error),
 
   /// 指定インデックスのフォント解析エラー
   #[error("インデックス {font_index} のフォント解析に失敗しました")]
@@ -30,7 +29,7 @@ enum ScriptLangsError {
       "ファイルが有効なフォントファイル (TTF/OTF/TTC/OTC) であることを確認してください。TTC の場合は別のインデックスを試してください。"
     )
   )]
-  FontParseError {
+  FontParse {
     /// フォント インデックス（TTC の場合）
     font_index: u32,
     /// 元の読み込みエラー
@@ -44,7 +43,7 @@ enum ScriptLangsError {
     code(cli::script_langs::gsub_error),
     help("このフォントには GSUB（グリフ置換）テーブルが含まれていない可能性があります。")
   )]
-  GsubError {
+  Gsub {
     /// 元の読み込みエラー
     #[source]
     source: ReadError,
@@ -56,7 +55,7 @@ enum ScriptLangsError {
     code(cli::script_langs::gpos_error),
     help("このフォントには GPOS（グリフ位置調整）テーブルが含まれていない可能性があります。")
   )]
-  GposError {
+  Gpos {
     /// 元の読み込みエラー
     #[source]
     source: ReadError,
@@ -68,7 +67,7 @@ enum ScriptLangsError {
     code(cli::script_langs::feature_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
-  FeatureListError {
+  FeatureList {
     /// テーブル名（"GSUB" または "GPOS"）
     table_name: &'static str,
     /// 元の読み込みエラー
@@ -82,7 +81,7 @@ enum ScriptLangsError {
     code(cli::script_langs::script_list_error),
     help("{table_name} テーブルの構造が破損している可能性があります。フォントファイルを検証してください。")
   )]
-  ScriptListError {
+  ScriptList {
     /// テーブル名（"GSUB" または "GPOS"）
     table_name: &'static str,
     /// 元の読み込みエラー
@@ -96,7 +95,7 @@ enum ScriptLangsError {
     code(cli::script_langs::lang_sys_error),
     help("Language System エントリが無効であるか、Script リスト構造が破損している可能性があります。")
   )]
-  LangSysError {
+  LangSys {
     /// Language System インデックス
     index: u16,
     /// Script タグ
@@ -112,7 +111,7 @@ enum ScriptLangsError {
     code(cli::script_langs::feature_error),
     help("Feature テーブルエントリが無効である可能性があります。Feature リストのインデックスが範囲外かもしれません。")
   )]
-  FeatureError {
+  Feature {
     /// Feature インデックス
     index: u16,
     /// 元の読み込みエラー
@@ -126,7 +125,7 @@ enum ScriptLangsError {
     code(cli::script_langs::feature_params_error),
     help("Feature パラメータ構造が破損している可能性があります。")
   )]
-  FeatureParamsError {
+  FeatureParams {
     /// Feature タグ
     feature_tag: String,
     /// 元の読み込みエラー
@@ -147,12 +146,12 @@ pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<
 
   let font_data = fs::read(file_path).map_err(ScriptLangsError::from)?;
   let font_ref = FontRef::from_index(&font_data, font_index)
-    .map_err(|source| return ScriptLangsError::FontParseError { font_index, source })?;
+    .map_err(|source| return ScriptLangsError::FontParse { font_index, source })?;
 
-  let gsub = font_ref.gsub().map_err(|source| return ScriptLangsError::GsubError { source })?;
+  let gsub = font_ref.gsub().map_err(|source| return ScriptLangsError::Gsub { source })?;
   let gsub_features = process_layout_table("GSUB", gsub.feature_list(), gsub.script_list(), &mut referenced_features)?;
 
-  let gpos = font_ref.gpos().map_err(|source| return ScriptLangsError::GposError { source })?;
+  let gpos = font_ref.gpos().map_err(|source| return ScriptLangsError::Gpos { source })?;
   let gpos_features = process_layout_table("GPOS", gpos.feature_list(), gpos.script_list(), &mut referenced_features)?;
 
   let all_features = collect_all_features(&gsub_features, &gpos_features);
@@ -174,8 +173,8 @@ fn process_layout_table<'a>(
 ) -> Result<FeatureList<'a>, ScriptLangsError> {
   println!("{table_name} Table:");
 
-  let feature_list = feature_list.map_err(|source| return ScriptLangsError::FeatureListError { table_name, source })?;
-  let script_list = script_list.map_err(|source| return ScriptLangsError::ScriptListError { table_name, source })?;
+  let feature_list = feature_list.map_err(|source| return ScriptLangsError::FeatureList { table_name, source })?;
+  let script_list = script_list.map_err(|source| return ScriptLangsError::ScriptList { table_name, source })?;
 
   print_scripts(&script_list, &feature_list, referenced_features)?;
 
@@ -199,7 +198,7 @@ fn print_scripts(
     if let Ok(subtable) = script_record.script(scripts.offset_data()) {
       if let Some(default_lang_sys) = subtable.default_lang_sys() {
         let default_lang = default_lang_sys.map_err(|source| {
-          return ScriptLangsError::LangSysError {
+          return ScriptLangsError::LangSys {
             index: 0,
             script_tag: script_tag.clone(),
             source,
@@ -268,7 +267,7 @@ fn get_language_features(
 
   for feature_index in lang_sys.feature_indices() {
     let feature = features.get(feature_index.get()).map_err(|source| {
-      return ScriptLangsError::FeatureError {
+      return ScriptLangsError::Feature {
         index: feature_index.get(),
         source,
       };
@@ -279,7 +278,7 @@ fn get_language_features(
 
     if let Some(params) = feature.feature_params() {
       let feature_params = params.map_err(|source| {
-        return ScriptLangsError::FeatureParamsError {
+        return ScriptLangsError::FeatureParams {
           feature_tag: feature_tag.clone(),
           source,
         };

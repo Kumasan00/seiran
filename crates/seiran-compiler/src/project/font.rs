@@ -110,7 +110,6 @@ impl FontData {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{FontConfig, FontConfigs, FontData, FontReadError, FontType};
   use crate::project::MemoryProjectSource;

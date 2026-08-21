@@ -128,8 +128,10 @@ pub(crate) enum Block {
     /// 伸長能力
     stretch: Length,
     /// 収縮能力
-    // ブロック間 glue の収縮は break_pages が使わない（伸長のみ）。対称性のため保持する。
-    #[allow(dead_code)]
+    #[allow(
+      dead_code,
+      reason = "ブロック間 glue の収縮は break_pages が使わない（伸長のみ）。glue の対称性のため保持する"
+    )]
     shrink: Length,
   },
   /// 分割コスト（penalty）

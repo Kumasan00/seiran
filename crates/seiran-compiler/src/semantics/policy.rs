@@ -108,7 +108,6 @@ impl SemanticPolicy {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::SemanticPolicy;
   use crate::{

@@ -297,7 +297,6 @@ fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, origi
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::path::PathBuf;
 

@@ -67,7 +67,6 @@ pub(crate) fn strict_command_calls<'a>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

@@ -83,7 +83,10 @@ pub(crate) fn load_image_resources(
 }
 
 /// 画像 1 件を読み込み、自然寸法と描画へ渡す資源を返す。
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
+)]
 fn read_image(
   source: &dyn crate::project::ProjectSource,
   path: &ProjectPath,
@@ -118,7 +121,10 @@ fn read_image(
 ///
 /// `blocks` の画像が `images` に無い場合に落ちる — 両者は同じ HIR の `Figure` から作られるので、
 /// 食い違うのは収集ロジックの不具合だけ（ユーザー入力では起こせない）。
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
+)]
 pub(crate) fn resolve_images(
   blocks: Vec<Block>,
   text_width: f32,

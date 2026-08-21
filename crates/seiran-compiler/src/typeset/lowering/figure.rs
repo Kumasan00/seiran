@@ -21,7 +21,10 @@ pub(crate) struct ImageOverrides {
 }
 
 /// 図をレイアウトノードに変換する
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "図 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
+)]
 pub(super) fn lower_figure(
   ctx: &LoweringContext,
   image_path: &ProjectPath,
@@ -61,7 +64,6 @@ pub(super) fn lower_figure(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::{lower_sources_with_headings, test_support::analyzed},

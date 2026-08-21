@@ -233,7 +233,11 @@ fn draw_image(
     && let Some(target) = required_pixels(width, height, dpi)
     && (nat_width > target.0 || nat_height > target.1)
   {
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    #[allow(
+      clippy::cast_sign_loss,
+      clippy::cast_possible_truncation,
+      reason = "`required_pixels` は有限かつ正の値だけを返し、`ceil().max(1.0)` で 1 以上に丸めた後の縮小目標ピクセル数"
+    )]
     let target_u = (target.0.ceil().max(1.0) as u32, target.1.ceil().max(1.0) as u32);
     load_image(path, format, bytes, Some(target_u))?
   } else {
@@ -293,7 +297,7 @@ mod tests {
   use super::{OutlineTreeNode, insert_outline_node, to_krilla_point, to_xyz_destination};
 
   #[test]
-  #[allow(clippy::float_cmp)]
+  #[allow(clippy::float_cmp, reason = "座標を素通しする関数の検証なので、丸めのない厳密一致を見るのが正しい")]
   fn to_krilla_point_passes_through_pt_coordinates_without_adding_margin() {
     // Arrange
     let point = PubPoint { x: 123.0, y: 45.0 };

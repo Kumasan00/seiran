@@ -63,7 +63,6 @@ impl<E: Diagnostic + 'static> Diagnostic for SourceDiagnostic<E> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::path::PathBuf;
 

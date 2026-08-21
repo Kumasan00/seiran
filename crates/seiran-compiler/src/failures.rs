@@ -117,7 +117,6 @@ impl<E: std::error::Error + 'static> std::error::Error for Failures<E> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use thiserror::Error;
 

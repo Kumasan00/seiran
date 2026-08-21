@@ -64,8 +64,7 @@ impl GeneratedCitations {
   pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return &self.bibliography; }
 
   /// 表示も書誌も 1 つも無い（＝引用ゼロのプロジェクト）かを返す
-  // crate 内の `#[cfg(test)]`（`compiler::semantics` のテスト）からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（`compiler::semantics` のテスト）からのみ使う")]
   pub(crate) fn is_empty(&self) -> bool { return self.displays.is_empty() && self.bibliography.is_empty(); }
 
   /// テスト専用の直接構築（`NodeId::for_test` と同じ位置づけ）
@@ -141,7 +140,6 @@ pub(crate) fn generate_citations(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::{io::Write, path::PathBuf};
 

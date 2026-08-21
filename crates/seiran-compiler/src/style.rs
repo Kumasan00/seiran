@@ -42,9 +42,10 @@ pub(crate) use crate::style::error::ReadStyleError;
 // module root が再エクスポートするのは、`style` の外から実際に名指しされる名前だけ。
 // `Style` の内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` 等）は
 // 下の非公開 `use` に留め、`crate::style::FigureStyle` という到達経路を作らない。
-// `NestedOrderedFormat` / `NumberStyle` のように利用側が `#[cfg(test)] mod tests` だけの名前があるため
-// `unused_imports` を許可する（非公開 module からの再エクスポートは本体ビルドでは未使用に見える）。
-#[allow(unused_imports)]
+#[allow(
+  unused_imports,
+  reason = "`NestedOrderedFormat` / `NumberStyle` は利用側が `#[cfg(test)] mod tests` だけで、非公開 module からの再エクスポートは本体ビルドでは未使用に見える"
+)]
 pub(crate) use crate::style::{
   caption::CaptionStyle,
   counter::{CounterName, CounterStyle, Counters},
@@ -203,8 +204,10 @@ impl Style {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
-// 設定ファイルは 1 回しか読まないため、Result サイズを最適化する価値が低い。
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
+)]
 pub(crate) fn load(
   source: &dyn ProjectSource,
   path: Option<&Path>,
@@ -248,7 +251,10 @@ pub(crate) fn load(
 /// # Errors
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
+)]
 pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<ReadStyleError>> {
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());

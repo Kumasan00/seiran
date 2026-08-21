@@ -3,8 +3,6 @@
 //! 検証面は `parse_source` の出力そのものにする。個々の評価器ハンドラではなく、
 //! 「frontend が返す HIR が満たすべき性質」をここでまとめて固定する。
 
-#![allow(clippy::unwrap_used)]
-
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use crate::{

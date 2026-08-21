@@ -175,7 +175,6 @@ pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<crate:
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::{

@@ -55,7 +55,11 @@ fn list_common(view: &EnvironmentView, builder: &HirBuilder, ordered: bool) -> R
           span: view.span().to_source_span(),
         });
       }
-      #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+      #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "直前のガードで有限・1 以上・整数・`u32::MAX` 以下であることを確認済み"
+      )]
       {
         start = Some(*n as u32);
       }
@@ -114,7 +118,6 @@ fn list_common(view: &EnvironmentView, builder: &HirBuilder, ordered: bool) -> R
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

@@ -191,7 +191,6 @@ pub(crate) fn evaluate_command(view: &CommandView, builder: &HirBuilder) -> Resu
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
   use proptest::prelude::*;

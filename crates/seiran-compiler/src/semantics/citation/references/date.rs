@@ -14,12 +14,11 @@ use serde::{
 ///
 /// JSON object または TOML テーブルの構造化された日付のみを受理する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#date>
-// `date_parts` は CSL の `date-parts` キー（103・134・140 行目の手書き Serialize/Deserialize
-// impl 内の文字列リテラル）に対応させた名前で、struct 名との重複は意図的。旧 citation crate では
-// 公開 API のため対象外だったが、seiran へ吸収され非公開 module 化されたことで
-// `clippy::struct_field_names`（pedantic、実効可視性ベース）が新たに発火する。
 #[derive(Debug, Default)]
-#[allow(clippy::struct_field_names)]
+#[allow(
+  clippy::struct_field_names,
+  reason = "`date_parts` は CSL の `date-parts` キーに対応させた名前で、struct 名との重複は意図的"
+)]
 pub(crate) struct Date {
   /// 日付部分（年・月・日）。
   ///

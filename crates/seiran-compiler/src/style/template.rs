@@ -545,7 +545,6 @@ impl RunningTemplate {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use garde::Validate;
   use serde::{Deserialize, Serialize};

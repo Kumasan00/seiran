@@ -14,8 +14,7 @@ impl LabelId {
   pub(crate) fn new(label: impl Into<String>) -> Self { return LabelId(label.into()); }
 
   /// 内部の文字列を返す
-  // crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う")]
   #[must_use]
   pub(crate) fn as_str(&self) -> &str { return &self.0; }
 }

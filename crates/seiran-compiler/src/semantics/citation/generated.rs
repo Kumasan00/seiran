@@ -98,7 +98,6 @@ pub(crate) fn generated_inlines_to_plain_text(inlines: &[GeneratedInline]) -> St
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{CitationId, GeneratedInline, generated_inlines_to_plain_text};
   use crate::document::FontKind;

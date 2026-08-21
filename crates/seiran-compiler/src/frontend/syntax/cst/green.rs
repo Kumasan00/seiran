@@ -67,9 +67,10 @@ pub(crate) enum GreenElement<'a> {
 
 impl GreenElement<'_> {
   /// 要素の Span を返す
-  // 現時点で未使用（#201 で syntax モジュールが frontend クレート内部に閉じ、
-  // 未使用な pub API が dead_code 検出の対象になった）。CST アクセサとして温存する。
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "#201 で syntax module が frontend 内部に閉じ、未使用な pub API が dead_code の対象になった。CST アクセサとして温存する"
+  )]
   #[must_use]
   pub(super) fn span(&self) -> Span {
     match self {

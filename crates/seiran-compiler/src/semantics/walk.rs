@@ -561,7 +561,6 @@ impl Walker<'_> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::collect_facts;
   use crate::{
@@ -931,7 +930,6 @@ mod tests {
 /// `analyze` が確定する fact の完全性（variant ごとの必須 fact が欠けないこと）を固定する
 /// property test（issue #324）
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod completeness_tests {
   use proptest::prelude::*;
 

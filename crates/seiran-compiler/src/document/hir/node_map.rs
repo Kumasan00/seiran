@@ -49,8 +49,7 @@ impl<T> NodeMap<T> {
   }
 
   /// エントリ数を返す
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub(crate) fn len(&self) -> usize { return self.entries.len(); }
 
   /// エントリが 1 つも無いかを返す
@@ -58,7 +57,6 @@ impl<T> NodeMap<T> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::NodeMap;
   use crate::{document::hir::NodeId, source::SourceId};

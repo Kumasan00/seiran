@@ -60,7 +60,6 @@ pub(super) enum Command {
 pub(super) fn parse_arg() -> Cli { return Cli::parse() }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use clap::CommandFactory;
 

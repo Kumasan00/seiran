@@ -68,7 +68,6 @@ pub(super) fn lower_paragraph(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_support::{analyzed, lower},

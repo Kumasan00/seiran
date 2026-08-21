@@ -169,7 +169,11 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
             span: view.span().to_source_span(),
           });
         }
-        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        #[allow(
+          clippy::cast_sign_loss,
+          clippy::cast_possible_truncation,
+          reason = "直前のガードで有限・正・`u32::MAX` 以下であることを確認済み"
+        )]
         let rounded = n.round() as u32;
         if rounded == 0 {
           return Err(EvalError::InvalidOptArgValue {
@@ -219,7 +223,6 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

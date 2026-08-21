@@ -67,7 +67,6 @@ pub(crate) fn parse_source(source: &str, source_id: crate::source::SourceId) -> 
 /// 評価器の統合テスト（旧 `frontend` crate の `tests/evaluate.rs`、#307 で本 module 直下の
 /// inline テストへ移設）
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::too_many_lines)]
 mod tests {
   use super::{EvalError, ParseSourceError, parse_source};
   use crate::document::{

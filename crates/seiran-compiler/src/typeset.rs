@@ -30,7 +30,6 @@ mod warning;
 mod dump;
 // 外側の module のテストが確定レイアウトを組み立てるための fixture builder（#353）。
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 pub(crate) mod test_fixtures;
 
 // 確定レイアウトを `Publication` へ写す `compiler::publication` が、ページの中身（配置済みブロック・

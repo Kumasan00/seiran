@@ -32,10 +32,10 @@ pub(crate) fn minimal_config_toml(source_path: &str) -> String {
 }
 
 /// [`minimal_config_toml`] の `[font_configs.serif]` に任意の行を足した `config.toml` を組む。
-///
-/// `tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされるので、片方でしか
-/// 使わないヘルパは `dead_code` になる（慣例どおり `allow` で許容する）。
-#[allow(dead_code)]
+#[allow(
+  dead_code,
+  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
+)]
 pub(crate) fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\n\n{}{}{}",
@@ -48,7 +48,10 @@ pub(crate) fn minimal_config_toml_with_serif_extra(source_path: &str, extra_line
 /// [`minimal_config_toml_with_serif_extra`] に `style_path` を足した `config.toml` を組む。
 ///
 /// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
-#[allow(dead_code)]
+#[allow(
+  dead_code,
+  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
+)]
 pub(crate) fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
   return format!(
     "sources = [\"{source_path}\"]\nstyle_path = \"{style_path}\"\n\n{}{}{}",
@@ -61,7 +64,10 @@ pub(crate) fn config_toml_with_style(source_path: &str, style_path: &str, extra_
 /// 脚注 1 行がページの高さを超える `style.toml` を組む（組版警告の再現用）。
 ///
 /// `numbering` は `"continuous"` / `"per_page"`（後者は本文パスが不動点まで反復される）。
-#[allow(dead_code)]
+#[allow(
+  dead_code,
+  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
+)]
 pub(crate) fn overflowing_footnote_style_toml(numbering: &str) -> String {
   return format!("[footnote]\nnumbering = \"{numbering}\"\nfont_size = \"900pt\"\n");
 }

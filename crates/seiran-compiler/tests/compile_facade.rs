@@ -23,7 +23,6 @@ use seiran_compiler::{MemoryProjectSource, ProjectPath};
 fn project_base_dir() -> &'static Path { return Path::new("/project"); }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   // Arrange — 実ファイルシステムに一切触れない MemoryProjectSource（フォントバイナリの読込
   // だけはテストコード自身が std::fs で行う。本体コードは ProjectSource 経由のみ）。
@@ -67,7 +66,6 @@ fn compile_reports_a_leaf_diagnostic_on_failure() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn compile_returns_font_warnings_with_the_successful_compilation() {
   // Arrange — テストフォントが持たない script タグを serif に指定する（組版は成功する）
   let font_bytes = read_test_font();
@@ -103,7 +101,6 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
   // Arrange — config の警告（拡張子）・フォントの警告（script 不一致）・組版の警告
   // （脚注 1 行がページの高さを超える）を同時に起こす
@@ -141,7 +138,6 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page() {
   // Arrange — 脚注 1 行がページの高さを超える style.toml（本文自体は組版できる）
   let font_bytes = read_test_font();
@@ -175,7 +171,6 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
   // Arrange — ページ単位採番は本文パスを不動点まで反復する（同じ問題を毎パス報告しない）
   let font_bytes = read_test_font();
@@ -200,7 +195,6 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
   // Arrange — 拡張子が `.sei` でないソースを宣言する（読み込み自体は成功する）
   let font_bytes = read_test_font();
