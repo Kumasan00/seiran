@@ -55,7 +55,10 @@ impl Default for TocStyle {
 ///
 /// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
 /// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
-const _: () = assert!(crate::document::HeadingLevel::COUNT == 6);
+const _: () = assert!(
+  crate::document::HeadingLevel::COUNT == 6,
+  "garde の range 上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"
+);
 
 #[cfg(test)]
 mod tests {

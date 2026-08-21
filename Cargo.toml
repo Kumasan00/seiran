@@ -58,6 +58,7 @@ similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
 implicit_return = { level = "warn", priority = 2 }
+missing_assert_message = { level = "warn", priority = 2 }
 missing_docs_in_private_items = { level = "warn", priority = 2 }
 multiple_unsafe_ops_per_block = { level = "warn", priority = 2 }
 undocumented_unsafe_blocks = { level = "warn", priority = 2 }

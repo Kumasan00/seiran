@@ -25,7 +25,11 @@ impl<'a> CommandView<'a> {
   /// コマンドビューを生成する
   #[must_use]
   pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
-    debug_assert_eq!(node.kind, SyntaxKind::CommandCall);
+    debug_assert_eq!(
+      node.kind,
+      SyntaxKind::CommandCall,
+      "CommandView は CommandCall ノードにのみ被せる（呼び出し元が kind を確認してから構築する）"
+    );
     return Self { node, source };
   }
 
@@ -89,7 +93,11 @@ impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
   #[must_use]
   pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
-    debug_assert_eq!(node.kind, SyntaxKind::Environment);
+    debug_assert_eq!(
+      node.kind,
+      SyntaxKind::Environment,
+      "EnvironmentView は Environment ノードにのみ被せる（呼び出し元が kind を確認してから構築する）"
+    );
     return Self { node, source };
   }
 
@@ -177,7 +185,11 @@ pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
 /// （例: `[draft]`）。
 #[must_use]
 pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
-  debug_assert_eq!(opt_arg.kind, SyntaxKind::OptArg);
+  debug_assert_eq!(
+    opt_arg.kind,
+    SyntaxKind::OptArg,
+    "key=value のパース対象は OptArg ノードだけ（呼び出し元が OptArg を選んで渡す）"
+  );
   let text = extract_text_content(source, opt_arg);
   let mut pairs = Vec::new();
   for entry in text.split(',') {
