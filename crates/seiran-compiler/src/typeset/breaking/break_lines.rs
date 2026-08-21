@@ -256,10 +256,7 @@ pub(super) mod test_support {
   /// テスト用の合成ボックス（幅 10、高さ 8、深さ 2）
   pub(super) fn test_box() -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: pt(10.0),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(10.0),
       height: pt(8.0),
       depth: pt(2.0),
@@ -269,10 +266,7 @@ pub(super) mod test_support {
   /// テスト用の指定幅ボックス（高さ 8・深さ 2）
   pub(super) fn box_width(width: f32) -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: pt(width),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
       height: pt(8.0),
       depth: pt(2.0),
@@ -292,10 +286,7 @@ pub(super) mod test_support {
   /// テスト用の右寄せ末尾ボックス（QED 相当・指定幅、高さ 6・深さ 0）
   pub(super) fn flush_right_box(width: f32) -> HItem {
     return HItem::FlushRight(HBox {
-      content: HBoxContent::Rule {
-        width: pt(width),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
       height: pt(6.0),
       depth: Length::ZERO,
@@ -336,10 +327,7 @@ pub(super) mod test_support {
   pub(super) fn discretionary(hyphen_width: f32) -> HItem {
     return HItem::Discretionary {
       hyphen: HBox {
-        content: HBoxContent::Rule {
-          width: pt(hyphen_width),
-          height: pt(1.0),
-        },
+        content: HBoxContent::Atom(Vec::new()),
         width: pt(hyphen_width),
         height: pt(6.0),
         depth: Length::ZERO,

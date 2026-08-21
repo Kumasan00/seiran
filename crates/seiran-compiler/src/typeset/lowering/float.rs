@@ -132,13 +132,11 @@ mod tests {
     );
   }
 
-  /// 本体（main）として使う、キャプションと区別しやすい Rule ノードを作る
-  fn main_node() -> LayoutNode {
-    return LayoutNode::Rule {
-      width: Length::pt(10.0),
-      height: Length::pt(2.0),
-    };
-  }
+  /// 本体（main）として使う、キャプションと取り違えようのない固定文字列の Text を作る
+  fn main_node() -> LayoutNode { return caption_node(MAIN_TEXT); }
+
+  /// [`main_node`] が積む本文文字列（キャプションには現れない値）
+  const MAIN_TEXT: &str = "MAIN";
 
   /// `LayoutNode` が指定 pt の `Vkern` であることを確認するヘルパ
   fn assert_vkern(node: &LayoutNode, expected_pt: f32) {
@@ -176,7 +174,7 @@ mod tests {
     assert_eq!(*align, Align::Center, "図表は既定で中央寄せ");
     assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == "cap"));
     assert_vkern(&children[1], 3.0);
-    assert!(matches!(&children[2], LayoutNode::Rule { .. }));
+    assert!(matches!(&children[2], LayoutNode::Text(t, _) if t == MAIN_TEXT));
   }
 
   #[test]
@@ -195,7 +193,7 @@ mod tests {
     let LayoutNode::VBox { children, .. } = &nodes[1] else {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
-    assert!(matches!(&children[0], LayoutNode::Rule { .. }));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == MAIN_TEXT));
     assert_vkern(&children[1], 3.0);
     assert!(matches!(&children[2], LayoutNode::Text(t, _) if t == "cap"));
   }
@@ -237,7 +235,7 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert_eq!(children.len(), 1, "本体のみ: {children:?}");
-    assert!(matches!(&children[0], LayoutNode::Rule { .. }));
+    assert!(matches!(&children[0], LayoutNode::Text(t, _) if t == MAIN_TEXT));
   }
 
   #[test]

@@ -27,7 +27,7 @@ use crate::{
     },
     breaking::{self, BreakKind, BreakPoint, Lang},
     font::{FontSystem, Glyph, GlyphRun, UnicodeBuffer},
-    lowering::{LayoutNode, TableLayout, TableRowLayout, TextStyle},
+    lowering::{AtomNode, LayoutNode, TableLayout, TableRowLayout, TextStyle},
   },
 };
 
@@ -128,13 +128,11 @@ impl Measurer<'_> {
     for node in nodes {
       match node {
         LayoutNode::Text(..)
-        | LayoutNode::Glue { .. }
         | LayoutNode::Kern { .. }
         | LayoutNode::LineBreak
         | LayoutNode::Raise { .. }
         | LayoutNode::Link { .. }
         | LayoutNode::FlushRight(..)
-        | LayoutNode::HBox { .. }
         | LayoutNode::Footnote { .. }
         | LayoutNode::IndexMark { .. } => {
           self.collect_inline(node, paragraph);
@@ -166,14 +164,6 @@ impl Measurer<'_> {
         LayoutNode::Vkern { length } => {
           self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
           blocks.push(Block::fixed_space(length));
-        },
-        LayoutNode::Rule { width, height } => {
-          self.flush_paragraph(blocks, paragraph, indent, right_indent, align);
-          blocks.push(Block::Rule {
-            width,
-            height,
-            align,
-          });
         },
         LayoutNode::Image {
           path,
@@ -256,18 +246,6 @@ impl Measurer<'_> {
       LayoutNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
-      LayoutNode::Glue {
-        natural,
-        stretch,
-        shrink,
-      } => {
-        out.push(HItem::Glue {
-          natural,
-          stretch,
-          shrink,
-          breakable: false,
-        });
-      },
       LayoutNode::Kern { length } => {
         out.push(HItem::Kern(length));
       },
@@ -283,11 +261,6 @@ impl Measurer<'_> {
         let flush_box = self.build_atom(Length::ZERO, children);
         out.push(HItem::Penalty { value: 0 });
         out.push(HItem::FlushRight(flush_box));
-      },
-      LayoutNode::HBox { children, .. } => {
-        for child in children {
-          self.collect_inline(child, out);
-        }
       },
       // リンク領域（機構 B）: 子要素を幅 0 のマーカー対で囲む。行分割がこの境界で
       // 行ごとのクリック矩形を収集する（折り返しは複数矩形に分割される）
@@ -324,21 +297,24 @@ impl Measurer<'_> {
       LayoutNode::IndexMark { word, reading } => {
         out.push(HItem::IndexMark { word, reading });
       },
-      // 縦リスト要素・アンカーはインライン文脈（表セル等）には現れない（構造上の不変条件）
+      // 縦リスト要素・アンカーはインライン文脈には現れない。本文では `walk_vertical` が
+      // インライン要素だけを本関数へ振り分け、表セル・脚注本体・リンク子は `HirInline` を
+      // 起点とする `lower_inlines` の出力なので、これらの variant は構造上生じない
       LayoutNode::Anchor(_)
       | LayoutNode::VBox { .. }
       | LayoutNode::Vkern { .. }
-      | LayoutNode::Rule { .. }
       | LayoutNode::Image { .. }
       | LayoutNode::Table(_)
       | LayoutNode::MathBlock { .. }
       | LayoutNode::PageBreak
-      | LayoutNode::KeepWithNext => {},
+      | LayoutNode::KeepWithNext => {
+        unreachable!("インライン文脈に来るのは walk_vertical が振り分けたインライン要素と lower_inlines の出力だけ")
+      },
     }
   }
 
   /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む
-  fn build_atom(&mut self, offset: Length, children: Vec<LayoutNode>) -> HBox {
+  fn build_atom(&mut self, offset: Length, children: Vec<AtomNode>) -> HBox {
     let mut placed: Vec<PlacedHItem> = Vec::new();
     let mut dx = Length::ZERO;
     self.place_atom_children(children, offset, &mut dx, &mut placed);
@@ -346,10 +322,13 @@ impl Measurer<'_> {
   }
 
   /// Atom の子要素を水平カーソル `dx` と縦オフセット `dy` で絶対配置する
-  fn place_atom_children(&mut self, nodes: Vec<LayoutNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
+  ///
+  /// 受け取るのは `AtomNode`（テキストと入れ子の `Raise` だけ）なので、畳めない要素が
+  /// 紛れ込む場合分けは型の側で消えている。
+  fn place_atom_children(&mut self, nodes: Vec<AtomNode>, dy: Length, dx: &mut Length, out: &mut Vec<PlacedHItem>) {
     for node in nodes {
       match node {
-        LayoutNode::Text(text, style) => {
+        AtomNode::Text(text, style) => {
           for hbox in self.shape_text(&text, style) {
             let width = hbox.width;
             out.push(PlacedHItem {
@@ -360,25 +339,12 @@ impl Measurer<'_> {
             *dx += width;
           }
         },
-        LayoutNode::Raise {
+        AtomNode::Raise {
           offset,
           children: nested,
         } => {
           self.place_atom_children(nested, dy + offset, dx, out);
         },
-        LayoutNode::Kern { length } => {
-          *dx += length;
-        },
-        LayoutNode::Glue { natural, .. } => {
-          *dx += natural;
-        },
-        LayoutNode::HBox {
-          children: nested, ..
-        } => {
-          self.place_atom_children(nested, dy, dx, out);
-        },
-        // Atom 内に縦リスト要素・改行は現れない
-        _ => {},
       }
     }
   }

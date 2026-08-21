@@ -12,12 +12,36 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::{
-  config_toml_with_style, minimal_config_toml, minimal_config_toml_with_serif_extra, overflowing_footnote_style_toml,
-  read_test_font,
-};
+use common::{minimal_config_toml, read_test_font};
 use miette::Diagnostic;
-use seiran_compiler::{MemoryProjectSource, ProjectPath};
+use seiran_compiler::{MemoryProjectSource, ProjectPath, test_support};
+
+/// [`minimal_config_toml`] の `[font_configs.serif]` に任意の行を足した `config.toml` を組む。
+fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
+  return common::config_toml_with_font_sections(
+    source_path,
+    "",
+    &test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
+  );
+}
+
+/// [`minimal_config_toml_with_serif_extra`] に `style_path` を足した `config.toml` を組む。
+///
+/// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
+fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
+  return common::config_toml_with_font_sections(
+    source_path,
+    &format!("style_path = \"{style_path}\"\n"),
+    &test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
+  );
+}
+
+/// 脚注 1 行がページの高さを超える `style.toml` を組む（組版警告の再現用）。
+///
+/// `numbering` は `"continuous"` / `"per_page"`（後者は本文パスが不動点まで反復される）。
+fn overflowing_footnote_style_toml(numbering: &str) -> String {
+  return format!("[footnote]\nnumbering = \"{numbering}\"\nfont_size = \"900pt\"\n");
+}
 
 /// メモリ上のテストプロジェクトで相対パスを解決する基準ディレクトリを返す。
 fn project_base_dir() -> &'static Path { return Path::new("/project"); }

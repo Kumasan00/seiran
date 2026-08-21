@@ -65,21 +65,6 @@ pub(crate) enum GreenElement<'a> {
   Token(Token),
 }
 
-impl GreenElement<'_> {
-  /// 要素の Span を返す
-  #[allow(
-    dead_code,
-    reason = "#201 で syntax module が frontend 内部に閉じ、未使用な pub API が dead_code の対象になった。CST アクセサとして温存する"
-  )]
-  #[must_use]
-  pub(super) fn span(&self) -> Span {
-    match self {
-      GreenElement::Node(n) => return n.span,
-      GreenElement::Token(t) => return t.span,
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -140,21 +125,5 @@ mod tests {
     };
     assert!(node.first_child_of_kind(SyntaxKind::MandatoryArg).is_some());
     assert!(node.first_child_of_kind(SyntaxKind::OptArg).is_none());
-  }
-
-  #[test]
-  fn green_element_span_returns_correct_span() {
-    let arena = bumpalo::Bump::new();
-    let token = Token::new(TokenKind::LBrace, Span::new(3, 4));
-    let elem = GreenElement::Token(token);
-    assert_eq!(elem.span(), Span::new(3, 4));
-
-    let node = arena.alloc(GreenNode {
-      kind: SyntaxKind::Root,
-      span: Span::new(0, 100),
-      children: &[],
-    });
-    let elem = GreenElement::Node(node);
-    assert_eq!(elem.span(), Span::new(0, 100));
   }
 }

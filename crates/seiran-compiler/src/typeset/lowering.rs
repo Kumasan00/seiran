@@ -34,7 +34,7 @@ mod theorem;
 mod title_page;
 
 pub(super) use counter::per_page_footnote_numbers;
-pub(super) use layout_node::{LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
+pub(super) use layout_node::{AtomNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
 /// Lowering のコンテキスト
@@ -376,12 +376,6 @@ fn lower_node_indexed(ctx: &LoweringContext, node: &HirNode, state: &mut Lowerin
     HirNodeKind::Quote { kind, body } => {
       return quote::lower_quote(ctx, *kind, body, state);
     },
-    HirNodeKind::Rule { width, height } => {
-      return vec![LayoutNode::Rule {
-        width: *width,
-        height: *height,
-      }];
-    },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];
     },
@@ -559,7 +553,8 @@ mod tests {
   fn contains_line_break(nodes: &[LayoutNode]) -> bool {
     return nodes.iter().any(|n| match n {
       LayoutNode::LineBreak => return true,
-      LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } | LayoutNode::Raise { children, .. } => {
+      // `Raise` の子は `AtomNode`（テキストと入れ子の `Raise` のみ）で、`LineBreak` を持てない
+      LayoutNode::VBox { children, .. } => {
         return contains_line_break(children);
       },
       LayoutNode::Table(table) => {
@@ -651,10 +646,7 @@ mod tests {
     };
     assert_eq!(rows.len(), 1, "equation は 1 行: {rows:?}");
     let number = rows[0].number.as_ref().expect("採番された行は番号ボックスを持つ");
-    assert!(
-      matches!(&number[0], LayoutNode::Text(t, _) if t == "(1)"),
-      "番号ボックスは Text(\"(1)\"): {number:?}"
-    );
+    assert!(matches!(&number[0], AtomNode::Text(t, _) if t == "(1)"), "番号ボックスは Text(\"(1)\"): {number:?}");
   }
 
   #[test]
@@ -702,7 +694,7 @@ mod tests {
     for node in nodes {
       match node {
         LayoutNode::Anchor(AnchorMark::Heading { key, .. }) => keys.push(key.index()),
-        LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
+        LayoutNode::VBox { children, .. } => {
           keys.extend(collect_heading_anchor_keys(children));
         },
         _ => {},
@@ -830,7 +822,7 @@ mod tests {
           target: LinkTarget::Internal(t),
           ..
         } => return *t == AnchorId::Label(LabelId::new(target)),
-        LayoutNode::VBox { children, .. } | LayoutNode::HBox { children, .. } => {
+        LayoutNode::VBox { children, .. } => {
           return contains_internal_link(children, target);
         },
         _ => return false,

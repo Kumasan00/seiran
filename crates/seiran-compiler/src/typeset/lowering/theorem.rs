@@ -2,7 +2,7 @@
 
 use super::{
   LoweringContext, LoweringState,
-  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+  layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
   lower_nodes_inner, with_label_anchor,
 };
 use crate::{
@@ -116,7 +116,7 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
     font_kind: FontKind::Math,
     color: None,
   };
-  return LayoutNode::FlushRight(vec![LayoutNode::Text(qed_mark.to_string(), qed_style)]);
+  return LayoutNode::FlushRight(vec![AtomNode::Text(qed_mark.to_string(), qed_style)]);
 }
 
 #[cfg(test)]

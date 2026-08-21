@@ -7,7 +7,7 @@ use crate::{
   project::FontType,
   typeset::{
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
-    lowering::{LayoutNode, MathBlockRow},
+    lowering::{AtomNode, MathBlockRow},
   },
 };
 
@@ -89,7 +89,7 @@ impl Measurer<'_> {
     &mut self,
     kind: MathEnvKind,
     rows: Vec<MathBlockRow>,
-    env_number: Option<Vec<LayoutNode>>,
+    env_number: Option<Vec<AtomNode>>,
     align: Align,
     numbers_on_right: bool,
     row_gap: Length,

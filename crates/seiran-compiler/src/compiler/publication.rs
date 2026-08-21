@@ -264,12 +264,6 @@ fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content
         run: run.clone(),
       });
     },
-    HBoxContent::Rule { width, height } => {
-      ops.push(PaintOp::FillRect {
-        rect: rect(x, baseline_y - height.to_pt(), width.to_pt(), height.to_pt()),
-        color: None,
-      });
-    },
     HBoxContent::Atom(children) => {
       for child in children {
         push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), &child.item.content);
@@ -317,7 +311,7 @@ mod tests {
       AnchorId, ImageFormat, Page,
       test_fixtures::{
         BoxSize, PageBuilder, TableRowSpec, atom_line, glyph_line, glyph_run, image_block, laid_out, math_block,
-        rule_block, rule_line, table_block,
+        rule_block, table_block,
       },
     },
   };
@@ -437,29 +431,6 @@ mod tests {
           y: 100.0
         },
         run: run.clone()
-      }
-    );
-  }
-
-  #[test]
-  fn build_flattens_inline_rule_above_baseline() {
-    // Arrange
-    let config = test_config();
-    let page = page_builder()
-      .block(rule_line(Length::pt(30.0), Length::pt(1.0), Length::pt(0.0), Length::pt(0.0), Length::pt(50.0)))
-      .build();
-
-    // Act
-    let publication = build(&config, vec![page], vec![]);
-
-    // Assert
-    let ops = &publication.pages()[0].ops();
-    assert_eq!(ops.len(), 1);
-    assert_eq!(
-      ops[0],
-      PaintOp::FillRect {
-        rect: Rect::new(ORIGIN_X_PT, 49.0, 30.0, 1.0).unwrap(),
-        color: None,
       }
     );
   }

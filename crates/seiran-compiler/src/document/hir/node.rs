@@ -131,15 +131,6 @@ pub(crate) enum HirNodeKind {
     body: Vec<HirNode>,
   },
 
-  /// 罫線（描画線）
-  #[allow(dead_code, reason = "`\rule` は未実装で frontend が構築しない。IR と lowering の受け口だけ先にある")]
-  Rule {
-    /// 幅
-    width: Length,
-    /// 高さ
-    height: Length,
-  },
-
   /// 改ページ
   PageBreak,
 

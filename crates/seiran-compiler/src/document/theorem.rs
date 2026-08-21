@@ -33,7 +33,7 @@ pub(crate) enum TheoremClass {
 
 impl TheoremClass {
   /// 全 10 クラスを宣言順に並べた配列。
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う（全 10 クラス網羅の検証）")]
+  #[cfg(test)]
   pub(crate) const ALL: [TheoremClass; 10] = [
     TheoremClass::Theorem,
     TheoremClass::Lemma,
@@ -47,7 +47,7 @@ impl TheoremClass {
     TheoremClass::Proof,
   ];
   /// [`TheoremClass::ALL`] の要素数
-  #[allow(dead_code, reason = "[`TheoremClass::ALL`] と同じく crate 内の `#[cfg(test)]` からのみ使う")]
+  #[cfg(test)]
   pub(super) const COUNT: usize = 10;
 
   /// `snake_case` の文字列表現を返す（TOML のキーおよび環境名と同じ）。

@@ -44,11 +44,6 @@ impl Span {
   #[must_use]
   pub(crate) fn len(self) -> u32 { return self.end - self.start; }
 
-  /// バイト長が 0 かどうかを返す
-  #[must_use]
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
-  pub(crate) fn is_empty(self) -> bool { return self.end == self.start; }
-
   /// 2 つの Span を含む最小の Span を返す
   #[must_use]
   pub(crate) fn merge(self, other: Span) -> Span {

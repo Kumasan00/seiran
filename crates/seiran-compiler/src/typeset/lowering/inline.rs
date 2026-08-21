@@ -2,7 +2,7 @@
 
 use super::{
   LoweringContext, LoweringState, generated,
-  layout_node::{LayoutNode, TextStyle},
+  layout_node::{AtomNode, LayoutNode, TextStyle},
   math::lower_inline_math,
 };
 use crate::{
@@ -54,7 +54,11 @@ pub(super) fn lower_inline(
       return lower_inlines(ctx, children, colored, state);
     },
     HirInlineKind::InlineMath(math_nodes) => {
-      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script);
+      // 数式は Atom の語彙（`AtomNode`）で組まれるので、段落の水平リストへ流すには持ち上げる
+      return lower_inline_math(math_nodes, parent_style.font_size, &ctx.style.math.script)
+        .into_iter()
+        .map(LayoutNode::from)
+        .collect();
     },
     HirInlineKind::Symbol(ch) => {
       return vec![LayoutNode::Text(ch.to_string(), parent_style)];
@@ -162,7 +166,7 @@ fn footnote_marker_node(
   };
   return LayoutNode::Raise {
     offset: base_font_size * footnote_style.marker_raise_factor,
-    children: vec![LayoutNode::Text(marker_text.to_string(), marker_style)],
+    children: vec![AtomNode::Text(marker_text.to_string(), marker_style)],
   };
 }
 
@@ -238,7 +242,7 @@ mod tests {
     let LayoutNode::Raise { children, .. } = node else {
       panic!("Raise が期待されます: {node:?}");
     };
-    let LayoutNode::Text(text, _) = &children[0] else {
+    let AtomNode::Text(text, _) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     return text;
@@ -564,7 +568,7 @@ mod tests {
     let LayoutNode::Raise { children, .. } = &link_children[0] else {
       panic!("Raise が期待されます: {link_children:?}");
     };
-    let LayoutNode::Text(marker, marker_style) = &children[0] else {
+    let AtomNode::Text(marker, marker_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     assert_eq!(marker, "[1]");
@@ -580,7 +584,7 @@ mod tests {
     let LayoutNode::Raise { children, .. } = &body[0] else {
       panic!("Raise が期待されます: {body:?}");
     };
-    let LayoutNode::Text(_, body_marker_style) = &children[0] else {
+    let AtomNode::Text(_, body_marker_style) = &children[0] else {
       panic!("Text が期待されます: {children:?}");
     };
     assert!((body_marker_style.font_size.to_pt() - 10.0).abs() < 1e-3, "{}", body_marker_style.font_size.to_pt());

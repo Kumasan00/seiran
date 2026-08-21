@@ -112,7 +112,7 @@ struct PageComposer {
   pending_anchors: Vec<AnchorMark>,
   /// カーソル位置（ページ上端からの距離、pt）。基本は「次のベースライン位置」
   y: Length,
-  /// 直前のブロックが底辺基準（画像・表・罫線）で終わったか
+  /// 直前のブロックが底辺基準（画像・表）で終わったか
   cursor_at_edge: bool,
   /// 段組み数（1 = 単段）
   num_columns: usize,
@@ -598,7 +598,6 @@ pub(crate) fn break_pages(
       Block::Glue {
         natural: Length::ZERO,
         stretch: Length::ZERO,
-        shrink: Length::ZERO,
       },
     );
     match block {
@@ -628,9 +627,7 @@ pub(crate) fn break_pages(
       // 伸縮アキ。カーソルへは自然値のみ加算する（下端揃え無効時は VSpace と同一挙動）。stretch を持つ
       // アキは下端揃え（#169）用に配置順（各配置ベクタの現在長）と stretch を記録しておき、リージョン確定時に
       // 不足高さを配分する。cursor_at_edge は触らない（アキはフラグを変えない）。
-      Block::Glue {
-        natural, stretch, ..
-      } => {
+      Block::Glue { natural, stretch } => {
         if stretch != Length::ZERO {
           composer.region_glues.push(GlueMark {
             stretch,
@@ -650,25 +647,6 @@ pub(crate) fn break_pages(
         } else if value != PENALTY_FORBID_BREAK {
           composer.pending_penalty = value;
         }
-      },
-      Block::Rule {
-        width,
-        height,
-        align,
-      } => {
-        let penalty = composer.take_pending_penalty();
-        composer.consider_break(height, penalty, geom);
-        let col_off = composer.column_offset();
-        composer.resolve_pending_anchors(col_off, composer.y);
-        composer.current.push(PlacedBlock::Rule {
-          x: col_off + align.offset(col_width, width),
-          y: composer.y,
-          width,
-          height,
-          color: None,
-        });
-        composer.y += height;
-        composer.cursor_at_edge = true;
       },
       Block::Image {
         path,
@@ -726,15 +704,14 @@ const MIN_LINES_AT_BREAK: usize = 2;
 
 /// 内容ブロック（実際の高さを占め、リージョン配置の対象になるブロック）か。
 fn is_content_block(block: &Block) -> bool {
-  return matches!(
-    block,
+  return match block {
     Block::Paragraph { .. }
-      | Block::Table { .. }
-      | Block::Image { .. }
-      | Block::Rule { .. }
-      | Block::ComposedLine { .. }
-      | Block::Math { .. }
-  );
+    | Block::Table { .. }
+    | Block::Image { .. }
+    | Block::ComposedLine { .. }
+    | Block::Math { .. } => true,
+    Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => false,
+  };
 }
 
 /// `blocks[start]` が keep-with-next グループの先頭なら、グループ末尾（最後の内容ブロック）の
@@ -768,14 +745,13 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
   return if end > start { Some(end) } else { None };
 }
 
-/// keep グループの末尾が段落でない（図表・数式・罫線・合成行）ときの配置シミュレーション。
+/// keep グループの末尾が段落でない（図表・数式・合成行）ときの配置シミュレーション。
 fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) -> (bool, Length) {
   match block {
     Block::Image { height, .. } => {
       let h = height.unwrap_or(Length::ZERO);
       return (y + h > geom.page_limit, y + h);
     },
-    Block::Rule { height, .. } => return (y + *height > geom.page_limit, y + *height),
     Block::Math { body, .. } => {
       let h = body.height + body.depth;
       return (y + h > geom.page_limit && geom.margin_top + h <= geom.page_limit, y + h);
@@ -793,7 +769,12 @@ fn atomic_place_sim(block: &Block, y: Length, cae: bool, geom: &PageGeometry) ->
       }
       return (y + total > geom.page_limit && geom.margin_top + total <= geom.page_limit, y + total);
     },
-    _ => return (false, y),
+    // 段落は行分割を伴うので `keep_group_orphaned` の専用経路が扱う
+    Block::Paragraph { .. } => unreachable!("段落は keep_group_orphaned が行分割込みの専用経路で扱う"),
+    // 内容ブロック以外はここへ来ない（呼び出し側が `is_content_block` で絞っている）
+    Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => {
+      unreachable!("内容ブロック以外は呼び出し側の is_content_block ガードが弾く")
+    },
   }
 }
 
@@ -1303,10 +1284,7 @@ mod tests {
   /// テスト用ボックス（幅 10、高さ 8、深さ 2）
   fn test_box() -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: Length::pt(10.0),
-        height: Length::pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: Length::pt(10.0),
       height: Length::pt(8.0),
       depth: Length::pt(2.0),
@@ -1724,10 +1702,7 @@ mod tests {
   /// 高さ `height` pt・深さ 2pt の箱（1 行がページ全高を超える脚注を作るため）
   fn tall_box(height: f32) -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: pt(10.0),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(10.0),
       height: pt(height),
       depth: pt(2.0),
@@ -1974,7 +1949,6 @@ mod tests {
       Block::Glue {
         natural: Length::ZERO,
         stretch: pt(10.0),
-        shrink: Length::ZERO,
       },
       paragraph_with_footnote_at(4, 0, footnote_of_lines(1, 4)),
     ];
@@ -2668,20 +2642,20 @@ mod tests {
     let target = LinkTarget::Internal(crate::typeset::boxes::AnchorId::Label(crate::semantics::LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
-      rule(8.0),                                  // idx0, bottom=18（シフト対象外）
+      fixed_block(8.0),                           // idx0, bottom=18（シフト対象外）
       Block::stretchable_space(pt(4.0), pt(4.0)), // stretch アキ
       Block::Table {
         table,
         align: Align::Left,
       }, // idx1, 行高10。glue 後の y=22、bottom=32
-      rule(40.0),                                 // 溢れて改ページ（不足 50-32=18 を配分）
+      fixed_block(40.0),                          // 溢れて改ページ（不足 50-32=18 を配分）
     ];
 
     // Act
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert
-    assert_eq!(rule_ys(&pages[0]), vec![Length::pt(10.0)], "先頭の罫線はシフトされない");
+    assert_eq!(fixed_block_ys(&pages[0]), vec![Length::pt(10.0)], "先頭のブロックはシフトされない");
     let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
     else {
@@ -3052,10 +3026,7 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let wide = HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: Length::pt(50.0),
-        height: Length::pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: Length::pt(50.0),
       height: Length::pt(8.0),
       depth: Length::pt(2.0),
@@ -3208,28 +3179,6 @@ mod tests {
   }
 
   #[test]
-  fn centered_rule_shifts_x_to_horizontal_center() {
-    // Arrange
-    let geom = test_geometry();
-    let blocks = vec![Block::Rule {
-      width: Length::pt(30.0),
-      height: Length::pt(2.0),
-      align: Align::Center,
-    }];
-
-    // Act
-    let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
-
-    // Assert
-    let PlacedBlock::Rule { x, .. } =
-      pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Rule { .. })).expect("罫線があるはず")
-    else {
-      unreachable!()
-    };
-    assert!(close(*x, 35.0), "rule.x={}", x.to_pt());
-  }
-
-  #[test]
   fn centered_table_shifts_all_rows_x() {
     // Arrange
     let geom = test_geometry();
@@ -3327,7 +3276,7 @@ mod tests {
     return Block::ComposedLine {
       line: Line {
         boxes: vec![PositionedBox {
-          content: HBoxContent::Rule { width, height },
+          content: HBoxContent::Atom(Vec::new()),
           x: Length::ZERO,
           dy: Length::ZERO,
           width,
@@ -3526,11 +3475,7 @@ mod tests {
   fn is_content_block_classifies_variants() {
     // Arrange / Act
     assert!(is_content_block(&paragraph_of_lines(1)));
-    assert!(is_content_block(&Block::Rule {
-      width: Length::pt(1.0),
-      height: Length::pt(1.0),
-      align: Align::Left,
-    }));
+    assert!(is_content_block(&fixed_block(1.0)));
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
     assert!(!is_content_block(&forbid_break()));
     assert!(!is_content_block(&Block::force_break()));
@@ -3719,22 +3664,27 @@ mod tests {
     };
   }
 
-  /// 高さ `height` の罫線ブロック（幅 10・左揃え）
-  fn rule(height: f32) -> Block {
-    return Block::Rule {
-      width: Length::pt(10.0),
-      height: pt(height),
+  /// 高さ `height` の内容ブロック（幅 10・左揃えの画像）
+  ///
+  /// 高さだけが意味を持つ汎用の内容ブロックとして使う。脚注の区切り罫線
+  /// （`PlacedBlock::Rule`）と取り違えないよう、本文側の fixture は画像で組む。
+  fn fixed_block(height: f32) -> Block {
+    return Block::Image {
+      path: crate::project::ProjectPath::new("fixture.png"),
+      width: Some(Length::pt(10.0)),
+      height: Some(pt(height)),
+      target_dpi: None,
       align: Align::Left,
     };
   }
 
-  /// ページ内の罫線の上端 y を上から順に集める
-  fn rule_ys(page: &Page) -> Vec<Length> {
+  /// ページ内の [`fixed_block`] の上端 y を上から順に集める
+  fn fixed_block_ys(page: &Page) -> Vec<Length> {
     return page
       .blocks
       .iter()
       .filter_map(|b| match b {
-        PlacedBlock::Rule { y, .. } => return Some(*y),
+        PlacedBlock::Image { y, .. } => return Some(*y),
         _ => return None,
       })
       .collect();
@@ -3758,12 +3708,12 @@ mod tests {
     // Arrange
     let geom = flush_geometry();
     let blocks = vec![
-      rule(10.0),                                 // y=10..20
+      fixed_block(10.0),                          // y=10..20
       Block::stretchable_space(pt(4.0), pt(4.0)), // 24
-      rule(10.0),                                 // y=24..34
+      fixed_block(10.0),                          // y=24..34
       Block::stretchable_space(pt(4.0), pt(4.0)), // 38
-      rule(10.0),                                 // y=38..48（不足 2pt）
-      rule(10.0),                                 // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
+      fixed_block(10.0),                          // y=38..48（不足 2pt）
+      fixed_block(10.0),                          // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
     ];
 
     // Act
@@ -3771,9 +3721,9 @@ mod tests {
 
     // Assert
     assert_eq!(pages.len(), 2);
-    assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 25.0, 40.0]));
+    assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 25.0, 40.0]));
     assert!(approx(max_block_bottom(&pages[0]), 50.0), "{:?}", pages[0]);
-    assert_eq!(rule_ys(&pages[1]), pts(&[10.0]));
+    assert_eq!(fixed_block_ys(&pages[1]), pts(&[10.0]));
   }
 
   #[test]
@@ -3781,19 +3731,19 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let blocks = vec![
-      rule(10.0),
+      fixed_block(10.0),
       Block::stretchable_space(pt(4.0), pt(4.0)),
-      rule(10.0),
+      fixed_block(10.0),
       Block::stretchable_space(pt(4.0), pt(4.0)),
-      rule(10.0),
-      rule(10.0),
+      fixed_block(10.0),
+      fixed_block(10.0),
     ];
 
     // Act
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert
-    assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
+    assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
     assert!(approx(max_block_bottom(&pages[0]), 48.0));
   }
 
@@ -3807,7 +3757,7 @@ mod tests {
       paragraph_of_lines(1),                      // baseline 26
       Block::stretchable_space(pt(4.0), pt(4.0)), // ba=2
       paragraph_of_lines(1),                      // baseline 42（bottom 44・不足 6pt）
-      rule(30.0),                                 // 溢れて改ページ
+      fixed_block(30.0),                          // 溢れて改ページ
     ];
 
     // Act
@@ -3827,7 +3777,7 @@ mod tests {
       if i > 0 {
         blocks.push(Block::stretchable_space(pt(4.0), pt(4.0)));
       }
-      blocks.push(rule(10.0));
+      blocks.push(fixed_block(10.0));
     }
 
     // Act
@@ -3845,11 +3795,11 @@ mod tests {
     // Arrange
     let geom = flush_geometry();
     let blocks = vec![
-      rule(10.0),
+      fixed_block(10.0),
       Block::stretchable_space(pt(4.0), pt(4.0)),
-      rule(10.0),
+      fixed_block(10.0),
       Block::force_break(), // このページは強制改ページで終わる → 揃えない
-      rule(10.0),
+      fixed_block(10.0),
     ];
 
     // Act
@@ -3857,8 +3807,8 @@ mod tests {
 
     // Assert
     assert_eq!(pages.len(), 2);
-    assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0]));
-    assert_eq!(rule_ys(&pages[1]), pts(&[10.0]));
+    assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0]));
+    assert_eq!(fixed_block_ys(&pages[1]), pts(&[10.0]));
   }
 
   #[test]
@@ -3866,18 +3816,18 @@ mod tests {
     // Arrange
     let geom = flush_geometry();
     let blocks = vec![
-      rule(10.0),
+      fixed_block(10.0),
       Block::fixed_space(pt(4.0)),
-      rule(10.0),
+      fixed_block(10.0),
       Block::fixed_space(pt(4.0)),
-      rule(10.0),
-      rule(10.0), // 溢れて改ページ
+      fixed_block(10.0),
+      fixed_block(10.0), // 溢れて改ページ
     ];
 
     // Act
     let (pages, _) = break_pages(blocks, Length::pt(100.0), &geom, &GreedyBreaker, TextAlignment::RaggedRight);
 
     // Assert
-    assert_eq!(rule_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
+    assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
   }
 }

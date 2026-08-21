@@ -384,10 +384,7 @@ mod tests {
   #[test]
   fn single_box_wider_than_width_is_not_split() {
     let wide = HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: pt(50.0),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(50.0),
       height: pt(8.0),
       depth: pt(2.0),

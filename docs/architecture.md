@@ -725,7 +725,6 @@ query だけで、side table の collection（`NodeMap`）は段間 interface �
   `generate_citations` が確立する不変条件なので、欠落は `Option` で返さず `unreachable!` で落とす
   （この検証の所在が `GeneratedCitations` に局所化されている点が眼目）。
 - `bibliography() -> &[GeneratedBlock]` — 書誌のノード列（引用が書誌を生まなければ空スライス）。
-- `is_empty() -> bool` — 表示も書誌も無い（＝引用ゼロのプロジェクト）か。
 
 `GeneratedCitations` は `SemanticDocument` の 1 フィールドとして保持され、`semantics` の外へは型として
 出ない。利用側は `SemanticDocument::citation_display` / `bibliography` を通して読む。
@@ -1039,7 +1038,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 表レイアウトの入力契約もここに置く。
 
 - `align`: `Align`（段落・行の水平方向の揃え）と `Align::offset`（利用可能幅の中での水平オフセット
-  算出。行・画像・罫線・表がこの 1 関数を共有する）。style の設定値そのものではなく lowering が
+  算出。行・画像・数式・表がこの 1 関数を共有する）。style の設定値そのものではなく lowering が
   それらから決めた結果なので serde は導出しない
 - `block`: `Block`（縦リスト要素 enum）/ `MathRowNumber` / `PENALTY_FORCE_BREAK` / `PENALTY_FORBID_BREAK`
 - `hitem`: `HItem`（水平リストの最小単位）/ `HBox`（計測済みボックス）/ `HBoxContent` / `PlacedHItem`
@@ -1088,7 +1087,11 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
 完全性検証が消費側へ漏れるため。生成物には `NodeId` を振らない（「すべての `NodeId` は同梱の
 `HirDocument` が発行したもの」という不変条件を保つため）。
 
-- `layout_node`: `LayoutNode` / `TextStyle` / `TableLayout` 等の型定義
+- `layout_node`: `LayoutNode` / `AtomNode` / `TextStyle` / `TableLayout` 等の型定義。
+  `AtomNode`（`Text` と入れ子の `Raise` だけ）は `LayoutNode` の部分集合で、`Atom` に畳める要素だけを
+  表現する型。`LayoutNode::Raise` の子・`FlushRight` の中身・ディスプレイ数式のセルと番号がこれを持ち、
+  `block` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
+  （インライン数式を段落の水平リストへ流すときに使う）
 - 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
   `theorem` / `title_page`
@@ -1151,7 +1154,8 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 (a) `build_blocks`: LayoutNode → `Vec<Block>`。縦リストの再帰的平坦化（`VBox` は副縦リスト）、テキストの
 スクリプト分割・シェーピング・計測、break 注入、`Raise` ツリーの `Atom` 化を行う。`icu` でスクリプトを判定し、
-`font::FontSystem`（シェイプ・メトリクス取得の窓口。`typeset::font` 節参照）を利用する。
+`font::FontSystem`（シェイプ・メトリクス取得の窓口。`typeset::font` 節参照）を利用する。`Atom` の中身は
+`AtomNode` に限られる（`lowering` 側の型が保証する）ため、畳めない要素の場合分けは持たない。
 
 **break 注入**は、シェーピング後の `GlyphRun` を ICU の分割可能位置で分割し、欧文スペースは伸縮 `Glue`、
 和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は
