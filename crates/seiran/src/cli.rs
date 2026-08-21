@@ -6,13 +6,9 @@ use clap::{Parser, Subcommand};
 
 /// Seiran - PDFテキスト生成ツール
 #[derive(Parser, Debug)]
-#[command(name = "seiran")]
-#[command(bin_name = "seiran")]
-#[command(author = "Kuma")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "PDFテキスト生成ツール", long_about = None)]
+#[command(version, about = "PDFテキスト生成ツール")]
 pub(super) struct Cli {
-  /// Seiran のログを詳しくする（`-v` = 工程、`-vv` = 内部詳細、`-vvv` = 最大）。`RUST_LOG` 未設定時のみ有効
+  /// Seiran のログを詳しくする（`-v` = 工程、`-vv` = 内部詳細、`-vvv` = 最大）。`RUST_LOG` が未設定・不正なときに有効
   #[arg(short, long, global = true, action = clap::ArgAction::Count, conflicts_with = "quiet")]
   pub(super) verbose: u8,
 
@@ -26,7 +22,7 @@ pub(super) struct Cli {
 }
 
 /// アプリケーションがサポートするサブコマンド
-#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+#[derive(Subcommand, Debug)]
 pub(super) enum Command {
   /// 設定ファイルの `sources` 配列に列挙されたファイルから PDF を生成する
   Build {
@@ -62,3 +58,17 @@ pub(super) enum Command {
 
 /// コマンドライン引数を解析する。
 pub(super) fn parse_arg() -> Cli { return Cli::parse() }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+  use clap::CommandFactory;
+
+  use super::Cli;
+
+  #[test]
+  fn cli_definition_is_valid() {
+    // Arrange / Act / Assert
+    Cli::command().debug_assert();
+  }
+}
