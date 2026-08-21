@@ -164,14 +164,6 @@ impl HBox {
 pub(crate) enum HBoxContent {
   /// シェーピング済みグリフ列
   Glyphs(GlyphRun),
-  /// 罫線（幅と高さを持つ塗りつぶし矩形）
-  #[allow(dead_code, reason = "本文の行内に罫線を置く経路は現状なく、crate 内の `#[cfg(test)]` だけが構築する")]
-  Rule {
-    /// 罫線の幅
-    width: Length,
-    /// 罫線の高さ
-    height: Length,
-  },
   /// 内部に breakable glue を持たない閉じた箱
   ///
   /// インライン数式の上付き・下付き・分数・平方根など、行分割をまたがない
@@ -201,13 +193,10 @@ mod tests {
   /// pt 値から `Length` を作る
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
-  /// 合成 Rule ボックスを作る
-  fn rule_box(width: f32, height: f32, depth: f32) -> HBox {
+  /// テキストを含まない合成ボックスを作る
+  fn text_free_box(width: f32, height: f32, depth: f32) -> HBox {
     return HBox {
-      content: HBoxContent::Rule {
-        width: pt(width),
-        height: pt(height),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
       height: pt(height),
       depth: pt(depth),
@@ -219,12 +208,12 @@ mod tests {
     // Arrange — ベース (幅 10, 高さ 8, 深さ 2) + 上付き (dx=10, dy=+4, 幅 5, 高さ 6, 深さ 1)
     let children = vec![
       PlacedHItem {
-        item: rule_box(10.0, 8.0, 2.0),
+        item: text_free_box(10.0, 8.0, 2.0),
         dy: pt(0.0),
         dx: pt(0.0),
       },
       PlacedHItem {
-        item: rule_box(5.0, 6.0, 1.0),
+        item: text_free_box(5.0, 6.0, 1.0),
         dy: pt(4.0),
         dx: pt(10.0),
       },
@@ -244,12 +233,12 @@ mod tests {
     // Arrange — ベース + 下付き (dy=-3): 下付きの深さがベースラインの下に突き出す
     let children = vec![
       PlacedHItem {
-        item: rule_box(10.0, 8.0, 2.0),
+        item: text_free_box(10.0, 8.0, 2.0),
         dy: pt(0.0),
         dx: pt(0.0),
       },
       PlacedHItem {
-        item: rule_box(5.0, 6.0, 1.0),
+        item: text_free_box(5.0, 6.0, 1.0),
         dy: pt(-3.0),
         dx: pt(10.0),
       },
@@ -274,7 +263,7 @@ mod tests {
   #[test]
   fn natural_width_per_variant() {
     // Arrange
-    let box_item = HItem::Box(rule_box(12.0, 8.0, 2.0));
+    let box_item = HItem::Box(text_free_box(12.0, 8.0, 2.0));
 
     // Act / Assert
     assert_eq!(box_item.natural_width(), pt(12.0));

@@ -20,7 +20,7 @@ impl FootnoteId {
 
   /// 元の出現 index を返す
   #[must_use]
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（golden ダンプ `compiler::dump`）からのみ使う")]
+  #[cfg(test)]
   pub(crate) fn index(self) -> u32 { return self.0; }
 }
 

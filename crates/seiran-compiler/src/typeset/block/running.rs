@@ -216,10 +216,7 @@ mod tests {
   /// 幅 `w`（高さ 8 / 深さ 2）の合成ボックスを作るヘルパ
   fn box_of_width(w: Length) -> HBox {
     return HBox {
-      content: HBoxContent::Rule {
-        width: w,
-        height: Length::pt(8.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: w,
       height: Length::pt(8.0),
       depth: Length::pt(2.0),

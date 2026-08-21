@@ -63,10 +63,6 @@ impl GeneratedCitations {
   /// 書誌のノード列を返す（引用がなければ空スライス）
   pub(crate) fn bibliography(&self) -> &[GeneratedBlock] { return &self.bibliography; }
 
-  /// 表示も書誌も 1 つも無い（＝引用ゼロのプロジェクト）かを返す
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（`compiler::semantics` のテスト）からのみ使う")]
-  pub(crate) fn is_empty(&self) -> bool { return self.displays.is_empty() && self.bibliography.is_empty(); }
-
   /// テスト専用の直接構築（`NodeId::for_test` と同じ位置づけ）
   ///
   /// 本番経路では [`generate_citations`] だけが構築する。lowering のテストが「表示・書誌がある

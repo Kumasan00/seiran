@@ -139,11 +139,6 @@ pub(crate) fn glyph_line_with_metrics(run: GlyphRun, baseline_y: Length, metrics
   return single_box_line(HBoxContent::Glyphs(run), Length::ZERO, Length::ZERO, baseline_y, metrics);
 }
 
-/// 行内罫線 1 個を置いた行ブロックを作る
-pub(crate) fn rule_line(width: Length, height: Length, x: Length, dy: Length, baseline_y: Length) -> PlacedBlock {
-  return single_box_line(HBoxContent::Rule { width, height }, x, dy, baseline_y, LineMetrics::default());
-}
-
 /// Atom（閉じた箱）1 個を置いた行ブロックを作る
 ///
 /// `children` は `(グリフ列, ボックス寸法, dx, dy)` の並び。Atom 自身の寸法は子から確定する。

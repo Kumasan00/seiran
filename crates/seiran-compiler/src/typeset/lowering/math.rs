@@ -4,7 +4,7 @@ use self::alphanumeric::push_math_char;
 use super::{
   LoweringContext, LoweringState,
   counter::format_counter_value,
-  layout_node::{LayoutNode, MathBlockRow, TextStyle},
+  layout_node::{AtomNode, LayoutNode, MathBlockRow, TextStyle},
 };
 use crate::{
   document::{FontKind, HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
@@ -65,9 +65,9 @@ pub(super) fn lower_math_block(
 }
 
 /// 発番された通し番号を番号書式テンプレートに当てはめ、立体（Serif）の番号ボックスを作る
-fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<LayoutNode> {
+fn number_box(tag_format: &NumberTemplate, n: &str, font_size: Length) -> Vec<AtomNode> {
   let text = tag_format.expand(n);
-  return vec![LayoutNode::Text(
+  return vec![AtomNode::Text(
     text,
     TextStyle {
       font_size,
@@ -86,12 +86,12 @@ fn alignment_to_align(alignment: Alignment) -> Align {
   };
 }
 
-/// インライン数式（`$...$`）を `LayoutNode` 列に変換する
+/// インライン数式（`$...$`）を `AtomNode` 列に変換する
 pub(super) fn lower_inline_math(
   math_nodes: &[HirMath],
   base_font_size: Length,
   math_style: &MathScriptStyle,
-) -> Vec<LayoutNode> {
+) -> Vec<AtomNode> {
   let mut result = Vec::new();
   for node in math_nodes {
     result.extend(lower_math_node(node, base_font_size, None, math_style));
@@ -99,13 +99,13 @@ pub(super) fn lower_inline_math(
   return result;
 }
 
-/// 単一の `HirMath` を `LayoutNode` 列に変換する
+/// 単一の `HirMath` を `AtomNode` 列に変換する
 fn lower_math_node(
   node: &HirMath,
   font_size: Length,
   variant: Option<MathVariant>,
   math_style: &MathScriptStyle,
-) -> Vec<LayoutNode> {
+) -> Vec<AtomNode> {
   match &node.kind {
     HirMathKind::Text(s) => {
       return lower_math_text(s, font_size, variant);
@@ -118,7 +118,7 @@ fn lower_math_node(
         font_kind: FontKind::Math,
         color: None,
       };
-      return vec![LayoutNode::Text(translated, layout_style)];
+      return vec![AtomNode::Text(translated, layout_style)];
     },
     HirMathKind::Group(children) => {
       let mut result = Vec::new();
@@ -130,7 +130,7 @@ fn lower_math_node(
     HirMathKind::Superscript(inner) => {
       let script_size = script_font_size(font_size, math_style);
       let children = lower_math_node(inner.as_ref(), script_size, variant, math_style);
-      return vec![LayoutNode::Raise {
+      return vec![AtomNode::Raise {
         offset: font_size * math_style.superscript_raise_factor,
         children,
       }];
@@ -138,7 +138,7 @@ fn lower_math_node(
     HirMathKind::Subscript(inner) => {
       let script_size = script_font_size(font_size, math_style);
       let children = lower_math_node(inner.as_ref(), script_size, variant, math_style);
-      return vec![LayoutNode::Raise {
+      return vec![AtomNode::Raise {
         offset: -font_size * math_style.subscript_drop_factor,
         children,
       }];
@@ -152,7 +152,7 @@ fn lower_math_node(
       };
       let mut result = Vec::new();
       result.extend(lower_math_node(numer.as_ref(), font_size, variant, math_style));
-      result.push(LayoutNode::Text("/".to_string(), slash_style));
+      result.push(AtomNode::Text("/".to_string(), slash_style));
       result.extend(lower_math_node(denom.as_ref(), font_size, variant, math_style));
       return result;
     },
@@ -166,12 +166,12 @@ fn lower_math_node(
       if let Some(idx) = index {
         let script_size = script_font_size(font_size, math_style);
         let idx_children = lower_math_node(idx.as_ref(), script_size, variant, math_style);
-        result.push(LayoutNode::Raise {
+        result.push(AtomNode::Raise {
           offset: font_size * math_style.superscript_raise_factor,
           children: idx_children,
         });
       }
-      result.push(LayoutNode::Text("√".to_string(), upright_style));
+      result.push(AtomNode::Text("√".to_string(), upright_style));
       result.extend(lower_math_node(radicand.as_ref(), font_size, variant, math_style));
       return result;
     },
@@ -188,8 +188,8 @@ fn lower_math_node(
   }
 }
 
-/// 数式中のテキスト文字列を `LayoutNode` 列に変換する
-fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) -> Vec<LayoutNode> {
+/// 数式中のテキスト文字列を `AtomNode` 列に変換する
+fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) -> Vec<AtomNode> {
   if text.is_empty() {
     return Vec::new();
   }
@@ -202,7 +202,7 @@ fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) 
     font_kind: FontKind::Math,
     color: None,
   };
-  return vec![LayoutNode::Text(translated, layout_style)];
+  return vec![AtomNode::Text(translated, layout_style)];
 }
 
 #[cfg(test)]
@@ -232,9 +232,21 @@ mod tests {
     for node in nodes {
       match node {
         LayoutNode::Text(text, _) => out.push_str(text),
-        LayoutNode::Raise { children, .. } => out.push_str(&concat_texts(children)),
+        LayoutNode::Raise { children, .. } => out.push_str(&concat_atom_texts(children)),
         // 数式の前後に段落 lowering が足すノード（`Vkern` 等）は表示文字列を持たない。
         _ => {},
+      }
+    }
+    return out;
+  }
+
+  /// Atom ノード列に含まれる `Text` を出現順に連結する（`concat_texts` の `AtomNode` 版）
+  fn concat_atom_texts(nodes: &[AtomNode]) -> String {
+    let mut out = String::new();
+    for node in nodes {
+      match node {
+        AtomNode::Text(text, _) => out.push_str(text),
+        AtomNode::Raise { children, .. } => out.push_str(&concat_atom_texts(children)),
       }
     }
     return out;
@@ -252,7 +264,7 @@ mod tests {
   }
 
   /// レイアウトノード列から最初の `Raise`（offset と子）を取り出すヘルパ
-  fn first_raise(nodes: &[LayoutNode]) -> (Length, &[LayoutNode]) {
+  fn first_raise(nodes: &[LayoutNode]) -> (Length, &[AtomNode]) {
     let raise = nodes.iter().find_map(|node| match node {
       LayoutNode::Raise { offset, children } => return Some((*offset, children.as_slice())),
       _ => return None,
@@ -308,8 +320,8 @@ mod tests {
     // Assert
     let (offset, children) = first_raise(&nodes);
     assert!(offset.is_positive(), "上付きは正の offset（上方向）になるべき: offset={}", offset.to_pt());
-    assert_eq!(concat_texts(children), "2");
-    let LayoutNode::Text(_, style) = &children[0] else {
+    assert_eq!(concat_atom_texts(children), "2");
+    let AtomNode::Text(_, style) = &children[0] else {
       panic!("Text を期待: {:?}", children[0]);
     };
     assert!(
@@ -327,7 +339,7 @@ mod tests {
     // Assert
     let (offset, children) = first_raise(&nodes);
     assert!(!offset.is_non_negative(), "下付きは負の offset（下方向）になるべき: offset={}", offset.to_pt());
-    assert_eq!(concat_texts(children), "\u{1D456}"); // U+1D44E + 8 (i - a)
+    assert_eq!(concat_atom_texts(children), "\u{1D456}"); // U+1D44E + 8 (i - a)
   }
 
   #[test]
@@ -414,7 +426,7 @@ mod tests {
     };
     let number = layout_rows[0].number.as_ref().expect("番号あり");
     assert!(
-      matches!(&number[0], LayoutNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
+      matches!(&number[0], AtomNode::Text(t, s) if t == "(1)" && s.font_kind == FontKind::Serif),
       "(1) の Serif Text が番号ボックスに入るはず: {number:?}"
     );
   }

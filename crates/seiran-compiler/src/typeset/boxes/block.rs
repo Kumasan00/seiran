@@ -79,15 +79,6 @@ pub(crate) enum Block {
     /// 揃えオフセットは確定済み描画幅と本文幅から `break_pages` で算出する。
     align: Align,
   },
-  /// 罫線（本文幅とは独立な塗りつぶし矩形）
-  Rule {
-    /// 幅
-    width: Length,
-    /// 高さ
-    height: Length,
-    /// 本文幅の中での罫線の水平揃え（既定は左揃え）
-    align: Align,
-  },
   /// 合成済みの単一行（行分割をかけずそのまま配置する）
   ///
   /// 目次エントリの「番号＋タイトル …リーダー… ページ番号（右寄せ）」のように、
@@ -117,8 +108,8 @@ pub(crate) enum Block {
   },
   /// 縦方向の伸縮アキ（glue）
   ///
-  /// `natural` は自然値（pt）、`stretch` / `shrink` は伸長 / 収縮能力（pt）。固定アキは
-  /// `stretch = 0.0, shrink = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
+  /// `natural` は自然値（pt）、`stretch` は伸長能力（pt）。固定アキは
+  /// `stretch = 0.0`（[`Block::fixed_space`]）。ブロック間アキは自然値に比例した
   /// `stretch` を持ち（[`Block::stretchable_space`]）、下端揃えが満杯リージョンの不足高さを
   /// この `stretch` へ比例配分する。下端揃えが無効なら `break_pages` は `stretch` を無視して `natural`
   /// のみカーソルへ加算するため出力は不変。
@@ -127,12 +118,6 @@ pub(crate) enum Block {
     natural: Length,
     /// 伸長能力
     stretch: Length,
-    /// 収縮能力
-    #[allow(
-      dead_code,
-      reason = "ブロック間 glue の収縮は break_pages が使わない（伸長のみ）。glue の対称性のため保持する"
-    )]
-    shrink: Length,
   },
   /// 分割コスト（penalty）
   ///
@@ -150,17 +135,16 @@ pub(crate) enum Block {
 }
 
 impl Block {
-  /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = shrink = 0`。
+  /// 固定の縦アキ（伸縮なし）を作る。`natural = pt`, `stretch = 0`。
   #[must_use]
   pub(crate) fn fixed_space(pt: Length) -> Block {
     return Block::Glue {
       natural: pt,
       stretch: Length::ZERO,
-      shrink: Length::ZERO,
     };
   }
 
-  /// 伸縮する縦アキ（glue）を作る。`natural = pt`, `stretch = stretch`, `shrink = 0`。
+  /// 伸縮する縦アキ（glue）を作る。`natural = pt`, `stretch = stretch`。
   ///
   /// ブロック間アキ（段落間・見出し前後等）に使う。下端揃えが満杯リージョンの不足高さを
   /// `stretch` へ比例配分し、最終ベースラインを版面下端へ寄せる。収縮は持たない（リージョンは
@@ -170,7 +154,6 @@ impl Block {
     return Block::Glue {
       natural: pt,
       stretch,
-      shrink: Length::ZERO,
     };
   }
 

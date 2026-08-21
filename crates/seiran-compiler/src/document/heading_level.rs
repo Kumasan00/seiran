@@ -22,7 +22,7 @@ pub(crate) enum HeadingLevel {
 
 impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（`style::heading` のテスト）からのみ使う")]
+  #[cfg(test)]
   pub(crate) const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
     HeadingLevel::Chapter,

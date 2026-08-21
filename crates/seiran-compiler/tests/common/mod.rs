@@ -21,53 +21,19 @@ pub(crate) fn read_test_font() -> Vec<u8> {
   });
 }
 
+/// 妥当な `[pdf]` / `[output]` に任意の `[font_configs.*]` 群を足して `config.toml` を組む。
+///
+/// `extra_top_level` は `sources` の直後へ差し込むトップレベル行（末尾の改行込み。不要なら空文字）。
+/// `font_sections` の作り分けはこの関数の呼び出し側が担う。
+pub(crate) fn config_toml_with_font_sections(source_path: &str, extra_top_level: &str, font_sections: &str) -> String {
+  return format!(
+    "sources = [\"{source_path}\"]\n{extra_top_level}\n{}{}{font_sections}",
+    test_support::valid_pdf_section(),
+    test_support::valid_output_section("out", "/project/out"),
+  );
+}
+
 /// 19 フォント種別すべてが同じフォントファイルを指す、最小の妥当な `config.toml` を組む。
 pub(crate) fn minimal_config_toml(source_path: &str) -> String {
-  return format!(
-    "sources = [\"{source_path}\"]\n\n{}{}{}",
-    test_support::valid_pdf_section(),
-    test_support::valid_output_section("out", "/project/out"),
-    test_support::make_font_sections("/project/font.ttf"),
-  );
-}
-
-/// [`minimal_config_toml`] の `[font_configs.serif]` に任意の行を足した `config.toml` を組む。
-#[allow(
-  dead_code,
-  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
-)]
-pub(crate) fn minimal_config_toml_with_serif_extra(source_path: &str, extra_lines: &str) -> String {
-  return format!(
-    "sources = [\"{source_path}\"]\n\n{}{}{}",
-    test_support::valid_pdf_section(),
-    test_support::valid_output_section("out", "/project/out"),
-    test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
-  );
-}
-
-/// [`minimal_config_toml_with_serif_extra`] に `style_path` を足した `config.toml` を組む。
-///
-/// `extra_lines` に空文字を渡せば `[font_configs.serif]` は既定のままになる。
-#[allow(
-  dead_code,
-  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
-)]
-pub(crate) fn config_toml_with_style(source_path: &str, style_path: &str, extra_lines: &str) -> String {
-  return format!(
-    "sources = [\"{source_path}\"]\nstyle_path = \"{style_path}\"\n\n{}{}{}",
-    test_support::valid_pdf_section(),
-    test_support::valid_output_section("out", "/project/out"),
-    test_support::font_sections_with_serif_extra("/project/font.ttf", extra_lines),
-  );
-}
-
-/// 脚注 1 行がページの高さを超える `style.toml` を組む（組版警告の再現用）。
-///
-/// `numbering` は `"continuous"` / `"per_page"`（後者は本文パスが不動点まで反復される）。
-#[allow(
-  dead_code,
-  reason = "`tests/common/mod.rs` は 2 つのテストバイナリへ別々にコンパイルされ、片方でしか使わないヘルパは未使用になる"
-)]
-pub(crate) fn overflowing_footnote_style_toml(numbering: &str) -> String {
-  return format!("[footnote]\nnumbering = \"{numbering}\"\nfont_size = \"900pt\"\n");
+  return config_toml_with_font_sections(source_path, "", &test_support::make_font_sections("/project/font.ttf"));
 }

@@ -204,7 +204,7 @@ impl Checker<'_> {
       HirNodeKind::Quote { body, .. } => self.nodes(body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 必須 fact を持たない variant。
-      HirNodeKind::Rule { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }
@@ -469,7 +469,7 @@ impl Walker<'_> {
       HirNodeKind::Quote { body, .. } => self.nodes(body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 採番対象も参照箇所も含まない variant。
-      HirNodeKind::Rule { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }

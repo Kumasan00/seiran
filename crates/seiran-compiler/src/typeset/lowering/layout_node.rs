@@ -25,24 +25,6 @@ pub(crate) enum LayoutNode {
     /// この `VBox` 配下の段落に適用する水平揃え（既定は左揃え）
     align: Align,
   },
-  /// 水平方向のコンテナ (行、インライン数式など)
-  #[allow(
-    dead_code,
-    reason = "lowering は構築しない（`VBox` 経由で組む）。block 側の扱いを crate 内の `#[cfg(test)]` が検証する"
-  )]
-  HBox {
-    /// 内包する子ノード列
-    children: Vec<LayoutNode>,
-    /// 明示幅（`None` なら子要素の自然幅に従う）
-    width: Option<Length>,
-  },
-  /// 画像や描画線など
-  Rule {
-    /// 罫線の幅
-    width: Length,
-    /// 罫線の高さ
-    height: Length,
-  },
   /// 画像（PNG / JPEG / SVG）
   Image {
     /// 画像ファイルへのパス
@@ -53,19 +35,6 @@ pub(crate) enum LayoutNode {
     height: Option<Length>,
     /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
     target_dpi: Option<u32>,
-  },
-  /// 伸縮スペース（水平方向の glue）
-  #[allow(
-    dead_code,
-    reason = "lowering は構築しない（行内のアキは block 段が挿入する）。block 側の扱いを crate 内の `#[cfg(test)]` が検証する"
-  )]
-  Glue {
-    /// 自然幅
-    natural: Length,
-    /// 伸長能力
-    stretch: Length,
-    /// 収縮能力
-    shrink: Length,
   },
   /// 水平カーン（固定幅の空白）
   Kern {
@@ -82,7 +51,7 @@ pub(crate) enum LayoutNode {
     /// ベースラインからの垂直オフセット（正で上方向）
     offset: Length,
     /// ずらす対象の子ノード列
-    children: Vec<LayoutNode>,
+    children: Vec<AtomNode>,
   },
   /// 表（`table` 環境）
   Table(TableLayout),
@@ -94,7 +63,7 @@ pub(crate) enum LayoutNode {
     rows: Vec<MathBlockRow>,
     /// 環境全体に 1 つだけ付く番号ボックス（`split` / `multiline` 用、lower 済み）。
     /// `block` 段がブロックの縦中央に配置する。行ごと採番や無採番では `None`
-    env_number: Option<Vec<LayoutNode>>,
+    env_number: Option<Vec<AtomNode>>,
     /// 本文幅の中での本体の水平揃え（既定は中央寄せ）
     align: Align,
     /// 番号を本文右端に寄せるか（`false` なら左端）
@@ -120,7 +89,7 @@ pub(crate) enum LayoutNode {
   /// keep-with-next マーカー（ゼロサイズ）
   KeepWithNext,
   /// 行の右端に寄せる末尾要素（証明の QED マーク等）
-  FlushRight(Vec<LayoutNode>),
+  FlushRight(Vec<AtomNode>),
   /// 脚注（`\footnote{...}`）の運搬マーカー + 本体
   Footnote {
     /// 発番済みの表示番号（マーカーのテキストとして既に埋め込み済みの値）
@@ -137,6 +106,37 @@ pub(crate) enum LayoutNode {
     /// 読みソートキー（`[reading=...]`）
     reading: Option<String>,
   },
+}
+
+/// Atom（行分割をまたがない閉じた箱）の中身になれるノード
+///
+/// `LayoutNode::Raise` / `LayoutNode::FlushRight` / ディスプレイ数式のセルと番号は、
+/// `crate::typeset::block` が絶対配置（`dx` / `dy`）へ畳んで 1 つの `HBox` にする。
+/// 畳めるのはテキストと入れ子の `Raise` だけなので、それ以外を表現できない型として
+/// `LayoutNode` から切り出してある（「Atom の子は限られる」という不変条件を型で保証し、
+/// 消費側 `block::LayoutBuilder::place_atom_children` の網羅 match を分岐なしで成立させる）。
+#[derive(Debug, Clone)]
+pub(crate) enum AtomNode {
+  /// スタイル付きテキスト
+  Text(String, TextStyle),
+  /// ベースラインから子要素を垂直方向にずらすコンテナ（上付き / 下付き / 根号指数）
+  Raise {
+    /// ベースラインからの垂直オフセット（正で上方向）
+    offset: Length,
+    /// ずらす対象の子ノード列
+    children: Vec<AtomNode>,
+  },
+}
+
+impl From<AtomNode> for LayoutNode {
+  /// `AtomNode` は `LayoutNode` の部分集合なので、常に無損失で持ち上がる
+  /// （インライン数式を段落の水平リストへ流し込むときに使う。逆方向の変換はない）
+  fn from(node: AtomNode) -> Self {
+    return match node {
+      AtomNode::Text(text, style) => LayoutNode::Text(text, style),
+      AtomNode::Raise { offset, children } => LayoutNode::Raise { offset, children },
+    };
+  }
 }
 
 /// 表全体の物理レイアウト表現
@@ -174,9 +174,9 @@ pub(crate) struct TableCellLayout {
 #[derive(Debug, Clone)]
 pub(crate) struct MathBlockRow {
   /// 列（lower 済みインライン数式）
-  pub cells: Vec<Vec<LayoutNode>>,
+  pub cells: Vec<Vec<AtomNode>>,
   /// 行番号ボックス（lower 済み、`None` は非採番）
-  pub number: Option<Vec<LayoutNode>>,
+  pub number: Option<Vec<AtomNode>>,
 }
 
 /// `LayoutNode::Text` 1 つに付与するテキスト書体情報（フォントサイズ + フォント種別）
@@ -189,19 +189,6 @@ pub(crate) struct TextStyle {
   /// テキスト色。`None` は既定色（黒）を意味し、render は塗り色を設定しない。
   /// `\color[color=#rrggbb]{...}` のときだけ `Some` になる。
   pub color: Option<Color>,
-}
-
-impl TextStyle {
-  /// 指定されたフォントサイズで新しい `TextStyle` を生成する（既定色 = 黒）
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
-  #[must_use]
-  pub(super) fn new(font_size: Length) -> Self {
-    return TextStyle {
-      font_size,
-      font_kind: FontKind::Serif,
-      color: None,
-    };
-  }
 }
 
 /// 隣接する同一スタイルの `Text` ノードを 1 つに結合する

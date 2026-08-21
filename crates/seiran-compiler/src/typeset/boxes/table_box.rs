@@ -83,7 +83,6 @@ pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
 fn max_font_size_in_content(content: &HBoxContent) -> Option<Length> {
   return match content {
     HBoxContent::Glyphs(run) => Some(run.font_size),
-    HBoxContent::Rule { .. } => None,
     HBoxContent::Atom(children) => children
       .iter()
       .filter_map(|child| return max_font_size_in_content(&child.item.content))
@@ -358,13 +357,10 @@ mod tests {
     });
   }
 
-  /// 指定幅の Rule ボックスを作る
-  fn rule_box(width: f32) -> HItem {
+  /// 指定幅の、テキストを含まないボックスを作る
+  fn text_free_box(width: f32) -> HItem {
     return HItem::Box(HBox {
-      content: HBoxContent::Rule {
-        width: pt(width),
-        height: pt(1.0),
-      },
+      content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
       height: pt(1.0),
       depth: Length::ZERO,
@@ -386,7 +382,7 @@ mod tests {
   fn measure_items_width_is_additive() {
     // Arrange
     let items = vec![
-      rule_box(10.0),
+      text_free_box(10.0),
       HItem::Glue {
         natural: pt(5.0),
         stretch: Length::ZERO,
@@ -404,7 +400,11 @@ mod tests {
   #[test]
   fn max_font_size_in_items_returns_largest_text_size() {
     // Arrange
-    let items = vec![glyph_box(20.0, 10.0), rule_box(5.0), glyph_box(20.0, 14.0)];
+    let items = vec![
+      glyph_box(20.0, 10.0),
+      text_free_box(5.0),
+      glyph_box(20.0, 14.0),
+    ];
 
     // Act / Assert
     assert_eq!(max_font_size_in_items(&items), Some(pt(14.0)));
@@ -413,7 +413,7 @@ mod tests {
   #[test]
   fn max_font_size_in_items_none_without_text() {
     // Arrange / Act / Assert
-    assert_eq!(max_font_size_in_items(&[rule_box(5.0)]), None);
+    assert_eq!(max_font_size_in_items(&[text_free_box(5.0)]), None);
   }
 
   #[test]
@@ -456,7 +456,7 @@ mod tests {
   #[test]
   fn table_row_height_falls_back_to_default_font() {
     // Arrange
-    let row = row(vec![cell(vec![rule_box(5.0)])]);
+    let row = row(vec![cell(vec![text_free_box(5.0)])]);
 
     // Act / Assert
     assert!(close(table_row_height(&row, pt(9.0), 2.0), 18.0));
@@ -482,9 +482,9 @@ mod tests {
       ],
       head: Vec::new(),
       rows: vec![row(vec![
-        cell(vec![rule_box(5.0)]),
-        cell(vec![rule_box(30.0)]),
-        cell(vec![rule_box(5.0)]),
+        cell(vec![text_free_box(5.0)]),
+        cell(vec![text_free_box(30.0)]),
+        cell(vec![text_free_box(5.0)]),
       ])],
       breakable: true,
     };
@@ -514,8 +514,8 @@ mod tests {
       ],
       head: Vec::new(),
       rows: vec![row(vec![
-        cell(vec![rule_box(20.0)]),
-        cell(vec![rule_box(10.0)]),
+        cell(vec![text_free_box(20.0)]),
+        cell(vec![text_free_box(10.0)]),
       ])],
       breakable: true,
     };
@@ -544,8 +544,8 @@ mod tests {
       ],
       head: Vec::new(),
       rows: vec![row(vec![
-        cell(vec![rule_box(90.0)]),
-        cell(vec![rule_box(40.0)]),
+        cell(vec![text_free_box(90.0)]),
+        cell(vec![text_free_box(40.0)]),
       ])],
       breakable: true,
     };
@@ -577,7 +577,7 @@ mod tests {
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target.clone()),
-      rule_box(20.0),
+      text_free_box(20.0),
       HItem::LinkEnd,
     ])]);
     let col_widths = vec![pt(30.0)];
@@ -604,7 +604,7 @@ mod tests {
   fn position_table_row_boxes_resolves_alignment_and_spacing() {
     // Arrange
     let row = row(vec![cell(vec![
-      rule_box(5.0),
+      text_free_box(5.0),
       HItem::Kern(pt(3.0)),
       HItem::Glue {
         natural: pt(2.0),
@@ -612,7 +612,7 @@ mod tests {
         shrink: Length::ZERO,
         breakable: false,
       },
-      rule_box(4.0),
+      text_free_box(4.0),
     ])]);
     let columns = vec![TableColumn {
       align: ColumnAlign::Right,
@@ -635,11 +635,11 @@ mod tests {
     let second = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(first.clone()),
-      rule_box(5.0),
+      text_free_box(5.0),
       HItem::LinkEnd,
-      rule_box(3.0),
+      text_free_box(3.0),
       HItem::LinkStart(second.clone()),
-      rule_box(5.0),
+      text_free_box(5.0),
       HItem::LinkEnd,
     ])]);
     let col_widths = vec![pt(30.0)];
@@ -666,7 +666,7 @@ mod tests {
     let row = row(vec![TableCellBox {
       items: vec![
         HItem::LinkStart(target.clone()),
-        rule_box(10.0),
+        text_free_box(10.0),
         HItem::LinkEnd,
       ],
       span: 2,
@@ -712,7 +712,7 @@ mod tests {
     let target = LinkTarget::External("https://example.com".to_string());
     let row = row(vec![cell(vec![
       HItem::LinkStart(target),
-      rule_box(10.0),
+      text_free_box(10.0),
       HItem::LinkEnd,
     ])]);
     let col_widths = vec![pt(30.0)];

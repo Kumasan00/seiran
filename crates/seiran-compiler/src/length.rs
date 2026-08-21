@@ -76,7 +76,6 @@ impl Length {
 
   /// 内部の sp 値を返す（比率計算などの生値取り出し用）。
   #[must_use]
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub const fn sp(self) -> i64 { return self.0; }
 
   /// pt 値を f32 で返す（PDF 座標などの出力境界用）。
@@ -97,7 +96,6 @@ impl Length {
     clippy::cast_possible_truncation,
     reason = "`to_pt` と同じく、出力境界の f32 精度へ落とすのは意図どおり"
   )]
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub fn to_mm(self) -> f32 { return (self.to_pt_f64() / MM_TO_PT) as f32; }
 
   /// 厳密に正の値か。
@@ -120,7 +118,6 @@ impl Length {
 
   /// 絶対値。
   #[must_use]
-  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
 }
 
