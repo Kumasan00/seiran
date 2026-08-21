@@ -3,7 +3,10 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::length::{Length, non_negative, positive};
+use crate::{
+  document::HeadingLevel,
+  length::{Length, non_negative, positive},
+};
 
 /// 目次のスタイル設定
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
@@ -56,7 +59,7 @@ impl Default for TocStyle {
 /// `garde` の `range` 属性は const 式しか受け付けないため上限値はリテラルだが、ここで
 /// 静的アサートを置くことで `HeadingLevel` を増減した際に誤値を検出できる。
 const _: () = assert!(
-  crate::document::HeadingLevel::COUNT == 6,
+  HeadingLevel::COUNT == 6,
   "garde の range 上限リテラル 6 と HeadingLevel::COUNT がずれている（HeadingLevel を増減したら上限も更新する）"
 );
 

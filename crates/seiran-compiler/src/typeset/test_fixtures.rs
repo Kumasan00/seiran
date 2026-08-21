@@ -11,20 +11,20 @@
 
 use std::collections::HashMap;
 
-use super::{
-  boxes::{
-    AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock, PlacedFootnote,
-    PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule, PositionedBox,
-    TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
-  },
-  font::GlyphRun,
-  pagination::{LaidOutDocument, OutlineEntry},
-};
 use crate::{
   document::{ColumnAlign, ColumnWidth, HeadingLevel},
   length::Length,
   project::{FontType, ProjectPath},
   semantics::{HeadingKey, LabelId},
+  typeset::{
+    boxes::{
+      AnchorId, AnchorMark, HBox, HBoxContent, HItem, Line, LinkTarget, Page, PlacedAnchor, PlacedBlock,
+      PlacedFootnote, PlacedHItem, PlacedIndexEntry, PlacedLink, PlacedMathNumber, PlacedTableRow, PlacedTableRule,
+      PositionedBox, TableCellBox, TableColumn, TableRowBox, max_font_size_in_items, position_table_row_boxes,
+    },
+    font::GlyphRun,
+    pagination::{LaidOutDocument, OutlineEntry},
+  },
 };
 
 /// 計測済みボックスの寸法（`HBox` を露出させずに箱の大きさを渡すための引数まとめ）

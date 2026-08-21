@@ -7,12 +7,15 @@
 //! 用紙左端からの絶対位置は、ページ自身が持つ [`Page::content_origin_x`] を描画時に
 //! ちょうど 1 回加算して得る（余白の所有は `style.toml` の `[page]`、#389）。
 
-use super::{
-  hitem::HBox,
-  line::{Line, PositionedBox},
-  link::{AnchorMark, LinkTarget},
+use crate::{
+  length::Length,
+  project::ProjectPath,
+  typeset::boxes::{
+    hitem::HBox,
+    line::{Line, PositionedBox},
+    link::{AnchorMark, LinkTarget},
+  },
 };
-use crate::{length::Length, project::ProjectPath};
 
 /// 組版済みの 1 ページ
 #[derive(Debug, Clone)]

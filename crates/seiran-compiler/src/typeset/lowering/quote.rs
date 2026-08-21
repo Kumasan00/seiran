@@ -1,10 +1,12 @@
 //! 引用ブロック（`document::HirNodeKind::Quote`）の lowering
 
-use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
 use crate::{
   document::{HirNode, QuoteKind},
   length::Length,
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner},
+  },
 };
 
 /// 引用ブロックをレイアウトノードに変換する

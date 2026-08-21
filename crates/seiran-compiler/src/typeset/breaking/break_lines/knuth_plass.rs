@@ -1,10 +1,14 @@
 //! Knuth–Plass 方式の段落全体最適な行分割
 
-use super::{GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue};
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HItem, Line},
+  typeset::{
+    boxes::{HItem, Line},
+    breaking::break_lines::{
+      GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue,
+    },
+  },
 };
 
 /// 1 行ぶんの demerits に加える基礎ペナルティ（TeX の `\linepenalty` 相当）

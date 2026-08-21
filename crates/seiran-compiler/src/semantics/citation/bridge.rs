@@ -8,7 +8,7 @@
 use hayagriva::citationberg::json::Item;
 use serde_json::{Map, Value};
 
-use super::Reference;
+use crate::semantics::citation::Reference;
 
 /// `Reference` を CSL-JSON 担体 `Item` に変換する。
 ///

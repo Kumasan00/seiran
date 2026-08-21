@@ -4,15 +4,17 @@
 //! 箱組み（見出し・段落）そのものは本文と同じ関数を通し、この module が持つのは
 //! 「`GeneratedInline` 列 → `LayoutNode` 列」の変換と、書誌に現れる固定形の走査だけ。
 
-use super::{
-  HeadingRecord, LoweringContext,
-  heading::{self, title_style},
-  layout_node::{LayoutNode, TextStyle},
-  paragraph::{assemble_paragraph, body_text_style},
-};
 use crate::{
   semantics::{GeneratedBlock, GeneratedInline, HeadingKey, generated_inlines_to_plain_text},
-  typeset::boxes::{AnchorId, AnchorMark, LinkTarget},
+  typeset::{
+    boxes::{AnchorId, AnchorMark, LinkTarget},
+    lowering::{
+      HeadingRecord, LoweringContext,
+      heading::{self, title_style},
+      layout_node::{LayoutNode, TextStyle},
+      paragraph::{assemble_paragraph, body_text_style},
+    },
+  },
 };
 
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
@@ -108,20 +110,24 @@ mod tests {
     super::test_support::{analyzed, lower},
     *,
   };
-  use crate::{semantics::CitationId, style::Style as ReadStyle};
+  use crate::{
+    document::{FontKind, HeadingLevel},
+    semantics::CitationId,
+    style::Style as ReadStyle,
+  };
 
   /// `citation::render` が合成するのと同じ形の書誌（見出し + アンカー + 段落）を作る
   fn bibliography() -> Vec<GeneratedBlock> {
     return vec![
       GeneratedBlock::Heading {
-        level: crate::document::HeadingLevel::Section,
+        level: HeadingLevel::Section,
         title: vec![GeneratedInline::Text("References".to_string())],
       },
       GeneratedBlock::Anchor(CitationId::new("kwan2014")),
       GeneratedBlock::Paragraph(vec![
         GeneratedInline::Text("K. Kwan, ".to_string()),
         GeneratedInline::Styled {
-          kind: crate::document::FontKind::SerifItalic,
+          kind: FontKind::SerifItalic,
           children: vec![GeneratedInline::Text("Crazy Rich Asians".to_string())],
         },
       ]),
@@ -184,7 +190,7 @@ mod tests {
       LayoutNode::Text(t, s) if t == "Crazy Rich Asians" => return Some(*s),
       _ => return None,
     });
-    assert_eq!(italic.map(|s| return s.font_kind), Some(crate::document::FontKind::SerifItalic), "{layout:?}");
+    assert_eq!(italic.map(|s| return s.font_kind), Some(FontKind::SerifItalic), "{layout:?}");
   }
 
   #[test]

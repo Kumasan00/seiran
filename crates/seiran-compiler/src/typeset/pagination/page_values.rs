@@ -144,6 +144,7 @@ impl PageLabels {
 mod tests {
   use super::{BodyPageValues, PageIndex};
   use crate::{
+    length::Length,
     semantics::{HeadingKey, LabelId},
     style::PageNumbering,
     typeset::boxes::{AnchorMark, Page, PlacedAnchor},
@@ -161,15 +162,15 @@ mod tests {
         .map(|mark| {
           return PlacedAnchor {
             mark,
-            x: crate::length::Length::ZERO,
-            y: crate::length::Length::ZERO,
+            x: Length::ZERO,
+            y: Length::ZERO,
           };
         })
         .collect(),
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,
-      content_origin_x: crate::length::Length::ZERO,
+      content_origin_x: Length::ZERO,
     };
   }
 

@@ -8,7 +8,11 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use crate::document::{HirBuilder, HirGroup, HirSource};
+use crate::{
+  document::{HirBuilder, HirGroup, HirSource},
+  frontend::syntax::ParserError,
+  source::SourceId,
+};
 
 mod evaluator;
 #[cfg(test)]
@@ -33,7 +37,7 @@ pub(crate) enum ParseSourceError {
   /// 構文解析（`crate::frontend::syntax::parse`）で発生したエラー
   #[error(transparent)]
   #[diagnostic(transparent)]
-  Syntax(#[from] crate::frontend::syntax::ParserError),
+  Syntax(#[from] ParserError),
 
   /// 評価（CST → Document IR 変換）で発生したエラー
   #[error(transparent)]
@@ -49,9 +53,9 @@ pub(crate) enum ParseSourceError {
 /// # Errors
 ///
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
-pub(crate) fn parse_source(source: &str, source_id: crate::source::SourceId) -> Result<HirSource, ParseSourceError> {
+pub(crate) fn parse_source(source: &str, source_id: SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
-  let cst = crate::frontend::syntax::parse(source, &arena, evaluator::lookup_env_parse_mode)?;
+  let cst = syntax::parse(source, &arena, evaluator::lookup_env_parse_mode)?;
 
   let builder = HirBuilder::new(source_id);
   let nodes = evaluator::evaluate_children(source, &builder, cst)?;
@@ -69,15 +73,16 @@ pub(crate) fn parse_source(source: &str, source_id: crate::source::SourceId) -> 
 #[cfg(test)]
 mod tests {
   use super::{EvalError, ParseSourceError, parse_source};
-  use crate::document::{
-    FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathVariant,
+  use crate::{
+    document::{FontKind, HeadingLevel, HirInline, HirInlineKind, HirMathKind, HirNode, HirNodeKind, MathVariant},
+    source::SourceId,
   };
 
   /// ソースを評価して `Vec<HirNode>` を返すテストヘルパ
   ///
   /// 成功を期待する場合に使う。失敗ケースは [`evaluate_error`] を利用する。
   fn evaluate_source(source: &str) -> Vec<HirNode> {
-    let hir = parse_source(source, crate::source::SourceId::new(0)).unwrap();
+    let hir = parse_source(source, SourceId::new(0)).unwrap();
     return hir.group.nodes;
   }
 
@@ -87,7 +92,7 @@ mod tests {
   /// `Eval` バリアントから内側のエラーを取り出して返す。
   /// 構文エラー（`Syntax` バリアント）の場合は `panic!` する。
   fn evaluate_error(source: &str) -> EvalError {
-    match parse_source(source, crate::source::SourceId::new(0)) {
+    match parse_source(source, SourceId::new(0)) {
       Err(ParseSourceError::Eval(error)) => return error,
       other => panic!("評価エラーが期待されます: {other:?}"),
     }

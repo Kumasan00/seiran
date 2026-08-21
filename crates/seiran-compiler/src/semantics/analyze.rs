@@ -5,12 +5,16 @@
 //! 生成物（引用表示・書誌）は著者が書いた文書木へは一切書き戻さず、[`SemanticDocument`] の別
 //! フィールドに置いたまま組版へ渡る。
 
+#[cfg(test)]
+use crate::semantics::SemanticFailures;
 use crate::{
   document::HirDocument,
+  project::ProjectSource,
   semantics::{
     GeneratedCitations, References, SemanticDocument, SemanticPolicy, error::AnalyzeError, facts::SemanticFacts,
     generate_citations, load_citation_style, walk,
   },
+  style::Style,
 };
 
 /// HIR を意味解析し、引用の表示と書誌を生成して [`SemanticDocument`] にまとめて返す。
@@ -23,10 +27,10 @@ use crate::{
 /// 意味解析（重複ラベル・未解決参照・未定義引用キー）、CSL スタイルの読込、または表示の生成に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn analyze(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   document: HirDocument,
   references: &References,
-  style: &crate::style::Style,
+  style: &Style,
 ) -> Result<SemanticDocument, AnalyzeError> {
   // ラベル・参照・カウンタ・見出し・引用箇所の走査はここで完了する
   // （以降 `\cite` のキーは必ず参照定義に存在する）。走査には表示設定を渡さない
@@ -51,7 +55,7 @@ pub(crate) fn analyze_for_test(
   document: HirDocument,
   policy: &SemanticPolicy,
   references: &References,
-) -> Result<SemanticDocument, crate::semantics::SemanticFailures> {
+) -> Result<SemanticDocument, SemanticFailures> {
   let facts = walk::collect_facts(&document, policy, references)?;
   return Ok(SemanticDocument::new(document, facts, GeneratedCitations::default()));
 }
@@ -60,10 +64,10 @@ pub(crate) fn analyze_for_test(
 ///
 /// 引用が 1 つも無ければ CSL スタイルを読まない（`csl_path` 未設定でもエラーにしない）。
 fn generate(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   facts: &SemanticFacts,
   references: &References,
-  style: &crate::style::Style,
+  style: &Style,
 ) -> Result<GeneratedCitations, AnalyzeError> {
   if facts.citations.is_empty() {
     return Ok(GeneratedCitations::default());
@@ -81,7 +85,7 @@ mod tests {
     frontend::parse_source,
     project::{FilesystemProjectSource, MemoryProjectSource},
     semantics::{
-      AnalyzeError, CitationStyleError, read_references,
+      AnalyzeError, CitationStyleError, SemanticError, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
     },
     source::SourceId,
@@ -190,7 +194,7 @@ mod tests {
       matches!(
         &error,
         AnalyzeError::Analyze(failures)
-          if matches!(failures.first(), crate::semantics::SemanticError::UnknownCitationKeys { .. })
+          if matches!(failures.first(), SemanticError::UnknownCitationKeys { .. })
       ),
       "got: {error:?}"
     );

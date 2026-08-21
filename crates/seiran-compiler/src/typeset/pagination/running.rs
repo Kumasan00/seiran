@@ -4,14 +4,15 @@ use std::time::Instant;
 
 use tracing::debug;
 
-use super::{context::TypesetContext, elapsed_ms, page_values::PageLabels};
 use crate::{
   color::Color,
+  length::Length,
   project::config::DocumentConfig,
   style::{RunningContentStyle, Style},
   typeset::{
     block::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content},
     boxes::Page,
+    pagination::{context::TypesetContext, elapsed_ms, page_values::PageLabels},
   },
 };
 
@@ -29,8 +30,8 @@ pub(super) fn place_running_content(ctx: &TypesetContext<'_>, pages: &mut [Page]
 fn build_running_spec(
   style: &Style,
   document: &DocumentConfig,
-  text_width: crate::length::Length,
-  page_height: crate::length::Length,
+  text_width: Length,
+  page_height: Length,
   page_labels: PageLabels,
 ) -> RunningContentSpec {
   return RunningContentSpec {
@@ -50,11 +51,7 @@ fn build_running_spec(
 /// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。
 ///
 /// 全スロットが空なら描画を省略するため `None` を返す。
-fn running_slots(
-  style: &RunningContentStyle,
-  baseline_y: crate::length::Length,
-  rule_below: bool,
-) -> Option<RunningSlots> {
+fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bool) -> Option<RunningSlots> {
   if style.is_empty() {
     return None;
   }

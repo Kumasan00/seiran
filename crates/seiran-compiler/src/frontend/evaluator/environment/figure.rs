@@ -14,6 +14,7 @@ use crate::{
     syntax::ast::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
+  project::ProjectPath,
 };
 
 /// `figure` 環境を評価する
@@ -92,7 +93,7 @@ pub(super) fn figure(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec
   return Ok(vec![HirNode::new(
     id,
     HirNodeKind::Figure {
-      image_path: crate::project::ProjectPath::new(image_path),
+      image_path: ProjectPath::new(image_path),
       width,
       height,
       dpi,
@@ -229,23 +230,15 @@ mod tests {
   use super::*;
   use crate::{
     document::HirInlineKind,
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  /// テスト用 `parse` ラッパ
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   #[test]
   fn figure_extracts_image_and_caption() {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{./images/seiran.jpg}\caption{タイトル}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -283,7 +276,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{タイトル}\image[width=80mm, height=60mm]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -303,7 +296,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, height=60mm]{a.png}\caption{タイトル}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -323,7 +316,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}[label=fig:foo]\image[width=10mm, height=10mm]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -341,7 +334,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\caption{c}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -355,7 +348,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -381,7 +374,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -399,7 +392,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}[foo=1]\image[width=1mm, height=1mm]{a}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -413,7 +406,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=80mm, dpi=600, downsample=false]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -434,7 +427,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=0]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -448,7 +441,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[dpi=-150]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -462,7 +455,7 @@ mod tests {
     // Arrange — 描画寸法 0 は krilla が受け付けないので、描画段まで運ばずここで弾く（#378）
     let arena = Bump::new();
     let source = r"\begin{figure}\image[width=0mm]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -476,7 +469,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{figure}\image[height=-5mm]{a.png}\end{figure}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);

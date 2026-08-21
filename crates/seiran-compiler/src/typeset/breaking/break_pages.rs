@@ -2,7 +2,6 @@
 
 use tracing::debug;
 
-use super::break_lines::LineBreaker;
 use crate::{
   length::Length,
   style::TextAlignment,
@@ -13,6 +12,7 @@ use crate::{
       PlacedMathNumber, PlacedTableRow, PlacedTableRule, TableBox, TableRowBox, collect_row_links,
       max_font_size_in_items, position_table_row_boxes, resolve_column_widths, table_row_height,
     },
+    breaking::break_lines::LineBreaker,
     geometry::column_width,
   },
 };
@@ -1217,11 +1217,13 @@ mod tests {
   use crate::{
     document::{ColumnAlign, ColumnWidth},
     length::Length,
+    project::{FontType, ProjectPath},
+    semantics::{HeadingKey, LabelId},
     style::TextAlignment,
     typeset::{
       boxes::{
-        Align, Block, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedBlock,
-        PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
+        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK,
+        Page, PlacedBlock, PositionedBox, TableBox, TableCellBox, TableColumn, TableRowBox,
       },
       font::GlyphRun,
     },
@@ -1606,9 +1608,7 @@ mod tests {
       return page
         .anchors
         .iter()
-        .filter(
-          |a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::boxes::FootnoteId::new(0)),
-        )
+        .filter(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == FootnoteId::new(0)))
         .count();
     };
     assert_eq!(anchors_on(&pages[0]), 1, "{:?}", pages[0].anchors);
@@ -1616,7 +1616,7 @@ mod tests {
     let anchor = pages[0]
       .anchors
       .iter()
-      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == crate::typeset::boxes::FootnoteId::new(0)))
+      .find(|a| return matches!(&a.mark, AnchorMark::Footnote(id) if *id == FootnoteId::new(0)))
       .expect("先頭断片のアンカーがあるはず");
     assert!(close(anchor.y, 16.0), "アンカーは脚注先頭行の上端のはず: {anchor:?}");
     assert!(close(anchor.x, 0.0));
@@ -2328,7 +2328,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Image {
-        path: crate::project::ProjectPath::new("x.png"),
+        path: ProjectPath::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(15.0)),
         target_dpi: None,
@@ -2356,7 +2356,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(3),
       Block::Image {
-        path: crate::project::ProjectPath::new("x.png"),
+        path: ProjectPath::new("x.png"),
         width: Some(pt(20.0)),
         height: Some(pt(30.0)),
         target_dpi: None,
@@ -2382,7 +2382,7 @@ mod tests {
             font_size: pt(10.0),
             text: text.to_string(),
             glyphs: Vec::new(),
-            font_type: crate::project::FontType::Serif,
+            font_type: FontType::Serif,
             color: None,
           }),
           width: Length::pt(20.0),
@@ -2540,7 +2540,7 @@ mod tests {
                 font_size: pt(10.0),
                 text: "リンク".to_string(),
                 glyphs: Vec::new(),
-                font_type: crate::project::FontType::Serif,
+                font_type: FontType::Serif,
                 color: None,
               }),
               width: Length::pt(20.0),
@@ -2639,7 +2639,7 @@ mod tests {
   fn table_link_shifts_with_its_row_under_flush_bottom() {
     // Arrange
     let geom = flush_geometry();
-    let target = LinkTarget::Internal(crate::typeset::boxes::AnchorId::Label(crate::semantics::LabelId::new("fig:1")));
+    let target = LinkTarget::Internal(AnchorId::Label(LabelId::new("fig:1")));
     let table = single_cell_link_table(target.clone());
     let blocks = vec![
       fixed_block(8.0),                           // idx0, bottom=18（シフト対象外）
@@ -2676,7 +2676,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       Block::Anchor(AnchorMark::Heading {
-        key: crate::semantics::HeadingKey::new(0),
+        key: HeadingKey::new(0),
         label: None,
       }),
       paragraph_of_lines(1),
@@ -2700,7 +2700,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(4),
-      Block::Anchor(AnchorMark::Label(crate::semantics::LabelId::new("tab:x"))),
+      Block::Anchor(AnchorMark::Label(LabelId::new("tab:x"))),
       paragraph_of_lines(1),
     ];
 
@@ -3139,7 +3139,7 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: crate::project::ProjectPath::new("x.png"),
+      path: ProjectPath::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
@@ -3161,7 +3161,7 @@ mod tests {
     // Arrange
     let geom = test_geometry();
     let blocks = vec![Block::Image {
-      path: crate::project::ProjectPath::new("x.png"),
+      path: ProjectPath::new("x.png"),
       width: Some(pt(20.0)),
       height: Some(pt(15.0)),
       target_dpi: None,
@@ -3262,7 +3262,7 @@ mod tests {
   }
 
   /// 合成済み単一行（[`Block::ComposedLine`]）のテスト用ヘルパ。幅・高さ・深さと任意のリンクを持つ
-  fn composed_line(width: f32, height: f32, depth: f32, link: Option<crate::typeset::boxes::LinkTarget>) -> Block {
+  fn composed_line(width: f32, height: f32, depth: f32, link: Option<LinkTarget>) -> Block {
     let width = pt(width);
     let height = pt(height);
     let depth = pt(depth);
@@ -3670,7 +3670,7 @@ mod tests {
   /// （`PlacedBlock::Rule`）と取り違えないよう、本文側の fixture は画像で組む。
   fn fixed_block(height: f32) -> Block {
     return Block::Image {
-      path: crate::project::ProjectPath::new("fixture.png"),
+      path: ProjectPath::new("fixture.png"),
       width: Some(Length::pt(10.0)),
       height: Some(pt(height)),
       target_dpi: None,

@@ -12,8 +12,10 @@
 //! 「生成物が取りうる形」がこの enum を読むだけで分かることの両方を支えている。
 //! CSL 整形が新しい表現を出すようになったら、そのとき variant を足す（#326）。
 
-use super::CitationId;
-use crate::document::{FontKind, HeadingLevel};
+use crate::{
+  document::{FontKind, HeadingLevel},
+  semantics::citation::CitationId,
+};
 
 /// 引用の生成物（書誌）が使うブロック要素
 ///

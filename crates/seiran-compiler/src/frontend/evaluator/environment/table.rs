@@ -73,22 +73,14 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::{CaptionPosition, HirInline, HirInlineKind, HirTableRow},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    document::{CaptionPosition, FontKind, HirInline, HirInlineKind, HirTableRow},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  /// テスト用 `parse` ラッパ
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   /// ソースを評価して最初の `HirNodeKind::Table` を取り出すヘルパ
   fn eval_table(source: &str) -> Result<Vec<HirNode>, EvalError> {
     let arena = Bump::new();
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     return evaluate_children_to_hir(source, cst);
   }
 
@@ -445,7 +437,7 @@ mod tests {
     assert!(matches!(
       &rows[0].cells[0].content[0].kind,
       HirInlineKind::Styled {
-        kind: crate::document::FontKind::SerifBold,
+        kind: FontKind::SerifBold,
         ..
       }
     ));

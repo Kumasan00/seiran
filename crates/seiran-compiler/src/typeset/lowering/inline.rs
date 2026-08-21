@@ -1,15 +1,18 @@
 //! インライン要素（`document::HirInline`）の lowering
 
-use super::{
-  LoweringContext, LoweringState, generated,
-  layout_node::{AtomNode, LayoutNode, TextStyle},
-  math::lower_inline_math,
-};
 use crate::{
+  color::Color,
   document::{FontKind, HirInline, HirInlineKind},
   length::Length,
   style::FootnoteStyle,
-  typeset::boxes::{AnchorId, FootnoteId, LinkTarget},
+  typeset::{
+    boxes::{AnchorId, FootnoteId, LinkTarget},
+    lowering::{
+      LoweringContext, LoweringState, generated,
+      layout_node::{AtomNode, LayoutNode, TextStyle},
+      math::lower_inline_math,
+    },
+  },
 };
 
 /// インライン列をまとめてレイアウトノードに変換する
@@ -171,7 +174,7 @@ fn footnote_marker_node(
 }
 
 /// リンク表示テキストにハイパーリンク色を適用したスタイルを返す。
-pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<crate::color::Color>) -> TextStyle {
+pub(super) fn with_link_color(parent_style: TextStyle, link_color: Option<Color>) -> TextStyle {
   return TextStyle {
     color: parent_style.color.or(link_color),
     ..parent_style
@@ -190,7 +193,7 @@ mod tests {
   use crate::{
     color::Color,
     semantics::{CitationId, GeneratedInline, LabelId},
-    style::{NumberTemplate, Style as ReadStyle},
+    style::{NumberStyle, NumberTemplate, Style as ReadStyle},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -598,7 +601,7 @@ mod tests {
   fn lower_footnote_applies_number_style_to_both_markers() {
     // Arrange
     let mut style = ReadStyle::default();
-    style.footnote.number_style = crate::style::NumberStyle::RomanUpper;
+    style.footnote.number_style = NumberStyle::RomanUpper;
 
     // Act
     let nodes = lower_source(&style, "a\\footnote{a}\n\nb\\footnote{b}\n");

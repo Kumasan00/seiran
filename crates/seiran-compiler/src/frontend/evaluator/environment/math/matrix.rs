@@ -2,12 +2,12 @@
 //!
 //! 行と列に分割する非採番の数式環境。
 
-use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
   document::{HirBuilder, HirNode, HirNodeKind, MathDelimiter, MathEnvKind},
   frontend::{
     evaluator::{
       EvalError,
+      environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
       opt_args::{OptType, collect_environment_opt_args, find_string},
     },
     span_ext::ToSourceSpan,
@@ -75,15 +75,8 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirMathRow, MathDelimiter, MathEnvKind},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   /// 結果の最初の `MathBlock` の `(delimiter, rows)` を取り出すヘルパ（kind が Matrix であることも検証）
   fn matrix_of(result: &[HirNode]) -> (MathDelimiter, &[HirMathRow]) {
@@ -108,7 +101,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}a & b \\ c & d\end{matrix}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -127,7 +120,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=bracket]a & b \\ c & d\end{matrix}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -142,7 +135,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[delimiter=angle]a & b\end{matrix}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -156,7 +149,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{matrix}[numbered=true]a & b\end{matrix}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);

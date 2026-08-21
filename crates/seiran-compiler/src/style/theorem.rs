@@ -383,6 +383,7 @@ mod tests {
   use super::{TheoremClass, TheoremReset, TheoremStyle, Theorems, default_for_class};
   use crate::{
     document::FontKind,
+    length::Length,
     style::{CounterTemplate, TheoremHeadingTemplate},
   };
 
@@ -463,7 +464,7 @@ mod tests {
   fn validate_rejects_negative_top_margin() {
     // Arrange
     let mut style = TheoremStyle::default();
-    style.style.top_margin = crate::length::Length::pt(-0.1);
+    style.style.top_margin = Length::pt(-0.1);
 
     // Act / Assert
     assert!(style.validate().is_err());

@@ -1,10 +1,12 @@
 //! 貪欲法（first-fit）による行分割
 
-use super::{LineBreaker, OpenLink, build_line};
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HItem, Line},
+  typeset::{
+    boxes::{HItem, Line},
+    breaking::break_lines::{LineBreaker, OpenLink, build_line},
+  },
 };
 
 /// 貪欲法（first-fit）による行分割

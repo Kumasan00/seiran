@@ -4,8 +4,7 @@
 
 use tracing::debug;
 
-use super::body::BodyLayout;
-use crate::typeset::{error::TypesetError, lowering::per_page_footnote_numbers};
+use crate::typeset::{error::TypesetError, lowering::per_page_footnote_numbers, pagination::body::BodyLayout};
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -51,7 +50,10 @@ mod tests {
   use miette::Diagnostic;
 
   use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, solve_per_page_numbering};
-  use crate::typeset::boxes::{Page, PlacedFootnote};
+  use crate::{
+    length::Length,
+    typeset::boxes::{Page, PlacedFootnote},
+  };
 
   /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
   fn page_with_footnotes(indices: &[u32]) -> Page {
@@ -74,7 +76,7 @@ mod tests {
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,
-      content_origin_x: crate::length::Length::ZERO,
+      content_origin_x: Length::ZERO,
     };
   }
 

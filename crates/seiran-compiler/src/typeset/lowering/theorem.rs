@@ -1,16 +1,18 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
-  lower_nodes_inner, with_label_anchor,
-};
 use crate::{
   document::{FontKind, HirNode, HirNodeKind, TheoremClass},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{
+      LoweringContext, LoweringState,
+      layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
+      lower_nodes_inner, with_label_anchor,
+    },
+  },
 };
 
 /// 定理ブロックをレイアウトノードに変換する

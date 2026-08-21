@@ -5,11 +5,16 @@
 //! 親 module の [`super::place_paragraph`] の責務。計画は widow / orphan 補正で何度も立て直されるので、
 //! 一度きりであるべき記録をここで作ると重複する（#382）。
 
-use super::{
-  MIN_LINES_AT_BREAK,
-  footnote_packing::{FootnoteCharges, FootnoteDemand, LineFootnoteFit, fit_line_footnotes, footnote_area_full},
+use crate::{
+  length::Length,
+  typeset::{
+    boxes::Line,
+    breaking::break_pages::{
+      MIN_LINES_AT_BREAK,
+      footnote_packing::{FootnoteCharges, FootnoteDemand, LineFootnoteFit, fit_line_footnotes, footnote_area_full},
+    },
+  },
 };
-use crate::{length::Length, typeset::boxes::Line};
 
 /// 段落 1 行の配置計画（純粋な幾何判定の結果）
 #[derive(Debug, Clone, PartialEq)]

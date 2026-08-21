@@ -68,12 +68,12 @@ use std::{
   sync::Arc,
 };
 
-use super::build_pages;
 use crate::{
+  compiler::build_pages,
   length::Length,
-  project::{FontData, MemoryProjectSource, ProjectPath, config::ProjectConfig},
+  project::{self, FilesystemProjectSource, FontData, MemoryProjectSource, ProjectPath, config::ProjectConfig},
   semantics::{References, read_references},
-  style::{RunningTemplate, Style},
+  style::{self, FootnoteNumbering, RunningTemplate, Style},
   typeset::{AnchorMark, Page, PlacedBlock, dump_pages},
 };
 
@@ -132,15 +132,11 @@ pub(super) fn load_base() -> (ProjectConfig, Style, Arc<References>) {
     Path::new("vendor/fonts").is_dir(),
     "golden テストの資産 vendor/ が未取得です。tools/fetch-test-assets.sh を実行してください"
   );
-  let source = crate::project::FilesystemProjectSource::new();
-  let (config, _) = crate::project::config::load(
-    &source,
-    Path::new("crates/seiran-compiler/tests/config/config.toml"),
-    &workspace_root(),
-  )
-  .expect("fixture config.toml の読込");
-  let style =
-    crate::style::load(&source, config.style_path.as_deref(), &workspace_root()).expect("fixture style.toml の読込");
+  let source = FilesystemProjectSource::new();
+  let (config, _) =
+    project::config::load(&source, Path::new("crates/seiran-compiler/tests/config/config.toml"), &workspace_root())
+      .expect("fixture config.toml の読込");
+  let style = style::load(&source, config.style_path.as_deref(), &workspace_root()).expect("fixture style.toml の読込");
   let references = read_references(&source, config.references_path.as_deref()).expect("fixture references の読込");
   return (config, style, Arc::new(references));
 }
@@ -164,7 +160,7 @@ fn apply_input_style_overrides(name: &str, style: &mut Style) {
     },
     // ページ単位採番が複数ページにまたがる版面にする（用紙寸法の縮小は config 側が持つ）
     "footnote_per_page" => {
-      style.footnote.numbering = crate::style::FootnoteNumbering::PerPage;
+      style.footnote.numbering = FootnoteNumbering::PerPage;
       style.page.margin_left = Length::mm(20.0);
       style.page.margin_right = Length::mm(20.0);
       style.page.margin_top = Length::mm(15.0);
@@ -351,7 +347,7 @@ fn dump_input(base_config: &ProjectConfig, style: &Style, references: &Arc<Refer
   let mut style = style.clone();
   apply_input_style_overrides(name, &mut style);
   apply_input_config_overrides(name, &mut config);
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, references, &font_data).expect("build_pages の実行");
   return dump_pages(&laid_out.pages);
@@ -416,7 +412,7 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
 
     // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `load` を通す）
     let (source, root) = memory_source_for_golden_fixture(name);
-    let (toml_config, _) = crate::project::config::load(&source, root.as_path(), &workspace_root)
+    let (toml_config, _) = project::config::load(&source, root.as_path(), &workspace_root)
       .unwrap_or_else(|error| panic!("fixture {name} の toml 版 config 読込は成功するはず: {error}"));
 
     // Assert — 両関数が触れうるフィールドが一致する
@@ -438,7 +434,7 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
     let mut typed_style = base_style.clone();
     apply_input_style_overrides(name, &mut typed_style);
     let style_text = toml::to_string(&typed_style).expect("Style を TOML へ再直列化できるはず");
-    let toml_style = crate::style::parse(&style_text, "style.toml")
+    let toml_style = style::parse(&style_text, "style.toml")
       .unwrap_or_else(|failures| panic!("fixture {name} の style 読み直しは成功するはず: {failures}"));
     assert_eq!(
       typed_style.page.margin_left, toml_style.page.margin_left,
@@ -513,7 +509,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
   style.page.margin_top = Length::mm(10.0);
   style.page.margin_bottom = Length::mm(10.0);
   config.sources = vec![PathBuf::from("tests/text/keepwithnext.sei")];
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
 
   // Act
@@ -527,7 +523,7 @@ fn keep_with_next_prevents_heading_orphan_end_to_end() {
 }
 
 /// `footnote_per_page.sei` を指定の採番方式で組版し、ページごとの脚注番号列を返すテストヘルパ
-fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<Vec<u32>> {
+fn footnote_numbers_per_page(numbering: FootnoteNumbering) -> Vec<Vec<u32>> {
   enter_workspace_root();
   let (mut config, mut style, references) = load_base();
   config.sources = vec![PathBuf::from("tests/text/footnote_per_page.sei")];
@@ -535,7 +531,7 @@ fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<
   apply_input_style_overrides("footnote_per_page", &mut style);
   // 採番方式はこのヘルパの引数が決める（style 上書きの既定値を上書きする）
   style.footnote.numbering = numbering;
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let laid_out = build_pages(&config, &style, &references, &font_data).expect("build_pages の実行");
   return laid_out
@@ -548,7 +544,7 @@ fn footnote_numbers_per_page(numbering: crate::style::FootnoteNumbering) -> Vec<
 #[test]
 fn per_page_footnote_numbering_restarts_on_each_page() {
   // Act
-  let per_page = footnote_numbers_per_page(crate::style::FootnoteNumbering::PerPage);
+  let per_page = footnote_numbers_per_page(FootnoteNumbering::PerPage);
 
   // Assert — 脚注を持つページが 2 つ以上あり（空振りでないこと）、どのページも 1 から始まる連番。
   // 入力は 1 ページ目に 10 個置くので、2 ページ目は通し番号なら 11 以降＝マーカーが 2 桁になる。
@@ -569,7 +565,7 @@ fn long_footnote_splits_across_pages_without_overlapping_body() {
   config.sources = vec![PathBuf::from("tests/text/footnote_split.sei")];
   apply_input_config_overrides("footnote_split", &mut config);
   apply_input_style_overrides("footnote_split", &mut style);
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
 
   // Act
@@ -631,7 +627,7 @@ fn block_bottom(block: &PlacedBlock) -> Option<Length> {
 #[test]
 fn continuous_footnote_numbering_runs_through_pages() {
   // Act — 同じ入力を既定（通し）で組む
-  let continuous = footnote_numbers_per_page(crate::style::FootnoteNumbering::Continuous);
+  let continuous = footnote_numbers_per_page(FootnoteNumbering::Continuous);
 
   // Assert — ページをまたいでも 1 からの通し連番のまま（ページ単位採番の導入で既定が変わっていない）
   let flattened: Vec<u32> = continuous.iter().flatten().copied().collect();

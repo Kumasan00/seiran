@@ -1,13 +1,16 @@
 //! 見出し（`document::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
 
-use super::{
-  LoweringContext,
-  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
-};
 use crate::{
   document::HeadingLevel,
+  length::Length,
   semantics::{HeadingKey, LabelId},
-  typeset::boxes::{Align, AnchorMark},
+  typeset::{
+    boxes::{Align, AnchorMark},
+    lowering::{
+      LoweringContext,
+      layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+    },
+  },
 };
 
 /// 見出しのタイトル・番号に使う基底テキストスタイルを返す
@@ -57,8 +60,8 @@ pub(super) fn lower_heading(
   result.push(LayoutNode::VBox {
     children,
     margin_bottom: heading_style.bottom_margin,
-    indent: crate::length::Length::pt(0.0),
-    right_indent: crate::length::Length::pt(0.0),
+    indent: Length::pt(0.0),
+    right_indent: Length::pt(0.0),
     align: Align::Left,
   });
 

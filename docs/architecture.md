@@ -510,6 +510,9 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
 - `inline` / `math` / `opt_args` / `error`
+- `test_support`（`#[cfg(test)]`）: 配下の test module が共有する CST 組み立てヘルパ。本番の環境
+  レジストリ（`lookup_env_parse_mode`）を注入した `parse` と、そこから最初の `CommandCall` を取り出す
+  `command_call_node` を持つ。以前は同じ形が evaluator 配下の各 test module へ複製されていた（#400）
 
 コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
 ディスパッチする。

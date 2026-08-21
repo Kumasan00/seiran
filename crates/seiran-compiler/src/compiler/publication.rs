@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use crate::{
+  length::Length,
   project::config::ProjectConfig,
   publication::{
     Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
@@ -185,9 +186,7 @@ fn build_destination_index(pages: &[Page]) -> (HashMap<AnchorId, Destination>, V
 /// Krilla と同じ `f32` の演算順序でページの本文原点を加える（pt 単位）。
 ///
 /// sp のまま加算すると PDF 座標の丸めが変わるため、pt へ変換してから加算する。
-fn add_origin_x(origin_x: crate::length::Length, x: crate::length::Length) -> f32 {
-  return origin_x.to_pt() + x.to_pt();
-}
+fn add_origin_x(origin_x: Length, x: Length) -> f32 { return origin_x.to_pt() + x.to_pt(); }
 
 /// 配置済みブロックの描画命令を追加する。
 ///

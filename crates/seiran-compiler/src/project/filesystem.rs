@@ -5,7 +5,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use super::{ProjectPath, ProjectSource, SourceReadError};
+use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 
 /// 実ファイルシステムから読み込む `ProjectSource`。
 ///

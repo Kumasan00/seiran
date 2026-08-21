@@ -88,38 +88,17 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{lookup_env_parse_mode, run_inline_handler},
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    color::Color,
+    frontend::evaluator::{run_inline_handler, test_support},
   };
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  /// テスト用: ソースからコマンドビューを取得
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
 
   #[test]
   fn bold_creates_styled_node() {
     // Arrange
     let arena = Bump::new();
     let source = "\\bold{hello}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -142,7 +121,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\bold{\italic{x}}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -167,7 +146,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\bold";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
@@ -182,7 +161,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\bold{a}{b}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
@@ -197,7 +176,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\bold[heavy]{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -212,7 +191,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#ff0000]{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -223,7 +202,7 @@ mod tests {
     let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, crate::color::Color::new(0xff, 0x00, 0x00));
+    assert_eq!(*color, Color::new(0xff, 0x00, 0x00));
     assert_eq!(children.len(), 1);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
@@ -233,7 +212,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\color{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
@@ -248,7 +227,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#zzzzzz]{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
@@ -262,7 +241,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#00ff00]{a}{b}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act & Assert
@@ -277,7 +256,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\color[color=#0000ff]{\bold{x}}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -287,7 +266,7 @@ mod tests {
     let HirInlineKind::Colored { color, children } = &result[0].kind else {
       panic!("Colored が期待されます: {result:?}");
     };
-    assert_eq!(*color, crate::color::Color::new(0x00, 0x00, 0xff));
+    assert_eq!(*color, Color::new(0x00, 0x00, 0xff));
     let HirInlineKind::Styled { kind, .. } = &children[0].kind else {
       panic!("内側は Styled が期待されます: {children:?}");
     };

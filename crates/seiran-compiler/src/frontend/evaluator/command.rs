@@ -196,25 +196,17 @@ mod tests {
   use proptest::prelude::*;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
+  use crate::frontend::{evaluator, evaluator::test_support};
 
   #[test]
   fn single_char_rejects_unknown_opt_arg_key() {
     // Arrange
     let arena = Bump::new();
     let source = r"\alpha[k=v]";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
-    let result = crate::frontend::evaluator::evaluate_children_to_hir(source, cst);
+    let result = evaluator::evaluate_children_to_hir(source, cst);
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
@@ -247,8 +239,8 @@ mod tests {
       let source = format!("\\{name}{args}");
 
       // Act
-      let cst = parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
-      let result = crate::frontend::evaluator::evaluate_children_to_hir(&source, cst);
+      let cst = test_support::parse(&source, &arena).expect("字句・構文解析自体は失敗しないはず（コマンド名は既知）");
+      let result = evaluator::evaluate_children_to_hir(&source, cst);
 
       // Assert
       let is_known_outcome = matches!(

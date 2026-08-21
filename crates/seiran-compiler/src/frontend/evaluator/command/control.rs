@@ -95,37 +95,14 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{evaluate_children_to_hir, lookup_env_parse_mode, run_block_handler},
-    syntax::{SyntaxKind, green::GreenElement},
-  };
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
+  use crate::frontend::evaluator::{evaluate_children_to_hir, run_block_handler, test_support};
 
   #[test]
   fn space_rejects_unknown_opt_arg_key() {
     // Arrange
     let arena = Bump::new();
     let source = r"\space[draft]{10}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -140,7 +117,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\noindent";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -155,7 +132,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\noindent{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -170,7 +147,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\noindent[draft]";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -185,7 +162,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -200,7 +177,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak{x}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -215,7 +192,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\pagebreak[weight=2]";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -230,7 +207,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"前\pagebreak 後";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();

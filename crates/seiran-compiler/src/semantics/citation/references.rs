@@ -16,6 +16,8 @@ pub(crate) use error::ReadReferencesError;
 pub(crate) use reference::{Reference, References};
 use tracing::debug;
 
+use crate::project::{ProjectPath, ProjectSource};
+
 /// 参照定義ファイルの形式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Format {
@@ -48,7 +50,7 @@ impl Format {
 /// - 拡張子がサポートされていない場合
 /// - TOML / JSON のパースに失敗した場合（著者名の排他性違反・空 / 重複 ID・未知フィールドを含む）
 pub(crate) fn read_references<P: AsRef<Path>>(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   path: Option<P>,
 ) -> Result<References, ReadReferencesError> {
   let Some(path) = path else {
@@ -57,7 +59,7 @@ pub(crate) fn read_references<P: AsRef<Path>>(
   };
   let path_ref = path.as_ref();
   debug!(references_path = %path_ref.display(), "参照定義ファイルの読み込みを開始します");
-  let content = source.read_text(&crate::project::ProjectPath::new(path_ref)).map_err(|source| {
+  let content = source.read_text(&ProjectPath::new(path_ref)).map_err(|source| {
     return ReadReferencesError::ReadFile {
       path: path_ref.display().to_string(),
       source,

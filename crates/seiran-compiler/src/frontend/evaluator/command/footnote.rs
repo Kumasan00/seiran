@@ -42,36 +42,17 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{lookup_env_parse_mode, run_inline_handler},
-    syntax::{SyntaxKind, green::GreenElement},
+  use crate::{
+    document::FontKind,
+    frontend::evaluator::{run_inline_handler, test_support},
   };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
 
   #[test]
   fn footnote_with_plain_text_produces_footnote_node() {
     // Arrange
     let arena = Bump::new();
     let source = r"\footnote{hello}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -91,7 +72,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\footnote{\bold{x}}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -105,7 +86,7 @@ mod tests {
     let HirInlineKind::Styled { kind, children } = &body[0].kind else {
       panic!("Styled が期待されます: {body:?}");
     };
-    assert_eq!(*kind, crate::document::FontKind::SerifBold);
+    assert_eq!(*kind, FontKind::SerifBold);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
   }
 
@@ -114,7 +95,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\footnote";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -129,7 +110,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\footnote{a}{b}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -144,7 +125,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\footnote[k=v]{body}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act

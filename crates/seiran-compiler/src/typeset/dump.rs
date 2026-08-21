@@ -8,11 +8,13 @@
 
 use std::fmt::Write;
 
-use super::boxes::{
-  AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
-  PositionedBox,
+use crate::{
+  length::Length,
+  typeset::boxes::{
+    AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
+    PositionedBox,
+  },
 };
-use crate::length::Length;
 
 /// ページ列を決定的なテキスト形式へダンプする。
 #[must_use]

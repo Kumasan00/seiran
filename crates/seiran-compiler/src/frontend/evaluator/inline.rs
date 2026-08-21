@@ -164,23 +164,15 @@ mod tests {
 
   use super::*;
   use crate::{
-    document::HirInlineKind,
-    frontend::evaluator::{extract_inline_nodes_to_hir, lookup_env_parse_mode},
+    document::{FontKind, HirInlineKind},
+    frontend::evaluator::{extract_inline_nodes_to_hir, test_support},
   };
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   #[test]
   fn extract_inline_nodes_with_bold() {
     let arena = Bump::new();
     let source = "\\section{\\bold{太字タイトル}}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -189,7 +181,7 @@ mod tests {
     assert!(matches!(
       &inlines[0].kind,
       HirInlineKind::Styled {
-        kind: crate::document::FontKind::SerifBold,
+        kind: FontKind::SerifBold,
         ..
       }
     ));
@@ -199,7 +191,7 @@ mod tests {
   fn extract_inline_nodes_with_symbol_command() {
     let arena = Bump::new();
     let source = "\\section{\\alpha}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -213,7 +205,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\section{\\leq}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -231,7 +223,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\section{\\nonexistent}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -248,7 +240,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section{\pagebreak}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -265,7 +257,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section{\index{語}}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -281,7 +273,7 @@ mod tests {
   fn extract_inline_nodes_with_inline_math() {
     let arena = Bump::new();
     let source = "\\section{数式 $x^2$ です}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -294,7 +286,7 @@ mod tests {
   fn extract_inline_nodes_mixed_text_and_commands() {
     let arena = Bump::new();
     let source = "\\section{Hello \\bold{World}}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
@@ -305,7 +297,7 @@ mod tests {
     assert!(matches!(
       &inlines[2].kind,
       HirInlineKind::Styled {
-        kind: crate::document::FontKind::SerifBold,
+        kind: FontKind::SerifBold,
         ..
       }
     ));

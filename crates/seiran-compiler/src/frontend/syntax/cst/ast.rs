@@ -209,7 +209,7 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::frontend::syntax::token::Token;
+  use crate::frontend::syntax::{parser, parser::ParseMode, token::Token};
 
   #[test]
   fn command_view_extracts_name() {
@@ -380,8 +380,8 @@ mod tests {
   fn parse_key_value_options_env_optarg_basic() {
     let arena = bumpalo::Bump::new();
     let source = r"\begin{figure}[label=fig:foo, position = h]body\end{figure}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::Environment);
@@ -401,8 +401,8 @@ mod tests {
   fn parse_key_value_options_command_optarg_basic() {
     let arena = bumpalo::Bump::new();
     let source = r"\image[width=10cm]{img.png}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
@@ -416,8 +416,8 @@ mod tests {
   fn parse_key_value_options_treats_bare_key_as_boolean_true() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[draft, key=val]{x}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
@@ -437,8 +437,8 @@ mod tests {
   fn parse_key_value_options_skips_empty_entries() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[ , draft , ,key=val]{x}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
@@ -459,8 +459,8 @@ mod tests {
     // Arrange
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[a=1, b=2]{x}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);
@@ -476,8 +476,8 @@ mod tests {
   fn parse_key_value_options_empty_optarg() {
     let arena = bumpalo::Bump::new();
     let source = r"\cmd[]{x}";
-    let cst = crate::frontend::syntax::parser::parse(source, &arena, |_| {
-      return crate::frontend::syntax::parser::ParseMode::Text;
+    let cst = parser::parse(source, &arena, |_| {
+      return ParseMode::Text;
     })
     .unwrap();
     let opt_arg = first_opt_arg(cst, SyntaxKind::CommandCall);

@@ -245,17 +245,9 @@ mod tests {
 
   use super::*;
   use crate::frontend::{
-    evaluator::lookup_env_parse_mode,
+    evaluator::test_support,
     syntax::{SyntaxKind, green::GreenElement},
   };
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   /// CST のルートから最初の `CommandCall` を取り出す
   fn first_command_node<'a>(root: &'a GreenNode<'a>) -> &'a GreenNode<'a> {
@@ -274,7 +266,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\bold{x}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -289,7 +281,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[label=foo]{Title}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -304,7 +296,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[unknown=v]{Title}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -319,7 +311,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{Title}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -334,7 +326,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[a=1][b=2]{Title}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -355,7 +347,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[width=10]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -370,7 +362,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[width=10mm]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -385,7 +377,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[width=5cm]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -400,7 +392,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[width=2CM]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -415,7 +407,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[width=10pt]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -430,7 +422,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -445,7 +437,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[draft=false]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -460,7 +452,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[draft]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -476,7 +468,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[count=3.14]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act
@@ -491,7 +483,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\section[count=foo]{T}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
     // Act

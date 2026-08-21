@@ -247,7 +247,8 @@ pub(super) fn build_line(
 pub(super) mod test_support {
   use crate::{
     length::Length,
-    typeset::boxes::{HBox, HBoxContent, HItem},
+    semantics::LabelId,
+    typeset::boxes::{AnchorId, HBox, HBoxContent, HItem, LinkTarget},
   };
 
   /// pt 値から `Length` を作る短縮子（テスト可読性のため）
@@ -336,11 +337,7 @@ pub(super) mod test_support {
   }
 
   /// テスト用の内部リンク行き先
-  pub(super) fn link_target() -> crate::typeset::boxes::LinkTarget {
-    return crate::typeset::boxes::LinkTarget::Internal(crate::typeset::boxes::AnchorId::Label(
-      crate::semantics::LabelId::new("sec:x"),
-    ));
-  }
+  pub(super) fn link_target() -> LinkTarget { return LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:x"))); }
 
   /// テスト用の索引マーカー（幅 0・分割不可）
   pub(super) fn index_mark(word: &str, reading: Option<&str>) -> HItem {

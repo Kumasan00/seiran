@@ -2,12 +2,12 @@
 //!
 //! 1 行 1 セルとして評価し、行単位で採番する。
 
-use super::math_grid::{GridSpec, evaluate_grid};
 use crate::{
   document::{HirBuilder, HirMathRow, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
     evaluator::{
       EvalError,
+      environment::math::math_grid::{GridSpec, evaluate_grid},
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
     span_ext::ToSourceSpan,
@@ -82,16 +82,8 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirMathKind, HirMathRow, MathEnvKind},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   /// 結果の最初の `HirNodeKind::MathBlock` から唯一の行を取り出すヘルパ
   fn first_row(result: &[HirNode]) -> &HirMathRow {
@@ -108,7 +100,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}x^2 = y\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -131,7 +123,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[label=eq:pythag]a^2+b^2=c^2\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -148,7 +140,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a & b\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -162,7 +154,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \\ b\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -176,7 +168,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[foo=1]x\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -190,7 +182,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false]x\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -206,7 +198,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=true]x\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -222,7 +214,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}[numbered=false][label=eq:x]a\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -236,7 +228,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \notag\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -250,7 +242,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{equation}a \label{eq:x}\end{equation}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);

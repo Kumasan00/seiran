@@ -13,6 +13,8 @@
 //! （#352）。入力の 19 種別・設定・バイト列は `project::font` の所有で、この module はそこから
 //! フォント資源を組み立てて使う側になる。
 
+use crate::project::ProjectSource;
+
 mod block;
 mod boxes;
 mod breaking;
@@ -83,7 +85,7 @@ use crate::{failures::Failures, project::config::ProjectConfig, semantics::Seman
 /// 失敗した場合に、その段で見つかった失敗を非空集合で返す（フォント・画像はそれぞれ独立に
 /// 検査できるので段の中では全件、段の間は早期 return する）。
 pub(crate) fn layout(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
   font_resources: &FontResources<'_>,

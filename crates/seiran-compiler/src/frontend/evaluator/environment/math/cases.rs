@@ -2,11 +2,14 @@
 //!
 //! 各行を最大 2 セルに分割する非採番の数式環境。
 
-use super::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows};
 use crate::{
   document::{HirBuilder, HirNode, HirNodeKind, MathEnvKind},
   frontend::{
-    evaluator::{EvalError, opt_args::collect_environment_opt_args},
+    evaluator::{
+      EvalError,
+      environment::math::math_grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
+      opt_args::collect_environment_opt_args,
+    },
     span_ext::ToSourceSpan,
     syntax::ast::EnvironmentView,
   },
@@ -67,15 +70,8 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirMathRow, MathEnvKind},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   fn rows_of(result: &[HirNode]) -> &[HirMathRow] {
     let HirNodeKind::MathBlock {
@@ -97,7 +93,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & x > 0 \\ b & x < 0\end{cases}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -115,7 +111,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b & c\end{cases}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -129,7 +125,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}[foo=1]a & b\end{cases}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -143,7 +139,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{cases}a & b \notag\end{cases}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);

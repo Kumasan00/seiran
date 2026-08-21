@@ -10,10 +10,12 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::debug;
 
-use super::{
-  CitationSiteFacts, GeneratedBlock, GeneratedInline, References, bridge, render, style::CompiledCitationStyle,
+use crate::{
+  document::{NodeId, NodeMap},
+  semantics::citation::{
+    CitationSiteFacts, GeneratedBlock, GeneratedInline, References, bridge, render, style::CompiledCitationStyle,
+  },
 };
-use crate::document::{NodeId, NodeMap};
 
 /// CSL 整形（表示の生成）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
@@ -142,9 +144,10 @@ mod tests {
   use super::{GeneratedBlock, GeneratedCitations, GeneratedInline, generate_citations};
   use crate::{
     document::{FontKind, HirDocument},
+    frontend,
     project::FilesystemProjectSource,
     semantics::{
-      SemanticPolicy,
+      References, SemanticPolicy,
       facts::SemanticFacts,
       load_citation_style, read_references,
       test_fixtures::{ieee_csl_path, sample_references},
@@ -156,12 +159,12 @@ mod tests {
 
   /// ソース 1 本をパースして `HirDocument` にする
   fn document(source: &str) -> HirDocument {
-    let hir = crate::frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
+    let hir = frontend::parse_source(source, SourceId::new(0)).expect("パースに成功するはず");
     return HirDocument::assemble(vec![hir]);
   }
 
   /// ソースを走査して引用箇所の事実を持つ `SemanticFacts` を返す
-  fn analyzed(source: &str, references: &crate::semantics::References) -> SemanticFacts {
+  fn analyzed(source: &str, references: &References) -> SemanticFacts {
     let policy = SemanticPolicy::from_style(&Style::default());
     return collect_facts(&document(source), &policy, references).expect("既知キーのみなので成功するはず");
   }

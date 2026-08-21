@@ -10,8 +10,10 @@ use hayagriva::{
   citationberg::{FontStyle, FontWeight, IndependentStyle, Locale, LocaleCode, json::Item},
 };
 
-use super::{CitationId, GeneratedBlock, GeneratedInline};
-use crate::document::{FontKind, HeadingLevel};
+use crate::{
+  document::{FontKind, HeadingLevel},
+  semantics::citation::{CitationId, GeneratedBlock, GeneratedInline},
+};
 
 /// hayagriva による整形結果。
 pub(crate) struct Rendered {

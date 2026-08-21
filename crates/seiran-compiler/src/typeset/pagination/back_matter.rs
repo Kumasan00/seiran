@@ -7,17 +7,17 @@ use std::{
 
 use tracing::{debug, debug_span};
 
-use super::{
-  context::{BodyPageFacts, TypesetContext},
-  elapsed_ms,
-  page_values::{BodyPageValues, PageIndex},
-};
 use crate::{
   length::Length,
   typeset::{
     block::{IndexEntryInput, IndexPageRef, build_index_blocks, build_index_spec, sort_index_entries},
     boxes::{AnchorMark, Page, PlacedAnchor},
     breaking::{FootnoteOverflow, break_pages},
+    pagination::{
+      context::{BodyPageFacts, TypesetContext},
+      elapsed_ms,
+      page_values::{BodyPageValues, PageIndex},
+    },
   },
 };
 
@@ -104,7 +104,7 @@ fn collect_index_entries(body_pages: &mut [Page], body_page_values: &BodyPageVal
 #[cfg(test)]
 mod tests {
   use super::{AnchorMark, BodyPageValues, Page, collect_index_entries};
-  use crate::{style::PageNumbering, typeset::boxes::PlacedIndexEntry};
+  use crate::{length::Length, style::PageNumbering, typeset::boxes::PlacedIndexEntry};
 
   /// 索引語 `index_entries` を持つ 1 ページを作るテストヘルパ
   fn page_with_index_entries(entries: Vec<(&str, Option<&str>)>) -> Page {
@@ -125,7 +125,7 @@ mod tests {
         })
         .collect(),
       background_color: None,
-      content_origin_x: crate::length::Length::ZERO,
+      content_origin_x: Length::ZERO,
     };
   }
 

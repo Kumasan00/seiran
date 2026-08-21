@@ -5,6 +5,8 @@
 
 use std::mem;
 
+#[cfg(test)]
+use crate::source::SourceId;
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
   frontend::{
@@ -28,6 +30,8 @@ mod opt_args;
 
 pub(crate) use environment::lookup_parse_mode as lookup_env_parse_mode;
 pub(crate) use error::EvalError;
+
+use crate::frontend::syntax::ast::EnvironmentView;
 
 /// CST ノードの子要素を評価して HIR（`Vec<HirNode>`）に変換する
 ///
@@ -103,7 +107,7 @@ pub(crate) fn evaluate_children(
         },
         SyntaxKind::Environment => {
           paragraph.flush(builder, &mut hir_nodes);
-          let view = crate::frontend::syntax::ast::EnvironmentView::new(child_node, source);
+          let view = EnvironmentView::new(child_node, source);
           let nodes = environment::evaluate_environment(&view, builder)?;
           hir_nodes.extend(nodes);
         },
@@ -202,14 +206,14 @@ impl ParagraphBuffer {
 /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
 pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(crate::source::SourceId::new(0));
+  let builder = HirBuilder::new(SourceId::new(0));
   return evaluate_children(source, &builder, node);
 }
 
 /// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
 #[cfg(test)]
 pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(crate::source::SourceId::new(0));
+  let builder = HirBuilder::new(SourceId::new(0));
   return inline::extract_inline_nodes(source, &builder, node);
 }
 
@@ -220,7 +224,7 @@ pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Res
 pub(crate) fn run_inline_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirInline>, EvalError>,
 ) -> Result<Vec<HirInline>, EvalError> {
-  let builder = HirBuilder::new(crate::source::SourceId::new(0));
+  let builder = HirBuilder::new(SourceId::new(0));
   return handler(&builder);
 }
 
@@ -229,7 +233,7 @@ pub(crate) fn run_inline_handler(
 pub(crate) fn run_block_handler(
   handler: impl FnOnce(&HirBuilder) -> Result<Vec<HirNode>, EvalError>,
 ) -> Result<Vec<HirNode>, EvalError> {
-  let builder = HirBuilder::new(crate::source::SourceId::new(0));
+  let builder = HirBuilder::new(SourceId::new(0));
   return handler(&builder);
 }
 
@@ -239,4 +243,45 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     HirInlineKind::Text(text) => !text.trim().is_empty(),
     _ => true,
   };
+}
+
+/// 子 module のテストが CST を組み立てるための共有ヘルパ
+///
+/// 本番の環境レジストリ（`lookup_env_parse_mode`）を注入した `parse` ラッパは、以前は evaluator 配下の
+/// 各 test module へ同じ形で複製されていた（#400）。テストが本番と同じ経路を通ることを 1 箇所で保証する。
+#[cfg(test)]
+pub(super) mod test_support {
+  use bumpalo::Bump;
+
+  use super::lookup_env_parse_mode;
+  use crate::frontend::syntax::{
+    self, ParserError, SyntaxKind,
+    green::{GreenElement, GreenNode},
+  };
+
+  /// `.sei` スニペットを本番の環境レジストリ付きで parse する
+  ///
+  /// # Errors
+  ///
+  /// 構文解析に失敗した場合にエラーを返します。
+  pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
+    return syntax::parse(source, arena, lookup_env_parse_mode);
+  }
+
+  /// スニペットを parse して最初の `CommandCall` ノードを取り出す
+  ///
+  /// # Panics
+  ///
+  /// 構文解析に失敗した場合、または `CommandCall` ノードが 1 つも無い場合に panic します。
+  pub(crate) fn command_call_node<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
+    let cst = parse(source, arena).unwrap();
+    for child in cst.children {
+      if let GreenElement::Node(node) = child
+        && node.kind == SyntaxKind::CommandCall
+      {
+        return node;
+      }
+    }
+    panic!("CommandCall ノードが見つかりません");
+  }
 }

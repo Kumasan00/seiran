@@ -1,14 +1,14 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  float::{FloatSpec, build_caption, wrap_float},
-  layout_node::LayoutNode,
-};
 use crate::{
   document::{CaptionPosition, HirInline},
   length::Length,
   project::ProjectPath,
+  typeset::lowering::{
+    LoweringContext, LoweringState,
+    float::{FloatSpec, build_caption, wrap_float},
+    layout_node::LayoutNode,
+  },
 };
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体

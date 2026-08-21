@@ -2,12 +2,12 @@
 //!
 //! 実際の発番は行わず、採番対象とラベルだけを構造化する。
 
-use super::{GridRow, is_blank_row};
 use crate::{
   document::HirMathRow,
   frontend::{
     evaluator::{
       EvalError,
+      environment::math::math_grid::{GridRow, is_blank_row},
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
     span_ext::ToSourceSpan,

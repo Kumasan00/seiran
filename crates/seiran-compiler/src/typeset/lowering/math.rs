@@ -1,20 +1,23 @@
 //! 数式（インライン / ディスプレイ）の lowering
 
-use self::alphanumeric::push_math_char;
-use super::{
-  LoweringContext, LoweringState,
-  counter::format_counter_value,
-  layout_node::{AtomNode, LayoutNode, MathBlockRow, TextStyle},
-};
 use crate::{
   document::{FontKind, HirMath, HirMathKind, HirMathRow, MathEnvKind, MathVariant},
   length::Length,
   semantics::CounterValue,
   style::{Alignment, MathScriptStyle, NumberSide, NumberTemplate},
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{
+      LoweringContext, LoweringState,
+      counter::format_counter_value,
+      layout_node::{AtomNode, LayoutNode, MathBlockRow, TextStyle},
+    },
+  },
 };
 
 mod alphanumeric;
+
+use alphanumeric::push_math_char;
 
 /// スクリプト（上付き / 下付き）のフォントサイズを計算する
 fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {

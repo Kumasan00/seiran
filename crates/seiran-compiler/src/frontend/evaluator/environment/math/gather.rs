@@ -2,10 +2,15 @@
 //!
 //! 単一セルの行に分割し、行単位で採番する。
 
-use super::math_grid::{GridSpec, NumberingMode, evaluate_math_env};
 use crate::{
   document::{HirBuilder, HirNode, MathEnvKind},
-  frontend::{evaluator::EvalError, syntax::ast::EnvironmentView},
+  frontend::{
+    evaluator::{
+      EvalError,
+      environment::math::math_grid::{GridSpec, NumberingMode, evaluate_math_env},
+    },
+    syntax::ast::EnvironmentView,
+  },
 };
 
 /// `gather` 環境を評価する
@@ -33,15 +38,8 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirMathRow, HirNodeKind, MathEnvKind},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   fn rows_of(result: &[HirNode]) -> &[HirMathRow] {
     let HirNodeKind::MathBlock { kind, rows, .. } = &result[0].kind else {
@@ -56,7 +54,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -73,7 +71,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a & b\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -87,7 +85,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}[numbered=false]a = b \\ c = d\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -102,7 +100,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \\ c = d \notag \\ e = f\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -120,7 +118,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a \notag = b\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -134,7 +132,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{gather}a = b \label{eq:g} \\ c = d\end{gather}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
