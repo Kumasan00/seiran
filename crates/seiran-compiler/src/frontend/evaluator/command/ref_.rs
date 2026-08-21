@@ -35,7 +35,6 @@ pub(crate) fn ref_command(view: &CommandView, builder: &HirBuilder) -> Result<Ve
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

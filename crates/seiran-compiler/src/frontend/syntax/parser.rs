@@ -91,7 +91,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// スキップしたトークンは CST に保持するため `children` に蓄積します。
   fn skip_trivia(&mut self, children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>) {
     while matches!(self.peek_kind(), Some(TokenKind::Comment | TokenKind::Whitespace | TokenKind::Newline)) {
-      #[allow(clippy::unwrap_used)]
       let token = self.next_token().unwrap();
       children.push(GreenElement::Token(token));
     }
@@ -132,7 +131,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     match kind {
       TokenKind::Command => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         let name = token.command_name(self.source);
 
@@ -149,12 +147,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         }
       },
       TokenKind::Dollar if mode == ParseMode::Text => {
-        #[allow(clippy::unwrap_used)]
         let first_dollar = self.next_token().unwrap();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
           // 最初の 2 つの `$` をまとめてエラー範囲にする。
-          #[allow(clippy::unwrap_used)]
           let second_dollar = self.next_token().unwrap();
           return Err(ParserError::DollarDollarNotSupported {
             span: first_dollar.span.merge(second_dollar.span).to_source_span(),
@@ -165,7 +161,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(math_node));
       },
       TokenKind::Dollar => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::DollarInMathMode {
           span: token.span.to_source_span(),
@@ -184,14 +179,12 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareGroup {
           span: token.span.to_source_span(),
         });
       },
       TokenKind::LBracket => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
           span: token.span.to_source_span(),
@@ -202,7 +195,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         return Ok(());
       },
       TokenKind::RBrace | TokenKind::RBracket => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
@@ -210,14 +202,12 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       TokenKind::Unknown => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       _ => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         children.push(GreenElement::Token(token));
       },
@@ -273,7 +263,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
       // \end の検出 — `parse_element` は `\end` をエラーとして弾くため、ここで先に break する必要がある
       if let Some(TokenKind::Command) = self.peek_kind() {
-        #[allow(clippy::unwrap_used)]
         let token = *self.peek_token().unwrap();
         if token.command_name(self.source) == "end" {
           break;
@@ -295,7 +284,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       });
     }
 
-    #[allow(clippy::unwrap_used)]
     let end_token = self.next_token().unwrap();
     debug_assert_eq!(end_token.command_name(self.source), "end", "本体ループは \\end でのみ break する");
 
@@ -377,7 +365,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       self.parse_element(&mut children, mode, Some(close_kind))?;
     }
 
-    #[allow(clippy::unwrap_used)]
     let close = self.next_token().unwrap();
     children.push(GreenElement::Token(close));
 
@@ -411,7 +398,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
       match self.peek_kind() {
         Some(TokenKind::Dollar) => {
-          #[allow(clippy::unwrap_used)]
           let dollar_close = self.next_token().unwrap();
           children.push(GreenElement::Token(dollar_close));
           break;
@@ -436,7 +422,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     loop {
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
-          #[allow(clippy::unwrap_used)]
           let rbrace = self.next_token().unwrap();
           children.push(GreenElement::Token(rbrace));
           break;
@@ -465,7 +450,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(group));
       },
       Some(TokenKind::Command) => {
-        #[allow(clippy::unwrap_used)]
         let cmd_token = self.next_token().unwrap();
         let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
@@ -479,21 +463,18 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       Some(TokenKind::Unknown) => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::LBracket) => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::BareBracket {
           span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
@@ -501,7 +482,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       _ => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         children.push(GreenElement::Token(token));
       },
@@ -511,7 +491,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
   /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
-    #[allow(clippy::unwrap_used)]
     let script_token = self.next_token().unwrap();
     let start_span = script_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
@@ -526,20 +505,17 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(group));
       },
       Some(TokenKind::Command) => {
-        #[allow(clippy::unwrap_used)]
         let cmd_token = self.next_token().unwrap();
         let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
       },
       Some(TokenKind::Unknown) => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
-        #[allow(clippy::unwrap_used)]
         let span = self.peek_token().unwrap().span;
         return Err(ParserError::UnexpectedToken {
           kind: token_kind,
@@ -547,7 +523,6 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         });
       },
       Some(_) => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         children.push(GreenElement::Token(token));
       },
@@ -566,12 +541,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   fn expect(&mut self, expected: TokenKind) -> Result<Token, ParserError> {
     match self.peek_kind() {
       Some(kind) if kind == expected => {
-        #[allow(clippy::unwrap_used)]
         let token = self.next_token().unwrap();
         return Ok(token);
       },
       Some(kind) => {
-        #[allow(clippy::unwrap_used)]
         let span = self.peek_token().unwrap().span;
         return Err(ParserError::UnexpectedToken {
           kind,
@@ -633,7 +606,6 @@ pub(crate) fn parse<'a>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
 

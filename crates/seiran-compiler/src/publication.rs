@@ -442,7 +442,6 @@ pub(crate) mod test_fixtures {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     Destination, ImageRef, PaintOp, Point, Publication, PublicationImage, PublicationLink, PublicationLinkTarget,

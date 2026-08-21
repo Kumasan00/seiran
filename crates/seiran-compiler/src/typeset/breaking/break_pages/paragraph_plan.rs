@@ -31,7 +31,10 @@ pub(super) struct LinePlacement {
 }
 
 /// 強制改リージョン点（`forced`）を尊重しつつ、貪欲にベースラインを送って各行を配置する（純粋関数）
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "純粋関数として計画に要る値をすべて引数で受け取る（暗黙の状態を持たせない）"
+)]
 fn place_lines(
   lines: &[Line],
   y0: Length,
@@ -147,7 +150,10 @@ fn pick_correction(
 }
 
 /// 段落の行列を現在のカーソルから前から順に配置する計画を立てる（純粋関数・widow/orphan 制御込み）
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "純粋関数として計画に要る値をすべて引数で受け取る（暗黙の状態を持たせない）"
+)]
 pub(super) fn plan_paragraph_lines(
   lines: &[Line],
   y0: Length,
@@ -188,7 +194,6 @@ pub(super) fn plan_paragraph_lines(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{FootnoteCharges, FootnoteDemand, LinePlacement, plan_paragraph_lines};
   use crate::{length::Length, typeset::boxes::Line};

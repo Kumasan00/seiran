@@ -69,7 +69,6 @@ const MISSING_IMAGES: &str = concat!(
 
 /// 複数の画像が欠落しているとき、正規化済みパスの昇順で全件が報告される。
 #[test]
-#[allow(clippy::unwrap_used)]
 fn missing_images_are_reported_in_path_order() {
   // Arrange
   let font_bytes = read_test_font();
@@ -95,7 +94,6 @@ fn missing_images_are_reported_in_path_order() {
 /// 並列処理（rayon）の完了順や `HashMap` の反復順が表示順へ漏れていれば、繰り返しのどこかで
 /// 順序が変わって落ちる（#376）。
 #[test]
-#[allow(clippy::unwrap_used)]
 fn error_path_is_deterministic_across_repeated_runs() {
   for text in ERROR_CASES {
     // Arrange
@@ -130,7 +128,6 @@ fn error_path_is_deterministic_across_repeated_runs() {
 
 /// `config.sources` の複数ファイルが欠落しているとき、宣言順で全件が決定的に報告される。
 #[test]
-#[allow(clippy::unwrap_used)]
 fn missing_sources_are_reported_in_declaration_order_on_every_run() {
   // Arrange — パス名の辞書順とは逆に宣言する
   let font_bytes = read_test_font();

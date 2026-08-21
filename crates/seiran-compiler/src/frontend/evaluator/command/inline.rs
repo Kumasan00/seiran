@@ -84,7 +84,6 @@ pub(crate) fn colored_text(view: &CommandView, builder: &HirBuilder) -> Result<V
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

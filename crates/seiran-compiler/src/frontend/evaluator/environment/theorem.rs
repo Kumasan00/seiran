@@ -76,7 +76,6 @@ pub(super) fn theorem(view: &EnvironmentView, builder: &HirBuilder) -> Result<Ve
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

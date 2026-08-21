@@ -218,7 +218,6 @@ fn is_trivia_element(child: &GreenElement) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

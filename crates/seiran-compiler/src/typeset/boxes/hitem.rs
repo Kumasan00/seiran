@@ -165,8 +165,7 @@ pub(crate) enum HBoxContent {
   /// シェーピング済みグリフ列
   Glyphs(GlyphRun),
   /// 罫線（幅と高さを持つ塗りつぶし矩形）
-  // 本文の行内に罫線を置く経路は現状なく、crate 内の `#[cfg(test)]` だけが構築する。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "本文の行内に罫線を置く経路は現状なく、crate 内の `#[cfg(test)]` だけが構築する")]
   Rule {
     /// 罫線の幅
     width: Length,

@@ -103,7 +103,6 @@ fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, paren
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_support::{analyzed, lower},

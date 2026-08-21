@@ -57,8 +57,7 @@ impl SourceSpans {
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
 
   /// 発行済み ID 数を返す
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub(crate) fn len(&self) -> usize { return self.spans.len(); }
 }
 
@@ -111,7 +110,6 @@ pub(crate) struct SourceLocation {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
 

@@ -21,7 +21,10 @@ pub(crate) enum LoadedImage {
 
 impl LoadedImage {
   /// 自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を返します。
-  #[allow(clippy::cast_precision_loss)]
+  #[allow(
+    clippy::cast_precision_loss,
+    reason = "ラスタの自然寸法は image crate が返すピクセル数で、f32 の仮数部に収まる"
+  )]
   pub(crate) fn natural_size(&self) -> (f32, f32) {
     return match self {
       LoadedImage::Raster(image) => {
@@ -117,7 +120,10 @@ pub(crate) fn required_pixels(width_pt: f32, height_pt: f32, dpi: u32) -> Option
   if !width_pt.is_finite() || !height_pt.is_finite() || width_pt <= 0.0 || height_pt <= 0.0 || dpi == 0 {
     return None;
   }
-  #[allow(clippy::cast_precision_loss)]
+  #[allow(
+    clippy::cast_precision_loss,
+    reason = "dpi は `[image]` の上限 DPI で、f32 の仮数部を超える桁にはならない"
+  )]
   let dpi_f = dpi as f32;
   return Some((width_pt / 72.0 * dpi_f, height_pt / 72.0 * dpi_f));
 }

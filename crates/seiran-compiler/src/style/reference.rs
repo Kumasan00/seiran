@@ -65,7 +65,11 @@ impl ReferenceStyle {
 }
 
 /// ロケールコードの構文を検証する `garde` カスタムバリデーター。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_locale(value: &Option<String>, _: &()) -> garde::Result {
   let Some(code) = value else {
     return Ok(());

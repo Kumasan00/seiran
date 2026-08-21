@@ -136,7 +136,7 @@ pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding
         let width = measure_items_width(&cell.items) + padding * 2;
         let current: Length = naturals[column_index..column_index + span].iter().sum();
         if width > current {
-          #[allow(clippy::cast_precision_loss)]
+          #[allow(clippy::cast_precision_loss, reason = "`span` は列数で、f32 の仮数部に収まる小さな整数")]
           let extra = (width - current) / span as f32;
           for natural in &mut naturals[column_index..column_index + span] {
             *natural += extra;
@@ -168,7 +168,7 @@ pub(crate) fn resolve_column_widths(table: &TableBox, available: Length, padding
     }
   }
   if !flex_indices.is_empty() {
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss, reason = "flex 列の本数は f32 の仮数部に収まる小さな整数")]
     let share = ((available - used) / flex_indices.len() as f32).max(Length::ZERO);
     for i in flex_indices {
       widths[i] = share.max(naturals[i]);

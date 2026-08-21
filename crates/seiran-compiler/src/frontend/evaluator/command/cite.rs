@@ -55,7 +55,6 @@ pub(crate) fn cite_command(view: &CommandView, builder: &HirBuilder) -> Result<V
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

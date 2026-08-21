@@ -81,10 +81,16 @@ pub(crate) enum LayoutValidationError {
 #[must_use]
 pub(super) fn column_width(text_width: Length, num_columns: usize, column_gap: Length) -> Length {
   let count = num_columns.max(1);
-  // 段数は実用上 1〜2。桁あふれ・精度低下・切り捨てが起きる桁数にはならない
-  #[allow(clippy::cast_precision_loss)]
+  #[allow(
+    clippy::cast_precision_loss,
+    reason = "段数は実用上 1〜2 で、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
+  )]
   let n = count as f32;
-  #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+  #[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    reason = "段数は実用上 1〜2 で、桁あふれ・精度低下・切り捨てが起きる桁数にならない"
+  )]
   let gaps = (count - 1) as i32;
   return (text_width - column_gap * gaps) / n;
 }

@@ -12,8 +12,10 @@
 //! 各スタイル構造体の `font_size` / `bottom_margin` などはこの型を用い、`garde` の `custom`
 //! バリデータ [`positive`] / [`non_negative`] で 0 や負値を弾く。
 
-// 内部表現が i64 で、pt / 比率との相互変換で i64 ↔ f64 を頻繁に跨ぐため、精度低下の警告は許容する。
-#![allow(clippy::cast_precision_loss)]
+#![allow(
+  clippy::cast_precision_loss,
+  reason = "内部表現が i64 で、pt / 比率との相互変換で i64 ↔ f64 を頻繁に跨ぐ"
+)]
 
 use std::{
   fmt,
@@ -35,7 +37,10 @@ const CM_TO_PT: f64 = 10.0 * MM_TO_PT;
 ///
 /// 半偶数（round-half-to-even）を採るのは、比例配分で `stretch * ratio` を反復して丸める際に
 /// 方向性バイアスが蓄積しないようにするため。IEEE-754 準拠環境では決定的に同じ結果になる。
-#[allow(clippy::cast_possible_truncation)]
+#[allow(
+  clippy::cast_possible_truncation,
+  reason = "`round_ties_even` 済みの値を i64 に落とすだけで端数は残らない（型内で唯一の丸め箇所）"
+)]
 fn round_sp(sp: f64) -> i64 { return sp.round_ties_even() as i64; }
 
 /// pt 値（f64）を sp へ丸める。
@@ -71,13 +76,15 @@ impl Length {
 
   /// 内部の sp 値を返す（比率計算などの生値取り出し用）。
   #[must_use]
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub const fn sp(self) -> i64 { return self.0; }
 
   /// pt 値を f32 で返す（PDF 座標などの出力境界用）。
   #[must_use]
-  #[allow(clippy::cast_possible_truncation)]
+  #[allow(
+    clippy::cast_possible_truncation,
+    reason = "PDF 座標などの出力境界が f32 のため、pt 換算値をここで f32 精度へ落とすのは意図どおり"
+  )]
   pub fn to_pt(self) -> f32 { return (self.0 as f64 / SP_PER_PT as f64) as f32; }
 
   /// pt 値を f64 で返す（[`Serialize`] の正準形やダンプ整形など、高精度が要る出力境界用）。
@@ -86,9 +93,11 @@ impl Length {
 
   /// mm 値を f32 で返す。
   #[must_use]
-  #[allow(clippy::cast_possible_truncation)]
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(
+    clippy::cast_possible_truncation,
+    reason = "`to_pt` と同じく、出力境界の f32 精度へ落とすのは意図どおり"
+  )]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub fn to_mm(self) -> f32 { return (self.to_pt_f64() / MM_TO_PT) as f32; }
 
   /// 厳密に正の値か。
@@ -111,8 +120,7 @@ impl Length {
 
   /// 絶対値。
   #[must_use]
-  // crate 内の `#[cfg(test)]` からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]` からのみ使う")]
   pub const fn abs(self) -> Self { return Length(self.0.abs()); }
 }
 
@@ -207,11 +215,10 @@ impl Serialize for Length {
 /// # Errors
 ///
 /// 値が 0 以下の場合に [`garde::Error`] を返す。
-// `Length`/`()` は Copy で軽量なため clippy::trivially_copy_pass_by_ref が指摘するが、
-// `#[garde(custom(positive))]` の呼び出しコードは garde の derive マクロが `&self.field` /
-// `&()` の形で生成するため、シグネチャを値渡しへ変えると呼び出し側と型が合わずビルドが
-// 壊れる（実験的に value を Length へ変更し E0308 が 15 件発生することを確認して復元済み、#307）。
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が `#[garde(custom(positive))]` の呼び出しを `&self.field` / `&()` で生成するため、値渡しへ変えると型が合わない（#307 で E0308 が 15 件出ることを確認済み）"
+)]
 pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
   if value.is_positive() {
     return Ok(());
@@ -226,9 +233,10 @@ pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
 /// # Errors
 ///
 /// 値が負の場合に [`garde::Error`] を返す。
-// 上の `positive` と同じ理由（garde の derive マクロが生成する呼び出しコードが
-// `&self.field` / `&()` を渡す固定シグネチャのため）で許容する。
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::trivially_copy_pass_by_ref,
+  reason = "上の `positive` と同じく、garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 pub(crate) fn non_negative(value: &Length, _ctx: &()) -> garde::Result {
   if value.is_non_negative() {
     return Ok(());

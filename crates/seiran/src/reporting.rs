@@ -75,9 +75,7 @@ impl Reporter {
 }
 
 /// `Duration` をログ・サマリ用のミリ秒へ変換する。
-///
-/// 処理時間が `u64::MAX` ms（約 5 億年）を超えることはない前提。
-#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
 fn elapsed_ms(elapsed: Duration) -> u64 { return elapsed.as_millis() as u64; }
 
 /// 優先順位に従って tracing フィルタを構築する。
@@ -115,7 +113,6 @@ fn flag_directive(verbose: u8) -> &'static str {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{build_env_filter, flag_directive, flag_filter};
 

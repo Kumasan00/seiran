@@ -38,8 +38,10 @@ pub(super) fn build_caption(
 }
 
 /// フロートの余白の指定
-// 全フィールドが余白（*_margin）のみの構造体なので postfix 警告は意図どおり
-#[allow(clippy::struct_field_names)]
+#[allow(
+  clippy::struct_field_names,
+  reason = "全フィールドが余白（`*_margin`）で、postfix は種類ではなく長さの用途を表す"
+)]
 pub(super) struct FloatSpec {
   /// フロート全体の上マージン（VBox の前に Vkern として出力）
   pub top_margin: Length,
@@ -91,7 +93,6 @@ pub(super) fn wrap_float(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_support::{analyzed, lower},

@@ -68,7 +68,6 @@ pub(crate) fn index_command(view: &CommandView, builder: &HirBuilder) -> Result<
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

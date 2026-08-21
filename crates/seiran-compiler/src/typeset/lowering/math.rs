@@ -206,7 +206,6 @@ fn lower_math_text(text: &str, font_size: Length, variant: Option<MathVariant>) 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_support::{analyzed, lower},

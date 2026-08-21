@@ -70,7 +70,6 @@ fn expected_name(level: HeadingLevel) -> &'static str {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

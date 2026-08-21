@@ -45,7 +45,6 @@ pub(super) fn solve_per_page_numbering(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::cell::RefCell;
 

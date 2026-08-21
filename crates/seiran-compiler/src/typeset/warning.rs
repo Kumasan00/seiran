@@ -50,7 +50,6 @@ pub(crate) enum TypesetWarning {
 fn join_numbers(numbers: &[u32]) -> String { return numbers.iter().map(u32::to_string).collect::<Vec<_>>().join(", "); }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use miette::{Diagnostic, Severity};
 

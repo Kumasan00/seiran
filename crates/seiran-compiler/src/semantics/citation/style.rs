@@ -229,7 +229,6 @@ fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::{
     io::Write,

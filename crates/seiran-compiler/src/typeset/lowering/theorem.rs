@@ -14,7 +14,10 @@ use crate::{
 };
 
 /// 定理ブロックをレイアウトノードに変換する
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "定理ブロック 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
+)]
 pub(super) fn lower_theorem(
   ctx: &LoweringContext,
   class: TheoremClass,
@@ -117,7 +120,6 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_support::{analyzed, lower},

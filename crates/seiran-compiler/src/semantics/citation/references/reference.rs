@@ -79,13 +79,12 @@ where
 /// CSL (Citation Style Language) に基づく文献情報を保持する。
 /// 参照 ID は keyed-table 形式のテーブルキーとして保持されるため、本構造体には持たない。
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
-// `reference_type` は `#[serde(rename = "type")]` により CSL の `type` キーへ写像するため、
-// struct 名との重複は意図的。旧 citation crate では公開 API のため対象外だったが、seiran へ
-// 吸収され非公開 module 化されたことで `clippy::struct_field_names`（pedantic、実効可視性
-// ベース）が新たに発火する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(clippy::struct_field_names)]
+#[allow(
+  clippy::struct_field_names,
+  reason = "`reference_type` は serde の rename で CSL の `type` キーへ写像するための名前で、struct 名との重複は意図的"
+)]
 pub(crate) struct Reference {
   /// 参照の種類（書籍、論文など）
   #[serde(rename = "type")]

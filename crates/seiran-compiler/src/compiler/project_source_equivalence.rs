@@ -46,7 +46,6 @@ fn memory_source_for(config: &ProjectConfig, style: &Style) -> MemoryProjectSour
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn memory_and_filesystem_sources_produce_identical_layout() {
   // Arrange — filesystem 経由（golden テストと同じ読込経路）
   enter_workspace_root();
@@ -75,7 +74,6 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
 fn shared_font_path_is_read_only_once() {
   // Arrange — fixture の serif と serif_bold は同じフォントファイルを共有する
   enter_workspace_root();

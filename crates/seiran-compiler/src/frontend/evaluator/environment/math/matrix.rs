@@ -69,7 +69,6 @@ pub(crate) fn matrix(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

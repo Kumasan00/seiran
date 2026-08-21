@@ -53,7 +53,6 @@ pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use std::path::PathBuf;
 

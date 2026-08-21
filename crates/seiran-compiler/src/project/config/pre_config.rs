@@ -67,7 +67,11 @@ pub(crate) struct PreDocumentConfig {
 }
 
 /// ドキュメント全体の言語タグを検証します（BCP 47 構造的妥当性のみ）。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
   let Some(language) = value else {
     return Ok(());
@@ -78,7 +82,11 @@ fn validate_document_language(value: &Option<String>, _: &()) -> garde::Result {
 }
 
 /// キーワード配列の各要素が非空であることを検証します。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_keywords(value: &Option<Vec<String>>, _: &()) -> garde::Result {
   let Some(keywords) = value else {
     return Ok(());
@@ -103,7 +111,11 @@ pub(crate) struct PreOutputConfig {
 }
 
 /// `sources` 配列が空でないことを検証します。
-#[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ptr_arg,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため（`&Vec<PathBuf>` を `&[PathBuf]` へは変えられない）"
+)]
 fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
   if value.is_empty() {
     return Err(garde::Error::new("sources は最低 1 つのファイルを指定する必要があります"));
@@ -112,7 +124,11 @@ fn validate_non_empty_sources(value: &Vec<PathBuf>, _: &()) -> garde::Result {
 }
 
 /// `output_dir` を検証します。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
   let Some(path) = value else {
     return Ok(());
@@ -124,7 +140,10 @@ fn validate_output_dir(value: &Option<PathBuf>, _: &()) -> garde::Result {
 }
 
 /// ドキュメント名を検証します。
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_document_name(value: &str, _: &()) -> garde::Result {
   if value.is_empty() {
     return Err(garde::Error::new("ドキュメント名は空にできません"));
@@ -259,7 +278,11 @@ pub(crate) struct PreFontConfig {
 }
 
 /// BCP 47 言語タグを検証します（`unic-langid` による構造的パース）。
-#[allow(clippy::ref_option, clippy::trivially_copy_pass_by_ref)]
+#[allow(
+  clippy::ref_option,
+  clippy::trivially_copy_pass_by_ref,
+  reason = "garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
+)]
 fn validate_bcp47_language(value: &Option<String>, _: &()) -> garde::Result {
   let Some(language) = value else {
     return Ok(());

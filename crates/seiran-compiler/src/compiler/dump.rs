@@ -150,7 +150,6 @@ fn f2_pt(value: f32) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{dump_metadata, dump_paint_op, dump_publication_link};
   use crate::{

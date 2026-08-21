@@ -146,7 +146,6 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
   use crate::style::{CounterTemplate, NumberStyle};

@@ -159,7 +159,6 @@ pub(crate) fn resolve_symbol_command(name: &str) -> Option<char> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use bumpalo::Bump;
 

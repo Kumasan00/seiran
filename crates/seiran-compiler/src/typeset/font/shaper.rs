@@ -85,8 +85,10 @@ fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<Shap
     return axes
       .iter()
       .map(|axis| {
-        // `harfrust` の API が要求する f32 へ境界で変換する。
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(
+          clippy::cast_possible_truncation,
+          reason = "harfrust の API が f32 の軸値を要求するため、境界で f32 へ落とす"
+        )]
         let value = axis.value as f32;
         return Variation::from((Tag::new(&axis.name), value));
       })

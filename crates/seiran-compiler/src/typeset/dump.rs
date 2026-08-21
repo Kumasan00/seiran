@@ -292,7 +292,6 @@ fn f2(value: Length) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::{
     super::test_fixtures::{LineMetrics, PageBuilder, glyph_line_with_metrics, glyph_run},

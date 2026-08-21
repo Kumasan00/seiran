@@ -22,8 +22,7 @@ pub(crate) enum HeadingLevel {
 
 impl HeadingLevel {
   /// 6 つのレベルすべてを宣言順で並べた配列
-  // crate 内の `#[cfg(test)]`（`config::style::heading` のテスト）からのみ使う。
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "crate 内の `#[cfg(test)]`（`style::heading` のテスト）からのみ使う")]
   pub(crate) const ALL: [HeadingLevel; 6] = [
     HeadingLevel::Part,
     HeadingLevel::Chapter,
@@ -58,7 +57,6 @@ impl std::fmt::Display for HeadingLevel {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::HeadingLevel;
 

@@ -207,7 +207,6 @@ pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
   use crate::frontend::syntax::token::Token;

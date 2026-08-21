@@ -55,7 +55,6 @@ impl<T> FontMap<T> {
   /// 指定された `font_type` がマップに存在しない場合にパニックします。
   #[must_use]
   pub fn get_mut(&mut self, font_type: FontType) -> &mut T {
-    #[allow(clippy::expect_used)]
     return self.inner.get_mut(&font_type).expect("FontMap: 指定された FontType が見つかりません");
   }
 

@@ -220,8 +220,11 @@ fn fill_leader(
   if !unit_width.is_positive() {
     return;
   }
-  // available / unit_width はここまでのガードで非負。truncation は意図どおり（収まる本数）。
-  #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+  #[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    reason = "`available` / `unit_width` はここまでのガードで非負で、切り捨ては収まる本数を出すための意図した丸め"
+  )]
   let count = available.ratio(unit_width).floor() as usize;
   if count == 0 {
     return;
