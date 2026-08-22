@@ -15,6 +15,8 @@ use crate::{
 const LINE_PENALTY: f64 = 10.0;
 /// 語中ハイフネーションで折り返した行に課すペナルティ（TeX の `\hyphenpenalty` 相当）
 const HYPHEN_PENALTY: f64 = 50.0;
+/// ハイフネーションで折り返した行 1 本ぶんの demerits（TeX と同じくハイフンペナルティの 2 乗）
+const HYPHEN_DEMERIT: f64 = HYPHEN_PENALTY * HYPHEN_PENALTY;
 /// 連続する行末でハイフンが続くときに加える追加 demerits（TeX の `\doublehyphendemerits` 相当）
 const DOUBLE_HYPHEN_DEMERIT: f64 = 10_000.0;
 /// badness の上限。極端に疎な行（伸長比が大きい行）はこの値で頭打ちにする
@@ -252,7 +254,7 @@ fn edge_cost(items: &[HItem], line_start: usize, brk: &Breakpoint, prev_hyphen: 
 fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool) -> f64 {
   let mut total = (LINE_PENALTY + badness).powi(2);
   if hyphen {
-    total += HYPHEN_PENALTY * HYPHEN_PENALTY;
+    total += HYPHEN_DEMERIT;
     if prev_hyphen {
       total += DOUBLE_HYPHEN_DEMERIT;
     }

@@ -574,8 +574,9 @@ mod tests {
     };
     assert_eq!(marker, "[1]");
     let body_font_size = style.text.font_size.to_pt();
+    let expected_marker_size = body_font_size * 0.5;
     assert!(
-      (marker_style.font_size.to_pt() - body_font_size * 0.5).abs() < 1e-3,
+      (marker_style.font_size.to_pt() - expected_marker_size).abs() < 1e-3,
       "{}",
       marker_style.font_size.to_pt()
     );
