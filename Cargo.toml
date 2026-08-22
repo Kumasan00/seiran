@@ -57,6 +57,9 @@ needless_return = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
+# 抑制は「reason 付きの #[expect]」だけを許す。allow は抑制対象が消えても黙って残るが、
+# expect なら rustc の unfulfilled_lint_expectations が失効した抑制を落とす。
+allow_attributes = { level = "warn", priority = 2 }
 absolute_paths = { level = "warn", priority = 2 }
 allow_attributes_without_reason = { level = "warn", priority = 2 }
 clone_on_ref_ptr = { level = "warn", priority = 2 }
@@ -71,6 +74,16 @@ panic_in_result_fn = { level = "warn", priority = 2 }
 undocumented_unsafe_blocks = { level = "warn", priority = 2 }
 unnecessary_safety_comment = { level = "warn", priority = 2 }
 unused_result_ok = { level = "warn", priority = 2 }
+
+# nursery lint（上記の restriction lint とは別枠）。Known problems は false-negative
+# （解析が保守的）で false-positive ではないため、発火したら真陽性として直す。
+redundant_clone = { level = "warn", priority = 2 }
+
+# nursery lint。「Eq を導出できるのに PartialEq だけ」を落とす。nursery なのは
+# 「将来 float フィールドが増えうる型」「Eq の追加が公開 API の約束になる型」で
+# 意図的に PartialEq 止まりにする選択があるためだが、seiran は Eq を導出できる型には
+# 例外なく Eq を足す方針を採る（float を持つ型は lint が発火しないのでそのまま残る）。
+derive_partial_eq_without_eq = { level = "warn", priority = 2 }
 
 [workspace.lints.rust]
 unreachable_pub = "warn"

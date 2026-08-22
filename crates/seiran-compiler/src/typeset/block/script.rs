@@ -101,7 +101,7 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
 /// `FontKind` とスクリプトカテゴリから具体的な `FontType` を決定する
 fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType {
   return match category {
-    #[allow(
+    #[expect(
       clippy::match_same_arms,
       reason = "和文に italic は無く、数式フォントに和文グリフも無いため、どちらも明朝体へ戻すのが正しい"
     )]

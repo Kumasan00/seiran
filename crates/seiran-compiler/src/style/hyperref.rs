@@ -11,7 +11,7 @@ use crate::color::Color;
 /// 直接対応するため、`_color` postfix を外すリネームはスキーマの破壊的変更になる
 /// （`config` crate 吸収に伴う可視性変化で新たに検出されるようになった `struct_field_names`
 /// で、standalone crate だった時点では検出されていなかった。#307）。
-#[allow(
+#[expect(
   clippy::struct_field_names,
   reason = "3 フィールドとも `style.toml` の TOML キーに直接対応し、`_color` を外すのはスキーマの破壊的変更になる"
 )]

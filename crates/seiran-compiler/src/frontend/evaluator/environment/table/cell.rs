@@ -82,7 +82,7 @@ fn extract_cell_command(view: &CommandView, builder: &HirBuilder) -> Result<HirT
           span: view.span().to_source_span(),
         });
       }
-      #[allow(
+      #[expect(
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,
         reason = "直前のガードで有限・1 以上・整数・`u32::MAX` 以下であることを確認済み"

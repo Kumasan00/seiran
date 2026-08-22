@@ -211,7 +211,7 @@ impl PageComposer {
 
   /// 現在の段の左端 x オフセット（本文左端基準、pt）。段 `k` は `k * (段幅 + 段間)` だけ右へ寄る
   fn column_offset(&self) -> Length {
-    #[allow(
+    #[expect(
       clippy::cast_precision_loss,
       reason = "段インデックスは実用上 0〜1 で、f32 で精度を失う桁数にならない"
     )]
@@ -854,7 +854,7 @@ fn keep_group_orphaned(
 }
 
 /// 段落を行に割ってベースライン送りで配置する
-#[allow(
+#[expect(
   clippy::too_many_arguments,
   reason = "ページ構成器・幾何・スタイル・脚注状態を 1 回の配置で同時に要するため、束ねる中間型を作っても呼び出し側の情報量は減らない"
 )]

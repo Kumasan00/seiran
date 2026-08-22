@@ -75,9 +75,12 @@ pub(crate) struct Page {
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedFootnote {
   /// 発番済みの表示番号（[`super::line::LineFootnote`] から素通し）
-  #[allow(
-    dead_code,
-    reason = "描画はマーカー側の番号を使うため読まない（crate 内の `#[cfg(test)]` が採番を検証する）"
+  #[cfg_attr(
+    not(test),
+    expect(
+      dead_code,
+      reason = "描画はマーカー側の番号を使うため読まない（crate 内の `#[cfg(test)]` が採番を検証する）"
+    )
   )]
   pub number: u32,
   /// 出現順の識別子（0 起点。[`super::line::LineFootnote`] から素通し）

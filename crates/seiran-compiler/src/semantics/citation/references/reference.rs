@@ -81,7 +81,7 @@ where
 /// <https://docs.citationstyles.org/en/stable/specification.html#appendix-iv-variables>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(
+#[expect(
   clippy::struct_field_names,
   reason = "`reference_type` は serde の rename で CSL の `type` キーへ写像するための名前で、struct 名との重複は意図的"
 )]

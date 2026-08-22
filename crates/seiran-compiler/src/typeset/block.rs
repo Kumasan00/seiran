@@ -50,7 +50,7 @@ const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
 const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
 
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
-#[allow(
+#[expect(
   clippy::cast_precision_loss,
   reason = "font design unit の合計は i64 で持つが、f64 の仮数部に収まる桁数しか取らない"
 )]
@@ -516,7 +516,7 @@ impl Measurer<'_> {
   }
 
   /// 和文セグメントを約物アキ調整つきで `HItem` 列に分割する（隣接グリフ対を走査）
-  #[allow(
+  #[expect(
     clippy::needless_range_loop,
     reason = "隣接グリフ対を見るため index 自身と `glyphs[i - 1]` の両方が要る"
   )]
@@ -597,7 +597,7 @@ impl Measurer<'_> {
   ) {
     let src = &run.glyphs[glyph_index];
     let metric = self.resources.metric(run.font_type);
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "`shift_em` は約物アキの em 比で、font unit 空間での端数切り捨ては視覚的に無意味な精度"
     )]
@@ -612,12 +612,12 @@ impl Measurer<'_> {
     };
     let advance = units_to_length(i64::from(src.x_advance), run.font_size, metric.upem);
     let width = advance - run.font_size * normalize.trim_em;
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]
     let ascender_units = metric.ascender as i64;
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]
@@ -663,12 +663,12 @@ impl Measurer<'_> {
       .collect();
     let metric = self.resources.metric(run.font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]
     let ascender_units = metric.ascender as i64;
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]
@@ -711,12 +711,12 @@ impl Measurer<'_> {
     let metric = self.resources.metric(font_type);
     let advance_units: i64 = glyphs.iter().map(|glyph| return i64::from(glyph.x_advance)).sum();
     let width = units_to_length(advance_units, font_size, metric.upem);
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]
     let ascender_units = metric.ascender as i64;
-    #[allow(
+    #[expect(
       clippy::cast_possible_truncation,
       reason = "ascender / descender は font design unit（f32）で、sub-unit の切り捨ては視覚的に無意味な精度"
     )]

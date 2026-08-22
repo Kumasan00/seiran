@@ -107,5 +107,5 @@ fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8]) -> miette::Result<()> {
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す。
-#[allow(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
+#[expect(clippy::cast_possible_truncation, reason = "経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはない")]
 fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64; }

@@ -19,10 +19,6 @@ use crate::typeset::{error::TypesetError, image::ImageFormat};
 /// # Errors
 ///
 /// デコードに失敗した場合に [`TypesetError`] を返す。
-#[allow(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
   return match format {
     ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
@@ -35,11 +31,7 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
 ///
 /// EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値をそのまま使うため、
 /// 適用すると組版時の自然寸法と描画時の解釈がずれる。
-#[allow(
-  clippy::result_large_err,
-  clippy::cast_precision_loss,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）。ピクセル寸法（u32）は f32 の仮数部に収まる"
-)]
+#[expect(clippy::cast_precision_loss, reason = "ピクセル寸法（u32）は f32 の仮数部に収まる")]
 fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(f32, f32), TypesetError> {
   let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().map_err(|source| {
     return TypesetError::DecodeImage {
@@ -51,10 +43,6 @@ fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(
 }
 
 /// SVG の width / height を usvg が解釈した値として返す。
-#[allow(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 fn svg_size(path: &str, bytes: &[u8]) -> Result<(f32, f32), TypesetError> {
   let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).map_err(|source| {
     return TypesetError::ParseSvg {

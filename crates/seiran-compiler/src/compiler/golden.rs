@@ -300,7 +300,7 @@ fn memory_source_for_golden_fixture(name: &str) -> (MemoryProjectSource, Project
     .clone();
 
   let (_, base_style, _) = load_base();
-  let mut style = base_style.clone();
+  let mut style = base_style;
   apply_input_style_overrides(name, &mut style);
   let style_text = toml::to_string(&style).expect("Style を TOML へ再直列化できるはず");
 

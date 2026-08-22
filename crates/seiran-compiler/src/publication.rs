@@ -157,7 +157,7 @@ impl Debug for PublicationResources {
 }
 
 /// 描画対象の画像 1 件（形式判定済みの生バイト列）。
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PublicationImage {
   /// 画像ファイルへのパス（診断メッセージ用）
   pub path: String,
@@ -212,7 +212,7 @@ impl Debug for PublicationFont {
 /// 解決済みの PDF メタデータ。
 ///
 /// `title` は `document.title` を優先し、未設定なら `output.name` にフォールバック済み。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicationMetadata {
   /// 文書タイトル（フォールバック解決済み）
   pub title: String,

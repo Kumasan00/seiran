@@ -220,7 +220,7 @@ fn fill_leader(
   if !unit_width.is_positive() {
     return;
   }
-  #[allow(
+  #[expect(
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     reason = "`available` / `unit_width` はここまでのガードで非負で、切り捨ては収まる本数を出すための意図した丸め"

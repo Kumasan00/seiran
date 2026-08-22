@@ -12,7 +12,7 @@
 //! 各スタイル構造体の `font_size` / `bottom_margin` などはこの型を用い、`garde` の `custom`
 //! バリデータ [`positive`] / [`non_negative`] で 0 や負値を弾く。
 
-#![allow(
+#![expect(
   clippy::cast_precision_loss,
   reason = "内部表現が i64 で、pt / 比率との相互変換で i64 ↔ f64 を頻繁に跨ぐ"
 )]
@@ -37,7 +37,7 @@ const CM_TO_PT: f64 = 10.0 * MM_TO_PT;
 ///
 /// 半偶数（round-half-to-even）を採るのは、比例配分で `stretch * ratio` を反復して丸める際に
 /// 方向性バイアスが蓄積しないようにするため。IEEE-754 準拠環境では決定的に同じ結果になる。
-#[allow(
+#[expect(
   clippy::cast_possible_truncation,
   reason = "`round_ties_even` 済みの値を i64 に落とすだけで端数は残らない（型内で唯一の丸め箇所）"
 )]
@@ -80,7 +80,7 @@ impl Length {
 
   /// pt 値を f32 で返す（PDF 座標などの出力境界用）。
   #[must_use]
-  #[allow(
+  #[expect(
     clippy::cast_possible_truncation,
     reason = "PDF 座標などの出力境界が f32 のため、pt 換算値をここで f32 精度へ落とすのは意図どおり"
   )]
@@ -92,7 +92,7 @@ impl Length {
 
   /// mm 値を f32 で返す。
   #[must_use]
-  #[allow(
+  #[expect(
     clippy::cast_possible_truncation,
     reason = "`to_pt` と同じく、出力境界の f32 精度へ落とすのは意図どおり"
   )]
@@ -212,7 +212,7 @@ impl Serialize for Length {
 /// # Errors
 ///
 /// 値が 0 以下の場合に [`garde::Error`] を返す。
-#[allow(
+#[expect(
   clippy::trivially_copy_pass_by_ref,
   reason = "garde の derive が `#[garde(custom(positive))]` の呼び出しを `&self.field` / `&()` で生成するため、値渡しへ変えると型が合わない（#307 で E0308 が 15 件出ることを確認済み）"
 )]
@@ -230,7 +230,7 @@ pub(crate) fn positive(value: &Length, _ctx: &()) -> garde::Result {
 /// # Errors
 ///
 /// 値が負の場合に [`garde::Error`] を返す。
-#[allow(
+#[expect(
   clippy::trivially_copy_pass_by_ref,
   reason = "上の `positive` と同じく、garde の derive が生成する呼び出しコードが `&self.field` / `&()` を渡す固定シグネチャのため"
 )]

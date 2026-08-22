@@ -7,7 +7,7 @@ use seiran_compiler::PublicationMetadata;
 /// [`PublicationMetadata`] から Krilla のメタデータを構築する。
 pub(crate) fn build_metadata(metadata: &PublicationMetadata) -> Metadata {
   let now = Utc::now();
-  #[allow(
+  #[expect(
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     reason = "chrono が各暦要素を暦上の範囲内で返すことを保証する"

@@ -81,7 +81,7 @@ struct MeasuredRow {
 
 impl Measurer<'_> {
   /// `LayoutNode::MathBlock` を measure して `Block::Math` に合成する
-  #[allow(
+  #[expect(
     clippy::too_many_arguments,
     reason = "数式ブロック 1 件の合成に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
   )]
