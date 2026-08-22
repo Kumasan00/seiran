@@ -1,16 +1,18 @@
 //! 定理ブロック（`document::HirNodeKind::Theorem`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
-  lower_nodes_inner, with_label_anchor,
-};
 use crate::{
   document::{FontKind, HirNode, HirNodeKind, TheoremClass},
   length::Length,
   semantics::LabelId,
   style::{TheoremHeadingValues, TheoremStyle},
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{
+      LoweringContext, LoweringState,
+      layout_node::{AtomNode, LayoutNode, TextStyle, merge_adjacent_text},
+      lower_nodes_inner, with_label_anchor,
+    },
+  },
 };
 
 /// 定理ブロックをレイアウトノードに変換する
@@ -121,11 +123,14 @@ fn make_qed_node(qed_mark: &str, font_size: Length) -> LayoutNode {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::{
+      boxes::AnchorMark,
+      lowering::test_support::{analyzed, lower},
+    },
   };
-  use crate::{style::Style as ReadStyle, typeset::boxes::AnchorMark};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

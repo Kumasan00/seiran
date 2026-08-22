@@ -2,8 +2,10 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use super::input::CompilationInputs;
-use crate::project::{FontType, ProjectPath};
+use crate::{
+  compiler::input::CompilationInputs,
+  project::{FontType, ProjectPath},
+};
 
 /// `compile` が読み取った外部資源のパス一覧（キャッシュ無効化・依存追跡用）。
 ///
@@ -59,17 +61,17 @@ mod tests {
 
   use super::DependencyManifest;
   use crate::{
-    compiler::{golden::load_base, input::CompilationInputs},
-    project::ProjectPath,
+    compiler::{golden, golden::load_base, input::CompilationInputs},
+    project::{FilesystemProjectSource, FontData, ProjectPath},
   };
 
   #[test]
   fn collect_gathers_paths_and_dedups_shared_fonts() {
     // Arrange — fixture config は serif / serif_bold が同じフォントファイルを共有する
-    crate::compiler::golden::enter_workspace_root();
+    golden::enter_workspace_root();
     let (config, style, references) = load_base();
-    let source = crate::project::FilesystemProjectSource::new();
-    let font_data = crate::project::FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
+    let source = FilesystemProjectSource::new();
+    let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
     let inputs = CompilationInputs::from_parts(&source, config.clone(), style, references, font_data)
       .expect("検証済み入力を組み立てられるはず");
     let image_paths = vec![ProjectPath::new("tests/image/testimage5.png")];

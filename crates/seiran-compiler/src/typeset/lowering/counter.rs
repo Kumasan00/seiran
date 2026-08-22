@@ -43,7 +43,7 @@ pub(crate) fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::typeset::boxes::PlacedFootnote;
+  use crate::{length::Length, typeset::boxes::PlacedFootnote};
 
   /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
   fn page_with_footnotes(indices: &[u32]) -> Page {
@@ -71,7 +71,7 @@ mod tests {
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,
-      content_origin_x: crate::length::Length::ZERO,
+      content_origin_x: Length::ZERO,
     };
   }
 

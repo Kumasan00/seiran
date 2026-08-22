@@ -37,14 +37,16 @@ pub(super) use counter::per_page_footnote_numbers;
 pub(super) use layout_node::{AtomNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 
+use crate::document::{FontKind, HeadingLevel};
+
 /// Lowering のコンテキスト
 pub(super) struct LoweringContext<'a> {
   /// スタイル設定への参照（`config/style.toml` 由来 + figment デフォルト）
   pub style: &'a ReadStyle,
   /// 本文段落の既定フォント種別
-  pub body_font_kind: crate::document::FontKind,
+  pub body_font_kind: FontKind,
   /// 段落先頭行の字下げ量
-  pub first_line_indent: crate::length::Length,
+  pub first_line_indent: Length,
   /// ラスタ画像埋め込み時の最大 DPI（config `[image].max_dpi` 由来）
   pub image_max_dpi: u32,
   /// ラスタ画像のダウンサンプリング可否（config `[image].downsample` 由来）
@@ -87,7 +89,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 本文段落の既定フォント種別だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_body_font_kind(&self, body_font_kind: crate::document::FontKind) -> LoweringContext<'a> {
+  pub(super) fn with_body_font_kind(&self, body_font_kind: FontKind) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind,
@@ -101,7 +103,7 @@ impl<'a> LoweringContext<'a> {
 
   /// 段落先頭行の字下げ量だけを差し替えた派生文脈を返す
   #[must_use]
-  pub(super) fn with_first_line_indent(&self, first_line_indent: crate::length::Length) -> LoweringContext<'a> {
+  pub(super) fn with_first_line_indent(&self, first_line_indent: Length) -> LoweringContext<'a> {
     return LoweringContext {
       style: self.style,
       body_font_kind: self.body_font_kind,
@@ -138,7 +140,7 @@ pub(super) struct HeadingRecord {
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
   /// 見出しレベル
-  pub level: crate::document::HeadingLevel,
+  pub level: HeadingLevel,
   /// 書式化済みの見出し番号（無採番の見出しは空文字列）
   pub number: String,
   /// 見出しタイトルのプレーンテキスト（`\ref` 解決済み）

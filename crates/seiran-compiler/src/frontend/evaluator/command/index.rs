@@ -72,36 +72,14 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{lookup_env_parse_mode, run_inline_handler},
-    syntax::{SyntaxKind, green::GreenElement},
-  };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
+  use crate::frontend::evaluator::{run_inline_handler, test_support};
 
   #[test]
   fn index_produces_inline_index_stub() {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{語}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -121,7 +99,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index[reading=よみ]{語}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -139,7 +117,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index[foo=bar]{語}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -154,7 +132,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -169,7 +147,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{語}{余分}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -184,7 +162,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{ }";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -199,7 +177,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{\bold{語}}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -214,7 +192,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{\alpha}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -229,7 +207,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{$x$}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -244,7 +222,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index{\ref{sec:x}}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -259,7 +237,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\index[reading= よみ ]{ 語 }";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act

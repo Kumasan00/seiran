@@ -1,12 +1,12 @@
 //! 目次（table of contents）ブロックの生成パス
 
-use super::Measurer;
 use crate::{
   document::{FontKind, HeadingLevel},
   length::Length,
   semantics::HeadingKey,
   style::Style,
   typeset::{
+    block::Measurer,
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     font::FontSystem,
     lowering::TextStyle,

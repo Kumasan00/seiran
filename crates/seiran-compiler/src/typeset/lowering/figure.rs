@@ -1,14 +1,14 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  float::{FloatSpec, build_caption, wrap_float},
-  layout_node::LayoutNode,
-};
 use crate::{
   document::{CaptionPosition, HirInline},
   length::Length,
   project::ProjectPath,
+  typeset::lowering::{
+    LoweringContext, LoweringState,
+    float::{FloatSpec, build_caption, wrap_float},
+    layout_node::LayoutNode,
+  },
 };
 
 /// `\image` の per-image 上書き引数（dpi / downsample）を 1 つにまとめた構造体
@@ -65,11 +65,11 @@ pub(super) fn lower_figure(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::{lower_sources_with_headings, test_support::analyzed},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::lowering::{lower_sources_with_headings, test_support::analyzed},
   };
-  use crate::style::Style as ReadStyle;
 
   /// `.sei` ソースを与えられた文脈で lower するテストヘルパ
   ///

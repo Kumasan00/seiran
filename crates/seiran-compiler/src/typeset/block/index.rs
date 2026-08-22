@@ -5,12 +5,12 @@ use icu::{
   locale::locale,
 };
 
-use super::Measurer;
 use crate::{
   document::FontKind,
   length::Length,
   style::Style,
   typeset::{
+    block::Measurer,
     boxes::{AnchorId, Block, HBox, Line, LineLink, LinkTarget, PositionedBox},
     font::FontSystem,
     lowering::TextStyle,

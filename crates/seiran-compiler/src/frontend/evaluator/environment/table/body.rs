@@ -1,12 +1,15 @@
 //! `table` 本体の走査（`\head` / `\row` / `\caption`）と列数の解決・検証
 
-use super::cell::{build_cell, contains_line_break};
 use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, HirBuilder, HirInline, HirTableCell, HirTableRow},
   frontend::{
     evaluator::{
       EvalError,
-      environment::{body_scan, caption::extract_caption},
+      environment::{
+        body_scan,
+        caption::extract_caption,
+        table::cell::{build_cell, contains_line_break},
+      },
       opt_args::{OptType, OptValue, collect_command_opt_args},
     },
     span_ext::ToSourceSpan,

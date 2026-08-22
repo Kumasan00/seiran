@@ -8,11 +8,13 @@
 
 use std::fmt::Write;
 
-use super::boxes::{
-  AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
-  PositionedBox,
+use crate::{
+  length::Length,
+  typeset::boxes::{
+    AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
+    PositionedBox,
+  },
 };
-use crate::length::Length;
 
 /// ページ列を決定的なテキスト形式へダンプする。
 #[must_use]
@@ -292,11 +294,11 @@ fn f2(value: Length) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_fixtures::{LineMetrics, PageBuilder, glyph_line_with_metrics, glyph_run},
-    Page, dump_pages,
+  use super::{Page, dump_pages};
+  use crate::{
+    length::Length,
+    typeset::test_fixtures::{LineMetrics, PageBuilder, glyph_line_with_metrics, glyph_run},
   };
-  use crate::length::Length;
 
   /// グリフボックス 1 つを持つテキスト行のページを合成する。
   fn page_with_text_line(baseline_y: f32, text: &str) -> Page {

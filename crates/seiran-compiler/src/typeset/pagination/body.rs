@@ -4,9 +4,9 @@ use std::time::Instant;
 
 use tracing::{debug, debug_span};
 
-use super::{context::TypesetContext, elapsed_ms, footnote_numbering};
 use crate::{
   semantics::SemanticDocument,
+  style::FootnoteNumbering,
   typeset::{
     block::build_blocks,
     boxes::Page,
@@ -14,6 +14,7 @@ use crate::{
     error::TypesetError,
     image::{ImageResources, resolve_images},
     lowering::{HeadingRecord, LoweringContext, lower_sources_with_headings},
+    pagination::{context::TypesetContext, elapsed_ms, footnote_numbering},
   },
 };
 
@@ -45,8 +46,8 @@ pub(super) fn typeset_body(
 ) -> Result<BodyLayout, TypesetError> {
   let run_pass = |footnote_numbers: Option<&[u32]>| return run_body_pass(ctx, document, images, footnote_numbers);
   return match ctx.style.footnote.numbering {
-    crate::style::FootnoteNumbering::Continuous => run_pass(None),
-    crate::style::FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
+    FootnoteNumbering::Continuous => run_pass(None),
+    FootnoteNumbering::PerPage => footnote_numbering::solve_per_page_numbering(&run_pass),
   };
 }
 

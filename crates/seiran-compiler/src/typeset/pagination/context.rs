@@ -1,16 +1,17 @@
 //! 組版の各段が共有する資源・寸法・行分割アルゴリズム
 
-use super::page_values::BodyPageValues;
 use crate::{
+  color::Color,
   length::Length,
   project::config::ProjectConfig,
-  style::Style,
+  style::{PageNumbering, Style},
   typeset::{
     boxes::Page,
     breaking::{KnuthPlassBreaker, PageGeometry},
     font::FontSystem,
     geometry,
     lowering::HeadingRecord,
+    pagination::page_values::BodyPageValues,
   },
 };
 
@@ -70,11 +71,7 @@ pub(super) struct BodyPageFacts {
 
 impl BodyPageFacts {
   /// 確定した本文ページ列と見出し記録から組み立てる。
-  pub(super) fn new(
-    body_pages: &[Page],
-    headings: Vec<HeadingRecord>,
-    numbering: &crate::style::PageNumbering,
-  ) -> Self {
+  pub(super) fn new(body_pages: &[Page], headings: Vec<HeadingRecord>, numbering: &PageNumbering) -> Self {
     return Self {
       page_values: BodyPageValues::from_body_pages(body_pages, numbering),
       headings,
@@ -104,11 +101,11 @@ fn build_page_geometries(
     footnote_top_margin: style.footnote.top_margin,
     footnote_rule_length: style.footnote.rule_length,
     footnote_rule_thickness: style.footnote.rule_thickness,
-    footnote_rule_color: style.footnote.rule_color.map(crate::color::Color::rgb),
+    footnote_rule_color: style.footnote.rule_color.map(Color::rgb),
     footnote_rule_gap: style.footnote.rule_gap,
     table_rule_thickness: style.table.rule_thickness,
-    table_rule_color: style.table.rule_color.map(crate::color::Color::rgb),
-    background_color: style.background_color.map(crate::color::Color::rgb),
+    table_rule_color: style.table.rule_color.map(Color::rgb),
+    background_color: style.background_color.map(Color::rgb),
   };
   let front_geometry = PageGeometry {
     num_columns: 1,

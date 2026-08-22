@@ -2,7 +2,7 @@
 
 use icu::segmenter::{LineSegmenter, options::LineBreakOptions};
 
-use super::hyphenation::{self, Lang};
+use crate::typeset::breaking::hyphenation::{self, Lang};
 
 /// 分割可能点の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

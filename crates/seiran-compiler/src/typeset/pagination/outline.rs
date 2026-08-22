@@ -1,12 +1,12 @@
 //! PDF しおり（アウトライン）エントリの組み立て
 
-use crate::typeset::lowering::HeadingRecord;
+use crate::{document::HeadingLevel, typeset::lowering::HeadingRecord};
 
 /// PDF のしおりに使う見出し。
 #[derive(Debug, Clone)]
 pub(crate) struct OutlineEntry {
   /// 見出しレベル（ネストの深さに使う）
-  pub(crate) level: crate::document::HeadingLevel,
+  pub(crate) level: HeadingLevel,
   /// しおりに表示するテキスト（`"{number} {plain title}"`）
   pub(crate) text: String,
 }

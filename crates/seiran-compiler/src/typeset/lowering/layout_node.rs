@@ -4,6 +4,7 @@ use crate::{
   color::Color,
   document::{FontKind, MathEnvKind},
   length::Length,
+  project::ProjectPath,
   typeset::boxes::{Align, AnchorMark, LinkTarget, TableColumn},
 };
 
@@ -28,7 +29,7 @@ pub(crate) enum LayoutNode {
   /// 画像（PNG / JPEG / SVG）
   Image {
     /// 画像ファイルへのパス
-    path: crate::project::ProjectPath,
+    path: ProjectPath,
     /// 描画幅（`None` の場合は `typeset::image` が本文幅 / 縦横比から決定）
     width: Option<Length>,
     /// 描画高さ（`None` の場合は `typeset::image` が本文幅 / 縦横比から決定）

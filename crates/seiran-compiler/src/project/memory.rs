@@ -6,7 +6,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use super::{ProjectPath, ProjectSource, SourceReadError};
+use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 
 /// メモリ上に事前登録したファイルだけを読む `ProjectSource`。
 ///

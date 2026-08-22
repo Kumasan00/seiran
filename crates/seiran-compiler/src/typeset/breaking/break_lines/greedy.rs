@@ -1,10 +1,12 @@
 //! 貪欲法（first-fit）による行分割
 
-use super::{LineBreaker, OpenLink, build_line};
 use crate::{
   length::Length,
   style::TextAlignment,
-  typeset::boxes::{HItem, Line},
+  typeset::{
+    boxes::{HItem, Line},
+    breaking::break_lines::{LineBreaker, OpenLink, build_line},
+  },
 };
 
 /// 貪欲法（first-fit）による行分割
@@ -108,17 +110,17 @@ impl LineBreaker for GreedyBreaker {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{
-      cjk_glue, discretionary, flush_right_box, index_mark, link_target, non_breakable_stretch_glue, space_glue,
-      stretch_glue, test_box,
-    },
-    GreedyBreaker, LineBreaker,
-  };
+  use super::{GreedyBreaker, LineBreaker};
   use crate::{
     length::Length,
     style::TextAlignment,
-    typeset::boxes::{HBox, HBoxContent, HItem},
+    typeset::{
+      boxes::{HBox, HBoxContent, HItem},
+      breaking::break_lines::test_support::{
+        cjk_glue, discretionary, flush_right_box, index_mark, link_target, non_breakable_stretch_glue, space_glue,
+        stretch_glue, test_box,
+      },
+    },
   };
 
   /// pt 値から `Length` を作る短縮子

@@ -2,12 +2,12 @@
 
 use tracing::debug;
 
-use super::Measurer;
 use crate::{
   document::FontKind,
   length::Length,
   style::{RunningTemplate, RunningValues},
   typeset::{
+    block::Measurer,
     boxes::{HBox, Line, Page, PlacedBlock, PositionedBox},
     font::FontSystem,
     lowering::TextStyle,

@@ -549,7 +549,12 @@ mod tests {
 #[cfg(test)]
 mod parse_tests {
   use super::{ReadStyleError, Style, StyleValidationError, TheoremClass, load, parse};
-  use crate::{document::HeadingLevel, length::Length, project::FilesystemProjectSource};
+  use crate::{
+    color::Color,
+    document::{FontKind, HeadingLevel},
+    length::Length,
+    project::FilesystemProjectSource,
+  };
 
   fn dummy_source() -> &'static str { return "test.toml"; }
 
@@ -759,9 +764,9 @@ mod parse_tests {
     // Assert
     assert_eq!(style.header.right.as_str(), "{page} / {pages}");
     assert!((style.header.font_size.to_pt() - 9.0).abs() < f32::EPSILON);
-    assert_eq!(style.header.font_kind, crate::document::FontKind::SansSerif);
+    assert_eq!(style.header.font_kind, FontKind::SansSerif);
     assert!((style.header.rule_thickness.to_pt() - 0.5).abs() < f32::EPSILON);
-    assert_eq!(style.header.rule_color.map(crate::color::Color::rgb), Some([0x33, 0x33, 0x33]));
+    assert_eq!(style.header.rule_color.map(Color::rgb), Some([0x33, 0x33, 0x33]));
     assert_eq!(style.footer.center.as_str(), "{title}");
     assert!(style.footer.left.as_str().is_empty());
     assert!(!style.header.is_empty());

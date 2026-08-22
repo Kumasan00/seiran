@@ -4,7 +4,7 @@ use crate::{
   document::{HirBuilder, HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      EvalError,
+      self, EvalError,
       environment::body_scan,
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
     },
@@ -96,7 +96,7 @@ fn list_common(view: &EnvironmentView, builder: &HirBuilder, ordered: bool) -> R
         });
       }
       let item_id = builder.alloc(cmd_view.span());
-      let content = crate::frontend::evaluator::evaluate_children(source, builder, first_arg)?;
+      let content = evaluator::evaluate_children(source, builder, first_arg)?;
       items.push(HirListItem {
         id: item_id,
         content,
@@ -122,22 +122,17 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode};
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
+  use crate::{
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
+    length::Length,
+  };
 
   #[test]
   fn itemize_rejects_unknown_opt_arg_key() {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[noitemsep]\item{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -151,7 +146,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=5]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -168,7 +163,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[start=5]\item{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -182,7 +177,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=0]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -196,7 +191,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=-1]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -210,7 +205,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=1.5]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -224,7 +219,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=foo]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -238,7 +233,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=☆]{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -255,7 +250,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[marker=]{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -272,7 +267,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[foo=bar]{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -286,7 +281,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}[item_gap=0]\item{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -295,7 +290,7 @@ mod tests {
     let HirNodeKind::List { item_gap, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(*item_gap, Some(crate::length::Length::mm(0.0)));
+    assert_eq!(*item_gap, Some(Length::mm(0.0)));
   }
 
   #[test]
@@ -303,7 +298,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{enumerate}[start=2, item_gap=8mm]\item{A}\end{enumerate}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -316,7 +311,7 @@ mod tests {
       panic!("List ノードであるべき: {nodes:?}");
     };
     assert_eq!(*start, Some(2));
-    assert_eq!(*item_gap, Some(crate::length::Length::mm(8.0)));
+    assert_eq!(*item_gap, Some(Length::mm(8.0)));
   }
 
   #[test]
@@ -324,7 +319,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\item[item_gap=-1mm]{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let nodes = evaluate_children_to_hir(source, cst).unwrap();
@@ -333,6 +328,6 @@ mod tests {
     let HirNodeKind::List { items, .. } = &nodes[0].kind else {
       panic!("List ノードであるべき: {nodes:?}");
     };
-    assert_eq!(items[0].item_gap, Some(crate::length::Length::mm(-1.0)));
+    assert_eq!(items[0].item_gap, Some(Length::mm(-1.0)));
   }
 }

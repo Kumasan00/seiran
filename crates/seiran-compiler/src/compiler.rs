@@ -1,5 +1,14 @@
 //! 設定ファイルの `sources` から PDF を生成するパイプライン
 
+#[cfg(test)]
+use crate::project::FilesystemProjectSource;
+use crate::{
+  document::{HirDocument, HirSource},
+  frontend,
+  project::{FontType, ProjectPath, ProjectSource},
+  semantics, typeset,
+};
+
 mod compile_failure;
 mod dependency_manifest;
 mod error;
@@ -77,9 +86,9 @@ pub struct Compilation {
 ///
 /// 設定・ソース・文献・フォント・画像の読込、パース、意味解決、組版のいずれかに失敗した場合、
 /// 1 件以上の error diagnostic を持つ [`CompileFailure`] を返す。
-pub fn compile<S: crate::project::ProjectSource>(
+pub fn compile<S: ProjectSource>(
   source: &S,
-  root: &crate::project::ProjectPath,
+  root: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
   let build_start = Instant::now();
@@ -100,7 +109,7 @@ pub fn compile<S: crate::project::ProjectSource>(
   );
 
   let stage_start = Instant::now();
-  let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
+  let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
   info!(
     phase = "semantics",
@@ -121,7 +130,7 @@ pub fn compile<S: crate::project::ProjectSource>(
 
   let stage_start = Instant::now();
   let (mut laid_out, typeset_warnings) =
-    crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
+    typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
       .map_err(CompileFailure::from)?;
   info!(
     phase = "typeset",
@@ -188,8 +197,8 @@ fn collect_warnings(
 /// # Errors
 ///
 /// パース・評価エラーが集約して返る場合にエラーを返す。
-fn parse_project(inputs: &CompilationInputs) -> Result<crate::document::HirDocument, CompileFailure> {
-  let document = crate::document::HirDocument::assemble(parse_all_sources(inputs.sources())?);
+fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailure> {
+  let document = HirDocument::assemble(parse_all_sources(inputs.sources())?);
   return Ok(document);
 }
 
@@ -203,18 +212,18 @@ fn parse_project(inputs: &CompilationInputs) -> Result<crate::document::HirDocum
 fn build_resources(
   font_data: &FontData,
   font_resources: &FontResources<'_>,
-  images: HashMap<crate::project::ProjectPath, ImageAsset>,
+  images: HashMap<ProjectPath, ImageAsset>,
 ) -> PublicationResources {
   let face_configs = font_resources.face_configs();
   let metrics = font_resources.metrics();
-  let fonts = FontMap::from_all(crate::project::FontType::ALL.iter().map(|&font_type| {
+  let fonts = FontMap::from_all(FontType::ALL.iter().map(|&font_type| {
     return PublicationFont {
       bytes: font_data.shared_bytes(font_type),
       face: face_configs.get(font_type).clone(),
       metric: *metrics.get(font_type),
     };
   }));
-  let mut sorted: Vec<(crate::project::ProjectPath, ImageAsset)> = images.into_iter().collect();
+  let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
   sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
   let images = sorted
     .into_iter()
@@ -237,7 +246,7 @@ fn build_pages(
   references: &Arc<References>,
   font_data: &FontData,
 ) -> Result<LaidOutDocument, CompileFailure> {
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   return build_pages_with_source(&source, config, style, references, font_data);
 }
 
@@ -247,7 +256,7 @@ fn build_pages(
 /// （2 実装が同じ結果を返すことの検証用。issue #300）。
 #[cfg(test)]
 fn build_pages_with_source(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   config: &ProjectConfig,
   style: &Style,
   references: &Arc<References>,
@@ -256,10 +265,10 @@ fn build_pages_with_source(
   let inputs =
     CompilationInputs::from_parts(source, config.clone(), style.clone(), Arc::clone(references), font_data.clone())?;
   let document = parse_project(&inputs)?;
-  let semantic_document = crate::semantics::analyze(source, document, inputs.references(), inputs.style())
+  let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
     .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
   let (font_resources, _) = FontResources::load(&config.font_configs, font_data).map_err(CompileFailure::from)?;
-  return crate::typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
+  return typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
     .map(|(laid_out, _)| return laid_out)
     .map_err(CompileFailure::from);
 }
@@ -272,12 +281,12 @@ fn elapsed_ms(start: Instant) -> u64 { return start.elapsed().as_millis() as u64
 ///
 /// 戻り値はソースごとの HIR。プロジェクト全体の文書木への組み立ては呼び出し元が行う。
 /// エラーは宣言順に並べ、先頭（最初に失敗したソースの leaf 診断）を主診断にする。
-fn parse_all_sources(sources: &SourceSet) -> Result<Vec<crate::document::HirSource>, CompileFailure> {
-  let mut parsed: Vec<crate::document::HirSource> = Vec::new();
+fn parse_all_sources(sources: &SourceSet) -> Result<Vec<HirSource>, CompileFailure> {
+  let mut parsed: Vec<HirSource> = Vec::new();
   let mut parse_errors: Vec<Box<dyn miette::Diagnostic + Send + Sync + 'static>> = Vec::new();
 
   for (source_id, entry) in sources.iter() {
-    match crate::frontend::parse_source(&entry.content, source_id) {
+    match frontend::parse_source(&entry.content, source_id) {
       Ok(hir) => parsed.push(hir),
       Err(error) => parse_errors.push(Box::new(SourceDiagnostic::attach(sources, source_id, error))),
     }

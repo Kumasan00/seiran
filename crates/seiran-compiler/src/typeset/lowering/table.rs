@@ -1,14 +1,16 @@
 //! 表環境（`document::HirNodeKind::Table`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  float::{FloatSpec, build_caption, wrap_float},
-  inline::lower_inlines,
-  layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
-};
 use crate::{
   document::{CaptionPosition, ColumnAlign, ColumnWidth, FontKind, HirInline, HirTableRow},
-  typeset::boxes::TableColumn,
+  typeset::{
+    boxes::TableColumn,
+    lowering::{
+      LoweringContext, LoweringState,
+      float::{FloatSpec, build_caption, wrap_float},
+      inline::lower_inlines,
+      layout_node::{LayoutNode, TableCellLayout, TableLayout, TableRowLayout, TextStyle},
+    },
+  },
 };
 
 /// 本文用の `FontKind` を太字バリアントに変換する（ヘッダ行セル用）
@@ -105,11 +107,12 @@ pub(super) fn lower_table(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    length::Length,
+    style::Style as ReadStyle,
+    typeset::lowering::test_support::{analyzed, lower},
   };
-  use crate::{length::Length, style::Style as ReadStyle};
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }

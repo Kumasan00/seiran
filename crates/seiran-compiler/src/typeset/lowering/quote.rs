@@ -1,10 +1,12 @@
 //! 引用ブロック（`document::HirNodeKind::Quote`）の lowering
 
-use super::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner};
 use crate::{
   document::{HirNode, QuoteKind},
   length::Length,
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{LoweringContext, LoweringState, layout_node::LayoutNode, lower_nodes_inner},
+  },
 };
 
 /// 引用ブロックをレイアウトノードに変換する
@@ -43,11 +45,11 @@ pub(super) fn lower_quote(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
+  use super::*;
+  use crate::{
+    style::Style as ReadStyle,
+    typeset::lowering::test_support::{analyzed, lower},
   };
-  use crate::style::Style as ReadStyle;
 
   /// `quote` / `quotation` 環境 1 つだけの `.sei` ソースを lower するヘルパ
   fn lower_quote_source(style: &ReadStyle, kind: QuoteKind) -> Vec<LayoutNode> {

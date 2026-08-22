@@ -1,11 +1,11 @@
 //! ディスプレイ数式環境の組版（`LayoutNode::MathBlock` → `Block::Math`）
 
-use super::Measurer;
 use crate::{
   document::{MathDelimiter, MathEnvKind},
   length::Length,
   project::FontType,
   typeset::{
+    block::Measurer,
     boxes::{Align, Block, HBox, MathRowNumber, PlacedHItem},
     lowering::{AtomNode, MathBlockRow},
   },

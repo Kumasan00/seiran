@@ -6,12 +6,15 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
-use super::{ImageFormat, natural_size};
 use crate::{
   failures::Failures,
   length::Length,
-  project::ProjectPath,
-  typeset::{boxes::Block, error::TypesetError},
+  project::{ProjectPath, ProjectSource},
+  typeset::{
+    boxes::Block,
+    error::TypesetError,
+    image::{ImageFormat, natural_size},
+  },
 };
 
 /// 描画へ渡す画像 1 件（判定済みの形式 + 生バイト列）。
@@ -57,7 +60,7 @@ impl ImageResources {
 ///
 /// 画像の読み込み・デコードに失敗した場合に [`TypesetError`] をパス昇順で返す。
 pub(crate) fn load_image_resources(
-  source: &dyn crate::project::ProjectSource,
+  source: &dyn ProjectSource,
   paths: &[ProjectPath],
 ) -> Result<ImageResources, Failures<TypesetError>> {
   let mut natural_sizes = HashMap::with_capacity(paths.len());
@@ -87,10 +90,7 @@ pub(crate) fn load_image_resources(
   clippy::result_large_err,
   reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
 )]
-fn read_image(
-  source: &dyn crate::project::ProjectSource,
-  path: &ProjectPath,
-) -> Result<((f32, f32), ImageAsset), TypesetError> {
+fn read_image(source: &dyn ProjectSource, path: &ProjectPath) -> Result<((f32, f32), ImageAsset), TypesetError> {
   let path_string = path.to_string();
   let file_bytes = source.read_bytes(path).map_err(|source| {
     return TypesetError::ReadImage {

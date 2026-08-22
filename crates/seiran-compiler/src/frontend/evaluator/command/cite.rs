@@ -59,36 +59,14 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{lookup_env_parse_mode, run_inline_handler},
-    syntax::{SyntaxKind, green::GreenElement},
-  };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
+  use crate::frontend::evaluator::{run_inline_handler, test_support};
 
   #[test]
   fn cite_produces_single_key() {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite{rika}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -106,7 +84,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite{a, b ,c}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act
@@ -124,7 +102,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act / Assert
@@ -138,7 +116,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite{a}{b}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act / Assert
@@ -152,7 +130,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite{a,}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act / Assert
@@ -166,7 +144,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\cite[k=v]{rika}";
-    let node = get_command_view(source, &arena);
+    let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
     // Act / Assert

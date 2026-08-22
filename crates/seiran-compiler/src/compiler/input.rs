@@ -16,15 +16,18 @@ use std::{
 
 use tracing::debug;
 
-use super::{elapsed_ms, error::CompileError};
 use crate::{
+  compiler::{elapsed_ms, error::CompileError},
   failures::Failures,
+  project,
   project::{
     FontData, ProjectSource, SourceSet,
     config::{ConfigWarning, ProjectConfig},
   },
   semantics::{References, read_references},
+  style,
   style::Style,
+  typeset,
 };
 
 /// 読込・個別検証・横断検証をすべて通った入力。
@@ -138,9 +141,9 @@ pub(super) fn load(
   config_path: &Path,
   base_dir: &Path,
 ) -> Result<CompilationInputs, Failures<CompileError>> {
-  let (config, config_warnings) = crate::project::config::load(source, config_path, base_dir).map_err(lift)?;
-  let style = crate::style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
-  crate::typeset::validate_layout(&config, &style).map_err(lift)?;
+  let (config, config_warnings) = project::config::load(source, config_path, base_dir).map_err(lift)?;
+  let style = style::load(source, config.style_path.as_deref(), base_dir).map_err(lift)?;
+  typeset::validate_layout(&config, &style).map_err(lift)?;
   let references = Arc::new(read_references(source, config.references_path.as_deref()).map_err(single)?);
 
   let stage_start = Instant::now();

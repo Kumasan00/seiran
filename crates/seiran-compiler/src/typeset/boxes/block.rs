@@ -3,14 +3,17 @@
 //! `typeset::block::build_blocks` が `LayoutNode` ツリーを平坦化して生成し、
 //! 行分割（`break_lines`）は `Block::Paragraph` の水平リストにだけ回る。
 
-use super::{
-  align::Align,
-  hitem::{HBox, HItem},
-  line::Line,
-  link::AnchorMark,
-  table_box::TableBox,
+use crate::{
+  length::Length,
+  project::ProjectPath,
+  typeset::boxes::{
+    align::Align,
+    hitem::{HBox, HItem},
+    line::Line,
+    link::AnchorMark,
+    table_box::TableBox,
+  },
 };
-use crate::{length::Length, project::ProjectPath};
 
 /// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
 ///

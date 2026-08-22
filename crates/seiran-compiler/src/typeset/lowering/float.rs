@@ -1,15 +1,17 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
-use super::{
-  LoweringContext, LoweringState,
-  inline::lower_inlines,
-  layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
-};
 use crate::{
   document::{CaptionPosition, FontKind, HirInline},
   length::Length,
   style::CaptionStyle,
-  typeset::boxes::Align,
+  typeset::{
+    boxes::Align,
+    lowering::{
+      LoweringContext, LoweringState,
+      inline::lower_inlines,
+      layout_node::{LayoutNode, TextStyle, merge_adjacent_text},
+    },
+  },
 };
 
 /// キャプション本体（`format` テンプレの `{number}` / `{title}` を埋めた `LayoutNode` 列）を生成する
@@ -94,14 +96,14 @@ pub(super) fn wrap_float(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     semantics::LabelId,
     style::{CaptionStyle, NumberTitleTemplate, Style as ReadStyle},
-    typeset::boxes::{Align, AnchorId, LinkTarget},
+    typeset::{
+      boxes::{Align, AnchorId, LinkTarget},
+      lowering::test_support::{analyzed, lower},
+    },
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ

@@ -4,7 +4,7 @@ use crate::{
   document::{HirBuilder, HirNode, HirNodeKind, HirProofTarget, TheoremClass},
   frontend::{
     evaluator::{
-      EvalError,
+      self, EvalError,
       opt_args::{OptType, OptValue, collect_environment_opt_args},
     },
     span_ext::ToSourceSpan,
@@ -59,7 +59,7 @@ pub(super) fn theorem(view: &EnvironmentView, builder: &HirBuilder) -> Result<Ve
     };
   });
   let body = match view.body() {
-    Some(body) => crate::frontend::evaluator::evaluate_children(view.source(), builder, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), builder, body)?,
     None => Vec::new(),
   };
 
@@ -82,23 +82,15 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirInlineKind, TheoremClass},
-    frontend::evaluator::{evaluate_children_to_hir, lookup_env_parse_mode},
+    frontend::evaluator::{evaluate_children_to_hir, test_support},
   };
-
-  /// テスト用 `parse` ラッパ
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
 
   #[test]
   fn theorem_carries_class_and_body_with_no_number() {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}本文\end{theorem}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -129,7 +121,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{proof}証明本文\end{proof}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -146,7 +138,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\begin{theorem}[title=\"ピタゴラスの定理\"]本文\\end{theorem}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -163,7 +155,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\ref{thm:p}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -186,7 +178,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=thm:p]本文\end{theorem}\begin{proof}[of=thm:p]証明\end{proof}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();
@@ -204,7 +196,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[of=thm:p]本文\end{theorem}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -218,7 +210,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{proof}[label=pf:1]証明\end{proof}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -232,7 +224,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[foo=1]本文\end{theorem}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst);
@@ -246,7 +238,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{theorem}[label=dup]A\end{theorem}\begin{lemma}[label=dup]B\end{lemma}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
 
     // Act
     let result = evaluate_children_to_hir(source, cst).unwrap();

@@ -4,18 +4,19 @@ use std::time::Instant;
 
 use tracing::{debug, debug_span};
 
-use super::{
-  context::{BodyPageFacts, TypesetContext},
-  elapsed_ms,
-  page_values::BodyPageValues,
-};
 use crate::{
   semantics::HeadingKey,
+  style::TocStyle,
   typeset::{
     block::{TocEntryInput, build_blocks, build_toc_blocks, build_toc_spec},
     boxes::{Block, Page},
     breaking::{FootnoteOverflow, break_pages},
     lowering::{HeadingRecord, TitlePageMetadata, lower_title_page},
+    pagination::{
+      context::{BodyPageFacts, TypesetContext},
+      elapsed_ms,
+      page_values::BodyPageValues,
+    },
   },
 };
 
@@ -90,11 +91,7 @@ pub(super) fn typeset_front_matter(
 /// 見出しと本文内ページ index から目次エントリを組み立てる。
 ///
 /// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
-fn collect_toc_entries(
-  headings: &[HeadingRecord],
-  page_values: &BodyPageValues,
-  toc: &crate::style::TocStyle,
-) -> Vec<TocEntryInput> {
+fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
   debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
   return headings
@@ -118,6 +115,7 @@ mod tests {
   use super::{BodyPageValues, HeadingRecord, Page, collect_toc_entries};
   use crate::{
     document::HeadingLevel,
+    length::Length,
     semantics::HeadingKey,
     style::{PageNumbering, TocStyle},
     typeset::boxes::{AnchorMark, PlacedAnchor},
@@ -146,13 +144,13 @@ mod tests {
               key: HeadingKey::new(index),
               label: None,
             },
-            x: crate::length::Length::ZERO,
-            y: crate::length::Length::ZERO,
+            x: Length::ZERO,
+            y: Length::ZERO,
           }],
           links: Vec::new(),
           index_entries: Vec::new(),
           background_color: None,
-          content_origin_x: crate::length::Length::ZERO,
+          content_origin_x: Length::ZERO,
         };
       })
       .collect();

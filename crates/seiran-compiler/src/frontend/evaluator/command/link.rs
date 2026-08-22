@@ -88,36 +88,14 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::{
-    evaluator::{lookup_env_parse_mode, run_inline_handler},
-    syntax::{SyntaxKind, green::GreenElement},
-  };
-
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
-
-  fn get_command_view<'a>(source: &'a str, arena: &'a Bump) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
-    let cst = parse(source, arena).unwrap();
-    for child in cst.children {
-      if let GreenElement::Node(n) = child
-        && n.kind == SyntaxKind::CommandCall
-      {
-        return n;
-      }
-    }
-    panic!("CommandCall ノードが見つかりません");
-  }
+  use crate::frontend::evaluator::{run_inline_handler, test_support};
 
   #[test]
   fn url_uses_uri_as_display_text() {
     // Arrange
     let arena = Bump::new();
     let source = r"\url{https:\/\/example.com}";
-    let view = CommandView::new(get_command_view(source, &arena), source);
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     // Act
     let result = run_inline_handler(|builder| return url_command(&view, builder)).unwrap();
@@ -135,7 +113,7 @@ mod tests {
   fn url_rejects_missing_argument() {
     let arena = Bump::new();
     let source = r"\url";
-    let view = CommandView::new(get_command_view(source, &arena), source);
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     assert!(
       matches!(run_inline_handler(|builder| return url_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
@@ -147,7 +125,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\href[url=https:\/\/example.com]{ここ}";
-    let view = CommandView::new(get_command_view(source, &arena), source);
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     // Act
     let result = run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
@@ -165,7 +143,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\href{表示だけ}";
-    let view = CommandView::new(get_command_view(source, &arena), source);
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
 
     // Act / Assert
     assert!(

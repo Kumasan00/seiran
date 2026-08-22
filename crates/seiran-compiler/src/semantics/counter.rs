@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+#[cfg(test)]
+use crate::style::{Counters, Style};
 use crate::{
   document::{NodeId, SourceMap, TheoremClass},
   semantics::{LabelId, SemanticError, SemanticPolicy, error::span_to_source_span},
@@ -264,15 +266,15 @@ impl CounterRegistry {
   /// seiran 既定のカウンタセットでレジストリを構築する
   #[must_use]
   pub(crate) fn default_for_seiran() -> Self {
-    return Self::from_policy(&SemanticPolicy::from_style(&crate::style::Style::default()));
+    return Self::from_policy(&SemanticPolicy::from_style(&Style::default()));
   }
 
   /// `crate::style::Counters` から直接レジストリを構築する（テスト・カスタム用）
   #[must_use]
-  pub(crate) fn from_counters(counters: &crate::style::Counters) -> Self {
-    let style = crate::style::Style {
+  pub(crate) fn from_counters(counters: &Counters) -> Self {
+    let style = Style {
       counters: counters.clone(),
-      ..crate::style::Style::default()
+      ..Style::default()
     };
     return Self::from_policy(&SemanticPolicy::from_style(&style));
   }
@@ -303,7 +305,10 @@ fn theorem_reset_counter_name(reset_by: TheoremReset) -> Option<CounterName> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset};
+  use crate::{
+    source::SourceId,
+    style::{CounterStyle, CounterTemplate, Counters, NumberStyle, ReferenceTemplate, Style, TheoremReset},
+  };
 
   fn theorem_span() -> Span { return Span::DUMMY; }
 
@@ -314,11 +319,11 @@ mod tests {
 
     // Act
     let thm = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
       .0
       .unwrap();
     let lemma = r
-      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), crate::source::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Lemma, None, theorem_span(), SourceId::new(0))
       .0
       .unwrap();
 
@@ -334,7 +339,7 @@ mod tests {
 
     // Act
     let (value, duplicate) =
-      r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), crate::source::SourceId::new(0));
+      r.increment_theorem_with_label(TheoremClass::Proof, None, theorem_span(), SourceId::new(0));
 
     // Assert
     assert!(value.is_none());
@@ -345,11 +350,11 @@ mod tests {
   fn increment_theorem_duplicate_label_reports_but_keeps_numbering() {
     // Arrange
     let mut r = CounterRegistry::default_for_seiran();
-    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), crate::source::SourceId::new(0));
+    r.increment_theorem_with_label(TheoremClass::Theorem, Some("dup"), theorem_span(), SourceId::new(0));
 
     // Act
     let (value, duplicate) =
-      r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), crate::source::SourceId::new(0));
+      r.increment_theorem_with_label(TheoremClass::Lemma, Some("dup"), theorem_span(), SourceId::new(0));
 
     // Assert — 重複は致命ではない（採番は済み、最初の定義が有効なまま残る）
     assert!(value.is_some(), "重複ラベルでも採番は行われるはず");
@@ -430,16 +435,16 @@ mod tests {
 
     // Act
     let a = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
       .0
       .unwrap();
     let b = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
       .0
       .unwrap();
     r.increment(CounterName::Section); // section = 2、theorem カウンタは 0 にリセット
     let c = r
-      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), crate::source::SourceId::new(0))
+      .increment_theorem_with_label(TheoremClass::Theorem, None, theorem_span(), SourceId::new(0))
       .0
       .unwrap();
 

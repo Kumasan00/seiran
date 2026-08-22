@@ -25,6 +25,8 @@ use markers::{ensure_markers_at_row_end, try_take_row_marker};
 pub(crate) use numbering::NumberingMode;
 use numbering::{assign_numbering, parse_math_env_opts, trim_trailing_blank_marker_rows};
 
+use crate::document::NodeId;
+
 /// グリッド分割の許可設定（環境種別ごと）
 pub(crate) struct GridSpec {
   /// 行区切り `\\` を許可するか
@@ -37,7 +39,7 @@ pub(crate) struct GridSpec {
 #[derive(Debug)]
 pub(crate) struct GridRow {
   /// この行の HIR ノード ID（セルより先に確保する）
-  pub id: crate::document::NodeId,
+  pub id: NodeId,
   /// 列（`&` 区切り）。各列は数式ノード列
   pub cells: Vec<Vec<HirMath>>,
   /// 行末マーカー `\notag` の位置（`None` は採番する）
@@ -226,6 +228,7 @@ mod tests {
     document::{HirBuilder, HirMathKind},
     frontend::{
       evaluator::lookup_env_parse_mode,
+      syntax,
       syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
     },
     source::SourceId,
@@ -248,7 +251,7 @@ mod tests {
 
   /// ソースをパースし、最初の数式環境の本体を返す
   fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
-    let root = crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode).unwrap();
+    let root = syntax::parse(source, arena, lookup_env_parse_mode).unwrap();
     let env = find_env(root).expect("Environment ノードが見つからない");
     return EnvironmentView::new(env, source).body().expect("環境本体あり");
   }

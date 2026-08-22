@@ -1,11 +1,17 @@
 //! リスト（`document::HirNodeKind::List`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  layout_node::{LayoutNode, TextStyle},
-  lower_nodes_inner,
+use crate::{
+  document::HirListItem,
+  length::Length,
+  typeset::{
+    boxes::Align,
+    lowering::{
+      LoweringContext, LoweringState,
+      layout_node::{LayoutNode, TextStyle},
+      lower_nodes_inner,
+    },
+  },
 };
-use crate::{document::HirListItem, length::Length, typeset::boxes::Align};
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
@@ -22,7 +28,7 @@ pub(super) fn lower_list(
 
   // 項目内容には本文の段落先頭字下げを波及させない（マーカー直後への字下げを避ける）。
   // 同時にネスト深さを +1 して渡し、item 内容中のネストしたリストが深さ +1 で lower されるようにする。
-  let item_ctx = ctx.with_first_line_indent(crate::length::Length::pt(0.0)).with_list_depth(depth + 1);
+  let item_ctx = ctx.with_first_line_indent(Length::pt(0.0)).with_list_depth(depth + 1);
 
   let marker_style = TextStyle {
     font_size: ctx.default_font_size(),
@@ -67,7 +73,7 @@ pub(super) fn lower_list(
       children: item_nodes,
       margin_bottom: item.item_gap.or(item_gap).unwrap_or(list_style.item_margin_bottom),
       indent: list_style.indent,
-      right_indent: crate::length::Length::pt(0.0),
+      right_indent: Length::pt(0.0),
       align: Align::Left,
     });
   }
@@ -77,13 +83,11 @@ pub(super) fn lower_list(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     document::FontKind,
-    style::{NumberTemplate, Style as ReadStyle},
+    style::{NestedOrderedFormat, NumberStyle, NumberTemplate, Style as ReadStyle},
+    typeset::lowering::test_support::{analyzed, lower},
   };
 
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
@@ -453,12 +457,12 @@ mod tests {
     // Arrange
     let mut style = ReadStyle::default();
     style.list.nested_ordered_formats = vec![
-      crate::style::NestedOrderedFormat {
-        number_style: crate::style::NumberStyle::RomanUpper,
+      NestedOrderedFormat {
+        number_style: NumberStyle::RomanUpper,
         format: NumberTemplate::parse("[{number}]"),
       },
-      crate::style::NestedOrderedFormat {
-        number_style: crate::style::NumberStyle::Kanji,
+      NestedOrderedFormat {
+        number_style: NumberStyle::Kanji,
         format: NumberTemplate::parse("{number}、"),
       },
     ];

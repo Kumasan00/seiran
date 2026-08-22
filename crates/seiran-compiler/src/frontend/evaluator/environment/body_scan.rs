@@ -71,22 +71,18 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::lookup_env_parse_mode;
-
-  /// テスト用 `parse` ラッパ — `env_mode` に本番レジストリを自動注入する
-  fn parse<'a>(
-    source: &'a str,
-    arena: &'a Bump,
-  ) -> Result<&'a crate::frontend::syntax::green::GreenNode<'a>, crate::frontend::syntax::ParserError> {
-    return crate::frontend::syntax::parse(source, arena, lookup_env_parse_mode);
-  }
+  use crate::frontend::{
+    evaluator::test_support,
+    syntax::{
+      ast::CommandView,
+      green::{GreenElement, GreenNode},
+    },
+  };
 
   /// テスト用: ソース中の最初の Environment ノードの body を取得する
-  fn first_env_body<'a>(
-    cst: &'a crate::frontend::syntax::green::GreenNode<'a>,
-  ) -> &'a crate::frontend::syntax::green::GreenNode<'a> {
+  fn first_env_body<'a>(cst: &'a GreenNode<'a>) -> &'a GreenNode<'a> {
     let env = cst.children.iter().find_map(|c| match c {
-      crate::frontend::syntax::green::GreenElement::Node(n) if n.kind == SyntaxKind::Environment => return Some(n),
+      GreenElement::Node(n) if n.kind == SyntaxKind::Environment => return Some(n),
       _ => return None,
     });
     let env = env.expect("Environment ノードが期待されます");
@@ -98,14 +94,14 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = "\\begin{itemize}\n\\item{A}\n\\item{B}\n\\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     // Act
     let views = strict_command_calls(source, body, "itemize", &["item"], "\\item").unwrap();
 
     // Assert
-    let names: Vec<&str> = views.iter().map(crate::frontend::syntax::ast::CommandView::name).collect();
+    let names: Vec<&str> = views.iter().map(CommandView::name).collect();
     assert_eq!(names, vec!["item", "item"]);
   }
 
@@ -114,7 +110,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}some text\item{A}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     // Act
@@ -129,7 +125,7 @@ mod tests {
     // Arrange
     let arena = Bump::new();
     let source = r"\begin{itemize}\bold{x}\end{itemize}";
-    let cst = parse(source, &arena).unwrap();
+    let cst = test_support::parse(source, &arena).unwrap();
     let body = first_env_body(cst);
 
     // Act

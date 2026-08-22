@@ -1,11 +1,13 @@
 //! 段落（`document::HirNodeKind::Paragraph`）の lowering
 
-use super::{
-  LoweringContext, LoweringState,
-  inline::lower_inline,
-  layout_node::{LayoutNode, TextStyle},
+use crate::{
+  document::{HirInline, HirInlineKind},
+  typeset::lowering::{
+    LoweringContext, LoweringState,
+    inline::lower_inline,
+    layout_node::{LayoutNode, TextStyle},
+  },
 };
-use crate::document::{HirInline, HirInlineKind};
 
 /// 本文段落の既定テキストスタイルを返す
 pub(super) fn body_text_style(ctx: &LoweringContext) -> TextStyle {
@@ -69,15 +71,15 @@ pub(super) fn lower_paragraph(
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    super::test_support::{analyzed, lower},
-    *,
-  };
+  use super::*;
   use crate::{
     length::Length,
     semantics::LabelId,
     style::Style as ReadStyle,
-    typeset::boxes::{AnchorId, LinkTarget},
+    typeset::{
+      boxes::{AnchorId, LinkTarget},
+      lowering::test_support::{analyzed, lower},
+    },
   };
 
   /// 段落 1 つの `.sei` ソースを lower するテストヘルパ

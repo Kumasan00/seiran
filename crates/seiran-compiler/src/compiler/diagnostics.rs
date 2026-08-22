@@ -9,12 +9,12 @@ use std::{
 
 use miette::{GraphicalReportHandler, GraphicalTheme};
 
-use super::{
-  CompileFailure, build_pages,
-  golden::{enter_workspace_root, load_base},
-};
 use crate::{
-  project::{FontData, FontType, VariationAxis, config::ProjectConfig},
+  compiler::{
+    CompileFailure, build_pages,
+    golden::{enter_workspace_root, load_base},
+  },
+  project::{FilesystemProjectSource, FontData, FontType, VariationAxis, config::ProjectConfig},
   style,
   typeset::FontResources,
 };
@@ -50,7 +50,7 @@ fn build_pages_err(sources: &[&str]) -> CompileFailure {
   enter_workspace_root();
   let (mut config, style, references) = load_base();
   config.sources = sources.iter().map(|source| return PathBuf::from(*source)).collect();
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   return match build_pages(&config, &style, &references, &font_data) {
     Ok(_) => panic!("このケースは失敗するはず"),
@@ -231,7 +231,7 @@ fn diagnostic_font_validation_errors_follow_font_type_order() {
 
 /// フォント検証を失敗させ、`compile` と同じ経路（`CompileFailure`）で診断を組み立てる
 fn font_validation_failure(config: &ProjectConfig) -> CompileFailure {
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   return match FontResources::load(&config.font_configs, &font_data) {
     Ok(_) => panic!("不明な軸を指定したので失敗するはず"),
@@ -248,7 +248,7 @@ fn diagnostic_missing_csl_path() {
   let (mut config, mut style, references) = load_base();
   config.sources = vec![PathBuf::from("tests/text/cite.sei")];
   style.reference.csl_path = None;
-  let source = crate::project::FilesystemProjectSource::new();
+  let source = FilesystemProjectSource::new();
   let font_data = FontData::load(&source, &config.font_configs).expect("フォントの読み込み");
   let Err(failure) = build_pages(&config, &style, &references, &font_data) else {
     panic!("CSL スタイル未設定なので失敗するはず")

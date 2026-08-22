@@ -1,10 +1,12 @@
 //! 行分割の出力。
 
-use super::{
-  hitem::{HBoxContent, HItem},
-  link::LinkTarget,
+use crate::{
+  length::Length,
+  typeset::boxes::{
+    hitem::{HBoxContent, HItem},
+    link::LinkTarget,
+  },
 };
-use crate::length::Length;
 
 /// 行分割で確定した 1 行
 ///

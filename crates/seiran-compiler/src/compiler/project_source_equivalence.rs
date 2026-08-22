@@ -8,12 +8,12 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{
-  build_pages_with_source,
-  golden::{enter_workspace_root, load_base},
-};
 use crate::{
-  project::{FontData, FontType, MemoryProjectSource, config::ProjectConfig},
+  compiler::{
+    build_pages_with_source,
+    golden::{enter_workspace_root, load_base},
+  },
+  project::{FilesystemProjectSource, FontData, FontType, MemoryProjectSource, config::ProjectConfig},
   style::Style,
   typeset::dump_pages,
 };
@@ -52,7 +52,7 @@ fn memory_and_filesystem_sources_produce_identical_layout() {
   let (base_config, style, references) = load_base();
   let mut config = base_config;
   config.sources = vec![PathBuf::from(SOURCE_REL)];
-  let fs_source = crate::project::FilesystemProjectSource::new();
+  let fs_source = FilesystemProjectSource::new();
   let fs_font_data = FontData::load(&fs_source, &config.font_configs).expect("フォントの読み込み");
 
   // Arrange — memory 経由（同じ内容を事前登録し、実ディスクには触れない）
