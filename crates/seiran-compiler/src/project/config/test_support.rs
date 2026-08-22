@@ -10,7 +10,8 @@ pub fn make_font_sections(font_path: &str) -> String {
   let mut out = String::new();
   for font_type in FontType::ALL {
     let key = font_type.as_toml_key();
-    write!(out, "[font_configs.{key}]\nfont_name = \"font_{key}\"\nfont_path = \"{font_path}\"\n\n").unwrap();
+    write!(out, "[font_configs.{key}]\nfont_name = \"font_{key}\"\nfont_path = \"{font_path}\"\n\n")
+      .expect("`String` への `write!` は `fmt::Error` を返さない");
   }
   return out;
 }
