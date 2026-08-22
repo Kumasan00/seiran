@@ -34,7 +34,7 @@ mod typeset;
 // 経由でファイルから読み込まれ内部で完結する）ため、ここには含めない。
 pub use color::Color;
 pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, OutputPlan, Warnings, compile};
-pub use length::Length;
+pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
 pub use project::test_support;
 pub use project::{

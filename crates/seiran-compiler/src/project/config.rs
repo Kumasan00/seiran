@@ -189,10 +189,6 @@ struct FontValues {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・バリデーション・出力パス構築の失敗時にエラーを返します。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 pub(crate) fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
@@ -222,10 +218,6 @@ pub(crate) fn load(
 ///
 /// `source_path` はエラー報告に使う表示用パスで、ファイルシステムへのアクセスには使われません。
 /// 値検証は行いません。検証・変換は [`validate_and_convert`]（[`resolve`] 経由）で実行します。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, Failures<ReadConfigError>> {
   return toml::from_str(content).map_err(|mut source| {
     let span = source.span().map_or_else(
@@ -247,10 +239,6 @@ fn parse_config(content: &str, source_path: &Path) -> Result<PreConfig, Failures
 ///
 /// 値検証と読み取り I/O の違反を集約します。出力ディレクトリの作成は行わず、絶対パスを
 /// 組み立てるだけです（作成は driver 側の責務、#300）。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 fn resolve(
   pre: PreConfig,
   source: &dyn ProjectSource,

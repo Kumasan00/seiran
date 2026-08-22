@@ -221,10 +221,7 @@ fn print_scripts(
 }
 
 /// GSUB と GPOS の Feature タグを重複なく統合する。
-fn collect_all_features(
-  gsub_features: &FeatureList,
-  gpos_features: &FeatureList,
-) -> std::collections::BTreeSet<std::string::String> {
+fn collect_all_features(gsub_features: &FeatureList, gpos_features: &FeatureList) -> BTreeSet<String> {
   let mut all_features = BTreeSet::new();
   insert_feature_tags(gsub_features, &mut all_features);
   insert_feature_tags(gpos_features, &mut all_features);

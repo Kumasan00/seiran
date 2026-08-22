@@ -165,13 +165,13 @@ mod tests {
     // Arrange
     let mut file = NamedTempFile::new().expect("一時ファイルを作成できるはず");
     write!(file, "concurrent").expect("書き込めるはず");
-    let source = std::sync::Arc::new(FilesystemProjectSource::new());
+    let source = Arc::new(FilesystemProjectSource::new());
     let path = ProjectPath::new(file.path());
 
     // Act: スレッドプールで複数スレッドから同一パスを同時読み込み
     let mut handles = vec![];
     for _ in 0..4 {
-      let source_clone = std::sync::Arc::clone(&source);
+      let source_clone = Arc::clone(&source);
       let path_clone = path.clone();
       handles.push(std::thread::spawn(move || {
         let _ = source_clone.read_bytes(&path_clone);
