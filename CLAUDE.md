@@ -179,8 +179,9 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 正典は root `Cargo.toml` の `[workspace.lints.rust]` / `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で両テーブルを継承）と、lint 側の設定値を持つ root `clippy.toml`。
 
 - `clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` は allow
-- restriction lint の `absolute_paths` / `allow_attributes` / `allow_attributes_without_reason` / `clone_on_ref_ptr` / `implicit_return` / `iter_over_hash_type` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `mod_module_files` / `multiple_unsafe_ops_per_block` / `panic_in_result_fn` / `undocumented_unsafe_blocks` / `unnecessary_safety_comment` / `unused_result_ok` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
+- restriction lint の `absolute_paths` / `allow_attributes` / `allow_attributes_without_reason` / `clone_on_ref_ptr` / `implicit_return` / `iter_over_hash_type` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `mod_module_files` / `multiple_unsafe_ops_per_block` / `panic_in_result_fn` / `undocumented_unsafe_blocks` / `unnecessary_safety_comment` / `unused_result_ok` / `unwrap_used` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
 - 上記とは別枠で、**nursery lint** の `redundant_clone` / `derive_partial_eq_without_eq` を warn で有効化している（restriction ではないので同じ列には並べない）
+- clippy.toml の設定値は `absolute-paths-max-segments = 3`（下の bullet）と `allow-unwrap-in-tests = true`（テスト内の `.unwrap()` を対象外にする）の 2 つ。
 - `absolute_paths` は `clippy.toml` の `absolute-paths-max-segments = 3` で運用する。`project::config::load` と `style::load` を書き分ける既存のイディオム（3 セグメント）は温存され、`crate::` を頭に付けた 4 セグメント以上だけが落ちる。これは「use 文」規約の**最終防衛線**であって規約そのものではない — 規約は本体コードに `crate::` を直書きしないことを求めており、lint はそのうち検出できる分だけを機械化している。`#[cfg(test)]` の中でも発火するので、テストにも同じ規約が効く
 - rustc 側は `unreachable_pub` / `unsafe_op_in_unsafe_fn` を warn で明示有効化している。前者は「モジュールは既定で非公開 + root ファサード」を機械的に強制するもので、外から到達しない `pub` は `pub(crate)` / `pub(super)` に狭める（crate 外へ本当に公開する項目だけが `pub` として残る）。後者は Edition 2024 の既定と同じ水準を設定として固定するもので、`unsafe fn` の本体でも `unsafe {}` を書かせる
 - `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
@@ -198,7 +199,8 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 - 本体ビルドでだけ発火する lint（`#[cfg(test)] mod tests` だけが使う項目に対する `dead_code` / `unused_imports`）は `#[cfg_attr(not(test), expect(...))]` と書く。素の `#[expect]` はテストビルドで充足せず `unfulfilled_lint_expectations` に落ちるため、`allow` へ戻すのではなく「本体ビルドでだけ抑制する」ことを字面に出す
 - 本体コードの `assert!` / `debug_assert!` 系にはメッセージが必須（`missing_assert_message`）。条件の言い換えではなく「なぜ成り立つはずか」＝上流のどの保証が破れたのかを日本語で書く（`unreachable!` と同じ書き方）。テストコード（`#[test]` / `#[cfg(test)]`）では発火しないので、テストの素の `assert_eq!` はそのままでよい
 - CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する
-- `unwrap_used` / `expect_used` は**有効化していない**（restriction lint で `all` にも `pedantic` にも含まれない）。したがって `#[expect(clippy::unwrap_used)]` は何も抑制せず、書けば `unfulfilled_lint_expectations` で落ちる
+- 本体コードで `.unwrap()` を使わない（`unwrap_used`）。`.expect("...")` に移し、メッセージには条件の言い換えではなく「なぜ落ちないか」＝上流のどの検証・型設計が保証するかを日本語で書く（`unreachable!` / `missing_assert_message` と同じ書き方）。到達しうる失敗（ソース・設定ファイル由来）なら `.expect()` ではなく miette 診断エラーにする（`error-handling` skill）。`#[test]` / `#[cfg(test)]` の中は clippy.toml の `allow-unwrap-in-tests = true` で対象外だが、`tests/` から使うヘルパ（`#[doc(hidden)] pub` の `test_support` 等）は cfg(test) の外なので本体と同じ扱いになる
+- `expect_used` は**有効化していない**（restriction lint で `all` にも `pedantic` にも含まれない）。`.expect()` は「根拠を書いた上での逃げ道」として残してある。したがって `#[expect(clippy::expect_used)]` は何も抑制せず、書けば `unfulfilled_lint_expectations` で落ちる
 
 ### テスト
 
@@ -206,7 +208,7 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 - AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る
 - **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]` で閉じた `test_support` module に切り出して 1 箇所に集める（`frontend::evaluator::test_support` / `typeset::lowering::test_support`）。切り出し先は「そのヘルパが注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)` のように module 経由で呼ぶ。crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` → `seiran_compiler::test_support`）
 - test module も本体と同じ use 規約に従う（「必須ルール」3）。親の被テスト項目を `use super::*` / `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する
-- テストコードでは `unwrap` / `expect` を許容する（`unwrap_used` / `expect_used` は無効なので属性は付けない）。`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）
+- テストコードでは `unwrap` / `expect` を許容する（`unwrap_used` は clippy.toml の `allow-unwrap-in-tests` で対象外、`expect_used` は無効なので、どちらも属性は付けない）。`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）。ただし `tests/` から使うヘルパは cfg(test) の外なので `unwrap_used` が効く（本体と同じく `.expect()` + 根拠）
 - **golden テスト・組版変更の検証**: レイアウトダンプ golden（`crates/seiran-compiler/src/compiler/golden.rs`）と PDF バイト比較の使い分け、前提資産の取得（初回は `tools/fetch-test-assets.sh` を 1 度実行）、golden の再生成、新機能へのテスト追加は `verify-typesetting` skill を参照する
 
 ## コード検索
