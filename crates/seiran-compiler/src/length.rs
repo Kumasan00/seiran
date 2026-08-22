@@ -399,7 +399,7 @@ mod tests {
     // Arrange — mm 由来の値は sp が f32 の仮数に収まらず、f32 経由の往復では数 sp ずれる。
     // style.toml を型付き `Style` から再直列化して読み直す経路（golden）が座標を動かさないよう、
     // serde の往復は無損失であることを固定する。
-    for mm in [99.0_f32, 85.0, 275.0, 12.0, 0.5] {
+    for mm in [99.0f32, 85.0, 275.0, 12.0, 0.5] {
       let value = Length::mm(mm);
 
       // Act
@@ -514,7 +514,7 @@ mod tests {
   #[test]
   fn mul_works() {
     let a = Length::pt(2.0);
-    let b = a * 3.0_f32;
+    let b = a * 3.0f32;
     assert_eq!(b, Length::pt(6.0));
   }
 
@@ -528,7 +528,7 @@ mod tests {
   #[test]
   fn div_works() {
     let a = Length::pt(6.0);
-    let b = a / 2.0_f32;
+    let b = a / 2.0f32;
     assert_eq!(b, Length::pt(3.0));
   }
 
