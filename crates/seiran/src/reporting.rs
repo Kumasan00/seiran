@@ -25,7 +25,7 @@ impl Reporter {
   pub(super) fn init(verbose: u8, quiet: bool) -> Self {
     let raw_filter = std::env::var("RUST_LOG").ok();
     let (filter, warning) = build_env_filter(raw_filter.as_deref(), verbose, quiet);
-    fmt::fmt()
+    fmt::Subscriber::builder()
       .compact()
       .with_env_filter(filter)
       .with_target(false)

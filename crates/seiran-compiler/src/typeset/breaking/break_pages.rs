@@ -3693,12 +3693,7 @@ mod tests {
 
   /// ページ内ブロックの底辺の最大値（版面下端に達したかの確認用）
   fn max_block_bottom(page: &Page) -> f32 {
-    return page
-      .blocks
-      .iter()
-      .map(super::placed_block_bottom)
-      .fold(Length::from_sp(i64::MIN), Length::max)
-      .to_pt();
+    return page.blocks.iter().map(placed_block_bottom).fold(Length::from_sp(i64::MIN), Length::max).to_pt();
   }
 
   /// 2 つの `f32` がほぼ等しいか（配置座標の比較用）
