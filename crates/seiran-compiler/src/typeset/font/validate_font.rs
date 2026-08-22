@@ -195,6 +195,30 @@ pub(crate) enum FontWarning {
     /// config.toml が指定した script タグ
     script: Tag,
   },
+  /// script は見つかったが、その `Script` サブテーブルを読めず言語対応を確認できない。
+  #[error(
+    "{}: {table} テーブルのスクリプト '{script}' を読み込めないため、言語対応を確認できません: {}",
+    .font_type.as_toml_key(),
+    .path.display()
+  )]
+  #[diagnostic(
+    code(typeset::font::script::unreadable_script),
+    severity(Warning),
+    help("フォントファイルが破損していないか確認してください。")
+  )]
+  UnreadableScript {
+    /// 対象のフォント種別
+    font_type: FontType,
+    /// フォントファイルのパス
+    path: PathBuf,
+    /// 対象テーブル名（`GSUB` / `GPOS`）
+    table: &'static str,
+    /// config.toml が指定した script タグ
+    script: Tag,
+    /// 元の読み込みエラー
+    #[source]
+    source: ReadError,
+  },
   /// 指定した言語が script 配下でサポートされていない。
   #[error(
     "{}: {table} テーブルのスクリプト '{script}' が言語 '{language}' をサポートしていません: {}",
@@ -398,14 +422,32 @@ fn check_script_in_table(
     return;
   };
 
-  let script = match script_list.get(index) {
-    Ok(record) => record.element,
-    Err(_) => return,
+  // `ot_language` の指定が無ければ `Script` サブテーブルを読む必要が無い（読んで失敗しても
+  // スキップされた検査が無いので、警告にする意味も無い）
+  let Some(lang_tag) = lang_tag else {
+    return;
   };
 
-  if let Some(lang_tag) = lang_tag
-    && script.lang_sys_index_for_tag(lang_tag).is_none()
-  {
+  // 添字は直前の `index_for_tag` が同じ `script_records()` を binary search して返した値なので
+  // `ReadError::OutOfBounds` にはならないが、`get` は `Script` サブテーブルのオフセットを
+  // フォントバイト列から解決する（read-fonts の `ScriptList::get`）ので、破損フォントでは
+  // 失敗しうる。両者は同じ `ReadError` 変種で返るため切り分けられない — 握りつぶすと
+  // 下の言語判定ごと消えるので、確認できなかったことを警告として届ける
+  let script = match script_list.get(index) {
+    Ok(record) => record.element,
+    Err(source) => {
+      warnings.push(FontWarning::UnreadableScript {
+        font_type,
+        path: path.to_path_buf(),
+        table,
+        script: script_tag,
+        source,
+      });
+      return;
+    },
+  };
+
+  if script.lang_sys_index_for_tag(lang_tag).is_none() {
     warnings.push(FontWarning::UnsupportedLanguage {
       font_type,
       path: path.to_path_buf(),
@@ -413,5 +455,121 @@ fn check_script_in_table(
       script: script_tag,
       language: lang_tag,
     });
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use read_fonts::{FontData, FontRead};
+
+  use super::*;
+
+  /// テストで使うフォントファイルのパス（実在しなくてよい — 警告の帰属表示にしか使わない）。
+  const FONT_PATH: &str = "/fonts/test.otf";
+
+  /// script タグ 1 件だけを持つ `ScriptList` のバイト列を組む。
+  ///
+  /// `script_offset` は `ScriptList` 先頭からの Offset16。範囲外の値を渡すと
+  /// `ScriptList::get` が `Script` サブテーブルのオフセット解決で失敗する
+  /// （null offset は別経路になりうるので 0 は使わない）。オフセット 8 を渡すと
+  /// 末尾に置いた空の `Script` テーブル（既定言語システム無し・`LangSysRecord` 0 件）を指す。
+  fn script_list_bytes(script_offset: u16) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&1u16.to_be_bytes()); // scriptCount
+    bytes.extend_from_slice(b"kana"); // scriptTag
+    bytes.extend_from_slice(&script_offset.to_be_bytes()); // scriptOffset
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // Script.defaultLangSysOffset（NULL）
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // Script.langSysCount
+    return bytes;
+  }
+
+  #[test]
+  fn unreadable_script_subtable_warns_that_language_support_is_unverified() {
+    // Arrange
+    let bytes = script_list_bytes(0xffff);
+    let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
+    let mut warnings = Vec::new();
+
+    // Act
+    check_script_in_table(
+      Ok(script_list),
+      Tag::new(b"kana"),
+      Some(Tag::new(b"JAN ")),
+      "GSUB",
+      FontType::Serif,
+      Path::new(FONT_PATH),
+      &mut warnings,
+    );
+
+    // Assert
+    let [
+      FontWarning::UnreadableScript {
+        font_type,
+        path,
+        table,
+        script,
+        source: _,
+      },
+    ] = warnings.as_slice()
+    else {
+      panic!("UnreadableScript が 1 件だけ出るはず: {warnings:?}");
+    };
+    assert_eq!(*font_type, FontType::Serif);
+    assert_eq!(path, Path::new(FONT_PATH));
+    assert_eq!(*table, "GSUB");
+    assert_eq!(*script, Tag::new(b"kana"));
+  }
+
+  #[test]
+  fn unreadable_script_subtable_is_silent_without_ot_language() {
+    // Arrange
+    let bytes = script_list_bytes(0xffff);
+    let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
+    let mut warnings = Vec::new();
+
+    // Act
+    check_script_in_table(
+      Ok(script_list),
+      Tag::new(b"kana"),
+      None,
+      "GSUB",
+      FontType::Serif,
+      Path::new(FONT_PATH),
+      &mut warnings,
+    );
+
+    // Assert
+    assert!(warnings.is_empty(), "確認すべき言語が無いので警告は出ないはず: {warnings:?}");
+  }
+
+  #[test]
+  fn readable_script_without_the_language_warns_unsupported_language() {
+    // Arrange
+    let bytes = script_list_bytes(8);
+    let script_list = ScriptList::read(FontData::new(&bytes)).expect("ScriptList 自体は読めるはず");
+    let mut warnings = Vec::new();
+
+    // Act
+    check_script_in_table(
+      Ok(script_list),
+      Tag::new(b"kana"),
+      Some(Tag::new(b"JAN ")),
+      "GSUB",
+      FontType::Serif,
+      Path::new(FONT_PATH),
+      &mut warnings,
+    );
+
+    // Assert
+    let [
+      FontWarning::UnsupportedLanguage {
+        script, language, ..
+      },
+    ] = warnings.as_slice()
+    else {
+      panic!("UnsupportedLanguage が 1 件だけ出るはず: {warnings:?}");
+    };
+    assert_eq!(*script, Tag::new(b"kana"));
+    assert_eq!(*language, Tag::new(b"JAN "));
   }
 }
