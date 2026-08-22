@@ -209,7 +209,7 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 | E 対立 pair の lock-in | 2 通り書ける形は現行スタイル側（0 件の側）を固定する | `separated_literal_suffix` / `pub_without_shorthand` |
 | F nursery 個別主義 | Known problems を理解した lint だけを 1 件ずつ採用する | `redundant_clone` / `fallible_impl_from` |
 
-A〜C は「目的」、D〜F は「採用条件」の軸で、1 つの lint が両方の性質を持つことはある（`float_cmp_const` は C かつ発火 0 件）— Cargo.toml の節見出しには採用の決め手になった軸を置く。軸に載らない lint は採らない。C 軸の帰結として、`suboptimal_flops` / `imprecise_flops` のように丸めが変わる lint は不採用（既存の候補箇所も直さない）。`clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は既定の 0）。
+A〜C は「目的」、D〜F は「採用条件」の軸で、1 つの lint が両方の性質を持つことはある（`float_cmp_const` は C かつ発火 0 件）— Cargo.toml の節見出しには採用の決め手になった軸を置く。軸に載らない lint は採らない。lint が**発火＝提案に従う**とは限らない — `suboptimal_flops` / `imprecise_flops` は「float の合成演算をここで書いた」ことの通知として有効化してあり、採否は箇所ごとに決める（項を累積して精度が効くなら `mul_add` / `ln_1p` を採る・値が一度動くので golden 再生成込み／1 項で定数畳み込みや可読性が勝つなら積へ名前を付けて式から乗算を外す／どちらでもないなら `#[expect]` + 根拠）。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的なので、C 軸の懸念は移行時の値の変化に限られる。`clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は既定の 0）。
 
 #### 運用
 

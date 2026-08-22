@@ -185,6 +185,9 @@ debug_assert_with_mut_call = "warn"
 derive_partial_eq_without_eq = "warn"
 # `From` 実装の中で panic しない（失敗しうる変換は `TryFrom` で型に出す）。
 fallible_impl_from = "warn"
+# `(1 + x).ln()` / `x.exp() - 1` / `x.powf(1.0 / 3.0)` を書いたことの通知。提案（`ln_1p` / `exp_m1` /
+# `cbrt`）は桁落ちを避ける側なので採るのが既定だが、採否は下の suboptimal_flops と同じ規則で箇所ごとに決める。
+imprecise_flops = "warn"
 # 読むだけの `&mut` 引数を落とす（呼び出し側に不要な可変借用を要求しない）。
 needless_pass_by_ref_mut = "warn"
 # 絶対パスの `push` は元のパスを丸ごと捨てる（`ProjectPath` の組み立てで効く）。
@@ -193,6 +196,11 @@ path_buf_push_overwrite = "warn"
 read_zero_byte_vec = "warn"
 # move すれば済む値の `clone()`。Known problems は false-negative 側なので発火は真陽性。
 redundant_clone = "warn"
+# float の `a * b + c` を書いたことの通知。`mul_add` は IEEE の単一丸めで `a * b + c` と同じく決定的なので、
+# 採用の代償は移行時に値が一度動く（golden 再生成）ことと、非 FMA ターゲットでの libm fallback だけ。
+# 発火したら箇所ごとに決める — 項を累積して精度が効くなら提案を採り、1 項で定数畳み込みや可読性が勝つなら
+# 積へ名前を付けて式から乗算を外し（`HYPHEN_DEMERIT`）、どちらでもないなら `#[expect]` + 根拠を書く。
+suboptimal_flops = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
 
