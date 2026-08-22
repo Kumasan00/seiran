@@ -13,12 +13,9 @@ pub(crate) fn read_test_font() -> Vec<u8> {
     .nth(2)
     .expect("crates/seiran-compiler の 2 階層上がワークスペースルート");
   let path = workspace_root.join("vendor/fonts/STIXTwoMath-Regular.ttf");
-  return std::fs::read(&path).unwrap_or_else(|error| {
-    panic!(
-      "テストフォントを読めるはず: {}: {error}（tools/fetch-test-assets.sh の実行が必要な場合があります）",
-      path.display()
-    )
-  });
+  return std::fs::read(&path).expect(
+    "vendor/fonts/STIXTwoMath-Regular.ttf を読めるはず（tools/fetch-test-assets.sh の実行が必要な場合があります）",
+  );
 }
 
 /// 妥当な `[pdf]` / `[output]` に任意の `[font_configs.*]` 群を足して `config.toml` を組む。

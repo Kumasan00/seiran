@@ -90,6 +90,10 @@ missing_docs_in_private_items = "warn"
 mod_module_files = "warn"
 # SAFETY 族 — unsafe 操作 1 つに 1 ブロック 1 コメントの 1 対 1 対応を保つ。
 multiple_unsafe_ops_per_block = "warn"
+# 必須ルール 5 / 6 の帰結 — 本体コードの裸の `panic!` に居場所はない（到達しない分岐は `unreachable!`、
+# 入力由来の状態は miette 診断）。`unreachable!` / `assert!` 系は別 lint なので規約と衝突しない。
+# テストは `clippy.toml` の allow-panic-in-tests = true で対象外（`unwrap_used` と同じ扱い）。
+panic = "warn"
 # 返り値の型で失敗を広告した関数の中で落ちない（診断エラーにして Err で返す）。
 panic_in_result_fn = "warn"
 # 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。

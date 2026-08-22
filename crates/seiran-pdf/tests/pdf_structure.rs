@@ -95,6 +95,10 @@ fn build_pdf_bytes_with_background(name: &str, background: Option<&str>) -> Vec<
   );
   let dir = TempDir::new().expect("一時ディレクトリを作成できるはず");
   let root = write_fixture_project(&dir, name, background);
+  #[expect(
+    clippy::panic,
+    reason = "失敗時に読みたいのは miette の整形出力（`into_report`）で、`expect` の Debug では代替できない"
+  )]
   let compilation = seiran_compiler::compile(&FilesystemProjectSource::new(), &root, &workspace_root())
     .unwrap_or_else(|failure| panic!("fixture {name} の compile は成功するはず: {:?}", failure.into_report()));
   return seiran_pdf::render(&compilation.publication).expect("PDF の描画");
