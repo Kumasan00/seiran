@@ -86,12 +86,34 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// 次のトークンの種類を消費せずに確認する
   fn peek_kind(&mut self) -> Option<TokenKind> { return self.peek_token().map(|t| return t.kind); }
 
+  /// 先読みで存在を確認済みのトークンを消費する
+  ///
+  /// # Panics
+  ///
+  /// 直前の [`Self::peek_token`] / [`Self::peek_kind`] が `Some` を返していない位置で呼ぶと落ちる。
+  fn take_peeked(&mut self) -> Token {
+    return self
+      .next_token()
+      .expect("先読みが `Some` を返した位置でだけ呼ぶので、消費できるトークンが必ず残っている");
+  }
+
+  /// 先読みで存在を確認済みのトークンを消費せずに読む
+  ///
+  /// # Panics
+  ///
+  /// 直前の [`Self::peek_token`] / [`Self::peek_kind`] が `Some` を返していない位置で呼ぶと落ちる。
+  fn peeked(&mut self) -> Token {
+    return *self
+      .peek_token()
+      .expect("先読みが `Some` を返した位置でだけ呼ぶので、読めるトークンが必ず残っている");
+  }
+
   /// トリビア（空白・改行・コメント）をスキップして次の意味のあるトークンまで進む
   ///
   /// スキップしたトークンは CST に保持するため `children` に蓄積します。
   fn skip_trivia(&mut self, children: &mut bumpalo::collections::Vec<'a, GreenElement<'a>>) {
     while matches!(self.peek_kind(), Some(TokenKind::Comment | TokenKind::Whitespace | TokenKind::Newline)) {
-      let token = self.next_token().unwrap();
+      let token = self.take_peeked();
       children.push(GreenElement::Token(token));
     }
   }
@@ -131,7 +153,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
     match kind {
       TokenKind::Command => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         let name = token.command_name(self.source);
 
         if name == "begin" {
@@ -147,11 +169,11 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         }
       },
       TokenKind::Dollar if mode == ParseMode::Text => {
-        let first_dollar = self.next_token().unwrap();
+        let first_dollar = self.take_peeked();
 
         if self.peek_kind() == Some(TokenKind::Dollar) {
           // 最初の 2 つの `$` をまとめてエラー範囲にする。
-          let second_dollar = self.next_token().unwrap();
+          let second_dollar = self.take_peeked();
           return Err(ParserError::DollarDollarNotSupported {
             span: first_dollar.span.merge(second_dollar.span).to_source_span(),
           });
@@ -161,7 +183,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(math_node));
       },
       TokenKind::Dollar => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::DollarInMathMode {
           span: token.span.to_source_span(),
         });
@@ -179,13 +201,13 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       TokenKind::LBrace => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::BareGroup {
           span: token.span.to_source_span(),
         });
       },
       TokenKind::LBracket => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::BareBracket {
           span: token.span.to_source_span(),
         });
@@ -195,20 +217,20 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         return Ok(());
       },
       TokenKind::RBrace | TokenKind::RBracket => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
           span: token.span.to_source_span(),
         });
       },
       TokenKind::Unknown => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       _ => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         children.push(GreenElement::Token(token));
       },
     }
@@ -263,7 +285,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
       // \end の検出 — `parse_element` は `\end` をエラーとして弾くため、ここで先に break する必要がある
       if let Some(TokenKind::Command) = self.peek_kind() {
-        let token = *self.peek_token().unwrap();
+        let token = self.peeked();
         if token.command_name(self.source) == "end" {
           break;
         }
@@ -284,7 +306,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       });
     }
 
-    let end_token = self.next_token().unwrap();
+    let end_token = self.take_peeked();
     debug_assert_eq!(end_token.command_name(self.source), "end", "本体ループは \\end でのみ break する");
 
     let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
@@ -365,7 +387,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
       self.parse_element(&mut children, mode, Some(close_kind))?;
     }
 
-    let close = self.next_token().unwrap();
+    let close = self.take_peeked();
     children.push(GreenElement::Token(close));
 
     return Ok(self.alloc_node(node_kind, start_span.merge(self.last_span), children));
@@ -398,7 +420,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
       match self.peek_kind() {
         Some(TokenKind::Dollar) => {
-          let dollar_close = self.next_token().unwrap();
+          let dollar_close = self.take_peeked();
           children.push(GreenElement::Token(dollar_close));
           break;
         },
@@ -422,7 +444,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     loop {
       match self.peek_kind() {
         Some(TokenKind::RBrace) => {
-          let rbrace = self.next_token().unwrap();
+          let rbrace = self.take_peeked();
           children.push(GreenElement::Token(rbrace));
           break;
         },
@@ -450,7 +472,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(group));
       },
       Some(TokenKind::Command) => {
-        let cmd_token = self.next_token().unwrap();
+        let cmd_token = self.take_peeked();
         let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
       },
@@ -463,26 +485,26 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(sup_node));
       },
       Some(TokenKind::Unknown) => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::LBracket) => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::BareBracket {
           span: token.span.to_source_span(),
         });
       },
       Some(TokenKind::RBracket | TokenKind::RBrace) => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::UnexpectedToken {
           kind: token.kind,
           span: token.span.to_source_span(),
         });
       },
       _ => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         children.push(GreenElement::Token(token));
       },
     }
@@ -491,7 +513,7 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 
   /// 数式内の上付き・下付きスクリプトをパースする: `_x`, `_{}`, `^x`, `^{}`
   fn parse_math_script(&mut self, kind: SyntaxKind) -> Result<&'a GreenNode<'a>, ParserError> {
-    let script_token = self.next_token().unwrap();
+    let script_token = self.take_peeked();
     let start_span = script_token.span;
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(script_token));
@@ -505,25 +527,25 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         children.push(GreenElement::Node(group));
       },
       Some(TokenKind::Command) => {
-        let cmd_token = self.next_token().unwrap();
+        let cmd_token = self.take_peeked();
         let cmd_node = self.parse_command_call(cmd_token, ParseMode::Math)?;
         children.push(GreenElement::Node(cmd_node));
       },
       Some(TokenKind::Unknown) => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Err(ParserError::InvalidBackslash {
           span: token.span.to_source_span(),
         });
       },
       Some(token_kind @ (TokenKind::Dollar | TokenKind::RBrace | TokenKind::RBracket | TokenKind::ParagraphBreak)) => {
-        let span = self.peek_token().unwrap().span;
+        let span = self.peeked().span;
         return Err(ParserError::UnexpectedToken {
           kind: token_kind,
           span: span.to_source_span(),
         });
       },
       Some(_) => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         children.push(GreenElement::Token(token));
       },
       None => {
@@ -541,11 +563,11 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   fn expect(&mut self, expected: TokenKind) -> Result<Token, ParserError> {
     match self.peek_kind() {
       Some(kind) if kind == expected => {
-        let token = self.next_token().unwrap();
+        let token = self.take_peeked();
         return Ok(token);
       },
       Some(kind) => {
-        let span = self.peek_token().unwrap().span;
+        let span = self.peeked().span;
         return Err(ParserError::UnexpectedToken {
           kind,
           span: span.to_source_span(),
