@@ -66,6 +66,7 @@ missing_docs_in_private_items = { level = "warn", priority = 2 }
 mod_module_files = { level = "warn", priority = 2 }
 multiple_unsafe_ops_per_block = { level = "warn", priority = 2 }
 undocumented_unsafe_blocks = { level = "warn", priority = 2 }
+unnecessary_safety_comment = { level = "warn", priority = 2 }
 unused_result_ok = { level = "warn", priority = 2 }
 
 [workspace.lints.rust]
