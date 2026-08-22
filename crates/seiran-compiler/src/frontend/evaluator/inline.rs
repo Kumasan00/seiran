@@ -80,7 +80,16 @@ pub(crate) fn extract_inline_nodes_from_elements(
             span: token.span.to_source_span(),
           });
         },
-        _ => {},
+        // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
+        // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
+        TokenKind::Command
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Dollar
+        | TokenKind::Comment
+        | TokenKind::Unknown => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
@@ -145,7 +154,17 @@ pub(crate) fn extract_inline_nodes_from_elements(
             span: child_node.span.to_source_span(),
           });
         },
-        _ => {},
+        // 引数・環境タグ・数式内ノードは、それぞれの評価経路が中身を取り出して再帰する。
+        // インライン位置で直に出会った分はインライン要素を持たないので何もしない。
+        SyntaxKind::Root
+        | SyntaxKind::EnvironmentBegin
+        | SyntaxKind::EnvironmentEnd
+        | SyntaxKind::EnvironmentBody
+        | SyntaxKind::OptArg
+        | SyntaxKind::MandatoryArg
+        | SyntaxKind::MathGroup
+        | SyntaxKind::MathSubscript
+        | SyntaxKind::MathSuperscript => {},
       },
     }
   }

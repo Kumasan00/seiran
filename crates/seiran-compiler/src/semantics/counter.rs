@@ -287,7 +287,13 @@ fn theorem_reset_level(name: CounterName) -> Option<TheoremReset> {
     CounterName::Chapter => Some(TheoremReset::Chapter),
     CounterName::Section => Some(TheoremReset::Section),
     CounterName::Subsection => Some(TheoremReset::Subsection),
-    _ => None,
+    // 定理カウンタのリセット先になれるのは部・章・節・小節の 4 レベルだけ（`TheoremReset`）。
+    // 段落以下の見出しと図表・数式のカウンタはリセット先に選べない。
+    CounterName::Paragraph
+    | CounterName::Subparagraph
+    | CounterName::Table
+    | CounterName::Figure
+    | CounterName::Equation => None,
   };
 }
 
@@ -311,6 +317,28 @@ mod tests {
   };
 
   fn theorem_span() -> Span { return Span::DUMMY; }
+
+  #[test]
+  fn theorem_reset_level_maps_every_counter_name() {
+    // Arrange
+    let expected: [(CounterName, Option<TheoremReset>); 9] = [
+      (CounterName::Part, Some(TheoremReset::Part)),
+      (CounterName::Chapter, Some(TheoremReset::Chapter)),
+      (CounterName::Section, Some(TheoremReset::Section)),
+      (CounterName::Subsection, Some(TheoremReset::Subsection)),
+      (CounterName::Paragraph, None),
+      (CounterName::Subparagraph, None),
+      (CounterName::Table, None),
+      (CounterName::Figure, None),
+      (CounterName::Equation, None),
+    ];
+
+    // Act & Assert
+    for (name, want) in expected {
+      assert_eq!(theorem_reset_level(name), want, "{name:?} のリセット先");
+    }
+    assert_eq!(expected.map(|(name, _)| return name), CounterName::ALL, "固定 9 種のカウンタ名を宣言順ですべて覆う");
+  }
 
   #[test]
   fn increment_theorem_numbers_with_default_style() {

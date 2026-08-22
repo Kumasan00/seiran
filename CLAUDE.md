@@ -164,7 +164,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 
 ### 値と型の書き方
 
-字面から意味が読めることを優先する（G1 のコードへの適用）。以下はいずれも lint が機械化している。
+字面から意味が読めることを優先する（G1 のコードへの適用）。以下は末尾の enum match の項を除き lint が機械化している。
 
 - `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。`x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、型宣言まで遡らないと読めない。`rc::Weak` / `sync::Weak` も対象
 - そのまま move すれば済む値を `clone()` しない（`redundant_clone`）。複製先も元もその後読まれないなら、複製は無駄なだけでなく「ここは所有権を分ける必要がある」という誤った合図を残す。nursery lint だが Known problems は **false-negative**（解析が保守的）なので、発火したら真陽性として直す。裏返すと**この lint が通っても「無駄な `clone` が無い」証明にはならない**ので、`clone` を書く判断そのものは人がやる
@@ -174,6 +174,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 - 型推論で足りる `as` は書かない（`trivial_casts`）。trait object から auto trait（`Send` / `Sync`）を落とす変換のように**外すとコンパイルが通らない**キャストで発火することがあり、そこだけ `#[expect]` + 理由で残す（`compiler::compile_failure`）
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない
 - 識別子は ASCII で書く（`non_ascii_idents`）。テスト名も同じで、日本語は doc コメント・診断メッセージ・assert の文言に置き、名前には持ち込まない
+- enum を match するときは「入力 enum に variant を追加したら、この処理の判断を必ず見直すべきか」で wildcard の可否を決める。**Yes なら wildcard を使わず全 variant を明示する**（同じ結果になる variant は `|` でまとめる）— enum 間・enum から値への意味的な対応表、parser / evaluator の dispatch、状態遷移、段間語彙の完全走査、新しい variant がアルゴリズムへ参加するかを必ず判断すべき分類がこれにあたり、明示しておくと variant 追加が見直すべき箇所でコンパイルエラーになる。**No なら wildcard を維持する** — ある variant だけを取り出す抽出・検索、明示された部分集合だけを判定する述語、許可リスト以外を同じ診断にする既定エラー、非対象値を変更せず通す pass-through、enum 自身の共通操作へ委譲する分岐では「新しい variant も既定へ入る」ことが処理の意味なので、網羅化すると意味が壊れる。`clippy::wildcard_enum_match_arm` はこの Yes / No を区別できず両方を等しく報告するので有効化しない（#402 / #426）— **この項だけは lint ではなく人が守る**。ガード付き arm と網羅性判定の関係に注意する（`Penalty { .. } if cond` のようなガード付き arm は網羅性判定に参加しないので、同じ variant を wildcard 側の列挙にも書く。逆に `Glue { breakable: true, .. }` のようなリテラルパターンは参加する）
 
 ### エラーハンドリング・バリデーション
 

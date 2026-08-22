@@ -74,7 +74,17 @@ pub(crate) fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
     .iter()
     .filter_map(|item| match item {
       HItem::Box(hbox) | HItem::FlushRight(hbox) => return max_font_size_in_content(&hbox.content),
-      _ => return None,
+      // グリフを内包しないアイテムはフォントサイズを持たない。`Discretionary` のハイフン箱と
+      // `Footnote` の本体はセルの支配的サイズには数えない（行送りは本文側で決まる）。
+      HItem::Glue { .. }
+      | HItem::Kern(_)
+      | HItem::Penalty { .. }
+      | HItem::Discretionary { .. }
+      | HItem::ForcedBreak
+      | HItem::LinkStart(_)
+      | HItem::LinkEnd
+      | HItem::Footnote { .. }
+      | HItem::IndexMark { .. } => return None,
     })
     .reduce(Length::max);
 }

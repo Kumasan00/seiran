@@ -67,7 +67,10 @@ fn delimiter_glyphs(kind: MathEnvKind) -> (Option<&'static str>, Option<&'static
       MathDelimiter::Bar => (Some("|"), Some("|")),
       MathDelimiter::DoubleBar => (Some("\u{2016}"), Some("\u{2016}")),
     },
-    _ => (None, None),
+    // 揃え系の環境は括弧で囲まない。
+    MathEnvKind::Equation | MathEnvKind::Align | MathEnvKind::Gather | MathEnvKind::Split | MathEnvKind::Multiline => {
+      (None, None)
+    },
   };
 }
 
@@ -302,6 +305,24 @@ mod tests {
       }),
       (Some("("), Some(")"))
     );
+    assert_eq!(
+      delimiter_glyphs(MathEnvKind::Matrix {
+        delimiter: MathDelimiter::Brace
+      }),
+      (Some("{"), Some("}"))
+    );
+    assert_eq!(
+      delimiter_glyphs(MathEnvKind::Matrix {
+        delimiter: MathDelimiter::Bar
+      }),
+      (Some("|"), Some("|"))
+    );
+    assert_eq!(
+      delimiter_glyphs(MathEnvKind::Matrix {
+        delimiter: MathDelimiter::DoubleBar
+      }),
+      (Some("\u{2016}"), Some("\u{2016}"))
+    );
   }
 
   #[test]
@@ -315,6 +336,9 @@ mod tests {
     );
     assert_eq!(delimiter_glyphs(MathEnvKind::Equation), (None, None));
     assert_eq!(delimiter_glyphs(MathEnvKind::Align), (None, None));
+    assert_eq!(delimiter_glyphs(MathEnvKind::Gather), (None, None));
+    assert_eq!(delimiter_glyphs(MathEnvKind::Split), (None, None));
+    assert_eq!(delimiter_glyphs(MathEnvKind::Multiline), (None, None));
   }
 
   #[test]

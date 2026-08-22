@@ -22,7 +22,14 @@ fn bold_kind(kind: FontKind) -> FontKind {
     FontKind::SansSerifItalic => FontKind::SansSerifBoldItalic,
     FontKind::Monospace => FontKind::MonospaceBold,
     FontKind::MonospaceItalic => FontKind::MonospaceBoldItalic,
-    other => other,
+    // 既に太字のものと数式用フォントは変換先を持たないのでそのまま返す。
+    FontKind::SerifBold
+    | FontKind::SerifBoldItalic
+    | FontKind::SansSerifBold
+    | FontKind::SansSerifBoldItalic
+    | FontKind::MonospaceBold
+    | FontKind::MonospaceBoldItalic
+    | FontKind::Math => kind,
   };
 }
 
@@ -239,11 +246,30 @@ mod tests {
   }
 
   #[test]
-  fn bold_kind_maps_regular_to_bold() {
-    assert_eq!(bold_kind(FontKind::Serif), FontKind::SerifBold);
-    assert_eq!(bold_kind(FontKind::SansSerifItalic), FontKind::SansSerifBoldItalic);
-    assert_eq!(bold_kind(FontKind::Monospace), FontKind::MonospaceBold);
-    assert_eq!(bold_kind(FontKind::SerifBold), FontKind::SerifBold);
+  fn bold_kind_maps_every_font_kind() {
+    // Arrange
+    let expected = [
+      (FontKind::Serif, FontKind::SerifBold),
+      (FontKind::SerifItalic, FontKind::SerifBoldItalic),
+      (FontKind::SansSerif, FontKind::SansSerifBold),
+      (FontKind::SansSerifItalic, FontKind::SansSerifBoldItalic),
+      (FontKind::Monospace, FontKind::MonospaceBold),
+      (FontKind::MonospaceItalic, FontKind::MonospaceBoldItalic),
+      // 既に太字のものと数式用フォントは変換されない
+      (FontKind::SerifBold, FontKind::SerifBold),
+      (FontKind::SerifBoldItalic, FontKind::SerifBoldItalic),
+      (FontKind::SansSerifBold, FontKind::SansSerifBold),
+      (FontKind::SansSerifBoldItalic, FontKind::SansSerifBoldItalic),
+      (FontKind::MonospaceBold, FontKind::MonospaceBold),
+      (FontKind::MonospaceBoldItalic, FontKind::MonospaceBoldItalic),
+      (FontKind::Math, FontKind::Math),
+    ];
+
+    // Act & Assert
+    assert_eq!(expected.len(), 13, "`FontKind` の全 variant を覆う");
+    for (kind, want) in expected {
+      assert_eq!(bold_kind(kind), want, "{kind:?} の太字化");
+    }
   }
 
   #[test]
