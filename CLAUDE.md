@@ -173,6 +173,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 - 借用を持つ型は `Foo<'_>` と書く（`elided_lifetimes_in_paths`）。`Foo` と書けると借用の有無が字面から消え、宣言まで遡らないと読めない
 - 型推論で足りる `as` は書かない（`trivial_casts`）。trait object から auto trait（`Send` / `Sync`）を落とす変換のように**外すとコンパイルが通らない**キャストで発火することがあり、そこだけ `#[expect]` + 理由で残す（`compiler::compile_failure`）
 - 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない
+- 識別子は ASCII で書く（`non_ascii_idents`）。テスト名も同じで、日本語は doc コメント・診断メッセージ・assert の文言に置き、名前には持ち込まない
 
 ### エラーハンドリング・バリデーション
 

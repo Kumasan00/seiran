@@ -73,7 +73,7 @@ mod tests {
   }
 
   #[test]
-  fn build_face_configs_変換対象の2フィールドのみ複製する() {
+  fn build_face_configs_copies_only_the_two_convertible_fields() {
     // Arrange
     let configs: FontConfigs = FontMap::from_all(FontType::ALL.iter().map(|_| return font_config_with(3, None)));
 
@@ -89,7 +89,7 @@ mod tests {
   }
 
   #[test]
-  fn build_face_configs_variation_axesをそのまま複製する() {
+  fn build_face_configs_copies_variation_axes_verbatim() {
     // Arrange
     let axes = vec![
       VariationAxis {

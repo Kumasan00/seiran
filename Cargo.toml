@@ -196,31 +196,75 @@ redundant_clone = "warn"
 # `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
 unused_peekable = "warn"
 
-# 節見出しは上の clippy テーブルと同じ 6 軸。
+# 節見出しは上の clippy テーブルと同じ 6 軸。カタログ（`rustc -W help` の allow-by-default 61 lint）
+# 全数の処分記録は #421（採用 23 / 恒久不採用 / 見送り）。
 [workspace.lints.rust]
-# B — 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す。
-elided_lifetimes_in_paths = "warn"
-# A — 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
+
+# ---------------------------------------------------------------------------
+# A 規約の機械化 — prose の規約に対応する lint（最優先）
+# ---------------------------------------------------------------------------
+
+# 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
 missing_debug_implementations = "warn"
-# A — 必須ルール 4「doc コメントは全項目」の公開側。
+# 必須ルール 4「doc コメントは全項目」の公開側。
 missing_docs = "warn"
-# D — 使っていないライフタイム引数の残骸。
-redundant_lifetimes = "warn"
-single_use_lifetimes = "warn"
-# D — 型が変わらない数値キャスト。
-trivial_numeric_casts = "warn"
-# B — 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
-trivial_casts = "warn"
-# A — facade 規約の裏面。公開シグネチャに現れるのに名指しできない型を落とす。
+# facade 規約の裏面。公開シグネチャに現れるのに名指しできない型を落とす。
 unnameable_types = "warn"
-# A — 「モジュールは既定で非公開 + root ファサード」の機械化。
+# 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
-# D — 使っていないライフタイム宣言。
-unused_lifetimes = "warn"
-# A — use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
+# use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
 unused_qualifications = "warn"
-# A — Edition 2024 の既定水準の固定。`unsafe fn` の本体でも `unsafe {}` を書かせる。
+# Edition 2024 の既定水準の固定。`unsafe fn` の本体でも `unsafe {}` を書かせる。
 unsafe_op_in_unsafe_fn = "warn"
+
+# ---------------------------------------------------------------------------
+# B 字面に意味 — G1「字面だけで構造が一意」のコードへの適用
+# ---------------------------------------------------------------------------
+
+# `-1i32.pow(2)` は `-(1.pow(2))` と読む。優先順位を括弧で字面に出させる。
+ambiguous_negative_literals = "warn"
+# 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す。
+elided_lifetimes_in_paths = "warn"
+# 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
+trivial_casts = "warn"
+
+# ---------------------------------------------------------------------------
+# D 0 件予防 — 発火 0 件かつ規約整合。無料の再発防止
+# ---------------------------------------------------------------------------
+
+# 将来 deprecated になる項目を使った時点で知る（`deprecated` の前倒し）。
+deprecated_in_future = "warn"
+# `#[macro_use] extern crate` はマクロを use 経由でない第 2 の経路で持ち込む（use 規約の裏面）。
+macro_use_extern_crate = "warn"
+# `macro_rules!` のメタ変数の取り違え。解析は不完全（取りこぼしあり）だが FP は実測 0 件。
+meta_variable_misuse = "warn"
+# 使っていないライフタイム引数の残骸。
+redundant_lifetimes = "warn"
+# 1 回しか使わないライフタイム引数（`'_` で足りる）。
+single_use_lifetimes = "warn"
+# 型が変わらない数値キャスト。
+trivial_numeric_casts = "warn"
+# `let x = ();` は式の書き間違いの合図（返り値のない関数を束縛している）。
+unit_bindings = "warn"
+# Edition 2018 以降 `extern crate` は不要（依存は `use` だけで引く）。
+unused_extern_crates = "warn"
+# 使っていないライフタイム宣言。
+unused_lifetimes = "warn"
+# 使われないマクロ規則＝死んだ分岐（`define_template!` の規則追加で効く）。
+unused_macro_rules = "warn"
+
+# ---------------------------------------------------------------------------
+# E 対立 pair の lock-in — 2 通り書ける形は現行スタイル側（0 件の側）を固定する
+# ---------------------------------------------------------------------------
+
+# 推論できる `T: 'a` 境界は書かない側に固定する。
+explicit_outlives_requirements = "warn"
+# `impl Trait` の `use<...>` は既定と異なるときだけ書く（冗長な指定を残さない）。
+impl_trait_redundant_captures = "warn"
+# 識別子は ASCII に固定する（doc コメント・診断メッセージ・テストの assert 文言は日本語のまま）。
+non_ascii_idents = "warn"
+# `use a::{b}` ではなく `use a::b` と書く（`unnecessary_self_imports` と同族）。
+unused_import_braces = "warn"
 
 [profile.release]
 opt-level = 3
