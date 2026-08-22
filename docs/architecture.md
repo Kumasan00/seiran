@@ -159,6 +159,14 @@ pub trait ProjectSource: Send + Sync {
   memory adapter でもパス検証ができなくなるため。
 - `FilesystemProjectSource` はパス単位のキャッシュを持ち（per-path lock 付き）、同じフォント・画像を
   2 度ディスクから読まない。呼び出し側（`FontData::load`）も共有パスを 1 回だけ要求する。
+  キャッシュに載るのはバイト列だけで、`read_text` はそこから毎回 UTF-8 検証して `Arc<str>` を作る
+  （ディスク I/O は増えない。テキストの読込は 1 パス 1 回なのでキャッシュを二重に持たない）。
+  per-path lock のエントリは読込の成否によらず読了時に畳むので、in-flight の間だけ生きる。
+  「2 度読まない」も「同じパスの並行アクセスだけ直列化する」も成功した読み込みの話で、エラーは
+  キャッシュしない — 失敗したパスは呼び出しごとに再読込され、その間の直列化も保証しない。
+  この lock が守るのは `()` なので poison は `into_inner` で回復する — 壊れた不変条件を運ばない
+  poison を panic 源にしない（キャッシュ側 mutex の poison まで救うわけではない）。キャッシュは `ProjectSource` の契約ではなく実装の私的性質で、
+  `MemoryProjectSource` は要求回数を数えるためにキャッシュを持たない。
 - `ProjectPath` は `Path::components()` による畳み込みのみ（`.` と冗長な区切りを除去。先頭の `./` は
   Rust の `components()` 仕様どおり残る）で、シンボリックリンクは解決しない。
 - `ProjectPath` は**外部資源を指す compiler 側の唯一のパス型**で、画像も同じ型で識別する。同じパスを

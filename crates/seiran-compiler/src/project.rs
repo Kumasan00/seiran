@@ -105,6 +105,10 @@ pub enum SourceReadError {
 /// 実 adapter は [`FilesystemProjectSource`]（CLI・実ビルド用）と [`MemoryProjectSource`]
 /// （決定的テスト用）の 2 つ。`rayon` 並列読み込み（フォント）から共有されるため
 /// `Send + Sync` を要求する。
+///
+/// キャッシュは実装ごとの私的性質で、この trait の契約ではない — 同じパスを 2 回要求したときに
+/// 実 I/O が起きるかは実装に委ねる（[`MemoryProjectSource`] は要求回数を数えるためにキャッシュを
+/// 持たない）。呼び出し側は「同じパスを何度読んでも安い」ことを前提にしない。
 pub trait ProjectSource: Send + Sync {
   /// UTF-8 テキストとして読み込む（設定・スタイル・文献・ソースファイル用）。
   ///
