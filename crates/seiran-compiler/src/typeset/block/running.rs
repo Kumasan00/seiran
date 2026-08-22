@@ -92,7 +92,7 @@ pub(crate) fn layout_running_content(pages: &mut [Page], resources: &FontSystem<
 
 /// 1 リージョン分の配置済みブロック（行＋任意の区切り線）を組み立てる
 fn build_region(
-  measurer: &mut Measurer,
+  measurer: &mut Measurer<'_>,
   slots: &RunningSlots,
   text_width: Length,
   page_label: &str,
@@ -154,7 +154,7 @@ fn build_region(
 
 /// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
 fn shape_slot(
-  measurer: &mut Measurer,
+  measurer: &mut Measurer<'_>,
   template: &RunningTemplate,
   page_label: &str,
   pages_label: &str,

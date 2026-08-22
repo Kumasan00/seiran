@@ -68,7 +68,7 @@ pub(crate) enum CommandKind {
 
 impl CommandKind {
   /// コマンドを実行し、対応する `CommandResult` を生成する
-  fn execute(self, view: &CommandView, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
+  fn execute(self, view: &CommandView<'_>, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
     match self {
       Self::Space => return control::space(view, builder).map(CommandResult::Block),
 
@@ -108,7 +108,7 @@ impl CommandKind {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(crate) fn single_char(view: &CommandView, builder: &HirBuilder, ch: char) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn single_char(view: &CommandView<'_>, builder: &HirBuilder, ch: char) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -177,7 +177,7 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 /// # Errors
 ///
 /// 未知のコマンドやコマンド実行中のエラーが発生した場合
-pub(crate) fn evaluate_command(view: &CommandView, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
+pub(crate) fn evaluate_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<CommandResult, EvalError> {
   if let Some(command_kind) = COMMAND_MAP.get(view.name()).copied() {
     return command_kind.execute(view, builder);
   }

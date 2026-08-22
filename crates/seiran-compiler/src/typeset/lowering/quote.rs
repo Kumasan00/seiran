@@ -11,10 +11,10 @@ use crate::{
 
 /// 引用ブロックをレイアウトノードに変換する
 pub(super) fn lower_quote(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   kind: QuoteKind,
   body: &[HirNode],
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.quote;
 

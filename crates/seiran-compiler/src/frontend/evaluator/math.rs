@@ -28,13 +28,13 @@ use crate::{
 pub(crate) fn evaluate_inline_math(
   source: &str,
   builder: &HirBuilder,
-  math_node: &GreenNode,
+  math_node: &GreenNode<'_>,
 ) -> Result<Vec<HirMath>, EvalError> {
   return evaluate_math_children(source, builder, math_node);
 }
 
 /// 数式モードで構造化された CST ノードの子要素を [`HirMath`] 列に変換する共通ヘルパ
-fn evaluate_math_children(source: &str, builder: &HirBuilder, node: &GreenNode) -> Result<Vec<HirMath>, EvalError> {
+fn evaluate_math_children(source: &str, builder: &HirBuilder, node: &GreenNode<'_>) -> Result<Vec<HirMath>, EvalError> {
   return evaluate_math_elements(source, builder, node.children);
 }
 
@@ -42,7 +42,7 @@ fn evaluate_math_children(source: &str, builder: &HirBuilder, node: &GreenNode) 
 pub(crate) fn evaluate_math_elements(
   source: &str,
   builder: &HirBuilder,
-  elements: &[GreenElement],
+  elements: &[GreenElement<'_>],
 ) -> Result<Vec<HirMath>, EvalError> {
   let mut nodes = Vec::new();
   for child in elements {
@@ -110,7 +110,7 @@ pub(crate) fn evaluate_math_elements(
 fn evaluate_math_script_content(
   source: &str,
   builder: &HirBuilder,
-  script_node: &GreenNode,
+  script_node: &GreenNode<'_>,
 ) -> Result<HirMath, EvalError> {
   let group_id = builder.alloc(script_node.span);
   let mut nodes = Vec::new();
@@ -161,7 +161,7 @@ fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
 }
 
 /// 数式内コマンドを [`HirMath`] に変換する
-fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNode) -> Result<HirMath, EvalError> {
+fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
   let view = CommandView::new(cmd_node, source);
   let name = view.name();
 
@@ -261,7 +261,7 @@ fn evaluate_math_command(source: &str, builder: &HirBuilder, cmd_node: &GreenNod
 }
 
 /// 数式引数ノードを単一の [`HirMath`] に変換するヘルパー
-fn math_arg_to_node(source: &str, builder: &HirBuilder, arg_node: &GreenNode) -> Result<HirMath, EvalError> {
+fn math_arg_to_node(source: &str, builder: &HirBuilder, arg_node: &GreenNode<'_>) -> Result<HirMath, EvalError> {
   let group_id = builder.alloc(arg_node.span);
   let nodes = evaluate_inline_math(source, builder, arg_node)?;
   return Ok(collapse_single(group_id, nodes));

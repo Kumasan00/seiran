@@ -156,14 +156,14 @@ impl LineAccum {
 }
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む（見出し行用）
-fn compose_left_line(measurer: &mut Measurer, text: &str, style: TextStyle) -> Line {
+fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
   acc.place(measurer.shape_text(text, style), Length::ZERO);
   return acc.into_line(Vec::new());
 }
 
 /// 1 エントリを「番号＋タイトル …リーダー… ページ番号（右寄せ）」の単一行に組む
-fn compose_entry_line(measurer: &mut Measurer, spec: &TocSpec, entry: &TocEntryInput) -> Line {
+fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &TocSpec, entry: &TocEntryInput) -> Line {
   let indent = spec.indent_per_level * f32::from(entry.level.depth());
   let label = entry_label(&entry.number, &entry.title_plain);
 
@@ -205,7 +205,7 @@ fn entry_label(number: &str, title_plain: &str) -> String {
 
 /// `from_x` から `to_x` の間をリーダー単位文字列の反復で充填する（ページ番号側に右寄せ）
 fn fill_leader(
-  measurer: &mut Measurer,
+  measurer: &mut Measurer<'_>,
   unit: &str,
   style: TextStyle,
   from_x: Length,

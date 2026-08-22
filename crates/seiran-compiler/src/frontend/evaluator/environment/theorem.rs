@@ -17,7 +17,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、余分な必須引数、ラベル重複などが発生した場合にエラーを返します。
-pub(super) fn theorem(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn theorem(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let class =
     TheoremClass::from_name(view.name()).expect("ENVIRONMENTS は 10 種の定理クラスのみを本ハンドラに登録する");
 

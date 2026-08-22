@@ -150,6 +150,8 @@ path_buf_push_overwrite = { level = "warn", priority = 2 }
 debug_assert_with_mut_call = { level = "warn", priority = 2 }
 
 [workspace.lints.rust]
+# 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す（G1 のライフタイムへの適用）。
+elided_lifetimes_in_paths = "warn"
 missing_docs = "warn"
 # ライフタイム表記の残骸（いずれも実測 0 件）。
 redundant_lifetimes = "warn"

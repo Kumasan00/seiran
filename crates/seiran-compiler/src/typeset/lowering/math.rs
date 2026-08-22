@@ -31,11 +31,11 @@ fn script_font_size(font_size: Length, math_style: &MathScriptStyle) -> Length {
 /// `number_format` / `tag_format` による表示文字列化しか行わない。ディスプレイ数式の中に脚注は
 /// 入らないので、`state` は不変借用で足りる。
 pub(super) fn lower_math_block(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   kind: MathEnvKind,
   rows: &[HirMathRow],
   env_counter_value: Option<&CounterValue>,
-  state: &LoweringState,
+  state: &LoweringState<'_>,
 ) -> LayoutNode {
   let font_size = ctx.default_font_size();
   let block = &ctx.style.math.block;

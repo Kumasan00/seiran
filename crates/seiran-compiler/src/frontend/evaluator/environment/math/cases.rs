@@ -20,7 +20,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
-pub(crate) fn cases(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn cases(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   collect_environment_opt_args(view, &[])?;
   if !view.args().is_empty() {
     return Err(EvalError::ExtraEnvironmentArgument {

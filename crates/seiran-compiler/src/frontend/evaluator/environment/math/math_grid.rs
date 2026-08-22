@@ -61,13 +61,13 @@ pub(crate) struct GridRow {
 pub(crate) fn evaluate_grid(
   source: &str,
   builder: &HirBuilder,
-  body: &GreenNode,
+  body: &GreenNode<'_>,
   spec: &GridSpec,
   row_markers_allowed: bool,
 ) -> Result<Vec<GridRow>, EvalError> {
   let mut rows: Vec<GridRow> = Vec::new();
   let mut current_row: Vec<Vec<HirMath>> = Vec::new();
-  let mut current_cell: Vec<GreenElement> = Vec::new();
+  let mut current_cell: Vec<GreenElement<'_>> = Vec::new();
   let mut current_notag: Option<SourceSpan> = None;
   let mut current_label: Option<RowLabel> = None;
   // 行 ID はセルより先に確保する（行の位置は本体全体を覆う span から始め、行区切りで更新する）
@@ -144,7 +144,7 @@ pub(crate) fn evaluate_grid(
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価や許可しない区切りトークンの出現、無採番への
 /// ラベル付与・重複ラベル時にエラーを返す。
 pub(crate) fn evaluate_math_env(
-  view: &EnvironmentView,
+  view: &EnvironmentView<'_>,
   builder: &HirBuilder,
   kind: MathEnvKind,
   spec: &GridSpec,
@@ -208,7 +208,7 @@ fn is_blank_row(row: &[Vec<HirMath>]) -> bool {
 }
 
 /// 要素がトリビア（空白・改行・コメント・段落区切り）かどうかを判定する
-fn is_trivia_element(child: &GreenElement) -> bool {
+fn is_trivia_element(child: &GreenElement<'_>) -> bool {
   return matches!(
     child,
     GreenElement::Token(token)

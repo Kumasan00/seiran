@@ -28,10 +28,10 @@ fn bold_kind(kind: FontKind) -> FontKind {
 
 /// `HirTableRow` の列を [`TableRowLayout`] の列に変換する
 fn lower_rows(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   rows: &[HirTableRow],
   cell_style: TextStyle,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<TableRowLayout> {
   let mut result = Vec::with_capacity(rows.len());
   for row in rows {
@@ -56,7 +56,7 @@ fn lower_rows(
   reason = "表 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
 )]
 pub(super) fn lower_table(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   columns: &[ColumnAlign],
   widths: &[ColumnWidth],
   head: &[HirTableRow],
@@ -64,7 +64,7 @@ pub(super) fn lower_table(
   caption: Option<(CaptionPosition, &[HirInline])>,
   number: &str,
   breakable: bool,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.table;
 

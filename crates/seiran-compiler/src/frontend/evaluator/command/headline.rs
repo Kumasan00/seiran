@@ -21,7 +21,7 @@ use crate::{
 ///
 /// 引数不足・過剰、または `[label=...]` の値型不一致でエラーを返します。
 pub(super) fn heading(
-  view: &CommandView,
+  view: &CommandView<'_>,
   builder: &HirBuilder,
   level: HeadingLevel,
 ) -> Result<Vec<HirNode>, EvalError> {

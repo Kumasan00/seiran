@@ -132,7 +132,7 @@ pub(crate) type FontMetrics = FontMap<FontMetric>;
 /// # Errors
 ///
 /// いずれかのテーブルを読めない場合に [`FontLoadError::ReadMetricsTable`] を `FontType::ALL` 順で返す。
-fn build_font_metrics(font_refs: &FontRefs) -> Result<FontMetrics, Failures<FontLoadError>> {
+fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<FontLoadError>> {
   let results = FontType::ALL
     .iter()
     .map(|&font_type| {

@@ -19,7 +19,7 @@ use crate::{
 ///
 /// 必須引数の欠落・過剰、未知の任意引数キー、語が非プレーンテキスト（インライン装飾・数式・
 /// コマンドを含む）または空文字列の場合にエラーを返します。
-pub(crate) fn index_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn index_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("reading", OptType::String)])?;
   let reading = find_string(&opt_args, "reading");
 

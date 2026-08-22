@@ -43,7 +43,7 @@ use crate::frontend::syntax::ast::EnvironmentView;
 pub(crate) fn evaluate_children(
   source: &str,
   builder: &HirBuilder,
-  node: &GreenNode,
+  node: &GreenNode<'_>,
 ) -> Result<Vec<HirNode>, EvalError> {
   let mut hir_nodes: Vec<HirNode> = Vec::new();
   let mut paragraph = ParagraphBuffer::default();
@@ -205,14 +205,14 @@ impl ParagraphBuffer {
 /// 評価器が既に組み立てている HIR を変換なしで返す。テストは `&node.kind` を match して検証する
 /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
 #[cfg(test)]
-pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn evaluate_children_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirNode>, EvalError> {
   let builder = HirBuilder::new(SourceId::new(0));
   return evaluate_children(source, &builder, node);
 }
 
 /// インライン抽出結果を変換なしで `Vec<HirInline>` として返すテスト専用ヘルパ
 #[cfg(test)]
-pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn extract_inline_nodes_to_hir(source: &str, node: &GreenNode<'_>) -> Result<Vec<HirInline>, EvalError> {
   let builder = HirBuilder::new(SourceId::new(0));
   return inline::extract_inline_nodes(source, &builder, node);
 }

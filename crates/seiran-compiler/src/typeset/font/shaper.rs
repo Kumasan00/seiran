@@ -43,11 +43,11 @@ pub(super) type ShaperDatas = FontMap<ShaperData>;
 /// [`ShaperDatas`] の構築機能。
 pub(super) trait ShaperDatasExt {
   /// 全フォント参照からシェイピング用の解析データを生成する。
-  fn new(font_refs: &FontRefs) -> Self;
+  fn new(font_refs: &FontRefs<'_>) -> Self;
 }
 
 impl ShaperDatasExt for ShaperDatas {
-  fn new(font_refs: &FontRefs) -> Self {
+  fn new(font_refs: &FontRefs<'_>) -> Self {
     let shaper_datas: Vec<ShaperData> =
       FontType::ALL.iter().map(|&font_type| return ShaperData::new(font_refs.get(font_type))).collect();
     return ShaperDatas::from_all(shaper_datas);
@@ -60,11 +60,11 @@ pub(super) type ShaperInstances = FontMap<Option<ShaperInstance>>;
 /// [`ShaperInstances`] の構築機能。
 pub(super) trait ShaperInstancesExt {
   /// 設定にバリエーション軸があるフォントのインスタンスを並列に生成する。
-  fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self;
+  fn new(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> Self;
 }
 
 impl ShaperInstancesExt for ShaperInstances {
-  fn new(configs: &FontConfigs, font_refs: &FontRefs) -> Self {
+  fn new(configs: &FontConfigs, font_refs: &FontRefs<'_>) -> Self {
     let shaper_instances: Vec<Option<ShaperInstance>> = FontType::ALL
       .par_iter()
       .map(|&font_type| {
@@ -78,7 +78,7 @@ impl ShaperInstancesExt for ShaperInstances {
 }
 
 /// バリエーション軸設定があればシェイパーインスタンスを生成する。
-fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef) -> Option<ShaperInstance> {
+fn build_shaper_instance(config: &FontConfig, font_ref: &FontRef<'_>) -> Option<ShaperInstance> {
   config.variation_axes.as_ref()?;
 
   let variations = config.variation_axes.as_ref().map(|axes| {
@@ -116,7 +116,7 @@ pub(super) trait HarfRustShapersExt<'a>: Sized {
   /// 言語タグを解析できない場合に [`ShaperError`] を `FontType::ALL` 順で返す。
   fn new(
     configs: &FontConfigs,
-    font_refs: &'a FontRefs,
+    font_refs: &'a FontRefs<'_>,
     shaper_datas: &'a ShaperDatas,
     instances: &'a ShaperInstances,
   ) -> Result<Self, Failures<ShaperError>>;
@@ -125,7 +125,7 @@ pub(super) trait HarfRustShapersExt<'a>: Sized {
 impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
   fn new(
     configs: &FontConfigs,
-    font_refs: &'a FontRefs,
+    font_refs: &'a FontRefs<'_>,
     shaper_datas: &'a ShaperDatas,
     instances: &'a ShaperInstances,
   ) -> Result<Self, Failures<ShaperError>> {

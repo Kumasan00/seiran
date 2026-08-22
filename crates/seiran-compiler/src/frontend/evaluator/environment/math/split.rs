@@ -18,7 +18,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー・位置引数の指定、本体のセル評価失敗時にエラーを返します
-pub(crate) fn split(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn split(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   return evaluate_math_env(
     view,
     builder,

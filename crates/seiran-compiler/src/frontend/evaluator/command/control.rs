@@ -15,7 +15,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰・数値でない場合にエラーを返します
-pub(super) fn space(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn space(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -63,7 +63,7 @@ pub(super) fn space(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirN
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
+pub(super) fn noindent(view: &CommandView<'_>) -> Result<(), EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {
@@ -79,7 +79,7 @@ pub(super) fn noindent(view: &CommandView) -> Result<(), EvalError> {
 /// # Errors
 ///
 /// 任意引数や必須引数が指定されている場合にエラーを返します
-pub(super) fn pagebreak(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn pagebreak(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   if !view.args_is_empty() {
     return Err(EvalError::ExtraCommandArgument {

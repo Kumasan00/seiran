@@ -21,14 +21,14 @@ use crate::{
   reason = "定理ブロック 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
 )]
 pub(super) fn lower_theorem(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   class: TheoremClass,
   number: Option<&str>,
   title: Option<&str>,
   body: &[HirNode],
   of: Option<&LabelId>,
   label: Option<&LabelId>,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let theorem_style = ctx.style.theorem(class);
   let pres = &theorem_style.style;
@@ -64,12 +64,12 @@ pub(super) fn lower_theorem(
 
 /// 定理見出し（独立行）の `VBox` を構築する
 fn build_heading(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   theorem_style: &TheoremStyle,
   number: Option<&str>,
   title: Option<&str>,
   of: Option<&LabelId>,
-  state: &LoweringState,
+  state: &LoweringState<'_>,
 ) -> LayoutNode {
   let pres = &theorem_style.style;
   let base_style = TextStyle {
