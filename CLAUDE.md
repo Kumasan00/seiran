@@ -208,7 +208,7 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 | E 対立 pair の lock-in | 2 通り書ける形は現行スタイル側（0 件の側）を固定する | `separated_literal_suffix` / `pub_without_shorthand` |
 | F nursery 個別主義 | Known problems を理解した lint だけを 1 件ずつ採用する | `redundant_clone` / `fallible_impl_from` |
 
-軸に載らない lint は採らない。C 軸の帰結として、`suboptimal_flops` / `imprecise_flops` のように丸めが変わる lint は不採用（既存の候補箇所も直さない）。`clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は既定の 0）。
+A〜C は「目的」、D〜F は「採用条件」の軸で、1 つの lint が両方の性質を持つことはある（`float_cmp_const` は C かつ発火 0 件）— Cargo.toml の節見出しには採用の決め手になった軸を置く。軸に載らない lint は採らない。C 軸の帰結として、`suboptimal_flops` / `imprecise_flops` のように丸めが変わる lint は不採用（既存の候補箇所も直さない）。`clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は既定の 0）。
 
 #### 運用
 
