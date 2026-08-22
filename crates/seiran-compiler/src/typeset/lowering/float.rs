@@ -40,7 +40,7 @@ pub(super) fn build_caption(
 }
 
 /// フロートの余白の指定
-#[allow(
+#[expect(
   clippy::struct_field_names,
   reason = "全フィールドが余白（`*_margin`）で、postfix は種類ではなく長さの用途を表す"
 )]

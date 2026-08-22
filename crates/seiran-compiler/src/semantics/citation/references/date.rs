@@ -15,7 +15,7 @@ use serde::{
 /// JSON object または TOML テーブルの構造化された日付のみを受理する。
 /// <https://docs.citationstyles.org/en/stable/specification.html#date>
 #[derive(Debug, Default)]
-#[allow(
+#[expect(
   clippy::struct_field_names,
   reason = "`date_parts` は CSL の `date-parts` キーに対応させた名前で、struct 名との重複は意図的"
 )]

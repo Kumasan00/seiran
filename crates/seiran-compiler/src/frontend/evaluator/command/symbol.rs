@@ -8,7 +8,7 @@ use phf::phf_map;
 ///
 /// `unicode-math-table.tex` 由来のキュレーション済み分類を [`SYMBOL_MAP`] に記録しておくためだけの型。
 // 詳細は `docs/architecture.md` の `document` 節（記号テーブルの `MathClass` 記録）。
-#[allow(
+#[expect(
   dead_code,
   reason = "記号間スペーシング（epic #83）を実装したときにそのまま消費する分類データで、旧構成の名残ではない"
 )]
@@ -36,7 +36,10 @@ pub(crate) struct MathSymbol {
   /// 出力する Unicode 文字
   pub(crate) ch: char,
   /// 数式クラス（記号間スペーシング実装時に消費する。[`MathClass`] の説明を参照）
-  #[allow(dead_code, reason = "記号間スペーシング（epic #83）の実装時に消費する（[`MathClass`] の説明を参照）")]
+  #[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "記号間スペーシング（epic #83）の実装時に消費する（[`MathClass`] の説明を参照）")
+  )]
   pub(crate) class: MathClass,
 }
 

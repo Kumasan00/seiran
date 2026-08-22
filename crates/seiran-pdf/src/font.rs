@@ -83,7 +83,7 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool
       .iter()
       .map(|cfg_axis| {
         let tag = Tag::new(&cfg_axis.name);
-        #[allow(
+        #[expect(
           clippy::cast_possible_truncation,
           reason = "krilla の variable font 軸値が f32 しか受け付けず、API 境界での精度低下は避けられない"
         )]
@@ -99,7 +99,7 @@ fn build_krilla_font(font_type: FontType, font: &PublicationFont, has_fvar: bool
 }
 
 /// レイアウト済みグリフ列を UPEM で正規化して Krilla のグリフ列へ変換する。
-#[allow(
+#[expect(
   clippy::cast_precision_loss,
   reason = "グリフ座標は font design unit の整数で、f32 の仮数部に収まる桁数しか持たない"
 )]

@@ -57,6 +57,9 @@ needless_return = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
+# 抑制は「reason 付きの #[expect]」だけを許す。allow は抑制対象が消えても黙って残るが、
+# expect なら rustc の unfulfilled_lint_expectations が失効した抑制を落とす。
+allow_attributes = { level = "warn", priority = 2 }
 absolute_paths = { level = "warn", priority = 2 }
 allow_attributes_without_reason = { level = "warn", priority = 2 }
 clone_on_ref_ptr = { level = "warn", priority = 2 }

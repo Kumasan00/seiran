@@ -51,7 +51,7 @@ fn lower_rows(
 }
 
 /// 表をレイアウトノードに変換する
-#[allow(
+#[expect(
   clippy::too_many_arguments,
   reason = "表 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
 )]

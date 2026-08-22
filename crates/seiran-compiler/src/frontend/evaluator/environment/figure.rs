@@ -170,7 +170,7 @@ fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
             span: view.span().to_source_span(),
           });
         }
-        #[allow(
+        #[expect(
           clippy::cast_sign_loss,
           clippy::cast_possible_truncation,
           reason = "直前のガードで有限・正・`u32::MAX` 以下であることを確認済み"
