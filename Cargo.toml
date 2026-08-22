@@ -48,123 +48,178 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "local-time
 unic-langid = "0.9.6"
 usvg = "0.47.0"
 
+# lint の採用根拠の正典はここ（1 lint = 1 行の根拠コメント）。節見出しは選定の 6 軸で、
+# CLAUDE.md「Clippy」節は原理と運用だけを持ちポインタでここを指す。
+# group は priority -1、個別 lint は priority 既定（0）で group を上書きする。
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "warn", priority = 0 }
+pedantic = { level = "warn", priority = -1 }
 
-needless_return = { level = "allow", priority = 1 }
-# 診断 enum は miette の位置情報（`NamedSource` + `SourceSpan`）を運ぶので必ず大きくなる。
-# 「thiserror + miette の富んだ診断を採る」という種類の判断 1 個の帰結で、エラーはコールドパス。
-result_large_err = { level = "allow", priority = 1 }
-similar_names = { level = "allow", priority = 1 }
-too_many_lines = { level = "allow", priority = 1 }
+# ---------------------------------------------------------------------------
+# 有効化しないもの（group が付ける warn を個別に落とす）
+# ---------------------------------------------------------------------------
 
-# 抑制は「reason 付きの #[expect]」だけを許す。allow は抑制対象が消えても黙って残るが、
-# expect なら rustc の unfulfilled_lint_expectations が失効した抑制を落とす。
-allow_attributes = { level = "warn", priority = 2 }
-absolute_paths = { level = "warn", priority = 2 }
-allow_attributes_without_reason = { level = "warn", priority = 2 }
-clone_on_ref_ptr = { level = "warn", priority = 2 }
-implicit_return = { level = "warn", priority = 2 }
-iter_over_hash_type = { level = "warn", priority = 2 }
-map_err_ignore = { level = "warn", priority = 2 }
-missing_assert_message = { level = "warn", priority = 2 }
-missing_docs_in_private_items = { level = "warn", priority = 2 }
-mod_module_files = { level = "warn", priority = 2 }
-multiple_unsafe_ops_per_block = { level = "warn", priority = 2 }
-panic_in_result_fn = { level = "warn", priority = 2 }
-undocumented_unsafe_blocks = { level = "warn", priority = 2 }
-unnecessary_safety_comment = { level = "warn", priority = 2 }
-# 数値リテラルの型サフィックスは `1u32` 形に統一する（`1_u32` 形との混在を止める）。
-separated_literal_suffix = { level = "warn", priority = 2 }
-unused_result_ok = { level = "warn", priority = 2 }
-# 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる
-# （`unreachable!` / `missing_assert_message` と同じ「根拠を書かせる」形）。
-# テスト内は clippy.toml の `allow-unwrap-in-tests` で対象外。
-unwrap_used = { level = "warn", priority = 2 }
+# 必須ルール 1「`return` を書く」の裏返し。
+needless_return = "allow"
+# 診断 enum は miette の位置情報を運ぶので必ず大きい（種類の判断 1 個の帰結・エラーはコールドパス）。
+result_large_err = "allow"
+# 組版コードの w/h・lhs/rhs は本質的に似た名前になる。
+similar_names = "allow"
+# 分割の判断基準は行数ではなく「自己完結した本体コードの塊」かどうか。
+too_many_lines = "allow"
 
-# デバッグ残骸を残さない（いずれも実測 0 件の再発防止）。
-dbg_macro = { level = "warn", priority = 2 }
-todo = { level = "warn", priority = 2 }
-unimplemented = { level = "warn", priority = 2 }
+# ---------------------------------------------------------------------------
+# A 規約の機械化 — prose の規約に対応する lint（最優先）
+# ---------------------------------------------------------------------------
 
-# 資源の取り違えと異常終了（実測 0 件）。`exit` はライブラリ 2 crate が
-# プロセスを殺さないための防火壁で、終了コードの決定は CLI の責務。
-exit = { level = "warn", priority = 2 }
-mem_forget = { level = "warn", priority = 2 }
-rc_mutex = { level = "warn", priority = 2 }
-
-# 既に守られている作法の lock-in（実測 0 件）。prose にしか無い規約を機械化する。
-cfg_not_test = { level = "warn", priority = 2 }
+# use 規約の最終防衛線。`clippy.toml` の absolute-paths-max-segments = 3 で運用する。
+absolute_paths = "warn"
+# 抑制は `#[expect]` だけ（`allow` は抑制対象が消えても黙って残る）。
+allow_attributes = "warn"
+# 抑制には「なぜ許してよいか」の reason を必ず書かせる。
+allow_attributes_without_reason = "warn"
 # 「名前側を変えて衝突自体を無くす」（`ConfigValidationError` / `StyleValidationError`）の機械化。
-error_impl_error = { level = "warn", priority = 2 }
-float_cmp_const = { level = "warn", priority = 2 }
-fn_to_numeric_cast_any = { level = "warn", priority = 2 }
-get_unwrap = { level = "warn", priority = 2 }
-infinite_loop = { level = "warn", priority = 2 }
-lossy_float_literal = { level = "warn", priority = 2 }
-redundant_test_prefix = { level = "warn", priority = 2 }
-same_name_method = { level = "warn", priority = 2 }
-string_add = { level = "warn", priority = 2 }
+error_impl_error = "warn"
+# 必須ルール 1「`return` キーワード必須」。
+implicit_return = "warn"
+# assert には条件の言い換えでなく「なぜ成り立つはずか」を書かせる。
+missing_assert_message = "warn"
+# 必須ルール 4「doc コメントは全項目」の非公開側（公開側は rust の missing_docs）。
+missing_docs_in_private_items = "warn"
+# 「mod.rs を使わない」モジュール構成規約。
+mod_module_files = "warn"
+# SAFETY 族 — unsafe 操作 1 つに 1 ブロック 1 コメントの 1 対 1 対応を保つ。
+multiple_unsafe_ops_per_block = "warn"
+# 返り値の型で失敗を広告した関数の中で落ちない（診断エラーにして Err で返す）。
+panic_in_result_fn = "warn"
+# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。
+print_stderr = "warn"
+print_stdout = "warn"
+# SAFETY 族 — `unsafe {}` の直上に `// SAFETY:` を書かせる。
+undocumented_unsafe_blocks = "warn"
+# SAFETY 族 — unsafe を含まない箇所の SAFETY コメントは誤読を招く死んだ注釈。
+unnecessary_safety_comment = "warn"
+# SAFETY 族 — unsafe を含まない項目に `# Safety` doc を書かせない。
+unnecessary_safety_doc = "warn"
+# 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる。
+unwrap_used = "warn"
+
+# ---------------------------------------------------------------------------
+# B 字面に意味 — G1「字面だけで構造が一意」のコードへの適用
+# ---------------------------------------------------------------------------
+
+# `Rc::clone(&x)` 形で「参照カウントを増やしただけ」を呼び出し箇所に出す。
+clone_on_ref_ptr = "warn"
+# `.get(i).unwrap()` ではなく添字か `?` で書き、失敗の扱いを字面に出す。
+get_unwrap = "warn"
+# `map_err(|_| ...)` で元のエラーを黙って捨てない（cause は `#[source]` へ包む）。
+map_err_ignore = "warn"
+# `Result` を `.ok()` で握り潰さない（捨てるなら `let _ = f();` と字面に出す）。
+unused_result_ok = "warn"
+
+# ---------------------------------------------------------------------------
+# C 決定性 — 成果物のバイト再現性を壊すものを拒む
+# ---------------------------------------------------------------------------
+
+# 関数ポインタを数値へ落とすと ASLR 等で値が変わる。
+fn_to_numeric_cast_any = "warn"
+# 定数との float 比較は丸め方式に依存する（等価判定を書かない）。
+float_cmp_const = "warn"
+# `HashMap` / `HashSet` の `for` 反復順はプロセスごとに変わる（`BTreeMap` か sort 済み `Vec` を使う）。
+iter_over_hash_type = "warn"
+# 型に収まらない float リテラルは黙って丸められる。
+lossy_float_literal = "warn"
+
+# ---------------------------------------------------------------------------
+# D 0 件予防 — 発火 0 件かつ規約整合。無料の再発防止
+# ---------------------------------------------------------------------------
+
+# `#[cfg(not(test))]` で本体だけの分岐を作らない（テストと本体で別のコードを走らせない）。
+cfg_not_test = "warn"
+# デバッグ残骸を残さない。
+dbg_macro = "warn"
+# ライブラリ 2 crate がプロセスを殺さない（終了コードの決定は CLI の責務）。
+exit = "warn"
+# 終わらないループは `loop {}` ではなく終了条件のある形で書く。
+infinite_loop = "warn"
+# `mem::forget` による資源リーク。
+mem_forget = "warn"
+# `Rc<Mutex<T>>` は単一スレッドでの排他という取り違え（`RefCell` を使う）。
+rc_mutex = "warn"
+# テスト名に `test_` 接頭辞を付けない（何を検証するかだけを書く）。
+redundant_test_prefix = "warn"
+# 継承元と同名の inherent method は呼び先が字面で決まらない。
+same_name_method = "warn"
+# `String + &str` ではなく `push_str` / `format!` で書く。
+string_add = "warn"
 # メタ文字を持たないパターンは素の文字列操作で書く（正規表現エンジンを引き込まない）。
-trivial_regex = { level = "warn", priority = 2 }
-try_err = { level = "warn", priority = 2 }
-# SAFETY 族の 4 枚目 — unsafe を含まない項目に `# Safety` doc を書かせない。
-unnecessary_safety_doc = { level = "warn", priority = 2 }
-unnecessary_self_imports = { level = "warn", priority = 2 }
+trivial_regex = "warn"
+# `Err(x)?` ではなく `return Err(x)` と書く（早期 return を字面に出す）。
+try_err = "warn"
+# `use foo::{self}` は `use foo` と書く。
+unnecessary_self_imports = "warn"
+# `todo!` / `unimplemented!` を残さない。
+todo = "warn"
+unimplemented = "warn"
 
-# 対立する書き方の pair は、現行スタイル側（実測 0 件の側）を lock-in する。
-# `pub(crate)` 統一 / `{ ...; }` の中に置くセミコロン。
-pub_without_shorthand = { level = "warn", priority = 2 }
-semicolon_inside_block = { level = "warn", priority = 2 }
+# ---------------------------------------------------------------------------
+# E 対立 pair の lock-in — 2 通り書ける形は現行スタイル側（0 件の側）を固定する
+# ---------------------------------------------------------------------------
 
-# 表示はプロダクトなので CLI（seiran）の crate root だけ `#![expect]` で開ける。
-# ライブラリ 2 crate が println! で出力すると診断・tracing の役割分担（#377）が壊れる。
-print_stderr = { level = "warn", priority = 2 }
-print_stdout = { level = "warn", priority = 2 }
+# `pub(self)` ではなく `pub(crate)` 等の短縮形に統一する。
+pub_without_shorthand = "warn"
+# ブロックのセミコロンは `{ ...; }` と内側に置く。
+semicolon_inside_block = "warn"
+# 数値リテラルの型サフィックスは `1u32` 形（`1_u32` 形と混在させない）。
+separated_literal_suffix = "warn"
 
-# nursery lint（上記の restriction lint とは別枠）。Known problems は false-negative
-# （解析が保守的）で false-positive ではないため、発火したら真陽性として直す。
-redundant_clone = { level = "warn", priority = 2 }
+# ---------------------------------------------------------------------------
+# F nursery 個別主義 — Known problems を確認した lint だけを 1 件ずつ採用する
+# ---------------------------------------------------------------------------
 
-# nursery lint。「Eq を導出できるのに PartialEq だけ」を落とす。nursery なのは
-# 「将来 float フィールドが増えうる型」「Eq の追加が公開 API の約束になる型」で
-# 意図的に PartialEq 止まりにする選択があるためだが、seiran は Eq を導出できる型には
-# 例外なく Eq を足す方針を採る（float を持つ型は lint が発火しないのでそのまま残る）。
-derive_partial_eq_without_eq = { level = "warn", priority = 2 }
-
-# nursery lint（各々 Known problems を確認したうえで採用。いずれも実測 0 件）。
-# `From` 実装の中で panic しない（変換の失敗は `TryFrom` で型に出す）。
-fallible_impl_from = { level = "warn", priority = 2 }
-# 組み立てたのに一度も読まないコレクション＝書き忘れか死んだコード。
-collection_is_never_read = { level = "warn", priority = 2 }
-# 実際には読むだけの `&mut` 引数を落とす（呼び出し側に不要な可変借用を要求しない）。
-needless_pass_by_ref_mut = { level = "warn", priority = 2 }
-# `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
-unused_peekable = { level = "warn", priority = 2 }
-# 長さ 0 の `Vec` へ `read` して 0 バイトだけ読む取り違え。
-read_zero_byte_vec = { level = "warn", priority = 2 }
+# 一度も読まないコレクション＝書き忘れか死んだコード。
+collection_is_never_read = "warn"
+# `debug_assert!` 内の可変呼び出しは release で消え、挙動が構成依存になる。
+debug_assert_with_mut_call = "warn"
+# `Eq` を導出できる型に `PartialEq` だけを derive しない（部分等価という誤った主張を残さない）。
+derive_partial_eq_without_eq = "warn"
+# `From` 実装の中で panic しない（失敗しうる変換は `TryFrom` で型に出す）。
+fallible_impl_from = "warn"
+# 読むだけの `&mut` 引数を落とす（呼び出し側に不要な可変借用を要求しない）。
+needless_pass_by_ref_mut = "warn"
 # 絶対パスの `push` は元のパスを丸ごと捨てる（`ProjectPath` の組み立てで効く）。
-path_buf_push_overwrite = { level = "warn", priority = 2 }
-# `debug_assert!` の中の可変呼び出しは release ビルドで消え、挙動が構成依存になる。
-debug_assert_with_mut_call = { level = "warn", priority = 2 }
+path_buf_push_overwrite = "warn"
+# 長さ 0 の `Vec` へ `read` して 0 バイトだけ読む取り違え。
+read_zero_byte_vec = "warn"
+# move すれば済む値の `clone()`。Known problems は false-negative 側なので発火は真陽性。
+redundant_clone = "warn"
+# `peekable()` にしたのに peek しない＝先読みの意図が消えた残骸。
+unused_peekable = "warn"
 
+# 節見出しは上の clippy テーブルと同じ 6 軸。
 [workspace.lints.rust]
-# 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す（G1 のライフタイムへの適用）。
+# B — 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す。
 elided_lifetimes_in_paths = "warn"
-# 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
+# A — 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
 missing_debug_implementations = "warn"
+# A — 必須ルール 4「doc コメントは全項目」の公開側。
 missing_docs = "warn"
-# ライフタイム表記の残骸（いずれも実測 0 件）。
+# D — 使っていないライフタイム引数の残骸。
 redundant_lifetimes = "warn"
 single_use_lifetimes = "warn"
-# 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
-trivial_casts = "warn"
+# D — 型が変わらない数値キャスト。
 trivial_numeric_casts = "warn"
+# B — 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
+trivial_casts = "warn"
+# A — facade 規約の裏面。公開シグネチャに現れるのに名指しできない型を落とす。
 unnameable_types = "warn"
+# A — 「モジュールは既定で非公開 + root ファサード」の機械化。
 unreachable_pub = "warn"
+# D — 使っていないライフタイム宣言。
 unused_lifetimes = "warn"
+# A — use 規約「最短パス」の機械化（`absolute_paths` が見ない短いパス側を押さえる）。
 unused_qualifications = "warn"
+# A — Edition 2024 の既定水準の固定。`unsafe fn` の本体でも `unsafe {}` を書かせる。
 unsafe_op_in_unsafe_fn = "warn"
 
 [profile.release]

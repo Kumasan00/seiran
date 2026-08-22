@@ -137,28 +137,42 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 2. **フォーマット**: 正典は `rustfmt.toml`（インデント 2 スペース・最大行幅 120 文字ほか）。手書き時もこれに合わせ、適用は `cargo +nightly fmt`（nightly 必須の理由は「コマンド」節を参照）
 3. **use 文**: import は「名前を持ち込む」行為であり、**持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う**（G1「字面だけで構造が一意」の import への適用）。以下はすべてこの原則から導かれる
    - **起点は `crate::` に統一**: `use` は `crate::` 起点で書き、`super::` / `self::` 起点は使わない（同じ型に 2 本のパスを作らないため。root ファサードと同じ理由）。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言している子 module から取り込む相対 use（`use input::CompilationInputs;`。`mod input;` が同じ画面にあるので出自が字面で見え、隣の `pub use input::OutputPlan;` と同じ形になる）、(b) `#[cfg(test)]` の module（`mod tests` / `mod test_support`）が**直近の親**の被テスト項目を取り込む `use super::*` / `use super::Item`。(b) は親 1 段までで、`super::super::` で祖父母以上へ遡る形は使わない（何段上かを数えないと出自が分からず、原則に反する）
-   - **`crate::` を本体コードへ直書きしない**: 型・トレイトは import して裸の名前で書き、関数は import した module 経由で `module::fn(...)` と呼ぶ。`clippy::absolute_paths` は 4 セグメント以上しか検出しない（末尾の enum variant / 関連関数を数えないので `crate::source::SourceId::new` は素通りする）ので、規約のほうが lint より厳しい。doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外
+   - **`crate::` を本体コードへ直書きしない**: 型・トレイトは import して裸の名前で書き、関数は import した module 経由で `module::fn(...)` と呼ぶ。`clippy::absolute_paths` は 4 セグメント以上しか検出しない（`clippy.toml` の `absolute-paths-max-segments = 3`。末尾の enum variant / 関連関数を数えないので `crate::source::SourceId::new` は素通りし、`project::config::load` と `style::load` を書き分けるイディオムは温存される）ので、規約のほうが lint より厳しい。短いパス側は rustc の `unused_qualifications` が押さえていて、スコープに入っている名前を `std::sync::Arc::new` のように再修飾すると落ちる。どちらの lint も `#[cfg(test)]` の中で発火するので、テストにも同じ規約が効く。doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外
    - `*` を避け明示的にインポート、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`
    - 型・トレイト・モジュールは直接 import する。関数は既定でモジュール経由で呼ぶ（`mem::swap` 方式）が、呼び出し元で `fn_name(...)` だけ見ても出自・曖昧さがない場合（private な単一関数サブモジュールからの re-export、`tracing::debug!` 等の広く知られた慣用）は直接 import してよい
    - `#[cfg(test)]` の項目だけが使う import は `#[cfg(test)] use ...;` と書いて本体ビルドから外す（本体の use ツリーへ混ぜると非テストビルドで unused になる）
-4. **ドキュメントコメント**: すべてのモジュール・型（struct / enum / trait）・関数に **日本語** で記述
+4. **ドキュメントコメント**: すべてのモジュール・型（struct / enum / trait）・関数に **日本語** で記述（`missing_docs_in_private_items` と rustc の `missing_docs` の 2 枚で全項目の**有無だけ**が検査される。日本語で書かれているかは検査されないので人が見る）
 5. **`unreachable!` は積極的に使う**: まず型設計で到達不能な状態自体を表現不能にできないか検討し、それでも残る「絶対に到達しない」分岐は `_ => {}` / `Default::default()` / 黙って `Ok` を返す等でごまかさず `unreachable!` で落とす（不変条件の破れを最寄りで顕在化させる）。ただし入力（ソース・設定ファイル）由来で到達しうる状態は panic ではなく miette 診断エラーにする（`error-handling` skill 参照）。本体コードでは「なぜ到達しないか」＝上流のどの検証が保証しているかをメッセージに書く（例: `unreachable!("許可リスト外は strict_command_calls がエラーにする")`。テストの let-else 分解など自明な箇所は省略可）
+6. **panic は根拠を書いてから落とす**: 本体コードで `.unwrap()` を使わず `.expect("...")` に移し、メッセージには条件の言い換えではなく「なぜ落ちないか」＝上流のどの検証・型設計が保証するかを日本語で書く（`unwrap_used`。`unreachable!` / assert メッセージと同じ書き方）。同じ根拠が何箇所にも並ぶなら、根拠ごとヘルパ関数へ畳んで 1 箇所にする（`frontend::syntax::parser` の `take_peeked` / `peeked`）。`assert!` / `debug_assert!` 系にもメッセージが必須（`missing_assert_message`。テストコードでは発火しないので素の `assert_eq!` でよい）。`-> Result` を返す関数の中では panic しない（`panic_in_result_fn`）— 入力由来で到達しうる状態は miette 診断エラーにして `Err` で返す。この lint が見るのは `panic!` / `todo!` / `unimplemented!` と `assert!` 系で、**`unreachable!` と `debug_assert!` は発火しない**ので必須ルール 5 と衝突しない。`#[cfg(test)]` の中でも発火するため、`?` のために `-> Result` を返すテスト関数では `assert!` ではなく `unwrap` / `expect` で落とす。`.expect()` 自体は「根拠を書いた上での逃げ道」として残してあり、`expect_used` は有効化していない
+7. **unsafe は 1 操作 1 ブロック 1 SAFETY**: `unsafe {}` 1 つに unsafe 操作は 1 つだけ置き（`multiple_unsafe_ops_per_block`）、その直上の行に `// SAFETY:` を書く（`undocumented_unsafe_blocks`。間に別の文を挟むと検出されない）。「どの操作のどの前提が根拠か」を 1 対 1 で対応させるためで、逆に unsafe を含まない箇所へ SAFETY コメント・`# Safety` doc を書かない（`unnecessary_safety_comment` / `unnecessary_safety_doc`。「ここに検証済みの unsafe がある」という誤読を招く死んだ注釈になる）。周辺コードの前提を説明したいときは `// NOTE:` 等の別の語で書く。`unsafe fn` の本体でも `unsafe {}` を書く（`unsafe_op_in_unsafe_fn`）
 
 ### モジュール構成
 
-- **`mod.rs` を使わない**: サブモジュールを持つモジュールは、2018 エディション以降のスタイルで分割する。親モジュールはディレクトリと同階層の `foo.rs`（`foo/mod.rs` ではない）に置き、子モジュールを `foo/<child>.rs` に配置する。
+- **`mod.rs` を使わない**（`mod_module_files`）: サブモジュールを持つモジュールは、2018 エディション以降のスタイルで分割する。親モジュールはディレクトリと同階層の `foo.rs`（`foo/mod.rs` ではない）に置き、子モジュールを `foo/<child>.rs` に配置する。
 
   ```text
   src/foo.rs        ← 親モジュール（mod bar; を宣言）
   src/foo/bar.rs  ← 子モジュール
   ```
 
-  例外: 統合テスト（`tests/`）の共通ヘルパは慣例どおり `tests/common/mod.rs` に置く（`common.rs` だとテストファイルとして扱われるため）。
+  例外: 統合テスト（`tests/`）の共通ヘルパは慣例どおり `tests/common/mod.rs` に置く（`common.rs` だとテストファイルとして扱われるため。この lint の検査対象外なのでそのまま置ける）。
 
-- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `project::config` は入口を `project::config::load` と読ませて `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
+- **モジュールは既定で非公開 + root ファサード**: 子モジュールは `mod`（非公開）とし、公開 API はクレート root（または親モジュール）の `pub use` で再エクスポートして公開パスを 1 本に揃える（同一型に `crate::Type` と `crate::module::Type` の 2 パスを作らない）。`pub mod` / `pub(crate) mod` はモジュール名が名前空間として意味を持つ場合のみ（例: `project::config` は入口を `project::config::load` と読ませて `style::load` と区別する。crate root 直下の非公開 module は crate 全体から到達できるため、garde カスタムバリデータを持つ `length` に `pub(crate)` は不要）。同名の型を 2 つ作って module 公開で回避しない — 名前側を変えて衝突自体を無くす（例: `ConfigValidationError` / `StyleValidationError`）。root facade へ載せるのは実際に名指しされる名前だけで、内部フィールド型としてしか現れない名前は再エクスポートしない（この 2 方向は rustc の `unreachable_pub` と `unnameable_types` が機械化している — 外から到達しない `pub` は狭め、公開シグネチャに現れるのに facade から名指しできない型は facade へ出すか宣言を狭める）。利用側は常に最浅の公開パスから import する。enum variant は import せず使用箇所で `Enum::Variant` と書く。テストモジュールの `use super::*` はイディオムどおり許容。
 - **分割の判断基準**: ファイルの肥大化を理由に分割する前に、本体コードと `#[cfg(test)] mod tests` の比率を確認する。行数の大半がインラインテストの場合は、テストはイディオムどおりその場に置いたままにし、分割しない。分割するのは**自己完結した本体コードの塊**が大きい場合に限る。
 - **何を切り出すか**: エラー型 enum のように、ロジックを持たず他の private 内部に依存しない自己完結した塊を優先的に子モジュールへ切り出す。`Parser` 等の private フィールドに密結合したメソッド群は、可視性を緩めてまで無理に分割しない。
 - **公開 API は既定で維持、明確になるなら変更可**: 不要な破壊を避けるため、切り出した型は親モジュールで `pub use <child>::<Type>;` して再エクスポートし、`crate::Type` / `crate::module::Type` のパスを保つのを既定とする（例: `parser.rs` で `pub use error::ParserError;`）。ただし新しいモジュールパスを公開したほうが利用側にとって分かりやすい場合は、API を変更してよい。
+
+### 値と型の書き方
+
+字面から意味が読めることを優先する（G1 のコードへの適用）。以下はいずれも lint が機械化している。
+
+- `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。`x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、型宣言まで遡らないと読めない。`rc::Weak` / `sync::Weak` も対象
+- そのまま move すれば済む値を `clone()` しない（`redundant_clone`）。複製先も元もその後読まれないなら、複製は無駄なだけでなく「ここは所有権を分ける必要がある」という誤った合図を残す。nursery lint だが Known problems は **false-negative**（解析が保守的）なので、発火したら真陽性として直す。裏返すと**この lint が通っても「無駄な `clone` が無い」証明にはならない**ので、`clone` を書く判断そのものは人がやる
+- `Eq` を導出できる型に `PartialEq` だけを derive しない（`derive_partial_eq_without_eq`）。`PartialEq` 止まりは「等価が部分的（`a == a` が成り立たない値がある）」という主張になるので、実際には全等価な型に付けると利用側が「NaN のような例外値があるのか」を判断できない。`PartialEq` 止まりで残るのは f32 / f64 を持つ型だけ（そこでは lint が発火しない）。`Length` は sp（1/65536pt の整数）なので float を経由しない限りこの方針に乗る。derive の並びは `Debug, Clone, Copy, PartialEq, Eq, Hash` の順
+- 公開型には `Debug` を実装する（`missing_debug_implementations`）。derive で生バイト列が出力に載る型（読込キャッシュ・フォント・画像）は手書きにして件数・長さだけを出す（`publication` / `project::filesystem` の `Debug`）
+- 借用を持つ型は `Foo<'_>` と書く（`elided_lifetimes_in_paths`）。`Foo` と書けると借用の有無が字面から消え、宣言まで遡らないと読めない
+- 型推論で足りる `as` は書かない（`trivial_casts`）。trait object から auto trait（`Send` / `Sync`）を落とす変換のように**外すとコンパイルが通らない**キャストで発火することがあり、そこだけ `#[expect]` + 理由で残す（`compiler::compile_failure`）
+- 数値リテラルの型サフィックスは `1u32` 形（`separated_literal_suffix`）。`1_u32` 形と混在させない
 
 ### エラーハンドリング・バリデーション
 
@@ -173,49 +187,41 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 - 集約自身に診断 `code` を付けない（`Failures<E>` は `Diagnostic` を実装しないことで型保証）
 - 外部資源の read error は低水準 cause として、所有段が作る leaf diagnostic の `#[source]` に入れる（#377）
 - warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない（#377）
+- `map_err(|_| ...)` で元のエラーを黙って捨てない（`map_err_ignore`）。低水準の cause は leaf diagnostic の `#[source]` に入れて包み、`ParseFloatError` のように値を持たず本当に捨ててよい場合は `let ... else` / `ok_or_else` で書く（捨てていることが字面に出る形にする）
+- `Result` を `.ok()` で捨てない（`unused_result_ok`）。無視してよい失敗なら `let _ = f();` と書いて捨てていること自体を字面に出す。値が要る場合は `.ok()` のまま `?` / `unwrap_or` へ繋げてよく、この lint は結果を使わない場合だけ発火する
+- 診断 enum が大きいこと（`result_large_err`）は workspace の allow で畳んである。miette の位置情報を運ぶ以上どの診断も大きくなり、これは「thiserror + miette の富んだ診断を採る」という**種類**の判断 1 個の帰結だから（P10 の判定テストと同型）。逆に `cast_*` 系・`too_many_arguments`・`ref_option` は箇所ごとに根拠が違うので per-site の `#[expect]` のまま
+- ライブラリ 2 crate では `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`）。人へ伝えたいことは診断（miette）か tracing に載せる。表示はユーザーへ届ける成果物なので、CLI（`seiran`）の crate root だけ `#![expect]` で開けてある
+- 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`RandomState` の反復順はプロセスごとに変わるので、出力順・採番順・配列添字にすると成果物が非決定になる。`BTreeMap` を使うか、キーで `sort` した `Vec` に落としてから反復する。この lint が見るのは `for` だけなので `values().sum()` のような順序非依存の集計は発火しない — 逃げ道として使うのではなく、「順序に依存していない」と言い切れるときだけそう書く
 
 ### Clippy
 
-正典は root `Cargo.toml` の `[workspace.lints.rust]` / `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で両テーブルを継承）と、lint 側の設定値を持つ root `clippy.toml`。
+**lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]`（各クレートは `lints.workspace = true` で両テーブルを継承）に 1 lint = 1 行の根拠コメントが付いていて、節見出しが下の 6 軸に対応する。lint 側の設定値は root `clippy.toml`（`absolute-paths-max-segments = 3` / `allow-unwrap-in-tests = true`）。**ここには原理と運用だけを置く** — lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の理由は Cargo.toml のコメントに書く（個々の lint が要求する**書き方**は上の規約各節に置く）。
 
-- `clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` / `result_large_err` は allow
-- restriction lint の `absolute_paths` / `allow_attributes` / `allow_attributes_without_reason` / `clone_on_ref_ptr` / `implicit_return` / `iter_over_hash_type` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `mod_module_files` / `multiple_unsafe_ops_per_block` / `panic_in_result_fn` / `undocumented_unsafe_blocks` / `unnecessary_safety_comment` / `unused_result_ok` / `unwrap_used` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は rustc の `missing_docs`（公開項目）と 2 枚で全項目の**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
-- 上記とは別枠で、**nursery lint** の `redundant_clone` / `derive_partial_eq_without_eq` を warn で有効化している（restriction ではないので同じ列には並べない）
-- clippy.toml の設定値は `absolute-paths-max-segments = 3`（下の bullet）と `allow-unwrap-in-tests = true`（テスト内の `.unwrap()` を対象外にする）の 2 つ。
-- `absolute_paths` は `clippy.toml` の `absolute-paths-max-segments = 3` で運用する。`project::config::load` と `style::load` を書き分ける既存のイディオム（3 セグメント）は温存され、`crate::` を頭に付けた 4 セグメント以上だけが落ちる。これは「use 文」規約の**最終防衛線**であって規約そのものではない — 規約は本体コードに `crate::` を直書きしないことを求めており、lint はそのうち検出できる分だけを機械化している。`#[cfg(test)]` の中でも発火するので、テストにも同じ規約が効く
-- rustc 側は `elided_lifetimes_in_paths` / `missing_debug_implementations` / `missing_docs` / `trivial_casts` / `unnameable_types` / `unreachable_pub` / `unsafe_op_in_unsafe_fn` / `unused_qualifications` を warn で明示有効化している（ほかに 0 件予防の 4 件は上の bullet）
-  - `unreachable_pub` は「モジュールは既定で非公開 + root ファサード」を機械的に強制するもので、外から到達しない `pub` は `pub(crate)` / `pub(super)` に狭める（crate 外へ本当に公開する項目だけが `pub` として残る）。`unnameable_types` はその裏面で、公開シグネチャに現れるのに facade から名指しできない型を落とす — 直し方は 2 択で、公開 API の一部なら facade へ再エクスポートし、内部型なら宣言側の可視性を狭める
-  - `unused_qualifications` は use 規約「最短パス」の機械化。スコープに入っている名前を `std::sync::Arc::new` のように再修飾しない（`absolute_paths` は 4 セグメント以上しか見ないので、こちらが短いパスの側を押さえる）
-  - `missing_docs` は必須ルール 4 の公開項目側（非公開側は `missing_docs_in_private_items`）
-  - `missing_debug_implementations` は公開型に `Debug` を要求する（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。実装は手書きにして、キャッシュやファイル内容の生バイト列ではなく件数を出す（`publication` の `Debug` と同じ方針）
-  - `trivial_casts` は型推論で足りる `as` を落とす。trait object から auto trait（`Send` / `Sync`）を落とす変換のように、外すとコンパイルが通らないキャストで発火することがあるので、その場合だけ `#[expect]` + 理由で残す
-  - `elided_lifetimes_in_paths` は借用を持つ型を `Foo<'_>` と書かせる。`Foo` と書けると「その型が借用を持つか」が字面から消え、宣言まで遡らないと読めない（G1 のライフタイムへの適用）
-  - `unsafe_op_in_unsafe_fn` は Edition 2024 の既定と同じ水準を設定として固定するもので、`unsafe fn` の本体でも `unsafe {}` を書かせる
-- `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
-- `unsafe {}` 1 つに unsafe 操作は 1 つだけ（`multiple_unsafe_ops_per_block`）。複数の操作をまとめず、操作ごとにブロックを分けて各々に `// SAFETY:` を書く（どの操作のどの前提が根拠かを 1 対 1 で対応させる）
-- `// SAFETY:` は unsafe ブロック・`unsafe` 項目の直上にだけ書く（`unnecessary_safety_comment`）。unsafe を含まない式・文・宣言に付いた SAFETY コメントは「ここに検証済みの unsafe がある」という誤読を招くだけの死んだ注釈なので落とす（「有効化されていない lint を allow しない」と同じ理由）。unsafe ブロックの前後で周辺コードの前提を説明したい場合は `// SAFETY:` 以外の語（`// NOTE:` 等）で書き、`undocumented_unsafe_blocks` が要求する SAFETY と 1 対 1 の対応を崩さない
-- `mod.rs` を作らない（`mod_module_files`）。サブモジュールを持つモジュールは親を `foo.rs`・子を `foo/<child>.rs` に置く（「モジュール構成」節）。統合テストの `tests/common/mod.rs` はこの lint の検査対象外なので、例外はそのまま置ける
-- `map_err(|_| ...)` で元のエラーを黙って捨てない（`map_err_ignore`）。低水準の cause は leaf diagnostic の `#[source]` に入れて包み、`ParseFloatError` のように値を持たず本当に捨ててよい場合は `let ... else` / `ok_or_else` で書く（捨てていることが字面に出る形にする）
-- `HashMap` / `HashSet` を `for` で直接反復しない（`iter_over_hash_type`）。`RandomState` の反復順はプロセスごとに変わるので、そのまま出力順・採番順・配列添字にすると成果物が非決定になる。順序が要る場合は `BTreeMap` を使うか、キーで `sort` した `Vec` に落としてから反復する（「集約するかは……表示順は入力の論理順」と同じ理由）。この lint が見るのは `for` だけなので、`values().sum()` のように順序に依存しない集計はイテレータアダプタで書けば発火しない — 逃げ道として使うのではなく、「順序に依存していない」と言い切れるときだけそう書く
-- `Result` を `.ok()` で捨てない（`unused_result_ok`）。`let _ = f().ok();` / `f().ok();` は「`Option` に変換した」という体裁で失敗を握り潰す書き方なので、無視してよい失敗なら `let _ = f();` と書いて捨てていること自体を字面に出す（`map_err_ignore` と同じ理由）。値が要る場合は `.ok()` のまま `?` / `unwrap_or` へ繋げてよく、この lint は結果を使わない場合だけ発火する
-- `-> Result` を返す関数の中で panic しない（`panic_in_result_fn`）。返り値の型で失敗を広告しておきながら本体で落ちるのは、呼び出し側から見えない失敗経路を作る書き方なので、入力（ソース・設定ファイル）由来で到達しうる状態は miette 診断エラーにして `Err` で返す（`error-handling` skill）。発火するのは `panic!` / `todo!` / `unimplemented!` と `assert!` 系で、**`unreachable!` と `debug_assert!` は発火しない** — 「必須ルール」5（`unreachable!` は積極的に使う）はこの lint と衝突せず、`-> Result` の関数でも上流の検証が保証する分岐は `unreachable!` で落としてよい。`missing_assert_message` と違ってこの lint は `#[cfg(test)]` の中でも発火するので、`?` を使うために `-> Result` を返すテスト関数の中では `assert!` ではなく `unwrap` / `expect` で落とす（既存のテストは `-> ()` なのでそのままでよい）
-- `Rc` / `Arc` の複製は `Rc::clone(&x)` / `Arc::clone(&x)` と関連関数形で書く（`clone_on_ref_ptr`）。`x.clone()` は「参照カウントを増やしただけ」なのか「中身を deep copy した」のかが字面で区別できず、型宣言まで遡らないと読めない（G1「字面だけで構造が一意」の import 以外への適用）。関連関数形なら共有が呼び出し箇所に出るうえ、`Arc<Vec<u8>>` のように内側も `Clone` な型でうっかり重い複製を書いてしまった場合の差も字面に出る。`rc::Weak` / `sync::Weak` も対象（`Weak::clone(&x)` と書く）。既存コード（`project::filesystem` の読込キャッシュ・`project::font` のフォントバイト列）はすでにこの形なので、lint はその作法を固定するもの
-- そのまま move すれば済む値を `clone()` しない（`redundant_clone`）。複製した先も元も、その後どこからも読まれないなら複製は無駄なだけでなく、「ここは所有権を分ける必要がある」という誤った合図を残す — 元をそのまま move すれば、値が 1 つしかないことが字面に出る（`clone_on_ref_ptr` と同じ「複製の意味を字面に出す」方向）。nursery lint だが、公式の Known problems は **false-negative**（解析が保守的で限定的）であって false-positive ではない — 発火したら真陽性として素直に直すのが既定で、`#[allow]` で外すのは考えていない。裏返すと**この lint が通ったことは「無駄な `clone` が無い」証明にはならない**（借用の絡む複製や、閉じたスコープを越える複製は見逃す）ので、`clone` を書く判断そのものは人がやる。MIR ベースの lint なのでマクロ展開後のコードにも効き、`#[cfg(test)]` の中でも発火する
-- `Eq` を導出できる型に `PartialEq` だけを derive しない（`derive_partial_eq_without_eq`）。`PartialEq` 止まりは「この型の等価は部分的（`a == a` が成り立たない値がある）」という主張になるため、実際には全等価な型に付けると、利用側が「NaN のような例外値があるのか」を型宣言まで遡っても判断できない（`clone_on_ref_ptr` と同じ「意味を字面に出す」方向）。nursery lint なのは、将来 float フィールドが増えうる型や、`Eq` の追加が公開 API の約束になる型では意図的に `PartialEq` 止まりにする選択があるためだが、seiran は**`Eq` を導出できる型には例外なく `Eq` を足す**方針を採る（`PartialEq` 止まりで残っているのは f32 / f64 を持つ型だけで、そこでは lint が発火しない）。`Length` は sp（`1/65536pt` の整数）なので、座標を持つ型でも float を経由しない限りこの方針に乗る。derive の並びは `PartialEq, Eq` の順に書く（`Debug, Clone, Copy, PartialEq, Eq, Hash`）
-- lint の抑制は `#[expect(...)]` + `reason = "..."` だけを使う（`allow_attributes` / `allow_attributes_without_reason`）。`allow` は抑制対象が消えても黙って残るが、`expect` なら rustc の `unfulfilled_lint_expectations` が「効いていない抑制」を落とすので、**有効化されていない lint を抑制しない**・**抑制対象が消えたら属性も消す**が機械的に守られる。`reason` に書くのは「なぜ許してよいか」＝上流のどの保証・どの設計判断が根拠かで、lint 名の言い換え（`reason = "truncation を許す"`）は書かない（`missing_assert_message` / `unreachable!` と同じ書き方）。根拠が言えない属性は書き足さずに素直に直す（`dead_code` は本当に未使用なら削除する）
-- 本体ビルドでだけ発火する lint（`#[cfg(test)] mod tests` だけが使う項目に対する `dead_code` / `unused_imports`）は `#[cfg_attr(not(test), expect(...))]` と書く。素の `#[expect]` はテストビルドで充足せず `unfulfilled_lint_expectations` に落ちるため、`allow` へ戻すのではなく「本体ビルドでだけ抑制する」ことを字面に出す
-- `result_large_err` は workspace で allow にしている（`#[expect]` を関数ごとに書かない）。診断 enum は miette の位置情報（`NamedSource` + `SourceSpan`）を運ぶので必ず大きくなり、これは「thiserror + miette の富んだ診断を採る」という**種類**の判断 1 個の帰結だから（個別関数の判断ではない。P10 の判定テストと同型）。逆に `cast_*` 系・`too_many_arguments`・`ref_option` は箇所ごとに根拠が違うので per-site の `#[expect]` のまま
-- 本体コードの `assert!` / `debug_assert!` 系にはメッセージが必須（`missing_assert_message`）。条件の言い換えではなく「なぜ成り立つはずか」＝上流のどの保証が破れたのかを日本語で書く（`unreachable!` と同じ書き方）。テストコード（`#[test]` / `#[cfg(test)]`）では発火しないので、テストの素の `assert_eq!` はそのままでよい
-- 上記のほかに、**発火 0 件の予防 lint** をまとめて有効化している（一覧と 1 行根拠は Cargo.toml のコメントが正典）。理由クラスは 5 つ — デバッグ残骸（`dbg_macro` / `todo` / `unimplemented`）/ 資源・異常終了（`exit` / `mem_forget` / `rc_mutex`）/ 既に守られている作法の lock-in（`error_impl_error` / `unnecessary_safety_doc` / `get_unwrap` ほか）/ 対立 pair の現行スタイル側（`pub_without_shorthand` / `semicolon_inside_block`）/ ライフタイム表記の残骸（rustc の `redundant_lifetimes` / `single_use_lifetimes` / `trivial_numeric_casts` / `unused_lifetimes`）。**新しい lint を足すときは「一括 sweep で 0 に見えた」を根拠にしない** — lint 単位で `cargo clippy --all-targets --all-features --message-format=json -- -W clippy::<name>` を回し、診断コードで数える（短縮フォーマットの grep は lint 名を含まないので 0 件に見える）
-- `println!` / `eprintln!` はライブラリ 2 crate では使わない（`print_stdout` / `print_stderr`）。表示はユーザーへ届ける成果物なので CLI（`seiran`）の crate root だけ `#![expect]` で開けてある。ライブラリ側で人へ伝えたいことは診断（miette）か tracing に載せる（#377 の役割分担）
+#### 選定の 6 軸
+
+| 軸 | 何を採るか | 例 |
+| --- | --- | --- |
+| A 規約の機械化 | prose の規約に対応する lint（最優先） | `implicit_return` / `missing_docs*` / `mod_module_files` / SAFETY 族 |
+| B 字面に意味 | G1「字面だけで構造が一意」のコードへの適用 | `clone_on_ref_ptr` / `map_err_ignore` / `elided_lifetimes_in_paths` |
+| C 決定性 | 成果物のバイト再現性を壊すものを拒む | `iter_over_hash_type` / `float_cmp_const` |
+| D 0 件予防 | 発火 0 件かつ規約整合＝無料の再発防止 | `dbg_macro` / `exit` / `rc_mutex` |
+| E 対立 pair の lock-in | 2 通り書ける形は現行スタイル側（0 件の側）を固定する | `separated_literal_suffix` / `pub_without_shorthand` |
+| F nursery 個別主義 | Known problems を理解した lint だけを 1 件ずつ採用する | `redundant_clone` / `fallible_impl_from` |
+
+軸に載らない lint は採らない。C 軸の帰結として、`suboptimal_flops` / `imprecise_flops` のように丸めが変わる lint は不採用（既存の候補箇所も直さない）。`clippy::all` が deny、`pedantic` が warn で、group を個別 lint が上書きする（group は priority -1、個別は既定の 0）。
+
+#### 運用
+
 - CI と pre-commit フックは `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する
-- 本体コードで `.unwrap()` を使わない（`unwrap_used`）。`.expect("...")` に移し、メッセージには条件の言い換えではなく「なぜ落ちないか」＝上流のどの検証・型設計が保証するかを日本語で書く（`unreachable!` / `missing_assert_message` と同じ書き方）。到達しうる失敗（ソース・設定ファイル由来）なら `.expect()` ではなく miette 診断エラーにする（`error-handling` skill）。`#[test]` / `#[cfg(test)]` の中は clippy.toml の `allow-unwrap-in-tests = true` で対象外だが、`tests/` から使うヘルパ（`#[doc(hidden)] pub` の `test_support` 等）は cfg(test) の外なので本体と同じ扱いになる
-- `expect_used` は**有効化していない**（restriction lint で `all` にも `pedantic` にも含まれない）。`.expect()` は「根拠を書いた上での逃げ道」として残してある。したがって `#[expect(clippy::expect_used)]` は何も抑制せず、書けば `unfulfilled_lint_expectations` で落ちる
+- **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes` / `allow_attributes_without_reason`）。`allow` は抑制対象が消えても黙って残るが、`expect` なら rustc の `unfulfilled_lint_expectations` が「効いていない抑制」を落とすので、**有効化されていない lint を抑制しない**・**抑制対象が消えたら属性も消す**が機械的に守られる。`reason` には「なぜ許してよいか」＝上流のどの保証・どの設計判断が根拠かを書き、lint 名の言い換え（`reason = "truncation を許す"`）は書かない。根拠が言えない属性は書き足さずに直す（`dead_code` は本当に未使用なら削除する）
+- 本体ビルドでだけ発火する lint（`#[cfg(test)] mod tests` だけが使う項目に対する `dead_code` / `unused_imports`）は `#[cfg_attr(not(test), expect(...))]` と書く。素の `#[expect]` はテストビルドで充足せず `unfulfilled_lint_expectations` に落ちるため、`allow` へ戻すのではなく「本体ビルドでだけ抑制する」ことを字面に出す
+- **新しい lint の 0 件は lint 単位で実測する**。`cargo clippy --all-targets --all-features --message-format=json -- -W clippy::<name>` を回し、診断コード（`message.code.code`）で数える。短縮フォーマットの grep は出力に lint 名を含まないため全件 0 に見える（この偽陰性で 14 件が隠れた実例がある）
+- 採らないと決めた lint の理由は #402 に記録がある（恒久不採用と、条件が変われば再検討するものを分けてある）
 
 ### テスト
 
 - テスト用入力: `tests/text/`（`text.sei` / `equation.sei` / `table.sei` / `theorem.sei` など機能別の `.sei` ファイル群）、フォント: リポジトリ直下の `fonts/`
-- AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る
+- AAA パターンで記述し、`// Arrange` / `// Act` / `// Assert` コメントで区切る。テスト名に `test_` 接頭辞は付けない（`redundant_test_prefix`）— 何を検証するかだけを書く
 - **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]` で閉じた `test_support` module に切り出して 1 箇所に集める（`frontend::evaluator::test_support` / `typeset::lowering::test_support`）。切り出し先は「そのヘルパが注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)` のように module 経由で呼ぶ。crate 外の統合テスト（`tests/`）も使うヘルパだけは例外で、`#[cfg(test)]` では閉じられないので `#[doc(hidden)] pub mod` として root facade に載せる（`project::config::test_support` → `seiran_compiler::test_support`）
 - test module も本体と同じ use 規約に従う（「必須ルール」3）。親の被テスト項目を `use super::*` / `use super::Item` で取り込むのは許容だが、それ以外は `crate::` 起点で import する
 - テストコードでは `unwrap` / `expect` を許容する（`unwrap_used` は clippy.toml の `allow-unwrap-in-tests` で対象外、`expect_used` は無効なので、どちらも属性は付けない）。`expect` のメッセージは日本語で期待を書く（例: `"一時ファイルを作成できるはず"`）。ただし `tests/` から使うヘルパは cfg(test) の外なので `unwrap_used` が効く（本体と同じく `.expect()` + 根拠）
