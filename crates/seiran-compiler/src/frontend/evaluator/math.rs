@@ -67,7 +67,19 @@ pub(crate) fn evaluate_math_elements(
             span: token.span.to_source_span(),
           });
         },
-        _ => {},
+        // 構造トークン（コマンド・括弧類・`$`・上下付きマーカー）と段落区切り・コメント・
+        // 不正トークンは数式に残さない。意味を持つ実体は parser がノードへ畳んだ側にある。
+        TokenKind::Command
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Dollar
+        | TokenKind::Underscore
+        | TokenKind::Caret
+        | TokenKind::ParagraphBreak
+        | TokenKind::Comment
+        | TokenKind::Unknown => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
@@ -96,7 +108,15 @@ pub(crate) fn evaluate_math_elements(
             span: child_node.span.to_source_span(),
           });
         },
-        _ => {},
+        // 引数・環境タグはそれぞれの評価経路が中身を取り出す。`InlineMath` は数式の入れ子で、
+        // 数式本体の直下で出会っても数式ノードとしては扱わない。
+        SyntaxKind::Root
+        | SyntaxKind::EnvironmentBegin
+        | SyntaxKind::EnvironmentEnd
+        | SyntaxKind::EnvironmentBody
+        | SyntaxKind::OptArg
+        | SyntaxKind::MandatoryArg
+        | SyntaxKind::InlineMath => {},
       },
     }
   }
@@ -130,7 +150,22 @@ fn evaluate_math_script_content(
             span: token.span.to_source_span(),
           });
         },
-        _ => {},
+        // `_` / `^` 自身と先行トリビア、`parse_math_script` が単一トークンとして積んだ記号類は、
+        // スクリプトの中身としては無視する。
+        TokenKind::Command
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Dollar
+        | TokenKind::Underscore
+        | TokenKind::Caret
+        | TokenKind::Ampersand
+        | TokenKind::Whitespace
+        | TokenKind::Newline
+        | TokenKind::ParagraphBreak
+        | TokenKind::Comment
+        | TokenKind::Unknown => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::MathGroup => {
@@ -142,7 +177,18 @@ fn evaluate_math_script_content(
           let math_node = evaluate_math_command(source, builder, child_node)?;
           nodes.push(math_node);
         },
-        _ => {},
+        // 上下付きの中身として組み立てるのは `MathGroup` と `CommandCall` だけで
+        // （`parse_math_script`）、それ以外のノードはスクリプトの中身として扱わない。
+        SyntaxKind::Root
+        | SyntaxKind::Environment
+        | SyntaxKind::EnvironmentBegin
+        | SyntaxKind::EnvironmentEnd
+        | SyntaxKind::EnvironmentBody
+        | SyntaxKind::OptArg
+        | SyntaxKind::MandatoryArg
+        | SyntaxKind::InlineMath
+        | SyntaxKind::MathSubscript
+        | SyntaxKind::MathSuperscript => {},
       },
     }
   }

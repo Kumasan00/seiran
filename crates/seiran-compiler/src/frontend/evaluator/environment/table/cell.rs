@@ -155,6 +155,16 @@ pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
     HirInlineKind::Styled { children, .. } | HirInlineKind::Colored { children, .. } => {
       return contains_line_break(children);
     },
-    _ => return false,
+    // 見るのはセル本文そのものの改行だけ。`Link` の表示テキスト・`Footnote` の本体は
+    // セル本文とは別のスコープなので、そこに `\\` があってもセルの改行としては数えない。
+    HirInlineKind::Text(_)
+    | HirInlineKind::InlineMath(_)
+    | HirInlineKind::Symbol(_)
+    | HirInlineKind::NoIndent
+    | HirInlineKind::Ref { .. }
+    | HirInlineKind::Link { .. }
+    | HirInlineKind::Cite { .. }
+    | HirInlineKind::Footnote { .. }
+    | HirInlineKind::Index { .. } => return false,
   });
 }

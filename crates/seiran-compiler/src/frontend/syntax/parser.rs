@@ -229,7 +229,20 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
           span: token.span.to_source_span(),
         });
       },
-      _ => {
+      // 構造を作らず、そのまま CST のリーフとして保持するトークン。`Underscore` / `Caret` は
+      // 数式モードのときだけ上の arm がスクリプトへ組み立てるので、テキストモード用にここへも要る。
+      TokenKind::Underscore
+      | TokenKind::Caret
+      | TokenKind::Ampersand
+      | TokenKind::Comma
+      | TokenKind::Equals
+      | TokenKind::Escaped
+      | TokenKind::Text
+      | TokenKind::LineBreak
+      | TokenKind::ParagraphBreak
+      | TokenKind::Whitespace
+      | TokenKind::Newline
+      | TokenKind::Comment => {
         let token = self.take_peeked();
         children.push(GreenElement::Token(token));
       },

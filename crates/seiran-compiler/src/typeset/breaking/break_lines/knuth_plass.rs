@@ -114,7 +114,19 @@ fn break_subparagraph(items: &[HItem], text_width: Length, open_links: &mut Vec<
         hyphen: true,
         is_end: false,
       }),
-      _ => {},
+      // 破断候補にならないアイテム。`Glue` / `Penalty` が上の arm にも出るのは、
+      // 分割不可な glue（`breakable: false`）と正の penalty をここで落とすため。
+      // `ForcedBreak` は段落を部分段落へ切る側（`break_subparagraph` の呼び出し元）が扱う。
+      HItem::Glue { .. }
+      | HItem::Penalty { .. }
+      | HItem::Box(_)
+      | HItem::Kern(_)
+      | HItem::FlushRight(_)
+      | HItem::ForcedBreak
+      | HItem::LinkStart(_)
+      | HItem::LinkEnd
+      | HItem::Footnote { .. }
+      | HItem::IndexMark { .. } => {},
     }
   }
   breaks.push(Breakpoint {

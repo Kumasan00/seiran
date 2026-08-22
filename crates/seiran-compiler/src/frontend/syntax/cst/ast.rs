@@ -169,7 +169,17 @@ pub(crate) fn extract_text_content(source: &str, node: &GreenNode<'_>) -> String
           let escaped = &source[token.span.start as usize + 1..token.span.end as usize];
           text.push_str(escaped);
         },
-        _ => {},
+        // 構造トークン（引数・数式の境界）とコメント・不正トークンは文字列に含めない。
+        TokenKind::Command
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Dollar
+        | TokenKind::LineBreak
+        | TokenKind::ParagraphBreak
+        | TokenKind::Comment
+        | TokenKind::Unknown => {},
       },
       GreenElement::Node(child_node) => {
         text.push_str(&extract_text_content(source, child_node));

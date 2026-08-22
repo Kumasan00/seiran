@@ -21,10 +21,10 @@ use crate::semantics::citation::Reference;
 /// [`serde_json::Error`] を返す。
 pub(crate) fn to_item(id: &str, reference: &Reference) -> Result<Item, serde_json::Error> {
   let value = serde_json::to_value(reference)?;
-  let mut object = match value {
-    Value::Object(map) => sanitize_object(map),
-    _ => Map::new(),
+  let Value::Object(map) = value else {
+    unreachable!("`Reference` は struct なので serde は必ず JSON object へ変換する")
   };
+  let mut object = sanitize_object(map);
   object.insert("id".to_string(), Value::String(id.to_string()));
   return serde_json::from_value(Value::Object(object));
 }
@@ -46,8 +46,17 @@ fn sanitize_value(value: Value) -> Value {
   return match value {
     Value::Object(map) => Value::Object(sanitize_object(map)),
     Value::Array(items) => Value::Array(items.into_iter().map(sanitize_value).collect()),
-    Value::Number(n) if n.is_f64() => Value::String(n.to_string()),
-    other => other,
+    // 非整数だけ文字列化する（`Item` の `Value` は i64 しか持てない）。整数はそのまま通す。
+    Value::Number(n) => {
+      if n.is_f64() {
+        Value::String(n.to_string())
+      } else {
+        Value::Number(n)
+      }
+    },
+    // 文字列・真偽値はそのまま `Item` の `Value` に嵌る。`null` は `sanitize_object` が
+    // 既に落としているが、配列要素としては残りうるのでそのまま通す。
+    other @ (Value::String(_) | Value::Bool(_) | Value::Null) => other,
   };
 }
 
@@ -57,11 +66,42 @@ mod tests {
 
   use hayagriva::citationberg::json::Value;
 
-  use super::to_item;
+  use super::{sanitize_value, to_item};
   use crate::{
     project::FilesystemProjectSource,
     semantics::{References, read_references, test_fixtures::sample_references},
   };
+
+  #[test]
+  fn sanitize_value_normalizes_every_json_variant() {
+    // Arrange
+    let input = serde_json::json!({
+      "integer": 2014,
+      "float": 1.5,
+      "text": "タイトル",
+      "flag": true,
+      "nested": { "float": 0.5, "absent": null },
+      "list": [2.5, 3, "x", null],
+    });
+
+    // Act
+    let output = sanitize_value(input);
+
+    // Assert
+    // 非整数だけ文字列化し、整数・文字列・真偽値はそのまま。object / array は再帰し、
+    // object のキーに付いた null だけが落ちる（array の null は要素位置を保つため残る）。
+    assert_eq!(
+      output,
+      serde_json::json!({
+        "integer": 2014,
+        "float": "1.5",
+        "text": "タイトル",
+        "flag": true,
+        "nested": { "float": "0.5" },
+        "list": ["2.5", 3, "x", null],
+      })
+    );
+  }
 
   /// TOML 文字列を一時ファイル経由で `References` に読み込むヘルパ。
   fn references_from_toml(toml: &str) -> References {

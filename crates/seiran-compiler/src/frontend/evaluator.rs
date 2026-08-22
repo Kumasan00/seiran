@@ -79,7 +79,16 @@ pub(crate) fn evaluate_children(
           paragraph.reserve(builder, token.span);
           paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text("&".to_string())));
         },
-        _ => {},
+        // 構造トークン（コマンド・括弧類・`$`）とコメント・不正トークンは HIR に残さない。
+        // 意味を持つ実体は parser がノードへ畳んだ側にあり、リーフとして残った分は捨てる。
+        TokenKind::Command
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Dollar
+        | TokenKind::Comment
+        | TokenKind::Unknown => {},
       },
       GreenElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
@@ -241,7 +250,19 @@ pub(crate) fn run_block_handler(
 fn is_non_blank_inline(inline: &HirInline) -> bool {
   return match &inline.kind {
     HirInlineKind::Text(text) => !text.trim().is_empty(),
-    _ => true,
+    // テキスト以外はすべて実体のある内容として数える。`NoIndent` は同じマーカーの重複を
+    // 段落途中として弾くためにここに含める。
+    HirInlineKind::Styled { .. }
+    | HirInlineKind::Colored { .. }
+    | HirInlineKind::InlineMath(_)
+    | HirInlineKind::Symbol(_)
+    | HirInlineKind::LineBreak
+    | HirInlineKind::NoIndent
+    | HirInlineKind::Ref { .. }
+    | HirInlineKind::Link { .. }
+    | HirInlineKind::Cite { .. }
+    | HirInlineKind::Footnote { .. }
+    | HirInlineKind::Index { .. } => true,
   };
 }
 
