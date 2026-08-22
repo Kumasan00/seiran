@@ -35,7 +35,7 @@ use crate::{
 pub(crate) fn extract_inline_nodes(
   source: &str,
   builder: &HirBuilder,
-  node: &GreenNode,
+  node: &GreenNode<'_>,
 ) -> Result<Vec<HirInline>, EvalError> {
   return extract_inline_nodes_from_elements(source, builder, node.children);
 }
@@ -50,7 +50,7 @@ pub(crate) fn extract_inline_nodes(
 pub(crate) fn extract_inline_nodes_from_elements(
   source: &str,
   builder: &HirBuilder,
-  children: &[GreenElement],
+  children: &[GreenElement<'_>],
 ) -> Result<Vec<HirInline>, EvalError> {
   let mut inlines = Vec::new();
   for child in children {

@@ -60,7 +60,7 @@ impl<'de> Deserialize<'de> for Name {
     impl<'de> Visitor<'de> for NameVisitor {
       type Value = Name;
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         return formatter.write_str("CSL の name オブジェクト");
       }
 

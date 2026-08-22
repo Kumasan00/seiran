@@ -22,7 +22,7 @@ use crate::{
 /// 書誌の見出しは無採番で、本文の続きとなる `HeadingKey` を `next_heading_index` から振る。
 /// `GeneratedBlock` は生成物専用に絞られている（#325）ので、この match は網羅的で済む。
 pub(super) fn lower_bibliography(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   nodes: &[GeneratedBlock],
   next_heading_index: usize,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
@@ -69,7 +69,7 @@ pub(super) fn lower_bibliography(
 /// 生成物には `\ref` も `\cite` も索引も脚注も現れない（`GeneratedInline` はそもそもそれらの
 /// variant を持たない、#325）ので、事実を引く必要がなく `LoweringState` を取らない。
 pub(super) fn lower_generated_inlines(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   inlines: &[GeneratedInline],
   parent_style: TextStyle,
 ) -> Vec<LayoutNode> {
@@ -84,7 +84,11 @@ pub(super) fn lower_generated_inlines(
 ///
 /// `GeneratedInline` は `citation::render` が実際に構築する 3 variant に絞られている
 /// （#325 / #326）ので、この match は網羅的で済む。
-fn lower_generated_inline(ctx: &LoweringContext, inline: &GeneratedInline, parent_style: TextStyle) -> Vec<LayoutNode> {
+fn lower_generated_inline(
+  ctx: &LoweringContext<'_>,
+  inline: &GeneratedInline,
+  parent_style: TextStyle,
+) -> Vec<LayoutNode> {
   match inline {
     GeneratedInline::Text(text) => return vec![LayoutNode::Text(text.clone(), parent_style)],
     GeneratedInline::Styled { kind, children } => {

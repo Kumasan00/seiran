@@ -18,7 +18,7 @@ use crate::{
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn itemize(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn itemize(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   return list_common(view, builder, false);
 }
 
@@ -27,7 +27,7 @@ pub(super) fn itemize(view: &EnvironmentView, builder: &HirBuilder) -> Result<Ve
 /// # Errors
 ///
 /// 余分な引数が指定されている場合にエラーを返します
-pub(super) fn enumerate(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn enumerate(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   return list_common(view, builder, true);
 }
 
@@ -36,7 +36,7 @@ pub(super) fn enumerate(view: &EnvironmentView, builder: &HirBuilder) -> Result<
 /// # Errors
 ///
 /// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-fn list_common(view: &EnvironmentView, builder: &HirBuilder, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
+fn list_common(view: &EnvironmentView<'_>, builder: &HirBuilder, ordered: bool) -> Result<Vec<HirNode>, EvalError> {
   let schema: &[(&str, OptType)] = if ordered {
     &[("start", OptType::Number), ("item_gap", OptType::Length)]
   } else {

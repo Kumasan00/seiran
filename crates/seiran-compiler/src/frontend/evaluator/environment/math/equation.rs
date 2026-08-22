@@ -21,7 +21,7 @@ use crate::{
 ///
 /// 不明な任意引数キーや値の型不一致、本体への `&` / `\\` の混入時にエラーを返します。
 /// `[numbered=false]` と `[label=...]` を併用した場合は [`EvalError::LabelRequiresNumbering`] を返します
-pub(crate) fn equation(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn equation(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String), ("numbered", OptType::Bool)])?;
   let numbered = find_bool(&opt_args, "numbered").unwrap_or(true);
   let label = find_string(&opt_args, "label");

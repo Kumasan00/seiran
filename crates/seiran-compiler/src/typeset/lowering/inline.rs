@@ -17,10 +17,10 @@ use crate::{
 
 /// インライン列をまとめてレイアウトノードに変換する
 pub(super) fn lower_inlines(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
   parent_style: TextStyle,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for inline in inlines {
@@ -31,10 +31,10 @@ pub(super) fn lower_inlines(
 
 /// インライン要素をレイアウトノードに変換する
 pub(super) fn lower_inline(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   inline: &HirInline,
   parent_style: TextStyle,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   match &inline.kind {
     HirInlineKind::Text(text) => {
@@ -147,7 +147,7 @@ pub(super) fn lower_inline(
 }
 
 /// 出現 index の脚注に振る表示番号を返す
-fn footnote_number(ctx: &LoweringContext, index: u32) -> u32 {
+fn footnote_number(ctx: &LoweringContext<'_>, index: u32) -> u32 {
   let continuous = index + 1;
   return ctx
     .footnote_numbers
@@ -198,7 +198,7 @@ mod tests {
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
   /// 与えた文脈で `.sei` ソースを lower するテストヘルパ（脚注番号の上書きを使うテスト用）
-  fn lower_source_with(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
+  fn lower_source_with(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
     let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
   }

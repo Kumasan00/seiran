@@ -180,14 +180,14 @@ impl LineAccum {
 }
 
 /// テキストを左端（x=0）からシェーピングして単一行に組む（タイトル行用）
-fn compose_left_line(measurer: &mut Measurer, text: &str, style: TextStyle) -> Line {
+fn compose_left_line(measurer: &mut Measurer<'_>, text: &str, style: TextStyle) -> Line {
   let mut acc = LineAccum::default();
   acc.place(measurer.shape_text(text, style), Length::ZERO);
   return acc.into_line(Vec::new());
 }
 
 /// 1 エントリを「語 … ページ番号列（カンマ区切り）」の単一行に組む
-fn compose_entry_line(measurer: &mut Measurer, spec: &IndexSpec, entry: &IndexEntryInput) -> Line {
+fn compose_entry_line(measurer: &mut Measurer<'_>, spec: &IndexSpec, entry: &IndexEntryInput) -> Line {
   let mut acc = LineAccum::default();
   let mut links = Vec::new();
 

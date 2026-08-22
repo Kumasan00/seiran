@@ -268,7 +268,7 @@ impl<'a> LoweringState<'a> {
 /// 意味解析の成果物をレイアウトノードに変換し、見出し記録（PDF しおり・目次生成用）も返す
 #[must_use]
 pub(super) fn lower_sources_with_headings(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   document: &SemanticDocument,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let mut state = LoweringState::new(document);
@@ -310,9 +310,9 @@ pub(super) fn lower_sources_with_headings(
 
 /// `nodes` を順に [`lower_node_indexed`] へ渡す内部ウォーク（本体）
 pub(super) fn lower_nodes_inner(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   nodes: &[HirNode],
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let mut result = Vec::new();
   for node in nodes {
@@ -322,7 +322,7 @@ pub(super) fn lower_nodes_inner(
 }
 
 /// 単一の `HirNode` をレイアウトノードに変換する（事実は `node.id` で引く）
-fn lower_node_indexed(ctx: &LoweringContext, node: &HirNode, state: &mut LoweringState) -> Vec<LayoutNode> {
+fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut LoweringState<'_>) -> Vec<LayoutNode> {
   match &node.kind {
     HirNodeKind::Heading {
       level,
@@ -485,7 +485,7 @@ fn with_label_anchors(labels: &[&LabelId], nodes: Vec<LayoutNode>) -> Vec<Layout
 ///
 /// 旧 `GeneratedInline` 版のプレーンテキスト畳み込みと同じ規則を保つ。バリアントごとの扱い（数式は
 /// `"[Math]"`、脚注・索引は空、`\cite` は整形済み表示を辿る等）は同じに保つ。
-fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState) -> String {
+fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
   let mut out = String::new();
   for inline in inlines {
     match &inline.kind {

@@ -32,7 +32,7 @@ pub(crate) enum NumberingMode {
 /// 未知の任意引数キー・不正な値、位置引数の指定（[`EvalError::ExtraEnvironmentArgument`]）、無採番環境への
 /// 環境単位ラベル付与（[`EvalError::LabelRequiresNumbering`]）でエラーを返す。
 pub(super) fn parse_math_env_opts(
-  view: &EnvironmentView,
+  view: &EnvironmentView<'_>,
   mode: &NumberingMode,
 ) -> Result<(bool, Option<String>), EvalError> {
   // 環境単位ラベル `[label=...]` は環境全体に 1 番号を振る `SingleEnv`（split / multiline）でのみ受理する。
@@ -95,7 +95,7 @@ pub(super) fn assign_numbering(
   grid: Vec<GridRow>,
   mode: &NumberingMode,
   numbered: bool,
-  view: &EnvironmentView,
+  view: &EnvironmentView<'_>,
 ) -> Result<(Vec<HirMathRow>, bool), EvalError> {
   let mut env_numbered = false;
   let rows: Vec<HirMathRow> = match mode {

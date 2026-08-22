@@ -232,7 +232,7 @@ pub(crate) enum FontWarning {
 /// （このとき警告は捨てる — 失敗したコンパイルでは warning を返さない）。
 pub(super) fn validate_fonts(
   font_configs: &FontConfigs,
-  font_refs: &FontRefs,
+  font_refs: &FontRefs<'_>,
 ) -> Result<Vec<FontWarning>, Failures<FontValidationFailure>> {
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
@@ -257,7 +257,7 @@ pub(super) fn validate_fonts(
 pub(super) fn validate_font(
   font_type: FontType,
   config: &FontConfig,
-  font_ref: &FontRef,
+  font_ref: &FontRef<'_>,
   warnings: &mut Vec<FontWarning>,
 ) -> Vec<FontValidationErrorKind> {
   let mut errors = Vec::new();
@@ -273,7 +273,7 @@ pub(super) fn validate_font(
 
 /// バリエーション軸の存在・値域・設定漏れを検証する。
 fn validate_variation_axes(
-  font_ref: &FontRef,
+  font_ref: &FontRef<'_>,
   config_variation_axes: &[VariationAxis],
   errors: &mut Vec<FontValidationErrorKind>,
 ) {
@@ -330,7 +330,7 @@ fn validate_variation_axes(
 fn check_script_language_support(
   font_type: FontType,
   font_config: &FontConfig,
-  font_ref: &FontRef,
+  font_ref: &FontRef<'_>,
   warnings: &mut Vec<FontWarning>,
 ) {
   let Some(script) = font_config.script else {

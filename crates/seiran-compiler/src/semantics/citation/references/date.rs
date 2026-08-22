@@ -86,7 +86,7 @@ impl<'de> Deserialize<'de> for Date {
     impl<'de> Visitor<'de> for DateVisitor {
       type Value = Date;
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         return formatter.write_str("CSL の構造化日付オブジェクト");
       }
 

@@ -22,7 +22,7 @@ use crate::{
 /// # Errors
 ///
 /// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(crate) fn url_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn url_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -55,7 +55,7 @@ pub(crate) fn url_command(view: &CommandView, builder: &HirBuilder) -> Result<Ve
 /// # Errors
 ///
 /// 任意引数 `url` の欠落・型不正、必須引数（表示テキスト）の欠落 / 過剰でエラーを返します。
-pub(crate) fn href_command(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn href_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("url", OptType::String)])?;
   let Some(url) = find_string(&opt_args, "url") else {
     return Err(EvalError::MissingCommandArgument {

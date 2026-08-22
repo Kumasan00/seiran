@@ -17,7 +17,7 @@ use crate::{
 ///
 /// タイトルの lowering は呼び出し元（本文なら HIR、書誌なら CSL 整形の生成物）が行うため、
 /// そこで使うスタイルをこの 1 箇所から配る。
-pub(super) fn title_style(ctx: &LoweringContext, level: HeadingLevel) -> TextStyle {
+pub(super) fn title_style(ctx: &LoweringContext<'_>, level: HeadingLevel) -> TextStyle {
   let heading_style = ctx.style.heading(level);
   return TextStyle {
     font_size: heading_style.font_size,
@@ -32,7 +32,7 @@ pub(super) fn title_style(ctx: &LoweringContext, level: HeadingLevel) -> TextSty
 /// ときだけ、現れた回数ぶん呼ばれる（タイトル中の `\footnote` が採番だけ消費する事故を防ぐ。
 /// 詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
 pub(super) fn lower_heading(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   level: HeadingLevel,
   number: &str,
   title: impl FnMut() -> Vec<LayoutNode>,
@@ -90,7 +90,7 @@ mod tests {
   };
 
   /// 基底スタイルのプレーンなタイトルノード 1 個を作る
-  fn plain_title(ctx: &LoweringContext, level: HeadingLevel, text: &str) -> Vec<LayoutNode> {
+  fn plain_title(ctx: &LoweringContext<'_>, level: HeadingLevel, text: &str) -> Vec<LayoutNode> {
     return vec![LayoutNode::Text(text.to_string(), title_style(ctx, level))];
   }
 

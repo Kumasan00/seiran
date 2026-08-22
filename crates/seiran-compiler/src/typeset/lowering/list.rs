@@ -15,12 +15,12 @@ use crate::{
 
 /// リストをレイアウトノードに変換する
 pub(super) fn lower_list(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   ordered: bool,
   items: &[HirListItem],
   start: Option<u32>,
   item_gap: Option<Length>,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let list_style = &ctx.style.list;
   let depth = ctx.list_depth;

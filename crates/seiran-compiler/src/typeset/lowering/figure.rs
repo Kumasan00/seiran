@@ -26,14 +26,14 @@ pub(crate) struct ImageOverrides {
   reason = "図 1 件の lowering に要る値を束ねる中間型を作っても、呼び出し側が同じ数の値を詰め替えるだけになる"
 )]
 pub(super) fn lower_figure(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   image_path: &ProjectPath,
   width: Option<Length>,
   height: Option<Length>,
   overrides: ImageOverrides,
   caption: Option<(CaptionPosition, &[HirInline])>,
   number: &str,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let style = &ctx.style.figure;
 
@@ -75,7 +75,7 @@ mod tests {
   ///
   /// 画像の既定値（`with_image_defaults`）を差し替えるテストがあるため、`LoweringContext` を
   /// 呼び出し側から渡せる形にしてある。
-  fn lower_source(ctx: &LoweringContext, source: &str) -> Vec<LayoutNode> {
+  fn lower_source(ctx: &LoweringContext<'_>, source: &str) -> Vec<LayoutNode> {
     let (layout, _headings) = lower_sources_with_headings(ctx, &analyzed(source));
     return layout;
   }

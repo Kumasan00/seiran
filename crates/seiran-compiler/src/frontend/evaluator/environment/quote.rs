@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 任意引数が指定された場合、または余分な必須引数がある場合にエラーを返します。
-pub(super) fn quote(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn quote(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let kind = QuoteKind::from_name(view.name()).expect("ENVIRONMENTS は quote / quotation のみを本ハンドラに登録する");
 
   let _opt_args = collect_environment_opt_args(view, &[])?;

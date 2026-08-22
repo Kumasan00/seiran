@@ -18,10 +18,10 @@ use crate::{
 pub(super) fn build_cell(
   source: &str,
   builder: &HirBuilder,
-  elements: &[GreenElement],
+  elements: &[GreenElement<'_>],
   empty_span: Span,
 ) -> Result<HirTableCell, EvalError> {
-  let mut cell_view: Option<CommandView> = None;
+  let mut cell_view: Option<CommandView<'_>> = None;
   let mut has_other_content = false;
   for element in elements {
     match element {
@@ -69,7 +69,7 @@ pub(super) fn build_cell(
 }
 
 /// `\cell[span=N]{...}` を属性付きセルに変換する
-fn extract_cell_command(view: &CommandView, builder: &HirBuilder) -> Result<HirTableCell, EvalError> {
+fn extract_cell_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<HirTableCell, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("span", OptType::Number)])?;
   let mut span: u32 = 1;
   for (key, value) in opt_args {
@@ -136,7 +136,7 @@ fn trim_cell_content(mut content: Vec<HirInline>) -> Vec<HirInline> {
 /// `&` 分割後の区画全体を覆うソース位置を返す
 ///
 /// 区画が空（`a & & b` の中央など）なら、呼び出し元が渡した直前の区切り位置を使う。
-fn segment_span(elements: &[GreenElement], empty_span: Span) -> Span {
+fn segment_span(elements: &[GreenElement<'_>], empty_span: Span) -> Span {
   let mut span: Option<Span> = None;
   for element in elements {
     let element_span = match element {

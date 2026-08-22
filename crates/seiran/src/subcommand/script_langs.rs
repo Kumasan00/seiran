@@ -187,8 +187,8 @@ fn process_layout_table<'a>(
 ///
 /// Language System または Feature の取得に失敗した場合にエラーを返す。
 fn print_scripts(
-  scripts: &ScriptList,
-  features: &FeatureList,
+  scripts: &ScriptList<'_>,
+  features: &FeatureList<'_>,
   referenced_features: &mut BTreeSet<String>,
 ) -> Result<(), ScriptLangsError> {
   for script_record in scripts.script_records() {
@@ -221,7 +221,7 @@ fn print_scripts(
 }
 
 /// GSUB と GPOS の Feature タグを重複なく統合する。
-fn collect_all_features(gsub_features: &FeatureList, gpos_features: &FeatureList) -> BTreeSet<String> {
+fn collect_all_features(gsub_features: &FeatureList<'_>, gpos_features: &FeatureList<'_>) -> BTreeSet<String> {
   let mut all_features = BTreeSet::new();
   insert_feature_tags(gsub_features, &mut all_features);
   insert_feature_tags(gpos_features, &mut all_features);
@@ -229,7 +229,7 @@ fn collect_all_features(gsub_features: &FeatureList, gpos_features: &FeatureList
 }
 
 /// `FeatureList` のタグを集合へ追加する。
-fn insert_feature_tags(feature_list: &FeatureList, all_features: &mut BTreeSet<String>) {
+fn insert_feature_tags(feature_list: &FeatureList<'_>, all_features: &mut BTreeSet<String>) {
   for record in feature_list.feature_records() {
     all_features.insert(record.feature_tag().to_string());
   }
@@ -256,8 +256,8 @@ fn print_feature_statistics(all_features: &BTreeSet<String>, referenced_features
 ///
 /// Feature または Feature Parameters の取得に失敗した場合にエラーを返す。
 fn get_language_features(
-  lang_sys: &LangSys,
-  features: &FeatureList,
+  lang_sys: &LangSys<'_>,
+  features: &FeatureList<'_>,
   referenced_features: &mut BTreeSet<String>,
 ) -> Result<Vec<String>, ScriptLangsError> {
   let mut feature_tags = Vec::new();

@@ -23,7 +23,7 @@ mod table;
 mod theorem;
 
 /// 環境ハンドラの関数ポインタ型
-type EnvHandler = fn(&EnvironmentView, &HirBuilder) -> Result<Vec<HirNode>, EvalError>;
+type EnvHandler = fn(&EnvironmentView<'_>, &HirBuilder) -> Result<Vec<HirNode>, EvalError>;
 
 /// 環境の定義
 pub(crate) struct EnvDef {
@@ -80,7 +80,10 @@ pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
 /// # Errors
 ///
 /// 未知の環境やハンドラ実行中のエラーが発生した場合
-pub(crate) fn evaluate_environment(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(crate) fn evaluate_environment(
+  view: &EnvironmentView<'_>,
+  builder: &HirBuilder,
+) -> Result<Vec<HirNode>, EvalError> {
   return match ENVIRONMENTS.get(view.name()).and_then(|def| return def.handler) {
     Some(handler) => handler(view, builder),
     None => Err(EvalError::UnknownEnvironment {

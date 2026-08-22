@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// 本文段落の既定テキストスタイルを返す
-pub(super) fn body_text_style(ctx: &LoweringContext) -> TextStyle {
+pub(super) fn body_text_style(ctx: &LoweringContext<'_>) -> TextStyle {
   return TextStyle {
     font_size: ctx.default_font_size(),
     font_kind: ctx.body_font_kind,
@@ -23,7 +23,7 @@ pub(super) fn body_text_style(ctx: &LoweringContext) -> TextStyle {
 /// 内容の lowering 経路（著者が書いた HIR / CSL 整形の生成物）に依らず共通なので、
 /// 両方の呼び出し元がこの 1 つを使う。
 pub(super) fn assemble_paragraph(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   content: Vec<LayoutNode>,
   suppress_indent: bool,
 ) -> Vec<LayoutNode> {
@@ -48,9 +48,9 @@ pub(super) fn assemble_paragraph(
 
 /// 段落をレイアウトノードに変換する
 pub(super) fn lower_paragraph(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let default_style = body_text_style(ctx);
 

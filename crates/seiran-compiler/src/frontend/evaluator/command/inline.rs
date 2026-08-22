@@ -19,7 +19,7 @@ use crate::{
 ///
 /// 引数の不足・過剰の場合にエラーを返します
 pub(crate) fn styled_text(
-  view: &CommandView,
+  view: &CommandView<'_>,
   builder: &HirBuilder,
   kind: FontKind,
 ) -> Result<Vec<HirInline>, EvalError> {
@@ -51,7 +51,7 @@ pub(crate) fn styled_text(
 /// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
 /// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-pub(crate) fn colored_text(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(crate) fn colored_text(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let name = view.name();
   let opt_args = collect_command_opt_args(view, &[("color", OptType::Color)])?;
   let Some(color) = find_color(&opt_args, "color") else {

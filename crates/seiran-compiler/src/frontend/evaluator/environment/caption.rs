@@ -14,7 +14,7 @@ use crate::{
 /// # Errors
 ///
 /// 引数の不足・過剰、未許可の任意引数がある場合にエラーを返します。
-pub(super) fn extract_caption(view: &CommandView, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
+pub(super) fn extract_caption(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(first_arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {

@@ -22,7 +22,7 @@ use crate::{
 /// # Errors
 ///
 /// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn figure(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("label", OptType::String)])?;
   let label = find_string(&opt_args, "label");
 
@@ -120,7 +120,7 @@ struct ImageArgs {
 }
 
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false]{path}` から各引数を抽出する
-fn extract_image(view: &CommandView) -> Result<ImageArgs, EvalError> {
+fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
   let opt_args = collect_command_opt_args(
     view,
     &[

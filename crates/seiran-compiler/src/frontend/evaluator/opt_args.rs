@@ -99,7 +99,7 @@ pub(crate) fn find_color(opt_args: &[(String, OptValue)], key: &str) -> Option<C
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
 /// [`EvalError::InvalidOptArgValue`] を返します。
 pub(crate) fn collect_command_opt_args(
-  view: &CommandView,
+  view: &CommandView<'_>,
   schema: &[(&str, OptType)],
 ) -> Result<Vec<(String, OptValue)>, EvalError> {
   return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);
@@ -112,7 +112,7 @@ pub(crate) fn collect_command_opt_args(
 /// 不明キー検出時に [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に
 /// [`EvalError::InvalidOptArgValue`] を返します。
 pub(crate) fn collect_environment_opt_args(
-  view: &EnvironmentView,
+  view: &EnvironmentView<'_>,
   schema: &[(&str, OptType)],
 ) -> Result<Vec<(String, OptValue)>, EvalError> {
   return collect_opt_args(view.source(), view.name(), view.opt_args(), schema);

@@ -42,7 +42,7 @@ pub(super) fn ensure_markers_at_row_end(
 
 /// 行末マーカー `\notag` / `\label{...}` を検出し、走査ローカル状態へ取り込む
 pub(super) fn try_take_row_marker(
-  child: &GreenElement,
+  child: &GreenElement<'_>,
   source: &str,
   builder: &HirBuilder,
   row_markers_allowed: bool,
@@ -72,7 +72,7 @@ pub(super) fn try_take_row_marker(
 
 /// 行末マーカー `\notag` を検証して走査ローカル状態 `current_notag` を立てる
 fn take_notag_marker(
-  view: &CommandView,
+  view: &CommandView<'_>,
   span: SourceSpan,
   row_markers_allowed: bool,
   current_notag: &mut Option<SourceSpan>,
@@ -92,7 +92,7 @@ fn take_notag_marker(
 
 /// 行末マーカー `\label{...}` を検証してラベル文字列を抽出し、走査ローカル状態 `current_label` を立てる
 fn take_label_marker(
-  view: &CommandView,
+  view: &CommandView<'_>,
   source: &str,
   builder: &HirBuilder,
   span: SourceSpan,

@@ -22,7 +22,7 @@ use crate::{
 ///
 /// 未知の任意引数キー、揃え / 幅トークンの不正、セル数の不一致、
 /// `\row` の欠如などが発生した場合にエラーを返します。
-pub(super) fn table(view: &EnvironmentView, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
+pub(super) fn table(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opts = collect_table_opts(view)?;
 
   if !view.args().is_empty() {

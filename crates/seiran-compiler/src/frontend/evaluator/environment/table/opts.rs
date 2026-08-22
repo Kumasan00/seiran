@@ -28,7 +28,7 @@ pub(super) struct TableOpts {
 /// `table` の任意引数（`columns` / `widths` / `label` / `breakable`）を収集してスカラー化する
 ///
 /// 既定では `breakable` は `true`（改ページによる分割を許可）。
-pub(super) fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, EvalError> {
+pub(super) fn collect_table_opts(view: &EnvironmentView<'_>) -> Result<TableOpts, EvalError> {
   let opt_args = collect_environment_opt_args(
     view,
     &[
@@ -62,7 +62,7 @@ pub(super) fn collect_table_opts(view: &EnvironmentView) -> Result<TableOpts, Ev
 }
 
 /// `columns="left center right"` の値を [`ColumnAlign`] の列に変換する
-pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnAlign>, EvalError> {
+pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Result<Vec<ColumnAlign>, EvalError> {
   let invalid = || {
     return EvalError::InvalidOptArgValue {
       name: "table".to_string(),
@@ -79,7 +79,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView) -> Result<V
 }
 
 /// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する
-pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView) -> Result<Vec<ColumnWidth>, EvalError> {
+pub(super) fn parse_widths_spec(spec: &str, view: &EnvironmentView<'_>) -> Result<Vec<ColumnWidth>, EvalError> {
   let invalid = || {
     return EvalError::InvalidOptArgValue {
       name: "table".to_string(),

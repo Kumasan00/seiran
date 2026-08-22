@@ -46,7 +46,7 @@ where
   impl<'de> Visitor<'de> for UniqueReferencesVisitor {
     type Value = HashMap<String, Reference>;
 
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
       return formatter.write_str("参照 ID をキーとするテーブル");
     }
 

@@ -20,11 +20,11 @@ use crate::{
 /// 含む回数ぶん実行する（キャプション中の `\footnote` が通し index だけ消費して消えるのを
 /// 防ぐため。詳細は [`crate::style::NumberTitleTemplate::expand`] の doc コメント）。
 pub(super) fn build_caption(
-  ctx: &LoweringContext,
+  ctx: &LoweringContext<'_>,
   caption_style: &CaptionStyle,
   inlines: &[HirInline],
   number: &str,
-  state: &mut LoweringState,
+  state: &mut LoweringState<'_>,
 ) -> Vec<LayoutNode> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,

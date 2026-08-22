@@ -150,7 +150,7 @@ impl<'a> EnvironmentView<'a> {
 ///
 /// 構造トークンとコメントを除いて連結する。
 #[must_use]
-pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
+pub(crate) fn extract_text_content(source: &str, node: &GreenNode<'_>) -> String {
   let mut text = String::new();
   for child in node.children {
     match child {
@@ -184,7 +184,7 @@ pub(crate) fn extract_text_content(source: &str, node: &GreenNode) -> String {
 /// `=` を含まないエントリは boolean フラグとして扱い `("key", "true")` を生成する
 /// （例: `[draft]`）。
 #[must_use]
-pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode) -> Vec<(String, String)> {
+pub(crate) fn parse_key_value_options(source: &str, opt_arg: &GreenNode<'_>) -> Vec<(String, String)> {
   debug_assert_eq!(
     opt_arg.kind,
     SyntaxKind::OptArg,

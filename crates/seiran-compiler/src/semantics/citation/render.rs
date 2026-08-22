@@ -32,9 +32,9 @@ pub(crate) fn render(
   locale_override: Option<LocaleCode>,
   bib_title: &str,
 ) -> Rendered {
-  let mut driver: BibliographyDriver<Item> = BibliographyDriver::new();
+  let mut driver: BibliographyDriver<'_, Item> = BibliographyDriver::new();
   for site in cite_sites {
-    let items: Vec<CitationItem<Item>> =
+    let items: Vec<CitationItem<'_, Item>> =
       site.iter().filter_map(|key| return entries.get(key)).map(CitationItem::with_entry).collect();
     driver.citation(CitationRequest::new(items, style, locale_override.clone(), locales, None));
   }

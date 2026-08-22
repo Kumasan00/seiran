@@ -36,7 +36,7 @@ pub(super) struct TableBody {
 }
 
 /// 本体から `\head` / `\row` / `\caption` を走査して [`TableBody`] に収集する
-pub(super) fn scan_table_body(view: &EnvironmentView, builder: &HirBuilder) -> Result<TableBody, EvalError> {
+pub(super) fn scan_table_body(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<TableBody, EvalError> {
   let source = view.source();
   let mut head: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
   let mut rows: Vec<(HirTableRow, miette::SourceSpan)> = Vec::new();
@@ -94,7 +94,10 @@ pub(super) fn scan_table_body(view: &EnvironmentView, builder: &HirBuilder) -> R
 }
 
 /// `\head{\row{...} ...}` からヘッダ行を抽出する
-fn extract_head(view: &CommandView, builder: &HirBuilder) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
+fn extract_head(
+  view: &CommandView<'_>,
+  builder: &HirBuilder,
+) -> Result<Vec<(HirTableRow, miette::SourceSpan)>, EvalError> {
   let _opt_args = collect_command_opt_args(view, &[])?;
   let Some(arg) = view.first_arg() else {
     return Err(EvalError::MissingCommandArgument {
@@ -164,7 +167,7 @@ fn extract_head(view: &CommandView, builder: &HirBuilder) -> Result<Vec<(HirTabl
 }
 
 /// `\row[rule_above]{A & B & \cell[span=2]{C}}` から 1 行を抽出する
-fn extract_row(view: &CommandView, builder: &HirBuilder) -> Result<HirTableRow, EvalError> {
+fn extract_row(view: &CommandView<'_>, builder: &HirBuilder) -> Result<HirTableRow, EvalError> {
   let opt_args = collect_command_opt_args(view, &[("rule_above", OptType::Bool)])?;
   let rule_above = opt_args
     .iter()
@@ -187,7 +190,7 @@ fn extract_row(view: &CommandView, builder: &HirBuilder) -> Result<HirTableRow, 
   let source = view.source();
   let id = builder.alloc(view.span());
   let mut cells: Vec<HirTableCell> = Vec::new();
-  let mut segment: Vec<GreenElement> = Vec::new();
+  let mut segment: Vec<GreenElement<'_>> = Vec::new();
   // 空セルには覆う要素がないので、直前の区切り位置を 0 幅の位置として使う
   let mut empty_cell_span = Span::new(arg.span.start, arg.span.start);
   for child in arg.children {
@@ -224,7 +227,7 @@ pub(super) fn resolve_column_count(
   widths_tokens: Option<&[ColumnWidth]>,
   head: &[(HirTableRow, miette::SourceSpan)],
   rows: &[(HirTableRow, miette::SourceSpan)],
-  view: &EnvironmentView,
+  view: &EnvironmentView<'_>,
 ) -> Result<usize, EvalError> {
   let column_count = match (columns_tokens, widths_tokens) {
     (Some(c), Some(w)) => {
