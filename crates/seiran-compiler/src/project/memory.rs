@@ -13,6 +13,9 @@ use crate::project::{ProjectPath, ProjectSource, SourceReadError};
 ///
 /// `FilesystemProjectSource` と同じ入力を与えたときに同じ結果になることを検証するテスト、
 /// および「同じパスが何回要求されたか」の検査（重複読み込みの検出）に使う。
+///
+/// 読み込みをキャッシュしないのはこの検査のため — 要求はすべて `read_count` に載る。
+/// `read_text` は登録済みバイト列から毎回 UTF-8 検証して `Arc<str>` を作る。
 pub struct MemoryProjectSource {
   /// 事前登録したファイルデータ。
   files: HashMap<ProjectPath, Arc<[u8]>>,
