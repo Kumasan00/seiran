@@ -330,7 +330,7 @@ fn resolve_reference_paths(
 
   if let Some(path) = reference.csl_path.take() {
     let joined = if path.is_absolute() {
-      path.clone()
+      path
     } else {
       base_dir.join(&path)
     };
@@ -345,7 +345,7 @@ fn resolve_reference_paths(
 
   if let Some(path) = reference.locale_path.take() {
     let joined = if path.is_absolute() {
-      path.clone()
+      path
     } else {
       base_dir.join(&path)
     };

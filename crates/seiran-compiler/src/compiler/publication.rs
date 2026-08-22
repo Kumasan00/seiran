@@ -429,7 +429,7 @@ mod tests {
           x: ORIGIN_X_PT + 5.0,
           y: 100.0
         },
-        run: run.clone()
+        run
       }
     );
   }
@@ -461,7 +461,7 @@ mod tests {
           x: ORIGIN_X_PT + 10.0,
           y: 97.0
         },
-        run: run_a.clone()
+        run: run_a
       }
     );
     assert_eq!(
@@ -471,7 +471,7 @@ mod tests {
           x: ORIGIN_X_PT + 15.0,
           y: 100.0
         },
-        run: run_b.clone()
+        run: run_b
       }
     );
   }
@@ -571,7 +571,7 @@ mod tests {
           x: ORIGIN_X_PT + 10.0,
           y: 200.0
         },
-        run: body_run.clone()
+        run: body_run
       }
     );
     assert_eq!(
@@ -581,7 +581,7 @@ mod tests {
           x: ORIGIN_X_PT + 300.0,
           y: 200.0
         },
-        run: number_run.clone()
+        run: number_run
       }
     );
   }
@@ -813,7 +813,7 @@ mod tests {
       .build();
     let second = PageBuilder::new()
       .content_origin_x(Length::pt(120.0))
-      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .block(glyph_line(run, Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
       .heading_anchor(key, Length::pt(7.0), Length::pt(10.0))
       .external_link("https://example.com", Length::pt(1.0), Length::pt(2.0), Length::pt(3.0), Length::pt(4.0))
       .build();
@@ -842,7 +842,7 @@ mod tests {
     let config = test_config();
     let run = glyph_run("x");
     let page = PageBuilder::new()
-      .block(glyph_line(run.clone(), Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
+      .block(glyph_line(run, Length::pt(5.0), Length::pt(0.0), Length::pt(100.0)))
       .build();
 
     // Act
