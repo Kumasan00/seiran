@@ -916,6 +916,11 @@ mod tests {
   }
 
   /// 指定の `[font_configs.serif]` 追加行で TOML を組み、`validate_values` を通した結果を返します。
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "呼び出し側が `extra_lines` に渡すのは `[font_configs.serif]` へ足せる妥当な行だけなので、\
+              組み上がる TOML のパースは成功する。`Result` が広告しているのは後段の値検証の失敗だけ"
+  )]
   fn run_validate_with_serif_extra(extra_lines: &str) -> Result<(), Vec<ConfigValidationError>> {
     let toml = format!(
       "sources = [\"dummy.sei\"]\n\n{}{}{}",

@@ -78,6 +78,10 @@ mod tests {
   };
 
   /// ソースを評価して最初の `HirNodeKind::Table` を取り出すヘルパ
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文として妥当なソースしか渡さないのでパースは成功する。`Result` が広告しているのは評価段の失敗だけ"
+  )]
   fn eval_table(source: &str) -> Result<Vec<HirNode>, EvalError> {
     let arena = Bump::new();
     let cst = test_support::parse(source, &arena).unwrap();

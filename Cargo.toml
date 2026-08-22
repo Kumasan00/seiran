@@ -96,6 +96,12 @@ multiple_unsafe_ops_per_block = "warn"
 panic = "warn"
 # 返り値の型で失敗を広告した関数の中で落ちない（診断エラーにして Err で返す）。
 panic_in_result_fn = "warn"
+# 同じ関数の `unwrap` / `expect` 側。`.expect()` の逃げ道は残すが、失敗を型で広告した関数の中では
+# `#[expect]` + 根拠への格上げを求める（`allow-unwrap-in-tests` を見ないのでテストにも効く）。
+# 発火するのは受け手と返り値の型ファミリが一致する組（`-> Result` の中の `Result::unwrap` /
+# `-> Option` の中の `Option::unwrap`）だけで、食い違う組とクロージャの本体は見ない。網羅ではなく
+# 「広告した失敗そのものを握り潰した」形を押さえる部分的な機械化（`missing_docs*` と同じ性格）。
+unwrap_in_result = "warn"
 # 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `#![expect]` で開ける。
 print_stderr = "warn"
 print_stdout = "warn"

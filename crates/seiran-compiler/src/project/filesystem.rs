@@ -54,6 +54,13 @@ impl FilesystemProjectSource {
   ///
   /// per-path locking により、同じパスへの並行アクセスのみ同期され、異なるパスの読み込みは
   /// 独立した `Arc<Mutex<()>>` でロックされるため並列実行される。
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "`cache` / `in_flight` / `disk_reads` の臨界区間は HashMap 操作だけで巻き戻さないので poison しない。\
+              `path_lock` の guard だけは I/O と cache 挿入まで覆うが、その区間で panic し得るのは上の 3 つの \
+              lock だけなので同じく poison しない。仮に起きても入力由来ではない（不変条件の破れなので \
+              `SourceReadError` では表現しない）"
+  )]
   fn read_cached(&self, path: &ProjectPath) -> Result<Arc<[u8]>, SourceReadError> {
     // 1. Fast path: already cached — no per-path lock needed at all.
     if let Some(cached) = self.cache.lock().expect("cache mutex は poison しない").get(path) {
