@@ -2,6 +2,7 @@
 
 use std::{
   collections::HashMap,
+  fmt,
   sync::{Arc, Mutex},
 };
 
@@ -22,6 +23,19 @@ pub struct FilesystemProjectSource {
   /// テスト用：各パスについて実ディスク読み込みを行った回数。
   #[cfg(test)]
   disk_reads: Mutex<HashMap<ProjectPath, usize>>,
+}
+
+impl fmt::Debug for FilesystemProjectSource {
+  /// キャッシュの中身（フォント・画像の生バイト列）ではなく、載っているパス数を出す。
+  ///
+  /// ロックを待たない（`try_lock`）ので、`Debug` 出力のために読み込みが止まることはない。
+  /// 取得できなかった場合は `None` を出す。
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    return f
+      .debug_struct("FilesystemProjectSource")
+      .field("cached_paths", &self.cache.try_lock().map(|cache| return cache.len()).ok())
+      .finish_non_exhaustive();
+  }
 }
 
 impl FilesystemProjectSource {

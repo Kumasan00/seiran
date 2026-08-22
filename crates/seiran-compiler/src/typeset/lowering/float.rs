@@ -310,7 +310,7 @@ mod tests {
       .iter()
       .flat_map(|n| match n {
         LayoutNode::VBox { children, .. } => return children.as_slice(),
-        _ => return &[] as &[LayoutNode],
+        _ => return &[],
       })
       .find_map(|n| match n {
         LayoutNode::Link { target, children } => return Some((target, children)),

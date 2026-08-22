@@ -2,6 +2,7 @@
 
 use std::{
   collections::HashMap,
+  fmt,
   path::Path,
   sync::{Arc, Mutex},
 };
@@ -17,6 +18,13 @@ pub struct MemoryProjectSource {
   files: HashMap<ProjectPath, Arc<[u8]>>,
   /// 各パスが `read_bytes` / `read_text` で要求された回数。
   read_counts: Mutex<HashMap<ProjectPath, usize>>,
+}
+
+impl fmt::Debug for MemoryProjectSource {
+  /// 登録済みファイルの中身（生バイト列）ではなく、件数を出す。
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    return f.debug_struct("MemoryProjectSource").field("files", &self.files.len()).finish_non_exhaustive();
+  }
 }
 
 impl MemoryProjectSource {
