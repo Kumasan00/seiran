@@ -60,6 +60,10 @@ impl CompileFailure {
   }
 
   /// 主診断から順に、保持する診断を返す（必ず 1 件以上）。
+  #[expect(
+    trivial_casts,
+    reason = "`Box<dyn Diagnostic + Send + Sync>` から auto trait を落として `&dyn Diagnostic` にする変換で、外すと反復子の要素型が合わない"
+  )]
   pub fn diagnostics(&self) -> impl Iterator<Item = &(dyn Diagnostic + 'static)> {
     return std::iter::once(self.primary.as_ref() as &dyn Diagnostic)
       .chain(self.rest.iter().map(|diagnostic| return diagnostic.as_ref() as &dyn Diagnostic));
@@ -116,6 +120,10 @@ impl Diagnostic for CompileFailure {
   fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { return self.primary.labels(); }
 
   /// 主診断自身の関連診断に、この失敗が持つ残りの診断を続けて返す。
+  #[expect(
+    trivial_casts,
+    reason = "`Box<dyn Diagnostic + Send + Sync>` から auto trait を落として `&dyn Diagnostic` にする変換で、外すと反復子の要素型が合わない"
+  )]
   fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
     let inherited = self.primary.related();
     if self.rest.is_empty() {

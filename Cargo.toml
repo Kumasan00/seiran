@@ -152,10 +152,14 @@ debug_assert_with_mut_call = { level = "warn", priority = 2 }
 [workspace.lints.rust]
 # 借用を持つ型は `Foo<'_>` と書き、借用の存在を字面に出す（G1 のライフタイムへの適用）。
 elided_lifetimes_in_paths = "warn"
+# 公開型は `Debug` を持つ（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。
+missing_debug_implementations = "warn"
 missing_docs = "warn"
 # ライフタイム表記の残骸（いずれも実測 0 件）。
 redundant_lifetimes = "warn"
 single_use_lifetimes = "warn"
+# 型推論で足りる `as` を落とす（「意味のある変換がある」という誤読を残さない）。
+trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unnameable_types = "warn"
 unreachable_pub = "warn"

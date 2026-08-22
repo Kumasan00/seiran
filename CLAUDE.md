@@ -183,10 +183,12 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 - 上記とは別枠で、**nursery lint** の `redundant_clone` / `derive_partial_eq_without_eq` を warn で有効化している（restriction ではないので同じ列には並べない）
 - clippy.toml の設定値は `absolute-paths-max-segments = 3`（下の bullet）と `allow-unwrap-in-tests = true`（テスト内の `.unwrap()` を対象外にする）の 2 つ。
 - `absolute_paths` は `clippy.toml` の `absolute-paths-max-segments = 3` で運用する。`project::config::load` と `style::load` を書き分ける既存のイディオム（3 セグメント）は温存され、`crate::` を頭に付けた 4 セグメント以上だけが落ちる。これは「use 文」規約の**最終防衛線**であって規約そのものではない — 規約は本体コードに `crate::` を直書きしないことを求めており、lint はそのうち検出できる分だけを機械化している。`#[cfg(test)]` の中でも発火するので、テストにも同じ規約が効く
-- rustc 側は `elided_lifetimes_in_paths` / `missing_docs` / `unnameable_types` / `unreachable_pub` / `unsafe_op_in_unsafe_fn` / `unused_qualifications` を warn で明示有効化している（ほかに 0 件予防の 4 件は上の bullet）
+- rustc 側は `elided_lifetimes_in_paths` / `missing_debug_implementations` / `missing_docs` / `trivial_casts` / `unnameable_types` / `unreachable_pub` / `unsafe_op_in_unsafe_fn` / `unused_qualifications` を warn で明示有効化している（ほかに 0 件予防の 4 件は上の bullet）
   - `unreachable_pub` は「モジュールは既定で非公開 + root ファサード」を機械的に強制するもので、外から到達しない `pub` は `pub(crate)` / `pub(super)` に狭める（crate 外へ本当に公開する項目だけが `pub` として残る）。`unnameable_types` はその裏面で、公開シグネチャに現れるのに facade から名指しできない型を落とす — 直し方は 2 択で、公開 API の一部なら facade へ再エクスポートし、内部型なら宣言側の可視性を狭める
   - `unused_qualifications` は use 規約「最短パス」の機械化。スコープに入っている名前を `std::sync::Arc::new` のように再修飾しない（`absolute_paths` は 4 セグメント以上しか見ないので、こちらが短いパスの側を押さえる）
   - `missing_docs` は必須ルール 4 の公開項目側（非公開側は `missing_docs_in_private_items`）
+  - `missing_debug_implementations` は公開型に `Debug` を要求する（利用側の `#[derive(Debug)]` が連鎖して失敗しないように）。実装は手書きにして、キャッシュやファイル内容の生バイト列ではなく件数を出す（`publication` の `Debug` と同じ方針）
+  - `trivial_casts` は型推論で足りる `as` を落とす。trait object から auto trait（`Send` / `Sync`）を落とす変換のように、外すとコンパイルが通らないキャストで発火することがあるので、その場合だけ `#[expect]` + 理由で残す
   - `elided_lifetimes_in_paths` は借用を持つ型を `Foo<'_>` と書かせる。`Foo` と書けると「その型が借用を持つか」が字面から消え、宣言まで遡らないと読めない（G1 のライフタイムへの適用）
   - `unsafe_op_in_unsafe_fn` は Edition 2024 の既定と同じ水準を設定として固定するもので、`unsafe fn` の本体でも `unsafe {}` を書かせる
 - `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
