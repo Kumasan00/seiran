@@ -179,13 +179,14 @@ related）の設計・ソース位置付与・garde バリデーション追加�
 正典は root `Cargo.toml` の `[workspace.lints.rust]` / `[workspace.lints.clippy]`（各クレートは `lints.workspace = true` で両テーブルを継承）と、lint 側の設定値を持つ root `clippy.toml`。
 
 - `clippy::all` が deny、`pedantic` が warn。`needless_return` / `similar_names` / `too_many_lines` は allow
-- restriction lint の `absolute_paths` / `allow_attributes_without_reason` / `implicit_return` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `mod_module_files` / `multiple_unsafe_ops_per_block` / `undocumented_unsafe_blocks` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
+- restriction lint の `absolute_paths` / `allow_attributes_without_reason` / `implicit_return` / `map_err_ignore` / `missing_assert_message` / `missing_docs_in_private_items` / `mod_module_files` / `multiple_unsafe_ops_per_block` / `undocumented_unsafe_blocks` / `unused_result_ok` を warn で追加有効化している。「必須ルール」1（`return` 必須）はこれで機械的に強制され、4（doc コメント）は**有無だけ**が検査される（日本語で書かれているかは検査されないので人が見る）
 - `absolute_paths` は `clippy.toml` の `absolute-paths-max-segments = 3` で運用する。`project::config::load` と `style::load` を書き分ける既存のイディオム（3 セグメント）は温存され、`crate::` を頭に付けた 4 セグメント以上だけが落ちる。これは「use 文」規約の**最終防衛線**であって規約そのものではない — 規約は本体コードに `crate::` を直書きしないことを求めており、lint はそのうち検出できる分だけを機械化している。`#[cfg(test)]` の中でも発火するので、テストにも同じ規約が効く
 - rustc 側は `unreachable_pub` / `unsafe_op_in_unsafe_fn` を warn で明示有効化している。前者は「モジュールは既定で非公開 + root ファサード」を機械的に強制するもので、外から到達しない `pub` は `pub(crate)` / `pub(super)` に狭める（crate 外へ本当に公開する項目だけが `pub` として残る）。後者は Edition 2024 の既定と同じ水準を設定として固定するもので、`unsafe fn` の本体でも `unsafe {}` を書かせる
 - `unsafe {}` には直前の行に `// SAFETY:` コメントが必須（`undocumented_unsafe_blocks`）。間に別の文を挟むと検出されないので、ブロックの直上に置く
 - `unsafe {}` 1 つに unsafe 操作は 1 つだけ（`multiple_unsafe_ops_per_block`）。複数の操作をまとめず、操作ごとにブロックを分けて各々に `// SAFETY:` を書く（どの操作のどの前提が根拠かを 1 対 1 で対応させる）
 - `mod.rs` を作らない（`mod_module_files`）。サブモジュールを持つモジュールは親を `foo.rs`・子を `foo/<child>.rs` に置く（「モジュール構成」節）。統合テストの `tests/common/mod.rs` はこの lint の検査対象外なので、例外はそのまま置ける
 - `map_err(|_| ...)` で元のエラーを黙って捨てない（`map_err_ignore`）。低水準の cause は leaf diagnostic の `#[source]` に入れて包み、`ParseFloatError` のように値を持たず本当に捨ててよい場合は `let ... else` / `ok_or_else` で書く（捨てていることが字面に出る形にする）
+- `Result` を `.ok()` で捨てない（`unused_result_ok`）。`let _ = f().ok();` / `f().ok();` は「`Option` に変換した」という体裁で失敗を握り潰す書き方なので、無視してよい失敗なら `let _ = f();` と書いて捨てていること自体を字面に出す（`map_err_ignore` と同じ理由）。値が要る場合は `.ok()` のまま `?` / `unwrap_or` へ繋げてよく、この lint は結果を使わない場合だけ発火する
 - `#[allow(...)]` には `reason = "..."` が必須（`allow_attributes_without_reason`）。書くのは「なぜ許してよいか」＝上流のどの保証・どの設計判断が根拠かで、lint 名の言い換え（`reason = "truncation を許す"`）は書かない（`missing_assert_message` / `unreachable!` と同じ書き方）。根拠が言えない属性は書き足さずに素直に直す（`dead_code` は本当に未使用なら削除する）
 - **有効化されていない lint を allow しない**。属性があるのは「そこで実際に lint を抑えている」ときだけで、抑制していない属性は「ここは lint を抑えている」という誤読を招くだけの死んだ注釈になる
 - 本体コードの `assert!` / `debug_assert!` 系にはメッセージが必須（`missing_assert_message`）。条件の言い換えではなく「なぜ成り立つはずか」＝上流のどの保証が破れたのかを日本語で書く（`unreachable!` と同じ書き方）。テストコード（`#[test]` / `#[cfg(test)]`）では発火しないので、テストの素の `assert_eq!` はそのままでよい
