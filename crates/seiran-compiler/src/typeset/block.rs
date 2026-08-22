@@ -7,9 +7,10 @@ mod script;
 mod toc;
 mod yakumono;
 
+use std::borrow::Cow;
+
 pub(super) use index::{IndexEntryInput, IndexPageRef, sort_index_entries};
 pub(crate) use index::{build_index_blocks, build_index_spec};
-use lazy_regex::regex_replace_all;
 pub(super) use running::{RunningContentSpec, RunningMetadata, RunningSlots, layout_running_content};
 pub(super) use toc::TocEntryInput;
 pub(crate) use toc::{build_toc_blocks, build_toc_spec};
@@ -48,6 +49,17 @@ const JA_LATIN_AKI_STRETCH_RATIO: f32 = 0.05;
 
 /// ブロック間アキ（`VBox::margin_bottom`）の伸長能力（自然値に対する倍率）
 const BLOCK_GLUE_STRETCH_RATIO: f32 = 1.0;
+
+/// テキスト中の改行を空白 1 個へ畳む。
+///
+/// ソース上の改行は語の区切りであって行分割の指示ではないため、シェーピング前に空白へ均す。
+/// 改行を含まない入力（大多数）は借用のまま返す。
+fn fold_newlines(text: &str) -> Cow<'_, str> {
+  if text.contains('\n') {
+    return Cow::Owned(text.replace('\n', " "));
+  }
+  return Cow::Borrowed(text);
+}
 
 /// フォント設計単位の合計 `units` を、フォントサイズ `font_size` と `upem` からスケールして長さにする。
 #[expect(
@@ -351,7 +363,7 @@ impl Measurer<'_> {
 
   /// テキストをスクリプト別にシェーピングし、計測済みの `HBox` 列を返す
   pub(crate) fn shape_text(&mut self, text: &str, style: TextStyle) -> Vec<HBox> {
-    let text = regex_replace_all!("\n", text, " ");
+    let text = fold_newlines(text);
     let segments = script::split_text_by_script(style.font_kind, &text);
     return segments
       .into_iter()
@@ -361,7 +373,7 @@ impl Measurer<'_> {
 
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   fn push_text_items(&mut self, text: &str, style: TextStyle, out: &mut Vec<HItem>) {
-    let text = regex_replace_all!("\n", text, " ");
+    let text = fold_newlines(text);
     // 直前セグメントの（スクリプトカテゴリ, 末尾文字）。和欧文間アキ（#174）の境界判定に使う。
     let mut prev_boundary: Option<(script::ScriptCategory, char)> = None;
     for segment in script::split_text_by_script(style.font_kind, &text) {

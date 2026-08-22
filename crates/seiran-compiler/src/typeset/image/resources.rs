@@ -357,7 +357,7 @@ mod tests {
 
     // Assert
     let (w, h) = resolved.expect("自然寸法が有効なので Some");
-    let expected_height = 160.0 * (180.0_f32 / 320.5_f32);
+    let expected_height = 160.0 * (180.0f32 / 320.5f32);
     assert!((w - 160.0).abs() < 1e-4);
     assert!((h - expected_height).abs() < 1e-4);
   }

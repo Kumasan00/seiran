@@ -1761,7 +1761,7 @@ mod tests {
     // Arrange — 各行に脚注が付き、widow/orphan 補正で計画が立て直される長さの段落
     let geom = cramped_geometry();
     let mut items = Vec::new();
-    for number in 1..=3_u32 {
+    for number in 1..=3u32 {
       if number > 1 {
         items.push(HItem::ForcedBreak);
       }

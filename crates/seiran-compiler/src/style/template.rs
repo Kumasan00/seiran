@@ -761,7 +761,7 @@ mod tests {
   fn title_closure_is_not_called_without_a_title_placeholder() {
     // Arrange — タイトル生成には脚注 index を払い出す副作用があるので呼んではならない
     let template = NumberTitleTemplate::parse("No.{number}");
-    let mut calls = 0_u32;
+    let mut calls = 0u32;
 
     // Act
     let nodes = template.expand(
@@ -782,7 +782,7 @@ mod tests {
   fn title_closure_is_called_once_per_occurrence() {
     // Arrange
     let template = NumberTitleTemplate::parse("{title} / {title}");
-    let mut calls = 0_u32;
+    let mut calls = 0u32;
 
     // Act
     let nodes = template.expand(

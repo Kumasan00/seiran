@@ -17,7 +17,6 @@ hayagriva.workspace = true
 hypher.workspace = true
 icu.workspace = true
 image.workspace = true
-lazy-regex.workspace = true
 memchr.workspace = true
 miette.workspace = true
 phf.workspace = true

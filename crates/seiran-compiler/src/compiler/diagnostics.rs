@@ -339,7 +339,7 @@ fn golden_diagnostics_show_no_aggregate_or_phase_wrapper() {
 
   // Act / Assert
   let entries = fs::read_dir(diagnostic_golden_dir()).expect("golden ディレクトリを読めるはず");
-  let mut checked = 0_usize;
+  let mut checked = 0usize;
   for entry in entries {
     let path = entry.expect("golden エントリを読めるはず").path();
     if path.extension().is_none_or(|extension| return extension != "txt") {

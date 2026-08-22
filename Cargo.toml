@@ -29,7 +29,6 @@ icu = { version = "2.2.0", features = ["compiled_data"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 krilla = "0.8.2"
 krilla-svg = "0.8.1"
-lazy-regex = "3.6.0"
 lopdf = { version = "0.44.0", default-features = false }
 memchr = "2.8.2"
 miette = { version = "7.6.0", features = ["fancy"] }
@@ -76,6 +75,8 @@ multiple_unsafe_ops_per_block = { level = "warn", priority = 2 }
 panic_in_result_fn = { level = "warn", priority = 2 }
 undocumented_unsafe_blocks = { level = "warn", priority = 2 }
 unnecessary_safety_comment = { level = "warn", priority = 2 }
+# 数値リテラルの型サフィックスは `1u32` 形に統一する（`1_u32` 形との混在を止める）。
+separated_literal_suffix = { level = "warn", priority = 2 }
 unused_result_ok = { level = "warn", priority = 2 }
 # 本体の `.unwrap()` を禁じ、panic しない根拠を `.expect()` のメッセージへ書かせる
 # （`unreachable!` / `missing_assert_message` と同じ「根拠を書かせる」形）。
@@ -105,6 +106,8 @@ lossy_float_literal = { level = "warn", priority = 2 }
 redundant_test_prefix = { level = "warn", priority = 2 }
 same_name_method = { level = "warn", priority = 2 }
 string_add = { level = "warn", priority = 2 }
+# メタ文字を持たないパターンは素の文字列操作で書く（正規表現エンジンを引き込まない）。
+trivial_regex = { level = "warn", priority = 2 }
 try_err = { level = "warn", priority = 2 }
 # SAFETY 族の 4 枚目 — unsafe を含まない項目に `# Safety` doc を書かせない。
 unnecessary_safety_doc = { level = "warn", priority = 2 }

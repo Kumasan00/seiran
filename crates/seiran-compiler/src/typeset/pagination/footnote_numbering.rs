@@ -83,7 +83,7 @@ mod tests {
   #[test]
   fn per_page_footnote_passes_stop_at_fixed_point() {
     // Arrange — ページ割り当てが番号に依らず安定している本文パスを模す（実文書の通常ケース）。
-    let calls = RefCell::new(0_u32);
+    let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       *calls.borrow_mut() += 1;
       return Ok(BodyLayout {
@@ -104,7 +104,7 @@ mod tests {
   #[test]
   fn per_page_footnote_passes_report_diagnostic_when_not_converged() {
     // Arrange — 番号を与えるたびにページ割り当てが変わり続けて収束しない本文パスを模す。
-    let calls = RefCell::new(0_u32);
+    let calls = RefCell::new(0u32);
     let body_pass = |_numbers: Option<&[u32]>| {
       let call = {
         let mut c = calls.borrow_mut();
