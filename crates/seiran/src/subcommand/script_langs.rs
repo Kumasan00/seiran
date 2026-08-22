@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 use miette::Diagnostic;
 use read_fonts::{
   FontRef, ReadError, TableProvider,
-  tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList},
+  tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList, ScriptRecord},
 };
 use thiserror::Error;
 use tracing::info;
@@ -89,22 +89,6 @@ enum ScriptLangsError {
     source: ReadError,
   },
 
-  /// Language System の取得エラー
-  #[error("Script '{script_tag}' のインデックス {index} の Language System の取得に失敗しました")]
-  #[diagnostic(
-    code(cli::script_langs::lang_sys_error),
-    help("Language System エントリが無効であるか、Script リスト構造が破損している可能性があります。")
-  )]
-  LangSys {
-    /// Language System インデックス
-    index: u16,
-    /// Script タグ
-    script_tag: String,
-    /// 元の読み込みエラー
-    #[source]
-    source: ReadError,
-  },
-
   /// Feature の取得エラー
   #[error("インデックス {index} の Feature の取得に失敗しました")]
   #[diagnostic(
@@ -164,7 +148,7 @@ pub(crate) fn script_langs(file_path: &Path, font_index: u32) -> miette::Result<
 ///
 /// # Errors
 ///
-/// Feature、Script、Language System の取得に失敗した場合にエラーを返す。
+/// Feature リスト、Script リスト、Feature の取得に失敗した場合にエラーを返す。
 fn process_layout_table<'a>(
   table_name: &'static str,
   feature_list: Result<FeatureList<'a>, ReadError>,
@@ -185,39 +169,82 @@ fn process_layout_table<'a>(
 ///
 /// # Errors
 ///
-/// Language System または Feature の取得に失敗した場合にエラーを返す。
+/// Feature の取得に失敗した場合にエラーを返す。
 fn print_scripts(
   scripts: &ScriptList<'_>,
   features: &FeatureList<'_>,
   referenced_features: &mut BTreeSet<String>,
 ) -> Result<(), ScriptLangsError> {
   for script_record in scripts.script_records() {
-    let script_tag = script_record.script_tag().to_string();
-    println!("  Script: {script_tag}");
-
-    if let Ok(subtable) = script_record.script(scripts.offset_data()) {
-      if let Some(default_lang_sys) = subtable.default_lang_sys() {
-        let default_lang = default_lang_sys.map_err(|source| {
-          return ScriptLangsError::LangSys {
-            index: 0,
-            script_tag: script_tag.clone(),
-            source,
-          };
-        })?;
-        let feature_tags = get_language_features(&default_lang, features, referenced_features)?;
-        println!("    Default Language System: {feature_tags:?}");
-      }
-
-      for lang_record in subtable.lang_sys_records() {
-        if let Ok(lang_sys) = lang_record.lang_sys(subtable.offset_data()) {
-          let lang_tag = lang_record.lang_sys_tag().to_string();
-          let feature_tags = get_language_features(&lang_sys, features, referenced_features)?;
-          println!("    {lang_tag}: {feature_tags:?}");
-        }
-      }
+    for line in script_lines(*script_record, scripts, features, referenced_features)? {
+      println!("{line}");
     }
   }
   return Ok(());
+}
+
+/// 1 つの `ScriptRecord` について表示する行を組み立てる。
+///
+/// `Script` サブテーブルや `LangSys` を読めなかったレコードは、読めなかった旨のマーカー行に
+/// 置き換えて走査を続ける。黙って飛ばすと「その script / 言語が存在しない」場合と区別が付かず、
+/// フォント警告が案内する確認手段としても成立しないため（#432）。レコード同士は独立なので、
+/// 1 件の破損で残りのダンプまで失わせない。
+///
+/// # Errors
+///
+/// Feature または Feature Parameters の取得に失敗した場合にエラーを返す（`FeatureList` の
+/// 索引ずれはレコード単位で閉じないので、こちらは打ち切る）。
+fn script_lines(
+  script_record: ScriptRecord,
+  scripts: &ScriptList<'_>,
+  features: &FeatureList<'_>,
+  referenced_features: &mut BTreeSet<String>,
+) -> Result<Vec<String>, ScriptLangsError> {
+  let script_tag = script_record.script_tag().to_string();
+  let mut lines = vec![format!("  Script: {script_tag}")];
+
+  // `ScriptRecord::script` は `Script` サブテーブルの Offset16 をフォントバイト列から
+  // 解決するだけ（read-fonts の `Offset16::resolve`）。オフセットが 0 なら
+  // `ReadError::NullOffset`、範囲外・切り詰めなら `ReadError::OutOfBounds` を返すので、
+  // 破損フォントで到達する
+  let subtable = match script_record.script(scripts.offset_data()) {
+    Ok(subtable) => subtable,
+    Err(source) => {
+      lines.push(format!("    (Script サブテーブルの読み取りに失敗しました: {source})"));
+      return Ok(lines);
+    },
+  };
+
+  // こちらは nullable な Offset16 なので、NULL は `None` に畳まれている。
+  // `Some(Err(_))` は「NULL ではないが解決できない」＝破損フォントの側
+  if let Some(default_lang_sys) = subtable.default_lang_sys() {
+    match default_lang_sys {
+      Ok(lang_sys) => {
+        let feature_tags = get_language_features(&lang_sys, features, referenced_features)?;
+        lines.push(format!("    Default Language System: {feature_tags:?}"));
+      },
+      Err(source) => {
+        lines.push(format!("    (既定 Language System の読み取りに失敗しました: {source})"));
+      },
+    }
+  }
+
+  for lang_record in subtable.lang_sys_records() {
+    let lang_tag = lang_record.lang_sys_tag().to_string();
+    // `LangSysRecord::lang_sys` も nullable でない Offset16 の解決なので、`script` と同じく
+    // 破損フォントで失敗しうる。タグはレコード本体にあるので、読めなくてもどの言語かは出せる
+    match lang_record.lang_sys(subtable.offset_data()) {
+      Ok(lang_sys) => {
+        let feature_tags = get_language_features(&lang_sys, features, referenced_features)?;
+        lines.push(format!("    {lang_tag}: {feature_tags:?}"));
+      },
+      Err(source) => {
+        lines.push(format!("    {lang_tag}: (Language System の読み取りに失敗しました: {source})"));
+      },
+    }
+  }
+
+  return Ok(lines);
 }
 
 /// GSUB と GPOS の Feature タグを重複なく統合する。
@@ -293,4 +320,185 @@ fn get_language_features(
     feature_tags.push(feature_tag);
   }
   return Ok(feature_tags);
+}
+
+#[cfg(test)]
+mod tests {
+  use read_fonts::{FontData, FontRead};
+
+  use super::*;
+
+  /// 正常な `Script` テーブルを指す `scriptOffset`（`ScriptList` 先頭 + scriptCount + レコード 1 件）。
+  const SCRIPT_OFFSET: u16 = 8;
+
+  /// `Script` テーブル先頭からの Offset16 として範囲外になる値。
+  const OUT_OF_BOUNDS_OFFSET: u16 = 0xffff;
+
+  /// feature index 0 だけを参照する `LangSys` テーブルのバイト列（8 バイト固定）。
+  fn lang_sys_bytes() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // lookupOrderOffset（NULL）
+    bytes.extend_from_slice(&0xffffu16.to_be_bytes()); // requiredFeatureIndex（無し）
+    bytes.extend_from_slice(&1u16.to_be_bytes()); // featureIndexCount
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // featureIndices[0]
+    return bytes;
+  }
+
+  /// タグ `liga` の Feature 1 件だけを持つ `FeatureList` のバイト列。
+  fn feature_list_bytes() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&1u16.to_be_bytes()); // featureCount
+    bytes.extend_from_slice(b"liga"); // featureTag
+    bytes.extend_from_slice(&8u16.to_be_bytes()); // featureOffset
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // Feature.featureParamsOffset（NULL）
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // Feature.lookupIndexCount
+    return bytes;
+  }
+
+  /// script タグ `latn` 1 件だけを持つ `ScriptList` のバイト列を組む。
+  ///
+  /// `script_offset` は `ScriptList` 先頭からの Offset16 で、`SCRIPT_OFFSET` を渡すと
+  /// 下で組む `Script` テーブルを指す。`default_lang_sys` が真なら既定 Language System を置く。
+  /// `lang_records` の第 2 要素が `None` なら正常な `LangSys` を指し、`Some(v)` は
+  /// その値をそのまま `langSysOffset` へ書く。
+  fn script_list_bytes(script_offset: u16, default_lang_sys: bool, lang_records: &[(&str, Option<u16>)]) -> Vec<u8> {
+    let record_count = u16::try_from(lang_records.len()).expect("テストのレコード数は u16 に収まる");
+    // `Script` テーブル先頭から見た最初の `LangSys` 本体の位置（ヘッダ 4 + レコード 6 * N の直後）
+    let mut body_offset = 4 + 6 * record_count;
+    let mut bodies = Vec::new();
+
+    let mut script = Vec::new();
+    if default_lang_sys {
+      script.extend_from_slice(&body_offset.to_be_bytes()); // defaultLangSysOffset
+      body_offset += 8;
+      bodies.extend_from_slice(&lang_sys_bytes());
+    } else {
+      script.extend_from_slice(&0u16.to_be_bytes()); // defaultLangSysOffset（NULL）
+    }
+    script.extend_from_slice(&record_count.to_be_bytes()); // langSysCount
+    for (lang_tag, offset_override) in lang_records {
+      script.extend_from_slice(lang_tag.as_bytes()); // langSysTag
+      if let Some(offset) = offset_override {
+        script.extend_from_slice(&offset.to_be_bytes());
+      } else {
+        script.extend_from_slice(&body_offset.to_be_bytes());
+        body_offset += 8;
+        bodies.extend_from_slice(&lang_sys_bytes());
+      }
+    }
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&1u16.to_be_bytes()); // scriptCount
+    bytes.extend_from_slice(b"latn"); // scriptTag
+    bytes.extend_from_slice(&script_offset.to_be_bytes()); // scriptOffset
+    bytes.extend_from_slice(&script);
+    bytes.extend_from_slice(&bodies);
+    return bytes;
+  }
+
+  /// 組んだバイト列から `script_lines` を呼び、行と参照済み Feature を返す。
+  fn run_script_lines(script_list: &[u8]) -> (Vec<String>, BTreeSet<String>) {
+    let scripts = ScriptList::read(FontData::new(script_list)).expect("ScriptList 自体は読めるはず");
+    let feature_bytes = feature_list_bytes();
+    let features = FeatureList::read(FontData::new(&feature_bytes)).expect("FeatureList は読めるはず");
+    let mut referenced_features = BTreeSet::new();
+    let record = scripts.script_records().first().expect("script レコードを 1 件置いている");
+    let lines = script_lines(*record, &scripts, &features, &mut referenced_features).expect("Feature の取得は成功する");
+    return (lines, referenced_features);
+  }
+
+  #[test]
+  fn unreadable_script_subtable_is_reported_as_a_marker_line() {
+    // Arrange
+    let bytes = script_list_bytes(OUT_OF_BOUNDS_OFFSET, false, &[]);
+
+    // Act
+    let (lines, referenced_features) = run_script_lines(&bytes);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "script タグの行と失敗を伝えるマーカー行の 2 行が出るはず");
+    assert_eq!(lines[0], "  Script: latn");
+    assert!(
+      lines[1].starts_with("    (Script サブテーブルの読み取りに失敗しました:"),
+      "黙って飛ばさず読み取り失敗を出力に残すはず: {}",
+      lines[1]
+    );
+    assert!(referenced_features.is_empty(), "読めなかった script は Feature を参照しない");
+  }
+
+  #[test]
+  fn null_script_offset_is_reported_as_a_marker_line() {
+    // Arrange
+    let bytes = script_list_bytes(0, false, &[]);
+
+    // Act
+    let (lines, _) = run_script_lines(&bytes);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "NULL オフセットも読み取り失敗として 1 行に出るはず");
+    assert!(
+      lines[1].starts_with("    (Script サブテーブルの読み取りに失敗しました:"),
+      "NULL オフセットも黙って飛ばさないはず: {}",
+      lines[1]
+    );
+  }
+
+  #[test]
+  fn unreadable_default_lang_sys_is_reported_as_a_marker_line() {
+    // Arrange
+    let mut bytes = script_list_bytes(SCRIPT_OFFSET, true, &[]);
+    let default_offset_at = usize::from(SCRIPT_OFFSET);
+    bytes[default_offset_at..default_offset_at + 2].copy_from_slice(&OUT_OF_BOUNDS_OFFSET.to_be_bytes());
+
+    // Act
+    let (lines, referenced_features) = run_script_lines(&bytes);
+
+    // Assert
+    assert_eq!(lines.len(), 2, "既定 Language System の失敗も 1 行として残るはず");
+    assert!(
+      lines[1].starts_with("    (既定 Language System の読み取りに失敗しました:"),
+      "打ち切らずマーカー行にするはず: {}",
+      lines[1]
+    );
+    assert!(referenced_features.is_empty(), "読めなかった LangSys は Feature を参照しない");
+  }
+
+  #[test]
+  fn unreadable_lang_sys_is_reported_but_other_languages_are_listed() {
+    // Arrange
+    let bytes = script_list_bytes(SCRIPT_OFFSET, false, &[("JAN ", None), ("TRK ", Some(OUT_OF_BOUNDS_OFFSET))]);
+
+    // Act
+    let (lines, referenced_features) = run_script_lines(&bytes);
+
+    // Assert
+    assert_eq!(lines.len(), 3, "script タグの行と言語 2 件の行が出るはず");
+    assert_eq!(lines[1], "    JAN : [\"liga\"]", "読めた言語は従来どおり一覧に出る");
+    assert!(
+      lines[2].starts_with("    TRK : (Language System の読み取りに失敗しました:"),
+      "読めなかった言語はタグ付きのマーカー行になるはず: {}",
+      lines[2]
+    );
+    assert_eq!(referenced_features, BTreeSet::from(["liga".to_owned()]));
+  }
+
+  #[test]
+  fn readable_script_lists_its_language_systems() {
+    // Arrange
+    let bytes = script_list_bytes(SCRIPT_OFFSET, true, &[("JAN ", None)]);
+
+    // Act
+    let (lines, referenced_features) = run_script_lines(&bytes);
+
+    // Assert
+    assert_eq!(
+      lines,
+      vec![
+        "  Script: latn".to_owned(),
+        "    Default Language System: [\"liga\"]".to_owned(),
+        "    JAN : [\"liga\"]".to_owned(),
+      ]
+    );
+    assert_eq!(referenced_features, BTreeSet::from(["liga".to_owned()]));
+  }
 }
