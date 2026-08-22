@@ -93,7 +93,14 @@ pub(super) fn typeset_front_matter(
 /// `max_depth` 以上の見出しは除外し、本文の番号スタイルでページラベルを作る。
 fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues, toc: &TocStyle) -> Vec<TocEntryInput> {
   let heading_pages = page_values.heading_pages();
-  debug_assert_eq!(headings.len(), heading_pages.len(), "見出し数と採取したページ数は一致するはず");
+  if headings.len() != heading_pages.len() {
+    unreachable!(
+      "lowering は見出し記録 1 件につき Heading アンカーを 1 個だけ出し、break_pages は全アンカーを \
+       いずれかの本文ページへ載せるので数が一致する: headings={} pages={}",
+      headings.len(),
+      heading_pages.len()
+    )
+  }
   return headings
     .iter()
     .zip(heading_pages.iter().copied())

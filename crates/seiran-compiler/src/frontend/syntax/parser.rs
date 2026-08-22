@@ -320,7 +320,12 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     }
 
     let end_token = self.take_peeked();
-    debug_assert_eq!(end_token.command_name(self.source), "end", "本体ループは \\end でのみ break する");
+    if end_token.command_name(self.source) != "end" {
+      unreachable!(
+        "本体ループは \\end でのみ break する（他のコマンドは parse_element が本体へ積み、トークンが \
+         尽きた場合は直前の UnclosedEnvironment で返している）"
+      )
+    }
 
     let mut end_node_children = bumpalo::collections::Vec::new_in(self.arena);
     end_node_children.push(GreenElement::Token(end_token));

@@ -68,6 +68,11 @@ pub(crate) struct RunningMetadata {
 }
 
 /// 各ページにヘッダー・フッターを配置する
+///
+/// # Panics
+///
+/// `spec` のページ番号ラベル列が `pages` より短い場合にパニックします。ラベル列は
+/// `typeset::pagination` が同じページ列から作るため、通常は起こりません。
 pub(crate) fn layout_running_content(pages: &mut [Page], resources: &FontSystem<'_>, spec: &RunningContentSpec) {
   if spec.header.is_none() && spec.footer.is_none() {
     return;
@@ -78,7 +83,7 @@ pub(crate) fn layout_running_content(pages: &mut [Page], resources: &FontSystem<
       continue;
     }
     let Some((page_label, pages_label)) = spec.page_numbers.get(index) else {
-      continue;
+      unreachable!("ページ番号ラベル列は typeset::pagination がページ列から作るので、長さはページ数と一致する")
     };
     if let Some(slots) = &spec.header {
       page.header = build_region(&mut measurer, slots, spec.text_width, page_label, pages_label, &spec.metadata);
