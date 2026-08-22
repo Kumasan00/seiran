@@ -85,7 +85,14 @@ pub(super) fn paginate(
   let page_labels = page_values.with_back_matter(&back_pages).finalize(&front_pages);
   let (front_count, body_count) = (front_pages.len(), body_pages.len());
   let mut pages = concat_pages(front_pages, body_pages, back_pages);
-  debug_assert_eq!(page_labels.len(), pages.len(), "ラベル数は物理ページ総数と一致するはず");
+  if page_labels.len() != pages.len() {
+    unreachable!(
+      "ページラベル列は前付け・本文・後付けの各ページ列そのものから作るので物理ページ総数と一致する: \
+       labels={} pages={}",
+      page_labels.len(),
+      pages.len()
+    )
+  }
   // セクション内 index を連結後の物理ページ index へ直してから診断にする。前付け → 本文 → 後付けの
   // 順に並べるので、表示順は物理ページの昇順で決定的になる（#382）
   let warnings = footnote_overflow_warnings(

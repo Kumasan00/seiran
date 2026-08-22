@@ -2,6 +2,24 @@
 
 use crate::document::MathVariant;
 
+/// Mathematical Alphanumeric ブロックの `base` から `offset` 文字目の文字を返す
+///
+/// # Panics
+///
+/// `base + offset` が Unicode スカラー値でない場合にパニックします。呼び出し元が渡す `base` は
+/// この module がリテラルで持つブロック先頭（0x1D400〜0x1D7F6）、`offset` は ASCII 英数字の差分
+/// （25 以下）か [`greek_math_offset`] の値（51 以下）なので、サロゲート域にも 0x10FFFF 超にも
+/// 届かず、通常は起こりません。
+fn math_alphanumeric(base: u32, offset: u32) -> char {
+  let Some(ch) = char::from_u32(base + offset) else {
+    unreachable!(
+      "base（0x1D400〜0x1D7F6 のブロック先頭リテラル）と offset（51 以下）の和はサロゲート域にも \
+       0x10FFFF 超にも届かない: base={base:#x} offset={offset}"
+    )
+  };
+  return ch;
+}
+
 /// 1 文字を `variant` に応じた Mathematical Alphanumeric コードポイントへ変換する
 pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> char {
   // `hole` は連続ブロックではなく Letterlike Symbols ブロックに散在する文字
@@ -12,22 +30,22 @@ pub(super) fn translate_math_char(ch: char, variant: Option<MathVariant>) -> cha
       return mapped;
     }
     match ch {
-      'A'..='Z' => return char::from_u32(upper_base + (ch as u32 - 'A' as u32)).unwrap_or(ch),
-      'a'..='z' => return char::from_u32(lower_base + (ch as u32 - 'a' as u32)).unwrap_or(ch),
+      'A'..='Z' => return math_alphanumeric(upper_base, ch as u32 - 'A' as u32),
+      'a'..='z' => return math_alphanumeric(lower_base, ch as u32 - 'a' as u32),
       _ => return ch,
     }
   };
 
   let map_digit = |ch: char, base: u32| -> char {
     match ch {
-      '0'..='9' => return char::from_u32(base + (ch as u32 - '0' as u32)).unwrap_or(ch),
+      '0'..='9' => return math_alphanumeric(base, ch as u32 - '0' as u32),
       _ => return ch,
     }
   };
 
   let map_greek = |ch: char, base: u32| -> char {
     match greek_math_offset(ch) {
-      Some(offset) => return char::from_u32(base + offset).unwrap_or(ch),
+      Some(offset) => return math_alphanumeric(base, offset),
       None => return ch,
     }
   };

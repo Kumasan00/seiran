@@ -19,10 +19,19 @@ pub(crate) struct CommandView<'a> {
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
   source: &'a str,
+  /// コマンド名（先頭の `\` を除いた名前）。構築時に取り出して保持する
+  name: &'a str,
 }
 
 impl<'a> CommandView<'a> {
   /// コマンドビューを生成する
+  ///
+  /// コマンド名は構築時に取り出して保持するので、[`CommandView::name`] は無謬になる。
+  ///
+  /// # Panics
+  ///
+  /// `node` が `CommandCall` でない場合（＝コマンドトークンを持たない場合）にパニックします。
+  /// 呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
   pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
@@ -30,7 +39,14 @@ impl<'a> CommandView<'a> {
       SyntaxKind::CommandCall,
       "CommandView は CommandCall ノードにのみ被せる（呼び出し元が kind を確認してから構築する）"
     );
-    return Self { node, source };
+    let Some(command_token) = node.first_token_of_kind(TokenKind::Command) else {
+      unreachable!("CommandCall は先頭の子にコマンドトークンを持つ（parser::parse_command_call が構築する）")
+    };
+    return Self {
+      node,
+      source,
+      name: command_token.command_name(source),
+    };
   }
 
   /// 元のソーステキストへの参照を返す
@@ -39,9 +55,7 @@ impl<'a> CommandView<'a> {
 
   /// コマンド名を返す（先頭の `\` を除いた名前）
   #[must_use]
-  pub(crate) fn name(&self) -> &'a str {
-    return self.node.first_token_of_kind(TokenKind::Command).map_or("", |t| return t.command_name(self.source));
-  }
+  pub(crate) fn name(&self) -> &'a str { return self.name; }
 
   /// ソース上のバイト範囲を返す
   #[must_use]
@@ -87,10 +101,22 @@ pub(crate) struct EnvironmentView<'a> {
   node: &'a GreenNode<'a>,
   /// 元のソーステキスト
   source: &'a str,
+  /// `\begin{...}` 側のノード（環境名・引数の取り出し元）。構築時に取り出して保持する
+  begin: &'a GreenNode<'a>,
+  /// 環境名。構築時に取り出して保持する
+  name: &'a str,
 }
 
 impl<'a> EnvironmentView<'a> {
   /// 環境ビューを生成する
+  ///
+  /// `\begin{...}` 側のノードと環境名は構築時に取り出して保持するので、[`EnvironmentView::name`] /
+  /// [`EnvironmentView::args`] / [`EnvironmentView::opt_args`] は無謬になる。
+  ///
+  /// # Panics
+  ///
+  /// `node` が `Environment` でない場合（＝`EnvironmentBegin` とその中の環境名引数を持たない場合）に
+  /// パニックします。呼び出し元が `kind` を確認してから構築するため、通常は起こりません。
   #[must_use]
   pub(crate) fn new(node: &'a GreenNode<'a>, source: &'a str) -> Self {
     debug_assert_eq!(
@@ -98,7 +124,23 @@ impl<'a> EnvironmentView<'a> {
       SyntaxKind::Environment,
       "EnvironmentView は Environment ノードにのみ被せる（呼び出し元が kind を確認してから構築する）"
     );
-    return Self { node, source };
+    let Some(begin) = node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
+      unreachable!("Environment は EnvironmentBegin を先頭の子に持つ（parser::parse_environment が構築する）")
+    };
+    let Some(name_arg) = begin.first_child_of_kind(SyntaxKind::MandatoryArg) else {
+      unreachable!(
+        "EnvironmentBegin は環境名の必須引数を先頭に持つ（parser::parse_environment が \\begin の直後に \
+         parse_mandatory_arg の結果を必ず積む）"
+      )
+    };
+    // 名前が空の `\begin{}` は入力として書けるので、Text トークンの不在はここでは到達可能
+    let name = name_arg.first_token_of_kind(TokenKind::Text).map_or("", |t| return t.text(source));
+    return Self {
+      node,
+      source,
+      begin,
+      name,
+    };
   }
 
   /// 元のソーステキストへの参照を返す
@@ -107,15 +149,7 @@ impl<'a> EnvironmentView<'a> {
 
   /// 環境名を返す
   #[must_use]
-  pub(crate) fn name(&self) -> &'a str {
-    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
-      return "";
-    };
-    let Some(name_arg) = begin.first_child_of_kind(SyntaxKind::MandatoryArg) else {
-      return "";
-    };
-    return name_arg.first_token_of_kind(TokenKind::Text).map_or("", |t| return t.text(self.source));
-  }
+  pub(crate) fn name(&self) -> &'a str { return self.name; }
 
   /// ソース上のバイト範囲を返す
   #[must_use]
@@ -130,19 +164,13 @@ impl<'a> EnvironmentView<'a> {
   /// 環境の必須引数ノードを返す（環境名の arg は除外）
   #[must_use]
   pub(crate) fn args(&self) -> Vec<&'a GreenNode<'a>> {
-    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
-      return vec![];
-    };
-    return begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
+    return self.begin.children_of_kind(SyntaxKind::MandatoryArg).skip(1).collect();
   }
 
   /// 環境の任意引数ノードを返す
   #[must_use]
   pub(crate) fn opt_args(&self) -> Vec<&'a GreenNode<'a>> {
-    let Some(begin) = self.node.first_child_of_kind(SyntaxKind::EnvironmentBegin) else {
-      return vec![];
-    };
-    return begin.children_of_kind(SyntaxKind::OptArg).collect();
+    return self.begin.children_of_kind(SyntaxKind::OptArg).collect();
   }
 }
 

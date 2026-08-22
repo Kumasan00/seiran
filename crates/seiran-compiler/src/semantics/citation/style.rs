@@ -209,6 +209,11 @@ struct LocaleLang {
 
 /// `wanted` に挙げたコードに一致する内蔵ロケールだけを `archive::LOCALES`（CBOR バイト列）から
 /// 復元して `out` に追加する。すべて見つかった時点で走査を打ち切る。
+///
+/// # Panics
+///
+/// 内蔵ロケールの復号に失敗した場合にパニックします。`archive::LOCALES` は hayagriva が
+/// コンパイル時に埋め込む定数で、外部入力ではないため通常は起こりません。
 fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
   let mut remaining = wanted.len();
   for bytes in archive::LOCALES {
@@ -216,15 +221,16 @@ fn load_builtin_locales(wanted: &[LocaleCode], out: &mut Vec<Locale>) {
       break;
     }
     let Ok(peek) = ciborium::de::from_reader::<LocaleLang, _>(*bytes) else {
-      continue;
+      unreachable!("内蔵ロケールは hayagriva が archive::LOCALES へ埋め込む CBOR 定数なので復号は失敗しない")
     };
     if !peek.lang.is_some_and(|lang| return wanted.contains(&lang)) {
       continue;
     }
-    if let Ok(locale) = ciborium::de::from_reader::<Locale, _>(*bytes) {
-      out.push(locale);
-      remaining -= 1;
-    }
+    let Ok(locale) = ciborium::de::from_reader::<Locale, _>(*bytes) else {
+      unreachable!("内蔵ロケールは hayagriva が archive::LOCALES へ埋め込む CBOR 定数なので復号は失敗しない")
+    };
+    out.push(locale);
+    remaining -= 1;
   }
 }
 
