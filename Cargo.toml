@@ -76,6 +76,12 @@ unused_result_ok = { level = "warn", priority = 2 }
 # （解析が保守的）で false-positive ではないため、発火したら真陽性として直す。
 redundant_clone = { level = "warn", priority = 2 }
 
+# nursery lint。「Eq を導出できるのに PartialEq だけ」を落とす。nursery なのは
+# 「将来 float フィールドが増えうる型」「Eq の追加が公開 API の約束になる型」で
+# 意図的に PartialEq 止まりにする選択があるためだが、seiran は Eq を導出できる型には
+# 例外なく Eq を足す方針を採る（float を持つ型は lint が発火しないのでそのまま残る）。
+derive_partial_eq_without_eq = { level = "warn", priority = 2 }
+
 [workspace.lints.rust]
 unreachable_pub = "warn"
 unsafe_op_in_unsafe_fn = "warn"

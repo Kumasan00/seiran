@@ -5,7 +5,7 @@ use std::ops::Range;
 use crate::{color::Color, length::Length, project::FontType};
 
 /// 1 つのフォント種別でシェーピングしたグリフ列
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlyphRun {
   /// テキストのフォントサイズ
   pub font_size: Length,
@@ -21,7 +21,7 @@ pub struct GlyphRun {
 }
 
 /// 単一グリフの配置情報
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Glyph {
   /// グリフ ID
   pub gid: u32,

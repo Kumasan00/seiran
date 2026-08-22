@@ -21,7 +21,7 @@ use crate::project::font::FontType;
 /// assert_eq!(map.get(FontType::Serif), "Serif");
 /// assert_eq!(map.iter().count(), 19);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontMap<T> {
   /// フォント種別ごとの値
   inner: HashMap<FontType, T>,
