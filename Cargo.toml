@@ -60,6 +60,7 @@ too_many_lines = { level = "allow", priority = 1 }
 absolute_paths = { level = "warn", priority = 2 }
 allow_attributes_without_reason = { level = "warn", priority = 2 }
 implicit_return = { level = "warn", priority = 2 }
+iter_over_hash_type = { level = "warn", priority = 2 }
 map_err_ignore = { level = "warn", priority = 2 }
 missing_assert_message = { level = "warn", priority = 2 }
 missing_docs_in_private_items = { level = "warn", priority = 2 }
