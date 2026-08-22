@@ -78,7 +78,7 @@ pub(super) enum FontValidationErrorKind {
     code(typeset::font::validation::parse),
     help("フォントファイルが破損していないか、正しい形式であるか確認してください。")
   )]
-  Parse(#[from] read_fonts::ReadError),
+  Parse(#[from] ReadError),
   /// 静的フォントにバリエーション軸が設定されている。
   #[error("このフォントはバリアブルフォントではありません。設定ファイルにバリエーション軸が指定されています。")]
   #[diagnostic(

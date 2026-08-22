@@ -86,10 +86,6 @@ impl CompilationInputs {
   ///
   /// いずれかのソースファイルの読込に失敗した場合にエラーを返す。
   #[cfg(test)]
-  #[expect(
-    clippy::result_large_err,
-    reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（入力読込は 1 回だけでサイズは最適化対象ではない）"
-  )]
   pub(super) fn from_parts(
     source: &dyn ProjectSource,
     config: ProjectConfig,
@@ -132,10 +128,6 @@ pub struct OutputPlan {
 /// **段の間は早期 return する** — config が読めなければ style path が決まらず、style が無ければ
 /// 横断検証ができない、というように後段の入力を構築できないため（#376 の集約規則）。段の中で
 /// 独立に検査できるもの（複数フォントパス・複数ソース）は全件を集約する。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（入力読込は 1 回だけでサイズは最適化対象ではない）"
-)]
 pub(super) fn load(
   source: &dyn ProjectSource,
   config_path: &Path,
@@ -179,10 +171,6 @@ fn lift<E: Into<CompileError>>(failures: Failures<E>) -> Failures<CompileError> 
 /// パスを含む leaf diagnostic を組み立てるのはここ。seam の `SourceReadError` は
 /// `Diagnostic` を実装しない低水準 cause なので、そのまま `#[source]` に載せても
 /// 入れ子の診断ブロックにはならない（#377）。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（入力読込は 1 回だけでサイズは最適化対象ではない）"
-)]
 fn read_sources(source: &dyn ProjectSource, sources: &[PathBuf]) -> Result<SourceSet, Failures<CompileError>> {
   return SourceSet::read(source, sources).map_err(|failures| {
     return failures.map(|error| {

@@ -22,7 +22,7 @@ use crate::project::font::FontType;
 /// assert_eq!(map.iter().count(), 19);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FontMap<T> {
+pub(crate) struct FontMap<T> {
   /// フォント種別ごとの値
   inner: HashMap<FontType, T>,
 }
@@ -33,7 +33,7 @@ impl<T> FontMap<T> {
   /// # Panics
   ///
   /// イテレータの要素数が [`FontType::ALL`] の要素数と異なる場合にパニックする。
-  pub fn from_all(values: impl IntoIterator<Item = T>) -> Self {
+  pub(crate) fn from_all(values: impl IntoIterator<Item = T>) -> Self {
     let inner: HashMap<FontType, T> = FontType::ALL.into_iter().zip(values).collect();
     assert_eq!(inner.len(), FontType::ALL.len(), "FontMap: 要素数が FontType::ALL と一致しません");
     return Self { inner };
@@ -46,7 +46,7 @@ impl<T> FontMap<T> {
   /// 指定された `font_type` がマップに存在しない場合にパニックします。
   /// `from_all` で正しく構築されていれば発生しません。
   #[must_use]
-  pub fn get(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
+  pub(crate) fn get(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
 
   /// 指定されたフォント種別の値を可変参照で返す
   ///
@@ -54,13 +54,20 @@ impl<T> FontMap<T> {
   ///
   /// 指定された `font_type` がマップに存在しない場合にパニックします。
   #[must_use]
-  pub fn get_mut(&mut self, font_type: FontType) -> &mut T {
+  #[cfg_attr(
+    not(test),
+    expect(
+      dead_code,
+      reason = "本体は組み立て済みの値しか触らない（crate 内の `#[cfg(test)]` が診断のフィクスチャ改変に使う）"
+    )
+  )]
+  pub(crate) fn get_mut(&mut self, font_type: FontType) -> &mut T {
     return self.inner.get_mut(&font_type).expect("FontMap: 指定された FontType が見つかりません");
   }
 
   /// [`FontType::ALL`] の順序で反復する
   #[must_use]
-  pub fn iter(&self) -> FontMapIter<'_, T> {
+  pub(crate) fn iter(&self) -> FontMapIter<'_, T> {
     return FontMapIter {
       inner: &self.inner,
       index: 0,
@@ -68,7 +75,7 @@ impl<T> FontMap<T> {
   }
 
   /// [`FontType::ALL`] の順序で可変反復する
-  pub fn iter_mut(&mut self) -> FontMapIterMut<'_, T> {
+  pub(crate) fn iter_mut(&mut self) -> FontMapIterMut<'_, T> {
     return FontMapIterMut {
       inner: &mut self.inner,
       index: 0,
@@ -79,7 +86,7 @@ impl<T> FontMap<T> {
 /// [`FontMap`] の不変イテレータ
 ///
 /// [`FontType::ALL`] の順序で `(FontType, &T)` を返します。
-pub struct FontMapIter<'a, T> {
+pub(crate) struct FontMapIter<'a, T> {
   /// 走査対象
   inner: &'a HashMap<FontType, T>,
   /// 現在位置
@@ -110,7 +117,7 @@ impl<T> ExactSizeIterator for FontMapIter<'_, T> {}
 /// [`FontMap`] の可変イテレータ
 ///
 /// [`FontType::ALL`] の順序で `(FontType, &mut T)` を返します。
-pub struct FontMapIterMut<'a, T> {
+pub(crate) struct FontMapIterMut<'a, T> {
   /// 走査対象
   inner: &'a mut HashMap<FontType, T>,
   /// 現在位置

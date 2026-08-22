@@ -48,7 +48,9 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   ビット同一の結果になる。丸め規約は `round_sp`（round-half-to-even）1 箇所に集約する。
   TOML の `"12pt"` / `"5mm"` / `"1.5cm"` を受理する `FromStr` / serde、正準形 `<pt値>pt` の `Display`、
   演算子実装（`Add` / `Sub` / `Mul<f64|f32|i32>` / `Div` / `Sum` 等）、garde のカスタムバリデータ
-  `positive` / `non_negative` をすべて同じ module に置く。
+  `positive` / `non_negative` をすべて同じ module に置く。`FromStr` の `Err` である `ParseLengthError`
+  は facade に載る — 公開 trait 実装の関連型は crate 外から名指しできる必要があるため
+  （rustc の `unnameable_types` が機械的に要求する側面）。
 - `color`: 8bit RGB 値 `Color([u8; 3])`。serde は `"#rrggbb"` の 16 進文字列のみを受理し（`[r, g, b]`
   配列は不可）、出力は小文字 16 進の正準表現。
 

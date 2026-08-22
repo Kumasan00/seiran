@@ -54,6 +54,9 @@ all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = 0 }
 
 needless_return = { level = "allow", priority = 1 }
+# 診断 enum は miette の位置情報（`NamedSource` + `SourceSpan`）を運ぶので必ず大きくなる。
+# 「thiserror + miette の富んだ診断を採る」という種類の判断 1 個の帰結で、エラーはコールドパス。
+result_large_err = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 too_many_lines = { level = "allow", priority = 1 }
 
@@ -90,7 +93,10 @@ redundant_clone = { level = "warn", priority = 2 }
 derive_partial_eq_without_eq = { level = "warn", priority = 2 }
 
 [workspace.lints.rust]
+missing_docs = "warn"
+unnameable_types = "warn"
 unreachable_pub = "warn"
+unused_qualifications = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 
 [profile.release]

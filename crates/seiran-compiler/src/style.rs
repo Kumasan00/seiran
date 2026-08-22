@@ -207,10 +207,6 @@ impl Style {
 /// # Errors
 ///
 /// ファイル読み込み・TOML 解析・値検証・参照ファイルのパス解決に失敗した場合はエラーを返します。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 pub(crate) fn load(
   source: &dyn ProjectSource,
   path: Option<&Path>,
@@ -254,10 +250,6 @@ pub(crate) fn load(
 /// # Errors
 ///
 /// TOML 解析または値検証に失敗した場合はエラーを返します。
-#[expect(
-  clippy::result_large_err,
-  reason = "位置付き診断のため `NamedSource` を同梱する Err を返す（設定・画像は 1 回しか読まないのでサイズは最適化対象ではない）"
-)]
 pub(crate) fn parse(content: &str, source_path: &str) -> Result<Style, Failures<ReadStyleError>> {
   let mut style: Style = toml::from_str(content).map_err(|source| {
     let src = NamedSource::new(source_path, content.to_string());
