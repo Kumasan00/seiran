@@ -32,7 +32,7 @@ mod typeset;
 // （再エクスポートしないと `ProjectSource` trait 自体が事実上実装不能になる）。`ProjectConfig`/`Style`
 // 等の内部データモデルは `compile` の引数にも `Compilation` の出力にも現れない（`ProjectSource`
 // 経由でファイルから読み込まれ内部で完結する）ため、ここには含めない。
-pub use color::Color;
+pub use color::{Color, ParseColorError};
 pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, OutputPlan, Warnings, compile};
 pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
