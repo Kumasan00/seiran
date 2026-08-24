@@ -95,7 +95,7 @@ pub fn compile<S: ProjectSource>(
   info!(phase = "compile", config_path = %root, "PDF のコンパイルを開始します");
 
   let stage_start = Instant::now();
-  let inputs = input::load(source, root.as_path(), base_dir)?;
+  let inputs = input::load(source, root.as_ref(), base_dir)?;
   info!(phase = "input", elapsed_ms = elapsed_ms(stage_start), "入力の読み込みが完了しました");
 
   let stage_start = Instant::now();
@@ -142,7 +142,7 @@ pub fn compile<S: ProjectSource>(
   let images = std::mem::take(&mut laid_out.images);
   let resources = build_resources(inputs.font_data(), &font_resources, images);
   let publication = publication::build_publication(inputs.config(), resources, &laid_out);
-  let dependencies = DependencyManifest::collect(root.as_path(), &inputs, &laid_out.image_paths);
+  let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
   let total_elapsed_ms = elapsed_ms(build_start);
   let statistics = BuildStatistics {
