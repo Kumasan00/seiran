@@ -332,7 +332,7 @@ fn validate_and_convert(pre: &PreConfig) -> Result<Vec<FontValues>, Vec<ConfigVa
 
   let mut font_values: Vec<FontValues> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    match parse_font_values(font_type, pre.font_configs.get(font_type)) {
+    match parse_font_values(font_type, &pre.font_configs[font_type]) {
       Ok(values) => font_values.push(values),
       Err(value_errors) => errors.extend(value_errors),
     }
@@ -372,7 +372,7 @@ fn resolve_paths(
 
   let mut font_paths: Vec<PathBuf> = Vec::with_capacity(FontType::ALL.len());
   for font_type in FontType::ALL {
-    let pre_font_config = pre.font_configs.get(font_type);
+    let pre_font_config = &pre.font_configs[font_type];
     let joined = join_with_base(&pre_font_config.font_path, base_dir);
     if source.exists(&ProjectPath::new(&joined)) {
       font_paths.push(joined);
@@ -1315,7 +1315,7 @@ mod tests {
     let base_dir = config_path.parent().expect("fixture パスは親ディレクトリを持つはず").to_path_buf();
     let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
-    let serif = config.font_configs.get(FontType::Serif);
+    let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.script, Some(*b"Latn"));
   }
 
@@ -1338,7 +1338,7 @@ mod tests {
     let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
-    let serif = config.font_configs.get(FontType::Serif);
+    let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.language.as_deref(), Some("ja-x-hbotJAN"));
     assert_eq!(serif.script, Some(*b"kana"));
     assert_eq!(serif.ot_language_tag, Some(*b"JAN "));
@@ -1363,7 +1363,7 @@ mod tests {
     let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
-    let serif = config.font_configs.get(FontType::Serif);
+    let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.language.as_deref(), Some("und-x-hbotENG"));
     assert_eq!(serif.ot_language_tag, Some(*b"ENG "));
   }
@@ -1387,7 +1387,7 @@ mod tests {
     let (config, _): (ProjectConfig, _) = load(&source, &config_path, &base_dir).unwrap();
 
     // Assert
-    let serif = config.font_configs.get(FontType::Serif);
+    let serif = &config.font_configs[FontType::Serif];
     assert_eq!(serif.direction, Some(TextDirection::RightToLeft));
   }
 
@@ -1454,7 +1454,7 @@ mod tests {
 
     // Assert
     for font_type in FontType::ALL {
-      assert_eq!(config.font_configs.get(font_type).direction, None, "{font_type:?}");
+      assert_eq!(config.font_configs[font_type].direction, None, "{font_type:?}");
     }
   }
 

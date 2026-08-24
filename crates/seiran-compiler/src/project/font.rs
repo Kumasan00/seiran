@@ -64,7 +64,7 @@ impl FontData {
   /// いずれかのファイルを読み込めない場合に [`FontReadError::ReadFont`] をパス昇順で返す。
   pub(crate) fn load(source: &dyn ProjectSource, font_configs: &FontConfigs) -> Result<Self, Failures<FontReadError>> {
     let mut unique_paths: Vec<PathBuf> =
-      FontType::ALL.iter().map(|&ft| return font_configs.get(ft).font_path.clone()).collect();
+      FontType::ALL.iter().map(|&ft| return font_configs[ft].font_path.clone()).collect();
     unique_paths.sort();
     unique_paths.dedup();
 
@@ -74,7 +74,7 @@ impl FontData {
         let bytes = source.read_bytes(&ProjectPath::new(path)).map_err(|source| {
           let font_type = FontType::ALL
             .iter()
-            .find(|&&ft| return &font_configs.get(ft).font_path == path)
+            .find(|&&ft| return &font_configs[ft].font_path == path)
             .copied()
             .expect("unique_paths は font_configs から集めた値のはず");
           return FontReadError::ReadFont {
@@ -91,7 +91,7 @@ impl FontData {
     let font_datas = FontType::ALL
       .iter()
       .map(|&font_type| {
-        let path = &font_configs.get(font_type).font_path;
+        let path = &font_configs[font_type].font_path;
         return Arc::clone(loaded.get(path).expect("上のループで全パスを読み込み済みのはず"));
       })
       .collect::<Vec<Arc<Vec<u8>>>>();
@@ -100,13 +100,13 @@ impl FontData {
 
   /// 指定されたフォント種別のバイト列を返す。
   #[must_use]
-  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return self.0.get(font_type).as_slice(); }
+  pub(crate) fn get(&self, font_type: FontType) -> &[u8] { return self.0[font_type].as_slice(); }
 
   /// 指定されたフォント種別のバイト列を共有ハンドルとして返す。
   ///
   /// `Publication` の描画資源へ渡すために使う（バイト列は複製されない）。
   #[must_use]
-  pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(self.0.get(font_type)); }
+  pub(crate) fn shared_bytes(&self, font_type: FontType) -> Arc<Vec<u8>> { return Arc::clone(&self.0[font_type]); }
 }
 
 #[cfg(test)]

@@ -197,7 +197,7 @@ fn diagnostic_font_validation_error() {
   // 内部の `validate_fonts` を失敗させる（`FontSystemError::Validation` の `transparent` 委譲を確認）
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
-  config.font_configs.get_mut(FontType::Serif).variation_axes = Some(vec![VariationAxis {
+  config.font_configs[FontType::Serif].variation_axes = Some(vec![VariationAxis {
     name: *b"zzzz",
     value: 0.0,
   }]);
@@ -216,7 +216,7 @@ fn diagnostic_font_validation_errors_follow_font_type_order() {
   enter_workspace_root();
   let (mut config, _style, _references) = load_base();
   for font_type in [FontType::JapaneseSerif, FontType::Serif] {
-    config.font_configs.get_mut(font_type).variation_axes = Some(vec![VariationAxis {
+    config.font_configs[font_type].variation_axes = Some(vec![VariationAxis {
       name: *b"zzzz",
       value: 0.0,
     }]);

@@ -118,7 +118,7 @@ impl PublicationResources {
 
   /// 指定フォント種別の描画資源を返す。
   #[must_use]
-  pub fn font(&self, font_type: FontType) -> &PublicationFont { return self.fonts.get(font_type); }
+  pub fn font(&self, font_type: FontType) -> &PublicationFont { return &self.fonts[font_type]; }
 
   /// 指定パスの画像への参照を返す。保持していないパスは `None`。
   ///

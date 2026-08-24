@@ -164,12 +164,12 @@ impl FontSystem<'_> {
     text: &str,
     point_size: f32,
   ) -> harfrust::GlyphBuffer {
-    return self.shapers.get(font_type).shape(buffer, text, point_size);
+    return self.shapers[font_type].shape(buffer, text, point_size);
   }
 
   /// 指定フォント種別の基本メトリクスを返す。
   #[must_use]
-  pub(crate) fn metric(&self, font_type: FontType) -> FontMetric { return *self.metrics.get(font_type); }
+  pub(crate) fn metric(&self, font_type: FontType) -> FontMetric { return self.metrics[font_type]; }
 }
 
 /// ステージ開始時刻からの経過ミリ秒を返す（DEBUG ログの `elapsed_ms` 用）。

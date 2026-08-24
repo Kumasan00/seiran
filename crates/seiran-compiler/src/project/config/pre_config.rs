@@ -1,6 +1,6 @@
 //! TOML ファイルからのデシリアライズ用設定構造体
 
-use std::path::PathBuf;
+use std::{ops::Index, path::PathBuf};
 
 use garde::Validate;
 use serde::Deserialize;
@@ -219,30 +219,31 @@ pub(crate) struct PreFontConfigs {
   pub japanese_monospace_bold: PreFontConfig,
 }
 
-impl PreFontConfigs {
-  /// フォント種別に対応する `PreFontConfig` を取得します。
-  pub(super) fn get(&self, font_type: FontType) -> &PreFontConfig {
-    match font_type {
-      FontType::Serif => return &self.serif,
-      FontType::SerifBold => return &self.serif_bold,
-      FontType::SerifItalic => return &self.serif_italic,
-      FontType::SerifBoldItalic => return &self.serif_bold_italic,
-      FontType::SansSerif => return &self.sans_serif,
-      FontType::SansSerifBold => return &self.sans_serif_bold,
-      FontType::SansSerifItalic => return &self.sans_serif_italic,
-      FontType::SansSerifBoldItalic => return &self.sans_serif_bold_italic,
-      FontType::Monospace => return &self.monospace,
-      FontType::MonospaceBold => return &self.monospace_bold,
-      FontType::MonospaceItalic => return &self.monospace_italic,
-      FontType::MonospaceBoldItalic => return &self.monospace_bold_italic,
-      FontType::Math => return &self.math,
-      FontType::JapaneseSerif => return &self.japanese_serif,
-      FontType::JapaneseSerifBold => return &self.japanese_serif_bold,
-      FontType::JapaneseSansSerif => return &self.japanese_sans_serif,
-      FontType::JapaneseSansSerifBold => return &self.japanese_sans_serif_bold,
-      FontType::JapaneseMonospace => return &self.japanese_monospace,
-      FontType::JapaneseMonospaceBold => return &self.japanese_monospace_bold,
-    }
+impl Index<FontType> for PreFontConfigs {
+  type Output = PreFontConfig;
+
+  fn index(&self, font_type: FontType) -> &PreFontConfig {
+    return match font_type {
+      FontType::Serif => &self.serif,
+      FontType::SerifBold => &self.serif_bold,
+      FontType::SerifItalic => &self.serif_italic,
+      FontType::SerifBoldItalic => &self.serif_bold_italic,
+      FontType::SansSerif => &self.sans_serif,
+      FontType::SansSerifBold => &self.sans_serif_bold,
+      FontType::SansSerifItalic => &self.sans_serif_italic,
+      FontType::SansSerifBoldItalic => &self.sans_serif_bold_italic,
+      FontType::Monospace => &self.monospace,
+      FontType::MonospaceBold => &self.monospace_bold,
+      FontType::MonospaceItalic => &self.monospace_italic,
+      FontType::MonospaceBoldItalic => &self.monospace_bold_italic,
+      FontType::Math => &self.math,
+      FontType::JapaneseSerif => &self.japanese_serif,
+      FontType::JapaneseSerifBold => &self.japanese_serif_bold,
+      FontType::JapaneseSansSerif => &self.japanese_sans_serif,
+      FontType::JapaneseSansSerifBold => &self.japanese_sans_serif_bold,
+      FontType::JapaneseMonospace => &self.japanese_monospace,
+      FontType::JapaneseMonospaceBold => &self.japanese_monospace_bold,
+    };
   }
 }
 
@@ -365,7 +366,7 @@ impl Default for PreImageConfig {
 pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   let mut seen = std::collections::HashSet::new();
   for font_type in FontType::ALL {
-    let name = value.get(font_type).font_name.as_str();
+    let name = value[font_type].font_name.as_str();
     if !seen.insert(name) {
       errors.push(ConfigValidationError::Field {
         path: format!("font_configs.{}", font_type.as_toml_key()),
@@ -378,7 +379,7 @@ pub(crate) fn validate_unique_font_names(value: &PreFontConfigs, errors: &mut Ve
 /// フォント設定における言語・スクリプトの相互制約を検証し、違反を `errors` に追加します。
 pub(crate) fn validate_font_language_constraints(value: &PreFontConfigs, errors: &mut Vec<ConfigValidationError>) {
   for font_type in FontType::ALL {
-    let cfg = value.get(font_type);
+    let cfg = &value[font_type];
     if cfg.ot_language.is_some() && cfg.script.is_none() {
       errors.push(ConfigValidationError::Field {
         path: format!("font_configs.{}", font_type.as_toml_key()),

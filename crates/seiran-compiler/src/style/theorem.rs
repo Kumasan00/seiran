@@ -1,5 +1,7 @@
 //! 定理環境（theorem / lemma / proof …）のスタイル設定型。
 
+use std::ops::Index;
+
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -37,23 +39,6 @@ pub(crate) struct Theorems {
 }
 
 impl Theorems {
-  /// 指定したクラスの定義への不変参照を返す（10 種固定のため必ず存在する）。
-  #[must_use]
-  pub(crate) fn get(&self, class: TheoremClass) -> &TheoremStyle {
-    return match class {
-      TheoremClass::Theorem => &self.theorem,
-      TheoremClass::Lemma => &self.lemma,
-      TheoremClass::Proposition => &self.proposition,
-      TheoremClass::Corollary => &self.corollary,
-      TheoremClass::Definition => &self.definition,
-      TheoremClass::Axiom => &self.axiom,
-      TheoremClass::Example => &self.example,
-      TheoremClass::Remark => &self.remark,
-      TheoremClass::Claim => &self.claim,
-      TheoremClass::Proof => &self.proof,
-    };
-  }
-
   /// 各クラスにクラス名を添えて走査するイテレータ。
   pub(crate) fn iter_with_class(&self) -> impl Iterator<Item = (TheoremClass, &TheoremStyle)> {
     return [
@@ -74,6 +59,25 @@ impl Theorems {
 
 impl Default for Theorems {
   fn default() -> Self { return Self::from(TheoremsTable::default()); }
+}
+
+impl Index<TheoremClass> for Theorems {
+  type Output = TheoremStyle;
+
+  fn index(&self, class: TheoremClass) -> &TheoremStyle {
+    return match class {
+      TheoremClass::Theorem => &self.theorem,
+      TheoremClass::Lemma => &self.lemma,
+      TheoremClass::Proposition => &self.proposition,
+      TheoremClass::Corollary => &self.corollary,
+      TheoremClass::Definition => &self.definition,
+      TheoremClass::Axiom => &self.axiom,
+      TheoremClass::Example => &self.example,
+      TheoremClass::Remark => &self.remark,
+      TheoremClass::Claim => &self.claim,
+      TheoremClass::Proof => &self.proof,
+    };
+  }
 }
 
 /// 1 つの定理クラスのスタイル定義（クラス別既定 + 差分上書きで解決済み）。
@@ -522,13 +526,13 @@ mod tests {
   }
 
   #[test]
-  fn get_returns_matching_field() {
+  fn indexing_returns_matching_field() {
     // Arrange
     let theorems = Theorems::default();
 
     // Act / Assert
-    assert!(std::ptr::eq(theorems.get(TheoremClass::Lemma), &raw const theorems.lemma));
-    assert!(std::ptr::eq(theorems.get(TheoremClass::Proof), &raw const theorems.proof));
+    assert!(std::ptr::eq(&raw const theorems[TheoremClass::Lemma], &raw const theorems.lemma));
+    assert!(std::ptr::eq(&raw const theorems[TheoremClass::Proof], &raw const theorems.proof));
   }
 
   #[test]

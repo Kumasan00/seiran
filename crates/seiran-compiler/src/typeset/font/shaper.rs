@@ -49,7 +49,7 @@ pub(super) trait ShaperDatasExt {
 impl ShaperDatasExt for ShaperDatas {
   fn new(font_refs: &FontRefs<'_>) -> Self {
     let shaper_datas: Vec<ShaperData> =
-      FontType::ALL.iter().map(|&font_type| return ShaperData::new(font_refs.get(font_type))).collect();
+      FontType::ALL.iter().map(|&font_type| return ShaperData::new(&font_refs[font_type])).collect();
     return ShaperDatas::from_all(shaper_datas);
   }
 }
@@ -68,8 +68,8 @@ impl ShaperInstancesExt for ShaperInstances {
     let shaper_instances: Vec<Option<ShaperInstance>> = FontType::ALL
       .par_iter()
       .map(|&font_type| {
-        let config = configs.get(font_type);
-        let font_ref = font_refs.get(font_type);
+        let config = &configs[font_type];
+        let font_ref = &font_refs[font_type];
         return build_shaper_instance(config, font_ref);
       })
       .collect();
@@ -132,10 +132,10 @@ impl<'a> HarfRustShapersExt<'a> for HarfRustShapers<'a> {
     let results: Vec<Result<HarfRustShaper<'a>, ShaperError>> = FontType::ALL
       .par_iter()
       .map(|&font_type| {
-        let config = configs.get(font_type);
-        let font_ref = font_refs.get(font_type);
-        let shaper_data = shaper_datas.get(font_type);
-        let instance = instances.get(font_type).as_ref();
+        let config = &configs[font_type];
+        let font_ref = &font_refs[font_type];
+        let shaper_data = &shaper_datas[font_type];
+        let instance = instances[font_type].as_ref();
         return HarfRustShaper::new(config, font_ref, shaper_data, instance);
       })
       .collect::<Vec<Result<HarfRustShaper<'a>, ShaperError>>>();

@@ -219,8 +219,8 @@ fn build_resources(
   let fonts = FontMap::from_all(FontType::ALL.iter().map(|&font_type| {
     return PublicationFont {
       bytes: font_data.shared_bytes(font_type),
-      face: face_configs.get(font_type).clone(),
-      metric: *metrics.get(font_type),
+      face: face_configs[font_type].clone(),
+      metric: metrics[font_type],
     };
   }));
   let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
