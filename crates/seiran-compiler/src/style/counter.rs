@@ -1,9 +1,10 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
 
-use std::ops::Index;
+use std::{ops::Index, str::FromStr};
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::style::{CounterTemplate, ReferenceTemplate, number_style::NumberStyle};
 
@@ -226,11 +227,23 @@ impl CounterName {
       Self::Equation => "equation",
     };
   }
+}
+
+/// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
+#[derive(Debug, Error)]
+#[error(
+  "カウンタ名は part / chapter / section / subsection / paragraph / subparagraph / table / figure / equation のいずれかである必要があります"
+)]
+pub(crate) struct ParseCounterNameError;
+
+impl FromStr for CounterName {
+  type Err = ParseCounterNameError;
 
   /// `snake_case` のカウンタ名文字列から [`CounterName`] を復元する
-  #[must_use]
-  pub(super) fn from_name(name: &str) -> Option<Self> {
-    return Self::ALL.into_iter().find(|c| return c.as_str() == name);
+  ///
+  /// [`CounterName::as_str`] の走査で実装しているので、両者が食い違うことはない。
+  fn from_str(name: &str) -> Result<Self, Self::Err> {
+    return Self::ALL.into_iter().find(|c| return c.as_str() == name).ok_or(ParseCounterNameError);
   }
 }
 
@@ -376,15 +389,15 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn from_name_roundtrips_as_str_for_all() {
+  fn from_str_roundtrips_as_str_for_all() {
     // Arrange / Act / Assert
     for counter in CounterName::ALL {
       let name_str = counter.as_str();
-      let recovered = CounterName::from_name(name_str);
+      let recovered = name_str.parse::<CounterName>().ok();
       assert_eq!(recovered, Some(counter), "{name_str} から復元できるべき");
     }
 
     // Assert
-    assert_eq!(CounterName::from_name("foo"), None);
+    assert!("foo".parse::<CounterName>().is_err());
   }
 }
