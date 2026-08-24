@@ -123,6 +123,15 @@ pub(crate) enum HirNodeKind {
     label: Option<String>,
   },
 
+  /// コードブロック（`\begin{code}...\end{code}`）
+  ///
+  /// 本体は verbatim 読みした生テキストで、改行・空白・字下げをソースのまま保持する
+  /// （インライン要素へは分解しない）。
+  CodeBlock {
+    /// コード本体（前後の改行トリム済み。行区切りは `\n`）
+    text: String,
+  },
+
   /// 引用ブロック（`\begin{quote}` / `\begin{quotation}`）
   Quote {
     /// 引用の種別（`quote` / `quotation`）

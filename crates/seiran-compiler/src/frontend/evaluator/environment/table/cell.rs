@@ -158,6 +158,7 @@ pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
     // 見るのはセル本文そのものの改行だけ。`Link` の表示テキスト・`Footnote` の本体は
     // セル本文とは別のスコープなので、そこに `\\` があってもセルの改行としては数えない。
     HirInlineKind::Text(_)
+    | HirInlineKind::Code(_)
     | HirInlineKind::InlineMath(_)
     | HirInlineKind::Symbol(_)
     | HirInlineKind::NoIndent

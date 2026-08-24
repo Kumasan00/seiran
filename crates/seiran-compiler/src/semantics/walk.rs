@@ -204,7 +204,7 @@ impl Checker<'_> {
       HirNodeKind::Quote { body, .. } => self.nodes(body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 必須 fact を持たない variant。
-      HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }
@@ -229,6 +229,7 @@ impl Checker<'_> {
         ),
         // 必須 fact を持たない variant。
         HirInlineKind::Text(_)
+        | HirInlineKind::Code(_)
         | HirInlineKind::InlineMath(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak
@@ -469,7 +470,7 @@ impl Walker<'_> {
       HirNodeKind::Quote { body, .. } => self.nodes(body),
       HirNodeKind::Paragraph(inlines) => self.inlines(inlines),
       // 採番対象も参照箇所も含まない variant。
-      HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
     return;
   }
@@ -493,6 +494,7 @@ impl Walker<'_> {
         }),
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
+        | HirInlineKind::Code(_)
         | HirInlineKind::InlineMath(_)
         | HirInlineKind::Symbol(_)
         | HirInlineKind::LineBreak

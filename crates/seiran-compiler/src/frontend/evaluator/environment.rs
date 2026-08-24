@@ -15,6 +15,7 @@ use crate::{
 
 pub(crate) mod body_scan;
 mod caption;
+mod code;
 mod figure;
 mod list;
 mod math;
@@ -63,6 +64,7 @@ pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
   "remark"      => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
   "claim"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
   "proof"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
+  "code"        => EnvDef { body_mode: BodyMode::Verbatim, handler: Some(code::code), display_name: "コード" },
   "quote"       => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用" },
   "quotation"   => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
 };

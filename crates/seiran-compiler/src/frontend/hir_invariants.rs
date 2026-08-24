@@ -118,7 +118,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
         walk_nodes(body, here, out);
       },
       HirNodeKind::Quote { body, .. } => walk_nodes(body, here, out),
-      HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
     }
   }
   return;
@@ -139,6 +139,7 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
       | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, out),
       HirInlineKind::InlineMath(math) => walk_math(math, here, out),
       HirInlineKind::Text(_)
+      | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
       | HirInlineKind::LineBreak
       | HirInlineKind::NoIndent
@@ -392,7 +393,10 @@ fn assert_unresolved(nodes: &[HirNode]) {
           assert_unresolved_inlines(caption);
         }
       },
-      HirNodeKind::MathBlock { .. } | HirNodeKind::PageBreak | HirNodeKind::Space(_) => {},
+      HirNodeKind::CodeBlock { .. }
+      | HirNodeKind::MathBlock { .. }
+      | HirNodeKind::PageBreak
+      | HirNodeKind::Space(_) => {},
     }
   }
   return;
@@ -408,6 +412,7 @@ fn assert_unresolved_inlines(inlines: &[HirInline]) {
       | HirInlineKind::Footnote { body: children, .. } => assert_unresolved_inlines(children),
       // `Cite` は引用「箇所」だけを表し、表示は型として持てない（生成物は side table 側）
       HirInlineKind::Text(_)
+      | HirInlineKind::Code(_)
       | HirInlineKind::InlineMath(_)
       | HirInlineKind::Symbol(_)
       | HirInlineKind::LineBreak

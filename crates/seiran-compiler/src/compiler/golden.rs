@@ -82,6 +82,7 @@ const GOLDEN_INPUTS: &[&str] = &[
   "align",
   "cases",
   "cite",
+  "code",
   "color",
   "equation",
   "footnote",
@@ -667,4 +668,22 @@ fn layout_dump_changes_with_punctuation_spacing() {
 
   // Assert — 約物アキ調整はレイアウトを変える（無効化で従来出力へ戻せる）
   assert_ne!(enabled_dump, disabled_dump);
+}
+
+/// コードブロックの空行が 1 行ぶんの高さを保つことを確認する。
+///
+/// 空行は内容が空の Atom 1 つになるので、素朴に組むと行の高さ・深さが 0 になり、行送りが
+/// `leading.max(前の行の深さ + この行の高さ)` の leading まで縮む（他の行より詰まる）。
+/// `typeset::block` の strut がこれを防いでいる。
+#[test]
+fn blank_code_line_keeps_a_full_line_height() {
+  // Arrange
+  enter_workspace_root();
+  let (base_config, style, references) = load_base();
+
+  // Act — code.sei は空行を含むコードブロックを 2 つ持つ
+  let dump = dump_input(&base_config, &style, &references, "code");
+
+  // Assert
+  assert!(!dump.contains("height=0.00"), "高さ 0 の行は出ないはず（空行も 1 行ぶんの extent を持つ）");
 }

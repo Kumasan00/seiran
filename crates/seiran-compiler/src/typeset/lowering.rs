@@ -18,6 +18,7 @@ use crate::{
   typeset::boxes::AnchorMark,
 };
 
+mod code;
 mod counter;
 mod figure;
 mod float;
@@ -378,6 +379,9 @@ fn lower_node_indexed(ctx: &LoweringContext<'_>, node: &HirNode, state: &mut Low
     HirNodeKind::Quote { kind, body } => {
       return quote::lower_quote(ctx, *kind, body, state);
     },
+    HirNodeKind::CodeBlock { text } => {
+      return code::lower_code_block(ctx, text);
+    },
     HirNodeKind::PageBreak => {
       return vec![LayoutNode::PageBreak];
     },
@@ -500,6 +504,7 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       HirInlineKind::Cite { .. } => {
         out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
       },
+      HirInlineKind::Code(text) => out.push_str(text),
       HirInlineKind::InlineMath(_) => out.push_str("[Math]"),
       HirInlineKind::Symbol(ch) => out.push(*ch),
       HirInlineKind::LineBreak => out.push('\n'),

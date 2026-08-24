@@ -50,6 +50,12 @@ pub(crate) enum HirInlineKind {
     children: Vec<HirInline>,
   },
 
+  /// インラインコード（`\code{...}`）
+  ///
+  /// verbatim 読みした生テキスト。見た目の等幅指定 `\mono`（[`HirInlineKind::Styled`]）とは別物で、
+  /// 内容は子インライン要素へ分解せず文字列のまま持つ。
+  Code(String),
+
   /// インライン数式（`$...$`）
   InlineMath(Vec<HirMath>),
 

@@ -47,13 +47,6 @@ pub(crate) enum BodyMode {
   /// トークン化して数式モードで読む
   Math,
   /// `\end{<環境名>}` の正確なバイト列一致まで生読みする
-  #[cfg_attr(
-    not(test),
-    expect(
-      dead_code,
-      reason = "#447 は字句モードだけを入れる分割で、これを構築するレジストリ登録（verbatim 環境）は #448 の担当"
-    )
-  )]
   Verbatim,
 }
 

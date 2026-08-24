@@ -270,6 +270,7 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     // 段落途中として弾くためにここに含める。
     HirInlineKind::Styled { .. }
     | HirInlineKind::Colored { .. }
+    | HirInlineKind::Code(_)
     | HirInlineKind::InlineMath(_)
     | HirInlineKind::Symbol(_)
     | HirInlineKind::LineBreak

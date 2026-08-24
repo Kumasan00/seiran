@@ -8,7 +8,7 @@ use crate::{
   typeset::{
     boxes::{AnchorId, FootnoteId, LinkTarget},
     lowering::{
-      LoweringContext, LoweringState, generated,
+      LoweringContext, LoweringState, code, generated,
       layout_node::{AtomNode, LayoutNode, TextStyle},
       math::lower_inline_math,
     },
@@ -55,6 +55,9 @@ pub(super) fn lower_inline(
         color: Some(*color),
       };
       return lower_inlines(ctx, children, colored, state);
+    },
+    HirInlineKind::Code(text) => {
+      return code::lower_inline_code(text, parent_style);
     },
     HirInlineKind::InlineMath(math_nodes) => {
       // 数式は Atom の語彙（`AtomNode`）で組まれるので、段落の水平リストへ流すには持ち上げる

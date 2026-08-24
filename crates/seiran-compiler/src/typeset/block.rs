@@ -140,6 +140,7 @@ impl Measurer<'_> {
     for node in nodes {
       match node {
         LayoutNode::Text(..)
+        | LayoutNode::TextAtom(..)
         | LayoutNode::Kern { .. }
         | LayoutNode::LineBreak
         | LayoutNode::Raise { .. }
@@ -258,6 +259,12 @@ impl Measurer<'_> {
       LayoutNode::Text(text, style) => {
         self.push_text_items(&text, style, out);
       },
+      // コード（`code` 環境の 1 行・`\code{...}`）: 空白を glue にせず Atom 1 つへ畳む。
+      // 行分割の機会が内部に無いので、幅は行揃えでも動かず、字下げがそのまま残る。
+      // `build_atom` 経由なので和欧文間アキ（#174）も挿さらない（内容としてのコードには不要）。
+      LayoutNode::TextAtom(text, style) => {
+        out.push(HItem::Box(self.text_atom(text, style)));
+      },
       LayoutNode::Kern { length } => {
         out.push(HItem::Kern(length));
       },
@@ -323,6 +330,24 @@ impl Measurer<'_> {
         unreachable!("インライン文脈に来るのは walk_vertical が振り分けたインライン要素と lower_inlines の出力だけ")
       },
     }
+  }
+
+  /// テキスト 1 塊を閉じた箱（Atom）にする
+  ///
+  /// 空文字列（コードの空行）でも 1 行ぶんの高さを持たせる — Atom の extent は子から決まるので、
+  /// 内容が空だと高さ・深さが 0 になり、行送り `leading.max(前の行の深さ + この行の高さ)` が
+  /// その行だけ leading まで縮む。空セグメントを同じ書体・サイズで測って（グリフは 0 個・
+  /// 幅 0 で、高さ・深さはフォントの ascender / descender から決まる）extent だけを移す。
+  fn text_atom(&mut self, text: String, style: TextStyle) -> HBox {
+    let is_empty = text.is_empty();
+    let mut atom = self.build_atom(Length::ZERO, vec![AtomNode::Text(text, style)]);
+    if is_empty {
+      let font_type = script::resolve_font_type(style.font_kind, script::ScriptCategory::Latin);
+      let strut = self.shape_segment("", font_type, style.font_size, None);
+      atom.height = strut.height;
+      atom.depth = strut.depth;
+    }
+    return atom;
   }
 
   /// `Raise` ツリーを絶対配置（`dx` / `dy`）の Atom に畳む

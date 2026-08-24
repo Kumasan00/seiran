@@ -531,6 +531,8 @@ verbatim 環境の `\begin` 直後は**トリビアを跨がない** — `\begin
 だけを任意引数として読み、それ以外はすべて本体のバイトになる（通常環境は空白・改行・コメントを
 跨いで引数を探すので、ここだけ規則が違う）。必須引数 `{...}` は読まない。
 
+現在 verbatim を宣言しているのは `code` 環境の本体と `\code` の必須引数（#448）。
+
 #### `evaluator`
 
 CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
@@ -538,8 +540,8 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
 - `command/`: `control` / `footnote` / `headline` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
-  `cite` / `symbol`
-- `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `table`（+ `table::body` /
+  `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol`
+- `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
@@ -1130,7 +1132,7 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
   表現する型。`LayoutNode::Raise` の子・`FlushRight` の中身・ディスプレイ数式のセルと番号がこれを持ち、
   `block` の `Atom` 化が場合分けなしで閉じる。持ち上げは `From<AtomNode> for LayoutNode` の一方向のみ
   （インライン数式を段落の水平リストへ流すときに使う）
-- 要素別: `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
+- 要素別: `code` / `figure` / `float` / `heading` / `inline` / `list` / `math`（+ `math::alphanumeric` ＝
   Mathematical Alphanumeric Symbols へのコードポイント変換）/ `paragraph` / `quote` / `table` /
   `theorem` / `title_page`
 - `generated`: CSL 整形の生成物（`semantics::GeneratedBlock` / `semantics::GeneratedInline`）専用の
@@ -1199,6 +1201,12 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 和文字間は幅 0・微小伸長の `Glue`、欧文のスペースなし分割点は `Penalty(0)`、欧文語中のハイフネーション点は
 計測済みハイフン箱を持つ `Discretionary`（言語は `build_blocks` の `language` 引数から導出）にする。和文と
 数式は分割しない。
+
+**コード**（`code` 環境の 1 行・`\code{...}`）は `LayoutNode::TextAtom` で来て、break 注入を通さず
+`Atom` 1 つに畳む — 空白を伸縮 `Glue` へ変換しないので、字下げと空白の個数が行分割・行揃えで動かない
+（行内に分割機会が無いので折り返しもしない。行折り返しは #446 の Tier 2 スコープ）。空文字列（コードの
+空行）のときだけ、同じ書体・サイズの空セグメントを測って高さ・深さを移す — Atom の extent は子から
+決まるため、そのままだと 0 になってその行の行送りだけが `leading` まで縮む。
 
 **ブロック間アキ**（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Block::Glue` として出す
 （下端揃えの配分先）。`Vkern`（数式上下・フロート内）は固定アキのまま。
