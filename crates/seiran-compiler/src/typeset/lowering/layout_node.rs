@@ -83,6 +83,12 @@ pub(crate) enum LayoutNode {
     /// リンク対象の子要素
     children: Vec<LayoutNode>,
   },
+  /// 行分割も伸縮もしない閉じたテキスト（`code` 環境の 1 行・`\code{...}`）
+  ///
+  /// [`LayoutNode::Text`] と違い、空白を glue へ変換せず Atom（行分割をまたがない閉じた箱）
+  /// 1 つとして組む。コードは空白の個数と位置そのものが内容なので、行分割・行揃えで
+  /// 幅が動いてはならない。
+  TextAtom(String, TextStyle),
   /// 強制改行（`\\` 由来）
   LineBreak,
   /// 強制改ページ

@@ -8,6 +8,7 @@ use crate::{
       command::{
         COMMAND_MAP, CommandKind,
         cite::cite_command,
+        code::code_command,
         footnote::footnote_command,
         inline::{colored_text, styled_text},
         link::{href_command, url_command},
@@ -122,6 +123,9 @@ pub(crate) fn extract_inline_nodes_from_elements(
             },
             Some(CommandKind::Href) => {
               inlines.extend(href_command(&view, builder)?);
+            },
+            Some(CommandKind::Code) => {
+              inlines.extend(code_command(&view, builder)?);
             },
             Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {

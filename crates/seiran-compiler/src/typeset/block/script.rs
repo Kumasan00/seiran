@@ -99,7 +99,7 @@ pub(crate) fn split_text_by_script(font_kind: FontKind, text: &str) -> Vec<TextS
 }
 
 /// `FontKind` とスクリプトカテゴリから具体的な `FontType` を決定する
-fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType {
+pub(super) fn resolve_font_type(font_kind: FontKind, category: ScriptCategory) -> FontType {
   return match category {
     #[expect(
       clippy::match_same_arms,

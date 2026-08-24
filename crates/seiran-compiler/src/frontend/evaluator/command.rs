@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub(crate) mod cite;
+pub(crate) mod code;
 mod control;
 pub(crate) mod footnote;
 mod headline;
@@ -56,6 +57,8 @@ pub(crate) enum CommandKind {
   Footnote,
   /// `\index{語}` — 索引マーカー。本文に出力を持たず、語・reading を収集用に運ぶだけ
   Index,
+  /// `\code{...}` — 内容としてのインラインコード（必須引数は verbatim）
+  Code,
   /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
@@ -87,6 +90,8 @@ impl CommandKind {
       Self::Footnote => return footnote::footnote_command(view, builder).map(CommandResult::Inline),
 
       Self::Index => return index::index_command(view, builder).map(CommandResult::Inline),
+
+      Self::Code => return code::code_command(view, builder).map(CommandResult::Inline),
 
       Self::Url => return link::url_command(view, builder).map(CommandResult::Inline),
 
@@ -138,6 +143,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   // 索引
   "index" => CommandKind::Index,
 
+  // 内容としてのコード（必須引数は verbatim）
+  "code" => CommandKind::Code,
+
   // 外部リンク
   "url" => CommandKind::Url,
   "href" => CommandKind::Href,
@@ -176,7 +184,9 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 ///
 /// どのコマンドが verbatim かはこのレジストリが単一の真実源で、ユーザは変更できない（P1 ガード）。
 /// 将来の `\define` もここへ宣言できない。
-static VERBATIM_ARG_COMMANDS: phf::Set<&'static str> = phf_set! {};
+static VERBATIM_ARG_COMMANDS: phf::Set<&'static str> = phf_set! {
+  "code",
+};
 
 /// コマンド名から必須引数の読み取り方を引く
 ///
