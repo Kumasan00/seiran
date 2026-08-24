@@ -1178,7 +1178,7 @@ mod tests {
 
   #[test]
   fn evaluate_index_in_href_display_text_errors() {
-    let error = evaluate_error(r"\href[url=https:\/\/example.com]{\index{語}}");
+    let error = evaluate_error(r"\href{https://example.com}{\index{語}}");
     assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
   }
 

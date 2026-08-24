@@ -318,7 +318,7 @@ mod tests {
     let style = ReadStyle::default();
 
     // Act
-    let nodes = lower_source(&style, "\\href[url=https:\\/\\/example.com]{ここ}\n");
+    let nodes = lower_source(&style, "\\href{https://example.com}{ここ}\n");
 
     // Assert
     let (target, children) = first_link(&nodes);
@@ -360,7 +360,7 @@ mod tests {
     style.hyperref.url_color = Some(blue);
 
     // Act
-    let nodes = lower_source(&style, "\\href[url=https:\\/\\/example.com]{ここ}\n");
+    let nodes = lower_source(&style, "\\href{https://example.com}{ここ}\n");
 
     // Assert
     let (_, children) = first_link(&nodes);

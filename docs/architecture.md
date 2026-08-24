@@ -520,8 +520,10 @@ verbatim 宣言されたコマンドの必須引数（終端はブレースバ�
 `rewind_peeked` でレキサーへ返す（走査開始位置は常にレキサーのカーソル）。
 
 どの環境・コマンドが verbatim かという語彙は `syntax` が持たず、`ModeResolver`（`env_body:
-fn(&str) -> BodyMode` / `command_arg: fn(&str) -> ArgMode` の 2 本）経由で `evaluator` の phf
-レジストリが単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。`BodyMode` は `Text` / `Math` /
+fn(&str) -> BodyMode` / `command_arg: fn(&str, usize) -> ArgMode` の 2 本）経由で `evaluator` の phf
+レジストリが単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。引数モードは**引数の位置ごと**に
+引くので、同じコマンドでも位置によってモードが違いうる（`\href` は第 1 引数だけ verbatim）。
+レジストリが宣言するのは位置ごとの読み取り方だけで、引数の個数は各ハンドラが検査する。`BodyMode` は `Text` / `Math` /
 `Verbatim`、`ArgMode` は `Inherit` / `Verbatim` で、トークン化して読むときの `ParseMode`（`Text` /
 `Math` の 2 値）とは別の型 — 生読みは「トークン化の際のモード」ではなく入口の分岐なので、
 `ParseMode` に `Verbatim` を足すと `parse_element` 側に到達不能な分岐が生える。引数モードは
@@ -531,8 +533,9 @@ verbatim 環境の `\begin` 直後は**トリビアを跨がない** — `\begin
 だけを任意引数として読み、それ以外はすべて本体のバイトになる（通常環境は空白・改行・コメントを
 跨いで引数を探すので、ここだけ規則が違う）。必須引数 `{...}` は読まない。
 
-現在 verbatim を宣言しているのは `code` 環境の本体と `\code` の必須引数（#448）、`\url` の必須引数（#449）。
-`\href` のリンク先は任意引数値 `[url=...]` なので対象外（任意引数値は常に通常のトークン化を通る）。
+現在 verbatim を宣言しているのは `code` 環境の本体と `\code` の必須引数（#448）、`\url` の必須引数（#449）、
+`\href` の第 1 引数（リンク先。#453）。`\href` の第 2 引数（表示テキスト）は宣言が無いので外側文脈を
+継承する。任意引数値は宣言の対象外で常に通常のトークン化を通る。
 
 #### `evaluator`
 

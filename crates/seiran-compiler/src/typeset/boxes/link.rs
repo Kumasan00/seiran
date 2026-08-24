@@ -67,6 +67,6 @@ pub(crate) enum AnchorMark {
 pub(crate) enum LinkTarget {
   /// 文書内アンカー（[`AnchorId`]）へのジャンプ
   Internal(AnchorId),
-  /// 外部 URI（`\url{uri}` / `\href[url=uri]{...}` の `uri`）
+  /// 外部 URI（`\url{uri}` / `\href{uri}{...}` の `uri`）
   External(String),
 }

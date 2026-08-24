@@ -34,7 +34,7 @@
 }
 \row{内部参照 & \ref{tab:scores}}
 \row{外部 URL & \url{https://example.com}}
-\row{href & \href[url=https:\/\/example.com]{リンクテキスト}}
+\row{href & \href{https://example.com}{リンクテキスト}}
 \row{複数リンク & \ref{tab:scores} と \url{https://example.com}}
 \end{table}
 

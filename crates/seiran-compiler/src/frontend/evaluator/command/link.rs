@@ -1,22 +1,19 @@
-//! `\url{uri}` / `\href[url=uri]{表示}` コマンド
+//! `\url{uri}` / `\href{uri}{表示}` コマンド
 //!
 //! ## URL 内の `//`
 //!
-//! `\url` の必須引数は verbatim（生読み）で、`//` もコメント開始にならず URL をそのまま書ける
-//! （`\url{https://example.com}`。宣言は `frontend::evaluator::command` の `VERBATIM_ARG_COMMANDS`）。
-//! 逆に verbatim 内では `\` も不活性なので、旧記法の `\/` は URL に literal `\/` として残る。
+//! リンク先を受け取る引数は verbatim（生読み）なので、`//` もコメント開始にならず URL をそのまま
+//! 書ける — `\url{https://example.com}` / `\href{https://example.com}{表示}`。verbatim なのは
+//! `\url` の必須引数と `\href` の**第 1 引数だけ**で、`\href` の第 2 引数（表示テキスト）は従来どおり
+//! 活性なので `\bold{...}` 等をネストできる（宣言は `frontend::evaluator::command` の
+//! `COMMAND_ARG_MODES`）。
 //!
-//! `\href` のリンク先は任意引数値 `[url=...]` で、任意引数値は常に通常のトークン化を通る（verbatim の
-//! 対象外）。したがって `\href` の URL では今も `\/` エスケープが要る — `\href[url=https:\/\/example.com]{...}`。
+//! verbatim 内では `\` も不活性なので、旧記法の `\/` は URL に literal `\/` として残る。
 
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind},
   frontend::{
-    evaluator::{
-      EvalError,
-      inline::extract_inline_nodes,
-      opt_args::{OptType, collect_command_opt_args, find_string},
-    },
+    evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
     syntax::ast::{CommandView, extract_text_content},
   },
@@ -55,36 +52,31 @@ pub(crate) fn url_command(view: &CommandView<'_>, builder: &HirBuilder) -> Resul
   )]);
 }
 
-/// `\href[url=uri]{表示}` を `HirInlineKind::Link` に変換する（本文を表示テキストにする）
+/// `\href{uri}{表示}` を `HirInlineKind::Link` に変換する（本文を表示テキストにする）
 ///
 /// # Errors
 ///
-/// 任意引数 `url` の欠落・型不正、必須引数（表示テキスト）の欠落 / 過剰でエラーを返します。
+/// 必須引数が 2 個でない場合、または任意引数が指定された場合にエラーを返します。
 pub(crate) fn href_command(view: &CommandView<'_>, builder: &HirBuilder) -> Result<Vec<HirInline>, EvalError> {
-  let opt_args = collect_command_opt_args(view, &[("url", OptType::String)])?;
-  let Some(url) = find_string(&opt_args, "url") else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "href".to_string(),
-      expected: "[url=...]（リンク先 URI）".to_string(),
-      span: view.span().to_source_span(),
-    });
-  };
-  let Some(first_arg) = view.first_arg() else {
-    return Err(EvalError::MissingCommandArgument {
-      name: "href".to_string(),
-      expected: "表示テキスト".to_string(),
-      span: view.span().to_source_span(),
-    });
-  };
-  if view.args_count() > 1 {
+  let _opt_args = collect_command_opt_args(view, &[])?;
+  if view.args_count() > 2 {
     return Err(EvalError::ExtraCommandArgument {
       name: "href".to_string(),
       span: view.span().to_source_span(),
     });
   }
+  let mut args = view.args();
+  let (Some(url_arg), Some(display_arg)) = (args.next(), args.next()) else {
+    return Err(EvalError::MissingCommandArgument {
+      name: "href".to_string(),
+      expected: "2 個（リンク先 URI と表示テキスト）".to_string(),
+      span: view.span().to_source_span(),
+    });
+  };
 
+  let url = extract_text_content(view.source(), url_arg).trim().to_string();
   let id = builder.alloc(view.span());
-  let children = extract_inline_nodes(view.source(), builder, first_arg)?;
+  let children = extract_inline_nodes(view.source(), builder, display_arg)?;
   return Ok(vec![HirInline::new(id, HirInlineKind::Link { url, children })]);
 }
 
@@ -176,34 +168,118 @@ mod tests {
     );
   }
 
-  #[test]
-  fn href_uses_opt_url_and_inline_display() {
-    // Arrange
+  /// `\href{...}{...}` を評価してインラインノード列を取り出す
+  fn href_link(source: &str) -> Vec<HirInline> {
     let arena = Bump::new();
-    let source = r"\href[url=https:\/\/example.com]{ここ}";
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
+    return run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
+  }
 
-    // Act
-    let result = run_inline_handler(|builder| return href_command(&view, builder)).unwrap();
+  /// `\href{...}{...}` を評価してリンク先だけを取り出す
+  fn href_url(source: &str) -> String {
+    let result = href_link(source);
+    let HirInlineKind::Link { url, .. } = &result[0].kind else {
+      panic!("Link が期待されます: {result:?}");
+    };
+    return url.clone();
+  }
+
+  /// `\href{...}{...}` を評価してエラーを取り出す
+  fn href_error(source: &str) -> EvalError {
+    let arena = Bump::new();
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
+    return run_inline_handler(|builder| return href_command(&view, builder)).unwrap_err();
+  }
+
+  #[test]
+  fn href_takes_url_and_display_text_as_two_mandatory_args() {
+    // Arrange & Act — 第 1 引数は verbatim なので `//` をエスケープせず書ける
+    let result = href_link(r"\href{https://example.com}{ここ}");
 
     // Assert
     let HirInlineKind::Link { url, children } = &result[0].kind else {
       panic!("Link が期待されます: {result:?}");
     };
     assert_eq!(url, "https://example.com");
-    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "ここ"));
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "ここ"), "{children:?}");
   }
 
   #[test]
-  fn href_rejects_missing_url_opt() {
-    // Arrange
-    let arena = Bump::new();
-    let source = r"\href{表示だけ}";
-    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
+  fn href_keeps_special_characters_inert_in_the_url_arg() {
+    // Arrange & Act & Assert — `_` `&` `=` はいずれも通常はエスケープが要る文字
+    assert_eq!(href_url(r"\href{https://example.com/a_b?x=1&y=2}{ここ}"), "https://example.com/a_b?x=1&y=2");
+  }
 
-    // Act / Assert
-    assert!(
-      matches!(run_inline_handler(|builder| return href_command(&view, builder)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "href")
-    );
+  #[test]
+  fn href_trims_surrounding_whitespace_in_the_url_arg() {
+    // Arrange & Act & Assert — 前後の空白だけは落とす（`\url` と同じ規則）
+    assert_eq!(href_url(r"\href{  https://example.com  }{ここ}"), "https://example.com");
+  }
+
+  #[test]
+  fn href_keeps_backslash_inert_in_the_url_arg() {
+    // Arrange & Act & Assert — 旧記法の名残。verbatim 内では `\` も不活性なので、`\/` は
+    // エスケープ解釈されず literal のまま残る（#453 の破壊的変更）
+    assert_eq!(href_url(r"\href{https:\/\/example.com}{ここ}"), r"https:\/\/example.com");
+  }
+
+  #[test]
+  fn href_evaluates_display_text_as_inline() {
+    // Arrange & Act — 第 2 引数は verbatim ではないのでネストしたコマンドが効く
+    let result = href_link(r"\href{https://example.com}{\bold{強調}}");
+
+    // Assert
+    let HirInlineKind::Link { children, .. } = &result[0].kind else {
+      panic!("Link が期待されます: {result:?}");
+    };
+    let HirInlineKind::Styled {
+      children: styled, ..
+    } = &children[0].kind
+    else {
+      panic!("Styled が期待されます: {children:?}");
+    };
+    assert!(matches!(&styled[0].kind, HirInlineKind::Text(t) if t == "強調"), "{styled:?}");
+  }
+
+  #[test]
+  fn href_rejects_the_old_opt_url_syntax() {
+    // Arrange & Act — 旧記法 `\href[url=...]{表示}`。`url` は任意引数キーではなくなった
+    let error = href_error(r"\href[url=https:\/\/example.com]{ここ}");
+
+    // Assert — 静かに壊れず P6 の診断で落ちる（#453 の破壊的変更）
+    assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "url"), "{error:?}");
+  }
+
+  #[test]
+  fn href_rejects_a_single_argument() {
+    // Arrange & Act
+    let error = href_error(r"\href{表示だけ}");
+
+    // Assert
+    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "href"), "{error:?}");
+  }
+
+  #[test]
+  fn href_rejects_three_arguments() {
+    // Arrange & Act
+    let error = href_error(r"\href{https://example.com}{ここ}{余分}");
+
+    // Assert
+    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "href"), "{error:?}");
+  }
+
+  #[test]
+  fn href_inside_math_is_rejected_as_an_unknown_command() {
+    // Arrange — 引数モードはレジストリ宣言が勝つので数式内でも第 1 引数は生読みされる（#447）が、
+    // 数式評価器の語彙に `\href` は無い
+    let arena = Bump::new();
+    let source = r"$\href{https://example.com}{ここ}$";
+    let cst = test_support::parse(source, &arena).unwrap();
+
+    // Act
+    let result = evaluate_children_to_hir(source, cst);
+
+    // Assert — 静かな無視ではなく P6 の診断で落ちる（数式内での許可は #236 のスコープ）
+    assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
   }
 }

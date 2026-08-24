@@ -74,7 +74,7 @@ pub(crate) enum HirInlineKind {
     label: String,
   },
 
-  /// 外部リンク（`\url{uri}` / `\href[url=uri]{表示}`）
+  /// 外部リンク（`\url{uri}` / `\href{uri}{表示}`）
   Link {
     /// リンク先の外部 URI
     url: String,

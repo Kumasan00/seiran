@@ -3,7 +3,7 @@
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
 use miette::SourceSpan;
-use phf::{phf_map, phf_set};
+use phf::phf_map;
 
 use crate::{
   document::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
@@ -61,7 +61,7 @@ pub(crate) enum CommandKind {
   Code,
   /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク（必須引数は verbatim）
   Url,
-  /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
+  /// `\href{uri}{表示}` — 表示テキストと外部 URI を別に指定する外部リンク（第 1 引数は verbatim）
   Href,
   /// `\noindent` — 段落先頭行の字下げを抑止するマーカー（引数なし）
   NoIndent,
@@ -180,24 +180,30 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
 };
 
-/// 必須引数を verbatim（生読み）で受け取るコマンドの集合
+/// 必須引数の読み取り方を位置ごとに宣言するレジストリ
 ///
-/// どのコマンドが verbatim かはこのレジストリが単一の真実源で、ユーザは変更できない（P1 ガード）。
-/// 将来の `\define` もここへ宣言できない。
-static VERBATIM_ARG_COMMANDS: phf::Set<&'static str> = phf_set! {
-  "code",
-  "url",
+/// 値は必須引数を先頭から並べた読み取り方で、`\href` のように位置ごとにモードが違うコマンドを
+/// 表せる。どのコマンドのどの位置が verbatim かはこのレジストリが単一の真実源で、ユーザは
+/// 変更できない（P1 ガード）。将来の `\define` もここへ宣言できない。
+///
+/// 宣言するのは**位置ごとの読み取り方だけ**で、引数の個数は保証しない（個数の検査は各ハンドラの
+/// 責務）。`"href" => &[Verbatim, Inherit]` は「2 個来たときそれぞれをこう読む」であって
+/// 「必ず 2 個来る」ではない。
+static COMMAND_ARG_MODES: phf::Map<&'static str, &'static [ArgMode]> = phf_map! {
+  "code" => &[ArgMode::Verbatim],
+  "url" => &[ArgMode::Verbatim],
+  "href" => &[ArgMode::Verbatim, ArgMode::Inherit],
 };
 
-/// コマンド名から必須引数の読み取り方を引く
+/// コマンド名と必須引数の位置（0 始まり）から読み取り方を引く
 ///
 /// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
-/// 宣言のないコマンドは [`ArgMode::Inherit`]（外側文脈の継承）が既定。
-pub(crate) fn lookup_arg_mode(name: &str) -> ArgMode {
-  if VERBATIM_ARG_COMMANDS.contains(name) {
-    return ArgMode::Verbatim;
-  }
-  return ArgMode::Inherit;
+/// 宣言のないコマンド・宣言の範囲を超えた位置は [`ArgMode::Inherit`]（外側文脈の継承）が既定。
+pub(crate) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
+  let Some(modes) = COMMAND_ARG_MODES.get(name) else {
+    return ArgMode::Inherit;
+  };
+  return modes.get(index).copied().unwrap_or(ArgMode::Inherit);
 }
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
@@ -241,18 +247,32 @@ mod tests {
   }
 
   #[test]
-  fn verbatim_arg_commands_are_all_registered_commands() {
+  fn arg_mode_declarations_are_all_registered_commands() {
     // Arrange & Act & Assert — 引数モードの宣言だけがあって本体が未登録のコマンドを作らない
-    for name in &VERBATIM_ARG_COMMANDS {
-      assert!(COMMAND_MAP.contains_key(name), "verbatim 引数を宣言した '{name}' が COMMAND_MAP に無い");
+    for name in COMMAND_ARG_MODES.keys() {
+      assert!(COMMAND_MAP.contains_key(name), "引数モードを宣言した '{name}' が COMMAND_MAP に無い");
     }
   }
 
   #[test]
   fn lookup_arg_mode_defaults_to_inherit() {
     // Arrange & Act & Assert — 宣言のないコマンドは外側文脈を継承する
-    assert_eq!(lookup_arg_mode("bold"), ArgMode::Inherit);
-    assert_eq!(lookup_arg_mode("unknown"), ArgMode::Inherit);
+    assert_eq!(lookup_arg_mode("bold", 0), ArgMode::Inherit);
+    assert_eq!(lookup_arg_mode("unknown", 0), ArgMode::Inherit);
+  }
+
+  #[test]
+  fn lookup_arg_mode_resolves_per_position() {
+    // Arrange & Act & Assert — `\href` は第 1 引数だけが verbatim
+    assert_eq!(lookup_arg_mode("href", 0), ArgMode::Verbatim);
+    assert_eq!(lookup_arg_mode("href", 1), ArgMode::Inherit);
+  }
+
+  #[test]
+  fn lookup_arg_mode_beyond_declaration_is_inherit() {
+    // Arrange & Act & Assert — 宣言の範囲を超えた位置も継承（個数はハンドラが検査する）
+    assert_eq!(lookup_arg_mode("url", 1), ArgMode::Inherit);
+    assert_eq!(lookup_arg_mode("href", 2), ArgMode::Inherit);
   }
 
   /// `COMMAND_MAP` の全コマンド名を返す（proptest 戦略の入力用）
