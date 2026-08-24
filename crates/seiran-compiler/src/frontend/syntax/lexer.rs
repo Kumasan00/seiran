@@ -234,7 +234,11 @@ impl<'a> Lexer<'a> {
   /// 開始位置しか渡さないため、通常は起こらない。
   pub(super) fn rewind_to(&mut self, offset: u32) {
     let offset = offset as usize;
-    assert!(offset <= self.cursor, "rewind_to は既に読んだ位置へ戻すためだけに使う（前進はさせない）");
+    assert!(
+      offset <= self.cursor,
+      "唯一の呼び出し元 `Parser::rewind_peeked` は先読み済みトークンの開始位置しか渡さず、それはこのレキサーが \
+       既に読み終えた位置なので必ずカーソル以前になる"
+    );
     self.cursor = offset;
   }
 

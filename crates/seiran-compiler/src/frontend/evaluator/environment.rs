@@ -1,6 +1,6 @@
 //! 環境ディスパッチ
 //!
-//! [`ENVIRONMENTS`] はハンドラとパースモードの対応を一元管理する。
+//! [`ENVIRONMENTS`] はハンドラと本体の読み取り方（[`BodyMode`]）の対応を一元管理する。
 
 use phf::phf_map;
 
@@ -29,7 +29,7 @@ type EnvHandler = fn(&EnvironmentView<'_>, &HirBuilder) -> Result<Vec<HirNode>, 
 pub(crate) struct EnvDef {
   /// 本体の読み取り方（トークン化して Text / Math、または生読み）
   pub body_mode: BodyMode,
-  /// 評価ハンドラ。`None` の場合は「構文解析モードのみ登録、評価は未実装」を意味し、
+  /// 評価ハンドラ。`None` の場合は「本体の読み取り方のみ登録、評価は未実装」を意味し、
   /// 評価器は [`EvalError::UnknownEnvironment`] を返す。
   pub handler: Option<EnvHandler>,
   /// エラーメッセージ・診断用の人間可読名

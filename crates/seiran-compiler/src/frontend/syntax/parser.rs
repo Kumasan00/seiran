@@ -29,7 +29,7 @@ pub(crate) use error::ParserError;
 /// 生読み（verbatim）はトークン化そのものを行わないのでここには入らない。環境本体の
 /// 読み取り方は [`BodyMode`]、コマンド必須引数の読み取り方は [`ArgMode`] が表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParseMode {
+enum ParseMode {
   /// 通常のテキストモード（`$` でインライン数式に入る）
   Text,
   /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
@@ -47,7 +47,13 @@ pub(crate) enum BodyMode {
   /// トークン化して数式モードで読む
   Math,
   /// `\end{<環境名>}` の正確なバイト列一致まで生読みする
-  #[cfg_attr(not(test), expect(dead_code, reason = "verbatim 環境（`code`、#448）のレジストリ登録が構築する"))]
+  #[cfg_attr(
+    not(test),
+    expect(
+      dead_code,
+      reason = "#447 は字句モードだけを入れる分割で、これを構築するレジストリ登録（verbatim 環境）は #448 の担当"
+    )
+  )]
   Verbatim,
 }
 
@@ -76,7 +82,7 @@ pub(crate) struct ModeResolver {
 }
 
 /// アリーナベース CST 構築パーサー
-pub(crate) struct Parser<'a> {
+struct Parser<'a> {
   /// 元のソーステキスト
   source: &'a str,
   /// レキサー
@@ -540,7 +546,8 @@ impl<'a> Parser<'a> {
     let open = self.expect(TokenKind::LBrace)?;
     debug_assert!(
       self.peeked_token.is_none(),
-      "raw 走査はレキサーのカーソルから始まるので、直前に先読みバッファが空である必要がある"
+      "直前の `self.expect(TokenKind::LBrace)` が先読みトークンを消費するので、この時点でバッファは空 \
+       ＝レキサーのカーソルが開き `{{` の直後にある"
     );
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(open));
