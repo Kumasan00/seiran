@@ -48,7 +48,7 @@ impl SemanticPolicy {
       counters.insert(
         name,
         CounterPolicy {
-          resets: style.counters.get(name).resets.clone(),
+          resets: style.counters[name].resets.clone(),
         },
       );
     }

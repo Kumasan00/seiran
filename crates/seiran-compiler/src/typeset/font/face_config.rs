@@ -34,7 +34,7 @@ pub(super) type FontFaceConfigs = FontMap<FontFaceConfig>;
 #[must_use]
 pub(super) fn build_face_configs(configs: &FontConfigs) -> FontFaceConfigs {
   return FontMap::from_all(FontType::ALL.iter().map(|font_type| {
-    let font_config = configs.get(*font_type);
+    let font_config = &configs[*font_type];
     return FontFaceConfig {
       font_index: font_config.font_index,
       variation_axes: font_config.variation_axes.as_ref().map(|axes| {
@@ -82,7 +82,7 @@ mod tests {
 
     // Assert
     for font_type in FontType::ALL {
-      let face_config = face_configs.get(font_type);
+      let face_config = &face_configs[font_type];
       assert_eq!(face_config.font_index, 3, "font_index がそのまま複製されるはず");
       assert!(face_config.variation_axes.is_none(), "variation_axes が None ならそのまま None のはず");
     }
@@ -108,7 +108,7 @@ mod tests {
     let face_configs = build_face_configs(&configs);
 
     // Assert
-    let face_config = face_configs.get(FontType::ALL[0]);
+    let face_config = &face_configs[FontType::ALL[0]];
     let got_axes = face_config.variation_axes.as_ref().expect("variation_axes が Some のはず");
     assert_eq!(got_axes.len(), 2, "軸の個数がそのまま複製されるはず");
     assert_eq!(got_axes[0].name, *b"wght", "軸名がそのまま複製されるはず");

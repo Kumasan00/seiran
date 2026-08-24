@@ -40,10 +40,10 @@ pub(crate) fn format_ref_display(style: &Style, value: &CounterValue) -> String 
   let number = format_counter_value(style, value);
   return match value.kind {
     CounterKind::Counter(name) => {
-      let def = style.counters.get(name);
+      let def = &style.counters[name];
       def.ref_format.expand(&number, &def.display_name)
     },
-    CounterKind::Theorem(class) => THEOREM_REF_FORMAT.expand(&number, &style.theorems.get(class).display_name),
+    CounterKind::Theorem(class) => THEOREM_REF_FORMAT.expand(&number, &style.theorems[class].display_name),
   };
 }
 
@@ -53,7 +53,7 @@ pub(crate) fn format_ref_display(style: &Style, value: &CounterValue) -> String 
 /// **参照先カウンタ自身の** `number_style` で描画する（`{part}` は既定でローマ数字）。
 fn expand_counter_template(style: &Style, name: CounterName, parts: &[u32]) -> String {
   let chain = counter_chain(&style.counters, name);
-  return style.counters.get(name).number_format.expand(|placeholder| {
+  return style.counters[name].number_format.expand(|placeholder| {
     let target = match placeholder {
       CounterPlaceholder::Own => name,
       CounterPlaceholder::Counter(target) => target,
@@ -68,7 +68,7 @@ fn expand_counter_template(style: &Style, name: CounterName, parts: &[u32]) -> S
 /// 描画する。`{<counter_name>}` は `reset_by` が指す見出しカウンタのみ解決できる
 /// （`semantics` が構造値に載せる祖先はその 1 段だけ — [`counter_chain`] の制限と同じ理由）。
 fn expand_theorem_template(style: &Style, class: TheoremClass, parts: &[u32]) -> String {
-  let def = style.theorems.get(class);
+  let def = &style.theorems[class];
   let own = parts.last().copied().unwrap_or(0);
   let reset_counter = theorem_reset_counter_name(def.reset_by);
   return def.number_format.expand(|placeholder| {
@@ -82,7 +82,7 @@ fn expand_theorem_template(style: &Style, class: TheoremClass, parts: &[u32]) ->
     let Some(ancestor) = parts.first().filter(|_| return parts.len() >= 2) else {
       return String::new();
     };
-    return style.counters.get(target).number_style.render(*ancestor);
+    return style.counters[target].number_style.render(*ancestor);
   });
 }
 
@@ -97,7 +97,7 @@ fn render_from_chain(style: &Style, chain: &[CounterName], parts: &[u32], target
   let Some(value) = parts.get(index) else {
     return String::new();
   };
-  return style.counters.get(target).number_style.render(*value);
+  return style.counters[target].number_style.render(*value);
 }
 
 /// `name` の祖先カウンタ列に自身を足した列を返す（`CounterValue::parts` と 1:1 に対応する）
@@ -124,7 +124,7 @@ fn ancestor_chain(counters: &Counters, name: CounterName) -> Vec<CounterName> {
   let parent = CounterName::ALL[..own_index]
     .iter()
     .rev()
-    .find(|candidate| return counters.get(**candidate).resets.contains(&name))
+    .find(|candidate| return counters[**candidate].resets.contains(&name))
     .copied();
   let Some(parent) = parent else {
     return Vec::new();

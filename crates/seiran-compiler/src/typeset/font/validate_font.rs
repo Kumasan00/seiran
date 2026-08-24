@@ -261,8 +261,8 @@ pub(super) fn validate_fonts(
   let mut all_errors = Vec::new();
   let mut all_warnings = Vec::new();
   for font_type in FontType::ALL {
-    let config = font_configs.get(font_type);
-    let font_ref = font_refs.get(font_type);
+    let config = &font_configs[font_type];
+    let font_ref = &font_refs[font_type];
     all_errors.extend(
       validate_font(font_type, config, font_ref, &mut all_warnings)
         .into_iter()

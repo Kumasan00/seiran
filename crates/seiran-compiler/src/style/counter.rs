@@ -1,5 +1,7 @@
 //! カウンタ（chapter / section / figure 等）のスタイル設定型。
 
+use std::ops::Index;
+
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -36,24 +38,6 @@ pub(crate) struct Counters {
   /// 数式
   #[garde(dive)]
   pub equation: CounterStyle,
-}
-
-impl Counters {
-  /// 指定したカウンタ名の定義への不変参照を返す（9 種固定のため必ず存在する）
-  #[must_use]
-  pub(crate) fn get(&self, name: CounterName) -> &CounterStyle {
-    return match name {
-      CounterName::Part => &self.part,
-      CounterName::Chapter => &self.chapter,
-      CounterName::Section => &self.section,
-      CounterName::Subsection => &self.subsection,
-      CounterName::Paragraph => &self.paragraph,
-      CounterName::Subparagraph => &self.subparagraph,
-      CounterName::Table => &self.table,
-      CounterName::Figure => &self.figure,
-      CounterName::Equation => &self.equation,
-    };
-  }
 }
 
 impl Default for Counters {
@@ -122,6 +106,24 @@ impl Default for Counters {
       table: CounterStyle::new("Table", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
       figure: CounterStyle::new("Figure", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
       equation: CounterStyle::new("Equation", "{chapter}.{n}", NumberStyle::Arabic, "({number})", &[]),
+    };
+  }
+}
+
+impl Index<CounterName> for Counters {
+  type Output = CounterStyle;
+
+  fn index(&self, name: CounterName) -> &CounterStyle {
+    return match name {
+      CounterName::Part => &self.part,
+      CounterName::Chapter => &self.chapter,
+      CounterName::Section => &self.section,
+      CounterName::Subsection => &self.subsection,
+      CounterName::Paragraph => &self.paragraph,
+      CounterName::Subparagraph => &self.subparagraph,
+      CounterName::Table => &self.table,
+      CounterName::Figure => &self.figure,
+      CounterName::Equation => &self.equation,
     };
   }
 }
@@ -367,10 +369,10 @@ resets = [\"example\"]
   }
 
   #[test]
-  fn counters_get_returns_matching_field() {
+  fn counters_indexing_returns_matching_field() {
     let counters = Counters::default();
-    assert!(std::ptr::eq(counters.get(CounterName::Chapter), &raw const counters.chapter));
-    assert!(std::ptr::eq(counters.get(CounterName::Table), &raw const counters.table));
+    assert!(std::ptr::eq(&raw const counters[CounterName::Chapter], &raw const counters.chapter));
+    assert!(std::ptr::eq(&raw const counters[CounterName::Table], &raw const counters.table));
   }
 
   #[test]

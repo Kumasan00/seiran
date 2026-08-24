@@ -33,7 +33,7 @@ fn register(memory: MemoryProjectSource, path: &Path) -> MemoryProjectSource {
 fn memory_source_for(config: &ProjectConfig, style: &Style) -> MemoryProjectSource {
   let mut memory = MemoryProjectSource::new();
   for font_type in FontType::ALL {
-    memory = register(memory, &config.font_configs.get(font_type).font_path);
+    memory = register(memory, &config.font_configs[font_type].font_path);
   }
   if let Some(csl_path) = &style.reference.csl_path {
     memory = register(memory, csl_path);
@@ -81,10 +81,10 @@ fn shared_font_path_is_read_only_once() {
   let mut config = base_config;
   config.sources = vec![PathBuf::from(SOURCE_REL)];
   let memory = memory_source_for(&config, &style);
-  let shared_path = config.font_configs.get(FontType::Serif).font_path.clone();
+  let shared_path = config.font_configs[FontType::Serif].font_path.clone();
   assert_eq!(
     shared_path,
-    config.font_configs.get(FontType::SerifBold).font_path,
+    config.font_configs[FontType::SerifBold].font_path,
     "fixture の serif と serif_bold は同じパスを共有しているはず"
   );
 

@@ -95,7 +95,7 @@ fn build_font_refs<'a>(
     .par_iter()
     .map(|&font_type| {
       let font_data = font_data.get(font_type);
-      let font_config = config.get(font_type);
+      let font_config = &config[font_type];
       let index = font_config.font_index;
       return FontRef::from_index(font_data, index).map_err(|source| {
         return FontLoadError::ParseFont {
@@ -136,7 +136,7 @@ fn build_font_metrics(font_refs: &FontRefs<'_>) -> Result<FontMetrics, Failures<
   let results = FontType::ALL
     .iter()
     .map(|&font_type| {
-      let font_ref = font_refs.get(font_type);
+      let font_ref = &font_refs[font_type];
       let head = font_ref.head().map_err(|source| {
         return FontLoadError::ReadMetricsTable {
           font_type,

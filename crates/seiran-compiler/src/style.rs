@@ -196,7 +196,7 @@ impl Style {
 
   /// 指定された定理クラスのスタイル定義への不変参照を返す（10 種固定のため必ず存在する）。
   #[must_use]
-  pub(crate) fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return self.theorems.get(class); }
+  pub(crate) fn theorem(&self, class: TheoremClass) -> &TheoremStyle { return &self.theorems[class]; }
 }
 
 /// スタイル設定ファイルを読み込みます。

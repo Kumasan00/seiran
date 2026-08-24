@@ -1,6 +1,9 @@
 //! 全フォント種別に対応する値を保持する [`FontMap`]。
 
-use std::collections::HashMap;
+use std::{
+  collections::HashMap,
+  ops::{Index, IndexMut},
+};
 
 use crate::project::font::FontType;
 
@@ -18,7 +21,7 @@ use crate::project::font::FontType;
 /// use crate::project::font::{FontMap, FontType};
 ///
 /// let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
-/// assert_eq!(map.get(FontType::Serif), "Serif");
+/// assert_eq!(map[FontType::Serif], "Serif");
 /// assert_eq!(map.iter().count(), 19);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,32 +42,6 @@ impl<T> FontMap<T> {
     return Self { inner };
   }
 
-  /// 指定されたフォント種別の値を返す
-  ///
-  /// # Panics
-  ///
-  /// 指定された `font_type` がマップに存在しない場合にパニックします。
-  /// `from_all` で正しく構築されていれば発生しません。
-  #[must_use]
-  pub(crate) fn get(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
-
-  /// 指定されたフォント種別の値を可変参照で返す
-  ///
-  /// # Panics
-  ///
-  /// 指定された `font_type` がマップに存在しない場合にパニックします。
-  #[must_use]
-  #[cfg_attr(
-    not(test),
-    expect(
-      dead_code,
-      reason = "本体は組み立て済みの値しか触らない（crate 内の `#[cfg(test)]` が診断のフィクスチャ改変に使う）"
-    )
-  )]
-  pub(crate) fn get_mut(&mut self, font_type: FontType) -> &mut T {
-    return self.inner.get_mut(&font_type).expect("FontMap: 指定された FontType が見つかりません");
-  }
-
   /// [`FontType::ALL`] の順序で反復する
   #[must_use]
   pub(crate) fn iter(&self) -> FontMapIter<'_, T> {
@@ -80,6 +57,21 @@ impl<T> FontMap<T> {
       inner: &mut self.inner,
       index: 0,
     };
+  }
+}
+
+impl<T> Index<FontType> for FontMap<T> {
+  type Output = T;
+
+  fn index(&self, font_type: FontType) -> &T { return &self.inner[&font_type]; }
+}
+
+impl<T> IndexMut<FontType> for FontMap<T> {
+  fn index_mut(&mut self, font_type: FontType) -> &mut T {
+    return self
+      .inner
+      .get_mut(&font_type)
+      .expect("from_all が FontType::ALL 全種別を埋めるので、どの種別でも必ず引ける");
   }
 }
 
@@ -174,7 +166,7 @@ mod tests {
     let map = FontMap::from_all(FontType::ALL.iter().map(|ft| format!("{ft}")));
 
     // Act
-    let serif_value = map.get(FontType::Serif);
+    let serif_value = &map[FontType::Serif];
 
     // Assert
     assert_eq!(serif_value, "Serif", "FontType::Serif の Debug 表記のはず");

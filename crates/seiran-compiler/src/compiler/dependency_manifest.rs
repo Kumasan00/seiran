@@ -40,7 +40,7 @@ impl DependencyManifest {
   ) -> Self {
     let font_paths: BTreeSet<PathBuf> = FontType::ALL
       .iter()
-      .map(|font_type| return inputs.config().font_configs.get(*font_type).font_path.clone())
+      .map(|font_type| return inputs.config().font_configs[*font_type].font_path.clone())
       .collect();
     return DependencyManifest {
       config_path: config_path.to_path_buf(),
