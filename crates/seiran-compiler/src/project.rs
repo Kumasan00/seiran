@@ -64,10 +64,10 @@ impl ProjectPath {
   /// 冗長な `.` / 区切りを畳んだ `ProjectPath` を作る。
   #[must_use]
   pub fn new(path: impl AsRef<Path>) -> Self { return ProjectPath(path.as_ref().components().collect()); }
+}
 
-  /// 内部の `Path` を返す。
-  #[must_use]
-  pub fn as_path(&self) -> &Path { return &self.0; }
+impl AsRef<Path> for ProjectPath {
+  fn as_ref(&self) -> &Path { return &self.0; }
 }
 
 impl std::fmt::Display for ProjectPath {
@@ -130,7 +130,7 @@ pub trait ProjectSource: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-  use std::collections::BTreeSet;
+  use std::{collections::BTreeSet, path::Path};
 
   use super::{ProjectPath, SourceReadError};
 
@@ -142,6 +142,18 @@ mod tests {
 
     // Assert
     assert_eq!(a, b, "`.` を含むパスは畳んだ形と等しいはず");
+  }
+
+  #[test]
+  fn as_ref_borrows_the_normalized_path() {
+    // Arrange
+    let path = ProjectPath::new("/a/./b.ttf");
+
+    // Act
+    let borrowed: &Path = path.as_ref();
+
+    // Assert
+    assert_eq!(borrowed, Path::new("/a/b.ttf"), "正規化済みの Path を借りるはず");
   }
 
   #[test]

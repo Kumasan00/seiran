@@ -114,7 +114,7 @@ impl FilesystemProjectSource {
     {
       *lock_map(&self.disk_reads).entry(path.clone()).or_insert(0) += 1;
     }
-    let bytes: Arc<[u8]> = std::fs::read(path.as_path()).map_err(SourceReadError::Io)?.into();
+    let bytes: Arc<[u8]> = std::fs::read(path).map_err(SourceReadError::Io)?.into();
     lock_map(&self.cache).insert(path.clone(), Arc::clone(&bytes));
     return Ok(bytes);
   }
@@ -143,7 +143,7 @@ impl ProjectSource for FilesystemProjectSource {
     return Ok(Arc::from(text));
   }
 
-  fn exists(&self, path: &ProjectPath) -> bool { return path.as_path().exists(); }
+  fn exists(&self, path: &ProjectPath) -> bool { return path.as_ref().exists(); }
 }
 
 #[cfg(test)]

@@ -412,7 +412,7 @@ fn config_overrides_typed_and_toml_stay_in_sync() {
 
     // Act — toml 版（`dump_input_via_compile` と同じ経路で実際に `load` を通す）
     let (source, root) = memory_source_for_golden_fixture(name);
-    let (toml_config, _) = project::config::load(&source, root.as_path(), &workspace_root)
+    let (toml_config, _) = project::config::load(&source, root.as_ref(), &workspace_root)
       .unwrap_or_else(|error| panic!("fixture {name} の toml 版 config 読込は成功するはず: {error}"));
 
     // Assert — 両関数が触れうるフィールドが一致する
