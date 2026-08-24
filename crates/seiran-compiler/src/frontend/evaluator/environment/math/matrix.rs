@@ -23,14 +23,17 @@ use crate::{
 pub(crate) fn matrix(view: &EnvironmentView<'_>, builder: &HirBuilder) -> Result<Vec<HirNode>, EvalError> {
   let opt_args = collect_environment_opt_args(view, &[("delimiter", OptType::String)])?;
   let delimiter = match find_string(&opt_args, "delimiter") {
-    Some(value) => MathDelimiter::from_opt_str(&value).ok_or_else(|| {
-      return EvalError::InvalidOptArgValue {
-        name: "matrix".to_string(),
-        key: "delimiter".to_string(),
-        expected: "none / paren / bracket / brace / bar / dbar".to_string(),
-        span: view.span().to_source_span(),
+    Some(value) => {
+      let Ok(delimiter) = value.parse::<MathDelimiter>() else {
+        return Err(EvalError::InvalidOptArgValue {
+          name: "matrix".to_string(),
+          key: "delimiter".to_string(),
+          expected: "none / paren / bracket / brace / bar / dbar".to_string(),
+          span: view.span().to_source_span(),
+        });
       };
-    })?,
+      delimiter
+    },
     None => MathDelimiter::None,
   };
   if !view.args().is_empty() {

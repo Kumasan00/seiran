@@ -1,5 +1,9 @@
 //! 数式環境の種別 [`MathEnvKind`] と区切り括弧 [`MathDelimiter`]。
 
+use std::str::FromStr;
+
+use thiserror::Error;
+
 /// ディスプレイ数式環境の種別
 ///
 /// `frontend` が `\begin{...}` の環境名から決定する。`block` 段がこの種別に応じて
@@ -45,21 +49,28 @@ pub(crate) enum MathDelimiter {
   DoubleBar,
 }
 
-impl MathDelimiter {
+/// [`MathDelimiter`] の `FromStr` が受理しない値を渡されたときのエラー。
+#[derive(Debug, Error)]
+#[error("区切り括弧は none / paren / bracket / brace / bar / dbar のいずれかである必要があります")]
+pub(crate) struct ParseMathDelimiterError;
+
+impl FromStr for MathDelimiter {
+  type Err = ParseMathDelimiterError;
+
   /// `matrix` 環境の `[delimiter=...]` オプション値文字列を [`MathDelimiter`] に変換する
   ///
-  /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`（大小無視）。
-  /// 未知の値には `None` を返す（呼び出し側がエラーにする）。
-  #[must_use]
-  pub(crate) fn from_opt_str(value: &str) -> Option<Self> {
+  /// 受理する値は `none` / `paren` / `bracket` / `brace` / `bar` / `dbar`。
+  /// 他の語彙型と違い前後の空白と大小文字をここで正規化する — 現行の受理範囲
+  /// （`" brace "` / `"BRACKET"` も通る）をそのまま保つため。
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
     return match value.trim().to_ascii_lowercase().as_str() {
-      "none" => Some(MathDelimiter::None),
-      "paren" => Some(MathDelimiter::Paren),
-      "bracket" => Some(MathDelimiter::Bracket),
-      "brace" => Some(MathDelimiter::Brace),
-      "bar" => Some(MathDelimiter::Bar),
-      "dbar" => Some(MathDelimiter::DoubleBar),
-      _ => None,
+      "none" => Ok(MathDelimiter::None),
+      "paren" => Ok(MathDelimiter::Paren),
+      "bracket" => Ok(MathDelimiter::Bracket),
+      "brace" => Ok(MathDelimiter::Brace),
+      "bar" => Ok(MathDelimiter::Bar),
+      "dbar" => Ok(MathDelimiter::DoubleBar),
+      _ => Err(ParseMathDelimiterError),
     };
   }
 }
@@ -69,19 +80,19 @@ mod tests {
   use super::MathDelimiter;
 
   #[test]
-  fn from_opt_str_maps_known_values_case_insensitively() {
-    // Arrange / Act / Assert
-    assert_eq!(MathDelimiter::from_opt_str("none"), Some(MathDelimiter::None));
-    assert_eq!(MathDelimiter::from_opt_str("paren"), Some(MathDelimiter::Paren));
-    assert_eq!(MathDelimiter::from_opt_str("BRACKET"), Some(MathDelimiter::Bracket));
-    assert_eq!(MathDelimiter::from_opt_str(" brace "), Some(MathDelimiter::Brace));
-    assert_eq!(MathDelimiter::from_opt_str("bar"), Some(MathDelimiter::Bar));
-    assert_eq!(MathDelimiter::from_opt_str("dbar"), Some(MathDelimiter::DoubleBar));
+  fn from_str_maps_known_values_case_insensitively() {
+    // Arrange / Act / Assert: 前後の空白と大小文字は `from_str` の中で正規化する
+    assert_eq!("none".parse::<MathDelimiter>().ok(), Some(MathDelimiter::None));
+    assert_eq!("paren".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Paren));
+    assert_eq!("BRACKET".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bracket));
+    assert_eq!(" brace ".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Brace));
+    assert_eq!("bar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::Bar));
+    assert_eq!("dbar".parse::<MathDelimiter>().ok(), Some(MathDelimiter::DoubleBar));
   }
 
   #[test]
-  fn from_opt_str_rejects_unknown_value() {
+  fn from_str_rejects_unknown_value() {
     // Arrange / Act / Assert
-    assert_eq!(MathDelimiter::from_opt_str("angle"), None);
+    assert!("angle".parse::<MathDelimiter>().is_err());
   }
 }

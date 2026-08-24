@@ -321,7 +321,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
   （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
   `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）/ `font_kind`（`FontKind`）。小さな `Copy` 値型・enum と、その正準変換
-  （`as_str` / `from_name` / serde / `Display`）のみを持つ。
+  （`as_str` / `FromStr` / serde / `Display`）のみを持つ。
   **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
   （語彙置き場を型の無制限な受け皿にしない）。全 10 型が HIR の enum に現れる — 8 型は
   `HirNodeKind` / `HirMathKind` の、`FontKind` は `HirInlineKind::Styled` の直接のフィールドで、

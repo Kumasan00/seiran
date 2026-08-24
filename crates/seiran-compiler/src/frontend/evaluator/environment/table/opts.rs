@@ -75,7 +75,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Resu
   if tokens.is_empty() {
     return Err(invalid());
   }
-  return tokens.iter().map(|t| return ColumnAlign::from_keyword(t).ok_or_else(invalid)).collect();
+  return tokens.iter().map(|t| return t.parse::<ColumnAlign>().ok().ok_or_else(invalid)).collect();
 }
 
 /// `widths="auto auto 5cm 0.3 *"` の値を [`ColumnWidth`] の列に変換する

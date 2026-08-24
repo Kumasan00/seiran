@@ -3,6 +3,10 @@
 //! どちらも HIR（`HirNodeKind::Table`）に直接現れる authored な語彙なので `document` が持つ。
 //! 2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有（#334）。
 
+use std::str::FromStr;
+
+use thiserror::Error;
+
 use crate::length::Length;
 
 /// 列内のセル内容の揃え方向
@@ -20,17 +24,24 @@ pub(crate) enum ColumnAlign {
   Right,
 }
 
-impl ColumnAlign {
+/// [`ColumnAlign`] の `FromStr` が受理しないキーワードを渡されたときのエラー。
+#[derive(Debug, Error)]
+#[error("列の揃えは left / center / right のいずれかである必要があります")]
+pub(crate) struct ParseColumnAlignError;
+
+impl FromStr for ColumnAlign {
+  type Err = ParseColumnAlignError;
+
   /// `columns=` のトークン（フルスペル）から揃え方向を解決する
   ///
-  /// 未知のトークンは `None` を返す（`l` / `c` / `r` 略記も不可）。
-  #[must_use]
-  pub(crate) fn from_keyword(keyword: &str) -> Option<Self> {
+  /// `l` / `c` / `r` の略記は受理しない。前後の空白も落とさない（呼び出し側が
+  /// `split_whitespace` で切り出したトークンを渡す）。
+  fn from_str(keyword: &str) -> Result<Self, Self::Err> {
     return match keyword {
-      "left" => Some(ColumnAlign::Left),
-      "center" => Some(ColumnAlign::Center),
-      "right" => Some(ColumnAlign::Right),
-      _ => None,
+      "left" => Ok(ColumnAlign::Left),
+      "center" => Ok(ColumnAlign::Center),
+      "right" => Ok(ColumnAlign::Right),
+      _ => Err(ParseColumnAlignError),
     };
   }
 }
@@ -79,19 +90,20 @@ mod tests {
   }
 
   #[test]
-  fn from_keyword_resolves_full_spellings() {
-    assert_eq!(ColumnAlign::from_keyword("left"), Some(ColumnAlign::Left));
-    assert_eq!(ColumnAlign::from_keyword("center"), Some(ColumnAlign::Center));
-    assert_eq!(ColumnAlign::from_keyword("right"), Some(ColumnAlign::Right));
+  fn from_str_resolves_full_spellings() {
+    // Arrange / Act / Assert
+    assert_eq!("left".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Left));
+    assert_eq!("center".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Center));
+    assert_eq!("right".parse::<ColumnAlign>().ok(), Some(ColumnAlign::Right));
   }
 
   #[test]
-  fn from_keyword_rejects_abbreviations_and_unknown() {
+  fn from_str_rejects_abbreviations_and_unknown() {
     // Arrange / Act / Assert
-    assert_eq!(ColumnAlign::from_keyword("l"), None);
-    assert_eq!(ColumnAlign::from_keyword("c"), None);
-    assert_eq!(ColumnAlign::from_keyword("r"), None);
-    assert_eq!(ColumnAlign::from_keyword("justify"), None);
-    assert_eq!(ColumnAlign::from_keyword(""), None);
+    assert!("l".parse::<ColumnAlign>().is_err());
+    assert!("c".parse::<ColumnAlign>().is_err());
+    assert!("r".parse::<ColumnAlign>().is_err());
+    assert!("justify".parse::<ColumnAlign>().is_err());
+    assert!("".parse::<ColumnAlign>().is_err());
   }
 }

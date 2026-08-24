@@ -1,6 +1,9 @@
 //! 定理クラス [`TheoremClass`]。
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// ビルトイン定理クラス（固定 10 種）。
 ///
@@ -66,25 +69,35 @@ impl TheoremClass {
       Self::Proof => "proof",
     };
   }
+}
 
-  /// 環境名（`snake_case`）から対応するクラスを取得する。
+/// [`TheoremClass`] の `FromStr` が受理しない環境名を渡されたときのエラー。
+#[derive(Debug, Error)]
+#[error(
+  "定理環境は theorem / lemma / proposition / corollary / definition / axiom / example / remark / claim / proof のいずれかである必要があります"
+)]
+pub(crate) struct ParseTheoremClassError;
+
+impl FromStr for TheoremClass {
+  type Err = ParseTheoremClassError;
+
+  /// 環境名（`snake_case`）から対応するクラスを復元する。
   ///
-  /// 10 種以外の名前は `None` を返す。`frontend` が `\begin{<name>}` の環境名を
-  /// クラスに解決するために使う。
-  #[must_use]
-  pub(crate) fn from_name(name: &str) -> Option<Self> {
+  /// [`TheoremClass::as_str`]（= [`Display`](std::fmt::Display)）と往復する。`frontend` が
+  /// `\begin{<name>}` の環境名をクラスに解決するために使う。
+  fn from_str(name: &str) -> Result<Self, Self::Err> {
     return match name {
-      "theorem" => Some(Self::Theorem),
-      "lemma" => Some(Self::Lemma),
-      "proposition" => Some(Self::Proposition),
-      "corollary" => Some(Self::Corollary),
-      "definition" => Some(Self::Definition),
-      "axiom" => Some(Self::Axiom),
-      "example" => Some(Self::Example),
-      "remark" => Some(Self::Remark),
-      "claim" => Some(Self::Claim),
-      "proof" => Some(Self::Proof),
-      _ => None,
+      "theorem" => Ok(Self::Theorem),
+      "lemma" => Ok(Self::Lemma),
+      "proposition" => Ok(Self::Proposition),
+      "corollary" => Ok(Self::Corollary),
+      "definition" => Ok(Self::Definition),
+      "axiom" => Ok(Self::Axiom),
+      "example" => Ok(Self::Example),
+      "remark" => Ok(Self::Remark),
+      "claim" => Ok(Self::Claim),
+      "proof" => Ok(Self::Proof),
+      _ => Err(ParseTheoremClassError),
     };
   }
 }
@@ -106,22 +119,30 @@ mod tests {
   }
 
   #[test]
-  fn as_str_and_from_name_roundtrip() {
+  fn as_str_and_from_str_roundtrip() {
     // Arrange / Act / Assert
     for class in TheoremClass::ALL {
-      assert_eq!(TheoremClass::from_name(class.as_str()), Some(class));
+      assert_eq!(class.as_str().parse::<TheoremClass>().ok(), Some(class));
     }
   }
 
   #[test]
-  fn from_name_rejects_unknown() {
+  fn from_str_rejects_unknown() {
     // Arrange / Act / Assert
-    assert_eq!(TheoremClass::from_name("conjecture"), None);
+    assert!("conjecture".parse::<TheoremClass>().is_err());
   }
 
   #[test]
   fn display_matches_as_str() {
     // Arrange / Act / Assert
     assert_eq!(format!("{}", TheoremClass::Proof), "proof");
+  }
+
+  #[test]
+  fn display_and_from_str_round_trip() {
+    // Arrange / Act / Assert: Display の正準形を FromStr で往復
+    for class in TheoremClass::ALL {
+      assert_eq!(class.to_string().parse::<TheoremClass>().ok(), Some(class));
+    }
   }
 }

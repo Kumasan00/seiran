@@ -290,7 +290,7 @@ impl Placeholder for CounterPlaceholder {
     if name == "n" {
       return Some(Self::Own);
     }
-    return CounterName::from_name(name).map(Self::Counter);
+    return name.parse::<CounterName>().ok().map(Self::Counter);
   }
 }
 
