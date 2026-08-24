@@ -59,7 +59,7 @@ pub(crate) enum CommandKind {
   Index,
   /// `\code{...}` — 内容としてのインラインコード（必須引数は verbatim）
   Code,
-  /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク
+  /// `\url{uri}` — 外部 URI を表示テキスト兼リンク先にする外部リンク（必須引数は verbatim）
   Url,
   /// `\href[url=uri]{表示}` — 表示テキストと外部 URI を別に指定する外部リンク
   Href,
@@ -186,6 +186,7 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 /// 将来の `\define` もここへ宣言できない。
 static VERBATIM_ARG_COMMANDS: phf::Set<&'static str> = phf_set! {
   "code",
+  "url",
 };
 
 /// コマンド名から必須引数の読み取り方を引く

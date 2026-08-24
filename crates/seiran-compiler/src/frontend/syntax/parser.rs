@@ -798,7 +798,8 @@ mod tests {
 
   /// テスト用のコマンド名 → [`ArgMode`] 解決関数
   ///
-  /// `vurl` は verbatim 引数コマンドのスタンドイン（本物の `\url` の verbatim 化は #449）。
+  /// `vurl` は verbatim 引数コマンドのスタンドイン。`syntax` は語彙を持たないので、本番レジストリ
+  /// （`evaluator::command` の `VERBATIM_ARG_COMMANDS`）とは独立した合成名でモード分岐だけを検査する。
   fn test_command_arg(name: &str) -> ArgMode {
     return match name {
       "vurl" => ArgMode::Verbatim,
