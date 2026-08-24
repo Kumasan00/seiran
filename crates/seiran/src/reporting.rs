@@ -47,7 +47,7 @@ impl Reporter {
     if self.quiet {
       return;
     }
-    for report in warnings.reports() {
+    for report in warnings {
       eprintln!("{report:?}");
     }
   }

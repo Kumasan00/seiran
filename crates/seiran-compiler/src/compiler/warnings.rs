@@ -7,7 +7,7 @@ use miette::Diagnostic;
 /// 中身は型消去済みの [`miette::Report`]。致命的エラーはこの型ではなく
 /// [`CompileFailure`](crate::CompileFailure) が持つ（error と warning で公開型を共用しない）。
 /// `CompileFailure` と違って空は正当な状態（警告なしでコンパイルが通るのが通常）なので、
-/// 空で構築できる。
+/// [`Default`] で空を構築できる。
 ///
 /// 順序は検出順ではなく**入力の論理順**を `compile` が組み立てる
 /// （config の警告は `sources` の宣言順、フォントの警告は `FontType::ALL` 順）。
@@ -18,14 +18,6 @@ pub struct Warnings {
 }
 
 impl Warnings {
-  /// 警告のない空集合を返す。
-  #[must_use]
-  pub fn empty() -> Self {
-    return Warnings {
-      reports: Vec::new(),
-    };
-  }
-
   /// warning severity の診断を 1 件追加する。
   pub(crate) fn push<D: Diagnostic + Send + Sync + 'static>(&mut self, warning: D) {
     assert_eq!(
@@ -40,8 +32,16 @@ impl Warnings {
   #[must_use]
   pub fn is_empty(&self) -> bool { return self.reports.is_empty(); }
 
-  /// 保持する警告を入力の論理順に返す。
-  pub fn reports(&self) -> impl Iterator<Item = &miette::Report> { return self.reports.iter(); }
+  /// 保持する警告を入力の論理順に借用で返す。
+  pub fn iter(&self) -> std::slice::Iter<'_, miette::Report> { return self.reports.iter(); }
+}
+
+/// 借用したまま入力の論理順に反復する（`for report in &warnings`）。
+impl<'a> IntoIterator for &'a Warnings {
+  type IntoIter = std::slice::Iter<'a, miette::Report>;
+  type Item = &'a miette::Report;
+
+  fn into_iter(self) -> Self::IntoIter { return self.iter(); }
 }
 
 #[cfg(test)]
@@ -58,19 +58,19 @@ mod tests {
   struct TestWarning;
 
   #[test]
-  fn empty_has_no_reports() {
+  fn default_has_no_reports() {
     // Arrange / Act
-    let warnings = Warnings::empty();
+    let warnings = Warnings::default();
 
     // Assert
     assert!(warnings.is_empty());
-    assert_eq!(warnings.reports().count(), 0);
+    assert_eq!(warnings.iter().count(), 0);
   }
 
   #[test]
   fn push_keeps_severity_and_insertion_order() {
     // Arrange
-    let mut warnings = Warnings::empty();
+    let mut warnings = Warnings::default();
 
     // Act
     warnings.push(TestWarning);
@@ -78,7 +78,25 @@ mod tests {
 
     // Assert
     assert!(!warnings.is_empty());
-    assert_eq!(warnings.reports().count(), 2);
-    assert!(warnings.reports().all(|report| return report.severity() == Some(miette::Severity::Warning)));
+    assert_eq!(warnings.iter().count(), 2);
+    assert!(warnings.iter().all(|report| return report.severity() == Some(miette::Severity::Warning)));
+  }
+
+  #[test]
+  fn borrowed_warnings_can_be_iterated_with_for() {
+    // Arrange
+    let mut warnings = Warnings::default();
+    warnings.push(TestWarning);
+    warnings.push(TestWarning);
+
+    // Act
+    let mut severities = Vec::new();
+    for report in &warnings {
+      severities.push(report.severity());
+    }
+
+    // Assert — 借用反復なので反復後も warnings を読める
+    assert_eq!(severities, vec![Some(miette::Severity::Warning); 2]);
+    assert_eq!(warnings.iter().count(), 2);
   }
 }

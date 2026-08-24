@@ -107,7 +107,7 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
   // Assert — 警告は成功成果物と一緒に返り、severity は Warning、code は leaf のもの
   let codes: Vec<String> = compilation
     .warnings
-    .reports()
+    .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
   assert!(!codes.is_empty(), "GSUB / GPOS の script 不一致が警告として返るはず: {codes:?}");
@@ -118,7 +118,7 @@ fn compile_returns_font_warnings_with_the_successful_compilation() {
   assert!(
     compilation
       .warnings
-      .reports()
+      .iter()
       .all(|report| return report.severity() == Some(miette::Severity::Warning)),
     "warning severity だけを持つはず"
   );
@@ -143,7 +143,7 @@ fn compile_orders_warnings_by_stage_config_before_font_before_typeset() {
   // Assert — 表示順は段の実行順（設定 → フォント → 組版）で固定
   let codes: Vec<String> = compilation
     .warnings
-    .reports()
+    .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
   assert_eq!(codes.first().map(String::as_str), Some("project::config::source_extension"), "{codes:?}");
@@ -177,7 +177,7 @@ fn compile_returns_a_typeset_warning_for_a_footnote_that_does_not_fit_the_page()
   let compilation = seiran_compiler::compile(&source, &root, project_base_dir()).expect("はみ出しは致命的ではないはず");
 
   // Assert — 組版の警告が成功成果物と一緒に返り、severity は Warning
-  let reports: Vec<&miette::Report> = compilation.warnings.reports().collect();
+  let reports: Vec<&miette::Report> = compilation.warnings.iter().collect();
   let codes: Vec<String> = reports
     .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
@@ -212,7 +212,7 @@ fn per_page_footnote_numbering_does_not_duplicate_typeset_warnings() {
   // Assert — 収束したパスの警告だけが残る
   let codes: Vec<String> = compilation
     .warnings
-    .reports()
+    .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
   assert_eq!(codes, vec!["typeset::footnote::overflow".to_string()], "{codes:?}");
@@ -235,7 +235,7 @@ fn compile_returns_a_config_warning_for_a_non_sei_source_extension() {
   // Assert
   let codes: Vec<String> = compilation
     .warnings
-    .reports()
+    .iter()
     .map(|report| return report.code().expect("警告も leaf の診断コードを持つはず").to_string())
     .collect();
   assert_eq!(codes, vec!["project::config::source_extension".to_string()]);
