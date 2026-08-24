@@ -511,6 +511,26 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 `parser`（+ `parser::error` の `ParserError`）/ `cst`（`green::GreenNode`
 ＝ロスレスなツリー、`kind` ＝ノード種別、`ast` ＝型付きビュー `CommandView` / `EnvironmentView`）。
 
+**verbatim 字句モード（#447）**: `Lexer::next` とは別経路の raw 走査で、終端マーカーを探す以外の
+字句規則（コメント `//`・`\x` エスケープ・`$`・`{}`）がすべて不活性になる。入口は 2 つ — verbatim
+宣言された環境の本体（終端は `\end{<環境名>}` の正確なバイト列一致。`Lexer::scan_verbatim_until`）と、
+verbatim 宣言されたコマンドの必須引数（終端はブレースバランス。`Lexer::scan_verbatim_balanced`）。
+走査結果は内部構造を持たない 1 個の `TokenKind::VerbatimText` トークンになり、環境本体・引数のどちらも
+本体が空でも必ず 1 個積む。raw 走査の直前にはパーサーの 1 トークン先読みバッファを
+`rewind_peeked` でレキサーへ返す（走査開始位置は常にレキサーのカーソル）。
+
+どの環境・コマンドが verbatim かという語彙は `syntax` が持たず、`ModeResolver`（`env_body:
+fn(&str) -> BodyMode` / `command_arg: fn(&str) -> ArgMode` の 2 本）経由で `evaluator` の phf
+レジストリが単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。`BodyMode` は `Text` / `Math` /
+`Verbatim`、`ArgMode` は `Inherit` / `Verbatim` で、トークン化して読むときの `ParseMode`（`Text` /
+`Math` の 2 値）とは別の型 — 生読みは「トークン化の際のモード」ではなく入口の分岐なので、
+`ParseMode` に `Verbatim` を足すと `parse_element` 側に到達不能な分岐が生える。引数モードは
+外側文脈からの継承に優先するので、数式内でも verbatim 宣言が効く（#236）。
+
+verbatim 環境の `\begin` 直後は**トリビアを跨がない** — `\begin{<環境名>}` に隣接する `[...]` 1 組
+だけを任意引数として読み、それ以外はすべて本体のバイトになる（通常環境は空白・改行・コメントを
+跨いで引数を探すので、ここだけ規則が違う）。必須引数 `{...}` は読まない。
+
 #### `evaluator`
 
 CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評価変換する。各ハンドラは
@@ -524,9 +544,10 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
   `multiline` / `cases` / `matrix` と、これらが共有する複数行分割の共通基盤 `math_grid`（+ `markers` /
   `numbering`）。数式系ハンドラは `math` モジュールから再エクスポートして `ENVIRONMENTS` に登録する
 - `inline` / `math` / `opt_args` / `error`
-- `test_support`（`#[cfg(test)]`）: 配下の test module が共有する CST 組み立てヘルパ。本番の環境
-  レジストリ（`lookup_env_parse_mode`）を注入した `parse` と、そこから最初の `CommandCall` を取り出す
-  `command_call_node` を持つ。以前は同じ形が evaluator 配下の各 test module へ複製されていた（#400）
+- `test_support`（`#[cfg(test)]`）: 配下の test module が共有する CST 組み立てヘルパ。本番の
+  レジストリ（`mode_resolver`＝環境本体の `lookup_body_mode` とコマンド引数の `lookup_arg_mode`）を
+  注入した `parse` と、そこから最初の `CommandCall` を取り出す `command_call_node` を持つ。
+  以前は同じ形が evaluator 配下の各 test module へ複製されていた（#400）
 
 コマンドは `COMMAND_MAP`、記号は `SYMBOL_MAP`、環境は `ENVIRONMENTS` の phf レジストリを単一の真実源として
 ディスパッチする。

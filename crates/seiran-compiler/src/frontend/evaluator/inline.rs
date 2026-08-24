@@ -56,7 +56,14 @@ pub(crate) fn extract_inline_nodes_from_elements(
   for child in children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
+        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
+        TokenKind::Text
+        | TokenKind::VerbatimText
+        | TokenKind::Whitespace
+        | TokenKind::Newline
+        | TokenKind::Comma
+        | TokenKind::Equals => {
           inlines.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {

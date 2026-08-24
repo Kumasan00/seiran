@@ -9,7 +9,7 @@ use crate::{
   frontend::{
     evaluator::EvalError,
     span_ext::ToSourceSpan,
-    syntax::{ParseMode, ast::EnvironmentView},
+    syntax::{BodyMode, ast::EnvironmentView},
   },
 };
 
@@ -27,8 +27,8 @@ type EnvHandler = fn(&EnvironmentView<'_>, &HirBuilder) -> Result<Vec<HirNode>, 
 
 /// 環境の定義
 pub(crate) struct EnvDef {
-  /// 本体の構文解析モード（Text / Math 等）
-  pub parse_mode: ParseMode,
+  /// 本体の読み取り方（トークン化して Text / Math、または生読み）
+  pub body_mode: BodyMode,
   /// 評価ハンドラ。`None` の場合は「構文解析モードのみ登録、評価は未実装」を意味し、
   /// 評価器は [`EvalError::UnknownEnvironment`] を返す。
   pub handler: Option<EnvHandler>,
@@ -42,37 +42,37 @@ pub(crate) struct EnvDef {
 
 /// 環境名 → 定義 の単一レジストリ
 pub(crate) static ENVIRONMENTS: phf::Map<&'static str, EnvDef> = phf_map! {
-  "itemize"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::itemize),   display_name: "箇条書きリスト" },
-  "enumerate" => EnvDef { parse_mode: ParseMode::Text, handler: Some(list::enumerate), display_name: "番号付きリスト" },
-  "equation"  => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::equation),     display_name: "数式" },
-  "align"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::align),         display_name: "整列数式" },
-  "gather"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::gather),        display_name: "中央寄せ数式" },
-  "split"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::split),         display_name: "分割数式" },
-  "multiline" => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::multiline),     display_name: "多行数式" },
-  "cases"     => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::cases),         display_name: "場合分け" },
-  "matrix"    => EnvDef { parse_mode: ParseMode::Math, handler: Some(math::matrix),        display_name: "行列" },
-  "figure"    => EnvDef { parse_mode: ParseMode::Text, handler: Some(figure::figure),      display_name: "図" },
-  "table"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(table::table),        display_name: "表" },
-  "theorem"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "定理" },
-  "lemma"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "補題" },
-  "proposition" => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "命題" },
-  "corollary"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "系" },
-  "definition"  => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "定義" },
-  "axiom"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "公理" },
-  "example"     => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "例" },
-  "remark"      => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
-  "claim"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
-  "proof"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
-  "quote"       => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用" },
-  "quotation"   => EnvDef { parse_mode: ParseMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
+  "itemize"   => EnvDef { body_mode: BodyMode::Text, handler: Some(list::itemize),   display_name: "箇条書きリスト" },
+  "enumerate" => EnvDef { body_mode: BodyMode::Text, handler: Some(list::enumerate), display_name: "番号付きリスト" },
+  "equation"  => EnvDef { body_mode: BodyMode::Math, handler: Some(math::equation),     display_name: "数式" },
+  "align"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::align),         display_name: "整列数式" },
+  "gather"    => EnvDef { body_mode: BodyMode::Math, handler: Some(math::gather),        display_name: "中央寄せ数式" },
+  "split"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::split),         display_name: "分割数式" },
+  "multiline" => EnvDef { body_mode: BodyMode::Math, handler: Some(math::multiline),     display_name: "多行数式" },
+  "cases"     => EnvDef { body_mode: BodyMode::Math, handler: Some(math::cases),         display_name: "場合分け" },
+  "matrix"    => EnvDef { body_mode: BodyMode::Math, handler: Some(math::matrix),        display_name: "行列" },
+  "figure"    => EnvDef { body_mode: BodyMode::Text, handler: Some(figure::figure),      display_name: "図" },
+  "table"     => EnvDef { body_mode: BodyMode::Text, handler: Some(table::table),        display_name: "表" },
+  "theorem"     => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "定理" },
+  "lemma"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "補題" },
+  "proposition" => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "命題" },
+  "corollary"   => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "系" },
+  "definition"  => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "定義" },
+  "axiom"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "公理" },
+  "example"     => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "例" },
+  "remark"      => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "注意" },
+  "claim"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "主張" },
+  "proof"       => EnvDef { body_mode: BodyMode::Text, handler: Some(theorem::theorem), display_name: "証明" },
+  "quote"       => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用" },
+  "quotation"   => EnvDef { body_mode: BodyMode::Text, handler: Some(quote::quote),    display_name: "引用（段落字下げあり）" },
 };
 
-/// 環境名から構文解析モードを引く
+/// 環境名から本体の読み取り方を引く
 ///
-/// `crate::frontend::syntax::parse` に渡すコールバック用。
-/// 未登録の環境は [`ParseMode::Text`] が既定。
-pub(crate) fn lookup_parse_mode(name: &str) -> ParseMode {
-  return ENVIRONMENTS.get(name).map_or(ParseMode::Text, |def| return def.parse_mode);
+/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
+/// 未登録の環境は [`BodyMode::Text`] が既定。
+pub(crate) fn lookup_body_mode(name: &str) -> BodyMode {
+  return ENVIRONMENTS.get(name).map_or(BodyMode::Text, |def| return def.body_mode);
 }
 
 /// 環境を評価し、対応する `Vec<HirNode>` を生成する
