@@ -9,6 +9,7 @@
 use std::fmt::Write;
 
 use crate::{
+  color::Color,
   length::Length,
   typeset::boxes::{
     AnchorId, AnchorMark, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedMathNumber, PlacedTableRow,
@@ -278,7 +279,7 @@ fn anchor_id_desc(id: &AnchorId) -> String {
 fn color_desc(color: Option<[u8; 3]>) -> String {
   return match color {
     None => "default".to_string(),
-    Some([r, g, b]) => format!("#{r:02x}{g:02x}{b:02x}"),
+    Some(rgb) => Color::from(rgb).to_string(),
   };
 }
 

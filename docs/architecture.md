@@ -51,8 +51,12 @@ crate 内から見た公開範囲（`pub` / `pub(crate)`）を指し、crate 外
   `positive` / `non_negative` をすべて同じ module に置く。`FromStr` の `Err` である `ParseLengthError`
   は facade に載る — 公開 trait 実装の関連型は crate 外から名指しできる必要があるため
   （rustc の `unnameable_types` が機械的に要求する側面）。
-- `color`: 8bit RGB 値 `Color([u8; 3])`。serde は `"#rrggbb"` の 16 進文字列のみを受理し（`[r, g, b]`
-  配列は不可）、出力は小文字 16 進の正準表現。
+- `color`: 8bit RGB 値 `Color([u8; 3])`。文字列との相互変換は `length` と同じく `FromStr` /
+  正準形 `#rrggbb`（小文字）の `Display` の組で持ち、serde の `Serialize` / `Deserialize` は
+  この 2 実装へ委譲する（正準表現の定義は `Display` の 1 箇所だけで、ダンプ整形もそこから使う）。
+  受理するのは `"#rrggbb"` ちょうど（`[r, g, b]` 配列は不可、大文字小文字は不問）で、`Length` と違い
+  前後の空白は許容しない — 空白を落とすのは呼び出し側の責務（`frontend::evaluator::opt_args`）。
+  `FromStr` の `Err` である `ParseColorError` は `ParseLengthError` と同じ理由で facade に載る。
 
 #### 不変条件・注意点
 

@@ -191,7 +191,9 @@ fn parse_value(
       return Ok(OptValue::Length(v));
     },
     OptType::Color => {
-      let v = Color::from_hex(raw.trim()).ok_or_else(|| return invalid(name, key, expected, span))?;
+      let Ok(v) = raw.trim().parse::<Color>() else {
+        return Err(invalid(name, key, expected, span));
+      };
       return Ok(OptValue::Color(v));
     },
   }
