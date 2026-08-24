@@ -152,7 +152,7 @@ pub fn compile<S: ProjectSource>(
   info!(
     phase = "compile",
     page_count = statistics.page_count,
-    warning_count = warnings.reports().count(),
+    warning_count = warnings.iter().count(),
     elapsed_ms = total_elapsed_ms,
     "PDF のコンパイルが完了しました"
   );
@@ -176,7 +176,7 @@ fn collect_warnings(
   font_warnings: Vec<FontWarning>,
   typeset_warnings: Vec<TypesetWarning>,
 ) -> Warnings {
-  let mut warnings = Warnings::empty();
+  let mut warnings = Warnings::default();
   for warning in inputs.config_warnings() {
     warnings.push(warning.clone());
   }
