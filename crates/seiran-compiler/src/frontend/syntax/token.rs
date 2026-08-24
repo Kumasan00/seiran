@@ -80,6 +80,11 @@ pub(crate) enum TokenKind {
   Newline,
   /// コメント（`// ...`）
   Comment,
+  /// verbatim 本体の生テキスト
+  ///
+  /// エスケープもコメントも解釈しない 1 個の塊で、レキサーの raw 走査だけが生成する
+  /// （`Lexer` の `Iterator::next` は返さない）。
+  VerbatimText,
   /// 不明なトークン
   Unknown,
 }
@@ -108,6 +113,7 @@ impl std::fmt::Display for TokenKind {
       TokenKind::Whitespace => "<空白>",
       TokenKind::Newline => "<改行>",
       TokenKind::Comment => "<コメント>",
+      TokenKind::VerbatimText => "<verbatim テキスト>",
       TokenKind::Unknown => "<不正なトークン>",
     };
     return write!(f, "{s}");
@@ -176,6 +182,7 @@ mod tests {
       TokenKind::Whitespace,
       TokenKind::Newline,
       TokenKind::Comment,
+      TokenKind::VerbatimText,
       TokenKind::Unknown,
     ];
     for kind in kinds {

@@ -114,10 +114,7 @@ impl<'a> Lexer<'a> {
       _ => self.read_text()?,
     };
 
-    let start = u32::try_from(start).expect("ソースは u32::MAX バイトを超えない前提");
-    let end = u32::try_from(self.cursor).expect("ソースは u32::MAX バイトを超えない前提");
-    let span = Span::new(start, end);
-    return Some(Token::new(kind, span));
+    return Some(Token::new(kind, self.span_from(start)));
   }
 
   /// バックスラッシュで始まるトークンを読み取る
@@ -225,6 +222,69 @@ impl<'a> Lexer<'a> {
         break;
       }
     }
+  }
+
+  /// カーソルを指定バイト位置へ戻す
+  ///
+  /// パーサーの 1 トークン先読みバッファに入った分を raw 走査の前に返却するために使う。
+  ///
+  /// # Panics
+  ///
+  /// 既に消費した位置より後ろを指定した場合に落ちる。呼び出し元は先読み済みトークンの
+  /// 開始位置しか渡さないため、通常は起こらない。
+  pub(super) fn rewind_to(&mut self, offset: u32) {
+    let offset = offset as usize;
+    assert!(
+      offset <= self.cursor,
+      "唯一の呼び出し元 `Parser::rewind_peeked` は先読み済みトークンの開始位置しか渡さず、それはこのレキサーが \
+       既に読み終えた位置なので必ずカーソル以前になる"
+    );
+    self.cursor = offset;
+  }
+
+  /// 終端マーカーの正確なバイト列一致まで生読みする（verbatim 環境の本体）
+  ///
+  /// 走査中はコメント・エスケープ・数式・括弧をいっさい解釈しない。生きる規則は終端探索だけ。
+  /// マーカーは消費せず、カーソルはその直前で止まる。マーカーが現れないまま入力が尽きたら
+  /// カーソルを動かさずに `None` を返す。
+  pub(super) fn scan_verbatim_until(&mut self, marker: &str) -> Option<Span> {
+    let start = self.cursor;
+    // `str::find` はバイト列一致だが char 境界を跨いだ一致を返さないので、UTF-8 本文でも安全。
+    let offset = self.input[start..].find(marker)?;
+    self.cursor = start + offset;
+    return Some(self.span_from(start));
+  }
+
+  /// ブレースバランスで生読みする（verbatim コマンドの必須引数）
+  ///
+  /// 開き `{` を消費済みの位置から呼ぶ。対応の取れた `{}` は内容に含め、対応しない `}` の直前で
+  /// カーソルが止まる。`\` は特別扱いしないので `\{` の `{` も深さに数える。閉じないまま入力が
+  /// 尽きたらカーソルを動かさずに `None` を返す。
+  pub(super) fn scan_verbatim_balanced(&mut self) -> Option<Span> {
+    let start = self.cursor;
+    let mut depth = 0usize;
+    let mut pos = start;
+    // `{` / `}` は ASCII なので UTF-8 の継続バイトと衝突しない。バイト単位の走査で char 境界は壊れない。
+    while let Some(&b) = self.bytes.get(pos) {
+      match b {
+        b'{' => depth += 1,
+        b'}' if depth == 0 => {
+          self.cursor = pos;
+          return Some(self.span_from(start));
+        },
+        b'}' => depth -= 1,
+        _ => {},
+      }
+      pos += 1;
+    }
+    return None;
+  }
+
+  /// `start` から現在のカーソル位置までの [`Span`] を作る
+  fn span_from(&self, start: usize) -> Span {
+    let start = u32::try_from(start).expect("ソースは u32::MAX バイトを超えない前提");
+    let end = u32::try_from(self.cursor).expect("ソースは u32::MAX バイトを超えない前提");
+    return Span::new(start, end);
   }
 }
 
@@ -1143,5 +1203,103 @@ mod tests {
       ]
     );
     return;
+  }
+
+  // --- raw 走査（verbatim 字句モード、#447）----------------------------------
+
+  #[test]
+  fn scan_verbatim_until_stops_before_the_marker() {
+    // Arrange
+    let input = "a// b\n$x\\y\\end{code}rest";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_until("\\end{code}").unwrap();
+
+    // Assert — マーカーは消費せず、その直前でカーソルが止まる
+    assert_eq!(&input[span.start as usize..span.end as usize], "a// b\n$x\\y");
+    assert_eq!(lexer.next().map(|t| return t.kind), Some(TokenKind::Command));
+  }
+
+  #[test]
+  fn scan_verbatim_until_returns_none_and_keeps_cursor_on_eof() {
+    // Arrange
+    let input = "a\\end {code}b";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_until("\\end{code}");
+
+    // Assert — 変形（空白入り）はマーカーに一致しない
+    assert!(span.is_none());
+    assert_eq!(lexer.cursor, 0);
+  }
+
+  #[test]
+  fn scan_verbatim_until_keeps_multibyte_content_intact() {
+    // Arrange
+    let input = "日本語のコード\\end{code}";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_until("\\end{code}").unwrap();
+
+    // Assert
+    assert_eq!(&input[span.start as usize..span.end as usize], "日本語のコード");
+  }
+
+  #[test]
+  fn scan_verbatim_balanced_includes_matched_braces() {
+    // Arrange — 開き `{` を消費済みの位置から呼ぶ
+    let input = "a{b{c}d}e}tail";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_balanced().unwrap();
+
+    // Assert — 対応しない `}` の直前で止まる
+    assert_eq!(&input[span.start as usize..span.end as usize], "a{b{c}d}e");
+    assert_eq!(lexer.next().map(|t| return t.kind), Some(TokenKind::RBrace));
+  }
+
+  #[test]
+  fn scan_verbatim_balanced_returns_none_and_keeps_cursor_on_eof() {
+    // Arrange
+    let input = "a{b";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_balanced();
+
+    // Assert
+    assert!(span.is_none());
+    assert_eq!(lexer.cursor, 0);
+  }
+
+  #[test]
+  fn scan_verbatim_balanced_keeps_multibyte_content_intact() {
+    // Arrange
+    let input = "見出し{入れ子}です}";
+    let mut lexer = Lexer::new(input);
+
+    // Act
+    let span = lexer.scan_verbatim_balanced().unwrap();
+
+    // Assert
+    assert_eq!(&input[span.start as usize..span.end as usize], "見出し{入れ子}です");
+  }
+
+  #[test]
+  fn rewind_to_replays_the_same_token() {
+    // Arrange
+    let input = "\\cmd{arg}";
+    let mut lexer = Lexer::new(input);
+    let first = lexer.next().unwrap();
+
+    // Act
+    lexer.rewind_to(first.span.start);
+
+    // Assert
+    assert_eq!(lexer.next(), Some(first));
   }
 }

@@ -6,4 +6,4 @@ mod parser;
 pub(super) mod token;
 
 pub(super) use cst::{ast, green, kind, kind::SyntaxKind};
-pub(super) use parser::{ParseMode, ParserError, parse};
+pub(super) use parser::{ArgMode, BodyMode, ModeResolver, ParserError, parse};

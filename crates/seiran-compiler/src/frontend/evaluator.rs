@@ -28,10 +28,19 @@ mod inline;
 mod math;
 mod opt_args;
 
-pub(crate) use environment::lookup_parse_mode as lookup_env_parse_mode;
 pub(crate) use error::EvalError;
 
-use crate::frontend::syntax::ast::EnvironmentView;
+use crate::frontend::syntax::{ModeResolver, ast::EnvironmentView};
+
+/// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
+///
+/// 環境本体・コマンド必須引数の読み取り方を、それぞれの phf レジストリから引く。
+pub(crate) fn mode_resolver() -> ModeResolver {
+  return ModeResolver {
+    env_body: environment::lookup_body_mode,
+    command_arg: command::lookup_arg_mode,
+  };
+}
 
 /// CST ノードの子要素を評価して HIR（`Vec<HirNode>`）に変換する
 ///
@@ -51,7 +60,14 @@ pub(crate) fn evaluate_children(
   for child in node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Whitespace | TokenKind::Newline | TokenKind::Comma | TokenKind::Equals => {
+        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
+        // （実際の消費者は verbatim 環境・コマンド、#448 / #449）。
+        TokenKind::Text
+        | TokenKind::VerbatimText
+        | TokenKind::Whitespace
+        | TokenKind::Newline
+        | TokenKind::Comma
+        | TokenKind::Equals => {
           paragraph.reserve(builder, token.span);
           paragraph.push(builder.leaf_inline(token.span, HirInlineKind::Text(token.text(source).to_string())));
         },
@@ -268,25 +284,25 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
 
 /// 子 module のテストが CST を組み立てるための共有ヘルパ
 ///
-/// 本番の環境レジストリ（`lookup_env_parse_mode`）を注入した `parse` ラッパは、以前は evaluator 配下の
+/// 本番のレジストリ（`mode_resolver`）を注入した `parse` ラッパは、以前は evaluator 配下の
 /// 各 test module へ同じ形で複製されていた（#400）。テストが本番と同じ経路を通ることを 1 箇所で保証する。
 #[cfg(test)]
 pub(super) mod test_support {
   use bumpalo::Bump;
 
-  use super::lookup_env_parse_mode;
+  use super::mode_resolver;
   use crate::frontend::syntax::{
     self, ParserError, SyntaxKind,
     green::{GreenElement, GreenNode},
   };
 
-  /// `.sei` スニペットを本番の環境レジストリ付きで parse する
+  /// `.sei` スニペットを本番のレジストリ付きで parse する
   ///
   /// # Errors
   ///
   /// 構文解析に失敗した場合にエラーを返します。
   pub(crate) fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
-    return syntax::parse(source, arena, lookup_env_parse_mode);
+    return syntax::parse(source, arena, mode_resolver());
   }
 
   /// スニペットを parse して最初の `CommandCall` ノードを取り出す

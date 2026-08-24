@@ -227,7 +227,7 @@ mod tests {
   use crate::{
     document::{HirBuilder, HirMathKind},
     frontend::{
-      evaluator::lookup_env_parse_mode,
+      evaluator::mode_resolver,
       syntax,
       syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
     },
@@ -251,7 +251,7 @@ mod tests {
 
   /// ソースをパースし、最初の数式環境の本体を返す
   fn first_env_body<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> {
-    let root = syntax::parse(source, arena, lookup_env_parse_mode).unwrap();
+    let root = syntax::parse(source, arena, mode_resolver()).unwrap();
     let env = find_env(root).expect("Environment ノードが見つからない");
     return EnvironmentView::new(env, source).body().expect("環境本体あり");
   }

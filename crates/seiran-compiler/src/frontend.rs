@@ -55,7 +55,7 @@ pub(crate) enum ParseSourceError {
 /// パースまたは評価で失敗した場合に [`ParseSourceError`] を返します。
 pub(crate) fn parse_source(source: &str, source_id: SourceId) -> Result<HirSource, ParseSourceError> {
   let arena = Bump::new();
-  let cst = syntax::parse(source, &arena, evaluator::lookup_env_parse_mode)?;
+  let cst = syntax::parse(source, &arena, evaluator::mode_resolver())?;
 
   let builder = HirBuilder::new(source_id);
   let nodes = evaluator::evaluate_children(source, &builder, cst)?;

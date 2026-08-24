@@ -24,19 +24,65 @@ mod error;
 
 pub(crate) use error::ParserError;
 
-/// 環境本体および入れ子要素のパース時に、どの語彙的解釈を適用するかを示すモード
+/// 入れ子要素をトークン化して読むときの語彙的解釈を示すモード
 ///
-/// 環境本体のモードは [`parse`] に渡すコールバックで決める。
+/// 生読み（verbatim）はトークン化そのものを行わないのでここには入らない。環境本体の
+/// 読み取り方は [`BodyMode`]、コマンド必須引数の読み取り方は [`ArgMode`] が表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParseMode {
+enum ParseMode {
   /// 通常のテキストモード（`$` でインライン数式に入る）
   Text,
   /// 数式モード（`^` `_` を上付き・下付きとして構造化、`{...}` を `MathGroup` として解釈）
   Math,
 }
 
+/// 環境本体の読み取り方
+///
+/// レジストリ（`crate::frontend::evaluator`）が環境名ごとに宣言し、[`ModeResolver`] 経由で
+/// パーサーへ渡る。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BodyMode {
+  /// トークン化してテキストモードで読む
+  Text,
+  /// トークン化して数式モードで読む
+  Math,
+  /// `\end{<環境名>}` の正確なバイト列一致まで生読みする
+  #[cfg_attr(
+    not(test),
+    expect(
+      dead_code,
+      reason = "#447 は字句モードだけを入れる分割で、これを構築するレジストリ登録（verbatim 環境）は #448 の担当"
+    )
+  )]
+  Verbatim,
+}
+
+/// コマンドの必須引数の読み取り方
+///
+/// レジストリ（`crate::frontend::evaluator`）がコマンド名ごとに宣言し、[`ModeResolver`] 経由で
+/// パーサーへ渡る。宣言は外側文脈からの継承に優先する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArgMode {
+  /// 外側文脈の [`ParseMode`] を継承してトークン化する（既定）
+  Inherit,
+  /// ブレースバランスで生読みする
+  Verbatim,
+}
+
+/// レジストリが答える「この位置をどう読むか」の解決器
+///
+/// どの環境・コマンドが verbatim かという語彙は `syntax` 層が持たず、evaluator の phf レジストリが
+/// 単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。
+#[derive(Clone, Copy)]
+pub(crate) struct ModeResolver {
+  /// 環境名 → 本体の読み取り方
+  pub env_body: fn(&str) -> BodyMode,
+  /// コマンド名 → 必須引数の読み取り方
+  pub command_arg: fn(&str) -> ArgMode,
+}
+
 /// アリーナベース CST 構築パーサー
-pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
+struct Parser<'a> {
   /// 元のソーステキスト
   source: &'a str,
   /// レキサー
@@ -47,20 +93,20 @@ pub(crate) struct Parser<'a, F: Fn(&str) -> ParseMode> {
   peeked_token: Option<Token>,
   /// 最後に消費したトークンの Span
   last_span: Span,
-  /// 環境名 → [`ParseMode`] を解決するコールバック
-  env_mode: F,
+  /// 環境名・コマンド名からモードを解決するレジストリ
+  modes: ModeResolver,
 }
 
-impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
+impl<'a> Parser<'a> {
   /// 新しいパーサーを生成する
-  fn new(source: &'a str, lexer: Lexer<'a>, arena: &'a Bump, env_mode: F) -> Self {
+  fn new(source: &'a str, lexer: Lexer<'a>, arena: &'a Bump, modes: ModeResolver) -> Self {
     return Self {
       source,
       lexer,
       arena,
       peeked_token: None,
       last_span: Span::DUMMY,
-      env_mode,
+      modes,
     };
   }
 
@@ -106,6 +152,15 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     return *self
       .peek_token()
       .expect("先読みが `Some` を返した位置でだけ呼ぶので、読めるトークンが必ず残っている");
+  }
+
+  /// raw 走査の直前に呼び、先読み済みトークンをレキサーへ返却する
+  ///
+  /// [`Self::peek_token`] は `last_span` を触らないので、戻しても位置状態は壊れない。
+  fn rewind_peeked(&mut self) {
+    if let Some(token) = self.peeked_token.take() {
+      self.lexer.rewind_to(token.span.start);
+    }
   }
 
   /// トリビア（空白・改行・コメント）をスキップして次の意味のあるトークンまで進む
@@ -246,6 +301,11 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
         let token = self.take_peeked();
         children.push(GreenElement::Token(token));
       },
+      TokenKind::VerbatimText => {
+        unreachable!(
+          "VerbatimText は raw 走査（parse_verbatim_body / parse_verbatim_arg）だけが生成し、Lexer::next は返さない"
+        )
+      },
     }
 
     return Ok(());
@@ -265,51 +325,45 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     let env_name = self.extract_text_from_arg(name_arg);
     begin_children.push(GreenElement::Node(name_arg));
 
-    self.skip_trivia(&mut begin_children);
+    // 本体の読み取り方は環境名が確定した時点で引く。verbatim では `\begin{...}` の直後から本体の
+    // バイトが始まるので、ここより後ろでトリビアや引数をトークン化すると内容が壊れる。
+    let body_mode = (self.modes.env_body)(env_name.as_str());
 
-    while let Some(TokenKind::LBracket) = self.peek_kind() {
-      let opt = self.parse_opt_arg()?;
-      begin_children.push(GreenElement::Node(opt));
-      self.skip_trivia(&mut begin_children);
-    }
+    match body_mode {
+      BodyMode::Verbatim => {
+        // トリビアを跨がず、`\begin{env}` に隣接する `[...]` 1 組だけを任意引数として読む
+        // （P3 の「環境名の直後に 1 組」）。それ以外はすべて本体のバイトになる。
+        if self.peek_kind() == Some(TokenKind::LBracket) {
+          let opt = self.parse_opt_arg()?;
+          begin_children.push(GreenElement::Node(opt));
+        }
+      },
+      BodyMode::Text | BodyMode::Math => {
+        self.skip_trivia(&mut begin_children);
 
-    while let Some(TokenKind::LBrace) = self.peek_kind() {
-      let arg = self.parse_mandatory_arg(ParseMode::Text)?;
-      begin_children.push(GreenElement::Node(arg));
-      self.skip_trivia(&mut begin_children);
+        while let Some(TokenKind::LBracket) = self.peek_kind() {
+          let opt = self.parse_opt_arg()?;
+          begin_children.push(GreenElement::Node(opt));
+          self.skip_trivia(&mut begin_children);
+        }
+
+        while let Some(TokenKind::LBrace) = self.peek_kind() {
+          let arg = self.parse_mandatory_arg(ParseMode::Text)?;
+          begin_children.push(GreenElement::Node(arg));
+          self.skip_trivia(&mut begin_children);
+        }
+      },
     }
 
     let begin_span = start_span.merge(self.last_span);
     let begin_node = self.alloc_node(SyntaxKind::EnvironmentBegin, begin_span, begin_children);
     env_children.push(GreenElement::Node(begin_node));
 
-    let body_mode = (self.env_mode)(env_name.as_str());
-
-    let last_span_end = self.last_span.end;
-    let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
-    let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
-
-    loop {
-      self.skip_trivia(&mut body_children);
-
-      if self.peek_token().is_none() {
-        break;
-      }
-
-      // \end の検出 — `parse_element` は `\end` をエラーとして弾くため、ここで先に break する必要がある
-      if let Some(TokenKind::Command) = self.peek_kind() {
-        let token = self.peeked();
-        if token.command_name(self.source) == "end" {
-          break;
-        }
-      }
-
-      self.parse_element(&mut body_children, body_mode, None)?;
-    }
-
-    let last_span_end = self.last_span.end;
-    let body_end = self.peek_token().map_or(last_span_end, |t| return t.span.start);
-    let body_node = self.alloc_node(SyntaxKind::EnvironmentBody, Span::new(body_start, body_end), body_children);
+    let body_node = match body_mode {
+      BodyMode::Verbatim => self.parse_verbatim_body(env_name.as_str(), start_span)?,
+      BodyMode::Text => self.parse_tokenized_body(ParseMode::Text)?,
+      BodyMode::Math => self.parse_tokenized_body(ParseMode::Math)?,
+    };
     env_children.push(GreenElement::Node(body_node));
 
     if self.peek_kind() != Some(TokenKind::Command) {
@@ -323,7 +377,8 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     if end_token.command_name(self.source) != "end" {
       unreachable!(
         "本体ループは \\end でのみ break する（他のコマンドは parse_element が本体へ積み、トークンが \
-         尽きた場合は直前の UnclosedEnvironment で返している）"
+         尽きた場合は直前の UnclosedEnvironment で返している）。verbatim 本体は \\end{{<環境名>}} の \
+         バイト列一致でだけ走査を止めるので、同じくここには \\end しか来ない"
       )
     }
 
@@ -351,11 +406,67 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     return Ok(self.alloc_node(SyntaxKind::Environment, env_span, env_children));
   }
 
+  /// 環境本体をトークン化して読む: `\end` の直前まで
+  ///
+  /// `\end` 自体は消費せず、呼び出し側（[`Self::parse_environment`]）に残す。
+  fn parse_tokenized_body(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
+    let last_span_end = self.last_span.end;
+    let body_start = self.peek_token().map_or(last_span_end, |t| return t.span.start);
+    let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
+
+    loop {
+      self.skip_trivia(&mut body_children);
+
+      if self.peek_token().is_none() {
+        break;
+      }
+
+      // \end の検出 — `parse_element` は `\end` をエラーとして弾くため、ここで先に break する必要がある
+      if let Some(TokenKind::Command) = self.peek_kind() {
+        let token = self.peeked();
+        if token.command_name(self.source) == "end" {
+          break;
+        }
+      }
+
+      self.parse_element(&mut body_children, mode, None)?;
+    }
+
+    let last_span_end = self.last_span.end;
+    let body_end = self.peek_token().map_or(last_span_end, |t| return t.span.start);
+    return Ok(self.alloc_node(SyntaxKind::EnvironmentBody, Span::new(body_start, body_end), body_children));
+  }
+
+  /// 環境本体を生読みする: `\end{<環境名>}` の正確なバイト列一致まで
+  ///
+  /// 本体はコメント・エスケープ・数式・括弧をいっさい解釈しない 1 個の
+  /// [`TokenKind::VerbatimText`] になる。`\end {code}` のような変形はマーカーに一致せず、内容として
+  /// 走査を続行する。本体内の `\begin{<環境名>}` も計数しない（最初の `\end{<環境名>}` で終端）。
+  /// 本体が空でもトークンを 1 個積み、「本体の子はちょうど 1 個」を利用側の不変条件にする。
+  fn parse_verbatim_body(&mut self, env_name: &str, begin_span: Span) -> Result<&'a GreenNode<'a>, ParserError> {
+    self.rewind_peeked();
+
+    let marker = format!("\\end{{{env_name}}}");
+    let Some(body_span) = self.lexer.scan_verbatim_until(&marker) else {
+      return Err(ParserError::UnclosedEnvironment {
+        name: env_name.to_string(),
+        span: begin_span.to_source_span(),
+      });
+    };
+    self.last_span = body_span;
+
+    let mut body_children = bumpalo::collections::Vec::new_in(self.arena);
+    body_children.push(GreenElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
+    return Ok(self.alloc_node(SyntaxKind::EnvironmentBody, body_span, body_children));
+  }
+
   /// コマンド呼び出しをパース: `\cmd[opt]{arg}`
   ///
-  /// 必須引数には `mode` を引き継ぎ、任意引数はテキストモードでパースする。
+  /// 必須引数の読み取り方はレジストリの宣言（[`ArgMode`]）が外側文脈からの継承に優先する。
+  /// 任意引数はテキストモードでパースする。
   fn parse_command_call(&mut self, cmd_token: Token, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = cmd_token.span;
+    let arg_mode = (self.modes.command_arg)(cmd_token.command_name(self.source));
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(cmd_token));
 
@@ -368,7 +479,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
     }
 
     while let Some(TokenKind::LBrace) = self.peek_kind() {
-      let arg_node = self.parse_mandatory_arg(mode)?;
+      let arg_node = match arg_mode {
+        ArgMode::Verbatim => self.parse_verbatim_arg()?,
+        ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
+      };
       children.push(GreenElement::Node(arg_node));
       self.skip_trivia(&mut children);
     }
@@ -421,6 +535,37 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
   /// 必須引数をパース: `{...}`
   fn parse_mandatory_arg(&mut self, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     return self.parse_delimited(TokenKind::LBrace, TokenKind::RBrace, SyntaxKind::MandatoryArg, mode);
+  }
+
+  /// 必須引数を生読みする: `{...}` をブレースバランスで
+  ///
+  /// 対応の取れた `{}` は内容に含め、対応しない `}` で終端する。`\` は不活性なので `\{` の `{` も
+  /// 深さに数える。ノード種別が [`SyntaxKind::MandatoryArg`] のままなのは、ブレースバランス走査が
+  /// `{}` の意味 1「引数境界」の解釈であって第 3 の意味を作らないため（P4）。
+  fn parse_verbatim_arg(&mut self) -> Result<&'a GreenNode<'a>, ParserError> {
+    let open = self.expect(TokenKind::LBrace)?;
+    debug_assert!(
+      self.peeked_token.is_none(),
+      "直前の `self.expect(TokenKind::LBrace)` が先読みトークンを消費するので、この時点でバッファは空 \
+       ＝レキサーのカーソルが開き `{{` の直後にある"
+    );
+    let mut children = bumpalo::collections::Vec::new_in(self.arena);
+    children.push(GreenElement::Token(open));
+
+    let Some(body_span) = self.lexer.scan_verbatim_balanced() else {
+      return Err(ParserError::UnclosedDelimiter {
+        open_kind: TokenKind::LBrace,
+        span: open.span.to_source_span(),
+      });
+    };
+    self.last_span = body_span;
+    // 本体が空でもトークンを 1 個積み、「引数の子は `{` / 本体 / `}` の 3 個」を利用側の不変条件にする。
+    children.push(GreenElement::Token(Token::new(TokenKind::VerbatimText, body_span)));
+
+    let close = self.expect(TokenKind::RBrace)?;
+    children.push(GreenElement::Token(close));
+
+    return Ok(self.alloc_node(SyntaxKind::MandatoryArg, open.span.merge(self.last_span), children));
   }
 
   /// インライン数式をパース: `$...$`
@@ -636,10 +781,10 @@ impl<'a, F: Fn(&str) -> ParseMode> Parser<'a, F> {
 pub(crate) fn parse<'a>(
   source: &'a str,
   arena: &'a Bump,
-  env_mode: impl Fn(&str) -> ParseMode,
+  modes: ModeResolver,
 ) -> Result<&'a GreenNode<'a>, ParserError> {
   let lexer = Lexer::new(source);
-  let mut parser = Parser::new(source, lexer, arena, env_mode);
+  let mut parser = Parser::new(source, lexer, arena, modes);
   let root = parser.parse_root()?;
   debug!(source_bytes = source.len(), "CST の構築が完了しました");
   return Ok(root);
@@ -649,17 +794,36 @@ pub(crate) fn parse<'a>(
 mod tests {
   use super::*;
 
-  /// テスト用の環境 → [`ParseMode`] 解決クロージャ
-  fn test_env_mode(name: &str) -> ParseMode {
+  /// テスト用の環境名 → [`BodyMode`] 解決関数
+  fn test_env_body(name: &str) -> BodyMode {
     return match name {
-      "equation" => ParseMode::Math,
-      _ => ParseMode::Text,
+      "equation" => BodyMode::Math,
+      "code" => BodyMode::Verbatim,
+      _ => BodyMode::Text,
+    };
+  }
+
+  /// テスト用のコマンド名 → [`ArgMode`] 解決関数
+  ///
+  /// `vurl` は verbatim 引数コマンドのスタンドイン（本物の `\url` の verbatim 化は #449）。
+  fn test_command_arg(name: &str) -> ArgMode {
+    return match name {
+      "vurl" => ArgMode::Verbatim,
+      _ => ArgMode::Inherit,
+    };
+  }
+
+  /// テスト用の [`ModeResolver`]
+  fn test_modes() -> ModeResolver {
+    return ModeResolver {
+      env_body: test_env_body,
+      command_arg: test_command_arg,
     };
   }
 
   /// テスト用の `parse` ラッパ
   fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a GreenNode<'a>, ParserError> {
-    return super::parse(source, arena, test_env_mode);
+    return super::parse(source, arena, test_modes());
   }
 
   fn parse_source<'a>(source: &'a str, arena: &'a Bump) -> &'a GreenNode<'a> { return parse(source, arena).unwrap(); }
@@ -1261,5 +1425,273 @@ mod tests {
     assert_eq!(sups.len(), 0, "Text モードでは MathSuperscript 化されない");
     let has_caret = body.children.iter().any(|c| matches!(c, GreenElement::Token(t) if t.kind == TokenKind::Caret));
     assert!(has_caret, "raw Caret トークンとして残っているはず");
+  }
+
+  // --- verbatim 字句モード（#447）-------------------------------------------
+
+  /// verbatim 環境の本体テキストを取り出す（本体はちょうど 1 個の `VerbatimText`）
+  fn verbatim_body<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
+    let cst = parse_source(source, arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let body = env.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+    assert_eq!(body.children.len(), 1, "verbatim 本体の子はちょうど 1 個");
+    let GreenElement::Token(token) = &body.children[0] else {
+      panic!("VerbatimText トークンが期待されます");
+    };
+    assert_eq!(token.kind, TokenKind::VerbatimText);
+    return token.text(source);
+  }
+
+  /// verbatim コマンド引数の本体テキストを取り出す（`{` / 本体 / `}` の 3 子）
+  fn verbatim_arg<'a>(source: &'a str, arena: &'a Bump) -> &'a str {
+    let cst = parse_source(source, arena);
+    let GreenElement::Node(cmd) = &cst.children[0] else {
+      panic!("CommandCall ノードが期待されます");
+    };
+    let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
+    assert_eq!(arg.children.len(), 3, "verbatim 引数の子は `{{` / 本体 / `}}` の 3 個");
+    let GreenElement::Token(token) = &arg.children[1] else {
+      panic!("VerbatimText トークンが期待されます");
+    };
+    assert_eq!(token.kind, TokenKind::VerbatimText);
+    return token.text(source);
+  }
+
+  #[test]
+  fn verbatim_body_keeps_comment_math_escape_and_braces_inert() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\begin{code}\n// not a comment\nlet x = $y\\{z&_^\n\\end{code}";
+
+    // Act
+    let body = verbatim_body(source, &arena);
+
+    // Assert
+    assert_eq!(body, "\n// not a comment\nlet x = $y\\{z&_^\n");
+  }
+
+  #[test]
+  fn verbatim_body_does_not_count_nested_begin() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\begin{code}\\begin{code}inner\\end{code}";
+
+    // Act
+    let body = verbatim_body(source, &arena);
+
+    // Assert — 最初の `\end{code}` で終端するので、内側の `\begin{code}` は内容のまま
+    assert_eq!(body, "\\begin{code}inner");
+  }
+
+  #[test]
+  fn verbatim_body_requires_exact_end_marker_bytes() {
+    // Arrange
+    let arena = Bump::new();
+    // `\end {code}` と `\end{codex}` はマーカーに一致せず、内容として走査を続行する
+    let source = "\\begin{code}a\\end {code}b\\end{codex}c\\end{code}";
+
+    // Act
+    let body = verbatim_body(source, &arena);
+
+    // Assert
+    assert_eq!(body, "a\\end {code}b\\end{codex}c");
+  }
+
+  #[test]
+  fn verbatim_body_can_be_empty() {
+    // Arrange
+    let arena = Bump::new();
+
+    // Act
+    let body = verbatim_body("\\begin{code}\\end{code}", &arena);
+
+    // Assert — 空でも VerbatimText トークンを 1 個持つ
+    assert_eq!(body, "");
+  }
+
+  #[test]
+  fn verbatim_environment_reads_one_adjacent_opt_arg() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\begin{code}[lang=rust]\nfoo\n\\end{code}";
+
+    // Act
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
+
+    // Assert — 任意引数は読まれ、本体は `]` の直後（先頭の改行込み）から始まる
+    assert_eq!(begin.children_of_kind(SyntaxKind::OptArg).count(), 1);
+    assert_eq!(verbatim_body(source, &arena), "\nfoo\n");
+  }
+
+  #[test]
+  fn verbatim_environment_opt_arg_must_be_adjacent() {
+    // Arrange — 通常環境と違い、トリビアを跨いだ `[...]` は任意引数にならず本体のバイトになる
+    let arena = Bump::new();
+    let source = "\\begin{code} [x]\\end{code}";
+
+    // Act
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(env) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let begin = env.first_child_of_kind(SyntaxKind::EnvironmentBegin).unwrap();
+
+    // Assert
+    assert_eq!(begin.children_of_kind(SyntaxKind::OptArg).count(), 0);
+    assert_eq!(verbatim_body(source, &arena), " [x]");
+  }
+
+  #[test]
+  fn unterminated_verbatim_environment_is_error_at_begin() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\begin{code}\nfoo\n";
+
+    // Act
+    let result = parse(source, &arena);
+
+    // Assert — label は `\begin{code}` に載る
+    let Err(ParserError::UnclosedEnvironment { name, span }) = result else {
+      panic!("UnclosedEnvironment が期待されます");
+    };
+    assert_eq!(name, "code");
+    assert_eq!(span.offset(), 0);
+    assert_eq!(span.len(), "\\begin".len());
+  }
+
+  #[test]
+  fn verbatim_environment_nested_in_a_tokenized_environment() {
+    // Arrange — 通常環境の本体に置かれても本体は生読みされる
+    let arena = Bump::new();
+    let source = "\\begin{quote}\\begin{code}a$b//c\\end{code}\\end{quote}";
+
+    // Act
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(outer) = &cst.children[0] else {
+      panic!("Environment ノードが期待されます");
+    };
+    let outer_body = outer.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+    let inner = outer_body.first_child_of_kind(SyntaxKind::Environment).unwrap();
+    let inner_body = inner.first_child_of_kind(SyntaxKind::EnvironmentBody).unwrap();
+
+    // Assert
+    assert_eq!(inner_body.children.len(), 1);
+    let GreenElement::Token(token) = &inner_body.children[0] else {
+      panic!("VerbatimText トークンが期待されます");
+    };
+    assert_eq!(token.kind, TokenKind::VerbatimText);
+    assert_eq!(token.text(source), "a$b//c");
+  }
+
+  #[test]
+  fn verbatim_arg_keeps_slashes_and_escapes_inert() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\vurl{https://example.com/a_b^c$d}";
+
+    // Act
+    let body = verbatim_arg(source, &arena);
+
+    // Assert — この epic の動機そのもの: URL をエスケープなしで書ける
+    assert_eq!(body, "https://example.com/a_b^c$d");
+  }
+
+  #[test]
+  fn verbatim_arg_includes_balanced_braces_and_ends_at_unmatched_rbrace() {
+    // Arrange
+    let arena = Bump::new();
+    let source = "\\vurl{a{b{c}d}e}f";
+
+    // Act
+    let body = verbatim_arg(source, &arena);
+
+    // Assert
+    assert_eq!(body, "a{b{c}d}e");
+  }
+
+  #[test]
+  fn verbatim_arg_treats_backslash_as_dead_bytes() {
+    // Arrange — `\` は不活性なので `\{` の `{` も深さに数える
+    let arena = Bump::new();
+    let unterminated_arena = Bump::new();
+
+    // Act
+    let unterminated = parse(r"\vurl{a\{b}", &unterminated_arena);
+    let terminated = verbatim_arg(r"\vurl{a\}b", &arena);
+
+    // Assert
+    assert!(matches!(
+      unterminated,
+      Err(ParserError::UnclosedDelimiter {
+        open_kind: TokenKind::LBrace,
+        ..
+      })
+    ));
+    // `\` の直後の `}` が引数を閉じるので、本体は `a\` で終わり `b` は引数の外の本文になる
+    assert_eq!(terminated, "a\\");
+  }
+
+  #[test]
+  fn unterminated_verbatim_arg_is_error_at_open_brace() {
+    // Arrange
+    let arena = Bump::new();
+    let source = r"\vurl{https://example.com";
+
+    // Act
+    let result = parse(source, &arena);
+
+    // Assert — label は開き `{` に載る
+    let Err(ParserError::UnclosedDelimiter { open_kind, span }) = result else {
+      panic!("UnclosedDelimiter が期待されます");
+    };
+    assert_eq!(open_kind, TokenKind::LBrace);
+    assert_eq!(span.offset(), r"\vurl".len());
+    assert_eq!(span.len(), 1);
+  }
+
+  #[test]
+  fn verbatim_arg_mode_applies_inside_inline_math() {
+    // Arrange — 数式モード内でもレジストリの引数モード宣言が効く（#236 と整合）
+    let arena = Bump::new();
+    let source = "$\\vurl{a//b}$";
+
+    // Act
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
+    let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
+
+    // Assert
+    assert_eq!(arg.children.len(), 3);
+    let GreenElement::Token(token) = &arg.children[1] else {
+      panic!("VerbatimText トークンが期待されます");
+    };
+    assert_eq!(token.kind, TokenKind::VerbatimText);
+    assert_eq!(token.text(source), "a//b");
+  }
+
+  #[test]
+  fn non_verbatim_command_arg_still_inherits_outer_mode() {
+    // Arrange — 回帰: 宣言のないコマンドは従来どおり外側の `ParseMode` を継承する
+    let arena = Bump::new();
+
+    // Act
+    let cst = parse_source("$\\frac{x^2}{y}$", &arena);
+    let GreenElement::Node(math) = &cst.children[0] else {
+      panic!("InlineMath ノードが期待されます");
+    };
+    let cmd = math.first_child_of_kind(SyntaxKind::CommandCall).unwrap();
+    let arg = cmd.first_child_of_kind(SyntaxKind::MandatoryArg).unwrap();
+
+    // Assert — `^` は Math モードで構造化される（生読みではない）
+    assert!(arg.first_child_of_kind(SyntaxKind::MathSuperscript).is_some());
   }
 }

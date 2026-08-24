@@ -3,14 +3,14 @@
 //! 機能コマンドは [`COMMAND_MAP`]、数式記号は [`symbol::SYMBOL_MAP`] に登録する。
 
 use miette::SourceSpan;
-use phf::phf_map;
+use phf::{phf_map, phf_set};
 
 use crate::{
   document::{FontKind, HeadingLevel, HirBuilder, HirInline, HirInlineKind, HirNode},
   frontend::{
     evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
-    syntax::ast::CommandView,
+    syntax::{ArgMode, ast::CommandView},
   },
 };
 
@@ -172,6 +172,23 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
 
 };
 
+/// 必須引数を verbatim（生読み）で受け取るコマンドの集合
+///
+/// どのコマンドが verbatim かはこのレジストリが単一の真実源で、ユーザは変更できない（P1 ガード）。
+/// 将来の `\define` もここへ宣言できない。
+static VERBATIM_ARG_COMMANDS: phf::Set<&'static str> = phf_set! {};
+
+/// コマンド名から必須引数の読み取り方を引く
+///
+/// `crate::frontend::syntax::parse` に渡す [`crate::frontend::syntax::ModeResolver`] 用。
+/// 宣言のないコマンドは [`ArgMode::Inherit`]（外側文脈の継承）が既定。
+pub(crate) fn lookup_arg_mode(name: &str) -> ArgMode {
+  if VERBATIM_ARG_COMMANDS.contains(name) {
+    return ArgMode::Verbatim;
+  }
+  return ArgMode::Inherit;
+}
+
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///
 /// # Errors
@@ -210,6 +227,21 @@ mod tests {
 
     // Assert
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
+  }
+
+  #[test]
+  fn verbatim_arg_commands_are_all_registered_commands() {
+    // Arrange & Act & Assert — 引数モードの宣言だけがあって本体が未登録のコマンドを作らない
+    for name in &VERBATIM_ARG_COMMANDS {
+      assert!(COMMAND_MAP.contains_key(name), "verbatim 引数を宣言した '{name}' が COMMAND_MAP に無い");
+    }
+  }
+
+  #[test]
+  fn lookup_arg_mode_defaults_to_inherit() {
+    // Arrange & Act & Assert — 宣言のないコマンドは外側文脈を継承する
+    assert_eq!(lookup_arg_mode("bold"), ArgMode::Inherit);
+    assert_eq!(lookup_arg_mode("unknown"), ArgMode::Inherit);
   }
 
   /// `COMMAND_MAP` の全コマンド名を返す（proptest 戦略の入力用）

@@ -48,7 +48,14 @@ pub(crate) fn evaluate_math_elements(
   for child in elements {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Comma | TokenKind::Equals | TokenKind::Whitespace | TokenKind::Newline => {
+        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
+        // （実際の消費者は verbatim コマンド、#449）。
+        TokenKind::Text
+        | TokenKind::VerbatimText
+        | TokenKind::Comma
+        | TokenKind::Equals
+        | TokenKind::Whitespace
+        | TokenKind::Newline => {
           nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
@@ -137,7 +144,9 @@ fn evaluate_math_script_content(
   for child in script_node.children {
     match child {
       GreenElement::Token(token) => match token.kind {
-        TokenKind::Text | TokenKind::Comma | TokenKind::Equals => {
+        // `VerbatimText` は生読みした 1 個の塊なので、エスケープ解釈をせずそのままテキストにする
+        // （実際の消費者は verbatim コマンド、#449）。
+        TokenKind::Text | TokenKind::VerbatimText | TokenKind::Comma | TokenKind::Equals => {
           nodes.push(builder.leaf_math(token.span, HirMathKind::Text(token.text(source).to_string())));
         },
         TokenKind::Escaped => {
