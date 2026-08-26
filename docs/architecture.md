@@ -1066,7 +1066,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 専用 module がこの状態（番号 → マーカー寸法 → 行分割 → ページ分割 → ページごとの番号）を所有する:
 
 1. 1 回目は空の上書きマップ（＝全脚注が通し番号へフォールバック）で本文パスを通し、脚注のページ割り当てを知る
-2. 確定ページ列から `lowering::per_page_footnote_numbers` で表示番号を割り当て直す
+2. 確定ページ列から同 module の `per_page_footnote_numbers` で表示番号を割り当て直す
 3. そのマップを `LoweringContext::with_footnote_numbers` で与えて組み直す
 4. 得られたページ列から番号を割り当て直しても同じマップになれば、表示とページ割り当てが一致した＝不動点なので
    確定。違えば 2 へ戻る（上限 `MAX_FOOTNOTE_NUMBERING_PASSES` = 4 回）
@@ -1152,7 +1152,7 @@ side table の raw な collection（`NodeMap` / スライス）を直接受け�
   lowering 経路。生成物は `NodeId` を持たないため `LoweringState` の query を経由できず、著者の本文
   （HIR）と別の関数群になる。書誌の箱組み（見出し・段落）自体は本文と同じ `heading::lower_heading` /
   `paragraph::assemble_paragraph` を通す
-- `counter`（+ `counter::format`）: `semantics::CounterValue` から `number_format` / `number_style` /
+- `counter`: `semantics::CounterValue` から `number_format` / `number_style` /
   `ref_format` / cleveref 相当の書式（定理は固定 `"{display_name} {number}"`）で表示文字列を作る純粋関数群。
   値の算出（発番・リセットカスケード）は持たない — それは `CounterRegistry`（`semantics` module 非公開）の
   責務

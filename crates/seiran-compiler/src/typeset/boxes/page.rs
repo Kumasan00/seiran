@@ -95,7 +95,7 @@ pub(crate) struct PlacedFootnote {
   /// 持つ先頭の断片だけが `false` になる。
   ///
   /// 「この脚注がこのページで始まったか」を表すので、ページ単位採番
-  /// （`typeset::per_page_footnote_numbers`）は `true` の断片を数えない — 数えると繰越先の
+  /// （`typeset::pagination::footnote_numbering`）は `true` の断片を数えない — 数えると繰越先の
   /// ページで番号を振り直してしまう。
   pub continued: bool,
   /// 脚注本体の配置済みブロック（改行があれば複数の [`PlacedBlock::Line`]。リージョン内最初の
