@@ -39,3 +39,17 @@
 \end{table}
 
 表の後の段落です。
+
+定理の中に置いた表です。本文セルが定理本体の書体（既定は斜体）で組まれ、ヘッダ行は
+style.toml の head_font_kind のまま変わらないことを確認します。
+
+\begin{theorem}
+定理本体の段落。以下の表の本文セルは、この段落と同じ書体で組まれます。
+
+\begin{table}
+\head{
+  \row{Name & Score}
+}
+\row{Alice & 92}
+\end{table}
+\end{theorem}

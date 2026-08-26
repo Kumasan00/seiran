@@ -454,7 +454,8 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `inner_margin`）・罫線（`rule_thickness` / `rule_color`。`None` は黒）・`cell_padding` に加え、
   ヘッダ行（`\head{}`）セルの書体 `head_font_kind`（既定 `serif_bold`）を持つ。`head_font_kind` は
   指定された `FontKind` をそのまま使う（本文書体からの導出も太字化もしない）。本文セルの書体は
-  `[text].font_kind` に従い、表側では指定しない。キャプションは上の「キャプション」項の
+  段落と同じく**文脈の本文書体**に従い（最上位は `[text].font_kind`、定理本体・引用の中ではその書体）、
+  表側では指定しない。キャプションは上の「キャプション」項の
   `[table.caption]` が持つ
 - **カウンタ（`CounterStyle`）**: `[counters.<name>]` の `<name>` は固定 9 種（`part` / `chapter` /
   `section` / `subsection` / `paragraph` / `subparagraph` / `table` / `figure` / `equation`）のみ。各
