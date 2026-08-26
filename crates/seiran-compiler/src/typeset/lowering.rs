@@ -34,7 +34,6 @@ mod table;
 mod theorem;
 mod title_page;
 
-pub(super) use counter::per_page_footnote_numbers;
 pub(super) use layout_node::{AtomNode, LayoutNode, MathBlockRow, TableLayout, TableRowLayout, TextStyle};
 pub(crate) use title_page::{TitlePageMetadata, lower_title_page};
 

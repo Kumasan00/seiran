@@ -1,10 +1,11 @@
 //! 脚注のページ単位採番（`crate::style::FootnoteNumbering::PerPage`）の不動点 solver
 //!
-//! 番号とページ割り当ての循環をこのモジュールに閉じ込める。
+//! 番号とページ割り当ての循環をこのモジュールに閉じ込める。確定ページ列から次の番号列を得る
+//! 算出もこの solver の内部操作なのでここが持つ。
 
 use tracing::debug;
 
-use crate::typeset::{error::TypesetError, lowering::per_page_footnote_numbers, pagination::body::BodyLayout};
+use crate::typeset::{boxes::Page, error::TypesetError, pagination::body::BodyLayout};
 
 /// 脚注のページ単位採番で本文パスを回す上限回数。
 ///
@@ -43,31 +44,62 @@ pub(super) fn solve_per_page_numbering(
   }
 }
 
+/// 確定したページ列から、脚注のページ単位表示番号を割り当てる
+///
+/// # Panics
+///
+/// 文書中の脚注数、または 1 ページの脚注数が `u32` に収まらない場合にパニックします。
+#[must_use]
+fn per_page_footnote_numbers(pages: &[Page]) -> Vec<u32> {
+  let mut numbers: Vec<u32> = Vec::new();
+  for page in pages {
+    // 繰越（前ページからの続き、#227）はこのページで「始まった」脚注ではないので数えない。
+    // 数えると (a) 自分自身が本体を置いた前ページの番号を上書きし、(b) このページの本当の
+    // 1 個目を 2 番へずらす。
+    for (position, footnote) in page.footnotes.iter().filter(|footnote| return !footnote.continued).enumerate() {
+      let index = usize::try_from(footnote.index).expect("脚注の出現 index は usize に収まる前提");
+      // 目的の index まで通し値で伸ばしてから、配置が分かっている脚注だけを上書きする。
+      // 伸ばした途中の穴（未配置の脚注）は通し値のまま残る。
+      while numbers.len() <= index {
+        let continuous = u32::try_from(numbers.len() + 1).expect("脚注の個数は u32 に収まる前提");
+        numbers.push(continuous);
+      }
+      numbers[index] = u32::try_from(position + 1).expect("1 ページの脚注数は u32 に収まる前提");
+    }
+  }
+  return numbers;
+}
+
 #[cfg(test)]
 mod tests {
   use std::cell::RefCell;
 
   use miette::Diagnostic;
 
-  use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, solve_per_page_numbering};
+  use super::{BodyLayout, MAX_FOOTNOTE_NUMBERING_PASSES, per_page_footnote_numbers, solve_per_page_numbering};
   use crate::{
     length::Length,
     typeset::boxes::{Page, PlacedFootnote},
   };
 
-  /// 指定した出現 index の脚注だけを持つ 1 ページを作るテストヘルパ
+  /// 指定した出現 index の脚注だけを載せたページを作るテストヘルパ
   fn page_with_footnotes(indices: &[u32]) -> Page {
+    return page_with_footnote_fragments(&indices.iter().map(|index| return (*index, false)).collect::<Vec<_>>());
+  }
+
+  /// 出現 index と「繰越（前ページからの続き）か」の組から 1 ページを作るテストヘルパ
+  fn page_with_footnote_fragments(fragments: &[(u32, bool)]) -> Page {
     return Page {
       blocks: Vec::new(),
       header: Vec::new(),
       footer: Vec::new(),
-      footnotes: indices
+      footnotes: fragments
         .iter()
-        .map(|index| {
+        .map(|(index, continued)| {
           return PlacedFootnote {
             number: index + 1,
             index: *index,
-            continued: false,
+            continued: *continued,
             blocks: Vec::new(),
           };
         })
@@ -133,5 +165,70 @@ mod tests {
       "typeset::footnote::per_page_not_converged",
       "回避策付きの専用診断になるはず"
     );
+  }
+
+  #[test]
+  fn per_page_numbers_restart_from_one_on_each_page() {
+    // Arrange
+    let pages = vec![
+      page_with_footnotes(&[0, 1, 2]),
+      page_with_footnotes(&[3, 4]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert
+    assert_eq!(numbers, vec![1, 2, 3, 1, 2]);
+  }
+
+  #[test]
+  fn per_page_numbers_restart_after_page_without_footnotes() {
+    // Arrange
+    let pages = vec![
+      page_with_footnotes(&[0]),
+      page_with_footnotes(&[]),
+      page_with_footnotes(&[1]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert
+    assert_eq!(numbers, vec![1, 1]);
+  }
+
+  #[test]
+  fn per_page_numbers_ignore_carried_over_fragments() {
+    // Arrange
+    let pages = vec![
+      page_with_footnote_fragments(&[(0, false)]),
+      page_with_footnote_fragments(&[(0, true), (1, false)]),
+    ];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert
+    assert_eq!(numbers, vec![1, 1]);
+  }
+
+  #[test]
+  fn per_page_numbers_fill_unplaced_footnotes_with_continuous_value() {
+    // Arrange
+    let pages = vec![page_with_footnotes(&[0, 2])];
+
+    // Act
+    let numbers = per_page_footnote_numbers(&pages);
+
+    // Assert
+    assert_eq!(numbers, vec![1, 2, 2]);
+  }
+
+  #[test]
+  fn per_page_numbers_are_empty_without_footnotes() {
+    let numbers = per_page_footnote_numbers(&[page_with_footnotes(&[])]);
+
+    assert!(numbers.is_empty());
   }
 }
