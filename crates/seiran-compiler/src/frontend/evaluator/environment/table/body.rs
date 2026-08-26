@@ -15,9 +15,9 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
-      ast::{CommandView, EnvironmentView},
       green::GreenElement,
       token::TokenKind,
+      view::{CommandView, EnvironmentView},
     },
   },
   source::Span,

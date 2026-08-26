@@ -9,8 +9,8 @@ use crate::{
     span_ext::ToSourceSpan,
     syntax::{
       SyntaxKind,
-      ast::{CommandView, extract_text_content},
       green::GreenElement,
+      view::{CommandView, extract_text_content},
     },
   },
 };

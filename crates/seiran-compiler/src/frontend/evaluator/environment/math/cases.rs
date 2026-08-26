@@ -11,7 +11,7 @@ use crate::{
       opt_args::collect_environment_opt_args,
     },
     span_ext::ToSourceSpan,
-    syntax::ast::EnvironmentView,
+    syntax::view::EnvironmentView,
   },
 };
 

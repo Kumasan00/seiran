@@ -9,7 +9,7 @@ use crate::{
       opt_args::{OptType, OptValue, collect_command_opt_args},
     },
     span_ext::ToSourceSpan,
-    syntax::{SyntaxKind, ast::CommandView, green::GreenElement, token::TokenKind},
+    syntax::{SyntaxKind, green::GreenElement, token::TokenKind, view::CommandView},
   },
   source::Span,
 };

@@ -1138,7 +1138,7 @@ mod tests {
   }
 
   #[test]
-  fn evaluate_index_in_headline_title_errors() {
+  fn evaluate_index_in_heading_title_errors() {
     let error = evaluate_error("\\section{\\index{語}}");
     assert!(matches!(error, EvalError::IndexNotAllowedHere { .. }), "{error:?}");
   }

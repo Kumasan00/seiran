@@ -319,7 +319,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - **語彙型**（module 直下）: `heading_level`（`HeadingLevel`）/ `table_column`
   （`ColumnAlign` / `ColumnWidth` — 著者が `columns=` / `widths=` に書く authored 語彙。
   2 つを列ごとに束ねた組版入力 `TableColumn` は `typeset::boxes` の所有）/ `theorem`
-  （`TheoremClass`）/ `math_class`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
+  （`TheoremClass`）/ `math_environment`（`MathEnvKind` / `MathDelimiter`）/ `caption`（`CaptionPosition`）/
   `quote`（`QuoteKind`）/ `math_variant`（`MathVariant`）/ `font_kind`（`FontKind`）。小さな `Copy` 値型・enum と、その正準変換
   （`as_str` / `FromStr` / serde / `Display`）のみを持つ。
   **置く基準は「HIR の variant が値として直接持つか」**で、複数 consumer が使うことは理由にならない
@@ -370,10 +370,6 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 - 段組みの 1 段あたりの幅を求める純粋計算 `column_width` は `typeset::geometry` の所有（#351）。
   横断バリデーション `validate_layout`・`typeset::pagination::context` の段幅算出・
   `typeset::breaking::break_pages` の実配置が同じ式を参照する。
-- ファイル名の注意: `math_class.rs` が持つのは `MathEnvKind` / `MathDelimiter` であり、`MathClass` では
-  ない（`MathClass` は上記のとおり `frontend` にある）。`MathEnvKind` は `HirNodeKind::MathBlock` が
-  値として持ち、`MathDelimiter` はその `MathEnvKind::Matrix` のフィールドに現れる authored 語彙なので
-  `document` にあるのが正しい — ファイル名だけを見て移さない。
 - **組版中間型・シェーピング結果型はここに置かない**。`Block` / `HItem` / `HBox` / `Line` / `Page` /
   `TableBox` 系は `typeset::boxes` の非公開型（`typeset` 節参照）、シェーピング結果 `GlyphRun` /
   `Glyph` は `typeset::font` の型（`typeset` 節の `font` 項参照）。いずれも著者が書いた内容ではなく組版の途中結果で、
@@ -518,7 +514,7 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 `lexer` → `parser` の字句・構文解析と、`bumpalo::Bump` アリーナ上のロスレスな CST。
 `token`（トークンの型定義。テキスト内容は複製せず `Span` 経由で元ソースから取得する）/ `lexer` /
 `parser`（+ `parser::error` の `ParserError`）/ `cst`（`green::GreenNode`
-＝ロスレスなツリー、`kind` ＝ノード種別、`ast` ＝型付きビュー `CommandView` / `EnvironmentView`）。
+＝ロスレスなツリー、`kind` ＝ノード種別、`view` ＝型付きビュー `CommandView` / `EnvironmentView`）。
 
 **verbatim 字句モード（#447）**: `Lexer::next` とは別経路の raw 走査で、終端マーカーを探す以外の
 字句規則（コメント `//`・`\x` エスケープ・`$`・`{}`）がすべて不活性になる。入口は 2 つ — verbatim
@@ -552,7 +548,7 @@ CST を走査して HIR（`document::HirNode` / `HirInline` / `HirMath`）へ評
 型付きビュー（`CommandView` / `EnvironmentView`）に加えて `&HirBuilder` を受け取り、自分の ID を
 子より先に確保する（`syntax` 層は HIR を知らない）。
 
-- `command/`: `control` / `footnote` / `headline` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
+- `command/`: `control` / `footnote` / `heading` / `index`（`\index{語}`）/ `inline` / `link` / `ref_` /
   `cite` / `code`（`\code{...}` ＝ verbatim 引数）/ `symbol`
 - `environment/`: テキスト系 `body_scan` / `caption` / `list` / `figure` / `quote` / `code`（verbatim 本体）/ `table`（+ `table::body` /
   `cell` / `opts`）/ `theorem`、数式系は `environment/math/` に `equation` / `align` / `gather` / `split` /

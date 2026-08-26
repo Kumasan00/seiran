@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{EvalError, inline::extract_inline_nodes, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
-    syntax::ast::CommandView,
+    syntax::view::CommandView,
   },
 };
 

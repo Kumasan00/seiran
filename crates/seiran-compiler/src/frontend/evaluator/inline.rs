@@ -20,10 +20,10 @@ use crate::{
     },
     span_ext::ToSourceSpan,
     syntax::{
-      ast::{CommandView, EnvironmentView},
       green::{GreenElement, GreenNode},
       kind::SyntaxKind,
       token::TokenKind,
+      view::{CommandView, EnvironmentView},
     },
   },
 };
@@ -127,7 +127,7 @@ pub(crate) fn extract_inline_nodes_from_elements(
             Some(CommandKind::Code) => {
               inlines.extend(code_command(&view, builder)?);
             },
-            Some(CommandKind::Headline(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
+            Some(CommandKind::Heading(_) | CommandKind::Space | CommandKind::NoIndent | CommandKind::PageBreak) => {
               return Err(EvalError::BlockInInline {
                 what: format!("\\{}", view.name()),
                 span: view.span().to_source_span(),

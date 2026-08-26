@@ -11,7 +11,7 @@ use opts::{collect_table_opts, parse_columns_spec, parse_widths_spec};
 
 use crate::{
   document::{ColumnAlign, ColumnWidth, HirBuilder, HirNode, HirNodeKind},
-  frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::ast::EnvironmentView},
+  frontend::{evaluator::EvalError, span_ext::ToSourceSpan, syntax::view::EnvironmentView},
 };
 
 /// `table` 環境を評価する

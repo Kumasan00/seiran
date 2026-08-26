@@ -9,7 +9,7 @@ use crate::{
       opt_args::{OptType, collect_command_opt_args, find_string},
     },
     span_ext::ToSourceSpan,
-    syntax::ast::CommandView,
+    syntax::view::CommandView,
   },
 };
 

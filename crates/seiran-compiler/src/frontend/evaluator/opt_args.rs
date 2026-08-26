@@ -10,8 +10,8 @@ use crate::{
     evaluator::EvalError,
     span_ext::ToSourceSpan,
     syntax::{
-      ast::{CommandView, EnvironmentView, parse_key_value_options},
       green::GreenNode,
+      view::{CommandView, EnvironmentView, parse_key_value_options},
     },
   },
   length::Length,

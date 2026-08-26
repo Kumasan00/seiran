@@ -10,9 +10,9 @@ use crate::{
     evaluator::{EvalError, math::evaluate_math_elements},
     span_ext::ToSourceSpan,
     syntax::{
-      ast::EnvironmentView,
       green::{GreenElement, GreenNode},
       token::TokenKind,
+      view::EnvironmentView,
     },
   },
 };
@@ -229,7 +229,7 @@ mod tests {
     frontend::{
       evaluator::mode_resolver,
       syntax,
-      syntax::{SyntaxKind, ast::EnvironmentView, green::GreenElement},
+      syntax::{SyntaxKind, green::GreenElement, view::EnvironmentView},
     },
     source::SourceId,
   };

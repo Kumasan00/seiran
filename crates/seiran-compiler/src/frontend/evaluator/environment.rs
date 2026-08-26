@@ -9,7 +9,7 @@ use crate::{
   frontend::{
     evaluator::EvalError,
     span_ext::ToSourceSpan,
-    syntax::{BodyMode, ast::EnvironmentView},
+    syntax::{BodyMode, view::EnvironmentView},
   },
 };
 
