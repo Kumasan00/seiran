@@ -48,7 +48,7 @@ fn main() -> miette::Result<()> {
       let compilation =
         seiran_compiler::compile(&source, &root, &base_dir).map_err(seiran_compiler::CompileFailure::into_report)?;
       let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
-      write_pdf_atomically(&compilation.output.pdf_path, &pdf_bytes)?;
+      write_pdf_atomically(&compilation.pdf_path, &pdf_bytes)?;
       reporter.warnings(&compilation.warnings);
       reporter.build(&compilation, build_start.elapsed());
     },

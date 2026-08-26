@@ -26,12 +26,14 @@ mod project_source_equivalence;
 
 #[cfg(test)]
 use std::sync::Arc;
-use std::{path::Path, time::Instant};
+use std::{
+  path::{Path, PathBuf},
+  time::Instant,
+};
 
 pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
 use input::CompilationInputs;
-pub use input::OutputPlan;
 use source_diagnostic::SourceDiagnostic;
 use tracing::info;
 pub use warnings::Warnings;
@@ -73,8 +75,9 @@ pub struct Compilation {
   pub warnings: Warnings,
   /// コンパイル結果の統計情報
   pub statistics: BuildStatistics,
-  /// 保存先など、書き込みを行う呼び出し側だけが使う出力情報
-  pub output: OutputPlan,
+  /// 出力 PDF の保存先。書き込みを行う呼び出し側だけが使う出力情報で、組版の成果ではなく
+  /// 検証済み設定から決まる値
+  pub pdf_path: PathBuf,
 }
 
 /// `source`、`root`（設定ファイルパス）、`base_dir`（相対パスの解決基準）から
@@ -82,7 +85,7 @@ pub struct Compilation {
 ///
 /// 言語処理・意味解決・組版を内部で順に実行する。呼び出し元は各段の中間型を知らない。
 /// `base_dir` は呼び出し元が実行環境に応じて明示し、本関数はカレントディレクトリを取得しない。
-/// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.output` が指す先へ書き出すのは
+/// 保存（PDF ファイルへの書き出し）は行わない — `Compilation.pdf_path` が指す先へ書き出すのは
 /// 呼び出し元の責務とする。
 ///
 /// # Errors
@@ -164,7 +167,7 @@ pub fn compile<S: ProjectSource>(
     dependencies,
     warnings,
     statistics,
-    output: inputs.output().clone(),
+    pdf_path: inputs.config().output.pdf_path(),
   });
 }
 

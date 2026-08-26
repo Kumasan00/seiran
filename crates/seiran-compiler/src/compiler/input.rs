@@ -1,4 +1,4 @@
-//! 入力読込の唯一の入口 [`load`] と、その成果物 [`CompilationInputs`] / [`OutputPlan`]
+//! 入力読込の唯一の入口 [`load`] と、その成果物 [`CompilationInputs`]
 //!
 //! config.toml → style.toml → 横断検証 → 文献 → フォント → ソース という順序は、
 //! 前段の結果が次段の入力になる（style / references のパスは config.toml が持ち、
@@ -51,8 +51,6 @@ pub(super) struct CompilationInputs {
   font_data: FontData,
   /// ソースファイルごとの読込済みテキスト（`SourceId` で引ける）
   sources: SourceSet,
-  /// 保存先など、書き込みを行う呼び出し側だけが使う出力情報
-  output: OutputPlan,
   /// 設定の読込で見つかった警告（`sources` の宣言順）
   config_warnings: Vec<ConfigWarning>,
 }
@@ -72,9 +70,6 @@ impl CompilationInputs {
 
   /// 読込済みソース集合を返す。
   pub(super) fn sources(&self) -> &SourceSet { return &self.sources; }
-
-  /// 出力先情報を返す。
-  pub(super) fn output(&self) -> &OutputPlan { return &self.output; }
 
   /// 設定の読込で見つかった警告を宣言順に返す。
   pub(super) fn config_warnings(&self) -> &[ConfigWarning] { return &self.config_warnings; }
@@ -98,26 +93,15 @@ impl CompilationInputs {
     font_data: FontData,
   ) -> Result<Self, Failures<CompileError>> {
     let sources = read_sources(source, &config.sources)?;
-    let output = OutputPlan {
-      pdf_path: config.output.pdf_path(),
-    };
     return Ok(CompilationInputs {
       config,
       style,
       references,
       font_data,
       sources,
-      output,
       config_warnings: Vec::new(),
     });
   }
-}
-
-/// 保存先など、書き込みを行う呼び出し側だけが使う出力情報。
-#[derive(Debug, Clone)]
-pub struct OutputPlan {
-  /// 出力 PDF のパス
-  pub pdf_path: PathBuf,
 }
 
 /// 設定・スタイル・文献・フォント・ソースを読み込み、検証済みの入力を組み立てる。
@@ -148,9 +132,6 @@ pub(super) fn load(
   debug!(elapsed_ms = elapsed_ms(stage_start), "フォントファイルの読み込みが完了しました");
 
   let sources = read_sources(source, &config.sources)?;
-  let output = OutputPlan {
-    pdf_path: config.output.pdf_path(),
-  };
 
   return Ok(CompilationInputs {
     config,
@@ -158,7 +139,6 @@ pub(super) fn load(
     references,
     font_data,
     sources,
-    output,
     config_warnings,
   });
 }

@@ -67,7 +67,7 @@ impl Reporter {
     };
     eprintln!(
       "{mark} {} · {} ページ · {} ms",
-      compilation.output.pdf_path.display(),
+      compilation.pdf_path.display(),
       compilation.statistics.page_count,
       elapsed_ms(elapsed)
     );
