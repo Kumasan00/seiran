@@ -1,6 +1,8 @@
-//! 確定ページ列（`Vec<crate::typeset::Page>`）から [`Publication`] への変換
+//! 確定ページ列と描画資源から [`Publication`] を構築する実装。
 //!
-//! epic #276 の一環で `pdf_gen`（現 `seiran-pdf`）から移設した「compiler 側の最終変換」。ここで `Style` に依存する判断は
+//! この写像が renderer ではなく compiler 側にあるのは、epic #276 で `pdf_gen`（現 `seiran-pdf`）から
+//! 移設した「compiler 側の最終変換」だから — renderer は確定座標の描画だけを行い、レイアウト判断を
+//! 持たない。ここで `Style` に依存する判断は
 //! 一切しない — 表のセル余白・罫線太さ・罫線色・ページ背景色は前段（`crate::typeset::breaking`）が解決済みの値を
 //! `crate::typeset::Page` / `crate::typeset::PlacedBlock` に載せており、ここはそれを読むだけ。
 //!
@@ -8,44 +10,103 @@
 //! 描画命令へ載せる直前の単位変換であって、Style 依存の判断ではない。グリフ列（`crate::typeset::GlyphRun`）は
 //! シェイピング結果をそのまま載せ、フォントサイズ・色の単位変換は render が行う（#372）。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use crate::{
   length::Length,
-  project::config::ProjectConfig,
+  project::{FontData, FontMap, FontType, ProjectPath, config::ProjectConfig},
   publication::{
-    Destination, PaintOp, Point, Publication, PublicationLink, PublicationLinkTarget, PublicationMetadata,
-    PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
+    Destination, PaintOp, Point, Publication, PublicationFont, PublicationImage, PublicationLink,
+    PublicationLinkTarget, PublicationMetadata, PublicationOutlineEntry, PublicationPage, PublicationResources, Rect,
   },
   typeset::{
-    AnchorId, AnchorMark, HBoxContent, LaidOutDocument, LinkTarget as TypesetLinkTarget, Page, PlacedBlock,
-    PlacedTableRow,
+    AnchorId, AnchorMark, FontResources, HBoxContent, ImageAsset, LaidOutDocument, LinkTarget as TypesetLinkTarget,
+    Page, PlacedBlock, PlacedTableRow,
   },
 };
 
+/// 組版の確定結果と読込済み資源から描画直前の [`Publication`] を構築する。
+///
+/// フォント資源は組版で使った解析結果を再利用し、画像はパス昇順に並べて不透明な `ImageRef` の
+/// 発行順を決定的にする。`compiler` はこの内部順序と組版中間型の走査を知らない。
+pub(crate) fn build(
+  config: &ProjectConfig,
+  font_data: &FontData,
+  font_resources: &FontResources<'_>,
+  mut laid_out: LaidOutDocument,
+) -> Publication {
+  let images = mem::take(&mut laid_out.images);
+  let resources = build_resources(font_data, font_resources, images);
+  return build_publication(config, resources, laid_out);
+}
+
+/// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
+///
+/// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
+/// バイト列は `Arc` 共有なので複製しない。krilla フォントの構築は render（`seiran-pdf`）の責務。
+///
+/// 画像はパス昇順に並べてから渡す — `ImageRef` は配列添字なので、`HashMap` の反復順のままだと
+/// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
+fn build_resources(
+  font_data: &FontData,
+  font_resources: &FontResources<'_>,
+  images: HashMap<ProjectPath, ImageAsset>,
+) -> PublicationResources {
+  let face_configs = font_resources.face_configs();
+  let metrics = font_resources.metrics();
+  let fonts = FontMap::from_all(FontType::ALL.iter().map(|&font_type| {
+    return PublicationFont {
+      bytes: font_data.shared_bytes(font_type),
+      face: face_configs[font_type].clone(),
+      metric: metrics[font_type],
+    };
+  }));
+  let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
+  sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
+  let images = sorted
+    .into_iter()
+    .map(|(path, asset)| {
+      return PublicationImage {
+        path: path.to_string(),
+        format: asset.format,
+        bytes: asset.bytes,
+      };
+    })
+    .collect();
+  return PublicationResources::new(fonts, images);
+}
+
 /// 確定ページ列としおりエントリ、描画資源から [`Publication`] を構築する。
-pub(super) fn build_publication(
+///
+/// 確定レイアウトは**消費する** — グリフ列・しおりテキスト・外部リンクの URI はここが最後の
+/// 読み手なので、複製せず move する（借りて複製すると shaped glyph 全体の複製がピークで 2 部残る）。
+fn build_publication(
   config: &ProjectConfig,
   resources: PublicationResources,
-  laid_out: &LaidOutDocument,
+  laid_out: LaidOutDocument,
 ) -> Publication {
   let (dest_by_id, heading_dests) = build_destination_index(&laid_out.pages);
+  let LaidOutDocument {
+    pages,
+    outline_entries,
+    image_paths: _,
+    images: _,
+  } = laid_out;
 
-  let mut publication_pages = Vec::with_capacity(laid_out.pages.len());
-  for page in &laid_out.pages {
+  let mut publication_pages = Vec::with_capacity(pages.len());
+  for page in pages {
     publication_pages.push(build_page(config, page, &dest_by_id, &resources));
   }
 
   let outline = if config.pdf.show_bookmarks {
-    let entries: Vec<PublicationOutlineEntry> = laid_out
-      .outline_entries
-      .iter()
-      .zip(heading_dests.iter())
+    let entries: Vec<PublicationOutlineEntry> = outline_entries
+      .into_iter()
+      .zip(heading_dests)
       .map(|(entry, dest)| {
         return PublicationOutlineEntry {
           depth: entry.level.depth(),
-          text: entry.text.clone(),
-          dest: *dest,
+          text: entry.text,
+          dest,
         };
       })
       .collect();
@@ -75,7 +136,7 @@ pub(super) fn build_publication(
 /// 1 ページぶんの `PublicationPage` を構築する
 fn build_page(
   config: &ProjectConfig,
-  page: &Page,
+  page: Page,
   dest_by_id: &HashMap<AnchorId, Destination>,
   resources: &PublicationResources,
 ) -> PublicationPage {
@@ -92,20 +153,20 @@ fn build_page(
   let origin_x_pt = origin_x.to_pt();
   for block in page
     .blocks
-    .iter()
-    .chain(&page.header)
-    .chain(&page.footer)
-    .chain(page.footnotes.iter().flat_map(|f| return &f.blocks))
+    .into_iter()
+    .chain(page.header)
+    .chain(page.footer)
+    .chain(page.footnotes.into_iter().flat_map(|f| return f.blocks))
   {
     push_placed_block_ops(&mut ops, origin_x_pt, block, resources);
   }
 
   let mut links = Vec::new();
-  for link in &page.links {
-    let target = match &link.target {
-      TypesetLinkTarget::External(uri) => PublicationLinkTarget::External(uri.clone()),
+  for link in page.links {
+    let target = match link.target {
+      TypesetLinkTarget::External(uri) => PublicationLinkTarget::External(uri),
       TypesetLinkTarget::Internal(id) => {
-        let Some(dest) = dest_by_id.get(id) else {
+        let Some(dest) = dest_by_id.get(&id) else {
           continue;
         };
         PublicationLinkTarget::Internal(*dest)
@@ -191,15 +252,15 @@ fn add_origin_x(origin_x: Length, x: Length) -> f32 { return origin_x.to_pt() + 
 /// 配置済みブロックの描画命令を追加する。
 ///
 /// PDF 出力と同じ丸め順序を保つため、座標計算は pt の `f32` で行う。
-fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: &PlacedBlock, resources: &PublicationResources) {
+fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: PlacedBlock, resources: &PublicationResources) {
   match block {
     PlacedBlock::Line { line, baseline_y } => {
-      for positioned in &line.boxes {
+      for positioned in line.boxes {
         push_box_content_ops(
           ops,
           origin_x + positioned.x.to_pt(),
-          (*baseline_y - positioned.dy).to_pt(),
-          &positioned.content,
+          (baseline_y - positioned.dy).to_pt(),
+          positioned.content,
         );
       }
     },
@@ -214,9 +275,9 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: &PlacedBl
       baseline_y,
       numbers,
     } => {
-      push_box_content_ops(ops, origin_x + x.to_pt(), baseline_y.to_pt(), &body.content);
+      push_box_content_ops(ops, origin_x + x.to_pt(), baseline_y.to_pt(), body.content);
       for number in numbers {
-        push_box_content_ops(ops, origin_x + number.x.to_pt(), number.baseline_y.to_pt(), &number.content.content);
+        push_box_content_ops(ops, origin_x + number.x.to_pt(), number.baseline_y.to_pt(), number.content.content);
       }
     },
     PlacedBlock::Image {
@@ -236,7 +297,7 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: &PlacedBl
       ops.push(PaintOp::DrawImage {
         image,
         rect: rect(origin_x + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
-        target_dpi: *target_dpi,
+        target_dpi,
       });
     },
     PlacedBlock::Rule {
@@ -248,43 +309,44 @@ fn push_placed_block_ops(ops: &mut Vec<PaintOp>, origin_x: f32, block: &PlacedBl
     } => {
       ops.push(PaintOp::FillRect {
         rect: rect(origin_x + x.to_pt(), y.to_pt(), width.to_pt(), height.to_pt()),
-        color: *color,
+        color,
       });
     },
   }
 }
 
 /// ボックス内容の描画命令を基準座標から追加する。
-fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content: &HBoxContent) {
+fn push_box_content_ops(ops: &mut Vec<PaintOp>, x: f32, baseline_y: f32, content: HBoxContent) {
   match content {
     HBoxContent::Glyphs(run) => {
       ops.push(PaintOp::DrawGlyphRun {
         origin: Point { x, y: baseline_y },
-        run: run.clone(),
+        run,
       });
     },
     HBoxContent::Atom(children) => {
       for child in children {
-        push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), &child.item.content);
+        push_box_content_ops(ops, x + child.dx.to_pt(), baseline_y - child.dy.to_pt(), child.item.content);
       }
     },
   }
 }
 
 /// 位置確定済みの表の 1 行から描画命令を追加する。
-fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: &PlacedTableRow, origin_x: f32) {
+fn push_table_row_ops(ops: &mut Vec<PaintOp>, placed_row: PlacedTableRow, origin_x: f32) {
   if let Some(rule) = placed_row.rule {
     ops.push(PaintOp::FillRect {
       rect: rect(origin_x + rule.x.to_pt(), rule.y.to_pt(), rule.width.to_pt(), rule.height.to_pt()),
       color: rule.color,
     });
   }
-  for positioned in &placed_row.boxes {
+  let baseline_y = placed_row.baseline_y;
+  for positioned in placed_row.boxes {
     push_box_content_ops(
       ops,
       origin_x + positioned.x.to_pt(),
-      (placed_row.baseline_y - positioned.dy).to_pt(),
-      &positioned.content,
+      (baseline_y - positioned.dy).to_pt(),
+      positioned.content,
     );
   }
 }
@@ -403,7 +465,7 @@ mod tests {
     outline: Vec<(HeadingLevel, String)>,
     image_paths: &[&str],
   ) -> Publication {
-    return build_publication(config, test_resources(image_paths), &laid_out(pages, outline));
+    return build_publication(config, test_resources(image_paths), laid_out(pages, outline));
   }
 
   #[test]

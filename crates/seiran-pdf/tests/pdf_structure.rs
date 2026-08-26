@@ -216,7 +216,7 @@ fn pdf_structure_tounicode_extracts_hyperref_text() {
 /// PDF の content stream operator を大まかな描画カテゴリへ分類する（z-order 検証専用）。
 ///
 /// `PublicationPage.ops` は「背景の矩形塗り（パス構築 + `f`）→ 本文（テキスト `Tj`/`TJ`・画像 `Do`）」
-/// の順で並ぶ（`seiran_compiler` の `compiler::publication` が定める描画順）。
+/// の順で並ぶ（`seiran_compiler` の `publication::build` が定める描画順）。
 fn classify_paint_operator(operator: &str) -> Option<&'static str> {
   return match operator {
     "f" | "F" | "f*" => Some("fill"),

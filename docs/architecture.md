@@ -256,7 +256,7 @@ pub trait ProjectSource: Send + Sync {
   `FontData::load(source, font_configs)`（`rayon` で並列化し、同じパスを指す種別は 1 回だけ読む）、
   読込エラー `FontReadError`。`FontData` を型エイリアスではなく newtype にしているのは、構築を
   inherent メソッドで表せて拡張トレイト（旧 `FontDataExt`）が要らなくなるため。`FontReadError` は
-  `compiler::error::CompileError` が `#[from]` で運ぶために名指しするので `project` の facade に載せる
+  `compiler::input::error::CompileError` が `#[from]` で運ぶために名指しするので `project` の facade に載せる
   （crate root の facade へは出さない）。
 
 #### 子 module `source_set`
@@ -404,7 +404,7 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
 `TitlePageStyle` / `TocStyle`、および下記 `template` の用途別テンプレート型とその値型）。`Style` の
 内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` / `TextBlockStyle` 等）と
 エラー型 `StyleValidationError`（子 module `error` の所有）は非公開 `use` に留め、`crate::style::FigureStyle` という
-到達経路を作らない。`ReadStyleError` だけは `compiler::error::CompileError` が `#[from]` で運ぶために
+到達経路を作らない。`ReadStyleError` だけは `compiler::input::error::CompileError` が `#[from]` で運ぶために
 名指しするので `pub(crate) use` で crate 内へ公開する。エラー型を `ConfigValidationError` / `StyleValidationError` と接頭辞で区別するのは
 `project::config` 節に書いたとおり。
 
@@ -841,7 +841,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 `boxes` は組版中間型そのもの（`Block` / `HItem` / `HBox` / `Line` / `Page` / `TableBox` 系と表の計測・
 配置ヘルパ）を持つ非公開 module で、`block` module（シェーピング + 計測）と `breaking` module（行分割 +
 縦組版）の双方から対称に参照されるため、どちらの所有物にもせず切り出してある。root facade へ出すのは
-**本体コードに消費者がある型だけ** — `compiler::publication` が `Publication` へ写すために走査する
+**本体コードに消費者がある型だけ** — `publication::build` が `Publication` へ写すために走査する
 `Page` / `PlacedBlock` / `HBoxContent` / `PlacedTableRow` / `AnchorId` / `AnchorMark` / `LinkTarget` で、
 `HItem` / `TableColumn` / 表セルの配置・計測ヘルパのように `typeset` の外に消費者がいないものは
 出さない（#326）。かつては `HBox` / `Line` / `PositionedBox` / `Placed*` /
@@ -863,12 +863,12 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `image_paths`: 文書が参照した画像ファイルのパス一覧（重複なし・昇順。`DependencyManifest` 用）
 - `images`: 画像ファイルの形式と生バイト列（`ImageAsset`。`publication::PublicationResources` 用）
 
-`pages` / `outline_entries` はフィールド公開のまま置く — `compiler::publication` と golden テストが
+`pages` / `outline_entries` はフィールド公開のまま置く — `publication::build` と golden テストが
 直接走査しており、アクセサ化すると「golden 無改変で組版の不変性を示す」検証手段が弱まるため。
 フォント資源は含めない（`layout` は `&FontResources` を借りるだけで、その構築・保持は `compiler` の
 責務。フォント資源は config / style / references と同じ**入力資源**であり、`layout` が決めた値では
 ないため成果物には載せない、#352）。警告も含めない（上記のとおり `layout` の戻り値タプルの第 2 要素。
-`build_publication` が描画と無関係なデータを見ずに済む、#382）。
+`publication::build` が描画と無関係なデータを見ずに済む、#382）。
 
 #### `warning`
 
@@ -894,7 +894,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 - `glyph_run`（非公開、`GlyphRun` / `Glyph` は `typeset` root facade 経由で crate root の facade まで
   再エクスポートされる）: シェーピング結果 1 個のグリフ列とその配置情報。値は `color::Color` /
   `project::FontType` / `length::Length` という leaf 値型にしか依存しない leaf 型で、`typeset::block` が
-  生成し `compiler::publication` が `PaintOp::DrawGlyphRun` へそのまま載せる（#372 で `seiran-pdf` 側の
+  生成し `publication::build` が `PaintOp::DrawGlyphRun` へそのまま載せる（#372 で `seiran-pdf` 側の
   同型の複製と変換関数を削除した。`font_size: Length` → pt と `color: Color` → `[u8; 3]` の変換は
   render が行う）。
 - `face_config`（非公開、`FontFaceConfig` / `VariationAxisConfig` は crate root の facade まで
@@ -924,7 +924,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   `ShaperDatas` / `ShaperInstances`（本来は兄弟フィールド）を両方借用し続けるため、1 つの構造体に
   まとめると自己参照構造体になる — これを避けて `FontResources`（所有）と `FontSystem`（借用ビュー）の
   2 段に分けている。`.system()` を呼ぶのは `layout` の中だけで、`compiler` は `FontResources` を
-  1 度構築して `layout` と `build_publication` に貸すだけになる。
+  1 度構築して `layout` と `publication::build` に貸すだけになる。
 
 不変条件:
 
@@ -1105,7 +1105,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
   baseline、位置・寸法・色を確定した罫線を持つ。列定義・列幅・セル余白・未配置の `HItem` は保持しない。
   `Page` は自分の**本文水平原点** `content_origin_x`（用紙左端から本文左端まで＝解決済みの
   `style.page.margin_left`）を持ち、ページ内の x はすべてこの原点からの相対値。用紙座標へ直すのは
-  `compiler::publication` が原点を 1 回加算する時だけで、原点をページごとに持たせているのは
+  `publication::build` が原点を 1 回加算する時だけで、原点をページごとに持たせているのは
   見開きで左右余白を変える将来の拡張でも描画側の interface を変えずに済ませるため（#389）
 - `table_box`: `TableColumn`（列の揃え + 幅指定。`lowering` が HIR の `ColumnAlign` / `ColumnWidth` を
   列ごとに束ねて作る入力契約）/ `TableBox` / `TableCellBox` / `TableRowBox` と表の純粋計測・配置ヘルパ
@@ -1115,7 +1115,7 @@ pin することで担保する（`usvg` を上げるときは `krilla-svg` が�
 
 表は `breaking::place_table` が改段・改ページとヘッダ再描画を決めた時点で、段オフセット・揃え・セル余白・
 baseline・罫線をページ座標へ畳む。畳み込みは `Length`（sp 整数）のまま行い、pt の `f32` へ変換するのは
-描画命令を作る 1 回だけである。以降の `compiler::publication` は表固有の配置判断・幅計算を持たず、
+描画命令を作る 1 回だけである。以降の `publication::build` は表固有の配置判断・幅計算を持たず、
 他の `PlacedBlock` と同じく左マージンの加算と pt 変換だけを行う。表セル内脚注・索引 marker をページ列へ
 配置しない現行制限は維持し、`position_table_row_boxes` で明示的に読み飛ばす。完全対応は表の配置済み
 表現とは別課題とする。
@@ -1329,7 +1329,7 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 | module | 役割 | 外への出し方 |
 | --- | --- | --- |
-| `test_fixtures` | 確定レイアウトの fixture builder。`PageBuilder` と `glyph_line` / `rule_line` / `atom_line` / `rule_block` / `image_block` / `math_block` / `table_block` / `laid_out` ほか | `pub(crate) mod`（`compiler::publication` / `typeset::dump` のテストが使う） |
+| `test_fixtures` | 確定レイアウトの fixture builder。`PageBuilder` と `glyph_line` / `rule_line` / `atom_line` / `rule_block` / `image_block` / `math_block` / `table_block` / `laid_out` ほか | `pub(crate) mod`（`publication::build` / `typeset::dump` のテストが使う） |
 | `dump` | 確定ページ列（`Vec<Page>`）の決定的テキストダンプ `dump_pages` | root facade から `pub(crate) use dump::dump_pages`（関数 1 つだけ） |
 
 `test_fixtures` の**不変条件**: 関数・メソッドの引数型にも返り値型にも `HBox` / `Line` /
@@ -1349,8 +1349,9 @@ Vec<HeadingRecord>)` が `document.hir().groups()`（`HirGroup { nodes, source_i
 
 #### 責務
 
-組版成果物の確定表現 `Publication` の所有者（#372 で `seiran-pdf` から移設）。持つのは型定義だけで、
-構築ロジックは `compiler::publication`（写像）と `compiler::build_resources`（描画資源）が持つ。
+組版成果物の確定表現 `Publication` と、その唯一の構築経路の所有者（#372 で `seiran-pdf` から移設）。
+子 module `build` が `typeset::LaidOutDocument` と読込済み資源を受け取り、描画資源の構築・確定座標の
+`PaintOp` への写像・リンク到達先の検証までを `build` 1 操作に閉じる。`compiler` は組版中間型を走査しない。
 
 公開型: `Publication` / `PublicationPage` / `PaintOp` / `Point` / `Rect` / `Destination` /
 `PublicationLink` / `PublicationLinkTarget` / `PublicationOutlineEntry` / `PublicationMetadata` /
@@ -1391,7 +1392,7 @@ error variant（invalid page size / rule rect / link rect / image not in manifes
 - `PaintOp::DrawGlyphRun` は `typeset::GlyphRun` を**そのまま**載せる（同型の複製を作らない）。
   したがって `Length` / `Color` / `FontType` / `GlyphRun` / `Glyph` も facade に載る。
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（`PublicationResources.images`
-  の添字）。添字である以上、資源の並びは決定的でなければならないので `compiler::build_resources` は
+  の添字）。添字である以上、資源の並びは決定的でなければならないので `publication::build` は
   `HashMap` の反復順ではなく**パス昇順**に並べてから配列を組む。
 - `PublicationResources` / `PublicationFont` / `PublicationImage` の `Debug` は手書きで、バイト列の中身ではなく長さを出す
   （`tests/determinism.rs` の `assert_eq!` が失敗したときに数百 MB を吐かないため）。
@@ -1408,11 +1409,11 @@ error variant（invalid page size / rule rect / link rect / image not in manifes
 PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
 （`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
-`compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順は知らない（#350）:
+`compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順と成果物への写像は知らない（#350）:
 
 ```text
 input::load → parse_project → semantics::analyze → typeset::FontResources::load
-  → typeset::layout → build_publication（Publication への写像）→ DependencyManifest::collect
+  → typeset::layout → DependencyManifest::collect → publication::build
 ```
 
 `tracing` の INFO イベントもこの facade が上記の安定した phase 境界で出す。各 module が知る内部手順
@@ -1422,12 +1423,13 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 
 組版の内部順序（本文・前付け・後付け・脚注採番の反復・画像寸法解決・走り文配置）と組版中間型は
 `typeset::layout` の内側にある。`compiler.rs` が `typeset` から名指しするのは facade に載る資源・
-警告型（`FontResources` / `FontWarning` / `ImageAsset` / `TypesetWarning`）と `layout` /
-`FontResources::load` の呼び出しだけで、組版中間型・内部 module には触れない。`Publication` への写像だけは `compiler` に残る（`typeset` は描画 API を知らないため）。
+警告型（`FontResources` / `FontWarning` / `TypesetWarning`）と `layout` / `FontResources::load` の
+呼び出しだけで、組版中間型・内部 module には触れない。`Publication` への写像は成果物を所有する
+`publication::build` に閉じ、`typeset` は描画表現を知らない依存方向を保つ。
 
 #### compile facade（`compiler.rs` 直下）
 
-`compiler.rs` 本体には facade 関数（`compile` / `parse_project` / `build_resources` /
+`compiler.rs` 本体には facade 関数（`compile` / `parse_project` /
 `parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
 `CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート、
@@ -1446,12 +1448,12 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 `Result<_, CompileFailure>`、`input::load` は `Result<_, Failures<CompileError>>` を返す。
 
 `compile` が `typeset::FontResources::load` を 1 回だけ呼び、それを `typeset::layout`（組版）と
-`build_resources`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
+`publication::build`（描画資源用の `metrics()` / `face_configs()`）の両方へ貸す
 （描画段での再構築はしない）。シェーパーの構築（`.system()`）と個々の型の構築順序・寿命関係は
 `typeset::font` に閉じており、facade はこれを知らない。フォント資源の構築を `typeset` の内側へ
 畳まないのは、`FontResources` が組版後にも描画資源用の `metrics()` を要求され、
 「`LaidOutDocument` は `layout` が決めた値だけを持つ」という設計意図と衝突するため（#352）。
-`build_resources`（`compiler.rs` 直下）は `FontData` の `Arc` 共有バイト列・`FontFaceConfig`・
+`publication::build` の内部は `FontData` の `Arc` 共有バイト列・`FontFaceConfig`・
 `FontMetric` を 19 種別ぶん束ねるだけで、krilla には触れない（#372）。画像側は
 `LaidOutDocument.images` を**パス昇順**に並べて `Vec<PublicationImage>` にする — `ImageRef` が
 この配列の添字なので、`HashMap` の反復順に任せると同じ入力から違う `Publication` ができてしまう。
@@ -1470,11 +1472,6 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   `SourceSetReadError` から `CompileError::ReadTextFile` への写像（`SourceReadError` はそのまま
   `#[source]` へ載せる）を `input` が行う。`project::config::load` が返す `ConfigWarning`（`sources` の
   拡張子が `.sei` でない等）も `CompilationInputs` が宣言順に保持し、`compile` が `Warnings` へ移す
-- `publication`: `typeset::LaidOutDocument` と `publication::PublicationResources` から
-  `publication::Publication` を組み立てる `build_publication`（`Publication` 系の型そのものは crate root
-  の `publication` module が所有する。#372）。`typeset` は描画命令の表現を知らないので、この写像だけは
-  `compiler` 側に残る。ここで `Style` に依存する判断や配置計算は一切しない。
-  表もセル内容の確定座標列と確定罫線を `PaintOp` へ写すだけで、列定義・列幅・セル余白を知らない
 - `dependency_manifest`: `compile` が読み取った外部資源のパス一覧 `DependencyManifest`（設定・スタイル・
   文献・ソース・画像・フォント・CSL 各パス）を組み立てる `DependencyManifest::collect`。すべて
   `CompilationInputs` と `LaidOutDocument.image_paths` が既に持つデータの再整形で、新しい I/O は発生させない
@@ -1496,7 +1493,7 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
   中身は `compile` が**入力の論理順**（config の警告 → フォントの警告 → 組版の警告）で組み立て、
   段の中の順序は各段が保証する（`sources` の宣言順 / `FontType::ALL` 順 / 物理ページの昇順）。
   コンパイルが失敗したときは warning を返さない（#377、#382）
-- `error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
+- `input::error`: `CompileError`（入力読込のエラーを束ねる。ラベル・カウンタの解決は `semantics` module が
   行うため、`typeset::lowering` 由来の診断エラーは無い）。**段名だけを足す wrapper にはしない** —
   内側が独立した診断を持つもの（`ReadConfigError` / `ReadStyleError` / `LayoutValidationError` /
   `ReadReferencesError` / `FontReadError`）は `#[diagnostic(transparent)]` でそのまま委譲し、自前の
@@ -1581,7 +1578,7 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 という防火壁は、compiler の内部 module が非公開であること — facade に `ProjectConfig` / `Style` /
 `typeset::Page` が出ていないこと — が担っている（型の複製で作った独立性ではない）。
 `Vec<Page>` → `Publication` への変換と画像の自然寸法解決（width / height 確定の prepass）は compiler 側
-（`compiler::publication` / `typeset::image`）の責務で、こちらへ戻さない。
+（`publication::build` / `typeset::image`）の責務で、こちらへ戻さない。
 
 ### モジュール構成
 
@@ -1618,20 +1615,20 @@ image not in manifest / 未対応の画像拡張子）は削除した — 同じ
 
 - **`PaintOp` は `DrawGlyphRun` / `DrawImage` / `FillRect` の 3 種**（renderer が実際に使う描画能力の最小
   集合）。ここを増やすときは「前段で決められない描画か」を確認する（型の所有は compiler 側なので
-  追加も compiler の `publication` module で行う）。
+  追加も `publication` module で行う）。
 - **`Style` / `ProjectConfig` を読まない**（compiler の facade に出ていないので参照できない）。表のセル余白 /
   罫線太さ / 罫線色・ページ背景色は前段（`typeset::breaking`）が `Style` から解決済みの値として
   `typeset::Page.background_color` と `PlacedTableRow` の配置済みセル内容列・`PlacedTableRule` に載せており、
   本文の水平原点は各ページの `typeset::Page.content_origin_x`（`style.page.margin_left` を `typeset` が
-  解決した値）に載っていて `compiler::publication` がそれを 1 回だけ加算する。ページサイズ・
-  `show_bookmarks`・文書メタデータは compiler 側（`compiler::publication`）が `project::ProjectConfig`
+  解決した値）に載っていて `publication::build` がそれを 1 回だけ加算する。ページサイズ・
+  `show_bookmarks`・文書メタデータは compiler 側の `publication::build` が `project::ProjectConfig`
   から読んで `Publication` に前倒し解決してから渡す。
 - `render` は `Publication` 1 個だけを消費する。krilla フォントの構築は `render` の冒頭 1 回で、
   フォント・画像の生資源は `publication.resources()` のアクセサ（`font()` / `image()`）から取る。
   `typeset::Page` / `ProjectConfig` / `Style` を直接読む描画経路を復活させない。
 - **描画命令の値を検査し直さない**（#378）。ページサイズ・矩形・画像参照（`ImageRef`）・内部リンクと
   しおりの到達先ページは `Publication` の構築時に検証済みで、破れていれば compiler 側のバグなので
-  renderer が診断を出す筋合いがない（保証点の一覧は compiler の `publication` 節）。
+  renderer が診断を出す筋合いがない（保証点の一覧は `publication` 節）。
 - 第 2 の描画バックエンド（HTML 等）が現れるまで `Renderer` trait も共有型だけの第三 crate も作らない
   — backend が 1 つの間は浅い seam にしかならない（#372）。
 - `tests/pdf_structure.rs`: `lopdf` による独立 reader での PDF 構造 golden テスト（golden は

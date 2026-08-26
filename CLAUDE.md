@@ -126,8 +126,8 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 | `frontend` | 字句・構文解析（CST は非公開）→ HIR への評価変換。phf レジストリでディスパッチ、採番なし |
 | `semantics` | 意味解析 `analyze`（採番・`\ref`・引用キー検証）+ CSL 読込・書誌生成 → `SemanticDocument` |
 | `typeset` | 組版。入口は `layout` 1 操作（`SemanticDocument` → `LaidOutDocument`） |
-| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）。krilla を知らない純データ |
-| `compiler` | compile facade。全体の phase 順序と `Publication` への写像だけを持ち、組版中間型を名指ししない |
+| `publication` | 組版成果物の確定表現（`Publication` / `PaintOp` / 描画資源）と、その唯一の構築経路。krilla を知らない純データ |
+| `compiler` | compile facade。全体の phase 順序だけを持ち、組版中間型の走査・描画資源の構築を名指ししない |
 
 ## コーディング規約
 

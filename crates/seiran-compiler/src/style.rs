@@ -37,7 +37,7 @@ use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-// `compiler::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
+// `compiler::input::error::CompileError` が `#[from]` で運ぶために名指しする読込エラー。
 pub(crate) use crate::style::error::ReadStyleError;
 // module root が再エクスポートするのは、`style` の外から実際に名指しされる名前だけ。
 // `Style` の内部フィールド型としてしか現れないサブスタイル型（`FigureStyle` / `HeadingStyle` 等）は

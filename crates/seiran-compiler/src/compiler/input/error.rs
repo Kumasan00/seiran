@@ -19,8 +19,12 @@ use crate::{
 ///
 /// PDF の保存は `compile` の責務ではないため、ここには含まない
 /// （呼び出し元である CLI 側が保存専用のエラー型を別途持つ）。
+///
+/// 可視性が crate 内で唯一の `pub(in ...)` 形なのは、この型が `input::load` の `pub(super)` な
+/// シグネチャに現れるため — `compiler` module 全体から名指しできないと rustc の
+/// `private_interfaces` が落ちる。`compiler` の外に消費者はいないので `pub(crate)` へは広げない。
 #[derive(Debug, Error, Diagnostic)]
-pub(super) enum CompileError {
+pub(in crate::compiler) enum CompileError {
   /// テキストファイルの読み込みエラー
   #[error("テキストファイルの読み込みに失敗しました: {path}")]
   #[diagnostic(
@@ -63,17 +67,12 @@ pub(super) enum CompileError {
   Font(#[from] FontReadError),
 }
 
-impl From<CompileError> for super::CompileFailure {
-  /// 入力読込の失敗は必ず 1 件の診断（`?` で `CompileFailure` を返す関数へ持ち上げるための変換）。
-  fn from(error: CompileError) -> Self { return super::CompileFailure::single(error); }
-}
-
 #[cfg(test)]
 mod tests {
   use miette::Diagnostic;
 
   use super::CompileError;
-  use crate::{compiler::CompileFailure, typeset::LayoutValidationError};
+  use crate::typeset::LayoutValidationError;
 
   #[test]
   fn layout_error_keeps_the_inner_leaf_code() {
@@ -85,11 +84,11 @@ mod tests {
     };
 
     // Act
-    let failure = CompileFailure::from(CompileError::from(error));
+    let error = CompileError::from(error);
 
     // Assert — `compiler::layout` ではなく内側の leaf の code が出るはず
     assert_eq!(
-      failure.code().expect("code を持つはず").to_string(),
+      error.code().expect("code を持つはず").to_string(),
       "typeset::geometry::invalid_columns",
       "段名だけの wrapper が主診断になってはいけない"
     );

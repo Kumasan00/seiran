@@ -5,15 +5,13 @@ use crate::project::FilesystemProjectSource;
 use crate::{
   document::{HirDocument, HirSource},
   frontend,
-  project::{FontType, ProjectPath, ProjectSource},
+  project::{ProjectPath, ProjectSource},
   semantics, typeset,
 };
 
 mod compile_failure;
 mod dependency_manifest;
-mod error;
 mod input;
-mod publication;
 mod source_diagnostic;
 mod warnings;
 
@@ -28,7 +26,7 @@ mod project_source_equivalence;
 
 #[cfg(test)]
 use std::sync::Arc;
-use std::{collections::HashMap, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
@@ -38,13 +36,18 @@ use source_diagnostic::SourceDiagnostic;
 use tracing::info;
 pub use warnings::Warnings;
 
-#[cfg(test)]
-use crate::{project::config::ProjectConfig, semantics::References, style::Style, typeset::LaidOutDocument};
 use crate::{
-  project::{FontData, FontMap, SourceSet},
-  publication::{Publication, PublicationFont, PublicationImage, PublicationResources},
+  project::SourceSet,
+  publication::{self, Publication},
   semantics::AnalyzeError,
-  typeset::{FontResources, FontWarning, ImageAsset, TypesetWarning},
+  typeset::{FontResources, FontWarning, TypesetWarning},
+};
+#[cfg(test)]
+use crate::{
+  project::{FontData, config::ProjectConfig},
+  semantics::References,
+  style::Style,
+  typeset::LaidOutDocument,
 };
 
 /// コンパイル結果の統計情報。
@@ -129,7 +132,7 @@ pub fn compile<S: ProjectSource>(
   );
 
   let stage_start = Instant::now();
-  let (mut laid_out, typeset_warnings) =
+  let (laid_out, typeset_warnings) =
     typeset::layout(source, inputs.config(), inputs.style(), &font_resources, &semantic_document)
       .map_err(CompileFailure::from)?;
   info!(
@@ -139,14 +142,13 @@ pub fn compile<S: ProjectSource>(
     elapsed_ms = elapsed_ms(stage_start),
     "組版が完了しました"
   );
-  let images = std::mem::take(&mut laid_out.images);
-  let resources = build_resources(inputs.font_data(), &font_resources, images);
-  let publication = publication::build_publication(inputs.config(), resources, &laid_out);
   let dependencies = DependencyManifest::collect(root.as_ref(), &inputs, &laid_out.image_paths);
+  let page_count = laid_out.pages.len();
+  let publication = publication::build(inputs.config(), inputs.font_data(), &font_resources, laid_out);
   let warnings = collect_warnings(&inputs, font_warnings, typeset_warnings);
   let total_elapsed_ms = elapsed_ms(build_start);
   let statistics = BuildStatistics {
-    page_count: laid_out.pages.len(),
+    page_count,
     total_elapsed_ms,
   };
   info!(
@@ -200,42 +202,6 @@ fn collect_warnings(
 fn parse_project(inputs: &CompilationInputs) -> Result<HirDocument, CompileFailure> {
   let document = HirDocument::assemble(parse_all_sources(inputs.sources())?);
   return Ok(document);
-}
-
-/// 読み込み済みフォント資源と画像資源から `Publication` の描画資源を組み立てる。
-///
-/// フォント資源は呼び出し元が 1 回だけ構築したものをそのまま使う（ここでの再構築はしない）。
-/// バイト列は `Arc` 共有なので複製しない。krilla フォントの構築は render（`seiran-pdf`）の責務。
-///
-/// 画像はパス昇順に並べてから渡す — `ImageRef` は配列添字なので、`HashMap` の反復順のままだと
-/// 同じ入力から作った `Publication` が実行ごとに違う値になってしまう。
-fn build_resources(
-  font_data: &FontData,
-  font_resources: &FontResources<'_>,
-  images: HashMap<ProjectPath, ImageAsset>,
-) -> PublicationResources {
-  let face_configs = font_resources.face_configs();
-  let metrics = font_resources.metrics();
-  let fonts = FontMap::from_all(FontType::ALL.iter().map(|&font_type| {
-    return PublicationFont {
-      bytes: font_data.shared_bytes(font_type),
-      face: face_configs[font_type].clone(),
-      metric: metrics[font_type],
-    };
-  }));
-  let mut sorted: Vec<(ProjectPath, ImageAsset)> = images.into_iter().collect();
-  sorted.sort_by(|(left, _), (right, _)| return left.cmp(right));
-  let images = sorted
-    .into_iter()
-    .map(|(path, asset)| {
-      return PublicationImage {
-        path: path.to_string(),
-        format: asset.format,
-        bytes: asset.bytes,
-      };
-    })
-    .collect();
-  return PublicationResources::new(fonts, images);
 }
 
 /// パースからページ確定までを実行するテストヘルパ（実ファイルシステム版）。
