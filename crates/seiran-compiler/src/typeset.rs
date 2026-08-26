@@ -6,7 +6,7 @@
 //! （box 計測は 1 回だけ・`breaking` はフォントに触れない）はすべて実装側に閉じる（#350）。
 //!
 //! 組版中間型（`Block` / `HItem` / `Line` / `Page` / `TableBox` 系）は本 module 非公開の
-//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`compiler::publication` が
+//! 子 module `boxes` が所有する（#280、#350 で `layout` から改名）。`publication::build` が
 //! `Publication` へ写すために読むぶんだけを facade へ出す。
 //!
 //! フォント処理（OpenType 解析・検証・メトリクス・シェイピング）は子 module `font` が持つ
@@ -34,7 +34,7 @@ mod dump;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 
-// 確定レイアウトを `Publication` へ写す `compiler::publication` が、ページの中身（配置済みブロック・
+// 確定レイアウトを `Publication` へ写す `publication::build` が、ページの中身（配置済みブロック・
 // 表の行・箱の内容）を走査するために名指しする型。この `boxes` からの
 // 再エクスポートに載るのは **本体コードに消費者がある名前だけ**で、テストが確定レイアウトを
 // 組み立てる手段は `#[cfg(test)]` の子 module `test_fixtures` が持つ（#353）。組版の段を呼ぶための型
@@ -59,7 +59,7 @@ pub(crate) use font::{FontResources, FontWarning};
 // 行う — 不正な組み合わせを組版より前に弾き、診断の出るタイミングを変えないため。
 pub(crate) use geometry::{LayoutValidationError, validate_layout};
 // 画像資源 — 判定済みの形式 `ImageFormat` は `Publication` に載って描画バックエンドまで届く
-// leaf 値型（crate root の facade が再エクスポートする）。`ImageAsset` は `compiler` が
+// leaf 値型（crate root の facade が再エクスポートする）。`ImageAsset` は `publication::build` が
 // 描画資源へ写すためだけに読む中間表現（#378）。
 pub(crate) use image::ImageAsset;
 pub use image::ImageFormat;

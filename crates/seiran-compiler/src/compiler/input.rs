@@ -16,8 +16,12 @@ use std::{
 
 use tracing::debug;
 
+mod error;
+
+use error::CompileError;
+
 use crate::{
-  compiler::{elapsed_ms, error::CompileError},
+  compiler::elapsed_ms,
   failures::Failures,
   project,
   project::{

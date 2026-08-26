@@ -1,13 +1,18 @@
 //! 描画直前の確定済み中間表現 [`Publication`] — compile の成果物。
 //!
-//! 座標は pt 単位の `f32`、描画順は配列順で確定している。ここにあるのは**純データ**だけで、
+//! 座標は pt 単位の `f32`、描画順は配列順で確定している。ここに置くデータ型は**純データ**だけで、
 //! 描画バックエンド（`seiran-pdf` / krilla）のハンドルは 1 つも含まない（#372）。
 //! フォント・画像は生バイト列と構築設定のまま持ち、krilla フォントの構築は render が行う。
 //!
-//! 組版の中間型（`crate::typeset::Page` 等）は含めない。例外は `crate::typeset::GlyphRun` /
-//! [`crate::typeset::FontMetric`] / [`crate::typeset::FontFaceConfig`] / [`crate::typeset::ImageFormat`] で、
-//! これらは「シェーピング結果」「フォント計測値」「フォント構築設定」「判定済みの画像形式」をそのまま
-//! 描画へ渡す leaf 値なので同型の複製を作らず直接載せる。
+//! データ型は組版の中間型（`crate::typeset::Page` 等）をフィールドに持たない。例外は
+//! `crate::typeset::GlyphRun` / [`crate::typeset::FontMetric`] / [`crate::typeset::FontFaceConfig`] /
+//! [`crate::typeset::ImageFormat`] で、これらは「シェーピング結果」「フォント計測値」「フォント構築設定」
+//! 「判定済みの画像形式」をそのまま描画へ渡す leaf 値なので同型の複製を作らず直接載せる。
+//!
+//! 唯一の構築経路である子 module `build` はこの制約の外側にある — `crate::typeset::LaidOutDocument` /
+//! `Page` / `PlacedBlock` / `PlacedTableRow` / `HBoxContent` / `FontResources` / `ImageAsset` を走査して
+//! 上のデータ型へ写すのがその責務だから。組版中間型への依存はこの写像 1 箇所に閉じ、データ型側へは
+//! 漏らさない（データ型へ新しいフィールドを足すときは上の例外規則が効く）。
 //!
 //! # 外部から不正状態を作れないこと（#378）
 //!
@@ -21,10 +26,14 @@
 //! - [`PublicationLinkTarget::Internal`] と [`PublicationOutlineEntry`] の到達先ページは必ず存在する
 //! - [`PaintOp::DrawImage`] が持つ [`ImageRef`] は必ず [`PublicationResources`] の画像を指す
 
+mod build;
+
 use std::{
   fmt::{self, Debug, Formatter},
   sync::Arc,
 };
+
+pub(crate) use build::build;
 
 use crate::{
   project::{FontMap, FontType},
@@ -409,7 +418,10 @@ pub struct PublicationOutlineEntry {
   pub dest: Destination,
 }
 
-/// テストが描画資源を組み立てるための fixture（本体コードは `compiler` の構築経路だけを使う）。
+/// テストが描画資源を組み立てるための fixture（本体コードは `build` の構築経路だけを使う）。
+///
+/// `pub(crate)` なのは `publication` の外の `compiler::dump` のテストも使うため
+/// （`Publication` のダンプは描画資源の中身を読まないので、同じダミー資源で足りる）。
 #[cfg(test)]
 pub(crate) mod test_fixtures {
   use std::sync::Arc;
