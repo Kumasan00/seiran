@@ -1404,10 +1404,10 @@ error variant（invalid page size / rule rect / link rect / image not in manifes
 `seiran-compiler` の外部入口 `compile` を持つ module。言語処理・意味解決・組版を 1 回の呼び出しに畳み、
 段の呼び出し順序・中間型（`LaidOutDocument` / `FontResources` / 画像資源等）は一切公開しない（`lib.rs`
 が crate 外へ出すのは `Compilation`・その構成要素（`DependencyManifest` / `Warnings` /
-`BuildStatistics` / `OutputPlan`）・失敗型 `CompileFailure`・`publication::Publication` と
+`BuildStatistics`）・失敗型 `CompileFailure`・`publication::Publication` と
 そこから到達できる leaf 値型・`ProjectSource` 系のみ）。
-PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.output`
-（`OutputPlan { pdf_path }`）が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
+PDF バイト列の生成（`seiran_pdf::render`）と保存は行わない — `Compilation.pdf_path`
+が指す先へ書き出すのは呼び出し元（`seiran`）の責務。
 
 `compiler` が知るのは**全体の phase 順序だけ**で、各 phase の内部手順と成果物への写像は知らない（#350）:
 
@@ -1432,8 +1432,10 @@ input::load → parse_project → semantics::analyze → typeset::FontResources:
 `compiler.rs` 本体には facade 関数（`compile` / `parse_project` /
 `parse_all_sources` / `attribute_analyze_error` / `collect_warnings`。自明な補助関数は除く）と、
 `compile` が返す公開型（`Compilation` / `BuildStatistics`。
-`CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート、
-`OutputPlan` は `input` 子 module から再エクスポート）を置く。入力読込は `compiler.rs` 直下には無く、
+`CompileFailure` / `DependencyManifest` / `Warnings` は子 module から `pub use` で再エクスポート）を置く。
+`Compilation` が持つ保存先 `pdf_path` は組版の成果ではなく検証済み設定から決まる値で、包みの型は置かない
+（1 フィールドの計画型は隠す規則を持たないため。出力形式か保存先が複数になった時点で改めて設計する、#463）。
+入力読込は `compiler.rs` 直下には無く、
 `input::load` の 1 呼び出しになっている（#351）。`compile<S: ProjectSource>(source: &S, root: &ProjectPath,
 base_dir: &Path) -> Result<Compilation, CompileFailure>` が唯一の公開エントリーポイントで、`root` は
 設定ファイルパスそのもの（`--config-path` が指す値と同じ）。`base_dir` は相対パス解決の基準ディレクトリで、
@@ -1460,7 +1462,8 @@ error の `miette::Report` への型消去は `CompileFailure::into_report`（CL
 子 module:
 
 - `input`: 入力読込の唯一の外向き入口 `load` と、その成果物 `CompilationInputs`（設定・style・文献・
-  font・読込済みソース・出力先情報 `OutputPlan`）。**config.toml → style.toml → 横断検証
+  font・読込済みソース）。**読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**
+  （#463）。**config.toml → style.toml → 横断検証
   （`typeset::validate_layout`）→ references → フォント → sources** という順序とエラー集約を知るのは
   この module だけで、`compile` は `load` を 1 回呼ぶ（#351）。CSL スタイル・ロケールはここでは読まない
   （引用箇所があるときだけ読む遅延は `semantics::analyze` の内側）。
@@ -1676,7 +1679,7 @@ filesystem・ログ初期化（`tracing-subscriber`）・端末出力といっ�
   成功サマリをすべて抑止する。
 - **成功サマリの所要時間は build 全体**。`Compilation.statistics.total_elapsed_ms` は compiler facade の
   所要時間だが、CLI が表示する値は compile → render → atomic write の全体を計測する。
-- **保存は CLI 側の責務**。`compile` は `Compilation.output`（`OutputPlan { pdf_path }`）を返すだけで
+- **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで
   書き出さない。atomic write は保存先と同じディレクトリに一時ファイルを作ってから rename する
   （cross-filesystem の rename は atomic にならないため）。
 - **package 名と binary 名を一致させている**（`seiran`）。`[[bin]]` セクションは持たず、`cargo run -- build`

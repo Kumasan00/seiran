@@ -33,7 +33,7 @@ mod typeset;
 // 等の内部データモデルは `compile` の引数にも `Compilation` の出力にも現れない（`ProjectSource`
 // 経由でファイルから読み込まれ内部で完結する）ため、ここには含めない。
 pub use color::{Color, ParseColorError};
-pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, OutputPlan, Warnings, compile};
+pub use compiler::{BuildStatistics, Compilation, CompileFailure, DependencyManifest, Warnings, compile};
 pub use length::{Length, ParseLengthError};
 #[doc(hidden)]
 pub use project::test_support;

@@ -99,7 +99,7 @@ crate はデプロイ・外部依存・独立再利用の単位に限る（コ�
 ```text
 seiran-compiler    言語処理・意味解決・組版のライブラリ（lib target のみ）。組版成果物
                    （`Publication` 系 leaf 型）の型所有者。公開 API は compile + 成果 Compilation
-                   （Publication / DependencyManifest / Warnings / BuildStatistics / OutputPlan）
+                   （Publication / DependencyManifest / Warnings / BuildStatistics / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource / ProjectPath）
   ↑ seiran-pdf     (e) 描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
@@ -136,7 +136,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
 1. **`return` キーワード必須**: 関数の返り値には必ず `return` を使用する（末尾式による暗黙の返却は使わない。Clippy の `needless_return` を allow にしているのはこの規約の裏返し）
 2. **フォーマット**: 正典は `rustfmt.toml`（インデント 2 スペース・最大行幅 120 文字ほか）。手書き時もこれに合わせ、適用は `cargo +nightly fmt`（nightly 必須の理由は「コマンド」節を参照）
 3. **use 文**: import は「名前を持ち込む」行為であり、**持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う**（G1「字面だけで構造が一意」の import への適用）。以下はすべてこの原則から導かれる
-   - **起点は `crate::` に統一**: `use` は `crate::` 起点で書き、`super::` / `self::` 起点は使わない（同じ型に 2 本のパスを作らないため。root ファサードと同じ理由）。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言している子 module から取り込む相対 use（`use input::CompilationInputs;`。`mod input;` が同じ画面にあるので出自が字面で見え、隣の `pub use input::OutputPlan;` と同じ形になる）、(b) `#[cfg(test)]` の module（`mod tests` / `mod test_support`）が**直近の親**の被テスト項目を取り込む `use super::*` / `use super::Item`。(b) は親 1 段までで、`super::super::` で祖父母以上へ遡る形は使わない（何段上かを数えないと出自が分からず、原則に反する）
+   - **起点は `crate::` に統一**: `use` は `crate::` 起点で書き、`super::` / `self::` 起点は使わない（同じ型に 2 本のパスを作らないため。root ファサードと同じ理由）。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言している子 module から取り込む相対 use（`use input::CompilationInputs;`。`mod input;` が同じ画面にあるので出自が字面で見え、隣の `pub use warnings::Warnings;` と同じ形になる）、(b) `#[cfg(test)]` の module（`mod tests` / `mod test_support`）が**直近の親**の被テスト項目を取り込む `use super::*` / `use super::Item`。(b) は親 1 段までで、`super::super::` で祖父母以上へ遡る形は使わない（何段上かを数えないと出自が分からず、原則に反する）
    - **`crate::` を本体コードへ直書きしない**: 型・トレイトは import して裸の名前で書き、関数は import した module 経由で `module::fn(...)` と呼ぶ。`clippy::absolute_paths` は 4 セグメント以上しか検出しない（`clippy.toml` の `absolute-paths-max-segments = 3`。末尾の enum variant / 関連関数を数えないので `crate::source::SourceId::new` は素通りし、`project::config::load` と `style::load` を書き分けるイディオムは温存される）ので、規約のほうが lint より厳しい。短いパス側は rustc の `unused_qualifications` が押さえていて、スコープに入っている名前を `std::sync::Arc::new` のように再修飾すると落ちる。どちらの lint も `#[cfg(test)]` の中で発火するので、テストにも同じ規約が効く。doc コメント内の intra-doc link（``[`crate::Foo`]``）は絶対パスが正しいので対象外
    - `*` を避け明示的にインポート、`StdExternalCrate` でグループ化、`imports_granularity = "Crate"`
    - 型・トレイト・モジュールは直接 import する。関数は既定でモジュール経由で呼ぶ（`mem::swap` 方式）が、呼び出し元で `fn_name(...)` だけ見ても出自・曖昧さがない場合（private な単一関数サブモジュールからの re-export、`tracing::debug!` 等の広く知られた慣用）は直接 import してよい

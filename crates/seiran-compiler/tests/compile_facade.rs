@@ -67,7 +67,7 @@ fn compile_is_callable_from_outside_the_crate_and_produces_a_publication() {
   assert!(compilation.warnings.is_empty(), "警告の出る設定ではないので空のはず");
   assert_eq!(compilation.dependencies.source_paths, vec![PathBuf::from("/project/text.sei")]);
   assert_eq!(compilation.dependencies.config_path, PathBuf::from("/project/config.toml"));
-  assert_eq!(compilation.output.pdf_path, PathBuf::from("/project/out/out.pdf"));
+  assert_eq!(compilation.pdf_path, PathBuf::from("/project/out/out.pdf"));
 }
 
 #[test]
