@@ -9,7 +9,7 @@ use crate::{
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_length, find_string},
     },
     span_ext::ToSourceSpan,
-    syntax::ast::EnvironmentView,
+    syntax::view::EnvironmentView,
   },
 };
 

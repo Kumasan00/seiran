@@ -8,7 +8,7 @@ use crate::{
       opt_args::{OptType, OptValue, collect_environment_opt_args},
     },
     span_ext::ToSourceSpan,
-    syntax::ast::EnvironmentView,
+    syntax::view::EnvironmentView,
   },
 };
 

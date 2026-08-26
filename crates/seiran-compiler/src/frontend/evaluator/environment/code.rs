@@ -7,7 +7,7 @@ use crate::{
   document::{HirBuilder, HirNode, HirNodeKind},
   frontend::{
     evaluator::{EvalError, opt_args::collect_environment_opt_args},
-    syntax::ast::{EnvironmentView, extract_text_content},
+    syntax::view::{EnvironmentView, extract_text_content},
   },
 };
 

@@ -7,9 +7,9 @@ use crate::frontend::{
   span_ext::ToSourceSpan,
   syntax::{
     SyntaxKind,
-    ast::CommandView,
     green::{GreenElement, GreenNode},
     token::TokenKind,
+    view::CommandView,
   },
 };
 
@@ -74,8 +74,8 @@ mod tests {
   use crate::frontend::{
     evaluator::test_support,
     syntax::{
-      ast::CommandView,
       green::{GreenElement, GreenNode},
+      view::CommandView,
     },
   };
 

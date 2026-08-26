@@ -10,7 +10,7 @@ use crate::{
   frontend::{
     evaluator::{EvalError, command::symbol::SYMBOL_MAP, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
-    syntax::{ArgMode, ast::CommandView},
+    syntax::{ArgMode, view::CommandView},
   },
 };
 
@@ -18,7 +18,7 @@ pub(crate) mod cite;
 pub(crate) mod code;
 mod control;
 pub(crate) mod footnote;
-mod headline;
+mod heading;
 pub(crate) mod index;
 pub(crate) mod inline;
 pub(crate) mod link;
@@ -44,7 +44,7 @@ pub(crate) enum CommandKind {
   /// `\space{N}` — 固定幅スペース挿入
   Space,
   /// 見出しコマンド（`\part`, `\chapter`, `\section` 等）
-  Headline(HeadingLevel),
+  Heading(HeadingLevel),
   /// 引数 1 つを取り書体を適用するコマンド（`\bold`, `\sansitalic` 等の 12 種）
   StyledText(FontKind),
   /// 引数 1 つを取りテキスト色を適用するコマンド（`\color[color=#rrggbb]{...}`）
@@ -77,7 +77,7 @@ impl CommandKind {
 
       Self::PageBreak => return control::pagebreak(view, builder).map(CommandResult::Block),
 
-      Self::Headline(level) => return headline::heading(view, builder, level).map(CommandResult::Block),
+      Self::Heading(level) => return heading::heading(view, builder, level).map(CommandResult::Block),
 
       Self::StyledText(kind) => return inline::styled_text(view, builder, kind).map(CommandResult::Inline),
 
@@ -171,12 +171,12 @@ pub(crate) static COMMAND_MAP: phf::Map<&'static str, CommandKind> = phf_map! {
   "color" => CommandKind::ColoredText,
 
   // 見出しコマンド
-  "part" => CommandKind::Headline(HeadingLevel::Part),
-  "chapter" => CommandKind::Headline(HeadingLevel::Chapter),
-  "section" => CommandKind::Headline(HeadingLevel::Section),
-  "subsection" => CommandKind::Headline(HeadingLevel::Subsection),
-  "paragraph" => CommandKind::Headline(HeadingLevel::Paragraph),
-  "subparagraph" => CommandKind::Headline(HeadingLevel::Subparagraph),
+  "part" => CommandKind::Heading(HeadingLevel::Part),
+  "chapter" => CommandKind::Heading(HeadingLevel::Chapter),
+  "section" => CommandKind::Heading(HeadingLevel::Section),
+  "subsection" => CommandKind::Heading(HeadingLevel::Subsection),
+  "paragraph" => CommandKind::Heading(HeadingLevel::Paragraph),
+  "subparagraph" => CommandKind::Heading(HeadingLevel::Subparagraph),
 
 };
 

@@ -9,7 +9,7 @@ use crate::{
   frontend::{
     evaluator::{EvalError, opt_args::collect_command_opt_args},
     span_ext::ToSourceSpan,
-    syntax::ast::{CommandView, extract_text_content},
+    syntax::view::{CommandView, extract_text_content},
   },
 };
 

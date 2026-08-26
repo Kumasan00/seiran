@@ -9,7 +9,7 @@ use crate::{
       EvalError,
       environment::math::math_grid::{GridSpec, NumberingMode, evaluate_math_env},
     },
-    syntax::ast::EnvironmentView,
+    syntax::view::EnvironmentView,
   },
 };
 

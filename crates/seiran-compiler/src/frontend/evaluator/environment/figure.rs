@@ -11,7 +11,7 @@ use crate::{
       opt_args::{OptType, OptValue, collect_command_opt_args, collect_environment_opt_args, find_string},
     },
     span_ext::ToSourceSpan,
-    syntax::ast::{CommandView, EnvironmentView, extract_text_content},
+    syntax::view::{CommandView, EnvironmentView, extract_text_content},
   },
   length::Length,
   project::ProjectPath,

@@ -40,7 +40,7 @@ mod caption;
 mod font_kind;
 mod heading_level;
 mod hir;
-mod math_class;
+mod math_environment;
 mod math_variant;
 mod quote;
 mod table_column;
@@ -54,7 +54,7 @@ pub(crate) use hir::{
   HirBuilder, HirDocument, HirGroup, HirInline, HirInlineKind, HirListItem, HirMath, HirMathKind, HirMathRow, HirNode,
   HirNodeKind, HirProofTarget, HirSource, HirTableCell, HirTableRow, NodeId, NodeMap, SourceMap,
 };
-pub(crate) use math_class::{MathDelimiter, MathEnvKind};
+pub(crate) use math_environment::{MathDelimiter, MathEnvKind};
 pub(crate) use math_variant::MathVariant;
 pub(crate) use quote::QuoteKind;
 pub(crate) use table_column::{ColumnAlign, ColumnWidth};

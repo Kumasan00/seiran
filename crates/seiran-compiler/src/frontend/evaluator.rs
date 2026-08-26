@@ -13,9 +13,9 @@ use crate::{
     evaluator::command::CommandResult,
     syntax::{
       SyntaxKind,
-      ast::CommandView,
       green::{GreenElement, GreenNode},
       token::TokenKind,
+      view::CommandView,
     },
   },
   source::Span,
@@ -30,7 +30,7 @@ mod opt_args;
 
 pub(crate) use error::EvalError;
 
-use crate::frontend::syntax::{ModeResolver, ast::EnvironmentView};
+use crate::frontend::syntax::{ModeResolver, view::EnvironmentView};
 
 /// `crate::frontend::syntax::parse` へ渡すレジストリ解決器を組む
 ///

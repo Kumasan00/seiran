@@ -11,7 +11,7 @@ use crate::{
       opt_args::{OptType, collect_environment_opt_args, find_bool, find_string},
     },
     span_ext::ToSourceSpan,
-    syntax::ast::EnvironmentView,
+    syntax::view::EnvironmentView,
   },
 };
 
