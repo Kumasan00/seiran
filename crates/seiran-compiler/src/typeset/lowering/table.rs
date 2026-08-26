@@ -59,7 +59,7 @@ pub(super) fn lower_table(
 
   let body_style = TextStyle {
     font_size: ctx.default_font_size(),
-    font_kind: ctx.style.text.font_kind,
+    font_kind: ctx.body_font_kind,
     color: None,
   };
   let head_style = TextStyle {
@@ -106,17 +106,27 @@ mod tests {
   /// `.sei` ソースを lower してレイアウトノード列を返すテストヘルパ
   fn lower_source(style: &ReadStyle, source: &str) -> Vec<LayoutNode> { return lower(style, &analyzed(source)); }
 
+  /// 表の本体 `VBox` の子要素列を `VBox` の入れ子を辿って探すヘルパ
+  ///
+  /// 引用は本体を 1 枚の `VBox` で包むため、その中の表は最上位から 1 段深い位置に現れる。
+  fn find_table_children(nodes: &[LayoutNode]) -> Option<&[LayoutNode]> {
+    for node in nodes {
+      let LayoutNode::VBox { children, .. } = node else {
+        continue;
+      };
+      if children.iter().any(|c| matches!(c, LayoutNode::Table(_))) {
+        return Some(children.as_slice());
+      }
+      if let Some(found) = find_table_children(children) {
+        return Some(found);
+      }
+    }
+    return None;
+  }
+
   /// 表の本体 `VBox` の子要素列を取り出すヘルパ
   fn table_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
-    return nodes
-      .iter()
-      .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Table(_))) => {
-          return Some(children.as_slice());
-        },
-        _ => return None,
-      })
-      .expect("表本体の VBox があるはず");
+    return find_table_children(nodes).expect("表本体の VBox があるはず");
   }
 
   /// `lower_table` の結果から `TableLayout` を取り出すヘルパ
@@ -191,7 +201,52 @@ mod tests {
     let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
       panic!("本体セルは Text であるべき");
     };
-    assert_eq!(body_style.font_kind, FontKind::Serif, "本体セルは [text] の書体のまま");
+    assert_eq!(body_style.font_kind, FontKind::Serif, "本体セルは文脈の本文書体（最上位なので [text]）のまま");
+  }
+
+  #[test]
+  fn lower_table_in_theorem_body_cells_use_theorem_font_kind() {
+    // Arrange — 既定 style で [theorems.theorem].font_kind は serif_italic
+    let style = ReadStyle::default();
+
+    // Act
+    let nodes = lower_source(
+      &style,
+      "\\begin{theorem}\n定理本体の段落。\n\n\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\
+       \\end{table}\n\\end{theorem}\n",
+    );
+
+    // Assert
+    let table = find_table(&nodes);
+    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+      panic!("本体セルは Text であるべき");
+    };
+    assert_eq!(body_style.font_kind, FontKind::SerifItalic, "本体セルは定理本体の書体に従う");
+    let LayoutNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+      panic!("ヘッダセルは Text であるべき");
+    };
+    assert_eq!(
+      head_style.font_kind,
+      FontKind::SerifBold,
+      "ヘッダ行は [table].head_font_kind のままで、スコープ本文書体の影響を受けない"
+    );
+  }
+
+  #[test]
+  fn lower_table_in_quote_body_cells_use_quote_font_kind() {
+    // Arrange
+    let mut style = ReadStyle::default();
+    style.quote.font_kind = FontKind::SansSerif;
+
+    // Act
+    let nodes = lower_source(&style, "\\begin{quote}\n\\begin{table}\n\\row{Alice}\n\\end{table}\n\\end{quote}\n");
+
+    // Assert
+    let table = find_table(&nodes);
+    let LayoutNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+      panic!("本体セルは Text であるべき");
+    };
+    assert_eq!(body_style.font_kind, FontKind::SansSerif, "本体セルは引用の書体に従う");
   }
 
   #[test]
