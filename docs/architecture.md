@@ -443,8 +443,10 @@ side table の `NodeMap<T>` も crate 内 interface に留め、`SemanticDocumen
   `alignment` の値型 `TextAlignment` は、それを読み込む `style::text` が所有する
   （設定読込の時点で成立する検証済み設定値であって、組版時に決まる `typeset::boxes::Align` とは
   変更理由が違う）
-- **キャプション**: figure / table は共通の `CaptionStyle { format, font_size }` を `caption` フィールドに
-  持つ。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、
+- **キャプション**: figure / table は共通の `CaptionStyle { format, font_size, font_kind }` を `caption`
+  フィールドに持つ。`font_kind`（既定 `serif`）は `format` が展開する番号リテラル（「Figure 1.1: 」）と
+  `\caption{}` 本体の両方に効き、`[text].font_kind` からの導出はしない（番号側だけを別書体にする手段は
+  持たない）。配置は図・表ともソース上の `\caption` の出現位置（本体より前なら Top、後なら Bottom）で決まり、
   スタイル側では指定しない。表示数式の番号体裁は `[math.block].tag_format` / `number_side`（番号 3 系統の
   **tag** ＝式の横に出すもの。**number** ＝ `counters.equation.number_format`、**ref** ＝
   `counters.equation.ref_format` とは別物）

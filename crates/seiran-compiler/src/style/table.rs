@@ -44,7 +44,7 @@ impl Default for TableStyle {
     return Self {
       caption: CaptionStyle {
         format: NumberTitleTemplate::parse("Table {number}: {title}"),
-        font_size: Length::pt(11.0),
+        ..CaptionStyle::default()
       },
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),

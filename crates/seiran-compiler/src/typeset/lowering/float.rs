@@ -1,7 +1,9 @@
 //! 図表（フロート）共通のキャプション構築と `VBox` 包み
 
+#[cfg(test)]
+use crate::document::FontKind;
 use crate::{
-  document::{CaptionPosition, FontKind, HirInline},
+  document::{CaptionPosition, HirInline},
   length::Length,
   style::CaptionStyle,
   typeset::{
@@ -28,7 +30,7 @@ pub(super) fn build_caption(
 ) -> Vec<LayoutNode> {
   let base_style = TextStyle {
     font_size: caption_style.font_size,
-    font_kind: FontKind::Serif,
+    font_kind: caption_style.font_kind,
     color: None,
   };
   let nodes = caption_style.format.expand(
@@ -241,12 +243,13 @@ mod tests {
   }
 
   #[test]
-  fn build_caption_expands_template_with_serif_caption_style() {
+  fn build_caption_expands_template_with_default_caption_font_kind() {
     // Arrange
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("Fig {number}: {title}"),
       font_size: Length::pt(9.0),
+      ..CaptionStyle::default()
     };
 
     // Act
@@ -267,12 +270,36 @@ mod tests {
   }
 
   #[test]
+  fn build_caption_follows_style_caption_font_kind() {
+    // Arrange — 番号リテラルと本文の両方が同じ書体で組まれる（`merge_adjacent_text` で 1 個の Text に併合される）
+    let mut style = ReadStyle::default();
+    style.figure.caption.font_kind = FontKind::SansSerif;
+
+    // Act
+    let nodes =
+      lower_source(&style, "\\chapter{C}\n\n\\begin{figure}\n\\image{a.png}\n\\caption{Overview}\n\\end{figure}\n");
+
+    // Assert
+    let captions: Vec<(String, TextStyle)> = float_body(&nodes)
+      .iter()
+      .filter_map(|n| match n {
+        LayoutNode::Text(text, text_style) => return Some((text.clone(), *text_style)),
+        _ => return None,
+      })
+      .collect();
+    assert_eq!(captions.len(), 1, "番号部分と本文部分は同じ書体なので 1 個の Text に併合される: {captions:?}");
+    assert_eq!(captions[0].0, "Figure 1.1: Overview");
+    assert_eq!(captions[0].1.font_kind, FontKind::SansSerif);
+  }
+
+  #[test]
   fn caption_format_without_title_placeholder_does_not_consume_footnote_number() {
     // Arrange — `{title}` を含まない独自フォーマット（キャプション本文は一切表示されない）
     let mut style = ReadStyle::default();
     style.figure.caption = CaptionStyle {
       format: NumberTitleTemplate::parse("図 {number}"),
       font_size: Length::pt(9.0),
+      ..CaptionStyle::default()
     };
 
     // Act
