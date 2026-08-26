@@ -256,7 +256,7 @@ mod tests {
   fn text_modes() -> ModeResolver {
     return ModeResolver {
       env_body: |_| return BodyMode::Text,
-      command_arg: |_| return ArgMode::Inherit,
+      command_arg: |_, _| return ArgMode::Inherit,
     };
   }
 

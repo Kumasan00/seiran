@@ -3,7 +3,7 @@
 これは導入の節です。詳しくは \ref{sec:detail} を参照してください。
 
 外部リンクの例: \url{https://example.com} と
-\href[url=https:\/\/www.rust-lang.org]{Rust の公式サイト} を参照。
+\href{https://www.rust-lang.org}{Rust の公式サイト} を参照。
 
 \section{背景}
 

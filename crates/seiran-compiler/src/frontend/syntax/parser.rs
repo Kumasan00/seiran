@@ -52,8 +52,8 @@ pub(crate) enum BodyMode {
 
 /// コマンドの必須引数の読み取り方
 ///
-/// レジストリ（`crate::frontend::evaluator`）がコマンド名ごとに宣言し、[`ModeResolver`] 経由で
-/// パーサーへ渡る。宣言は外側文脈からの継承に優先する。
+/// レジストリ（`crate::frontend::evaluator`）がコマンド名と引数位置ごとに宣言し、[`ModeResolver`]
+/// 経由でパーサーへ渡る。宣言は外側文脈からの継承に優先する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ArgMode {
   /// 外側文脈の [`ParseMode`] を継承してトークン化する（既定）
@@ -70,8 +70,8 @@ pub(crate) enum ArgMode {
 pub(crate) struct ModeResolver {
   /// 環境名 → 本体の読み取り方
   pub env_body: fn(&str) -> BodyMode,
-  /// コマンド名 → 必須引数の読み取り方
-  pub command_arg: fn(&str) -> ArgMode,
+  /// コマンド名と必須引数の位置（0 始まり）→ その位置の読み取り方
+  pub command_arg: fn(&str, usize) -> ArgMode,
 }
 
 /// アリーナベース CST 構築パーサー
@@ -456,10 +456,11 @@ impl<'a> Parser<'a> {
   /// コマンド呼び出しをパース: `\cmd[opt]{arg}`
   ///
   /// 必須引数の読み取り方はレジストリの宣言（[`ArgMode`]）が外側文脈からの継承に優先する。
-  /// 任意引数はテキストモードでパースする。
+  /// 宣言は引数の位置ごとに引くので、同じコマンドでも位置によってモードが違いうる（`\href` は
+  /// 第 1 引数だけ verbatim）。任意引数はテキストモードでパースする。
   fn parse_command_call(&mut self, cmd_token: Token, mode: ParseMode) -> Result<&'a GreenNode<'a>, ParserError> {
     let start_span = cmd_token.span;
-    let arg_mode = (self.modes.command_arg)(cmd_token.command_name(self.source));
+    let command_name = cmd_token.command_name(self.source);
     let mut children = bumpalo::collections::Vec::new_in(self.arena);
     children.push(GreenElement::Token(cmd_token));
 
@@ -471,11 +472,13 @@ impl<'a> Parser<'a> {
       self.skip_trivia(&mut children);
     }
 
+    let mut arg_index = 0usize;
     while let Some(TokenKind::LBrace) = self.peek_kind() {
-      let arg_node = match arg_mode {
+      let arg_node = match (self.modes.command_arg)(command_name, arg_index) {
         ArgMode::Verbatim => self.parse_verbatim_arg()?,
         ArgMode::Inherit => self.parse_mandatory_arg(mode)?,
       };
+      arg_index += 1;
       children.push(GreenElement::Node(arg_node));
       self.skip_trivia(&mut children);
     }
@@ -796,13 +799,14 @@ mod tests {
     };
   }
 
-  /// テスト用のコマンド名 → [`ArgMode`] 解決関数
+  /// テスト用の（コマンド名, 引数位置）→ [`ArgMode`] 解決関数
   ///
-  /// `vurl` は verbatim 引数コマンドのスタンドイン。`syntax` は語彙を持たないので、本番レジストリ
-  /// （`evaluator::command` の `VERBATIM_ARG_COMMANDS`）とは独立した合成名でモード分岐だけを検査する。
-  fn test_command_arg(name: &str) -> ArgMode {
-    return match name {
-      "vurl" => ArgMode::Verbatim,
+  /// `vurl` は全必須引数が verbatim なコマンド、`vhref` は第 1 引数だけが verbatim なコマンドの
+  /// スタンドイン。`syntax` は語彙を持たないので、本番レジストリ（`evaluator::command` の
+  /// `COMMAND_ARG_MODES`）とは独立した合成名でモード分岐だけを検査する。
+  fn test_command_arg(name: &str, index: usize) -> ArgMode {
+    return match (name, index) {
+      ("vurl", _) | ("vhref", 0) => ArgMode::Verbatim,
       _ => ArgMode::Inherit,
     };
   }
@@ -1687,5 +1691,28 @@ mod tests {
 
     // Assert — `^` は Math モードで構造化される（生読みではない）
     assert!(arg.first_child_of_kind(SyntaxKind::MathSuperscript).is_some());
+  }
+
+  #[test]
+  fn arg_mode_is_resolved_per_argument_position() {
+    // Arrange — `vhref` は第 1 引数だけが verbatim（本番の `\href` と同じ形）
+    let arena = Bump::new();
+    let source = "\\vhref{https://example.com}{\\bold{強調}}";
+
+    // Act
+    let cst = parse_source(source, &arena);
+    let GreenElement::Node(cmd) = &cst.children[0] else {
+      panic!("CommandCall ノードが期待されます");
+    };
+    let args: Vec<_> = cmd.children_of_kind(SyntaxKind::MandatoryArg).collect();
+
+    // Assert — 第 1 引数は生読みした 1 個の塊、第 2 引数は通常のトークン化を通る
+    assert_eq!(args.len(), 2);
+    let GreenElement::Token(url_token) = &args[0].children[1] else {
+      panic!("VerbatimText トークンが期待されます");
+    };
+    assert_eq!(url_token.kind, TokenKind::VerbatimText);
+    assert_eq!(url_token.text(source), "https://example.com");
+    assert!(args[1].first_child_of_kind(SyntaxKind::CommandCall).is_some(), "{:?}", args[1]);
   }
 }
